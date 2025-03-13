@@ -185,12 +185,12 @@ fn test_direct_array() {
 
 #[test]
 fn test_ser_array() {
-    #[derive(Serialize, Deserialize)]
+    #[derive(Serialize, Deserialize, Debug, PartialEq)]
     #[serde(rename_all = "PascalCase")]
     struct Element {
         elem: i32,
     }
-    #[derive(Serialize, Deserialize)]
+    #[derive(Serialize, Deserialize, Debug, PartialEq)]
     #[serde(rename_all = "PascalCase")]
     struct Test {
         string_seq: Vec<String>,
@@ -205,9 +205,7 @@ fn test_ser_array() {
 
     // Serializer
     let ttlv = to_ttlv(&test).unwrap();
-    info!("TTLV: {ttlv:?}");
-    println!("{}", serde_json::to_string_pretty(&ttlv).unwrap());
-    let expected = r#"TTLV { tag: "Test", value: Structure([TTLV { tag: "StringSeq", value: TextString("a") }, TTLV { tag: "StringSeq", value: TextString("b") }, TTLV { tag: "StructSeq", value: Structure([TTLV { tag: "Elem", value: Integer(1) }]) }, TTLV { tag: "StructSeq", value: Structure([TTLV { tag: "Elem", value: Integer(2) }]) }]) }"#;
+    let expected = r#"TTLV { tag: "Test", value: Structure([TTLV { tag: "StringSeq", value: Array([TTLV { tag: "StringSeq", value: TextString("a") }, TTLV { tag: "StringSeq", value: TextString("b") }]) }, TTLV { tag: "StructSeq", value: Array([TTLV { tag: "StructSeq", value: Structure([TTLV { tag: "Elem", value: Integer(1) }]) }, TTLV { tag: "StructSeq", value: Structure([TTLV { tag: "Elem", value: Integer(2) }]) }]) }]) }"#;
     let ttlv_s = format!("{ttlv:?}");
     assert_eq!(ttlv_s, expected);
 
@@ -216,12 +214,13 @@ fn test_ser_array() {
 
     //Deserialize
     let re_ttlv = serde_json::from_str::<TTLV>(&json).unwrap();
+    assert_eq!(json, serde_json::to_string_pretty(&re_ttlv).unwrap());
     assert_eq!(ttlv, re_ttlv);
 
     //Deserializer
     log_init(Some("trace"));
     let rec: Test = from_ttlv(re_ttlv).unwrap();
-    assert_eq!(test.string_seq, rec.string_seq);
+    assert_eq!(test, rec);
 }
 
 #[test]

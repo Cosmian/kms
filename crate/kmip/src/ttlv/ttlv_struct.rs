@@ -21,6 +21,10 @@ pub enum TTLValue {
     DateTime(OffsetDateTime),
     Interval(u32),
     DateTimeExtended(OffsetDateTime),
+    // Arrays are flattened in TTLV representations
+    // They do not exist as a value. We use this Variant to
+    // facilitate serialization and deserialization to KMIP
+    Array(Vec<TTLV>),
 }
 
 impl Default for TTLValue {
@@ -45,6 +49,7 @@ impl PartialEq for TTLValue {
             (Self::DateTimeExtended(l0), Self::DateTimeExtended(r0)) => {
                 l0.unix_timestamp_nanos() / 1000 == r0.unix_timestamp_nanos() / 1000
             }
+            (Self::Array(l0), Self::Array(r0)) => l0 == r0,
             (_, _) => false,
         }
     }
@@ -64,8 +69,8 @@ pub struct KmipEnumerationVariant {
 /// # Explanation
 /// When serializing a TTLV from a KMIP Object which has an enumeration using
 /// the `KmipEnumerationSerialize` derivation, both the name and the value
-/// are serialized and will be present in the TTLV Output
-/// However, JSON serialization of the TTLV will only serialize the name, and not the value.
+/// are serialized and will be present in the TTLV Output.
+/// However, JSON serialization of the TTLV will only serialize the name and not the value.
 /// Therefore, when deserializing from JSON, the value will be missing.
 impl PartialEq for KmipEnumerationVariant {
     fn eq(&self, other: &Self) -> bool {
