@@ -155,24 +155,24 @@ jobs:
             sudo apt update && sudo apt-get install libc6:i386 libstdc++6:i386
 
             # Download the simulator
-            wget "https://package.cosmian.com/SecurityServerEvaluation-6.0.0.0.tar.gz"
+            wget "https://package.cosmian.com/ci/hsm-simulator.tar.xz"
             echo -n Extracting compressed archive...
-            tar -xvf SecurityServerEvaluation-6.0.0.0.tar.gz
+            tar -xvf hsm-simulator.tar.xz
             find .
-            rm SecurityServerEvaluation-6.0.0.0.tar.gz
-            ./u.trust_anchor_integration_eval_bundle-6.0.0.0/Software/Linux/Simulator/sim5_linux/bin/bl_sim5
+            rm hsm-simulator.tar.xz
+            .hsm-simulator/bl_sim5
 
             # Configure the PKCS#11 connection on the KMS server
             sudo telnet localhost 3001
-            sudo cp Software/Linux/Crypto_APIs/PKCS11_R3/lib/libcs_pkcs11_R3.so /lib directory
+            sudo cp hsm-simulator/libcs_pkcs11_R3.so /lib directory
             sudo mkdir -p /etc/utimaco
             sudo chmod 755 /etc/utimaco
-            sudo cp u.trust_anchor_integration_eval_bundle-6.0.0.0/Software/Linux/Crypto_APIs/PKCS11_R3/sample/cs_pkcs11_R3.cfg /etc/utimaco/
+            sudo cp hsm-simulator/cs_pkcs11_R3.cfg /etc/utimaco/
             sudo echo -e "...\nLogpath = /tmp\n...\nLogging = 3\n...\nDevice = 3001@localhost \n..." > /etc/utimaco/cs_pkcs11_R3.cfg
             export CS_PKCS11_R3_CFG=/etc/utimaco/cs_pkcs11_R3.cfg
 
             # Test the PKCS#11 configuration using ./p11tool2 Slot=0 GetSlotInfo
-            cd u.trust_anchor_integration_eval_bundle-6.0.0.0/Software/Linux/Administration
+            cd hsm-simulator/Administration
             ./p11tool2 Slot=0 GetSlotInfo
 
             cargo test -p utimaco_pkcs11_loader --features utimaco
