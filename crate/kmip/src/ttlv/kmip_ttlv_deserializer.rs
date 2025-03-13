@@ -159,6 +159,13 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         // - or not in a map at all, and we are also interested in the value
 
         match &self.current.value {
+            TTLValue::Array(_array) => {
+                // if the TTLV value is an Array, the deserializer is attempting to deserialize the children
+                // by iterating over the children which hold the values of the sequence/array
+                // Reset the child index to 0 to start from the beginning
+                self.child_index = 0;
+                visitor.visit_seq(self)
+            }
             TTLValue::BigInteger(bi) => {
                 // if the TTLV value is a BigInt, the deserializer is attempting to deserialize the value
                 // by converting the BigInt to u32
@@ -548,9 +555,9 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
                 let seq_access = KmipBigIntDeserializer::instantiate(&bi)?;
                 visitor.visit_seq(seq_access)
             }
-            TTLValue::Structure(_) | TTLValue::ByteString(_) => {
-                // if the TTLV value is a Structure, the deserializer is attempting to deserialize the children
-                // by iterating over the children which hold the values of the sequence/array
+            TTLValue::Structure(_) | TTLValue::ByteString(_) | TTLValue::Array(_) => {
+                // if the TTLV value is a Structure, ByteString or Array, the deserializer is attempting to deserialize the children
+                // by iterating over the children which hold the values of the sequence/array.
                 // Reset the child index to 0 to start from the beginning
                 self.child_index = 0;
                 visitor.visit_seq(self)
@@ -784,8 +791,8 @@ impl<'de> SeqAccess<'de> for TtlvDeserializer {
         );
 
         match &self.current.value {
-            TTLValue::Structure(child_array) => {
-                // if the TTLV value is a Structure, the deserializer is attempting to deserialize the children
+            TTLValue::Structure(child_array) | TTLValue::Array(child_array) => {
+                // if the TTLV value is a Structure or Array, the deserializer is attempting to deserialize the children
                 // by iterating over the children which hold the values of the sequence/array
                 if self.child_index >= child_array.len() {
                     self.child_index = 0;
@@ -806,7 +813,7 @@ impl<'de> SeqAccess<'de> for TtlvDeserializer {
                 seed.deserialize(self).map(Some)
             }
             _ => Err(TtlvError::from(
-                "Expected BigInt, Structure or ByteString value in TTLV",
+                "Expected Structure, Array or ByteString value in TTLV",
             )),
         }
     }

@@ -38,7 +38,22 @@ impl Serialize for TTLV {
         }
 
         match &self.value {
-            TTLValue::Structure(v) => _serialize_struct(serializer, &self.tag, "Structure", v),
+            TTLValue::Structure(v) => {
+                // flatten the arrays in the structure
+                let mut items = Vec::new();
+                for item in v {
+                    if let TTLValue::Array(array) = &item.value {
+                        items.extend(array.clone());
+                    } else {
+                        items.push(item.clone());
+                    }
+                }
+                _serialize_struct(serializer, &self.tag, "Structure", &items)
+            }
+            TTLValue::Array(array) => {
+                // This should neve happen, see Structure above, arrays are flattened
+                array.serialize(serializer)
+            }
             TTLValue::Integer(v) => _serialize_struct(serializer, &self.tag, "Integer", v),
             TTLValue::LongInteger(v) => _serialize_struct(
                 serializer,

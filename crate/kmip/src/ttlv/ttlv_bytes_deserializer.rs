@@ -151,6 +151,13 @@ fn item_size(ttlv: &TTLV) -> Result<usize, TtlvError> {
         TTLValue::BigInteger(value) => value.to_bytes_be().len(),
         TTLValue::TextString(value) => value.len(),
         TTLValue::ByteString(value) => value.len(),
+        TTLValue::Array(items) => {
+            let mut array_size = 0;
+            for item in items {
+                array_size += item_size(item)?;
+            }
+            array_size
+        }
     };
 
     Ok(size)

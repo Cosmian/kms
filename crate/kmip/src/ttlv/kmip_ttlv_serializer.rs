@@ -84,6 +84,15 @@ impl TTLVSerializer {
             )),
         }
     }
+
+    pub fn current_mut_array(&mut self) -> Result<&mut Vec<TTLV>> {
+        match self.current_mut()?.value {
+            TTLValue::Array(ref mut v) => Ok(v),
+            _ => Err(TtlvError::custom(
+                "the current element is not a TTLV Array".to_owned(),
+            )),
+        }
+    }
 }
 
 /// The public API of the TTLV Serde serializer
@@ -469,7 +478,7 @@ impl ser::Serializer for &mut TTLVSerializer {
         match self.stack.peek_mut() {
             Some(parent) => {
                 trace!("serialize_seq of len: {len:?} in parent: {:?}", parent);
-                parent.value = TTLValue::Structure(Vec::with_capacity(len.unwrap_or(0)));
+                parent.value = TTLValue::Array(Vec::with_capacity(len.unwrap_or(0)));
             }
             None => {
                 trace!(
@@ -479,22 +488,10 @@ impl ser::Serializer for &mut TTLVSerializer {
                 // create a new structure parent to which we will add the fields of the struct
                 self.stack.push(TTLV {
                     tag: "[ARRAY]".to_owned(),
-                    value: TTLValue::Structure(Vec::with_capacity(len.unwrap_or(0))),
+                    value: TTLValue::Array(Vec::with_capacity(len.unwrap_or(0))),
                 });
             }
         }
-
-        trace!(
-            "serializing a sequence of tags {}, of len: {len:?}, stack: {:?}",
-            &self.current_tag(),
-            self.stack
-        );
-        // make the current element a structure that will hold the array
-        let holder = self
-            .stack
-            .peek_mut()
-            .ok_or_else(|| TtlvError::custom("no current TTLV found".to_owned()))?;
-        holder.value = TTLValue::Structure(Vec::with_capacity(len.unwrap_or(0)));
         Ok(self)
     }
 
@@ -655,7 +652,7 @@ impl SerializeSeq for &mut TTLVSerializer {
             .pop()
             .ok_or_else(|| TtlvError::custom("no TTLV found".to_owned()))?;
         // add the TTLV element to the parent
-        self.current_mut_structure()?.push(current_element);
+        self.current_mut_array()?.push(current_element);
 
         trace!(
             "... Seq element added, the current sequence is: {:?}",
@@ -831,7 +828,7 @@ impl SerializeStruct for &mut TTLVSerializer {
         );
 
         // Serialize the value according to its type
-        let mut current_element = match value.detect() {
+        let current_element = match value.detect() {
             Detected::ByteString(byte_string) => TTLV {
                 tag: key.to_owned(),
                 value: TTLValue::ByteString(byte_string),
@@ -861,34 +858,11 @@ impl SerializeStruct for &mut TTLVSerializer {
         };
 
         let v = self.current_mut_structure()?;
-        // Special case: if the current_element is an array, add all
-        // values of the array as elements to the parent (in TTLV.
-        // arrays are flattened)
-        match current_element.value {
-            TTLValue::Structure(ref mut children) => {
-                let is_array = children
-                    .iter()
-                    .all(|child| child.tag == current_element.tag);
-                // add all the elements of the array to the parent
-                if is_array {
-                    trace!("... adding the array elements to the parent");
-                    for child in children.drain(..) {
-                        v.push(child);
-                    }
-                    return Ok(());
-                } else {
-                    // an ordinary structure
-                    v.push(current_element);
-                }
-            }
-            _ => {
-                v.push(current_element);
-            }
-        }
+        v.push(current_element);
 
         trace!(
             "... added a struct field: {key}, the parent struct is now: {:?}",
-            &self.stack.peek(),
+            &v,
         );
         Ok(())
     }
