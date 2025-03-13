@@ -1,12 +1,12 @@
 use core::fmt;
 
 use serde::{
-    de::{self, MapAccess, Visitor},
+    de::{self, MapAccess, SeqAccess, Visitor},
     Deserialize,
 };
 use serde_json::Value;
 use time::{format_description::well_known::Iso8601, OffsetDateTime};
-use tracing::trace;
+use tracing::{info, instrument, trace};
 
 use super::{kmip_big_int::KmipBigInt, TTLV};
 use crate::ttlv::{KmipEnumerationVariant, TTLValue};
@@ -35,6 +35,26 @@ impl<'de> Deserialize<'de> for TTLV {
                 formatter.write_str("struct TTLV")
             }
 
+            // This is not officially supported in TTLV and will only be called
+            // if the user is attempting to deserialize an array of TTLV
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: SeqAccess<'de>,
+            {
+                let mut array = Vec::new();
+                while let Some(element) = seq.next_element::<TTLV>()? {
+                    array.push(element);
+                }
+                // Add a wrapper Array around the elements
+                Ok(TTLV {
+                    tag: array
+                        .first()
+                        .map_or_else(|| "Unknown".to_owned(), |v| v.tag.clone()),
+                    value: TTLValue::Array(array),
+                })
+            }
+
+            #[instrument(skip(self, map))]
             fn visit_map<V>(self, mut map: V) -> Result<Self::Value, V::Error>
             where
                 V: MapAccess<'de>,
@@ -64,7 +84,18 @@ impl<'de> Deserialize<'de> for TTLV {
                             let typ = typ.clone().unwrap_or_else(|| "Structure".to_owned());
                             value = Some(match typ.as_str() {
                                 "Structure" => {
-                                    TTLValue::Structure(aggregate_arrays(map.next_value()?)?)
+                                    // Aggregate the flattened arrays inside the chidren into  TTLValue::Array
+                                    let children = aggregate_arrays(map.next_value()?)?;
+                                    // Is this structure and array itself?
+                                    let struct_tag = tag.clone().unwrap_or_default();
+                                    info!("Structure tag: {struct_tag}, children: {children:?}");
+                                    let not_array =
+                                        children.iter().any(|child| child.tag != struct_tag);
+                                    if not_array {
+                                        TTLValue::Structure(children)
+                                    } else {
+                                        TTLValue::Array(children)
+                                    }
                                 }
 
                                 "Integer" => {
@@ -271,7 +302,8 @@ where
             } else {
                 // we are not accumulating
                 // just add the item to the result
-                result.push(item.clone());
+                result.push(previous);
+                previous = item.clone();
             }
         }
     }
