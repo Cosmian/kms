@@ -80,6 +80,7 @@ impl TtlvDeserializer {
     /// * `Ok(Some(Value))` - Successfully deserialized child value
     /// * `Ok(None)` - No more children to process
     /// * `Err` - Deserialization error
+    #[instrument(skip(self, seed))]
     fn get_child_deserializer<'de, K>(
         &mut self,
         seed: K,
@@ -91,6 +92,12 @@ impl TtlvDeserializer {
         let TTLValue::Structure(child_array) = &self.current.value else {
             return Ok(None)
         };
+        trace!(
+            "get_child_deserializer: map access state: {:?}, index: {}, current: {:?}",
+            self.map_state,
+            self.child_index,
+            self.current
+        );
         if self.child_index >= child_array.len() {
             self.child_index = 0;
             return Ok(None);
@@ -825,6 +832,7 @@ impl<'a> StructureWalker<'a> {
 impl<'a, 'de: 'a> MapAccess<'de> for StructureWalker<'a> {
     type Error = TtlvError;
 
+    #[instrument(skip(self, seed))]
     fn next_key_seed<K>(&mut self, seed: K) -> std::result::Result<Option<K::Value>, Self::Error>
     where
         K: DeserializeSeed<'de>,
@@ -839,6 +847,7 @@ impl<'a, 'de: 'a> MapAccess<'de> for StructureWalker<'a> {
         Ok(v)
     }
 
+    #[instrument(skip(self, seed))]
     fn next_value_seed<V>(&mut self, seed: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: DeserializeSeed<'de>,
