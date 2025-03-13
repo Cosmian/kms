@@ -87,7 +87,6 @@ fn test_ser_big_int() {
 
         // serialize
         let value = serde_json::to_value(&ttlv).unwrap();
-        println!("{}", serde_json::to_string_pretty(&value).unwrap());
         assert!(value.is_object());
         assert_eq!(value["tag"], "Test");
         assert_eq!(value["value"][0]["tag"], "BigIntNeg");
@@ -102,7 +101,6 @@ fn test_ser_big_int() {
         assert_eq!(ttlv, re_ttlv);
 
         // Deserializer
-        info!("*** Running Deserializer: {:?}", re_ttlv);
         let rec: Test = from_ttlv(re_ttlv).unwrap();
         assert_eq!(test, rec);
     }
@@ -161,18 +159,20 @@ fn test_direct_array() {
     struct Element {
         elem: i32,
     }
-    log_init(option_env!("RUST_LOG"));
+    // log_init(option_env!("RUST_LOG"));
+    log_init(Some("info"));
 
     let array = vec![Element { elem: 1 }, Element { elem: 2 }];
 
     // Serializer
     let ttlv = to_ttlv(&array).unwrap();
-    let expected = r#"TTLV { tag: "[ARRAY]", value: Structure([TTLV { tag: "[ARRAY]", value: Structure([TTLV { tag: "Elem", value: Integer(1) }]) }, TTLV { tag: "[ARRAY]", value: Structure([TTLV { tag: "Elem", value: Integer(2) }]) }]) }"#;
+    let expected = r#"TTLV { tag: "[ARRAY]", value: Array([TTLV { tag: "[ARRAY]", value: Structure([TTLV { tag: "Elem", value: Integer(1) }]) }, TTLV { tag: "[ARRAY]", value: Structure([TTLV { tag: "Elem", value: Integer(2) }]) }]) }"#;
     let ttlv_s = format!("{ttlv:?}");
     assert_eq!(ttlv_s, expected);
 
     //Serialize
     let json = serde_json::to_string_pretty(&ttlv).unwrap();
+    info!("JSON: {}", json);
 
     //Deserialize
     let re_ttlv = serde_json::from_str::<TTLV>(&json).unwrap();
@@ -218,7 +218,6 @@ fn test_ser_array() {
     assert_eq!(ttlv, re_ttlv);
 
     //Deserializer
-    log_init(Some("trace"));
     let rec: Test = from_ttlv(re_ttlv).unwrap();
     assert_eq!(test, rec);
 }
