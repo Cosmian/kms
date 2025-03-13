@@ -196,8 +196,7 @@ fn test_ser_array() {
         string_seq: Vec<String>,
         struct_seq: Vec<Element>,
     }
-    // log_init(option_env!("RUST_LOG"));
-    log_init(Some("trace"));
+    log_init(option_env!("RUST_LOG"));
 
     let test = Test {
         string_seq: vec!["a".to_owned(), "b".to_owned()],
@@ -220,6 +219,7 @@ fn test_ser_array() {
     assert_eq!(ttlv, re_ttlv);
 
     //Deserializer
+    log_init(Some("trace"));
     let rec: Test = from_ttlv(re_ttlv).unwrap();
     assert_eq!(test.string_seq, rec.string_seq);
 }
