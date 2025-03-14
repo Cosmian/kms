@@ -32,7 +32,7 @@ use std::collections::VecDeque;
 use serde::de::{self, DeserializeSeed, SeqAccess, Visitor};
 use tracing::{instrument, trace};
 
-use super::{error::TtlvError, KmipBigInt};
+use crate::ttlv::{KmipBigInt, TtlvError};
 
 type Result<T> = std::result::Result<T, TtlvError>;
 

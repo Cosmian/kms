@@ -2,7 +2,7 @@ use cosmian_logger::log_init;
 use kmip_derive::KmipEnumSerialize;
 use num_bigint_dig::{BigInt, BigUint};
 use serde::{Deserialize, Serialize};
-use time::OffsetDateTime;
+use time::{OffsetDateTime, UtcOffset};
 use tracing::info;
 
 use crate::ttlv::{
@@ -12,6 +12,7 @@ use crate::ttlv::{
 
 #[test]
 fn test_ser_int() {
+    // According to the KMIP spec, onl;y i32 is supported as integer
     #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
     #[serde(rename_all = "PascalCase")]
     struct Test {
@@ -19,7 +20,8 @@ fn test_ser_int() {
         int8: i8,
         uint16: u16,
         int16: i16,
-        uint32: u32,
+        // u32 is reserved for Interval
+        // uint32: u32,
         int32: i32,
         uint64: u64,
         int64: i64,
@@ -27,7 +29,7 @@ fn test_ser_int() {
     log_init(option_env!("RUST_LOG"));
 
     let test = Test {
-        uint32: 1,
+        // uint32: 1,
         uint8: 2,
         int8: 3,
         uint16: 4,
@@ -39,7 +41,7 @@ fn test_ser_int() {
 
     //Serializer
     let ttlv = to_ttlv(&test).unwrap();
-    let expected = r#"TTLV { tag: "Test", value: Structure([TTLV { tag: "Uint8", value: Integer(2) }, TTLV { tag: "Int8", value: Integer(3) }, TTLV { tag: "Uint16", value: Integer(4) }, TTLV { tag: "Int16", value: Integer(5) }, TTLV { tag: "Uint32", value: Integer(1) }, TTLV { tag: "Int32", value: Integer(6) }, TTLV { tag: "Uint64", value: LongInteger(7) }, TTLV { tag: "Int64", value: LongInteger(8) }]) }"#;
+    let expected = r#"TTLV { tag: "Test", value: Structure([TTLV { tag: "Uint8", value: Integer(2) }, TTLV { tag: "Int8", value: Integer(3) }, TTLV { tag: "Uint16", value: Integer(4) }, TTLV { tag: "Int16", value: Integer(5) }, TTLV { tag: "Int32", value: Integer(6) }, TTLV { tag: "Uint64", value: LongInteger(7) }, TTLV { tag: "Int64", value: LongInteger(8) }]) }"#;
     let ttlv_s = format!("{ttlv:?}");
     assert_eq!(ttlv_s, expected);
 
@@ -115,7 +117,6 @@ fn test_ser_big_uint() {
         the_big_uint: BigUint,
     }
     log_init(option_env!("RUST_LOG"));
-    // log_init(Some("trace"));
 
     let tests = [
         (
@@ -161,8 +162,7 @@ fn test_direct_array() {
     struct Element {
         elem: i32,
     }
-    // log_init(option_env!("RUST_LOG"));
-    log_init(Some("info"));
+    log_init(option_env!("RUST_LOG"));
 
     let array = vec![Element { elem: 1 }, Element { elem: 2 }];
 
@@ -194,8 +194,7 @@ fn test_ser_array() {
         string_seq: Vec<String>,
         struct_seq: Vec<Element>,
     }
-    // log_init(option_env!("RUST_LOG"));
-    log_init(Some("trace"));
+    log_init(option_env!("RUST_LOG"));
 
     let test = Test {
         string_seq: vec!["a".to_owned(), "b".to_owned()],
@@ -345,7 +344,7 @@ fn test_enumeration_untagged_variant_struct() {
     #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
     #[serde(rename_all = "PascalCase")]
     struct Int {
-        int_value: u32,
+        int_value: i32,
     }
 
     #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
@@ -442,7 +441,7 @@ fn test_nested_structures() {
     #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
     #[serde(untagged)]
     enum Enumeration {
-        OneInt(u32),
+        OneInt(i32),
         TwoString(String),
     }
 
@@ -450,7 +449,7 @@ fn test_nested_structures() {
     #[serde(rename_all = "PascalCase")]
     struct Child {
         enumeration: Enumeration,
-        an_int: u32,
+        an_int: i32,
     }
 
     #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
@@ -571,7 +570,6 @@ fn test_long_integer() {
         long_integer: i64,
     }
     log_init(option_env!("RUST_LOG"));
-    log_init(option_env!("RUST_LOG"));
 
     let test = Test {
         long_integer: 0x1234_5678_9ABC_DEF0,
@@ -614,14 +612,14 @@ fn test_date_time() {
         date_time: OffsetDateTime::new_utc(
             time::Date::from_calendar_date(2021, time::Month::October, 1).unwrap(),
             time::Time::from_hms(12, 34, 56).unwrap(),
-        ),
+        )
+        .to_offset(UtcOffset::from_hms(-1, -2, 3).unwrap()),
     };
     // Serializer
     let ttlv = to_ttlv(&test).unwrap();
-    println!("{ttlv:?}");
     assert_eq!(
         format!("{ttlv:?}"),
-        r#"TTLV { tag: \"Test\", value: Structure([TTLV { tag: \"DateTime\", value: Integer(2021) }, TTLV { tag: \"DateTime\", value: Integer(274) }, TTLV { tag: \"DateTime\", value: Integer(12) }, TTLV { tag: \"DateTime\", value: Integer(34) }, TTLV { tag: \"DateTime\", value: Integer(56) }, TTLV { tag: \"DateTime\", value: Integer(0) }, TTLV { tag: \"DateTime\", value: Integer(0) }, TTLV { tag: \"DateTime\", value: Integer(0) }, TTLV { tag: \"DateTime\", value: Integer(0) }]) }"#
+        r#"TTLV { tag: "Test", value: Structure([TTLV { tag: "DateTime", value: DateTime(2021-10-01 11:32:53.0 -01:02:03) }]) }"#
     );
 
     // Serialize
@@ -632,6 +630,83 @@ fn test_date_time() {
     assert_eq!(value["value"][0]["tag"], "DateTime");
     assert_eq!(value["value"][0]["type"], "DateTime");
     assert_eq!(value["value"][0]["value"], "2021-10-01T12:34:56Z");
+
+    // Deserialize
+    let re_ttlv = serde_json::from_value::<TTLV>(value).unwrap();
+    assert_eq!(ttlv, re_ttlv);
+
+    // Deserializer
+    let rec: Test = from_ttlv(re_ttlv).unwrap();
+    assert_eq!(test, rec);
+}
+
+#[test]
+fn test_date_time_extended() {
+    #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+    #[serde(rename_all = "PascalCase")]
+    struct Test {
+        date_time: i128,
+    }
+    log_init(option_env!("RUST_LOG"));
+
+    let micros = OffsetDateTime::new_utc(
+        time::Date::from_calendar_date(2021, time::Month::October, 1).unwrap(),
+        time::Time::from_hms(12, 34, 56).unwrap(),
+    )
+    .to_offset(UtcOffset::from_hms(-1, -2, 3).unwrap())
+    .unix_timestamp_nanos()
+        / 1000;
+    let test = Test { date_time: micros };
+    // Serializer
+    let ttlv = to_ttlv(&test).unwrap();
+    assert_eq!(
+        format!("{ttlv:?}"),
+        r#"TTLV { tag: "Test", value: Structure([TTLV { tag: "DateTime", value: DateTimeExtended(1633091696000000) }]) }"#
+    );
+
+    // Serialize
+    let value = serde_json::to_value(&ttlv).unwrap();
+    info!("VALUE: {}", serde_json::to_string_pretty(&value).unwrap());
+    assert!(value.is_object());
+    assert_eq!(value["tag"], "Test");
+    assert_eq!(value["value"][0]["tag"], "DateTime");
+    assert_eq!(value["value"][0]["type"], "DateTimeExtended");
+    assert_eq!(value["value"][0]["value"], "0x0005CD49CA6CFC00");
+
+    // Deserialize
+    let re_ttlv = serde_json::from_value::<TTLV>(value).unwrap();
+    assert_eq!(ttlv, re_ttlv);
+
+    // Deserializer
+    let rec: Test = from_ttlv(re_ttlv).unwrap();
+    assert_eq!(test, rec);
+}
+
+#[test]
+fn test_interval() {
+    #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+    #[serde(rename_all = "PascalCase")]
+    struct Test {
+        interval: u32,
+    }
+    log_init(option_env!("RUST_LOG"));
+
+    let test = Test { interval: 42 };
+    // Serializer
+    let ttlv = to_ttlv(&test).unwrap();
+    assert_eq!(
+        format!("{ttlv:?}"),
+        r#"TTLV { tag: "Test", value: Structure([TTLV { tag: "Interval", value: Interval(42) }]) }"#
+    );
+
+    // Serialize
+    let value = serde_json::to_value(&ttlv).unwrap();
+    info!("VALUE: {}", serde_json::to_string_pretty(&value).unwrap());
+    assert!(value.is_object());
+    assert_eq!(value["tag"], "Test");
+    assert_eq!(value["value"][0]["tag"], "Interval");
+    assert_eq!(value["value"][0]["type"], "Interval");
+    assert_eq!(value["value"][0]["value"], 42);
 
     // Deserialize
     let re_ttlv = serde_json::from_value::<TTLV>(value).unwrap();

@@ -118,9 +118,7 @@ where
             TTLValue::DateTimeExtended(value) => {
                 write_type(&mut self.writer, TtlvType::DateTimeExtended)?;
                 write_length(&mut self.writer, 8)?;
-                let t = u64::try_from(value.unix_timestamp_nanos() / 1000)
-                    .map_err(|_e| TtlvError::from(format!("Timestamp too large: {value}")))?;
-                self.writer.write_all(&t.to_be_bytes())?;
+                self.writer.write_all(&value.to_be_bytes())?;
             }
         }
         Ok(())

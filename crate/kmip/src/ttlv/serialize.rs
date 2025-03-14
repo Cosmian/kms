@@ -2,7 +2,7 @@ use serde::{
     ser::{self, SerializeStruct, Serializer},
     Serialize,
 };
-use time::format_description::well_known::Iso8601;
+use time::{format_description::well_known::Rfc3339, UtcOffset};
 
 use super::{ttlv_struct::TTLV, KmipEnumerationVariant};
 use crate::ttlv::ttlv_struct::TTLValue;
@@ -67,18 +67,27 @@ impl Serialize for TTLV {
                 serializer,
                 &self.tag,
                 "DateTime",
-                &v.format(&Iso8601::DEFAULT).map_err(|err| {
-                    ser::Error::custom(format!("Cannot format DateTime {v} into ISO8601: {err}"))
-                })?,
+                &v.to_offset(UtcOffset::UTC)
+                    .format(&Rfc3339)
+                    .map_err(|err| {
+                        ser::Error::custom(format!(
+                            "Cannot format DateTime {v} into ISO8601: {err}"
+                        ))
+                    })?,
             ),
             TTLValue::Interval(v) => _serialize_struct(serializer, &self.tag, "Interval", v),
-            TTLValue::DateTimeExtended(v) => _serialize_struct(
-                serializer,
-                &self.tag,
-                "DateTimeExtended",
-                &("0x".to_owned()
-                    + &hex::encode_upper((v.unix_timestamp_nanos() / 1000).to_be_bytes())),
-            ),
+            TTLValue::DateTimeExtended(v) => {
+                // truncate to 64 bits
+                let u_64 = u64::try_from(*v).map_err(|err| {
+                    ser::Error::custom(format!("Cannot convert DateTimeExtended {v} to u64: {err}"))
+                })?;
+                _serialize_struct(
+                    serializer,
+                    &self.tag,
+                    "DateTimeExtended",
+                    &("0x".to_owned() + &hex::encode_upper(u_64.to_be_bytes())),
+                )
+            }
         }
     }
 }
