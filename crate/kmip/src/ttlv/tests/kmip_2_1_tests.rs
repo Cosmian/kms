@@ -1,5 +1,5 @@
 use cosmian_logger::log_init;
-use num_bigint_dig::{BigInt, BigUint};
+use num_bigint_dig::BigInt;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tracing::{info, trace};
 use zeroize::Zeroizing;
@@ -29,7 +29,7 @@ use crate::{
         kmip_ttlv_deserializer::from_ttlv, kmip_ttlv_serializer::to_ttlv, KmipEnumerationVariant,
         TTLValue, TTLV,
     },
-    SafeBigUint,
+    SafeBigInt,
 };
 
 fn aes_key_material(key_value: &[u8]) -> KeyMaterial {
@@ -309,11 +309,11 @@ fn test_key_material_big_int_deserialization() {
         ]),
     };
     let km = KeyMaterial::TransparentDHPrivateKey {
-        p: BigUint::from(u32::MAX).into(),
-        q: Some(BigUint::from(1_u64).into()),
-        g: BigUint::from(2_u32).into(),
+        p: BigInt::from(u32::MAX).into(),
+        q: Some(BigInt::from(1_u64).into()),
+        g: BigInt::from(2_u32).into(),
         j: None,
-        x: SafeBigUint::from(BigUint::from(u128::MAX)).into(),
+        x: SafeBigInt::from(BigInt::from(u128::MAX)).into(),
     };
     let ttlv_ = to_ttlv(&km).unwrap();
     assert_eq!(ttlv, ttlv_);
@@ -324,11 +324,11 @@ fn test_key_material_big_int_deserialization() {
 #[test]
 fn test_big_int_deserialization() {
     let km = KeyMaterial::TransparentDHPrivateKey {
-        p: BigUint::from(u32::MAX).into(),
-        q: Some(BigUint::from(1_u64).into()),
-        g: BigUint::from(2_u32).into(),
+        p: BigInt::from(u32::MAX).into(),
+        q: Some(BigInt::from(1_u64).into()),
+        g: BigInt::from(2_u32).into(),
         j: None,
-        x: SafeBigUint::from(BigUint::from(u128::MAX - 1)).into(),
+        x: SafeBigInt::from(BigInt::from(u128::MAX - 1)).into(),
     };
     let j = serde_json::to_value(&km).unwrap();
     let km_: KeyMaterial = serde_json::from_value(j).unwrap();
