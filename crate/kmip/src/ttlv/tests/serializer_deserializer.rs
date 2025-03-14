@@ -2,6 +2,7 @@ use cosmian_logger::log_init;
 use kmip_derive::KmipEnumSerialize;
 use num_bigint_dig::{BigInt, BigUint};
 use serde::{Deserialize, Serialize};
+use time::OffsetDateTime;
 use tracing::info;
 
 use crate::ttlv::{
@@ -233,8 +234,7 @@ fn test_enum_unit_variant() {
     struct Test {
         an_enum: Enumeration,
     }
-    // log_init(option_env!("RUST_LOG"));
-    log_init(Some("trace"));
+    log_init(option_env!("RUST_LOG"));
 
     // Try with Ten
     let test = Test {
@@ -524,4 +524,120 @@ fn test_enum_unit_variant_with_value() {
         format!("{ttlv:?}"),
         r#"TTLV { tag: "Test", value: Structure([TTLV { tag: "AnEnum", value: Enumeration(KmipEnumerationVariant { value: 286335522, name: "Big" }) }]) }"#
     );
+}
+
+#[test]
+fn test_byte_string() {
+    #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+    #[serde(rename_all = "PascalCase")]
+    struct Test {
+        byte_string: Vec<u8>,
+    }
+    log_init(option_env!("RUST_LOG"));
+
+    let test = Test {
+        byte_string: vec![0x01, 0x02, 0x03, 0xef],
+    };
+    // Serializer
+    let ttlv = to_ttlv(&test).unwrap();
+    assert_eq!(
+        format!("{ttlv:?}"),
+        r#"TTLV { tag: "Test", value: Structure([TTLV { tag: "ByteString", value: ByteString([1, 2, 3, 239]) }]) }"#
+    );
+
+    // Serialize
+    let value = serde_json::to_value(&ttlv).unwrap();
+    info!("VALUE: {}", serde_json::to_string_pretty(&value).unwrap());
+    assert!(value.is_object());
+    assert_eq!(value["tag"], "Test");
+    assert_eq!(value["value"][0]["tag"], "ByteString");
+    assert_eq!(value["value"][0]["type"], "ByteString");
+    assert_eq!(value["value"][0]["value"], "010203EF");
+
+    // Deserialize
+    let re_ttlv = serde_json::from_value::<TTLV>(value).unwrap();
+    assert_eq!(ttlv, re_ttlv);
+
+    // Deserializer
+    let rec: Test = from_ttlv(re_ttlv).unwrap();
+    assert_eq!(test, rec);
+}
+
+#[test]
+fn test_long_integer() {
+    #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+    #[serde(rename_all = "PascalCase")]
+    struct Test {
+        long_integer: i64,
+    }
+    log_init(option_env!("RUST_LOG"));
+    log_init(option_env!("RUST_LOG"));
+
+    let test = Test {
+        long_integer: 0x1234_5678_9ABC_DEF0,
+    };
+    // Serializer
+    let ttlv = to_ttlv(&test).unwrap();
+    assert_eq!(
+        format!("{ttlv:?}"),
+        r#"TTLV { tag: "Test", value: Structure([TTLV { tag: "LongInteger", value: LongInteger(1311768467463790320) }]) }"#
+    );
+
+    // Serialize
+    let value = serde_json::to_value(&ttlv).unwrap();
+    info!("VALUE: {}", serde_json::to_string_pretty(&value).unwrap());
+    assert!(value.is_object());
+    assert_eq!(value["tag"], "Test");
+    assert_eq!(value["value"][0]["tag"], "LongInteger");
+    assert_eq!(value["value"][0]["type"], "LongInteger");
+    assert_eq!(value["value"][0]["value"], "0x123456789ABCDEF0");
+
+    // Deserialize
+    let re_ttlv = serde_json::from_value::<TTLV>(value).unwrap();
+    assert_eq!(ttlv, re_ttlv);
+
+    // Deserializer
+    let rec: Test = from_ttlv(re_ttlv).unwrap();
+    assert_eq!(test, rec);
+}
+
+#[test]
+fn test_date_time() {
+    #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+    #[serde(rename_all = "PascalCase")]
+    struct Test {
+        date_time: OffsetDateTime,
+    }
+    log_init(option_env!("RUST_LOG"));
+
+    let test = Test {
+        date_time: OffsetDateTime::new_utc(
+            time::Date::from_calendar_date(2021, time::Month::October, 1).unwrap(),
+            time::Time::from_hms(12, 34, 56).unwrap(),
+        ),
+    };
+    // Serializer
+    let ttlv = to_ttlv(&test).unwrap();
+    println!("{ttlv:?}");
+    assert_eq!(
+        format!("{ttlv:?}"),
+        r#"TTLV { tag: \"Test\", value: Structure([TTLV { tag: \"DateTime\", value: Integer(2021) }, TTLV { tag: \"DateTime\", value: Integer(274) }, TTLV { tag: \"DateTime\", value: Integer(12) }, TTLV { tag: \"DateTime\", value: Integer(34) }, TTLV { tag: \"DateTime\", value: Integer(56) }, TTLV { tag: \"DateTime\", value: Integer(0) }, TTLV { tag: \"DateTime\", value: Integer(0) }, TTLV { tag: \"DateTime\", value: Integer(0) }, TTLV { tag: \"DateTime\", value: Integer(0) }]) }"#
+    );
+
+    // Serialize
+    let value = serde_json::to_value(&ttlv).unwrap();
+    info!("VALUE: {}", serde_json::to_string_pretty(&value).unwrap());
+    assert!(value.is_object());
+    assert_eq!(value["tag"], "Test");
+    assert_eq!(value["value"][0]["tag"], "DateTime");
+    assert_eq!(value["value"][0]["type"], "DateTime");
+    assert_eq!(value["value"][0]["value"], "2021-10-01T12:34:56Z");
+
+    // Deserialize
+    let re_ttlv = serde_json::from_value::<TTLV>(value).unwrap();
+    assert_eq!(ttlv, re_ttlv);
+
+    // Deserializer
+    let rec: Test = from_ttlv(re_ttlv).unwrap();
+    assert_eq!(test, rec);
 }

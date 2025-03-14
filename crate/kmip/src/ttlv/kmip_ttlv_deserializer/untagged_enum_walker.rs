@@ -1,0 +1,65 @@
+use serde::de::{DeserializeSeed, MapAccess};
+use tracing::trace;
+
+use super::TtlvDeserializer;
+use crate::ttlv::{kmip_ttlv_deserializer::deserializer::MapAccessState, TTLValue, TtlvError};
+
+/// The `UntaggedEnumWalker` is used to deserialize a struct as a map of property -> values
+/// It is called by the main deserializer when receiving Visitor requests to `deserialize_struct`
+pub(super) struct UntaggedEnumWalker<'a> {
+    de: &'a mut TtlvDeserializer,
+    completed: bool,
+}
+
+impl<'a> UntaggedEnumWalker<'a> {
+    pub(super) fn new(de: &'a mut TtlvDeserializer) -> Self {
+        UntaggedEnumWalker {
+            de,
+            completed: false,
+        }
+    }
+}
+
+impl<'a, 'de: 'a> MapAccess<'de> for UntaggedEnumWalker<'a> {
+    type Error = TtlvError;
+
+    fn next_key_seed<K>(&mut self, seed: K) -> std::result::Result<Option<K::Value>, Self::Error>
+    where
+        K: DeserializeSeed<'de>,
+    {
+        trace!(
+            "Untagged Enum map: next_key_seed: completed?: {}, index: {}, current: {:?}",
+            self.completed,
+            self.de.child_index,
+            self.de.current
+        );
+        if self.completed {
+            return Ok(None);
+        }
+        // we want to recover the tag of the TTLV and pass it back to the visitor
+        self.de.map_state = MapAccessState::Key;
+        seed.deserialize(&mut *self.de).map(Some)
+    }
+
+    fn next_value_seed<V>(&mut self, seed: V) -> std::result::Result<V::Value, Self::Error>
+    where
+        V: DeserializeSeed<'de>,
+    {
+        trace!(
+            "Untagged Enum map: next_value_seed: current:  {:?}",
+            self.de.current
+        );
+        self.de.map_state = MapAccessState::Value;
+        let res = seed.deserialize(&mut *self.de)?;
+        self.completed = true;
+        Ok(res)
+    }
+
+    #[inline]
+    fn size_hint(&self) -> Option<usize> {
+        let TTLValue::Structure(child_array) = &self.de.current.value else {
+            return Some(0_usize)
+        };
+        Some(child_array.len())
+    }
+}
