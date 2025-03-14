@@ -1374,14 +1374,20 @@ fn normative_request_message_test() {
   ]}
 ]}    
     "#;
+    // Deserialize
     let ttlv: TTLV = serde_json::from_str(ttlv_string).unwrap();
-    println!("ttlv: {:#?}", &ttlv);
-    let _req: RequestMessage = from_ttlv(ttlv).unwrap();
-}
 
-#[test]
-fn normative_message_request() {
-    log_init(Some("trace"));
+    // Serialize
+    let re_json = serde_json::to_string_pretty(&ttlv).unwrap();
+
+    // Deserialize again
+    let ttlv_: TTLV = serde_json::from_str(&re_json).unwrap();
+    assert_eq!(ttlv, ttlv_);
+
+    // Deserializer
+    let norm_req: RequestMessage = from_ttlv(ttlv.clone()).unwrap();
+
+    // KMIP Request Message in Rust
     let request_message = RequestMessage {
         request_header: RequestMessageHeader {
             protocol_version: ProtocolVersion {
@@ -1405,7 +1411,9 @@ fn normative_message_request() {
             message_extension: None,
         }],
     };
-    let ttlv = to_ttlv(&request_message).unwrap();
-    info!("{}", serde_json::to_string_pretty(&ttlv).unwrap());
-    let _request_message_: RequestMessage = from_ttlv(ttlv).unwrap();
+    assert_eq!(request_message, norm_req);
+
+    // Serializer
+    let ttlv__ = to_ttlv(&request_message).unwrap();
+    assert_eq!(ttlv__, ttlv);
 }

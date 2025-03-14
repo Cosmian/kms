@@ -12,7 +12,7 @@ use crate::ttlv::{
 
 #[test]
 fn test_ser_int() {
-    // According to the KMIP spec, onl;y i32 is supported as integer
+    // According to the KMIP spec, only i32 is supported for Integer
     #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
     #[serde(rename_all = "PascalCase")]
     struct Test {
@@ -29,7 +29,6 @@ fn test_ser_int() {
     log_init(option_env!("RUST_LOG"));
 
     let test = Test {
-        // uint32: 1,
         uint8: 2,
         int8: 3,
         uint16: 4,
