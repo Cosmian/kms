@@ -25,6 +25,7 @@ use serde::{
     Deserialize, Serialize,
 };
 use time::OffsetDateTime;
+use tracing::info;
 
 use super::{
     kmip_operations::{Direction, ErrorReason, Operation},
@@ -34,7 +35,7 @@ use super::{
     },
 };
 
-#[derive(Deserialize, PartialEq, Eq)]
+#[derive(Deserialize, PartialEq, Eq, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct RequestMessage {
     /// Header of the request
@@ -162,8 +163,7 @@ pub struct RequestMessageHeader {
 /// Batch item for a message request
 ///
 /// `request_payload` depends on the request
-#[derive(PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "PascalCase")]
+#[derive(PartialEq, Eq, Debug)]
 pub struct RequestMessageBatchItem {
     /// Type of the KMIP operation
     pub operation: OperationEnumeration,
@@ -177,7 +177,6 @@ pub struct RequestMessageBatchItem {
     ///
     /// If a request has a Unique Batch Item ID, then responses to
     /// that request SHALL have the same Unique Batch Item ID.
-    #[serde(rename = "UniqueBatchItemID")]
     pub unique_batch_item_id: Option<String>,
 
     /// The KMIP request, which depends on the KMIP Operation
@@ -248,169 +247,178 @@ impl Serialize for RequestMessageBatchItem {
     }
 }
 
-// impl<'de> Deserialize<'de> for RequestMessageBatchItem {
-//     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-//     where
-//         D: serde::Deserializer<'de>,
-//     {
-//         #[derive(Deserialize, Debug)]
-//         #[serde(field_identifier)]
-//         enum Field {
-//             Operation,
-//             Ephemeral,
-//             UniqueBatchItemID,
-//             RequestPayload,
-//             MessageExtension,
-//         }
-//
-//         struct RequestMessageBatchItemVisitor;
-//
-//         impl<'de> Visitor<'de> for RequestMessageBatchItemVisitor {
-//             type Value = RequestMessageBatchItem;
-//
-//             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-//                 formatter.write_str("struct RequestMessageBatchItem")
-//             }
-//
-//             fn visit_map<V>(self, mut map: V) -> Result<Self::Value, V::Error>
-//             where
-//                 V: MapAccess<'de>,
-//             {
-//                 let mut operation: Option<OperationEnumeration> = None;
-//                 let mut ephemeral: Option<bool> = None;
-//                 let mut unique_batch_item_id: Option<String> = None;
-//                 let mut request_payload: Option<Operation> = None;
-//                 let mut message_extension: Option<Vec<MessageExtension>> = None;
-//
-//                 let next_key = map.next_key::<String>()?;
-//                 info!(
-//                     "RequestMessageBatchItem deserializing first field: {next_key:?}",
-//                     next_key = next_key
-//                 );
-//
-//                 while let Some(key) = map.next_key()? {
-//                     info!(
-//                         "RequestMessageBatchItem deserializing field: {key:?}",
-//                         key = key
-//                     );
-//                     match key {
-//                         Field::Operation => {
-//                             if operation.is_some() {
-//                                 return Err(de::Error::duplicate_field("Operation"));
-//                             }
-//                             operation = Some(map.next_value()?);
-//                         }
-//                         Field::Ephemeral => {
-//                             if ephemeral.is_some() {
-//                                 return Err(de::Error::duplicate_field("Ephemeral"));
-//                             }
-//                             ephemeral = Some(map.next_value()?);
-//                         }
-//                         Field::UniqueBatchItemID => {
-//                             if unique_batch_item_id.is_some() {
-//                                 return Err(de::Error::duplicate_field("UniqueBatchItemID"));
-//                             }
-//                             unique_batch_item_id = Some(map.next_value()?);
-//                         }
-//                         Field::MessageExtension => {
-//                             if message_extension.is_some() {
-//                                 return Err(de::Error::duplicate_field("MessageExtension"));
-//                             }
-//                             message_extension = Some(map.next_value()?);
-//                         }
-//                         Field::RequestPayload => {
-//                             if request_payload.is_some() {
-//                                 return Err(de::Error::duplicate_field("RequestPayload"));
-//                             }
-//                             // we must have parsed the `operation` field before
-//                             // TODO: handle the case where the keys are not in right order
-//                             let Some(operation) = operation else {
-//                                 return Err(de::Error::missing_field("operation"))
-//                             };
-//                             // recover by hand the proper type of `request_payload`
-//                             // the default derived deserializer does not have enough
-//                             // information to properly recover which type has been
-//                             // serialized, we need to do the job by hand,
-//                             // using the `operation` enum.
-//                             request_payload = Some(match operation {
-//                                 OperationEnumeration::Encrypt => {
-//                                     Operation::Encrypt(map.next_value()?)
-//                                 }
-//                                 OperationEnumeration::Create => {
-//                                     Operation::Create(map.next_value()?)
-//                                 }
-//                                 OperationEnumeration::CreateKeyPair => {
-//                                     Operation::CreateKeyPair(map.next_value()?)
-//                                 }
-//                                 OperationEnumeration::Certify => {
-//                                     Operation::Certify(map.next_value()?)
-//                                 }
-//                                 OperationEnumeration::Locate => {
-//                                     Operation::Locate(map.next_value()?)
-//                                 }
-//                                 OperationEnumeration::Get => Operation::Get(map.next_value()?),
-//                                 OperationEnumeration::GetAttributes => {
-//                                     Operation::GetAttributes(map.next_value()?)
-//                                 }
-//                                 OperationEnumeration::Revoke => {
-//                                     Operation::Revoke(map.next_value()?)
-//                                 }
-//                                 OperationEnumeration::Destroy => {
-//                                     Operation::Destroy(map.next_value()?)
-//                                 }
-//                                 OperationEnumeration::Decrypt => {
-//                                     Operation::Decrypt(map.next_value()?)
-//                                 }
-//                                 OperationEnumeration::Import => {
-//                                     Operation::Import(map.next_value()?)
-//                                 }
-//                                 OperationEnumeration::Export => {
-//                                     Operation::Export(map.next_value()?)
-//                                 }
-//                                 _ => return Err(de::Error::missing_field("valid enum operation")),
-//                             });
-//                         }
-//                     }
-//                 }
-//                 let operation = operation.ok_or_else(|| de::Error::missing_field("Operation"))?;
-//                 tracing::trace!("MessageBatchItem operation: {operation:?}");
-//
-//                 let request_payload =
-//                     request_payload.ok_or_else(|| de::Error::missing_field("request_payload"))?;
-//                 tracing::trace!("MessageBatchItem request payload: {request_payload}");
-//
-//                 if operation != request_payload.operation_enum() {
-//                     return Err(de::Error::custom(format!(
-//                         "operation enum (`{}`) doesn't correspond to request payload (`{}`)",
-//                         operation,
-//                         request_payload.operation_enum()
-//                     )));
-//                 }
-//
-//                 Ok(RequestMessageBatchItem {
-//                     operation,
-//                     ephemeral,
-//                     unique_batch_item_id,
-//                     request_payload,
-//                     message_extension,
-//                 })
-//             }
-//         }
-//
-//         const FIELDS: &[&str] = &[
-//             "operation",
-//             "ephemeral",
-//             "UniqueBatchItemID",
-//             "RequestPayload",
-//             "MessageExtension",
-//         ];
-//         deserializer.deserialize_struct(
-//             "RequestMessageBatchItem",
-//             FIELDS,
-//             RequestMessageBatchItemVisitor,
-//         )
-//     }
-// }
+/// The `RequestMessageBatchItem` deserializer
+/// This deserializer needs to be implemented by hand, because the request Payload
+/// contains an untagged enum `Operation` which must be selected based on the
+/// `OperationEnumeration` field value.
+impl<'de> Deserialize<'de> for RequestMessageBatchItem {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize, Debug)]
+        #[serde(field_identifier)]
+        enum Field {
+            Operation,
+            Ephemeral,
+            UniqueBatchItemID,
+            RequestPayload,
+            MessageExtension,
+        }
+
+        struct RequestMessageBatchItemVisitor;
+
+        impl<'de> Visitor<'de> for RequestMessageBatchItemVisitor {
+            type Value = RequestMessageBatchItem;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("struct RequestMessageBatchItem")
+            }
+
+            fn visit_map<V>(self, mut map: V) -> Result<Self::Value, V::Error>
+            where
+                V: MapAccess<'de>,
+            {
+                let mut operation: Option<OperationEnumeration> = None;
+                let mut ephemeral: Option<bool> = None;
+                let mut unique_batch_item_id: Option<String> = None;
+                let mut request_payload: Option<Operation> = None;
+                let mut message_extension: Option<Vec<MessageExtension>> = None;
+
+                let next_key = map.next_key::<String>()?;
+                info!(
+                    "RequestMessageBatchItem deserializing first field: {next_key:?}",
+                    next_key = next_key
+                );
+
+                while let Some(key) = map.next_key()? {
+                    info!(
+                        "RequestMessageBatchItem deserializing field: {key:?}",
+                        key = key
+                    );
+                    match key {
+                        Field::Operation => {
+                            if operation.is_some() {
+                                return Err(de::Error::duplicate_field("Operation"));
+                            }
+                            operation = Some(map.next_value()?);
+                        }
+                        Field::Ephemeral => {
+                            if ephemeral.is_some() {
+                                return Err(de::Error::duplicate_field("Ephemeral"));
+                            }
+                            ephemeral = Some(map.next_value()?);
+                        }
+                        Field::UniqueBatchItemID => {
+                            if unique_batch_item_id.is_some() {
+                                return Err(de::Error::duplicate_field("UniqueBatchItemID"));
+                            }
+                            unique_batch_item_id = Some(map.next_value()?);
+                        }
+                        Field::MessageExtension => {
+                            if message_extension.is_some() {
+                                return Err(de::Error::duplicate_field("MessageExtension"));
+                            }
+                            message_extension = Some(map.next_value()?);
+                        }
+                        Field::RequestPayload => {
+                            if request_payload.is_some() {
+                                return Err(de::Error::duplicate_field("RequestPayload"));
+                            }
+                            // we must have parsed the `operation` field before
+                            // TODO: handle the case where the keys are not in right order
+                            let Some(operation) = operation else {
+                                return Err(de::Error::missing_field("operation"))
+                            };
+                            // recover by hand the proper type of `request_payload`
+                            // the default derived deserializer does not have enough
+                            // information to properly recover which type has been
+                            // serialized, we need to do the job by hand,
+                            // using the `operation` enum.
+                            request_payload = Some(match operation {
+                                OperationEnumeration::Encrypt => {
+                                    Operation::Encrypt(map.next_value()?)
+                                }
+                                OperationEnumeration::Create => {
+                                    Operation::Create(map.next_value()?)
+                                }
+                                OperationEnumeration::CreateKeyPair => {
+                                    Operation::CreateKeyPair(map.next_value()?)
+                                }
+                                OperationEnumeration::Certify => {
+                                    Operation::Certify(map.next_value()?)
+                                }
+                                OperationEnumeration::Locate => {
+                                    Operation::Locate(map.next_value()?)
+                                }
+                                OperationEnumeration::Get => Operation::Get(map.next_value()?),
+                                OperationEnumeration::GetAttributes => {
+                                    Operation::GetAttributes(map.next_value()?)
+                                }
+                                OperationEnumeration::Revoke => {
+                                    Operation::Revoke(map.next_value()?)
+                                }
+                                OperationEnumeration::Destroy => {
+                                    Operation::Destroy(map.next_value()?)
+                                }
+                                OperationEnumeration::Decrypt => {
+                                    Operation::Decrypt(map.next_value()?)
+                                }
+                                OperationEnumeration::Import => {
+                                    Operation::Import(map.next_value()?)
+                                }
+                                OperationEnumeration::Export => {
+                                    Operation::Export(map.next_value()?)
+                                }
+                                OperationEnumeration::Query => Operation::Query(map.next_value()?),
+                                x => {
+                                    return Err(de::Error::custom(format!(
+                                        "unsuported operation: {x:?}"
+                                    )))
+                                }
+                            });
+                        }
+                    }
+                }
+                let operation = operation.ok_or_else(|| de::Error::missing_field("Operation"))?;
+                tracing::trace!("MessageBatchItem operation: {operation:?}");
+
+                let request_payload =
+                    request_payload.ok_or_else(|| de::Error::missing_field("request_payload"))?;
+                tracing::trace!("MessageBatchItem request payload: {request_payload}");
+
+                if operation != request_payload.operation_enum() {
+                    return Err(de::Error::custom(format!(
+                        "operation enum (`{}`) doesn't correspond to request payload (`{}`)",
+                        operation,
+                        request_payload.operation_enum()
+                    )));
+                }
+
+                Ok(RequestMessageBatchItem {
+                    operation,
+                    ephemeral,
+                    unique_batch_item_id,
+                    request_payload,
+                    message_extension,
+                })
+            }
+        }
+
+        const FIELDS: &[&str] = &[
+            "operation",
+            "ephemeral",
+            "UniqueBatchItemID",
+            "RequestPayload",
+            "MessageExtension",
+        ];
+        deserializer.deserialize_struct(
+            "RequestMessageBatchItem",
+            FIELDS,
+            RequestMessageBatchItemVisitor,
+        )
+    }
+}
 
 #[derive(Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]

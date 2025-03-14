@@ -1813,8 +1813,8 @@ impl From<LinkedObjectIdentifier> for UniqueIdentifier {
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
 #[serde(rename_all = "PascalCase")]
 pub struct ProtocolVersion {
-    pub protocol_version_major: u32,
-    pub protocol_version_minor: u32,
+    pub protocol_version_major: i32,
+    pub protocol_version_minor: i32,
 }
 
 /// The KMIP version 2.1 is used as the reference

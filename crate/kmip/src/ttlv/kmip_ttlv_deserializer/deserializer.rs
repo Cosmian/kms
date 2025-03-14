@@ -360,9 +360,9 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
                     })
             }
             TTLValue::Interval(i) => visitor.visit_u32(*i),
-            _ => Err(TtlvError::from(
-                "Expected Integer ro BigInteger value in TTLV",
-            )),
+            v => Err(TtlvError::from(format!(
+                "Expected BigInteger or Interval value in TTLV for an u32, got : {v:?}"
+            ))),
         }
     }
 
