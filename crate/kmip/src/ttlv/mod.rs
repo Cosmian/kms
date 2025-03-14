@@ -10,6 +10,7 @@ mod ttlv_struct;
 mod deserialize;
 mod serialize;
 
+pub use error::TtlvError;
 pub use kmip_big_int::KmipBigInt;
 pub use ttlv_struct::{KmipEnumerationVariant, TTLValue, TtlvType, TTLV};
 
