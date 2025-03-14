@@ -4,10 +4,8 @@
 #![allow(unused_variables)]
 use std::{collections::HashSet, path::PathBuf, sync::Arc};
 
-use KmipKeyMaterial::TransparentRSAPublicKey;
 use async_trait::async_trait;
 use cosmian_kmip::{
-    SafeBigUint,
     kmip_2_1::{
         kmip_attributes::Attributes,
         kmip_data_structures::{KeyBlock, KeyMaterial as KmipKeyMaterial, KeyValue},
@@ -16,13 +14,15 @@ use cosmian_kmip::{
             CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, StateEnumeration,
         },
     },
+    SafeBigInt,
 };
-use num_bigint_dig::BigUint;
+use num_bigint_dig::BigInt;
 use tracing::debug;
+use KmipKeyMaterial::TransparentRSAPublicKey;
 
 use crate::{
-    AtomicOperation, HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject, InterfaceError,
-    InterfaceResult, KeyMaterial, ObjectWithMetadata, ObjectsStore, SessionParams,
+    AtomicOperation, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject, InterfaceError,
+    InterfaceResult, KeyMaterial, ObjectWithMetadata, ObjectsStore, SessionParams, HSM,
 };
 
 pub struct HsmStore {
@@ -376,22 +376,22 @@ fn to_object_with_metadata(
                 .set_tags(tags)
                 .map_err(|e| InterfaceError::InvalidRequest(format!("Invalid tags: {e}")))?;
             let kmip_key_material = KmipKeyMaterial::TransparentRSAPrivateKey {
-                modulus: Box::new(BigUint::from_bytes_be(km.modulus.as_slice())),
-                private_exponent: Some(Box::new(SafeBigUint::from_bytes_be(
+                modulus: Box::new(BigInt::from_signed_bytes_be(km.modulus.as_slice())),
+                private_exponent: Some(Box::new(SafeBigInt::from_bytes_be(
                     km.private_exponent.as_slice(),
                 ))),
-                public_exponent: Some(Box::new(BigUint::from_bytes_be(
+                public_exponent: Some(Box::new(BigInt::from_signed_bytes_be(
                     km.public_exponent.as_slice(),
                 ))),
-                p: Some(Box::new(SafeBigUint::from_bytes_be(km.prime_1.as_slice()))),
-                q: Some(Box::new(SafeBigUint::from_bytes_be(km.prime_2.as_slice()))),
-                prime_exponent_p: Some(Box::new(SafeBigUint::from_bytes_be(
+                p: Some(Box::new(SafeBigInt::from_bytes_be(km.prime_1.as_slice()))),
+                q: Some(Box::new(SafeBigInt::from_bytes_be(km.prime_2.as_slice()))),
+                prime_exponent_p: Some(Box::new(SafeBigInt::from_bytes_be(
                     km.exponent_1.as_slice(),
                 ))),
-                prime_exponent_q: Some(Box::new(SafeBigUint::from_bytes_be(
+                prime_exponent_q: Some(Box::new(SafeBigInt::from_bytes_be(
                     km.exponent_2.as_slice(),
                 ))),
-                crt_coefficient: Some(Box::new(SafeBigUint::from_bytes_be(
+                crt_coefficient: Some(Box::new(SafeBigInt::from_bytes_be(
                     km.coefficient.as_slice(),
                 ))),
             };
@@ -444,8 +444,10 @@ fn to_object_with_metadata(
                 .set_tags(tags)
                 .map_err(|e| InterfaceError::InvalidRequest(format!("Invalid tags: {e}")))?;
             let kmip_key_material = TransparentRSAPublicKey {
-                modulus: Box::new(BigUint::from_bytes_be(km.modulus.as_slice())),
-                public_exponent: Box::new(BigUint::from_bytes_be(km.public_exponent.as_slice())),
+                modulus: Box::new(BigInt::from_signed_bytes_be(km.modulus.as_slice())),
+                public_exponent: Box::new(BigInt::from_signed_bytes_be(
+                    km.public_exponent.as_slice(),
+                )),
             };
             let object = Object::PublicKey(PublicKey {
                 key_block: KeyBlock {

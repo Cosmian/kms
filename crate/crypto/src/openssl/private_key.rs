@@ -9,8 +9,9 @@ use cosmian_kmip::{
             KeyFormatType, RecommendedCurve,
         },
     },
+    SafeBigInt,
 };
-use num_bigint_dig::BigUint;
+use num_bigint_dig::{BigInt, BigUint, IntoBigUint};
 use openssl::{
     bn::{BigNum, BigNumContext},
     ec::{EcGroup, EcKey, EcPoint},
@@ -93,14 +94,14 @@ pub fn kmip_private_key_to_openssl(private_key: &Object) -> Result<PKey<Private>
                 crt_coefficient,
             } => {
                 let mut rsa_private_key_builder = RsaPrivateKeyBuilder::new(
-                    BigNum::from_slice(&modulus.to_bytes_be())?,
+                    BigNum::from_slice(&modulus.to_signed_bytes_be())?,
                     BigNum::from_slice(
                         &public_exponent
                             .clone()
                             .context(
                                 "the public exponent is required for Transparent RSA Private Keys",
                             )?
-                            .to_bytes_be(),
+                            .to_signed_bytes_be(),
                     )?,
                     BigNum::from_slice(
                         &private_exponent
@@ -108,15 +109,15 @@ pub fn kmip_private_key_to_openssl(private_key: &Object) -> Result<PKey<Private>
                             .context(
                                 "the private exponent is required for Transparent RSA Private Keys",
                             )?
-                            .to_bytes_be(),
+                            .to_signed_bytes_be(),
                     )?,
                 )?;
                 if let Some(p) = p {
                     if let Some(q) = q {
                         rsa_private_key_builder = rsa_private_key_builder
                             .set_factors(
-                                BigNum::from_slice(&p.clone().to_bytes_be())?,
-                                BigNum::from_slice(&q.clone().to_bytes_be())?,
+                                BigNum::from_slice(&p.clone().to_signed_bytes_be())?,
+                                BigNum::from_slice(&q.clone().to_signed_bytes_be())?,
                             )
                             .context("Failed to set 'p' and 'q' on the RSA Private key")?;
                     }
@@ -126,9 +127,15 @@ pub fn kmip_private_key_to_openssl(private_key: &Object) -> Result<PKey<Private>
                         if let Some(crt_coefficient) = crt_coefficient {
                             rsa_private_key_builder = rsa_private_key_builder
                                 .set_crt_params(
-                                    BigNum::from_slice(&prime_exponent_p.clone().to_bytes_be())?,
-                                    BigNum::from_slice(&prime_exponent_q.clone().to_bytes_be())?,
-                                    BigNum::from_slice(&crt_coefficient.clone().to_bytes_be())?,
+                                    BigNum::from_slice(
+                                        &prime_exponent_p.clone().to_signed_bytes_be(),
+                                    )?,
+                                    BigNum::from_slice(
+                                        &prime_exponent_q.clone().to_signed_bytes_be(),
+                                    )?,
+                                    BigNum::from_slice(
+                                        &crt_coefficient.clone().to_signed_bytes_be(),
+                                    )?,
                                 )
                                 .context("Failed to set CRT parameters on the RSA Private key")?;
                         }
@@ -154,26 +161,34 @@ pub fn kmip_private_key_to_openssl(private_key: &Object) -> Result<PKey<Private>
                 recommended_curve,
             } => match recommended_curve {
                 RecommendedCurve::CURVE25519 => {
-                    let mut privkey_vec = d.to_bytes_be();
+                    let mut privkey_vec = d.to_signed_bytes_be();
                     pad_be_bytes(&mut privkey_vec, X25519_PRIVATE_KEY_LENGTH);
                     PKey::private_key_from_raw_bytes(&privkey_vec, Id::X25519)?
                 }
                 RecommendedCurve::CURVE448 => {
-                    let mut privkey_vec = d.to_bytes_be();
+                    let mut privkey_vec = d.to_signed_bytes_be();
                     pad_be_bytes(&mut privkey_vec, X448_PRIVATE_KEY_LENGTH);
                     PKey::private_key_from_raw_bytes(&privkey_vec, Id::X448)?
                 }
                 RecommendedCurve::CURVEED25519 => {
-                    let mut privkey_vec = d.to_bytes_be();
+                    let mut privkey_vec = d.to_signed_bytes_be();
                     pad_be_bytes(&mut privkey_vec, ED25519_PRIVATE_KEY_LENGTH);
                     PKey::private_key_from_raw_bytes(&privkey_vec, Id::ED25519)?
                 }
                 RecommendedCurve::CURVEED448 => {
-                    let mut privkey_vec = d.to_bytes_be();
+                    let mut privkey_vec = d.to_signed_bytes_be();
                     pad_be_bytes(&mut privkey_vec, ED448_PRIVATE_KEY_LENGTH);
                     PKey::private_key_from_raw_bytes(&privkey_vec, Id::ED448)?
                 }
-                other => ec_private_key_from_scalar(d, *other)?,
+                other => {
+                    let bi: BigInt = BigInt::from(*d.clone());
+                    let bui = bi.into_biguint().ok_or_else(|| {
+                        CryptoError::ConversionError(
+                            "Failed converting the scalar BigInt to a BigUint".to_owned(),
+                        )
+                    })?;
+                    ec_private_key_from_scalar(&bui, *other)?
+                }
             },
             x => crypto_bail!(
                 "KMIP key to openssl: invalid Transparent EC private key material: {}: \
@@ -251,39 +266,41 @@ pub fn openssl_private_key_to_kmip(
             let rsa_private_key = private_key
                 .rsa()
                 .context("the provided openssl key is not an RSA private key")?;
-            let modulus = BigUint::from_bytes_be(rsa_private_key.n().to_vec().as_slice());
-            let public_exponent = BigUint::from_bytes_be(rsa_private_key.e().to_vec().as_slice());
-            let private_exponent = BigUint::from_bytes_be(rsa_private_key.d().to_vec().as_slice());
+            let modulus = BigInt::from_signed_bytes_be(rsa_private_key.n().to_vec().as_slice());
+            let public_exponent =
+                BigInt::from_signed_bytes_be(rsa_private_key.e().to_vec().as_slice());
+            let private_exponent =
+                BigInt::from_signed_bytes_be(rsa_private_key.d().to_vec().as_slice());
             let p = rsa_private_key
                 .p()
-                .map(|p| BigUint::from_bytes_be(p.to_vec().as_slice()));
+                .map(|p| BigInt::from_signed_bytes_be(p.to_vec().as_slice()));
             let q = rsa_private_key
                 .q()
-                .map(|q| BigUint::from_bytes_be(q.to_vec().as_slice()));
+                .map(|q| BigInt::from_signed_bytes_be(q.to_vec().as_slice()));
             let prime_exponent_p = rsa_private_key
                 .dmp1()
-                .map(|dmp1| BigUint::from_bytes_be(dmp1.to_vec().as_slice()));
+                .map(|dmp1| BigInt::from_signed_bytes_be(dmp1.to_vec().as_slice()));
             let prime_exponent_q = rsa_private_key
                 .dmq1()
-                .map(|dmpq1| BigUint::from_bytes_be(dmpq1.to_vec().as_slice()));
+                .map(|dmpq1| BigInt::from_signed_bytes_be(dmpq1.to_vec().as_slice()));
             let crt_coefficient = rsa_private_key
                 .iqmp()
-                .map(|iqmp| BigUint::from_bytes_be(iqmp.to_vec().as_slice()));
+                .map(|iqmp| BigInt::from_signed_bytes_be(iqmp.to_vec().as_slice()));
             KeyBlock {
                 key_format_type,
                 key_value: Some(KeyValue {
                     key_material: KeyMaterial::TransparentRSAPrivateKey {
                         modulus: Box::new(modulus),
-                        private_exponent: Some(Box::new(SafeBigUint::from(private_exponent))),
+                        private_exponent: Some(Box::new(SafeBigInt::from(private_exponent))),
                         public_exponent: Some(Box::new(public_exponent)),
-                        p: p.map(|p| Box::new(SafeBigUint::from(p))),
-                        q: q.map(|q| Box::new(SafeBigUint::from(q))),
+                        p: p.map(|p| Box::new(SafeBigInt::from(p))),
+                        q: q.map(|q| Box::new(SafeBigInt::from(q))),
                         prime_exponent_p: prime_exponent_p
-                            .map(|pep| Box::new(SafeBigUint::from(pep))),
+                            .map(|pep| Box::new(SafeBigInt::from(pep))),
                         prime_exponent_q: prime_exponent_q
-                            .map(|peq| Box::new(SafeBigUint::from(peq))),
+                            .map(|peq| Box::new(SafeBigInt::from(peq))),
                         crt_coefficient: crt_coefficient
-                            .map(|crt_coeff| Box::new(SafeBigUint::from(crt_coeff))),
+                            .map(|crt_coeff| Box::new(SafeBigInt::from(crt_coeff))),
                     },
                     attributes: Some(Attributes {
                         cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
@@ -362,7 +379,7 @@ pub fn openssl_private_key_to_kmip(
                 key_value: Some(KeyValue {
                     key_material: KeyMaterial::TransparentECPrivateKey {
                         recommended_curve,
-                        d: Box::new(SafeBigUint::from(d)),
+                        d: Box::new(SafeBigInt::from(d)),
                     },
                     attributes: Some(Attributes {
                         activation_date: None,
@@ -649,14 +666,14 @@ mod tests {
         };
         let private_key_ = PKey::from_rsa(
             Rsa::from_private_components(
-                BigNum::from_slice(&modulus.to_bytes_be()).unwrap(),
-                BigNum::from_slice(&public_exponent.unwrap().to_bytes_be()).unwrap(),
-                BigNum::from_slice(&private_exponent.unwrap().to_bytes_be()).unwrap(),
-                BigNum::from_slice(&p.unwrap().to_bytes_be()).unwrap(),
-                BigNum::from_slice(&q.unwrap().to_bytes_be()).unwrap(),
-                BigNum::from_slice(&prime_exponent_p.unwrap().to_bytes_be()).unwrap(),
-                BigNum::from_slice(&prime_exponent_q.unwrap().to_bytes_be()).unwrap(),
-                BigNum::from_slice(&crt_coefficient.unwrap().to_bytes_be()).unwrap(),
+                BigNum::from_slice(&modulus.to_signed_bytes_be()).unwrap(),
+                BigNum::from_slice(&public_exponent.unwrap().to_signed_bytes_be()).unwrap(),
+                BigNum::from_slice(&private_exponent.unwrap().to_signed_bytes_be()).unwrap(),
+                BigNum::from_slice(&p.unwrap().to_signed_bytes_be()).unwrap(),
+                BigNum::from_slice(&q.unwrap().to_signed_bytes_be()).unwrap(),
+                BigNum::from_slice(&prime_exponent_p.unwrap().to_signed_bytes_be()).unwrap(),
+                BigNum::from_slice(&prime_exponent_q.unwrap().to_signed_bytes_be()).unwrap(),
+                BigNum::from_slice(&crt_coefficient.unwrap().to_signed_bytes_be()).unwrap(),
             )
             .unwrap(),
         )
@@ -716,7 +733,7 @@ mod tests {
         };
         assert_eq!(recommended_curve, curve);
 
-        let mut privkey_vec = d.to_bytes_be();
+        let mut privkey_vec = d.to_signed_bytes_be();
 
         // privkey size on curve.
         let bytes_key_size = 1 + ((usize::try_from(key_size).unwrap() - 1) / 8);
