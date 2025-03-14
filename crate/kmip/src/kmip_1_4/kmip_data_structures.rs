@@ -1,4 +1,4 @@
-use num_bigint_dig::BigUint;
+use num_bigint_dig::BigInt;
 use serde::{
     de,
     de::{MapAccess, Visitor},
@@ -11,7 +11,7 @@ use zeroize::Zeroizing;
 use super::kmip_types::*;
 use crate::{
     kmip_1_4::kmip_attributes::{Attribute, Attributes},
-    kmip_2_1, SafeBigUint,
+    kmip_2_1, SafeBigInt,
 };
 
 /// 2.1.2 Credential Object Structure
@@ -104,7 +104,7 @@ impl From<KeyValue> for kmip_2_1::kmip_data_structures::KeyValue {
 }
 
 /// Private fields are represented using a Zeroizing object: either array of
-/// bytes, or `SafeBigUint` type.
+/// bytes, or `SafeBigInt` type.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum KeyMaterial {
     ByteString(Zeroizing<Vec<u8>>),
@@ -112,49 +112,49 @@ pub enum KeyMaterial {
         key: Zeroizing<Vec<u8>>,
     },
     TransparentDSAPrivateKey {
-        p: Box<BigUint>,
-        q: Box<BigUint>,
-        g: Box<BigUint>,
-        x: Box<SafeBigUint>,
+        p: Box<BigInt>,
+        q: Box<BigInt>,
+        g: Box<BigInt>,
+        x: Box<SafeBigInt>,
     },
     TransparentDSAPublicKey {
-        p: Box<BigUint>,
-        q: Box<BigUint>,
-        g: Box<BigUint>,
-        y: Box<BigUint>,
+        p: Box<BigInt>,
+        q: Box<BigInt>,
+        g: Box<BigInt>,
+        y: Box<BigInt>,
     },
     TransparentRSAPrivateKey {
-        modulus: Box<BigUint>,
-        private_exponent: Option<Box<SafeBigUint>>,
-        public_exponent: Option<Box<BigUint>>,
-        p: Option<Box<SafeBigUint>>,
-        q: Option<Box<SafeBigUint>>,
-        prime_exponent_p: Option<Box<SafeBigUint>>,
-        prime_exponent_q: Option<Box<SafeBigUint>>,
-        crt_coefficient: Option<Box<SafeBigUint>>,
+        modulus: Box<BigInt>,
+        private_exponent: Option<Box<SafeBigInt>>,
+        public_exponent: Option<Box<BigInt>>,
+        p: Option<Box<SafeBigInt>>,
+        q: Option<Box<SafeBigInt>>,
+        prime_exponent_p: Option<Box<SafeBigInt>>,
+        prime_exponent_q: Option<Box<SafeBigInt>>,
+        crt_coefficient: Option<Box<SafeBigInt>>,
     },
     TransparentRSAPublicKey {
-        modulus: Box<BigUint>,
-        public_exponent: Box<BigUint>,
+        modulus: Box<BigInt>,
+        public_exponent: Box<BigInt>,
     },
     TransparentDHPrivateKey {
-        p: Box<BigUint>,
-        q: Option<Box<BigUint>>,
-        g: Box<BigUint>,
-        j: Option<Box<BigUint>>,
-        x: Box<SafeBigUint>,
+        p: Box<BigInt>,
+        q: Option<Box<BigInt>>,
+        g: Box<BigInt>,
+        j: Option<Box<BigInt>>,
+        x: Box<SafeBigInt>,
     },
     TransparentDHPublicKey {
-        p: Box<BigUint>,
-        q: Option<Box<BigUint>>,
-        g: Box<BigUint>,
-        j: Option<Box<BigUint>>,
-        y: Box<BigUint>,
+        p: Box<BigInt>,
+        q: Option<Box<BigInt>>,
+        g: Box<BigInt>,
+        j: Option<Box<BigInt>>,
+        y: Box<BigInt>,
     },
     TransparentECDSAPrivateKey {
         recommended_curve: RecommendedCurve,
         // big int in big endian format
-        d: Box<SafeBigUint>,
+        d: Box<SafeBigInt>,
     },
     TransparentECDSAPublicKey {
         recommended_curve: RecommendedCurve,
@@ -163,7 +163,7 @@ pub enum KeyMaterial {
     TransparentECDHPrivateKey {
         recommended_curve: RecommendedCurve,
         // big int in big endian format
-        d: Box<SafeBigUint>,
+        d: Box<SafeBigInt>,
     },
     TransparentECDHPublicKey {
         recommended_curve: RecommendedCurve,
@@ -172,7 +172,7 @@ pub enum KeyMaterial {
     TransparentECMQVPrivateKey {
         recommended_curve: RecommendedCurve,
         // big int in big endian format
-        d: Box<SafeBigUint>,
+        d: Box<SafeBigInt>,
     },
     TransparentECMQVPublicKey {
         recommended_curve: RecommendedCurve,
@@ -182,7 +182,7 @@ pub enum KeyMaterial {
     TransparentECPrivateKey {
         recommended_curve: RecommendedCurve,
         // big int in big endian format
-        d: Box<SafeBigUint>,
+        d: Box<SafeBigInt>,
     },
     TransparentECPublicKey {
         recommended_curve: RecommendedCurve,
@@ -440,23 +440,23 @@ impl<'de> Deserialize<'de> for KeyMaterial {
                 let mut bytestring: Option<Zeroizing<Vec<u8>>> = None;
                 let mut key_type_ser: Option<KeyTypeSer> = None;
                 // Here `p` and `q` describes either a public value for DH or
-                // a prime secret factor for RSA. Kept as `BigUint`` and wrapped
-                // as `SafeBigUint` in RSA.
-                let mut p: Option<Box<BigUint>> = None;
-                let mut q: Option<Box<BigUint>> = None;
-                let mut g: Option<Box<BigUint>> = None;
-                let mut j: Option<Box<BigUint>> = None;
-                let mut y: Option<Box<BigUint>> = None;
-                let mut x: Option<Box<SafeBigUint>> = None;
+                // a prime secret factor for RSA. Kept as `BigInt`` and wrapped
+                // as `SafeBigInt` in RSA.
+                let mut p: Option<Box<BigInt>> = None;
+                let mut q: Option<Box<BigInt>> = None;
+                let mut g: Option<Box<BigInt>> = None;
+                let mut j: Option<Box<BigInt>> = None;
+                let mut y: Option<Box<BigInt>> = None;
+                let mut x: Option<Box<SafeBigInt>> = None;
                 let mut key: Option<Zeroizing<Vec<u8>>> = None;
-                let mut modulus: Option<Box<BigUint>> = None;
-                let mut public_exponent: Option<Box<BigUint>> = None;
-                let mut private_exponent: Option<Box<SafeBigUint>> = None;
-                let mut prime_exponent_p: Option<Box<SafeBigUint>> = None;
-                let mut prime_exponent_q: Option<Box<SafeBigUint>> = None;
-                let mut crt_coefficient: Option<Box<SafeBigUint>> = None;
+                let mut modulus: Option<Box<BigInt>> = None;
+                let mut public_exponent: Option<Box<BigInt>> = None;
+                let mut private_exponent: Option<Box<SafeBigInt>> = None;
+                let mut prime_exponent_p: Option<Box<SafeBigInt>> = None;
+                let mut prime_exponent_q: Option<Box<SafeBigInt>> = None;
+                let mut crt_coefficient: Option<Box<SafeBigInt>> = None;
                 let mut recommended_curve: Option<RecommendedCurve> = None;
-                let mut d: Option<Box<SafeBigUint>> = None;
+                let mut d: Option<Box<SafeBigInt>> = None;
                 let mut q_string: Option<Vec<u8>> = None;
 
                 while let Some(field) = map.next_key()? {
@@ -621,8 +621,8 @@ impl<'de> Deserialize<'de> for KeyMaterial {
                                 modulus,
                                 public_exponent,
                                 private_exponent,
-                                p: p.map(|p| Box::new(SafeBigUint::from(*p))),
-                                q: q.map(|q| Box::new(SafeBigUint::from(*q))),
+                                p: p.map(|p| Box::new(SafeBigInt::from(*p))),
+                                q: q.map(|q| Box::new(SafeBigInt::from(*q))),
                                 prime_exponent_p,
                                 prime_exponent_q,
                                 crt_coefficient,

@@ -30,7 +30,7 @@
 use std::collections::VecDeque;
 
 use serde::de::{self, DeserializeSeed, SeqAccess, Visitor};
-use tracing::trace;
+use tracing::{instrument, trace};
 
 use super::{error::TtlvError, KmipBigInt};
 
@@ -350,15 +350,15 @@ impl<'de> de::Deserializer<'de> for &mut KmipBigIntDeserializer {
     }
 }
 
-// `SeqAccess` is provided to the `Visitor` to give it the ability to iterate
+// `SeqAccess` is provided to the `Visitor` to allow it to iterate
 // through elements of the sequence.
-// From the BigInt Deserilialize point of view, the KMIP BigInt is a sequence of
+// From the BigInt Deserialize point of view, the KMIP BigInt is a sequence of
 // - a sign encoded as an i8
 // - a sequence of u32 in big endian order representing the absolute value of the BigInt
 impl<'de> SeqAccess<'de> for KmipBigIntDeserializer {
     type Error = TtlvError;
 
-    // #[instrument(skip(self, seed))]
+    #[instrument(skip(self, seed))]
     fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>>
     where
         T: DeserializeSeed<'de>,
