@@ -170,7 +170,7 @@ jobs:
             tar -xvf hsm-simulator.tar.xz
             find .
             rm hsm-simulator.tar.xz
-            bash ./hsm-simulator/sim5_linux/bin/cs_sim.sh
+            ./hsm-simulator/sim5_linux/bin/bl_sim5 -h -o -d ./hsm-simulator/sim5_linux/devices &
 
       - name: Configure the PKCS#11 connection on the KMS server
         run: |
