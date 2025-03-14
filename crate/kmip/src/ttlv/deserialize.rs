@@ -171,12 +171,30 @@ impl<'de> Deserialize<'de> for TTLV {
                                     })? != "0x"
                                     {
                                         return Err(de::Error::custom(format!(
-                                            "Invalid value for i64 hex String: {hex} (should \
-                                             start with 0x)"
+                                            "Invalid value for DateTimeExtended hex String: {hex} \
+                                             (should start with 0x)"
                                         )))
                                     }
-                                    let dt = parse_hex_time::<V>(&hex, HexTimeUnit::Microseconds)?;
-                                    TTLValue::DateTimeExtended(dt)
+                                    let bytes = hex::decode(hex.get(2..).ok_or_else(|| {
+                                        de::Error::custom(format!(
+                                            "visit_map: indexing slicing failed for \
+                                             DateTimeExtended 2..: {hex}"
+                                        ))
+                                    })?)
+                                    .map_err(|_e| {
+                                        de::Error::custom(format!(
+                                            "Invalid value for DateTimeExtended: {hex}"
+                                        ))
+                                    })?;
+                                    let dte = i128::from(u64::from_be_bytes(
+                                        bytes.as_slice().try_into().map_err(|e| {
+                                            de::Error::custom(format!(
+                                                "Invalid value for i128 hex String: {hex}. Error: \
+                                                 {e}",
+                                            ))
+                                        })?,
+                                    ));
+                                    TTLValue::DateTimeExtended(dte)
                                 }
                                 t => return Err(de::Error::custom(format!("Unknown type: {t}"))),
                             });
@@ -243,7 +261,7 @@ where
 #[derive(Debug, Copy, Clone)]
 enum HexTimeUnit {
     Seconds,
-    Microseconds,
+    // Microseconds,
 }
 
 /// Parse a hex string into a `OffsetDateTime`.
@@ -276,19 +294,18 @@ where
                     "Invalid value for unix seconds timestamp: {hex}. Error: {e}",
                 ))
             })?
-        }
-        HexTimeUnit::Microseconds => {
-            let v = i128::from_be_bytes(bytes.as_slice().try_into().map_err(|e| {
-                de::Error::custom(format!(
-                    "Invalid value for i128 hex String: {hex}. Error: {e}",
-                ))
-            })?);
-            OffsetDateTime::from_unix_timestamp_nanos(v * 1000).map_err(|e| {
-                de::Error::custom(format!(
-                    "Invalid value for unix micro-seconds timestamp: {hex}. Error: {e}",
-                ))
-            })?
-        }
+        } // HexTimeUnit::Microseconds => {
+          //     let v = i128::from_be_bytes(bytes.as_slice().try_into().map_err(|e| {
+          //         de::Error::custom(format!(
+          //             "Invalid value for i128 hex String: {hex}. Error: {e}",
+          //         ))
+          //     })?);
+          //     OffsetDateTime::from_unix_timestamp_nanos(v * 1000).map_err(|e| {
+          //         de::Error::custom(format!(
+          //             "Invalid value for unix micro-seconds timestamp: {hex}. Error: {e}",
+          //         ))
+          //     })?
+          // }
     })
 }
 

@@ -8,6 +8,7 @@ use serde::{
     },
     Serialize,
 };
+use time::OffsetDateTime;
 // use strum::VariantNames;
 use tracing::{debug, instrument, trace};
 use zeroize::Zeroizing;
@@ -788,6 +789,9 @@ impl SerializeStruct for &mut TTLVSerializer {
             BigInt(BigInt),
             // BigUint should go
             BigUint(BigUint),
+            DateTime(OffsetDateTime),
+            DateTimeExtended(i128),
+            DateTimeInterval(u32),
         }
         trait Detect {
             fn detect(&self) -> Detected;
@@ -825,6 +829,25 @@ impl SerializeStruct for &mut TTLVSerializer {
                 Detected::BigUint(self.to_owned().clone())
             }
         }
+        impl Detect for &OffsetDateTime {
+            fn detect(&self) -> Detected {
+                trace!("... the value is a OffsetDateTime");
+                Detected::DateTime(*self.to_owned())
+            }
+        }
+        impl Detect for &i128 {
+            fn detect(&self) -> Detected {
+                trace!("... the value is a OffsetDateTime");
+                Detected::DateTimeExtended(**self)
+            }
+        }
+
+        impl Detect for &u32 {
+            fn detect(&self) -> Detected {
+                trace!("... the value is an Interval");
+                Detected::DateTimeInterval(**self)
+            }
+        }
 
         trace!(
             "serializing a struct field with name: {key}, stack: {:?}",
@@ -845,16 +868,25 @@ impl SerializeStruct for &mut TTLVSerializer {
                 tag: key.to_owned(),
                 value: TTLValue::BigInteger(big_uint.into()),
             },
-            // anything else such as a struct or a seq
+            Detected::DateTime(date_time) => TTLV {
+                tag: key.to_owned(),
+                value: TTLValue::DateTime(date_time),
+            },
+            Detected::DateTimeExtended(offset_date_time) => TTLV {
+                tag: key.to_owned(),
+                value: TTLValue::DateTimeExtended(offset_date_time),
+            },
+            Detected::DateTimeInterval(interval) => TTLV {
+                tag: key.to_owned(),
+                value: TTLValue::Interval(interval),
+            },
             Detected::Other => {
                 let current_ttlv = TTLV {
                     tag: key.to_owned(),
                     value: TTLValue::Boolean(true),
                 };
                 self.stack.push(current_ttlv);
-                // The value will be updated by the serializer
                 value.serialize(&mut **self)?;
-                // pop the TTLV from the stack
                 self.stack.pop().ok_or_else(|| {
                     TtlvError::custom("'unexpected end of struct fields: no parent ".to_owned())
                 })?

@@ -10,9 +10,10 @@ use super::{array_deserializer::ArrayDeserializer, structure_walker::StructureWa
 use crate::{
     kmip_1_4, kmip_2_1,
     ttlv::{
-        kmip_big_int_deserializer::KmipBigIntDeserializer,
         kmip_ttlv_deserializer::{
             byte_string_deserializer::ByteStringDeserializer, enum_walker::EnumWalker,
+            kmip_big_int_deserializer::KmipBigIntDeserializer,
+            offset_date_time_deserializer::OffsetDateTimeDeserializer,
             untagged_enum_walker::UntaggedEnumWalker,
         },
         TTLValue, TtlvError, TTLV,
@@ -199,7 +200,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
             }
             TTLValue::DateTimeExtended(dt) => {
                 // if the TTLV value is a DateTimeExtended, the deserializer is attempting to deserialize the value
-                visitor.visit_i128(dt.unix_timestamp_nanos() / 1000)
+                visitor.visit_i128(*dt)
             }
             TTLValue::Enumeration(e) => {
                 // Choose the variant name over the value if it is available
@@ -358,14 +359,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
                         visitor.visit_u32(*v)
                     })
             }
-            TTLValue::Integer(i) => {
-                if *i < 0 {
-                    return Err(TtlvError::from("Cannot convert negative integer to u32"));
-                }
-                let value: u32 = u32::try_from(*i)
-                    .map_err(|e| TtlvError::from(format!("Integer conversion error{e}")))?;
-                visitor.visit_u32(value)
-            }
+            TTLValue::Interval(i) => visitor.visit_u32(*i),
             _ => Err(TtlvError::from(
                 "Expected Integer ro BigInteger value in TTLV",
             )),
@@ -409,6 +403,21 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         trace!("deserialize_f64: state:  {:?}", self.current);
         // there is no support for f64 in KMIP
         Err(TtlvError::from("f64 is not supported in KMIP"))
+    }
+
+    #[instrument(skip(self, visitor))]
+    fn deserialize_i128<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        // This is called when deserializing a DateTimeExtended
+        // The value is a 128-bit integer
+        trace!("deserialize_i128: state:  {:?}", self.current);
+        if let TTLValue::DateTimeExtended(dt) = &self.fetch_element()?.value {
+            visitor.visit_i128(*dt)
+        } else {
+            Err(TtlvError::from("Expected DateTimeExtended value in TTLV"))
+        }
     }
 
     #[instrument(skip(self, _visitor))]
@@ -601,6 +610,17 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
             // by converting the BigInt to u32
             TTLValue::BigInteger(bi) => {
                 let seq_access = KmipBigIntDeserializer::instantiate(bi)?;
+                visitor.visit_seq(seq_access)
+            }
+            TTLValue::DateTime(dt) => {
+                // if human_readable is not on the deserializer and the `time` crate (feature serde-human-readable),
+                // `deserialize_tuple` will be called on the deserializer
+                // see https://github.com/time-rs/time/blob/main/time/src/serde/mod.rs#L320
+                // The `OffsetDateTime` visitor expects calls to `visit_seq` passing all the elements
+                // og the tuple in order (year, day of year, hour, etc..)
+                // see https://github.com/time-rs/time/blob/main/time/src/serde/visitor.rs#L80
+
+                let seq_access = OffsetDateTimeDeserializer::new(&self.current.tag, *dt);
                 visitor.visit_seq(seq_access)
             }
             _ => Err(TtlvError::from("Expected a BigInteger value in TTLV")),
@@ -836,46 +856,3 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         self.deserialize_any(visitor)
     }
 }
-
-// impl<'de> SeqAccess<'de> for TtlvDeserializer {
-//     type Error = TtlvError;
-
-//     #[instrument(skip(self, seed))]
-//     fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>>
-//     where
-//         T: DeserializeSeed<'de>,
-//     {
-//         trace!(
-//             "seq_access: next_element_seed: index: {}, current:  {:?}",
-//             self.child_index,
-//             self.current
-//         );
-
-//         match &self.current.value {
-//             TTLValue::Structure(child_array) => {
-//                 // if the TTLV value is a Structure or Array, the deserializer is attempting to deserialize the children
-//                 // by iterating over the children which hold the values of the sequence/array
-//                 if self.child_index >= child_array.len() {
-//                     self.child_index = 0;
-//                     return Ok(None);
-//                 }
-//                 let child = child_array.get(self.child_index).ok_or_else(|| {
-//                     TtlvError::from("Index out of bounds when accessing child array")
-//                 })?;
-//                 let mut deserializer = Self::from_ttlv(child.clone());
-//                 self.child_index += 1;
-//                 seed.deserialize(&mut deserializer).map(Some)
-//             }
-//             TTLValue::ByteString(byte_array) => {
-//                 if self.child_index >= byte_array.len() {
-//                     self.child_index = 0;
-//                     return Ok(None);
-//                 }
-//                 seed.deserialize(self).map(Some)
-//             }
-//             _ => Err(TtlvError::from(
-//                 "Expected Structure, Array or ByteString value in TTLV",
-//             )),
-//         }
-//     }
-// }
