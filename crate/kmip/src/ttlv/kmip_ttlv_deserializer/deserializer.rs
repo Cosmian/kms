@@ -1,18 +1,23 @@
 #![allow(dead_code)]
 use serde::{
-    de::{self, DeserializeSeed, EnumAccess, MapAccess, SeqAccess, VariantAccess, Visitor},
+    de::{self, Visitor},
     Deserialize,
 };
 use strum::VariantNames;
 use tracing::{instrument, trace};
 
-use super::{error::TtlvError, TTLV};
+use super::{array_deserializer::ArrayDeserializer, structure_walker::StructureWalker, Result};
 use crate::{
     kmip_1_4, kmip_2_1,
-    ttlv::{kmip_big_int_deserializer::KmipBigIntDeserializer, TTLValue},
+    ttlv::{
+        kmip_big_int_deserializer::KmipBigIntDeserializer,
+        kmip_ttlv_deserializer::{
+            byte_string_deserializer::ByteStringDeserializer, enum_walker::EnumWalker,
+            untagged_enum_walker::UntaggedEnumWalker,
+        },
+        TTLValue, TtlvError, TTLV,
+    },
 };
-
-type Result<T> = std::result::Result<T, TtlvError>;
 
 /// Parse a KMIP structure from its TTLV value.
 ///
@@ -33,7 +38,7 @@ where
 // WHen deserializing a map, the deserializer needs to know if it is deserializing the key or the value
 // This is handled in MapAccess::next_key_seed and MapAccess::next_value_seed
 #[derive(Debug, PartialEq, Eq)]
-enum MapAccessState {
+pub(super) enum MapAccessState {
     // Not in a Map Axxess
     None,
     Key,
@@ -43,21 +48,22 @@ enum MapAccessState {
 #[derive(Debug)]
 pub struct TtlvDeserializer {
     /// The current TTLV being deserialized
-    current: TTLV,
+    pub(super) current: TTLV,
     /// The current child index in a structure being deserialized.
     /// Arrays in TTLV are represented as structures with children holding the array values
     /// The child index is also used in Enums deserialization to differentiate between the tag and the variant
     /// when deserializing an identifier (0; tag, 1; variant)
-    child_index: usize,
+    pub(super) child_index: usize,
     /// The state of the deserializer when deserializing a map.
     /// The deserializer needs to know if it is deserializing the key or the value.
     /// This is handled in `MapAccess::next_key_seed` and `MapAccess::next_value_seed`.
     /// The deserializer starts with the key state
     /// When the key is deserialized, the state is changed to Value
-    map_state: MapAccessState,
-    /// The secondary index is used to track a position in a value
-    /// such as the byte index in a `ByteString`
-    value_index: usize,
+    pub(super) map_state: MapAccessState,
+    /// Determines whether the deserializer is at the root of the TTLV
+    /// This is used to determine if the deserializer should deserialize the current TTLV as a structure
+    /// or if it should deserialize the child pointed at by the child index
+    at_root: bool,
 }
 
 impl TtlvDeserializer {
@@ -66,8 +72,8 @@ impl TtlvDeserializer {
         Self {
             current: root,
             child_index: 0,
-            value_index: 0,
             map_state: MapAccessState::None,
+            at_root: true,
         }
     }
 
@@ -114,13 +120,18 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
             self.child_index,
             self.current
         );
+        // fetch the element
+        let element = self.fetch_element()?;
+
+        // if the self.map_state is Key, the deserializer is deserializing the key of a map
+        // which is the tag of the TTLV
         if self.map_state == MapAccessState::Key {
             // if the deserializer is deserializing the key of a map, the tag is the key
             trace!(
                 "deserialize_any: map access state: key, tag: {}",
-                self.current.tag
+                element.tag
             );
-            return visitor.visit_str(&self.current.tag);
+            return visitor.visit_str(&element.tag);
         }
 
         // if self.map_state == MapAccessState::None
@@ -137,7 +148,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         // - deserializing a value in a map
         // - or not in a map at all, and we are also interested in the value
 
-        match &self.fetch_element()?.value {
+        match &element.value {
             TTLValue::BigInteger(bi) => {
                 // if the TTLV value is a BigInt, the deserializer is attempting to deserialize the value
                 // by converting the BigInt to u32
@@ -149,7 +160,12 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
                 trace!("deserialize_any value of Structure: {:?}", child_array);
                 // if the TTLV value is a Structure, we will deserialize it using the StructureWalker
                 // which will iterate over the children of the structure as it were a map of properties to values
-                visitor.visit_map(StructureWalker::new(self))
+                visitor.visit_map(StructureWalker::new(&mut TtlvDeserializer {
+                    current: element.clone(),
+                    child_index: 0,
+                    map_state: MapAccessState::None,
+                    at_root: false,
+                }))
             }
             TTLValue::Integer(i) => {
                 // if the TTLV value is an Integer, the deserializer is attempting to deserialize the value
@@ -290,20 +306,6 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
             self.child_index
         );
         match &self.fetch_element()?.value {
-            TTLValue::ByteString(_bs) => {
-                Err(TtlvError::from(
-                    "ByteString: deserialize from u8: how does this work ?",
-                ))
-                // if let Some(byte) = bs.get(self.value_index).cloned() {
-                //     self.value_index += 1;
-                //     visitor.visit_u8(byte)
-                // } else {
-                //     self.value_index = 0;
-                //     Err(TtlvError::from(
-                //         "Index out of bounds when accessing ByteString",
-                //     ))
-                // }
-            }
             TTLValue::Integer(i) => {
                 if *i < 0 {
                     return Err(TtlvError::from("Cannot convert negative integer to u8"));
@@ -542,7 +544,8 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         // but it is hard to do better than this, although we could inspect the next element to see if it
         // has the same tag.
 
-        match &self.fetch_element()?.value {
+        let element = self.fetch_element()?;
+        match &element.value {
             TTLValue::BigInteger(bi) => {
                 // if the TTLV value is a BigInt, assuming the deserializer is attempting to deserialize the value
                 // by converting the BigInt to u32
@@ -555,8 +558,8 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
                 // by iterating over the children which hold the values of the sequence/array.
                 // Reset the child index to 0 to start from the beginning
                 trace!("   ... assuming deserialization of ByteString: {:?}", bs);
-                self.child_index = 0;
-                visitor.visit_seq(self)
+                let deserializer = ByteStringDeserializer::new(&element.tag, bs);
+                visitor.visit_seq(deserializer)
             }
             _ => match self.current.value.clone() {
                 TTLValue::Structure(children) => {
@@ -706,10 +709,29 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
             "deserialize_struct: name {name}, fields: {fields:?} : state:  {:?}",
             self.current
         );
-        // we are going to iterate over the children of the current TTLV by calling visit_map
-        // set the child index to 0
-        self.child_index = 0;
-        visitor.visit_map(StructureWalker::new(self))
+        if self.at_root {
+            // we are going to iterate over the children of the current TTLV by calling visit_map
+            // set the child index to 0
+            self.child_index = 0;
+            // we are going to walk the element at the root of the TTLV
+            // so we are not at the root anymore
+            self.at_root = false;
+            visitor.visit_map(StructureWalker::new(self))
+        } else {
+            let element = self.fetch_element()?;
+            if let TTLValue::Structure(_) = &element.value {
+                // if the TTLV value is a Structure, we will deserialize it using the StructureWalker
+                // which will iterate over the children of the structure as it were a map of properties to values
+                visitor.visit_map(StructureWalker::new(&mut TtlvDeserializer {
+                    current: element.clone(),
+                    child_index: 0,
+                    map_state: MapAccessState::None,
+                    at_root: false,
+                }))
+            } else {
+                Err(TtlvError::from("Expected Structure value in TTLV"))
+            }
+        }
     }
 
     #[instrument(skip(self, visitor))]
@@ -762,10 +784,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
                 //if the current item is an enumeration,
                 // and the child index is 0 => deserialize the tag
                 // else deserialize the variant
-                if self.child_index == 0 {
-                    trace!("... enum: tag: {}", self.current.tag);
-                    visitor.visit_str(&self.current.tag)
-                } else if e.name.is_empty() {
+                if e.name.is_empty() {
                     trace!("... enum: index: {}", e.value);
                     visitor.visit_u32(e.value)
                 } else {
@@ -818,322 +837,45 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
     }
 }
 
-impl<'de> SeqAccess<'de> for TtlvDeserializer {
-    type Error = TtlvError;
+// impl<'de> SeqAccess<'de> for TtlvDeserializer {
+//     type Error = TtlvError;
 
-    #[instrument(skip(self, seed))]
-    fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>>
-    where
-        T: DeserializeSeed<'de>,
-    {
-        trace!(
-            "seq_access: next_element_seed: index: {}, current:  {:?}",
-            self.child_index,
-            self.current
-        );
+//     #[instrument(skip(self, seed))]
+//     fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>>
+//     where
+//         T: DeserializeSeed<'de>,
+//     {
+//         trace!(
+//             "seq_access: next_element_seed: index: {}, current:  {:?}",
+//             self.child_index,
+//             self.current
+//         );
 
-        match &self.current.value {
-            TTLValue::Structure(child_array) => {
-                // if the TTLV value is a Structure or Array, the deserializer is attempting to deserialize the children
-                // by iterating over the children which hold the values of the sequence/array
-                if self.child_index >= child_array.len() {
-                    self.child_index = 0;
-                    return Ok(None);
-                }
-                let child = child_array.get(self.child_index).ok_or_else(|| {
-                    TtlvError::from("Index out of bounds when accessing child array")
-                })?;
-                let mut deserializer = Self::from_ttlv(child.clone());
-                self.child_index += 1;
-                seed.deserialize(&mut deserializer).map(Some)
-            }
-            TTLValue::ByteString(byte_array) => {
-                if self.child_index >= byte_array.len() {
-                    self.child_index = 0;
-                    return Ok(None);
-                }
-                seed.deserialize(self).map(Some)
-            }
-            _ => Err(TtlvError::from(
-                "Expected Structure, Array or ByteString value in TTLV",
-            )),
-        }
-    }
-}
-
-// The `ArrayDeserializer` is used to deserialize an array from struct elements
-/// It is called by the main deserializer when receiving Visitor requests to `deserialize_seq`
-struct ArrayDeserializer<'a> {
-    de: &'a mut TtlvDeserializer,
-    // The tag of the array
-    tag: String,
-    // all the elements of the containing struct
-    struct_elements: &'a [TTLV],
-}
-
-impl<'a> ArrayDeserializer<'a> {
-    fn new(de: &'a mut TtlvDeserializer, tag: &str, struct_elements: &'a [TTLV]) -> Self {
-        ArrayDeserializer {
-            de,
-            tag: tag.to_owned(),
-            struct_elements,
-        }
-    }
-}
-
-impl<'a, 'de: 'a> SeqAccess<'de> for ArrayDeserializer<'a> {
-    type Error = TtlvError;
-
-    #[instrument(skip(self, seed))]
-    fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>>
-    where
-        T: DeserializeSeed<'de>,
-    {
-        trace!(
-            "array_access: next_element_seed in seq: {}, current index: {}, structure elems:  {:?}",
-            self.tag,
-            self.de.child_index,
-            self.struct_elements
-        );
-        // recover the current element
-        // if the current index is out of bounds, we are done with this child
-        let Some(current_element) = self.struct_elements.get(self.de.child_index) else {
-            return Ok(None);
-        };
-
-        // if the tag of the current element is different from the tag of the array,
-        // we are done with this child
-        if current_element.tag != self.tag {
-            // backtrack one on the index, because the index should point to the current element
-            // in the struct. The index is incremented in the `next_value_seed` method of the Struct Walker
-            self.de.child_index -= 1;
-            return Ok(None);
-        }
-
-        // deserialize the current element
-        let mut deserializer = TtlvDeserializer::from_ttlv(current_element.clone());
-        // increment the current index
-        self.de.child_index += 1;
-        // deserialize the element
-        let v = seed.deserialize(&mut deserializer).map(Some)?;
-        Ok(v)
-    }
-}
-
-/// The `StructureWalker` is used to deserialize a struct as a map of property -> values
-/// It is called by the main deserializer when receiving Visitor requests to `deserialize_struct`
-struct StructureWalker<'a> {
-    de: &'a mut TtlvDeserializer,
-}
-
-impl<'a> StructureWalker<'a> {
-    fn new(de: &'a mut TtlvDeserializer) -> Self {
-        StructureWalker { de }
-    }
-}
-
-// MapAccess is called when deserializing a struct because deserialize_struct called visit_map
-// The current input is the top structure holding an array of TTLVs which are the fields of the struct/map.
-// The calls to `next_value` are driven by the visitor,
-// and it is up to this Access to synchronize and advance its counter
-// over the struct fields (`self.index`) in this case
-impl<'a, 'de: 'a> MapAccess<'de> for StructureWalker<'a> {
-    type Error = TtlvError;
-
-    #[instrument(skip(self, seed))]
-    fn next_key_seed<K>(&mut self, seed: K) -> std::result::Result<Option<K::Value>, Self::Error>
-    where
-        K: DeserializeSeed<'de>,
-    {
-        trace!(
-            "map access: next_key_seed: index: {}, current: {:?}",
-            self.de.child_index,
-            self.de.current
-        );
-        // Check that the index is not out of bounds, i.e. we have not reached the end of the struct
-        // If we have, return None
-        // If the current value is not a Structure, return an error
-        let TTLValue::Structure(current_value) = &self.de.current.value else {
-            return Err(TtlvError::from(
-                "Deserializing a map: expected Structure value in TTLV",
-            ))
-        };
-        if self.de.child_index >= current_value.len() {
-            return Ok(None);
-        }
-        // recover the tag of the element pointed at by the child index
-        // by running the deserialize_identifier method on its deserializer
-        self.de.map_state = MapAccessState::Key;
-        seed.deserialize(&mut *self.de).map(Some)
-    }
-
-    #[instrument(skip(self, seed))]
-    fn next_value_seed<V>(&mut self, seed: V) -> std::result::Result<V::Value, Self::Error>
-    where
-        V: DeserializeSeed<'de>,
-    {
-        trace!(
-            "next_value_seed:index: {}, current: {:?}",
-            self.de.child_index,
-            self.de.current
-        );
-        self.de.map_state = MapAccessState::Value;
-        let res = seed.deserialize(&mut *self.de);
-        self.de.child_index += 1;
-        res
-    }
-
-    #[inline]
-    fn size_hint(&self) -> Option<usize> {
-        let TTLValue::Structure(child_array) = &self.de.current.value else {
-            return Some(0_usize)
-        };
-        Some(child_array.len())
-    }
-}
-
-/// The `UntaggedEnumWalker` is used to deserialize a struct as a map of property -> values
-/// It is called by the main deserializer when receiving Visitor requests to `deserialize_struct`
-struct UntaggedEnumWalker<'a> {
-    de: &'a mut TtlvDeserializer,
-    completed: bool,
-}
-
-impl<'a> UntaggedEnumWalker<'a> {
-    fn new(de: &'a mut TtlvDeserializer) -> Self {
-        UntaggedEnumWalker {
-            de,
-            completed: false,
-        }
-    }
-}
-
-impl<'a, 'de: 'a> MapAccess<'de> for UntaggedEnumWalker<'a> {
-    type Error = TtlvError;
-
-    fn next_key_seed<K>(&mut self, seed: K) -> std::result::Result<Option<K::Value>, Self::Error>
-    where
-        K: DeserializeSeed<'de>,
-    {
-        trace!(
-            "Untagged Enum map: next_key_seed: completed?: {}, index: {}, current: {:?}",
-            self.completed,
-            self.de.child_index,
-            self.de.current
-        );
-        if self.completed {
-            return Ok(None);
-        }
-        // we want to recover the tag of the TTLV and pass it back to the visitor
-        self.de.map_state = MapAccessState::Key;
-        seed.deserialize(&mut *self.de).map(Some)
-    }
-
-    fn next_value_seed<V>(&mut self, seed: V) -> std::result::Result<V::Value, Self::Error>
-    where
-        V: DeserializeSeed<'de>,
-    {
-        trace!(
-            "Untagged Enum map: next_value_seed: current:  {:?}",
-            self.de.current
-        );
-        self.de.map_state = MapAccessState::Value;
-        let res = seed.deserialize(&mut *self.de)?;
-        self.completed = true;
-        Ok(res)
-    }
-
-    #[inline]
-    fn size_hint(&self) -> Option<usize> {
-        let TTLValue::Structure(child_array) = &self.de.current.value else {
-            return Some(0_usize)
-        };
-        Some(child_array.len())
-    }
-}
-
-struct EnumWalker<'a> {
-    de: &'a mut TtlvDeserializer,
-}
-
-impl<'a> EnumWalker<'a> {
-    fn new(de: &'a mut TtlvDeserializer) -> Self {
-        EnumWalker { de }
-    }
-}
-
-// `EnumAccess` is provided to the `Visitor` to give it the ability to determine
-// which variant of the enum is supposed to be deserialized.
-//
-// Note that all enum deserialization methods in Serde refer exclusively to the
-// "externally tagged" enum representation.
-impl<'de> EnumAccess<'de> for EnumWalker<'_> {
-    type Error = TtlvError;
-    type Variant = Self;
-
-    #[instrument(skip(self, seed))]
-    fn variant_seed<V>(self, seed: V) -> Result<(V::Value, Self::Variant)>
-    where
-        V: DeserializeSeed<'de>,
-    {
-        trace!("variant_seed: state:  {:?}", self.de.current);
-        // by setting the child index to 1, we are telling the deserializer
-        // to deserialize the variant name and not the tag of the TTLV holding the variant
-        self.de.child_index = 1;
-        let val = seed.deserialize(&mut *self.de)?;
-        self.de.child_index = 0;
-        Ok((val, self))
-    }
-}
-
-// `VariantAccess` is provided to the `Visitor` to give it the ability to see
-// the content of the single variant that it decided to deserialize.
-impl<'de> VariantAccess<'de> for EnumWalker<'_> {
-    type Error = TtlvError;
-
-    // If the `Visitor` expected this variant to be a unit variant, the input
-    // should have been the plain string case handled in `deserialize_enum`.
-    #[instrument(skip(self))]
-    fn unit_variant(self) -> Result<()> {
-        trace!("unit_variant: state:  {:?}", self.de.current);
-        let TTLValue::Enumeration(_e) = &self.de.current.value else {
-            return Err(TtlvError::from("Expected Enumeration value in TTLV"))
-        };
-        Ok(())
-    }
-
-    /// `variant` is called to identify which variant to deserialize.
-    #[instrument(skip(self, _seed))]
-    fn newtype_variant_seed<T>(self, _seed: T) -> Result<T::Value>
-    where
-        T: DeserializeSeed<'de>,
-    {
-        trace!("newtype_variant_seed: state:  {:?}", self.de.current);
-        unimplemented!("newtype_variant_seed");
-    }
-
-    // Tuple variants are not in KMIP but, if any,
-    // deserialize as a sequence of data here.
-    #[instrument(skip(self, _visitor))]
-    fn tuple_variant<V>(self, len: usize, _visitor: V) -> Result<V::Value>
-    where
-        V: Visitor<'de>,
-    {
-        trace!("tuple_variant of len: {len}, state:  {:?}", self.de.current);
-        unimplemented!("tuple_variant");
-    }
-
-    // Struct variants are represented in JSON as `{ NAME: { K: V, ... } }` so
-    // deserialize the inner map here.
-    #[instrument(skip(self, _visitor))]
-    fn struct_variant<V>(self, fields: &'static [&'static str], _visitor: V) -> Result<V::Value>
-    where
-        V: Visitor<'de>,
-    {
-        trace!(
-            "struct_variant with fields: {fields:?}: state:  {:?}",
-            self.de.current
-        );
-        unimplemented!("struct_variant");
-    }
-}
+//         match &self.current.value {
+//             TTLValue::Structure(child_array) => {
+//                 // if the TTLV value is a Structure or Array, the deserializer is attempting to deserialize the children
+//                 // by iterating over the children which hold the values of the sequence/array
+//                 if self.child_index >= child_array.len() {
+//                     self.child_index = 0;
+//                     return Ok(None);
+//                 }
+//                 let child = child_array.get(self.child_index).ok_or_else(|| {
+//                     TtlvError::from("Index out of bounds when accessing child array")
+//                 })?;
+//                 let mut deserializer = Self::from_ttlv(child.clone());
+//                 self.child_index += 1;
+//                 seed.deserialize(&mut deserializer).map(Some)
+//             }
+//             TTLValue::ByteString(byte_array) => {
+//                 if self.child_index >= byte_array.len() {
+//                     self.child_index = 0;
+//                     return Ok(None);
+//                 }
+//                 seed.deserialize(self).map(Some)
+//             }
+//             _ => Err(TtlvError::from(
+//                 "Expected Structure, Array or ByteString value in TTLV",
+//             )),
+//         }
+//     }
+// }
