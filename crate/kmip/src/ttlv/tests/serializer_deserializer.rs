@@ -113,8 +113,8 @@ fn test_ser_big_uint() {
     struct Test {
         the_big_uint: BigUint,
     }
-    // log_init(option_env!("RUST_LOG"));
-    log_init(Some("trace"));
+    log_init(option_env!("RUST_LOG"));
+    // log_init(Some("trace"));
 
     let tests = [
         (
@@ -193,7 +193,8 @@ fn test_ser_array() {
         string_seq: Vec<String>,
         struct_seq: Vec<Element>,
     }
-    log_init(option_env!("RUST_LOG"));
+    // log_init(option_env!("RUST_LOG"));
+    log_init(Some("trace"));
 
     let test = Test {
         string_seq: vec!["a".to_owned(), "b".to_owned()],
@@ -232,7 +233,8 @@ fn test_enum_unit_variant() {
     struct Test {
         an_enum: Enumeration,
     }
-    log_init(option_env!("RUST_LOG"));
+    // log_init(option_env!("RUST_LOG"));
+    log_init(Some("trace"));
 
     // Try with Ten
     let test = Test {
