@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use num_bigint_dig::BigInt;
+use num_bigint_dig::{BigInt, BigUint};
 use serde::Deserialize;
 use zeroize::Zeroize;
 
@@ -27,6 +27,18 @@ impl Drop for SafeBigInt {
 impl From<BigInt> for SafeBigInt {
     fn from(value: BigInt) -> Self {
         Self(value)
+    }
+}
+
+impl From<SafeBigInt> for BigInt {
+    fn from(value: SafeBigInt) -> Self {
+        value.0.clone()
+    }
+}
+
+impl From<BigUint> for SafeBigInt {
+    fn from(value: BigUint) -> Self {
+        Self(value.into())
     }
 }
 

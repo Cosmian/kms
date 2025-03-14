@@ -87,8 +87,8 @@ pub fn kmip_public_key_to_openssl(public_key: &Object) -> Result<PKey<Public>, C
             } => {
                 trace!("Key format type: TransparentRSAPublicKey");
                 let rsa_public_key = Rsa::from_public_components(
-                    BigNum::from_slice(&modulus.to_bytes_be())?,
-                    BigNum::from_slice(&public_exponent.to_bytes_be())?,
+                    BigNum::from_slice(&modulus.to_signed_bytes_be())?,
+                    BigNum::from_slice(&public_exponent.to_signed_bytes_be())?,
                 )?;
                 trace!("Key format type: convert Rsa<Public> openssl object");
                 PKey::from_rsa(rsa_public_key)?
