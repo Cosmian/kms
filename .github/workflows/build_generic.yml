@@ -69,6 +69,11 @@ jobs:
         run: |
           bash .github/scripts/cargo_build.sh
 
+      - name: hsm simulator
+        if: inputs.distribution == 'ubuntu-24.04'
+        run : |
+          bash .github/scripts/test_utimaco.sh
+
       - name: Remove large files before saving cache
         run: |
           find target/ -type f -size +100M -delete
@@ -146,44 +151,3 @@ jobs:
           find /usr/local/openssl
           chmod u+x /usr/local/openssl/lib/ossl-modules/*.dylib
           ./$KMS_PATH/cosmian_kms --info
-
-  hsm-test:
-    name: KMS HSM tests
-    needs: kms-build
-    if: inputs.distribution == 'ubuntu-24.04'
-    services:
-      hsm:
-        image: ubuntu
-        ports:
-          - 3001:3001
-
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Download hsm simulator
-        run: |
-            set -ex
-            sudo dpkg --add-architecture i386
-            sudo apt update && sudo apt-get install libc6:i386 libstdc++6:i386
-
-            wget "https://package.cosmian.com/ci/hsm-simulator.tar.xz"
-            echo -n Extracting compressed archive...
-            tar -xvf hsm-simulator.tar.xz
-            find .
-            rm hsm-simulator.tar.xz
-            ./hsm-simulator/sim5_linux/bin/bl_sim5 -h -o -d ./hsm-simulator/sim5_linux/devices &
-
-      - name: Configure the PKCS#11 connection on the KMS server
-        run: |
-            sudo telnet localhost 3001
-            sudo cp ./hsm-simulator/libcs_pkcs11_R3.so /lib directory
-            sudo mkdir -p /etc/utimaco
-            sudo chmod 755 /etc/utimaco
-            sudo cp ./hsm-simulator/cs_pkcs11_R3.cfg /etc/utimaco/
-            sudo echo -e "...\nLogpath = /tmp\n...\nLogging = 3\n...\nDevice = 3001@localhost \n..." > /etc/utimaco/cs_pkcs11_R3.cfg
-            export CS_PKCS11_R3_CFG=/etc/utimaco/cs_pkcs11_R3.cfg
-
-      - name: Test the PKCS#11 configuration using ./p11tool2 Slot=0 GetSlotInfo
-        run: |
-            cd hsm-simulator/Administration
-            ./p11tool2 Slot=0 GetSlotInfo
-            cargo test -p utimaco_pkcs11_loader --features utimaco
