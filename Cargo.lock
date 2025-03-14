@@ -1154,7 +1154,7 @@ dependencies = [
 [[package]]
 name = "cosmian_cover_crypt"
 version = "15.0.0"
-source = "git+https://github.com/Cosmian/cover_crypt.git?branch=release/v15.0.0#9c029f08ae91020512a6aca61d510a2aecea5640"
+source = "git+https://github.com/Cosmian/cover_crypt.git?branch=release/v15.0.0#018daaf2c39a64473028200a8ee0085d1bfadfdb"
 dependencies = [
  "cosmian_crypto_core 10.0.1",
  "ml-kem",
