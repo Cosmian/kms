@@ -20,7 +20,7 @@ pub enum TTLValue {
     ByteString(Vec<u8>),
     DateTime(OffsetDateTime),
     Interval(u32),
-    DateTimeExtended(OffsetDateTime),
+    DateTimeExtended(i128),
 }
 
 impl Default for TTLValue {
@@ -42,9 +42,7 @@ impl PartialEq for TTLValue {
             (Self::ByteString(l0), Self::ByteString(r0)) => l0 == r0,
             (Self::DateTime(l0), Self::DateTime(r0)) => l0.unix_timestamp() == r0.unix_timestamp(),
             (Self::Interval(l0), Self::Interval(r0)) => l0 == r0,
-            (Self::DateTimeExtended(l0), Self::DateTimeExtended(r0)) => {
-                l0.unix_timestamp_nanos() / 1000 == r0.unix_timestamp_nanos() / 1000
-            }
+            (Self::DateTimeExtended(l0), Self::DateTimeExtended(r0)) => l0 == r0,
             (_, _) => false,
         }
     }

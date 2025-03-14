@@ -117,9 +117,7 @@ where
                 let mut buf8 = [0_u8; 8];
                 self.reader.read_exact(&mut buf8)?;
                 let micros = i64::from_be_bytes(buf8);
-                let t: OffsetDateTime =
-                    OffsetDateTime::from_unix_timestamp_nanos(i128::from(micros))?;
-                TTLValue::DateTimeExtended(t)
+                TTLValue::DateTimeExtended(i128::from(micros))
             }
         };
 

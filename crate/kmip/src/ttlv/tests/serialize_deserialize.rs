@@ -85,7 +85,7 @@ fn test_serialization_deserialization() {
             },
             TTLV {
                 tag: "ADateTimeExtended".to_owned(),
-                value: TTLValue::DateTimeExtended(now),
+                value: TTLValue::DateTimeExtended(now.unix_timestamp_nanos() / 1000),
             },
         ]),
     };
@@ -153,7 +153,9 @@ fn test_serialization_deserialization() {
             }
             assert_eq!(s[10].tag, "ADateTimeExtended");
             match &s[10].value {
-                TTLValue::DateTimeExtended(d) => assert_eq!(*d, now),
+                TTLValue::DateTimeExtended(d) => {
+                    assert_eq!(*d, now.unix_timestamp_nanos() / 1000);
+                }
                 _ => panic!("Wrong type for ADateTimeExtended"),
             }
         }
