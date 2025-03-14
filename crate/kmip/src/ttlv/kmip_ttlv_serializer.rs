@@ -30,14 +30,14 @@ impl<T> Stack<T>
 where
     T: Debug,
 {
-    pub(crate) fn new() -> Self {
-        Stack {
+    pub(crate) const fn new() -> Self {
+        Self {
             elements: Vec::new(),
         }
     }
 
     pub(crate) fn push(&mut self, value: T) {
-        self.elements.push(value)
+        self.elements.push(value);
     }
 
     pub(crate) fn pop(&mut self) -> Option<T> {
@@ -59,13 +59,15 @@ pub struct TTLVSerializer {
 }
 
 impl TTLVSerializer {
-    pub fn new() -> Self {
-        TTLVSerializer {
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
             stack: Stack::new(),
         }
     }
 
     // Get the current tag
+    #[must_use]
     pub fn current_tag(&self) -> &str {
         self.stack.peek().map_or("", |parent| parent.tag.as_str())
     }
@@ -83,6 +85,12 @@ impl TTLVSerializer {
                 "the current element is not a TTLV structure".to_owned(),
             )),
         }
+    }
+}
+
+impl Default for TTLVSerializer {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -105,11 +113,11 @@ where
 {
     let mut serializer = TTLVSerializer::new();
     value.serialize(&mut serializer)?;
-    Ok(serializer
+    serializer
         .stack
         .peek()
         .cloned()
-        .ok_or_else(|| TtlvError::custom("no TTLV value found".to_owned()))?)
+        .ok_or_else(|| TtlvError::custom("no TTLV value found".to_owned()))
 }
 
 impl ser::Serializer for &mut TTLVSerializer {
@@ -469,25 +477,22 @@ impl ser::Serializer for &mut TTLVSerializer {
     fn serialize_seq(self, len: Option<usize>) -> Result<Self::SerializeSeq> {
         // A receiver has been added on the stack, which will be flattened
         // when returned, since TTLV flattens arrays to the parent structure
-        match self.stack.peek_mut() {
-            Some(receiver) => {
-                receiver.value = TTLValue::Structure(Vec::with_capacity(len.unwrap_or(0)));
-                trace!("serialize_seq of len: {len:?} in receiver: {:?}", receiver);
-            }
-            None => {
-                trace!(
-                    "serialize_seq, no parent found. This is a direct vec![] serialization. \
-                     Creating a new one with tag: {}",
-                    self.current_tag()
-                );
-                // create a new structure parent to which we will add the fields of the struct
-                let tag = "[ARRAY]".to_owned();
-                self.stack.push(TTLV {
-                    tag: tag.clone(),
-                    value: TTLValue::Structure(Vec::with_capacity(len.unwrap_or(0))),
-                });
-            }
-        };
+        if let Some(receiver) = self.stack.peek_mut() {
+            receiver.value = TTLValue::Structure(Vec::with_capacity(len.unwrap_or(0)));
+            trace!("serialize_seq of len: {len:?} in receiver: {:?}", receiver);
+        } else {
+            trace!(
+                "serialize_seq, no parent found. This is a direct vec![] serialization. Creating \
+                 a new one with tag: {}",
+                self.current_tag()
+            );
+            // create a new structure parent to which we will add the fields of the struct
+            let tag = "[ARRAY]".to_owned();
+            self.stack.push(TTLV {
+                tag,
+                value: TTLValue::Structure(Vec::with_capacity(len.unwrap_or(0))),
+            });
+        }
         Ok(self)
     }
 
@@ -564,24 +569,21 @@ impl ser::Serializer for &mut TTLVSerializer {
     // - when the struct is done, pop the parent from `parents` and add it to the last parent
     #[instrument(skip(self))]
     fn serialize_struct(self, name: &'static str, len: usize) -> Result<Self::SerializeStruct> {
-        match self.stack.peek_mut() {
-            Some(parent) => {
-                trace!("serialize_struct named: {name} in parent: {:?}", parent);
-                parent.value = TTLValue::Structure(Vec::with_capacity(len));
-            }
-            None => {
-                trace!(
-                    "serialize_struct, no parent found, creating a new one with tag: {}",
-                    name
-                );
-                // top level struct
-                let tag = name.to_owned();
-                // create a new structure parent to which we will add the fields of the struct
-                self.stack.push(TTLV {
-                    tag,
-                    value: TTLValue::Structure(Vec::with_capacity(len)),
-                });
-            }
+        if let Some(parent) = self.stack.peek_mut() {
+            trace!("serialize_struct named: {name} in parent: {:?}", parent);
+            parent.value = TTLValue::Structure(Vec::with_capacity(len));
+        } else {
+            trace!(
+                "serialize_struct, no parent found, creating a new one with tag: {}",
+                name
+            );
+            // top level struct
+            let tag = name.to_owned();
+            // create a new structure parent to which we will add the fields of the struct
+            self.stack.push(TTLV {
+                tag,
+                value: TTLValue::Structure(Vec::with_capacity(len)),
+            });
         }
         Ok(self)
     }
@@ -649,7 +651,7 @@ impl SerializeSeq for &mut TTLVSerializer {
             .ok_or_else(|| TtlvError::custom("no TTLV found".to_owned()))?;
         // add the TTLV element to the parent
         let receiving_parent_vec = self.current_mut_structure().map_err(|e| {
-            TtlvError::custom(format!("error getting the current TTLV structure: {}", e))
+            TtlvError::custom(format!("error getting the current TTLV structure: {e}"))
         })?;
         receiving_parent_vec.push(current_element);
 

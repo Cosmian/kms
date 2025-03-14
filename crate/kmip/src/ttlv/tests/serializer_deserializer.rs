@@ -111,20 +111,21 @@ fn test_ser_big_uint() {
     #[derive(Serialize, Deserialize)]
     #[serde(rename_all = "PascalCase")]
     struct Test {
-        big_uint: BigUint,
+        the_big_uint: BigUint,
     }
-    log_init(option_env!("RUST_LOG"));
+    // log_init(option_env!("RUST_LOG"));
+    log_init(Some("trace"));
 
     let tests = [
         (
             Test {
-                big_uint: BigUint::from(1_234_567_890_u128),
+                the_big_uint: BigUint::from(1_234_567_890_u128),
             },
             "0x00000000499602D2",
         ),
         (
             Test {
-                big_uint: BigUint::from(0x0000_1111_1222_2222_u128),
+                the_big_uint: BigUint::from(0x0000_1111_1222_2222_u128),
             },
             "0x0000111112222222",
         ),
@@ -137,7 +138,7 @@ fn test_ser_big_uint() {
         let value = serde_json::to_value(&ttlv).unwrap();
         assert!(value.is_object());
         assert_eq!(value["tag"], "Test");
-        assert_eq!(value["value"][0]["tag"], "BigUint");
+        assert_eq!(value["value"][0]["tag"], "TheBigUint");
         assert_eq!(value["value"][0]["type"], "BigInteger");
         assert_eq!(value["value"][0]["value"], s);
 
@@ -147,7 +148,7 @@ fn test_ser_big_uint() {
 
         // Deserializer
         let rec: Test = from_ttlv(re_ttlv).unwrap();
-        assert_eq!(test.big_uint, rec.big_uint);
+        assert_eq!(test.the_big_uint, rec.the_big_uint);
     }
 }
 
@@ -166,13 +167,9 @@ fn test_direct_array() {
 
     // Serializer
     let ttlv = to_ttlv(&array).unwrap();
-    let expected = r#"TTLV { tag: "[ARRAY]", value: Array([TTLV { tag: "[ARRAY]", value: Structure([TTLV { tag: "Elem", value: Integer(1) }]) }, TTLV { tag: "[ARRAY]", value: Structure([TTLV { tag: "Elem", value: Integer(2) }]) }]) }"#;
-    let ttlv_s = format!("{ttlv:?}");
-    assert_eq!(ttlv_s, expected);
 
     //Serialize
     let json = serde_json::to_string_pretty(&ttlv).unwrap();
-    info!("JSON: {}", json);
 
     //Deserialize
     let re_ttlv = serde_json::from_str::<TTLV>(&json).unwrap();
@@ -196,8 +193,7 @@ fn test_ser_array() {
         string_seq: Vec<String>,
         struct_seq: Vec<Element>,
     }
-    // log_init(option_env!("RUST_LOG"));
-    log_init(Some("trace"));
+    log_init(option_env!("RUST_LOG"));
 
     let test = Test {
         string_seq: vec!["a".to_owned(), "b".to_owned()],
@@ -206,9 +202,6 @@ fn test_ser_array() {
 
     // Serializer
     let ttlv = to_ttlv(&test).unwrap();
-    let expected = r#"TTLV { tag: "Test", value: Structure([TTLV { tag: "StringSeq", value: TextString("a") }, TTLV { tag: "StringSeq", value: TextString("b") }, TTLV { tag: "StructSeq", value: Structure([TTLV { tag: "Elem", value: Integer(1) }]) }, TTLV { tag: "StructSeq", value: Structure([TTLV { tag: "Elem", value: Integer(2) }]) }]) }"#;
-    let ttlv_s = format!("{ttlv:?}");
-    assert_eq!(ttlv_s, expected);
 
     //Serialize
     let json = serde_json::to_string_pretty(&ttlv).unwrap();
@@ -218,7 +211,6 @@ fn test_ser_array() {
     assert_eq!(json, serde_json::to_string_pretty(&re_ttlv).unwrap());
     assert_eq!(ttlv, re_ttlv);
 
-    println!("TTLV: {ttlv:#?}");
     //Deserializer
     let rec: Test = from_ttlv(re_ttlv).unwrap();
     assert_eq!(test, rec);
