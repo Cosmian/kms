@@ -507,7 +507,7 @@ pub(crate) async fn test_export_x25519() -> CliResult<()> {
         panic!("Invalid key value type");
     };
     assert_eq!(recommended_curve, &RecommendedCurve::CURVE25519);
-    let mut d_vec = d.to_bytes_be();
+    let mut d_vec = d.to_signed_bytes_be();
     // 32 is privkey size on x25519.
     pad_be_bytes(&mut d_vec, 32);
     trace!("d_vec size is {:?}", d_vec.len());
