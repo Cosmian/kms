@@ -16,7 +16,7 @@ use cosmian_kmip::kmip_2_1::{
         KeyWrapType, PaddingMethod, UniqueIdentifier,
     },
 };
-use num_bigint_dig::BigUint;
+use num_bigint_dig::BigInt;
 use serde::{Deserialize, Serialize};
 use tracing::{info, log::trace};
 use url::Url;
@@ -161,8 +161,8 @@ async fn _get_key(key_tag: &str, req_http: HttpRequest, kms: &Arc<KMS>) -> KResu
                 Ok(KeyData {
                     key: DkePublicKey {
                         key_type: KeyType::RSA,
-                        modulus: STANDARD.encode(modulus.to_bytes_be()),
-                        exponent: big_uint_to_u32(public_exponent),
+                        modulus: STANDARD.encode(modulus.to_signed_bytes_be()),
+                        exponent: big_int_to_u32(public_exponent),
                         algorithm: Algorithm::Rs256,
                         key_id: dke_service_url.to_string(),
                     },
@@ -250,8 +250,8 @@ async fn internal_decrypt(
 }
 
 #[allow(clippy::indexing_slicing)]
-fn big_uint_to_u32(bu: &BigUint) -> u32 {
-    let bytes = bu.to_bytes_be();
+fn big_int_to_u32(bu: &BigInt) -> u32 {
+    let (_, bytes) = bu.to_bytes_be();
     let len = bytes.len();
     let min = std::cmp::min(4, len);
     let mut padded = [0_u8; 4];
@@ -263,23 +263,23 @@ fn big_uint_to_u32(bu: &BigUint) -> u32 {
 mod tests {
     #![allow(clippy::unwrap_used)]
     use chrono::{DateTime, Utc};
-    use num_bigint_dig::BigUint;
+    use num_bigint_dig::BigInt;
 
-    use crate::routes::ms_dke::big_uint_to_u32;
+    use crate::routes::ms_dke::big_int_to_u32;
 
     #[test]
     fn test_big_uint() {
-        let bu = BigUint::from(12_u8);
-        assert_eq!(1, bu.to_bytes_be().len());
-        assert_eq!(12, big_uint_to_u32(&bu));
+        let bu = BigInt::from(12_u8);
+        assert_eq!(1, bu.to_bytes_be().1.len());
+        assert_eq!(12, big_int_to_u32(&bu));
 
-        let bu = BigUint::from(1_u32 << 31);
-        assert_eq!(4, bu.to_bytes_be().len());
-        assert_eq!(1_u32 << 31, big_uint_to_u32(&bu));
+        let bu = BigInt::from(1_u32 << 31);
+        assert_eq!(4, bu.to_bytes_be().1.len());
+        assert_eq!(1_u32 << 31, big_int_to_u32(&bu));
 
-        let bu = BigUint::from(1_u64 << 32);
-        assert_eq!(5, bu.to_bytes_be().len());
-        assert_eq!(0, big_uint_to_u32(&bu));
+        let bu = BigInt::from(1_u64 << 32);
+        assert_eq!(5, bu.to_bytes_be().1.len());
+        assert_eq!(0, big_int_to_u32(&bu));
     }
 
     #[test]

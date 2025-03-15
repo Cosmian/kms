@@ -7,7 +7,7 @@ use cosmian_kmip::kmip_2_1::{
         KeyFormatType, RecommendedCurve,
     },
 };
-use num_bigint_dig::BigUint;
+use num_bigint_dig::BigInt;
 use openssl::{
     bn::{BigNum, BigNumContext},
     ec::{EcGroup, EcKey, EcPoint, PointConversionForm},
@@ -255,8 +255,10 @@ pub fn openssl_public_key_to_kmip(
                 key_format_type,
                 key_value: Some(KeyValue {
                     key_material: KeyMaterial::TransparentRSAPublicKey {
-                        modulus: Box::new(BigUint::from_bytes_be(&rsa_public_key.n().to_vec())),
-                        public_exponent: Box::new(BigUint::from_bytes_be(
+                        modulus: Box::new(BigInt::from_signed_bytes_be(
+                            &rsa_public_key.n().to_vec(),
+                        )),
+                        public_exponent: Box::new(BigInt::from_signed_bytes_be(
                             &rsa_public_key.e().to_vec(),
                         )),
                     },
@@ -590,8 +592,8 @@ mod tests {
         };
         let public_key_ = PKey::from_rsa(
             Rsa::from_public_components(
-                BigNum::from_slice(&modulus.to_bytes_be()).unwrap(),
-                BigNum::from_slice(&public_exponent.to_bytes_be()).unwrap(),
+                BigNum::from_slice(&modulus.to_signed_bytes_be()).unwrap(),
+                BigNum::from_slice(&public_exponent.to_signed_bytes_be()).unwrap(),
             )
             .unwrap(),
         )
