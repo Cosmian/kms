@@ -1,3 +1,4 @@
+use num_bigint_dig::Sign;
 use serde::{Deserialize, Serialize};
 
 use super::error::TtlvError;
@@ -63,20 +64,20 @@ impl From<KmipBigInt> for num_bigint_dig::BigUint {
 }
 
 impl KmipBigInt {
-    /// Encoded as a sequence of eight-bit bytes, in two's complement notation,
-    /// transmitted big-endian. If the length of the sequence is not a multiple of eight bytes,
+    /// Encoded as a sequence of eight-bit bytes, in complement notation, transmitted big-endian..
+    /// If the length of the sequence is not a multiple of eight bytes,
     /// then Big Integers SHALL be padded with the minimal number of leading sign-extended bytes
     /// to make the length a multiple of eight bytes.
     /// These padding bytes are part of the Item Value and SHALL be counted in the Item Length.
     #[must_use]
-    pub fn to_bytes_be(&self) -> Vec<u8> {
+    pub fn to_signed_bytes_be(&self) -> Vec<u8> {
         let mut bytes = self.0.to_signed_bytes_be();
         let len = bytes.len();
         if len % 8 != 0 {
             let padding = 8 - len % 8;
             let mut padded_bytes = match self.0.sign() {
-                num_bigint_dig::Sign::Minus => vec![255_u8; padding],
-                num_bigint_dig::Sign::NoSign | num_bigint_dig::Sign::Plus => vec![0_u8; padding],
+                Sign::Minus => vec![255_u8; padding],
+                Sign::NoSign | Sign::Plus => vec![0_u8; padding],
             };
             padded_bytes.append(&mut bytes);
             padded_bytes
@@ -85,8 +86,9 @@ impl KmipBigInt {
         }
     }
 
+    /// Creates a new `KmipBigInt` from complement notation raw bytes encoded in big endian.
     #[must_use]
-    pub fn from_bytes_be(bytes: &[u8]) -> Self {
+    pub fn from_signed_bytes_be(bytes: &[u8]) -> Self {
         Self(num_bigint_dig::BigInt::from_signed_bytes_be(bytes))
     }
 
@@ -96,22 +98,22 @@ impl KmipBigInt {
     #[must_use]
     pub fn sign(&self) -> i8 {
         match self.0.sign() {
-            num_bigint_dig::Sign::Minus => -1,
-            num_bigint_dig::Sign::NoSign => 0,
-            num_bigint_dig::Sign::Plus => 1,
+            Sign::Minus => -1,
+            Sign::NoSign => 0,
+            Sign::Plus => 1,
         }
     }
 
-    /// Convert the abolute value of a `BigInt` into a `Vec<u32>`.
+    /// Convert the complement notation value of a `BigInt` into a `Vec<u32>`.
     /// This is used by the TTLV Serializer to construct a `BigInt`.
     ///
-    /// Get the `Vec<u8>` representation from the `BigUint`,
+    /// Get the `Vec<u8>` representation from the `BigInt`,
     /// and chunk it 4-by-4 bytes to create the multiple
     /// `u32` bytes needed for `Vec<u32>` representation.
     ///
     /// This conversion is done manually, as `num-bigint-dig`
     /// doesn't provide such conversion.
-    pub fn to_u32_digits(&self) -> Result<Vec<u32>, TtlvError> {
+    pub fn to_u32_digits(&self) -> Result<(i8, Vec<u32>), TtlvError> {
         // Since the KMS works with big-endian representation of byte arrays, casting
         // a group of 4 bytes in big-endian u32 representation needs revert iter so
         // that if you have a chunk [0, 12, 143, 239] you will do
@@ -119,10 +121,10 @@ impl KmipBigInt {
         // top of that, if the number of bytes in `big_int` is not a multiple of 4,
         // it will behave as if there were leading null bytes which is technically
         // the case.
-        // In this case, using this to convert a BigUint to a Vec<u32> will not lose
+        // In this case, using this to convert a BigInt to a Vec<u32> will not lose
         // leading null bytes information which might be the case when an EC private
         // key is legally generated with leading null bytes.
-        let (_sign, mut bytes_be) = self.0.to_bytes_be();
+        let (sign, mut bytes_be) = self.0.to_bytes_be();
         bytes_be.reverse();
 
         let mut result = Vec::new();
@@ -133,10 +135,19 @@ impl KmipBigInt {
             }
             result.push(acc);
         }
-        Ok(result)
+        Ok((
+            match sign {
+                Sign::Minus => -1,
+                Sign::NoSign => 0,
+                Sign::Plus => 1,
+            },
+            result,
+        ))
     }
 
-    pub fn from_u32_digits(digits: &[u32], sign: i8) -> Result<Self, TtlvError> {
+    /// Convert from a `BigUint` in `u32` and a sign into a `KmipBigInt`.
+    /// This is used by the TTLV Deserializer to construct a `BigInt`.
+    pub fn from_u32_digits(sign: i8, digits: &[u32]) -> Result<Self, TtlvError> {
         let mut bytes = Vec::new();
         for digit in digits {
             let mut acc = *digit;
@@ -148,10 +159,10 @@ impl KmipBigInt {
         }
         bytes.reverse();
         let sign = match sign {
-            -1 => num_bigint_dig::Sign::Minus,
-            0 => num_bigint_dig::Sign::NoSign,
-            1 => num_bigint_dig::Sign::Plus,
-            x => return Err(TtlvError::from(format!("InvalidSign: {x}"))),
+            -1 => Sign::Minus,
+            0 => Sign::NoSign,
+            1 => Sign::Plus,
+            _ => return Err(TtlvError::new(&format!("Invalid sign value: {sign}"))),
         };
         let big_int = num_bigint_dig::BigInt::from_bytes_be(sign, &bytes);
         Ok(Self(big_int))
@@ -163,7 +174,7 @@ impl Serialize for KmipBigInt {
     where
         S: serde::Serializer,
     {
-        let s = "0x".to_owned() + &hex::encode_upper(self.to_bytes_be());
+        let s = "0x".to_owned() + &hex::encode_upper(self.to_signed_bytes_be());
         serializer.serialize_str(&s)
     }
 }
@@ -184,7 +195,7 @@ impl<'de> Deserialize<'de> for KmipBigInt {
             serde::de::Error::custom("Invalid KMIP Big Integer string: unexpected end of string")
         })?;
         let bytes = hex::decode(hex_str).map_err(serde::de::Error::custom)?;
-        Ok(Self::from_bytes_be(&bytes))
+        Ok(Self::from_signed_bytes_be(&bytes))
     }
 }
 
@@ -216,9 +227,9 @@ mod tests {
         ];
         for value in &values {
             let big_int = KmipBigInt::from(value.clone());
-            let bytes = big_int.to_bytes_be();
+            let bytes = big_int.to_signed_bytes_be();
             assert_eq!(bytes.len() % 8, 0);
-            let big_int2 = KmipBigInt::from_bytes_be(&bytes);
+            let big_int2 = KmipBigInt::from_signed_bytes_be(&bytes);
             assert_eq!(big_int, big_int2);
         }
     }
@@ -255,9 +266,9 @@ mod tests {
 
         for value in &values {
             let big_int = KmipBigInt::from(value.clone());
-            let bytes = big_int.to_bytes_be();
+            let bytes = big_int.to_signed_bytes_be();
             assert_eq!(bytes.len() % 8, 0);
-            let big_int2 = KmipBigInt::from_bytes_be(&bytes);
+            let big_int2 = KmipBigInt::from_signed_bytes_be(&bytes);
             assert_eq!(big_int, big_int2);
         }
     }
@@ -303,8 +314,8 @@ mod tests {
         ];
         for value in &values {
             let big_int = KmipBigInt::from(value.clone());
-            let u32_digits = big_int.to_u32_digits().unwrap();
-            let big_int2 = KmipBigInt::from_u32_digits(&u32_digits, big_int.sign()).unwrap();
+            let (sign, u32_digits) = big_int.to_u32_digits().unwrap();
+            let big_int2 = KmipBigInt::from_u32_digits(sign, &u32_digits).unwrap();
             assert_eq!(big_int, big_int2);
         }
     }

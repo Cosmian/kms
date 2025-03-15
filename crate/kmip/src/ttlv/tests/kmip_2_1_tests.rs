@@ -626,11 +626,34 @@ fn test_aes_key_full() {
 }
 
 #[test]
-pub(crate) fn test_attributes_with_links() {
-    log_init(None);
-    let json = include_str!("./attributes_with_links.json");
-    let ttlv: TTLV = serde_json::from_str(json).unwrap();
-    let _attributes: Attributes = from_ttlv(ttlv).unwrap();
+fn test_attributes_with_links() {
+    log_init(option_env!("RUST_LOG"));
+    let attributes = Attributes {
+        object_type: Some(ObjectType::SymmetricKey),
+        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+        link: Some(vec![
+            Link {
+                link_type: LinkType::ParentLink,
+                linked_object_identifier: LinkedObjectIdentifier::TextString("SK".to_owned()),
+            },
+            Link {
+                link_type: LinkType::CertificateLink,
+                linked_object_identifier: LinkedObjectIdentifier::TextString("CERT".to_owned()),
+            },
+        ]),
+        ..Attributes::default()
+    };
+
+    // Serializer
+    let ttlv = to_ttlv(&attributes).unwrap();
+    let json = serde_json::to_string_pretty(&ttlv).unwrap();
+    info!("{}", json);
+    // Deserialize
+    let ttlv_from_json = serde_json::from_str::<TTLV>(&json).unwrap();
+    assert_eq!(ttlv, ttlv_from_json);
+    // Deserializer
+    let rec: Attributes = from_ttlv(ttlv).unwrap();
+    assert_eq!(attributes, rec);
 }
 
 #[test]

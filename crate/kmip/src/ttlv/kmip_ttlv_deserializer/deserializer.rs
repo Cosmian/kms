@@ -352,6 +352,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
                 // if the TTLV value is a BigInt, the deserializer is attempting to deserialize the value
                 // by converting the BigInt to u32
                 bi.to_u32_digits()?
+                    .1
                     .get(self.child_index)
                     .ok_or_else(|| TtlvError::from("BigInt conversion error"))
                     .and_then(|v| {

@@ -120,7 +120,7 @@ impl<'de> Deserialize<'de> for TTLV {
                                         de::Error::custom(format!("Invalid value for Mask: {hex}"))
                                     })?;
                                     // build the `KmipBigInt` using the bytes representation.
-                                    let v = KmipBigInt::from_bytes_be(bytes.as_slice());
+                                    let v = KmipBigInt::from_signed_bytes_be(bytes.as_slice());
                                     TTLValue::BigInteger(v)
                                 }
                                 "Enumeration" => {

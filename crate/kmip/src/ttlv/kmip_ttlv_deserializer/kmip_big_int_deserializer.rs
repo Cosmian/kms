@@ -55,7 +55,7 @@ impl KmipBigIntDeserializer {
     pub fn instantiate(kmip_big_int: &KmipBigInt) -> Result<Self> {
         Ok(Self {
             sign: kmip_big_int.sign(),
-            u32_be: VecDeque::from(kmip_big_int.to_u32_digits()?),
+            u32_be: VecDeque::from(kmip_big_int.to_u32_digits()?.1),
         })
     }
 }
