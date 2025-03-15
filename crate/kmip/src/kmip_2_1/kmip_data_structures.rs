@@ -93,7 +93,7 @@ impl KeyBlock {
                 d,
                 recommended_curve,
             } => {
-                let mut d_vec = d.to_signed_bytes_be();
+                let mut d_vec = d.to_bytes_be().1;
                 let privkey_size = match recommended_curve {
                     RecommendedCurve::P192 => 24,
                     RecommendedCurve::P224 => 28,

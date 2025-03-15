@@ -16,7 +16,7 @@ use cosmian_kmip::{
     },
     SafeBigInt,
 };
-use num_bigint_dig::BigInt;
+use num_bigint_dig::{BigInt, Sign};
 use tracing::debug;
 use KmipKeyMaterial::TransparentRSAPublicKey;
 
@@ -376,11 +376,12 @@ fn to_object_with_metadata(
                 .set_tags(tags)
                 .map_err(|e| InterfaceError::InvalidRequest(format!("Invalid tags: {e}")))?;
             let kmip_key_material = KmipKeyMaterial::TransparentRSAPrivateKey {
-                modulus: Box::new(BigInt::from_signed_bytes_be(km.modulus.as_slice())),
+                modulus: Box::new(BigInt::from_bytes_be(Sign::Plus, km.modulus.as_slice())),
                 private_exponent: Some(Box::new(SafeBigInt::from_bytes_be(
                     km.private_exponent.as_slice(),
                 ))),
-                public_exponent: Some(Box::new(BigInt::from_signed_bytes_be(
+                public_exponent: Some(Box::new(BigInt::from_bytes_be(
+                    Sign::Plus,
                     km.public_exponent.as_slice(),
                 ))),
                 p: Some(Box::new(SafeBigInt::from_bytes_be(km.prime_1.as_slice()))),
@@ -444,8 +445,9 @@ fn to_object_with_metadata(
                 .set_tags(tags)
                 .map_err(|e| InterfaceError::InvalidRequest(format!("Invalid tags: {e}")))?;
             let kmip_key_material = TransparentRSAPublicKey {
-                modulus: Box::new(BigInt::from_signed_bytes_be(km.modulus.as_slice())),
-                public_exponent: Box::new(BigInt::from_signed_bytes_be(
+                modulus: Box::new(BigInt::from_bytes_be(Sign::Plus, km.modulus.as_slice())),
+                public_exponent: Box::new(BigInt::from_bytes_be(
+                    Sign::Plus,
                     km.public_exponent.as_slice(),
                 )),
             };

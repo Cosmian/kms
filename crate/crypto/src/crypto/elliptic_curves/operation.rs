@@ -646,7 +646,7 @@ mod tests {
             &wrap_key_pair.private_key().key_block().unwrap().key_value;
         let mut original_private_key_bytes =
             match &original_private_key_value.as_ref().unwrap().key_material {
-                KeyMaterial::TransparentECPrivateKey { d, .. } => d.to_signed_bytes_be(),
+                KeyMaterial::TransparentECPrivateKey { d, .. } => d.to_bytes_be().1,
                 _ => panic!("Not a transparent private key"),
             };
         pad_be_bytes(&mut original_private_key_bytes, X25519_PRIVATE_KEY_LENGTH);
@@ -784,7 +784,7 @@ mod tests {
             .expect("failed to get key material from private key in test_x448_conversions")
             .key_material
         {
-            KeyMaterial::TransparentECPrivateKey { d, .. } => d.to_signed_bytes_be(),
+            KeyMaterial::TransparentECPrivateKey { d, .. } => d.to_bytes_be().1,
             _ => panic!("Not a transparent private key"),
         };
         pad_be_bytes(&mut original_private_key_bytes, X448_PRIVATE_KEY_LENGTH);

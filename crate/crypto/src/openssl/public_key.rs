@@ -7,7 +7,7 @@ use cosmian_kmip::kmip_2_1::{
         KeyFormatType, RecommendedCurve,
     },
 };
-use num_bigint_dig::BigInt;
+use num_bigint_dig::{BigInt, Sign};
 use openssl::{
     bn::{BigNum, BigNumContext},
     ec::{EcGroup, EcKey, EcPoint, PointConversionForm},
@@ -87,8 +87,8 @@ pub fn kmip_public_key_to_openssl(public_key: &Object) -> Result<PKey<Public>, C
             } => {
                 trace!("Key format type: TransparentRSAPublicKey");
                 let rsa_public_key = Rsa::from_public_components(
-                    BigNum::from_slice(&modulus.to_signed_bytes_be())?,
-                    BigNum::from_slice(&public_exponent.to_signed_bytes_be())?,
+                    BigNum::from_slice(&modulus.to_bytes_be().1)?,
+                    BigNum::from_slice(&public_exponent.to_bytes_be().1)?,
                 )?;
                 trace!("Key format type: convert Rsa<Public> openssl object");
                 PKey::from_rsa(rsa_public_key)?
@@ -255,10 +255,12 @@ pub fn openssl_public_key_to_kmip(
                 key_format_type,
                 key_value: Some(KeyValue {
                     key_material: KeyMaterial::TransparentRSAPublicKey {
-                        modulus: Box::new(BigInt::from_signed_bytes_be(
+                        modulus: Box::new(BigInt::from_bytes_be(
+                            Sign::Plus,
                             &rsa_public_key.n().to_vec(),
                         )),
-                        public_exponent: Box::new(BigInt::from_signed_bytes_be(
+                        public_exponent: Box::new(BigInt::from_bytes_be(
+                            Sign::Plus,
                             &rsa_public_key.e().to_vec(),
                         )),
                     },
@@ -592,8 +594,8 @@ mod tests {
         };
         let public_key_ = PKey::from_rsa(
             Rsa::from_public_components(
-                BigNum::from_slice(&modulus.to_signed_bytes_be()).unwrap(),
-                BigNum::from_slice(&public_exponent.to_signed_bytes_be()).unwrap(),
+                BigNum::from_slice(&modulus.to_bytes_be().1).unwrap(),
+                BigNum::from_slice(&public_exponent.to_bytes_be().1).unwrap(),
             )
             .unwrap(),
         )

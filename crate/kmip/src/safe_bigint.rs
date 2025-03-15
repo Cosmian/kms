@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use num_bigint_dig::{BigInt, BigUint};
+use num_bigint_dig::{BigInt, BigUint, Sign};
 use serde::Deserialize;
 use zeroize::Zeroize;
 
@@ -14,7 +14,7 @@ impl SafeBigInt {
     /// Creates a new `SafeBigInt` from raw bytes encoded in big endian.
     #[must_use]
     pub fn from_bytes_be(bytes: &[u8]) -> Self {
-        Self(BigInt::from_signed_bytes_be(bytes))
+        Self(BigInt::from_bytes_be(Sign::Plus, bytes))
     }
 }
 
