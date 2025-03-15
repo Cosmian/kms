@@ -77,7 +77,7 @@ where
                 self.writer.write_all(&value.to_be_bytes())?;
             }
             TTLValue::BigInteger(value) => {
-                let bytes = value.to_bytes_be();
+                let bytes = value.to_signed_bytes_be();
                 write_type(&mut self.writer, TtlvType::BigInteger)?;
                 write_length(&mut self.writer, bytes.len())?;
                 self.writer.write_all(&bytes)?;

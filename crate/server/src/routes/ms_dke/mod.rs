@@ -161,7 +161,7 @@ async fn _get_key(key_tag: &str, req_http: HttpRequest, kms: &Arc<KMS>) -> KResu
                 Ok(KeyData {
                     key: DkePublicKey {
                         key_type: KeyType::RSA,
-                        modulus: STANDARD.encode(modulus.to_signed_bytes_be()),
+                        modulus: STANDARD.encode(modulus.to_bytes_be().1),
                         exponent: big_int_to_u32(public_exponent),
                         algorithm: Algorithm::Rs256,
                         key_id: dke_service_url.to_string(),

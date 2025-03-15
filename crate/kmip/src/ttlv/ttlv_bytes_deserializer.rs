@@ -76,7 +76,7 @@ where
                 let mut buf = vec![0_u8; length];
                 self.reader.read_exact(&mut buf)?;
 
-                TTLValue::BigInteger(KmipBigInt::from_bytes_be(&buf))
+                TTLValue::BigInteger(KmipBigInt::from_signed_bytes_be(&buf))
             }
             TtlvType::Enumeration => {
                 let mut buf4 = [0_u8; 4];
@@ -146,7 +146,7 @@ fn item_size(ttlv: &TTLV) -> Result<usize, TtlvError> {
         | TTLValue::DateTimeExtended(_)
         | TTLValue::DateTime(_)
         | TTLValue::Boolean(_) => 8,
-        TTLValue::BigInteger(value) => value.to_bytes_be().len(),
+        TTLValue::BigInteger(value) => value.to_signed_bytes_be().len(),
         TTLValue::TextString(value) => value.len(),
         TTLValue::ByteString(value) => value.len(),
     };

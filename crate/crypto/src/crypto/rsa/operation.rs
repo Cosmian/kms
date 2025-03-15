@@ -14,7 +14,7 @@ use cosmian_kmip::{
     },
     SafeBigInt,
 };
-use num_bigint_dig::BigInt;
+use num_bigint_dig::{BigInt, Sign};
 use openssl::{pkey::Private, rsa::Rsa};
 use tracing::{debug, trace};
 use zeroize::Zeroizing;
@@ -93,8 +93,9 @@ pub fn to_rsa_public_key(
             key_compression_type: None,
             key_value: Some(KeyValue {
                 key_material: KeyMaterial::TransparentRSAPublicKey {
-                    modulus: Box::new(BigInt::from_signed_bytes_be(&private_key.n().to_vec())),
-                    public_exponent: Box::new(BigInt::from_signed_bytes_be(
+                    modulus: Box::new(BigInt::from_bytes_be(Sign::Plus, &private_key.n().to_vec())),
+                    public_exponent: Box::new(BigInt::from_bytes_be(
+                        Sign::Plus,
                         &private_key.e().to_vec(),
                     )),
                 },
@@ -151,11 +152,12 @@ pub fn to_rsa_private_key(
             key_compression_type: None,
             key_value: Some(KeyValue {
                 key_material: KeyMaterial::TransparentRSAPrivateKey {
-                    modulus: Box::new(BigInt::from_signed_bytes_be(&private_key.n().to_vec())),
+                    modulus: Box::new(BigInt::from_bytes_be(Sign::Plus, &private_key.n().to_vec())),
                     private_exponent: Some(Box::new(SafeBigInt::from_bytes_be(&Zeroizing::from(
                         private_key.d().to_vec(),
                     )))),
-                    public_exponent: Some(Box::new(BigInt::from_signed_bytes_be(
+                    public_exponent: Some(Box::new(BigInt::from_bytes_be(
+                        Sign::Plus,
                         &private_key.e().to_vec(),
                     ))),
                     p: private_key
