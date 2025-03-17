@@ -895,12 +895,14 @@ impl SerializeStruct for &mut TTLVSerializer {
             }
         };
 
-        // Fet the structure
+        // Fetch the structure
         let struct_elems = self.current_mut_structure()?;
 
         // test if the current element is an array
         if let TTLValue::Structure(ref v) = current_element.value {
-            let is_array = v.iter().all(|child| child.tag == key);
+            // Arrays have all the same tag, which is the same as the parent element storing them
+            // `Attributes` may be an empty structure but is not an array
+            let is_array = !v.is_empty() && v.iter().all(|child| child.tag == key);
             if is_array {
                 struct_elems.extend_from_slice(v);
             } else {
