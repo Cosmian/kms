@@ -5,6 +5,7 @@ use cosmian_kms_client::{
     cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm, read_object_from_json_ttlv_file,
     KMS_CLI_CONF_ENV,
 };
+#[cfg(not(feature = "fips"))]
 use cosmian_logger::log_init;
 #[cfg(not(feature = "fips"))]
 use kms_test_server::start_default_test_kms_server;
