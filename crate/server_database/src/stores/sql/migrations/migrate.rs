@@ -65,18 +65,18 @@ where
     }
 
     async fn get_current_db_version(&self) -> DbResult<Option<String>> {
-        (sqlx::query(self.get_query("select-parameter")?)
+        sqlx::query(self.get_query("select-parameter")?)
             .bind("db_version")
             .fetch_optional(self.get_pool())
             .await
-            .map_err(DbError::from)?)
-        .map_or_else(
-            || {
-                trace!("No current DB version, old KMS version database");
-                Ok(None)
-            },
-            |row| Ok(Some(row.get::<String, _>(0))),
-        )
+            .map_err(DbError::from)?
+            .map_or_else(
+                || {
+                    trace!("No current DB version, old KMS version database");
+                    Ok(None)
+                },
+                |row| Ok(Some(row.get::<String, _>(0))),
+            )
     }
 
     async fn set_current_db_version(&self, version: &str) -> DbResult<()> {
@@ -92,7 +92,7 @@ where
     async fn migrate_from_4_12_0_to_4_13_0(&self) -> DbResult<()> {
         trace!("Migrating from 4.12.0 to 4.13.0");
 
-        // Add the column attributes to the objects table
+        // Add the column attributes to the objects' table
         if sqlx::query("SELECT attributes from objects")
             .execute(self.get_pool())
             .await
@@ -175,7 +175,7 @@ where
     }
 
     async fn migrate_to_4_22_2(&self) -> DbResult<()> {
-        tracing::debug!("Migrating to 4.22.1+");
+        debug!("Migrating to 4.22.1+");
 
         let uids = sqlx::query("SELECT id FROM objects")
             .fetch_all(self.get_pool())
@@ -213,7 +213,7 @@ where
                 let attributes_json = row.get::<Value, usize>(1);
                 let mut attributes: Attributes = serde_json::from_value(attributes_json)
                     .context("migration to 4.22.1+ failed: failed to deserialize the attributes")?;
-                // update an issue that ObjectType is not always correctly set (e.g. certificates)
+                // update an issue that ObjectType is not always correctly set (e.g., certificates)
                 attributes.object_type = Some(object.object_type());
                 let attributes_json = serde_json::to_value(attributes)
                     .context("migration to 4.22.1+ failed: serializing the attributes to JSON")?;

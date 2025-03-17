@@ -22,6 +22,12 @@ cosmian_kms_interfaces = { path = "../interfaces" }
 hex = { workspace = true }
 lazy_static = { workspace = true }
 lru = { workspace = true }
+num-bigint-dig = { workspace = true, features = [
+    "std",
+    "rand",
+    "serde",
+    "zeroize",
+] }
 num_cpus = { workspace = true }
 rawsql = "0.1"
 redis = { version = "0.23", features = [
