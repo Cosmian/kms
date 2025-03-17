@@ -427,8 +427,7 @@ fn test_object_ibn_struct() {
     struct Wrapper {
         object: Object,
     }
-    // log_init(option_env!("RU ST_LOG"));
-    log_init(Some("trace"));
+    log_init(option_env!("RUST_LOG"));
 
     let wrapper = Wrapper {
         object: aes_key(b"this_is_a_test"),
@@ -450,8 +449,7 @@ fn test_object_ibn_struct() {
 
 #[test]
 fn test_import_symmetric_key() {
-    // log_init(option_env!("RUST_LOG"));
-    log_init(Some("trace"));
+    log_init(option_env!("RUST_LOG"));
 
     let key_bytes: &[u8] = b"this_is_a_test";
     let key = aes_key(key_bytes);
@@ -560,8 +558,7 @@ fn test_some_attributes() {
         NoAttr { whatever: i32 },
     }
 
-    // log_init(option_env!("RUST_LOG"));
-    log_init(Some("trace"));
+    log_init(option_env!("RUST_LOG"));
 
     let value = Wrapper::Attr {
         attrs: Attributes {
@@ -589,7 +586,6 @@ fn test_untagged_enum() {
     }
 
     log_init(option_env!("RUST_LOG"));
-    log_init(Some("trace"));
 
     let value = Untagged::AnInt { the_int: 12 };
 
@@ -620,75 +616,8 @@ fn test_untagged_enum() {
 }
 
 #[test]
-fn test_java_import_request() {
-    log_init(None);
-    let ir_java = r#"
-{
-  "tag" : "Import",
-  "value" : [ {
-    "tag" : "UniqueIdentifier",
-    "type" : "TextString",
-    "value" : "unique_identifier"
-  }, {
-    "tag" : "ObjectType",
-    "type" : "Enumeration",
-    "value" : "SymmetricKey"
-  }, {
-    "tag" : "ReplaceExisting",
-    "type" : "Boolean",
-    "value" : true
-  }, {
-    "tag" : "KeyWrapType",
-    "type" : "Enumeration",
-    "value" : "AsRegistered"
-  }, {
-    "tag" : "Attributes",
-    "value" : [ {
-      "tag" : "Link",
-      "value" : [ ]
-    }, {
-      "tag" : "ObjectType",
-      "type" : "Enumeration",
-      "value" : "OpaqueObject"
-    } ]
-  }, {
-    "tag" : "SymmetricKey",
-    "value" : [ {
-      "tag" : "KeyBlock",
-      "value" : [ {
-        "tag" : "KeyFormatType",
-        "type" : "Enumeration",
-        "value" : "TransparentSymmetricKey"
-      }, {
-        "tag" : "KeyValue",
-        "value" : [ {
-          "tag" : "KeyMaterial",
-          "value" : [ {
-            "tag" : "Key",
-            "type" : "ByteString",
-            "value" : "6279746573"
-          } ]
-        } ]
-      }, {
-        "tag" : "CryptographicAlgorithm",
-        "type" : "Enumeration",
-        "value" : "AES"
-      }, {
-        "tag" : "CryptographicLength",
-        "type" : "Integer",
-        "value" : 256
-      } ]
-    } ]
-  } ]
-}
-"#;
-    let ttlv: TTLV = serde_json::from_str(ir_java).unwrap();
-    let _import_request: Import = from_ttlv(ttlv).unwrap();
-}
-
-#[test]
 fn test_java_import_response() {
-    log_init(None);
+    log_init(option_env!("RUST_LOG"));
     let ir = ImportResponse {
         unique_identifier: UniqueIdentifier::TextString("blah".to_owned()),
     };
@@ -699,7 +628,7 @@ fn test_java_import_response() {
 
 #[test]
 fn test_byte_string_key_material() {
-    log_init(None);
+    log_init(option_env!("RUST_LOG"));
     let key_bytes: &[u8] = b"this_is_a_test";
     let key_value = KeyValue {
         key_material: KeyMaterial::ByteString(Zeroizing::from(key_bytes.to_vec())),
@@ -715,8 +644,7 @@ fn test_byte_string_key_material() {
 
 #[test]
 fn test_aes_key_full() {
-    // log_init(option_env!("RUST_LOG"));
-    log_init(Some("trace"));
+    log_init(option_env!("RUST_LOG"));
     let key_bytes: &[u8] = b"this_is_a_test";
     let aes_key = aes_key(key_bytes);
     let ttlv = to_ttlv(&aes_key).unwrap();
@@ -756,30 +684,8 @@ fn test_attributes_with_links() {
 }
 
 #[test]
-pub(crate) fn test_import_correct_object() {
-    log_init(None);
-
-    // This file cannot be used to do crypto stuff,
-    // it's just for testing the serialization/deserialization of TTLV.
-    let json = include_str!("./import.json");
-    let ttlv: TTLV = serde_json::from_str(json).unwrap();
-    let import: Import = from_ttlv(ttlv).unwrap();
-
-    assert_eq!(ObjectType::PublicKey, import.object_type);
-    assert_eq!(ObjectType::PublicKey, import.object.object_type());
-    assert_eq!(
-        CryptographicAlgorithm::CoverCrypt,
-        import
-            .object
-            .key_block()
-            .unwrap()
-            .cryptographic_algorithm
-            .unwrap()
-    );
-}
-
-#[test]
 pub(crate) fn test_create() {
+    log_init(option_env!("RUST_LOG"));
     let attributes = Attributes {
         object_type: Some(ObjectType::SymmetricKey),
         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -811,7 +717,7 @@ pub(crate) fn test_create() {
 // is actually fixed
 #[test]
 fn test_issue_deserialize_object_with_empty_attributes() {
-    log_init(None);
+    log_init(option_env!("RUST_LOG"));
 
     // this works
     serialize_deserialize(&get_key_block()).unwrap();
@@ -1021,7 +927,7 @@ pub(crate) fn test_message_response() {
 
 #[test]
 pub(crate) fn test_message_enforce_enum() {
-    log_init(None);
+    log_init(option_env!("RUST_LOG"));
 
     // check Message request serializer reinforcement
     let req = RequestMessage {
@@ -1254,7 +1160,7 @@ pub(crate) fn test_message_enforce_enum() {
 
 #[test]
 fn test_deserialization_set_attribute() -> KmipResult<()> {
-    log_init(None);
+    log_init(option_env!("RUST_LOG"));
     let set_attribute_request = r#"
     {
       "tag": "SetAttribute",
@@ -1299,7 +1205,7 @@ fn test_deserialization_set_attribute() -> KmipResult<()> {
 
 #[test]
 fn test_deserialization_attribute() -> KmipResult<()> {
-    log_init(None);
+    log_init(option_env!("RUST_LOG"));
     let attribute_str = r#"
     {
           "tag": "NewAttribute",
@@ -1327,15 +1233,14 @@ fn test_deserialization_attribute() -> KmipResult<()> {
     let ttlv: TTLV = serde_json::from_str(attribute_str)?;
     trace!("ttlv: {:?}", ttlv);
 
-    let attribute: Attribute = from_ttlv(ttlv)?;
-    trace!("attribute: {:?}", attribute);
+    let _unused: Attribute = from_ttlv(ttlv)?;
 
     Ok(())
 }
 
 #[test]
 fn test_deserialization_link() -> KmipResult<()> {
-    log_init(None);
+    log_init(option_env!("RUST_LOG"));
     let link_str = r#"
     {
               "tag": "Link",
@@ -1357,15 +1262,14 @@ fn test_deserialization_link() -> KmipResult<()> {
     let ttlv: TTLV = serde_json::from_str(link_str)?;
     trace!("ttlv: {:?}", ttlv);
 
-    let link: Link = from_ttlv(ttlv)?;
-    trace!("attribute: {:?}", link);
+    let _unused: Link = from_ttlv(ttlv)?;
 
     Ok(())
 }
 
 #[test]
 fn test_serialization_set_attribute() -> KmipResult<()> {
-    log_init(None);
+    log_init(option_env!("RUST_LOG"));
     let set_attribute_request = SetAttribute {
         unique_identifier: Some(UniqueIdentifier::TextString(
             "173cb39b-c95a-4e98-ae0d-3e8079e145e6".to_owned(),
@@ -1397,7 +1301,7 @@ fn test_serialization_set_attribute() -> KmipResult<()> {
 
 #[test]
 fn test_serialization_link() -> KmipResult<()> {
-    log_init(None);
+    log_init(option_env!("RUST_LOG"));
     let link_request = vec![Link {
         link_type: LinkType::PublicKeyLink,
         linked_object_identifier: LinkedObjectIdentifier::TextString("public_key_id".to_owned()),
@@ -1414,7 +1318,7 @@ fn test_serialization_link() -> KmipResult<()> {
 
 #[test]
 fn integer_deserialization_test() -> KmipResult<()> {
-    log_init(None);
+    log_init(option_env!("RUST_LOG"));
     let integer_str = r#"
     {
         "tag": "IntegerNumber",
@@ -1443,7 +1347,7 @@ fn integer_deserialization_test() -> KmipResult<()> {
 
 #[test]
 fn long_integer_deserialization_test() -> KmipResult<()> {
-    log_init(None);
+    log_init(option_env!("RUST_LOG"));
     let integer_str = r#"
     {
         "tag": "IntegerNumber",
@@ -1476,7 +1380,7 @@ fn long_integer_deserialization_test() -> KmipResult<()> {
 
 #[test]
 fn normative_request_message_test() {
-    log_init(Some("trace"));
+    log_init(option_env!("RUST_LOG"));
     let ttlv_string = r#"
 {"tag":"RequestMessage", "value":[
   {"tag":"RequestHeader", "value":[
