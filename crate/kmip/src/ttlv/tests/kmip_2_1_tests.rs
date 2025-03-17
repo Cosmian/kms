@@ -933,8 +933,8 @@ pub(crate) fn test_message_enforce_enum() {
     let req = RequestMessage {
         request_header: RequestMessageHeader {
             protocol_version: ProtocolVersion {
-                protocol_version_major: 1,
-                protocol_version_minor: 0,
+                protocol_version_major: 2,
+                protocol_version_minor: 1,
             },
             maximum_response_size: Some(9999),
             batch_count: 1,
@@ -957,8 +957,8 @@ pub(crate) fn test_message_enforce_enum() {
     let req = RequestMessage {
         request_header: RequestMessageHeader {
             protocol_version: ProtocolVersion {
-                protocol_version_major: 1,
-                protocol_version_minor: 0,
+                protocol_version_major: 2,
+                protocol_version_minor: 1,
             },
             maximum_response_size: Some(9999),
             // mismatch number of batch items
@@ -971,7 +971,8 @@ pub(crate) fn test_message_enforce_enum() {
     };
     assert_eq!(
         to_ttlv(&req).unwrap_err().to_string(),
-        "mismatch number of batch items between header (`15`) and items list (`1`)".to_owned()
+        "mismatch count of batch items between header (`15`) and actual items count (`1`)"
+            .to_owned()
     );
 
     let req = RequestMessage {
@@ -996,8 +997,8 @@ pub(crate) fn test_message_enforce_enum() {
     let req = RequestMessage {
         request_header: RequestMessageHeader {
             protocol_version: ProtocolVersion {
-                protocol_version_major: 1,
-                protocol_version_minor: 0,
+                protocol_version_major: 2,
+                protocol_version_minor: 1,
             },
             batch_count: 1,
             ..Default::default()
@@ -1024,8 +1025,8 @@ pub(crate) fn test_message_enforce_enum() {
     let res = ResponseMessage {
         response_header: ResponseMessageHeader {
             protocol_version: ProtocolVersion {
-                protocol_version_major: 1,
-                protocol_version_minor: 0,
+                protocol_version_major: 2,
+                protocol_version_minor: 1,
             },
             batch_count: 1,
             time_stamp: 1_697_201_574,
@@ -1053,8 +1054,8 @@ pub(crate) fn test_message_enforce_enum() {
     let res = ResponseMessage {
         response_header: ResponseMessageHeader {
             protocol_version: ProtocolVersion {
-                protocol_version_major: 1,
-                protocol_version_minor: 0,
+                protocol_version_major: 2,
+                protocol_version_minor: 1,
             },
             batch_count: 1,
             time_stamp: 1_697_201_574,
@@ -1080,11 +1081,10 @@ pub(crate) fn test_message_enforce_enum() {
     let res = ResponseMessage {
         response_header: ResponseMessageHeader {
             protocol_version: ProtocolVersion {
-                protocol_version_major: 1,
-                protocol_version_minor: 0,
+                protocol_version_major: 2,
+                protocol_version_minor: 1,
             },
-            // mismatch number of items
-            batch_count: 22,
+            batch_count: 1,
             time_stamp: 1_697_201_574,
             ..Default::default()
         },
@@ -1094,7 +1094,9 @@ pub(crate) fn test_message_enforce_enum() {
     };
     assert_eq!(
         to_ttlv(&res).unwrap_err().to_string(),
-        "mismatch number of batch items between header (`22`) and items list (`1`)".to_owned()
+        "missing `AsynchronousCorrelationValue` with pending status (`ResultStatus` is set to \
+         `OperationPending`)"
+            .to_owned()
     );
 
     let res = ResponseMessage {
@@ -1121,8 +1123,8 @@ pub(crate) fn test_message_enforce_enum() {
     let res = ResponseMessage {
         response_header: ResponseMessageHeader {
             protocol_version: ProtocolVersion {
-                protocol_version_major: 1,
-                protocol_version_minor: 0,
+                protocol_version_major: 2,
+                protocol_version_minor: 1,
             },
             batch_count: 1,
             client_correlation_value: Some("client_123".to_owned()),
