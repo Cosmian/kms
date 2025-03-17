@@ -122,7 +122,15 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
             self.current
         );
         // fetch the element
-        let element = self.fetch_element()?;
+        // If the deserializer is at the root, the current TTLV is the root TTLV
+        // If the deserializer is not at the root, the current TTLV is the child at the current child index
+        // `deserialize_any` may be called from the root when deserializing an untagged enum for instance
+        let element = if self.at_root {
+            self.at_root = false;
+            &self.current
+        } else {
+            self.fetch_element()?
+        };
 
         // if the self.map_state is Key, the deserializer is deserializing the key of a map
         // which is the tag of the TTLV
@@ -134,16 +142,6 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
             );
             return visitor.visit_str(&element.tag);
         }
-
-        // if self.map_state == MapAccessState::None
-        //     && matches!(self.current.value, TTLValue::Structure(_))
-        // {
-        //     self.current = TTLV {
-        //         tag: "ROOT".to_owned(),
-        //         value: TTLValue::Structure(vec![self.current.clone()]),
-        //     };
-        //     return visitor.visit_map(self);
-        // }
 
         // we are not in a map accessing a seed key but either:
         // - deserializing a value in a map
@@ -445,9 +443,11 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         );
         if self.map_state == MapAccessState::Key {
             // if the deserializer is deserializing the key of a map, the tag is the key
+            trace!("... str: key: {}", self.current.tag);
             return visitor.visit_str(&self.current.tag);
         }
         if let TTLValue::TextString(s) = &self.fetch_element()?.value {
+            trace!("... text string: value: {}", s);
             visitor.visit_str(s)
         } else {
             Err(TtlvError::from("Expected TextString value in TTLV"))
@@ -699,8 +699,26 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
     where
         V: Visitor<'de>,
     {
-        trace!("deserialize_map: state:  {:?}", self.current);
-        visitor.visit_map(UntaggedEnumWalker::new(self))
+        trace!(
+            "deserialize_map: child index: {},  current:  {:?}",
+            self.child_index,
+            self.current
+        );
+        // When directly deserializing an Object (e.g. Object::SymmetricKey),
+        // `deserialize_map` is the entry point of the deserializer, so we are at root
+        // and we need to deserialize the top/current element
+        let element = if self.at_root {
+            self.at_root = false;
+            &self.current
+        } else {
+            self.fetch_element()?
+        };
+        visitor.visit_map(UntaggedEnumWalker::new(&mut TtlvDeserializer {
+            current: element.clone(),
+            child_index: 0,
+            map_state: MapAccessState::None,
+            at_root: true,
+        }))
     }
 
     /// Deserializing a struct.
@@ -727,7 +745,10 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         V: Visitor<'de>,
     {
         trace!(
-            "deserialize_struct: name {name}, fields: {fields:?} : state:  {:?}",
+            "deserialize_struct: name {name}, fields: {fields:?}, child index: {}, at root? {},  \
+             current:  {:?}",
+            self.child_index,
+            self.at_root,
             self.current
         );
         if self.at_root {
@@ -788,7 +809,8 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         V: Visitor<'de>,
     {
         trace!(
-            "deserialize_identifier: child_index :{}, current:  {:?}",
+            "deserialize_identifier: map state: {:?},  child_index :{}, current:  {:?}",
+            self.map_state,
             self.child_index,
             self.current
         );
@@ -797,6 +819,14 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
 
         if self.map_state == MapAccessState::Key {
             // if the deserializer is deserializing the key of a map, the tag is the key
+            // except for the corner case of Objects inside another structure, where the key is always "Object"
+            if kmip_2_1::kmip_objects::Object::VARIANTS.contains(&element.tag.as_str())
+                || kmip_1_4::kmip_objects::Object::VARIANTS.contains(&element.tag.as_str())
+            {
+                trace!("... identifier: key: Object");
+                return visitor.visit_str("Object");
+            }
+            trace!("... identifier: key: {}", element.tag);
             return visitor.visit_str(&element.tag);
         }
 
