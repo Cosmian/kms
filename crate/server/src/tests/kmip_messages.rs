@@ -1,17 +1,20 @@
 use std::sync::Arc;
 
-use cosmian_kmip::kmip_2_1::{
-    extra::tagging::EMPTY_TAGS,
-    kmip_messages::{RequestMessage, RequestMessageBatchItem, RequestMessageHeader},
-    kmip_operations::{Decrypt, ErrorReason, Locate, Operation},
-    kmip_types::{
-        BlockCipherMode, CryptographicAlgorithm, CryptographicParameters, HashingAlgorithm,
-        OperationEnumeration, ProtocolVersion, RecommendedCurve, ResultStatusEnumeration,
-        UniqueIdentifier,
+use cosmian_kmip::{
+    kmip_2_1::{
+        extra::tagging::EMPTY_TAGS,
+        kmip_messages::{RequestMessage, RequestMessageBatchItem, RequestMessageHeader},
+        kmip_operations::{Decrypt, ErrorReason, Locate, Operation},
+        kmip_types::{
+            OperationEnumeration, ProtocolVersion, RecommendedCurve, ResultStatusEnumeration,
+            UniqueIdentifier,
+        },
+        requests::create_ec_key_pair_request,
     },
-    requests::{create_ec_key_pair_request, symmetric_key_create_request},
+    ttlv::kmip_ttlv_serializer::to_ttlv,
 };
 use cosmian_logger::log_init;
+use tracing::debug;
 
 use crate::{
     config::ServerParams, core::KMS, result::KResult, tests::test_utils::https_clap_config,
@@ -161,7 +164,7 @@ async fn test_encrypt_kmip_messages() -> KResult<()> {
 
 #[tokio::test]
 async fn test_kmip_messages() -> KResult<()> {
-    // cosmian_logger::log_init("info,hyper=info,reqwest=info");
+    log_init(option_env!("RUST_LOG"));
 
     let clap_config = https_clap_config();
 
@@ -185,17 +188,18 @@ async fn test_kmip_messages() -> KResult<()> {
     let message_request = RequestMessage {
         request_header: RequestMessageHeader {
             protocol_version: ProtocolVersion {
-                protocol_version_major: 1,
-                protocol_version_minor: 0,
+                protocol_version_major: 2,
+                protocol_version_minor: 1,
             },
             maximum_response_size: Some(9999),
             // wrong number of items but it is only checked
             // when TTLV-serialization is done
-            batch_count: 1,
+            batch_count: 3,
             ..Default::default()
         },
         batch_item,
     };
+    debug!("message_request: {:#?}", to_ttlv(&message_request));
 
     let response = kms.message(message_request, owner, None).await?;
     assert_eq!(response.response_header.batch_count, 3);
@@ -223,7 +227,11 @@ async fn test_kmip_messages() -> KResult<()> {
     );
     assert_eq!(
         response.batch_item[1].result_status,
-        ResultStatusEnumeration::Success
+        ResultStatusEnumeration::Success,
+        "result_status: {:?}, result_message: {:?}, result_reason: {:?}",
+        response.batch_item[1].result_status,
+        response.batch_item[1].result_message,
+        response.batch_item[1].result_reason
     );
     let Some(Operation::LocateResponse(locate_response)) = &response.batch_item[1].response_payload
     else {

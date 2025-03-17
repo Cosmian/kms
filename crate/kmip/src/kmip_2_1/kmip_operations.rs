@@ -1460,7 +1460,7 @@ impl Display for DecryptResponse {
 /// Mask field includes the Destroyed Storage indicator. The server SHALL NOT
 /// return unique identifiers for objects that are archived unless the Storage
 /// Status Mask field includes the Archived Storage indicator.
-#[derive(Serialize, Deserialize, Default, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Default, PartialEq, Eq, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct Locate {
     /// An Integer object that indicates the maximum number of object
@@ -1486,7 +1486,7 @@ pub struct Locate {
 }
 
 impl Display for Locate {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "Locate {{ maximum_items: {:?}, offset_items: {:?}, storage_status_mask: {:?}, \
