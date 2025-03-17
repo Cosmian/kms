@@ -234,7 +234,8 @@ fn ec_private_key_from_scalar(
 /// Convert an openssl private key to a KMIP private Key (`Object::PrivateKey`) of the given `KeyFormatType`
 pub fn openssl_private_key_to_kmip(
     private_key: &PKey<Private>,
-    mut key_format_type: KeyFormatType,
+    #[cfg(not(feature = "fips"))] mut key_format_type: KeyFormatType,
+    #[cfg(feature = "fips")] key_format_type: KeyFormatType,
     cryptographic_usage_mask: Option<CryptographicUsageMask>,
 ) -> Result<Object, CryptoError> {
     let cryptographic_length = Some(i32::try_from(private_key.bits())?);
@@ -779,8 +780,7 @@ mod tests {
 
     #[test]
     fn test_conversion_rsa_private_key() {
-        // log_init(option_env!("RUST_LOG"));
-        log_init(Some("info"));
+        log_init(option_env!("RUST_LOG"));
 
         #[cfg(feature = "fips")]
         // Load FIPS provider module from OpenSSL.
