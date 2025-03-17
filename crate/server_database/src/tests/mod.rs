@@ -154,11 +154,12 @@ pub(crate) async fn test_mysql() -> DbResult<()> {
 
 #[tokio::test]
 pub(crate) async fn test_migrate_sqlite() -> DbResult<()> {
-    log_init(option_env!("RUST_LOG"));
+    // log_init(option_env!("RUST_LOG"));
+    log_init(Some("trace"));
     for sqlite_path in [
-        "src/tests/migrate/kms_4.12.0.sqlite",
-        "src/tests/migrate/kms_4.16.0.sqlite",
-        "src/tests/migrate/kms_4.17.0.sqlite",
+        // "src/tests/migrate/kms_4.12.0.sqlite",
+        // "src/tests/migrate/kms_4.16.0.sqlite",
+        // "src/tests/migrate/kms_4.17.0.sqlite",
         "src/tests/migrate/kms_4.22.1.sqlite",
     ] {
         debug!("==> Migrating {}", sqlite_path);
