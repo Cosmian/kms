@@ -87,7 +87,7 @@ pub enum CliError {
     NotSupported(String),
 
     // When a user requests an endpoint which does not exist
-    #[error("Not Supported route: {0}")]
+    #[error("Route not supported: {0}")]
     RouteNotFound(String),
 
     #[error(transparent)]

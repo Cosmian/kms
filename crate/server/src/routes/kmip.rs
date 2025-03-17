@@ -49,7 +49,7 @@ async fn handle_ttlv(
     user: &str,
     database_params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<TTLV> {
-    if ttlv.tag.as_str() == "Message" {
+    if ttlv.tag.as_str() == "RequestMessage" {
         let req = from_ttlv::<RequestMessage>(ttlv)?;
         let resp = kms.message(req, user, database_params).await?;
         Ok(to_ttlv(&resp)?)
