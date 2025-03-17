@@ -25,7 +25,7 @@ use crate::{
 /// Each batch item contains an operation to process.
 ///
 /// The items are processed sequentially.
-/// Each item may fail but a response is still sent back.
+/// Each item may fail, but a response is still sent back.
 pub(crate) async fn message(
     kms: &KMS,
     request: RequestMessage,

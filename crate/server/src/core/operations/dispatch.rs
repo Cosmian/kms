@@ -40,6 +40,11 @@ pub(crate) async fn dispatch(
             let resp = kms.decrypt(req, user, database_params).await?;
             Operation::DecryptResponse(resp)
         }
+        "DeleteAttribute" => {
+            let req = from_ttlv::<DeleteAttribute>(ttlv)?;
+            let resp = kms.delete_attribute(req, user, database_params).await?;
+            Operation::DeleteAttributeResponse(resp)
+        }
         "Destroy" => {
             let req = from_ttlv::<Destroy>(ttlv)?;
             let resp = kms.destroy(req, user, database_params).await?;
@@ -65,6 +70,7 @@ pub(crate) async fn dispatch(
             let resp = kms.get_attributes(req, user, database_params).await?;
             Operation::GetAttributesResponse(resp)
         }
+
         "Hash" => {
             let req = from_ttlv::<Hash>(ttlv)?;
             let resp = kms.hash(req, user, database_params).await?;
@@ -74,16 +80,6 @@ pub(crate) async fn dispatch(
             let req = from_ttlv::<Mac>(ttlv)?;
             let resp = kms.mac(req, user, database_params).await?;
             Operation::MacResponse(resp)
-        }
-        "SetAttribute" => {
-            let req = from_ttlv::<SetAttribute>(ttlv)?;
-            let resp = kms.set_attribute(req, user, database_params).await?;
-            Operation::SetAttributeResponse(resp)
-        }
-        "DeleteAttribute" => {
-            let req = from_ttlv::<DeleteAttribute>(ttlv)?;
-            let resp = kms.delete_attribute(req, user, database_params).await?;
-            Operation::DeleteAttributeResponse(resp)
         }
         "Import" => {
             let req = from_ttlv::<Import>(ttlv)?;
@@ -109,6 +105,11 @@ pub(crate) async fn dispatch(
             let req = from_ttlv::<Revoke>(ttlv)?;
             let resp = kms.revoke(req, user, database_params).await?;
             Operation::RevokeResponse(resp)
+        }
+        "SetAttribute" => {
+            let req = from_ttlv::<SetAttribute>(ttlv)?;
+            let resp = kms.set_attribute(req, user, database_params).await?;
+            Operation::SetAttributeResponse(resp)
         }
         "Validate" => {
             let req = from_ttlv::<Validate>(ttlv)?;
