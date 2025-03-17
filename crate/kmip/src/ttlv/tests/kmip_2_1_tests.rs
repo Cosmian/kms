@@ -1443,3 +1443,25 @@ fn normative_request_message_test() {
     let ttlv__ = to_ttlv(&request_message).unwrap();
     assert_eq!(ttlv__, ttlv);
 }
+
+#[test]
+fn test_locate_with_empty_attributes() {
+    log_init(option_env!("RUST_LOG"));
+    let locate = Locate::default();
+
+    // Serializer
+    let ttlv = to_ttlv(&locate).unwrap();
+    info!("{:#?}", ttlv);
+
+    // Serialize
+    let json = serde_json::to_string_pretty(&ttlv).unwrap();
+    info!("{}", json);
+
+    // Deserialize
+    let ttlv_from_json = serde_json::from_str::<TTLV>(&json).unwrap();
+    assert_eq!(ttlv, ttlv_from_json);
+
+    // Deserializer
+    let locate_: Locate = from_ttlv(ttlv).unwrap();
+    assert_eq!(locate, locate_);
+}

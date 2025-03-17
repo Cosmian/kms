@@ -8,12 +8,13 @@ use cosmian_kmip::kmip_2_1::{
     kmip_types::{OperationEnumeration, ProtocolVersion, ResultStatusEnumeration},
 };
 use cosmian_kms_crypto::crypto::cover_crypt::kmip_requests::build_create_covercrypt_master_keypair_request;
+use cosmian_logger::log_init;
 
 use crate::{result::KResult, tests::test_utils};
 
 #[tokio::test]
 async fn integration_tests_bulk() -> KResult<()> {
-    // cosmian_logger::log_init("trace,hyper=info,reqwest=info");
+    log_init(option_env!("RUST_LOG"));
 
     let app = test_utils::test_app(None).await;
 

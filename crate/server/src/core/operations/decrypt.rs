@@ -92,6 +92,7 @@ pub(crate) async fn decrypt(
                     .iter()
                     .any(|p| [KmipOperation::Decrypt, KmipOperation::Get].contains(p))
                 {
+                    debug!("Decrypt: user: {user} is not authorized to decrypt using: {uid}");
                     continue
                 }
             }
@@ -105,16 +106,19 @@ pub(crate) async fn decrypt(
             .retrieve_object(&uid, params.clone())
             .await?
             .ok_or_else(|| {
+                debug!("Decrypt: failed to retrieve the key: {uid}");
                 KmsError::Kmip21Error(
                     ErrorReason::Item_Not_Found,
                     format!("Decrypt: failed to retrieve the key: {uid}"),
                 )
             })?;
         if owm.state() != StateEnumeration::Active {
+            debug!("Decrypt: key: {uid} is not active");
             continue
         }
         let attributes = owm.object().attributes().cloned().unwrap_or_default();
         if !attributes.is_usage_authorized_for(CryptographicUsageMask::Decrypt)? {
+            debug!("Decrypt: key: {uid} is not authorized for decryption");
             continue
         }
         //check user permissions - owner can always decrypt
@@ -127,6 +131,7 @@ pub(crate) async fn decrypt(
                 .iter()
                 .any(|p| [KmipOperation::Decrypt, KmipOperation::Get].contains(p))
             {
+                debug!("Decrypt: user: {user} is not authorized to decrypt using: {uid}");
                 continue
             }
         }

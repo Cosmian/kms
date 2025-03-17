@@ -67,12 +67,12 @@ impl Serialize for RequestMessage {
         // check batch item count
         if header_batch_count != self.batch_item.len() {
             return Err(ser::Error::custom(format!(
-                "mismatch number of batch items between header (`{}`) and items list (`{}`)",
+                "mismatch count of batch items between header (`{}`) and actual items count (`{}`)",
                 self.request_header.batch_count,
                 self.batch_item.len()
             )));
         }
-        // check version of protocol version defined in the header is
+        // check that the protocol version defined in the header is
         // equal or greater than the protocol version of each item's payload.
         for item in &self.batch_item {
             if self.request_header.protocol_version > item.request_payload.protocol_version() {
