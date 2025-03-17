@@ -274,7 +274,7 @@ async fn test_destroy_cover_crypt() -> CliResult<()> {
         // generate a new master key pair
         let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(
             &ctx.owner_client_conf_path,
-            "--access-structure-filepath",
+            "--access-structure-specification",
             "../../test_data/access_structure_specifications.json",
             &[],
             false,
@@ -332,7 +332,7 @@ async fn test_destroy_cover_crypt() -> CliResult<()> {
         // generate a new master key pair
         let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(
             &ctx.owner_client_conf_path,
-            "--access-structure-filepath",
+            "--access-structure-specification",
             "../../test_data/access_structure_specifications.json",
             &[],
             false,
@@ -390,7 +390,7 @@ async fn test_destroy_cover_crypt() -> CliResult<()> {
         // generate a new master key pair
         let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(
             &ctx.owner_client_conf_path,
-            "--access-structure-filepath",
+            "--access-structure-specification",
             "../../test_data/access_structure_specifications.json",
             &[],
             false,

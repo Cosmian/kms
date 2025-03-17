@@ -47,7 +47,6 @@ async fn test_view_access_structure() -> CliResult<()> {
         "view",
         "-f",
         "../../test_data/ttlv_public_key.json",
-        "--detailed",
     ]);
     recover_cmd_logs(&mut cmd);
     cmd.assert()
@@ -63,7 +62,7 @@ async fn test_view_access_structure() -> CliResult<()> {
 
 pub(crate) async fn rename(
     cli_conf_path: &str,
-    master_private_key_id: &str,
+    master_secret_key_id: &str,
     attribute: &str,
     new_name: &str,
 ) -> CliResult<()> {
@@ -76,7 +75,7 @@ pub(crate) async fn rename(
         "access-structure",
         "rename-attribute",
         "--key-id",
-        master_private_key_id,
+        master_secret_key_id,
         attribute,
         new_name,
     ];
@@ -92,7 +91,7 @@ pub(crate) async fn rename(
 
 pub(crate) async fn add(
     cli_conf_path: &str,
-    master_private_key_id: &str,
+    master_secret_key_id: &str,
     new_attribute: &str,
 ) -> CliResult<()> {
     start_default_test_kms_server().await;
@@ -104,7 +103,7 @@ pub(crate) async fn add(
         "access-structure",
         "add-attribute",
         "--key-id",
-        master_private_key_id,
+        master_secret_key_id,
         new_attribute,
     ];
     cmd.arg(SUB_COMMAND).args(args);
@@ -119,7 +118,7 @@ pub(crate) async fn add(
 
 pub(crate) async fn disable(
     cli_conf_path: &str,
-    master_private_key_id: &str,
+    master_secret_key_id: &str,
     attribute: &str,
 ) -> CliResult<()> {
     start_default_test_kms_server().await;
@@ -131,7 +130,7 @@ pub(crate) async fn disable(
         "access-structure",
         "disable-attribute",
         "--key-id",
-        master_private_key_id,
+        master_secret_key_id,
         attribute,
     ];
     cmd.arg(SUB_COMMAND).args(args);
@@ -146,7 +145,7 @@ pub(crate) async fn disable(
 
 pub(crate) async fn remove(
     cli_conf_path: &str,
-    master_private_key_id: &str,
+    master_secret_key_id: &str,
     attribute: &str,
 ) -> CliResult<()> {
     start_default_test_kms_server().await;
@@ -158,7 +157,7 @@ pub(crate) async fn remove(
         "access-structure",
         "remove-attribute",
         "--key-id",
-        master_private_key_id,
+        master_secret_key_id,
         attribute,
     ];
     cmd.arg(SUB_COMMAND).args(args);
@@ -184,16 +183,16 @@ async fn test_edit_access_structure() -> CliResult<()> {
     let recovered_file = tmp_path.join("plain.txt");
 
     // generate a new master key pair
-    let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(
+    let (master_secret_key_id, master_public_key_id) = create_cc_master_key_pair(
         &ctx.owner_client_conf_path,
-        "--access-structure-filepath",
+        "--access-structure-specification",
         "../../test_data/access_structure_specifications.json",
         &[],
         false,
     )?;
     let user_decryption_key = create_user_decryption_key(
         &ctx.owner_client_conf_path,
-        &master_private_key_id,
+        &master_secret_key_id,
         "(Department::MKG || Department::FIN) && Security Level::Top Secret",
         &[],
         false,
@@ -220,7 +219,7 @@ async fn test_edit_access_structure() -> CliResult<()> {
     // Rename MKG to Marketing
     rename(
         &ctx.owner_client_conf_path,
-        &master_private_key_id,
+        &master_secret_key_id,
         "Department::MKG",
         "Marketing",
     )
@@ -238,7 +237,7 @@ async fn test_edit_access_structure() -> CliResult<()> {
     // Adding new attribute "Department::Sales"
     add(
         &ctx.owner_client_conf_path,
-        &master_private_key_id,
+        &master_secret_key_id,
         "Department::Sales",
     )
     .await?;
@@ -256,7 +255,7 @@ async fn test_edit_access_structure() -> CliResult<()> {
     // Create a new user key with access to both the new and the renamed attribute
     let sales_mkg_user_decryption_key = create_user_decryption_key(
         &ctx.owner_client_conf_path,
-        &master_private_key_id,
+        &master_secret_key_id,
         "(Department::Sales || Department::Marketing) && Security Level::Confidential",
         &[],
         false,
@@ -286,7 +285,7 @@ async fn test_edit_access_structure() -> CliResult<()> {
     // disable attribute Sales
     disable(
         &ctx.owner_client_conf_path,
-        &master_private_key_id,
+        &master_secret_key_id,
         "Department::Sales",
     )
     .await?;
@@ -316,7 +315,7 @@ async fn test_edit_access_structure() -> CliResult<()> {
     // remove attribute Sales
     remove(
         &ctx.owner_client_conf_path,
-        &master_private_key_id,
+        &master_secret_key_id,
         "Department::Sales",
     )
     .await?;

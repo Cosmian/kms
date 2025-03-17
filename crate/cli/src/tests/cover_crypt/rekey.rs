@@ -6,14 +6,12 @@ use cosmian_cover_crypt::{
 };
 use cosmian_crypto_core::bytes_ser_de::{test_serialization, Deserializer, Serializable};
 use cosmian_kms_client::KMS_CLI_CONF_ENV;
+use cosmian_kms_crypto::crypto::cover_crypt::access_structure::access_structure_from_json_file;
 use kms_test_server::start_default_test_kms_server;
 use tempfile::TempDir;
 
 use crate::{
-    actions::{
-        cover_crypt::access_structure::access_structure_from_json_file, shared::utils::KeyUsage,
-        symmetric::keys::create_key::CreateKeyAction,
-    },
+    actions::{shared::utils::KeyUsage, symmetric::keys::create_key::CreateKeyAction},
     error::{result::CliResult, CliError},
     tests::{
         cover_crypt::{
@@ -31,7 +29,7 @@ use crate::{
 
 pub(crate) fn rekey(
     cli_conf_path: &str,
-    master_private_key_id: &str,
+    master_secret_key_id: &str,
     access_policy: &str,
 ) -> CliResult<()> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
@@ -41,7 +39,7 @@ pub(crate) fn rekey(
         "keys",
         "rekey",
         "--key-id",
-        master_private_key_id,
+        master_secret_key_id,
         access_policy,
     ];
     cmd.arg(SUB_COMMAND).args(args);
@@ -56,7 +54,7 @@ pub(crate) fn rekey(
 
 pub(crate) fn prune(
     cli_conf_path: &str,
-    master_private_key_id: &str,
+    master_secret_key_id: &str,
     access_policy: &str,
 ) -> CliResult<()> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
@@ -66,7 +64,7 @@ pub(crate) fn prune(
         "keys",
         "prune",
         "--key-id",
-        master_private_key_id,
+        master_secret_key_id,
         access_policy,
     ];
     cmd.arg(SUB_COMMAND).args(args);
@@ -84,16 +82,16 @@ async fn test_rekey_error() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
 
     // generate a new master key pair
-    let (master_private_key_id, _master_public_key_id) = create_cc_master_key_pair(
+    let (master_secret_key_id, _master_public_key_id) = create_cc_master_key_pair(
         &ctx.owner_client_conf_path,
-        "--access-structure-filepath",
+        "--access-structure-specification",
         "../../test_data/access_structure_specifications.json",
         &[],
         false,
     )?;
     let _user_decryption_key = create_user_decryption_key(
         &ctx.owner_client_conf_path,
-        &master_private_key_id,
+        &master_secret_key_id,
         "(Department::MKG || Department::FIN) && Security Level::Top Secret",
         &[],
         false,
@@ -103,7 +101,7 @@ async fn test_rekey_error() -> CliResult<()> {
     assert!(
         rekey(
             &ctx.owner_client_conf_path,
-            &master_private_key_id,
+            &master_secret_key_id,
             "bad_access_policy"
         )
         .is_err()
@@ -132,7 +130,7 @@ async fn test_rekey_error() -> CliResult<()> {
     export_key(ExportKeyParams {
         cli_conf_path: ctx.owner_client_conf_path.clone(),
         sub_command: SUB_COMMAND.to_owned(),
-        key_id: master_private_key_id,
+        key_id: master_secret_key_id,
         key_file: exported_wrapped_key_file.to_str().unwrap().to_string(),
         wrap_key_id: Some(symmetric_key_id),
         ..Default::default()
@@ -216,16 +214,16 @@ async fn test_enc_dec_rekey() -> CliResult<()> {
     let recovered_file = tmp_path.join("plain.txt");
 
     // generate a new master key pair
-    let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(
+    let (master_secret_key_id, master_public_key_id) = create_cc_master_key_pair(
         &ctx.owner_client_conf_path,
-        "--access-structure-filepath",
+        "--access-structure-specification",
         "../../test_data/access_structure.json",
         &[],
         false,
     )?;
     let user_decryption_key_id = create_user_decryption_key(
         &ctx.owner_client_conf_path,
-        &master_private_key_id,
+        &master_secret_key_id,
         "Department::MKG || Department::FIN",
         &[],
         false,
@@ -265,7 +263,7 @@ async fn test_enc_dec_rekey() -> CliResult<()> {
     // rekey the attributes
     rekey(
         &ctx.owner_client_conf_path,
-        &master_private_key_id,
+        &master_secret_key_id,
         "Department::MKG || Department::FIN",
     )?;
     Ok(())
@@ -284,16 +282,16 @@ async fn test_rekey_prune() -> CliResult<()> {
     let recovered_file = tmp_path.join("plain.txt");
 
     // generate a new master key pair
-    let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(
+    let (master_secret_key_id, master_public_key_id) = create_cc_master_key_pair(
         &ctx.owner_client_conf_path,
-        "--access-structure-filepath",
+        "--access-structure-specification",
         "../../test_data/access_structure_specifications.json",
         &[],
         false,
     )?;
     let user_decryption_key_id = create_user_decryption_key(
         &ctx.owner_client_conf_path,
-        &master_private_key_id,
+        &master_secret_key_id,
         "(Department::MKG || Department::FIN) && Security Level::Top Secret",
         &[],
         false,
@@ -333,7 +331,7 @@ async fn test_rekey_prune() -> CliResult<()> {
     // rekey the attributes
     rekey(
         &ctx.owner_client_conf_path,
-        &master_private_key_id,
+        &master_secret_key_id,
         "Department::MKG || Department::FIN",
     )?;
 
@@ -398,7 +396,7 @@ async fn test_rekey_prune() -> CliResult<()> {
     // prune the attributes
     prune(
         &ctx.owner_client_conf_path,
-        &master_private_key_id,
+        &master_secret_key_id,
         "Department::MKG || Department::FIN",
     )?;
 

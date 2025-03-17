@@ -26,6 +26,9 @@ pub enum CryptoError {
     #[error("Invalid tag: {0}")]
     InvalidTag(String),
 
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+
     #[error("KMIP Error: {0}")]
     Kmip(String),
 

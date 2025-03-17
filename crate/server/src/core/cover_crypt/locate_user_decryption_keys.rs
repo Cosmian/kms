@@ -17,11 +17,11 @@ use crate::{
     result::KResult,
 };
 
-/// Locate all the user decryption keys associated with the master private key
+/// Locate all the user decryption keys associated with the master secret key
 /// and for the given access structure attributes
 pub(crate) async fn locate_user_decryption_keys(
     kmip_server: &KMS,
-    master_private_key_uid: &str,
+    master_secret_key_uid: &str,
     cover_crypt_policy_attributes_to_revoke: Option<Vec<QualifiedAttribute>>,
     state: Option<StateEnumeration>,
     owner: &str,
@@ -41,7 +41,7 @@ pub(crate) async fn locate_user_decryption_keys(
         link: Some(vec![Link {
             link_type: LinkType::ParentLink,
             linked_object_identifier: LinkedObjectIdentifier::TextString(
-                master_private_key_uid.to_owned(),
+                master_secret_key_uid.to_owned(),
             ),
         }]),
         ..Attributes::default()

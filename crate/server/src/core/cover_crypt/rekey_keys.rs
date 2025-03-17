@@ -210,7 +210,7 @@ async fn get_master_keys(
     owner: &str,
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<(KmipKeyUidObject, KmipKeyUidObject)> {
-    // Recover the master private key
+    // Recover the master secret key
     let msk = kmip_server
         .get(Get::from(&msk_uid), owner, params.clone())
         .await?

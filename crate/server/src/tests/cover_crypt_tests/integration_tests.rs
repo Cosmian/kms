@@ -11,6 +11,7 @@ use cosmian_kmip::kmip_2_1::{
     requests::{decrypt_request, encrypt_request},
 };
 use cosmian_kms_crypto::crypto::cover_crypt::{
+    access_structure::access_structure_from_str,
     attributes::RekeyEditAction,
     kmip_requests::{
         build_create_covercrypt_master_keypair_request,
@@ -21,7 +22,7 @@ use cosmian_kms_crypto::crypto::cover_crypt::{
 
 use crate::{
     result::{KResult, KResultHelper},
-    tests::{cover_crypt_tests::access_structure_utils::access_structure_from_str, test_utils},
+    tests::test_utils,
 };
 #[tokio::test]
 async fn integration_tests_use_ids_no_tags() -> KResult<()> {

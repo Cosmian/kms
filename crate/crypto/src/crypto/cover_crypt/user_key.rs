@@ -51,26 +51,26 @@ pub(crate) fn unwrap_user_decryption_key_object(
 /// and the master key information for efficiency
 pub struct UserDecryptionKeysHandler {
     cover_crypt: Covercrypt,
-    pub master_private_key: MasterSecretKey,
+    pub master_secret_key: MasterSecretKey,
 }
 
 impl UserDecryptionKeysHandler {
     pub fn instantiate(
         cover_crypt: Covercrypt,
-        master_private_key: &Object,
+        master_secret_key: &Object,
     ) -> Result<Self, CryptoError> {
-        let msk_key_block = master_private_key.key_block()?;
+        let msk_key_block = master_secret_key.key_block()?;
         let msk_key_bytes = msk_key_block.key_bytes()?;
         debug!("instantiate: msk_key_bytes len: {}", msk_key_bytes.len());
         let msk = MasterSecretKey::deserialize(&msk_key_bytes)?;
         debug!("instantiate: MSK deserialize success");
         Ok(Self {
             cover_crypt,
-            master_private_key: msk,
+            master_secret_key: msk,
         })
     }
 
-    /// Create a User Decryption Key Object from the passed master private key bytes,
+    /// Create a User Decryption Key Object from the passed master secret key bytes,
     /// Access Policy and optional additional attributes
     ///
     /// see `cover_crypt_unwrap_user_decryption_key` for the reverse operation
@@ -87,7 +87,7 @@ impl UserDecryptionKeysHandler {
         trace!("create_user_decryption_key_object: Access Policy: {access_policy:?}");
         let uk = self
             .cover_crypt
-            .generate_user_secret_key(&mut self.master_private_key, &access_policy)
+            .generate_user_secret_key(&mut self.master_secret_key, &access_policy)
             .map_err(|e| CryptoError::Kmip(e.to_string()))?;
 
         trace!("Created user decryption key with access policy: {access_policy:?}");
@@ -104,7 +104,7 @@ impl UserDecryptionKeysHandler {
         // Add the access policy to the attributes
         upsert_access_policy_in_attributes(&mut attributes, access_policy_str)?;
 
-        // Add the link to the master private key
+        // Add the link to the master secret key
         attributes.link = Some(vec![Link {
             link_type: LinkType::ParentLink,
             linked_object_identifier: LinkedObjectIdentifier::TextString(msk_id.to_owned()),
@@ -139,9 +139,8 @@ impl UserDecryptionKeysHandler {
             ))
         })?;
 
-        let msk = &mut self.master_private_key;
         self.cover_crypt
-            .refresh_usk(msk, &mut usk, keep_old_rights)
+            .refresh_usk(&mut self.master_secret_key, &mut usk, keep_old_rights)
             .map_err(|e| {
                 CryptoError::Kmip(format!(
                     "covercrypt: failed refreshing the user decryption key: {e}"

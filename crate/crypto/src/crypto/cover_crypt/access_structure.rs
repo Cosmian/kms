@@ -1,14 +1,21 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, path::Path};
 
 use cosmian_cover_crypt::{AccessStructure, EncryptionHint, QualifiedAttribute};
 use tracing::debug;
 
-use crate::{error::KmsError, result::KResult};
+use crate::{error::result::CryptoResult, CryptoError};
 
-pub(crate) fn access_structure_from_str(access_structure_str: &str) -> KResult<AccessStructure> {
+pub fn access_structure_from_json_file(
+    specs_filename: &impl AsRef<Path>,
+) -> CryptoResult<AccessStructure> {
+    let access_structure = std::fs::read_to_string(specs_filename.as_ref())?;
+    access_structure_from_str(&access_structure)
+}
+
+pub fn access_structure_from_str(access_structure_str: &str) -> CryptoResult<AccessStructure> {
     let access_structure_json: HashMap<String, Vec<String>> =
         serde_json::from_str(access_structure_str).map_err(|e| {
-            KmsError::Default(format!(
+            CryptoError::Default(format!(
                 "failed parsing the access structure from the string: {e}"
             ))
         })?;

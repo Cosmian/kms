@@ -4,12 +4,12 @@ use cosmian_kmip::kmip_2_1::{
     kmip_operations::Operation,
     kmip_types::{OperationEnumeration, ProtocolVersion, ResultStatusEnumeration},
 };
-use cosmian_kms_crypto::crypto::cover_crypt::kmip_requests::build_create_covercrypt_master_keypair_request;
-
-use crate::{
-    result::KResult,
-    tests::{cover_crypt_tests::access_structure_utils::access_structure_from_str, test_utils},
+use cosmian_kms_crypto::crypto::cover_crypt::{
+    access_structure::access_structure_from_str,
+    kmip_requests::build_create_covercrypt_master_keypair_request,
 };
+
+use crate::{result::KResult, tests::test_utils};
 #[tokio::test]
 async fn integration_tests_bulk() -> KResult<()> {
     // cosmian_logger::log_init("trace,hyper=info,reqwest=info");

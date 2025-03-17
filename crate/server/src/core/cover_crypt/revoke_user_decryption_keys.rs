@@ -9,9 +9,9 @@ use crate::{
     result::KResult,
 };
 
-/// Revoke all the user decryption keys associated with the master private key
+/// Revoke all the user decryption keys associated with the master secret key
 pub(crate) async fn revoke_user_decryption_keys(
-    master_private_key_id: &str,
+    master_secret_key_id: &str,
     revocation_reason: RevocationReason,
     compromise_occurrence_date: Option<u64>,
     kms: &KMS,
@@ -21,7 +21,7 @@ pub(crate) async fn revoke_user_decryption_keys(
 ) -> KResult<()> {
     if let Some(ids) = locate_user_decryption_keys(
         kms,
-        master_private_key_id,
+        master_secret_key_id,
         None,
         Some(StateEnumeration::Active),
         owner,

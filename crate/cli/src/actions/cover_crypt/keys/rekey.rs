@@ -25,10 +25,10 @@ pub struct RekeyAction {
     #[clap(required = true)]
     access_policy: String,
 
-    /// The private master key unique identifier stored in the KMS.
+    /// The master secret key unique identifier stored in the KMS.
     /// If not specified, tags should be specified
     #[clap(long = "key-id", short = 'k', group = "key-tags")]
-    secret_key_id: Option<String>,
+    master_secret_key_id: Option<String>,
 
     /// Tag to use to retrieve the key when no key id is specified.
     /// To specify multiple tags, use the option multiple times.
@@ -38,7 +38,7 @@ pub struct RekeyAction {
 
 impl RekeyAction {
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
-        let id = if let Some(key_id) = &self.secret_key_id {
+        let id = if let Some(key_id) = &self.master_secret_key_id {
             key_id.clone()
         } else if let Some(tags) = &self.tags {
             serde_json::to_string(&tags)?
@@ -59,8 +59,8 @@ impl RekeyAction {
             .with_context(|| "failed rekeying the master keys")?;
 
         let stdout = format!(
-            "The master private key {} and master public key {} were rekeyed for the access \
-             policy {:?}",
+            "The master secret key {} and master public key {} were rekeyed for the access policy \
+             {:?}",
             &response.private_key_unique_identifier,
             &response.public_key_unique_identifier,
             &self.access_policy
@@ -126,7 +126,7 @@ impl PruneAction {
             .with_context(|| "failed pruning the master keys")?;
 
         let stdout = format!(
-            "The master private key {} and master public key {} were pruned for the access policy \
+            "The master secret key {} and master public key {} were pruned for the access policy \
              {:?}",
             &response.private_key_unique_identifier,
             &response.public_key_unique_identifier,

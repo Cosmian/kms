@@ -45,7 +45,7 @@ pub fn build_create_covercrypt_user_decryption_key_request<
     T: IntoIterator<Item = impl AsRef<str>>,
 >(
     access_policy: &str,
-    cover_crypt_master_private_key_id: &str,
+    cover_crypt_master_secret_key_id: &str,
     tags: T,
     sensitive: bool,
 ) -> Result<Create, CryptoError> {
@@ -57,7 +57,7 @@ pub fn build_create_covercrypt_user_decryption_key_request<
         link: Some(vec![Link {
             link_type: LinkType::ParentLink,
             linked_object_identifier: LinkedObjectIdentifier::TextString(
-                cover_crypt_master_private_key_id.to_owned(),
+                cover_crypt_master_secret_key_id.to_owned(),
             ),
         }]),
         cryptographic_usage_mask: Some(CryptographicUsageMask::Unrestricted),
@@ -80,7 +80,7 @@ pub fn build_import_decryption_private_key_request<T: IntoIterator<Item = impl A
     private_key: &[u8],
     unique_identifier: Option<String>,
     replace_existing: bool,
-    cover_crypt_master_private_key_id: &str,
+    cover_crypt_master_secret_key_id: &str,
     access_policy: &str,
     is_wrapped: bool,
     wrapping_password: Option<String>,
@@ -93,7 +93,7 @@ pub fn build_import_decryption_private_key_request<T: IntoIterator<Item = impl A
         link: Some(vec![Link {
             link_type: LinkType::ParentLink,
             linked_object_identifier: LinkedObjectIdentifier::TextString(
-                cover_crypt_master_private_key_id.to_owned(),
+                cover_crypt_master_secret_key_id.to_owned(),
             ),
         }]),
         vendor_attributes: Some(vec![access_policy_as_vendor_attribute(access_policy)?]),
@@ -148,7 +148,7 @@ pub fn build_import_decryption_private_key_request<T: IntoIterator<Item = impl A
     })
 }
 
-/// Build a `Import` request for an Cover Crypt Master Private Key
+/// Build a `Import` request for an Cover Crypt master secret key
 ///
 /// A unique identifier will be generated if none is supplied
 #[allow(clippy::too_many_arguments)]
@@ -228,7 +228,7 @@ pub fn build_import_public_key_request<T: IntoIterator<Item = impl AsRef<str>>>(
     public_key: &[u8],
     unique_identifier: Option<String>,
     replace_existing: bool,
-    cover_crypt_master_private_key_id: &str,
+    cover_crypt_master_secret_key_id: &str,
     tags: T,
 ) -> Result<Import, CryptoError> {
     let mut attributes = Attributes {
@@ -238,7 +238,7 @@ pub fn build_import_public_key_request<T: IntoIterator<Item = impl AsRef<str>>>(
         link: Some(vec![Link {
             link_type: LinkType::PrivateKeyLink,
             linked_object_identifier: LinkedObjectIdentifier::TextString(
-                cover_crypt_master_private_key_id.to_owned(),
+                cover_crypt_master_secret_key_id.to_owned(),
             ),
         }]),
         ..Attributes::default()
@@ -292,18 +292,18 @@ pub fn build_destroy_key_request(unique_identifier: &str) -> Result<Destroy, Cry
 
 /// Build a `ReKeyKeyPair` request to locate an `CoverCrypt` User Decryption Key
 /// To rekey an attribute of a user decryption key, we first need:
-/// - the master private key uid
+/// - the master secret key uid
 /// - the `CoverCrypt` attributes to revoke
 /// - the `ReKeyKeyPairAction` to perform
 ///
 /// The routine will then locate and renew all user decryption keys with those `CoverCrypt` attributes
 pub fn build_rekey_keypair_request(
-    master_private_key_unique_identifier: &str,
+    master_secret_key_unique_identifier: &str,
     action: &RekeyEditAction,
 ) -> Result<ReKeyKeyPair, CryptoError> {
     Ok(ReKeyKeyPair {
         private_key_unique_identifier: Some(UniqueIdentifier::TextString(
-            master_private_key_unique_identifier.to_owned(),
+            master_secret_key_unique_identifier.to_owned(),
         )),
         private_key_attributes: Some(Attributes {
             object_type: Some(ObjectType::PrivateKey),

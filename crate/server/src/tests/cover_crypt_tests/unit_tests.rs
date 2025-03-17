@@ -11,9 +11,12 @@ use cosmian_kmip::kmip_2_1::{
     },
     requests::{decrypt_request, encrypt_request},
 };
-use cosmian_kms_crypto::crypto::cover_crypt::kmip_requests::{
-    build_create_covercrypt_master_keypair_request,
-    build_create_covercrypt_user_decryption_key_request,
+use cosmian_kms_crypto::crypto::cover_crypt::{
+    access_structure::access_structure_from_str,
+    kmip_requests::{
+        build_create_covercrypt_master_keypair_request,
+        build_create_covercrypt_user_decryption_key_request,
+    },
 };
 use tracing::debug;
 use uuid::Uuid;
@@ -24,10 +27,7 @@ use crate::{
     error::KmsError,
     kms_bail,
     result::{KResult, KResultHelper},
-    tests::{
-        cover_crypt_tests::access_structure_utils::access_structure_from_str,
-        test_utils::https_clap_config,
-    },
+    tests::test_utils::https_clap_config,
 };
 
 #[tokio::test]
@@ -236,7 +236,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
             None,
         )
         .await?;
-    let master_private_key_id = ckr
+    let master_secret_key_id = ckr
         .private_key_unique_identifier
         .as_str()
         .context("There should be a private key unique identifier in the response")?;
@@ -342,7 +342,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
         .create(
             build_create_covercrypt_user_decryption_key_request(
                 secret_mkg_fin_access_policy,
-                master_private_key_id,
+                master_secret_key_id,
                 EMPTY_TAGS,
                 false,
             )?,
@@ -460,7 +460,7 @@ async fn test_abe_json_access() -> KResult<()> {
 
     // create Key Pair
     let ckr = kms.create_key_pair(master_keypair, owner, None).await?;
-    let master_private_key_uid = ckr.private_key_unique_identifier.to_string();
+    let master_secret_key_uid = ckr.private_key_unique_identifier.to_string();
 
     // define search criteria
     let search_attrs = Attributes {
@@ -470,7 +470,7 @@ async fn test_abe_json_access() -> KResult<()> {
         link: Some(vec![Link {
             link_type: LinkType::ParentLink,
             linked_object_identifier: LinkedObjectIdentifier::TextString(
-                master_private_key_uid.clone(),
+                master_secret_key_uid.clone(),
             ),
         }]),
         object_type: Some(ObjectType::PrivateKey),
@@ -496,7 +496,7 @@ async fn test_abe_json_access() -> KResult<()> {
         .create(
             build_create_covercrypt_user_decryption_key_request(
                 secret_mkg_fin_access_policy,
-                &master_private_key_uid,
+                &master_secret_key_uid,
                 EMPTY_TAGS,
                 false,
             )?,

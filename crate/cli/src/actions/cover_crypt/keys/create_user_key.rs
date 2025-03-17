@@ -46,9 +46,9 @@ use crate::{
 #[derive(Parser, Debug)]
 #[clap(verbatim_doc_comment)]
 pub struct CreateUserKeyAction {
-    /// The master private key unique identifier
+    /// The master secret key unique identifier
     #[clap(required = true)]
-    master_private_key_id: String,
+    master_secret_key_id: String,
 
     /// The access policy as a boolean expression combining policy attributes.
     ///
@@ -74,7 +74,7 @@ impl CreateUserKeyAction {
         // Create the kmip query
         let create_user_key = build_create_covercrypt_user_decryption_key_request(
             &self.access_policy,
-            &self.master_private_key_id,
+            &self.master_secret_key_id,
             &self.tags,
             self.sensitive,
         )?;

@@ -53,7 +53,7 @@ pub fn create_master_keypair(
         .as_ref()
         .or(common_attributes.as_ref());
 
-    let private_key = create_master_private_key_object(
+    let private_key = create_master_secret_key_object(
         &msk.serialize()?,
         private_key_attributes,
         public_key_uid,
@@ -66,16 +66,12 @@ pub fn create_master_keypair(
     let public_key_attributes = public_key_attributes
         .as_ref()
         .or(common_attributes.as_ref());
-    let public_key = create_master_public_key_object(
-        &mpk.serialize()?,
-        public_key_attributes,
-        private_key_uid,
-        sensitive,
-    )?;
+    let public_key =
+        create_master_public_key_object(&mpk.serialize()?, public_key_attributes, private_key_uid)?;
     Ok(KeyPair((private_key, public_key)))
 }
 
-pub fn create_master_private_key_object(
+pub fn create_master_secret_key_object(
     key: &[u8],
     attributes: Option<&Attributes>,
     master_public_key_uid: &str,
@@ -83,7 +79,7 @@ pub fn create_master_private_key_object(
     sensitive: bool,
 ) -> Result<Object, CryptoError> {
     debug!(
-        "create_master_private_key_object: key len: {}, attributes: {attributes:?}",
+        "create_master_secret_key_object: key len: {}, attributes: {attributes:?}",
         key.len()
     );
     let mut attributes = attributes.cloned().unwrap_or_default();
@@ -125,8 +121,7 @@ pub fn create_master_private_key_object(
 fn create_master_public_key_object(
     key: &[u8],
     attributes: Option<&Attributes>,
-    master_private_key_uid: &str,
-    sensitive: bool,
+    master_secret_key_uid: &str,
 ) -> Result<Object, CryptoError> {
     let mut attributes = attributes.cloned().unwrap_or_default();
     attributes.sensitive = false;
@@ -138,10 +133,9 @@ fn create_master_public_key_object(
     attributes.link = Some(vec![Link {
         link_type: LinkType::PrivateKeyLink,
         linked_object_identifier: LinkedObjectIdentifier::TextString(
-            master_private_key_uid.to_owned(),
+            master_secret_key_uid.to_owned(),
         ),
     }]);
-    attributes.sensitive = sensitive;
     let cryptographic_length = Some(i32::try_from(key.len())? * 8);
     Ok(Object::PublicKey {
         key_block: KeyBlock {
@@ -159,11 +153,11 @@ fn create_master_public_key_object(
 }
 
 pub fn covercrypt_keys_from_kmip_objects(
-    master_private_key: &Object,
+    master_secret_key: &Object,
     master_public_key: &Object,
 ) -> Result<(MasterSecretKey, MasterPublicKey), CryptoError> {
     // Recover the Covercrypt PrivateKey Object
-    let msk_key_block = master_private_key.key_block()?;
+    let msk_key_block = master_secret_key.key_block()?;
     let msk_key_bytes = msk_key_block.key_bytes()?;
     trace!(
         "covercrypt_keys_from_kmip_objects: msk_key_bytes len: {}",
@@ -171,7 +165,7 @@ pub fn covercrypt_keys_from_kmip_objects(
     );
     let msk = MasterSecretKey::deserialize(&msk_key_bytes).map_err(|e| {
         CryptoError::Kmip(format!(
-            "Failed deserializing the Covercrypt Master Private Key: {e}"
+            "Failed deserializing the Covercrypt master secret key: {e}"
         ))
     })?;
 
@@ -194,13 +188,13 @@ pub fn kmip_objects_from_covercrypt_keys(
     mpk_obj: KmipKeyUidObject,
     sensitive: bool,
 ) -> Result<(KmipKeyUidObject, KmipKeyUidObject), CryptoError> {
-    let updated_master_private_key_bytes = &msk.serialize()?;
+    let updated_master_secret_key_bytes = &msk.serialize()?;
     trace!(
-        "kmip_objects_from_covercrypt_keys: updated_master_private_key_bytes len: {}",
-        updated_master_private_key_bytes.len()
+        "kmip_objects_from_covercrypt_keys: updated_master_secret_key_bytes len: {}",
+        updated_master_secret_key_bytes.len()
     );
-    let updated_master_private_key = create_master_private_key_object(
-        updated_master_private_key_bytes,
+    let updated_master_secret_key = create_master_secret_key_object(
+        updated_master_secret_key_bytes,
         Some(msk_obj.1.attributes()?),
         &mpk_obj.0,
         &msk.access_structure,
@@ -215,11 +209,10 @@ pub fn kmip_objects_from_covercrypt_keys(
         updated_master_public_key_bytes,
         Some(mpk_obj.1.attributes()?),
         &msk_obj.0,
-        sensitive,
     )?;
 
     Ok((
-        (msk_obj.0, updated_master_private_key),
+        (msk_obj.0, updated_master_secret_key),
         (mpk_obj.0, updated_master_public_key),
     ))
 }

@@ -1,10 +1,7 @@
-use std::{
-    collections::HashMap,
-    path::{Path, PathBuf},
-};
+use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use cosmian_cover_crypt::{AccessStructure, EncryptionHint, MasterPublicKey, QualifiedAttribute};
+use cosmian_cover_crypt::{EncryptionHint, MasterPublicKey, QualifiedAttribute};
 use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kms_client::{
     cosmian_kmip::KmipResultHelper,
@@ -21,47 +18,14 @@ use cosmian_kms_crypto::{
     },
     CryptoError,
 };
-use tracing::debug;
 
 use crate::{actions::console, cli_bail, error::result::CliResult};
-
-pub(crate) fn access_structure_from_json_file(
-    specs_filename: &impl AsRef<Path>,
-) -> CliResult<AccessStructure> {
-    let access_structure_json: HashMap<String, Vec<String>> = read_from_json_file(&specs_filename)?;
-
-    let mut access_structure = AccessStructure::new();
-    for (dimension, attributes) in &access_structure_json {
-        if dimension.contains("::<") {
-            let trim_key_name = dimension.trim_end_matches("::<");
-            access_structure.add_hierarchy(trim_key_name.to_owned())?;
-        } else {
-            access_structure.add_anarchy(dimension.clone())?;
-        }
-
-        for name in attributes.iter().rev() {
-            let attribute = QualifiedAttribute {
-                dimension: dimension.trim_end_matches("::<").to_owned(),
-                name: name.trim_end_matches("::+").to_owned(),
-            };
-            let encryption_hint = if name.contains("::+") {
-                EncryptionHint::Hybridized
-            } else {
-                EncryptionHint::Classic
-            };
-            debug!("cli parsing: attribute: {attribute:?}, encryption_hint: {encryption_hint:?}");
-            access_structure.add_attribute(attribute, encryption_hint, None)?;
-        }
-    }
-
-    Ok(access_structure)
-}
 
 /// Extract, view, or edit policies of existing keys
 #[derive(Subcommand)]
 pub enum AccessStructureCommands {
     View(ViewAction),
-    AddAttribute(AddAttributeAction),
+    AddAttribute(AddQualifiedAttributeAction),
     RemoveAttribute(RemoveAttributeAction),
     DisableAttribute(DisableAttributeAction),
     RenameAttribute(RenameAttributeAction),
@@ -70,16 +34,15 @@ pub enum AccessStructureCommands {
 impl AccessStructureCommands {
     pub async fn process(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         match self {
-            Self::View(action) => action.run(kms_rest_client).await?,
-            Self::AddAttribute(action) => action.run(kms_rest_client).await?,
-            Self::RemoveAttribute(action) => action.run(kms_rest_client).await?,
-            Self::DisableAttribute(action) => action.run(kms_rest_client).await?,
-            Self::RenameAttribute(action) => action.run(kms_rest_client).await?,
+            Self::View(action) => action.run(kms_rest_client).await,
+            Self::AddAttribute(action) => action.run(kms_rest_client).await,
+            Self::RemoveAttribute(action) => action.run(kms_rest_client).await,
+            Self::DisableAttribute(action) => action.run(kms_rest_client).await,
+            Self::RenameAttribute(action) => action.run(kms_rest_client).await,
         }
-
-        Ok(())
     }
 }
+
 /// View the access structure of an existing public or private master key.
 ///
 ///  - Use the `--key-id` switch to extract the access structure from a key stored in the KMS.
@@ -91,28 +54,16 @@ pub struct ViewAction {
     #[clap(long = "key-id", short = 'i', required_unless_present = "key_file")]
     key_id: Option<String>,
 
-    /// If `key-id` is not provided, the file containing the public or private master key in TTLV format.²
+    /// If `key-id` is not provided, use `--key-file` to provide the file containing the public or private master key in TTLV format.
     #[clap(long = "key-file", short = 'f')]
     key_file: Option<PathBuf>,
-
-    /// Show all the access structure details rather than just the specifications
-    #[clap(
-        required = false,
-        long = "detailed",
-        short = 'd',
-        default_value = "false"
-    )]
-    detailed: bool,
 }
 impl ViewAction {
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
-        let object: Object = if self.key_id.is_some() {
+        let object: Object = if let Some(id) = &self.key_id {
             export_object(
                 kms_rest_client,
-                &self
-                    .key_id
-                    .clone()
-                    .ok_or_else(|| CryptoError::Default("ID".to_owned()))?,
+                id,
                 ExportObjectParams {
                     unwrap: true,
                     ..ExportObjectParams::default()
@@ -120,13 +71,8 @@ impl ViewAction {
             )
             .await?
             .1
-        } else if self.key_file.is_some() {
-            let ttlv: TTLV = read_from_json_file(
-                &self
-                    .key_file
-                    .clone()
-                    .ok_or_else(|| CryptoError::Default("FILE".to_owned()))?,
-            )?;
+        } else if let Some(key_file) = &self.key_file {
+            let ttlv: TTLV = read_from_json_file(key_file)?;
             from_ttlv(&ttlv)?
         } else {
             cli_bail!("either a key ID or a key TTLV file must be supplied");
@@ -134,6 +80,7 @@ impl ViewAction {
         let mpk = MasterPublicKey::deserialize(&object.key_block()?.key_bytes()?).map_err(|e| {
             CryptoError::Kmip(format!("Failed deserializing the CoverCrypt MPK: {e}"))
         })?;
+
         let stdout: String = format!("{:?}", mpk.access_structure);
         console::Stdout::new(&stdout).write()?;
 
@@ -144,17 +91,17 @@ impl ViewAction {
 /// Add an attribute to the access structure of an existing private master key.
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
-pub struct AddAttributeAction {
+pub struct AddQualifiedAttributeAction {
     /// The name of the attribute to create.
-    /// Example: `department::rd`
+    /// Example: `department::rnd`
     #[clap(required = true)]
     attribute: String,
 
-    /// Set encryption hint for the new attribute to use hybridized keys.
-    #[clap(required = false, long = "hybridized", default_value = "false")]
+    /// Hybridize this qualified attribute.
+    #[clap(required = false, long, default_value = "false")]
     hybridized: bool,
 
-    /// The private master key unique identifier stored in the KMS.
+    /// The master secret key unique identifier stored in the KMS.
     /// If not specified, tags should be specified
     #[clap(long = "key-id", short = 'k', group = "key-tags")]
     secret_key_id: Option<String>,
@@ -164,7 +111,7 @@ pub struct AddAttributeAction {
     #[clap(long = "tag", short = 't', value_name = "TAG", group = "key-tags")]
     tags: Option<Vec<String>>,
 }
-impl AddAttributeAction {
+impl AddQualifiedAttributeAction {
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         let id = if let Some(key_id) = &self.secret_key_id {
             key_id.clone()
@@ -174,14 +121,11 @@ impl AddAttributeAction {
             cli_bail!("Either --key-id or one or more --tag must be specified")
         };
 
-        let enc_hint = EncryptionHint::new(self.hybridized);
-
-        // Create the kmip query
         let rekey_query = build_rekey_keypair_request(
             &id,
             &RekeyEditAction::AddAttribute(vec![(
                 QualifiedAttribute::try_from(self.attribute.as_str())?,
-                enc_hint,
+                EncryptionHint::new(self.hybridized),
                 None,
             )]),
         )?;
@@ -193,15 +137,13 @@ impl AddAttributeAction {
             .with_context(|| "failed adding an attribute to the master keys")?;
 
         let stdout = format!(
-            "New attribute {} was successfully added to the master private key {} and master \
+            "New attribute {} was successfully added to the master secret key {} and master \
              public key {}.",
             &self.attribute,
             &rekey_response.private_key_unique_identifier,
             &rekey_response.public_key_unique_identifier,
         );
-        console::Stdout::new(&stdout).write()?;
-
-        Ok(())
+        console::Stdout::new(&stdout).write()
     }
 }
 
@@ -265,7 +207,7 @@ impl RenameAttributeAction {
 }
 
 /// Disable an attribute from the access structure of an existing private master key.
-/// Prevents the encryption of new messages for this attribute while keeping the ability to decrypt existing ciphertexts.
+/// Prevents the creation of new ciphertexts for this attribute while keeping the ability to decrypt existing ones.
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
 pub struct DisableAttributeAction {
@@ -328,6 +270,7 @@ impl DisableAttributeAction {
 pub struct RemoveAttributeAction {
     /// The name of the attribute to remove.
     /// Example: `department::marketing`
+    /// Note: prevents ciphertexts only targeting this qualified attribute to be decrypted.
     #[clap(required = true)]
     attribute: String,
 
@@ -366,7 +309,7 @@ impl RemoveAttributeAction {
             .with_context(|| "failed removing an attribute from the master keys")?;
 
         let stdout = format!(
-            "Attribute {} was successfully removed from the master private key {} and master \
+            "Attribute {} was successfully removed from the master secret key {} and master \
              public key {}.",
             &self.attribute,
             &rekey_response.private_key_unique_identifier,
