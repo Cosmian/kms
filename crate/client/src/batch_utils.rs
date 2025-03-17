@@ -1,5 +1,5 @@
 use cosmian_kmip::kmip_2_1::{
-    kmip_messages::{RequestMessageBatchItem, RequestMessage, RequestMessageHeader},
+    kmip_messages::{RequestMessage, RequestMessageBatchItem, RequestMessageHeader},
     kmip_operations::Operation,
     kmip_types::ProtocolVersion,
 };
@@ -27,7 +27,10 @@ pub(crate) async fn batch_operations(
             batch_count: operations.len() as i32,
             ..Default::default()
         },
-        batch_item: operations.into_iter().map(RequestMessageBatchItem::new).collect(),
+        batch_item: operations
+            .into_iter()
+            .map(RequestMessageBatchItem::new)
+            .collect(),
     };
     let response = kms_rest_client.message(request).await?;
     response
