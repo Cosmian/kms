@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use clap::Parser;
 use cosmian_kms_client::{
-    cosmian_kmip::kmip_2_1::{kmip_operations::DecryptedData, kmip_types::CryptographicAlgorithm},
+    cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm,
     kmip_2_1::{kmip_types::CryptographicParameters, requests::decrypt_request},
     read_bytes_from_file, read_bytes_from_files_to_bulk, write_bulk_decrypted_data,
     write_single_decrypted_data, KmsClient,
@@ -92,22 +92,14 @@ impl DecryptAction {
             .await
             .with_context(|| "Can't execute the query on the kms server")?;
 
-        let metadata_and_cleartext: DecryptedData = decrypt_response
-            .data
-            .context("The plain data are empty")?
-            .as_slice()
-            .try_into()?;
+        let cleartext = decrypt_response.data.context("The plain data are empty")?;
 
         // Write the decrypted files
         if cryptographic_algorithm == CryptographicAlgorithm::CoverCryptBulk {
-            write_bulk_decrypted_data(
-                &metadata_and_cleartext.plaintext,
-                &self.input_files,
-                self.output_file.as_ref(),
-            )?;
+            write_bulk_decrypted_data(&cleartext, &self.input_files, self.output_file.as_ref())?;
         } else {
             write_single_decrypted_data(
-                &metadata_and_cleartext.plaintext,
+                &cleartext,
                 &self.input_files[0],
                 self.output_file.as_ref(),
             )?;

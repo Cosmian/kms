@@ -9,7 +9,7 @@ use cosmian_kmip::kmip_2_1::{
         StateEnumeration,
     },
 };
-use cosmian_kms_crypto::crypto::cover_crypt::attributes::attributes_as_vendor_attribute;
+use cosmian_kms_crypto::crypto::cover_crypt::attributes::qualified_attributes_as_vendor_attributes;
 use cosmian_kms_interfaces::SessionParams;
 
 use crate::{
@@ -29,7 +29,7 @@ pub(crate) async fn locate_user_decryption_keys(
 ) -> KResult<Option<Vec<String>>> {
     // Convert the access structure attributes to vendor attributes
     let vendor_attributes = match cover_crypt_policy_attributes_to_revoke {
-        Some(att) => Some(vec![attributes_as_vendor_attribute(&att)?]),
+        Some(att) => Some(vec![qualified_attributes_as_vendor_attributes(&att)?]),
         None => None,
     };
     // Search the user decryption keys that need to be refreshed

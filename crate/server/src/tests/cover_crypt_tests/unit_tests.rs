@@ -4,7 +4,7 @@ use std::sync::Arc;
 use cosmian_kmip::kmip_2_1::{
     extra::tagging::EMPTY_TAGS,
     kmip_objects::{Object, ObjectType},
-    kmip_operations::{DecryptedData, Get, Import, Locate},
+    kmip_operations::{Get, Import, Locate},
     kmip_types::{
         Attributes, CryptographicAlgorithm, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
         UniqueIdentifier,
@@ -256,7 +256,6 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
                 Some(confidential_mkg_policy_attributes.to_owned()),
                 confidential_mkg_data.to_vec(),
                 None,
-                None,
                 Some(confidential_authentication_data.clone()),
                 None,
             )?,
@@ -280,7 +279,6 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
                 Some(confidential_mkg_policy_attributes.to_owned()),
                 confidential_mkg_data.to_vec(),
                 None,
-                None,
                 Some(confidential_authentication_data.clone()),
                 None,
             )?,
@@ -300,7 +298,6 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
                 master_public_key_id,
                 Some(secret_fin_policy_attributes.to_owned()),
                 secret_fin_data.to_vec(),
-                None,
                 None,
                 Some(secret_authentication_data.clone()),
                 None,
@@ -324,7 +321,6 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
                 master_public_key_id,
                 Some(secret_fin_policy_attributes.to_owned()),
                 secret_fin_data.to_vec(),
-                None,
                 None,
                 Some(secret_authentication_data.clone()),
                 None,
@@ -371,15 +367,8 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
         )
         .await?;
 
-    let decrypted_data: DecryptedData = dr
-        .data
-        .context("There should be decrypted data")?
-        .as_slice()
-        .try_into()
-        .unwrap();
-
-    assert_eq!(confidential_mkg_data, &decrypted_data.plaintext[..]);
-    assert!(decrypted_data.metadata.is_empty());
+    let decrypted_data = dr.data.context("There should be decrypted data")?;
+    assert_eq!(&*confidential_mkg_data, &**decrypted_data);
 
     // check it doesn't work with invalid tenant
     let dr = kms
@@ -414,15 +403,9 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
         )
         .await?;
 
-    let decrypted_data: DecryptedData = dr
-        .data
-        .context("There should be decrypted data")?
-        .as_slice()
-        .try_into()
-        .unwrap();
+    let decrypted_data = dr.data.context("There should be decrypted data")?;
 
-    assert_eq!(secret_fin_data, &decrypted_data.plaintext[..]);
-    assert!(decrypted_data.metadata.is_empty());
+    assert_eq!(&*secret_fin_data, &**decrypted_data);
 
     // check it doesn't work with invalid tenant
     let dr = kms
@@ -561,7 +544,6 @@ async fn test_import_decrypt() -> KResult<()> {
                 Some(confidential_mkg_policy_attributes.to_owned()),
                 confidential_mkg_data.to_vec(),
                 None,
-                None,
                 Some(confidential_authentication_data.clone()),
                 None,
             )?,
@@ -642,14 +624,8 @@ async fn test_import_decrypt() -> KResult<()> {
         .await?;
     // Decryption used to fails: import attributes were incorrect;
     // this seems fixed since #71. Leaving the test in case this pops-up again
-    let decrypted_data: DecryptedData = dr
-        .data
-        .context("There should be decrypted data")?
-        .as_slice()
-        .try_into()
-        .unwrap();
-    assert_eq!(confidential_mkg_data, &decrypted_data.plaintext[..]);
-    assert!(decrypted_data.metadata.is_empty());
+    let decrypted_data = dr.data.context("There should be decrypted data")?;
+    assert_eq!(&*confidential_mkg_data, &**decrypted_data);
 
     // ...and reimport it under custom uid (will work)
     let custom_sk_uid = Uuid::new_v4().to_string();
@@ -683,15 +659,9 @@ async fn test_import_decrypt() -> KResult<()> {
         )
         .await?;
 
-    let decrypted_data: DecryptedData = dr
-        .data
-        .context("There should be decrypted data")?
-        .as_slice()
-        .try_into()
-        .unwrap();
+    let decrypted_data = dr.data.context("There should be decrypted data")?;
 
-    assert_eq!(confidential_mkg_data, &decrypted_data.plaintext[..]);
-    assert!(decrypted_data.metadata.is_empty());
+    assert_eq!(&*confidential_mkg_data, &**decrypted_data);
 
     Ok(())
 }

@@ -65,7 +65,7 @@ pub fn upsert_access_structure_in_attributes(
 }
 
 /// Convert from `Covercrypt` policy attributes to vendor attributes
-pub fn attributes_as_vendor_attribute(
+pub fn qualified_attributes_as_vendor_attributes(
     attributes: &[QualifiedAttribute],
 ) -> Result<VendorAttribute, CryptoError> {
     Ok(VendorAttribute {
@@ -77,33 +77,32 @@ pub fn attributes_as_vendor_attribute(
     })
 }
 
-/// Convert from vendor attributes to `Covercrypt` policy attributes
-pub fn attributes_from_attributes(
+/// Extract qualified attributes from the given KMIP attributes.
+pub fn qualified_attributes_from_attributes(
     attributes: &Attributes,
 ) -> Result<Vec<QualifiedAttribute>, CryptoError> {
-    if let Some(bytes) =
-        attributes.get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_ATTR)
-    {
-        let attribute_strings = serde_json::from_slice::<Vec<String>>(bytes).map_err(|e| {
-            CryptoError::Kmip(format!(
-                "failed reading the Covercrypt attribute strings from the attributes bytes: {e}"
-            ))
+    let bytes = attributes
+        .get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_ATTR)
+        .ok_or_else(|| {
+            CryptoError::Kmip(
+                "the attributes do not contain Covercrypt (vendor) Attributes".to_owned(),
+            )
         })?;
-        let mut policy_attributes = Vec::with_capacity(attribute_strings.len());
-        for attr in attribute_strings {
-            let attr = QualifiedAttribute::try_from(attr.as_str()).map_err(|e| {
+    let attribute_strings = serde_json::from_slice::<Vec<String>>(&bytes).map_err(|e| {
+        CryptoError::Kmip(format!(
+            "failed reading the Covercrypt attribute strings from the attributes bytes: {e}"
+        ))
+    })?;
+    attribute_strings
+        .iter()
+        .map(|attr| {
+            QualifiedAttribute::try_from(attr.as_str()).map_err(|e| {
                 CryptoError::Kmip(format!(
                     "failed deserializing the Covercrypt attribute: {e}"
                 ))
-            })?;
-            policy_attributes.push(attr);
-        }
-        Ok(policy_attributes)
-    } else {
-        Err(CryptoError::Kmip(
-            "the attributes do not contain Covercrypt (vendor) Attributes".to_owned(),
-        ))
-    }
+            })
+        })
+        .collect()
 }
 
 /// Convert an access policy to a vendor attribute
@@ -180,7 +179,7 @@ pub fn rekey_edit_action_as_vendor_attribute(
     })
 }
 
-/// Extract an edit `Covercrypt` policy action from attributes.
+/// Extract and edit `Covercrypt` policy action from attributes.
 ///
 /// If Covercrypt attributes are specified without an `EditPolicyAction`,
 /// a `RotateAttributes` action is returned by default to keep backward compatibility.
