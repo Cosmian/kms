@@ -515,7 +515,6 @@ mod tests {
         pkey::{Id, PKey, Private},
         rsa::Rsa,
     };
-    use tracing::info;
 
     use crate::openssl::{
         kmip_private_key_to_openssl,

@@ -34,14 +34,14 @@ impl<'a, 'de: 'a> MapAccess<'de> for StructureWalker<'a> {
             self.de.child_index,
             self.de.current
         );
-        // Check that the index is not out of bounds, i.e. we have not reached the end of the struct
-        // If we have, return None
         // If the current value is not a Structure, return an error
         let TTLValue::Structure(current_value) = &self.de.current.value else {
             return Err(TtlvError::from(
                 "Deserializing a map: expected Structure value in TTLV",
             ))
         };
+        // Check that the index is not out of bounds, i.e. we have not reached the end of the struct
+        // If we have, return None
         if self.de.child_index >= current_value.len() {
             return Ok(None);
         }
@@ -69,9 +69,8 @@ impl<'a, 'de: 'a> MapAccess<'de> for StructureWalker<'a> {
 
     #[inline]
     fn size_hint(&self) -> Option<usize> {
-        let TTLValue::Structure(child_array) = &self.de.current.value else {
-            return Some(0_usize)
-        };
-        Some(child_array.len())
+        // If there is a flattened array in the structure, it is impossible to know
+        // how many non flattened elements are in the structure
+        None
     }
 }
