@@ -69,7 +69,7 @@ jobs:
       archive-name: ${{ matrix.archive-name }}
       target: ${{ matrix.target }}
       debug_or_release: ${{ inputs.debug_or_release }}
-      skip_services_tests: --skip test_mysql --skip test_postgresql --skip test_redis --skip google_cse --skip hsm
+      skip_services_tests: --skip test_mysql --skip test_postgresql --skip test_redis --skip google_cse
       artifacts: ${{ matrix.artifacts }}
       features: ${{ matrix.features }}
 
@@ -106,7 +106,7 @@ jobs:
       archive-name: ${{ matrix.archive-name }}
       target: ${{ matrix.target }}
       debug_or_release: ${{ inputs.debug_or_release }}
-      skip_services_tests: --skip test_mysql --skip test_postgresql --skip test_redis --skip google_cse --skip hsm
+      skip_services_tests: --skip test_mysql --skip test_postgresql --skip test_redis --skip google_cse
       artifacts: ${{ matrix.artifacts }}
 
   windows-2022:

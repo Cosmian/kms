@@ -16,7 +16,7 @@ sudo mkdir -p /etc/utimaco
 sudo chmod 755 /etc/utimaco/
 sudo cp ./hsm-simulator/cs_pkcs11_R3.cfg /etc/utimaco/
 sudo chmod 766 /etc/utimaco/cs_pkcs11_R3.cfg
-sudo echo -e "Logpath = /tmp\nLogging = 3\nDevice = 3001@localhost\n" > /etc/utimaco/cs_pkcs11_R3.cfg
+sudo echo -e "[Global]\nLogpath = /tmp\nLogging = 3\n[CryptoServer]\nDevice = 3001@localhost\n" > /etc/utimaco/cs_pkcs11_R3.cfg
 export CS_PKCS11_R3_CFG=/etc/utimaco/cs_pkcs11_R3.cfg
 
 cd ./hsm-simulator/Administration
@@ -32,4 +32,4 @@ cd ./hsm-simulator/Administration
 
 ./p11tool2 Slot=0 GetSlotInfo
 
-cargo test -p utimaco_pkcs11_loader --features utimaco
+HSM_USER_PASSWORD="./key/ADMIN_SIM.key" cargo test -p utimaco_pkcs11_loader --features utimaco
