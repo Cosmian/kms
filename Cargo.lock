@@ -1584,6 +1584,7 @@ dependencies = [
  "hex",
  "lazy_static",
  "lru",
+ "num-bigint-dig",
  "num_cpus",
  "rawsql",
  "redis 0.23.3",
