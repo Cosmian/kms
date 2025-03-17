@@ -72,7 +72,7 @@ pub enum DbError {
     Redis(String),
 
     // When a user requests an endpoint which does not exist
-    #[error("Not Supported route: {0}")]
+    #[error("Route not supported: {0}")]
     RouteNotFound(String),
 
     // Any errors related to a bad behavior of the server but not related to the user input
