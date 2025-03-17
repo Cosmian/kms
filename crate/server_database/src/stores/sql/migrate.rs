@@ -8,7 +8,7 @@ use cosmian_kmip::kmip_2_1::{
 use cosmian_kms_interfaces::ObjectsStore;
 use serde_json::Value;
 use sqlx::{Executor, IntoArguments, Row};
-use tracing::{error, info, trace};
+use tracing::{debug, error, info, trace};
 
 use crate::{
     error::{DbResult, DbResultHelper},
@@ -204,7 +204,9 @@ where
                 }
                 let dbobject_value: Value = serde_json::from_value(dbobject_json)
                     .context("failed deserializing the object")?;
+
                 let object = db_object_to_object(&dbobject_value)?;
+
                 let object_json = serde_json::to_value(&object)
                     .context("migration to 4.22.1+ failed: failed to serialize the object")?;
                 // Migrate Attributes --> Attributes
@@ -256,6 +258,7 @@ fn db_object_to_object(db_object: &Value) -> DbResult<Object> {
     // make sure we can actually deserialize and re-serialize the objects
     Ok(match object_type {
         "PrivateKey" => {
+            debug!("Private Key: {content:#?}");
             let obj = serde_json::from_value::<PrivateKey>(content).map_err(|e| {
                 DbError::DatabaseError(format!(
                     "migration to 4.22.1+ failed: failed to deserialize PrivateKey: {e}"
