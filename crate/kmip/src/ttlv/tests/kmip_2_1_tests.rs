@@ -161,7 +161,22 @@ fn test_ser_aes_key() {
     log_init(option_env!("RUST_LOG"));
     let key_bytes: &[u8] = b"this_is_a_test";
     let aes_key = aes_key(key_bytes);
+
+    // Serializer
     let ttlv = to_ttlv(&aes_key).unwrap();
+
+    // Serialize
+    let json = serde_json::to_string_pretty(&ttlv).unwrap();
+    info!("{}", json);
+
+    // Deserialize
+    let ttlv_from_json = serde_json::from_str::<TTLV>(&json).unwrap();
+    assert_eq!(ttlv, ttlv_from_json);
+
+    // Deserializer
+    let rec: Object = from_ttlv(ttlv.clone()).unwrap();
+    assert_eq!(aes_key, rec);
+
     assert_eq!(aes_key_ttlv(key_bytes), ttlv);
 }
 
@@ -173,7 +188,7 @@ fn test_des_int() {
         an_int: i32,
         another_int: i32,
     }
-    log_init(None);
+    log_init(option_env!("RUST_LOG"));
 
     let ttlv = TTLV {
         tag: "Test".to_owned(),
@@ -207,22 +222,19 @@ fn test_des_array() {
         ints: Vec<i32>,
     }
 
-    log_init(None);
+    log_init(option_env!("RUST_LOG"));
     let ttlv = TTLV {
         tag: "Test".to_owned(),
-        value: TTLValue::Structure(vec![TTLV {
-            tag: "Ints".to_owned(),
-            value: TTLValue::Structure(vec![
-                TTLV {
-                    tag: "Ints".to_owned(),
-                    value: TTLValue::Integer(2),
-                },
-                TTLV {
-                    tag: "Ints".to_owned(),
-                    value: TTLValue::Integer(4),
-                },
-            ]),
-        }]),
+        value: TTLValue::Structure(vec![
+            TTLV {
+                tag: "Ints".to_owned(),
+                value: TTLValue::Integer(2),
+            },
+            TTLV {
+                tag: "Ints".to_owned(),
+                value: TTLValue::Integer(4),
+            },
+        ]),
     };
 
     let rec: Test = from_ttlv(ttlv).unwrap();
@@ -236,7 +248,7 @@ fn test_des_enum() {
     struct Test {
         crypto_algo: CryptographicAlgorithm,
     }
-    log_init(None);
+    log_init(option_env!("RUST_LOG"));
 
     let ttlv = TTLV {
         tag: "Test".to_owned(),
@@ -323,6 +335,7 @@ fn test_key_material_big_int_deserialization() {
 
 #[test]
 fn test_big_int_deserialization() {
+    log_init(option_env!("RUST_LOG"));
     let km = KeyMaterial::TransparentDHPrivateKey {
         p: BigInt::from(u32::MAX).into(),
         q: Some(BigInt::from(1_u64).into()),
@@ -337,16 +350,28 @@ fn test_big_int_deserialization() {
 
 #[test]
 fn test_aes_key_material() {
-    log_init(None);
+    log_init(option_env!("RUST_LOG"));
     let key_bytes: &[u8] = b"this_is_a_test";
-    let ttlv = aes_key_material_ttlv(key_bytes);
+
+    // Serializer
+    let ttlv = to_ttlv(&aes_key_material(key_bytes)).unwrap();
+    info!("{:?}", ttlv);
+    assert_eq!(aes_key_material_ttlv(key_bytes), ttlv);
+
+    // Serialize
+    let json = serde_json::to_string_pretty(&ttlv).unwrap();
+    // Deserialize
+    let ttlv_from_json = serde_json::from_str::<TTLV>(&json).unwrap();
+    assert_eq!(ttlv, ttlv_from_json);
+
+    // Deserializer
     let rec: KeyMaterial = from_ttlv(ttlv).unwrap();
     assert_eq!(aes_key_material(key_bytes), rec);
 }
 
 #[test]
 fn test_aes_key_value() {
-    log_init(None);
+    log_init(option_env!("RUST_LOG"));
     let key_bytes: &[u8] = b"this_is_a_test";
     //
     let json = serde_json::to_value(aes_key_value(key_bytes)).unwrap();
@@ -396,8 +421,38 @@ fn test_des_aes_key() {
 }
 
 #[test]
+fn test_object_ibn_struct() {
+    #[derive(Serialize, Deserialize, PartialEq, Debug)]
+    #[serde(rename_all = "PascalCase")]
+    struct Wrapper {
+        object: Object,
+    }
+    // log_init(option_env!("RU ST_LOG"));
+    log_init(Some("trace"));
+
+    let wrapper = Wrapper {
+        object: aes_key(b"this_is_a_test"),
+    };
+
+    // Serializer
+    let ttlv = to_ttlv(&wrapper).unwrap();
+    info!("{:#?}", ttlv);
+    // Serialize
+    let json = serde_json::to_string_pretty(&ttlv).unwrap();
+    info!("{}", json);
+    // Deserialize
+    let ttlv_from_json = serde_json::from_str::<TTLV>(&json).unwrap();
+    assert_eq!(ttlv, ttlv_from_json);
+    // Deserializer
+    let rec: Wrapper = from_ttlv(ttlv).unwrap();
+    assert_eq!(wrapper, rec);
+}
+
+#[test]
 fn test_import_symmetric_key() {
-    log_init(option_env!("RUST_LOG"));
+    // log_init(option_env!("RUST_LOG"));
+    log_init(Some("trace"));
+
     let key_bytes: &[u8] = b"this_is_a_test";
     let key = aes_key(key_bytes);
     let import = Import {
@@ -505,7 +560,8 @@ fn test_some_attributes() {
         NoAttr { whatever: i32 },
     }
 
-    log_init(option_env!("RUST_LOG"));
+    // log_init(option_env!("RUST_LOG"));
+    log_init(Some("trace"));
 
     let value = Wrapper::Attr {
         attrs: Attributes {
@@ -518,6 +574,48 @@ fn test_some_attributes() {
     let ttlv_: TTLV = serde_json::from_value(json).unwrap();
     assert_eq!(ttlv, ttlv_);
     let rec: Wrapper = from_ttlv(ttlv_).unwrap();
+    assert_eq!(value, rec);
+}
+
+#[test]
+fn test_untagged_enum() {
+    #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+    #[serde(untagged)]
+    enum Untagged {
+        #[serde(rename_all = "PascalCase")]
+        AnInt { the_int: i32 },
+        #[serde(rename_all = "PascalCase")]
+        ALong { the_long: i64 },
+    }
+
+    log_init(option_env!("RUST_LOG"));
+    log_init(Some("trace"));
+
+    let value = Untagged::AnInt { the_int: 12 };
+
+    // Serializer
+    let ttlv = to_ttlv(&value).unwrap();
+    assert_eq!(
+        ttlv,
+        TTLV {
+            tag: "Untagged".to_owned(),
+            value: TTLValue::Structure(vec![TTLV {
+                tag: "TheInt".to_owned(),
+                value: TTLValue::Integer(12)
+            }])
+        }
+    );
+
+    // Serialize
+    let json = serde_json::to_string_pretty(&ttlv).unwrap();
+    info!("{}", json);
+
+    // Deserialize
+    let ttlv_from_json = serde_json::from_str::<TTLV>(&json).unwrap();
+    assert_eq!(ttlv, ttlv_from_json);
+
+    // Deserializer
+    let rec: Untagged = from_ttlv(ttlv).unwrap();
     assert_eq!(value, rec);
 }
 
@@ -617,7 +715,8 @@ fn test_byte_string_key_material() {
 
 #[test]
 fn test_aes_key_full() {
-    log_init(option_env!("RUST_LOG"));
+    // log_init(option_env!("RUST_LOG"));
+    log_init(Some("trace"));
     let key_bytes: &[u8] = b"this_is_a_test";
     let aes_key = aes_key(key_bytes);
     let ttlv = to_ttlv(&aes_key).unwrap();
@@ -769,7 +868,7 @@ fn get_key_block() -> KeyBlock {
 
 #[test]
 pub(crate) fn test_message_request() {
-    log_init(Some("trace"));
+    log_init(option_env!("RUST_LOG"));
 
     let req = RequestMessage {
         request_header: RequestMessageHeader {
@@ -827,7 +926,7 @@ pub(crate) fn test_message_request() {
 
 #[test]
 pub(crate) fn test_message_response() {
-    log_init(None);
+    log_init(option_env!("RUST_LOG"));
 
     let res = ResponseMessage {
         response_header: ResponseMessageHeader {

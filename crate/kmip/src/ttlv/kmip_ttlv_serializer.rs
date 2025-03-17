@@ -564,15 +564,17 @@ impl ser::Serializer for &mut TTLVSerializer {
     // and will be known at deserialization time
     // without looking at the serialized data,
     // for example, struct S { r: u8, g: u8, b: u8 }.
-    // The strategy is as follows:
-    // - create a new parent TTLV structure and push it into `parents`
-    // - serialize the fields of the struct, adding them to this new parent
-    // - when the struct is done, pop the parent from `parents` and add it to the last parent
     #[instrument(skip(self))]
     fn serialize_struct(self, name: &'static str, len: usize) -> Result<Self::SerializeStruct> {
         if let Some(parent) = self.stack.peek_mut() {
+            // the children will be handled in SerializeStruct impl
             trace!("serialize_struct named: {name} in parent: {:?}", parent);
             parent.value = TTLValue::Structure(Vec::with_capacity(len));
+            // corner case: when the parent has a filed named `object`, then the
+            // the field name must be replaced the the `name`of the struct: example: SymmetricKey
+            if parent.tag == "Object" {
+                name.clone_into(&mut parent.tag);
+            }
         } else {
             trace!(
                 "serialize_struct, no parent found, creating a new one with tag: {}",
@@ -929,7 +931,7 @@ impl SerializeStructVariant for &mut TTLVSerializer {
     type Error = TtlvError;
     type Ok = ();
 
-    //#[instrument(skip(self, value))]
+    #[instrument(skip(self, value))]
     fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<Self::Ok>
     where
         T: ?Sized + Serialize,
@@ -937,7 +939,7 @@ impl SerializeStructVariant for &mut TTLVSerializer {
         <&mut TTLVSerializer as SerializeStruct>::serialize_field(self, key, value)
     }
 
-    // #[instrument(skip(self))]
+    #[instrument(skip(self))]
     fn end(self) -> Result<Self::Ok> {
         <&mut TTLVSerializer as SerializeStruct>::end(self)
     }
