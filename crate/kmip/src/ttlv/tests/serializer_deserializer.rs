@@ -282,7 +282,7 @@ fn test_enumeration_untagged() {
         TwoString(String),
     }
 
-    #[derive(Serialize, Deserialize)]
+    #[derive(Serialize, Deserialize, Debug, PartialEq)]
     #[serde(rename_all = "PascalCase")]
     struct Test {
         an_enum: Enumeration,
