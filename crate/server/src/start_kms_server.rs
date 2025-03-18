@@ -422,6 +422,7 @@ pub async fn prepare_kms_server(
             // CORS middleware is the last one so that the auth middlewares do not run on
             // preflight (OPTION) requests.
             .wrap(Cors::permissive())
+            .service(kmip::kmip_2_1_json)
             .service(kmip::kmip)
             .service(access::list_owned_objects)
             .service(access::list_access_rights_obtained)
