@@ -27,10 +27,11 @@ use serde::{
 use time::OffsetDateTime;
 
 use super::{
-    kmip_operations::{Direction, ErrorReason, Operation},
+    kmip_operations::{Direction, Operation},
     kmip_types::{
         AsynchronousIndicator, AttestationType, BatchErrorContinuationOption, Credential,
-        MessageExtension, Nonce, OperationEnumeration, ProtocolVersion, ResultStatusEnumeration,
+        ErrorReason, MessageExtension, Nonce, OperationEnumeration, ProtocolVersion,
+        ResultStatusEnumeration,
     },
 };
 
@@ -316,7 +317,7 @@ impl<'de> Deserialize<'de> for RequestMessageBatchItem {
                             }
                             // we must have parsed the `operation` field before
                             // TODO: handle the case where the keys are not in right order
-                            let Some(operation) = operation else {
+                            let Some(operation) = &operation else {
                                 return Err(de::Error::missing_field("operation"))
                             };
                             // recover by hand the proper type of `request_payload`
