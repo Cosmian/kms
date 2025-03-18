@@ -58,7 +58,7 @@ fi
 
 rustup target add "$TARGET"
 
-if [ "$(uname)" = "Linux" ]; then
+if [ -f /etc/lsb-release ]; then
   bash .github/scripts/test_utimaco.sh
 fi
 
