@@ -20,7 +20,7 @@ sudo echo -e "[Global]\nLogpath = /tmp\nLogging = 3\n[CryptoServer]\nDevice = 30
 export CS_PKCS11_R3_CFG=/etc/utimaco/cs_pkcs11_R3.cfg
 
 cd ./hsm-simulator/Administration
-pwd
+ll -alh
 
 # set the SO PIN to 11223344
 ./p11tool2 Slot=0 login=ADMIN,./key/ADMIN_SIM.key  InitToken=11223344
