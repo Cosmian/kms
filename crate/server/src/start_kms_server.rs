@@ -413,28 +413,28 @@ pub async fn prepare_kms_server(
                 );
             }
 
-            // The default scope serves from the root / the KMIP, permissions, and tee endpoints
-            let default_scope = web::scope("")
-                .app_data(web::Data::new(privileged_users.clone()))
-                .wrap(AuthTransformer::new(
-                    kms_server.clone(),
-                    jwt_configurations.clone(),
-                )) // Use JWT for authentication if necessary.
-                .wrap(Condition::new(use_cert_auth, SslAuth)) // Use certificates for authentication if necessary.
-                // Enable CORS for the application.
-                // Since Actix is running the middlewares in reverse order, it's important that the
-                // CORS middleware is the last one so that the auth middlewares do not run on
-                // preflight (OPTION) requests.
-                .wrap(Cors::permissive())
-                .service(kmip::kmip_2_1)
-                .service(access::list_owned_objects)
-                .service(access::list_access_rights_obtained)
-                .service(access::list_accesses)
-                .service(access::grant_access)
-                .service(access::revoke_access)
-                .service(access::get_create_access)
-                .service(access::get_privileged_access)
-                .service(get_version);
+        // The default scope serves from the root / the KMIP, permissions, and tee endpoints
+        let default_scope = web::scope("")
+            .wrap(AuthTransformer::new(
+                kms_server.clone(),
+                jwt_configurations.clone(),
+            )) // Use JWT for authentication if necessary.
+            .wrap(Condition::new(use_cert_auth, SslAuth)) // Use certificates for authentication if necessary.
+            // Enable CORS for the application.
+            // Since Actix is running the middlewares in reverse order, it's important that the
+            // CORS middleware is the last one so that the auth middlewares do not run on
+            // preflight (OPTION) requests.
+            .wrap(Cors::permissive())
+            .service(kmip::kmip_2_1_json)
+            .service(kmip::kmip)
+            .service(access::list_owned_objects)
+            .service(access::list_access_rights_obtained)
+            .service(access::list_accesses)
+            .service(access::grant_access)
+            .service(access::revoke_access)
+            .service(access::get_create_access)
+            .service(access::get_privileged_access)
+            .service(get_version);
 
         app.service(default_scope)
     })
