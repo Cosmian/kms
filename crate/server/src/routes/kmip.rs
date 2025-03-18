@@ -77,7 +77,7 @@ pub(crate) async fn kmip(
         .to_str()
         .map_err(|e| KmsError::InvalidRequest(format!("Cannot parse content type: {e}")))?;
     match content_type {
-        "application/octet-stream" => kmip_binary(req_http, body, kms),
+        "application/octet-stream" => Ok(kmip_binary(req_http, body, kms)),
         "application/json" => {
             let body = String::from_utf8(body.to_vec())?;
             kmip_json(req_http, body, kms)
@@ -124,17 +124,18 @@ pub(crate) async fn kmip_json(
 
 /// Handle KMIP requests with binary content type
 #[allow(dead_code)]
+#[allow(clippy::needless_pass_by_value)]
 pub(crate) fn kmip_binary(
     _req_http: HttpRequest,
     _body: Bytes,
     _kms: Data<Arc<KMS>>,
-) -> KResult<HttpResponse> {
+) -> HttpResponse {
     let span = tracing::span!(tracing::Level::INFO, "kmip_binary");
     let _enter = span.enter();
 
-    Ok(HttpResponse::Ok()
+    HttpResponse::Ok()
         .content_type("application/octet-stream")
-        .body(b"OK".as_slice()))
+        .body(b"OK".as_slice())
 
     // let ttlv = TTLV::from_bytes(&body)?;
     // let user = kms.get_user(&req_http);
