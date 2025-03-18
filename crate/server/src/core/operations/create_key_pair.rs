@@ -214,7 +214,6 @@ pub(crate) fn generate_key_pair(
                         create_ed25519_key_pair(
                             private_key_uid,
                             public_key_uid,
-                            &cryptographic_algorithm,
                             common_attributes,
                             request.private_key_attributes,
                             request.public_key_attributes,
@@ -248,7 +247,6 @@ pub(crate) fn generate_key_pair(
                         create_ed448_key_pair(
                             private_key_uid,
                             public_key_uid,
-                            &cryptographic_algorithm,
                             common_attributes,
                             request.private_key_attributes,
                             request.public_key_attributes,
@@ -280,7 +278,6 @@ pub(crate) fn generate_key_pair(
         CryptographicAlgorithm::Ed25519 => create_ed25519_key_pair(
             private_key_uid,
             public_key_uid,
-            &cryptographic_algorithm,
             common_attributes,
             request.private_key_attributes,
             request.public_key_attributes,
@@ -288,7 +285,6 @@ pub(crate) fn generate_key_pair(
         CryptographicAlgorithm::Ed448 => create_ed448_key_pair(
             private_key_uid,
             public_key_uid,
-            &cryptographic_algorithm,
             common_attributes,
             request.private_key_attributes,
             request.public_key_attributes,
