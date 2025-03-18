@@ -99,7 +99,7 @@ async fn test_encrypt_decrypt_using_object_ids() -> CliResult<()> {
 
     let (master_secret_key_id, master_public_key_id) = create_cc_master_key_pair(
         &ctx.owner_client_conf_path,
-        "--access-structure-specification",
+        "--specification",
         "../../test_data/access_structure_specifications.json",
         &[],
         false,
@@ -189,7 +189,7 @@ async fn test_encrypt_decrypt_bulk_using_object_ids() -> CliResult<()> {
 
     let (master_secret_key_id, master_public_key_id) = create_cc_master_key_pair(
         &ctx.owner_client_conf_path,
-        "--access-structure-specification",
+        "--specification",
         "../../test_data/access_structure_specifications.json",
         &[],
         false,
@@ -309,7 +309,7 @@ async fn test_encrypt_decrypt_using_tags() -> CliResult<()> {
 
     let (master_secret_key_id, _master_public_key_id) = create_cc_master_key_pair(
         &ctx.owner_client_conf_path,
-        "--access-structure-specification",
+        "--specification",
         "../../test_data/access_structure_specifications.json",
         &["tag"],
         false,
@@ -432,7 +432,7 @@ async fn test_encrypt_decrypt_bulk_using_tags() -> CliResult<()> {
 
     let (master_secret_key_id, _master_public_key_id) = create_cc_master_key_pair(
         &ctx.owner_client_conf_path,
-        "--access-structure-specification",
+        "--specification",
         "../../test_data/access_structure_specifications.json",
         &["tag_bulk"],
         false,

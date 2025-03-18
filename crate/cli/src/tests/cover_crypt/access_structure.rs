@@ -185,7 +185,7 @@ async fn test_edit_access_structure() -> CliResult<()> {
     // generate a new master key pair
     let (master_secret_key_id, master_public_key_id) = create_cc_master_key_pair(
         &ctx.owner_client_conf_path,
-        "--access-structure-specification",
+        "--specification",
         "../../test_data/access_structure_specifications.json",
         &[],
         false,

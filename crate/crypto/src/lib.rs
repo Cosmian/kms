@@ -52,8 +52,6 @@
 )]
 // required to detect generic type in Serializer
 #![feature(min_specialization)]
-// To parse a slice
-#![feature(slice_take)]
 
 pub use error::{result::CryptoResultHelper, CryptoError};
 

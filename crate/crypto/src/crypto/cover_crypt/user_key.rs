@@ -8,7 +8,7 @@ use cosmian_kmip::kmip_2_1::{
         LinkedObjectIdentifier,
     },
 };
-use tracing::{debug, trace};
+use tracing::trace;
 use zeroize::Zeroizing;
 
 use crate::{
@@ -49,32 +49,21 @@ pub(crate) fn unwrap_user_decryption_key_object(
 
 /// Handles operations on user keys, caching the engine
 /// and the master key information for efficiency
-pub struct UserDecryptionKeysHandler {
-    cover_crypt: Covercrypt,
-    pub master_secret_key: MasterSecretKey,
+pub struct UserDecryptionKeysHandler<'a> {
+    cover_crypt: &'a Covercrypt,
+    msk: &'a mut MasterSecretKey,
 }
 
-impl UserDecryptionKeysHandler {
-    pub fn instantiate(
-        cover_crypt: Covercrypt,
-        master_secret_key: &Object,
-    ) -> Result<Self, CryptoError> {
-        let msk_key_block = master_secret_key.key_block()?;
-        let msk_key_bytes = msk_key_block.key_bytes()?;
-        debug!("instantiate: msk_key_bytes len: {}", msk_key_bytes.len());
-        let msk = MasterSecretKey::deserialize(&msk_key_bytes)?;
-        debug!("instantiate: MSK deserialize success");
-        Ok(Self {
-            cover_crypt,
-            master_secret_key: msk,
-        })
+impl<'a> UserDecryptionKeysHandler<'a> {
+    pub fn instantiate(cover_crypt: &'a Covercrypt, msk: &'a mut MasterSecretKey) -> Self {
+        Self { cover_crypt, msk }
     }
 
     /// Create a User Decryption Key Object from the passed master secret key bytes,
     /// Access Policy and optional additional attributes
     ///
     /// see `cover_crypt_unwrap_user_decryption_key` for the reverse operation
-    pub fn create_user_decryption_key_object(
+    pub fn create_usk_object(
         &mut self,
         access_policy_str: &str,
         attributes: Option<&Attributes>,
@@ -87,7 +76,7 @@ impl UserDecryptionKeysHandler {
         trace!("create_user_decryption_key_object: Access Policy: {access_policy:?}");
         let uk = self
             .cover_crypt
-            .generate_user_secret_key(&mut self.master_secret_key, &access_policy)
+            .generate_user_secret_key(self.msk, &access_policy)
             .map_err(|e| CryptoError::Kmip(e.to_string()))?;
 
         trace!("Created user decryption key with access policy: {access_policy:?}");
@@ -140,7 +129,7 @@ impl UserDecryptionKeysHandler {
         })?;
 
         self.cover_crypt
-            .refresh_usk(&mut self.master_secret_key, &mut usk, keep_old_rights)
+            .refresh_usk(self.msk, &mut usk, keep_old_rights)
             .map_err(|e| {
                 CryptoError::Kmip(format!(
                     "covercrypt: failed refreshing the user decryption key: {e}"
