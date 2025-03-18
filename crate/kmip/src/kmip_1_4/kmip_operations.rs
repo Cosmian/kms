@@ -3,6 +3,7 @@ use std::fmt::{self, Display};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
+use super::kmip_objects::Certificate;
 #[allow(clippy::wildcard_imports)]
 use super::{
     kmip_data_structures::*,
@@ -414,15 +415,24 @@ pub struct RecoverResponse {
 /// 4.24 Validate
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct Validate {
-    pub unique_identifier: String,
+    /// One or more Certificates.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub certificate: Option<Vec<Certificate>>,
+    /// One or more Unique Identifiers of Certificate Objects.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<Vec<UniqueIdentifier>>,
+    /// A Date-Time object indicating when the certificate chain needs to be
+    /// valid. If omitted, the current date and time SHALL be assumed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub validity_time: Option<OffsetDateTime>,
 }
 
 /// Response to a Validate request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct ValidateResponse {
-    pub unique_identifier: String,
-    pub validation_type: ValidationType,
-    pub validation_result: ValidationResult,
+    /// An Enumeration object indicating whether the certificate chain is valid,
+    /// invalid, or unknown.
+    pub validity_indicator: ValidityIndicator,
 }
 
 /// 4.25 Query
@@ -434,18 +444,45 @@ pub struct Query {
 /// Response to a Query request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct QueryResponse {
+    /// List of operations supported by the server.
     pub operations: Vec<Operation>,
+
+    /// List of object types that the server supports.
     pub object_types: Vec<ObjectType>,
-    pub vendor_identification: String,
+
+    /// List of vendor extensions supported by the server.
+    pub vendor_identification: Option<String>,
+
+    /// Detailed information about the server.
     pub server_information: String,
-    pub profile_information: Option<Vec<ProfileInfo>>,
-    pub validation_information: Option<Vec<ValidationInfo>>,
-    pub capability_information: Option<Vec<CapabilityInfo>>,
-    pub client_registration_methods: Option<Vec<ClientRegistrationMethod>>,
+    /// List of extensions supported by the server.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extension_information: Option<Vec<ExtensionInformation>>,
+
+    /// List of attestation types supported by the server.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub attestation_types: Option<Vec<AttestationType>>,
+
+    /// The RNG Parameters base object is a structure that contains a mandatory RNG Algorithm
+    /// and a set of OPTIONAL fields that describe a Random Number Generator
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub rng_parameters: Option<Vec<RNGParameters>>,
-    pub profile_versions: Option<Vec<String>>,
-    pub validation_versions: Option<Vec<String>>,
+
+    /// List of profiles supported by the server.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub profiles_information: Option<Vec<ProfileInformation>>,
+
+    /// List of supported validation authorities.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub validation_information: Option<Vec<ValidationInformation>>,
+
+    /// List of supported capabilities.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub capability_information: Option<Vec<CapabilityInformation>>,
+
+    /// Specifies a Client Registration Method that is supported by the server.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cient_registration_method: Option<Vec<ClientRegistrationMethod>>,
 }
 
 /// 4.26 Discover Versions
