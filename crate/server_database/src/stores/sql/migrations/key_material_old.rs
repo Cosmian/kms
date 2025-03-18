@@ -1,7 +1,10 @@
 use std::fmt::Display;
 
-use cosmian_kmip::kmip_2_1::kmip_types::RecommendedCurve;
-use num_bigint_dig::BigUint;
+use cosmian_kmip::{
+    kmip_2_1::{kmip_data_structures::KeyMaterial, kmip_types::RecommendedCurve},
+    SafeBigInt,
+};
+use num_bigint_dig::{BigInt, BigUint, Sign};
 use serde::{
     de,
     de::{MapAccess, Visitor},
@@ -9,9 +12,9 @@ use serde::{
 };
 use zeroize::Zeroizing;
 
-#[derive(Clone, Eq, PartialEq)]
-/// Private fields are represented using a Zeroizing object: either array of
-/// bytes, or `BigUint` type.
+#[derive(Clone, Eq, PartialEq, Debug)]
+/// This is the `KeyMaterial` enum used in KMS 4.21 and earlier versions
+/// that uses `BigUint`. The new version of `KeyMaterial` uses `BigInt`.
 pub(super) enum KeyMaterial421 {
     ByteString(Zeroizing<Vec<u8>>),
     TransparentDHPrivateKey {
@@ -397,5 +400,96 @@ impl<'de> Deserialize<'de> for KeyMaterial421 {
             "q_string",
         ];
         deserializer.deserialize_struct("KeyMaterial421", FIELDS, KeyMaterialVisitor)
+    }
+}
+
+impl From<KeyMaterial421> for KeyMaterial {
+    fn from(key_material: KeyMaterial421) -> Self {
+        match key_material {
+            KeyMaterial421::ByteString(byte_string) => Self::ByteString(byte_string),
+            KeyMaterial421::TransparentDHPrivateKey { p, q, g, j, x } => {
+                Self::TransparentDHPrivateKey {
+                    p: Box::new(BigInt::from_biguint(Sign::Plus, *p)),
+                    q: q.map(|q| Box::new(BigInt::from_biguint(Sign::Plus, *q))),
+                    g: Box::new(BigInt::from_biguint(Sign::Plus, *g)),
+                    j: j.map(|j| Box::new(BigInt::from_biguint(Sign::Plus, *j))),
+                    x: Box::new(SafeBigInt::from(*x)),
+                }
+            }
+            KeyMaterial421::TransparentDHPublicKey { p, q, g, j, y } => {
+                Self::TransparentDHPublicKey {
+                    p: Box::new(BigInt::from_biguint(Sign::Plus, *p)),
+                    q: q.map(|q| Box::new(BigInt::from_biguint(Sign::Plus, *q))),
+                    g: Box::new(BigInt::from_biguint(Sign::Plus, *g)),
+                    j: j.map(|j| Box::new(BigInt::from_biguint(Sign::Plus, *j))),
+                    y: Box::new(BigInt::from_biguint(Sign::Plus, *y)),
+                }
+            }
+            KeyMaterial421::TransparentDSAPrivateKey { p, q, g, x } => {
+                Self::TransparentDSAPrivateKey {
+                    p: Box::new(BigInt::from_biguint(Sign::Plus, *p)),
+                    q: Box::new(BigInt::from_biguint(Sign::Plus, *q)),
+                    g: Box::new(BigInt::from_biguint(Sign::Plus, *g)),
+                    x: Box::new(SafeBigInt::from(*x)),
+                }
+            }
+            KeyMaterial421::TransparentDSAPublicKey { p, q, g, y } => {
+                Self::TransparentDSAPublicKey {
+                    p: Box::new(BigInt::from_biguint(Sign::Plus, *p)),
+                    q: Box::new(BigInt::from_biguint(Sign::Plus, *q)),
+                    g: Box::new(BigInt::from_biguint(Sign::Plus, *g)),
+                    y: Box::new(BigInt::from_biguint(Sign::Plus, *y)),
+                }
+            }
+            KeyMaterial421::TransparentSymmetricKey { key } => {
+                Self::TransparentSymmetricKey { key }
+            }
+            KeyMaterial421::TransparentRSAPublicKey {
+                modulus,
+                public_exponent,
+            } => Self::TransparentRSAPublicKey {
+                modulus: Box::new(BigInt::from_biguint(Sign::Plus, *modulus)),
+                public_exponent: Box::new(BigInt::from_biguint(Sign::Plus, *public_exponent)),
+            },
+            KeyMaterial421::TransparentRSAPrivateKey {
+                modulus,
+                private_exponent,
+                public_exponent,
+                p,
+                q,
+                prime_exponent_p,
+                prime_exponent_q,
+                crt_coefficient,
+            } => Self::TransparentRSAPrivateKey {
+                modulus: Box::new(BigInt::from_biguint(Sign::Plus, *modulus)),
+                private_exponent: private_exponent
+                    .map(|private_exponent| Box::new(SafeBigInt::from(*private_exponent))),
+                public_exponent: public_exponent.map(|public_exponent| {
+                    Box::new(BigInt::from_biguint(Sign::Plus, *public_exponent))
+                }),
+                p: p.map(|p| Box::new(SafeBigInt::from(*p))),
+                q: q.map(|q| Box::new(SafeBigInt::from(*q))),
+                prime_exponent_p: prime_exponent_p
+                    .map(|prime_exponent_p| Box::new(SafeBigInt::from(*prime_exponent_p))),
+                prime_exponent_q: prime_exponent_q
+                    .map(|prime_exponent_q| Box::new(SafeBigInt::from(*prime_exponent_q))),
+                crt_coefficient: crt_coefficient
+                    .map(|crt_coefficient| Box::new(SafeBigInt::from(*crt_coefficient))),
+            },
+            KeyMaterial421::TransparentECPrivateKey {
+                recommended_curve,
+                d,
+            } => Self::TransparentECPrivateKey {
+                recommended_curve,
+                d: Box::new(SafeBigInt::from(*d)),
+            },
+            KeyMaterial421::TransparentECPublicKey {
+                recommended_curve,
+                q_string,
+            } => Self::TransparentECPublicKey {
+                recommended_curve,
+                q_string,
+            },
+        }
     }
 }
