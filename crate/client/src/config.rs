@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::KmsClientError;
 
-pub const KMS_CLI_CONF_ENV: &str = "./test_data/configs/kms_hsm.toml";
+pub const KMS_CLI_CONF_ENV: &str = "KMS_CLI_CONF";
 pub(crate) const KMS_CLI_CONF_DEFAULT_SYSTEM_PATH: &str = "/etc/cosmian/kms.toml";
 pub(crate) const KMS_CLI_CONF_PATH: &str = ".cosmian/kms.toml";
 
