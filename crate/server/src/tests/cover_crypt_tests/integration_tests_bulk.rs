@@ -37,7 +37,7 @@ async fn integration_tests_bulk() -> KResult<()> {
         ],
     };
 
-    let response: ResponseMessage = test_utils::post(&app, &request_message).await?;
+    let response: ResponseMessage = test_utils::post_2_1(&app, &request_message).await?;
     assert_eq!(response.batch_item.len(), 2);
 
     // 1. Create keypair

@@ -80,7 +80,7 @@ async fn decrypt_data_test() -> KResult<()> {
             },
         }),
     };
-    let import_response: ImportResponse = test_utils::post(&app, &import_key).await?;
+    let import_response: ImportResponse = test_utils::post_2_1(&app, &import_key).await?;
     let key_id = import_response.unique_identifier;
 
     // encrypted data
@@ -98,7 +98,7 @@ async fn decrypt_data_test() -> KResult<()> {
         data: Some(ciphertext),
         ..Decrypt::default()
     };
-    let decrypt_response: DecryptResponse = test_utils::post(&app, &decrypt_request).await?;
+    let decrypt_response: DecryptResponse = test_utils::post_2_1(&app, &decrypt_request).await?;
     println!("plaintext: {:?}", decrypt_response.data);
     println!(
         "plaintext len: {:?}",

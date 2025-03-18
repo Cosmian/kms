@@ -26,7 +26,7 @@ async fn bulk_encrypt_decrypt() -> KResult<()> {
     let app = test_utils::test_app(None).await;
 
     let response: CreateResponse =
-        test_utils::post(&app, aes_256_gcm_key_request(Vec::<String>::new())?).await?;
+        test_utils::post_2_1(&app, aes_256_gcm_key_request(Vec::<String>::new())?).await?;
     let key_id = response.unique_identifier;
 
     let mut messages = Vec::with_capacity(NUM_MESSAGES);
@@ -36,7 +36,7 @@ async fn bulk_encrypt_decrypt() -> KResult<()> {
     }
 
     // Bulk encrypt the messages
-    let response: EncryptResponse = test_utils::post(
+    let response: EncryptResponse = test_utils::post_2_1(
         &app,
         encrypt_request(key_id.clone(), &BulkData::from(messages.clone()))?,
     )
@@ -50,7 +50,7 @@ async fn bulk_encrypt_decrypt() -> KResult<()> {
 
     // Bulk decrypt the messages
     let response: DecryptResponse =
-        test_utils::post(&app, decrypt_request(key_id.clone(), &ciphertexts)?).await?;
+        test_utils::post_2_1(&app, decrypt_request(key_id.clone(), &ciphertexts)?).await?;
     let plaintexts = BulkData::deserialize(
         response
             .data
