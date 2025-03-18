@@ -10,7 +10,8 @@ tar -xvf hsm-simulator.tar.xz
 rm hsm-simulator.tar.xz
 ./hsm-simulator/sim5_linux/bin/bl_sim5 -h -o -d ./hsm-simulator/sim5_linux/devices &
 
-#sudo telnet localhost 3001
+sleep 30
+
 sudo cp ./hsm-simulator/libcs_pkcs11_R3.so /lib
 sudo mkdir -p /etc/utimaco
 sudo chmod 755 /etc/utimaco/
@@ -22,14 +23,14 @@ export CS_PKCS11_R3_CFG=/etc/utimaco/cs_pkcs11_R3.cfg
 cd ./hsm-simulator/Administration
 
 # set the SO PIN to 11223344
-sudo ./p11tool2 Slot=0 login=ADMIN,./hsm-simulator/Administration/key/ADMIN_SIM.key  InitToken=11223344
+./p11tool2 Slot=0 login=ADMIN,./key/ADMIN_SIM.key  InitToken=11223344
 # Change the SO PIN to 12345678
-sudo ./p11tool2 Slot=0 LoginSO=11223344 SetPin=11223344,12345678
+./p11tool2 Slot=0 LoginSO=11223344 SetPin=11223344,12345678
 # Set the User PIN to 11223344
-sudo ./p11tool2 Slot=0 LoginSO=12345678 InitPin=11223344
+./p11tool2 Slot=0 LoginSO=12345678 InitPin=11223344
 # Change the User PIN to 12345678
-sudo ./p11tool2 Slot=0 LoginUser=11223344 SetPin=11223344,12345678
+./p11tool2 Slot=0 LoginUser=11223344 SetPin=11223344,12345678
 
-sudo ./p11tool2 Slot=0 GetSlotInfo
+./p11tool2 Slot=0 GetSlotInfo
 
 HSM_USER_PASSWORD="12345678" cargo test -p utimaco_pkcs11_loader --target x86_64-unknown-linux-gnu --features utimaco -- tests::test_all
