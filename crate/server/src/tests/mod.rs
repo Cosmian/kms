@@ -10,6 +10,7 @@ pub(crate) mod test_validate;
 mod bulk_encrypt_decrypt_tests;
 #[cfg(not(feature = "fips"))]
 mod curve_25519_tests;
+mod kmip_endpoints;
 #[cfg(not(feature = "fips"))]
 mod kmip_messages;
 #[cfg(not(feature = "fips"))]
