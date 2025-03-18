@@ -308,11 +308,29 @@ pub fn create_x448_key_pair(
 pub fn create_ed25519_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
-    cryptographic_algorithm: &CryptographicAlgorithm,
     common_attributes: Attributes,
     private_key_attributes: Option<Attributes>,
     public_key_attributes: Option<Attributes>,
 ) -> Result<KeyPair, CryptoError> {
+    #[cfg(feature = "fips")]
+    {
+        // Cryptographic Usage Masks
+        let private_key_mask = private_key_attributes
+            .as_ref()
+            .and_then(|attr| attr.cryptographic_usage_mask);
+        let public_key_mask = public_key_attributes
+            .as_ref()
+            .and_then(|attr| attr.cryptographic_usage_mask);
+
+        // Validate FIPS algorithms and mask.
+        check_ecc_mask_algorithm_compliance(
+            private_key_mask,
+            public_key_mask,
+            CryptographicAlgorithm::Ed25519,
+            &[CryptographicAlgorithm::Ed25519],
+        )?;
+    }
+
     let private_key = PKey::generate_ed25519()?;
     let private_key_bytes = Zeroizing::from(private_key.raw_private_key()?);
     let private_key_num_bits = private_key.bits();
@@ -325,7 +343,7 @@ pub fn create_ed25519_key_pair(
         private_key_uid,
         public_key_uid,
         RecommendedCurve::CURVEED25519,
-        *cryptographic_algorithm,
+        CryptographicAlgorithm::Ed25519,
         common_attributes,
         private_key_attributes,
         public_key_attributes,
@@ -341,12 +359,31 @@ pub fn create_ed25519_key_pair(
 pub fn create_ed448_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
-    cryptographic_algorithm: &CryptographicAlgorithm,
     common_attributes: Attributes,
     private_key_attributes: Option<Attributes>,
     public_key_attributes: Option<Attributes>,
 ) -> Result<KeyPair, CryptoError> {
     trace!("create_ed448_key_pair");
+
+    #[cfg(feature = "fips")]
+    {
+        // Cryptographic Usage Masks
+        let private_key_mask = private_key_attributes
+            .as_ref()
+            .and_then(|attr| attr.cryptographic_usage_mask);
+        let public_key_mask = public_key_attributes
+            .as_ref()
+            .and_then(|attr| attr.cryptographic_usage_mask);
+
+        // Validate FIPS algorithms and mask.
+        check_ecc_mask_algorithm_compliance(
+            private_key_mask,
+            public_key_mask,
+            CryptographicAlgorithm::Ed448,
+            &[CryptographicAlgorithm::Ed448],
+        )?;
+    }
+
     let private_key = PKey::generate_ed448()?;
     let private_key_bytes = Zeroizing::from(private_key.raw_private_key()?);
     let private_key_num_bits = private_key.bits();
@@ -359,7 +396,7 @@ pub fn create_ed448_key_pair(
         private_key_uid,
         public_key_uid,
         RecommendedCurve::CURVEED448,
-        *cryptographic_algorithm,
+        CryptographicAlgorithm::Ed448,
         common_attributes,
         private_key_attributes,
         public_key_attributes,
@@ -375,6 +412,29 @@ pub fn create_approved_ecc_key_pair(
     private_key_attributes: Option<Attributes>,
     public_key_attributes: Option<Attributes>,
 ) -> Result<KeyPair, CryptoError> {
+    #[cfg(feature = "fips")]
+    {
+        // Cryptographic Usage Masks
+        let private_key_mask = private_key_attributes
+            .as_ref()
+            .and_then(|attr| attr.cryptographic_usage_mask);
+        let public_key_mask = public_key_attributes
+            .as_ref()
+            .and_then(|attr| attr.cryptographic_usage_mask);
+
+        // Validate FIPS algorithms and mask.
+        check_ecc_mask_algorithm_compliance(
+            private_key_mask,
+            public_key_mask,
+            CryptographicAlgorithm::Ed448,
+            &[
+                CryptographicAlgorithm::EC,
+                CryptographicAlgorithm::ECDSA,
+                CryptographicAlgorithm::ECDH,
+            ],
+        )?;
+    }
+
     let curve_nid = match curve {
         #[cfg(not(feature = "fips"))]
         RecommendedCurve::P192 => Nid::X9_62_PRIME192V1,
@@ -430,21 +490,6 @@ fn create_ec_key_pair(
     let public_key_mask = public_key_attributes
         .as_ref()
         .and_then(|attr| attr.cryptographic_usage_mask);
-
-    #[cfg(feature = "fips")]
-    // Validate FIPS algorithms and mask.
-    check_ecc_mask_algorithm_compliance(
-        private_key_mask,
-        public_key_mask,
-        cryptographic_algorithm,
-        &[
-            CryptographicAlgorithm::EC,
-            CryptographicAlgorithm::ECDSA,
-            CryptographicAlgorithm::ECDH,
-            CryptographicAlgorithm::Ed448,
-            CryptographicAlgorithm::Ed25519,
-        ],
-    )?;
 
     // recover tags and clean them up from the common attributes
     let tags = common_attributes.remove_tags().unwrap_or_default();
@@ -551,7 +596,6 @@ mod tests {
         // Load FIPS provider module from OpenSSL.
         Provider::load(None, "fips").unwrap();
 
-        let algorithm = CryptographicAlgorithm::Ed25519;
         let private_key_attributes = Attributes {
             cryptographic_usage_mask: Some(CryptographicUsageMask::Sign),
             ..Attributes::default()
@@ -564,7 +608,6 @@ mod tests {
         let keypair1 = create_ed25519_key_pair(
             "sk_uid1",
             "pk_uid1",
-            &algorithm,
             Attributes::default(),
             Some(private_key_attributes.clone()),
             Some(public_key_attributes.clone()),
@@ -573,7 +616,6 @@ mod tests {
         let keypair2 = create_ed25519_key_pair(
             "sk_uid2",
             "pk_uid2",
-            &algorithm,
             Attributes::default(),
             Some(private_key_attributes),
             Some(public_key_attributes),
@@ -1145,7 +1187,6 @@ mod tests {
 
         assert!(res.is_err());
 
-        let algorithm = CryptographicAlgorithm::Ed448;
         let private_key_attributes = Attributes {
             cryptographic_usage_mask: Some(CryptographicUsageMask::Sign),
             ..Attributes::default()
@@ -1159,7 +1200,6 @@ mod tests {
         let res = create_ed448_key_pair(
             "pubkey05",
             "privkey05",
-            &algorithm,
             Attributes::default(),
             Some(private_key_attributes),
             Some(public_key_attributes),
@@ -1174,48 +1214,6 @@ mod tests {
         // Load FIPS provider module from OpenSSL.
         Provider::load(None, "fips").unwrap();
 
-        let algorithm = CryptographicAlgorithm::ECDH;
-        let private_key_attributes = Attributes {
-            cryptographic_usage_mask: Some(CryptographicUsageMask::Sign),
-            ..Attributes::default()
-        };
-        let public_key_attributes = Attributes {
-            cryptographic_usage_mask: Some(CryptographicUsageMask::Verify),
-            ..Attributes::default()
-        };
-        let res = create_approved_ecc_key_pair(
-            "pubkey01",
-            "privkey01",
-            RecommendedCurve::P256,
-            &algorithm,
-            Attributes::default(),
-            Some(private_key_attributes),
-            Some(public_key_attributes),
-        );
-
-        assert!(res.is_err());
-
-        let private_key_attributes = Attributes {
-            cryptographic_usage_mask: Some(CryptographicUsageMask::Sign),
-            ..Attributes::default()
-        };
-        let public_key_attributes = Attributes {
-            cryptographic_usage_mask: Some(CryptographicUsageMask::Verify),
-            ..Attributes::default()
-        };
-
-        let res = create_approved_ecc_key_pair(
-            "pubkey02",
-            "privkey02",
-            RecommendedCurve::P256,
-            &algorithm,
-            Attributes::default(),
-            Some(private_key_attributes),
-            Some(public_key_attributes),
-        );
-
-        assert!(res.is_err());
-
         let algorithm = CryptographicAlgorithm::Ed25519;
         let private_key_attributes = Attributes {
             cryptographic_usage_mask: Some(CryptographicUsageMask::Sign),
@@ -1225,9 +1223,10 @@ mod tests {
             cryptographic_usage_mask: Some(CryptographicUsageMask::Verify),
             ..Attributes::default()
         };
-        let res = create_ed448_key_pair(
+        let res = create_approved_ecc_key_pair(
             "pubkey01",
             "privkey01",
+            RecommendedCurve::P256,
             &algorithm,
             Attributes::default(),
             Some(private_key_attributes),
