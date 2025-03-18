@@ -1,9 +1,9 @@
 use std::io::Write;
 
-use super::{error::TtlvError, TTLValue, TtlvType, TTLV};
+use crate::ttlv::{error::TtlvError, TTLValue, TtlvType, TTLV};
 
 /// This trait is used to define the KMIP 1.4 and KMIP 2.1 tags that can be used in TTLV serialization
-pub trait KmipTag: TryFrom<u32> + Into<u32> + TryFrom<String> + std::string::ToString {}
+pub trait KmipTag: TryFrom<u32> + Into<u32> + TryFrom<String> + ToString {}
 
 /// Write a tag as a 3-byte big-endian integer
 fn write_tag<W: Write, TAG: KmipTag>(writer: &mut W, tag_str: &str) -> Result<(), TtlvError> {
