@@ -7,7 +7,10 @@ use cosmian_crypto_core::{
 use cosmian_kmip::kmip_2_1::{
     kmip_attributes::Attributes,
     kmip_objects::ObjectType,
-    kmip_types::{CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, StateEnumeration},
+    kmip_types::{
+        CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, StateEnumeration,
+        UniqueIdentifier,
+    },
     requests::create_symmetric_key_kmip_object,
 };
 use cosmian_kms_interfaces::{ObjectsStore, PermissionsStore, SessionParams};
@@ -23,6 +26,8 @@ pub(crate) async fn tags<DB: ObjectsStore + PermissionsStore>(
     cosmian_logger::log_init(None);
     let mut rng = CsRng::from_entropy();
 
+    let owner = "eyJhbGciOiJSUzI1Ni";
+    let uid = Uuid::new_v4().to_string();
     // create a symmetric key with tags
     let mut symmetric_key_bytes = vec![0; 32];
     rng.fill_bytes(&mut symmetric_key_bytes);
@@ -31,14 +36,13 @@ pub(crate) async fn tags<DB: ObjectsStore + PermissionsStore>(
         &symmetric_key_bytes,
         &Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
             ..Attributes::default()
         },
     )?;
 
     // insert into DB
 
-    let owner = "eyJhbGciOiJSUzI1Ni";
-    let uid = Uuid::new_v4().to_string();
     let uid_ = db
         .create(
             Some(uid.clone()),
@@ -57,7 +61,7 @@ pub(crate) async fn tags<DB: ObjectsStore + PermissionsStore>(
         .await?
         .ok_or_else(|| db_error!("Object not found"))?;
 
-    let expected_attributes = Attributes {
+    let mut expected_attributes = Attributes {
         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
         cryptographic_length: Some(256),
         cryptographic_usage_mask: Some(
@@ -69,8 +73,10 @@ pub(crate) async fn tags<DB: ObjectsStore + PermissionsStore>(
         ),
         key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
         object_type: Some(ObjectType::SymmetricKey),
+        unique_identifier: Some(UniqueIdentifier::TextString(owm.id().to_owned())),
         ..Attributes::default()
     };
+    expected_attributes.set_tags(["_kk".to_owned()])?;
     assert_eq!(StateEnumeration::Active, owm.state());
     assert!(&symmetric_key == owm.object());
 
