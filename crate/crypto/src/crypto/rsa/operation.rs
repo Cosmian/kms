@@ -426,8 +426,14 @@ mod tests {
             cryptographic_length: Some(2048),
             ..Attributes::default()
         };
-        let private_key_attributes = Attributes::default();
-        let public_key_attributes = Attributes::default();
+        let private_key_attributes = Attributes {
+            cryptographic_usage_mask: Some(FIPS_PRIVATE_RSA_MASK),
+            ..Attributes::default()
+        };
+        let public_key_attributes = Attributes {
+            cryptographic_usage_mask: Some(FIPS_PUBLIC_RSA_MASK),
+            ..Attributes::default()
+        };
 
         let res = create_rsa_key_pair(
             "privkey01",
