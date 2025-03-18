@@ -622,9 +622,9 @@ impl Serialize for ResponseMessageBatchItem {
         }
 
         let mut st = serializer.serialize_struct("MessageResponseBatchItem", 5)?;
-        if let Some(operation) = self.operation {
+        if let Some(operation) = &self.operation {
             if let Some(response_payload) = &self.response_payload {
-                if operation != response_payload.operation_enum() {
+                if operation != &response_payload.operation_enum() {
                     return Err(ser::Error::custom(format!(
                         "operation enum (`{}`) doesn't correspond to response payload (`{}`)",
                         operation,
@@ -757,7 +757,7 @@ impl<'de> Deserialize<'de> for ResponseMessageBatchItem {
                             }
                             // we must have parsed the `operation` field before
                             // TODO: handle the case where the keys are not in right order
-                            let Some(operation) = operation else {
+                            let Some(operation) = &operation else {
                                 return Err(de::Error::missing_field("operation"))
                             };
                             // recover by hand the proper type of `response_payload`

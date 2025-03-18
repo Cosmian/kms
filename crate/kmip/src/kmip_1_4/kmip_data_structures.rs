@@ -1177,3 +1177,26 @@ pub struct DerivationParameters {
     /// Optional iteration count used by the derivation method
     pub iteration_count: Option<i32>,
 }
+
+/// The RNG Parameters base object is a structure that contains a mandatory RNG Algorithm
+/// and a set of OPTIONAL fields that describe a Random Number Generator.
+/// Specific fields pertain only to certain types of RNGs.
+///
+/// The RNG Algorithm SHALL be specified and if the algorithm implemented is unknown
+/// or the implementation does not want to provide the specific details of the RNG Algorithm
+/// then the Unspecified enumeration SHALL be used.
+///
+/// If the cryptographic building blocks used within the RNG are known
+/// they MAY be specified in combination of the remaining fields
+///  within the RNG Parameters structure.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct RNGParameters {
+    pub rng_algorithm: RNGAlgorithm,
+    pub cryptographic_algorithm: Option<CryptographicAlgorithm>,
+    pub cryptographic_length: Option<i32>,
+    pub hashing_algorithm: Option<HashingAlgorithm>,
+    pub drbg_algorithm: Option<DRBGAlgorithm>,
+    pub recommended_curve: Option<RecommendedCurve>,
+    pub fips186_variation: Option<FIPS186Variation>,
+    pub prediction_resistance: Option<bool>,
+}
