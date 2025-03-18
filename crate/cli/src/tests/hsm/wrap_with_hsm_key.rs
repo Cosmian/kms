@@ -23,7 +23,7 @@ pub(crate) fn test_wrap_with_aes_gcm() -> CliResult<()> {
     let wrapping_key_id = create_symmetric_key(
         KMS_HSM_CLIENT_CONF,
         CreateKeyAction {
-            key_id: Some("hsm::4::".to_string() + &Uuid::new_v4().to_string()),
+            key_id: Some("hsm::0::".to_string() + &Uuid::new_v4().to_string()),
             number_of_bits: Some(256),
             algorithm: SymmetricAlgorithm::Aes,
             sensitive: true,
@@ -67,7 +67,7 @@ pub(crate) fn test_wrap_with_rsa_oaep() -> CliResult<()> {
     let (_private_key_id, public_key_id) = create_rsa_key_pair(
         KMS_HSM_CLIENT_CONF,
         &RsaKeyPairOptions {
-            key_id: Some("hsm::4::".to_string() + &Uuid::new_v4().to_string()),
+            key_id: Some("hsm::0::".to_string() + &Uuid::new_v4().to_string()),
             number_of_bits: Some(2048),
             sensitive: true,
             ..Default::default()
@@ -110,7 +110,7 @@ pub(crate) fn test_unwrap_on_export() -> CliResult<()> {
     let (_private_key_id, public_key_id) = create_rsa_key_pair(
         KMS_HSM_CLIENT_CONF,
         &RsaKeyPairOptions {
-            key_id: Some("hsm::4::".to_string() + &Uuid::new_v4().to_string()),
+            key_id: Some("hsm::0::".to_string() + &Uuid::new_v4().to_string()),
             number_of_bits: Some(2048),
             sensitive: true,
             ..Default::default()

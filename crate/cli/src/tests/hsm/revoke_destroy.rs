@@ -17,7 +17,7 @@ async fn test_revoke_symmetric_key() -> CliResult<()> {
     let key_id = create_symmetric_key(
         KMS_HSM_CLIENT_CONF,
         CreateKeyAction {
-            key_id: Some("hsm::4::".to_string() + &Uuid::new_v4().to_string()),
+            key_id: Some("hsm::0::".to_string() + &Uuid::new_v4().to_string()),
             ..Default::default()
         },
     )?;
