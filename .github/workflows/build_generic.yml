@@ -69,11 +69,6 @@ jobs:
         run: |
           bash .github/scripts/cargo_build.sh
 
-      - name: hsm simulator
-        if: inputs.distribution == 'ubuntu-24.04'
-        run : |
-          bash .github/scripts/test_utimaco.sh
-
       - name: Remove large files before saving cache
         run: |
           find target/ -type f -size +100M -delete

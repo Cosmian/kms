@@ -58,6 +58,10 @@ fi
 
 rustup target add "$TARGET"
 
+if [ "$(uname)" = "Linux" ]; then
+  bash .github/scripts/test_utimaco.sh
+fi
+
 # Additional tests
 if [ "$DEBUG_OR_RELEASE" = "release" ]; then
   # Before building the crates, test crates individually on specific features
