@@ -426,7 +426,7 @@ pub fn create_approved_ecc_key_pair(
         check_ecc_mask_algorithm_compliance(
             private_key_mask,
             public_key_mask,
-            CryptographicAlgorithm::Ed448,
+            *cryptographic_algorithm,
             &[
                 CryptographicAlgorithm::EC,
                 CryptographicAlgorithm::ECDSA,
