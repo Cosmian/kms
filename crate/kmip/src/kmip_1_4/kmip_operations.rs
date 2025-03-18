@@ -335,7 +335,363 @@ pub struct ObtainLeaseResponse {
     pub last_change_date: OffsetDateTime,
 }
 
-// Continue implementing remaining operations...
+/// 4.18 Get Usage Allocation
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct GetUsageAllocation {
+    pub unique_identifier: String,
+}
+
+/// Response to a Get Usage Allocation request
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct GetUsageAllocationResponse {
+    pub unique_identifier: String,
+    pub allocation_percent: i32,
+    pub amount_used: i32,
+}
+
+/// 4.19 Activate
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct Activate {
+    pub unique_identifier: String,
+}
+
+/// Response to an Activate request
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct ActivateResponse {
+    pub unique_identifier: String,
+}
+
+/// 4.20 Revoke
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct Revoke {
+    pub unique_identifier: String,
+    pub revocation_reason: RevocationReason,
+    pub compromise_occurrence_date: Option<OffsetDateTime>,
+}
+
+/// Response to a Revoke request
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct RevokeResponse {
+    pub unique_identifier: String,
+}
+
+/// 4.21 Destroy
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct Destroy {
+    pub unique_identifier: String,
+}
+
+/// Response to a Destroy request
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct DestroyResponse {
+    pub unique_identifier: String,
+}
+
+/// 4.22 Archive
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct Archive {
+    pub unique_identifier: String,
+}
+
+/// Response to an Archive request
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct ArchiveResponse {
+    pub unique_identifier: String,
+}
+
+/// 4.23 Recover
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct Recover {
+    pub unique_identifier: String,
+}
+
+/// Response to a Recover request
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct RecoverResponse {
+    pub unique_identifier: String,
+}
+
+/// 4.24 Validate
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct Validate {
+    pub unique_identifier: String,
+}
+
+/// Response to a Validate request
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct ValidateResponse {
+    pub unique_identifier: String,
+    pub validation_type: ValidationType,
+    pub validation_result: ValidationResult,
+}
+
+/// 4.25 Query
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct Query {
+    pub query_functions: Vec<QueryFunction>,
+}
+
+/// Response to a Query request
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct QueryResponse {
+    pub operations: Vec<Operation>,
+    pub object_types: Vec<ObjectType>,
+    pub vendor_identification: String,
+    pub server_information: String,
+    pub profile_information: Option<Vec<ProfileInfo>>,
+    pub validation_information: Option<Vec<ValidationInfo>>,
+    pub capability_information: Option<Vec<CapabilityInfo>>,
+    pub client_registration_methods: Option<Vec<ClientRegistrationMethod>>,
+    pub attestation_types: Option<Vec<AttestationType>>,
+    pub rng_parameters: Option<Vec<RNGParameters>>,
+    pub profile_versions: Option<Vec<String>>,
+    pub validation_versions: Option<Vec<String>>,
+}
+
+/// 4.26 Discover Versions
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct DiscoverVersions {
+    pub protocol_versions: Option<Vec<String>>,
+}
+
+/// Response to a Discover Versions request
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct DiscoverVersionsResponse {
+    pub protocol_versions: Vec<String>,
+}
+
+/// 4.27 Cancel
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct Cancel {
+    pub asynchronous_correlation_value: String,
+}
+
+/// Response to a Cancel request
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct CancelResponse {
+    pub cancellation_result: CancellationResult,
+}
+
+/// 4.28 Poll
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct Poll {
+    pub asynchronous_correlation_value: String,
+}
+
+/// Response to a Poll request
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct PollResponse {
+    pub unique_identifier: Option<String>,
+    pub operation: Box<Option<Operation>>,
+}
+
+/// 4.29 Encrypt
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct Encrypt {
+    pub unique_identifier: String,
+    pub cryptographic_parameters: Option<CryptographicParameters>,
+    pub data: Vec<u8>,
+    pub iv_counter_nonce: Option<Vec<u8>>,
+    pub authenticated_encryption_additional_data: Option<Vec<u8>>,
+}
+
+/// Response to an Encrypt request
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct EncryptResponse {
+    pub unique_identifier: String,
+    pub data: Vec<u8>,
+    pub iv_counter_nonce: Option<Vec<u8>>,
+    pub authenticated_encryption_tag: Option<Vec<u8>>,
+}
+
+/// 4.30 Decrypt
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct Decrypt {
+    pub unique_identifier: String,
+    pub cryptographic_parameters: Option<CryptographicParameters>,
+    pub data: Vec<u8>,
+    pub iv_counter_nonce: Option<Vec<u8>>,
+    pub authenticated_encryption_additional_data: Option<Vec<u8>>,
+    pub authenticated_encryption_tag: Option<Vec<u8>>,
+}
+
+/// Response to a Decrypt request
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct DecryptResponse {
+    pub unique_identifier: String,
+    pub data: Vec<u8>,
+}
+
+/// 4.31 Sign
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct Sign {
+    pub unique_identifier: String,
+    pub cryptographic_parameters: Option<CryptographicParameters>,
+    pub data: Vec<u8>,
+}
+
+/// Response to a Sign request
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct SignResponse {
+    pub unique_identifier: String,
+    pub signature_data: Vec<u8>,
+}
+
+/// 4.32 Signature Verify
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct SignatureVerify {
+    pub unique_identifier: String,
+    pub cryptographic_parameters: Option<CryptographicParameters>,
+    pub data: Vec<u8>,
+    pub signature_data: Vec<u8>,
+}
+
+/// Response to a Signature Verify request
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct SignatureVerifyResponse {
+    pub unique_identifier: String,
+    pub validity_indicator: ValidityIndicator,
+}
+
+/// 4.33 MAC
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct MAC {
+    pub unique_identifier: String,
+    pub cryptographic_parameters: Option<CryptographicParameters>,
+    pub data: Vec<u8>,
+}
+
+/// Response to a MAC request
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct MACResponse {
+    pub unique_identifier: String,
+    pub mac_data: Vec<u8>,
+}
+
+/// 4.34 MAC Verify
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct MACVerify {
+    pub unique_identifier: String,
+    pub cryptographic_parameters: Option<CryptographicParameters>,
+    pub data: Vec<u8>,
+    pub mac_data: Vec<u8>,
+}
+
+/// Response to a MAC Verify request
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct MACVerifyResponse {
+    pub unique_identifier: String,
+    pub validity_indicator: ValidityIndicator,
+}
+
+/// 4.35 RNG Retrieve
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct RNGRetrieve {
+    pub data_length: i32,
+}
+
+/// Response to an RNG Retrieve request
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct RNGRetrieveResponse {
+    pub data: Vec<u8>,
+}
+
+/// 4.36 RNG Seed
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct RNGSeed {
+    pub data: Vec<u8>,
+}
+
+/// Response to an RNG Seed request
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct RNGSeedResponse {
+    amount_of_seed_data: i32,
+}
+
+/// 4.37 Hash
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct Hash {
+    pub cryptographic_parameters: Option<CryptographicParameters>,
+    pub data: Vec<u8>,
+}
+
+/// Response to a Hash request
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct HashResponse {
+    pub hash_data: Vec<u8>,
+}
+
+/// 4.38 Create Split Key
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct CreateSplitKey {
+    pub split_key_parts: i32,
+    pub split_key_threshold: i32,
+    pub split_key_method: SplitKeyMethod,
+    pub parameter: Option<Vec<u8>>,
+    pub template_attribute: Option<TemplateAttribute>,
+}
+
+/// Response to a Create Split Key request
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct CreateSplitKeyResponse {
+    pub unique_identifier: String,
+    pub split_key_parts: Vec<String>,
+}
+
+/// 4.39 Join Split Key
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct JoinSplitKey {
+    pub split_key_parts: Vec<Vec<u8>>,
+    pub split_key_method: SplitKeyMethod,
+    pub parameter: Option<Vec<u8>>,
+}
+
+/// Response to a Join Split Key request
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct JoinSplitKeyResponse {
+    pub unique_identifier: String,
+}
+
+/// 4.40 Export
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct Export {
+    pub object_type: ObjectType,
+    pub unique_identifier: String,
+    pub key_wrap_type: Option<KeyWrapType>,
+    pub key_format_type: Option<KeyFormatType>,
+    pub key_compression_type: Option<KeyCompressionType>,
+    pub key_wrapping_specification: Option<KeyWrappingSpecification>,
+}
+
+/// Response to an Export request
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct ExportResponse {
+    pub object_type: ObjectType,
+    pub unique_identifier: String,
+    pub key_format_type: Option<KeyFormatType>,
+    pub key_compression_type: Option<KeyCompressionType>,
+    pub key_wrapping_data: Option<KeyWrappingData>,
+    pub key_material: Vec<u8>,
+}
+
+/// 4.41 Import
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct Import {
+    pub object_type: ObjectType,
+    pub unique_identifier: String,
+    pub replace_existing: Option<bool>,
+    pub key_wrap_type: Option<KeyWrapType>,
+    pub key_format_type: Option<KeyFormatType>,
+    pub key_compression_type: Option<KeyCompressionType>,
+    pub key_wrapping_specification: Option<KeyWrappingSpecification>,
+    pub key_material: Vec<u8>,
+}
+
+/// Response to an Import request
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct ImportResponse {
+    pub unique_identifier: String,
+}
 
 /// The operation that processes a specific request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -376,7 +732,54 @@ pub enum Operation {
     DeleteAttributeResponse(DeleteAttributeResponse),
     ObtainLease(ObtainLease),
     ObtainLeaseResponse(ObtainLeaseResponse),
-    // ... Add remaining operations ...
+    GetUsageAllocation(GetUsageAllocation),
+    GetUsageAllocationResponse(GetUsageAllocationResponse),
+    Activate(Activate),
+    ActivateResponse(ActivateResponse),
+    Revoke(Revoke),
+    RevokeResponse(RevokeResponse),
+    Destroy(Destroy),
+    DestroyResponse(DestroyResponse),
+    Archive(Archive),
+    ArchiveResponse(ArchiveResponse),
+    Recover(Recover),
+    RecoverResponse(RecoverResponse),
+    Validate(Validate),
+    ValidateResponse(ValidateResponse),
+    Query(Query),
+    QueryResponse(QueryResponse),
+    DiscoverVersions(DiscoverVersions),
+    DiscoverVersionsResponse(DiscoverVersionsResponse),
+    Cancel(Cancel),
+    CancelResponse(CancelResponse),
+    Poll(Poll),
+    PollResponse(PollResponse),
+    Encrypt(Encrypt),
+    EncryptResponse(EncryptResponse),
+    Decrypt(Decrypt),
+    DecryptResponse(DecryptResponse),
+    Sign(Sign),
+    SignResponse(SignResponse),
+    SignatureVerify(SignatureVerify),
+    SignatureVerifyResponse(SignatureVerifyResponse),
+    MAC(MAC),
+    MACResponse(MACResponse),
+    MACVerify(MACVerify),
+    MACVerifyResponse(MACVerifyResponse),
+    RNGRetrieve(RNGRetrieve),
+    RNGRetrieveResponse(RNGRetrieveResponse),
+    RNGSeed(RNGSeed),
+    RNGSeedResponse(RNGSeedResponse),
+    Hash(Hash),
+    HashResponse(HashResponse),
+    CreateSplitKey(CreateSplitKey),
+    CreateSplitKeyResponse(CreateSplitKeyResponse),
+    JoinSplitKey(JoinSplitKey),
+    JoinSplitKeyResponse(JoinSplitKeyResponse),
+    Export(Export),
+    ExportResponse(ExportResponse),
+    Import(Import),
+    ImportResponse(ImportResponse),
 }
 
 impl Operation {
@@ -400,25 +803,32 @@ impl Operation {
             | Self::AddAttribute(_)
             | Self::ModifyAttribute(_)
             | Self::DeleteAttribute(_)
-            | Self::ObtainLease(_) => Direction::Request,
-            Self::CreateResponse(_)
-            | Self::CreateKeyPairResponse(_)
-            | Self::RegisterResponse(_)
-            | Self::ReKeyResponse(_)
-            | Self::ReKeyKeyPairResponse(_)
-            | Self::DeriveKeyResponse(_)
-            | Self::CertifyResponse(_)
-            | Self::ReCertifyResponse(_)
-            | Self::LocateResponse(_)
-            | Self::CheckResponse(_)
-            | Self::GetResponse(_)
-            | Self::GetAttributesResponse(_)
-            | Self::GetAttributeListResponse(_)
-            | Self::AddAttributeResponse(_)
-            | Self::ModifyAttributeResponse(_)
-            | Self::DeleteAttributeResponse(_)
-            | Self::ObtainLeaseResponse(_) => Direction::Response,
-            // ... Handle remaining operations
+            | Self::ObtainLease(_)
+            | Self::GetUsageAllocation(_)
+            | Self::Activate(_)
+            | Self::Revoke(_)
+            | Self::Destroy(_)
+            | Self::Archive(_)
+            | Self::Recover(_)
+            | Self::Validate(_)
+            | Self::Query(_)
+            | Self::DiscoverVersions(_)
+            | Self::Cancel(_)
+            | Self::Poll(_)
+            | Self::Encrypt(_)
+            | Self::Decrypt(_)
+            | Self::Sign(_)
+            | Self::SignatureVerify(_)
+            | Self::MAC(_)
+            | Self::MACVerify(_)
+            | Self::RNGRetrieve(_)
+            | Self::RNGSeed(_)
+            | Self::Hash(_)
+            | Self::CreateSplitKey(_)
+            | Self::JoinSplitKey(_)
+            | Self::Export(_)
+            | Self::Import(_) => Direction::Request,
+            _ => Direction::Response,
         }
     }
 
@@ -458,8 +868,56 @@ impl Operation {
             }
             Self::ObtainLease(_) | Self::ObtainLeaseResponse(_) => {
                 OperationEnumeration::ObtainLease
-            } // ... continue matching remaining operations
+            }
+            Self::GetUsageAllocation(_) | Self::GetUsageAllocationResponse(_) => {
+                OperationEnumeration::GetUsageAllocation
+            }
+            Self::Activate(_) | Self::ActivateResponse(_) => OperationEnumeration::Activate,
+            Self::Revoke(_) | Self::RevokeResponse(_) => OperationEnumeration::Revoke,
+            Self::Destroy(_) | Self::DestroyResponse(_) => OperationEnumeration::Destroy,
+            Self::Archive(_) | Self::ArchiveResponse(_) => OperationEnumeration::Archive,
+            Self::Recover(_) | Self::RecoverResponse(_) => OperationEnumeration::Recover,
+            Self::Validate(_) | Self::ValidateResponse(_) => OperationEnumeration::Validate,
+            Self::Query(_) | Self::QueryResponse(_) => OperationEnumeration::Query,
+            Self::DiscoverVersions(_) | Self::DiscoverVersionsResponse(_) => {
+                OperationEnumeration::DiscoverVersions
+            }
+            Self::Cancel(_) | Self::CancelResponse(_) => OperationEnumeration::Cancel,
+            Self::Poll(_) | Self::PollResponse(_) => OperationEnumeration::Poll,
+            Self::Encrypt(_) | Self::EncryptResponse(_) => OperationEnumeration::Encrypt,
+            Self::Decrypt(_) | Self::DecryptResponse(_) => OperationEnumeration::Decrypt,
+            Self::Sign(_) | Self::SignResponse(_) => OperationEnumeration::Sign,
+            Self::SignatureVerify(_) | Self::SignatureVerifyResponse(_) => {
+                OperationEnumeration::SignatureVerify
+            }
+            Self::MAC(_) | Self::MACResponse(_) => OperationEnumeration::MAC,
+            Self::MACVerify(_) | Self::MACVerifyResponse(_) => OperationEnumeration::MACVerify,
+            Self::RNGRetrieve(_) | Self::RNGRetrieveResponse(_) => {
+                OperationEnumeration::RNGRetrieve
+            }
+            Self::RNGSeed(_) | Self::RNGSeedResponse(_) => OperationEnumeration::RNGSeed,
+            Self::Hash(_) | Self::HashResponse(_) => OperationEnumeration::Hash,
+            Self::CreateSplitKey(_) | Self::CreateSplitKeyResponse(_) => {
+                OperationEnumeration::CreateSplitKey
+            }
+            Self::JoinSplitKey(_) | Self::JoinSplitKeyResponse(_) => {
+                OperationEnumeration::JoinSplitKey
+            }
+            Self::Export(_) | Self::ExportResponse(_) => OperationEnumeration::Export,
+            Self::Import(_) | Self::ImportResponse(_) => OperationEnumeration::Import,
         }
+    }
+
+    /// Allow to ensure that the protocol version used by the operation
+    /// is compatible with this KMIP implementation.
+    ///
+    /// Backward compatibility within major version is mandatory.
+    ///
+    /// The check is enforced only if a upper version than the default one
+    /// is detected when receiving an operation.
+    #[must_use]
+    pub fn protocol_version(&self) -> ProtocolVersion {
+        ProtocolVersion::default()
     }
 }
 
@@ -535,6 +993,102 @@ impl Display for Operation {
             Self::ObtainLease(obtain_lease) => write!(f, "ObtainLease({obtain_lease:?})"),
             Self::ObtainLeaseResponse(obtain_lease_resp) => {
                 write!(f, "ObtainLeaseResponse({obtain_lease_resp:?})")
+            }
+            Self::GetUsageAllocation(get_usage) => write!(f, "GetUsageAllocation({get_usage:?})"),
+            Self::GetUsageAllocationResponse(get_usage_resp) => {
+                write!(f, "GetUsageAllocationResponse({get_usage_resp:?})")
+            }
+            Self::Activate(activate) => write!(f, "Activate({activate:?})"),
+            Self::ActivateResponse(activate_resp) => {
+                write!(f, "ActivateResponse({activate_resp:?})")
+            }
+            Self::Revoke(revoke) => write!(f, "Revoke({revoke:?})"),
+            Self::RevokeResponse(revoke_resp) => {
+                write!(f, "RevokeResponse({revoke_resp:?})")
+            }
+            Self::Destroy(destroy) => write!(f, "Destroy({destroy:?})"),
+            Self::DestroyResponse(destroy_resp) => {
+                write!(f, "DestroyResponse({destroy_resp:?})")
+            }
+            Self::Archive(archive) => write!(f, "Archive({archive:?})"),
+            Self::ArchiveResponse(archive_resp) => {
+                write!(f, "ArchiveResponse({archive_resp:?})")
+            }
+            Self::Recover(recover) => write!(f, "Recover({recover:?})"),
+            Self::RecoverResponse(recover_resp) => {
+                write!(f, "RecoverResponse({recover_resp:?})")
+            }
+            Self::Validate(validate) => write!(f, "Validate({validate:?})"),
+            Self::ValidateResponse(validate_resp) => {
+                write!(f, "ValidateResponse({validate_resp:?})")
+            }
+            Self::Query(query) => write!(f, "Query({query:?})"),
+            Self::QueryResponse(query_resp) => {
+                write!(f, "QueryResponse({query_resp:?})")
+            }
+            Self::DiscoverVersions(discover) => write!(f, "DiscoverVersions({discover:?})"),
+            Self::DiscoverVersionsResponse(discover_resp) => {
+                write!(f, "DiscoverVersionsResponse({discover_resp:?})")
+            }
+            Self::Cancel(cancel) => write!(f, "Cancel({cancel:?})"),
+            Self::CancelResponse(cancel_resp) => {
+                write!(f, "CancelResponse({cancel_resp:?})")
+            }
+            Self::Poll(poll) => write!(f, "Poll({poll:?})"),
+            Self::PollResponse(poll_resp) => {
+                write!(f, "PollResponse({poll_resp:?})")
+            }
+            Self::Encrypt(encrypt) => write!(f, "Encrypt({encrypt:?})"),
+            Self::EncryptResponse(encrypt_resp) => {
+                write!(f, "EncryptResponse({encrypt_resp:?})")
+            }
+            Self::Decrypt(decrypt) => write!(f, "Decrypt({decrypt:?})"),
+            Self::DecryptResponse(decrypt_resp) => {
+                write!(f, "DecryptResponse({decrypt_resp:?})")
+            }
+            Self::Sign(sign) => write!(f, "Sign({sign:?})"),
+            Self::SignResponse(sign_resp) => {
+                write!(f, "SignResponse({sign_resp:?})")
+            }
+            Self::SignatureVerify(verify) => write!(f, "SignatureVerify({verify:?})"),
+            Self::SignatureVerifyResponse(verify_resp) => {
+                write!(f, "SignatureVerifyResponse({verify_resp:?})")
+            }
+            Self::MAC(mac) => write!(f, "MAC({mac:?})"),
+            Self::MACResponse(mac_resp) => {
+                write!(f, "MACResponse({mac_resp:?})")
+            }
+            Self::MACVerify(mac_verify) => write!(f, "MACVerify({mac_verify:?})"),
+            Self::MACVerifyResponse(mac_verify_resp) => {
+                write!(f, "MACVerifyResponse({mac_verify_resp:?})")
+            }
+            Self::RNGRetrieve(rng) => write!(f, "RNGRetrieve({rng:?})"),
+            Self::RNGRetrieveResponse(rng_resp) => {
+                write!(f, "RNGRetrieveResponse({rng_resp:?})")
+            }
+            Self::RNGSeed(seed) => write!(f, "RNGSeed({seed:?})"),
+            Self::RNGSeedResponse(seed_resp) => {
+                write!(f, "RNGSeedResponse({seed_resp:?})")
+            }
+            Self::Hash(hash) => write!(f, "Hash({hash:?})"),
+            Self::HashResponse(hash_resp) => {
+                write!(f, "HashResponse({hash_resp:?})")
+            }
+            Self::CreateSplitKey(split) => write!(f, "CreateSplitKey({split:?})"),
+            Self::CreateSplitKeyResponse(split_resp) => {
+                write!(f, "CreateSplitKeyResponse({split_resp:?})")
+            }
+            Self::JoinSplitKey(join) => write!(f, "JoinSplitKey({join:?})"),
+            Self::JoinSplitKeyResponse(join_resp) => {
+                write!(f, "JoinSplitKeyResponse({join_resp:?})")
+            }
+            Self::Export(export) => write!(f, "Export({export:?})"),
+            Self::ExportResponse(export_resp) => {
+                write!(f, "ExportResponse({export_resp:?})")
+            }
+            Self::Import(import) => write!(f, "Import({import:?})"),
+            Self::ImportResponse(import_resp) => {
+                write!(f, "ImportResponse({import_resp:?})")
             }
         }
     }
