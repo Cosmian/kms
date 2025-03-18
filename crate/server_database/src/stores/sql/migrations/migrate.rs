@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use cosmian_kmip::kmip_2_1::{
     kmip_attributes::Attributes,
+    kmip_data_structures::KeyMaterial,
     kmip_objects::{
         Certificate, Object, OpaqueObject, PrivateKey, PublicKey, SecretData, SymmetricKey,
     },
@@ -14,7 +15,7 @@ use crate::{
     error::{DbResult, DbResultHelper},
     stores::{
         migrate::{DbState, Migrate},
-        sql::database::SqlDatabase,
+        sql::{database::SqlDatabase, migrations::key_material_old::KeyMaterial421},
     },
     DbError,
 };
@@ -254,11 +255,11 @@ fn db_object_to_object(db_object: &Value) -> DbResult<Object> {
             "migration to 4.22.1+ failed: object_type not found in object: {db_object:?}",
         ))
     })?;
-    let content = db_object["object"].clone();
+    let mut content = db_object["object"].clone();
     // make sure we can actually deserialize and re-serialize the objects
     Ok(match object_type {
         "PrivateKey" => {
-            debug!("Private Key: {content:#?}");
+            migrate_key_material(&mut content)?;
             let obj = serde_json::from_value::<PrivateKey>(content).map_err(|e| {
                 DbError::DatabaseError(format!(
                     "migration to 4.22.1+ failed: failed to deserialize PrivateKey: {e}"
@@ -267,6 +268,7 @@ fn db_object_to_object(db_object: &Value) -> DbResult<Object> {
             Object::PrivateKey(obj)
         }
         "PublicKey" => {
+            migrate_key_material(&mut content)?;
             let obj = serde_json::from_value::<PublicKey>(content).map_err(|e| {
                 DbError::DatabaseError(format!(
                     "migration to 4.22.1+ failed: failed to deserialize PublicKey: {e}"
@@ -312,4 +314,23 @@ fn db_object_to_object(db_object: &Value) -> DbResult<Object> {
             )));
         }
     })
+}
+
+/// Migrate the `KeyMaterial` which used `BigUin` to `KeyMaterial` which uses `BigInt`
+fn migrate_key_material(content: &mut Value) -> Result<(), DbError> {
+    let key_material_value = &content["KeyBlock"]["KeyValue"]["KeyMaterial"];
+    let key_material_4_21: KeyMaterial421 = serde_json::from_value(key_material_value.clone())
+        .map_err(|e| {
+            DbError::DatabaseError(format!(
+                "migration to 4.22.1+ failed: failed to deserialize KeyMaterial 4.21: {e}"
+            ))
+        })?;
+    let key_material: KeyMaterial = key_material_4_21.into();
+    content["KeyBlock"]["KeyValue"]["KeyMaterial"] =
+        serde_json::to_value(key_material).map_err(|e| {
+            DbError::DatabaseError(format!(
+                "migration to 4.22.1+ failed: failed to replace KeyMaterial: {e}"
+            ))
+        })?;
+    Ok(())
 }
