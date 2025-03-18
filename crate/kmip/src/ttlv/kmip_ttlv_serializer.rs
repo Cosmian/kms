@@ -55,11 +55,11 @@ where
 }
 
 #[derive(Debug)]
-pub struct TTLVSerializer {
+pub struct TtlvSerializer {
     stack: Stack<TTLV>,
 }
 
-impl TTLVSerializer {
+impl TtlvSerializer {
     #[must_use]
     pub const fn new() -> Self {
         Self {
@@ -89,7 +89,7 @@ impl TTLVSerializer {
     }
 }
 
-impl Default for TTLVSerializer {
+impl Default for TtlvSerializer {
     fn default() -> Self {
         Self::new()
     }
@@ -112,7 +112,7 @@ pub fn to_ttlv<T>(value: &T) -> Result<TTLV>
 where
     T: Serialize,
 {
-    let mut serializer = TTLVSerializer::new();
+    let mut serializer = TtlvSerializer::new();
     value.serialize(&mut serializer)?;
     serializer
         .stack
@@ -121,7 +121,7 @@ where
         .ok_or_else(|| TtlvError::custom("no TTLV value found".to_owned()))
 }
 
-impl ser::Serializer for &mut TTLVSerializer {
+impl ser::Serializer for &mut TtlvSerializer {
     // The error type when some error occurs during serialization.
     type Error = TtlvError;
     // The output type produced by this `Serializer` during successful
@@ -622,7 +622,7 @@ impl ser::Serializer for &mut TTLVSerializer {
 
 // This impl is `SerializeSeq` so these methods are called after `serialize_seq`
 // is called on the Serializer.
-impl SerializeSeq for &mut TTLVSerializer {
+impl SerializeSeq for &mut TtlvSerializer {
     // Must match the `Error` type of the serializer.
     type Error = TtlvError;
     // Must match the `Ok` type of the serializer.
@@ -677,7 +677,7 @@ impl SerializeSeq for &mut TTLVSerializer {
 }
 
 // Same thing as seq but for tuples.
-impl SerializeTuple for &mut TTLVSerializer {
+impl SerializeTuple for &mut TtlvSerializer {
     type Error = TtlvError;
     type Ok = ();
 
@@ -686,16 +686,16 @@ impl SerializeTuple for &mut TTLVSerializer {
     where
         T: ?Sized + Serialize,
     {
-        <&mut TTLVSerializer as SerializeSeq>::serialize_element(self, value)
+        <&mut TtlvSerializer as SerializeSeq>::serialize_element(self, value)
     }
 
     fn end(self) -> Result<Self::Ok> {
-        <&mut TTLVSerializer as SerializeSeq>::end(self)
+        <&mut TtlvSerializer as SerializeSeq>::end(self)
     }
 }
 
 // Same thing but for tuple structs.
-impl ser::SerializeTupleStruct for &mut TTLVSerializer {
+impl ser::SerializeTupleStruct for &mut TtlvSerializer {
     type Error = TtlvError;
     type Ok = ();
 
@@ -704,17 +704,17 @@ impl ser::SerializeTupleStruct for &mut TTLVSerializer {
     where
         T: ?Sized + Serialize,
     {
-        <&mut TTLVSerializer as SerializeSeq>::serialize_element(self, value)
+        <&mut TtlvSerializer as SerializeSeq>::serialize_element(self, value)
     }
 
     fn end(self) -> Result<Self::Ok> {
-        <&mut TTLVSerializer as SerializeSeq>::end(self)
+        <&mut TtlvSerializer as SerializeSeq>::end(self)
     }
 }
 
 // For example the E::T in enum E { T(u8, u8) }
 // There is no such thing as a tuple variant in TTLV
-impl SerializeTupleVariant for &mut TTLVSerializer {
+impl SerializeTupleVariant for &mut TtlvSerializer {
     type Error = TtlvError;
     type Ok = ();
 
@@ -742,7 +742,7 @@ impl SerializeTupleVariant for &mut TTLVSerializer {
 // When deserializing, the length is determined by looking at the serialized
 // data.
 // This is not supported in TTLV
-impl SerializeMap for &mut TTLVSerializer {
+impl SerializeMap for &mut TtlvSerializer {
     type Error = TtlvError;
     type Ok = ();
 
@@ -776,7 +776,7 @@ impl SerializeMap for &mut TTLVSerializer {
 }
 
 // Structs are like seqs for their elements
-impl SerializeStruct for &mut TTLVSerializer {
+impl SerializeStruct for &mut TtlvSerializer {
     type Error = TtlvError;
     type Ok = ();
 
@@ -929,7 +929,7 @@ impl SerializeStruct for &mut TTLVSerializer {
 
 // For example the `E::S` in `enum E { S { r: u8, g: u8, b: u8 } }`
 // same as Struct therefore same as seqs
-impl SerializeStructVariant for &mut TTLVSerializer {
+impl SerializeStructVariant for &mut TtlvSerializer {
     type Error = TtlvError;
     type Ok = ();
 
@@ -938,11 +938,11 @@ impl SerializeStructVariant for &mut TTLVSerializer {
     where
         T: ?Sized + Serialize,
     {
-        <&mut TTLVSerializer as SerializeStruct>::serialize_field(self, key, value)
+        <&mut TtlvSerializer as SerializeStruct>::serialize_field(self, key, value)
     }
 
     #[instrument(skip(self))]
     fn end(self) -> Result<Self::Ok> {
-        <&mut TTLVSerializer as SerializeStruct>::end(self)
+        <&mut TtlvSerializer as SerializeStruct>::end(self)
     }
 }

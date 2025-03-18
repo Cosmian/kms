@@ -69,7 +69,7 @@ pub mod ttlv;
 pub use safe_bigint::SafeBigInt;
 
 pub fn pad_be_bytes(bytes: &mut Vec<u8>, size: usize) {
-    while bytes.len() != size {
+    while bytes.len() < size {
         bytes.insert(0, 0);
     }
 }

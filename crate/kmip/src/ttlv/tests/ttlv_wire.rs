@@ -5,8 +5,7 @@ use strum::Display;
 use time::OffsetDateTime;
 
 use crate::ttlv::{
-    ttlv_bytes_deserializer::TTLVBytesDeserializer,
-    ttlv_bytes_serializer::{KmipTag, TTLVBytesSerializer},
+    wire::{KmipTag, TTLVBytesDeserializer, TTLVBytesSerializer},
     TTLValue, TTLV,
 };
 
