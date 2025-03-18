@@ -13,8 +13,8 @@ use crate::{error::KmsError, result::KResult, tests::test_utils};
 
 #[tokio::test]
 async fn test_kmip_endpoints() -> KResult<()> {
-    // log_init(option_env!("RUST_LOG"));
-    log_init(Some("debug,hyper=info,actix_web=info"));
+    log_init(option_env!("RUST_LOG"));
+    // log_init(Some("debug,hyper=info,actix_web=info"));
     let request_message = RequestMessage {
         request_header: RequestMessageHeader {
             protocol_version: ProtocolVersion {

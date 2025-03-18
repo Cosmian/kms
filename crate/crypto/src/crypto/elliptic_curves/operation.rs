@@ -1174,7 +1174,7 @@ mod tests {
         // Load FIPS provider module from OpenSSL.
         Provider::load(None, "fips").unwrap();
 
-        let algorithm = CryptographicAlgorithm::Ed25519;
+        let algorithm = CryptographicAlgorithm::ECDH;
         let private_key_attributes = Attributes {
             cryptographic_usage_mask: Some(CryptographicUsageMask::Sign),
             ..Attributes::default()
