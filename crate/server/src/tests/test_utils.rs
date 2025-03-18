@@ -13,6 +13,7 @@ use actix_web::{
 };
 use cosmian_kmip::ttlv::{kmip_ttlv_deserializer::from_ttlv, kmip_ttlv_serializer::to_ttlv, TTLV};
 use serde::{de::DeserializeOwned, Serialize};
+use tracing::info;
 use uuid::Uuid;
 
 use super::google_cse::utils::google_cse_auth;
@@ -70,7 +71,8 @@ pub(crate) async fn test_app(
 
     let mut app = App::new()
         .app_data(Data::new(kms_server.clone()))
-        .service(routes::kmip::kmip_2_1)
+        .service(routes::kmip::kmip_2_1_json)
+        .service(routes::kmip::kmip)
         .service(routes::access::grant_access)
         .service(routes::access::revoke_access);
 
@@ -97,7 +99,7 @@ pub(crate) async fn test_app(
     test::init_service(app).await
 }
 
-pub(crate) async fn post<B, O, R, S>(app: &S, operation: O) -> KResult<R>
+pub(crate) async fn post_2_1<B, O, R, S>(app: &S, operation: O) -> KResult<R>
 where
     O: Serialize,
     R: DeserializeOwned,
@@ -117,12 +119,12 @@ where
         );
     }
     let body = read_body(res).await;
-    let json: TTLV = serde_json::from_slice(&body)?;
-    let result: R = from_ttlv(json)?;
+    let ttlv: TTLV = serde_json::from_slice(&body)?;
+    let result: R = from_ttlv(ttlv)?;
     Ok(result)
 }
 
-pub(crate) async fn post_with_uri<B, O, R, S>(app: &S, operation: O, uri: &str) -> KResult<R>
+pub(crate) async fn post_json_with_uri<B, O, R, S>(app: &S, operation: O, uri: &str) -> KResult<R>
 where
     O: Serialize,
     R: DeserializeOwned,
@@ -141,11 +143,12 @@ where
             String::from_utf8(read_body(res).await.to_vec()).unwrap_or_else(|_| "[N/A".to_owned())
         );
     }
+    info!("Response: {:?}", res.status());
     let body = read_body(res).await;
     Ok(serde_json::from_slice(&body)?)
 }
 
-pub(crate) async fn get_with_uri<B, R, S>(app: &S, uri: &str) -> KResult<R>
+pub(crate) async fn get_json_with_uri<B, R, S>(app: &S, uri: &str) -> KResult<R>
 where
     R: DeserializeOwned,
     S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,

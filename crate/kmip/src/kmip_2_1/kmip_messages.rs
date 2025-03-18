@@ -25,7 +25,6 @@ use serde::{
     Deserialize, Serialize,
 };
 use time::OffsetDateTime;
-use tracing::info;
 
 use super::{
     kmip_operations::{Direction, ErrorReason, Operation},
@@ -284,18 +283,8 @@ impl<'de> Deserialize<'de> for RequestMessageBatchItem {
                 let mut unique_batch_item_id: Option<String> = None;
                 let mut request_payload: Option<Operation> = None;
                 let mut message_extension: Option<Vec<MessageExtension>> = None;
-
-                let next_key = map.next_key::<String>()?;
-                info!(
-                    "RequestMessageBatchItem deserializing first field: {next_key:?}",
-                    next_key = next_key
-                );
-
+                // we need to parse all the fields
                 while let Some(key) = map.next_key()? {
-                    info!(
-                        "RequestMessageBatchItem deserializing field: {key:?}",
-                        key = key
-                    );
                     match key {
                         Field::Operation => {
                             if operation.is_some() {
