@@ -2,7 +2,9 @@ use std::io::Read;
 
 use time::OffsetDateTime;
 
-use super::{error::TtlvError, kmip_big_int::KmipBigInt, TTLValue, TtlvType, TTLV};
+use crate::ttlv::{
+    error::TtlvError, kmip_big_int::KmipBigInt, KmipEnumerationVariant, TTLValue, TtlvType, TTLV,
+};
 
 // /// Deserialize from a reader implementing Read into a TTLV structure
 // pub fn from_reader<R, T>(reader: &mut R) -> Result<T>
@@ -26,9 +28,7 @@ where
         Self { reader }
     }
 
-    pub fn read_ttlv<TAG: TryFrom<u32> + std::string::ToString>(
-        &mut self,
-    ) -> Result<TTLV, TtlvError> {
+    pub fn read_ttlv<TAG: TryFrom<u32> + ToString>(&mut self) -> Result<TTLV, TtlvError> {
         // Read Tag (3 bytes)
         let mut tag_bytes = [0_u8; 3];
         self.reader.read_exact(&mut tag_bytes)?;
@@ -81,7 +81,7 @@ where
             TtlvType::Enumeration => {
                 let mut buf4 = [0_u8; 4];
                 self.reader.read_exact(&mut buf4)?;
-                TTLValue::Enumeration(super::KmipEnumerationVariant {
+                TTLValue::Enumeration(KmipEnumerationVariant {
                     value: u32::from_be_bytes(buf4),
                     name: String::new(),
                 })
