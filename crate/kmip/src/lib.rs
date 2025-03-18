@@ -63,6 +63,7 @@ pub use data_to_encrypt::DataToEncrypt;
 mod error;
 pub mod kmip_1_4;
 pub mod kmip_2_1;
+mod kmip_request_common;
 mod safe_bigint;
 pub mod ttlv;
 
