@@ -11,7 +11,7 @@ use crate::{
 
 /// Revoke all the user decryption keys associated with the master secret key
 pub(crate) async fn destroy_user_decryption_keys(
-    msk_id: &str,
+    msk_uid: &str,
     remove: bool,
     kms: &KMS,
     owner: &str,
@@ -19,9 +19,7 @@ pub(crate) async fn destroy_user_decryption_keys(
     // keys that should be skipped
     ids_to_skip: HashSet<String>,
 ) -> KResult<()> {
-    if let Some(ids) =
-        locate_usk(kms, msk_uid, None, None, owner, params.clone()).await?
-    {
+    if let Some(ids) = locate_usk(kms, msk_uid, None, None, owner, params.clone()).await? {
         for id in ids.into_iter().filter(|id| !ids_to_skip.contains(id)) {
             recursively_destroy_object(
                 &UniqueIdentifier::TextString(id),
