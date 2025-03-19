@@ -58,6 +58,7 @@ jobs:
 
       - name: Build
         env:
+          KMS_CLI_CONF: "./test_data/configs/kms_hsm.toml"
           OPENSSL_DIR: ${{ env.OPENSSL_DIR }}
           TEST_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_ID }}
           TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET }}
