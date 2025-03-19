@@ -1,4 +1,0 @@
-hsm_model = "utimaco"
-hsm_admin = "ADMIN"
-hsm_slot = [0]
-hsm_password = ["12345678"]

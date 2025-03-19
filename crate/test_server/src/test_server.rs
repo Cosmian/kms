@@ -115,14 +115,12 @@ fn redis_findex_db_config() -> MainDBConfig {
 }
 
 fn get_db_config() -> MainDBConfig {
-    env::var_os("KMS_TEST_DB").map_or_else(sqlite_enc_db_config, |v| {
-        match v.to_str().unwrap_or("") {
-            "redis-findex" => redis_findex_db_config(),
-            "mysql" => mysql_db_config(),
-            "sqlite" => sqlite_db_config(),
-            "postgresql" => postgres_db_config(),
-            _ => sqlite_enc_db_config(),
-        }
+    env::var_os("KMS_TEST_DB").map_or_else(sqlite_db_config, |v| match v.to_str().unwrap_or("") {
+        "redis-findex" => redis_findex_db_config(),
+        "mysql" => mysql_db_config(),
+        "sqlite-enc" => sqlite_enc_db_config(),
+        "postgresql" => postgres_db_config(),
+        _ => sqlite_db_config(),
     })
 }
 
@@ -141,6 +139,7 @@ pub async fn start_default_test_kms_server() -> &'static TestsContext {
                 api_token_id: None,
                 api_token: None,
             },
+            None,
             None,
         )
     })
@@ -162,6 +161,7 @@ pub async fn start_default_test_kms_server_with_cert_auth() -> &'static TestsCon
                     api_token_id: None,
                     api_token: None,
                 },
+                None,
                 None,
             )
         })
@@ -186,6 +186,35 @@ pub async fn start_default_test_kms_server_with_non_revocable_key_ids(
                     api_token: None,
                 },
                 non_revocable_key_id,
+                None,
+            )
+        })
+        .await
+        .unwrap()
+}
+
+/// Non revocable key ids
+pub async fn start_default_test_kms_server_with_utimaco_hsm() -> &'static TestsContext {
+    trace!("Starting test server with non revocable key ids");
+    ONCE_SERVER_WITH_NON_REVOCABLE_KEY
+        .get_or_try_init(|| {
+            start_test_server_with_options(
+                get_db_config(),
+                9993,
+                AuthenticationOptions {
+                    use_jwt_token: false,
+                    use_https: false,
+                    use_client_cert: false,
+                    api_token_id: None,
+                    api_token: None,
+                },
+                None,
+                Some(HsmOptions {
+                    hsm_model: "utimaco".to_string(),
+                    hsm_admin: "admin".to_string(),
+                    hsm_slot: vec![0],
+                    hsm_password: vec!["12345678".to_string()],
+                }),
             )
         })
         .await
@@ -217,12 +246,38 @@ pub struct AuthenticationOptions {
     pub api_token: Option<String>,
 }
 
+pub struct HsmOptions {
+    /// The HSM model.
+    /// Trustway Proteccio and Utimaco General purpose HSMs are supported.
+    pub hsm_model: String,
+
+    /// The username of the HSM admin.
+    /// The HSM admin can create objects on the HSM, destroy them, and potentially export them.
+    pub hsm_admin: String,
+
+    /// HSM slot number. The slots used must be listed.
+    /// Repeat this option to specify multiple slots
+    /// while specifying a password for each slot (or an empty string for no password)
+    /// e.g.
+    /// ```sh
+    ///   --hsm_slot 1 --hsm_password password1 \
+    ///   --hsm_slot 2 --hsm_password password2
+    ///```
+    pub hsm_slot: Vec<usize>,
+
+    /// Password for the user logging in to the HSM Slot specified with `--hsm_slot`
+    /// Provide an empty string for no password
+    /// see `--hsm_slot` for more information
+    pub hsm_password: Vec<String>,
+}
+
 /// Start a KMS server in a thread with the given options
 pub async fn start_test_server_with_options(
     db_config: MainDBConfig,
     port: u16,
     authentication_options: AuthenticationOptions,
     non_revocable_key_id: Option<Vec<String>>,
+    hsm_options: Option<HsmOptions>,
 ) -> Result<TestsContext, KmsClientError> {
     log_init(None);
     let server_params = generate_server_params(
@@ -230,6 +285,7 @@ pub async fn start_test_server_with_options(
         port,
         &authentication_options,
         non_revocable_key_id,
+        hsm_options,
     )?;
 
     // Create a (object owner) conf
@@ -370,6 +426,7 @@ fn generate_server_params(
     port: u16,
     authentication_options: &AuthenticationOptions,
     non_revocable_key_id: Option<Vec<String>>,
+    hsm_options: Option<HsmOptions>,
 ) -> Result<ServerParams, KmsClientError> {
     // Configure the server
     let clap_config = ClapConfig {
@@ -387,6 +444,18 @@ fn generate_server_params(
         ),
         non_revocable_key_id,
         google_cse_disable_tokens_validation: true,
+        hsm_admin: hsm_options
+            .as_ref()
+            .map_or_else(String::new, |h| h.hsm_admin.clone()),
+        hsm_model: hsm_options
+            .as_ref()
+            .map_or_else(String::new, |h| h.hsm_model.clone()),
+        hsm_slot: hsm_options
+            .as_ref()
+            .map_or_else(Vec::new, |h| h.hsm_slot.clone()),
+        hsm_password: hsm_options
+            .as_ref()
+            .map_or_else(Vec::new, |h| h.hsm_password.clone()),
         ..ClapConfig::default()
     };
     ServerParams::try_from(clap_config)
@@ -459,6 +528,7 @@ fn generate_owner_conf(
         ..KmsClientConfig::default()
     };
 
+    println!("Owner client conf: {owner_client_conf:?}");
     owner_client_conf.to_toml(&owner_client_conf_path)?;
 
     Ok((owner_client_conf_path, owner_client_conf))
@@ -542,6 +612,7 @@ async fn test_start_server() -> Result<(), KmsClientError> {
             api_token_id: None,
             api_token: None,
         },
+        None,
         None,
     )
     .await?;
