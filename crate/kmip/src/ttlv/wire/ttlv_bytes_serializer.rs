@@ -6,7 +6,10 @@ use crate::ttlv::{error::TtlvError, TTLValue, TtlvType, TTLV};
 pub trait KmipTag: TryFrom<u32> + Into<u32> + TryFrom<String> + ToString {}
 
 /// Write a tag as a 3-byte big-endian integer
-fn write_tag<W: Write, TAG: KmipTag>(writer: &mut W, tag_str: &str) -> Result<(), TtlvError> {
+fn write_tag<W: Write, TAG: strum::EnumString + Into<u32>>(
+    writer: &mut W,
+    tag_str: &str,
+) -> Result<(), TtlvError> {
     let tag = TAG::try_from(tag_str.to_owned())
         .map_err(|_e| TtlvError::from(format!("Unknown tag: {tag_str}")))?;
     let tag_value: u32 = tag.into();
@@ -122,5 +125,66 @@ where
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr;
+
+    use crate::{kmip_1_4, kmip_2_1, ttlv::wire::ttlv_bytes_serializer::write_tag};
+
+    #[test]
+    fn test_tag_u32_from_tag_name() {
+        let tag = kmip_2_1::kmip_types::Tag::from_str("Link").unwrap();
+        let tag_u32 = tag as u32;
+        assert_eq!(tag_u32, 0x42_004A);
+
+        let tag = kmip_2_1::kmip_types::Tag::from_str("PublicProtectionStorageMasks").unwrap();
+        let tag_u32 = tag as u32;
+        assert_eq!(tag_u32, 0x42_0165);
+
+        let tag = kmip_1_4::kmip_types::Tag::from_str("Link").unwrap();
+        let tag_u32 = tag as u32;
+        assert_eq!(tag_u32, 0x42_004A);
+    }
+
+    #[test]
+    fn test_tag_last_three_bytes_big_endian() {
+        use std::str::FromStr;
+
+        // Get a Tag value (Link = 0x42_004A)
+        let tag = kmip_1_4::kmip_types::Tag::from_str("Link").unwrap();
+        let tag_u32: u32 = tag as u32;
+
+        // Convert to big-endian bytes
+        let tag_bytes = tag_u32.to_be_bytes();
+
+        // Get last 3 bytes (ignore first byte)
+        let last_three_bytes = &tag_bytes[1..];
+
+        // Verify against expected values
+        assert_eq!(last_three_bytes, [0x42, 0x00, 0x4A]);
+
+        // Test with another tag (ObjectType = 0x42_0057)
+        let tag2 = kmip_1_4::kmip_types::Tag::from_str("ObjectType").unwrap();
+        let tag2_u32: u32 = tag2 as u32;
+        let tag2_bytes = tag2_u32.to_be_bytes();
+        let last_three_bytes2 = &tag2_bytes[1..];
+
+        assert_eq!(last_three_bytes2, [0x42, 0x00, 0x57]);
+    }
+
+    #[test]
+    fn test_write_tag() {
+        let tag = kmip_1_4::kmip_types::Tag::from_str("Link").unwrap();
+        let tag_u32: u32 = tag as u32;
+        let tag_bytes = tag_u32.to_be_bytes();
+        let last_three_bytes = &tag_bytes[1..];
+
+        let mut buffer = Vec::new();
+        write_tag::<Vec<u8>, kmip_1_4::kmip_types::Tag>(&mut buffer, "Link").unwrap();
+
+        assert_eq!(buffer, last_three_bytes);
     }
 }
