@@ -4,8 +4,8 @@ use std::{
 };
 
 use serde::{
-    de::{self, MapAccess, Visitor},
     Deserialize, Serialize,
+    de::{self, MapAccess, Visitor},
 };
 use strum::Display;
 use zeroize::Zeroizing;
@@ -19,6 +19,7 @@ use super::{
         ProtectionStorageMasks, ProtocolVersion, RevocationReason, StorageStatusMask,
         UniqueIdentifier, ValidityIndicator,
     },
+    ttlv::deserializer::TryFromTtlv,
 };
 
 #[allow(non_camel_case_types)]
@@ -364,6 +365,8 @@ pub struct Import {
     pub object: Object,
 }
 
+impl TryFromTtlv for Import {}
+
 impl Display for Import {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -500,6 +503,8 @@ pub struct ImportResponse {
     pub unique_identifier: UniqueIdentifier,
 }
 
+impl TryFromTtlv for ImportResponse {}
+
 impl Display for ImportResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -561,6 +566,8 @@ pub struct Certify {
     pub protection_storage_masks: Option<ProtectionStorageMasks>,
 }
 
+impl TryFromTtlv for Certify {}
+
 impl Display for Certify {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -582,6 +589,8 @@ pub struct CertifyResponse {
     /// The Unique Identifier of the newly created object.
     pub unique_identifier: UniqueIdentifier,
 }
+
+impl TryFromTtlv for CertifyResponse {}
 
 impl Display for CertifyResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -613,6 +622,8 @@ pub struct Create {
     pub protection_storage_masks: Option<ProtectionStorageMasks>,
 }
 
+impl TryFromTtlv for Create {}
+
 impl Display for Create {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -631,6 +642,8 @@ pub struct CreateResponse {
     /// The Unique Identifier of the newly created object.
     pub unique_identifier: UniqueIdentifier,
 }
+
+impl TryFromTtlv for CreateResponse {}
 
 impl Display for CreateResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -685,6 +698,8 @@ pub struct CreateKeyPair {
     pub public_protection_storage_masks: Option<ProtectionStorageMasks>,
 }
 
+impl TryFromTtlv for CreateKeyPair {}
+
 impl Display for CreateKeyPair {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -710,6 +725,8 @@ pub struct CreateKeyPairResponse {
     /// The Unique Identifier of the newly created public key object.
     pub public_key_unique_identifier: UniqueIdentifier,
 }
+
+impl TryFromTtlv for CreateKeyPairResponse {}
 
 impl Display for CreateKeyPairResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -811,6 +828,8 @@ pub struct Export {
     pub key_wrapping_specification: Option<KeyWrappingSpecification>,
 }
 
+impl TryFromTtlv for Export {}
+
 impl Display for Export {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -909,6 +928,8 @@ pub struct ExportResponse {
     pub object: Object,
 }
 
+impl TryFromTtlv for ExportResponse {}
+
 impl Display for ExportResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -970,6 +991,8 @@ pub struct Get {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub key_wrapping_specification: Option<KeyWrappingSpecification>,
 }
+
+impl TryFromTtlv for Get {}
 
 impl Display for Get {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -1072,6 +1095,8 @@ pub struct GetResponse {
     pub object: Object,
 }
 
+impl TryFromTtlv for GetResponse {}
+
 impl Display for GetResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -1109,6 +1134,8 @@ pub struct GetAttributes {
     )]
     pub attribute_references: Option<Vec<AttributeReference>>,
 }
+
+impl TryFromTtlv for GetAttributes {}
 
 impl Display for GetAttributes {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -1148,6 +1175,8 @@ pub struct GetAttributesResponse {
     pub attributes: Attributes,
 }
 
+impl TryFromTtlv for GetAttributesResponse {}
+
 impl Display for GetAttributesResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -1168,6 +1197,8 @@ pub struct SetAttribute {
     pub new_attribute: Attribute,
 }
 
+impl TryFromTtlv for SetAttribute {}
+
 impl Display for SetAttribute {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -1184,6 +1215,8 @@ pub struct SetAttributeResponse {
     /// The Unique Identifier of the object
     pub unique_identifier: UniqueIdentifier,
 }
+
+impl TryFromTtlv for SetAttributeResponse {}
 
 impl Display for SetAttributeResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -1212,6 +1245,8 @@ pub struct DeleteAttribute {
     pub attribute_references: Option<Vec<AttributeReference>>,
 }
 
+impl TryFromTtlv for DeleteAttribute {}
+
 impl Display for DeleteAttribute {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -1229,6 +1264,8 @@ pub struct DeleteAttributeResponse {
     /// The Unique Identifier of the object
     pub unique_identifier: UniqueIdentifier,
 }
+
+impl TryFromTtlv for DeleteAttributeResponse {}
 
 impl Display for DeleteAttributeResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -1290,6 +1327,8 @@ pub struct Encrypt {
     pub authenticated_encryption_additional_data: Option<Vec<u8>>,
 }
 
+impl TryFromTtlv for Encrypt {}
+
 impl Display for Encrypt {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -1342,6 +1381,8 @@ pub struct EncryptResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub authenticated_encryption_tag: Option<Vec<u8>>,
 }
+
+impl TryFromTtlv for EncryptResponse {}
 
 impl Display for EncryptResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -1417,6 +1458,8 @@ pub struct Decrypt {
     pub authenticated_encryption_tag: Option<Vec<u8>>,
 }
 
+impl TryFromTtlv for Decrypt {}
+
 impl Display for Decrypt {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -1455,6 +1498,8 @@ pub struct DecryptResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub correlation_value: Option<Vec<u8>>,
 }
+
+impl TryFromTtlv for DecryptResponse {}
 
 impl Display for DecryptResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -1574,6 +1619,8 @@ pub struct Locate {
     pub attributes: Attributes,
 }
 
+impl TryFromTtlv for Locate {}
+
 impl Display for Locate {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -1603,6 +1650,8 @@ pub struct LocateResponse {
     #[serde(skip_serializing_if = "Option::is_none", rename = "UniqueIdentifier")]
     pub unique_identifiers: Option<Vec<UniqueIdentifier>>,
 }
+
+impl TryFromTtlv for LocateResponse {}
 
 impl Display for LocateResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -1645,6 +1694,8 @@ pub struct Revoke {
     pub compromise_occurrence_date: Option<u64>, // epoch millis
 }
 
+impl TryFromTtlv for Revoke {}
+
 impl Display for Revoke {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -1662,6 +1713,8 @@ pub struct RevokeResponse {
     /// The Unique Identifier of the object.
     pub unique_identifier: UniqueIdentifier,
 }
+
+impl TryFromTtlv for RevokeResponse {}
 
 impl Display for RevokeResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -1704,6 +1757,8 @@ pub struct ReKey {
     pub protection_storage_masks: Option<ProtectionStorageMasks>,
 }
 
+impl TryFromTtlv for ReKey {}
+
 impl Display for ReKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -1721,6 +1776,8 @@ pub struct ReKeyResponse {
     // The Unique Identifier of the newly created replacement Private Key object.
     pub unique_identifier: UniqueIdentifier,
 }
+
+impl TryFromTtlv for ReKeyResponse {}
 
 impl Display for ReKeyResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -1798,6 +1855,8 @@ pub struct ReKeyKeyPair {
     pub public_protection_storage_masks: Option<ProtectionStorageMasks>,
 }
 
+impl TryFromTtlv for ReKeyKeyPair {}
+
 impl Display for ReKeyKeyPair {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -1827,6 +1886,8 @@ pub struct ReKeyKeyPairResponse {
     pub public_key_unique_identifier: UniqueIdentifier,
 }
 
+impl TryFromTtlv for ReKeyKeyPairResponse {}
+
 impl Display for ReKeyKeyPairResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -1854,6 +1915,8 @@ pub struct Destroy {
     pub remove: bool,
 }
 
+impl TryFromTtlv for Destroy {}
+
 impl Display for Destroy {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -1870,6 +1933,8 @@ pub struct DestroyResponse {
     /// The Unique Identifier of the object.
     pub unique_identifier: UniqueIdentifier,
 }
+
+impl TryFromTtlv for DestroyResponse {}
 
 impl Display for DestroyResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -1900,6 +1965,8 @@ pub struct Hash {
     pub final_indicator: Option<bool>,
 }
 
+impl TryFromTtlv for Hash {}
+
 impl Display for Hash {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -1925,6 +1992,8 @@ pub struct HashResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub correlation_value: Option<Vec<u8>>,
 }
+
+impl TryFromTtlv for HashResponse {}
 
 impl Display for HashResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -1958,6 +2027,8 @@ pub struct Mac {
     pub final_indicator: Option<bool>,
 }
 
+impl TryFromTtlv for Mac {}
+
 impl Display for Mac {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -1986,6 +2057,8 @@ pub struct MacResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub correlation_value: Option<Vec<u8>>,
 }
+
+impl TryFromTtlv for MacResponse {}
 
 impl Display for MacResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -2025,6 +2098,8 @@ pub struct Validate {
     pub validity_time: Option<String>,
 }
 
+impl TryFromTtlv for Validate {}
+
 impl Display for Validate {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -2042,6 +2117,8 @@ pub struct ValidateResponse {
     /// invalid, or unknown.
     pub validity_indicator: ValidityIndicator,
 }
+
+impl TryFromTtlv for ValidateResponse {}
 
 impl Display for ValidateResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

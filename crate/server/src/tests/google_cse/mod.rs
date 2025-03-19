@@ -6,11 +6,12 @@ use std::{
     sync::Arc,
 };
 
-use actix_http::{body::MessageBody, Request};
+use actix_http::{Request, body::MessageBody};
 use actix_service::Service;
 use actix_web::dev::ServiceResponse;
-use base64::{engine::general_purpose, Engine};
+use base64::{Engine, engine::general_purpose};
 use cosmian_kmip::kmip_2_1::{
+    KmipOperation,
     extra::{VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingSpecification},
     kmip_objects::{Object, ObjectType},
@@ -21,8 +22,7 @@ use cosmian_kmip::kmip_2_1::{
         LinkedObjectIdentifier, UniqueIdentifier, VendorAttribute, WrappingMethod,
     },
     requests::create_rsa_key_pair_request,
-    ttlv::{deserializer::from_ttlv, TTLV},
-    KmipOperation,
+    ttlv::{TTLV, deserializer::TryFromTtlv},
 };
 use cosmian_kms_access::access::{Access, SuccessResponse};
 use cosmian_kms_crypto::crypto::certificates::EXTENSION_CONFIG;
@@ -43,11 +43,12 @@ use crate::{
     core::KMS,
     result::{KResult, KResultHelper},
     routes::google_cse::operations::{
-        DigestRequest, DigestResponse, PrivateKeyDecryptRequest, PrivateKeyDecryptResponse,
-        PrivateKeySignRequest, PrivateKeySignResponse, PrivilegedPrivateKeyDecryptRequest,
-        PrivilegedPrivateKeyDecryptResponse, PrivilegedUnwrapRequest, PrivilegedUnwrapResponse,
-        PrivilegedWrapRequest, PrivilegedWrapResponse, RewrapRequest, RewrapResponse,
-        StatusResponse, UnwrapRequest, UnwrapResponse, WrapRequest, WrapResponse, GOOGLE_CSE_ID,
+        DigestRequest, DigestResponse, GOOGLE_CSE_ID, PrivateKeyDecryptRequest,
+        PrivateKeyDecryptResponse, PrivateKeySignRequest, PrivateKeySignResponse,
+        PrivilegedPrivateKeyDecryptRequest, PrivilegedPrivateKeyDecryptResponse,
+        PrivilegedUnwrapRequest, PrivilegedUnwrapResponse, PrivilegedWrapRequest,
+        PrivilegedWrapResponse, RewrapRequest, RewrapResponse, StatusResponse, UnwrapRequest,
+        UnwrapResponse, WrapRequest, WrapResponse,
     },
     tests::{
         google_cse::utils::generate_google_jwt,
@@ -81,9 +82,7 @@ pub(crate) fn read_object_from_json_ttlv_bytes(bytes: &[u8]) -> KResult<Object> 
     // Read the object from the file
     let ttlv = serde_json::from_slice::<TTLV>(bytes)
         .with_context(|| "failed parsing the object from the json file".to_owned())?;
-    // Deserialize the object
-    let object: Object = from_ttlv(&ttlv)?;
-    Ok(object)
+    Ok(Object::try_from_ttlv(&ttlv)?)
 }
 
 async fn import_google_cse_symmetric_key_with_access<B, S>(app: &S) -> KResult<()>

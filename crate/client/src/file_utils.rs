@@ -5,14 +5,14 @@ use std::{
 };
 
 use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializer};
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{
     cosmian_kmip::kmip_2_1::{
         kmip_objects::Object,
-        ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
+        ttlv::{TTLV, deserializer::TryFromTtlv, serializer::to_ttlv},
     },
-    error::{result::KmsClientResultHelper, KmsClientError},
+    error::{KmsClientError, result::KmsClientResultHelper},
 };
 
 /// Read all bytes from a file
@@ -42,7 +42,7 @@ pub fn read_object_from_json_ttlv_bytes(bytes: &[u8]) -> Result<Object, KmsClien
     let ttlv = serde_json::from_slice::<TTLV>(bytes)
         .with_context(|| "failed parsing the object from the json file")?;
     // Deserialize the object
-    let object: Object = from_ttlv(&ttlv)?;
+    let object = TryFromTtlv::try_from_ttlv(&ttlv)?;
     Ok(object)
 }
 

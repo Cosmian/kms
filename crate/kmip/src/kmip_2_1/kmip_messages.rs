@@ -21,9 +21,9 @@ use std::fmt::{self, Display, Formatter};
 /// asynchronous responses only if the Asynchronous Indicator is present in the header.
 use chrono::Utc;
 use serde::{
+    Deserialize, Serialize,
     de::{self, MapAccess, Visitor},
     ser::{self, SerializeStruct},
-    Deserialize, Serialize,
 };
 
 use super::{
@@ -32,8 +32,9 @@ use super::{
         AsynchronousIndicator, AttestationType, BatchErrorContinuationOption, Credential,
         MessageExtension, Nonce, OperationEnumeration, ProtocolVersion, ResultStatusEnumeration,
     },
+    ttlv::deserializer::TryFromTtlv,
 };
-use crate::{error::result::KmipResult, KmipError};
+use crate::{KmipError, error::result::KmipResult};
 
 #[derive(Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
@@ -43,6 +44,8 @@ pub struct Message {
     /// Batch items of the request
     pub items: Vec<MessageBatchItem>,
 }
+
+impl TryFromTtlv for Message {}
 
 impl Display for Message {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -391,6 +394,8 @@ pub struct MessageResponse {
     /// Batch items of the response
     pub items: Vec<MessageResponseBatchItem>,
 }
+
+impl TryFromTtlv for MessageResponse {}
 
 impl Serialize for MessageResponse {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>

@@ -4,15 +4,15 @@ use std::{env::temp_dir, path::PathBuf, sync::Arc};
 
 use actix_http::Request;
 use actix_web::{
+    App,
     body::MessageBody,
     dev::{Service, ServiceResponse},
     http::StatusCode,
     test::{self, call_service, read_body},
     web::{self, Data},
-    App,
 };
-use cosmian_kmip::kmip_2_1::ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV};
-use serde::{de::DeserializeOwned, Serialize};
+use cosmian_kmip::kmip_2_1::ttlv::{deserializer::TryFromTtlv, serializer::to_ttlv, TTLV};
+use serde::{Serialize, de::DeserializeOwned};
 use uuid::Uuid;
 
 use super::google_cse::utils::google_cse_auth;
@@ -100,7 +100,7 @@ pub(crate) async fn test_app(
 pub(crate) async fn post<B, O, R, S>(app: &S, operation: O) -> KResult<R>
 where
     O: Serialize,
-    R: DeserializeOwned,
+    R: DeserializeOwned + TryFromTtlv,
     S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
     B: MessageBody,
 {
@@ -118,7 +118,7 @@ where
     }
     let body = read_body(res).await;
     let json: TTLV = serde_json::from_slice(&body)?;
-    let result: R = from_ttlv(&json)?;
+    let result = R::try_from_ttlv(&json)?;
     Ok(result)
 }
 

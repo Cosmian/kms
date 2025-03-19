@@ -1,14 +1,13 @@
-#![allow(clippy::indexing_slicing)]
 use serde::{
-    de::{self, DeserializeSeed, EnumAccess, Error, MapAccess, SeqAccess, VariantAccess, Visitor},
     Deserialize,
+    de::{self, DeserializeSeed, EnumAccess, Error, MapAccess, SeqAccess, VariantAccess, Visitor},
 };
 use time::format_description::well_known::Rfc3339;
 use tracing::trace;
 
 use crate::kmip_2_1::{
     kmip_objects::{Object, ObjectType},
-    ttlv::{error::TtlvError, to_u32_digits, TTLVEnumeration, TTLValue, TTLV},
+    ttlv::{TTLV, TTLVEnumeration, TTLValue, error::TtlvError, to_u32_digits},
 };
 
 type Result<T> = std::result::Result<T, TtlvError>;
@@ -81,40 +80,20 @@ impl<'de> TtlvDeserializer<'de> {
     }
 }
 
-/// Parse a KMIP structure from its TTLV value.
-///
-/// Note: `Objects` are untagged enums, so it is impossible to know the type of the Object
-/// unless the root value being deserialized is an object, in which case,
-/// the tag is the name of the variant.
-///
-/// #see `Object::post_fix()`
-pub fn from_ttlv<'a, T>(s: &'a TTLV) -> Result<T>
-where
-    T: Deserialize<'a>,
-{
-    // postfix the TTLV if it is a root object
-    trait PostFix
-    where
-        Self: Sized,
-    {
-        fn post_fix(self, tag: &str) -> Result<Self>;
+pub trait TryFromTtlv: for<'a> Deserialize<'a> {
+    fn try_from_ttlv(s: &TTLV) -> Result<Self> {
+        let mut deserializer = TtlvDeserializer::from_ttlv(s);
+        Self::deserialize(&mut deserializer)
     }
-    impl<T> PostFix for T {
-        default fn post_fix(self, _tag: &str) -> Result<Self> {
-            Ok(self)
-        }
-    }
-    impl PostFix for Object {
-        fn post_fix(self, tag: &str) -> Result<Self> {
-            let object_type = ObjectType::try_from(tag)?;
-            Ok(Self::post_fix(object_type, self))
-        }
-    }
+}
 
-    let mut deserializer = TtlvDeserializer::from_ttlv(s);
-    let value = T::deserialize(&mut deserializer)?;
-
-    value.post_fix(s.tag.as_str())
+impl TryFromTtlv for Object {
+    fn try_from_ttlv(s: &TTLV) -> Result<Object> {
+        let mut deserializer = TtlvDeserializer::from_ttlv(s);
+        let value = Self::deserialize(&mut deserializer)?;
+        let object_type = ObjectType::try_from(s.tag.as_str())?;
+        Ok(Self::post_fix(object_type, value))
+    }
 }
 
 impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
@@ -130,9 +109,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
     {
         trace!(
             "deserialize_any  {:?}:  {:?} -> {:?}",
-            self.deserializing,
-            self.index,
-            self.inputs
+            self.deserializing, self.index, self.inputs
         );
         if self.deserializing == Deserializing::ByteString {
             return visitor.visit_u8(self.get_bytes()?[self.index - 1])

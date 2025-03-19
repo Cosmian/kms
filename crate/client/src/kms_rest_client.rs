@@ -5,6 +5,7 @@ use cosmian_kmip::kmip_2_1::{
         DeleteAttribute, DeleteAttributeResponse, Hash, HashResponse, Mac, MacResponse, ReKey,
         ReKeyResponse, SetAttribute, SetAttributeResponse,
     },
+    ttlv::deserializer::TryFromTtlv,
 };
 // re-export the kmip module as kmip
 use cosmian_kmip::kmip_2_1::{
@@ -15,7 +16,7 @@ use cosmian_kmip::kmip_2_1::{
         ImportResponse, Locate, LocateResponse, ReKeyKeyPair, ReKeyKeyPairResponse, Revoke,
         RevokeResponse, StatusResponse, Validate, ValidateResponse,
     },
-    ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
+    ttlv::{TTLV, serializer::to_ttlv},
 };
 use cosmian_kms_access::access::{
     Access, AccessRightsObtainedResponse, ObjectOwnedResponse, SuccessResponse, UserAccessResponse,
@@ -25,8 +26,8 @@ use serde::Serialize;
 use tracing::trace;
 
 use crate::{
-    error::{result::KmsClientResultHelper, KmsClientError},
     KmsClientConfig,
+    error::{KmsClientError, result::KmsClientResultHelper},
 };
 
 /// A struct implementing some of the 50+ operations a KMIP client should implement:
@@ -615,7 +616,7 @@ impl KmsClient {
     pub async fn post_ttlv<O, R>(&self, kmip_request: &O) -> Result<R, KmsClientError>
     where
         O: Serialize,
-        R: serde::de::DeserializeOwned + Sized + 'static,
+        R: serde::de::DeserializeOwned + TryFromTtlv + Sized + 'static,
     {
         let endpoint = "/kmip/2_1";
         let server_url = format!("{}{endpoint}", self.client.server_url);
@@ -647,7 +648,8 @@ impl KmsClient {
                 "<==\n{}",
                 serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_owned())
             );
-            return from_ttlv(&ttlv).map_err(|e| KmsClientError::ResponseFailed(e.to_string()))
+            return <R as TryFromTtlv>::try_from_ttlv(&ttlv)
+                .map_err(|e| KmsClientError::ResponseFailed(e.to_string()))
         }
 
         // process error

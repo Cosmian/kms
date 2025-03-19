@@ -1,19 +1,18 @@
 use std::sync::Arc;
 
 use actix_web::{
-    post,
+    HttpRequest, post,
     web::{Data, Json},
-    HttpRequest,
 };
 use cosmian_kmip::kmip_2_1::{
     kmip_messages::Message,
-    ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
+    ttlv::{TTLV, deserializer::TryFromTtlv, serializer::to_ttlv},
 };
 use cosmian_kms_interfaces::SessionParams;
 use tracing::info;
 
 use crate::{
-    core::{operations::dispatch, KMS},
+    core::{KMS, operations::dispatch},
     result::KResult,
 };
 
@@ -52,7 +51,7 @@ async fn handle_ttlv(
     database_params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<TTLV> {
     if ttlv.tag.as_str() == "Message" {
-        let req = from_ttlv::<Message>(ttlv)?;
+        let req = Message::try_from_ttlv(ttlv)?;
         let resp = kms.message(req, user, database_params).await?;
         Ok(to_ttlv(&resp)?)
     } else {

@@ -6,19 +6,19 @@
 use std::fmt::{self, Display, Formatter};
 
 use serde::{
+    Deserialize, Serialize,
     de::{self, MapAccess, Visitor},
     ser::SerializeStruct,
-    Deserialize, Serialize,
 };
 use strum::{Display, EnumIter, EnumString};
 use tracing::trace;
 use uuid::Uuid;
 
-use super::kmip_objects::ObjectType;
+use super::{kmip_objects::ObjectType, ttlv::deserializer::TryFromTtlv};
 use crate::{
     error::KmipError,
     kmip_2_1::{
-        extra::{tagging::VENDOR_ATTR_TAG, VENDOR_ID_COSMIAN},
+        extra::{VENDOR_ID_COSMIAN, tagging::VENDOR_ATTR_TAG},
         kmip_operations::ErrorReason,
     },
     kmip_error,
@@ -796,6 +796,8 @@ pub struct Link {
     pub linked_object_identifier: LinkedObjectIdentifier,
 }
 
+impl TryFromTtlv for Link {}
+
 /// A vendor specific Attribute is a structure used for sending and receiving
 /// a Managed Object attribute. The Vendor Identification
 /// and Attribute Name are text-strings that are used to identify the attribute.
@@ -1008,6 +1010,8 @@ pub struct Attributes {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vendor_attributes: Option<Vec<VendorAttribute>>,
 }
+
+impl TryFromTtlv for Attributes {}
 
 impl Attributes {
     /// Add a vendor attribute to the list of vendor attributes.
@@ -1229,6 +1233,8 @@ pub enum Attribute {
     Links(Vec<Link>),
     VendorAttributes(Vec<VendorAttribute>),
 }
+
+impl TryFromTtlv for Attribute {}
 
 impl Display for Attribute {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {

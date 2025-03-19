@@ -4,19 +4,20 @@ use clap::{Parser, Subcommand};
 use cosmian_cover_crypt::{EncryptionHint, MasterPublicKey, QualifiedAttribute};
 use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kms_client::{
+    ExportObjectParams, KmsClient,
     cosmian_kmip::KmipResultHelper,
     export_object,
     kmip_2_1::{
         kmip_objects::Object,
-        ttlv::{deserializer::from_ttlv, TTLV},
+        ttlv::{TTLV, deserializer::TryFromTtlv},
     },
-    read_from_json_file, ExportObjectParams, KmsClient,
+    read_from_json_file,
 };
 use cosmian_kms_crypto::{
+    CryptoError,
     crypto::cover_crypt::{
         attributes::RekeyEditAction, kmip_requests::build_rekey_keypair_request,
     },
-    CryptoError,
 };
 
 use crate::{actions::console, cli_bail, error::result::CliResult};
@@ -61,19 +62,15 @@ pub struct ViewAction {
 impl ViewAction {
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         let object: Object = if let Some(id) = &self.key_id {
-            export_object(
-                kms_rest_client,
-                id,
-                ExportObjectParams {
-                    unwrap: true,
-                    ..ExportObjectParams::default()
-                },
-            )
+            export_object(kms_rest_client, id, ExportObjectParams {
+                unwrap: true,
+                ..ExportObjectParams::default()
+            })
             .await?
             .1
         } else if let Some(key_file) = &self.key_file {
             let ttlv: TTLV = read_from_json_file(key_file)?;
-            from_ttlv(&ttlv)?
+            Object::try_from_ttlv(&ttlv)?
         } else {
             cli_bail!("either a key ID or a key TTLV file must be supplied");
         };
