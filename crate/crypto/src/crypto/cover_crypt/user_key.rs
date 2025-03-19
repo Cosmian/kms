@@ -1,4 +1,4 @@
-use cosmian_cover_crypt::{api::Covercrypt, AccessPolicy, MasterSecretKey, UserSecretKey};
+use cosmian_cover_crypt::{AccessPolicy, MasterSecretKey, UserSecretKey, api::Covercrypt};
 use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
@@ -115,7 +115,7 @@ impl<'a> UserDecryptionKeysHandler<'a> {
     }
 
     /// Refresh the user decryption key according to the (new) policy of the master key
-    pub fn refresh_user_decryption_key_object(
+    pub fn refresh_usk_object(
         &mut self,
         user_decryption_key: &Object,
         keep_old_rights: bool,

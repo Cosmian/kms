@@ -13,13 +13,13 @@ use cosmian_kms_crypto::crypto::cover_crypt::attributes::qualified_attributes_as
 use cosmian_kms_interfaces::SessionParams;
 
 use crate::{
-    core::{operations, KMS},
+    core::{KMS, operations},
     result::KResult,
 };
 
 /// Locate all the user decryption keys associated with the master secret key
 /// and for the given access structure attributes
-pub(crate) async fn locate_user_decryption_keys(
+pub(crate) async fn locate_usk(
     kmip_server: &KMS,
     master_secret_key_uid: &str,
     cover_crypt_policy_attributes_to_revoke: Option<Vec<QualifiedAttribute>>,

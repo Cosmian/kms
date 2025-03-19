@@ -3,15 +3,15 @@ use std::{collections::HashSet, sync::Arc};
 use cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier;
 use cosmian_kms_interfaces::SessionParams;
 
-use super::locate_user_decryption_keys;
+use super::locate_usk;
 use crate::{
-    core::{operations::recursively_destroy_object, KMS},
+    core::{KMS, operations::recursively_destroy_object},
     result::KResult,
 };
 
 /// Revoke all the user decryption keys associated with the master secret key
 pub(crate) async fn destroy_user_decryption_keys(
-    master_secret_key_id: &str,
+    msk_id: &str,
     remove: bool,
     kms: &KMS,
     owner: &str,
@@ -20,8 +20,7 @@ pub(crate) async fn destroy_user_decryption_keys(
     ids_to_skip: HashSet<String>,
 ) -> KResult<()> {
     if let Some(ids) =
-        locate_user_decryption_keys(kms, master_secret_key_id, None, None, owner, params.clone())
-            .await?
+        locate_usk(kms, msk_uid, None, None, owner, params.clone()).await?
     {
         for id in ids.into_iter().filter(|id| !ids_to_skip.contains(id)) {
             recursively_destroy_object(

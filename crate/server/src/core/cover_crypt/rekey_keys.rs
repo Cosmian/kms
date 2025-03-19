@@ -1,4 +1,3 @@
-#![allow(clippy::large_stack_frames)]
 use std::{ops::AsyncFn, sync::Arc};
 
 use cosmian_cover_crypt::{MasterPublicKey, MasterSecretKey, api::Covercrypt};
@@ -18,9 +17,7 @@ use cosmian_kms_interfaces::SessionParams;
 use tracing::trace;
 
 use super::KMS;
-use crate::{
-    core::cover_crypt::locate_user_decryption_keys, error::KmsError, kms_bail, result::KResult,
-};
+use crate::{core::cover_crypt::locate_usk, error::KmsError, kms_bail, result::KResult};
 
 /// KMIP `ReKey` for `CoverCrypt` master keys can be one of these actions:
 ///
@@ -266,7 +263,7 @@ async fn update_all_active_usk(
     owner: &str,
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<()> {
-    let locate_response = locate_user_decryption_keys(
+    let res = locate_usk(
         kmip_server,
         msk_uid,
         None,
@@ -276,52 +273,43 @@ async fn update_all_active_usk(
     )
     .await?;
 
-    if let Some(unique_identifiers) = &locate_response {
+    if let Some(uids) = &res {
         let mut handler = UserDecryptionKeysHandler::instantiate(cover_crypt, msk);
-        for user_decryption_key_uid in unique_identifiers {
-            update_usk(
-                &mut handler,
-                user_decryption_key_uid,
-                kmip_server,
-                owner,
-                params.clone(),
-            )
-            .await?;
+        for usk_uid in uids {
+            update_usk(&mut handler, usk_uid, kmip_server, owner, params.clone()).await?;
         }
     }
 
     Ok(())
 }
 
-/// Refresh an individual user secret key with a given handler to a master secret key
+/// Refresh an individual USK with a given handler to a MSK.
 async fn update_usk<'a>(
     handler: &mut UserDecryptionKeysHandler<'a>,
-    user_decryption_key_uid: &str,
+    usk_uid: &str,
     kmip_server: &KMS,
     owner: &str,
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<()> {
-    //fetch the user decryption key
-    let get_response = kmip_server
-        .get(Get::from(user_decryption_key_uid), owner, params.clone())
+    let res = kmip_server
+        .get(Get::from(usk_uid), owner, params.clone())
         .await?;
-    let user_decryption_key = get_response.object;
 
-    // Generate a fresh User Decryption Key
-    let updated_user_decryption_key =
-        handler.refresh_user_decryption_key_object(&user_decryption_key, true)?;
-    let import_request = Import {
-        unique_identifier: get_response.unique_identifier,
-        object_type: get_response.object_type,
+    let usk_obj = handler.refresh_usk_object(&res.object, true)?;
+
+    let req = Import {
+        unique_identifier: res.unique_identifier,
+        object_type: res.object_type,
         replace_existing: Some(true),
         key_wrap_type: None,
-        attributes: updated_user_decryption_key
+        attributes: usk_obj
             .attributes()
             .map_err(|e| KmsError::KmipError(ErrorReason::Attribute_Not_Found, e.to_string()))?
             .clone(),
-        object: updated_user_decryption_key,
+        object: usk_obj,
     };
-    let _import_response = kmip_server.import(import_request, owner, params).await?;
+
+    kmip_server.import(req, owner, params).await?;
 
     Ok(())
 }

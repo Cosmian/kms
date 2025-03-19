@@ -6,14 +6,12 @@ use cosmian_kmip::kmip_2_1::{
     kmip_operations::{ErrorReason, ReKeyKeyPair, ReKeyKeyPairResponse},
     kmip_types::{CryptographicAlgorithm, KeyFormatType, StateEnumeration},
 };
-use cosmian_kms_crypto::crypto::cover_crypt::attributes::{
-    access_structure_from_attributes, rekey_edit_action_from_attributes,
-};
+use cosmian_kms_crypto::crypto::cover_crypt::attributes::rekey_edit_action_from_attributes;
 use cosmian_kms_interfaces::SessionParams;
 use tracing::trace;
 
 use crate::{
-    core::{cover_crypt::rekey_keypair_cover_crypt, KMS},
+    core::{KMS, cover_crypt::rekey_keypair_cover_crypt},
     error::KmsError,
     kms_bail,
     result::{KResult, KResultHelper},
@@ -49,23 +47,21 @@ pub(crate) async fn rekey_keypair(
         .into_values();
 
     for owm in owm_s {
-        // only active objects
         if owm.state() != StateEnumeration::Active {
             continue
         }
-        // only private keys
+
         if owm.object().object_type() != ObjectType::PrivateKey {
             continue
         }
+
         // if a Covercrypt key, it must be a master secret key
         if let Ok(attributes) = owm.object().attributes() {
-            if attributes.key_format_type == Some(KeyFormatType::CoverCryptSecretKey) {
-                // a master key should have policies in the attributes
-                if access_structure_from_attributes(attributes).is_err() {
-                    continue
-                }
+            if attributes.key_format_type != Some(KeyFormatType::CoverCryptSecretKey) {
+                continue
             }
         }
+
         if Some(CryptographicAlgorithm::CoverCrypt) == attributes.cryptographic_algorithm {
             let action = rekey_edit_action_from_attributes(attributes)?;
             return Box::pin(rekey_keypair_cover_crypt(

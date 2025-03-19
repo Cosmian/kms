@@ -1,6 +1,7 @@
 use cosmian_cover_crypt::{MasterPublicKey, MasterSecretKey, api::Covercrypt};
 use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kmip::kmip_2_1::{
+    extra::VENDOR_ID_COSMIAN,
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
     kmip_objects::{Object, ObjectType},
     kmip_types::{
@@ -12,7 +13,12 @@ use tracing::debug;
 use zeroize::Zeroizing;
 
 use crate::{
-    crypto::{KeyPair, cover_crypt::attributes::access_structure_from_attributes},
+    crypto::{
+        KeyPair,
+        cover_crypt::attributes::{
+            VENDOR_ATTR_COVER_CRYPT_ACCESS_STRUCTURE, access_structure_from_attributes,
+        },
+    },
     error::CryptoError,
 };
 
@@ -25,7 +31,7 @@ pub fn create_master_keypair(
     cover_crypt: &Covercrypt,
     private_key_uid: String,
     public_key_uid: &str,
-    common_attributes: Attributes,
+    mut common_attributes: Attributes,
     msk_attributes: Option<Attributes>,
     mpk_attributes: Option<Attributes>,
     sensitive: bool,
@@ -41,11 +47,8 @@ pub fn create_master_keypair(
     let mpk = cover_crypt.update_msk(&mut msk)?;
 
     // Removes the access structure from the common attributes.
-
-    // TODO: this creates a bug: the MSK cannot be found anymore :/
-    //
-    // common_attributes.remove_vendor_attribute(VENDOR_ID_COSMIAN,
-    // VENDOR_ATTR_COVER_CRYPT_ACCESS_STRUCTURE);
+    common_attributes
+        .remove_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_ACCESS_STRUCTURE);
 
     let msk_owm = create_msk_object(
         msk.serialize()?,

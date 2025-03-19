@@ -8,8 +8,7 @@ use cosmian_kmip::kmip_2_1::{
     kmip_types::{Attributes, KeyFormatType, StateEnumeration, UniqueIdentifier},
 };
 use cosmian_kms_crypto::crypto::cover_crypt::{
-    attributes::{access_policy_from_attributes, access_structure_from_attributes},
-    master_keys::create_msk_object,
+    attributes::access_policy_from_attributes, master_keys::create_msk_object,
     user_key::UserDecryptionKeysHandler,
 };
 use cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams};
@@ -60,11 +59,6 @@ pub(crate) async fn create_user_decryption_key(
 
         // The master key should be a CoverCrypt secret key
         if attributes.key_format_type != Some(KeyFormatType::CoverCryptSecretKey) {
-            continue;
-        }
-
-        // a master key should have policies in the attributes
-        if access_structure_from_attributes(attributes).is_err() {
             continue;
         }
 
