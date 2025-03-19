@@ -6,7 +6,7 @@ set -ex
 # export TARGET=x86_64-unknown-linux-gnu
 # export DEBUG_OR_RELEASE=debug
 # export OPENSSL_DIR=/usr/local/openssl
-# export SKIP_SERVICES_TESTS="--skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse --skip test_all_authentications --skip hsm"
+# export SKIP_SERVICES_TESTS="--skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse"
 # export FEATURES="fips"
 
 ROOT_FOLDER=$(pwd)
