@@ -19,10 +19,12 @@ pub trait KmipTag: Copy + ToString + FromStr {
 
 impl KmipTag for kmip_1_4::kmip_types::Tag {
     fn from_u32(tag_value: u32) -> Result<Self, TtlvError> {
-        kmip_1_4::kmip_types::Tag::from_repr(tag_value)
+        Self::from_repr(tag_value)
             .ok_or_else(|| TtlvError::from(format!("Unknown tag value: {tag_value}")))
     }
 
+    #[allow(clippy::as_conversions)]
+    // This conversion is idomatic for items marked with #[repr(u32)]
     fn to_u32(&self) -> u32 {
         *self as u32
     }
@@ -30,10 +32,12 @@ impl KmipTag for kmip_1_4::kmip_types::Tag {
 
 impl KmipTag for kmip_2_1::kmip_types::Tag {
     fn from_u32(tag_value: u32) -> Result<Self, TtlvError> {
-        kmip_2_1::kmip_types::Tag::from_repr(tag_value)
+        Self::from_repr(tag_value)
             .ok_or_else(|| TtlvError::from(format!("Unknown tag value: {tag_value}")))
     }
 
+    #[allow(clippy::as_conversions)]
+    // This conversion is idomatic for items marked with #[repr(u32)]
     fn to_u32(&self) -> u32 {
         *self as u32
     }
@@ -141,7 +145,8 @@ where
                 // pad to a multiple of 8 bytes
                 let padding = 8 - (utf8_bytes.len() % 8);
                 if padding != 8 {
-                    self.writer.write_all(&[0u8; 8][..padding])?;
+                    let padding_bytes = vec![0_u8; padding];
+                    self.writer.write_all(&padding_bytes)?;
                 }
             }
             TTLValue::ByteString(value) => {
@@ -151,7 +156,8 @@ where
                 // pad to a multiple of 8 bytes
                 let padding = 8 - (value.len() % 8);
                 if padding != 8 {
-                    self.writer.write_all(&[0u8; 8][..padding])?;
+                    let padding_bytes = vec![0_u8; padding];
+                    self.writer.write_all(&padding_bytes)?;
                 }
             }
             TTLValue::DateTime(value) => {
@@ -180,6 +186,9 @@ where
     }
 }
 
+#[allow(clippy::unwrap_used)]
+#[allow(clippy::as_conversions)]
+#[allow(clippy::indexing_slicing)]
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;
@@ -337,7 +346,7 @@ mod tests {
     fn test_long_integer() {
         let ttlv = TTLV {
             tag: kmip_1_4::kmip_types::Tag::IterationCount.to_string(),
-            value: TTLValue::LongInteger(1234567890123456789),
+            value: TTLValue::LongInteger(1_234_567_890_123_456_789),
         };
         let mut buffer = Vec::new();
         let mut serializer = TTLVBytesSerializer::new(&mut buffer);
@@ -359,12 +368,14 @@ mod tests {
         // Check the length bytes
         assert_eq!(&buffer[4..8], &[0x00, 0x00, 0x00, 0x08]);
         // Check the value bytes
-        assert_eq!(&buffer[8..16], &i64::to_be_bytes(1234567890123456789));
+        assert_eq!(&buffer[8..16], &i64::to_be_bytes(1_234_567_890_123_456_789));
     }
 
     #[test]
     fn test_big_integer() {
-        let bi = KmipBigInt::from(BigInt::from(12345678901234567890123456789012345678_i128));
+        let bi = KmipBigInt::from(BigInt::from(
+            12_345_678_901_234_567_890_123_456_789_012_345_678_i128,
+        ));
         let bi_bytes = bi.to_signed_bytes_be();
         let bi_len = bi_bytes.len();
         assert_eq!(bi_bytes.len() % 8, 0);
@@ -405,7 +416,7 @@ mod tests {
     fn test_enumeration() {
         let variant = KmipEnumerationVariant {
             value: 0x03,
-            name: "AES".to_string(),
+            name: "AES".to_owned(),
         };
         let ttlv = TTLV {
             tag: kmip_1_4::kmip_types::Tag::CryptographicAlgorithm.to_string(),
@@ -511,7 +522,7 @@ mod tests {
 
         let ttlv = TTLV {
             tag: kmip_1_4::kmip_types::Tag::KeyValue.to_string(),
-            value: TTLValue::ByteString(msg.clone()),
+            value: TTLValue::ByteString(msg),
         };
         let mut buffer = Vec::new();
         let mut serializer = TTLVBytesSerializer::new(&mut buffer);
@@ -607,7 +618,7 @@ mod tests {
             .unwrap();
         let ttlv = TTLV {
             tag: kmip_1_4::kmip_types::Tag::ActivationDate.to_string(),
-            value: TTLValue::DateTimeExtended(micros as i128),
+            value: TTLValue::DateTimeExtended(i128::from(micros)),
         };
         let mut buffer = Vec::new();
         let mut serializer = TTLVBytesSerializer::new(&mut buffer);
@@ -671,9 +682,10 @@ mod tests {
         assert_eq!(&buffer[4..8], &(8_u32 + 8 + 8 + 16).to_be_bytes());
 
         // Check LinkType inner structure
+        #[allow(clippy::items_after_statements)]
         const OFFSET_1: usize = 8;
         assert_eq!(
-            &buffer[0 + OFFSET_1..3 + OFFSET_1],
+            &buffer[OFFSET_1..3 + OFFSET_1],
             &(kmip_1_4::kmip_types::Tag::LinkType as u32).to_be_bytes()[1..4]
         );
         // Check the type byte
@@ -689,9 +701,10 @@ mod tests {
         assert_eq!(&buffer[12 + OFFSET_1..16 + OFFSET_1], &[0; 4]);
 
         // Check LinkedObjectIdentifier inner structure
+        #[allow(clippy::items_after_statements)]
         const OFFSET_2: usize = 8 + 16;
         assert_eq!(
-            &buffer[0 + OFFSET_2..3 + OFFSET_2],
+            &buffer[OFFSET_2..3 + OFFSET_2],
             &(kmip_1_4::kmip_types::Tag::LinkedObjectIdentifier as u32).to_be_bytes()[1..4]
         );
         // Check the type byte
