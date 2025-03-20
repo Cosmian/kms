@@ -1,27 +1,37 @@
-use std::{io::Cursor, str::FromStr};
+use std::io::Cursor;
 
 use num_bigint_dig::BigInt;
 use strum::Display;
 use time::OffsetDateTime;
 
-use crate::{
-    kmip_1_4, kmip_2_1,
-    ttlv::{
-        wire::{KmipTag, TTLVBytesDeserializer, TTLVBytesSerializer},
-        TTLValue, TTLV,
-    },
+use crate::ttlv::{
+    wire::{KmipTag, TTLVBytesDeserializer, TTLVBytesSerializer},
+    TTLValue, TtlvError, TTLV,
 };
 
 #[test]
 fn test_serialization_deserialization() {
     // Helper enum implementing KmipTag
-    #[derive(Debug, Clone, Display)]
+    #[derive(Debug, Clone, Display, Copy, strum::EnumString, strum::FromRepr)]
+    #[repr(u32)]
     enum TestTag {
-        Test1,
-        Test2,
+        Test1 = 0x04,
+        Test2 = 0x08,
     }
 
-    impl KmipTag for TestTag {}
+    impl KmipTag for TestTag {
+        fn from_u32(tag_value: u32) -> Result<Self, TtlvError>
+        where
+            Self: Sized,
+        {
+            TestTag::from_repr(tag_value)
+                .ok_or_else(|| TtlvError::from(format!("Unknown tag value: {tag_value}")))
+        }
+
+        fn to_u32(&self) -> u32 {
+            *self as u32
+        }
+    }
 
     impl TryFrom<u32> for TestTag {
         type Error = ();

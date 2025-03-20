@@ -1043,6 +1043,7 @@ impl AttributeReference {
     EnumIter,
     Hash,
     strum::IntoStaticStr,
+    strum::FromRepr,
 )]
 #[repr(u32)]
 pub enum Tag {

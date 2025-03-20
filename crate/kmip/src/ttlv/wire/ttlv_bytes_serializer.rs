@@ -1,18 +1,49 @@
-use std::io::Write;
+use std::{io::Write, str::FromStr};
 
-use crate::ttlv::{error::TtlvError, TTLValue, TtlvType, TTLV};
+use crate::{
+    kmip_1_4, kmip_2_1,
+    ttlv::{error::TtlvError, TTLValue, TtlvType, TTLV},
+};
 
 /// This trait is used to define the KMIP 1.4 and KMIP 2.1 tags that can be used in TTLV serialization
-pub trait KmipTag: TryFrom<u32> + Into<u32> + TryFrom<String> + ToString {}
+
+pub trait KmipTag: Copy + ToString + FromStr {
+    /// Get a tag variant from a value
+    fn from_u32(tag_value: u32) -> Result<Self, TtlvError>
+    where
+        Self: Sized;
+
+    /// Convert the tag to an u32 value
+    fn to_u32(&self) -> u32;
+}
+
+impl KmipTag for kmip_1_4::kmip_types::Tag {
+    fn from_u32(tag_value: u32) -> Result<Self, TtlvError> {
+        kmip_1_4::kmip_types::Tag::from_repr(tag_value)
+            .ok_or_else(|| TtlvError::from(format!("Unknown tag value: {tag_value}")))
+    }
+
+    fn to_u32(&self) -> u32 {
+        *self as u32
+    }
+}
+
+impl KmipTag for kmip_2_1::kmip_types::Tag {
+    fn from_u32(tag_value: u32) -> Result<Self, TtlvError> {
+        kmip_2_1::kmip_types::Tag::from_repr(tag_value)
+            .ok_or_else(|| TtlvError::from(format!("Unknown tag value: {tag_value}")))
+    }
+
+    fn to_u32(&self) -> u32 {
+        *self as u32
+    }
+}
 
 /// Write a tag as a 3-byte big-endian integer
-fn write_tag<W: Write, TAG: strum::EnumString + Into<u32>>(
-    writer: &mut W,
-    tag_str: &str,
-) -> Result<(), TtlvError> {
-    let tag = TAG::try_from(tag_str.to_owned())
-        .map_err(|_e| TtlvError::from(format!("Unknown tag: {tag_str}")))?;
-    let tag_value: u32 = tag.into();
+fn write_tag<W: Write, TAG: KmipTag>(writer: &mut W, tag_str: &str) -> Result<(), TtlvError> {
+    let tag =
+        TAG::from_str(tag_str).map_err(|_e| TtlvError::from(format!("Unknown tag: {tag_str}")))?;
+    let tag_value: u32 = tag.to_u32();
     let tag_bytes = tag_value.to_be_bytes();
     // Write only the lowest 3 bytes in big-endian
     writer.write_all(&tag_bytes[1..])?;
@@ -73,6 +104,8 @@ where
                 write_type(&mut self.writer, TtlvType::Integer)?;
                 write_length(&mut self.writer, 4)?;
                 self.writer.write_all(&value.to_be_bytes())?;
+                // 4 bytes padding
+                self.writer.write_all(&[0; 4])?;
             }
             TTLValue::LongInteger(value) => {
                 write_type(&mut self.writer, TtlvType::LongInteger)?;
@@ -89,23 +122,37 @@ where
                 write_type(&mut self.writer, TtlvType::Enumeration)?;
                 write_length(&mut self.writer, 4)?;
                 self.writer.write_all(&en.value.to_be_bytes())?;
+                // 4 bytes padding
+                self.writer.write_all(&[0; 4])?;
             }
             TTLValue::Boolean(value) => {
                 write_type(&mut self.writer, TtlvType::Boolean)?;
                 write_length(&mut self.writer, 8)?;
+                // booleans are encoded on 8 bytes
                 let mut buf = [0_u8; 8];
                 buf[7] = u8::from(*value);
                 self.writer.write_all(&buf)?;
             }
             TTLValue::TextString(value) => {
                 write_type(&mut self.writer, TtlvType::TextString)?;
-                write_length(&mut self.writer, value.len())?;
-                self.writer.write_all(value.as_bytes())?;
+                let utf8_bytes = value.as_bytes();
+                write_length(&mut self.writer, utf8_bytes.len())?;
+                self.writer.write_all(utf8_bytes)?;
+                // pad to a multiple of 8 bytes
+                let padding = 8 - (utf8_bytes.len() % 8);
+                if padding != 8 {
+                    self.writer.write_all(&[0u8; 8][..padding])?;
+                }
             }
             TTLValue::ByteString(value) => {
                 write_type(&mut self.writer, TtlvType::ByteString)?;
                 write_length(&mut self.writer, value.len())?;
                 self.writer.write_all(value)?;
+                // pad to a multiple of 8 bytes
+                let padding = 8 - (value.len() % 8);
+                if padding != 8 {
+                    self.writer.write_all(&[0u8; 8][..padding])?;
+                }
             }
             TTLValue::DateTime(value) => {
                 write_type(&mut self.writer, TtlvType::DateTime)?;
@@ -117,11 +164,16 @@ where
                 write_type(&mut self.writer, TtlvType::Interval)?;
                 write_length(&mut self.writer, 4)?;
                 self.writer.write_all(&value.to_be_bytes())?;
+                // 4 bytes padding
+                self.writer.write_all(&[0; 4])?;
             }
             TTLValue::DateTimeExtended(value) => {
                 write_type(&mut self.writer, TtlvType::DateTimeExtended)?;
                 write_length(&mut self.writer, 8)?;
-                self.writer.write_all(&value.to_be_bytes())?;
+                let v_64 = i64::try_from(*value).map_err(|_e| {
+                    TtlvError::from(format!("Date Time Extended value too large: {value}"))
+                })?;
+                self.writer.write_all(&v_64.to_be_bytes())?;
             }
         }
         Ok(())
@@ -132,7 +184,17 @@ where
 mod tests {
     use std::str::FromStr;
 
-    use crate::{kmip_1_4, kmip_2_1, ttlv::wire::ttlv_bytes_serializer::write_tag};
+    use num_bigint_dig::BigInt;
+    use time::OffsetDateTime;
+
+    use crate::{
+        kmip_1_4, kmip_2_1,
+        ttlv::{
+            wire::ttlv_bytes_serializer::{write_length, write_tag, write_type},
+            KmipBigInt, KmipEnumerationVariant, TTLVBytesSerializer, TTLValue, TtlvError, TtlvType,
+            TTLV,
+        },
+    };
 
     #[test]
     fn test_tag_u32_from_tag_name() {
@@ -186,5 +248,462 @@ mod tests {
         write_tag::<Vec<u8>, kmip_1_4::kmip_types::Tag>(&mut buffer, "Link").unwrap();
 
         assert_eq!(buffer, last_three_bytes);
+    }
+
+    #[test]
+    fn test_write_type() {
+        let mut buffer = Vec::new();
+        write_type(&mut buffer, crate::ttlv::TtlvType::Structure).unwrap();
+        assert_eq!(buffer, [0x01]);
+        buffer.clear();
+        write_type(&mut buffer, crate::ttlv::TtlvType::Integer).unwrap();
+        assert_eq!(buffer, [0x02]);
+        buffer.clear();
+        write_type(&mut buffer, crate::ttlv::TtlvType::LongInteger).unwrap();
+        assert_eq!(buffer, [0x03]);
+        buffer.clear();
+        write_type(&mut buffer, crate::ttlv::TtlvType::BigInteger).unwrap();
+        assert_eq!(buffer, [0x04]);
+        buffer.clear();
+        write_type(&mut buffer, crate::ttlv::TtlvType::Enumeration).unwrap();
+        assert_eq!(buffer, [0x05]);
+        buffer.clear();
+        write_type(&mut buffer, crate::ttlv::TtlvType::Boolean).unwrap();
+        assert_eq!(buffer, [0x06]);
+        buffer.clear();
+        write_type(&mut buffer, crate::ttlv::TtlvType::TextString).unwrap();
+        assert_eq!(buffer, [0x07]);
+        buffer.clear();
+        write_type(&mut buffer, crate::ttlv::TtlvType::ByteString).unwrap();
+        assert_eq!(buffer, [0x08]);
+        buffer.clear();
+        write_type(&mut buffer, crate::ttlv::TtlvType::DateTime).unwrap();
+        assert_eq!(buffer, [0x09]);
+        buffer.clear();
+        write_type(&mut buffer, crate::ttlv::TtlvType::Interval).unwrap();
+        assert_eq!(buffer, [0x0A]);
+        buffer.clear();
+        write_type(&mut buffer, crate::ttlv::TtlvType::DateTimeExtended).unwrap();
+        assert_eq!(buffer, [0x0B]);
+        buffer.clear();
+    }
+
+    #[test]
+    fn test_write_length() {
+        let mut buffer = Vec::new();
+        write_length(&mut buffer, 4).unwrap();
+        assert_eq!(buffer, [0x00, 0x00, 0x00, 0x04]);
+        buffer.clear();
+        write_length(&mut buffer, 8).unwrap();
+        assert_eq!(buffer, [0x00, 0x00, 0x00, 0x08]);
+        buffer.clear();
+        write_length(&mut buffer, 16).unwrap();
+        assert_eq!(buffer, [0x00, 0x00, 0x00, 0x10]);
+        buffer.clear();
+    }
+
+    #[test]
+    fn test_write_integer() {
+        let ttlv = TTLV {
+            tag: kmip_1_4::kmip_types::Tag::BatchCount.to_string(),
+            value: TTLValue::Integer(123),
+        };
+        let mut buffer = Vec::new();
+        let mut serializer = TTLVBytesSerializer::new(&mut buffer);
+        serializer
+            .write_ttlv::<kmip_1_4::kmip_types::Tag>(&ttlv)
+            .unwrap();
+
+        assert_eq!(
+            buffer.len(),
+            3 /* tag */ + 1 /* type */ + 4 /* length */ + 4 /* i32 value */ + 4 /* padding */
+        );
+        // Check the first 3 bytes (tag) - BatchCount
+        assert_eq!(
+            &buffer[0..3],
+            &(kmip_1_4::kmip_types::Tag::BatchCount as u32).to_be_bytes()[1..4]
+        );
+        // Check the type byte
+        assert_eq!(buffer[3], TtlvType::Integer as u8);
+        // Check the length bytes
+        assert_eq!(&buffer[4..8], &[0x00, 0x00, 0x00, 0x04]);
+        // Check the value bytes
+        assert_eq!(&buffer[8..12], u32::to_be_bytes(123));
+        // Check the padding bytes
+        assert_eq!(&buffer[12..16], &[0; 4]);
+    }
+
+    #[test]
+    fn test_long_integer() {
+        let ttlv = TTLV {
+            tag: kmip_1_4::kmip_types::Tag::IterationCount.to_string(),
+            value: TTLValue::LongInteger(1234567890123456789),
+        };
+        let mut buffer = Vec::new();
+        let mut serializer = TTLVBytesSerializer::new(&mut buffer);
+        serializer
+            .write_ttlv::<kmip_1_4::kmip_types::Tag>(&ttlv)
+            .unwrap();
+
+        assert_eq!(
+            buffer.len(),
+            3 /* tag */ + 1 /* type */ + 4 /* length */ + 8 /* i64 value */
+        );
+        // Check the first 3 bytes (tag) - IterationCount
+        assert_eq!(
+            &buffer[0..3],
+            &(kmip_1_4::kmip_types::Tag::IterationCount as u32).to_be_bytes()[1..4]
+        );
+        // Check the type byte
+        assert_eq!(buffer[3], TtlvType::LongInteger as u8);
+        // Check the length bytes
+        assert_eq!(&buffer[4..8], &[0x00, 0x00, 0x00, 0x08]);
+        // Check the value bytes
+        assert_eq!(&buffer[8..16], &i64::to_be_bytes(1234567890123456789));
+    }
+
+    #[test]
+    fn test_big_integer() {
+        let bi = KmipBigInt::from(BigInt::from(12345678901234567890123456789012345678_i128));
+        let bi_bytes = bi.to_signed_bytes_be();
+        let bi_len = bi_bytes.len();
+        assert_eq!(bi_bytes.len() % 8, 0);
+
+        let ttlv = TTLV {
+            tag: kmip_1_4::kmip_types::Tag::D.to_string(),
+            value: TTLValue::BigInteger(bi.clone()),
+        };
+        let mut buffer = Vec::new();
+        let mut serializer = TTLVBytesSerializer::new(&mut buffer);
+        serializer
+            .write_ttlv::<kmip_1_4::kmip_types::Tag>(&ttlv)
+            .unwrap();
+
+        assert_eq!(
+            buffer.len(),
+            3 /* tag */ + 1 /* type */ + 4 /* length */ + bi_len /* BigInt value */
+        );
+        // Check the first 3 bytes (tag) - D
+        assert_eq!(
+            &buffer[0..3],
+            &(kmip_1_4::kmip_types::Tag::D as u32).to_be_bytes()[1..4]
+        );
+        // Check the type byte
+        assert_eq!(buffer[3], TtlvType::BigInteger as u8);
+        // Check the length bytes
+        assert_eq!(
+            &buffer[4..8],
+            u32::try_from(bi.to_signed_bytes_be().len())
+                .unwrap()
+                .to_be_bytes()
+        );
+        // Check the value bytes
+        assert_eq!(&buffer[8..], bi_bytes.as_slice());
+    }
+
+    #[test]
+    fn test_enumeration() {
+        let variant = KmipEnumerationVariant {
+            value: 0x03,
+            name: "AES".to_string(),
+        };
+        let ttlv = TTLV {
+            tag: kmip_1_4::kmip_types::Tag::CryptographicAlgorithm.to_string(),
+            value: TTLValue::Enumeration(variant),
+        };
+        let mut buffer = Vec::new();
+        let mut serializer = TTLVBytesSerializer::new(&mut buffer);
+        serializer
+            .write_ttlv::<kmip_1_4::kmip_types::Tag>(&ttlv)
+            .unwrap();
+
+        assert_eq!(
+            buffer.len(),
+            3 /* tag */ + 1 /* type */ + 4 /* length */ + 4 /* variant */ + 4 /* padding */
+        );
+        // Check the first 3 bytes (tag) - CryptographicAlgorithm
+        assert_eq!(
+            &buffer[0..3],
+            &(kmip_1_4::kmip_types::Tag::CryptographicAlgorithm as u32).to_be_bytes()[1..4]
+        );
+        // Check the type byte
+        assert_eq!(buffer[3], TtlvType::Enumeration as u8);
+        // Check the length bytes
+        assert_eq!(&buffer[4..8], &[0x00, 0x00, 0x00, 0x04]);
+        // Check the value bytes
+        assert_eq!(
+            &buffer[8..12],
+            u32::to_be_bytes(kmip_1_4::kmip_types::CryptographicAlgorithm::AES as u32)
+        );
+        // Check the padding bytes
+        assert_eq!(&buffer[12..16], &[0; 4]);
+    }
+
+    #[test]
+    fn test_boolean() {
+        let ttlv = TTLV {
+            tag: kmip_1_4::kmip_types::Tag::Sensitive.to_string(),
+            value: TTLValue::Boolean(true),
+        };
+        let mut buffer = Vec::new();
+        let mut serializer = TTLVBytesSerializer::new(&mut buffer);
+        serializer
+            .write_ttlv::<kmip_1_4::kmip_types::Tag>(&ttlv)
+            .unwrap();
+
+        assert_eq!(
+            buffer.len(),
+            3 /* tag */ + 1 /* type */ + 4 /* length */ + 8 /* boolean */
+        );
+        // Check the first 3 bytes (tag) - Sensitive
+        assert_eq!(
+            &buffer[0..3],
+            &(kmip_1_4::kmip_types::Tag::Sensitive as u32).to_be_bytes()[1..4]
+        );
+        // Check the type byte
+        assert_eq!(buffer[3], TtlvType::Boolean as u8);
+        // Check the length bytes
+        assert_eq!(&buffer[4..8], &[0x00, 0x00, 0x00, 0x08]);
+        // Check the value bytes
+        assert_eq!(&buffer[8..15], &[0; 7]);
+        assert_eq!(&buffer[15], &0x01);
+    }
+
+    #[test]
+    fn test_text_string() {
+        let msg = "Hello KMIP";
+        let msg_bytes = msg.as_bytes();
+        let msg_len = msg_bytes.len();
+
+        let ttlv = TTLV {
+            tag: kmip_1_4::kmip_types::Tag::Name.to_string(),
+            value: TTLValue::TextString(msg.to_owned()),
+        };
+        let mut buffer = Vec::new();
+        let mut serializer = TTLVBytesSerializer::new(&mut buffer);
+        serializer
+            .write_ttlv::<kmip_1_4::kmip_types::Tag>(&ttlv)
+            .unwrap();
+
+        assert_eq!(
+            buffer.len(),
+            3 /* tag */ + 1 /* type */ + 4 /* length */ + 10 /* string */ + 6 /* padding */
+        );
+        // Check the first 3 bytes (tag) - Name
+        assert_eq!(
+            &buffer[0..3],
+            &(kmip_1_4::kmip_types::Tag::Name as u32).to_be_bytes()[1..4]
+        );
+        // Check the type byte
+        assert_eq!(buffer[3], TtlvType::TextString as u8);
+        // Check the length bytes
+        assert_eq!(&buffer[4..8], u32::try_from(msg_len).unwrap().to_be_bytes());
+        // Check the value bytes
+        assert_eq!(&buffer[8..8 + msg_len], b"Hello KMIP");
+        // Check the padding bytes
+        assert_eq!(&buffer[8 + msg_len..], &[0; 6]);
+    }
+
+    #[test]
+    fn test_bytes_string() {
+        let msg = vec![1, 2, 3, 4, 5];
+        let msg_len = msg.len();
+
+        let ttlv = TTLV {
+            tag: kmip_1_4::kmip_types::Tag::KeyValue.to_string(),
+            value: TTLValue::ByteString(msg.clone()),
+        };
+        let mut buffer = Vec::new();
+        let mut serializer = TTLVBytesSerializer::new(&mut buffer);
+        serializer
+            .write_ttlv::<kmip_1_4::kmip_types::Tag>(&ttlv)
+            .unwrap();
+
+        assert_eq!(
+            buffer.len(),
+            3 /* tag */ + 1 /* type */ + 4 /* length */ + msg_len /* string */ + 3 /* padding */
+        );
+        // Check the first 3 bytes (tag) - KeyValue
+        assert_eq!(
+            &buffer[0..3],
+            &(kmip_1_4::kmip_types::Tag::KeyValue as u32).to_be_bytes()[1..4]
+        );
+        // Check the type byte
+        assert_eq!(buffer[3], TtlvType::ByteString as u8);
+        // Check the length bytes
+        assert_eq!(&buffer[4..8], u32::try_from(msg_len).unwrap().to_be_bytes());
+        // Check the value bytes
+        assert_eq!(&buffer[8..8 + msg_len], &[1, 2, 3, 4, 5]);
+        // Check the padding bytes
+        assert_eq!(&buffer[8 + msg_len..], &[0; 3]);
+    }
+
+    #[test]
+    fn test_date_time() {
+        let now = OffsetDateTime::now_utc();
+        let ttlv = TTLV {
+            tag: kmip_1_4::kmip_types::Tag::DeactivationDate.to_string(),
+            value: TTLValue::DateTime(now),
+        };
+        let mut buffer = Vec::new();
+        let mut serializer = TTLVBytesSerializer::new(&mut buffer);
+        serializer
+            .write_ttlv::<kmip_1_4::kmip_types::Tag>(&ttlv)
+            .unwrap();
+
+        assert_eq!(
+            buffer.len(),
+            3 /* tag */ + 1 /* type */ + 4 /* length */ + 8 /* datetime */
+        );
+        // Check the first 3 bytes (tag) - DeactivationDate
+        assert_eq!(
+            &buffer[0..3],
+            &(kmip_1_4::kmip_types::Tag::DeactivationDate as u32).to_be_bytes()[1..4]
+        );
+        // Check the type byte
+        assert_eq!(buffer[3], TtlvType::DateTime as u8);
+        // Check the length bytes
+        assert_eq!(&buffer[4..8], &[0x00, 0x00, 0x00, 0x08]);
+        // Check the value bytes
+        assert_eq!(&buffer[8..16], &now.unix_timestamp().to_be_bytes());
+    }
+
+    #[test]
+    fn test_interval() {
+        let ttlv = TTLV {
+            tag: kmip_1_4::kmip_types::Tag::ValidityIndicator.to_string(),
+            value: TTLValue::Interval(86400),
+        };
+        let mut buffer = Vec::new();
+        let mut serializer = TTLVBytesSerializer::new(&mut buffer);
+        serializer
+            .write_ttlv::<kmip_1_4::kmip_types::Tag>(&ttlv)
+            .unwrap();
+
+        assert_eq!(
+            buffer.len(),
+            3 /* tag */ + 1 /* type */ + 4 /* length */ + 4 /* interval */ + 4 /* padding */
+        );
+        // Check the first 3 bytes (tag) - ValidityIndicator
+        assert_eq!(
+            &buffer[0..3],
+            &(kmip_1_4::kmip_types::Tag::ValidityIndicator as u32).to_be_bytes()[1..4]
+        );
+        // Check the type byte
+        assert_eq!(buffer[3], TtlvType::Interval as u8);
+        // Check the length bytes
+        assert_eq!(&buffer[4..8], &[0x00, 0x00, 0x00, 0x04]);
+        // Check the value bytes
+        assert_eq!(&buffer[8..12], 86400_u32.to_be_bytes());
+        // Check the padding bytes
+        assert_eq!(&buffer[12..16], &[0; 4]);
+    }
+
+    #[test]
+    fn test_date_time_extended() {
+        let now = OffsetDateTime::now_utc();
+        let micros = i64::try_from(now.unix_timestamp_nanos() / 1_000)
+            .map_err(|_e| TtlvError::from(format!("Date Time Extended value too large: {now}")))
+            .unwrap();
+        let ttlv = TTLV {
+            tag: kmip_1_4::kmip_types::Tag::ActivationDate.to_string(),
+            value: TTLValue::DateTimeExtended(micros as i128),
+        };
+        let mut buffer = Vec::new();
+        let mut serializer = TTLVBytesSerializer::new(&mut buffer);
+        serializer
+            .write_ttlv::<kmip_1_4::kmip_types::Tag>(&ttlv)
+            .unwrap();
+
+        assert_eq!(
+            buffer.len(),
+            3 /* tag */ + 1 /* type */ + 4 /* length */ + 8 /* datetime extended */
+        );
+        // Check the first 3 bytes (tag) - ActivationDate
+        assert_eq!(
+            &buffer[0..3],
+            &(kmip_1_4::kmip_types::Tag::ActivationDate as u32).to_be_bytes()[1..4]
+        );
+        // Check the type byte
+        assert_eq!(buffer[3], TtlvType::DateTimeExtended as u8);
+        // Check the length bytes
+        assert_eq!(&buffer[4..8], &[0x00, 0x00, 0x00, 0x08]);
+        // Check the value bytes
+        assert_eq!(&buffer[8..16], &micros.to_be_bytes());
+    }
+
+    #[test]
+    fn test_structure() {
+        let ttlv = TTLV {
+            tag: kmip_1_4::kmip_types::Tag::Link.to_string(),
+            value: TTLValue::Structure(vec![
+                TTLV {
+                    tag: kmip_1_4::kmip_types::Tag::LinkType.to_string(),
+                    value: TTLValue::Integer(123),
+                },
+                TTLV {
+                    tag: kmip_1_4::kmip_types::Tag::LinkedObjectIdentifier.to_string(),
+                    value: TTLValue::TextString("Hello KMIP".to_owned()),
+                },
+            ]),
+        };
+        let mut buffer = Vec::new();
+        let mut serializer = TTLVBytesSerializer::new(&mut buffer);
+        serializer
+            .write_ttlv::<kmip_1_4::kmip_types::Tag>(&ttlv)
+            .unwrap();
+
+        assert_eq!(
+            buffer.len(),
+            3 /* tag */ + 1 /* type */ + 4 /* length */
+                + 8 + 8 // (Integer)
+                + 8 + 16 // (TextString)
+        );
+
+        // Check the first 3 bytes (tag) - Link
+        assert_eq!(
+            &buffer[0..3],
+            &(kmip_1_4::kmip_types::Tag::Link as u32).to_be_bytes()[1..4]
+        );
+        // Check the type byte
+        assert_eq!(buffer[3], TtlvType::Structure as u8);
+        // Check the length bytes
+        assert_eq!(&buffer[4..8], &(8_u32 + 8 + 8 + 16).to_be_bytes());
+
+        // Check LinkType inner structure
+        const OFFSET_1: usize = 8;
+        assert_eq!(
+            &buffer[0 + OFFSET_1..3 + OFFSET_1],
+            &(kmip_1_4::kmip_types::Tag::LinkType as u32).to_be_bytes()[1..4]
+        );
+        // Check the type byte
+        assert_eq!(buffer[3 + OFFSET_1], TtlvType::Integer as u8);
+        // Check the length bytes
+        assert_eq!(
+            &buffer[4 + OFFSET_1..8 + OFFSET_1],
+            &[0x00, 0x00, 0x00, 0x04]
+        );
+        // Check the value bytes
+        assert_eq!(&buffer[8 + OFFSET_1..12 + OFFSET_1], u32::to_be_bytes(123));
+        // Check the padding bytes
+        assert_eq!(&buffer[12 + OFFSET_1..16 + OFFSET_1], &[0; 4]);
+
+        // Check LinkedObjectIdentifier inner structure
+        const OFFSET_2: usize = 8 + 16;
+        assert_eq!(
+            &buffer[0 + OFFSET_2..3 + OFFSET_2],
+            &(kmip_1_4::kmip_types::Tag::LinkedObjectIdentifier as u32).to_be_bytes()[1..4]
+        );
+        // Check the type byte
+        assert_eq!(buffer[3 + OFFSET_2], TtlvType::TextString as u8);
+        // Check the length bytes
+        assert_eq!(
+            &buffer[4 + OFFSET_2..8 + OFFSET_2],
+            u32::try_from(10).unwrap().to_be_bytes()
+        );
+        // Check the value bytes
+        assert_eq!(&buffer[8 + OFFSET_2..8 + 10 + OFFSET_2], b"Hello KMIP");
+        // Check the padding bytes
+        assert_eq!(&buffer[10 + 8 + OFFSET_2..], &[0; 6]);
     }
 }
