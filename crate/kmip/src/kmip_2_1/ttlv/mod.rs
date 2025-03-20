@@ -17,11 +17,11 @@ use core::fmt;
 
 use num_bigint_dig::BigUint;
 use serde::{
+    Deserialize, Serialize,
     de::{self, MapAccess, Visitor},
     ser::{self, SerializeStruct, Serializer},
-    Deserialize, Serialize,
 };
-use time::{format_description::well_known::Rfc3339, OffsetDateTime};
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::error::result::KmipResult;
 
@@ -156,7 +156,7 @@ impl Serialize for TTLV {
     where
         S: Serializer,
     {
-        fn _serialize<S, T>(
+        fn serialize<S, T>(
             serializer: S,
             tag: &str,
             typ: &str,
@@ -174,15 +174,15 @@ impl Serialize for TTLV {
         }
 
         match &self.value {
-            TTLValue::Structure(v) => _serialize(serializer, &self.tag, "Structure", v),
-            TTLValue::Integer(v) => _serialize(serializer, &self.tag, "Integer", v),
-            TTLValue::BitMask(v) => _serialize(
+            TTLValue::Structure(v) => serialize(serializer, &self.tag, "Structure", v),
+            TTLValue::Integer(v) => serialize(serializer, &self.tag, "Integer", v),
+            TTLValue::BitMask(v) => serialize(
                 serializer,
                 &self.tag,
                 "Integer",
                 &("0x".to_owned() + &hex::encode_upper(v.to_be_bytes())),
             ),
-            TTLValue::LongInteger(v) => _serialize(
+            TTLValue::LongInteger(v) => serialize(
                 serializer,
                 &self.tag,
                 "LongInteger",
@@ -192,20 +192,20 @@ impl Serialize for TTLV {
                 //TODO Note that Big Integers must be sign extended to
                 //TODO  contain a multiple of 8 bytes, and as per LongInteger, JS numbers only
                 // support a limited range of values.
-                _serialize(
+                serialize(
                     serializer,
                     &self.tag,
                     "BigInteger",
                     &("0x".to_owned() + &hex::encode_upper(v.to_bytes_be())),
                 )
             }
-            TTLValue::Enumeration(v) => _serialize(serializer, &self.tag, "Enumeration", v),
-            TTLValue::Boolean(v) => _serialize(serializer, &self.tag, "Boolean", v),
-            TTLValue::TextString(v) => _serialize(serializer, &self.tag, "TextString", v),
+            TTLValue::Enumeration(v) => serialize(serializer, &self.tag, "Enumeration", v),
+            TTLValue::Boolean(v) => serialize(serializer, &self.tag, "Boolean", v),
+            TTLValue::TextString(v) => serialize(serializer, &self.tag, "TextString", v),
             TTLValue::ByteString(v) => {
-                _serialize(serializer, &self.tag, "ByteString", &hex::encode_upper(v))
+                serialize(serializer, &self.tag, "ByteString", &hex::encode_upper(v))
             }
-            TTLValue::DateTime(v) => _serialize(
+            TTLValue::DateTime(v) => serialize(
                 serializer,
                 &self.tag,
                 "DateTime",
@@ -213,8 +213,8 @@ impl Serialize for TTLV {
                     ser::Error::custom(format!("Cannot format DateTime {v} into RFC3339: {err}"))
                 })?,
             ),
-            TTLValue::Interval(v) => _serialize(serializer, &self.tag, "Interval", v),
-            TTLValue::DateTimeExtended(v) => _serialize(
+            TTLValue::Interval(v) => serialize(serializer, &self.tag, "Interval", v),
+            TTLValue::DateTimeExtended(v) => serialize(
                 serializer,
                 &self.tag,
                 "DateTimeExtended",

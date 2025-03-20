@@ -5,14 +5,15 @@ use std::{
 
 use num_bigint_dig::BigUint;
 use serde::{
+    Deserialize, Serialize,
     de::{self, MapAccess, Visitor},
     ser::SerializeStruct,
-    Deserialize, Serialize,
 };
 use zeroize::Zeroizing;
 
 use super::kmip_types::{LinkType, LinkedObjectIdentifier};
 use crate::{
+    SafeBigUint,
     error::KmipError,
     kmip_2_1::{
         kmip_operations::ErrorReason,
@@ -22,7 +23,7 @@ use crate::{
             WrappingMethod,
         },
     },
-    pad_be_bytes, SafeBigUint,
+    pad_be_bytes,
 };
 
 /// A Key Block object is a structure used to encapsulate all of the information
@@ -227,6 +228,9 @@ impl Display for KeyValue {
     }
 }
 
+// This is required since its signature must match what serde
+// skip_serializing_if is expecting.
+#[allow(clippy::ref_option)]
 // Attributes is default is a fix for https://github.com/Cosmian/kms/issues/92
 fn attributes_is_default_or_none<T: Default + PartialEq + Serialize>(val: &Option<T>) -> bool {
     val.as_ref().map_or(true, |v| *v == T::default())

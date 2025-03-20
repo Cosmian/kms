@@ -40,6 +40,7 @@
     // clippy::use_debug,
 )]
 #![allow(
+    clippy::too_long_first_doc_paragraph,
     clippy::module_name_repetitions,
     clippy::similar_names,
     clippy::too_many_lines,
@@ -53,10 +54,10 @@
 // required to detect generic type in Serializer
 #![feature(min_specialization)]
 
-pub use error::{result::KmipResultHelper, KmipError};
+pub use error::{KmipError, result::KmipResultHelper};
 
 mod bytes_ser_de;
-pub use bytes_ser_de::{test_serialization, to_leb128_len, Deserializer, Serializer};
+pub use bytes_ser_de::{Deserializer, Serializer, test_serialization, to_leb128_len};
 mod data_to_encrypt;
 pub use data_to_encrypt::DataToEncrypt;
 mod error;

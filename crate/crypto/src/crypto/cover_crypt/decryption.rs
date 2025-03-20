@@ -1,7 +1,7 @@
-use cosmian_cover_crypt::{api::Covercrypt, traits::KemAc, Error, UserSecretKey, XEnc};
+use cosmian_cover_crypt::{Error, UserSecretKey, XEnc, api::Covercrypt, traits::KemAc};
 use cosmian_crypto_core::{
-    bytes_ser_de::{Deserializer, Serializable, Serializer},
     Aes256Gcm, Dem, FixedSizeCBytes, Instantiable, Nonce, SymmetricKey,
+    bytes_ser_de::{Deserializer, Serializable, Serializer},
 };
 use cosmian_kmip::kmip_2_1::{
     kmip_objects::Object,
@@ -14,7 +14,7 @@ use zeroize::Zeroizing;
 use super::user_key::unwrap_user_decryption_key_object;
 use crate::{
     crypto::DecryptionSystem,
-    error::{result::CryptoResult, CryptoError},
+    error::{CryptoError, result::CryptoResult},
 };
 
 /// Decrypt a single block of data encrypted using an hybrid encryption mode
@@ -48,22 +48,6 @@ impl CovercryptDecryption {
         })
     }
 
-    fn aead_decrypt(
-        &self,
-        key: &SymmetricKey<{ Aes256Gcm::KEY_LENGTH }>,
-        ctx: &[u8],
-        ad: Option<&[u8]>,
-    ) -> CryptoResult<Zeroizing<Vec<u8>>> {
-        if ctx.len() < Aes256Gcm::NONCE_LENGTH {
-            return Err(CryptoError::Default("encrypted block too short".to_owned()));
-        }
-        let nonce = Nonce::try_from_slice(&ctx[..Aes256Gcm::NONCE_LENGTH])?;
-        Aes256Gcm::new(&key)
-            .decrypt(&nonce, &ctx[Aes256Gcm::NONCE_LENGTH..], ad)
-            .map(Zeroizing::new)
-            .map_err(CryptoError::from)
-    }
-
     fn single_decrypt(
         &self,
         encrypted_bytes: &[u8],
@@ -90,7 +74,7 @@ impl CovercryptDecryption {
         let key = SymmetricKey::derive(&seed, b"Covercrypt AEAD key")?;
         // The rest of the bytes is the encrypted payload.
         let ctx = de.finalize();
-        let ptx = self.aead_decrypt(&key, &ctx, ad)?;
+        let ptx = aead_decrypt(&key, &ctx, ad)?;
 
         debug!(
             "Decrypted data with user key {} of len (Plain/Enc): {}/{}",
@@ -197,4 +181,20 @@ impl DecryptionSystem for CovercryptDecryption {
             correlation_value: None,
         })
     }
+}
+
+fn aead_decrypt(
+    key: &SymmetricKey<{ Aes256Gcm::KEY_LENGTH }>,
+    ctx: &[u8],
+    ad: Option<&[u8]>,
+) -> CryptoResult<Zeroizing<Vec<u8>>> {
+    #![allow(clippy::indexing_slicing)]
+    if ctx.len() < Aes256Gcm::NONCE_LENGTH {
+        return Err(CryptoError::Default("encrypted block too short".to_owned()));
+    }
+    let nonce = Nonce::try_from_slice(&ctx[..Aes256Gcm::NONCE_LENGTH])?;
+    Aes256Gcm::new(key)
+        .decrypt(&nonce, &ctx[Aes256Gcm::NONCE_LENGTH..], ad)
+        .map(Zeroizing::new)
+        .map_err(CryptoError::from)
 }

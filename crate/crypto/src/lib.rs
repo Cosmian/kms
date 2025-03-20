@@ -40,6 +40,7 @@
     // clippy::use_debug,
 )]
 #![allow(
+    clippy::too_long_first_doc_paragraph,
     clippy::module_name_repetitions,
     clippy::similar_names,
     clippy::too_many_lines,
@@ -53,7 +54,7 @@
 // required to detect generic type in Serializer
 #![feature(min_specialization)]
 
-pub use error::{result::CryptoResultHelper, CryptoError};
+pub use error::{CryptoError, result::CryptoResultHelper};
 
 pub mod crypto;
 mod error;

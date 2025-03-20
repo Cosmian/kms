@@ -52,7 +52,7 @@ pub fn create_master_keypair(
 
     let msk_owm = create_msk_object(
         msk.serialize()?,
-        msk_attributes.unwrap_or(common_attributes.clone()),
+        msk_attributes.unwrap_or_else(|| common_attributes.clone()),
         public_key_uid,
         sensitive,
     )?;
@@ -169,7 +169,7 @@ pub fn kmip_objects_from_cc_master_keypair(
             Ok(())
         }
         _ => Err(CryptoError::Kmip(
-            "wrong key material type for MSK".to_string(),
+            "wrong key material type for MSK".to_owned(),
         )),
     }?;
 
@@ -183,7 +183,7 @@ pub fn kmip_objects_from_cc_master_keypair(
             Ok(())
         }
         _ => Err(CryptoError::Kmip(
-            "wrong key material type for MPK".to_string(),
+            "wrong key material type for MPK".to_owned(),
         )),
     }?;
 

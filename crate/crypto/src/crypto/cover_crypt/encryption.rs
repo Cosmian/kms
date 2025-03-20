@@ -1,16 +1,16 @@
-use cosmian_cover_crypt::{api::Covercrypt, traits::KemAc, AccessPolicy, MasterPublicKey};
+use cosmian_cover_crypt::{AccessPolicy, MasterPublicKey, api::Covercrypt, traits::KemAc};
 use cosmian_crypto_core::{
+    Aes256Gcm, Dem, Instantiable, Nonce, RandomFixedSizeCBytes, SymmetricKey,
     bytes_ser_de::{Deserializer, Serializable, Serializer},
     reexport::zeroize::Zeroizing,
-    Aes256Gcm, Dem, Instantiable, Nonce, RandomFixedSizeCBytes, SymmetricKey,
 };
 use cosmian_kmip::{
+    DataToEncrypt,
     kmip_2_1::{
         kmip_objects::Object,
         kmip_operations::{Encrypt, EncryptResponse},
         kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
     },
-    DataToEncrypt,
 };
 use tracing::{debug, trace};
 
@@ -70,12 +70,12 @@ impl CoverCryptEncryption {
         mpk: &MasterPublicKey,
         ptx: &[u8],
         ad: Option<&[u8]>,
-        ap: AccessPolicy,
+        ap: &AccessPolicy,
     ) -> Result<Vec<u8>, CryptoError> {
         let mut de = Deserializer::new(ptx);
         let mut ser = Serializer::new();
 
-        let (seed, enc) = self.cover_crypt.encaps(&mpk, &ap)?;
+        let (seed, enc) = self.cover_crypt.encaps(mpk, ap)?;
         let key = SymmetricKey::derive(&seed, b"Covercrypt AEAD key")?;
         let enc = enc.serialize()?;
 
@@ -108,9 +108,9 @@ impl CoverCryptEncryption {
         mpk: &MasterPublicKey,
         ptx: &[u8],
         ad: Option<&[u8]>,
-        ap: AccessPolicy,
+        ap: &AccessPolicy,
     ) -> Result<Vec<u8>, CryptoError> {
-        let (seed, enc) = self.cover_crypt.encaps(&mpk, &ap)?;
+        let (seed, enc) = self.cover_crypt.encaps(mpk, ap)?;
         let key = SymmetricKey::derive(&seed, b"Covercrypt AEAD key")?;
         let enc = enc.serialize()?;
         trace!("CoverCryptEncryption: encrypt: encryption_policy: {ap:?}",);
@@ -165,9 +165,9 @@ impl EncryptionSystem for CoverCryptEncryption {
                         ..
                     }) = request.cryptographic_parameters
                     {
-                        self.bulk_encrypt(&mpk, &ptx.plaintext, ad, ap)
+                        self.bulk_encrypt(&mpk, &ptx.plaintext, ad, &ap)
                     } else {
-                        self.single_encrypt(&mpk, &ptx.plaintext, ad, ap)
+                        self.single_encrypt(&mpk, &ptx.plaintext, ad, &ap)
                     }
                 })
                 .transpose()?;

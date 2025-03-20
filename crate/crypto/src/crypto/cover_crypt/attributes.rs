@@ -88,7 +88,7 @@ pub fn qualified_attributes_from_attributes(
                 "the attributes do not contain Covercrypt (vendor) Attributes".to_owned(),
             )
         })?;
-    let attribute_strings = serde_json::from_slice::<Vec<String>>(&bytes).map_err(|e| {
+    let attribute_strings = serde_json::from_slice::<Vec<String>>(bytes).map_err(|e| {
         CryptoError::Kmip(format!(
             "failed reading the Covercrypt attribute strings from the attributes bytes: {e}"
         ))
