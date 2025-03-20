@@ -23,7 +23,7 @@ pub(crate) async fn login(
         return HttpResponse::InternalServerError().body("Failed to build HTTP client")
     };
 
-    let issuer_url = match &oidc_config.issuer_url {
+    let issuer_url = match &oidc_config.ui_oidc_issuer_url {
         Some(url) => match IssuerUrl::new(url.clone()) {
             Ok(valid_url) => valid_url,
             Err(_) => return HttpResponse::InternalServerError().body("Invalid issuer URL"),
@@ -35,7 +35,7 @@ pub(crate) async fn login(
         return HttpResponse::InternalServerError().body("Invalid Redirect URL")
     };
 
-    let client_id = match &oidc_config.client_id {
+    let client_id = match &oidc_config.ui_oidc_client_id {
         Some(id) => ClientId::new(id.clone()),
         None => return HttpResponse::InternalServerError().body("Client ID is missing"),
     };
@@ -49,7 +49,10 @@ pub(crate) async fn login(
     let client = CoreClient::from_provider_metadata(
         provider_metadata,
         client_id,
-        oidc_config.client_secret.clone().map(ClientSecret::new),
+        oidc_config
+            .ui_oidc_client_secret
+            .clone()
+            .map(ClientSecret::new),
     )
     .set_redirect_uri(redirect_url);
 
@@ -123,7 +126,7 @@ pub(crate) async fn callback(
     };
 
     // Exchange code for tokens
-    let issuer_url = match &oidc_config.issuer_url {
+    let issuer_url = match &oidc_config.ui_oidc_issuer_url {
         Some(url) => match IssuerUrl::new(url.clone()) {
             Ok(valid_url) => valid_url,
             Err(_) => return HttpResponse::InternalServerError().body("Invalid issuer URL"),
@@ -135,7 +138,7 @@ pub(crate) async fn callback(
         return HttpResponse::InternalServerError().body("Invalid Redirect URL")
     };
 
-    let client_id = match &oidc_config.client_id {
+    let client_id = match &oidc_config.ui_oidc_client_id {
         Some(id) => ClientId::new(id.clone()),
         None => return HttpResponse::InternalServerError().body("Client ID is missing"),
     };
@@ -149,7 +152,10 @@ pub(crate) async fn callback(
     let client = CoreClient::from_provider_metadata(
         provider_metadata,
         client_id,
-        oidc_config.client_secret.clone().map(ClientSecret::new),
+        oidc_config
+            .ui_oidc_client_secret
+            .clone()
+            .map(ClientSecret::new),
     )
     .set_redirect_uri(redirect_url);
 
@@ -217,7 +223,7 @@ pub(crate) async fn logout(
 ) -> HttpResponse {
     session.purge();
 
-    let mut logout_url = match &oidc_config.logout_url {
+    let mut logout_url = match &oidc_config.ui_oidc_logout_url {
         Some(url) => match Url::parse(url) {
             Ok(parsed_url) => parsed_url,
             Err(_) => return HttpResponse::InternalServerError().body("Invalid logout URL"),
@@ -225,7 +231,7 @@ pub(crate) async fn logout(
         None => return HttpResponse::InternalServerError().body("Logout URL is missing"),
     };
 
-    let client_id = match &oidc_config.client_id {
+    let client_id = match &oidc_config.ui_oidc_client_id {
         Some(id) => ClientId::new(id.clone()),
         None => return HttpResponse::InternalServerError().body("Client ID is missing"),
     };

@@ -9,17 +9,14 @@ use crate::error::UtilsError;
 
 // Symmetric encryption utils
 #[derive(ValueEnum, Debug, Clone, Copy, Default, EnumIter, PartialEq, Eq, Display, Deserialize)]
+#[strum(serialize_all = "kebab-case")]
 pub enum DataEncryptionAlgorithm {
     #[cfg(not(feature = "fips"))]
-    #[value(name = "Chacha20Poly1305")]
     Chacha20Poly1305,
     #[default]
-    #[value(name = "AesGcm")]
     AesGcm,
-    #[value(name = "AesXts")]
     AesXts,
     #[cfg(not(feature = "fips"))]
-    #[value(name = "AesGcmSiv")]
     AesGcmSiv,
 }
 

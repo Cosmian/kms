@@ -13,6 +13,7 @@ use crate::{
 };
 
 #[derive(ValueEnum, Debug, Clone, PartialEq, Eq, EnumIter, EnumString)]
+#[strum(serialize_all = "kebab-case")]
 pub enum CLinkType {
     /// For Certificate objects: the parent certificate for a certificate in a
     /// certificate chain. For Public Key objects: the corresponding

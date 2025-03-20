@@ -93,9 +93,10 @@ jwks_uri = ["<jwks uri>"]
 jwt_audience = ["<jwt audience>"]
 
 [ui_oidc_auth]
-client_id = "[client id]"
-issuer_url = "[issuer url]"
-logout_url = "[logout url]"
+ui_oidc_client_id = "[client id]"
+ui_oidc_client_secret = "[client secret]"
+ui_oidc_issuer_url = "[issuer url]"
+ui_oidc_logout_url = "[logout url]"
 
 
 [workspace]

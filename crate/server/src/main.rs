@@ -163,10 +163,10 @@ mod tests {
                 ]),
             },
             ui_oidc_auth: OidcConfig {
-                client_id: Some("[client id]".to_owned()),
-                client_secret: Some("[client secret]".to_owned()),
-                issuer_url: Some("[issuer url]".to_owned()),
-                logout_url: Some("[logout url]".to_owned()),
+                ui_oidc_client_id: Some("[client id]".to_owned()),
+                ui_oidc_client_secret: Some("[client secret]".to_owned()),
+                ui_oidc_issuer_url: Some("[issuer url]".to_owned()),
+                ui_oidc_logout_url: Some("[logout url]".to_owned()),
             },
             workspace: WorkspaceConfig {
                 root_data_path: PathBuf::from("[root data path]"),
@@ -221,9 +221,10 @@ jwks_uri = ["[jwks uri 1]", "[jwks uri 2]"]
 jwt_audience = ["[jwt audience 1]", "[jwt audience 2]"]
 
 [ui_oidc_auth]
-client_id = "[client id]"
-issuer_url = "[issuer url]"
-logout_url = "[logout url]"
+ui_oidc_client_id = "[client id]"
+ui_oidc_client_secret = "[client secret]"
+ui_oidc_issuer_url = "[issuer url]"
+ui_oidc_logout_url = "[logout url]"
 
 [workspace]
 root_data_path = "[root data path]"

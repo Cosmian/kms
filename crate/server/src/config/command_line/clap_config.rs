@@ -194,7 +194,7 @@ impl fmt::Debug for ClapConfig {
         } else {
             x
         };
-        let x = if self.ui_oidc_auth.client_id.is_some() {
+        let x = if self.ui_oidc_auth.ui_oidc_client_id.is_some() {
             x.field("ui_oidc_auth", &self.ui_oidc_auth)
         } else {
             x

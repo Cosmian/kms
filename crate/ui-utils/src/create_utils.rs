@@ -11,27 +11,18 @@ use crate::error::UtilsError;
 #[strum(serialize_all = "kebab-case")]
 pub enum Curve {
     #[cfg(not(feature = "fips"))]
-    #[strum(to_string = "nist-p192")]
     NistP192,
-    #[strum(to_string = "nist-p224")]
     NistP224,
-    #[strum(to_string = "nist-p256")]
     NistP256,
-    #[strum(to_string = "nist-p384")]
     NistP384,
-    #[strum(to_string = "nist-p521")]
     NistP521,
     #[cfg(not(feature = "fips"))]
-    #[strum(to_string = "x25519")]
     X25519,
     #[cfg(not(feature = "fips"))]
-    #[strum(to_string = "ed25519")]
     Ed25519,
     #[cfg(not(feature = "fips"))]
-    #[strum(to_string = "x448")]
     X448,
     #[cfg(not(feature = "fips"))]
-    #[strum(to_string = "ed448")]
     Ed448,
 }
 
