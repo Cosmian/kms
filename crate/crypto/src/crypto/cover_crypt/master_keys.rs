@@ -1,4 +1,4 @@
-use cosmian_cover_crypt::{MasterPublicKey, MasterSecretKey, api::Covercrypt};
+use cosmian_cover_crypt::{api::Covercrypt, MasterPublicKey, MasterSecretKey};
 use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kmip::kmip_2_1::{
     extra::VENDOR_ID_COSMIAN,
@@ -14,10 +14,10 @@ use zeroize::Zeroizing;
 
 use crate::{
     crypto::{
-        KeyPair,
         cover_crypt::attributes::{
-            VENDOR_ATTR_COVER_CRYPT_ACCESS_STRUCTURE, access_structure_from_attributes,
+            access_structure_from_attributes, VENDOR_ATTR_COVER_CRYPT_ACCESS_STRUCTURE,
         },
+        KeyPair,
     },
     error::CryptoError,
 };

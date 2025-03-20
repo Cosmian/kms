@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use cosmian_cover_crypt::{MasterSecretKey, api::Covercrypt};
+use cosmian_cover_crypt::{api::Covercrypt, MasterSecretKey};
 use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kmip::kmip_2_1::{
     kmip_objects::{Object, ObjectType},

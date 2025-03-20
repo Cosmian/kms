@@ -1,4 +1,4 @@
-use cosmian_cover_crypt::{AccessPolicy, MasterSecretKey, UserSecretKey, api::Covercrypt};
+use cosmian_cover_crypt::{api::Covercrypt, AccessPolicy, MasterSecretKey, UserSecretKey};
 use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},

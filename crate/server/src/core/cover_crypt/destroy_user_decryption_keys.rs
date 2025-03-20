@@ -5,7 +5,7 @@ use cosmian_kms_interfaces::SessionParams;
 
 use super::locate_usk;
 use crate::{
-    core::{KMS, operations::recursively_destroy_object},
+    core::{operations::recursively_destroy_object, KMS},
     result::KResult,
 };
 

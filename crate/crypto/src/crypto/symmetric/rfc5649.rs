@@ -12,10 +12,10 @@
 //! Google provides a patch : <https://cloud.google.com/kms/docs/configuring-openssl-for-manual-key-wrapping>
 //! and so does AWS: <https://repost.aws/en/knowledge-center/patch-openssl-cloudhsm>
 
-use openssl::symm::{Cipher, Crypter, Mode, encrypt};
+use openssl::symm::{encrypt, Cipher, Crypter, Mode};
 use zeroize::Zeroizing;
 
-use crate::error::{CryptoError, result::CryptoResult};
+use crate::error::{result::CryptoResult, CryptoError};
 
 const DEFAULT_RFC5649_CONST: u32 = 0xA659_59A6_u32;
 const DEFAULT_IV: u64 = 0xA6A6_A6A6_A6A6_A6A6;
