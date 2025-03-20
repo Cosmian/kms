@@ -1,15 +1,15 @@
-import { Button, Card, Form, Input, Select, Space, Upload } from 'antd'
-import React, { useEffect, useRef, useState } from 'react'
-import { useAuth } from "./AuthContext"
-import { downloadFile, sendKmipRequest } from './utils'
-import { encrypt_sym_ttlv_request, parse_encrypt_ttlv_response } from "./wasm/pkg"
+import { Button, Card, Form, Input, Select, Space, Upload } from "antd";
+import React, { useEffect, useRef, useState } from "react";
+import { useAuth } from "./AuthContext";
+import { downloadFile, sendKmipRequest } from "./utils";
+import { encrypt_sym_ttlv_request, parse_encrypt_ttlv_response } from "./wasm/pkg";
 
 interface SymmetricEncryptFormData {
     inputFile: Uint8Array;
     fileName: string;
     keyId?: string;
     tags?: string[];
-    dataEncryptionAlgorithm: 'AesGcm' | 'AesGcmSiv' | 'Chacha20Poly1305' | 'AesXts';
+    dataEncryptionAlgorithm: "AesGcm" | "AesGcmSiv" | "Chacha20Poly1305" | "AesXts";
     // keyEncryptionAlgorithm?: 'rsa-oaep' | 'rsa-oaep-256' | 'rsa-oaep-384' | 'rsa-oaep-512';
     outputFile?: string;
     nonce?: Uint8Array;
@@ -20,30 +20,38 @@ const SymmetricEncryptForm: React.FC = () => {
     const [form] = Form.useForm<SymmetricEncryptFormData>();
     const [res, setRes] = useState<undefined | string>(undefined);
     const [isLoading, setIsLoading] = useState(false);
-    const { idToken, serverUrl}= useAuth();
+    const { idToken, serverUrl } = useAuth();
     const responseRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (res && responseRef.current) {
-            responseRef.current.scrollIntoView({ behavior: 'smooth' });
+            responseRef.current.scrollIntoView({ behavior: "smooth" });
         }
     }, [res]);
     // const [isClientSide, setIsClientSide] = useState(false);
 
     const onFinish = async (values: SymmetricEncryptFormData) => {
-        console.log('Encrypt values:', values);
+        console.log("Encrypt values:", values);
         setIsLoading(true);
         setRes(undefined);
         const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
         try {
             if (id == undefined) {
-                setRes("Missing key identifier.")
-                throw Error("Missing key identifier")
+                setRes("Missing key identifier.");
+                throw Error("Missing key identifier");
             }
-            const request = encrypt_sym_ttlv_request(id , undefined, values.inputFile, undefined, values.nonce, values.authenticationData, values.dataEncryptionAlgorithm);
+            const request = encrypt_sym_ttlv_request(
+                id,
+                undefined,
+                values.inputFile,
+                undefined,
+                values.nonce,
+                values.authenticationData,
+                values.dataEncryptionAlgorithm
+            );
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
-                const  { IvCounterNonce, Data, AuthenticatedEncryptionTag } = await parse_encrypt_ttlv_response(result_str)
+                const { IvCounterNonce, Data, AuthenticatedEncryptionTag } = await parse_encrypt_ttlv_response(result_str);
                 const combinedData = new Uint8Array(IvCounterNonce.length + Data.length + AuthenticatedEncryptionTag.length);
                 combinedData.set(IvCounterNonce, 0);
                 combinedData.set(Data, IvCounterNonce.length);
@@ -51,10 +59,10 @@ const SymmetricEncryptForm: React.FC = () => {
                 const mimeType = "application/octet-stream";
                 const filename = `${values.fileName}.enc`;
                 downloadFile(combinedData, filename, mimeType);
-                setRes("File has been encrypted")
+                setRes("File has been encrypted");
             }
         } catch (e) {
-            setRes(`Error encrypting: ${e}`)
+            setRes(`Error encrypting: ${e}`);
             console.error("Error encrypting:", e);
         } finally {
             setIsLoading(false);
@@ -80,10 +88,10 @@ const SymmetricEncryptForm: React.FC = () => {
                 onFinish={onFinish}
                 layout="vertical"
                 initialValues={{
-                    dataEncryptionAlgorithm: 'AesGcm',
+                    dataEncryptionAlgorithm: "AesGcm",
                 }}
             >
-                <Space direction="vertical" size="middle" style={{ display: 'flex' }}>
+                <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
                         <h3 className="text-m font-bold mb-4">Input File</h3>
 
@@ -91,19 +99,16 @@ const SymmetricEncryptForm: React.FC = () => {
                             <Input />
                         </Form.Item>
 
-                        <Form.Item
-                            name="inputFile"
-                            rules={[{ required: true, message: 'Please select a file to encrypt' }]}
-                        >
+                        <Form.Item name="inputFile" rules={[{ required: true, message: "Please select a file to encrypt" }]}>
                             <Upload.Dragger
                                 beforeUpload={(file) => {
-                                    form.setFieldValue("fileName", file.name)
+                                    form.setFieldValue("fileName", file.name);
                                     const reader = new FileReader();
                                     reader.onload = (e) => {
                                         const arrayBuffer = e.target?.result;
                                         if (arrayBuffer && arrayBuffer instanceof ArrayBuffer) {
                                             const bytes = new Uint8Array(arrayBuffer);
-                                            form.setFieldsValue({ inputFile: bytes })
+                                            form.setFieldsValue({ inputFile: bytes });
                                         }
                                     };
                                     reader.readAsArrayBuffer(file);
@@ -117,24 +122,12 @@ const SymmetricEncryptForm: React.FC = () => {
                     </Card>
                     <Card>
                         <h3 className="text-m font-bold mb-4">Key Identification (required)</h3>
-                        <Form.Item
-                            name="keyId"
-                            label="Key ID"
-                            help="The unique identifier of the symmetric key"
-                        >
+                        <Form.Item name="keyId" label="Key ID" help="The unique identifier of the symmetric key">
                             <Input placeholder="Enter key ID" />
                         </Form.Item>
 
-                        <Form.Item
-                            name="tags"
-                            label="Tags"
-                            help="Alternative to Key ID: specify tags to identify the key"
-                        >
-                            <Select
-                                mode="tags"
-                                placeholder="Enter tags"
-                                open={false}
-                            />
+                        <Form.Item name="tags" label="Tags" help="Alternative to Key ID: specify tags to identify the key">
+                            <Select mode="tags" placeholder="Enter tags" open={false} />
                         </Form.Item>
                     </Card>
                     <Card>
@@ -187,12 +180,7 @@ const SymmetricEncryptForm: React.FC = () => {
                     </Card>
 
                     <Form.Item>
-                        <Button
-                            type="primary"
-                            htmlType="submit"
-                            loading={isLoading}
-                            className="w-full text-white font-medium"
-                            >
+                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium">
                             Encrypt File (Server-side)
                         </Button>
                     </Form.Item>

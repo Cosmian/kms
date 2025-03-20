@@ -1,5 +1,5 @@
-import { Layout } from 'antd'
-import React from 'react'
+import { Layout } from "antd";
+import React from "react";
 
 interface FooterProps {
     version: string;

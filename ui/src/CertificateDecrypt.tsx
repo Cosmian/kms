@@ -1,8 +1,8 @@
-import { Button, Card, Form, Input, Select, Space, Upload } from 'antd'
-import React, { useEffect, useRef, useState } from 'react'
-import { useAuth } from "./AuthContext"
-import { getMimeType, saveDecryptedFile, sendKmipRequest } from './utils'
-import { decrypt_certificate_ttlv_request, parse_decrypt_ttlv_response } from "./wasm/pkg"
+import { Button, Card, Form, Input, Select, Space, Upload } from "antd";
+import React, { useEffect, useRef, useState } from "react";
+import { useAuth } from "./AuthContext";
+import { getMimeType, saveDecryptedFile, sendKmipRequest } from "./utils";
+import { decrypt_certificate_ttlv_request, parse_decrypt_ttlv_response } from "./wasm/pkg";
 
 interface CertificateDecryptFormData {
     inputFile: Uint8Array;
@@ -11,56 +11,51 @@ interface CertificateDecryptFormData {
     tags?: string[];
     outputFile?: string;
     authenticationData?: Uint8Array;
-    encryptionAlgorithm: 'CkmRsaPkcs' | 'CkmRsaPkcsOaep' | 'CkmRsaAesKeyWrap';
+    encryptionAlgorithm: "CkmRsaPkcs" | "CkmRsaPkcsOaep" | "CkmRsaAesKeyWrap";
 }
 
 const RSA_ENCRYPTION_ALGORITHMS = [
-    { label: 'RSA PKCS #1 v1.5 (Legacy)', value: 'CkmRsaPkcs' },
-    { label: 'RSA OAEP (Recommended)', value: 'CkmRsaPkcsOaep' },
-    { label: 'RSA AES Key Wrap', value: 'CkmRsaAesKeyWrap' },
+    { label: "RSA PKCS #1 v1.5 (Legacy)", value: "CkmRsaPkcs" },
+    { label: "RSA OAEP (Recommended)", value: "CkmRsaPkcsOaep" },
+    { label: "RSA AES Key Wrap", value: "CkmRsaAesKeyWrap" },
 ];
 
 const CertificateDecryptForm: React.FC = () => {
     const [form] = Form.useForm<CertificateDecryptFormData>();
     const [res, setRes] = useState<undefined | string>(undefined);
     const [isLoading, setIsLoading] = useState(false);
-    const { idToken, serverUrl  } = useAuth();
+    const { idToken, serverUrl } = useAuth();
     const responseRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (res && responseRef.current) {
-            responseRef.current.scrollIntoView({ behavior: 'smooth' });
+            responseRef.current.scrollIntoView({ behavior: "smooth" });
         }
     }, [res]);
 
     const onFinish = async (values: CertificateDecryptFormData) => {
-        console.log('Certificate Decrypt values:', values);
+        console.log("Certificate Decrypt values:", values);
         setIsLoading(true);
         setRes(undefined);
         const id = values.privateKeyId ? values.privateKeyId : values.tags ? JSON.stringify(values.tags) : undefined;
         try {
             if (id == undefined) {
-                setRes("Missing key identifier.")
-                throw Error("Missing key identifier")
+                setRes("Missing key identifier.");
+                throw Error("Missing key identifier");
             }
-            const request = decrypt_certificate_ttlv_request(
-                id,
-                values.inputFile,
-                values.authenticationData,
-                values.encryptionAlgorithm
-            );
+            const request = decrypt_certificate_ttlv_request(id, values.inputFile, values.authenticationData, values.encryptionAlgorithm);
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
-                const response = await parse_decrypt_ttlv_response(result_str)
+                const response = await parse_decrypt_ttlv_response(result_str);
                 const name = values.fileName.slice(0, -4);
                 const lastDotIndex = name.lastIndexOf(".");
                 const fileName = lastDotIndex !== -1 ? name : `${name}.plain`;
                 const mimeType = getMimeType(fileName);
                 saveDecryptedFile(response.Data, fileName, mimeType);
-                setRes("File has been decrypted")
+                setRes("File has been decrypted");
             }
         } catch (e) {
-            setRes(`Error decrypting: ${e}`)
+            setRes(`Error decrypting: ${e}`);
             console.error("Error decrypting:", e);
         } finally {
             setIsLoading(false);
@@ -82,29 +77,26 @@ const CertificateDecryptForm: React.FC = () => {
                 onFinish={onFinish}
                 layout="vertical"
                 initialValues={{
-                    encryptionAlgorithm: 'CkmRsaPkcsOaep',
+                    encryptionAlgorithm: "CkmRsaPkcsOaep",
                 }}
             >
-                <Space direction="vertical" size="middle" style={{ display: 'flex' }}>
+                <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
                         <h3 className="text-m font-bold mb-4">Input File</h3>
                         <Form.Item name="fileName" style={{ display: "none" }}>
                             <Input />
                         </Form.Item>
 
-                        <Form.Item
-                            name="inputFile"
-                            rules={[{ required: true, message: 'Please select a file to decrypt' }]}
-                        >
+                        <Form.Item name="inputFile" rules={[{ required: true, message: "Please select a file to decrypt" }]}>
                             <Upload.Dragger
                                 beforeUpload={(file) => {
-                                    form.setFieldValue("fileName", file.name)
+                                    form.setFieldValue("fileName", file.name);
                                     const reader = new FileReader();
                                     reader.onload = (e) => {
                                         const arrayBuffer = e.target?.result;
                                         if (arrayBuffer && arrayBuffer instanceof ArrayBuffer) {
                                             const bytes = new Uint8Array(arrayBuffer);
-                                            form.setFieldsValue({ inputFile: bytes })
+                                            form.setFieldsValue({ inputFile: bytes });
                                         }
                                     };
                                     reader.readAsArrayBuffer(file);
@@ -126,16 +118,8 @@ const CertificateDecryptForm: React.FC = () => {
                             <Input placeholder="Enter private key ID" />
                         </Form.Item>
 
-                        <Form.Item
-                            name="tags"
-                            label="Tags"
-                            help="Alternative to Key ID: specify tags to identify the key"
-                        >
-                            <Select
-                                mode="tags"
-                                placeholder="Enter tags"
-                                open={false}
-                            />
+                        <Form.Item name="tags" label="Tags" help="Alternative to Key ID: specify tags to identify the key">
+                            <Select mode="tags" placeholder="Enter tags" open={false} />
                         </Form.Item>
                     </Card>
                     <Card>
@@ -155,21 +139,12 @@ const CertificateDecryptForm: React.FC = () => {
                             <Input placeholder="Enter authentication data" />
                         </Form.Item>
 
-                        <Form.Item
-                            name="outputFile"
-                            label="Output File Path"
-                            help="Optional: Specify a custom output file path"
-                        >
+                        <Form.Item name="outputFile" label="Output File Path" help="Optional: Specify a custom output file path">
                             <Input placeholder="Enter output file path" />
                         </Form.Item>
                     </Card>
                     <Form.Item>
-                        <Button
-                            type="primary"
-                            htmlType="submit"
-                            loading={isLoading}
-                            className="w-full text-white font-medium"
-                        >
+                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium">
                             Decrypt File
                         </Button>
                     </Form.Item>

@@ -1,9 +1,8 @@
-import { Button, Card, Checkbox, Form, Input, Select, Space } from 'antd'
-import React, { useEffect, useRef, useState } from 'react'
-import { useAuth } from "./AuthContext"
-import { sendKmipRequest } from './utils'
-import { create_ec_key_pair_ttlv_request, parse_create_keypair_ttlv_response } from "./wasm/pkg"
-
+import { Button, Card, Checkbox, Form, Input, Select, Space } from "antd";
+import React, { useEffect, useRef, useState } from "react";
+import { useAuth } from "./AuthContext";
+import { sendKmipRequest } from "./utils";
+import { create_ec_key_pair_ttlv_request, parse_create_keypair_ttlv_response } from "./wasm/pkg";
 
 interface ECKeyCreateFormData {
     privateKeyId?: string;
@@ -13,37 +12,38 @@ interface ECKeyCreateFormData {
 }
 
 type CreateKeyPairResponse = {
-    PrivateKeyUniqueIdentifier: string,
-    PublicKeyUniqueIdentifier: string,
-}
+    PrivateKeyUniqueIdentifier: string;
+    PublicKeyUniqueIdentifier: string;
+};
 
 const ECKeyCreateForm: React.FC = () => {
     const [form] = Form.useForm<ECKeyCreateFormData>();
     const [res, setRes] = useState<undefined | string>(undefined);
     const [isLoading, setIsLoading] = useState(false);
-    const { idToken, serverUrl  } = useAuth();
+    const { idToken, serverUrl } = useAuth();
     const responseRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (res && responseRef.current) {
-            responseRef.current.scrollIntoView({ behavior: 'smooth' });
+            responseRef.current.scrollIntoView({ behavior: "smooth" });
         }
     }, [res]);
 
-
     const onFinish = async (values: ECKeyCreateFormData) => {
-        console.log('Create EC key pair values:', values);
+        console.log("Create EC key pair values:", values);
         setIsLoading(true);
         setRes(undefined);
         try {
             const request = create_ec_key_pair_ttlv_request(values.privateKeyId, values.tags, values.curve, values.sensitive);
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
-                const result: CreateKeyPairResponse = await parse_create_keypair_ttlv_response(result_str)
-                setRes(`Key pair has been created. Private key Id: ${result.PrivateKeyUniqueIdentifier} - Public key Id: ${result.PublicKeyUniqueIdentifier}`)
+                const result: CreateKeyPairResponse = await parse_create_keypair_ttlv_response(result_str);
+                setRes(
+                    `Key pair has been created. Private key Id: ${result.PrivateKeyUniqueIdentifier} - Public key Id: ${result.PublicKeyUniqueIdentifier}`
+                );
             }
         } catch (e) {
-            setRes(`Error creating EC keys: ${e}`)
+            setRes(`Error creating EC keys: ${e}`);
             console.error("Error creating EC keys:", e);
         } finally {
             setIsLoading(false);
@@ -66,18 +66,18 @@ const ECKeyCreateForm: React.FC = () => {
                 onFinish={onFinish}
                 layout="vertical"
                 initialValues={{
-                    curve: 'nist-p256',
+                    curve: "nist-p256",
                     tags: [],
                     sensitive: false,
                 }}
             >
-                <Space direction="vertical" size="middle" style={{ display: 'flex' }}>
+                <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
                         <Form.Item
                             name="curve"
                             label="Curve"
                             help="Select the elliptic curve to use"
-                            rules={[{ required: true, message: 'Please select a curve' }]}
+                            rules={[{ required: true, message: "Please select a curve" }]}
                         >
                             <Select>
                                 <Select.Option value="nist-p192">NIST P-192</Select.Option>
@@ -97,41 +97,20 @@ const ECKeyCreateForm: React.FC = () => {
                             label="Private Key ID"
                             help="Optional: a random UUID will be generated if not specified"
                         >
-                            <Input
-                                placeholder="Enter private key ID"
-                            />
+                            <Input placeholder="Enter private key ID" />
                         </Form.Item>
 
-                        <Form.Item
-                            name="tags"
-                            label="Tags"
-                            help="Optional: Add tags to help retrieve the keys later"
-                        >
-                            <Select
-                                mode="tags"
-                                placeholder="Enter tags"
-                                open={false}
-                            />
+                        <Form.Item name="tags" label="Tags" help="Optional: Add tags to help retrieve the keys later">
+                            <Select mode="tags" placeholder="Enter tags" open={false} />
                         </Form.Item>
 
-                        <Form.Item
-                            name="sensitive"
-                            valuePropName="checked"
-                            help="If set, the private key will not be exportable"
-                        >
-                            <Checkbox>
-                                Sensitive
-                            </Checkbox>
+                        <Form.Item name="sensitive" valuePropName="checked" help="If set, the private key will not be exportable">
+                            <Checkbox>Sensitive</Checkbox>
                         </Form.Item>
                     </Card>
 
                     <Form.Item>
-                        <Button
-                            type="primary"
-                            htmlType="submit"
-                            loading={isLoading}
-                            className="w-full text-white font-medium"
-                        >
+                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium">
                             Create EC Keypair
                         </Button>
                     </Form.Item>

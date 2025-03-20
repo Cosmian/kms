@@ -1,4 +1,4 @@
-import { createContext, ReactNode, useContext, useState } from "react"
+import { createContext, ReactNode, useContext, useState } from "react";
 
 // Define the context type
 interface AuthContextType {
@@ -20,12 +20,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     // Login function
     const login = async () => {
-      try {
-        const kmsUrl = serverUrl + "/ui/login_flow";
-        window.location.href = kmsUrl;
-      } catch (error) {
-        console.error('Login error:', error);
-      }
+        try {
+            const kmsUrl = serverUrl + "/ui/login_flow";
+            window.location.href = kmsUrl;
+        } catch (error) {
+            console.error("Login error:", error);
+        }
     };
 
     // Logout function
@@ -35,11 +35,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         window.location.href = kmsUrl;
     };
 
-    return (
-        <AuthContext.Provider value={{ serverUrl, setServerUrl, idToken, setIdToken, login, logout }}>
-            {children}
-        </AuthContext.Provider>
-    );
+    return <AuthContext.Provider value={{ serverUrl, setServerUrl, idToken, setIdToken, login, logout }}>{children}</AuthContext.Provider>;
 };
 
 // Custom hook for using auth context

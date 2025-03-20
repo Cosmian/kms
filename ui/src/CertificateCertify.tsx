@@ -1,14 +1,13 @@
-import { Button, Card, Checkbox, Form, Input, Radio, Select, Space, Upload } from 'antd'
-import React, { useEffect, useRef, useState } from 'react'
-import { useAuth } from "./AuthContext"
-import { sendKmipRequest } from './utils'
-import { certify_ttlv_request, parse_certify_ttlv_response } from "./wasm/pkg"
-
+import { Button, Card, Checkbox, Form, Input, Radio, Select, Space, Upload } from "antd";
+import React, { useEffect, useRef, useState } from "react";
+import { useAuth } from "./AuthContext";
+import { sendKmipRequest } from "./utils";
+import { certify_ttlv_request, parse_certify_ttlv_response } from "./wasm/pkg";
 
 interface CertificateCertifyFormData {
     certificateId?: string;
     certificateSigningRequest?: Uint8Array;
-    csrFormat: 'pem' | 'der';
+    csrFormat: "pem" | "der";
     publicKeyIdToCertify?: string;
     certificateIdToReCertify?: string;
     generateKeyPair: boolean;
@@ -22,41 +21,50 @@ interface CertificateCertifyFormData {
 }
 
 const ALGORITHM_OPTIONS = [
-    { label: 'RSA 2048', value: 'rsa2048' },
-    { label: 'RSA 3072', value: 'rsa3072' },
-    { label: 'RSA 4096', value: 'rsa4096' },
-    { label: 'NIST P-256', value: 'nist-p256' },
-    { label: 'NIST P-384', value: 'nist-p384' },
-    { label: 'NIST P-521', value: 'nist-p521' },
-    { label: 'Ed25519', value: 'ed25519' },
+    { label: "RSA 2048", value: "rsa2048" },
+    { label: "RSA 3072", value: "rsa3072" },
+    { label: "RSA 4096", value: "rsa4096" },
+    { label: "NIST P-256", value: "nist-p256" },
+    { label: "NIST P-384", value: "nist-p384" },
+    { label: "NIST P-521", value: "nist-p521" },
+    { label: "Ed25519", value: "ed25519" },
 ];
 
 const CertificateCertifyForm: React.FC = () => {
     const [form] = Form.useForm<CertificateCertifyFormData>();
     const [res, setRes] = useState<undefined | string>(undefined);
     const [isLoading, setIsLoading] = useState(false);
-    const [certifyMethod, setCertifyMethod] = useState<string>('csr');
-    const { idToken, serverUrl  } = useAuth();
+    const [certifyMethod, setCertifyMethod] = useState<string>("csr");
+    const { idToken, serverUrl } = useAuth();
     const responseRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (res && responseRef.current) {
-            responseRef.current.scrollIntoView({ behavior: 'smooth' });
+            responseRef.current.scrollIntoView({ behavior: "smooth" });
         }
     }, [res]);
 
     const onCertifyMethodChange = (e: any) => {
         setCertifyMethod(e.target.value);
         // Reset related fields when switching methods
-        form.resetFields(['certificateSigningRequest', 'publicKeyIdToCertify',
-                         'certificateIdToReCertify', 'generateKeyPair', 'subjectName', 'algorithm', 'issuerPrivateKeyId', 'issuerCertificateId', 'certificateExtensions']);
-        if (e.target.value === 'generate') {
-          form.setFieldValue('generateKeyPair', true)
+        form.resetFields([
+            "certificateSigningRequest",
+            "publicKeyIdToCertify",
+            "certificateIdToReCertify",
+            "generateKeyPair",
+            "subjectName",
+            "algorithm",
+            "issuerPrivateKeyId",
+            "issuerCertificateId",
+            "certificateExtensions",
+        ]);
+        if (e.target.value === "generate") {
+            form.setFieldValue("generateKeyPair", true);
         }
     };
 
     const onFinish = async (values: CertificateCertifyFormData) => {
-        console.log('Certificate Certify values:', values);
+        console.log("Certificate Certify values:", values);
         setIsLoading(true);
         setRes(undefined);
         try {
@@ -107,14 +115,14 @@ const CertificateCertifyForm: React.FC = () => {
                 onFinish={onFinish}
                 layout="vertical"
                 initialValues={{
-                    csrFormat: 'pem',
-                    algorithm: 'rsa4096',
+                    csrFormat: "pem",
+                    algorithm: "rsa4096",
                     numberOfDays: 365,
                     generateKeyPair: false,
-                    tags: []
+                    tags: [],
                 }}
             >
-                <Space direction="vertical" size="middle" style={{ display: 'flex' }}>
+                <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
                         <h3 className="text-m font-bold mb-4">Certificate ID (Optional)</h3>
                         <Form.Item
@@ -136,12 +144,12 @@ const CertificateCertifyForm: React.FC = () => {
                             </Space>
                         </Radio.Group>
 
-                        {certifyMethod === 'csr' && (
+                        {certifyMethod === "csr" && (
                             <div className="mt-4">
                                 <Form.Item
                                     name="certificateSigningRequest"
                                     label="Certificate Signing Request"
-                                    rules={[{ required: true, message: 'Please upload a CSR file' }]}
+                                    rules={[{ required: true, message: "Please upload a CSR file" }]}
                                 >
                                     <Upload.Dragger
                                         beforeUpload={(file) => {
@@ -162,11 +170,7 @@ const CertificateCertifyForm: React.FC = () => {
                                     </Upload.Dragger>
                                 </Form.Item>
 
-                                <Form.Item
-                                    name="csrFormat"
-                                    label="CSR Format"
-                                    rules={[{ required: true }]}
-                                >
+                                <Form.Item name="csrFormat" label="CSR Format" rules={[{ required: true }]}>
                                     <Radio.Group>
                                         <Radio value="pem">PEM</Radio>
                                         <Radio value="der">DER</Radio>
@@ -175,12 +179,12 @@ const CertificateCertifyForm: React.FC = () => {
                             </div>
                         )}
 
-                        {certifyMethod === 'publicKey' && (
+                        {certifyMethod === "publicKey" && (
                             <div className="mt-4">
                                 <Form.Item
                                     name="publicKeyIdToCertify"
                                     label="Public Key ID to Certify"
-                                    rules={[{ required: true, message: 'Please enter a public key ID' }]}
+                                    rules={[{ required: true, message: "Please enter a public key ID" }]}
                                 >
                                     <Input placeholder="Enter public key ID" />
                                 </Form.Item>
@@ -188,49 +192,45 @@ const CertificateCertifyForm: React.FC = () => {
                                 <Form.Item
                                     name="subjectName"
                                     label="Subject Name"
-                                    rules={[{ required: true, message: 'Subject name is required' }]}
+                                    rules={[{ required: true, message: "Subject name is required" }]}
                                     help='For instance: "CN=John Doe,OU=Org Unit,O=Org Name,L=City,ST=State,C=US"'
                                 >
-                                    <Input placeholder='CN=John Doe,OU=Org Unit,O=Org Name,L=City,ST=State,C=US' />
+                                    <Input placeholder="CN=John Doe,OU=Org Unit,O=Org Name,L=City,ST=State,C=US" />
                                 </Form.Item>
                             </div>
                         )}
 
-                        {certifyMethod === 'reCertify' && (
+                        {certifyMethod === "reCertify" && (
                             <div className="mt-4">
                                 <Form.Item
                                     name="certificateIdToReCertify"
                                     label="Certificate ID to Re-certify"
-                                    rules={[{ required: true, message: 'Please enter a certificate ID' }]}
+                                    rules={[{ required: true, message: "Please enter a certificate ID" }]}
                                 >
                                     <Input placeholder="Enter certificate ID to re-certify" />
                                 </Form.Item>
                             </div>
                         )}
 
-                        {certifyMethod === 'generate' && (
+                        {certifyMethod === "generate" && (
                             <div className="mt-4">
-                                <Form.Item
-                                    name="generateKeyPair"
-                                    valuePropName="checked"
-                                    hidden={true}
-                                >
+                                <Form.Item name="generateKeyPair" valuePropName="checked" hidden={true}>
                                     <Checkbox>Generate Key Pair</Checkbox>
                                 </Form.Item>
 
                                 <Form.Item
                                     name="subjectName"
                                     label="Subject Name"
-                                    rules={[{ required: true, message: 'Subject name is required' }]}
+                                    rules={[{ required: true, message: "Subject name is required" }]}
                                     help='For instance: "CN=John Doe,OU=Org Unit,O=Org Name,L=City,ST=State,C=US"'
                                 >
-                                    <Input placeholder='CN=John Doe,OU=Org Unit,O=Org Name,L=City,ST=State,C=US' />
+                                    <Input placeholder="CN=John Doe,OU=Org Unit,O=Org Name,L=City,ST=State,C=US" />
                                 </Form.Item>
 
                                 <Form.Item
                                     name="algorithm"
                                     label="Key Algorithm"
-                                    rules={[{ required: true, message: 'Please select an algorithm' }]}
+                                    rules={[{ required: true, message: "Please select an algorithm" }]}
                                 >
                                     <Select options={ALGORITHM_OPTIONS} />
                                 </Form.Item>
@@ -264,7 +264,7 @@ const CertificateCertifyForm: React.FC = () => {
                         <Form.Item
                             name="numberOfDays"
                             label="Validity Period (days)"
-                            rules={[{ required: true, message: 'Please enter number of days' }]}
+                            rules={[{ required: true, message: "Please enter number of days" }]}
                             help="The requested number of validity days (server may grant a different value)"
                         >
                             <Input type="number" min={1} />
@@ -294,26 +294,13 @@ const CertificateCertifyForm: React.FC = () => {
                             </Upload.Dragger>
                         </Form.Item>
 
-                        <Form.Item
-                            name="tags"
-                            label="Tags"
-                            help="Tags to associate with the certificate (optional)"
-                        >
-                            <Select
-                                mode="tags"
-                                placeholder="Enter tags"
-                                open={false}
-                            />
+                        <Form.Item name="tags" label="Tags" help="Tags to associate with the certificate (optional)">
+                            <Select mode="tags" placeholder="Enter tags" open={false} />
                         </Form.Item>
                     </Card>
 
                     <Form.Item>
-                        <Button
-                            type="primary"
-                            htmlType="submit"
-                            loading={isLoading}
-                            className="w-full text-white font-medium"
-                        >
+                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium">
                             Issue/Renew Certificate
                         </Button>
                     </Form.Item>

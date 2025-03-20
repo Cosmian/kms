@@ -1,8 +1,8 @@
-import { Button, Card, Form, Input, Select, Space } from 'antd'
-import React, { useEffect, useRef, useState } from 'react'
-import { useAuth } from "./AuthContext"
-import { sendKmipRequest } from './utils'
-import { locate_ttlv_request, parse_locate_ttlv_response } from "./wasm/pkg"
+import { Button, Card, Form, Input, Select, Space } from "antd";
+import React, { useEffect, useRef, useState } from "react";
+import { useAuth } from "./AuthContext";
+import { sendKmipRequest } from "./utils";
+import { locate_ttlv_request, parse_locate_ttlv_response } from "./wasm/pkg";
 
 interface LocateFormData {
     tags?: string[];
@@ -16,47 +16,47 @@ interface LocateFormData {
 }
 
 const CRYPTO_ALGORITHMS = [
-    { label: 'Covercrypt', value: 'Covercrypt' },
-    { label: 'ECDH', value: 'ECDH' },
-    { label: 'ChaCha20-Poly1305', value: 'ChaCha20Poly1305' },
-    { label: 'AES', value: 'AES' },
-    { label: 'Ed25519', value: 'Ed25519' },
+    { label: "Covercrypt", value: "Covercrypt" },
+    { label: "ECDH", value: "ECDH" },
+    { label: "ChaCha20-Poly1305", value: "ChaCha20Poly1305" },
+    { label: "AES", value: "AES" },
+    { label: "Ed25519", value: "Ed25519" },
 ];
 
 const KEY_FORMAT_TYPES = [
-    { label: 'CoverCrypt Secret Key', value: 'CoverCryptSecretKey' },
-    { label: 'CoverCrypt Public Key', value: 'CoverCryptPublicKey' },
-    { label: 'Raw', value: 'RAW' },
-    { label: 'PKCS8', value: 'PKCS8' },
+    { label: "CoverCrypt Secret Key", value: "CoverCryptSecretKey" },
+    { label: "CoverCrypt Public Key", value: "CoverCryptPublicKey" },
+    { label: "Raw", value: "RAW" },
+    { label: "PKCS8", value: "PKCS8" },
 ];
 
 const OBJECT_TYPES = [
-    { label: 'Certificate', value: 'Certificate' },
-    { label: 'Symmetric Key', value: 'SymmetricKey' },
-    { label: 'Public Key', value: 'PublicKey' },
-    { label: 'Private Key', value: 'PrivateKey' },
-    { label: 'Split Key', value: 'SplitKey' },
-    { label: 'Secret Data', value: 'SecretData' },
-    { label: 'Opaque Object', value: 'OpaqueObject' },
-    { label: 'PGP Key', value: 'PGPKey' },
-    { label: 'Certificate Request', value: 'CertificateRequest' },
+    { label: "Certificate", value: "Certificate" },
+    { label: "Symmetric Key", value: "SymmetricKey" },
+    { label: "Public Key", value: "PublicKey" },
+    { label: "Private Key", value: "PrivateKey" },
+    { label: "Split Key", value: "SplitKey" },
+    { label: "Secret Data", value: "SecretData" },
+    { label: "Opaque Object", value: "OpaqueObject" },
+    { label: "PGP Key", value: "PGPKey" },
+    { label: "Certificate Request", value: "CertificateRequest" },
 ];
 
 const LocateForm: React.FC = () => {
     const [form] = Form.useForm<LocateFormData>();
     const [isLoading, setIsLoading] = useState(false);
     const [res, setRes] = useState<string | undefined>(undefined);
-    const { idToken, serverUrl  } = useAuth();
+    const { idToken, serverUrl } = useAuth();
     const responseRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (res && responseRef.current) {
-            responseRef.current.scrollIntoView({ behavior: 'smooth' });
+            responseRef.current.scrollIntoView({ behavior: "smooth" });
         }
     }, [res]);
 
     const onFinish = async (values: LocateFormData) => {
-        console.log('Locate values:', values);
+        console.log("Locate values:", values);
         setIsLoading(true);
         setRes(undefined);
         try {
@@ -72,12 +72,13 @@ const LocateForm: React.FC = () => {
             );
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
-                const response = await parse_locate_ttlv_response(result_str)
-                const objects = response.UniqueIdentifier && response.UniqueIdentifier.length > 0 ? response.UniqueIdentifier.join(" - ") : "";
-                setRes(`${response.LocatedItems} Object(s) located. ${objects}`)
+                const response = await parse_locate_ttlv_response(result_str);
+                const objects =
+                    response.UniqueIdentifier && response.UniqueIdentifier.length > 0 ? response.UniqueIdentifier.join(" - ") : "";
+                setRes(`${response.LocatedItems} Object(s) located. ${objects}`);
             }
         } catch (e) {
-            setRes(`Error locating object: ${e}`)
+            setRes(`Error locating object: ${e}`);
             console.error("Error locating object:", e);
         } finally {
             setIsLoading(false);
@@ -93,25 +94,13 @@ const LocateForm: React.FC = () => {
                 <p>Results will show one ID per line.</p>
             </div>
 
-            <Form
-                form={form}
-                onFinish={onFinish}
-                layout="vertical"
-            >
-                <Space direction="vertical" size="middle" style={{ display: 'flex' }}>
+            <Form form={form} onFinish={onFinish} layout="vertical">
+                <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
                         <h3 className="text-m font-bold mb-4">Basic Search Criteria</h3>
 
-                        <Form.Item
-                            name="tags"
-                            label="Tags"
-                            help="User tags or system tags to locate the object"
-                        >
-                            <Select
-                                mode="tags"
-                                placeholder="Enter tags"
-                                open={false}
-                            />
+                        <Form.Item name="tags" label="Tags" help="User tags or system tags to locate the object">
+                            <Select mode="tags" placeholder="Enter tags" open={false} />
                         </Form.Item>
 
                         <Form.Item
@@ -119,18 +108,10 @@ const LocateForm: React.FC = () => {
                             label="Cryptographic Algorithm"
                             help="Algorithm used by the cryptographic object"
                         >
-                            <Select
-                                options={CRYPTO_ALGORITHMS}
-                                allowClear
-                                placeholder="Select algorithm"
-                            />
+                            <Select options={CRYPTO_ALGORITHMS} allowClear placeholder="Select algorithm" />
                         </Form.Item>
 
-                        <Form.Item
-                            name="cryptographicLength"
-                            label="Cryptographic Length"
-                            help="Key size in bits"
-                        >
+                        <Form.Item name="cryptographicLength" label="Cryptographic Length" help="Key size in bits">
                             <Input type="number" placeholder="Enter length in bits" />
                         </Form.Item>
                     </Card>
@@ -138,66 +119,33 @@ const LocateForm: React.FC = () => {
                     <Card>
                         <h3 className="text-m font-bold mb-4">Object Type and Format</h3>
 
-                        <Form.Item
-                            name="keyFormatType"
-                            label="Key Format Type"
-                            help="Format used to store the key"
-                        >
-                            <Select
-                                options={KEY_FORMAT_TYPES}
-                                allowClear
-                                placeholder="Select key format"
-                            />
+                        <Form.Item name="keyFormatType" label="Key Format Type" help="Format used to store the key">
+                            <Select options={KEY_FORMAT_TYPES} allowClear placeholder="Select key format" />
                         </Form.Item>
 
-                        <Form.Item
-                            name="objectType"
-                            label="Object Type"
-                            help="Type of cryptographic object"
-                        >
-                            <Select
-                                options={OBJECT_TYPES}
-                                allowClear
-                                placeholder="Select object type"
-                            />
+                        <Form.Item name="objectType" label="Object Type" help="Type of cryptographic object">
+                            <Select options={OBJECT_TYPES} allowClear placeholder="Select object type" />
                         </Form.Item>
                     </Card>
 
                     <Card>
                         <h3 className="text-m font-bold mb-4">Linked Objects</h3>
 
-                        <Form.Item
-                            name="publicKeyId"
-                            label="Public Key ID"
-                            help="Find objects linked to this public key"
-                        >
+                        <Form.Item name="publicKeyId" label="Public Key ID" help="Find objects linked to this public key">
                             <Input placeholder="Enter public key ID" />
                         </Form.Item>
 
-                        <Form.Item
-                            name="privateKeyId"
-                            label="Private Key ID"
-                            help="Find objects linked to this private key"
-                        >
+                        <Form.Item name="privateKeyId" label="Private Key ID" help="Find objects linked to this private key">
                             <Input placeholder="Enter private key ID" />
                         </Form.Item>
 
-                        <Form.Item
-                            name="certificateId"
-                            label="Certificate ID"
-                            help="Find objects linked to this certificate"
-                        >
+                        <Form.Item name="certificateId" label="Certificate ID" help="Find objects linked to this certificate">
                             <Input placeholder="Enter certificate ID" />
                         </Form.Item>
                     </Card>
 
                     <Form.Item>
-                        <Button
-                            type="primary"
-                            htmlType="submit"
-                            loading={isLoading}
-                            className="w-full text-white font-medium"
-                        >
+                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium">
                             Search Objects
                         </Button>
                     </Form.Item>

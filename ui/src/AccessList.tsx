@@ -1,8 +1,7 @@
-import { Button, Card, Form, Input, Space, Table } from 'antd'
-import React, { useEffect, useRef, useState } from 'react'
-import { useAuth } from "./AuthContext"
-import { getNoTTLVRequest } from './utils'
-
+import { Button, Card, Form, Input, Space, Table } from "antd";
+import React, { useEffect, useRef, useState } from "react";
+import { useAuth } from "./AuthContext";
+import { getNoTTLVRequest } from "./utils";
 
 interface AccessListFormData {
     unique_identifier: string;
@@ -23,15 +22,15 @@ const AccessListForm: React.FC = () => {
 
     useEffect(() => {
         if (res && responseRef.current) {
-            responseRef.current.scrollIntoView({ behavior: 'smooth' });
+            responseRef.current.scrollIntoView({ behavior: "smooth" });
         }
     }, [res]);
 
     const onFinish = async (values: AccessListFormData) => {
-        console.log('List access values:', values);
+        console.log("List access values:", values);
         setIsLoading(true);
         setRes(undefined);
-        setAccessRights([])
+        setAccessRights([]);
         try {
             const response = await getNoTTLVRequest(`/access/list/${values.unique_identifier}`, idToken, serverUrl);
             if (response.length) {
@@ -39,9 +38,8 @@ const AccessListForm: React.FC = () => {
             } else {
                 setRes("Empty result");
             }
-
         } catch (e) {
-            setRes(`Error listing access right: ${e}`)
+            setRes(`Error listing access right: ${e}`);
             console.error("Error listing access right:", e);
         } finally {
             setIsLoading(false);
@@ -50,15 +48,15 @@ const AccessListForm: React.FC = () => {
 
     const columns = [
         {
-            title: 'User',
-            dataIndex: 'user_id',
-            key: 'user_id',
+            title: "User",
+            dataIndex: "user_id",
+            key: "user_id",
         },
         {
-            title: 'Granted Operations',
-            dataIndex: 'operations',
-            key: 'operations',
-            render: (operations: string[]) => operations.join(', '),
+            title: "Granted Operations",
+            dataIndex: "operations",
+            key: "operations",
+            render: (operations: string[]) => operations.join(", "),
         },
     ];
 
@@ -71,50 +69,35 @@ const AccessListForm: React.FC = () => {
                 <p>This action can only be performed by the owner of the object.</p>
             </div>
 
-            <Form
-                form={form}
-                onFinish={onFinish}
-                layout="vertical"
-            >
-                <Space direction="vertical" size="middle" style={{ display: 'flex' }}>
+            <Form form={form} onFinish={onFinish} layout="vertical">
+                <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
                         <Form.Item
                             name="unique_identifier"
                             label="Object UID"
-                            rules={[{ required: true, message: 'Please enter the object UID' }]}
+                            rules={[{ required: true, message: "Please enter the object UID" }]}
                             help="The unique identifier of the object stored in the KMS"
                         >
                             <Input placeholder="Enter object UID" />
                         </Form.Item>
-
                     </Card>
                     <Form.Item>
-                        <Button
-                            type="primary"
-                            htmlType="submit"
-                            loading={isLoading}
-                            className="w-full text-white font-medium"
-                        >
+                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium">
                             List Access Right
                         </Button>
                     </Form.Item>
                 </Space>
             </Form>
-            {res &&
+            {res && (
                 <div ref={responseRef}>
                     <Card title="List access response">{res}</Card>
                 </div>
-            }
+            )}
 
             {accessRights.length > 0 && (
                 <div className="mt-8" ref={responseRef}>
                     <Card title="Access Rights">
-                        <Table
-                            dataSource={accessRights}
-                            columns={columns}
-                            rowKey="user_id"
-                            pagination={false}
-                        />
+                        <Table dataSource={accessRights} columns={columns} rowKey="user_id" pagination={false} />
                     </Card>
                 </div>
             )}

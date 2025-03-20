@@ -1,35 +1,24 @@
-import { Button, Card, Form, Input, Select, Space } from 'antd'
-import React, { useEffect, useRef, useState } from 'react'
-import { useAuth } from "./AuthContext"
-import { postNoTTLVRequest } from './utils'
-
+import { Button, Card, Form, Input, Select, Space } from "antd";
+import React, { useEffect, useRef, useState } from "react";
+import { useAuth } from "./AuthContext";
+import { postNoTTLVRequest } from "./utils";
 
 interface AccessGrantFormData {
     user_id: string;
     unique_identifier: string;
-    operation_types: Array<
-        | 'create'
-        | 'get'
-        | 'encrypt'
-        | 'decrypt'
-        | 'import'
-        | 'revoke'
-        | 'locate'
-        | 'rekey'
-        | 'destroy'
-    >;
+    operation_types: Array<"create" | "get" | "encrypt" | "decrypt" | "import" | "revoke" | "locate" | "rekey" | "destroy">;
 }
 
 const KMIP_OPERATIONS = [
-    { label: 'Create', value: 'create' },
-    { label: 'Get', value: 'get' },
-    { label: 'Encrypt', value: 'encrypt' },
-    { label: 'Decrypt', value: 'decrypt' },
-    { label: 'Import', value: 'import' },
-    { label: 'Revoke', value: 'revoke' },
-    { label: 'Locate', value: 'locate' },
-    { label: 'Rekey', value: 'rekey' },
-    { label: 'Destroy', value: 'destroy' },
+    { label: "Create", value: "create" },
+    { label: "Get", value: "get" },
+    { label: "Encrypt", value: "encrypt" },
+    { label: "Decrypt", value: "decrypt" },
+    { label: "Import", value: "import" },
+    { label: "Revoke", value: "revoke" },
+    { label: "Locate", value: "locate" },
+    { label: "Rekey", value: "rekey" },
+    { label: "Destroy", value: "destroy" },
 ];
 
 const AccessGrantForm: React.FC = () => {
@@ -42,19 +31,19 @@ const AccessGrantForm: React.FC = () => {
 
     useEffect(() => {
         if (res && responseRef.current) {
-            responseRef.current.scrollIntoView({ behavior: 'smooth' });
+            responseRef.current.scrollIntoView({ behavior: "smooth" });
         }
     }, [res]);
 
     const onFinish = async (values: AccessGrantFormData) => {
-        console.log('Grant access values:', values);
+        console.log("Grant access values:", values);
         setIsLoading(true);
         setRes(undefined);
         try {
             const response = await postNoTTLVRequest("/access/grant", values, idToken, serverUrl);
-            setRes(response.success)
+            setRes(response.success);
         } catch (e) {
-            setRes(`Error granting access: ${e}`)
+            setRes(`Error granting access: ${e}`);
             console.error("Error granting access:", e);
         } finally {
             setIsLoading(false);
@@ -70,17 +59,13 @@ const AccessGrantForm: React.FC = () => {
                 <p>This action can only be performed by the owner of the object.</p>
             </div>
 
-            <Form
-                form={form}
-                onFinish={onFinish}
-                layout="vertical"
-            >
-                <Space direction="vertical" size="middle" style={{ display: 'flex' }}>
+            <Form form={form} onFinish={onFinish} layout="vertical">
+                <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
                         <Form.Item
                             name="user_id"
                             label="User Identifier"
-                            rules={[{ required: true, message: 'Please enter the user identifier' }]}
+                            rules={[{ required: true, message: "Please enter the user identifier" }]}
                             help="The user to grant access to"
                         >
                             <Input placeholder="Enter user identifier" />
@@ -89,7 +74,7 @@ const AccessGrantForm: React.FC = () => {
                         <Form.Item
                             name="unique_identifier"
                             label="Object UID"
-                            rules={[{ required: true, message: 'Please enter the object UID' }]}
+                            rules={[{ required: true, message: "Please enter the object UID" }]}
                             help="The unique identifier of the object stored in the KMS"
                         >
                             <Input placeholder="Enter object UID" />
@@ -98,33 +83,24 @@ const AccessGrantForm: React.FC = () => {
                         <Form.Item
                             name="operation_types"
                             label="KMIP Operations"
-                            rules={[{ required: true, message: 'Please select at least one operation' }]}
+                            rules={[{ required: true, message: "Please select at least one operation" }]}
                             help="Select one or more operations to grant access to"
                         >
-                            <Select
-                                mode="multiple"
-                                options={KMIP_OPERATIONS}
-                                placeholder="Select operations"
-                            />
+                            <Select mode="multiple" options={KMIP_OPERATIONS} placeholder="Select operations" />
                         </Form.Item>
                     </Card>
                     <Form.Item>
-                        <Button
-                            type="primary"
-                            htmlType="submit"
-                            loading={isLoading}
-                            className="w-full text-white font-medium"
-                        >
+                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium">
                             Grand Access
                         </Button>
                     </Form.Item>
                 </Space>
             </Form>
-            {res &&
+            {res && (
                 <div ref={responseRef}>
                     <Card title="Grant access response">{res}</Card>
                 </div>
-            }
+            )}
         </div>
     );
 };

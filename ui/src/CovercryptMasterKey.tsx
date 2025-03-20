@@ -1,8 +1,8 @@
-import { Button, Card, Checkbox, Form, Input, Select, Space, Upload } from 'antd'
-import React, { useEffect, useRef, useState } from 'react'
-import { useAuth } from "./AuthContext"
-import { sendKmipRequest } from './utils'
-import { create_covercrypt_master_keypair_ttlv_request, parse_create_keypair_ttlv_response } from "./wasm/pkg"
+import { Button, Card, Checkbox, Form, Input, Select, Space, Upload } from "antd";
+import React, { useEffect, useRef, useState } from "react";
+import { useAuth } from "./AuthContext";
+import { sendKmipRequest } from "./utils";
+import { create_covercrypt_master_keypair_ttlv_request, parse_create_keypair_ttlv_response } from "./wasm/pkg";
 
 interface CovercryptMasterKeyFormData {
     policy: Uint8Array;
@@ -26,31 +26,33 @@ const POLICY_EXAMPLE = `{
 
 const CovercryptMasterKeyForm: React.FC = () => {
     const [form] = Form.useForm<CovercryptMasterKeyFormData>();
-    const [policyType, setPolicyType] = React.useState<'json-file' | 'json-text'>('json-file');
+    const [policyType, setPolicyType] = React.useState<"json-file" | "json-text">("json-file");
     const [res, setRes] = useState<undefined | string>(undefined);
     const [isLoading, setIsLoading] = useState(false);
-    const { idToken, serverUrl  } = useAuth();
+    const { idToken, serverUrl } = useAuth();
     const responseRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (res && responseRef.current) {
-            responseRef.current.scrollIntoView({ behavior: 'smooth' });
+            responseRef.current.scrollIntoView({ behavior: "smooth" });
         }
     }, [res]);
 
     const onFinish = async (values: CovercryptMasterKeyFormData) => {
-        console.log('Create master key pair values:', values);
+        console.log("Create master key pair values:", values);
         setIsLoading(true);
         setRes(undefined);
         try {
             const request = create_covercrypt_master_keypair_ttlv_request(values.policy, values.tags, values.sensitive);
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
-                const result = await parse_create_keypair_ttlv_response(result_str)
-                setRes(`Key pair has been created. Private key Id: ${result.PrivateKeyUniqueIdentifier} - Public key Id: ${result.PublicKeyUniqueIdentifier}`)
+                const result = await parse_create_keypair_ttlv_response(result_str);
+                setRes(
+                    `Key pair has been created. Private key Id: ${result.PrivateKeyUniqueIdentifier} - Public key Id: ${result.PublicKeyUniqueIdentifier}`
+                );
             }
         } catch (e) {
-            setRes(`${e}`)
+            setRes(`${e}`);
             console.error(e);
         } finally {
             setIsLoading(false);
@@ -61,11 +63,17 @@ const CovercryptMasterKeyForm: React.FC = () => {
         <div className="mt-2 space-y-1">
             <p className="font-medium">This example creates a policy with:</p>
             <ul className="list-disc pl-5 space-y-1">
-                <li>Two policy axes: <code>Security Level</code> and <code>Department</code></li>
-                <li>Hierarchical <code>Security Level</code> axis (indicated by <code>::&lt;</code> suffix)</li>
+                <li>
+                    Two policy axes: <code>Security Level</code> and <code>Department</code>
+                </li>
+                <li>
+                    Hierarchical <code>Security Level</code> axis (indicated by <code>::&lt;</code> suffix)
+                </li>
                 <li>Three security levels: Protected, Confidential, and Top Secret</li>
                 <li>Four departments: R&D, HR, MKG, and FIN</li>
-                <li>Post-quantum encryption for Top Secret level (indicated by <code>::+</code> suffix)</li>
+                <li>
+                    Post-quantum encryption for Top Secret level (indicated by <code>::+</code> suffix)
+                </li>
                 <li>Classic cryptography for other levels</li>
             </ul>
         </div>
@@ -92,7 +100,7 @@ const CovercryptMasterKeyForm: React.FC = () => {
                     tags: [],
                 }}
             >
-                <Space direction="vertical" size="middle" style={{ display: 'flex' }}>
+                <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
                         <div className="p-4 rounded-lg space-y-4">
                             <h3 className="text-m font-bold mb-4">Policy Configuration (required)</h3>
@@ -106,8 +114,8 @@ const CovercryptMasterKeyForm: React.FC = () => {
                                     value={policyType}
                                     onChange={(value) => setPolicyType(value)}
                                     options={[
-                                        { label: 'Upload JSON Policy File', value: 'json-file' },
-                                        { label: 'Enter JSON Policy', value: 'json-text' },
+                                        { label: "Upload JSON Policy File", value: "json-file" },
+                                        { label: "Enter JSON Policy", value: "json-text" },
                                     ]}
                                 />
                             </Form.Item>
@@ -118,10 +126,10 @@ const CovercryptMasterKeyForm: React.FC = () => {
                                 <PolicyExplanation />
                             </div>
 
-                            {policyType === 'json-file' && (
+                            {policyType === "json-file" && (
                                 <Form.Item
                                     name="policySpecifications"
-                                    rules={[{ required: true, message: 'Please provide policy specifications' }]}
+                                    rules={[{ required: true, message: "Please provide policy specifications" }]}
                                 >
                                     <Upload.Dragger
                                         accept=".json"
@@ -131,7 +139,7 @@ const CovercryptMasterKeyForm: React.FC = () => {
                                                 const arrayBuffer = e.target?.result;
                                                 if (arrayBuffer && arrayBuffer instanceof ArrayBuffer) {
                                                     const bytes = new Uint8Array(arrayBuffer);
-                                                    form.setFieldsValue({ policy: bytes })
+                                                    form.setFieldsValue({ policy: bytes });
                                                 }
                                             };
                                             reader.readAsArrayBuffer(file);
@@ -144,11 +152,11 @@ const CovercryptMasterKeyForm: React.FC = () => {
                                 </Form.Item>
                             )}
 
-                            {policyType === 'json-text' && (
+                            {policyType === "json-text" && (
                                 <Form.Item
                                     name="policyJson"
                                     rules={[
-                                        { required: true, message: 'Please enter policy JSON' },
+                                        { required: true, message: "Please enter policy JSON" },
                                         {
                                             validator: async (_, value) => {
                                                 if (value) {
@@ -156,7 +164,7 @@ const CovercryptMasterKeyForm: React.FC = () => {
                                                         const jsonObject = JSON.parse(value);
                                                         const encoder = new TextEncoder();
                                                         const uint8Array = encoder.encode(JSON.stringify(jsonObject));
-                                                        form.setFieldValue("policy", uint8Array)
+                                                        form.setFieldValue("policy", uint8Array);
                                                     } catch (e) {
                                                         throw new Error(`Invalid JSON format: ${e}`);
                                                     }
@@ -165,32 +173,16 @@ const CovercryptMasterKeyForm: React.FC = () => {
                                         },
                                     ]}
                                 >
-                                    <Input.TextArea
-                                        placeholder="Paste your JSON policy here"
-                                        rows={10}
-                                        className="font-mono text-sm"
-                                    />
+                                    <Input.TextArea placeholder="Paste your JSON policy here" rows={10} className="font-mono text-sm" />
                                 </Form.Item>
                             )}
                         </div>
 
-                        <Form.Item
-                            name="tags"
-                            label="Tags"
-                            help="Optional tags to help retrieve the keys later"
-                        >
-                            <Select
-                                mode="tags"
-                                placeholder="Enter tags"
-                                open={false}
-                            />
+                        <Form.Item name="tags" label="Tags" help="Optional tags to help retrieve the keys later">
+                            <Select mode="tags" placeholder="Enter tags" open={false} />
                         </Form.Item>
 
-                        <Form.Item
-                            name="sensitive"
-                            valuePropName="checked"
-                            help="If enabled, the private key will not be exportable"
-                        >
+                        <Form.Item name="sensitive" valuePropName="checked" help="If enabled, the private key will not be exportable">
                             <Checkbox>
                                 <span>Sensitive Key</span>
                             </Checkbox>
@@ -198,12 +190,7 @@ const CovercryptMasterKeyForm: React.FC = () => {
                     </Card>
 
                     <Form.Item>
-                        <Button
-                            type="primary"
-                            htmlType="submit"
-                            loading={isLoading}
-                            className="w-full text-white font-medium"
-                        >
+                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium">
                             Create Master Key pair
                         </Button>
                     </Form.Item>

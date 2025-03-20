@@ -1,8 +1,8 @@
-import { Button, Card, Checkbox, Form, Input, InputNumber, Select, Space } from 'antd'
-import React, { useEffect, useRef, useState } from 'react'
-import { useAuth } from "./AuthContext"
-import { sendKmipRequest } from './utils'
-import { create_rsa_key_pair_ttlv_request, parse_create_keypair_ttlv_response } from "./wasm/pkg"
+import { Button, Card, Checkbox, Form, Input, InputNumber, Select, Space } from "antd";
+import React, { useEffect, useRef, useState } from "react";
+import { useAuth } from "./AuthContext";
+import { sendKmipRequest } from "./utils";
+import { create_rsa_key_pair_ttlv_request, parse_create_keypair_ttlv_response } from "./wasm/pkg";
 
 interface RsaKeyCreateFormData {
     privateKeyId?: string;
@@ -12,36 +12,38 @@ interface RsaKeyCreateFormData {
 }
 
 type CreateKeyPairResponse = {
-    PrivateKeyUniqueIdentifier: string,
-    PublicKeyUniqueIdentifier: string,
-}
+    PrivateKeyUniqueIdentifier: string;
+    PublicKeyUniqueIdentifier: string;
+};
 
 const RsaKeyCreateForm: React.FC = () => {
     const [form] = Form.useForm<RsaKeyCreateFormData>();
     const [res, setRes] = useState<undefined | string>(undefined);
     const [isLoading, setIsLoading] = useState(false);
-    const { idToken, serverUrl}= useAuth();
+    const { idToken, serverUrl } = useAuth();
     const responseRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (res && responseRef.current) {
-            responseRef.current.scrollIntoView({ behavior: 'smooth' });
+            responseRef.current.scrollIntoView({ behavior: "smooth" });
         }
     }, [res]);
 
     const onFinish = async (values: RsaKeyCreateFormData) => {
-        console.log('Create key values:', values);
+        console.log("Create key values:", values);
         setIsLoading(true);
         setRes(undefined);
         try {
             const request = create_rsa_key_pair_ttlv_request(values.privateKeyId, values.tags, values.sizeInBits, values.sensitive);
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
-                const result: CreateKeyPairResponse = await parse_create_keypair_ttlv_response(result_str)
-                setRes(`Key pair has been created. Private key Id: ${result.PrivateKeyUniqueIdentifier} - Public key Id: ${result.PublicKeyUniqueIdentifier}`)
+                const result: CreateKeyPairResponse = await parse_create_keypair_ttlv_response(result_str);
+                setRes(
+                    `Key pair has been created. Private key Id: ${result.PrivateKeyUniqueIdentifier} - Public key Id: ${result.PublicKeyUniqueIdentifier}`
+                );
             }
         } catch (e) {
-            setRes(`Error creating keypair: ${e}`)
+            setRes(`Error creating keypair: ${e}`);
             console.error("Error creating keypair:", e);
         } finally {
             setIsLoading(false);
@@ -70,61 +72,35 @@ const RsaKeyCreateForm: React.FC = () => {
                     sensitive: false,
                 }}
             >
-                <Space direction="vertical" size="middle" style={{ display: 'flex' }}>
+                <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
                         <Form.Item
                             name="privateKeyId"
                             label="Private Key ID"
                             help="Optional: a random UUID will be generated if not specified"
                         >
-                            <Input
-                                placeholder="Enter private key ID"
-                            />
+                            <Input placeholder="Enter private key ID" />
                         </Form.Item>
 
                         <Form.Item
                             name="sizeInBits"
                             label="Size in Bits"
                             help="The expected size in bits for the RSA key"
-                            rules={[{ required: true, message: 'Please specify the key size' }]}
+                            rules={[{ required: true, message: "Please specify the key size" }]}
                         >
-                            <InputNumber
-                                className="w-[200px]"
-                                min={1024}
-                                step={1024}
-                                max={8192}
-                            />
+                            <InputNumber className="w-[200px]" min={1024} step={1024} max={8192} />
                         </Form.Item>
 
-                        <Form.Item
-                            name="tags"
-                            label="Tags"
-                            help="Optional: Add tags to help retrieve the keys later"
-                        >
-                            <Select
-                                mode="tags"
-                                placeholder="Enter tags"
-                                open={false}
-                            />
+                        <Form.Item name="tags" label="Tags" help="Optional: Add tags to help retrieve the keys later">
+                            <Select mode="tags" placeholder="Enter tags" open={false} />
                         </Form.Item>
 
-                        <Form.Item
-                            name="sensitive"
-                            valuePropName="checked"
-                            help="If set, the private key will not be exportable"
-                        >
-                            <Checkbox>
-                                Sensitive
-                            </Checkbox>
+                        <Form.Item name="sensitive" valuePropName="checked" help="If set, the private key will not be exportable">
+                            <Checkbox>Sensitive</Checkbox>
                         </Form.Item>
                     </Card>
                     <Form.Item>
-                        <Button
-                            type="primary"
-                            htmlType="submit"
-                            loading={isLoading}
-                            className="w-full text-white font-medium"
-                            >
+                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium">
                             Create RSA Keypair
                         </Button>
                     </Form.Item>

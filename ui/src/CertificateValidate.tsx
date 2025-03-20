@@ -1,9 +1,9 @@
-import { UploadOutlined } from '@ant-design/icons'
-import { Button, Card, DatePicker, Form, Input, Radio, Space, Upload } from 'antd'
-import React, { useEffect, useRef, useState } from 'react'
-import { useAuth } from "./AuthContext"
-import { sendKmipRequest } from './utils'
-import { parse_validate_ttlv_response, validate_certificate_ttlv_request } from "./wasm/pkg"
+import { UploadOutlined } from "@ant-design/icons";
+import { Button, Card, DatePicker, Form, Input, Radio, Space, Upload } from "antd";
+import React, { useEffect, useRef, useState } from "react";
+import { useAuth } from "./AuthContext";
+import { sendKmipRequest } from "./utils";
+import { parse_validate_ttlv_response, validate_certificate_ttlv_request } from "./wasm/pkg";
 
 interface ValidateCertificateFormData {
     certificateBytes?: Uint8Array;
@@ -16,24 +16,24 @@ const CertificateValidateForm: React.FC = () => {
     const [form] = Form.useForm<ValidateCertificateFormData>();
     const [isLoading, setIsLoading] = useState(false);
     const [res, setRes] = useState<string | undefined>(undefined);
-    const [certificateInputType, setCertificateInputType] = useState<'file' | 'text' | 'id'>('file');
-    const { idToken, serverUrl  } = useAuth();
+    const [certificateInputType, setCertificateInputType] = useState<"file" | "text" | "id">("file");
+    const { idToken, serverUrl } = useAuth();
     const responseRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (res && responseRef.current) {
-            responseRef.current.scrollIntoView({ behavior: 'smooth' });
+            responseRef.current.scrollIntoView({ behavior: "smooth" });
         }
     }, [res]);
 
     const onFinish = async (values: ValidateCertificateFormData) => {
-        console.log('Validate Certificate values:', values);
+        console.log("Validate Certificate values:", values);
         setIsLoading(true);
         setRes(undefined);
         try {
             if (values.uniqueIdentifier == undefined && values.certificateBytes == undefined) {
-                setRes("Missing certificate to validate.")
-                throw Error("Missing certificate to validate.")
+                setRes("Missing certificate to validate.");
+                throw Error("Missing certificate to validate.");
             }
             const validityTime = values.validityTime ? values.validityTime.toISOString() : undefined;
             const request = validate_certificate_ttlv_request(
@@ -63,12 +63,8 @@ const CertificateValidateForm: React.FC = () => {
                 <p>You can upload a certificate file, paste certificate content, or specify certificate IDs stored in the KMS.</p>
             </div>
 
-            <Form
-                form={form}
-                onFinish={onFinish}
-                layout="vertical"
-            >
-                <Space direction="vertical" size="middle" style={{ display: 'flex' }}>
+            <Form form={form} onFinish={onFinish} layout="vertical">
+                <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
                         <h3 className="text-m font-bold mb-4">Certificate Input</h3>
 
@@ -80,8 +76,12 @@ const CertificateValidateForm: React.FC = () => {
                             <Radio.Group
                                 value={certificateInputType}
                                 onChange={(e) => {
-                                  setCertificateInputType(e.target.value)
-                                  form.setFieldsValue({ certificateBytes: undefined, certificateContent: undefined, uniqueIdentifier: undefined })
+                                    setCertificateInputType(e.target.value);
+                                    form.setFieldsValue({
+                                        certificateBytes: undefined,
+                                        certificateContent: undefined,
+                                        uniqueIdentifier: undefined,
+                                    });
                                 }}
                             >
                                 <Radio.Button value="file">Upload Certificate File</Radio.Button>
@@ -90,13 +90,9 @@ const CertificateValidateForm: React.FC = () => {
                             </Radio.Group>
                         </Form.Item>
 
-                        {certificateInputType === 'file' && (
+                        {certificateInputType === "file" && (
                             <div>
-                                <Form.Item
-                                    name="certificateFile"
-                                    label="Certificate File"
-                                    help="Upload a certificate file for validation"
-                                >
+                                <Form.Item name="certificateFile" label="Certificate File" help="Upload a certificate file for validation">
                                     <Upload
                                         beforeUpload={(file) => {
                                             const reader = new FileReader();
@@ -118,25 +114,25 @@ const CertificateValidateForm: React.FC = () => {
                             </div>
                         )}
 
-                        {certificateInputType === 'text' && (
+                        {certificateInputType === "text" && (
                             <Form.Item
                                 name="certificateContent"
                                 label="Certificate Content"
                                 help="Paste the certificate content (PEM format)"
                                 rules={[
                                     {
-                                      validator: async (_, value) => {
-                                          if (value) {
-                                              try {
-                                                  const encoder = new TextEncoder();
-                                                  const uint8Array = encoder.encode(JSON.stringify(value));
-                                                  form.setFieldValue("certificateBytes", uint8Array)
-                                              } catch (e) {
-                                                  throw new Error(`Invalid format: ${e}`);
-                                              }
-                                          }
-                                      },
-                                  },
+                                        validator: async (_, value) => {
+                                            if (value) {
+                                                try {
+                                                    const encoder = new TextEncoder();
+                                                    const uint8Array = encoder.encode(JSON.stringify(value));
+                                                    form.setFieldValue("certificateBytes", uint8Array);
+                                                } catch (e) {
+                                                    throw new Error(`Invalid format: ${e}`);
+                                                }
+                                            }
+                                        },
+                                    },
                                 ]}
                             >
                                 <Input.TextArea
@@ -151,7 +147,7 @@ BAYTAkFVMRMwEQYDVQQIDApTb21lLVN0YXRlMSEwHwYDVQQKDBhJbnRlcm5ldCBX
                             </Form.Item>
                         )}
 
-                        {certificateInputType === 'id' && (
+                        {certificateInputType === "id" && (
                             <Form.Item
                                 name="uniqueIdentifier"
                                 label="Certificate Unique Identifier"
@@ -160,7 +156,6 @@ BAYTAkFVMRMwEQYDVQQIDApTb21lLVN0YXRlMSEwHwYDVQQKDBhJbnRlcm5ldCBX
                                 <Input placeholder="Enter certificate ID" />
                             </Form.Item>
                         )}
-
                     </Card>
 
                     <Card>
@@ -176,12 +171,7 @@ BAYTAkFVMRMwEQYDVQQIDApTb21lLVN0YXRlMSEwHwYDVQQKDBhJbnRlcm5ldCBX
                     </Card>
 
                     <Form.Item>
-                        <Button
-                            type="primary"
-                            htmlType="submit"
-                            loading={isLoading}
-                            className="w-full text-white font-medium"
-                        >
+                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium">
                             Validate Certificate
                         </Button>
                     </Form.Item>
