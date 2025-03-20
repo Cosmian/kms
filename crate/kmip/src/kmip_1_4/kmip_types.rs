@@ -12,7 +12,7 @@ use serde::{
     ser::SerializeStruct,
     Deserialize, Serialize,
 };
-use strum::{Display, EnumString};
+use strum::{Display, EnumString, FromRepr};
 use uuid::Uuid;
 
 use crate::kmip_2_1::{self};
@@ -2126,7 +2126,9 @@ impl From<ResultStatusEnumeration> for kmip_2_1::kmip_types::ResultStatusEnumera
 }
 
 /// KMIP Tag values as defined in the KMIP 1.4 specification.
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq)]
+#[derive(
+    Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Copy, FromRepr,
+)]
 #[repr(u32)]
 pub enum Tag {
     ActivationDate = 0x42_0001,
