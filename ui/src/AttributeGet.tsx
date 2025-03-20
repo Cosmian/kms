@@ -196,7 +196,7 @@ const AttributeGetForm: React.FC = () => {
                         <HashMapDisplay data={res} />
                     </div>
                 ) : (
-                    <div ref={responseRef}>Empty result. {res}</div>
+                    <div ref={responseRef}>{res}</div>
                 ))}
         </div>
     );

@@ -1,4 +1,4 @@
-import { Button, Card, Form, Input, Select, Space } from "antd";
+import { Button, Card, Form, Input, List, Select, Space } from "antd";
 import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthContext";
 import { sendKmipRequest } from "./utils";
@@ -16,7 +16,7 @@ interface LocateFormData {
 }
 
 const CRYPTO_ALGORITHMS = [
-    { label: "Covercrypt", value: "Covercrypt" },
+    { label: "Covercrypt", value: "CoverCrypt" },
     { label: "ECDH", value: "ECDH" },
     { label: "ChaCha20-Poly1305", value: "ChaCha20Poly1305" },
     { label: "AES", value: "AES" },
@@ -26,7 +26,7 @@ const CRYPTO_ALGORITHMS = [
 const KEY_FORMAT_TYPES = [
     { label: "CoverCrypt Secret Key", value: "CoverCryptSecretKey" },
     { label: "CoverCrypt Public Key", value: "CoverCryptPublicKey" },
-    { label: "Raw", value: "RAW" },
+    { label: "Raw", value: "Raw" },
     { label: "PKCS8", value: "PKCS8" },
 ];
 
@@ -46,6 +46,7 @@ const LocateForm: React.FC = () => {
     const [form] = Form.useForm<LocateFormData>();
     const [isLoading, setIsLoading] = useState(false);
     const [res, setRes] = useState<string | undefined>(undefined);
+    const [objects, setObjects] = useState<string[] | undefined>(undefined);
     const { idToken, serverUrl } = useAuth();
     const responseRef = useRef<HTMLDivElement>(null);
 
@@ -56,9 +57,9 @@ const LocateForm: React.FC = () => {
     }, [res]);
 
     const onFinish = async (values: LocateFormData) => {
-        console.log("Locate values:", values);
         setIsLoading(true);
         setRes(undefined);
+        setObjects(undefined);
         try {
             const request = locate_ttlv_request(
                 values.tags,
@@ -73,9 +74,10 @@ const LocateForm: React.FC = () => {
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const response = await parse_locate_ttlv_response(result_str);
-                const objects =
-                    response.UniqueIdentifier && response.UniqueIdentifier.length > 0 ? response.UniqueIdentifier.join(" - ") : "";
-                setRes(`${response.LocatedItems} Object(s) located. ${objects}`);
+                if (response.UniqueIdentifier && response.UniqueIdentifier.length) {
+                    setObjects(response.UniqueIdentifier);
+                }
+                setRes(`${response.LocatedItems} Object(s) located.`);
             }
         } catch (e) {
             setRes(`Error locating object: ${e}`);
@@ -112,7 +114,7 @@ const LocateForm: React.FC = () => {
                         </Form.Item>
 
                         <Form.Item name="cryptographicLength" label="Cryptographic Length" help="Key size in bits">
-                            <Input type="number" placeholder="Enter length in bits" />
+                            <Input type="number" placeholder="Enter length in bits" min={0} />
                         </Form.Item>
                     </Card>
 
@@ -153,7 +155,15 @@ const LocateForm: React.FC = () => {
             </Form>
             {res && (
                 <div ref={responseRef}>
-                    <Card title="Locate response">{res}</Card>
+                    <Card title="Locate response">
+                        <List
+                            header={<div className="font-bold">{res}</div>}
+                            size="small"
+                            bordered
+                            dataSource={objects}
+                            renderItem={(uuid) => <List.Item>{uuid}</List.Item>}
+                        />
+                    </Card>
                 </div>
             )}
         </div>

@@ -127,7 +127,7 @@ pub fn parse_locate_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
     parse_ttlv_response::<LocateResponse>(response)
 }
 
-// Create_key_pair requests
+// Create keys Requests
 #[wasm_bindgen]
 pub fn create_rsa_key_pair_ttlv_request(
     private_key_id: Option<String>,
@@ -171,8 +171,6 @@ pub fn create_ec_key_pair_ttlv_request(
 pub fn parse_create_keypair_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
     parse_ttlv_response::<CreateKeyPairResponse>(response)
 }
-
-// Create request
 
 #[allow(clippy::needless_pass_by_value)]
 #[wasm_bindgen]
@@ -232,7 +230,7 @@ pub fn parse_create_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
     parse_ttlv_response::<CreateResponse>(response)
 }
 
-// Decrypt request
+// Decrypt requests
 #[wasm_bindgen]
 pub fn decrypt_sym_ttlv_request(
     key_unique_identifier: &str,
@@ -331,7 +329,7 @@ pub fn parse_destroy_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
     parse_ttlv_response::<DestroyResponse>(response)
 }
 
-// Encrypt request
+// Encrypt requests
 #[wasm_bindgen]
 pub fn encrypt_sym_ttlv_request(
     key_unique_identifier: &str,
@@ -584,7 +582,7 @@ pub fn import_ttlv_request(
 ) -> Result<JsValue, JsValue> {
     let key_usage = key_usage.map(|vec| {
         vec.into_iter()
-            .filter_map(|s| s.parse::<KeyUsage>().ok()) // Parse and filter out errors
+            .filter_map(|s| s.parse::<KeyUsage>().ok())
             .collect()
     });
     let key_format =
@@ -646,7 +644,7 @@ use std::collections::HashMap;
 
 // Covercrypt requests
 #[wasm_bindgen]
-pub fn create_covercrypt_master_keypair_ttlv_request(
+pub fn create_cc_master_keypair_ttlv_request(
     policy: &[u8],
     tags: Vec<String>,
     sensitive: bool,
@@ -655,7 +653,7 @@ pub fn create_covercrypt_master_keypair_ttlv_request(
         serde_json::from_slice(policy).map_err(|e| JsValue::from(e.to_string()))?;
     let policy: Policy = policy_specs
         .try_into()
-        .map_err(|e: cover_crypt::Error| JsValue::from(e.to_string()))?; // TODO map_error properly - with the right Error Try_from type
+        .map_err(|e: cover_crypt::Error| JsValue::from(e.to_string()))?;
     // let policy = Policy::parse_and_convert(policy.as_slice()).map_err(|e| JsValue::from(e.to_string()))?; // for bianary
     let request = build_create_covercrypt_master_keypair_request(&policy, tags, sensitive)
         .map_err(|e| {
@@ -669,7 +667,7 @@ pub fn create_covercrypt_master_keypair_ttlv_request(
 }
 
 #[wasm_bindgen]
-pub fn create_covercrypt_user_key_ttlv_request(
+pub fn create_cc_user_key_ttlv_request(
     master_private_key_id: &str,
     access_policy: &str,
     tags: Vec<String>,
@@ -742,6 +740,7 @@ pub fn decrypt_cc_ttlv_request(
         })
 }
 
+// Certificate requests
 #[allow(clippy::needless_pass_by_value)]
 #[allow(clippy::too_many_arguments)]
 #[wasm_bindgen]
@@ -1077,7 +1076,7 @@ pub fn parse_certify_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
     parse_ttlv_response::<CertifyResponse>(response)
 }
 
-// Get attributes request
+// Attributes request
 #[wasm_bindgen]
 pub fn get_attributes_ttlv_request(
     unique_identifier: String,
@@ -1131,7 +1130,6 @@ pub fn parse_get_attributes_ttlv_response(
     Ok(serde_wasm_bindgen::to_value(&results)?)
 }
 
-// Set attributes request
 #[wasm_bindgen]
 pub fn set_attribute_ttlv_request(
     unique_identifier: String,
@@ -1157,7 +1155,6 @@ pub fn parse_set_attribute_ttlv_response(response: &str) -> Result<JsValue, JsVa
     parse_ttlv_response::<SetAttributeResponse>(response)
 }
 
-// Set attributes request
 #[wasm_bindgen]
 pub fn delete_attribute_ttlv_request(
     unique_identifier: String,

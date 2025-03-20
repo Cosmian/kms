@@ -1,3 +1,4 @@
+import { MoonOutlined, SunOutlined } from "@ant-design/icons";
 import { Button, Layout, Spin, Switch } from "antd";
 import React, { useEffect, useState } from "react";
 import { Outlet } from "react-router-dom";
@@ -52,8 +53,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
                             className="w-20 h-[25px]"
                             checked={isDarkMode}
                             onChange={() => setIsDarkMode(!isDarkMode)}
-                            checkedChildren="🌙 Dark"
-                            unCheckedChildren="☀️ Light"
+                            checkedChildren={<MoonOutlined />}
+                            unCheckedChildren={<SunOutlined />}
                         />
                         {authMethod == "JWT" && (
                             <Button onClick={handleLogout} className="ml-4 w-18">

@@ -53,7 +53,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode }) =>
 
     useEffect(() => {
         // const location = window.location.origin; // WHEN USING REAL URL/IP
-        const location = "https://0.0.0.0:9998"; // ONLY FOR DEV MODE
+        const location = "http://0.0.0.0:9998"; // ONLY FOR DEV MODE
         setServerUrl(location);
 
         const fetchUser = async () => {
@@ -182,6 +182,10 @@ function App() {
             Form: {
                 itemMarginBottom: 40,
             },
+            Switch: {
+                trackHeight: 32,
+                handleSize: 28,
+            },
         },
     };
 
@@ -192,6 +196,9 @@ function App() {
             colorBgBase: "#2a2d30",
             colorTextPlaceholder: "#b9b9b9",
             colorError: "#e23030",
+            colorBorder: "#7a7676",
+            colorSplit: "#7a7676",
+            colorBorderSecondary: "#7a7676",
         },
         components: {
             Layout: {
@@ -213,6 +220,7 @@ function App() {
             Button: {
                 primaryShadow: "None",
                 dangerShadow: "None,",
+                defaultBorderColor: "#e4dddd",
             },
             Select: {
                 selectorBg: "#2f3239",
@@ -234,6 +242,10 @@ function App() {
             Card: {
                 colorBgContainer: "#393E46",
                 borderRadiusLG: 8,
+            },
+            Switch: {
+                trackHeight: 32,
+                handleSize: 28,
             },
         },
     };

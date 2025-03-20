@@ -2,7 +2,7 @@ import { Button, Card, Checkbox, Form, Input, Select, Space } from "antd";
 import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthContext";
 import { sendKmipRequest } from "./utils";
-import { create_covercrypt_user_key_ttlv_request, parse_create_ttlv_response } from "./wasm/pkg";
+import { create_cc_user_key_ttlv_request, parse_create_ttlv_response } from "./wasm/pkg";
 
 interface CovercryptUserKeyFormData {
     masterPrivateKeyId: string;
@@ -34,12 +34,7 @@ const CovercryptUserKeyForm: React.FC = () => {
         setIsLoading(true);
         setRes(undefined);
         try {
-            const request = create_covercrypt_user_key_ttlv_request(
-                values.masterPrivateKeyId,
-                values.accessPolicy,
-                values.tags,
-                values.sensitive
-            );
+            const request = create_cc_user_key_ttlv_request(values.masterPrivateKeyId, values.accessPolicy, values.tags, values.sensitive);
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const result = await parse_create_ttlv_response(result_str);

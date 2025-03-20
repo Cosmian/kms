@@ -1,4 +1,4 @@
-import { Button, Card, Checkbox, Form, Input, Select, Space } from "antd";
+import { Button, Card, Checkbox, Divider, Form, Input, Select, Space } from "antd";
 import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthContext";
 import { downloadFile, sendKmipRequest } from "./utils";
@@ -64,12 +64,29 @@ const KeyExportForm: React.FC<KeyExportFormProps> = (props: KeyExportFormProps) 
     const [isLoading, setIsLoading] = useState(false);
     const { idToken, serverUrl } = useAuth();
     const responseRef = useRef<HTMLDivElement>(null);
+    const wrapKeyId = Form.useWatch("wrapKeyId", form);
+    const selectedAlgorithm: WrappingAlgorithm | undefined = Form.useWatch("wrappingAlgorithm", form);
 
     useEffect(() => {
         if (res && responseRef.current) {
             responseRef.current.scrollIntoView({ behavior: "smooth" });
         }
     }, [res]);
+
+    useEffect(() => {
+        if (!wrapKeyId) {
+            form.setFieldsValue({
+                wrappingAlgorithm: undefined,
+                authenticatedAdditionalData: undefined,
+            });
+        }
+    }, [wrapKeyId, form]);
+
+    useEffect(() => {
+        if (selectedAlgorithm !== "aes-gcm") {
+            form.setFieldsValue({ authenticatedAdditionalData: undefined });
+        }
+    }, [selectedAlgorithm, form]);
 
     const onFinish = async (values: KeyExportFormData) => {
         console.log("Export key values:", values);
@@ -189,27 +206,33 @@ const KeyExportForm: React.FC<KeyExportFormProps> = (props: KeyExportFormProps) 
                         </Form.Item>
                     </Card>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Wrapping Options</h3>
+                        <h3 className="text-m font-bold mb-4">Unwrapping Options</h3>
 
-                        <Form.Item name="unwrap" valuePropName="checked">
-                            <Checkbox>Unwrap the key before export</Checkbox>
+                        <Form.Item name="unwrap" valuePropName="checked" label="Unwrap" help="Unwrap if it is wrapped before export">
+                            <Checkbox>Unwrap key before export</Checkbox>
                         </Form.Item>
+
+                        <Divider />
+
+                        <h3 className="text-m font-bold mb-4">Wrapping Options</h3>
 
                         <Form.Item name="wrapKeyId" label="Wrap Key ID" help="ID of the key/certificate to use for wrapping">
                             <Input placeholder="Enter wrap key ID" />
                         </Form.Item>
 
                         <Form.Item name="wrappingAlgorithm" label="Wrapping Algorithm" help="Algorithm to use when wrapping the key">
-                            <Select options={WRAPPING_ALGORITHMS} placeholder="Select wrapping algorithm" />
+                            <Select options={WRAPPING_ALGORITHMS} placeholder="Select wrapping algorithm" disabled={!wrapKeyId} />
                         </Form.Item>
 
-                        <Form.Item
-                            name="authenticatedAdditionalData"
-                            label="Authenticated Additional Data"
-                            help="Only available for AES GCM wrapping"
-                        >
-                            <Input placeholder="Enter authenticated data" />
-                        </Form.Item>
+                        {selectedAlgorithm === "aes-gcm" && (
+                            <Form.Item
+                                name="authenticatedAdditionalData"
+                                label="Authenticated Additional Data"
+                                help="Only available for AES GCM wrapping"
+                            >
+                                <Input placeholder="Enter authenticated data" disabled={!wrapKeyId} />
+                            </Form.Item>
+                        )}
                     </Card>
                     <Card>
                         <Form.Item

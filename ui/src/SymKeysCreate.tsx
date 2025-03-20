@@ -6,7 +6,7 @@ import { create_sym_key_ttlv_request, parse_create_ttlv_response } from "./wasm/
 
 interface SymKeyCreateFormData {
     keyId?: string;
-    algorithm: "Aes" | "ChaCha20" | "Sha3" | "Shake";
+    algorithm: "Aes" | "Chacha20" | "Sha3" | "Shake";
     numberOfBits?: number;
     bytesB64?: string;
     tags: string[];
@@ -87,7 +87,7 @@ const SymKeyCreateForm: React.FC = () => {
                         <Form.Item name="algorithm" label="Algorithm" rules={[{ required: true, message: "Please select an algorithm" }]}>
                             <Select>
                                 <Select.Option value="Aes">Aes</Select.Option>
-                                <Select.Option value="ChaCha20">ChaCha20</Select.Option>
+                                <Select.Option value="Chacha20">ChaCha20</Select.Option>
                                 <Select.Option value="Sha3">SHA3</Select.Option>
                                 <Select.Option value="Shake">SHAKE</Select.Option>
                             </Select>

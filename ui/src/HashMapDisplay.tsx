@@ -21,7 +21,7 @@ const HashMapDisplay: React.FC<HashMapDisplayProps> = ({ data }) => {
     // Format a value for display
     const formatDisplayKey = (key: any): React.ReactNode => {
         if (typeof key === "string") {
-            return <span className="text-purple-600">"{key}"</span>;
+            return <span className="text-yellow-600">"{key}"</span>;
         }
         if (typeof key === "number") {
             return <span className="text-orange-600">{key}</span>;
@@ -85,17 +85,16 @@ const HashMapDisplay: React.FC<HashMapDisplayProps> = ({ data }) => {
     // Create Map preview with syntax highlighting
     const renderMapPreview = (map: Map<any, any>): React.ReactNode => {
         return (
-            <div className="bg-gray-50 p-4 rounded-md overflow-auto max-h-96 text-sm font-mono">
+            <div className="p-4 rounded-md overflow-auto max-h-96 text-sm font-mono">
                 <div className="space-y-3">
                     {Array.from(map.entries()).map(([key, value], index) => {
                         return (
                             <div key={index} className="flex items-start">
-                                <span className="font-bold text-gray-800 mr-2">{index}:</span>
                                 <div className="flex items-start">
                                     <span className="text-blue-600">{"{"}</span>
                                     <div className="mx-1">
                                         {formatDisplayKey(key)}
-                                        <span className="text-gray-800 mx-2">{" => "}</span>
+                                        <span className="text-blue-600 mx-2">{" => "}</span>
                                         {renderValueWithColor(value)}
                                     </div>
                                     <span className="text-blue-600">{"}"}</span>
