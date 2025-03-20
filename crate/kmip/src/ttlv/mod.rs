@@ -11,7 +11,7 @@ pub(super) mod kmip_ttlv_serializer;
 pub use kmip_ttlv_serializer::{to_ttlv, TtlvSerializer};
 pub use ttlv_struct::{KmipEnumerationVariant, TTLValue, TtlvType, TTLV};
 mod wire;
-pub use wire::{KmipTag, TTLVBytesDeserializer, TTLVBytesSerializer};
+pub use wire::{TTLVBytesDeserializer, TTLVBytesSerializer};
 
 #[allow(
     clippy::cast_possible_truncation,
