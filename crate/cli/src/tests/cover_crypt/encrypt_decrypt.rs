@@ -1,12 +1,13 @@
 use std::{fs, path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
-use cosmian_kms_client::{read_bytes_from_file, KMS_CLI_CONF_ENV};
+use cosmian_kms_client::read_bytes_from_file;
 use kms_test_server::start_default_test_kms_server;
 use tempfile::TempDir;
 
 use crate::{
     error::{result::CliResult, CliError},
+    reexport::cosmian_kms_client::KMS_CLI_CONF_ENV,
     tests::{
         cover_crypt::{
             master_key_pair::create_cc_master_key_pair,

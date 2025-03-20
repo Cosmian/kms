@@ -5,7 +5,7 @@ use std::process::Command;
 use assert_cmd::prelude::*;
 use cosmian_kms_client::{
     kmip_2_1::kmip_types::{BlockCipherMode, KeyFormatType},
-    read_bytes_from_file, read_object_from_json_ttlv_file, KMS_CLI_CONF_ENV,
+    read_bytes_from_file, read_object_from_json_ttlv_file,
 };
 #[cfg(not(feature = "fips"))]
 use cosmian_kms_client::{
@@ -32,6 +32,7 @@ use crate::{
         symmetric::keys::create_key::CreateKeyAction,
     },
     error::{result::CliResult, CliError},
+    reexport::cosmian_kms_client::KMS_CLI_CONF_ENV,
     tests::{
         elliptic_curve::create_key_pair::create_ec_key_pair,
         rsa::create_key_pair::{create_rsa_key_pair, RsaKeyPairOptions},

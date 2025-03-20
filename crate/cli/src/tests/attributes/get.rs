@@ -1,7 +1,7 @@
 use std::{collections::HashMap, process::Command};
 
 use assert_cmd::cargo::CommandCargoExt;
-use cosmian_kms_client::{kmip_2_1::kmip_types::Tag, KMS_CLI_CONF_ENV};
+use cosmian_kms_client::kmip_2_1::kmip_types::Tag;
 use serde_json::Value;
 
 use crate::{
@@ -10,6 +10,7 @@ use crate::{
         result::{CliResult, CliResultHelper},
         CliError,
     },
+    reexport::cosmian_kms_client::KMS_CLI_CONF_ENV,
     tests::{utils::recover_cmd_logs, PROG_NAME},
 };
 

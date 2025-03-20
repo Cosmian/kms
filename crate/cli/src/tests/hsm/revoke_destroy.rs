@@ -1,13 +1,12 @@
 use cosmian_logger::log_init;
 use kms_test_server::start_default_test_kms_server_with_utimaco_hsm;
-use tracing::debug;
 use uuid::Uuid;
 
 use crate::{
     actions::symmetric::keys::create_key::CreateKeyAction,
     error::result::CliResult,
     tests::{
-        shared::{destroy, export_key, revoke, ExportKeyParams},
+        shared::{destroy, export_key, ExportKeyParams},
         symmetric::create_key::create_symmetric_key,
     },
 };
@@ -25,21 +24,6 @@ async fn test_revoke_symmetric_key() -> CliResult<()> {
             ..Default::default()
         },
     )?;
-
-    // revoke
-    match revoke(
-        &ctx.owner_client_conf_path,
-        "sym",
-        &key_id,
-        "revocation test",
-    ) {
-        Ok(()) => {
-            debug!("revocation successful");
-        }
-        Err(_) => {
-            debug!("revocation not supported");
-        }
-    }
 
     // The key is always removed when it is an HSM
     destroy(&ctx.owner_client_conf_path, "sym", &key_id, true)?;

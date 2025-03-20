@@ -3,7 +3,7 @@ use std::{path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
 use base64::Engine;
-use cosmian_kms_client::{read_object_from_json_ttlv_file, KMS_CLI_CONF_ENV};
+use cosmian_kms_client::read_object_from_json_ttlv_file;
 use cosmian_logger::log_init;
 use kms_test_server::{
     start_test_server_with_options, AuthenticationOptions, MainDBConfig, TestsContext,
@@ -15,6 +15,7 @@ use super::utils::recover_cmd_logs;
 use crate::{
     actions::symmetric::keys::create_key::CreateKeyAction,
     error::result::CliResult,
+    reexport::cosmian_kms_client::KMS_CLI_CONF_ENV,
     tests::{
         access::SUB_COMMAND,
         shared::{export_key, ExportKeyParams},

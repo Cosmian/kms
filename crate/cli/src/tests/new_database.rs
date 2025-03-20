@@ -1,9 +1,7 @@
 use std::{path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
-use cosmian_kms_client::{
-    reexport::cosmian_config_utils::ConfigUtils, KmsClient, KMS_CLI_CONF_ENV,
-};
+use cosmian_kms_client::{reexport::cosmian_config_utils::ConfigUtils, KmsClient};
 use cosmian_logger::log_init;
 use kms_test_server::{
     generate_invalid_conf, start_default_test_kms_server, start_test_server_with_options,
@@ -16,6 +14,7 @@ use tracing::info;
 use crate::{
     actions::symmetric::keys::create_key::CreateKeyAction,
     error::result::CliResult,
+    reexport::cosmian_kms_client::KMS_CLI_CONF_ENV,
     tests::{
         shared::{export_key, ExportKeyParams},
         symmetric::create_key::create_symmetric_key,

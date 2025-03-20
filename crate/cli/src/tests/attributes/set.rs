@@ -1,11 +1,11 @@
 use std::process::Command;
 
 use assert_cmd::cargo::CommandCargoExt;
-use cosmian_kms_client::KMS_CLI_CONF_ENV;
 
 use crate::{
     actions::attributes::SetOrDeleteAttributes,
     error::{result::CliResult, CliError},
+    reexport::cosmian_kms_client::KMS_CLI_CONF_ENV,
     tests::{utils::recover_cmd_logs, PROG_NAME},
 };
 

@@ -7,7 +7,7 @@ use cosmian_kms_client::{
         kmip_types::{Attributes, KeyFormatType, LinkType},
         ttlv::{deserializer::from_ttlv, TTLV},
     },
-    read_from_json_file, read_object_from_json_ttlv_file, KMS_CLI_CONF_ENV,
+    read_from_json_file, read_object_from_json_ttlv_file,
 };
 use kms_test_server::start_default_test_kms_server;
 use openssl::{
@@ -25,6 +25,7 @@ use crate::{
         shared::ExportKeyFormat::JsonTtlv,
     },
     error::{result::CliResult, CliError},
+    reexport::cosmian_kms_client::KMS_CLI_CONF_ENV,
     tests::{
         certificates::{
             certify::{certify, create_self_signed_cert, import_root_and_intermediate, CertifyOp},

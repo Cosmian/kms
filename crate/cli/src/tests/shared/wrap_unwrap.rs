@@ -11,7 +11,7 @@ use cloudproof::reexport::crypto_core::{
 };
 use cosmian_kms_client::{
     cosmian_kmip::kmip_2_1::kmip_types::{EncodingOption, WrappingMethod},
-    read_object_from_json_ttlv_file, KMS_CLI_CONF_ENV,
+    read_object_from_json_ttlv_file,
 };
 use cosmian_logger::log_init;
 use kms_test_server::{start_default_test_kms_server, TestsContext};
@@ -21,6 +21,7 @@ use super::ExportKeyParams;
 use crate::{
     actions::symmetric::keys::create_key::CreateKeyAction,
     error::{result::CliResult, CliError},
+    reexport::cosmian_kms_client::KMS_CLI_CONF_ENV,
     tests::{
         cover_crypt::master_key_pair::create_cc_master_key_pair,
         elliptic_curve::create_key_pair::create_ec_key_pair,

@@ -1,7 +1,6 @@
 use std::process::Command;
 
 use assert_cmd::prelude::*;
-use cosmian_kms_client::KMS_CLI_CONF_ENV;
 use kms_test_server::start_default_test_kms_server_with_cert_auth;
 use tracing::trace;
 
@@ -9,6 +8,7 @@ use super::{symmetric::create_key::create_symmetric_key, utils::recover_cmd_logs
 use crate::{
     actions::symmetric::{keys::create_key::CreateKeyAction, DataEncryptionAlgorithm},
     error::{result::CliResult, CliError},
+    reexport::cosmian_kms_client::KMS_CLI_CONF_ENV,
     tests::{
         shared::{destroy, export_key, revoke, ExportKeyParams},
         symmetric::encrypt_decrypt::run_encrypt_decrypt_test,

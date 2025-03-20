@@ -1,7 +1,6 @@
 use std::process::Command;
 
 use assert_cmd::prelude::*;
-use cosmian_kms_client::KMS_CLI_CONF_ENV;
 use kms_test_server::start_default_test_kms_server_with_cert_auth;
 
 #[cfg(not(feature = "fips"))]
@@ -15,6 +14,7 @@ use crate::tests::{
 use crate::{
     actions::symmetric::keys::create_key::CreateKeyAction,
     error::{result::CliResult, CliError},
+    reexport::cosmian_kms_client::KMS_CLI_CONF_ENV,
     tests::{
         elliptic_curve::create_key_pair::create_ec_key_pair,
         symmetric::create_key::create_symmetric_key,

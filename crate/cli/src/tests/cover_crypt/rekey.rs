@@ -1,13 +1,13 @@
 use std::{path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
-use cosmian_kms_client::KMS_CLI_CONF_ENV;
 use kms_test_server::start_default_test_kms_server;
 use tempfile::TempDir;
 
 use crate::{
     actions::{shared::utils::KeyUsage, symmetric::keys::create_key::CreateKeyAction},
     error::{result::CliResult, CliError},
+    reexport::cosmian_kms_client::KMS_CLI_CONF_ENV,
     tests::{
         cover_crypt::{
             encrypt_decrypt::{decrypt, encrypt},

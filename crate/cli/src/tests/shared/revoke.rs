@@ -1,7 +1,6 @@
 use std::process::Command;
 
 use assert_cmd::prelude::CommandCargoExt;
-use cosmian_kms_client::KMS_CLI_CONF_ENV;
 use kms_test_server::{
     start_default_test_kms_server, start_default_test_kms_server_with_non_revocable_key_ids,
 };
@@ -15,9 +14,10 @@ use crate::tests::cover_crypt::{
 use crate::{
     actions::symmetric::keys::create_key::CreateKeyAction,
     error::{result::CliResult, CliError},
+    reexport::cosmian_kms_client::KMS_CLI_CONF_ENV,
     tests::{
         elliptic_curve::create_key_pair::create_ec_key_pair,
-        shared::{export::export_key, ExportKeyParams},
+        shared::{export_key, ExportKeyParams},
         symmetric::create_key::create_symmetric_key,
         utils::recover_cmd_logs,
         PROG_NAME,
@@ -313,7 +313,6 @@ async fn test_non_revocable_symmetric_key() -> CliResult<()> {
     // Check that a non-revocable key cannot be revoked (and then still exportable)
     //
     let non_revocable_key = Uuid::new_v4().to_string();
-
     // init the test server with the non-revocable key in the parameter
     let ctx = start_default_test_kms_server_with_non_revocable_key_ids(Some(vec![
         non_revocable_key.clone(),
@@ -329,7 +328,6 @@ async fn test_non_revocable_symmetric_key() -> CliResult<()> {
             ..Default::default()
         },
     )?;
-
     assert_eq!(key_id, non_revocable_key);
 
     // revoke
@@ -345,13 +343,14 @@ async fn test_non_revocable_symmetric_key() -> CliResult<()> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
 
-    // should be able to Get (even when revoked)....
+    // should be able to export (even when revoked)....
     assert!(
         export_key(ExportKeyParams {
             cli_conf_path: ctx.owner_client_conf_path.clone(),
             sub_command: "ec".to_owned(),
             key_id,
             key_file: tmp_path.join("output.export").to_str().unwrap().to_string(),
+            allow_revoked: true,
             ..Default::default()
         })
         .is_ok()
