@@ -23,6 +23,7 @@ pub enum Direction {
 /// contains information about the type of object being created, and some of the attributes to be
 /// assigned to the object.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct Create {
     /// Determines the type of object to be created
     pub object_type: ObjectType,
@@ -32,6 +33,7 @@ pub struct Create {
 
 /// Response to a Create request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct CreateResponse {
     /// The Unique Identifier of the newly created object
     pub unique_identifier: String,
@@ -43,6 +45,7 @@ pub struct CreateResponse {
 /// This operation requests the server to generate a new public/private key pair and register
 /// the two corresponding new Managed Cryptographic Objects.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct CreateKeyPair {
     /// Common template attributes that apply to both public and private key
     pub common_template_attribute: Option<TemplateAttribute>,
@@ -54,6 +57,7 @@ pub struct CreateKeyPair {
 
 /// Response to a Create Key Pair request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct CreateKeyPairResponse {
     /// Unique ID of the private key
     pub private_key_unique_identifier: String,
@@ -69,6 +73,7 @@ pub struct CreateKeyPairResponse {
 /// This operation requests the server to register a Managed Object that was created by the client
 /// or obtained by the client through some other means.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct Register {
     /// The object being registered
     pub object: Object,
@@ -78,6 +83,7 @@ pub struct Register {
 
 /// Response to a Register request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct RegisterResponse {
     /// The unique identifier of the registered object
     pub unique_identifier: String,
@@ -88,6 +94,7 @@ pub struct RegisterResponse {
 /// 4.4 Re-key
 /// This operation requests the server to generate a replacement key for an existing symmetric key.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct ReKey {
     /// Unique identifier of the symmetric key to be rekeyed
     pub unique_identifier: String,
@@ -99,6 +106,7 @@ pub struct ReKey {
 
 /// Response to a Re-key request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct ReKeyResponse {
     /// Unique identifier of the newly created key
     pub unique_identifier: String,
@@ -109,6 +117,7 @@ pub struct ReKeyResponse {
 /// 4.5 Re-key Key Pair
 /// This operation requests the server to generate a replacement key pair for an existing public/private key pair.  
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct ReKeyKeyPair {
     /// Unique identifier of private key to be rekeyed
     pub private_key_unique_identifier: String,
@@ -124,6 +133,7 @@ pub struct ReKeyKeyPair {
 
 /// Response to a Re-key Key Pair request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct ReKeyKeyPairResponse {
     /// Unique identifier of new private key
     pub private_key_unique_identifier: String,
@@ -139,6 +149,7 @@ pub struct ReKeyKeyPairResponse {
 /// This operation requests the server to derive a symmetric key or secret data from a key or
 /// secret data that is already known to the key management system.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct DeriveKey {
     /// Unique identifier of the object to derive from
     pub object_unique_identifier: String,
@@ -152,6 +163,7 @@ pub struct DeriveKey {
 
 /// Response to a Derive Key request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct DeriveKeyResponse {
     /// Unique identifier of derived object
     pub unique_identifier: String,
@@ -162,6 +174,7 @@ pub struct DeriveKeyResponse {
 /// 4.7 Certify
 /// This operation requests the server to generate a Certificate object for a public key.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct Certify {
     pub unique_identifier: String,
     pub certificate_request_type: CertificateRequestType,
@@ -171,6 +184,7 @@ pub struct Certify {
 
 /// Response to a Certify request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct CertifyResponse {
     pub unique_identifier: String,
     pub template_attribute: Option<TemplateAttribute>,
@@ -179,6 +193,7 @@ pub struct CertifyResponse {
 /// 4.8 Re-certify
 /// This operation requests the server to generate a new Certificate object for an existing public key.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct ReCertify {
     pub unique_identifier: String,
     pub certificate_request_type: CertificateRequestType,
@@ -188,6 +203,7 @@ pub struct ReCertify {
 
 /// Response to a Re-certify request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct ReCertifyResponse {
     pub unique_identifier: String,
     pub template_attribute: Option<TemplateAttribute>,
@@ -196,6 +212,7 @@ pub struct ReCertifyResponse {
 /// 4.9 Locate
 /// This operation requests that the server search for one or more Managed Objects.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct Locate {
     pub attributes: Attributes,
     pub storage_status_mask: Option<StorageStatusMask>,
@@ -204,6 +221,7 @@ pub struct Locate {
 
 /// Response to a Locate request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct LocateResponse {
     pub unique_identifiers: Vec<String>,
 }
@@ -212,6 +230,7 @@ pub struct LocateResponse {
 /// This operation requests that the server check for use of a Managed Object according
 /// to values specified in the request.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct Check {
     pub unique_identifier: String,
     pub usage_limits_count: Option<i64>,
@@ -221,6 +240,7 @@ pub struct Check {
 
 /// Response to a Check request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct CheckResponse {
     pub unique_identifier: String,
     pub usage_limits_count: Option<i64>,
@@ -232,6 +252,7 @@ pub struct CheckResponse {
 /// This operation requests that the server returns the Managed Object specified by its
 /// Unique Identifier.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct Get {
     pub unique_identifier: String,
     pub key_format_type: Option<KeyFormatType>,
@@ -241,6 +262,7 @@ pub struct Get {
 
 /// Response to a Get request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct GetResponse {
     pub object_type: ObjectType,
     pub unique_identifier: String,
@@ -250,6 +272,7 @@ pub struct GetResponse {
 /// 4.12 Get Attributes
 /// This operation requests one or more attributes associated with a Managed Object.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct GetAttributes {
     pub unique_identifier: String,
     pub attribute_names: Option<Vec<String>>,
@@ -257,6 +280,7 @@ pub struct GetAttributes {
 
 /// Response to a Get Attributes request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct GetAttributesResponse {
     pub unique_identifier: String,
     pub attributes: Attributes,
@@ -265,12 +289,14 @@ pub struct GetAttributesResponse {
 /// 4.13 Get Attribute List
 /// This operation requests a list of the attribute names associated with a Managed Object.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct GetAttributeList {
     pub unique_identifier: String,
 }
 
 /// Response to a Get Attribute List request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct GetAttributeListResponse {
     pub unique_identifier: String,
     pub attribute_names: Vec<String>,
@@ -279,6 +305,7 @@ pub struct GetAttributeListResponse {
 /// 4.14 Add Attribute
 /// This operation requests that the server add a new attribute or append attribute values to an existing attribute.  
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct AddAttribute {
     pub unique_identifier: String,
     pub attribute: Attribute,
@@ -286,6 +313,7 @@ pub struct AddAttribute {
 
 /// Response to an Add Attribute request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct AddAttributeResponse {
     pub unique_identifier: String,
     pub attribute: Attribute,
@@ -294,6 +322,7 @@ pub struct AddAttributeResponse {
 /// 4.15 Modify Attribute
 /// This operation requests that the server modify one or more attributes associated with a Managed Object.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct ModifyAttribute {
     pub unique_identifier: String,
     pub attribute: Attribute,
@@ -301,6 +330,7 @@ pub struct ModifyAttribute {
 
 /// Response to a Modify Attribute request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct ModifyAttributeResponse {
     pub unique_identifier: String,
     pub attribute: Attribute,
@@ -309,6 +339,7 @@ pub struct ModifyAttributeResponse {
 /// 4.16 Delete Attribute
 /// This operation requests that the server delete an attribute associated with a Managed Object.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct DeleteAttribute {
     pub unique_identifier: String,
     pub attribute_name: String,
@@ -317,6 +348,7 @@ pub struct DeleteAttribute {
 
 /// Response to a Delete Attribute request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct DeleteAttributeResponse {
     pub unique_identifier: String,
 }
@@ -324,12 +356,14 @@ pub struct DeleteAttributeResponse {
 /// 4.17 Obtain Lease
 /// This operation requests a new or renewed lease for a client's use of a Managed Object.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct ObtainLease {
     pub unique_identifier: String,
 }
 
 /// Response to an Obtain Lease request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct ObtainLeaseResponse {
     pub unique_identifier: String,
     pub lease_time: i32,
@@ -338,12 +372,14 @@ pub struct ObtainLeaseResponse {
 
 /// 4.18 Get Usage Allocation
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct GetUsageAllocation {
     pub unique_identifier: String,
 }
 
 /// Response to a Get Usage Allocation request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct GetUsageAllocationResponse {
     pub unique_identifier: String,
     pub allocation_percent: i32,
@@ -352,18 +388,21 @@ pub struct GetUsageAllocationResponse {
 
 /// 4.19 Activate
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct Activate {
     pub unique_identifier: String,
 }
 
 /// Response to an Activate request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct ActivateResponse {
     pub unique_identifier: String,
 }
 
 /// 4.20 Revoke
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct Revoke {
     pub unique_identifier: String,
     pub revocation_reason: RevocationReason,
@@ -372,48 +411,56 @@ pub struct Revoke {
 
 /// Response to a Revoke request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct RevokeResponse {
     pub unique_identifier: String,
 }
 
 /// 4.21 Destroy
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct Destroy {
     pub unique_identifier: String,
 }
 
 /// Response to a Destroy request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct DestroyResponse {
     pub unique_identifier: String,
 }
 
 /// 4.22 Archive
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct Archive {
     pub unique_identifier: String,
 }
 
 /// Response to an Archive request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct ArchiveResponse {
     pub unique_identifier: String,
 }
 
 /// 4.23 Recover
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct Recover {
     pub unique_identifier: String,
 }
 
 /// Response to a Recover request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct RecoverResponse {
     pub unique_identifier: String,
 }
 
 /// 4.24 Validate
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct Validate {
     /// One or more Certificates.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -429,6 +476,7 @@ pub struct Validate {
 
 /// Response to a Validate request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct ValidateResponse {
     /// An Enumeration object indicating whether the certificate chain is valid,
     /// invalid, or unknown.
@@ -437,12 +485,14 @@ pub struct ValidateResponse {
 
 /// 4.25 Query
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct Query {
-    pub query_functions: Vec<QueryFunction>,
+    pub query_function: Vec<QueryFunction>,
 }
 
 /// Response to a Query request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct QueryResponse {
     /// List of operations supported by the server.
     pub operations: Vec<Operation>,
@@ -487,36 +537,42 @@ pub struct QueryResponse {
 
 /// 4.26 Discover Versions
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct DiscoverVersions {
     pub protocol_versions: Option<Vec<String>>,
 }
 
 /// Response to a Discover Versions request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct DiscoverVersionsResponse {
     pub protocol_versions: Vec<String>,
 }
 
 /// 4.27 Cancel
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct Cancel {
     pub asynchronous_correlation_value: String,
 }
 
 /// Response to a Cancel request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct CancelResponse {
     pub cancellation_result: CancellationResult,
 }
 
 /// 4.28 Poll
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct Poll {
     pub asynchronous_correlation_value: String,
 }
 
 /// Response to a Poll request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct PollResponse {
     pub unique_identifier: Option<String>,
     pub operation: Box<Option<Operation>>,
@@ -524,6 +580,7 @@ pub struct PollResponse {
 
 /// 4.29 Encrypt
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct Encrypt {
     pub unique_identifier: String,
     pub cryptographic_parameters: Option<CryptographicParameters>,
@@ -534,6 +591,7 @@ pub struct Encrypt {
 
 /// Response to an Encrypt request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct EncryptResponse {
     pub unique_identifier: String,
     pub data: Vec<u8>,
@@ -543,6 +601,7 @@ pub struct EncryptResponse {
 
 /// 4.30 Decrypt
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct Decrypt {
     pub unique_identifier: String,
     pub cryptographic_parameters: Option<CryptographicParameters>,
@@ -554,6 +613,7 @@ pub struct Decrypt {
 
 /// Response to a Decrypt request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct DecryptResponse {
     pub unique_identifier: String,
     pub data: Vec<u8>,
@@ -561,6 +621,7 @@ pub struct DecryptResponse {
 
 /// 4.31 Sign
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct Sign {
     pub unique_identifier: String,
     pub cryptographic_parameters: Option<CryptographicParameters>,
@@ -569,6 +630,7 @@ pub struct Sign {
 
 /// Response to a Sign request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct SignResponse {
     pub unique_identifier: String,
     pub signature_data: Vec<u8>,
@@ -576,6 +638,7 @@ pub struct SignResponse {
 
 /// 4.32 Signature Verify
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct SignatureVerify {
     pub unique_identifier: String,
     pub cryptographic_parameters: Option<CryptographicParameters>,
@@ -585,6 +648,7 @@ pub struct SignatureVerify {
 
 /// Response to a Signature Verify request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct SignatureVerifyResponse {
     pub unique_identifier: String,
     pub validity_indicator: ValidityIndicator,
@@ -592,6 +656,7 @@ pub struct SignatureVerifyResponse {
 
 /// 4.33 MAC
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct MAC {
     pub unique_identifier: String,
     pub cryptographic_parameters: Option<CryptographicParameters>,
@@ -600,6 +665,7 @@ pub struct MAC {
 
 /// Response to a MAC request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct MACResponse {
     pub unique_identifier: String,
     pub mac_data: Vec<u8>,
@@ -607,6 +673,7 @@ pub struct MACResponse {
 
 /// 4.34 MAC Verify
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct MACVerify {
     pub unique_identifier: String,
     pub cryptographic_parameters: Option<CryptographicParameters>,
@@ -616,6 +683,7 @@ pub struct MACVerify {
 
 /// Response to a MAC Verify request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct MACVerifyResponse {
     pub unique_identifier: String,
     pub validity_indicator: ValidityIndicator,
@@ -623,30 +691,35 @@ pub struct MACVerifyResponse {
 
 /// 4.35 RNG Retrieve
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct RNGRetrieve {
     pub data_length: i32,
 }
 
 /// Response to an RNG Retrieve request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct RNGRetrieveResponse {
     pub data: Vec<u8>,
 }
 
 /// 4.36 RNG Seed
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct RNGSeed {
     pub data: Vec<u8>,
 }
 
 /// Response to an RNG Seed request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct RNGSeedResponse {
     amount_of_seed_data: i32,
 }
 
 /// 4.37 Hash
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct Hash {
     pub cryptographic_parameters: Option<CryptographicParameters>,
     pub data: Vec<u8>,
@@ -654,12 +727,14 @@ pub struct Hash {
 
 /// Response to a Hash request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct HashResponse {
     pub hash_data: Vec<u8>,
 }
 
 /// 4.38 Create Split Key
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct CreateSplitKey {
     pub split_key_parts: i32,
     pub split_key_threshold: i32,
@@ -670,6 +745,7 @@ pub struct CreateSplitKey {
 
 /// Response to a Create Split Key request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct CreateSplitKeyResponse {
     pub unique_identifier: String,
     pub split_key_parts: Vec<String>,
@@ -677,6 +753,7 @@ pub struct CreateSplitKeyResponse {
 
 /// 4.39 Join Split Key
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct JoinSplitKey {
     pub split_key_parts: Vec<Vec<u8>>,
     pub split_key_method: SplitKeyMethod,
@@ -685,12 +762,14 @@ pub struct JoinSplitKey {
 
 /// Response to a Join Split Key request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct JoinSplitKeyResponse {
     pub unique_identifier: String,
 }
 
 /// 4.40 Export
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct Export {
     pub object_type: ObjectType,
     pub unique_identifier: String,
@@ -702,6 +781,7 @@ pub struct Export {
 
 /// Response to an Export request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct ExportResponse {
     pub object_type: ObjectType,
     pub unique_identifier: String,
@@ -713,6 +793,7 @@ pub struct ExportResponse {
 
 /// 4.41 Import
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct Import {
     pub object_type: ObjectType,
     pub unique_identifier: String,
@@ -726,6 +807,7 @@ pub struct Import {
 
 /// Response to an Import request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct ImportResponse {
     pub unique_identifier: String,
 }

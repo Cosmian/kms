@@ -2,12 +2,29 @@ use std::fmt::Debug;
 
 use time::OffsetDateTime;
 
-use super::{error::TtlvError, kmip_big_int::KmipBigInt};
+use super::{
+    error::TtlvError, kmip_big_int::KmipBigInt, TTLVBytesDeserializer, TTLVBytesSerializer,
+};
+use crate::kmip_1_4;
 
 #[derive(PartialEq, Debug, Clone, Default)]
 pub struct TTLV {
     pub tag: String,
     pub value: TTLValue,
+}
+
+impl TTLV {
+    pub fn to_bytes_1_4(&self) -> Result<Vec<u8>, TtlvError> {
+        let mut writer = Vec::new();
+        TTLVBytesSerializer::new(&mut writer).write_ttlv::<kmip_1_4::kmip_types::Tag>(self)?;
+        Ok(writer)
+    }
+
+    pub fn from_bytes_1_4(bytes: &[u8]) -> Result<Self, TtlvError> {
+        let (ttlv, _) =
+            TTLVBytesDeserializer::new(bytes).read_ttlv::<kmip_1_4::kmip_types::Tag>()?;
+        Ok(ttlv)
+    }
 }
 
 #[derive(Debug, Clone)]

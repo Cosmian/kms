@@ -32,7 +32,12 @@ serde = { workspace = true, features = ["derive", "std"] }
 serde_json = { workspace = true, features = [] }
 strum = { workspace = true, features = ["std", "derive", "strum_macros"] }
 thiserror = { workspace = true }
-time = { workspace = true, features = ["formatting", "parsing", "serde"] }
+time = { workspace = true, features = [
+    "formatting",
+    "parsing",
+    "serde",
+    "macros",
+] }
 tracing = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 zeroize = { workspace = true, features = ["zeroize_derive", "std", "serde"] }
@@ -44,3 +49,9 @@ ignored = ["rust-ini", "sha3"]
 hex = { workspace = true, features = ["std"] }
 num-traits = { workspace = true }
 rand = { workspace = true }
+reqwest = { workspace = true, features = [
+    "blocking",
+    "json",
+    "stream",
+    "native-tls",
+] }
