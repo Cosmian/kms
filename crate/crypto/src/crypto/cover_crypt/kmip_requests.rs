@@ -9,8 +9,8 @@ use cosmian_kmip::kmip_2_1::{
 };
 
 use super::attributes::{
-    access_policy_as_vendor_attribute, access_structure_as_vendor_attribute,
-    rekey_edit_action_as_vendor_attribute, RekeyEditAction,
+    RekeyEditAction, access_policy_as_vendor_attribute, access_structure_as_vendor_attribute,
+    rekey_edit_action_as_vendor_attribute,
 };
 use crate::error::CryptoError;
 
@@ -38,10 +38,8 @@ pub fn build_create_covercrypt_master_keypair_request<T: IntoIterator<Item = imp
     })
 }
 
-/// Build a `Create` request for an `CoverCrypt` User Decryption Key
-pub fn build_create_covercrypt_user_decryption_key_request<
-    T: IntoIterator<Item = impl AsRef<str>>,
->(
+/// Build a `Create` request for a `CoverCrypt` USK
+pub fn build_create_covercrypt_usk_request<T: IntoIterator<Item = impl AsRef<str>>>(
     access_policy: &str,
     cover_crypt_master_secret_key_id: &str,
     tags: T,

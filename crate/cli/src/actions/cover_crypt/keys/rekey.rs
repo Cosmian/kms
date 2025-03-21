@@ -23,7 +23,7 @@ pub struct RekeyAction {
     /// attributes. For example (provided the corresponding attributes are
     /// defined in the MSK):
     ///
-    /// "(Department::HR || Department::MKG) && Security Level::Confidential"
+    /// `"(Department::HR || Department::MKG) && Security Level::Confidential"`
     #[clap(required = true)]
     access_policy: String,
 
@@ -80,7 +80,7 @@ pub struct PruneAction {
     /// attributes. For example (provided the corresponding attributes are
     /// defined in the MSK):
     ///
-    /// "(Department::HR || Department::MKG) && Security Level::Confidential"
+    /// `"(Department::HR || Department::MKG) && Security Level::Confidential"`
     #[clap(required = true)]
     access_policy: String,
 
@@ -99,13 +99,13 @@ impl PruneAction {
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         let uid = get_key_uid(self.msk_uid.as_ref(), self.tags.as_ref(), KEY_ID)?;
 
-        let req = build_rekey_keypair_request(
+        let request = build_rekey_keypair_request(
             &uid,
             &RekeyEditAction::PruneAccessPolicy(self.access_policy.clone()),
         )?;
 
         let res = kms_rest_client
-            .rekey_keypair(req)
+            .rekey_keypair(request)
             .await
             .with_context(|| "failed pruning the master keys")?;
 

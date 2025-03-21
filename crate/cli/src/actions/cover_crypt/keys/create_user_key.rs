@@ -1,7 +1,7 @@
 use clap::Parser;
 use cosmian_cover_crypt::AccessPolicy;
 use cosmian_kms_client::KmsClient;
-use cosmian_kms_crypto::crypto::cover_crypt::kmip_requests::build_create_covercrypt_user_decryption_key_request;
+use cosmian_kms_crypto::crypto::cover_crypt::kmip_requests::build_create_covercrypt_usk_request;
 
 use crate::{
     actions::console,
@@ -21,7 +21,7 @@ pub struct CreateUserKeyAction {
     /// attributes. For example (provided the corresponding attributes are
     /// defined in the MSK):
     ///
-    /// "(Department::HR || Department::MKG) && Security Level::Confidential"
+    /// `"(Department::HR || Department::MKG) && Security Level::Confidential"`
     #[clap(required = true)]
     access_policy: String,
 
@@ -40,19 +40,19 @@ impl CreateUserKeyAction {
         // Validate the access policy: side-effect only.
         AccessPolicy::parse(&self.access_policy).with_context(|| "bad access policy syntax")?;
 
-        let req = build_create_covercrypt_user_decryption_key_request(
+        let request = build_create_covercrypt_usk_request(
             &self.access_policy,
             &self.master_secret_key_id,
             &self.tags,
             self.sensitive,
         )?;
 
-        let res = kms_rest_client
-            .create(req)
+        let response = kms_rest_client
+            .create(request)
             .await
             .with_context(|| "user decryption key creation failed")?;
 
-        let usk_uid = &res.unique_identifier;
+        let usk_uid = &response.unique_identifier;
 
         let mut stdout =
             console::Stdout::new("The user decryption key pair has been properly generated.");

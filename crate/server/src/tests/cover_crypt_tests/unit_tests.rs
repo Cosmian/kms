@@ -14,8 +14,7 @@ use cosmian_kmip::kmip_2_1::{
 use cosmian_kms_crypto::crypto::cover_crypt::{
     access_structure::access_structure_from_str,
     kmip_requests::{
-        build_create_covercrypt_master_keypair_request,
-        build_create_covercrypt_user_decryption_key_request,
+        build_create_covercrypt_master_keypair_request, build_create_covercrypt_usk_request,
     },
 };
 use tracing::debug;
@@ -141,12 +140,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
 
     // ...via KeyPair
     debug!(" .... user key via Keypair");
-    let request = build_create_covercrypt_user_decryption_key_request(
-        access_policy,
-        &sk_uid,
-        EMPTY_TAGS,
-        false,
-    )?;
+    let request = build_create_covercrypt_usk_request(access_policy, &sk_uid, EMPTY_TAGS, false)?;
     let cr = kms.create(request, owner, None).await?;
     debug!("Create Response for User Decryption Key {:?}", cr);
 
@@ -175,12 +169,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
 
     // ...via Private key
     debug!(" .... user key via Private Key");
-    let request = build_create_covercrypt_user_decryption_key_request(
-        access_policy,
-        &sk_uid,
-        EMPTY_TAGS,
-        false,
-    )?;
+    let request = build_create_covercrypt_usk_request(access_policy, &sk_uid, EMPTY_TAGS, false)?;
     let cr = kms.create(request, owner, None).await?;
     debug!("Create Response for User Decryption Key {:?}", cr);
 
@@ -336,7 +325,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
         "(Department::MKG || Department::FIN) && Security Level::Top Secret";
     let cr = kms
         .create(
-            build_create_covercrypt_user_decryption_key_request(
+            build_create_covercrypt_usk_request(
                 secret_mkg_fin_access_policy,
                 master_secret_key_id,
                 EMPTY_TAGS,
@@ -477,7 +466,7 @@ async fn test_abe_json_access() -> KResult<()> {
         "(Department::MKG|| Department::FIN) && Security Level::Top Secret";
     let cr = kms
         .create(
-            build_create_covercrypt_user_decryption_key_request(
+            build_create_covercrypt_usk_request(
                 secret_mkg_fin_access_policy,
                 &master_secret_key_uid,
                 EMPTY_TAGS,
@@ -564,7 +553,7 @@ async fn test_import_decrypt() -> KResult<()> {
         "(Department::MKG|| Department::FIN) && Security Level::Top Secret";
     let cr = kms
         .create(
-            build_create_covercrypt_user_decryption_key_request(
+            build_create_covercrypt_usk_request(
                 secret_mkg_fin_access_policy,
                 &sk_uid,
                 EMPTY_TAGS,
