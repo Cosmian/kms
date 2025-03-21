@@ -43,8 +43,8 @@ const ECKeyCreateForm: React.FC = () => {
                 );
             }
         } catch (e) {
-            setRes(`Error creating EC keys: ${e}`);
-            console.error("Error creating EC keys:", e);
+            setRes(`Error creating EC keypair: ${e}`);
+            console.error("Error creating EC keypair:", e);
         } finally {
             setIsLoading(false);
         }

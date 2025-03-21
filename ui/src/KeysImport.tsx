@@ -89,7 +89,7 @@ const KeyImportForm: React.FC<KeyImportFormProps> = (props: KeyImportFormProps) 
             { label: "PKCS#1 DER (RSA public)", value: "pkcs1-pub" },
             { label: "PKCS#8 DER (RSA private)", value: "pkcs8-priv" },
             { label: "PKCS#8 DER (RSA public)", value: "pkcs8-pub" },
-            { label: "SPKI DER (RSA public)", value: "spki" },
+            // { label: "SPKI DER (RSA public)", value: "spki" },
         ];
         key_usages = [
             { label: "Sign", value: "sign" },

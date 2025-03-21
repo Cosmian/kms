@@ -11,55 +11,59 @@ const { Option } = Select;
 // Define link types based on the CLAP documentation
 const LINK_TYPES = [
     {
-        value: "Certificate",
+        value: "certificate",
         label: "Certificate",
         description:
             "For Certificate objects: the parent certificate for a certificate in a certificate chain. For Public Key objects: the corresponding certificate(s), containing the same public key.",
     },
     {
-        value: "PublicKey",
+        value: "public-key",
         label: "Public Key",
         description:
             "For a Private Key object: the public key corresponding to the private key. For a Certificate object: the public key contained in the certificate.",
     },
-    { value: "PrivateKey", label: "Private Key", description: "For a Public Key object: the private key corresponding to the public key." },
     {
-        value: "DerivationBaseObject",
+        value: "private-key",
+        label: "Private Key",
+        description: "For a Public Key object: the private key corresponding to the public key.",
+    },
+    {
+        value: "derivation-base-object",
         label: "Derivation Base Object",
         description: "For a derived Symmetric Key or Secret Data object: the object(s) from which the current symmetric key was derived.",
     },
     {
-        value: "DerivedKey",
+        value: "derived-key",
         label: "Derived Key",
         description: "The symmetric key(s) or Secret Data object(s) that were derived from the current object.",
     },
     {
-        value: "ReplacementObject",
+        value: "replacement-object",
         label: "Replacement Object",
         description:
             "For a Symmetric Key, an Asymmetric Private Key, or an Asymmetric Public Key object: the key that resulted from the re-key of the current key.",
     },
     {
-        value: "ReplacedObject",
+        value: "replaced-object",
         label: "Replaced Object",
         description:
             "For a Symmetric Key, an Asymmetric Private Key, or an Asymmetric Public Key object: the key that was re-keyed to obtain the current key.",
     },
     {
-        value: "Parent",
+        value: "parent",
         label: "Parent",
         description: "For all object types: the container or other parent object corresponding to the object.",
     },
     {
-        value: "Child",
+        value: "child",
         label: "Child",
         description: "For all object types: the subordinate, derived or other child object corresponding to the object.",
     },
-    { value: "Previous", label: "Previous", description: "For all object types: the previous object to this object." },
-    { value: "Next", label: "Next", description: "For all object types: the next object to this object." },
-    { value: "PKCS12Certificate", label: "PKCS12 Certificate" },
-    { value: "PKCS12Password", label: "PKCS12 Password" },
-    { value: "WrappingKey", label: "Wrapping Key", description: "For wrapped objects: the object that was used to wrap this object." },
+    { value: "previous", label: "Previous", description: "For all object types: the previous object to this object." },
+    { value: "next", label: "Next", description: "For all object types: the next object to this object." },
+    { value: "pkcs12-certificate", label: "PKCS12 Certificate" },
+    { value: "pkcs12-password", label: "PKCS12 Password" },
+    { value: "wrapping-key", label: "Wrapping Key", description: "For wrapped objects: the object that was used to wrap this object." },
 ];
 
 // Sample KMIP tags - in a real application, these would come from your backend
@@ -109,12 +113,13 @@ const AttributeGetForm: React.FC = () => {
                 setRes(response);
             }
         } catch (e) {
-            setRes(`Error validating certificate: ${e}`);
-            console.error("Error validating certificate:", e);
+            setRes(`Error getting attributes: ${e}`);
+            console.error("Error getting attributes:", e);
         } finally {
             setIsLoading(false);
         }
     };
+    console.log(typeof res);
 
     return (
         <div className="p-6">
@@ -190,14 +195,15 @@ const AttributeGetForm: React.FC = () => {
                 </Space>
             </Form>
 
-            {res &&
-                (typeof res !== "string" && res.size ? (
-                    <div ref={responseRef}>
-                        <HashMapDisplay data={res} />
-                    </div>
-                ) : (
+            {res && typeof res !== "string" && res.size ? (
+                <div ref={responseRef}>
+                    <HashMapDisplay data={res} />
+                </div>
+            ) : (
+                <Card>
                     <div ref={responseRef}>{res}</div>
-                ))}
+                </Card>
+            )}
         </div>
     );
 };

@@ -87,7 +87,7 @@ const DestroyForm: React.FC<DestroyFormProps> = (props: DestroyFormProps) => {
             <div className="mb-8 space-y-2">
                 <div className="bg-red-200 border-l-4 border-red-600 rounded-md p-4">
                     <div className="text-red-800 text-sm space-y-2">
-                        <p className="font-bold">Warning: This is a destructive action!</p>
+                        <p className="font-bold">Warning: This is a destructive action.</p>
                         <ul className="list-disc pl-5 space-y-1">
                             <li>The {objectTypeLabel} must be revoked first</li>
                             {isKeyType &&

@@ -85,7 +85,7 @@ const RevokeForm: React.FC<RevokeFormProps> = (props: RevokeFormProps) => {
             </div>
 
             <div className="mb-8 space-y-2">
-                <div className="bg-red-200 border border-red-200 rounded-md p-4">
+                <div className="bg-red-200 border-l-4 border-red-600 rounded-md p-4">
                     <div className="text-red-800 text-sm space-y-2">
                         <p>
                             <strong>Warning:</strong> This action cannot be undone.

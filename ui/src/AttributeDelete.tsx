@@ -1,7 +1,6 @@
 import { Button, Card, Form, Input, Select, Space, Typography } from "antd";
 import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthContext";
-import HashMapDisplay from "./HashMapDisplay";
 import { sendKmipRequest } from "./utils";
 import { delete_attribute_ttlv_request, parse_delete_attribute_ttlv_response } from "./wasm/pkg/cosmian_kms_ui_utils";
 
@@ -31,7 +30,7 @@ interface AttributeDeleteFormData {
 
 const DeleteAttribute: React.FC = () => {
     const [form] = Form.useForm<AttributeDeleteFormData>();
-    const [res, setRes] = useState<Map<any, any> | string>(new Map());
+    const [res, setRes] = useState<string | undefined>(undefined);
     const [isLoading, setIsLoading] = useState(false);
     const { serverUrl, idToken } = useAuth();
     const responseRef = useRef<HTMLDivElement>(null);
@@ -124,12 +123,10 @@ const DeleteAttribute: React.FC = () => {
                 </Space>
             </Form>
 
-            {res instanceof Map && res.size ? (
-                <div ref={responseRef}>
-                    <HashMapDisplay data={res} />
-                </div>
-            ) : (
-                <div ref={responseRef}>{res}</div>
+            {res && (
+                <Card>
+                    <div ref={responseRef}>{res}</div>
+                </Card>
             )}
         </div>
     );

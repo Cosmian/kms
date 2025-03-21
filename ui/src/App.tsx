@@ -196,9 +196,9 @@ function App() {
             colorBgBase: "#2a2d30",
             colorTextPlaceholder: "#b9b9b9",
             colorError: "#e23030",
-            colorBorder: "#7a7676",
-            colorSplit: "#7a7676",
-            colorBorderSecondary: "#7a7676",
+            colorBorder: "#4d4b4b",
+            colorSplit: "#4d4b4b",
+            colorBorderSecondary: "#4d4b4b",
         },
         components: {
             Layout: {

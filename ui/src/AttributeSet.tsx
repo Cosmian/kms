@@ -2,7 +2,6 @@ import { Button, Card, DatePicker, Form, Input, Select, Space, Typography } from
 import moment from "moment";
 import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthContext";
-import HashMapDisplay from "./HashMapDisplay";
 import { sendKmipRequest } from "./utils";
 import { parse_set_attribute_ttlv_response, set_attribute_ttlv_request } from "./wasm/pkg/cosmian_kms_ui_utils";
 
@@ -62,7 +61,7 @@ interface AttributeSetFormData {
 
 const AttributeSetForm: React.FC = () => {
     const [form] = Form.useForm<AttributeSetFormData>();
-    const [res, setRes] = useState<Map<any, any> | string>(new Map());
+    const [res, setRes] = useState<string | undefined>(undefined);
     const [isLoading, setIsLoading] = useState(false);
     const [selectedAttributeName, setSelectedAttributeName] = useState<string | undefined>(undefined);
     const { idToken, serverUrl } = useAuth();
@@ -262,12 +261,10 @@ const AttributeSetForm: React.FC = () => {
                     </Form.Item>
                 </Space>
             </Form>
-            {res && typeof res !== "string" && res.size ? (
-                <div ref={responseRef}>
-                    <HashMapDisplay data={res} />
-                </div>
-            ) : (
-                <div ref={responseRef}>{res}</div>
+            {res && (
+                <Card>
+                    <div ref={responseRef}>{res}</div>
+                </Card>
             )}
         </div>
     );
