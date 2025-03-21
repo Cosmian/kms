@@ -28,12 +28,12 @@ use syn::{parse_macro_input, DeriveInput};
 ///   SymmetricKey = 0x00000002,
 /// }
 /// ```
-/// serde will loose the variant value, and only serialize the variant name
+/// serde will lose the variant value, and only serialize the variant name
 /// with the default Serialize implementation.
 ///
 /// `KmipEnumSerialize` will serialize the variant name and value.
 ///
-/// It accomplishes this using two "tricks":
+/// It achieves this using two "tricks":
 /// 1. With the help of `strum::IntoStaticStr`, it converts the variant name to a static string
 ///    required by `serde::Serialize::serialize_unit_variant`.
 /// 2. It uses `*self as u32` to get the variant value, which requires the enum to derive
