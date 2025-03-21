@@ -11,7 +11,7 @@ use actix_web::{
     test::{self, call_service, read_body},
     web::{self, Data},
 };
-use cosmian_kmip::ttlv::{kmip_ttlv_deserializer::from_ttlv, kmip_ttlv_serializer::to_ttlv, TTLV};
+use cosmian_kmip::ttlv::{from_ttlv, to_ttlv, TTLV};
 use serde::{de::DeserializeOwned, Serialize};
 use tracing::info;
 use uuid::Uuid;
