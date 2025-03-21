@@ -379,7 +379,7 @@ fn verify_chain_signature(certificates: &[X509]) -> KResult<ValidityIndicator> {
 
     if !result {
         return Err(KmsError::Certificate(
-            "Result of the function verify_cert: {result:?}".to_owned(),
+            format!("Result of the function verify_cert: {result:?}"),
         ));
     }
 

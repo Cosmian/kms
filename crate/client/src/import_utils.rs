@@ -13,7 +13,7 @@ use crate::{
 ///
 /// If the `import_attributes` are not specified,
 /// the attributes of the object are used, if any.
-pub async fn import_object<'a, T: IntoIterator<Item = impl AsRef<str>>>(
+pub async fn import_object<T: IntoIterator<Item = impl AsRef<str>>>(
     kms_rest_client: &KmsClient,
     object_id: Option<String>,
     object: Object,

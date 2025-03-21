@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use cosmian_cover_crypt::{api::Covercrypt, MasterSecretKey};
+use cosmian_cover_crypt::{MasterSecretKey, api::Covercrypt};
 use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kmip::kmip_2_1::{
     kmip_objects::{Object, ObjectType},
@@ -71,11 +71,10 @@ pub(crate) async fn create_user_decryption_key(
             &access_policy,
             &create_request.attributes,
             sensitive,
-        )
-        .await?;
+        )?;
 
         let import_request = Import {
-            unique_identifier: UniqueIdentifier::TextString(owm.id().to_string()),
+            unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
             object_type: ObjectType::PrivateKey,
             replace_existing: Some(true),
             key_wrap_type: None,
@@ -95,10 +94,10 @@ pub(crate) async fn create_user_decryption_key(
     )))
 }
 
-async fn create_user_decryption_key_(
+fn create_user_decryption_key_(
     owm: &ObjectWithMetadata,
     cover_crypt: &Covercrypt,
-    access_policy: &String,
+    access_policy: &str,
     create_attributes: &Attributes,
     sensitive: bool,
 ) -> KResult<(Object, Object)> {
@@ -108,8 +107,8 @@ async fn create_user_decryption_key_(
         ));
     }
 
-    let mut msk = MasterSecretKey::deserialize(&**owm.object().key_block()?.key_bytes()?)?;
-    let mut usk_handler = UserDecryptionKeysHandler::instantiate(&cover_crypt, &mut msk);
+    let mut msk = MasterSecretKey::deserialize(&owm.object().key_block()?.key_bytes()?)?;
+    let mut usk_handler = UserDecryptionKeysHandler::instantiate(cover_crypt, &mut msk);
 
     let usk_obj = usk_handler
         .create_usk_object(access_policy, Some(create_attributes), owm.id())
@@ -140,5 +139,5 @@ async fn create_user_decryption_key_(
         sensitive,
     )?;
 
-    return Ok((msk_obj, usk_obj));
+    Ok((msk_obj, usk_obj))
 }

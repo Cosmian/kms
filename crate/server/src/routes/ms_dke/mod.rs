@@ -100,7 +100,7 @@ pub(crate) async fn get_key(
     if key_name.is_empty() {
         "dke_key".clone_into(&mut key_name);
     }
-    match _get_key(&key_name, req_http, &kms).await {
+    match internal_get_key(&key_name, req_http, &kms).await {
         Ok(key_data) => {
             trace!(
                 "GET KEY /{} {:?}",
@@ -113,7 +113,7 @@ pub(crate) async fn get_key(
     }
 }
 
-async fn _get_key(key_tag: &str, req_http: HttpRequest, kms: &Arc<KMS>) -> KResult<KeyData> {
+async fn internal_get_key(key_tag: &str, req_http: HttpRequest, kms: &Arc<KMS>) -> KResult<KeyData> {
     let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
     let user = kms.get_user(&req_http);
     let dke_service_url = kms
@@ -206,13 +206,13 @@ pub(crate) async fn decrypt(
     let (key_name, key_id) = path.into_inner();
     // let _key_id = key_id.into_inner();
     trace!("POST /{}/{}/Decrypt {:?}", key_name, key_id, encrypted_data);
-    match _decrypt(&key_name, encrypted_data, req_http, &kms).await {
+    match internal_decrypt(&key_name, encrypted_data, req_http, &kms).await {
         Ok(decrypted_data) => HttpResponse::Ok().json(decrypted_data),
         Err(e) => HttpResponse::from_error(e),
     }
 }
 
-async fn _decrypt(
+async fn internal_decrypt(
     key_tag: &str,
     encrypted_data: EncryptedData,
     req_http: HttpRequest,

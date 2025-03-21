@@ -69,23 +69,18 @@ impl CreateMasterKeyPairAction {
 
         debug!("client: access_structure: {access_structure:?}");
 
-        let req = build_create_covercrypt_master_keypair_request(
-            &access_structure,
-            &self.tags,
-            self.sensitive,
-        )?;
-
         let res = kms_rest_client
-            .create_key_pair(req)
+            .create_key_pair(build_create_covercrypt_master_keypair_request(
+                &access_structure,
+                &self.tags,
+                self.sensitive,
+            )?)
             .await
             .with_context(|| "failed creating a Covercrypt Master Key Pair")?;
 
-        let msk_uid = &res.private_key_unique_identifier;
-        let mpk_uid = &res.public_key_unique_identifier;
-
         let mut stdout = console::Stdout::new("The master keypair has been properly generated.");
         stdout.set_tags(Some(&self.tags));
-        stdout.set_key_pair_unique_identifier(msk_uid, mpk_uid);
+        stdout.set_key_pair_unique_identifier(&res.private_key_unique_identifier, &res.public_key_unique_identifier);
         stdout.write()
     }
 }

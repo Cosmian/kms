@@ -144,7 +144,7 @@ impl PermissionsDB {
             .await?
             .into_iter()
             .next()
-            .unwrap_or((keyword, HashSet::new()))
+            .unwrap_or_else(|| (keyword, HashSet::new()))
             .1
             .iter()
             .map(Triple::try_from)

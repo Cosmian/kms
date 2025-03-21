@@ -46,13 +46,11 @@ impl RekeyAction {
             cli_bail!("Either --key-id or one or more --tag must be specified")
         };
 
-        let req = build_rekey_keypair_request(
-            &id,
-            &RekeyEditAction::RekeyAccessPolicy(self.access_policy.clone()),
-        )?;
-
         let res = kms_rest_client
-            .rekey_keypair(req)
+            .rekey_keypair(build_rekey_keypair_request(
+                &id,
+                &RekeyEditAction::RekeyAccessPolicy(self.access_policy.clone()),
+            )?)
             .await
             .with_context(|| "failed rekeying the master keys")?;
 

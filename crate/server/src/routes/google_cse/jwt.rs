@@ -24,7 +24,7 @@ static APPLICATIONS: &[&str; 4] = &["meet", "drive", "gmail", "calendar"];
 
 fn get_jwks_uri(application: &str) -> String {
     std::env::var(format!("KMS_GOOGLE_CSE_{}_JWKS_URI", application.to_uppercase()))
-    .unwrap_or(format!("https://www.googleapis.com/service_accounts/v1/jwk/gsuitecse-tokenissuer-{application}@system.gserviceaccount.com"))
+    .unwrap_or_else(|_| format!("https://www.googleapis.com/service_accounts/v1/jwk/gsuitecse-tokenissuer-{application}@system.gserviceaccount.com"))
 }
 
 /// List the possible JWKS URI for all the supported application
@@ -45,9 +45,7 @@ fn jwt_authorization_config_application(
         "KMS_GOOGLE_CSE_{}_JWT_ISSUER",
         application.to_uppercase()
     ))
-    .unwrap_or(format!(
-        "gsuitecse-tokenissuer-{application}@system.gserviceaccount.com"
-    ));
+    .unwrap_or_else(|_| format!("gsuitecse-tokenissuer-{application}@system.gserviceaccount.com"));
 
     let jwt_audience = Some(
         std::env::var("KMS_GOOGLE_CSE_AUDIENCE").unwrap_or_else(|_| "cse-authorization".to_owned()),
@@ -348,7 +346,7 @@ mod tests {
         routes::google_cse::{
             self,
             jwt::{
-                decode_jwt_authorization_token, jwt_authorization_config, JWKS_URI, JWT_ISSUER_URI,
+                JWKS_URI, JWT_ISSUER_URI, decode_jwt_authorization_token, jwt_authorization_config,
             },
             operations::WrapRequest,
         },

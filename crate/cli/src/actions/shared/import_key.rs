@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use clap::{Parser, ValueEnum};
 use cosmian_kms_client::{
+    KmsClient,
     cosmian_kmip::kmip_2_1::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType},
@@ -10,14 +11,13 @@ use cosmian_kms_client::{
         },
     },
     import_object, objects_from_pem, read_bytes_from_file, read_object_from_json_ttlv_bytes,
-    KmsClient,
 };
 use zeroize::Zeroizing;
 
-use super::utils::{build_usage_mask_from_key_usage, KeyUsage};
+use super::utils::{KeyUsage, build_usage_mask_from_key_usage};
 use crate::{
     actions::console,
-    error::{result::CliResult, CliError},
+    error::{CliError, result::CliResult},
 };
 
 #[derive(ValueEnum, Debug, Clone)]
@@ -164,13 +164,10 @@ impl ImportKeyAction {
         let object_type = object.object_type();
 
         // Generate the import attributes if links are specified.
-        let mut import_attributes = object
-            .attributes()
-            .unwrap_or(&Attributes {
-                cryptographic_usage_mask,
-                ..Default::default()
-            })
-            .clone();
+        let mut import_attributes = object.attributes().cloned().unwrap_or_else(|_| Attributes {
+            cryptographic_usage_mask,
+            ..Default::default()
+        });
 
         if let Some(issuer_certificate_id) = &self.certificate_id {
             //let attributes = import_attributes.get_or_insert(Attributes::default());

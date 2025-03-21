@@ -27,6 +27,7 @@ use crate::{core::cover_crypt::locate_usk, error::KmsError, kms_bail, result::KR
 /// - `DisableAttribute`: Disable attributes in the access structure.
 /// - `AddAttribute`: Add new attributes to the access structure.
 /// - `RenameAttribute`: Rename attributes in the access structure.
+#[allow(clippy::large_futures)]
 pub(crate) async fn rekey_keypair_cover_crypt(
     kmip_server: &KMS,
     cover_crypt: Covercrypt,
@@ -258,7 +259,7 @@ async fn import_rekeyed_master_keys(
 async fn update_all_active_usk(
     kmip_server: &KMS,
     cover_crypt: &Covercrypt,
-    msk_uid: &String,
+    msk_uid: &str,
     msk: &mut MasterSecretKey,
     owner: &str,
     params: Option<Arc<dyn SessionParams>>,
@@ -284,8 +285,8 @@ async fn update_all_active_usk(
 }
 
 /// Refresh an individual USK with a given handler to a MSK.
-async fn update_usk<'a>(
-    handler: &mut UserDecryptionKeysHandler<'a>,
+async fn update_usk(
+    handler: &mut UserDecryptionKeysHandler<'_>,
     usk_uid: &str,
     kmip_server: &KMS,
     owner: &str,

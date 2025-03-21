@@ -142,7 +142,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
         .data
         .context("There should be decrypted data")?;
 
-    assert_eq!(&*data, &**decrypted_data);
+    assert_eq!(data, &**decrypted_data);
 
     // revocation
 
@@ -205,7 +205,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
         .data
         .context("There should be decrypted data")?;
 
-    assert_eq!(&*data, &*decrypted_data);
+    assert_eq!(data, &*decrypted_data);
 
     // test user2 can decrypt
     let request = decrypt_request(
@@ -222,7 +222,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
         .data
         .context("There should be decrypted data")?;
 
-    assert_eq!(&*data, &*decrypted_data);
+    assert_eq!(data, &*decrypted_data);
 
     // Revoke key of user 1
     let _revoke_response: RevokeResponse = test_utils::post(
@@ -293,7 +293,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
     let decrypted_data = decrypt_response
         .data
         .context("There should be decrypted data")?;
-    assert_eq!(&*data, &*decrypted_data);
+    assert_eq!(data, &*decrypted_data);
 
     //
     // Destroy user decryption key

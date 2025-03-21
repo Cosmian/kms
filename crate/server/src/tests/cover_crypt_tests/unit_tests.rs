@@ -368,7 +368,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
         .await?;
 
     let decrypted_data = dr.data.context("There should be decrypted data")?;
-    assert_eq!(&*confidential_mkg_data, &**decrypted_data);
+    assert_eq!(confidential_mkg_data, &**decrypted_data);
 
     // check it doesn't work with invalid tenant
     let dr = kms
@@ -405,7 +405,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
 
     let decrypted_data = dr.data.context("There should be decrypted data")?;
 
-    assert_eq!(&*secret_fin_data, &**decrypted_data);
+    assert_eq!(secret_fin_data, &**decrypted_data);
 
     // check it doesn't work with invalid tenant
     let dr = kms
@@ -625,7 +625,7 @@ async fn test_import_decrypt() -> KResult<()> {
     // Decryption used to fails: import attributes were incorrect;
     // this seems fixed since #71. Leaving the test in case this pops-up again
     let decrypted_data = dr.data.context("There should be decrypted data")?;
-    assert_eq!(&*confidential_mkg_data, &**decrypted_data);
+    assert_eq!(confidential_mkg_data, &**decrypted_data);
 
     // ...and reimport it under custom uid (will work)
     let custom_sk_uid = Uuid::new_v4().to_string();
@@ -661,7 +661,7 @@ async fn test_import_decrypt() -> KResult<()> {
 
     let decrypted_data = dr.data.context("There should be decrypted data")?;
 
-    assert_eq!(&*confidential_mkg_data, &**decrypted_data);
+    assert_eq!(confidential_mkg_data, &**decrypted_data);
 
     Ok(())
 }

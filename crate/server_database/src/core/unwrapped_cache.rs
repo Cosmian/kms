@@ -111,6 +111,7 @@ impl UnwrappedCache {
 }
 
 #[cfg(test)]
+#[allow(clippy::panic_in_result_fn)]
 mod tests {
     use std::collections::{HashMap, HashSet};
 
