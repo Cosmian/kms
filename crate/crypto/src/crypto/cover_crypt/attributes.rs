@@ -40,13 +40,14 @@ pub fn access_structure_from_attributes(
         .map_or_else(
             || {
                 Err(CryptoError::Kmip(
-                    "the attributes do not contain a CoverCrypt Policy".to_owned(),
+                    "the attributes do not contain a Covercrypt access structure".to_owned(),
                 ))
             },
             |bytes| {
                 AccessStructure::deserialize(bytes).map_err(|e| {
                     CryptoError::Kmip(format!(
-                        "failed deserializing the CoverCrypt Policy from the attributes: {e}"
+                        "failed deserializing the Covercrypt access structure from the \
+                         attributes: {e}"
                     ))
                 })
             },
@@ -64,7 +65,7 @@ pub fn upsert_access_structure_in_attributes(
     Ok(())
 }
 
-/// Convert from `Covercrypt` policy attributes to vendor attributes
+/// Convert a list of `Covercrypt` qualified attributes to a vendor attribute.
 pub fn qualified_attributes_as_vendor_attributes(
     attributes: &[QualifiedAttribute],
 ) -> Result<VendorAttribute, CryptoError> {
@@ -179,7 +180,7 @@ pub fn rekey_edit_action_as_vendor_attribute(
     })
 }
 
-/// Extract and edit `Covercrypt` policy action from attributes.
+/// Extract an edit `Covercrypt` re-key action from attributes.
 ///
 /// If Covercrypt attributes are specified without an `EditPolicyAction`,
 /// a `RotateAttributes` action is returned by default to keep backward compatibility.

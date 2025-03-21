@@ -157,7 +157,7 @@ impl EncryptionSystem for CoverCryptEncryption {
                         })?;
 
                     let ap = AccessPolicy::parse(ptx.encryption_policy.as_deref().ok_or_else(
-                        || CryptoError::Kmip("encryption policy missing".to_owned()),
+                        || CryptoError::Kmip("missing encryption policy".to_owned()),
                     )?)?;
 
                     if let Some(CryptographicParameters {

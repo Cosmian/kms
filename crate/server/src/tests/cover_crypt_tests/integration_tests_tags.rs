@@ -10,9 +10,8 @@ use cosmian_kms_crypto::crypto::cover_crypt::{
     access_structure::access_structure_from_str,
     attributes::RekeyEditAction,
     kmip_requests::{
-        build_create_covercrypt_master_keypair_request,
-        build_create_covercrypt_user_decryption_key_request, build_destroy_key_request,
-        build_rekey_keypair_request,
+        build_create_covercrypt_master_keypair_request, build_create_covercrypt_usk_request,
+        build_destroy_key_request, build_rekey_keypair_request,
     },
 };
 
@@ -118,7 +117,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
     let udk_tag = "udk";
     let udk_json_tag = serde_json::to_string(&[udk_tag.to_owned()])?;
     let access_policy = "(Department::MKG || Department::FIN) && Security Level::Top Secret";
-    let request = build_create_covercrypt_user_decryption_key_request(
+    let request = build_create_covercrypt_usk_request(
         access_policy,
         &private_key_unique_identifier.to_string(),
         [udk_tag],
@@ -169,7 +168,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
     let udk1_tag = "udk1";
     let udk1_json_tag = serde_json::to_string(&[udk1_tag.to_owned()])?;
     let access_policy = "(Department::MKG || Department::FIN) && Security Level::Confidential";
-    let request = build_create_covercrypt_user_decryption_key_request(
+    let request = build_create_covercrypt_usk_request(
         access_policy,
         &private_key_unique_identifier.to_string(),
         [udk1_tag],
@@ -182,7 +181,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
     let udk2_tag = "udk2";
     let udk2_json_tag = serde_json::to_string(&[udk2_tag.to_owned()])?;
     let access_policy = "Department::MKG && Security Level::Confidential";
-    let request = build_create_covercrypt_user_decryption_key_request(
+    let request = build_create_covercrypt_usk_request(
         access_policy,
         &private_key_unique_identifier.to_string(),
         [udk2_tag],

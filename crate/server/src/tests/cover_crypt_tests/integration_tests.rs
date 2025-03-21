@@ -14,9 +14,8 @@ use cosmian_kms_crypto::crypto::cover_crypt::{
     access_structure::access_structure_from_str,
     attributes::RekeyEditAction,
     kmip_requests::{
-        build_create_covercrypt_master_keypair_request,
-        build_create_covercrypt_user_decryption_key_request, build_destroy_key_request,
-        build_rekey_keypair_request,
+        build_create_covercrypt_master_keypair_request, build_create_covercrypt_usk_request,
+        build_destroy_key_request, build_rekey_keypair_request,
     },
 };
 
@@ -71,7 +70,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
 
     // Create a user decryption key
     let access_policy = "(Department::MKG || Department::FIN) && Security Level::Top Secret";
-    let request = build_create_covercrypt_user_decryption_key_request(
+    let request = build_create_covercrypt_usk_request(
         access_policy,
         private_key_unique_identifier,
         EMPTY_TAGS,
@@ -126,7 +125,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     //
     // Create a user decryption key
     let access_policy = "(Department::MKG || Department::FIN) && Security Level::Confidential";
-    let request = build_create_covercrypt_user_decryption_key_request(
+    let request = build_create_covercrypt_usk_request(
         access_policy,
         private_key_unique_identifier,
         EMPTY_TAGS,
@@ -141,7 +140,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     //
     // Create another user decryption key
     let access_policy = "Department::MKG && Security Level::Confidential";
-    let request = build_create_covercrypt_user_decryption_key_request(
+    let request = build_create_covercrypt_usk_request(
         access_policy,
         private_key_unique_identifier,
         EMPTY_TAGS,
