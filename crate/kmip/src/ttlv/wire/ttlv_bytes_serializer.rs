@@ -150,7 +150,7 @@ mod tests {
     use std::str::FromStr;
 
     use num_bigint_dig::BigInt;
-    use time::OffsetDateTime;
+    use time::{macros::datetime, OffsetDateTime};
 
     use crate::{
         kmip_1_4, kmip_2_1,
@@ -674,5 +674,257 @@ mod tests {
         assert_eq!(&buffer[8 + OFFSET_2..8 + 10 + OFFSET_2], b"Hello KMIP");
         // Check the padding bytes
         assert_eq!(&buffer[10 + 8 + OFFSET_2..], &[0; 6]);
+    }
+
+    /// Section 9.1.2
+    #[test]
+    fn normative_tests_1_4() {
+        // An Integer containing the decimal value 8:
+        // 42 00 20 | 02 | 00 00 00 04 | 00 00 00 08 00 00 00 00
+        let ttlv = TTLV {
+            tag: kmip_1_4::kmip_types::Tag::CompromiseDate.to_string(),
+            value: TTLValue::Integer(8),
+        };
+        let mut buffer = Vec::new();
+        let mut serializer = TTLVBytesSerializer::new(&mut buffer);
+        serializer
+            .write_ttlv::<kmip_1_4::kmip_types::Tag>(&ttlv)
+            .unwrap();
+        assert_eq!(
+            buffer,
+            vec![
+                0x42, 0x00, 0x20, // Tag
+                0x02, // Type
+                0x00, 0x00, 0x00, 0x04, // Length
+                0x00, 0x00, 0x00, 0x08, // Value
+                0x00, 0x00, 0x00, 0x00, // Padding
+            ]
+        );
+
+        // A Long Integer containing the decimal value 123456789000000000:
+        // 42 00 20 | 03 | 00 00 00 08 | 01 B6 9B 4B A5 74 92 00
+        let ttlv = TTLV {
+            tag: kmip_1_4::kmip_types::Tag::CompromiseDate.to_string(), // tag 42 00 20
+            value: TTLValue::LongInteger(123_456_789_000_000_000),
+        };
+        buffer.clear();
+        serializer = TTLVBytesSerializer::new(&mut buffer);
+        serializer
+            .write_ttlv::<kmip_1_4::kmip_types::Tag>(&ttlv)
+            .unwrap();
+        assert_eq!(
+            buffer,
+            vec![
+                0x42, 0x00, 0x20, // Tag
+                0x03, // Type
+                0x00, 0x00, 0x00, 0x08, // Length
+                0x01, 0xB6, 0x9B, 0x4B, 0xA5, 0x74, 0x92, 0x00, // Value
+            ]
+        );
+
+        // A Big Integer containing the decimal value 1234567890000000000000000000:
+        // 42 00 20 | 04 | 00 00 00 10 | 00 00 00 00 03 FD 35 EB 6B C2 DF 46 18 08 00 00
+        let bi =
+            KmipBigInt::from(BigInt::parse_bytes(b"1234567890000000000000000000", 10).unwrap());
+        let ttlv = TTLV {
+            tag: kmip_1_4::kmip_types::Tag::CompromiseDate.to_string(),
+            value: TTLValue::BigInteger(bi),
+        };
+        buffer.clear();
+        serializer = TTLVBytesSerializer::new(&mut buffer);
+        serializer
+            .write_ttlv::<kmip_1_4::kmip_types::Tag>(&ttlv)
+            .unwrap();
+        assert_eq!(
+            buffer,
+            vec![
+                0x42, 0x00, 0x20, // Tag
+                0x04, // Type
+                0x00, 0x00, 0x00, 0x10, // Length
+                0x00, 0x00, 0x00, 0x00, 0x03, 0xFD, 0x35, 0xEB, 0x6B, 0xC2, 0xDF, 0x46, 0x18, 0x08,
+                0x00, 0x00, // Value
+            ]
+        );
+
+        // An Enumeration with value 255:
+        // 42 00 20 | 05 | 00 00 00 04 | 00 00 00 FF 00 00 00 00
+        let variant = KmipEnumerationVariant {
+            value: 255,
+            name: "TestEnum".to_owned(),
+        };
+        let ttlv = TTLV {
+            tag: kmip_1_4::kmip_types::Tag::CompromiseDate.to_string(),
+            value: TTLValue::Enumeration(variant),
+        };
+        buffer.clear();
+        serializer = TTLVBytesSerializer::new(&mut buffer);
+        serializer
+            .write_ttlv::<kmip_1_4::kmip_types::Tag>(&ttlv)
+            .unwrap();
+        assert_eq!(
+            buffer,
+            vec![
+                0x42, 0x00, 0x20, // Tag
+                0x05, // Type
+                0x00, 0x00, 0x00, 0x04, // Length
+                0x00, 0x00, 0x00, 0xFF, // Value
+                0x00, 0x00, 0x00, 0x00, // Padding
+            ]
+        );
+
+        // A Boolean with the value True:
+        // 42 00 20 | 06 | 00 00 00 08 | 00 00 00 00 00 00 00 01
+        let ttlv = TTLV {
+            tag: kmip_1_4::kmip_types::Tag::CompromiseDate.to_string(),
+            value: TTLValue::Boolean(true),
+        };
+        buffer.clear();
+        serializer = TTLVBytesSerializer::new(&mut buffer);
+        serializer
+            .write_ttlv::<kmip_1_4::kmip_types::Tag>(&ttlv)
+            .unwrap();
+        assert_eq!(
+            buffer,
+            vec![
+                0x42, 0x00, 0x20, // Tag
+                0x06, // Type
+                0x00, 0x00, 0x00, 0x08, // Length
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, // Value
+            ]
+        );
+
+        // A Text String with the value "Hello World":
+        // 42 00 20 | 07 | 00 00 00 0B | 48 65 6C 6C 6F 20 57 6F 72 6C 64 00 00 00 00 00
+        let ttlv = TTLV {
+            tag: kmip_1_4::kmip_types::Tag::CompromiseDate.to_string(),
+            value: TTLValue::TextString("Hello World".to_owned()),
+        };
+        buffer.clear();
+        serializer = TTLVBytesSerializer::new(&mut buffer);
+        serializer
+            .write_ttlv::<kmip_1_4::kmip_types::Tag>(&ttlv)
+            .unwrap();
+        assert_eq!(
+            buffer,
+            vec![
+                0x42, 0x00, 0x20, // Tag
+                0x07, // Type
+                0x00, 0x00, 0x00, 0x0B, // Length
+                0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x20, 0x57, 0x6F, 0x72, 0x6C, 0x64, 0x00, 0x00, 0x00,
+                0x00, 0x00, // Value + Padding
+            ]
+        );
+
+        // A Byte String with the value { 0x01, 0x02, 0x03 }:
+        // 42 00 20 | 08 | 00 00 00 03 | 01 02 03 00 00 00 00 00
+        let ttlv = TTLV {
+            tag: kmip_1_4::kmip_types::Tag::CompromiseDate.to_string(),
+            value: TTLValue::ByteString(vec![0x01, 0x02, 0x03]),
+        };
+        buffer.clear();
+        serializer = TTLVBytesSerializer::new(&mut buffer);
+        serializer
+            .write_ttlv::<kmip_1_4::kmip_types::Tag>(&ttlv)
+            .unwrap();
+        assert_eq!(
+            buffer,
+            vec![
+                0x42, 0x00, 0x20, // Tag
+                0x08, // Type
+                0x00, 0x00, 0x00, 0x03, // Length
+                0x01, 0x02, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, // Value + Padding
+            ]
+        );
+
+        // A Date-Time, containing the value for Friday, March 14, 2008, 11:56:40 GMT:
+        // 42 00 20 | 09 | 00 00 00 08 | 00 00 00 00 47 DA 67 F8
+        let dt = datetime!(2008-03-14 11:56:40 UTC);
+        // let dt = OffsetDateTime::from_unix_timestamp(1205499400).unwrap();
+        let ttlv = TTLV {
+            tag: kmip_1_4::kmip_types::Tag::CompromiseDate.to_string(),
+            value: TTLValue::DateTime(dt),
+        };
+        buffer.clear();
+        serializer = TTLVBytesSerializer::new(&mut buffer);
+        serializer
+            .write_ttlv::<kmip_1_4::kmip_types::Tag>(&ttlv)
+            .unwrap();
+        assert_eq!(
+            buffer,
+            vec![
+                0x42, 0x00, 0x20, // Tag
+                0x09, // Type
+                0x00, 0x00, 0x00, 0x08, // Length
+                0x00, 0x00, 0x00, 0x00, 0x47, 0xDA, 0x67, 0xF8, // Value
+            ]
+        );
+
+        // An Interval, containing the value for 10 days:
+        // 42 00 20 | 0A | 00 00 00 04 | 00 0D 2F 00 00 00 00 00
+        let ttlv = TTLV {
+            tag: kmip_1_4::kmip_types::Tag::CompromiseDate.to_string(),
+            value: TTLValue::Interval(864_000), // 10 days in seconds
+        };
+        buffer.clear();
+        serializer = TTLVBytesSerializer::new(&mut buffer);
+        serializer
+            .write_ttlv::<kmip_1_4::kmip_types::Tag>(&ttlv)
+            .unwrap();
+        assert_eq!(
+            buffer,
+            vec![
+                0x42, 0x00, 0x20, // Tag
+                0x0A, // Type
+                0x00, 0x00, 0x00, 0x04, // Length
+                0x00, 0x0D, 0x2F, 0x00, // Value
+                0x00, 0x00, 0x00, 0x00, // Padding
+            ]
+        );
+
+        // A Structure containing an Enumeration, value 254, followed by an Integer, value 255:
+        // 42 00 20 | 01 | 00 00 00 20 |
+        // 42 00 04 | 05 | 00 00 00 04 | 00 00 00 FE 00 00 00 00 |
+        // 42 00 05 | 02 | 00 00 00 04 | 00 00 00 FF 00 00 00 00
+        let enum_variant = KmipEnumerationVariant {
+            value: 254,
+            name: "TestEnum".to_owned(),
+        };
+        let ttlv_enum = TTLV {
+            tag: kmip_1_4::kmip_types::Tag::ApplicationSpecificInformation.to_string(), // "420004", Custom tag from example
+            value: TTLValue::Enumeration(enum_variant),
+        };
+        let ttlv_int = TTLV {
+            tag: kmip_1_4::kmip_types::Tag::ArchiveDate.to_string(), //"420005", Custom tag from example
+            value: TTLValue::Integer(255),
+        };
+        let ttlv = TTLV {
+            tag: kmip_1_4::kmip_types::Tag::CompromiseDate.to_string(),
+            value: TTLValue::Structure(vec![ttlv_enum, ttlv_int]),
+        };
+        buffer.clear();
+        serializer = TTLVBytesSerializer::new(&mut buffer);
+        serializer
+            .write_ttlv::<kmip_1_4::kmip_types::Tag>(&ttlv)
+            .unwrap();
+        assert_eq!(
+            buffer,
+            vec![
+                0x42, 0x00, 0x20, // Tag
+                0x01, // Type
+                0x00, 0x00, 0x00, 0x20, // Length
+                // First nested item (Enumeration)
+                0x42, 0x00, 0x04, // Tag
+                0x05, // Type
+                0x00, 0x00, 0x00, 0x04, // Length
+                0x00, 0x00, 0x00, 0xFE, // Value
+                0x00, 0x00, 0x00, 0x00, // Padding
+                // Second nested item (Integer)
+                0x42, 0x00, 0x05, // Tag
+                0x02, // Type
+                0x00, 0x00, 0x00, 0x04, // Length
+                0x00, 0x00, 0x00, 0xFF, // Value
+                0x00, 0x00, 0x00, 0x00, // Padding
+            ]
+        );
     }
 }
