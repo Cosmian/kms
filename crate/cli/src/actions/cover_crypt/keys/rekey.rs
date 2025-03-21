@@ -5,8 +5,7 @@ use cosmian_kms_crypto::crypto::cover_crypt::{
 };
 
 use crate::{
-    actions::console,
-    cli_bail,
+    actions::{console, labels::KEY_ID, shared::get_key_uid},
     error::result::{CliResult, CliResultHelper},
 };
 
@@ -27,7 +26,7 @@ pub struct RekeyAction {
 
     /// The master secret key unique identifier stored in the KMS.
     /// If not specified, tags should be specified
-    #[clap(long = "key-id", short = 'k', group = "key-tags")]
+    #[clap(long = KEY_ID, short = 'k', group = "key-tags")]
     master_secret_key_id: Option<String>,
 
     /// Tag to use to retrieve the key when no key id is specified.
@@ -38,13 +37,11 @@ pub struct RekeyAction {
 
 impl RekeyAction {
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
-        let id = if let Some(key_id) = &self.master_secret_key_id {
-            key_id.clone()
-        } else if let Some(tags) = &self.tags {
-            serde_json::to_string(&tags)?
-        } else {
-            cli_bail!("Either --key-id or one or more --tag must be specified")
-        };
+        let id = get_key_uid(
+            self.master_secret_key_id.as_ref(),
+            self.tags.as_ref(),
+            KEY_ID,
+        )?;
 
         let res = kms_rest_client
             .rekey_keypair(build_rekey_keypair_request(
@@ -87,8 +84,8 @@ pub struct PruneAction {
 
     /// The private master key unique identifier stored in the KMS.
     /// If not specified, tags should be specified
-    #[clap(long = "key-id", short = 'k', group = "key-tags")]
-    secret_key_id: Option<String>,
+    #[clap(long = KEY_ID, short = 'k', group = "key-tags")]
+    master_secret_key_id: Option<String>,
 
     /// Tag to use to retrieve the key when no key id is specified.
     /// To specify multiple tags, use the option multiple times.
@@ -98,13 +95,11 @@ pub struct PruneAction {
 
 impl PruneAction {
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
-        let id = if let Some(key_id) = &self.secret_key_id {
-            key_id.clone()
-        } else if let Some(tags) = &self.tags {
-            serde_json::to_string(&tags)?
-        } else {
-            cli_bail!("Either --key-id or one or more --tag must be specified")
-        };
+        let id = get_key_uid(
+            self.master_secret_key_id.as_ref(),
+            self.tags.as_ref(),
+            KEY_ID,
+        )?;
 
         // Create the kmip query
         let query = build_rekey_keypair_request(

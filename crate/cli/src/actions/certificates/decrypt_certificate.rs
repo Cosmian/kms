@@ -9,9 +9,10 @@ use cosmian_kms_client::{
 use crate::{
     actions::{
         console,
+        labels::KEY_ID,
         rsa::{HashFn, RsaEncryptionAlgorithm},
+        shared::get_key_uid,
     },
-    cli_bail,
     error::result::{CliResult, CliResultHelper},
 };
 
@@ -26,7 +27,7 @@ pub struct DecryptCertificateAction {
 
     /// The private key unique identifier related to certificate
     /// If not specified, tags should be specified
-    #[clap(long = "key-id", short = 'k', group = "key-tags")]
+    #[clap(long = KEY_ID,  short = 'k', group = "key-tags")]
     private_key_id: Option<String>,
 
     /// Tag to use to retrieve the key when no key id is specified.
@@ -55,13 +56,7 @@ impl DecryptCertificateAction {
         let ciphertext = read_bytes_from_file(&self.input_file)?;
 
         // Recover the unique identifier or set of tags
-        let id = if let Some(key_id) = &self.private_key_id {
-            key_id.clone()
-        } else if let Some(tags) = &self.tags {
-            serde_json::to_string(&tags)?
-        } else {
-            cli_bail!("Either --key-id or one or more --tag must be specified")
-        };
+        let id = get_key_uid(self.private_key_id.as_ref(), self.tags.as_ref(), KEY_ID)?;
 
         // Create the kmip query
         let decrypt_request = Decrypt {

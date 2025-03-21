@@ -9,7 +9,7 @@ use cosmian_kms_client::{
 };
 
 use crate::{
-    cli_bail,
+    actions::{labels::KEY_ID, shared::get_key_uid},
     error::result::{CliResult, CliResultHelper},
 };
 
@@ -24,7 +24,7 @@ pub struct DecryptAction {
 
     /// The user key unique identifier
     /// If not specified, tags should be specified
-    #[clap(long = "key-id", short = 'k', group = "key-tags")]
+    #[clap(long = KEY_ID, short = 'k', group = "key-tags")]
     key_id: Option<String>,
 
     /// Tag to use to retrieve the key when no key id is specified.
@@ -61,13 +61,7 @@ impl DecryptAction {
         };
 
         // Recover the unique identifier or set of tags
-        let id = if let Some(key_id) = &self.key_id {
-            key_id.clone()
-        } else if let Some(tags) = &self.tags {
-            serde_json::to_string(&tags)?
-        } else {
-            cli_bail!("Either `--key-id` or one or more `--tag` must be specified")
-        };
+        let id = get_key_uid(self.key_id.as_ref(), self.tags.as_ref(), KEY_ID)?;
 
         // Create the kmip query
         let decrypt_request = decrypt_request(

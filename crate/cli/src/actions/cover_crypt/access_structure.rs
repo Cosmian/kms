@@ -19,7 +19,11 @@ use cosmian_kms_crypto::{
     CryptoError,
 };
 
-use crate::{actions::console, cli_bail, error::result::CliResult};
+use crate::{
+    actions::{console, labels::KEY_ID, shared::get_key_uid},
+    cli_bail,
+    error::result::CliResult,
+};
 
 /// Extract, view, or edit policies of existing keys
 #[derive(Subcommand)]
@@ -51,7 +55,7 @@ impl AccessStructureCommands {
 #[clap(verbatim_doc_comment)]
 pub struct ViewAction {
     /// The public or private master key ID if the key is stored in the KMS
-    #[clap(long = "key-id", short = 'i', required_unless_present = "key_file")]
+    #[clap(long = KEY_ID, short = 'i', required_unless_present = "key_file")]
     key_id: Option<String>,
 
     /// If `key-id` is not provided, use `--key-file` to provide the file containing the public or private master key in TTLV format.
@@ -103,7 +107,7 @@ pub struct AddQualifiedAttributeAction {
 
     /// The master secret key unique identifier stored in the KMS.
     /// If not specified, tags should be specified
-    #[clap(long = "key-id", short = 'k', group = "key-tags")]
+    #[clap(long = KEY_ID, short = 'k', group = "key-tags")]
     secret_key_id: Option<String>,
 
     /// Tag to use to retrieve the key when no key id is specified.
@@ -113,13 +117,7 @@ pub struct AddQualifiedAttributeAction {
 }
 impl AddQualifiedAttributeAction {
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
-        let id = if let Some(key_id) = &self.secret_key_id {
-            key_id.clone()
-        } else if let Some(tags) = &self.tags {
-            serde_json::to_string(&tags)?
-        } else {
-            cli_bail!("Either --key-id or one or more --tag must be specified")
-        };
+        let id = get_key_uid(self.secret_key_id.as_ref(), self.tags.as_ref(), KEY_ID)?;
 
         let rekey_query = build_rekey_keypair_request(
             &id,
@@ -161,10 +159,10 @@ pub struct RenameAttributeAction {
     #[clap(required = true)]
     new_name: String,
 
-    /// The private master key unique identifier stored in the KMS.
+    /// The master secret key unique identifier stored in the KMS.
     /// If not specified, tags should be specified
-    #[clap(long = "key-id", short = 'k', group = "key-tags")]
-    secret_key_id: Option<String>,
+    #[clap(long = KEY_ID, short = 'k', group = "key-tags")]
+    master_secret_key_id: Option<String>,
 
     /// Tag to use to retrieve the key when no key id is specified.
     /// To specify multiple tags, use the option multiple times.
@@ -173,13 +171,11 @@ pub struct RenameAttributeAction {
 }
 impl RenameAttributeAction {
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
-        let id = if let Some(key_id) = &self.secret_key_id {
-            key_id.clone()
-        } else if let Some(tags) = &self.tags {
-            serde_json::to_string(&tags)?
-        } else {
-            cli_bail!("Either --key-id or one or more --tag must be specified")
-        };
+        let id = get_key_uid(
+            self.master_secret_key_id.as_ref(),
+            self.tags.as_ref(),
+            KEY_ID,
+        )?;
 
         // Create the kmip query
         let rekey_query = build_rekey_keypair_request(
@@ -216,10 +212,10 @@ pub struct DisableAttributeAction {
     #[clap(required = true)]
     attribute: String,
 
-    /// The private master key unique identifier stored in the KMS.
+    /// The master secret key unique identifier stored in the KMS.
     /// If not specified, tags should be specified
-    #[clap(long = "key-id", short = 'k', group = "key-tags")]
-    secret_key_id: Option<String>,
+    #[clap(long = KEY_ID, short = 'k', group = "key-tags")]
+    master_secret_key_id: Option<String>,
 
     /// Tag to use to retrieve the key when no key id is specified.
     /// To specify multiple tags, use the option multiple times.
@@ -228,13 +224,11 @@ pub struct DisableAttributeAction {
 }
 impl DisableAttributeAction {
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
-        let id = if let Some(key_id) = &self.secret_key_id {
-            key_id.clone()
-        } else if let Some(tags) = &self.tags {
-            serde_json::to_string(&tags)?
-        } else {
-            cli_bail!("Either --key-id or one or more --tag must be specified")
-        };
+        let id = get_key_uid(
+            self.master_secret_key_id.as_ref(),
+            self.tags.as_ref(),
+            KEY_ID,
+        )?;
 
         // Create the kmip query
         let rekey_query = build_rekey_keypair_request(
@@ -274,10 +268,10 @@ pub struct RemoveAttributeAction {
     #[clap(required = true)]
     attribute: String,
 
-    /// The private master key unique identifier stored in the KMS.
+    /// The master secret key unique identifier stored in the KMS.
     /// If not specified, tags should be specified
-    #[clap(long = "key-id", short = 'k', group = "key-tags")]
-    secret_key_id: Option<String>,
+    #[clap(long = KEY_ID, short = 'k', group = "key-tags")]
+    master_secret_key_id: Option<String>,
 
     /// Tag to use to retrieve the key when no key id is specified.
     /// To specify multiple tags, use the option multiple times.
@@ -286,13 +280,11 @@ pub struct RemoveAttributeAction {
 }
 impl RemoveAttributeAction {
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
-        let id = if let Some(key_id) = &self.secret_key_id {
-            key_id.clone()
-        } else if let Some(tags) = &self.tags {
-            serde_json::to_string(&tags)?
-        } else {
-            cli_bail!("Either --key-id or one or more --tag must be specified")
-        };
+        let id = get_key_uid(
+            self.master_secret_key_id.as_ref(),
+            self.tags.as_ref(),
+            KEY_ID,
+        )?;
 
         // Create the kmip query
         let rekey_query = build_rekey_keypair_request(

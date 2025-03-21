@@ -10,7 +10,10 @@ use cosmian_kms_client::{
 use tracing::trace;
 
 use super::set::SetOrDeleteAttributes;
-use crate::{actions::console, cli_bail, error::result::CliResult};
+use crate::{
+    actions::{console, labels::ATTRIBUTE_ID, shared::get_key_uid},
+    error::result::CliResult,
+};
 
 /// Delete the KMIP object attributes.
 #[derive(Parser, Debug)]
@@ -62,13 +65,11 @@ impl DeleteAttributesAction {
     ///
     pub async fn process(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         trace!("DeleteAttributeAction: {:?}", self);
-        let id = if let Some(key_id) = &self.requested_attributes.id {
-            key_id.clone()
-        } else if let Some(tags) = &self.requested_attributes.tags {
-            serde_json::to_string(&tags)?
-        } else {
-            cli_bail!("Either --id or one or more --tag must be specified")
-        };
+        let id = get_key_uid(
+            self.requested_attributes.id.as_ref(),
+            self.requested_attributes.tags.as_ref(),
+            ATTRIBUTE_ID,
+        )?;
 
         for attribute in self.requested_attributes.get_attributes_from_args()? {
             self.delete_attribute(kms_rest_client, &id, Some(attribute), None)
