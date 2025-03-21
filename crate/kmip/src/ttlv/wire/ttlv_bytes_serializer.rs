@@ -49,17 +49,14 @@ where
             TTLValue::Structure(items) => {
                 // Write Type (1 byte)
                 write_type(&mut self.writer, TtlvType::Structure)?;
-
                 // Calculate total length of nested items
                 let mut temp_buffer = Vec::new();
                 let mut temp_serializer = TTLVBytesSerializer::new(&mut temp_buffer);
                 for item in items {
                     temp_serializer.write_ttlv::<TAG>(item)?;
                 }
-
                 // Write Length (4 bytes)
                 write_length(&mut self.writer, temp_buffer.len())?;
-
                 // Write actual nested items
                 self.writer.write_all(&temp_buffer)?;
             }

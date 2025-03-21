@@ -49,11 +49,11 @@ where
                 let mut items = Vec::new();
                 let mut remaining = length;
                 while remaining > 0 {
-                    let item = self.read_ttlv::<TAG>()?;
-                    remaining -= item_size(&item)?;
+                    let (item, item_length) = self.read_ttlv::<TAG>()?;
+                    remaining -= item_length;
                     items.push(item);
                 }
-                (TTLValue::Structure(items), 42)
+                (TTLValue::Structure(items), length)
             }
             TtlvType::Integer => {
                 let mut buf4 = [0_u8; 4];
@@ -90,69 +90,65 @@ where
             TtlvType::Boolean => {
                 let mut buf8 = [0_u8; 8];
                 self.reader.read_exact(&mut buf8)?;
-                TTLValue::Boolean(buf8[7] != 0)
+                (TTLValue::Boolean(buf8[7] != 0), 8)
             }
             TtlvType::TextString => {
                 let mut buf = vec![0_u8; length];
                 self.reader.read_exact(&mut buf)?;
-                TTLValue::TextString(String::from_utf8(buf)?)
+                let value = TTLValue::TextString(String::from_utf8(buf)?);
+                // calculate the padding
+                let padding = 8 - (length % 8);
+                if padding != 8 {
+                    // read the padding bytes
+                    let mut padding_bytes = vec![0_u8; padding];
+                    self.reader.read_exact(&mut padding_bytes)?;
+                }
+                (value, length + padding)
             }
             TtlvType::ByteString => {
                 let mut buf = vec![0_u8; length];
                 self.reader.read_exact(&mut buf)?;
-                TTLValue::ByteString(buf)
+                let value = TTLValue::ByteString(buf);
+                // calculate the padding
+                let padding = 8 - (length % 8);
+                if padding != 8 {
+                    // read the padding bytes
+                    let mut padding_bytes = vec![0_u8; padding];
+                    self.reader.read_exact(&mut padding_bytes)?;
+                }
+                (value, length + padding)
             }
             TtlvType::DateTime => {
                 let mut buf8 = [0_u8; 8];
                 self.reader.read_exact(&mut buf8)?;
                 let timestamp = i64::from_be_bytes(buf8);
                 let t = OffsetDateTime::from_unix_timestamp(timestamp)?;
-                TTLValue::DateTime(t)
+                (TTLValue::DateTime(t), 8)
             }
             TtlvType::Interval => {
                 let mut buf4 = [0_u8; 4];
                 self.reader.read_exact(&mut buf4)?;
-                TTLValue::Interval(u32::from_be_bytes(buf4))
+                let value = TTLValue::Interval(u32::from_be_bytes(buf4));
+                // read the 4 bytes of padding
+                self.reader.read_exact(&mut buf4)?;
+                (value, 8)
             }
             TtlvType::DateTimeExtended => {
                 let mut buf8 = [0_u8; 8];
                 self.reader.read_exact(&mut buf8)?;
                 let micros = i64::from_be_bytes(buf8);
-                TTLValue::DateTimeExtended(i128::from(micros))
+                (TTLValue::DateTimeExtended(i128::from(micros)), 8)
             }
         };
 
-        Ok(TTLV {
-            tag: tag.to_string(),
-            value,
-        })
+        Ok((
+            TTLV {
+                tag: tag.to_string(),
+                value,
+            },
+            value_len + 8,
+        ))
     }
-}
-
-/// Calculate the total size of a TTLV item including its tag, type, length, and value
-fn item_size(ttlv: &TTLV) -> Result<usize, TtlvError> {
-    // 8 bytes for tag (3), type (1), and length (4)
-    let mut size = 8;
-
-    size += match &ttlv.value {
-        TTLValue::Structure(items) => {
-            let mut struct_size = 0;
-            for item in items {
-                struct_size += item_size(item)?;
-            }
-            struct_size
-        }
-        TTLValue::Integer(_) | TTLValue::Enumeration(_) | TTLValue::Interval(_) => 4,
-        TTLValue::LongInteger(_)
-        | TTLValue::DateTimeExtended(_)
-        | TTLValue::DateTime(_)
-        | TTLValue::Boolean(_) => 8,
-        TTLValue::BigInteger(value) => value.to_signed_bytes_be().len(),
-        TTLValue::TextString(value) => value.len(),
-        TTLValue::ByteString(value) => value.len(),
-    };
-
-    Ok(size)
 }
 
 #[allow(clippy::unwrap_used)]
@@ -170,7 +166,7 @@ mod tests {
         },
     };
 
-    fn serialize_and_deserialize(ttlv: &TTLV) -> TTLV {
+    fn serialize_and_deserialize(ttlv: &TTLV) {
         let mut buffer = Vec::new();
         let mut serializer = TTLVBytesSerializer::new(&mut buffer);
         serializer
@@ -178,9 +174,12 @@ mod tests {
             .unwrap();
 
         let mut deserializer = TTLVBytesDeserializer::new(buffer.as_slice());
-        deserializer
+        let (ttlv_, length) = deserializer
             .read_ttlv::<kmip_1_4::kmip_types::Tag>()
-            .unwrap()
+            .unwrap();
+        assert_eq!(length, buffer.len(), "Length mismatch");
+        assert_eq!(ttlv.tag, ttlv_.tag, "Tag mismatch");
+        assert_eq!(ttlv.value, ttlv_.value, "Value mismatch");
     }
 
     #[test]
@@ -189,9 +188,7 @@ mod tests {
             tag: kmip_1_4::kmip_types::Tag::BatchCount.to_string(),
             value: TTLValue::Integer(123),
         };
-        let deserialized = serialize_and_deserialize(&original);
-        assert_eq!(original.tag, deserialized.tag);
-        assert_eq!(original.value, deserialized.value);
+        serialize_and_deserialize(&original);
     }
 
     #[test]
@@ -200,9 +197,7 @@ mod tests {
             tag: kmip_1_4::kmip_types::Tag::IterationCount.to_string(),
             value: TTLValue::LongInteger(1_234_567_890_123_456_789),
         };
-        let deserialized = serialize_and_deserialize(&original);
-        assert_eq!(original.tag, deserialized.tag);
-        assert_eq!(original.value, deserialized.value);
+        serialize_and_deserialize(&original);
     }
 
     #[test]
@@ -212,9 +207,7 @@ mod tests {
             tag: kmip_1_4::kmip_types::Tag::D.to_string(),
             value: TTLValue::BigInteger(KmipBigInt::from(bi)),
         };
-        let deserialized = serialize_and_deserialize(&original);
-        assert_eq!(original.tag, deserialized.tag);
-        assert_eq!(original.value, deserialized.value);
+        serialize_and_deserialize(&original);
     }
 
     #[test]
@@ -229,16 +222,7 @@ mod tests {
             tag: kmip_1_4::kmip_types::Tag::CryptographicAlgorithm.to_string(),
             value: TTLValue::Enumeration(variant),
         };
-        let deserialized = serialize_and_deserialize(&original);
-        assert_eq!(original.tag, deserialized.tag);
-        // Only compare the value since the name is not serialized
-        if let (TTLValue::Enumeration(orig_enum), TTLValue::Enumeration(des_enum)) =
-            (&original.value, &deserialized.value)
-        {
-            assert_eq!(orig_enum.value, des_enum.value);
-        } else {
-            panic!("Expected Enumeration values");
-        }
+        serialize_and_deserialize(&original);
     }
 
     #[test]
@@ -247,9 +231,7 @@ mod tests {
             tag: kmip_1_4::kmip_types::Tag::Sensitive.to_string(),
             value: TTLValue::Boolean(true),
         };
-        let deserialized = serialize_and_deserialize(&original);
-        assert_eq!(original.tag, deserialized.tag);
-        assert_eq!(original.value, deserialized.value);
+        serialize_and_deserialize(&original);
     }
 
     #[test]
@@ -258,9 +240,7 @@ mod tests {
             tag: kmip_1_4::kmip_types::Tag::Name.to_string(),
             value: TTLValue::TextString("Hello KMIP".to_owned()),
         };
-        let deserialized = serialize_and_deserialize(&original);
-        assert_eq!(original.tag, deserialized.tag);
-        assert_eq!(original.value, deserialized.value);
+        serialize_and_deserialize(&original);
     }
 
     #[test]
@@ -269,9 +249,7 @@ mod tests {
             tag: kmip_1_4::kmip_types::Tag::KeyValue.to_string(),
             value: TTLValue::ByteString(vec![1, 2, 3, 4, 5]),
         };
-        let deserialized = serialize_and_deserialize(&original);
-        assert_eq!(original.tag, deserialized.tag);
-        assert_eq!(original.value, deserialized.value);
+        serialize_and_deserialize(&original);
     }
 
     #[test]
@@ -281,9 +259,7 @@ mod tests {
             tag: kmip_1_4::kmip_types::Tag::DeactivationDate.to_string(),
             value: TTLValue::DateTime(now),
         };
-        let deserialized = serialize_and_deserialize(&original);
-        assert_eq!(original.tag, deserialized.tag);
-        assert_eq!(original.value, deserialized.value);
+        serialize_and_deserialize(&original);
     }
 
     #[test]
@@ -292,9 +268,7 @@ mod tests {
             tag: kmip_1_4::kmip_types::Tag::ValidityIndicator.to_string(),
             value: TTLValue::Interval(86400),
         };
-        let deserialized = serialize_and_deserialize(&original);
-        assert_eq!(original.tag, deserialized.tag);
-        assert_eq!(original.value, deserialized.value);
+        serialize_and_deserialize(&original);
     }
 
     #[test]
@@ -305,9 +279,7 @@ mod tests {
             tag: kmip_1_4::kmip_types::Tag::ActivationDate.to_string(),
             value: TTLValue::DateTimeExtended(i128::from(micros)),
         };
-        let deserialized = serialize_and_deserialize(&original);
-        assert_eq!(original.tag, deserialized.tag);
-        assert_eq!(original.value, deserialized.value);
+        serialize_and_deserialize(&original);
     }
 
     #[test]
@@ -325,8 +297,6 @@ mod tests {
                 },
             ]),
         };
-        let deserialized = serialize_and_deserialize(&original);
-        assert_eq!(original.tag, deserialized.tag);
-        assert_eq!(original.value, deserialized.value);
+        serialize_and_deserialize(&original);
     }
 }

@@ -8,7 +8,7 @@ use cosmian_kms_client::{
         kmip_types::{KeyFormatType, LinkType},
     },
     read_from_json_file, read_object_from_json_ttlv_file,
-    ttlv::{kmip_ttlv_deserializer::from_ttlv, TTLV},
+    ttlv::{from_ttlv, TTLV},
     KMS_CLI_CONF_ENV,
 };
 use kms_test_server::start_default_test_kms_server;

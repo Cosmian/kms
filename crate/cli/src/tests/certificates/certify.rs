@@ -4,7 +4,7 @@ use assert_cmd::cargo::CommandCargoExt;
 use cosmian_kms_client::{
     cosmian_kmip::{
         kmip_2_1::{kmip_attributes::Attributes, kmip_objects::Object, kmip_types::LinkType},
-        ttlv::{kmip_ttlv_deserializer::from_ttlv, TTLV},
+        ttlv::{from_ttlv, TTLV},
     },
     kmip_2_1::kmip_objects::Certificate,
     read_from_json_file, read_object_from_json_ttlv_file, KMS_CLI_CONF_ENV,
