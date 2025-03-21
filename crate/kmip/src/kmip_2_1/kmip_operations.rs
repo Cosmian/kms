@@ -1821,9 +1821,7 @@ impl Display for ReKeyKeyPair {
 #[derive(Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct ReKeyKeyPairResponse {
-    // The Unique Identifier of the newly created replacement Private Key object.
     pub private_key_unique_identifier: UniqueIdentifier,
-    // The Unique Identifier of the newly created replacement Public Key object.}
     pub public_key_unique_identifier: UniqueIdentifier,
 }
 

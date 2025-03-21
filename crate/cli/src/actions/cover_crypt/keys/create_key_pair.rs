@@ -20,7 +20,7 @@ use crate::{
 ///  - The master public key is used to encrypt the files and can be safely shared.
 ///  - The master secret key is used to generate user decryption keys and must be kept confidential.
 ///
-/// The policy specifications must be passed as a JSON in a file, for example:
+/// The access structure specifications must be passed as a JSON in a file, for example:
 /// ```json
 ///     {
 ///        "Security Level::<": [
@@ -36,13 +36,12 @@ use crate::{
 ///        ]
 ///    }
 /// ```
-/// These specifications create a policy where:
-///  - the policy is defined with 2 policy axes: `Security Level` and `Department`
-///  - the `Security Level` axis is hierarchical as indicated by the `::<` suffix,
-///  - the `Security Level` axis has 3 possible values: `Protected`, `Confidential`, and `Top Secret`,
-///  - the `Department` axis has 4 possible values: `RnD`, `HR`, `MKG`, and `FIN`,
-///  - all partitions which are `Top Secret` will be encrypted using post-quantum hybridized cryptography, as indicated by the `::+` suffix on the value,
-///  - all other partitions will use classic cryptography.
+/// This specification creates an access structure with:
+///  - 2 dimensions: `Security Level` and `Department`
+///  - `Security Level` as hierarchical dimension, as indicated by the `::<` suffix,
+///  - `Security Level` has 3 possible values: `Protected`, `Confidential`, and `Top Secret`,
+///  - `Department` has 4 possible values: `RnD`, `HR`, `MKG`, and `FIN`,
+///  - all encapsulations targeting `Top Secret` will be hybridized, as indicated by the `::+` suffix on the value,
 ///
 /// Tags can later be used to retrieve the keys. Tags are optional.
 #[derive(Parser)]
