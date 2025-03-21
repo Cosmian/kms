@@ -5,20 +5,20 @@ use std::{
     fmt::{Display, Formatter},
 };
 
-use kmip_derive::KmipEnumSerialize;
+use kmip_derive::{kmip_enum, KmipEnumDeserialize, KmipEnumSerialize};
 use serde::{
     de,
     de::{MapAccess, Visitor},
     ser::SerializeStruct,
     Deserialize, Serialize,
 };
-use strum::{Display, EnumString, FromRepr};
+use strum::Display;
 use uuid::Uuid;
 
 use crate::kmip_2_1::{self};
 
 /// KMIP 1.4 Credential Type Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum CredentialType {
     UsernameAndPassword = 0x1,
     Device = 0x2,
@@ -26,7 +26,7 @@ pub enum CredentialType {
 }
 
 /// KMIP 1.4 Key Compression Type Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum KeyCompressionType {
     ECPublicKeyTypeUncompressed = 0x1,
     ECPublicKeyTypeX962Compressed = 0x2,
@@ -50,7 +50,7 @@ impl From<KeyCompressionType> for kmip_2_1::kmip_types::KeyCompressionType {
 }
 
 /// KMIP 1.4 Key Format Type Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum KeyFormatType {
     Raw = 0x1,
     Opaque = 0x2,
@@ -100,7 +100,7 @@ impl From<KeyFormatType> for kmip_2_1::kmip_types::KeyFormatType {
 }
 
 /// KMIP 1.4 Wrapping Method Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum WrappingMethod {
     Encrypt = 0x1,
     MACSign = 0x2,
@@ -122,7 +122,7 @@ impl From<WrappingMethod> for kmip_2_1::kmip_types::WrappingMethod {
 }
 
 /// KMIP 1.4 Certificate Type Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum CertificateType {
     X509 = 0x1,
     PGP = 0x2,
@@ -138,14 +138,14 @@ impl From<CertificateType> for kmip_2_1::kmip_types::CertificateType {
 }
 
 /// KMIP 1.4 Split Key Method Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum SplitKeyMethod {
     XOR = 0x0000_0001,
-    #[serde(rename = "Polynomial Sharing GF (2^16)")]
+    // #[serde(rename = "Polynomial Sharing GF (2^16)")]
     PolynomialSharingGf216 = 0x0000_0002,
-    #[serde(rename = "Polynomial Sharing Prime Field")]
+    // #[serde(rename = "Polynomial Sharing Prime Field")]
     PolynomialSharingPrimeField = 0x0000_0003,
-    #[serde(rename = "Polynomial Sharing GF (2^8)")]
+    // #[serde(rename = "Polynomial Sharing GF (2^8)")]
     PolynomialSharingGf28 = 0x0000_0004,
 }
 
@@ -161,7 +161,7 @@ impl From<SplitKeyMethod> for kmip_2_1::kmip_types::SplitKeyMethod {
 }
 
 /// KMIP 1.4 Secret Data Type Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum SecretDataType {
     Password = 0x1,
     Seed = 0x2,
@@ -177,7 +177,7 @@ impl From<SecretDataType> for kmip_2_1::kmip_types::SecretDataType {
 }
 
 /// KMIP 1.4 Name Type Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum NameType {
     UninterpretedTextString = 0x1,
     URI = 0x2,
@@ -193,7 +193,7 @@ impl From<NameType> for kmip_2_1::kmip_types::NameType {
 }
 
 /// KMIP 1.4 Object Type Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum ObjectType {
     Certificate = 0x1,
     SymmetricKey = 0x2,
@@ -223,7 +223,7 @@ impl From<ObjectType> for kmip_2_1::kmip_objects::ObjectType {
 }
 
 /// KMIP 1.4 Cryptographic Algorithm Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum CryptographicAlgorithm {
     DES = 0x1,
     ThreeES = 0x2,
@@ -314,8 +314,7 @@ impl From<CryptographicAlgorithm> for kmip_2_1::kmip_types::CryptographicAlgorit
 }
 
 /// KMIP 1.4 Block Cipher Mode Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
-#[repr(u32)]
+#[kmip_enum]
 pub enum BlockCipherMode {
     CBC = 0x0000_0001,
     ECB = 0x0000_0002,
@@ -326,17 +325,17 @@ pub enum BlockCipherMode {
     CMAC = 0x0000_0007,
     CCM = 0x0000_0008,
     GCM = 0x0000_0009,
-    #[serde(rename = "CBC-MAC")]
+    // #[serde(rename = "CBC-MAC")]
     CBCMAC = 0x0000_000A,
     XTS = 0x0000_000B,
     AESKeyWrapPadding = 0x0000_000C,
-    #[serde(rename = "X9.102 AESKW")]
+    // #[serde(rename = "X9.102 AESKW")]
     X9102AESKW = 0x0000_000E,
-    #[serde(rename = "X9.102 TDKW")]
+    // #[serde(rename = "X9.102 TDKW")]
     X9102TDKW = 0x0000_000F,
-    #[serde(rename = "X9.102 AKW1")]
+    // #[serde(rename = "X9.102 AKW1")]
     X9102AKW1 = 0x0000_0010,
-    #[serde(rename = "X9.102 AKW2")]
+    // #[serde(rename = "X9.102 AKW2")]
     X9102AKW2 = 0x0000_0011,
     AEAD = 0x0000_0012,
     // Extensions - 8XXXXXXX
@@ -373,20 +372,20 @@ impl From<BlockCipherMode> for kmip_2_1::kmip_types::BlockCipherMode {
 }
 
 /// KMIP 1.4 Padding Method Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum PaddingMethod {
     None = 0x1,
     OAEP = 0x2,
     PKCS5 = 0x3,
     SSL3 = 0x4,
     Zeros = 0x5,
-    #[serde(rename = "ANSI X9.23")]
+    // #[serde(rename = "ANSI X9.23")]
     ANSI_X923 = 0x6,
-    #[serde(rename = "ISO 10126")]
+    // #[serde(rename = "ISO 10126")]
     ISO10126 = 0x7,
-    #[serde(rename = "PKCS1 v1.5")]
+    // #[serde(rename = "PKCS1 v1.5")]
     PKCS1v15 = 0x8,
-    #[serde(rename = "X9.31")]
+    // #[serde(rename = "X9.31")]
     X931 = 0x9,
     PSS = 0xA,
 }
@@ -408,36 +407,36 @@ impl From<PaddingMethod> for kmip_2_1::kmip_types::PaddingMethod {
 }
 
 /// KMIP 1.4 Hashing Algorithm Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum HashingAlgorithm {
     MD2 = 0x0000_0001,
     MD4 = 0x0000_0002,
     MD5 = 0x0000_0003,
-    #[serde(rename = "SHA-1")]
+    // #[serde(rename = "SHA-1")]
     SHA1 = 0x0000_0004,
-    #[serde(rename = "SHA-224")]
+    // #[serde(rename = "SHA-224")]
     SHA224 = 0x0000_0005,
-    #[serde(rename = "SHA-256")]
+    // #[serde(rename = "SHA-256")]
     SHA256 = 0x0000_0006,
-    #[serde(rename = "SHA-384")]
+    // #[serde(rename = "SHA-384")]
     SHA384 = 0x0000_0007,
-    #[serde(rename = "SHA-512")]
+    // #[serde(rename = "SHA-512")]
     SHA512 = 0x0000_0008,
-    #[serde(rename = "RIPEMD-160")]
+    // #[serde(rename = "RIPEMD-160")]
     RIPEMD160 = 0x0000_0009,
     Tiger = 0x0000_000A,
     Whirlpool = 0x0000_000B,
-    #[serde(rename = "SHA-512/224")]
+    // #[serde(rename = "SHA-512/224")]
     SHA512224 = 0x0000_000C,
-    #[serde(rename = "SHA-512/256")]
+    // #[serde(rename = "SHA-512/256")]
     SHA512256 = 0x0000_000D,
-    #[serde(rename = "SHA-3-224")]
+    // #[serde(rename = "SHA-3-224")]
     SHA3224 = 0x0000_000E,
-    #[serde(rename = "SHA-3-256")]
+    // #[serde(rename = "SHA-3-256")]
     SHA3256 = 0x0000_000F,
-    #[serde(rename = "SHA-3-384")]
+    // #[serde(rename = "SHA-3-384")]
     SHA3384 = 0x0000_0010,
-    #[serde(rename = "SHA-3-512")]
+    // #[serde(rename = "SHA-3-512")]
     SHA3512 = 0x0000_0011,
 }
 
@@ -466,7 +465,7 @@ impl From<HashingAlgorithm> for kmip_2_1::kmip_types::HashingAlgorithm {
 }
 
 /// KMIP 1.4 Key Role Type Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum KeyRoleType {
     BDK = 0x1,
     CVK = 0x2,
@@ -526,7 +525,7 @@ impl From<KeyRoleType> for kmip_2_1::kmip_types::KeyRoleType {
 }
 
 /// KMIP 1.4 State Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum State {
     PreActive = 0x1,
     Active = 0x2,
@@ -550,7 +549,7 @@ impl From<State> for kmip_2_1::kmip_types::State {
 }
 
 /// KMIP 1.4 Revocation Reason Code Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum RevocationReasonCode {
     Unspecified = 0x1,
     KeyCompromise = 0x2,
@@ -576,8 +575,7 @@ impl From<RevocationReasonCode> for kmip_2_1::kmip_types::RevocationReasonCode {
 }
 
 /// KMIP 1.4 Link Type Enumeration
-#[allow(non_camel_case_types)]
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum LinkType {
     CertificateLink = 0x101,
     PublicKeyLink = 0x102,
@@ -611,8 +609,7 @@ impl From<LinkType> for kmip_2_1::kmip_types::LinkType {
 }
 
 /// KMIP 1.4 Derivation Method Enumeration
-#[allow(non_camel_case_types)]
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum DerivationMethod {
     PBKDF2 = 0x1,
     HASH = 0x2,
@@ -625,7 +622,7 @@ pub enum DerivationMethod {
 }
 
 /// KMIP 1.4 Certificate Request Type Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum CertificateRequestType {
     CRMF = 0x1,
     PKCS10 = 0x2,
@@ -633,7 +630,7 @@ pub enum CertificateRequestType {
 }
 
 /// KMIP 1.4 Validity Indicator Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum ValidityIndicator {
     Valid = 0x1,
     Invalid = 0x2,
@@ -641,7 +638,7 @@ pub enum ValidityIndicator {
 }
 
 /// KMIP 1.4 Query Function Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum QueryFunction {
     QueryOperations = 0x1,
     QueryObjects = 0x2,
@@ -657,7 +654,7 @@ pub enum QueryFunction {
 }
 
 /// KMIP 1.4 Cancellation Result Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum CancellationResult {
     Canceled = 0x1,
     UnableToCancel = 0x2,
@@ -667,14 +664,14 @@ pub enum CancellationResult {
 }
 
 /// KMIP 1.4 Put Function Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum PutFunction {
     New = 0x1,
     Replace = 0x2,
 }
 
 /// KMIP 1.4 Operation Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum OperationEnumeration {
     Create = 0x1,
     CreateKeyPair = 0x2,
@@ -722,7 +719,7 @@ pub enum OperationEnumeration {
 }
 
 /// KMIP 1.4 Result Status Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum ResultStatus {
     Success = 0x1,
     OperationFailed = 0x2,
@@ -731,7 +728,7 @@ pub enum ResultStatus {
 }
 
 /// KMIP 1.4 Result Reason Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum ResultReason {
     ItemNotFound = 0x1,
     ResponseTooLarge = 0x2,
@@ -761,7 +758,7 @@ pub enum ResultReason {
 }
 
 /// KMIP 1.4 Batch Error Continuation Option Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum BatchErrorContinuationOption {
     Continue = 0x1,
     Stop = 0x2,
@@ -769,7 +766,7 @@ pub enum BatchErrorContinuationOption {
 }
 
 /// KMIP 1.4 Usage Limits Unit Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum UsageLimitsUnit {
     Byte = 0x1,
     Object = 0x2,
@@ -785,7 +782,7 @@ impl From<UsageLimitsUnit> for kmip_2_1::kmip_types::UsageLimitsUnit {
 }
 
 /// KMIP 1.4 Encoding Option Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum EncodingOption {
     NoEncoding = 0x1,
     TTLVEncoding = 0x2,
@@ -801,14 +798,14 @@ impl From<EncodingOption> for kmip_2_1::kmip_types::EncodingOption {
 }
 
 /// KMIP 1.4 Object Group Member Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum ObjectGroupMember {
     GroupMemberFresh = 0x1,
     GroupMemberDefault = 0x2,
 }
 
 /// KMIP 1.4 Alternative Name Type Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum AlternativeNameType {
     UninterpretedTextString = 0x1,
     URI = 0x2,
@@ -834,7 +831,7 @@ impl From<AlternativeNameType> for kmip_2_1::kmip_types::AlternativeNameType {
 }
 
 /// KMIP 1.4 Key Value Location Type Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum KeyValueLocationType {
     Unspecified = 0x1,
     OnPremise = 0x2,
@@ -854,8 +851,7 @@ impl From<KeyValueLocationType> for kmip_2_1::kmip_types::KeyValueLocationType {
 }
 
 /// KMIP 1.4 RNG Algorithm Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
-#[allow(non_camel_case_types)]
+#[kmip_enum]
 pub enum RNGAlgorithm {
     Unspecified = 0x1,
     FIPS186_2 = 0x2,
@@ -879,10 +875,10 @@ impl From<RNGAlgorithm> for kmip_2_1::kmip_types::RNGAlgorithm {
 }
 
 /// KMIP 1.4 DRBG Algorithm Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum DRBGAlgorithm {
     Unspecified = 0x1,
-    #[serde(rename = "Dual-EC")]
+    // #[serde(rename = "Dual-EC")]
     DualEC = 0x2,
     Hash = 0x3,
     HMAC = 0x4,
@@ -902,21 +898,20 @@ impl From<DRBGAlgorithm> for kmip_2_1::kmip_types::DRBGAlgorithm {
 }
 
 /// KMIP 1.4 FIPS186 Variation Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
-#[allow(non_camel_case_types)]
+#[kmip_enum]
 pub enum FIPS186Variation {
     Unspecified = 0x1,
-    #[serde(rename = "GP x-Original")]
+    // #[serde(rename = "GP x-Original")]
     GPXOriginal = 0x2,
-    #[serde(rename = "GP x-Change Notice")]
+    // #[serde(rename = "GP x-Change Notice")]
     GPXChangeNotice = 0x3,
-    #[serde(rename = "x-Original")]
+    // #[serde(rename = "x-Original")]
     XOriginal = 0x4,
-    #[serde(rename = "x-Change Notice")]
+    // #[serde(rename = "x-Change Notice")]
     XChangeNotice = 0x5,
-    #[serde(rename = "k-Original")]
+    // #[serde(rename = "k-Original")]
     KOriginal = 0x6,
-    #[serde(rename = "k-Change Notice")]
+    // #[serde(rename = "k-Change Notice")]
     KChangeNotice = 0x7,
 }
 
@@ -935,8 +930,7 @@ impl From<FIPS186Variation> for kmip_2_1::kmip_types::FIPS186Variation {
 }
 
 /// KMIP 1.4 Validation Authority Type Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
-#[allow(non_camel_case_types)]
+#[kmip_enum]
 pub enum ValidationAuthorityType {
     Unspecified = 0x1,
     NIST_CMVP = 0x2,
@@ -944,7 +938,7 @@ pub enum ValidationAuthorityType {
 }
 
 /// KMIP 1.4 Validation Type Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum ValidationType {
     Unspecified = 0x1,
     Hardware = 0x2,
@@ -954,7 +948,7 @@ pub enum ValidationType {
 }
 
 /// KMIP 1.4 Profile Name Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum ProfileName {
     BEK = 0x1,
     TKLC = 0x2,
@@ -967,7 +961,7 @@ pub enum ProfileName {
 }
 
 /// KMIP 1.4 Unwrap Mode Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum UnwrapMode {
     Unspecified = 0x1,
     UsingWrappingKey = 0x2,
@@ -975,28 +969,28 @@ pub enum UnwrapMode {
 }
 
 /// KMIP 1.4 Destroy Action Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum DestroyAction {
     Unspecified = 0x1,
     Zeroize = 0x2,
 }
 
 /// KMIP 1.4 Shredding Algorithm Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum ShreddingAlgorithm {
     Unspecified = 0x1,
     CryptoShred = 0x2,
 }
 
 /// KMIP 1.4 RNG Mode Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum RNGMode {
     SharedInstantiation = 0x1,
     NonSharedInstantiation = 0x2,
 }
 
 /// KMIP 1.4 Client Registration Method Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum ClientRegistrationMethod {
     Unspecified = 0x1,
     ServerPreProvided = 0x2,
@@ -1006,14 +1000,14 @@ pub enum ClientRegistrationMethod {
 }
 
 /// KMIP 1.4 Key Wrap Type Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum KeyWrapType {
     NotWrapped = 0x1,
     AsRegistered = 0x2,
 }
 
 /// KMIP 1.4 Mask Generator Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum MaskGenerator {
     MGF1 = 0x1,
 }
@@ -1027,7 +1021,7 @@ impl From<MaskGenerator> for kmip_2_1::kmip_types::MaskGenerator {
 }
 
 /// KMIP 1.4 Storage Status Mask Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum StorageStatusMask {
     Online = 0x1,
     Archival = 0x2,
@@ -1037,7 +1031,7 @@ pub enum StorageStatusMask {
 /// KMIP 1.4 Cryptographic Usage Mask Flags
 
 /// KMIP 1.4 Recommended Curve Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum RecommendedCurve {
     P192 = 0x1,
     K163 = 0x2,
@@ -1121,7 +1115,7 @@ impl From<RecommendedCurve> for kmip_2_1::kmip_types::RecommendedCurve {
 }
 
 /// KMIP 1.4 Digital Signature Algorithm Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum DigitalSignatureAlgorithm {
     MD2WithRSAEncryption = 0x1,
     MD5WithRSAEncryption = 0x2,
@@ -1165,7 +1159,7 @@ impl From<DigitalSignatureAlgorithm> for kmip_2_1::kmip_types::DigitalSignatureA
 }
 
 /// KMIP 1.4 Opaque Data Type Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum OpaqueDataType {
     Unknown = 0x1,
 }
@@ -1422,7 +1416,6 @@ impl From<RandomNumberGenerator> for kmip_2_1::kmip_types::RandomNumberGenerator
 /// This attribute SHALL be assigned by the key management system at creation or registration time,
 /// and then SHALL NOT be changed or deleted before the object is destroyed.
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Hash)]
-#[serde(untagged)]
 pub enum UniqueIdentifier {
     TextString(String),
 }
@@ -1499,8 +1492,7 @@ impl From<Link> for kmip_2_1::kmip_types::Link {
 }
 
 /// `LinkedObjectIdentifier` defines the format of the object reference in a link.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
-#[serde(untagged)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum LinkedObjectIdentifier {
     TextString(String),
 }
@@ -1513,8 +1505,7 @@ impl From<LinkedObjectIdentifier> for kmip_2_1::kmip_types::LinkedObjectIdentifi
     }
 }
 
-#[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Display, Debug, Eq, PartialEq, Default)]
+#[kmip_enum]
 pub enum ErrorReason {
     Item_Not_Found = 0x0000_0001,
     Response_Too_Large = 0x0000_0002,
@@ -1586,12 +1577,10 @@ pub enum ErrorReason {
     Unknown_Object_Group = 0x0000_004A,
     Constraint_Violation = 0x0000_004B,
     Duplicate_Process_Request = 0x0000_004C,
-    #[default]
     General_Failure = 0x0000_0100,
 }
 
-#[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[kmip_enum]
 pub enum TicketType {
     Login = 0x0000_0001,
 }
@@ -1650,7 +1639,7 @@ impl fmt::Display for ProtocolVersion {
 /// If not present in a request, then Prohibited is assumed.
 ///
 /// If the value is Prohibited, the server SHALL process the request synchronously.
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[kmip_enum]
 pub enum AsynchronousIndicator {
     /// The server SHALL process all batch items in the request asynchronously
     /// (returning an Asynchronous Correlation Value for each batch item).
@@ -1667,8 +1656,7 @@ pub enum AsynchronousIndicator {
 }
 
 /// Types of attestation supported by the server
-#[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[kmip_enum]
 pub enum AttestationType {
     TPM_Quote = 0x0000_0001,
     TCG_Integrity_Report = 0x0000_0002,
@@ -2103,10 +2091,7 @@ impl From<MessageExtension> for kmip_2_1::kmip_types::MessageExtension {
     }
 }
 
-#[allow(non_camel_case_types)]
-#[derive(
-    KmipEnumSerialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display, strum::IntoStaticStr,
-)]
+#[kmip_enum]
 pub enum ResultStatusEnumeration {
     Success = 0x0000_0000,
     OperationFailed = 0x0000_0001,
@@ -2126,10 +2111,7 @@ impl From<ResultStatusEnumeration> for kmip_2_1::kmip_types::ResultStatusEnumera
 }
 
 /// KMIP Tag values as defined in the KMIP 1.4 specification.
-#[derive(
-    Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Copy, FromRepr,
-)]
-#[repr(u32)]
+#[kmip_enum]
 pub enum Tag {
     ActivationDate = 0x42_0001,
     ApplicationData = 0x42_0002,

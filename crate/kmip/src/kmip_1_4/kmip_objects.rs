@@ -18,7 +18,7 @@ pub struct Certificate {
 impl From<Certificate> for kmip_2_1::kmip_objects::Certificate {
     fn from(val: Certificate) -> Self {
         Self {
-            certificate_type: val.certificate_type.clone().into(),
+            certificate_type: val.certificate_type.into(),
             certificate_value: val.certificate_value,
         }
     }
@@ -34,7 +34,7 @@ pub struct SecretData {
 impl From<SecretData> for kmip_2_1::kmip_objects::SecretData {
     fn from(val: SecretData) -> Self {
         Self {
-            secret_data_type: val.secret_data_type.clone().into(),
+            secret_data_type: val.secret_data_type.into(),
             key_block: val.key_block.into(),
         }
     }
