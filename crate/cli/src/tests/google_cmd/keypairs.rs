@@ -1,12 +1,12 @@
 use std::process::Command;
 
 use assert_cmd::prelude::*;
+use cosmian_kms_client::KMS_CLI_CONF_ENV;
 use kms_test_server::start_default_test_kms_server;
 use serde::Deserialize;
 
 use crate::{
     error::CliError,
-    reexport::cosmian_kms_client::KMS_CLI_CONF_ENV,
     tests::{google_cmd::identities::create_gmail_api_conf, utils::recover_cmd_logs, PROG_NAME},
 };
 

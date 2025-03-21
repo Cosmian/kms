@@ -1,7 +1,7 @@
 use std::{fs, path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
-use cosmian_kms_client::{read_bytes_from_file, KmsClient};
+use cosmian_kms_client::{read_bytes_from_file, KmsClient, KMS_CLI_CONF_ENV};
 use kms_test_server::start_default_test_kms_server;
 use strum::IntoEnumIterator;
 use tempfile::TempDir;
@@ -13,7 +13,6 @@ use crate::{
         DataEncryptionAlgorithm, DecryptAction, EncryptAction, KeyEncryptionAlgorithm,
     },
     error::{result::CliResult, CliError},
-    reexport::cosmian_kms_client::KMS_CLI_CONF_ENV,
     tests::{symmetric::create_key::create_symmetric_key, utils::recover_cmd_logs, PROG_NAME},
 };
 

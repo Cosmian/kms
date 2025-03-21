@@ -1,12 +1,12 @@
 use std::{collections::HashSet, process::Command};
 
 use assert_cmd::prelude::*;
+use cosmian_kms_client::KMS_CLI_CONF_ENV;
 use kms_test_server::start_default_test_kms_server;
 
 use super::SUB_COMMAND;
 use crate::{
     error::{result::CliResult, CliError},
-    reexport::cosmian_kms_client::KMS_CLI_CONF_ENV,
     tests::{
         utils::{
             extract_uids::{extract_private_key, extract_public_key},

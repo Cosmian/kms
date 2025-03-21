@@ -1,7 +1,7 @@
 use std::{fs, path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
-use cosmian_kms_client::read_bytes_from_file;
+use cosmian_kms_client::{read_bytes_from_file, KMS_CLI_CONF_ENV};
 use kms_test_server::start_default_test_kms_server;
 use tempfile::TempDir;
 use tracing::{debug, trace};
@@ -18,7 +18,6 @@ use crate::{
         },
     },
     error::{result::CliResult, CliError},
-    reexport::cosmian_kms_client::KMS_CLI_CONF_ENV,
     tests::{
         certificates::import::{import_certificate, ImportCertificateInput},
         shared::{export_key, import_key, ExportKeyParams, ImportKeyParams},

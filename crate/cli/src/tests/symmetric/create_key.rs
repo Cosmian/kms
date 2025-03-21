@@ -6,13 +6,13 @@ use cloudproof::reexport::crypto_core::{
     reexport::rand_core::{RngCore, SeedableRng},
     CsRng,
 };
+use cosmian_kms_client::KMS_CLI_CONF_ENV;
 use kms_test_server::start_default_test_kms_server;
 
 use super::SUB_COMMAND;
 use crate::{
     actions::symmetric::keys::create_key::{CreateKeyAction, SymmetricAlgorithm},
     error::{result::CliResult, CliError},
-    reexport::cosmian_kms_client::KMS_CLI_CONF_ENV,
     tests::{
         utils::{extract_uids::extract_uid, recover_cmd_logs},
         PROG_NAME,
@@ -55,7 +55,7 @@ pub(crate) fn create_symmetric_key(
     if let Some(key_id) = action.key_id.as_ref() {
         args.push(key_id.to_owned());
     }
-    cmd.arg(SUB_COMMAND).args(args.clone());
+    cmd.arg(SUB_COMMAND).args(args);
 
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {

@@ -1,13 +1,12 @@
 use std::process::Command;
 
 use assert_cmd::cargo::CommandCargoExt;
-use cosmian_kms_client::kmip_2_1::kmip_types::Tag;
+use cosmian_kms_client::{kmip_2_1::kmip_types::Tag, KMS_CLI_CONF_ENV};
 
 use super::set::prepare_attributes;
 use crate::{
     actions::attributes::SetOrDeleteAttributes,
     error::{result::CliResult, CliError},
-    reexport::cosmian_kms_client::KMS_CLI_CONF_ENV,
     tests::{utils::recover_cmd_logs, PROG_NAME},
 };
 

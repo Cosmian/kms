@@ -1,6 +1,7 @@
 use std::process::Command;
 
 use assert_cmd::prelude::*;
+use cosmian_kms_client::KMS_CLI_CONF_ENV;
 use cosmian_logger::log_init;
 use kms_test_server::{generate_invalid_conf, start_default_test_kms_server};
 use predicates::prelude::*;
@@ -8,7 +9,6 @@ use tracing::info;
 
 use crate::{
     error::result::CliResult,
-    reexport::cosmian_kms_client::KMS_CLI_CONF_ENV,
     tests::{utils::recover_cmd_logs, PROG_NAME},
 };
 

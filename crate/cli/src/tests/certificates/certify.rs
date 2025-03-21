@@ -7,7 +7,7 @@ use cosmian_kms_client::{
         kmip_types::{Attributes, LinkType},
         ttlv::{deserializer::from_ttlv, TTLV},
     },
-    read_from_json_file, read_object_from_json_ttlv_file,
+    read_from_json_file, read_object_from_json_ttlv_file, KMS_CLI_CONF_ENV,
 };
 use cosmian_logger::log_init;
 use kms_test_server::{start_default_test_kms_server, TestsContext};
@@ -21,7 +21,6 @@ use super::validate;
 use crate::{
     actions::certificates::{Algorithm, CertificateExportFormat, CertificateInputFormat},
     error::{result::CliResult, CliError},
-    reexport::cosmian_kms_client::KMS_CLI_CONF_ENV,
     tests::{
         certificates::{
             export::export_certificate,

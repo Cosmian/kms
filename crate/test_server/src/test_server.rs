@@ -37,6 +37,7 @@ pub(crate) static ONCE: OnceCell<TestsContext> = OnceCell::const_new();
 pub(crate) static ONCE_SERVER_WITH_AUTH: OnceCell<TestsContext> = OnceCell::const_new();
 pub(crate) static ONCE_SERVER_WITH_NON_REVOCABLE_KEY: OnceCell<TestsContext> =
     OnceCell::const_new();
+pub(crate) static ONCE_SERVER_WITH_HSM: OnceCell<TestsContext> = OnceCell::const_new();
 
 fn sqlite_db_config() -> MainDBConfig {
     trace!("TESTS: using sqlite");
@@ -196,7 +197,7 @@ pub async fn start_default_test_kms_server_with_non_revocable_key_ids(
 /// Non revocable key ids
 pub async fn start_default_test_kms_server_with_utimaco_hsm() -> &'static TestsContext {
     trace!("Starting test server with non revocable key ids");
-    ONCE_SERVER_WITH_NON_REVOCABLE_KEY
+    ONCE_SERVER_WITH_HSM
         .get_or_try_init(|| {
             start_test_server_with_options(
                 get_db_config(),

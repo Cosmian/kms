@@ -1,7 +1,7 @@
 use std::{fs, path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
-use cosmian_kms_client::read_bytes_from_file;
+use cosmian_kms_client::{read_bytes_from_file, KMS_CLI_CONF_ENV};
 use kms_test_server::start_default_test_kms_server;
 use predicates::prelude::*;
 use tempfile::TempDir;
@@ -9,7 +9,6 @@ use tempfile::TempDir;
 use super::SUB_COMMAND;
 use crate::{
     error::{result::CliResult, CliError},
-    reexport::cosmian_kms_client::KMS_CLI_CONF_ENV,
     tests::{
         elliptic_curve::create_key_pair::create_ec_key_pair, utils::recover_cmd_logs, PROG_NAME,
     },

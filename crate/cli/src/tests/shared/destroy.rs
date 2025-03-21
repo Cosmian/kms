@@ -1,7 +1,7 @@
 use std::process::Command;
 
 use assert_cmd::prelude::CommandCargoExt;
-use cosmian_kms_client::read_object_from_json_ttlv_file;
+use cosmian_kms_client::{read_object_from_json_ttlv_file, KMS_CLI_CONF_ENV};
 use kms_test_server::start_default_test_kms_server;
 use tempfile::TempDir;
 use tracing::trace;
@@ -14,7 +14,6 @@ use crate::{
     actions::symmetric::keys::create_key::CreateKeyAction,
     cli_bail,
     error::{result::CliResult, CliError},
-    reexport::cosmian_kms_client::KMS_CLI_CONF_ENV,
     tests::{
         elliptic_curve::create_key_pair::create_ec_key_pair,
         shared::{export::export_key, revoke::revoke, ExportKeyParams},
