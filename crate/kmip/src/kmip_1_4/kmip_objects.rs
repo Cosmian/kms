@@ -66,6 +66,7 @@ impl From<SplitKey> for kmip_2_1::kmip_objects::SplitKey {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[serde(rename_all = "PascalCase")]
 pub struct SymmetricKey {
     #[serde(rename = "KeyBlock")]
     pub key_block: KeyBlock,
@@ -80,6 +81,7 @@ impl From<SymmetricKey> for kmip_2_1::kmip_objects::SymmetricKey {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[serde(rename_all = "PascalCase")]
 pub struct PrivateKey {
     #[serde(rename = "KeyBlock")]
     pub key_block: KeyBlock,
@@ -94,6 +96,7 @@ impl From<PrivateKey> for kmip_2_1::kmip_objects::PrivateKey {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[serde(rename_all = "PascalCase")]
 pub struct PublicKey {
     #[serde(rename = "KeyBlock")]
     pub key_block: KeyBlock,
@@ -108,6 +111,7 @@ impl From<PublicKey> for kmip_2_1::kmip_objects::PublicKey {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[serde(rename_all = "PascalCase")]
 pub struct OpaqueObject {
     pub opaque_data_type: OpaqueDataType,
     pub opaque_data_value: Vec<u8>,
@@ -123,6 +127,7 @@ impl From<OpaqueObject> for kmip_2_1::kmip_objects::OpaqueObject {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[serde(rename_all = "PascalCase")]
 pub struct PGPKey {
     #[serde(rename = "PGPKeyVersion")]
     pub pgp_key_version: u32,
