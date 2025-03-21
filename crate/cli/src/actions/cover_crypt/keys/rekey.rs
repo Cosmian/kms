@@ -30,7 +30,7 @@ pub struct RekeyAction {
     /// The MSK UID stored in the KMS. If not specified, tags should be
     /// specified.
     #[clap(long = KEY_ID, short = 'k', group = "key-tags")]
-    master_secret_key_id: Option<String>,
+    msk_uid: Option<String>,
 
     /// Tag to use to retrieve the MSK when no key id is specified.
     /// To specify multiple tags, use the option multiple times.
@@ -40,15 +40,11 @@ pub struct RekeyAction {
 
 impl RekeyAction {
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
-        let id = get_key_uid(
-            self.master_secret_key_id.as_ref(),
-            self.tags.as_ref(),
-            KEY_ID,
-        )?;
+        let uid = get_key_uid(self.msk_uid.as_ref(), self.tags.as_ref(), KEY_ID)?;
 
         let res = kms_rest_client
             .rekey_keypair(build_rekey_keypair_request(
-                &id,
+                &uid,
                 &RekeyEditAction::RekeyAccessPolicy(self.access_policy.clone()),
             )?)
             .await
@@ -101,7 +97,7 @@ pub struct PruneAction {
 
 impl PruneAction {
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
-        let id = get_key_uid(self.msk_uid.as_ref(), self.tags.as_ref(), KEY_ID)?;
+        let uid = get_key_uid(self.msk_uid.as_ref(), self.tags.as_ref(), KEY_ID)?;
 
         let req = build_rekey_keypair_request(
             &uid,
