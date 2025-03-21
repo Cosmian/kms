@@ -7,7 +7,7 @@ use actix_web::{
 };
 use cosmian_kmip::{
     kmip_2_1::kmip_messages::RequestMessage,
-    ttlv::{kmip_ttlv_deserializer::from_ttlv, kmip_ttlv_serializer::to_ttlv, TTLValue, TTLV},
+    ttlv::{from_ttlv, to_ttlv, TTLValue, TTLV},
     KmipResultHelper,
 };
 use cosmian_kms_interfaces::SessionParams;
