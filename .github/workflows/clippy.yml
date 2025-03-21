@@ -38,7 +38,7 @@ jobs:
 
       # Ensure all code has been formatted with rustfmt
       - name: Check formatting
-        run: cargo fmt --all -- --check --color always
+        run: cargo +${{ inputs.toolchain }} fmt --all -- --check --color always
 
       - name: Static analysis
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
