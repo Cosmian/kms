@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use time::OffsetDateTime;
 
 use super::{error::TtlvError, kmip_big_int::KmipBigInt};
@@ -50,10 +52,19 @@ impl PartialEq for TTLValue {
 
 /// This holds the KMIP enumeration variant value and name
 /// JSON uses the name, the byte serializer uses the value
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct KmipEnumerationVariant {
     pub value: u32,
     pub name: String,
+}
+
+impl Debug for KmipEnumerationVariant {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("KmipEnumerationVariant")
+            .field("value", &format!("0x{:08x}", self.value))
+            .field("name", &self.name)
+            .finish()
+    }
 }
 
 /// Two KMIP enumeration variants are equal if their names are equal

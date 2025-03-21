@@ -8,7 +8,7 @@ use cosmian_kmip::{
         kmip_operations::ErrorReason,
         kmip_types::ResultStatusEnumeration,
     },
-    ttlv::kmip_ttlv_serializer::to_ttlv,
+    ttlv::to_ttlv,
 };
 use cosmian_kms_interfaces::SessionParams;
 use tracing::trace;

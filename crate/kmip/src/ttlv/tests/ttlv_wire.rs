@@ -1,158 +1,65 @@
-use std::io::Cursor;
+use cosmian_logger::log_init;
+use tracing::info;
 
-use num_bigint_dig::BigInt;
-use strum::Display;
-use time::OffsetDateTime;
-
-use crate::ttlv::{
-    wire::{TTLVBytesDeserializer, TTLVBytesSerializer},
-    TTLValue, TtlvError, TTLV,
+use crate::{
+    kmip_2_1,
+    kmip_2_1::{
+        kmip_messages::{RequestMessageBatchItem, RequestMessageHeader},
+        kmip_operations::{Operation, Query},
+        kmip_types::{OperationEnumeration, ProtocolVersion, QueryFunction},
+        RequestMessage,
+    },
+    ttlv::{from_ttlv, to_ttlv, TTLVBytesDeserializer, TTLVBytesSerializer},
 };
 
 #[test]
 fn test_serialization_deserialization() {
-    // Helper enum implementing KmipTag
-    #[derive(Debug, Clone, Display, Copy, strum::EnumString, strum::FromRepr)]
-    #[repr(u32)]
-    enum TestTag {
-        Test1 = 0x04,
-        Test2 = 0x08,
-    }
-
-    impl KmipTag for TestTag {
-        fn from_u32(tag_value: u32) -> Result<Self, TtlvError>
-        where
-            Self: Sized,
-        {
-            TestTag::from_repr(tag_value)
-                .ok_or_else(|| TtlvError::from(format!("Unknown tag value: {tag_value}")))
-        }
-
-        fn to_u32(&self) -> u32 {
-            *self as u32
-        }
-    }
-
-    impl TryFrom<u32> for TestTag {
-        type Error = ();
-
-        fn try_from(v: u32) -> Result<Self, Self::Error> {
-            match v {
-                1 => Ok(Self::Test1),
-                2 => Ok(Self::Test2),
-                _ => Err(()),
-            }
-        }
-    }
-
-    impl From<TestTag> for u32 {
-        fn from(tag: TestTag) -> Self {
-            match tag {
-                TestTag::Test1 => 1,
-                TestTag::Test2 => 2,
-            }
-        }
-    }
-
-    impl TryFrom<String> for TestTag {
-        type Error = ();
-
-        fn try_from(s: String) -> Result<Self, Self::Error> {
-            match s.as_str() {
-                "Test1" => Ok(Self::Test1),
-                "Test2" => Ok(Self::Test2),
-                _ => Err(()),
-            }
-        }
-    }
-
-    let test_cases = vec![
-        // Test integer
-        TTLV {
-            tag: "Test1".to_owned(),
-            value: TTLValue::Integer(42),
+    log_init(Some("trace"));
+    // KMIP Request Message in Rust
+    let request_message = RequestMessage {
+        request_header: RequestMessageHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 1,
+                protocol_version_minor: 4,
+            },
+            maximum_response_size: Some(256),
+            batch_count: 1,
+            ..Default::default()
         },
-        // Test long integer
-        TTLV {
-            tag: "Test2".to_owned(),
-            value: TTLValue::LongInteger(9_223_372_036_854_775_807),
-        },
-        // Test big integer
-        TTLV {
-            tag: "Test1".to_owned(),
-            value: TTLValue::BigInteger(BigInt::from(123_456_789_u64).into()),
-        },
-        // Test boolean
-        TTLV {
-            tag: "Test2".to_owned(),
-            value: TTLValue::Boolean(true),
-        },
-        // Test text string
-        TTLV {
-            tag: "Test1".to_owned(),
-            value: TTLValue::TextString("Hello KMIP".to_owned()),
-        },
-        // Test byte string
-        TTLV {
-            tag: "Test2".to_owned(),
-            value: TTLValue::ByteString(vec![1, 2, 3, 4, 5]),
-        },
-        // Test datetime
-        TTLV {
-            tag: "Test1".to_owned(),
-            value: TTLValue::DateTime(OffsetDateTime::from_unix_timestamp(1_234_567_890).unwrap()),
-        },
-        // Test interval
-        TTLV {
-            tag: "Test2".to_owned(),
-            value: TTLValue::Interval(86400),
-        },
-        // Test nested structure
-        TTLV {
-            tag: "Test1".to_owned(),
-            value: TTLValue::Structure(vec![
-                TTLV {
-                    tag: "Test2".to_owned(),
-                    value: TTLValue::Integer(123),
-                },
-                TTLV {
-                    tag: "Test1".to_owned(),
-                    value: TTLValue::TextString("Nested".to_owned()),
-                },
-            ]),
-        },
-    ];
+        batch_item: vec![RequestMessageBatchItem {
+            operation: OperationEnumeration::Query,
+            ephemeral: None,
+            unique_batch_item_id: None,
+            request_payload: Operation::Query(Query {
+                query_function: Some(vec![
+                    QueryFunction::QueryOperations,
+                    QueryFunction::QueryObjects,
+                ]),
+            }),
+            message_extension: None,
+        }],
+    };
 
-    for test_case in test_cases {
-        let mut buffer = Vec::new();
-        let mut serializer = TTLVBytesSerializer::new(&mut buffer);
-        serializer.write_ttlv::<TestTag>(&test_case).unwrap();
+    // Serializer
+    let ttlv = to_ttlv(&request_message).unwrap();
 
-        let mut deserializer = TTLVBytesDeserializer::new(Cursor::new(&buffer));
-        let result = deserializer.read_ttlv::<TestTag>().unwrap();
+    // Bytes serializer
+    let mut buffer = Vec::new();
+    TTLVBytesSerializer::new(&mut buffer)
+        .write_ttlv::<kmip_2_1::kmip_types::Tag>(&ttlv)
+        .unwrap();
 
-        assert_eq!(test_case.tag, result.tag);
-        match (&test_case.value, &result.value) {
-            (TTLValue::Integer(a), TTLValue::Integer(b)) => assert_eq!(a, b),
-            (TTLValue::LongInteger(a), TTLValue::LongInteger(b)) => assert_eq!(a, b),
-            (TTLValue::BigInteger(a), TTLValue::BigInteger(b)) => assert_eq!(a, b),
-            (TTLValue::Boolean(a), TTLValue::Boolean(b)) => assert_eq!(a, b),
-            (TTLValue::TextString(a), TTLValue::TextString(b)) => assert_eq!(a, b),
-            (TTLValue::ByteString(a), TTLValue::ByteString(b)) => assert_eq!(a, b),
-            (TTLValue::DateTime(a), TTLValue::DateTime(b)) => assert_eq!(a, b),
-            (TTLValue::Interval(a), TTLValue::Interval(b)) => assert_eq!(a, b),
-            (TTLValue::Structure(a), TTLValue::Structure(b)) => {
-                assert_eq!(a.len(), b.len());
-                for (a, b) in a.iter().zip(b.iter()) {
-                    assert_eq!(a.tag, b.tag);
-                    match (&a.value, &b.value) {
-                        (TTLValue::Integer(a), TTLValue::Integer(b)) => assert_eq!(a, b),
-                        (TTLValue::TextString(a), TTLValue::TextString(b)) => assert_eq!(a, b),
-                        _ => panic!("Type mismatch"),
-                    }
-                }
-            }
-            _ => panic!("Type mismatch"),
-        }
-    }
+    // Byte deserializer
+    let (ttlv_, length) = TTLVBytesDeserializer::new(buffer.as_slice())
+        .read_ttlv::<kmip_2_1::kmip_types::Tag>()
+        .unwrap();
+    // Assert that the length of the deserialized TTLV matches the original
+    assert_eq!(length, buffer.len());
+    // Assert that the deserialized TTLV matches the original
+    assert_eq!(ttlv_, ttlv);
+    info!("ttlv: {:#?}", ttlv_);
+    // Deserialize the TTLV back to a RequestMessage
+    let request_message_: RequestMessage = from_ttlv(ttlv_).unwrap();
+    // Assert that the original and deserialized messages are equal
+    assert_eq!(request_message_, request_message);
 }
