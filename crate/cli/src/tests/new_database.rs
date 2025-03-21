@@ -141,6 +141,7 @@ async fn test_multiple_databases() -> CliResult<()> {
             api_token: None,
         },
         None,
+        None,
     )
     .await?;
 
