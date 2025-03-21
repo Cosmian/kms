@@ -50,11 +50,13 @@ pub struct JwtAuthConfig {
 impl JwtAuthConfig {
     /// Build a JWKS URI using `jwt_issuer_uri` and an optional `jwks_uri`.
     pub(crate) fn uri(jwt_issuer_uri: &str, jwks_uri: Option<&str>) -> String {
-        jwks_uri.as_ref().map_or(
-            format!(
-                "{}/.well-known/jwks.json",
-                jwt_issuer_uri.trim_end_matches('/')
-            ),
+        jwks_uri.as_ref().map_or_else(
+            || {
+                format!(
+                    "{}/.well-known/jwks.json",
+                    jwt_issuer_uri.trim_end_matches('/')
+                )
+            },
             std::string::ToString::to_string,
         )
     }

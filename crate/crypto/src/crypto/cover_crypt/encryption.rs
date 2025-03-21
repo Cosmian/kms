@@ -1,7 +1,6 @@
-use cosmian_cover_crypt::{api::Covercrypt, AccessPolicy, EncryptedHeader, MasterPublicKey};
+use cosmian_cover_crypt::{api::Covercrypt, traits::KemAc, AccessPolicy, MasterPublicKey};
 use cosmian_crypto_core::{
     bytes_ser_de::{Deserializer, Serializable, Serializer},
-    kdf256,
     reexport::zeroize::Zeroizing,
     Aes256Gcm, Dem, Instantiable, Nonce, RandomFixedSizeCBytes, SymmetricKey,
 };
@@ -17,7 +16,6 @@ use tracing::{debug, trace};
 
 use crate::{crypto::EncryptionSystem, error::CryptoError};
 
-const SYM_KEY_LENGTH: usize = 32;
 /// Encrypt a single block of data using a KEM-DEM cryptosystem
 /// Cannot be used as a stream cipher
 pub struct CoverCryptEncryption {
@@ -45,8 +43,8 @@ impl CoverCryptEncryption {
 
     /// Encrypt multiple LEB128-serialized payloads
     ///
-    /// The input plaintext data is serialized using LEB128 (bulk mode).
-    /// Each chunk of data is encrypted and serialized back to LEB128.
+    /// The input plaintext data is serialized using LEB128 (bulk mode).  Each
+    /// chunk of data is encrypted and serialized back to LEB128.
     ///
     /// Bulk encryption / decryption scheme
     ///
@@ -69,15 +67,20 @@ impl CoverCryptEncryption {
     ///
     fn bulk_encrypt(
         &self,
-        encrypted_header: &[u8],
-        plaintext: &[u8],
+        mpk: &MasterPublicKey,
+        ptx: &[u8],
         ad: Option<&[u8]>,
-        symmetric_key: &SymmetricKey<SYM_KEY_LENGTH>,
+        ap: &AccessPolicy,
     ) -> Result<Vec<u8>, CryptoError> {
-        let mut de = Deserializer::new(plaintext);
+        let mut de = Deserializer::new(ptx);
         let mut ser = Serializer::new();
 
-        // number of chunks of plaintext data to encrypt
+        let (seed, enc) = self.cover_crypt.encaps(mpk, ap)?;
+        let key = SymmetricKey::derive(&seed, b"Covercrypt AEAD key")?;
+        let enc = enc.serialize()?;
+
+        trace!("CoverCryptEncryption: encrypt: encryption_policy: {ap:?}",);
+
         let nb_chunks = {
             let len = de.read_leb128_u64()?;
             ser.write_leb128_u64(len)?;
@@ -88,37 +91,46 @@ impl CoverCryptEncryption {
             })?
         };
 
-        // encrypt each chunk and serialize it
-        // a copy of the encrypted header is also serialized, prepending the chunk
+        // Encrypt each chunk and serialize it along with a copy of the
+        // Covecrypt encapsulation.
         for _ in 0..nb_chunks {
-            let chunk_data = de.read_vec_as_ref()?;
-            let mut encrypted_block = self.encrypt(chunk_data, ad, symmetric_key)?;
-            let mut chunk = encrypted_header.to_vec();
-            chunk.append(&mut encrypted_block);
-            ser.write_vec(&chunk)?;
+            let ptx = de.read_vec_as_ref()?;
+            let ctx = self.aead_encrypt(&key, ptx, ad)?;
+            let res = [&**enc, &ctx].concat();
+            ser.write_vec(&res)?;
         }
 
         Ok(ser.finalize().to_vec())
     }
 
-    fn encrypt(
+    fn single_encrypt(
         &self,
-        plaintext: &[u8],
+        mpk: &MasterPublicKey,
+        ptx: &[u8],
         ad: Option<&[u8]>,
-        symmetric_key: &SymmetricKey<{ SYM_KEY_LENGTH }>,
+        ap: &AccessPolicy,
     ) -> Result<Vec<u8>, CryptoError> {
-        // Encrypt the data
-        let aes256gcm = Aes256Gcm::new(symmetric_key);
+        let (seed, enc) = self.cover_crypt.encaps(mpk, ap)?;
+        let key = SymmetricKey::derive(&seed, b"Covercrypt AEAD key")?;
+        let enc = enc.serialize()?;
+        trace!("CoverCryptEncryption: encrypt: encryption_policy: {ap:?}",);
+        let ctx = self.aead_encrypt(&key, ptx, ad)?;
+        Ok([&**enc, &ctx].concat())
+    }
+
+    fn aead_encrypt(
+        &self,
+        key: &SymmetricKey<{ Aes256Gcm::KEY_LENGTH }>,
+        ptx: &[u8],
+        ad: Option<&[u8]>,
+    ) -> Result<Vec<u8>, CryptoError> {
         let nonce = Nonce::new(&mut *self.cover_crypt.rng());
-        let mut ciphertext = aes256gcm.encrypt(&nonce, plaintext, ad)?;
-        let mut res =
-            Vec::with_capacity(plaintext.len() + Aes256Gcm::MAC_LENGTH + Aes256Gcm::NONCE_LENGTH);
-        res.extend(nonce.0);
-        res.append(&mut ciphertext);
+        let ctx = Aes256Gcm::new(key).encrypt(&nonce, ptx, ad)?;
+        let res = [&nonce.0, &*ctx].concat();
         debug!(
             "Encrypted data with auth data {:?} of len (Plain/Enc): {}/{}",
             ad,
-            plaintext.len(),
+            ptx.len(),
             res.len(),
         );
         Ok(res)
@@ -130,69 +142,39 @@ impl EncryptionSystem for CoverCryptEncryption {
         let ad = request.authenticated_encryption_additional_data.as_deref();
 
         trace!("CoverCryptEncryption: encrypt: authenticated_encryption_additional_data: {ad:?}",);
-        let data_to_encrypt = DataToEncrypt::try_from_bytes(
+
+        let encrypted_data =
             request
                 .data
                 .as_deref()
-                .ok_or_else(|| CryptoError::Kmip("Missing data to encrypt".to_owned()))?,
-        )?;
+                .map(|data| -> Result<_, _> {
+                    let ptx = DataToEncrypt::try_from_bytes(data)?;
+                    let mpk = MasterPublicKey::deserialize(self.public_key_bytes.as_slice())
+                        .map_err(|e| {
+                            CryptoError::Kmip(format!(
+                                "Covercrypt encrypt: failed recovering the master public key: {e}"
+                            ))
+                        })?;
 
-        let public_key =
-            MasterPublicKey::deserialize(self.public_key_bytes.as_slice()).map_err(|e| {
-                CryptoError::Kmip(format!(
-                    "cover crypt encrypt: failed recovering the public key: {e}"
-                ))
-            })?;
+                    let ap = AccessPolicy::parse(ptx.encryption_policy.as_deref().ok_or_else(
+                        || CryptoError::Kmip("encryption policy missing".to_owned()),
+                    )?)?;
 
-        let encryption_policy = data_to_encrypt
-            .encryption_policy
-            .as_deref()
-            .ok_or_else(|| CryptoError::Kmip("encryption policy missing".to_owned()))?;
-        trace!("CoverCryptEncryption: encrypt: encryption_policy_string: {encryption_policy}",);
-        // Generate a symmetric key and encrypt the header
-        let (secret, encrypted_header) = EncryptedHeader::generate(
-            &self.cover_crypt,
-            &public_key,
-            &AccessPolicy::parse(encryption_policy)?,
-            data_to_encrypt.header_metadata.as_deref(),
-            ad,
-        )
-        .map_err(|e| CryptoError::Kmip(e.to_string()))?;
-
-        let mut encrypted_header = encrypted_header
-            .serialize()
-            .map_err(|e| CryptoError::Kmip(e.to_string()))?;
-
-        let mut symmetric_key = SymmetricKey::default();
-        kdf256!(&mut *symmetric_key, &*secret);
-
-        let encrypted_data = if let Some(CryptographicParameters {
-            cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCryptBulk),
-            ..
-        }) = request.cryptographic_parameters
-        {
-            self.bulk_encrypt(
-                &encrypted_header,
-                &data_to_encrypt.plaintext,
-                ad,
-                &symmetric_key,
-            )?
-        } else {
-            let mut encrypted_data =
-                self.encrypt(&data_to_encrypt.plaintext, ad, &symmetric_key)?;
-            debug!(
-                "Encrypted bytes len: {}, Encrypted header len: {}, Encrypted data len: {}",
-                encrypted_header.len() + encrypted_data.len(),
-                encrypted_header.len(),
-                encrypted_data.len(),
-            );
-            encrypted_header.append(&mut encrypted_data);
-            encrypted_header.to_vec()
-        };
+                    if let Some(CryptographicParameters {
+                        cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCryptBulk),
+                        ..
+                    }) = request.cryptographic_parameters
+                    {
+                        self.bulk_encrypt(&mpk, &ptx.plaintext, ad, &ap)
+                    } else {
+                        self.single_encrypt(&mpk, &ptx.plaintext, ad, &ap)
+                    }
+                })
+                .transpose()?;
 
         Ok(EncryptResponse {
             unique_identifier: UniqueIdentifier::TextString(self.public_key_uid.clone()),
-            data: Some(encrypted_data),
+            data: encrypted_data,
             iv_counter_nonce: None,
             correlation_value: None,
             authenticated_encryption_tag: ad.map(<[u8]>::to_vec),

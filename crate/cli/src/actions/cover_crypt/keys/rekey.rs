@@ -10,7 +10,7 @@ use crate::{
     error::result::{CliResult, CliResultHelper},
 };
 
-/// Rekey the master and user keys for a given access policy.
+/// Rekey the given access policy.
 ///
 /// Active user decryption keys are automatically re-keyed.
 /// Revoked or destroyed user decryption keys are not re-keyed.
@@ -46,34 +46,27 @@ impl RekeyAction {
             cli_bail!("Either --key-id or one or more --tag must be specified")
         };
 
-        // Create the kmip query
-        let query = build_rekey_keypair_request(
-            &id,
-            &RekeyEditAction::RekeyAccessPolicy(self.access_policy.clone()),
-        )?;
-
-        // Query the KMS with your kmip data
-        let response = kms_rest_client
-            .rekey_keypair(query)
+        let res = kms_rest_client
+            .rekey_keypair(build_rekey_keypair_request(
+                &id,
+                &RekeyEditAction::RekeyAccessPolicy(self.access_policy.clone()),
+            )?)
             .await
             .with_context(|| "failed rekeying the master keys")?;
 
         let stdout = format!(
-            "The master secret key {} and master public key {} were rekeyed for the access policy \
-             {:?}",
-            &response.private_key_unique_identifier,
-            &response.public_key_unique_identifier,
+            "The MSK {} and MPK {} were rekeyed for the access policy {:?}",
+            &res.private_key_unique_identifier,
+            &res.public_key_unique_identifier,
             &self.access_policy
         );
 
         let mut stdout = console::Stdout::new(&stdout);
         stdout.set_key_pair_unique_identifier(
-            response.private_key_unique_identifier,
-            response.public_key_unique_identifier,
+            res.private_key_unique_identifier,
+            res.public_key_unique_identifier,
         );
-        stdout.write()?;
-
-        Ok(())
+        stdout.write()
     }
 }
 

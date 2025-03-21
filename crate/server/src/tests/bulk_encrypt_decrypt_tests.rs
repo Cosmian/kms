@@ -19,6 +19,7 @@ use crate::{error::KmsError, result::KResult, tests::test_utils};
 const NUM_MESSAGES: usize = 1000;
 
 #[tokio::test]
+#[allow(clippy::panic_in_result_fn)]
 async fn bulk_encrypt_decrypt() -> KResult<()> {
     cosmian_logger::log_init(option_env!("RUST_LOG"));
     let app = test_utils::test_app(None).await;

@@ -63,7 +63,7 @@ pub(crate) async fn hash_operation(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::panic_in_result_fn)]
 mod tests {
     use std::sync::Arc;
 

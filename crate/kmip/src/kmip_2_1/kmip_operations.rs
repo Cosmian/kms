@@ -20,7 +20,6 @@ use super::{
         UniqueIdentifier, ValidityIndicator,
     },
 };
-use crate::{error::KmipError, Deserializer, Serializer};
 
 #[allow(non_camel_case_types)]
 #[derive(Serialize, Deserialize, Copy, Clone, Display, Debug, Eq, PartialEq, Default)]
@@ -1436,55 +1435,6 @@ impl Display for Decrypt {
             self.authenticated_encryption_additional_data,
             self.authenticated_encryption_tag
         )
-    }
-}
-
-/// When decrypting data with Cover Crypt we can have some
-/// additional metadata stored inside the header and encrypted
-/// with de DEM. We need to return these data to the user but
-/// the KMIP protocol do not provide a way to do it. So we prepend
-/// the decrypted bytes with the decrypted additional metadata.
-/// This struct is not useful (and shouldn't be use) if the user
-/// ask to encrypt with something else than Cover Crypt (for example an AES encrypt.)
-/// See also `DataToEncrypt` struct.
-/// The binary format of this struct is:
-/// 1. LEB128 unsigned length of the metadata
-/// 2. metadata decrypted bytes
-/// 3. data decrypted
-pub struct DecryptedData {
-    pub metadata: Vec<u8>,
-    pub plaintext: Zeroizing<Vec<u8>>,
-}
-
-impl TryInto<Vec<u8>> for DecryptedData {
-    type Error = KmipError;
-
-    fn try_into(self) -> Result<Vec<u8>, Self::Error> {
-        let mut ser = Serializer::new();
-        ser.write_vec(&self.metadata)?;
-
-        let mut result = ser.finalize().to_vec();
-        result.extend_from_slice(&self.plaintext);
-        Ok(result)
-    }
-}
-
-impl TryFrom<&[u8]> for DecryptedData {
-    type Error = KmipError;
-
-    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
-        let mut de = Deserializer::new(bytes);
-
-        // Read the metadata
-        let metadata = de.read_vec()?;
-
-        // Remaining is the decrypted plaintext
-        let plaintext = Zeroizing::from(de.finalize());
-
-        Ok(Self {
-            metadata,
-            plaintext,
-        })
     }
 }
 

@@ -241,6 +241,11 @@ impl Object {
     }
 
     /// Returns the `Attributes` of that object if any, an error otherwise
+    pub fn into_attributes(&self) -> Result<&Attributes, KmipError> {
+        self.key_block()?.attributes()
+    }
+
+    /// Returns the `Attributes` of that object if any, an error otherwise
     pub fn attributes(&self) -> Result<&Attributes, KmipError> {
         self.key_block()?.attributes()
     }

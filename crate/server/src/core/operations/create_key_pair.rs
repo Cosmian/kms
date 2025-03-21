@@ -308,16 +308,16 @@ pub(crate) fn generate_key_pair_and_tags(
         ),
         CryptographicAlgorithm::CoverCrypt => create_master_keypair(
             &Covercrypt::default(),
-            private_key_uid,
+            private_key_uid.to_owned(),
             public_key_uid,
-            &Some(common_attributes),
-            &request.private_key_attributes,
-            &request.public_key_attributes,
+            common_attributes,
+            request.private_key_attributes,
+            request.public_key_attributes,
             sensitive,
         ),
         other => {
             kms_bail!(KmsError::NotSupported(format!(
-                "The creation of a key pair for algorithm: {other:?} is not supported"
+                "The creation of a keypair for algorithm: {other:?} is not supported"
             )))
         }
     }?;

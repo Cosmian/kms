@@ -209,7 +209,6 @@ impl EncryptAction {
             data_encryption_key_id,
             None,
             plaintext,
-            None,
             nonce,
             authenticated_data,
             Some(cryptographic_parameters),

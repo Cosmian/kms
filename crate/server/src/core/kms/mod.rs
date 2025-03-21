@@ -14,7 +14,8 @@ use utimaco_pkcs11_loader::Utimaco;
 
 use crate::{config::ServerParams, error::KmsError, kms_bail, result::KResult};
 
-/// A Key Management System that partially implements KMIP 2.1:
+/// A Key Management System that partially implements KMIP 2.1
+///
 /// `https://www.oasis-open.org/committees/tc_home.php?wg_abbrev=kmip`
 /// and other operations that are not part of KMIP such as Google CSE or Microsoft DKE.
 pub struct KMS {

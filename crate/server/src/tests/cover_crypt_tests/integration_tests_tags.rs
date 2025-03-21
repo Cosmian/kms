@@ -1,7 +1,7 @@
 use cosmian_kmip::kmip_2_1::{
     kmip_operations::{
-        CreateKeyPairResponse, CreateResponse, DecryptResponse, DecryptedData, DestroyResponse,
-        EncryptResponse, ReKeyKeyPairResponse, Revoke, RevokeResponse,
+        CreateKeyPairResponse, CreateResponse, DecryptResponse, DestroyResponse, EncryptResponse,
+        ReKeyKeyPairResponse, Revoke, RevokeResponse,
     },
     kmip_types::{RevocationReason, UniqueIdentifier},
     requests::{decrypt_request, encrypt_request},
@@ -63,7 +63,6 @@ async fn test_re_key_with_tags() -> KResult<()> {
         &mkp_json_tag,
         Some(encryption_policy.to_owned()),
         data.to_vec(),
-        None,
         Some(authentication_data.clone()),
         None,
         None,
@@ -100,13 +99,11 @@ async fn integration_tests_with_tags() -> KResult<()> {
     let authentication_data = b"cc the uid".to_vec();
     let data = b"Confidential MKG Data";
     let encryption_policy = "Security Level::Confidential && Department::MKG";
-    let header_metadata = vec![1, 2, 3];
 
     let request = encrypt_request(
         &mkp_json_tag,
         Some(encryption_policy.to_owned()),
         data.to_vec(),
-        Some(header_metadata.clone()),
         None,
         Some(authentication_data.clone()),
         None,
@@ -141,14 +138,11 @@ async fn integration_tests_with_tags() -> KResult<()> {
     );
     let decrypt_response: DecryptResponse = test_utils::post(&app, request).await?;
 
-    let decrypted_data: DecryptedData = decrypt_response
+    let decrypted_data = decrypt_response
         .data
-        .context("There should be decrypted data")?
-        .as_slice()
-        .try_into()?;
+        .context("There should be decrypted data")?;
 
-    assert_eq!(data, &decrypted_data.plaintext[..]);
-    assert_eq!(header_metadata, decrypted_data.metadata);
+    assert_eq!(data, &**decrypted_data);
 
     // revocation
 
@@ -161,7 +155,6 @@ async fn integration_tests_with_tags() -> KResult<()> {
         &mkp_json_tag,
         Some(encryption_policy.to_owned()),
         data.to_vec(),
-        None,
         None,
         Some(authentication_data.clone()),
         None,
@@ -208,15 +201,11 @@ async fn integration_tests_with_tags() -> KResult<()> {
     );
     let decrypt_response: DecryptResponse = test_utils::post(&app, &request).await?;
 
-    let decrypted_data: DecryptedData = decrypt_response
+    let decrypted_data = decrypt_response
         .data
-        .context("There should be decrypted data")?
-        .as_slice()
-        .try_into()
-        .unwrap();
+        .context("There should be decrypted data")?;
 
-    assert_eq!(&data, &decrypted_data.plaintext.to_vec());
-    assert!(decrypted_data.metadata.is_empty());
+    assert_eq!(data, &*decrypted_data);
 
     // test user2 can decrypt
     let request = decrypt_request(
@@ -229,15 +218,11 @@ async fn integration_tests_with_tags() -> KResult<()> {
     );
     let decrypt_response: DecryptResponse = test_utils::post(&app, &request).await?;
 
-    let decrypted_data: DecryptedData = decrypt_response
+    let decrypted_data = decrypt_response
         .data
-        .context("There should be decrypted data")?
-        .as_slice()
-        .try_into()
-        .unwrap();
+        .context("There should be decrypted data")?;
 
-    assert_eq!(&data, &decrypted_data.plaintext.to_vec());
-    assert!(decrypted_data.metadata.is_empty());
+    assert_eq!(data, &*decrypted_data);
 
     // Revoke key of user 1
     let _revoke_response: RevokeResponse = test_utils::post(
@@ -275,7 +260,6 @@ async fn integration_tests_with_tags() -> KResult<()> {
         Some(encryption_policy.to_owned()),
         data.to_vec(),
         None,
-        None,
         Some(authentication_data.clone()),
         None,
     )?;
@@ -306,14 +290,10 @@ async fn integration_tests_with_tags() -> KResult<()> {
         None,
     );
     let decrypt_response: DecryptResponse = test_utils::post(&app, &request).await?;
-    let decrypted_data: DecryptedData = decrypt_response
+    let decrypted_data = decrypt_response
         .data
-        .context("There should be decrypted data")?
-        .as_slice()
-        .try_into()?;
-
-    assert_eq!(&data, &decrypted_data.plaintext.to_vec());
-    assert!(decrypted_data.metadata.is_empty());
+        .context("There should be decrypted data")?;
+    assert_eq!(data, &*decrypted_data);
 
     //
     // Destroy user decryption key

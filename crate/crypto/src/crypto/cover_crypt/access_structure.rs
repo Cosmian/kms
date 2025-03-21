@@ -29,6 +29,9 @@ pub fn access_structure_from_str(access_structure_str: &str) -> CryptoResult<Acc
             access_structure.add_anarchy(dimension.clone())?;
         }
 
+        // Reversing the iterator is necessary because hierarchical attributes
+        // are declared in increasing order but inserted in decreasing order
+        // when `None` is passed as `after`.
         for name in attributes.iter().rev() {
             let attribute = QualifiedAttribute {
                 dimension: dimension.trim_end_matches("::<").to_owned(),

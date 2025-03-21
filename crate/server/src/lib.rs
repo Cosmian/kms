@@ -52,7 +52,8 @@
     clippy::future_not_send,
     clippy::cognitive_complexity,
     clippy::significant_drop_tightening,
-    clippy::iter_with_drain
+    clippy::iter_with_drain,
+    clippy::ref_option, // to be uncommented after #384
 )]
 
 pub mod config;
@@ -67,6 +68,7 @@ pub mod telemetry;
 
 #[allow(
     clippy::panic,
+    clippy::panic_in_result_fn,
     clippy::unwrap_used,
     clippy::expect_used,
     unsafe_code,

@@ -13,7 +13,8 @@ use crate::{
     error::result::{CliResult, CliResultHelper},
 };
 
-/// Create a new master key pair for a given policy and return the key IDs.
+/// Create a new master keypair for a given access structure and return the key
+/// IDs.
 ///
 ///
 ///  - The master public key is used to encrypt the files and can be safely shared.
@@ -50,7 +51,7 @@ pub struct CreateMasterKeyPairAction {
     /// The JSON access structure specifications file to use to generate the keys.
     /// See the inline doc of the `create-master-key-pair` command for details.
     #[clap(long, short = 's')]
-    access_structure_specification: PathBuf,
+    specification: PathBuf,
 
     /// The tag to associate with the master key pair.
     /// To specify multiple tags, use the option multiple times.
@@ -64,33 +65,25 @@ pub struct CreateMasterKeyPairAction {
 
 impl CreateMasterKeyPairAction {
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
-        // Parse the json access structure file
-        let access_structure =
-            access_structure_from_json_file(&self.access_structure_specification)?;
-        debug!("client: access_structure: {access_structure:?}");
-        let create_key_pair = build_create_covercrypt_master_keypair_request(
-            &access_structure,
-            &self.tags,
-            self.sensitive,
-        )?;
+        let access_structure = access_structure_from_json_file(&self.specification)?;
 
-        // Query the KMS with your kmip data and get the key pair ids
-        let create_key_pair_response = kms_rest_client
-            .create_key_pair(create_key_pair)
+        debug!("client: access_structure: {access_structure:?}");
+
+        let res = kms_rest_client
+            .create_key_pair(build_create_covercrypt_master_keypair_request(
+                &access_structure,
+                &self.tags,
+                self.sensitive,
+            )?)
             .await
             .with_context(|| "failed creating a Covercrypt Master Key Pair")?;
 
-        let private_key_unique_identifier = &create_key_pair_response.private_key_unique_identifier;
-        let public_key_unique_identifier = &create_key_pair_response.public_key_unique_identifier;
-
-        let mut stdout = console::Stdout::new("The master key pair has been properly generated.");
+        let mut stdout = console::Stdout::new("The master keypair has been properly generated.");
         stdout.set_tags(Some(&self.tags));
         stdout.set_key_pair_unique_identifier(
-            private_key_unique_identifier,
-            public_key_unique_identifier,
+            &res.private_key_unique_identifier,
+            &res.public_key_unique_identifier,
         );
-        stdout.write()?;
-
-        Ok(())
+        stdout.write()
     }
 }

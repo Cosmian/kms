@@ -153,7 +153,7 @@ pub(crate) async fn test_generate_export_import() -> CliResult<()> {
     // Covercrypt import/export test
     let (private_key_id, _public_key_id) = create_cc_master_key_pair(
         &ctx.owner_client_conf_path,
-        "--access-structure-specification",
+        "--specification",
         "../../test_data/access_structure_specifications.json",
         &[],
         false,

@@ -26,7 +26,7 @@ const AES_BLOCK_SIZE: usize = 0x10;
 ///
 /// `wrapped_key_size` is the size of the key to wrap.
 fn build_iv(wrapped_key_size: usize) -> CryptoResult<u64> {
-    Ok(u64::from(DEFAULT_RFC5649_CONST) << 32 | u64::try_from(wrapped_key_size)?.to_le())
+    Ok((u64::from(DEFAULT_RFC5649_CONST) << 32) | u64::try_from(wrapped_key_size)?.to_le())
 }
 
 /// Check if the `iv` value obtained after decryption is appropriate according
@@ -88,7 +88,7 @@ pub fn rfc5649_wrap(plain: &[u8], kek: &[u8]) -> Result<Vec<u8>, CryptoError> {
 
         Ok(ciphertext[..AES_BLOCK_SIZE].to_vec())
     } else {
-        _wrap_64(&padded_plain, kek, Some(build_iv(n)?))
+        wrap_64(&padded_plain, kek, Some(build_iv(n)?))
     }
 }
 
@@ -107,7 +107,7 @@ pub fn rfc5649_unwrap(ciphertext: &[u8], kek: &[u8]) -> Result<Zeroizing<Vec<u8>
     }
 
     if n > 16 {
-        let (iv, padded_plain) = _unwrap_64(ciphertext, kek)?;
+        let (iv, padded_plain) = unwrap_64(ciphertext, kek)?;
 
         // Verify integrity check register as described in RFC 5649.
         if !check_iv(iv, &padded_plain)? {
@@ -165,7 +165,7 @@ pub fn rfc5649_unwrap(ciphertext: &[u8], kek: &[u8]) -> Result<Zeroizing<Vec<u8>
 ///
 /// The function name matches the one used in the RFC and has no link to the
 /// unwrap function in Rust.
-fn _wrap_64(plain: &[u8], kek: &[u8], iv: Option<u64>) -> Result<Vec<u8>, CryptoError> {
+fn wrap_64(plain: &[u8], kek: &[u8], iv: Option<u64>) -> Result<Vec<u8>, CryptoError> {
     let n = plain.len();
 
     if n % AES_WRAP_PAD_BLOCK_SIZE != 0 {
@@ -198,7 +198,7 @@ fn _wrap_64(plain: &[u8], kek: &[u8], iv: Option<u64>) -> Result<Vec<u8>, Crypto
     for j in 0..6 {
         for (i, block) in blocks.iter_mut().enumerate().take(n) {
             // B = AES(K, A | R[i])
-            let plaintext_block = (u128::from(icr) << 64 | u128::from(*block)).to_be_bytes();
+            let plaintext_block = ((u128::from(icr) << 64) | u128::from(*block)).to_be_bytes();
 
             /*
              * Encrypt block using AES with ECB mode i.e. raw AES as specified in
@@ -223,7 +223,7 @@ fn _wrap_64(plain: &[u8], kek: &[u8], iv: Option<u64>) -> Result<Vec<u8>, Crypto
     Ok(wrapped_key)
 }
 
-fn _unwrap_64(ciphertext: &[u8], kek: &[u8]) -> Result<(u64, Zeroizing<Vec<u8>>), CryptoError> {
+fn unwrap_64(ciphertext: &[u8], kek: &[u8]) -> Result<(u64, Zeroizing<Vec<u8>>), CryptoError> {
     let n = ciphertext.len();
 
     if n % AES_WRAP_PAD_BLOCK_SIZE != 0 || n < AES_BLOCK_SIZE {
@@ -266,7 +266,7 @@ fn _unwrap_64(ciphertext: &[u8], kek: &[u8]) -> Result<(u64, Zeroizing<Vec<u8>>)
             let t = u64::try_from((n * j) + (n - i))?;
 
             // B = AES-1(K, (A ^ t) | R[i]) where t = n*j+i
-            let big_i = (u128::from(icr ^ t) << 64 | u128::from(*block)).to_be_bytes();
+            let big_i = ((u128::from(icr ^ t) << 64) | u128::from(*block)).to_be_bytes();
             let big_b = big_i.as_slice();
 
             let mut plaintext = Zeroizing::from(vec![0; big_b.len() + AES_BLOCK_SIZE]);

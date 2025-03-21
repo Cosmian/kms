@@ -3,7 +3,7 @@ use std::{collections::HashSet, sync::Arc};
 use cosmian_kmip::kmip_2_1::kmip_types::{RevocationReason, StateEnumeration, UniqueIdentifier};
 use cosmian_kms_interfaces::SessionParams;
 
-use super::locate_user_decryption_keys;
+use super::locate_usk;
 use crate::{
     core::{operations::recursively_revoke_key, KMS},
     result::KResult,
@@ -19,7 +19,7 @@ pub(crate) async fn revoke_user_decryption_keys(
     params: Option<Arc<dyn SessionParams>>, // keys that should be skipped
     ids_to_skip: HashSet<String>,
 ) -> KResult<()> {
-    if let Some(ids) = locate_user_decryption_keys(
+    if let Some(ids) = locate_usk(
         kms,
         master_secret_key_id,
         None,

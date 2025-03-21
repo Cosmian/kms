@@ -79,7 +79,6 @@ impl EncryptAction {
             Some(self.encryption_policy.to_string()),
             data,
             None,
-            None,
             self.authentication_data
                 .as_deref()
                 .map(|s| s.as_bytes().to_vec()),

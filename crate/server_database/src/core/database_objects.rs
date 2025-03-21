@@ -24,7 +24,7 @@ use crate::{
 /// # Methods
 ///
 /// - `register_objects_store`: Registers an `ObjectsStore` for objects with a specific prefix.
-/// - `unregister_object_store`: Unregisters the default objects store or a store for a given prefix.
+/// - `unregister_object_store`: Unregister the default objects store or a store for a given prefix.
 /// - `get_object_store`: Retrieves the appropriate object store based on the prefix of the `uid`.
 /// - `filename`: Returns the filename of the database or `None` if not supported.
 /// - `migrate`: Migrates all the databases to the latest version.
@@ -88,10 +88,7 @@ impl Database {
     /// # Errors
     ///
     /// This function will return an error if no object store is found for the given prefix or if no default object store is available.
-    async fn get_object_store<'a>(
-        &'a self,
-        uid: &str,
-    ) -> DbResult<Arc<dyn ObjectsStore + Sync + Send>> {
+    async fn get_object_store(&self, uid: &str) -> DbResult<Arc<dyn ObjectsStore + Sync + Send>> {
         // split the uid on the first ::
         let splits = uid.split_once("::");
         Ok(match splits {

@@ -380,7 +380,7 @@ pub(crate) async fn test_export_covercrypt() -> CliResult<()> {
     // generate a new master key pair
     let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(
         &ctx.owner_client_conf_path,
-        "--access-structure-specification",
+        "--specification",
         "../../test_data/access_structure_specifications.json",
         &[],
         false,
@@ -439,7 +439,7 @@ pub(crate) async fn test_export_error_cover_crypt() -> CliResult<()> {
     // generate a new master key pair
     let (master_private_key_id, _master_public_key_id) = create_cc_master_key_pair(
         &ctx.owner_client_conf_path,
-        "--access-structure-specification",
+        "--specification",
         "../../test_data/access_structure_specifications.json",
         &[],
         false,
@@ -716,7 +716,7 @@ pub(crate) async fn test_sensitive_covercrypt_key() -> CliResult<()> {
     // generate a new master key pair
     let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(
         &ctx.owner_client_conf_path,
-        "--access-structure-specification",
+        "--specification",
         "../../test_data/access_structure_specifications.json",
         &[],
         true,
