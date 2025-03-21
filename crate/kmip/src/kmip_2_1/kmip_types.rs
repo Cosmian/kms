@@ -8,13 +8,13 @@ use std::{
     fmt::{Display, Formatter},
 };
 
-use kmip_derive::KmipEnumSerialize;
+use kmip_derive::{kmip_enum, KmipEnumDeserialize, KmipEnumSerialize};
 use serde::{
     de::{self, MapAccess, Visitor},
     ser::SerializeStruct,
     Deserialize, Serialize,
 };
-use strum::{Display, EnumIter, EnumString};
+use strum::{Display, EnumIter};
 use uuid::Uuid;
 
 use crate::{
@@ -30,52 +30,39 @@ pub const VENDOR_ATTR_AAD: &str = "aad";
 /// is created or registered and then SHALL NOT be changed or deleted before the
 /// object is destroyed.
 /// The PKCS7 format is a Cosmian extension from KMIP.
-#[derive(
-    KmipEnumSerialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, strum::IntoStaticStr,
-)]
-#[repr(u32)]
+#[kmip_enum]
 pub enum CertificateType {
     X509 = 0x01,
     PGP = 0x02,
     PKCS7 = 0x8000_0001,
 }
 
-#[derive(
-    KmipEnumSerialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, strum::IntoStaticStr,
-)]
+#[kmip_enum]
 pub enum CertificateRequestType {
     CRMF = 0x01,
     PKCS10 = 0x02,
     PEM = 0x03,
 }
 
-#[derive(
-    KmipEnumSerialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, strum::IntoStaticStr,
-)]
-#[repr(u32)]
+#[kmip_enum]
 pub enum OpaqueDataType {
     Unknown = 0x8000_0001,
 }
 
-#[derive(
-    KmipEnumSerialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, strum::IntoStaticStr,
-)]
-#[repr(u32)]
+#[kmip_enum]
 pub enum SecretDataType {
     Password = 0x01,
     Seed = 0x02,
 }
 
-#[derive(
-    KmipEnumSerialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, strum::IntoStaticStr,
-)]
+#[kmip_enum]
 pub enum SplitKeyMethod {
     XOR = 0x0000_0001,
-    #[serde(rename = "Polynomial Sharing GF (2^16)")]
+    // #[serde(rename = "Polynomial Sharing GF (2^16)")]
     PolynomialSharingGf216 = 0x0000_0002,
-    #[serde(rename = "Polynomial Sharing Prime Field")]
+    // #[serde(rename = "Polynomial Sharing Prime Field")]
     PolynomialSharingPrimeField = 0x0000_0003,
-    #[serde(rename = "Polynomial Sharing GF (2^8)")]
+    // #[serde(rename = "Polynomial Sharing GF (2^8)")]
     PolynomialSharingGf28 = 0x0000_0004,
 }
 
@@ -109,19 +96,7 @@ pub enum SplitKeyMethod {
 ///  - `TransparentSymmetricKey` for symmetric keys
 ///  - Raw for opaque objects and Secret Data
 ///
-#[repr(u32)]
-#[derive(
-    KmipEnumSerialize,
-    Deserialize,
-    Copy,
-    Clone,
-    Debug,
-    Eq,
-    PartialEq,
-    EnumIter,
-    Display,
-    strum::IntoStaticStr,
-)]
+#[kmip_enum]
 pub enum KeyFormatType {
     Raw = 0x01,
     Opaque = 0x02,
@@ -163,20 +138,7 @@ pub enum KeyFormatType {
     CoverCryptPublicKey = 0x8880_000D,
 }
 
-#[allow(non_camel_case_types)]
-#[repr(u32)]
-#[derive(
-    KmipEnumSerialize,
-    Deserialize,
-    Copy,
-    Clone,
-    Debug,
-    Display,
-    Eq,
-    PartialEq,
-    EnumIter,
-    strum::IntoStaticStr,
-)]
+#[kmip_enum]
 pub enum CryptographicAlgorithm {
     DES = 0x0000_0001,
     THREE_DES = 0x0000_0002,
@@ -270,11 +232,7 @@ impl Default for CryptographicDomainParameters {
     }
 }
 
-#[allow(non_camel_case_types)]
-#[repr(u32)]
-#[derive(
-    KmipEnumSerialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display, strum::IntoStaticStr,
-)]
+#[kmip_enum]
 pub enum RecommendedCurve {
     P192 = 0x0000_0001,
     K163 = 0x0000_0002,
@@ -363,10 +321,7 @@ impl Default for RecommendedCurve {
     }
 }
 
-#[allow(non_camel_case_types)]
-#[derive(
-    KmipEnumSerialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, strum::IntoStaticStr,
-)]
+#[kmip_enum]
 pub enum KeyCompressionType {
     ECPublicKeyTypeUncompressed = 0x0000_0001,
     ECPublicKeyTypeX962CompressedPrime = 0x0000_0002,
@@ -580,11 +535,7 @@ impl<'de> Deserialize<'de> for ProtectionStorageMasks {
     }
 }
 
-#[allow(non_camel_case_types)]
-#[derive(
-    KmipEnumSerialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, strum::IntoStaticStr,
-)]
-#[serde(rename_all = "PascalCase")]
+#[kmip_enum]
 pub enum ObjectGroupMember {
     Group_Member_Fresh = 0x0000_0001,
     Group_Member_Default = 0x0000_0002,
@@ -666,19 +617,7 @@ impl<'de> Deserialize<'de> for StorageStatusMask {
     }
 }
 
-#[allow(non_camel_case_types)]
-#[derive(
-    KmipEnumSerialize,
-    Deserialize,
-    Copy,
-    Clone,
-    Debug,
-    Eq,
-    Display,
-    PartialEq,
-    EnumIter,
-    strum::IntoStaticStr,
-)]
+#[kmip_enum]
 pub enum LinkType {
     /// For Certificate objects: the parent certificate for a certificate in a
     /// certificate chain. For Public Key objects: the corresponding
@@ -729,19 +668,7 @@ pub enum LinkType {
 /// Identifier: If multiple unique identifiers would be referenced then the
 /// operation is repeated for each of them. If an operation appears
 /// multiple times in a request, it is the most recent that is referred to.
-#[allow(non_camel_case_types)]
-#[derive(
-    KmipEnumSerialize,
-    Deserialize,
-    Copy,
-    Clone,
-    Debug,
-    Eq,
-    PartialEq,
-    Display,
-    Hash,
-    strum::IntoStaticStr,
-)]
+#[kmip_enum]
 pub enum UniqueIdentifierEnumeration {
     IDPlaceholder = 0x0000_0001,
     Certify = 0x0000_0002,
@@ -796,10 +723,7 @@ impl From<UniqueIdentifier> for LinkedObjectIdentifier {
     }
 }
 
-#[allow(non_camel_case_types)]
-#[derive(
-    KmipEnumSerialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display, strum::IntoStaticStr,
-)]
+#[kmip_enum]
 pub enum RevocationReasonCode {
     Unspecified = 0x0000_0001,
     KeyCompromise = 0x0000_0002,
@@ -1028,24 +952,7 @@ impl AttributeReference {
     }
 }
 
-#[allow(non_camel_case_types)]
-#[allow(clippy::enum_variant_names)]
-#[derive(
-    KmipEnumSerialize,
-    Deserialize,
-    Copy,
-    Clone,
-    Debug,
-    Eq,
-    PartialEq,
-    Display,
-    EnumString,
-    EnumIter,
-    Hash,
-    strum::IntoStaticStr,
-    strum::FromRepr,
-)]
-#[repr(u32)]
+#[kmip_enum]
 pub enum Tag {
     ActivationDate = 0x42_0001,
     ApplicationData = 0x42_0002,
@@ -1389,10 +1296,7 @@ pub enum Tag {
 }
 
 /// Indicates the method used to wrap the Key Value.
-#[allow(non_camel_case_types)]
-#[derive(
-    KmipEnumSerialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, strum::IntoStaticStr,
-)]
+#[kmip_enum]
 pub enum WrappingMethod {
     Encrypt = 0x0000_0001,
     MACSign = 0x0000_0002,
@@ -1444,10 +1348,7 @@ pub enum BlockCipherMode {
     GCMSIV = 0x8000_0002,
 }
 
-#[allow(non_camel_case_types)]
-#[derive(
-    KmipEnumSerialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, strum::IntoStaticStr,
-)]
+#[kmip_enum]
 pub enum PaddingMethod {
     None = 0x1,
     OAEP = 0x2,
@@ -1461,10 +1362,7 @@ pub enum PaddingMethod {
     PSS = 0xA,
 }
 
-#[allow(non_camel_case_types)]
-#[derive(
-    KmipEnumSerialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, strum::IntoStaticStr,
-)]
+#[kmip_enum]
 pub enum HashingAlgorithm {
     MD2 = 0x0000_0001,
     MD4 = 0x0000_0002,
@@ -1485,10 +1383,7 @@ pub enum HashingAlgorithm {
     SHA3512 = 0x0000_0011,
 }
 
-#[allow(non_camel_case_types)]
-#[derive(
-    KmipEnumSerialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, strum::IntoStaticStr,
-)]
+#[kmip_enum]
 pub enum KeyRoleType {
     BDK = 0x0000_0001,
     CVK = 0x0000_0002,
@@ -1516,10 +1411,7 @@ pub enum KeyRoleType {
     TRKBK = 0x0000_0018,
 }
 
-#[allow(non_camel_case_types)]
-#[derive(
-    KmipEnumSerialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, strum::IntoStaticStr,
-)]
+#[kmip_enum]
 pub enum DigitalSignatureAlgorithm {
     MD2WithRSAEncryption = 0x0000_0001,
     MD5WithRSAEncryption = 0x0000_0002,
@@ -1542,10 +1434,7 @@ pub enum DigitalSignatureAlgorithm {
     SHA3512WithRSAEncryption = 0x0000_0013,
 }
 
-#[allow(non_camel_case_types)]
-#[derive(
-    KmipEnumSerialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, strum::IntoStaticStr,
-)]
+#[kmip_enum]
 pub enum MaskGenerator {
     MFG1 = 0x0000_0001,
 }
@@ -1648,10 +1537,7 @@ pub struct MacSignatureKeyInformation {
     pub cryptographic_parameters: Option<CryptographicParameters>,
 }
 
-#[allow(non_camel_case_types)]
-#[derive(
-    KmipEnumSerialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, strum::IntoStaticStr,
-)]
+#[kmip_enum]
 pub enum EncodingOption {
     /// the wrapped-encoded value of the Byte String Key Material field in
     /// the Key Value structure
@@ -1660,10 +1546,7 @@ pub enum EncodingOption {
     TTLVEncoding = 0x0000_0002,
 }
 
-#[allow(non_camel_case_types)]
-#[derive(
-    KmipEnumSerialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, strum::IntoStaticStr,
-)]
+#[kmip_enum]
 pub enum KeyWrapType {
     NotWrapped = 0x0000_0001,
     AsRegistered = 0x0000_0002,
@@ -2278,17 +2161,16 @@ pub struct Nonce {
 /// This option SHALL only be present if the Batch Count is greater than 1.
 /// This option SHALL have one of three values (Undo, Stop or Continue).
 /// If not specified, then Stop is assumed.
-#[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[kmip_enum]
 pub enum BatchErrorContinuationOption {
     /// If any operation in the request fails, then the server SHALL undo all the previous operations.
     ///
-    /// Batch item fails and Result Status is set to Operation Failed.
+    /// Batch item fails and the Result Status is set to Operation Failed.
     /// Responses to batch items that have already been processed are returned normally.
     /// Responses to batch items that have not been processed are not returned.
-    Undo,
-    Stop,
-    Continue,
+    Continue = 0x01,
+    Stop = 0x02,
+    Undo = 0x03,
 }
 
 /// The Message Extension is an OPTIONAL structure that MAY be appended to any Batch Item.
@@ -2321,10 +2203,7 @@ pub struct MessageExtension {
     pub vendor_extension: Vec<u8>,
 }
 
-#[allow(non_camel_case_types)]
-#[derive(
-    KmipEnumSerialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display, strum::IntoStaticStr,
-)]
+#[kmip_enum]
 pub enum OperationEnumeration {
     Create = 0x0000_0001,
     CreateKeyPair = 0x0000_0002,
@@ -2387,10 +2266,7 @@ pub enum OperationEnumeration {
     Ping = 0x0000_003B,
 }
 
-#[allow(non_camel_case_types)]
-#[derive(
-    KmipEnumSerialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display, strum::IntoStaticStr,
-)]
+#[kmip_enum]
 pub enum ResultStatusEnumeration {
     Success = 0x0000_0000,
     OperationFailed = 0x0000_0001,
@@ -2400,10 +2276,7 @@ pub enum ResultStatusEnumeration {
 
 /// An Enumeration object indicating whether the certificate chain is valid,
 /// invalid, or unknown.
-#[allow(non_camel_case_types)]
-#[derive(
-    KmipEnumSerialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display, strum::IntoStaticStr,
-)]
+#[kmip_enum]
 pub enum ValidityIndicator {
     Valid = 0x0000_0000,
     Invalid = 0x0000_0001,
@@ -2437,7 +2310,7 @@ pub struct AlternativeName {
 }
 
 /// `AlternativeNameType` enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum AlternativeNameType {
     UninterpretedTextString = 0x1,
     URI = 0x2,
@@ -2460,7 +2333,7 @@ pub struct ApplicationSpecificInformation {
 }
 
 /// `KeyValueLocationType` enumeration indicates where a key value is stored
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum KeyValueLocationType {
     Unspecified = 0x1,
     OnPremise = 0x2,
@@ -2469,7 +2342,7 @@ pub enum KeyValueLocationType {
 }
 
 /// `NistKeyType` enumeration used with NIST SP 800-56 and SP 800-108 operations
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum NistKeyType {
     AESP1 = 0x1,
     AESP2 = 0x2,
@@ -2489,7 +2362,7 @@ pub enum NistKeyType {
 }
 
 /// `ProtectionLevel` enumeration indicates the level of protection required for an object
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum ProtectionLevel {
     Software = 0x1,
     Hardware = 0x2,
@@ -2530,7 +2403,7 @@ pub struct RNGParameters {
 }
 
 /// State enumeration indicates the current state of a managed object
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum State {
     PreActive = 0x1,
     Active = 0x2,
@@ -2553,7 +2426,7 @@ pub struct UsageLimits {
 }
 
 /// `UsageLimitsUnit` enumeration defines the unit for usage limits
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum UsageLimitsUnit {
     Byte = 0x1,
     Object = 0x2,
@@ -2570,7 +2443,7 @@ pub struct Name {
 }
 
 /// `NameType` enumeration defines the type of name used to identify managed objects
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum NameType {
     UninterpretedTextString = 0x1,
     URI = 0x2,
@@ -2590,9 +2463,7 @@ pub struct X509CertificateIdentifier {
 }
 
 /// RNG Algorithm Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
-#[serde(rename_all = "PascalCase")]
-#[allow(non_camel_case_types)]
+#[kmip_enum]
 pub enum RNGAlgorithm {
     Unspecified = 0x1,
     FIPS186_2 = 0x2,
@@ -2603,10 +2474,10 @@ pub enum RNGAlgorithm {
 }
 
 /// DRBG Algorithm Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[kmip_enum]
 pub enum DRBGAlgorithm {
     Unspecified = 0x1,
-    #[serde(rename = "Dual-EC")]
+    // #[serde(rename = "Dual-EC")]
     DualEC = 0x2,
     Hash = 0x3,
     HMAC = 0x4,
@@ -2614,26 +2485,25 @@ pub enum DRBGAlgorithm {
 }
 
 /// KMIP 2.1 FIPS186 Variation Enumeration
-#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
-#[allow(non_camel_case_types)]
+#[kmip_enum]
 pub enum FIPS186Variation {
     Unspecified = 0x1,
-    #[serde(rename = "GP x-Original")]
+    // #[serde(rename = "GP x-Original")]
     GPXOriginal = 0x2,
-    #[serde(rename = "GP x-Change Notice")]
+    // #[serde(rename = "GP x-Change Notice")]
     GPXChangeNotice = 0x3,
-    #[serde(rename = "x-Original")]
+    // #[serde(rename = "x-Original")]
     XOriginal = 0x4,
-    #[serde(rename = "x-Change Notice")]
+    // #[serde(rename = "x-Change Notice")]
     XChangeNotice = 0x5,
-    #[serde(rename = "k-Original")]
+    // #[serde(rename = "k-Original")]
     KOriginal = 0x6,
-    #[serde(rename = "k-Change Notice")]
+    // #[serde(rename = "k-Change Notice")]
     KChangeNotice = 0x7,
 }
 
 /// The `QueryFunction` is used to indicate what server information is being requested.
-#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
+#[kmip_enum]
 pub enum QueryFunction {
     QueryOperations,
     QueryObjects,
@@ -2652,36 +2522,15 @@ pub enum QueryFunction {
 }
 
 /// Random Number Generation Mode enumeration
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[serde(rename_all = "PascalCase")]
+#[kmip_enum]
 pub enum RNGMode {
-    /// Shared Random Number Generator
-    Shared,
-
-    /// Per Operation Random Number Generator
-    PerOperation,
-
-    /// Combined Multiple Random Number Generators
-    Combined,
-
-    /// No Random Number Generator
-    None,
-}
-
-impl Display for RNGMode {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Shared => write!(f, "Shared"),
-            Self::PerOperation => write!(f, "PerOperation"),
-            Self::Combined => write!(f, "Combined"),
-            Self::None => write!(f, "None"),
-        }
-    }
+    Unspecified = 0x01,
+    SharedInstantiation = 0x02,
+    NonSharedInstantiation = 0x03,
 }
 
 /// Methods by which clients can register with a KMIP server.
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(i32)]
+#[kmip_enum]
 pub enum ClientRegistrationMethod {
     /// The client is not required to register.
     Unspecified = 0x0000_0001,
@@ -2698,9 +2547,7 @@ pub enum ClientRegistrationMethod {
 }
 
 /// Supported profile identifiers in the KMIP specification.
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(non_camel_case_types)]
-#[repr(i32)]
+#[kmip_enum]
 pub enum ProfileName {
     /// The KMIP baseline profile.
     Baseline = 0x0000_0001,
@@ -2723,8 +2570,7 @@ pub enum ProfileName {
 }
 
 /// Types of validation authorities that can validate cryptographic objects.
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(i32)]
+#[kmip_enum]
 pub enum ValidationAuthorityType {
     /// Common Criteria Testing Laboratory authority.
     CommonCriteriaTestingLaboratory = 0x0000_0001,
