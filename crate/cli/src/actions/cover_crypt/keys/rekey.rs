@@ -5,32 +5,34 @@ use cosmian_kms_crypto::crypto::cover_crypt::{
 };
 
 use crate::{
-    actions::console,
-    cli_bail,
+    actions::{console, labels::KEY_ID, shared::get_key_uid},
     error::result::{CliResult, CliResultHelper},
 };
 
-/// Rekey the master and user keys for a given access policy.
+/// Rekey the given access policy.
 ///
-/// Active user decryption keys are automatically re-keyed.
-/// Revoked or destroyed user decryption keys are not re-keyed.
+/// Active USKs are automatically re-keyed. Revoked or destroyed USKs are not
+/// re-keyed.
 ///
-/// User keys that have not been rekeyed will only be able to decrypt
-/// data encrypted before this operation.
+/// USKs that have not been rekeyed will only be able to decrypt data encrypted
+/// before this operation.
 #[derive(Parser, Debug)]
 #[clap(verbatim_doc_comment)]
 pub struct RekeyAction {
-    /// The access policy to rekey.
-    /// Example: `department::marketing && level::confidential`
+    /// The access policy should be expressed as a boolean expression of
+    /// attributes. For example (provided the corresponding attributes are
+    /// defined in the MSK):
+    ///
+    /// `"(Department::HR || Department::MKG) && Security Level::Confidential"`
     #[clap(required = true)]
     access_policy: String,
 
-    /// The private master key unique identifier stored in the KMS.
-    /// If not specified, tags should be specified
-    #[clap(long = "key-id", short = 'k', group = "key-tags")]
-    secret_key_id: Option<String>,
+    /// The MSK UID stored in the KMS. If not specified, tags should be
+    /// specified.
+    #[clap(long = KEY_ID, short = 'k', group = "key-tags")]
+    msk_uid: Option<String>,
 
-    /// Tag to use to retrieve the key when no key id is specified.
+    /// Tag to use to retrieve the MSK when no key id is specified.
     /// To specify multiple tags, use the option multiple times.
     #[clap(long = "tag", short = 't', value_name = "TAG", group = "key-tags")]
     tags: Option<Vec<String>>,
@@ -38,64 +40,54 @@ pub struct RekeyAction {
 
 impl RekeyAction {
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
-        let id = if let Some(key_id) = &self.secret_key_id {
-            key_id.clone()
-        } else if let Some(tags) = &self.tags {
-            serde_json::to_string(&tags)?
-        } else {
-            cli_bail!("Either --key-id or one or more --tag must be specified")
-        };
+        let uid = get_key_uid(self.msk_uid.as_ref(), self.tags.as_ref(), KEY_ID)?;
 
-        // Create the kmip query
-        let query = build_rekey_keypair_request(
-            &id,
-            &RekeyEditAction::RekeyAccessPolicy(self.access_policy.clone()),
-        )?;
-
-        // Query the KMS with your kmip data
-        let response = kms_rest_client
-            .rekey_keypair(query)
+        let res = kms_rest_client
+            .rekey_keypair(build_rekey_keypair_request(
+                &uid,
+                &RekeyEditAction::RekeyAccessPolicy(self.access_policy.clone()),
+            )?)
             .await
             .with_context(|| "failed rekeying the master keys")?;
 
         let stdout = format!(
-            "The master private key {} and master public key {} were rekeyed for the access \
-             policy {:?}",
-            &response.private_key_unique_identifier,
-            &response.public_key_unique_identifier,
+            "The MSK {} and MPK {} were rekeyed for the access policy {:?}",
+            &res.private_key_unique_identifier,
+            &res.public_key_unique_identifier,
             &self.access_policy
         );
 
         let mut stdout = console::Stdout::new(&stdout);
         stdout.set_key_pair_unique_identifier(
-            response.private_key_unique_identifier,
-            response.public_key_unique_identifier,
+            res.private_key_unique_identifier,
+            res.public_key_unique_identifier,
         );
-        stdout.write()?;
-
-        Ok(())
+        stdout.write()
     }
 }
 
-/// Prune the master and user keys for a given access policy.
+/// Prune all keys linked to an MSK w.r.t an given access policy.
 ///
-/// Active user decryption keys are automatically pruned.
-/// Revoked or destroyed user decryption keys are not.
+/// Active USKs are automatically pruned. Revoked or destroyed user decryption
+/// keys are not.
 ///
-/// Pruned user keys will only be able to decrypt ciphertexts
-/// generated after the last rekeying.
+/// Pruned user keys can only open encapsulations generated for this access
+/// policy since the last rekeying.
 #[derive(Parser, Debug)]
 #[clap(verbatim_doc_comment)]
 pub struct PruneAction {
-    /// The access policy to prune.
-    /// Example: `department::marketing && level::confidential`
+    /// The access policy should be expressed as a boolean expression of
+    /// attributes. For example (provided the corresponding attributes are
+    /// defined in the MSK):
+    ///
+    /// `"(Department::HR || Department::MKG) && Security Level::Confidential"`
     #[clap(required = true)]
     access_policy: String,
 
     /// The private master key unique identifier stored in the KMS.
     /// If not specified, tags should be specified
-    #[clap(long = "key-id", short = 'k', group = "key-tags")]
-    secret_key_id: Option<String>,
+    #[clap(long = KEY_ID, short = 'k', group = "key-tags")]
+    msk_uid: Option<String>,
 
     /// Tag to use to retrieve the key when no key id is specified.
     /// To specify multiple tags, use the option multiple times.
@@ -105,42 +97,31 @@ pub struct PruneAction {
 
 impl PruneAction {
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
-        let id = if let Some(key_id) = &self.secret_key_id {
-            key_id.clone()
-        } else if let Some(tags) = &self.tags {
-            serde_json::to_string(&tags)?
-        } else {
-            cli_bail!("Either --key-id or one or more --tag must be specified")
-        };
+        let uid = get_key_uid(self.msk_uid.as_ref(), self.tags.as_ref(), KEY_ID)?;
 
-        // Create the kmip query
-        let query = build_rekey_keypair_request(
-            &id,
+        let request = build_rekey_keypair_request(
+            &uid,
             &RekeyEditAction::PruneAccessPolicy(self.access_policy.clone()),
         )?;
 
-        // Query the KMS with your kmip data
-        let response = kms_rest_client
-            .rekey_keypair(query)
+        let res = kms_rest_client
+            .rekey_keypair(request)
             .await
             .with_context(|| "failed pruning the master keys")?;
 
         let stdout = format!(
-            "The master private key {} and master public key {} were pruned for the access policy \
-             {:?}",
-            &response.private_key_unique_identifier,
-            &response.public_key_unique_identifier,
+            "The MSK {} and MPK {} were pruned for the access policy {:?}",
+            &res.private_key_unique_identifier,
+            &res.public_key_unique_identifier,
             &self.access_policy
         );
 
         let mut stdout = console::Stdout::new(&stdout);
         stdout.set_tags(self.tags.as_ref());
         stdout.set_key_pair_unique_identifier(
-            response.private_key_unique_identifier,
-            response.public_key_unique_identifier,
+            res.private_key_unique_identifier,
+            res.public_key_unique_identifier,
         );
-        stdout.write()?;
-
-        Ok(())
+        stdout.write()
     }
 }

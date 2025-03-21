@@ -24,12 +24,12 @@ pub(crate) async fn locate(
         .find(Some(&request.attributes), state, user, false, params)
         .await?;
     trace!("Found {} objects: {:?}", uids_attrs.len(), uids_attrs);
-    // Filter the uids that match the access policy
+    // Filter the uids that match the access access structure
     let mut uids = Vec::new();
     if !uids_attrs.is_empty() {
         for (uid, _, attributes) in uids_attrs {
             trace!("UID: {:?}, Attributes: {:?}", uid, attributes);
-            // If there is no access policy, do not match and add, otherwise compare the access policies
+            // If there is no access access structure, do not match and add, otherwise compare the access policies
             if access_policy_from_attributes(&request.attributes).is_err() {
                 uids.push(UniqueIdentifier::TextString(uid));
             }

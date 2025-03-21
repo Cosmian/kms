@@ -96,7 +96,7 @@ pub(crate) fn validate_certificate(
         args.push(certificate);
     }
     for uid in uids {
-        args.push("--unique-identifier".to_owned());
+        args.push("--certificate-id".to_owned());
         args.push(uid);
     }
     if let Some(d) = date {

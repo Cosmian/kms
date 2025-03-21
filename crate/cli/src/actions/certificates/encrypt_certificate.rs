@@ -10,9 +10,10 @@ use zeroize::Zeroizing;
 use crate::{
     actions::{
         console,
+        labels::CERTIFICATE_ID,
         rsa::{HashFn, RsaEncryptionAlgorithm},
+        shared::get_key_uid,
     },
-    cli_bail,
     error::result::{CliResult, CliResultHelper},
 };
 
@@ -27,7 +28,7 @@ pub struct EncryptCertificateAction {
 
     /// The certificate unique identifier.
     /// If not specified, tags should be specified
-    #[clap(long = "certificate-id", short = 'c', group = "key-tags")]
+    #[clap(long = CERTIFICATE_ID, short = 'c', group = "key-tags")]
     certificate_id: Option<String>,
 
     /// Tag to use to retrieve the key when no key id is specified.
@@ -57,15 +58,13 @@ impl EncryptCertificateAction {
         let data = Zeroizing::from(read_bytes_from_file(&self.input_file)?);
 
         // Recover the unique identifier or set of tags
-        let id = if let Some(key_id) = &self.certificate_id {
-            key_id.clone()
-        } else if let Some(tags) = &self.tags {
-            serde_json::to_string(&tags)?
-        } else {
-            cli_bail!("Either --certificate-id or one or more --tag must be specified")
-        };
+        let id = get_key_uid(
+            self.certificate_id.as_ref(),
+            self.tags.as_ref(),
+            CERTIFICATE_ID,
+        )?;
 
-        let authentication_data = self
+        let authenticated_encryption_additional_data = self
             .authentication_data
             .as_ref()
             .map(|auth_data| auth_data.as_bytes().to_vec());
@@ -80,7 +79,7 @@ impl EncryptCertificateAction {
         let encrypt_request = Encrypt {
             unique_identifier: Some(UniqueIdentifier::TextString(id.clone())),
             data: Some(data),
-            authenticated_encryption_additional_data: authentication_data,
+            authenticated_encryption_additional_data,
             cryptographic_parameters,
             ..Encrypt::default()
         };

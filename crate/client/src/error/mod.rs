@@ -118,8 +118,8 @@ impl From<KmipError> for KmsClientError {
     }
 }
 
-impl From<cloudproof::reexport::crypto_core::CryptoCoreError> for KmsClientError {
-    fn from(e: cloudproof::reexport::crypto_core::CryptoCoreError) -> Self {
+impl From<cosmian_crypto_core::CryptoCoreError> for KmsClientError {
+    fn from(e: cosmian_crypto_core::CryptoCoreError) -> Self {
         Self::UnexpectedError(e.to_string())
     }
 }

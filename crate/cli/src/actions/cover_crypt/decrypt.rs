@@ -2,14 +2,14 @@ use std::path::PathBuf;
 
 use clap::Parser;
 use cosmian_kms_client::{
-    cosmian_kmip::kmip_2_1::{kmip_operations::DecryptedData, kmip_types::CryptographicAlgorithm},
+    cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm,
     kmip_2_1::{kmip_types::CryptographicParameters, requests::decrypt_request},
     read_bytes_from_file, read_bytes_from_files_to_bulk, write_bulk_decrypted_data,
     write_single_decrypted_data, KmsClient,
 };
 
 use crate::{
-    cli_bail,
+    actions::{labels::KEY_ID, shared::get_key_uid},
     error::result::{CliResult, CliResultHelper},
 };
 
@@ -24,7 +24,7 @@ pub struct DecryptAction {
 
     /// The user key unique identifier
     /// If not specified, tags should be specified
-    #[clap(long = "key-id", short = 'k', group = "key-tags")]
+    #[clap(long = KEY_ID, short = 'k', group = "key-tags")]
     key_id: Option<String>,
 
     /// Tag to use to retrieve the key when no key id is specified.
@@ -61,13 +61,7 @@ impl DecryptAction {
         };
 
         // Recover the unique identifier or set of tags
-        let id = if let Some(key_id) = &self.key_id {
-            key_id.clone()
-        } else if let Some(tags) = &self.tags {
-            serde_json::to_string(&tags)?
-        } else {
-            cli_bail!("Either `--key-id` or one or more `--tag` must be specified")
-        };
+        let id = get_key_uid(self.key_id.as_ref(), self.tags.as_ref(), KEY_ID)?;
 
         // Create the kmip query
         let decrypt_request = decrypt_request(
@@ -92,22 +86,14 @@ impl DecryptAction {
             .await
             .with_context(|| "Can't execute the query on the kms server")?;
 
-        let metadata_and_cleartext: DecryptedData = decrypt_response
-            .data
-            .context("The plain data are empty")?
-            .as_slice()
-            .try_into()?;
+        let cleartext = decrypt_response.data.context("The plain data are empty")?;
 
         // Write the decrypted files
         if cryptographic_algorithm == CryptographicAlgorithm::CoverCryptBulk {
-            write_bulk_decrypted_data(
-                &metadata_and_cleartext.plaintext,
-                &self.input_files,
-                self.output_file.as_ref(),
-            )?;
+            write_bulk_decrypted_data(&cleartext, &self.input_files, self.output_file.as_ref())?;
         } else {
             write_single_decrypted_data(
-                &metadata_and_cleartext.plaintext,
+                &cleartext,
                 &self.input_files[0],
                 self.output_file.as_ref(),
             )?;

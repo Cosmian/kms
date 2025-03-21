@@ -227,6 +227,9 @@ impl Display for KeyValue {
     }
 }
 
+// This is required since its signature must match what serde
+// skip_serializing_if is expecting.
+#[allow(clippy::ref_option)]
 // Attributes is default is a fix for https://github.com/Cosmian/kms/issues/92
 fn attributes_is_default_or_none<T: Default + PartialEq + Serialize>(val: &Option<T>) -> bool {
     val.as_ref().map_or(true, |v| *v == T::default())

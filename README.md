@@ -129,7 +129,6 @@ And also some crates:
 - `kmip` which is an implementation of the KMIP standard
 - `server_database` to handle the database
 - `pkcs11_*` to handle PKCS11 support
-- `kms_pyo3` which is a KMS client in Python
 - `kms_test_server` which is a library to instantiate programmatically the KMS server.
 
 **Please refer to the README of the inner directories to have more information.**

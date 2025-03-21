@@ -1,6 +1,6 @@
 use std::num::TryFromIntError;
 
-use cloudproof::reexport::crypto_core::{reexport::pkcs8, CryptoCoreError};
+use cosmian_crypto_core::CryptoCoreError;
 use cosmian_kmip::KmipError;
 use thiserror::Error;
 
@@ -26,6 +26,9 @@ pub enum CryptoError {
     #[error("Invalid tag: {0}")]
     InvalidTag(String),
 
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+
     #[error("KMIP Error: {0}")]
     Kmip(String),
 
@@ -43,17 +46,14 @@ pub enum CryptoError {
 
     #[error(transparent)]
     TryFromSliceError(#[from] std::array::TryFromSliceError),
+
+    #[error(transparent)]
+    Covercrypt(#[from] cosmian_cover_crypt::Error),
 }
 
 impl From<Vec<u8>> for CryptoError {
     fn from(value: Vec<u8>) -> Self {
         Self::ConversionError(format!("Failed converting Vec<u8>: {value:?}"))
-    }
-}
-
-impl From<cloudproof::reexport::cover_crypt::Error> for CryptoError {
-    fn from(e: cloudproof::reexport::cover_crypt::Error) -> Self {
-        Self::Default(e.to_string())
     }
 }
 
@@ -63,34 +63,9 @@ impl From<CryptoCoreError> for CryptoError {
     }
 }
 
-#[cfg(feature = "pyo3")]
-impl From<pyo3::PyErr> for CryptoError {
-    fn from(e: pyo3::PyErr) -> Self {
-        Self::Default(e.to_string())
-    }
-}
-#[cfg(feature = "pyo3")]
-impl From<CryptoError> for pyo3::PyErr {
-    fn from(e: CryptoError) -> Self {
-        pyo3::exceptions::PyException::new_err(e.to_string())
-    }
-}
-
 impl From<openssl::error::ErrorStack> for CryptoError {
     fn from(e: openssl::error::ErrorStack) -> Self {
         Self::OpenSSL(format!("Error: {e}. Details: {e:?}"))
-    }
-}
-
-impl From<pkcs8::spki::Error> for CryptoError {
-    fn from(e: pkcs8::spki::Error) -> Self {
-        Self::ConversionError(e.to_string())
-    }
-}
-
-impl From<pkcs8::Error> for CryptoError {
-    fn from(e: pkcs8::Error) -> Self {
-        Self::ConversionError(e.to_string())
     }
 }
 

@@ -2,7 +2,7 @@ use std::process::Command;
 
 use assert_cmd::prelude::*;
 use base64::{engine::general_purpose, Engine as _};
-use cloudproof::reexport::crypto_core::{
+use cosmian_crypto_core::{
     reexport::rand_core::{RngCore, SeedableRng},
     CsRng,
 };

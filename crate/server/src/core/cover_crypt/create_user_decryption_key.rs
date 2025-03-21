@@ -1,71 +1,48 @@
 use std::sync::Arc;
 
-use cloudproof::reexport::cover_crypt::Covercrypt;
+use cosmian_cover_crypt::{api::Covercrypt, MasterSecretKey};
+use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kmip::kmip_2_1::{
     kmip_objects::{Object, ObjectType},
-    kmip_operations::{Create, CreateKeyPair, Get},
+    kmip_operations::{Create, Import},
     kmip_types::{Attributes, KeyFormatType, StateEnumeration, UniqueIdentifier},
 };
-use cosmian_kms_crypto::crypto::{
-    cover_crypt::{
-        attributes::{access_policy_from_attributes, policy_from_attributes},
-        user_key::UserDecryptionKeysHandler,
-    },
-    KeyPair,
+use cosmian_kms_crypto::crypto::cover_crypt::{
+    attributes::access_policy_from_attributes, master_keys::create_msk_object,
+    user_key::UserDecryptionKeysHandler,
 };
-use cosmian_kms_interfaces::SessionParams;
+use cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams};
+use tracing::{debug, trace};
 
 use super::KMS;
 use crate::{error::KmsError, kms_bail, result::KResult};
 
-/// Create a User Decryption Key in the KMS
+/// Create a User Decryption Key in the KMS.
 ///
-/// The attributes of the `Create` request must contain the
-/// `Access Policy`
+/// The attributes of the `Create` request must contain the `Access Policy`.
 pub(crate) async fn create_user_decryption_key(
     kmip_server: &KMS,
     cover_crypt: Covercrypt,
     create_request: &Create,
     owner: &str,
     params: Option<Arc<dyn SessionParams>>,
+    sensitive: bool,
 ) -> KResult<Object> {
-    create_user_decryption_key_(
-        kmip_server,
-        cover_crypt,
-        &create_request.attributes,
-        owner,
-        params,
-    )
-    .await
-}
-
-async fn create_user_decryption_key_(
-    kms: &KMS,
-    cover_crypt: Covercrypt,
-    create_attributes: &Attributes,
-    _user: &str,
-    params: Option<Arc<dyn SessionParams>>,
-) -> KResult<Object> {
-    // Recover the access policy
-    let access_policy = access_policy_from_attributes(create_attributes)?;
-
-    // Recover private key
-    let msk_uid_or_tags = create_attributes
+    let msk_uid_or_tags = create_request
+        .attributes
         .get_parent_id()
         .ok_or_else(|| {
             KmsError::InvalidRequest(
-                "there should be a reference to the master private key in the creation attributes"
-                    .to_owned(),
+                "there should be a reference to the MSK in the creation attributes".to_owned(),
             )
         })?
         .to_string();
 
-    // retrieve from tags or use passed identifier
-    for owm in kms
+    for owm in kmip_server
         .database
-        .retrieve_objects(&msk_uid_or_tags, params)
+        .retrieve_objects(&msk_uid_or_tags, params.clone())
         .await?
-        .values()
+        .into_values()
     {
         if owm.state() != StateEnumeration::Active {
             continue;
@@ -84,81 +61,83 @@ async fn create_user_decryption_key_(
         if attributes.key_format_type != Some(KeyFormatType::CoverCryptSecretKey) {
             continue;
         }
-        // a master key should have policies in the attributes
-        if policy_from_attributes(attributes).is_err() {
-            continue;
-        }
 
-        let master_private_key = owm.object();
-        if master_private_key.key_wrapping_data().is_some() {
-            kms_bail!(KmsError::InconsistentOperation(
-                "The server can't create a decryption key: the master private key is wrapped"
-                    .to_owned()
-            ));
-        }
+        let access_policy = access_policy_from_attributes(&create_request.attributes)?;
+        debug!("create_user_decryption_key_: Access Policy: {access_policy}");
 
-        return UserDecryptionKeysHandler::instantiate(cover_crypt, master_private_key)?
-            .create_user_decryption_key_object(&access_policy, Some(create_attributes), owm.id())
-            .map_err(Into::into)
+        let (msk_obj, usk_obj) = create_user_decryption_key_(
+            &owm,
+            &cover_crypt,
+            &access_policy,
+            &create_request.attributes,
+            sensitive,
+        )?;
+
+        let import_request = Import {
+            unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
+            object_type: ObjectType::PrivateKey,
+            replace_existing: Some(true),
+            key_wrap_type: None,
+            attributes: owm.attributes().clone(),
+            object: msk_obj,
+        };
+
+        kmip_server
+            .import(import_request, owner, params.clone())
+            .await?;
+
+        return Ok(usk_obj);
     }
 
     Err(KmsError::InvalidRequest(format!(
-        "get: no Covercrypt master private key found for: {msk_uid_or_tags}",
+        "get: no Covercrypt master secret key found for: {msk_uid_or_tags}",
     )))
 }
 
-#[allow(unused)]
-//TODO: there is noway to distinguish between the creation of a user decryption key pair and a master key pair
-/// Create a KMIP tuple (`Object::PrivateKey`, `Object::PublicKey`)
-pub(crate) async fn create_user_decryption_key_pair(
-    kmip_server: &KMS,
-    cover_crypt: Covercrypt,
-    create_key_pair_request: &CreateKeyPair,
-    owner: &str,
-    params: Option<Arc<dyn SessionParams>>,
-) -> KResult<KeyPair> {
-    // create user decryption key
-    let private_key_attributes = create_key_pair_request
-        .private_key_attributes
-        .as_ref()
-        .or(create_key_pair_request.common_attributes.as_ref())
+fn create_user_decryption_key_(
+    owm: &ObjectWithMetadata,
+    cover_crypt: &Covercrypt,
+    access_policy: &str,
+    create_attributes: &Attributes,
+    sensitive: bool,
+) -> KResult<(Object, Object)> {
+    if owm.object().key_wrapping_data().is_some() {
+        kms_bail!(KmsError::InconsistentOperation(
+            "The server can't create a decryption key: the master secret key is wrapped".to_owned()
+        ));
+    }
+
+    let mut msk = MasterSecretKey::deserialize(&owm.object().key_block()?.key_bytes()?)?;
+    let mut usk_handler = UserDecryptionKeysHandler::instantiate(cover_crypt, &mut msk);
+
+    let usk_obj = usk_handler
+        .create_usk_object(access_policy, Some(create_attributes), owm.id())
+        .map_err(KmsError::from)?;
+
+    let msk_bytes = msk.serialize()?;
+
+    trace!(
+        "create_user_decryption_key_: updated_master_secret_key_bytes len: {}",
+        msk_bytes.len()
+    );
+
+    let msk_attributes = owm.object().attributes()?;
+    let mpk_link = msk_attributes
+        .get_link(cosmian_kmip::kmip_2_1::kmip_types::LinkType::PublicKeyLink)
         .ok_or_else(|| {
-            KmsError::InvalidRequest(
-                "Missing private attributes in CoverCrypt Create Keypair request".to_owned(),
+            KmsError::InconsistentOperation(
+                "The server can't create a decryption key: the master secret key has no public \
+                 key link"
+                    .to_owned(),
             )
         })?;
-    let private_key = create_user_decryption_key_(
-        kmip_server,
-        cover_crypt,
-        private_key_attributes,
-        owner,
-        params.clone(),
-    )
-    .await?;
 
-    //Recover Public Key
-    let public_key_attributes = create_key_pair_request
-        .public_key_attributes
-        .as_ref()
-        .or(create_key_pair_request.common_attributes.as_ref())
-        .ok_or_else(|| {
-            KmsError::InvalidRequest(
-                "Missing public attributes in CoverCrypt Create Keypair request".to_owned(),
-            )
-        })?;
-    let master_public_key_uid = public_key_attributes.get_parent_id().ok_or_else(|| {
-        KmsError::InvalidRequest(
-            "the master public key id should be available in the public creation attributes"
-                .to_owned(),
-        )
-    })?;
-    let gr_public_key = kmip_server
-        .get(
-            Get::from(UniqueIdentifier::from(master_public_key_uid)),
-            owner,
-            params,
-        )
-        .await?;
+    let msk_obj = create_msk_object(
+        msk_bytes,
+        msk_attributes.clone(),
+        &mpk_link.to_string(),
+        sensitive,
+    )?;
 
-    Ok(KeyPair((private_key, gr_public_key.object)))
+    Ok((msk_obj, usk_obj))
 }

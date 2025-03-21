@@ -1,7 +1,13 @@
 use clap::Parser;
 use cosmian_kms_client::KmsClient;
 
-use crate::{actions::shared::utils::destroy, cli_bail, error::result::CliResult};
+use crate::{
+    actions::{
+        labels::CERTIFICATE_ID,
+        shared::{get_key_uid, utils::destroy},
+    },
+    error::result::CliResult,
+};
 
 /// Destroy a certificate.
 ///
@@ -14,7 +20,7 @@ use crate::{actions::shared::utils::destroy, cli_bail, error::result::CliResult}
 pub struct DestroyCertificateAction {
     /// The certificate unique identifier.
     /// If not specified, tags should be specified
-    #[clap(long = "certificate-id", short = 'c', group = "certificate-tags")]
+    #[clap(long = CERTIFICATE_ID, short = 'c', group = "certificate-tags")]
     certificate_id: Option<String>,
 
     /// Tag to use to retrieve the certificate when no certificate id is specified.
@@ -37,14 +43,11 @@ pub struct DestroyCertificateAction {
 
 impl DestroyCertificateAction {
     pub async fn run(&self, client_connector: &KmsClient) -> CliResult<()> {
-        let id = if let Some(certificate_id) = &self.certificate_id {
-            certificate_id.clone()
-        } else if let Some(tags) = &self.tags {
-            serde_json::to_string(&tags)?
-        } else {
-            cli_bail!("Either `--certificate-id` or one or more `--tag` must be specified")
-        };
-
+        let id = get_key_uid(
+            self.certificate_id.as_ref(),
+            self.tags.as_ref(),
+            CERTIFICATE_ID,
+        )?;
         destroy(client_connector, &id, self.remove).await
     }
 }

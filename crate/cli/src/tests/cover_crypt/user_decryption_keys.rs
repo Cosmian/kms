@@ -16,7 +16,7 @@ use crate::{
 
 pub(crate) fn create_user_decryption_key(
     cli_conf_path: &str,
-    master_private_key_id: &str,
+    master_secret_key_id: &str,
     access_policy: &str,
     tags: &[&str],
     sensitive: bool,
@@ -27,7 +27,7 @@ pub(crate) fn create_user_decryption_key(
     let mut args = vec![
         "keys",
         "create-user-key",
-        master_private_key_id,
+        master_secret_key_id,
         access_policy,
     ];
     // add tags
@@ -58,10 +58,10 @@ pub(crate) async fn test_user_decryption_key() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
 
     // generate a new master key pair
-    let (master_private_key_id, _) = create_cc_master_key_pair(
+    let (master_secret_key_id, _) = create_cc_master_key_pair(
         &ctx.owner_client_conf_path,
-        "--policy-specifications",
-        "../../test_data/policy_specifications.json",
+        "--specification",
+        "../../test_data/access_structure_specifications.json",
         &[],
         false,
     )?;
@@ -69,7 +69,7 @@ pub(crate) async fn test_user_decryption_key() -> CliResult<()> {
     // and a user key
     let user_key_id = create_user_decryption_key(
         &ctx.owner_client_conf_path,
-        &master_private_key_id,
+        &master_secret_key_id,
         "(Department::MKG || Department::FIN) && Security Level::Top Secret",
         &[],
         false,
@@ -84,10 +84,10 @@ pub(crate) async fn test_user_decryption_key_error() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
 
     // generate a new master key pair
-    let (master_private_key_id, _) = create_cc_master_key_pair(
+    let (master_secret_key_id, _) = create_cc_master_key_pair(
         &ctx.owner_client_conf_path,
-        "--policy-specifications",
-        "../../test_data/policy_specifications.json",
+        "--specification",
+        "../../test_data/access_structure_specifications.json",
         &[],
         false,
     )?;
@@ -95,7 +95,7 @@ pub(crate) async fn test_user_decryption_key_error() -> CliResult<()> {
     // bad attributes
     let err = create_user_decryption_key(
         &ctx.owner_client_conf_path,
-        &master_private_key_id,
+        &master_secret_key_id,
         "(Department::MKG || Department::FIN) && Security Level::Top SecretZZZZZZ",
         &[],
         false,
@@ -104,10 +104,10 @@ pub(crate) async fn test_user_decryption_key_error() -> CliResult<()> {
     .unwrap();
     assert!(
         err.to_string()
-            .contains("attribute not found: Security Level::Top SecretZZZZZZ")
+            .contains("attribute not found: Top SecretZZZZZZ")
     );
 
-    // bad master private key
+    // bad master secret key
     let err = create_user_decryption_key(
         &ctx.owner_client_conf_path,
         "BAD_KEY",
@@ -119,7 +119,7 @@ pub(crate) async fn test_user_decryption_key_error() -> CliResult<()> {
     .unwrap();
     assert!(
         err.to_string()
-            .contains("no Covercrypt master private key found for: BAD_KEY")
+            .contains("no Covercrypt master secret key found for: BAD_KEY")
     );
     Ok(())
 }

@@ -380,8 +380,8 @@ pub(crate) async fn test_export_covercrypt() -> CliResult<()> {
     // generate a new master key pair
     let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(
         &ctx.owner_client_conf_path,
-        "--policy-specifications",
-        "../../test_data/policy_specifications.json",
+        "--specification",
+        "../../test_data/access_structure_specifications.json",
         &[],
         false,
     )?;
@@ -439,8 +439,8 @@ pub(crate) async fn test_export_error_cover_crypt() -> CliResult<()> {
     // generate a new master key pair
     let (master_private_key_id, _master_public_key_id) = create_cc_master_key_pair(
         &ctx.owner_client_conf_path,
-        "--policy-specifications",
-        "../../test_data/policy_specifications.json",
+        "--specification",
+        "../../test_data/access_structure_specifications.json",
         &[],
         false,
     )?;
@@ -716,13 +716,13 @@ pub(crate) async fn test_sensitive_covercrypt_key() -> CliResult<()> {
     // generate a new master key pair
     let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(
         &ctx.owner_client_conf_path,
-        "--policy-specifications",
-        "../../test_data/policy_specifications.json",
+        "--specification",
+        "../../test_data/access_structure_specifications.json",
         &[],
         true,
     )?;
 
-    // Master private key should not be exportable
+    // master secret key should not be exportable
     assert!(
         export_key(ExportKeyParams {
             cli_conf_path: ctx.owner_client_conf_path.clone(),
@@ -738,7 +738,7 @@ pub(crate) async fn test_sensitive_covercrypt_key() -> CliResult<()> {
         .is_err()
     );
 
-    // Master public key should not be exportable
+    // Master public key should be exportable
     assert!(
         export_key(ExportKeyParams {
             cli_conf_path: ctx.owner_client_conf_path.clone(),

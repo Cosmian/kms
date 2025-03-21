@@ -18,7 +18,7 @@ use crate::{
 };
 
 #[tokio::test]
-#[allow(clippy::as_conversions)]
+#[allow(clippy::as_conversions, clippy::large_futures)]
 async fn test_kmip_mac_messages() -> KResult<()> {
     log_init(None);
 
@@ -88,7 +88,7 @@ async fn test_kmip_mac_messages() -> KResult<()> {
 }
 
 #[tokio::test]
-#[allow(clippy::as_conversions)]
+#[allow(clippy::as_conversions, clippy::large_futures)]
 async fn test_encrypt_kmip_messages() -> KResult<()> {
     // cosmian_logger::log_init("info,hyper=info,reqwest=info");
     let clap_config = https_clap_config();
@@ -182,6 +182,7 @@ async fn test_kmip_messages() -> KResult<()> {
             ..Default::default()
         })),
     ];
+
     let message_request = Message {
         header: MessageHeader {
             protocol_version: ProtocolVersion {

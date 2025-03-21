@@ -34,6 +34,8 @@ use zeroize::Zeroizing;
 use crate::{
     actions::{
         console,
+        labels::KEY_ID,
+        shared::get_key_uid,
         symmetric::{DataEncryptionAlgorithm, KeyEncryptionAlgorithm},
     },
     cli_bail,
@@ -73,7 +75,7 @@ pub struct DecryptAction {
 
     /// The private key unique identifier
     /// If not specified, tags should be specified
-    #[clap(long = "key-id", short = 'k', group = "key-tags")]
+    #[clap(long = KEY_ID, short = 'k', group = "key-tags")]
     key_id: Option<String>,
 
     /// Tag to use to retrieve the key when no key id is specified.
@@ -120,13 +122,7 @@ pub struct DecryptAction {
 impl DecryptAction {
     pub(crate) async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         // Recover the unique identifier or set of tags
-        let id = if let Some(key_id) = &self.key_id {
-            key_id.clone()
-        } else if let Some(tags) = &self.tags {
-            serde_json::to_string(&tags)?
-        } else {
-            cli_bail!("Either `--key-id` or one or more `--tag` must be specified")
-        };
+        let id = get_key_uid(self.key_id.as_ref(), self.tags.as_ref(), KEY_ID)?;
 
         // Write the decrypted file
         let output_file_name = self

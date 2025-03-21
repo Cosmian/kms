@@ -2,24 +2,25 @@ use std::path::PathBuf;
 
 use clap::Parser;
 use cosmian_kms_client::KmsClient;
-use cosmian_kms_crypto::crypto::cover_crypt::kmip_requests::build_create_covercrypt_master_keypair_request;
+use cosmian_kms_crypto::crypto::cover_crypt::{
+    access_structure::access_structure_from_json_file,
+    kmip_requests::build_create_covercrypt_master_keypair_request,
+};
+use tracing::debug;
 
 use crate::{
-    actions::{
-        console,
-        cover_crypt::policy::{policy_from_binary_file, policy_from_json_file},
-    },
-    cli_bail,
+    actions::console,
     error::result::{CliResult, CliResultHelper},
 };
 
-/// Create a new master key pair for a given policy and return the key IDs.
+/// Create a new master keypair for a given access structure and return the key
+/// IDs.
 ///
 ///
 ///  - The master public key is used to encrypt the files and can be safely shared.
 ///  - The master secret key is used to generate user decryption keys and must be kept confidential.
 ///
-/// The policy specifications must be passed as a JSON in a file, for example:
+/// The access structure specifications must be passed as a JSON in a file, for example:
 /// ```json
 ///     {
 ///        "Security Level::<": [
@@ -28,35 +29,28 @@ use crate::{
 ///            "Top Secret::+"
 ///        ],
 ///        "Department": [
-///            "R&D",
+///            "RnD",
 ///            "HR",
 ///            "MKG",
 ///            "FIN"
 ///        ]
 ///    }
 /// ```
-/// These specifications create a policy where:
-///  - the policy is defined with 2 policy axes: `Security Level` and `Department`
-///  - the `Security Level` axis is hierarchical as indicated by the `::<` suffix,
-///  - the `Security Level` axis has 3 possible values: `Protected`, `Confidential`, and `Top Secret`,
-///  - the `Department` axis has 4 possible values: `R&D`, `HR`, `MKG`, and `FIN`,
-///  - all partitions which are `Top Secret` will be encrypted using post-quantum hybridized cryptography, as indicated by the `::+` suffix on the value,
-///  - all other partitions will use classic cryptography.
+/// This specification creates an access structure with:
+///  - 2 dimensions: `Security Level` and `Department`
+///  - `Security Level` as hierarchical dimension, as indicated by the `::<` suffix,
+///  - `Security Level` has 3 possible values: `Protected`, `Confidential`, and `Top Secret`,
+///  - `Department` has 4 possible values: `RnD`, `HR`, `MKG`, and `FIN`,
+///  - all encapsulations targeting `Top Secret` will be hybridized, as indicated by the `::+` suffix on the value,
 ///
 /// Tags can later be used to retrieve the keys. Tags are optional.
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
 pub struct CreateMasterKeyPairAction {
-    /// The JSON policy specifications file to use to generate the keys.
+    /// The JSON access structure specifications file to use to generate the keys.
     /// See the inline doc of the `create-master-key-pair` command for details.
-    #[clap(long = "policy-specifications", short = 's', group = "policy")]
-    policy_specifications_file: Option<PathBuf>,
-
-    /// When not using policy specifications, a policy binary file can be used instead.
-    /// See the `policy` command, to create this binary file from policy specifications
-    /// or to extract it from existing keys.
-    #[clap(long = "policy-binary", short = 'b', group = "policy")]
-    policy_binary_file: Option<PathBuf>,
+    #[clap(long, short = 's')]
+    specification: PathBuf,
 
     /// The tag to associate with the master key pair.
     /// To specify multiple tags, use the option multiple times.
@@ -70,36 +64,25 @@ pub struct CreateMasterKeyPairAction {
 
 impl CreateMasterKeyPairAction {
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
-        // Parse the json policy file
-        let policy = if let Some(specs_file) = &self.policy_specifications_file {
-            policy_from_json_file(specs_file)?
-        } else if let Some(binary_file) = &self.policy_binary_file {
-            policy_from_binary_file(binary_file)?
-        } else {
-            cli_bail!("either a policy specifications or policy binary file must be provided");
-        };
+        let access_structure = access_structure_from_json_file(&self.specification)?;
 
-        // Create the kmip query
-        let create_key_pair =
-            build_create_covercrypt_master_keypair_request(&policy, &self.tags, self.sensitive)?;
+        debug!("client: access_structure: {access_structure:?}");
 
-        // Query the KMS with your kmip data and get the key pair ids
-        let create_key_pair_response = kms_rest_client
-            .create_key_pair(create_key_pair)
+        let res = kms_rest_client
+            .create_key_pair(build_create_covercrypt_master_keypair_request(
+                &access_structure,
+                &self.tags,
+                self.sensitive,
+            )?)
             .await
             .with_context(|| "failed creating a Covercrypt Master Key Pair")?;
 
-        let private_key_unique_identifier = &create_key_pair_response.private_key_unique_identifier;
-        let public_key_unique_identifier = &create_key_pair_response.public_key_unique_identifier;
-
-        let mut stdout = console::Stdout::new("The master key pair has been properly generated.");
+        let mut stdout = console::Stdout::new("The master keypair has been properly generated.");
         stdout.set_tags(Some(&self.tags));
         stdout.set_key_pair_unique_identifier(
-            private_key_unique_identifier,
-            public_key_unique_identifier,
+            &res.private_key_unique_identifier,
+            &res.public_key_unique_identifier,
         );
-        stdout.write()?;
-
-        Ok(())
+        stdout.write()
     }
 }

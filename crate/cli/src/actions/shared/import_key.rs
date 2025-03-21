@@ -164,13 +164,10 @@ impl ImportKeyAction {
         let object_type = object.object_type();
 
         // Generate the import attributes if links are specified.
-        let mut import_attributes = object
-            .attributes()
-            .unwrap_or(&Attributes {
-                cryptographic_usage_mask,
-                ..Default::default()
-            })
-            .clone();
+        let mut import_attributes = object.attributes().cloned().unwrap_or_else(|_| Attributes {
+            cryptographic_usage_mask,
+            ..Default::default()
+        });
 
         if let Some(issuer_certificate_id) = &self.certificate_id {
             //let attributes = import_attributes.get_or_insert(Attributes::default());

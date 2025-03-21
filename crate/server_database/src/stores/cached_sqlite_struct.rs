@@ -68,7 +68,7 @@ impl fmt::Debug for KMSSqliteCacheItem {
 }
 
 /// Give the time since EPOCH in secs
-pub(crate) fn _now() -> DbResult<u64> {
+pub(crate) fn now() -> DbResult<u64> {
     Ok(SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .map_err(|e| {
@@ -86,7 +86,7 @@ impl KMSSqliteCacheItem {
         Ok(Self {
             sqlite: Arc::new(sqlite),
             mac,
-            inserted_at: _now()?,
+            inserted_at: now()?,
             in_used: 0,
             last_used_at: 0,
             closed: false,
@@ -191,7 +191,7 @@ impl KMSSqliteCache {
         }
 
         item.in_used += 1;
-        item.last_used_at = _now()?;
+        item.last_used_at = now()?;
 
         Ok(Arc::clone(&item.sqlite))
     }
@@ -256,7 +256,7 @@ impl KMSSqliteCache {
                     .ok_or_else(|| db_error!("Key is not in the cache"))?;
 
                 item.closed = true;
-                item.closed_at = _now()?;
+                item.closed_at = now()?;
 
                 info!("CachedSQLCipher: freeing = {item:?}");
 
@@ -310,7 +310,7 @@ impl KMSSqliteCache {
             item.sqlite = Arc::new(pool);
             item.closed = false;
             item.in_used = 1;
-            item.last_used_at = _now()?;
+            item.last_used_at = now()?;
         } else {
             trace!("CachedSQLCipher: new group_id={id}");
 
@@ -327,7 +327,7 @@ impl KMSSqliteCache {
 
             // Make it usable (to avoid direct free after alloc in case of cache overflow)
             item.in_used = 1;
-            item.last_used_at = _now()?;
+            item.last_used_at = now()?;
 
             sqlites.insert(id, item);
         }

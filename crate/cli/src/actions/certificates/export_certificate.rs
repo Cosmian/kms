@@ -9,7 +9,11 @@ use cosmian_kms_client::{
 };
 use tracing::log::trace;
 
-use crate::{actions::console, cli_bail, error::result::CliResult};
+use crate::{
+    actions::{console, labels::CERTIFICATE_ID, shared::get_key_uid},
+    cli_bail,
+    error::result::CliResult,
+};
 
 #[derive(ValueEnum, Debug, Clone, PartialEq, Eq)]
 pub enum CertificateExportFormat {
@@ -45,12 +49,12 @@ pub struct ExportCertificateAction {
     /// The certificate unique identifier stored in the KMS; for PKCS#12, provide the private key id
     /// If not specified, tags should be specified
     #[clap(
-        long = "certificate-id",
+        long = CERTIFICATE_ID,
         short = 'c',
         group = "certificate-tags",
         verbatim_doc_comment
     )]
-    unique_id: Option<String>,
+    certificate_id: Option<String>,
 
     /// Tag to use to retrieve the certificate/private key when no unique id is specified.
     /// To specify multiple tags, use the option multiple times.
@@ -88,13 +92,11 @@ impl ExportCertificateAction {
     pub async fn run(&self, client_connector: &KmsClient) -> CliResult<()> {
         trace!("Export certificate: {:?}", self);
 
-        let id_or_tags: String = if let Some(object_id) = &self.unique_id {
-            object_id.clone()
-        } else if let Some(tags) = &self.tags {
-            serde_json::to_string(&tags)?
-        } else {
-            cli_bail!("Either `--certificate-id` or one or more `--tag` must be specified")
-        };
+        let id = get_key_uid(
+            self.certificate_id.as_ref(),
+            self.tags.as_ref(),
+            CERTIFICATE_ID,
+        )?;
 
         let (key_format_type, wrapping_key_id) = match self.output_format {
             CertificateExportFormat::JsonTtlv | CertificateExportFormat::Pem => {
@@ -113,7 +115,7 @@ impl ExportCertificateAction {
         // export the object
         let (id, object, export_attributes) = export_object(
             client_connector,
-            &id_or_tags,
+            &id,
             ExportObjectParams {
                 wrapping_key_id,
                 allow_revoked: self.allow_revoked,
@@ -180,12 +182,12 @@ impl ExportCertificateAction {
             write_json_object_to_file(&to_ttlv(&export_attributes)?, &attributes_file)?;
             let stdout_attributes = format!(
                 "The attributes of the certificate {} were exported to {:?}",
-                &id_or_tags, &attributes_file
+                &id, &attributes_file
             );
             stdout = format!("{stdout} - {stdout_attributes}");
         }
         let mut stdout = console::Stdout::new(&stdout);
-        stdout.set_unique_identifier(id_or_tags);
+        stdout.set_unique_identifier(id);
         stdout.write()?;
 
         Ok(())

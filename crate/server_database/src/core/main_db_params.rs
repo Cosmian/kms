@@ -4,8 +4,8 @@ use std::{
     path::PathBuf,
 };
 
-use cloudproof::reexport::crypto_core::SymmetricKey;
 use cloudproof_findex::Label;
+use cosmian_crypto_core::SymmetricKey;
 use url::Url;
 
 use crate::stores::REDIS_WITH_FINDEX_MASTER_KEY_LENGTH;

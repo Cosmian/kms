@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use cloudproof::reexport::cover_crypt::Covercrypt;
+use cosmian_cover_crypt::api::Covercrypt;
 use cosmian_kmip::kmip_2_1::{
     extra::BulkData,
     kmip_objects::Object,
@@ -139,7 +139,7 @@ pub(crate) async fn decrypt(
         if let Object::PrivateKey { .. } = owm.object() {
             // is it a Covercrypt secret key?
             if attributes.key_format_type == Some(KeyFormatType::CoverCryptSecretKey) {
-                // does it have an access policy that allows decryption?
+                // does it have an access access structure that allows decryption?
                 if attributes::access_policy_from_attributes(&attributes).is_err() {
                     continue
                 }

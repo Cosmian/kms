@@ -89,6 +89,7 @@ impl KMS {
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<CreateResponse> {
+        #[allow(clippy::large_futures)]
         operations::create(self, request, user, params).await
     }
 

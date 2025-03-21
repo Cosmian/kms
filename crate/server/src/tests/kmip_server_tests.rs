@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use cloudproof::reexport::crypto_core::X25519_PUBLIC_KEY_LENGTH;
+use cosmian_crypto_core::X25519_PUBLIC_KEY_LENGTH;
 use cosmian_kmip::kmip_2_1::{
     extra::tagging::EMPTY_TAGS,
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
@@ -249,6 +249,7 @@ async fn test_import_wrapped_symmetric_key() -> KResult<()> {
 }
 
 #[tokio::test]
+#[allow(clippy::large_futures)]
 async fn test_create_transparent_symmetric_key() -> KResult<()> {
     cosmian_logger::log_init(None);
 

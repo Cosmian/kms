@@ -1,7 +1,13 @@
 use clap::Parser;
 use cosmian_kms_client::KmsClient;
 
-use crate::{actions::shared::utils::revoke, cli_bail, error::result::CliResult};
+use crate::{
+    actions::{
+        labels::KEY_ID,
+        shared::{get_key_uid, utils::revoke},
+    },
+    error::result::CliResult,
+};
 
 /// Revoke a Covercrypt master or user decryption key.
 ///
@@ -24,7 +30,7 @@ pub struct RevokeKeyAction {
 
     /// The key unique identifier of the key to revoke.
     /// If not specified, tags should be specified
-    #[clap(long = "key-id", short = 'k', group = "key-tags")]
+    #[clap(long = KEY_ID, short = 'k', group = "key-tags")]
     key_id: Option<String>,
 
     /// Tag to use to retrieve the key when no key id is specified.
@@ -35,14 +41,7 @@ pub struct RevokeKeyAction {
 
 impl RevokeKeyAction {
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
-        let id = if let Some(key_id) = &self.key_id {
-            key_id.clone()
-        } else if let Some(tags) = &self.tags {
-            serde_json::to_string(&tags)?
-        } else {
-            cli_bail!("Either --key-id or one or more --tag must be specified")
-        };
-
+        let id = get_key_uid(self.key_id.as_ref(), self.tags.as_ref(), KEY_ID)?;
         revoke(kms_rest_client, &id, &self.revocation_reason).await
     }
 }

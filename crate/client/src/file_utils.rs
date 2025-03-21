@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use cloudproof::reexport::crypto_core::bytes_ser_de::{Deserializer, Serializer};
+use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializer};
 use serde::{de::DeserializeOwned, Serialize};
 
 use crate::{

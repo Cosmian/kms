@@ -1,7 +1,13 @@
 use clap::Parser;
 use cosmian_kms_client::KmsClient;
 
-use crate::{actions::shared::utils::destroy, cli_bail, error::result::CliResult};
+use crate::{
+    actions::{
+        labels::KEY_ID,
+        shared::{get_key_uid, utils::destroy},
+    },
+    error::result::CliResult,
+};
 
 /// Destroy a public or private key.
 ///
@@ -20,7 +26,7 @@ use crate::{actions::shared::utils::destroy, cli_bail, error::result::CliResult}
 pub struct DestroyKeyAction {
     /// The key unique identifier of the key to destroy
     /// If not specified, tags should be specified
-    #[clap(long = "key-id", short = 'k', group = "key-tags")]
+    #[clap(long = KEY_ID, short = 'k', group = "key-tags")]
     key_id: Option<String>,
 
     /// Tag to use to retrieve the key when no key id is specified.
@@ -38,13 +44,7 @@ pub struct DestroyKeyAction {
 
 impl DestroyKeyAction {
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
-        let id = if let Some(key_id) = &self.key_id {
-            key_id.clone()
-        } else if let Some(tags) = &self.tags {
-            serde_json::to_string(&tags)?
-        } else {
-            cli_bail!("Either --key-id or one or more --tag must be specified")
-        };
+        let id = get_key_uid(self.key_id.as_ref(), self.tags.as_ref(), KEY_ID)?;
 
         destroy(kms_rest_client, &id, self.remove).await
     }

@@ -262,7 +262,7 @@ async fn test_encrypt_decrypt_with_tags() -> CliResult<()> {
     let tmp_path = tmp_dir.path();
 
     let ctx = start_default_test_kms_server().await;
-    let _key_id = create_symmetric_key(
+    let key_id = create_symmetric_key(
         &ctx.owner_client_conf_path,
         CreateKeyAction {
             tags: vec!["tag_sym".to_owned()],
@@ -285,7 +285,7 @@ async fn test_encrypt_decrypt_with_tags() -> CliResult<()> {
     encrypt(
         &ctx.owner_client_conf_path,
         input_file.to_str().unwrap(),
-        "[\"tag_sym\"]",
+        &key_id,
         DataEncryptionAlgorithm::Chacha20Poly1305,
         None,
         Some(output_file.to_str().unwrap()),
@@ -296,7 +296,7 @@ async fn test_encrypt_decrypt_with_tags() -> CliResult<()> {
     decrypt(
         &ctx.owner_client_conf_path,
         output_file.to_str().unwrap(),
-        "[\"tag_sym\"]",
+        &key_id,
         DataEncryptionAlgorithm::Chacha20Poly1305,
         None,
         Some(recovered_file.to_str().unwrap()),

@@ -1,7 +1,13 @@
 use clap::Parser;
 use cosmian_kms_client::KmsClient;
 
-use crate::{actions::shared::utils::revoke, cli_bail, error::result::CliResult};
+use crate::{
+    actions::{
+        labels::{CERTIFICATE_ID, TAG},
+        shared::{get_key_uid, utils::revoke},
+    },
+    error::result::CliResult,
+};
 
 /// Revoke a certificate.
 ///
@@ -15,13 +21,13 @@ pub struct RevokeCertificateAction {
 
     /// The certificate unique identifier of the certificate to revoke.
     /// If not specified, tags should be specified
-    #[clap(long = "certificate-id", short = 'c', group = "certificate-tags")]
+    #[clap(long = CERTIFICATE_ID, short = 'c', group = "certificate-tags")]
     certificate_id: Option<String>,
 
     /// Tag to use to retrieve the certificate when no certificate id is specified.
     /// To specify multiple tags, use the option multiple times.
     #[clap(
-        long = "tag",
+        long = TAG,
         short = 't',
         value_name = "TAG",
         group = "certificate-tags"
@@ -31,13 +37,11 @@ pub struct RevokeCertificateAction {
 
 impl RevokeCertificateAction {
     pub async fn run(&self, client_connector: &KmsClient) -> CliResult<()> {
-        let id = if let Some(certificate_id) = &self.certificate_id {
-            certificate_id.clone()
-        } else if let Some(tags) = &self.tags {
-            serde_json::to_string(&tags)?
-        } else {
-            cli_bail!("Either --certificate-id or one or more --tag must be specified")
-        };
+        let id = get_key_uid(
+            self.certificate_id.as_ref(),
+            self.tags.as_ref(),
+            CERTIFICATE_ID,
+        )?;
         revoke(client_connector, &id, &self.revocation_reason).await
     }
 }

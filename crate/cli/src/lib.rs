@@ -18,7 +18,8 @@
     // restriction lints
     clippy::map_err_ignore,
     clippy::print_stdout,
-    clippy::redundant_clone
+    clippy::redundant_clone,
+    clippy::renamed_function_params,
 )]
 #![allow(
     clippy::module_name_repetitions,

@@ -8,7 +8,7 @@ use crate::{
     DataToEncrypt, KmipError,
 };
 
-/// Build an Encryption Request to encrypt the provided `plaintext`
+/// Build an Encryption Request to encrypt the provided `plaintext`.
 /// The cryptographic scheme is determined by that of the key identified by `key_unique_identifier`
 /// For Covercrypt,
 ///     - the `encryption_policy` must be provided
@@ -20,32 +20,30 @@ pub fn encrypt_request(
     key_unique_identifier: &str,
     encryption_policy: Option<String>,
     plaintext: Vec<u8>,
-    header_metadata: Option<Vec<u8>>,
     nonce: Option<Vec<u8>>,
-    authentication_data: Option<Vec<u8>>,
+    authenticated_encryption_additional_data: Option<Vec<u8>>,
     cryptographic_parameters: Option<CryptographicParameters>,
 ) -> Result<Encrypt, KmipError> {
-    let data_to_encrypt = Zeroizing::from(if encryption_policy.is_some() {
+    let data_to_encrypt = if encryption_policy.is_some() {
         DataToEncrypt {
             encryption_policy,
-            header_metadata,
             plaintext,
         }
         .to_bytes()?
     } else {
         plaintext
-    });
+    };
 
     Ok(Encrypt {
         unique_identifier: Some(UniqueIdentifier::TextString(
             key_unique_identifier.to_owned(),
         )),
         cryptographic_parameters,
-        data: Some(data_to_encrypt),
+        data: Some(Zeroizing::from(data_to_encrypt)),
         iv_counter_nonce: nonce,
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,
-        authenticated_encryption_additional_data: authentication_data,
+        authenticated_encryption_additional_data,
     })
 }
