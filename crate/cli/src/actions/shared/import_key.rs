@@ -2,7 +2,6 @@ use std::path::PathBuf;
 
 use clap::{Parser, ValueEnum};
 use cosmian_kms_client::{
-    KmsClient,
     cosmian_kmip::kmip_2_1::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType},
@@ -11,13 +10,14 @@ use cosmian_kms_client::{
         },
     },
     import_object, objects_from_pem, read_bytes_from_file, read_object_from_json_ttlv_bytes,
+    KmsClient,
 };
 use zeroize::Zeroizing;
 
-use super::utils::{KeyUsage, build_usage_mask_from_key_usage};
+use super::utils::{build_usage_mask_from_key_usage, KeyUsage};
 use crate::{
     actions::console,
-    error::{CliError, result::CliResult},
+    error::{result::CliResult, CliError},
 };
 
 #[derive(ValueEnum, Debug, Clone)]

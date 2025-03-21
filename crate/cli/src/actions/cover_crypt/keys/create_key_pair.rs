@@ -80,7 +80,10 @@ impl CreateMasterKeyPairAction {
 
         let mut stdout = console::Stdout::new("The master keypair has been properly generated.");
         stdout.set_tags(Some(&self.tags));
-        stdout.set_key_pair_unique_identifier(&res.private_key_unique_identifier, &res.public_key_unique_identifier);
+        stdout.set_key_pair_unique_identifier(
+            &res.private_key_unique_identifier,
+            &res.public_key_unique_identifier,
+        );
         stdout.write()
     }
 }

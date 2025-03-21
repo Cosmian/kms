@@ -88,10 +88,7 @@ impl Database {
     /// # Errors
     ///
     /// This function will return an error if no object store is found for the given prefix or if no default object store is available.
-    async fn get_object_store(
-        &self,
-        uid: &str,
-    ) -> DbResult<Arc<dyn ObjectsStore + Sync + Send>> {
+    async fn get_object_store(&self, uid: &str) -> DbResult<Arc<dyn ObjectsStore + Sync + Send>> {
         // split the uid on the first ::
         let splits = uid.split_once("::");
         Ok(match splits {

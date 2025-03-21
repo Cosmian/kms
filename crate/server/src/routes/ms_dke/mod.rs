@@ -113,7 +113,11 @@ pub(crate) async fn get_key(
     }
 }
 
-async fn internal_get_key(key_tag: &str, req_http: HttpRequest, kms: &Arc<KMS>) -> KResult<KeyData> {
+async fn internal_get_key(
+    key_tag: &str,
+    req_http: HttpRequest,
+    kms: &Arc<KMS>,
+) -> KResult<KeyData> {
     let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
     let user = kms.get_user(&req_http);
     let dke_service_url = kms
