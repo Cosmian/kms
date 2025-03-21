@@ -5,9 +5,7 @@ use serde::{Deserialize, Serialize};
 use time::{OffsetDateTime, UtcOffset};
 use tracing::info;
 
-use crate::ttlv::{
-    from_ttlv, kmip_ttlv_serializer::to_ttlv, ttlv_struct::TTLV, KmipEnumerationVariant, TTLValue,
-};
+use crate::ttlv::{from_ttlv, to_ttlv, ttlv_struct::TTLV, KmipEnumerationVariant, TTLValue};
 
 #[test]
 fn test_ser_int() {

@@ -294,7 +294,7 @@ impl ImportCertificateAction {
             );
         }
 
-        let private_key_id = import_object(
+        let private_key_id = Box::pin(import_object(
             kms_rest_client,
             self.certificate_id.clone(),
             private_key,
@@ -302,7 +302,7 @@ impl ImportCertificateAction {
             false,
             self.replace_existing,
             &self.tags,
-        )
+        ))
         .await?;
         Ok(private_key_id)
     }
@@ -342,7 +342,7 @@ impl ImportCertificateAction {
                 );
             }
             // import the certificate
-            let unique_identifier = import_object(
+            let unique_identifier = Box::pin(import_object(
                 kms_rest_client,
                 self.certificate_id.clone(),
                 object,
@@ -350,7 +350,7 @@ impl ImportCertificateAction {
                 false,
                 replace_existing,
                 &self.tags,
-            )
+            ))
             .await?;
             previous_identifier = Some(unique_identifier);
         }

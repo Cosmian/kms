@@ -836,7 +836,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
                 // and the child index is 0 => deserialize the tag
                 // else deserialize the variant
                 if e.name.is_empty() {
-                    trace!("... enum: index: {}", e.value);
+                    trace!("... enum: index: {:#x}", e.value);
                     visitor.visit_u32(e.value)
                 } else {
                     trace!("... enum: name: {}", e.name);

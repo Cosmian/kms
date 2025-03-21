@@ -25,7 +25,7 @@ use crate::{
             QueryFunction, ResultStatusEnumeration, UniqueIdentifier,
         },
     },
-    ttlv::{from_ttlv, kmip_ttlv_serializer::to_ttlv, KmipEnumerationVariant, TTLValue, TTLV},
+    ttlv::{from_ttlv, to_ttlv, KmipEnumerationVariant, TTLValue, TTLV},
     SafeBigInt,
 };
 

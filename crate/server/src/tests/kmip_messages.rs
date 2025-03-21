@@ -11,7 +11,7 @@ use cosmian_kmip::{
         },
         requests::create_ec_key_pair_request,
     },
-    ttlv::kmip_ttlv_serializer::to_ttlv,
+    ttlv::to_ttlv,
 };
 use cosmian_logger::log_init;
 use tracing::debug;

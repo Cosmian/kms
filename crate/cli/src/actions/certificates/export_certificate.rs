@@ -7,7 +7,7 @@ use cosmian_kms_client::{
         kmip_objects::{Certificate, Object, PrivateKey},
         kmip_types::KeyFormatType,
     },
-    ttlv::kmip_ttlv_serializer::to_ttlv,
+    ttlv::to_ttlv,
     write_bytes_to_file, write_json_object_to_file, write_kmip_object_to_file, ExportObjectParams,
     KmsClient,
 };

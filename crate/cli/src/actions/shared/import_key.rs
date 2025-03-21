@@ -200,7 +200,7 @@ impl ImportKeyAction {
         }
 
         // import the key
-        let unique_identifier = import_object(
+        let unique_identifier = Box::pin(import_object(
             kms_rest_client,
             self.key_id.clone(),
             object,
@@ -208,7 +208,7 @@ impl ImportKeyAction {
             self.unwrap,
             self.replace_existing,
             &self.tags,
-        )
+        ))
         .await?;
 
         // print the response

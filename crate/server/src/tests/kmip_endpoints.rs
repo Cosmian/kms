@@ -5,7 +5,7 @@ use cosmian_kmip::{
         kmip_types::{OperationEnumeration, ProtocolVersion, QueryFunction},
         RequestMessage,
     },
-    ttlv::{kmip_ttlv_serializer::to_ttlv, TTLV},
+    ttlv::{to_ttlv, TTLV},
 };
 use cosmian_logger::log_init;
 

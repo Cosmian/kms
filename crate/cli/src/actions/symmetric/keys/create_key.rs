@@ -152,7 +152,7 @@ impl CreateKeyAction {
                 attributes.set_wrapping_key_id(wrapping_key_id);
             }
             UniqueIdentifier::TextString(
-                import_object(
+                Box::pin(import_object(
                     kms_rest_client,
                     self.key_id.clone(),
                     object,
@@ -160,7 +160,7 @@ impl CreateKeyAction {
                     false,
                     false,
                     &self.tags,
-                )
+                ))
                 .await?,
             )
         } else {
