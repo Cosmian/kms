@@ -12,7 +12,7 @@ const SERVER_CA_CERTIFICATE: &str = include_str!("server.crt");
 const CLIENT_P12: &[u8; 2691] = include_bytes!("client.p12");
 
 /// Configuration for the `PyKMIP` test client
-pub(crate) struct PyKmipClientConfig {
+pub(crate) struct PyKmipHttpClientConfig {
     /// Server URL
     pub url: String,
     /// Client certificate path (PEM format, X509)
@@ -23,7 +23,7 @@ pub(crate) struct PyKmipClientConfig {
     pub server_ca_cert_pem: String,
 }
 
-impl Default for PyKmipClientConfig {
+impl Default for PyKmipHttpClientConfig {
     fn default() -> Self {
         Self {
             url: "https://localhost:5696/kmip".to_owned(),
@@ -35,14 +35,14 @@ impl Default for PyKmipClientConfig {
 }
 
 /// Client for communicating with a `PyKMIP` server
-pub(crate) struct PyKmipClient {
+pub(crate) struct PyKmipHttpClient {
     client: Client,
-    config: PyKmipClientConfig,
+    config: PyKmipHttpClientConfig,
 }
 
-impl PyKmipClient {
+impl PyKmipHttpClient {
     /// Create a new `PyKMIP` client with the specified configuration
-    pub(crate) fn new(config: PyKmipClientConfig) -> KmipResult<Self> {
+    pub(crate) fn new(config: PyKmipHttpClientConfig) -> KmipResult<Self> {
         // Create client identity from cert and key
         let pem = format!("{}\n{}", config.client_key_pem, config.client_cert_pem);
         // let pem = config.client_key_pem.to_owned();
@@ -142,8 +142,8 @@ impl PyKmipClient {
 }
 
 /// Helper function to create a `PyKMIP` client with default configuration
-pub(crate) fn create_default_client() -> KmipResult<PyKmipClient> {
-    PyKmipClient::new(PyKmipClientConfig::default())
+pub(crate) fn create_default_client() -> KmipResult<PyKmipHttpClient> {
+    PyKmipHttpClient::new(PyKmipHttpClientConfig::default())
 }
 
 #[cfg(test)]

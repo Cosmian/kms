@@ -1399,6 +1399,7 @@ dependencies = [
  "hex",
  "kmip-derive",
  "leb128",
+ "native-tls",
  "num-bigint-dig",
  "rand 0.9.1",
  "serde",

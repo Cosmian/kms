@@ -2,14 +2,15 @@ use cosmian_logger::log_init;
 use tracing::info;
 
 use crate::{
-    kmip_2_1,
+    kmip_1_4,
     kmip_2_1::{
+        self,
         kmip_messages::{RequestMessageBatchItem, RequestMessageHeader},
         kmip_operations::{Operation, Query},
         kmip_types::{OperationEnumeration, ProtocolVersion, QueryFunction},
         RequestMessage,
     },
-    ttlv::{from_ttlv, to_ttlv, TTLVBytesDeserializer, TTLVBytesSerializer},
+    ttlv::{from_ttlv, to_ttlv, TTLVBytesDeserializer, TTLVBytesSerializer, TTLV},
 };
 
 #[test]
@@ -62,4 +63,15 @@ fn test_serialization_deserialization() {
     let request_message_: RequestMessage = from_ttlv(ttlv_).unwrap();
     // Assert that the original and deserialized messages are equal
     assert_eq!(request_message_, request_message);
+}
+
+#[test]
+fn test_pykmip_response_message_1_4() {
+    log_init(Some("trace"));
+    let response = hex::decode("42007b01000001a042007a0100000048420069010000002042006a0200000004000000010000000042006b0200000004000000040000000042009209000000080000000067ddb66c42000d0200000004000000010000000042000f010000014842005c0500000004000000180000000042007f0500000004000000000000000042007c010000012042005c0500000004000000010000000042005c0500000004000000020000000042005c0500000004000000030000000042005c0500000004000000050000000042005c0500000004000000080000000042005c05000000040000000a0000000042005c05000000040000000b0000000042005c05000000040000000c0000000042005c0500000004000000120000000042005c0500000004000000130000000042005c0500000004000000140000000042005c0500000004000000180000000042005c05000000040000001e0000000042005c05000000040000001f0000000042005c0500000004000000200000000042005c0500000004000000210000000042005c0500000004000000220000000042005c05000000040000002300000000").unwrap();
+    info!("Response Length: {}", response.len());
+    let ttlv = TTLV::from_bytes_1_4(&response).unwrap();
+    info!("Response TTLV: {:#?}", ttlv);
+    let response_message: kmip_1_4::kmip_messages::ResponseMessage = from_ttlv(ttlv).unwrap();
+    info!("Response Message: {:#?}", response_message);
 }

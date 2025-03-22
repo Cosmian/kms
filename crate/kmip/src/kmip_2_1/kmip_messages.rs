@@ -490,7 +490,7 @@ pub struct ResponseMessageHeader {
     ///
     /// If only a single operation is being requested, then the batch count SHALL be set to 1.
     /// The Message Payload, which follows the Message Header, contains one or more batch items.
-    pub batch_count: u32,
+    pub batch_count: i32,
 }
 
 /// Default implementation for a message response header
