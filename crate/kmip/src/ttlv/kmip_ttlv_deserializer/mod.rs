@@ -8,6 +8,15 @@ mod untagged_enum_walker;
 pub use deserializer::{from_ttlv, TtlvDeserializer};
 mod kmip_big_int_deserializer;
 
-use super::TtlvError;
+use super::{TTLValue, TtlvError, TTLV};
 
 type Result<T> = std::result::Result<T, TtlvError>;
+
+/// Helper function to get the child at the specified index of a Structure TTLV
+/// Used in logging
+fn peek_structure_child(ttlv: &TTLV, child_index: usize) -> Option<&TTLV> {
+    let TTLValue::Structure(children) = &ttlv.value else {
+        return None;
+    };
+    children.get(child_index)
+}

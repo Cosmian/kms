@@ -13,7 +13,7 @@ use crate::{
         kmip_ttlv_deserializer::{
             byte_string_deserializer::ByteStringDeserializer, enum_walker::EnumWalker,
             kmip_big_int_deserializer::KmipBigIntDeserializer,
-            offset_date_time_deserializer::OffsetDateTimeDeserializer,
+            offset_date_time_deserializer::OffsetDateTimeDeserializer, peek_structure_child,
             untagged_enum_walker::UntaggedEnumWalker,
         },
         TTLValue, TtlvError, TTLV,
@@ -116,10 +116,10 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         V: Visitor<'de>,
     {
         trace!(
-            "deserialize_any: map access state: {:?}, index: {}, current: {:?}",
+            "deserialize_any: map access state: {:?}, index: {}, child: {:?}",
             self.map_state,
             self.child_index,
-            self.current
+            peek_structure_child(&self.current, self.child_index)
         );
         // fetch the element
         // If the deserializer is at the root, the current TTLV is the root TTLV
@@ -286,7 +286,11 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
     where
         V: Visitor<'de>,
     {
-        trace!("deserialize_i64: state:  {:?}", self.current);
+        trace!(
+            "deserialize_i64:  {}: {:?}",
+            self.child_index,
+            peek_structure_child(&self.current, self.child_index)
+        );
         match &self.fetch_element()?.value {
             TTLValue::DateTime(dt) => visitor.visit_i64(dt.unix_timestamp()),
             TTLValue::LongInteger(i) => visitor.visit_i64(*i),
@@ -302,9 +306,9 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         V: Visitor<'de>,
     {
         trace!(
-            "deserialize_u8: state: {:?}, index: {}",
-            self.current,
-            self.child_index
+            "deserialize_u8: state: {}: {:?}",
+            self.child_index,
+            peek_structure_child(&self.current, self.child_index)
         );
         match &self.fetch_element()?.value {
             TTLValue::Integer(i) => {
@@ -327,7 +331,11 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
     where
         V: Visitor<'de>,
     {
-        trace!("deserialize_u16: state:  {:?}", self.current);
+        trace!(
+            "deserialize_u16: {}: {:?}",
+            self.child_index,
+            peek_structure_child(&self.current, self.child_index)
+        );
         if let TTLValue::Integer(i) = &self.fetch_element()?.value {
             if *i < 0 {
                 return Err(TtlvError::from("Cannot convert negative integer to u16"));
@@ -346,7 +354,11 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
     where
         V: Visitor<'de>,
     {
-        trace!("deserialize_u32: state:  {:?}", self.current);
+        trace!(
+            "deserialize_u32: state: {}: {:?}",
+            self.child_index,
+            peek_structure_child(&self.current, self.child_index)
+        );
         match &self.fetch_element()?.value {
             TTLValue::BigInteger(bi) => {
                 // if the TTLV value is a BigInt, the deserializer is attempting to deserialize the value
@@ -372,7 +384,11 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
     where
         V: Visitor<'de>,
     {
-        trace!("deserialize_u64: state:  {:?}", self.current);
+        trace!(
+            "deserialize_u64: state:  {}: {:?}",
+            self.child_index,
+            peek_structure_child(&self.current, self.child_index)
+        );
         if let TTLValue::LongInteger(i) = &self.fetch_element()?.value {
             if *i < 0 {
                 return Err(TtlvError::from("Cannot convert negative integer to u64"));
@@ -413,7 +429,11 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
     {
         // This is called when deserializing a DateTimeExtended
         // The value is a 128-bit integer
-        trace!("deserialize_i128: state:  {:?}", self.current);
+        trace!(
+            "deserialize_i128: state: {}: {:?}",
+            self.child_index,
+            peek_structure_child(&self.current, self.child_index)
+        );
         if let TTLValue::DateTimeExtended(dt) = &self.fetch_element()?.value {
             visitor.visit_i128(*dt)
         } else {
@@ -540,9 +560,9 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         V: Visitor<'de>,
     {
         trace!(
-            "deserialize_seq: child index: {}, current :  {:?}",
+            "deserialize_seq: child index: {}: {:?}",
             self.child_index,
-            self.current
+            peek_structure_child(&self.current, self.child_index)
         );
         // There are 3 reasons why this method may be called:
         // 1. The deserializer is deserializing a sequence of TTLVs to reconstruct a flattened array
@@ -811,10 +831,10 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         V: Visitor<'de>,
     {
         trace!(
-            "deserialize_identifier: map state: {:?},  child_index :{}, current:  {:?}",
+            "deserialize_identifier: map state: {:?},  child_index :{}, child:  {:?}",
             self.map_state,
             self.child_index,
-            self.current
+            peek_structure_child(&self.current, self.child_index)
         );
 
         let element = self.fetch_element()?;

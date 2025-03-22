@@ -802,37 +802,103 @@ impl<'de> Deserialize<'de> for ResponseMessageBatchItem {
                                 OperationEnumeration::Export => {
                                     Operation::ExportResponse(map.next_value()?)
                                 }
-                                OperationEnumeration::Register => todo!(),
-                                OperationEnumeration::ReKey => todo!(),
-                                OperationEnumeration::DeriveKey => todo!(),
-                                OperationEnumeration::ReCertify => todo!(),
-                                OperationEnumeration::Check => todo!(),
-                                OperationEnumeration::GetAttributeList => todo!(),
-                                OperationEnumeration::AddAttribute => todo!(),
-                                OperationEnumeration::ModifyAttribute => todo!(),
-                                OperationEnumeration::DeleteAttribute => todo!(),
-                                OperationEnumeration::ObtainLease => todo!(),
-                                OperationEnumeration::GetUsageAllocation => todo!(),
-                                OperationEnumeration::Activate => todo!(),
-                                OperationEnumeration::Archive => todo!(),
-                                OperationEnumeration::Recover => todo!(),
-                                OperationEnumeration::Validate => todo!(),
-                                OperationEnumeration::Query => todo!(),
-                                OperationEnumeration::Cancel => todo!(),
-                                OperationEnumeration::Poll => todo!(),
-                                OperationEnumeration::Notify => todo!(),
-                                OperationEnumeration::Put => todo!(),
-                                OperationEnumeration::RekeyKeyPair => todo!(),
-                                OperationEnumeration::DiscoverVersions => todo!(),
-                                OperationEnumeration::Sign => todo!(),
-                                OperationEnumeration::SignatureVerify => todo!(),
-                                OperationEnumeration::MAC => todo!(),
-                                OperationEnumeration::MACVerify => todo!(),
-                                OperationEnumeration::RNGRetrieve => todo!(),
-                                OperationEnumeration::RNGSeed => todo!(),
-                                OperationEnumeration::Hash => todo!(),
-                                OperationEnumeration::CreateSplitKey => todo!(),
-                                OperationEnumeration::JoinSplitKey => todo!(),
+                                OperationEnumeration::Register => {
+                                    Operation::RegisterResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::ReKey => {
+                                    Operation::ReKeyResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::DeriveKey => {
+                                    Operation::DeriveKeyResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::ReCertify => {
+                                    Operation::ReCertifyResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::Check => {
+                                    Operation::CheckResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::GetAttributeList => {
+                                    Operation::GetAttributeListResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::AddAttribute => {
+                                    Operation::AddAttributeResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::ModifyAttribute => {
+                                    Operation::ModifyAttributeResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::DeleteAttribute => {
+                                    Operation::DeleteAttributeResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::ObtainLease => {
+                                    Operation::ObtainLeaseResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::GetUsageAllocation => {
+                                    Operation::GetUsageAllocationResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::Activate => {
+                                    Operation::ActivateResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::Archive => {
+                                    Operation::ArchiveResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::Recover => {
+                                    Operation::RecoverResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::Validate => {
+                                    Operation::ValidateResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::Query => {
+                                    Operation::QueryResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::Cancel => {
+                                    Operation::CancelResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::Poll => {
+                                    Operation::PollResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::Notify => {
+                                    return Err(de::Error::custom(
+                                        "Notify operation is not supported in response",
+                                    ))
+                                }
+                                OperationEnumeration::Put => {
+                                    return Err(de::Error::custom(
+                                        "Put operation is not supported in response",
+                                    ))
+                                }
+                                OperationEnumeration::RekeyKeyPair => {
+                                    Operation::ReKeyKeyPairResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::DiscoverVersions => {
+                                    Operation::DiscoverVersionsResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::Sign => {
+                                    Operation::SignResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::SignatureVerify => {
+                                    Operation::SignatureVerifyResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::MAC => {
+                                    Operation::MACResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::MACVerify => {
+                                    Operation::MACVerifyResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::RNGRetrieve => {
+                                    Operation::RNGRetrieveResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::RNGSeed => {
+                                    Operation::RNGSeedResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::Hash => {
+                                    Operation::HashResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::CreateSplitKey => {
+                                    Operation::CreateSplitKeyResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::JoinSplitKey => {
+                                    Operation::JoinSplitKeyResponse(map.next_value()?)
+                                }
                             });
                         }
                     }

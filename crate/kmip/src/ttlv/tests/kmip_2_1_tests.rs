@@ -16,7 +16,7 @@ use crate::{
         kmip_objects::{Object, ObjectType, PublicKey, SymmetricKey},
         kmip_operations::{
             Create, DecryptResponse, Encrypt, ErrorReason, Import, ImportResponse, Locate,
-            LocateResponse, Operation, Query, SetAttribute,
+            LocateResponse, Operation, Query,  SetAttribute,
         },
         kmip_types::{
             AsynchronousIndicator, AttestationType, BatchErrorContinuationOption, Credential,
@@ -1464,3 +1464,45 @@ fn test_locate_with_empty_attributes() {
     let locate_: Locate = from_ttlv(ttlv).unwrap();
     assert_eq!(locate, locate_);
 }
+
+// #[test]
+// fn test_query_response() {
+//     log_init(option_env!("RUST_LOG"));
+
+//     let response_batch_item = ResponseMessageBatchItem {
+//         operation: Some(OperationEnumeration::Query),
+//         unique_batch_item_id: None,
+//         response_payload: Some(Operation::QueryResponse(QueryResponse {
+//             operation: Some(vec![QueryFunction::QueryOperations]),
+//             object_type: None,
+//             vendor_identification: None,
+//             application_namespaces: None,
+//             server_information: None,
+//             extension_information: None,
+//             attestation_types: None,
+//             rng_mode: None,
+//             profiles_supported: None,
+//             validation_information: None,
+//             capability_information: None,
+//             client_registration_methods: None,
+//             defaults_information: None,
+//             protection_storage_masks: None,
+//         })),
+//         result_status: ResultStatusEnumeration::Success,
+//         result_reason: None,
+//         result_message: None,
+//         asynchronous_correlation_value: None,
+//         message_extension: None,
+//     };
+
+//     let ttlv = to_ttlv(&query_response)?;
+//     trace!("query_response: {:#?}", ttlv);
+
+//     let query_response_deserialized: QueryResponse = from_ttlv(ttlv)?;
+//     trace!(
+//         "query_response_deserialized: {:#?}",
+//         query_response_deserialized
+//     );
+
+//     Ok(())
+// }

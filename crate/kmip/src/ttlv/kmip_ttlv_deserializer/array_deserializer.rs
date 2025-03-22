@@ -37,10 +37,10 @@ impl<'a, 'de: 'a> SeqAccess<'de> for ArrayDeserializer<'a> {
         T: DeserializeSeed<'de>,
     {
         trace!(
-            "array_access: next_element_seed in seq: {}, current index: {}, structure elems:  {:?}",
+            "array_access: next_element_seed in seq: {}, current index: {}, elem at index:  {:?}",
             self.tag,
             self.de.child_index,
-            self.struct_elements
+            self.struct_elements.get(self.de.child_index)
         );
         // recover the current element
         // if the current index is out of bounds, we are done with this child
