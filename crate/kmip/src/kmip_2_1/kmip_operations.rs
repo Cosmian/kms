@@ -1994,11 +1994,11 @@ impl Display for Query {
 pub struct QueryResponse {
     /// List of operations supported by the server.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub operations: Option<Vec<Operation>>,
+    pub operation: Option<Vec<OperationEnumeration>>,
 
     /// List of object types that the server supports.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub object_types: Option<Vec<ObjectType>>,
+    pub object_type: Option<Vec<ObjectType>>,
 
     /// List of vendor extensions supported by the server.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -2059,8 +2059,8 @@ impl Display for QueryResponse {
              validation_information: {:?}, capability_information: {:?}, \
              client_registration_methods: {:?}, defaults_information: {:?}, \
              protection_storage_masks: {:?} }}",
-            self.operations,
-            self.object_types,
+            self.operation,
+            self.object_type,
             self.vendor_identification,
             self.application_namespaces,
             self.server_information,

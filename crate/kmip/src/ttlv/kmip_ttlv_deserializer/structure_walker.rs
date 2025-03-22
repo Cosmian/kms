@@ -2,7 +2,10 @@ use serde::de::{DeserializeSeed, MapAccess};
 use tracing::{instrument, trace};
 
 use super::TtlvDeserializer;
-use crate::ttlv::{kmip_ttlv_deserializer::deserializer::MapAccessState, TTLValue, TtlvError};
+use crate::ttlv::{
+    kmip_ttlv_deserializer::{deserializer::MapAccessState, peek_structure_child},
+    TTLValue, TtlvError,
+};
 
 /// The `StructureWalker` is used to deserialize a struct as a map of property -> values
 /// It is called by the main deserializer when receiving Visitor requests to `deserialize_struct`
@@ -30,9 +33,9 @@ impl<'a, 'de: 'a> MapAccess<'de> for StructureWalker<'a> {
         K: DeserializeSeed<'de>,
     {
         trace!(
-            "map access: next_key_seed: index: {}, current: {:?}",
+            "map access: next_key_seed: index: {}, child: {:?}",
             self.de.child_index,
-            self.de.current
+            peek_structure_child(&self.de.current, self.de.child_index)
         );
         // If the current value is not a Structure, return an error
         let TTLValue::Structure(current_value) = &self.de.current.value else {
@@ -57,9 +60,9 @@ impl<'a, 'de: 'a> MapAccess<'de> for StructureWalker<'a> {
         V: DeserializeSeed<'de>,
     {
         trace!(
-            "next_value_seed:index: {}, current: {:?}",
+            "next_value_seed:index: {}, child: {:?}",
             self.de.child_index,
-            self.de.current
+            peek_structure_child(&self.de.current, self.de.child_index)
         );
         self.de.map_state = MapAccessState::Value;
         let res = seed.deserialize(&mut *self.de);
