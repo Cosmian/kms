@@ -495,16 +495,21 @@ pub struct Query {
 #[serde(rename_all = "PascalCase")]
 pub struct QueryResponse {
     /// List of operations supported by the server.
-    pub operations: Vec<Operation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub operation: Option<Vec<OperationEnumeration>>,
 
     /// List of object types that the server supports.
-    pub object_types: Vec<ObjectType>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub object_type: Option<Vec<ObjectType>>,
 
     /// List of vendor extensions supported by the server.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub vendor_identification: Option<String>,
 
     /// Detailed information about the server.
-    pub server_information: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub server_information: Option<String>,
+
     /// List of extensions supported by the server.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub extension_information: Option<Vec<ExtensionInformation>>,
