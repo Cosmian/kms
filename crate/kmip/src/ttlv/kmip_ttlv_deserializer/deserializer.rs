@@ -287,10 +287,12 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         V: Visitor<'de>,
     {
         trace!("deserialize_i64: state:  {:?}", self.current);
-        if let TTLValue::LongInteger(i) = &self.fetch_element()?.value {
-            visitor.visit_i64(*i)
-        } else {
-            Err(TtlvError::from("Expected Integer value in TTLV"))
+        match &self.fetch_element()?.value {
+            TTLValue::DateTime(dt) => visitor.visit_i64(dt.unix_timestamp()),
+            TTLValue::LongInteger(i) => visitor.visit_i64(*i),
+            _ => Err(TtlvError::from(
+                "Expected DateTime or LongInteger value in TTLV",
+            )),
         }
     }
 

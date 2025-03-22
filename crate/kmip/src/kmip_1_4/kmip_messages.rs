@@ -410,7 +410,7 @@ impl<'de> Deserialize<'de> for RequestMessageBatchItem {
     }
 }
 
-#[derive(Deserialize, Eq, PartialEq)]
+#[derive(Deserialize, Eq, PartialEq, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct ResponseMessage {
     /// Header of the response
@@ -491,7 +491,7 @@ pub struct ResponseMessageHeader {
     ///
     /// If only a single operation is being requested, then the batch count SHALL be set to 1.
     /// The Message Payload, which follows the Message Header, contains one or more batch items.
-    pub batch_count: u32,
+    pub batch_count: i32,
 }
 
 /// Default implementation for a message response header
@@ -513,7 +513,7 @@ impl Default for ResponseMessageHeader {
     }
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Debug)]
 pub struct ResponseMessageBatchItem {
     /// Required if present in request Batch Item
     pub operation: Option<OperationEnumeration>,
@@ -802,11 +802,37 @@ impl<'de> Deserialize<'de> for ResponseMessageBatchItem {
                                 OperationEnumeration::Export => {
                                     Operation::ExportResponse(map.next_value()?)
                                 }
-                                _ => {
-                                    return Err(de::Error::missing_field(
-                                        "valid enum operation (unsupported operation ?)",
-                                    ))
-                                }
+                                OperationEnumeration::Register => todo!(),
+                                OperationEnumeration::ReKey => todo!(),
+                                OperationEnumeration::DeriveKey => todo!(),
+                                OperationEnumeration::ReCertify => todo!(),
+                                OperationEnumeration::Check => todo!(),
+                                OperationEnumeration::GetAttributeList => todo!(),
+                                OperationEnumeration::AddAttribute => todo!(),
+                                OperationEnumeration::ModifyAttribute => todo!(),
+                                OperationEnumeration::DeleteAttribute => todo!(),
+                                OperationEnumeration::ObtainLease => todo!(),
+                                OperationEnumeration::GetUsageAllocation => todo!(),
+                                OperationEnumeration::Activate => todo!(),
+                                OperationEnumeration::Archive => todo!(),
+                                OperationEnumeration::Recover => todo!(),
+                                OperationEnumeration::Validate => todo!(),
+                                OperationEnumeration::Query => todo!(),
+                                OperationEnumeration::Cancel => todo!(),
+                                OperationEnumeration::Poll => todo!(),
+                                OperationEnumeration::Notify => todo!(),
+                                OperationEnumeration::Put => todo!(),
+                                OperationEnumeration::RekeyKeyPair => todo!(),
+                                OperationEnumeration::DiscoverVersions => todo!(),
+                                OperationEnumeration::Sign => todo!(),
+                                OperationEnumeration::SignatureVerify => todo!(),
+                                OperationEnumeration::MAC => todo!(),
+                                OperationEnumeration::MACVerify => todo!(),
+                                OperationEnumeration::RNGRetrieve => todo!(),
+                                OperationEnumeration::RNGSeed => todo!(),
+                                OperationEnumeration::Hash => todo!(),
+                                OperationEnumeration::CreateSplitKey => todo!(),
+                                OperationEnumeration::JoinSplitKey => todo!(),
                             });
                         }
                     }

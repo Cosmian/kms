@@ -1364,6 +1364,7 @@ dependencies = [
  "hex",
  "kmip-derive",
  "leb128",
+ "native-tls",
  "num-bigint-dig",
  "num-traits",
  "pyo3",
