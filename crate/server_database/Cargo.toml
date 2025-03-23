@@ -13,7 +13,7 @@ doctest = false
 
 [dependencies]
 async-trait = { workspace = true }
-clap = { workspace = true }
+clap = { workspace = true, features = ["cargo", "std"] }
 cosmian_crypto_core = { workspace = true }
 cloudproof_findex = { version = "5.0", features = ["findex-redis"] }
 cosmian_kmip = { path = "../kmip" }
