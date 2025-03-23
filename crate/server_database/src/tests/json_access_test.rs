@@ -1,6 +1,7 @@
 use std::{collections::HashSet, sync::Arc};
 
 use cosmian_crypto_core::{
+    CsRng,
     reexport::rand_core::{RngCore, SeedableRng},
 };
 use cosmian_kmip::kmip_2_1::{

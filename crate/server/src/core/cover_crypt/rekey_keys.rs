@@ -1,15 +1,15 @@
 use std::{ops::AsyncFn, sync::Arc};
 
-use cosmian_cover_crypt::{api::Covercrypt, MasterPublicKey, MasterSecretKey};
+use cosmian_cover_crypt::{MasterPublicKey, MasterSecretKey, api::Covercrypt};
 use cosmian_kmip::kmip_2_1::{
     kmip_objects::{Object, ObjectType},
     kmip_operations::{ErrorReason, Get, Import, ReKeyKeyPairResponse},
     kmip_types::{LinkType, StateEnumeration, UniqueIdentifier},
 };
 use cosmian_kms_crypto::crypto::cover_crypt::{
-    attributes::{deserialize_access_policy, RekeyEditAction},
+    attributes::{RekeyEditAction, deserialize_access_policy},
     master_keys::{
-        cc_master_keypair_from_kmip_objects, kmip_objects_from_cc_master_keypair, KmipKeyUidObject,
+        KmipKeyUidObject, cc_master_keypair_from_kmip_objects, kmip_objects_from_cc_master_keypair,
     },
     user_key::UserDecryptionKeysHandler,
 };

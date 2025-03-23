@@ -1003,8 +1003,8 @@ checksum = "a25dad7ff37557df4cb27a20d80727d75dfa2ddcbed14f02761e8bfb1f595741"
 dependencies = [
  "async-trait",
  "cosmian_crypto_core 9.5.0",
- "cosmian_findex",
- "redis",
+ "cosmian_findex 5.0.3",
+ "redis 0.23.3",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
@@ -1130,10 +1130,10 @@ dependencies = [
  "assert_cmd",
  "base64 0.22.1",
  "clap",
- "cloudproof",
  "const-oid",
  "cosmian_config_utils",
- "cosmian_crypto_core 10.0.0",
+ "cosmian_cover_crypt",
+ "cosmian_crypto_core 10.0.1",
  "cosmian_findex 7.0.0",
  "cosmian_findex_client",
  "cosmian_findex_structs",
@@ -1165,6 +1165,7 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
+ "x509-cert",
  "x509-parser",
  "zeroize",
 ]
@@ -1272,6 +1273,87 @@ dependencies = [
 ]
 
 [[package]]
+name = "cosmian_findex"
+version = "7.0.0"
+source = "git+https://github.com/Cosmian/findex?rev=98fcb6e97054e1bb9dddd7a0d620e27438cb91b7#98fcb6e97054e1bb9dddd7a0d620e27438cb91b7"
+dependencies = [
+ "aes",
+ "rand 0.9.0",
+ "rand_chacha 0.9.0",
+ "rand_core 0.9.0",
+ "redis 0.28.2",
+ "tiny-keccak",
+ "xts-mode",
+ "zeroize",
+]
+
+[[package]]
+name = "cosmian_findex_client"
+version = "4.22.1"
+dependencies = [
+ "base64 0.22.1",
+ "cosmian_crypto_core 10.0.1",
+ "cosmian_findex 7.0.0",
+ "cosmian_findex_structs",
+ "cosmian_http_client",
+ "cosmian_kms_client",
+ "cosmian_logger",
+ "rand 0.9.0",
+ "rand_chacha 0.9.0",
+ "reqwest",
+ "serde",
+ "test_kms_server",
+ "thiserror 2.0.11",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "cosmian_findex_server"
+version = "0.2.0"
+dependencies = [
+ "actix-cors",
+ "actix-identity",
+ "actix-service",
+ "actix-tls",
+ "actix-web",
+ "alcoholic_jwt",
+ "async-trait",
+ "chrono",
+ "clap",
+ "cosmian_crypto_core 10.0.1",
+ "cosmian_findex 7.0.0",
+ "cosmian_findex_structs",
+ "cosmian_logger",
+ "dotenvy",
+ "futures",
+ "openssl",
+ "redis 0.28.2",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "thiserror 2.0.11",
+ "tokio",
+ "toml",
+ "tracing",
+ "url",
+ "uuid",
+]
+
+[[package]]
+name = "cosmian_findex_structs"
+version = "0.2.0"
+dependencies = [
+ "base64 0.22.1",
+ "cosmian_crypto_core 10.0.1",
+ "cosmian_findex 7.0.0",
+ "thiserror 2.0.11",
+ "uuid",
+]
+
+[[package]]
 name = "cosmian_http_client"
 version = "0.1.0"
 source = "git+https://www.github.com/Cosmian/http_client_server?tag=0.1.0#66c4e05ebbfa6d205ae16bacf99d197bab3a70a9"
@@ -1332,44 +1414,6 @@ dependencies = [
  "thiserror 2.0.11",
  "tracing",
  "tracing-subscriber",
- "zeroize",
-]
-
-[[package]]
-name = "cosmian_kms_cli"
-version = "4.22.1"
-dependencies = [
- "assert_cmd",
- "base64 0.22.1",
- "clap",
- "cosmian_config_utils",
- "cosmian_cover_crypt",
- "cosmian_crypto_core 10.0.1",
- "cosmian_kms_client",
- "cosmian_kms_crypto",
- "cosmian_logger",
- "der",
- "hex",
- "jwt-simple",
- "kms_test_server",
- "leb128",
- "num-format",
- "openssl",
- "pem",
- "predicates",
- "regex",
- "reqwest",
- "serde",
- "serde_json",
- "strum",
- "tempfile",
- "thiserror 2.0.11",
- "tokio",
- "tracing",
- "url",
- "uuid",
- "x509-cert",
- "x509-parser",
  "zeroize",
 ]
 
@@ -2851,25 +2895,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2b8645470337db67b01a7f966decf7d0bafedbae74147d33e641c67a91df239f"
 dependencies = [
  "rand_core 0.6.4",
- "zeroize",
-]
-
-[[package]]
-name = "kms_test_server"
-version = "4.22.1"
-dependencies = [
- "actix-server",
- "base64 0.22.1",
- "cosmian_kms_client",
- "cosmian_kms_crypto",
- "cosmian_kms_server",
- "cosmian_kms_server_database",
- "cosmian_logger",
- "criterion",
- "serde_json",
- "tempfile",
- "tokio",
- "tracing",
  "zeroize",
 ]
 
@@ -5355,7 +5380,7 @@ version = "1.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b913a3b5fe84142e269d63cc62b64319ccaf89b748fc31fe025177f767a756c4"
 dependencies = [
- "getrandom 0.3.1",
+ "getrandom 0.2.15",
  "serde",
 ]
 

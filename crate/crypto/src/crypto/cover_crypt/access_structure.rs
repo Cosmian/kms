@@ -3,7 +3,7 @@ use std::{collections::HashMap, path::Path};
 use cosmian_cover_crypt::{AccessStructure, EncryptionHint, QualifiedAttribute};
 use tracing::debug;
 
-use crate::{error::result::CryptoResult, CryptoError};
+use crate::{CryptoError, error::result::CryptoResult};
 
 pub fn access_structure_from_json_file(
     specs_filename: &impl AsRef<Path>,

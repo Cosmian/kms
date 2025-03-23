@@ -9,7 +9,7 @@ use cloudproof_findex::{
     IndexedValue, Keyword, Label, Location, implementations::redis::FindexRedis,
     parameters::MASTER_KEY_LENGTH,
 };
-use cosmian_crypto_core::{kdf256, FixedSizeCBytes, SymmetricKey};
+use cosmian_crypto_core::{FixedSizeCBytes, SymmetricKey, kdf256};
 use cosmian_kmip::kmip_2_1::{
     KmipOperation,
     kmip_objects::Object,

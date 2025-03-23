@@ -116,6 +116,7 @@ mod tests {
     use std::collections::{HashMap, HashSet};
 
     use cosmian_crypto_core::{
+        CsRng,
         reexport::rand_core::{RngCore, SeedableRng},
     };
     use cosmian_kmip::kmip_2_1::{

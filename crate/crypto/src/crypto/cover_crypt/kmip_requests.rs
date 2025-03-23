@@ -9,8 +9,8 @@ use cosmian_kmip::kmip_2_1::{
 };
 
 use super::attributes::{
-    access_policy_as_vendor_attribute, access_structure_as_vendor_attribute,
-    rekey_edit_action_as_vendor_attribute, RekeyEditAction,
+    RekeyEditAction, access_policy_as_vendor_attribute, access_structure_as_vendor_attribute,
+    rekey_edit_action_as_vendor_attribute,
 };
 use crate::error::CryptoError;
 

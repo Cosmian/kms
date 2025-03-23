@@ -9,8 +9,8 @@ use cloudproof_findex::{
     implementations::redis::{FindexRedisError, RemovedLocationsFinder},
 };
 use cosmian_crypto_core::{
-    reexport::rand_core::SeedableRng, Aes256Gcm, CsRng, Dem, Instantiable, Nonce,
-    RandomFixedSizeCBytes, SymmetricKey,
+    Aes256Gcm, CsRng, Dem, Instantiable, Nonce, RandomFixedSizeCBytes, SymmetricKey,
+    reexport::rand_core::SeedableRng,
 };
 use cosmian_kmip::{
     KmipResultHelper,
