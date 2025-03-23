@@ -77,7 +77,7 @@ jobs:
 
     env:
       ARCHIVE_NAMES: rhel9-${{ inputs.debug_or_release }} fips_ubuntu_22_04-${{ inputs.debug_or_release }} ubuntu_24_04-${{ inputs.debug_or_release }} macos_arm-${{
-        inputs.debug_or_release }} kms_python_linux kms_python_macos_intel kms_python_macos_arm kms_python_windows
+        inputs.debug_or_release }}
 
     steps:
       - run: rm -rf kms_* fips_* python-* windows* ubuntu* macos* rhel9* centos*
