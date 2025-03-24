@@ -9,7 +9,6 @@ use crate::{error::result::KmipResult, KmipError, KmipResultHelper};
 const CLIENT_KEY: &str = include_str!("client.key");
 const CLIENT_CERTIFICATE: &str = include_str!("client.crt");
 const SERVER_CA_CERTIFICATE: &str = include_str!("server.crt");
-const CLIENT_P12: &[u8; 2691] = include_bytes!("client.p12");
 
 /// Configuration for the `PyKMIP` test client
 pub(crate) struct PyKmipHttpClientConfig {
