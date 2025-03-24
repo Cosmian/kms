@@ -129,7 +129,7 @@ And also some crates:
 - `kmip` which is an implementation of the KMIP standard
 - `server_database` to handle the database
 - `pkcs11_*` to handle PKCS11 support
-- `kms_test_server` which is a library to instantiate programmatically the KMS server.
+- `test_kms_server` which is a library to instantiate programmatically the KMS server.
 
 **Please refer to the README of the inner directories to have more information.**
 
@@ -138,7 +138,13 @@ directory.
 
 ## Building the KMS
 
-OpenSSL v3.2.0 is required to build the KMS.
+First, pull the git submodule for client requirements such as CLI and UI:
+
+```sh
+git submodule update --recursive --init
+````
+
+Then OpenSSL v3.2.0 is required to build the KMS.
 
 ### Linux or MacOS (CPU Intel or MacOs ARM)
 
