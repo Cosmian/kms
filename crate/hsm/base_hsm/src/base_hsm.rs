@@ -6,9 +6,9 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use pkcs11_sys::{CK_INFO, CKR_OK};
+use pkcs11_sys::{CKR_OK, CK_INFO};
 
-use crate::{HError, HResult, SlotManager, hsm_lib::HsmLib};
+use crate::{hsm_lib::HsmLib, HError, HResult, SlotManager};
 
 struct SlotState {
     password: Option<String>,
@@ -28,10 +28,13 @@ impl BaseHsm {
         let hsm_lib = Arc::new(HsmLib::instantiate(path)?);
         let mut slots = HashMap::with_capacity(passwords.len());
         for (k, v) in passwords.iter() {
-            slots.insert(*k, SlotState {
-                password: v.clone(),
-                slot: None,
-            });
+            slots.insert(
+                *k,
+                SlotState {
+                    password: v.clone(),
+                    slot: None,
+                },
+            );
         }
         Ok(BaseHsm {
             hsm_lib,

@@ -6,8 +6,8 @@ mod stores;
 pub use encryption_oracle::{CryptoAlgorithm, EncryptedContent, EncryptionOracle, KeyMetadata};
 pub use error::{InterfaceError, InterfaceResult};
 pub use hsm::{
-    HSM, HsmEncryptionOracle, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject, HsmObjectFilter,
-    HsmStore, KeyMaterial, RsaPrivateKeyMaterial, RsaPublicKeyMaterial,
+    HsmEncryptionOracle, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject, HsmObjectFilter,
+    HsmStore, KeyMaterial, RsaPrivateKeyMaterial, RsaPublicKeyMaterial, HSM,
 };
 pub use stores::{
     AtomicOperation, ObjectWithMetadata, ObjectsStore, PermissionsStore, SessionParams,

@@ -4,9 +4,9 @@ use std::{
 };
 
 use async_trait::async_trait;
-use cosmian_kmip::kmip_2_1::{KmipOperation, kmip_types::StateEnumeration};
+use cosmian_kmip::kmip_2_1::{kmip_types::StateEnumeration, KmipOperation};
 
-use crate::{InterfaceResult, stores::SessionParams};
+use crate::{stores::SessionParams, InterfaceResult};
 
 /// Trait that the stores must implement to store permissions
 #[async_trait(?Send)]

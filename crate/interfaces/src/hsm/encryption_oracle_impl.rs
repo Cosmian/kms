@@ -9,8 +9,8 @@ use async_trait::async_trait;
 use zeroize::Zeroizing;
 
 use crate::{
-    CryptoAlgorithm, EncryptionOracle, HSM, InterfaceError, InterfaceResult, KeyMetadata, KeyType,
-    encryption_oracle::EncryptedContent,
+    encryption_oracle::EncryptedContent, CryptoAlgorithm, EncryptionOracle, InterfaceError,
+    InterfaceResult, KeyMetadata, KeyType, HSM,
 };
 
 pub struct HsmEncryptionOracle {

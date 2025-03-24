@@ -42,7 +42,7 @@ use cosmian_kms_interfaces::{
     KeyType, RsaPrivateKeyMaterial, RsaPublicKeyMaterial,
 };
 use pkcs11_sys::*;
-use rand::{TryRngCore, rngs::OsRng};
+use rand::{rngs::OsRng, TryRngCore};
 use tracing::debug;
 use zeroize::Zeroizing;
 
@@ -77,7 +77,6 @@ impl From<CryptoAlgorithm> for HsmEncryptionAlgorithm {
 }
 
 /// A session with an HSM (Hardware Security Module) that implements PKCS#11 interface.
-///
 /// This structure represents an active connection to the HSM and provides methods to
 /// perform cryptographic operations and key management.
 ///

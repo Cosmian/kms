@@ -33,8 +33,8 @@
 //! - Zero-copy cleanup for sensitive data using `Zeroizing`
 use async_trait::async_trait;
 use cosmian_kms_interfaces::{
-    CryptoAlgorithm, EncryptedContent, HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject,
-    HsmObjectFilter, InterfaceError, InterfaceResult, KeyMetadata, KeyType,
+    CryptoAlgorithm, EncryptedContent, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject,
+    HsmObjectFilter, InterfaceError, InterfaceResult, KeyMetadata, KeyType, HSM,
 };
 use zeroize::Zeroizing;
 
