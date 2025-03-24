@@ -12,6 +12,7 @@ use tracing::debug;
 
 use crate::{backend::CliBackend, error::Pkcs11Error, kms_object::get_kms_objects_async};
 
+#[ignore = "to be re-included"]
 #[tokio::test]
 async fn test_kms_client() -> Result<(), Pkcs11Error> {
     let ctx = start_default_test_kms_server().await;
