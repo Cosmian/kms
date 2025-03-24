@@ -11,7 +11,7 @@ use crate::{error::result::KmipResult, KmipResultHelper};
 
 // load the string content at compile time - same as http_client.rs
 const SERVER_CA_CERTIFICATE: &str = include_str!("server.crt");
-const CLIENT_P12: &[u8; 2691] = include_bytes!("client.p12");
+const CLIENT_P12: &[u8; 3501] = include_bytes!("client.p12");
 
 /// Configuration for the `PyKMIP` socket client
 #[derive(Clone)]
