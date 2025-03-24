@@ -66,7 +66,7 @@ const AccessObtainedList: React.FC = () => {
             if (response.length) {
                 setAccessRights(response);
             } else {
-                setRes("Empty result");
+                setRes("Empty result - no access obtained.");
             }
         } catch (e) {
             setRes(`Error listing objects: ${e}`);

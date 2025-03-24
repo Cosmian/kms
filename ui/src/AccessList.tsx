@@ -36,7 +36,7 @@ const AccessListForm: React.FC = () => {
             if (response.length) {
                 setAccessRights(response);
             } else {
-                setRes("Empty result");
+                setRes("Empty result - no access granted.");
             }
         } catch (e) {
             setRes(`Error listing access right: ${e}`);

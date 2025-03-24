@@ -45,7 +45,7 @@ const ObjectsOwnedList: React.FC = () => {
             if (response.length) {
                 setObjects(response);
             } else {
-                setRes("Empty result");
+                setRes("Empty result - no object owned.");
             }
         } catch (e) {
             setRes(`Error listing objects: ${e}`);

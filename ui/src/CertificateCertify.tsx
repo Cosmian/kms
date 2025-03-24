@@ -21,13 +21,19 @@ interface CertificateCertifyFormData {
 }
 
 const ALGORITHM_OPTIONS = [
+    { label: "RSA 1024", value: "rsa1024" },
     { label: "RSA 2048", value: "rsa2048" },
     { label: "RSA 3072", value: "rsa3072" },
     { label: "RSA 4096", value: "rsa4096" },
+    { label: "NIST P-192", value: "nist-p192" },
+    { label: "NIST P-224", value: "nist-p224" },
     { label: "NIST P-256", value: "nist-p256" },
     { label: "NIST P-384", value: "nist-p384" },
     { label: "NIST P-521", value: "nist-p521" },
     { label: "Ed25519", value: "ed25519" },
+    { label: "X25519", value: "x25519" },
+    { label: "X448", value: "x448" },
+    { label: "Ed448", value: "ed448" },
 ];
 
 const CertificateCertifyForm: React.FC = () => {
@@ -37,6 +43,8 @@ const CertificateCertifyForm: React.FC = () => {
     const [certifyMethod, setCertifyMethod] = useState<string>("csr");
     const { idToken, serverUrl } = useAuth();
     const responseRef = useRef<HTMLDivElement>(null);
+
+    console.log("algo", ALGORITHM_OPTIONS);
 
     useEffect(() => {
         if (res && responseRef.current) {
