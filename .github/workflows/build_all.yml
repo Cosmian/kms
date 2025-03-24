@@ -41,31 +41,31 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - distribution: ubuntu-20.04
-            archive-name: fips_ubuntu_20_04
+          - distribution: ubuntu-22.04
+            archive-name: fips_ubuntu_22_04
             target: x86_64-unknown-linux-gnu
             artifacts: |
               /usr/local/openssl/lib64/ossl-modules/fips.so
               /usr/local/openssl/ssl/openssl.cnf
               /usr/local/openssl/ssl/fipsmodule.cnf
             features: fips
-            skip_services_tests: --skip test_mysql --skip test_postgresql --skip test_redis --skip google_cse
 
+            docker_compose: true
 
           - distribution: ubuntu-24.04
             archive-name: ubuntu_24_04
             target: x86_64-unknown-linux-gnu
             artifacts: |
               /usr/local/openssl/lib64/ossl-modules/legacy.so
-            skip_services_tests: --skip test_mysql --skip test_postgresql --skip test_redis --skip google_cse
-
+            docker_compose: true
 
           - distribution: macos-14
             archive-name: macos_arm
             target: aarch64-apple-darwin
             artifacts: |
               /usr/local/openssl/lib/ossl-modules/legacy.dylib
-            skip_services_tests: --skip test_mysql --skip test_postgresql --skip test_redis --skip google_cse --skip hsm
+            skip_services_tests: --skip test_mysql --skip test_postgresql --skip test_redis --skip google_cse --skip hsm --skip findex_server
+            docker_compose: false
 
     name: ${{ matrix.distribution }}
     uses: ./.github/workflows/build_generic.yml
@@ -79,34 +79,28 @@ jobs:
       skip_services_tests: ${{ matrix.skip_services_tests }}
       artifacts: ${{ matrix.artifacts }}
       features: ${{ matrix.features }}
+      docker_compose: ${{ matrix.docker_compose }}
 
   linux-mac-release:
     strategy:
       fail-fast: false
       matrix:
         include:
-          - distribution: ubuntu-20.04
-            archive-name: ubuntu_20_04
-            target: x86_64-unknown-linux-gnu
-            artifacts: |
-              /usr/local/openssl/lib64/ossl-modules/legacy.so
-            skip_services_tests: --skip test_mysql --skip test_postgresql --skip test_redis --skip google_cse
-
-
           - distribution: ubuntu-22.04
             archive-name: ubuntu_22_04
             target: x86_64-unknown-linux-gnu
             artifacts: |
               /usr/local/openssl/lib64/ossl-modules/legacy.so
-            skip_services_tests: --skip test_mysql --skip test_postgresql --skip test_redis --skip google_cse
+            docker_compose: true
 
 
           - distribution: macos-13
             archive-name: macos_intel
             target: x86_64-apple-darwin
+            skip_services_tests: --skip test_mysql --skip test_postgresql --skip test_redis --skip google_cse --skip hsm --skip findex_server
             artifacts: |
               /usr/local/openssl/lib/ossl-modules/legacy.dylib
-            skip_services_tests: --skip test_mysql --skip test_postgresql --skip test_redis --skip google_cse --skip hsm
+            docker_compose: false
 
 
     name: ${{ matrix.distribution }}
@@ -121,6 +115,7 @@ jobs:
       debug_or_release: ${{ inputs.debug_or_release }}
       skip_services_tests: ${{ matrix.skip_services_tests }}
       artifacts: ${{ matrix.artifacts }}
+      docker_compose: ${{ matrix.docker_compose }}
 
   windows-2022:
     if: inputs.debug_or_release == 'release'

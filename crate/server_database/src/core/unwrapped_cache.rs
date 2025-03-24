@@ -129,7 +129,7 @@ mod tests {
     use crate::{core::main_db_params::MainDbParams, error::DbResult, Database};
 
     #[tokio::test]
-    #[allow(clippy::unwrap_used)]
+    #[allow(clippy::unwrap_used, clippy::panic_in_result_fn)]
     async fn test_lru_cache() -> DbResult<()> {
         log_init(option_env!("RUST_LOG"));
 

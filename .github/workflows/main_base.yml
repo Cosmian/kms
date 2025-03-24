@@ -19,7 +19,9 @@ jobs:
     name: Security Audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - uses: EmbarkStudios/cargo-deny-action@v1
 
   cargo-lint:
@@ -74,7 +76,7 @@ jobs:
         - /home/cosmian/.ssh/id_rsa:/root/.ssh/id_rsa
 
     env:
-      ARCHIVE_NAMES: rhel9-${{ inputs.debug_or_release }} fips_ubuntu_20_04-${{ inputs.debug_or_release }} ubuntu_24_04-${{ inputs.debug_or_release }} macos_arm-${{
+      ARCHIVE_NAMES: rhel9-${{ inputs.debug_or_release }} fips_ubuntu_22_04-${{ inputs.debug_or_release }} ubuntu_24_04-${{ inputs.debug_or_release }} macos_arm-${{
         inputs.debug_or_release }}
 
     steps:
@@ -94,7 +96,6 @@ jobs:
 
           # Warning, no all binaries in debug, only in release
           if [ "${{ inputs.debug_or_release }}" == "release" ]; then
-            zip -r ubuntu_20_04-release.zip ubuntu_20_04-release
             zip -r ubuntu_22_04-release.zip ubuntu_22_04-release
             zip -r windows-release.zip windows-release
             zip -r macos_intel-release.zip macos_intel-release
@@ -116,7 +117,7 @@ jobs:
             cosmian@package.cosmian.com:$DESTINATION_DIR/
 
           if [ "${{ inputs.debug_or_release }}" == "release" ]; then
-            ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p $DESTINATION_DIR/{rhel9,ubuntu-20.04,ubuntu-22.04,ubuntu-24.04}
+            ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p $DESTINATION_DIR/{rhel9,ubuntu-22.04,ubuntu-24.04}
 
             # RedHat 9 package
             scp -o 'StrictHostKeyChecking no' \
@@ -124,9 +125,6 @@ jobs:
               cosmian@package.cosmian.com:$DESTINATION_DIR/rhel9
 
             # Ubuntu packages
-            scp -o 'StrictHostKeyChecking no' \
-              -i /root/.ssh/id_rsa ubuntu_20_04-${{ inputs.debug_or_release }}/home/runner/work/kms/kms/target/x86_64-unknown-linux-gnu/debian/*.deb \
-              cosmian@package.cosmian.com:$DESTINATION_DIR/ubuntu-20.04
             scp -o 'StrictHostKeyChecking no' \
               -i /root/.ssh/id_rsa ubuntu_22_04-${{ inputs.debug_or_release }}/home/runner/work/kms/kms/target/x86_64-unknown-linux-gnu/debian/*.deb \
               cosmian@package.cosmian.com:$DESTINATION_DIR/ubuntu-22.04
@@ -142,7 +140,6 @@ jobs:
           files: |
             *.zip
             rhel9-release/__w/kms/kms/target/x86_64-unknown-linux-gnu/generate-rpm/*.rpm \
-            ubuntu_20_04-release/home/runner/work/kms/kms/target/x86_64-unknown-linux-gnu/debian/*.deb \
             ubuntu_22_04-release/home/runner/work/kms/kms/target/x86_64-unknown-linux-gnu/debian/*.deb \
             ubuntu_24_04-release/home/runner/work/kms/kms/target/x86_64-unknown-linux-gnu/debian/*.deb
 
@@ -150,7 +147,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Deploy documentation in staging
         if: ${{ github.ref_name == 'develop' }}

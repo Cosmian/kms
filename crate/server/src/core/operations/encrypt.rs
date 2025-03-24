@@ -327,6 +327,7 @@ fn encrypt_with_symmetric_key(
     request: &Encrypt,
     owm: &ObjectWithMetadata,
 ) -> KResult<EncryptResponse> {
+    trace!("encrypt_with_symmetric_key: entering");
     let (key_bytes, aead) = get_cipher_and_key(request, owm)?;
     let plaintext = request.data.as_ref().ok_or_else(|| {
         KmsError::InvalidRequest("Encrypt: data to encrypt must be provided".to_owned())
@@ -340,6 +341,9 @@ fn encrypt_with_symmetric_key(
         .as_deref()
         .unwrap_or(EMPTY_SLICE);
     let (ciphertext, tag) = sym_encrypt(aead, &key_bytes, &nonce, aad, plaintext)?;
+
+    trace!("encrypt_with_symmetric_key: plaintext: {plaintext:?}, nonce: {nonce:?}, aad: {aad:?}");
+    trace!("encrypt_with_symmetric_key: ciphertext: {ciphertext:?}, tag: {tag:?},");
     Ok(EncryptResponse {
         unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
         data: Some(ciphertext),

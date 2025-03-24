@@ -185,6 +185,7 @@ mod tests {
 default_username = "[default username]"
 force_default_username = false
 google_cse_kacls_url = "[google cse kacls url]"
+google_cse_disable_tokens_validation = false
 ms_dke_service_url = "[ms dke service url]"
 info = false
 hsm_model = ""

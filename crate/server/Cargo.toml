@@ -46,7 +46,7 @@ clap = { workspace = true, features = [
   "derive",
   "cargo",
 ] }
-cloudproof_findex = { workspace = true }
+cloudproof_findex = { version = "5.0", features = ["findex-redis"] }
 cosmian_cover_crypt = { workspace = true }
 cosmian_crypto_core = { workspace = true }
 cosmian_kmip = { path = "../kmip" }

@@ -4,6 +4,8 @@ set -ex
 
 # --- Declare the following variables for tests
 # export TARGET=x86_64-unknown-linux-gnu
+# export TARGET=x86_64-apple-darwin
+# export TARGET=aarch64-apple-darwin
 # export DEBUG_OR_RELEASE=debug
 # export OPENSSL_DIR=/usr/local/openssl
 # export SKIP_SERVICES_TESTS="--skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse"
@@ -13,7 +15,7 @@ ROOT_FOLDER=$(pwd)
 
 if [ "$DEBUG_OR_RELEASE" = "release" ]; then
   # First build the Debian and RPM packages. It must come at first since
-  # after this step `ckms` and `cosmian_kms` are built with custom features flags (fips for example).
+  # after this step `cosmian` and `cosmian_kms` are built with custom features flags (fips for example).
   rm -rf target/"$TARGET"/debian
   rm -rf target/"$TARGET"/generate-rpm
   if [ -f /etc/redhat-release ]; then
@@ -74,18 +76,12 @@ if [ "$DEBUG_OR_RELEASE" = "release" ]; then
   done
 fi
 
-echo "Building crate/pkcs11/provider"
-cd crate/pkcs11/provider
-# shellcheck disable=SC2086
-cargo build --target $TARGET $RELEASE
-cd "$ROOT_FOLDER"
-
 if [ -z "$OPENSSL_DIR" ]; then
   echo "Error: OPENSSL_DIR is not set."
   exit 1
 fi
 
-crates=("crate/server" "crate/cli")
+crates=("crate/server" "cli/crate/cli")
 for crate in "${crates[@]}"; do
   echo "Building $crate"
   cd "$crate"
@@ -97,34 +93,46 @@ done
 # Debug
 # find .
 
-./target/"$TARGET/$DEBUG_OR_RELEASE"/ckms -h
+COSMIAN_EXE="cli/target/$TARGET/$DEBUG_OR_RELEASE/cosmian"
+COSMIAN_KMS_EXE="target/$TARGET/$DEBUG_OR_RELEASE/cosmian_kms"
+
+./"$COSMIAN_EXE" -h
+
 # Must use OpenSSL with this specific version 3.2.0
 OPENSSL_VERSION_REQUIRED="3.2.0"
-correct_openssl_version_found=$(./target/"$TARGET/$DEBUG_OR_RELEASE"/cosmian_kms --info | grep "$OPENSSL_VERSION_REQUIRED")
+correct_openssl_version_found=$(./"$COSMIAN_KMS_EXE" --info | grep "$OPENSSL_VERSION_REQUIRED")
 if [ -z "$correct_openssl_version_found" ]; then
   echo "Error: The correct OpenSSL version $OPENSSL_VERSION_REQUIRED is not found."
   exit 1
 fi
 
 if [ "$(uname)" = "Linux" ]; then
-  ldd target/"$TARGET/$DEBUG_OR_RELEASE"/ckms | grep ssl && exit 1
-  ldd target/"$TARGET/$DEBUG_OR_RELEASE"/cosmian_kms | grep ssl && exit 1
+  ldd "$COSMIAN_EXE" | grep ssl && exit 1
+  ldd "$COSMIAN_KMS_EXE" | grep ssl && exit 1
 else
-  otool -L target/"$TARGET/$DEBUG_OR_RELEASE"/ckms | grep openssl && exit 1
-  otool -L target/"$TARGET/$DEBUG_OR_RELEASE"/cosmian_kms | grep openssl && exit 1
+  otool -L "$COSMIAN_EXE" | grep openssl && exit 1
+  otool -L "$COSMIAN_KMS_EXE" | grep openssl && exit 1
 fi
 
 find . -type d -name cosmian-kms -exec rm -rf \{\} \; -print || true
 rm -f /tmp/*.toml
 
-export RUST_LOG="cosmian_kms_cli=debug,cosmian_kms_server=debug"
+export RUST_LOG="cosmian_cli=debug,cosmian_kms_server=info,cosmian_kmip=info"
 
 # shellcheck disable=SC2086
 cargo build --target $TARGET $RELEASE $FEATURES
 
 echo "Database KMS: $KMS_TEST_DB"
 # shellcheck disable=SC2086
-cargo test --lib --target $TARGET $RELEASE $FEATURES --workspace -- --nocapture $SKIP_SERVICES_TESTS
+cargo test -v --workspace --lib --target $TARGET $RELEASE $FEATURES -- $SKIP_SERVICES_TESTS
+
+# shellcheck disable=SC2086
+cargo test --workspace --bins --target $TARGET $RELEASE $FEATURES
+
+if [ "$DEBUG_OR_RELEASE" = "release" ]; then
+  # shellcheck disable=SC2086
+  cargo bench --target $TARGET $FEATURES --no-run
+fi
 
 # Uncomment this code to run tests indefinitely
 # counter=1

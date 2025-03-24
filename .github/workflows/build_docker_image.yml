@@ -34,7 +34,10 @@ jobs:
       - name: Install tar
         run: apk add --no-cache tar
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
 
       - name: Login to GitHub Packages
         uses: docker/login-action@v2

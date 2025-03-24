@@ -231,6 +231,7 @@ impl Display for KeyValue {
 // skip_serializing_if is expecting.
 #[allow(clippy::ref_option)]
 // Attributes is default is a fix for https://github.com/Cosmian/kms/issues/92
+#[allow(clippy::ref_option)]
 fn attributes_is_default_or_none<T: Default + PartialEq + Serialize>(val: &Option<T>) -> bool {
     val.as_ref().map_or(true, |v| *v == T::default())
 }
@@ -266,6 +267,8 @@ impl KeyValue {
     }
 }
 
+/// Key wrapping data
+///
 /// The Key Block MAY also supply OPTIONAL information about a cryptographic key
 /// wrapping mechanism used to wrap the Key Value. This consists of a Key
 /// Wrapping Data structure. It is only used inside a Key Block.

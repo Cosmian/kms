@@ -324,7 +324,7 @@ fn decrypt_bulk(
 }
 
 fn decrypt_single(owm: &ObjectWithMetadata, request: &Decrypt) -> KResult<DecryptResponse> {
-    trace!("decrypt_single");
+    trace!("decrypt_single: entering");
     let key_block = owm.object().key_block()?;
     match &key_block.key_format_type {
         KeyFormatType::CoverCryptSecretKey => decrypt_with_covercrypt(owm, request),
@@ -369,10 +369,6 @@ fn decrypt_single_with_symmetric_key(
             "Decrypt single with symmetric key: data to decrypt must be provided".to_owned(),
         )
     })?;
-    trace!(
-        "Decrypt single with symmetric key: ciphertext size: {:?}",
-        ciphertext.len()
-    );
     let (key_bytes, aead) = get_aead_and_key(owm, request)?;
     let nonce = request.iv_counter_nonce.as_ref().ok_or_else(|| {
         KmsError::InvalidRequest("Decrypt: the nonce/IV must be provided".to_owned())
@@ -386,6 +382,11 @@ fn decrypt_single_with_symmetric_key(
         .as_deref()
         .unwrap_or(EMPTY_SLICE);
     let plaintext = sym_decrypt(aead, &key_bytes, nonce, aad, ciphertext, tag)?;
+    trace!(
+        "Decrypt single with symmetric key: ciphertext: {ciphertext:?}, nonce: {nonce:?}, aad: \
+         {aad:?}, tag: {tag:?}"
+    );
+    trace!("Decrypt single with symmetric key: plaintext: {plaintext:?}");
     Ok(Ok(DecryptResponse {
         unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
         data: Some(plaintext),

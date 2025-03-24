@@ -20,9 +20,9 @@ RUN if [ "$TARGETPLATFORM" = "linux/amd64" ]; then export ARCHITECTURE=x86_64; e
 
 # Conditional cargo build based on FIPS argument
 RUN if [ "$FIPS" = "true" ]; then \
-    cargo build -p cosmian_kms_cli -p cosmian_kms_server --release --no-default-features --features="fips"; \
+    cargo build -p cosmian_cli -p cosmian_kms_server --release --no-default-features --features="fips"; \
     else \
-    cargo build -p cosmian_kms_cli -p cosmian_kms_server --release --no-default-features; \
+    cargo build -p cosmian_cli -p cosmian_kms_server --release --no-default-features; \
     fi
 
 #
@@ -31,7 +31,7 @@ RUN if [ "$FIPS" = "true" ]; then \
 FROM debian:bullseye-slim AS kms-server
 
 COPY --from=builder /root/kms/target/release/cosmian_kms        /usr/bin/cosmian_kms
-COPY --from=builder /root/kms/target/release/ckms               /usr/bin/ckms
+COPY --from=builder /root/kms/target/release/cosmian            /usr/bin/cosmian
 COPY --from=builder /usr/local/openssl                          /usr/local/openssl
 
 #
