@@ -56,17 +56,17 @@ cosmian_crypto_core = { version = "10.0.1", default-features = false, features =
 ] }
 cosmian_findex_client = { path = "crate/findex_client" }
 cosmian_findex = { git = "https://github.com/Cosmian/findex", default-features = false, rev = "98fcb6e97054e1bb9dddd7a0d620e27438cb91b7" }
-cosmian_findex_server = { git = "https://www.github.com/Cosmian/findex-server", branch = "update_cli" }
-cosmian_findex_structs = { git = "https://www.github.com/Cosmian/findex-server", branch = "update_cli" }
+cosmian_findex_server = { git = "https://www.github.com/Cosmian/findex-server", branch = "develop" }
+cosmian_findex_structs = { git = "https://www.github.com/Cosmian/findex-server", branch = "develop" }
 cosmian_http_client = { git = "https://www.github.com/Cosmian/http_client_server", tag = "0.1.0" }
 cosmian_logger = { git = "https://www.github.com/Cosmian/http_client_server", tag = "0.1.0" }
 cosmian_kms_client = { path = "crate/kms_client" }
-pkcs11_sys = { git = "https://www.github.com/Cosmian/kms", branch = "merge_cli" }
-cosmian_kmip = { git = "https://www.github.com/Cosmian/kms", branch = "merge_cli" }
-cosmian_kms_access = { git = "https://www.github.com/Cosmian/kms", branch = "merge_cli" }
-cosmian_kms_crypto = { git = "https://www.github.com/Cosmian/kms", branch = "merge_cli" }
-cosmian_kms_server = { git = "https://www.github.com/Cosmian/kms", branch = "merge_cli" }
-cosmian_kms_server_database = { git = "https://www.github.com/Cosmian/kms", branch = "merge_cli" }
+pkcs11_sys = { git = "https://www.github.com/Cosmian/kms", branch = "develop" }
+cosmian_kmip = { git = "https://www.github.com/Cosmian/kms", branch = "develop" }
+cosmian_kms_access = { git = "https://www.github.com/Cosmian/kms", branch = "develop" }
+cosmian_kms_crypto = { git = "https://www.github.com/Cosmian/kms", branch = "develop" }
+cosmian_kms_server = { git = "https://www.github.com/Cosmian/kms", branch = "develop" }
+cosmian_kms_server_database = { git = "https://www.github.com/Cosmian/kms", branch = "develop" }
 der = { version = "0.7", default-features = false }
 hex = { version = "0.4", default-features = false }
 leb128 = "0.2"
