@@ -5,11 +5,7 @@ use time::OffsetDateTime;
 
 use super::kmip_objects::Certificate;
 #[allow(clippy::wildcard_imports)]
-use super::{
-    kmip_data_structures::*,
-    kmip_objects::{Object, ObjectType},
-    kmip_types::*,
-};
+use super::{kmip_data_structures::*, kmip_objects::Object, kmip_types::*};
 use crate::kmip_1_4::kmip_attributes::{Attribute, Attributes};
 
 #[derive(Debug, Eq, PartialEq)]
@@ -537,7 +533,7 @@ pub struct QueryResponse {
 
     /// Specifies a Client Registration Method that is supported by the server.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub cient_registration_method: Option<Vec<ClientRegistrationMethod>>,
+    pub client_registration_method: Option<Vec<ClientRegistrationMethod>>,
 }
 
 /// 4.26 Discover Versions

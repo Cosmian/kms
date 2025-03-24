@@ -1,8 +1,8 @@
 #![allow(non_camel_case_types)]
 
 use std::{
-    fmt,
-    fmt::{Display, Formatter},
+    fmt::{self, Display, Formatter},
+    str::FromStr,
 };
 
 use kmip_derive::{kmip_enum, KmipEnumDeserialize, KmipEnumSerialize};
@@ -15,7 +15,10 @@ use serde::{
 use strum::Display;
 use uuid::Uuid;
 
-use crate::kmip_2_1::{self};
+use crate::{
+    kmip_2_1::{self},
+    KmipError,
+};
 
 /// KMIP 1.4 Credential Type Enumeration
 #[kmip_enum]
@@ -205,6 +208,47 @@ pub enum ObjectType {
     SecretData = 0x7,
     OpaqueObject = 0x8,
     PGPKey = 0x9,
+}
+
+impl From<ObjectType> for u32 {
+    fn from(object_type: ObjectType) -> Self {
+        match object_type {
+            ObjectType::Certificate => 0x01,
+            ObjectType::SymmetricKey => 0x02,
+            ObjectType::PublicKey => 0x03,
+            ObjectType::PrivateKey => 0x04,
+            ObjectType::SplitKey => 0x05,
+            // ObjectType::Template => 0x06,
+            ObjectType::SecretData => 0x07,
+            ObjectType::OpaqueObject => 0x08,
+            ObjectType::PGPKey => 0x09,
+        }
+    }
+}
+
+impl TryFrom<u32> for ObjectType {
+    type Error = KmipError;
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        match value {
+            0x01 => Ok(Self::Certificate),
+            0x02 => Ok(Self::SymmetricKey),
+            0x03 => Ok(Self::PublicKey),
+            0x04 => Ok(Self::PrivateKey),
+            0x05 => Ok(Self::SplitKey),
+            0x06 => Err(KmipError::InvalidKmip14Value(
+                ResultReason::InvalidField,
+                "Template is not supported in this version of KMIP 1.4".to_owned(),
+            )),
+            0x07 => Ok(Self::SecretData),
+            0x08 => Ok(Self::OpaqueObject),
+            0x09 => Ok(Self::PGPKey),
+            _ => Err(KmipError::InvalidKmip14Value(
+                ResultReason::InvalidField,
+                format!("Invalid Object Type value: {value}"),
+            )),
+        }
+    }
 }
 
 impl From<ObjectType> for kmip_2_1::kmip_objects::ObjectType {
@@ -1236,7 +1280,7 @@ pub struct Digest {
 }
 
 /// KMIP 1.4 Cryptographic Usage Mask (bitmask)
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Copy, Eq, PartialEq)]
 pub struct CryptographicUsageMask(pub u32);
 
 bitflags::bitflags! {
@@ -1578,6 +1622,12 @@ pub enum ErrorReason {
     Constraint_Violation = 0x0000_004B,
     Duplicate_Process_Request = 0x0000_004C,
     General_Failure = 0x0000_0100,
+}
+
+impl From<ErrorReason> for kmip_2_1::kmip_operations::ErrorReason {
+    fn from(val: ErrorReason) -> Self {
+        Self::from_str(val.to_string().as_str()).unwrap_or(Self::General_Failure)
+    }
 }
 
 #[kmip_enum]
@@ -2405,4 +2455,53 @@ pub enum Tag {
     Extractable = 0x42_0122,
     NeverExtractable = 0x42_0123,
     ReplaceExisting = 0x42_0124,
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_object_type_display() {
+        assert_eq!(ObjectType::Certificate.to_string(), "Certificate");
+        assert_eq!(ObjectType::SymmetricKey.to_string(), "Symmetric Key");
+        assert_eq!(ObjectType::PublicKey.to_string(), "Public Key");
+        assert_eq!(ObjectType::PrivateKey.to_string(), "Private Key");
+        assert_eq!(ObjectType::SplitKey.to_string(), "Split Key");
+        assert_eq!(ObjectType::SecretData.to_string(), "Secret Data");
+        assert_eq!(ObjectType::OpaqueObject.to_string(), "Opaque Object");
+        assert_eq!(ObjectType::PGPKey.to_string(), "PGP Key");
+    }
+
+    #[test]
+    fn test_object_type_try_from() {
+        assert_eq!(ObjectType::try_from(0x01).unwrap(), ObjectType::Certificate);
+        assert_eq!(
+            ObjectType::try_from(0x02).unwrap(),
+            ObjectType::SymmetricKey
+        );
+        assert_eq!(ObjectType::try_from(0x03).unwrap(), ObjectType::PublicKey);
+        assert_eq!(ObjectType::try_from(0x04).unwrap(), ObjectType::PrivateKey);
+        assert_eq!(ObjectType::try_from(0x05).unwrap(), ObjectType::SplitKey);
+        assert_eq!(ObjectType::try_from(0x07).unwrap(), ObjectType::SecretData);
+        assert_eq!(
+            ObjectType::try_from(0x08).unwrap(),
+            ObjectType::OpaqueObject
+        );
+        assert_eq!(ObjectType::try_from(0x09).unwrap(), ObjectType::PGPKey);
+        ObjectType::try_from(0x0A).unwrap_err();
+    }
+
+    #[test]
+    fn test_object_type_from() {
+        assert_eq!(u32::from(ObjectType::Certificate), 0x01);
+        assert_eq!(u32::from(ObjectType::SymmetricKey), 0x02);
+        assert_eq!(u32::from(ObjectType::PublicKey), 0x03);
+        assert_eq!(u32::from(ObjectType::PrivateKey), 0x04);
+        assert_eq!(u32::from(ObjectType::SplitKey), 0x05);
+        assert_eq!(u32::from(ObjectType::SecretData), 0x07);
+        assert_eq!(u32::from(ObjectType::OpaqueObject), 0x08);
+        assert_eq!(u32::from(ObjectType::PGPKey), 0x09);
+    }
 }

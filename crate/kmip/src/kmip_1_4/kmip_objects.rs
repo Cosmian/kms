@@ -1,8 +1,8 @@
-use std::{convert::TryFrom, fmt::Display};
+use std::fmt::Display;
 
 use num_bigint_dig::BigInt;
 use serde::{Deserialize, Serialize};
-use strum::{EnumIter, VariantNames};
+use strum::VariantNames;
 
 #[allow(clippy::wildcard_imports)]
 use super::{kmip_data_structures::KeyBlock, kmip_types::*};
@@ -287,127 +287,5 @@ impl From<Object> for kmip_2_1::kmip_objects::Object {
             Object::OpaqueObject(opaque) => Self::OpaqueObject(opaque.into()),
             Object::PGPKey(pgp) => Self::PGPKey(pgp.into()),
         }
-    }
-}
-
-/// The type of a KMIP 1.4 Objects
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, EnumIter)]
-#[serde(rename_all = "PascalCase")]
-#[repr(u32)]
-pub enum ObjectType {
-    Certificate = 0x01,
-    SymmetricKey = 0x02,
-    PublicKey = 0x03,
-    PrivateKey = 0x04,
-    SplitKey = 0x05,
-    // Unsupported in KMIP 2.1 and deactivated in KMIP 1.4
-    // Template = 0x06,
-    SecretData = 0x07,
-    OpaqueObject = 0x08,
-    PGPKey = 0x09,
-}
-
-impl From<ObjectType> for u32 {
-    fn from(object_type: ObjectType) -> Self {
-        match object_type {
-            ObjectType::Certificate => 0x01,
-            ObjectType::SymmetricKey => 0x02,
-            ObjectType::PublicKey => 0x03,
-            ObjectType::PrivateKey => 0x04,
-            ObjectType::SplitKey => 0x05,
-            // ObjectType::Template => 0x06,
-            ObjectType::SecretData => 0x07,
-            ObjectType::OpaqueObject => 0x08,
-            ObjectType::PGPKey => 0x09,
-        }
-    }
-}
-
-impl TryFrom<u32> for ObjectType {
-    type Error = KmipError;
-
-    fn try_from(value: u32) -> Result<Self, Self::Error> {
-        match value {
-            0x01 => Ok(Self::Certificate),
-            0x02 => Ok(Self::SymmetricKey),
-            0x03 => Ok(Self::PublicKey),
-            0x04 => Ok(Self::PrivateKey),
-            0x05 => Ok(Self::SplitKey),
-            0x06 => Err(KmipError::InvalidKmip14Value(
-                ResultReason::InvalidField,
-                "Template is not supported in this version of KMIP 1.4".to_owned(),
-            )),
-            0x07 => Ok(Self::SecretData),
-            0x08 => Ok(Self::OpaqueObject),
-            0x09 => Ok(Self::PGPKey),
-            _ => Err(KmipError::InvalidKmip14Value(
-                ResultReason::InvalidField,
-                format!("Invalid Object Type value: {value}"),
-            )),
-        }
-    }
-}
-
-impl Display for ObjectType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Certificate => write!(f, "Certificate"),
-            Self::SymmetricKey => write!(f, "Symmetric Key"),
-            Self::PublicKey => write!(f, "Public Key"),
-            Self::PrivateKey => write!(f, "Private Key"),
-            Self::SplitKey => write!(f, "Split Key"),
-            Self::SecretData => write!(f, "Secret Data"),
-            Self::OpaqueObject => write!(f, "Opaque Object"),
-            Self::PGPKey => write!(f, "PGP Key"),
-        }
-    }
-}
-
-#[cfg(test)]
-#[allow(clippy::unwrap_used)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_object_type_display() {
-        assert_eq!(ObjectType::Certificate.to_string(), "Certificate");
-        assert_eq!(ObjectType::SymmetricKey.to_string(), "Symmetric Key");
-        assert_eq!(ObjectType::PublicKey.to_string(), "Public Key");
-        assert_eq!(ObjectType::PrivateKey.to_string(), "Private Key");
-        assert_eq!(ObjectType::SplitKey.to_string(), "Split Key");
-        assert_eq!(ObjectType::SecretData.to_string(), "Secret Data");
-        assert_eq!(ObjectType::OpaqueObject.to_string(), "Opaque Object");
-        assert_eq!(ObjectType::PGPKey.to_string(), "PGP Key");
-    }
-
-    #[test]
-    fn test_object_type_try_from() {
-        assert_eq!(ObjectType::try_from(0x01).unwrap(), ObjectType::Certificate);
-        assert_eq!(
-            ObjectType::try_from(0x02).unwrap(),
-            ObjectType::SymmetricKey
-        );
-        assert_eq!(ObjectType::try_from(0x03).unwrap(), ObjectType::PublicKey);
-        assert_eq!(ObjectType::try_from(0x04).unwrap(), ObjectType::PrivateKey);
-        assert_eq!(ObjectType::try_from(0x05).unwrap(), ObjectType::SplitKey);
-        assert_eq!(ObjectType::try_from(0x07).unwrap(), ObjectType::SecretData);
-        assert_eq!(
-            ObjectType::try_from(0x08).unwrap(),
-            ObjectType::OpaqueObject
-        );
-        assert_eq!(ObjectType::try_from(0x09).unwrap(), ObjectType::PGPKey);
-        ObjectType::try_from(0x0A).unwrap_err();
-    }
-
-    #[test]
-    fn test_object_type_from() {
-        assert_eq!(u32::from(ObjectType::Certificate), 0x01);
-        assert_eq!(u32::from(ObjectType::SymmetricKey), 0x02);
-        assert_eq!(u32::from(ObjectType::PublicKey), 0x03);
-        assert_eq!(u32::from(ObjectType::PrivateKey), 0x04);
-        assert_eq!(u32::from(ObjectType::SplitKey), 0x05);
-        assert_eq!(u32::from(ObjectType::SecretData), 0x07);
-        assert_eq!(u32::from(ObjectType::OpaqueObject), 0x08);
-        assert_eq!(u32::from(ObjectType::PGPKey), 0x09);
     }
 }

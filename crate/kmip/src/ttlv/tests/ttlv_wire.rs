@@ -113,7 +113,7 @@ fn test_pykmip_response_message_1_4() {
                     profiles_information: None,
                     validation_information: None,
                     capability_information: None,
-                    cient_registration_method: None,
+                    client_registration_method: None,
                 },
             )),
             message_extension: None,
