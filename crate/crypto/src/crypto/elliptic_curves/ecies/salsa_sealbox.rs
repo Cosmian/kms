@@ -1,6 +1,6 @@
 use cosmian_crypto_core::{
-    CsRng, Ecies, EciesSalsaSealBox, Ed25519PrivateKey, Ed25519PublicKey, X25519PrivateKey,
-    X25519PublicKey, reexport::rand_core::SeedableRng,
+    reexport::rand_core::SeedableRng, CsRng, Ecies, EciesSalsaSealBox, Ed25519PrivateKey,
+    Ed25519PublicKey, X25519PrivateKey, X25519PublicKey,
 };
 use openssl::pkey::{Id, PKey, Private, Public};
 use tracing::trace;

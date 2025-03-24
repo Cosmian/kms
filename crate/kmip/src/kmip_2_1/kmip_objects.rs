@@ -10,7 +10,7 @@ use strum::EnumIter;
 
 use super::{kmip_data_structures::KeyWrappingData, kmip_types::Attributes};
 use crate::{
-    error::{KmipError, result::KmipResult},
+    error::{result::KmipResult, KmipError},
     kmip_2_1::{
         kmip_data_structures::KeyBlock,
         kmip_operations::ErrorReason,

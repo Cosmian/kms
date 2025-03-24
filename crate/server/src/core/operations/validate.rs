@@ -5,24 +5,24 @@ use std::{
 };
 
 use cosmian_kmip::kmip_2_1::{
-    KmipOperation,
     kmip_objects::Object,
     kmip_operations::{Validate, ValidateResponse},
     kmip_types::{UniqueIdentifier, ValidityIndicator},
+    KmipOperation,
 };
 use cosmian_kms_interfaces::SessionParams;
 use openssl::{
     asn1::Asn1Time,
     stack::Stack,
     x509::{
-        CrlStatus, DistPointNameRef, DistPointRef, GeneralNameRef, X509, X509Crl, X509StoreContext,
-        store::X509StoreBuilder,
+        store::X509StoreBuilder, CrlStatus, DistPointNameRef, DistPointRef, GeneralNameRef,
+        X509Crl, X509StoreContext, X509,
     },
 };
 use tracing::{debug, trace, warn};
 
 use crate::{
-    core::{KMS, retrieve_object_utils::retrieve_object_for_operation},
+    core::{retrieve_object_utils::retrieve_object_for_operation, KMS},
     error::KmsError,
     result::KResult,
 };
@@ -663,7 +663,6 @@ async fn certificate_by_uid(
     }
 }
 
-#[allow(clippy::ref_option)]
 fn validate_chain_date(certificates: &[X509], date: &Option<String>) -> KResult<ValidityIndicator> {
     let current_date = date.clone().map_or_else(
         || Asn1Time::days_from_now(0),

@@ -1,9 +1,7 @@
 use std::sync::Arc;
 
 use cosmian_kmip::{
-    KmipError,
     kmip_2_1::{
-        KmipOperation,
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingSpecification},
         kmip_objects::{Object, ObjectType},
         kmip_operations::{Export, ExportResponse},
@@ -11,7 +9,9 @@ use cosmian_kmip::{
             Attributes, CertificateType, CryptographicAlgorithm, CryptographicUsageMask,
             KeyFormatType, KeyWrapType, LinkType, StateEnumeration, UniqueIdentifier,
         },
+        KmipOperation,
     },
+    KmipError,
 };
 use cosmian_kms_crypto::openssl::{
     kmip_certificate_to_openssl, kmip_private_key_to_openssl, kmip_public_key_to_openssl,
@@ -31,11 +31,11 @@ use zeroize::Zeroizing;
 
 use crate::{
     core::{
-        KMS,
         certificate::{retrieve_certificate_for_private_key, retrieve_private_key_for_certificate},
         operations::import::upsert_imported_links_in_attributes,
         retrieve_object_utils::retrieve_object_for_operation,
         wrapping::wrap_key,
+        KMS,
     },
     error::KmsError,
     kms_bail,

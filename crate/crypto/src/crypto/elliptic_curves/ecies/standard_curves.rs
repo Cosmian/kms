@@ -9,9 +9,9 @@ use openssl::{
 use zeroize::Zeroizing;
 
 use crate::{
-    crypto::symmetric::symmetric_ciphers::{SymCipher, decrypt, encrypt},
+    crypto::symmetric::symmetric_ciphers::{decrypt, encrypt, SymCipher},
     crypto_bail,
-    error::{CryptoError, result::CryptoResultHelper},
+    error::{result::CryptoResultHelper, CryptoError},
 };
 
 /// Derive an initialization vector from recipient public key `Q` and

@@ -18,8 +18,8 @@ mod unwrapped_cache;
 
 pub use crate::core::unwrapped_cache::{CachedUnwrappedObject, UnwrappedCache};
 use crate::stores::{
-    CachedSqlCipher, MySqlPool, PgPool, REDIS_WITH_FINDEX_MASTER_KEY_LENGTH, RedisWithFindex,
-    SqlitePool,
+    CachedSqlCipher, MySqlPool, PgPool, RedisWithFindex, SqlitePool,
+    REDIS_WITH_FINDEX_MASTER_KEY_LENGTH,
 };
 
 /// The `Database` struct represents the core database functionalities, including object management,

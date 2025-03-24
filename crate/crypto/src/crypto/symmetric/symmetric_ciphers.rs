@@ -4,9 +4,9 @@ use cosmian_kmip::kmip_2_1::kmip_types::{BlockCipherMode, CryptographicAlgorithm
 use openssl::{
     rand::rand_bytes,
     symm::{
-        Cipher, Crypter, Mode as OpenSslMode, decrypt as openssl_decrypt,
-        decrypt_aead as openssl_decrypt_aead, encrypt as openssl_encrypt,
-        encrypt_aead as openssl_encrypt_aead,
+        decrypt as openssl_decrypt, decrypt_aead as openssl_decrypt_aead,
+        encrypt as openssl_encrypt, encrypt_aead as openssl_encrypt_aead, Cipher, Crypter,
+        Mode as OpenSslMode,
     },
 };
 use zeroize::Zeroizing;
@@ -16,7 +16,7 @@ use super::aes_gcm_siv_not_openssl;
 use crate::{
     crypto::symmetric::rfc5649::{rfc5649_unwrap, rfc5649_wrap},
     crypto_bail,
-    error::{CryptoError, result::CryptoResult},
+    error::{result::CryptoResult, CryptoError},
 };
 
 /// AES 128 GCM key length in bytes.

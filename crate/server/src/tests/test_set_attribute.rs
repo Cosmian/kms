@@ -26,8 +26,8 @@
 use std::{collections::HashSet, sync::Arc};
 
 use cosmian_crypto_core::{
-    CsRng,
     reexport::rand_core::{RngCore, SeedableRng},
+    CsRng,
 };
 use cosmian_kmip::kmip_2_1::{
     kmip_operations::{DeleteAttribute, GetAttributes, GetAttributesResponse, SetAttribute},
@@ -109,17 +109,25 @@ pub(crate) async fn test_set_attribute_server() -> KResult<()> {
     //
     // Start tests
     //
-    set_activation_date_and_remove_it(&kms, &uid, DeleteAttribute {
-        unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
-        current_attribute: Some(Attribute::ActivationDate(42)),
-        attribute_references: None,
-    })
+    set_activation_date_and_remove_it(
+        &kms,
+        &uid,
+        DeleteAttribute {
+            unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
+            current_attribute: Some(Attribute::ActivationDate(42)),
+            attribute_references: None,
+        },
+    )
     .await?;
-    set_activation_date_and_remove_it(&kms, &uid, DeleteAttribute {
-        unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
-        current_attribute: None,
-        attribute_references: Some(vec![AttributeReference::Standard(Tag::ActivationDate)]),
-    })
+    set_activation_date_and_remove_it(
+        &kms,
+        &uid,
+        DeleteAttribute {
+            unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
+            current_attribute: None,
+            attribute_references: Some(vec![AttributeReference::Standard(Tag::ActivationDate)]),
+        },
+    )
     .await?;
     set_cryptographic_algorithm_and_remove_it(&kms, &uid).await?;
     set_cryptographic_length_and_remove_it(&kms, &uid).await?;
@@ -213,13 +221,16 @@ async fn set_cryptographic_algorithm_and_remove_it(kms: &Arc<KMS>, uid: &str) ->
         Some(CryptographicAlgorithm::AES)
     );
 
-    delete_attribute(kms, DeleteAttribute {
-        unique_identifier: Some(UniqueIdentifier::TextString(uid.to_owned())),
-        current_attribute: Some(Attribute::CryptographicAlgorithm(
-            CryptographicAlgorithm::AES,
-        )),
-        attribute_references: None,
-    })
+    delete_attribute(
+        kms,
+        DeleteAttribute {
+            unique_identifier: Some(UniqueIdentifier::TextString(uid.to_owned())),
+            current_attribute: Some(Attribute::CryptographicAlgorithm(
+                CryptographicAlgorithm::AES,
+            )),
+            attribute_references: None,
+        },
+    )
     .await?;
 
     let get_response = get_attributes(kms, uid, Tag::CryptographicAlgorithm).await?;
@@ -238,11 +249,14 @@ async fn set_cryptographic_length_and_remove_it(kms: &Arc<KMS>, uid: &str) -> KR
     let get_response = get_attributes(kms, uid, Tag::CryptographicLength).await?;
     assert_eq!(get_response.attributes.cryptographic_length, Some(256));
 
-    delete_attribute(kms, DeleteAttribute {
-        unique_identifier: Some(UniqueIdentifier::TextString(uid.to_owned())),
-        current_attribute: Some(Attribute::CryptographicLength(256)),
-        attribute_references: None,
-    })
+    delete_attribute(
+        kms,
+        DeleteAttribute {
+            unique_identifier: Some(UniqueIdentifier::TextString(uid.to_owned())),
+            current_attribute: Some(Attribute::CryptographicLength(256)),
+            attribute_references: None,
+        },
+    )
     .await?;
 
     let get_response = get_attributes(kms, uid, Tag::CryptographicLength).await?;

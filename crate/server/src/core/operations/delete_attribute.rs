@@ -1,15 +1,15 @@
 use std::sync::Arc;
 
 use cosmian_kmip::kmip_2_1::{
-    KmipOperation,
     kmip_operations::{DeleteAttribute, DeleteAttributeResponse},
     kmip_types::{Attribute, AttributeReference, Tag, UniqueIdentifier},
+    KmipOperation,
 };
 use cosmian_kms_interfaces::SessionParams;
 use tracing::trace;
 
 use crate::{
-    core::{KMS, retrieve_object_utils::retrieve_object_for_operation},
+    core::{retrieve_object_utils::retrieve_object_for_operation, KMS},
     error::KmsError,
     result::{KResult, KResultHelper},
 };

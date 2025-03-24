@@ -4,7 +4,7 @@ use openssl::{
     md::{Md, MdRef},
 };
 
-use crate::{CryptoError, crypto_error};
+use crate::{crypto_error, CryptoError};
 
 pub fn hashing_algorithm_to_openssl(
     hashing_algorithm: HashingAlgorithm,

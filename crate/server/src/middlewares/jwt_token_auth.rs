@@ -3,10 +3,10 @@ use std::{rc::Rc, sync::Arc};
 use actix_identity::Identity;
 use actix_service::Service;
 use actix_web::{
-    Error, FromRequest, HttpMessage, HttpResponse,
     body::{BoxBody, EitherBody},
     dev::{ServiceRequest, ServiceResponse},
     http::header,
+    Error, FromRequest, HttpMessage, HttpResponse,
 };
 use tracing::{debug, error, trace};
 

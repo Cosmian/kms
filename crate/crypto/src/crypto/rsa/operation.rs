@@ -3,7 +3,6 @@ use cosmian_kmip::kmip_2_1::extra::fips::{
     FIPS_MIN_RSA_MODULUS_LENGTH, FIPS_PRIVATE_RSA_MASK, FIPS_PUBLIC_RSA_MASK,
 };
 use cosmian_kmip::{
-    SafeBigUint,
     kmip_2_1::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType},
@@ -12,13 +11,14 @@ use cosmian_kmip::{
             KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
         },
     },
+    SafeBigUint,
 };
 use num_bigint_dig::BigUint;
 use openssl::{pkey::Private, rsa::Rsa};
 use tracing::trace;
 use zeroize::Zeroizing;
 
-use crate::{CryptoResultHelper, crypto::KeyPair, crypto_bail, error::CryptoError};
+use crate::{crypto::KeyPair, crypto_bail, error::CryptoError, CryptoResultHelper};
 
 #[cfg(feature = "fips")]
 /// Check that bits set in `mask` are only bits set in `flags`. If any bit set
@@ -79,7 +79,8 @@ pub fn to_rsa_public_key(
 
     trace!(
         "to_rsa_public_key: bytes len: {}, bits: {}",
-        cryptographic_length_in_bits, pkey_bits_number
+        cryptographic_length_in_bits,
+        pkey_bits_number
     );
 
     let output = Object::PublicKey {
@@ -134,7 +135,8 @@ pub fn to_rsa_private_key(
 
     trace!(
         "to_rsa_private_key: bytes len: {}, bits: {}",
-        cryptographic_length_in_bits, pkey_bits_number
+        cryptographic_length_in_bits,
+        pkey_bits_number
     );
 
     Ok(Object::PrivateKey {

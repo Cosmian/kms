@@ -2,20 +2,20 @@ use std::{collections::HashSet, sync::Arc};
 
 use async_trait::async_trait;
 use cloudproof_findex::{
-    Location,
     implementations::redis::{FindexRedis, FindexRedisError, RemovedLocationsFinder},
+    Location,
 };
 use cosmian_crypto_core::{
-    CsRng, RandomFixedSizeCBytes, SymmetricKey,
     reexport::rand_core::{RngCore, SeedableRng},
+    CsRng, RandomFixedSizeCBytes, SymmetricKey,
 };
 use cosmian_kmip::{
-    KmipResultHelper,
     kmip_2_1::{
-        KmipOperation,
         kmip_types::{CryptographicAlgorithm, StateEnumeration},
         requests::create_symmetric_key_kmip_object,
+        KmipOperation,
     },
+    KmipResultHelper,
 };
 use redis::aio::ConnectionManager;
 use tracing::trace;

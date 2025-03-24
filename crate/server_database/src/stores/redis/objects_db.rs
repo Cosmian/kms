@@ -5,24 +5,24 @@ use std::{
 
 use async_trait::async_trait;
 use cloudproof_findex::{
-    Keyword, Location,
     implementations::redis::{FindexRedisError, RemovedLocationsFinder},
+    Keyword, Location,
 };
 use cosmian_crypto_core::{
-    Aes256Gcm, CsRng, Dem, Instantiable, Nonce, RandomFixedSizeCBytes, SymmetricKey,
-    reexport::rand_core::SeedableRng,
+    reexport::rand_core::SeedableRng, Aes256Gcm, CsRng, Dem, Instantiable, Nonce,
+    RandomFixedSizeCBytes, SymmetricKey,
 };
 use cosmian_kmip::{
-    KmipResultHelper,
     kmip_2_1::{
         kmip_objects::{Object, ObjectType},
         kmip_types::{Attributes, StateEnumeration},
     },
+    KmipResultHelper,
 };
-use redis::{AsyncCommands, aio::ConnectionManager, pipe};
+use redis::{aio::ConnectionManager, pipe, AsyncCommands};
 use serde::{Deserialize, Serialize};
 
-use crate::{DbError, db_bail, error::DbResult};
+use crate::{db_bail, error::DbResult, DbError};
 
 /// Extract the keywords from the attributes
 pub(crate) fn keywords_from_attributes(attributes: &Attributes) -> HashSet<Keyword> {

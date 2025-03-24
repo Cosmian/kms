@@ -2,9 +2,7 @@ use std::sync::Arc;
 
 use cosmian_cover_crypt::api::Covercrypt;
 use cosmian_kmip::{
-    KmipError,
     kmip_2_1::{
-        KmipOperation,
         extra::BulkData,
         kmip_objects::Object,
         kmip_operations::{Encrypt, EncryptResponse, ErrorReason},
@@ -12,7 +10,9 @@ use cosmian_kmip::{
             CryptographicAlgorithm, CryptographicParameters, CryptographicUsageMask, KeyFormatType,
             PaddingMethod, StateEnumeration, UniqueIdentifier,
         },
+        KmipOperation,
     },
+    KmipError,
 };
 #[cfg(not(feature = "fips"))]
 use cosmian_kms_crypto::crypto::elliptic_curves::ecies::ecies_encrypt;
@@ -20,13 +20,13 @@ use cosmian_kms_crypto::crypto::elliptic_curves::ecies::ecies_encrypt;
 use cosmian_kms_crypto::crypto::rsa::ckm_rsa_pkcs::ckm_rsa_pkcs_encrypt;
 use cosmian_kms_crypto::{
     crypto::{
-        EncryptionSystem,
         cover_crypt::encryption::CoverCryptEncryption,
         rsa::{
             ckm_rsa_aes_key_wrap::ckm_rsa_aes_key_wrap,
             ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_encrypt, default_cryptographic_parameters,
         },
-        symmetric::symmetric_ciphers::{SymCipher, encrypt as sym_encrypt, random_nonce},
+        symmetric::symmetric_ciphers::{encrypt as sym_encrypt, random_nonce, SymCipher},
+        EncryptionSystem,
     },
     openssl::kmip_public_key_to_openssl,
 };
@@ -40,8 +40,8 @@ use zeroize::Zeroizing;
 
 use crate::{
     core::{
-        KMS,
         uid_utils::{has_prefix, uids_from_unique_identifier},
+        KMS,
     },
     error::KmsError,
     kms_bail,

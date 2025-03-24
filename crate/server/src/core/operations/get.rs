@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
 use cosmian_kmip::kmip_2_1::{
-    KmipOperation,
     kmip_operations::{Get, GetResponse},
+    KmipOperation,
 };
 use cosmian_kms_interfaces::SessionParams;
 use tracing::trace;
 
 use crate::{
-    core::{KMS, operations::export_get},
+    core::{operations::export_get, KMS},
     result::KResult,
 };
 

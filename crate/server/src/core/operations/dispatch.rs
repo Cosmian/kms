@@ -6,7 +6,7 @@ use cosmian_kmip::kmip_2_1::{
         GetAttributes, Hash, Import, Locate, Mac, Operation, ReKey, ReKeyKeyPair, Revoke,
         SetAttribute, Validate,
     },
-    ttlv::{TTLV, deserializer::from_ttlv},
+    ttlv::{deserializer::from_ttlv, TTLV},
 };
 use cosmian_kms_interfaces::SessionParams;
 

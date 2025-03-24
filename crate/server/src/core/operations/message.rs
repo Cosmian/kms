@@ -10,7 +10,7 @@ use cosmian_kms_interfaces::SessionParams;
 use tracing::trace;
 
 use crate::{
-    core::{KMS, operations::dispatch},
+    core::{operations::dispatch, KMS},
     error::KmsError,
     result::KResult,
 };

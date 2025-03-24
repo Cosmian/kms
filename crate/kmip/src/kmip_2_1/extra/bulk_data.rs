@@ -4,9 +4,9 @@ use tracing::trace;
 use zeroize::Zeroizing;
 
 use crate::{
-    Deserializer, Serializer,
-    error::{KmipError, result::KmipResult},
+    error::{result::KmipResult, KmipError},
     kmip_2_1::kmip_operations::ErrorReason,
+    Deserializer, Serializer,
 };
 
 /// Bulk Data is a structure that holds a list of zeroizing byte arrays
@@ -99,10 +99,13 @@ mod tests {
         ];
         let bulk_data = BulkData::new(data.clone());
         let serialized = bulk_data.serialize().unwrap();
-        assert_eq!(serialized.to_vec(), vec![
-            0x87, 0x87, 0x03, 0x03, 0x01, 0x02, 0x03, 0x03, 0x04, 0x05, 0x06, 0x0A, 0x07, 0x07,
-            0x07, 0x07, 0x07, 0x07, 0x07, 0x07, 0x07, 0x07
-        ]);
+        assert_eq!(
+            serialized.to_vec(),
+            vec![
+                0x87, 0x87, 0x03, 0x03, 0x01, 0x02, 0x03, 0x03, 0x04, 0x05, 0x06, 0x0A, 0x07, 0x07,
+                0x07, 0x07, 0x07, 0x07, 0x07, 0x07, 0x07, 0x07
+            ]
+        );
         let deserialized = BulkData::deserialize(&serialized).unwrap();
         assert_eq!(data, deserialized.0);
     }

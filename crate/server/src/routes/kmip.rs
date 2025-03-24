@@ -1,18 +1,19 @@
 use std::sync::Arc;
 
 use actix_web::{
-    HttpRequest, post,
+    post,
     web::{Data, Json},
+    HttpRequest,
 };
 use cosmian_kmip::kmip_2_1::{
     kmip_messages::Message,
-    ttlv::{TTLV, deserializer::from_ttlv, serializer::to_ttlv},
+    ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
 };
 use cosmian_kms_interfaces::SessionParams;
 use tracing::info;
 
 use crate::{
-    core::{KMS, operations::dispatch},
+    core::{operations::dispatch, KMS},
     result::KResult,
 };
 

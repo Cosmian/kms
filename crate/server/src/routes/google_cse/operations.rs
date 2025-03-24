@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use base64::{Engine, engine::general_purpose};
+use base64::{engine::general_purpose, Engine};
 use clap::crate_version;
 use cosmian_kmip::kmip_2_1::{
     kmip_operations::{Decrypt, Encrypt},
@@ -21,8 +21,8 @@ use zeroize::Zeroizing;
 use super::GoogleCseConfig;
 use crate::{
     core::{
-        KMS,
         operations::{decrypt, encrypt},
+        KMS,
     },
     error::KmsError,
     kms_ensure,
@@ -1012,7 +1012,6 @@ async fn cse_wrapped_key_decrypt(
 /// The resource key hash is a mechanism allowing Google to verify the integrity of the wrapped encryption keys without having access to the keys.
 ///
 /// Generating the resource key hash requires access to the unwrapped key including the DEK, the `resource_name` and the `perimeter_id` specified during the key wrapping operation.
-///
 /// We use the cryptographic function HMAC-SHA256 with `unwrapped_dek` as a key and the concatenation of metadata as data ("`ResourceKeyDigest`:", `resource_name`, ":", `perimeter_id`). The `resource_name` and `perimeter_id` should be UTF-8 encoded strings.
 ///
 /// # Arguments

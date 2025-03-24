@@ -2,7 +2,7 @@ use cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier;
 use openssl::{
     asn1::Asn1TimeRef,
     pkey::{PKey, PKeyRef, Private},
-    x509::{X509, X509NameRef, X509Ref},
+    x509::{X509NameRef, X509Ref, X509},
 };
 
 /// A certificate Issuer is constructed from a unique identifier and

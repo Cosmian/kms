@@ -6,11 +6,11 @@ use openssl::{
     asn1::{Asn1Object, Asn1OctetString},
     nid::Nid,
     sha::Sha1,
-    x509::{X509, X509Extension, X509Name, X509NameBuilder},
+    x509::{X509Extension, X509Name, X509NameBuilder, X509},
 };
 use x509_parser::prelude::{FromDer, X509Certificate};
 
-use crate::error::{CryptoError, result::CryptoResultHelper};
+use crate::error::{result::CryptoResultHelper, CryptoError};
 
 /// Generate a KMIP certificate from an OpenSSL certificate
 pub fn openssl_certificate_to_kmip(certificate: &X509) -> Result<Object, CryptoError> {
@@ -32,7 +32,6 @@ pub fn kmip_certificate_to_openssl(certificate: &Object) -> Result<X509, CryptoE
 }
 
 /// Extract the `X509Extensions` of an openssl X509 certificate
-///
 /// This is still an open issue in the openssl crate: <https://github.com/sfackler/rust-openssl/pull/1095>
 /// (The PR was closed)
 /// If this is ever fixed, this method should be replaced by the one in the openssl crate

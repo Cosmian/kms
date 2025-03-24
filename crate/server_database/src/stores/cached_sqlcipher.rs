@@ -8,9 +8,9 @@ use std::{
 use async_trait::async_trait;
 use clap::crate_version;
 use cosmian_kmip::kmip_2_1::{
-    KmipOperation,
     kmip_objects::Object,
     kmip_types::{Attributes, StateEnumeration},
+    KmipOperation,
 };
 use cosmian_kms_crypto::crypto::{
     secret::Secret, symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH,
@@ -20,30 +20,31 @@ use cosmian_kms_interfaces::{
     PermissionsStore, SessionParams,
 };
 use sqlx::{
-    ConnectOptions, Pool, Row, Sqlite,
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},
+    ConnectOptions, Pool, Row, Sqlite,
 };
 use tracing::{debug, trace};
 
 use super::{
-    SqlCipherSessionParams,
     cached_sqlite_struct::KMSSqliteCache,
     sqlite::{
         create_, delete_, find_, insert_access_, is_object_owned_by_, list_accesses_,
         list_user_granted_access_rights_, remove_access_, retrieve_, update_object_, update_state_,
     },
+    SqlCipherSessionParams,
 };
 use crate::{
-    KMS_VERSION_BEFORE_MIGRATION_SUPPORT, db_error,
+    db_error,
     error::{DbResult, DbResultHelper},
     get_sqlite_query,
     migrate::do_migration,
     stores::{
-        SQLITE_QUERIES,
         sqlite::{
             atomic_, is_migration_in_progress_, list_uids_for_tags_, migrate_, retrieve_tags_,
         },
+        SQLITE_QUERIES,
     },
+    KMS_VERSION_BEFORE_MIGRATION_SUPPORT,
 };
 
 #[derive(Clone)]

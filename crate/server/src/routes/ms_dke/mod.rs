@@ -1,10 +1,11 @@
 use std::{default::Default, sync::Arc};
 
 use actix_web::{
-    HttpRequest, HttpResponse, get, post,
+    get, post,
     web::{Data, Json, Path},
+    HttpRequest, HttpResponse,
 };
-use base64::{Engine, engine::general_purpose::STANDARD};
+use base64::{engine::general_purpose::STANDARD, Engine};
 use chrono::{Duration, Utc};
 use clap::crate_version;
 use cosmian_kmip::kmip_2_1::{

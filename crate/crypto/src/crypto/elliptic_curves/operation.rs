@@ -4,7 +4,6 @@ use cosmian_kmip::kmip_2_1::extra::fips::{
     FIPS_PUBLIC_ECC_MASK_ECDH, FIPS_PUBLIC_ECC_MASK_SIGN, FIPS_PUBLIC_ECC_MASK_SIGN_ECDH,
 };
 use cosmian_kmip::{
-    SafeBigUint,
     kmip_2_1::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType},
@@ -14,6 +13,7 @@ use cosmian_kmip::{
             LinkedObjectIdentifier, RecommendedCurve,
         },
     },
+    SafeBigUint,
 };
 use openssl::{
     bn::BigNumContext,
@@ -27,7 +27,7 @@ use zeroize::Zeroizing;
 use crate::{
     crypto::KeyPair,
     crypto_bail,
-    error::{CryptoError, result::CryptoResult},
+    error::{result::CryptoResult, CryptoError},
 };
 
 #[cfg(feature = "fips")]
@@ -132,7 +132,8 @@ pub fn to_ec_public_key(
     let cryptographic_length = Some(i32::try_from(bytes.len())? * 8);
     trace!(
         "to_ec_public_key: bytes len: {:?}, bits: {}",
-        cryptographic_length, pkey_bits_number
+        cryptographic_length,
+        pkey_bits_number
     );
 
     let q_length = Some(i32::try_from(pkey_bits_number)?);
@@ -198,7 +199,8 @@ pub fn to_ec_private_key(
 
     trace!(
         "to_ec_private_key: bytes len: {:?}, bits: {}",
-        cryptographic_length, pkey_bits_number
+        cryptographic_length,
+        pkey_bits_number
     );
 
     let q_length = Some(i32::try_from(pkey_bits_number)?);
@@ -327,9 +329,12 @@ pub fn create_ed25519_key_pair(
 ) -> Result<KeyPair, CryptoError> {
     #[cfg(feature = "fips")]
     // Validate FIPS algorithm and mask.
-    check_ecc_mask_algorithm_compliance(private_key_mask, public_key_mask, algorithm, &[
-        CryptographicAlgorithm::Ed25519,
-    ])?;
+    check_ecc_mask_algorithm_compliance(
+        private_key_mask,
+        public_key_mask,
+        algorithm,
+        &[CryptographicAlgorithm::Ed25519],
+    )?;
 
     let private_key = PKey::generate_ed25519()?;
     trace!("create_ed25519_key_pair: keypair OK");
@@ -374,9 +379,12 @@ pub fn create_ed448_key_pair(
 ) -> Result<KeyPair, CryptoError> {
     #[cfg(feature = "fips")]
     // Validate FIPS algorithm and mask.
-    check_ecc_mask_algorithm_compliance(private_key_mask, public_key_mask, algorithm, &[
-        CryptographicAlgorithm::Ed448,
-    ])?;
+    check_ecc_mask_algorithm_compliance(
+        private_key_mask,
+        public_key_mask,
+        algorithm,
+        &[CryptographicAlgorithm::Ed448],
+    )?;
 
     let private_key = PKey::generate_ed448()?;
     trace!("create_ed448_key_pair: keypair OK");
@@ -416,11 +424,16 @@ pub fn create_approved_ecc_key_pair(
 ) -> Result<KeyPair, CryptoError> {
     #[cfg(feature = "fips")]
     // Validate FIPS algorithms and mask.
-    check_ecc_mask_algorithm_compliance(private_key_mask, public_key_mask, algorithm, &[
-        CryptographicAlgorithm::EC,
-        CryptographicAlgorithm::ECDSA,
-        CryptographicAlgorithm::ECDH,
-    ])?;
+    check_ecc_mask_algorithm_compliance(
+        private_key_mask,
+        public_key_mask,
+        algorithm,
+        &[
+            CryptographicAlgorithm::EC,
+            CryptographicAlgorithm::ECDSA,
+            CryptographicAlgorithm::ECDH,
+        ],
+    )?;
 
     let curve_nid = match curve {
         #[cfg(not(feature = "fips"))]
@@ -488,11 +501,11 @@ mod tests {
     use super::{check_ecc_mask_against_flags, check_ecc_mask_algorithm_compliance};
     use super::{create_approved_ecc_key_pair, create_ed25519_key_pair};
     #[cfg(not(feature = "fips"))]
-    use super::{create_x448_key_pair, create_x25519_key_pair};
+    use super::{create_x25519_key_pair, create_x448_key_pair};
     #[cfg(feature = "fips")]
     use crate::crypto::elliptic_curves::operation::create_ed448_key_pair;
     #[cfg(not(feature = "fips"))]
-    use crate::crypto::elliptic_curves::{X448_PRIVATE_KEY_LENGTH, X25519_PRIVATE_KEY_LENGTH};
+    use crate::crypto::elliptic_curves::{X25519_PRIVATE_KEY_LENGTH, X448_PRIVATE_KEY_LENGTH};
     use crate::openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl};
     #[cfg(not(feature = "fips"))]
     use crate::pad_be_bytes;

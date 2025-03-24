@@ -350,7 +350,7 @@ mod tests {
         routes::google_cse::{
             self,
             jwt::{
-                JWKS_URI, JWT_ISSUER_URI, decode_jwt_authorization_token, jwt_authorization_config,
+                decode_jwt_authorization_token, jwt_authorization_config, JWKS_URI, JWT_ISSUER_URI,
             },
             operations::WrapRequest,
         },

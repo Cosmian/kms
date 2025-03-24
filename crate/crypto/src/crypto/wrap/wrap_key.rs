@@ -1,4 +1,4 @@
-use base64::{Engine, engine::general_purpose};
+use base64::{engine::general_purpose, Engine};
 use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::{
         KeyBlock, KeyMaterial, KeyValue, KeyWrappingData, KeyWrappingSpecification,
@@ -23,7 +23,6 @@ use crate::crypto::elliptic_curves::ecies::ecies_encrypt;
 use crate::crypto::rsa::ckm_rsa_pkcs::ckm_rsa_pkcs_key_wrap;
 use crate::{
     crypto::{
-        FIPS_MIN_SALT_SIZE,
         password_derivation::derive_key_from_password,
         rsa::{
             ckm_rsa_aes_key_wrap::ckm_rsa_aes_key_wrap,
@@ -31,12 +30,13 @@ use crate::{
         },
         symmetric::{
             rfc5649::rfc5649_wrap,
-            symmetric_ciphers::{SymCipher, encrypt, random_nonce},
+            symmetric_ciphers::{encrypt, random_nonce, SymCipher},
         },
         wrap::common::rsa_parameters,
+        FIPS_MIN_SALT_SIZE,
     },
     crypto_bail, crypto_error,
-    error::{CryptoError, result::CryptoResult},
+    error::{result::CryptoResult, CryptoError},
     openssl::kmip_public_key_to_openssl,
 };
 

@@ -17,7 +17,6 @@ use crate::crypto::elliptic_curves::ecies::ecies_decrypt;
 use crate::crypto::rsa::ckm_rsa_pkcs::ckm_rsa_pkcs_key_unwrap;
 use crate::{
     crypto::{
-        FIPS_MIN_SALT_SIZE,
         password_derivation::derive_key_from_password,
         rsa::{
             ckm_rsa_aes_key_wrap::ckm_rsa_aes_key_unwrap,
@@ -25,12 +24,13 @@ use crate::{
         },
         symmetric::{
             rfc5649::rfc5649_unwrap,
-            symmetric_ciphers::{SymCipher, decrypt},
+            symmetric_ciphers::{decrypt, SymCipher},
         },
         wrap::common::rsa_parameters,
+        FIPS_MIN_SALT_SIZE,
     },
     crypto_bail,
-    error::{CryptoError, result::CryptoResultHelper},
+    error::{result::CryptoResultHelper, CryptoError},
     openssl::kmip_private_key_to_openssl,
 };
 

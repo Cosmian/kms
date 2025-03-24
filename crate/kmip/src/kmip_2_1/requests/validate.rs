@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
 use crate::{
-    KmipError,
     kmip_2_1::{kmip_operations::Validate, kmip_types::UniqueIdentifier},
+    KmipError,
 };
 
 /// Build a `Validate` request to validate a certificate chain.

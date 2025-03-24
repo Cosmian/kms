@@ -116,8 +116,8 @@ mod tests {
     use std::collections::{HashMap, HashSet};
 
     use cosmian_crypto_core::{
-        CsRng,
         reexport::rand_core::{RngCore, SeedableRng},
+        CsRng,
     };
     use cosmian_kmip::kmip_2_1::{
         kmip_types::CryptographicAlgorithm, requests::create_symmetric_key_kmip_object,
@@ -126,7 +126,7 @@ mod tests {
     use tempfile::TempDir;
     use uuid::Uuid;
 
-    use crate::{Database, core::main_db_params::MainDbParams, error::DbResult};
+    use crate::{core::main_db_params::MainDbParams, error::DbResult, Database};
 
     #[tokio::test]
     #[allow(clippy::unwrap_used, clippy::panic_in_result_fn)]

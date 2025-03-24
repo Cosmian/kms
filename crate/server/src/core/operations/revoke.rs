@@ -2,22 +2,22 @@ use std::{collections::HashSet, sync::Arc};
 
 use async_recursion::async_recursion;
 use cosmian_kmip::kmip_2_1::{
-    KmipOperation,
     kmip_objects::ObjectType,
     kmip_operations::{ErrorReason, Revoke, RevokeResponse},
     kmip_types::{
         KeyFormatType, LinkType, RevocationReason, RevocationReasonEnumeration, StateEnumeration,
         UniqueIdentifier,
     },
+    KmipOperation,
 };
 use cosmian_kms_interfaces::SessionParams;
 use tracing::{debug, trace};
 
 use crate::{
     core::{
-        KMS,
         cover_crypt::revoke_user_decryption_keys,
         uid_utils::{has_prefix, uids_from_unique_identifier},
+        KMS,
     },
     error::KmsError,
     kms_bail,

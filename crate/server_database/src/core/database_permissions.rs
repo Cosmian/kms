@@ -3,7 +3,7 @@ use std::{
     sync::Arc,
 };
 
-use cosmian_kmip::kmip_2_1::{KmipOperation, kmip_types::StateEnumeration};
+use cosmian_kmip::kmip_2_1::{kmip_types::StateEnumeration, KmipOperation};
 use cosmian_kms_interfaces::SessionParams;
 
 use super::Database;

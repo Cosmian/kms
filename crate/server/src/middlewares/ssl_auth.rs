@@ -7,14 +7,14 @@ use std::{
 use actix_service::{Service, Transform};
 use actix_tls::accept::openssl::TlsStream;
 use actix_web::{
-    Error, HttpMessage, HttpResponse,
     body::{BoxBody, EitherBody},
     dev::{Extensions, ServiceRequest, ServiceResponse},
     rt::net::TcpStream,
+    Error, HttpMessage, HttpResponse,
 };
 use futures::{
+    future::{ok, Ready},
     Future,
-    future::{Ready, ok},
 };
 use openssl::{nid::Nid, x509::X509};
 use tracing::{debug, error, trace};

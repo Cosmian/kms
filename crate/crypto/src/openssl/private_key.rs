@@ -1,5 +1,4 @@
 use cosmian_kmip::{
-    SafeBigUint,
     kmip_2_1::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType},
@@ -8,6 +7,7 @@ use cosmian_kmip::{
             CryptographicUsageMask, KeyFormatType, RecommendedCurve,
         },
     },
+    SafeBigUint,
 };
 use num_bigint_dig::BigUint;
 use openssl::{
@@ -21,11 +21,11 @@ use zeroize::Zeroizing;
 
 use crate::{
     crypto::elliptic_curves::{
-        ED448_PRIVATE_KEY_LENGTH, ED25519_PRIVATE_KEY_LENGTH, X448_PRIVATE_KEY_LENGTH,
-        X25519_PRIVATE_KEY_LENGTH,
+        ED25519_PRIVATE_KEY_LENGTH, ED448_PRIVATE_KEY_LENGTH, X25519_PRIVATE_KEY_LENGTH,
+        X448_PRIVATE_KEY_LENGTH,
     },
     crypto_bail,
-    error::{CryptoError, result::CryptoResultHelper},
+    error::{result::CryptoResultHelper, CryptoError},
     pad_be_bytes,
 };
 

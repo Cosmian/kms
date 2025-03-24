@@ -17,7 +17,7 @@ use rawsql::Loader;
 #[cfg(test)]
 pub(crate) use redis::additional_redis_findex_tests;
 pub use redis::redis_master_key_from_password;
-pub(crate) use redis::{REDIS_WITH_FINDEX_MASTER_KEY_LENGTH, RedisWithFindex};
+pub(crate) use redis::{RedisWithFindex, REDIS_WITH_FINDEX_MASTER_KEY_LENGTH};
 use serde::{Deserialize, Serialize};
 pub(crate) use sqlite::SqlitePool;
 

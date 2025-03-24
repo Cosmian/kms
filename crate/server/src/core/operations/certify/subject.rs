@@ -11,7 +11,7 @@ use cosmian_kms_crypto::openssl::{kmip_public_key_to_openssl, openssl_certificat
 use cosmian_kms_interfaces::ObjectWithMetadata;
 use openssl::{
     pkey::{PKey, Public},
-    x509::{X509, X509Extension, X509Name, X509NameRef, X509Req},
+    x509::{X509Extension, X509Name, X509NameRef, X509Req, X509},
 };
 
 use crate::{kms_error, result::KResult};

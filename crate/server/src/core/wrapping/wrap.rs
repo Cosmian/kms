@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use cosmian_kmip::kmip_2_1::{
-    KmipOperation,
     kmip_data_structures::{KeyBlock, KeyWrappingSpecification},
     kmip_objects::ObjectType,
     kmip_types::{CryptographicUsageMask, LinkType, StateEnumeration},
+    KmipOperation,
 };
 use cosmian_kms_crypto::crypto::wrap::{
     key_data_to_wrap, update_key_block_with_wrapped_key, wrap_key_block,
@@ -13,7 +13,7 @@ use cosmian_kms_interfaces::SessionParams;
 use tracing::debug;
 
 use crate::{
-    core::{KMS, uid_utils::has_prefix},
+    core::{uid_utils::has_prefix, KMS},
     error::KmsError,
     kms_bail,
     result::{KResult, KResultHelper},

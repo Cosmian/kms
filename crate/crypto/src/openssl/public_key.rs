@@ -19,7 +19,7 @@ use zeroize::Zeroizing;
 
 use crate::{
     crypto_bail, crypto_error,
-    error::{CryptoError, result::CryptoResultHelper},
+    error::{result::CryptoResultHelper, CryptoError},
 };
 
 /// Convert a KMIP Public key to openssl `PKey<Public>`

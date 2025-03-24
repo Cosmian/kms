@@ -9,7 +9,6 @@ use cosmian_kmip::kmip_2_1::extra::fips::{
 #[cfg(feature = "fips")]
 use cosmian_kmip::kmip_2_1::kmip_types::{CryptographicAlgorithm, CryptographicUsageMask};
 use cosmian_kmip::kmip_2_1::{
-    KmipOperation,
     extra::{VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
     kmip_objects::{Object, ObjectType},
     kmip_operations::{Certify, CertifyResponse, CreateKeyPair},
@@ -17,6 +16,7 @@ use cosmian_kmip::kmip_2_1::{
         Attributes, CertificateRequestType, KeyFormatType, LinkType, LinkedObjectIdentifier,
         StateEnumeration, UniqueIdentifier,
     },
+    KmipOperation,
 };
 use cosmian_kms_crypto::openssl::{
     certificate_attributes_to_subject_name, kmip_certificate_to_openssl,
@@ -28,13 +28,12 @@ use openssl::{
     asn1::{Asn1Integer, Asn1Time},
     hash::MessageDigest,
     sha::Sha1,
-    x509::{X509, X509Req},
+    x509::{X509Req, X509},
 };
 use tracing::{debug, info, trace};
 
 use crate::{
     core::{
-        KMS,
         certificate::retrieve_issuer_private_key_and_certificate,
         operations::{
             certify::{
@@ -44,6 +43,7 @@ use crate::{
             create_key_pair::generate_key_pair_and_tags,
         },
         retrieve_object_utils::retrieve_object_for_operation,
+        KMS,
     },
     error::KmsError,
     kms_bail,
