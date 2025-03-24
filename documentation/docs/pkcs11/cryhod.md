@@ -29,7 +29,7 @@ Configuring the location of the PKCS#11 provider using the policy P296
 
 ![CRYHOD_p296](images/cryhod_p296.png)
 
-Enter the full path of the `ckms_pkcs11.dll` as value name and leave the value empty.
+Enter the full path of the `cosmian_pkcs11.dll` as value name and leave the value empty.
 
 Note: if you change the value, kill all CRYHOD processes or restart
 for the change to be taken into effect

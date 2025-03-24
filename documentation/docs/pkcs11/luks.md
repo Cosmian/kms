@@ -62,15 +62,15 @@ EOF
 ### 4. Copy the PKCS#11 module to the pkcs11 directory
 
 ```bash
-sudo cp libckms_pkcs11.so /usr/local/lib/
+sudo cp libcosmian_pkcs11.so /usr/local/lib/
 ```
 
 ### 5. Create a configuration file for the cosmian PKCS#11 module
 
 ```bash
-sudo tee /etc/pkcs11/modules/ckms_pkcs11.module <<EOF
+sudo tee /etc/pkcs11/modules/cosmian_pkcs11.module <<EOF
 # Cosmian KMS PKCS#11 module
-module: /usr/local/lib/libckms_pkcs11.so
+module: /usr/local/lib/libcosmian_pkcs11.so
 EOF
 ```
 
@@ -80,7 +80,7 @@ EOF
 > p11-kit list-modules
 
 ...
-ckms_pkcs11: /usr/local/lib/libckms_pkcs11.so
+cosmian_pkcs11: /usr/local/lib/libcosmian_pkcs11.so
  library-description: Cosmian KMS PKCS#11 provider
  library-manufacturer: Cosmian
  library-version: x.y
@@ -217,7 +217,7 @@ during `cryptenroll` or when rotating the RSA keys.
 
 ## Enrolling the LUKS partition with the Cosmian KMS
 
-Logging of the PKCS#11 module is controlled by the `CKMS_PKCS11_LOGGING_LEVEL` environment variable.
+Logging of the PKCS#11 module is controlled by the `COSMIAN_PKCS11_LOGGING_LEVEL` environment variable.
 The logging level can be set to `trace`, `debug`, `info`, `warn`, or `error` and defaults to `info`
 when not set.
 
