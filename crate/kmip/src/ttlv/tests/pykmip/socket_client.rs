@@ -5,9 +5,9 @@ use std::{
 };
 
 use native_tls::{Identity, TlsConnector};
-use tracing::info;
+use tracing::{debug, info};
 
-use crate::{error::result::KmipResult, KmipError, KmipResultHelper};
+use crate::{error::result::KmipResult, KmipResultHelper};
 
 // load the string content at compile time - same as http_client.rs
 const SERVER_CA_CERTIFICATE: &str = include_str!("server.crt");
@@ -96,18 +96,26 @@ impl PyKmipSocketClient {
         info!("Request sent");
 
         // Read response
-        let mut response = Vec::new();
+        // Read 8 bytes of the TTLV header
+        let mut header = [0_u8; 8];
         tls_stream
-            .read_to_end(&mut response)
+            .read_exact(&mut header)
+            .context("Failed to read response header")?;
+        let length = u32::from_be_bytes([header[4], header[5], header[6], header[7]]) as usize;
+
+        // Read the rest of the response
+        let mut response = vec![0_u8; length];
+        tls_stream
+            .read_exact(&mut response)
             .context("Failed to read response")?;
 
-        if response.is_empty() {
-            return Err(KmipError::Default(
-                "Received empty response from server".to_owned(),
-            ));
-        }
+        // concat the header and the rest of the response
+        let response = [header.to_vec(), response].concat();
 
-        info!("Received response: {}", hex::encode(&response));
+        // Log response
+        debug!("Received response: {}", hex::encode(&response));
+
+        // Return response
         Ok(response)
     }
 }
@@ -115,70 +123,4 @@ impl PyKmipSocketClient {
 /// Helper function to create a `PyKMIP` socket client with default configuration
 pub(crate) fn create_default_client() -> KmipResult<PyKmipSocketClient> {
     PyKmipSocketClient::new(PyKmipSocketClientConfig::default())
-}
-
-#[cfg(test)]
-mod tests {
-    use cosmian_logger::log_init;
-
-    use super::*;
-    use crate::{
-        kmip_1_4::{
-            kmip_messages::{RequestMessage, RequestMessageBatchItem, RequestMessageHeader},
-            kmip_operations::{Operation, Query},
-            kmip_types::{OperationEnumeration, ProtocolVersion, QueryFunction},
-        },
-        ttlv::{self, to_ttlv},
-    };
-
-    #[test]
-    #[ignore] // Requires a running PyKMIP server
-    fn test_connect_to_pykmip_server() {
-        log_init(Some("trace"));
-        let client = create_default_client().unwrap();
-
-        // Create a simple KMIP request (same as HTTP client test)
-        let request_data = request_message();
-        let response = client.send_request(&request_data).unwrap();
-
-        info!("Response length: {}", response.len());
-        info!("Response: {}", hex::encode(&response));
-
-        let ttlv = ttlv::TTLV::from_bytes_1_4(&response).unwrap();
-        info!("Response TTLV: {:#?}", ttlv);
-
-        // Check that we got a response
-        assert!(!response.is_empty());
-    }
-
-    fn request_message() -> Vec<u8> {
-        // KMIP Request Message (same as HTTP client test)
-        let request_message = RequestMessage {
-            request_header: RequestMessageHeader {
-                protocol_version: ProtocolVersion {
-                    protocol_version_major: 1,
-                    protocol_version_minor: 4,
-                },
-                maximum_response_size: Some(1_048_576),
-                batch_count: 1,
-                ..Default::default()
-            },
-            batch_item: vec![RequestMessageBatchItem {
-                operation: OperationEnumeration::Query,
-                ephemeral: None,
-                unique_batch_item_id: None,
-                request_payload: Operation::Query(Query {
-                    query_function: vec![
-                        QueryFunction::QueryOperations,
-                        QueryFunction::QueryObjects,
-                    ],
-                }),
-                message_extension: None,
-            }],
-        };
-
-        let ttlv = to_ttlv(&request_message).unwrap();
-        info!("Request TTLV: {:#?}", ttlv);
-        ttlv.to_bytes_1_4().unwrap()
-    }
 }

@@ -3,6 +3,7 @@ use std::{
     ops::Not,
 };
 
+use kmip_derive::{kmip_enum, KmipEnumDeserialize, KmipEnumSerialize};
 use serde::{Deserialize, Serialize};
 use strum::Display;
 use zeroize::Zeroizing;
@@ -22,8 +23,7 @@ use super::{
     },
 };
 
-#[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Display, Debug, Eq, PartialEq, Default)]
+#[kmip_enum]
 pub enum ErrorReason {
     Item_Not_Found = 0x0000_0001,
     Response_Too_Large = 0x0000_0002,
@@ -95,8 +95,13 @@ pub enum ErrorReason {
     Unknown_Object_Group = 0x0000_004A,
     Constraint_Violation = 0x0000_004B,
     Duplicate_Process_Request = 0x0000_004C,
-    #[default]
     General_Failure = 0x0000_0100,
+}
+
+impl Default for ErrorReason {
+    fn default() -> Self {
+        Self::General_Failure
+    }
 }
 
 #[derive(Debug, Eq, PartialEq)]

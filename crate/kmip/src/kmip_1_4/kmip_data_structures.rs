@@ -7,18 +7,17 @@ use serde::{
 };
 use zeroize::Zeroizing;
 
+use super::kmip_attributes::Attribute;
 #[allow(clippy::wildcard_imports)]
 use super::kmip_types::*;
-use crate::{
-    kmip_1_4::kmip_attributes::{Attribute, Attributes},
-    kmip_2_1, SafeBigInt,
-};
+use crate::{kmip_1_4::kmip_attributes::Attributes, kmip_2_1, SafeBigInt};
 
 /// 2.1.2 Credential Object Structure
 /// A Credential is a structure used to convey information used to authenticate a client
 /// or server to the other party in a KMIP message. It contains credential type and
 /// credential value fields.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct Credential {
     pub credential_type: CredentialType,
     pub credential_value: CredentialValue,
@@ -53,6 +52,7 @@ pub enum CredentialValue {
 /// closely associated with a cryptographic key. It contains information about the format
 /// of the key, the algorithm it supports, and its cryptographic length.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct KeyBlock {
     pub key_format_type: KeyFormatType,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -88,6 +88,7 @@ fn attributes_is_default_or_none<T: Default + PartialEq + Serialize>(val: &Optio
 /// The Key Value object is a structure used to represent the key material and associated
 /// attributes within a Key Block structure.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct KeyValue {
     pub key_material: KeyMaterial,
     #[serde(skip_serializing_if = "attributes_is_default_or_none")]
@@ -828,12 +829,18 @@ impl From<KeyMaterial> for kmip_2_1::kmip_data_structures::KeyMaterial {
 /// MAC/signature information, initialization vector/counter/nonce if applicable, and
 /// encoding information.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct KeyWrappingData {
     pub wrapping_method: WrappingMethod,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub encryption_key_information: Option<EncryptionKeyInformation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub mac_signature_key_information: Option<MacSignatureKeyInformation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub mac_signature: Option<Vec<u8>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub iv_counter_nonce: Option<Vec<u8>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub encoding_option: Option<EncodingOption>,
 }
 
@@ -854,8 +861,10 @@ impl From<KeyWrappingData> for kmip_2_1::kmip_data_structures::KeyWrappingData {
 /// The Encryption Key Information is a structure containing a unique identifier and
 /// optional parameters used to encrypt the key.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct EncryptionKeyInformation {
     pub unique_identifier: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_parameters: Option<CryptographicParameters>,
 }
 
@@ -874,8 +883,10 @@ impl From<EncryptionKeyInformation> for kmip_2_1::kmip_types::EncryptionKeyInfor
 /// The MAC/Signature Key Information is a structure containing a unique identifier and
 /// optional parameters used to generate a MAC or signature over the key.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct MacSignatureKeyInformation {
     pub unique_identifier: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_parameters: Option<CryptographicParameters>,
 }
 
@@ -896,34 +907,58 @@ impl From<MacSignatureKeyInformation> for kmip_2_1::kmip_types::MacSignatureKeyI
 /// MAC/signature information, attribute names to be included in the wrapped data and
 /// encoding options.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct KeyWrappingSpecification {
     pub wrapping_method: WrappingMethod,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub encryption_key_information: Option<EncryptionKeyInformation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub mac_signature_key_information: Option<MacSignatureKeyInformation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub attribute_names: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub encoding_option: Option<EncodingOption>,
 }
 
 /// Cryptographic Parameters Structure
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct CryptographicParameters {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub block_cipher_mode: Option<BlockCipherMode>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub padding_method: Option<PaddingMethod>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub hashing_algorithm: Option<HashingAlgorithm>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub key_role_type: Option<KeyRoleType>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub digital_signature_algorithm: Option<DigitalSignatureAlgorithm>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_algorithm: Option<CryptographicAlgorithm>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub random_iv: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub iv_length: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub tag_length: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub fixed_field_length: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub invocation_field_length: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub counter_length: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub initial_counter_value: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub salt_length: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub mask_generator: Option<MaskGenerator>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub mask_generator_hashing_algorithm: Option<HashingAlgorithm>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub p_source: Option<Vec<u8>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub trailer_field: Option<i32>,
 }
 
@@ -956,12 +991,14 @@ impl From<CryptographicParameters> for kmip_2_1::kmip_types::CryptographicParame
 /// The Transparent Symmetric Key structure is used to carry the key data for a
 /// symmetric key in raw form.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct TransparentSymmetricKey {
     pub key: Vec<u8>,
 }
 
 /// 2.1.7.2 Transparent DSA Private Key Structure
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct TransparentDsaPrivateKey {
     pub p: Vec<u8>,
     pub q: Vec<u8>,
@@ -971,6 +1008,7 @@ pub struct TransparentDsaPrivateKey {
 
 /// 2.1.7.3 Transparent DSA Public Key Structure
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct TransparentDsaPublicKey {
     pub p: Vec<u8>,
     pub q: Vec<u8>,
@@ -980,20 +1018,29 @@ pub struct TransparentDsaPublicKey {
 
 /// 2.1.7.4 Transparent RSA Private Key Structure
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct TransparentRsaPrivateKey {
     pub modulus: Vec<u8>,
     pub private_exponent: Vec<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub public_exponent: Option<Vec<u8>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub p: Option<Vec<u8>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub q: Option<Vec<u8>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub prime_exponent_p: Option<Vec<u8>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub prime_exponent_q: Option<Vec<u8>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub crt_coefficient: Option<Vec<u8>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub recommended_curve: Option<RecommendedCurve>,
 }
 
 /// 2.1.7.5 Transparent RSA Public Key Structure
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct TransparentRsaPublicKey {
     pub modulus: Vec<u8>,
     pub public_exponent: Vec<u8>,
@@ -1001,26 +1048,33 @@ pub struct TransparentRsaPublicKey {
 
 /// 2.1.7.6 Transparent DH Private Key Structure
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct TransparentDhPrivateKey {
     pub p: Vec<u8>,
     pub g: Vec<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub q: Option<Vec<u8>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub j: Option<Vec<u8>>,
     pub x: Vec<u8>,
 }
 
 /// 2.1.7.7 Transparent DH Public Key Structure
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct TransparentDhPublicKey {
     pub p: Vec<u8>,
     pub g: Vec<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub q: Option<Vec<u8>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub j: Option<Vec<u8>>,
     pub y: Vec<u8>,
 }
 
 /// 2.1.7.8 Transparent ECDSA Private Key Structure
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct TransparentEcdsaPrivateKey {
     pub recommended_curve: RecommendedCurve,
     pub d: Vec<u8>,
@@ -1028,6 +1082,7 @@ pub struct TransparentEcdsaPrivateKey {
 
 /// 2.1.7.9 Transparent ECDSA Public Key Structure
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct TransparentEcdsaPublicKey {
     pub recommended_curve: RecommendedCurve,
     pub q_string: Vec<u8>,
@@ -1035,6 +1090,7 @@ pub struct TransparentEcdsaPublicKey {
 
 /// 2.1.7.10 Transparent ECDH Private Key Structure
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct TransparentEcdhPrivateKey {
     pub recommended_curve: RecommendedCurve,
     pub d: Vec<u8>,
@@ -1042,6 +1098,7 @@ pub struct TransparentEcdhPrivateKey {
 
 /// 2.1.7.11 Transparent ECDH Public Key Structure
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct TransparentEcdhPublicKey {
     pub recommended_curve: RecommendedCurve,
     pub q_string: Vec<u8>,
@@ -1049,6 +1106,7 @@ pub struct TransparentEcdhPublicKey {
 
 /// 2.1.7.12 Transparent ECMQV Private Key Structure
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct TransparentEcmqvPrivateKey {
     pub recommended_curve: RecommendedCurve,
     pub d: Vec<u8>,
@@ -1056,6 +1114,7 @@ pub struct TransparentEcmqvPrivateKey {
 
 /// 2.1.7.13 Transparent ECMQV Public Key Structure
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct TransparentEcmqvPublicKey {
     pub recommended_curve: RecommendedCurve,
     pub q_string: Vec<u8>,
@@ -1063,64 +1122,88 @@ pub struct TransparentEcmqvPublicKey {
 
 /// 2.1.8 Template-Attribute Structures
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct TemplateAttribute {
-    pub name: Option<String>,
-    pub attributes: Vec<Attribute>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<Vec<Name>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attribute: Option<Vec<Attribute>>,
 }
 
 /// 2.1.9 Extension Information Structure
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct ExtensionInformation {
     pub extension_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub extension_tag: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub extension_type: Option<i32>,
 }
 
 /// 2.1.10-23 Additional Structures
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct Data(pub Vec<u8>);
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct DataLength(pub i32);
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct SignatureData(pub Vec<u8>);
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct MacData(pub Vec<u8>);
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct Nonce(pub Vec<u8>);
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct CorrelationValue(pub Vec<u8>);
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct InitIndicator(pub bool);
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct FinalIndicator(pub bool);
 
 /// RNG Parameters provides information about random number generation. It contains
 /// details about the RNG algorithm, cryptographic algorithms, hash algorithms, DRBG
 /// algorithms and associated parameters.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct RngParameters {
     pub rng_algorithm: RNGAlgorithm,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_algorithm: Option<CryptographicAlgorithm>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_length: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub hashing_algorithm: Option<HashingAlgorithm>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub drbg_algorithm: Option<DRBGAlgorithm>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub recommended_curve: Option<RecommendedCurve>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub fips186_variation: Option<FIPS186Variation>,
     pub prediction_resistance: Option<bool>,
 }
 
 /// Profile Information contains details about supported KMIP profiles.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct ProfileInformation {
     pub profile_name: ProfileName,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub server_uri: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub server_port: Option<i32>,
 }
 
@@ -1128,53 +1211,77 @@ pub struct ProfileInformation {
 /// module, including the validation authority, version information and validation
 /// profiles.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct ValidationInformation {
     pub validation_authority_type: ValidationAuthorityType,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub validation_authority_country: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub validation_authority_uri: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub validation_version_major: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub validation_version_minor: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub validation_type: Option<ValidationType>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub validation_level: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub validation_certificate_identifier: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub validation_certificate_uri: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub validation_vendor_uri: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub validation_profile: Option<String>,
 }
 
 /// Capability Information indicates various capabilities supported by a KMIP server.
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct CapabilityInformation {
     pub streaming_capability: bool,
     pub asynchronous_capability: bool,
     pub attestation_capability: bool,
     pub batch_undo_capability: bool,
     pub batch_continue_capability: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub unwrap_mode: Option<UnwrapMode>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub destroy_action: Option<DestroyAction>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub shredding_algorithm: Option<ShreddingAlgorithm>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub rng_mode: Option<RNGMode>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct AuthenticatedEncryptionAdditionalData(pub Vec<u8>);
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct AuthenticatedEncryptionTag(pub Vec<u8>);
 
 /// Derivation Parameters defines the parameters for a key derivation process
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct DerivationParameters {
     /// The type of derivation method to be used
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_parameters: Option<CryptographicParameters>,
     /// The initialization vector or nonce if required by the derivation algorithm
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub initialization_vector: Option<Vec<u8>>,
     /// A value that identifies the derivation process
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub derivation_data: Option<Vec<u8>>,
     /// The length in bits of the derived data
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub salt: Option<Vec<u8>>,
     /// Optional iteration count used by the derivation method
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub iteration_count: Option<i32>,
 }
 
@@ -1190,13 +1297,21 @@ pub struct DerivationParameters {
 /// they MAY be specified in combination of the remaining fields
 ///  within the RNG Parameters structure.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
 pub struct RNGParameters {
     pub rng_algorithm: RNGAlgorithm,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_algorithm: Option<CryptographicAlgorithm>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_length: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub hashing_algorithm: Option<HashingAlgorithm>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub drbg_algorithm: Option<DRBGAlgorithm>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub recommended_curve: Option<RecommendedCurve>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub fips186_variation: Option<FIPS186Variation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub prediction_resistance: Option<bool>,
 }
