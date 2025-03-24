@@ -1,7 +1,7 @@
 //! These tests  require a connection to a working HSM and are gated behind the `utimaco` feature.
 //! To run a test, cd into the crate directory and run (replace `XXX` with the actual password):
 //! ```
-//! HSM_USER_PASSWORD=XXX cargo test --target x86_64-unknown-linux-gnu --features utimaco -- tests::test_all
+//! HSM_USER_PASSWORD=XXX cargo test --target x86_64-unknown-linux-gnu --features utimaco -- tests::test_hsm_all
 //! ```
 
 use std::{collections::HashMap, ptr, sync::Arc, thread};

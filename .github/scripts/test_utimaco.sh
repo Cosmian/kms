@@ -33,6 +33,6 @@ cd ./hsm-simulator/Administration
 ./p11tool2 Slot=0 GetSlotInfo
 cd ../..
 
-HSM_USER_PASSWORD="12345678" cargo test -p utimaco_pkcs11_loader --target x86_64-unknown-linux-gnu --features utimaco -- tests::test_all
+HSM_USER_PASSWORD="12345678" cargo test -p utimaco_pkcs11_loader --target x86_64-unknown-linux-gnu --features utimaco -- test_hsm_all
 
 rm -rf hsm-simulator

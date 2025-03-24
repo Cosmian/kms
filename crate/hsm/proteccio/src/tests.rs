@@ -2,7 +2,7 @@
 //! To run a test, cd into the crate directory and run (replace `XXX` with the actual password).
 //! The tests should be run in release mode as the behaviour of the PKCS#11 library is different in debug mode.
 //! ```
-//! HSM_USER_PASSWORD=XXX cargo test --release --target x86_64-unknown-linux-gnu --features proteccio -- tests::test_all
+//! HSM_USER_PASSWORD=XXX cargo test --release --target x86_64-unknown-linux-gnu --features proteccio -- tests::test_hsm_all
 //! ```
 
 use std::{collections::HashMap, ptr, sync::Arc, thread};

@@ -22,15 +22,16 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+
       - uses: EmbarkStudios/cargo-deny-action@v1
 
   cargo-lint:
-    uses: ./.github/workflows/clippy.yml
+    uses: Cosmian/reusable_workflows/.github/workflows/clippy.yml@develop
     with:
       toolchain: ${{ inputs.toolchain }}
 
   build:
-    uses: ./.github/workflows/build_all.yml
+    uses: Cosmian/reusable_workflows/.github/workflows/build_all.yml@develop
     secrets: inherit
     with:
       toolchain: ${{ inputs.toolchain }}
@@ -38,7 +39,7 @@ jobs:
 
   not-fips-image:
     name: Not FIPS image build and tests
-    uses: ./.github/workflows/build_docker_image.yml
+    uses: Cosmian/reusable_workflows/.github/workflows/build_docker_image.yml@develop
     with:
       prefix: ''
       registry-image: ghcr.io/cosmian/kms
@@ -47,7 +48,7 @@ jobs:
 
   fips-image:
     name: FIPS image build and tests
-    uses: ./.github/workflows/build_docker_image.yml
+    uses: Cosmian/reusable_workflows/.github/workflows/build_docker_image.yml@develop
     with:
       prefix: FIPS
       registry-image: ghcr.io/cosmian/kms-fips
