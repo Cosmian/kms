@@ -98,8 +98,9 @@ pkcs11_sys = { path = "crate/pkcs11/sys" }
 pyo3 = { version = "0.20", default-features = false }
 rand = "0.9"
 reqwest = { version = "0.11", default-features = false }
-serde = "1.0"
-serde_json = "1.0"
+rustls = "0.23.25"
+serde = "1.0.217"
+serde_json = "1.0.138"
 sha3 = { version = "0.10", default-features = false }
 strum = { version = "0.25", default-features = false }
 thiserror = "2.0"

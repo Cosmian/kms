@@ -44,13 +44,13 @@ async-recursion = "1.1"
 base64 = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true, features = [
-  "help",
-  "env",
-  "std",
-  "usage",
-  "error-context",
-  "derive",
-  "cargo",
+    "help",
+    "env",
+    "std",
+    "usage",
+    "error-context",
+    "derive",
+    "cargo",
 ] }
 cloudproof_findex = { version = "5.0", features = ["findex-redis"] }
 cosmian_cover_crypt = { workspace = true }
@@ -66,10 +66,10 @@ hex = { workspace = true, features = ["serde"] }
 lazy_static = { workspace = true }
 log = { workspace = true }
 num-bigint-dig = { workspace = true, features = [
-  "std",
-  "rand",
-  "serde",
-  "zeroize",
+    "std",
+    "rand",
+    "serde",
+    "zeroize",
 ] }
 oauth2 = "5.0.0"
 openidconnect = "4.0.0"
@@ -86,6 +86,7 @@ proteccio_pkcs11_loader = { path = "../hsm/proteccio" }
 # use openssl
 # The default features is to guarantee that the native-tls crate will be used
 reqwest = { workspace = true, features = ["default", "json"] }
+rustls = { version = "0.23", features = ["tls12", "std", ], default-features = false }
 serde = { workspace = true }
 serde_json = { workspace = true }
 strum = { workspace = true, features = ["std", "derive", "strum_macros"] }
@@ -157,7 +158,7 @@ assets = [
   ],
 ]
 systemd-units = [
-  { unit-name = "cosmian_kms", unit-scripts = "../../pkg", enable = true, start = false, restart-after-upgrade = false },
+    { unit-name = "cosmian_kms", unit-scripts = "../../pkg", enable = true, start = false, restart-after-upgrade = false },
 ]
 
 [package.metadata.deb.variants.fips]
