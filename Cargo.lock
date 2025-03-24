@@ -1313,7 +1313,7 @@ dependencies = [
 [[package]]
 name = "cosmian_findex_server"
 version = "0.2.0"
-source = "git+https://www.github.com/Cosmian/findex-server?branch=update_cli#ac08ef892d56ba65ed320a99cdf5094c7172c873"
+source = "git+https://www.github.com/Cosmian/findex-server?branch=develop#ba52d691cf8cc43281e642b73512085e0992ebcb"
 dependencies = [
  "actix-cors",
  "actix-identity",
@@ -1347,7 +1347,7 @@ dependencies = [
 [[package]]
 name = "cosmian_findex_structs"
 version = "0.2.0"
-source = "git+https://www.github.com/Cosmian/findex-server?branch=update_cli#ac08ef892d56ba65ed320a99cdf5094c7172c873"
+source = "git+https://www.github.com/Cosmian/findex-server?branch=develop#ba52d691cf8cc43281e642b73512085e0992ebcb"
 dependencies = [
  "base64 0.22.1",
  "cosmian_crypto_core 10.0.1",
