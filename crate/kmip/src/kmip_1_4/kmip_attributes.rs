@@ -1,18 +1,34 @@
-use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 
+use serde::{ser::SerializeStruct, Deserialize, Serialize};
+
+use super::kmip_types::{ErrorReason, LinkType, LinkedObjectIdentifier};
 use crate::{
     kmip_1_4::{
         kmip_data_structures::CryptographicParameters,
         kmip_types::{
             AlternativeName, ApplicationSpecificInformation, CertificateType,
             CryptographicAlgorithm, CryptographicDomainParameters, CryptographicUsageMask, Digest,
-            DigitalSignatureAlgorithm, KeyValueLocationType, Link, Name, ObjectType,
+            DigitalSignatureAlgorithm, KeyFormatType, KeyValueLocationType, Link, Name, ObjectType,
             RandomNumberGenerator, RevocationReason, State, UsageLimits, X509CertificateIdentifier,
         },
     },
-    kmip_2_1,
     kmip_2_1::kmip_types::VendorAttribute,
+    KmipError,
 };
+
+pub const VENDOR_ATTR_TAG: &str = "tag";
+
+/// Constant to use to express there are no tags
+pub const EMPTY_TAGS: [&str; 0] = [];
+
+/// The vendor ID to use for Cosmian specific attributes
+pub const VENDOR_ID_COSMIAN: &str = "cosmian";
+
+/// The vendor attribute name to use for x.509 extensions
+pub const VENDOR_ATTR_X509_EXTENSION: &str = "x509-extension";
+
+pub const VENDOR_ATTR_AAD: &str = "aad";
 
 /// Attributes structure containing all KMIP 1.4 attributes (51 total)
 /// as specified in Chapter 3, paragraphs 3.1 to 3.51
@@ -192,7 +208,11 @@ pub struct Attributes {
     /// its name as defined in Section 2.1.1.
     /// Note: Cosmian implementation: we map it to a 2.1 `VendorAttribute`
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub custom_attribute: Option<Vec<VendorAttribute>>,
+    pub custom_attribute: Option<Vec<CustomAttributeValue>>,
+
+    /// The Key Format Type attribute specifies the format of the key value.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key_format_type: Option<KeyFormatType>,
 
     /// The Last Change Date attribute specifies the date and time of the last change.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -252,11 +272,291 @@ pub struct Attributes {
     pub never_extractable: Option<bool>,
 }
 
-impl From<Attributes> for kmip_2_1::kmip_attributes::Attributes {
+impl Attributes {
+    /// Add a vendor attribute to the list of vendor attributes.
+    pub fn add_vendor_attribute(&mut self, vendor_attribute: VendorAttribute) -> &mut Self {
+        if let Some(vas) = &mut self.custom_attribute {
+            vas.push(CustomAttributeValue::Structure(vendor_attribute));
+        } else {
+            self.custom_attribute = Some(vec![CustomAttributeValue::Structure(vendor_attribute)]);
+        }
+        self
+    }
+
+    /// Set a vendor attribute to the list of vendor attributes replacing one with an existing value
+    /// if any
+    pub fn set_vendor_attribute(
+        &mut self,
+        vendor_identification: &str,
+        attribute_name: &str,
+        attribute_value: Vec<u8>,
+    ) -> &mut Self {
+        let va = self.get_vendor_attribute_mut(vendor_identification, attribute_name);
+        va.attribute_value = attribute_value;
+        self
+    }
+
+    /// Return the vendor attribute with the given vendor identification and
+    /// attribute name.
+    #[must_use]
+    pub fn get_vendor_attribute_value(
+        &self,
+        vendor_identification: &str,
+        attribute_name: &str,
+    ) -> Option<&[u8]> {
+        self.custom_attribute.as_ref().and_then(|vas| {
+            vas.iter().find_map(|cav| {
+                if let CustomAttributeValue::Structure(va) = cav {
+                    if va.vendor_identification == vendor_identification
+                        && va.attribute_name == attribute_name
+                    {
+                        Some(va.attribute_value.as_slice())
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+        })
+    }
+
+    /// Return the vendor attribute with the given vendor identification
+    /// and remove it from the vendor attributes.
+    #[must_use]
+    pub fn extract_vendor_attribute_value(
+        &mut self,
+        vendor_identification: &str,
+        attribute_name: &str,
+    ) -> Option<Vec<u8>> {
+        let value = self
+            .get_vendor_attribute_value(vendor_identification, attribute_name)
+            .map(<[u8]>::to_vec);
+        if value.is_some() {
+            self.remove_vendor_attribute(vendor_identification, attribute_name);
+        }
+        value
+    }
+
+    /// Return the vendor attribute with the given vendor identification and
+    /// attribute name. If the attribute does not exist, an empty
+    /// vendor attribute is created and returned.
+    #[must_use]
+    #[allow(clippy::indexing_slicing)]
+    #[allow(clippy::unreachable)]
+    pub fn get_vendor_attribute_mut(
+        &mut self,
+        vendor_identification: &str,
+        attribute_name: &str,
+    ) -> &mut VendorAttribute {
+        let vas = self.custom_attribute.get_or_insert_with(Vec::new);
+        let position = vas.iter().position(|va| {
+            if let CustomAttributeValue::Structure(va) = va {
+                va.vendor_identification == vendor_identification
+                    && va.attribute_name == attribute_name
+            } else {
+                false
+            }
+        });
+        let len = vas.len();
+        let cav = match position {
+            None => {
+                vas.push(CustomAttributeValue::Structure(VendorAttribute {
+                    vendor_identification: vendor_identification.to_owned(),
+                    attribute_name: attribute_name.to_owned(),
+                    attribute_value: vec![],
+                }));
+                &mut vas[len]
+            }
+            Some(position) => &mut vas[position],
+        };
+        if let CustomAttributeValue::Structure(va) = cav {
+            va
+        } else {
+            unreachable!("CustomAttributeValue has to be a Vendor Attribute")
+        }
+    }
+
+    /// Remove a vendor attribute from the list of vendor attributes.
+    pub fn remove_vendor_attribute(&mut self, vendor_identification: &str, attribute_name: &str) {
+        if let Some(vas) = self.custom_attribute.as_mut() {
+            vas.retain(|va| {
+                if let CustomAttributeValue::Structure(va) = va {
+                    va.vendor_identification != vendor_identification
+                        || va.attribute_name != attribute_name
+                } else {
+                    true
+                }
+            });
+            if vas.is_empty() {
+                self.custom_attribute = None;
+            }
+        }
+    }
+
+    /// Get the link to the object.
+    #[must_use]
+    pub fn get_link(&self, link_type: LinkType) -> Option<LinkedObjectIdentifier> {
+        self.link.as_ref().and_then(|links| {
+            links
+                .iter()
+                .find(|&l| l.link_type == link_type)
+                .map(|l| l.linked_object_identifier.clone())
+        })
+    }
+
+    /// Remove the link from the attributes
+    pub fn remove_link(&mut self, link_type: LinkType) {
+        if let Some(links) = self.link.as_mut() {
+            links.retain(|l| l.link_type != link_type);
+            if links.is_empty() {
+                self.link = None;
+            }
+        }
+    }
+
+    /// Get the parent id of the object.
+    #[must_use]
+    pub fn get_parent_id(&self) -> Option<LinkedObjectIdentifier> {
+        self.get_link(LinkType::ParentLink)
+    }
+
+    /// Set a link to an object.
+    /// If a link of the same type already exists, it is removed.
+    /// There can only be one link of a given type.
+    pub fn set_link(
+        &mut self,
+        link_type: LinkType,
+        linked_object_identifier: LinkedObjectIdentifier,
+    ) {
+        self.remove_link(link_type);
+        let links = self.link.get_or_insert_with(Vec::new);
+        links.push(Link {
+            link_type,
+            linked_object_identifier,
+        });
+    }
+
+    /// Set the attributes's object type.
+    pub fn set_object_type(&mut self, object_type: ObjectType) {
+        self.object_type = Some(object_type);
+    }
+
+    /// Set the attributes's `CryptographicUsageMask`.
+    pub fn set_cryptographic_usage_mask(&mut self, mask: Option<CryptographicUsageMask>) {
+        self.cryptographic_usage_mask = mask;
+    }
+
+    /// Set the bits in `mask` to the attributes's `CryptographicUsageMask` bits.
+    pub fn set_cryptographic_usage_mask_bits(&mut self, mask: CryptographicUsageMask) {
+        let mask = self
+            .cryptographic_usage_mask
+            .map_or(mask, |attr_mask| attr_mask | mask);
+
+        self.cryptographic_usage_mask = Some(mask);
+    }
+
+    /// Check that `flag` bit is set in object's `CryptographicUsageMask`.
+    /// If FIPS mode is disabled, check if Unrestricted bit is set too.
+    ///
+    /// Return `true` if `flag` has at least one bit set in self's attributes,
+    /// return `false` otherwise.
+    /// Raise error if object's `CryptographicUsageMask` is None.
+    pub fn is_usage_authorized_for(&self, flag: CryptographicUsageMask) -> Result<bool, KmipError> {
+        let usage_mask = self.cryptographic_usage_mask.ok_or_else(|| {
+            KmipError::InvalidKmip21Value(
+                ErrorReason::Incompatible_Cryptographic_Usage_Mask.into(),
+                "CryptographicUsageMask is None".to_owned(),
+            )
+        })?;
+
+        #[cfg(not(feature = "fips"))]
+        // In non-FIPS mode, Unrestricted can be allowed.
+        let flag = flag | CryptographicUsageMask::Unrestricted;
+
+        Ok((usage_mask & flag).bits() != 0)
+    }
+
+    /// Remove the authenticated additional data from the attributes and return it - for AESGCM unwrapping
+    #[must_use]
+    pub fn remove_aad(&mut self) -> Option<Vec<u8>> {
+        let aad = self
+            .get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_AAD)
+            .map(|value: &[u8]| value.to_vec());
+
+        if aad.is_some() {
+            self.remove_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_AAD);
+        }
+        aad
+    }
+
+    /// Add the authenticated additional data to the attributes - for AESGCM unwrapping
+    pub fn add_aad(&mut self, value: &[u8]) {
+        let va = VendorAttribute {
+            vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
+            attribute_name: VENDOR_ATTR_AAD.to_owned(),
+            attribute_value: value.to_vec(),
+        };
+        self.add_vendor_attribute(va);
+    }
+}
+
+impl Attributes {
+    /// Get the tags from the attributes
+    #[must_use]
+    pub fn get_tags(&self) -> HashSet<String> {
+        self.get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_TAG)
+            .map(|value| serde_json::from_slice::<HashSet<String>>(value).unwrap_or_default())
+            .unwrap_or_default()
+    }
+
+    /// Set the tags on the attributes
+    pub fn set_tags<T: IntoIterator<Item = impl AsRef<str>>>(
+        &mut self,
+        tags: T,
+    ) -> Result<(), KmipError> {
+        let va = self.get_vendor_attribute_mut(VENDOR_ID_COSMIAN, VENDOR_ATTR_TAG);
+        va.attribute_value = serde_json::to_vec::<HashSet<String>>(
+            &tags
+                .into_iter()
+                .map(|t| t.as_ref().to_owned())
+                .collect::<HashSet<_>>(),
+        )?;
+        Ok(())
+    }
+
+    /// Check that the user tags are valid i.e. they are not empty and do not start with '_'
+    pub fn check_user_tags(tags: &HashSet<String>) -> Result<(), KmipError> {
+        for tag in tags {
+            if tag.starts_with('_') {
+                return Err(KmipError::InvalidTag(
+                    "user tags cannot start with _".to_owned(),
+                ))
+            } else if tag.is_empty() {
+                return Err(KmipError::InvalidTag("tags cannot be empty".to_owned()))
+            }
+        }
+        Ok(())
+    }
+
+    /// Remove the tags from the attributes and return them
+    #[must_use]
+    pub fn remove_tags(&mut self) -> Option<HashSet<String>> {
+        let tags = self
+            .get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_TAG)
+            .map(|value| serde_json::from_slice::<HashSet<String>>(value).unwrap_or_default());
+        if tags.is_some() {
+            self.remove_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_TAG);
+        }
+        tags
+    }
+}
+
+impl From<Attributes> for crate::kmip_2_1::kmip_attributes::Attributes {
     fn from(val: Attributes) -> Self {
         Self {
             unique_identifier: val.unique_identifier.map(|unique_identifier| {
-                kmip_2_1::kmip_types::UniqueIdentifier::TextString(unique_identifier)
+                crate::kmip_2_1::kmip_types::UniqueIdentifier::TextString(unique_identifier)
             }),
             name: val.name.map(|n| n.into_iter().map(Into::into).collect()),
             never_extractable: val.never_extractable,
@@ -320,14 +620,209 @@ impl From<Attributes> for kmip_2_1::kmip_attributes::Attributes {
             quantum_safe: None,
             rotate_offset: None,
             short_unique_identifier: None,
-            vendor_attributes: val
-                .custom_attribute
-                .map(|n| n.into_iter().map(Into::into).collect()),
+            vendor_attributes: val.custom_attribute.map(|n| {
+                n.iter()
+                    .filter_map(|cav| {
+                        if let CustomAttributeValue::Structure(va) = cav {
+                            Some(va.clone())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect()
+            }),
         }
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+impl Attributes {
+    #[must_use]
+    pub fn to_attributes(&self) -> Vec<Attribute> {
+        let mut attributes = Vec::new();
+        if let Some(unique_identifier) = &self.unique_identifier {
+            attributes.push(Attribute::UniqueIdentifier(unique_identifier.clone()));
+        }
+        if let Some(name) = &self.name {
+            attributes.push(Attribute::Name(name.clone()));
+        }
+        if let Some(object_type) = &self.object_type {
+            attributes.push(Attribute::ObjectType(*object_type));
+        }
+        if let Some(cryptographic_algorithm) = &self.cryptographic_algorithm {
+            attributes.push(Attribute::CryptographicAlgorithm(*cryptographic_algorithm));
+        }
+        if let Some(cryptographic_length) = &self.cryptographic_length {
+            attributes.push(Attribute::CryptographicLength(*cryptographic_length));
+        }
+        if let Some(cryptographic_parameters) = &self.cryptographic_parameters {
+            attributes.push(Attribute::CryptographicParameters(
+                cryptographic_parameters.clone(),
+            ));
+        }
+        if let Some(cryptographic_domain_parameters) = &self.cryptographic_domain_parameters {
+            attributes.push(Attribute::CryptographicDomainParameters(
+                cryptographic_domain_parameters.clone(),
+            ));
+        }
+        if let Some(certificate_type) = &self.certificate_type {
+            attributes.push(Attribute::CertificateType(*certificate_type));
+        }
+        if let Some(certificate_length) = &self.certificate_length {
+            attributes.push(Attribute::CertificateLength(*certificate_length));
+        }
+        if let Some(x_509_certificate_identifier) = &self.x_509_certificate_identifier {
+            attributes.push(Attribute::X509CertificateIdentifier(
+                x_509_certificate_identifier.clone(),
+            ));
+        }
+        if let Some(x_509_certificate_subject) = &self.x_509_certificate_subject {
+            attributes.push(Attribute::X509CertificateSubject(
+                x_509_certificate_subject.clone(),
+            ));
+        }
+        if let Some(x_509_certificate_issuer) = &self.x_509_certificate_issuer {
+            attributes.push(Attribute::X509CertificateIssuer(
+                x_509_certificate_issuer.clone(),
+            ));
+        }
+        if let Some(certificate_identifier) = &self.certificate_identifier {
+            attributes.push(Attribute::CertificateIdentifier(
+                certificate_identifier.clone(),
+            ));
+        }
+        if let Some(certificate_subject) = &self.certificate_subject {
+            attributes.push(Attribute::CertificateSubject(certificate_subject.clone()));
+        }
+        if let Some(certificate_issuer) = &self.certificate_issuer {
+            attributes.push(Attribute::CertificateIssuer(certificate_issuer.clone()));
+        }
+        if let Some(digital_signature_algorithm) = &self.digital_signature_algorithm {
+            attributes.push(Attribute::DigitalSignatureAlgorithm(
+                *digital_signature_algorithm,
+            ));
+        }
+        if let Some(digest) = &self.digest {
+            attributes.push(Attribute::Digest(digest.clone()));
+        }
+        if let Some(operation_policy_name) = &self.operation_policy_name {
+            attributes.push(Attribute::OperationPolicyName(
+                operation_policy_name.clone(),
+            ));
+        }
+        if let Some(cryptographic_usage_mask) = &self.cryptographic_usage_mask {
+            attributes.push(Attribute::CryptographicUsageMask(
+                cryptographic_usage_mask.to_owned(),
+            ));
+        }
+        if let Some(lease_time) = &self.lease_time {
+            attributes.push(Attribute::LeaseTime(*lease_time));
+        }
+        if let Some(usage_limits) = &self.usage_limits {
+            attributes.push(Attribute::UsageLimits(usage_limits.clone()));
+        }
+        if let Some(state) = &self.state {
+            attributes.push(Attribute::State(*state));
+        }
+        if let Some(initial_date) = &self.initial_date {
+            attributes.push(Attribute::InitialDate(*initial_date));
+        }
+        if let Some(activation_date) = &self.activation_date {
+            attributes.push(Attribute::ActivationDate(*activation_date));
+        }
+        if let Some(process_start_date) = &self.process_start_date {
+            attributes.push(Attribute::ProcessStartDate(*process_start_date));
+        }
+        if let Some(protect_stop_date) = &self.protect_stop_date {
+            attributes.push(Attribute::ProtectStopDate(*protect_stop_date));
+        }
+        if let Some(deactivation_date) = &self.deactivation_date {
+            attributes.push(Attribute::DeactivationDate(*deactivation_date));
+        }
+        if let Some(destroy_date) = &self.destroy_date {
+            attributes.push(Attribute::DestroyDate(*destroy_date));
+        }
+        if let Some(compromise_occurrence_date) = &self.compromise_occurrence_date {
+            attributes.push(Attribute::CompromiseOccurrenceDate(
+                *compromise_occurrence_date,
+            ));
+        }
+        if let Some(compromise_date) = &self.compromise_date {
+            attributes.push(Attribute::CompromiseDate(*compromise_date));
+        }
+        if let Some(revocation_reason) = &self.revocation_reason {
+            attributes.push(Attribute::RevocationReason(revocation_reason.clone()));
+        }
+        if let Some(archive_date) = &self.archive_date {
+            attributes.push(Attribute::ArchiveDate(*archive_date));
+        }
+        if let Some(object_group) = &self.object_group {
+            attributes.push(Attribute::ObjectGroup(object_group.clone()));
+        }
+        if let Some(fresh) = &self.fresh {
+            attributes.push(Attribute::Fresh(*fresh));
+        }
+        if let Some(link) = &self.link {
+            attributes.push(Attribute::Link(link.clone()));
+        }
+        if let Some(application_specific_information) = &self.application_specific_information {
+            attributes.push(Attribute::ApplicationSpecificInformation(
+                application_specific_information.clone(),
+            ));
+        }
+        if let Some(contact_information) = &self.contact_information {
+            attributes.push(Attribute::ContactInformation(contact_information.clone()));
+        }
+        if let Some(last_change_date) = &self.last_change_date {
+            attributes.push(Attribute::LastChangeDate(*last_change_date));
+        }
+        if let Some(custom_attribute) = &self.custom_attribute {
+            for ca in custom_attribute {
+                attributes.push(Attribute::CustomAttribute(ca.clone()));
+            }
+        }
+        if let Some(alternative_name) = &self.alternative_name {
+            attributes.push(Attribute::AlternativeName(alternative_name.clone()));
+        }
+        if let Some(key_value_present) = &self.key_value_present {
+            attributes.push(Attribute::KeyValuePresent(*key_value_present));
+        }
+        if let Some(key_value_location) = &self.key_value_location {
+            attributes.push(Attribute::KeyValueLocation(*key_value_location));
+        }
+        if let Some(original_creation_date) = &self.original_creation_date {
+            attributes.push(Attribute::OriginalCreationDate(*original_creation_date));
+        }
+        if let Some(random_number_generator) = &self.random_number_generator {
+            attributes.push(Attribute::RandomNumberGenerator(
+                random_number_generator.clone(),
+            ));
+        }
+        if let Some(pkcs12_friendly_name) = &self.pkcs12_friendly_name {
+            attributes.push(Attribute::Pkcs12FriendlyName(pkcs12_friendly_name.clone()));
+        }
+        if let Some(description) = &self.description {
+            attributes.push(Attribute::Description(description.clone()));
+        }
+        if let Some(comment) = &self.comment {
+            attributes.push(Attribute::Comment(comment.clone()));
+        }
+        if let Some(sensitive) = &self.sensitive {
+            attributes.push(Attribute::Sensitive(*sensitive));
+        }
+        if let Some(always_sensitive) = &self.always_sensitive {
+            attributes.push(Attribute::AlwaysSensitive(*always_sensitive));
+        }
+        if let Some(extractable) = &self.extractable {
+            attributes.push(Attribute::Extractable(*extractable));
+        }
+        if let Some(never_extractable) = &self.never_extractable {
+            attributes.push(Attribute::NeverExtractable(*never_extractable));
+        }
+        attributes
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(untagged)]
 pub enum Attribute {
     UniqueIdentifier(String),
@@ -368,7 +863,7 @@ pub enum Attribute {
     ApplicationSpecificInformation(ApplicationSpecificInformation),
     ContactInformation(String),
     LastChangeDate(i64),
-    CustomAttribute(VendorAttribute),
+    CustomAttribute(CustomAttributeValue),
     AlternativeName(AlternativeName),
     KeyValuePresent(bool),
     KeyValueLocation(KeyValueLocationType),
@@ -381,4 +876,300 @@ pub enum Attribute {
     AlwaysSensitive(bool),
     Extractable(bool),
     NeverExtractable(bool),
+}
+
+impl Serialize for Attribute {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut st = serializer.serialize_struct("Attribute", 2)?;
+        match self {
+            Self::UniqueIdentifier(value) => {
+                st.serialize_field("AttributeName", "Unique Identifier")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::Name(value) => {
+                st.serialize_field("AttributeName", "Name")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::ObjectType(value) => {
+                st.serialize_field("AttributeName", "Object Type")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::CryptographicAlgorithm(value) => {
+                st.serialize_field("AttributeName", "Cryptographic Algorithm")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::CryptographicLength(value) => {
+                st.serialize_field("AttributeName", "Cryptographic Length")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::CryptographicParameters(value) => {
+                st.serialize_field("AttributeName", "Cryptographic Parameters")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::CryptographicDomainParameters(value) => {
+                st.serialize_field("AttributeName", "Cryptographic Domain Parameters")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::CertificateType(value) => {
+                st.serialize_field("AttributeName", "Certificate Type")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::CertificateLength(value) => {
+                st.serialize_field("AttributeName", "CertificateLength")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::X509CertificateIdentifier(value) => {
+                st.serialize_field("AttributeName", "X.509 Certificate Identifier")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::X509CertificateSubject(value) => {
+                st.serialize_field("AttributeName", "X.509 Certificate Subject")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::X509CertificateIssuer(value) => {
+                st.serialize_field("AttributeName", "X.509 Certificate Issuer")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::CertificateIdentifier(value) => {
+                st.serialize_field("AttributeName", "Certificate Identifier")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::CertificateSubject(value) => {
+                st.serialize_field("AttributeName", "Certificate Subject")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::CertificateIssuer(value) => {
+                st.serialize_field("AttributeName", "Certificate Issuer")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::DigitalSignatureAlgorithm(value) => {
+                st.serialize_field("AttributeName", "Digital Signature Algorithm")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::Digest(value) => {
+                st.serialize_field("AttributeName", "Digest")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::OperationPolicyName(value) => {
+                st.serialize_field("AttributeName", "Operation Policy Name")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::CryptographicUsageMask(value) => {
+                st.serialize_field("AttributeName", "Cryptographic Usage Mask")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::LeaseTime(value) => {
+                st.serialize_field("AttributeName", "Lease Time")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::UsageLimits(value) => {
+                st.serialize_field("AttributeName", "Usage Limits")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::State(value) => {
+                st.serialize_field("AttributeName", "State")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::InitialDate(value) => {
+                st.serialize_field("AttributeName", "Initial Date")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::ActivationDate(value) => {
+                st.serialize_field("AttributeName", "Activation Date")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::ProcessStartDate(value) => {
+                st.serialize_field("AttributeName", "Process Start Date")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::ProtectStopDate(value) => {
+                st.serialize_field("AttributeName", "Protect Stop Date")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::DeactivationDate(value) => {
+                st.serialize_field("AttributeName", "Deactivation Date")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::DestroyDate(value) => {
+                st.serialize_field("AttributeName", "Destroy Date")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::CompromiseOccurrenceDate(value) => {
+                st.serialize_field("AttributeName", "Compromise Occurrence Date")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::CompromiseDate(value) => {
+                st.serialize_field("AttributeName", "Compromise Date")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::RevocationReason(value) => {
+                st.serialize_field("AttributeName", "Revocation Reason")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::ArchiveDate(value) => {
+                st.serialize_field("AttributeName", "Archive Date")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::ObjectGroup(value) => {
+                st.serialize_field("AttributeName", "Object Group")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::Fresh(value) => {
+                st.serialize_field("AttributeName", "Fresh")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::Link(value) => {
+                st.serialize_field("AttributeName", "Link")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::ApplicationSpecificInformation(value) => {
+                st.serialize_field("AttributeName", "Application Specific Information")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::ContactInformation(value) => {
+                st.serialize_field("AttributeName", "Contact Information")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::LastChangeDate(value) => {
+                st.serialize_field("AttributeName", "Last Change Date")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::CustomAttribute(value) => {
+                st.serialize_field("AttributeName", "Custom Attribute")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::AlternativeName(value) => {
+                st.serialize_field("AttributeName", "Alternative Name")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::KeyValuePresent(value) => {
+                st.serialize_field("AttributeName", "Key Value Present")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::KeyValueLocation(value) => {
+                st.serialize_field("AttributeName", "Key Value Location")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::OriginalCreationDate(value) => {
+                st.serialize_field("AttributeName", "Original Creation Date")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::RandomNumberGenerator(value) => {
+                st.serialize_field("AttributeName", "Random Number Generator")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::Pkcs12FriendlyName(value) => {
+                st.serialize_field("AttributeName", "PKCS#12 Friendly Name")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::Description(value) => {
+                st.serialize_field("AttributeName", "Description")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::Comment(value) => {
+                st.serialize_field("AttributeName", "Comment")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::Sensitive(value) => {
+                st.serialize_field("AttributeName", "Sensitive")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::AlwaysSensitive(value) => {
+                st.serialize_field("AttributeName", "Always Sensitive")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::Extractable(value) => {
+                st.serialize_field("AttributeName", "Extractable")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::NeverExtractable(value) => {
+                st.serialize_field("AttributeName", "Never Extractable")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+        }
+        st.end()
+    }
+}
+
+// impl Serialize for Attribute {
+//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+//     where
+//         S: serde::Serializer,
+//     {
+//         let mut st = serializer.serialize_struct("Attribute", 2)?;
+//         match self {
+//             Attribute::UniqueIdentifier(value) => {
+//                 st.serialize_field("AttributeName", "UniqueIdentifier")?;
+//                 st.serialize_field("AttributeValue", value)?;
+//             }
+//         }
+
+//         st.end()
+//     }
+// }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::kmip_1_4::kmip_types::NameType;
+
+    #[test]
+    fn test_attributes_to_attributes() {
+        // Create an Attributes instance with all fields populated
+        let attrs = Attributes {
+            unique_identifier: Some("id123".to_owned()),
+            name: Some(vec![Name {
+                name_value: "test".to_owned(),
+                name_type: NameType::UninterpretedTextString,
+            }]),
+            // ...all other fields populated with Some values...
+            never_extractable: Some(false),
+            ..Default::default()
+        };
+
+        // Convert to Vec<Attribute>
+        let attribute_vec = attrs.to_attributes();
+
+        // Verify all fields are converted
+        assert!(
+            attribute_vec
+                .iter()
+                .any(|a| matches!(a, Attribute::UniqueIdentifier(_)))
+        );
+        assert!(
+            attribute_vec
+                .iter()
+                .any(|a| matches!(a, Attribute::Name(_)))
+        );
+        // ... add assertions for all other fields ...
+        assert!(
+            attribute_vec
+                .iter()
+                .any(|a| matches!(a, Attribute::NeverExtractable(_)))
+        );
+
+        // Test with all None values
+        let empty_attrs = Attributes::default();
+        assert!(empty_attrs.to_attributes().is_empty());
+    }
+}
+
+/// The value of a Custom Attribute (section 3.39).
+/// Any data type or structure.
+/// If a structure, then the structure SHALL NOT include sub structures
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[serde(untagged)]
+pub enum CustomAttributeValue {
+    TextString(String),
+    Integer(i32),
+    LongInteger(i64),
+    BigInteger(Vec<u8>),
+    Enumeration(i32),
+    Boolean(bool),
+    DateTime(i64),
+    Interval(i64),
+    Structure(VendorAttribute),
 }
