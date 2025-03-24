@@ -1187,7 +1187,8 @@ dependencies = [
 [[package]]
 name = "cosmian_cover_crypt"
 version = "15.0.0"
-source = "git+https://github.com/Cosmian/cover_crypt.git?branch=release/v15.0.0#018daaf2c39a64473028200a8ee0085d1bfadfdb"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f12eb7e96555b6b8841966fa264e7a6dfe5e39ad0733317c088c52259e99993c"
 dependencies = [
  "cosmian_crypto_core 10.0.1",
  "ml-kem",

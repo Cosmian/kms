@@ -67,7 +67,7 @@ cosmian_findex_client = { path = "cli/crate/findex_client" }
 cosmian_findex_server = { git = "https://www.github.com/Cosmian/findex-server", branch = "update_cli" }
 cosmian_findex_structs = { git = "https://www.github.com/Cosmian/findex-server", branch = "update_cli" }
 cosmian_config_utils = { git = "https://www.github.com/Cosmian/http_client_server", tag = "0.1.0" }
-cosmian_cover_crypt = { git = "https://github.com/Cosmian/cover_crypt.git", branch = "release/v15.0.0" }
+cosmian_cover_crypt = "15.0"
 cosmian_crypto_core = { version = "10.0.1", default-features = false, features = [
   "ser",
 ] }
