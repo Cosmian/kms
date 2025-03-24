@@ -144,7 +144,7 @@ cargo test
 Example: logs can be useful to debug:
 
 ```sh
-RUST_LOG="cosmian_cli=trace,cosmian_client=trace,cosmian_kmip=error,cosmian_kms_rest_client=info" cargo test
+RUST_LOG="cosmian_cli=trace,cosmian_findex_client=trace,cosmian_kmip=error,cosmian_kms_rest_client=info" cargo test
 ````
 
 Alternatively, when writing a test or running a test from your IDE, the following can be inserted
@@ -152,7 +152,7 @@ at the top of the test:
 
 ```rust
 unsafe {
-set_var("RUST_LOG", "trace,cosmian_client=trace,cosmian_kmip=error,cosmian_kms_rest_client=info");
+set_var("RUST_LOG", "trace,cosmian_findex_client=trace,cosmian_kmip=error,cosmian_kms_rest_client=info");
 set_var("RUST_BACKTRACE", "1");
 }
 log_init(None);

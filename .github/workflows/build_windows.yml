@@ -70,6 +70,7 @@ jobs:
           path: |
             target/x86_64-pc-windows-msvc/${{ inputs.debug_or_release }}/cosmian.exe
             target/x86_64-pc-windows-msvc/${{ inputs.debug_or_release }}/cosmian_gui.exe
+            target/x86_64-pc-windows-msvc/${{ inputs.debug_or_release }}/cosmian_pkcs11.dll
           retention-days: 1
           if-no-files-found: error
 

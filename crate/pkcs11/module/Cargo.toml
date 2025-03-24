@@ -1,0 +1,40 @@
+[package]
+name = "cosmian_pkcs11_module"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Cross-platform PKCS#11 module written in rust, originally forked from Google/native_pkcs11"
+
+[lib]
+doctest = false
+
+[dependencies]
+bincode = "1.3.3"
+const-oid = "0.9.6"
+hex = { workspace = true, features = ["std"] }
+log = { workspace = true, default-features = false }
+once_cell = "1.20.2"
+p256 = { version = "0.13.2", default-features = false, features = [
+  "arithmetic",
+  "pkcs8",
+  "std",
+] }
+pkcs1 = "0.7.5"
+pkcs11_sys = { workspace = true }
+rand = { workspace = true, features = ["thread_rng"] }
+rsa = "0.9"
+strum_macros = "0.26.4"
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = [
+  "fmt",
+  "env-filter",
+  "std",
+] }
+zeroize = { workspace = true }
+
+[dev-dependencies]
+serial_test = { version = "3.2.0", default-features = true }

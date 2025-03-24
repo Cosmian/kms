@@ -16,7 +16,7 @@ services:
     container_name: findex-server
     image: ghcr.io/cosmian/findex-server:develop
     ports:
-      - 6670:6668
+      - 16668:6668
     environment:
       RUST_LOG: cosmian_findex_server=trace
       FINDEX_SERVER_DATABASE_TYPE: redis
@@ -27,4 +27,4 @@ services:
     # image: ghcr.io/cosmian/kms:4.22.1
     image: ghcr.io/cosmian/kms:develop
     ports:
-      - 9998:9998
+      - 19998:9998

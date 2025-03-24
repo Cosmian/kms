@@ -1,20 +1,20 @@
-use crate::{
-    actions::findex_server::findex::findex_instance::FindexInstance,
-    cli_bail, cli_error,
-    error::result::{CosmianResult, CosmianResultHelper},
-};
 use clap::Parser;
-use cosmian_client::{
-    reexport::cosmian_findex_structs::{Uuids, CUSTOM_WORD_LENGTH},
+use cosmian_findex_client::{
     RestClient,
+    reexport::cosmian_findex_structs::{CUSTOM_WORD_LENGTH, Uuids},
 };
-use cosmian_kms_cli::{
-    actions::symmetric::{DataEncryptionAlgorithm, DecryptAction},
-    reexport::cosmian_kms_client::KmsClient,
-};
+use cosmian_kms_client::KmsClient;
 use tracing::trace;
 
 use super::findex::parameters::FindexParameters;
+use crate::{
+    actions::{
+        findex_server::findex::findex_instance::FindexInstance,
+        kms::symmetric::{DataEncryptionAlgorithm, DecryptAction},
+    },
+    cli_bail, cli_error,
+    error::result::{CosmianResult, CosmianResultHelper},
+};
 
 /// Search keywords and decrypt the content of corresponding UUIDs.
 #[derive(Parser, Debug)]
@@ -71,9 +71,18 @@ impl SearchAndDecryptAction {
         kms_rest_client: &KmsClient,
     ) -> CosmianResult<Vec<String>> {
         // Either seed key is required or both hmac_key_id and aes_xts_key_id are required
-        match (&self.findex_parameters.seed_key_id, &self.findex_parameters.hmac_key_id, &self.findex_parameters.aes_xts_key_id) {
+        match (
+            &self.findex_parameters.seed_key_id,
+            &self.findex_parameters.hmac_key_id,
+            &self.findex_parameters.aes_xts_key_id,
+        ) {
             (Some(_), None, None) | (None, Some(_), Some(_)) => (),
-            _ => return Err(cli_error!("Either seed key ID is required or both HMAC key ID and AES XTS key ID are required")),
+            _ => {
+                return Err(cli_error!(
+                    "Either seed key ID is required or both HMAC key ID and AES XTS key ID are \
+                     required"
+                ))
+            }
         }
 
         let findex_instance = FindexInstance::<CUSTOM_WORD_LENGTH>::instantiate_findex(
@@ -103,9 +112,9 @@ impl SearchAndDecryptAction {
 
         let decrypt_action = DecryptAction::default();
         let mut results = Vec::with_capacity(encrypted_entries.len());
-        let mut decrypted_records = Vec::with_capacity(encrypted_entries.len());
+        let mut decrypted_records: Vec<Vec<u8>> = Vec::with_capacity(encrypted_entries.len());
         for (_uuid, ciphertext) in encrypted_entries.iter() {
-            let decrypted_record = match (
+            let decrypted_record: Vec<u8> = match (
                 self.key_encryption_key_id.as_ref(),
                 self.data_encryption_key_id.as_ref(),
             ) {

@@ -1,7 +1,8 @@
-use crate::error::{result::CosmianResult, CosmianError};
 use clap::Parser;
-use cosmian_client::{reexport::cosmian_http_client::LoginState, RestClientConfig};
+use cosmian_findex_client::{RestClientConfig, reexport::cosmian_http_client::LoginState};
 use tracing::info;
+
+use crate::error::{CosmianError, result::CosmianResult};
 
 /// Login to the Identity Provider of the Findex server using the `OAuth2` authorization code flow.
 ///

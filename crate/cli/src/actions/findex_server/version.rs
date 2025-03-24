@@ -1,5 +1,5 @@
 use clap::Parser;
-use cosmian_client::RestClient;
+use cosmian_findex_client::RestClient;
 
 use crate::error::result::{CosmianResult, CosmianResultHelper};
 

@@ -3,9 +3,9 @@
 When using S/MIME, the `gmail_api_conf` field should be set in the configuration file to provide
 the necessary information about the configured service account to interact with Gmail API, and
 handle
-identities and keypairs easily from the ckms.
+identities and keypairs easily from the cosmian kms.
 
-This configuration is mandatory for `ckms google` subcommands.
+This configuration is mandatory for `cosmian kms google` subcommands.
 
 The `gmail_api_conf` field is a TOML object with the following fields:
 

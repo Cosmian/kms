@@ -1,5 +1,5 @@
 use clap::CommandFactory;
-use cosmian_cli::{cosmian_main, error::CosmianError, Cli};
+use cosmian_cli::{Cli, cosmian_main, error::CosmianError};
 
 pub async fn gui_main() -> Result<(), CosmianError> {
     let args = std::env::args().collect::<Vec<_>>();

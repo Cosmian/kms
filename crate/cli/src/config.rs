@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
-use cosmian_client::RestClientConfig;
-use cosmian_config_utils::{location, ConfigUtils};
-use cosmian_kms_cli::reexport::cosmian_kms_client::KmsClientConfig;
+use cosmian_config_utils::{ConfigUtils, location};
+use cosmian_findex_client::RestClientConfig;
+use cosmian_kms_client::KmsClientConfig;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
@@ -81,11 +81,11 @@ impl ConfigUtils for ClientConfig {}
 mod tests {
     use std::{env, fs, path::PathBuf};
 
-    use cosmian_config_utils::{get_default_conf_path, ConfigUtils};
+    use cosmian_config_utils::{ConfigUtils, get_default_conf_path};
     use cosmian_logger::log_init;
 
-    use super::{ClientConfig, COSMIAN_CLI_CONF_ENV};
-    use crate::config::COSMIAN_CLI_CONF_PATH;
+    use super::ClientConfig;
+    use crate::config::{COSMIAN_CLI_CONF_ENV, COSMIAN_CLI_CONF_PATH};
 
     #[test]
     pub(crate) fn test_load() {
@@ -113,9 +113,11 @@ mod tests {
             get_default_conf_path(COSMIAN_CLI_CONF_PATH).unwrap(),
         ));
         assert!(ClientConfig::load(None).is_ok());
-        assert!(get_default_conf_path(COSMIAN_CLI_CONF_PATH)
-            .unwrap()
-            .exists());
+        assert!(
+            get_default_conf_path(COSMIAN_CLI_CONF_PATH)
+                .unwrap()
+                .exists()
+        );
 
         // invalid conf
         unsafe {

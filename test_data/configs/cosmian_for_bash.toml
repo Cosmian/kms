@@ -2,7 +2,7 @@
 print_json = false
 
 [kms_config.http_config]
-server_url = "http://0.0.0.0:9998"
+server_url = "http://0.0.0.0:19998"
 
 [findex_config.http_config]
-server_url = "http://0.0.0.0:6670"
+server_url = "http://0.0.0.0:16668"

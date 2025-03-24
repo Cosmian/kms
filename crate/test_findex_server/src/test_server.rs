@@ -7,9 +7,9 @@ use std::{
 };
 
 use actix_server::ServerHandle;
-use cosmian_client::{
-    client_bail, client_error, reexport::cosmian_http_client::HttpClientConfig, ClientError,
-    RestClient, RestClientConfig,
+use cosmian_findex_client::{
+    ClientError, RestClient, RestClientConfig, client_bail, client_error,
+    reexport::cosmian_http_client::HttpClientConfig,
 };
 use cosmian_findex_server::{
     config::{
@@ -20,7 +20,7 @@ use cosmian_findex_server::{
 use tokio::sync::OnceCell;
 use tracing::{info, trace};
 
-use crate::test_jwt::{get_auth0_jwt_config, AUTH0_TOKEN};
+use crate::test_jwt::{AUTH0_TOKEN, get_auth0_jwt_config};
 
 const REDIS_DEFAULT_URL: &str = "redis://localhost:6379";
 
@@ -51,15 +51,11 @@ fn redis_db_config(redis_url_var_env: &str) -> DBConfig {
 pub async fn start_default_test_findex_server() -> &'static TestsContext {
     trace!("Starting default test server");
     ONCE.get_or_try_init(|| {
-        start_test_server_with_options(
-            redis_db_config("REDIS_URL"),
-            6668,
-            AuthenticationOptions {
-                use_jwt_token: false,
-                use_https: false,
-                use_client_cert: false,
-            },
-        )
+        start_test_server_with_options(redis_db_config("REDIS_URL"), 6668, AuthenticationOptions {
+            use_jwt_token: false,
+            use_https: false,
+            use_client_cert: false,
+        })
     })
     .await
     .unwrap()
@@ -270,7 +266,8 @@ fn generate_owner_conf(server_params: &ServerParams) -> Result<RestClientConfig,
                 );
                 #[cfg(target_os = "macos")]
                 let p = root_dir.join(
-                    "../../test_data/certificates/client_server/owner/owner.client.acme.com.old.format.p12",
+                    "../../test_data/certificates/client_server/owner/owner.client.acme.com.old.\
+                     format.p12",
                 );
                 Some(
                     p.to_str()
@@ -324,12 +321,12 @@ fn generate_user_conf(
 }
 
 #[cfg(test)]
-mod test {
-    use cosmian_client::ClientError;
+mod findex_server {
+    use cosmian_findex_client::ClientError;
     use tracing::trace;
 
     use crate::{
-        start_test_server_with_options, test_server::redis_db_config, AuthenticationOptions,
+        AuthenticationOptions, start_test_server_with_options, test_server::redis_db_config,
     };
 
     #[tokio::test]

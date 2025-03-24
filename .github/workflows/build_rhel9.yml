@@ -39,10 +39,6 @@ jobs:
           --health-retries 5
         # ports: # not required since docker in docker
         #   - 6379:6379
-      kms:
-        image: ghcr.io/cosmian/kms:develop
-        ports:
-          - 9998:9998
 
     steps:
       - name: Display cpuinfo
@@ -73,7 +69,6 @@ jobs:
       - name: Build and tests
         env:
           REDIS_URL: redis://redis:6379
-          KMS_HOSTNAME: kms
 
           OPENSSL_DIR: ${{ env.OPENSSL_DIR }}
 

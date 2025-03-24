@@ -1,17 +1,19 @@
 [package]
 name = "cosmian_cli"
-version = "0.2.0"
-authors = [
-  "Bruno Grieder <bruno.grieder@cosmian.com>",
-  "Emmanuel Coste <emmanuel.coste@cosmian.com>",
-]
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
 categories = ["security"]
-edition = "2021"
 keywords = ["cosmian_cli", "kms", "findex", "findex-server", "cosmian"]
-license = "BUSL-1.1" # "Business Source License 1.1"
-repository = "https://github.com/Cosmian/cli"
-rust-version = "1.83.0"
-description = "CLI used to manage the Cosmian KMS and Findex server."
+description = """
+Command Line Interface used to manage the KMS and Findex servers.
+
+If any assistance is needed, please either visit the Cosmian technical documentation at https://docs.cosmian.com
+or contact the Cosmian support team on Discord https://discord.com/invite/7kPMNtHpnz
+"""
 
 [[bin]]
 name = "cosmian"
@@ -24,7 +26,11 @@ test = false
 doctest = false
 
 [features]
-fips = ["cosmian_kms_cli/fips"]
+fips = [
+  "cosmian_kms_client/fips",
+  "cosmian_kms_crypto/fips",
+  "test_kms_server/fips",
+]
 
 [dependencies]
 base64 = { workspace = true }
@@ -38,35 +44,50 @@ clap = { workspace = true, features = [
   "cargo",
 ] }
 cosmian_config_utils = { workspace = true }
-cosmian_crypto_core = { workspace = true }
-cosmian_findex = { workspace = true }
-cosmian_client = { path = "../client" }
+cosmian_cover_crypt = { workspace = true }
+cosmian_crypto_core = { workspace = true, features = ["ser"] }
+cosmian_findex = { workspace = true, features = ["redis-mem"] }
+cosmian_findex_client = { workspace = true }
 cosmian_findex_structs = { workspace = true }
-cosmian_kms_cli = { workspace = true }
+cosmian_kms_client = { workspace = true }
+cosmian_kms_crypto = { workspace = true }
 cosmian_logger = { workspace = true }
 csv = "1.3.1"
+der = { workspace = true, features = ["pem"] }
 hex = { workspace = true }
+jwt-simple = { version = "0.12", default-features = false, features = [
+  "pure-rust",
+] }
+leb128 = { workspace = true }
+num-format = { workspace = true }
+pem = { workspace = true }
+reqwest = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
+strum = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tracing = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true }
+x509-cert = { workspace = true, features = ["pem"] }
+zeroize = { workspace = true }
 
 [dev-dependencies]
 actix-rt = "2.10"
 actix-server = { workspace = true }
 assert_cmd = "2.0"
 const-oid = { version = "0.9", features = ["db"] }
-cosmian_findex = { workspace = true, features = ["test-utils"] }
+cosmian_findex = { workspace = true, features = ["redis-mem", "test-utils"] }
 lazy_static = "1.5"
 openssl = { workspace = true }
 predicates = "3.1"
-rand = "0.9.0"
+rand = { workspace = true }
 rand_chacha = "0.9.0"
 regex = { version = "1.11", default-features = false }
 tempfile = "3.16"
 test_findex_server = { path = "../test_findex_server" }
+test_kms_server = { path = "../test_kms_server" }
 x509-parser = { workspace = true, features = ["verify"] }
 
 # ------------------------------------------------------------------------------

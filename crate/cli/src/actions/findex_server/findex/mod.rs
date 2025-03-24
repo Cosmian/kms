@@ -1,6 +1,6 @@
 use cosmian_crypto_core::reexport::zeroize::Zeroizing;
-use cosmian_findex::{Secret, KEY_LENGTH};
-use cosmian_kms_cli::reexport::cosmian_kms_client::{kmip_2_1::kmip_operations::Get, KmsClient};
+use cosmian_findex::{KEY_LENGTH, Secret};
+use cosmian_kms_client::{KmsClient, kmip_2_1::kmip_operations::Get};
 
 use crate::error::result::CosmianResult;
 

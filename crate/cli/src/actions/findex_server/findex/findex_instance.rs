@@ -3,19 +3,21 @@ use std::{
     sync::Arc,
 };
 
-use cosmian_client::{FindexRestClient, KmsEncryptionLayer, RestClient};
-use cosmian_findex::{
-    generic_decode, generic_encode, Findex, IndexADT, MemoryEncryptionLayer, Value,
+use cosmian_findex_client::{
+    FindexRestClient, KmsEncryptionLayer, RestClient,
+    reexport::cosmian_findex::{
+        Findex, IndexADT, MemoryEncryptionLayer, Value, generic_decode, generic_encode,
+    },
 };
 use cosmian_findex_structs::{Keyword, Keywords, SearchResults};
-use cosmian_kms_cli::reexport::cosmian_kms_client::KmsClient;
+use cosmian_kms_client::KmsClient;
 use tokio::sync::Semaphore;
 use tracing::{debug, trace};
 use uuid::Uuid;
 
 use crate::{
     actions::findex_server::findex::retrieve_key_from_kms,
-    error::{result::CosmianResult, CosmianError},
+    error::{CosmianError, result::CosmianResult},
 };
 
 const MAX_PERMITS: usize = 256;

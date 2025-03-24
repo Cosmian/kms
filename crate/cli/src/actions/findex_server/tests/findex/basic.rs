@@ -1,5 +1,21 @@
 use std::path::PathBuf;
 
+use cosmian_findex::{
+    Value,
+    test_utils::{test_guarded_write_concurrent, test_single_write_and_read, test_wrong_guard},
+};
+use cosmian_findex_client::RestClient;
+use cosmian_findex_structs::CUSTOM_WORD_LENGTH;
+use cosmian_kms_client::KmsClient;
+use cosmian_logger::log_init;
+use test_findex_server::{
+    start_default_test_findex_server, start_default_test_findex_server_with_cert_auth,
+};
+use test_kms_server::start_default_test_kms_server;
+use tracing::trace;
+use uuid::Uuid;
+
+use super::utils::HUGE_DATASET;
 use crate::{
     actions::findex_server::{
         findex::{
@@ -7,30 +23,13 @@ use crate::{
             search::SearchAction,
         },
         tests::{
-            findex::utils::{
-                create_encryption_layer, insert_search_delete, instantiate_kms_client,
-                SMALL_DATASET,
-            },
+            findex::utils::{SMALL_DATASET, create_encryption_layer, insert_search_delete},
             permissions::create_index_id,
             search_options::SearchOptions,
         },
     },
     error::result::CosmianResult,
 };
-use cosmian_client::RestClient;
-use cosmian_findex::{
-    test_utils::{test_guarded_write_concurrent, test_single_write_and_read, test_wrong_guard},
-    Value,
-};
-use cosmian_findex_structs::CUSTOM_WORD_LENGTH;
-use cosmian_logger::log_init;
-use test_findex_server::{
-    start_default_test_findex_server, start_default_test_findex_server_with_cert_auth,
-};
-use tracing::trace;
-use uuid::Uuid;
-
-use super::utils::HUGE_DATASET;
 
 pub(crate) fn findex_number_of_threads() -> Option<usize> {
     if std::env::var("GITHUB_ACTIONS").is_ok() {
@@ -44,7 +43,8 @@ pub(crate) fn findex_number_of_threads() -> Option<usize> {
 pub(crate) async fn test_findex_no_auth() -> CosmianResult<()> {
     log_init(None);
     let ctx = start_default_test_findex_server().await;
-    let kms_client = instantiate_kms_client()?;
+    let ctx_kms = start_default_test_kms_server().await;
+    let kms_client = KmsClient::new_with_config(ctx_kms.owner_client_conf.kms_config.clone())?;
     let findex_parameters = FindexParameters::new(
         Uuid::new_v4(),
         &kms_client,
@@ -77,7 +77,8 @@ pub(crate) async fn test_findex_no_auth() -> CosmianResult<()> {
 pub(crate) async fn test_findex_local_encryption() -> CosmianResult<()> {
     log_init(None);
     let ctx = start_default_test_findex_server().await;
-    let kms_client = instantiate_kms_client()?;
+    let ctx_kms = start_default_test_kms_server().await;
+    let kms_client = KmsClient::new_with_config(ctx_kms.owner_client_conf.kms_config.clone())?;
     let findex_parameters = FindexParameters::new(
         Uuid::new_v4(),
         &kms_client,
@@ -109,7 +110,8 @@ pub(crate) async fn test_findex_local_encryption() -> CosmianResult<()> {
 async fn run_huge_dataset_test(use_remote_crypto: bool) -> CosmianResult<()> {
     log_init(None);
     let ctx = start_default_test_findex_server().await;
-    let kms_client = instantiate_kms_client()?;
+    let ctx_kms = start_default_test_kms_server().await;
+    let kms_client = KmsClient::new_with_config(ctx_kms.owner_client_conf.kms_config.clone())?;
     let findex_parameters = FindexParameters::new(
         Uuid::new_v4(),
         &kms_client,
@@ -127,9 +129,10 @@ async fn run_huge_dataset_test(use_remote_crypto: bool) -> CosmianResult<()> {
             "80078".to_owned(),
         ],
         expected_results: {
-            vec![
-                Value::from("BDCQ.SEA1AA2011.0680078FNumber0Business Data Collection - BDCIndustry by employment variableFilled jobsAgriculture, Forestry and FishingActual"),
-            ]
+            vec![Value::from(
+                "BDCQ.SEA1AA2011.0680078FNumber0Business Data Collection - BDCIndustry by \
+                 employment variableFilled jobsAgriculture, Forestry and FishingActual",
+            )]
             .into_iter()
             .collect()
         },
@@ -145,12 +148,13 @@ async fn run_huge_dataset_test(use_remote_crypto: bool) -> CosmianResult<()> {
 
 #[ignore]
 #[tokio::test]
-pub(crate) async fn test_findex_no_auth_huge_dataset_remote_crypto() -> CosmianResult<()> {
+pub(crate) async fn test_findex_huge_dataset_remote_crypto() -> CosmianResult<()> {
     run_huge_dataset_test(true).await
 }
 
+#[ignore]
 #[tokio::test]
-pub(crate) async fn test_findex_no_auth_huge_dataset_local_crypto() -> CosmianResult<()> {
+pub(crate) async fn test_findex_huge_dataset_local_crypto() -> CosmianResult<()> {
     run_huge_dataset_test(false).await
 }
 
@@ -159,7 +163,8 @@ pub(crate) async fn test_findex_cert_auth() -> CosmianResult<()> {
     log_init(None);
     let ctx = start_default_test_findex_server_with_cert_auth().await;
     let owner_rest_client = RestClient::new(&ctx.owner_client_conf.clone())?;
-    let kms_client = instantiate_kms_client()?;
+    let ctx_kms = start_default_test_kms_server().await;
+    let kms_client = KmsClient::new_with_config(ctx_kms.owner_client_conf.kms_config.clone())?;
 
     let search_options = SearchOptions {
         dataset_path: SMALL_DATASET.into(),
@@ -189,12 +194,13 @@ pub(crate) async fn test_findex_cert_auth() -> CosmianResult<()> {
 }
 
 #[tokio::test]
-pub(crate) async fn test_findex_no_auth_searching_with_bad_key() -> CosmianResult<()> {
+pub(crate) async fn test_findex_searching_with_bad_key() -> CosmianResult<()> {
     log_init(None);
     let ctx = start_default_test_findex_server().await;
 
     let rest_client = RestClient::new(&ctx.owner_client_conf.clone())?;
-    let kms_client = instantiate_kms_client()?;
+    let ctx_kms = start_default_test_kms_server().await;
+    let kms_client = KmsClient::new_with_config(ctx_kms.owner_client_conf.kms_config.clone())?;
 
     let index_id = create_index_id(rest_client.clone()).await?;
     trace!("index_id: {index_id}");

@@ -2,7 +2,11 @@
 
 set -ex
 
-export KMS_CLI_FORMAT=json
+# Run servers and Redis instance
+docker compose up -d
+sleep 5
+
+export COSMIAN_CLI_FORMAT=json
 COSMIAN="cargo run --bin cosmian -- -c test_data/configs/cosmian_for_bash.toml"
 
 # Create the seed key
@@ -14,14 +18,14 @@ kek_id=$($COSMIAN kms sym keys create | jq -r '.unique_identifier')
 echo "kek_id: $kek_id"
 
 # Create the index ID
-index_id=$($COSMIAN findex-server permissions create | sed 's/Created Index ID: //')
+index_id=$($COSMIAN findex permissions create | sed 's/Created Index ID: //')
 echo "index_id: $index_id"
 
 # Encrypt and index the data
-$COSMIAN findex-server encrypt-and-index --seed-key-id "$seed_key_id" --index-id "$index_id" --kek-id "$kek_id" --csv test_data/datasets/smallpop.csv
+$COSMIAN findex encrypt-and-index --seed-key-id "$seed_key_id" --index-id "$index_id" --kek-id "$kek_id" --csv test_data/datasets/smallpop.csv
 
 # Search and decrypt the data
-expected_line=$($COSMIAN findex-server search-and-decrypt --seed-key-id "$seed_key_id" --index-id "$index_id" --kek-id "$kek_id" --keyword "Southborough" | sed 's/Decrypted records: //')
+expected_line=$($COSMIAN findex search-and-decrypt --seed-key-id "$seed_key_id" --index-id "$index_id" --kek-id "$kek_id" --keyword "Southborough" | sed 's/Decrypted records: //')
 echo "expected_line: $expected_line"
 
 # Check the result
@@ -41,10 +45,10 @@ aes_xts_key_id=$($COSMIAN kms sym keys create | jq -r '.unique_identifier')
 echo "aes_xts_key_id: $aes_xts_key_id"
 
 # Encrypt and index the data
-$COSMIAN findex-server encrypt-and-index --hmac-key-id "$hmac_key_id" --aes-xts-key-id "$aes_xts_key_id" --index-id "$index_id" --kek-id "$kek_id" --csv test_data/datasets/smallpop.csv
+$COSMIAN findex encrypt-and-index --hmac-key-id "$hmac_key_id" --aes-xts-key-id "$aes_xts_key_id" --index-id "$index_id" --kek-id "$kek_id" --csv test_data/datasets/smallpop.csv
 
 # Search and decrypt the data
-expected_line=$($COSMIAN findex-server search-and-decrypt --hmac-key-id "$hmac_key_id" --aes-xts-key-id "$aes_xts_key_id" --index-id "$index_id" --kek-id "$kek_id" --keyword "Southborough" | sed 's/Decrypted records: //')
+expected_line=$($COSMIAN findex search-and-decrypt --hmac-key-id "$hmac_key_id" --aes-xts-key-id "$aes_xts_key_id" --index-id "$index_id" --kek-id "$kek_id" --keyword "Southborough" | sed 's/Decrypted records: //')
 echo "expected_line: $expected_line"
 
 # Check the result

@@ -1,18 +1,20 @@
-use super::parameters::FindexParameters;
-use crate::{
-    actions::findex_server::findex::findex_instance::FindexInstance, error::result::CosmianResult,
-};
-use clap::Parser;
-use cosmian_client::RestClient;
-use cosmian_findex::Value;
-use cosmian_findex_structs::{Keyword, Keywords, CUSTOM_WORD_LENGTH};
-use cosmian_kms_cli::reexport::cosmian_kms_client::KmsClient;
 use std::{
     collections::{HashMap, HashSet},
     fs::File,
     path::PathBuf,
 };
+
+use clap::Parser;
+use cosmian_findex::Value;
+use cosmian_findex_client::RestClient;
+use cosmian_findex_structs::{CUSTOM_WORD_LENGTH, Keyword, Keywords};
+use cosmian_kms_client::KmsClient;
 use tracing::trace;
+
+use super::parameters::FindexParameters;
+use crate::{
+    actions::findex_server::findex::findex_instance::FindexInstance, error::result::CosmianResult,
+};
 
 #[derive(Parser, Debug)]
 #[clap(verbatim_doc_comment)]

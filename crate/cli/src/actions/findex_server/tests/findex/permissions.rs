@@ -1,3 +1,15 @@
+use std::{ops::Deref, path::PathBuf};
+
+use cosmian_findex::Value;
+use cosmian_findex_client::RestClient;
+use cosmian_findex_structs::Permission;
+use cosmian_kms_client::KmsClient;
+use cosmian_logger::log_init;
+use test_findex_server::start_default_test_findex_server_with_cert_auth;
+use test_kms_server::start_default_test_kms_server;
+use tracing::{debug, trace};
+use uuid::Uuid;
+
 use crate::{
     actions::findex_server::{
         findex::{
@@ -7,7 +19,7 @@ use crate::{
         tests::{
             findex::{
                 basic::findex_number_of_threads,
-                utils::{insert_search_delete, instantiate_kms_client, SMALL_DATASET},
+                utils::{SMALL_DATASET, insert_search_delete},
             },
             permissions::{create_index_id, list_permissions, revoke_permission, set_permission},
             search_options::SearchOptions,
@@ -15,14 +27,6 @@ use crate::{
     },
     error::result::CosmianResult,
 };
-use cosmian_client::RestClient;
-use cosmian_findex::Value;
-use cosmian_findex_structs::Permission;
-use cosmian_logger::log_init;
-use std::{ops::Deref, path::PathBuf};
-use test_findex_server::start_default_test_findex_server_with_cert_auth;
-use tracing::{debug, trace};
-use uuid::Uuid;
 
 #[tokio::test]
 pub(crate) async fn test_findex_set_and_revoke_permission() -> CosmianResult<()> {
@@ -45,7 +49,8 @@ pub(crate) async fn test_findex_set_and_revoke_permission() -> CosmianResult<()>
 
     let owner_rest_client = RestClient::new(&ctx.owner_client_conf)?;
     let user_rest_client = RestClient::new(&ctx.user_client_conf)?;
-    let kms_client = instantiate_kms_client()?;
+    let ctx_kms = start_default_test_kms_server().await;
+    let kms_client = KmsClient::new_with_config(ctx_kms.owner_client_conf.kms_config.clone())?;
 
     let findex_parameters =
         FindexParameters::new(index_id, &kms_client, true, findex_number_of_threads()).await?;
@@ -154,7 +159,8 @@ pub(crate) async fn test_findex_no_permission() -> CosmianResult<()> {
     log_init(None);
     let ctx = start_default_test_findex_server_with_cert_auth().await;
 
-    let kms_client = instantiate_kms_client()?;
+    let ctx_kms = start_default_test_kms_server().await;
+    let kms_client = KmsClient::new_with_config(ctx_kms.owner_client_conf.kms_config.clone())?;
     let findex_parameters = FindexParameters::new(
         Uuid::new_v4(),
         &kms_client,
@@ -173,14 +179,16 @@ pub(crate) async fn test_findex_no_permission() -> CosmianResult<()> {
         },
     };
 
-    assert!(insert_search_delete(
-        &findex_parameters,
-        &ctx.user_client_conf,
-        search_options,
-        kms_client
-    )
-    .await
-    .is_err());
+    assert!(
+        insert_search_delete(
+            &findex_parameters,
+            &ctx.user_client_conf,
+            search_options,
+            kms_client
+        )
+        .await
+        .is_err()
+    );
 
     Ok(())
 }

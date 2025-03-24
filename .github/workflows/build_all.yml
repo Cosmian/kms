@@ -21,6 +21,7 @@ jobs:
       archive-name: rhel9
       target: x86_64-unknown-linux-gnu
       debug_or_release: ${{ inputs.debug_or_release }}
+      skip_services_tests: --skip hsm
 
   generic:
     strategy:
@@ -33,6 +34,7 @@ jobs:
             prerequisites: |
               sudo apt-get update
               sudo apt-get install -qq librust-atk-sys-dev librust-gdk-sys-dev pkg-config jq
+            skip_services_tests: --skip hsm
             docker_compose: true
 
           - distribution: ubuntu-24.04
@@ -41,18 +43,19 @@ jobs:
             prerequisites: |
               sudo apt-get update
               sudo apt-get install -qq libgtk-3-dev libglib2.0-dev pkg-config jq
+            skip_services_tests: --skip hsm
             docker_compose: true
 
           - distribution: macos-13
             archive-name: macos_intel
             target: x86_64-apple-darwin
-            skip_services_tests: --skip test_encrypt --skip test_create --skip findex_server --skip test_server_auth_matrix --skip memory_adt
+            skip_services_tests: --skip findex_server --skip hsm
             docker_compose: false
 
           - distribution: macos-14
             archive-name: macos_arm
             target: aarch64-apple-darwin
-            skip_services_tests: --skip test_encrypt --skip test_create --skip findex_server --skip test_server_auth_matrix --skip memory_adt
+            skip_services_tests: --skip findex_server --skip hsm
             docker_compose: false
 
     name: ${{ matrix.distribution }}
@@ -69,7 +72,7 @@ jobs:
       docker_compose: ${{ matrix.docker_compose }}
 
   windows-2022:
-    if: inputs.debug_or_release == 'release'
+    # if: inputs.debug_or_release == 'release'
     uses: ./.github/workflows/build_windows.yml
     with:
       toolchain: ${{ inputs.toolchain }}

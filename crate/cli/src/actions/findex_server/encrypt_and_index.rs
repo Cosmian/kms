@@ -5,28 +5,27 @@ use std::{
 };
 
 use clap::Parser;
-use cosmian_client::{
+use cosmian_findex_client::{
+    RestClient,
     reexport::{
         cosmian_findex::Value,
         cosmian_findex_structs::{
-            EncryptedEntries, Keyword, KeywordToDataSetsMap, Uuids, CUSTOM_WORD_LENGTH,
+            CUSTOM_WORD_LENGTH, EncryptedEntries, Keyword, KeywordToDataSetsMap, Uuids,
         },
     },
-    RestClient,
 };
-use cosmian_kms_cli::{
-    actions::symmetric::{DataEncryptionAlgorithm, EncryptAction, KeyEncryptionAlgorithm},
-    reexport::cosmian_kms_client::KmsClient,
-};
+use cosmian_kms_client::KmsClient;
 use tracing::trace;
 
+use super::findex::parameters::FindexParameters;
 use crate::{
-    actions::findex_server::findex::findex_instance::FindexInstance,
+    actions::{
+        findex_server::findex::findex_instance::FindexInstance,
+        kms::symmetric::{DataEncryptionAlgorithm, EncryptAction, KeyEncryptionAlgorithm},
+    },
     cli_bail,
     error::result::{CosmianResult, CosmianResultHelper},
 };
-
-use super::findex::parameters::FindexParameters;
 
 /// Encrypt entries and index the corresponding database UUIDs with the Findex.
 ///

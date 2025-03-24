@@ -12,9 +12,12 @@ rust-version.workspace = true
 # and is not needed for internal lib
 doctest = false
 
+[features]
+fips = ["cosmian_findex_client/fips"]
+
 [dependencies]
 actix-server = { workspace = true }
-cosmian_client = { path = "../client" }
+cosmian_findex_client = { workspace = true }
 cosmian_findex_server = { workspace = true, features = ["insecure"] }
 cosmian_logger = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread"] }

@@ -1,5 +1,5 @@
 ---
-name: CLI cargo build - no docker
+name: CLI cargo build
 
 on:
   workflow_call:
@@ -54,7 +54,7 @@ jobs:
           toolchain: ${{ inputs.toolchain }}
           components: rustfmt, clippy
 
-      - name: Run Redis, KMS and Findex servers containers
+      - name: Run docker containers
         if: ${{ inputs.docker_compose }}
         run: |
           docker compose -h
@@ -103,6 +103,7 @@ jobs:
           path: |
             target/${{ inputs.target }}/${{ inputs.debug_or_release }}/cosmian
             target/${{ inputs.target }}/${{ inputs.debug_or_release }}/cosmian_gui
+            target/${{ inputs.target }}/${{ inputs.debug_or_release }}/libcosmian_pkcs11.*
             target/${{ inputs.target }}/debian/*.deb
           retention-days: 1
           if-no-files-found: error

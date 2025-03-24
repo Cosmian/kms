@@ -4,20 +4,20 @@ use super::CosmianError;
 
 pub type CosmianResult<R> = Result<R, CosmianError>;
 
-/// Trait for providing helper methods for `CliResult`.
+/// Trait for providing helper methods for `CosmianResult`.
 pub trait CosmianResultHelper<T> {
     /// Sets the context for the error.
     ///
     /// # Errors
     ///
-    /// Returns a `CliResult` with the specified context.
+    /// Returns a `CosmianResult` with the specified context.
     fn context(self, context: &str) -> CosmianResult<T>;
 
     /// Sets the context for the error using a closure.
     ///
     /// # Errors
     ///
-    /// Returns a `CliResult` with the context returned by the closure.
+    /// Returns a `CosmianResult` with the context returned by the closure.
     fn with_context<D, O>(self, op: O) -> CosmianResult<T>
     where
         D: Display + Send + Sync + 'static,

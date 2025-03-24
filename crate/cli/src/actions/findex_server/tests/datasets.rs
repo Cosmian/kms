@@ -1,14 +1,16 @@
+use std::ops::Deref;
+
+use base64::{Engine, engine::general_purpose};
+use cosmian_findex_client::RestClient;
+use cosmian_findex_structs::EncryptedEntries;
+use cosmian_logger::log_init;
+use test_findex_server::start_default_test_findex_server;
+use uuid::Uuid;
+
 use crate::{
     actions::findex_server::datasets::{AddEntries, DeleteEntries, GetEntries},
     error::result::CosmianResult,
 };
-use base64::{engine::general_purpose, Engine};
-use cosmian_client::RestClient;
-use cosmian_findex_structs::EncryptedEntries;
-use cosmian_logger::log_init;
-use std::ops::Deref;
-use test_findex_server::start_default_test_findex_server;
-use uuid::Uuid;
 
 async fn dataset_add_entries(
     rest_client: RestClient,

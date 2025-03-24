@@ -1,3 +1,12 @@
+use std::{ops::Deref, path::PathBuf};
+
+use cosmian_findex_client::{FindexRestClient, KmsEncryptionLayer, RestClient, RestClientConfig};
+use cosmian_kms_client::KmsClient;
+use test_findex_server::start_default_test_findex_server;
+use test_kms_server::start_default_test_kms_server;
+use uuid::Uuid;
+
+use super::basic::findex_number_of_threads;
 use crate::{
     actions::findex_server::{
         findex::{
@@ -8,15 +17,6 @@ use crate::{
     },
     error::result::CosmianResult,
 };
-use cosmian_client::{FindexRestClient, KmsEncryptionLayer, RestClient, RestClientConfig};
-use cosmian_kms_cli::reexport::cosmian_kms_client::{
-    reexport::cosmian_http_client::HttpClientConfig, KmsClient, KmsClientConfig,
-};
-use std::{ops::Deref, path::PathBuf};
-use test_findex_server::start_default_test_findex_server;
-use uuid::Uuid;
-
-use super::basic::findex_number_of_threads;
 
 pub(crate) const SMALL_DATASET: &str = "../../test_data/datasets/smallpop.csv";
 pub(crate) const HUGE_DATASET: &str = "../../test_data/datasets/business-employment.csv";
@@ -69,23 +69,11 @@ pub(crate) async fn insert_search_delete(
     Ok(())
 }
 
-pub(crate) fn instantiate_kms_client() -> CosmianResult<KmsClient> {
-    Ok(KmsClient::new(KmsClientConfig {
-        http_config: HttpClientConfig {
-            server_url: format!(
-                "http://{}:9998",
-                std::env::var("KMS_HOSTNAME").unwrap_or_else(|_| "0.0.0.0".to_owned())
-            ),
-            ..HttpClientConfig::default()
-        },
-        ..KmsClientConfig::default()
-    })?)
-}
-
-pub(crate) async fn create_encryption_layer<const WORD_LENGTH: usize>(
-) -> CosmianResult<KmsEncryptionLayer<WORD_LENGTH, FindexRestClient<WORD_LENGTH>>> {
+pub(crate) async fn create_encryption_layer<const WORD_LENGTH: usize>()
+-> CosmianResult<KmsEncryptionLayer<WORD_LENGTH, FindexRestClient<WORD_LENGTH>>> {
     let ctx = start_default_test_findex_server().await;
-    let kms_client = instantiate_kms_client()?;
+    let ctx_kms = start_default_test_kms_server().await;
+    let kms_client = KmsClient::new_with_config(ctx_kms.owner_client_conf.kms_config.clone())?;
     let findex_parameters = FindexParameters::new(
         Uuid::new_v4(),
         &kms_client,

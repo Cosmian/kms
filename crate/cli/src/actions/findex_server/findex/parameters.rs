@@ -1,14 +1,12 @@
 use clap::Parser;
-
-use cosmian_kms_cli::{
-    actions::symmetric::keys::create_key::{CreateKeyAction, SymmetricAlgorithm},
-    reexport::cosmian_kms_client::KmsClient,
-};
+use cosmian_kms_client::KmsClient;
 use uuid::Uuid;
 
-use crate::error::{result::CosmianResult, CosmianError};
-
 use super::findex_instance::FindexKeys;
+use crate::{
+    actions::kms::symmetric::keys::create_key::{CreateKeyAction, SymmetricAlgorithm},
+    error::{CosmianError, result::CosmianResult},
+};
 
 pub const HMAC_KEY_SIZE: u32 = 256;
 pub const AES_XTS_KEY_SIZE: u32 = 512;
@@ -77,8 +75,9 @@ impl FindexParameters {
             .run(kms_client)
             .await?;
             println!(
-            "Warning: This is the only time that this {key_type} key ID will be printed. ID: {uid}"
-        );
+                "Warning: This is the only time that this {key_type} key ID will be printed. ID: \
+                 {uid}"
+            );
             Ok(uid.to_string())
         }
 
@@ -114,6 +113,7 @@ impl FindexParameters {
             })
         }
     }
+
     /// Instantiates the Findex keys.
     /// If a seed key is provided, the client side encryption is used.
     /// Otherwise, the KMS server-side encryption is used.
