@@ -10,6 +10,7 @@ use cosmian_kmip::{
 };
 use cosmian_kms_client::{SocketClient, SocketClientConfig};
 use cosmian_logger::log_init;
+use tracing::info;
 
 use crate::socket_server::{create_rustls_server_config, SocketServer, SocketServerConfig};
 
@@ -25,7 +26,9 @@ fn start_socket_server() -> &'static thread::JoinHandle<()> {
 
         thread::spawn(move || {
             server
-                .start(|request| {
+                .start(|username, request| {
+                    // log the username
+                    info!("Received request from user: {}", username);
                     // Echo the request back
                     request.to_vec()
                 })
@@ -77,7 +80,7 @@ fn test_server_binding() {
     let server = SocketServer::instantiate(&config).expect("Failed to instantiate server");
 
     let _server_thread = thread::spawn(move || {
-        let _unused = server.start(<[u8]>::to_vec);
+        let _unused = server.start(|_username, req| req.to_vec());
     });
 
     thread::sleep(Duration::from_millis(100));
@@ -103,7 +106,7 @@ fn test_rustls_server_config() {
 
 #[test]
 fn test_socket_server_with_socket_client() {
-    log_init(Some("trace"));
+    log_init(Some("debug"));
     let _server_thread = start_socket_server();
 
     let socket_client = SocketClient::new(SocketClientConfig {
