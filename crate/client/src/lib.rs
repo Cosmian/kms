@@ -15,6 +15,7 @@ pub use file_utils::{
 };
 pub use import_utils::import_object;
 pub use kms_rest_client::KmsClient;
+pub use socket_client::{SocketClient, SocketClientConfig};
 
 mod batch_utils;
 mod config;
@@ -24,6 +25,10 @@ mod export_utils;
 mod file_utils;
 mod import_utils;
 mod kms_rest_client;
+mod socket_client;
+
+#[cfg(test)]
+mod tests;
 
 pub mod reexport {
     pub use cosmian_config_utils;

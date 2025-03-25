@@ -11,7 +11,7 @@ use rustls::{
     server::WebPkiClientVerifier,
     RootCertStore, ServerConfig, ServerConnection,
 };
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, trace};
 
 use crate::{
     error::KmsError,
@@ -47,7 +47,12 @@ pub struct SocketServer {
 
 impl SocketServer {
     /// Create a new `PyKMIP` socket server with the specified configuration
-    pub fn instantiate(config: SocketServerConfig) -> KResult<Self> {
+    ///
+    /// # Errors
+    /// - If the server certificates and key are invalid
+    /// - If the client CA certificate is invalid
+    /// - If the server fails to bind to the specified host and port
+    pub fn instantiate(config: &SocketServerConfig) -> KResult<Self> {
         let server_config = Arc::new(create_rustls_server_config(
             &config.server_p12_der,
             &config.server_p12_password,
@@ -61,12 +66,21 @@ impl SocketServer {
     }
 
     /// Start the server and listen for incoming connections
+    /// The `request_handler` function is called for each incoming request.
+    /// The function should take a byte slice as input and return a byte vector as output.
+    /// The server runs in a separate thread for each client connection.
+    /// The server will continue to run until an error occurs
+    /// or the process is terminated.
+    ///
+    /// # Errors
+    /// - If the server fails to bind to the specified host and port
+    /// - If an error occurs while handling a client connection
     pub fn start<F>(&self, request_handler: F) -> KResult<()>
     where
         F: Fn(&[u8]) -> Vec<u8> + Send + Sync + 'static,
     {
         let addr = format!("{}:{}", self.host, self.port);
-        let listener = TcpListener::bind(&addr).context(&format!("Failed to bind to {}", addr))?;
+        let listener = TcpListener::bind(&addr).context(&format!("Failed to bind to {addr}"))?;
 
         info!("Server listening on {}", addr);
 
@@ -80,7 +94,7 @@ impl SocketServer {
                     let handler = handler.clone();
 
                     thread::spawn(move || {
-                        if let Err(e) = handle_client(&mut stream, server_config, handler) {
+                        if let Err(e) = handle_client(&mut stream, server_config, &handler) {
                             error!("Error handling client: {}", e);
                         }
                     });
@@ -98,24 +112,26 @@ impl SocketServer {
 fn handle_client(
     stream: &mut TcpStream,
     server_config: Arc<ServerConfig>,
-    handler: Arc<impl Fn(&[u8]) -> Vec<u8> + Send + Sync>,
+    handler: &Arc<impl Fn(&[u8]) -> Vec<u8> + Send + Sync>,
 ) -> KResult<()> {
     // Accept TLS connection
     let peer_addr = stream
         .peer_addr()
-        .unwrap_or_else(|_| "[unknown]".parse().unwrap());
-    info!("Client connected from {}", peer_addr);
+        .map_or("[N/A]".to_owned(), |sa| sa.to_string());
+    trace!("Client connected from {}", peer_addr);
 
     let mut server_connection = ServerConnection::new(server_config)
         .context("Failed to create rustls server connection")?;
 
     // Check for client certificate
     let certs = server_connection.peer_certificates();
-    if certs.is_none() || certs.as_ref().unwrap().is_empty() {
+    if certs.is_none() || certs.as_ref().map_or(true, |v| v.is_empty()) {
         error!("Client did not present a certificate.");
-        return Ok(()); // or return an error
+        return Err(KmsError::Certificate(
+            "Client did not present a certificate".to_owned(),
+        ));
     }
-    info!("TLS handshake completed with {}", peer_addr);
+    debug!("TLS handshake completed with {}", peer_addr);
 
     let mut tls_stream = rustls::Stream::new(&mut server_connection, stream);
 
@@ -131,10 +147,12 @@ fn handle_client(
         // Read 8 bytes of the TTLV header
         let mut header = [0_u8; 8];
         match tls_stream.read_exact(&mut header) {
-            Ok(_) => {
+            Ok(()) => {
                 // Parse length from header
-                let length =
-                    u32::from_be_bytes([header[4], header[5], header[6], header[7]]) as usize;
+                let length = usize::try_from(u32::from_be_bytes([
+                    header[4], header[5], header[6], header[7],
+                ]))
+                .context("Failed to parse request length")?;
 
                 // Read the rest of the request
                 let mut request_body = vec![0_u8; length];
@@ -157,7 +175,7 @@ fn handle_client(
 
                 tls_stream.flush().context("Failed to flush TLS stream")?;
 
-                info!("Response sent to {}", peer_addr);
+                trace!("Response sent to {}", peer_addr);
             }
             Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
                 // Client disconnected
@@ -175,7 +193,7 @@ fn handle_client(
 
 // Client Certificate Authentication
 // Build a rustls ServerConfig supporting client cert auth
-fn create_rustls_server_config(
+pub(crate) fn create_rustls_server_config(
     server_p12_der: &[u8],
     server_p12_password: &str,
     client_ca_cert_pem: &str,
@@ -197,7 +215,7 @@ fn create_rustls_server_config(
     }
     let Some(server_cert) = p12.cert else {
         return Err(KmsError::Certificate(
-            "No server certificate found in PKCS#12 file".to_string(),
+            "No server certificate found in PKCS#12 file".to_owned(),
         ));
     };
     let server_cert = server_cert
@@ -207,7 +225,7 @@ fn create_rustls_server_config(
 
     let Some(server_private_key) = p12.pkey else {
         return Err(KmsError::Certificate(
-            "No server private key found in PKCS#12 file".to_string(),
+            "No server private key found in PKCS#12 file".to_owned(),
         ));
     };
     let server_private_key_pkcs8 = server_private_key
@@ -221,7 +239,9 @@ fn create_rustls_server_config(
     let mut client_auth_roots = RootCertStore::empty();
     let client_ca_cert = CertificateDer::from_pem_slice(client_ca_cert_pem.as_bytes())
         .context("failed loading the clients'  CA certificate")?;
-    client_auth_roots.add(client_ca_cert).unwrap();
+    client_auth_roots
+        .add(client_ca_cert)
+        .context("failed to add client CA cert")?;
 
     // Enable the client certificate verifier
     let client_auth = WebPkiClientVerifier::builder(client_auth_roots.into())

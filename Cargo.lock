@@ -1452,6 +1452,8 @@ dependencies = [
  "cosmian_kms_access",
  "cosmian_logger",
  "der",
+ "hex",
+ "native-tls",
  "pem",
  "reqwest",
  "serde",
