@@ -124,7 +124,7 @@ cargo build --target $TARGET $RELEASE $FEATURES
 
 echo "Database KMS: $KMS_TEST_DB"
 # shellcheck disable=SC2086
-cargo test -v --workspace --lib --target $TARGET $RELEASE $FEATURES -- $SKIP_SERVICES_TESTS
+cargo test --workspace --lib --target $TARGET $RELEASE $FEATURES -- $SKIP_SERVICES_TESTS
 
 # shellcheck disable=SC2086
 cargo test --workspace --bins --target $TARGET $RELEASE $FEATURES

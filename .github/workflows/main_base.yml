@@ -36,12 +36,6 @@ jobs:
       toolchain: ${{ inputs.toolchain }}
       debug_or_release: ${{ inputs.debug_or_release }}
 
-  cargo-doc:
-    if: inputs.debug_or_release == 'release'
-    uses: Cosmian/reusable_workflows/.github/workflows/cargo-doc.yml@develop
-    with:
-      toolchain: ${{ inputs.toolchain }}
-
   not-fips-image:
     name: Not FIPS image build and tests
     uses: ./.github/workflows/build_docker_image.yml
