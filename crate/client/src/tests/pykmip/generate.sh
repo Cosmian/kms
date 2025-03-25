@@ -1,6 +1,6 @@
 #!/bin/bash
 
-OPENSSL="/opt/homebrew/bin/openssl"
+OPENSSL="$HOME/homebrew/bin/openssl"
 
 # Generate the ca key
 $OPENSSL genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out ca.key
@@ -27,7 +27,7 @@ $OPENSSL req -new -key server.key -out server.csr -subj "/C=FR/ST=IdG/L=Paris/O=
 $OPENSSL x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out server.crt
 
 # Create the PKCS12 file
-$OPENSSL pkcs12 -export -out server.p12 -inkey server.key -in server.crt -certfile ca.crt -password pass:secret
+#$OPENSSL pkcs12 -export -out server.p12 -inkey server.key -in server.crt -certfile ca.crt -password pass:secret
 
 # Generate the client key
 $OPENSSL genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out client.key
@@ -37,6 +37,3 @@ $OPENSSL req -new -key client.key -out client.csr -subj "/C=FR/ST=IdG/L=Paris/O=
 
 # Sign the client certificate with the intermediate certificate
 $OPENSSL x509 -req -in client.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out client.crt
-
-# Generate the client PKCS#12
-$OPENSSL pkcs12 -export -out client.p12 -inkey client.key -in client.crt  -passout pass:secret
