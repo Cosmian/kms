@@ -133,7 +133,7 @@ impl SocketClient {
             .context("Failed to send request data")?;
         tls_stream.flush().context("Failed to flush TLS stream")?;
 
-        info!("Request sent");
+        debug!("Request sent");
 
         // Read response
         // Read 8 bytes of the TTLV header
