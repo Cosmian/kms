@@ -1,19 +1,43 @@
-use std::{fs, net::TcpStream, path::Path, thread, time::Duration};
+use std::{net::TcpStream, sync::OnceLock, thread, time::Duration};
+
+use cosmian_kmip::{
+    kmip_1_4::{
+        kmip_messages::{RequestMessage, RequestMessageBatchItem, RequestMessageHeader},
+        kmip_operations::{Operation, Query},
+        kmip_types::{OperationEnumeration, ProtocolVersion, QueryFunction},
+    },
+    ttlv::KmipFlavor::Kmip1,
+};
+use cosmian_kms_client::{SocketClient, SocketClientConfig};
+use cosmian_logger::log_init;
 
 use crate::socket_server::{create_rustls_server_config, SocketServer, SocketServerConfig};
 
 const TEST_HOST: &str = "127.0.0.1";
 const TEST_PORT: u16 = 5696;
 
+pub(crate) static SOCKET_SERVER_ONCE: OnceLock<thread::JoinHandle<()>> = OnceLock::new();
+
+fn start_socket_server() -> &'static thread::JoinHandle<()> {
+    SOCKET_SERVER_ONCE.get_or_init(|| {
+        let config = load_test_config();
+        let server = SocketServer::instantiate(&config).expect("Failed to instantiate server");
+
+        thread::spawn(move || {
+            server
+                .start(|request| {
+                    // Echo the request back
+                    request.to_vec()
+                })
+                .expect("Failed to start server");
+        })
+    })
+}
+
 fn load_test_config() -> SocketServerConfig {
-    let test_dir = Path::new("./certificates/socket_server");
-
-    let server_p12_der = fs::read(test_dir.join("server.p12")).expect("Failed to read server.p12");
-
-    let server_p12_password = "password".to_owned();
-
-    let client_ca_cert_pem =
-        fs::read_to_string(test_dir.join("client_ca.crt")).expect("Failed to read client_ca.crt");
+    let server_p12_der = include_bytes!("./certificates/socket_server/server.p12").to_vec();
+    let server_p12_password = "secret".to_owned();
+    let client_ca_cert_pem = include_str!("./certificates/socket_server/ca.crt").to_owned();
 
     SocketServerConfig {
         host: TEST_HOST.to_owned(),
@@ -75,4 +99,47 @@ fn test_rustls_server_config() {
     );
 
     result.expect("Failed to create rustls server config");
+}
+
+#[test]
+fn test_socket_server_with_socket_client() {
+    log_init(Some("trace"));
+    let _server_thread = start_socket_server();
+
+    let socket_client = SocketClient::new(SocketClientConfig {
+        host: "localhost".to_owned(),
+        port: 5696,
+        client_p12: include_bytes!("./certificates/socket_server/client.p12").to_vec(),
+        client_p12_secret: "secret".to_owned(),
+        server_ca_cert_pem: include_str!("./certificates/socket_server/ca.crt").to_owned(),
+    })
+    .expect("Failed to create socket client");
+
+    let query = Query {
+        query_function: vec![QueryFunction::QueryOperations, QueryFunction::QueryObjects],
+    };
+    let request_message = RequestMessage {
+        request_header: RequestMessageHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 1,
+                protocol_version_minor: 4,
+            },
+            maximum_response_size: Some(1_048_576),
+            batch_count: 1,
+            ..Default::default()
+        },
+        batch_item: vec![RequestMessageBatchItem {
+            operation: OperationEnumeration::Query,
+            ephemeral: None,
+            unique_batch_item_id: None,
+            request_payload: Operation::Query(query),
+            message_extension: None,
+        }],
+    };
+
+    let response = socket_client
+        .send_request::<RequestMessage, RequestMessage>(Kmip1, &request_message)
+        .expect("Failed to send request");
+
+    assert_eq!(response, request_message);
 }

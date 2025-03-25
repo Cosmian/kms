@@ -1,7 +1,7 @@
 use std::{
     io::{Read, Write},
     net::{TcpListener, TcpStream},
-    sync::Arc,
+    sync::{Arc, Once},
     thread,
 };
 
@@ -17,11 +17,22 @@ use crate::{
     error::KmsError,
     result::{KResult, KResultHelper},
 };
+static INIT_CRYPTO: Once = Once::new();
 
-// Load the certificates at compile time
-// const SERVER_CERTIFICATE: &str = include_str!("server.crt");
-// const SERVER_KEY: &str = include_str!("server.key"); // Need this file in the same directory
-// const CLIENT_CA_CERTIFICATE: &str = include_str!("client.crt"); // Need this file in the same directory
+/// Initialize the crypto provider used by rustls.
+/// Use AWS LC crypto provider which is FIPS certified
+fn initialize_aws_lc_crypto_provider() {
+    {
+        INIT_CRYPTO.call_once(|| {
+            let provider = rustls::crypto::aws_lc_rs::default_provider();
+            if let Err(_e) = provider.install_default() {
+                let err = "Failed to install the aws_lc crypto provider".to_owned();
+                error!("{err}");
+                // Downstream code will likely fail but graciously
+            }
+        });
+    }
+}
 
 /// Configuration for the `PyKMIP` socket server
 #[derive(Clone)]
@@ -118,30 +129,12 @@ fn handle_client(
     let peer_addr = stream
         .peer_addr()
         .map_or("[N/A]".to_owned(), |sa| sa.to_string());
-    trace!("Client connected from {}", peer_addr);
+    debug!("Client connected from {}", peer_addr);
 
     let mut server_connection = ServerConnection::new(server_config)
         .context("Failed to create rustls server connection")?;
 
-    // Check for client certificate
-    let certs = server_connection.peer_certificates();
-    if certs.is_none() || certs.as_ref().map_or(true, |v| v.is_empty()) {
-        error!("Client did not present a certificate.");
-        return Err(KmsError::Certificate(
-            "Client did not present a certificate".to_owned(),
-        ));
-    }
-    debug!("TLS handshake completed with {}", peer_addr);
-
     let mut tls_stream = rustls::Stream::new(&mut server_connection, stream);
-
-    // // Perform handshake
-    // while server_connection.is_handshaking() {
-    //     tls_stream
-    //         .conn
-    //         .complete_io(&mut server_connection)
-    //         .context("Handshake failed")?;
-    // }
 
     loop {
         // Read 8 bytes of the TTLV header
@@ -198,6 +191,9 @@ pub(crate) fn create_rustls_server_config(
     server_p12_password: &str,
     client_ca_cert_pem: &str,
 ) -> KResult<ServerConfig> {
+    // We need an initialized crypto provider to use rustls
+    initialize_aws_lc_crypto_provider();
+
     // Parse the byte vector as a PKCS#12 object - this uses openssl
     let sealed_p12 = Pkcs12::from_der(server_p12_der)?;
     let p12 = sealed_p12
@@ -205,14 +201,7 @@ pub(crate) fn create_rustls_server_config(
         .context("HTTPS configuration")?;
 
     let mut certs: Vec<CertificateDer> = Vec::new();
-    if let Some(cas) = p12.ca {
-        for ca in cas {
-            let der_bytes = ca
-                .to_der()
-                .context("Failed to encode CA certificate in DER bytes")?;
-            certs.push(CertificateDer::from(der_bytes));
-        }
-    }
+
     let Some(server_cert) = p12.cert else {
         return Err(KmsError::Certificate(
             "No server certificate found in PKCS#12 file".to_owned(),
@@ -222,6 +211,14 @@ pub(crate) fn create_rustls_server_config(
         .to_der()
         .context("Failed to encode server certificate in DER bytes")?;
     certs.push(CertificateDer::from(server_cert));
+    if let Some(cas) = p12.ca {
+        for ca in cas.iter().rev() {
+            let der_bytes = ca
+                .to_der()
+                .context("Failed to encode CA certificate in DER bytes")?;
+            certs.push(CertificateDer::from(der_bytes));
+        }
+    }
 
     let Some(server_private_key) = p12.pkey else {
         return Err(KmsError::Certificate(
@@ -231,9 +228,7 @@ pub(crate) fn create_rustls_server_config(
     let server_private_key_pkcs8 = server_private_key
         .private_key_to_pkcs8()
         .context("Failed to generate the server private key as PKCS#8")?;
-    let server_private_key =
-        PrivatePkcs8KeyDer::from_pem_reader(server_private_key_pkcs8.as_slice())
-            .context("Failed to parse the server private key as PKCS#8")?;
+    let server_private_key = PrivatePkcs8KeyDer::from(server_private_key_pkcs8);
 
     // Create the clients' CA certificate store
     let mut client_auth_roots = RootCertStore::empty();
@@ -245,13 +240,10 @@ pub(crate) fn create_rustls_server_config(
 
     // Enable the client certificate verifier
     let client_auth = WebPkiClientVerifier::builder(client_auth_roots.into())
-        // .with_crls(crls)
         .build()
         .context("failed to create client auth verifier")?;
 
     let mut server_config = ServerConfig::builder()
-        // ServerConfig::builder_with_provider(rustls_openssl::default_provider())
-        // .with_safe_defaults()
         .with_client_cert_verifier(client_auth)
         .with_single_cert(certs, PrivateKeyDer::Pkcs8(server_private_key))
         .context("Invalid server certificate or key")?;

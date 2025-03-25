@@ -115,7 +115,7 @@ impl SocketClient {
 
     /// Send a KMIP request to the server and return the response
     fn _send_request(&self, data: &[u8]) -> KmsClientResult<Vec<u8>> {
-        info!("Sending request: {}", hex::encode(data));
+        debug!("Sending request: {}", hex::encode(data));
 
         // Connect to server
         let stream = TcpStream::connect((self.config.host.as_str(), self.config.port))
