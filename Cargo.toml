@@ -85,9 +85,10 @@ der = { version = "0.7", default-features = false }
 hex = { version = "0.4", default-features = false }
 lazy_static = "1.5"
 leb128 = "0.2"
-libloading = "0.8"
-log = { version = "0.4", default-features = false }
-lru = "0.12"
+libloading = "0.8.6"
+log = { version = "0.4.25", default-features = false }
+lru = "0.12.5"
+native-tls = { version = "0.2", default-features = false }
 num_cpus = "1.16"
 num-format = "0.4"
 num-traits = "0.2"

@@ -1,21 +1,24 @@
+//! Socket client for communicating with a `PyKMIP` server over TLS socket
+//! This client uses a PKCS#12 client certificate for authentication
+//! and a server CA certificate for verifying the server's certificate
+//! The client is thread-safe and can be shared across threads
+//! using `Arc`
 use std::{
     io::{Read, Write},
     net::TcpStream,
     sync::Arc,
 };
 
+use cosmian_kmip::ttlv::{from_ttlv, to_ttlv, KmipFlavor, TTLV};
 use native_tls::{Identity, TlsConnector};
+use serde::{de::DeserializeOwned, Serialize};
 use tracing::{debug, info};
 
-use crate::{error::result::KmipResult, KmipResultHelper};
-
-// load the string content at compile time - same as http_client.rs
-const SERVER_CA_CERTIFICATE: &str = include_str!("server.crt");
-const CLIENT_P12: &[u8; 3501] = include_bytes!("client.p12");
+use crate::error::result::{KmsClientResult, KmsClientResultHelper};
 
 /// Configuration for the `PyKMIP` socket client
 #[derive(Clone)]
-pub(crate) struct PyKmipSocketClientConfig {
+pub struct SocketClientConfig {
     /// Server host
     pub host: String,
     /// Server port
@@ -28,27 +31,19 @@ pub(crate) struct PyKmipSocketClientConfig {
     pub server_ca_cert_pem: String,
 }
 
-impl Default for PyKmipSocketClientConfig {
-    fn default() -> Self {
-        Self {
-            host: "localhost".to_owned(),
-            port: 5696,
-            client_p12: CLIENT_P12.to_vec(),
-            client_p12_secret: "secret".to_owned(),
-            server_ca_cert_pem: SERVER_CA_CERTIFICATE.to_owned(),
-        }
-    }
-}
-
 /// Client for communicating with a `PyKMIP` server over TLS socket
-pub(crate) struct PyKmipSocketClient {
-    config: PyKmipSocketClientConfig,
+/// This client uses a PKCS#12 client certificate for authentication
+/// and a server CA certificate for verifying the server's certificate
+/// The client is thread-safe and can be shared across threads
+/// using `Arc`
+pub struct SocketClient {
+    config: SocketClientConfig,
     connector: Arc<TlsConnector>,
 }
 
-impl PyKmipSocketClient {
+impl SocketClient {
     /// Create a new `PyKMIP` socket client with the specified configuration
-    pub(crate) fn new(config: PyKmipSocketClientConfig) -> KmipResult<Self> {
+    pub fn new(config: SocketClientConfig) -> KmsClientResult<Self> {
         // Create client identity from cert and key
         let identity = Identity::from_pkcs12(&config.client_p12, &config.client_p12_secret)
             .context("Failed to create identity from client PKCS#12")?;
@@ -74,7 +69,52 @@ impl PyKmipSocketClient {
     }
 
     /// Send a KMIP request to the server and return the response
-    pub(crate) fn send_request(&self, data: &[u8]) -> KmipResult<Vec<u8>> {
+    /// This method serializes the request to TTLV, then to bytes,
+    /// sends the bytes to the server, reads the response bytes,
+    /// deserializes the response bytes to TTLV, then to the response object
+    ///
+    /// # Arguments
+    ///
+    /// * `kmip_flavor` - KMIP flavor to use for serialization
+    /// * `request` - Request object to send
+    ///
+    /// # Returns
+    ///
+    /// * `RESP` - Response object
+    ///
+    /// # Errors
+    ///
+    /// * If serialization or deserialization fails
+    /// * If sending or receiving data fails
+    /// * If the server returns an error response
+    /// * If the response is invalid
+    pub fn send_request<REQ: Serialize, RESP: DeserializeOwned>(
+        &self,
+        kmip_flavor: KmipFlavor,
+        request: &REQ,
+    ) -> KmsClientResult<RESP> {
+        // Serialize to TTLV
+        let ttlv_request = to_ttlv(request).context("Failed to serialize request to TTLV")?;
+        // Serialize to bytes
+        let request_data = ttlv_request
+            .to_bytes(kmip_flavor)
+            .context("Failed to serialize TTLV to bytes")?;
+
+        // Send request
+        let response_data = self._send_request(&request_data)?;
+
+        // Deserialize response
+        let ttlv_response = TTLV::from_bytes(&response_data, kmip_flavor)
+            .context("Failed to deserialize response TTLV")?;
+
+        // Deserialize response
+        let response = from_ttlv(ttlv_response)?;
+
+        Ok(response)
+    }
+
+    /// Send a KMIP request to the server and return the response
+    fn _send_request(&self, data: &[u8]) -> KmsClientResult<Vec<u8>> {
         info!("Sending request: {}", hex::encode(data));
 
         // Connect to server
@@ -118,9 +158,4 @@ impl PyKmipSocketClient {
         // Return response
         Ok(response)
     }
-}
-
-/// Helper function to create a `PyKMIP` socket client with default configuration
-pub(crate) fn create_default_client() -> KmipResult<PyKmipSocketClient> {
-    PyKmipSocketClient::new(PyKmipSocketClientConfig::default())
 }
