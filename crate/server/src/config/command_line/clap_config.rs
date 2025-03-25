@@ -19,6 +19,8 @@ impl Default for ClapConfig {
     fn default() -> Self {
         Self {
             db: MainDBConfig::default(),
+            socket_server: SocketServerConfig::default(),
+            tls: TlsConfig::default(),
             http: HttpConfig::default(),
             kms_public_url: None,
             auth: JwtAuthConfig::default(),
@@ -46,6 +48,12 @@ impl Default for ClapConfig {
 pub struct ClapConfig {
     #[clap(flatten)]
     pub db: MainDBConfig,
+
+    #[clap(flatten)]
+    pub socket_server: SocketServerConfig,
+
+    #[clap(flatten)]
+    pub tls: TlsConfig,
 
     #[clap(flatten)]
     pub http: HttpConfig,

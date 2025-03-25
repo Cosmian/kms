@@ -148,8 +148,8 @@ mod tests {
             http: HttpConfig {
                 port: 443,
                 hostname: "[hostname]".to_owned(),
-                https_p12_file: Some(PathBuf::from("[https p12 file]")),
-                https_p12_password: Some("[https p12 password]".to_owned()),
+                tls_p12_file: Some(PathBuf::from("[https p12 file]")),
+                tls_p12_password: Some("[https p12 password]".to_owned()),
                 authority_cert_file: Some(PathBuf::from("[authority cert file]")),
                 api_token_id: None,
             },
