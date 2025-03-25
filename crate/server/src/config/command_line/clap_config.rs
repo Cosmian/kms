@@ -212,6 +212,13 @@ impl fmt::Debug for ClapConfig {
         } else {
             x
         };
+        let x = x.field("socket server", &self.socket_server);
+        let x = x.field("TLS", &self.tls);
+        let x = if self.socket_server.socket_server_start {
+            x.field("socket server", &self.socket_server)
+        } else {
+            x
+        };
         let x = x.field("ui_index_html_folder", &self.ui_config.ui_index_html_folder);
         let x = if self.ui_config.ui_oidc_auth.ui_oidc_client_id.is_some() {
             x.field("ui_oidc_auth", &self.ui_config.ui_oidc_auth)
