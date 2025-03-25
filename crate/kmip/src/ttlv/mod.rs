@@ -4,13 +4,14 @@ mod kmip_big_int;
 mod kmip_ttlv_deserializer;
 mod serialize;
 mod ttlv_struct;
+mod wire;
+
 pub use error::TtlvError;
 pub(crate) use kmip_big_int::KmipBigInt;
 pub use kmip_ttlv_deserializer::{from_ttlv, TtlvDeserializer};
 pub(super) mod kmip_ttlv_serializer;
 pub use kmip_ttlv_serializer::{to_ttlv, TtlvSerializer};
-pub use ttlv_struct::{KmipEnumerationVariant, TTLValue, TtlvType, TTLV};
-mod wire;
+pub use ttlv_struct::{KmipEnumerationVariant, KmipFlavor, TTLValue, TtlvType, TTLV};
 pub use wire::{TTLVBytesDeserializer, TTLVBytesSerializer};
 
 #[allow(

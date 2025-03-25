@@ -1,3 +1,6 @@
+use std::sync::OnceLock;
+
+use cosmian_kmip::ttlv::KmipFlavor;
 use tracing::debug;
 
 use crate::{
@@ -8,8 +11,11 @@ use crate::{
         kmip_operations::Operation,
         kmip_types::{ProtocolVersion, ResultStatusEnumeration},
     },
-    ttlv::{self, from_ttlv, tests::pykmip::socket_client::create_default_client, to_ttlv},
+    SocketClient, SocketClientConfig,
 };
+
+// load the string content at compile time - same as http_client.rs
+const SERVER_CA_CERTIFICATE: &str = include_str!("server.crt");
 
 pub(crate) fn wrap_in_request_message(op: Operation) -> RequestMessage {
     RequestMessage {
@@ -44,24 +50,27 @@ pub(crate) fn unwrap_from_response_message(response: &ResponseMessage) -> Operat
 }
 
 pub(crate) fn send_to_server(req: &RequestMessage) -> ResponseMessage {
-    let req_ttlv = to_ttlv(&req).unwrap();
-    debug!("Request TTLV: {:#?}", req_ttlv);
-    let req_bytes = req_ttlv.to_bytes_1_4().unwrap();
+    // Initialize the client once
+    static CLIENT: OnceLock<SocketClient> = OnceLock::new();
 
-    let resp_bytes = create_default_client()
-        .unwrap()
-        .send_request(&req_bytes)
+    // Get or initialize the client
+    let client = CLIENT.get_or_init(|| {
+        let client_p12: Vec<u8> = include_bytes!("client.p12").to_vec();
+        let config = SocketClientConfig {
+            host: "localhost".to_owned(),
+            port: 5696,
+            client_p12,
+            client_p12_secret: "secret".to_owned(),
+            server_ca_cert_pem: SERVER_CA_CERTIFICATE.to_owned(),
+        };
+
+        SocketClient::new(config).unwrap()
+    });
+
+    let response_message = client
+        .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip1, req)
         .unwrap();
 
-    // Check that we got a response
-    assert!(!resp_bytes.is_empty(), "Empty response");
-
-    // parse the response TTLV bytes
-    let ttlv = ttlv::TTLV::from_bytes_1_4(&resp_bytes).unwrap();
-    debug!("Response TTLV: {:#?}", ttlv);
-
-    // parse the response message
-    let response_message = from_ttlv::<ResponseMessage>(ttlv).unwrap();
     debug!("Response Message: {:#?}", response_message);
     response_message
 }
@@ -73,15 +82,13 @@ macro_rules! send_to_pykmip_server {
         let operation = Operation::$req_variant($req);
 
         // 2. Wrap in RequestMessage
-        let request_message =
-            $crate::ttlv::tests::pykmip::client::wrap_in_request_message(operation);
+        let request_message = $crate::tests::pykmip::client::wrap_in_request_message(operation);
 
         // 3. Send to PyKMIP server
-        let response_message =
-            $crate::ttlv::tests::pykmip::client::send_to_server(&request_message);
+        let response_message = $crate::tests::pykmip::client::send_to_server(&request_message);
 
         // 4 & 5. Unwrap response and extract the specific response type
-        match $crate::ttlv::tests::pykmip::client::unwrap_from_response_message(&response_message) {
+        match $crate::tests::pykmip::client::unwrap_from_response_message(&response_message) {
             Operation::$resp_variant(response) => response,
             other => panic!(
                 "Expected Operation::{}, got {:?}",
