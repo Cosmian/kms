@@ -20,7 +20,7 @@ if [ "$DEBUG_OR_RELEASE" = "release" ]; then
   rm -rf target/"$TARGET"/generate-rpm
   if [ -f /etc/redhat-release ]; then
     cd crate/server && cargo build --target "$TARGET" --release && cd -
-    cargo install --version 0.14.1 cargo-generate-rpm --force
+    cargo install --version 0.16.0 cargo-generate-rpm --force
     cd "$ROOT_FOLDER"
     cargo generate-rpm --target "$TARGET" -p crate/server --metadata-overwrite=pkg/rpm/scriptlets.toml
   elif [ -f /etc/lsb-release ]; then
@@ -68,7 +68,7 @@ fi
 if [ "$DEBUG_OR_RELEASE" = "release" ]; then
   # Before building the crates, test crates individually on specific features
   cargo install --version 0.6.31 cargo-hack --force
-  crates=("crate/kmip" "crate/client")
+  crates=("crate/kmip" "cli/crate/kms_client" "cli/crate/findex_client")
   for crate in "${crates[@]}"; do
     cd "$crate"
     cargo hack test --feature-powerset --all-targets
