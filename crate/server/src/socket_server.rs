@@ -9,9 +9,10 @@ use openssl::pkcs12::Pkcs12;
 use rustls::{
     pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer},
     server::WebPkiClientVerifier,
-    RootCertStore, ServerConfig, ServerConnection,
+    RootCertStore, ServerConfig, ServerConnection, Stream,
 };
 use tracing::{debug, error, info, trace};
+use x509_parser::nom::AsBytes;
 
 use crate::{
     error::KmsError,
@@ -83,12 +84,18 @@ impl SocketServer {
     /// The server will continue to run until an error occurs
     /// or the process is terminated.
     ///
+    /// # Arguments
+    ///
+    /// * `request_handler`: A function that handles incoming requests.
+    /// * It takes the username and request bytes as input and returns the response bytes.
+    /// * The function must be `Send`, `Sync`, and `'static` to be used in a thread.
+    ///
     /// # Errors
     /// - If the server fails to bind to the specified host and port
     /// - If an error occurs while handling a client connection
     pub fn start<F>(&self, request_handler: F) -> KResult<()>
     where
-        F: Fn(&[u8]) -> Vec<u8> + Send + Sync + 'static,
+        F: Fn(&str, &[u8]) -> Vec<u8> + Send + Sync + 'static,
     {
         let addr = format!("{}:{}", self.host, self.port);
         let listener = TcpListener::bind(&addr).context(&format!("Failed to bind to {addr}"))?;
@@ -123,7 +130,7 @@ impl SocketServer {
 fn handle_client(
     stream: &mut TcpStream,
     server_config: Arc<ServerConfig>,
-    handler: &Arc<impl Fn(&[u8]) -> Vec<u8> + Send + Sync>,
+    handler: &Arc<impl Fn(&str, &[u8]) -> Vec<u8> + Send + Sync>,
 ) -> KResult<()> {
     // Accept TLS connection
     let peer_addr = stream
@@ -141,6 +148,8 @@ fn handle_client(
         let mut header = [0_u8; 8];
         match tls_stream.read_exact(&mut header) {
             Ok(()) => {
+                let username = client_username(&tls_stream)?;
+
                 // Parse length from header
                 let length = usize::try_from(u32::from_be_bytes([
                     header[4], header[5], header[6], header[7],
@@ -159,7 +168,7 @@ fn handle_client(
                 debug!("Received request: {}", hex::encode(&request));
 
                 // Process the request
-                let response = handler(&request);
+                let response = handler(&username, &request);
 
                 // Send the response
                 tls_stream
@@ -172,7 +181,7 @@ fn handle_client(
             }
             Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
                 // Client disconnected
-                info!("Client {} disconnected", peer_addr);
+                debug!("Client {} disconnected", peer_addr);
                 break;
             }
             Err(e) => {
@@ -182,6 +191,33 @@ fn handle_client(
     }
 
     Ok(())
+}
+
+/// Extract the common name from the client certificate which is used as the username
+fn client_username(tls_stream: &Stream<ServerConnection, TcpStream>) -> Result<String, KmsError> {
+    // The call to peer_certificate() must be made AFTER the first few bytes are read
+    let client_certificate = tls_stream
+        .conn
+        .peer_certificates()
+        .ok_or_else(|| {
+            // note: this should never happen since the Web PLI client verifier of the config
+            // should have already verified the client certificate
+            KmsError::Certificate("The client did not provide a peer certificate".to_owned())
+        })?
+        .first()
+        .ok_or_else(|| KmsError::Certificate("Failed to get client certificate".to_owned()))?;
+
+    let cert_der_bytes = client_certificate.as_bytes();
+    let x509 = openssl::x509::X509::from_der(cert_der_bytes)?;
+    Ok(x509
+        .subject_name()
+        .entries_by_nid(openssl::nid::Nid::COMMONNAME)
+        .next()
+        .ok_or_else(|| KmsError::Certificate("Failed to get common name".to_owned()))?
+        .data()
+        .as_utf8()
+        .map_err(|_e| KmsError::Certificate("Failed to convert common name to UTF-8".to_owned()))?
+        .to_string())
 }
 
 // Client Certificate Authentication
