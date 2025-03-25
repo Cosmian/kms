@@ -6,9 +6,9 @@
 use std::fmt::{self, Display, Formatter};
 
 use serde::{
+    Deserialize, Serialize,
     de::{self, MapAccess, Visitor},
     ser::SerializeStruct,
-    Deserialize, Serialize,
 };
 use strum::{Display, EnumIter, EnumString};
 use tracing::trace;
@@ -18,7 +18,7 @@ use super::kmip_objects::ObjectType;
 use crate::{
     error::KmipError,
     kmip_2_1::{
-        extra::{tagging::VENDOR_ATTR_TAG, VENDOR_ID_COSMIAN},
+        extra::{VENDOR_ID_COSMIAN, tagging::VENDOR_ATTR_TAG},
         kmip_operations::ErrorReason,
     },
     kmip_error,
@@ -2966,10 +2966,6 @@ impl ValidityIndicator {
 
     #[must_use]
     pub const fn from_bool(b: bool) -> Self {
-        if b {
-            Self::Valid
-        } else {
-            Self::Invalid
-        }
+        if b { Self::Valid } else { Self::Invalid }
     }
 }

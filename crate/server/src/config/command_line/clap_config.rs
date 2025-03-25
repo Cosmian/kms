@@ -6,7 +6,7 @@ use std::{
 use clap::Parser;
 use serde::{Deserialize, Serialize};
 
-use super::{HttpConfig, JwtAuthConfig, MainDBConfig, WorkspaceConfig};
+use super::{HttpConfig, JwtAuthConfig, MainDBConfig, OidcConfig, WorkspaceConfig};
 use crate::{error::KmsError, result::KResult, telemetry::TelemetryConfig};
 
 const DEFAULT_COSMIAN_KMS_CONF: &str = "/etc/cosmian_kms/kms.toml";
@@ -19,6 +19,7 @@ impl Default for ClapConfig {
             db: MainDBConfig::default(),
             http: HttpConfig::default(),
             auth: JwtAuthConfig::default(),
+            ui_oidc_auth: OidcConfig::default(),
             workspace: WorkspaceConfig::default(),
             default_username: DEFAULT_USERNAME.to_owned(),
             force_default_username: false,
@@ -48,6 +49,9 @@ pub struct ClapConfig {
 
     #[clap(flatten)]
     pub auth: JwtAuthConfig,
+
+    #[clap(flatten)]
+    pub ui_oidc_auth: OidcConfig,
 
     #[clap(flatten)]
     pub workspace: WorkspaceConfig,
@@ -187,6 +191,11 @@ impl fmt::Debug for ClapConfig {
         let x = x.field("db", &self.db);
         let x = if self.auth.jwt_issuer_uri.is_some() {
             x.field("auth", &self.auth)
+        } else {
+            x
+        };
+        let x = if self.ui_oidc_auth.ui_oidc_client_id.is_some() {
+            x.field("ui_oidc_auth", &self.ui_oidc_auth)
         } else {
             x
         };

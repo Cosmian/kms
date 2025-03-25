@@ -28,9 +28,11 @@ fips = ["cosmian_kmip/fips", "cosmian_kms_crypto/fips"]
 
 [dependencies]
 actix-cors = "0.6"
+actix-files = "0.6.6"
 actix-identity = "0.6"
 actix-rt = { workspace = true }
 actix-service = "2.0"
+actix-session = { version = "0.8", features = ["cookie-session"] }
 actix-tls = "3.4"
 actix-web = { workspace = true, features = ["macros", "openssl"] }
 alcoholic_jwt = "4091"
@@ -65,6 +67,8 @@ num-bigint-dig = { workspace = true, features = [
   "serde",
   "zeroize",
 ] }
+oauth2 = "5.0.0"
+openidconnect = "4.0.0"
 openssl = { workspace = true }
 opentelemetry = "0.23.0"
 opentelemetry-otlp = { version = "0.16.0", features = ["tonic"] }

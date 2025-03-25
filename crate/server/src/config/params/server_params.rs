@@ -5,7 +5,7 @@ use openssl::x509::X509;
 
 use super::HttpParams;
 use crate::{
-    config::{ClapConfig, IdpConfig},
+    config::{ClapConfig, IdpConfig, OidcConfig},
     kms_bail,
     result::KResult,
 };
@@ -16,6 +16,9 @@ use crate::{
 pub struct ServerParams {
     /// The JWT Config if Auth is enabled
     pub identity_provider_configurations: Option<Vec<IdpConfig>>,
+
+    /// The OIDC config used to handle login from UI
+    pub ui_oidc_auth: OidcConfig,
 
     /// The username to use if no authentication method is provided
     pub default_username: String,
@@ -126,6 +129,7 @@ impl ServerParams {
 
         Ok(Self {
             identity_provider_configurations: conf.auth.extract_idp_configs()?,
+            ui_oidc_auth: conf.ui_oidc_auth,
             main_db_params: Some(conf.db.init(&conf.workspace.init()?)?),
             clear_db_on_start: conf.db.clear_database,
             hostname: conf.http.hostname,
@@ -201,6 +205,7 @@ impl fmt::Debug for ServerParams {
         } else {
             x
         };
+        let x = x.field("ui_oidc_auth", &self.ui_oidc_auth);
         let x = if let Some(verify_cert) = &self.authority_cert_file {
             x.field("verify_cert CN", verify_cert.subject_name())
         } else {
@@ -253,6 +258,7 @@ impl Clone for ServerParams {
     fn clone(&self) -> Self {
         Self {
             identity_provider_configurations: self.identity_provider_configurations.clone(),
+            ui_oidc_auth: self.ui_oidc_auth.clone(),
             default_username: self.default_username.clone(),
             force_default_username: self.force_default_username,
             main_db_params: None,

@@ -126,7 +126,9 @@ mod tests {
     use std::path::PathBuf;
 
     use cosmian_kms_server::{
-        config::{ClapConfig, HttpConfig, JwtAuthConfig, MainDBConfig, WorkspaceConfig},
+        config::{
+            ClapConfig, HttpConfig, JwtAuthConfig, MainDBConfig, OidcConfig, WorkspaceConfig,
+        },
         telemetry::TelemetryConfig,
     };
 
@@ -159,6 +161,12 @@ mod tests {
                     "[jwt audience 1]".to_owned(),
                     "[jwt audience 2]".to_owned(),
                 ]),
+            },
+            ui_oidc_auth: OidcConfig {
+                ui_oidc_client_id: Some("[client id]".to_owned()),
+                ui_oidc_client_secret: Some("[client secret]".to_owned()),
+                ui_oidc_issuer_url: Some("[issuer url]".to_owned()),
+                ui_oidc_logout_url: Some("[logout url]".to_owned()),
             },
             workspace: WorkspaceConfig {
                 root_data_path: PathBuf::from("[root data path]"),
@@ -212,6 +220,12 @@ authority_cert_file = "[authority cert file]"
 jwt_issuer_uri = ["[jwt issuer uri 1]", "[jwt issuer uri 2]"]
 jwks_uri = ["[jwks uri 1]", "[jwks uri 2]"]
 jwt_audience = ["[jwt audience 1]", "[jwt audience 2]"]
+
+[ui_oidc_auth]
+ui_oidc_client_id = "[client id]"
+ui_oidc_client_secret = "[client secret]"
+ui_oidc_issuer_url = "[issuer url]"
+ui_oidc_logout_url = "[logout url]"
 
 [workspace]
 root_data_path = "[root data path]"
