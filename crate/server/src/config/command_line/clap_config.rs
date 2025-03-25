@@ -203,6 +203,13 @@ impl fmt::Debug for ClapConfig {
         } else {
             x
         };
+        let x = x.field("socket server", &self.socket_server);
+        let x = x.field("TLS", &self.tls);
+        let x = if self.socket_server.socket_server_start {
+            x.field("socket server", &self.socket_server)
+        } else {
+            x
+        };
         let x = x.field("KMS http", &self.http);
         let x = x.field("workspace", &self.workspace);
         let x = x.field("default username", &self.default_username);
