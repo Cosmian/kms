@@ -78,13 +78,18 @@ pub async fn start_kms_server(
         openssl::provider::Provider::load(None, "default")?
     };
 
+    if server_params.start_socket_server {
+        // Start the socket server
+        //start_socket_server(server_params).await;
+    }
+
     // Log the server configuration
     info!("KMS Server configuration: {:#?}", server_params);
-    match &server_params.http_params {
-        config::HttpParams::Https(_) => {
+    match &server_params.tls_params {
+        config::TlsParams::Tls(_) => {
             start_https_kms_server(server_params, kms_server_handle_tx).await
         }
-        config::HttpParams::Http => {
+        config::TlsParams::Plain => {
             start_plain_http_kms_server(server_params, kms_server_handle_tx).await
         }
     }
@@ -144,7 +149,7 @@ async fn start_https_kms_server(
     server_params: ServerParams,
     server_handle_transmitter: Option<mpsc::Sender<ServerHandle>>,
 ) -> KResult<()> {
-    let config::HttpParams::Https(p12) = &server_params.http_params else {
+    let config::TlsParams::Tls(p12) = &server_params.tls_params else {
         kms_bail!("http/s: a PKCS#12 file must be provided")
     };
 
@@ -260,7 +265,10 @@ pub async fn prepare_kms_server(
     let use_cert_auth = kms_server.params.authority_cert_file.is_some();
 
     // Determine the address to bind the server to.
-    let address = format!("{}:{}", kms_server.params.hostname, kms_server.params.port);
+    let address = format!(
+        "{}:{}",
+        kms_server.params.http_hostname, kms_server.params.http_port
+    );
 
     // Get the Google Client-Side Encryption JWT authorization config
     debug!("Enable Google CSE JWT Authorization: {enable_google_cse_authentication}");

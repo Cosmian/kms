@@ -16,7 +16,7 @@ use cosmian_kms_crypto::crypto::{
     secret::Secret, symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH,
 };
 use cosmian_kms_server::{
-    config::{ClapConfig, HttpConfig, HttpParams, JwtAuthConfig, MainDBConfig, ServerParams},
+    config::{ClapConfig, HttpConfig, JwtAuthConfig, MainDBConfig, ServerParams, TlsParams},
     start_kms_server::start_kms_server,
 };
 use cosmian_logger::log_init;
@@ -323,10 +323,10 @@ fn generate_http_config(
         if use_client_cert {
             HttpConfig {
                 port,
-                https_p12_file: Some(
+                tls_p12_file: Some(
                     root_dir.join("../../test_data/client_server/server/kmserver.acme.com.p12"),
                 ),
-                https_p12_password: Some("password".to_owned()),
+                tls_p12_password: Some("password".to_owned()),
                 authority_cert_file: Some(
                     root_dir.join("../../test_data/client_server/server/ca.crt"),
                 ),
@@ -336,10 +336,10 @@ fn generate_http_config(
         } else {
             HttpConfig {
                 port,
-                https_p12_file: Some(
+                tls_p12_file: Some(
                     root_dir.join("../../test_data/client_server/server/kmserver.acme.com.p12"),
                 ),
-                https_p12_password: Some("password".to_owned()),
+                tls_p12_password: Some("password".to_owned()),
                 api_token_id,
                 ..HttpConfig::default()
             }
@@ -401,7 +401,7 @@ fn generate_owner_conf(
     let root_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
     // Create a conf
-    let owner_client_conf_path = format!("/tmp/owner_kms_{}.toml", server_params.port);
+    let owner_client_conf_path = format!("/tmp/owner_kms_{}.toml", server_params.http_port);
 
     let gmail_api_conf: Option<GmailApiConf> = std::env::var("TEST_GMAIL_API_CONF")
         .ok()
@@ -409,10 +409,10 @@ fn generate_owner_conf(
 
     let owner_client_conf = KmsClientConfig {
         http_config: HttpClientConfig {
-            server_url: if matches!(server_params.http_params, HttpParams::Https(_)) {
-                format!("https://0.0.0.0:{}", server_params.port)
+            server_url: if matches!(server_params.tls_params, TlsParams::Tls(_)) {
+                format!("https://0.0.0.0:{}", server_params.http_port)
             } else {
-                format!("http://0.0.0.0:{}", server_params.port)
+                format!("http://0.0.0.0:{}", server_params.http_port)
             },
             accept_invalid_certs: true,
             access_token: set_access_token(server_params, api_token),
