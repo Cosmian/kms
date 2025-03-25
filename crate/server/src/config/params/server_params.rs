@@ -3,7 +3,7 @@ use std::{collections::HashMap, fmt, path::PathBuf};
 use cosmian_kms_server_database::MainDbParams;
 use openssl::x509::X509;
 
-use super::HttpParams;
+use super::TlsParams;
 use crate::{
     config::{ClapConfig, IdpConfig},
     kms_bail,
@@ -13,6 +13,7 @@ use crate::{
 /// This structure is the context used by the server
 /// while it is running. There is a singleton instance
 /// shared between all threads.
+#[allow(clippy::struct_excessive_bools)]
 pub struct ServerParams {
     /// The JWT Config if Auth is enabled
     pub identity_provider_configurations: Option<Vec<IdpConfig>>,
@@ -30,15 +31,27 @@ pub struct ServerParams {
     /// Whether to clear the database on start
     pub clear_db_on_start: bool,
 
-    pub hostname: String,
+    /// Whether the socket server should be started
+    pub start_socket_server: bool,
 
-    pub port: u16,
+    /// The socket server hostname
+    pub socket_server_hostname: String,
 
-    pub http_params: HttpParams,
+    /// The socket server port
+    pub socket_server_port: u16,
+
+    /// The TLS parameters of the server
+    pub tls_params: TlsParams,
 
     /// The certificate used to verify the client TLS certificates
     /// used for authentication
     pub authority_cert_file: Option<X509>,
+
+    /// The hostname of the HTTP server
+    pub http_hostname: String,
+
+    /// The port of the HTTP server
+    pub http_port: u16,
 
     /// The API authentication token used both server and client side
     pub api_token_id: Option<String>,
@@ -92,14 +105,14 @@ impl ServerParams {
     ///
     /// Returns an error if the conversion from `ClapConfig` to `ServerParams` fails.
     pub fn try_from(conf: ClapConfig) -> KResult<Self> {
-        let http_params = HttpParams::try_from(&conf.http)?;
+        let tls_params = TlsParams::try_from(&conf.tls)?;
 
         // Should we verify the client TLS certificates?
         let authority_cert_file = conf
-            .http
+            .tls
             .authority_cert_file
             .map(|cert_file| {
-                if http_params.is_running_https() {
+                if tls_params.is_running_tls() {
                     Self::load_cert(&cert_file)
                 } else {
                     kms_bail!(
@@ -128,9 +141,12 @@ impl ServerParams {
             identity_provider_configurations: conf.auth.extract_idp_configs()?,
             main_db_params: Some(conf.db.init(&conf.workspace.init()?)?),
             clear_db_on_start: conf.db.clear_database,
-            hostname: conf.http.hostname,
-            port: conf.http.port,
-            http_params,
+            start_socket_server: conf.socket_server.socket_server_start,
+            socket_server_hostname: conf.socket_server.socket_server_hostname,
+            socket_server_port: conf.socket_server.socket_server_port,
+            http_hostname: conf.http.hostname,
+            http_port: conf.http.port,
+            tls_params,
             default_username: conf.default_username,
             force_default_username: conf.force_default_username,
             authority_cert_file,
@@ -180,13 +196,13 @@ impl fmt::Debug for ServerParams {
                 "kms_url",
                 &format!(
                     "http{}://{}:{}",
-                    if self.http_params.is_running_https() {
+                    if self.tls_params.is_running_tls() {
                         "s"
                     } else {
                         ""
                     },
-                    &self.hostname,
-                    &self.port
+                    &self.http_hostname,
+                    &self.http_port
                 ),
             )
             .field("db_params", &self.main_db_params)
@@ -201,6 +217,18 @@ impl fmt::Debug for ServerParams {
         } else {
             x
         };
+        let x = if self.start_socket_server {
+            x.field(
+                "socket_server",
+                &format!(
+                    "{}:{}",
+                    &self.socket_server_hostname, &self.socket_server_port
+                ),
+            )
+        } else {
+            x
+        };
+
         let x = if let Some(verify_cert) = &self.authority_cert_file {
             x.field("verify_cert CN", verify_cert.subject_name())
         } else {
@@ -209,7 +237,7 @@ impl fmt::Debug for ServerParams {
         let x = x
             .field("default_username", &self.default_username)
             .field("force_default_username", &self.force_default_username);
-        let x = x.field("http_params", &self.http_params);
+        let x = x.field("http_params", &self.tls_params);
         let x = x.field(
             "google_cse_disable_tokens_validation",
             &self.google_cse_disable_tokens_validation,
@@ -257,9 +285,12 @@ impl Clone for ServerParams {
             force_default_username: self.force_default_username,
             main_db_params: None,
             clear_db_on_start: self.clear_db_on_start,
-            hostname: self.hostname.clone(),
-            port: self.port,
-            http_params: HttpParams::Http,
+            start_socket_server: self.start_socket_server,
+            socket_server_hostname: self.socket_server_hostname.clone(),
+            socket_server_port: self.socket_server_port,
+            http_hostname: self.http_hostname.clone(),
+            http_port: self.http_port,
+            tls_params: TlsParams::Plain,
             authority_cert_file: self.authority_cert_file.clone(),
             api_token_id: self.api_token_id.clone(),
             google_cse_disable_tokens_validation: self.google_cse_disable_tokens_validation,

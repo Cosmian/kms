@@ -7,7 +7,12 @@ use clap::Parser;
 use serde::{Deserialize, Serialize};
 
 use super::{HttpConfig, JwtAuthConfig, MainDBConfig, WorkspaceConfig};
-use crate::{error::KmsError, result::KResult, telemetry::TelemetryConfig};
+use crate::{
+    config::{SocketServerConfig, TlsConfig},
+    error::KmsError,
+    result::KResult,
+    telemetry::TelemetryConfig,
+};
 
 const DEFAULT_COSMIAN_KMS_CONF: &str = "/etc/cosmian_kms/kms.toml";
 const DEFAULT_USERNAME: &str = "admin";
@@ -17,6 +22,8 @@ impl Default for ClapConfig {
     fn default() -> Self {
         Self {
             db: MainDBConfig::default(),
+            socket_server: SocketServerConfig::default(),
+            tls: TlsConfig::default(),
             http: HttpConfig::default(),
             auth: JwtAuthConfig::default(),
             workspace: WorkspaceConfig::default(),
@@ -42,6 +49,12 @@ impl Default for ClapConfig {
 pub struct ClapConfig {
     #[clap(flatten)]
     pub db: MainDBConfig,
+
+    #[clap(flatten)]
+    pub socket_server: SocketServerConfig,
+
+    #[clap(flatten)]
+    pub tls: TlsConfig,
 
     #[clap(flatten)]
     pub http: HttpConfig,
