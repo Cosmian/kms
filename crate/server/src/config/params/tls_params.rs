@@ -1,9 +1,10 @@
-use std::fmt;
+use std::{fmt, path::PathBuf};
 
 use openssl::pkcs12::{ParsedPkcs12_2, Pkcs12};
 
 use crate::{
-    config::TlsConfig,
+    config::{HttpConfig, TlsConfig},
+    error::KmsError,
     result::{KResult, KResultHelper},
 };
 
@@ -20,6 +21,7 @@ impl TlsParams {
     /// # Arguments
     ///
     /// * `config` - The `HttpConfig` object containing the configuration parameters.
+    /// * `deprecated_config` - The `HttpConfig` object containing the deprecated configuration parameters.
     ///
     /// # Returns
     ///
@@ -28,20 +30,16 @@ impl TlsParams {
     /// # Errors
     ///
     /// This function can return an error if there is an issue reading the PKCS#12 file or parsing it.
-    pub fn try_from(config: &TlsConfig) -> KResult<Self> {
-        // start in HTTPS mode if a PKCS#12 file is provided
+    pub fn try_from(config: &TlsConfig, deprecated_config: &HttpConfig) -> KResult<Self> {
         if let (Some(p12_file), Some(p12_password)) =
             (&config.tls_p12_file, &config.tls_p12_password)
         {
-            // Open and read the file into a byte vector
-            let der_bytes = std::fs::read(p12_file)?;
-            // Parse the byte vector as a PKCS#12 object
-            let sealed_p12 = Pkcs12::from_der(der_bytes.as_slice())?;
-            let p12 = sealed_p12
-                .parse2(p12_password)
-                .context("HTTPS configuration")?;
-            Ok(Self::Tls(p12))
-        // else start in HTTP mode which is the default
+            open_p12(p12_file, p12_password)
+        } else if let (Some(p12_file), Some(p12_password)) = (
+            &deprecated_config.https_p12_file,
+            &deprecated_config.https_p12_password,
+        ) {
+            open_p12(p12_file, p12_password)
         } else {
             Ok(Self::Plain)
         }
@@ -56,6 +54,18 @@ impl TlsParams {
     pub const fn is_running_tls(&self) -> bool {
         matches!(self, Self::Tls(_))
     }
+}
+
+/// Opens a PKCS#12 file and parses it into a `TlsParams` object.
+fn open_p12(p12_file: &PathBuf, p12_password: &str) -> Result<TlsParams, KmsError> {
+    // Open and read the file into a byte vector
+    let der_bytes = std::fs::read(p12_file)?;
+    // Parse the byte vector as a PKCS#12 object
+    let sealed_p12 = Pkcs12::from_der(der_bytes.as_slice())?;
+    let p12 = sealed_p12
+        .parse2(p12_password)
+        .context("HTTPS configuration")?;
+    Ok(TlsParams::Tls(p12))
 }
 
 impl fmt::Debug for TlsParams {
