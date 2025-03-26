@@ -45,8 +45,7 @@ fn load_test_config() -> SocketServerConfig {
     SocketServerConfig {
         host: TEST_HOST.to_owned(),
         port: TEST_PORT,
-        server_p12_der,
-        server_p12_password,
+        p12,
         client_ca_cert_pem,
     }
 }
