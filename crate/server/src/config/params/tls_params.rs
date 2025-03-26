@@ -11,10 +11,10 @@ use crate::{
 /// The TLS parameters of the API server
 pub struct TlsParams {
     /// The TLS private key and certificate of the HTTP server and Socket server
-    p12: ParsedPkcs12_2,
+    pub p12: ParsedPkcs12_2,
     /// The certificate used to verify the client TLS certificates
     /// used for authentication in PEM format
-    pub authority_cert_file: Option<Vec<u8>>,
+    pub client_ca_cert_pem: Option<Vec<u8>>,
 }
 
 /// Represents the HTTP parameters for the server configuration.
@@ -60,7 +60,7 @@ impl TlsParams {
         };
         Ok(Some(Self {
             p12,
-            authority_cert_file,
+            client_ca_cert_pem: authority_cert_file,
         }))
     }
 }
@@ -78,17 +78,14 @@ fn open_p12(p12_file: &PathBuf, p12_password: &str) -> Result<ParsedPkcs12_2, Km
 
 impl fmt::Debug for TlsParams {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Tls(ParsedPkcs12_2 {
-                cert: Some(x509), ..
-            }) => f
-                .debug_tuple("server certificate CN")
-                .field(&x509.subject_name())
-                .finish(),
-            Self::Tls(ParsedPkcs12_2 { cert: None, .. }) => {
-                write!(f, "server certificate CN unknown. THIS IS AN ERROR")
-            }
-            Self::Plain => write!(f, "Http"),
-        }
+        f.debug_struct("TlsParams")
+            .field(
+                "p12",
+                &self.p12.cert.as_ref().map_or("[N/A]".to_owned(), |cert| {
+                    format!("{:?}", cert.subject_name())
+                }),
+            )
+            .field("authority_cert_file ? ", &self.client_ca_cert_pem.is_some())
+            .finish()
     }
 }

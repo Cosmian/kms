@@ -15,7 +15,7 @@ use tracing::{debug, error, info, trace};
 use x509_parser::nom::AsBytes;
 
 use crate::{
-    config::{ServerParams, TlsParams::Tls},
+    config::ServerParams,
     error::KmsError,
     result::{KResult, KResultHelper},
 };
@@ -44,30 +44,31 @@ pub struct SocketServerConfig<'a> {
     pub host: String,
     /// Server port
     pub port: u16,
-
+    /// Server certificate and private key (PKCS#12 format)
     pub p12: &'a ParsedPkcs12_2,
-    // /// Server certificates and key (PKCS#12 format)
-    // pub server_p12_der: Vec<u8>,
-    // /// Server PKCS#12 password
-    // pub server_p12_password: String,
-    // /// Client CA certificate (PEM format, X509)
-    pub client_ca_cert_pem: String,
+    /// Client CA certificate (PEM format, X509)
+    pub client_ca_cert_pem: &'a [u8],
 }
 
 impl<'a> TryFrom<&'a ServerParams> for SocketServerConfig<'a> {
     type Error = KmsError;
 
-    fn try_from(params: &ServerParams) -> Result<Self, Self::Error> {
-        let Tls(p12) = &params.tls_params else {
+    fn try_from(params: &'a ServerParams) -> Result<Self, Self::Error> {
+        let Some(tls_params) = &params.tls_params else {
             return Err(KmsError::NotSupported(
                 "The Socket server cannot be started: TLS parameters are not set".to_owned(),
+            ));
+        };
+        let Some(client_ca_cert_pem) = &tls_params.client_ca_cert_pem else {
+            return Err(KmsError::NotSupported(
+                "The Socket server cannot be started: Client CA certificate is not set".to_owned(),
             ));
         };
         Ok(Self {
             host: params.socket_server_hostname.to_owned(),
             port: params.socket_server_port,
-            p12,
-            client_ca_cert_pem: params.authority_cert_file.,
+            p12: &tls_params.p12,
+            client_ca_cert_pem,
         })
     }
 }
@@ -87,11 +88,7 @@ impl SocketServer {
     /// - If the client CA certificate is invalid
     /// - If the server fails to bind to the specified host and port
     pub fn instantiate(config: &SocketServerConfig) -> KResult<Self> {
-        let server_config = Arc::new(create_rustls_server_config(
-            &config.server_p12_der,
-            &config.server_p12_password,
-            &config.client_ca_cert_pem,
-        )?);
+        let server_config = Arc::new(create_rustls_server_config(config)?);
         Ok(Self {
             host: config.host.clone(),
             port: config.port,
@@ -245,9 +242,7 @@ fn client_username(tls_stream: &Stream<ServerConnection, TcpStream>) -> Result<S
 // Client Certificate Authentication
 // Build a rustls ServerConfig supporting client cert auth
 pub(crate) fn create_rustls_server_config(
-    server_p12_der: &[u8],
-    server_p12_password: &str,
-    client_ca_cert_pem: &str,
+    server_config: &SocketServerConfig,
 ) -> KResult<ServerConfig> {
     // We need an initialized crypto provider to use rustls
     initialize_aws_lc_crypto_provider();
