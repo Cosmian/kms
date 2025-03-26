@@ -136,23 +136,6 @@ impl ServerParams {
         let http_params = HttpParams::try_from(&conf.http)?;
         let tls_params = TlsParams::try_from(&conf.tls, &conf.http)?;
 
-        // Should we verify the client TLS certificates?
-        let authority_cert_file = conf
-            .tls
-            .authority_cert_file
-            .or(conf.http.authority_cert_file) // support deprecated config
-            .map(|cert_file| {
-                if tls_params.is_running_tls() {
-                    Self::load_cert(&cert_file)
-                } else {
-                    kms_bail!(
-                        "The authority certificate file can only be used when the server is \
-                         running in HTTPS mode"
-                    )
-                }
-            })
-            .transpose()?;
-
         let slot_passwords: HashMap<usize, Option<String>> = conf
             .hsm_slot
             .iter()
@@ -185,7 +168,6 @@ impl ServerParams {
             http_params,
             default_username: conf.default_username,
             force_default_username: conf.force_default_username,
-            authority_cert_file,
             api_token_id: conf.http.api_token_id,
             google_cse_disable_tokens_validation: conf.google_cse_disable_tokens_validation,
             google_cse_kacls_url: conf.google_cse_kacls_url,
@@ -235,11 +217,7 @@ impl fmt::Debug for ServerParams {
                 "kms_url",
                 &format!(
                     "http{}://{}:{}",
-                    if self.tls_params.is_running_tls() {
-                        "s"
-                    } else {
-                        ""
-                    },
+                    if self.tls_params.is_some() { "s" } else { "" },
                     &self.http_hostname,
                     &self.http_port
                 ),
@@ -271,11 +249,6 @@ impl fmt::Debug for ServerParams {
             x
         };
 
-        let x = if let Some(verify_cert) = &self.authority_cert_file {
-            x.field("verify_cert CN", verify_cert.subject_name())
-        } else {
-            x
-        };
         let x = x
             .field("default_username", &self.default_username)
             .field("force_default_username", &self.force_default_username);
@@ -340,6 +313,7 @@ impl Clone for ServerParams {
             kms_public_url: self.kms_public_url.clone(),
             http_params: HttpParams::Http,
             authority_cert_file: self.authority_cert_file.clone(),
+            tls_params: None,
             api_token_id: self.api_token_id.clone(),
             google_cse_disable_tokens_validation: self.google_cse_disable_tokens_validation,
             google_cse_kacls_url: self.google_cse_kacls_url.clone(),
