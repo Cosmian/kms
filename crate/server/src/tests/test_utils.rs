@@ -18,7 +18,7 @@ use uuid::Uuid;
 
 use super::google_cse::utils::google_cse_auth;
 use crate::{
-    config::{ClapConfig, HttpConfig, MainDBConfig, ServerParams},
+    config::{ClapConfig, MainDBConfig, ServerParams, TlsConfig},
     core::KMS,
     kms_bail,
     result::KResult,
@@ -39,7 +39,7 @@ pub(crate) fn https_clap_config_opts(google_cse_kacls_url: Option<String>) -> Cl
     }
 
     ClapConfig {
-        http: HttpConfig {
+        tls: TlsConfig {
             tls_p12_file: Some(PathBuf::from("src/tests/kmserver.acme.com.p12")),
             tls_p12_password: Some("password".to_owned()),
             ..Default::default()

@@ -12,7 +12,7 @@ use std::{
 use cosmian_kmip::ttlv::{from_ttlv, to_ttlv, KmipFlavor, TTLV};
 use native_tls::{Identity, TlsConnector};
 use serde::{de::DeserializeOwned, Serialize};
-use tracing::{debug, info};
+use tracing::debug;
 
 use crate::error::result::{KmsClientResult, KmsClientResultHelper};
 

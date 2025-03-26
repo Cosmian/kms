@@ -105,12 +105,13 @@ impl ServerParams {
     ///
     /// Returns an error if the conversion from `ClapConfig` to `ServerParams` fails.
     pub fn try_from(conf: ClapConfig) -> KResult<Self> {
-        let tls_params = TlsParams::try_from(&conf.tls)?;
+        let tls_params = TlsParams::try_from(&conf.tls, &conf.http)?;
 
         // Should we verify the client TLS certificates?
         let authority_cert_file = conf
             .tls
             .authority_cert_file
+            .or(conf.http.authority_cert_file) // support deprecated config
             .map(|cert_file| {
                 if tls_params.is_running_tls() {
                     Self::load_cert(&cert_file)

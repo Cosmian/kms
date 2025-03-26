@@ -126,7 +126,10 @@ mod tests {
     use std::path::PathBuf;
 
     use cosmian_kms_server::{
-        config::{ClapConfig, HttpConfig, JwtAuthConfig, MainDBConfig, WorkspaceConfig},
+        config::{
+            ClapConfig, HttpConfig, JwtAuthConfig, MainDBConfig, SocketServerConfig, TlsConfig,
+            WorkspaceConfig,
+        },
         telemetry::TelemetryConfig,
     };
 
@@ -141,13 +144,21 @@ mod tests {
                 redis_findex_label: Some("[redis findex label]".to_owned()),
                 clear_database: false,
             },
+            socket_server: SocketServerConfig {
+                socket_server_start: false,
+                socket_server_port: 5696,
+                socket_server_hostname: "0.0.0.0".to_string(),
+            },
+            tls: TlsConfig {
+                tls_p12_file: Some(PathBuf::from("[tls p12 file]")),
+                tls_p12_password: Some("[tls p12 password]".to_owned()),
+                authority_cert_file: Some(PathBuf::from("[authority cert file]")),
+            },
             http: HttpConfig {
                 port: 443,
                 hostname: "[hostname]".to_owned(),
-                tls_p12_file: Some(PathBuf::from("[https p12 file]")),
-                tls_p12_password: Some("[https p12 password]".to_owned()),
-                authority_cert_file: Some(PathBuf::from("[authority cert file]")),
                 api_token_id: None,
+                ..Default::default()
             },
             auth: JwtAuthConfig {
                 jwt_issuer_uri: Some(vec![
@@ -185,6 +196,7 @@ mod tests {
 default_username = "[default username]"
 force_default_username = false
 google_cse_kacls_url = "[google cse kacls url]"
+google_cse_disable_tokens_validation = false
 ms_dke_service_url = "[ms dke service url]"
 info = false
 hsm_model = ""
@@ -200,12 +212,19 @@ redis_master_password = "[redis master password]"
 redis_findex_label = "[redis findex label]"
 clear_database = false
 
+[socket_server]
+socket_server_start = false
+socket_server_port = 5696
+socket_server_hostname = "0.0.0.0"
+
+[tls]
+tls_p12_file = "[tls p12 file]"
+tls_p12_password = "[tls p12 password]"
+authority_cert_file = "[authority cert file]"
+
 [http]
 port = 443
 hostname = "[hostname]"
-https_p12_file = "[https p12 file]"
-https_p12_password = "[https p12 password]"
-authority_cert_file = "[authority cert file]"
 
 [auth]
 jwt_issuer_uri = ["[jwt issuer uri 1]", "[jwt issuer uri 2]"]
@@ -221,7 +240,6 @@ otlp = "http://localhost:4317"
 quiet = false
 "#;
 
-        // println!("{}", toml::to_string(&config).unwrap().trim());
         assert_eq!(toml_string.trim(), toml::to_string(&config).unwrap().trim());
     }
 }
