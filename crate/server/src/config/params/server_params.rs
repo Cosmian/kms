@@ -48,7 +48,7 @@ pub struct ServerParams {
     pub socket_server_port: u16,
 
     /// The TLS parameters of the server
-    pub tls_params: TlsParams,
+    pub tls_params: Option<TlsParams>,
 
     /// The public URL of the exposed KMS server
     pub kms_public_url: Option<String>,
