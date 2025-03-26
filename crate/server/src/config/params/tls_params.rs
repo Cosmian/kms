@@ -9,9 +9,12 @@ use crate::{
 };
 
 /// The TLS parameters of the API server
-pub enum TlsParams {
-    Tls(ParsedPkcs12_2),
-    Plain,
+pub struct TlsParams {
+    /// The TLS private key and certificate of the HTTP server and Socket server
+    p12: ParsedPkcs12_2,
+    /// The certificate used to verify the client TLS certificates
+    /// used for authentication in PEM format
+    pub authority_cert_file: Option<Vec<u8>>,
 }
 
 /// Represents the HTTP parameters for the server configuration.
@@ -30,42 +33,47 @@ impl TlsParams {
     /// # Errors
     ///
     /// This function can return an error if there is an issue reading the PKCS#12 file or parsing it.
-    pub fn try_from(config: &TlsConfig, deprecated_config: &HttpConfig) -> KResult<Self> {
-        if let (Some(p12_file), Some(p12_password)) =
+    pub fn try_from(config: &TlsConfig, deprecated_config: &HttpConfig) -> KResult<Option<Self>> {
+        let p12 = if let (Some(p12_file), Some(p12_password)) =
             (&config.tls_p12_file, &config.tls_p12_password)
         {
-            open_p12(p12_file, p12_password)
+            open_p12(p12_file, p12_password)?
         } else if let (Some(p12_file), Some(p12_password)) = (
             &deprecated_config.https_p12_file,
             &deprecated_config.https_p12_password,
         ) {
-            open_p12(p12_file, p12_password)
+            open_p12(p12_file, p12_password)?
         } else {
-            Ok(Self::Plain)
-        }
-    }
-
-    /// Checks if the server is running in TLS mode.
-    ///
-    /// # Returns
-    ///
-    /// Returns `true` if the server is running in HTTPS mode, `false` otherwise.
-    #[must_use]
-    pub const fn is_running_tls(&self) -> bool {
-        matches!(self, Self::Tls(_))
+            return Ok(None);
+        };
+        let authority_cert_file = if let Some(authority_cert_file) = config
+            .authority_cert_file
+            .as_ref()
+            .or(deprecated_config.authority_cert_file.as_ref())
+        {
+            Some(
+                std::fs::read(authority_cert_file)
+                    .context("TLS configuration. Failed opening authority cert file")?,
+            )
+        } else {
+            None
+        };
+        Ok(Some(Self {
+            p12,
+            authority_cert_file,
+        }))
     }
 }
 
 /// Opens a PKCS#12 file and parses it into a `TlsParams` object.
-fn open_p12(p12_file: &PathBuf, p12_password: &str) -> Result<TlsParams, KmsError> {
+fn open_p12(p12_file: &PathBuf, p12_password: &str) -> Result<ParsedPkcs12_2, KmsError> {
     // Open and read the file into a byte vector
     let der_bytes = std::fs::read(p12_file)?;
     // Parse the byte vector as a PKCS#12 object
     let sealed_p12 = Pkcs12::from_der(der_bytes.as_slice())?;
-    let p12 = sealed_p12
+    Ok(sealed_p12
         .parse2(p12_password)
-        .context("HTTPS configuration")?;
-    Ok(TlsParams::Tls(p12))
+        .context("TLS configuration. Failed opening P12")?)
 }
 
 impl fmt::Debug for TlsParams {

@@ -5,7 +5,7 @@ use std::{
     thread,
 };
 
-use openssl::pkcs12::Pkcs12;
+use openssl::pkcs12::{ParsedPkcs12_2, Pkcs12};
 use rustls::{
     pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer},
     server::WebPkiClientVerifier,
@@ -15,9 +15,11 @@ use tracing::{debug, error, info, trace};
 use x509_parser::nom::AsBytes;
 
 use crate::{
+    config::{ServerParams, TlsParams::Tls},
     error::KmsError,
     result::{KResult, KResultHelper},
 };
+
 static INIT_CRYPTO: Once = Once::new();
 
 /// Initialize the crypto provider used by rustls.
@@ -37,17 +39,37 @@ fn initialize_aws_lc_crypto_provider() {
 
 /// Configuration for the `PyKMIP` socket server
 #[derive(Clone)]
-pub struct SocketServerConfig {
+pub struct SocketServerConfig<'a> {
     /// Server host
     pub host: String,
     /// Server port
     pub port: u16,
-    /// Server certificates and key (PKCS#12 format)
-    pub server_p12_der: Vec<u8>,
-    /// Server PKCS#12 password
-    pub server_p12_password: String,
-    /// Client CA certificate (PEM format, X509)
+
+    pub p12: &'a ParsedPkcs12_2,
+    // /// Server certificates and key (PKCS#12 format)
+    // pub server_p12_der: Vec<u8>,
+    // /// Server PKCS#12 password
+    // pub server_p12_password: String,
+    // /// Client CA certificate (PEM format, X509)
     pub client_ca_cert_pem: String,
+}
+
+impl<'a> TryFrom<&'a ServerParams> for SocketServerConfig<'a> {
+    type Error = KmsError;
+
+    fn try_from(params: &ServerParams) -> Result<Self, Self::Error> {
+        let Tls(p12) = &params.tls_params else {
+            return Err(KmsError::NotSupported(
+                "The Socket server cannot be started: TLS parameters are not set".to_owned(),
+            ));
+        };
+        Ok(Self {
+            host: params.socket_server_hostname.to_owned(),
+            port: params.socket_server_port,
+            p12,
+            client_ca_cert_pem: params.authority_cert_file.,
+        })
+    }
 }
 
 /// Server for handling `PyKMIP` requests over TLS socket

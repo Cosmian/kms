@@ -41,11 +41,7 @@ pub struct ServerParams {
     pub socket_server_port: u16,
 
     /// The TLS parameters of the server
-    pub tls_params: TlsParams,
-
-    /// The certificate used to verify the client TLS certificates
-    /// used for authentication
-    pub authority_cert_file: Option<X509>,
+    pub tls_params: Option<TlsParams>,
 
     /// The hostname of the HTTP server
     pub http_hostname: String,

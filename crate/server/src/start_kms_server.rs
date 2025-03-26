@@ -1,4 +1,7 @@
-use std::sync::{mpsc, Arc};
+use std::{
+    sync::{mpsc, Arc},
+    thread::JoinHandle,
+};
 
 use actix_cors::Cors;
 use actix_identity::IdentityMiddleware;
@@ -26,6 +29,7 @@ use crate::{
         google_cse::{self, GoogleCseConfig},
         kmip, ms_dke,
     },
+    socket_server::SocketServer,
 };
 
 /// Starts the Key Management System (KMS) server based on the provided configuration.
@@ -71,9 +75,10 @@ pub async fn start_kms_server(
         openssl::provider::Provider::load(None, "default")?
     };
 
+    let mut _socket_server_handle: Option<JoinHandle<()>> = None;
     if server_params.start_socket_server {
         // Start the socket server
-        //start_socket_server(server_params).await;
+        _socket_server_handle = Some(start_socket_server(&server_params)?);
     }
 
     // Log the server configuration
@@ -86,6 +91,17 @@ pub async fn start_kms_server(
             start_plain_http_kms_server(server_params, kms_server_handle_tx).await
         }
     }
+}
+
+fn start_socket_server(server_params: &ServerParams) -> KResult<JoinHandle<()>> {
+    // Start the socket server
+    let socket_server = SocketServer::instantiate(server_params);
+    let socket_server_handle = std::thread::spawn(move || {
+        if let Err(e) = socket_server.start() {
+            error!("Socket server error: {e}");
+        }
+    });
+    Ok(socket_server_handle)
 }
 
 /// Start a plain HTTP KMS server
