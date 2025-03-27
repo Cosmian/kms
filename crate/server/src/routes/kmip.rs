@@ -140,11 +140,19 @@ pub(crate) fn kmip_binary(
     // let ttlv = TTLV::from_bytes(&body)?;
     // let user = kms.get_user(&req_http);
     // info!(target: "kmip", user=user, tag=ttlv.tag.as_str(), "POST /kmip Binary. Request: {:?} {}", ttlv.tag.as_str(), user);
-
+    //
     // let response_ttlv = handle_ttlv_2_1(&kms, ttlv, &user, None).await?;
     // Ok(HttpResponse::Ok()
     //     .content_type("application/octet-stream")
     //     .body(response_ttlv.to_bytes()?))
+}
+
+pub(crate) fn handle_ttlv_bytes(username: &str, ttlv_bytes: &[u8], _kms: Arc<KMS>) -> Vec<u8> {
+    info!(
+        "DUMMY HANDLER ECHOING BACK:  {username} -> {} - ",
+        hex::encode(ttlv_bytes)
+    );
+    ttlv_bytes.to_vec()
 }
 
 fn get_kmip_version(ttlv: &TTLV) -> KResult<(i32, i32)> {

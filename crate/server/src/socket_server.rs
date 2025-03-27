@@ -19,6 +19,7 @@ use x509_parser::nom::AsBytes;
 
 use crate::{
     config::ServerParams,
+    core::KMS,
     error::KmsError,
     kms_bail,
     result::{KResult, KResultHelper},
@@ -116,14 +117,14 @@ impl SocketServer {
     /// # Errors
     /// - If the server fails to bind to the specified host and port
     /// - If an error occurs while handling a client connection
-    pub fn start<F>(&self, request_handler: F) -> KResult<()>
+    pub fn start<F>(&self, kms_server: Arc<KMS>, request_handler: F) -> KResult<()>
     where
-        F: Fn(&str, &[u8]) -> Vec<u8> + Send + Sync + 'static,
+        F: Fn(&str, &[u8], Arc<KMS>) -> Vec<u8> + Send + Sync + 'static,
     {
         let addr = format!("{}:{}", self.host, self.port);
         let server_config = self.server_config.clone();
         let handler = Arc::new(request_handler);
-        Self::start_listening(&addr, &server_config, &handler, None)?;
+        Self::start_listening(kms_server, &addr, &server_config, &handler, None)?;
         Ok(())
     }
 
@@ -143,9 +144,13 @@ impl SocketServer {
     /// - If the server fails to bind to the specified host and port
     /// - If an error occurs while handling a client connection
     ///
-    pub fn start_threaded<F>(&self, request_handler: F) -> KResult<JoinHandle<()>>
+    pub fn start_threaded<F>(
+        &self,
+        kms_server: Arc<KMS>,
+        request_handler: F,
+    ) -> KResult<JoinHandle<()>>
     where
-        F: Fn(&str, &[u8]) -> Vec<u8> + Send + Sync + 'static,
+        F: Fn(&str, &[u8], Arc<KMS>) -> Vec<u8> + Send + Sync + 'static,
     {
         let addr = format!("{}:{}", self.host, self.port);
         let server_config = self.server_config.clone();
@@ -154,7 +159,13 @@ impl SocketServer {
 
         let thread_handle = thread::spawn(move || {
             // we swallow the error if any, it will be received by the mpsc receiver
-            let _swallowed = Self::start_listening(&addr, &server_config, &handler, Some(tx));
+            let _swallowed = Self::start_listening(
+                kms_server.clone(),
+                &addr,
+                &server_config,
+                &handler,
+                Some(tx),
+            );
         });
         trace!("Waiting for test socket server to start...");
         let state = rx
@@ -166,13 +177,14 @@ impl SocketServer {
     }
 
     fn start_listening<F>(
+        kms_server: Arc<KMS>,
         addr: &str,
         server_config: &Arc<ServerConfig>,
         handler: &Arc<F>,
         start_notifier: Option<mpsc::Sender<KResult<()>>>,
     ) -> Result<(), KmsError>
     where
-        F: Fn(&str, &[u8]) -> Vec<u8> + Send + Sync + 'static,
+        F: Fn(&str, &[u8], Arc<KMS>) -> Vec<u8> + Send + Sync + 'static,
     {
         let listener = match TcpListener::bind(addr).context(&format!("Failed to bind to {addr}")) {
             Ok(listener) => {
@@ -201,8 +213,11 @@ impl SocketServer {
                     let server_config = server_config.clone();
                     let handler = handler.clone();
                     // Spawn a new thread to handle the client connection
+                    let kms_server = kms_server.clone();
                     thread::spawn(move || {
-                        if let Err(e) = handle_client(&mut stream, server_config, &handler) {
+                        if let Err(e) =
+                            handle_client(kms_server, server_config, &handler, &mut stream)
+                        {
                             error!("Error handling socket client: {}", e);
                         }
                     });
@@ -217,9 +232,10 @@ impl SocketServer {
 }
 
 fn handle_client(
-    stream: &mut TcpStream,
+    kms_server: Arc<KMS>,
     server_config: Arc<ServerConfig>,
-    handler: &Arc<impl Fn(&str, &[u8]) -> Vec<u8> + Send + Sync>,
+    handler: &Arc<impl Fn(&str, &[u8], Arc<KMS>) -> Vec<u8> + Send + Sync>,
+    stream: &mut TcpStream,
 ) -> KResult<()> {
     // Accept TLS connection
     let peer_addr = stream
@@ -257,7 +273,7 @@ fn handle_client(
                 debug!("socket server: received request: {}", hex::encode(&request));
 
                 // Process the request
-                let response = handler(&username, &request);
+                let response = handler(&username, &request, kms_server.clone());
 
                 // Send the response
                 tls_stream

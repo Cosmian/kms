@@ -26,10 +26,12 @@ use crate::{
     error::KmsError,
     kms_bail,
     middlewares::{AuthTransformer, JwksManager, JwtConfig, SslAuth, extract_peer_certificate},
+    middlewares::{extract_peer_certificate, AuthTransformer, JwksManager, JwtConfig, SslAuth},
     result::{KResult, KResultHelper},
     routes::{
         access, get_version,
         google_cse::{self, GoogleCseConfig},
+        kmip::handle_ttlv_bytes,
         kmip, ms_dke,
         ui_auth::configure_auth_routes,
     },
@@ -79,38 +81,49 @@ pub async fn start_kms_server(
         openssl::provider::Provider::load(None, "default")?
     };
 
+    let kms_server = Arc::new(KMS::instantiate(server_params.clone()).await?);
+
     let _socket_server_handle: Option<JoinHandle<()>> = if server_params.start_socket_server {
         // Start the socket server
-        Some(start_socket_server(&server_params)?)
+        Some(start_socket_server(kms_server.clone()).await?)
     } else {
         None
     };
 
     // Log the server configuration
     info!("KMS Server configuration: {:#?}", server_params);
-    if server_params.tls_params.is_some() {
-        start_https_kms_server(server_params, kms_server_handle_tx).await
-    } else {
-        start_plain_http_kms_server(server_params, kms_server_handle_tx).await
-    }
+    start_http_kms_server(kms_server.clone(), kms_server_handle_tx).await
 }
 
-fn start_socket_server(server_params: &ServerParams) -> KResult<JoinHandle<()>> {
+/// Start a socket server that will handle TTLV bytes
+///
+/// # Arguments
+/// * `server_params` - An instance of `ServerParams` that contains the settings for the server.
+///
+/// # Errors
+/// This function returns an error if:
+/// - The socket server cannot be instantiated or started
+/// - The server fails to run
+///
+/// # Returns
+/// Returns a `JoinHandle<()>` that represents the socket server thread.
+///
+async fn start_socket_server(kms_server: Arc<KMS>) -> KResult<JoinHandle<()>> {
     // Start the socket server
-    let socket_server = SocketServer::instantiate(&SocketServerParams::try_from(server_params)?)?;
-    let socket_server_handle = socket_server.start_threaded(|username, request| {
-        info!(
-            "DUMMY HANDLER ECHOING BACK:  {username} -> {} - ",
-            hex::encode(request)
-        );
-        request.to_vec()
-    })?;
+    let socket_server =
+        SocketServer::instantiate(&SocketServerParams::try_from(&kms_server.params)?)?;
+    let socket_server_handle = socket_server.start_threaded(
+        kms_server.clone(),
+        move |username, request, kms_server| {
+            trace!("request: {username} {}", hex::encode(request));
+            // Handle the TTLV bytes received from the socket server
+            handle_ttlv_bytes(username, &request, kms_server)
+        },
+    )?;
     Ok(socket_server_handle)
 }
 
-/// Start a plain HTTP KMS server
-///
-/// This function will instantiate and prepare the KMS server and run it on a plain HTTP connection
+/// Start an HTTP(S) KMS server
 ///
 /// # Arguments
 ///
@@ -118,82 +131,44 @@ fn start_socket_server(server_params: &ServerParams) -> KResult<JoinHandle<()>> 
 /// * `server_handle_transmitter` - An optional sender channel of type `mpsc::Sender<ServerHandle>` that can be used to manage server state.
 ///
 /// # Errors
-///
 /// This function returns an error if:
-/// - The KMS server cannot be instantiated or prepared
+/// - The server cannot be instantiated or started
 /// - The server fails to run
-async fn start_plain_http_kms_server(
-    server_params: ServerParams,
+async fn start_http_kms_server(
+    kms_server: Arc<KMS>,
     server_handle_transmitter: Option<mpsc::Sender<ServerHandle>>,
 ) -> KResult<()> {
-    // Instantiate and prepare the KMS server
-    let kms_server = Arc::new(KMS::instantiate(server_params).await?);
+    let server_params = &kms_server.params;
+    let ssl_acceptor_builder = if let Some(tls_params) = &server_params.tls_params {
+        let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls())?;
+        if let Some(pkey) = &tls_params.p12.pkey {
+            builder.set_private_key(pkey)?;
+        }
+        if let Some(cert) = &tls_params.p12.cert {
+            builder.set_certificate(cert)?;
+        }
+        if let Some(chain) = &tls_params.p12.ca {
+            for x in chain {
+                builder.add_extra_chain_cert(x.to_owned())?;
+            }
+        }
 
-    // Prepare the server
-    let server = prepare_kms_server(kms_server, None).await?;
-
-    // send the server handle to the caller
-    if let Some(tx) = &server_handle_transmitter {
-        tx.send(server.handle())?;
-    }
-
-    info!("Starting the HTTP KMS server...");
-    // Run the server and return the result
-    server.await.map_err(Into::into)
-}
-
-/// Start an HTTPS KMS server using a PKCS#12 certificate file
-///
-/// # Arguments
-///
-/// * `server_params` - An instance of `ServerParams` that contains the settings for the server.
-/// * `server_handle_transmitter` - An optional sender channel of type `mpsc::Sender<ServerHandle>` that can be used to manage server state.
-///
-/// # Errors
-///
-/// This function returns an error if:
-/// - The path to the PKCS#12 certificate file is not provided in the config
-/// - The file cannot be opened or read
-/// - The file is not a valid PKCS#12 format or the password is incorrect
-/// - The SSL acceptor cannot be created or configured with the certificate and key
-/// - The KMS server cannot be instantiated or prepared
-/// - The server fails to run
-async fn start_https_kms_server(
-    server_params: ServerParams,
-    server_handle_transmitter: Option<mpsc::Sender<ServerHandle>>,
-) -> KResult<()> {
-    let Some(tls_params) = &server_params.tls_params else {
-        kms_bail!("https: a PKCS#12 file must be provided")
+        if let Some(verify_cert) = &tls_params.client_ca_cert_pem {
+            // This line sets the mode to verify peer (client) certificates
+            builder.set_verify(SslVerifyMode::PEER | SslVerifyMode::FAIL_IF_NO_PEER_CERT);
+            let x509_cert = openssl::x509::X509::from_pem(verify_cert)
+                .context("Failed to parse the client CA certificate")?;
+            let mut store_builder = X509StoreBuilder::new()?;
+            store_builder.add_cert(x509_cert)?;
+            builder.set_verify_cert_store(store_builder.build())?;
+        }
+        Some(builder)
+    } else {
+        None
     };
 
-    let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls())?;
-    if let Some(pkey) = &tls_params.p12.pkey {
-        builder.set_private_key(pkey)?;
-    }
-    if let Some(cert) = &tls_params.p12.cert {
-        builder.set_certificate(cert)?;
-    }
-    if let Some(chain) = &tls_params.p12.ca {
-        for x in chain {
-            builder.add_extra_chain_cert(x.to_owned())?;
-        }
-    }
-
-    if let Some(verify_cert) = &tls_params.client_ca_cert_pem {
-        // This line sets the mode to verify peer (client) certificates
-        builder.set_verify(SslVerifyMode::PEER | SslVerifyMode::FAIL_IF_NO_PEER_CERT);
-        let x509_cert = openssl::x509::X509::from_pem(verify_cert)
-            .context("Failed to parse the client CA certificate")?;
-        let mut store_builder = X509StoreBuilder::new()?;
-        store_builder.add_cert(x509_cert)?;
-        builder.set_verify_cert_store(store_builder.build())?;
-    }
-
-    // Create and configure an SSL acceptor with the certificate and key
-
     // Instantiate and prepare the KMS server
-    let kms_server = Arc::new(KMS::instantiate(server_params).await?);
-    let server = prepare_kms_server(kms_server, Some(builder)).await?;
+    let server = prepare_kms_server(kms_server, ssl_acceptor_builder).await?;
 
     // send the server handle to the caller
     if let Some(tx) = &server_handle_transmitter {
