@@ -7,6 +7,7 @@ use std::{
     time::Duration,
 };
 
+use log::warn;
 use openssl::pkcs12::ParsedPkcs12_2;
 use rustls::{
     pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer},
@@ -175,11 +176,11 @@ impl SocketServer {
     {
         let listener = match TcpListener::bind(addr).context(&format!("Failed to bind to {addr}")) {
             Ok(listener) => {
-                info!("Server listening on {}", addr);
+                info!("Socket server listening on {}", addr);
                 if let Some(notifier) = start_notifier {
                     notifier
                         .send(Ok(()))
-                        .context("Failed to notify server start")?;
+                        .context("Failed to notify the successful socket server start")?;
                 }
                 listener
             }
@@ -187,7 +188,7 @@ impl SocketServer {
                 if let Some(notifier) = start_notifier {
                     notifier
                         .send(Err(e.clone()))
-                        .context("Failed to notify server start")?;
+                        .context("Failed to notify the error on socket server start")?;
                 }
                 kms_bail!("Failed to bind to {addr}: {}", e);
             }
@@ -202,12 +203,12 @@ impl SocketServer {
                     // Spawn a new thread to handle the client connection
                     thread::spawn(move || {
                         if let Err(e) = handle_client(&mut stream, server_config, &handler) {
-                            error!("Error handling client: {}", e);
+                            error!("Error handling socket client: {}", e);
                         }
                     });
                 }
                 Err(e) => {
-                    error!("Connection failed: {}", e);
+                    warn!("Socket server: connection failed: {}", e);
                 }
             }
         }
@@ -224,10 +225,10 @@ fn handle_client(
     let peer_addr = stream
         .peer_addr()
         .map_or("[N/A]".to_owned(), |sa| sa.to_string());
-    debug!("Client connected from {}", peer_addr);
+    debug!("socket server: client connected from {}", peer_addr);
 
     let mut server_connection = ServerConnection::new(server_config)
-        .context("Failed to create rustls server connection")?;
+        .context("socket server: failed to create rustls server connection")?;
 
     let mut tls_stream = Stream::new(&mut server_connection, stream);
 
@@ -242,18 +243,18 @@ fn handle_client(
                 let length = usize::try_from(u32::from_be_bytes([
                     header[4], header[5], header[6], header[7],
                 ]))
-                .context("Failed to parse request length")?;
+                .context("socket server: failed to parse request length")?;
 
                 // Read the rest of the request
                 let mut request_body = vec![0_u8; length];
                 tls_stream
                     .read_exact(&mut request_body)
-                    .context("Failed to read request body")?;
+                    .context("socket server: failed to read request body")?;
 
                 // Concatenate header and body
                 let request = [header.to_vec(), request_body].concat();
 
-                debug!("Received request: {}", hex::encode(&request));
+                debug!("socket server: received request: {}", hex::encode(&request));
 
                 // Process the request
                 let response = handler(&username, &request);
@@ -261,19 +262,21 @@ fn handle_client(
                 // Send the response
                 tls_stream
                     .write_all(&response)
-                    .context("Failed to send response")?;
+                    .context("socket server: failed to send response")?;
 
-                tls_stream.flush().context("Failed to flush TLS stream")?;
+                tls_stream
+                    .flush()
+                    .context("socket server: failed to flush TLS stream")?;
 
                 trace!("Response sent to {}", peer_addr);
             }
             Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
                 // Client disconnected
-                debug!("Client {} disconnected", peer_addr);
+                debug!("socket server: client {} disconnected", peer_addr);
                 break;
             }
             Err(e) => {
-                return Err(e).context("Failed to read request header");
+                return Err(e).context("socket server: failed to read request header");
             }
         }
     }
@@ -290,10 +293,14 @@ fn client_username(tls_stream: &Stream<ServerConnection, TcpStream>) -> Result<S
         .ok_or_else(|| {
             // note: this should never happen since the Web PLI client verifier of the config
             // should have already verified the client certificate
-            KmsError::Certificate("The client did not provide a peer certificate".to_owned())
+            KmsError::Certificate(
+                "socket server: the client did not provide a peer certificate".to_owned(),
+            )
         })?
         .first()
-        .ok_or_else(|| KmsError::Certificate("Failed to get client certificate".to_owned()))?;
+        .ok_or_else(|| {
+            KmsError::Certificate("socket server: failed to get client certificate".to_owned())
+        })?;
 
     let cert_der_bytes = client_certificate.as_bytes();
     let x509 = openssl::x509::X509::from_der(cert_der_bytes)?;
@@ -301,10 +308,16 @@ fn client_username(tls_stream: &Stream<ServerConnection, TcpStream>) -> Result<S
         .subject_name()
         .entries_by_nid(openssl::nid::Nid::COMMONNAME)
         .next()
-        .ok_or_else(|| KmsError::Certificate("Failed to get common name".to_owned()))?
+        .ok_or_else(|| {
+            KmsError::Certificate("socket server: failed to get common name".to_owned())
+        })?
         .data()
         .as_utf8()
-        .map_err(|_e| KmsError::Certificate("Failed to convert common name to UTF-8".to_owned()))?
+        .map_err(|_e| {
+            KmsError::Certificate(
+                "socket server: failed to convert common name to UTF-8".to_owned(),
+            )
+        })?
         .to_string())
 }
 
@@ -349,7 +362,7 @@ pub(crate) fn create_rustls_server_config(
     // Create the clients' CA certificate store
     let mut client_auth_roots = RootCertStore::empty();
     let client_ca_cert = CertificateDer::from_pem_slice(server_config.client_ca_cert_pem)
-        .context("failed loading socket server clients' CA certificate")?;
+        .context("socket server: failed loading socket server clients' CA certificate")?;
     client_auth_roots
         .add(client_ca_cert)
         .context("socket server: failed to add client CA cert")?;
@@ -357,12 +370,12 @@ pub(crate) fn create_rustls_server_config(
     // Enable the client certificate verifier
     let client_auth = WebPkiClientVerifier::builder(client_auth_roots.into())
         .build()
-        .context("failed to create the socket server client auth verifier")?;
+        .context("socket server: failed to create the socket server client auth verifier")?;
 
     let mut server_config = ServerConfig::builder()
         .with_client_cert_verifier(client_auth)
         .with_single_cert(certs, PrivateKeyDer::Pkcs8(server_private_key))
-        .context("failed building the socket server config")?;
+        .context("socket server: failed building the socket server config")?;
     server_config.alpn_protocols = vec![b"http/1.1".to_vec()];
     Ok(server_config)
 }
