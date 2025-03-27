@@ -18,10 +18,10 @@ use openssl::{
     ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod, SslVerifyMode},
     x509::store::X509StoreBuilder,
 };
-use tracing::{debug, info, trace};
+use tracing::{debug, error, info, trace};
 
 use crate::{
-    config::{self, JwtAuthConfig, ServerParams},
+    config::{JwtAuthConfig, ServerParams},
     core::KMS,
     error::KmsError,
     kms_bail,
@@ -33,7 +33,7 @@ use crate::{
         kmip, ms_dke,
         ui_auth::configure_auth_routes,
     },
-    socket_server::SocketServer,
+    socket_server::{SocketServer, SocketServerConfig},
 };
 
 /// Starts the Key Management System (KMS) server based on the provided configuration.
@@ -87,21 +87,24 @@ pub async fn start_kms_server(
 
     // Log the server configuration
     info!("KMS Server configuration: {:#?}", server_params);
-    match &server_params.tls_params {
-        config::TlsParams::Tls(_) => {
-            start_https_kms_server(server_params, kms_server_handle_tx).await
-        }
-        config::TlsParams::Plain => {
-            start_plain_http_kms_server(server_params, kms_server_handle_tx).await
-        }
+    if server_params.tls_params.is_some() {
+        start_https_kms_server(server_params, kms_server_handle_tx).await
+    } else {
+        start_plain_http_kms_server(server_params, kms_server_handle_tx).await
     }
 }
 
 fn start_socket_server(server_params: &ServerParams) -> KResult<JoinHandle<()>> {
     // Start the socket server
-    let socket_server = SocketServer::instantiate(server_params);
+    let socket_server = SocketServer::instantiate(&SocketServerConfig::try_from(server_params)?)?;
     let socket_server_handle = std::thread::spawn(move || {
-        if let Err(e) = socket_server.start() {
+        if let Err(e) = socket_server.start(|username, request| {
+            info!(
+                "DUMMY HANDLER ECHOING BACK:  {username} -> {} - ",
+                hex::encode(request)
+            );
+            request.to_vec()
+        }) {
             error!("Socket server error: {e}");
         }
     });
@@ -162,31 +165,34 @@ async fn start_https_kms_server(
     server_params: ServerParams,
     server_handle_transmitter: Option<mpsc::Sender<ServerHandle>>,
 ) -> KResult<()> {
-    let config::TlsParams::Tls(p12) = &server_params.tls_params else {
-        kms_bail!("http/s: a PKCS#12 file must be provided")
+    let Some(tls_params) = &server_params.tls_params else {
+        kms_bail!("https: a PKCS#12 file must be provided")
     };
 
-    // Create and configure an SSL acceptor with the certificate and key
     let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls())?;
-    if let Some(pkey) = &p12.pkey {
+    if let Some(pkey) = &tls_params.p12.pkey {
         builder.set_private_key(pkey)?;
     }
-    if let Some(cert) = &p12.cert {
+    if let Some(cert) = &tls_params.p12.cert {
         builder.set_certificate(cert)?;
     }
-    if let Some(chain) = &p12.ca {
+    if let Some(chain) = &tls_params.p12.ca {
         for x in chain {
             builder.add_extra_chain_cert(x.to_owned())?;
         }
     }
 
-    if let Some(verify_cert) = &server_params.authority_cert_file {
+    if let Some(verify_cert) = &tls_params.client_ca_cert_pem {
         // This line sets the mode to verify peer (client) certificates
         builder.set_verify(SslVerifyMode::PEER | SslVerifyMode::FAIL_IF_NO_PEER_CERT);
+        let x509_cert = openssl::x509::X509::from_pem(verify_cert)
+            .context("Failed to parse the client CA certificate")?;
         let mut store_builder = X509StoreBuilder::new()?;
-        store_builder.add_cert(verify_cert.clone())?;
+        store_builder.add_cert(x509_cert)?;
         builder.set_verify_cert_store(store_builder.build())?;
     }
+
+    // Create and configure an SSL acceptor with the certificate and key
 
     // Instantiate and prepare the KMS server
     let kms_server = Arc::new(KMS::instantiate(server_params).await?);
@@ -275,7 +281,11 @@ pub async fn prepare_kms_server(
     };
 
     // Determine if Client Cert Auth should be used for authentication.
-    let use_cert_auth = kms_server.params.authority_cert_file.is_some();
+    let use_cert_auth = kms_server
+        .params
+        .tls_params
+        .as_ref()
+        .map_or(false, |tls_params| tls_params.client_ca_cert_pem.is_some());
 
     // Determine the address to bind the server to.
     let address = format!(

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt, path::PathBuf};
+use std::{collections::HashMap, fmt};
 
 use cosmian_kms_server_database::MainDbParams;
 use openssl::x509::X509;
@@ -189,28 +189,6 @@ impl ServerParams {
         debug!("try_from: server_params: {res:#?}");
 
         Ok(res)
-    }
-
-    /// Loads the certificate from the given file path.
-    ///
-    /// # Arguments
-    ///
-    /// * `authority_cert_file` - The path to the authority certificate file.
-    ///
-    /// # Returns
-    ///
-    /// Returns a `KResult` containing the loaded `X509` certificate if successful, or an error if the loading fails.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the certificate file cannot be read or if the parsing of the certificate fails.
-    fn load_cert(authority_cert_file: &PathBuf) -> KResult<X509> {
-        // Open and read the file into a byte vector
-        let pem_bytes = std::fs::read(authority_cert_file)?;
-
-        // Parse the byte vector as a X509 object
-        let x509 = X509::from_pem(pem_bytes.as_slice())?;
-        Ok(x509)
     }
 }
 
