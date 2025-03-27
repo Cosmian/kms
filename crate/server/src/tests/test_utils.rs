@@ -40,7 +40,9 @@ pub(crate) fn https_clap_config_opts(google_cse_kacls_url: Option<String>) -> Cl
 
     ClapConfig {
         tls: TlsConfig {
-            tls_p12_file: Some(PathBuf::from("src/tests/kmserver.acme.com.p12")),
+            tls_p12_file: Some(PathBuf::from(
+                "../../test_data/client_server/server/kmserver.acme.com.p12",
+            )),
             tls_p12_password: Some("password".to_owned()),
             ..Default::default()
         },
