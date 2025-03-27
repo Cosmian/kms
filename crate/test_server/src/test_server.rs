@@ -16,7 +16,7 @@ use cosmian_kms_crypto::crypto::{
     secret::Secret, symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH,
 };
 use cosmian_kms_server::{
-    config::{ClapConfig, HttpConfig, JwtAuthConfig, MainDBConfig, ServerParams, TlsParams},
+    config::{ClapConfig, HttpConfig, JwtAuthConfig, MainDBConfig, ServerParams},
     start_kms_server::start_kms_server,
 };
 use cosmian_logger::log_init;
@@ -323,10 +323,10 @@ fn generate_http_config(
         if use_client_cert {
             HttpConfig {
                 port,
-                tls_p12_file: Some(
+                https_p12_file: Some(
                     root_dir.join("../../test_data/client_server/server/kmserver.acme.com.p12"),
                 ),
-                tls_p12_password: Some("password".to_owned()),
+                https_p12_password: Some("password".to_owned()),
                 authority_cert_file: Some(
                     root_dir.join("../../test_data/client_server/server/ca.crt"),
                 ),
@@ -336,10 +336,10 @@ fn generate_http_config(
         } else {
             HttpConfig {
                 port,
-                tls_p12_file: Some(
+                https_p12_file: Some(
                     root_dir.join("../../test_data/client_server/server/kmserver.acme.com.p12"),
                 ),
-                tls_p12_password: Some("password".to_owned()),
+                https_p12_password: Some("password".to_owned()),
                 api_token_id,
                 ..HttpConfig::default()
             }
@@ -407,16 +407,22 @@ fn generate_owner_conf(
         .ok()
         .and_then(|config| serde_json::from_str(&config).ok());
 
+    let use_client_cert_auth = server_params
+        .tls_params
+        .as_ref()
+        .and_then(|tls| tls.client_ca_cert_pem.as_ref())
+        .is_some();
+
     let owner_client_conf = KmsClientConfig {
         http_config: HttpClientConfig {
-            server_url: if matches!(server_params.tls_params, TlsParams::Tls(_)) {
+            server_url: if server_params.tls_params.is_some() {
                 format!("https://0.0.0.0:{}", server_params.http_port)
             } else {
                 format!("http://0.0.0.0:{}", server_params.http_port)
             },
             accept_invalid_certs: true,
             access_token: set_access_token(server_params, api_token),
-            ssl_client_pkcs12_path: if server_params.authority_cert_file.is_some() {
+            ssl_client_pkcs12_path: if use_client_cert_auth {
                 #[cfg(not(target_os = "macos"))]
                 let p =
                     root_dir.join("../../test_data/client_server/owner/owner.client.acme.com.p12");
@@ -434,7 +440,7 @@ fn generate_owner_conf(
             } else {
                 None
             },
-            ssl_client_pkcs12_password: if server_params.authority_cert_file.is_some() {
+            ssl_client_pkcs12_password: if use_client_cert_auth {
                 Some("password".to_owned())
             } else {
                 None
