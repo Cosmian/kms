@@ -1,4 +1,10 @@
-use std::{net::TcpStream, sync::OnceLock, thread, time::Duration};
+use std::{
+    collections::HashMap,
+    net::TcpStream,
+    sync::{Arc, OnceLock},
+    thread,
+    time::Duration,
+};
 
 use cosmian_kmip::{
     kmip_1_4::{
@@ -9,11 +15,18 @@ use cosmian_kmip::{
     ttlv::KmipFlavor::Kmip1,
 };
 use cosmian_kms_client::{SocketClient, SocketClientConfig};
+use cosmian_kms_server_database::{Database, MainDbParams::Sqlite};
 use cosmian_logger::log_init;
 use openssl::pkcs12::{ParsedPkcs12_2, Pkcs12};
+use tokio::sync::RwLock;
 use tracing::info;
 
-use crate::socket_server::{create_rustls_server_config, SocketServer, SocketServerParams};
+use crate::{
+    config::ServerParams,
+    core::KMS,
+    socket_server::{create_rustls_server_config, SocketServer, SocketServerParams},
+    tests::test_utils::https_clap_config_opts,
+};
 
 const TEST_HOST: &str = "127.0.0.1";
 const TEST_PORT: u16 = 5696;
@@ -22,12 +35,29 @@ pub(crate) static SOCKET_SERVER_ONCE: OnceLock<thread::JoinHandle<()>> = OnceLoc
 
 fn start_socket_server() -> &'static thread::JoinHandle<()> {
     SOCKET_SERVER_ONCE.get_or_init(|| {
+        let clap_config = https_clap_config_opts(None);
+        let server_params = ServerParams::try_from(clap_config).unwrap();
+
+        let kms_server = Arc::new(
+            KMS::instantiate(server_params)
+                .await
+                .expect("cannot instantiate KMS server"),
+        );
+        let kms_server = Arc::new(KMS {
+            params: ServerParams::default(),
+            database: Database {
+                objects: RwLock::new(HashMap::new()),
+                permissions: Arc::new(Sqlite(Sqlite::instantiate("kms.db", false).unwrap())),
+                unwrapped_cache: UnwrappedCache::new(100),
+            },
+            encryption_oracles: RwLock::new(HashMap::new()),
+        });
         let config = load_test_config();
         let server = SocketServer::instantiate(&config).expect("Failed to instantiate server");
 
         thread::spawn(move || {
             server
-                .start(|username, request| {
+                .start(kms_server, |username, request, _kms_server| {
                     // log the username
                     info!("Received request from user: {}", username);
                     // Echo the request back
