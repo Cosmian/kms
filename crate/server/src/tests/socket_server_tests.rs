@@ -46,8 +46,10 @@ fn load_test_config() -> SocketServerParams<'static> {
     // Initialize the static data if needed
     unsafe {
         if TEST_P12.is_none() {
-            let server_p12_der = include_bytes!("./certificates/socket_server/server.p12");
-            let server_p12_password = "secret";
+            // let server_p12_der = include_bytes!("./certificates/socket_server/server.p12");
+            let server_p12_der =
+                include_bytes!("../../../../test_data/client_server/server/kmserver.acme.com.p12");
+            let server_p12_password = "password";
 
             // Parse the PKCS#12 object
             let sealed_p12 =
@@ -60,7 +62,8 @@ fn load_test_config() -> SocketServerParams<'static> {
 
             // Store client CA cert
             TEST_CLIENT_CA_CERT_PEM =
-                Some(include_bytes!("./certificates/socket_server/ca.crt").to_vec());
+                Some(include_bytes!("../../../../test_data/client_server/server/ca.crt").to_vec());
+            // Some(include_bytes!("./certificates/socket_server/ca.crt").to_vec());
         }
 
         SocketServerParams {
@@ -109,19 +112,11 @@ fn test_socket_server_with_socket_client() {
     log_init(Some("debug"));
     let _server_thread = start_socket_server();
 
-    // let socket_client = SocketClient::new(SocketClientConfig {
-    //     host: "localhost".to_owned(),
-    //     port: 5696,
-    //     client_p12: include_bytes!("./certificates/socket_server/client.p12").to_vec(),
-    //     client_p12_secret: "secret".to_owned(),
-    //     server_ca_cert_pem: include_str!("./certificates/socket_server/ca.crt").to_owned(),
-    // })
-    // .expect("Failed to create socket client");
     let socket_client = SocketClient::new(SocketClientConfig {
         host: "localhost".to_owned(),
         port: 5696,
         client_p12: include_bytes!(
-            "../../../../test_data/client_server/server/kmserver.acme.com.p12"
+            "../../../../test_data/client_server/user/user.client.acme.com.p12"
         )
         .to_vec(),
         client_p12_secret: "password".to_owned(),
