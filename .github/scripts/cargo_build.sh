@@ -124,7 +124,7 @@ cargo build --target $TARGET $RELEASE $FEATURES
 
 echo "Database KMS: $KMS_TEST_DB"
 # shellcheck disable=SC2086
-cargo test -v --workspace --lib --target $TARGET $RELEASE $FEATURES -- $SKIP_SERVICES_TESTS
+cargo test --workspace --lib --target $TARGET $RELEASE $FEATURES -- --nocapture $SKIP_SERVICES_TESTS
 
 # shellcheck disable=SC2086
 cargo test --workspace --bins --target $TARGET $RELEASE $FEATURES
@@ -133,16 +133,3 @@ if [ "$DEBUG_OR_RELEASE" = "release" ]; then
   # shellcheck disable=SC2086
   cargo bench --target $TARGET $FEATURES --no-run
 fi
-
-# Uncomment this code to run tests indefinitely
-# counter=1
-# while true; do
-#   find . -type d -name cosmian-kms -exec rm -rf \{\} \; -print || true
-#   # export RUST_LOG="hyper=trace,reqwest=trace,cosmian_kms_cli=debug,cosmian_kms_server=debug,cosmian_kmip=error"
-#   # shellcheck disable=SC2086
-#   cargo test --target $TARGET $RELEASE $FEATURES --workspace -- --nocapture $SKIP_SERVICES_TESTS
-#   counter=$((counter + 1))
-#   reset
-#   echo "counter: $counter"
-#   sleep 3
-# done
