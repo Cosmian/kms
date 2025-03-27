@@ -1359,7 +1359,7 @@ dependencies = [
 [[package]]
 name = "cosmian_http_client"
 version = "0.1.0"
-source = "git+https://www.github.com/Cosmian/http_client_server?tag=0.1.0#66c4e05ebbfa6d205ae16bacf99d197bab3a70a9"
+source = "git+https://www.github.com/Cosmian/http_client_server?tag=0.1.1#136f269493316677cce12bfa0a65456414e12d64"
 dependencies = [
  "actix-web",
  "derive_more",
