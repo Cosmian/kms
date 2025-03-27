@@ -13,7 +13,7 @@ use cosmian_logger::log_init;
 use openssl::pkcs12::{ParsedPkcs12_2, Pkcs12};
 use tracing::info;
 
-use crate::socket_server::{create_rustls_server_config, SocketServer, SocketServerConfig};
+use crate::socket_server::{create_rustls_server_config, SocketServer, SocketServerParams};
 
 const TEST_HOST: &str = "127.0.0.1";
 const TEST_PORT: u16 = 5696;
@@ -42,7 +42,7 @@ fn start_socket_server() -> &'static thread::JoinHandle<()> {
 static mut TEST_P12: Option<ParsedPkcs12_2> = None;
 static mut TEST_CLIENT_CA_CERT_PEM: Option<Vec<u8>> = None;
 
-fn load_test_config() -> SocketServerConfig<'static> {
+fn load_test_config() -> SocketServerParams<'static> {
     // Initialize the static data if needed
     unsafe {
         if TEST_P12.is_none() {
@@ -63,7 +63,7 @@ fn load_test_config() -> SocketServerConfig<'static> {
                 Some(include_bytes!("./certificates/socket_server/ca.crt").to_vec());
         }
 
-        SocketServerConfig {
+        SocketServerParams {
             host: TEST_HOST.to_owned(),
             port: TEST_PORT,
             p12: TEST_P12.as_ref().unwrap(),
@@ -109,12 +109,24 @@ fn test_socket_server_with_socket_client() {
     log_init(Some("debug"));
     let _server_thread = start_socket_server();
 
+    // let socket_client = SocketClient::new(SocketClientConfig {
+    //     host: "localhost".to_owned(),
+    //     port: 5696,
+    //     client_p12: include_bytes!("./certificates/socket_server/client.p12").to_vec(),
+    //     client_p12_secret: "secret".to_owned(),
+    //     server_ca_cert_pem: include_str!("./certificates/socket_server/ca.crt").to_owned(),
+    // })
+    // .expect("Failed to create socket client");
     let socket_client = SocketClient::new(SocketClientConfig {
         host: "localhost".to_owned(),
         port: 5696,
-        client_p12: include_bytes!("./certificates/socket_server/client.p12").to_vec(),
-        client_p12_secret: "secret".to_owned(),
-        server_ca_cert_pem: include_str!("./certificates/socket_server/ca.crt").to_owned(),
+        client_p12: include_bytes!(
+            "../../../../test_data/client_server/server/kmserver.acme.com.p12"
+        )
+        .to_vec(),
+        client_p12_secret: "password".to_owned(),
+        server_ca_cert_pem: include_str!("../../../../test_data/client_server/server/ca.crt")
+            .to_owned(),
     })
     .expect("Failed to create socket client");
 
