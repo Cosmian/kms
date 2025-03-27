@@ -5,7 +5,7 @@ use std::{
     thread,
 };
 
-use openssl::pkcs12::{ParsedPkcs12_2, Pkcs12};
+use openssl::pkcs12::ParsedPkcs12_2;
 use rustls::{
     pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer},
     server::WebPkiClientVerifier,
@@ -160,7 +160,7 @@ fn handle_client(
     let mut server_connection = ServerConnection::new(server_config)
         .context("Failed to create rustls server connection")?;
 
-    let mut tls_stream = rustls::Stream::new(&mut server_connection, stream);
+    let mut tls_stream = Stream::new(&mut server_connection, stream);
 
     loop {
         // Read 8 bytes of the TTLV header
@@ -247,15 +247,9 @@ pub(crate) fn create_rustls_server_config(
     // We need an initialized crypto provider to use rustls
     initialize_aws_lc_crypto_provider();
 
-    // Parse the byte vector as a PKCS#12 object - this uses openssl
-    let sealed_p12 = Pkcs12::from_der(server_p12_der)?;
-    let p12 = sealed_p12
-        .parse2(server_p12_password)
-        .context("HTTPS configuration")?;
-
     let mut certs: Vec<CertificateDer> = Vec::new();
 
-    let Some(server_cert) = p12.cert else {
+    let Some(server_cert) = &server_config.p12.cert else {
         return Err(KmsError::Certificate(
             "No server certificate found in PKCS#12 file".to_owned(),
         ));
@@ -264,7 +258,7 @@ pub(crate) fn create_rustls_server_config(
         .to_der()
         .context("Failed to encode server certificate in DER bytes")?;
     certs.push(CertificateDer::from(server_cert));
-    if let Some(cas) = p12.ca {
+    if let Some(cas) = &server_config.p12.ca {
         for ca in cas.iter().rev() {
             let der_bytes = ca
                 .to_der()
@@ -273,7 +267,7 @@ pub(crate) fn create_rustls_server_config(
         }
     }
 
-    let Some(server_private_key) = p12.pkey else {
+    let Some(server_private_key) = &server_config.p12.pkey else {
         return Err(KmsError::Certificate(
             "No server private key found in PKCS#12 file".to_owned(),
         ));
@@ -285,7 +279,7 @@ pub(crate) fn create_rustls_server_config(
 
     // Create the clients' CA certificate store
     let mut client_auth_roots = RootCertStore::empty();
-    let client_ca_cert = CertificateDer::from_pem_slice(client_ca_cert_pem.as_bytes())
+    let client_ca_cert = CertificateDer::from_pem_slice(server_config.client_ca_cert_pem)
         .context("failed loading the clients'  CA certificate")?;
     client_auth_roots
         .add(client_ca_cert)

@@ -37,7 +37,7 @@ fn start_socket_server() -> &'static thread::JoinHandle<()> {
     })
 }
 
-fn load_test_config() -> SocketServerConfig {
+fn load_test_config() -> SocketServerConfig<'static> {
     let server_p12_der = include_bytes!("./certificates/socket_server/server.p12").to_vec();
     let server_p12_password = "secret".to_owned();
     let client_ca_cert_pem = include_str!("./certificates/socket_server/ca.crt").to_owned();
@@ -58,17 +58,11 @@ fn test_server_instantiation() {
 }
 
 #[test]
-fn test_invalid_server_password() {
-    let mut config = load_test_config();
-    "wrong_password".clone_into(&mut config.server_p12_password);
-    let server = SocketServer::instantiate(&config);
-    assert!(server.is_err());
-}
-
-#[test]
 fn test_invalid_client_ca_cert() {
     let mut config = load_test_config();
-    "invalid certificate data".clone_into(&mut config.client_ca_cert_pem);
+    "invalid certificate data"
+        .as_bytes()
+        .clone_into(&mut config.client_ca_cert_pem);
     let server = SocketServer::instantiate(&config);
     assert!(server.is_err());
 }
