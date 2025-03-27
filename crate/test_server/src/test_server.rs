@@ -410,13 +410,8 @@ fn generate_owner_conf(
             accept_invalid_certs: true,
             access_token: set_access_token(server_params, api_token),
             ssl_client_pkcs12_path: if use_client_cert_auth {
-                #[cfg(not(target_os = "macos"))]
                 let p =
                     root_dir.join("../../test_data/client_server/owner/owner.client.acme.com.p12");
-                #[cfg(target_os = "macos")]
-                let p = root_dir.join(
-                    "../../test_data/client_server/owner/owner.client.acme.com.old.format.p12",
-                );
                 Some(
                     p.to_str()
                         .ok_or_else(|| {
@@ -450,16 +445,12 @@ fn generate_user_conf(
     port: u16,
     owner_client_conf: &KmsClientConfig,
 ) -> Result<String, KmsClientError> {
-    // This create root dir
+    // This is the crate root dir
     let root_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
     let mut user_conf = owner_client_conf.clone();
     user_conf.http_config.ssl_client_pkcs12_path = {
-        #[cfg(not(target_os = "macos"))]
         let p = root_dir.join("../../test_data/client_server/user/user.client.acme.com.p12");
-        #[cfg(target_os = "macos")]
-        let p =
-            root_dir.join("../../test_data/client_server/user/user.client.acme.com.old.format.p12");
         Some(
             p.to_str()
                 .ok_or_else(|| KmsClientError::Default("Can't convert path to string".to_owned()))?
@@ -499,7 +490,7 @@ pub fn generate_invalid_conf(correct_conf: &KmsClientConfig) -> String {
 #[cfg(test)]
 #[tokio::test]
 async fn test_start_server() -> Result<(), KmsClientError> {
-    log_init(Some("trace"));
+    log_init(option_env!("RUST_LOG"));
     let context = start_test_server_with_options(
         sqlite_db_config(false),
         9990,
