@@ -1,8 +1,10 @@
 use std::{
     io::{Read, Write},
     net::{TcpListener, TcpStream},
-    sync::{Arc, Once},
+    sync::{mpsc, Arc, Once},
     thread,
+    thread::JoinHandle,
+    time::Duration,
 };
 
 use openssl::pkcs12::ParsedPkcs12_2;
@@ -17,6 +19,7 @@ use x509_parser::nom::AsBytes;
 use crate::{
     config::ServerParams,
     error::KmsError,
+    kms_bail,
     result::{KResult, KResultHelper},
 };
 
@@ -39,7 +42,7 @@ fn initialize_aws_lc_crypto_provider() {
 
 /// Configuration for the `PyKMIP` socket server
 #[derive(Clone)]
-pub struct SocketServerConfig<'a> {
+pub struct SocketServerParams<'a> {
     /// Server host
     pub host: String,
     /// Server port
@@ -50,7 +53,7 @@ pub struct SocketServerConfig<'a> {
     pub client_ca_cert_pem: &'a [u8],
 }
 
-impl<'a> TryFrom<&'a ServerParams> for SocketServerConfig<'a> {
+impl<'a> TryFrom<&'a ServerParams> for SocketServerParams<'a> {
     type Error = KmsError;
 
     fn try_from(params: &'a ServerParams) -> Result<Self, Self::Error> {
@@ -87,7 +90,7 @@ impl SocketServer {
     /// - If the server certificates and key are invalid
     /// - If the client CA certificate is invalid
     /// - If the server fails to bind to the specified host and port
-    pub fn instantiate(config: &SocketServerConfig) -> KResult<Self> {
+    pub fn instantiate(config: &SocketServerParams) -> KResult<Self> {
         let server_config = Arc::new(create_rustls_server_config(config)?);
         Ok(Self {
             host: config.host.clone(),
@@ -117,19 +120,86 @@ impl SocketServer {
         F: Fn(&str, &[u8]) -> Vec<u8> + Send + Sync + 'static,
     {
         let addr = format!("{}:{}", self.host, self.port);
-        let listener = TcpListener::bind(&addr).context(&format!("Failed to bind to {addr}"))?;
-
-        info!("Server listening on {}", addr);
-
         let server_config = self.server_config.clone();
         let handler = Arc::new(request_handler);
+        Self::start_listening(&addr, &server_config, &handler, None)?;
+        Ok(())
+    }
 
+    /// Start the server in a separate thread and listen for incoming connections
+    /// The `request_handler` function is called for each incoming request.
+    /// The function should take a byte slice as input and return a byte vector as output.
+    /// The server runs in a separate thread for each client connection.
+    /// The server will continue to run until the process is terminated.
+    ///
+    /// # Arguments
+    ///
+    /// * `request_handler`: A function that handles incoming requests.
+    /// * It takes the username and request bytes as input and returns the response bytes.
+    /// * The function must be `Send`, `Sync`, and `'static` to be used in a thread.
+    ///
+    /// # Errors
+    /// - If the server fails to bind to the specified host and port
+    /// - If an error occurs while handling a client connection
+    ///
+    pub fn start_threaded<F>(&self, request_handler: F) -> KResult<JoinHandle<()>>
+    where
+        F: Fn(&str, &[u8]) -> Vec<u8> + Send + Sync + 'static,
+    {
+        let addr = format!("{}:{}", self.host, self.port);
+        let server_config = self.server_config.clone();
+        let handler = Arc::new(request_handler);
+        let (tx, rx) = mpsc::channel::<KResult<()>>();
+
+        let thread_handle = thread::spawn(move || {
+            // we swallow the error if any, it will be received by the mpsc receiver
+            let _swallowed = Self::start_listening(&addr, &server_config, &handler, Some(tx));
+        });
+        trace!("Waiting for test socket server to start...");
+        let state = rx
+            .recv_timeout(Duration::from_secs(25))
+            .context("Can't get the socket server to start after 25 seconds")?;
+        // if the server failed to start, the returned state will be in error
+        state?;
+        Ok(thread_handle)
+    }
+
+    fn start_listening<F>(
+        addr: &str,
+        server_config: &Arc<ServerConfig>,
+        handler: &Arc<F>,
+        start_notifier: Option<mpsc::Sender<KResult<()>>>,
+    ) -> Result<(), KmsError>
+    where
+        F: Fn(&str, &[u8]) -> Vec<u8> + Send + Sync + 'static,
+    {
+        let listener = match TcpListener::bind(addr).context(&format!("Failed to bind to {addr}")) {
+            Ok(listener) => {
+                info!("Server listening on {}", addr);
+                if let Some(notifier) = start_notifier {
+                    notifier
+                        .send(Ok(()))
+                        .context("Failed to notify server start")?;
+                }
+                listener
+            }
+            Err(e) => {
+                if let Some(notifier) = start_notifier {
+                    notifier
+                        .send(Err(e.clone()))
+                        .context("Failed to notify server start")?;
+                }
+                kms_bail!("Failed to bind to {addr}: {}", e);
+            }
+        };
+
+        // Accept incoming connections
         for stream in listener.incoming() {
             match stream {
                 Ok(mut stream) => {
                     let server_config = server_config.clone();
                     let handler = handler.clone();
-
+                    // Spawn a new thread to handle the client connection
                     thread::spawn(move || {
                         if let Err(e) = handle_client(&mut stream, server_config, &handler) {
                             error!("Error handling client: {}", e);
@@ -141,7 +211,6 @@ impl SocketServer {
                 }
             }
         }
-
         Ok(())
     }
 }
@@ -242,7 +311,7 @@ fn client_username(tls_stream: &Stream<ServerConnection, TcpStream>) -> Result<S
 // Client Certificate Authentication
 // Build a rustls ServerConfig supporting client cert auth
 pub(crate) fn create_rustls_server_config(
-    server_config: &SocketServerConfig,
+    server_config: &SocketServerParams,
 ) -> KResult<ServerConfig> {
     // We need an initialized crypto provider to use rustls
     initialize_aws_lc_crypto_provider();
@@ -251,49 +320,49 @@ pub(crate) fn create_rustls_server_config(
 
     let Some(server_cert) = &server_config.p12.cert else {
         return Err(KmsError::Certificate(
-            "No server certificate found in PKCS#12 file".to_owned(),
+            "socket server: no server certificate found in PKCS#12 file".to_owned(),
         ));
     };
     let server_cert = server_cert
         .to_der()
-        .context("Failed to encode server certificate in DER bytes")?;
+        .context("socket server: failed to encode server certificate in DER bytes")?;
     certs.push(CertificateDer::from(server_cert));
     if let Some(cas) = &server_config.p12.ca {
         for ca in cas.iter().rev() {
             let der_bytes = ca
                 .to_der()
-                .context("Failed to encode CA certificate in DER bytes")?;
+                .context("socket server: failed to encode CA certificate in DER bytes")?;
             certs.push(CertificateDer::from(der_bytes));
         }
     }
 
     let Some(server_private_key) = &server_config.p12.pkey else {
         return Err(KmsError::Certificate(
-            "No server private key found in PKCS#12 file".to_owned(),
+            "socket server: no server private key found in PKCS#12 file".to_owned(),
         ));
     };
     let server_private_key_pkcs8 = server_private_key
         .private_key_to_pkcs8()
-        .context("Failed to generate the server private key as PKCS#8")?;
+        .context("socket server: failed to generate the server private key as PKCS#8")?;
     let server_private_key = PrivatePkcs8KeyDer::from(server_private_key_pkcs8);
 
     // Create the clients' CA certificate store
     let mut client_auth_roots = RootCertStore::empty();
     let client_ca_cert = CertificateDer::from_pem_slice(server_config.client_ca_cert_pem)
-        .context("failed loading the clients'  CA certificate")?;
+        .context("failed loading socket server clients' CA certificate")?;
     client_auth_roots
         .add(client_ca_cert)
-        .context("failed to add client CA cert")?;
+        .context("socket server: failed to add client CA cert")?;
 
     // Enable the client certificate verifier
     let client_auth = WebPkiClientVerifier::builder(client_auth_roots.into())
         .build()
-        .context("failed to create client auth verifier")?;
+        .context("failed to create the socket server client auth verifier")?;
 
     let mut server_config = ServerConfig::builder()
         .with_client_cert_verifier(client_auth)
         .with_single_cert(certs, PrivateKeyDer::Pkcs8(server_private_key))
-        .context("Invalid server certificate or key")?;
+        .context("failed building the socket server config")?;
     server_config.alpn_protocols = vec![b"http/1.1".to_vec()];
     Ok(server_config)
 }

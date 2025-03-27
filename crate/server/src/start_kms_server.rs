@@ -18,7 +18,7 @@ use openssl::{
     ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod, SslVerifyMode},
     x509::store::X509StoreBuilder,
 };
-use tracing::{debug, error, info, trace};
+use tracing::{debug, info, trace};
 
 use crate::{
     config::{JwtAuthConfig, ServerParams},
@@ -33,7 +33,7 @@ use crate::{
         kmip, ms_dke,
         ui_auth::configure_auth_routes,
     },
-    socket_server::{SocketServer, SocketServerConfig},
+    socket_server::{SocketServer, SocketServerParams},
 };
 
 /// Starts the Key Management System (KMS) server based on the provided configuration.
@@ -79,7 +79,7 @@ pub async fn start_kms_server(
         openssl::provider::Provider::load(None, "default")?
     };
 
-    let mut _socket_server_handle: Option<JoinHandle<()>> = if server_params.start_socket_server {
+    let _socket_server_handle: Option<JoinHandle<()>> = if server_params.start_socket_server {
         // Start the socket server
         Some(start_socket_server(&server_params)?)
     } else {
@@ -97,18 +97,14 @@ pub async fn start_kms_server(
 
 fn start_socket_server(server_params: &ServerParams) -> KResult<JoinHandle<()>> {
     // Start the socket server
-    let socket_server = SocketServer::instantiate(&SocketServerConfig::try_from(server_params)?)?;
-    let socket_server_handle = std::thread::spawn(move || {
-        if let Err(e) = socket_server.start(|username, request| {
-            info!(
-                "DUMMY HANDLER ECHOING BACK:  {username} -> {} - ",
-                hex::encode(request)
-            );
-            request.to_vec()
-        }) {
-            error!("Socket server error: {e}");
-        }
-    });
+    let socket_server = SocketServer::instantiate(&SocketServerParams::try_from(server_params)?)?;
+    let socket_server_handle = socket_server.start_threaded(|username, request| {
+        info!(
+            "DUMMY HANDLER ECHOING BACK:  {username} -> {} - ",
+            hex::encode(request)
+        );
+        request.to_vec()
+    })?;
     Ok(socket_server_handle)
 }
 

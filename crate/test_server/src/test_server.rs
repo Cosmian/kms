@@ -16,7 +16,10 @@ use cosmian_kms_crypto::crypto::{
     secret::Secret, symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH,
 };
 use cosmian_kms_server::{
-    config::{ClapConfig, HttpConfig, JwtAuthConfig, MainDBConfig, ServerParams},
+    config::{
+        ClapConfig, HttpConfig, JwtAuthConfig, MainDBConfig, ServerParams, SocketServerConfig,
+        TlsConfig,
+    },
     start_kms_server::start_kms_server,
 };
 use cosmian_logger::log_init;
@@ -310,47 +313,21 @@ async fn wait_for_server_to_start(kms_rest_client: &KmsClient) -> Result<(), Kms
     Ok(())
 }
 
-fn generate_http_config(
-    port: u16,
-    use_https: bool,
-    use_client_cert: bool,
-    api_token_id: Option<String>,
-) -> HttpConfig {
-    // This create root dir
+fn generate_tls_config(use_https: bool, use_client_cert: bool) -> TlsConfig {
+    // This is the crate root dir
     let root_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
+    let mut tls_config = TlsConfig::default();
     if use_https {
+        tls_config.tls_p12_file =
+            Some(root_dir.join("../../test_data/client_server/server/kmserver.acme.com.p12"));
+        tls_config.tls_p12_password = Some("password".to_owned());
         if use_client_cert {
-            HttpConfig {
-                port,
-                https_p12_file: Some(
-                    root_dir.join("../../test_data/client_server/server/kmserver.acme.com.p12"),
-                ),
-                https_p12_password: Some("password".to_owned()),
-                authority_cert_file: Some(
-                    root_dir.join("../../test_data/client_server/server/ca.crt"),
-                ),
-                api_token_id,
-                ..HttpConfig::default()
-            }
-        } else {
-            HttpConfig {
-                port,
-                https_p12_file: Some(
-                    root_dir.join("../../test_data/client_server/server/kmserver.acme.com.p12"),
-                ),
-                https_p12_password: Some("password".to_owned()),
-                api_token_id,
-                ..HttpConfig::default()
-            }
-        }
-    } else {
-        HttpConfig {
-            port,
-            api_token_id,
-            ..HttpConfig::default()
+            tls_config.authority_cert_file =
+                Some(root_dir.join("../../test_data/client_server/server/ca.crt"));
         }
     }
+    tls_config
 }
 
 fn generate_server_params(
@@ -366,13 +343,23 @@ fn generate_server_params(
         } else {
             JwtAuthConfig::default()
         },
+        socket_server: SocketServerConfig {
+            // start the socket server automatically if both https and client cert authentication are used
+            socket_server_start: authentication_options.use_https
+                && authentication_options.use_client_cert,
+            socket_server_port: port + 100,
+            ..Default::default()
+        },
         db: db_config,
-        http: generate_http_config(
-            port,
+        tls: generate_tls_config(
             authentication_options.use_https,
             authentication_options.use_client_cert,
-            authentication_options.api_token_id.clone(),
         ),
+        http: HttpConfig {
+            port,
+            api_token_id: authentication_options.api_token_id.clone(),
+            ..HttpConfig::default()
+        },
         non_revocable_key_id,
         google_cse_disable_tokens_validation: true,
         ..ClapConfig::default()
@@ -512,6 +499,7 @@ pub fn generate_invalid_conf(correct_conf: &KmsClientConfig) -> String {
 #[cfg(test)]
 #[tokio::test]
 async fn test_start_server() -> Result<(), KmsClientError> {
+    log_init(Some("trace"));
     let context = start_test_server_with_options(
         sqlite_db_config(false),
         9990,
