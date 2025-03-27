@@ -28,7 +28,7 @@ use crate::{
 
 #[tokio::test]
 pub(crate) async fn test_new_database() -> CosmianResult<()> {
-    log_init(option_env!("RUST_LOG"));
+    log_init(None);
     let ctx = start_default_test_kms_server().await;
 
     if ctx
@@ -56,7 +56,7 @@ pub(crate) async fn test_new_database() -> CosmianResult<()> {
 
 #[tokio::test]
 pub(crate) async fn test_secrets_bad() -> CosmianResult<()> {
-    log_init(option_env!("RUST_LOG"));
+    log_init(None);
     let ctx = start_default_test_kms_server().await;
 
     if ctx
@@ -75,7 +75,9 @@ pub(crate) async fn test_secrets_bad() -> CosmianResult<()> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(COSMIAN_CLI_CONF_ENV, bad_conf_path);
 
-    cmd.arg("ec").args(vec!["keys", "create"]);
+    cmd.arg(KMS_SUBCOMMAND)
+        .arg("ec")
+        .args(vec!["keys", "create"]);
     recover_cmd_logs(&mut cmd);
     cmd.assert()
         .failure()
@@ -86,7 +88,7 @@ pub(crate) async fn test_secrets_bad() -> CosmianResult<()> {
 
 #[tokio::test]
 pub(crate) async fn test_conf_does_not_exist() -> CosmianResult<()> {
-    log_init(option_env!("RUST_LOG"));
+    log_init(None);
     let ctx = start_default_test_kms_server().await;
 
     if ctx
@@ -106,7 +108,9 @@ pub(crate) async fn test_conf_does_not_exist() -> CosmianResult<()> {
         "../../test_data/configs/kms_bad_group_id.bad",
     );
 
-    cmd.arg("ec").args(vec!["keys", "create"]);
+    cmd.arg(KMS_SUBCOMMAND)
+        .arg("ec")
+        .args(vec!["keys", "create"]);
     let output = recover_cmd_logs(&mut cmd);
     assert!(!output.status.success());
     Ok(())
@@ -114,7 +118,7 @@ pub(crate) async fn test_conf_does_not_exist() -> CosmianResult<()> {
 
 #[tokio::test]
 pub(crate) async fn test_secrets_key_bad() -> CosmianResult<()> {
-    log_init(option_env!("RUST_LOG"));
+    log_init(None);
     let ctx = start_default_test_kms_server().await;
 
     if ctx
@@ -130,14 +134,18 @@ pub(crate) async fn test_secrets_key_bad() -> CosmianResult<()> {
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(COSMIAN_CLI_CONF_ENV, &ctx.owner_client_conf_path);
-    cmd.arg("ec").args(vec!["keys", "create"]);
+    cmd.arg(KMS_SUBCOMMAND)
+        .arg("ec")
+        .args(vec!["keys", "create"]);
     cmd.assert().success();
 
     let invalid_conf_path = generate_invalid_conf(&ctx.owner_client_conf);
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(COSMIAN_CLI_CONF_ENV, invalid_conf_path);
 
-    cmd.arg("ec").args(vec!["keys", "create"]);
+    cmd.arg(KMS_SUBCOMMAND)
+        .arg("ec")
+        .args(vec!["keys", "create"]);
     recover_cmd_logs(&mut cmd);
     cmd.assert().failure();
 

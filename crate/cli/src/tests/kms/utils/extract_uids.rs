@@ -34,7 +34,7 @@ pub(crate) fn extract_user_key(text: &str) -> Option<&str> {
 
 /// Extract the database secret from a test
 pub(crate) fn extract_database_secret(text: &str) -> Option<&str> {
-    let formatted = r"entry of your KMS_CLI_CONF\):\s*?(?P<uid>[a-zA-Z0-9=]+)$";
+    let formatted = r"entry of your COSMIAN_CLI_CONF\):\s*?(?P<uid>[a-zA-Z0-9=]+)$";
     let uid_regex = RegexBuilder::new(formatted)
         .multi_line(true)
         .build()

@@ -136,7 +136,7 @@ pub(crate) fn unwrap(
 
 #[tokio::test]
 pub(crate) async fn test_password_wrap_import() -> CosmianResult<()> {
-    log_init(option_env!("RUST_LOG"));
+    log_init(None);
     let ctx = start_default_test_kms_server().await;
 
     // CC

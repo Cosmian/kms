@@ -46,7 +46,7 @@ where
 pub fn read_object_from_json_ttlv_bytes(bytes: &[u8]) -> Result<Object, KmsClientError> {
     // Read the object from the file
     let ttlv = serde_json::from_slice::<TTLV>(bytes)
-        .with_context(|| "failed parsing the object from the json file")?;
+        .with_context(|| "failed parsing the object from the bytes")?;
     // Deserialize the object
     let object: Object = from_ttlv(&ttlv)?;
     Ok(object)
@@ -84,7 +84,7 @@ where
     T: Serialize,
 {
     let bytes = serde_json::to_vec::<T>(json_object)
-        .with_context(|| "failed parsing the object from the json file")?;
+        .with_context(|| "failed writing the object from the json object")?;
     write_bytes_to_file(&bytes, file)
 }
 

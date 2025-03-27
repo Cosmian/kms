@@ -3,7 +3,7 @@ use cosmian_findex_structs::{
     Addresses, Bindings, Guard, OptionalWords,
     reexport::cosmian_findex::{ADDRESS_LENGTH, Address, MemoryADT},
 };
-use tracing::{trace, warn};
+use tracing::{debug, trace, warn};
 use uuid::Uuid;
 
 use crate::{RestClient, error::ClientError, rest_client::handle_error};
@@ -58,8 +58,7 @@ impl<const WORD_LENGTH: usize> MemoryADT for FindexRestClient<WORD_LENGTH> {
             return Err(ClientError::RequestFailed(err));
         }
 
-        let words: OptionalWords<WORD_LENGTH> =
-            OptionalWords::deserialize(&response.bytes().await?)?;
+        let words = OptionalWords::deserialize(&response.bytes().await?)?;
 
         trace!(
             "batch_read successful on server url {}. result: {}",
@@ -88,7 +87,12 @@ impl<const WORD_LENGTH: usize> MemoryADT for FindexRestClient<WORD_LENGTH> {
         // concatenation. Anyway, this should be abstracted away in a function.
         let guard_bytes = Guard::new(guard.0, guard.1).serialize()?;
         let bindings_bytes = Bindings::new(bindings).serialize()?;
-        let mut request_bytes = Vec::with_capacity(guard_bytes.len() + bindings_bytes.len());
+        let length = guard_bytes.len() + bindings_bytes.len();
+        if length > 1_000_000 {
+            debug!("FindexRestClient: guarded_write: allocating {length}");
+        }
+
+        let mut request_bytes = Vec::with_capacity(length);
         request_bytes.extend_from_slice(&guard_bytes);
         request_bytes.extend_from_slice(&bindings_bytes);
         // END TODO
@@ -109,8 +113,7 @@ impl<const WORD_LENGTH: usize> MemoryADT for FindexRestClient<WORD_LENGTH> {
         }
 
         let guard = {
-            let bytes = response.bytes().await?;
-            let words: Vec<_> = OptionalWords::deserialize(&bytes)?.into();
+            let words: Vec<_> = OptionalWords::deserialize(&response.bytes().await?)?.into();
             words.into_iter().next().ok_or_else(|| {
                 ClientError::RequestFailed(
                     "Unexpected response from server. Expected 1 word, got None".to_owned(),

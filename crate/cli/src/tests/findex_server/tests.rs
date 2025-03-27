@@ -1,6 +1,5 @@
 use std::ops::Deref;
 
-use cosmian_config_utils::ConfigUtils;
 use cosmian_findex_client::RestClient;
 use cosmian_findex_structs::Uuids;
 use cosmian_kms_client::{KmsClient, kmip_2_1::kmip_types::UniqueIdentifier};
@@ -9,7 +8,7 @@ use test_findex_server::{
     start_default_test_findex_server, start_default_test_findex_server_with_cert_auth,
 };
 use test_kms_server::start_default_test_kms_server;
-use tracing::{debug, trace};
+use tracing::trace;
 use uuid::Uuid;
 
 use crate::{
@@ -47,13 +46,12 @@ struct SearchOptions {
 
 impl TestsCliContext {
     async fn new(
-        config_path: &str,
+        client_config: ClientConfig,
         dataset: &str,
         keywords: Vec<String>,
         expected_results: &str,
         expected_len: usize,
     ) -> CosmianResult<Self> {
-        let client_config = ClientConfig::from_toml(config_path)?;
         let kms = KmsClient::new_with_config(client_config.kms_config)?;
         let findex = RestClient::new(&client_config.findex_config.unwrap())?;
         let kek_id = Some(CreateKeyAction::default().run(&kms).await?);
@@ -140,11 +138,16 @@ impl TestsCliContext {
 #[tokio::test]
 async fn test_encrypt_and_index_no_auth() -> CosmianResult<()> {
     log_init(None);
-    start_default_test_findex_server().await;
-    start_default_test_kms_server().await;
+    let findex_ctx = start_default_test_findex_server().await;
+    let kms_ctx = start_default_test_kms_server().await;
+
+    let cosmian_cli_conf = ClientConfig {
+        kms_config: kms_ctx.owner_client_conf.kms_config.clone(),
+        findex_config: Some(findex_ctx.owner_client_conf.clone()),
+    };
 
     let ctx = TestsCliContext::new(
-        &get_cosmian_config_filepath("cosmian.toml"),
+        cosmian_cli_conf,
         SMALL_DATASET,
         vec!["Southborough".to_owned()],
         "States9686",
@@ -158,11 +161,15 @@ async fn test_encrypt_and_index_no_auth() -> CosmianResult<()> {
 async fn test_encrypt_and_index_cert_auth() -> CosmianResult<()> {
     log_init(None);
 
-    start_default_test_findex_server_with_cert_auth().await;
-    start_default_test_kms_server().await;
+    let findex_ctx = start_default_test_findex_server_with_cert_auth().await;
+    let kms_ctx = start_default_test_kms_server().await;
+    let cosmian_cli_conf = ClientConfig {
+        kms_config: kms_ctx.owner_client_conf.kms_config.clone(),
+        findex_config: Some(findex_ctx.owner_client_conf.clone()),
+    };
 
     let ctx = TestsCliContext::new(
-        &get_cosmian_config_filepath("cosmian_cert_auth_owner.toml"),
+        cosmian_cli_conf,
         SMALL_DATASET,
         vec!["Southborough".to_owned()],
         "States9686",
@@ -177,11 +184,16 @@ async fn test_encrypt_and_index_cert_auth() -> CosmianResult<()> {
 async fn test_encrypt_and_index_huge() -> CosmianResult<()> {
     log_init(None);
 
-    start_default_test_findex_server_with_cert_auth().await;
-    start_default_test_kms_server().await;
+    let findex_ctx = start_default_test_findex_server_with_cert_auth().await;
+    let kms_ctx = start_default_test_kms_server().await;
+
+    let cosmian_cli_conf = ClientConfig {
+        kms_config: kms_ctx.owner_client_conf.kms_config.clone(),
+        findex_config: Some(findex_ctx.owner_client_conf.clone()),
+    };
 
     let ctx = TestsCliContext::new(
-        &get_cosmian_config_filepath("cosmian_cert_auth_owner.toml"),
+        cosmian_cli_conf,
         HUGE_DATASET,
         vec![
             "BDCQ.SEA1AA".to_owned(),
@@ -193,15 +205,4 @@ async fn test_encrypt_and_index_huge() -> CosmianResult<()> {
     )
     .await?;
     ctx.run_test_sequence().await
-}
-
-fn get_cosmian_config_filepath(filename: &str) -> String {
-    let path = match std::env::var("KMS_HOSTNAME") {
-        Ok(_) => format!("../../test_data/configs_using_docker/{filename}"),
-        Err(_) => {
-            format!("../../test_data/configs/{filename}")
-        }
-    };
-    debug!("cosmian config filepath: {path}");
-    path
 }

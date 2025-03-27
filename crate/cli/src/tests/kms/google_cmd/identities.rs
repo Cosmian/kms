@@ -37,7 +37,7 @@ fn list_identities(
         .collect();
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(COSMIAN_CLI_CONF_ENV, cli_conf_path);
-    cmd.arg("google").arg("identities").args(args);
+    cmd.arg(KMS_SUBCOMMAND).arg("google").arg("identities").args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
         if output.stdout.is_empty() {
@@ -62,7 +62,7 @@ fn get_identities(cli_conf_path: &str, user_id: &str) -> Result<Identity, Cosmia
         .collect();
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(COSMIAN_CLI_CONF_ENV, cli_conf_path);
-    cmd.arg("google").arg("identities").args(args);
+    cmd.arg(KMS_SUBCOMMAND).arg("google").arg("identities").args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
         let output = std::str::from_utf8(&output.stdout)?;
@@ -82,7 +82,7 @@ fn delete_identities(cli_conf_path: &str, user_id: &str) -> Result<(), CosmianEr
         .collect();
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(COSMIAN_CLI_CONF_ENV, cli_conf_path);
-    cmd.arg("google").arg("identities").args(args);
+    cmd.arg(KMS_SUBCOMMAND).arg("google").arg("identities").args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
         return Ok(())
@@ -104,7 +104,7 @@ fn insert_identities(
         .collect();
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(COSMIAN_CLI_CONF_ENV, cli_conf_path);
-    cmd.arg("google").arg("identities").args(args);
+    cmd.arg(KMS_SUBCOMMAND).arg("google").arg("identities").args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
         let output = std::str::from_utf8(&output.stdout)?;

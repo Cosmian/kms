@@ -18,7 +18,7 @@ if [ "$DEBUG_OR_RELEASE" = "release" ]; then
   rm -rf target/"$TARGET"/generate-rpm
   if [ -f /etc/redhat-release ]; then
     cargo build --target "$TARGET" --release
-    cargo install --version 0.14.1 cargo-generate-rpm --force
+    cargo install --version 0.16.0 cargo-generate-rpm --force
     cargo generate-rpm --target "$TARGET" -p crate/cli
   elif [ -f /etc/lsb-release ]; then
     cargo build --target "$TARGET" --release
@@ -42,6 +42,10 @@ if [ -z "$SKIP_SERVICES_TESTS" ]; then
 fi
 
 rustup target add "$TARGET"
+
+if [ -f /etc/lsb-release ]; then
+  bash .github/scripts/test_utimaco.sh
+fi
 
 cd "$ROOT_FOLDER"
 
@@ -80,21 +84,14 @@ rm -f /tmp/*.json /tmp/*.toml
 # shellcheck disable=SC2086
 cargo build --target $TARGET $RELEASE $FEATURES
 
-export RUST_LOG="cosmian_cli=error,cosmian_findex_client=error,cosmian_kmip=error,cosmian_kms_client=error,test_findex_server=error"
-
-# shellcheck disable=SC2086
-cargo test -v --workspace --lib --target $TARGET $RELEASE $FEATURES -- $SKIP_SERVICES_TESTS
-
 # shellcheck disable=SC2086
 cargo test --workspace --bins --target $TARGET $RELEASE $FEATURES
 
 if [ "$DEBUG_OR_RELEASE" = "release" ]; then
+  INCLUDE_IGNORED="--include-ignored"
   # shellcheck disable=SC2086
   cargo bench --target $TARGET $FEATURES --no-run
 fi
-
-# while true; do
-#   sleep 1 && reset
-#   # shellcheck disable=SC2086
-#   cargo test -v --target $TARGET $RELEASE $FEATURES --workspace -- --nocapture $SKIP_SERVICES_TESTS
-# done
+export RUST_LOG="fatal,cosmian_cli=error,cosmian_findex_client=debug,cosmian_kmip=error,cosmian_kms_client=debug"
+# shellcheck disable=SC2086
+cargo test --workspace --lib --target $TARGET $RELEASE $FEATURES -- --nocapture $SKIP_SERVICES_TESTS $INCLUDE_IGNORED
