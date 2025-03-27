@@ -71,9 +71,9 @@ fn open_p12(p12_file: &PathBuf, p12_password: &str) -> Result<ParsedPkcs12_2, Km
     let der_bytes = std::fs::read(p12_file)?;
     // Parse the byte vector as a PKCS#12 object
     let sealed_p12 = Pkcs12::from_der(der_bytes.as_slice())?;
-    Ok(sealed_p12
+    sealed_p12
         .parse2(p12_password)
-        .context("TLS configuration. Failed opening P12")?)
+        .context("TLS configuration. Failed opening P12")
 }
 
 impl fmt::Debug for TlsParams {

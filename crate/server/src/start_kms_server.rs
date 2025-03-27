@@ -79,11 +79,12 @@ pub async fn start_kms_server(
         openssl::provider::Provider::load(None, "default")?
     };
 
-    let mut _socket_server_handle: Option<JoinHandle<()>> = None;
-    if server_params.start_socket_server {
+    let mut _socket_server_handle: Option<JoinHandle<()>> = if server_params.start_socket_server {
         // Start the socket server
-        _socket_server_handle = Some(start_socket_server(&server_params)?);
-    }
+        Some(start_socket_server(&server_params)?)
+    } else {
+        None
+    };
 
     // Log the server configuration
     info!("KMS Server configuration: {:#?}", server_params);

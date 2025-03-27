@@ -65,7 +65,7 @@ impl<'a> TryFrom<&'a ServerParams> for SocketServerConfig<'a> {
             ));
         };
         Ok(Self {
-            host: params.socket_server_hostname.to_owned(),
+            host: params.socket_server_hostname.clone(),
             port: params.socket_server_port,
             p12: &tls_params.p12,
             client_ca_cert_pem,
