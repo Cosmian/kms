@@ -1,13 +1,16 @@
 use std::{collections::HashSet, sync::Arc};
 
 use async_recursion::async_recursion;
-use cosmian_kmip::kmip_2_1::{
-    kmip_attributes::Attributes,
-    kmip_data_structures::{KeyMaterial, KeyValue},
-    kmip_objects::{Object, ObjectType},
-    kmip_operations::{Destroy, DestroyResponse, ErrorReason},
-    kmip_types::{KeyFormatType, LinkType, StateEnumeration, UniqueIdentifier},
-    KmipOperation,
+use cosmian_kmip::{
+    kmip_0::kmip_types::ErrorReason,
+    kmip_2_1::{
+        kmip_attributes::Attributes,
+        kmip_data_structures::{KeyMaterial, KeyValue},
+        kmip_objects::{Object, ObjectType},
+        kmip_operations::{Destroy, DestroyResponse},
+        kmip_types::{KeyFormatType, LinkType, StateEnumeration, UniqueIdentifier},
+        KmipOperation,
+    },
 };
 use cosmian_kms_interfaces::SessionParams;
 use tracing::{debug, trace};

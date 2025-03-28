@@ -38,6 +38,7 @@ enum KmipVersion {
 
 #[derive(PartialEq, Eq, Debug, Serialize)]
 #[serde(untagged)]
+#[allow(clippy::large_enum_variant)]
 pub enum RequestMessageBatchItemVersioned {
     V14(crate::kmip_1_4::kmip_messages::RequestMessageBatchItem),
     V21(crate::kmip_2_1::kmip_messages::RequestMessageBatchItem),
@@ -137,8 +138,7 @@ impl<'de> Deserialize<'de> for RequestMessage {
                             // determine kmip version from the header
                             let kmip_version = match request_header
                                 .as_ref()
-                                .map(|header| header.protocol_version.protocol_version_major)
-                                .unwrap_or(0)
+                                .map_or(0, |header| header.protocol_version.protocol_version_major)
                             {
                                 1 => KmipVersion::V14,
                                 2 => KmipVersion::V21,
@@ -524,6 +524,7 @@ impl Default for RequestMessageHeader {
 
 #[derive(PartialEq, Eq, Debug, Serialize)]
 #[serde(untagged)]
+#[allow(clippy::large_enum_variant)]
 pub enum ResponseMessageBatchItemVersioned {
     V14(crate::kmip_1_4::kmip_messages::ResponseMessageBatchItem),
     V21(crate::kmip_2_1::kmip_messages::ResponseMessageBatchItem),
@@ -626,8 +627,7 @@ impl<'de> Deserialize<'de> for ResponseMessage {
                             // determine kmip version from the header
                             let kmip_version = match response_header
                                 .as_ref()
-                                .map(|header| header.protocol_version.protocol_version_major)
-                                .unwrap_or(0)
+                                .map_or(0, |header| header.protocol_version.protocol_version_major)
                             {
                                 1 => KmipVersion::V14,
                                 2 => KmipVersion::V21,

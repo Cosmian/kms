@@ -206,7 +206,8 @@ impl fmt::Debug for ServerParams {
             .field("default_username", &self.default_username)
             .field("force_default_username", &self.force_default_username)
             .field("main_db_params", &self.main_db_params)
-            .field("clear_db_on_start", &self.clear_db_on_start);
+            .field("clear_db_on_start", &self.clear_db_on_start)
+            .field("non_revocable_key_id", &self.non_revocable_key_id);
 
         if self.start_socket_server {
             debug_struct
@@ -246,7 +247,7 @@ impl fmt::Debug for ServerParams {
         debug_struct.field("non_revocable_key_id", &self.non_revocable_key_id);
         debug_struct.field("privileged_users", &self.privileged_users);
 
-        debug_struct.finish()
+        debug_struct.finish_non_exhaustive()
     }
 }
 

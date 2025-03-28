@@ -1,14 +1,17 @@
 #![allow(clippy::unwrap_used, clippy::print_stdout)]
 
-use base64::{Engine, engine::general_purpose::STANDARD};
-use cosmian_kmip::kmip_2_1::{
-    kmip_attributes::Attributes,
-    kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-    kmip_objects::{Object, ObjectType, PublicKey},
-    kmip_operations::{Decrypt, DecryptResponse, Import, ImportResponse},
-    kmip_types::{
-        CryptographicAlgorithm, CryptographicParameters, HashingAlgorithm, KeyFormatType,
-        PaddingMethod, UniqueIdentifier,
+use base64::{engine::general_purpose::STANDARD, Engine};
+use cosmian_kmip::{
+    kmip_0::kmip_types::HashingAlgorithm,
+    kmip_2_1::{
+        kmip_attributes::Attributes,
+        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+        kmip_objects::{Object, ObjectType, PublicKey},
+        kmip_operations::{Decrypt, DecryptResponse, Import, ImportResponse},
+        kmip_types::{
+            CryptographicAlgorithm, CryptographicParameters, KeyFormatType, PaddingMethod,
+            UniqueIdentifier,
+        },
     },
 };
 

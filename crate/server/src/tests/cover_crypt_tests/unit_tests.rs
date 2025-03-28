@@ -494,6 +494,7 @@ async fn test_abe_json_access() -> KResult<()> {
 
 #[tokio::test]
 async fn test_import_decrypt() -> KResult<()> {
+    log_init(option_env!("RUST_LOG"));
     let clap_config = https_clap_config();
 
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);

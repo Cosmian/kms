@@ -1,5 +1,4 @@
 use std::{
-    ops::Deref,
     sync::{mpsc, Arc},
     thread::JoinHandle,
 };
@@ -90,7 +89,7 @@ pub async fn start_kms_server(
 
     let _socket_server_handle: Option<JoinHandle<()>> = if server_params.start_socket_server {
         // Start the socket server
-        Some(start_socket_server(kms_server.clone()).await?)
+        Some(start_socket_server(kms_server.clone())?)
     } else {
         None
     };
@@ -113,18 +112,16 @@ pub async fn start_kms_server(
 /// # Returns
 /// Returns a `JoinHandle<()>` that represents the socket server thread.
 ///
-async fn start_socket_server(kms_server: Arc<KMS>) -> KResult<JoinHandle<()>> {
+fn start_socket_server(kms_server: Arc<KMS>) -> KResult<JoinHandle<()>> {
     // Start the socket server
     let socket_server =
-        SocketServer::instantiate(&SocketServerParams::try_from(kms_server.params.deref())?)?;
-    let socket_server_handle = socket_server.start_threaded(
-        kms_server.clone(),
-        move |username, request, kms_server| {
+        SocketServer::instantiate(&SocketServerParams::try_from(kms_server.params.as_ref())?)?;
+    let socket_server_handle =
+        socket_server.start_threaded(kms_server, move |username, request, kms_server| {
             trace!("request: {username} {}", hex::encode(request));
             // Handle the TTLV bytes received from the socket server
-            handle_ttlv_bytes(username, &request, kms_server)
-        },
-    )?;
+            handle_ttlv_bytes(username, request, &kms_server)
+        })?;
     Ok(socket_server_handle)
 }
 
