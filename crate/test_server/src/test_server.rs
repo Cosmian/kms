@@ -323,7 +323,7 @@ fn generate_tls_config(use_https: bool, use_client_cert: bool) -> TlsConfig {
             Some(root_dir.join("../../test_data/client_server/server/kmserver.acme.com.p12"));
         tls_config.tls_p12_password = Some("password".to_owned());
         if use_client_cert {
-            tls_config.authority_cert_file =
+            tls_config.clients_ca_cert_file =
                 Some(root_dir.join("../../test_data/client_server/ca/ca.crt"));
         }
     }
