@@ -44,6 +44,7 @@ pub(crate) fn https_clap_config_opts(google_cse_kacls_url: Option<String>) -> Cl
                 "../../test_data/client_server/server/kmserver.acme.com.p12",
             )),
             tls_p12_password: Some("password".to_owned()),
+            authority_cert_file: Some(PathBuf::from("../../test_data/client_server/ca/ca.crt")),
             ..Default::default()
         },
         db: MainDBConfig {
@@ -64,7 +65,7 @@ pub(crate) async fn test_app(
 ) -> impl Service<Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error> {
     let clap_config = https_clap_config_opts(google_cse_kacls_url);
 
-    let server_params = ServerParams::try_from(clap_config).unwrap();
+    let server_params = Arc::new(ServerParams::try_from(clap_config).unwrap());
 
     let kms_server = Arc::new(
         KMS::instantiate(server_params)

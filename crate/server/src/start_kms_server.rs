@@ -1,4 +1,5 @@
 use std::{
+    ops::Deref,
     sync::{mpsc, Arc},
     thread::JoinHandle,
 };
@@ -55,7 +56,7 @@ use crate::{
 ///
 /// This function will return an error if any of the server starting methods fails.
 pub async fn start_kms_server(
-    server_params: ServerParams,
+    server_params: Arc<ServerParams>,
     kms_server_handle_tx: Option<mpsc::Sender<ServerHandle>>,
 ) -> KResult<()> {
     // OpenSSL is loaded now, so that tests can use the correct provider(s)
@@ -81,7 +82,11 @@ pub async fn start_kms_server(
         openssl::provider::Provider::load(None, "default")?
     };
 
-    let kms_server = Arc::new(KMS::instantiate(server_params.clone()).await?);
+    let kms_server = Arc::new(
+        KMS::instantiate(server_params.clone())
+            .await
+            .context("start KMS server: failed instantiating the server")?,
+    );
 
     let _socket_server_handle: Option<JoinHandle<()>> = if server_params.start_socket_server {
         // Start the socket server
@@ -111,7 +116,7 @@ pub async fn start_kms_server(
 async fn start_socket_server(kms_server: Arc<KMS>) -> KResult<JoinHandle<()>> {
     // Start the socket server
     let socket_server =
-        SocketServer::instantiate(&SocketServerParams::try_from(&kms_server.params)?)?;
+        SocketServer::instantiate(&SocketServerParams::try_from(kms_server.params.deref())?)?;
     let socket_server_handle = socket_server.start_threaded(
         kms_server.clone(),
         move |username, request, kms_server| {

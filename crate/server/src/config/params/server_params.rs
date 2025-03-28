@@ -195,125 +195,59 @@ impl ServerParams {
 
 impl fmt::Debug for ServerParams {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut x = f.debug_struct("");
-        let x = x
+        let mut debug_struct = f.debug_struct("ServerParams");
+
+        // Add all fields systematically
+        debug_struct
             .field(
-                "kms_url",
-                &format!(
-                    "http{}://{}:{}",
-                    if self.tls_params.is_some() { "s" } else { "" },
-                    &self.http_hostname,
-                    &self.http_port
-                ),
-            )
-            .field("db_params", &self.main_db_params)
-            .field("clear_db_on_start", &self.clear_db_on_start);
-        let x = if let Some(identity_provider_configurations) =
-            &self.identity_provider_configurations
-        {
-            x.field(
                 "identity_provider_configurations",
-                &identity_provider_configurations,
+                &self.identity_provider_configurations,
             )
-        } else {
-            x
-        };
-        let x = x.field("kms_public_url", &self.kms_public_url);
-        let x = x.field("ui_index_html_folder", &self.ui_index_html_folder);
-        let x = x.field("ui_oidc_auth", &self.ui_oidc_auth);
-        let x = if self.start_socket_server {
-            x.field(
-                "socket_server",
-                &format!(
-                    "{}:{}",
-                    &self.socket_server_hostname, &self.socket_server_port
-                ),
-            )
-        } else {
-            x
-        };
-
-        let x = x
             .field("default_username", &self.default_username)
-            .field("force_default_username", &self.force_default_username);
-        let x = x.field("http_params", &self.tls_params);
-        let x = x.field(
-            "google_cse_disable_tokens_validation",
-            &self.google_cse_disable_tokens_validation,
-        );
-        let x = if let Some(google_cse_kacls_url) = &self.google_cse_kacls_url {
-            x.field("google_cse_kacls_url", &google_cse_kacls_url)
+            .field("force_default_username", &self.force_default_username)
+            .field("main_db_params", &self.main_db_params)
+            .field("clear_db_on_start", &self.clear_db_on_start);
+
+        if self.start_socket_server {
+            debug_struct
+                .field("socket_server_hostname", &self.socket_server_hostname)
+                .field("socket_server_port", &self.socket_server_port);
         } else {
-            x
-        };
-        let x = x.field("ms_dke_service_url", &self.ms_dke_service_url);
-        let x = x.field("api_token_id", &self.api_token_id);
-        let x = x.field("HSM_username", &self.hsm_admin);
-        let x = x.field(
-            "hsm_model",
-            if self.slot_passwords.is_empty() {
-                &"NO HSM"
-            } else {
-                &self.hsm_model
-            },
-        );
-        let x = x.field(
-            "slot_passwords",
-            &self
-                .slot_passwords
-                .iter()
-                .map(|(s, p)| {
-                    let p = if p.is_some() { "********" } else { "" };
-                    format!("{s} -> {p}")
-                })
-                .collect::<Vec<String>>(),
-        );
-        let x = x.field("non_revocable_key_id", &self.non_revocable_key_id);
-        let x = x.field("privileged_users", &self.privileged_users);
-
-        x.finish()
-    }
-}
-
-/// Creates a partial clone of the `ServerParams`
-/// the `DbParams`, PKCS#12 information and Proteccio password are not copied
-/// since it may contain sensitive material
-impl Clone for ServerParams {
-    fn clone(&self) -> Self {
-        Self {
-            identity_provider_configurations: self.identity_provider_configurations.clone(),
-            ui_index_html_folder: self.ui_index_html_folder.clone(),
-            ui_oidc_auth: self.ui_oidc_auth.clone(),
-            default_username: self.default_username.clone(),
-            force_default_username: self.force_default_username,
-            main_db_params: None,
-            clear_db_on_start: self.clear_db_on_start,
-            start_socket_server: self.start_socket_server,
-            socket_server_hostname: self.socket_server_hostname.clone(),
-            socket_server_port: self.socket_server_port,
-            http_hostname: self.http_hostname.clone(),
-            http_port: self.http_port,
-            tls_params: TlsParams::Plain,
-            hostname: self.hostname.clone(),
-            port: self.port,
-            kms_public_url: self.kms_public_url.clone(),
-            http_params: HttpParams::Http,
-            authority_cert_file: self.authority_cert_file.clone(),
-            tls_params: None,
-            api_token_id: self.api_token_id.clone(),
-            google_cse_disable_tokens_validation: self.google_cse_disable_tokens_validation,
-            google_cse_kacls_url: self.google_cse_kacls_url.clone(),
-            ms_dke_service_url: self.ms_dke_service_url.clone(),
-            hsm_admin: self.hsm_admin.clone(),
-            hsm_model: self.hsm_model.clone(),
-            slot_passwords: self
-                .slot_passwords
-                .clone()
-                .into_keys()
-                .map(|s| (s, None))
-                .collect(),
-            non_revocable_key_id: self.non_revocable_key_id.clone(),
-            privileged_users: self.privileged_users.clone(),
+            debug_struct.field("socket_server", &"disabled");
         }
+
+        debug_struct
+            .field("tls_params", &self.tls_params)
+            .field("api_token_id", &self.api_token_id)
+            .field("google_cse_kacls_url", &self.google_cse_kacls_url)
+            .field(
+                "google_cse_disable_tokens_validation",
+                &self.google_cse_disable_tokens_validation,
+            )
+            .field("ms_dke_service_url", &self.ms_dke_service_url);
+
+        if self.hsm_model.is_some() {
+            debug_struct
+                .field("hsm_admin", &self.hsm_admin)
+                .field("hsm_model", &self.hsm_model);
+        } else {
+            debug_struct.field("hsm_model", &"no HSM configured");
+        }
+
+        debug_struct.field(
+            "kms_url",
+            &format!(
+                "http{}://{}:{}",
+                if self.tls_params.is_some() { "s" } else { "" },
+                &self.http_hostname,
+                &self.http_port
+            ),
+        );
+        debug_struct.field("non_revocable_key_id", &self.non_revocable_key_id);
+        debug_struct.field("privileged_users", &self.privileged_users);
+
+        debug_struct.finish()
     }
 }
+
+

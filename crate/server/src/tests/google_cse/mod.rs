@@ -97,10 +97,9 @@ where
 {
     let symmetric_key = read_bytes_from_file(&PathBuf::from(
         "../../documentation/docs/google_cse/17fd53a2-a753-4ec4-800b-ccc68bc70480.demo.key.json",
-    ))
-    .unwrap();
+    ))?;
 
-    let object = read_object_from_json_ttlv_bytes(&symmetric_key).unwrap();
+    let object = read_object_from_json_ttlv_bytes(&symmetric_key)?;
 
     let import_request = Import {
         unique_identifier: UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned()),
@@ -111,9 +110,9 @@ where
         object,
     };
 
-    tracing::debug!("import request: {import_request}");
+    debug!("import request: {import_request}");
     let response: ImportResponse = test_utils::post_2_1(app, import_request).await?;
-    tracing::debug!("import response: {response:?}");
+    debug!("import response: {response:?}");
 
     let access = Access {
         unique_identifier: Some(UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned())),
@@ -129,7 +128,7 @@ where
 
     let access_response: SuccessResponse =
         test_utils::post_json_with_uri(app, access, "/access/grant").await?;
-    tracing::debug!("grant response post: {access_response:?}");
+    debug!("grant response post: {access_response:?}");
 
     Ok(())
 }
@@ -152,12 +151,12 @@ fn test_ossl_sign_verify() -> KResult<()> {
     let private_key = PKey::from_rsa(rsa_private_key)?;
     let mut signer = Signer::new(MessageDigest::sha256(), &private_key)?;
 
-    tracing::debug!("padding method: {:?}", signer.rsa_padding());
+    debug!("padding method: {:?}", signer.rsa_padding());
 
     signer.update(&digest)?;
     let signature = signer.sign_to_vec()?;
 
-    tracing::debug!(
+    debug!(
         "signature: {}",
         general_purpose::STANDARD.encode(signature.clone())
     );
@@ -188,7 +187,7 @@ async fn test_cse_status() -> KResult<()> {
 
     let response: StatusResponse =
         test_utils::get_json_with_uri(&app, "/google_cse/status").await?;
-    tracing::debug!("status_request sent");
+    debug!("status_request sent");
 
     assert_eq!(response.server_type, "KACLS");
     assert_eq!(response.vendor_id, "Cosmian");
@@ -227,15 +226,14 @@ async fn test_cse_private_key_sign() -> KResult<()> {
         wrapped_private_key: wrapped_private_key.to_owned(),
     };
 
-    tracing::debug!("private key sign request post");
+    debug!("private key sign request post");
     let pksr_response: PrivateKeySignResponse =
         test_utils::post_json_with_uri(&app, pksr, "/google_cse/privatekeysign").await?;
-    tracing::debug!("private key sign response post: {pksr_response:?}");
+    debug!("private key sign response post: {pksr_response:?}");
 
     let user_public_key_pem_pkcs1 = read_bytes_from_file(&PathBuf::from(
         "../../test_data/certificates/gmail_cse/test_public_key",
-    ))
-    .unwrap();
+    ))?;
 
     // Load the public key from bytes
     let rsa_public_key = Rsa::public_key_from_pem_pkcs1(&user_public_key_pem_pkcs1)?;
@@ -268,7 +266,7 @@ fn rsa_encrypt(rsa_public_key: Rsa<Public>, dek: &[u8]) -> KResult<String> {
     let mut encrypted_data_encryption_key = vec![0_u8; encrypt_size];
     ctx.encrypt(dek, Some(&mut *encrypted_data_encryption_key))?;
 
-    tracing::debug!("rsa pkcs1: dek={dek:?}\nencrypted_dek={encrypted_data_encryption_key:?}");
+    debug!("rsa pkcs1: dek={dek:?}\nencrypted_dek={encrypted_data_encryption_key:?}");
     Ok(general_purpose::STANDARD.encode(encrypted_data_encryption_key))
 }
 
@@ -300,7 +298,7 @@ async fn test_create_pair_encrypt_decrypt() -> KResult<()> {
     log_init(None);
 
     let clap_config = https_clap_config();
-    let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
+    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     // Create google_cse key
@@ -511,10 +509,10 @@ async fn test_cse_private_key_decrypt(
         wrapped_private_key: wrapped_private_key.to_owned(),
     };
 
-    tracing::debug!("private key decrypt request post");
+    debug!("private key decrypt request post");
     let response: PrivateKeyDecryptResponse =
         test_utils::post_json_with_uri(&app, request, "/google_cse/privatekeydecrypt").await?;
-    tracing::debug!("private key decrypt response post: {response:?}");
+    debug!("private key decrypt response post: {response:?}");
 
     Ok(response.data_encryption_key)
 }
@@ -577,10 +575,10 @@ async fn test_cse_wrap_unwrap_key() -> KResult<()> {
         reason: String::new(),
     };
 
-    tracing::debug!("wrapping key request post");
+    debug!("wrapping key request post");
     let wrap_response: WrapResponse =
         test_utils::post_json_with_uri(&app, wrap_request, "/google_cse/wrap").await?;
-    tracing::debug!("wrapping key response post: {wrap_response:?}");
+    debug!("wrapping key response post: {wrap_response:?}");
 
     let wrapped_key = wrap_response.wrapped_key;
 
@@ -591,10 +589,10 @@ async fn test_cse_wrap_unwrap_key() -> KResult<()> {
         reason: String::new(),
     };
 
-    tracing::debug!("unwrapping key request post");
+    debug!("unwrapping key request post");
     let unwrap_response: UnwrapResponse =
         test_utils::post_json_with_uri(&app, unwrap_request, "/google_cse/unwrap").await?;
-    tracing::debug!("unwrapping key response post: {unwrap_response:?}");
+    debug!("unwrapping key response post: {unwrap_response:?}");
 
     assert_eq!(dek, unwrap_response.key);
 
@@ -629,10 +627,10 @@ async fn test_cse_privileged_wrap_unwrap_key() -> KResult<()> {
         reason: String::new(),
     };
 
-    tracing::debug!("privileged wrapping key request post");
+    debug!("privileged wrapping key request post");
     let wrap_response: PrivilegedWrapResponse =
         test_utils::post_json_with_uri(&app, wrap_request, "/google_cse/privilegedwrap").await?;
-    tracing::debug!("privileged wrapping key response post: {wrap_response:?}");
+    debug!("privileged wrapping key response post: {wrap_response:?}");
 
     let wrapped_key = wrap_response.wrapped_key;
 
@@ -643,7 +641,7 @@ async fn test_cse_privileged_wrap_unwrap_key() -> KResult<()> {
         reason: String::new(),
     };
 
-    tracing::debug!("privileged unwrapping key request post");
+    debug!("privileged unwrapping key request post");
     let unwrap_response: PrivilegedUnwrapResponse =
         test_utils::post_json_with_uri(&app, unwrap_request, "/google_cse/privilegedunwrap")
             .await?;
@@ -691,7 +689,7 @@ async fn test_cse_privileged_private_key_decrypt() -> KResult<()> {
     let mut encrypted_data_encryption_key = vec![0_u8; encrypt_size];
     ctx.encrypt(&dek, Some(&mut *encrypted_data_encryption_key))?;
 
-    tracing::debug!("rsa pkcs1: dek={dek:?}\nencrypted_dek={encrypted_data_encryption_key:?}");
+    debug!("rsa pkcs1: dek={dek:?}\nencrypted_dek={encrypted_data_encryption_key:?}");
 
     // Import google CSE key
     import_google_cse_symmetric_key_with_access(&app).await?;
@@ -715,7 +713,7 @@ async fn test_cse_privileged_private_key_decrypt() -> KResult<()> {
         spki_hash_algorithm: "SHA-256".to_owned(),
     };
 
-    tracing::debug!("privileged private key decrypt request post");
+    debug!("privileged private key decrypt request post");
     let private_key_decrypt_response: PrivilegedPrivateKeyDecryptResponse =
         test_utils::post_json_with_uri(
             &app,
@@ -723,9 +721,7 @@ async fn test_cse_privileged_private_key_decrypt() -> KResult<()> {
             "/google_cse/privilegedprivatekeydecrypt",
         )
         .await?;
-    tracing::debug!(
-        "privileged private key decrypt response post: {private_key_decrypt_response:?}"
-    );
+    debug!("privileged private key decrypt response post: {private_key_decrypt_response:?}");
 
     assert_eq!(
         general_purpose::STANDARD.encode(dek),
@@ -769,9 +765,7 @@ async fn test_cse_rewrap_key() -> KResult<()> {
 
     let response_original_key_import: ImportResponse =
         test_utils::post_2_1(&app, import_original_key_request).await?;
-    tracing::debug!(
-        "import original kms google_cse key response: {response_original_key_import:?}"
-    );
+    debug!("import original kms google_cse key response: {response_original_key_import:?}");
 
     let access_original_key_request = Access {
         unique_identifier: Some(UniqueIdentifier::TextString(
@@ -788,7 +782,7 @@ async fn test_cse_rewrap_key() -> KResult<()> {
 
     let access_original_key_response: SuccessResponse =
         test_utils::post_json_with_uri(&app, access_original_key_request, "/access/grant").await?;
-    tracing::debug!("grant response post: {access_original_key_response:?}");
+    debug!("grant response post: {access_original_key_response:?}");
 
     // Original DEK and Wrapped DEK with original kms google_cse key
     let dek: &str = "wHrlNOTI9mU6PBdqiq7EQA==";
@@ -807,7 +801,7 @@ async fn test_cse_rewrap_key() -> KResult<()> {
 
     let rewrap_response: RewrapResponse =
         test_utils::post_json_with_uri(&app, rewrap_request, "/google_cse/rewrap").await?;
-    tracing::debug!("rewrapping key response post: {rewrap_response:?}");
+    debug!("rewrapping key response post: {rewrap_response:?}");
 
     // Unwrap DEK and compare it to the initial DEK
     let rewrapped_key = rewrap_response.wrapped_key;
@@ -831,7 +825,7 @@ async fn test_cse_rewrap_key() -> KResult<()> {
         wrapped_key: rewrapped_key,
         reason: String::new(),
     };
-    tracing::debug!("digest key request post");
+    debug!("digest key request post");
     let digest_response: DigestResponse =
         test_utils::post_json_with_uri(&app, digest_request, "/google_cse/digest").await?;
 
