@@ -6,7 +6,7 @@ use actix_web::{
     HttpRequest, HttpResponse,
 };
 use cosmian_kmip::{
-    kmip_2_1::kmip_messages::RequestMessage,
+    kmip_0::kmip_messages::RequestMessage,
     ttlv::{from_ttlv, to_ttlv, TTLValue, TTLV},
     KmipResultHelper,
 };
@@ -147,7 +147,7 @@ pub(crate) fn kmip_binary(
     //     .body(response_ttlv.to_bytes()?))
 }
 
-pub(crate) fn handle_ttlv_bytes(username: &str, ttlv_bytes: &[u8], _kms: Arc<KMS>) -> Vec<u8> {
+pub(crate) fn handle_ttlv_bytes(username: &str, ttlv_bytes: &[u8], _kms: &Arc<KMS>) -> Vec<u8> {
     info!(
         "DUMMY HANDLER ECHOING BACK:  {username} -> {} - ",
         hex::encode(ttlv_bytes)

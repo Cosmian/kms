@@ -1,22 +1,19 @@
 use std::sync::OnceLock;
 
-use cosmian_kmip::ttlv::KmipFlavor;
-use tracing::debug;
-
-use crate::{
+use cosmian_kmip::{
     kmip_0::{
-        kmip_messages::{RequestMessage as RequestMessage0, ResponseMessage as ResponseMessage0},
-        kmip_operations::Operation as Operation0,
-    },
-    kmip_1_4::{
         kmip_messages::{
-            RequestMessage, RequestMessageBatchItem, RequestMessageHeader, ResponseMessage,
+            RequestMessage, RequestMessageBatchItemVersioned, RequestMessageHeader,
+            ResponseMessage, ResponseMessageBatchItemVersioned,
         },
-        kmip_operations::Operation,
         kmip_types::{ProtocolVersion, ResultStatusEnumeration},
     },
-    SocketClient, SocketClientConfig,
+    kmip_1_4::{kmip_messages::RequestMessageBatchItem, kmip_operations::Operation},
+    ttlv::KmipFlavor,
 };
+use tracing::debug;
+
+use crate::{SocketClient, SocketClientConfig};
 
 // load the string content at compile time - same as http_client.rs
 const SERVER_CA_CERTIFICATE: &str =
@@ -33,19 +30,24 @@ pub(crate) fn wrap_in_request_message(op: Operation) -> RequestMessage {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItem {
-            operation: op.operation_enum(),
-            ephemeral: None,
-            unique_batch_item_id: None,
-            request_payload: op,
-            message_extension: None,
-        }],
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+            RequestMessageBatchItem {
+                operation: op.operation_enum(),
+                ephemeral: None,
+                unique_batch_item_id: None,
+                request_payload: op,
+                message_extension: None,
+            },
+        )],
     }
 }
 
 #[allow(clippy::expect_used)]
 pub(crate) fn unwrap_from_response_message(response: &ResponseMessage) -> Operation {
     let batch_item = response.batch_item.first().expect("No batch item");
+    let ResponseMessageBatchItemVersioned::V14(batch_item) = batch_item else {
+        panic!("Expected V14 batch item, got {:?}", batch_item)
+    };
     assert_eq!(batch_item.result_status, ResultStatusEnumeration::Success);
     batch_item
         .response_payload

@@ -52,8 +52,7 @@ impl TlsParams {
             .or(deprecated_config.authority_cert_file.as_ref())
         {
             Some(std::fs::read(authority_cert_file).context(&format!(
-                "TLS configuration. Failed opening authority cert file at {:?}",
-                authority_cert_file
+                "TLS configuration. Failed opening authority cert file at {authority_cert_file:?}"
             ))?)
         } else {
             None

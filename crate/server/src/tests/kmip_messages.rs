@@ -1,14 +1,18 @@
 use std::sync::Arc;
 
 use cosmian_kmip::{
+    kmip_0::{
+        kmip_messages::{
+            RequestMessage, RequestMessageBatchItemVersioned, RequestMessageHeader,
+            ResponseMessageBatchItemVersioned,
+        },
+        kmip_types::{ErrorReason, ProtocolVersion, ResultStatusEnumeration},
+    },
     kmip_2_1::{
         extra::tagging::EMPTY_TAGS,
-        kmip_messages::{RequestMessage, RequestMessageBatchItem, RequestMessageHeader},
-        kmip_operations::{Decrypt, ErrorReason, Locate, Operation},
-        kmip_types::{
-            OperationEnumeration, ProtocolVersion, RecommendedCurve, ResultStatusEnumeration,
-            UniqueIdentifier,
-        },
+        kmip_messages::RequestMessageBatchItem,
+        kmip_operations::{Decrypt, Locate, Operation},
+        kmip_types::{OperationEnumeration, RecommendedCurve, UniqueIdentifier},
         requests::create_ec_key_pair_request,
     },
     ttlv::to_ttlv,
@@ -177,13 +181,19 @@ async fn test_kmip_messages() -> KResult<()> {
 
     // prepare and send the single message
     let batch_item = vec![
-        RequestMessageBatchItem::new(Operation::CreateKeyPair(ec_create_request)),
-        RequestMessageBatchItem::new(Operation::Locate(Locate::default())),
-        RequestMessageBatchItem::new(Operation::Decrypt(Decrypt {
-            unique_identifier: Some(UniqueIdentifier::TextString("id_12345".to_owned())),
-            data: Some(b"decrypted_data".to_vec()),
-            ..Default::default()
-        })),
+        RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
+            Operation::CreateKeyPair(ec_create_request),
+        )),
+        RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(Operation::Locate(
+            Locate::default(),
+        ))),
+        RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(Operation::Decrypt(
+            Decrypt {
+                unique_identifier: Some(UniqueIdentifier::TextString("id_12345".to_owned())),
+                data: Some(b"decrypted_data".to_vec()),
+                ..Default::default()
+            },
+        ))),
     ];
     let message_request = RequestMessage {
         request_header: RequestMessageHeader {
@@ -206,35 +216,34 @@ async fn test_kmip_messages() -> KResult<()> {
     assert_eq!(response.batch_item.len(), 3);
 
     // 1. Create keypair
+    let ResponseMessageBatchItemVersioned::V21(batch_item) = &response.batch_item[0] else {
+        panic!("not a V21 response");
+    };
     assert_eq!(
-        response.batch_item[0].operation,
+        batch_item.operation,
         Some(OperationEnumeration::CreateKeyPair)
     );
-    assert_eq!(
-        response.batch_item[0].result_status,
-        ResultStatusEnumeration::Success
-    );
+    assert_eq!(batch_item.result_status, ResultStatusEnumeration::Success);
     let Some(Operation::CreateKeyPairResponse(create_keypair_response)) =
-        &response.batch_item[0].response_payload
+        &batch_item.response_payload
     else {
         panic!("not a create key pair response payload");
     };
 
     // 2. Locate
+    let ResponseMessageBatchItemVersioned::V21(batch_item) = &response.batch_item[1] else {
+        panic!("not a V21 response");
+    };
+    assert_eq!(batch_item.operation, Some(OperationEnumeration::Locate));
     assert_eq!(
-        response.batch_item[1].operation,
-        Some(OperationEnumeration::Locate)
-    );
-    assert_eq!(
-        response.batch_item[1].result_status,
+        batch_item.result_status,
         ResultStatusEnumeration::Success,
         "result_status: {:?}, result_message: {:?}, result_reason: {:?}",
-        response.batch_item[1].result_status,
-        response.batch_item[1].result_message,
-        response.batch_item[1].result_reason
+        batch_item.result_status,
+        batch_item.result_message,
+        batch_item.result_reason
     );
-    let Some(Operation::LocateResponse(locate_response)) = &response.batch_item[1].response_payload
-    else {
+    let Some(Operation::LocateResponse(locate_response)) = &batch_item.response_payload else {
         panic!("not a locate response payload");
     };
     // locate response contains only 2 keys, the pair that was created
@@ -246,22 +255,20 @@ async fn test_kmip_messages() -> KResult<()> {
     assert!(locate_uids.contains(&create_keypair_response.public_key_unique_identifier));
 
     // 3. Decrypt (that failed)
+    let ResponseMessageBatchItemVersioned::V21(batch_item) = &response.batch_item[2] else {
+        panic!("not a V21 response");
+    };
+
+    assert_eq!(batch_item.operation, Some(OperationEnumeration::Decrypt));
     assert_eq!(
-        response.batch_item[2].operation,
-        Some(OperationEnumeration::Decrypt)
-    );
-    assert_eq!(
-        response.batch_item[2].result_status,
+        batch_item.result_status,
         ResultStatusEnumeration::OperationFailed
     );
     assert_eq!(
-        response.batch_item[2].result_message,
+        batch_item.result_message,
         Some("Decrypt: failed to retrieve the key: id_12345".to_owned())
     );
-    assert_eq!(
-        response.batch_item[2].result_reason,
-        Some(ErrorReason::Item_Not_Found)
-    );
-    assert!(response.batch_item[2].response_payload.is_none());
+    assert_eq!(batch_item.result_reason, Some(ErrorReason::Item_Not_Found));
+    assert!(batch_item.response_payload.is_none());
     Ok(())
 }

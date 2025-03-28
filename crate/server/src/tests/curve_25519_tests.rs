@@ -11,8 +11,29 @@ use cosmian_kmip::kmip_2_1::{
         CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, LinkType,
         LinkedObjectIdentifier, ProtocolVersion, RecommendedCurve, ResultStatusEnumeration,
         UniqueIdentifier,
+use cloudproof::reexport::crypto_core::X25519_PUBLIC_KEY_LENGTH;
+use cosmian_kmip::{
+    kmip_0::{
+        kmip_messages::{
+            RequestMessage, RequestMessageBatchItemVersioned, RequestMessageHeader,
+            ResponseMessageBatchItemVersioned,
+        },
+        kmip_types::{ErrorReason, ProtocolVersion, ResultStatusEnumeration},
     },
-    requests::{create_ec_key_pair_request, get_ec_private_key_request, get_ec_public_key_request},
+    kmip_2_1::{
+        extra::tagging::EMPTY_TAGS,
+        kmip_attributes::Attributes,
+        kmip_messages::RequestMessageBatchItem,
+        kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
+        kmip_operations::{Import, Operation},
+        kmip_types::{
+            CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, LinkType,
+            LinkedObjectIdentifier, RecommendedCurve, UniqueIdentifier,
+        },
+        requests::{
+            create_ec_key_pair_request, get_ec_private_key_request, get_ec_public_key_request,
+        },
+    },
 };
 use cosmian_kms_crypto::crypto::elliptic_curves::{
     operation::to_ec_public_key, CURVE_25519_Q_LENGTH_BITS,
@@ -220,15 +241,17 @@ async fn test_curve_25519_multiple() -> KResult<()> {
             ..Default::default()
         },
         batch_item: vec![
-            RequestMessageBatchItem::new(Operation::CreateKeyPair(create_ec_key_pair_request(
-                None,
-                EMPTY_TAGS,
-                RecommendedCurve::CURVE25519,
-                false,
-            )?)),
-            RequestMessageBatchItem::new(Operation::Locate(
-                cosmian_kmip::kmip_2_1::kmip_operations::Locate::default(),
+            RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
+                Operation::CreateKeyPair(create_ec_key_pair_request(
+                    None,
+                    EMPTY_TAGS,
+                    RecommendedCurve::CURVE25519,
+                    false,
+                )?),
             )),
+            RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(Operation::Locate(
+                cosmian_kmip::kmip_2_1::kmip_operations::Locate::default(),
+            ))),
         ],
     };
 
@@ -246,30 +269,38 @@ async fn test_curve_25519_multiple() -> KResult<()> {
             ..Default::default()
         },
         batch_item: vec![
-            RequestMessageBatchItem::new(Operation::CreateKeyPair(create_ec_key_pair_request(
-                None,
-                EMPTY_TAGS,
-                RecommendedCurve::CURVE25519,
-                false,
-            )?)),
-            RequestMessageBatchItem::new(Operation::CreateKeyPair(create_ec_key_pair_request(
-                None,
-                EMPTY_TAGS,
-                RecommendedCurve::CURVEED25519,
-                false,
-            )?)),
-            RequestMessageBatchItem::new(Operation::CreateKeyPair(create_ec_key_pair_request(
-                None,
-                EMPTY_TAGS,
-                RecommendedCurve::SECP256K1,
-                false,
-            )?)),
-            RequestMessageBatchItem::new(Operation::CreateKeyPair(create_ec_key_pair_request(
-                None,
-                EMPTY_TAGS,
-                RecommendedCurve::CURVEED25519,
-                false,
-            )?)),
+            RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
+                Operation::CreateKeyPair(create_ec_key_pair_request(
+                    None,
+                    EMPTY_TAGS,
+                    RecommendedCurve::CURVE25519,
+                    false,
+                )?),
+            )),
+            RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
+                Operation::CreateKeyPair(create_ec_key_pair_request(
+                    None,
+                    EMPTY_TAGS,
+                    RecommendedCurve::CURVEED25519,
+                    false,
+                )?),
+            )),
+            RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
+                Operation::CreateKeyPair(create_ec_key_pair_request(
+                    None,
+                    EMPTY_TAGS,
+                    RecommendedCurve::SECP256K1,
+                    false,
+                )?),
+            )),
+            RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
+                Operation::CreateKeyPair(create_ec_key_pair_request(
+                    None,
+                    EMPTY_TAGS,
+                    RecommendedCurve::CURVEED25519,
+                    false,
+                )?),
+            )),
         ],
     };
 
@@ -277,62 +308,68 @@ async fn test_curve_25519_multiple() -> KResult<()> {
     assert_eq!(response.response_header.batch_count, 4);
     assert_eq!(response.batch_item.len(), 4);
 
-    assert_eq!(
-        response.batch_item[0].result_status,
-        ResultStatusEnumeration::Success
-    );
-    let Some(Operation::CreateKeyPairResponse(_)) = &response.batch_item[0].response_payload else {
+    let ResponseMessageBatchItemVersioned::V21(batch_item) = &response.batch_item[0] else {
+        panic!("not a v2.1 response");
+    };
+    assert_eq!(batch_item.result_status, ResultStatusEnumeration::Success);
+    let Some(Operation::CreateKeyPairResponse(_)) = &batch_item.response_payload else {
         panic!("not a create key pair response payload");
+    };
+
+    let ResponseMessageBatchItemVersioned::V21(batch_item) = &response.batch_item[1] else {
+        panic!("not a v2.1 response");
     };
 
     // Should fail in fips mode since ed25519 for ECDH is not allowed.
     #[cfg(feature = "fips")]
     assert_eq!(
-        response.items[1].result_status,
+        batch_item.result_status,
         ResultStatusEnumeration::OperationFailed
     );
     #[cfg(not(feature = "fips"))]
-    assert_eq!(
-        response.batch_item[1].result_status,
-        ResultStatusEnumeration::Success
-    );
+    assert_eq!(batch_item.result_status, ResultStatusEnumeration::Success);
 
     #[cfg(not(feature = "fips"))]
-    let Some(Operation::CreateKeyPairResponse(_)) = &response.batch_item[1].response_payload else {
+    let Some(Operation::CreateKeyPairResponse(_)) = &batch_item.response_payload else {
         panic!("not a create key pair response payload");
     };
 
-    assert!(response.batch_item[2].response_payload.is_none());
+    let ResponseMessageBatchItemVersioned::V21(batch_item) = &response.batch_item[2] else {
+        panic!("not a v2.1 response");
+    };
+
+    assert!(batch_item.response_payload.is_none());
     assert_eq!(
-        response.batch_item[2].result_status,
+        batch_item.result_status,
         ResultStatusEnumeration::OperationFailed
     );
     assert_eq!(
-        response.batch_item[2].result_reason,
+        batch_item.result_reason,
         Some(ErrorReason::Operation_Not_Supported)
     );
     assert_eq!(
-        response.batch_item[2].result_message,
+        batch_item.result_message,
         Some(
             "Not Supported: Generation of Key Pair for curve: SECP256K1, is not supported"
                 .to_owned()
         )
     );
 
+    let ResponseMessageBatchItemVersioned::V21(batch_item) = &response.batch_item[3] else {
+        panic!("not a v2.1 response");
+    };
+
     // Should fail in fips mode since ed25519 for ECDH is not allowed.
     #[cfg(feature = "fips")]
     assert_eq!(
-        response.items[3].result_status,
+        batch_item.result_status,
         ResultStatusEnumeration::OperationFailed
     );
     #[cfg(not(feature = "fips"))]
-    assert_eq!(
-        response.batch_item[3].result_status,
-        ResultStatusEnumeration::Success
-    );
+    assert_eq!(batch_item.result_status, ResultStatusEnumeration::Success);
 
     #[cfg(not(feature = "fips"))]
-    let Some(Operation::CreateKeyPairResponse(_)) = &response.batch_item[3].response_payload else {
+    let Some(Operation::CreateKeyPairResponse(_)) = &batch_item.response_payload else {
         panic!("not a create key pair response payload");
     };
 

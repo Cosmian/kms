@@ -8,13 +8,16 @@ use actix_web::{
 use base64::{engine::general_purpose::STANDARD, Engine};
 use chrono::{Duration, Utc};
 use clap::crate_version;
-use cosmian_kmip::kmip_2_1::{
-    kmip_data_structures::KeyMaterial,
-    kmip_objects::{Object, PublicKey},
-    kmip_operations::{Decrypt, Get},
-    kmip_types::{
-        CryptographicAlgorithm, CryptographicParameters, HashingAlgorithm, KeyFormatType,
-        KeyWrapType, PaddingMethod, UniqueIdentifier,
+use cosmian_kmip::{
+    kmip_0::kmip_types::HashingAlgorithm,
+    kmip_2_1::{
+        kmip_data_structures::KeyMaterial,
+        kmip_objects::{Object, PublicKey},
+        kmip_operations::{Decrypt, Get},
+        kmip_types::{
+            CryptographicAlgorithm, CryptographicParameters, KeyFormatType, KeyWrapType,
+            PaddingMethod, UniqueIdentifier,
+        },
     },
 };
 use num_bigint_dig::BigInt;

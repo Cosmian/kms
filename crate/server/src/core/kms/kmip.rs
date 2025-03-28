@@ -1,16 +1,18 @@
 use std::sync::Arc;
 
-use cosmian_kmip::kmip_2_1::{
-    kmip_messages::{RequestMessage, ResponseMessage},
-    kmip_operations::{
-        Certify, CertifyResponse, Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse,
-        Decrypt, DecryptResponse, DeleteAttribute, DeleteAttributeResponse, Destroy,
-        DestroyResponse, Encrypt, EncryptResponse, Export, ExportResponse, Get, GetAttributes,
-        GetAttributesResponse, GetResponse, Hash, HashResponse, Import, ImportResponse, Locate,
-        LocateResponse, Mac, MacResponse, ReKey, ReKeyKeyPair, ReKeyKeyPairResponse, ReKeyResponse,
-        Revoke, RevokeResponse, SetAttribute, SetAttributeResponse, Validate, ValidateResponse,
+use cosmian_kmip::{
+    kmip_0::kmip_messages::{RequestMessage, ResponseMessage},
+    kmip_2_1::{
+        kmip_operations::{
+            Certify, CertifyResponse, Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse,
+            Decrypt, DecryptResponse, DeleteAttribute, DeleteAttributeResponse, Destroy,
+            DestroyResponse, Encrypt, EncryptResponse, Export, ExportResponse, Get, GetAttributes,
+            GetAttributesResponse, GetResponse, Import, ImportResponse, Locate, LocateResponse,
+            ReKey, ReKeyKeyPair, ReKeyKeyPairResponse, ReKeyResponse, Revoke, RevokeResponse,
+            SetAttribute, SetAttributeResponse, Validate, ValidateResponse,
+        },
+        kmip_types::StateEnumeration,
     },
-    kmip_types::StateEnumeration,
 };
 use cosmian_kms_interfaces::SessionParams;
 

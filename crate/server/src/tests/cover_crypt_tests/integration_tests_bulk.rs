@@ -1,10 +1,16 @@
-use cosmian_kmip::kmip_2_1::{
-    extra::tagging::EMPTY_TAGS,
-    kmip_messages::{
-        RequestMessage, RequestMessageBatchItem, RequestMessageHeader, ResponseMessage,
+use cloudproof::reexport::cover_crypt::abe_policy::{DimensionBuilder, EncryptionHint, Policy};
+use cosmian_kmip::{
+    kmip_0::{
+        kmip_messages::{
+            RequestMessage, RequestMessageBatchItemVersioned, RequestMessageHeader,
+            ResponseMessage, ResponseMessageBatchItemVersioned,
+        },
+        kmip_types::{ProtocolVersion, ResultStatusEnumeration},
     },
-    kmip_operations::Operation,
-    kmip_types::{OperationEnumeration, ProtocolVersion, ResultStatusEnumeration},
+    kmip_2_1::{
+        extra::tagging::EMPTY_TAGS, kmip_messages::RequestMessageBatchItem,
+        kmip_operations::Operation, kmip_types::OperationEnumeration,
+    },
 };
 use cosmian_kms_client_utils::cover_crypt_utils::build_create_covercrypt_master_keypair_request;
 
@@ -21,18 +27,22 @@ async fn integration_tests_bulk() -> KResult<()> {
     let request_message = RequestMessage {
         request_header: RequestMessageHeader {
             protocol_version: ProtocolVersion {
-                protocol_version_major: 1,
-                protocol_version_minor: 0,
+                protocol_version_major: 2,
+                protocol_version_minor: 1,
             },
             batch_count: 2,
             ..Default::default()
         },
         batch_item: vec![
-            RequestMessageBatchItem::new(Operation::CreateKeyPair(
-                build_create_covercrypt_master_keypair_request(&policy, EMPTY_TAGS, false)?,
+            RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
+                Operation::CreateKeyPair(build_create_covercrypt_master_keypair_request(
+                    &policy, EMPTY_TAGS, false,
+                )?),
             )),
-            RequestMessageBatchItem::new(Operation::CreateKeyPair(
-                build_create_covercrypt_master_keypair_request(&policy, EMPTY_TAGS, false)?,
+            RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
+                Operation::CreateKeyPair(build_create_covercrypt_master_keypair_request(
+                    &policy, EMPTY_TAGS, false,
+                )?),
             )),
         ],
     };
@@ -41,28 +51,28 @@ async fn integration_tests_bulk() -> KResult<()> {
     assert_eq!(response.batch_item.len(), 2);
 
     // 1. Create keypair
+    let ResponseMessageBatchItemVersioned::V21(batch_item) = &response.batch_item[0] else {
+        panic!("not a create key pair response payload");
+    };
     assert_eq!(
-        response.batch_item[0].operation,
+        batch_item.operation,
         Some(OperationEnumeration::CreateKeyPair)
     );
-    assert_eq!(
-        response.batch_item[0].result_status,
-        ResultStatusEnumeration::Success
-    );
-    let Some(Operation::CreateKeyPairResponse(_)) = &response.batch_item[0].response_payload else {
+    assert_eq!(batch_item.result_status, ResultStatusEnumeration::Success);
+    let Some(Operation::CreateKeyPairResponse(_)) = &batch_item.response_payload else {
         panic!("not a create key pair response payload");
     };
 
     // 2. Create keypair
+    let ResponseMessageBatchItemVersioned::V21(batch_item) = &response.batch_item[1] else {
+        panic!("not a create key pair response payload");
+    };
     assert_eq!(
-        response.batch_item[1].operation,
+        batch_item.operation,
         Some(OperationEnumeration::CreateKeyPair)
     );
-    assert_eq!(
-        response.batch_item[1].result_status,
-        ResultStatusEnumeration::Success
-    );
-    let Some(Operation::CreateKeyPairResponse(_)) = &response.batch_item[1].response_payload else {
+    assert_eq!(batch_item.result_status, ResultStatusEnumeration::Success);
+    let Some(Operation::CreateKeyPairResponse(_)) = &batch_item.response_payload else {
         panic!("not a create key pair response payload");
     };
 

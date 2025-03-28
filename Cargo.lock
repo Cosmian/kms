@@ -1568,7 +1568,6 @@ dependencies = [
  "dotenvy",
  "futures",
  "hex",
- "kms_test_server",
  "lazy_static",
  "log",
  "num-bigint-dig",
@@ -3180,7 +3179,19 @@ version = "0.3.0-pre.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2b8645470337db67b01a7f966decf7d0bafedbae74147d33e641c67a91df239f"
 dependencies = [
- "rand_core 0.6.4",
+ "actix-server",
+ "cosmian_kmip",
+ "cosmian_kms_client",
+ "cosmian_kms_crypto",
+ "cosmian_kms_server",
+ "cosmian_kms_server_database",
+ "cosmian_logger",
+ "criterion",
+ "hex",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
  "zeroize",
 ]
 

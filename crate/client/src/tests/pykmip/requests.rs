@@ -19,7 +19,10 @@ fn test_query() {
     log_init(option_env!("RUST_LOG"));
 
     let query = Query {
-        query_function: vec![QueryFunction::QueryOperations, QueryFunction::QueryObjects],
+        query_function: Some(vec![
+            QueryFunction::QueryOperations,
+            QueryFunction::QueryObjects,
+        ]),
     };
 
     let query_response = send_to_pykmip_server!(query, Query, QueryResponse);

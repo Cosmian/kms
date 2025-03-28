@@ -1,74 +1,36 @@
 use std::{
-    collections::HashMap,
-    net::TcpStream,
-    sync::{Arc, OnceLock},
+    sync::{mpsc, Arc},
     thread,
     time::Duration,
 };
 
+use actix_web::dev::ServerHandle;
 use cosmian_kmip::{
+    kmip_0::{
+        kmip_messages::{RequestMessage, RequestMessageBatchItemVersioned, RequestMessageHeader},
+        kmip_types::ProtocolVersion,
+    },
     kmip_1_4::{
-        kmip_messages::{RequestMessage, RequestMessageBatchItem, RequestMessageHeader},
+        kmip_messages::RequestMessageBatchItem,
         kmip_operations::{Operation, Query},
-        kmip_types::{OperationEnumeration, ProtocolVersion, QueryFunction},
+        kmip_types::{OperationEnumeration, QueryFunction},
     },
     ttlv::KmipFlavor::Kmip1,
 };
-use cosmian_kms_client::{SocketClient, SocketClientConfig};
-use cosmian_kms_server_database::{Database, MainDbParams::Sqlite};
+use cosmian_kms_client::{KmsClientError, SocketClient, SocketClientConfig};
 use cosmian_logger::log_init;
 use openssl::pkcs12::{ParsedPkcs12_2, Pkcs12};
-use tokio::sync::RwLock;
-use tracing::info;
+use tracing::{error, trace};
 
 use crate::{
     config::ServerParams,
-    core::KMS,
     socket_server::{create_rustls_server_config, SocketServer, SocketServerParams},
-    tests::test_utils::https_clap_config_opts,
+    start_kms_server::start_kms_server,
+    tests::test_utils::https_clap_config,
 };
-use crate::start_kms_server::start_kms_server;
 
 const TEST_HOST: &str = "127.0.0.1";
 const TEST_PORT: u16 = 5696;
-
-pub(crate) static SOCKET_SERVER_ONCE: OnceLock<thread::JoinHandle<()>> = OnceLock::new();
-
-fn start_socket_server() -> &'static thread::JoinHandle<()> {
-    SOCKET_SERVER_ONCE.get_or_init(|| {
-        let clap_config = https_clap_config_opts(None);
-        let server_params = ServerParams::try_from(clap_config).unwrap();
-        start_kms_server()
-
-        // let kms_server = Arc::new(
-        //     KMS::instantiate(server_params)
-        //         .await
-        //         .expect("cannot instantiate KMS server"),
-        // );
-        // let kms_server = Arc::new(KMS {
-        //     params: ServerParams::default(),
-        //     database: Database {
-        //         objects: RwLock::new(HashMap::new()),
-        //         permissions: Arc::new(Sqlite(Sqlite::instantiate("kms.db", false).unwrap())),
-        //         unwrapped_cache: UnwrappedCache::new(100),
-        //     },
-        //     encryption_oracles: RwLock::new(HashMap::new()),
-        // });
-        let config = load_test_config();
-        let server = SocketServer::instantiate(&config).expect("Failed to instantiate server");
-
-        thread::spawn(move || {
-            server
-                .start(kms_server, |username, request, _kms_server| {
-                    // log the username
-                    info!("Received request from user: {}", username);
-                    // Echo the request back
-                    request.to_vec()
-                })
-                .expect("Failed to start server");
-        })
-    })
-}
 
 // Static config for tests
 static mut TEST_P12: Option<ParsedPkcs12_2> = None;
@@ -109,30 +71,15 @@ fn load_test_config() -> SocketServerParams<'static> {
 
 #[test]
 fn test_server_instantiation() {
+    log_init(option_env!("RUST_LOG"));
     let config = load_test_config();
     let server = SocketServer::instantiate(&config);
     server.expect("Failed to instantiate server");
 }
 
 #[test]
-fn test_server_binding() {
-    let config = load_test_config();
-    let server = SocketServer::instantiate(&config).expect("Failed to instantiate server");
-
-    let _server_thread = thread::spawn(move || {
-        let _unused = server.start(|_username, req| req.to_vec());
-    });
-
-    thread::sleep(Duration::from_millis(100));
-
-    let result = TcpStream::connect(format!("{TEST_HOST}:{TEST_PORT}"));
-    result.expect("Failed to connect to server");
-
-    // Let the test finish and the thread terminate
-}
-
-#[test]
 fn test_rustls_server_config() {
+    log_init(option_env!("RUST_LOG"));
     let config = load_test_config();
 
     let result = create_rustls_server_config(&config);
@@ -141,12 +88,32 @@ fn test_rustls_server_config() {
 
 #[test]
 fn test_socket_server_with_socket_client() {
-    log_init(Some("debug"));
-    start_default_test_kms_server_with_cert_auth().unwrap();
+    log_init(option_env!("RUST_LOG"));
+
+    let server_params = Arc::new(ServerParams::try_from(https_clap_config()).unwrap());
+
+    let (tx, rx) = mpsc::channel::<ServerHandle>();
+
+    let _thread_handle = thread::spawn(move || {
+        // allow others `spawn` to happen within the KMS Server future
+        tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()?
+            .block_on(start_kms_server(server_params, Some(tx)))
+            .map_err(|e| {
+                error!("Failed to start KMS server: {}", e);
+                KmsClientError::UnexpectedError(e.to_string())
+            })
+    });
+    trace!("Waiting for test KMS server to start...");
+    let _server_handle = rx
+        .recv_timeout(Duration::from_secs(25))
+        .expect("Can't get test KMS server handle after 25 seconds");
+    trace!("... got handle ...");
 
     let socket_client = SocketClient::new(SocketClientConfig {
         host: "localhost".to_owned(),
-        port: 5696,
+        port: 5695,
         client_p12: include_bytes!(
             "../../../../test_data/client_server/user/user.client.acme.com.p12"
         )
@@ -158,7 +125,10 @@ fn test_socket_server_with_socket_client() {
     .expect("Failed to create socket client");
 
     let query = Query {
-        query_function: vec![QueryFunction::QueryOperations, QueryFunction::QueryObjects],
+        query_function: Some(vec![
+            QueryFunction::QueryOperations,
+            QueryFunction::QueryObjects,
+        ]),
     };
     let request_message = RequestMessage {
         request_header: RequestMessageHeader {
@@ -170,13 +140,15 @@ fn test_socket_server_with_socket_client() {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItem {
-            operation: OperationEnumeration::Query,
-            ephemeral: None,
-            unique_batch_item_id: None,
-            request_payload: Operation::Query(query),
-            message_extension: None,
-        }],
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+            RequestMessageBatchItem {
+                operation: OperationEnumeration::Query,
+                ephemeral: None,
+                unique_batch_item_id: None,
+                request_payload: Operation::Query(query),
+                message_extension: None,
+            },
+        )],
     };
 
     let response = socket_client
