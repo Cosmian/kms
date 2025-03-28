@@ -156,7 +156,7 @@ mod tests {
             tls: TlsConfig {
                 tls_p12_file: Some(PathBuf::from("[tls p12 file]")),
                 tls_p12_password: Some("[tls p12 password]".to_owned()),
-                authority_cert_file: Some(PathBuf::from("[authority cert file]")),
+                clients_ca_cert_file: Some(PathBuf::from("[authority cert file]")),
             },
             http: HttpConfig {
                 port: 443,

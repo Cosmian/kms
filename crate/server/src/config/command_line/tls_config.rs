@@ -20,8 +20,8 @@ pub struct TlsConfig {
     /// The server optional authority X509 certificate in PEM format used to validate the client certificate presented for authentication.
     /// If provided, this will require clients to present a certificate signed by this authority for authentication.
     /// Mandatory when starting the socket server.
-    #[clap(long, env = "KMS_AUTHORITY_CERT_FILE")]
-    pub authority_cert_file: Option<PathBuf>,
+    #[clap(long, env = "KMS_CLIENTS_CA_CERT_FILE")]
+    pub clients_ca_cert_file: Option<PathBuf>,
 }
 
 impl Display for TlsConfig {
@@ -33,8 +33,8 @@ impl Display for TlsConfig {
             }
             write!(
                 f,
-                "authority cert file: {:?}",
-                self.authority_cert_file.as_ref()
+                "clients' CA cert file: {:?}",
+                self.clients_ca_cert_file.as_ref()
             )
         } else {
             write!(f, "No TLS config")

@@ -16,7 +16,7 @@ use crate::{
         kmip_objects::{Object, ObjectType, PublicKey, SymmetricKey},
         kmip_operations::{
             Create, DecryptResponse, Encrypt, ErrorReason, Import, ImportResponse, Locate,
-            LocateResponse, Operation, Query,  SetAttribute,
+            LocateResponse, Operation, Query, SetAttribute,
         },
         kmip_types::{
             AsynchronousIndicator, AttestationType, BatchErrorContinuationOption, Credential,

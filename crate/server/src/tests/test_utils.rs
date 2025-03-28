@@ -44,7 +44,7 @@ pub(crate) fn https_clap_config_opts(google_cse_kacls_url: Option<String>) -> Cl
                 "../../test_data/client_server/server/kmserver.acme.com.p12",
             )),
             tls_p12_password: Some("password".to_owned()),
-            authority_cert_file: Some(PathBuf::from("../../test_data/client_server/ca/ca.crt")),
+            clients_ca_cert_file: Some(PathBuf::from("../../test_data/client_server/ca/ca.crt")),
             ..Default::default()
         },
         db: MainDBConfig {
