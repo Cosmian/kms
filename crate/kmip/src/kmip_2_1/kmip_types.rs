@@ -1959,20 +1959,20 @@ pub enum FIPS186Variation {
 /// The `QueryFunction` is used to indicate what server information is being requested.
 #[kmip_enum]
 pub enum QueryFunction {
-    QueryOperations,
-    QueryObjects,
-    QueryServerInformation,
-    QueryApplicationNamespaces,
-    QueryExtensionList,
-    QueryExtensionMap,
-    QueryAttestationTypes,
-    QueryRNGOptions,
-    QueryProfileInformation,
-    QueryValidationInformation,
-    QueryCapabilityInformation,
-    QueryClientRegistrationMethods,
-    QueryDefaults,
-    QueryProtectionStorageMasks,
+    QueryOperations = 0x000_0001,
+    QueryObjects = 0x000_0002,
+    QueryServerInformation = 0x000_0003,
+    QueryApplicationNamespaces = 0x000_0004,
+    QueryExtensionList = 0x000_0005,
+    QueryExtensionMap = 0x000_0006,
+    QueryAttestationTypes = 0x000_0007,
+    QueryRNGs = 0x000_0008,
+    QueryValidations = 0x000_0009,
+    QueryProfiles = 0x000_000A,
+    QueryCapabilities = 0x000_000B,
+    QueryClientRegistrationMethods = 0x000_000C,
+    QueryDefaultsInformation = 0x000_000D,
+    QueryStorageProtectionMasks = 0x000_000E,
 }
 
 /// Random Number Generation Mode enumeration

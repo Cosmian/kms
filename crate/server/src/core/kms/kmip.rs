@@ -8,8 +8,8 @@ use cosmian_kmip::{
             Decrypt, DecryptResponse, DeleteAttribute, DeleteAttributeResponse, Destroy,
             DestroyResponse, Encrypt, EncryptResponse, Export, ExportResponse, Get, GetAttributes,
             GetAttributesResponse, GetResponse, Import, ImportResponse, Locate, LocateResponse,
-            ReKey, ReKeyKeyPair, ReKeyKeyPairResponse, ReKeyResponse, Revoke, RevokeResponse,
-            SetAttribute, SetAttributeResponse, Validate, ValidateResponse,
+            Query, QueryResponse, ReKey, ReKeyKeyPair, ReKeyKeyPairResponse, ReKeyResponse, Revoke,
+            RevokeResponse, SetAttribute, SetAttributeResponse, Validate, ValidateResponse,
         },
         kmip_types::StateEnumeration,
     },
@@ -22,30 +22,6 @@ use crate::{
 };
 
 impl KMS {
-    /// This operation requests the server to Import a Managed Object specified
-    /// by its Unique Identifier. The request specifies the object being
-    /// imported and all the attributes to be assigned to the object. The
-    /// attribute rules for each attribute for "Initially set by" and "When
-    /// implicitly set" SHALL NOT be enforced as all attributes MUST be set
-    /// to the supplied values rather than any server generated values.
-    /// The response contains the Unique Identifier provided in the request or
-    /// assigned by the server. The server SHALL copy the Unique Identifier
-    /// returned by this operation into the ID Placeholder variable.
-    ///
-    /// Cosmian specific: unique identifiers starting with `[` are reserved
-    /// for queries on tags. See tagging.
-    /// For instance, a request for unique identifier `[tag1]` will
-    /// attempt to find a valid single object tagged with `tag1`
-    pub(crate) async fn import(
-        &self,
-        request: Import,
-        user: &str,
-        params: Option<Arc<dyn SessionParams>>,
-    ) -> KResult<ImportResponse> {
-        // Box::pin :: see https://rust-lang.github.io/rust-clippy/master/index.html#large_futures
-        Box::pin(operations::import(self, request, user, params)).await
-    }
-
     /// This request is used to generate a Certificate object for a public key.
     /// This request supports the certification of a new public key, as well as
     /// the certification of a public key that has already been certified (i.e.,
@@ -288,6 +264,30 @@ impl KMS {
         operations::hash_operation(self, request, user, params).await
     }
 
+    /// This operation requests the server to Import a Managed Object specified
+    /// by its Unique Identifier. The request specifies the object being
+    /// imported and all the attributes to be assigned to the object. The
+    /// attribute rules for each attribute for "Initially set by" and "When
+    /// implicitly set" SHALL NOT be enforced as all attributes MUST be set
+    /// to the supplied values rather than any server generated values.
+    /// The response contains the Unique Identifier provided in the request or
+    /// assigned by the server. The server SHALL copy the Unique Identifier
+    /// returned by this operation into the ID Placeholder variable.
+    ///
+    /// Cosmian specific: unique identifiers starting with `[` are reserved
+    /// for queries on tags. See tagging.
+    /// For instance, a request for unique identifier `[tag1]` will
+    /// attempt to find a valid single object tagged with `tag1`
+    pub(crate) async fn import(
+        &self,
+        request: Import,
+        user: &str,
+        params: Option<Arc<dyn SessionParams>>,
+    ) -> KResult<ImportResponse> {
+        // Box::pin :: see https://rust-lang.github.io/rust-clippy/master/index.html#large_futures
+        Box::pin(operations::import(self, request, user, params)).await
+    }
+
     /// This operation requests that the server search for one or more Managed
     /// Objects, depending on the attributes specified in the request. All
     /// attributes are allowed to be used. The request MAY contain a Maximum
@@ -372,7 +372,7 @@ impl KMS {
     ///
     /// The Storage Status Mask field is used to indicate whether on-line
     /// objects (not archived or destroyed), archived objects, destroyed objects
-    /// or any combination of the above are to be searched.The server SHALL NOT
+    /// or any combination of the above are to be searched. The server SHALL NOT
     /// return unique identifiers for objects that are destroyed unless the
     /// Storage Status Mask field includes the Destroyed Storage indicator. The
     /// server SHALL NOT return unique identifiers for objects that are archived
@@ -385,6 +385,27 @@ impl KMS {
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<LocateResponse> {
         operations::locate(self, request, Some(StateEnumeration::Active), user, params).await
+    }
+
+    /// This operation is used by the client to interrogate the server
+    /// to determine its capabilities and/or protocol mechanisms.
+    /// The Query operation SHOULD be invocable by unauthenticated clients
+    /// to interrogate server features and functions.
+    /// The Query Function field in the request SHALL contain one or more of the following items:
+    ///         Query Operations
+    ///         Query Objects
+    ///         Query Server Information
+    ///         Query Application Namespaces
+    ///         Query Extension List
+    ///         Query Extension Map
+    ///         Query Attestation Types
+    ///         Query RNGs
+    ///         Query Validations
+    ///         Query Profiles
+    ///         Query Capabilities
+    ///         Query Client Registration Methods
+    pub(crate) async fn query(&self, request: Query) -> KResult<QueryResponse> {
+        operations::query(request).await
     }
 
     /// This operation requests the server to perform message authentication code (MAC) operation on the provided data using a Managed Cryptographic Object as the key for the MAC operation.
