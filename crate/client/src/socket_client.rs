@@ -19,7 +19,7 @@ use crate::error::result::{KmsClientResult, KmsClientResultHelper};
 /// Configuration for the `PyKMIP` socket client
 #[derive(Clone)]
 pub struct SocketClientConfig {
-    /// Server host
+    /// Server hostmeet
     pub host: String,
     /// Server port
     pub port: u16,

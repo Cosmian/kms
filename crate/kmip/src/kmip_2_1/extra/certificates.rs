@@ -1,9 +1,9 @@
 use crate::{
     error::KmipError,
+    kmip_0::kmip_types::ErrorReason,
     kmip_2_1::{
         extra::{VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
         kmip_attributes::Attributes,
-        kmip_operations::ErrorReason,
     },
 };
 

@@ -10,7 +10,10 @@ use zeroize::Zeroizing;
 use super::kmip_attributes::Attribute;
 #[allow(clippy::wildcard_imports)]
 use super::kmip_types::*;
-use crate::{kmip_1_4::kmip_attributes::Attributes, kmip_2_1, SafeBigInt};
+use crate::{
+    kmip_0::kmip_types::HashingAlgorithm, kmip_1_4::kmip_attributes::Attributes, kmip_2_1,
+    SafeBigInt,
+};
 
 /// 2.1.2 Credential Object Structure
 /// A Credential is a structure used to convey information used to authenticate a client

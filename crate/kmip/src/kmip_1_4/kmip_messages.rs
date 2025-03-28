@@ -24,141 +24,136 @@ use serde::{
     ser::{self, SerializeStruct},
     Deserialize, Serialize,
 };
-use time::OffsetDateTime;
 
-use super::{
-    kmip_operations::{Direction, Operation},
-    kmip_types::{
-        AsynchronousIndicator, AttestationType, BatchErrorContinuationOption, Credential,
-        ErrorReason, MessageExtension, Nonce, OperationEnumeration, ProtocolVersion,
-        ResultStatusEnumeration,
-    },
+use super::{kmip_operations::Operation, kmip_types::OperationEnumeration};
+use crate::kmip_0::kmip_types::{
+    Direction, ErrorReason, MessageExtension, ResultStatusEnumeration,
 };
-
-#[derive(Deserialize, PartialEq, Eq, Debug)]
-#[serde(rename_all = "PascalCase")]
-pub struct RequestMessage {
-    /// Header of the request
-    pub request_header: RequestMessageHeader,
-    /// Batch items of the request
-    pub batch_item: Vec<RequestMessageBatchItem>,
-}
-
-impl Display for RequestMessage {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let mut temp_str = format!("Message header: {:?}, ", self.request_header);
-        for (i, item) in self.batch_item.iter().enumerate() {
-            if i > 0 {
-                temp_str.push_str(", ");
-            }
-            temp_str = format!("{temp_str} {item}");
-        }
-        write!(f, "{temp_str}")
-    }
-}
-
-impl Serialize for RequestMessage {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let header_batch_count = usize::try_from(self.request_header.batch_count)
-            .map_err(|err| ser::Error::custom(format!("failed to convert batch count: {err:?}")))?;
-        // check batch item count
-        if header_batch_count != self.batch_item.len() {
-            return Err(ser::Error::custom(format!(
-                "mismatch count of batch items between header (`{}`) and actual items count (`{}`)",
-                self.request_header.batch_count,
-                self.batch_item.len()
-            )));
-        }
-        // check that the protocol version defined in the header is
-        // equal or greater than the protocol version of each item's payload.
-        for item in &self.batch_item {
-            if self.request_header.protocol_version > item.request_payload.protocol_version() {
-                return Err(ser::Error::custom(format!(
-                    "item's protocol version is greater (`{}`) than header's protocol version \
-                     (`{}`)",
-                    self.request_header.protocol_version,
-                    item.request_payload.protocol_version()
-                )));
-            }
-        }
-        let mut st = serializer.serialize_struct("RequestMessage", 2)?;
-        st.serialize_field("RequestHeader", &self.request_header)?;
-        st.serialize_field("BatchItem", &self.batch_item)?;
-        st.end()
-    }
-}
-
-/// Header of the request
-///
-/// Contains fields whose presence is determined by the protocol features used.
-#[derive(Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "PascalCase")]
-pub struct RequestMessageHeader {
-    /// The KMIP protocol version used in this message
-    pub protocol_version: ProtocolVersion,
-
-    /// This is an OPTIONAL field contained in a request message,
-    /// and is used to indicate the maximum size of a response, in bytes,
-    /// that the requester SHALL be able to handle.
-    ///
-    /// It SHOULD only be sent in requests that possibly return large replies.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub maximum_response_size: Option<i32>,
-
-    /// The Client Correlation Value is a string that MAY be added to messages by clients
-    /// to provide additional information to the server. It need not be unique.
-    /// The server SHOULD log this information.
-    ///
-    /// For client to server operations, the Client Correlation Value is provided in the request.
-    /// For server to client operations, the Client Correlation Value is provided in the response.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub client_correlation_value: Option<String>,
-
-    /// The Server Correlation Value SHOULD be provided by the server and
-    /// SHOULD be globally unique, and SHOULD be logged by the server with each request.
-    ///
-    /// For client to server operations, the Server Correlation Value is provided in the response.
-    /// For server to client operations, the Server Correlation Value is provided in the request.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub server_correlation_value: Option<String>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub asynchronous_indicator: Option<AsynchronousIndicator>,
-
-    /// Indicates whether the client is able to create
-    /// an Attestation Credential Object.
-    ///
-    /// If not present, the value `false` is assumed
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub attestation_capable_indicator: Option<bool>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub attestation_type: Option<Vec<AttestationType>>,
-
-    /// Used to authenticate the requester
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub authentication: Option<Vec<Credential>>,
-
-    /// If omitted, then `Stop` is assumed
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub batch_error_continuation_option: Option<BatchErrorContinuationOption>,
-
-    /// If omitted, then `true` is assumed
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub batch_order_option: Option<bool>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub time_stamp: Option<u64>, // epoch millis
-
-    /// This field contains the number of Batch Items in a message and is REQUIRED.
-    ///
-    /// If only a single operation is being requested, then the batch count SHALL be set to 1.
-    /// The Message Payload, which follows the Message Header, contains one or more batch items.
-    pub batch_count: i32,
-}
+//
+// #[derive(Deserialize, PartialEq, Eq, Debug)]
+// #[serde(rename_all = "PascalCase")]
+// pub struct RequestMessage {
+//     /// Header of the request
+//     pub request_header: RequestMessageHeader,
+//     /// Batch items of the request
+//     pub batch_item: Vec<RequestMessageBatchItem>,
+// }
+//
+// impl Display for RequestMessage {
+//     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+//         let mut temp_str = format!("Message header: {:?}, ", self.request_header);
+//         for (i, item) in self.batch_item.iter().enumerate() {
+//             if i > 0 {
+//                 temp_str.push_str(", ");
+//             }
+//             temp_str = format!("{temp_str} {item}");
+//         }
+//         write!(f, "{temp_str}")
+//     }
+// }
+//
+// impl Serialize for RequestMessage {
+//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+//     where
+//         S: serde::Serializer,
+//     {
+//         let header_batch_count = usize::try_from(self.request_header.batch_count)
+//             .map_err(|err| ser::Error::custom(format!("failed to convert batch count: {err:?}")))?;
+//         // check batch item count
+//         if header_batch_count != self.batch_item.len() {
+//             return Err(ser::Error::custom(format!(
+//                 "mismatch count of batch items between header (`{}`) and actual items count (`{}`)",
+//                 self.request_header.batch_count,
+//                 self.batch_item.len()
+//             )));
+//         }
+//         // check that the protocol version defined in the header is
+//         // equal or greater than the protocol version of each item's payload.
+//         for item in &self.batch_item {
+//             if self.request_header.protocol_version > item.request_payload.protocol_version() {
+//                 return Err(ser::Error::custom(format!(
+//                     "item's protocol version is greater (`{}`) than header's protocol version \
+//                      (`{}`)",
+//                     self.request_header.protocol_version,
+//                     item.request_payload.protocol_version()
+//                 )));
+//             }
+//         }
+//         let mut st = serializer.serialize_struct("RequestMessage", 2)?;
+//         st.serialize_field("RequestHeader", &self.request_header)?;
+//         st.serialize_field("BatchItem", &self.batch_item)?;
+//         st.end()
+//     }
+// }
+//
+// /// Header of the request
+// ///
+// /// Contains fields whose presence is determined by the protocol features used.
+// #[derive(Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+// #[serde(rename_all = "PascalCase")]
+// pub struct RequestMessageHeader {
+//     /// The KMIP protocol version used in this message
+//     pub protocol_version: ProtocolVersion,
+//
+//     /// This is an OPTIONAL field contained in a request message,
+//     /// and is used to indicate the maximum size of a response, in bytes,
+//     /// that the requester SHALL be able to handle.
+//     ///
+//     /// It SHOULD only be sent in requests that possibly return large replies.
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub maximum_response_size: Option<i32>,
+//
+//     /// The Client Correlation Value is a string that MAY be added to messages by clients
+//     /// to provide additional information to the server. It need not be unique.
+//     /// The server SHOULD log this information.
+//     ///
+//     /// For client to server operations, the Client Correlation Value is provided in the request.
+//     /// For server to client operations, the Client Correlation Value is provided in the response.
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub client_correlation_value: Option<String>,
+//
+//     /// The Server Correlation Value SHOULD be provided by the server and
+//     /// SHOULD be globally unique, and SHOULD be logged by the server with each request.
+//     ///
+//     /// For client to server operations, the Server Correlation Value is provided in the response.
+//     /// For server to client operations, the Server Correlation Value is provided in the request.
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub server_correlation_value: Option<String>,
+//
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub asynchronous_indicator: Option<AsynchronousIndicator>,
+//
+//     /// Indicates whether the client is able to create
+//     /// an Attestation Credential Object.
+//     ///
+//     /// If not present, the value `false` is assumed
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub attestation_capable_indicator: Option<bool>,
+//
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub attestation_type: Option<Vec<AttestationType>>,
+//
+//     /// Used to authenticate the requester
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub authentication: Option<Vec<Credential>>,
+//
+//     /// If omitted, then `Stop` is assumed
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub batch_error_continuation_option: Option<BatchErrorContinuationOption>,
+//
+//     /// If omitted, then `true` is assumed
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub batch_order_option: Option<bool>,
+//
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub time_stamp: Option<u64>, // epoch millis
+//
+//     /// This field contains the number of Batch Items in a message and is REQUIRED.
+//     ///
+//     /// If only a single operation is being requested, then the batch count SHALL be set to 1.
+//     /// The Message Payload, which follows the Message Header, contains one or more batch items.
+//     pub batch_count: i32,
+// }
 
 /// Batch item for a message request
 ///
@@ -409,109 +404,109 @@ impl<'de> Deserialize<'de> for RequestMessageBatchItem {
         )
     }
 }
-
-#[derive(Deserialize, Eq, PartialEq, Debug)]
-#[serde(rename_all = "PascalCase")]
-pub struct ResponseMessage {
-    /// Header of the response
-    pub response_header: ResponseMessageHeader,
-    /// Batch items of the response
-    pub batch_item: Vec<ResponseMessageBatchItem>,
-}
-
-impl Serialize for ResponseMessage {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let header_batch_count = usize::try_from(self.response_header.batch_count)
-            .map_err(|err| ser::Error::custom(format!("failed to convert batch count: {err:?}")))?;
-
-        // check batch item count
-        if header_batch_count != self.batch_item.len() {
-            return Err(ser::Error::custom(format!(
-                "mismatch number of batch items between header (`{}`) and items list (`{}`)",
-                self.response_header.batch_count,
-                self.batch_item.len()
-            )));
-        }
-        // check version of protocol version defined in the header is
-        // equal or greater than the protocol version of each item's payload.
-        for item in &self.batch_item {
-            if let Some(response_payload) = &item.response_payload {
-                if self.response_header.protocol_version > response_payload.protocol_version() {
-                    return Err(ser::Error::custom(format!(
-                        "item's protocol version is greater (`{}`) than header's protocol version \
-                         (`{}`)",
-                        self.response_header.protocol_version,
-                        response_payload.protocol_version()
-                    )));
-                }
-            }
-        }
-        let mut st = serializer.serialize_struct("Message", 2)?;
-        st.serialize_field("ResponseHeader", &self.response_header)?;
-        st.serialize_field("BatchItem", &self.batch_item)?;
-        st.end()
-    }
-}
-
-/// The `ResponseHeader` contains protocol version information and other
-/// metadata about the response.
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
-#[serde(rename_all = "PascalCase")]
-pub struct ResponseMessageHeader {
-    /// The KMIP protocol version used in this response
-    pub protocol_version: ProtocolVersion,
-
-    /// The time stamp when the response was created
-    pub time_stamp: i64,
-
-    /// The nonce provided by the server if the operation is asynchronous
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub nonce: Option<Nonce>,
-
-    /// Server extensions that may be specified for the response
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub server_hashed_password: Option<Vec<u8>>,
-
-    /// REQUIRED in Attestation Required error message if client set Attestation Capable Indicator to True in the request
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub attestation_type: Option<Vec<AttestationType>>,
-
-    /// The client's KMIP version used for sending this request (echoed back)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub client_correlation_value: Option<String>,
-
-    /// The asynchronous correlation value for the request (echoed back)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub server_correlation_value: Option<String>,
-
-    /// This field contains the number of Batch Items in a message and is REQUIRED.
-    ///
-    /// If only a single operation is being requested, then the batch count SHALL be set to 1.
-    /// The Message Payload, which follows the Message Header, contains one or more batch items.
-    pub batch_count: i32,
-}
-
-/// Default implementation for a message response header
-///
-/// The timestamp is automatically set to now (UTC time)
-impl Default for ResponseMessageHeader {
-    #[allow(clippy::cast_sign_loss, clippy::as_conversions)]
-    fn default() -> Self {
-        Self {
-            protocol_version: ProtocolVersion::default(),
-            time_stamp: OffsetDateTime::now_utc().unix_timestamp(),
-            nonce: None,
-            server_hashed_password: None,
-            attestation_type: None,
-            client_correlation_value: None,
-            server_correlation_value: None,
-            batch_count: 0,
-        }
-    }
-}
+//
+// #[derive(Deserialize, Eq, PartialEq, Debug)]
+// #[serde(rename_all = "PascalCase")]
+// pub struct ResponseMessage {
+//     /// Header of the response
+//     pub response_header: ResponseMessageHeader,
+//     /// Batch items of the response
+//     pub batch_item: Vec<ResponseMessageBatchItem>,
+// }
+//
+// impl Serialize for ResponseMessage {
+//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+//     where
+//         S: serde::Serializer,
+//     {
+//         let header_batch_count = usize::try_from(self.response_header.batch_count)
+//             .map_err(|err| ser::Error::custom(format!("failed to convert batch count: {err:?}")))?;
+//
+//         // check batch item count
+//         if header_batch_count != self.batch_item.len() {
+//             return Err(ser::Error::custom(format!(
+//                 "mismatch number of batch items between header (`{}`) and items list (`{}`)",
+//                 self.response_header.batch_count,
+//                 self.batch_item.len()
+//             )));
+//         }
+//         // check version of protocol version defined in the header is
+//         // equal or greater than the protocol version of each item's payload.
+//         for item in &self.batch_item {
+//             if let Some(response_payload) = &item.response_payload {
+//                 if self.response_header.protocol_version > response_payload.protocol_version() {
+//                     return Err(ser::Error::custom(format!(
+//                         "item's protocol version is greater (`{}`) than header's protocol version \
+//                          (`{}`)",
+//                         self.response_header.protocol_version,
+//                         response_payload.protocol_version()
+//                     )));
+//                 }
+//             }
+//         }
+//         let mut st = serializer.serialize_struct("Message", 2)?;
+//         st.serialize_field("ResponseHeader", &self.response_header)?;
+//         st.serialize_field("BatchItem", &self.batch_item)?;
+//         st.end()
+//     }
+// }
+//
+// /// The `ResponseHeader` contains protocol version information and other
+// /// metadata about the response.
+// #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+// #[serde(rename_all = "PascalCase")]
+// pub struct ResponseMessageHeader {
+//     /// The KMIP protocol version used in this response
+//     pub protocol_version: ProtocolVersion,
+//
+//     /// The time stamp when the response was created
+//     pub time_stamp: i64,
+//
+//     /// The nonce provided by the server if the operation is asynchronous
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub nonce: Option<Nonce>,
+//
+//     /// Server extensions that may be specified for the response
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub server_hashed_password: Option<Vec<u8>>,
+//
+//     /// REQUIRED in Attestation Required error message if client set Attestation Capable Indicator to True in the request
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub attestation_type: Option<Vec<AttestationType>>,
+//
+//     /// The client's KMIP version used for sending this request (echoed back)
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub client_correlation_value: Option<String>,
+//
+//     /// The asynchronous correlation value for the request (echoed back)
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub server_correlation_value: Option<String>,
+//
+//     /// This field contains the number of Batch Items in a message and is REQUIRED.
+//     ///
+//     /// If only a single operation is being requested, then the batch count SHALL be set to 1.
+//     /// The Message Payload, which follows the Message Header, contains one or more batch items.
+//     pub batch_count: i32,
+// }
+//
+// /// Default implementation for a message response header
+// ///
+// /// The timestamp is automatically set to now (UTC time)
+// impl Default for ResponseMessageHeader {
+//     #[allow(clippy::cast_sign_loss, clippy::as_conversions)]
+//     fn default() -> Self {
+//         Self {
+//             protocol_version: ProtocolVersion::default(),
+//             time_stamp: OffsetDateTime::now_utc().unix_timestamp(),
+//             nonce: None,
+//             server_hashed_password: None,
+//             attestation_type: None,
+//             client_correlation_value: None,
+//             server_correlation_value: None,
+//             batch_count: 0,
+//         }
+//     }
+// }
 
 #[derive(PartialEq, Eq, Debug)]
 pub struct ResponseMessageBatchItem {

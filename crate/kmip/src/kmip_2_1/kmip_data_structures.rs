@@ -15,15 +15,18 @@ use zeroize::Zeroizing;
 use super::{
     kmip_attributes::Attributes,
     kmip_objects::ObjectType,
-    kmip_operations::ErrorReason,
     kmip_types::{
         ClientRegistrationMethod, CryptographicAlgorithm, EncodingOption, EncryptionKeyInformation,
         KeyCompressionType, KeyFormatType, LinkType, LinkedObjectIdentifier,
-        MacSignatureKeyInformation, ProfileName, ProtocolVersion, RNGMode, RecommendedCurve,
+        MacSignatureKeyInformation, ProfileName, RNGMode, RecommendedCurve,
         ValidationAuthorityType, WrappingMethod,
     },
 };
-use crate::{error::KmipError, pad_be_bytes, SafeBigInt};
+use crate::{
+    error::KmipError,
+    kmip_0::kmip_types::{ErrorReason, ProtocolVersion},
+    pad_be_bytes, SafeBigInt,
+};
 
 /// A Key Block object is a structure used to encapsulate all of the information
 /// that is closely associated with a cryptographic key.

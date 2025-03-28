@@ -2,8 +2,7 @@ use std::io;
 
 use cosmian_http_client::HttpClientError;
 use cosmian_kmip::{
-    kmip_1_4::kmip_types::ResultReason, kmip_2_1::kmip_operations::ErrorReason, ttlv::TtlvError,
-    KmipError,
+    kmip_0::kmip_types::ErrorReason, kmip_1_4::kmip_types::ResultReason, ttlv::TtlvError, KmipError,
 };
 use thiserror::Error;
 

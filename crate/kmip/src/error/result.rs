@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use crate::{error::KmipError, kmip_2_1::kmip_operations::ErrorReason};
+use crate::{error::KmipError, kmip_0::kmip_types::ErrorReason};
 
 pub(crate) type KmipResult<R> = Result<R, KmipError>;
 

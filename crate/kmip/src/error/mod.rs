@@ -2,9 +2,7 @@ use std::num::TryFromIntError;
 
 use thiserror::Error;
 
-use crate::{
-    kmip_1_4::kmip_types::ResultReason, kmip_2_1::kmip_operations::ErrorReason, ttlv::TtlvError,
-};
+use crate::{kmip_0::kmip_types::ErrorReason, kmip_1_4::kmip_types::ResultReason, ttlv::TtlvError};
 
 pub(crate) mod result;
 
@@ -146,13 +144,13 @@ macro_rules! kmip_2_1_ensure {
 #[macro_export]
 macro_rules! kmip_2_1_error {
     ($msg:literal) => {
-        $crate::error::KmipError::Kmip21($crate::kmip_2_1::kmip_operations::ErrorReason::General_Failure, ::core::format_args!($msg).to_string())
+        $crate::error::KmipError::Kmip21($crate::kmip_0::kmip_types::ErrorReason::General_Failure, ::core::format_args!($msg).to_string())
     };
     ($err:expr $(,)?) => ({
-        $crate::error::KmipError::Kmip21($crate::kmip_2_1::kmip_operations::ErrorReason::General_Failure, $err.to_string())
+        $crate::error::KmipError::Kmip21($crate::kmip_0::kmip_types::ErrorReason::General_Failure, $err.to_string())
     });
     ($fmt:expr, $($arg:tt)*) => {
-        $crate::error::KmipError::Kmip21($crate::kmip_2_1::kmip_operations::ErrorReason::General_Failure, ::core::format_args!($fmt, $($arg)*).to_string())
+        $crate::error::KmipError::Kmip21($crate::kmip_0::kmip_types::ErrorReason::General_Failure, ::core::format_args!($fmt, $($arg)*).to_string())
     };
 }
 

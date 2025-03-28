@@ -12,10 +12,10 @@ use serde::{
 use tracing::trace;
 
 use crate::{
+    kmip_0::kmip_types::ErrorReason,
     kmip_2_1::{
         extra::VENDOR_ID_COSMIAN,
         kmip_objects::ObjectType,
-        kmip_operations::ErrorReason,
         kmip_types::{
             AlternativeName, ApplicationSpecificInformation, CertificateAttributes,
             CertificateType, CryptographicAlgorithm, CryptographicDomainParameters,

@@ -506,7 +506,7 @@ fn test_enum_unit_variant_with_value() {
     let ttlv = to_ttlv(&test).unwrap();
     assert_eq!(
         format!("{ttlv:?}"),
-        r#"TTLV { tag: "Test", value: Structure([TTLV { tag: "AnEnum", value: Enumeration(KmipEnumerationVariant { value: 10, name: "Ten" }) }]) }"#
+        r#"TTLV { tag: "Test", value: Structure([TTLV { tag: "AnEnum", value: Enumeration(KmipEnumerationVariant { value: "0x0000000a", name: "Ten" }) }]) }"#
     );
 
     // Try with Big
@@ -517,7 +517,7 @@ fn test_enum_unit_variant_with_value() {
     let ttlv = to_ttlv(&test).unwrap();
     assert_eq!(
         format!("{ttlv:?}"),
-        r#"TTLV { tag: "Test", value: Structure([TTLV { tag: "AnEnum", value: Enumeration(KmipEnumerationVariant { value: 286335522, name: "Big" }) }]) }"#
+        r#"TTLV { tag: "Test", value: Structure([TTLV { tag: "AnEnum", value: Enumeration(KmipEnumerationVariant { value: "0x11112222", name: "Big" }) }]) }"#
     );
 }
 

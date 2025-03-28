@@ -4,6 +4,10 @@ use cosmian_kmip::ttlv::KmipFlavor;
 use tracing::debug;
 
 use crate::{
+    kmip_0::{
+        kmip_messages::{RequestMessage as RequestMessage0, ResponseMessage as ResponseMessage0},
+        kmip_operations::Operation as Operation0,
+    },
     kmip_1_4::{
         kmip_messages::{
             RequestMessage, RequestMessageBatchItem, RequestMessageHeader, ResponseMessage,

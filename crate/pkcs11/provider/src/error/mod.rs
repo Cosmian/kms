@@ -2,7 +2,7 @@ use std::{array::TryFromSliceError, str::Utf8Error};
 
 use cosmian_config_utils::ConfigUtilsError;
 use cosmian_kmip::{
-    kmip_1_4::kmip_types::ResultReason, kmip_2_1::kmip_operations::ErrorReason, KmipError,
+    kmip_0::kmip_types::ErrorReason, kmip_1_4::kmip_types::ResultReason, KmipError,
 };
 use cosmian_kms_client::KmsClientError;
 use thiserror::Error;

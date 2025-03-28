@@ -5,7 +5,7 @@ use zeroize::Zeroizing;
 
 use crate::{
     error::{result::KmipResult, KmipError},
-    kmip_2_1::kmip_operations::ErrorReason,
+    kmip_0::kmip_types::ErrorReason,
     Deserializer, Serializer,
 };
 

@@ -1,6 +1,6 @@
+use cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm;
 #[cfg(feature = "fips")]
 use cosmian_kmip::kmip_2_1::extra::fips::FIPS_MIN_RSA_MODULUS_LENGTH;
-use cosmian_kmip::kmip_2_1::kmip_types::HashingAlgorithm;
 use openssl::{
     pkey::{PKey, Private, Public},
     rand::rand_bytes,
@@ -116,7 +116,7 @@ pub fn ckm_rsa_aes_key_unwrap(
 #[allow(clippy::panic_in_result_fn, clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
-    use cosmian_kmip::kmip_2_1::kmip_types::HashingAlgorithm;
+    use cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm;
     use openssl::pkey::PKey;
     use zeroize::Zeroizing;
 

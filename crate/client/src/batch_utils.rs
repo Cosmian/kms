@@ -1,7 +1,12 @@
-use cosmian_kmip::kmip_2_1::{
-    kmip_messages::{RequestMessage, RequestMessageBatchItem, RequestMessageHeader},
-    kmip_operations::Operation,
-    kmip_types::ProtocolVersion,
+use cosmian_kmip::{
+    kmip_0::{
+        kmip_messages::{
+            RequestMessage, RequestMessageBatchItemVersioned, RequestMessageHeader,
+            ResponseMessage, ResponseMessageBatchItemVersioned,
+        },
+        kmip_types::ProtocolVersion,
+    },
+    kmip_2_1::{kmip_messages::RequestMessageBatchItem, kmip_operations::Operation},
 };
 
 use crate::{KmsClient, KmsClientError};
@@ -20,31 +25,36 @@ pub(crate) async fn batch_operations(
     let request = RequestMessage {
         request_header: RequestMessageHeader {
             protocol_version: ProtocolVersion {
-                protocol_version_major: 1,
-                protocol_version_minor: 0,
+                protocol_version_major: 2,
+                protocol_version_minor: 1,
             },
-            maximum_response_size: Some(9999),
+            maximum_response_size: Some(10_000_000),
             batch_count: operations.len() as i32,
             ..Default::default()
         },
         batch_item: operations
             .into_iter()
-            .map(RequestMessageBatchItem::new)
+            .map(|op| RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(op)))
             .collect(),
     };
-    let response = kms_rest_client.message(request).await?;
+    let response: ResponseMessage = kms_rest_client.message(request).await?;
     response
         .batch_item
         .into_iter()
         .map(|item| {
+            let ResponseMessageBatchItemVersioned::V21(item) = item else {
+                return Err(KmsClientError::Default(
+                    "Unsupported KMIP version".to_string(),
+                ));
+            };
             if let Some(payload) = item.response_payload {
                 Ok(payload)
             } else {
-                Err(format!(
+                Err(KmsClientError::Default(format!(
                     "Error: {} {}",
                     item.result_reason.unwrap_or_default(),
                     item.result_message.unwrap_or_default()
-                ))
+                )))
             }
         })
         .collect::<Vec<_>>()

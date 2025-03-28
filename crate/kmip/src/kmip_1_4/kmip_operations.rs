@@ -6,13 +6,10 @@ use time::OffsetDateTime;
 use super::kmip_objects::Certificate;
 #[allow(clippy::wildcard_imports)]
 use super::{kmip_data_structures::*, kmip_objects::Object, kmip_types::*};
-use crate::kmip_1_4::kmip_attributes::{Attribute, Attributes};
-
-#[derive(Debug, Eq, PartialEq)]
-pub enum Direction {
-    Request,
-    Response,
-}
+use crate::{
+    kmip_0::kmip_types::{AttestationType, Direction},
+    kmip_1_4::kmip_attributes::{Attribute, Attributes},
+};
 
 /// 4.1 Create
 /// This operation requests the server to generate a new managed cryptographic object. The request
@@ -483,7 +480,7 @@ pub struct ValidateResponse {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Query {
-    pub query_function: Vec<QueryFunction>,
+    pub query_function: Option<Vec<QueryFunction>>,
 }
 
 /// Response to a Query request
@@ -1026,18 +1023,6 @@ impl Operation {
             Self::Export(_) | Self::ExportResponse(_) => OperationEnumeration::Export,
             Self::Import(_) | Self::ImportResponse(_) => OperationEnumeration::Import,
         }
-    }
-
-    /// Allow to ensure that the protocol version used by the operation
-    /// is compatible with this KMIP implementation.
-    ///
-    /// Backward compatibility within major version is mandatory.
-    ///
-    /// The check is enforced only if a upper version than the default one
-    /// is detected when receiving an operation.
-    #[must_use]
-    pub fn protocol_version(&self) -> ProtocolVersion {
-        ProtocolVersion::default()
     }
 }
 
