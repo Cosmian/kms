@@ -278,7 +278,7 @@ fn start_test_kms_server(
     });
     trace!("Waiting for test KMS server to start...");
     let server_handle = rx
-        .recv_timeout(Duration::from_secs(50))
+        .recv_timeout(Duration::from_secs(25))
         .expect("Can't get test KMS server handle after 25 seconds");
     trace!("... got handle ...");
     (server_handle, thread_handle)
