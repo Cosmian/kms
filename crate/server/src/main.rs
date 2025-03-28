@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 #[cfg(not(feature = "fips"))]
 use cosmian_kmip::KmipResultHelper;
 use cosmian_kms_server::{
@@ -96,7 +98,7 @@ async fn main() -> KResult<()> {
     debug!("Command line config: {clap_config:#?}");
 
     // Parse the Server Config from the command line arguments
-    let server_params = ServerParams::try_from(clap_config)?;
+    let server_params = Arc::new(ServerParams::try_from(clap_config)?);
 
     if info_only {
         info!("Server started with --info. Exiting");

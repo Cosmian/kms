@@ -168,7 +168,7 @@ async fn test_kmip_messages() -> KResult<()> {
 
     let clap_config = https_clap_config();
 
-    let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
+    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     // request key pair creation

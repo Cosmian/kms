@@ -1,7 +1,7 @@
 use std::{
     env,
     path::PathBuf,
-    sync::mpsc,
+    sync::{mpsc, Arc},
     thread::{self, JoinHandle},
     time::Duration,
 };
@@ -213,12 +213,12 @@ pub async fn start_test_server_with_options(
     non_revocable_key_id: Option<Vec<String>>,
 ) -> Result<TestsContext, KmsClientError> {
     log_init(None);
-    let server_params = generate_server_params(
+    let server_params = Arc::new(generate_server_params(
         db_config.clone(),
         port,
         &authentication_options,
         non_revocable_key_id,
-    )?;
+    )?);
 
     // Create a (object owner) conf
     let (owner_client_conf_path, mut owner_client_conf) =
@@ -261,7 +261,7 @@ pub async fn start_test_server_with_options(
 
 /// Start a test KMS server with the given config in a separate thread
 fn start_test_kms_server(
-    server_params: ServerParams,
+    server_params: Arc<ServerParams>,
 ) -> (ServerHandle, JoinHandle<Result<(), KmsClientError>>) {
     let (tx, rx) = mpsc::channel::<ServerHandle>();
 
@@ -324,7 +324,7 @@ fn generate_tls_config(use_https: bool, use_client_cert: bool) -> TlsConfig {
         tls_config.tls_p12_password = Some("password".to_owned());
         if use_client_cert {
             tls_config.authority_cert_file =
-                Some(root_dir.join("../../test_data/client_server/server/ca.crt"));
+                Some(root_dir.join("../../test_data/client_server/ca/ca.crt"));
         }
     }
     tls_config
