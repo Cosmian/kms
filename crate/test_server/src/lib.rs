@@ -5,7 +5,5 @@ pub use test_server::{
     start_default_test_kms_server_with_non_revocable_key_ids, start_test_server_with_options,
     AuthenticationOptions, TestsContext,
 };
-
-mod test_server;
-
 mod test_jwt;
+mod test_server;

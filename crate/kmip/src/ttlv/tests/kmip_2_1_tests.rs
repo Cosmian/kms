@@ -23,7 +23,7 @@ use crate::{
         kmip_objects::{Object, ObjectType, PublicKey, SymmetricKey},
         kmip_operations::{
             Create, DecryptResponse, Encrypt, Import, ImportResponse, Locate, LocateResponse,
-            Operation, Query, QueryResponse, SetAttribute,
+            Operation, Query, SetAttribute,
         },
         kmip_types::{
             CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, Link, LinkType,
@@ -775,163 +775,6 @@ fn get_key_block() -> KeyBlock {
 }
 
 #[test]
-pub(crate) fn test_message_request() {
-    // log_init(option_env!("RUST_LOG"));
-    log_init(Some("trace"));
-
-    let req = RequestMessage {
-        request_header: RequestMessageHeader {
-            protocol_version: ProtocolVersion {
-                protocol_version_major: 1,
-                protocol_version_minor: 2,
-            },
-            maximum_response_size: Some(9999),
-            batch_count: 1,
-            client_correlation_value: Some("client_123".to_owned()),
-            server_correlation_value: Some("server_234".to_owned()),
-            asynchronous_indicator: Some(AsynchronousIndicator::Optional),
-            attestation_capable_indicator: Some(true),
-            attestation_type: Some(vec![AttestationType::TPM_Quote]),
-            authentication: Some(vec![Credential::Attestation {
-                nonce: Nonce {
-                    nonce_id: vec![9, 8, 7],
-                    nonce_value: vec![10, 11, 12],
-                },
-                attestation_type: AttestationType::TCG_Integrity_Report,
-                attestation_measurement: Some(vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
-                attestation_assertion: Some(vec![11, 12, 13, 14, 15, 16, 17, 18, 19, 20]),
-            }]),
-            batch_error_continuation_option: Some(BatchErrorContinuationOption::Undo),
-            batch_order_option: Some(true),
-            time_stamp: Some(1_950_940_403),
-        },
-        batch_item: vec![RequestMessageBatchItemVersioned::V21(
-            RequestMessageBatchItem {
-                operation: OperationEnumeration::Encrypt,
-                ephemeral: None,
-                unique_batch_item_id: None,
-                request_payload: Operation::Encrypt(Encrypt {
-                    data: Some(Zeroizing::from(b"to be enc".to_vec())),
-                    ..Default::default()
-                }),
-                message_extension: Some(vec![MessageExtension {
-                    vendor_identification: "CosmianVendor".to_owned(),
-                    criticality_indicator: false,
-                    vendor_extension: vec![42_u8],
-                }]),
-            },
-        )],
-    };
-    let ttlv = to_ttlv(&req).unwrap();
-    println!("TTLV: {:#?}", ttlv);
-    let req_: RequestMessage = from_ttlv(ttlv).unwrap();
-    let RequestMessageBatchItemVersioned::V21(batch_item) = &req_.batch_item[0] else {
-        panic!("not a V0_2 batch item");
-    };
-    assert_eq!(batch_item.operation, OperationEnumeration::Encrypt);
-    let Operation::Encrypt(encrypt) = &batch_item.request_payload else {
-        panic!("not an encrypt operation's request payload: {}", batch_item);
-    };
-    assert_eq!(encrypt.data, Some(Zeroizing::from(b"to be enc".to_vec())));
-    assert!(req == req_);
-}
-
-#[test]
-pub(crate) fn test_message_response() {
-    log_init(option_env!("RUST_LOG"));
-
-    let res = ResponseMessage {
-        response_header: ResponseMessageHeader {
-            protocol_version: ProtocolVersion {
-                protocol_version_major: 1,
-                protocol_version_minor: 0,
-            },
-            batch_count: 2,
-            client_correlation_value: Some("client_123".to_owned()),
-            server_correlation_value: Some("server_234".to_owned()),
-            attestation_type: Some(vec![AttestationType::TPM_Quote]),
-            time_stamp: 1_697_201_574,
-            nonce: Some(Nonce {
-                nonce_id: vec![5, 6, 7],
-                nonce_value: vec![8, 9, 0],
-            }),
-            server_hashed_password: Some(b"5e8953ab".to_vec()),
-        },
-        batch_item: vec![
-            ResponseMessageBatchItemVersioned::V21(ResponseMessageBatchItem {
-                operation: Some(OperationEnumeration::Locate),
-                unique_batch_item_id: Some("1234".to_owned()),
-                response_payload: Some(Operation::LocateResponse(LocateResponse {
-                    located_items: Some(134),
-                    unique_identifiers: Some(vec![UniqueIdentifier::TextString(
-                        "some_id".to_owned(),
-                    )]),
-                })),
-                message_extension: Some(MessageExtension {
-                    vendor_identification: "CosmianVendor".to_owned(),
-                    criticality_indicator: false,
-                    vendor_extension: vec![42_u8],
-                }),
-                result_status: ResultStatusEnumeration::OperationPending,
-                result_reason: None,
-                result_message: None,
-                asynchronous_correlation_value: Some("42_u8, 5".to_owned()),
-            }),
-            ResponseMessageBatchItemVersioned::V21(ResponseMessageBatchItem {
-                operation: Some(OperationEnumeration::Decrypt),
-                unique_batch_item_id: Some("1235".to_owned()),
-                response_payload: Some(Operation::DecryptResponse(DecryptResponse {
-                    unique_identifier: UniqueIdentifier::TextString("id_12345".to_owned()),
-                    data: Some(Zeroizing::from(b"decrypted_data".to_vec())),
-                    correlation_value: Some(vec![9_u8, 13]),
-                })),
-                message_extension: Some(MessageExtension {
-                    vendor_identification: "CosmianVendor".to_owned(),
-                    criticality_indicator: true,
-                    vendor_extension: vec![42_u8],
-                }),
-                result_status: ResultStatusEnumeration::OperationUndone,
-                result_reason: Some(ErrorReason::Response_Too_Large),
-                result_message: Some("oversized data".to_owned()),
-                asynchronous_correlation_value: Some("43_u8, 6".to_owned()),
-            }),
-        ],
-    };
-    let ttlv = to_ttlv(&res).unwrap();
-    let res_: ResponseMessage = from_ttlv(ttlv).unwrap();
-    assert_eq!(res_.batch_item.len(), 2);
-    let ResponseMessageBatchItemVersioned::V21(batch_item) = &res_.batch_item[0] else {
-        panic!("not a V0_2 batch item");
-    };
-    assert_eq!(batch_item.operation, Some(OperationEnumeration::Locate));
-    assert_eq!(
-        batch_item.result_status,
-        ResultStatusEnumeration::OperationPending
-    );
-    let ResponseMessageBatchItemVersioned::V21(batch_item) = &res_.batch_item[1] else {
-        panic!("not a V0_2 batch item");
-    };
-    assert_eq!(batch_item.operation, Some(OperationEnumeration::Decrypt));
-    assert_eq!(
-        batch_item.result_status,
-        ResultStatusEnumeration::OperationUndone
-    );
-
-    let Some(Operation::DecryptResponse(decrypt)) = &batch_item.response_payload else {
-        panic!("not a decrypt operation's response payload");
-    };
-    assert_eq!(
-        decrypt.data,
-        Some(Zeroizing::from(b"decrypted_data".to_vec()))
-    );
-    assert_eq!(
-        decrypt.unique_identifier,
-        UniqueIdentifier::TextString("id_12345".to_owned())
-    );
-    assert!(res == res_);
-}
-
-#[test]
 pub(crate) fn test_message_enforce_enum() {
     log_init(option_env!("RUST_LOG"));
 
@@ -1489,3 +1332,201 @@ fn test_locate_with_empty_attributes() {
 //
 //     assert_eq!(response_batch_item, response_batch_item_);
 // }
+
+#[test]
+pub(crate) fn test_simple_message_request() {
+    log_init(option_env!("RUST_LOG"));
+
+    let req = RequestMessage {
+        request_header: RequestMessageHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 2,
+                protocol_version_minor: 1,
+            },
+            batch_count: 1,
+            ..Default::default()
+        },
+        batch_item: vec![RequestMessageBatchItemVersioned::V21(
+            RequestMessageBatchItem {
+                operation: OperationEnumeration::Query,
+                ephemeral: None,
+                unique_batch_item_id: None,
+                request_payload: Operation::Query(Query {
+                    query_function: Some(vec![QueryFunction::QueryOperations]),
+                }),
+                message_extension: None,
+            },
+        )],
+    };
+    let ttlv = to_ttlv(&req).unwrap();
+    info!("TTLV: {:#?}", ttlv);
+    let req_: RequestMessage = from_ttlv(ttlv).unwrap();
+    info!("{:#?}", req_);
+    let RequestMessageBatchItemVersioned::V21(batch_item) = &req_.batch_item[0] else {
+        panic!("not a v2.1 batch item");
+    };
+    assert_eq!(batch_item.operation, OperationEnumeration::Query);
+    let Operation::Query(query) = &batch_item.request_payload else {
+        panic!("not an encrypt operation's request payload: {batch_item}");
+    };
+    assert_eq!(
+        query.query_function,
+        Some(vec![QueryFunction::QueryOperations])
+    );
+    assert_eq!(req, req_);
+}
+
+#[test]
+pub(crate) fn test_message_request() {
+    log_init(option_env!("RUST_LOG"));
+
+    let req = RequestMessage {
+        request_header: RequestMessageHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 2,
+                protocol_version_minor: 1,
+            },
+            maximum_response_size: Some(9999),
+            batch_count: 1,
+            client_correlation_value: Some("client_123".to_owned()),
+            server_correlation_value: Some("server_234".to_owned()),
+            asynchronous_indicator: Some(AsynchronousIndicator::Optional),
+            attestation_capable_indicator: Some(true),
+            attestation_type: Some(vec![AttestationType::TPM_Quote]),
+            authentication: Some(vec![Credential::Attestation {
+                nonce: Nonce {
+                    nonce_id: vec![9, 8, 7],
+                    nonce_value: vec![10, 11, 12],
+                },
+                attestation_type: AttestationType::TCG_Integrity_Report,
+                attestation_measurement: Some(vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
+                attestation_assertion: Some(vec![11, 12, 13, 14, 15, 16, 17, 18, 19, 20]),
+            }]),
+            batch_error_continuation_option: Some(BatchErrorContinuationOption::Undo),
+            batch_order_option: Some(true),
+            time_stamp: Some(1_950_940_403),
+        },
+        batch_item: vec![RequestMessageBatchItemVersioned::V21(
+            RequestMessageBatchItem {
+                operation: OperationEnumeration::Encrypt,
+                ephemeral: None,
+                unique_batch_item_id: None,
+                request_payload: Operation::Encrypt(Encrypt {
+                    data: Some(Zeroizing::from(b"to be enc".to_vec())),
+                    ..Default::default()
+                }),
+                message_extension: Some(vec![MessageExtension {
+                    vendor_identification: "CosmianVendor".to_owned(),
+                    criticality_indicator: false,
+                    vendor_extension: vec![42_u8],
+                }]),
+            },
+        )],
+    };
+    let ttlv = to_ttlv(&req).unwrap();
+    let req_: RequestMessage = from_ttlv(ttlv).unwrap();
+    let RequestMessageBatchItemVersioned::V21(batch_item) = &req_.batch_item[0] else {
+        panic!("not a v2.1 batch item");
+    };
+    assert_eq!(batch_item.operation, OperationEnumeration::Encrypt);
+    let Operation::Encrypt(encrypt) = &batch_item.request_payload else {
+        panic!("not an encrypt operation's request payload: {batch_item}");
+    };
+    assert_eq!(encrypt.data, Some(Zeroizing::from(b"to be enc".to_vec())));
+    assert_eq!(req, req_);
+}
+
+#[test]
+pub(crate) fn test_message_response() {
+    log_init(option_env!("RUST_LOG"));
+
+    let res = ResponseMessage {
+        response_header: ResponseMessageHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 2,
+                protocol_version_minor: 1,
+            },
+            batch_count: 2,
+            client_correlation_value: Some("client_123".to_owned()),
+            server_correlation_value: Some("server_234".to_owned()),
+            attestation_type: Some(vec![AttestationType::TPM_Quote]),
+            time_stamp: 1_697_201_574,
+            nonce: Some(Nonce {
+                nonce_id: vec![5, 6, 7],
+                nonce_value: vec![8, 9, 0],
+            }),
+            server_hashed_password: Some(b"5e8953ab".to_vec()),
+        },
+        batch_item: vec![
+            ResponseMessageBatchItemVersioned::V21(ResponseMessageBatchItem {
+                operation: Some(OperationEnumeration::Locate),
+                unique_batch_item_id: Some("1234".to_owned()),
+                response_payload: Some(Operation::LocateResponse(LocateResponse {
+                    located_items: Some(134),
+                    unique_identifiers: Some(vec![UniqueIdentifier::TextString(
+                        "some_id".to_owned(),
+                    )]),
+                })),
+                message_extension: Some(MessageExtension {
+                    vendor_identification: "CosmianVendor".to_owned(),
+                    criticality_indicator: false,
+                    vendor_extension: vec![42_u8],
+                }),
+                result_status: ResultStatusEnumeration::OperationPending,
+                result_reason: None,
+                result_message: None,
+                asynchronous_correlation_value: Some("42_u8, 5".to_owned()),
+            }),
+            ResponseMessageBatchItemVersioned::V21(ResponseMessageBatchItem {
+                operation: Some(OperationEnumeration::Decrypt),
+                unique_batch_item_id: Some("1235".to_owned()),
+                response_payload: Some(Operation::DecryptResponse(DecryptResponse {
+                    unique_identifier: UniqueIdentifier::TextString("id_12345".to_owned()),
+                    data: Some(Zeroizing::from(b"decrypted_data".to_vec())),
+                    correlation_value: Some(vec![9_u8, 13]),
+                })),
+                message_extension: Some(MessageExtension {
+                    vendor_identification: "CosmianVendor".to_owned(),
+                    criticality_indicator: true,
+                    vendor_extension: vec![42_u8],
+                }),
+                result_status: ResultStatusEnumeration::OperationUndone,
+                result_reason: Some(ErrorReason::Response_Too_Large),
+                result_message: Some("oversized data".to_owned()),
+                asynchronous_correlation_value: Some("43_u8, 6".to_owned()),
+            }),
+        ],
+    };
+    let ttlv = to_ttlv(&res).unwrap();
+    let res_: ResponseMessage = from_ttlv(ttlv).unwrap();
+    assert_eq!(res_.batch_item.len(), 2);
+    let ResponseMessageBatchItemVersioned::V21(batch_item) = &res_.batch_item[0] else {
+        panic!("not a v2.1 batch item");
+    };
+    assert_eq!(batch_item.operation, Some(OperationEnumeration::Locate));
+    assert_eq!(
+        batch_item.result_status,
+        ResultStatusEnumeration::OperationPending
+    );
+    let ResponseMessageBatchItemVersioned::V21(batch_item) = &res_.batch_item[1] else {
+        panic!("not a v2.1 batch item");
+    };
+    assert_eq!(batch_item.operation, Some(OperationEnumeration::Decrypt));
+    assert_eq!(
+        batch_item.result_status,
+        ResultStatusEnumeration::OperationUndone
+    );
+
+    let Some(Operation::DecryptResponse(decrypt)) = &batch_item.response_payload else {
+        panic!("not a decrypt operation's response payload");
+    };
+    assert_eq!(
+        decrypt.data,
+        Some(Zeroizing::from(b"decrypted_data".to_vec()))
+    );
+    assert_eq!(
+        decrypt.unique_identifier,
+        UniqueIdentifier::TextString("id_12345".to_owned())
+    );
+    assert_eq!(res, res_);
+}

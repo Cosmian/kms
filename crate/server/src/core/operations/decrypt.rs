@@ -1,15 +1,18 @@
 use std::sync::Arc;
 
 use cloudproof::reexport::cover_crypt::Covercrypt;
-use cosmian_kmip::kmip_2_1::{
-    extra::BulkData,
-    kmip_objects::Object,
-    kmip_operations::{Decrypt, DecryptResponse, ErrorReason},
-    kmip_types::{
-        CryptographicAlgorithm, CryptographicParameters, CryptographicUsageMask, KeyFormatType,
-        PaddingMethod, StateEnumeration, UniqueIdentifier,
+use cosmian_kmip::{
+    kmip_0::kmip_types::ErrorReason,
+    kmip_2_1::{
+        extra::BulkData,
+        kmip_objects::Object,
+        kmip_operations::{Decrypt, DecryptResponse},
+        kmip_types::{
+            CryptographicAlgorithm, CryptographicParameters, CryptographicUsageMask, KeyFormatType,
+            PaddingMethod, StateEnumeration, UniqueIdentifier,
+        },
+        KmipOperation,
     },
-    KmipOperation,
 };
 #[cfg(not(feature = "fips"))]
 use cosmian_kms_crypto::crypto::elliptic_curves::ecies::ecies_decrypt;

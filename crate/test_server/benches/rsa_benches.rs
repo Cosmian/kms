@@ -1,16 +1,17 @@
 #![allow(dead_code)]
 
+use cosmian_kmip::kmip_0::{
+    kmip_messages::{
+        RequestMessage, RequestMessageBatchItemVersioned, RequestMessageHeader, ResponseMessage,
+    },
+    kmip_types::{HashingAlgorithm, ProtocolVersion},
+};
 use cosmian_kms_client::{
     kmip_2_1::requests::{create_rsa_key_pair_request, decrypt_request, encrypt_request},
     reexport::cosmian_kmip::kmip_2_1::{
-        kmip_messages::{
-            RequestMessage, RequestMessageBatchItem, RequestMessageHeader, ResponseMessage,
-        },
+        kmip_messages::RequestMessageBatchItem,
         kmip_operations::Operation,
-        kmip_types::{
-            CryptographicAlgorithm, CryptographicParameters, HashingAlgorithm, PaddingMethod,
-            ProtocolVersion,
-        },
+        kmip_types::{CryptographicAlgorithm, CryptographicParameters, PaddingMethod},
     },
     KmsClient,
 };
@@ -350,14 +351,18 @@ pub(crate) async fn message_encrypt(
     let message_request = RequestMessage {
         request_header: RequestMessageHeader {
             protocol_version: ProtocolVersion {
-                protocol_version_major: 1,
-                protocol_version_minor: 0,
+                protocol_version_major: 2,
+                protocol_version_minor: 1,
             },
             batch_count: num_plaintexts as i32,
             ..Default::default()
         },
         batch_item: (0..num_plaintexts)
-            .map(|_| RequestMessageBatchItem::new(Operation::Encrypt(encrypt_request.clone())))
+            .map(|_| {
+                RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
+                    Operation::Encrypt(encrypt_request.clone()),
+                ))
+            })
             .collect(),
     };
 
@@ -385,14 +390,18 @@ pub(crate) async fn message_decrypt(
     let message_request = RequestMessage {
         request_header: RequestMessageHeader {
             protocol_version: ProtocolVersion {
-                protocol_version_major: 1,
-                protocol_version_minor: 0,
+                protocol_version_major: 2,
+                protocol_version_minor: 1,
             },
             batch_count: num_ciphertexts as i32,
             ..Default::default()
         },
         batch_item: (0..num_ciphertexts)
-            .map(|_| RequestMessageBatchItem::new(Operation::Decrypt(decrypt_request.clone())))
+            .map(|_| {
+                RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
+                    Operation::Decrypt(decrypt_request.clone()),
+                ))
+            })
             .collect(),
     };
 

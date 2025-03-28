@@ -3,10 +3,13 @@ use std::sync::Arc;
 use cloudproof::reexport::cover_crypt::{
     abe_policy::Policy, Covercrypt, MasterPublicKey, MasterSecretKey,
 };
-use cosmian_kmip::kmip_2_1::{
-    kmip_objects::{Object, ObjectType, PrivateKey},
-    kmip_operations::{ErrorReason, Get, Import, ReKeyKeyPairResponse},
-    kmip_types::{LinkType, StateEnumeration, UniqueIdentifier},
+use cosmian_kmip::{
+    kmip_0::kmip_types::ErrorReason,
+    kmip_2_1::{
+        kmip_objects::{Object, ObjectType, PrivateKey},
+        kmip_operations::{Get, Import, ReKeyKeyPairResponse},
+        kmip_types::{LinkType, StateEnumeration, UniqueIdentifier},
+    },
 };
 use cosmian_kms_crypto::crypto::cover_crypt::{
     attributes::{deserialize_access_policy, policy_from_attributes, RekeyEditAction},

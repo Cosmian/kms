@@ -1576,7 +1576,6 @@ dependencies = [
  "dotenvy",
  "futures",
  "hex",
- "kms_test_server",
  "lazy_static",
  "log",
  "num-bigint-dig",
@@ -2947,7 +2946,7 @@ name = "kms_test_server"
 version = "4.22.2"
 dependencies = [
  "actix-server",
- "base64 0.22.1",
+ "cosmian_kmip",
  "cosmian_kms_client",
  "cosmian_kms_crypto",
  "cosmian_kms_server",

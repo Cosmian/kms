@@ -117,7 +117,7 @@ impl SocketServer {
     /// # Errors
     /// - If the server fails to bind to the specified host and port
     /// - If an error occurs while handling a client connection
-    pub fn start<F>(&self, kms_server: Arc<KMS>, request_handler: F) -> KResult<()>
+    pub fn start<F>(&self, kms_server: &Arc<KMS>, request_handler: F) -> KResult<()>
     where
         F: Fn(&str, &[u8], Arc<KMS>) -> Vec<u8> + Send + Sync + 'static,
     {
@@ -159,13 +159,8 @@ impl SocketServer {
 
         let thread_handle = thread::spawn(move || {
             // we swallow the error if any, it will be received by the mpsc receiver
-            let _swallowed = Self::start_listening(
-                kms_server.clone(),
-                &addr,
-                &server_config,
-                &handler,
-                Some(tx),
-            );
+            let _swallowed =
+                Self::start_listening(&kms_server, &addr, &server_config, &handler, Some(tx));
         });
         trace!("Waiting for test socket server to start...");
         let state = rx
@@ -177,7 +172,7 @@ impl SocketServer {
     }
 
     fn start_listening<F>(
-        kms_server: Arc<KMS>,
+        kms_server: &Arc<KMS>,
         addr: &str,
         server_config: &Arc<ServerConfig>,
         handler: &Arc<F>,
@@ -216,7 +211,7 @@ impl SocketServer {
                     let kms_server = kms_server.clone();
                     thread::spawn(move || {
                         if let Err(e) =
-                            handle_client(kms_server, server_config, &handler, &mut stream)
+                            handle_client(&kms_server, server_config, &handler, &mut stream)
                         {
                             error!("Error handling socket client: {}", e);
                         }
@@ -232,7 +227,7 @@ impl SocketServer {
 }
 
 fn handle_client(
-    kms_server: Arc<KMS>,
+    kms_server: &Arc<KMS>,
     server_config: Arc<ServerConfig>,
     handler: &Arc<impl Fn(&str, &[u8], Arc<KMS>) -> Vec<u8> + Send + Sync>,
     stream: &mut TcpStream,

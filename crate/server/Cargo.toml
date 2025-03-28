@@ -98,7 +98,6 @@ zeroize = { workspace = true }
 actix-http = "3.6"
 cosmian_kms_client = { path = "../client" }
 cosmian_logger = { workspace = true }
-kms_test_server = { path = "../test_server" }
 pem = { workspace = true }
 tempfile = { workspace = true }
 

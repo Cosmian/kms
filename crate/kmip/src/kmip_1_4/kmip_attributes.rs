@@ -466,7 +466,7 @@ impl Attributes {
     pub fn is_usage_authorized_for(&self, flag: CryptographicUsageMask) -> Result<bool, KmipError> {
         let usage_mask = self.cryptographic_usage_mask.ok_or_else(|| {
             KmipError::InvalidKmip21Value(
-                ErrorReason::Incompatible_Cryptographic_Usage_Mask.into(),
+                ErrorReason::Incompatible_Cryptographic_Usage_Mask,
                 "CryptographicUsageMask is None".to_owned(),
             )
         })?;

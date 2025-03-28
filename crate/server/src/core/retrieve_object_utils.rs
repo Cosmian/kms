@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
-use cosmian_kmip::kmip_2_1::{
-    kmip_operations::ErrorReason, kmip_types::StateEnumeration, KmipOperation,
+use cosmian_kmip::{
+    kmip_0::kmip_types::ErrorReason,
+    kmip_2_1::{kmip_types::StateEnumeration, KmipOperation},
 };
 use cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams};
 use tracing::trace;

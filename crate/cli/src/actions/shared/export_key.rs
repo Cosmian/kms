@@ -3,11 +3,12 @@ use std::{fmt::Display, path::PathBuf};
 use base64::Engine;
 use clap::{Parser, ValueEnum};
 use cosmian_kms_client::{
-    cosmian_kmip::kmip_2_1::kmip_types::{BlockCipherMode, KeyFormatType},
-    der_to_pem, export_object,
-    kmip_2_1::kmip_types::{
-        CryptographicAlgorithm, CryptographicParameters, HashingAlgorithm, PaddingMethod,
+    cosmian_kmip::{
+        kmip_0::kmip_types::HashingAlgorithm,
+        kmip_2_1::kmip_types::{BlockCipherMode, KeyFormatType},
     },
+    der_to_pem, export_object,
+    kmip_2_1::kmip_types::{CryptographicAlgorithm, CryptographicParameters, PaddingMethod},
     write_bytes_to_file, write_kmip_object_to_file, ExportObjectParams, KmsClient,
 };
 

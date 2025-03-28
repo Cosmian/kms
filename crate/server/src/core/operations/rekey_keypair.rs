@@ -1,10 +1,13 @@
 use std::sync::Arc;
 
 use cloudproof::reexport::cover_crypt::Covercrypt;
-use cosmian_kmip::kmip_2_1::{
-    kmip_objects::ObjectType,
-    kmip_operations::{ErrorReason, ReKeyKeyPair, ReKeyKeyPairResponse},
-    kmip_types::{CryptographicAlgorithm, KeyFormatType, StateEnumeration},
+use cosmian_kmip::{
+    kmip_0::kmip_types::ErrorReason,
+    kmip_2_1::{
+        kmip_objects::ObjectType,
+        kmip_operations::{ReKeyKeyPair, ReKeyKeyPairResponse},
+        kmip_types::{CryptographicAlgorithm, KeyFormatType, StateEnumeration},
+    },
 };
 use cosmian_kms_crypto::crypto::cover_crypt::attributes::{
     policy_from_attributes, rekey_edit_action_from_attributes,

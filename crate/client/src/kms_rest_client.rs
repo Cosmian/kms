@@ -8,12 +8,10 @@ use cosmian_kmip::kmip_2_1::kmip_operations::{
     StatusResponse, Validate, ValidateResponse,
 };
 use cosmian_kmip::{
-    kmip_2_1::{
-        kmip_messages::{RequestMessage, ResponseMessage},
-        kmip_operations::{
-            DeleteAttribute, DeleteAttributeResponse, ReKey, ReKeyResponse, SetAttribute,
-            SetAttributeResponse,
-        },
+    kmip_0::kmip_messages::{RequestMessage, ResponseMessage},
+    kmip_2_1::kmip_operations::{
+        DeleteAttribute, DeleteAttributeResponse, ReKey, ReKeyResponse, SetAttribute,
+        SetAttributeResponse,
     },
     ttlv::{from_ttlv, to_ttlv, TTLV},
 };

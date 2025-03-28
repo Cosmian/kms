@@ -16,6 +16,7 @@ use cosmian_kms_crypto::crypto::cover_crypt::kmip_requests::{
     build_create_covercrypt_master_keypair_request,
     build_create_covercrypt_user_decryption_key_request,
 };
+use cosmian_logger::log_init;
 use tracing::debug;
 use uuid::Uuid;
 
@@ -573,6 +574,7 @@ async fn test_abe_json_access() -> KResult<()> {
 
 #[tokio::test]
 async fn test_import_decrypt() -> KResult<()> {
+    log_init(option_env!("RUST_LOG"));
     let clap_config = https_clap_config();
 
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);

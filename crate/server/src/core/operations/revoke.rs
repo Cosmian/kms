@@ -1,14 +1,17 @@
 use std::{collections::HashSet, sync::Arc};
 
 use async_recursion::async_recursion;
-use cosmian_kmip::kmip_2_1::{
-    kmip_objects::ObjectType,
-    kmip_operations::{ErrorReason, Revoke, RevokeResponse},
-    kmip_types::{
-        KeyFormatType, LinkType, RevocationReason, RevocationReasonCode, StateEnumeration,
-        UniqueIdentifier,
+use cosmian_kmip::{
+    kmip_0::kmip_types::ErrorReason,
+    kmip_2_1::{
+        kmip_objects::ObjectType,
+        kmip_operations::{Revoke, RevokeResponse},
+        kmip_types::{
+            KeyFormatType, LinkType, RevocationReason, RevocationReasonCode, StateEnumeration,
+            UniqueIdentifier,
+        },
+        KmipOperation,
     },
-    KmipOperation,
 };
 use cosmian_kms_interfaces::SessionParams;
 use tracing::{debug, trace};
