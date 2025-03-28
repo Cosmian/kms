@@ -626,10 +626,11 @@ pub enum QueryFunction {
     QueryExtensionList = 0x5,
     QueryExtensionMap = 0x6,
     QueryAttestationTypes = 0x7,
-    QueryRNGParameters = 0x8,
-    QueryValidationParameters = 0x9,
-    QueryValidationCapabilities = 0xA,
-    QueryProfiles = 0xB,
+    QueryRNGs = 0x8,
+    QueryValidations = 0x9,
+    QueryProfiles = 0xA,
+    QueryCapabilities = 0xB,
+    QueryClientRegistrationMethods = 0xC,
 }
 
 /// KMIP 1.4 Cancellation Result Enumeration

@@ -3,8 +3,8 @@ use std::sync::Arc;
 use cosmian_kmip::{
     kmip_2_1::kmip_operations::{
         Certify, Create, CreateKeyPair, Decrypt, DeleteAttribute, Destroy, Encrypt, Export, Get,
-        GetAttributes, Hash, Import, Locate, Mac, Operation, ReKey, ReKeyKeyPair, Revoke,
-        SetAttribute, Validate,
+        GetAttributes, Import, Locate, Operation, Query, ReKey, ReKeyKeyPair, Revoke, SetAttribute,
+        Validate,
     },
     ttlv::{from_ttlv, TTLV},
 };
@@ -102,6 +102,11 @@ pub(crate) async fn dispatch(
             let req = from_ttlv::<Locate>(ttlv)?;
             let resp = kms.locate(req, user, database_params).await?;
             Operation::LocateResponse(resp)
+        }
+        "Query" => {
+            let req = from_ttlv::<Query>(ttlv)?;
+            let resp = kms.query(req).await?;
+            Operation::QueryResponse(resp)
         }
         "ReKey" => {
             let req = from_ttlv::<ReKey>(ttlv)?;
