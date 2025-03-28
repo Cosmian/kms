@@ -1781,13 +1781,13 @@ mod tests {
     #[test]
     fn test_object_type_display() {
         assert_eq!(ObjectType::Certificate.to_string(), "Certificate");
-        assert_eq!(ObjectType::SymmetricKey.to_string(), "Symmetric Key");
-        assert_eq!(ObjectType::PublicKey.to_string(), "Public Key");
-        assert_eq!(ObjectType::PrivateKey.to_string(), "Private Key");
-        assert_eq!(ObjectType::SplitKey.to_string(), "Split Key");
-        assert_eq!(ObjectType::SecretData.to_string(), "Secret Data");
-        assert_eq!(ObjectType::OpaqueObject.to_string(), "Opaque Object");
-        assert_eq!(ObjectType::PGPKey.to_string(), "PGP Key");
+        assert_eq!(ObjectType::SymmetricKey.to_string(), "SymmetricKey");
+        assert_eq!(ObjectType::PublicKey.to_string(), "PublicKey");
+        assert_eq!(ObjectType::PrivateKey.to_string(), "PrivateKey");
+        assert_eq!(ObjectType::SplitKey.to_string(), "SplitKey");
+        assert_eq!(ObjectType::SecretData.to_string(), "SecretData");
+        assert_eq!(ObjectType::OpaqueObject.to_string(), "OpaqueObject");
+        assert_eq!(ObjectType::PGPKey.to_string(), "PGPKey");
     }
 
     #[test]
