@@ -47,7 +47,7 @@ impl TlsParams {
             return Ok(None);
         };
         let authority_cert_file = if let Some(authority_cert_file) = config
-            .authority_cert_file
+            .clients_ca_cert_file
             .as_ref()
             .or(deprecated_config.authority_cert_file.as_ref())
         {
