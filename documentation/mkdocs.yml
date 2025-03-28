@@ -91,6 +91,7 @@ nav:
       - Authorizing users with access rights: authorization.md
       - Enabling TLS: tls.md
       - Logging and telemetry: logging.md
+      - User interface: ui.md
   - Certifications and compliance:
       - FIPS 140-3: fips.md
       - Cryptographic algorithms:
