@@ -90,7 +90,9 @@ fn test_rustls_server_config() {
 fn test_socket_server_with_socket_client() {
     log_init(option_env!("RUST_LOG"));
 
-    let server_params = Arc::new(ServerParams::try_from(https_clap_config()).unwrap());
+    let mut server_params = ServerParams::try_from(https_clap_config()).unwrap();
+    server_params.http_port = 11111;
+    server_params.socket_server_port = 11112;
 
     let (tx, rx) = mpsc::channel::<ServerHandle>();
 
@@ -99,7 +101,7 @@ fn test_socket_server_with_socket_client() {
         tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()?
-            .block_on(start_kms_server(server_params, Some(tx)))
+            .block_on(start_kms_server(Arc::new(server_params), Some(tx)))
             .map_err(|e| {
                 error!("Failed to start KMS server: {}", e);
                 KmsClientError::UnexpectedError(e.to_string())
@@ -113,7 +115,7 @@ fn test_socket_server_with_socket_client() {
 
     let socket_client = SocketClient::new(SocketClientConfig {
         host: "localhost".to_owned(),
-        port: 5695,
+        port: 11112,
         client_p12: include_bytes!(
             "../../../../test_data/client_server/user/user.client.acme.com.p12"
         )
