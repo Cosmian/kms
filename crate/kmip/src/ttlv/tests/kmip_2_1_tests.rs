@@ -6,23 +6,28 @@ use zeroize::Zeroizing;
 
 use crate::{
     error::{result::KmipResult, KmipError},
-    kmip_2_1::{
-        kmip_attributes::{Attribute, Attributes},
-        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+    kmip_0::{
         kmip_messages::{
-            RequestMessage, RequestMessageBatchItem, RequestMessageHeader, ResponseMessage,
-            ResponseMessageBatchItem, ResponseMessageHeader,
-        },
-        kmip_objects::{Object, ObjectType, PublicKey, SymmetricKey},
-        kmip_operations::{
-            Create, DecryptResponse, Encrypt, ErrorReason, Import, ImportResponse, Locate,
-            LocateResponse, Operation, Query, SetAttribute,
+            RequestMessage, RequestMessageBatchItemVersioned, RequestMessageHeader,
+            ResponseMessage, ResponseMessageBatchItemVersioned, ResponseMessageHeader,
         },
         kmip_types::{
             AsynchronousIndicator, AttestationType, BatchErrorContinuationOption, Credential,
+            ErrorReason, MessageExtension, Nonce, ProtocolVersion, ResultStatusEnumeration,
+        },
+    },
+    kmip_2_1::{
+        kmip_attributes::{Attribute, Attributes},
+        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+        kmip_messages::{RequestMessageBatchItem, ResponseMessageBatchItem},
+        kmip_objects::{Object, ObjectType, PublicKey, SymmetricKey},
+        kmip_operations::{
+            Create, DecryptResponse, Encrypt, Import, ImportResponse, Locate, LocateResponse,
+            Operation, Query, QueryResponse, SetAttribute,
+        },
+        kmip_types::{
             CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, Link, LinkType,
-            LinkedObjectIdentifier, MessageExtension, Nonce, OperationEnumeration, ProtocolVersion,
-            QueryFunction, ResultStatusEnumeration, UniqueIdentifier,
+            LinkedObjectIdentifier, OperationEnumeration, QueryFunction, UniqueIdentifier,
         },
     },
     ttlv::{from_ttlv, to_ttlv, KmipEnumerationVariant, TTLValue, TTLV},
@@ -771,7 +776,8 @@ fn get_key_block() -> KeyBlock {
 
 #[test]
 pub(crate) fn test_message_request() {
-    log_init(option_env!("RUST_LOG"));
+    // log_init(option_env!("RUST_LOG"));
+    log_init(Some("trace"));
 
     let req = RequestMessage {
         request_header: RequestMessageHeader {
@@ -799,29 +805,32 @@ pub(crate) fn test_message_request() {
             batch_order_option: Some(true),
             time_stamp: Some(1_950_940_403),
         },
-        batch_item: vec![RequestMessageBatchItem {
-            operation: OperationEnumeration::Encrypt,
-            ephemeral: None,
-            unique_batch_item_id: None,
-            request_payload: Operation::Encrypt(Encrypt {
-                data: Some(Zeroizing::from(b"to be enc".to_vec())),
-                ..Default::default()
-            }),
-            message_extension: Some(vec![MessageExtension {
-                vendor_identification: "CosmianVendor".to_owned(),
-                criticality_indicator: false,
-                vendor_extension: vec![42_u8],
-            }]),
-        }],
+        batch_item: vec![RequestMessageBatchItemVersioned::V21(
+            RequestMessageBatchItem {
+                operation: OperationEnumeration::Encrypt,
+                ephemeral: None,
+                unique_batch_item_id: None,
+                request_payload: Operation::Encrypt(Encrypt {
+                    data: Some(Zeroizing::from(b"to be enc".to_vec())),
+                    ..Default::default()
+                }),
+                message_extension: Some(vec![MessageExtension {
+                    vendor_identification: "CosmianVendor".to_owned(),
+                    criticality_indicator: false,
+                    vendor_extension: vec![42_u8],
+                }]),
+            },
+        )],
     };
     let ttlv = to_ttlv(&req).unwrap();
+    println!("TTLV: {:#?}", ttlv);
     let req_: RequestMessage = from_ttlv(ttlv).unwrap();
-    assert_eq!(req_.batch_item[0].operation, OperationEnumeration::Encrypt);
-    let Operation::Encrypt(encrypt) = &req_.batch_item[0].request_payload else {
-        panic!(
-            "not an encrypt operation's request payload: {}",
-            req_.batch_item[0]
-        );
+    let RequestMessageBatchItemVersioned::V21(batch_item) = &req_.batch_item[0] else {
+        panic!("not a V0_2 batch item");
+    };
+    assert_eq!(batch_item.operation, OperationEnumeration::Encrypt);
+    let Operation::Encrypt(encrypt) = &batch_item.request_payload else {
+        panic!("not an encrypt operation's request payload: {}", batch_item);
     };
     assert_eq!(encrypt.data, Some(Zeroizing::from(b"to be enc".to_vec())));
     assert!(req == req_);
@@ -849,7 +858,7 @@ pub(crate) fn test_message_response() {
             server_hashed_password: Some(b"5e8953ab".to_vec()),
         },
         batch_item: vec![
-            ResponseMessageBatchItem {
+            ResponseMessageBatchItemVersioned::V21(ResponseMessageBatchItem {
                 operation: Some(OperationEnumeration::Locate),
                 unique_batch_item_id: Some("1234".to_owned()),
                 response_payload: Some(Operation::LocateResponse(LocateResponse {
@@ -867,8 +876,8 @@ pub(crate) fn test_message_response() {
                 result_reason: None,
                 result_message: None,
                 asynchronous_correlation_value: Some("42_u8, 5".to_owned()),
-            },
-            ResponseMessageBatchItem {
+            }),
+            ResponseMessageBatchItemVersioned::V21(ResponseMessageBatchItem {
                 operation: Some(OperationEnumeration::Decrypt),
                 unique_batch_item_id: Some("1235".to_owned()),
                 response_payload: Some(Operation::DecryptResponse(DecryptResponse {
@@ -885,30 +894,30 @@ pub(crate) fn test_message_response() {
                 result_reason: Some(ErrorReason::Response_Too_Large),
                 result_message: Some("oversized data".to_owned()),
                 asynchronous_correlation_value: Some("43_u8, 6".to_owned()),
-            },
+            }),
         ],
     };
     let ttlv = to_ttlv(&res).unwrap();
     let res_: ResponseMessage = from_ttlv(ttlv).unwrap();
     assert_eq!(res_.batch_item.len(), 2);
+    let ResponseMessageBatchItemVersioned::V21(batch_item) = &res_.batch_item[0] else {
+        panic!("not a V0_2 batch item");
+    };
+    assert_eq!(batch_item.operation, Some(OperationEnumeration::Locate));
     assert_eq!(
-        res_.batch_item[0].operation,
-        Some(OperationEnumeration::Locate)
-    );
-    assert_eq!(
-        res_.batch_item[0].result_status,
+        batch_item.result_status,
         ResultStatusEnumeration::OperationPending
     );
+    let ResponseMessageBatchItemVersioned::V21(batch_item) = &res_.batch_item[1] else {
+        panic!("not a V0_2 batch item");
+    };
+    assert_eq!(batch_item.operation, Some(OperationEnumeration::Decrypt));
     assert_eq!(
-        res_.batch_item[1].operation,
-        Some(OperationEnumeration::Decrypt)
-    );
-    assert_eq!(
-        res_.batch_item[1].result_status,
+        batch_item.result_status,
         ResultStatusEnumeration::OperationUndone
     );
 
-    let Some(Operation::DecryptResponse(decrypt)) = &res_.batch_item[1].response_payload else {
+    let Some(Operation::DecryptResponse(decrypt)) = &batch_item.response_payload else {
         panic!("not a decrypt operation's response payload");
     };
     assert_eq!(
@@ -937,14 +946,16 @@ pub(crate) fn test_message_enforce_enum() {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItem {
-            operation: OperationEnumeration::Create,
-            ephemeral: None,
-            unique_batch_item_id: None,
-            // mismatch operation regarding the enum
-            request_payload: Operation::Locate(Locate::default()),
-            message_extension: None,
-        }],
+        batch_item: vec![RequestMessageBatchItemVersioned::V21(
+            RequestMessageBatchItem {
+                operation: OperationEnumeration::Create,
+                ephemeral: None,
+                unique_batch_item_id: None,
+                // mismatch operation regarding the enum
+                request_payload: Operation::Locate(Locate::default()),
+                message_extension: None,
+            },
+        )],
     };
     assert_eq!(
         to_ttlv(&req).unwrap_err().to_string(),
@@ -962,32 +973,13 @@ pub(crate) fn test_message_enforce_enum() {
             batch_count: 15,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItem::new(Operation::Locate(
-            Locate::default(),
-        ))],
+        batch_item: vec![RequestMessageBatchItemVersioned::V21(
+            RequestMessageBatchItem::new(Operation::Locate(Locate::default())),
+        )],
     };
     assert_eq!(
         to_ttlv(&req).unwrap_err().to_string(),
         "mismatch count of batch items between header (`15`) and actual items count (`1`)"
-            .to_owned()
-    );
-
-    let req = RequestMessage {
-        request_header: RequestMessageHeader {
-            protocol_version: ProtocolVersion {
-                protocol_version_major: 3,
-                protocol_version_minor: 0,
-            },
-            batch_count: 1,
-            ..Default::default()
-        },
-        batch_item: vec![RequestMessageBatchItem::new(Operation::Locate(
-            Locate::default(),
-        ))],
-    };
-    assert_eq!(
-        to_ttlv(&req).unwrap_err().to_string(),
-        "item's protocol version is greater (`3.0`) than header's protocol version (`2.1`)"
             .to_owned()
     );
 
@@ -1000,18 +992,20 @@ pub(crate) fn test_message_enforce_enum() {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItem {
-            operation: OperationEnumeration::Decrypt,
-            ephemeral: None,
-            unique_batch_item_id: None,
-            // mismatch operation regarding the enum
-            request_payload: Operation::DecryptResponse(DecryptResponse {
-                unique_identifier: UniqueIdentifier::TextString("id_12345".to_owned()),
-                data: Some(Zeroizing::from(b"decrypted_data".to_vec())),
-                correlation_value: None,
-            }),
-            message_extension: None,
-        }],
+        batch_item: vec![RequestMessageBatchItemVersioned::V21(
+            RequestMessageBatchItem {
+                operation: OperationEnumeration::Decrypt,
+                ephemeral: None,
+                unique_batch_item_id: None,
+                // mismatch operation regarding the enum
+                request_payload: Operation::DecryptResponse(DecryptResponse {
+                    unique_identifier: UniqueIdentifier::TextString("id_12345".to_owned()),
+                    data: Some(Zeroizing::from(b"decrypted_data".to_vec())),
+                    correlation_value: None,
+                }),
+                message_extension: None,
+            },
+        )],
     };
     assert_eq!(
         to_ttlv(&req).unwrap_err().to_string(),
@@ -1029,17 +1023,19 @@ pub(crate) fn test_message_enforce_enum() {
             time_stamp: 1_697_201_574,
             ..Default::default()
         },
-        batch_item: vec![ResponseMessageBatchItem {
-            operation: Some(OperationEnumeration::Decrypt),
-            unique_batch_item_id: None,
-            // mismatch operation regarding the enum
-            response_payload: Some(Operation::Locate(Locate::default())),
-            message_extension: None,
-            result_status: ResultStatusEnumeration::OperationPending,
-            result_reason: None,
-            result_message: None,
-            asynchronous_correlation_value: None,
-        }],
+        batch_item: vec![ResponseMessageBatchItemVersioned::V21(
+            ResponseMessageBatchItem {
+                operation: Some(OperationEnumeration::Decrypt),
+                unique_batch_item_id: None,
+                // mismatch operation regarding the enum
+                response_payload: Some(Operation::Locate(Locate::default())),
+                message_extension: None,
+                result_status: ResultStatusEnumeration::OperationPending,
+                result_reason: None,
+                result_message: None,
+                asynchronous_correlation_value: None,
+            },
+        )],
     };
     assert_eq!(
         to_ttlv(&res).unwrap_err().to_string(),
@@ -1058,17 +1054,19 @@ pub(crate) fn test_message_enforce_enum() {
             time_stamp: 1_697_201_574,
             ..Default::default()
         },
-        batch_item: vec![ResponseMessageBatchItem {
-            operation: Some(OperationEnumeration::Decrypt),
-            unique_batch_item_id: None,
-            // mismatch operation regarding the enum
-            response_payload: Some(Operation::Locate(Locate::default())),
-            message_extension: None,
-            result_status: ResultStatusEnumeration::OperationPending,
-            result_reason: None,
-            result_message: None,
-            asynchronous_correlation_value: Some("0, 0, 1".to_owned()),
-        }],
+        batch_item: vec![ResponseMessageBatchItemVersioned::V21(
+            ResponseMessageBatchItem {
+                operation: Some(OperationEnumeration::Decrypt),
+                unique_batch_item_id: None,
+                // mismatch operation regarding the enum
+                response_payload: Some(Operation::Locate(Locate::default())),
+                message_extension: None,
+                result_status: ResultStatusEnumeration::OperationPending,
+                result_reason: None,
+                result_message: None,
+                asynchronous_correlation_value: Some("0, 0, 1".to_owned()),
+            },
+        )],
     };
     assert_eq!(
         to_ttlv(&res).unwrap_err().to_string(),
@@ -1085,35 +1083,14 @@ pub(crate) fn test_message_enforce_enum() {
             time_stamp: 1_697_201_574,
             ..Default::default()
         },
-        batch_item: vec![ResponseMessageBatchItem::new(
-            ResultStatusEnumeration::OperationPending,
+        batch_item: vec![ResponseMessageBatchItemVersioned::V21(
+            ResponseMessageBatchItem::new(ResultStatusEnumeration::OperationPending),
         )],
     };
     assert_eq!(
         to_ttlv(&res).unwrap_err().to_string(),
         "missing `AsynchronousCorrelationValue` with pending status (`ResultStatus` is set to \
          `OperationPending`)"
-            .to_owned()
-    );
-
-    let res = ResponseMessage {
-        response_header: ResponseMessageHeader {
-            protocol_version: ProtocolVersion {
-                protocol_version_major: 128,
-                protocol_version_minor: 128,
-            },
-            batch_count: 1,
-            time_stamp: 1_697_201_574,
-            ..Default::default()
-        },
-        batch_item: vec![ResponseMessageBatchItem::new_with_response(
-            ResultStatusEnumeration::OperationPending,
-            Operation::Locate(Locate::default()),
-        )],
-    };
-    assert_eq!(
-        to_ttlv(&res).unwrap_err().to_string(),
-        "item's protocol version is greater (`128.128`) than header's protocol version (`2.1`)"
             .to_owned()
     );
 
@@ -1134,22 +1111,24 @@ pub(crate) fn test_message_enforce_enum() {
             }),
             server_hashed_password: Some(b"5e8953ab".to_vec()),
         },
-        batch_item: vec![ResponseMessageBatchItem {
-            operation: Some(OperationEnumeration::Locate),
-            unique_batch_item_id: Some("1234".to_owned()),
-            // in a message response, we can't have `Operation::Locate`,
-            // we could only have an `Operation::LocateResponse`
-            response_payload: Some(Operation::Locate(Locate::default())),
-            message_extension: Some(MessageExtension {
-                vendor_identification: "CosmianVendor".to_owned(),
-                criticality_indicator: false,
-                vendor_extension: vec![42_u8],
-            }),
-            result_status: ResultStatusEnumeration::OperationPending,
-            result_reason: None,
-            result_message: None,
-            asynchronous_correlation_value: Some("42_u8, 5".to_owned()),
-        }],
+        batch_item: vec![ResponseMessageBatchItemVersioned::V21(
+            ResponseMessageBatchItem {
+                operation: Some(OperationEnumeration::Locate),
+                unique_batch_item_id: Some("1234".to_owned()),
+                // in a message response, we can't have `Operation::Locate`,
+                // we could only have an `Operation::LocateResponse`
+                response_payload: Some(Operation::Locate(Locate::default())),
+                message_extension: Some(MessageExtension {
+                    vendor_identification: "CosmianVendor".to_owned(),
+                    criticality_indicator: false,
+                    vendor_extension: vec![42_u8],
+                }),
+                result_status: ResultStatusEnumeration::OperationPending,
+                result_reason: None,
+                result_message: None,
+                asynchronous_correlation_value: Some("42_u8, 5".to_owned()),
+            },
+        )],
     };
     assert_eq!(
         to_ttlv(&res).unwrap_err().to_string(),
@@ -1384,8 +1363,8 @@ fn normative_request_message_test() {
 {"tag":"RequestMessage", "value":[
   {"tag":"RequestHeader", "value":[
     {"tag":"ProtocolVersion", "value":[
-      {"tag":"ProtocolVersionMajor", "type":"Integer", "value":"0x00000001"},
-      {"tag":"ProtocolVersionMinor", "type":"Integer", "value":"0x00000004"}
+      {"tag":"ProtocolVersionMajor", "type":"Integer", "value":"0x00000002"},
+      {"tag":"ProtocolVersionMinor", "type":"Integer", "value":"0x00000001"}
     ]},
     {"tag":"MaximumResponseSize", "type":"Integer", "value":"0x00000100"},
     {"tag":"BatchCount", "type":"Integer", "value":"0x00000001"}
@@ -1416,25 +1395,27 @@ fn normative_request_message_test() {
     let request_message = RequestMessage {
         request_header: RequestMessageHeader {
             protocol_version: ProtocolVersion {
-                protocol_version_major: 1,
-                protocol_version_minor: 4,
+                protocol_version_major: 2,
+                protocol_version_minor: 1,
             },
             maximum_response_size: Some(256),
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItem {
-            operation: OperationEnumeration::Query,
-            ephemeral: None,
-            unique_batch_item_id: None,
-            request_payload: Operation::Query(Query {
-                query_function: Some(vec![
-                    QueryFunction::QueryOperations,
-                    QueryFunction::QueryObjects,
-                ]),
-            }),
-            message_extension: None,
-        }],
+        batch_item: vec![RequestMessageBatchItemVersioned::V21(
+            RequestMessageBatchItem {
+                operation: OperationEnumeration::Query,
+                ephemeral: None,
+                unique_batch_item_id: None,
+                request_payload: Operation::Query(Query {
+                    query_function: Some(vec![
+                        QueryFunction::QueryOperations,
+                        QueryFunction::QueryObjects,
+                    ]),
+                }),
+                message_extension: None,
+            },
+        )],
     };
     assert_eq!(request_message, norm_req);
 
@@ -1465,15 +1446,20 @@ fn test_locate_with_empty_attributes() {
     assert_eq!(locate, locate_);
 }
 
+//TODO: implement the Query operation in 2.1 first
 // #[test]
 // fn test_query_response() {
 //     log_init(option_env!("RUST_LOG"));
-
+//
 //     let response_batch_item = ResponseMessageBatchItem {
 //         operation: Some(OperationEnumeration::Query),
 //         unique_batch_item_id: None,
 //         response_payload: Some(Operation::QueryResponse(QueryResponse {
-//             operation: Some(vec![QueryFunction::QueryOperations]),
+//             operation: Some(vec![
+//                 OperationEnumeration::Activate,
+//                 OperationEnumeration::Create,
+//                 OperationEnumeration::Get,
+//             ]),
 //             object_type: None,
 //             vendor_identification: None,
 //             application_namespaces: None,
@@ -1494,15 +1480,12 @@ fn test_locate_with_empty_attributes() {
 //         asynchronous_correlation_value: None,
 //         message_extension: None,
 //     };
-
-//     let ttlv = to_ttlv(&query_response)?;
-//     trace!("query_response: {:#?}", ttlv);
-
-//     let query_response_deserialized: QueryResponse = from_ttlv(ttlv)?;
-//     trace!(
-//         "query_response_deserialized: {:#?}",
-//         query_response_deserialized
-//     );
-
-//     Ok(())
+//
+//     let ttlv = to_ttlv(&response_batch_item).unwrap();
+//     trace!("batch item: {:#?}", ttlv);
+//
+//     let response_batch_item_: ResponseMessageBatchItem = from_ttlv(ttlv).unwrap();
+//     trace!("query_response_deserialized: {:#?}", response_batch_item_);
+//
+//     assert_eq!(response_batch_item, response_batch_item_);
 // }

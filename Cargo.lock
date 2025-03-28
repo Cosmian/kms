@@ -1543,6 +1543,7 @@ dependencies = [
  "dotenvy",
  "futures",
  "hex",
+ "kms_test_server",
  "lazy_static",
  "log",
  "num-bigint-dig",

@@ -16,12 +16,14 @@ use strum::{EnumIter, VariantNames};
 use super::{
     kmip_attributes::Attributes,
     kmip_data_structures::{KeyBlock, KeyWrappingData},
-    kmip_operations::ErrorReason,
     kmip_types::{
         CertificateRequestType, CertificateType, OpaqueDataType, SecretDataType, SplitKeyMethod,
     },
 };
-use crate::error::{result::KmipResult, KmipError};
+use crate::{
+    error::{result::KmipResult, KmipError},
+    kmip_0::kmip_types::ErrorReason,
+};
 
 /// A Managed Cryptographic Object that is a digital certificate.
 /// It is a DER-encoded X.509 public key certificate.

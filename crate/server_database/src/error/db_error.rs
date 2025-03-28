@@ -2,7 +2,7 @@ use std::array::TryFromSliceError;
 
 use cloudproof_findex::implementations::redis::FindexRedisError;
 use cosmian_kmip::{
-    kmip_1_4::kmip_types::ResultReason, kmip_2_1::kmip_operations::ErrorReason, KmipError,
+    kmip_0::kmip_types::ErrorReason, kmip_1_4::kmip_types::ResultReason, KmipError,
 };
 use cosmian_crypto_core::CryptoCoreError;
 use cosmian_kmip::{KmipError, kmip_2_1::kmip_operations::ErrorReason};
