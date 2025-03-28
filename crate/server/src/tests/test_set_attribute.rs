@@ -82,7 +82,7 @@ pub(crate) async fn test_set_attribute_server() -> KResult<()> {
     log_init(None);
 
     let clap_config = https_clap_config();
-    let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
+    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
 
     let mut rng = CsRng::from_entropy();
 

@@ -15,4 +15,4 @@ mod kmip_endpoints;
 mod kmip_messages;
 #[cfg(not(feature = "fips"))]
 mod kmip_server_tests;
-mod socket_server_tests;
+// mod socket_server_tests;

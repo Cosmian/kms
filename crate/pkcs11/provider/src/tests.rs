@@ -38,7 +38,6 @@ async fn test_kms_client() -> Result<(), Pkcs11Error> {
 }
 
 fn initialize_backend() -> Result<CkmsBackend, Pkcs11Error> {
-    log_init(option_env!("RUST_LOG"));
     let rt = tokio::runtime::Runtime::new()?;
     let owner_client_conf = rt.block_on(async {
         let ctx = start_default_test_kms_server().await;

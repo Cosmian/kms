@@ -32,7 +32,7 @@ use crate::{
 async fn test_cover_crypt_keys() -> KResult<()> {
     let clap_config = https_clap_config();
 
-    let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
+    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
 
     //
@@ -237,7 +237,7 @@ pub(crate) fn access_policy_serialization() -> KResult<()> {
 async fn test_abe_encrypt_decrypt() -> KResult<()> {
     let clap_config = https_clap_config();
 
-    let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
+    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
     let nonexistent_owner = "invalid_owner";
     //
@@ -479,7 +479,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
 async fn test_abe_json_access() -> KResult<()> {
     let clap_config = https_clap_config();
 
-    let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
+    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
     //
     let mut policy = Policy::new();
@@ -575,7 +575,7 @@ async fn test_abe_json_access() -> KResult<()> {
 async fn test_import_decrypt() -> KResult<()> {
     let clap_config = https_clap_config();
 
-    let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
+    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
 
     let mut policy = Policy::new();

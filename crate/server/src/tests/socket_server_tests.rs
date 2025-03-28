@@ -38,20 +38,20 @@ fn start_socket_server() -> &'static thread::JoinHandle<()> {
         let clap_config = https_clap_config_opts(None);
         let server_params = ServerParams::try_from(clap_config).unwrap();
 
-        let kms_server = Arc::new(
-            KMS::instantiate(server_params)
-                .await
-                .expect("cannot instantiate KMS server"),
-        );
-        let kms_server = Arc::new(KMS {
-            params: ServerParams::default(),
-            database: Database {
-                objects: RwLock::new(HashMap::new()),
-                permissions: Arc::new(Sqlite(Sqlite::instantiate("kms.db", false).unwrap())),
-                unwrapped_cache: UnwrappedCache::new(100),
-            },
-            encryption_oracles: RwLock::new(HashMap::new()),
-        });
+        // let kms_server = Arc::new(
+        //     KMS::instantiate(server_params)
+        //         .await
+        //         .expect("cannot instantiate KMS server"),
+        // );
+        // let kms_server = Arc::new(KMS {
+        //     params: ServerParams::default(),
+        //     database: Database {
+        //         objects: RwLock::new(HashMap::new()),
+        //         permissions: Arc::new(Sqlite(Sqlite::instantiate("kms.db", false).unwrap())),
+        //         unwrapped_cache: UnwrappedCache::new(100),
+        //     },
+        //     encryption_oracles: RwLock::new(HashMap::new()),
+        // });
         let config = load_test_config();
         let server = SocketServer::instantiate(&config).expect("Failed to instantiate server");
 
@@ -92,7 +92,7 @@ fn load_test_config() -> SocketServerParams<'static> {
 
             // Store client CA cert
             TEST_CLIENT_CA_CERT_PEM =
-                Some(include_bytes!("../../../../test_data/client_server/server/ca.crt").to_vec());
+                Some(include_bytes!("../../../../test_data/client_server/ca/ca.crt").to_vec());
             // Some(include_bytes!("./certificates/socket_server/ca.crt").to_vec());
         }
 
@@ -150,7 +150,7 @@ fn test_socket_server_with_socket_client() {
         )
         .to_vec(),
         client_p12_secret: "password".to_owned(),
-        server_ca_cert_pem: include_str!("../../../../test_data/client_server/server/ca.crt")
+        server_ca_cert_pem: include_str!("../../../../test_data/client_server/ca/ca.crt")
             .to_owned(),
     })
     .expect("Failed to create socket client");
