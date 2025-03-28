@@ -15,7 +15,8 @@ use crate::{
 };
 
 // load the string content at compile time - same as http_client.rs
-const SERVER_CA_CERTIFICATE: &str = include_str!("server.crt");
+const SERVER_CA_CERTIFICATE: &str =
+    include_str!("../../../../../test_data/client_server/ca/ca.crt");
 
 pub(crate) fn wrap_in_request_message(op: Operation) -> RequestMessage {
     RequestMessage {
@@ -55,7 +56,9 @@ pub(crate) fn send_to_server(req: &RequestMessage) -> ResponseMessage {
 
     // Get or initialize the client
     let client = CLIENT.get_or_init(|| {
-        let client_p12: Vec<u8> = include_bytes!("client.p12").to_vec();
+        let client_p12: Vec<u8> =
+            include_bytes!("../../../../../test_data/client_server/user/user.client.acme.com.p12")
+                .to_vec();
         let config = SocketClientConfig {
             host: "localhost".to_owned(),
             port: 5696,
