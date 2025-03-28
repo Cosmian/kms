@@ -2,8 +2,9 @@ use std::collections::HashSet;
 
 use serde::{ser::SerializeStruct, Deserialize, Serialize};
 
-use super::kmip_types::{ErrorReason, LinkType, LinkedObjectIdentifier};
+use super::kmip_types::{LinkType, LinkedObjectIdentifier};
 use crate::{
+    kmip_0::kmip_types::ErrorReason,
     kmip_1_4::{
         kmip_data_structures::CryptographicParameters,
         kmip_types::{

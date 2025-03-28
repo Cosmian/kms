@@ -27,6 +27,7 @@ use crate::{
     socket_server::{create_rustls_server_config, SocketServer, SocketServerParams},
     tests::test_utils::https_clap_config_opts,
 };
+use crate::start_kms_server::start_kms_server;
 
 const TEST_HOST: &str = "127.0.0.1";
 const TEST_PORT: u16 = 5696;
@@ -37,6 +38,7 @@ fn start_socket_server() -> &'static thread::JoinHandle<()> {
     SOCKET_SERVER_ONCE.get_or_init(|| {
         let clap_config = https_clap_config_opts(None);
         let server_params = ServerParams::try_from(clap_config).unwrap();
+        start_kms_server()
 
         // let kms_server = Arc::new(
         //     KMS::instantiate(server_params)
@@ -140,7 +142,7 @@ fn test_rustls_server_config() {
 #[test]
 fn test_socket_server_with_socket_client() {
     log_init(Some("debug"));
-    let _server_thread = start_socket_server();
+    start_default_test_kms_server_with_cert_auth().unwrap();
 
     let socket_client = SocketClient::new(SocketClientConfig {
         host: "localhost".to_owned(),
