@@ -92,6 +92,7 @@ jobs:
           path: |
             target/${{ inputs.target }}/${{ inputs.debug_or_release }}/cosmian
             target/${{ inputs.target }}/${{ inputs.debug_or_release }}/cosmian_gui
+            target/${{ inputs.target }}/${{ inputs.debug_or_release }}/libcosmian_pkcs11.*
             target/${{ inputs.target }}/generate-rpm/cosmian_*
           retention-days: 1
           if-no-files-found: error
