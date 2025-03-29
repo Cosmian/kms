@@ -321,7 +321,7 @@ impl Serialize for ResponseMessage {
                 self.response_header.batch_count, num_items
             )));
         }
-        let mut st = serializer.serialize_struct("Message", 2)?;
+        let mut st = serializer.serialize_struct("ResponseMessage", 2)?;
         st.serialize_field("ResponseHeader", &self.response_header)?;
         st.serialize_field("BatchItem", &self.batch_item)?;
         st.end()

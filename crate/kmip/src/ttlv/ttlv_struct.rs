@@ -5,7 +5,7 @@ use time::OffsetDateTime;
 use super::{
     error::TtlvError, kmip_big_int::KmipBigInt, TTLVBytesDeserializer, TTLVBytesSerializer,
 };
-use crate::{kmip_1_4, kmip_2_1};
+use crate::{kmip_1_4, kmip_2_1, KmipResultHelper};
 
 #[derive(Debug, Copy, Clone)]
 pub enum KmipFlavor {
@@ -20,6 +20,47 @@ pub struct TTLV {
 }
 
 impl TTLV {
+    pub fn find_version(bytes: &[u8]) -> Result<(i32, i32), TtlvError> {
+        let mut major: i32 = i32::MAX;
+        let mut minor: i32 = i32::MAX;
+        let mut i = 0;
+        while i < bytes.len() {
+            if major != i32::MAX && minor != i32::MAX {
+                // found them
+                break;
+            }
+            if bytes.get(i..i + 8) == Some(&[0x42, 0x00, 0x6a, 0x02, 0x00, 0x00, 0x00, 0x04]) {
+                // we found the protocol version major
+                i += 8;
+                // read the nez 4 bytes
+                let Some(major_be) = bytes.get(i..i + 4) else {
+                    return Err(TtlvError::from("Invalid KMIP version"));
+                };
+                major = i32::from_be_bytes(
+                    major_be
+                        .try_into()
+                        .context("failed reading the major version")?,
+                );
+                i += 8
+            }
+            if bytes.get(i..i + 8) == Some(&[0x42, 0x00, 0x6b, 0x02, 0x00, 0x00, 0x00, 0x04]) {
+                // we found the protocol version minor
+                i += 8;
+                // read the nez 4 bytes
+                let Some(minor_be) = bytes.get(i..i + 4) else {
+                    return Err(TtlvError::from("Invalid KMIP version"));
+                };
+                minor = i32::from_be_bytes(
+                    minor_be
+                        .try_into()
+                        .context("failed reading the minor version")?,
+                );
+            }
+            i += 8;
+        }
+        Ok((major, minor))
+    }
+
     pub fn to_bytes(&self, kmip_flavor: KmipFlavor) -> Result<Vec<u8>, TtlvError> {
         let mut writer = Vec::new();
         match kmip_flavor {
