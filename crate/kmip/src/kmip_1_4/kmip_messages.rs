@@ -26,8 +26,9 @@ use serde::{
 };
 
 use super::{kmip_operations::Operation, kmip_types::OperationEnumeration};
-use crate::kmip_0::kmip_types::{
-    Direction, ErrorReason, MessageExtension, ResultStatusEnumeration,
+use crate::{
+    kmip_0::kmip_types::{Direction, ErrorReason, MessageExtension, ResultStatusEnumeration},
+    kmip_2_1, KmipError,
 };
 
 /// Batch item for a message request
@@ -277,6 +278,20 @@ impl<'de> Deserialize<'de> for RequestMessageBatchItem {
             FIELDS,
             RequestMessageBatchItemVisitor,
         )
+    }
+}
+
+impl TryFrom<RequestMessageBatchItem> for kmip_2_1::kmip_messages::RequestMessageBatchItem {
+    type Error = KmipError;
+
+    fn try_from(item: RequestMessageBatchItem) -> Result<Self, Self::Error> {
+        Ok(kmip_2_1::kmip_messages::RequestMessageBatchItem {
+            operation: item.operation.into(),
+            ephemeral: item.ephemeral,
+            unique_batch_item_id: item.unique_batch_item_id,
+            request_payload: item.request_payload.try_into()?,
+            message_extension: item.message_extension,
+        })
     }
 }
 
@@ -633,7 +648,7 @@ impl<'de> Deserialize<'de> for ResponseMessageBatchItem {
                                         "Put operation is not supported in response",
                                     ))
                                 }
-                                OperationEnumeration::RekeyKeyPair => {
+                                OperationEnumeration::ReKeyKeyPair => {
                                     Operation::ReKeyKeyPairResponse(map.next_value()?)
                                 }
                                 OperationEnumeration::DiscoverVersions => {
