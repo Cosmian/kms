@@ -3,7 +3,6 @@ use std::{
     net::{TcpListener, TcpStream},
     sync::{mpsc, Arc, Once},
     thread,
-    thread::JoinHandle,
     time::Duration,
 };
 
@@ -14,6 +13,7 @@ use rustls::{
     server::WebPkiClientVerifier,
     RootCertStore, ServerConfig, ServerConnection, Stream,
 };
+use tokio::task::JoinHandle;
 use tracing::{debug, error, info, trace};
 use x509_parser::nom::AsBytes;
 
@@ -157,7 +157,7 @@ impl SocketServer {
         let handler = Arc::new(request_handler);
         let (tx, rx) = mpsc::channel::<KResult<()>>();
 
-        let thread_handle = thread::spawn(move || {
+        let thread_handle = tokio::spawn(async move {
             // we swallow the error if any, it will be received by the mpsc receiver
             let _swallowed =
                 Self::start_listening(&kms_server, &addr, &server_config, &handler, Some(tx));

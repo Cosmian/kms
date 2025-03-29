@@ -3,7 +3,7 @@ mod config;
 mod query;
 
 const TEST_HOST: &str = "127.0.0.1";
-const TEST_PORT: u16 = 5696;
+const TEST_PORT: u16 = 11112;
 
 use std::{
     sync::{mpsc, Arc, OnceLock},
@@ -47,8 +47,10 @@ fn start_test_server() -> &'static TestServerCtx {
 
     SERVER_HANDLES.get_or_init(|| {
         let mut server_params = ServerParams::try_from(https_clap_config()).unwrap();
-        server_params.http_port = 11111;
-        server_params.socket_server_port = 11112;
+        server_params.http_hostname = TEST_HOST.to_owned();
+        server_params.http_port = TEST_PORT - 1;
+        server_params.socket_server_hostname = TEST_HOST.to_owned();
+        server_params.socket_server_port = TEST_PORT;
 
         let (tx, rx) = mpsc::channel::<ServerHandle>();
 

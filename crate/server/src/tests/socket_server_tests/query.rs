@@ -1,6 +1,8 @@
 use cosmian_kmip::{
     kmip_0::{
-        kmip_messages::{RequestMessage, RequestMessageBatchItemVersioned, RequestMessageHeader},
+        kmip_messages::{
+            RequestMessage, RequestMessageBatchItemVersioned, RequestMessageHeader, ResponseMessage,
+        },
         kmip_types::ProtocolVersion,
     },
     kmip_1_4::{
@@ -11,6 +13,7 @@ use cosmian_kmip::{
     ttlv::KmipFlavor::Kmip1,
 };
 use cosmian_logger::log_init;
+use log::info;
 
 use crate::tests::socket_server_tests::get_client;
 
@@ -48,8 +51,10 @@ fn test_socket_server_with_socket_client() {
     };
 
     let response = client
-        .send_request::<RequestMessage, RequestMessage>(Kmip1, &request_message)
+        .send_request::<RequestMessage, ResponseMessage>(Kmip1, &request_message)
         .expect("Failed to send request");
 
-    assert_eq!(response, request_message);
+    info!("{:?}", response);
+
+    assert_eq!(response.batch_item.len(), 1);
 }
