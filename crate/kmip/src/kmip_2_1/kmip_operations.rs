@@ -226,9 +226,9 @@ impl Operation {
             Self::Locate(_) | Self::LocateResponse(_) => OperationEnumeration::Locate,
             Self::Query(_) | Self::QueryResponse(_) => OperationEnumeration::Query,
             Self::Revoke(_) | Self::RevokeResponse(_) => OperationEnumeration::Revoke,
-            Self::ReKey(_) | Self::ReKeyResponse(_) => OperationEnumeration::Rekey,
+            Self::ReKey(_) | Self::ReKeyResponse(_) => OperationEnumeration::ReKey,
             Self::ReKeyKeyPair(_) | Self::ReKeyKeyPairResponse(_) => {
-                OperationEnumeration::RekeyKeyPair
+                OperationEnumeration::ReKeyKeyPair
             }
             Self::Destroy(_) | Self::DestroyResponse(_) => OperationEnumeration::Destroy,
             Self::Validate(_) | Self::ValidateResponse(_) => OperationEnumeration::Validate,

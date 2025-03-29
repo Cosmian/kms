@@ -9,6 +9,7 @@ use super::{kmip_data_structures::*, kmip_objects::Object, kmip_types::*};
 use crate::{
     kmip_0::kmip_types::{AttestationType, Direction},
     kmip_1_4::kmip_attributes::{Attribute, Attributes},
+    kmip_2_1, KmipError,
 };
 
 /// 4.1 Create
@@ -960,7 +961,7 @@ impl Operation {
             Self::Register(_) | Self::RegisterResponse(_) => OperationEnumeration::Register,
             Self::ReKey(_) | Self::ReKeyResponse(_) => OperationEnumeration::ReKey,
             Self::ReKeyKeyPair(_) | Self::ReKeyKeyPairResponse(_) => {
-                OperationEnumeration::RekeyKeyPair
+                OperationEnumeration::ReKeyKeyPair
             }
             Self::DeriveKey(_) | Self::DeriveKeyResponse(_) => OperationEnumeration::DeriveKey,
             Self::Certify(_) | Self::CertifyResponse(_) => OperationEnumeration::Certify,
@@ -1196,5 +1197,247 @@ impl Display for Operation {
                 write!(f, "ImportResponse({import_resp:?})")
             }
         }
+    }
+}
+
+impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
+    type Error = KmipError;
+
+    fn try_from(value: Operation) -> Result<Self, Self::Error> {
+        Ok(match value {
+            Operation::Create(create) => {
+                kmip_2_1::kmip_operations::Operation::Create(create.into())
+            }
+            Operation::CreateResponse(create_response) => {
+                kmip_2_1::kmip_operations::Operation::CreateResponse(create_response.into())
+            }
+            Operation::CreateKeyPair(create_key_pair) => {
+                kmip_2_1::kmip_operations::Operation::CreateKeyPair(create_key_pair.into())
+            }
+            Operation::CreateKeyPairResponse(create_key_pair_response) => {
+                kmip_2_1::kmip_operations::Operation::CreateKeyPairResponse(
+                    create_key_pair_response.into(),
+                )
+            }
+            // Operation::Register(register) => {
+            //     kmip_2_1::kmip_operations::Operation::Register(register.into())
+            // }
+            // Operation::RegisterResponse(register_response) => {
+            //     kmip_2_1::kmip_operations::Operation::RegisterResponse(register_response.into())
+            // }
+            Operation::ReKey(rekey) => kmip_2_1::kmip_operations::Operation::ReKey(rekey.into()),
+            Operation::ReKeyResponse(rekey_response) => {
+                kmip_2_1::kmip_operations::Operation::ReKeyResponse(rekey_response.into())
+            }
+            Operation::ReKeyKeyPair(rekey_key_pair) => {
+                kmip_2_1::kmip_operations::Operation::ReKeyKeyPair(rekey_key_pair.into())
+            }
+            Operation::ReKeyKeyPairResponse(rekey_key_pair_response) => {
+                kmip_2_1::kmip_operations::Operation::ReKeyKeyPairResponse(
+                    rekey_key_pair_response.into(),
+                )
+            }
+            // Operation::DeriveKey(derive_key) => {
+            //     kmip_2_1::kmip_operations::Operation::DeriveKey(derive_key.into())
+            // }
+            // Operation::DeriveKeyResponse(derive_key_response) => {
+            //     kmip_2_1::kmip_operations::Operation::DeriveKeyResponse(derive_key_response.into())
+            // }
+            Operation::Certify(certify) => {
+                kmip_2_1::kmip_operations::Operation::Certify(certify.into())
+            }
+            Operation::CertifyResponse(certify_response) => {
+                kmip_2_1::kmip_operations::Operation::CertifyResponse(certify_response.into())
+            }
+            // Operation::ReCertify(recertify) => {
+            //     kmip_2_1::kmip_operations::Operation::ReCertify(recertify.into())
+            // }
+            // Operation::ReCertifyResponse(recertify_response) => {
+            //     kmip_2_1::kmip_operations::Operation::ReCertifyResponse(recertify_response.into())
+            // }
+            Operation::Locate(locate) => {
+                kmip_2_1::kmip_operations::Operation::Locate(locate.into())
+            }
+            Operation::LocateResponse(locate_response) => {
+                kmip_2_1::kmip_operations::Operation::LocateResponse(locate_response.into())
+            }
+            // Operation::Check(check) => kmip_2_1::kmip_operations::Operation::Check(check.into()),
+            // Operation::CheckResponse(check_response) => {
+            //     kmip_2_1::kmip_operations::Operation::CheckResponse(check_response.into())
+            // }
+            Operation::Get(get) => kmip_2_1::kmip_operations::Operation::Get(get.into()),
+            Operation::GetResponse(get_response) => {
+                kmip_2_1::kmip_operations::Operation::GetResponse(get_response.into())
+            }
+            Operation::GetAttributes(get_attributes) => {
+                kmip_2_1::kmip_operations::Operation::GetAttributes(get_attributes.into())
+            }
+            Operation::GetAttributesResponse(get_attributes_response) => {
+                kmip_2_1::kmip_operations::Operation::GetAttributesResponse(
+                    get_attributes_response.into(),
+                )
+            }
+            // Operation::GetAttributeList(get_attribute_list) => {
+            //     kmip_2_1::kmip_operations::Operation::GetAttributeList(get_attribute_list.into())
+            // }
+            // Operation::GetAttributeListResponse(get_attribute_list_response) => {
+            //     kmip_2_1::kmip_operations::Operation::GetAttributeListResponse(
+            //         get_attribute_list_response.into(),
+            //     )
+            // }
+            // Operation::AddAttribute(add_attribute) => {
+            //     kmip_2_1::kmip_operations::Operation::AddAttribute(add_attribute.into())
+            // }
+            // Operation::AddAttributeResponse(add_attribute_response) => {
+            //     kmip_2_1::kmip_operations::Operation::AddAttributeResponse(
+            //         add_attribute_response.into(),
+            //     )
+            // }
+            // Operation::ModifyAttribute(modify_attribute) => {
+            //     kmip_2_1::kmip_operations::Operation::ModifyAttribute(modify_attribute.into())
+            // }
+            // Operation::ModifyAttributeResponse(modify_attribute_response) => {
+            //     kmip_2_1::kmip_operations::Operation::ModifyAttributeResponse(
+            //         modify_attribute_response.into(),
+            //     )
+            // }
+            Operation::DeleteAttribute(delete_attribute) => {
+                kmip_2_1::kmip_operations::Operation::DeleteAttribute(delete_attribute.into())
+            }
+            Operation::DeleteAttributeResponse(delete_attribute_response) => {
+                kmip_2_1::kmip_operations::Operation::DeleteAttributeResponse(
+                    delete_attribute_response.into(),
+                )
+            }
+            // Operation::ObtainLease(obtain_lease) => {
+            //     kmip_2_1::kmip_operations::Operation::ObtainLease(obtain_lease.into())
+            // }
+            // Operation::ObtainLeaseResponse(obtain_lease_response) => {
+            //     kmip_2_1::kmip_operations::Operation::ObtainLeaseResponse(
+            //         obtain_lease_response.into(),
+            //     )
+            // }
+            // Operation::GetUsageAllocation(get_usage_allocation) => {
+            //     kmip_2_1::kmip_operations::Operation::GetUsageAllocation(
+            //         get_usage_allocation.into(),
+            //     )
+            // }
+            // Operation::GetUsageAllocationResponse(get_usage_allocation_response) => {
+            //     kmip_2_1::kmip_operations::Operation::GetUsageAllocationResponse(
+            //         get_usage_allocation_response.into(),
+            //     )
+            // }
+            // Operation::Activate(activate) => {
+            //     kmip_2_1::kmip_operations::Operation::Activate(activate.into())
+            // }
+            // Operation::ActivateResponse(activate_response) => {
+            //     kmip_2_1::kmip_operations::Operation::ActivateResponse(activate_response.into())
+            // }
+            Operation::Revoke(revoke) => {
+                kmip_2_1::kmip_operations::Operation::Revoke(revoke.into())
+            }
+            Operation::RevokeResponse(revoke_response) => {
+                kmip_2_1::kmip_operations::Operation::RevokeResponse(revoke_response.into())
+            }
+            Operation::Destroy(destroy) => {
+                kmip_2_1::kmip_operations::Operation::Destroy(destroy.into())
+            }
+            Operation::DestroyResponse(destroy_response) => {
+                kmip_2_1::kmip_operations::Operation::DestroyResponse(destroy_response.into())
+            }
+            // Operation::Archive(archive) => {
+            //     kmip_2_1::kmip_operations::Operation::Archive(archive.into())
+            // }
+            // Operation::ArchiveResponse(archive_response) => {
+            //     kmip_2_1::kmip_operations::Operation::ArchiveResponse(archive_response.into())
+            // }
+            // Operation::Recover(recover) => {
+            //     kmip_2_1::kmip_operations::Operation::Recover(recover.into())
+            // }
+            // Operation::RecoverResponse(recover_response) => {
+            //     kmip_2_1::kmip_operations::Operation::RecoverResponse(recover_response.into())
+            // }
+            Operation::Validate(validate) => {
+                kmip_2_1::kmip_operations::Operation::Validate(validate.into())
+            }
+            Operation::ValidateResponse(validate_response) => {
+                kmip_2_1::kmip_operations::Operation::ValidateResponse(validate_response.into())
+            }
+            Operation::Query(query) => kmip_2_1::kmip_operations::Operation::Query(query.into()),
+            Operation::QueryResponse(query_response) => {
+                kmip_2_1::kmip_operations::Operation::QueryResponse(query_response.into())
+            }
+            // Operation::DiscoverVersions(discover_versions) => {
+            //     kmip_2_1::kmip_operations::Operation::DiscoverVersions(discover_versions.into())
+            // }
+            // Operation::DiscoverVersionsResponse(discover_versions_response) => {
+            //     kmip_2_1::kmip_operations::Operation::DiscoverVersionsResponse(
+            //         discover_versions_response.into(),
+            //     )
+            // }
+            // Operation::Cancel(cancel) => {
+            //     kmip_2_1::kmip_operations::Operation::Cancel(cancel.into())
+            // }
+            // Operation::CancelResponse(cancel_response) => {
+            //     kmip_2_1::kmip_operations::Operation::CancelResponse(cancel_response.into())
+            // }
+            // Operation::Poll(poll) => kmip_2_1::kmip_operations::Operation::Poll(poll.into()),
+            // Operation::PollResponse(poll_response) => {
+            //     kmip_2_1::kmip_operations::Operation::PollResponse(poll_response.into())
+            // }
+            Operation::Encrypt(encrypt) => {
+                kmip_2_1::kmip_operations::Operation::Encrypt(encrypt.into())
+            }
+            Operation::EncryptResponse(encrypt_response) => {
+                kmip_2_1::kmip_operations::Operation::EncryptResponse(encrypt_response.into())
+            }
+            Operation::Decrypt(decrypt) => {
+                kmip_2_1::kmip_operations::Operation::Decrypt(decrypt.into())
+            }
+            Operation::DecryptResponse(decrypt_response) => {
+                kmip_2_1::kmip_operations::Operation::DecryptResponse(decrypt_response.into())
+            }
+            // Operation::Sign(sign) => kmip_2_1::kmip_operations::Operation::Sign(sign.into()),
+            // Operation::SignResponse(sign_response) => {
+            //     kmip_2_1::kmip_operations::Operation::SignResponse(sign_response.into())
+            // }
+            // Operation::SignatureVerify(signature_verify) => {
+            //     kmip_2_1::kmip_operations::Operation::SignatureVerify(signature_verify.into())
+            // }
+            // Operation::SignatureVerifyResponse(signature_verify_response) => {
+            //     kmip_2_1::kmip_operations::Operation::SignatureVerifyResponse(
+            //         signature_verify_response.into(),
+            //     )
+            // }
+            // Operation::MAC(mac) => kmip_2_1::kmip_operations::Operation::MAC(mac.into()),
+            // Operation::MACResponse(mac_response) => {
+            //     kmip_2_1::kmip_operations::Operation::MACResponse(mac_response.into())
+            // }
+            // Operation::MACVerify(mac_verify) => {
+            //     kmip_2_1::kmip_operations::Operation::MACVerify(mac_verify.into())
+            // }
+            // Operation::MACVerifyResponse(mac_verify_response) => {
+            //     kmip_2_1::kmip_operations::Operation::MACVerifyResponse(mac_verify_response.into())
+            // }
+            // Operation::RNGRetrieve(rng_retrieve) => {
+            //     kmip_2_1::kmip_operations::Operation::RNGRetrieve(rng_retrieve.into())
+            // }
+            // Operation::RNGRetrieveResponse(rng_retrieve_response) => {
+            //     kmip_2_1::kmip_operations::Operation::RNGRetrieveResponse(
+            //         rng_retrieve_response.into(),
+            //     )
+            // }
+            // Operation::RNGSeed(rng_seed) => {
+            //     kmip_2_1::kmip_operations::Operation::RNGSeed(rng_seed.into())
+            // }
+            // Operation::RNGSeedResponse(rng_seed_response) => {
+            //     kmip_2_1::kmip_operations::Operation::RNGSeedResponse(rng_seed_response.into())
+            // }
+            op => {
+                return Err(KmipError::NotSupported(format!(
+                    "Operation: {op:?}, is not supported in KMIP 2.1"
+                )))
+            }
+        })
     }
 }

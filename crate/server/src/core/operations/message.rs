@@ -8,6 +8,7 @@ use cosmian_kmip::{
         },
         kmip_types::{ErrorReason, ResultStatusEnumeration},
     },
+    kmip_2_1,
     kmip_2_1::kmip_messages::ResponseMessageBatchItem,
     ttlv::to_ttlv,
 };
@@ -36,14 +37,15 @@ pub(crate) async fn message(
     trace!("Entering message KMIP operation: {request:?}");
 
     let mut response_items = Vec::new();
-    for item_request in request.batch_item {
-        let RequestMessageBatchItemVersioned::V21(item_request) = item_request else {
-            return Err(KmsError::Kmip21Error(
-                ErrorReason::Operation_Not_Supported,
-                "Unsupported KMIP version. The version must be 2.1".to_owned(),
-            ));
+    for versioned_batch_item in request.batch_item {
+        let batch_item = match versioned_batch_item {
+            RequestMessageBatchItemVersioned::V14(item_request) => {
+                kmip_2_1::kmip_messages::RequestMessageBatchItem::from(item_request)
+            }
+            RequestMessageBatchItemVersioned::V21(item_request) => item_request,
         };
-        let operation = item_request.request_payload;
+
+        let operation = batch_item.request_payload;
         // conversion for `dispatch` call convenience
         let ttlv = to_ttlv(&operation)?;
 
@@ -71,8 +73,8 @@ pub(crate) async fn message(
 
         response_items.push(ResponseMessageBatchItemVersioned::V21(
             ResponseMessageBatchItem {
-                operation: Some(item_request.operation),
-                unique_batch_item_id: item_request.unique_batch_item_id,
+                operation: Some(batch_item.operation),
+                unique_batch_item_id: batch_item.unique_batch_item_id,
                 result_status,
                 result_reason,
                 result_message,
