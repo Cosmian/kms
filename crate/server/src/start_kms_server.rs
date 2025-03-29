@@ -1,7 +1,4 @@
-use std::{
-    sync::{mpsc, Arc},
-    thread::JoinHandle,
-};
+use std::sync::{mpsc, Arc};
 
 use actix_cors::Cors;
 use actix_files::Files;
@@ -18,6 +15,7 @@ use openssl::{
     ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod, SslVerifyMode},
     x509::store::X509StoreBuilder,
 };
+use tokio::{runtime::Handle, task::JoinHandle};
 use tracing::{debug, info, trace};
 
 use crate::{
@@ -116,11 +114,18 @@ fn start_socket_server(kms_server: Arc<KMS>) -> KResult<JoinHandle<()>> {
     // Start the socket server
     let socket_server =
         SocketServer::instantiate(&SocketServerParams::try_from(kms_server.params.as_ref())?)?;
+    let tokio_handle = Handle::current();
     let socket_server_handle =
         socket_server.start_threaded(kms_server, move |username, request, kms_server| {
             trace!("request: {username} {}", hex::encode(request));
             // Handle the TTLV bytes received from the socket server
-            handle_ttlv_bytes(username, request, &kms_server)
+
+            // tokio: run async code in the current thread
+
+            tokio_handle.block_on(async {
+                // Handle the TTLV bytes
+                handle_ttlv_bytes(username, request, &kms_server).await
+            })
         })?;
     Ok(socket_server_handle)
 }
