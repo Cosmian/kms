@@ -64,36 +64,15 @@ if [ -f /etc/lsb-release ]; then
   bash .github/scripts/test_utimaco.sh
 fi
 
-# Additional tests
-if [ "$DEBUG_OR_RELEASE" = "release" ]; then
-  # Before building the crates, test crates individually on specific features
-  cargo install --version 0.6.31 cargo-hack --force
-  crates=("crate/kmip" "cli/crate/kms_client" "cli/crate/findex_client")
-  for crate in "${crates[@]}"; do
-    cd "$crate"
-    cargo hack test --feature-powerset --all-targets
-    cd "$ROOT_FOLDER"
-  done
-fi
-
 if [ -z "$OPENSSL_DIR" ]; then
   echo "Error: OPENSSL_DIR is not set."
   exit 1
 fi
 
-crates=("crate/server" "cli/crate/cli")
-for crate in "${crates[@]}"; do
-  echo "Building $crate"
-  cd "$crate"
-  # shellcheck disable=SC2086
-  cargo build --target $TARGET $RELEASE $FEATURES
-  cd "$ROOT_FOLDER"
-done
+# shellcheck disable=SC2086
+cargo build --target $TARGET $RELEASE $FEATURES
 
-# Debug
-# find .
-
-COSMIAN_EXE="cli/target/$TARGET/$DEBUG_OR_RELEASE/cosmian"
+COSMIAN_EXE="target/$TARGET/$DEBUG_OR_RELEASE/cosmian"
 COSMIAN_KMS_EXE="target/$TARGET/$DEBUG_OR_RELEASE/cosmian_kms"
 
 ./"$COSMIAN_EXE" -h

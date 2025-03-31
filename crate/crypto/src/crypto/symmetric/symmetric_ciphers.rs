@@ -4,9 +4,9 @@ use cosmian_kmip::kmip_2_1::kmip_types::{BlockCipherMode, CryptographicAlgorithm
 use openssl::{
     rand::rand_bytes,
     symm::{
-        decrypt as openssl_decrypt, decrypt_aead as openssl_decrypt_aead,
-        encrypt as openssl_encrypt, encrypt_aead as openssl_encrypt_aead, Cipher, Crypter,
-        Mode as OpenSslMode,
+        Cipher, Crypter, Mode as OpenSslMode, decrypt as openssl_decrypt,
+        decrypt_aead as openssl_decrypt_aead, encrypt as openssl_encrypt,
+        encrypt_aead as openssl_encrypt_aead,
     },
 };
 use zeroize::Zeroizing;
@@ -16,8 +16,22 @@ use super::aes_gcm_siv_not_openssl;
 use crate::{
     crypto::symmetric::rfc5649::{rfc5649_unwrap, rfc5649_wrap},
     crypto_bail,
-    error::{result::CryptoResult, CryptoError},
+    error::{CryptoError, result::CryptoResult},
 };
+
+/// AES 128 CBC key length in bytes.
+pub const AES_128_CBC_KEY_LENGTH: usize = 16;
+/// AES 128 CBC nonce length in bytes.
+pub const AES_128_CBC_IV_LENGTH: usize = 16;
+/// AES 128 CBC tag/mac length in bytes.
+pub const AES_128_CBC_MAC_LENGTH: usize = 0;
+
+/// AES 256 CBC key length in bytes.
+pub const AES_256_CBC_KEY_LENGTH: usize = 32;
+/// AES 256 CBC nonce length in bytes.
+pub const AES_256_CBC_IV_LENGTH: usize = 16;
+/// AES 256 CBC tag/mac length in bytes.
+pub const AES_256_CBC_MAC_LENGTH: usize = 0;
 
 /// AES 128 GCM key length in bytes.
 pub const AES_128_GCM_KEY_LENGTH: usize = 16;
@@ -106,6 +120,8 @@ impl From<Mode> for OpenSslMode {
 /// The supported AEAD ciphers.
 #[derive(Debug, Clone, Copy)]
 pub enum SymCipher {
+    Aes256Cbc,
+    Aes128Cbc,
     Aes256Gcm,
     Aes128Gcm,
     Aes128Xts,
@@ -124,6 +140,8 @@ impl SymCipher {
     /// Convert to the corresponding OpenSSL cipher.
     fn to_openssl_cipher(self) -> Result<Cipher, CryptoError> {
         match self {
+            Self::Aes128Cbc => Ok(Cipher::aes_128_cbc()),
+            Self::Aes256Cbc => Ok(Cipher::aes_256_cbc()),
             Self::Aes128Gcm => Ok(Cipher::aes_128_gcm()),
             Self::Aes256Gcm => Ok(Cipher::aes_256_gcm()),
             Self::Aes128Xts => Ok(Cipher::aes_128_xts()),
@@ -149,6 +167,8 @@ impl SymCipher {
     #[must_use]
     pub const fn tag_size(&self) -> usize {
         match self {
+            Self::Aes128Cbc => AES_128_CBC_MAC_LENGTH,
+            Self::Aes256Cbc => AES_256_CBC_MAC_LENGTH,
             Self::Aes128Gcm => AES_128_GCM_MAC_LENGTH,
             Self::Aes256Gcm => AES_256_GCM_MAC_LENGTH,
             Self::Aes128Xts => AES_128_XTS_MAC_LENGTH,
@@ -168,6 +188,8 @@ impl SymCipher {
     #[must_use]
     pub const fn nonce_size(&self) -> usize {
         match self {
+            Self::Aes128Cbc => AES_128_CBC_IV_LENGTH,
+            Self::Aes256Cbc => AES_256_CBC_IV_LENGTH,
             Self::Aes128Gcm => AES_128_GCM_IV_LENGTH,
             Self::Aes256Gcm => AES_256_GCM_IV_LENGTH,
             Self::Aes128Xts => AES_128_XTS_TWEAK_LENGTH,
@@ -187,6 +209,8 @@ impl SymCipher {
     #[must_use]
     pub const fn key_size(&self) -> usize {
         match self {
+            Self::Aes128Cbc => AES_128_CBC_KEY_LENGTH,
+            Self::Aes256Cbc => AES_256_CBC_KEY_LENGTH,
             Self::Aes128Gcm => AES_128_GCM_KEY_LENGTH,
             Self::Aes256Gcm => AES_256_GCM_KEY_LENGTH,
             Self::Aes128Xts => AES_128_XTS_KEY_LENGTH,
@@ -216,6 +240,13 @@ impl SymCipher {
                         AES_256_GCM_KEY_LENGTH => Ok(Self::Aes256Gcm),
                         _ => crypto_bail!(CryptoError::NotSupported(
                             "AES key must be 16 or 32 bytes long for AES GCM ".to_owned()
+                        )),
+                    },
+                    BlockCipherMode::CBC => match key_size {
+                        AES_128_CBC_KEY_LENGTH => Ok(Self::Aes128Cbc),
+                        AES_256_CBC_KEY_LENGTH => Ok(Self::Aes256Cbc),
+                        _ => crypto_bail!(CryptoError::NotSupported(
+                            "AES key must be 16 or 32 bytes long for AES CBC".to_owned()
                         )),
                     },
                     BlockCipherMode::XTS => match key_size {
@@ -298,8 +329,11 @@ pub fn encrypt(
     plaintext: &[u8],
 ) -> Result<(Vec<u8>, Vec<u8>), CryptoError> {
     match sym_cipher {
-        SymCipher::Aes128Xts | SymCipher::Aes256Xts => {
-            // XTS mode does not require a tag.
+        SymCipher::Aes128Xts
+        | SymCipher::Aes256Xts
+        | SymCipher::Aes128Cbc
+        | SymCipher::Aes256Cbc => {
+            // Neither XTS nor CBC mode requires a tag.
             let ciphertext =
                 openssl_encrypt(sym_cipher.to_openssl_cipher()?, key, Some(nonce), plaintext)?;
             Ok((ciphertext, vec![]))
@@ -342,8 +376,11 @@ pub fn decrypt(
     tag: &[u8],
 ) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
     Ok(match sym_cipher {
-        SymCipher::Aes128Xts | SymCipher::Aes256Xts => {
-            // XTS mode does not require a tag.
+        SymCipher::Aes128Xts
+        | SymCipher::Aes256Xts
+        | SymCipher::Aes128Cbc
+        | SymCipher::Aes256Cbc => {
+            // XTS or CBC mode does not require a tag.
             Zeroizing::from(openssl_decrypt(
                 sym_cipher.to_openssl_cipher()?,
                 key,

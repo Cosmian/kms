@@ -277,7 +277,7 @@ pub(crate) fn encrypt_bulk(
                 .unwrap_or(EMPTY_SLICE);
             for plaintext in <BulkData as Into<Vec<Zeroizing<Vec<u8>>>>>::into(bulk_data) {
                 request.data = Some(plaintext.clone());
-                let (key_bytes, cipher) = get_cipher_and_key(&request, owm)?;
+                let (key_bytes, cipher) = get_key_and_cipher(&request, owm)?;
                 let nonce = request
                     .iv_counter_nonce
                     .clone()
@@ -328,7 +328,7 @@ fn encrypt_with_symmetric_key(
     owm: &ObjectWithMetadata,
 ) -> KResult<EncryptResponse> {
     trace!("encrypt_with_symmetric_key: entering");
-    let (key_bytes, aead) = get_cipher_and_key(request, owm)?;
+    let (key_bytes, aead) = get_key_and_cipher(request, owm)?;
     let plaintext = request.data.as_ref().ok_or_else(|| {
         KmsError::InvalidRequest("Encrypt: data to encrypt must be provided".to_owned())
     })?;
@@ -340,9 +340,8 @@ fn encrypt_with_symmetric_key(
         .authenticated_encryption_additional_data
         .as_deref()
         .unwrap_or(EMPTY_SLICE);
-    let (ciphertext, tag) = sym_encrypt(aead, &key_bytes, &nonce, aad, plaintext)?;
-
     trace!("encrypt_with_symmetric_key: plaintext: {plaintext:?}, nonce: {nonce:?}, aad: {aad:?}");
+    let (ciphertext, tag) = sym_encrypt(aead, &key_bytes, &nonce, aad, plaintext)?;
     trace!("encrypt_with_symmetric_key: ciphertext: {ciphertext:?}, tag: {tag:?},");
     Ok(EncryptResponse {
         unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
@@ -353,7 +352,7 @@ fn encrypt_with_symmetric_key(
     })
 }
 
-fn get_cipher_and_key(
+fn get_key_and_cipher(
     request: &Encrypt,
     owm: &ObjectWithMetadata,
 ) -> KResult<(Zeroizing<Vec<u8>>, SymCipher)> {
