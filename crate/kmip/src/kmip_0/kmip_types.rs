@@ -641,3 +641,9 @@ pub enum Direction {
     Request,
     Response,
 }
+
+#[kmip_enum]
+pub enum KeyWrapType {
+    NotWrapped = 0x0000_0001,
+    AsRegistered = 0x0000_0002,
+}
