@@ -1526,12 +1526,6 @@ pub enum EncodingOption {
     TTLVEncoding = 0x0000_0002,
 }
 
-#[kmip_enum]
-pub enum KeyWrapType {
-    NotWrapped = 0x0000_0001,
-    AsRegistered = 0x0000_0002,
-}
-
 /// This attribute is an indication of the State of an object as known to the
 /// key management server. The State SHALL NOT be changed by using the Modify
 /// Attribute operation on this attribute. The State SHALL only be changed by

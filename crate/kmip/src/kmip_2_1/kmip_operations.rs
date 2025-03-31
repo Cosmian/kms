@@ -15,14 +15,14 @@ use super::{
     kmip_objects::{Object, ObjectType},
     kmip_types::{
         AttributeReference, CertificateRequestType, ClientRegistrationMethod,
-        CryptographicParameters, KeyCompressionType, KeyFormatType, KeyWrapType, ObjectGroupMember,
+        CryptographicParameters, KeyCompressionType, KeyFormatType, ObjectGroupMember,
         OperationEnumeration, ProfileName, ProtectionStorageMasks, QueryFunction, RNGMode,
         RevocationReason, StorageStatusMask, UniqueIdentifier, ValidityIndicator,
     },
 };
 use crate::{
     error::KmipError,
-    kmip_0::kmip_types::{AttestationType, Direction},
+    kmip_0::kmip_types::{AttestationType, Direction, KeyWrapType},
     Deserializer, Serializer,
 };
 
