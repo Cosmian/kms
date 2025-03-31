@@ -108,7 +108,7 @@ pub async fn start_kms_server(
 /// - The server fails to run
 ///
 /// # Returns
-/// Returns a `JoinHandle<()>` that represents the socket server thread.
+/// * a `JoinHandle<()>` that represents the socket server thread.
 ///
 fn start_socket_server(kms_server: Arc<KMS>) -> KResult<JoinHandle<()>> {
     // Start the socket server
