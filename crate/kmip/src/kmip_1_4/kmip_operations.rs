@@ -7,7 +7,7 @@ use super::kmip_objects::Certificate;
 #[allow(clippy::wildcard_imports)]
 use super::{kmip_data_structures::*, kmip_objects::Object, kmip_types::*};
 use crate::{
-    kmip_0::kmip_types::{AttestationType, Direction},
+    kmip_0::kmip_types::{AttestationType, Direction, KeyWrapType},
     kmip_1_4::kmip_attributes::{Attribute, Attributes},
     kmip_2_1, KmipError,
 };
@@ -797,11 +797,14 @@ pub struct Import {
     pub object_type: ObjectType,
     pub unique_identifier: String,
     pub replace_existing: Option<bool>,
+    /// If Not Wrapped then the server SHALL unwrap the object before storing it,
+    /// and return an error if the wrapping key is not available.  
+    /// Otherwise the server SHALL store the object as provided.
     pub key_wrap_type: Option<KeyWrapType>,
-    pub key_format_type: Option<KeyFormatType>,
-    pub key_compression_type: Option<KeyCompressionType>,
-    pub key_wrapping_specification: Option<KeyWrappingSpecification>,
-    pub key_material: Vec<u8>,
+    /// All of the object’s Attributes.
+    pub attributes: Option<Vec<Attribute>>,
+    /// The object being imported. The object and attributes MAY be wrapped.
+    pub object: Object,
 }
 
 /// Response to an Import request

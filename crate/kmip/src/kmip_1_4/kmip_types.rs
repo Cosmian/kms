@@ -1,6 +1,6 @@
 #![allow(non_camel_case_types)]
 
-use std::fmt::{self, Display, Formatter};
+use std::fmt::Display;
 
 use kmip_derive::{kmip_enum, KmipEnumDeserialize, KmipEnumSerialize};
 use serde::{Deserialize, Serialize};
@@ -1021,13 +1021,6 @@ pub enum ClientRegistrationMethod {
     ClientRegistered = 0x5,
 }
 
-/// KMIP 1.4 Key Wrap Type Enumeration
-#[kmip_enum]
-pub enum KeyWrapType {
-    NotWrapped = 0x1,
-    AsRegistered = 0x2,
-}
-
 /// KMIP 1.4 Mask Generator Enumeration
 #[kmip_enum]
 pub enum MaskGenerator {
@@ -1437,42 +1430,23 @@ impl From<RandomNumberGenerator> for kmip_2_1::kmip_types::RandomNumberGenerator
 ///
 /// This attribute SHALL be assigned by the key management system at creation or registration time,
 /// and then SHALL NOT be changed or deleted before the object is destroyed.
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Hash)]
-pub enum UniqueIdentifier {
-    TextString(String),
-}
-
-impl Display for UniqueIdentifier {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::TextString(s) => write!(f, "{s}"),
-        }
-    }
-}
+pub type UniqueIdentifier = String;
 
 impl Default for UniqueIdentifier {
     fn default() -> Self {
-        Self::TextString(Uuid::new_v4().to_string())
+        String::from(Uuid::new_v4().to_string())
     }
 }
 
-impl From<&UniqueIdentifier> for String {
-    fn from(value: &UniqueIdentifier) -> Self {
-        value.to_string()
+impl From<UniqueIdentifier> for kmip_2_1::kmip_types::UniqueIdentifier {
+    fn from(val: UniqueIdentifier) -> Self {
+        Self::TextString(val)
     }
 }
-impl From<UniqueIdentifier> for String {
-    fn from(value: UniqueIdentifier) -> Self {
-        value.to_string()
-    }
-}
-impl UniqueIdentifier {
-    /// Returns the value as a string if it is a `TextString`
-    #[must_use]
-    pub fn as_str(&self) -> Option<&str> {
-        match self {
-            Self::TextString(s) => Some(s),
-        }
+
+impl From<kmip_2_1::kmip_types::UniqueIdentifier> for UniqueIdentifier {
+    fn from(val: kmip_2_1::kmip_types::UniqueIdentifier) -> Self {
+        val.to_string()
     }
 }
 
@@ -1484,15 +1458,7 @@ impl From<LinkedObjectIdentifier> for UniqueIdentifier {
     )]
     fn from(value: LinkedObjectIdentifier) -> Self {
         match value {
-            LinkedObjectIdentifier::TextString(s) => Self::TextString(s),
-        }
-    }
-}
-
-impl From<UniqueIdentifier> for kmip_2_1::kmip_types::UniqueIdentifier {
-    fn from(val: UniqueIdentifier) -> Self {
-        match val {
-            UniqueIdentifier::TextString(s) => Self::TextString(s),
+            LinkedObjectIdentifier::TextString(s) => s,
         }
     }
 }
