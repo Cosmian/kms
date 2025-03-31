@@ -6,9 +6,9 @@
 use std::fmt::{self, Display, Formatter};
 
 use serde::{
-    Deserialize, Serialize,
     de::{self, MapAccess, Visitor},
     ser::SerializeStruct,
+    Deserialize, Serialize,
 };
 use strum::{Display, EnumIter, EnumString};
 use tracing::trace;
@@ -18,7 +18,7 @@ use super::kmip_objects::ObjectType;
 use crate::{
     error::KmipError,
     kmip_2_1::{
-        extra::{VENDOR_ID_COSMIAN, tagging::VENDOR_ATTR_TAG},
+        extra::{tagging::VENDOR_ATTR_TAG, VENDOR_ID_COSMIAN},
         kmip_operations::ErrorReason,
     },
     kmip_error,
@@ -1991,14 +1991,15 @@ pub enum BlockCipherMode {
     GCM = 0x0000_0009,
     CBCMAC = 0x0000_000A,
     XTS = 0x0000_000B,
+    AESKeyWrapPadding = 0x0000_000C,
+    // NISTKeyWrap refers to rfc5649
+    NISTKeyWrap = 0x0000_000D,
     X9102AESKW = 0x0000_000E,
     X9102TDKW = 0x0000_000F,
     X9102AKW1 = 0x0000_0010,
     X9102AKW2 = 0x0000_0011,
     AEAD = 0x0000_0012,
     // Extensions - 8XXXXXXX
-    // NISTKeyWrap refers to rfc5649
-    NISTKeyWrap = 0x8000_0001,
     // AES GCM SIV
     GCMSIV = 0x8000_0002,
 }
@@ -2966,6 +2967,10 @@ impl ValidityIndicator {
 
     #[must_use]
     pub const fn from_bool(b: bool) -> Self {
-        if b { Self::Valid } else { Self::Invalid }
+        if b {
+            Self::Valid
+        } else {
+            Self::Invalid
+        }
     }
 }

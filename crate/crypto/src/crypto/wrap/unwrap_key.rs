@@ -270,24 +270,21 @@ fn unwrap_with_rsa(
     wrapped_key: &[u8],
 ) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
     let (algorithm, padding, hashing_fn) = rsa_parameters(key_wrapping_data);
-    #[cfg(not(feature = "fips"))]
-    if padding == PaddingMethod::PKCS1v15 {
-        return ckm_rsa_pkcs_key_unwrap(private_key, wrapped_key);
-    }
-    if padding != PaddingMethod::OAEP {
-        crypto_bail!(
-            "Unable to wrap key with RSA: padding method not supported: {:?}",
-            padding
-        )
-    }
     match algorithm {
-        CryptographicAlgorithm::AES => ckm_rsa_aes_key_unwrap(private_key, hashing_fn, wrapped_key),
-        CryptographicAlgorithm::RSA => {
-            ckm_rsa_pkcs_oaep_key_unwrap(private_key, hashing_fn, wrapped_key)
-        }
+        CryptographicAlgorithm::RSA => match padding {
+            PaddingMethod::None => ckm_rsa_aes_key_unwrap(private_key, hashing_fn, wrapped_key),
+            PaddingMethod::OAEP => {
+                ckm_rsa_pkcs_oaep_key_unwrap(private_key, hashing_fn, wrapped_key)
+            }
+            #[cfg(not(feature = "fips"))]
+            PaddingMethod::PKCS1v15 => ckm_rsa_pkcs_key_unwrap(private_key, wrapped_key),
+            _ => crypto_bail!(
+                "Unable to unwrap key with RSA: padding method not supported: {padding:?}"
+            ),
+        },
         x => {
             crypto_bail!(
-                "Unable to wrap key with RSA: algorithm not supported for wrapping: {:?}",
+                "Unable to unwrap key with RSA: algorithm not supported for unwrapping: {:?}",
                 x
             )
         }

@@ -4,9 +4,9 @@ use cosmian_kmip::kmip_2_1::kmip_types::{BlockCipherMode, CryptographicAlgorithm
 use openssl::{
     rand::rand_bytes,
     symm::{
-        Cipher, Crypter, Mode as OpenSslMode, decrypt as openssl_decrypt,
-        decrypt_aead as openssl_decrypt_aead, encrypt as openssl_encrypt,
-        encrypt_aead as openssl_encrypt_aead,
+        decrypt as openssl_decrypt, decrypt_aead as openssl_decrypt_aead,
+        encrypt as openssl_encrypt, encrypt_aead as openssl_encrypt_aead, Cipher, Crypter,
+        Mode as OpenSslMode,
     },
 };
 use zeroize::Zeroizing;
@@ -16,7 +16,7 @@ use super::aes_gcm_siv_not_openssl;
 use crate::{
     crypto::symmetric::rfc5649::{rfc5649_unwrap, rfc5649_wrap},
     crypto_bail,
-    error::{CryptoError, result::CryptoResult},
+    error::{result::CryptoResult, CryptoError},
 };
 
 /// AES 128 CBC key length in bytes.
@@ -334,6 +334,13 @@ pub fn encrypt(
         | SymCipher::Aes128Cbc
         | SymCipher::Aes256Cbc => {
             // Neither XTS nor CBC mode requires a tag.
+            if plaintext.len() < 16
+                && matches!(sym_cipher, SymCipher::Aes128Xts | SymCipher::Aes256Xts)
+            {
+                return Err(CryptoError::InvalidSize(
+                    "Plaintext is too short for block encryption".to_owned(),
+                ));
+            }
             let ciphertext =
                 openssl_encrypt(sym_cipher.to_openssl_cipher()?, key, Some(nonce), plaintext)?;
             Ok((ciphertext, vec![]))

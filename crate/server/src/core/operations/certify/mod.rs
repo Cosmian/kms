@@ -27,6 +27,7 @@ use cosmian_kms_interfaces::{AtomicOperation, ObjectWithMetadata, SessionParams}
 use openssl::{
     asn1::{Asn1Integer, Asn1Time},
     hash::MessageDigest,
+    pkey::Id,
     sha::Sha1,
     x509::{X509Req, X509},
 };
@@ -315,7 +316,7 @@ async fn get_subject(
                 x => kms_bail!("Invalid Certify request for object type {x:?}"),
             }
         } else {
-            None
+            return Err(KmsError::ItemNotFound(request_id.to_string()))
         }
     } else {
         None
@@ -630,10 +631,15 @@ fn build_and_sign_certificate(
             .try_for_each(|extension| x509_builder.append_extension(extension))?;
     }
 
+    let digest = match subject.public_key()?.id() {
+        Id::ED25519 | Id::ED448 => MessageDigest::null(), // EdDSA does not use a digest
+        _ => MessageDigest::sha256(),                     // Default to SHA-256 for other algorithms
+    };
+
     // Set the issuer name and private key
     x509_builder.set_issuer_name(issuer.subject_name())?;
     x509_builder.set_serial_number(create_subject_key_identifier_value(subject)?.as_ref())?;
-    x509_builder.sign(issuer.private_key(), MessageDigest::sha256())?;
+    x509_builder.sign(issuer.private_key(), digest)?;
 
     let x509 = x509_builder.build();
 
