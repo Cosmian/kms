@@ -138,7 +138,7 @@ repos:
       - id: docker-compose-down
 
   - repo: https://github.com/EmbarkStudios/cargo-deny
-    rev: 0.16.1 # choose your preferred tag
+    rev: 0.18.2 # choose your preferred tag
     hooks:
       - id: cargo-deny
         args: [--all-features, check]

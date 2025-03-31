@@ -54,17 +54,8 @@ if [ -z "$OPENSSL_DIR" ]; then
   exit 1
 fi
 
-crates=("crate/gui" "crate/cli" "crate/pkcs11/provider")
-for crate in "${crates[@]}"; do
-  echo "Building $crate"
-  cd "$crate"
-  # shellcheck disable=SC2086
-  cargo build --target $TARGET $RELEASE
-  cd "$ROOT_FOLDER"
-done
-
-# Debug
-# find .
+# shellcheck disable=SC2086
+cargo build --target $TARGET $RELEASE
 
 TARGET_FOLDER=./target/"$TARGET/$DEBUG_OR_RELEASE"
 "${TARGET_FOLDER}"/cosmian -h
@@ -82,16 +73,16 @@ find . -type d -name cosmian-findex-server -exec rm -rf \{\} \; -print || true
 rm -f /tmp/*.json /tmp/*.toml
 
 # shellcheck disable=SC2086
-cargo build --target $TARGET $RELEASE $FEATURES
+cargo build --target $TARGET $RELEASE
 
 # shellcheck disable=SC2086
-cargo test --workspace --bins --target $TARGET $RELEASE $FEATURES
+cargo test --workspace --bins --target $TARGET $FEATURES
 
 if [ "$DEBUG_OR_RELEASE" = "release" ]; then
   INCLUDE_IGNORED="--include-ignored"
   # shellcheck disable=SC2086
-  cargo bench --target $TARGET $FEATURES --no-run
+  cargo bench --target $TARGET --no-run
 fi
 export RUST_LOG="fatal,cosmian_cli=error,cosmian_findex_client=debug,cosmian_kmip=error,cosmian_kms_client=debug"
 # shellcheck disable=SC2086
-cargo test --workspace --lib --target $TARGET $RELEASE $FEATURES -- --nocapture $SKIP_SERVICES_TESTS $INCLUDE_IGNORED
+cargo test --workspace --lib --target $TARGET $RELEASE -- --nocapture $SKIP_SERVICES_TESTS $INCLUDE_IGNORED

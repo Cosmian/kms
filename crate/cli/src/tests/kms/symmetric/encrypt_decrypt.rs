@@ -196,6 +196,23 @@ async fn test_aes_gcm_server_side() -> CosmianResult<()> {
 }
 
 #[tokio::test]
+async fn test_aes_cbc_server_side() -> CosmianResult<()> {
+    let ctx = start_default_test_kms_server().await;
+    let dek = create_symmetric_key(&ctx.owner_client_conf_path, CreateKeyAction {
+        algorithm: SymmetricAlgorithm::Aes,
+        number_of_bits: Some(256),
+        ..Default::default()
+    })?;
+    run_encrypt_decrypt_test(
+        &ctx.owner_client_conf_path,
+        &dek,
+        DataEncryptionAlgorithm::AesCbc,
+        None,
+        8 /* padding */ + 16, /* iv */
+    )
+}
+
+#[tokio::test]
 async fn test_aes_xts_server_side() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
     let dek = create_symmetric_key(&ctx.owner_client_conf_path, CreateKeyAction {

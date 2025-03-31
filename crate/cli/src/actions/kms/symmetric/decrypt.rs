@@ -22,9 +22,9 @@ use cosmian_kms_crypto::crypto::symmetric::symmetric_ciphers::{
 };
 use cosmian_kms_crypto::crypto::{
     symmetric::symmetric_ciphers::{
-        AES_128_GCM_IV_LENGTH, AES_128_GCM_MAC_LENGTH, AES_128_XTS_MAC_LENGTH,
-        AES_128_XTS_TWEAK_LENGTH, Mode, RFC5649_16_IV_LENGTH, RFC5649_16_MAC_LENGTH, SymCipher,
-        decrypt,
+        AES_128_CBC_IV_LENGTH, AES_128_CBC_MAC_LENGTH, AES_128_GCM_IV_LENGTH,
+        AES_128_GCM_MAC_LENGTH, AES_128_XTS_MAC_LENGTH, AES_128_XTS_TWEAK_LENGTH, Mode,
+        RFC5649_16_IV_LENGTH, RFC5649_16_MAC_LENGTH, SymCipher, decrypt,
     },
     wrap::unwrap_key_block,
 };
@@ -206,6 +206,7 @@ impl DecryptAction {
                 BlockCipherMode::GCM | BlockCipherMode::GCMSIV => {
                     (AES_128_GCM_IV_LENGTH, AES_128_GCM_MAC_LENGTH)
                 }
+                BlockCipherMode::CBC => (AES_128_CBC_IV_LENGTH, AES_128_CBC_MAC_LENGTH),
                 BlockCipherMode::XTS => (AES_128_XTS_TWEAK_LENGTH, AES_128_XTS_MAC_LENGTH),
                 BlockCipherMode::NISTKeyWrap => (RFC5649_16_IV_LENGTH, RFC5649_16_MAC_LENGTH),
                 _ => cli_bail!("Unsupported block cipher mode"),
@@ -258,7 +259,9 @@ impl DecryptAction {
         // (empty for XTS)
         let aad = match data_encryption_algorithm {
             DataEncryptionAlgorithm::AesXts => vec![],
-            DataEncryptionAlgorithm::AesGcm => aad.unwrap_or_default(),
+            DataEncryptionAlgorithm::AesCbc | DataEncryptionAlgorithm::AesGcm => {
+                aad.unwrap_or_default()
+            }
             #[cfg(not(feature = "fips"))]
             DataEncryptionAlgorithm::AesGcmSiv | DataEncryptionAlgorithm::Chacha20Poly1305 => {
                 aad.unwrap_or_default()
@@ -376,7 +379,7 @@ impl DecryptAction {
         // Additional authenticated data (AAD) for AEAD ciphers
         // (empty for XTS)
         let aad = match data_encryption_algorithm {
-            DataEncryptionAlgorithm::AesXts => vec![],
+            DataEncryptionAlgorithm::AesXts | DataEncryptionAlgorithm::AesCbc => vec![],
             DataEncryptionAlgorithm::AesGcm => aad.unwrap_or_default(),
             #[cfg(not(feature = "fips"))]
             DataEncryptionAlgorithm::AesGcmSiv | DataEncryptionAlgorithm::Chacha20Poly1305 => {

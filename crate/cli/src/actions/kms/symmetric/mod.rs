@@ -49,6 +49,7 @@ pub enum DataEncryptionAlgorithm {
     Chacha20Poly1305,
     #[default]
     AesGcm,
+    AesCbc,
     AesXts,
     #[cfg(not(feature = "fips"))]
     AesGcmSiv,
@@ -65,6 +66,11 @@ impl From<DataEncryptionAlgorithm> for CryptographicParameters {
             DataEncryptionAlgorithm::AesGcm => Self {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
                 block_cipher_mode: Some(BlockCipherMode::GCM),
+                ..Self::default()
+            },
+            DataEncryptionAlgorithm::AesCbc => Self {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                block_cipher_mode: Some(BlockCipherMode::CBC),
                 ..Self::default()
             },
             DataEncryptionAlgorithm::AesXts => Self {

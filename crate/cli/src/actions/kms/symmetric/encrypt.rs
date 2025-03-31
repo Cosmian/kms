@@ -251,7 +251,7 @@ impl EncryptAction {
         // Additional authenticated data (AAD) for AEAD ciphers
         // (empty for XTS)
         let aad = match data_encryption_algorithm {
-            DataEncryptionAlgorithm::AesXts => vec![],
+            DataEncryptionAlgorithm::AesXts | DataEncryptionAlgorithm::AesCbc => vec![],
             DataEncryptionAlgorithm::AesGcm => aad.unwrap_or_default(),
             #[cfg(not(feature = "fips"))]
             DataEncryptionAlgorithm::Chacha20Poly1305 | DataEncryptionAlgorithm::AesGcmSiv => {
@@ -334,6 +334,7 @@ impl EncryptAction {
         // Generate the ephemeral key (DEK)
         let dek = match data_encryption_algorithm {
             DataEncryptionAlgorithm::AesGcm => random_key(SymCipher::Aes256Gcm)?,
+            DataEncryptionAlgorithm::AesCbc => random_key(SymCipher::Aes256Cbc)?,
             #[cfg(not(feature = "fips"))]
             DataEncryptionAlgorithm::Chacha20Poly1305 => random_key(SymCipher::Chacha20Poly1305)?,
             #[cfg(not(feature = "fips"))]
@@ -374,6 +375,7 @@ impl EncryptAction {
     ) -> CosmianResult<(Zeroizing<Vec<u8>>, Vec<u8>)> {
         // Generate the ephemeral key (DEK)
         let dek: Zeroizing<Vec<u8>> = match data_encryption_algorithm {
+            DataEncryptionAlgorithm::AesCbc => random_key(SymCipher::Aes256Cbc)?,
             DataEncryptionAlgorithm::AesGcm => random_key(SymCipher::Aes256Gcm)?,
             #[cfg(not(feature = "fips"))]
             DataEncryptionAlgorithm::Chacha20Poly1305 => random_key(SymCipher::Chacha20Poly1305)?,
@@ -424,9 +426,9 @@ impl EncryptAction {
         aad: Option<Vec<u8>>,
     ) -> CosmianResult<Vec<u8>> {
         // Additional authenticated data (AAD) for AEAD ciphers
-        // (empty for XTS)
+        // (empty for XTS or CBC modes)
         let aad = match data_encryption_algorithm {
-            DataEncryptionAlgorithm::AesXts => vec![],
+            DataEncryptionAlgorithm::AesXts | DataEncryptionAlgorithm::AesCbc => vec![],
             DataEncryptionAlgorithm::AesGcm => aad.unwrap_or_default(),
             #[cfg(not(feature = "fips"))]
             DataEncryptionAlgorithm::Chacha20Poly1305 | DataEncryptionAlgorithm::AesGcmSiv => {
