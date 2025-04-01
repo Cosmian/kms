@@ -41,7 +41,7 @@ impl TTLV {
                         .try_into()
                         .context("failed reading the major version")?,
                 );
-                i += 8
+                i += 8;
             }
             if bytes.get(i..i + 8) == Some(&[0x42, 0x00, 0x6b, 0x02, 0x00, 0x00, 0x00, 0x04]) {
                 // we found the protocol version minor

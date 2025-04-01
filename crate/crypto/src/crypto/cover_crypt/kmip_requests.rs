@@ -1,12 +1,15 @@
 use cloudproof::reexport::cover_crypt::abe_policy::Policy;
-use cosmian_kmip::kmip_2_1::{
-    kmip_attributes::Attributes,
-    kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
-    kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
-    kmip_operations::{Create, CreateKeyPair, Destroy, Import, Locate, ReKeyKeyPair},
-    kmip_types::{
-        CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, KeyWrapType, Link, LinkType,
-        LinkedObjectIdentifier, UniqueIdentifier, WrappingMethod,
+use cosmian_kmip::{
+    kmip_0::kmip_types::KeyWrapType,
+    kmip_2_1::{
+        kmip_attributes::Attributes,
+        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
+        kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
+        kmip_operations::{Create, CreateKeyPair, Destroy, Import, Locate, ReKeyKeyPair},
+        kmip_types::{
+            CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, Link, LinkType,
+            LinkedObjectIdentifier, UniqueIdentifier, WrappingMethod,
+        },
     },
 };
 use zeroize::Zeroizing;

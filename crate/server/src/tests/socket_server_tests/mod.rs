@@ -14,7 +14,7 @@ use std::{
 use actix_web::dev::ServerHandle;
 use cosmian_kms_client::{KmsClientError, SocketClient, SocketClientConfig};
 use futures::executor::block_on;
-use tracing::{error, trace};
+use tracing::{error, info, trace};
 
 use crate::{
     config::ServerParams, start_kms_server::start_kms_server, tests::test_utils::https_clap_config,
@@ -37,7 +37,7 @@ impl Drop for TestServerCtx {
             trace!("Waiting for test KMS server thread to finish...");
             handle.join().unwrap().unwrap();
         }
-        println!("Test KMS server shut down.");
+        info!("Test KMS server shut down.");
     }
 }
 
@@ -47,9 +47,9 @@ fn start_test_server() -> &'static TestServerCtx {
 
     SERVER_HANDLES.get_or_init(|| {
         let mut server_params = ServerParams::try_from(https_clap_config()).unwrap();
-        server_params.http_hostname = TEST_HOST.to_owned();
+        TEST_HOST.clone_into(&mut server_params.http_hostname);
         server_params.http_port = TEST_PORT - 1;
-        server_params.socket_server_hostname = TEST_HOST.to_owned();
+        TEST_HOST.clone_into(&mut server_params.socket_server_hostname);
         server_params.socket_server_port = TEST_PORT;
 
         let (tx, rx) = mpsc::channel::<ServerHandle>();

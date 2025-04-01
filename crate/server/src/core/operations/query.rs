@@ -53,7 +53,7 @@ pub(crate) async fn query(request: Query) -> KResult<QueryResponse> {
                         OperationEnumeration::Revoke,
                         OperationEnumeration::SetAttribute,
                         OperationEnumeration::Validate,
-                    ])
+                    ]);
                 }
                 QueryFunction::QueryObjects => {
                     response.object_type = Some(vec![
@@ -61,20 +61,20 @@ pub(crate) async fn query(request: Query) -> KResult<QueryResponse> {
                         ObjectType::SymmetricKey,
                         ObjectType::PrivateKey,
                         ObjectType::PublicKey,
-                    ])
+                    ]);
                 }
-                QueryFunction::QueryServerInformation => {}
-                QueryFunction::QueryApplicationNamespaces => {}
-                QueryFunction::QueryExtensionList => {}
-                QueryFunction::QueryExtensionMap => {}
-                QueryFunction::QueryAttestationTypes => {}
-                QueryFunction::QueryRNGs => {}
-                QueryFunction::QueryValidations => {}
-                QueryFunction::QueryProfiles => {}
-                QueryFunction::QueryCapabilities => {}
-                QueryFunction::QueryClientRegistrationMethods => {}
-                QueryFunction::QueryDefaultsInformation => {}
-                QueryFunction::QueryStorageProtectionMasks => {}
+                QueryFunction::QueryServerInformation
+                | QueryFunction::QueryApplicationNamespaces
+                | QueryFunction::QueryExtensionList
+                | QueryFunction::QueryExtensionMap
+                | QueryFunction::QueryAttestationTypes
+                | QueryFunction::QueryRNGs
+                | QueryFunction::QueryValidations
+                | QueryFunction::QueryProfiles
+                | QueryFunction::QueryCapabilities
+                | QueryFunction::QueryClientRegistrationMethods
+                | QueryFunction::QueryDefaultsInformation
+                | QueryFunction::QueryStorageProtectionMasks => {}
             }
         }
     }
