@@ -1,19 +1,22 @@
 use std::sync::Arc;
 
 use cosmian_crypto_core::X25519_PUBLIC_KEY_LENGTH;
-use cosmian_kmip::kmip_2_1::{
-    extra::tagging::EMPTY_TAGS,
-    kmip_attributes::Attributes,
-    kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
-    kmip_objects::{Object, ObjectType, PrivateKey, PublicKey, SymmetricKey},
-    kmip_operations::{Get, Import},
-    kmip_types::{
-        CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, KeyWrapType, LinkType,
-        LinkedObjectIdentifier, RecommendedCurve, UniqueIdentifier, WrappingMethod,
-    },
-    requests::{
-        create_ec_key_pair_request, get_ec_private_key_request, get_ec_public_key_request,
-        symmetric_key_create_request,
+use cosmian_kmip::{
+    kmip_0::kmip_types::KeyWrapType,
+    kmip_2_1::{
+        extra::tagging::EMPTY_TAGS,
+        kmip_attributes::Attributes,
+        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
+        kmip_objects::{Object, ObjectType, PrivateKey, PublicKey, SymmetricKey},
+        kmip_operations::{Get, Import},
+        kmip_types::{
+            CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, LinkType,
+            LinkedObjectIdentifier, RecommendedCurve, UniqueIdentifier, WrappingMethod,
+        },
+        requests::{
+            create_ec_key_pair_request, get_ec_private_key_request, get_ec_public_key_request,
+            symmetric_key_create_request,
+        },
     },
 };
 use cosmian_kms_crypto::crypto::{

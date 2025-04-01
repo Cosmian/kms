@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use cosmian_kmip::{
+    kmip_0::kmip_types::KeyWrapType,
     KmipError,
     kmip_2_1::{
         kmip_attributes::Attributes,
@@ -9,7 +10,7 @@ use cosmian_kmip::{
         kmip_operations::{Export, ExportResponse},
         kmip_types::{
             CertificateType, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType,
-            KeyWrapType, LinkType, StateEnumeration, UniqueIdentifier,
+            LinkType, StateEnumeration, UniqueIdentifier,
         },
     },
 };

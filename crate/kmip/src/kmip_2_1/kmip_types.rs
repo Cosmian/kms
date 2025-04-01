@@ -1628,11 +1628,7 @@ impl From<&UniqueIdentifier> for String {
         value.to_string()
     }
 }
-impl From<UniqueIdentifier> for String {
-    fn from(value: UniqueIdentifier) -> Self {
-        value.to_string()
-    }
-}
+
 impl UniqueIdentifier {
     /// Returns the value as a string if it is a `TextString`
     #[must_use]

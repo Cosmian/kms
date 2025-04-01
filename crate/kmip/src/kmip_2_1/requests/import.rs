@@ -1,10 +1,11 @@
-use tracing::trace;
-
-use crate::kmip_2_1::{
-    kmip_attributes::Attributes,
-    kmip_objects::{Object, ObjectType},
-    kmip_operations::Import,
-    kmip_types::{KeyWrapType, UniqueIdentifier},
+use crate::{
+    kmip_0::kmip_types::KeyWrapType,
+    kmip_2_1::{
+        kmip_attributes::Attributes,
+        kmip_objects::{Object, ObjectType},
+        kmip_operations::Import,
+        kmip_types::UniqueIdentifier,
+    },
 };
 
 /// Build an ` Import ` request for a generic Object
