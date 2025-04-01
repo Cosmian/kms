@@ -22,7 +22,10 @@ use super::{
 };
 use crate::{
     error::KmipError,
-    kmip_0::kmip_types::{AttestationType, Direction, KeyWrapType},
+    kmip_0::{
+        kmip_operations::{DiscoverVersions, DiscoverVersionsResponse},
+        kmip_types::{AttestationType, Direction, KeyWrapType},
+    },
     Deserializer, Serializer,
 };
 
@@ -36,6 +39,8 @@ pub enum Operation {
     CreateResponse(CreateResponse),
     CreateKeyPair(CreateKeyPair),
     CreateKeyPairResponse(CreateKeyPairResponse),
+    DiscoverVersions(DiscoverVersions),
+    DiscoverVersionsResponse(DiscoverVersionsResponse),
     Decrypt(Decrypt),
     DecryptResponse(DecryptResponse),
     DeleteAttribute(DeleteAttribute),
@@ -155,6 +160,12 @@ impl Display for Operation {
             }
             Self::Query(query) => write!(f, "Query({query})"),
             Self::QueryResponse(query_response) => write!(f, "QueryResponse({query_response})"),
+            Self::DiscoverVersions(_) => {
+                write!(f, "DiscoverVersions")
+            }
+            Self::DiscoverVersionsResponse(_) => {
+                write!(f, "DiscoverVersionsResponse")
+            }
         }
     }
 }
@@ -186,6 +197,9 @@ impl Operation {
             | Self::Revoke(_)
             | Self::ReKey(_)
             | Self::ReKeyKeyPair(_)
+            | Self::Destroy(_)
+            | Self::Validate(_)
+            | Self::DiscoverVersions(_)
             | Self::SetAttribute(_)
             | Self::Validate(_) => Direction::Request,
 
@@ -208,7 +222,8 @@ impl Operation {
             | Self::ReKeyKeyPairResponse(_)
             | Self::DestroyResponse(_)
             | Self::QueryResponse(_)
-            | Self::ValidateResponse(_) => Direction::Response,
+            | Self::ValidateResponse(_)
+            | Self::DiscoverVersionsResponse(_) => Direction::Response,
         }
     }
 
@@ -244,6 +259,9 @@ impl Operation {
                 OperationEnumeration::SetAttribute
             }
             Self::Validate(_) | Self::ValidateResponse(_) => OperationEnumeration::Validate,
+            Self::DiscoverVersions(_) | Self::DiscoverVersionsResponse(_) => {
+                OperationEnumeration::DiscoverVersions
+            }
         }
     }
 }
