@@ -7,7 +7,10 @@ use super::kmip_objects::Certificate;
 #[allow(clippy::wildcard_imports)]
 use super::{kmip_data_structures::*, kmip_objects::Object, kmip_types::*};
 use crate::{
-    kmip_0::kmip_types::{AttestationType, Direction, KeyWrapType},
+    kmip_0::{
+        kmip_operations::{DiscoverVersions, DiscoverVersionsResponse},
+        kmip_types::{AttestationType, Direction, KeyWrapType},
+    },
     kmip_1_4::kmip_attributes::{Attribute, Attributes},
 };
 
@@ -531,20 +534,6 @@ pub struct QueryResponse {
     /// Specifies a Client Registration Method that is supported by the server.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub client_registration_method: Option<Vec<ClientRegistrationMethod>>,
-}
-
-/// 4.26 Discover Versions
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-#[serde(rename_all = "PascalCase")]
-pub struct DiscoverVersions {
-    pub protocol_versions: Option<Vec<String>>,
-}
-
-/// Response to a Discover Versions request
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-#[serde(rename_all = "PascalCase")]
-pub struct DiscoverVersionsResponse {
-    pub protocol_versions: Vec<String>,
 }
 
 /// 4.27 Cancel

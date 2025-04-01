@@ -231,6 +231,9 @@ impl<'de> Deserialize<'de> for RequestMessageBatchItem {
                                     Operation::Export(map.next_value()?)
                                 }
                                 OperationEnumeration::Query => Operation::Query(map.next_value()?),
+                                OperationEnumeration::DiscoverVersions => {
+                                    Operation::DiscoverVersions(map.next_value()?)
+                                }
                                 x => {
                                     return Err(de::Error::custom(format!(
                                         "unsuported operation: {x:?}"

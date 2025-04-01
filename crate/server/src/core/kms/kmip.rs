@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
 use cosmian_kmip::{
-    kmip_0::kmip_messages::{RequestMessage, ResponseMessage},
+    kmip_0::{
+        kmip_messages::{RequestMessage, ResponseMessage},
+        kmip_operations::{DiscoverVersions, DiscoverVersionsResponse},
+    },
     kmip_2_1::{
         kmip_operations::{
             Certify, CertifyResponse, Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse,
@@ -93,6 +96,32 @@ impl KMS {
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<CreateKeyPairResponse> {
         Box::pin(operations::create_key_pair(self, request, user, params)).await
+    }
+
+    /// This request is used by the client to determine a list of protocol versions
+    /// that is supported by the server.
+    /// The request payload contains an optional list of protocol versions
+    /// that is supported by the client. The protocol versions SHALL be ranked
+    /// in order of preference (highest preference first).
+    //
+    // The response payload contains a list of protocol versions that is supported by the server.
+    // The protocol versions are ranked in order of preference (highest preference first).
+    // If the client provides the server with a list of supported protocol versions
+    // in the request payload, the server SHALL return only the protocol versions
+    // that are supported by both the client and server.
+    // The server SHOULD list all the protocol versions supported by both client and server.
+    // If the protocol version specified in the request header is not specified in the request
+    // payload and the server does not support any protocol version specified in the request payload,
+    // the server SHALL return an empty list in the response payload.
+    // If no protocol versions are specified in the request payload,
+    // the server SHOULD simply return all the protocol versions that are supported by the server.
+    pub(crate) async fn discover_versions(
+        &self,
+        request: DiscoverVersions,
+        _user: &str,
+        _params: Option<Arc<dyn SessionParams>>,
+    ) -> DiscoverVersionsResponse {
+        operations::discover_versions(request).await
     }
 
     /// This operation requests the server to perform a decryption operation on

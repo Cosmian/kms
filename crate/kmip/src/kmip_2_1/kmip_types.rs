@@ -1337,15 +1337,14 @@ pub enum BlockCipherMode {
     CBCMAC = 0x0000_000A,
     XTS = 0x0000_000B,
     AESKeyWrapPadding = 0x0000_000C,
+    // NISTKeyWrap refers to rfc5649
+    NISTKeyWrap = 0x0000_000D,
     X9102AESKW = 0x0000_000E,
     X9102TDKW = 0x0000_000F,
     X9102AKW1 = 0x0000_0010,
     X9102AKW2 = 0x0000_0011,
     AEAD = 0x0000_0012,
     // Extensions - 8XXXXXXX
-    // NISTKeyWrap refers to rfc5649
-    NISTKeyWrap = 0x8000_0001,
-    // AES GCM SIV
     GCMSIV = 0x8000_0002,
 }
 
