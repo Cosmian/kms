@@ -76,7 +76,7 @@ rm -f /tmp/*.json /tmp/*.toml
 cargo build --target $TARGET $RELEASE
 
 # shellcheck disable=SC2086
-cargo test --workspace --bins --target $TARGET $FEATURES
+cargo test --workspace --bins --target $TARGET $RELEASE
 
 if [ "$DEBUG_OR_RELEASE" = "release" ]; then
   INCLUDE_IGNORED="--include-ignored"
