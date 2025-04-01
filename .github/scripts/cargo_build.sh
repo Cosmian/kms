@@ -13,6 +13,8 @@ set -ex
 
 ROOT_FOLDER=$(pwd)
 
+declare -a DATABASES=('' 'redis-findex' 'sqlite' 'sqlite-enc')
+
 if [ "$DEBUG_OR_RELEASE" = "release" ]; then
   # First build the Debian and RPM packages. It must come at first since
   # after this step `cosmian` and `cosmian_kms` are built with custom features flags (fips for example).
@@ -46,11 +48,6 @@ fi
 if [ -z "$FEATURES" ]; then
   echo "Info: FEATURES is not set."
   unset FEATURES
-fi
-
-if [ -z "$KMS_TEST_DB" ]; then
-  echo "Info: KMS_TEST_DB is not set. Forcing sqlite"
-  KMS_TEST_DB="sqlite"
 fi
 
 if [ -z "$SKIP_SERVICES_TESTS" ]; then
@@ -102,8 +99,20 @@ export RUST_LOG="cosmian_cli=debug,cosmian_kms_server=info,cosmian_kmip=info"
 cargo build --target $TARGET $RELEASE $FEATURES
 
 echo "Database KMS: $KMS_TEST_DB"
+
+for i in "${DATABASES[@]}"
+do
+if [ -z "$i" ]; then
+  echo "Info: KMS_TEST_DB is not set. Forcing sqlite"
+  KMS_TEST_DB="sqlite"
+else
+  KMS_TEST_DB="$i"
+fi
+if [ "$DEBUG_OR_RELEASE" = "release" && "$KMS_TEST_DB" = "redis-findex" ]; then
 # shellcheck disable=SC2086
-cargo test --workspace --lib --target $TARGET $RELEASE $FEATURES -- --nocapture $SKIP_SERVICES_TESTS
+KMS_TEST_DB="$i" cargo test --workspace --lib --target $TARGET $RELEASE $FEATURES -- --nocapture $SKIP_SERVICES_TESTS
+fi
+done
 
 # shellcheck disable=SC2086
 cargo test --workspace --bins --target $TARGET $RELEASE $FEATURES
