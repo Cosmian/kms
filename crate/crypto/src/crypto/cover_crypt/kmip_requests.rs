@@ -1,7 +1,15 @@
-use cosmian_kmip::kmip_2_1::{
-    kmip_objects::ObjectType,
-    kmip_operations::ReKeyKeyPair,
-    kmip_types::{Attributes, CryptographicAlgorithm, KeyFormatType, UniqueIdentifier},
+use cosmian_kmip::{
+    kmip_0::kmip_types::KeyWrapType,
+    kmip_2_1::{
+        kmip_attributes::Attributes,
+        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
+        kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
+        kmip_operations::{Create, CreateKeyPair, Destroy, Import, Locate, ReKeyKeyPair},
+        kmip_types::{
+            CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, Link, LinkType,
+            LinkedObjectIdentifier, UniqueIdentifier, WrappingMethod,
+        },
+    },
 };
 
 use super::attributes::{RekeyEditAction, rekey_edit_action_as_vendor_attribute};

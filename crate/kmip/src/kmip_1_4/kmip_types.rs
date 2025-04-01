@@ -1,11 +1,8 @@
 #![allow(non_camel_case_types)]
 
-use std::fmt::Display;
-
 use kmip_derive::{kmip_enum, KmipEnumDeserialize, KmipEnumSerialize};
 use serde::{Deserialize, Serialize};
 use strum::Display;
-use uuid::Uuid;
 
 use crate::{
     kmip_0::kmip_types::HashingAlgorithm,
@@ -1431,12 +1428,6 @@ impl From<RandomNumberGenerator> for kmip_2_1::kmip_types::RandomNumberGenerator
 /// This attribute SHALL be assigned by the key management system at creation or registration time,
 /// and then SHALL NOT be changed or deleted before the object is destroyed.
 pub type UniqueIdentifier = String;
-
-impl Default for UniqueIdentifier {
-    fn default() -> Self {
-        String::from(Uuid::new_v4().to_string())
-    }
-}
 
 impl From<UniqueIdentifier> for kmip_2_1::kmip_types::UniqueIdentifier {
     fn from(val: UniqueIdentifier) -> Self {

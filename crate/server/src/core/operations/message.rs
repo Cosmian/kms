@@ -8,7 +8,6 @@ use cosmian_kmip::{
         },
         kmip_types::{ErrorReason, ResultStatusEnumeration},
     },
-    kmip_2_1,
     kmip_2_1::kmip_messages::ResponseMessageBatchItem,
     ttlv::to_ttlv,
 };
@@ -18,6 +17,7 @@ use tracing::trace;
 use crate::{
     core::{KMS, operations::dispatch},
     error::KmsError,
+    kms_bail,
     result::KResult,
 };
 
@@ -39,10 +39,13 @@ pub(crate) async fn message(
     let mut response_items = Vec::new();
     for versioned_batch_item in request.batch_item {
         let batch_item = match versioned_batch_item {
-            RequestMessageBatchItemVersioned::V14(item_request) => {
-                kmip_2_1::kmip_messages::RequestMessageBatchItem::from(item_request)
-            }
+            // RequestMessageBatchItemVersioned::V14(item_request) => {
+            //     kmip_2_1::kmip_messages::RequestMessageBatchItem::from(item_request)
+            // }
             RequestMessageBatchItemVersioned::V21(item_request) => item_request,
+            RequestMessageBatchItemVersioned::V14(_item_request) => {
+                kms_bail!("Need to implement conversion for V14 to V21");
+            }
         };
 
         let operation = batch_item.request_payload;
