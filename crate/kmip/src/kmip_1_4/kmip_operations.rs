@@ -8,11 +8,14 @@ use super::kmip_objects::Certificate;
 use super::{kmip_data_structures::*, kmip_objects::Object, kmip_types::*};
 use crate::{
     kmip_0::{
+        kmip_data_structures::ValidationInformation,
         kmip_operations::{DiscoverVersions, DiscoverVersionsResponse},
         kmip_types::{AttestationType, Direction, KeyWrapType},
     },
     kmip_1_4::kmip_attributes::{Attribute, Attributes},
-    kmip_2_1, KmipError,
+    kmip_2_1,
+    kmip_2_1::kmip_data_structures::ValidationInformation,
+    KmipError,
 };
 
 /// 4.1 Create
@@ -487,6 +490,18 @@ pub struct Query {
     pub query_function: Option<Vec<QueryFunction>>,
 }
 
+impl From<Query> for kmip_2_1::kmip_operations::Query {
+    fn from(query: Query) -> Self {
+        kmip_2_1::kmip_operations::Query {
+            query_function: query.query_function.map(|v| {
+                v.into_iter()
+                    .map(|f| f.into())
+                    .collect::<Vec<kmip_2_1::kmip_types::QueryFunction>>()
+            }),
+        }
+    }
+}
+
 /// Response to a Query request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
@@ -535,6 +550,80 @@ pub struct QueryResponse {
     /// Specifies a Client Registration Method that is supported by the server.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub client_registration_method: Option<Vec<ClientRegistrationMethod>>,
+}
+
+impl TryFrom<kmip_2_1::kmip_operations::QueryResponse> for QueryResponse {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_operations::QueryResponse) -> Result<Self, Self::Error> {
+        let operation = value
+            .operation
+            .map(|v| {
+                v.into_iter()
+                    .map(|f| f.try_into())
+                    .collect::<Result<Vec<OperationEnumeration>, KmipError>>()
+            })
+            .transpose()?;
+
+        let object_type = value
+            .object_type
+            .map(|v| {
+                v.into_iter()
+                    .map(|f| f.try_into())
+                    .collect::<Result<Vec<ObjectType>, KmipError>>()
+            })
+            .transpose()?;
+
+        let extension_information = value
+            .extension_information
+            .map(|v| {
+                v.into_iter()
+                    .map(|f| f.try_into())
+                    .collect::<Result<Vec<ExtensionInformation>, KmipError>>()
+            })
+            .transpose()?;
+
+        let rng_parameters = value
+            .rng_parameters
+            .map(|v| {
+                v.into_iter()
+                    .map(|f| f.try_into())
+                    .collect::<Result<Vec<RNGParameters>, KmipError>>()
+            })
+            .transpose()?;
+
+        let profiles_information = value
+            .profiles_information
+            .map(|v| {
+                v.into_iter()
+                    .map(|f| f.try_into())
+                    .collect::<Result<Vec<ProfileInformation>, KmipError>>()
+            })
+            .transpose()?;
+
+        let capability_information = value
+            .capability_information
+            .map(|v| {
+                v.into_iter()
+                    .map(|f| f.try_into())
+                    .collect::<Result<Vec<CapabilityInformation>, KmipError>>()
+            })
+            .transpose()?;
+
+        Ok(QueryResponse {
+            operation,
+            object_type,
+            vendor_identification: value.vendor_identification,
+            server_information: value.server_information.map(|s| s.to_string()),
+            extension_information,
+            attestation_types: value.attestation_types,
+            rng_parameters,
+            profiles_information,
+            validation_information: value.validation_information,
+            capability_information,
+            client_registration_method: None,
+        })
+    }
 }
 
 /// 4.27 Cancel
@@ -1355,10 +1444,8 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             // Operation::ValidateResponse(validate_response) => {
             //     Self::ValidateResponse(validate_response.into())
             // }
-            // Operation::Query(query) => Self::Query(query.into()),
-            // Operation::QueryResponse(query_response) => {
-            //     Self::QueryResponse(query_response.into())
-            // }
+            Operation::Query(query) => Self::Query(query.into()),
+            // Operation::QueryResponse(query_response) => Self::QueryResponse(query_response.into()),
             // Operation::DiscoverVersions(discover_versions) => {
             //     Self::DiscoverVersions(discover_versions.into())
             // }
@@ -1603,10 +1690,10 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             // Operation::ValidateResponse(validate_response) => {
             //     Self::ValidateResponse(validate_response.into())
             // }
-            // Operation::Query(query) => Self::Query(query.into()),
-            // Operation::QueryResponse(query_response) => {
-            //     Self::QueryResponse(query_response.into())
-            // }
+            // kmip_2_1::kmip_operations::Operation::Query(query) => Self::Query(query.into()),
+            kmip_2_1::kmip_operations::Operation::QueryResponse(query_response) => {
+                Self::QueryResponse(query_response.try_into()?)
+            }
             // Operation::DiscoverVersions(discover_versions) => {
             //     Self::DiscoverVersions(discover_versions.into())
             // }

@@ -18,7 +18,7 @@ use uuid::Uuid;
 
 use crate::{
     error::KmipError,
-    kmip_0::kmip_types::HashingAlgorithm,
+    kmip_0::kmip_types::{DRBGAlgorithm, FIPS186Variation, HashingAlgorithm},
     kmip_2_1::extra::{tagging::VENDOR_ATTR_TAG, VENDOR_ID_COSMIAN},
     kmip_2_1_error,
 };
@@ -1833,18 +1833,6 @@ pub struct RandomNumberGenerator {
     pub prediction_resistance: Option<bool>,
 }
 
-/// `RNGParameters` structure contains parameters for the random number generator
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
-#[serde(rename_all = "PascalCase")]
-pub struct RNGParameters {
-    /// DRBG algorithm
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub drbg_algorithm: Option<DRBGAlgorithm>,
-    /// DRBG mechanism
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub drbg_mechanism: Option<String>,
-}
-
 /// State enumeration indicates the current state of a managed object
 #[kmip_enum]
 pub enum State {
@@ -1905,46 +1893,6 @@ pub struct X509CertificateIdentifier {
     pub cxertificate_serial_number: Vec<u8>,
 }
 
-/// RNG Algorithm Enumeration
-#[kmip_enum]
-pub enum RNGAlgorithm {
-    Unspecified = 0x1,
-    FIPS186_2 = 0x2,
-    DRBG = 0x3,
-    NRBG = 0x4,
-    ANSI_X931 = 0x5,
-    ANSI_X962 = 0x6,
-}
-
-/// DRBG Algorithm Enumeration
-#[kmip_enum]
-pub enum DRBGAlgorithm {
-    Unspecified = 0x1,
-    // #[serde(rename = "Dual-EC")]
-    DualEC = 0x2,
-    Hash = 0x3,
-    HMAC = 0x4,
-    CTR = 0x5,
-}
-
-/// KMIP 2.1 FIPS186 Variation Enumeration
-#[kmip_enum]
-pub enum FIPS186Variation {
-    Unspecified = 0x1,
-    // #[serde(rename = "GP x-Original")]
-    GPXOriginal = 0x2,
-    // #[serde(rename = "GP x-Change Notice")]
-    GPXChangeNotice = 0x3,
-    // #[serde(rename = "x-Original")]
-    XOriginal = 0x4,
-    // #[serde(rename = "x-Change Notice")]
-    XChangeNotice = 0x5,
-    // #[serde(rename = "k-Original")]
-    KOriginal = 0x6,
-    // #[serde(rename = "k-Change Notice")]
-    KChangeNotice = 0x7,
-}
-
 /// The `QueryFunction` is used to indicate what server information is being requested.
 #[kmip_enum]
 pub enum QueryFunction {
@@ -1992,41 +1940,61 @@ pub enum ClientRegistrationMethod {
 /// Supported profile identifiers in the KMIP specification.
 #[kmip_enum]
 pub enum ProfileName {
-    /// The KMIP baseline profile.
-    Baseline = 0x0000_0001,
-    /// The basic KMIP baseline with TLS profile.
-    BasicBaseline_TLS = 0x0000_0002,
-    /// The OMG (Object Management Group) Mobile Device Management protocol profile.
-    OmgMdm = 0x0000_0003,
-    /// Server-specific profile.
-    Custom = 0x0000_0004,
-    /// Advanced storage features profile.
-    Storage = 0x0000_0005,
-    /// Quantum safe algorithms and operations profile.
-    QuantumSafe = 0x0000_0006,
-    /// Profile with asymmetric key lifecycle operations.
-    AsymmetricKeyLifecycle = 0x0000_0007,
-    /// Profile for systems with limited resources.
-    ResourceLimited = 0x0000_0008,
-    /// Profile for systems using the `SQLite` database format.
-    SQLite = 0x0000_0009,
+    CompleteServerBasic = 0x0000_0104,
+    CompleteServerTLSv12 = 0x0000_0105,
+    TapeLibraryClient = 0x0000_0106,
+    TapeLibraryServer = 0x0000_0107,
+    SymmetricKeyLifecycleClient = 0x0000_0108,
+    SymmetricKeyLifecycleServer = 0x0000_0109,
+    AsymmetricKeyLifecycleClient = 0x0000_010A,
+    AsymmetricKeyLifecycleServer = 0x0000_010B,
+    BasicCryptographicClient = 0x0000_010C,
+    BasicCryptographicServer = 0x0000_010D,
+    AdvancedCryptographicClient = 0x0000_010E,
+    AdvancedCryptographicServer = 0x0000_010F,
+    RNGCryptographicClient = 0x0000_0110,
+    RNGCryptographicServer = 0x0000_0111,
+    BasicSymmetricKeyFoundryClient = 0x0000_0112,
+    IntermediateSymmetricKeyFoundryClient = 0x0000_0113,
+    AdvancedSymmetricKeyFoundryClient = 0x0000_0114,
+    SymmetricKeyFoundryServer = 0x0000_0115,
+    OpaqueMangedObjectStoreClient = 0x0000_0116,
+    OpaqueMangedObjectStoreServer = 0x0000_0117,
+    Reserved118 = 0x0000_0118,
+    Reserved119 = 0x0000_0119,
+    Reserved11A = 0x0000_011A,
+    Reserved11B = 0x0000_011B,
+    StorageArrayWithSelfEncryptingDriveClient = 0x0000_011C,
+    StorageArrayWithSelfEncryptingDriveServer = 0x0000_011D,
+    HTTPSClient = 0x0000_011E,
+    HTTPSServer = 0x0000_011F,
+    JSONClient = 0x0000_0120,
+    JSONServer = 0x0000_0121,
+    XMLClient = 0x0000_0122,
+    XMLServer = 0x0000_0123,
+    AESXTSClient = 0x0000_0124,
+    AESXTSServer = 0x0000_0125,
+    QuantumSafeClient = 0x0000_0126,
+    QuantumSafeServer = 0x0000_0127,
+    PKCS11Client = 0x0000_0128,
+    PKCS11Server = 0x0000_0129,
+    BaselineClient = 0x0000_012A,
+    BaselineServer = 0x0000_012B,
+    CompleteServer = 0x0000_012C,
 }
 
-/// Types of validation authorities that can validate cryptographic objects.
+/// Types of items that can be used in TTLV encoding.
 #[kmip_enum]
-pub enum ValidationAuthorityType {
-    /// Common Criteria Testing Laboratory authority.
-    CommonCriteriaTestingLaboratory = 0x0000_0001,
-    /// National Voluntary Laboratory Accreditation Program.
-    Nvlap = 0x0000_0002,
-    /// National Information Assurance Partnership.
-    Niap = 0x0000_0003,
-    /// Authority not matching any other defined type.
-    Unspecified = 0x0000_0004,
-    /// Federal Information Processing Standards authority.
-    FipsApprovedSecurityFunction = 0x0000_0005,
-    /// ISO/IEC 19790 compliant validation.
-    Iso19790Compliant = 0x0000_0006,
-    /// Federal Information Security Management Act authority.
-    Fisma = 0x0000_0007,
+pub enum ItemType {
+    Structure = 0x0000_0001,
+    Integer = 0x0000_0002,
+    LongInteger = 0x0000_0003,
+    BigInteger = 0x0000_0004,
+    Enumeration = 0x0000_0005,
+    Boolean = 0x0000_0006,
+    TextString = 0x0000_0007,
+    ByteString = 0x0000_0008,
+    DateTime = 0x0000_0009,
+    Interval = 0x0000_000A,
+    DateTimeExtended = 0x0000_000B,
 }
