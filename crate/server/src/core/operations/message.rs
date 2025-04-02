@@ -8,7 +8,6 @@ use cosmian_kmip::{
         },
         kmip_types::{ErrorReason, ResultStatusEnumeration},
     },
-    kmip_2_1,
     kmip_2_1::{kmip_messages::ResponseMessageBatchItem, kmip_operations::Operation},
     ttlv::KmipFlavor,
 };
@@ -36,10 +35,9 @@ pub(crate) async fn message(
     let mut response_items = Vec::new();
     for versioned_batch_item in request.batch_item {
         let (batch_item, kmip_version) = match versioned_batch_item {
-            RequestMessageBatchItemVersioned::V14(item_request) => (
-                kmip_2_1::kmip_messages::RequestMessageBatchItem::from(item_request.into()),
-                KmipFlavor::Kmip1,
-            ),
+            RequestMessageBatchItemVersioned::V14(item_request) => {
+                (item_request.try_into()?, KmipFlavor::Kmip1)
+            }
             RequestMessageBatchItemVersioned::V21(item_request) => {
                 (item_request, KmipFlavor::Kmip2)
             }
@@ -49,27 +47,30 @@ pub(crate) async fn message(
 
         // conversion for `dispatch` call convenience
 
-        let (result_status, result_reason, result_message, response_payload) =
-            match process_operation(kms, user, params.clone(), request_operation).await {
-                Ok(operation) => (
-                    ResultStatusEnumeration::Success,
-                    None,
-                    None,
-                    Some(operation),
-                ),
-                Err(KmsError::Kmip21Error(reason, error_message)) => (
-                    ResultStatusEnumeration::OperationFailed,
-                    Some(reason),
-                    Some(error_message),
-                    None,
-                ),
-                Err(err) => (
-                    ResultStatusEnumeration::OperationFailed,
-                    Some(ErrorReason::Operation_Not_Supported),
-                    Some(err.to_string()),
-                    None,
-                ),
-            };
+        let (result_status, result_reason, result_message, response_payload) = match Box::pin(
+            process_operation(kms, user, params.clone(), request_operation),
+        )
+        .await
+        {
+            Ok(operation) => (
+                ResultStatusEnumeration::Success,
+                None,
+                None,
+                Some(operation),
+            ),
+            Err(KmsError::Kmip21Error(reason, error_message)) => (
+                ResultStatusEnumeration::OperationFailed,
+                Some(reason),
+                Some(error_message),
+                None,
+            ),
+            Err(err) => (
+                ResultStatusEnumeration::OperationFailed,
+                Some(ErrorReason::Operation_Not_Supported),
+                Some(err.to_string()),
+                None,
+            ),
+        };
 
         let response_message_batch_item = ResponseMessageBatchItem {
             operation: Some(batch_item.operation),
@@ -84,7 +85,7 @@ pub(crate) async fn message(
 
         let response_message_batch_item = match kmip_version {
             KmipFlavor::Kmip1 => {
-                ResponseMessageBatchItemVersioned::V14(response_message_batch_item.into())
+                ResponseMessageBatchItemVersioned::V14(response_message_batch_item.try_into()?)
             }
             KmipFlavor::Kmip2 => {
                 ResponseMessageBatchItemVersioned::V21(response_message_batch_item)
