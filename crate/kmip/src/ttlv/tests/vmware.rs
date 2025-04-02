@@ -40,7 +40,6 @@ fn discover_versions_1() {
     assert_eq!(minor, 1);
 
     let ttlv = TTLV::from_bytes(&request, KmipFlavor::Kmip1).unwrap();
-    info!("request: {:#?}", ttlv);
     let request_message: RequestMessage = from_ttlv(ttlv).unwrap();
     let RequestMessageBatchItemVersioned::V14(request_message) = &request_message.batch_item[0]
     else {
@@ -52,7 +51,6 @@ fn discover_versions_1() {
             protocol_version: None
         })
     );
-    info!("request: {:#?}", request_message);
 
     // response
     let response = hex::decode(DISCOVER_VERSIONS_1_RESPONSE).unwrap();
@@ -60,7 +58,6 @@ fn discover_versions_1() {
     assert_eq!(major, 1);
     assert_eq!(minor, 1);
     let ttlv = TTLV::from_bytes(&response, KmipFlavor::Kmip1).unwrap();
-    info!("response: {:#?}", ttlv);
     let response_message: ResponseMessage = from_ttlv(ttlv).unwrap();
     let ResponseMessageBatchItemVersioned::V14(response_message) = &response_message.batch_item[0]
     else {
@@ -146,7 +143,6 @@ fn discover_versions_2() {
     assert_eq!(minor, 1);
     let ttlv = TTLV::from_bytes(&response, KmipFlavor::Kmip1).unwrap();
     let response_message: ResponseMessage = from_ttlv(ttlv).unwrap();
-    info!("response: {:#?}", response_message);
     let ResponseMessageBatchItemVersioned::V14(response_message) = &response_message.batch_item[0]
     else {
         panic!("Expected V14 response message");

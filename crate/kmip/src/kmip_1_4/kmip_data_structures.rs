@@ -11,8 +11,9 @@ use super::kmip_attributes::Attribute;
 #[allow(clippy::wildcard_imports)]
 use super::kmip_types::*;
 use crate::{
-    kmip_0::kmip_types::HashingAlgorithm, kmip_1_4::kmip_attributes::Attributes, kmip_2_1,
-    SafeBigInt,
+    kmip_0::kmip_types::{DRBGAlgorithm, FIPS186Variation, HashingAlgorithm, RNGAlgorithm},
+    kmip_1_4::kmip_attributes::Attributes,
+    kmip_2_1, KmipError, SafeBigInt,
 };
 
 /// 2.1.2 Credential Object Structure
@@ -1144,6 +1145,20 @@ pub struct ExtensionInformation {
     pub extension_type: Option<i32>,
 }
 
+impl TryFrom<kmip_2_1::kmip_data_structures::ExtensionInformation> for ExtensionInformation {
+    type Error = KmipError;
+
+    fn try_from(
+        val: kmip_2_1::kmip_data_structures::ExtensionInformation,
+    ) -> Result<Self, Self::Error> {
+        Ok(Self {
+            extension_name: val.extension_name,
+            extension_tag: val.extension_tag,
+            extension_type: val.extension_type.map(|v| v as i32),
+        })
+    }
+}
+
 /// 2.1.10-23 Additional Structures
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
@@ -1210,33 +1225,18 @@ pub struct ProfileInformation {
     pub server_port: Option<i32>,
 }
 
-/// Validation Information contains details about the validation of a cryptographic
-/// module, including the validation authority, version information and validation
-/// profiles.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-#[serde(rename_all = "PascalCase")]
-pub struct ValidationInformation {
-    pub validation_authority_type: ValidationAuthorityType,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub validation_authority_country: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub validation_authority_uri: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub validation_version_major: Option<i32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub validation_version_minor: Option<i32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub validation_type: Option<ValidationType>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub validation_level: Option<i32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub validation_certificate_identifier: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub validation_certificate_uri: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub validation_vendor_uri: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub validation_profile: Option<String>,
+impl TryFrom<kmip_2_1::kmip_data_structures::ProfileInformation> for ProfileInformation {
+    type Error = KmipError;
+
+    fn try_from(
+        val: kmip_2_1::kmip_data_structures::ProfileInformation,
+    ) -> Result<Self, Self::Error> {
+        Ok(Self {
+            profile_name: ProfileName::KMIP21,
+            server_uri: val.server_uri,
+            server_port: val.server_port,
+        })
+    }
 }
 
 /// Capability Information indicates various capabilities supported by a KMIP server.
@@ -1317,4 +1317,24 @@ pub struct RNGParameters {
     pub fips186_variation: Option<FIPS186Variation>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prediction_resistance: Option<bool>,
+}
+
+impl TryFrom<kmip_2_1::kmip_data_structures::RNGParameters> for RNGParameters {
+    type Error = KmipError;
+
+    fn try_from(val: kmip_2_1::kmip_data_structures::RNGParameters) -> Result<Self, Self::Error> {
+        Ok(Self {
+            rng_algorithm: val.rng_algorithm,
+            cryptographic_algorithm: val
+                .cryptographic_algorithm
+                .map(TryInto::try_into)
+                .transpose()?,
+            cryptographic_length: val.cryptographic_length,
+            hashing_algorithm: val.hashing_algorithm.map(Into::into),
+            drbg_algorithm: val.drbg_algorithm.map(Into::into),
+            recommended_curve: val.recommended_curve.map(TryInto::try_into).transpose()?,
+            fips186_variation: val.fips186_variation,
+            prediction_resistance: val.prediction_resistance,
+        })
+    }
 }

@@ -1,5 +1,6 @@
 mod config;
 
+mod discover_versions;
 mod query;
 
 const TEST_HOST: &str = "127.0.0.1";
