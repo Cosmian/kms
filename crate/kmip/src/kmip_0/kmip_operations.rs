@@ -13,5 +13,5 @@ pub struct DiscoverVersions {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct DiscoverVersionsResponse {
-    pub protocol_versions: Option<Vec<ProtocolVersion>>,
+    pub protocol_version: Option<Vec<ProtocolVersion>>,
 }

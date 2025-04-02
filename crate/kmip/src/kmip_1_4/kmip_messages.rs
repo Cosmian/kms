@@ -48,7 +48,7 @@ pub struct RequestMessageBatchItem {
     ///
     /// If a request has a Unique Batch Item ID, then responses to
     /// that request SHALL have the same Unique Batch Item ID.
-    pub unique_batch_item_id: Option<String>,
+    pub unique_batch_item_id: Option<Vec<u8>>,
 
     /// The KMIP request, which depends on the KMIP Operation
     pub request_payload: Operation,
@@ -152,7 +152,7 @@ impl<'de> Deserialize<'de> for RequestMessageBatchItem {
             {
                 let mut operation: Option<OperationEnumeration> = None;
                 let mut ephemeral: Option<bool> = None;
-                let mut unique_batch_item_id: Option<String> = None;
+                let mut unique_batch_item_id: Option<Vec<u8>> = None;
                 let mut request_payload: Option<Operation> = None;
                 let mut message_extension: Option<Vec<MessageExtension>> = None;
                 // we need to parse all the fields
@@ -270,8 +270,8 @@ impl<'de> Deserialize<'de> for RequestMessageBatchItem {
         }
 
         const FIELDS: &[&str] = &[
-            "operation",
-            "ephemeral",
+            "Operation",
+            "Ephemeral",
             "UniqueBatchItemID",
             "RequestPayload",
             "MessageExtension",
@@ -304,7 +304,7 @@ pub struct ResponseMessageBatchItem {
     pub operation: Option<OperationEnumeration>,
 
     /// Required if present in request Batch Item
-    pub unique_batch_item_id: Option<String>,
+    pub unique_batch_item_id: Option<Vec<u8>>,
 
     /// Indicates the success or failure of a request
     pub result_status: ResultStatusEnumeration,
@@ -428,7 +428,7 @@ impl Serialize for ResponseMessageBatchItem {
             st.serialize_field("Operation", &self.operation)?;
         }
         if let Some(unique_batch_item_id) = &self.unique_batch_item_id {
-            st.serialize_field("UniqueBatchItemId", unique_batch_item_id)?;
+            st.serialize_field("UniqueBatchItemID", unique_batch_item_id)?;
         }
         st.serialize_field("ResultStatus", &self.result_status)?;
         if let Some(result_reason) = &self.result_reason {
@@ -459,7 +459,7 @@ impl<'de> Deserialize<'de> for ResponseMessageBatchItem {
         #[serde(field_identifier)]
         enum Field {
             Operation,
-            UniqueBatchItemId,
+            UniqueBatchItemID,
             ResultStatus,
             ResultReason,
             ResultMessage,
@@ -482,7 +482,7 @@ impl<'de> Deserialize<'de> for ResponseMessageBatchItem {
                 V: MapAccess<'de>,
             {
                 let mut operation: Option<OperationEnumeration> = None;
-                let mut unique_batch_item_id: Option<String> = None;
+                let mut unique_batch_item_id: Option<Vec<u8>> = None;
                 let mut result_status: Option<ResultStatusEnumeration> = None;
                 let mut result_reason: Option<ErrorReason> = None;
                 let mut result_message: Option<String> = None;
@@ -498,7 +498,7 @@ impl<'de> Deserialize<'de> for ResponseMessageBatchItem {
                             }
                             operation = Some(map.next_value()?);
                         }
-                        Field::UniqueBatchItemId => {
+                        Field::UniqueBatchItemID => {
                             if unique_batch_item_id.is_some() {
                                 return Err(de::Error::duplicate_field("unique_batch_item_id"));
                             }
