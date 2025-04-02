@@ -18,13 +18,16 @@ use super::{
     kmip_types::{
         ClientRegistrationMethod, CryptographicAlgorithm, EncodingOption, EncryptionKeyInformation,
         KeyCompressionType, KeyFormatType, LinkType, LinkedObjectIdentifier,
-        MacSignatureKeyInformation, ProfileName, RNGMode, RecommendedCurve,
-        ValidationAuthorityType, WrappingMethod,
+        MacSignatureKeyInformation, ProfileName, RNGMode, RecommendedCurve, WrappingMethod,
     },
 };
 use crate::{
     error::KmipError,
-    kmip_0::kmip_types::{ErrorReason, ProtocolVersion},
+    kmip_0::kmip_types::{DRBGAlgorithm, ErrorReason, FIPS186Variation, HashingAlgorithm},
+    kmip_2_1::{
+        kmip_attributes::Attribute,
+        kmip_types::{ItemType, RNGAlgorithm},
+    },
     pad_be_bytes, SafeBigInt,
 };
 
@@ -989,20 +992,67 @@ impl<'de> Deserialize<'de> for KeyMaterial {
     }
 }
 
-/// Contains detailed information about the server.
+/// The Server Information  base object is a structure that contains a set of OPTIONAL fields
+/// that describe server information.
+/// Where a server supports returning information in a vendor-specific field for
+/// which there is an equivalent field within the structure,
+/// the server SHALL provide the standardized version of the field.
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct ServerInformation {
-    /// The server version.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub server_name: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub server_serial_number: Option<String>,
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub server_version: Option<String>,
 
-    /// The KMIP specification version supported by the server.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub kmip_version: Option<Vec<ProtocolVersion>>,
+    pub server_load: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub product_name: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub build_level: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub build_date: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cluster_info: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alternative_failover_endpoints: Option<Vec<String>>,
 }
 
-/// Information about a specific extension supported by the server.
+impl Display for ServerInformation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "ServerInformation {{ server_name: {:?}, server_serial_number: {:?}, server_version: \
+             {:?}, server_load: {:?}, product_name: {:?}, build_level: {:?}, build_date: {:?}, \
+             cluster_info: {:?}, alternative_failover_endpoints: {:?} }}",
+            self.server_name,
+            self.server_serial_number,
+            self.server_version,
+            self.server_load,
+            self.product_name,
+            self.build_level,
+            self.build_date,
+            self.cluster_info,
+            self.alternative_failover_endpoints
+        )
+    }
+}
+
+/// An Extension Information object is a structure describing Objects with Item Tag values
+/// in the Extensions range.
+/// The Extension Name is a Text String that is used to name the Object.
+/// The Extension Tag is the Item Tag Value of the Object.
+/// The Extension Type is the Item Type Value of the Object.
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct ExtensionInformation {
@@ -1013,40 +1063,26 @@ pub struct ExtensionInformation {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub extension_tag: Option<i32>,
 
-    /// Flag indicating deprecated status.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub extension_deprecated: Option<bool>,
+    pub extension_type: Option<ItemType>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extension_enumeration: Option<i32>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extension_attribute: Option<bool>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extension_parent_structure_tag: Option<i32>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extension_description: Option<String>,
 }
 
-/// Contains information about validation.
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
-#[serde(rename_all = "PascalCase")]
-pub struct ValidationInformation {
-    /// The validation authority.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub validation_authority_type: Option<ValidationAuthorityType>,
-
-    /// The validation authority country.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub validation_authority_country: Option<String>,
-
-    /// The validation authority URI.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub validation_authority_uri: Option<Vec<String>>,
-
-    /// The validation version major.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub validation_version_major: Option<i32>,
-
-    /// The validation version minor.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub validation_version_minor: Option<i32>,
-}
-
-/// The Object Defaults structure is used to specify default values for various
-/// attributes during the creation of a Managed Object. Multiple Object Defaults
-/// may exist for a given client, with different combinations of Cryptographic
-/// Parameters and Template Attributes.
+/// The Object Defaults is a structure that details the values that the server will use
+/// if the client omits them on factory methods for objects. The structure list the Attributes
+/// nd their values by Object Type enumeration, as well as the Object Group(s)
+/// for which such defaults pertain (if not pertinent to ALL Object Group values)
 #[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct ObjectDefaults {
@@ -1057,14 +1093,19 @@ pub struct ObjectDefaults {
     /// during object creation.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attributes: Option<Attributes>,
+
+    /// The Object Groups is a structure that lists the relevant Object Group Attributes
+    /// and their values
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub object_groups: Option<Vec<Attribute>>,
 }
 
 impl Display for ObjectDefaults {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "ObjectDefaults {{ object_type: {:?}, attributes: {:?} }}",
-            self.object_type, self.attributes
+            "ObjectDefaults {{ object_type: {:?}, attributes: {:?}, object_groups: {:?} }}",
+            self.object_type, self.attributes, self.object_groups
         )
     }
 }
@@ -1108,43 +1149,27 @@ pub struct CapabilityInformation {
 
     /// Indicates whether the server supports batching of operations in a single request.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub batch_capability: Option<bool>,
+    pub batch_undo_capability: Option<bool>,
 
-    /// Indicates whether the server supports unwrapping of wrapped keys.
+    /// Indicates whether the server supports batching of operations in a single request.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub unwrap_mode: Option<bool>,
+    pub batch_continue_capability: Option<bool>,
 
-    /// Indicates whether the server supports destroying of keys.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub destroy_action: Option<bool>,
+    pub unwrap_mode: Option<UnwrapMode>,
 
-    /// Indicates whether the server supports certify of keys.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub certify: Option<bool>,
+    pub destroy_action: Option<DestroyAction>,
 
-    /// Indicates whether the server supports getting usage allocation for keys.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub create_key_pair: Option<bool>,
+    pub shredding_algorithm: Option<ShreddingAlgorithm>,
 
-    /// Indicates whether the server supports deletion of private keys.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub register: Option<bool>,
-
-    /// Indicates whether the server supports rekey of keys.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub rekey: Option<bool>,
-
-    /// List of the profiles supported by the server.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub profile_names: Option<Vec<ProfileName>>,
-
-    /// Modes of Random Number Generation supported.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub rng_mode: Option<Vec<RNGMode>>,
+    pub rng_mode: Option<RNGMode>,
 
     /// Client registration methods supported by the server.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub client_registration_methods: Option<Vec<ClientRegistrationMethod>>,
+    pub quantum_safe_capability: Option<bool>,
 }
 
 impl Display for CapabilityInformation {
@@ -1156,4 +1181,57 @@ impl Display for CapabilityInformation {
             self.streaming_capability, self.asynchronous_capability
         )
     }
+}
+
+/// The RNG Parameters base object is a structure that contains a mandatory RNG Algorithm
+/// and a set of OPTIONAL fields that describe a Random Number Generator.
+/// Specific fields pertain only to certain types of RNGs.
+///
+/// The RNG Algorithm SHALL be specified and if the algorithm implemented is unknown
+/// or the implementation does not want to provide the specific details of the RNG Algorithm
+/// then the Unspecified enumeration SHALL be used.
+///
+/// If the cryptographic building blocks used within the RNG are known
+/// they MAY be specified in combination of the remaining fields
+///  within the RNG Parameters structure.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
+pub struct RNGParameters {
+    pub rng_algorithm: RNGAlgorithm,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cryptographic_algorithm: Option<CryptographicAlgorithm>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cryptographic_length: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hashing_algorithm: Option<HashingAlgorithm>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub drbg_algorithm: Option<DRBGAlgorithm>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recommended_curve: Option<RecommendedCurve>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fips186_variation: Option<FIPS186Variation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prediction_resistance: Option<bool>,
+}
+
+/// Profile Information contains details about supported KMIP profiles.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
+pub struct ProfileInformation {
+    pub profile_name: ProfileName,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub profile_version: Option<ProfileVersion>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub server_uri: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub server_port: Option<i32>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
+pub struct ProfileVersion {
+    /// Major version number of the profile.
+    pub profile_version_major: i32,
+    /// Minor version number of the profile.
+    pub profile_version_minor: i32,
 }

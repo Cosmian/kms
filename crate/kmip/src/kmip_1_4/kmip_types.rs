@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use strum::Display;
 
 use crate::{
-    kmip_0::kmip_types::HashingAlgorithm,
+    kmip_0::kmip_types::{DRBGAlgorithm, FIPS186Variation, HashingAlgorithm},
     kmip_2_1::{self},
     KmipError,
 };
@@ -200,6 +200,29 @@ pub enum ObjectType {
     PGPKey = 0x9,
 }
 
+impl TryFrom<kmip_2_1::kmip_objects::ObjectType> for ObjectType {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_objects::ObjectType) -> Result<Self, Self::Error> {
+        match value {
+            kmip_2_1::kmip_objects::ObjectType::Certificate => Ok(Self::Certificate),
+            kmip_2_1::kmip_objects::ObjectType::SymmetricKey => Ok(Self::SymmetricKey),
+            kmip_2_1::kmip_objects::ObjectType::PublicKey => Ok(Self::PublicKey),
+            kmip_2_1::kmip_objects::ObjectType::PrivateKey => Ok(Self::PrivateKey),
+            kmip_2_1::kmip_objects::ObjectType::SplitKey => Ok(Self::SplitKey),
+            kmip_2_1::kmip_objects::ObjectType::SecretData => Ok(Self::SecretData),
+            kmip_2_1::kmip_objects::ObjectType::OpaqueObject => Ok(Self::OpaqueObject),
+            kmip_2_1::kmip_objects::ObjectType::PGPKey => Ok(Self::PGPKey),
+            kmip_2_1::kmip_objects::ObjectType::CertificateRequest => {
+                Err(KmipError::InvalidKmip14Value(
+                    ResultReason::InvalidField,
+                    "CertificateRequest is not supported in KMIP 1.4".to_owned(),
+                ))
+            }
+        }
+    }
+}
+
 impl From<ObjectType> for u32 {
     fn from(object_type: ObjectType) -> Self {
         match object_type {
@@ -343,6 +366,60 @@ impl From<CryptographicAlgorithm> for kmip_2_1::kmip_types::CryptographicAlgorit
             CryptographicAlgorithm::HMACSHA3512 => Self::HMACSHA3512,
             CryptographicAlgorithm::SHAKE128 => Self::SHAKE128,
             CryptographicAlgorithm::SHAKE256 => Self::SHAKE256,
+        }
+    }
+}
+
+impl TryFrom<kmip_2_1::kmip_types::CryptographicAlgorithm> for CryptographicAlgorithm {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_types::CryptographicAlgorithm) -> Result<Self, Self::Error> {
+        match value {
+            kmip_2_1::kmip_types::CryptographicAlgorithm::DES => Ok(Self::DES),
+            kmip_2_1::kmip_types::CryptographicAlgorithm::AES => Ok(Self::AES),
+            kmip_2_1::kmip_types::CryptographicAlgorithm::RSA => Ok(Self::RSA),
+            kmip_2_1::kmip_types::CryptographicAlgorithm::DSA => Ok(Self::DSA),
+            kmip_2_1::kmip_types::CryptographicAlgorithm::ECDSA => Ok(Self::ECDSA),
+            kmip_2_1::kmip_types::CryptographicAlgorithm::HMACSHA1 => Ok(Self::HMACSHA1),
+            kmip_2_1::kmip_types::CryptographicAlgorithm::HMACSHA224 => Ok(Self::HMACSHA224),
+            kmip_2_1::kmip_types::CryptographicAlgorithm::HMACSHA256 => Ok(Self::HMACSHA256),
+            kmip_2_1::kmip_types::CryptographicAlgorithm::HMACSHA384 => Ok(Self::HMACSHA384),
+            kmip_2_1::kmip_types::CryptographicAlgorithm::HMACSHA512 => Ok(Self::HMACSHA512),
+            kmip_2_1::kmip_types::CryptographicAlgorithm::HMACMD5 => Ok(Self::HMACMD5),
+            kmip_2_1::kmip_types::CryptographicAlgorithm::DH => Ok(Self::DH),
+            kmip_2_1::kmip_types::CryptographicAlgorithm::ECDH => Ok(Self::ECDH),
+            kmip_2_1::kmip_types::CryptographicAlgorithm::ECMQV => Ok(Self::ECMQV),
+            kmip_2_1::kmip_types::CryptographicAlgorithm::Blowfish => Ok(Self::Blowfish),
+            kmip_2_1::kmip_types::CryptographicAlgorithm::Camellia => Ok(Self::Camellia),
+            kmip_2_1::kmip_types::CryptographicAlgorithm::CAST5 => Ok(Self::CAST5),
+            kmip_2_1::kmip_types::CryptographicAlgorithm::IDEA => Ok(Self::IDEA),
+            kmip_2_1::kmip_types::CryptographicAlgorithm::MARS => Ok(Self::MARS),
+            kmip_2_1::kmip_types::CryptographicAlgorithm::RC2 => Ok(Self::RC2),
+            kmip_2_1::kmip_types::CryptographicAlgorithm::RC4 => Ok(Self::RC4),
+            kmip_2_1::kmip_types::CryptographicAlgorithm::RC5 => Ok(Self::RC5),
+            kmip_2_1::kmip_types::CryptographicAlgorithm::SKIPJACK => Ok(Self::SKIPJACK),
+            kmip_2_1::kmip_types::CryptographicAlgorithm::Twofish => Ok(Self::Twofish),
+            kmip_2_1::kmip_types::CryptographicAlgorithm::EC => Ok(Self::EC),
+            kmip_2_1::kmip_types::CryptographicAlgorithm::OneTimePad => Ok(Self::OneTimePad),
+            kmip_2_1::kmip_types::CryptographicAlgorithm::ChaCha20 => Ok(Self::ChaCha20),
+            kmip_2_1::kmip_types::CryptographicAlgorithm::Poly1305 => Ok(Self::Poly1305),
+            kmip_2_1::kmip_types::CryptographicAlgorithm::ChaCha20Poly1305 => {
+                Ok(Self::ChaCha20Poly1305)
+            }
+            kmip_2_1::kmip_types::CryptographicAlgorithm::SHA3224 => Ok(Self::SHA3224),
+            kmip_2_1::kmip_types::CryptographicAlgorithm::SHA3256 => Ok(Self::SHA3256),
+            kmip_2_1::kmip_types::CryptographicAlgorithm::SHA3384 => Ok(Self::SHA3384),
+            kmip_2_1::kmip_types::CryptographicAlgorithm::SHA3512 => Ok(Self::SHA3512),
+            kmip_2_1::kmip_types::CryptographicAlgorithm::HMACSHA3224 => Ok(Self::HMACSHA3224),
+            kmip_2_1::kmip_types::CryptographicAlgorithm::HMACSHA3256 => Ok(Self::HMACSHA3256),
+            kmip_2_1::kmip_types::CryptographicAlgorithm::HMACSHA3384 => Ok(Self::HMACSHA3384),
+            kmip_2_1::kmip_types::CryptographicAlgorithm::HMACSHA3512 => Ok(Self::HMACSHA3512),
+            kmip_2_1::kmip_types::CryptographicAlgorithm::SHAKE128 => Ok(Self::SHAKE128),
+            kmip_2_1::kmip_types::CryptographicAlgorithm::SHAKE256 => Ok(Self::SHAKE256),
+            x => Err(KmipError::InvalidKmip14Value(
+                ResultReason::InvalidField,
+                format!("Invalid Cryptographic Algorithm value: {x}. Not supported in KMIP 1.4"),
+            )),
         }
     }
 }
@@ -628,6 +705,25 @@ pub enum QueryFunction {
     QueryProfiles = 0xA,
     QueryCapabilities = 0xB,
     QueryClientRegistrationMethods = 0xC,
+}
+
+impl From<QueryFunction> for kmip_2_1::kmip_types::QueryFunction {
+    fn from(val: QueryFunction) -> Self {
+        match val {
+            QueryFunction::QueryOperations => Self::QueryOperations,
+            QueryFunction::QueryObjects => Self::QueryObjects,
+            QueryFunction::QueryServerInformation => Self::QueryServerInformation,
+            QueryFunction::QueryApplicationNamespaces => Self::QueryApplicationNamespaces,
+            QueryFunction::QueryExtensionList => Self::QueryExtensionList,
+            QueryFunction::QueryExtensionMap => Self::QueryExtensionMap,
+            QueryFunction::QueryAttestationTypes => Self::QueryAttestationTypes,
+            QueryFunction::QueryRNGs => Self::QueryRNGs,
+            QueryFunction::QueryValidations => Self::QueryValidations,
+            QueryFunction::QueryProfiles => Self::QueryProfiles,
+            QueryFunction::QueryCapabilities => Self::QueryCapabilities,
+            QueryFunction::QueryClientRegistrationMethods => Self::QueryClientRegistrationMethods,
+        }
+    }
 }
 
 /// KMIP 1.4 Cancellation Result Enumeration
@@ -944,17 +1040,6 @@ impl From<KeyValueLocationType> for kmip_2_1::kmip_types::KeyValueLocationType {
     }
 }
 
-/// KMIP 1.4 RNG Algorithm Enumeration
-#[kmip_enum]
-pub enum RNGAlgorithm {
-    Unspecified = 0x1,
-    FIPS186_2 = 0x2,
-    DRBG = 0x3,
-    NRBG = 0x4,
-    ANSI_X931 = 0x5,
-    ANSI_X962 = 0x6,
-}
-
 impl From<RNGAlgorithm> for kmip_2_1::kmip_types::RNGAlgorithm {
     fn from(val: RNGAlgorithm) -> Self {
         match val {
@@ -968,90 +1053,167 @@ impl From<RNGAlgorithm> for kmip_2_1::kmip_types::RNGAlgorithm {
     }
 }
 
-/// KMIP 1.4 DRBG Algorithm Enumeration
-#[kmip_enum]
-pub enum DRBGAlgorithm {
-    Unspecified = 0x1,
-    // #[serde(rename = "Dual-EC")]
-    DualEC = 0x2,
-    Hash = 0x3,
-    HMAC = 0x4,
-    CTR = 0x5,
-}
-
-impl From<DRBGAlgorithm> for kmip_2_1::kmip_types::DRBGAlgorithm {
-    fn from(val: DRBGAlgorithm) -> Self {
-        match val {
-            DRBGAlgorithm::Unspecified => Self::Unspecified,
-            DRBGAlgorithm::DualEC => Self::DualEC,
-            DRBGAlgorithm::Hash => Self::Hash,
-            DRBGAlgorithm::HMAC => Self::HMAC,
-            DRBGAlgorithm::CTR => Self::CTR,
-        }
-    }
-}
-
-/// KMIP 1.4 FIPS186 Variation Enumeration
-#[kmip_enum]
-pub enum FIPS186Variation {
-    Unspecified = 0x1,
-    // #[serde(rename = "GP x-Original")]
-    GPXOriginal = 0x2,
-    // #[serde(rename = "GP x-Change Notice")]
-    GPXChangeNotice = 0x3,
-    // #[serde(rename = "x-Original")]
-    XOriginal = 0x4,
-    // #[serde(rename = "x-Change Notice")]
-    XChangeNotice = 0x5,
-    // #[serde(rename = "k-Original")]
-    KOriginal = 0x6,
-    // #[serde(rename = "k-Change Notice")]
-    KChangeNotice = 0x7,
-}
-
-impl From<FIPS186Variation> for kmip_2_1::kmip_types::FIPS186Variation {
-    fn from(val: FIPS186Variation) -> Self {
-        match val {
-            FIPS186Variation::Unspecified => Self::Unspecified,
-            FIPS186Variation::GPXOriginal => Self::GPXOriginal,
-            FIPS186Variation::GPXChangeNotice => Self::GPXChangeNotice,
-            FIPS186Variation::XOriginal => Self::XOriginal,
-            FIPS186Variation::XChangeNotice => Self::XChangeNotice,
-            FIPS186Variation::KOriginal => Self::KOriginal,
-            FIPS186Variation::KChangeNotice => Self::KChangeNotice,
-        }
-    }
-}
-
-/// KMIP 1.4 Validation Authority Type Enumeration
-#[kmip_enum]
-pub enum ValidationAuthorityType {
-    Unspecified = 0x1,
-    NIST_CMVP = 0x2,
-    Common_Criteria = 0x3,
-}
-
-/// KMIP 1.4 Validation Type Enumeration
-#[kmip_enum]
-pub enum ValidationType {
-    Unspecified = 0x1,
-    Hardware = 0x2,
-    Software = 0x3,
-    Firmware = 0x4,
-    Hybrid = 0x5,
-}
-
-/// KMIP 1.4 Profile Name Enumeration
 #[kmip_enum]
 pub enum ProfileName {
-    BEK = 0x1,
-    TKLC = 0x2,
-    TKTLS = 0x3,
-    TKSL = 0x4,
-    TKApps = 0x5,
-    TKBEK = 0x6,
-    TKCS = 0x7,
-    TKSW = 0x8,
+    BaselineServerBasicKMIPv12 = 0x0000_0001,
+    BaselineServerTLSv12KMIPv12 = 0x0000_0002,
+    BaselineClientBasicKMIPv12 = 0x0000_0003,
+    BaselineClientTLSv12KMIPv12 = 0x0000_0004,
+    CompleteServerBasicKMIPv12 = 0x0000_0005,
+    CompleteServerTLSv12KMIPv12 = 0x0000_0006,
+    TapeLibraryClientKMIPv10 = 0x0000_0007,
+    TapeLibraryClientKMIPv11 = 0x0000_0008,
+    TapeLibraryClientKMIPv12 = 0x0000_0009,
+    TapeLibraryServerKMIPv10 = 0x0000_000A,
+    TapeLibraryServerKMIPv11 = 0x0000_000B,
+    TapeLibraryServerKMIPv12 = 0x0000_000C,
+    SymmetricKeyLifecycleClientKMIPv10 = 0x0000_000D,
+    SymmetricKeyLifecycleClientKMIPv11 = 0x0000_000E,
+    SymmetricKeyLifecycleClientKMIPv12 = 0x0000_000F,
+    SymmetricKeyLifecycleServerKMIPv10 = 0x0000_0010,
+    SymmetricKeyLifecycleServerKMIPv11 = 0x0000_0011,
+    SymmetricKeyLifecycleServerKMIPv12 = 0x0000_0012,
+    AsymmetricKeyLifecycleClientKMIPv10 = 0x0000_0013,
+    AsymmetricKeyLifecycleClientKMIPv11 = 0x0000_0014,
+    AsymmetricKeyLifecycleClientKMIPv12 = 0x0000_0015,
+    AsymmetricKeyLifecycleServerKMIPv10 = 0x0000_0016,
+    AsymmetricKeyLifecycleServerKMIPv11 = 0x0000_0017,
+    AsymmetricKeyLifecycleServerKMIPv12 = 0x0000_0018,
+    BasicCryptographicClientKMIPv12 = 0x0000_0019,
+    BasicCryptographicServerKMIPv12 = 0x0000_001A,
+    AdvancedCryptographicClientKMIPv12 = 0x0000_001B,
+    AdvancedCryptographicServerKMIPv12 = 0x0000_001C,
+    RNGCryptographicClientKMIPv12 = 0x0000_001D,
+    RNGCryptographicServerKMIPv12 = 0x0000_001E,
+    BasicSymmetricKeyFoundryClientKMIPv10 = 0x0000_001F,
+    IntermediateSymmetricKeyFoundryClientKMIPv10 = 0x0000_0020,
+    AdvancedSymmetricKeyFoundryClientKMIPv10 = 0x0000_0021,
+    BasicSymmetricKeyFoundryClientKMIPv11 = 0x0000_0022,
+    IntermediateSymmetricKeyFoundryClientKMIPv11 = 0x0000_0023,
+    AdvancedSymmetricKeyFoundryClientKMIPv11 = 0x0000_0024,
+    BasicSymmetricKeyFoundryClientKMIPv12 = 0x0000_0025,
+    IntermediateSymmetricKeyFoundryClientKMIPv12 = 0x0000_0026,
+    AdvancedSymmetricKeyFoundryClientKMIPv12 = 0x0000_0027,
+    SymmetricKeyFoundryServerKMIPv10 = 0x0000_0028,
+    SymmetricKeyFoundryServerKMIPv11 = 0x0000_0029,
+    SymmetricKeyFoundryServerKMIPv12 = 0x0000_002A,
+    OpaqueManagedObjectStoreClientKMIPv10 = 0x0000_002B,
+    OpaqueManagedObjectStoreClientKMIPv11 = 0x0000_002C,
+    OpaqueManagedObjectStoreClientKMIPv12 = 0x0000_002D,
+    OpaqueManagedObjectStoreServerKMIPv10 = 0x0000_002E,
+    OpaqueManagedObjectStoreServerKMIPv11 = 0x0000_002F,
+    OpaqueManagedObjectStoreServerKMIPv12 = 0x0000_0030,
+    SuiteBMinLOS128ClientKMIPv10 = 0x0000_0031,
+    SuiteBMinLOS128ClientKMIPv11 = 0x0000_0032,
+    SuiteBMinLOS128ClientKMIPv12 = 0x0000_0033,
+    SuiteBMinLOS128ServerKMIPv10 = 0x0000_0034,
+    SuiteBMinLOS128ServerKMIPv11 = 0x0000_0035,
+    SuiteBMinLOS128ServerKMIPv12 = 0x0000_0036,
+    SuiteBMinLOS192ClientKMIPv10 = 0x0000_0037,
+    SuiteBMinLOS192ClientKMIPv11 = 0x0000_0038,
+    SuiteBMinLOS192ClientKMIPv12 = 0x0000_0039,
+    SuiteBMinLOS192ServerKMIPv10 = 0x0000_003A,
+    SuiteBMinLOS192ServerKMIPv11 = 0x0000_003B,
+    SuiteBMinLOS192ServerKMIPv12 = 0x0000_003C,
+    StorageArrayWithSelfEncryptingDriveClientKMIPv10 = 0x0000_003D,
+    StorageArrayWithSelfEncryptingDriveClientKMIPv11 = 0x0000_003E,
+    StorageArrayWithSelfEncryptingDriveClientKMIPv12 = 0x0000_003F,
+    StorageArrayWithSelfEncryptingDriveServerKMIPv10 = 0x0000_0040,
+    StorageArrayWithSelfEncryptingDriveServerKMIPv11 = 0x0000_0041,
+    StorageArrayWithSelfEncryptingDriveServerKMIPv12 = 0x0000_0042,
+    HTTPSClientKMIPv10 = 0x0000_0043,
+    HTTPSClientKMIPv11 = 0x0000_0044,
+    HTTPSClientKMIPv12 = 0x0000_0045,
+    HTTPSServerKMIPv10 = 0x0000_0046,
+    HTTPSServerKMIPv11 = 0x0000_0047,
+    HTTPSServerKMIPv12 = 0x0000_0048,
+    JSONClientKMIPv10 = 0x0000_0049,
+    JSONClientKMIPv11 = 0x0000_004A,
+    JSONClientKMIPv12 = 0x0000_004B,
+    JSONServerKMIPv10 = 0x0000_004C,
+    JSONServerKMIPv11 = 0x0000_004D,
+    JSONServerKMIPv12 = 0x0000_004E,
+    XMLClientKMIPv10 = 0x0000_004F,
+    XMLClientKMIPv11 = 0x0000_0050,
+    XMLClientKMIPv12 = 0x0000_0051,
+    XMLServerKMIPv10 = 0x0000_0052,
+    XMLServerKMIPv11 = 0x0000_0053,
+    XMLServerKMIPv12 = 0x0000_0054,
+    BaselineServerBasicKMIPv13 = 0x0000_0055,
+    BaselineServerTLSv12KMIPv13 = 0x0000_0056,
+    BaselineClientBasicKMIPv13 = 0x0000_0057,
+    BaselineClientTLSv12KMIPv13 = 0x0000_0058,
+    CompleteServerBasicKMIPv13 = 0x0000_0059,
+    CompleteServerTLSv12KMIPv13 = 0x0000_005A,
+    TapeLibraryClientKMIPv13 = 0x0000_005B,
+    TapeLibraryServerKMIPv13 = 0x0000_005C,
+    SymmetricKeyLifecycleClientKMIPv13 = 0x0000_005D,
+    SymmetricKeyLifecycleServerKMIPv13 = 0x0000_005E,
+    AsymmetricKeyLifecycleClientKMIPv13 = 0x0000_005F,
+    AsymmetricKeyLifecycleServerKMIPv13 = 0x0000_0060,
+    BasicCryptographicClientKMIPv13 = 0x0000_0061,
+    BasicCryptographicServerKMIPv13 = 0x0000_0062,
+    AdvancedCryptographicClientKMIPv13 = 0x0000_0063,
+    AdvancedCryptographicServerKMIPv13 = 0x0000_0064,
+    RNGCryptographicClientKMIPv13 = 0x0000_0065,
+    RNGCryptographicServerKMIPv13 = 0x0000_0066,
+    BasicSymmetricKeyFoundryClientKMIPv13 = 0x0000_0067,
+    IntermediateSymmetricKeyFoundryClientKMIPv13 = 0x0000_0068,
+    AdvancedSymmetricKeyFoundryClientKMIPv13 = 0x0000_0069,
+    SymmetricKeyFoundryServerKMIPv13 = 0x0000_006A,
+    OpaqueManagedObjectStoreClientKMIPv13 = 0x0000_006B,
+    OpaqueManagedObjectStoreServerKMIPv13 = 0x0000_006C,
+    SuiteBMinLOS128ClientKMIPv13 = 0x0000_006D,
+    SuiteBMinLOS128ServerKMIPv13 = 0x0000_006E,
+    SuiteBMinLOS192ClientKMIPv13 = 0x0000_006F,
+    SuiteBMinLOS192ServerKMIPv13 = 0x0000_0070,
+    StorageArrayWithSelfEncryptingDriveClientKMIPv13 = 0x0000_0071,
+    StorageArrayWithSelfEncryptingDriveServerKMIPv13 = 0x0000_0072,
+    HTTPSClientKMIPv13 = 0x0000_0073,
+    HTTPSServerKMIPv13 = 0x0000_0074,
+    JSONClientKMIPv13 = 0x0000_0075,
+    JSONServerKMIPv13 = 0x0000_0076,
+    XMLClientKMIPv13 = 0x0000_0077,
+    XMLServerKMIPv13 = 0x0000_0078,
+    BaselineServerBasicKMIPv14 = 0x0000_0079,
+    BaselineServerTLSv12KMIPv14 = 0x0000_007A,
+    BaselineClientBasicKMIPv14 = 0x0000_007B,
+    BaselineClientTLSv12KMIPv14 = 0x0000_007C,
+    CompleteServerBasicKMIPv14 = 0x0000_007D,
+    CompleteServerTLSv12KMIPv14 = 0x0000_007E,
+    TapeLibraryClientKMIPv14 = 0x0000_007F,
+    TapeLibraryServerKMIPv14 = 0x0000_0080,
+    SymmetricKeyLifecycleClientKMIPv14 = 0x0000_0081,
+    SymmetricKeyLifecycleServerKMIPv14 = 0x0000_0082,
+    AsymmetricKeyLifecycleClientKMIPv14 = 0x0000_0083,
+    AsymmetricKeyLifecycleServerKMIPv14 = 0x0000_0084,
+    BasicCryptographicClientKMIPv14 = 0x0000_0085,
+    BasicCryptographicServerKMIPv14 = 0x0000_0086,
+    AdvancedCryptographicClientKMIPv14 = 0x0000_0087,
+    AdvancedCryptographicServerKMIPv14 = 0x0000_0088,
+    RNGCryptographicClientKMIPv14 = 0x0000_0089,
+    RNGCryptographicServerKMIPv14 = 0x0000_008A,
+    BasicSymmetricKeyFoundryClientKMIPv14 = 0x0000_008B,
+    IntermediateSymmetricKeyFoundryClientKMIPv14 = 0x0000_008C,
+    AdvancedSymmetricKeyFoundryClientKMIPv14 = 0x0000_008D,
+    SymmetricKeyFoundryServerKMIPv14 = 0x0000_008E,
+    OpaqueManagedObjectStoreClientKMIPv14 = 0x0000_008F,
+    OpaqueManagedObjectStoreServerKMIPv14 = 0x0000_0090,
+    SuiteBMinLOS128ClientKMIPv14 = 0x0000_0091,
+    SuiteBMinLOS128ServerKMIPv14 = 0x0000_0092,
+    SuiteBMinLOS192ClientKMIPv14 = 0x0000_0093,
+    SuiteBMinLOS192ServerKMIPv14 = 0x0000_0094,
+    StorageArrayWithSelfEncryptingDriveClientKMIPv14 = 0x0000_0095,
+    StorageArrayWithSelfEncryptingDriveServerKMIPv14 = 0x0000_0096,
+    HTTPSClientKMIPv14 = 0x0000_0097,
+    HTTPSServerKMIPv14 = 0x0000_0098,
+    JSONClientKMIPv14 = 0x0000_0099,
+    JSONServerKMIPv14 = 0x0000_009A,
+    XMLClientKMIPv14 = 0x0000_009B,
+    XMLServerKMIPv14 = 0x0000_009C,
+    // Extension used to support KMIP 2.1 which has a completely different set of profiles
+    // and is not compatible with KMIP 1.4
+    KMIP21 = 0x8000_0001,
 }
 
 /// KMIP 1.4 Unwrap Mode Enumeration
@@ -1198,6 +1360,57 @@ impl From<RecommendedCurve> for kmip_2_1::kmip_types::RecommendedCurve {
             RecommendedCurve::BRAINPOOLP512R1 => Self::BRAINPOOLP512R1,
             RecommendedCurve::BRAINPOOLP512T1 => Self::BRAINPOOLP512T1,
         }
+    }
+}
+
+impl TryFrom<kmip_2_1::kmip_types::RecommendedCurve> for RecommendedCurve {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_types::RecommendedCurve) -> Result<Self, Self::Error> {
+        Ok(match value {
+            kmip_2_1::kmip_types::RecommendedCurve::P192 => Self::P192,
+            kmip_2_1::kmip_types::RecommendedCurve::K163 => Self::K163,
+            kmip_2_1::kmip_types::RecommendedCurve::B163 => Self::B163,
+            kmip_2_1::kmip_types::RecommendedCurve::P224 => Self::P224,
+            kmip_2_1::kmip_types::RecommendedCurve::K233 => Self::K233,
+            kmip_2_1::kmip_types::RecommendedCurve::B233 => Self::B233,
+            kmip_2_1::kmip_types::RecommendedCurve::P256 => Self::P256,
+            kmip_2_1::kmip_types::RecommendedCurve::K283 => Self::K283,
+            kmip_2_1::kmip_types::RecommendedCurve::B283 => Self::B283,
+            kmip_2_1::kmip_types::RecommendedCurve::P384 => Self::P384,
+            kmip_2_1::kmip_types::RecommendedCurve::K409 => Self::K409,
+            kmip_2_1::kmip_types::RecommendedCurve::B409 => Self::B409,
+            kmip_2_1::kmip_types::RecommendedCurve::P521 => Self::P521,
+            kmip_2_1::kmip_types::RecommendedCurve::K571 => Self::K571,
+            kmip_2_1::kmip_types::RecommendedCurve::B571 => Self::B571,
+            kmip_2_1::kmip_types::RecommendedCurve::SECP112R1 => Self::SECP112R1,
+            kmip_2_1::kmip_types::RecommendedCurve::SECP112R2 => Self::SECP112R2,
+            kmip_2_1::kmip_types::RecommendedCurve::SECP128R1 => Self::SECP128R1,
+            kmip_2_1::kmip_types::RecommendedCurve::SECP128R2 => Self::SECP128R2,
+            kmip_2_1::kmip_types::RecommendedCurve::SECP160R1 => Self::SECP160R1,
+            kmip_2_1::kmip_types::RecommendedCurve::SECP160K1 => Self::SECP160K1,
+            kmip_2_1::kmip_types::RecommendedCurve::SECP256K1 => Self::SECP256K1,
+            kmip_2_1::kmip_types::RecommendedCurve::BRAINPOOLP160R1 => Self::BRAINPOOLP160R1,
+            kmip_2_1::kmip_types::RecommendedCurve::BRAINPOOLP160T1 => Self::BRAINPOOLP160T1,
+            kmip_2_1::kmip_types::RecommendedCurve::BRAINPOOLP192R1 => Self::BRAINPOOLP192R1,
+            kmip_2_1::kmip_types::RecommendedCurve::BRAINPOOLP192T1 => Self::BRAINPOOLP192T1,
+            kmip_2_1::kmip_types::RecommendedCurve::BRAINPOOLP224R1 => Self::BRAINPOOLP224R1,
+            kmip_2_1::kmip_types::RecommendedCurve::BRAINPOOLP224T1 => Self::BRAINPOOLP224T1,
+            kmip_2_1::kmip_types::RecommendedCurve::BRAINPOOLP256R1 => Self::BRAINPOOLP256R1,
+            kmip_2_1::kmip_types::RecommendedCurve::BRAINPOOLP256T1 => Self::BRAINPOOLP256T1,
+            kmip_2_1::kmip_types::RecommendedCurve::BRAINPOOLP320R1 => Self::BRAINPOOLP320R1,
+            kmip_2_1::kmip_types::RecommendedCurve::BRAINPOOLP320T1 => Self::BRAINPOOLP320T1,
+            kmip_2_1::kmip_types::RecommendedCurve::BRAINPOOLP384R1 => Self::BRAINPOOLP384R1,
+            kmip_2_1::kmip_types::RecommendedCurve::BRAINPOOLP384T1 => Self::BRAINPOOLP384T1,
+            kmip_2_1::kmip_types::RecommendedCurve::BRAINPOOLP512R1 => Self::BRAINPOOLP512R1,
+            kmip_2_1::kmip_types::RecommendedCurve::BRAINPOOLP512T1 => Self::BRAINPOOLP512T1,
+            x => {
+                return Err(KmipError::InvalidKmip14Value(
+                    ResultReason::OperationNotSupported,
+                    format!("RecommendedCurve not supported in KMIP 1: {x:?}"),
+                ))
+            }
+        })
     }
 }
 

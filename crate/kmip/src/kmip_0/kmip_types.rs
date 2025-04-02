@@ -647,3 +647,71 @@ pub enum KeyWrapType {
     NotWrapped = 0x0000_0001,
     AsRegistered = 0x0000_0002,
 }
+
+/// KMIP 1.4 FIPS186 Variation Enumeration
+#[kmip_enum]
+pub enum FIPS186Variation {
+    Unspecified = 0x1,
+    // #[serde(rename = "GP x-Original")]
+    GPXOriginal = 0x2,
+    // #[serde(rename = "GP x-Change Notice")]
+    GPXChangeNotice = 0x3,
+    // #[serde(rename = "x-Original")]
+    XOriginal = 0x4,
+    // #[serde(rename = "x-Change Notice")]
+    XChangeNotice = 0x5,
+    // #[serde(rename = "k-Original")]
+    KOriginal = 0x6,
+    // #[serde(rename = "k-Change Notice")]
+    KChangeNotice = 0x7,
+}
+
+/// DRBG Algorithm Enumeration
+#[kmip_enum]
+pub enum DRBGAlgorithm {
+    Unspecified = 0x1,
+    // #[serde(rename = "Dual-EC")]
+    DualEC = 0x2,
+    Hash = 0x3,
+    HMAC = 0x4,
+    CTR = 0x5,
+}
+
+/// RNG Algorithm Enumeration
+#[kmip_enum]
+pub enum RNGAlgorithm {
+    Unspecified = 0x1,
+    FIPS186_2 = 0x2,
+    DRBG = 0x3,
+    NRBG = 0x4,
+    ANSI_X931 = 0x5,
+    ANSI_X962 = 0x6,
+}
+
+/// Types of validation authorities that can validate cryptographic objects.
+#[kmip_enum]
+pub enum ValidationAuthorityType {
+    /// Common Criteria Testing Laboratory authority.
+    CommonCriteriaTestingLaboratory = 0x0000_0001,
+    /// National Voluntary Laboratory Accreditation Program.
+    Nvlap = 0x0000_0002,
+    /// National Information Assurance Partnership.
+    Niap = 0x0000_0003,
+    /// Authority not matching any other defined type.
+    Unspecified = 0x0000_0004,
+    /// Federal Information Processing Standards authority.
+    FipsApprovedSecurityFunction = 0x0000_0005,
+    /// ISO/IEC 19790 compliant validation.
+    Iso19790Compliant = 0x0000_0006,
+    /// Federal Information Security Management Act authority.
+    Fisma = 0x0000_0007,
+}
+
+#[kmip_enum]
+pub enum ValidationType {
+    Unspecified = 0x1,
+    Hardware = 0x2,
+    Software = 0x3,
+    Firmware = 0x4,
+    Hybrid = 0x5,
+}
