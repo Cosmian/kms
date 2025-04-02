@@ -30,7 +30,7 @@ jobs:
       toolchain: ${{ inputs.toolchain }}
 
   build:
-    uses: ./.github/workflows/build_all.yml
+    uses: Cosmian/reusable_workflows/.github/workflows/build_all.yml@add-workflows
     secrets: inherit
     with:
       toolchain: ${{ inputs.toolchain }}
@@ -38,7 +38,7 @@ jobs:
 
   not-fips-image:
     name: Not FIPS image build and tests
-    uses: ./.github/workflows/build_docker_image.yml
+    uses: Cosmian/reusable_workflows/.github/workflows/build_docker_image.yml@add-workflows
     with:
       prefix: ''
       registry-image: ghcr.io/cosmian/kms
@@ -47,7 +47,7 @@ jobs:
 
   fips-image:
     name: FIPS image build and tests
-    uses: ./.github/workflows/build_docker_image.yml
+    uses: Cosmian/reusable_workflows/.github/workflows/build_docker_image.yml@add-workflows
     with:
       prefix: FIPS
       registry-image: ghcr.io/cosmian/kms-fips
