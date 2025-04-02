@@ -24,7 +24,7 @@ use tracing::trace;
 pub(crate) async fn discover_versions(request: DiscoverVersions) -> DiscoverVersionsResponse {
     trace!(
         "Discover versions: {}",
-        serde_json::to_string(&request).unwrap_or("[N/A]".to_owned())
+        serde_json::to_string(&request).unwrap_or_else(|_| "[N/A]".to_owned())
     );
 
     let supported = vec![

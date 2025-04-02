@@ -745,6 +745,81 @@ impl From<OperationEnumeration> for kmip_2_1::kmip_types::OperationEnumeration {
     }
 }
 
+impl TryFrom<kmip_2_1::kmip_types::OperationEnumeration> for OperationEnumeration {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_types::OperationEnumeration) -> Result<Self, Self::Error> {
+        Ok(match value {
+            kmip_2_1::kmip_types::OperationEnumeration::Create => Self::Create,
+            kmip_2_1::kmip_types::OperationEnumeration::CreateKeyPair => Self::CreateKeyPair,
+            kmip_2_1::kmip_types::OperationEnumeration::Register => Self::Register,
+            kmip_2_1::kmip_types::OperationEnumeration::ReKey => Self::ReKey,
+            kmip_2_1::kmip_types::OperationEnumeration::DeriveKey => Self::DeriveKey,
+            kmip_2_1::kmip_types::OperationEnumeration::Certify => Self::Certify,
+            kmip_2_1::kmip_types::OperationEnumeration::ReCertify => Self::ReCertify,
+            kmip_2_1::kmip_types::OperationEnumeration::Locate => Self::Locate,
+            kmip_2_1::kmip_types::OperationEnumeration::Check => Self::Check,
+            kmip_2_1::kmip_types::OperationEnumeration::Get => Self::Get,
+            kmip_2_1::kmip_types::OperationEnumeration::GetAttributes => Self::GetAttributes,
+            kmip_2_1::kmip_types::OperationEnumeration::GetAttributeList => Self::GetAttributeList,
+            kmip_2_1::kmip_types::OperationEnumeration::AddAttribute => Self::AddAttribute,
+            kmip_2_1::kmip_types::OperationEnumeration::ModifyAttribute => Self::ModifyAttribute,
+            kmip_2_1::kmip_types::OperationEnumeration::DeleteAttribute => Self::DeleteAttribute,
+            kmip_2_1::kmip_types::OperationEnumeration::ObtainLease => Self::ObtainLease,
+            kmip_2_1::kmip_types::OperationEnumeration::GetUsageAllocation => {
+                Self::GetUsageAllocation
+            }
+            kmip_2_1::kmip_types::OperationEnumeration::Activate => Self::Activate,
+            kmip_2_1::kmip_types::OperationEnumeration::Revoke => Self::Revoke,
+            kmip_2_1::kmip_types::OperationEnumeration::Destroy => Self::Destroy,
+            kmip_2_1::kmip_types::OperationEnumeration::Archive => Self::Archive,
+            kmip_2_1::kmip_types::OperationEnumeration::Recover => Self::Recover,
+            kmip_2_1::kmip_types::OperationEnumeration::Validate => Self::Validate,
+            kmip_2_1::kmip_types::OperationEnumeration::Query => Self::Query,
+            kmip_2_1::kmip_types::OperationEnumeration::Cancel => Self::Cancel,
+            kmip_2_1::kmip_types::OperationEnumeration::Poll => Self::Poll,
+            kmip_2_1::kmip_types::OperationEnumeration::Notify => Self::Notify,
+            kmip_2_1::kmip_types::OperationEnumeration::Put => Self::Put,
+            kmip_2_1::kmip_types::OperationEnumeration::ReKeyKeyPair => Self::ReKeyKeyPair,
+            kmip_2_1::kmip_types::OperationEnumeration::DiscoverVersions => Self::DiscoverVersions,
+            kmip_2_1::kmip_types::OperationEnumeration::Encrypt => Self::Encrypt,
+            kmip_2_1::kmip_types::OperationEnumeration::Decrypt => Self::Decrypt,
+            kmip_2_1::kmip_types::OperationEnumeration::Sign => Self::Sign,
+            kmip_2_1::kmip_types::OperationEnumeration::SignatureVerify => Self::SignatureVerify,
+            kmip_2_1::kmip_types::OperationEnumeration::MAC => Self::MAC,
+            kmip_2_1::kmip_types::OperationEnumeration::MACVerify => Self::MACVerify,
+            kmip_2_1::kmip_types::OperationEnumeration::RNGRetrieve => Self::RNGRetrieve,
+            kmip_2_1::kmip_types::OperationEnumeration::RNGSeed => Self::RNGSeed,
+            kmip_2_1::kmip_types::OperationEnumeration::Hash => Self::Hash,
+            kmip_2_1::kmip_types::OperationEnumeration::CreateSplitKey => Self::CreateSplitKey,
+            kmip_2_1::kmip_types::OperationEnumeration::JoinSplitKey => Self::JoinSplitKey,
+            kmip_2_1::kmip_types::OperationEnumeration::Import => Self::Import,
+            kmip_2_1::kmip_types::OperationEnumeration::Export => Self::Export,
+            kmip_2_1::kmip_types::OperationEnumeration::Log
+            | kmip_2_1::kmip_types::OperationEnumeration::Login
+            | kmip_2_1::kmip_types::OperationEnumeration::Logout
+            | kmip_2_1::kmip_types::OperationEnumeration::DelegatedLogin
+            | kmip_2_1::kmip_types::OperationEnumeration::AdjustAttribute
+            | kmip_2_1::kmip_types::OperationEnumeration::SetAttribute
+            | kmip_2_1::kmip_types::OperationEnumeration::SetEndpointRole
+            | kmip_2_1::kmip_types::OperationEnumeration::PKCS11
+            | kmip_2_1::kmip_types::OperationEnumeration::Interop
+            | kmip_2_1::kmip_types::OperationEnumeration::ReProvision
+            | kmip_2_1::kmip_types::OperationEnumeration::SetDefaults
+            | kmip_2_1::kmip_types::OperationEnumeration::SetConstraints
+            | kmip_2_1::kmip_types::OperationEnumeration::GetConstraints
+            | kmip_2_1::kmip_types::OperationEnumeration::QueryAsynchronousRequests
+            | kmip_2_1::kmip_types::OperationEnumeration::Process
+            | kmip_2_1::kmip_types::OperationEnumeration::Ping => {
+                return Err(KmipError::InvalidKmip14Value(
+                    ResultReason::OperationNotSupported,
+                    format!("Operation not supported: {value:?}"),
+                ))
+            }
+        })
+    }
+}
+
 /// KMIP 1.4 Result Status Enumeration
 #[kmip_enum]
 pub enum ResultStatus {
