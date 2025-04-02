@@ -33,12 +33,12 @@ pub(crate) async fn discover_versions(request: DiscoverVersions) -> DiscoverVers
             protocol_version_minor: 1,
         },
         ProtocolVersion {
-            protocol_version_major: 1,
-            protocol_version_minor: 1,
+            protocol_version_major: 2,
+            protocol_version_minor: 0,
         },
         ProtocolVersion {
             protocol_version_major: 1,
-            protocol_version_minor: 2,
+            protocol_version_minor: 4,
         },
         ProtocolVersion {
             protocol_version_major: 1,
@@ -46,7 +46,15 @@ pub(crate) async fn discover_versions(request: DiscoverVersions) -> DiscoverVers
         },
         ProtocolVersion {
             protocol_version_major: 1,
-            protocol_version_minor: 4,
+            protocol_version_minor: 2,
+        },
+        ProtocolVersion {
+            protocol_version_major: 1,
+            protocol_version_minor: 1,
+        },
+        ProtocolVersion {
+            protocol_version_major: 1,
+            protocol_version_minor: 0,
         },
     ];
 
@@ -59,7 +67,7 @@ pub(crate) async fn discover_versions(request: DiscoverVersions) -> DiscoverVers
             }
         }
         return DiscoverVersionsResponse {
-            protocol_versions: if response.is_empty() {
+            protocol_version: if response.is_empty() {
                 None
             } else {
                 Some(response)
@@ -69,6 +77,6 @@ pub(crate) async fn discover_versions(request: DiscoverVersions) -> DiscoverVers
 
     // no requested versions, return all supported versions
     DiscoverVersionsResponse {
-        protocol_versions: Some(supported),
+        protocol_version: Some(supported),
     }
 }

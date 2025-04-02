@@ -957,7 +957,7 @@ pub(crate) fn test_message_enforce_enum() {
         batch_item: vec![ResponseMessageBatchItemVersioned::V21(
             ResponseMessageBatchItem {
                 operation: Some(OperationEnumeration::Locate),
-                unique_batch_item_id: Some("1234".to_owned()),
+                unique_batch_item_id: Some(b"1234".to_vec()),
                 // in a message response, we can't have `Operation::Locate`,
                 // we could only have an `Operation::LocateResponse`
                 response_payload: Some(Operation::Locate(Locate::default())),
@@ -1460,7 +1460,7 @@ pub(crate) fn test_message_response() {
         batch_item: vec![
             ResponseMessageBatchItemVersioned::V21(ResponseMessageBatchItem {
                 operation: Some(OperationEnumeration::Locate),
-                unique_batch_item_id: Some("1234".to_owned()),
+                unique_batch_item_id: Some(b"1234".to_vec()),
                 response_payload: Some(Operation::LocateResponse(LocateResponse {
                     located_items: Some(134),
                     unique_identifiers: Some(vec![UniqueIdentifier::TextString(
@@ -1479,7 +1479,7 @@ pub(crate) fn test_message_response() {
             }),
             ResponseMessageBatchItemVersioned::V21(ResponseMessageBatchItem {
                 operation: Some(OperationEnumeration::Decrypt),
-                unique_batch_item_id: Some("1235".to_owned()),
+                unique_batch_item_id: Some(b"1235".to_vec()),
                 response_payload: Some(Operation::DecryptResponse(DecryptResponse {
                     unique_identifier: UniqueIdentifier::TextString("id_12345".to_owned()),
                     data: Some(Zeroizing::from(b"decrypted_data".to_vec())),

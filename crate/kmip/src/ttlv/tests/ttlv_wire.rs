@@ -20,7 +20,7 @@ use crate::{
 
 #[test]
 fn test_serialization_deserialization() {
-    log_init(Some("trace"));
+    log_init(option_env!("RUST_LOG"));
     // KMIP Request Message in Rust
     let request_message = RequestMessage {
         request_header: RequestMessageHeader {
