@@ -97,8 +97,8 @@ where
                 self.reader.read_exact(&mut buf)?;
                 let value = TTLValue::TextString(String::from_utf8(buf)?);
                 // calculate the padding
-                let padding = 8 - (length % 8);
-                if padding != 8 {
+                let padding = (8 - (length % 8)) % 8;
+                if padding != 0 {
                     // read the padding bytes
                     let mut padding_bytes = vec![0_u8; padding];
                     self.reader.read_exact(&mut padding_bytes)?;
@@ -110,8 +110,8 @@ where
                 self.reader.read_exact(&mut buf)?;
                 let value = TTLValue::ByteString(buf);
                 // calculate the padding
-                let padding = 8 - (length % 8);
-                if padding != 8 {
+                let padding = (8 - (length % 8)) % 8;
+                if padding != 0 {
                     // read the padding bytes
                     let mut padding_bytes = vec![0_u8; padding];
                     self.reader.read_exact(&mut padding_bytes)?;
