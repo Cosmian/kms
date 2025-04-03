@@ -320,55 +320,55 @@ impl<'de> Deserialize<'de> for Credential {
                     match key {
                         Field::Username => {
                             if username.is_some() {
-                                return Err(de::Error::duplicate_field("username"))
+                                return Err(de::Error::duplicate_field("username"));
                             }
                             username = Some(map.next_value()?);
                         }
                         Field::Password => {
                             if password.is_some() {
-                                return Err(de::Error::duplicate_field("password"))
+                                return Err(de::Error::duplicate_field("password"));
                             }
                             password = Some(map.next_value()?);
                         }
                         Field::DeviceSerialNumber => {
                             if device_serial_number.is_some() {
-                                return Err(de::Error::duplicate_field("device_serial_number"))
+                                return Err(de::Error::duplicate_field("device_serial_number"));
                             }
                             device_serial_number = Some(map.next_value()?);
                         }
                         Field::DeviceIdentifier => {
                             if device_identifier.is_some() {
-                                return Err(de::Error::duplicate_field("device_identifier"))
+                                return Err(de::Error::duplicate_field("device_identifier"));
                             }
                             device_identifier = Some(map.next_value()?);
                         }
                         Field::NetworkIdentifier => {
                             if network_identifier.is_some() {
-                                return Err(de::Error::duplicate_field("network_identifier"))
+                                return Err(de::Error::duplicate_field("network_identifier"));
                             }
                             network_identifier = Some(map.next_value()?);
                         }
                         Field::MachineIdentifier => {
                             if machine_identifier.is_some() {
-                                return Err(de::Error::duplicate_field("machine_identifier"))
+                                return Err(de::Error::duplicate_field("machine_identifier"));
                             }
                             machine_identifier = Some(map.next_value()?);
                         }
                         Field::MediaIdentifier => {
                             if media_identifier.is_some() {
-                                return Err(de::Error::duplicate_field("media_identifier"))
+                                return Err(de::Error::duplicate_field("media_identifier"));
                             }
                             media_identifier = Some(map.next_value()?);
                         }
                         Field::Nonce => {
                             if nonce.is_some() {
-                                return Err(de::Error::duplicate_field("nonce"))
+                                return Err(de::Error::duplicate_field("nonce"));
                             }
                             nonce = Some(map.next_value()?);
                         }
                         Field::AttestationType => {
                             if attestation_type.is_some() {
-                                return Err(de::Error::duplicate_field("attestation_type"))
+                                return Err(de::Error::duplicate_field("attestation_type"));
                             }
                             attestation_type = Some(map.next_value()?);
                         }
@@ -376,49 +376,49 @@ impl<'de> Deserialize<'de> for Credential {
                             if attestation_measurement.is_some() {
                                 return Err(de::Error::duplicate_field(
                                     "attestation_measurement_type",
-                                ))
+                                ));
                             }
                             attestation_measurement = Some(map.next_value()?);
                         }
                         Field::AttestationAssertion => {
                             if attestation_assertion.is_some() {
-                                return Err(de::Error::duplicate_field("attestation_assertion"))
+                                return Err(de::Error::duplicate_field("attestation_assertion"));
                             }
                             attestation_assertion = Some(map.next_value()?);
                         }
                         Field::OneTimePassword => {
                             if one_time_password.is_some() {
-                                return Err(de::Error::duplicate_field("one_time_password"))
+                                return Err(de::Error::duplicate_field("one_time_password"));
                             }
                             one_time_password = Some(map.next_value()?);
                         }
                         Field::Timestamp => {
                             if timestamp.is_some() {
-                                return Err(de::Error::duplicate_field("timestamp"))
+                                return Err(de::Error::duplicate_field("timestamp"));
                             }
                             timestamp = Some(map.next_value()?);
                         }
                         Field::HashingAlgorithm => {
                             if hashing_algorithm.is_some() {
-                                return Err(de::Error::duplicate_field("hashing_algorithm"))
+                                return Err(de::Error::duplicate_field("hashing_algorithm"));
                             }
                             hashing_algorithm = Some(map.next_value()?);
                         }
                         Field::HashedPassword => {
                             if hashed_password.is_some() {
-                                return Err(de::Error::duplicate_field("hashed_password"))
+                                return Err(de::Error::duplicate_field("hashed_password"));
                             }
                             hashed_password = Some(map.next_value()?);
                         }
                         Field::TicketType => {
                             if ticket_type.is_some() {
-                                return Err(de::Error::duplicate_field("ticket_type"))
+                                return Err(de::Error::duplicate_field("ticket_type"));
                             }
                             ticket_type = Some(map.next_value()?);
                         }
                         Field::TicketValue => {
                             if ticket_value.is_some() {
-                                return Err(de::Error::duplicate_field("ticket_value"))
+                                return Err(de::Error::duplicate_field("ticket_value"));
                             }
                             ticket_value = Some(map.next_value()?);
                         }
@@ -431,7 +431,7 @@ impl<'de> Deserialize<'de> for Credential {
                         attestation_type,
                         attestation_measurement,
                         attestation_assertion,
-                    })
+                    });
                 } else if let (Some(ticket_type), Some(ticket_value)) = (ticket_type, ticket_value)
                 {
                     return Ok(Credential::Ticket {
@@ -445,7 +445,7 @@ impl<'de> Deserialize<'de> for Credential {
                             timestamp,
                             hashing_algorithm,
                             hashed_password,
-                        })
+                        });
                     } else if let Some(one_time_password) = one_time_password {
                         return Ok(Credential::OneTimePassword {
                             username,
@@ -454,7 +454,7 @@ impl<'de> Deserialize<'de> for Credential {
                         })
                     }
 
-                    return Ok(Credential::UsernameAndPassword { username, password })
+                    return Ok(Credential::UsernameAndPassword { username, password });
                 }
 
                 Ok(Credential::Device {
@@ -714,4 +714,30 @@ pub enum ValidationType {
     Software = 0x3,
     Firmware = 0x4,
     Hybrid = 0x5,
+}
+
+#[kmip_enum]
+pub enum UnwrapMode {
+    Unspecified = 0x1,
+    UsingWrappingKey = 0x2,
+    UsingTransportKey = 0x3,
+}
+
+/// KMIP 1.4 Destroy Action Enumeration
+#[kmip_enum]
+pub enum DestroyAction {
+    Unspecified = 0x1,
+    KeyMaterialDeleted = 0x2,
+    KeyMaterialShredded = 0x3,
+    MetaDataDeleted = 0x4,
+    MetaDataShredded = 0x5,
+    Deleted = 0x6,
+    Shredded = 0x7,
+}
+
+#[kmip_enum]
+pub enum ShreddingAlgorithm {
+    Unspecified = 0x1,
+    Cryptographic = 0x2,
+    Unsupervised = 0x3,
 }

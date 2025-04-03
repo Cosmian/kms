@@ -23,11 +23,10 @@ pub(crate) async fn query(request: Query) -> KResult<QueryResponse> {
         server_information: None,
         extension_information: None,
         attestation_types: None,
-        rng_mode: None,
-        profiles_supported: None,
+        rng_parameters: None,
+        profiles_information: None,
         validation_information: None,
         capability_information: None,
-        client_registration_methods: None,
         defaults_information: None,
         protection_storage_masks: None,
     };

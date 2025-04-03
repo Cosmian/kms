@@ -13,9 +13,7 @@ use crate::{
         kmip_types::{AttestationType, Direction, KeyWrapType},
     },
     kmip_1_4::kmip_attributes::{Attribute, Attributes},
-    kmip_2_1,
-    kmip_2_1::kmip_data_structures::ValidationInformation,
-    KmipError,
+    kmip_2_1, KmipError,
 };
 
 /// 4.1 Create
@@ -27,7 +25,7 @@ use crate::{
 pub struct Create {
     /// Determines the type of object to be created
     pub object_type: ObjectType,
-    /// Specifies template attributes to be assigned to new object
+    /// Specifies template attributes to be assigned to a new object
     pub template_attribute: TemplateAttribute,
 }
 
@@ -492,10 +490,10 @@ pub struct Query {
 
 impl From<Query> for kmip_2_1::kmip_operations::Query {
     fn from(query: Query) -> Self {
-        kmip_2_1::kmip_operations::Query {
+        Self {
             query_function: query.query_function.map(|v| {
                 v.into_iter()
-                    .map(|f| f.into())
+                    .map(Into::into)
                     .collect::<Vec<kmip_2_1::kmip_types::QueryFunction>>()
             }),
         }
@@ -560,7 +558,7 @@ impl TryFrom<kmip_2_1::kmip_operations::QueryResponse> for QueryResponse {
             .operation
             .map(|v| {
                 v.into_iter()
-                    .map(|f| f.try_into())
+                    .map(TryInto::try_into)
                     .collect::<Result<Vec<OperationEnumeration>, KmipError>>()
             })
             .transpose()?;
@@ -569,7 +567,7 @@ impl TryFrom<kmip_2_1::kmip_operations::QueryResponse> for QueryResponse {
             .object_type
             .map(|v| {
                 v.into_iter()
-                    .map(|f| f.try_into())
+                    .map(TryInto::try_into)
                     .collect::<Result<Vec<ObjectType>, KmipError>>()
             })
             .transpose()?;
@@ -578,7 +576,7 @@ impl TryFrom<kmip_2_1::kmip_operations::QueryResponse> for QueryResponse {
             .extension_information
             .map(|v| {
                 v.into_iter()
-                    .map(|f| f.try_into())
+                    .map(TryInto::try_into)
                     .collect::<Result<Vec<ExtensionInformation>, KmipError>>()
             })
             .transpose()?;
@@ -587,7 +585,7 @@ impl TryFrom<kmip_2_1::kmip_operations::QueryResponse> for QueryResponse {
             .rng_parameters
             .map(|v| {
                 v.into_iter()
-                    .map(|f| f.try_into())
+                    .map(TryInto::try_into)
                     .collect::<Result<Vec<RNGParameters>, KmipError>>()
             })
             .transpose()?;
@@ -596,7 +594,7 @@ impl TryFrom<kmip_2_1::kmip_operations::QueryResponse> for QueryResponse {
             .profiles_information
             .map(|v| {
                 v.into_iter()
-                    .map(|f| f.try_into())
+                    .map(TryInto::try_into)
                     .collect::<Result<Vec<ProfileInformation>, KmipError>>()
             })
             .transpose()?;
@@ -605,12 +603,12 @@ impl TryFrom<kmip_2_1::kmip_operations::QueryResponse> for QueryResponse {
             .capability_information
             .map(|v| {
                 v.into_iter()
-                    .map(|f| f.try_into())
+                    .map(TryInto::try_into)
                     .collect::<Result<Vec<CapabilityInformation>, KmipError>>()
             })
             .transpose()?;
 
-        Ok(QueryResponse {
+        Ok(Self {
             operation,
             object_type,
             vendor_identification: value.vendor_identification,

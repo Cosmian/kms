@@ -194,7 +194,7 @@ async fn process_operation(
         | Operation::ValidateResponse(_) => {
             return Err(KmsError::Kmip21Error(
                 ErrorReason::Operation_Not_Supported,
-                format!("Operation: {request_operation} not supported"),
+                format!("Operation: {request_operation:?} not supported"),
             ));
         }
     })

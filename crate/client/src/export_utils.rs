@@ -270,7 +270,7 @@ async fn batch_get(
             operations => {
                 let mut errors = String::new();
                 for op in operations {
-                    errors = format!("{errors}, Unexpected operation {op}\n");
+                    errors = format!("{errors}, Unexpected operation {op:?}\n");
                 }
                 return Err(KmsClientError::Default(format!(
                     "Unexpected response from KMS, returning a sequence of non matching \
@@ -335,7 +335,7 @@ async fn batch_export(
             operations => {
                 let mut errors = String::new();
                 for op in operations {
-                    errors = format!("{errors}, Unexpected operation {op}\n");
+                    errors = format!("{errors}, Unexpected operation {op:?}\n");
                 }
                 return Err(KmsClientError::Default(format!(
                     "Unexpected response from KMS, returning a sequence of non matching \

@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use strum::Display;
 
 use crate::{
-    kmip_0::kmip_types::{DRBGAlgorithm, FIPS186Variation, HashingAlgorithm},
+    kmip_0::kmip_types::{DRBGAlgorithm, FIPS186Variation, HashingAlgorithm, RNGAlgorithm},
     kmip_2_1::{self},
     KmipError,
 };
@@ -1040,19 +1040,6 @@ impl From<KeyValueLocationType> for kmip_2_1::kmip_types::KeyValueLocationType {
     }
 }
 
-impl From<RNGAlgorithm> for kmip_2_1::kmip_types::RNGAlgorithm {
-    fn from(val: RNGAlgorithm) -> Self {
-        match val {
-            RNGAlgorithm::Unspecified => Self::Unspecified,
-            RNGAlgorithm::FIPS186_2 => Self::FIPS186_2,
-            RNGAlgorithm::DRBG => Self::DRBG,
-            RNGAlgorithm::NRBG => Self::NRBG,
-            RNGAlgorithm::ANSI_X931 => Self::ANSI_X931,
-            RNGAlgorithm::ANSI_X962 => Self::ANSI_X962,
-        }
-    }
-}
-
 #[kmip_enum]
 pub enum ProfileName {
     BaselineServerBasicKMIPv12 = 0x0000_0001,
@@ -1214,28 +1201,6 @@ pub enum ProfileName {
     // Extension used to support KMIP 2.1 which has a completely different set of profiles
     // and is not compatible with KMIP 1.4
     KMIP21 = 0x8000_0001,
-}
-
-/// KMIP 1.4 Unwrap Mode Enumeration
-#[kmip_enum]
-pub enum UnwrapMode {
-    Unspecified = 0x1,
-    UsingWrappingKey = 0x2,
-    UsingTransportKey = 0x3,
-}
-
-/// KMIP 1.4 Destroy Action Enumeration
-#[kmip_enum]
-pub enum DestroyAction {
-    Unspecified = 0x1,
-    Zeroize = 0x2,
-}
-
-/// KMIP 1.4 Shredding Algorithm Enumeration
-#[kmip_enum]
-pub enum ShreddingAlgorithm {
-    Unspecified = 0x1,
-    CryptoShred = 0x2,
 }
 
 /// KMIP 1.4 RNG Mode Enumeration
@@ -1694,7 +1659,7 @@ pub struct RandomNumberGenerator {
 impl From<RandomNumberGenerator> for kmip_2_1::kmip_types::RandomNumberGenerator {
     fn from(val: RandomNumberGenerator) -> Self {
         Self {
-            rng_algorithm: val.rng_algorithm.into(),
+            rng_algorithm: val.rng_algorithm,
             cryptographic_algorithm: val.cryptographic_algorithm.map(Into::into),
             cryptographic_length: val.cryptographic_length,
             hashing_algorithm: val.hashing_algorithm.map(Into::into),
