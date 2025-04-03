@@ -1579,7 +1579,6 @@ dependencies = [
 name = "cosmian_pkcs11"
 version = "4.22.1"
 dependencies = [
- "cosmian_kmip",
  "cosmian_kms_client",
  "cosmian_logger",
  "cosmian_pkcs11_module",
@@ -4819,8 +4818,6 @@ dependencies = [
  "actix-server",
  "base64 0.22.1",
  "cosmian_cli",
- "cosmian_kms_client",
- "cosmian_kms_crypto",
  "cosmian_kms_server",
  "cosmian_kms_server_database",
  "cosmian_logger",
