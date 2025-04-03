@@ -25,7 +25,7 @@ jobs:
       - uses: EmbarkStudios/cargo-deny-action@v1
 
   cargo-lint:
-    uses: ./.github/workflows/clippy.yml
+    uses: Cosmian/reusable_workflows/.github/workflows/clippy.yml@add-workflows
     with:
       toolchain: ${{ inputs.toolchain }}
 
