@@ -2,6 +2,7 @@ use std::fmt::{self, Display};
 
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
+use tracing::debug;
 
 use super::kmip_objects::Certificate;
 #[allow(clippy::wildcard_imports)]
@@ -13,7 +14,7 @@ use crate::{
         kmip_types::{AttestationType, Direction, KeyWrapType},
     },
     kmip_1_4::kmip_attributes::{Attribute, Attributes},
-    kmip_2_1, KmipError,
+    kmip_2_1, KmipError, KmipResultHelper,
 };
 
 /// 4.1 Create
@@ -554,59 +555,43 @@ impl TryFrom<kmip_2_1::kmip_operations::QueryResponse> for QueryResponse {
     type Error = KmipError;
 
     fn try_from(value: kmip_2_1::kmip_operations::QueryResponse) -> Result<Self, Self::Error> {
-        let operation = value
-            .operation
-            .map(|v| {
-                v.into_iter()
-                    .map(TryInto::try_into)
-                    .collect::<Result<Vec<OperationEnumeration>, KmipError>>()
-            })
-            .transpose()?;
+        debug!("Converting KMIP 2.1 QueryResponse to KMIP 1.4: {value:#?}");
 
-        let object_type = value
-            .object_type
-            .map(|v| {
-                v.into_iter()
-                    .map(TryInto::try_into)
-                    .collect::<Result<Vec<ObjectType>, KmipError>>()
-            })
-            .transpose()?;
+        let operation = value.operation.map(|v| {
+            v.into_iter()
+                .flat_map(TryInto::try_into)
+                .collect::<Vec<OperationEnumeration>>()
+        });
 
-        let extension_information = value
-            .extension_information
-            .map(|v| {
-                v.into_iter()
-                    .map(TryInto::try_into)
-                    .collect::<Result<Vec<ExtensionInformation>, KmipError>>()
-            })
-            .transpose()?;
+        let object_type = value.object_type.map(|v| {
+            v.into_iter()
+                .flat_map(TryInto::try_into)
+                .collect::<Vec<ObjectType>>()
+        });
 
-        let rng_parameters = value
-            .rng_parameters
-            .map(|v| {
-                v.into_iter()
-                    .map(TryInto::try_into)
-                    .collect::<Result<Vec<RNGParameters>, KmipError>>()
-            })
-            .transpose()?;
+        let extension_information = value.extension_information.map(|v| {
+            v.into_iter()
+                .flat_map(TryInto::try_into)
+                .collect::<Vec<ExtensionInformation>>()
+        });
 
-        let profiles_information = value
-            .profiles_information
-            .map(|v| {
-                v.into_iter()
-                    .map(TryInto::try_into)
-                    .collect::<Result<Vec<ProfileInformation>, KmipError>>()
-            })
-            .transpose()?;
+        let rng_parameters = value.rng_parameters.map(|v| {
+            v.into_iter()
+                .flat_map(TryInto::try_into)
+                .collect::<Vec<RNGParameters>>()
+        });
 
-        let capability_information = value
-            .capability_information
-            .map(|v| {
-                v.into_iter()
-                    .map(TryInto::try_into)
-                    .collect::<Result<Vec<CapabilityInformation>, KmipError>>()
-            })
-            .transpose()?;
+        let profiles_information = value.profiles_information.map(|v| {
+            v.into_iter()
+                .flat_map(TryInto::try_into)
+                .collect::<Vec<ProfileInformation>>()
+        });
+
+        let capability_information = value.capability_information.map(|v| {
+            v.into_iter()
+                .flat_map(TryInto::try_into)
+                .collect::<Vec<CapabilityInformation>>()
+        });
 
         Ok(Self {
             operation,
@@ -1690,7 +1675,7 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             // }
             // kmip_2_1::kmip_operations::Operation::Query(query) => Self::Query(query.into()),
             kmip_2_1::kmip_operations::Operation::QueryResponse(query_response) => {
-                Self::QueryResponse(query_response.try_into()?)
+                Self::QueryResponse(query_response.try_into().context("QueryResponse")?)
             }
             // Operation::DiscoverVersions(discover_versions) => {
             //     Self::DiscoverVersions(discover_versions.into())

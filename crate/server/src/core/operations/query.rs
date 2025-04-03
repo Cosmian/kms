@@ -13,7 +13,7 @@ use crate::result::KResult;
 /// to interrogate server features and functions.
 /// The Query Function field in the request SHALL contain one or more of the following items:
 pub(crate) async fn query(request: Query) -> KResult<QueryResponse> {
-    trace!("Query: {}", serde_json::to_string(&request)?);
+    trace!("Query: {request:#?}");
 
     let mut response = QueryResponse {
         operation: None,
