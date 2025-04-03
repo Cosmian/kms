@@ -19,7 +19,7 @@ use cosmian_kmip::{
 use cosmian_kms_interfaces::SessionParams;
 use reqwest::header::CONTENT_TYPE;
 use serde_json::Value;
-use tracing::{error, info, trace};
+use tracing::{debug, error, info};
 
 use crate::{
     core::{
@@ -345,12 +345,12 @@ async fn handle_ttlv_bytes_inner(
         .map_err(|e| KmsError::InvalidRequest(format!("Failed to parse RequestMessage: {e}")))?;
 
     // log the request
-    trace!(target: "kmip", request_message=?request_message);
+    debug!(target: "kmip", request_message=?request_message);
 
     let response = Box::pin(message(kms, request_message, username, None)).await?;
 
     // log the response
-    trace!(target: "kmip", response_message=?response);
+    debug!(target: "kmip", response_message=?response);
 
     // serialize the response to TTLV
     let response_ttlv = to_ttlv(&response)
