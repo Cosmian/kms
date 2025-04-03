@@ -16,18 +16,18 @@ use super::{
     kmip_attributes::Attributes,
     kmip_objects::ObjectType,
     kmip_types::{
-        ClientRegistrationMethod, CryptographicAlgorithm, EncodingOption, EncryptionKeyInformation,
-        KeyCompressionType, KeyFormatType, LinkType, LinkedObjectIdentifier,
-        MacSignatureKeyInformation, ProfileName, RNGMode, RecommendedCurve, WrappingMethod,
+        CryptographicAlgorithm, EncodingOption, EncryptionKeyInformation, KeyCompressionType,
+        KeyFormatType, LinkType, LinkedObjectIdentifier, MacSignatureKeyInformation, ProfileName,
+        RNGMode, RecommendedCurve, WrappingMethod,
     },
 };
 use crate::{
     error::KmipError,
-    kmip_0::kmip_types::{DRBGAlgorithm, ErrorReason, FIPS186Variation, HashingAlgorithm},
-    kmip_2_1::{
-        kmip_attributes::Attribute,
-        kmip_types::{ItemType, RNGAlgorithm},
+    kmip_0::kmip_types::{
+        DRBGAlgorithm, DestroyAction, ErrorReason, FIPS186Variation, HashingAlgorithm,
+        RNGAlgorithm, ShreddingAlgorithm, UnwrapMode,
     },
+    kmip_2_1::{kmip_attributes::Attribute, kmip_types::ItemType},
     pad_be_bytes, SafeBigInt,
 };
 

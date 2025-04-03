@@ -18,7 +18,7 @@ use uuid::Uuid;
 
 use crate::{
     error::KmipError,
-    kmip_0::kmip_types::{DRBGAlgorithm, FIPS186Variation, HashingAlgorithm},
+    kmip_0::kmip_types::{DRBGAlgorithm, FIPS186Variation, HashingAlgorithm, RNGAlgorithm},
     kmip_2_1::extra::{tagging::VENDOR_ATTR_TAG, VENDOR_ID_COSMIAN},
     kmip_2_1_error,
 };
