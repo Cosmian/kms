@@ -221,8 +221,8 @@ async fn import_encrypt_decrypt(
     // let tmp_path = std::path::Path::new("./");
 
     let input_file = PathBuf::from("../../test_data/plain.txt");
-    let output_file = tmp_path.join("plain.enc");
-    let recovered_file = tmp_path.join("plain.txt");
+    let output_file = tmp_path.join(format!("{filename}-plain.enc"));
+    let recovered_file = tmp_path.join(format!("{filename}-plain.txt"));
 
     let tags = &[filename];
 
@@ -269,7 +269,7 @@ async fn import_encrypt_decrypt(
     )?;
 
     debug!("\n\nExport Private key wrapping with X509 certificate");
-    let private_key_wrapped = "/tmp/wrapped_private_key_exported.json".to_owned();
+    let private_key_wrapped = format!("/tmp/wrapped_{filename}_private_key_exported.json");
 
     export_key(ExportKeyParams {
         cli_conf_path: ctx.owner_client_conf_path.clone(),
@@ -311,7 +311,7 @@ async fn import_encrypt_decrypt(
 
     debug!("\n\nExport the wrapped Private key without unwrapping");
     let private_key_wrapped_as_is = tmp_path
-        .join("wrapped_private_key.json")
+        .join(format!("wrapped_{filename}_private_key.json"))
         .to_str()
         .unwrap()
         .to_owned();

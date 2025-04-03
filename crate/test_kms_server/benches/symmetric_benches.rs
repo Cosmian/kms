@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use cosmian_kms_client::{
+use cosmian_cli::reexport::cosmian_kms_client::{
     KmsClient, KmsClientError,
     reexport::cosmian_kmip::kmip_2_1::{
         extra::BulkData,

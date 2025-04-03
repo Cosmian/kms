@@ -1,13 +1,13 @@
-use cosmian_kmip::kmip_2_1::{
-    kmip_objects::Object,
-    kmip_operations::{Decrypt, GetAttributes, Locate},
-    kmip_types::{
-        Attributes, CryptographicAlgorithm, CryptographicParameters, KeyFormatType, PaddingMethod,
-        RecommendedCurve, UniqueIdentifier,
-    },
-};
 use cosmian_kms_client::{
     ExportObjectParams, KmsClient, KmsClientConfig, batch_export_objects, export_object,
+    reexport::cosmian_kmip::kmip_2_1::{
+        kmip_objects::Object,
+        kmip_operations::{Decrypt, GetAttributes, Locate},
+        kmip_types::{
+            Attributes, CryptographicAlgorithm, CryptographicParameters, KeyFormatType,
+            PaddingMethod, RecommendedCurve, UniqueIdentifier,
+        },
+    },
 };
 use cosmian_pkcs11_module::traits::{EncryptionAlgorithm, KeyAlgorithm};
 use tracing::{debug, error, trace};

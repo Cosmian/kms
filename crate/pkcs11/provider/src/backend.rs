@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
-use cosmian_kmip::kmip_2_1::kmip_types::KeyFormatType;
-use cosmian_kms_client::KmsClient;
+use cosmian_kms_client::{KmsClient, reexport::cosmian_kmip::kmip_2_1::kmip_types::KeyFormatType};
 use cosmian_pkcs11_module::{
     MError, MResult,
     traits::{

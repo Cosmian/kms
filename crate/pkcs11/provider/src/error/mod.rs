@@ -1,7 +1,9 @@
 use std::{array::TryFromSliceError, str::Utf8Error};
 
-use cosmian_kmip::{KmipError, kmip_2_1::kmip_operations::ErrorReason};
-use cosmian_kms_client::KmsClientError;
+use cosmian_kms_client::{
+    KmsClientError,
+    reexport::cosmian_kmip::{KmipError, kmip_2_1::kmip_operations::ErrorReason},
+};
 use thiserror::Error;
 
 pub(crate) mod result;

@@ -1,10 +1,12 @@
-use cosmian_kmip::kmip_2_1::{
-    kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-    kmip_objects::Object,
-    kmip_types::{CryptographicAlgorithm, KeyFormatType},
-    requests::create_symmetric_key_kmip_object,
+use cosmian_kms_client::{
+    KmsClient, import_object,
+    reexport::cosmian_kmip::kmip_2_1::{
+        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+        kmip_objects::Object,
+        kmip_types::{CryptographicAlgorithm, KeyFormatType},
+        requests::create_symmetric_key_kmip_object,
+    },
 };
-use cosmian_kms_client::{KmsClient, import_object};
 use cosmian_logger::log_init;
 use cosmian_pkcs11_module::traits::Backend;
 use test_kms_server::start_default_test_kms_server;
@@ -116,7 +118,7 @@ async fn test_kms_client() -> Result<(), Pkcs11Error> {
     let keys = get_kms_objects_async(
         &kms_rest_client,
         &[COSMIAN_PKCS11_DISK_ENCRYPTION_TAG.to_owned()],
-        Some(KeyFormatType::Raw),
+        KeyFormatType::Raw,
     )
     .await?;
     assert_eq!(keys.len(), 2);
