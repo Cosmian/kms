@@ -10,31 +10,11 @@ use cosmian_pkcs11_module::traits::Backend;
 use test_kms_server::start_default_test_kms_server;
 use tracing::debug;
 
-use crate::{backend::CliBackend, error::Pkcs11Error, kms_object::get_kms_objects_async};
-
-#[tokio::test]
-async fn test_kms_client() -> Result<(), Pkcs11Error> {
-    log_init(None);
-    let ctx = start_default_test_kms_server().await;
-
-    let kms_rest_client = KmsClient::new_with_config(ctx.owner_client_conf.kms_config.clone())?;
-    create_keys(&kms_rest_client).await?;
-
-    let keys = get_kms_objects_async(
-        &kms_rest_client,
-        &["disk-encryption".to_owned()],
-        KeyFormatType::Raw,
-    )
-    .await?;
-    assert_eq!(keys.len(), 2);
-    let mut labels = keys
-        .iter()
-        .flat_map(|k| k.other_tags.clone())
-        .collect::<Vec<String>>();
-    labels.sort();
-    assert_eq!(labels, vec!["vol1".to_owned(), "vol2".to_owned()]);
-    Ok(())
-}
+use crate::{
+    backend::{COSMIAN_PKCS11_DISK_ENCRYPTION_TAG, CliBackend},
+    error::Pkcs11Error,
+    kms_object::get_kms_objects_async,
+};
 
 fn initialize_backend() -> Result<CliBackend, Pkcs11Error> {
     log_init(None);
@@ -44,10 +24,12 @@ fn initialize_backend() -> Result<CliBackend, Pkcs11Error> {
 
         let kms_rest_client = KmsClient::new_with_config(ctx.owner_client_conf.kms_config.clone())
             .expect("failed to initialize kms client");
-        create_keys(&kms_rest_client)
+        create_keys(&kms_rest_client, COSMIAN_PKCS11_DISK_ENCRYPTION_TAG)
             .await
             .expect("failed to create keys");
-        load_p12().await.expect("failed to load p12");
+        load_p12(COSMIAN_PKCS11_DISK_ENCRYPTION_TAG)
+            .await
+            .expect("failed to load p12");
         ctx.owner_client_conf.clone()
     });
 
@@ -56,7 +38,10 @@ fn initialize_backend() -> Result<CliBackend, Pkcs11Error> {
     )?))
 }
 
-async fn create_keys(kms_rest_client: &KmsClient) -> Result<(), Pkcs11Error> {
+async fn create_keys(
+    kms_rest_client: &KmsClient,
+    disk_encryption_tag: &str,
+) -> Result<(), Pkcs11Error> {
     let vol1 = create_symmetric_key_kmip_object(&[1, 2, 3, 4], CryptographicAlgorithm::AES, false)?;
     debug!("vol1: {}", vol1);
     let _vol1_id = import_object(
@@ -66,7 +51,7 @@ async fn create_keys(kms_rest_client: &KmsClient) -> Result<(), Pkcs11Error> {
         None,
         false,
         true,
-        ["disk-encryption", "vol1"],
+        [disk_encryption_tag, "vol1"],
     )
     .await?;
 
@@ -78,14 +63,14 @@ async fn create_keys(kms_rest_client: &KmsClient) -> Result<(), Pkcs11Error> {
         None,
         false,
         true,
-        ["disk-encryption", "vol2"],
+        [disk_encryption_tag, "vol2"],
     )
     .await?;
 
     Ok(())
 }
 
-async fn load_p12() -> Result<String, Pkcs11Error> {
+async fn load_p12(disk_encryption_tag: &str) -> Result<String, Pkcs11Error> {
     let ctx = start_default_test_kms_server().await;
 
     let kms_rest_client = KmsClient::new_with_config(ctx.owner_client_conf.kms_config.clone())?;
@@ -116,14 +101,44 @@ async fn load_p12() -> Result<String, Pkcs11Error> {
         None,
         false,
         true,
-        ["disk-encryption", "luks_volume"],
+        [disk_encryption_tag, "luks_volume"],
     )
     .await?;
     Ok(p12_id)
 }
 
+async fn test_kms_client() -> Result<(), Pkcs11Error> {
+    let ctx = start_default_test_kms_server().await;
+
+    let kms_rest_client = KmsClient::new_with_config(ctx.owner_client_conf.kms_config.clone())?;
+    create_keys(&kms_rest_client, COSMIAN_PKCS11_DISK_ENCRYPTION_TAG).await?;
+
+    let keys = get_kms_objects_async(
+        &kms_rest_client,
+        &[COSMIAN_PKCS11_DISK_ENCRYPTION_TAG.to_owned()],
+        Some(KeyFormatType::Raw),
+    )
+    .await?;
+    assert_eq!(keys.len(), 2);
+    let mut labels = keys
+        .iter()
+        .flat_map(|k| k.other_tags.clone())
+        .collect::<Vec<String>>();
+    labels.sort();
+    assert_eq!(labels, vec!["vol1".to_owned(), "vol2".to_owned()]);
+
+    Ok(())
+}
+
 #[test]
-fn test_backend() -> Result<(), Pkcs11Error> {
+fn test_kms_client_and_backend() -> Result<(), Pkcs11Error> {
+    log_init(None);
+
+    // Must be called before the backend tests
+    tokio::runtime::Runtime::new()?.block_on(async {
+        test_kms_client().await.expect("failed to test kms client");
+    });
+
     let backend = initialize_backend()?;
 
     //TODO fix this test

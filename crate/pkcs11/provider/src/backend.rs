@@ -23,7 +23,7 @@ use crate::{
     pkcs11_private_key::Pkcs11PrivateKey,
 };
 
-const COSMIAN_PKCS11_DISK_ENCRYPTION_TAG: &str = "disk-encryption";
+pub(crate) const COSMIAN_PKCS11_DISK_ENCRYPTION_TAG: &str = "disk-encryption";
 
 pub(crate) struct CliBackend {
     kms_rest_client: KmsClient,
