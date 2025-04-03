@@ -270,7 +270,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
             None,
         )
         .await;
-    assert!(er.is_err());
+    er.unwrap_err();
 
     // encrypt a resource FIN + Secret
     let secret_authentication_data = b"cc the uid Top Secret".to_vec();
@@ -313,7 +313,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
             None,
         )
         .await;
-    assert!(er.is_err());
+    er.unwrap_err();
 
     // Create a user decryption key MKG | FIN + Top Secret
     let secret_mkg_fin_access_policy =
@@ -370,7 +370,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
             None,
         )
         .await;
-    assert!(dr.is_err());
+    dr.unwrap_err();
 
     // decrypt resource FIN + Secret
     let dr = kms
@@ -407,7 +407,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
             None,
         )
         .await;
-    assert!(dr.is_err());
+    dr.unwrap_err();
 
     Ok(())
 }

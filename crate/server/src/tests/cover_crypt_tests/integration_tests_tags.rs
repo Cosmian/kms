@@ -274,7 +274,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
         None,
     );
     let post_ttlv_decrypt: KResult<DecryptResponse> = test_utils::post_2_1(&app, &request).await;
-    assert!(post_ttlv_decrypt.is_err());
+    post_ttlv_decrypt.unwrap_err();
 
     // decrypt
     let request = decrypt_request(
