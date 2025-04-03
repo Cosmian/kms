@@ -28,7 +28,7 @@ use serde::{
 use super::{kmip_operations::Operation, kmip_types::OperationEnumeration};
 use crate::{
     kmip_0::kmip_types::{Direction, ErrorReason, MessageExtension, ResultStatusEnumeration},
-    kmip_2_1, KmipError,
+    kmip_2_1, KmipError, KmipResultHelper,
 };
 
 /// Batch item for a message request
@@ -758,13 +758,21 @@ impl TryFrom<kmip_2_1::kmip_messages::ResponseMessageBatchItem> for ResponseMess
         value: kmip_2_1::kmip_messages::ResponseMessageBatchItem,
     ) -> Result<Self, Self::Error> {
         Ok(Self {
-            operation: value.operation.map(TryInto::try_into).transpose()?,
+            operation: value
+                .operation
+                .map(TryInto::try_into)
+                .transpose()
+                .context("ResponseMessageBatchItem->Operation")?,
             unique_batch_item_id: value.unique_batch_item_id,
             result_status: value.result_status,
             result_reason: value.result_reason,
             result_message: value.result_message,
             asynchronous_correlation_value: value.asynchronous_correlation_value,
-            response_payload: value.response_payload.map(TryInto::try_into).transpose()?,
+            response_payload: value
+                .response_payload
+                .map(TryInto::try_into)
+                .transpose()
+                .context("ResponseMessageBatchItem->ResponsePayload")?,
             message_extension: value.message_extension,
         })
     }

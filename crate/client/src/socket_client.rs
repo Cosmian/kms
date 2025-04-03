@@ -4,6 +4,7 @@
 //! The client is thread-safe and can be shared across threads
 //! using `Arc`
 use std::{
+    fmt,
     io::{Read, Write},
     net::TcpStream,
     sync::Arc,
@@ -88,13 +89,15 @@ impl SocketClient {
     /// * If sending or receiving data fails
     /// * If the server returns an error response
     /// * If the response is invalid
-    pub fn send_request<REQ: Serialize, RESP: DeserializeOwned>(
+    pub fn send_request<REQ: Serialize + fmt::Debug, RESP: DeserializeOwned + fmt::Debug>(
         &self,
         kmip_flavor: KmipFlavor,
         request: &REQ,
     ) -> KmsClientResult<RESP> {
+        debug!("REQ:\n{:#?}", request);
         // Serialize to TTLV
         let ttlv_request = to_ttlv(request).context("Failed to serialize request to TTLV")?;
+        debug!("TTLV REQ:\n{:#?}", ttlv_request);
         // Serialize to bytes
         let request_data = ttlv_request
             .to_bytes(kmip_flavor)
@@ -107,8 +110,11 @@ impl SocketClient {
         let ttlv_response = TTLV::from_bytes(&response_data, kmip_flavor)
             .context("Failed to deserialize response TTLV")?;
 
+        debug!("TTLV RESP:\n{:#?}", ttlv_response);
+
         // Deserialize response
         let response = from_ttlv(ttlv_response)?;
+        debug!("RESP:\n{:#?}", response);
 
         Ok(response)
     }

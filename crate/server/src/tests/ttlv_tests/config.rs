@@ -3,7 +3,7 @@ use openssl::pkcs12::{ParsedPkcs12_2, Pkcs12};
 
 use crate::{
     socket_server::{create_rustls_server_config, SocketServer, SocketServerParams},
-    tests::socket_server_tests::{TEST_HOST, TEST_PORT},
+    tests::ttlv_tests::{TEST_HOST, TEST_PORT},
 };
 
 // Static config for tests

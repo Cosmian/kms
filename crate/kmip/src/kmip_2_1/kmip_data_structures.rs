@@ -1173,7 +1173,7 @@ pub struct CapabilityInformation {
 }
 
 impl Display for CapabilityInformation {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "CapabilityInformation {{ streaming_capability: {:?}, asynchronous_capability: {:?}, \

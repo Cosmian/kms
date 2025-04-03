@@ -1,7 +1,8 @@
 use cosmian_kmip::{
     kmip_0::{
         kmip_messages::{
-            RequestMessage, RequestMessageBatchItemVersioned, RequestMessageHeader, ResponseMessage,
+            RequestMessage, RequestMessageBatchItemVersioned, RequestMessageHeader,
+            ResponseMessage, ResponseMessageBatchItemVersioned,
         },
         kmip_types::ProtocolVersion,
     },
@@ -13,12 +14,11 @@ use cosmian_kmip::{
     ttlv::KmipFlavor::Kmip1,
 };
 use cosmian_logger::log_init;
-use log::info;
 
-use crate::tests::socket_server_tests::get_client;
+use crate::tests::ttlv_tests::get_client;
 
 #[test]
-fn test_socket_server_with_socket_client() {
+fn test_query() {
     // log_init(option_env!("RUST_LOG"));
     log_init(Some("debug"));
 
@@ -34,7 +34,7 @@ fn test_socket_server_with_socket_client() {
         request_header: RequestMessageHeader {
             protocol_version: ProtocolVersion {
                 protocol_version_major: 1,
-                protocol_version_minor: 4,
+                protocol_version_minor: 2,
             },
             batch_count: 1,
             ..Default::default()
@@ -54,7 +54,25 @@ fn test_socket_server_with_socket_client() {
         .send_request::<RequestMessage, ResponseMessage>(Kmip1, &request_message)
         .expect("Failed to send request");
 
-    info!("{:?}", response);
-
+    assert_eq!(
+        response.response_header.protocol_version,
+        ProtocolVersion {
+            protocol_version_major: 1,
+            protocol_version_minor: 2,
+        }
+    );
     assert_eq!(response.batch_item.len(), 1);
+    let Some(response_batch_item) = response.batch_item.first() else {
+        panic!("Expected response batch item");
+    };
+    let ResponseMessageBatchItemVersioned::V14(batch_item) = response_batch_item else {
+        panic!("Expected V14 request message");
+    };
+    let Some(Operation::QueryResponse(query_response)) = &batch_item.response_payload else {
+        panic!("Expected QueryResponse");
+    };
+    let Some(operations) = &query_response.operation else {
+        panic!("Expected operations");
+    };
+    assert!(!operations.is_empty());
 }

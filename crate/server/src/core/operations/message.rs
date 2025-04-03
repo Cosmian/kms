@@ -10,6 +10,7 @@ use cosmian_kmip::{
     },
     kmip_2_1::{kmip_messages::ResponseMessageBatchItem, kmip_operations::Operation},
     ttlv::KmipFlavor,
+    KmipResultHelper,
 };
 use cosmian_kms_interfaces::SessionParams;
 use time::OffsetDateTime;
@@ -44,33 +45,37 @@ pub(crate) async fn message(
         };
 
         let request_operation = batch_item.request_payload;
+        let response_operation = Box::pin(process_operation(
+            kms,
+            user,
+            params.clone(),
+            request_operation,
+        ))
+        .await;
 
-        // conversion for `dispatch` call convenience
+        trace!("Message: operation result => {response_operation:#?}");
 
-        let (result_status, result_reason, result_message, response_payload) = match Box::pin(
-            process_operation(kms, user, params.clone(), request_operation),
-        )
-        .await
-        {
-            Ok(operation) => (
-                ResultStatusEnumeration::Success,
-                None,
-                None,
-                Some(operation),
-            ),
-            Err(KmsError::Kmip21Error(reason, error_message)) => (
-                ResultStatusEnumeration::OperationFailed,
-                Some(reason),
-                Some(error_message),
-                None,
-            ),
-            Err(err) => (
-                ResultStatusEnumeration::OperationFailed,
-                Some(ErrorReason::Operation_Not_Supported),
-                Some(err.to_string()),
-                None,
-            ),
-        };
+        let (result_status, result_reason, result_message, response_payload) =
+            match response_operation {
+                Ok(operation) => (
+                    ResultStatusEnumeration::Success,
+                    None,
+                    None,
+                    Some(operation),
+                ),
+                Err(KmsError::Kmip21Error(reason, error_message)) => (
+                    ResultStatusEnumeration::OperationFailed,
+                    Some(reason),
+                    Some(error_message),
+                    None,
+                ),
+                Err(err) => (
+                    ResultStatusEnumeration::OperationFailed,
+                    Some(ErrorReason::Operation_Not_Supported),
+                    Some(err.to_string()),
+                    None,
+                ),
+            };
 
         let response_message_batch_item = ResponseMessageBatchItem {
             operation: Some(batch_item.operation),
@@ -84,9 +89,11 @@ pub(crate) async fn message(
         };
 
         let response_message_batch_item = match kmip_version {
-            KmipFlavor::Kmip1 => {
-                ResponseMessageBatchItemVersioned::V14(response_message_batch_item.try_into()?)
-            }
+            KmipFlavor::Kmip1 => ResponseMessageBatchItemVersioned::V14(
+                response_message_batch_item
+                    .try_into()
+                    .context("conversion to KMIP 1 failed")?,
+            ),
             KmipFlavor::Kmip2 => {
                 ResponseMessageBatchItemVersioned::V21(response_message_batch_item)
             }
@@ -109,6 +116,8 @@ pub(crate) async fn message(
         batch_item: response_items,
     };
 
+    trace!("Response message: {response_message:#?}");
+
     Ok(response_message)
 }
 
@@ -118,31 +127,10 @@ async fn process_operation(
     params: Option<Arc<dyn SessionParams>>,
     request_operation: Operation,
 ) -> Result<Operation, KmsError> {
+    trace!("Processing KMIP operation: {request_operation:?} with user: {user:?}");
     Ok(match request_operation {
-        Operation::Import(kmip_request) => {
-            Operation::ImportResponse(kms.import(kmip_request, user, params).await?)
-        }
-        Operation::Locate(kmip_request) => {
-            Operation::LocateResponse(kms.locate(kmip_request, user, params).await?)
-        }
-        Operation::Get(kmip_request) => {
-            Operation::GetResponse(kms.get(kmip_request, user, params).await?)
-        }
-        Operation::GetAttributes(kmip_request) => {
-            Operation::GetAttributesResponse(kms.get_attributes(kmip_request, user, params).await?)
-        }
-        Operation::SetAttribute(kmip_request) => {
-            Operation::SetAttributeResponse(kms.set_attribute(kmip_request, user, params).await?)
-        }
-        Operation::DeleteAttribute(kmip_request) => Operation::DeleteAttributeResponse(
-            kms.delete_attribute(kmip_request, user, params).await?,
-        ),
-
-        Operation::ReKey(kmip_request) => {
-            Operation::ReKeyResponse(kms.rekey(kmip_request, user, params).await?)
-        }
-        Operation::ReKeyKeyPair(kmip_request) => {
-            Operation::ReKeyKeyPairResponse(kms.rekey_keypair(kmip_request, user, params).await?)
+        Operation::Certify(kmip_request) => {
+            Operation::CertifyResponse(kms.certify(kmip_request, user, params).await?)
         }
         Operation::Create(kmip_request) => {
             Operation::CreateResponse(kms.create(kmip_request, user, params).await?)
@@ -150,47 +138,70 @@ async fn process_operation(
         Operation::CreateKeyPair(kmip_request) => {
             Operation::CreateKeyPairResponse(kms.create_key_pair(kmip_request, user, params).await?)
         }
-        Operation::Certify(kmip_request) => {
-            Operation::CertifyResponse(kms.certify(kmip_request, user, params).await?)
-        }
-        Operation::Destroy(kmip_request) => {
-            Operation::DestroyResponse(kms.destroy(kmip_request, user, params).await?)
-        }
-        Operation::Encrypt(kmip_request) => {
-            Operation::EncryptResponse(kms.encrypt(kmip_request, user, params).await?)
-        }
         Operation::Decrypt(kmip_request) => {
             Operation::DecryptResponse(kms.decrypt(kmip_request, user, params).await?)
         }
-        Operation::Export(kmip_request) => {
-            Operation::ExportResponse(kms.export(kmip_request, user, params).await?)
+        Operation::DeleteAttribute(kmip_request) => Operation::DeleteAttributeResponse(
+            kms.delete_attribute(kmip_request, user, params).await?,
+        ),
+        Operation::Destroy(kmip_request) => {
+            Operation::DestroyResponse(kms.destroy(kmip_request, user, params).await?)
         }
         Operation::DiscoverVersions(kmip_request) => Operation::DiscoverVersionsResponse(
             kms.discover_versions(kmip_request, user, params).await,
         ),
+        Operation::Encrypt(kmip_request) => {
+            Operation::EncryptResponse(kms.encrypt(kmip_request, user, params).await?)
+        }
+        Operation::Export(kmip_request) => {
+            Operation::ExportResponse(kms.export(kmip_request, user, params).await?)
+        }
+        Operation::Get(kmip_request) => {
+            Operation::GetResponse(kms.get(kmip_request, user, params).await?)
+        }
+        Operation::GetAttributes(kmip_request) => {
+            Operation::GetAttributesResponse(kms.get_attributes(kmip_request, user, params).await?)
+        }
+        Operation::Import(kmip_request) => {
+            Operation::ImportResponse(kms.import(kmip_request, user, params).await?)
+        }
+        Operation::Locate(kmip_request) => {
+            Operation::LocateResponse(kms.locate(kmip_request, user, params).await?)
+        }
+        Operation::Query(kmip_request) => Operation::QueryResponse(kms.query(kmip_request).await?),
+        Operation::ReKey(kmip_request) => {
+            Operation::ReKeyResponse(kms.rekey(kmip_request, user, params).await?)
+        }
+        Operation::ReKeyKeyPair(kmip_request) => {
+            Operation::ReKeyKeyPairResponse(kms.rekey_keypair(kmip_request, user, params).await?)
+        }
+        Operation::Revoke(kmip_request) => {
+            Operation::RevokeResponse(kms.revoke(kmip_request, user, params).await?)
+        }
+        Operation::SetAttribute(kmip_request) => {
+            Operation::SetAttributeResponse(kms.set_attribute(kmip_request, user, params).await?)
+        }
         Operation::Validate(kmip_request) => {
             Operation::ValidateResponse(kms.validate(kmip_request, user, params).await?)
         }
-        Operation::ImportResponse(_)
-        | Operation::CertifyResponse(_)
-        | Operation::CreateResponse(_)
+        Operation::CertifyResponse(_)
         | Operation::CreateKeyPairResponse(_)
-        | Operation::DiscoverVersionsResponse(_)
-        | Operation::ExportResponse(_)
-        | Operation::GetResponse(_)
-        | Operation::GetAttributesResponse(_)
-        | Operation::SetAttributeResponse(_)
-        | Operation::DeleteAttributeResponse(_)
-        | Operation::EncryptResponse(_)
+        | Operation::CreateResponse(_)
         | Operation::DecryptResponse(_)
-        | Operation::LocateResponse(_)
-        | Operation::Query(_)
-        | Operation::QueryResponse(_)
-        | Operation::Revoke(_)
-        | Operation::RevokeResponse(_)
-        | Operation::ReKeyResponse(_)
-        | Operation::ReKeyKeyPairResponse(_)
+        | Operation::DeleteAttributeResponse(_)
         | Operation::DestroyResponse(_)
+        | Operation::DiscoverVersionsResponse(_)
+        | Operation::EncryptResponse(_)
+        | Operation::ExportResponse(_)
+        | Operation::GetAttributesResponse(_)
+        | Operation::GetResponse(_)
+        | Operation::ImportResponse(_)
+        | Operation::LocateResponse(_)
+        | Operation::QueryResponse(_)
+        | Operation::ReKeyKeyPairResponse(_)
+        | Operation::ReKeyResponse(_)
+        | Operation::RevokeResponse(_)
+        | Operation::SetAttributeResponse(_)
         | Operation::ValidateResponse(_) => {
             return Err(KmsError::Kmip21Error(
                 ErrorReason::Operation_Not_Supported,
