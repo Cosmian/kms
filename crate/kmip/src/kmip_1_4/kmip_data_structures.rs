@@ -11,7 +11,10 @@ use super::kmip_attributes::Attribute;
 #[allow(clippy::wildcard_imports)]
 use super::kmip_types::*;
 use crate::{
-    kmip_0::kmip_types::{DRBGAlgorithm, FIPS186Variation, HashingAlgorithm, RNGAlgorithm},
+    kmip_0::kmip_types::{
+        DRBGAlgorithm, DestroyAction, FIPS186Variation, HashingAlgorithm, RNGAlgorithm,
+        ShreddingAlgorithm, UnwrapMode,
+    },
     kmip_1_4::kmip_attributes::Attributes,
     kmip_2_1, KmipError, SafeBigInt,
 };
@@ -1151,6 +1154,7 @@ impl TryFrom<kmip_2_1::kmip_data_structures::ExtensionInformation> for Extension
     fn try_from(
         val: kmip_2_1::kmip_data_structures::ExtensionInformation,
     ) -> Result<Self, Self::Error> {
+        #[allow(clippy::as_conversions)]
         Ok(Self {
             extension_name: val.extension_name,
             extension_tag: val.extension_tag,
@@ -1239,24 +1243,62 @@ impl TryFrom<kmip_2_1::kmip_data_structures::ProfileInformation> for ProfileInfo
     }
 }
 
-/// Capability Information indicates various capabilities supported by a KMIP server.
-#[allow(clippy::struct_excessive_bools)]
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+/// The `CapabilityInformation` structure provides information about the capabilities
+/// of the server, such as supported operations, objects, and algorithms.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct CapabilityInformation {
-    pub streaming_capability: bool,
-    pub asynchronous_capability: bool,
-    pub attestation_capability: bool,
-    pub batch_undo_capability: bool,
-    pub batch_continue_capability: bool,
+    /// Specifies a particular KMIP profile supported by the server.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub streaming_capability: Option<bool>,
+
+    /// Indicates whether the server supports asynchronous operations.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub asynchronous_capability: Option<bool>,
+
+    /// Indicates whether the server supports attestation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attestation_capability: Option<bool>,
+
+    /// Indicates whether the server supports batching of operations in a single request.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub batch_undo_capability: Option<bool>,
+
+    /// Indicates whether the server supports batching of operations in a single request.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub batch_continue_capability: Option<bool>,
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unwrap_mode: Option<UnwrapMode>,
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub destroy_action: Option<DestroyAction>,
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub shredding_algorithm: Option<ShreddingAlgorithm>,
+
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub rng_mode: Option<RNGMode>,
+    pub rng_mode: Option<kmip_2_1::kmip_types::RNGMode>,
+}
+
+impl TryFrom<kmip_2_1::kmip_data_structures::CapabilityInformation> for CapabilityInformation {
+    type Error = KmipError;
+
+    fn try_from(
+        value: kmip_2_1::kmip_data_structures::CapabilityInformation,
+    ) -> Result<Self, Self::Error> {
+        Ok(Self {
+            streaming_capability: value.streaming_capability,
+            asynchronous_capability: value.asynchronous_capability,
+            attestation_capability: value.attestation_capability,
+            batch_undo_capability: value.batch_undo_capability,
+            batch_continue_capability: value.batch_continue_capability,
+            unwrap_mode: value.unwrap_mode.map(Into::into),
+            destroy_action: value.destroy_action.map(Into::into),
+            shredding_algorithm: value.shredding_algorithm.map(Into::into),
+            rng_mode: value.rng_mode.map(Into::into),
+        })
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]

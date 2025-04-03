@@ -60,7 +60,7 @@ impl Display for RequestMessageBatchItem {
         write!(
             f,
             "MessageBatchItem {{ operation: {:?}, ephemeral: {:?}, unique_batch_item_id: {:?}, \
-             request_payload: {}, message_extension: {:?} }}",
+             request_payload: {:?}, message_extension: {:?} }}",
             self.operation,
             self.ephemeral,
             self.unique_batch_item_id,
@@ -248,7 +248,7 @@ impl<'de> Deserialize<'de> for RequestMessageBatchItem {
 
                 let request_payload =
                     request_payload.ok_or_else(|| de::Error::missing_field("request_payload"))?;
-                tracing::trace!("MessageBatchItem request payload: {request_payload}");
+                tracing::trace!("MessageBatchItem request payload: {request_payload:?}");
 
                 if operation != request_payload.operation_enum() {
                     return Err(de::Error::custom(format!(
@@ -582,7 +582,7 @@ impl<'de> Deserialize<'de> for ResponseMessageBatchItem {
                 tracing::trace!("MessageResponseBatchItem operation: {operation:?}");
                 if let Some(response_payload) = &response_payload {
                     tracing::trace!(
-                        "MessageResponseBatchItem response payload: {response_payload}"
+                        "MessageResponseBatchItem response payload: {response_payload:?}"
                     );
                 }
 
