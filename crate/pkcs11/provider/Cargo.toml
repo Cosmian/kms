@@ -19,7 +19,7 @@ fips = ["cosmian_kmip/fips", "cosmian_kms_client/fips", "test_kms_server/fips"]
 
 [dependencies]
 cosmian_kmip = { workspace = true }
-cosmian_kms_client = { workspace = true }
+cosmian_kms_client = { path = "../../kms_client" }
 cosmian_pkcs11_module = { path = "../module" }
 etcetera = "0.8.0"
 p256 = { version = "0.13.2", default-features = false, features = [

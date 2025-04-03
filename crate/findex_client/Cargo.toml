@@ -21,7 +21,7 @@ cosmian_crypto_core = { workspace = true }
 cosmian_findex = { workspace = true, features = ["redis-mem"] }
 cosmian_findex_structs = { workspace = true }
 cosmian_http_client = { workspace = true }
-cosmian_kms_client = { workspace = true }
+cosmian_kms_client = { path = "../kms_client" }
 cosmian_logger = { workspace = true }
 reqwest = { workspace = true, features = ["default", "json", "native-tls"] }
 serde = { workspace = true }

@@ -27,8 +27,8 @@ harness = false
 [dependencies]
 actix-server = { workspace = true }
 base64 = { workspace = true }
-cosmian_cli = { workspace = true }
-cosmian_kms_client = { workspace = true }
+cosmian_cli = { path = "../cli" }
+cosmian_kms_client = { path = "../kms_client" }
 cosmian_kms_crypto = { workspace = true }
 cosmian_kms_server = { workspace = true, features = ["insecure"] }
 cosmian_kms_server_database = { workspace = true }
