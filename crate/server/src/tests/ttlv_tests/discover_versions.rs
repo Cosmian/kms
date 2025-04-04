@@ -8,7 +8,7 @@ use cosmian_kmip::{
         kmip_types::ProtocolVersion,
     },
     kmip_1_4, kmip_2_1,
-    ttlv::KmipFlavor::Kmip1,
+    ttlv::KmipFlavor,
 };
 use cosmian_logger::log_init;
 
@@ -130,7 +130,7 @@ fn test_discover_versions_(
                 kmip_1_4::kmip_messages::RequestMessageBatchItem {
                     operation: kmip_1_4::kmip_types::OperationEnumeration::DiscoverVersions,
                     ephemeral: None,
-                    unique_batch_item_id: None,
+                    unique_batch_item_id: Some(b"12345".to_vec()),
                     request_payload: kmip_1_4::kmip_operations::Operation::DiscoverVersions(dv),
                     message_extension: None,
                 },
@@ -142,7 +142,7 @@ fn test_discover_versions_(
                 kmip_2_1::kmip_messages::RequestMessageBatchItem {
                     operation: kmip_2_1::kmip_types::OperationEnumeration::DiscoverVersions,
                     ephemeral: None,
-                    unique_batch_item_id: None,
+                    unique_batch_item_id: Some(b"12345".to_vec()),
                     request_payload: kmip_2_1::kmip_operations::Operation::DiscoverVersions(dv),
                     message_extension: None,
                 },
@@ -150,7 +150,14 @@ fn test_discover_versions_(
     }
 
     let response = client
-        .send_request::<RequestMessage, ResponseMessage>(Kmip1, &request_message)
+        .send_request::<RequestMessage, ResponseMessage>(
+            if major == 1 {
+                KmipFlavor::Kmip1
+            } else {
+                KmipFlavor::Kmip2
+            },
+            &request_message,
+        )
         .expect("Failed to send request");
 
     assert_eq!(
@@ -168,6 +175,7 @@ fn test_discover_versions_(
         let ResponseMessageBatchItemVersioned::V14(batch_item) = response_batch_item else {
             panic!("Expected V14 request message");
         };
+        assert_eq!(batch_item.unique_batch_item_id, Some(b"12345".to_vec()));
         let Some(kmip_1_4::kmip_operations::Operation::DiscoverVersionsResponse(resp)) =
             &batch_item.response_payload
         else {
@@ -178,6 +186,7 @@ fn test_discover_versions_(
         let ResponseMessageBatchItemVersioned::V21(batch_item) = response_batch_item else {
             panic!("Expected V14 request message");
         };
+        assert_eq!(batch_item.unique_batch_item_id, Some(b"12345".to_vec()));
         let Some(kmip_2_1::kmip_operations::Operation::DiscoverVersionsResponse(resp)) =
             &batch_item.response_payload
         else {
