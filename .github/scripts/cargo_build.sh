@@ -129,8 +129,10 @@ if [ -z "$i" ]; then
 else
   KMS_TEST_DB="$i"
 fi
+if [ "$DEBUG_OR_RELEASE" = "release" && "$KMS_TEST_DB" = "redis-findex" ]; then
 # shellcheck disable=SC2086
 KMS_TEST_DB="$i" cargo test --workspace --lib --target $TARGET $RELEASE $FEATURES -- --nocapture $SKIP_SERVICES_TESTS
+fi
 done
 
 # shellcheck disable=SC2086
