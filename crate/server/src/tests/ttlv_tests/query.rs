@@ -7,9 +7,10 @@ use cosmian_kmip::{
         kmip_types::ProtocolVersion,
     },
     kmip_1_4, kmip_2_1,
-    ttlv::KmipFlavor::Kmip1,
+    ttlv::KmipFlavor,
 };
 use cosmian_logger::log_init;
+use tracing::info;
 
 use crate::tests::ttlv_tests::get_client;
 
@@ -17,7 +18,9 @@ use crate::tests::ttlv_tests::get_client;
 fn test_query() {
     log_init(option_env!("RUST_LOG"));
     test_query_(1, 2);
+    info!("Test KMIP 1 ==> OK");
     test_query_(2, 1);
+    info!("Test KMIP 2 ==> OK");
 }
 fn test_query_(major: i32, minor: i32) {
     let client = get_client();
@@ -46,6 +49,7 @@ fn test_query_(major: i32, minor: i32) {
                             query_function: Some(vec![
                                 kmip_1_4::kmip_types::QueryFunction::QueryOperations,
                                 kmip_1_4::kmip_types::QueryFunction::QueryObjects,
+                                kmip_1_4::kmip_types::QueryFunction::QueryServerInformation,
                             ]),
                         },
                     ),
@@ -65,6 +69,7 @@ fn test_query_(major: i32, minor: i32) {
                             query_function: Some(vec![
                                 kmip_2_1::kmip_types::QueryFunction::QueryOperations,
                                 kmip_2_1::kmip_types::QueryFunction::QueryObjects,
+                                kmip_2_1::kmip_types::QueryFunction::QueryServerInformation,
                             ]),
                         },
                     ),
@@ -74,9 +79,15 @@ fn test_query_(major: i32, minor: i32) {
     }
 
     let response = client
-        .send_request::<RequestMessage, ResponseMessage>(Kmip1, &request_message)
+        .send_request::<RequestMessage, ResponseMessage>(
+            if major == 1 {
+                KmipFlavor::Kmip1
+            } else {
+                KmipFlavor::Kmip2
+            },
+            &request_message,
+        )
         .expect("Failed to send request");
-
     assert_eq!(
         response.response_header.protocol_version,
         ProtocolVersion {
@@ -105,6 +116,10 @@ fn test_query_(major: i32, minor: i32) {
             panic!("Expected object types");
         };
         assert!(!object_types.is_empty());
+        let Some(vendor_identification) = &query_response.vendor_identification else {
+            panic!("Expected vendor identification");
+        };
+        assert!(!vendor_identification.is_empty());
     } else {
         let ResponseMessageBatchItemVersioned::V21(batch_item) = response_batch_item else {
             panic!("Expected V14 request message");
@@ -122,5 +137,9 @@ fn test_query_(major: i32, minor: i32) {
             panic!("Expected object types");
         };
         assert!(!object_types.is_empty());
+        let Some(vendor_identification) = &query_response.vendor_identification else {
+            panic!("Expected vendor identification");
+        };
+        assert!(!vendor_identification.is_empty());
     }
 }
