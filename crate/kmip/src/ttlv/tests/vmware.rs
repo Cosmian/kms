@@ -1,17 +1,22 @@
 #![allow(unused)]
+use std::option;
+
 use cosmian_logger::log_init;
 use tracing::info;
 
 use crate::{
-    kmip_0,
     kmip_0::{
+        self,
         kmip_messages::{
             RequestMessage, RequestMessageBatchItemVersioned, ResponseMessage,
             ResponseMessageBatchItemVersioned,
         },
         kmip_operations::{DiscoverVersions, DiscoverVersionsResponse},
     },
-    kmip_1_4,
+    kmip_1_4::{
+        self,
+        kmip_operations::{Operation, Query, QueryResponse},
+    },
     ttlv::{from_ttlv, KmipFlavor, TTLV},
 };
 
@@ -32,7 +37,7 @@ const DISCOVER_VERSIONS_1_RESPONSE: &str = "42007b010000017042007a01000000484200
 
 #[test]
 fn discover_versions_1() {
-    log_init(Some("debug"));
+    log_init(option_env!("RUST_LOG"));
     let request = hex::decode(DISCOVER_VERSIONS_1).unwrap();
 
     let (major, minor) = TTLV::find_version(&request).unwrap();
@@ -47,7 +52,7 @@ fn discover_versions_1() {
     };
     assert_eq!(
         request_message.request_payload,
-        kmip_1_4::kmip_operations::Operation::DiscoverVersions(DiscoverVersions {
+        Operation::DiscoverVersions(DiscoverVersions {
             protocol_version: None
         })
     );
@@ -68,7 +73,7 @@ fn discover_versions_1() {
     };
     assert_eq!(
         response_payload,
-        &kmip_1_4::kmip_operations::Operation::DiscoverVersionsResponse(DiscoverVersionsResponse {
+        &Operation::DiscoverVersionsResponse(DiscoverVersionsResponse {
             protocol_version: Some(vec![
                 kmip_0::kmip_types::ProtocolVersion {
                     protocol_version_major: 2,
@@ -116,7 +121,7 @@ const DISCOVER_VERSIONS_2_RESPONSE: &str = "42007b010000018042007a01000000484200
 
 #[test]
 fn discover_versions_2() {
-    log_init(Some("debug"));
+    log_init(option_env!("RUST_LOG"));
     let request = hex::decode(DISCOVER_VERSIONS_2).unwrap();
 
     let (major, minor) = TTLV::find_version(&request).unwrap();
@@ -131,7 +136,7 @@ fn discover_versions_2() {
     };
     assert_eq!(
         request_message.request_payload,
-        kmip_1_4::kmip_operations::Operation::DiscoverVersions(DiscoverVersions {
+        Operation::DiscoverVersions(DiscoverVersions {
             protocol_version: None
         })
     );
@@ -157,7 +162,7 @@ fn discover_versions_2() {
     );
     assert_eq!(
         response_payload,
-        &kmip_1_4::kmip_operations::Operation::DiscoverVersionsResponse(DiscoverVersionsResponse {
+        &Operation::DiscoverVersionsResponse(DiscoverVersionsResponse {
             protocol_version: Some(vec![
                 kmip_0::kmip_types::ProtocolVersion {
                     protocol_version_major: 2,
@@ -185,5 +190,62 @@ fn discover_versions_2() {
                 }
             ])
         })
+    );
+}
+
+const QUERY: &str = "42007801000000804200770100000038420069010000002042006a0200000004000000010000000042006b0200000004000000010000000042000d0200000004000000010000000042000f010000003842005c050000000400000018000000004200930800000008514c4b4301000000420079010000001042007405000000040000000300000000";
+const QUERY_RESPONSE: &str = "42007b01000000c042007a0100000048420069010000002042006a0200000004000000010000000042006b0200000004000000010000000042009209000000080000000067ea85f542000d0200000004000000010000000042000f010000006842005c050000000400000018000000004200930800000008514c4b430100000042007f0500000004000000000000000042007c010000003042009d070000002250794b4d495020302e31312e302e6465763120536f66747761726520536572766572000000000000";
+
+#[test]
+fn query() {
+    log_init(Some("debug"));
+    let request = hex::decode(QUERY).unwrap();
+
+    let (major, minor) = TTLV::find_version(&request).unwrap();
+    assert_eq!(major, 1);
+    assert_eq!(minor, 1);
+
+    let ttlv = TTLV::from_bytes(&request, KmipFlavor::Kmip1).unwrap();
+    let request_message: RequestMessage = from_ttlv(ttlv).unwrap();
+    let RequestMessageBatchItemVersioned::V14(request_message) = &request_message.batch_item[0]
+    else {
+        panic!("Expected V14 request message");
+    };
+    info!("request_message: {:?}", request_message);
+    assert_eq!(
+        request_message.request_payload,
+        Operation::Query(Query {
+            query_function: Some(vec![
+                kmip_1_4::kmip_types::QueryFunction::QueryServerInformation
+            ]),
+        })
+    );
+
+    // response
+    let response = hex::decode(QUERY_RESPONSE).unwrap();
+    let (major, minor) = TTLV::find_version(&response).unwrap();
+    assert_eq!(major, 1);
+    assert_eq!(minor, 1);
+    let ttlv = TTLV::from_bytes(&response, KmipFlavor::Kmip1).unwrap();
+    let response_message: ResponseMessage = from_ttlv(ttlv).unwrap();
+    let ResponseMessageBatchItemVersioned::V14(response_message) = &response_message.batch_item[0]
+    else {
+        panic!("Expected V14 response message");
+    };
+    let Some(response_payload) = &response_message.response_payload else {
+        panic!("Expected response payload");
+    };
+    assert!(request_message.unique_batch_item_id.is_some());
+    assert_eq!(
+        response_message.unique_batch_item_id,
+        request_message.unique_batch_item_id
+    );
+    info!("response_message: {:#?}", response_message);
+    let Operation::QueryResponse(response_operation) = response_payload else {
+        panic!("Expected QueryResponse");
+    };
+    assert_eq!(
+        response_operation.vendor_identification,
+        Some("PyKMIP 0.11.0.dev1 Software Server".to_owned())
     );
 }

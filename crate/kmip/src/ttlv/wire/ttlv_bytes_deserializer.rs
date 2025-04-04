@@ -28,8 +28,12 @@ where
         let mut full_tag_bytes = [0_u8; 4];
         full_tag_bytes[1..].copy_from_slice(&tag_bytes);
         let tag_value = u32::from_be_bytes(full_tag_bytes);
-        let tag = TAG::from_u32(tag_value)
-            .map_err(|_e| TtlvError::from(format!("Invalid tag number: {tag_value}")))?;
+        let tag = TAG::from_u32(tag_value).map_err(|_e| {
+            TtlvError::from(format!(
+                "Invalid tag number: Ox{}",
+                hex::encode_upper(&tag_value.to_be_bytes()[1..])
+            ))
+        })?;
 
         // Read Type (1 byte)
         let mut type_byte = [0_u8; 1];

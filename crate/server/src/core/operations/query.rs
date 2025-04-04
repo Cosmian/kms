@@ -1,4 +1,5 @@
 use cosmian_kmip::kmip_2_1::{
+    kmip_data_structures::ServerInformation,
     kmip_objects::ObjectType,
     kmip_operations::{Query, QueryResponse},
     kmip_types::{OperationEnumeration, QueryFunction},
@@ -62,8 +63,15 @@ pub(crate) async fn query(request: Query) -> KResult<QueryResponse> {
                         ObjectType::PublicKey,
                     ]);
                 }
-                QueryFunction::QueryServerInformation
-                | QueryFunction::QueryApplicationNamespaces
+                QueryFunction::QueryServerInformation => {
+                    response.vendor_identification = Some("Cosmian".to_owned());
+                    response.server_information = Some(ServerInformation {
+                        server_name: Some("Cosmian KMS".to_owned()),
+                        server_version: Some(env!("CARGO_PKG_VERSION").to_owned()),
+                        ..Default::default()
+                    });
+                }
+                QueryFunction::QueryApplicationNamespaces
                 | QueryFunction::QueryExtensionList
                 | QueryFunction::QueryExtensionMap
                 | QueryFunction::QueryAttestationTypes
