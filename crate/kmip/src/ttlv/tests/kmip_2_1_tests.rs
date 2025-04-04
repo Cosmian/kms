@@ -23,7 +23,7 @@ use crate::{
         kmip_objects::{Object, ObjectType, PublicKey, SymmetricKey},
         kmip_operations::{
             Create, DecryptResponse, Encrypt, Import, ImportResponse, Locate, LocateResponse,
-            Operation, Query, SetAttribute,
+            Operation, Query, QueryResponse, SetAttribute,
         },
         kmip_types::{
             CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, Link, LinkType,
@@ -1290,48 +1290,47 @@ fn test_locate_with_empty_attributes() {
 }
 
 //TODO: implement the Query operation in 2.1 first
-// #[test]
-// fn test_query_response() {
-//     log_init(option_env!("RUST_LOG"));
-//
-//     let response_batch_item = ResponseMessageBatchItem {
-//         operation: Some(OperationEnumeration::Query),
-//         unique_batch_item_id: None,
-//         response_payload: Some(Operation::QueryResponse(QueryResponse {
-//             operation: Some(vec![
-//                 OperationEnumeration::Activate,
-//                 OperationEnumeration::Create,
-//                 OperationEnumeration::Get,
-//             ]),
-//             object_type: None,
-//             vendor_identification: None,
-//             application_namespaces: None,
-//             server_information: None,
-//             extension_information: None,
-//             attestation_types: None,
-//             rng_mode: None,
-//             profiles_supported: None,
-//             validation_information: None,
-//             capability_information: None,
-//             client_registration_methods: None,
-//             defaults_information: None,
-//             protection_storage_masks: None,
-//         })),
-//         result_status: ResultStatusEnumeration::Success,
-//         result_reason: None,
-//         result_message: None,
-//         asynchronous_correlation_value: None,
-//         message_extension: None,
-//     };
-//
-//     let ttlv = to_ttlv(&response_batch_item).unwrap();
-//     trace!("batch item: {:#?}", ttlv);
-//
-//     let response_batch_item_: ResponseMessageBatchItem = from_ttlv(ttlv).unwrap();
-//     trace!("query_response_deserialized: {:#?}", response_batch_item_);
-//
-//     assert_eq!(response_batch_item, response_batch_item_);
-// }
+#[test]
+fn test_query_response() {
+    log_init(option_env!("RUST_LOG"));
+
+    let response_batch_item = ResponseMessageBatchItem {
+        operation: Some(OperationEnumeration::Query),
+        unique_batch_item_id: None,
+        response_payload: Some(Operation::QueryResponse(QueryResponse {
+            operation: Some(vec![
+                OperationEnumeration::Activate,
+                OperationEnumeration::Create,
+                OperationEnumeration::Get,
+            ]),
+            object_type: None,
+            vendor_identification: None,
+            application_namespaces: None,
+            server_information: None,
+            extension_information: None,
+            attestation_types: None,
+            validation_information: None,
+            capability_information: None,
+            defaults_information: None,
+            protection_storage_masks: None,
+            rng_parameters: None,
+            profiles_information: None,
+        })),
+        result_status: ResultStatusEnumeration::Success,
+        result_reason: None,
+        result_message: None,
+        asynchronous_correlation_value: None,
+        message_extension: None,
+    };
+
+    let ttlv = to_ttlv(&response_batch_item).unwrap();
+    trace!("batch item: {:#?}", ttlv);
+
+    let response_batch_item_: ResponseMessageBatchItem = from_ttlv(ttlv).unwrap();
+    trace!("query_response_deserialized: {:#?}", response_batch_item_);
+
+    assert_eq!(response_batch_item, response_batch_item_);
+}
 
 #[test]
 pub(crate) fn test_simple_message_request() {

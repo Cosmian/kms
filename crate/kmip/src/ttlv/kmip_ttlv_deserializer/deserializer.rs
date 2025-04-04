@@ -373,8 +373,19 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
                     })
             }
             TTLValue::Interval(i) => visitor.visit_u32(*i),
+            // This is for masks
+            TTLValue::Integer(i) => {
+                if *i < 0 {
+                    return Err(TtlvError::from("Cannot convert negative integer to u32"));
+                }
+                let value: u32 = (*i)
+                    .try_into()
+                    .map_err(|e| TtlvError::from(format!("Integer conversion error{e}")))?;
+                visitor.visit_u32(value)
+            }
             v => Err(TtlvError::from(format!(
-                "Expected BigInteger or Interval value in TTLV for an u32, got : {v:?}"
+                "Expected BigInteger, Interval, Integer (for masks) value in TTLV for an u32, got \
+                 : {v:?}"
             ))),
         }
     }
@@ -430,7 +441,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         // This is called when deserializing a DateTimeExtended
         // The value is a 128-bit integer
         trace!(
-            "deserialize_i128: state: {}: {:?}",
+            "deserialize_i128: child: {}: {:?}",
             self.child_index,
             peek_structure_child(&self.current, self.child_index)
         );
@@ -458,17 +469,18 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         V: Visitor<'de>,
     {
         trace!(
-            "deserialize_str: map state: {:?}, index: {}, current:  {:?}",
+            "deserialize_str: map state: {:?}, child: {}: {:?}",
             self.map_state,
             self.child_index,
-            self.current
+            peek_structure_child(&self.current, self.child_index)
         );
+        let element = self.fetch_element()?;
         if self.map_state == MapAccessState::Key {
             // if the deserializer is deserializing the key of a map, the tag is the key
-            trace!("... str: key: {}", self.current.tag);
-            return visitor.visit_str(&self.current.tag);
+            trace!("... str: key: {}", element.tag);
+            return visitor.visit_str(&element.tag);
         }
-        if let TTLValue::TextString(s) = &self.fetch_element()?.value {
+        if let TTLValue::TextString(s) = &element.value {
             trace!("... text string: value: {}", s);
             visitor.visit_str(s)
         } else {

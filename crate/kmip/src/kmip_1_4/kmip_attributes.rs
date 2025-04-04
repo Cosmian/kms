@@ -1,6 +1,13 @@
-use std::collections::HashSet;
+use std::{
+    collections::HashSet,
+    fmt::{self, Formatter},
+};
 
-use serde::{ser::SerializeStruct, Deserialize, Serialize};
+use serde::{
+    de::{self, MapAccess, Visitor},
+    ser::SerializeStruct,
+    Deserialize, Serialize,
+};
 
 use super::kmip_types::{LinkType, LinkedObjectIdentifier};
 use crate::{
@@ -823,8 +830,7 @@ impl Attributes {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(untagged)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Attribute {
     UniqueIdentifier(String),
     Name(Vec<Name>),
@@ -1095,22 +1101,288 @@ impl Serialize for Attribute {
     }
 }
 
-// impl Serialize for Attribute {
-//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-//     where
-//         S: serde::Serializer,
-//     {
-//         let mut st = serializer.serialize_struct("Attribute", 2)?;
-//         match self {
-//             Attribute::UniqueIdentifier(value) => {
-//                 st.serialize_field("AttributeName", "UniqueIdentifier")?;
-//                 st.serialize_field("AttributeValue", value)?;
-//             }
-//         }
+impl<'de> Deserialize<'de> for Attribute {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize, Debug)]
+        #[serde(field_identifier)]
+        enum Field {
+            AttributeName,
+            AttributeValue,
+        }
 
-//         st.end()
-//     }
-// }
+        struct AttributeVisitor;
+
+        impl<'de> Visitor<'de> for AttributeVisitor {
+            type Value = Attribute;
+
+            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                formatter.write_str("struct Attribute")
+            }
+
+            fn visit_map<V>(self, mut map: V) -> Result<Self::Value, V::Error>
+            where
+                V: MapAccess<'de>,
+            {
+                let Some(attribute_name_key) = map.next_key::<String>()? else {
+                    return Err(de::Error::custom("missing attribute name in attribute"));
+                };
+                if attribute_name_key != "AttributeName" {
+                    return Err(de::Error::custom(format!(
+                        "expected AttributeName in attribute, found {attribute_name_key}"
+                    )));
+                }
+                let attribute_name_value = map.next_value::<String>()?;
+
+                // TODO: Special case of Notify for which there is no attribute value
+                // This server cannot handle Notify for now
+
+                let Some(attribute_value_name) = map.next_key::<String>()? else {
+                    return Err(de::Error::custom("No attribute value in attribute"));
+                };
+                if attribute_value_name != "AttributeValue" {
+                    return Err(de::Error::custom(format!(
+                        "expected AttributeValue in attribute, found {attribute_value_name}"
+                    )));
+                }
+                match attribute_name_value.as_str() {
+                    "Unique Identifier" => {
+                        let value: String = map.next_value()?;
+                        Ok(Attribute::UniqueIdentifier(value))
+                    }
+                    "Name" => {
+                        let value: Vec<Name> = map.next_value()?;
+                        Ok(Attribute::Name(value))
+                    }
+                    "Object Type" => {
+                        let value: ObjectType = map.next_value()?;
+                        Ok(Attribute::ObjectType(value))
+                    }
+                    "Cryptographic Algorithm" => {
+                        let value: CryptographicAlgorithm = map.next_value()?;
+                        Ok(Attribute::CryptographicAlgorithm(value))
+                    }
+                    "Cryptographic Length" => {
+                        let value: i32 = map.next_value()?;
+                        Ok(Attribute::CryptographicLength(value))
+                    }
+                    "Cryptographic Parameters" => {
+                        let value: CryptographicParameters = map.next_value()?;
+                        Ok(Attribute::CryptographicParameters(value))
+                    }
+                    "Cryptographic Domain Parameters" => {
+                        let value: CryptographicDomainParameters = map.next_value()?;
+                        Ok(Attribute::CryptographicDomainParameters(value))
+                    }
+                    "Certificate Type" => {
+                        let value: CertificateType = map.next_value()?;
+                        Ok(Attribute::CertificateType(value))
+                    }
+                    "Certificate Length" => {
+                        let value: i32 = map.next_value()?;
+                        Ok(Attribute::CertificateLength(value))
+                    }
+                    "X.509 Certificate Identifier" => {
+                        let value: X509CertificateIdentifier = map.next_value()?;
+                        Ok(Attribute::X509CertificateIdentifier(value))
+                    }
+                    "X.509 Certificate Subject" => {
+                        let value: String = map.next_value()?;
+                        Ok(Attribute::X509CertificateSubject(value))
+                    }
+                    "X.509 Certificate Issuer" => {
+                        let value: String = map.next_value()?;
+                        Ok(Attribute::X509CertificateIssuer(value))
+                    }
+                    "Certificate Identifier" => {
+                        let value: String = map.next_value()?;
+                        Ok(Attribute::CertificateIdentifier(value))
+                    }
+                    "Certificate Subject" => {
+                        let value: String = map.next_value()?;
+                        Ok(Attribute::CertificateSubject(value))
+                    }
+                    "Certificate Issuer" => {
+                        let value: String = map.next_value()?;
+                        Ok(Attribute::CertificateIssuer(value))
+                    }
+                    "Digital Signature Algorithm" => {
+                        let value: DigitalSignatureAlgorithm = map.next_value()?;
+                        Ok(Attribute::DigitalSignatureAlgorithm(value))
+                    }
+                    "Digest" => {
+                        let value: Digest = map.next_value()?;
+                        Ok(Attribute::Digest(value))
+                    }
+                    "Operation Policy Name" => {
+                        let value: String = map.next_value()?;
+                        Ok(Attribute::OperationPolicyName(value))
+                    }
+                    "Cryptographic Usage Mask" => {
+                        let value: CryptographicUsageMask = map.next_value()?;
+                        Ok(Attribute::CryptographicUsageMask(value))
+                    }
+                    "Lease Time" => {
+                        let value: i64 = map.next_value()?;
+                        Ok(Attribute::LeaseTime(value))
+                    }
+                    "Usage Limits" => {
+                        let value: UsageLimits = map.next_value()?;
+                        Ok(Attribute::UsageLimits(value))
+                    }
+                    "State" => {
+                        let value: State = map.next_value()?;
+                        Ok(Attribute::State(value))
+                    }
+                    "Initial Date" => {
+                        let value: i64 = map.next_value()?;
+                        Ok(Attribute::InitialDate(value))
+                    }
+                    "Activation Date" => {
+                        let value: i64 = map.next_value()?;
+                        Ok(Attribute::ActivationDate(value))
+                    }
+                    "Process Start Date" => {
+                        let value: i64 = map.next_value()?;
+                        Ok(Attribute::ProcessStartDate(value))
+                    }
+                    "Protect Stop Date" => {
+                        let value: i64 = map.next_value()?;
+                        Ok(Attribute::ProtectStopDate(value))
+                    }
+                    "Deactivation Date" => {
+                        let value: i64 = map.next_value()?;
+                        Ok(Attribute::DeactivationDate(value))
+                    }
+                    "Destroy Date" => {
+                        let value: i64 = map.next_value()?;
+                        Ok(Attribute::DestroyDate(value))
+                    }
+                    "Compromise Occurrence Date" => {
+                        let value: i64 = map.next_value()?;
+                        Ok(Attribute::CompromiseOccurrenceDate(value))
+                    }
+                    "Compromise Date" => {
+                        let value: i64 = map.next_value()?;
+                        Ok(Attribute::CompromiseDate(value))
+                    }
+                    "Revocation Reason" => {
+                        let value: RevocationReason = map.next_value()?;
+                        Ok(Attribute::RevocationReason(value))
+                    }
+                    "Archive Date" => {
+                        let value: i64 = map.next_value()?;
+                        Ok(Attribute::ArchiveDate(value))
+                    }
+                    "Object Group" => {
+                        let value: String = map.next_value()?;
+                        Ok(Attribute::ObjectGroup(value))
+                    }
+                    "Fresh" => {
+                        let value: bool = map.next_value()?;
+                        Ok(Attribute::Fresh(value))
+                    }
+                    "Link" => {
+                        let value: Vec<Link> = map.next_value()?;
+                        Ok(Attribute::Link(value))
+                    }
+                    "Application Specific Information" => {
+                        let value: ApplicationSpecificInformation = map.next_value()?;
+                        Ok(Attribute::ApplicationSpecificInformation(value))
+                    }
+                    "Contact Information" => {
+                        let value: String = map.next_value()?;
+                        Ok(Attribute::ContactInformation(value))
+                    }
+                    "Last Change Date" => {
+                        let value: i64 = map.next_value()?;
+                        Ok(Attribute::LastChangeDate(value))
+                    }
+                    "Custom Attribute" => {
+                        let value: CustomAttributeValue = map.next_value()?;
+                        Ok(Attribute::CustomAttribute(value))
+                    }
+                    "Alternative Name" => {
+                        let value: AlternativeName = map.next_value()?;
+                        Ok(Attribute::AlternativeName(value))
+                    }
+                    "Key Value Present" => {
+                        let value: bool = map.next_value()?;
+                        Ok(Attribute::KeyValuePresent(value))
+                    }
+                    "Key Value Location" => {
+                        let value: KeyValueLocationType = map.next_value()?;
+                        Ok(Attribute::KeyValueLocation(value))
+                    }
+                    "Original Creation Date" => {
+                        let value: i64 = map.next_value()?;
+                        Ok(Attribute::OriginalCreationDate(value))
+                    }
+                    "Random Number Generator" => {
+                        let value: RandomNumberGenerator = map.next_value()?;
+                        Ok(Attribute::RandomNumberGenerator(value))
+                    }
+                    "PKCS#12 Friendly Name" => {
+                        let value: String = map.next_value()?;
+                        Ok(Attribute::Pkcs12FriendlyName(value))
+                    }
+                    "Description" => {
+                        let value: String = map.next_value()?;
+                        Ok(Attribute::Description(value))
+                    }
+                    "Comment" => {
+                        let value: String = map.next_value()?;
+                        Ok(Attribute::Comment(value))
+                    }
+                    "Sensitive" => {
+                        let value: bool = map.next_value()?;
+                        Ok(Attribute::Sensitive(value))
+                    }
+                    "Always Sensitive" => {
+                        let value: bool = map.next_value()?;
+                        Ok(Attribute::AlwaysSensitive(value))
+                    }
+                    "Extractable" => {
+                        let value: bool = map.next_value()?;
+                        Ok(Attribute::Extractable(value))
+                    }
+                    "Never Extractable" => {
+                        let value: bool = map.next_value()?;
+                        Ok(Attribute::NeverExtractable(value))
+                    }
+                    _ => Err(de::Error::custom(format!(
+                        "invalid attribute name: {attribute_name_value}"
+                    ))),
+                }
+            }
+        }
+
+        deserializer.deserialize_struct(
+            "Attribute",
+            &["AttributeName", "AttributeValue"],
+            AttributeVisitor,
+        )
+    }
+}
+
+/// The value of a Custom Attribute (section 3.39).
+/// Any data type or structure.
+/// If a structure, then the structure SHALL NOT include sub structures
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[serde(untagged)]
+pub enum CustomAttributeValue {
+    TextString(String),
+    Integer(i32),
+    LongInteger(i64),
+    BigInteger(Vec<u8>),
+    Enumeration(u32),
+    Boolean(bool),
+    DateTime(i64),
+    Interval(u64),
+    Structure(VendorAttribute),
+}
 
 #[cfg(test)]
 mod tests {
@@ -1156,21 +1428,4 @@ mod tests {
         let empty_attrs = Attributes::default();
         assert!(empty_attrs.to_attributes().is_empty());
     }
-}
-
-/// The value of a Custom Attribute (section 3.39).
-/// Any data type or structure.
-/// If a structure, then the structure SHALL NOT include sub structures
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
-#[serde(untagged)]
-pub enum CustomAttributeValue {
-    TextString(String),
-    Integer(i32),
-    LongInteger(i64),
-    BigInteger(Vec<u8>),
-    Enumeration(i32),
-    Boolean(bool),
-    DateTime(i64),
-    Interval(i64),
-    Structure(VendorAttribute),
 }
