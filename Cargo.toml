@@ -24,7 +24,7 @@ resolver = "2"
 [workspace.package]
 version = "4.23.0"
 edition = "2021"
-rust-version = "1.71.0"
+rust-version = "1.80.0"
 authors = [
   "Bruno Grieder <bruno.grieder@cosmian.com>",
   "Emmanuel Coste <emmanuel.coste@cosmian.com>",
