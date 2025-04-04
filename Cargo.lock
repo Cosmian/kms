@@ -1628,10 +1628,13 @@ dependencies = [
 name = "cosmian_pkcs11"
 version = "4.23.0"
 dependencies = [
- "cosmian_kms_client",
+ "cosmian_cli",
+ "cosmian_crypto_core 10.0.1",
+ "cosmian_kmip",
  "cosmian_logger",
  "cosmian_pkcs11_module",
  "etcetera",
+ "hex",
  "p256",
  "pkcs1",
  "serde_json",
