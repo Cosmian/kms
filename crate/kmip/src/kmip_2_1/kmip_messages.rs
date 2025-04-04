@@ -563,6 +563,9 @@ impl<'de> Deserialize<'de> for ResponseMessageBatchItem {
                                 OperationEnumeration::Decrypt => {
                                     Operation::DecryptResponse(map.next_value()?)
                                 }
+                                OperationEnumeration::Query => {
+                                    Operation::QueryResponse(map.next_value()?)
+                                }
                                 OperationEnumeration::Import => {
                                     Operation::ImportResponse(map.next_value()?)
                                 }
@@ -571,7 +574,7 @@ impl<'de> Deserialize<'de> for ResponseMessageBatchItem {
                                 }
                                 x => {
                                     return Err(de::Error::custom(format!(
-                                        "response payload: unsupported operation: {x:?}"
+                                        "KMIP 2 response message payload: unsupported operation: {x:?}"
                                     )))
                                 }
                             });
