@@ -249,3 +249,63 @@ fn query() {
         Some("PyKMIP 0.11.0.dev1 Software Server".to_owned())
     );
 }
+
+const CREATE: &str = "42007801000001304200770100000038420069010000002042006a0200000004000000010000000042006b0200000004000000010000000042000d0200000004000000010000000042000f01000000e842005c050000000400000001000000004200930800000008514c4b430100000042007901000000c04200570500000004000000020000000042009101000000a8420008010000003042000a070000001743727970746f6772617068696320416c676f726974686d0042000b05000000040000000300000000420008010000003042000a070000001843727970746f67726170686963205573616765204d61736b42000b02000000040000000c00000000420008010000003042000a070000001443727970746f67726170686963204c656e6774680000000042000b02000000040000010000000000";
+const CREATE_RESPONSE: &str = "42007b01000000b042007a0100000048420069010000002042006a0200000004000000010000000042006b0200000004000000010000000042009209000000080000000067ee614742000d0200000004000000010000000042000f010000005842005c050000000400000001000000004200930800000008514c4b430100000042007f0500000004000000000000000042007c01000000204200570500000004000000020000000042009407000000013100000000000000";
+
+#[test]
+fn create() {
+    log_init(Some("debug"));
+    let request = hex::decode(CREATE).unwrap();
+
+    let (major, minor) = TTLV::find_version(&request).unwrap();
+    assert_eq!(major, 1);
+    assert_eq!(minor, 1);
+
+    let ttlv = TTLV::from_bytes(&request, KmipFlavor::Kmip1).unwrap();
+    info!("ttlv: {:#?}", ttlv);
+
+    let request_message: RequestMessage = from_ttlv(ttlv).unwrap();
+    let RequestMessageBatchItemVersioned::V14(request_message) = &request_message.batch_item[0]
+    else {
+        panic!("Expected V14 request message");
+    };
+    info!("request_message: {:#?}", request_message);
+    // assert_eq!(
+    //     request_message.request_payload,
+    //     Operation::Query(Query {
+    //         query_function: Some(vec![
+    //             kmip_1_4::kmip_types::QueryFunction::QueryServerInformation
+    //         ]),
+    //     })
+    // );
+
+    // response
+    let response = hex::decode(CREATE_RESPONSE).unwrap();
+    let (major, minor) = TTLV::find_version(&response).unwrap();
+    assert_eq!(major, 1);
+    assert_eq!(minor, 1);
+    let ttlv = TTLV::from_bytes(&response, KmipFlavor::Kmip1).unwrap();
+    let response_message: ResponseMessage = from_ttlv(ttlv).unwrap();
+    info!("response_message: {:#?}", response_message);
+
+    let ResponseMessageBatchItemVersioned::V14(response_message) = &response_message.batch_item[0]
+    else {
+        panic!("Expected V14 response message");
+    };
+    let Some(response_payload) = &response_message.response_payload else {
+        panic!("Expected response payload");
+    };
+    assert!(request_message.unique_batch_item_id.is_some());
+    assert_eq!(
+        response_message.unique_batch_item_id,
+        request_message.unique_batch_item_id
+    );
+    // let Operation::QueryResponse(response_operation) = response_payload else {
+    //     panic!("Expected QueryResponse");
+    // };
+    // assert_eq!(
+    //     response_operation.vendor_identification,
+    //     Some("PyKMIP 0.11.0.dev1 Software Server".to_owned())
+    // );
+}
