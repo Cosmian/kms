@@ -861,6 +861,9 @@ async fn post_process_pkcs7(
         // Retrieve the certificate chain
         while let Some(parent_id) = cert_owm.attributes().get_link(LinkType::CertificateLink) {
             trace!("Certificate parent id is: {parent_id}");
+            if parent_id.to_string() == cert_owm.id() {
+                break;
+            }
             // Retrieve the parent certificate
             cert_owm = retrieve_object_for_operation(
                 &parent_id.to_string(),
