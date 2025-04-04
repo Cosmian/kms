@@ -193,7 +193,7 @@ fn spa_index_handler(req: &HttpRequest) -> actix_web::HttpResponse {
     let index_path = match env::current_dir() {
         Ok(dir) => dir.join("ui/dist/index.html"),
         Err(e) => {
-            log::error!("Failed to get current directory: {:?}", e);
+            log::error!("Failed to get current directory: {e:?}");
             return HttpResponse::InternalServerError().finish();
         }
     };
@@ -201,7 +201,7 @@ fn spa_index_handler(req: &HttpRequest) -> actix_web::HttpResponse {
     match actix_files::NamedFile::open(index_path) {
         Ok(file) => file.into_response(req),
         Err(e) => {
-            log::error!("Failed to open index.html: {:?}", e);
+            log::error!("Failed to open index.html: {e:?}");
             HttpResponse::InternalServerError().finish()
         }
     }
