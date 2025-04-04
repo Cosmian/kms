@@ -1132,8 +1132,6 @@ pub struct TransparentEcmqvPublicKey {
 #[serde(rename_all = "PascalCase")]
 pub struct TemplateAttribute {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub name: Option<Vec<Name>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub attribute: Option<Vec<Attribute>>,
 }
 
