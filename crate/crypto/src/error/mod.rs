@@ -1,4 +1,4 @@
-use std::num::TryFromIntError;
+use std::{num::TryFromIntError, str::Utf8Error};
 
 use cosmian_crypto_core::CryptoCoreError;
 use cosmian_kmip::KmipError;
@@ -78,6 +78,12 @@ impl From<TryFromIntError> for CryptoError {
 impl From<KmipError> for CryptoError {
     fn from(e: KmipError) -> Self {
         Self::Kmip(e.to_string())
+    }
+}
+
+impl From<Utf8Error> for CryptoError {
+    fn from(e: Utf8Error) -> Self {
+        Self::Default(e.to_string())
     }
 }
 

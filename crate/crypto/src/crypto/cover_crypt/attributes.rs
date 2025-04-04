@@ -6,6 +6,7 @@ use cosmian_kmip::kmip_2_1::{
 };
 use serde::{Deserialize, Serialize};
 
+use super::access_structure::access_structure_from_str;
 use crate::error::CryptoError;
 
 pub const VENDOR_ATTR_COVER_CRYPT_ATTR: &str = "cover_crypt_attributes";
@@ -44,12 +45,8 @@ pub fn access_structure_from_attributes(
                 ))
             },
             |bytes| {
-                AccessStructure::deserialize(bytes).map_err(|e| {
-                    CryptoError::Kmip(format!(
-                        "failed deserializing the Covercrypt access structure from the \
-                         attributes: {e}"
-                    ))
-                })
+                let access_structure_str = std::str::from_utf8(bytes)?;
+                access_structure_from_str(access_structure_str)
             },
         )
 }
