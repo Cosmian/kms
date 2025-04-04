@@ -6,13 +6,7 @@ use cosmian_kmip::{
         },
         kmip_types::ProtocolVersion,
     },
-    kmip_1_4::{
-        self,
-        kmip_messages::RequestMessageBatchItem,
-        kmip_operations::{Operation, Query},
-        kmip_types::{OperationEnumeration, QueryFunction},
-    },
-    kmip_2_1,
+    kmip_1_4, kmip_2_1,
     ttlv::KmipFlavor::Kmip1,
 };
 use cosmian_logger::log_init;
@@ -21,21 +15,14 @@ use crate::tests::ttlv_tests::get_client;
 
 #[test]
 fn test_query() {
-    // log_init(option_env!("RUST_LOG"));
-    log_init(Some("debug"));
+    log_init(option_env!("RUST_LOG"));
     test_query_(1, 2);
     test_query_(2, 1);
 }
 fn test_query_(major: i32, minor: i32) {
     let client = get_client();
 
-    let query = Query {
-        query_function: Some(vec![
-            QueryFunction::QueryOperations,
-            QueryFunction::QueryObjects,
-        ]),
-    };
-    let request_message = RequestMessage {
+    let mut request_message = RequestMessage {
         request_header: RequestMessageHeader {
             protocol_version: ProtocolVersion {
                 protocol_version_major: major,
@@ -44,16 +31,47 @@ fn test_query_(major: i32, minor: i32) {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
-            RequestMessageBatchItem {
-                operation: OperationEnumeration::Query,
-                ephemeral: None,
-                unique_batch_item_id: None,
-                request_payload: Operation::Query(query),
-                message_extension: None,
-            },
-        )],
+        batch_item: vec![],
     };
+    if major == 1 {
+        request_message
+            .batch_item
+            .push(RequestMessageBatchItemVersioned::V14(
+                kmip_1_4::kmip_messages::RequestMessageBatchItem {
+                    operation: kmip_1_4::kmip_types::OperationEnumeration::Query,
+                    ephemeral: None,
+                    unique_batch_item_id: None,
+                    request_payload: kmip_1_4::kmip_operations::Operation::Query(
+                        kmip_1_4::kmip_operations::Query {
+                            query_function: Some(vec![
+                                kmip_1_4::kmip_types::QueryFunction::QueryOperations,
+                                kmip_1_4::kmip_types::QueryFunction::QueryObjects,
+                            ]),
+                        },
+                    ),
+                    message_extension: None,
+                },
+            ));
+    } else {
+        request_message
+            .batch_item
+            .push(RequestMessageBatchItemVersioned::V21(
+                kmip_2_1::kmip_messages::RequestMessageBatchItem {
+                    operation: kmip_2_1::kmip_types::OperationEnumeration::Query,
+                    ephemeral: None,
+                    unique_batch_item_id: None,
+                    request_payload: kmip_2_1::kmip_operations::Operation::Query(
+                        kmip_2_1::kmip_operations::Query {
+                            query_function: Some(vec![
+                                kmip_2_1::kmip_types::QueryFunction::QueryOperations,
+                                kmip_2_1::kmip_types::QueryFunction::QueryObjects,
+                            ]),
+                        },
+                    ),
+                    message_extension: None,
+                },
+            ));
+    }
 
     let response = client
         .send_request::<RequestMessage, ResponseMessage>(Kmip1, &request_message)
