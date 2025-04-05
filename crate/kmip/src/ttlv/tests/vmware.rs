@@ -279,7 +279,7 @@ const CREATE_RESPONSE: &str =
 
 #[test]
 fn create() {
-    log_init(Some("debug"));
+    log_init(option_env!("RUST_LOG"));
     let request = hex::decode(CREATE).unwrap();
 
     let (major, minor) = TTLV::find_version(&request).unwrap();
@@ -287,7 +287,7 @@ fn create() {
     assert_eq!(minor, 1);
 
     let ttlv = TTLV::from_bytes(&request, KmipFlavor::Kmip1).unwrap();
-    info!("ttlv: {:#?}", ttlv);
+    info!("request ttlv: {:#?}", ttlv);
 
     let request_message: RequestMessage = from_ttlv(ttlv).unwrap();
     let RequestMessageBatchItemVersioned::V14(request_message) = &request_message.batch_item[0]
@@ -316,7 +316,10 @@ fn create() {
     let (major, minor) = TTLV::find_version(&response).unwrap();
     assert_eq!(major, 1);
     assert_eq!(minor, 1);
+
     let ttlv = TTLV::from_bytes(&response, KmipFlavor::Kmip1).unwrap();
+    info!("response ttlv: {:#?}", ttlv);
+
     let response_message: ResponseMessage = from_ttlv(ttlv).unwrap();
     info!("response_message: {:#?}", response_message);
 
@@ -335,6 +338,7 @@ fn create() {
     assert_eq!(
         response_payload,
         &Operation::CreateResponse(CreateResponse {
+            object_type: ObjectType::SymmetricKey,
             unique_identifier: "1".to_owned(),
             template_attribute: None
         })

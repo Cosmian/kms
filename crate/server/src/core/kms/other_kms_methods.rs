@@ -123,10 +123,7 @@ impl KMS {
             | CryptographicAlgorithm::SHA3512
             | CryptographicAlgorithm::SHAKE128
             | CryptographicAlgorithm::SHAKE256 => match attributes.key_format_type {
-                None => Err(KmsError::InvalidRequest(
-                    "Unable to create a symmetric key, the format type is not specified".to_owned(),
-                )),
-                Some(KeyFormatType::TransparentSymmetricKey) => {
+                None | Some(KeyFormatType::TransparentSymmetricKey) => {
                     // create the key
                     let key_len = attributes
                         .cryptographic_length
