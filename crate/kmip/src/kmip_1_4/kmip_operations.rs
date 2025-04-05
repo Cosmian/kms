@@ -30,14 +30,41 @@ pub struct Create {
     pub template_attribute: TemplateAttribute,
 }
 
+impl From<Create> for kmip_2_1::kmip_operations::Create {
+    fn from(create: Create) -> Self {
+        Self {
+            object_type: create.object_type.into(),
+            attributes: create.template_attribute.into(),
+            protection_storage_masks: None,
+        }
+    }
+}
+
 /// Response to a Create request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct CreateResponse {
+    /// Type of Object created
+    pub object_type: ObjectType,
     /// The Unique Identifier of the newly created object
     pub unique_identifier: String,
     /// The template attributes that were assigned
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub template_attribute: Option<TemplateAttribute>,
+}
+
+impl TryFrom<kmip_2_1::kmip_operations::CreateResponse> for CreateResponse {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_operations::CreateResponse) -> Result<Self, Self::Error> {
+        debug!("Converting KMIP 2.1 CreateResponse to KMIP 1.4: {value:#?}");
+
+        Ok(Self {
+            object_type: value.object_type.try_into()?,
+            unique_identifier: value.unique_identifier.to_string(),
+            template_attribute: None,
+        })
+    }
 }
 
 /// 4.2 Create Key Pair
@@ -1269,9 +1296,7 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
 
     fn try_from(value: Operation) -> Result<Self, Self::Error> {
         Ok(match value {
-            // Operation::Create(create) => {
-            //     Self::Create(create.into())
-            // }
+            Operation::Create(create) => Self::Create(create.into()),
             // Operation::CreateResponse(create_response) => {
             //     Self::CreateResponse(create_response.into())
             // }
@@ -1503,7 +1528,7 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             }
             op => {
                 return Err(KmipError::NotSupported(format!(
-                    "Operation: {op:?}, is not supported in KMIP 2.1"
+                    "KMIP 2.1 does not support Request Operation: {op:?}"
                 )))
             }
         })
@@ -1518,9 +1543,9 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             // Operation::Create(create) => {
             //     Self::Create(create.into())
             // }
-            // Operation::CreateResponse(create_response) => {
-            //     Self::CreateResponse(create_response.into())
-            // }
+            kmip_2_1::kmip_operations::Operation::CreateResponse(create_response) => {
+                Self::CreateResponse(create_response.try_into()?)
+            }
             // Operation::CreateKeyPair(create_key_pair) => {
             //     Self::CreateKeyPair(create_key_pair.into())
             // }
@@ -1751,7 +1776,7 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             ) => Self::DiscoverVersionsResponse(discover_versions_response),
             op => {
                 return Err(KmipError::NotSupported(format!(
-                    "Operation: {op:?}, is not supported in KMIP 2.1"
+                    "KMIP 2.1 does not support Response Operation: {op:?}"
                 )))
             }
         })
