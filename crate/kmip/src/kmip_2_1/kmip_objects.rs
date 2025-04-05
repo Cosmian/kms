@@ -5,13 +5,13 @@ use std::{
     hash::{DefaultHasher, Hash, Hasher},
 };
 
-use kmip_derive::KmipEnumSerialize;
+use kmip_derive::{kmip_enum, KmipEnumDeserialize, KmipEnumSerialize};
 use num_bigint_dig::BigInt;
 use serde::{
     de::{MapAccess, Visitor},
     Deserialize, Serialize,
 };
-use strum::{EnumIter, VariantNames};
+use strum::{Display, VariantNames};
 
 use super::{
     kmip_attributes::Attributes,
@@ -504,20 +504,7 @@ impl TryInto<Vec<u8>> for Object {
 }
 
 /// The type of a KMIP Objects
-#[allow(non_camel_case_types)]
-#[derive(
-    KmipEnumSerialize,
-    Deserialize,
-    Copy,
-    Clone,
-    Debug,
-    Eq,
-    PartialEq,
-    EnumIter,
-    strum::IntoStaticStr,
-)]
-#[serde(rename_all = "PascalCase")]
-#[repr(u32)]
+#[kmip_enum]
 pub enum ObjectType {
     Certificate = 0x0000_0001,
     SymmetricKey = 0x0000_0002,
@@ -528,49 +515,4 @@ pub enum ObjectType {
     OpaqueObject = 0x0000_0008,
     PGPKey = 0x0000_0009,
     CertificateRequest = 0x0000_000A,
-}
-
-impl TryFrom<&str> for ObjectType {
-    type Error = KmipError;
-
-    fn try_from(object_type: &str) -> Result<Self, Self::Error> {
-        match object_type {
-            "Certificate" => Ok(Self::Certificate),
-            "SymmetricKey" => Ok(Self::SymmetricKey),
-            "PublicKey" => Ok(Self::PublicKey),
-            "PrivateKey" => Ok(Self::PrivateKey),
-            "SplitKey" => Ok(Self::SplitKey),
-            "SecretData" => Ok(Self::SecretData),
-            "OpaqueObject" => Ok(Self::OpaqueObject),
-            "PGPKey" => Ok(Self::PGPKey),
-            "CertificateRequest" => Ok(Self::CertificateRequest),
-            _ => Err(KmipError::InvalidKmip21Object(
-                ErrorReason::Invalid_Object_Type,
-                format!("{object_type} is not a valid ObjectType"),
-            )),
-        }
-    }
-}
-
-impl From<ObjectType> for String {
-    fn from(object_type: ObjectType) -> Self {
-        match object_type {
-            ObjectType::Certificate => "Certificate".to_owned(),
-            ObjectType::SymmetricKey => "SymmetricKey".to_owned(),
-            ObjectType::PublicKey => "PublicKey".to_owned(),
-            ObjectType::PrivateKey => "PrivateKey".to_owned(),
-            ObjectType::SplitKey => "SplitKey".to_owned(),
-            ObjectType::SecretData => "SecretData".to_owned(),
-            ObjectType::OpaqueObject => "OpaqueObject".to_owned(),
-            ObjectType::PGPKey => "PGPKey".to_owned(),
-            ObjectType::CertificateRequest => "CertificateRequest".to_owned(),
-        }
-    }
-}
-
-impl Display for ObjectType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let s: String = (*self).into();
-        write!(f, "{s}")
-    }
 }
