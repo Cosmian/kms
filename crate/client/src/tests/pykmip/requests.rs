@@ -65,7 +65,6 @@ fn test_create_aes_symmetric_key() {
         object_type: ObjectType::SymmetricKey,
         template_attribute: TemplateAttribute {
             attribute: Some(attributes.to_attributes()),
-            name: None,
         },
     };
 
