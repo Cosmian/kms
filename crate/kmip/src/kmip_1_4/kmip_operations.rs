@@ -315,7 +315,8 @@ pub struct GetResponse {
 #[serde(rename_all = "PascalCase")]
 pub struct GetAttributes {
     pub unique_identifier: String,
-    pub attribute_names: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attribute_name: Option<Vec<String>>,
 }
 
 /// Response to a Get Attributes request
@@ -325,7 +326,7 @@ pub struct GetAttributesResponse {
     pub unique_identifier: String,
     /// The attributes associated with the Managed Object
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub attributes: Option<Vec<Attribute>>,
+    pub attribute: Option<Vec<Attribute>>,
 }
 
 /// 4.13 Get Attribute List
