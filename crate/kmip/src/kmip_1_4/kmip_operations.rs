@@ -13,7 +13,7 @@ use crate::{
         kmip_operations::{DiscoverVersions, DiscoverVersionsResponse},
         kmip_types::{AttestationType, Direction, KeyWrapType},
     },
-    kmip_1_4::kmip_attributes::{Attribute, Attributes},
+    kmip_1_4::kmip_attributes::Attribute,
     kmip_2_1, KmipError, KmipResultHelper,
 };
 
@@ -240,9 +240,23 @@ pub struct ReCertifyResponse {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Locate {
-    pub attributes: Attributes,
+    /// An Integer object that indicates the maximum number of object identifiers the server MAY return.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub maximum_items: Option<i32>,
+
+    /// An Integer object (used as a bit mask) that indicates whether only on-line objects, only archived objects,
+    /// or both on-line and archived objects are to be searched. If omitted, then on-line only is assumed.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub storage_status_mask: Option<StorageStatusMask>,
+
+    /// An Enumeration object that indicates the object group member type.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub object_group_member: Option<ObjectGroupMember>,
+
+    /// Specifies an attribute and its value(s) that are REQUIRED
+    /// to match those in a candidate object (according to the matching rules defined above).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attributes: Option<Vec<Attribute>>,
 }
 
 /// Response to a Locate request
@@ -309,7 +323,9 @@ pub struct GetAttributes {
 #[serde(rename_all = "PascalCase")]
 pub struct GetAttributesResponse {
     pub unique_identifier: String,
-    pub attributes: Attributes,
+    /// The attributes associated with the Managed Object
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attributes: Option<Vec<Attribute>>,
 }
 
 /// 4.13 Get Attribute List

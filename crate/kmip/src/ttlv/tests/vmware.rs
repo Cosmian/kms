@@ -279,7 +279,8 @@ const CREATE_RESPONSE: &str =
 
 #[test]
 fn create() {
-    log_init(option_env!("RUST_LOG"));
+    log_init(Some("debug"));
+    // log_init(option_env!("RUST_LOG"));
     let request = hex::decode(CREATE).unwrap();
 
     let (major, minor) = TTLV::find_version(&request).unwrap();
@@ -344,3 +345,95 @@ fn create() {
         })
     );
 }
+
+
+const GET_ATTRIBUTES: &str = "42007801000000a04200770100000038420069010000002042006a0200000004000000010000000042006b0200000004000000010000000042000d0200000004000000010000000042000f010000005842005c05000000040000000b000000004200930800000008514c4b430100000042007901000000304200940700000001310000000000000042000a0700000011782d50726f647563745f56657273696f6e00000000000000";
+// const GET_ATTRIBUTES_RESPONSE: &str = "42007b01000000a042007a0100000048420069010000002042006a0200000004000000010000000042006b0200000004000000010000000042009209000000080000000067ee614842000d0200000004000000010000000042000f010000004842005c05000000040000000b000000004200930800000008514c4b430100000042007f0500000004000000000000000042007c010000001042009407000000013100000000000000";
+const GET_ATTRIBUTES_RESPONSE: &str = "42007b01000000a042007a0100000048420069010000002042006a0200000004000000010000000042006b0200000004000000010000000042009209000000080000000067ee614842000d0200000004000000010000000042000f010000004842005c05000000040000000b000000004200930800000008514c4b430100000042007f0500000004000000000000000042007c010000001042009407000000013100000000000000";
+
+#[test]
+fn get_attributes() {
+    log_init(Some("debug"));
+    let request = hex::decode(GET_ATTRIBUTES).unwrap();
+
+    let (major, minor) = TTLV::find_version(&request).unwrap();
+    assert_eq!(major, 1);
+    assert_eq!(minor, 1);
+
+    let ttlv = TTLV::from_bytes(&request, KmipFlavor::Kmip1).unwrap();
+    info!("request ttlv: {:#?}", ttlv);
+
+    let request_message: RequestMessage = from_ttlv(ttlv).unwrap();
+    let RequestMessageBatchItemVersioned::V14(request_message) = &request_message.batch_item[0]
+    else {
+        panic!("Expected V14 request message");
+    };
+    info!("request_message: {:#?}", request_message);
+    // assert_eq!(
+    //     request_message.request_payload,
+    //     Operation::GetAttributes {
+    //         unique_identifier: "1".to_owned(),
+    //         attribute_name: vec![
+    //             kmip_1_4::kmip_types::AttributeName::CryptographicAlgorithm,
+    //             kmip_1_4::kmip_types::AttributeName::CryptographicLength,
+    //             kmip_1_4::kmip_types::AttributeName::CryptographicUsageMask,
+    //         ],
+    //     }
+    // );
+
+    // response
+    let response = hex::decode(GET_ATTRIBUTES_RESPONSE).unwrap();
+    let (major, minor) = TTLV::find_version(&response).unwrap();
+    assert_eq!(major, 1);
+    assert_eq!(minor, 1);
+    let ttlv = TTLV::from_bytes(&response, KmipFlavor::Kmip1).unwrap();
+    info!("response ttlv: {:#?}", ttlv);
+    let response_message: ResponseMessage = from_ttlv(ttlv).unwrap();
+    info!("response_message: {:#?}", response_message);
+    // let ResponseMessageBatchItemVersioned::V14(response_message) = &response_message.batch_item[0]
+    // else {
+    //     panic!("Expected V14 response message");
+    // };
+    // let Some(response_payload) = &response_message.response_payload else {
+    //     panic!("Expected response payload");
+    // };
+    // assert!(request_message.unique_batch_item_id.is_some());
+    // assert_eq!(
+    //     response_message.unique_batch_item_id,
+    //     request_message.unique_batch_item_id
+    // );
+    // assert_eq!(
+    //     response_payload,
+    //     &Operation::GetAttributesResponse {
+    //         unique_identifier: "1".to_owned(),
+    //         attribute: vec![
+    //             kmip_1_4::kmip_types::AttributeName::CryptographicAlgorithm,
+    //             kmip_1_4::kmip_types::AttributeName::CryptographicLength,
+    //             kmip_1_4::kmip_types::AttributeName::CryptographicUsageMask,
+    //         ],
+    //     }
+    // );
+    // let Some(attribute) = &response_message.attribute else {
+    //     panic!("Expected attribute");
+    // };
+    // assert_eq!(attribute.len(), 3);
+    // assert_eq!(
+    //     attribute[0],
+    //     kmip_1_4::kmip_types::AttributeName::CryptographicAlgorithm
+    // );
+    // assert_eq!(
+    //     attribute[1],
+    //     kmip_1_4::kmip_types::AttributeName::CryptographicLength
+    // );
+    // assert_eq!(
+    //     attribute[2],
+    //     kmip_1_4::kmip_types::AttributeName::CryptographicUsageMask
+    // );
+    // assert_eq!(attribute[0].get_value(), Some("AES".to_owned()));
+}
+
+
+const ADD_ATTRIBUTE: &str = "4200770100000038420069010000002042006a0200000004000000010000000042006b0200000004000000010000000042000d0200000004000000030000000042000f010000008042005c05000000040000000d000000004200930800000008514c4b4301000000420079010000005842009407000000013100000000000000420008010000004042000a0700000011782d50726f647563745f56657273696f6e0000000000000042000b0700000014372e302e33206275696c642d31393438303836360000000042000f010000006842005c05000000040000000d000000004200930800000008514c4b4302000000420079010000004042009407000000013100000000000000420008010000002842000a0700000008782d56656e646f7242000b070000000c564d776172652c20496e632e0000000042000f010000007042005c05000000040000000d000000004200930800000008514c4b4303000000420079010000004842009407000000013100000000000000420008010000003042000a0700000009782d50726f647563740000000000000042000b070000000e564d7761726520765370686572650000";
+
+const GET: &str = "42007801000000804200770100000038420069010000002042006a0200000004000000010000000042006b0200000004000000010000000042000d0200000004000000010000000042000f010000003842005c05000000040000000a000000004200930800000008514c4b4301000000420079010000001042009407000000013200000000000000";
+const GET_RESPONSE: &str = "42007b010000012042007a0100000048420069010000002042006a0200000004000000010000000042006b0200000004000000010000000042009209000000080000000067ee614842000d0200000004000000010000000042000f01000000c842005c05000000040000000a000000004200930800000008514c4b430100000042007f0500000004000000000000000042007c0100000090420057050000000400000002000000004200940700000001320000000000000042008f0100000068420040010000006042004205000000040000000100000000420045010000002842004308000000201c5d9de2a8baf74903d662382546c085edb2feed0c279465394b418cc7a613bd4200280500000004000000030000000042002a02000000040000010000000000";
