@@ -5,7 +5,6 @@ use serde::{
     ser::SerializeStruct,
     Deserialize, Serialize,
 };
-use tracing::warn;
 use zeroize::Zeroizing;
 
 use super::kmip_attributes::Attribute;
@@ -16,9 +15,7 @@ use crate::{
         DRBGAlgorithm, DestroyAction, FIPS186Variation, HashingAlgorithm, RNGAlgorithm,
         ShreddingAlgorithm, UnwrapMode,
     },
-    kmip_1_4::kmip_attributes::Attributes,
-    kmip_2_1::{self, kmip_types::VendorAttribute},
-    KmipError, SafeBigInt,
+    kmip_2_1, KmipError, SafeBigInt,
 };
 
 /// 2.1.2 Credential Object Structure
@@ -101,7 +98,7 @@ fn attributes_is_default_or_none<T: Default + PartialEq + Serialize>(val: &Optio
 pub struct KeyValue {
     pub key_material: KeyMaterial,
     #[serde(skip_serializing_if = "attributes_is_default_or_none")]
-    pub attributes: Option<Attributes>,
+    pub attributes: Option<Vec<Attribute>>,
 }
 
 impl From<KeyValue> for kmip_2_1::kmip_data_structures::KeyValue {
@@ -1139,158 +1136,7 @@ pub struct TemplateAttribute {
 
 impl From<TemplateAttribute> for kmip_2_1::kmip_attributes::Attributes {
     fn from(val: TemplateAttribute) -> Self {
-        let mut attributes = Self::default();
-        for attribute in val.attribute.unwrap_or_default() {
-            match attribute {
-                Attribute::ActivationDate(v) => {
-                    attributes.activation_date = Some(v);
-                }
-                Attribute::CryptographicDomainParameters(v) => {
-                    attributes.cryptographic_domain_parameters = Some(v.into());
-                }
-                Attribute::CryptographicLength(v) => {
-                    attributes.cryptographic_length = Some(v);
-                }
-                Attribute::CryptographicParameters(v) => {
-                    attributes.cryptographic_parameters = Some(v.into());
-                }
-                Attribute::CryptographicUsageMask(v) => {
-                    attributes.cryptographic_usage_mask = Some(v.into());
-                }
-                Attribute::DeactivationDate(v) => {
-                    attributes.deactivation_date = Some(v);
-                }
-                Attribute::Description(v) => {
-                    attributes.description = Some(v);
-                }
-                Attribute::Name(v) => {
-                    attributes.name = Some(v.into_iter().map(Into::into).collect());
-                }
-                Attribute::ObjectType(v) => {
-                    attributes.object_type = Some(v.into());
-                }
-                Attribute::ProcessStartDate(v) => {
-                    attributes.process_start_date = Some(v);
-                }
-                Attribute::ProtectStopDate(v) => {
-                    attributes.protect_stop_date = Some(v);
-                }
-                Attribute::UniqueIdentifier(v) => {
-                    attributes.unique_identifier =
-                        Some(kmip_2_1::kmip_types::UniqueIdentifier::TextString(v));
-                }
-                Attribute::CryptographicAlgorithm(v) => {
-                    attributes.cryptographic_algorithm = Some(v.into());
-                }
-                Attribute::CertificateType(v) => {
-                    attributes.certificate_type = Some(v.into());
-                }
-                Attribute::CertificateLength(v) => {
-                    attributes.certificate_length = Some(v);
-                }
-                Attribute::X509CertificateIdentifier(_)
-                | Attribute::X509CertificateSubject(_)
-                | Attribute::X509CertificateIssuer(_)
-                | Attribute::CertificateIdentifier(_)
-                | Attribute::CertificateSubject(_)
-                | Attribute::CertificateIssuer(_)
-                | Attribute::Digest(_)
-                | Attribute::OperationPolicyName(_)
-                | Attribute::Pkcs12FriendlyName(_) => {
-                    // Not support in KMIP 2.1
-                    warn!("KMIP 2.1 does not support the KMIP 1 attribute {attribute:?}");
-                }
-                Attribute::DigitalSignatureAlgorithm(v) => {
-                    attributes.digital_signature_algorithm = Some(v.into());
-                }
-
-                Attribute::LeaseTime(v) => {
-                    attributes.lease_time = Some(v);
-                }
-                Attribute::UsageLimits(v) => {
-                    attributes.usage_limits = Some(v.into());
-                }
-                Attribute::State(v) => {
-                    attributes.state = Some(v.into());
-                }
-                Attribute::InitialDate(v) => {
-                    attributes.initial_date = Some(v);
-                }
-                Attribute::DestroyDate(v) => {
-                    attributes.destroy_date = Some(v);
-                }
-                Attribute::CompromiseOccurrenceDate(v) => {
-                    attributes.compromise_occurrence_date = Some(v);
-                }
-                Attribute::CompromiseDate(v) => {
-                    attributes.compromise_date = Some(v);
-                }
-                Attribute::RevocationReason(v) => {
-                    attributes.revocation_reason = Some(v.into());
-                }
-                Attribute::ArchiveDate(v) => {
-                    attributes.archive_date = Some(v);
-                }
-                Attribute::ObjectGroup(v) => {
-                    attributes.object_group = Some(v);
-                }
-                Attribute::Fresh(v) => {
-                    attributes.fresh = Some(v);
-                }
-                Attribute::Link(v) => {
-                    attributes.link = Some(v.into_iter().map(Into::into).collect());
-                }
-                Attribute::ApplicationSpecificInformation(v) => {
-                    attributes.application_specific_information = Some(v.into());
-                }
-                Attribute::ContactInformation(v) => {
-                    attributes.contact_information = Some(v);
-                }
-                Attribute::LastChangeDate(v) => {
-                    attributes.last_change_date = Some(v);
-                }
-                Attribute::CustomAttribute(v) => {
-                    let vas = attributes.vendor_attributes.get_or_insert(vec![]);
-                    vas.push(VendorAttribute {
-                        vendor_identification: "KMIP1".to_owned(),
-                        attribute_name: "KMIP1".to_owned(),
-                        attribute_value: serde_json::to_vec(&v).unwrap_or(Vec::new()),
-                    });
-                }
-                Attribute::AlternativeName(v) => {
-                    attributes.alternative_name = Some(v.into());
-                }
-                Attribute::KeyValuePresent(v) => {
-                    attributes.key_value_present = Some(v);
-                }
-                Attribute::KeyValueLocation(v) => {
-                    attributes.key_value_location = Some(v.into());
-                }
-                Attribute::OriginalCreationDate(v) => {
-                    attributes.original_creation_date = Some(v);
-                }
-                Attribute::RandomNumberGenerator(v) => {
-                    attributes.random_number_generator = Some(v.into());
-                }
-
-                Attribute::Comment(v) => {
-                    attributes.comment = Some(v);
-                }
-                Attribute::Sensitive(v) => {
-                    attributes.sensitive = Some(v);
-                }
-                Attribute::AlwaysSensitive(v) => {
-                    attributes.always_sensitive = Some(v);
-                }
-                Attribute::Extractable(v) => {
-                    attributes.extractable = Some(v);
-                }
-                Attribute::NeverExtractable(v) => {
-                    attributes.never_extractable = Some(v);
-                }
-            }
-        }
-        attributes
+        val.attribute.map_or_else(Self::default, Into::into)
     }
 }
 
