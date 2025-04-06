@@ -15,9 +15,9 @@ use crate::{
     },
     kmip_1_4::{
         self,
-        kmip_attributes::Attribute,
+        kmip_attributes::{Attribute, CustomAttributeValue},
         kmip_data_structures::TemplateAttribute,
-        kmip_operations::{Create, CreateResponse, Operation, Query, QueryResponse},
+        kmip_operations::{AddAttribute, Create, CreateResponse, GetAttributes, GetAttributesResponse, Operation, Query, QueryResponse},
         kmip_types::{CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, ObjectType},
     },
     ttlv::{from_ttlv, KmipFlavor, TTLV},
@@ -279,8 +279,7 @@ const CREATE_RESPONSE: &str =
 
 #[test]
 fn create() {
-    log_init(Some("debug"));
-    // log_init(option_env!("RUST_LOG"));
+    log_init(option_env!("RUST_LOG"));
     let request = hex::decode(CREATE).unwrap();
 
     let (major, minor) = TTLV::find_version(&request).unwrap();
@@ -324,16 +323,16 @@ fn create() {
     let response_message: ResponseMessage = from_ttlv(ttlv).unwrap();
     info!("response_message: {:#?}", response_message);
 
-    let ResponseMessageBatchItemVersioned::V14(response_message) = &response_message.batch_item[0]
+    let ResponseMessageBatchItemVersioned::V14(batch_item) = &response_message.batch_item[0]
     else {
         panic!("Expected V14 response message");
     };
-    let Some(response_payload) = &response_message.response_payload else {
+    let Some(response_payload) = &batch_item.response_payload else {
         panic!("Expected response payload");
     };
     assert!(request_message.unique_batch_item_id.is_some());
     assert_eq!(
-        response_message.unique_batch_item_id,
+        batch_item.unique_batch_item_id,
         request_message.unique_batch_item_id
     );
     assert_eq!(
@@ -353,7 +352,7 @@ const GET_ATTRIBUTES_RESPONSE: &str = "42007b01000000a042007a0100000048420069010
 
 #[test]
 fn get_attributes() {
-    log_init(Some("debug"));
+    log_init(option_env!("RUST_LOG"));
     let request = hex::decode(GET_ATTRIBUTES).unwrap();
 
     let (major, minor) = TTLV::find_version(&request).unwrap();
@@ -369,17 +368,13 @@ fn get_attributes() {
         panic!("Expected V14 request message");
     };
     info!("request_message: {:#?}", request_message);
-    // assert_eq!(
-    //     request_message.request_payload,
-    //     Operation::GetAttributes {
-    //         unique_identifier: "1".to_owned(),
-    //         attribute_name: vec![
-    //             kmip_1_4::kmip_types::AttributeName::CryptographicAlgorithm,
-    //             kmip_1_4::kmip_types::AttributeName::CryptographicLength,
-    //             kmip_1_4::kmip_types::AttributeName::CryptographicUsageMask,
-    //         ],
-    //     }
-    // );
+    assert_eq!(
+        request_message.request_payload,
+        Operation::GetAttributes(GetAttributes {
+            unique_identifier: "1".to_owned(),
+            attribute_name: Some(vec!["x-Product_Version". to_owned()]),
+        })
+    );
 
     // response
     let response = hex::decode(GET_ATTRIBUTES_RESPONSE).unwrap();
@@ -390,50 +385,99 @@ fn get_attributes() {
     info!("response ttlv: {:#?}", ttlv);
     let response_message: ResponseMessage = from_ttlv(ttlv).unwrap();
     info!("response_message: {:#?}", response_message);
-    // let ResponseMessageBatchItemVersioned::V14(response_message) = &response_message.batch_item[0]
-    // else {
-    //     panic!("Expected V14 response message");
-    // };
-    // let Some(response_payload) = &response_message.response_payload else {
-    //     panic!("Expected response payload");
-    // };
-    // assert!(request_message.unique_batch_item_id.is_some());
-    // assert_eq!(
-    //     response_message.unique_batch_item_id,
-    //     request_message.unique_batch_item_id
-    // );
-    // assert_eq!(
-    //     response_payload,
-    //     &Operation::GetAttributesResponse {
-    //         unique_identifier: "1".to_owned(),
-    //         attribute: vec![
-    //             kmip_1_4::kmip_types::AttributeName::CryptographicAlgorithm,
-    //             kmip_1_4::kmip_types::AttributeName::CryptographicLength,
-    //             kmip_1_4::kmip_types::AttributeName::CryptographicUsageMask,
-    //         ],
-    //     }
-    // );
-    // let Some(attribute) = &response_message.attribute else {
-    //     panic!("Expected attribute");
-    // };
-    // assert_eq!(attribute.len(), 3);
-    // assert_eq!(
-    //     attribute[0],
-    //     kmip_1_4::kmip_types::AttributeName::CryptographicAlgorithm
-    // );
-    // assert_eq!(
-    //     attribute[1],
-    //     kmip_1_4::kmip_types::AttributeName::CryptographicLength
-    // );
-    // assert_eq!(
-    //     attribute[2],
-    //     kmip_1_4::kmip_types::AttributeName::CryptographicUsageMask
-    // );
-    // assert_eq!(attribute[0].get_value(), Some("AES".to_owned()));
+    let ResponseMessageBatchItemVersioned::V14(batch_item) = &response_message.batch_item[0]
+    else {
+        panic!("Expected V14 response message");
+    };
+    let Some(response_payload) = &batch_item.response_payload else {
+        panic!("Expected response payload");
+    };
+    assert!(request_message.unique_batch_item_id.is_some());
+    assert_eq!(
+        batch_item.unique_batch_item_id,
+        request_message.unique_batch_item_id
+    );
+    assert_eq!(
+        response_payload,
+        &Operation::GetAttributesResponse(GetAttributesResponse {
+            unique_identifier: "1".to_owned(),
+            attribute: None,
+        })
+    );
+
 }
 
 
-const ADD_ATTRIBUTE: &str = "4200770100000038420069010000002042006a0200000004000000010000000042006b0200000004000000010000000042000d0200000004000000030000000042000f010000008042005c05000000040000000d000000004200930800000008514c4b4301000000420079010000005842009407000000013100000000000000420008010000004042000a0700000011782d50726f647563745f56657273696f6e0000000000000042000b0700000014372e302e33206275696c642d31393438303836360000000042000f010000006842005c05000000040000000d000000004200930800000008514c4b4302000000420079010000004042009407000000013100000000000000420008010000002842000a0700000008782d56656e646f7242000b070000000c564d776172652c20496e632e0000000042000f010000007042005c05000000040000000d000000004200930800000008514c4b4303000000420079010000004842009407000000013100000000000000420008010000003042000a0700000009782d50726f647563740000000000000042000b070000000e564d7761726520765370686572650000";
+const ADD_ATTRIBUTE: &str = "42007801000001b04200770100000038420069010000002042006a0200000004000000010000000042006b0200000004000000010000000042000d0200000004000000030000000042000f010000008042005c05000000040000000d000000004200930800000008514c4b4301000000420079010000005842009407000000013200000000000000420008010000004042000a0700000011782d50726f647563745f56657273696f6e0000000000000042000b0700000014372e302e33206275696c642d31393438303836360000000042000f010000006842005c05000000040000000d000000004200930800000008514c4b4302000000420079010000004042009407000000013200000000000000420008010000002842000a0700000008782d56656e646f7242000b070000000c564d776172652c20496e632e0000000042000f010000007042005c05000000040000000d000000004200930800000008514c4b4303000000420079010000004842009407000000013200000000000000420008010000003042000a0700000009782d50726f647563740000000000000042000b070000000e564d7761726520765370686572650000";
+// The PyKMIP server does not support this operation, so the response is empty
+
+#[test]
+fn add_attribute() {
+    log_init(option_env!("RUST_LOG"));
+    // log_init(Some("debug"));
+    let request = hex::decode(ADD_ATTRIBUTE).unwrap();
+
+    let (major, minor) = TTLV::find_version(&request).unwrap();
+    assert_eq!(major, 1);
+    assert_eq!(minor, 1);
+
+    let ttlv = TTLV::from_bytes(&request, KmipFlavor::Kmip1).unwrap();
+    info!("request ttlv: {:#?}", ttlv);
+
+    let request_message: RequestMessage = from_ttlv(ttlv).unwrap();
+    assert_eq!(request_message.batch_item.len(), 3);
+
+    let RequestMessageBatchItemVersioned::V14(batch_item) = &request_message.batch_item[0]
+    else {
+        panic!("Expected V14 request message");
+    };
+    info!("Batch Item 1: {:#?}", batch_item);
+    assert_eq!(
+        batch_item.request_payload,
+        Operation::AddAttribute(AddAttribute {
+            unique_identifier: "2".to_owned(),
+            attribute: Attribute::CustomAttribute((
+                "x-Product_Version".to_owned(),
+                CustomAttributeValue::TextString("7.0.3 build-19480866".to_owned())
+            )),
+        })
+    );
+    
+    let RequestMessageBatchItemVersioned::V14(batch_item) = &request_message.batch_item[1]
+    else {
+        panic!("Expected V14 request message");
+    };
+    info!("Batch Item 2: {:#?}", batch_item);
+    assert_eq!(
+        batch_item.request_payload,
+        Operation::AddAttribute(AddAttribute {
+            unique_identifier: "2".to_owned(),
+            attribute: Attribute::CustomAttribute((
+                "x-Vendor".to_owned(),
+                CustomAttributeValue::TextString("VMware, Inc.".to_owned())
+            )),
+        })
+    );
+    
+    let RequestMessageBatchItemVersioned::V14(batch_item) = &request_message.batch_item[2]
+    else {
+        panic!("Expected V14 request message");
+    };
+    info!("Batch Item 3: {:#?}", batch_item);
+    assert_eq!(
+        batch_item.request_payload,
+        Operation::AddAttribute(AddAttribute {
+            unique_identifier: "2".to_owned(),
+            attribute: Attribute::CustomAttribute((
+                "x-Product".to_owned(),
+                CustomAttributeValue::TextString("VMware vSphere".to_owned())
+            )),
+        })
+    );
+
+
+}
+
 
 const GET: &str = "42007801000000804200770100000038420069010000002042006a0200000004000000010000000042006b0200000004000000010000000042000d0200000004000000010000000042000f010000003842005c05000000040000000a000000004200930800000008514c4b4301000000420079010000001042009407000000013200000000000000";
 const GET_RESPONSE: &str = "42007b010000012042007a0100000048420069010000002042006a0200000004000000010000000042006b0200000004000000010000000042009209000000080000000067ee614842000d0200000004000000010000000042000f01000000c842005c05000000040000000a000000004200930800000008514c4b430100000042007f0500000004000000000000000042007c0100000090420057050000000400000002000000004200940700000001320000000000000042008f0100000068420040010000006042004205000000040000000100000000420045010000002842004308000000201c5d9de2a8baf74903d662382546c085edb2feed0c279465394b418cc7a613bd4200280500000004000000030000000042002a02000000040000010000000000";
