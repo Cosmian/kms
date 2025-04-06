@@ -120,7 +120,7 @@ impl FindexParameters {
     ///
     /// # Errors
     /// - if no key id is provided
-    pub fn instantiate_keys(self) -> CosmianResult<FindexKeys> {
+    pub(crate) fn instantiate_keys(self) -> CosmianResult<FindexKeys> {
         match (self.seed_key_id, self.hmac_key_id, self.aes_xts_key_id) {
             (Some(seed_key_id), None, None) => Ok(FindexKeys::ClientSideEncryption {
                 seed_key_id,

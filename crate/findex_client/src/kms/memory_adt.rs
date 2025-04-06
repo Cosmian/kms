@@ -153,7 +153,7 @@ mod tests {
 
     use cosmian_findex::{
         InMemory,
-        test_utils::{test_single_write_and_read, test_wrong_guard},
+        test_utils::{test_guarded_write_concurrent, test_single_write_and_read, test_wrong_guard},
     };
     use cosmian_findex_structs::CUSTOM_WORD_LENGTH;
     use cosmian_kms_client::{
@@ -390,13 +390,12 @@ mod tests {
         Ok(())
     }
 
-    // Creating an issue to fix this test
-    // #[tokio::test]
-    // async fn test_concurrent_read_write() -> ClientResult<()> {
-    //     log_init(None);
-    //     let ctx = start_default_test_kms_server().await;
-    //     let memory = create_test_layer(ctx.owner_client_conf.kms_config.clone()).await?;
-    //     test_guarded_write_concurrent::<CUSTOM_WORD_LENGTH, _>(&memory, rand::random()).await;
-    //     Ok(())
-    // }
+    #[tokio::test]
+    async fn test_concurrent_read_write() -> ClientResult<()> {
+        log_init(None);
+        let ctx = start_default_test_kms_server().await;
+        let memory = create_test_layer(ctx.owner_client_conf.kms_config.clone()).await?;
+        test_guarded_write_concurrent::<CUSTOM_WORD_LENGTH, _>(&memory, rand::random()).await;
+        Ok(())
+    }
 }

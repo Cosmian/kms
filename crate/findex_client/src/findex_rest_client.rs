@@ -1,4 +1,4 @@
-use base64::{Engine, engine::general_purpose};
+use base64::{Engine as _, engine::general_purpose};
 use cosmian_findex_structs::{
     Addresses, Bindings, Guard, OptionalWords,
     reexport::cosmian_findex::{ADDRESS_LENGTH, Address, MemoryADT},
@@ -16,6 +16,7 @@ pub struct FindexRestClient<const WORD_LENGTH: usize> {
 
 impl<const WORD_LENGTH: usize> FindexRestClient<WORD_LENGTH> {
     #[must_use]
+    #[inline]
     pub const fn new(rest_client: RestClient, index_id: Uuid) -> Self {
         Self {
             rest_client,
@@ -29,6 +30,7 @@ impl<const WORD_LENGTH: usize> MemoryADT for FindexRestClient<WORD_LENGTH> {
     type Error = ClientError;
     type Word = [u8; WORD_LENGTH];
 
+    #[inline]
     async fn batch_read(
         &self,
         addresses: Vec<Self::Address>,
@@ -68,6 +70,7 @@ impl<const WORD_LENGTH: usize> MemoryADT for FindexRestClient<WORD_LENGTH> {
         Ok(words.into_inner())
     }
 
+    #[inline]
     async fn guarded_write(
         &self,
         guard: (Self::Address, Option<Self::Word>),

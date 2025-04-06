@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use cosmian_findex::{
     Value,
-    test_utils::{test_single_write_and_read, test_wrong_guard},
+    test_utils::{test_guarded_write_concurrent, test_single_write_and_read, test_wrong_guard},
 };
 use cosmian_findex_client::RestClient;
 use cosmian_findex_structs::CUSTOM_WORD_LENGTH;
@@ -271,13 +271,12 @@ async fn test_findex_sequential_wrong_guard() -> CosmianResult<()> {
     Ok(())
 }
 
-// Creating an issue to fix this test
-// #[tokio::test]
-// async fn test_findex_concurrent_read_write() -> CosmianResult<()> {
-//     test_guarded_write_concurrent(
-//         &create_encryption_layer::<CUSTOM_WORD_LENGTH>().await?,
-//         rand::random(),
-//     )
-//     .await;
-//     Ok(())
-// }
+#[tokio::test]
+async fn test_findex_concurrent_read_write() -> CosmianResult<()> {
+    test_guarded_write_concurrent(
+        &create_encryption_layer::<CUSTOM_WORD_LENGTH>().await?,
+        rand::random(),
+    )
+    .await;
+    Ok(())
+}

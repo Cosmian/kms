@@ -28,14 +28,14 @@ fn get_semaphore_limit(num_threads: Option<usize>) -> usize {
     limit
 }
 
-pub enum FindexKeys {
+pub(crate) enum FindexKeys {
     ClientSideEncryption {
-        seed_key_id: String,
         index_id: Uuid,
+        seed_key_id: String,
     },
     ServerSideEncryption {
-        hmac_key_id: String,
         aes_xts_key_id: String,
+        hmac_key_id: String,
         index_id: Uuid,
     },
 }
@@ -43,19 +43,23 @@ pub enum FindexKeys {
 #[derive(Clone)]
 pub enum FindexInstance<const WORD_LENGTH: usize> {
     ClientSideEncryption(
-        Findex<
-            WORD_LENGTH,
-            Value,
-            String,
-            MemoryEncryptionLayer<WORD_LENGTH, FindexRestClient<WORD_LENGTH>>,
+        Box<
+            Findex<
+                WORD_LENGTH,
+                Value,
+                String,
+                MemoryEncryptionLayer<WORD_LENGTH, FindexRestClient<WORD_LENGTH>>,
+            >,
         >,
     ),
     ServerSideEncryption(
-        Findex<
-            WORD_LENGTH,
-            Value,
-            String,
-            KmsEncryptionLayer<WORD_LENGTH, FindexRestClient<WORD_LENGTH>>,
+        Box<
+            Findex<
+                WORD_LENGTH,
+                Value,
+                String,
+                KmsEncryptionLayer<WORD_LENGTH, FindexRestClient<WORD_LENGTH>>,
+            >,
         >,
     ),
 }
@@ -68,7 +72,7 @@ impl<const WORD_LENGTH: usize> FindexInstance<WORD_LENGTH> {
     /// # Errors
     /// - If the seed key cannot be retrieved from the KMS
     /// - If the HMAC key ID or the AES XTS key ID cannot be retrieved from the KMS
-    pub async fn instantiate_findex(
+    pub(crate) async fn instantiate_findex(
         rest_client: RestClient,
         kms_client: KmsClient,
         findex_keys: FindexKeys,
@@ -82,11 +86,11 @@ impl<const WORD_LENGTH: usize> FindexInstance<WORD_LENGTH> {
                 trace!("Using client side encryption");
                 let seed = retrieve_key_from_kms(&seed_key_id, kms_client).await?;
                 let encryption_layer = MemoryEncryptionLayer::<WORD_LENGTH, _>::new(&seed, memory);
-                Ok(Self::ClientSideEncryption(Findex::new(
+                Ok(Self::ClientSideEncryption(Box::new(Findex::new(
                     encryption_layer,
                     generic_encode,
                     generic_decode,
-                )))
+                ))))
             }
             FindexKeys::ServerSideEncryption {
                 hmac_key_id,
@@ -102,11 +106,11 @@ impl<const WORD_LENGTH: usize> FindexInstance<WORD_LENGTH> {
                     aes_xts_key_id,
                     memory,
                 );
-                Ok(Self::ServerSideEncryption(Findex::new(
+                Ok(Self::ServerSideEncryption(Box::new(Findex::new(
                     encryption_layer,
                     generic_encode,
                     generic_decode,
-                )))
+                ))))
             }
         }
     }
@@ -131,7 +135,7 @@ impl<const WORD_LENGTH: usize> FindexInstance<WORD_LENGTH> {
         let mut handles = lowercase_keywords
             .iter()
             .map(|kw| {
-                let semaphore = semaphore.clone();
+                let semaphore = Arc::<Semaphore>::clone(&semaphore);
                 let keyword = Keyword::from(kw.as_ref());
                 let findex_instance = self.clone();
                 tokio::spawn(async move {
@@ -186,7 +190,7 @@ impl<const WORD_LENGTH: usize> FindexInstance<WORD_LENGTH> {
             .into_iter()
             .map(|(kw, vs)| {
                 let findex = self.clone();
-                let semaphore = semaphore.clone();
+                let semaphore = Arc::<Semaphore>::clone(&semaphore);
                 tokio::spawn(async move {
                     let _permit = semaphore.acquire().await.map_err(|e| {
                         CosmianError::Default(format!(
