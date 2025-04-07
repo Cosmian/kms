@@ -357,7 +357,7 @@ pub struct AddAttribute {
 impl From<AddAttribute> for kmip_2_1::kmip_operations::AddAttribute {
     fn from(add_attribute: AddAttribute) -> Self {
         Self {
-            unique_identifier: add_attribute.unique_identifier.to_owned(),
+            unique_identifier: add_attribute.unique_identifier.clone(),
             new_attribute: add_attribute.attribute.into(),
         }
     }
@@ -374,7 +374,7 @@ pub struct AddAttributeResponse {
 impl From<kmip_2_1::kmip_operations::AddAttributeResponse> for AddAttributeResponse {
     fn from(add_attribute_response: kmip_2_1::kmip_operations::AddAttributeResponse) -> Self {
         Self {
-            unique_identifier: add_attribute_response.unique_identifier.to_string(),
+            unique_identifier: add_attribute_response.unique_identifier,
             attribute: Attribute::Comment(
                 "KMIP 2 does not send the attribute value on the response".to_owned(),
             ),
