@@ -11,12 +11,7 @@ use cosmian_kmip::kmip_2_1::{
     },
     requests::{decrypt_request, encrypt_request},
 };
-use cosmian_kms_crypto::crypto::cover_crypt::{
-    access_structure::access_structure_from_str,
-    kmip_requests::{
-        build_create_covercrypt_master_keypair_request, build_create_covercrypt_usk_request,
-    },
-};
+use cosmian_kms_client_utils::cover_crypt_utils::{build_create_covercrypt_master_keypair_request, build_create_covercrypt_usk_request};
 use tracing::debug;
 use uuid::Uuid;
 
@@ -35,15 +30,13 @@ async fn test_cover_crypt_keys() -> KResult<()> {
 
     let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
-    let access_structure = access_structure_from_str(
-        r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["RnD","HR","MKG","FIN"]}"#,
-    )?;
+    let access_structure = r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["RnD","HR","MKG","FIN"]}"#;
 
     // create Key Pair
     debug!("ABE Create Master Key Pair");
     let cr = kms
         .create_key_pair(
-            build_create_covercrypt_master_keypair_request(&access_structure, EMPTY_TAGS, false)?,
+            build_create_covercrypt_master_keypair_request(access_structure, EMPTY_TAGS, false)?,
             owner,
             None,
         )
@@ -213,14 +206,12 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
     let nonexistent_owner = "invalid_owner";
-    let access_structure = access_structure_from_str(
-        r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["RnD","HR","MKG","FIN"]}"#,
-    )?;
+    let access_structure = r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["RnD","HR","MKG","FIN"]}"#;
 
     // create Key Pair
     let ckr = kms
         .create_key_pair(
-            build_create_covercrypt_master_keypair_request(&access_structure, EMPTY_TAGS, false)?,
+            build_create_covercrypt_master_keypair_request(access_structure, EMPTY_TAGS, false)?,
             owner,
             None,
         )
@@ -422,13 +413,10 @@ async fn test_abe_json_access() -> KResult<()> {
 
     let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
-    let access_structure = access_structure_from_str(
-        r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["RnD","HR","MKG","FIN"]}"#,
-    )?;
-
+    let access_structure = r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["RnD","HR","MKG","FIN"]}"#;
     // Create CC master key pair
     let master_keypair =
-        build_create_covercrypt_master_keypair_request(&access_structure, EMPTY_TAGS, false)?;
+        build_create_covercrypt_master_keypair_request(access_structure, EMPTY_TAGS, false)?;
 
     // create Key Pair
     let ckr = kms.create_key_pair(master_keypair, owner, None).await?;
@@ -502,14 +490,12 @@ async fn test_import_decrypt() -> KResult<()> {
 
     let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
-    let access_structure = access_structure_from_str(
-        r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["RnD","HR","MKG","FIN"]}"#,
-    )?;
+    let access_structure = r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["RnD","HR","MKG","FIN"]}"#;
 
     // create Key Pair
     let cr = kms
         .create_key_pair(
-            build_create_covercrypt_master_keypair_request(&access_structure, EMPTY_TAGS, false)?,
+            build_create_covercrypt_master_keypair_request(access_structure, EMPTY_TAGS, false)?,
             owner,
             None,
         )

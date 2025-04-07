@@ -4,8 +4,8 @@ use actix_web::{dev::ServerHandle, error::QueryPayloadError};
 use cloudproof_findex::implementations::redis::FindexRedisError;
 use cosmian_crypto_core::CryptoCoreError;
 use cosmian_kmip::{
-    kmip_2_1::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
     KmipError,
+    kmip_2_1::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
 };
 use cosmian_kms_crypto::CryptoError;
 use cosmian_kms_interfaces::InterfaceError;
@@ -50,7 +50,7 @@ pub enum KmsError {
     #[error("Invalid Request: {0}")]
     InvalidRequest(String),
 
-    // // When a user requests an item which does not exist
+    // When a user requests an item which does not exist
     #[error("Item not found: {0}")]
     ItemNotFound(String),
 
@@ -271,6 +271,13 @@ impl From<InterfaceError> for KmsError {
 impl From<CryptoError> for KmsError {
     fn from(value: CryptoError) -> Self {
         Self::CryptographicError(value.to_string())
+    }
+}
+
+#[cfg(test)]
+impl From<cosmian_kms_client_utils::error::UtilsError> for KmsError {
+    fn from(value: cosmian_kms_client_utils::error::UtilsError) -> Self {
+        Self::Default(value.to_string())
     }
 }
 

@@ -2,21 +2,19 @@ use cosmian_cover_crypt::{AccessPolicy, EncryptionHint, QualifiedAttribute};
 use cosmian_kmip::kmip_2_1::{
     extra::tagging::EMPTY_TAGS,
     kmip_operations::{
-        CreateKeyPairResponse, CreateResponse, DecryptResponse, DestroyResponse, EncryptResponse,
-        ReKeyKeyPairResponse, Revoke, RevokeResponse,
+        CreateKeyPairResponse, CreateResponse, DecryptResponse, Destroy, DestroyResponse,
+        EncryptResponse, ReKeyKeyPairResponse, Revoke, RevokeResponse,
     },
     kmip_types::{
         CryptographicAlgorithm, CryptographicParameters, RevocationReason, UniqueIdentifier,
     },
     requests::{decrypt_request, encrypt_request},
 };
+use cosmian_kms_client_utils::cover_crypt_utils::{
+    build_create_covercrypt_master_keypair_request, build_create_covercrypt_usk_request,
+};
 use cosmian_kms_crypto::crypto::cover_crypt::{
-    access_structure::access_structure_from_str,
-    attributes::RekeyEditAction,
-    kmip_requests::{
-        build_create_covercrypt_master_keypair_request, build_create_covercrypt_usk_request,
-        build_destroy_key_request, build_rekey_keypair_request,
-    },
+    attributes::RekeyEditAction, kmip_requests::build_rekey_keypair_request,
 };
 
 use crate::{
@@ -27,13 +25,12 @@ use crate::{
 async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     cosmian_logger::log_init(None);
     let app = test_utils::test_app(None).await;
-    let access_structure = access_structure_from_str(
-        r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["RnD","HR","MKG","FIN"]}"#,
-    )?;
+    let access_structure = r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["RnD","HR","MKG","FIN"]}"#;
 
     // create Key Pair
     let create_key_pair =
-        build_create_covercrypt_master_keypair_request(&access_structure, EMPTY_TAGS, false)?;
+        build_create_covercrypt_master_keypair_request(access_structure, EMPTY_TAGS, false)
+            .unwrap();
     let create_key_pair_response: CreateKeyPairResponse =
         test_utils::post(&app, &create_key_pair).await?;
 
@@ -75,7 +72,8 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         private_key_unique_identifier,
         EMPTY_TAGS,
         false,
-    )?;
+    )
+    .unwrap();
     let create_response: CreateResponse = test_utils::post(&app, request).await?;
     let user_decryption_key_identifier = create_response
         .unique_identifier
@@ -130,7 +128,8 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         private_key_unique_identifier,
         EMPTY_TAGS,
         false,
-    )?;
+    )
+    .unwrap();
     let create_response: CreateResponse = test_utils::post(&app, &request).await?;
     let user_decryption_key_identifier_1 = create_response
         .unique_identifier
@@ -145,7 +144,8 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         private_key_unique_identifier,
         EMPTY_TAGS,
         false,
-    )?;
+    )
+    .unwrap();
     let create_response2: CreateResponse = test_utils::post(&app, &request).await?;
     let user_decryption_key_identifier_2 = &create_response2
         .unique_identifier
@@ -417,7 +417,12 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
 
     //
     // Destroy user decryption key
-    let request = build_destroy_key_request(user_decryption_key_identifier_1)?;
+    let request = Destroy {
+        unique_identifier: Some(UniqueIdentifier::TextString(
+            user_decryption_key_identifier_1.to_owned(),
+        )),
+        remove: false,
+    };
     let destroy_response: DestroyResponse = test_utils::post(&app, &request).await?;
     assert_eq!(
         user_decryption_key_identifier_1,

@@ -73,6 +73,7 @@ cosmian_http_client = { git = "https://www.github.com/Cosmian/http_client_server
 cosmian_kmip = { path = "crate/kmip" }
 cosmian_kms_access = { path = "crate/access" }
 cosmian_kms_client = { path = "cli/crate/kms_client" }
+cosmian_kms_client_utils = { path = "cli/crate/client_utils" }
 cosmian_kms_crypto = { path = "crate/crypto" }
 cosmian_kms_server = { path = "crate/server" }
 cosmian_kms_server_database = { path = "crate/server_database" }
