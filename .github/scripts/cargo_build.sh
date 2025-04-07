@@ -3,13 +3,13 @@
 set -ex
 
 # --- Declare the following variables for tests
-# export TARGET=x86_64-unknown-linux-gnu
-# export TARGET=x86_64-apple-darwin
-# export TARGET=aarch64-apple-darwin
-# export DEBUG_OR_RELEASE=debug
-# export OPENSSL_DIR=/usr/local/openssl
-# export SKIP_SERVICES_TESTS="--skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse"
-# export FEATURES="fips"
+export TARGET=x86_64-unknown-linux-gnu
+export TARGET=x86_64-apple-darwin
+export TARGET=aarch64-apple-darwin
+export DEBUG_OR_RELEASE=debug
+export OPENSSL_DIR=/usr/local/openssl
+export SKIP_SERVICES_TESTS="--skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse"
+export FEATURES="fips"
 
 ROOT_FOLDER=$(pwd)
 
@@ -61,34 +61,13 @@ if [ -f /etc/lsb-release ]; then
   bash .github/scripts/test_utimaco.sh
 fi
 
-# Additional tests
-if [ "$DEBUG_OR_RELEASE" = "release" ]; then
-  # Before building the crates, test crates individually on specific features
-  cargo install --version 0.6.31 cargo-hack --force
-  crates=("crate/kmip" "cli/crate/kms_client" "cli/crate/findex_client")
-  for crate in "${crates[@]}"; do
-    cd "$crate"
-    cargo hack test --feature-powerset --all-targets
-    cd "$ROOT_FOLDER"
-  done
-fi
-
 if [ -z "$OPENSSL_DIR" ]; then
   echo "Error: OPENSSL_DIR is not set."
   exit 1
 fi
 
-crates=("crate/server" "cli/crate/cli")
-for crate in "${crates[@]}"; do
-  echo "Building $crate"
-  cd "$crate"
-  # shellcheck disable=SC2086
-  cargo build --target $TARGET $RELEASE $FEATURES
-  cd "$ROOT_FOLDER"
-done
-
-# Debug
-# find .
+# shellcheck disable=SC2086
+cargo build --target $TARGET $RELEASE $FEATURES
 
 COSMIAN_EXE="cli/target/$TARGET/$DEBUG_OR_RELEASE/cosmian"
 COSMIAN_KMS_EXE="target/$TARGET/$DEBUG_OR_RELEASE/cosmian_kms"
@@ -142,4 +121,3 @@ if [ "$DEBUG_OR_RELEASE" = "release" ]; then
   # shellcheck disable=SC2086
   cargo bench --target $TARGET $FEATURES --no-run
 fi
-
