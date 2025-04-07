@@ -1,7 +1,7 @@
 use cosmian_logger::log_init;
 use num_bigint_dig::BigInt;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use tracing::{info, trace};
+use tracing::{debug, info, trace};
 use zeroize::Zeroizing;
 
 use crate::{
@@ -1090,32 +1090,25 @@ fn test_deserialization_link() -> KmipResult<()> {
 
 #[test]
 fn test_serialization_set_attribute() -> KmipResult<()> {
-    log_init(option_env!("RUST_LOG"));
+    // log_init(option_env!("RUST_LOG"));
+    log_init(Some("debug"));
     let set_attribute_request = SetAttribute {
         unique_identifier: Some(UniqueIdentifier::TextString(
             "173cb39b-c95a-4e98-ae0d-3e8079e145e6".to_owned(),
         )),
-        new_attribute: Attribute::Links(vec![
-            Link {
-                link_type: LinkType::PublicKeyLink,
-                linked_object_identifier: LinkedObjectIdentifier::TextString(
-                    "public_key_id".to_owned(),
-                ),
-            },
-            Link {
-                link_type: LinkType::PrivateKeyLink,
-                linked_object_identifier: LinkedObjectIdentifier::TextString(
-                    "private_key_id".to_owned(),
-                ),
-            },
-        ]),
+        new_attribute: Attribute::Link(Link {
+            link_type: LinkType::PublicKeyLink,
+            linked_object_identifier: LinkedObjectIdentifier::TextString(
+                "public_key_id".to_owned(),
+            ),
+        }),
     };
 
     let set_attribute = to_ttlv(&set_attribute_request)?;
-    trace!("set_attribute: {:#?}", set_attribute);
+    debug!("set_attribute: {:#?}", set_attribute);
 
     let set_attribute_deserialized: SetAttribute = from_ttlv(set_attribute)?;
-    trace!("set_attribute_deserialized: {}", set_attribute_deserialized);
+    debug!("set_attribute_deserialized: {}", set_attribute_deserialized);
 
     Ok(())
 }

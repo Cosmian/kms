@@ -17,6 +17,7 @@ use cosmian_kmip::{
     },
     ttlv::KmipFlavor,
 };
+use cosmian_kms_client::SocketClient;
 use cosmian_logger::log_init;
 
 use crate::tests::ttlv_tests::get_client;
@@ -27,6 +28,11 @@ fn test_create_1_4() {
 
     let client = get_client();
 
+    // Create a symmetric key
+    create_symmetric_key(&client);
+}
+
+pub(super) fn create_symmetric_key(client: &SocketClient) -> String {
     let request_message = RequestMessage {
         request_header: RequestMessageHeader {
             protocol_version: ProtocolVersion {
@@ -90,4 +96,5 @@ fn test_create_1_4() {
     assert!(create_response.object_type == ObjectType::SymmetricKey);
     assert!(!create_response.unique_identifier.is_empty());
     assert!(create_response.template_attribute.is_none());
+    create_response.unique_identifier.clone()
 }

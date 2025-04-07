@@ -1,15 +1,4 @@
-use std::{
-    fmt,
-    fmt::{Display, Formatter},
-};
-
-use serde::{
-    de,
-    de::{MapAccess, Visitor},
-    ser::SerializeStruct,
-    Deserialize, Serialize,
-};
-use tracing::trace;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     kmip_0::kmip_types::ErrorReason,
@@ -800,234 +789,488 @@ impl Attributes {
 }
 
 /// Structure used in various operations to provide the New Attribute value in the request.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// Each variant corresponds to a field in the Attributes struct.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[allow(clippy::large_enum_variant)]
+// #[serde(untagged)]
 pub enum Attribute {
+    /// The Activation Date attribute contains the date and time when the
+    /// Managed Object MAY begin to be used. This time corresponds to state
+    /// transition. The object SHALL NOT be used for any cryptographic
+    /// purpose before the Activation Date has been reached. Once the state
+    /// transition from Pre-Active has occurred, then this attribute SHALL
+    /// NOT be changed or deleted before the object is destroyed.
     ActivationDate(i64),
+
+    /// The Alternative Name attribute is a variable length text string that is associated
+    /// with the unique identifier of the object. It may be used as an alternative name to
+    /// identify the object, instead of using its unique identifier.
+    AlternativeName(AlternativeName),
+
+    /// The Always Sensitive attribute is a Boolean that indicates whether the key material
+    /// of a Symmetric Key, Private Key, or Secret Data object has always been considered
+    /// sensitive. This attribute SHOULD only be used for Managed Objects with the Sensitive
+    /// attribute set to True.
+    AlwaysSensitive(bool),
+
+    /// The Application Specific Information attribute is a structure used to store data specific
+    /// to the application(s) using the Managed Object. It consists of the following fields:
+    /// - Application Namespace - Text String
+    /// - Application Data - Text String
+    ApplicationSpecificInformation(ApplicationSpecificInformation),
+
+    /// The Archive Date attribute contains the date and time when the Managed Object was
+    /// transferred to the Archive state in the Object States table.
+    ArchiveDate(i64),
+
+    /// The Attribute Index attribute is used to identify distinct instances of multi-instance attributes.
+    /// The combination of the attribute name and the Attribute Index SHALL be unique
+    /// within an instance of a managed object.
+    AttributeIndex(i32),
+
+    /// The Certificate Attributes are the various items included in a certificate.
+    /// The following list is based on RFC2253.
+    CertificateAttributes(CertificateAttributes),
+
+    /// The Certificate Type attribute is a type of certificate (e.g., X.509).
+    /// The Certificate Type value SHALL be set by the server when the certificate
+    /// is created or registered and then SHALL NOT be changed or deleted
+    /// before the object is destroyed.
+    CertificateType(CertificateType),
+
+    /// The Certificate Length attribute is the length in bytes of the Certificate object.
+    /// The Certificate Length SHALL be set by the server when the object is created or registered,
+    /// and then SHALL NOT be changed or deleted before the object is destroyed.
+    CertificateLength(i32),
+
+    /// The Comment attribute is a text string that MAY be used to provide additional
+    /// information about the object.
+    Comment(String),
+
+    /// The Compromise Date attribute contains the date and time when the Managed Object
+    /// entered the Compromised state in the Object States table.
+    CompromiseDate(i64),
+
+    /// The Compromise Occurrence Date attribute contains the date and time when the
+    /// Managed Object was first believed to be compromised.
+    CompromiseOccurrenceDate(i64),
+
+    /// The Contact Information attribute is a text string that MAY be used to identify
+    /// or provide information about the Contact for the Managed Object.
+    ContactInformation(String),
+
+    /// The Critical attribute is a Boolean value that indicates whether the Cryptographic
+    /// Usage Mask attribute should be always provided for the object.
+    Critical(bool),
+
+    /// The Cryptographic Algorithm of an object. The Cryptographic Algorithm of
+    /// a Certificate object identifies the algorithm for the public key
+    /// contained within the Certificate. The digital signature algorithm used
+    /// to sign the Certificate is identified in the Digital Signature
+    /// Algorithm attribute. This attribute SHALL be set by the server when
+    /// the object is created or registered and then SHALL NOT be changed or
+    /// deleted before the object is destroyed.
     CryptographicAlgorithm(CryptographicAlgorithm),
-    CryptographicLength(i32),
-    CryptographicParameters(CryptographicParameters),
+
+    /// The Cryptographic Domain Parameters attribute is a structure that
+    /// contains fields that MAY need to be specified in the Create Key Pair
+    /// Request Payload. Specific fields MAY only pertain to certain types
+    /// of Managed Cryptographic Objects.
     CryptographicDomainParameters(CryptographicDomainParameters),
+
+    /// For keys, Cryptographic Length is the length in bits of the clear-text
+    /// cryptographic key material of the Managed Cryptographic Object. For
+    /// certificates, Cryptographic Length is the length in bits of the public
+    /// key contained within the Certificate. This attribute SHALL be set by the
+    /// server when the object is created or registered, and then SHALL NOT
+    /// be changed or deleted before the object is destroyed.
+    CryptographicLength(i32),
+
+    /// Contains cryptographic parameters for operations
+    CryptographicParameters(CryptographicParameters),
+
+    /// The Cryptographic Usage Mask attribute defines the cryptographic usage
+    /// of a key. This is a bit mask that indicates to the client which
+    /// cryptographic functions MAY be performed using the key, and which ones
+    /// SHALL NOT be performed.
     CryptographicUsageMask(CryptographicUsageMask),
-    Links(Vec<Link>),
-    VendorAttributes(Vec<VendorAttribute>),
+
+    /// The Deactivation Date attribute contains the date and time when the
+    /// Managed Object SHALL NOT be used for any purpose, except for deletion,
+    /// destruction, or re-activation.
+    DeactivationDate(i64),
+
+    /// The Description attribute is a string containing a description of the object.
+    Description(String),
+
+    /// The Destroy Date attribute contains the date and time when the Managed Object
+    /// was destroyed.
+    DestroyDate(i64),
+
+    /// The Digital Signature Algorithm attribute specifies the digital signature algorithm
+    /// that is used with the signing key.
+    DigitalSignatureAlgorithm(DigitalSignatureAlgorithm),
+
+    /// The Extractable attribute is a Boolean that indicates whether the Managed Object
+    /// may be extracted from the cryptographic device on which it is stored.
+    Extractable(bool),
+
+    /// The Fresh attribute indicates if the key value has remained unchanged
+    /// since its initial generation.
+    Fresh(bool),
+
+    /// The Initial Date attribute contains the date and time when the Managed Object
+    /// was first created or registered at the server.
+    InitialDate(i64),
+
+    /// The Key Format Type attribute is a required attribute of a
+    /// Cryptographic Object. It is set by the server, but a particular Key
+    /// Format Type MAY be requested by the client.
+    KeyFormatType(KeyFormatType),
+
+    /// The Key Value Location attribute identifies whether the key value is stored
+    /// on the KMIP server or stored on an external repository.
+    KeyValueLocation(KeyValueLocationType),
+
+    /// The Key Value Present attribute is a Boolean that indicates whether a key value
+    /// is present in the key block.
+    KeyValuePresent(bool),
+
+    /// The Last Change Date attribute contains the date and time of the last change
+    /// to the Managed Object.
+    LastChangeDate(i64),
+
+    /// The Lease Time attribute is the length of time in seconds that the object MAY
+    /// be retained by the client.
+    LeaseTime(i64),
+
+    /// The Link attribute is a structure used to create a link from one Managed
+    /// Cryptographic Object to another, closely related target Managed
+    /// Cryptographic Object.
+    Link(Link),
+
+    /// The Name attribute is a structure used to identify and locate the object.
+    /// The Name attribute MUST contain the Name Value. The Name Value member is
+    /// either a Text String or Enumeration.
+    Name(Name),
+
+    /// The Never Extractable attribute is a Boolean that indicates whether the key material
+    /// of a Symmetric Key, Private Key, or Secret Data object has never been extractable.
+    NeverExtractable(bool),
+
+    /// The NIST Key Type attribute is used to identify the key type used with the
+    /// NIST SP 800-56 and SP 800-108 operations.
+    NistKeyType(NistKeyType),
+
+    /// The Object Group attribute is a Text String that MAY be used to identify a group
+    /// of objects.
+    ObjectGroup(String),
+
+    /// The Object Group Member attribute is an enumeration that indicates how the
+    /// object is a member of an object group.
+    ObjectGroupMember(ObjectGroupMember),
+
+    /// The Object Type of a Managed Object (e.g., public key, private key,
+    /// symmetric key, etc.) SHALL be set by the server when the object is
+    /// created or registered and then SHALL NOT be changed or deleted before
+    /// the object is destroyed.
+    ObjectType(ObjectType),
+
+    /// The Opaque Data Type attribute is an enumeration that indicates the type of opaque
+    /// data contained in the value of the opaque data attribute.
+    OpaqueDataType(OpaqueDataType),
+
+    /// The Original Creation Date attribute contains the date and time the object
+    /// was created by the client that first created it.
+    OriginalCreationDate(i64),
+
+    /// The PKCS#12 Friendly Name attribute is a string used to identify the key
+    /// material stored within a PKCS#12 object.
+    Pkcs12FriendlyName(String),
+
+    /// The Process Start Date attribute is the date and time that a managed object
+    /// is considered to enter the processing state.
+    ProcessStartDate(i64),
+
+    /// The Protect Stop Date attribute is the date and time that a managed object
+    /// is considered to enter the protected state.
+    ProtectStopDate(i64),
+
+    /// The Protection Level attribute indicates the level of protection required for a object.
+    ProtectionLevel(ProtectionLevel),
+
+    /// The Protection Period attribute is the length of time in seconds that the
+    /// object MAY be protected.
+    ProtectionPeriod(i64),
+
+    /// The Protection Storage Masks attribute contains a list of masks that define
+    /// storage protections required for an object.
+    ProtectionStorageMasks(ProtectionStorageMasks),
+
+    /// The Quantum Safe attribute is a Boolean that indicates whether the key is
+    /// quantum safe or not.
+    QuantumSafe(bool),
+
+    /// The Random Number Generator attribute is a structure that contains the details
+    /// of the random number generation.
+    RandomNumberGenerator(RandomNumberGenerator),
+
+    /// The Revocation Reason attribute is a structure used to indicate why the
+    /// Managed Object was revoked.
+    RevocationReason(RevocationReason),
+
+    /// The Rotate Date attribute specifies the date and time for the last rotation
+    /// of a Managed Cryptographic Object. The Rotate Date attribute SHALL be set by
+    /// the server when the Rotate operation successfully completes.
+    RotateDate(i64),
+
+    /// The Rotate Generation attribute specifies the generation of the last rotation
+    /// of a Managed Cryptographic Object. The Rotate Generation attribute SHALL be set
+    /// by the server when the Rotate operation successfully completes.
+    RotateGeneration(i32),
+
+    /// The Rotate Interval attribute specifies the interval between rotations of a
+    /// Managed Cryptographic Object, measured in seconds.
+    RotateInterval(i32),
+
+    /// The Rotate Latest attribute is a Boolean that indicates whether the latest
+    /// rotation time should be recalculated based on the Rotation Interval and
+    /// the Initial Date.
+    RotateLatest(bool),
+
+    /// The Rotate Name attribute specifies the name of the rotation. This attribute
+    /// SHALL be used to specify the algorithm and/or template to be used for the
+    /// rotation.
+    RotateName(String),
+
+    /// The Rotate Offset attribute specifies the time offset between the Creation
+    /// Date and the Rotation Date of a Managed Cryptographic Object, measured in
+    /// seconds.
+    RotateOffset(i32),
+
+    /// If True then the server SHALL prevent the object value being retrieved (via the Get operation) unless it is
+    /// wrapped by another key. The server SHALL set the value to False if the value is not provided by the
+    /// client.
+    Sensitive(bool),
+
+    /// The Short Unique Identifier attribute is used for compact identification of objects.
+    ShortUniqueIdentifier(String),
+
+    /// The State attribute indicates the current state of a Managed Object.
+    State(State),
+
+    /// The Unique Identifier is generated by the key management system
+    /// to uniquely identify a Managed Object. It is only REQUIRED to be unique
+    /// within the identifier space managed by a single key management system,
+    /// however this identifier SHOULD be globally unique.
+    UniqueIdentifier(UniqueIdentifier),
+
+    /// The Usage Limits attribute is a mechanism for limiting the usage of a
+    /// Managed Cryptographic Object.
+    UsageLimits(UsageLimits),
+
+    /// A vendor specific Attribute is a structure used for sending and
+    /// receiving a Managed Object attribute. The Vendor Identification and
+    /// Attribute Name are text-strings that are used to identify the attribute.
+    VendorAttribute(VendorAttribute),
+
+    /// The X.509 Certificate Identifier attribute is the X.509 certificate identifier
+    /// stored in the Issuer and Serial Number attributes from the X.509 Certificate
+    /// Issuer and the X.509 Certificate Serial Number.
+    X509CertificateIdentifier(X509CertificateIdentifier),
+
+    /// The X.509 Certificate Issuer attribute is the Distinguished Name of the
+    /// Certificate Authority that issued the certificate.
+    X509CertificateIssuer(String),
+
+    /// The X.509 Certificate Subject attribute is the Distinguished Name of the
+    /// entity associated with the public key contained in the certificate.
+    X509CertificateSubject(String),
 }
 
-impl Display for Attribute {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::ActivationDate(activation_date) => {
-                write!(f, "ActivationDate: {activation_date}")
-            }
-            Self::CryptographicAlgorithm(crypto_algorithm) => {
-                write!(f, "CryptographicAlgorithm: {crypto_algorithm}")
-            }
-            Self::CryptographicLength(crypto_length) => {
-                write!(f, "CryptographicLength: {crypto_length}")
-            }
-            Self::CryptographicParameters(crypto_parameters) => {
-                write!(f, "CryptographicParameters: {crypto_parameters:?}")
-            }
-            Self::CryptographicDomainParameters(crypto_domain_parameters) => {
-                write!(
-                    f,
-                    "CryptographicDomainParameters: {crypto_domain_parameters:?}"
-                )
-            }
-            Self::CryptographicUsageMask(crypto_usage_mask) => {
-                write!(f, "CryptographicUsageMask: {crypto_usage_mask:?}")
-            }
-            Self::Links(links) => write!(f, "Links: {links:?}"),
-            Self::VendorAttributes(vendor_attributes) => {
-                write!(f, "VendorAttributes: {vendor_attributes:?}")
-            }
-        }
-    }
-}
+// impl Serialize for Attribute {
+//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+//     where
+//         S: serde::Serializer,
+//     {
+//         match self {
+//             Self::ActivationDate(activation_date) => {
+//                 let mut st = serializer.serialize_struct("Attribute", 1)?;
+//                 st.serialize_field("ActivationDate", activation_date)?;
+//                 st.end()
+//             }
+//             Self::CryptographicAlgorithm(crypto_algorithm) => {
+//                 let mut st = serializer.serialize_struct("Attribute", 1)?;
+//                 st.serialize_field("CryptographicAlgorithm", crypto_algorithm)?;
+//                 st.end()
+//             }
+//             Self::CryptographicLength(crypto_length) => {
+//                 let mut st = serializer.serialize_struct("Attribute", 1)?;
+//                 st.serialize_field("CryptographicLength", crypto_length)?;
+//                 st.end()
+//             }
+//             Self::CryptographicParameters(crypto_parameters) => {
+//                 let mut st = serializer.serialize_struct("Attribute", 1)?;
+//                 st.serialize_field("CryptographicParameters", crypto_parameters)?;
+//                 st.end()
+//             }
+//             Self::CryptographicDomainParameters(crypto_domain_parameters) => {
+//                 let mut st = serializer.serialize_struct("Attribute", 1)?;
+//                 st.serialize_field("CryptographicDomainParameters", crypto_domain_parameters)?;
+//                 st.end()
+//             }
+//             Self::CryptographicUsageMask(crypto_usage_mask) => {
+//                 let mut st = serializer.serialize_struct("Attribute", 1)?;
+//                 st.serialize_field("CryptographicUsageMask", crypto_usage_mask)?;
+//                 st.end()
+//             }
+//             Self::Links(links) => {
+//                 let mut st = serializer.serialize_struct("Attribute", links.len())?;
+//                 for link in links {
+//                     st.serialize_field("Link", link)?;
+//                 }
+//                 st.end()
+//             }
+//             Self::VendorAttributes(vendor_attributes) => {
+//                 let mut st = serializer.serialize_struct("Attribute", vendor_attributes.len())?;
+//                 for vendor_attribute in vendor_attributes {
+//                     st.serialize_field("VendorAttribute", vendor_attribute)?;
+//                 }
+//                 st.end()
+//             }
+//         }
+//     }
+// }
 
-impl Serialize for Attribute {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        match self {
-            Self::ActivationDate(activation_date) => {
-                let mut st = serializer.serialize_struct("Attribute", 1)?;
-                st.serialize_field("ActivationDate", activation_date)?;
-                st.end()
-            }
-            Self::CryptographicAlgorithm(crypto_algorithm) => {
-                let mut st = serializer.serialize_struct("Attribute", 1)?;
-                st.serialize_field("CryptographicAlgorithm", crypto_algorithm)?;
-                st.end()
-            }
-            Self::CryptographicLength(crypto_length) => {
-                let mut st = serializer.serialize_struct("Attribute", 1)?;
-                st.serialize_field("CryptographicLength", crypto_length)?;
-                st.end()
-            }
-            Self::CryptographicParameters(crypto_parameters) => {
-                let mut st = serializer.serialize_struct("Attribute", 1)?;
-                st.serialize_field("CryptographicParameters", crypto_parameters)?;
-                st.end()
-            }
-            Self::CryptographicDomainParameters(crypto_domain_parameters) => {
-                let mut st = serializer.serialize_struct("Attribute", 1)?;
-                st.serialize_field("CryptographicDomainParameters", crypto_domain_parameters)?;
-                st.end()
-            }
-            Self::CryptographicUsageMask(crypto_usage_mask) => {
-                let mut st = serializer.serialize_struct("Attribute", 1)?;
-                st.serialize_field("CryptographicUsageMask", crypto_usage_mask)?;
-                st.end()
-            }
-            Self::Links(links) => {
-                let mut st = serializer.serialize_struct("Attribute", links.len())?;
-                for link in links {
-                    st.serialize_field("Link", link)?;
-                }
-                st.end()
-            }
-            Self::VendorAttributes(vendor_attributes) => {
-                let mut st = serializer.serialize_struct("Attribute", vendor_attributes.len())?;
-                for vendor_attribute in vendor_attributes {
-                    st.serialize_field("VendorAttribute", vendor_attribute)?;
-                }
-                st.end()
-            }
-        }
-    }
-}
+// impl<'de> Deserialize<'de> for Attribute {
+//     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+//     where
+//         D: serde::Deserializer<'de>,
+//     {
+//         #[derive(Deserialize, Debug)]
+//         #[serde(field_identifier)]
+//         enum Field {
+//             ActivationDate,
+//             CryptographicAlgorithm,
+//             CryptographicLength,
+//             CryptographicParameters,
+//             CryptographicDomainParameters,
+//             CryptographicUsageMask,
+//             Link,
+//             VendorAttribute,
+//         }
 
-impl<'de> Deserialize<'de> for Attribute {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        #[derive(Deserialize, Debug)]
-        #[serde(field_identifier)]
-        enum Field {
-            ActivationDate,
-            CryptographicAlgorithm,
-            CryptographicLength,
-            CryptographicParameters,
-            CryptographicDomainParameters,
-            CryptographicUsageMask,
-            Link,
-            VendorAttribute,
-        }
+//         struct AttributeVisitor;
 
-        struct AttributeVisitor;
+//         impl<'de> Visitor<'de> for AttributeVisitor {
+//             type Value = Attribute;
 
-        impl<'de> Visitor<'de> for AttributeVisitor {
-            type Value = Attribute;
+//             fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+//                 formatter.write_str("struct AttributeVisitor")
+//             }
 
-            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
-                formatter.write_str("struct AttributeVisitor")
-            }
+//             fn visit_map<V>(self, mut map: V) -> Result<Self::Value, V::Error>
+//             where
+//                 V: MapAccess<'de>,
+//             {
+//                 let mut activation_date: Option<i64> = None;
+//                 let mut cryptographic_algorithm: Option<CryptographicAlgorithm> = None;
+//                 let mut cryptographic_length: Option<i32> = None;
+//                 let mut cryptographic_parameters: Option<CryptographicParameters> = None;
+//                 let mut cryptographic_domain_parameters: Option<CryptographicDomainParameters> =
+//                     None;
+//                 let mut cryptographic_usage_mask: Option<CryptographicUsageMask> = None;
+//                 let mut links: Vec<Link> = Vec::new();
+//                 let mut vendor_attributes: Vec<VendorAttribute> = Vec::new();
 
-            fn visit_map<V>(self, mut map: V) -> Result<Self::Value, V::Error>
-            where
-                V: MapAccess<'de>,
-            {
-                let mut activation_date: Option<i64> = None;
-                let mut cryptographic_algorithm: Option<CryptographicAlgorithm> = None;
-                let mut cryptographic_length: Option<i32> = None;
-                let mut cryptographic_parameters: Option<CryptographicParameters> = None;
-                let mut cryptographic_domain_parameters: Option<CryptographicDomainParameters> =
-                    None;
-                let mut cryptographic_usage_mask: Option<CryptographicUsageMask> = None;
-                let mut links: Vec<Link> = Vec::new();
-                let mut vendor_attributes: Vec<VendorAttribute> = Vec::new();
+//                 while let Some(key) = map.next_key()? {
+//                     trace!("visit_map: Key: {key:?}");
+//                     match key {
+//                         Field::ActivationDate => {
+//                             if activation_date.is_some() {
+//                                 return Err(de::Error::duplicate_field("activation_date"))
+//                             }
+//                             activation_date = Some(map.next_value()?);
+//                         }
+//                         Field::CryptographicAlgorithm => {
+//                             if cryptographic_algorithm.is_some() {
+//                                 return Err(de::Error::duplicate_field("cryptographic_algorithm"))
+//                             }
+//                             cryptographic_algorithm = Some(map.next_value()?);
+//                         }
+//                         Field::CryptographicLength => {
+//                             if cryptographic_length.is_some() {
+//                                 return Err(de::Error::duplicate_field("cryptographic_length"))
+//                             }
+//                             cryptographic_length = Some(map.next_value()?);
+//                         }
+//                         Field::CryptographicParameters => {
+//                             if cryptographic_parameters.is_some() {
+//                                 return Err(de::Error::duplicate_field("cryptographic_parameters"))
+//                             }
+//                             cryptographic_parameters = Some(map.next_value()?);
+//                         }
+//                         Field::CryptographicDomainParameters => {
+//                             if cryptographic_domain_parameters.is_some() {
+//                                 return Err(de::Error::duplicate_field(
+//                                     "cryptographic_domain_parameters",
+//                                 ))
+//                             }
+//                             cryptographic_domain_parameters = Some(map.next_value()?);
+//                         }
+//                         Field::CryptographicUsageMask => {
+//                             if cryptographic_usage_mask.is_some() {
+//                                 return Err(de::Error::duplicate_field("cryptographic_usage_mask"))
+//                             }
+//                             cryptographic_usage_mask = Some(map.next_value()?);
+//                         }
+//                         Field::Link => {
+//                             links.push(map.next_value()?);
+//                         }
+//                         Field::VendorAttribute => {
+//                             vendor_attributes.push(map.next_value()?);
+//                         }
+//                     }
+//                 }
 
-                while let Some(key) = map.next_key()? {
-                    trace!("visit_map: Key: {key:?}");
-                    match key {
-                        Field::ActivationDate => {
-                            if activation_date.is_some() {
-                                return Err(de::Error::duplicate_field("activation_date"))
-                            }
-                            activation_date = Some(map.next_value()?);
-                        }
-                        Field::CryptographicAlgorithm => {
-                            if cryptographic_algorithm.is_some() {
-                                return Err(de::Error::duplicate_field("cryptographic_algorithm"))
-                            }
-                            cryptographic_algorithm = Some(map.next_value()?);
-                        }
-                        Field::CryptographicLength => {
-                            if cryptographic_length.is_some() {
-                                return Err(de::Error::duplicate_field("cryptographic_length"))
-                            }
-                            cryptographic_length = Some(map.next_value()?);
-                        }
-                        Field::CryptographicParameters => {
-                            if cryptographic_parameters.is_some() {
-                                return Err(de::Error::duplicate_field("cryptographic_parameters"))
-                            }
-                            cryptographic_parameters = Some(map.next_value()?);
-                        }
-                        Field::CryptographicDomainParameters => {
-                            if cryptographic_domain_parameters.is_some() {
-                                return Err(de::Error::duplicate_field(
-                                    "cryptographic_domain_parameters",
-                                ))
-                            }
-                            cryptographic_domain_parameters = Some(map.next_value()?);
-                        }
-                        Field::CryptographicUsageMask => {
-                            if cryptographic_usage_mask.is_some() {
-                                return Err(de::Error::duplicate_field("cryptographic_usage_mask"))
-                            }
-                            cryptographic_usage_mask = Some(map.next_value()?);
-                        }
-                        Field::Link => {
-                            links.push(map.next_value()?);
-                        }
-                        Field::VendorAttribute => {
-                            vendor_attributes.push(map.next_value()?);
-                        }
-                    }
-                }
+//                 trace!("Attribute::deserialize: Link: {:?}", links);
+//                 if let Some(activation_date) = activation_date {
+//                     return Ok(Attribute::ActivationDate(activation_date))
+//                 } else if let Some(cryptographic_algorithm) = cryptographic_algorithm {
+//                     return Ok(Attribute::CryptographicAlgorithm(cryptographic_algorithm))
+//                 } else if let Some(cryptographic_length) = cryptographic_length {
+//                     return Ok(Attribute::CryptographicLength(cryptographic_length))
+//                 } else if let Some(cryptographic_parameters) = cryptographic_parameters {
+//                     return Ok(Attribute::CryptographicParameters(cryptographic_parameters))
+//                 } else if let Some(cryptographic_domain_parameters) =
+//                     cryptographic_domain_parameters
+//                 {
+//                     return Ok(Attribute::CryptographicDomainParameters(
+//                         cryptographic_domain_parameters,
+//                     ))
+//                 } else if let Some(cryptographic_usage_mask) = cryptographic_usage_mask {
+//                     return Ok(Attribute::CryptographicUsageMask(cryptographic_usage_mask))
+//                 } else if !links.is_empty() {
+//                     return Ok(Attribute::Links(links))
+//                 } else if !vendor_attributes.is_empty() {
+//                     return Ok(Attribute::VendorAttributes(vendor_attributes))
+//                 }
 
-                trace!("Attribute::deserialize: Link: {:?}", links);
-                if let Some(activation_date) = activation_date {
-                    return Ok(Attribute::ActivationDate(activation_date))
-                } else if let Some(cryptographic_algorithm) = cryptographic_algorithm {
-                    return Ok(Attribute::CryptographicAlgorithm(cryptographic_algorithm))
-                } else if let Some(cryptographic_length) = cryptographic_length {
-                    return Ok(Attribute::CryptographicLength(cryptographic_length))
-                } else if let Some(cryptographic_parameters) = cryptographic_parameters {
-                    return Ok(Attribute::CryptographicParameters(cryptographic_parameters))
-                } else if let Some(cryptographic_domain_parameters) =
-                    cryptographic_domain_parameters
-                {
-                    return Ok(Attribute::CryptographicDomainParameters(
-                        cryptographic_domain_parameters,
-                    ))
-                } else if let Some(cryptographic_usage_mask) = cryptographic_usage_mask {
-                    return Ok(Attribute::CryptographicUsageMask(cryptographic_usage_mask))
-                } else if !links.is_empty() {
-                    return Ok(Attribute::Links(links))
-                } else if !vendor_attributes.is_empty() {
-                    return Ok(Attribute::VendorAttributes(vendor_attributes))
-                }
+//                 Ok(Attribute::ActivationDate(0))
+//             }
+//         }
 
-                Ok(Attribute::ActivationDate(0))
-            }
-        }
-
-        const FIELDS: &[&str] = &[
-            "activation_date",
-            "cryptographic_algorithm",
-            "cryptographic_length",
-            "cryptographic_parameters",
-            "cryptographic_domain_parameters",
-            "cryptographic_usage_mask",
-            "link",
-            "public_key_link",
-            "vendor_attributes",
-        ];
-        deserializer.deserialize_struct("Attribute", FIELDS, AttributeVisitor)
-    }
-}
+//         const FIELDS: &[&str] = &[
+//             "activation_date",
+//             "cryptographic_algorithm",
+//             "cryptographic_length",
+//             "cryptographic_parameters",
+//             "cryptographic_domain_parameters",
+//             "cryptographic_usage_mask",
+//             "link",
+//             "public_key_link",
+//             "vendor_attributes",
+//         ];
+//         deserializer.deserialize_struct("Attribute", FIELDS, AttributeVisitor)
+//     }
+// }

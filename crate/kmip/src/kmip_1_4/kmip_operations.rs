@@ -354,12 +354,32 @@ pub struct AddAttribute {
     pub attribute: Attribute,
 }
 
+impl From<AddAttribute> for kmip_2_1::kmip_operations::AddAttribute {
+    fn from(add_attribute: AddAttribute) -> Self {
+        Self {
+            unique_identifier: add_attribute.unique_identifier.to_owned(),
+            new_attribute: add_attribute.attribute.into(),
+        }
+    }
+}
+
 /// Response to an Add Attribute request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct AddAttributeResponse {
     pub unique_identifier: String,
     pub attribute: Attribute,
+}
+
+impl From<kmip_2_1::kmip_operations::AddAttributeResponse> for AddAttributeResponse {
+    fn from(add_attribute_response: kmip_2_1::kmip_operations::AddAttributeResponse) -> Self {
+        Self {
+            unique_identifier: add_attribute_response.unique_identifier.to_string(),
+            attribute: Attribute::Comment(
+                "KMIP 2 does not send the attribute value on the response".to_owned(),
+            ),
+        }
+    }
 }
 
 /// 4.15 Modify Attribute
@@ -1391,9 +1411,7 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             //         get_attribute_list_response.into(),
             //     )
             // }
-            // Operation::AddAttribute(add_attribute) => {
-            //     Self::AddAttribute(add_attribute.into())
-            // }
+            Operation::AddAttribute(add_attribute) => Self::AddAttribute(add_attribute.into()),
             // Operation::AddAttributeResponse(add_attribute_response) => {
             //     Self::AddAttributeResponse(
             //         add_attribute_response.into(),
@@ -1640,11 +1658,9 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             // Operation::AddAttribute(add_attribute) => {
             //     Self::AddAttribute(add_attribute.into())
             // }
-            // Operation::AddAttributeResponse(add_attribute_response) => {
-            //     Self::AddAttributeResponse(
-            //         add_attribute_response.into(),
-            //     )
-            // }
+            kmip_2_1::kmip_operations::Operation::AddAttributeResponse(add_attribute_response) => {
+                Self::AddAttributeResponse(add_attribute_response.into())
+            }
             // Operation::ModifyAttribute(modify_attribute) => {
             //     Self::ModifyAttribute(modify_attribute.into())
             // }
