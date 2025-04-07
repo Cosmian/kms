@@ -2,7 +2,10 @@ use serde::de::{DeserializeSeed, MapAccess};
 use tracing::{instrument, trace};
 
 use super::TtlvDeserializer;
-use crate::ttlv::{kmip_ttlv_deserializer::deserializer::MapAccessState, TTLValue, TtlvError};
+use crate::{
+    ttlv::{kmip_ttlv_deserializer::deserializer::MapAccessState, TTLValue, TtlvError},
+    KmipResultHelper,
+};
 
 /// The `UntaggedEnumWalker` is used to deserialize a struct as a map of property -> values
 /// It is called by the main deserializer when receiving Visitor requests to `deserialize_struct`
@@ -29,10 +32,12 @@ impl<'a, 'de: 'a> MapAccess<'de> for UntaggedEnumWalker<'a> {
         K: DeserializeSeed<'de>,
     {
         trace!(
-            "Untagged Enum map: next_key_seed: completed?: {}, index: {}, current: {:?}",
+            "Untagged Enum map: next_key_seed: completed?: {}, at root: {} , index: {}, current \
+             tag: {:?}",
             self.completed,
+            *self.de.at_root.read().context("failed to read at_root")?,
             self.de.child_index,
-            self.de.current
+            self.de.current.tag
         );
         if self.completed {
             return Ok(None);
