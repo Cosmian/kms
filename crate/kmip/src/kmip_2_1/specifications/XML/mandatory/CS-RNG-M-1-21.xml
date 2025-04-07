@@ -1,0 +1,48 @@
+<KMIP>
+
+<!--
+     Key Management Interoperability Protocol Profiles Version 2.1
+     OASIS Standard
+     14 December 2020
+     Copyright (c) OASIS Open 2020. All Rights Reserved.
+     Source: https://docs.oasis-open.org/kmip/kmip-profiles/v2.1/os/test-cases/kmip-v2.1/mandatory/
+     Latest version of the specification: https://docs.oasis-open.org/kmip/kmip-profiles/v2.1/kmip-profiles-v2.1.html
+     TC IPR Statement: https://www.oasis-open.org/committees/kmip/ipr.php
+-->
+
+<RequestMessage>
+  <RequestHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="2"/>
+      <ProtocolVersionMinor type="Integer" value="1"/>
+    </ProtocolVersion>
+    <ClientCorrelationValue type="TextString" value="CS-RNG-M-1-21 step=0"/>
+    <BatchCount type="Integer" value="1"/>
+  </RequestHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="RNGRetrieve"/>
+    <RequestPayload>
+      <DataLength type="Integer" value="32"/>
+    </RequestPayload>
+  </BatchItem>
+</RequestMessage>
+
+<ResponseMessage>
+  <ResponseHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="2"/>
+      <ProtocolVersionMinor type="Integer" value="1"/>
+    </ProtocolVersion>
+    <TimeStamp type="DateTime" value="$NOW"/>
+    <BatchCount type="Integer" value="1"/>
+  </ResponseHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="RNGRetrieve"/>
+    <ResultStatus type="Enumeration" value="Success"/>
+    <ResponsePayload>
+      <Data type="ByteString" value="9c0bcd79d775998ddc52457bbbcfce2d4a194b039e20a3adacb63fb6561ba545"/>
+    </ResponsePayload>
+  </BatchItem>
+</ResponseMessage>
+
+</KMIP>

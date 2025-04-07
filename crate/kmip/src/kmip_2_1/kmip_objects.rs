@@ -12,6 +12,7 @@ use serde::{
     Deserialize, Serialize,
 };
 use strum::{Display, VariantNames};
+use tracing::trace;
 
 use super::{
     kmip_attributes::Attributes,
@@ -162,7 +163,7 @@ pub struct SymmetricKey {
 /// appears after despite the presence of `secret_data_type`
 #[derive(Serialize, Clone, Eq, PartialEq, Debug, VariantNames)]
 #[serde(rename_all = "PascalCase")]
-// #[serde(untagged)]
+#[serde(untagged)]
 pub enum Object {
     /// A Managed Cryptographic Object that is a digital certificate.
     /// It is a DER-encoded X.509 public key certificate.
@@ -236,6 +237,7 @@ impl<'de> Deserialize<'de> for Object {
             {
                 // let mut object_type: Option<ObjectType> = None;
                 if let Some(key) = map.next_key::<String>()? {
+                    trace!("Object Visitor: visit_map: key: {key:?}, ");
                     if !Object::VARIANTS.contains(&key.as_str()) {
                         return Err(serde::de::Error::custom(format!(
                             "Unknown Object to deserialize: {key}. Known Objects are: {:?}",

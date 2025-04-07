@@ -1,0 +1,717 @@
+<KMIP>
+
+<!--
+     Key Management Interoperability Protocol Profiles Version 2.1
+     OASIS Standard
+     14 December 2020
+     Copyright (c) OASIS Open 2020. All Rights Reserved.
+     Source: https://docs.oasis-open.org/kmip/kmip-profiles/v2.1/os/test-cases/kmip-v2.1/mandatory/
+     Latest version of the specification: https://docs.oasis-open.org/kmip/kmip-profiles/v2.1/kmip-profiles-v2.1.html
+     TC IPR Statement: https://www.oasis-open.org/committees/kmip/ipr.php
+-->
+
+<RequestMessage>
+  <RequestHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="2"/>
+      <ProtocolVersionMinor type="Integer" value="1"/>
+    </ProtocolVersion>
+    <ClientCorrelationValue type="TextString" value="SKFF-M-10-21 step=0"/>
+    <BatchCount type="Integer" value="1"/>
+  </RequestHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="Create"/>
+    <RequestPayload>
+      <ObjectType type="Enumeration" value="SymmetricKey"/>
+      <Attributes>
+        <CryptographicAlgorithm type="Enumeration" value="AES"/>
+        <CryptographicLength type="Integer" value="192"/>
+        <Name>
+          <NameValue type="TextString" value="SKFF-M-10-21"/>
+          <NameType type="Enumeration" value="UninterpretedTextString"/>
+        </Name>
+        <CryptographicUsageMask type="Integer" value="Encrypt"/>
+      </Attributes>
+    </RequestPayload>
+  </BatchItem>
+</RequestMessage>
+
+<ResponseMessage>
+  <ResponseHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="2"/>
+      <ProtocolVersionMinor type="Integer" value="1"/>
+    </ProtocolVersion>
+    <TimeStamp type="DateTime" value="$NOW"/>
+    <BatchCount type="Integer" value="1"/>
+  </ResponseHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="Create"/>
+    <ResultStatus type="Enumeration" value="Success"/>
+    <ResponsePayload>
+      <ObjectType type="Enumeration" value="SymmetricKey"/>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+    </ResponsePayload>
+  </BatchItem>
+</ResponseMessage>
+
+<RequestMessage>
+  <RequestHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="2"/>
+      <ProtocolVersionMinor type="Integer" value="1"/>
+    </ProtocolVersion>
+    <ClientCorrelationValue type="TextString" value="SKFF-M-10-21 step=1"/>
+    <BatchCount type="Integer" value="1"/>
+  </RequestHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="GetAttributes"/>
+    <RequestPayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+      <AttributeReference type="Enumeration" value="State"/>
+      <AttributeReference type="Enumeration" value="RandomNumberGenerator"/>
+    </RequestPayload>
+  </BatchItem>
+</RequestMessage>
+
+<ResponseMessage>
+  <ResponseHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="2"/>
+      <ProtocolVersionMinor type="Integer" value="1"/>
+    </ProtocolVersion>
+    <TimeStamp type="DateTime" value="$NOW"/>
+    <BatchCount type="Integer" value="1"/>
+  </ResponseHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="GetAttributes"/>
+    <ResultStatus type="Enumeration" value="Success"/>
+    <ResponsePayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+      <Attributes>
+        <State type="Enumeration" value="PreActive"/>
+        <RandomNumberGenerator>
+          <RNGAlgorithm type="Enumeration" value="ANSIX9_31"/>
+          <CryptographicAlgorithm type="Enumeration" value="AES"/>
+          <CryptographicLength type="Integer" value="256"/>
+        </RandomNumberGenerator>
+      </Attributes>
+    </ResponsePayload>
+  </BatchItem>
+</ResponseMessage>
+
+<RequestMessage>
+  <RequestHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="2"/>
+      <ProtocolVersionMinor type="Integer" value="1"/>
+    </ProtocolVersion>
+    <ClientCorrelationValue type="TextString" value="SKFF-M-10-21 step=2"/>
+    <BatchCount type="Integer" value="1"/>
+  </RequestHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="Activate"/>
+    <RequestPayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+    </RequestPayload>
+  </BatchItem>
+</RequestMessage>
+
+<ResponseMessage>
+  <ResponseHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="2"/>
+      <ProtocolVersionMinor type="Integer" value="1"/>
+    </ProtocolVersion>
+    <TimeStamp type="DateTime" value="$NOW"/>
+    <BatchCount type="Integer" value="1"/>
+  </ResponseHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="Activate"/>
+    <ResultStatus type="Enumeration" value="Success"/>
+    <ResponsePayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+    </ResponsePayload>
+  </BatchItem>
+</ResponseMessage>
+
+<RequestMessage>
+  <RequestHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="2"/>
+      <ProtocolVersionMinor type="Integer" value="1"/>
+    </ProtocolVersion>
+    <ClientCorrelationValue type="TextString" value="SKFF-M-10-21 step=3"/>
+    <BatchCount type="Integer" value="1"/>
+  </RequestHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="GetAttributes"/>
+    <RequestPayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+      <AttributeReference type="Enumeration" value="State"/>
+    </RequestPayload>
+  </BatchItem>
+</RequestMessage>
+
+<ResponseMessage>
+  <ResponseHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="2"/>
+      <ProtocolVersionMinor type="Integer" value="1"/>
+    </ProtocolVersion>
+    <TimeStamp type="DateTime" value="$NOW"/>
+    <BatchCount type="Integer" value="1"/>
+  </ResponseHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="GetAttributes"/>
+    <ResultStatus type="Enumeration" value="Success"/>
+    <ResponsePayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+      <Attributes>
+        <State type="Enumeration" value="Active"/>
+      </Attributes>
+    </ResponsePayload>
+  </BatchItem>
+</ResponseMessage>
+
+<RequestMessage>
+  <RequestHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="2"/>
+      <ProtocolVersionMinor type="Integer" value="1"/>
+    </ProtocolVersion>
+    <ClientCorrelationValue type="TextString" value="SKFF-M-10-21 step=4"/>
+    <BatchCount type="Integer" value="1"/>
+  </RequestHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="Locate"/>
+    <RequestPayload>
+      <Attributes>
+        <ObjectType type="Enumeration" value="SymmetricKey"/>
+        <Name>
+          <NameValue type="TextString" value="SKFF-M-10-21"/>
+          <NameType type="Enumeration" value="UninterpretedTextString"/>
+        </Name>
+      </Attributes>
+    </RequestPayload>
+  </BatchItem>
+</RequestMessage>
+
+<ResponseMessage>
+  <ResponseHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="2"/>
+      <ProtocolVersionMinor type="Integer" value="1"/>
+    </ProtocolVersion>
+    <TimeStamp type="DateTime" value="$NOW"/>
+    <BatchCount type="Integer" value="1"/>
+  </ResponseHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="Locate"/>
+    <ResultStatus type="Enumeration" value="Success"/>
+    <ResponsePayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+    </ResponsePayload>
+  </BatchItem>
+</ResponseMessage>
+
+<RequestMessage>
+  <RequestHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="2"/>
+      <ProtocolVersionMinor type="Integer" value="1"/>
+    </ProtocolVersion>
+    <ClientCorrelationValue type="TextString" value="SKFF-M-10-21 step=5"/>
+    <BatchCount type="Integer" value="1"/>
+  </RequestHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="Get"/>
+    <RequestPayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+    </RequestPayload>
+  </BatchItem>
+</RequestMessage>
+
+<ResponseMessage>
+  <ResponseHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="2"/>
+      <ProtocolVersionMinor type="Integer" value="1"/>
+    </ProtocolVersion>
+    <TimeStamp type="DateTime" value="$NOW"/>
+    <BatchCount type="Integer" value="1"/>
+  </ResponseHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="Get"/>
+    <ResultStatus type="Enumeration" value="Success"/>
+    <ResponsePayload>
+      <ObjectType type="Enumeration" value="SymmetricKey"/>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+      <SymmetricKey>
+        <KeyBlock>
+          <KeyFormatType type="Enumeration" value="Raw"/>
+          <KeyValue>
+            <KeyMaterial type="ByteString" value="13e1e3d7b4e630dc4582869ce7e8d27e1c5f31fdec2abee1"/>
+          </KeyValue>
+          <CryptographicAlgorithm type="Enumeration" value="AES"/>
+          <CryptographicLength type="Integer" value="192"/>
+        </KeyBlock>
+      </SymmetricKey>
+    </ResponsePayload>
+  </BatchItem>
+</ResponseMessage>
+
+<RequestMessage>
+  <RequestHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="2"/>
+      <ProtocolVersionMinor type="Integer" value="1"/>
+    </ProtocolVersion>
+    <ClientCorrelationValue type="TextString" value="SKFF-M-10-21 step=6"/>
+    <BatchCount type="Integer" value="1"/>
+  </RequestHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="Revoke"/>
+    <RequestPayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+      <RevocationReason>
+        <RevocationReasonCode type="Enumeration" value="KeyCompromise"/>
+      </RevocationReason>
+      <CompromiseOccurrenceDate type="DateTime" value="1970-01-01T00:00:06+00:00"/>
+    </RequestPayload>
+  </BatchItem>
+</RequestMessage>
+
+<ResponseMessage>
+  <ResponseHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="2"/>
+      <ProtocolVersionMinor type="Integer" value="1"/>
+    </ProtocolVersion>
+    <TimeStamp type="DateTime" value="$NOW"/>
+    <BatchCount type="Integer" value="1"/>
+  </ResponseHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="Revoke"/>
+    <ResultStatus type="Enumeration" value="Success"/>
+    <ResponsePayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+    </ResponsePayload>
+  </BatchItem>
+</ResponseMessage>
+
+<RequestMessage>
+  <RequestHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="2"/>
+      <ProtocolVersionMinor type="Integer" value="1"/>
+    </ProtocolVersion>
+    <ClientCorrelationValue type="TextString" value="SKFF-M-10-21 step=7"/>
+    <BatchCount type="Integer" value="1"/>
+  </RequestHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="GetAttributes"/>
+    <RequestPayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+      <AttributeReference type="Enumeration" value="State"/>
+    </RequestPayload>
+  </BatchItem>
+</RequestMessage>
+
+<ResponseMessage>
+  <ResponseHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="2"/>
+      <ProtocolVersionMinor type="Integer" value="1"/>
+    </ProtocolVersion>
+    <TimeStamp type="DateTime" value="$NOW"/>
+    <BatchCount type="Integer" value="1"/>
+  </ResponseHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="GetAttributes"/>
+    <ResultStatus type="Enumeration" value="Success"/>
+    <ResponsePayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+      <Attributes>
+        <State type="Enumeration" value="Compromised"/>
+      </Attributes>
+    </ResponsePayload>
+  </BatchItem>
+</ResponseMessage>
+
+<RequestMessage>
+  <RequestHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="2"/>
+      <ProtocolVersionMinor type="Integer" value="1"/>
+    </ProtocolVersion>
+    <ClientCorrelationValue type="TextString" value="SKFF-M-10-21 step=8"/>
+    <BatchCount type="Integer" value="1"/>
+  </RequestHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="GetAttributeList"/>
+    <RequestPayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+    </RequestPayload>
+  </BatchItem>
+</RequestMessage>
+
+<ResponseMessage>
+  <ResponseHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="2"/>
+      <ProtocolVersionMinor type="Integer" value="1"/>
+    </ProtocolVersion>
+    <TimeStamp type="DateTime" value="$NOW"/>
+    <BatchCount type="Integer" value="1"/>
+  </ResponseHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="GetAttributeList"/>
+    <ResultStatus type="Enumeration" value="Success"/>
+    <ResponsePayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+      <AttributeReference type="Enumeration" value="UniqueIdentifier"/>
+      <AttributeReference type="Enumeration" value="ShortUniqueIdentifier"/>
+      <AttributeReference type="Enumeration" value="ObjectType"/>
+      <AttributeReference type="Enumeration" value="CryptographicAlgorithm"/>
+      <AttributeReference type="Enumeration" value="CryptographicLength"/>
+      <AttributeReference type="Enumeration" value="ActivationDate"/>
+      <AttributeReference type="Enumeration" value="AlwaysSensitive"/>
+      <AttributeReference type="Enumeration" value="CompromiseDate"/>
+      <AttributeReference type="Enumeration" value="CompromiseOccurrenceDate"/>
+      <AttributeReference type="Enumeration" value="CryptographicUsageMask"/>
+      <AttributeReference type="Enumeration" value="Digest"/>
+      <AttributeReference type="Enumeration" value="KeyFormatType"/>
+      <AttributeReference type="Enumeration" value="Extractable"/>
+      <AttributeReference type="Enumeration" value="Fresh"/>
+      <AttributeReference type="Enumeration" value="InitialDate"/>
+      <AttributeReference type="Enumeration" value="LastChangeDate"/>
+      <AttributeReference type="Enumeration" value="LeaseTime"/>
+      <AttributeReference type="Enumeration" value="Name"/>
+      <AttributeReference type="Enumeration" value="NeverExtractable"/>
+      <AttributeReference type="Enumeration" value="OriginalCreationDate"/>
+      <AttributeReference type="Enumeration" value="ProtectionStorageMask"/>
+      <AttributeReference type="Enumeration" value="RandomNumberGenerator"/>
+      <AttributeReference type="Enumeration" value="RevocationReason"/>
+      <AttributeReference type="Enumeration" value="Sensitive"/>
+      <AttributeReference type="Enumeration" value="State"/>
+    </ResponsePayload>
+  </BatchItem>
+</ResponseMessage>
+
+<RequestMessage>
+  <RequestHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="2"/>
+      <ProtocolVersionMinor type="Integer" value="1"/>
+    </ProtocolVersion>
+    <ClientCorrelationValue type="TextString" value="SKFF-M-10-21 step=9"/>
+    <BatchCount type="Integer" value="1"/>
+  </RequestHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="GetAttributes"/>
+    <RequestPayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+      <AttributeReference type="Enumeration" value="State"/>
+    </RequestPayload>
+  </BatchItem>
+</RequestMessage>
+
+<ResponseMessage>
+  <ResponseHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="2"/>
+      <ProtocolVersionMinor type="Integer" value="1"/>
+    </ProtocolVersion>
+    <TimeStamp type="DateTime" value="$NOW"/>
+    <BatchCount type="Integer" value="1"/>
+  </ResponseHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="GetAttributes"/>
+    <ResultStatus type="Enumeration" value="Success"/>
+    <ResponsePayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+      <Attributes>
+        <State type="Enumeration" value="Compromised"/>
+      </Attributes>
+    </ResponsePayload>
+  </BatchItem>
+</ResponseMessage>
+
+<RequestMessage>
+  <RequestHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="2"/>
+      <ProtocolVersionMinor type="Integer" value="1"/>
+    </ProtocolVersion>
+    <ClientCorrelationValue type="TextString" value="SKFF-M-10-21 step=10"/>
+    <BatchOrderOption type="Boolean" value="true"/>
+    <BatchCount type="Integer" value="2"/>
+  </RequestHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="AddAttribute"/>
+    <UniqueBatchItemID type="ByteString" value="23a177faa569463c"/>
+    <RequestPayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+      <NewAttribute>
+        <Attribute>
+          <VendorIdentification type="TextString" value="x"/>
+          <AttributeName type="TextString" value="attribute1"/>
+          <AttributeValue type="TextString" value="Value1"/>
+        </Attribute>
+      </NewAttribute>
+    </RequestPayload>
+  </BatchItem>
+  <BatchItem>
+    <Operation type="Enumeration" value="AddAttribute"/>
+    <UniqueBatchItemID type="ByteString" value="9b898dc0577f8080"/>
+    <RequestPayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+      <NewAttribute>
+        <Attribute>
+          <VendorIdentification type="TextString" value="x"/>
+          <AttributeName type="TextString" value="attribute2"/>
+          <AttributeValue type="TextString" value="Value2"/>
+        </Attribute>
+      </NewAttribute>
+    </RequestPayload>
+  </BatchItem>
+</RequestMessage>
+
+<ResponseMessage>
+  <ResponseHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="2"/>
+      <ProtocolVersionMinor type="Integer" value="1"/>
+    </ProtocolVersion>
+    <TimeStamp type="DateTime" value="$NOW"/>
+    <BatchCount type="Integer" value="2"/>
+  </ResponseHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="AddAttribute"/>
+    <UniqueBatchItemID type="ByteString" value="23a177faa569463c"/>
+    <ResultStatus type="Enumeration" value="Success"/>
+    <ResponsePayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+    </ResponsePayload>
+  </BatchItem>
+  <BatchItem>
+    <Operation type="Enumeration" value="AddAttribute"/>
+    <UniqueBatchItemID type="ByteString" value="9b898dc0577f8080"/>
+    <ResultStatus type="Enumeration" value="Success"/>
+    <ResponsePayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+    </ResponsePayload>
+  </BatchItem>
+</ResponseMessage>
+
+<RequestMessage>
+  <RequestHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="2"/>
+      <ProtocolVersionMinor type="Integer" value="1"/>
+    </ProtocolVersion>
+    <ClientCorrelationValue type="TextString" value="SKFF-M-10-21 step=11"/>
+    <BatchOrderOption type="Boolean" value="true"/>
+    <BatchCount type="Integer" value="2"/>
+  </RequestHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="ModifyAttribute"/>
+    <UniqueBatchItemID type="ByteString" value="0752c951bb9926cc"/>
+    <RequestPayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+      <NewAttribute>
+        <Attribute>
+          <VendorIdentification type="TextString" value="x"/>
+          <AttributeName type="TextString" value="attribute1"/>
+          <AttributeValue type="TextString" value="ModifiedValue1"/>
+        </Attribute>
+      </NewAttribute>
+    </RequestPayload>
+  </BatchItem>
+  <BatchItem>
+    <Operation type="Enumeration" value="ModifyAttribute"/>
+    <UniqueBatchItemID type="ByteString" value="33f55c8d7e6cafbf"/>
+    <RequestPayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+      <NewAttribute>
+        <Attribute>
+          <VendorIdentification type="TextString" value="x"/>
+          <AttributeName type="TextString" value="attribute2"/>
+          <AttributeValue type="TextString" value="ModifiedValue2"/>
+        </Attribute>
+      </NewAttribute>
+    </RequestPayload>
+  </BatchItem>
+</RequestMessage>
+
+<ResponseMessage>
+  <ResponseHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="2"/>
+      <ProtocolVersionMinor type="Integer" value="1"/>
+    </ProtocolVersion>
+    <TimeStamp type="DateTime" value="$NOW"/>
+    <BatchCount type="Integer" value="2"/>
+  </ResponseHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="ModifyAttribute"/>
+    <UniqueBatchItemID type="ByteString" value="0752c951bb9926cc"/>
+    <ResultStatus type="Enumeration" value="Success"/>
+    <ResponsePayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+    </ResponsePayload>
+  </BatchItem>
+  <BatchItem>
+    <Operation type="Enumeration" value="ModifyAttribute"/>
+    <UniqueBatchItemID type="ByteString" value="33f55c8d7e6cafbf"/>
+    <ResultStatus type="Enumeration" value="Success"/>
+    <ResponsePayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+    </ResponsePayload>
+  </BatchItem>
+</ResponseMessage>
+
+<RequestMessage>
+  <RequestHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="2"/>
+      <ProtocolVersionMinor type="Integer" value="1"/>
+    </ProtocolVersion>
+    <ClientCorrelationValue type="TextString" value="SKFF-M-10-21 step=12"/>
+    <BatchOrderOption type="Boolean" value="true"/>
+    <BatchCount type="Integer" value="2"/>
+  </RequestHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="DeleteAttribute"/>
+    <UniqueBatchItemID type="ByteString" value="a3eb249b495e8ad2"/>
+    <RequestPayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+      <AttributeReference>
+        <VendorIdentification type="TextString" value="x"/>
+        <AttributeName type="TextString" value="attribute1"/>
+      </AttributeReference>
+    </RequestPayload>
+  </BatchItem>
+  <BatchItem>
+    <Operation type="Enumeration" value="DeleteAttribute"/>
+    <UniqueBatchItemID type="ByteString" value="c1fe7b3b4c977730"/>
+    <RequestPayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+      <AttributeReference>
+        <VendorIdentification type="TextString" value="x"/>
+        <AttributeName type="TextString" value="attribute2"/>
+      </AttributeReference>
+    </RequestPayload>
+  </BatchItem>
+</RequestMessage>
+
+<ResponseMessage>
+  <ResponseHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="2"/>
+      <ProtocolVersionMinor type="Integer" value="1"/>
+    </ProtocolVersion>
+    <TimeStamp type="DateTime" value="$NOW"/>
+    <BatchCount type="Integer" value="2"/>
+  </ResponseHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="DeleteAttribute"/>
+    <UniqueBatchItemID type="ByteString" value="a3eb249b495e8ad2"/>
+    <ResultStatus type="Enumeration" value="Success"/>
+    <ResponsePayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+    </ResponsePayload>
+  </BatchItem>
+  <BatchItem>
+    <Operation type="Enumeration" value="DeleteAttribute"/>
+    <UniqueBatchItemID type="ByteString" value="c1fe7b3b4c977730"/>
+    <ResultStatus type="Enumeration" value="Success"/>
+    <ResponsePayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+    </ResponsePayload>
+  </BatchItem>
+</ResponseMessage>
+
+<RequestMessage>
+  <RequestHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="2"/>
+      <ProtocolVersionMinor type="Integer" value="1"/>
+    </ProtocolVersion>
+    <ClientCorrelationValue type="TextString" value="SKFF-M-10-21 step=13"/>
+    <BatchCount type="Integer" value="1"/>
+  </RequestHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="Get"/>
+    <RequestPayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+    </RequestPayload>
+  </BatchItem>
+</RequestMessage>
+
+<ResponseMessage>
+  <ResponseHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="2"/>
+      <ProtocolVersionMinor type="Integer" value="1"/>
+    </ProtocolVersion>
+    <TimeStamp type="DateTime" value="$NOW"/>
+    <BatchCount type="Integer" value="1"/>
+  </ResponseHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="Get"/>
+    <ResultStatus type="Enumeration" value="Success"/>
+    <ResponsePayload>
+      <ObjectType type="Enumeration" value="SymmetricKey"/>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+      <SymmetricKey>
+        <KeyBlock>
+          <KeyFormatType type="Enumeration" value="Raw"/>
+          <KeyValue>
+            <KeyMaterial type="ByteString" value="13e1e3d7b4e630dc4582869ce7e8d27e1c5f31fdec2abee1"/>
+          </KeyValue>
+          <CryptographicAlgorithm type="Enumeration" value="AES"/>
+          <CryptographicLength type="Integer" value="192"/>
+        </KeyBlock>
+      </SymmetricKey>
+    </ResponsePayload>
+  </BatchItem>
+</ResponseMessage>
+
+<RequestMessage>
+  <RequestHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="2"/>
+      <ProtocolVersionMinor type="Integer" value="1"/>
+    </ProtocolVersion>
+    <ClientCorrelationValue type="TextString" value="SKFF-M-10-21 step=14"/>
+    <BatchCount type="Integer" value="1"/>
+  </RequestHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="Destroy"/>
+    <RequestPayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+    </RequestPayload>
+  </BatchItem>
+</RequestMessage>
+
+<ResponseMessage>
+  <ResponseHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="2"/>
+      <ProtocolVersionMinor type="Integer" value="1"/>
+    </ProtocolVersion>
+    <TimeStamp type="DateTime" value="$NOW"/>
+    <BatchCount type="Integer" value="1"/>
+  </ResponseHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="Destroy"/>
+    <ResultStatus type="Enumeration" value="Success"/>
+    <ResponsePayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+    </ResponsePayload>
+  </BatchItem>
+</ResponseMessage>
+
+</KMIP>

@@ -479,7 +479,8 @@ fn test_import_symmetric_key() {
 
 #[test]
 fn test_import_private_key() {
-    log_init(option_env!("RUST_LOG"));
+    // log_init(option_env!("RUST_LOG"));
+    log_init(Some("trace"));
     let key_bytes: &[u8] = b"this_is_a_test";
     let key = Object::PublicKey(PublicKey {
         key_block: KeyBlock {
@@ -980,6 +981,30 @@ pub(crate) fn test_message_enforce_enum() {
 }
 
 #[test]
+fn test_serde_attribute() {
+    // log_init(option_env!("RUST_LOG"));
+    log_init(Some("trace"));
+
+    let attribute = Attribute::Link(Link {
+        link_type: LinkType::PublicKeyLink,
+        linked_object_identifier: LinkedObjectIdentifier::TextString("public_key_id".to_owned()),
+    });
+
+    // Serializer
+    let ttlv = to_ttlv(&attribute).unwrap();
+    debug!("ttlv: {:#?}", ttlv);
+    // Serialize
+    let json = serde_json::to_string_pretty(&ttlv).unwrap();
+    debug!("{}", json);
+    // Deserialize
+    let ttlv_from_json = serde_json::from_str::<TTLV>(&json).unwrap();
+    assert_eq!(ttlv, ttlv_from_json);
+    // Deserializer
+    let rec: Attribute = from_ttlv(ttlv).unwrap();
+    assert_eq!(attribute, rec);
+}
+
+#[test]
 fn test_deserialization_set_attribute() -> KmipResult<()> {
     log_init(option_env!("RUST_LOG"));
     let set_attribute_request = r#"
@@ -1029,30 +1054,24 @@ fn test_deserialization_attribute() -> KmipResult<()> {
     log_init(option_env!("RUST_LOG"));
     let attribute_str = r#"
     {
-          "tag": "NewAttribute",
-          "type": "Structure",
-          "value": [
+        "tag": "Link",
+        "type": "Structure",
+        "value": [
             {
-              "tag": "Link",
-              "type": "Structure",
-              "value": [
-                {
-                  "tag": "LinkType",
-                  "type": "Enumeration",
-                  "value": "PublicKeyLink"
-                },
-                {
-                  "tag": "LinkedObjectIdentifier",
-                  "type": "TextString",
-                  "value": "public_key_id"
-                }
-              ]
+                "tag": "LinkType",
+                "type": "Enumeration",
+                "value": "PublicKeyLink"
+            },
+            {
+                "tag": "LinkedObjectIdentifier",
+                "type": "TextString",
+                "value": "public_key_id"
             }
-          ]
+        ]
     }
     "#;
     let ttlv: TTLV = serde_json::from_str(attribute_str)?;
-    trace!("ttlv: {:?}", ttlv);
+    debug!("ttlv: {:?}", ttlv);
 
     let _unused: Attribute = from_ttlv(ttlv)?;
 

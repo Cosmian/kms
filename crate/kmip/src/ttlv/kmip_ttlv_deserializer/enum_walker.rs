@@ -2,7 +2,10 @@ use serde::de::{DeserializeSeed, EnumAccess, VariantAccess, Visitor};
 use tracing::{instrument, trace};
 
 use super::{Result, TtlvDeserializer};
-use crate::ttlv::{kmip_ttlv_deserializer::deserializer::MapAccessState, TtlvError};
+use crate::{
+    ttlv::{kmip_ttlv_deserializer::deserializer::MapAccessState, TtlvError},
+    KmipResultHelper,
+};
 
 pub(super) struct EnumWalker<'a> {
     de: &'a mut TtlvDeserializer,
@@ -28,7 +31,12 @@ impl<'de> EnumAccess<'de> for EnumWalker<'_> {
     where
         V: DeserializeSeed<'de>,
     {
-        trace!("variant_seed: state:  {:?}", self.de.current);
+        trace!(
+            "variant_seed: child index: {}, at root? {},  current:  {:?}",
+            self.de.child_index,
+            *self.de.at_root.read().context("failed to read at_root")?,
+            self.de.current
+        );
         // The map state should already be set to value, but just in case
         // this will tel deserialize_identifier to deserialize the variant of the TT:V, not the tag
         self.de.map_state = MapAccessState::Value;

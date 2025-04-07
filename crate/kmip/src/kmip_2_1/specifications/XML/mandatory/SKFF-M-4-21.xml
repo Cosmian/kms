@@ -1,0 +1,89 @@
+<KMIP>
+
+<!--
+     Key Management Interoperability Protocol Profiles Version 2.1
+     OASIS Standard
+     14 December 2020
+     Copyright (c) OASIS Open 2020. All Rights Reserved.
+     Source: https://docs.oasis-open.org/kmip/kmip-profiles/v2.1/os/test-cases/kmip-v2.1/mandatory/
+     Latest version of the specification: https://docs.oasis-open.org/kmip/kmip-profiles/v2.1/kmip-profiles-v2.1.html
+     TC IPR Statement: https://www.oasis-open.org/committees/kmip/ipr.php
+-->
+
+<RequestMessage>
+  <RequestHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="2"/>
+      <ProtocolVersionMinor type="Integer" value="1"/>
+    </ProtocolVersion>
+    <ClientCorrelationValue type="TextString" value="SKFF-M-4-21 step=0"/>
+    <BatchCount type="Integer" value="1"/>
+  </RequestHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="Create"/>
+    <RequestPayload>
+      <ObjectType type="Enumeration" value="SymmetricKey"/>
+      <Attributes>
+        <CryptographicAlgorithm type="Enumeration" value="DES3"/>
+        <CryptographicLength type="Integer" value="168"/>
+        <CryptographicUsageMask type="Integer" value="Decrypt Encrypt"/>
+      </Attributes>
+    </RequestPayload>
+  </BatchItem>
+</RequestMessage>
+
+<ResponseMessage>
+  <ResponseHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="2"/>
+      <ProtocolVersionMinor type="Integer" value="1"/>
+    </ProtocolVersion>
+    <TimeStamp type="DateTime" value="$NOW"/>
+    <BatchCount type="Integer" value="1"/>
+  </ResponseHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="Create"/>
+    <ResultStatus type="Enumeration" value="Success"/>
+    <ResponsePayload>
+      <ObjectType type="Enumeration" value="SymmetricKey"/>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+    </ResponsePayload>
+  </BatchItem>
+</ResponseMessage>
+
+<RequestMessage>
+  <RequestHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="2"/>
+      <ProtocolVersionMinor type="Integer" value="1"/>
+    </ProtocolVersion>
+    <ClientCorrelationValue type="TextString" value="SKFF-M-4-21 step=1"/>
+    <BatchCount type="Integer" value="1"/>
+  </RequestHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="Destroy"/>
+    <RequestPayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+    </RequestPayload>
+  </BatchItem>
+</RequestMessage>
+
+<ResponseMessage>
+  <ResponseHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="2"/>
+      <ProtocolVersionMinor type="Integer" value="1"/>
+    </ProtocolVersion>
+    <TimeStamp type="DateTime" value="$NOW"/>
+    <BatchCount type="Integer" value="1"/>
+  </ResponseHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="Destroy"/>
+    <ResultStatus type="Enumeration" value="Success"/>
+    <ResponsePayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+    </ResponsePayload>
+  </BatchItem>
+</ResponseMessage>
+
+</KMIP>

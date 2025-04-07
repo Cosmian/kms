@@ -1,0 +1,68 @@
+<KMIP>
+
+<!--
+     Key Management Interoperability Protocol Profiles Version 2.1
+     OASIS Standard
+     14 December 2020
+     Copyright (c) OASIS Open 2020. All Rights Reserved.
+     Source: https://docs.oasis-open.org/kmip/kmip-profiles/v2.1/os/test-cases/kmip-v2.1/mandatory/
+     Latest version of the specification: https://docs.oasis-open.org/kmip/kmip-profiles/v2.1/kmip-profiles-v2.1.html
+     TC IPR Statement: https://www.oasis-open.org/committees/kmip/ipr.php
+-->
+
+<RequestMessage>
+  <RequestHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="2"/>
+      <ProtocolVersionMinor type="Integer" value="1"/>
+    </ProtocolVersion>
+    <ClientCorrelationValue type="TextString" value="QS-M-1-21 step=0"/>
+    <BatchCount type="Integer" value="1"/>
+  </RequestHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="Query"/>
+    <RequestPayload>
+      <QueryFunction type="Enumeration" value="QueryOperations"/>
+    </RequestPayload>
+  </BatchItem>
+</RequestMessage>
+
+<ResponseMessage>
+  <ResponseHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="2"/>
+      <ProtocolVersionMinor type="Integer" value="1"/>
+    </ProtocolVersion>
+    <TimeStamp type="DateTime" value="$NOW"/>
+    <BatchCount type="Integer" value="1"/>
+  </ResponseHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="Query"/>
+    <ResultStatus type="Enumeration" value="Success"/>
+    <ResponsePayload>
+      <Operation type="Enumeration" value="Activate"/>
+      <Operation type="Enumeration" value="AddAttribute"/>
+      <Operation type="Enumeration" value="AdjustAttribute"/>
+      <Operation type="Enumeration" value="Check"/>
+      <Operation type="Enumeration" value="DeleteAttribute"/>
+      <Operation type="Enumeration" value="Destroy"/>
+      <Operation type="Enumeration" value="DiscoverVersions"/>
+      <Operation type="Enumeration" value="Export"/>
+      <Operation type="Enumeration" value="Get"/>
+      <Operation type="Enumeration" value="GetAttributeList"/>
+      <Operation type="Enumeration" value="GetAttributes"/>
+      <Operation type="Enumeration" value="Import"/>
+      <Operation type="Enumeration" value="Interop"/>
+      <Operation type="Enumeration" value="ModifyAttribute"/>
+      <Operation type="Enumeration" value="Locate"/>
+      <Operation type="Enumeration" value="Log"/>
+      <Operation type="Enumeration" value="Query"/>
+      <Operation type="Enumeration" value="Register"/>
+      <Operation type="Enumeration" value="Revoke"/>
+      <Operation type="Enumeration" value="SetAttribute"/>
+      <Operation type="Enumeration" value="SetEndpointRole"/>
+    </ResponsePayload>
+  </BatchItem>
+</ResponseMessage>
+
+</KMIP>
