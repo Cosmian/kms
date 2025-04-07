@@ -21,16 +21,14 @@ fn test_template_attributes() {
 
     let template_attribute = TemplateAttribute {
         attribute: Some(vec![
-            Attribute::Name(vec![
-                Name {
-                    name_value: "TestName".to_owned(),
-                    name_type: NameType::UninterpretedTextString,
-                },
-                Name {
-                    name_value: "http://localhost".to_owned(),
-                    name_type: NameType::URI,
-                },
-            ]),
+            Attribute::Name(Name {
+                name_value: "TestName".to_owned(),
+                name_type: NameType::UninterpretedTextString,
+            }),
+            Attribute::Name(Name {
+                name_value: "http://localhost".to_owned(),
+                name_type: NameType::URI,
+            }),
             Attribute::CryptographicAlgorithm(CryptographicAlgorithm::EC),
             Attribute::CryptographicLength(128),
             Attribute::CryptographicDomainParameters(CryptographicDomainParameters {

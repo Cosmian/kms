@@ -34,6 +34,8 @@ use crate::{
 #[serde(untagged)]
 #[allow(clippy::large_enum_variant)]
 pub enum Operation {
+    AddAttribute(AddAttribute),
+    AddAttributeResponse(AddAttributeResponse),
     Certify(Certify),
     CertifyResponse(CertifyResponse),
     Create(Create),
@@ -56,6 +58,16 @@ pub enum Operation {
     GetResponse(GetResponse),
     GetAttributes(GetAttributes),
     GetAttributesResponse(GetAttributesResponse),
+    Import(Import),
+    ImportResponse(ImportResponse),
+    SetAttribute(SetAttribute),
+    SetAttributeResponse(SetAttributeResponse),
+    DeleteAttribute(DeleteAttribute),
+    DeleteAttributeResponse(DeleteAttributeResponse),
+    Encrypt(Encrypt),
+    EncryptResponse(EncryptResponse),
+    Decrypt(Decrypt),
+    DecryptResponse(DecryptResponse),
     Hash(Hash),
     HashResponse(HashResponse),
     Import(Import),
@@ -80,7 +92,7 @@ impl Operation {
     #[must_use]
     pub const fn direction(&self) -> Direction {
         match self {
-            Self::Import(_)
+            Self::AddAttribute(_)
             | Self::Certify(_)
             | Self::Create(_)
             | Self::CreateKeyPair(_)
@@ -90,6 +102,7 @@ impl Operation {
             | Self::Encrypt(_)
             | Self::Export(_)
             | Self::Get(_)
+            | Self::Import(_)
             | Self::GetAttributes(_)
             | Self::Hash(_)
             | Self::Locate(_)
@@ -103,7 +116,7 @@ impl Operation {
             | Self::SetAttribute(_)
             | Self::Validate(_) => Direction::Request,
 
-            Self::ImportResponse(_)
+            Self::AddAttributeResponse(_)
             | Self::CertifyResponse(_)
             | Self::CreateResponse(_)
             | Self::CreateKeyPairResponse(_)
@@ -114,6 +127,11 @@ impl Operation {
             | Self::ExportResponse(_)
             | Self::GetResponse(_)
             | Self::GetAttributesResponse(_)
+            | Self::SetAttributeResponse(_)
+            | Self::DeleteAttributeResponse(_)
+            | Self::EncryptResponse(_)
+            | Self::DecryptResponse(_)
+            | Self::ImportResponse(_)
             | Self::HashResponse(_)
             | Self::LocateResponse(_)
             | Self::MacResponse(_)
@@ -130,7 +148,9 @@ impl Operation {
     #[must_use]
     pub const fn operation_enum(&self) -> OperationEnumeration {
         match self {
-            Self::Import(_) | Self::ImportResponse(_) => OperationEnumeration::Import,
+            Self::AddAttribute(_) | Self::AddAttributeResponse(_) => {
+                OperationEnumeration::AddAttribute
+            }
             Self::Certify(_) | Self::CertifyResponse(_) => OperationEnumeration::Certify,
             Self::Create(_) | Self::CreateResponse(_) => OperationEnumeration::Create,
             Self::CreateKeyPair(_) | Self::CreateKeyPairResponse(_) => {
@@ -141,99 +161,60 @@ impl Operation {
                 OperationEnumeration::DeleteAttribute
             }
             Self::Destroy(_) | Self::DestroyResponse(_) => OperationEnumeration::Destroy,
+            Self::DiscoverVersions(_) | Self::DiscoverVersionsResponse(_) => {
+                OperationEnumeration::DiscoverVersions
+            }
+            Self::Decrypt(_) | Self::DecryptResponse(_) => OperationEnumeration::Decrypt,
+            Self::DeleteAttribute(_) | Self::DeleteAttributeResponse(_) => {
+                OperationEnumeration::DeleteAttribute
+            }
             Self::Encrypt(_) | Self::EncryptResponse(_) => OperationEnumeration::Encrypt,
             Self::Export(_) | Self::ExportResponse(_) => OperationEnumeration::Export,
             Self::Get(_) | Self::GetResponse(_) => OperationEnumeration::Get,
             Self::GetAttributes(_) | Self::GetAttributesResponse(_) => {
                 OperationEnumeration::GetAttributes
             }
+            Self::Import(_) | Self::ImportResponse(_) => OperationEnumeration::Import,
             Self::Hash(_) | Self::HashResponse(_) => OperationEnumeration::Hash,
             Self::Locate(_) | Self::LocateResponse(_) => OperationEnumeration::Locate,
             Self::Query(_) | Self::QueryResponse(_) => OperationEnumeration::Query,
-            Self::Revoke(_) | Self::RevokeResponse(_) => OperationEnumeration::Revoke,
             Self::ReKey(_) | Self::ReKeyResponse(_) => OperationEnumeration::ReKey,
             Self::ReKeyKeyPair(_) | Self::ReKeyKeyPairResponse(_) => {
                 OperationEnumeration::ReKeyKeyPair
+            }
+            Self::Revoke(_) | Self::RevokeResponse(_) => OperationEnumeration::Revoke,
+            Self::SetAttribute(_) | Self::SetAttributeResponse(_) => {
+                OperationEnumeration::SetAttribute
             }
             Self::SetAttribute(_) | Self::SetAttributeResponse(_) => {
                 OperationEnumeration::SetAttribute
             }
             Self::Validate(_) | Self::ValidateResponse(_) => OperationEnumeration::Validate,
-            Self::DiscoverVersions(_) | Self::DiscoverVersionsResponse(_) => {
-                OperationEnumeration::DiscoverVersions
-            }
         }
     }
 }
 
-/// Import
-///
-/// This operation requests the server to Import a Managed Object specified by
-/// its Unique Identifier. The request specifies the object being imported and
-/// all the attributes to be assigned to the object. The attribute rules for
-/// each attribute for "Initially set by" and "When implicitly set" SHALL NOT be
-/// enforced as all attributes MUST be set to the supplied values rather than
-/// any server generated values.
-///
-/// The response contains the Unique Identifier provided in the request or
-/// assigned by the server. The server SHALL copy the Unique Identifier returned
-/// by this operations into the ID Placeholder variable.
-/// `https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html#_Toc57115657`
+
+
+/// This operation requests the server to add a new attribute instance to be associated with
+/// a Managed Object and set its value. The request contains the Unique Identifier of the
+/// Managed Object to which the attribute pertains, along with the attribute name and value.
+/// For single-instance attributes, this creates the attribute value. For multi-instance
+/// attributes, this is how the first and subsequent values are created. Existing attribute
+/// values SHALL NOT be changed by this operation. Read-Only attributes SHALL NOT be added
+/// using the Add Attribute operation.
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 #[serde(rename_all = "PascalCase")]
-pub struct Import {
-    /// The Unique Identifier of the object to be imported
-    pub unique_identifier: UniqueIdentifier,
-    /// Determines the type of object being imported.
-    pub object_type: ObjectType,
-    /// A Boolean.  If specified and true then any existing object with the same
-    /// Unique Identifier SHALL be replaced by this operation. If absent or
-    /// false and an object exists with the same Unique Identifier then an error
-    /// SHALL be returned.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub replace_existing: Option<bool>,
-    /// If Not Wrapped then the server SHALL unwrap the object before storing
-    /// it, and return an error if the wrapping key is not available.
-    /// Otherwise the server SHALL store the object as provided.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub key_wrap_type: Option<KeyWrapType>,
-    /// Specifies object attributes to be associated with the new object.
-    pub attributes: Attributes,
-    /// The object being imported. The object and attributes MAY be wrapped.
-    pub object: Object,
+pub struct AddAttribute {
+    pub unique_identifier: String,
+    pub new_attribute: Attribute,
 }
 
-impl Display for Import {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Import {{ unique_identifier: {}, object_type: {}, replace_existing: {:?}, \
-             key_wrap_type: {:?}, attributes: {:?}, object: {} }}",
-            self.unique_identifier,
-            self.object_type,
-            self.replace_existing,
-            self.key_wrap_type,
-            self.attributes,
-            self.object
-        )
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+/// Response to an Add Attribute request
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
-pub struct ImportResponse {
-    /// The Unique Identifier of the newly imported object.
-    pub unique_identifier: UniqueIdentifier,
-}
-
-impl Display for ImportResponse {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "ImportResponse {{ unique_identifier: {} }}",
-            self.unique_identifier
-        )
-    }
+pub struct AddAttributeResponse {
+    pub unique_identifier: String,
 }
 
 /// Certify
@@ -450,6 +431,78 @@ impl Display for CreateKeyPairResponse {
             "CreateKeyPairResponse {{ private_key_unique_identifier: {}, \
              public_key_unique_identifier: {} }}",
             self.private_key_unique_identifier, self.public_key_unique_identifier
+        )
+    }
+}
+
+
+/// Import
+///
+/// This operation requests the server to Import a Managed Object specified by
+/// its Unique Identifier. The request specifies the object being imported and
+/// all the attributes to be assigned to the object. The attribute rules for
+/// each attribute for "Initially set by" and "When implicitly set" SHALL NOT be
+/// enforced as all attributes MUST be set to the supplied values rather than
+/// any server generated values.
+///
+/// The response contains the Unique Identifier provided in the request or
+/// assigned by the server. The server SHALL copy the Unique Identifier returned
+/// by this operation into the ID Placeholder variable.
+/// `https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html#_Toc57115657`
+///
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct Import {
+    /// The Unique Identifier of the object to be imported
+    pub unique_identifier: UniqueIdentifier,
+    /// Determines the type of object being imported.
+    pub object_type: ObjectType,
+    /// A Boolean.  If specified and true then any existing object with the same
+    /// Unique Identifier SHALL be replaced by this operation. If absent or
+    /// false and an object exists with the same Unique Identifier then an error
+    /// SHALL be returned.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub replace_existing: Option<bool>,
+    /// If Not Wrapped then the server SHALL unwrap the object before storing
+    /// it, and return an error if the wrapping key is not available.
+    /// Otherwise the server SHALL store the object as provided.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key_wrap_type: Option<KeyWrapType>,
+    /// Specifies object attributes to be associated with the new object.
+    pub attributes: Attributes,
+    /// The object being imported. The object and attributes MAY be wrapped.
+    pub object: Object,
+}
+
+impl Display for Import {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Import {{ unique_identifier: {}, object_type: {}, replace_existing: {:?}, \
+             key_wrap_type: {:?}, attributes: {:?}, object: {} }}",
+            self.unique_identifier,
+            self.object_type,
+            self.replace_existing,
+            self.key_wrap_type,
+            self.attributes,
+            self.object
+        )
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "PascalCase")]
+pub struct ImportResponse {
+    /// The Unique Identifier of the newly imported object.
+    pub unique_identifier: UniqueIdentifier,
+}
+
+impl Display for ImportResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "ImportResponse {{ unique_identifier: {} }}",
+            self.unique_identifier
         )
     }
 }
@@ -908,7 +961,7 @@ impl Display for SetAttribute {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "SetAttribute {{ unique_identifier: {:?}, new_attribute: {} }}",
+            "SetAttribute {{ unique_identifier: {:?}, new_attribute: {:?} }}",
             self.unique_identifier, self.new_attribute
         )
     }
