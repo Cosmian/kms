@@ -185,6 +185,28 @@ impl From<NameType> for kmip_2_1::kmip_types::NameType {
     }
 }
 
+impl TryFrom<kmip_2_1::kmip_types::NameType> for NameType {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_types::NameType) -> Result<Self, Self::Error> {
+        match value {
+            kmip_2_1::kmip_types::NameType::UninterpretedTextString => {
+                Ok(Self::UninterpretedTextString)
+            }
+            kmip_2_1::kmip_types::NameType::URI => Ok(Self::URI),
+            kmip_2_1::kmip_types::NameType::DNS
+            | kmip_2_1::kmip_types::NameType::EmailAddress
+            | kmip_2_1::kmip_types::NameType::DistinguishedName => {
+                Err(KmipError::InvalidKmip14Value(
+                    ResultReason::InvalidField,
+                    "Name: DNS, EmailAddress, and DistinguishedName are not supported in KMIP 1.4"
+                        .to_owned(),
+                ))
+            }
+        }
+    }
+}
+
 /// KMIP 1.4 Object Type Enumeration
 #[kmip_enum]
 pub enum ObjectType {
@@ -1451,6 +1473,17 @@ impl From<Name> for kmip_2_1::kmip_types::Name {
             name_value: val.name_value,
             name_type: val.name_type.into(),
         }
+    }
+}
+
+impl TryFrom<kmip_2_1::kmip_types::Name> for Name {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_types::Name) -> Result<Self, Self::Error> {
+        Ok(Self {
+            name_value: value.name_value,
+            name_type: value.name_type.try_into()?,
+        })
     }
 }
 
