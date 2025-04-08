@@ -206,7 +206,7 @@ impl Operation {
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct AddAttribute {
-    pub unique_identifier: String,
+    pub unique_identifier: UniqueIdentifier,
     pub new_attribute: Attribute,
 }
 
@@ -214,7 +214,7 @@ pub struct AddAttribute {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct AddAttributeResponse {
-    pub unique_identifier: String,
+    pub unique_identifier: UniqueIdentifier,
 }
 
 /// Certify

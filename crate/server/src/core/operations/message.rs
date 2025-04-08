@@ -129,6 +129,9 @@ async fn process_operation(
 ) -> Result<Operation, KmsError> {
     trace!("Processing KMIP operation: {request_operation:?} with user: {user:?}");
     Ok(match request_operation {
+        Operation::AddAttribute(add_attribute) => {
+            Operation::AddAttributeResponse(kms.add_attribute(add_attribute, user, params).await?)
+        }
         Operation::Certify(kmip_request) => {
             Operation::CertifyResponse(kms.certify(kmip_request, user, params).await?)
         }
@@ -184,7 +187,8 @@ async fn process_operation(
         Operation::Validate(kmip_request) => {
             Operation::ValidateResponse(kms.validate(kmip_request, user, params).await?)
         }
-        Operation::CertifyResponse(_)
+        Operation::AddAttributeResponse(_)
+        | Operation::CertifyResponse(_)
         | Operation::CreateKeyPairResponse(_)
         | Operation::CreateResponse(_)
         | Operation::DecryptResponse(_)

@@ -1,3 +1,4 @@
+mod add_attribute;
 mod certify;
 mod create;
 mod create_key_pair;
@@ -23,6 +24,7 @@ mod revoke;
 mod set_attribute;
 mod validate;
 
+pub(crate) use add_attribute::add_attribute;
 pub(crate) use certify::certify;
 pub(crate) use create::create;
 pub(crate) use create_key_pair::create_key_pair;
