@@ -116,14 +116,20 @@ time = { workspace = true, features = ["local-offset", "formatting"] }
 # ------------------------------------------------------------------------------
 # START DEBIAN PACKAGING
 [package.metadata.deb]
-maintainer = "Emmanuel Coste <emmanuel.coste@cosmian.com>"
+maintainer = "Cosmian support team <tech@cosmian.com>"
 maintainer-scripts = "../../pkg/deb/"
-copyright = "2024, Cosmian Tech SAS <tech@cosmian.com>"
+copyright = "2025, Cosmian Tech SAS <tech@cosmian.com>"
 license-file = ["../../LICENSE", "0"]
 changelog = "../../CHANGELOG.md"
 section = "security"
 priority = "optional"
+depends = ""
 assets = [
+  [
+    "ui/dist/*",
+    "usr/local/cosmian/ui/dist/",
+    "500",
+  ],
   [
     "target/release/cosmian_kms",
     "usr/sbin/cosmian_kms",
@@ -131,12 +137,12 @@ assets = [
   ],
   [
     "../../README.md",
-    "usr/share/doc/cosmian_kms/README",
+    "usr/share/doc/cosmian/README",
     "644",
   ],
   [
     "../../pkg/kms.toml",
-    "etc/cosmian_kms/",
+    "etc/cosmian/",
     "400",
   ],
   [
@@ -153,18 +159,23 @@ systemd-units = [
 features = ["fips"]
 assets = [
   [
+    "ui/dist/*",
+    "usr/local/cosmian/ui/dist/",
+    "500",
+  ],
+  [
     "target/release/cosmian_kms",
     "usr/sbin/cosmian_kms",
     "500",
   ],
   [
     "../../README.md",
-    "usr/share/doc/cosmian_kms/README",
+    "usr/share/doc/cosmian/README",
     "644",
   ],
   [
     "../../pkg/kms.toml",
-    "etc/cosmian_kms/",
+    "etc/cosmian/",
     "400",
   ],
   [
@@ -192,10 +203,11 @@ assets = [
 [package.metadata.generate-rpm]
 license = "BUSL-1.1"
 assets = [
+  { source = "ui/dist/*", dest = "/usr/local/cosmian/ui/dist/", mode = "500" },
   { source = "target/release/cosmian_kms", dest = "/usr/sbin/cosmian_kms", mode = "500" },
   { source = "/usr/local/openssl/lib64/ossl-modules/legacy.so", dest = "/usr/local/openssl/lib64/ossl-modules/legacy.so", mode = "500" },
-  { source = "../../README.md", dest = "/usr/share/doc/cosmian_kms/README", mode = "644", doc = true },
-  { source = "../../pkg/kms.toml", dest = "/etc/cosmian_kms/kms.toml", mode = "400" },
+  { source = "../../README.md", dest = "/usr/share/doc/cosmian/README", mode = "644", doc = true },
+  { source = "../../pkg/kms.toml", dest = "/etc/cosmian/kms.toml", mode = "400" },
   { source = "../../pkg/cosmian_kms.service", dest = "/lib/systemd/system/cosmian_kms.service", mode = "644" },
 ]
 auto-req = "no" # do not try to discover .so dependencies

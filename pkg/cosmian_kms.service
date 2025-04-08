@@ -9,7 +9,7 @@ User=root
 ExecStart=/usr/sbin/cosmian_kms
 Restart=on-failure
 RestartSec=3s
-Environment="COSMIAN_KMS_CONF=/etc/cosmian_kms/kms.toml"
+Environment="COSMIAN_KMS_CONF=/etc/cosmian/kms.toml"
 StandardOutput=syslog+console
 
 [Install]

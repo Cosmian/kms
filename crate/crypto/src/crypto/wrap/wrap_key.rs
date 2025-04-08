@@ -232,7 +232,7 @@ pub(crate) fn wrap(
                         crypto_bail!(CryptoError::NotSupported(
                             "Can't use RSA algorithm for AES wrapping key".to_owned()
                         ))
-                    };
+                    }
                     let block_cipher_mode = cryptographic_parameters
                         .as_ref()
                         .and_then(|params| params.block_cipher_mode)

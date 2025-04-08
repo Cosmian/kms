@@ -1,18 +1,18 @@
 use std::{
-    env,
-    sync::{mpsc, Arc},
+    path::PathBuf,
+    sync::{Arc, mpsc},
 };
 
 use actix_cors::Cors;
 use actix_files::Files;
 use actix_identity::IdentityMiddleware;
-use actix_session::{config::PersistentSession, storage::CookieSessionStore, SessionMiddleware};
+use actix_session::{SessionMiddleware, config::PersistentSession, storage::CookieSessionStore};
 use actix_web::{
-    cookie::{time::Duration, Key},
+    App, HttpRequest, HttpResponse, HttpServer,
+    cookie::{Key, time::Duration},
     dev::ServerHandle,
     middleware::Condition,
     web::{self, Data, JsonConfig, PayloadConfig},
-    App, HttpRequest, HttpResponse, HttpServer,
 };
 use openssl::{
     ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod, SslVerifyMode},
@@ -25,7 +25,7 @@ use crate::{
     core::KMS,
     error::KmsError,
     kms_bail,
-    middlewares::{extract_peer_certificate, AuthTransformer, JwksManager, JwtConfig, SslAuth},
+    middlewares::{AuthTransformer, JwksManager, JwtConfig, SslAuth, extract_peer_certificate},
     result::{KResult, KResultHelper},
     routes::{
         access, add_new_database, get_version,
@@ -186,17 +186,11 @@ async fn start_https_kms_server(
 }
 
 /// This function handles a request to an inner path of the static UI and redirect
-/// it to the index.html file, so that the routing renders the appropiate component
-fn spa_index_handler(req: &HttpRequest) -> actix_web::HttpResponse {
-    let index_path = match env::current_dir() {
-        Ok(dir) => dir.join("ui/dist/index.html"),
-        Err(e) => {
-            log::error!("Failed to get current directory: {e:?}");
-            return HttpResponse::InternalServerError().finish();
-        }
-    };
-
-    match actix_files::NamedFile::open(index_path) {
+/// it to the index.html file, so that the routing renders the appropriate component
+fn spa_index_handler(req: &HttpRequest, ui_index_html_folder: &PathBuf) -> actix_web::HttpResponse {
+    let index_html_path = PathBuf::from(ui_index_html_folder).join("index.html");
+    info!("Serving index.html from {}", index_html_path.display());
+    match actix_files::NamedFile::open(index_html_path) {
         Ok(file) => file.into_response(req),
         Err(e) => {
             log::error!("Failed to open index.html: {e:?}");
@@ -294,7 +288,6 @@ pub async fn prepare_kms_server(
 
     // Generate key for actix session cookie encryption and elements for UI exposure
     let secret_key: Key = Key::generate();
-    let current_dir = env::current_dir()?;
 
     let kms_public_url = kms_server.params.kms_public_url.clone().map_or_else(
         || {
@@ -358,53 +351,64 @@ pub async fn prepare_kms_server(
             app = app.service(ms_dke_scope);
         }
 
-        let dist_path: std::path::PathBuf = current_dir.join("ui/dist");
-        let oidc_config = kms_server.params.ui_oidc_auth.clone();
+        let ui_index_folder = kms_server.params.ui_index_html_folder.clone();
+        if ui_index_folder.join("index.html").exists() {
+            info!("Serving UI from {}", ui_index_folder.display());
+            let oidc_config = kms_server.params.ui_oidc_auth.clone();
 
-        let auth_type: Option<String> = if jwt_configurations.is_some() {
-            Some("JWT".to_owned())
-        } else if use_cert_auth {
-            Some("CERT".to_owned())
+            let auth_type: Option<String> = if jwt_configurations.is_some() {
+                Some("JWT".to_owned())
+            } else if use_cert_auth {
+                Some("CERT".to_owned())
+            } else {
+                None
+            };
+
+            let spa_routes = [
+                "/login",
+                "/locate",
+                "/sym{_:.*}",
+                "/rsa{_:.*}",
+                "/ec{_:.*}",
+                "/cc{_:.*}",
+                "/certificates{_:.*}",
+                "/attributes{_:.*}",
+                "/access-rights{_:.*}",
+            ];
+            let mut auth_routes = web::scope("/ui")
+                .app_data(web::Data::new(oidc_config))
+                .app_data(web::Data::new(kms_public_url.clone()))
+                .app_data(web::Data::new(ui_index_folder.clone()))
+                .app_data(web::Data::new(auth_type))
+                .wrap(Cors::permissive())
+                .configure(configure_auth_routes);
+            // Add all SPA routes
+            for route in spa_routes {
+                auth_routes = auth_routes.route(
+                    route,
+                    web::get().to(
+                        move |req: HttpRequest, ui_index_folder: web::Data<PathBuf>| async move {
+                            spa_index_handler(&req, &ui_index_folder)
+                        },
+                    ),
+                );
+            }
+            // Add static files service
+            auth_routes = auth_routes.service(
+                Files::new("/", ui_index_folder)
+                    .index_file("index.html")
+                    .use_last_modified(true)
+                    .use_etag(true)
+                    .prefer_utf8(true),
+            );
+            // Add the auth_routes to the main app
+            app = app.service(auth_routes);
         } else {
-            None
-        };
-
-        let kms_public_url_data = web::Data::new(kms_public_url.clone());
-
-        let spa_routes = [
-            "/login",
-            "/locate",
-            "/sym{_:.*}",
-            "/rsa{_:.*}",
-            "/ec{_:.*}",
-            "/cc{_:.*}",
-            "/certificates{_:.*}",
-            "/attributes{_:.*}",
-            "/access-rights{_:.*}",
-        ];
-        let mut auth_routes = web::scope("/ui")
-            .app_data(web::Data::new(oidc_config))
-            .app_data(kms_public_url_data)
-            .app_data(web::Data::new(auth_type))
-            .wrap(Cors::permissive())
-            .configure(configure_auth_routes);
-        // Add all SPA routes
-        for route in spa_routes {
-            auth_routes = auth_routes.route(
-                route,
-                web::get().to(|req: HttpRequest| async move { spa_index_handler(&req) }),
+            trace!(
+                "No UI folder containing index.html found at {}",
+                ui_index_folder.display()
             );
         }
-        // Add static files service
-        auth_routes = auth_routes.service(
-            Files::new("/", dist_path)
-                .index_file("index.html")
-                .use_last_modified(true)
-                .use_etag(true)
-                .prefer_utf8(true),
-        );
-        // Add the auth_routes to the main app
-        app = app.service(auth_routes);
 
         // The default scope serves from the root / the KMIP, permissions, and tee endpoints
         let default_scope = web::scope("")
