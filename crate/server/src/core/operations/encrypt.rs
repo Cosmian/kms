@@ -451,7 +451,7 @@ fn encrypt_with_pkey(
     plaintext: &[u8],
     public_key: &PKey<Public>,
 ) -> KResult<EncryptResponse> {
-    let ciphertext: Vec<u8> = match public_key.id() {
+    let ciphertext = match public_key.id() {
         Id::RSA => encrypt_with_rsa(
             public_key,
             request.cryptographic_parameters.as_ref(),

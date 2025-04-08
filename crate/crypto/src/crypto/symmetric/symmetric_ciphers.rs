@@ -338,7 +338,7 @@ pub fn encrypt(
                 && matches!(sym_cipher, SymCipher::Aes128Xts | SymCipher::Aes256Xts)
             {
                 return Err(CryptoError::InvalidSize(
-                    "Plaintext is too short for block encryption".to_owned(),
+                    "Plaintext is too short for XTS block encryption".to_owned(),
                 ));
             }
             let ciphertext =

@@ -185,10 +185,8 @@ async fn start_https_kms_server(
     server.await.map_err(Into::into)
 }
 
-/**
- * This function handles a request to an inner path of the static UI and redirect
- * it to the index.html file, so that the routing renders the appropiate component
- */
+/// This function handles a request to an inner path of the static UI and redirect
+/// it to the index.html file, so that the routing renders the appropiate component
 fn spa_index_handler(req: &HttpRequest) -> actix_web::HttpResponse {
     let index_path = match env::current_dir() {
         Ok(dir) => dir.join("ui/dist/index.html"),
@@ -207,26 +205,23 @@ fn spa_index_handler(req: &HttpRequest) -> actix_web::HttpResponse {
     }
 }
 
-/**
- * This function prepares a server for the application. It creates an `HttpServer` instance,
- * configures the routes for the application, and sets the request timeout. The server can be
- * configured to use OpenSSL for SSL encryption by providing an `SslAcceptorBuilder`.
- *
- * # Arguments
- *
- * * `kms_server`: A shared reference to the `KMS` instance to be used by the application.
- * * `builder`: An optional `SslAcceptorBuilder` to configure the SSL encryption for the server.
- *
- * # Returns
- *
- * Returns a `Result` type that contains a `Server` instance if successful, or an error if
- * something went wrong.
- *
- * # Errors
- *
- * This function can return the following errors:
- * - `KmsError::ServerError` - If there is an error in the server configuration or preparation.
- */
+/// Prepare server for the application.
+///
+/// Creates an `HttpServer` instance,
+/// configures the routes for the application, and sets the request timeout. The server can be
+/// configured to use OpenSSL for SSL encryption by providing an `SslAcceptorBuilder`.
+///
+/// # Arguments
+/// `kms_server`: A shared reference to the `KMS` instance to be used by the application.
+/// `builder`: An optional `SslAcceptorBuilder` to configure the SSL encryption for the server.
+///
+/// # Returns
+/// Returns a `Result` type that contains a `Server` instance if successful, or an error if
+/// something went wrong.
+///
+/// # Errors
+/// This function can return the following errors:
+/// - `KmsError::ServerError` - If there is an error in the server configuration or preparation.
 pub async fn prepare_kms_server(
     kms_server: Arc<KMS>,
     builder: Option<SslAcceptorBuilder>,
@@ -302,11 +297,7 @@ pub async fn prepare_kms_server(
     let current_dir = env::current_dir()?;
     let kms_url = format!(
         "http{}://{}:{}",
-        if kms_server.params.http_params.is_running_https() {
-            "s"
-        } else {
-            ""
-        },
+        if builder.is_some() { "s" } else { "" },
         &kms_server.params.hostname,
         &kms_server.params.port
     );
@@ -374,56 +365,38 @@ pub async fn prepare_kms_server(
 
         let kms_url_data = web::Data::new(kms_url.clone());
 
-        let auth_routes = web::scope("/ui")
+        let spa_routes = [
+            "/login",
+            "/locate",
+            "/sym{_:.*}",
+            "/rsa{_:.*}",
+            "/ec{_:.*}",
+            "/cc{_:.*}",
+            "/certificates{_:.*}",
+            "/attributes{_:.*}",
+            "/access-rights{_:.*}",
+        ];
+        let mut auth_routes = web::scope("/ui")
             .app_data(web::Data::new(oidc_config))
             .app_data(kms_url_data)
             .app_data(web::Data::new(auth_type))
             .wrap(Cors::permissive())
-            .configure(configure_auth_routes)
-            .route(
-                "/login",
+            .configure(configure_auth_routes);
+        // Add all SPA routes
+        for route in spa_routes {
+            auth_routes = auth_routes.route(
+                route,
                 web::get().to(|req: HttpRequest| async move { spa_index_handler(&req) }),
-            )
-            .route(
-                "/locate",
-                web::get().to(|req: HttpRequest| async move { spa_index_handler(&req) }),
-            )
-            .route(
-                "/sym{_:.*}",
-                web::get().to(|req: HttpRequest| async move { spa_index_handler(&req) }),
-            )
-            .route(
-                "/rsa{_:.*}",
-                web::get().to(|req: HttpRequest| async move { spa_index_handler(&req) }),
-            )
-            .route(
-                "/ec{_:.*}",
-                web::get().to(|req: HttpRequest| async move { spa_index_handler(&req) }),
-            )
-            .route(
-                "/cc{_:.*}",
-                web::get().to(|req: HttpRequest| async move { spa_index_handler(&req) }),
-            )
-            .route(
-                "/certificates{_:.*}",
-                web::get().to(|req: HttpRequest| async move { spa_index_handler(&req) }),
-            )
-            .route(
-                "/attributes{_:.*}",
-                web::get().to(|req: HttpRequest| async move { spa_index_handler(&req) }),
-            )
-            .route(
-                "/access-rights{_:.*}",
-                web::get().to(|req: HttpRequest| async move { spa_index_handler(&req) }),
-            )
-            .service(
-                Files::new("/", dist_path)
-                    .index_file("index.html")
-                    .use_last_modified(true)
-                    .use_etag(true)
-                    .prefer_utf8(true),
             );
-
+        }
+        // Add static files service
+        auth_routes = auth_routes.service(
+            Files::new("/", dist_path)
+                .index_file("index.html")
+                .use_last_modified(true)
+                .use_etag(true)
+                .prefer_utf8(true),
+        );
         // Add the auth_routes to the main app
         app = app.service(auth_routes);
 

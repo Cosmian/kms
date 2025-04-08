@@ -31,16 +31,14 @@ async fn integration_tests_bulk() -> KResult<()> {
                     access_structure,
                     EMPTY_TAGS,
                     false,
-                )
-                .unwrap(),
+                )?,
             )),
             MessageBatchItem::new(Operation::CreateKeyPair(
                 build_create_covercrypt_master_keypair_request(
                     access_structure,
                     EMPTY_TAGS,
                     false,
-                )
-                .unwrap(),
+                )?,
             )),
         ],
     };

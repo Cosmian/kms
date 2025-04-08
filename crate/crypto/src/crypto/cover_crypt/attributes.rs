@@ -44,10 +44,7 @@ pub fn access_structure_from_attributes(
                     "the attributes do not contain a Covercrypt access structure".to_owned(),
                 ))
             },
-            |bytes| {
-                let access_structure_str = std::str::from_utf8(bytes)?;
-                access_structure_from_str(access_structure_str)
-            },
+            |bytes| access_structure_from_str(std::str::from_utf8(bytes)?),
         )
 }
 
