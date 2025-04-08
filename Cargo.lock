@@ -1454,11 +1454,8 @@ dependencies = [
 name = "cosmian_kms_client"
 version = "4.22.1"
 dependencies = [
- "cosmian_config_utils",
  "cosmian_crypto_core 10.0.1",
  "cosmian_http_client",
- "cosmian_kmip",
- "cosmian_kms_access",
  "cosmian_kms_client_utils",
  "der",
  "pem",
@@ -1468,7 +1465,6 @@ dependencies = [
  "thiserror 2.0.11",
  "tracing",
  "url",
- "zeroize",
 ]
 
 [[package]]
@@ -1480,19 +1476,12 @@ dependencies = [
  "cosmian_config_utils",
  "cosmian_kmip",
  "cosmian_kms_access",
- "cosmian_logger",
- "der",
- "js-sys",
  "pem",
  "serde",
- "serde-wasm-bindgen",
  "serde_json",
  "strum",
  "thiserror 2.0.11",
  "tracing",
- "wasm-bindgen",
- "web-sys",
- "x509-cert",
  "zeroize",
 ]
 
@@ -2689,7 +2678,7 @@ dependencies = [
  "httpdate",
  "itoa",
  "pin-project-lite",
- "socket2 0.5.8",
+ "socket2 0.4.10",
  "tokio",
  "tower-service",
  "tracing",
@@ -3147,7 +3136,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc2f4eb4bc735547cfed7c0a4922cbd04a4655978c09b54f1f7b228750664c34"
 dependencies = [
  "cfg-if",
- "windows-targets 0.52.6",
+ "windows-targets 0.48.5",
 ]
 
 [[package]]
@@ -4689,17 +4678,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "serde-wasm-bindgen"
-version = "0.6.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8302e169f0eddcc139c70f139d19d6467353af16f9fce27e8c30158036a1e16b"
-dependencies = [
- "js-sys",
- "serde",
- "wasm-bindgen",
-]
-
-[[package]]
 name = "serde_derive"
 version = "1.0.217"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5473,9 +5451,9 @@ dependencies = [
 
 [[package]]
 name = "tokio"
-version = "1.43.0"
+version = "1.44.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3d61fa4ffa3de412bfea335c6ecff681de2b609ba3c77ef3e00e521813a9ed9e"
+checksum = "e6b88822cbe49de4185e3a4cbf8321dd487cf5fe0c5c65695fef6346371e9c48"
 dependencies = [
  "backtrace",
  "bytes",

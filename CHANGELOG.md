@@ -575,7 +575,7 @@ All notable changes to this project will be documented in this file.
     - force checking the leaf TLS certificate when querying a KMS running inside a TEE
     - verify RA-TLS certificate before querying the bootstrap server
     - review the TLS certificate generation using the key tied to the TEE
-    - remove libsgx and create a new dependance to tee_attestation crate
+    - remove libsgx and create a new dependence to tee_attestation crate
     - update KMS server argument regarding the TEE and certbot
     - review documentation regarding the KMS usage inside a TEE
 - Activate tracing in CLI tests when binary is instrumented ([#56])

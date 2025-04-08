@@ -24,7 +24,11 @@ insecure = []
 # The binary won't start after a date chosen at compile-time
 timeout = []
 # Enable FIPS module feature build. KMS builds in FIPS mode when this is enabled.
-fips = ["cosmian_kmip/fips", "cosmian_kms_crypto/fips"]
+fips = [
+  "cosmian_kmip/fips",
+  "cosmian_kms_crypto/fips",
+  "cosmian_kms_client_utils/fips",
+]
 
 [dependencies]
 actix-cors = "0.6"
@@ -100,10 +104,10 @@ zeroize = { workspace = true }
 
 [dev-dependencies]
 actix-http = "3.6"
+cosmian_kms_client_utils = { workspace = true }
 cosmian_logger = { workspace = true }
 pem = { workspace = true }
 tempfile = { workspace = true }
-cosmian_kms_client_utils = { workspace = true }
 
 [build-dependencies]
 actix-http = "3.6"
