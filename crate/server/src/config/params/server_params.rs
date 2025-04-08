@@ -39,6 +39,9 @@ pub struct ServerParams {
 
     pub http_params: HttpParams,
 
+    /// The public URL of the exposed KMS server
+    pub kms_public_url: Option<String>,
+
     /// The certificate used to verify the client TLS certificates
     /// used for authentication
     pub authority_cert_file: Option<X509>,
@@ -134,6 +137,7 @@ impl ServerParams {
             clear_db_on_start: conf.db.clear_database,
             hostname: conf.http.hostname,
             port: conf.http.port,
+            kms_public_url: conf.kms_public_url,
             http_params,
             default_username: conf.default_username,
             force_default_username: conf.force_default_username,
@@ -205,6 +209,7 @@ impl fmt::Debug for ServerParams {
         } else {
             x
         };
+        let x = x.field("kms_public_url", &self.kms_public_url);
         let x = x.field("ui_oidc_auth", &self.ui_oidc_auth);
         let x = if let Some(verify_cert) = &self.authority_cert_file {
             x.field("verify_cert CN", verify_cert.subject_name())
@@ -265,6 +270,7 @@ impl Clone for ServerParams {
             clear_db_on_start: self.clear_db_on_start,
             hostname: self.hostname.clone(),
             port: self.port,
+            kms_public_url: self.kms_public_url.clone(),
             http_params: HttpParams::Http,
             authority_cert_file: self.authority_cert_file.clone(),
             api_token_id: self.api_token_id.clone(),

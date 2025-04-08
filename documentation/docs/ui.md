@@ -27,6 +27,13 @@ ui_oidc_issuer_url = "https://your_oidc_issuer_url"
 ui_oidc_logout_url = "https://your_oidc_logout_url"
 ```
 
+If your KMS is accessible behind a proxy, you need to also specify the public KMS URL from the generic section of
+the TOML file:
+
+```toml
+kms_public_url = "your_kms_public_url"
+```
+
 
 #### 2. Using Command-Line Arguments
 

@@ -18,6 +18,7 @@ impl Default for ClapConfig {
         Self {
             db: MainDBConfig::default(),
             http: HttpConfig::default(),
+            kms_public_url: None,
             auth: JwtAuthConfig::default(),
             ui_oidc_auth: OidcConfig::default(),
             workspace: WorkspaceConfig::default(),
@@ -128,6 +129,9 @@ pub struct ClapConfig {
     /// The non-revocable keys ID used for demo purposes
     #[clap(long, hide = true)]
     pub non_revocable_key_id: Option<Vec<String>>,
+
+    #[clap(verbatim_doc_comment, long, env = "KMS_PUBLIC_URL")]
+    pub kms_public_url: Option<String>,
 }
 
 impl ClapConfig {
@@ -200,6 +204,8 @@ impl fmt::Debug for ClapConfig {
             x
         };
         let x = x.field("KMS http", &self.http);
+        let x = x.field("KMS public URL", &self.kms_public_url);
+
         let x = x.field("workspace", &self.workspace);
         let x = x.field("default username", &self.default_username);
         let x = x.field("force default username", &self.force_default_username);

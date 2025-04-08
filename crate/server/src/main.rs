@@ -168,6 +168,7 @@ mod tests {
                 ui_oidc_issuer_url: Some("[issuer url]".to_owned()),
                 ui_oidc_logout_url: Some("[logout url]".to_owned()),
             },
+            kms_public_url: Some("[kms_public_url]".to_owned()),
             workspace: WorkspaceConfig {
                 root_data_path: PathBuf::from("[root data path]"),
                 tmp_path: PathBuf::from("[tmp path]"),
@@ -200,6 +201,7 @@ hsm_model = ""
 hsm_admin = ""
 hsm_slot = []
 hsm_password = []
+kms_public_url = "[kms_public_url]"
 
 [db]
 database_type = "[redis-findex, postgresql,...]"

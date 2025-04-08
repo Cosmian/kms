@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
 use actix_session::Session;
-use actix_web::{HttpRequest, HttpResponse, get, web};
+use actix_web::{get, web, HttpRequest, HttpResponse};
 use openidconnect::{
+    core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata},
     AuthorizationCode, ClientId, ClientSecret, CsrfToken, IssuerUrl, Nonce, PkceCodeChallenge,
     PkceCodeVerifier, RedirectUrl, Scope,
-    core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata},
 };
 use url::Url;
 

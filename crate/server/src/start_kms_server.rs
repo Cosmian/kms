@@ -295,11 +295,17 @@ pub async fn prepare_kms_server(
     // Generate key for actix session cookie encryption and elements for UI exposure
     let secret_key: Key = Key::generate();
     let current_dir = env::current_dir()?;
-    let kms_url = format!(
-        "http{}://{}:{}",
-        if builder.is_some() { "s" } else { "" },
-        &kms_server.params.hostname,
-        &kms_server.params.port
+
+    let kms_public_url = kms_server.params.kms_public_url.clone().map_or_else(
+        || {
+            format!(
+                "http{}://{}:{}",
+                if builder.is_some() { "s" } else { "" },
+                &kms_server.params.hostname,
+                &kms_server.params.port
+            )
+        },
+        |url| url,
     );
 
     // Create the `HttpServer` instance.
@@ -363,7 +369,7 @@ pub async fn prepare_kms_server(
             None
         };
 
-        let kms_url_data = web::Data::new(kms_url.clone());
+        let kms_public_url_data = web::Data::new(kms_public_url.clone());
 
         let spa_routes = [
             "/login",
@@ -378,7 +384,7 @@ pub async fn prepare_kms_server(
         ];
         let mut auth_routes = web::scope("/ui")
             .app_data(web::Data::new(oidc_config))
-            .app_data(kms_url_data)
+            .app_data(kms_public_url_data)
             .app_data(web::Data::new(auth_type))
             .wrap(Cors::permissive())
             .configure(configure_auth_routes);

@@ -36,6 +36,10 @@ google-cse-disable-tokens-validation = false
 # The URL should be something like <https://cse.my_domain.com/ms_dke>
 ms_dke_service_url = "<ms dke service url>"
 
+# This setting defines the public URL where the KMS is accessible (e.g., behind a proxy).
+# It is primarily used during the authentication flow initiated from the KMS UI
+kms_public_url = "kms-public-url"
+
 # Print the server configuration information and exit
 info = false
 
@@ -106,4 +110,11 @@ tmp_path = "/tmp"
 otlp = "<url of the OTLP collector>"
 # Do not log to stdout
 quiet = false
+
+# Configuration for the handling of authentication with JWT from the KMS UI
+[ui_oidc_auth]
+ui_oidc_client_id = "<client id>"
+ui_oidc_client_secret = "<client secret>" (optional)
+ui_oidc_issuer_url = "<issuer-url>"
+ui_oidc_logout_url = "<logout-url>"
 ```
