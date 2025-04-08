@@ -3,7 +3,7 @@ use std::sync::Arc;
 use cosmian_kmip::kmip_2_1::{
     kmip_attributes::Attribute,
     kmip_objects::ObjectType,
-    kmip_operations::{SetAttribute, SetAttributeResponse},
+    kmip_operations::{AddAttribute, AddAttributeResponse},
     kmip_types::UniqueIdentifier,
     KmipOperation,
 };
@@ -12,23 +12,20 @@ use tracing::{debug, trace};
 
 use crate::{
     core::{retrieve_object_utils::retrieve_object_for_operation, KMS},
-    error::KmsError,
     result::{KResult, KResultHelper},
 };
 
-pub(crate) async fn set_attribute(
+pub(crate) async fn add_attribute(
     kms: &KMS,
-    request: SetAttribute,
+    request: AddAttribute,
     user: &str,
     params: Option<Arc<dyn SessionParams>>,
-) -> KResult<SetAttributeResponse> {
-    trace!("Set attribute: {}", serde_json::to_string(&request)?);
+) -> KResult<AddAttributeResponse> {
+    trace!("Add attribute: {}", serde_json::to_string(&request)?);
 
     // there must be an identifier
     let uid_or_tags = request
         .unique_identifier
-        .as_ref()
-        .ok_or(KmsError::UnsupportedPlaceholder)?
         .as_str()
         .context("Set Attribute: the unique identifier must be a string")?;
 
