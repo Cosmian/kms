@@ -1,6 +1,8 @@
 #!/bin/bash
 set -ex
 
+export OPENSSL_DIR=/usr/local/openssl
+
 env
 
 if [ -z "$OPENSSL_DIR" ]; then

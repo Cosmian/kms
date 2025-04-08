@@ -3,7 +3,13 @@
 set -ex
 
 # --- Declare the following variables for tests
-# ccargo build --target x86_64-unknown-linux-gnu
+# export TARGET=x86_64-unknown-linux-gnu
+# export TARGET=x86_64-apple-darwin
+# export TARGET=aarch64-apple-darwin
+# export DEBUG_OR_RELEASE=debug
+# export OPENSSL_DIR=/usr/local/openssl
+# export SKIP_SERVICES_TESTS="--skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse"
+# export FEATURES="fips"
 
 ROOT_FOLDER=$(pwd)
 
