@@ -450,8 +450,9 @@ impl ser::Serializer for &mut TtlvSerializer {
     }
 
     // For example the E::N in enum E { N(u8) }.
-    // We serialize the newtype variant as the value itself
-    // (i.e we collapse the newtype variant)
+    // This is typically called when serializing an `Attribute` enumeration
+    // The serialized value is inside a TTLV structure that has a tag
+    // that is the name of the enum variant
     #[instrument(skip(self, value))]
     fn serialize_newtype_variant<T>(
         self,
@@ -466,7 +467,42 @@ impl ser::Serializer for &mut TtlvSerializer {
         trace!(
             "serialize_newtype_variant, name: {name}::{variant} (variant index: {variant_index})"
         );
-        value.serialize(self)
+
+        // First we want to kmow if this variant has a parent. If not the user is
+        // trying to serialize a newtype variant directly as root
+        let has_parent = self.stack.peek().is_some();
+
+        // create a new structure parent to which we will add the fields of the struct
+        let tag = variant.to_owned();
+        self.stack.push(TTLV {
+            tag,
+            value: TTLValue::Structure(vec![]),
+        });
+        value.serialize(&mut *self)?;
+        // We now have the variant serialized in the TTLV structure created above
+        // If it has nop parent, we are done, else we need to add the newtype
+        // variant to the parent
+        if !has_parent {
+            return Ok(());
+        }
+
+        // We have a parent, so we need to add the newtype variant to it
+        let current_element = self
+            .stack
+            .pop()
+            .ok_or_else(|| TtlvError::custom("no TTLV found".to_owned()))?;
+        // add the TTLV element to the parent
+        let receiving_parent_vec = self.current_mut().map_err(|e| {
+            TtlvError::custom(format!(
+                "error getting the parent TTLV of the serialized new type variant: {e}"
+            ))
+        })?;
+        receiving_parent_vec.value = TTLValue::Structure(vec![current_element]);
+        trace!(
+            "... Newtype variant added, the current parent value is: {:?}",
+            receiving_parent_vec,
+        );
+        Ok(())
     }
 
     /// Serialize a sequence of items.

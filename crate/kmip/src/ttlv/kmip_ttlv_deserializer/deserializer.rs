@@ -81,16 +81,10 @@ impl TtlvDeserializer {
         }
     }
 
-    // When the current value is a structure, we want to look at the child
-    // at the current child index. If the current value is not a structure,
-    // or if we are at root, we want to look at the current value.
-    fn fetch_element(&self) -> Result<&TTLV> {
+    /// Peek the element that will be fetched next
+    pub(super) fn peek_element(&self) -> Result<&TTLV> {
         // if we are at root, we want to look at the current value
         if *self.at_root.read().context("Failed to lock at_root")? {
-            {
-                let mut at_root = self.at_root.write().context("Failed to lock at_root")?;
-                *at_root = false;
-            }
             return Ok(&self.current);
         }
         //unwrap the structure if within a structure and get the child
@@ -109,7 +103,22 @@ impl TtlvDeserializer {
         }
     }
 
-    //
+    /// Fetch the element that will be deserialized next
+    /// Updates the `at_root` status if the deserializer is at the root
+    fn fetch_element(&self) -> Result<&TTLV> {
+        let element = self.peek_element()?;
+        // When we have fetched the value of en element at root,
+        // we need to set the at_root status to false
+        if *self.at_root.read().context("Failed to lock at_root")? {
+            // if deserializing a Map key, leave the at root status set so that
+            // the deserializer can deserialize the value while being at root
+            if self.map_state != MapAccessState::Key {
+                let mut at_root = self.at_root.write().context("Failed to lock at_root")?;
+                *at_root = false;
+            }
+        }
+        Ok(element)
+    }
 }
 
 impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
@@ -446,12 +455,9 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
     {
         // This is called when deserializing a DateTimeExtended
         // The value is a 128-bit integer
-        trace!(
-            "deserialize_i128: child: {}: {:?}",
-            self.child_index,
-            peek_structure_child(&self.current, self.child_index)
-        );
-        if let TTLValue::DateTimeExtended(dt) = &self.fetch_element()?.value {
+        let element = self.fetch_element()?;
+        trace!("deserialize_i128: element: {:?}", element);
+        if let TTLValue::DateTimeExtended(dt) = &element.value {
             visitor.visit_i128(*dt)
         } else {
             Err(TtlvError::from("Expected DateTimeExtended value in TTLV"))
@@ -778,11 +784,8 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         V: Visitor<'de>,
     {
         trace!(
-            "deserialize_struct: name {name}, fields: {fields:?}, child index: {}, at root? {},  \
-             current:  {:?}",
-            self.child_index,
-            *self.at_root.read().context("Failed to lock at_root")?,
-            self.current
+            "deserialize_struct: name {name}, fields: {fields:?}, element: {:?}",
+            self.peek_element()?
         );
         // if *self.at_root.read().context("Failed to lock at_root")? {
         //     // we are going to iterate over the children of the current TTLV by calling visit_map
@@ -820,12 +823,63 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         V: Visitor<'de>,
     {
         trace!(
-            "deserialize_enum: name {name}, variants: {variants:?}, child index: {}, at root? {},  \
-             current:  {:?}",
-            self.child_index,
-            *self.at_root.read().context("Failed to lock at_root")?,
-            self.current);
-        visitor.visit_enum(EnumWalker::new(self))
+            "deserialize_enum: name {name}, element: {:?}",
+            self.peek_element()?
+        );
+        if *self.at_root.read().context("Failed to lock at_root")? {
+            // The enum is the current structure
+            trace!("... deserializing enum at root");
+            visitor.visit_enum(EnumWalker::new(self))
+        } else {
+            // The enumeration the deserializer is deserializing is the only child of the current structure
+            // This is typically the case of a property with an `Attribute`
+            // ```Rust
+            // struct A {
+            //   new_attribute: Attribute // enum to deserialize
+            // }
+            // ```
+            trace!("... deserializing enum that is the only child of the current element",);
+            let element = self.fetch_element()?;
+
+            match &element.value {
+                // if the TTLV value is an Enumeration, we will deserialize it using the EnumWalker
+                TTLValue::Enumeration(_) => visitor.visit_enum(EnumWalker::new(self)),
+                // if the TTLV value is a Structure, we will deserialize the single child
+                // using the EnumWalker
+                TTLValue::Structure(children) => {
+                    if children.len() != 1 {
+                        return Err(TtlvError::from(format!(
+                            "Deserializing an enum of tag: {}: expected a child structure with \
+                             only one child",
+                            element.tag
+                        )));
+                    }
+                    // if the TTLV value is a Structure, we will deserialize it using the StructureWalker
+                    // which will iterate over the children of the structure as it were a map of properties to values
+                    visitor.visit_enum(EnumWalker::new(&mut TtlvDeserializer {
+                        current: children
+                            .first()
+                            .ok_or_else(|| {
+                                TtlvError::from(format!(
+                                    "Deserializing an enum of tag: {}: expected a child structure",
+                                    element.tag
+                                ))
+                            })?
+                            .clone(),
+                        child_index: 0,
+                        map_state: MapAccessState::None,
+                        at_root: RwLock::new(true),
+                    }))
+                }
+                // if the TTLV value is a Structure, we will deserialize it using the StructureWalker
+                // which will iterate over the children of the structure as it were a map of properties to values
+                x => Err(TtlvError::from(format!(
+                    "Deserializing an enum of tag: {}: expected a an Enumeration or a Structure \
+                     as a value, got: {x:?}",
+                    element.tag
+                ))),
+            }
+        }
     }
 
     // An identifier in Serde is the type that identifies a field of a struct or
@@ -845,11 +899,9 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
     {
         let element = self.fetch_element()?;
         trace!(
-            "deserialize_identifier: map state: {:?}, at root? {},  child_index :{}, element tag:  {:?}",
+            "deserialize_identifier: map state: {:?}, element: {:?}",
             self.map_state,
-            *self.at_root.read().context("Failed to lock at_root")?,
-            self.child_index,
-            element.tag
+            element
         );
 
         if self.map_state == MapAccessState::Key {
@@ -879,25 +931,24 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
                 }
             }
             TTLValue::Structure(_) => {
-                trace!("... structure: tag: {}", self.current.tag);
                 // if the current item is a structure, it may be a KMIP Object
                 // KMIP objects are always present in KMIP structures with "Object" as the property name.
                 // So the deserializer is expecting "Object" as the identifier, not the tag/Object Name
-                if kmip_2_1::kmip_objects::Object::VARIANTS.contains(&self.current.tag.as_str()) {
-                    trace!("... structure: Object");
+                if kmip_2_1::kmip_objects::Object::VARIANTS.contains(&element.tag.as_str()) {
+                    trace!("... structure: 2.1 Object");
                     return visitor.visit_str("Object");
                 }
-                if kmip_1_4::kmip_objects::Object::VARIANTS.contains(&self.current.tag.as_str()) {
-                    trace!("... structure: Object");
+                if kmip_1_4::kmip_objects::Object::VARIANTS.contains(&element.tag.as_str()) {
+                    trace!("... structure: 1.4 Object");
                     return visitor.visit_str("Object");
                 }
-                trace!("... structure: tag: {}", self.current.tag);
-                visitor.visit_str(&self.current.tag)
+                trace!("... structure: tag: {}", element.tag);
+                visitor.visit_str(&element.tag)
             }
             // all other cases, we want the tag
             _ => {
-                trace!("... tag: {}", self.current.tag);
-                visitor.visit_str(&self.current.tag)
+                trace!("... tag: {}", element.tag);
+                visitor.visit_str(&element.tag)
             }
         }
     }

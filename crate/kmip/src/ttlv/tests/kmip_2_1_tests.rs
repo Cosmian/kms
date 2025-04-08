@@ -478,9 +478,45 @@ fn test_import_symmetric_key() {
 }
 
 #[test]
-fn test_import_private_key() {
-    // log_init(option_env!("RUST_LOG"));
-    log_init(Some("trace"));
+fn test_object_public_key() {
+    log_init(option_env!("RUST_LOG"));
+    let key = Object::PublicKey(PublicKey {
+        key_block: KeyBlock {
+            key_format_type: KeyFormatType::TransparentSymmetricKey,
+            key_compression_type: None,
+            key_value: Some(KeyValue {
+                key_material: KeyMaterial::ByteString(Zeroizing::from(b"1231456".to_vec())),
+                attributes: Some(Attributes {
+                    object_type: Some(ObjectType::PublicKey),
+                    cryptographic_algorithm: Some(CryptographicAlgorithm::EC),
+                    cryptographic_length: Some(256),
+                    cryptographic_usage_mask: Some(CryptographicUsageMask::Encrypt),
+                    key_format_type: Some(KeyFormatType::TransparentECPublicKey),
+                    ..Attributes::default()
+                }),
+            }),
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            cryptographic_length: Some(256),
+            key_wrapping_data: None,
+        },
+    });
+    // Serializer
+    let ttlv = to_ttlv(&key).unwrap();
+    info!("{:?}", ttlv);
+    // Serialize
+    let json = serde_json::to_string_pretty(&ttlv).unwrap();
+    info!("{}", json);
+    // Deserialize
+    let ttlv_from_json = serde_json::from_str::<TTLV>(&json).unwrap();
+    assert_eq!(ttlv, ttlv_from_json);
+    // Deserializer
+    let rec: Object = from_ttlv(ttlv).unwrap();
+    assert_eq!(key, rec);
+}
+
+#[test]
+fn test_import_public_key() {
+    log_init(option_env!("RUST_LOG"));
     let key_bytes: &[u8] = b"this_is_a_test";
     let key = Object::PublicKey(PublicKey {
         key_block: KeyBlock {
@@ -512,7 +548,7 @@ fn test_import_private_key() {
     };
     // Serializer
     let ttlv = to_ttlv(&import).unwrap();
-    info!("{:?}", ttlv);
+    info!("{:#?}", ttlv);
     // Serialize
     let json = serde_json::to_string_pretty(&ttlv).unwrap();
     info!("{}", json);
@@ -982,8 +1018,8 @@ pub(crate) fn test_message_enforce_enum() {
 
 #[test]
 fn test_serde_attribute() {
-    // log_init(option_env!("RUST_LOG"));
-    log_init(Some("trace"));
+    log_init(option_env!("RUST_LOG"));
+    // log_init(Some("trace"));
 
     let attribute = Attribute::Link(Link {
         link_type: LinkType::PublicKeyLink,
@@ -1052,6 +1088,7 @@ fn test_deserialization_set_attribute() -> KmipResult<()> {
 #[test]
 fn test_deserialization_attribute() -> KmipResult<()> {
     log_init(option_env!("RUST_LOG"));
+    // log_init(Some("trace"));
     let attribute_str = r#"
     {
         "tag": "Link",
@@ -1109,8 +1146,8 @@ fn test_deserialization_link() -> KmipResult<()> {
 
 #[test]
 fn test_serialization_set_attribute() -> KmipResult<()> {
-    // log_init(option_env!("RUST_LOG"));
-    log_init(Some("debug"));
+    log_init(option_env!("RUST_LOG"));
+    // log_init(Some("trace"));
     let set_attribute_request = SetAttribute {
         unique_identifier: Some(UniqueIdentifier::TextString(
             "173cb39b-c95a-4e98-ae0d-3e8079e145e6".to_owned(),

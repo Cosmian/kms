@@ -16,8 +16,7 @@ use crate::{
 #[allow(clippy::expect_used)]
 #[test]
 fn test_template_attributes() {
-    // log_init(option_env!("RUST_LOG"));
-    log_init(Some("trace"));
+    log_init(option_env!("RUST_LOG"));
 
     let template_attribute = TemplateAttribute {
         attribute: Some(vec![
