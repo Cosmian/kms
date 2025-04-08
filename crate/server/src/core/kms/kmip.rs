@@ -7,12 +7,13 @@ use cosmian_kmip::{
     },
     kmip_2_1::{
         kmip_operations::{
-            Certify, CertifyResponse, Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse,
-            Decrypt, DecryptResponse, DeleteAttribute, DeleteAttributeResponse, Destroy,
-            DestroyResponse, Encrypt, EncryptResponse, Export, ExportResponse, Get, GetAttributes,
-            GetAttributesResponse, GetResponse, Import, ImportResponse, Locate, LocateResponse,
-            Query, QueryResponse, ReKey, ReKeyKeyPair, ReKeyKeyPairResponse, ReKeyResponse, Revoke,
-            RevokeResponse, SetAttribute, SetAttributeResponse, Validate, ValidateResponse,
+            AddAttribute, AddAttributeResponse, Certify, CertifyResponse, Create, CreateKeyPair,
+            CreateKeyPairResponse, CreateResponse, Decrypt, DecryptResponse, DeleteAttribute,
+            DeleteAttributeResponse, Destroy, DestroyResponse, Encrypt, EncryptResponse, Export,
+            ExportResponse, Get, GetAttributes, GetAttributesResponse, GetResponse, Import,
+            ImportResponse, Locate, LocateResponse, Query, QueryResponse, ReKey, ReKeyKeyPair,
+            ReKeyKeyPairResponse, ReKeyResponse, Revoke, RevokeResponse, SetAttribute,
+            SetAttributeResponse, Validate, ValidateResponse,
         },
         kmip_types::StateEnumeration,
     },
@@ -25,6 +26,22 @@ use crate::{
 };
 
 impl KMS {
+    /// This operation requests the server to add a new attribute instance to be associated with a
+    /// Managed Object and set its value. The request contains the Unique Identifier of the
+    /// Managed Object to which the attribute pertains, along with the attribute name and value.
+    /// For single-instance attributes, this creates the attribute value. For multi-instance
+    /// attributes, this is how the first and subsequent values are created. Existing attribute
+    /// values SHALL NOT be changed by this operation. Read-Only attributes SHALL NOT be added
+    /// using the Add Attribute operation.
+    pub(crate) async fn add_attribute(
+        &self,
+        request: AddAttribute,
+        user: &str,
+        params: Option<Arc<dyn SessionParams>>,
+    ) -> KResult<AddAttributeResponse> {
+        Box::pin(operations::add_attribute(self, request, user, params)).await
+    }
+
     /// This request is used to generate a Certificate object for a public key.
     /// This request supports the certification of a new public key, as well as
     /// the certification of a public key that has already been certified (i.e.,
