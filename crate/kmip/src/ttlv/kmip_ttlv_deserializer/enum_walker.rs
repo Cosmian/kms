@@ -1,3 +1,5 @@
+use std::sync::RwLock;
+
 use serde::de::{DeserializeSeed, EnumAccess, VariantAccess, Visitor};
 use tracing::{instrument, trace};
 
@@ -31,12 +33,7 @@ impl<'de> EnumAccess<'de> for EnumWalker<'_> {
     where
         V: DeserializeSeed<'de>,
     {
-        trace!(
-            "variant_seed: child index: {}, at root? {},  current:  {:?}",
-            self.de.child_index,
-            *self.de.at_root.read().context("failed to read at_root")?,
-            self.de.current
-        );
+        trace!("element:  {:?}", self.de.peek_element()?);
         // The map state should already be set to value, but just in case
         // this will tel deserialize_identifier to deserialize the variant of the TT:V, not the tag
         self.de.map_state = MapAccessState::Value;
@@ -63,17 +60,25 @@ impl<'de> VariantAccess<'de> for EnumWalker<'_> {
     }
 
     /// `variant` is called to identify which variant to deserialize.
-    #[instrument(skip(self, _seed))]
-    fn newtype_variant_seed<T>(self, _seed: T) -> Result<T::Value>
+    /// This is typically call for the Attribute enumeration
+    /// Tell the derializwr to deserialize the content of the next struct as the variant value
+    #[instrument(skip(self, seed))]
+    fn newtype_variant_seed<T>(self, seed: T) -> Result<T::Value>
     where
         T: DeserializeSeed<'de>,
     {
         trace!(
-            "newtype_variant_seed: child index: {}, current: {:?}",
+            "newtype_variant_seed: child index: {}, at root: {}, current tag: {:?}",
             self.de.child_index,
-            self.de.current
+            *self.de.at_root.read().context("failed to read at_root")?,
+            self.de.current.tag
         );
-        unimplemented!("newtype_variant_seed");
+        seed.deserialize(&mut TtlvDeserializer {
+            current: self.de.current.clone(),
+            map_state: MapAccessState::None,
+            child_index: 0,
+            at_root: RwLock::new(true),
+        })
     }
 
     // Tuple variants are not in KMIP but, if any,

@@ -2,10 +2,7 @@ use serde::de::{DeserializeSeed, MapAccess};
 use tracing::{instrument, trace};
 
 use super::TtlvDeserializer;
-use crate::ttlv::{
-    kmip_ttlv_deserializer::{deserializer::MapAccessState, peek_structure_child},
-    TTLValue, TtlvError,
-};
+use crate::ttlv::{kmip_ttlv_deserializer::deserializer::MapAccessState, TTLValue, TtlvError};
 
 /// The `StructureWalker` is used to deserialize a struct as a map of property -> values
 /// It is called by the main deserializer when receiving Visitor requests to `deserialize_struct`
@@ -32,22 +29,23 @@ impl<'a, 'de: 'a> MapAccess<'de> for StructureWalker<'a> {
     where
         K: DeserializeSeed<'de>,
     {
-        trace!(
-            "map access: next_key_seed: index: {}, child: {:?}",
-            self.de.child_index,
-            peek_structure_child(&self.de.current, self.de.child_index)
-        );
         // If the current value is not a Structure, return an error
-        let TTLValue::Structure(current_value) = &self.de.current.value else {
+        let TTLValue::Structure(children) = &self.de.current.value else {
             return Err(TtlvError::from(
                 "Deserializing a map: expected Structure value in TTLV",
             ))
         };
         // Check that the index is not out of bounds, i.e. we have not reached the end of the struct
         // If we have, return None
-        if self.de.child_index >= current_value.len() {
+        if self.de.child_index >= children.len() {
             return Ok(None);
         }
+        trace!(
+            "current struct: {}, num children: {}, next child {:?}",
+            self.de.current.tag,
+            children.len(),
+            self.de.peek_element()?,
+        );
         // recover the tag of the element pointed at by the child index
         // by running the deserialize_identifier method on its deserializer
         self.de.map_state = MapAccessState::Key;
@@ -59,11 +57,7 @@ impl<'a, 'de: 'a> MapAccess<'de> for StructureWalker<'a> {
     where
         V: DeserializeSeed<'de>,
     {
-        trace!(
-            "next_value_seed:index: {}, child: {:?}",
-            self.de.child_index,
-            peek_structure_child(&self.de.current, self.de.child_index)
-        );
+        trace!("element: {:?}", self.de.peek_element()?);
         self.de.map_state = MapAccessState::Value;
         let res = seed.deserialize(&mut *self.de);
         self.de.child_index += 1;
