@@ -3,13 +3,7 @@
 set -ex
 
 # --- Declare the following variables for tests
-# export TARGET=x86_64-unknown-linux-gnu
-# export TARGET=x86_64-apple-darwin
-# export TARGET=aarch64-apple-darwin
-# export DEBUG_OR_RELEASE=debug
-# export OPENSSL_DIR=/usr/local/openssl
-# export SKIP_SERVICES_TESTS="--skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse"
-# export FEATURES="fips"
+# ccargo build --target x86_64-unknown-linux-gnu
 
 ROOT_FOLDER=$(pwd)
 
@@ -66,8 +60,14 @@ if [ -z "$OPENSSL_DIR" ]; then
   exit 1
 fi
 
-# shellcheck disable=SC2086
-cargo build --target $TARGET $RELEASE $FEATURES
+crates=("crate/server" "cli/crate/cli")
+for crate in "${crates[@]}"; do
+  echo "Building $crate"
+  cd "$crate"
+  # shellcheck disable=SC2086
+  cargo build --target $TARGET $RELEASE $FEATURES
+  cd "$ROOT_FOLDER"
+done
 
 COSMIAN_EXE="cli/target/$TARGET/$DEBUG_OR_RELEASE/cosmian"
 COSMIAN_KMS_EXE="target/$TARGET/$DEBUG_OR_RELEASE/cosmian_kms"
