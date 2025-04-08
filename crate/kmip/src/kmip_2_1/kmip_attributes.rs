@@ -792,7 +792,6 @@ impl Attributes {
 /// Each variant corresponds to a field in the Attributes struct.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[allow(clippy::large_enum_variant)]
-// #[serde(untagged)]
 pub enum Attribute {
     /// The Activation Date attribute contains the date and time when the
     /// Managed Object MAY begin to be used. This time corresponds to state

@@ -32,7 +32,7 @@ impl<'a, 'de: 'a> MapAccess<'de> for UntaggedEnumWalker<'a> {
         K: DeserializeSeed<'de>,
     {
         trace!(
-            "Untagged Enum map: next_key_seed: completed?: {}, at root: {} , index: {}, current \
+            "Untagged Enum map: next_key_seed: completed?: {}, at root: {}, index: {}, current \
              tag: {:?}",
             self.completed,
             *self.de.at_root.read().context("failed to read at_root")?,
@@ -53,8 +53,9 @@ impl<'a, 'de: 'a> MapAccess<'de> for UntaggedEnumWalker<'a> {
         V: DeserializeSeed<'de>,
     {
         trace!(
-            "Untagged Enum map: next_value_seed: current:  {:?}",
-            self.de.current
+            "Untagged Enum map: next_value_seed: current tag:  {:?}, at root: {}",
+            self.de.current.tag,
+            *self.de.at_root.read().context("failed to read at_root")?
         );
         self.de.map_state = MapAccessState::Value;
         let res = seed.deserialize(&mut *self.de)?;
