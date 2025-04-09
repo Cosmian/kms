@@ -2,10 +2,11 @@ use std::{collections::HashMap, fmt, path::PathBuf};
 
 use cosmian_kms_server_database::MainDbParams;
 use openssl::x509::X509;
+use tracing::{debug, warn};
 
 use super::HttpParams;
 use crate::{
-    config::{ClapConfig, IdpConfig, OidcConfig},
+    config::{ClapConfig, DEFAULT_COSMIAN_UI_DIST_PATH, IdpConfig, OidcConfig},
     kms_bail,
     result::KResult,
 };
@@ -16,6 +17,9 @@ use crate::{
 pub struct ServerParams {
     /// The JWT Config if Auth is enabled
     pub identity_provider_configurations: Option<Vec<IdpConfig>>,
+
+    /// The UI distribution folder
+    pub ui_index_html_folder: PathBuf,
 
     /// The OIDC config used to handle login from UI
     pub ui_oidc_auth: OidcConfig,
@@ -98,6 +102,24 @@ impl ServerParams {
     ///
     /// Returns an error if the conversion from `ClapConfig` to `ServerParams` fails.
     pub fn try_from(conf: ClapConfig) -> KResult<Self> {
+        debug!("try_from: clap_config: {conf:#?}");
+
+        let ui_index_html_folder: PathBuf = if conf.ui_config.ui_index_html_folder.is_empty() {
+            DEFAULT_COSMIAN_UI_DIST_PATH.to_owned()
+        } else {
+            conf.ui_config.ui_index_html_folder
+        }
+        .into();
+        debug!("try_from: ui_index_html_folder: {ui_index_html_folder:#?}");
+        if ui_index_html_folder.join("index.html").exists() {
+            debug!("try_from: ui_index_html_folder: {ui_index_html_folder:#?}");
+        } else {
+            warn!(
+                "The UI index HTML folder does not contain an index.html file: \
+                 {ui_index_html_folder:#?}"
+            );
+        }
+
         let http_params = HttpParams::try_from(&conf.http)?;
 
         // Should we verify the client TLS certificates?
@@ -130,9 +152,10 @@ impl ServerParams {
             })
             .collect();
 
-        Ok(Self {
+        let res = Self {
             identity_provider_configurations: conf.auth.extract_idp_configs()?,
-            ui_oidc_auth: conf.ui_oidc_auth,
+            ui_index_html_folder,
+            ui_oidc_auth: conf.ui_config.ui_oidc_auth,
             main_db_params: Some(conf.db.init(&conf.workspace.init()?)?),
             clear_db_on_start: conf.db.clear_database,
             hostname: conf.http.hostname,
@@ -154,7 +177,10 @@ impl ServerParams {
             },
             slot_passwords,
             non_revocable_key_id: conf.non_revocable_key_id,
-        })
+        };
+        debug!("try_from: server_params: {res:#?}");
+
+        Ok(res)
     }
 
     /// Loads the certificate from the given file path.
@@ -210,6 +236,7 @@ impl fmt::Debug for ServerParams {
             x
         };
         let x = x.field("kms_public_url", &self.kms_public_url);
+        let x = x.field("ui_index_html_folder", &self.ui_index_html_folder);
         let x = x.field("ui_oidc_auth", &self.ui_oidc_auth);
         let x = if let Some(verify_cert) = &self.authority_cert_file {
             x.field("verify_cert CN", verify_cert.subject_name())
@@ -263,6 +290,7 @@ impl Clone for ServerParams {
     fn clone(&self) -> Self {
         Self {
             identity_provider_configurations: self.identity_provider_configurations.clone(),
+            ui_index_html_folder: self.ui_index_html_folder.clone(),
             ui_oidc_auth: self.ui_oidc_auth.clone(),
             default_username: self.default_username.clone(),
             force_default_username: self.force_default_username,

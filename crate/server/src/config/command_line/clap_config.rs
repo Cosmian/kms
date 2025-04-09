@@ -6,10 +6,12 @@ use std::{
 use clap::Parser;
 use serde::{Deserialize, Serialize};
 
-use super::{HttpConfig, JwtAuthConfig, MainDBConfig, OidcConfig, WorkspaceConfig};
+use super::{
+    HttpConfig, JwtAuthConfig, MainDBConfig, WorkspaceConfig, ui_config::UiConfig,
+};
 use crate::{error::KmsError, result::KResult, telemetry::TelemetryConfig};
 
-const DEFAULT_COSMIAN_KMS_CONF: &str = "/etc/cosmian_kms/kms.toml";
+const DEFAULT_COSMIAN_KMS_CONF: &str = "/etc/cosmian/kms.toml";
 const DEFAULT_USERNAME: &str = "admin";
 const HSM_ADMIN: &str = "admin";
 
@@ -20,7 +22,7 @@ impl Default for ClapConfig {
             http: HttpConfig::default(),
             kms_public_url: None,
             auth: JwtAuthConfig::default(),
-            ui_oidc_auth: OidcConfig::default(),
+            ui_config: UiConfig::default(),
             workspace: WorkspaceConfig::default(),
             default_username: DEFAULT_USERNAME.to_owned(),
             force_default_username: false,
@@ -52,7 +54,7 @@ pub struct ClapConfig {
     pub auth: JwtAuthConfig,
 
     #[clap(flatten)]
-    pub ui_oidc_auth: OidcConfig,
+    pub ui_config: UiConfig,
 
     #[clap(flatten)]
     pub workspace: WorkspaceConfig,
@@ -198,8 +200,9 @@ impl fmt::Debug for ClapConfig {
         } else {
             x
         };
-        let x = if self.ui_oidc_auth.ui_oidc_client_id.is_some() {
-            x.field("ui_oidc_auth", &self.ui_oidc_auth)
+        let x = x.field("ui_index_html_folder", &self.ui_config.ui_index_html_folder);
+        let x = if self.ui_config.ui_oidc_auth.ui_oidc_client_id.is_some() {
+            x.field("ui_oidc_auth", &self.ui_config.ui_oidc_auth)
         } else {
             x
         };

@@ -60,7 +60,7 @@ For high availability and scalability, please refer to the [high availability gu
     ```
 
     A `cosmian_kms` service will be configured; the service file is located at `/etc/systemd/system/cosmian_kms.service`.
-    The server will use a configuration file located at `/etc/cosmian_kms/kms.toml`.
+    The server will use a configuration file located at `/etc/cosmian/kms.toml`.
 
     To start the KMS, run:
 
@@ -88,7 +88,7 @@ For high availability and scalability, please refer to the [high availability gu
     ```
 
     A `cosmian_kms` service will be configured; the service file is located at `/etc/systemd/system/cosmian_kms.service`.
-    The server will use a configuration file located at `/etc/cosmian_kms/kms.toml`.
+    The server will use a configuration file located at `/etc/cosmian/kms.toml`.
 
     To start the KMS, run:
 
