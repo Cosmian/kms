@@ -637,10 +637,8 @@ impl From<Attribute> for kmip_2_1::kmip_attributes::Attribute {
 /// According to the specifications, If a structure, then the structure SHALL NOT include sub structures.
 /// In this implementation, we use a JSON value to represent the structure.
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
-#[serde(untagged)]
 pub enum CustomAttributeValue {
     TextString(String),
-    Integer(i32),
     LongInteger(i64),
     BigInteger(BigInt),
     ByteString(Vec<u8>),
@@ -654,7 +652,6 @@ impl From<CustomAttributeValue> for kmip_2_1::kmip_types::VendorAttributeValue {
     fn from(value: CustomAttributeValue) -> Self {
         match value {
             CustomAttributeValue::TextString(v) => Self::TextString(v),
-            CustomAttributeValue::Integer(v) => Self::Integer(v),
             CustomAttributeValue::LongInteger(v) => Self::LongInteger(v),
             CustomAttributeValue::BigInteger(v) => Self::BigInteger(v),
             CustomAttributeValue::ByteString(v) => Self::ByteString(v),
@@ -670,7 +667,6 @@ impl From<kmip_2_1::kmip_types::VendorAttributeValue> for CustomAttributeValue {
     fn from(value: kmip_2_1::kmip_types::VendorAttributeValue) -> Self {
         match value {
             kmip_2_1::kmip_types::VendorAttributeValue::TextString(v) => Self::TextString(v),
-            kmip_2_1::kmip_types::VendorAttributeValue::Integer(v) => Self::Integer(v),
             kmip_2_1::kmip_types::VendorAttributeValue::LongInteger(v) => Self::LongInteger(v),
             kmip_2_1::kmip_types::VendorAttributeValue::BigInteger(v) => Self::BigInteger(v),
             kmip_2_1::kmip_types::VendorAttributeValue::ByteString(v) => Self::ByteString(v),
