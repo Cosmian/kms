@@ -49,6 +49,16 @@ Options:
           The JWKS (Json Web Key Set) URI of the JWT token [env: KMS_JWKS_URI=]
       --jwt-audience <JWT_AUDIENCE>...
           The audience of the JWT token [env: KMS_JST_AUDIENCE=]
+  -u, --ui-index-html-folder <UI_INDEX_HTML_FOLDER>
+          The UI distribution folder [env: COSMIAN_UI_DIST_PATH=] [default: /usr/local/cosmian/ui/dist/]
+      --ui-oidc-client-id <UI_OIDC_CLIENT_ID>
+          The client ID of the configured OIDC tenant for UI Auth [env: UI_OIDC_CLIENT_ID=]
+      --ui-oidc-client-secret <UI_OIDC_CLIENT_SECRET>
+          The client secret of the configured OIDC tenant for UI Auth [env: UI_OIDC_CLIENT_SECRET=]
+      --ui-oidc-issuer-url <UI_OIDC_ISSUER_URL>
+          The issuer URI of the configured OIDC tenant for UI Auth [env: UI_OIDC_ISSUER_URL=]
+      --ui-oidc-logout-url <UI_OIDC_LOGOUT_URL>
+          The logout URI of the configured OIDC tenant for UI Auth [env: UI_OIDC_LOGOUT_URL=]
       --root-data-path <ROOT_DATA_PATH>
           The root folder where the KMS will store its data A relative path is taken relative to the user HOME directory [env: KMS_ROOT_DATA_PATH=] [default: ./cosmian-kms]
       --tmp-path <TMP_PATH>
@@ -88,6 +98,8 @@ Options:
           Password for the user logging in to the HSM Slot specified with `--hsm_slot`
           Provide an empty string for no password
           see `--hsm_slot` for more information
+      --kms-public-url <KMS_PUBLIC_URL>
+          [env: KMS_PUBLIC_URL=]
   -h, --help
           Print help (see more with '--help')
   -V, --version

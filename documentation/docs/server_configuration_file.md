@@ -27,7 +27,7 @@ force_default_username = false
 google_cse_kacls_url = "<google cse kacls url>"
 
 # This setting disables the validation of the tokens used by the Google Workspace CSE feature of this server
-# Usefeull for testing purposes
+# Useful for testing purposes
 google-cse-disable-tokens-validation = false
 
 # This setting enables the Microsoft Double Key Encryption service feature of this server.
@@ -76,7 +76,7 @@ https_p12_password = "<https p12 password>"
 # The server must run in TLS mode for this to be used
 authority_cert_file = "<authority cert file>"
 
-# Check the Auhtenticating Users for more information
+# Check the Authenticating Users for more information
 [auth]
 # The issuer URI of the JWT token
 # To handle multiple identity managers, add different parameters
