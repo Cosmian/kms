@@ -830,7 +830,6 @@ impl Display for VendorAttribute {
 #[serde(untagged)]
 pub enum VendorAttributeValue {
     TextString(String),
-    Integer(i32),
     LongInteger(i64),
     BigInteger(BigInt),
     ByteString(Vec<u8>),
@@ -847,7 +846,6 @@ impl Serialize for VendorAttributeValue {
     {
         match self {
             Self::TextString(s) => serializer.serialize_str(s),
-            Self::Integer(i) => serializer.serialize_i32(*i),
             Self::LongInteger(i) => serializer.serialize_i64(*i),
             Self::BigInteger(i) => serializer.serialize_newtype_struct("BigInteger", i),
             Self::ByteString(b) => serializer.serialize_bytes(b),

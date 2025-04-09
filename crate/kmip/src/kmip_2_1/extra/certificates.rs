@@ -16,14 +16,14 @@ impl Attributes {
     ///
     /// # Returns
     /// * The requested validity days if it was set before
-    pub fn set_requested_validity_days(&mut self, requested_validity_days: i32) -> Option<i32> {
+    pub fn set_requested_validity_days(&mut self, requested_validity_days: i64) -> Option<i64> {
         self.set_vendor_attribute(
             VENDOR_ID_COSMIAN,
             VENDOR_ATTR_REQUESTED_VALIDITY_DAYS,
-            VendorAttributeValue::Integer(requested_validity_days),
+            VendorAttributeValue::LongInteger(requested_validity_days),
         )
         .and_then(|val| {
-            if let VendorAttributeValue::Integer(val) = val {
+            if let VendorAttributeValue::LongInteger(val) = val {
                 Some(val)
             } else {
                 None
@@ -36,10 +36,10 @@ impl Attributes {
     /// # Returns
     /// * The requested validity days if it was set before
     /// * `None` if it was not set
-    pub fn remove_validity_days(&mut self) -> Option<i32> {
+    pub fn remove_validity_days(&mut self) -> Option<i64> {
         self.remove_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_REQUESTED_VALIDITY_DAYS)
             .and_then(|val| {
-                if let VendorAttributeValue::Integer(val) = val {
+                if let VendorAttributeValue::LongInteger(val) = val {
                     Some(val)
                 } else {
                     None
