@@ -22,7 +22,10 @@ use cosmian_kms_client::{
 
 use crate::{
     actions::console,
-    error::{result::CliResult, CliError},
+    error::{
+        result::{CliResult, CliResultHelper},
+        CliError,
+    },
 };
 
 /// The algorithm to use for the keypair generation
@@ -259,7 +262,10 @@ impl CertifyAction {
         }
 
         // set the number of requested days
-        attributes.set_requested_validity_days(self.number_of_days);
+        attributes.set_requested_validity_days(
+            i32::try_from(self.number_of_days)
+                .context("failed to convert number of days to i32")?,
+        );
 
         // A certificate id has been provided
         if let Some(certificate_id) = &self.certificate_id {

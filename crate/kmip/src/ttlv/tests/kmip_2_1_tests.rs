@@ -1,6 +1,7 @@
 use cosmian_logger::log_init;
 use num_bigint_dig::BigInt;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use time::OffsetDateTime;
 use tracing::{debug, info, trace};
 use zeroize::Zeroizing;
 
@@ -28,6 +29,7 @@ use crate::{
         kmip_types::{
             CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, Link, LinkType,
             LinkedObjectIdentifier, OperationEnumeration, QueryFunction, UniqueIdentifier,
+            VendorAttributeValue,
         },
     },
     ttlv::{from_ttlv, to_ttlv, KmipEnumerationVariant, TTLValue, TTLV},
@@ -451,16 +453,54 @@ fn test_object_inside_struct() {
 
 #[test]
 fn test_import_symmetric_key() {
-    log_init(option_env!("RUST_LOG"));
+    log_init(Some("debug"));
+    // log_init(option_env!("RUST_LOG"));
 
     let key_bytes: &[u8] = b"this_is_a_test";
     let key = aes_key(key_bytes);
+    let mut attributes = key.attributes().unwrap().to_owned();
+    attributes.set_vendor_attribute("Vendor", "int", VendorAttributeValue::Integer(1));
+    attributes.set_vendor_attribute(
+        "Vendor",
+        "string",
+        VendorAttributeValue::TextString("string".to_owned()),
+    );
+    attributes.set_vendor_attribute(
+        "Vendor",
+        "byte_string",
+        VendorAttributeValue::ByteString(hex::decode("31323331343536").unwrap()),
+    );
+    attributes.set_vendor_attribute(
+        "Vendor",
+        "big_int",
+        VendorAttributeValue::BigInteger(BigInt::from(123_456_789)),
+    );
+    attributes.set_vendor_attribute(
+        "Vendor",
+        "long_int",
+        VendorAttributeValue::LongInteger(123_456_789),
+    );
+    attributes.set_vendor_attribute("Vendor", "bool", VendorAttributeValue::Boolean(true));
+    attributes.set_vendor_attribute(
+        "Vendor",
+        "DateTime",
+        VendorAttributeValue::DateTime(OffsetDateTime::now_utc()),
+    );
+    // attributes.set_vendor_attribute(
+    //     "Vendor",
+    //     "struct",
+    //     VendorAttributeValue::Structure(serde_json::json!({
+    //         "key": "value",
+    //         "key2": 2,
+    //     })),
+    // );
+
     let import = Import {
         unique_identifier: UniqueIdentifier::TextString("unique_identifier".to_owned()),
-        object_type: ObjectType::Certificate,
+        object_type: ObjectType::SymmetricKey,
         replace_existing: None,
         key_wrap_type: None,
-        attributes: key.attributes().unwrap().to_owned(),
+        attributes,
         object: key,
     };
     // Serializer

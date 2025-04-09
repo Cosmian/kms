@@ -10,7 +10,7 @@ use cosmian_kms_client::{
         kmip_types::{
             BlockCipherMode, CertificateAttributes, CryptographicAlgorithm,
             CryptographicParameters, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
-            UniqueIdentifier, VendorAttribute,
+            UniqueIdentifier, VendorAttribute, VendorAttributeValue,
         },
         requests::create_rsa_key_pair_request,
     },
@@ -189,7 +189,7 @@ impl CreateKeyPairsAction {
             vendor_attributes: Some(vec![VendorAttribute {
                 vendor_identification: VENDOR_ID_COSMIAN.to_string(),
                 attribute_name: VENDOR_ATTR_X509_EXTENSION.to_string(),
-                attribute_value: EXTENSION_CONFIG.to_vec(),
+                attribute_value: VendorAttributeValue::ByteString(EXTENSION_CONFIG.to_vec()),
             }]),
             ..Attributes::default()
         };

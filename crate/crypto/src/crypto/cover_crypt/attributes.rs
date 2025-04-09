@@ -1,6 +1,8 @@
 use cloudproof::reexport::cover_crypt::abe_policy::{self, AccessPolicy, EncryptionHint, Policy};
 use cosmian_kmip::kmip_2_1::{
-    extra::VENDOR_ID_COSMIAN, kmip_attributes::Attributes, kmip_types::VendorAttribute,
+    extra::VENDOR_ID_COSMIAN,
+    kmip_attributes::Attributes,
+    kmip_types::{VendorAttribute, VendorAttributeValue},
 };
 use serde::{Deserialize, Serialize};
 
@@ -16,11 +18,13 @@ pub fn policy_as_vendor_attribute(policy: &Policy) -> Result<VendorAttribute, Cr
     Ok(VendorAttribute {
         vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
         attribute_name: VENDOR_ATTR_COVER_CRYPT_POLICY.to_owned(),
-        attribute_value: Vec::<u8>::try_from(policy).map_err(|e| {
-            CryptoError::Kmip(format!(
-                "failed convert the CoverCrypt policy to bytes: {e}"
-            ))
-        })?,
+        attribute_value: VendorAttributeValue::ByteString(Vec::<u8>::try_from(policy).map_err(
+            |e| {
+                CryptoError::Kmip(format!(
+                    "failed convert the CoverCrypt policy to bytes: {e}"
+                ))
+            },
+        )?),
     })
 }
 
@@ -35,6 +39,11 @@ pub fn policy_from_attributes(attributes: &Attributes) -> Result<Policy, CryptoE
                 ))
             },
             |bytes| {
+                let VendorAttributeValue::ByteString(bytes) = bytes else {
+                    return Err(CryptoError::Kmip(
+                        "the CoverCrypt Policy is not a byte string".to_owned(),
+                    ));
+                };
                 Policy::parse_and_convert(bytes).map_err(|e| {
                     CryptoError::Kmip(format!(
                         "failed deserializing the CoverCrypt Policy from the attributes: {e}"
@@ -62,7 +71,7 @@ pub fn access_policy_as_vendor_attribute(
     Ok(VendorAttribute {
         vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
         attribute_name: VENDOR_ATTR_COVER_CRYPT_ACCESS_POLICY.to_owned(),
-        attribute_value: access_policy.as_bytes().to_vec(),
+        attribute_value: VendorAttributeValue::ByteString(access_policy.as_bytes().to_vec()),
     })
 }
 
@@ -73,9 +82,11 @@ pub fn attributes_as_vendor_attribute(
     Ok(VendorAttribute {
         vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
         attribute_name: VENDOR_ATTR_COVER_CRYPT_ATTR.to_owned(),
-        attribute_value: serde_json::to_vec(&attributes).map_err(|e| {
-            CryptoError::Kmip(format!("failed serializing the CoverCrypt attributes: {e}"))
-        })?,
+        attribute_value: VendorAttributeValue::ByteString(
+            serde_json::to_vec(&attributes).map_err(|e| {
+                CryptoError::Kmip(format!("failed serializing the CoverCrypt attributes: {e}"))
+            })?,
+        ),
     })
 }
 
@@ -86,6 +97,11 @@ pub fn attributes_from_attributes(
     if let Some(bytes) =
         attributes.get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_ATTR)
     {
+        let VendorAttributeValue::ByteString(bytes) = bytes else {
+            return Err(CryptoError::Kmip(
+                "the CoverCrypt attributes are not a byte string".to_owned(),
+            ));
+        };
         let attribute_strings = serde_json::from_slice::<Vec<String>>(bytes).map_err(|e| {
             CryptoError::Kmip(format!(
                 "failed reading the CoverCrypt attribute strings from the attributes bytes: {e}"
@@ -119,7 +135,12 @@ pub fn access_policy_from_attributes(attributes: &Attributes) -> Result<String, 
                 ))
             },
             |bytes| {
-                String::from_utf8(bytes.to_vec()).map_err(|e| {
+                let VendorAttributeValue::ByteString(bytes) = bytes else {
+                    return Err(CryptoError::Kmip(
+                        "the Access Policy is not a byte string".to_owned(),
+                    ));
+                };
+                String::from_utf8(bytes.clone()).map_err(|e| {
                     CryptoError::Kmip(format!(
                         "failed to read Access Policy string from the (vendor) attributes bytes: \
                          {e}"
@@ -165,9 +186,9 @@ pub fn rekey_edit_action_as_vendor_attribute(
     Ok(VendorAttribute {
         vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
         attribute_name: VENDOR_ATTR_COVER_CRYPT_REKEY_ACTION.to_owned(),
-        attribute_value: serde_json::to_vec(action).map_err(|e| {
-            CryptoError::Kmip(format!("failed serializing the CoverCrypt action: {e}"))
-        })?,
+        attribute_value: VendorAttributeValue::ByteString(serde_json::to_vec(action).map_err(
+            |e| CryptoError::Kmip(format!("failed serializing the CoverCrypt action: {e}")),
+        )?),
     })
 }
 
@@ -187,6 +208,11 @@ pub fn rekey_edit_action_from_attributes(
                 ))
             },
             |bytes| {
+                let VendorAttributeValue::ByteString(bytes) = bytes else {
+                    return Err(CryptoError::Kmip(
+                        "the CoverCrypt action is not a byte string".to_owned(),
+                    ));
+                };
                 serde_json::from_slice::<RekeyEditAction>(bytes).map_err(|e| {
                     CryptoError::Kmip(format!(
                         "failed reading the CoverCrypt action from the attribute bytes: {e}"

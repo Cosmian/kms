@@ -1,10 +1,13 @@
 use std::fmt::{self, Formatter};
 
+use num_bigint_dig::BigInt;
 use serde::{
     de::{self, MapAccess, Visitor},
     ser::SerializeStruct,
     Deserialize, Serialize,
 };
+use serde_json::Value;
+use time::OffsetDateTime;
 use tracing::warn;
 
 use crate::{
@@ -601,7 +604,7 @@ impl From<Attribute> for kmip_2_1::kmip_attributes::Attribute {
             Attribute::CustomAttribute((n, v)) => Self::VendorAttribute(VendorAttribute {
                 vendor_identification: "KMIP1".to_owned(),
                 attribute_name: n,
-                attribute_value: serde_json::to_vec(&v).unwrap_or(Vec::new()),
+                attribute_value: v.into(),
             }),
             Attribute::AlternativeName(v) => Self::AlternativeName(v.into()),
             Attribute::KeyValuePresent(v) => Self::KeyValuePresent(v),
@@ -631,19 +634,52 @@ impl From<Attribute> for kmip_2_1::kmip_attributes::Attribute {
 
 /// The value of a Custom Attribute (section 3.39).
 /// Any data type or structure.
-/// If a structure, then the structure SHALL NOT include sub structures
+/// According to the specifications, If a structure, then the structure SHALL NOT include sub structures.
+/// In this implementation, we use a JSON value to represent the structure.
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 #[serde(untagged)]
 pub enum CustomAttributeValue {
     TextString(String),
     Integer(i32),
     LongInteger(i64),
-    BigInteger(Vec<u8>),
-    Enumeration(u32),
+    BigInteger(BigInt),
+    ByteString(Vec<u8>),
     Boolean(bool),
-    DateTime(i64),
-    Interval(u64),
-    Structure(VendorAttribute),
+    DateTime(OffsetDateTime),
+    Interval(u32),
+    Structure(Value),
+}
+
+impl From<CustomAttributeValue> for kmip_2_1::kmip_types::VendorAttributeValue {
+    fn from(value: CustomAttributeValue) -> Self {
+        match value {
+            CustomAttributeValue::TextString(v) => Self::TextString(v),
+            CustomAttributeValue::Integer(v) => Self::Integer(v),
+            CustomAttributeValue::LongInteger(v) => Self::LongInteger(v),
+            CustomAttributeValue::BigInteger(v) => Self::BigInteger(v),
+            CustomAttributeValue::ByteString(v) => Self::ByteString(v),
+            CustomAttributeValue::Boolean(v) => Self::Boolean(v),
+            CustomAttributeValue::DateTime(v) => Self::DateTime(v),
+            CustomAttributeValue::Interval(v) => Self::Interval(v),
+            CustomAttributeValue::Structure(v) => Self::Structure(v),
+        }
+    }
+}
+
+impl From<kmip_2_1::kmip_types::VendorAttributeValue> for CustomAttributeValue {
+    fn from(value: kmip_2_1::kmip_types::VendorAttributeValue) -> Self {
+        match value {
+            kmip_2_1::kmip_types::VendorAttributeValue::TextString(v) => Self::TextString(v),
+            kmip_2_1::kmip_types::VendorAttributeValue::Integer(v) => Self::Integer(v),
+            kmip_2_1::kmip_types::VendorAttributeValue::LongInteger(v) => Self::LongInteger(v),
+            kmip_2_1::kmip_types::VendorAttributeValue::BigInteger(v) => Self::BigInteger(v),
+            kmip_2_1::kmip_types::VendorAttributeValue::ByteString(v) => Self::ByteString(v),
+            kmip_2_1::kmip_types::VendorAttributeValue::Boolean(v) => Self::Boolean(v),
+            kmip_2_1::kmip_types::VendorAttributeValue::DateTime(v) => Self::DateTime(v),
+            kmip_2_1::kmip_types::VendorAttributeValue::Interval(v) => Self::Interval(v),
+            kmip_2_1::kmip_types::VendorAttributeValue::Structure(v) => Self::Structure(v),
+        }
+    }
 }
 
 impl From<Vec<Attribute>> for kmip_2_1::kmip_attributes::Attributes {
@@ -771,7 +807,7 @@ impl From<Vec<Attribute>> for kmip_2_1::kmip_attributes::Attributes {
                     vas.push(VendorAttribute {
                         vendor_identification: "KMIP1".to_owned(),
                         attribute_name: n,
-                        attribute_value: serde_json::to_vec(&v).unwrap_or(Vec::new()),
+                        attribute_value: v.into(),
                     });
                 }
                 Attribute::AlternativeName(v) => {

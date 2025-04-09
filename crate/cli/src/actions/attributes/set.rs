@@ -8,6 +8,7 @@ use cosmian_kms_client::{
         kmip_operations::{SetAttribute, SetAttributeResponse},
         kmip_types::{
             self, CryptographicAlgorithm, Link, LinkType, LinkedObjectIdentifier, VendorAttribute,
+            VendorAttributeValue,
         },
     },
     KmsClient,
@@ -117,9 +118,9 @@ impl TryFrom<&VendorAttributeCli> for Attribute {
                 .clone()
                 .unwrap_or_default(),
             attribute_name: vendor_attribute.attribute_name.clone().unwrap_or_default(),
-            attribute_value: hex::decode(
+            attribute_value: VendorAttributeValue::ByteString(hex::decode(
                 vendor_attribute.attribute_value.clone().unwrap_or_default(),
-            )?,
+            )?),
         };
         Ok(Self::VendorAttribute(vendor_attribute))
     }
@@ -135,9 +136,9 @@ impl TryFrom<&VendorAttributeCli> for VendorAttribute {
                 .clone()
                 .unwrap_or_default(),
             attribute_name: vendor_attribute.attribute_name.clone().unwrap_or_default(),
-            attribute_value: hex::decode(
+            attribute_value: VendorAttributeValue::ByteString(hex::decode(
                 vendor_attribute.attribute_value.clone().unwrap_or_default(),
-            )?,
+            )?),
         };
         Ok(vendor_attribute)
     }
