@@ -78,7 +78,7 @@ pub(crate) async fn set_attribute(
         }
         Attribute::Link(link) => {
             trace!("Set Attribute: Link: {:?}", link);
-            attributes.set_link(link.link_type, link.linked_object_identifier.clone());
+            attributes.set_link(link.link_type, link.linked_object_identifier);
         }
         Attribute::VendorAttribute(vendor_attribute) => {
             trace!("Set Attribute: Vendor Attributes: {:?}", vendor_attribute);

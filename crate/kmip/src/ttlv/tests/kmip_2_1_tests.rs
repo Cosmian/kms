@@ -423,7 +423,7 @@ fn test_des_aes_key() {
 }
 
 #[test]
-fn test_object_ibn_struct() {
+fn test_object_inside_struct() {
     #[derive(Serialize, Deserialize, PartialEq, Debug)]
     #[serde(rename_all = "PascalCase")]
     struct Wrapper {
@@ -512,10 +512,18 @@ fn test_object_public_key() {
     // Deserializer
     let rec: Object = from_ttlv(ttlv).unwrap();
     assert_eq!(key, rec);
+
+    // JSON
+    let json = serde_json::to_string_pretty(&key).unwrap();
+    info!("{}", json);
+    // Deserialize
+    let key_from_json = serde_json::from_str::<Object>(&json).unwrap();
+    assert_eq!(key, key_from_json);
 }
 
 #[test]
 fn test_import_public_key() {
+    // log_init(Some("trace"));
     log_init(option_env!("RUST_LOG"));
     let key_bytes: &[u8] = b"this_is_a_test";
     let key = Object::PublicKey(PublicKey {

@@ -1,6 +1,6 @@
 #![allow(clippy::unwrap_used, clippy::print_stdout, clippy::expect_used)]
 
-use std::{env::temp_dir, path::PathBuf, sync::Arc};
+use std::{path::PathBuf, sync::Arc};
 
 use actix_http::Request;
 use actix_web::{
@@ -31,9 +31,10 @@ pub(crate) fn https_clap_config() -> ClapConfig {
 }
 
 pub(crate) fn https_clap_config_opts(google_cse_kacls_url: Option<String>) -> ClapConfig {
-    let tmp_dir = temp_dir();
+    let project_root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    // let tmp_dir = temp_dir();
     let uuid = Uuid::new_v4();
-    let sqlite_path = tmp_dir.join(format!("{uuid}.sqlite"));
+    let sqlite_path = project_root.join(format!("cosmian-kms/{uuid}.sqlite"));
     if sqlite_path.exists() {
         std::fs::remove_file(&sqlite_path).unwrap();
     }
