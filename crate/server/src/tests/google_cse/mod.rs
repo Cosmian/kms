@@ -20,7 +20,7 @@ use cosmian_kmip::{
         kmip_types::{
             BlockCipherMode, CertificateAttributes, CryptographicParameters, EncodingOption,
             EncryptionKeyInformation, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
-            UniqueIdentifier, VendorAttribute, WrappingMethod,
+            UniqueIdentifier, VendorAttribute, VendorAttributeValue, WrappingMethod,
         },
         requests::create_rsa_key_pair_request,
         KmipOperation,
@@ -402,7 +402,7 @@ async fn test_create_pair_encrypt_decrypt() -> KResult<()> {
         vendor_attributes: Some(vec![VendorAttribute {
             vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
             attribute_name: VENDOR_ATTR_X509_EXTENSION.to_owned(),
-            attribute_value: EXTENSION_CONFIG.to_vec(),
+            attribute_value: VendorAttributeValue::ByteString(EXTENSION_CONFIG.to_vec()),
         }]),
         ..Attributes::default()
     };

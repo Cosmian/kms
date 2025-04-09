@@ -9,7 +9,6 @@ use cosmian_kmip::kmip_2_1::extra::fips::{
 #[cfg(feature = "fips")]
 use cosmian_kmip::kmip_2_1::kmip_types::{CryptographicAlgorithm, CryptographicUsageMask};
 use cosmian_kmip::kmip_2_1::{
-    extra::{VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
     kmip_attributes::Attributes,
     kmip_objects::{Object, ObjectType},
     kmip_operations::{Certify, CertifyResponse, CreateKeyPair},
@@ -598,8 +597,7 @@ fn build_and_sign_certificate(
     // Create a new Asn1Time object for the current time
     let now = Asn1Time::days_from_now(0).context("could not get a date in ASN.1")?;
     // retrieve the number of days for the validity of the certificate
-    let mut number_of_days =
-        u32::try_from(attributes.extract_requested_validity_days()?.unwrap_or(365))?;
+    let mut number_of_days = u32::try_from(attributes.remove_validity_days().unwrap_or(365))?;
     trace!("Number of days: {}", number_of_days);
 
     // the number of days cannot exceed that of the issuer certificate
@@ -623,11 +621,10 @@ fn build_and_sign_certificate(
 
     // Extensions supplied using an extension attribute
     // This requires knowing the issuer certificate
-    if let Some(extensions) =
-        attributes.get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_X509_EXTENSION)
-    {
-        let extensions_as_str = String::from_utf8(extensions.to_vec())?;
+    if let Some(extensions) = attributes.remove_x509_extension_file() {
+        let extensions_as_str = String::from_utf8(extensions)?;
         debug!("OpenSSL Extensions: {}", extensions_as_str);
+        // Create a new X509V3Context object for the issuer certificate
         let context = x509_builder.x509v3_context(issuer.certificate(), None);
         x509_extensions::parse_v3_ca_from_str(&extensions_as_str, &context)?
             .into_iter()
