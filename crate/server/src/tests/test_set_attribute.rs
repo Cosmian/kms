@@ -176,14 +176,14 @@ async fn set_link_attribute_and_remove_it(
     let get_response = get_attributes(kms, uid, tag).await?;
     assert!(get_response.attributes.link.is_none());
 
-    let links = vec![Link {
+    let link = Link {
         link_type,
         linked_object_identifier: LinkedObjectIdentifier::TextString("my_link".to_owned()),
-    }];
-    set_attribute(kms, uid, Attribute::Links(links.clone())).await?;
+    };
+    set_attribute(kms, uid, Attribute::Link(link.clone())).await?;
 
     let get_response = get_attributes(kms, uid, tag).await?;
-    assert_eq!(get_response.attributes.link, Some(links));
+    assert_eq!(get_response.attributes.link, Some(vec![link]));
 
     kms.delete_attribute(
         DeleteAttribute {

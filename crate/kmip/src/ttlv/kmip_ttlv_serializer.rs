@@ -606,9 +606,10 @@ impl ser::Serializer for &mut TtlvSerializer {
             // the children will be handled in SerializeStruct impl
             trace!("serialize_struct named: {name} in parent: {:?}", parent);
             parent.value = TTLValue::Structure(Vec::with_capacity(len));
-            // corner case: when the parent has a filed named `object`, then the
-            // the field name must be replaced the the `name`of the struct: example: SymmetricKey
+            // corner case: when the parent has a field named `object`, then the
+            // the field name must be replaced the `name`of the struct: example: SymmetricKey
             if parent.tag == "Object" {
+                trace!("... replacing  \"Object\" with: {name}");
                 name.clone_into(&mut parent.tag);
             }
         } else {
@@ -919,15 +920,34 @@ impl SerializeStruct for &mut TtlvSerializer {
                 value: TTLValue::Interval(interval),
             },
             Detected::Other => {
+
                 let current_ttlv = TTLV {
                     tag: key.to_owned(),
                     value: TTLValue::Boolean(true),
                 };
                 self.stack.push(current_ttlv);
                 value.serialize(&mut **self)?;
-                self.stack.pop().ok_or_else(|| {
+                let mut ttlv = self.stack.pop().ok_or_else(|| {
                     TtlvError::custom("'unexpected end of struct fields: no parent ".to_owned())
-                })?
+                })?;
+                // There is a corner case: if the field name is "Object", then we serialize the
+                // Object structure directly into the parent structure (no intermediate TTLV with
+                // tag "Object")
+                if key == "Object" {
+                    trace!("... the field name is 'Object', removing the Object layer");
+                    // remove the "Object" layer
+                    if let TTLValue::Structure(ref mut v) = ttlv.value {
+                        if v.len() == 1 {
+                            ttlv = v.pop().ok_or_else(|| {
+                                TtlvError::custom(
+                                    "unexpected end of struct fields: no child".to_owned(),
+                                )
+                            })?;
+                        }
+                        // more than one object in the structure? This should not happen
+                    }
+                }
+                ttlv
             }
         };
 
