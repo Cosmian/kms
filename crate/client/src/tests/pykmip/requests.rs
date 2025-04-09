@@ -1,3 +1,6 @@
+use std::vec;
+
+use cosmian_kmip::kmip_1_4::kmip_attributes::Attribute;
 use cosmian_logger::log_init;
 use tracing::info;
 
@@ -36,34 +39,29 @@ fn test_query() {
 fn test_create_aes_symmetric_key() {
     // log_init(option_env!("RUST_LOG"));
     log_init(Some("debug"));
-    let attributes = Attributes {
-        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-        cryptographic_length: Some(128),
-        cryptographic_usage_mask: Some(
+    let attributes = vec![
+        Attribute::CryptographicAlgorithm(CryptographicAlgorithm::AES),
+        Attribute::CryptographicLength(128),
+        Attribute::CryptographicUsageMask(
             CryptographicUsageMask::Encrypt
                 | CryptographicUsageMask::Decrypt
                 | CryptographicUsageMask::WrapKey
                 | CryptographicUsageMask::UnwrapKey
                 | CryptographicUsageMask::KeyAgreement,
         ),
-        key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
-        // object_type: Some(ObjectType::SymmetricKey), // Not supported by the PyKMIP server
-        // unique_identifier: Some(key_id), // Not supported by the PyKMIP server
-        sensitive: Some(false),
-        // custom_attribute: Some(vec![CustomAttributeValue::TextString(
-        //     "custom value".to_owned(),
-        // )]),  // Not supported by the PyKMIP server
-        ..Attributes::default()
-    };
-    // Note: PyKMIP server does not support Custom Attributes with Structures
-    // attributes
-    //     .set_tags(&["tag1".to_owned(), "tag2".to_owned()])
-    //     .unwrap();
+        Attribute::Sensitive(false),
+        // Note: PyKMIP server does not support ObjectType, UniqueIdentifier and CustomAttribute
+        // Attribute::ObjectType(ObjectType::SymmetricKey),
+        // Attribute::UniqueIdentifier(UniqueIdentifier::TextString("test_key".to_owned())),
+        // Attribute::CustomAttribute(
+        //     CustomAttribute::TextString("custom value".to_owned()),
+        // ),
+    ];
 
     let create_kk = Create {
         object_type: ObjectType::SymmetricKey,
         template_attribute: TemplateAttribute {
-            attribute: Some(attributes.to_attributes()),
+            attribute: Some(attributes),
         },
     };
 

@@ -16,6 +16,7 @@ use cosmian_kmip::{
 };
 use cosmian_kms_client::SocketClient;
 use cosmian_logger::log_init;
+use log::info;
 
 use super::create_1_4::create_symmetric_key;
 use crate::tests::ttlv_tests::get_client;
@@ -29,6 +30,7 @@ fn test_add_attribute_1_4() {
 
     // Create a symmetric key
     let key_id = create_symmetric_key(&client);
+    info!("Key ID: {}", key_id);
 
     // Add attributes to the key
     add_attributes(&client, &key_id);
