@@ -161,9 +161,11 @@ pub struct SymmetricKey {
 ///
 /// Order matters: `SecretData` will be deserialized as a `PrivateKey` if it
 /// appears after despite the presence of `secret_data_type`
+/// 
+/// Note: this enum is not "untagged" because we need the Variant name (which is the KMIP Object Name)
+/// in the json serialization for the Database.
 #[derive( Clone, Eq, Serialize, PartialEq, Debug, VariantNames)]
 #[serde(rename_all = "PascalCase")]
-// #[serde(untagged)]
 pub enum Object {
     /// A Managed Cryptographic Object that is a digital certificate.
     /// It is a DER-encoded X.509 public key certificate.
@@ -216,27 +218,6 @@ pub enum Object {
     /// A Managed Cryptographic Object that is a symmetric key.
     SymmetricKey(SymmetricKey),
 }
-
-// impl Serialize for Object {
-//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-//     where
-//         S: serde::Serializer,
-//     {
-//         match self {
-//             Self::Certificate(certificate) => certificate.serialize(serializer),
-//             Self::CertificateRequest(certificate_request) => {
-//                 certificate_request.serialize(serializer)
-//             }
-//             Self::OpaqueObject(opaque_object) => opaque_object.serialize(serializer),
-//             Self::PGPKey(pgp_key) => pgp_key.serialize(serializer),
-//             Self::SecretData(secret_data) => secret_data.serialize(serializer),
-//             Self::SplitKey(split_key) => split_key.serialize(serializer),
-//             Self::PrivateKey(private_key) => private_key.serialize(serializer),
-//             Self::PublicKey(public_key) => public_key.serialize(serializer),
-//             Self::SymmetricKey(symmetric_key) => symmetric_key.serialize(serializer),
-//         }
-//     }
-// }
 
 impl<'de> Deserialize<'de> for Object {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
