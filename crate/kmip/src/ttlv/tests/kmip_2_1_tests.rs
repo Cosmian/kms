@@ -459,7 +459,6 @@ fn test_import_symmetric_key() {
     let key_bytes: &[u8] = b"this_is_a_test";
     let key = aes_key(key_bytes);
     let mut attributes = key.attributes().unwrap().to_owned();
-    attributes.set_vendor_attribute("Vendor", "int", VendorAttributeValue::Integer(1));
     attributes.set_vendor_attribute(
         "Vendor",
         "string",
@@ -503,6 +502,14 @@ fn test_import_symmetric_key() {
         attributes,
         object: key,
     };
+
+    //JSON serialize
+    let json = serde_json::to_string_pretty(&import).unwrap();
+    info!("{}", json);
+    //JSON deserialize
+    let import_from_json = serde_json::from_str::<Import>(&json).unwrap();
+    assert_eq!(import, import_from_json);
+
     // Serializer
     let ttlv = to_ttlv(&import).unwrap();
     info!("{:?}", ttlv);
