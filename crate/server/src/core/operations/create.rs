@@ -66,7 +66,7 @@ pub(crate) async fn create(
     // a copy of the unwrapped key if needed
     let mut unwrapped_key = None;
     // This is a Cosmos specific extension
-    let wrapping_key_id = request.attributes.extract_wrapping_key_id()?;
+    let wrapping_key_id = request.attributes.remove_wrapping_key_id();
     // This is useful to store a key on the default data store but wrapped by a key stored in an HSM
     // extract the wrapping key id
     if let Some(wrapping_key_id) = wrapping_key_id {

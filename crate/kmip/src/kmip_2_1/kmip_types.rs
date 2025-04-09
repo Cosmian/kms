@@ -9,11 +9,14 @@ use std::{
 };
 
 use kmip_derive::{kmip_enum, KmipEnumDeserialize, KmipEnumSerialize};
+use num_bigint_dig::BigInt;
 use serde::{
     de::{self, Visitor},
     Deserialize, Serialize,
 };
+use serde_json::Value;
 use strum::{Display, EnumIter};
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::{
@@ -806,7 +809,7 @@ pub struct VendorAttribute {
     /// i.e. [A-Za-z0-9_.])
     pub vendor_identification: String,
     pub attribute_name: String,
-    pub attribute_value: Vec<u8>,
+    pub attribute_value: VendorAttributeValue,
 }
 
 impl Display for VendorAttribute {
@@ -814,11 +817,45 @@ impl Display for VendorAttribute {
         write!(
             f,
             "VendorAttribute {{ vendor_identification: {}, attribute_name: {}, attribute_value: \
-             {} }}",
-            self.vendor_identification,
-            self.attribute_name,
-            hex::encode(&self.attribute_value)
+             {:?} }}",
+            self.vendor_identification, self.attribute_name, self.attribute_value
         )
+    }
+}
+
+/// The value of a Vendor Attribute
+/// Any data type or structure.
+/// If a structure, only JSON Value is supported.
+#[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
+#[serde(untagged)]
+pub enum VendorAttributeValue {
+    TextString(String),
+    Integer(i32),
+    LongInteger(i64),
+    BigInteger(BigInt),
+    ByteString(Vec<u8>),
+    Boolean(bool),
+    DateTime(OffsetDateTime),
+    Interval(u32),
+    Structure(Value),
+}
+
+impl Serialize for VendorAttributeValue {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Self::TextString(s) => serializer.serialize_str(s),
+            Self::Integer(i) => serializer.serialize_i32(*i),
+            Self::LongInteger(i) => serializer.serialize_i64(*i),
+            Self::BigInteger(i) => serializer.serialize_newtype_struct("BigInteger", i),
+            Self::ByteString(b) => serializer.serialize_bytes(b),
+            Self::Boolean(b) => serializer.serialize_bool(*b),
+            Self::DateTime(dt) => serializer.serialize_newtype_struct("OffsetDateTime", dt),
+            Self::Interval(i) => serializer.serialize_newtype_struct("Interval", i),
+            Self::Structure(v) => v.serialize(serializer),
+        }
     }
 }
 

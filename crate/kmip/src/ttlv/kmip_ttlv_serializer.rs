@@ -15,7 +15,7 @@ use zeroize::Zeroizing;
 
 use super::{error::TtlvError, TTLValue, TTLV};
 // use crate::{kmip_1_4, kmip_2_1, ttlv::KmipEnumerationVariant};
-use crate::ttlv::KmipEnumerationVariant;
+use crate::ttlv::{KmipBigInt, KmipEnumerationVariant};
 
 type Result<T> = std::result::Result<T, TtlvError>;
 
@@ -436,6 +436,22 @@ impl ser::Serializer for &mut TtlvSerializer {
                 } else {
                     None
                 }
+            }
+        }
+        // Yhis is used by `VendorAttributeValue::Serialize()``
+        impl Detect for &BigInt {
+            fn detect_specific_value(&self, _name: &'static str) -> Option<TTLValue> {
+                debug!("serializing a Big Int {:?}", self);
+                Some(TTLValue::BigInteger(KmipBigInt::from(
+                    self.to_owned().clone(),
+                )))
+            }
+        }
+        // This is used by `VendorAttributeValue::Serialize()`
+        impl Detect for &OffsetDateTime {
+            fn detect_specific_value(&self, _name: &'static str) -> Option<TTLValue> {
+                debug!("serializing a Offset Date Time {:?}", self);
+                Some(TTLValue::DateTime(*self.to_owned()))
             }
         }
         if let Some(value) = value.detect_specific_value(name) {
@@ -920,7 +936,6 @@ impl SerializeStruct for &mut TtlvSerializer {
                 value: TTLValue::Interval(interval),
             },
             Detected::Other => {
-
                 let current_ttlv = TTLV {
                     tag: key.to_owned(),
                     value: TTLValue::Boolean(true),

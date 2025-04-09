@@ -1,7 +1,9 @@
 use std::convert::TryFrom;
 
 use cosmian_kmip::kmip_2_1::{
-    extra::VENDOR_ID_COSMIAN, kmip_attributes::Attributes, kmip_types::VendorAttribute,
+    extra::VENDOR_ID_COSMIAN,
+    kmip_attributes::Attributes,
+    kmip_types::{VendorAttribute, VendorAttributeValue},
 };
 use serde::{Deserialize, Serialize};
 
@@ -23,11 +25,13 @@ impl TryFrom<&EnclaveSharedKeyCreateRequest> for VendorAttribute {
         Ok(Self {
             vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
             attribute_name: "enclave_shared_key_create_request".to_owned(),
-            attribute_value: serde_json::to_vec(&request).map_err(|e| {
-                CryptoError::Kmip(format!(
-                    "failed serializing the shared key setup value. Error: {e:?}"
-                ))
-            })?,
+            attribute_value: VendorAttributeValue::ByteString(
+                serde_json::to_vec(&request).map_err(|e| {
+                    CryptoError::Kmip(format!(
+                        "failed serializing the shared key setup value. Error: {e:?}"
+                    ))
+                })?,
+            ),
         })
     }
 }
@@ -43,7 +47,12 @@ impl TryFrom<&VendorAttribute> for EnclaveSharedKeyCreateRequest {
                 "the attributes in not a shared key create request".to_owned(),
             ))
         }
-        serde_json::from_slice::<Self>(&attribute.attribute_value).map_err(|e| {
+        let VendorAttributeValue::ByteString(value) = &attribute.attribute_value else {
+            return Err(CryptoError::Kmip(
+                "the attributes in not a shared key create request".to_owned(),
+            ))
+        };
+        serde_json::from_slice::<Self>(value).map_err(|e| {
             CryptoError::Kmip(format!(
                 "failed deserializing the Shared Key Create Request. Error: {e:?}"
             ))

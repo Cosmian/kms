@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use super::kmip_types::VendorAttributeValue;
 use crate::{
     kmip_0::kmip_types::ErrorReason,
     kmip_2_1::{
@@ -433,6 +434,7 @@ pub struct Attributes {
     /// deleted by the client.
     #[allow(clippy::struct_field_names)]
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "Attribute")]
     pub vendor_attributes: Option<Vec<VendorAttribute>>,
 
     /// The X.509 Certificate Identifier attribute is the X.509 certificate identifier
@@ -465,15 +467,32 @@ impl Attributes {
 
     /// Set a vendor attribute to the list of vendor attributes replacing one with an existing value
     /// if any
+    ///
+    /// This function will remove the vendor attribute if it exists and add the new vendor attribute.
+    ///
+    /// # Arguments
+    ///     * `vendor_identification` - The vendor identification string.
+    ///     * `attribute_name` - The name of the attribute.
+    ///     * `attribute_value` - The value of the attribute.
+    ///
+    /// # Returns
+    ///     * `Option<VendorAttributeValue>` - The old value of the attribute if it existed.
+    ///
     pub fn set_vendor_attribute(
         &mut self,
         vendor_identification: &str,
         attribute_name: &str,
-        attribute_value: Vec<u8>,
-    ) -> &mut Self {
-        let va = self.get_vendor_attribute_mut(vendor_identification, attribute_name);
-        va.attribute_value = attribute_value;
-        self
+        attribute_value: VendorAttributeValue,
+    ) -> Option<VendorAttributeValue> {
+        // Remove the vendor attribute if it exists
+        let old = self.remove_vendor_attribute(vendor_identification, attribute_name);
+        // Add the new vendor attribute
+        self.add_vendor_attribute(VendorAttribute {
+            vendor_identification: vendor_identification.to_owned(),
+            attribute_name: attribute_name.to_owned(),
+            attribute_value,
+        });
+        old
     }
 
     /// Return the vendor attribute with the given vendor identification and
@@ -483,73 +502,42 @@ impl Attributes {
         &self,
         vendor_identification: &str,
         attribute_name: &str,
-    ) -> Option<&[u8]> {
+    ) -> Option<&VendorAttributeValue> {
         self.vendor_attributes.as_ref().and_then(|vas| {
             vas.iter()
                 .find(|&va| {
                     va.vendor_identification == vendor_identification
                         && va.attribute_name == attribute_name
                 })
-                .map(|va| va.attribute_value.as_slice())
+                .map(|va| &va.attribute_value)
         })
     }
 
-    /// Return the vendor attribute with the given vendor identification
-    /// and remove it from the vendor attributes.
-    #[must_use]
-    pub fn extract_vendor_attribute_value(
+    /// Remove the vendor attribute with the given vendor identification and attribute name.
+    /// Returns the value of the removed attribute if it existed.
+    pub fn remove_vendor_attribute(
         &mut self,
         vendor_identification: &str,
         attribute_name: &str,
-    ) -> Option<Vec<u8>> {
-        let value = self
-            .get_vendor_attribute_value(vendor_identification, attribute_name)
-            .map(<[u8]>::to_vec);
-        if value.is_some() {
-            self.remove_vendor_attribute(vendor_identification, attribute_name);
-        }
-        value
-    }
-
-    /// Return the vendor attribute with the given vendor identification and
-    /// attribute name. If the attribute does not exist, an empty
-    /// vendor attribute is created and returned.
-    #[must_use]
-    #[allow(clippy::indexing_slicing)]
-    pub fn get_vendor_attribute_mut(
-        &mut self,
-        vendor_identification: &str,
-        attribute_name: &str,
-    ) -> &mut VendorAttribute {
-        let vas = self.vendor_attributes.get_or_insert_with(Vec::new);
-        let position = vas.iter().position(|va| {
-            va.vendor_identification == vendor_identification && va.attribute_name == attribute_name
-        });
-        let len = vas.len();
-        match position {
-            None => {
-                vas.push(VendorAttribute {
-                    vendor_identification: vendor_identification.to_owned(),
-                    attribute_name: attribute_name.to_owned(),
-                    attribute_value: vec![],
-                });
-                &mut vas[len]
-            }
-            Some(position) => &mut vas[position],
-        }
-    }
-
-    /// Remove a vendor attribute from the list of vendor attributes.
-    pub fn remove_vendor_attribute(&mut self, vendor_identification: &str, attribute_name: &str) {
-        if let Some(vas) = self.vendor_attributes.as_mut() {
-            vas.retain(|va| {
-                va.vendor_identification != vendor_identification
-                    || va.attribute_name != attribute_name
+    ) -> Option<VendorAttributeValue> {
+        if let Some(vas) = &mut self.vendor_attributes {
+            // Find the index of the vendor attribute
+            let index = vas.iter().position(|va| {
+                va.vendor_identification == vendor_identification
+                    && va.attribute_name == attribute_name
             });
-            if vas.is_empty() {
-                self.vendor_attributes = None;
+
+            // Remove the vendor attribute if found
+            if let Some(idx) = index {
+                let va = vas.remove(idx);
+                // If there are no more vendor attributes, set to None
+                if vas.is_empty() {
+                    self.vendor_attributes = None;
+                }
+                return Some(va.attribute_value);
             }
         }
+        None
     }
 
     /// Get the link to the object.
@@ -638,14 +626,14 @@ impl Attributes {
     /// Remove the authenticated additional data from the attributes and return it - for AESGCM unwrapping
     #[must_use]
     pub fn remove_aad(&mut self) -> Option<Vec<u8>> {
-        let aad = self
-            .get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_AAD)
-            .map(|value: &[u8]| value.to_vec());
-
-        if aad.is_some() {
-            self.remove_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_AAD);
-        }
-        aad
+        self.remove_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_AAD)
+            .and_then(|val| {
+                if let VendorAttributeValue::ByteString(value) = val {
+                    Some(value)
+                } else {
+                    None
+                }
+            })
     }
 
     /// Add the authenticated additional data to the attributes - for AESGCM unwrapping
@@ -653,7 +641,7 @@ impl Attributes {
         let va = VendorAttribute {
             vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
             attribute_name: VENDOR_ATTR_AAD.to_owned(),
-            attribute_value: value.to_vec(),
+            attribute_value: VendorAttributeValue::ByteString(value.to_vec()),
         };
         self.add_vendor_attribute(va);
     }
@@ -1071,6 +1059,7 @@ pub enum Attribute {
     /// A vendor specific Attribute is a structure used for sending and
     /// receiving a Managed Object attribute. The Vendor Identification and
     /// Attribute Name are text-strings that are used to identify the attribute.
+    #[serde(rename = "Attribute")]
     VendorAttribute(VendorAttribute),
 
     /// The X.509 Certificate Identifier attribute is the X.509 certificate identifier

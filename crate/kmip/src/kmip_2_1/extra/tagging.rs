@@ -2,7 +2,9 @@ use std::collections::HashSet;
 
 use crate::{
     error::KmipError,
-    kmip_2_1::{extra::VENDOR_ID_COSMIAN, kmip_attributes::Attributes},
+    kmip_2_1::{
+        extra::VENDOR_ID_COSMIAN, kmip_attributes::Attributes, kmip_types::VendorAttributeValue,
+    },
 };
 
 pub const VENDOR_ATTR_TAG: &str = "tag";
@@ -15,7 +17,13 @@ impl Attributes {
     #[must_use]
     pub fn get_tags(&self) -> HashSet<String> {
         self.get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_TAG)
-            .map(|value| serde_json::from_slice::<HashSet<String>>(value).unwrap_or_default())
+            .and_then(|value| {
+                if let VendorAttributeValue::Structure(value) = value {
+                    serde_json::from_value::<HashSet<String>>(value.clone()).ok()
+                } else {
+                    None
+                }
+            })
             .unwrap_or_default()
     }
 
@@ -24,13 +32,15 @@ impl Attributes {
         &mut self,
         tags: T,
     ) -> Result<(), KmipError> {
-        let va = self.get_vendor_attribute_mut(VENDOR_ID_COSMIAN, VENDOR_ATTR_TAG);
-        va.attribute_value = serde_json::to_vec::<HashSet<String>>(
-            &tags
-                .into_iter()
-                .map(|t| t.as_ref().to_owned())
-                .collect::<HashSet<_>>(),
-        )?;
+        self.set_vendor_attribute(
+            VENDOR_ID_COSMIAN,
+            VENDOR_ATTR_TAG,
+            VendorAttributeValue::Structure(serde_json::to_value::<HashSet<String>>(
+                tags.into_iter()
+                    .map(|t| t.as_ref().to_owned())
+                    .collect::<HashSet<_>>(),
+            )?),
+        );
         Ok(())
     }
 
@@ -51,12 +61,13 @@ impl Attributes {
     /// Remove the tags from the attributes and return them
     #[must_use]
     pub fn remove_tags(&mut self) -> Option<HashSet<String>> {
-        let tags = self
-            .get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_TAG)
-            .map(|value| serde_json::from_slice::<HashSet<String>>(value).unwrap_or_default());
-        if tags.is_some() {
-            self.remove_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_TAG);
-        }
-        tags
+        self.remove_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_TAG)
+            .and_then(|value| {
+                if let VendorAttributeValue::Structure(value) = value {
+                    serde_json::from_value::<HashSet<String>>(value).ok()
+                } else {
+                    None
+                }
+            })
     }
 }

@@ -173,11 +173,7 @@ pub(crate) async fn get_attributes(
             }) => {
                 if vendor_identification == VENDOR_ID_COSMIAN && attribute_name == VENDOR_ATTR_TAG {
                     let tags = kms.database.retrieve_tags(owm.id(), params.clone()).await?;
-                    res.add_vendor_attribute(VendorAttribute {
-                        vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
-                        attribute_name: VENDOR_ATTR_TAG.to_owned(),
-                        attribute_value: serde_json::to_vec(&tags)?,
-                    });
+                    res.set_tags(tags)?;
                 } else if let Some(value) =
                     attributes.get_vendor_attribute_value(&vendor_identification, &attribute_name)
                 {
