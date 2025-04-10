@@ -15,7 +15,7 @@ use zeroize::Zeroizing;
 
 use super::{error::TtlvError, TTLValue, TTLV};
 // use crate::{kmip_1_4, kmip_2_1, ttlv::KmipEnumerationVariant};
-use crate::ttlv::{KmipBigInt, KmipEnumerationVariant};
+use crate::ttlv::KmipEnumerationVariant;
 
 type Result<T> = std::result::Result<T, TtlvError>;
 
@@ -433,7 +433,7 @@ impl ser::Serializer for &mut TtlvSerializer {
                 None
             }
         }
-        // User for Interval everywhere and by `VendorAttributeValue::Serialize()``
+        // Used for Interval
         impl Detect for u32 {
             fn detect_specific_value(&self, name: &'static str) -> Option<TTLValue> {
                 if name == "Interval" {
@@ -441,29 +441,6 @@ impl ser::Serializer for &mut TtlvSerializer {
                 } else {
                     None
                 }
-            }
-        }
-        // This is used by `VendorAttributeValue::Serialize()``
-        impl Detect for &BigInt {
-            fn detect_specific_value(&self, _name: &'static str) -> Option<TTLValue> {
-                debug!("serializing a Big Int {:?}", self);
-                Some(TTLValue::BigInteger(KmipBigInt::from(
-                    self.to_owned().clone(),
-                )))
-            }
-        }
-        // This is used by `VendorAttributeValue::Serialize()`
-        impl Detect for &OffsetDateTime {
-            fn detect_specific_value(&self, _name: &'static str) -> Option<TTLValue> {
-                debug!("serializing a Offset Date Time {:?}", self);
-                Some(TTLValue::DateTime(*self.to_owned()))
-            }
-        }
-        // This is used by `VendorAttributeValue::Serialize()`
-        impl Detect for &TTLV {
-            fn detect_specific_value(&self, _name: &'static str) -> Option<TTLValue> {
-                debug!("serializing a TTLV {:?}", self);
-                Some(self.value.clone())
             }
         }
         if let Some(value) = value.detect_specific_value(name) {
@@ -859,6 +836,8 @@ impl SerializeStruct for &mut TtlvSerializer {
             DateTime(OffsetDateTime),
             DateTimeExtended(i128),
             DateTimeInterval(u32),
+            // Used in`VendorAttributeValue`
+            Structure(TTLV),
         }
         trait Detect {
             fn detect(&self) -> Detected;
@@ -908,11 +887,16 @@ impl SerializeStruct for &mut TtlvSerializer {
                 Detected::DateTimeExtended(**self)
             }
         }
-
         impl Detect for &u32 {
             fn detect(&self) -> Detected {
                 trace!("... the value is an Interval");
                 Detected::DateTimeInterval(**self)
+            }
+        }
+        impl Detect for &TTLV {
+            fn detect(&self) -> Detected {
+                trace!("... the value is a TTLV");
+                Detected::Structure(self.to_owned().clone())
             }
         }
 
@@ -947,6 +931,15 @@ impl SerializeStruct for &mut TtlvSerializer {
                 tag: key.to_owned(),
                 value: TTLValue::Interval(interval),
             },
+            Detected::Structure(ttlv) => {
+                // if the value is a TTLV, we need to add it to the parent
+                // structure
+                trace!("... the value is a TTLV");
+                TTLV {
+                    tag: key.to_owned(),
+                    value: TTLValue::Structure(vec![ttlv]),
+                }
+            }
             Detected::Other => {
                 let current_ttlv = TTLV {
                     tag: key.to_owned(),
