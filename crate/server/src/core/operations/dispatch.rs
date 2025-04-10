@@ -27,7 +27,6 @@ pub(crate) async fn dispatch(
         }
         "Create" => {
             let req = from_ttlv::<Create>(ttlv)?;
-            #[allow(clippy::large_futures)]
             let resp = kms.create(req, user, database_params).await?;
             Operation::CreateResponse(resp)
         }
@@ -103,7 +102,6 @@ pub(crate) async fn dispatch(
         }
         "ReKeyKeyPair" => {
             let req = from_ttlv::<ReKeyKeyPair>(ttlv)?;
-            #[allow(clippy::large_futures)]
             let resp = kms.rekey_keypair(req, user, database_params).await?;
             Operation::ReKeyKeyPairResponse(resp)
         }

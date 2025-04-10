@@ -89,8 +89,7 @@ impl KMS {
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<CreateResponse> {
-        #[allow(clippy::large_futures)]
-        operations::create(self, request, user, params).await
+        Box::pin(operations::create(self, request, user, params)).await
     }
 
     /// This operation requests the server to generate a new public/private key
