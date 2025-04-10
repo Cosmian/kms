@@ -35,14 +35,13 @@ RUN if [ "$FIPS" = "true" ]; then \
 #
 FROM debian:bullseye-slim AS kms-server
 
-COPY --from=builder /root/kms/crate/server/ui                   /data/ui
+COPY --from=builder /root/kms/crate/server/ui                   /usr/local/cosmian/ui
 COPY --from=builder /root/kms/target/release/cosmian_kms        /usr/bin/cosmian_kms
 COPY --from=builder /root/kms/target/release/cosmian            /usr/bin/cosmian
 COPY --from=builder /usr/local/openssl                          /usr/local/openssl
 #
 # Create working directory
 #
-WORKDIR /data
 
 EXPOSE 9998
 
