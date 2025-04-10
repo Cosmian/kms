@@ -13,14 +13,12 @@ rust-version.workspace = true
 doctest = false
 
 [features]
-fips = ["cosmian_kmip/fips"]
+fips = ["cosmian_kms_client_utils/fips"]
 
 [dependencies]
-cosmian_config_utils = { workspace = true }
 cosmian_crypto_core = { workspace = true }
 cosmian_http_client = { workspace = true }
-cosmian_kmip = { workspace = true }
-cosmian_kms_access = { workspace = true }
+cosmian_kms_client_utils = { path = "../client_utils" }
 der = { workspace = true }
 pem = { workspace = true }
 reqwest = { workspace = true, features = ["default", "json", "native-tls"] }
@@ -29,4 +27,3 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 url = { workspace = true }
-zeroize = { workspace = true }

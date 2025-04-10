@@ -3,14 +3,15 @@ use cosmian_findex_client::{
     RestClient,
     reexport::cosmian_findex_structs::{CUSTOM_WORD_LENGTH, Uuids},
 };
-use cosmian_kms_client::KmsClient;
+use cosmian_kms_client::{
+    KmsClient, reexport::cosmian_kms_client_utils::symmetric_utils::DataEncryptionAlgorithm,
+};
 use tracing::trace;
 
 use super::findex::parameters::FindexParameters;
 use crate::{
     actions::{
-        findex_server::findex::findex_instance::FindexInstance,
-        kms::symmetric::{DataEncryptionAlgorithm, DecryptAction},
+        findex_server::findex::findex_instance::FindexInstance, kms::symmetric::DecryptAction,
     },
     cli_bail, cli_error,
     error::result::{CosmianResult, CosmianResultHelper},

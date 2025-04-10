@@ -11,6 +11,7 @@ use cosmian_kms_client::{
             VendorAttribute,
         },
     },
+    reexport::cosmian_kms_client_utils::import_utils::{KeyUsage, build_usage_mask_from_key_usage},
 };
 use serde::Deserialize;
 use strum::EnumIter;
@@ -19,13 +20,7 @@ use tracing::{info, trace};
 use crate::{
     actions::{
         console,
-        kms::{
-            labels::ATTRIBUTE_ID,
-            shared::{
-                get_key_uid,
-                utils::{KeyUsage, build_usage_mask_from_key_usage},
-            },
-        },
+        kms::{labels::ATTRIBUTE_ID, shared::get_key_uid},
     },
     cli_bail,
     error::result::CosmianResult,

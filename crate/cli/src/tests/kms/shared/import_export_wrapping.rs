@@ -11,7 +11,9 @@ use cosmian_kms_client::{
         },
     },
     kmip_2_1::requests::create_symmetric_key_kmip_object,
-    read_object_from_json_ttlv_file, write_kmip_object_to_file,
+    read_object_from_json_ttlv_file,
+    reexport::cosmian_kms_client_utils::import_utils::KeyUsage,
+    write_kmip_object_to_file,
 };
 #[cfg(not(feature = "fips"))]
 use cosmian_kms_crypto::crypto::elliptic_curves::operation::create_x25519_key_pair;
@@ -22,7 +24,7 @@ use tracing::{debug, trace};
 
 use super::ExportKeyParams;
 use crate::{
-    actions::kms::{shared::utils::KeyUsage, symmetric::keys::create_key::CreateKeyAction},
+    actions::kms::symmetric::keys::create_key::CreateKeyAction,
     error::result::CosmianResult,
     tests::kms::{
         cover_crypt::master_key_pair::create_cc_master_key_pair,

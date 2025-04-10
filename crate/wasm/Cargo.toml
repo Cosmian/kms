@@ -1,0 +1,34 @@
+[package]
+name = "cosmian_kms_client_wasm"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+# doc test linking as a separate binary is extremely slow
+# and is not needed for internal lib
+doctest = false
+
+[features]
+fips = ["cosmian_kms_client_utils/fips"]
+default = ["getrandom/js"]
+
+[dependencies]
+base64.workspace = true
+cosmian_kms_client_utils = { path = "../client_utils" }
+getrandom = { version = "0.2", features = ["js"], optional = true }
+js-sys = "0.3.77"
+pem = { workspace = true }
+serde = { workspace = true }
+serde-wasm-bindgen = "0.6.5"
+serde_json = { workspace = true }
+wasm-bindgen = "0.2.100"
+x509-cert = { workspace = true, features = ["pem"] }
+zeroize = { workspace = true }
+
+[package.metadata.cargo-machete]
+ignored = ["getrandom"]

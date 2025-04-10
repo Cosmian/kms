@@ -1,23 +1,9 @@
-use std::{
-    fmt::{Display, Formatter},
-    path::PathBuf,
-};
+use std::path::PathBuf;
 
-use clap::{Parser, ValueEnum};
+use clap::Parser;
 use cosmian_kms_client::{
-    KmsClient,
-    cosmian_kmip::kmip_2_1::{
-        kmip_objects::ObjectType,
-        kmip_operations::Certify,
-        kmip_types::{
-            Attributes, CertificateAttributes, CertificateRequestType, LinkType,
-            LinkedObjectIdentifier, UniqueIdentifier,
-        },
-    },
-    kmip_2_1::kmip_types::{
-        CryptographicAlgorithm, CryptographicDomainParameters, KeyFormatType, RecommendedCurve,
-    },
-    read_bytes_from_file,
+    KmsClient, read_bytes_from_file,
+    reexport::cosmian_kms_client_utils::certificate_utils::{Algorithm, build_certify_request},
 };
 
 use crate::{
@@ -27,56 +13,6 @@ use crate::{
     },
     error::{CosmianError, result::CosmianResult},
 };
-
-/// The algorithm to use for the keypair generation
-#[derive(ValueEnum, Debug, Clone, Copy)]
-pub(crate) enum Algorithm {
-    #[cfg(not(feature = "fips"))]
-    NistP192,
-    NistP224,
-    NistP256,
-    NistP384,
-    NistP521,
-    #[cfg(not(feature = "fips"))]
-    X25519,
-    #[cfg(not(feature = "fips"))]
-    Ed25519,
-    #[cfg(not(feature = "fips"))]
-    X448,
-    #[cfg(not(feature = "fips"))]
-    Ed448,
-    #[cfg(not(feature = "fips"))]
-    RSA1024,
-    RSA2048,
-    RSA3072,
-    RSA4096,
-}
-
-impl Display for Algorithm {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            #[cfg(not(feature = "fips"))]
-            Self::NistP192 => write!(f, "nist-p192"),
-            Self::NistP224 => write!(f, "nist-p224"),
-            Self::NistP256 => write!(f, "nist-p256"),
-            Self::NistP384 => write!(f, "nist-p384"),
-            Self::NistP521 => write!(f, "nist-p521"),
-            #[cfg(not(feature = "fips"))]
-            Self::X25519 => write!(f, "x25519"),
-            #[cfg(not(feature = "fips"))]
-            Self::Ed25519 => write!(f, "ed25519"),
-            #[cfg(not(feature = "fips"))]
-            Self::X448 => write!(f, "x448"),
-            #[cfg(not(feature = "fips"))]
-            Self::Ed448 => write!(f, "ed448"),
-            #[cfg(not(feature = "fips"))]
-            Self::RSA1024 => write!(f, "rsa1024"),
-            Self::RSA2048 => write!(f, "rsa2048"),
-            Self::RSA3072 => write!(f, "rsa3072"),
-            Self::RSA4096 => write!(f, "rsa4096"),
-        }
-    }
-}
 
 /// Issue or renew a X509 certificate
 ///
@@ -240,175 +176,33 @@ pub struct CertifyAction {
 
 impl CertifyAction {
     pub async fn run(&self, client_connector: &KmsClient) -> CosmianResult<()> {
-        let mut attributes = Attributes {
-            object_type: Some(ObjectType::Certificate),
-            ..Attributes::default()
-        };
+        let certificate_signing_request_bytes = self
+            .certificate_signing_request
+            .as_ref()
+            .map(read_bytes_from_file)
+            .transpose()?;
 
-        // set the issuer certificate id
-        if let Some(issuer_certificate_id) = &self.issuer_certificate_id {
-            attributes.set_link(
-                LinkType::CertificateLink,
-                LinkedObjectIdentifier::TextString(issuer_certificate_id.clone()),
-            );
-        }
+        let certificate_extensions_bytes = self
+            .certificate_extensions
+            .as_ref()
+            .map(std::fs::read)
+            .transpose()?;
 
-        // set the issuer private key id
-        if let Some(issuer_private_key_id) = &self.issuer_private_key_id {
-            attributes.set_link(
-                LinkType::PrivateKeyLink,
-                LinkedObjectIdentifier::TextString(issuer_private_key_id.clone()),
-            );
-        }
-
-        // set the number of requested days
-        attributes.set_requested_validity_days(self.number_of_days);
-
-        // A certificate id has been provided
-        if let Some(certificate_id) = &self.certificate_id {
-            attributes.unique_identifier =
-                Some(UniqueIdentifier::TextString(certificate_id.clone()));
-        }
-
-        attributes.set_tags(&self.tags)?;
-
-        let mut certificate_request_value = None;
-        let mut certificate_request_type = None;
-        let mut unique_identifier = None;
-
-        if let Some(certificate_signing_request) = &self.certificate_signing_request {
-            certificate_request_value = Some(read_bytes_from_file(certificate_signing_request)?);
-            certificate_request_type = match self.certificate_signing_request_format.as_str() {
-                "der" => Some(CertificateRequestType::PKCS10),
-                _ => Some(CertificateRequestType::PEM),
-            };
-        } else if let Some(public_key_to_certify) = &self.public_key_id_to_certify {
-            attributes.certificate_attributes =
-                Some(Box::new(CertificateAttributes::parse_subject_line(
-                    self.subject_name.as_ref().ok_or_else(|| {
-                        CosmianError::Default(
-                            "subject name is required when certifying a public key".to_owned(),
-                        )
-                    })?,
-                )?));
-            unique_identifier = Some(UniqueIdentifier::TextString(
-                public_key_to_certify.to_string(),
-            ));
-        } else if let Some(certificate_id_to_renew) = &self.certificate_id_to_re_certify {
-            unique_identifier = Some(UniqueIdentifier::TextString(
-                certificate_id_to_renew.clone(),
-            ));
-        } else if self.generate_key_pair {
-            attributes.certificate_attributes =
-                Some(Box::new(CertificateAttributes::parse_subject_line(
-                    self.subject_name.as_ref().ok_or_else(|| {
-                        CosmianError::Default(
-                            "subject name is required when generating a keypair".to_owned(),
-                        )
-                    })?,
-                )?));
-            match self.algorithm {
-                #[cfg(not(feature = "fips"))]
-                Algorithm::RSA1024 => {
-                    rsa_algorithm(&mut attributes, 1024);
-                }
-                Algorithm::RSA2048 => {
-                    rsa_algorithm(&mut attributes, 2048);
-                }
-                Algorithm::RSA3072 => {
-                    rsa_algorithm(&mut attributes, 3072);
-                }
-                Algorithm::RSA4096 => {
-                    rsa_algorithm(&mut attributes, 4096);
-                }
-                #[cfg(not(feature = "fips"))]
-                Algorithm::NistP192 => {
-                    ec_algorithm(
-                        &mut attributes,
-                        CryptographicAlgorithm::EC,
-                        RecommendedCurve::P192,
-                    );
-                }
-                Algorithm::NistP224 => {
-                    ec_algorithm(
-                        &mut attributes,
-                        CryptographicAlgorithm::EC,
-                        RecommendedCurve::P224,
-                    );
-                }
-                Algorithm::NistP256 => {
-                    ec_algorithm(
-                        &mut attributes,
-                        CryptographicAlgorithm::EC,
-                        RecommendedCurve::P256,
-                    );
-                }
-                Algorithm::NistP384 => {
-                    ec_algorithm(
-                        &mut attributes,
-                        CryptographicAlgorithm::EC,
-                        RecommendedCurve::P384,
-                    );
-                }
-                Algorithm::NistP521 => {
-                    ec_algorithm(
-                        &mut attributes,
-                        CryptographicAlgorithm::EC,
-                        RecommendedCurve::P521,
-                    );
-                }
-                #[cfg(not(feature = "fips"))]
-                Algorithm::X25519 => {
-                    ec_algorithm(
-                        &mut attributes,
-                        CryptographicAlgorithm::EC,
-                        RecommendedCurve::CURVE25519,
-                    );
-                }
-                #[cfg(not(feature = "fips"))]
-                Algorithm::Ed25519 => {
-                    ec_algorithm(
-                        &mut attributes,
-                        CryptographicAlgorithm::Ed25519,
-                        RecommendedCurve::CURVEED25519,
-                    );
-                }
-                #[cfg(not(feature = "fips"))]
-                Algorithm::X448 => {
-                    ec_algorithm(
-                        &mut attributes,
-                        CryptographicAlgorithm::EC,
-                        RecommendedCurve::CURVE448,
-                    );
-                }
-                #[cfg(not(feature = "fips"))]
-                Algorithm::Ed448 => {
-                    ec_algorithm(
-                        &mut attributes,
-                        CryptographicAlgorithm::Ed448,
-                        RecommendedCurve::CURVEED448,
-                    );
-                }
-            }
-        } else {
-            return Err(CosmianError::Default(
-                "Supply a certificate signing request, a public key id or an existing certificate \
-                 id or request a keypair to be generated"
-                    .to_string(),
-            ));
-        }
-
-        if let Some(extension_file) = &self.certificate_extensions {
-            attributes.set_x509_extension_file(std::fs::read(extension_file)?);
-        }
-
-        let certify_request = Certify {
-            unique_identifier,
-            attributes: Some(attributes),
-            certificate_request_value,
-            certificate_request_type,
-            ..Certify::default()
-        };
+        let certify_request = build_certify_request(
+            &self.certificate_id,
+            &Some(self.certificate_signing_request_format.clone()),
+            &certificate_signing_request_bytes,
+            &self.public_key_id_to_certify,
+            &self.certificate_id_to_re_certify,
+            self.generate_key_pair,
+            &self.subject_name,
+            self.algorithm,
+            &self.issuer_private_key_id,
+            &self.issuer_certificate_id,
+            self.number_of_days,
+            &certificate_extensions_bytes,
+            &self.tags,
+        )?;
 
         let certificate_unique_identifier = client_connector
             .certify(certify_request)
@@ -423,27 +217,4 @@ impl CertifyAction {
 
         Ok(())
     }
-}
-
-fn ec_algorithm(
-    attributes: &mut Attributes,
-    cryptographic_algorithm: CryptographicAlgorithm,
-    recommended_curve: RecommendedCurve,
-) {
-    attributes.cryptographic_algorithm = Some(cryptographic_algorithm);
-    attributes.cryptographic_domain_parameters = Some(CryptographicDomainParameters {
-        recommended_curve: Some(recommended_curve),
-        ..CryptographicDomainParameters::default()
-    });
-    attributes.key_format_type = Some(KeyFormatType::ECPrivateKey);
-    attributes.object_type = Some(ObjectType::PrivateKey);
-}
-
-fn rsa_algorithm(attributes: &mut Attributes, cryptographic_length: i32) {
-    attributes.cryptographic_algorithm = Some(CryptographicAlgorithm::RSA);
-    attributes.cryptographic_length = Some(cryptographic_length);
-    attributes.cryptographic_domain_parameters = None;
-    attributes.cryptographic_parameters = None;
-    attributes.key_format_type = Some(KeyFormatType::TransparentRSAPrivateKey);
-    attributes.object_type = Some(ObjectType::PrivateKey);
 }

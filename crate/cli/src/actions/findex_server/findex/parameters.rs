@@ -1,10 +1,12 @@
 use clap::Parser;
-use cosmian_kms_client::KmsClient;
+use cosmian_kms_client::{
+    KmsClient, reexport::cosmian_kms_client_utils::create_utils::SymmetricAlgorithm,
+};
 use uuid::Uuid;
 
 use super::findex_instance::FindexKeys;
 use crate::{
-    actions::kms::symmetric::keys::create_key::{CreateKeyAction, SymmetricAlgorithm},
+    actions::kms::symmetric::keys::create_key::CreateKeyAction,
     error::{CosmianError, result::CosmianResult},
 };
 

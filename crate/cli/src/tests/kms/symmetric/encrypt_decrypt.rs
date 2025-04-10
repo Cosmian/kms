@@ -1,7 +1,12 @@
 use std::{fs, path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
-use cosmian_kms_client::{KmsClient, read_bytes_from_file};
+use cosmian_kms_client::{
+    KmsClient, read_bytes_from_file,
+    reexport::cosmian_kms_client_utils::{
+        create_utils::SymmetricAlgorithm, symmetric_utils::DataEncryptionAlgorithm,
+    },
+};
 use strum::IntoEnumIterator;
 use tempfile::TempDir;
 use test_kms_server::start_default_test_kms_server;
@@ -9,8 +14,7 @@ use test_kms_server::start_default_test_kms_server;
 use super::SUB_COMMAND;
 use crate::{
     actions::kms::symmetric::{
-        DataEncryptionAlgorithm, DecryptAction, EncryptAction, KeyEncryptionAlgorithm,
-        keys::create_key::{CreateKeyAction, SymmetricAlgorithm},
+        DecryptAction, EncryptAction, KeyEncryptionAlgorithm, keys::create_key::CreateKeyAction,
     },
     config::COSMIAN_CLI_CONF_ENV,
     error::{CosmianError, result::CosmianResult},

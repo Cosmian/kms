@@ -1,13 +1,6 @@
 use cosmian_http_client::HttpClient;
-use cosmian_kmip::kmip_2_1::{
-    kmip_messages::{Message, MessageResponse},
-    kmip_operations::{
-        DeleteAttribute, DeleteAttributeResponse, Hash, HashResponse, Mac, MacResponse, ReKey,
-        ReKeyResponse, SetAttribute, SetAttributeResponse,
-    },
-};
 // re-export the kmip module as kmip
-use cosmian_kmip::kmip_2_1::{
+use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::{
     kmip_operations::{
         Certify, CertifyResponse, Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse,
         Decrypt, DecryptResponse, Destroy, DestroyResponse, Encrypt, EncryptResponse, Export,
@@ -17,8 +10,18 @@ use cosmian_kmip::kmip_2_1::{
     },
     ttlv::{TTLV, deserializer::from_ttlv, serializer::to_ttlv},
 };
-use cosmian_kms_access::access::{
-    Access, AccessRightsObtainedResponse, ObjectOwnedResponse, SuccessResponse, UserAccessResponse,
+use cosmian_kms_client_utils::reexport::{
+    cosmian_kmip::kmip_2_1::{
+        kmip_messages::{Message, MessageResponse},
+        kmip_operations::{
+            DeleteAttribute, DeleteAttributeResponse, Hash, HashResponse, Mac, MacResponse, ReKey,
+            ReKeyResponse, SetAttribute, SetAttributeResponse,
+        },
+    },
+    cosmian_kms_access::access::{
+        Access, AccessRightsObtainedResponse, ObjectOwnedResponse, SuccessResponse,
+        UserAccessResponse,
+    },
 };
 use reqwest::{Response, StatusCode};
 use serde::Serialize;

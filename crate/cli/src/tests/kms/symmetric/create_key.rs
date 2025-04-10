@@ -6,11 +6,12 @@ use cosmian_crypto_core::{
     CsRng,
     reexport::rand_core::{RngCore, SeedableRng},
 };
+use cosmian_kms_client::reexport::cosmian_kms_client_utils::create_utils::SymmetricAlgorithm;
 use test_kms_server::start_default_test_kms_server;
 
 use super::SUB_COMMAND;
 use crate::{
-    actions::kms::symmetric::keys::create_key::{CreateKeyAction, SymmetricAlgorithm},
+    actions::kms::symmetric::keys::create_key::CreateKeyAction,
     config::COSMIAN_CLI_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
     tests::{

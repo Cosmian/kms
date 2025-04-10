@@ -14,14 +14,16 @@ use cosmian_findex_client::{
         },
     },
 };
-use cosmian_kms_client::KmsClient;
+use cosmian_kms_client::{
+    KmsClient, reexport::cosmian_kms_client_utils::symmetric_utils::DataEncryptionAlgorithm,
+};
 use tracing::trace;
 
 use super::findex::parameters::FindexParameters;
 use crate::{
     actions::{
         findex_server::findex::findex_instance::FindexInstance,
-        kms::symmetric::{DataEncryptionAlgorithm, EncryptAction, KeyEncryptionAlgorithm},
+        kms::symmetric::{EncryptAction, KeyEncryptionAlgorithm},
     },
     cli_bail,
     error::result::{CosmianResult, CosmianResultHelper},

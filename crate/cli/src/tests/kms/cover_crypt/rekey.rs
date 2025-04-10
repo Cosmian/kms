@@ -5,12 +5,13 @@ use cosmian_cover_crypt::{
     AccessPolicy, EncryptedHeader, MasterSecretKey, UserSecretKey, api::Covercrypt,
 };
 use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable, test_serialization};
+use cosmian_kms_client::reexport::cosmian_kms_client_utils::import_utils::KeyUsage;
 use cosmian_kms_crypto::crypto::cover_crypt::access_structure::access_structure_from_json_file;
 use tempfile::TempDir;
 use test_kms_server::start_default_test_kms_server;
 
 use crate::{
-    actions::kms::{shared::utils::KeyUsage, symmetric::keys::create_key::CreateKeyAction},
+    actions::kms::symmetric::keys::create_key::CreateKeyAction,
     config::COSMIAN_CLI_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
     tests::{

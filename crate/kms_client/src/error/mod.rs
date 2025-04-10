@@ -1,7 +1,7 @@
 use std::io;
 
 use cosmian_http_client::HttpClientError;
-use cosmian_kmip::{
+use cosmian_kms_client_utils::reexport::cosmian_kmip::{
     KmipError,
     kmip_2_1::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
 };
@@ -57,7 +57,7 @@ pub enum KmsClientError {
     UrlError(#[from] url::ParseError),
 
     #[error(transparent)]
-    ConfigUtils(#[from] cosmian_config_utils::ConfigUtilsError),
+    ConfigUtils(#[from] cosmian_kms_client_utils::reexport::cosmian_config_utils::ConfigUtilsError),
 
     #[error(transparent)]
     TryFromIntError(#[from] std::num::TryFromIntError),

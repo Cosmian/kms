@@ -25,7 +25,6 @@ pub(crate) fn encrypt(
     input_files: &[&str],
     public_key_id: &str,
     output_file: Option<&str>,
-    authentication_data: Option<&str>,
 ) -> CosmianResult<()> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(COSMIAN_CLI_CONF_ENV, cli_conf_path);
@@ -38,10 +37,6 @@ pub(crate) fn encrypt(
     if let Some(output_file) = output_file {
         args.push("-o");
         args.push(output_file);
-    }
-    if let Some(authentication_data) = authentication_data {
-        args.push("-a");
-        args.push(authentication_data);
     }
     cmd.arg(KMS_SUBCOMMAND).arg(SUB_COMMAND).args(args);
     recover_cmd_logs(&mut cmd);
@@ -57,7 +52,6 @@ pub(crate) fn decrypt(
     input_file: &str,
     private_key_id: &str,
     output_file: Option<&str>,
-    authentication_data: Option<&str>,
 ) -> CosmianResult<()> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(COSMIAN_CLI_CONF_ENV, cli_conf_path);
@@ -66,10 +60,6 @@ pub(crate) fn decrypt(
     if let Some(output_file) = output_file {
         args.push("-o");
         args.push(output_file);
-    }
-    if let Some(authentication_data) = authentication_data {
-        args.push("-a");
-        args.push(authentication_data);
     }
     cmd.arg(KMS_SUBCOMMAND).arg(SUB_COMMAND).args(args);
     let output = recover_cmd_logs(&mut cmd);
@@ -103,7 +93,6 @@ async fn test_encrypt_decrypt_using_ids() -> CosmianResult<()> {
         &[input_file.to_str().unwrap()],
         &public_key_id,
         Some(output_file.to_str().unwrap()),
-        None,
     )?;
 
     // the user key should be able to decrypt the file
@@ -112,7 +101,6 @@ async fn test_encrypt_decrypt_using_ids() -> CosmianResult<()> {
         output_file.to_str().unwrap(),
         &private_key_id,
         Some(recovered_file.to_str().unwrap()),
-        None,
     )?;
     assert!(recovered_file.exists());
 
@@ -145,7 +133,6 @@ async fn test_encrypt_decrypt_using_tags() -> CosmianResult<()> {
         &[input_file.to_str().unwrap()],
         "[\"tag_ec\"]",
         Some(output_file.to_str().unwrap()),
-        None,
     )?;
 
     // the user key should be able to decrypt the file
@@ -154,7 +141,6 @@ async fn test_encrypt_decrypt_using_tags() -> CosmianResult<()> {
         output_file.to_str().unwrap(),
         "[\"tag_ec\"]",
         Some(recovered_file.to_str().unwrap()),
-        None,
     )?;
     assert!(recovered_file.exists());
 

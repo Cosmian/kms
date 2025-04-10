@@ -1,4 +1,4 @@
-use cosmian_kmip::kmip_2_1::{
+use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::{
     kmip_messages::{Message, MessageBatchItem, MessageHeader},
     kmip_operations::Operation,
     kmip_types::ProtocolVersion,

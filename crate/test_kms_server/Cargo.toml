@@ -13,10 +13,7 @@ rust-version.workspace = true
 doctest = false
 
 [features]
-fips = [
-  "cosmian_cli/fips",
-  "cosmian_kms_server/fips",
-]
+fips = ["cosmian_cli/fips", "cosmian_kms_server/fips"]
 
 [[bench]]
 name = "benches"

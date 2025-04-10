@@ -1,10 +1,12 @@
 use std::process::Command;
 
 use assert_cmd::prelude::*;
+use cosmian_kms_client::reexport::cosmian_kms_client_utils::import_utils::{
+    CertificateInputFormat, KeyUsage,
+};
 use test_kms_server::start_default_test_kms_server;
 
 use crate::{
-    actions::kms::{certificates::CertificateInputFormat, shared::utils::KeyUsage},
     config::COSMIAN_CLI_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
     tests::{

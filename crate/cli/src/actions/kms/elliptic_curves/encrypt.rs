@@ -33,11 +33,6 @@ pub struct EncryptAction {
     /// The encrypted output file path
     #[clap(required = false, long, short = 'o')]
     output_file: Option<PathBuf>,
-
-    /// Optional authentication data.
-    /// This data needs to be provided back for decryption.
-    #[clap(required = false, long, short = 'a')]
-    authentication_data: Option<String>,
 }
 
 impl EncryptAction {
@@ -50,16 +45,7 @@ impl EncryptAction {
         let id = get_key_uid(self.key_id.as_ref(), self.tags.as_ref(), KEY_ID)?;
 
         // Create the kmip query
-        let encrypt_request = encrypt_request(
-            &id,
-            None,
-            data,
-            None,
-            self.authentication_data
-                .as_deref()
-                .map(|s| s.as_bytes().to_vec()),
-            None,
-        )?;
+        let encrypt_request = encrypt_request(&id, None, data, None, None, None)?;
 
         // Query the KMS with your kmip data and get the key pair ids
         let encrypt_response = kms_rest_client

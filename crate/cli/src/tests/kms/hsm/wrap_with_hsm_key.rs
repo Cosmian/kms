@@ -1,16 +1,14 @@
+use cosmian_kms_client::reexport::cosmian_kms_client_utils::{
+    create_utils::SymmetricAlgorithm, export_utils::ExportKeyFormat,
+    symmetric_utils::DataEncryptionAlgorithm,
+};
 use cosmian_logger::log_init;
 use tempfile::TempDir;
 use test_kms_server::start_default_test_kms_server_with_utimaco_hsm;
 use uuid::Uuid;
 
 use crate::{
-    actions::kms::{
-        shared::ExportKeyFormat,
-        symmetric::{
-            DataEncryptionAlgorithm, KeyEncryptionAlgorithm,
-            keys::create_key::{CreateKeyAction, SymmetricAlgorithm},
-        },
-    },
+    actions::kms::symmetric::{KeyEncryptionAlgorithm, keys::create_key::CreateKeyAction},
     error::result::CosmianResult,
     tests::kms::{
         rsa::create_key_pair::{RsaKeyPairOptions, create_rsa_key_pair},

@@ -13,6 +13,7 @@ use cosmian_kms_client::{
         requests::{create_symmetric_key_kmip_object, encrypt_request},
     },
     read_bytes_from_file,
+    reexport::cosmian_kms_client_utils::symmetric_utils::DataEncryptionAlgorithm,
 };
 use cosmian_kms_crypto::crypto::{
     symmetric::symmetric_ciphers::{Mode, SymCipher, encrypt, random_key, random_nonce},
@@ -23,11 +24,7 @@ use zeroize::Zeroizing;
 use crate::{
     actions::{
         console,
-        kms::{
-            labels::KEY_ID,
-            shared::get_key_uid,
-            symmetric::{DataEncryptionAlgorithm, KeyEncryptionAlgorithm},
-        },
+        kms::{labels::KEY_ID, shared::get_key_uid, symmetric::KeyEncryptionAlgorithm},
     },
     error::{
         CosmianError,

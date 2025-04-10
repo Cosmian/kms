@@ -11,9 +11,9 @@ use crate::{
 
 /// Create a new RSA key pair
 ///
-///  - The public is used to encrypt
+///  - The public is used to encrypt or verify a signature
 ///      and can be safely shared.
-///  - The private key is used to decrypt
+///  - The private key is used to decrypt or sign
 ///      and must be kept secret.
 ///
 /// Tags can later be used to retrieve the keys. Tags are optional.

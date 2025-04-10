@@ -1,10 +1,10 @@
 use cosmian_kms_client::{
-    KmsClient, import_object,
+    KmsClient,
     reexport::cosmian_kmip::kmip_2_1::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::Object,
         kmip_types::{CryptographicAlgorithm, KeyFormatType},
-        requests::create_symmetric_key_kmip_object,
+        requests::{create_symmetric_key_kmip_object, import_object_request},
     },
 };
 use cosmian_logger::log_init;
@@ -46,28 +46,30 @@ async fn create_keys(
 ) -> Result<(), Pkcs11Error> {
     let vol1 = create_symmetric_key_kmip_object(&[1, 2, 3, 4], CryptographicAlgorithm::AES, false)?;
     debug!("vol1: {}", vol1);
-    let _vol1_id = import_object(
-        kms_rest_client,
-        Some("vol1".to_owned()),
-        vol1,
-        None,
-        false,
-        true,
-        [disk_encryption_tag, "vol1"],
-    )
-    .await?;
+    let import_object_request =
+        import_object_request(Some("vol1".to_owned()), vol1, None, false, true, [
+            disk_encryption_tag,
+            "vol1",
+        ]);
+    let _vol1_id = kms_rest_client
+        .import(import_object_request)
+        .await?
+        .unique_identifier;
 
     let vol2 = create_symmetric_key_kmip_object(&[4, 5, 6, 7], CryptographicAlgorithm::AES, false)?;
-    let _vol2_id = import_object(
-        kms_rest_client,
-        Some("vol2".to_owned()),
-        vol2,
-        None,
-        false,
-        true,
-        [disk_encryption_tag, "vol2"],
-    )
-    .await?;
+    let import_object_request_2 =
+        cosmian_kms_client::reexport::cosmian_kmip::kmip_2_1::requests::import_object_request(
+            Some("vol2".to_owned()),
+            vol2,
+            None,
+            false,
+            true,
+            [disk_encryption_tag, "vol2"],
+        );
+    let _vol2_id = kms_rest_client
+        .import(import_object_request_2)
+        .await?
+        .unique_identifier;
 
     Ok(())
 }
@@ -96,17 +98,17 @@ async fn load_p12(disk_encryption_tag: &str) -> Result<String, Pkcs11Error> {
         },
     };
 
-    let p12_id = import_object(
-        &kms_rest_client,
-        Some("test.p12".to_owned()),
-        p12_sk,
-        None,
-        false,
-        true,
-        [disk_encryption_tag, "luks_volume"],
-    )
-    .await?;
-    Ok(p12_id)
+    let import_object_request =
+        import_object_request(Some("test.p12".to_owned()), p12_sk, None, false, true, [
+            disk_encryption_tag,
+            "luks_volume",
+        ]);
+    let p12_id = kms_rest_client
+        .import(import_object_request)
+        .await?
+        .unique_identifier;
+
+    Ok(String::from(p12_id))
 }
 
 async fn test_kms_client() -> Result<(), Pkcs11Error> {

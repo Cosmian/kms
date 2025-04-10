@@ -1,6 +1,13 @@
 use std::{fs, path::PathBuf};
 
-use cosmian_kms_client::read_bytes_from_file;
+use cosmian_kms_client::{
+    read_bytes_from_file,
+    reexport::cosmian_kms_client_utils::{
+        create_utils::SymmetricAlgorithm,
+        rsa_utils::{HashFn, RsaEncryptionAlgorithm},
+        symmetric_utils::DataEncryptionAlgorithm,
+    },
+};
 use cosmian_logger::log_init;
 use tempfile::TempDir;
 use test_kms_server::start_default_test_kms_server_with_utimaco_hsm;
@@ -8,13 +15,7 @@ use tracing::trace;
 use uuid::Uuid;
 
 use crate::{
-    actions::kms::{
-        rsa::{HashFn, RsaEncryptionAlgorithm},
-        symmetric::{
-            DataEncryptionAlgorithm, KeyEncryptionAlgorithm,
-            keys::create_key::{CreateKeyAction, SymmetricAlgorithm},
-        },
-    },
+    actions::kms::symmetric::{KeyEncryptionAlgorithm, keys::create_key::CreateKeyAction},
     error::result::CosmianResult,
     tests::kms::{
         rsa::{

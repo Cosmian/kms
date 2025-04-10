@@ -1,21 +1,22 @@
 use std::{fs::File, io::Write, path::PathBuf};
 
 use clap::Parser;
-use cosmian_kms_client::{KmsClient, kmip_2_1::requests::decrypt_request, read_bytes_from_file};
+use cosmian_kms_client::{
+    KmsClient,
+    kmip_2_1::requests::decrypt_request,
+    read_bytes_from_file,
+    reexport::cosmian_kms_client_utils::rsa_utils::{HashFn, RsaEncryptionAlgorithm},
+};
 
 use crate::{
     actions::{
         console,
-        kms::{
-            labels::KEY_ID,
-            rsa::{HashFn, RsaEncryptionAlgorithm},
-            shared::get_key_uid,
-        },
+        kms::{labels::KEY_ID, shared::get_key_uid},
     },
     error::result::{CosmianResult, CosmianResultHelper},
 };
 
-/// Decrypt a file with the given public key using either
+/// Decrypt a file with the given private key using either
 ///  - `CKM_RSA_PKCS` a.k.a PKCS #1 RSA V1.5 as specified in PKCS#11 v2.40
 ///  - `CKM_RSA_PKCS_OAEP` a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40
 ///  - `CKM_RSA_AES_KEY_WRAP` as specified in PKCS#11 v2.40

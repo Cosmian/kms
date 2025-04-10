@@ -463,13 +463,12 @@ Export a key from the KMS
  - `sec1-pem` and `sec1-der`only apply to NIST EC private keys (Not Curve25519 or X448)
  - `pkcs1-pem` and `pkcs1-der` only apply to RSA private and public keys
  - `pkcs8-pem` and `pkcs8-der` only apply to RSA and EC private keys
- - `spki-pem` and `spki-der` only apply to RSA and EC public keys
  - `raw` returns the raw bytes of
       - symmetric keys
       - Covercrypt keys
       - wrapped keys
 
-Possible values:  `"json-ttlv", "sec1-pem", "sec1-der", "pkcs1-pem", "pkcs1-der", "pkcs8-pem", "pkcs8-der", "spki-pem", "spki-der", "base64", "raw"` [default: `"json-ttlv"`]
+Possible values:  `"json-ttlv", "sec1-pem", "sec1-der", "pkcs1-pem", "pkcs1-der", "pkcs8-pem", "pkcs8-der", "base64", "raw"` [default: `"json-ttlv"`]
 
 `--unwrap [-u] <UNWRAP>` Unwrap the key if it is wrapped before export
 
@@ -487,9 +486,7 @@ Possible values:  `"true", "false"` [default: `"false"`]
 By default, the algorithm used is
 
 - `NISTKeyWrap` for symmetric keys (a.k.a. RFC 5649)
-- `RsaPkcsOaep` for RSA keys
-
-Possible values:  `"nist-key-wrap", "aes-gcm", "rsa-pkcs-v15", "rsa-oaep", "rsa-aes-key-wrap"`
+- `RsaOaep` for RSA keys
 
 `--authenticated-additional-data [-d] <AUTHENTICATED_ADDITIONAL_DATA>` Authenticated encryption additional data Only available for AES GCM wrapping
 
@@ -512,7 +509,7 @@ Import a private or public key in the KMS.
 
 `--key-format [-f] <KEY_FORMAT>` The format of the key
 
-Possible values:  `"json-ttlv", "pem", "sec1", "pkcs1-priv", "pkcs1-pub", "pkcs8", "spki", "aes", "chacha20"` [default: `"json-ttlv"`]
+Possible values:  `"json-ttlv", "pem", "sec1", "pkcs1-priv", "pkcs1-pub", "pkcs8-priv", "pkcs8-pub", "aes", "chacha20"` [default: `"json-ttlv"`]
 
 `--public-key-id [-p] <PUBLIC_KEY_ID>` For a private key: the corresponding KMS public key id if any
 
@@ -893,7 +890,7 @@ the subject name to use.
 
 `--algorithm [-a] <ALGORITHM>` The algorithm to use for the keypair generation
 
-Possible values:  `"nist-p192", "nist-p224", "nist-p256", "nist-p384", "nist-p521", "x25519", "ed25519", "x448", "ed448", "rsa1024", "rsa2048", "rsa3072", "rsa4096"` [default: `"rsa4096"`]
+Possible values:  `"nist-p192", "nist-p224", "nist-p256", "nist-p384", "nist-p521", "ed25519", "ed448", "rsa1024", "rsa2048", "rsa3072", "rsa4096"` [default: `"rsa4096"`]
 
 `--issuer-private-key-id [-k] <ISSUER_PRIVATE_KEY_ID>` The unique identifier of the private key of the issuer. A certificate must be linked to that private key if no issuer certificate id is provided
 
@@ -1020,7 +1017,7 @@ When importing a PKCS12, the unique id will be that of the private key.
 
 `--format [-f] <INPUT_FORMAT>` Import the certificate in the selected format
 
-Possible values:  `"json-ttlv", "pem", "der", "chain", "ccadb", "pkcs12"` [default: `"json-ttlv"`]
+Possible values:  `"json-ttlv", "pem", "der", "chain", "pkcs12", "ccadb"` [default: `"json-ttlv"`]
 
 `--private-key-id [-k] <PRIVATE_KEY_ID>` The corresponding private key id if any. Ignored for PKCS12 and CCADB formats
 
@@ -1091,8 +1088,6 @@ Validate a certificate
 ### Usage
 `cosmian kms certificates validate [options]`
 ### Arguments
-`--certificate [-v] <CERTIFICATE>` One or more Certificates filepath
-
 `--certificate-id [-k] <CERTIFICATE_ID>` One or more Unique Identifiers of Certificate Objects
 
 `--validity-time [-t] <VALIDITY_TIME>` A Date-Time object indicating when the certificate chain needs to be valid. If omitted, the current date and time SHALL be assumed
@@ -1188,13 +1183,12 @@ Export a key from the KMS
  - `sec1-pem` and `sec1-der`only apply to NIST EC private keys (Not Curve25519 or X448)
  - `pkcs1-pem` and `pkcs1-der` only apply to RSA private and public keys
  - `pkcs8-pem` and `pkcs8-der` only apply to RSA and EC private keys
- - `spki-pem` and `spki-der` only apply to RSA and EC public keys
  - `raw` returns the raw bytes of
       - symmetric keys
       - Covercrypt keys
       - wrapped keys
 
-Possible values:  `"json-ttlv", "sec1-pem", "sec1-der", "pkcs1-pem", "pkcs1-der", "pkcs8-pem", "pkcs8-der", "spki-pem", "spki-der", "base64", "raw"` [default: `"json-ttlv"`]
+Possible values:  `"json-ttlv", "sec1-pem", "sec1-der", "pkcs1-pem", "pkcs1-der", "pkcs8-pem", "pkcs8-der", "base64", "raw"` [default: `"json-ttlv"`]
 
 `--unwrap [-u] <UNWRAP>` Unwrap the key if it is wrapped before export
 
@@ -1212,9 +1206,7 @@ Possible values:  `"true", "false"` [default: `"false"`]
 By default, the algorithm used is
 
 - `NISTKeyWrap` for symmetric keys (a.k.a. RFC 5649)
-- `RsaPkcsOaep` for RSA keys
-
-Possible values:  `"nist-key-wrap", "aes-gcm", "rsa-pkcs-v15", "rsa-oaep", "rsa-aes-key-wrap"`
+- `RsaOaep` for RSA keys
 
 `--authenticated-additional-data [-d] <AUTHENTICATED_ADDITIONAL_DATA>` Authenticated encryption additional data Only available for AES GCM wrapping
 
@@ -1237,7 +1229,7 @@ Import a private or public key in the KMS.
 
 `--key-format [-f] <KEY_FORMAT>` The format of the key
 
-Possible values:  `"json-ttlv", "pem", "sec1", "pkcs1-priv", "pkcs1-pub", "pkcs8", "spki", "aes", "chacha20"` [default: `"json-ttlv"`]
+Possible values:  `"json-ttlv", "pem", "sec1", "pkcs1-priv", "pkcs1-pub", "pkcs8-priv", "pkcs8-pub", "aes", "chacha20"` [default: `"json-ttlv"`]
 
 `--public-key-id [-p] <PUBLIC_KEY_ID>` For a private key: the corresponding KMS public key id if any
 
@@ -1370,8 +1362,6 @@ Encrypt a file with the given public key using ECIES
 
 `--output-file [-o] <OUTPUT_FILE>` The encrypted output file path
 
-`--authentication-data [-a] <AUTHENTICATION_DATA>` Optional authentication data. This data needs to be provided back for decryption
-
 
 
 ---
@@ -1391,8 +1381,6 @@ Decrypts a file with the given private key using ECIES
 `--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
 
 `--output-file [-o] <OUTPUT_FILE>` The encrypted output file path
-
-`--authentication-data [-a] <AUTHENTICATION_DATA>` Optional authentication data that was supplied during encryption
 
 
 
@@ -1803,7 +1791,7 @@ Manage RSA keys. Encrypt and decrypt data using RSA keys
  - `CKM_RSA_PKCS_OAEP` a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40
  - `CKM_RSA_AES_KEY_WRAP` as specified in PKCS#11 v2.40
 
-**`decrypt`** [[1.14.3]](#1143-cosmian-kms-rsa-decrypt)  Decrypt a file with the given public key using either
+**`decrypt`** [[1.14.3]](#1143-cosmian-kms-rsa-decrypt)  Decrypt a file with the given private key using either
 
  - `CKM_RSA_PKCS` a.k.a PKCS #1 RSA V1.5 as specified in PKCS#11 v2.40
  - `CKM_RSA_PKCS_OAEP` a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40
@@ -1878,13 +1866,12 @@ Export a key from the KMS
  - `sec1-pem` and `sec1-der`only apply to NIST EC private keys (Not Curve25519 or X448)
  - `pkcs1-pem` and `pkcs1-der` only apply to RSA private and public keys
  - `pkcs8-pem` and `pkcs8-der` only apply to RSA and EC private keys
- - `spki-pem` and `spki-der` only apply to RSA and EC public keys
  - `raw` returns the raw bytes of
       - symmetric keys
       - Covercrypt keys
       - wrapped keys
 
-Possible values:  `"json-ttlv", "sec1-pem", "sec1-der", "pkcs1-pem", "pkcs1-der", "pkcs8-pem", "pkcs8-der", "spki-pem", "spki-der", "base64", "raw"` [default: `"json-ttlv"`]
+Possible values:  `"json-ttlv", "sec1-pem", "sec1-der", "pkcs1-pem", "pkcs1-der", "pkcs8-pem", "pkcs8-der", "base64", "raw"` [default: `"json-ttlv"`]
 
 `--unwrap [-u] <UNWRAP>` Unwrap the key if it is wrapped before export
 
@@ -1902,9 +1889,7 @@ Possible values:  `"true", "false"` [default: `"false"`]
 By default, the algorithm used is
 
 - `NISTKeyWrap` for symmetric keys (a.k.a. RFC 5649)
-- `RsaPkcsOaep` for RSA keys
-
-Possible values:  `"nist-key-wrap", "aes-gcm", "rsa-pkcs-v15", "rsa-oaep", "rsa-aes-key-wrap"`
+- `RsaOaep` for RSA keys
 
 `--authenticated-additional-data [-d] <AUTHENTICATED_ADDITIONAL_DATA>` Authenticated encryption additional data Only available for AES GCM wrapping
 
@@ -1927,7 +1912,7 @@ Import a private or public key in the KMS.
 
 `--key-format [-f] <KEY_FORMAT>` The format of the key
 
-Possible values:  `"json-ttlv", "pem", "sec1", "pkcs1-priv", "pkcs1-pub", "pkcs8", "spki", "aes", "chacha20"` [default: `"json-ttlv"`]
+Possible values:  `"json-ttlv", "pem", "sec1", "pkcs1-priv", "pkcs1-pub", "pkcs8-priv", "pkcs8-pub", "aes", "chacha20"` [default: `"json-ttlv"`]
 
 `--public-key-id [-p] <PUBLIC_KEY_ID>` For a private key: the corresponding KMS public key id if any
 
@@ -2078,7 +2063,7 @@ Possible values:  `"sha1", "sha224", "sha256", "sha384", "sha512", "sha3-224", "
 
 ## 1.14.3 cosmian kms rsa decrypt
 
-Decrypt a file with the given public key using either
+Decrypt a file with the given private key using either
 
  - `CKM_RSA_PKCS` a.k.a PKCS #1 RSA V1.5 as specified in PKCS#11 v2.40
  - `CKM_RSA_PKCS_OAEP` a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40
@@ -2231,13 +2216,12 @@ Export a key from the KMS
  - `sec1-pem` and `sec1-der`only apply to NIST EC private keys (Not Curve25519 or X448)
  - `pkcs1-pem` and `pkcs1-der` only apply to RSA private and public keys
  - `pkcs8-pem` and `pkcs8-der` only apply to RSA and EC private keys
- - `spki-pem` and `spki-der` only apply to RSA and EC public keys
  - `raw` returns the raw bytes of
       - symmetric keys
       - Covercrypt keys
       - wrapped keys
 
-Possible values:  `"json-ttlv", "sec1-pem", "sec1-der", "pkcs1-pem", "pkcs1-der", "pkcs8-pem", "pkcs8-der", "spki-pem", "spki-der", "base64", "raw"` [default: `"json-ttlv"`]
+Possible values:  `"json-ttlv", "sec1-pem", "sec1-der", "pkcs1-pem", "pkcs1-der", "pkcs8-pem", "pkcs8-der", "base64", "raw"` [default: `"json-ttlv"`]
 
 `--unwrap [-u] <UNWRAP>` Unwrap the key if it is wrapped before export
 
@@ -2255,9 +2239,7 @@ Possible values:  `"true", "false"` [default: `"false"`]
 By default, the algorithm used is
 
 - `NISTKeyWrap` for symmetric keys (a.k.a. RFC 5649)
-- `RsaPkcsOaep` for RSA keys
-
-Possible values:  `"nist-key-wrap", "aes-gcm", "rsa-pkcs-v15", "rsa-oaep", "rsa-aes-key-wrap"`
+- `RsaOaep` for RSA keys
 
 `--authenticated-additional-data [-d] <AUTHENTICATED_ADDITIONAL_DATA>` Authenticated encryption additional data Only available for AES GCM wrapping
 
@@ -2280,7 +2262,7 @@ Import a private or public key in the KMS.
 
 `--key-format [-f] <KEY_FORMAT>` The format of the key
 
-Possible values:  `"json-ttlv", "pem", "sec1", "pkcs1-priv", "pkcs1-pub", "pkcs8", "spki", "aes", "chacha20"` [default: `"json-ttlv"`]
+Possible values:  `"json-ttlv", "pem", "sec1", "pkcs1-priv", "pkcs1-pub", "pkcs8-priv", "pkcs8-pub", "aes", "chacha20"` [default: `"json-ttlv"`]
 
 `--public-key-id [-p] <PUBLIC_KEY_ID>` For a private key: the corresponding KMS public key id if any
 

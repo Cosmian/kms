@@ -1,44 +1,21 @@
-use std::fmt::Display;
-
-use base64::{Engine as _, engine::general_purpose};
-use clap::{Parser, ValueEnum};
+use clap::Parser;
 use cosmian_kms_client::{
     KmsClient,
-    cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm,
-    import_object,
     kmip_2_1::{
         kmip_types::UniqueIdentifier,
-        requests::{create_symmetric_key_kmip_object, symmetric_key_create_request},
+        requests::{
+            create_symmetric_key_kmip_object, import_object_request, symmetric_key_create_request,
+        },
+    },
+    reexport::cosmian_kms_client_utils::create_utils::{
+        SymmetricAlgorithm, prepare_sym_key_elements,
     },
 };
 
 use crate::{
     actions::console,
-    cli_bail,
     error::result::{CosmianResult, CosmianResultHelper},
 };
-
-#[derive(ValueEnum, Debug, Clone, Copy, Default)]
-pub enum SymmetricAlgorithm {
-    #[cfg(not(feature = "fips"))]
-    Chacha20,
-    #[default]
-    Aes,
-    Sha3,
-    Shake,
-}
-
-impl Display for SymmetricAlgorithm {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            #[cfg(not(feature = "fips"))]
-            Self::Chacha20 => write!(f, "chacha20"),
-            Self::Aes => write!(f, "aes"),
-            Self::Sha3 => write!(f, "sha3"),
-            Self::Shake => write!(f, "shake"),
-        }
-    }
-}
 
 /// Create a new symmetric key
 ///
@@ -107,35 +84,9 @@ impl CreateKeyAction {
     /// # Errors
     /// Fail in input key parsing fails
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CosmianResult<UniqueIdentifier> {
-        let mut key_bytes = None;
-        let number_of_bits = if let Some(key_b64) = &self.wrap_key_b64 {
-            let bytes = general_purpose::STANDARD
-                .decode(key_b64)
-                .with_context(|| "failed decoding the wrap key")?;
-            let number_of_bits = bytes.len() * 8;
-            key_bytes = Some(bytes);
-            number_of_bits
-        } else {
-            self.number_of_bits.unwrap_or(256)
-        };
-
-        let algorithm = match self.algorithm {
-            SymmetricAlgorithm::Aes => CryptographicAlgorithm::AES,
-            #[cfg(not(feature = "fips"))]
-            SymmetricAlgorithm::Chacha20 => CryptographicAlgorithm::ChaCha20,
-            SymmetricAlgorithm::Sha3 => match number_of_bits {
-                224 => CryptographicAlgorithm::SHA3224,
-                256 => CryptographicAlgorithm::SHA3256,
-                384 => CryptographicAlgorithm::SHA3384,
-                512 => CryptographicAlgorithm::SHA3512,
-                _ => cli_bail!("invalid number of bits for sha3 {}", number_of_bits),
-            },
-            SymmetricAlgorithm::Shake => match number_of_bits {
-                128 => CryptographicAlgorithm::SHAKE128,
-                256 => CryptographicAlgorithm::SHAKE256,
-                _ => cli_bail!("invalid number of bits for shake {}", number_of_bits),
-            },
-        };
+        let (number_of_bits, key_bytes, algorithm) =
+            prepare_sym_key_elements(self.number_of_bits, &self.wrap_key_b64, self.algorithm)
+                .with_context(|| "failed preparing key elements")?;
 
         let unique_identifier = if let Some(key_bytes) = key_bytes {
             let mut object =
@@ -144,18 +95,13 @@ impl CreateKeyAction {
                 let attributes = object.attributes_mut()?;
                 attributes.set_wrapping_key_id(wrapping_key_id);
             }
-            UniqueIdentifier::TextString(
-                import_object(
-                    kms_rest_client,
-                    self.key_id.clone(),
-                    object,
-                    None,
-                    false,
-                    false,
-                    &self.tags,
-                )
-                .await?,
-            )
+            let import_object_request =
+                import_object_request(self.key_id.clone(), object, None, false, false, &self.tags);
+            kms_rest_client
+                .import(import_object_request)
+                .await
+                .with_context(|| "failed importing the key")?
+                .unique_identifier
         } else {
             let key_id = self
                 .key_id

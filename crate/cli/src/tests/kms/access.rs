@@ -1,12 +1,13 @@
 use std::process::Command;
 
 use assert_cmd::prelude::*;
+use cosmian_kms_client::reexport::cosmian_kms_client_utils::symmetric_utils::DataEncryptionAlgorithm;
 use test_kms_server::start_default_test_kms_server_with_cert_auth;
 use tracing::trace;
 
 use super::{KMS_SUBCOMMAND, symmetric::create_key::create_symmetric_key, utils::recover_cmd_logs};
 use crate::{
-    actions::kms::symmetric::{DataEncryptionAlgorithm, keys::create_key::CreateKeyAction},
+    actions::kms::symmetric::keys::create_key::CreateKeyAction,
     config::COSMIAN_CLI_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
     tests::{

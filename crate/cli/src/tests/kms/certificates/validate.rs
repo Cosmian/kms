@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use assert_cmd::cargo::CommandCargoExt;
+use cosmian_kms_client::reexport::cosmian_kms_client_utils::import_utils::CertificateInputFormat;
 #[cfg(feature = "fips")]
 use tempfile::TempDir;
 use test_kms_server::start_default_test_kms_server;
@@ -13,7 +14,6 @@ use tracing::info;
 #[cfg(feature = "fips")]
 use crate::tests::kms::certificates::encrypt::encrypt;
 use crate::{
-    actions::kms::certificates::CertificateInputFormat,
     config::COSMIAN_CLI_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
     tests::{
@@ -93,17 +93,12 @@ async fn test_import_revoked_certificate_encrypt_prime256() -> CosmianResult<()>
 pub(crate) fn validate_certificate(
     cli_conf_path: &str,
     sub_command: &str,
-    certificates: Vec<String>,
     uids: Vec<String>,
     date: Option<String>,
 ) -> CosmianResult<String> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(COSMIAN_CLI_CONF_ENV, cli_conf_path);
     let mut args: Vec<String> = vec!["validate".to_owned()];
-    for certificate in certificates {
-        args.push("--certificate".to_owned());
-        args.push(certificate);
-    }
     for uid in uids {
         args.push("--certificate-id".to_owned());
         args.push(uid);
@@ -162,7 +157,6 @@ async fn test_validate_cli() -> CosmianResult<()> {
     let test1_res = validate_certificate(
         &ctx.owner_client_conf_path,
         "certificates",
-        vec![],
         vec![
             intermediate_certificate_id.clone(),
             root_certificate_id.clone(),
@@ -179,7 +173,6 @@ async fn test_validate_cli() -> CosmianResult<()> {
     let test2_res = validate_certificate(
         &ctx.owner_client_conf_path,
         "certificates",
-        vec!["../../test_data/certificates/chain/leaf2.cert.der".to_owned()],
         vec![
             intermediate_certificate_id.clone(),
             root_certificate_id.clone(),
@@ -195,7 +188,6 @@ async fn test_validate_cli() -> CosmianResult<()> {
     let test3_res = validate_certificate(
         &ctx.owner_client_conf_path,
         "certificates",
-        vec!["../../test_data/certificates/chain/leaf2.cert.der".to_owned()],
         vec![intermediate_certificate_id, root_certificate_id.clone()],
         // Date: 15/04/2048
         Some("4804152030Z".to_owned()),
@@ -209,7 +201,6 @@ async fn test_validate_cli() -> CosmianResult<()> {
     let test4_res = validate_certificate(
         &ctx.owner_client_conf_path,
         "certificates",
-        vec![],
         vec![root_certificate_id],
         None,
     )?;

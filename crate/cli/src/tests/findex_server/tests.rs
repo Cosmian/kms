@@ -2,7 +2,10 @@ use std::ops::Deref;
 
 use cosmian_findex_client::RestClient;
 use cosmian_findex_structs::Uuids;
-use cosmian_kms_client::{KmsClient, kmip_2_1::kmip_types::UniqueIdentifier};
+use cosmian_kms_client::{
+    KmsClient, kmip_2_1::kmip_types::UniqueIdentifier,
+    reexport::cosmian_kms_client_utils::symmetric_utils::DataEncryptionAlgorithm,
+};
 use cosmian_logger::log_init;
 use test_findex_server::{
     start_default_test_findex_server, start_default_test_findex_server_with_cert_auth,
@@ -18,7 +21,7 @@ use crate::{
             findex::parameters::FindexParameters, permissions::CreateIndex,
             search_and_decrypt::SearchAndDecryptAction,
         },
-        kms::symmetric::{DataEncryptionAlgorithm, keys::create_key::CreateKeyAction},
+        kms::symmetric::keys::create_key::CreateKeyAction,
     },
     config::ClientConfig,
     error::result::CosmianResult,

@@ -1,37 +1,17 @@
 use std::path::PathBuf;
 
-use clap::{Parser, ValueEnum};
+use clap::Parser;
 use cosmian_kms_client::{
     KmsClient,
-    cosmian_kmip::kmip_2_1::{
-        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-        kmip_objects::{Object, ObjectType},
-        kmip_types::{
-            Attributes, CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier,
-        },
+    cosmian_kmip::kmip_2_1::kmip_objects::ObjectType,
+    kmip_2_1::requests::import_object_request,
+    read_bytes_from_file,
+    reexport::cosmian_kms_client_utils::import_utils::{
+        ImportKeyFormat, KeyUsage, prepare_key_import_elements,
     },
-    import_object, objects_from_pem, read_bytes_from_file, read_object_from_json_ttlv_bytes,
-};
-use zeroize::Zeroizing;
-
-use super::utils::{KeyUsage, build_usage_mask_from_key_usage};
-use crate::{
-    actions::console,
-    error::{CosmianError, result::CosmianResult},
 };
 
-#[derive(ValueEnum, Debug, Clone)]
-pub(crate) enum ImportKeyFormat {
-    JsonTtlv,
-    Pem,
-    Sec1,
-    Pkcs1Priv,
-    Pkcs1Pub,
-    Pkcs8,
-    Spki,
-    Aes,
-    Chacha20,
-}
+use crate::{actions::console, error::result::CosmianResult};
 
 /// Import a private or public key in the KMS.
 ///
@@ -40,12 +20,11 @@ pub(crate) enum ImportKeyFormat {
 /// By default, the format is expected to be JSON TTLV but
 /// other formats can be specified with the option `-f`.
 ///   * json-ttlv (the default)
-///   * pem (PKCS#1, PKCS#8, SEC1, SPKI): the function will attempt to detect the type of key and key format
+///   * pem (PKCS#1, PKCS#8, SEC1): the function will attempt to detect the type of key and key format
 ///   * sec1: an elliptic curve private key in SEC1 DER format (NIST curves only - SECG SEC1-v2 #C.4)
 ///   * pkcs1-priv: an RSA private key in PKCS#1 DER format (RFC 8017)
 ///   * pkcs1-pub: an RSA public key in PKCS#1 DER format (RFC 8017)
 ///   * pkcs8: an RSA or Elliptic Curve private key in PKCS#8 DER format (RFC 5208 and 5958)
-///   * spki: an RSA or Elliptic Curve public key in Subject Public Key Info DER format (RFC 5480)
 ///   * aes: the bytes of an AES symmetric key
 ///   * chacha20: the bytes of a `ChaCha20` symmetric key
 ///
@@ -129,86 +108,32 @@ impl ImportKeyAction {
     ///
     /// [`CosmianError`]: ../error/result/enum.CosmianError.html
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CosmianResult<()> {
-        let cryptographic_usage_mask = self
-            .key_usage
-            .as_deref()
-            .and_then(build_usage_mask_from_key_usage);
-        // read the key file
-        let bytes = Zeroizing::from(read_bytes_from_file(&self.key_file)?);
-        let mut object = match &self.key_format {
-            ImportKeyFormat::JsonTtlv => read_object_from_json_ttlv_bytes(&bytes)?,
-            ImportKeyFormat::Pem => read_key_from_pem(&bytes)?,
-            ImportKeyFormat::Sec1 => {
-                build_private_key_from_der_bytes(KeyFormatType::ECPrivateKey, bytes)
-            }
-            ImportKeyFormat::Pkcs1Priv => {
-                build_private_key_from_der_bytes(KeyFormatType::PKCS1, bytes)
-            }
-            ImportKeyFormat::Pkcs1Pub => {
-                build_public_key_from_der_bytes(KeyFormatType::PKCS1, bytes)
-            }
-            ImportKeyFormat::Pkcs8 => build_private_key_from_der_bytes(KeyFormatType::PKCS8, bytes),
-            ImportKeyFormat::Spki => build_public_key_from_der_bytes(KeyFormatType::PKCS8, bytes),
-            ImportKeyFormat::Aes => {
-                build_symmetric_key_from_bytes(CryptographicAlgorithm::AES, bytes)?
-            }
-            ImportKeyFormat::Chacha20 => {
-                build_symmetric_key_from_bytes(CryptographicAlgorithm::ChaCha20, bytes)?
-            }
-        };
-        // Assign CryptographicUsageMask from command line arguments.
-        object
-            .attributes_mut()?
-            .set_cryptographic_usage_mask(cryptographic_usage_mask);
-
-        let object_type = object.object_type();
-
-        // Generate the import attributes if links are specified.
-        let mut import_attributes = object.attributes().cloned().unwrap_or_else(|_| Attributes {
-            cryptographic_usage_mask,
-            ..Default::default()
-        });
-
-        if let Some(issuer_certificate_id) = &self.certificate_id {
-            //let attributes = import_attributes.get_or_insert(Attributes::default());
-            import_attributes.set_link(
-                LinkType::CertificateLink,
-                LinkedObjectIdentifier::TextString(issuer_certificate_id.clone()),
-            );
-        }
-        if let Some(private_key_id) = &self.private_key_id {
-            //let attributes = import_attributes.get_or_insert(Attributes::default());
-            import_attributes.set_link(
-                LinkType::PrivateKeyLink,
-                LinkedObjectIdentifier::TextString(private_key_id.clone()),
-            );
-        }
-        if let Some(public_key_id) = &self.public_key_id {
-            import_attributes.set_link(
-                LinkType::PublicKeyLink,
-                LinkedObjectIdentifier::TextString(public_key_id.clone()),
-            );
-        }
-
-        if self.unwrap {
-            if let Some(data) = &self.authenticated_additional_data {
-                // If authenticated_additional_data are provided, must be added on key attributes for unwrapping
-                let aad = data.as_bytes();
-                object.attributes_mut()?.add_aad(aad);
-            }
-        }
+        let key_bytes = read_bytes_from_file(&self.key_file)?;
+        let (object, import_attributes) = prepare_key_import_elements(
+            &self.key_usage,
+            &self.key_format,
+            key_bytes,
+            &self.certificate_id,
+            &self.private_key_id,
+            &self.public_key_id,
+            self.unwrap,
+            &self.authenticated_additional_data,
+        )?;
+        let object_type: ObjectType = object.object_type();
 
         // import the key
-        let unique_identifier = import_object(
-            kms_rest_client,
+        let import_object_request = import_object_request(
             self.key_id.clone(),
             object,
             Some(import_attributes),
             self.unwrap,
             self.replace_existing,
             &self.tags,
-        )
-        .await?;
+        );
+        let unique_identifier = kms_rest_client
+            .import(import_object_request)
+            .await?
+            .unique_identifier;
 
         // print the response
         let stdout = format!(
@@ -222,99 +147,4 @@ impl ImportKeyAction {
 
         Ok(())
     }
-}
-
-/// Read a key from a PEM file
-#[allow(clippy::print_stdout)]
-fn read_key_from_pem(bytes: &[u8]) -> CosmianResult<Object> {
-    let mut objects = objects_from_pem(bytes)?;
-    let object = objects.pop().ok_or_else(|| {
-        CosmianError::Default("The PEM file does not contain any object".to_owned())
-    })?;
-    match object.object_type() {
-        ObjectType::PrivateKey | ObjectType::PublicKey => {
-            if !objects.is_empty() {
-                println!(
-                    "WARNING: the PEM file contains multiple objects. Only the private key will \
-                     be imported. A corresponding public key will be generated automatically."
-                );
-            }
-            Ok(object)
-        }
-        ObjectType::Certificate => Err(CosmianError::Default(
-            "For certificates, use the `cosmian kms certificate` sub-command".to_owned(),
-        )),
-        _ => Err(CosmianError::Default(format!(
-            "The PEM file contains an object of type {:?} which is not supported",
-            object.object_type()
-        ))),
-    }
-}
-
-pub(crate) fn build_private_key_from_der_bytes(
-    key_format_type: KeyFormatType,
-    bytes: Zeroizing<Vec<u8>>,
-) -> Object {
-    Object::PrivateKey {
-        key_block: KeyBlock {
-            key_format_type,
-            key_compression_type: None,
-            key_value: KeyValue {
-                key_material: KeyMaterial::ByteString(bytes),
-                attributes: Some(Attributes::default()),
-            },
-            // According to the KMIP spec, the cryptographic algorithm is not required
-            // as long as it can be recovered from the Key Format Type or the Key Value.
-            // Also it should not be specified if the cryptographic length is not specified.
-            cryptographic_algorithm: None,
-            // See comment above
-            cryptographic_length: None,
-            key_wrapping_data: None,
-        },
-    }
-}
-
-// Here the zeroizing type on public key bytes is overkill, but it aligns with
-// other methods dealing with private components.
-fn build_public_key_from_der_bytes(
-    key_format_type: KeyFormatType,
-    bytes: Zeroizing<Vec<u8>>,
-) -> Object {
-    Object::PublicKey {
-        key_block: KeyBlock {
-            key_format_type,
-            key_compression_type: None,
-            key_value: KeyValue {
-                key_material: KeyMaterial::ByteString(bytes),
-                attributes: Some(Attributes::default()),
-            },
-            // According to the KMIP spec, the cryptographic algorithm is not required
-            // as long as it can be recovered from the Key Format Type or the Key Value.
-            // Also it should not be specified if the cryptographic length is not specified.
-            cryptographic_algorithm: None,
-            // See comment above
-            cryptographic_length: None,
-            key_wrapping_data: None,
-        },
-    }
-}
-
-fn build_symmetric_key_from_bytes(
-    cryptographic_algorithm: CryptographicAlgorithm,
-    bytes: Zeroizing<Vec<u8>>,
-) -> CosmianResult<Object> {
-    let len = i32::try_from(bytes.len())? * 8;
-    Ok(Object::SymmetricKey {
-        key_block: KeyBlock {
-            key_format_type: KeyFormatType::TransparentSymmetricKey,
-            key_compression_type: None,
-            key_value: KeyValue {
-                key_material: KeyMaterial::TransparentSymmetricKey { key: bytes },
-                attributes: Some(Attributes::default()),
-            },
-            cryptographic_algorithm: Some(cryptographic_algorithm),
-            cryptographic_length: Some(len),
-            key_wrapping_data: None,
-        },
-    })
 }

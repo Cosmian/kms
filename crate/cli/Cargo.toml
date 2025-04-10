@@ -2,12 +2,12 @@
 name = "cosmian_cli"
 version.workspace = true
 authors.workspace = true
+categories = ["security"]
 edition.workspace = true
+keywords = ["cosmian_cli", "kms", "findex", "findex-server", "cosmian"]
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-categories = ["security"]
-keywords = ["cosmian_cli", "kms", "findex", "findex-server", "cosmian"]
 description = """
 Command Line Interface used to manage the KMS and Findex servers.
 
@@ -93,7 +93,7 @@ x509-parser = { workspace = true, features = ["verify"] }
 # ------------------------------------------------------------------------------
 # START DEBIAN PACKAGING
 [package.metadata.deb]
-maintainer = "Emmanuel Coste <emmanuel.coste@cosmian.com>"
+maintainer = "Cosmian support team <tech@cosmian.com>"
 copyright = "2025, Cosmian Tech SAS <tech@cosmian.com>"
 license-file = ["../../LICENSE", "0"]
 changelog = "../../CHANGELOG.md"

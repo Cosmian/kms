@@ -8,6 +8,9 @@ use cosmian_kms_client::{
         ttlv::{TTLV, deserializer::from_ttlv},
     },
     read_from_json_file, read_object_from_json_ttlv_file,
+    reexport::cosmian_kms_client_utils::{
+        export_utils::CertificateExportFormat, import_utils::CertificateInputFormat,
+    },
 };
 use cosmian_logger::log_init;
 use openssl::{nid::Nid, x509::X509};
@@ -19,7 +22,7 @@ use x509_parser::{der_parser::oid, prelude::*};
 
 use super::validate;
 use crate::{
-    actions::kms::certificates::{Algorithm, CertificateExportFormat, CertificateInputFormat},
+    actions::kms::certificates::Algorithm,
     config::COSMIAN_CLI_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
     tests::{
@@ -412,7 +415,6 @@ async fn test_certify_a_csr_without_extensions() -> CosmianResult<()> {
     let validation = validate::validate_certificate(
         &ctx.owner_client_conf_path,
         "certificates",
-        vec![],
         vec![root_id, intermediate_id, certificate_id],
         None,
     )?;
@@ -450,7 +452,6 @@ async fn test_certify_a_csr_with_extensions() -> CosmianResult<()> {
     let validation = validate::validate_certificate(
         &ctx.owner_client_conf_path,
         "certificates",
-        vec![],
         vec![root_id, intermediate_id, certificate_id],
         None,
     )?;
@@ -488,7 +489,6 @@ async fn test_certify_a_public_key_test_without_extensions() -> CosmianResult<()
     let validation = validate::validate_certificate(
         &ctx.owner_client_conf_path,
         "certificates",
-        vec![],
         vec![root_id, intermediate_id, certificate_id],
         None,
     )?;
@@ -534,7 +534,6 @@ async fn test_certify_a_public_key_test_with_extensions() -> CosmianResult<()> {
     let validation = validate::validate_certificate(
         &ctx.owner_client_conf_path,
         "certificates",
-        vec![],
         vec![root_id, intermediate_id, certificate_id],
         None,
     )?;
@@ -583,7 +582,6 @@ async fn test_certify_renew_a_certificate() -> CosmianResult<()> {
     let validation = validate::validate_certificate(
         &ctx.owner_client_conf_path,
         "certificates",
-        vec![],
         vec![root_id, intermediate_id, renewed_certificate_id],
         None,
     )?;
@@ -620,7 +618,6 @@ async fn test_certify_issue_with_subject_name() -> CosmianResult<()> {
     let validation = validate::validate_certificate(
         &ctx.owner_client_conf_path,
         "certificates",
-        vec![],
         vec![root_id, intermediate_id, certificate_id],
         None,
     )?;
@@ -653,7 +650,6 @@ async fn test_certify_a_public_key_test_self_signed() -> CosmianResult<()> {
     let validation = validate::validate_certificate(
         &ctx.owner_client_conf_path,
         "certificates",
-        vec![],
         vec![certificate_id],
         None,
     )?;
@@ -693,7 +689,6 @@ async fn test_certify_issue_with_subject_name_self_signed_without_extensions() -
     let validation = validate::validate_certificate(
         &ctx.owner_client_conf_path,
         "certificates",
-        vec![],
         vec![certificate_id],
         None,
     )?;
@@ -728,7 +723,6 @@ async fn test_certify_issue_with_subject_name_self_signed_with_extensions() -> C
     let validation = validate::validate_certificate(
         &ctx.owner_client_conf_path,
         "certificates",
-        vec![],
         vec![certificate_id],
         None,
     )?;

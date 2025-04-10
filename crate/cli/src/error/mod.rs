@@ -11,7 +11,7 @@ use cosmian_findex_client::{
         cosmian_http_client::HttpClientError,
     },
 };
-use cosmian_kms_client::KmsClientError;
+use cosmian_kms_client::{KmsClientError, reexport::cosmian_kms_client_utils::error::UtilsError};
 use thiserror::Error;
 
 use crate::actions::kms::google::GoogleApiError;
@@ -93,6 +93,8 @@ pub enum CosmianError {
     UuidError(#[from] uuid::Error),
     #[error("Access denied: {0}")]
     Unauthorized(String),
+    #[error(transparent)]
+    UtilsError(#[from] UtilsError),
 }
 
 impl From<GoogleApiError> for CosmianError {

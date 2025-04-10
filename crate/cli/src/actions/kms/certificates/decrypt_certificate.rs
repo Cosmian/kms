@@ -5,16 +5,13 @@ use cosmian_kms_client::{
     KmsClient,
     cosmian_kmip::kmip_2_1::{kmip_operations::Decrypt, kmip_types::UniqueIdentifier},
     read_bytes_from_file,
+    reexport::cosmian_kms_client_utils::rsa_utils::{HashFn, RsaEncryptionAlgorithm},
 };
 
 use crate::{
     actions::{
         console,
-        kms::{
-            labels::KEY_ID,
-            rsa::{HashFn, RsaEncryptionAlgorithm},
-            shared::get_key_uid,
-        },
+        kms::{labels::KEY_ID, shared::get_key_uid},
     },
     error::result::{CosmianResult, CosmianResultHelper},
 };
