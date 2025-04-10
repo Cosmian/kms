@@ -3,7 +3,7 @@
 #
 FROM rust:1.85.0-bullseye AS builder
 
-LABEL version="4.22.1"
+LABEL version="4.23.0"
 LABEL name="Cosmian KMS docker container"
 
 ENV OPENSSL_DIR=/usr/local/openssl

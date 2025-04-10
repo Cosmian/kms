@@ -1152,7 +1152,7 @@ checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
 
 [[package]]
 name = "cosmian_cli"
-version = "4.22.1"
+version = "4.23.0"
 dependencies = [
  "actix-rt",
  "actix-server",
@@ -1319,7 +1319,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_findex_client"
-version = "4.22.1"
+version = "4.23.0"
 dependencies = [
  "base64 0.22.1",
  "cosmian_crypto_core 10.0.1",
@@ -1407,7 +1407,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kmip"
-version = "4.22.1"
+version = "4.23.0"
 dependencies = [
  "bitflags 2.8.0",
  "chrono",
@@ -1428,7 +1428,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_access"
-version = "4.22.1"
+version = "4.23.0"
 dependencies = [
  "cosmian_kmip",
  "serde",
@@ -1436,7 +1436,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_base_hsm"
-version = "4.22.1"
+version = "4.23.0"
 dependencies = [
  "async-trait",
  "cosmian_kms_interfaces",
@@ -1452,7 +1452,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_client"
-version = "4.22.1"
+version = "4.23.0"
 dependencies = [
  "cosmian_crypto_core 10.0.1",
  "cosmian_http_client",
@@ -1469,7 +1469,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_client_utils"
-version = "4.22.1"
+version = "4.23.0"
 dependencies = [
  "base64 0.22.1",
  "clap",
@@ -1487,7 +1487,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_crypto"
-version = "4.22.1"
+version = "4.23.0"
 dependencies = [
  "aes-gcm-siv",
  "argon2",
@@ -1510,7 +1510,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_interfaces"
-version = "4.22.1"
+version = "4.23.0"
 dependencies = [
  "async-trait",
  "cosmian_kmip",
@@ -1523,7 +1523,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_server"
-version = "4.22.1"
+version = "4.23.0"
 dependencies = [
  "actix-cors",
  "actix-files",
@@ -1585,7 +1585,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_server_database"
-version = "4.22.1"
+version = "4.23.0"
 dependencies = [
  "async-trait",
  "clap",
@@ -1626,7 +1626,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_pkcs11"
-version = "4.22.1"
+version = "4.23.0"
 dependencies = [
  "cosmian_kms_client",
  "cosmian_logger",
@@ -1649,7 +1649,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_pkcs11_module"
-version = "4.22.1"
+version = "4.23.0"
 dependencies = [
  "bincode",
  "const-oid",
@@ -4023,7 +4023,7 @@ dependencies = [
 
 [[package]]
 name = "proteccio_pkcs11_loader"
-version = "4.22.1"
+version = "4.23.0"
 dependencies = [
  "cosmian_kms_base_hsm",
  "cosmian_kms_interfaces",
@@ -5271,7 +5271,7 @@ checksum = "8f50febec83f5ee1df3015341d8bd429f2d1cc62bcba7ea2076759d315084683"
 
 [[package]]
 name = "test_findex_server"
-version = "4.22.1"
+version = "4.23.0"
 dependencies = [
  "actix-server",
  "cosmian_findex_client",
@@ -5285,7 +5285,7 @@ dependencies = [
 
 [[package]]
 name = "test_kms_server"
-version = "4.22.1"
+version = "4.23.0"
 dependencies = [
  "actix-server",
  "base64 0.22.1",
@@ -5852,7 +5852,7 @@ checksum = "b6c140620e7ffbb22c2dee59cafe6084a59b5ffc27a8859a5f0d494b5d52b6be"
 
 [[package]]
 name = "utimaco_pkcs11_loader"
-version = "4.22.1"
+version = "4.23.0"
 dependencies = [
  "cosmian_kms_base_hsm",
  "cosmian_kms_interfaces",
