@@ -1,6 +1,6 @@
 # Cosmian CLI
 
-![Build status](https://github.com/Cosmian/cli/actions/workflows/main_release.yml/badge.svg?branch=main)
+![Build status](https://github.com/Cosmian/client/actions/workflows/main_release.yml/badge.svg?branch=main)
 
 Cosmian CLI (named `cosmian`) is the Command Line Interface to drive [KMS](https://github.com/Cosmian/kms) and [Findex server](https://github.com/Cosmian/findex-server).
 

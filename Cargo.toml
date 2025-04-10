@@ -25,7 +25,7 @@ authors = [
 ]
 license = "BUSL-1.1" # "Business Source License 1.1"
 license-file = "LICENSE"
-repository = "https://github.com/Cosmian/cli"
+repository = "https://github.com/Cosmian/client"
 keywords = ["cosmian_cli", "kms", "findex", "findex-server", "cosmian"]
 categories = ["security"]
 

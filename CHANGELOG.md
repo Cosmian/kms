@@ -6,11 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### 🚀 Features
 
-- Support Findex server v0.2 (including findex v7) ([#9](https://github.com/Cosmian/cli/pull/9))
+- Support Findex server v0.2 (including findex v7) ([#9](https://github.com/Cosmian/client/pull/9))
 
 ### 📚 Documentation
 
-- Edit authentication section ([#7](https://github.com/Cosmian/cli/pull/7))
+- Edit authentication section ([#7](https://github.com/Cosmian/client/pull/7))
 
 ### 🧪 Testing
 
