@@ -18,8 +18,8 @@ impl Attributes {
     pub fn get_tags(&self) -> HashSet<String> {
         self.get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_TAG)
             .and_then(|value| {
-                if let VendorAttributeValue::Structure(value) = value {
-                    serde_json::from_value::<HashSet<String>>(value.clone()).ok()
+                if let VendorAttributeValue::TextString(value) = value {
+                    serde_json::from_str::<HashSet<String>>(value).ok()
                 } else {
                     None
                 }
@@ -35,8 +35,9 @@ impl Attributes {
         self.set_vendor_attribute(
             VENDOR_ID_COSMIAN,
             VENDOR_ATTR_TAG,
-            VendorAttributeValue::Structure(serde_json::to_value::<HashSet<String>>(
-                tags.into_iter()
+            VendorAttributeValue::TextString(serde_json::to_string::<HashSet<String>>(
+                &tags
+                    .into_iter()
                     .map(|t| t.as_ref().to_owned())
                     .collect::<HashSet<_>>(),
             )?),
@@ -63,8 +64,8 @@ impl Attributes {
     pub fn remove_tags(&mut self) -> Option<HashSet<String>> {
         self.remove_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_TAG)
             .and_then(|value| {
-                if let VendorAttributeValue::Structure(value) = value {
-                    serde_json::from_value::<HashSet<String>>(value).ok()
+                if let VendorAttributeValue::TextString(value) = value {
+                    serde_json::from_str::<HashSet<String>>(&value).ok()
                 } else {
                     None
                 }

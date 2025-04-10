@@ -63,13 +63,26 @@ impl KmipBigIntDeserializer {
 impl<'de> de::Deserializer<'de> for &mut KmipBigIntDeserializer {
     type Error = TtlvError;
 
-    fn deserialize_any<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
+    fn deserialize_any<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: Visitor<'de>,
     {
-        Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
-        ))
+        trace!("deserialize_any: state:  {:?}", self);
+        // Check if the sign was visited already
+        if self.sign != i8::MAX {
+            // deserialize the sign
+            let res = visitor.visit_i8(self.sign);
+            // mark the sign as visited
+            self.sign = i8::MAX;
+            // return res;
+            return res;
+        }
+        // if the sign was already visited, deserialize the next u32
+        let next = self.u32_be.pop_front();
+        next.map_or_else(
+            || Err(TtlvError::from("No more elements in BigInt")),
+            |v| visitor.visit_u32(v),
+        )
     }
 
     fn deserialize_bool<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
@@ -77,7 +90,7 @@ impl<'de> de::Deserializer<'de> for &mut KmipBigIntDeserializer {
         V: Visitor<'de>,
     {
         Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
+            "deserialize_bool: Unsupported deserialization for KmipBigInt",
         ))
     }
 
@@ -93,7 +106,7 @@ impl<'de> de::Deserializer<'de> for &mut KmipBigIntDeserializer {
         V: Visitor<'de>,
     {
         Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
+            "deserialize_i16: Unsupported deserialization for KmipBigInt",
         ))
     }
 
@@ -102,7 +115,7 @@ impl<'de> de::Deserializer<'de> for &mut KmipBigIntDeserializer {
         V: Visitor<'de>,
     {
         Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
+            "deserialize_i32: Unsupported deserialization for KmipBigInt",
         ))
     }
 
@@ -111,7 +124,7 @@ impl<'de> de::Deserializer<'de> for &mut KmipBigIntDeserializer {
         V: Visitor<'de>,
     {
         Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
+            "deserialize_i64: Unsupported deserialization for KmipBigInt",
         ))
     }
 
@@ -120,7 +133,7 @@ impl<'de> de::Deserializer<'de> for &mut KmipBigIntDeserializer {
         V: Visitor<'de>,
     {
         Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
+            "deserialize_u8: Unsupported deserialization for KmipBigInt",
         ))
     }
 
@@ -129,7 +142,7 @@ impl<'de> de::Deserializer<'de> for &mut KmipBigIntDeserializer {
         V: Visitor<'de>,
     {
         Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
+            "deserialize_u16: Unsupported deserialization for KmipBigInt",
         ))
     }
 
@@ -149,7 +162,7 @@ impl<'de> de::Deserializer<'de> for &mut KmipBigIntDeserializer {
         V: Visitor<'de>,
     {
         Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
+            "deserialize_u64: Unsupported deserialization for KmipBigInt",
         ))
     }
 
@@ -158,7 +171,7 @@ impl<'de> de::Deserializer<'de> for &mut KmipBigIntDeserializer {
         V: Visitor<'de>,
     {
         Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
+            "deserialize_f32: Unsupported deserialization for KmipBigInt",
         ))
     }
 
@@ -167,7 +180,7 @@ impl<'de> de::Deserializer<'de> for &mut KmipBigIntDeserializer {
         V: Visitor<'de>,
     {
         Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
+            "deserialize_f64: Unsupported deserialization for KmipBigInt",
         ))
     }
 
@@ -176,7 +189,7 @@ impl<'de> de::Deserializer<'de> for &mut KmipBigIntDeserializer {
         V: Visitor<'de>,
     {
         Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
+            "deserialize_char: Unsupported deserialization for KmipBigInt",
         ))
     }
 
@@ -185,7 +198,7 @@ impl<'de> de::Deserializer<'de> for &mut KmipBigIntDeserializer {
         V: Visitor<'de>,
     {
         Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
+            "deserialize_str: Unsupported deserialization for KmipBigInt",
         ))
     }
 
@@ -194,7 +207,7 @@ impl<'de> de::Deserializer<'de> for &mut KmipBigIntDeserializer {
         V: Visitor<'de>,
     {
         Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
+            "deserialize_string: Unsupported deserialization for KmipBigInt",
         ))
     }
 
@@ -203,7 +216,7 @@ impl<'de> de::Deserializer<'de> for &mut KmipBigIntDeserializer {
         V: Visitor<'de>,
     {
         Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
+            "deserialize_bytes: Unsupported deserialization for KmipBigInt",
         ))
     }
 
@@ -212,7 +225,7 @@ impl<'de> de::Deserializer<'de> for &mut KmipBigIntDeserializer {
         V: Visitor<'de>,
     {
         Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
+            "deserialize_bytes_buf: Unsupported deserialization for KmipBigInt",
         ))
     }
 
@@ -221,7 +234,7 @@ impl<'de> de::Deserializer<'de> for &mut KmipBigIntDeserializer {
         V: Visitor<'de>,
     {
         Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
+            "deserialize_option: Unsupported deserialization for KmipBigInt",
         ))
     }
 
@@ -230,7 +243,7 @@ impl<'de> de::Deserializer<'de> for &mut KmipBigIntDeserializer {
         V: Visitor<'de>,
     {
         Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
+            "deserialize_unit: Unsupported deserialization for KmipBigInt",
         ))
     }
 
@@ -243,7 +256,7 @@ impl<'de> de::Deserializer<'de> for &mut KmipBigIntDeserializer {
         V: Visitor<'de>,
     {
         Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
+            "deserialize_unit_struct: Unsupported deserialization for KmipBigInt",
         ))
     }
 
@@ -256,7 +269,7 @@ impl<'de> de::Deserializer<'de> for &mut KmipBigIntDeserializer {
         V: Visitor<'de>,
     {
         Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
+            "deserialize_newtype_struct: Unsupported deserialization for KmipBigInt",
         ))
     }
 
@@ -290,7 +303,7 @@ impl<'de> de::Deserializer<'de> for &mut KmipBigIntDeserializer {
         V: Visitor<'de>,
     {
         Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
+            "deserialize_tuple_struct: Unsupported deserialization for KmipBigInt",
         ))
     }
 
@@ -299,7 +312,7 @@ impl<'de> de::Deserializer<'de> for &mut KmipBigIntDeserializer {
         V: Visitor<'de>,
     {
         Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
+            "deserialize_map: Unsupported deserialization for KmipBigInt",
         ))
     }
 
@@ -313,7 +326,7 @@ impl<'de> de::Deserializer<'de> for &mut KmipBigIntDeserializer {
         V: Visitor<'de>,
     {
         Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
+            "deserialize_struct: Unsupported deserialization for KmipBigInt",
         ))
     }
 

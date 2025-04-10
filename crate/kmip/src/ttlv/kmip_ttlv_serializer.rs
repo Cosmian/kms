@@ -429,6 +429,7 @@ impl ser::Serializer for &mut TtlvSerializer {
                 None
             }
         }
+        // User for Interval everywhere and by `VendorAttributeValue::Serialize()``
         impl Detect for u32 {
             fn detect_specific_value(&self, name: &'static str) -> Option<TTLValue> {
                 if name == "Interval" {
@@ -438,7 +439,7 @@ impl ser::Serializer for &mut TtlvSerializer {
                 }
             }
         }
-        // Yhis is used by `VendorAttributeValue::Serialize()``
+        // This is used by `VendorAttributeValue::Serialize()``
         impl Detect for &BigInt {
             fn detect_specific_value(&self, _name: &'static str) -> Option<TTLValue> {
                 debug!("serializing a Big Int {:?}", self);
@@ -452,6 +453,13 @@ impl ser::Serializer for &mut TtlvSerializer {
             fn detect_specific_value(&self, _name: &'static str) -> Option<TTLValue> {
                 debug!("serializing a Offset Date Time {:?}", self);
                 Some(TTLValue::DateTime(*self.to_owned()))
+            }
+        }
+        // This is used by `VendorAttributeValue::Serialize()`
+        impl Detect for &TTLV {
+            fn detect_specific_value(&self, _name: &'static str) -> Option<TTLValue> {
+                debug!("serializing a TTLV {:?}", self);
+                Some(self.value.clone())
             }
         }
         if let Some(value) = value.detect_specific_value(name) {

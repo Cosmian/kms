@@ -13,7 +13,7 @@ pub enum KmipFlavor {
     Kmip2,
 }
 
-#[derive(PartialEq, Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TTLV {
     pub tag: String,
     pub value: TTLValue,
@@ -85,7 +85,7 @@ impl TTLV {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq)]
 pub enum TTLValue {
     Structure(Vec<TTLV>),
     Integer(i32),
