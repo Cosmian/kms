@@ -1,3 +1,4 @@
+mod adjacently_tagged_structure;
 mod array_deserializer;
 mod byte_string_deserializer;
 mod deserializer;

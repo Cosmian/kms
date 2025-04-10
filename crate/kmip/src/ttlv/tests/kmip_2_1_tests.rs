@@ -29,7 +29,7 @@ use crate::{
         kmip_types::{
             CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, Link, LinkType,
             LinkedObjectIdentifier, OperationEnumeration, QueryFunction, UniqueIdentifier,
-            VendorAttributeValue,
+            VendorAttribute, VendorAttributeValue,
         },
     },
     ttlv::{from_ttlv, to_ttlv, KmipEnumerationVariant, TTLValue, TTLV},
@@ -452,8 +452,68 @@ fn test_object_inside_struct() {
 }
 
 #[test]
-fn test_import_symmetric_key() {
+fn test_vendor_attribute_value() {
+    log_init(option_env!("RUST_LOG"));
+    let vendor_attribute_value =
+        VendorAttributeValue::BigInteger(BigInt::from(123_456_789_000_u128));
+
+    // Json
+    let json = serde_json::to_string_pretty(&vendor_attribute_value).unwrap();
+    info!("{}", json);
+    let vendor_attribute_: VendorAttributeValue = serde_json::from_str(&json).unwrap();
+    assert_eq!(vendor_attribute_value, vendor_attribute_);
+
+    // Serializer
+    let ttlv = to_ttlv(&vendor_attribute_value).unwrap();
+    info!("{:#?}", ttlv);
+    // Serialize
+    let json = serde_json::to_string_pretty(&ttlv).unwrap();
+    info!("{}", json);
+    // Deserialize
+    let ttlv_from_json = serde_json::from_str::<TTLV>(&json).unwrap();
+    assert_eq!(ttlv, ttlv_from_json);
+    // Deserializer
+    let rec: VendorAttributeValue = from_ttlv(ttlv).unwrap();
+    assert_eq!(vendor_attribute_value, rec);
+}
+
+#[test]
+fn test_vendor_attribute() {
     log_init(Some("trace"));
+    // log_init(option_env!("RUST_LOG"));
+
+    let vendor_attribute = VendorAttribute {
+        vendor_identification: "Test Vendor".to_owned(),
+        attribute_name: "Test Attribute".to_owned(),
+        attribute_value: VendorAttributeValue::Structure(TTLV {
+            tag: "TheTag".to_owned(),
+            value: TTLValue::TextString("The Content".to_owned()),
+        }),
+    };
+
+    // Json
+    let json = serde_json::to_string_pretty(&vendor_attribute).unwrap();
+    info!("{}", json);
+    let vendor_attribute_: VendorAttribute = serde_json::from_str(&json).unwrap();
+    assert_eq!(vendor_attribute, vendor_attribute_);
+
+    // Serializer
+    let ttlv = to_ttlv(&vendor_attribute).unwrap();
+    info!("{:#?}", ttlv);
+    // Serialize
+    let json = serde_json::to_string_pretty(&ttlv).unwrap();
+    info!("{}", json);
+    // Deserialize
+    let ttlv_from_json = serde_json::from_str::<TTLV>(&json).unwrap();
+    assert_eq!(ttlv, ttlv_from_json);
+    // Deserializer
+    let rec: VendorAttribute = from_ttlv(ttlv).unwrap();
+    assert_eq!(vendor_attribute, rec);
+}
+
+#[test]
+fn test_import_symmetric_key() {
+    log_init(Some("debug"));
     // log_init(option_env!("RUST_LOG"));
 
     let key_bytes: &[u8] = b"this_is_a_test";
