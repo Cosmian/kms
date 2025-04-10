@@ -79,13 +79,13 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode }) =>
         <Routes>
             {!isAuthenticated && authMethod === "JWT" ? (
                 <>
-                    <Route path="/login" element={<LoginPage />} />
+                    <Route path="/login" element={<LoginPage auth={true} />} />
                     <Route path="*" element={<Navigate to="/login" replace />} />
                 </>
             ) : (
                 <>
+                    <Route index element={<LoginPage auth={false} />} />
                     <Route path="/" element={<MainLayout isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} authMethod={authMethod} />}>
-                        <Route index element={<Navigate to="/locate" replace />} />
                         <Route path="locate" element={<LocateForm />} />
                         <Route path="sym">
                             <Route path="keys/create" element={<SymKeyCreateForm />} />
