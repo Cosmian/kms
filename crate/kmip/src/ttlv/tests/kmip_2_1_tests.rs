@@ -453,7 +453,7 @@ fn test_object_inside_struct() {
 
 #[test]
 fn test_import_symmetric_key() {
-    log_init(Some("debug"));
+    log_init(Some("trace"));
     // log_init(option_env!("RUST_LOG"));
 
     let key_bytes: &[u8] = b"this_is_a_test";
@@ -466,6 +466,12 @@ fn test_import_symmetric_key() {
     );
     attributes.set_vendor_attribute(
         "Vendor",
+        "long_int",
+        VendorAttributeValue::LongInteger(123_456_789),
+    );
+    attributes.set_vendor_attribute("Vendor", "bool", VendorAttributeValue::Boolean(true));
+    attributes.set_vendor_attribute(
+        "Vendor",
         "byte_string",
         VendorAttributeValue::ByteString(hex::decode("31323331343536").unwrap()),
     );
@@ -476,23 +482,19 @@ fn test_import_symmetric_key() {
     );
     attributes.set_vendor_attribute(
         "Vendor",
-        "long_int",
-        VendorAttributeValue::LongInteger(123_456_789),
-    );
-    attributes.set_vendor_attribute("Vendor", "bool", VendorAttributeValue::Boolean(true));
-    attributes.set_vendor_attribute(
-        "Vendor",
         "DateTime",
         VendorAttributeValue::DateTime(OffsetDateTime::now_utc()),
     );
-    // attributes.set_vendor_attribute(
-    //     "Vendor",
-    //     "struct",
-    //     VendorAttributeValue::Structure(serde_json::json!({
-    //         "key": "value",
-    //         "key2": 2,
-    //     })),
-    // );
+    attributes.set_vendor_attribute(
+        "Vendor",
+        "struct",
+        VendorAttributeValue::Structure(
+            to_ttlv(&Attribute::CryptographicAlgorithm(
+                CryptographicAlgorithm::AES,
+            ))
+            .unwrap(),
+        ),
+    );
 
     let import = Import {
         unique_identifier: UniqueIdentifier::TextString("unique_identifier".to_owned()),

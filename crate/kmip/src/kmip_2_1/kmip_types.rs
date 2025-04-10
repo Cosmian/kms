@@ -14,9 +14,9 @@ use serde::{
     de::{self, Visitor},
     Deserialize, Serialize,
 };
-use serde_json::Value;
 use strum::{Display, EnumIter};
 use time::OffsetDateTime;
+use tracing::trace;
 use uuid::Uuid;
 
 use crate::{
@@ -24,6 +24,7 @@ use crate::{
     kmip_0::kmip_types::{DRBGAlgorithm, FIPS186Variation, HashingAlgorithm, RNGAlgorithm},
     kmip_2_1::extra::{tagging::VENDOR_ATTR_TAG, VENDOR_ID_COSMIAN},
     kmip_2_1_error,
+    ttlv::TTLV,
 };
 
 pub const VENDOR_ATTR_AAD: &str = "aad";
@@ -826,8 +827,8 @@ impl Display for VendorAttribute {
 /// The value of a Vendor Attribute
 /// Any data type or structure.
 /// If a structure, only JSON Value is supported.
-#[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
-#[serde(untagged)]
+#[derive(Debug, Clone, Eq, PartialEq)]
+// #[serde(untagged)]
 pub enum VendorAttributeValue {
     TextString(String),
     LongInteger(i64),
@@ -836,7 +837,7 @@ pub enum VendorAttributeValue {
     Boolean(bool),
     DateTime(OffsetDateTime),
     Interval(u32),
-    Structure(Value),
+    Structure(TTLV),
 }
 
 impl Serialize for VendorAttributeValue {
@@ -852,8 +853,79 @@ impl Serialize for VendorAttributeValue {
             Self::Boolean(b) => serializer.serialize_bool(*b),
             Self::DateTime(dt) => serializer.serialize_newtype_struct("OffsetDateTime", dt),
             Self::Interval(i) => serializer.serialize_newtype_struct("Interval", i),
-            Self::Structure(v) => v.serialize(serializer),
+            Self::Structure(v) => serializer.serialize_newtype_struct("TTLV", v),
         }
+    }
+}
+
+impl<'de> Deserialize<'de> for VendorAttributeValue {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        deserializer.deserialize_any(VendorAttributeValueVisitor)
+    }
+}
+struct VendorAttributeValueVisitor;
+impl<'de> Visitor<'de> for VendorAttributeValueVisitor {
+    type Value = VendorAttributeValue;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("VendorAttributeValue")
+    }
+
+    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        trace!("VendorAttributeValueVisitor::visit_str: {v} -> Text String");
+        Ok(VendorAttributeValue::TextString(v.to_owned()))
+    }
+
+    fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        trace!("VendorAttributeValueVisitor::visit_i64: {v} -> Long Integer");
+        Ok(VendorAttributeValue::LongInteger(v))
+    }
+
+    fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        trace!("VendorAttributeValueVisitor::visit_i64: {v} -> Long Integer");
+        Ok(VendorAttributeValue::LongInteger(
+            i64::try_from(v).map_err(de::Error::custom)?,
+        ))
+    }
+
+    fn visit_bool<E>(self, v: bool) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        trace!("VendorAttributeValueVisitor::visit_bool: {v} -> Boolean");
+        Ok(VendorAttributeValue::Boolean(v))
+    }
+
+    // fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
+    // where
+    //     E: de::Error,
+    // {
+    //     trace!("VendorAttributeValueVisitor::visit_bytes: {v:?} -> Byte String");
+    //     Ok(VendorAttributeValue::ByteString(v.to_vec()))
+    // }
+
+    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+    where
+        A: de::SeqAccess<'de>,
+    {
+        trace!("VendorAttributeValueVisitor::visit_seq -> ByteString");
+        let mut vec = Vec::<u8>::new();
+        while let Some(value) = seq.next_element()? {
+            vec.push(value);
+        }
+        Ok(VendorAttributeValue::ByteString(vec))
     }
 }
 

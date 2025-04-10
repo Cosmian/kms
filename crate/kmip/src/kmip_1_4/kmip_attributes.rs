@@ -6,7 +6,6 @@ use serde::{
     ser::SerializeStruct,
     Deserialize, Serialize,
 };
-use serde_json::Value;
 use time::OffsetDateTime;
 use tracing::warn;
 
@@ -21,6 +20,7 @@ use crate::{
         },
     },
     kmip_2_1::{self, kmip_types::VendorAttribute},
+    ttlv::TTLV,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -645,7 +645,7 @@ pub enum CustomAttributeValue {
     Boolean(bool),
     DateTime(OffsetDateTime),
     Interval(u32),
-    Structure(Value),
+    Structure(TTLV),
 }
 
 impl From<CustomAttributeValue> for kmip_2_1::kmip_types::VendorAttributeValue {
