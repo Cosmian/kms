@@ -195,7 +195,7 @@ pub(crate) async fn callback(
     }
 
     HttpResponse::Found()
-        .append_header(("Location", "/ui"))
+        .append_header(("Location", "/ui/locate"))
         .finish()
 }
 

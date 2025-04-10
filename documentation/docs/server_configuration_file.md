@@ -111,8 +111,11 @@ otlp = "<url of the OTLP collector>"
 # Do not log to stdout
 quiet = false
 
+# Generic configuration to edit path to static UI application files
+[ui_config]
+ui_index_html_folder = "/Users/celia-std/Documents/kms/ui/dist"
 # Configuration for the handling of authentication with JWT from the KMS UI
-[ui_oidc_auth]
+[ui_config.ui_oidc_auth]
 ui_oidc_client_id = "<client id>"
 ui_oidc_client_secret = "<client secret>" (optional)
 ui_oidc_issuer_url = "<issuer-url>"
