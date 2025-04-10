@@ -1076,189 +1076,215 @@ pub enum Attribute {
     X509CertificateSubject(String),
 }
 
-// impl Serialize for Attribute {
-//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-//     where
-//         S: serde::Serializer,
-//     {
-//         match self {
-//             Self::ActivationDate(activation_date) => {
-//                 let mut st = serializer.serialize_struct("Attribute", 1)?;
-//                 st.serialize_field("ActivationDate", activation_date)?;
-//                 st.end()
-//             }
-//             Self::CryptographicAlgorithm(crypto_algorithm) => {
-//                 let mut st = serializer.serialize_struct("Attribute", 1)?;
-//                 st.serialize_field("CryptographicAlgorithm", crypto_algorithm)?;
-//                 st.end()
-//             }
-//             Self::CryptographicLength(crypto_length) => {
-//                 let mut st = serializer.serialize_struct("Attribute", 1)?;
-//                 st.serialize_field("CryptographicLength", crypto_length)?;
-//                 st.end()
-//             }
-//             Self::CryptographicParameters(crypto_parameters) => {
-//                 let mut st = serializer.serialize_struct("Attribute", 1)?;
-//                 st.serialize_field("CryptographicParameters", crypto_parameters)?;
-//                 st.end()
-//             }
-//             Self::CryptographicDomainParameters(crypto_domain_parameters) => {
-//                 let mut st = serializer.serialize_struct("Attribute", 1)?;
-//                 st.serialize_field("CryptographicDomainParameters", crypto_domain_parameters)?;
-//                 st.end()
-//             }
-//             Self::CryptographicUsageMask(crypto_usage_mask) => {
-//                 let mut st = serializer.serialize_struct("Attribute", 1)?;
-//                 st.serialize_field("CryptographicUsageMask", crypto_usage_mask)?;
-//                 st.end()
-//             }
-//             Self::Links(links) => {
-//                 let mut st = serializer.serialize_struct("Attribute", links.len())?;
-//                 for link in links {
-//                     st.serialize_field("Link", link)?;
-//                 }
-//                 st.end()
-//             }
-//             Self::VendorAttributes(vendor_attributes) => {
-//                 let mut st = serializer.serialize_struct("Attribute", vendor_attributes.len())?;
-//                 for vendor_attribute in vendor_attributes {
-//                     st.serialize_field("VendorAttribute", vendor_attribute)?;
-//                 }
-//                 st.end()
-//             }
-//         }
-//     }
-// }
-
-// impl<'de> Deserialize<'de> for Attribute {
-//     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-//     where
-//         D: serde::Deserializer<'de>,
-//     {
-//         #[derive(Deserialize, Debug)]
-//         #[serde(field_identifier)]
-//         enum Field {
-//             ActivationDate,
-//             CryptographicAlgorithm,
-//             CryptographicLength,
-//             CryptographicParameters,
-//             CryptographicDomainParameters,
-//             CryptographicUsageMask,
-//             Link,
-//             VendorAttribute,
-//         }
-
-//         struct AttributeVisitor;
-
-//         impl<'de> Visitor<'de> for AttributeVisitor {
-//             type Value = Attribute;
-
-//             fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
-//                 formatter.write_str("struct AttributeVisitor")
-//             }
-
-//             fn visit_map<V>(self, mut map: V) -> Result<Self::Value, V::Error>
-//             where
-//                 V: MapAccess<'de>,
-//             {
-//                 let mut activation_date: Option<i64> = None;
-//                 let mut cryptographic_algorithm: Option<CryptographicAlgorithm> = None;
-//                 let mut cryptographic_length: Option<i32> = None;
-//                 let mut cryptographic_parameters: Option<CryptographicParameters> = None;
-//                 let mut cryptographic_domain_parameters: Option<CryptographicDomainParameters> =
-//                     None;
-//                 let mut cryptographic_usage_mask: Option<CryptographicUsageMask> = None;
-//                 let mut links: Vec<Link> = Vec::new();
-//                 let mut vendor_attributes: Vec<VendorAttribute> = Vec::new();
-
-//                 while let Some(key) = map.next_key()? {
-//                     trace!("visit_map: Key: {key:?}");
-//                     match key {
-//                         Field::ActivationDate => {
-//                             if activation_date.is_some() {
-//                                 return Err(de::Error::duplicate_field("activation_date"))
-//                             }
-//                             activation_date = Some(map.next_value()?);
-//                         }
-//                         Field::CryptographicAlgorithm => {
-//                             if cryptographic_algorithm.is_some() {
-//                                 return Err(de::Error::duplicate_field("cryptographic_algorithm"))
-//                             }
-//                             cryptographic_algorithm = Some(map.next_value()?);
-//                         }
-//                         Field::CryptographicLength => {
-//                             if cryptographic_length.is_some() {
-//                                 return Err(de::Error::duplicate_field("cryptographic_length"))
-//                             }
-//                             cryptographic_length = Some(map.next_value()?);
-//                         }
-//                         Field::CryptographicParameters => {
-//                             if cryptographic_parameters.is_some() {
-//                                 return Err(de::Error::duplicate_field("cryptographic_parameters"))
-//                             }
-//                             cryptographic_parameters = Some(map.next_value()?);
-//                         }
-//                         Field::CryptographicDomainParameters => {
-//                             if cryptographic_domain_parameters.is_some() {
-//                                 return Err(de::Error::duplicate_field(
-//                                     "cryptographic_domain_parameters",
-//                                 ))
-//                             }
-//                             cryptographic_domain_parameters = Some(map.next_value()?);
-//                         }
-//                         Field::CryptographicUsageMask => {
-//                             if cryptographic_usage_mask.is_some() {
-//                                 return Err(de::Error::duplicate_field("cryptographic_usage_mask"))
-//                             }
-//                             cryptographic_usage_mask = Some(map.next_value()?);
-//                         }
-//                         Field::Link => {
-//                             links.push(map.next_value()?);
-//                         }
-//                         Field::VendorAttribute => {
-//                             vendor_attributes.push(map.next_value()?);
-//                         }
-//                     }
-//                 }
-
-//                 trace!("Attribute::deserialize: Link: {:?}", links);
-//                 if let Some(activation_date) = activation_date {
-//                     return Ok(Attribute::ActivationDate(activation_date))
-//                 } else if let Some(cryptographic_algorithm) = cryptographic_algorithm {
-//                     return Ok(Attribute::CryptographicAlgorithm(cryptographic_algorithm))
-//                 } else if let Some(cryptographic_length) = cryptographic_length {
-//                     return Ok(Attribute::CryptographicLength(cryptographic_length))
-//                 } else if let Some(cryptographic_parameters) = cryptographic_parameters {
-//                     return Ok(Attribute::CryptographicParameters(cryptographic_parameters))
-//                 } else if let Some(cryptographic_domain_parameters) =
-//                     cryptographic_domain_parameters
-//                 {
-//                     return Ok(Attribute::CryptographicDomainParameters(
-//                         cryptographic_domain_parameters,
-//                     ))
-//                 } else if let Some(cryptographic_usage_mask) = cryptographic_usage_mask {
-//                     return Ok(Attribute::CryptographicUsageMask(cryptographic_usage_mask))
-//                 } else if !links.is_empty() {
-//                     return Ok(Attribute::Links(links))
-//                 } else if !vendor_attributes.is_empty() {
-//                     return Ok(Attribute::VendorAttributes(vendor_attributes))
-//                 }
-
-//                 Ok(Attribute::ActivationDate(0))
-//             }
-//         }
-
-//         const FIELDS: &[&str] = &[
-//             "activation_date",
-//             "cryptographic_algorithm",
-//             "cryptographic_length",
-//             "cryptographic_parameters",
-//             "cryptographic_domain_parameters",
-//             "cryptographic_usage_mask",
-//             "link",
-//             "public_key_link",
-//             "vendor_attributes",
-//         ];
-//         deserializer.deserialize_struct("Attribute", FIELDS, AttributeVisitor)
-//     }
-// }
+impl From<Attributes> for Vec<Attribute> {
+    fn from(attributes: Attributes) -> Self {
+        let mut vec = Vec::new();
+        if let Some(activation_date) = attributes.activation_date {
+            vec.push(Attribute::ActivationDate(activation_date));
+        }
+        if let Some(alternative_name) = attributes.alternative_name {
+            vec.push(Attribute::AlternativeName(alternative_name));
+        }
+        if let Some(always_sensitive) = attributes.always_sensitive {
+            vec.push(Attribute::AlwaysSensitive(always_sensitive));
+        }
+        if let Some(application_specific_information) = attributes.application_specific_information
+        {
+            vec.push(Attribute::ApplicationSpecificInformation(
+                application_specific_information,
+            ));
+        }
+        if let Some(archive_date) = attributes.archive_date {
+            vec.push(Attribute::ArchiveDate(archive_date));
+        }
+        if let Some(attribute_index) = attributes.attribute_index {
+            vec.push(Attribute::AttributeIndex(attribute_index));
+        }
+        if let Some(certificate_attributes) = attributes.certificate_attributes {
+            vec.push(Attribute::CertificateAttributes(certificate_attributes));
+        }
+        if let Some(certificate_type) = attributes.certificate_type {
+            vec.push(Attribute::CertificateType(certificate_type));
+        }
+        if let Some(certificate_length) = attributes.certificate_length {
+            vec.push(Attribute::CertificateLength(certificate_length));
+        }
+        if let Some(comment) = attributes.comment {
+            vec.push(Attribute::Comment(comment));
+        }
+        if let Some(compromise_date) = attributes.compromise_date {
+            vec.push(Attribute::CompromiseDate(compromise_date));
+        }
+        if let Some(compromise_occurrence_date) = attributes.compromise_occurrence_date {
+            vec.push(Attribute::CompromiseOccurrenceDate(
+                compromise_occurrence_date,
+            ));
+        }
+        if let Some(contact_information) = attributes.contact_information {
+            vec.push(Attribute::ContactInformation(contact_information));
+        }
+        if let Some(critical) = attributes.critical {
+            vec.push(Attribute::Critical(critical));
+        }
+        if let Some(cryptographic_algorithm) = attributes.cryptographic_algorithm {
+            vec.push(Attribute::CryptographicAlgorithm(cryptographic_algorithm));
+        }
+        if let Some(cryptographic_domain_parameters) = attributes.cryptographic_domain_parameters {
+            vec.push(Attribute::CryptographicDomainParameters(
+                cryptographic_domain_parameters,
+            ));
+        }
+        if let Some(cryptographic_length) = attributes.cryptographic_length {
+            vec.push(Attribute::CryptographicLength(cryptographic_length));
+        }
+        if let Some(cryptographic_parameters) = attributes.cryptographic_parameters {
+            vec.push(Attribute::CryptographicParameters(cryptographic_parameters));
+        }
+        if let Some(cryptographic_usage_mask) = attributes.cryptographic_usage_mask {
+            vec.push(Attribute::CryptographicUsageMask(cryptographic_usage_mask));
+        }
+        if let Some(deactivation_date) = attributes.deactivation_date {
+            vec.push(Attribute::DeactivationDate(deactivation_date));
+        }
+        if let Some(description) = attributes.description {
+            vec.push(Attribute::Description(description));
+        }
+        if let Some(destroy_date) = attributes.destroy_date {
+            vec.push(Attribute::DestroyDate(destroy_date));
+        }
+        if let Some(digital_signature_algorithm) = attributes.digital_signature_algorithm {
+            vec.push(Attribute::DigitalSignatureAlgorithm(
+                digital_signature_algorithm,
+            ));
+        }
+        if let Some(extractable) = attributes.extractable {
+            vec.push(Attribute::Extractable(extractable));
+        }
+        if let Some(fresh) = attributes.fresh {
+            vec.push(Attribute::Fresh(fresh));
+        }
+        if let Some(initial_date) = attributes.initial_date {
+            vec.push(Attribute::InitialDate(initial_date));
+        }
+        if let Some(key_format_type) = attributes.key_format_type {
+            vec.push(Attribute::KeyFormatType(key_format_type));
+        }
+        if let Some(key_value_location) = attributes.key_value_location {
+            vec.push(Attribute::KeyValueLocation(key_value_location));
+        }
+        if let Some(key_value_present) = attributes.key_value_present {
+            vec.push(Attribute::KeyValuePresent(key_value_present));
+        }
+        if let Some(last_change_date) = attributes.last_change_date {
+            vec.push(Attribute::LastChangeDate(last_change_date));
+        }
+        if let Some(lease_time) = attributes.lease_time {
+            vec.push(Attribute::LeaseTime(lease_time));
+        }
+        if let Some(links) = attributes.link {
+            for link in links {
+                vec.push(Attribute::Link(link));
+            }
+        }
+        if let Some(names) = attributes.name {
+            for name in names {
+                vec.push(Attribute::Name(name));
+            }
+        }
+        if let Some(nist_key_type) = attributes.nist_key_type {
+            vec.push(Attribute::NistKeyType(nist_key_type));
+        }
+        if let Some(object_group) = attributes.object_group {
+            vec.push(Attribute::ObjectGroup(object_group));
+        }
+        if let Some(object_group_member) = attributes.object_group_member {
+            vec.push(Attribute::ObjectGroupMember(object_group_member));
+        }
+        if let Some(object_type) = attributes.object_type {
+            vec.push(Attribute::ObjectType(object_type));
+        }
+        if let Some(opaque_data_type) = attributes.opaque_data_type {
+            vec.push(Attribute::OpaqueDataType(opaque_data_type));
+        }
+        if let Some(original_creation_date) = attributes.original_creation_date {
+            vec.push(Attribute::OriginalCreationDate(original_creation_date));
+        }
+        if let Some(pkcs_12_friendly_name) = attributes.pkcs_12_friendly_name {
+            vec.push(Attribute::Pkcs12FriendlyName(pkcs_12_friendly_name));
+        }
+        if let Some(process_start_date) = attributes.process_start_date {
+            vec.push(Attribute::ProcessStartDate(process_start_date));
+        }
+        if let Some(protect_stop_date) = attributes.protect_stop_date {
+            vec.push(Attribute::ProtectStopDate(protect_stop_date));
+        }
+        if let Some(protection_level) = attributes.protection_level {
+            vec.push(Attribute::ProtectionLevel(protection_level));
+        }
+        if let Some(protection_period) = attributes.protection_period {
+            vec.push(Attribute::ProtectionPeriod(protection_period));
+        }
+        if let Some(protection_storage_masks) = attributes.protection_storage_masks {
+            vec.push(Attribute::ProtectionStorageMasks(protection_storage_masks));
+        }
+        if let Some(quantum_safe) = attributes.quantum_safe {
+            vec.push(Attribute::QuantumSafe(quantum_safe));
+        }
+        if let Some(random_number_generator) = attributes.random_number_generator {
+            vec.push(Attribute::RandomNumberGenerator(random_number_generator));
+        }
+        if let Some(revocation_reason) = attributes.revocation_reason {
+            vec.push(Attribute::RevocationReason(revocation_reason));
+        }
+        if let Some(rotate_date) = attributes.rotate_date {
+            vec.push(Attribute::RotateDate(rotate_date));
+        }
+        if let Some(rotate_generation) = attributes.rotate_generation {
+            vec.push(Attribute::RotateGeneration(rotate_generation));
+        }
+        if let Some(rotate_interval) = attributes.rotate_interval {
+            vec.push(Attribute::RotateInterval(rotate_interval));
+        }
+        if let Some(rotate_latest) = attributes.rotate_latest {
+            vec.push(Attribute::RotateLatest(rotate_latest));
+        }
+        if let Some(rotate_name) = attributes.rotate_name {
+            vec.push(Attribute::RotateName(rotate_name));
+        }
+        if let Some(rotate_offset) = attributes.rotate_offset {
+            vec.push(Attribute::RotateOffset(rotate_offset));
+        }
+        if let Some(sensitive) = attributes.sensitive {
+            vec.push(Attribute::Sensitive(sensitive));
+        }
+        if let Some(short_unique_identifier) = attributes.short_unique_identifier {
+            vec.push(Attribute::ShortUniqueIdentifier(short_unique_identifier));
+        }
+        if let Some(state) = attributes.state {
+            vec.push(Attribute::State(state));
+        }
+        if let Some(unique_identifier) = attributes.unique_identifier {
+            vec.push(Attribute::UniqueIdentifier(unique_identifier));
+        }
+        if let Some(usage_limits) = attributes.usage_limits {
+            vec.push(Attribute::UsageLimits(usage_limits));
+        }
+        if let Some(vendor_attributes) = attributes.vendor_attributes {
+            for vendor_attribute in vendor_attributes {
+                vec.push(Attribute::VendorAttribute(vendor_attribute));
+            }
+        }
+        if let Some(x_509_certificate_identifier) = attributes.x_509_certificate_identifier {
+            vec.push(Attribute::X509CertificateIdentifier(
+                x_509_certificate_identifier,
+            ));
+        }
+        if let Some(x_509_certificate_issuer) = attributes.x_509_certificate_issuer {
+            vec.push(Attribute::X509CertificateIssuer(x_509_certificate_issuer));
+        }
+        if let Some(x_509_certificate_subject) = attributes.x_509_certificate_subject {
+            vec.push(Attribute::X509CertificateSubject(x_509_certificate_subject));
+        }
+        vec
+    }
+}
