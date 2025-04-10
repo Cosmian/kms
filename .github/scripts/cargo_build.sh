@@ -8,7 +8,7 @@ set -ex
 # export TARGET=aarch64-apple-darwin
 # export DEBUG_OR_RELEASE=debug
 # export OPENSSL_DIR=/usr/local/openssl
-# export SKIP_SERVICES_TESTS="--skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse"
+# export SKIP_SERVICES_TESTS="--skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse --skip hsm"
 # export FEATURES="fips"
 
 ROOT_FOLDER=$(pwd)
@@ -52,11 +52,6 @@ fi
 if [ -z "$FEATURES" ]; then
   echo "Info: FEATURES is not set."
   unset FEATURES
-fi
-
-if [ -z "$KMS_TEST_DB" ]; then
-  echo "Info: KMS_TEST_DB is not set. Forcing sqlite"
-  KMS_TEST_DB="sqlite"
 fi
 
 if [ -z "$SKIP_SERVICES_TESTS" ]; then
@@ -107,9 +102,29 @@ export RUST_LOG="cosmian_cli=debug,cosmian_kms_server=info,cosmian_kmip=error,te
 # shellcheck disable=SC2086
 cargo build --target $TARGET $RELEASE $FEATURES
 
-echo "Database KMS: $KMS_TEST_DB"
-# shellcheck disable=SC2086
-cargo test --workspace --lib --target $TARGET $RELEASE $FEATURES -- --nocapture $SKIP_SERVICES_TESTS
+declare -a DATABASES=('redis-findex' 'sqlite' 'sqlite-enc' 'postgresql' 'mysql')
+for KMS_TEST_DB in "${DATABASES[@]}"; do
+  echo "Database KMS: $KMS_TEST_DB"
+
+  # for now, discard tests on postgresql and mysql
+  if [ "$KMS_TEST_DB" = "sqlite-enc" ] || [ "$KMS_TEST_DB" = "postgresql" ] || [ "$KMS_TEST_DB" = "mysql" ]; then
+    continue
+  fi
+
+  # no docker containers on macOS Github runner
+  if [ "$(uname)" = "Darwin" ] && [ "$KMS_TEST_DB" != "sqlite" ]; then
+    continue
+  fi
+
+  # only tests all databases on release mode - keep sqlite for debug
+  if [ "$DEBUG_OR_RELEASE" = "debug" ] && [ "$KMS_TEST_DB" != "sqlite" ]; then
+    continue
+  fi
+
+  export KMS_TEST_DB="$KMS_TEST_DB"
+  # shellcheck disable=SC2086
+  cargo test --workspace --lib --target $TARGET $RELEASE $FEATURES -- --nocapture $SKIP_SERVICES_TESTS
+done
 
 # shellcheck disable=SC2086
 cargo test --workspace --bins --target $TARGET $RELEASE $FEATURES

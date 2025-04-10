@@ -36,7 +36,6 @@ pub(crate) async fn message(
         // conversion for `dispatch` call convenience
         let ttlv = to_ttlv(&operation)?;
 
-        #[allow(clippy::large_futures)]
         let (result_status, result_reason, result_message, response_payload) =
             match dispatch(kms, &ttlv, owner, params.clone()).await {
                 Ok(operation) => (
