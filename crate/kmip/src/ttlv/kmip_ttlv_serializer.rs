@@ -73,12 +73,16 @@ impl TtlvSerializer {
         self.stack.peek().map_or("", |parent| parent.tag.as_str())
     }
 
+    /// Get the current TTLV element
+    /// which is the last element on the stack
     pub fn current_mut(&mut self) -> Result<&mut TTLV> {
         self.stack
             .peek_mut()
             .ok_or_else(|| TtlvError::custom("no TTLV found on stack".to_owned()))
     }
 
+    /// Get the current TTLV element
+    /// which is the last element on the stack
     pub fn current_mut_structure(&mut self) -> Result<&mut Vec<TTLV>> {
         match self.current_mut()?.value {
             TTLValue::Structure(ref mut v) => Ok(v),
@@ -1001,8 +1005,81 @@ impl SerializeStruct for &mut TtlvSerializer {
 
     #[instrument(skip(self))]
     fn end(self) -> Result<Self::Ok> {
+        collapse_adjacently_tagged_structure(self.current_mut()?);
         trace!("Structure finalized, stack: {:?} ", self.stack);
         Ok(())
+    }
+}
+
+/// Collapse an Adjacently tagged structure with a tag and a content into
+/// a single TTVL element.
+///
+/// This converts
+/// ```
+/// TTLV {®
+/// tag: "VendorAttributeValue",
+/// value: Structure(
+///     [
+///         TTLV {
+///             tag: "_t",
+///             value: Enumeration(
+///                 KmipEnumerationVariant {
+///                     value: "0x00000002",
+///                     name: "BigInteger",
+///                 },
+///             ),
+///         },
+///         TTLV {
+///             tag: "_c",
+///             value: BigInteger(
+///                 KmipBigInt(
+///                     BigInt {
+///                         sign: Plus,
+///                         data: BigUint {
+///                            data: [
+///                                 3197704712,
+///                                 28,
+///                             ],
+///                         },
+///                     },
+///                 ),
+///             ),
+///         },
+///     ],
+/// ),
+/// }
+/// ```
+///
+/// into:
+/// ```
+/// TTLV {
+/// tag: "VendorAttributeValue",
+/// value: BigInteger(
+///     KmipBigInt(
+///         BigInt {
+///             sign: Plus,
+///             data: BigUint {
+///                 data: [
+///                     3197704712,
+///                     28,
+///                 ],
+///             },
+///         },
+///     ),
+/// )
+/// ```
+///
+///
+fn collapse_adjacently_tagged_structure(ttlv: &mut TTLV) {
+    // if the structure is empty, we need to remove it from the stack
+    if let TTLValue::Structure(ref mut items) = ttlv.value {
+        if items.len() == 2 {
+            let value = items.iter().find(|i| i.tag == "_c").map(|c| &c.value);
+            if let Some(value) = value {
+                // remove the structure
+                ttlv.value = value.clone();
+            }
+        }
     }
 }
 

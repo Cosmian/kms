@@ -16,7 +16,6 @@ use serde::{
 };
 use strum::{Display, EnumIter};
 use time::OffsetDateTime;
-use tracing::trace;
 use uuid::Uuid;
 
 use crate::{
@@ -826,107 +825,30 @@ impl Display for VendorAttribute {
 
 /// The value of a Vendor Attribute
 /// Any data type or structure.
-/// If a structure, only JSON Value is supported.
-#[derive(Debug, Clone, Eq, PartialEq)]
-// #[serde(untagged)]
+/// If a structure, only TTLV is supported.
+///
+/// The reason to use ajacently tagged enum is to allow for JSON serialization
+/// without lossing the type information for `ByteString`, `DateTime` and `BigInteger`
+/// which all serialize to arrays in JSON, making deserialization impossible wihout
+/// type indication.
+/// The same is true for `Integer` and `LongInteger` which serialize to numbers in JSON.
+///
+/// The serialization and deserialization to TTLV of this adjacently tagged enum
+/// involves special treatment in the KMIP serializer and deserializer.
+/// In particular, the name of the variants must match the `TTLValue` variant names EXACTLY.
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[serde(tag = "_t", content = "_c")]
 pub enum VendorAttributeValue {
     TextString(String),
+    Integer(i32),
     LongInteger(i64),
     BigInteger(BigInt),
     ByteString(Vec<u8>),
     Boolean(bool),
     DateTime(OffsetDateTime),
     Interval(u32),
+    DateTimeExtended(i128),
     Structure(TTLV),
-}
-
-impl Serialize for VendorAttributeValue {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        match self {
-            Self::TextString(s) => serializer.serialize_str(s),
-            Self::LongInteger(i) => serializer.serialize_i64(*i),
-            Self::BigInteger(i) => serializer.serialize_newtype_struct("BigInteger", i),
-            Self::ByteString(b) => serializer.serialize_bytes(b),
-            Self::Boolean(b) => serializer.serialize_bool(*b),
-            Self::DateTime(dt) => serializer.serialize_newtype_struct("OffsetDateTime", dt),
-            Self::Interval(i) => serializer.serialize_newtype_struct("Interval", i),
-            Self::Structure(v) => serializer.serialize_newtype_struct("TTLV", v),
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for VendorAttributeValue {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        deserializer.deserialize_any(VendorAttributeValueVisitor)
-    }
-}
-struct VendorAttributeValueVisitor;
-impl<'de> Visitor<'de> for VendorAttributeValueVisitor {
-    type Value = VendorAttributeValue;
-
-    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        formatter.write_str("VendorAttributeValue")
-    }
-
-    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        trace!("VendorAttributeValueVisitor::visit_str: {v} -> Text String");
-        Ok(VendorAttributeValue::TextString(v.to_owned()))
-    }
-
-    fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        trace!("VendorAttributeValueVisitor::visit_i64: {v} -> Long Integer");
-        Ok(VendorAttributeValue::LongInteger(v))
-    }
-
-    fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        trace!("VendorAttributeValueVisitor::visit_i64: {v} -> Long Integer");
-        Ok(VendorAttributeValue::LongInteger(
-            i64::try_from(v).map_err(de::Error::custom)?,
-        ))
-    }
-
-    fn visit_bool<E>(self, v: bool) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        trace!("VendorAttributeValueVisitor::visit_bool: {v} -> Boolean");
-        Ok(VendorAttributeValue::Boolean(v))
-    }
-
-    // fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
-    // where
-    //     E: de::Error,
-    // {
-    //     trace!("VendorAttributeValueVisitor::visit_bytes: {v:?} -> Byte String");
-    //     Ok(VendorAttributeValue::ByteString(v.to_vec()))
-    // }
-
-    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-    where
-        A: de::SeqAccess<'de>,
-    {
-        trace!("VendorAttributeValueVisitor::visit_seq -> ByteString");
-        let mut vec = Vec::<u8>::new();
-        while let Some(value) = seq.next_element()? {
-            vec.push(value);
-        }
-        Ok(VendorAttributeValue::ByteString(vec))
-    }
 }
 
 /// The Certificate Attributes are the various items included in a certificate. The following list is based on RFC2253.

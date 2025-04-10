@@ -13,6 +13,7 @@ use crate::{
     kmip_1_4, kmip_2_1,
     ttlv::{
         kmip_ttlv_deserializer::{
+            adjacently_tagged_structure::AdjacentlyTaggedStructure,
             byte_string_deserializer::ByteStringDeserializer, enum_walker::EnumWalker,
             kmip_big_int_deserializer::KmipBigIntDeserializer,
             offset_date_time_deserializer::OffsetDateTimeDeserializer, peek_structure_child,
@@ -783,20 +784,26 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
     where
         V: Visitor<'de>,
     {
+        let element = self.fetch_element()?;
         trace!(
             "deserialize_struct: name {name}, fields: {fields:?}, element: {:?}",
-            self.peek_element()?
+            element
         );
-        // if *self.at_root.read().context("Failed to lock at_root")? {
-        //     // we are going to iterate over the children of the current TTLV by calling visit_map
-        //     // set the child index to 0
-        //     self.child_index = 0;
-        //     // we are going to walk the element at the root of the TTLV
-        //     // so we are not at the root anymore
-        //     self.at_root = false;
-        //     visitor.visit_map(StructureWalker::new(self))
-        // } else {
-        let element = self.fetch_element()?;
+
+        if fields == ["_t", "_c"] {
+            // This is a special case for the KMIP 2.1 Object, which has a _t and _c field
+            // that are not part of the structure, but are used to identify the type of object
+            // being deserialized.
+            // The deserializer will skip these fields and deserialize the rest of the structure
+            trace!("... deserializing an adjacently tagged structure");
+            return visitor.visit_map(AdjacentlyTaggedStructure::new(&mut TtlvDeserializer {
+                current: element.clone(),
+                child_index: 0,
+                map_state: MapAccessState::None,
+                at_root: RwLock::new(false),
+            }));
+        }
+
         if let TTLValue::Structure(_) = &element.value {
             // if the TTLV value is a Structure, we will deserialize it using the StructureWalker
             // which will iterate over the children of the structure as it were a map of properties to values
@@ -809,7 +816,6 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         } else {
             Err(TtlvError::from("Expected Structure value in TTLV"))
         }
-        // }
     }
 
     #[instrument(skip(self, visitor))]
