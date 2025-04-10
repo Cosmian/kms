@@ -16,8 +16,8 @@ use actix_web::{
 };
 use cosmian_kmip::ttlv::{from_ttlv, to_ttlv, TTLV};
 use serde::{de::DeserializeOwned, Serialize};
+use time::{format_description::well_known::Iso8601, OffsetDateTime};
 use tracing::info;
-use uuid::Uuid;
 
 use super::google_cse::utils::google_cse_auth;
 use crate::{
@@ -42,10 +42,10 @@ pub(crate) fn https_clap_config_opts(google_cse_kacls_url: Option<String>) -> Cl
         .unwrap()
         .join(Path::new("test_data/sqlite"));
 
-    // let tmp_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    // let tmp_dir = temp_dir();
-    let uuid = Uuid::new_v4();
-    let sqlite_path = project_dir.join(format!("{uuid}.sqlite"));
+    // get the current date and time as an ISO 8601 string usinf OffsetDateTime
+    let now = OffsetDateTime::now_utc().format(&Iso8601::DEFAULT).unwrap();
+
+    let sqlite_path = project_dir.join(format!("{now}.sqlite"));
     if sqlite_path.exists() {
         std::fs::remove_file(&sqlite_path).unwrap();
     }

@@ -196,8 +196,11 @@ impl<'de> Deserialize<'de> for RequestMessageBatchItem {
                             // serialized, we need to do the job by hand,
                             // using the `operation` enum.
                             request_payload = Some(match operation {
-                                OperationEnumeration::Encrypt => {
-                                    Operation::Encrypt(map.next_value()?)
+                                OperationEnumeration::AddAttribute => {
+                                    Operation::AddAttribute(map.next_value()?)
+                                }
+                                OperationEnumeration::Certify => {
+                                    Operation::Certify(map.next_value()?)
                                 }
                                 OperationEnumeration::Create => {
                                     Operation::Create(map.next_value()?)
@@ -205,38 +208,38 @@ impl<'de> Deserialize<'de> for RequestMessageBatchItem {
                                 OperationEnumeration::CreateKeyPair => {
                                     Operation::CreateKeyPair(map.next_value()?)
                                 }
-                                OperationEnumeration::Certify => {
-                                    Operation::Certify(map.next_value()?)
+                                OperationEnumeration::Decrypt => {
+                                    Operation::Decrypt(map.next_value()?)
                                 }
-                                OperationEnumeration::Locate => {
-                                    Operation::Locate(map.next_value()?)
+                                OperationEnumeration::Destroy => {
+                                    Operation::Destroy(map.next_value()?)
+                                }
+                                OperationEnumeration::DiscoverVersions => {
+                                    Operation::DiscoverVersions(map.next_value()?)
+                                }
+                                OperationEnumeration::Encrypt => {
+                                    Operation::Encrypt(map.next_value()?)
+                                }
+                                OperationEnumeration::Export => {
+                                    Operation::Export(map.next_value()?)
                                 }
                                 OperationEnumeration::Get => Operation::Get(map.next_value()?),
                                 OperationEnumeration::GetAttributes => {
                                     Operation::GetAttributes(map.next_value()?)
                                 }
-                                OperationEnumeration::Revoke => {
-                                    Operation::Revoke(map.next_value()?)
-                                }
-                                OperationEnumeration::Destroy => {
-                                    Operation::Destroy(map.next_value()?)
-                                }
-                                OperationEnumeration::Decrypt => {
-                                    Operation::Decrypt(map.next_value()?)
-                                }
                                 OperationEnumeration::Import => {
                                     Operation::Import(map.next_value()?)
                                 }
-                                OperationEnumeration::Export => {
-                                    Operation::Export(map.next_value()?)
+                                OperationEnumeration::Locate => {
+                                    Operation::Locate(map.next_value()?)
                                 }
                                 OperationEnumeration::Query => Operation::Query(map.next_value()?),
-                                OperationEnumeration::DiscoverVersions => {
-                                    Operation::DiscoverVersions(map.next_value()?)
+                                OperationEnumeration::Revoke => {
+                                    Operation::Revoke(map.next_value()?)
                                 }
                                 x => {
                                     return Err(de::Error::custom(format!(
-                                        "unsuported operation: {x:?}"
+                                        "Request Message Batch Item: unsupported operation: {x:?}"
                                     )))
                                 }
                             });
@@ -533,8 +536,11 @@ impl<'de> Deserialize<'de> for ResponseMessageBatchItem {
                             // serialized, we need to do the job by hand,
                             // using the `operation` enum.
                             response_payload = Some(match operation {
-                                OperationEnumeration::Encrypt => {
-                                    Operation::EncryptResponse(map.next_value()?)
+                                OperationEnumeration::AddAttribute => {
+                                    Operation::AddAttributeResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::Certify => {
+                                    Operation::CertifyResponse(map.next_value()?)
                                 }
                                 OperationEnumeration::Create => {
                                     Operation::CreateResponse(map.next_value()?)
@@ -542,14 +548,20 @@ impl<'de> Deserialize<'de> for ResponseMessageBatchItem {
                                 OperationEnumeration::CreateKeyPair => {
                                     Operation::CreateKeyPairResponse(map.next_value()?)
                                 }
-                                OperationEnumeration::Certify => {
-                                    Operation::CertifyResponse(map.next_value()?)
+                                OperationEnumeration::Decrypt => {
+                                    Operation::DecryptResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::Destroy => {
+                                    Operation::DestroyResponse(map.next_value()?)
                                 }
                                 OperationEnumeration::DiscoverVersions => {
                                     Operation::DiscoverVersionsResponse(map.next_value()?)
                                 }
-                                OperationEnumeration::Locate => {
-                                    Operation::LocateResponse(map.next_value()?)
+                                OperationEnumeration::Encrypt => {
+                                    Operation::EncryptResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::Export => {
+                                    Operation::ExportResponse(map.next_value()?)
                                 }
                                 OperationEnumeration::Get => {
                                     Operation::GetResponse(map.next_value()?)
@@ -557,23 +569,17 @@ impl<'de> Deserialize<'de> for ResponseMessageBatchItem {
                                 OperationEnumeration::GetAttributes => {
                                     Operation::GetAttributesResponse(map.next_value()?)
                                 }
-                                OperationEnumeration::Revoke => {
-                                    Operation::RevokeResponse(map.next_value()?)
+                                OperationEnumeration::Import => {
+                                    Operation::ImportResponse(map.next_value()?)
                                 }
-                                OperationEnumeration::Destroy => {
-                                    Operation::DestroyResponse(map.next_value()?)
-                                }
-                                OperationEnumeration::Decrypt => {
-                                    Operation::DecryptResponse(map.next_value()?)
+                                OperationEnumeration::Locate => {
+                                    Operation::LocateResponse(map.next_value()?)
                                 }
                                 OperationEnumeration::Query => {
                                     Operation::QueryResponse(map.next_value()?)
                                 }
-                                OperationEnumeration::Import => {
-                                    Operation::ImportResponse(map.next_value()?)
-                                }
-                                OperationEnumeration::Export => {
-                                    Operation::ExportResponse(map.next_value()?)
+                                OperationEnumeration::Revoke => {
+                                    Operation::RevokeResponse(map.next_value()?)
                                 }
                                 x => {
                                     return Err(de::Error::custom(format!(

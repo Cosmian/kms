@@ -6,11 +6,11 @@ use cosmian_kmip::{
         },
         kmip_types::{ProtocolVersion, ResultStatusEnumeration},
     },
-    kmip_1_4::{
-        kmip_attributes::{Attribute, CustomAttributeValue},
+    kmip_2_1::{
+        kmip_attributes::Attribute,
         kmip_messages::RequestMessageBatchItem,
         kmip_operations::{AddAttribute, Operation},
-        kmip_types::OperationEnumeration,
+        kmip_types::{OperationEnumeration, VendorAttribute, VendorAttributeValue},
     },
     ttlv::KmipFlavor,
 };
@@ -40,49 +40,67 @@ pub(crate) fn add_attributes(client: &SocketClient, key_id: &str) {
     let request_message = RequestMessage {
         request_header: RequestMessageHeader {
             protocol_version: ProtocolVersion {
-                protocol_version_major: 1,
+                protocol_version_major: 2,
                 protocol_version_minor: 1,
             },
             batch_count: 3,
             ..Default::default()
         },
         batch_item: vec![
-            RequestMessageBatchItemVersioned::V14(RequestMessageBatchItem {
+            RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem {
                 operation: OperationEnumeration::AddAttribute,
                 ephemeral: None,
                 unique_batch_item_id: Some(b"12345".to_vec()),
                 request_payload: Operation::AddAttribute(AddAttribute {
-                    unique_identifier: key_id.to_owned(),
-                    attribute: Attribute::CustomAttribute((
-                        "x-Product_Version".to_owned(),
-                        CustomAttributeValue::TextString("7.0.3 build-19480866".to_owned()),
-                    )),
+                    unique_identifier:
+                        cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier::TextString(
+                            key_id.to_owned(),
+                        ),
+                    new_attribute: Attribute::VendorAttribute(VendorAttribute {
+                        vendor_identification: "VMware, Inc.".to_owned(),
+                        attribute_name: "x-Product_Version".to_owned(),
+                        attribute_value: VendorAttributeValue::TextString(
+                            "7.0.3 build-19480866".to_owned(),
+                        ),
+                    }),
                 }),
                 message_extension: None,
             }),
-            RequestMessageBatchItemVersioned::V14(RequestMessageBatchItem {
+            RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem {
                 operation: OperationEnumeration::AddAttribute,
                 ephemeral: None,
                 unique_batch_item_id: Some(b"123456".to_vec()),
                 request_payload: Operation::AddAttribute(AddAttribute {
-                    unique_identifier: key_id.to_owned(),
-                    attribute: Attribute::CustomAttribute((
-                        "x-Vendor".to_owned(),
-                        CustomAttributeValue::TextString("VMware, Inc.".to_owned()),
-                    )),
+                    unique_identifier:
+                        cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier::TextString(
+                            key_id.to_owned(),
+                        ),
+                    new_attribute: Attribute::VendorAttribute(VendorAttribute {
+                        vendor_identification: "VMware, Inc.".to_owned(),
+                        attribute_name: "-Product_Name".to_owned(),
+                        attribute_value: VendorAttributeValue::TextString(
+                            "VMware vSphere".to_owned(),
+                        ),
+                    }),
                 }),
                 message_extension: None,
             }),
-            RequestMessageBatchItemVersioned::V14(RequestMessageBatchItem {
+            RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem {
                 operation: OperationEnumeration::AddAttribute,
                 ephemeral: None,
                 unique_batch_item_id: Some(b"123456".to_vec()),
                 request_payload: Operation::AddAttribute(AddAttribute {
-                    unique_identifier: key_id.to_owned(),
-                    attribute: Attribute::CustomAttribute((
-                        "x-Product".to_owned(),
-                        CustomAttributeValue::TextString("VMware vSphere".to_owned()),
-                    )),
+                    unique_identifier:
+                        cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier::TextString(
+                            key_id.to_owned(),
+                        ),
+                    new_attribute: Attribute::VendorAttribute(VendorAttribute {
+                        vendor_identification: "VMware, Inc.".to_owned(),
+                        attribute_name: "x-Product".to_owned(),
+                        attribute_value: VendorAttributeValue::TextString(
+                            "VMware vSphere".to_owned(),
+                        ),
+                    }),
                 }),
                 message_extension: None,
             }),
@@ -90,13 +108,13 @@ pub(crate) fn add_attributes(client: &SocketClient, key_id: &str) {
     };
 
     let response = client
-        .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip1, &request_message)
+        .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip2, &request_message)
         .expect("Failed to send request");
 
     assert_eq!(
         response.response_header.protocol_version,
         ProtocolVersion {
-            protocol_version_major: 1,
+            protocol_version_major: 2,
             protocol_version_minor: 1,
         }
     );
@@ -105,8 +123,8 @@ pub(crate) fn add_attributes(client: &SocketClient, key_id: &str) {
     let Some(response_batch_item) = response.batch_item.first() else {
         panic!("Expected response batch item");
     };
-    let ResponseMessageBatchItemVersioned::V14(batch_item) = response_batch_item else {
-        panic!("Expected V14 response message");
+    let ResponseMessageBatchItemVersioned::V21(batch_item) = response_batch_item else {
+        panic!("Expected V21 response message");
     };
     assert_eq!(batch_item.result_status, ResultStatusEnumeration::Success);
     assert_eq!(batch_item.unique_batch_item_id, Some(b"12345".to_vec()));
