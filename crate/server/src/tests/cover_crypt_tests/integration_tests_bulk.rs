@@ -4,21 +4,17 @@ use cosmian_kmip::kmip_2_1::{
     kmip_operations::Operation,
     kmip_types::{OperationEnumeration, ProtocolVersion, ResultStatusEnumeration},
 };
-use cosmian_kms_crypto::crypto::cover_crypt::{
-    access_structure::access_structure_from_str,
-    kmip_requests::build_create_covercrypt_master_keypair_request,
-};
+use cosmian_kms_client_utils::cover_crypt_utils::build_create_covercrypt_master_keypair_request;
 
 use crate::{result::KResult, tests::test_utils};
+
 #[tokio::test]
 async fn integration_tests_bulk() -> KResult<()> {
     // cosmian_logger::log_init("trace,hyper=info,reqwest=info");
     let app = test_utils::test_app(None).await;
 
     // Parse the json access_structure file
-    let access_structure = access_structure_from_str(
-        r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["RnD","HR","MKG","FIN"]}"#,
-    )?;
+    let access_structure = r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["RnD","HR","MKG","FIN"]}"#;
 
     let request_message = Message {
         header: MessageHeader {
@@ -32,14 +28,14 @@ async fn integration_tests_bulk() -> KResult<()> {
         items: vec![
             MessageBatchItem::new(Operation::CreateKeyPair(
                 build_create_covercrypt_master_keypair_request(
-                    &access_structure,
+                    access_structure,
                     EMPTY_TAGS,
                     false,
                 )?,
             )),
             MessageBatchItem::new(Operation::CreateKeyPair(
                 build_create_covercrypt_master_keypair_request(
-                    &access_structure,
+                    access_structure,
                     EMPTY_TAGS,
                     false,
                 )?,

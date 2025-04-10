@@ -21,7 +21,11 @@ aes-gcm-siv = "0.11.1"
 argon2 = "0.5"
 base64 = { workspace = true }
 cosmian_cover_crypt = { workspace = true }
-cosmian_crypto_core = { workspace = true, features = ["ecies", "blake", "chacha"] }
+cosmian_crypto_core = { workspace = true, features = [
+  "ecies",
+  "blake",
+  "chacha",
+] }
 cosmian_kmip = { path = "../kmip" }
 cosmian_logger = { workspace = true }
 hex = { workspace = true }

@@ -14,6 +14,9 @@ set -ex
 ROOT_FOLDER=$(pwd)
 
 if [ "$DEBUG_OR_RELEASE" = "release" ]; then
+  # Build the UI in release mode
+  bash .github/scripts/build_ui.sh
+
   # First build the Debian and RPM packages. It must come at first since
   # after this step `cosmian` and `cosmian_kms` are built with custom features flags (fips for example).
   rm -rf target/"$TARGET"/debian
@@ -25,8 +28,11 @@ if [ "$DEBUG_OR_RELEASE" = "release" ]; then
     cargo generate-rpm --target "$TARGET" -p crate/server --metadata-overwrite=pkg/rpm/scriptlets.toml
   elif [ -f /etc/lsb-release ]; then
     cargo install --version 2.4.0 cargo-deb --force
-    cargo deb --target "$TARGET" -p cosmian_kms_server --variant fips
-    cargo deb --target "$TARGET" -p cosmian_kms_server
+    if [ -n "$FEATURES" ]; then
+      cargo deb --target "$TARGET" -p cosmian_kms_server --variant fips
+    else
+      cargo deb --target "$TARGET" -p cosmian_kms_server
+    fi
   fi
 fi
 
@@ -96,7 +102,7 @@ fi
 find . -type d -name cosmian-kms -exec rm -rf \{\} \; -print || true
 rm -f /tmp/*.toml
 
-export RUST_LOG="cosmian_cli=debug,cosmian_kms_server=info,cosmian_kmip=info"
+export RUST_LOG="cosmian_cli=debug,cosmian_kms_server=info,cosmian_kmip=error,test_kms_server=info"
 
 # shellcheck disable=SC2086
 cargo build --target $TARGET $RELEASE $FEATURES

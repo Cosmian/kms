@@ -228,6 +228,11 @@ pub(crate) fn wrap(
                         .as_ref()
                         .and_then(|params| params.cryptographic_algorithm)
                         .unwrap_or(CryptographicAlgorithm::AES);
+                    if cryptographic_algorithm == CryptographicAlgorithm::RSA {
+                        crypto_bail!(CryptoError::NotSupported(
+                            "Can't use RSA algorithm for AES wrapping key".to_owned()
+                        ))
+                    }
                     let block_cipher_mode = cryptographic_parameters
                         .as_ref()
                         .and_then(|params| params.block_cipher_mode)
@@ -315,24 +320,24 @@ fn wrap_with_public_key(
 }
 
 fn wrap_with_rsa(
-    pub_key: &PKey<Public>,
+    public_key: &PKey<Public>,
     key_wrapping_data: &KeyWrappingData,
     key_to_wrap: &[u8],
 ) -> Result<Vec<u8>, CryptoError> {
     let (algorithm, padding, hashing_fn) = rsa_parameters(key_wrapping_data);
     debug!("wrapping with RSA {algorithm} {padding:?} {hashing_fn:?} ");
-    #[cfg(not(feature = "fips"))]
-    if padding == PaddingMethod::PKCS1v15 {
-        return ckm_rsa_pkcs_key_wrap(pub_key, key_to_wrap)
-    }
-    if padding != PaddingMethod::OAEP {
-        crypto_bail!("Unable to wrap key with RSA: padding method not supported: {padding:?}")
-    }
     match algorithm {
-        CryptographicAlgorithm::AES => ckm_rsa_aes_key_wrap(pub_key, hashing_fn, key_to_wrap),
-        CryptographicAlgorithm::RSA => ckm_rsa_pkcs_oaep_key_wrap(pub_key, hashing_fn, key_to_wrap),
-        x => Err(crypto_error!(
-            "Unable to wrap key with RSA: algorithm not supported for wrapping: {x:?}"
-        )),
+        CryptographicAlgorithm::RSA => match padding {
+            PaddingMethod::None => ckm_rsa_aes_key_wrap(public_key, hashing_fn, key_to_wrap),
+            PaddingMethod::OAEP => ckm_rsa_pkcs_oaep_key_wrap(public_key, hashing_fn, key_to_wrap),
+            #[cfg(not(feature = "fips"))]
+            PaddingMethod::PKCS1v15 => ckm_rsa_pkcs_key_wrap(public_key, key_to_wrap),
+            _ => crypto_bail!(
+                "Unable to wrap key with RSA: padding method not supported: {padding:?}"
+            ),
+        },
+        x => {
+            crypto_bail!("Unable to wrap key with RSA: algorithm not supported for wrapping: {x:?}")
+        }
     }
 }

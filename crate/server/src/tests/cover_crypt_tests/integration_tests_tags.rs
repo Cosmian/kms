@@ -1,18 +1,16 @@
 use cosmian_kmip::kmip_2_1::{
     kmip_operations::{
-        CreateKeyPairResponse, CreateResponse, DecryptResponse, DestroyResponse, EncryptResponse,
-        ReKeyKeyPairResponse, Revoke, RevokeResponse,
+        CreateKeyPairResponse, CreateResponse, DecryptResponse, Destroy, DestroyResponse,
+        EncryptResponse, ReKeyKeyPairResponse, Revoke, RevokeResponse,
     },
     kmip_types::{RevocationReason, UniqueIdentifier},
     requests::{decrypt_request, encrypt_request},
 };
+use cosmian_kms_client_utils::cover_crypt_utils::{
+    build_create_covercrypt_master_keypair_request, build_create_covercrypt_usk_request,
+};
 use cosmian_kms_crypto::crypto::cover_crypt::{
-    access_structure::access_structure_from_str,
-    attributes::RekeyEditAction,
-    kmip_requests::{
-        build_create_covercrypt_master_keypair_request, build_create_covercrypt_usk_request,
-        build_destroy_key_request, build_rekey_keypair_request,
-    },
+    attributes::RekeyEditAction, kmip_requests::build_rekey_keypair_request,
 };
 
 use crate::{
@@ -25,12 +23,10 @@ async fn test_re_key_with_tags() -> KResult<()> {
     // create Key Pair
     let mkp_tag = "mkp";
     let mkp_json_tag = serde_json::to_string(&[mkp_tag.to_owned()])?;
-    let access_structure = access_structure_from_str(
-        r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["RnD","HR","MKG","FIN"]}"#,
-    )?;
+    let access_structure = r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["RnD","HR","MKG","FIN"]}"#;
 
     let create_key_pair =
-        build_create_covercrypt_master_keypair_request(&access_structure, [mkp_tag], false)?;
+        build_create_covercrypt_master_keypair_request(access_structure, [mkp_tag], false)?;
     let create_key_pair_response: CreateKeyPairResponse =
         test_utils::post(&app, &create_key_pair).await?;
 
@@ -82,12 +78,10 @@ async fn integration_tests_with_tags() -> KResult<()> {
     // create Key Pair
     let mkp_tag = "mkp";
     let mkp_json_tag = serde_json::to_string(&[mkp_tag.to_owned()])?;
-    let access_structure = access_structure_from_str(
-        r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["RnD","HR","MKG","FIN"]}"#,
-    )?;
+    let access_structure = r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["RnD","HR","MKG","FIN"]}"#;
 
     let create_key_pair =
-        build_create_covercrypt_master_keypair_request(&access_structure, [mkp_tag], false)?;
+        build_create_covercrypt_master_keypair_request(access_structure, [mkp_tag], false)?;
     let create_key_pair_response: CreateKeyPairResponse =
         test_utils::post(&app, &create_key_pair).await?;
 
@@ -296,7 +290,10 @@ async fn integration_tests_with_tags() -> KResult<()> {
 
     //
     // Destroy user decryption key
-    let request = build_destroy_key_request(&udk1_json_tag)?;
+    let request = Destroy {
+        unique_identifier: Some(UniqueIdentifier::TextString(udk1_json_tag.clone())),
+        remove: false,
+    };
     let destroy_response: DestroyResponse = test_utils::post(&app, &request).await?;
     assert_eq!(
         &udk1_json_tag,

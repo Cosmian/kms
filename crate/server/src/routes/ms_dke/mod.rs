@@ -209,7 +209,7 @@ pub(crate) async fn decrypt(
     info!("Encrypted Data : {encrypted_data:?}",);
     let (key_name, key_id) = path.into_inner();
     // let _key_id = key_id.into_inner();
-    trace!("POST /{}/{}/Decrypt {:?}", key_name, key_id, encrypted_data);
+    trace!("POST /{key_name}/{key_id}/Decrypt {encrypted_data:?}");
     match internal_decrypt(&key_name, encrypted_data, req_http, &kms).await {
         Ok(decrypted_data) => HttpResponse::Ok().json(decrypted_data),
         Err(e) => HttpResponse::from_error(e),

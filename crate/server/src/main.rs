@@ -7,6 +7,7 @@ use cosmian_kms_server::{
     telemetry::initialize_telemetry,
 };
 use dotenvy::dotenv;
+use openssl::provider::Provider;
 #[cfg(feature = "timeout")]
 use tracing::warn;
 use tracing::{debug, info, span};
@@ -77,18 +78,18 @@ async fn main() -> KResult<()> {
 
     // In FIPS mode, we only load the fips provider
     #[cfg(feature = "fips")]
-    openssl::provider::Provider::load(None, "fips")?;
+    Provider::load(None, "fips")?;
 
     // Not in FIPS mode and version > 3.0: load the default provider and the legacy provider
     // so that we can use the legacy algorithms
     // particularly those used for old PKCS#12 formats
     #[cfg(not(feature = "fips"))]
     if openssl::version::number() >= 0x30000000 {
-        openssl::provider::Provider::try_load(None, "legacy", true)
+        Provider::try_load(None, "legacy", true)
             .context("export: unable to load the openssl legacy provider")?;
     } else {
         // In version < 3.0, we only load the default provider
-        openssl::provider::Provider::load(None, "default")?;
+        Provider::load(None, "default")?;
     };
 
     // Instantiate a config object using the env variables and the args of the binary
@@ -126,7 +127,10 @@ mod tests {
     use std::path::PathBuf;
 
     use cosmian_kms_server::{
-        config::{ClapConfig, HttpConfig, JwtAuthConfig, MainDBConfig, WorkspaceConfig},
+        config::{
+            ClapConfig, HttpConfig, JwtAuthConfig, MainDBConfig, OidcConfig, UiConfig,
+            WorkspaceConfig,
+        },
         telemetry::TelemetryConfig,
     };
 
@@ -160,6 +164,16 @@ mod tests {
                     "[jwt audience 2]".to_owned(),
                 ]),
             },
+            ui_config: UiConfig {
+                ui_index_html_folder: "[ui index html folder]".to_owned(),
+                ui_oidc_auth: OidcConfig {
+                    ui_oidc_client_id: Some("[client id]".to_owned()),
+                    ui_oidc_client_secret: Some("[client secret]".to_owned()),
+                    ui_oidc_issuer_url: Some("[issuer url]".to_owned()),
+                    ui_oidc_logout_url: Some("[logout url]".to_owned()),
+                },
+            },
+            kms_public_url: Some("[kms_public_url]".to_owned()),
             workspace: WorkspaceConfig {
                 root_data_path: PathBuf::from("[root data path]"),
                 tmp_path: PathBuf::from("[tmp path]"),
@@ -192,6 +206,7 @@ hsm_model = ""
 hsm_admin = ""
 hsm_slot = []
 hsm_password = []
+kms_public_url = "[kms_public_url]"
 
 [db]
 database_type = "[redis-findex, postgresql,...]"
@@ -212,6 +227,15 @@ authority_cert_file = "[authority cert file]"
 jwt_issuer_uri = ["[jwt issuer uri 1]", "[jwt issuer uri 2]"]
 jwks_uri = ["[jwks uri 1]", "[jwks uri 2]"]
 jwt_audience = ["[jwt audience 1]", "[jwt audience 2]"]
+
+[ui_config]
+ui_index_html_folder = "[ui index html folder]"
+
+[ui_config.ui_oidc_auth]
+ui_oidc_client_id = "[client id]"
+ui_oidc_client_secret = "[client secret]"
+ui_oidc_issuer_url = "[issuer url]"
+ui_oidc_logout_url = "[logout url]"
 
 [workspace]
 root_data_path = "[root data path]"

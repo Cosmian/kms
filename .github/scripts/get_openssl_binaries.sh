@@ -34,4 +34,5 @@ echo -n Extracting compressed archive...
 cd "${OPENSSL_DIR}"
 tar -xf "$OPENSSL_VERSION.tar.gz"
 find .
+chmod u+x lib*/ossl-modules/*
 rm "$OPENSSL_VERSION.tar.gz"

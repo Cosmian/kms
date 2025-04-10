@@ -482,14 +482,8 @@ fn encrypt_with_rsa(
     debug!("encrypt_with_rsa: encrypting with RSA {algorithm:?} {padding:?} {hashing_fn:?}");
 
     let ciphertext = match algorithm {
-        CryptographicAlgorithm::AES => match padding {
-            PaddingMethod::OAEP => ckm_rsa_aes_key_wrap(public_key, hashing_fn, plaintext)?,
-            _ => kms_bail!(
-                "Unable to encrypt with RSA AES KEY WRAP: padding method not supported: \
-                 {padding:?}"
-            ),
-        },
         CryptographicAlgorithm::RSA => match padding {
+            PaddingMethod::None => ckm_rsa_aes_key_wrap(public_key, hashing_fn, plaintext)?,
             PaddingMethod::OAEP => ckm_rsa_pkcs_oaep_encrypt(public_key, hashing_fn, plaintext)?,
             #[cfg(not(feature = "fips"))]
             PaddingMethod::PKCS1v15 => ckm_rsa_pkcs_encrypt(public_key, plaintext)?,

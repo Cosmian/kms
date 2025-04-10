@@ -464,7 +464,7 @@ fn decrypt_with_rsa(
     );
 
     Ok(match (algorithm, padding) {
-        (CryptographicAlgorithm::AES, PaddingMethod::OAEP) => {
+        (CryptographicAlgorithm::RSA, PaddingMethod::None) => {
             ckm_rsa_aes_key_unwrap(private_key, hashing_fn, ciphertext)?
         }
         (CryptographicAlgorithm::RSA, PaddingMethod::OAEP) => {

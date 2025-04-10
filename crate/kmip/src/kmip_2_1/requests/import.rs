@@ -1,3 +1,5 @@
+use tracing::trace;
+
 use crate::kmip_2_1::{
     kmip_objects::{Object, ObjectType},
     kmip_operations::Import,
@@ -6,26 +8,49 @@ use crate::kmip_2_1::{
 
 /// Build an ` Import ` request for a generic Object
 #[must_use]
-pub fn build_import_object_request(
+pub fn import_object_request<T: IntoIterator<Item = impl AsRef<str>>>(
+    unique_identifier: Option<String>,
     object: Object,
-    object_type: ObjectType,
-    attributes: Attributes,
-    unique_identifier: &str,
-    replace_existing: Option<bool>,
+    attributes: Option<Attributes>,
+    unwrap: bool,
+    replace_existing: bool,
+    tags: T,
 ) -> Import {
-    let key_wrap_type = if object.key_wrapping_data().is_some() {
-        Some(KeyWrapType::AsRegistered)
+    let unique_identifier = UniqueIdentifier::TextString(unique_identifier.unwrap_or_default());
+    trace!("import_object_request: unique_identifier: {unique_identifier}");
+    let object_type = object.object_type();
+
+    let (key_wrap_type, mut attributes) = if object_type == ObjectType::Certificate {
+        // add the tags to the attributes
+        let attributes = attributes.unwrap_or_default();
+        (None, attributes)
     } else {
-        None
+        // unwrap the key if needed
+        let key_wrap_type = object.key_wrapping_data().map(|_| {
+            if unwrap {
+                KeyWrapType::NotWrapped
+            } else {
+                KeyWrapType::AsRegistered
+            }
+        });
+        // add the tags to the attributes
+        let attributes = attributes.map_or_else(
+            || object.attributes().cloned().unwrap_or_default(),
+            |attributes| attributes,
+        );
+        (key_wrap_type, attributes)
     };
 
-    // build the import request and run it
+    trace!("import_object_request: key_wrap_type: {key_wrap_type:?}, attributes: {attributes:?}");
+
+    attributes.set_tags(tags).unwrap_or_default();
+
     Import {
-        unique_identifier: UniqueIdentifier::TextString(unique_identifier.to_owned()),
+        unique_identifier,
+        object,
         object_type,
-        replace_existing,
+        replace_existing: Some(replace_existing),
         key_wrap_type,
         attributes,
-        object,
     }
 }
