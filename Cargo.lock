@@ -1946,7 +1946,7 @@ dependencies = [
 [[package]]
 name = "cosmian_kmip"
 version = "4.22.1"
-source = "git+https://www.github.com/Cosmian/kms?branch=feat%2Fadd_ui#eacece3f7717bfc29e373718c2cf5682f98ce0dd"
+source = "git+https://www.github.com/Cosmian/kms?branch=develop#e1bf36874d6beb6d1f3258eeb203e5d44103a86f"
 dependencies = [
  "bitflags 2.9.0",
  "chrono",
@@ -1967,7 +1967,7 @@ dependencies = [
 [[package]]
 name = "cosmian_kms_access"
 version = "4.22.1"
-source = "git+https://www.github.com/Cosmian/kms?branch=feat%2Fadd_ui#eacece3f7717bfc29e373718c2cf5682f98ce0dd"
+source = "git+https://www.github.com/Cosmian/kms?branch=develop#e1bf36874d6beb6d1f3258eeb203e5d44103a86f"
 dependencies = [
  "cosmian_kmip",
  "serde",
@@ -1976,7 +1976,7 @@ dependencies = [
 [[package]]
 name = "cosmian_kms_base_hsm"
 version = "4.22.1"
-source = "git+https://www.github.com/Cosmian/kms?branch=feat%2Fadd_ui#eacece3f7717bfc29e373718c2cf5682f98ce0dd"
+source = "git+https://www.github.com/Cosmian/kms?branch=develop#e1bf36874d6beb6d1f3258eeb203e5d44103a86f"
 dependencies = [
  "async-trait",
  "cosmian_kms_interfaces",
@@ -2045,7 +2045,7 @@ dependencies = [
 [[package]]
 name = "cosmian_kms_crypto"
 version = "4.22.1"
-source = "git+https://www.github.com/Cosmian/kms?branch=feat%2Fadd_ui#eacece3f7717bfc29e373718c2cf5682f98ce0dd"
+source = "git+https://www.github.com/Cosmian/kms?branch=develop#e1bf36874d6beb6d1f3258eeb203e5d44103a86f"
 dependencies = [
  "aes-gcm-siv",
  "argon2",
@@ -2069,7 +2069,7 @@ dependencies = [
 [[package]]
 name = "cosmian_kms_interfaces"
 version = "4.22.1"
-source = "git+https://www.github.com/Cosmian/kms?branch=feat%2Fadd_ui#eacece3f7717bfc29e373718c2cf5682f98ce0dd"
+source = "git+https://www.github.com/Cosmian/kms?branch=develop#e1bf36874d6beb6d1f3258eeb203e5d44103a86f"
 dependencies = [
  "async-trait",
  "cosmian_kmip",
@@ -2083,7 +2083,7 @@ dependencies = [
 [[package]]
 name = "cosmian_kms_server"
 version = "4.22.1"
-source = "git+https://www.github.com/Cosmian/kms?branch=feat%2Fadd_ui#eacece3f7717bfc29e373718c2cf5682f98ce0dd"
+source = "git+https://www.github.com/Cosmian/kms?branch=develop#e1bf36874d6beb6d1f3258eeb203e5d44103a86f"
 dependencies = [
  "actix-cors",
  "actix-files",
@@ -2142,7 +2142,7 @@ dependencies = [
 [[package]]
 name = "cosmian_kms_server_database"
 version = "4.22.1"
-source = "git+https://www.github.com/Cosmian/kms?branch=feat%2Fadd_ui#eacece3f7717bfc29e373718c2cf5682f98ce0dd"
+source = "git+https://www.github.com/Cosmian/kms?branch=develop#e1bf36874d6beb6d1f3258eeb203e5d44103a86f"
 dependencies = [
  "async-trait",
  "clap",
@@ -5360,7 +5360,7 @@ dependencies = [
 [[package]]
 name = "pkcs11_sys"
 version = "0.2.17"
-source = "git+https://www.github.com/Cosmian/kms?branch=feat%2Fadd_ui#eacece3f7717bfc29e373718c2cf5682f98ce0dd"
+source = "git+https://www.github.com/Cosmian/kms?branch=develop#e1bf36874d6beb6d1f3258eeb203e5d44103a86f"
 
 [[package]]
 name = "pkcs5"
@@ -5561,7 +5561,7 @@ dependencies = [
 [[package]]
 name = "proteccio_pkcs11_loader"
 version = "4.22.1"
-source = "git+https://www.github.com/Cosmian/kms?branch=feat%2Fadd_ui#eacece3f7717bfc29e373718c2cf5682f98ce0dd"
+source = "git+https://www.github.com/Cosmian/kms?branch=develop#e1bf36874d6beb6d1f3258eeb203e5d44103a86f"
 dependencies = [
  "cosmian_kms_base_hsm",
  "cosmian_kms_interfaces",
@@ -7676,7 +7676,7 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 [[package]]
 name = "utimaco_pkcs11_loader"
 version = "4.22.1"
-source = "git+https://www.github.com/Cosmian/kms?branch=feat%2Fadd_ui#eacece3f7717bfc29e373718c2cf5682f98ce0dd"
+source = "git+https://www.github.com/Cosmian/kms?branch=develop#e1bf36874d6beb6d1f3258eeb203e5d44103a86f"
 dependencies = [
  "cosmian_kms_base_hsm",
  "cosmian_kms_interfaces",
