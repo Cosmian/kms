@@ -20,7 +20,7 @@ To enable authentication via **OIDC**, you must configure the KMS UI with detail
 Add the following section to your **KMS configuration file**:
 
 ```toml
-[ui_oidc_auth]
+[ui_config.ui_oidc_auth]
 ui_oidc_client_id = "your_client_id"
 ui_oidc_client_secret = "your_client_secret"  # (optional)
 ui_oidc_issuer_url = "https://your_oidc_issuer_url"
