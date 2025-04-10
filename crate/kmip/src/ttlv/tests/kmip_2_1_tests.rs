@@ -479,8 +479,8 @@ fn test_vendor_attribute_value() {
 
 #[test]
 fn test_vendor_attribute() {
-    log_init(Some("trace"));
-    // log_init(option_env!("RUST_LOG"));
+    // log_init(Some("trace"));
+    log_init(option_env!("RUST_LOG"));
 
     let vendor_attribute = VendorAttribute {
         vendor_identification: "Test Vendor".to_owned(),
@@ -513,8 +513,8 @@ fn test_vendor_attribute() {
 
 #[test]
 fn test_import_symmetric_key() {
-    log_init(Some("debug"));
-    // log_init(option_env!("RUST_LOG"));
+    // log_init(Some("debug"));
+    log_init(option_env!("RUST_LOG"));
 
     let key_bytes: &[u8] = b"this_is_a_test";
     let key = aes_key(key_bytes);

@@ -635,8 +635,12 @@ impl From<Attribute> for kmip_2_1::kmip_attributes::Attribute {
 /// The value of a Custom Attribute (section 3.39).
 /// Any data type or structure.
 /// According to the specifications, If a structure, then the structure SHALL NOT include sub structures.
-/// In this implementation, we use a JSON value to represent the structure.
+/// In this implementation, we use a TTLV to represent the structure.
+///
+/// For reasons on why we use an adjacent tagged enum, see the comment on the `VendorAttributeValue`
+/// enum in the KMIP 2.1 folder.
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[serde(tag = "_t", content = "_c")]
 pub enum CustomAttributeValue {
     TextString(String),
     Integer(i32),

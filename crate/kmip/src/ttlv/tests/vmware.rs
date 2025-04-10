@@ -414,7 +414,7 @@ const ADD_ATTRIBUTE: &str = "42007801000001b042007701000000384200690100000020420
 #[test]
 fn add_attribute() {
     log_init(option_env!("RUST_LOG"));
-    // log_init(Some("debug"));
+    // log_init(Some("trace"));
     let request = hex::decode(ADD_ATTRIBUTE).unwrap();
 
     let (major, minor) = TTLV::find_version(&request).unwrap();

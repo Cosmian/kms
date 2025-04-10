@@ -103,10 +103,12 @@ impl<'a> AdjacentlyTaggedStructure {
                         name: "Structure".to_owned(),
                     }),
                 },
-                TTLV {
-                    tag: "_c".to_owned(),
-                    value: TTLValue::Structure(ttlvs.clone()),
-                },
+                further_expand_ttlv_struct(ttlvs.first().unwrap_or(&TTLV {
+                    tag: "ERROR".to_owned(),
+                    value: TTLValue::TextString(
+                        "There should be one TTLV in the Structure".to_owned(),
+                    ),
+                })),
             ),
             TTLValue::Integer(v) => (
                 TTLV {
@@ -247,6 +249,40 @@ impl<'a> AdjacentlyTaggedStructure {
             tag,
             content,
         }
+    }
+}
+
+/// When we have a TTLV in the Structure variant, ti is compressed by the serializer (left as such)
+/// However, we need to expand it to a TTLV with a tag, a type and a value for the deserializer
+fn further_expand_ttlv_struct(ttlv: &TTLV) -> TTLV {
+    TTLV {
+        tag: "_c".to_owned(),
+        value: TTLValue::Structure(vec![
+            TTLV {
+                tag: "tag".to_owned(),
+                value: TTLValue::TextString(ttlv.tag.clone()),
+            },
+            TTLV {
+                tag: "type".to_owned(),
+                value: TTLValue::TextString(match ttlv.value {
+                    TTLValue::Structure(_) => "Structure".to_owned(),
+                    TTLValue::Integer(_) => "Integer".to_owned(),
+                    TTLValue::LongInteger(_) => "LongInteger".to_owned(),
+                    TTLValue::BigInteger(_) => "BigInteger".to_owned(),
+                    TTLValue::Enumeration(_) => "Enumeration".to_owned(),
+                    TTLValue::Boolean(_) => "Boolean".to_owned(),
+                    TTLValue::TextString(_) => "TextString".to_owned(),
+                    TTLValue::ByteString(_) => "ByteString".to_owned(),
+                    TTLValue::DateTime(_) => "DateTime".to_owned(),
+                    TTLValue::Interval(_) => "Interval".to_owned(),
+                    TTLValue::DateTimeExtended(_) => "DateTimeExtended".to_owned(),
+                }),
+            },
+            TTLV {
+                tag: "value".to_owned(),
+                value: ttlv.value.clone(),
+            },
+        ]),
     }
 }
 
