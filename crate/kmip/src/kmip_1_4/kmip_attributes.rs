@@ -21,6 +21,7 @@ use crate::{
     },
     kmip_2_1::{self, kmip_types::VendorAttribute},
     ttlv::TTLV,
+    KmipError,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -627,6 +628,121 @@ impl From<Attribute> for kmip_2_1::kmip_attributes::Attribute {
             | Attribute::Pkcs12FriendlyName(_) => {
                 warn!("KMIP 2.1 does not support the KMIP 1 attribute {attribute:?}");
                 Self::Comment("Unsupported KMIP 1.4 attribute".to_owned())
+            }
+        }
+    }
+}
+
+impl TryFrom<kmip_2_1::kmip_attributes::Attribute> for Attribute {
+    type Error = KmipError;
+
+    fn try_from(attribute: kmip_2_1::kmip_attributes::Attribute) -> Result<Self, Self::Error> {
+        match attribute {
+            kmip_2_1::kmip_attributes::Attribute::ActivationDate(v) => Ok(Self::ActivationDate(v)),
+            kmip_2_1::kmip_attributes::Attribute::CryptographicDomainParameters(v) => {
+                Ok(Self::CryptographicDomainParameters(v.into()))
+            }
+            kmip_2_1::kmip_attributes::Attribute::CryptographicLength(v) => {
+                Ok(Self::CryptographicLength(v))
+            }
+            kmip_2_1::kmip_attributes::Attribute::CryptographicParameters(v) => {
+                Ok(Self::CryptographicParameters(v.into()))
+            }
+            kmip_2_1::kmip_attributes::Attribute::CryptographicUsageMask(v) => {
+                Ok(Self::CryptographicUsageMask(v.into()))
+            }
+            kmip_2_1::kmip_attributes::Attribute::DeactivationDate(v) => {
+                Ok(Self::DeactivationDate(v))
+            }
+            kmip_2_1::kmip_attributes::Attribute::Description(v) => Ok(Self::Description(v)),
+            kmip_2_1::kmip_attributes::Attribute::Name(v) => Ok(Self::Name(v.into())),
+            kmip_2_1::kmip_attributes::Attribute::ObjectType(v) => Ok(Self::ObjectType(v.into())),
+            kmip_2_1::kmip_attributes::Attribute::ProcessStartDate(v) => {
+                Ok(Self::ProcessStartDate(v))
+            }
+            kmip_2_1::kmip_attributes::Attribute::ProtectStopDate(v) => {
+                Ok(Self::ProtectStopDate(v))
+            }
+            kmip_2_1::kmip_attributes::Attribute::UniqueIdentifier(kmip_id) => match kmip_id {
+                kmip_2_1::kmip_types::UniqueIdentifierTypeEnum(kmip_id_enum) => {
+                    match kmip_id_enum {
+                        kmip_2_1::kmip_types::_UniqueIdentifierTypeEnum__TextString(id) => {
+                            Ok(Self::UniqueIdentifier(id))
+                        }
+                        _ => Err("Unsupported Unique Identifier type".to_owned()),
+                    }
+                }
+            },
+            kmip_2_1::kmip_attributes::Attribute::CryptographicAlgorithm(v) => {
+                Ok(Self::CryptographicAlgorithm(v.into()))
+            }
+            kmip_2_1::kmip_attributes::Attribute::CertificateType(v) => {
+                Ok(Self::CertificateType(v.into()))
+            }
+            kmip_2_1::kmip_attributes::Attribute::CertificateLength(v) => {
+                Ok(Self::CertificateLength(v))
+            }
+            kmip_2_1::kmip_attributes::Attribute::DigitalSignatureAlgorithm(v) => {
+                Ok(Self::DigitalSignatureAlgorithm(v.into()))
+            }
+            kmip_2_1::kmip_attributes::Attribute::LeaseTime(v) => Ok(Self::LeaseTime(v)),
+            kmip_2_1::kmip_attributes::Attribute::UsageLimits(v) => Ok(Self::UsageLimits(v.into())),
+            kmip_2_1::kmip_attributes::Attribute::State(v) => Ok(Self::State(v.into())),
+            kmip_2_1::kmip_attributes::Attribute::InitialDate(v) => Ok(Self::InitialDate(v)),
+            kmip_2_1::kmip_attributes::Attribute::DestroyDate(v) => Ok(Self::DestroyDate(v)),
+            kmip_2_1::kmip_attributes::Attribute::CompromiseOccurrenceDate(v) => {
+                Ok(Self::CompromiseOccurrenceDate(v))
+            }
+            kmip_2_1::kmip_attributes::Attribute::CompromiseDate(v) => Ok(Self::CompromiseDate(v)),
+            kmip_2_1::kmip_attributes::Attribute::RevocationReason(v) => {
+                Ok(Self::RevocationReason(v.into()))
+            }
+            kmip_2_1::kmip_attributes::Attribute::ArchiveDate(v) => Ok(Self::ArchiveDate(v)),
+            kmip_2_1::kmip_attributes::Attribute::ObjectGroup(v) => Ok(Self::ObjectGroup(v)),
+            kmip_2_1::kmip_attributes::Attribute::Fresh(v) => Ok(Self::Fresh(v)),
+            kmip_2_1::kmip_attributes::Attribute::Link(v) => Ok(Self::Link(v.into())),
+            kmip_2_1::kmip_attributes::Attribute::ApplicationSpecificInformation(v) => {
+                Ok(Self::ApplicationSpecificInformation(v.into()))
+            }
+            kmip_2_1::kmip_attributes::Attribute::ContactInformation(v) => {
+                Ok(Self::ContactInformation(v))
+            }
+            kmip_2_1::kmip_attributes::Attribute::LastChangeDate(v) => Ok(Self::LastChangeDate(v)),
+            kmip_2_1::kmip_attributes::Attribute::VendorAttribute(vendor_attribute) => {
+                let kmip_id = vendor_attribute.vendor_identification;
+                let name = vendor_attribute.attribute_name;
+                let value = vendor_attribute.attribute_value.into();
+                Ok(Self::CustomAttribute((name, value)))
+            }
+            kmip_2_1::kmip_attributes::Attribute::AlternativeName(v) => {
+                Ok(Self::AlternativeName(v.into()))
+            }
+            kmip_2_1::kmip_attributes::Attribute::KeyValuePresent(v) => {
+                Ok(Self::KeyValuePresent(v))
+            }
+            kmip_2_1::kmip_attributes::Attribute::KeyValueLocation(v) => {
+                Ok(Self::KeyValueLocation(v.into()))
+            }
+            kmip_2_1::kmip_attributes::Attribute::OriginalCreationDate(v) => {
+                Ok(Self::OriginalCreationDate(v))
+            }
+            kmip_2_1::kmip_attributes::Attribute::RandomNumberGenerator(v) => {
+                Ok(Self::RandomNumberGenerator(v.into()))
+            }
+            kmip_2_1::kmip_attributes::Attribute::Pkcs12FriendlyName(v) => {
+                Ok(Self::Pkcs12FriendlyName(v))
+            }
+            kmip_2_1::kmip_attributes::Attribute::Comment(v) => Ok(Self::Comment(v)),
+            kmip_2_1::kmip_attributes::Attribute::Sensitive(v) => Ok(Self::Sensitive(v)),
+            kmip_2_1::kmip_attributes::Attribute::AlwaysSensitive(v) => {
+                Ok(Self::AlwaysSensitive(v))
+            }
+            kmip_2_1::kmip_attributes::Attribute::Extractable(v) => Ok(Self::Extractable(v)),
+            kmip_2_1::kmip_attributes::Attribute::NeverExtractable(v) => {
+                Ok(Self::NeverExtractable(v))
+            }
+            kmip_2_1::kmip_attributes::Attribute::Unknown(v) => {
+                Err(format!("Unknown attribute: {v:?}").into())
             }
         }
     }

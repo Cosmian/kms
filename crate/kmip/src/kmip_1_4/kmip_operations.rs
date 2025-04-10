@@ -1,4 +1,7 @@
-use std::fmt::{self, Display};
+use std::{
+    fmt::{self, Display},
+    str::FromStr,
+};
 
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
@@ -319,6 +322,35 @@ pub struct GetAttributes {
     pub attribute_name: Option<Vec<String>>,
 }
 
+impl From<GetAttributes> for kmip_2_1::kmip_operations::GetAttributes {
+    fn from(get_attributes: GetAttributes) -> Self {
+        Self {
+            unique_identifier: Some(kmip_2_1::kmip_types::UniqueIdentifier::TextString(
+                get_attributes.unique_identifier,
+            )),
+            attribute_references: get_attributes.attribute_name.map(|v| {
+                v.into_iter()
+                    .map(|v| {
+                        if v.starts_with("x-") || v.starts_with("y-") {
+                            kmip_2_1::kmip_types::AttributeReference::Vendor(
+                                kmip_2_1::kmip_types::VendorAttributeReference {
+                                    vendor_identification: "KMIP1".to_owned(),
+                                    attribute_name: v,
+                                },
+                            )
+                        } else {
+                            kmip_2_1::kmip_types::AttributeReference::Standard(
+                                kmip_2_1::kmip_types::Tag::from_str(&v)
+                                    .unwrap_or(kmip_2_1::kmip_types::Tag::Y), //some dummy tag that will never be found
+                            )
+                        }
+                    })
+                    .collect::<Vec<kmip_2_1::kmip_types::AttributeReference>>()
+            }),
+        }
+    }
+}
+
 /// Response to a Get Attributes request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
@@ -327,6 +359,27 @@ pub struct GetAttributesResponse {
     /// The attributes associated with the Managed Object
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attribute: Option<Vec<Attribute>>,
+}
+
+impl TryFrom<kmip_2_1::kmip_operations::GetAttributesResponse> for GetAttributesResponse {
+    type Error = KmipError;
+
+    fn try_from(
+        value: kmip_2_1::kmip_operations::GetAttributesResponse,
+    ) -> Result<Self, Self::Error> {
+        debug!("Converting KMIP 2.1 GetAttributesResponse to KMIP 1.4: {value:#?}");
+
+        let attributes_2_1: Vec<kmip_2_1::kmip_attributes::Attribute> = value.attributes.into();
+        let attributes_1_4: Vec<Attribute> = attributes_2_1
+            .into_iter()
+            .flat_map(|v| v.try_into())
+            .collect();
+
+        Ok(Self {
+            unique_identifier: value.unique_identifier.to_string(),
+            attribute: Some(attributes_1_4),
+        })
+    }
 }
 
 /// 4.13 Get Attribute List
@@ -1397,9 +1450,7 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             // Operation::GetResponse(get_response) => {
             //     Self::GetResponse(get_response.into())
             // }
-            // Operation::GetAttributes(get_attributes) => {
-            //     Self::GetAttributes(get_attributes.into())
-            // }
+            Operation::GetAttributes(get_attributes) => Self::GetAttributes(get_attributes.into()),
             // Operation::GetAttributesResponse(get_attributes_response) => {
             //     Self::GetAttributesResponse(
             //         get_attributes_response.into(),
@@ -1644,11 +1695,9 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             // Operation::GetAttributes(get_attributes) => {
             //     Self::GetAttributes(get_attributes.into())
             // }
-            // Operation::GetAttributesResponse(get_attributes_response) => {
-            //     Self::GetAttributesResponse(
-            //         get_attributes_response.into(),
-            //     )
-            // }
+            kmip_2_1::kmip_operations::Operation::GetAttributesResponse(
+                get_attributes_response,
+            ) => Self::GetAttributesResponse(get_attributes_response.try_into()?),
             // Operation::GetAttributeList(get_attribute_list) => {
             //     Self::GetAttributeList(get_attribute_list.into())
             // }
