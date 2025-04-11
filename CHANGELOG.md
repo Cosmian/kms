@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0] - 2025-04-10
+
+### 🚀 Features
+
+- Delegates encryption to KMS ([#13](https://github.com/Cosmian/client/pull/13))
+- Add UI in React + WASM ([#21](https://github.com/Cosmian/client/pull/21))
+- Add CBC mode support for KMS encryption ([#23](https://github.com/Cosmian/client/pull/23))
+
+### 🐛 Bug Fixes
+
+- Test_kms_client: bug when exporting a sym key using the tag of a private key
+- Test_certificate_encrypt_using_rsa: add prefix to temporary files
+- RUSTSEC-2025-0022: Use-After-Free in Md::fetch and Cipher::fetch
+- Findex concurrent tests on KMS encryption layer
+
+### 🚜 Refactor
+
+- Import all KMS CLI crates ([#18](https://github.com/Cosmian/client/pull/18))
+
+### ⚙️ Miscellaneous Tasks
+
+- Missing artifact libcosmian_pkcs11.so on RHEL
+- Reuse generic GitHub workflows
+
 ## [0.2.0] - 2025-02-04
 
 ### 🚀 Features

@@ -29,8 +29,8 @@ else
 fi
 
 DESTINATION_DIR=/mnt/package/cli/$BRANCH
-KMS_DESTINATION_DIR=/mnt/package/kms/4.22.1
-FINDEX_SERVER_DESTINATION_DIR=/mnt/package/findex-server/0.2.0
+KMS_DESTINATION_DIR=/mnt/package/kms/4.23.0
+FINDEX_SERVER_DESTINATION_DIR=/mnt/package/findex-server/0.3.0
 
 ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p "$DESTINATION_DIR"
 scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa ./*.zip cosmian@package.cosmian.com:"$DESTINATION_DIR"/
