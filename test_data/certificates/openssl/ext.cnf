@@ -1,0 +1,16 @@
+crlDistributionPoints=crl_section
+
+[crl_section]
+fullname = @url_section
+
+[url_section]
+URI.1=ldap://www.example.com/ldap?DN=TEST
+URI.2=https://package.cosmian.com/kms/crl_tests/intermediate.crl.pem
+
+[v3_ca]
+basicConstraints=CA:FALSE,pathlen:0
+keyUsage=keyCertSign,digitalSignature
+extendedKeyUsage=emailProtection
+crlDistributionPoints=URI:https://package.cosmian.com/kms/crl_tests/intermediate.crl.pem
+subjectKeyIdentifier=hash
+authorityKeyIdentifier=keyid:always,issuer

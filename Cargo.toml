@@ -1,5 +1,14 @@
 [workspace]
-members = ["crate/cli", "crate/gui"]
+members = [
+  "crate/cli",
+  "crate/findex_client",
+  "crate/kms_client",
+  "crate/gui",
+  "crate/pkcs11/module",
+  "crate/pkcs11/provider",
+  "crate/client_utils",
+  "crate/wasm",
+]
 
 # Do that if you don't want to enable `dev` feature by default due to the `dev-dependencies` of the cli.
 # For more details, read: https://doc.rust-lang.org/cargo/reference/resolver.html#feature-resolver-version-2
@@ -7,16 +16,16 @@ members = ["crate/cli", "crate/gui"]
 resolver = "2"
 
 [workspace.package]
-version = "0.2.0"
-edition = "2021"
-rust-version = "1.83.0"
+version = "0.3.0"
+edition = "2024"
+rust-version = "1.85.0"
 authors = [
   "Bruno Grieder <bruno.grieder@cosmian.com>",
   "Emmanuel Coste <emmanuel.coste@cosmian.com>",
 ]
 license = "BUSL-1.1" # "Business Source License 1.1"
 license-file = "LICENSE"
-repository = "https://github.com/Cosmian/cli"
+repository = "https://github.com/Cosmian/client"
 keywords = ["cosmian_cli", "kms", "findex", "findex-server", "cosmian"]
 categories = ["security"]
 
@@ -38,18 +47,46 @@ incremental = false
 opt-level = 0
 
 [workspace.dependencies]
-clap = { version = "4.5.28", default-features = false }
-cosmian_kms_cli = { git = "https://www.github.com/Cosmian/kms", tag = "4.22.1" }
-cosmian_findex_cli = { git = "https://www.github.com/Cosmian/findex-server", tag = "0.2.0" }
+actix-server = { version = "2.5", default-features = false }
+base64 = "0.22"
+clap = { version = "4.5", default-features = false }
 cosmian_config_utils = { git = "https://www.github.com/Cosmian/http_client_server", tag = "0.1.0" }
-cosmian_http_client = { git = "https://www.github.com/Cosmian/http_client_server", tag = "0.1.0" }
+cosmian_cover_crypt = { version = "15.0", default-features = false }
+cosmian_cli = { path = "crate/cli" }
+cosmian_kms_client_utils = { path = "crate/client_utils" }
+cosmian_kms_client_wasm = { path = "crate/wasm" }
+cosmian_crypto_core = { version = "10.0.1", default-features = false, features = [
+  "ser",
+] }
+cosmian_findex = { git = "https://github.com/Cosmian/findex", default-features = false, rev = "98fcb6e97054e1bb9dddd7a0d620e27438cb91b7" }
+cosmian_findex_server = { git = "https://www.github.com/Cosmian/findex-server", branch = "develop" }
+cosmian_findex_structs = { git = "https://www.github.com/Cosmian/findex-server", branch = "develop" }
+cosmian_http_client = { git = "https://www.github.com/Cosmian/http_client_server", tag = "0.1.1" }
 cosmian_logger = { git = "https://www.github.com/Cosmian/http_client_server", tag = "0.1.0" }
+pkcs11_sys = { git = "https://www.github.com/Cosmian/kms", branch = "develop" }
+cosmian_kmip = { git = "https://www.github.com/Cosmian/kms", branch = "develop" }
+cosmian_kms_access = { git = "https://www.github.com/Cosmian/kms", branch = "develop" }
+cosmian_kms_crypto = { git = "https://www.github.com/Cosmian/kms", branch = "develop" }
+cosmian_kms_server = { git = "https://www.github.com/Cosmian/kms", branch = "develop" }
+cosmian_kms_server_database = { git = "https://www.github.com/Cosmian/kms", branch = "develop" }
+der = { version = "0.7", default-features = false }
 hex = { version = "0.4", default-features = false }
+leb128 = "0.2"
+log = { version = "0.4", default-features = false }
+num-format = "0.4"
+pem = "3.0"
 openssl = { version = "0.10", default-features = false }
+rand = "0.9"
+reqwest = { version = "0.11", default-features = false }
 serde = "1.0"
+serde_json = "1.0"
+strum = { version = "0.25", default-features = false }
 thiserror = "2.0"
 tokio = { version = "1.43", default-features = false }
 tracing = "0.1"
+tracing-subscriber = { version = "0.3", default-features = false }
 url = "2.5"
-uuid = "1.12"
+uuid = "=1.11.1"
+x509-cert = { version = "0.2", default-features = false }
 x509-parser = "0.17"
+zeroize = { version = "1.8", default-features = false }

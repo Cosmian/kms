@@ -1,15 +1,17 @@
 use std::path::PathBuf;
 
 use clap::{CommandFactory, Parser, Subcommand};
-use cosmian_findex_cli::{reexports::cosmian_findex_client::FindexRestClient, CoreFindexActions};
-use cosmian_kms_cli::{reexport::cosmian_kms_client::KmsClient, KmsActions};
+use cosmian_findex_client::RestClient;
+use cosmian_kms_client::KmsClient;
 use cosmian_logger::log_init;
 use tracing::{info, trace};
 
 use crate::{
-    actions::{findex::FindexActions, markdown::MarkdownAction},
+    actions::{
+        findex_server::actions::FindexActions, kms::actions::KmsActions, markdown::MarkdownAction,
+    },
     cli_error,
-    config::ClientConf,
+    config::ClientConfig,
     error::result::CosmianResult,
 };
 
@@ -63,7 +65,7 @@ pub enum CliCommands {
     Kms(KmsActions),
     /// Handle Findex server actions
     #[command(subcommand)]
-    FindexServer(FindexActions),
+    Findex(FindexActions),
     /// Action to auto-generate doc in Markdown format
     /// Run `cargo run --bin cosmian -- markdown
     /// documentation/docs/cli/main_commands.md`
@@ -71,11 +73,11 @@ pub enum CliCommands {
     Markdown(MarkdownAction),
 }
 
-/// Main function for the CKMS CLI application.
+/// Main function for the Cosmian CLI application.
 ///
 /// This function initializes logging, parses command-line arguments, and
 /// executes the appropriate command based on the provided arguments. It
-/// supports various subcommands for interacting with the CKMS, such as login,
+/// supports various subcommands for interacting with the Cosmian CLI, such as login,
 /// logout, locating objects, and more.
 ///
 /// # Errors
@@ -85,13 +87,13 @@ pub enum CliCommands {
 /// - The command-line arguments cannot be parsed.
 /// - The configuration file cannot be located or loaded.
 /// - Any of the subcommands fail during their execution.
-#[allow(clippy::future_not_send, clippy::cognitive_complexity)]
+#[allow(clippy::cognitive_complexity)]
 pub async fn cosmian_main() -> CosmianResult<()> {
     log_init(None);
     info!("Starting Cosmian CLI");
     let cli = Cli::parse();
 
-    let mut config = ClientConf::load(cli.conf_path.clone())?;
+    let mut config = ClientConfig::load(cli.conf_path.clone())?;
 
     // Handle KMS configuration
     if let Some(url) = cli.kms_url.clone() {
@@ -115,7 +117,7 @@ pub async fn cosmian_main() -> CosmianResult<()> {
     trace!("Configuration: {config:?}");
 
     // Instantiate the KMS client
-    let mut kms_rest_client = KmsClient::new(config.kms_config.clone())?;
+    let mut kms_rest_client = KmsClient::new_with_config(config.kms_config.clone())?;
 
     match &cli.command {
         CliCommands::Markdown(action) => {
@@ -127,15 +129,19 @@ pub async fn cosmian_main() -> CosmianResult<()> {
             kms_actions.process(&mut kms_rest_client).await?;
             config.kms_config = kms_rest_client.config.clone();
         }
-        CliCommands::FindexServer(findex_actions) => {
-            let findex_config = config.findex_config.as_ref().ok_or_else(|| {
-                cli_error!("Findex server configuration is missing in the configuration file")
-            })?;
-            let mut findex_rest_client = FindexRestClient::new(findex_config.clone())?;
-            findex_actions
-                .run(&mut findex_rest_client, &kms_rest_client)
+        CliCommands::Findex(findex_actions) => {
+            let findex_config = config
+                .findex_config
+                .as_ref()
+                .ok_or_else(|| {
+                    cli_error!("Findex server configuration is missing in the configuration file")
+                })?
+                .clone();
+            let findex_rest_client = RestClient::new(&findex_config)?;
+            let new_findex_config = findex_actions
+                .run(findex_rest_client, kms_rest_client, findex_config)
                 .await?;
-            config.findex_config = Some(findex_rest_client.config.clone());
+            config.findex_config = Some(new_findex_config);
         }
     }
 
@@ -144,9 +150,7 @@ pub async fn cosmian_main() -> CosmianResult<()> {
         CliCommands::Kms(KmsActions::Login(_) | KmsActions::Logout(_)) => {
             config.save(cli.conf_path.clone())?;
         }
-        CliCommands::FindexServer(FindexActions::Findex(
-            CoreFindexActions::Login(_) | CoreFindexActions::Logout(_),
-        )) => {
+        CliCommands::Findex(FindexActions::Login(_) | FindexActions::Logout(_)) => {
             config.save(cli.conf_path)?;
         }
         _ => {}

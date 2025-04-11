@@ -10,21 +10,21 @@
 exclude: test_data|documentation/pandoc
 repos:
   - repo: https://github.com/compilerla/conventional-pre-commit
-    rev: v3.4.0
+    rev: v4.0.0
     hooks:
       - id: conventional-pre-commit
         stages: [commit-msg]
         args: [] # optional: list of Conventional Commits types to allow e.g. [feat, fix, ci, chore, test]
 
   - repo: https://github.com/igorshubovych/markdownlint-cli
-    rev: v0.42.0
+    rev: v0.44.0
     hooks:
       - id: markdownlint-fix
         args: [--disable=MD004, --disable=MD013, --disable=MD024, --disable=MD029, --disable=MD041, --disable=MD046, --fix]
         exclude: documentation/docs
 
   - repo: https://github.com/tcort/markdown-link-check
-    rev: v3.12.2
+    rev: v3.13.7
     hooks:
       - id: markdown-link-check
         args: [-q]
@@ -38,7 +38,7 @@ repos:
         exclude: ansible
 
   - repo: https://github.com/crate-ci/typos
-    rev: v1.25.0
+    rev: v1
     hooks:
       - id: typos
         exclude: documentation/docs/images
@@ -54,7 +54,7 @@ repos:
         exclude: ^.git/|crate/server/src/tests/certificates/chain/root/ca
 
   - repo: https://github.com/sirosen/texthooks
-    rev: 0.6.7
+    rev: 0.6.8
     hooks:
       - id: fix-smartquotes
       - id: fix-ligatures
@@ -87,7 +87,7 @@ repos:
       - id: debug-statements
       - id: destroyed-symlinks
       - id: detect-private-key
-        exclude: documentation/docs
+        exclude: documentation/docs|crate/cli/src/tests/kms/google_cmd/identities.rs
       - id: double-quote-string-fixer
       - id: end-of-file-fixer
         exclude: documentation/docs/cli/main_commands.md|documentation/docs
@@ -100,10 +100,10 @@ repos:
       - id: requirements-txt-fixer
       - id: sort-simple-yaml
       - id: trailing-whitespace
-        exclude: crate/kmip/src/kmip/extra/x509_extensions.rs
+        exclude: documentation/docs/cli/main_commands.md
 
   - repo: https://github.com/psf/black
-    rev: 24.8.0
+    rev: 25.1.0
     hooks:
       - id: black
         # avoid clash with `double-quote-string-fixer`
@@ -113,16 +113,22 @@ repos:
     rev: v1.0.36
     hooks:
       - id: cargo-format
-      # - id: dprint-toml-fix
-      # - id: cargo-upgrade
-      # - id: cargo-update
+      - id: dprint-toml-fix
+        stages: [manual]
+      - id: cargo-upgrade
+        stages: [manual]
+      - id: cargo-update
+        stages: [manual]
       - id: cargo-machete
       - id: cargo-build
       - id: renew-cosmian-markdown
       - id: docker-compose-up
+      - id: cargo-test
+        args: [--, --skip, test_wrap_auth, --skip, google_cse, --skip, hsm]
       - id: cargo-build-all
       - id: cargo-test
-        args: [--, --skip, test_wrap_auth, --skip, google_cse]
+        alias: cargo-test-all
+        args: [--all-features, --, --skip, test_wrap_auth, --skip, google_cse, --skip, hsm]
       - id: clippy-autofix-unreachable-pub
       - id: clippy-autofix-all-targets-all-features
       - id: clippy-autofix-all-targets
@@ -132,7 +138,7 @@ repos:
       - id: docker-compose-down
 
   - repo: https://github.com/EmbarkStudios/cargo-deny
-    rev: 0.16.1 # choose your preferred tag
+    rev: 0.18.2 # choose your preferred tag
     hooks:
       - id: cargo-deny
         args: [--all-features, check]

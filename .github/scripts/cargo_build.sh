@@ -4,9 +4,10 @@ set -ex
 
 # --- Declare the following variables for tests
 # export TARGET=x86_64-unknown-linux-gnu
+# export TARGET=aarch64-apple-darwin
 # export DEBUG_OR_RELEASE=debug
 # export OPENSSL_DIR=/usr/local/openssl
-# export SKIP_SERVICES_TESTS="--skip test_encrypt --skip test_create"
+# export SKIP_SERVICES_TESTS="--skip hsm"
 
 ROOT_FOLDER=$(pwd)
 
@@ -17,7 +18,7 @@ if [ "$DEBUG_OR_RELEASE" = "release" ]; then
   rm -rf target/"$TARGET"/generate-rpm
   if [ -f /etc/redhat-release ]; then
     cargo build --target "$TARGET" --release
-    cargo install --version 0.14.1 cargo-generate-rpm --force
+    cargo install --version 0.16.0 cargo-generate-rpm --force
     cargo generate-rpm --target "$TARGET" -p crate/cli
   elif [ -f /etc/lsb-release ]; then
     cargo build --target "$TARGET" --release
@@ -42,6 +43,10 @@ fi
 
 rustup target add "$TARGET"
 
+if [ -f /etc/lsb-release ]; then
+  bash .github/scripts/test_utimaco.sh
+fi
+
 cd "$ROOT_FOLDER"
 
 if [ -z "$OPENSSL_DIR" ]; then
@@ -49,17 +54,8 @@ if [ -z "$OPENSSL_DIR" ]; then
   exit 1
 fi
 
-crates=("crate/gui" "crate/cli")
-for crate in "${crates[@]}"; do
-  echo "Building $crate"
-  cd "$crate"
-  # shellcheck disable=SC2086
-  cargo build --target $TARGET $RELEASE
-  cd "$ROOT_FOLDER"
-done
-
-# Debug
-# find .
+# shellcheck disable=SC2086
+cargo build --target $TARGET $RELEASE
 
 TARGET_FOLDER=./target/"$TARGET/$DEBUG_OR_RELEASE"
 "${TARGET_FOLDER}"/cosmian -h
@@ -77,14 +73,16 @@ find . -type d -name cosmian-findex-server -exec rm -rf \{\} \; -print || true
 rm -f /tmp/*.json /tmp/*.toml
 
 # shellcheck disable=SC2086
-cargo build --target $TARGET $RELEASE $FEATURES
+cargo build --target $TARGET $RELEASE
 
-export RUST_LOG="cosmian_cli=trace,cosmian_findex_client=trace,cosmian_kmip=error,cosmian_kms_rest_client=info"
 # shellcheck disable=SC2086
-cargo test --target $TARGET $RELEASE $FEATURES --workspace -- --nocapture $SKIP_SERVICES_TESTS
+cargo test --workspace --bins --target $TARGET $RELEASE
 
-# while true; do
-#   sleep 1 && reset
-#   # shellcheck disable=SC2086
-#   cargo test --target $TARGET $RELEASE $FEATURES --workspace -- --nocapture $SKIP_SERVICES_TESTS
-# done
+if [ "$DEBUG_OR_RELEASE" = "release" ]; then
+  # INCLUDE_IGNORED="--include-ignored"
+  # shellcheck disable=SC2086
+  cargo bench --target $TARGET --no-run
+fi
+export RUST_LOG="fatal,cosmian_cli=error,cosmian_findex_client=debug,cosmian_kmip=error,cosmian_kms_client=debug"
+# shellcheck disable=SC2086
+cargo test --workspace --lib --target $TARGET $RELEASE -- --nocapture $SKIP_SERVICES_TESTS

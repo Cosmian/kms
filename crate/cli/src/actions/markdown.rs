@@ -1,6 +1,6 @@
 use std::{fmt::Write, fs::File, io::Write as io_Write, path::PathBuf};
 
-use clap::{builder::StyledStr, Command, Parser};
+use clap::{Command, Parser, builder::StyledStr};
 
 use crate::error::result::CosmianResult;
 

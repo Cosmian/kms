@@ -20,12 +20,12 @@ jobs:
       - uses: EmbarkStudios/cargo-deny-action@v1
 
   cargo-lint:
-    uses: ./.github/workflows/clippy.yml
+    uses: Cosmian/reusable_workflows/.github/workflows/clippy.yml@develop
     with:
       toolchain: ${{ inputs.toolchain }}
 
   build:
-    uses: ./.github/workflows/build_all.yml
+    uses: Cosmian/reusable_workflows/.github/workflows/build_all.yml@develop
     secrets: inherit
     with:
       toolchain: ${{ inputs.toolchain }}
@@ -67,10 +67,9 @@ jobs:
         with:
           files: |
             *.zip
-            rhel9-release/generate-rpm/*.rpm \
-            ubuntu_20_04-release/debian/*.deb \
-            ubuntu_22_04-release/debian/*.deb \
-            ubuntu_24_04-release/debian/*.deb
+            ./ubuntu_22_04-release/home/runner/work/cli/cli/target/x86_64-unknown-linux-gnu/debian/*.deb \
+            ./ubuntu_24_04-release/home/runner/work/cli/cli/target/x86_64-unknown-linux-gnu/debian/*.deb \
+            ./rhel9-release/__w/cli/cli/target/x86_64-unknown-linux-gnu/generate-rpm/*.rpm
 
   public_documentation:
     needs:

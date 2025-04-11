@@ -1,0 +1,31 @@
+[package]
+name = "cosmian_kms_client_utils"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+# doc test linking as a separate binary is extremely slow
+# and is not needed for internal lib
+doctest = false
+
+[features]
+fips = ["cosmian_kmip/fips"]
+
+[dependencies]
+base64.workspace = true
+clap = { workspace = true, features = ["std", "derive"] }
+cosmian_config_utils = { workspace = true }
+cosmian_kmip = { workspace = true }
+cosmian_kms_access = { workspace = true }
+pem = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+strum.workspace = true
+thiserror = { workspace = true }
+tracing = { workspace = true }
+zeroize = { workspace = true }

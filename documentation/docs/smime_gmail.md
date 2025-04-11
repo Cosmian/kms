@@ -3,13 +3,13 @@
 When using S/MIME, the `gmail_api_conf` field should be set in the configuration file to provide
 the necessary information about the configured service account to interact with Gmail API, and
 handle
-identities and keypairs easily from the ckms.
+identities and keypairs easily from the cosmian kms.
 
-This configuration is mandatory for `ckms google` subcommands.
+This configuration is mandatory for `cosmian kms google` subcommands.
 
 The `gmail_api_conf` field is a TOML object with the following fields:
 
-- `account_type`
+- `type`
 - `project_id`
 - `private_key_id`
 - `private_key`
@@ -31,7 +31,7 @@ Example:
 server_url = "http://127.0.0.1:9998"
 
 [kms_config.gmail_api_conf]
-account_type = "service_account"
+type = "service_account"
 project_id = "project_id"
 private_key_id = "abc123abc123abc123abc123abc123abc123"
 private_key = "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"

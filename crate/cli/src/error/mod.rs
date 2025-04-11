@@ -3,15 +3,18 @@ use std::str::Utf8Error;
 #[cfg(test)]
 use assert_cmd::cargo::CargoError;
 use cosmian_config_utils::ConfigUtilsError;
-use cosmian_findex_cli::reexports::{
-    cosmian_findex_client::{
-        reexport::cosmian_findex::{self, Address, ADDRESS_LENGTH},
-        FindexClientError,
+use cosmian_findex_client::{
+    ClientError,
+    reexport::{
+        cosmian_findex::{self, ADDRESS_LENGTH, Address},
+        cosmian_findex_structs::StructsError,
+        cosmian_http_client::HttpClientError,
     },
-    cosmian_findex_structs::StructsError,
 };
-use cosmian_kms_cli::reexport::cosmian_kms_client::KmsClientError;
+use cosmian_kms_client::{KmsClientError, reexport::cosmian_kms_client_utils::error::UtilsError};
 use thiserror::Error;
+
+use crate::actions::kms::google::GoogleApiError;
 
 pub mod result;
 
@@ -19,97 +22,89 @@ pub mod result;
 // `kmip_endpoint.rs`)
 #[derive(Error, Debug)]
 pub enum CosmianError {
-    // When a user requests an endpoint which does not exist
-    #[error("Not Supported route: {0}")]
-    RouteNotFound(String),
-
-    // When a user requests something not supported by the server
-    #[error("Not Supported: {0}")]
-    NotSupported(String),
-
-    // When a user requests something which is a non-sense
-    #[error("Inconsistent operation: {0}")]
-    InconsistentOperation(String),
-
-    // When a user requests an id which does not exist
-    #[error("Item not found: {0}")]
-    ItemNotFound(String),
-
-    // Missing arguments in the request
-    #[error("Invalid Request: {0}")]
-    InvalidRequest(String),
-
-    // Any errors related to a bad behavior of the server but not related to the user input
-    #[error("Server error: {0}")]
-    ServerError(String),
-
-    // Any actions of the user which is not allowed
-    #[error("Access denied: {0}")]
-    Unauthorized(String),
-
-    // Conversion errors
-    #[error("Conversion error: {0}")]
-    Conversion(String),
-
-    // Invalid configuration file
-    #[error("{0}")]
-    Configuration(String),
-
-    // Other errors
-    #[error("invalid options: {0}")]
-    UserError(String),
-
-    // Other errors
-    #[error("{0}")]
-    Default(String),
-
-    // Url parsing errors
     #[error(transparent)]
-    UrlParsing(#[from] url::ParseError),
-
-    // When an error occurs fetching Gmail API
-    #[error("Error interacting with Gmail API: {0}")]
-    GmailApiError(String),
-
-    #[error(transparent)]
-    KmsClientError(#[from] KmsClientError),
-
-    #[error(transparent)]
-    KmsCliError(#[from] cosmian_kms_cli::error::CliError),
-
-    #[error(transparent)]
-    Findex(#[from] cosmian_findex::Error<Address<ADDRESS_LENGTH>>),
-
-    #[error(transparent)]
-    FindexClientConfig(#[from] FindexClientError),
-
-    #[error(transparent)]
-    FindexCliError(#[from] cosmian_findex_cli::error::CliError),
-
-    #[error(transparent)]
-    IoError(#[from] std::io::Error),
-
-    #[error(transparent)]
-    CsvError(#[from] csv::Error),
-
-    #[error(transparent)]
-    Utf8Error(#[from] Utf8Error),
-
-    #[error(transparent)]
-    UuidError(#[from] uuid::Error),
-
-    #[error(transparent)]
-    StructsError(#[from] StructsError),
-
-    #[error(transparent)]
-    ConfigUtilsError(#[from] ConfigUtilsError),
-
-    #[error(transparent)]
-    FmtError(#[from] std::fmt::Error),
-
+    Base64(#[from] base64::DecodeError),
     #[cfg(test)]
     #[error(transparent)]
     CargoError(#[from] CargoError),
+    #[error("{0}")]
+    Configuration(String),
+    #[error("Conversion error: {0}")]
+    Conversion(String),
+    #[error(transparent)]
+    ConfigUtilsError(#[from] ConfigUtilsError),
+    #[error(transparent)]
+    CovercryptError(#[from] cosmian_cover_crypt::Error),
+    #[error(transparent)]
+    CryptoError(#[from] cosmian_kms_crypto::CryptoError),
+    #[error(transparent)]
+    CsvError(#[from] csv::Error),
+    #[error("{0}")]
+    Default(String),
+    #[error(transparent)]
+    DerError(#[from] der::Error),
+    #[error(transparent)]
+    Findex(#[from] cosmian_findex::Error<Address<ADDRESS_LENGTH>>),
+    #[error(transparent)]
+    FindexClientConfig(#[from] ClientError),
+    #[error(transparent)]
+    FmtError(#[from] std::fmt::Error),
+    #[error(transparent)]
+    FromHexError(#[from] hex::FromHexError),
+    #[error(transparent)]
+    FromUtf8Error(#[from] std::string::FromUtf8Error),
+    #[error("Error interacting with Gmail API: {0}")]
+    GmailApiError(String),
+    #[error(transparent)]
+    HttpClientError(#[from] HttpClientError),
+    #[error("Inconsistent operation: {0}")]
+    InconsistentOperation(String),
+    #[error("Invalid Request: {0}")]
+    InvalidRequest(String),
+    #[error(transparent)]
+    IoError(#[from] std::io::Error),
+    #[error("Item not found: {0}")]
+    ItemNotFound(String),
+    #[error(transparent)]
+    KmipError(#[from] cosmian_kms_client::cosmian_kmip::KmipError),
+    #[error(transparent)]
+    KmsClientError(#[from] KmsClientError),
+    #[error("Not Supported: {0}")]
+    NotSupported(String),
+    #[error("Not Supported route: {0}")]
+    RouteNotFound(String),
+    #[error(transparent)]
+    SerdeJsonError(#[from] serde_json::Error),
+    #[error("Server error: {0}")]
+    ServerError(String),
+    #[error(transparent)]
+    StructsError(#[from] StructsError),
+    #[error(transparent)]
+    TryFromIntError(#[from] std::num::TryFromIntError),
+    #[error(transparent)]
+    TTLVError(#[from] cosmian_kms_client::reexport::cosmian_kmip::kmip_2_1::ttlv::error::TtlvError),
+    #[error(transparent)]
+    UrlParsing(#[from] url::ParseError),
+    #[error("invalid options: {0}")]
+    UserError(String),
+    #[error(transparent)]
+    Utf8Error(#[from] Utf8Error),
+    #[error(transparent)]
+    UuidError(#[from] uuid::Error),
+    #[error("Access denied: {0}")]
+    Unauthorized(String),
+    #[error(transparent)]
+    UtilsError(#[from] UtilsError),
+}
+
+impl From<GoogleApiError> for CosmianError {
+    fn from(e: GoogleApiError) -> Self {
+        match e {
+            GoogleApiError::Jwt(e) => Self::GmailApiError(e.to_string()),
+            GoogleApiError::Reqwest(e) => Self::GmailApiError(e.to_string()),
+            GoogleApiError::Serde(e) => Self::GmailApiError(e.to_string()),
+        }
+    }
 }
 
 /// Return early with an error if a condition is not satisfied.

@@ -1,0 +1,31 @@
+[package]
+name = "test_findex_server"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lib]
+# doc test linking as a separate binary is extremely slow
+# and is not needed for internal lib
+doctest = false
+
+[features]
+fips = ["cosmian_findex_client/fips"]
+
+[dependencies]
+actix-server = { workspace = true }
+cosmian_findex_client = { path = "../findex_client" }
+cosmian_findex_server = { workspace = true, features = ["insecure"] }
+cosmian_logger = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread"] }
+tracing = { workspace = true }
+
+[dev-dependencies]
+criterion = { version = "0.5", features = [
+  "html_reports",
+  "async_tokio",
+], default-features = false }
+zeroize = { workspace = true }
