@@ -1,6 +1,6 @@
 use std::{collections::HashSet, sync::Arc};
 
-use cloudproof::reexport::cover_crypt::Covercrypt;
+use cosmian_cover_crypt::api::Covercrypt;
 use cosmian_kmip::kmip_2_1::{
     kmip_operations::{CreateKeyPair, CreateKeyPairResponse},
     kmip_types::{Attributes, CryptographicAlgorithm, RecommendedCurve, UniqueIdentifier},
@@ -122,7 +122,7 @@ pub(crate) fn generate_key_pair_and_tags(
         .as_ref()
         .is_some_and(|attr| attr.sensitive)
         || common_attributes.sensitive;
-    // Grab whatever attributes were supplied on the  create request.
+    // Grab whatever attributes were supplied on the create request.
     let any_attributes = Some(&common_attributes)
         .or(request.private_key_attributes.as_ref())
         .or(request.public_key_attributes.as_ref())
@@ -308,16 +308,16 @@ pub(crate) fn generate_key_pair_and_tags(
         ),
         CryptographicAlgorithm::CoverCrypt => create_master_keypair(
             &Covercrypt::default(),
-            private_key_uid,
+            private_key_uid.to_owned(),
             public_key_uid,
-            &Some(common_attributes),
-            &request.private_key_attributes,
-            &request.public_key_attributes,
-        )
-        .map_err(Into::into),
+            common_attributes,
+            request.private_key_attributes,
+            request.public_key_attributes,
+            sensitive,
+        ),
         other => {
             kms_bail!(KmsError::NotSupported(format!(
-                "The creation of a key pair for algorithm: {other:?} is not supported"
+                "The creation of a keypair for algorithm: {other:?} is not supported"
             )))
         }
     }?;

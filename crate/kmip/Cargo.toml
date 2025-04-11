@@ -13,7 +13,6 @@ rust-version.workspace = true
 doctest = false
 
 [features]
-pyo3 = ["dep:pyo3"]
 # Enable FIPS module feature build. KMS builds in FIPS mode when this is enabled.
 fips = []
 
@@ -29,7 +28,6 @@ num-bigint-dig = { workspace = true, features = [
   "serde",
   "zeroize",
 ] }
-pyo3 = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive", "std"] }
 serde_json = { workspace = true, features = [] }
 strum = { workspace = true, features = ["std", "derive", "strum_macros"] }

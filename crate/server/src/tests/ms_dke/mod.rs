@@ -56,7 +56,7 @@ async fn decrypt_data_test() -> KResult<()> {
 
     let app = test_utils::test_app(None).await;
 
-    let pem = pem::parse(RSA_PRIVATE_KEY.as_bytes())
+    let pem: pem::Pem = pem::parse(RSA_PRIVATE_KEY.as_bytes())
         .map_err(|e| kms_error!(format!("cannot parse RSA private key: {}", e)))?;
 
     let import_key = Import {

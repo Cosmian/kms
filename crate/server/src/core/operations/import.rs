@@ -429,6 +429,7 @@ fn single_operation(
     }
 }
 
+#[allow(clippy::ref_option)]
 fn process_pkcs12(
     certificate_id: &str,
     object: Object,

@@ -1,4 +1,5 @@
 //! Implements the RSA Key Encryption Mechanism `CKM_RSA_PKCS`
+//!
 //! a.k.a PKCS #1 RSA V1.5 as specified in PKCS#11 v2.40 available at
 //! <https://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html>#_Toc408226893
 //!
@@ -32,6 +33,7 @@ pub fn ckm_rsa_pkcs_key_wrap(pub_key: &PKey<Public>, dek: &[u8]) -> Result<Vec<u
 }
 
 /// Encryption using `CKM_RSA_PKCS`
+///
 /// a.k.a PKCS #1 RSA V1.5 as specified in PKCS#11 v2.40 available at
 /// <https://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html>#_Toc408226893
 ///
@@ -67,6 +69,7 @@ fn init_ckm_rsa_pkcs_encryption_context(
 }
 
 /// Key Unwrap using `CKM_RSA_PKCS`
+///
 /// a.k.a PKCS #1 RSA V1.5 as specified in PKCS#11 v2.40 available at
 /// <https://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html>#_Toc408226893
 ///

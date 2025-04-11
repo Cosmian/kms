@@ -6,10 +6,12 @@ use std::{
 use clap::Parser;
 use serde::{Deserialize, Serialize};
 
-use super::{HttpConfig, JwtAuthConfig, MainDBConfig, WorkspaceConfig};
+use super::{
+    HttpConfig, JwtAuthConfig, MainDBConfig, WorkspaceConfig, ui_config::UiConfig,
+};
 use crate::{error::KmsError, result::KResult, telemetry::TelemetryConfig};
 
-const DEFAULT_COSMIAN_KMS_CONF: &str = "/etc/cosmian_kms/kms.toml";
+const DEFAULT_COSMIAN_KMS_CONF: &str = "/etc/cosmian/kms.toml";
 const DEFAULT_USERNAME: &str = "admin";
 const HSM_ADMIN: &str = "admin";
 
@@ -18,7 +20,9 @@ impl Default for ClapConfig {
         Self {
             db: MainDBConfig::default(),
             http: HttpConfig::default(),
+            kms_public_url: None,
             auth: JwtAuthConfig::default(),
+            ui_config: UiConfig::default(),
             workspace: WorkspaceConfig::default(),
             default_username: DEFAULT_USERNAME.to_owned(),
             force_default_username: false,
@@ -48,6 +52,9 @@ pub struct ClapConfig {
 
     #[clap(flatten)]
     pub auth: JwtAuthConfig,
+
+    #[clap(flatten)]
+    pub ui_config: UiConfig,
 
     #[clap(flatten)]
     pub workspace: WorkspaceConfig,
@@ -124,6 +131,9 @@ pub struct ClapConfig {
     /// The non-revocable keys ID used for demo purposes
     #[clap(long, hide = true)]
     pub non_revocable_key_id: Option<Vec<String>>,
+
+    #[clap(verbatim_doc_comment, long, env = "KMS_PUBLIC_URL")]
+    pub kms_public_url: Option<String>,
 }
 
 impl ClapConfig {
@@ -190,7 +200,15 @@ impl fmt::Debug for ClapConfig {
         } else {
             x
         };
+        let x = x.field("ui_index_html_folder", &self.ui_config.ui_index_html_folder);
+        let x = if self.ui_config.ui_oidc_auth.ui_oidc_client_id.is_some() {
+            x.field("ui_oidc_auth", &self.ui_config.ui_oidc_auth)
+        } else {
+            x
+        };
         let x = x.field("KMS http", &self.http);
+        let x = x.field("KMS public URL", &self.kms_public_url);
+
         let x = x.field("workspace", &self.workspace);
         let x = x.field("default username", &self.default_username);
         let x = x.field("force default username", &self.force_default_username);

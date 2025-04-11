@@ -3,15 +3,15 @@ use std::{collections::HashSet, sync::Arc};
 use cosmian_kmip::kmip_2_1::kmip_types::{RevocationReason, StateEnumeration, UniqueIdentifier};
 use cosmian_kms_interfaces::SessionParams;
 
-use super::locate_user_decryption_keys;
+use super::locate_usk;
 use crate::{
     core::{operations::recursively_revoke_key, KMS},
     result::KResult,
 };
 
-/// Revoke all the user decryption keys associated with the master private key
+/// Revoke all the user decryption keys associated with the master secret key
 pub(crate) async fn revoke_user_decryption_keys(
-    master_private_key_id: &str,
+    master_secret_key_id: &str,
     revocation_reason: RevocationReason,
     compromise_occurrence_date: Option<u64>,
     kms: &KMS,
@@ -19,9 +19,9 @@ pub(crate) async fn revoke_user_decryption_keys(
     params: Option<Arc<dyn SessionParams>>, // keys that should be skipped
     ids_to_skip: HashSet<String>,
 ) -> KResult<()> {
-    if let Some(ids) = locate_user_decryption_keys(
+    if let Some(ids) = locate_usk(
         kms,
-        master_private_key_id,
+        master_secret_key_id,
         None,
         Some(StateEnumeration::Active),
         owner,

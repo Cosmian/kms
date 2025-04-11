@@ -4,27 +4,35 @@ set -ex
 
 # --- Declare the following variables for tests
 # export TARGET=x86_64-unknown-linux-gnu
+# export TARGET=x86_64-apple-darwin
+# export TARGET=aarch64-apple-darwin
 # export DEBUG_OR_RELEASE=debug
 # export OPENSSL_DIR=/usr/local/openssl
-# export SKIP_SERVICES_TESTS="--skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse --skip test_all_authentications --skip hsm"
+# export SKIP_SERVICES_TESTS="--skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse --skip hsm"
 # export FEATURES="fips"
 
 ROOT_FOLDER=$(pwd)
 
 if [ "$DEBUG_OR_RELEASE" = "release" ]; then
+  # Build the UI in release mode
+  bash .github/scripts/build_ui.sh
+
   # First build the Debian and RPM packages. It must come at first since
-  # after this step `ckms` and `cosmian_kms` are built with custom features flags (fips for example).
+  # after this step `cosmian` and `cosmian_kms` are built with custom features flags (fips for example).
   rm -rf target/"$TARGET"/debian
   rm -rf target/"$TARGET"/generate-rpm
   if [ -f /etc/redhat-release ]; then
     cd crate/server && cargo build --target "$TARGET" --release && cd -
-    cargo install --version 0.14.1 cargo-generate-rpm --force
+    cargo install --version 0.16.0 cargo-generate-rpm --force
     cd "$ROOT_FOLDER"
     cargo generate-rpm --target "$TARGET" -p crate/server --metadata-overwrite=pkg/rpm/scriptlets.toml
   elif [ -f /etc/lsb-release ]; then
     cargo install --version 2.4.0 cargo-deb --force
-    cargo deb --target "$TARGET" -p cosmian_kms_server --variant fips
-    cargo deb --target "$TARGET" -p cosmian_kms_server
+    if [ -n "$FEATURES" ]; then
+      cargo deb --target "$TARGET" -p cosmian_kms_server --variant fips
+    else
+      cargo deb --target "$TARGET" -p cosmian_kms_server
+    fi
   fi
 fi
 
@@ -46,11 +54,6 @@ if [ -z "$FEATURES" ]; then
   unset FEATURES
 fi
 
-if [ -z "$KMS_TEST_DB" ]; then
-  echo "Info: KMS_TEST_DB is not set. Forcing sqlite"
-  KMS_TEST_DB="sqlite"
-fi
-
 if [ -z "$SKIP_SERVICES_TESTS" ]; then
   echo "Info: SKIP_SERVICES_TESTS is not set."
   unset SKIP_SERVICES_TESTS
@@ -58,79 +61,75 @@ fi
 
 rustup target add "$TARGET"
 
-# Additional tests
-if [ "$DEBUG_OR_RELEASE" = "release" ]; then
-  # Before building the crates, test crates individually on specific features
-  cargo install --version 0.6.31 cargo-hack --force
-  crates=("crate/kmip" "crate/client")
-  for crate in "${crates[@]}"; do
-    cd "$crate"
-    PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 cargo hack test --feature-powerset --all-targets
-    cd "$ROOT_FOLDER"
-  done
+if [ -f /etc/lsb-release ]; then
+  bash .github/scripts/test_utimaco.sh
 fi
-
-echo "Building crate/pkcs11/provider"
-cd crate/pkcs11/provider
-# shellcheck disable=SC2086
-cargo build --target $TARGET $RELEASE
-cd "$ROOT_FOLDER"
 
 if [ -z "$OPENSSL_DIR" ]; then
   echo "Error: OPENSSL_DIR is not set."
   exit 1
 fi
 
-crates=("crate/server" "crate/cli")
-for crate in "${crates[@]}"; do
-  echo "Building $crate"
-  cd "$crate"
-  # shellcheck disable=SC2086
-  cargo build --target $TARGET $RELEASE $FEATURES
-  cd "$ROOT_FOLDER"
-done
+# shellcheck disable=SC2086
+cargo build --target $TARGET $RELEASE $FEATURES
 
-# Debug
-# find .
+COSMIAN_EXE="target/$TARGET/$DEBUG_OR_RELEASE/cosmian"
+COSMIAN_KMS_EXE="target/$TARGET/$DEBUG_OR_RELEASE/cosmian_kms"
 
-./target/"$TARGET/$DEBUG_OR_RELEASE"/ckms -h
+./"$COSMIAN_EXE" -h
+
 # Must use OpenSSL with this specific version 3.2.0
 OPENSSL_VERSION_REQUIRED="3.2.0"
-correct_openssl_version_found=$(./target/"$TARGET/$DEBUG_OR_RELEASE"/cosmian_kms --info | grep "$OPENSSL_VERSION_REQUIRED")
+correct_openssl_version_found=$(./"$COSMIAN_KMS_EXE" --info | grep "$OPENSSL_VERSION_REQUIRED")
 if [ -z "$correct_openssl_version_found" ]; then
   echo "Error: The correct OpenSSL version $OPENSSL_VERSION_REQUIRED is not found."
   exit 1
 fi
 
 if [ "$(uname)" = "Linux" ]; then
-  ldd target/"$TARGET/$DEBUG_OR_RELEASE"/ckms | grep ssl && exit 1
-  ldd target/"$TARGET/$DEBUG_OR_RELEASE"/cosmian_kms | grep ssl && exit 1
+  ldd "$COSMIAN_EXE" | grep ssl && exit 1
+  ldd "$COSMIAN_KMS_EXE" | grep ssl && exit 1
 else
-  otool -L target/"$TARGET/$DEBUG_OR_RELEASE"/ckms | grep openssl && exit 1
-  otool -L target/"$TARGET/$DEBUG_OR_RELEASE"/cosmian_kms | grep openssl && exit 1
+  otool -L "$COSMIAN_EXE" | grep openssl && exit 1
+  otool -L "$COSMIAN_KMS_EXE" | grep openssl && exit 1
 fi
 
 find . -type d -name cosmian-kms -exec rm -rf \{\} \; -print || true
 rm -f /tmp/*.toml
 
-export RUST_LOG="cosmian_kms_cli=debug,cosmian_kms_server=debug"
+export RUST_LOG="cosmian_cli=debug,cosmian_kms_server=info,cosmian_kmip=error,test_kms_server=info"
 
 # shellcheck disable=SC2086
 cargo build --target $TARGET $RELEASE $FEATURES
 
-echo "Database KMS: $KMS_TEST_DB"
-# shellcheck disable=SC2086
-cargo test --target $TARGET $RELEASE $FEATURES --workspace -- --nocapture $SKIP_SERVICES_TESTS
+declare -a DATABASES=('redis-findex' 'sqlite' 'sqlite-enc' 'postgresql' 'mysql')
+for KMS_TEST_DB in "${DATABASES[@]}"; do
+  echo "Database KMS: $KMS_TEST_DB"
 
-# Uncomment this code to run tests indefinitely
-# counter=1
-# while true; do
-#   find . -type d -name cosmian-kms -exec rm -rf \{\} \; -print || true
-#   # export RUST_LOG="hyper=trace,reqwest=trace,cosmian_kms_cli=debug,cosmian_kms_server=debug,cosmian_kmip=error"
-#   # shellcheck disable=SC2086
-#   cargo test --target $TARGET $RELEASE $FEATURES --workspace -- --nocapture $SKIP_SERVICES_TESTS
-#   counter=$((counter + 1))
-#   reset
-#   echo "counter: $counter"
-#   sleep 3
-# done
+  # for now, discard tests on postgresql and mysql
+  if [ "$KMS_TEST_DB" = "sqlite-enc" ] || [ "$KMS_TEST_DB" = "postgresql" ] || [ "$KMS_TEST_DB" = "mysql" ]; then
+    continue
+  fi
+
+  # no docker containers on macOS Github runner
+  if [ "$(uname)" = "Darwin" ] && [ "$KMS_TEST_DB" != "sqlite" ]; then
+    continue
+  fi
+
+  # only tests all databases on release mode - keep sqlite for debug
+  if [ "$DEBUG_OR_RELEASE" = "debug" ] && [ "$KMS_TEST_DB" != "sqlite" ]; then
+    continue
+  fi
+
+  export KMS_TEST_DB="$KMS_TEST_DB"
+  # shellcheck disable=SC2086
+  cargo test --workspace --lib --target $TARGET $RELEASE $FEATURES -- --nocapture $SKIP_SERVICES_TESTS
+done
+
+# shellcheck disable=SC2086
+cargo test --workspace --bins --target $TARGET $RELEASE $FEATURES
+
+if [ "$DEBUG_OR_RELEASE" = "release" ]; then
+  # shellcheck disable=SC2086
+  cargo bench --target $TARGET $FEATURES --no-run
+fi

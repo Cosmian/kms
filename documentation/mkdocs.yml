@@ -91,6 +91,7 @@ nav:
       - Authorizing users with access rights: authorization.md
       - Enabling TLS: tls.md
       - Logging and telemetry: logging.md
+      - User interface: ui.md
   - Certifications and compliance:
       - FIPS 140-3: fips.md
       - Cryptographic algorithms:
@@ -108,6 +109,10 @@ nav:
       - The JSON TTLV KMIP API: kmip_2_1/json_ttlv_api.md
       - Bulk mode with Messages: kmip_2_1/messages.md
       - Operations: kmip_2_1/operations.md
+      - Attributes:
+          Get: kmip_2_1/_get_attributes.md
+          Set: kmip_2_1/_set_attributes.md
+          Delete: kmip_2_1/_delete_attributes.md
       - Certify: kmip_2_1/_certify.md
       - Create: kmip_2_1/_create.md
       - Create Key Pair: kmip_2_1/_create_key_pair.md
@@ -116,11 +121,10 @@ nav:
       - Encrypt: kmip_2_1/_encrypt.md
       - Export: kmip_2_1/_export.md
       - Get: kmip_2_1/_get.md
-      - Get Attributes: kmip_2_1/_get_attributes.md
-      - Set Attributes: kmip_2_1/_set_attributes.md
-      - Delete Attributes: kmip_2_1/_delete_attributes.md
+      - Hash: kmip_2_1/_hash.md
       - Import: kmip_2_1/_import.md
       - Locate: kmip_2_1/_locate.md
+      - Mac: kmip_2_1/_mac.md
       - Re-Key: kmip_2_1/_re-key.md
       - Re-Key Key Pair: kmip_2_1/_re-key_key_pair.md
       - Revoke: kmip_2_1/_revoke.md

@@ -3,10 +3,7 @@
 
 // see CryptographicUsageMask
 #![allow(non_upper_case_globals)]
-use std::{
-    fmt,
-    fmt::{Display, Formatter},
-};
+use std::fmt::{self, Display, Formatter};
 
 use serde::{
     de::{self, MapAccess, Visitor},
@@ -28,7 +25,8 @@ use crate::{
 };
 pub const VENDOR_ATTR_AAD: &str = "aad";
 
-/// 4.7
+/// `CertificateType`
+///
 /// The Certificate Type attribute is a type of certificate (e.g., X.509).
 /// The Certificate Type value SHALL be set by the server when the certificate
 /// is created or registered and then SHALL NOT be changed or deleted before the
@@ -36,13 +34,14 @@ pub const VENDOR_ATTR_AAD: &str = "aad";
 /// The PKCS7 format is a Cosmian extension from KMIP.
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
 #[allow(clippy::enum_clike_unportable_variant)]
+#[repr(u32)]
 pub enum CertificateType {
     X509 = 0x01,
     PGP = 0x02,
     PKCS7 = 0x8000_0001,
 }
 
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, EnumString)]
 pub enum CertificateRequestType {
     CRMF = 0x01,
     PKCS10 = 0x02,
@@ -51,6 +50,7 @@ pub enum CertificateRequestType {
 
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
 #[allow(clippy::enum_clike_unportable_variant)]
+#[repr(u32)]
 pub enum OpaqueDataType {
     Unknown = 0x8000_0001,
 }
@@ -101,7 +101,10 @@ pub enum SplitKeyMethod {
 ///  - Raw for opaque objects and Secret Data
 ///
 #[allow(clippy::enum_clike_unportable_variant)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, EnumIter, Display)]
+#[derive(
+    Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, EnumIter, Display, EnumString,
+)]
+#[repr(u32)]
 pub enum KeyFormatType {
     Raw = 0x01,
     Opaque = 0x02,
@@ -145,10 +148,24 @@ pub enum KeyFormatType {
 
 #[allow(non_camel_case_types)]
 #[allow(clippy::enum_clike_unportable_variant)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Display, Eq, PartialEq, EnumIter)]
+#[derive(
+    Serialize,
+    Deserialize,
+    Copy,
+    Clone,
+    Debug,
+    Display,
+    Eq,
+    PartialEq,
+    EnumIter,
+    EnumString,
+    Default,
+)]
+#[repr(u32)]
 pub enum CryptographicAlgorithm {
     DES = 0x0000_0001,
     THREE_DES = 0x0000_0002,
+    #[default]
     AES = 0x0000_0003,
     /// This is `CKM_RSA_PKCS_OAEP` from PKCS#11
     /// see <https://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html>#_Toc408226895
@@ -214,6 +231,8 @@ pub enum CryptographicAlgorithm {
     CoverCryptBulk = 0x8880_0005,
 }
 
+/// `CryptographicDomainParameters`
+///
 /// The Cryptographic Domain Parameters attribute (4.14) is a structure that
 /// contains fields that MAY need to be specified in the Create Key Pair Request
 /// Payload. Specific fields MAY only pertain to certain types of Managed
@@ -241,7 +260,8 @@ impl Default for CryptographicDomainParameters {
 
 #[allow(non_camel_case_types)]
 #[allow(clippy::enum_clike_unportable_variant)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display, EnumString)]
+#[repr(u32)]
 pub enum RecommendedCurve {
     P192 = 0x0000_0001,
     K163 = 0x0000_0002,
@@ -330,7 +350,7 @@ impl Default for RecommendedCurve {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, EnumString)]
 pub enum KeyCompressionType {
     ECPublicKeyTypeUncompressed = 0x0000_0001,
     ECPublicKeyTypeX962CompressedPrime = 0x0000_0002,
@@ -339,7 +359,7 @@ pub enum KeyCompressionType {
     // Extensions 8XXXXXXX
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[repr(transparent)]
 pub struct CryptographicUsageMask(u32);
 
@@ -676,6 +696,8 @@ pub enum LinkType {
     //Extensions 8XXXXXXX
 }
 
+/// `UniqueIdentifierEnumeration`
+///
 /// The following values may be specified in an operation request for a Unique
 /// Identifier: If multiple unique identifiers would be referenced then the
 /// operation is repeated for each of them. If an operation appears
@@ -749,6 +771,8 @@ pub enum RevocationReasonEnumeration {
     //Extensions 8XXXXXXX
 }
 
+/// `RevocationReason`
+///
 /// The Revocation Reason attribute is a structure used to indicate why the
 /// Managed Cryptographic Object was revoked (e.g., "compromised", "expired",
 /// "no longer used", etc.). This attribute is only set by the server as a part
@@ -766,6 +790,8 @@ pub enum RevocationReason {
     TextString(String),
 }
 
+/// Link
+///
 /// The Link attribute is a structure used to create a link from one Managed
 /// Cryptographic Object to another, closely related target Managed
 /// Cryptographic Object. The link has a type, and the allowed types differ,
@@ -799,6 +825,8 @@ pub struct Link {
     pub linked_object_identifier: LinkedObjectIdentifier,
 }
 
+/// `VendorAttribute`
+///
 /// A vendor specific Attribute is a structure used for sending and receiving
 /// a Managed Object attribute. The Vendor Identification
 /// and Attribute Name are text-strings that are used to identify the attribute.
@@ -837,6 +865,8 @@ impl Display for VendorAttribute {
     }
 }
 
+/// Attributes
+///
 /// The following subsections describe the attributes that are associated with
 /// Managed Objects. Attributes that an object MAY have multiple instances of
 /// are referred to as multi-instance attributes. All instances of an attribute
@@ -1220,7 +1250,7 @@ impl Attributes {
 }
 
 /// Structure used in various operations to provide the New Attribute value in the request.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, EnumString)]
 #[allow(clippy::large_enum_variant)]
 pub enum Attribute {
     ActivationDate(u64),
@@ -1948,6 +1978,7 @@ impl Default for WrappingMethod {
 
 #[allow(non_camel_case_types, clippy::enum_clike_unportable_variant)]
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, EnumIter, Display)]
+#[repr(u32)]
 pub enum BlockCipherMode {
     CBC = 0x0000_0001,
     ECB = 0x0000_0002,
@@ -1960,14 +1991,15 @@ pub enum BlockCipherMode {
     GCM = 0x0000_0009,
     CBCMAC = 0x0000_000A,
     XTS = 0x0000_000B,
+    AESKeyWrapPadding = 0x0000_000C,
+    // NISTKeyWrap refers to rfc5649
+    NISTKeyWrap = 0x0000_000D,
     X9102AESKW = 0x0000_000E,
     X9102TDKW = 0x0000_000F,
     X9102AKW1 = 0x0000_0010,
     X9102AKW2 = 0x0000_0011,
     AEAD = 0x0000_0012,
     // Extensions - 8XXXXXXX
-    // NISTKeyWrap refers to rfc5649
-    NISTKeyWrap = 0x8000_0001,
     // AES GCM SIV
     GCMSIV = 0x8000_0002,
 }
@@ -2068,6 +2100,8 @@ pub enum MaskGenerator {
     MFG1 = 0x0000_0001,
 }
 
+/// `CryptographicParameters`
+///
 /// The Cryptographic Parameters attribute is a structure that contains a set of
 /// OPTIONAL fields that describe certain cryptographic parameters to be used
 /// when performing cryptographic operations using the object. Specific fields
@@ -2177,12 +2211,14 @@ pub enum EncodingOption {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, EnumString)]
 pub enum KeyWrapType {
     NotWrapped = 0x0000_0001,
     AsRegistered = 0x0000_0002,
 }
 
+/// `StateEnumeration`
+///
 /// This attribute is an indication of the State of an object as known to the
 /// key management server. The State SHALL NOT be changed by using the Modify
 /// Attribute operation on this attribute. The State SHALL only be changed by
@@ -2912,6 +2948,7 @@ pub enum ResultStatusEnumeration {
 /// invalid, or unknown.
 #[allow(non_camel_case_types)]
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display)]
+#[repr(u32)]
 pub enum ValidityIndicator {
     Valid = 0x0000_0000,
     Invalid = 0x0000_0001,
@@ -2930,6 +2967,10 @@ impl ValidityIndicator {
 
     #[must_use]
     pub const fn from_bool(b: bool) -> Self {
-        if b { Self::Valid } else { Self::Invalid }
+        if b {
+            Self::Valid
+        } else {
+            Self::Invalid
+        }
     }
 }

@@ -17,6 +17,7 @@ It is used to secure email messages and is supported by most email clients and s
         - [Generate a user certificate signed by the intermediate certificate](#generate-a-user-certificate-signed-by-the-intermediate-certificate)
     - [Exporting and viewing](#exporting-and-viewing)
         - [PKCS#12 format](#pkcs12-format)
+            - [Exporting for Google CSE S/MIME](#exporting-for-google-cse-smime)
         - [PEM format](#pem-format)
     - [Loading the PKCS#12 file in an email client](#loading-the-pkcs12-file-in-an-email-client)
     - [Apple mail, MacOS](#apple-mail-macos)
@@ -118,10 +119,21 @@ Let us create a self-signed root certificate with the following details:
 - Key Algorithm: NIST P-256
 
 ```sh
-cosmian kms certificates certify --certificate-id acme_root_ca \
---generate-key-pair --algorithm nist-p256  \
---subject-name "CN=ACME Root CA,OU=IT,O=ACME,L=New York,ST=New York,C=US" \
---days 3650
+cosmian kms certificates certify \
+  --certificate-id acme_root_ca \
+  --generate-key-pair \
+  --algorithm rsa4096 \
+  --subject-name "CN=ACME Root CA,OU=IT,O=ACME,L=New York,ST=New York,C=US" \
+  --days 3650 \
+  --certificate-extensions ca.ext
+```
+
+The `ca.ext` file should contain the following content (which should meet Google CSE):
+
+```text
+[ v3_ca ]
+subjectKeyIdentifier=hash
+basicConstraints=critical,CA:TRUE
 ```
 
 #### Create an Intermediate CA
@@ -141,9 +153,11 @@ end-users S/MIME certificates. It will be created with the following details:
 
 ```text
 [ v3_ca ]
-basicConstraints=CA:TRUE,pathlen:0
+basicConstraints=critical,CA:TRUE,pathlen:0
 keyUsage=keyCertSign,digitalSignature
 extendedKeyUsage=emailProtection
+subjectKeyIdentifier=hash
+authorityKeyIdentifier=keyid:always,issuer
 crlDistributionPoints=URI:https://acme.com/crl.pem
 ```
 
@@ -151,12 +165,14 @@ Note: these extensions make the intermediate CA compatible with Google CSE for G
 [S/MIME requirements](https://support.google.com/a/answer/7300887?fl=1&sjid=2093401421194266294-NA)
 
 ```shell
-cosmian kms certificates certify --certificate-id acme_intermediate_ca \
- --issuer-certificate-id acme_root_ca \
- --generate-key-pair --algorithm nist-p256  \
- --subject-name "CN=ACME S/MIME intermediate,OU=IT,O=ACME,L=New York,ST=New York,C=US" \
- --days 1825 \
- --certificate-extensions intermediate.ext
+cosmian kms certificates certify \
+  --certificate-id acme_intermediate_ca \
+  --issuer-certificate-id acme_root_ca \
+  --generate-key-pair \
+  --algorithm rsa4096 \
+  --subject-name "CN=ACME S/MIME intermediate,OU=IT,O=ACME,L=New York,ST=New York,C=US" \
+  --days 1825 \
+  --certificate-extensions intermediate.ext
 ```
 
 ### Generate a user certificate signed by the intermediate certificate
@@ -188,10 +204,12 @@ requirements):
 
 ```text
 [ v3_ca ]
-keyUsage=digitalSignature,nonRepudiation,keyAgreement
+keyUsage=nonRepudiation,digitalSignature,dataEncipherment,keyEncipherment
 extendedKeyUsage=emailProtection
 subjectAltName=email:john.doe@acme.com
 crlDistributionPoints=URI:https://acme.com/crl.pem
+subjectKeyIdentifier=hash
+authorityKeyIdentifier=keyid:always,issuer
 ```
 
 Issue the following command to generate the certificate:
@@ -298,6 +316,18 @@ MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQge5si3Le85K18XOLc
 ae8QE50qCE0yUMipcPvHwZM1k1ChRANCAATrwGY/kQYxJSzFlYqRsfq2xpp4g/DQ
 KTNop1izftWr73dkLJTofZoYk9fLtiiZK4xvYSG1YfHMq+P3cbVi+hqI
 -----END PRIVATE KEY-----
+
+```
+
+#### Exporting for Google CSE S/MIME
+
+To export the expected Google CSE Root certificate in order to import it in the [Apps/Google Workspace/Settings for Gmail/User Settings](https://admin.google.com/ac/apps/gmail/usersettings), proceed as follows:
+
+```sh
+openssl pkcs12 -in john_doe.p12 -cacerts -nokeys -out ca.pem -passin pass:"$MY_PASSWD"
+openssl pkcs12 -in john_doe.p12 -clcerts -nokeys -out certificate.pem -passin pass:"$MY_PASSWD"
+cp certificate.pem fullchain.pem
+cat ca.pem >>fullchain.pem
 
 ```
 

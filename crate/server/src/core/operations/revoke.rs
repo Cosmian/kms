@@ -242,7 +242,7 @@ pub(crate) async fn recursively_revoke_key(
             x => kms_bail!(KmsError::NotSupported(format!(
                 "revoke operation is not supported for object type {x:?}"
             ))),
-        };
+        }
         debug!(
             "Object type: {}, with unique identifier: {}, revoked by user {}",
             owm.object().object_type(),

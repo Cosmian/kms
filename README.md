@@ -61,7 +61,7 @@ The KMS has extensive online [documentation](https://docs.cosmian.com/key_manage
 
 ## Quick start
 
-Pre-built binaries [are available](https://package.cosmian.com/kms/4.22.1/)
+Pre-built binaries [are available](https://package.cosmian.com/kms/4.23.0/)
 for Linux, MacOS, and Windows, as well as Docker images. To run the server binary, OpenSSL must be
 available in your path (see "building the KMS" below for details); other binaries do not have this
 requirement.
@@ -74,11 +74,11 @@ docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest
 ```
 
 Then, use the CLI to issue commands to the KMS.
-The CLI, called `ckms`, can be either downloaded from [Cosmian packages](https://package.cosmian.com/kms/) or built and
+The CLI, called `cosmian`, can be either downloaded from [Cosmian packages](https://package.cosmian.com/kms/) or built and
 launched from this GitHub project by running
 
 ```sh
-cargo run --bin ckms -- --help
+cargo run --bin cosmian -- --help
 ```
 
 ### Example
@@ -86,7 +86,7 @@ cargo run --bin ckms -- --help
 1. Create a 256-bit symmetric key
 
     ```sh
-    ➜ cargo run --bin ckms -- sym keys create --number-of-bits 256 --algorithm aes --tag my-key-file
+    ➜ cargo run --bin cosmian -- sym keys create --number-of-bits 256 --algorithm aes --tag my-key-file
     ...
     The symmetric key was successfully generated.
       Unique identifier: 87e9e2a8-4538-4701-aa8c-e3af94e44a9e
@@ -98,7 +98,7 @@ cargo run --bin ckms -- --help
 2. Encrypt the `image.png` file with AES GCM using the key
 
     ```sh
-    ➜ cargo run --bin ckms -- sym encrypt --tag my-key-file --output-file image.enc image.png
+    ➜ cargo run --bin cosmian -- sym encrypt --tag my-key-file --output-file image.enc image.png
     ...
     The encrypted file is available at "image.enc"
     ```
@@ -106,7 +106,7 @@ cargo run --bin ckms -- --help
 3. Decrypt the `image.enc` file using the key
 
     ```sh
-    ➜ cargo run --bin ckms -- sym decrypt --tag my-key-file --output-file image2.png image.enc
+    ➜ cargo run --bin cosmian -- sym decrypt --tag my-key-file --output-file image2.png image.enc
     ...
     The decrypted file is available at "image2.png"
     ```
@@ -119,7 +119,7 @@ The server is written in [Rust](https://www.rust-lang.org/) and is broken down i
 binaries:
 
 - A server (`cosmian_kms`) which is the KMS itself
-- A CLI (`ckms`) to interact with this server
+- A CLI (`cosmian`) to interact with this server
 
 And also some crates:
 
@@ -129,8 +129,7 @@ And also some crates:
 - `kmip` which is an implementation of the KMIP standard
 - `server_database` to handle the database
 - `pkcs11_*` to handle PKCS11 support
-- `kms_pyo3` which is a KMS client in Python
-- `kms_test_server` which is a library to instantiate programmatically the KMS server.
+- `test_kms_server` which is a library to instantiate programmatically the KMS server.
 
 **Please refer to the README of the inner directories to have more information.**
 
@@ -139,7 +138,13 @@ directory.
 
 ## Building the KMS
 
-OpenSSL v3.2.0 is required to build the KMS.
+First, pull the git submodule for client requirements such as CLI and UI:
+
+```sh
+git submodule update --recursive --init
+````
+
+Then OpenSSL v3.2.0 is required to build the KMS.
 
 ### Linux or MacOS (CPU Intel or MacOs ARM)
 
@@ -190,7 +195,7 @@ Build the server and CLI binaries:
 cd crate/server
 cargo build --release
 cd ../..
-cd crate/ckms
+cd cli/crate/cli
 cargo build --release
 ```
 
@@ -258,7 +263,7 @@ cargo run --bin cosmian_kms -- \
 
 If a configuration file is provided, parameters are set following this order:
 
-- conf file (env variable `COSMIAN_KMS_CONF` set by default to `/etc/cosmian_kms/kms.toml`)
+- conf file (env variable `COSMIAN_KMS_CONF` set by default to `/etc/cosmian/kms.toml`)
 - default (set on struct)
 
 Otherwise, the parameters are set following this order:

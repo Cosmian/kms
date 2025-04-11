@@ -19,49 +19,41 @@ jobs:
     name: Security Audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
       - uses: EmbarkStudios/cargo-deny-action@v1
 
   cargo-lint:
-    uses: ./.github/workflows/clippy.yml
+    uses: Cosmian/reusable_workflows/.github/workflows/clippy.yml@develop
     with:
       toolchain: ${{ inputs.toolchain }}
 
   build:
-    uses: ./.github/workflows/build_all.yml
+    uses: Cosmian/reusable_workflows/.github/workflows/build_all.yml@develop
     secrets: inherit
     with:
       toolchain: ${{ inputs.toolchain }}
       debug_or_release: ${{ inputs.debug_or_release }}
 
-  cargo-doc:
-    if: inputs.debug_or_release == 'release'
-    uses: Cosmian/reusable_workflows/.github/workflows/cargo-doc.yml@develop
-    with:
-      toolchain: ${{ inputs.toolchain }}
-
-  pyo3:
-    uses: ./.github/workflows/maturin.yml
-    with:
-      toolchain: ${{ inputs.toolchain }}
-
   not-fips-image:
     name: Not FIPS image build and tests
-    uses: ./.github/workflows/build_docker_image.yml
+    uses: Cosmian/reusable_workflows/.github/workflows/build_docker_image.yml@develop
     with:
       prefix: ''
-      dockerfile: Dockerfile
       registry-image: ghcr.io/cosmian/kms
       platforms: ${{ inputs.platforms }}
+      fips: false
 
   fips-image:
     name: FIPS image build and tests
-    uses: ./.github/workflows/build_docker_image.yml
+    uses: Cosmian/reusable_workflows/.github/workflows/build_docker_image.yml@develop
     with:
       prefix: FIPS
-      dockerfile: Dockerfile.fips
       registry-image: ghcr.io/cosmian/kms-fips
       platforms: ${{ inputs.platforms }}
+      fips: true
 
   ##############################################################################
   ### Releases
@@ -72,7 +64,6 @@ jobs:
       - cargo-audit
       - cargo-lint
       - build
-      - pyo3
     runs-on: [self-hosted, not-sgx]
     container:
       image: cosmian/docker_doc_ci
@@ -80,8 +71,8 @@ jobs:
         - /home/cosmian/.ssh/id_rsa:/root/.ssh/id_rsa
 
     env:
-      ARCHIVE_NAMES: rhel9-${{ inputs.debug_or_release }} fips_ubuntu_20_04-${{ inputs.debug_or_release }} ubuntu_24_04-${{ inputs.debug_or_release }} macos_arm-${{
-        inputs.debug_or_release }} kms_python_linux kms_python_macos_intel kms_python_macos_arm kms_python_windows
+      ARCHIVE_NAMES: rhel9-${{ inputs.debug_or_release }} fips_ubuntu_22_04-${{ inputs.debug_or_release }} ubuntu_24_04-${{ inputs.debug_or_release }} macos_arm-${{
+        inputs.debug_or_release }}
 
     steps:
       - run: rm -rf kms_* fips_* python-* windows* ubuntu* macos* rhel9* centos*
@@ -100,7 +91,6 @@ jobs:
 
           # Warning, no all binaries in debug, only in release
           if [ "${{ inputs.debug_or_release }}" == "release" ]; then
-            zip -r ubuntu_20_04-release.zip ubuntu_20_04-release
             zip -r ubuntu_22_04-release.zip ubuntu_22_04-release
             zip -r windows-release.zip windows-release
             zip -r macos_intel-release.zip macos_intel-release
@@ -122,7 +112,7 @@ jobs:
             cosmian@package.cosmian.com:$DESTINATION_DIR/
 
           if [ "${{ inputs.debug_or_release }}" == "release" ]; then
-            ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p $DESTINATION_DIR/{rhel9,ubuntu-20.04,ubuntu-22.04,ubuntu-24.04}
+            ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p $DESTINATION_DIR/{rhel9,ubuntu-22.04,ubuntu-24.04}
 
             # RedHat 9 package
             scp -o 'StrictHostKeyChecking no' \
@@ -130,9 +120,6 @@ jobs:
               cosmian@package.cosmian.com:$DESTINATION_DIR/rhel9
 
             # Ubuntu packages
-            scp -o 'StrictHostKeyChecking no' \
-              -i /root/.ssh/id_rsa ubuntu_20_04-${{ inputs.debug_or_release }}/home/runner/work/kms/kms/target/x86_64-unknown-linux-gnu/debian/*.deb \
-              cosmian@package.cosmian.com:$DESTINATION_DIR/ubuntu-20.04
             scp -o 'StrictHostKeyChecking no' \
               -i /root/.ssh/id_rsa ubuntu_22_04-${{ inputs.debug_or_release }}/home/runner/work/kms/kms/target/x86_64-unknown-linux-gnu/debian/*.deb \
               cosmian@package.cosmian.com:$DESTINATION_DIR/ubuntu-22.04
@@ -148,58 +135,16 @@ jobs:
           files: |
             *.zip
             rhel9-release/__w/kms/kms/target/x86_64-unknown-linux-gnu/generate-rpm/*.rpm \
-            ubuntu_20_04-release/home/runner/work/kms/kms/target/x86_64-unknown-linux-gnu/debian/*.deb \
             ubuntu_22_04-release/home/runner/work/kms/kms/target/x86_64-unknown-linux-gnu/debian/*.deb \
             ubuntu_24_04-release/home/runner/work/kms/kms/target/x86_64-unknown-linux-gnu/debian/*.deb
-
-  python_publish:
-    name: python publish
-    needs:
-      - cargo-audit
-      - cargo-lint
-      - build
-      - pyo3
-    runs-on: ubuntu-22.04
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - archive_name: kms_python_linux
-          - archive_name: kms_python_macos_intel
-          - archive_name: kms_python_macos_arm
-          - archive_name: kms_python_windows
-
-    steps:
-      - uses: actions/download-artifact@v4
-      - uses: actions/setup-python@v4
-        with:
-          python-version: 3.7
-
-      - name: List directory
-        if: contains(runner.os, 'Linux')
-        run: find .
-
-      - name: Install requirements
-        run: |
-          set -ex
-          pip install twine
-          mkdir -p dist
-          cp ${{ matrix.archive_name }}/*.whl dist/
-
-      - name: Publish package to PyPi
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          skip-existing: true
-          repository-url: https://upload.pypi.org/legacy/
-          print-hash: true
-          password: ${{ secrets.PYPI_API_TOKEN }}
 
   public_documentation:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Deploy documentation in staging
         if: ${{ github.ref_name == 'develop' }}

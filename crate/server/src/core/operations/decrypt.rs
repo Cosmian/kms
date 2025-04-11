@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
-use cloudproof::reexport::cover_crypt::Covercrypt;
+use cosmian_cover_crypt::api::Covercrypt;
 use cosmian_kmip::kmip_2_1::{
+    KmipOperation,
     extra::BulkData,
     kmip_objects::Object,
     kmip_operations::{Decrypt, DecryptResponse, ErrorReason},
@@ -9,7 +10,6 @@ use cosmian_kmip::kmip_2_1::{
         CryptographicAlgorithm, CryptographicParameters, CryptographicUsageMask, KeyFormatType,
         PaddingMethod, StateEnumeration, UniqueIdentifier,
     },
-    KmipOperation,
 };
 #[cfg(not(feature = "fips"))]
 use cosmian_kms_crypto::crypto::elliptic_curves::ecies::ecies_decrypt;
@@ -17,13 +17,13 @@ use cosmian_kms_crypto::crypto::elliptic_curves::ecies::ecies_decrypt;
 use cosmian_kms_crypto::crypto::rsa::ckm_rsa_pkcs::ckm_rsa_pkcs_decrypt;
 use cosmian_kms_crypto::{
     crypto::{
+        DecryptionSystem,
         cover_crypt::{attributes, decryption::CovercryptDecryption},
         rsa::{
             ckm_rsa_aes_key_wrap::ckm_rsa_aes_key_unwrap,
             ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_key_decrypt, default_cryptographic_parameters,
         },
-        symmetric::symmetric_ciphers::{decrypt as sym_decrypt, SymCipher},
-        DecryptionSystem,
+        symmetric::symmetric_ciphers::{SymCipher, decrypt as sym_decrypt},
     },
     openssl::kmip_private_key_to_openssl,
 };
@@ -34,8 +34,8 @@ use zeroize::Zeroizing;
 
 use crate::{
     core::{
-        uid_utils::{has_prefix, uids_from_unique_identifier},
         KMS,
+        uid_utils::{has_prefix, uids_from_unique_identifier},
     },
     error::KmsError,
     kms_bail,
@@ -139,7 +139,7 @@ pub(crate) async fn decrypt(
         if let Object::PrivateKey { .. } = owm.object() {
             // is it a Covercrypt secret key?
             if attributes.key_format_type == Some(KeyFormatType::CoverCryptSecretKey) {
-                // does it have an access policy that allows decryption?
+                // does it have an access access structure that allows decryption?
                 if attributes::access_policy_from_attributes(&attributes).is_err() {
                     continue
                 }
@@ -310,7 +310,7 @@ fn decrypt_bulk(
                 "decryption with keys of format: {other}"
             )))
         }
-    };
+    }
 
     debug!(
         "decrypt_bulk: ==> decrypted {} plaintexts",
@@ -324,7 +324,7 @@ fn decrypt_bulk(
 }
 
 fn decrypt_single(owm: &ObjectWithMetadata, request: &Decrypt) -> KResult<DecryptResponse> {
-    trace!("decrypt_single");
+    trace!("decrypt_single: entering");
     let key_block = owm.object().key_block()?;
     match &key_block.key_format_type {
         KeyFormatType::CoverCryptSecretKey => decrypt_with_covercrypt(owm, request),
@@ -369,10 +369,6 @@ fn decrypt_single_with_symmetric_key(
             "Decrypt single with symmetric key: data to decrypt must be provided".to_owned(),
         )
     })?;
-    trace!(
-        "Decrypt single with symmetric key: ciphertext size: {:?}",
-        ciphertext.len()
-    );
     let (key_bytes, aead) = get_aead_and_key(owm, request)?;
     let nonce = request.iv_counter_nonce.as_ref().ok_or_else(|| {
         KmsError::InvalidRequest("Decrypt: the nonce/IV must be provided".to_owned())
@@ -385,7 +381,12 @@ fn decrypt_single_with_symmetric_key(
         .authenticated_encryption_tag
         .as_deref()
         .unwrap_or(EMPTY_SLICE);
+    trace!(
+        "Decrypt single with symmetric key: ciphertext: {ciphertext:?}, nonce: {nonce:?}, aad: \
+         {aad:?}, tag: {tag:?}"
+    );
     let plaintext = sym_decrypt(aead, &key_bytes, nonce, aad, ciphertext, tag)?;
+    trace!("Decrypt single with symmetric key: plaintext: {plaintext:?}");
     Ok(Ok(DecryptResponse {
         unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
         data: Some(plaintext),
@@ -459,13 +460,11 @@ fn decrypt_with_rsa(
         default_cryptographic_parameters(cryptographic_parameters);
     trace!(
         "Decrypt with RSA: algorithm: {:?}, padding: {:?}, hashing_fn: {:?}",
-        algorithm,
-        padding,
-        hashing_fn
+        algorithm, padding, hashing_fn
     );
 
     Ok(match (algorithm, padding) {
-        (CryptographicAlgorithm::AES, PaddingMethod::OAEP) => {
+        (CryptographicAlgorithm::RSA, PaddingMethod::None) => {
             ckm_rsa_aes_key_unwrap(private_key, hashing_fn, ciphertext)?
         }
         (CryptographicAlgorithm::RSA, PaddingMethod::OAEP) => {

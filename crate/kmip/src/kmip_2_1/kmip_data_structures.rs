@@ -227,7 +227,11 @@ impl Display for KeyValue {
     }
 }
 
+// This is required since its signature must match what serde
+// skip_serializing_if is expecting.
+#[allow(clippy::ref_option)]
 // Attributes is default is a fix for https://github.com/Cosmian/kms/issues/92
+#[allow(clippy::ref_option)]
 fn attributes_is_default_or_none<T: Default + PartialEq + Serialize>(val: &Option<T>) -> bool {
     val.as_ref().map_or(true, |v| *v == T::default())
 }
@@ -263,6 +267,8 @@ impl KeyValue {
     }
 }
 
+/// Key wrapping data
+///
 /// The Key Block MAY also supply OPTIONAL information about a cryptographic key
 /// wrapping mechanism used to wrap the Key Value. This consists of a Key
 /// Wrapping Data structure. It is only used inside a Key Block.
@@ -546,11 +552,11 @@ impl Serialize for KeyMaterial {
                 st.serialize_field("P", &**p)?;
                 if let Some(q) = q {
                     st.serialize_field("Q", &**q)?;
-                };
+                }
                 st.serialize_field("G", &**g)?;
                 if let Some(j) = j {
                     st.serialize_field("J", &**j)?;
-                };
+                }
                 st.serialize_field("X", &***x)?;
                 st.end()
             }
@@ -560,11 +566,11 @@ impl Serialize for KeyMaterial {
                 st.serialize_field("P", &**p)?;
                 if let Some(q) = q {
                     st.serialize_field("Q", &**q)?;
-                };
+                }
                 st.serialize_field("G", &**g)?;
                 if let Some(j) = j {
                     st.serialize_field("J", &**j)?;
-                };
+                }
                 st.serialize_field("Y", &**y)?;
                 st.end()
             }
@@ -601,25 +607,25 @@ impl Serialize for KeyMaterial {
                 st.serialize_field("Modulus", &**modulus)?;
                 if let Some(private_exponent) = private_exponent {
                     st.serialize_field("PrivateExponent", &***private_exponent)?;
-                };
+                }
                 if let Some(public_exponent) = public_exponent {
                     st.serialize_field("PublicExponent", &**public_exponent)?;
-                };
+                }
                 if let Some(p) = p {
                     st.serialize_field("P", &***p)?;
-                };
+                }
                 if let Some(q) = q {
                     st.serialize_field("Q", &***q)?;
-                };
+                }
                 if let Some(prime_exponent_p) = prime_exponent_p {
                     st.serialize_field("PrimeExponentP", &***prime_exponent_p)?;
-                };
+                }
                 if let Some(prime_exponent_q) = prime_exponent_q {
                     st.serialize_field("PrimeExponentQ", &***prime_exponent_q)?;
-                };
+                }
                 if let Some(crt_coefficient) = crt_coefficient {
                     st.serialize_field("CrtCoefficient", &***crt_coefficient)?;
-                };
+                }
                 st.end()
             }
             Self::TransparentRSAPublicKey {

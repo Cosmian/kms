@@ -20,7 +20,6 @@ use super::{
         UniqueIdentifier, ValidityIndicator,
     },
 };
-use crate::{error::KmipError, Deserializer, Serializer};
 
 #[allow(non_camel_case_types)]
 #[derive(Serialize, Deserialize, Copy, Clone, Display, Debug, Eq, PartialEq, Default)]
@@ -109,38 +108,42 @@ pub enum Direction {
 #[serde(untagged)]
 #[allow(clippy::large_enum_variant)]
 pub enum Operation {
-    Import(Import),
-    ImportResponse(ImportResponse),
     Certify(Certify),
     CertifyResponse(CertifyResponse),
     Create(Create),
     CreateResponse(CreateResponse),
     CreateKeyPair(CreateKeyPair),
     CreateKeyPairResponse(CreateKeyPairResponse),
+    Decrypt(Decrypt),
+    DecryptResponse(DecryptResponse),
+    DeleteAttribute(DeleteAttribute),
+    DeleteAttributeResponse(DeleteAttributeResponse),
+    Destroy(Destroy),
+    DestroyResponse(DestroyResponse),
+    Encrypt(Encrypt),
+    EncryptResponse(EncryptResponse),
     Export(Export),
     ExportResponse(ExportResponse),
     Get(Get),
     GetResponse(GetResponse),
     GetAttributes(GetAttributes),
     GetAttributesResponse(GetAttributesResponse),
-    SetAttribute(SetAttribute),
-    SetAttributeResponse(SetAttributeResponse),
-    DeleteAttribute(DeleteAttribute),
-    DeleteAttributeResponse(DeleteAttributeResponse),
-    Encrypt(Encrypt),
-    EncryptResponse(EncryptResponse),
-    Decrypt(Decrypt),
-    DecryptResponse(DecryptResponse),
+    Hash(Hash),
+    HashResponse(HashResponse),
+    Import(Import),
+    ImportResponse(ImportResponse),
     Locate(Locate),
     LocateResponse(LocateResponse),
+    Mac(Mac),
+    MacResponse(MacResponse),
     Revoke(Revoke),
     RevokeResponse(RevokeResponse),
     ReKey(ReKey),
     ReKeyResponse(ReKeyResponse),
     ReKeyKeyPair(ReKeyKeyPair),
     ReKeyKeyPairResponse(ReKeyKeyPairResponse),
-    Destroy(Destroy),
-    DestroyResponse(DestroyResponse),
+    SetAttribute(SetAttribute),
+    SetAttributeResponse(SetAttributeResponse),
     Validate(Validate),
     ValidateResponse(ValidateResponse),
 }
@@ -166,6 +169,24 @@ impl Display for Operation {
             Self::CreateKeyPairResponse(create_key_pair_response) => {
                 write!(f, "CreateKeyPairResponse({create_key_pair_response})")
             }
+            Self::Decrypt(decrypt) => write!(f, "Decrypt({decrypt})"),
+            Self::DecryptResponse(decrypt_response) => {
+                write!(f, "DecryptResponse({decrypt_response})")
+            }
+            Self::DeleteAttribute(delete_attribute) => {
+                write!(f, "DeleteAttribute({delete_attribute})")
+            }
+            Self::DeleteAttributeResponse(delete_attribute_response) => {
+                write!(f, "DeleteAttributeResponse({delete_attribute_response})")
+            }
+            Self::Destroy(destroy) => write!(f, "Destroy({destroy})"),
+            Self::DestroyResponse(destroy_response) => {
+                write!(f, "DestroyResponse({destroy_response})")
+            }
+            Self::Encrypt(encrypt) => write!(f, "Encrypt({encrypt})"),
+            Self::EncryptResponse(encrypt_response) => {
+                write!(f, "EncryptResponse({encrypt_response})")
+            }
             Self::Export(export) => write!(f, "Export({export})"),
             Self::ExportResponse(export_response) => {
                 write!(f, "ExportResponse({export_response})")
@@ -178,27 +199,19 @@ impl Display for Operation {
             Self::GetAttributesResponse(get_attributes_response) => {
                 write!(f, "GetAttributesResponse({get_attributes_response})")
             }
+            Self::Hash(hash) => write!(f, "Hash({hash})"),
+            Self::HashResponse(hash_response) => write!(f, "HashResponse({hash_response})"),
             Self::SetAttribute(set_attribute) => write!(f, "SetAttribute({set_attribute})"),
             Self::SetAttributeResponse(set_attribute_response) => {
                 write!(f, "SetAttributeResponse({set_attribute_response})")
             }
-            Self::DeleteAttribute(delete_attribute) => {
-                write!(f, "DeleteAttribute({delete_attribute})")
-            }
-            Self::DeleteAttributeResponse(delete_attribute_response) => {
-                write!(f, "DeleteAttributeResponse({delete_attribute_response})")
-            }
-            Self::Encrypt(encrypt) => write!(f, "Encrypt({encrypt})"),
-            Self::EncryptResponse(encrypt_response) => {
-                write!(f, "EncryptResponse({encrypt_response})")
-            }
-            Self::Decrypt(decrypt) => write!(f, "Decrypt({decrypt})"),
-            Self::DecryptResponse(decrypt_response) => {
-                write!(f, "DecryptResponse({decrypt_response})")
-            }
             Self::Locate(locate) => write!(f, "Locate({locate})"),
             Self::LocateResponse(locate_response) => {
                 write!(f, "LocateResponse({locate_response})")
+            }
+            Self::Mac(mac) => write!(f, "Mac({mac})"),
+            Self::MacResponse(mac_response) => {
+                write!(f, "MacResponse({mac_response})")
             }
             Self::Revoke(revoke) => write!(f, "Revoke({revoke})"),
             Self::RevokeResponse(revoke_response) => {
@@ -213,10 +226,6 @@ impl Display for Operation {
             }
             Self::ReKeyKeyPairResponse(re_key_key_pair_response) => {
                 write!(f, "ReKeyKeyPairResponse({re_key_key_pair_response})")
-            }
-            Self::Destroy(destroy) => write!(f, "Destroy({destroy})"),
-            Self::DestroyResponse(destroy_response) => {
-                write!(f, "DestroyResponse({destroy_response})")
             }
             Self::Validate(validate) => write!(f, "Validate({validate})"),
             Self::ValidateResponse(validate_response) => {
@@ -234,36 +243,40 @@ impl Operation {
             | Self::Certify(_)
             | Self::Create(_)
             | Self::CreateKeyPair(_)
+            | Self::Decrypt(_)
+            | Self::DeleteAttribute(_)
+            | Self::Destroy(_)
+            | Self::Encrypt(_)
             | Self::Export(_)
             | Self::Get(_)
             | Self::GetAttributes(_)
-            | Self::SetAttribute(_)
-            | Self::DeleteAttribute(_)
-            | Self::Encrypt(_)
-            | Self::Decrypt(_)
+            | Self::Hash(_)
             | Self::Locate(_)
+            | Self::Mac(_)
             | Self::Revoke(_)
             | Self::ReKey(_)
             | Self::ReKeyKeyPair(_)
-            | Self::Destroy(_)
+            | Self::SetAttribute(_)
             | Self::Validate(_) => Direction::Request,
 
             Self::ImportResponse(_)
             | Self::CertifyResponse(_)
             | Self::CreateResponse(_)
             | Self::CreateKeyPairResponse(_)
+            | Self::DecryptResponse(_)
+            | Self::DeleteAttributeResponse(_)
+            | Self::DestroyResponse(_)
+            | Self::EncryptResponse(_)
             | Self::ExportResponse(_)
             | Self::GetResponse(_)
             | Self::GetAttributesResponse(_)
-            | Self::SetAttributeResponse(_)
-            | Self::DeleteAttributeResponse(_)
-            | Self::EncryptResponse(_)
-            | Self::DecryptResponse(_)
+            | Self::HashResponse(_)
             | Self::LocateResponse(_)
+            | Self::MacResponse(_)
             | Self::RevokeResponse(_)
             | Self::ReKeyResponse(_)
             | Self::ReKeyKeyPairResponse(_)
-            | Self::DestroyResponse(_)
+            | Self::SetAttributeResponse(_)
             | Self::ValidateResponse(_) => Direction::Response,
         }
     }
@@ -277,26 +290,28 @@ impl Operation {
             Self::CreateKeyPair(_) | Self::CreateKeyPairResponse(_) => {
                 OperationEnumeration::CreateKeyPair
             }
+            Self::Decrypt(_) | Self::DecryptResponse(_) => OperationEnumeration::Decrypt,
+            Self::DeleteAttribute(_) | Self::DeleteAttributeResponse(_) => {
+                OperationEnumeration::DeleteAttribute
+            }
+            Self::Destroy(_) | Self::DestroyResponse(_) => OperationEnumeration::Destroy,
+            Self::Encrypt(_) | Self::EncryptResponse(_) => OperationEnumeration::Encrypt,
             Self::Export(_) | Self::ExportResponse(_) => OperationEnumeration::Export,
             Self::Get(_) | Self::GetResponse(_) => OperationEnumeration::Get,
             Self::GetAttributes(_) | Self::GetAttributesResponse(_) => {
                 OperationEnumeration::GetAttributes
             }
-            Self::SetAttribute(_) | Self::SetAttributeResponse(_) => {
-                OperationEnumeration::SetAttribute
-            }
-            Self::DeleteAttribute(_) | Self::DeleteAttributeResponse(_) => {
-                OperationEnumeration::DeleteAttribute
-            }
-            Self::Encrypt(_) | Self::EncryptResponse(_) => OperationEnumeration::Encrypt,
-            Self::Decrypt(_) | Self::DecryptResponse(_) => OperationEnumeration::Decrypt,
+            Self::Hash(_) | Self::HashResponse(_) => OperationEnumeration::Hash,
             Self::Locate(_) | Self::LocateResponse(_) => OperationEnumeration::Locate,
+            Self::Mac(_) | Self::MacResponse(_) => OperationEnumeration::MAC,
             Self::Revoke(_) | Self::RevokeResponse(_) => OperationEnumeration::Revoke,
             Self::ReKey(_) | Self::ReKeyResponse(_) => OperationEnumeration::Rekey,
             Self::ReKeyKeyPair(_) | Self::ReKeyKeyPairResponse(_) => {
                 OperationEnumeration::RekeyKeyPair
             }
-            Self::Destroy(_) | Self::DestroyResponse(_) => OperationEnumeration::Destroy,
+            Self::SetAttribute(_) | Self::SetAttributeResponse(_) => {
+                OperationEnumeration::SetAttribute
+            }
             Self::Validate(_) | Self::ValidateResponse(_) => OperationEnumeration::Validate,
         }
     }
@@ -314,6 +329,8 @@ impl Operation {
     }
 }
 
+/// Import
+///
 /// This operation requests the server to Import a Managed Object specified by
 /// its Unique Identifier. The request specifies the object being imported and
 /// all the attributes to be assigned to the object. The attribute rules for
@@ -495,6 +512,8 @@ impl Display for ImportResponse {
     }
 }
 
+/// Certify
+///
 /// This request is used to generate a Certificate object for a public key. This
 /// request supports the certification of a new public key, as well as the
 /// certification of a public key that has already been certified (i.e.,
@@ -578,6 +597,8 @@ impl Display for CertifyResponse {
     }
 }
 
+/// Create
+///
 /// This operation requests the server to generate a new symmetric key or
 /// generate Secret Data as aManaged Cryptographic Object. The request contains
 /// information about the type of object being created, and some of the
@@ -627,6 +648,8 @@ impl Display for CreateResponse {
     }
 }
 
+/// `CreateKeyPair`
+///
 /// This operation requests the server to generate a new public/private key pair
 /// and register the two corresponding new Managed Cryptographic Object
 /// The request contains attributes to be assigned to the objects (e.g.,
@@ -739,6 +762,8 @@ pub struct DerivationParameters {
     iteration_count: Option<i32>,
 }
 
+/// `DeriveKey`
+///
 /// This request is used to derive a Symmetric Key or Secret Data object from
 /// keys or Secret Data objects that are already known to the key management
 /// system. The request SHALL only apply to Managed Objects that have the Derive
@@ -767,6 +792,8 @@ pub struct DeriveKey {
     pub attributes: Attributes,
 }
 
+/// Export
+///
 /// This operation requests that the server returns a Managed Object specified by its Unique Identifier,
 /// together with its attributes.
 /// The Key Format Type, Key Wrap Type, Key Compression Type and Key Wrapping Specification
@@ -1289,7 +1316,7 @@ impl Display for Encrypt {
             self.correlation_value,
             self.init_indicator,
             self.final_indicator,
-            self.authenticated_encryption_additional_data
+            self.authenticated_encryption_additional_data,
         )
     }
 }
@@ -1423,55 +1450,6 @@ impl Display for Decrypt {
     }
 }
 
-/// When decrypting data with Cover Crypt we can have some
-/// additional metadata stored inside the header and encrypted
-/// with de DEM. We need to return these data to the user but
-/// the KMIP protocol do not provide a way to do it. So we prepend
-/// the decrypted bytes with the decrypted additional metadata.
-/// This struct is not useful (and shouldn't be use) if the user
-/// ask to encrypt with something else than Cover Crypt (for example an AES encrypt.)
-/// See also `DataToEncrypt` struct.
-/// The binary format of this struct is:
-/// 1. LEB128 unsigned length of the metadata
-/// 2. metadata decrypted bytes
-/// 3. data decrypted
-pub struct DecryptedData {
-    pub metadata: Vec<u8>,
-    pub plaintext: Zeroizing<Vec<u8>>,
-}
-
-impl TryInto<Vec<u8>> for DecryptedData {
-    type Error = KmipError;
-
-    fn try_into(self) -> Result<Vec<u8>, Self::Error> {
-        let mut ser = Serializer::new();
-        ser.write_vec(&self.metadata)?;
-
-        let mut result = ser.finalize().to_vec();
-        result.extend_from_slice(&self.plaintext);
-        Ok(result)
-    }
-}
-
-impl TryFrom<&[u8]> for DecryptedData {
-    type Error = KmipError;
-
-    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
-        let mut de = Deserializer::new(bytes);
-
-        // Read the metadata
-        let metadata = de.read_vec()?;
-
-        // Remaining is the decrypted plaintext
-        let plaintext = Zeroizing::from(de.finalize());
-
-        Ok(Self {
-            metadata,
-            plaintext,
-        })
-    }
-}
-
 #[derive(Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct DecryptResponse {
@@ -1500,6 +1478,8 @@ impl Display for DecryptResponse {
     }
 }
 
+/// Locate
+///
 /// This operation requests that the server search for one or more Managed
 /// Objects, depending on the attributes specified in the request. All attributes
 /// are allowed to be used. The request MAY contain a Maximum Items field, which
@@ -1648,6 +1628,8 @@ impl Display for LocateResponse {
     }
 }
 
+/// Revoke
+///
 /// This operation requests the server to revoke a Managed Cryptographic Object
 /// or an Opaque Object. The request contains a reason for the revocation (e.g.,
 /// "key compromise", "cessation of operation", etc.). The operation has one of
@@ -1766,6 +1748,8 @@ impl Display for ReKeyResponse {
     }
 }
 
+/// `RekeyKeyPair`
+///
 /// This request is used to generate a replacement key pair for an existing
 /// public/private key pair. It is analogous to the Create Key Pair operation,
 /// except that attributes of the replacement key pair are copied from the
@@ -1855,9 +1839,7 @@ impl Display for ReKeyKeyPair {
 #[derive(Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct ReKeyKeyPairResponse {
-    // The Unique Identifier of the newly created replacement Private Key object.
     pub private_key_unique_identifier: UniqueIdentifier,
-    // The Unique Identifier of the newly created replacement Public Key object.}
     pub public_key_unique_identifier: UniqueIdentifier,
 }
 
@@ -1915,6 +1897,124 @@ impl Display for DestroyResponse {
     }
 }
 
+#[derive(Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "PascalCase")]
+pub struct Hash {
+    /// The Cryptographic Parameters (Hashing Algorithm) corresponding to the particular hash method requested.
+    pub cryptographic_parameters: CryptographicParameters,
+    /// The data to be hashed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<Vec<u8>>,
+    /// Specifies the existing stream or by-parts cryptographic operation (as returned from a previous call to this operation).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub correlation_value: Option<Vec<u8>>,
+    /// Initial operation as Boolean
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub init_indicator: Option<bool>,
+    /// Final operation as Boolean
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub final_indicator: Option<bool>,
+}
+
+impl Display for Hash {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Hash {{ cryptographic_parameters: {:?}, data: {:?}, correlation_value: {:?}, \
+             init_indicator: {:?}, final_indicator: {:?} }}",
+            self.cryptographic_parameters,
+            self.data,
+            self.correlation_value,
+            self.init_indicator,
+            self.final_indicator
+        )
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
+pub struct HashResponse {
+    /// The hashed data (as a Byte String).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<Vec<u8>>,
+    /// Specifies the stream or by-parts value to be provided in subsequent calls to this operation for performing cryptographic operations.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub correlation_value: Option<Vec<u8>>,
+}
+
+impl Display for HashResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "HashResponse {{ data: {:?}, correlation_value: {:?} }}",
+            self.data, self.correlation_value
+        )
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "PascalCase")]
+pub struct Mac {
+    /// The Unique Identifier of the Managed Cryptographic Object that is the key to use for the MAC operation. If omitted, then the ID Placeholder value SHALL be used by the server as the Unique Identifier.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<UniqueIdentifier>,
+    /// The Cryptographic Parameters (Hashing Algorithm) corresponding to the particular hash method requested.
+    pub cryptographic_parameters: CryptographicParameters,
+    /// The data to be hashed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<Vec<u8>>,
+    /// Specifies the existing stream or by-parts cryptographic operation (as returned from a previous call to this operation).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub correlation_value: Option<Vec<u8>>,
+    /// Initial operation as Boolean
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub init_indicator: Option<bool>,
+    /// Final operation as Boolean
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub final_indicator: Option<bool>,
+}
+
+impl Display for Mac {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Mac {{ unique_identifier: {:?}, cryptographic_parameters: {:?}, data: {:?}, \
+             correlation_value: {:?}, init_indicator: {:?}, final_indicator: {:?} }}",
+            self.unique_identifier,
+            self.cryptographic_parameters,
+            self.data,
+            self.correlation_value,
+            self.init_indicator,
+            self.final_indicator
+        )
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
+pub struct MacResponse {
+    /// The Unique Identifier of the Managed Cryptographic Object that is the key used for the MAC operation.
+    pub unique_identifier: UniqueIdentifier,
+    /// The hashed data (as a Byte String).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<Vec<u8>>,
+    /// Specifies the stream or by-parts value to be provided in subsequent calls to this operation for performing cryptographic operations.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub correlation_value: Option<Vec<u8>>,
+}
+
+impl Display for MacResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "MacResponse {{ data: {:?}, correlation_value: {:?} }}",
+            self.data, self.correlation_value
+        )
+    }
+}
+
+/// Validate
+///
 /// This operation requests the server to validate a certificate chain and return
 /// information on its validity. Only a single certificate chain SHALL be
 /// included in each request.

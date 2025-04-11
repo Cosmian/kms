@@ -1,6 +1,6 @@
 # test_private_key and test_public_key
 
-`ckms` is used to generate a RSA key pair where the private key is wrapped by the symmetric key `google_cse`. All the chain is saved in a PKCS7 file.
+`cosmian` is used to generate a RSA key pair where the private key is wrapped by the symmetric key `google_cse`. All the chain is saved in a PKCS7 file.
 
 - `test_private_key` is a RSA wrapped private key.
 - `test_public_key` is extracted from the PKCS7 file:

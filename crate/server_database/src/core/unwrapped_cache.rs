@@ -111,10 +111,11 @@ impl UnwrappedCache {
 }
 
 #[cfg(test)]
+#[allow(clippy::panic_in_result_fn)]
 mod tests {
     use std::collections::{HashMap, HashSet};
 
-    use cloudproof::reexport::crypto_core::{
+    use cosmian_crypto_core::{
         reexport::rand_core::{RngCore, SeedableRng},
         CsRng,
     };
@@ -128,7 +129,7 @@ mod tests {
     use crate::{core::main_db_params::MainDbParams, error::DbResult, Database};
 
     #[tokio::test]
-    #[allow(clippy::unwrap_used)]
+    #[allow(clippy::unwrap_used, clippy::panic_in_result_fn)]
     async fn test_lru_cache() -> DbResult<()> {
         log_init(option_env!("RUST_LOG"));
 

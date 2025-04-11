@@ -1,11 +1,10 @@
-mod revoke;
-
 mod create;
 mod create_key_pair;
 mod decrypt;
 mod encrypt;
 mod get;
 mod import;
+mod revoke;
 mod validate;
 
 pub use create::{create_symmetric_key_kmip_object, symmetric_key_create_request};
@@ -16,6 +15,6 @@ pub use get::{
     get_ec_private_key_request, get_ec_public_key_request, get_rsa_private_key_request,
     get_rsa_public_key_request,
 };
-pub use import::build_import_object_request;
+pub use import::import_object_request;
 pub use revoke::build_revoke_key_request;
 pub use validate::build_validate_certificate_request;

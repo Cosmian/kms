@@ -126,7 +126,7 @@ cosmian kms sym keys create --tag MySymmetricKey
 #### Example - Covercrypt User Decryption Key
 
 Creating a Covercrypt User Decryption Key with the tag `MyUserKey` and the access policy `Security Level::Confidential && (Department::FIN || Department::HR)`
-(see [Create Key Pair](./_create_key_pair.md) for the corresponding master key policy).
+(see [Create Key Pair](./_create_key_pair.md) for the corresponding master key access structure).
 
 Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
 

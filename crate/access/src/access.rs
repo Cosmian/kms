@@ -4,8 +4,8 @@ use std::{
 };
 
 use cosmian_kmip::kmip_2_1::{
-    kmip_types::{Attributes, StateEnumeration, UniqueIdentifier},
     KmipOperation,
+    kmip_types::{Attributes, StateEnumeration, UniqueIdentifier},
 };
 use serde::{Deserialize, Serialize};
 

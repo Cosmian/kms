@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use cloudproof::reexport::cover_crypt::Covercrypt;
+use cosmian_cover_crypt::api::Covercrypt;
 use cosmian_kmip::{
     kmip_2_1::{
         extra::BulkData,
@@ -71,7 +71,7 @@ pub(crate) async fn encrypt(
     let uids = uids_from_unique_identifier(unique_identifier, kms, params.clone())
         .await
         .context("Encrypt")?;
-    debug!("Encrypt: candidate uids: {uids:?}");
+    trace!("Encrypt: candidate uids: {uids:?}");
 
     // Determine which uid to select. The decision process is as follows: loop through the uids
     // 1. if the uid has a prefix, try using that
@@ -129,7 +129,7 @@ pub(crate) async fn encrypt(
                 continue
             }
         }
-        debug!("Encrypt: user: {user} is authorized to encrypt using: {uid}");
+        trace!("Encrypt: user: {user} is authorized to encrypt using: {uid}");
         //TODO check why usage masks are not checked for certificates
         if let Object::Certificate { .. } = owm.object() {
             selected_owm = Some(owm);
@@ -277,7 +277,7 @@ pub(crate) fn encrypt_bulk(
                 .unwrap_or(EMPTY_SLICE);
             for plaintext in <BulkData as Into<Vec<Zeroizing<Vec<u8>>>>>::into(bulk_data) {
                 request.data = Some(plaintext.clone());
-                let (key_bytes, cipher) = get_cipher_and_key(&request, owm)?;
+                let (key_bytes, cipher) = get_key_and_cipher(&request, owm)?;
                 let nonce = request
                     .iv_counter_nonce
                     .clone()
@@ -308,7 +308,7 @@ pub(crate) fn encrypt_bulk(
             "Encrypt bulk: encryption with keys of type: {} is not supported",
             other.object_type()
         ))),
-    };
+    }
 
     debug!(
         "encrypt_bulk: <== encrypted {} ciphertexts",
@@ -327,7 +327,8 @@ fn encrypt_with_symmetric_key(
     request: &Encrypt,
     owm: &ObjectWithMetadata,
 ) -> KResult<EncryptResponse> {
-    let (key_bytes, aead) = get_cipher_and_key(request, owm)?;
+    trace!("encrypt_with_symmetric_key: entering");
+    let (key_bytes, aead) = get_key_and_cipher(request, owm)?;
     let plaintext = request.data.as_ref().ok_or_else(|| {
         KmsError::InvalidRequest("Encrypt: data to encrypt must be provided".to_owned())
     })?;
@@ -339,7 +340,9 @@ fn encrypt_with_symmetric_key(
         .authenticated_encryption_additional_data
         .as_deref()
         .unwrap_or(EMPTY_SLICE);
+    trace!("encrypt_with_symmetric_key: plaintext: {plaintext:?}, nonce: {nonce:?}, aad: {aad:?}");
     let (ciphertext, tag) = sym_encrypt(aead, &key_bytes, &nonce, aad, plaintext)?;
+    trace!("encrypt_with_symmetric_key: ciphertext: {ciphertext:?}, tag: {tag:?},");
     Ok(EncryptResponse {
         unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
         data: Some(ciphertext),
@@ -349,7 +352,7 @@ fn encrypt_with_symmetric_key(
     })
 }
 
-fn get_cipher_and_key(
+fn get_key_and_cipher(
     request: &Encrypt,
     owm: &ObjectWithMetadata,
 ) -> KResult<(Zeroizing<Vec<u8>>, SymCipher)> {
@@ -479,14 +482,8 @@ fn encrypt_with_rsa(
     debug!("encrypt_with_rsa: encrypting with RSA {algorithm:?} {padding:?} {hashing_fn:?}");
 
     let ciphertext = match algorithm {
-        CryptographicAlgorithm::AES => match padding {
-            PaddingMethod::OAEP => ckm_rsa_aes_key_wrap(public_key, hashing_fn, plaintext)?,
-            _ => kms_bail!(
-                "Unable to encrypt with RSA AES KEY WRAP: padding method not supported: \
-                 {padding:?}"
-            ),
-        },
         CryptographicAlgorithm::RSA => match padding {
+            PaddingMethod::None => ckm_rsa_aes_key_wrap(public_key, hashing_fn, plaintext)?,
             PaddingMethod::OAEP => ckm_rsa_pkcs_oaep_encrypt(public_key, hashing_fn, plaintext)?,
             #[cfg(not(feature = "fips"))]
             PaddingMethod::PKCS1v15 => ckm_rsa_pkcs_encrypt(public_key, plaintext)?,

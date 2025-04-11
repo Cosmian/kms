@@ -23,7 +23,7 @@ based on the dates of the existing key pair as follows
 #### Implementation
 
 The `Re-Key Key Pair` Operation is the main mechanism to rotate Covercrypt attributes on the Cosmian KMS Server. By
-updating, through this operation, the Policy held by a Master Private Key in it Vendor Attributes, the Cosmian KMS Server
+updating, through this operation, the Policy held by a master secret key in it Vendor Attributes, the Cosmian KMS Server
 will automatically
 
 - update the Policy held by the Master Public Key
@@ -40,7 +40,7 @@ Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
 cosmian kms cc rotate -k b652a48a-a48c-4dc1-bd7e-cf0e5126b7b9 "Security Level::Confidential"
 ```
 
-Using a JSON TTLV request to rotate the `Security Level::Confidential` attribute on a Master Private Key, construct a JSON object containing
+Using a JSON TTLV request to rotate the `Security Level::Confidential` attribute on a master secret key, construct a JSON object containing
 an array of the attributes that must be rotated:
 
 ```json

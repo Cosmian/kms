@@ -22,9 +22,10 @@ const JWKS_URI: &str = "https://www.googleapis.com/oauth2/v3/certs";
 
 static APPLICATIONS: &[&str; 4] = &["meet", "drive", "gmail", "calendar"];
 
+#[allow(clippy::or_fun_call)]
 fn get_jwks_uri(application: &str) -> String {
     std::env::var(format!("KMS_GOOGLE_CSE_{}_JWKS_URI", application.to_uppercase()))
-    .unwrap_or(format!("https://www.googleapis.com/service_accounts/v1/jwk/gsuitecse-tokenissuer-{application}@system.gserviceaccount.com"))
+    .unwrap_or_else(|_| format!("https://www.googleapis.com/service_accounts/v1/jwk/gsuitecse-tokenissuer-{application}@system.gserviceaccount.com"))
 }
 
 /// List the possible JWKS URI for all the supported application
@@ -37,6 +38,7 @@ pub fn list_jwks_uri() -> Vec<String> {
 }
 
 /// Fetch the JWT authorization configuration for Google CSE 'drive' or 'meet'
+#[allow(clippy::or_fun_call)]
 fn jwt_authorization_config_application(
     application: &str,
     jwks_manager: Arc<JwksManager>,
@@ -45,9 +47,7 @@ fn jwt_authorization_config_application(
         "KMS_GOOGLE_CSE_{}_JWT_ISSUER",
         application.to_uppercase()
     ))
-    .unwrap_or(format!(
-        "gsuitecse-tokenissuer-{application}@system.gserviceaccount.com"
-    ));
+    .unwrap_or_else(|_| format!("gsuitecse-tokenissuer-{application}@system.gserviceaccount.com"));
 
     let jwt_audience = Some(
         std::env::var("KMS_GOOGLE_CSE_AUDIENCE").unwrap_or_else(|_| "cse-authorization".to_owned()),
@@ -147,6 +147,7 @@ pub struct GoogleCseConfig {
 
 /// Validate the authentication token and return the calling user
 /// See [doc](https://developers.google.com/workspace/cse/guides/encrypt-and-decrypt-data?hl=en)
+#[allow(clippy::ref_option)]
 pub(crate) async fn validate_cse_authentication_token(
     authentication_token: &str,
     cse_config: &Option<GoogleCseConfig>,
@@ -215,7 +216,7 @@ pub(crate) async fn validate_cse_authentication_token(
 
 /// Validate the authorization token and return the calling user
 /// See [doc](https://developers.google.com/workspace/cse/guides/encrypt-and-decrypt-data?hl=en)
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::ref_option)]
 pub(crate) async fn validate_cse_authorization_token(
     authorization_token: &str,
     kms: &Arc<KMS>,
@@ -298,6 +299,7 @@ pub(crate) struct TokenExtractedContent {
 
 /// Validate the authentication and the authorization tokens and return the calling user
 /// See [doc](https://developers.google.com/workspace/cse/guides/encrypt-and-decrypt-data?hl=en)
+#[allow(clippy::ref_option)]
 pub(crate) async fn validate_tokens(
     authentication_token: &str,
     authorization_token: &str,

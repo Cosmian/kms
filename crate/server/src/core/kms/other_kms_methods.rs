@@ -5,7 +5,7 @@ use base64::{
     engine::general_purpose::{self, STANDARD as b64},
     Engine as _,
 };
-use cloudproof::reexport::cover_crypt::Covercrypt;
+use cosmian_cover_crypt::api::Covercrypt;
 use cosmian_kmip::kmip_2_1::{
     kmip_objects::Object,
     kmip_operations::Create,
@@ -319,6 +319,7 @@ impl KMS {
                     create_request,
                     owner,
                     params,
+                    create_request.attributes.sensitive,
                 )
                 .await?;
                 Ok((uid, object, tags))

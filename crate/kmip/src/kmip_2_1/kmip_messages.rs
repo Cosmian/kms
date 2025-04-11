@@ -33,6 +33,7 @@ use super::{
         MessageExtension, Nonce, OperationEnumeration, ProtocolVersion, ResultStatusEnumeration,
     },
 };
+use crate::{error::result::KmipResult, KmipError};
 
 #[derive(Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
@@ -66,7 +67,8 @@ impl Serialize for Message {
         // check batch item count
         if header_batch_count != self.items.len() {
             return Err(ser::Error::custom(format!(
-                "mismatch number of batch items between header (`{}`) and items list (`{}`)",
+                "Message::serialize: mismatch number of batch items between header (`{}`) and \
+                 items list (`{}`)",
                 self.header.batch_count,
                 self.items.len()
             )))
@@ -305,9 +307,6 @@ impl<'de> Deserialize<'de> for MessageBatchItem {
                             // serialized, we need to do the job by hand,
                             // using the `operation` enum.
                             request_payload = Some(match operation {
-                                OperationEnumeration::Encrypt => {
-                                    Operation::Encrypt(map.next_value()?)
-                                }
                                 OperationEnumeration::Create => {
                                     Operation::Create(map.next_value()?)
                                 }
@@ -317,27 +316,31 @@ impl<'de> Deserialize<'de> for MessageBatchItem {
                                 OperationEnumeration::Certify => {
                                     Operation::Certify(map.next_value()?)
                                 }
-                                OperationEnumeration::Locate => {
-                                    Operation::Locate(map.next_value()?)
-                                }
-                                OperationEnumeration::Get => Operation::Get(map.next_value()?),
-                                OperationEnumeration::GetAttributes => {
-                                    Operation::GetAttributes(map.next_value()?)
-                                }
-                                OperationEnumeration::Revoke => {
-                                    Operation::Revoke(map.next_value()?)
-                                }
                                 OperationEnumeration::Destroy => {
                                     Operation::Destroy(map.next_value()?)
                                 }
                                 OperationEnumeration::Decrypt => {
                                     Operation::Decrypt(map.next_value()?)
                                 }
-                                OperationEnumeration::Import => {
-                                    Operation::Import(map.next_value()?)
+                                OperationEnumeration::Encrypt => {
+                                    Operation::Encrypt(map.next_value()?)
                                 }
                                 OperationEnumeration::Export => {
                                     Operation::Export(map.next_value()?)
+                                }
+                                OperationEnumeration::Get => Operation::Get(map.next_value()?),
+                                OperationEnumeration::GetAttributes => {
+                                    Operation::GetAttributes(map.next_value()?)
+                                }
+                                OperationEnumeration::Import => {
+                                    Operation::Import(map.next_value()?)
+                                }
+                                OperationEnumeration::MAC => Operation::Mac(map.next_value()?),
+                                OperationEnumeration::Locate => {
+                                    Operation::Locate(map.next_value()?)
+                                }
+                                OperationEnumeration::Revoke => {
+                                    Operation::Revoke(map.next_value()?)
                                 }
                                 _ => return Err(de::Error::missing_field("valid enum operation")),
                             });
@@ -400,7 +403,8 @@ impl Serialize for MessageResponse {
         // check batch item count
         if header_batch_count != self.items.len() {
             return Err(ser::Error::custom(format!(
-                "mismatch number of batch items between header (`{}`) and items list (`{}`)",
+                "MessageResponse::serialize: mismatch number of batch items between header (`{}`) \
+                 and items list (`{}`)",
                 self.header.batch_count,
                 self.items.len()
             )))
@@ -423,6 +427,54 @@ impl Serialize for MessageResponse {
         st.serialize_field("Header", &self.header)?;
         st.serialize_field("Items", &self.items)?;
         st.end()
+    }
+}
+
+impl MessageResponse {
+    pub fn extract_items_data(&self) -> KmipResult<Vec<Vec<u8>>> {
+        self.items
+            .iter()
+            .map(|item| {
+                item.response_payload
+                    .as_ref()
+                    .ok_or_else(|| {
+                        KmipError::Default("Missing operation in Message Response".to_owned())
+                    })
+                    .and_then(|response_payload| match response_payload {
+                        Operation::DecryptResponse(response) => response
+                            .data
+                            .as_ref()
+                            .map(|data| data.to_vec())
+                            .ok_or_else(|| {
+                                KmipError::Default("Missing data in Decrypt Response".to_owned())
+                            }),
+                        Operation::EncryptResponse(response) => response
+                            .data
+                            .as_ref()
+                            .ok_or_else(|| {
+                                KmipError::Default("Missing data in Encrypt Response".to_owned())
+                            })
+                            .cloned(),
+                        Operation::HashResponse(response) => response
+                            .data
+                            .as_ref()
+                            .ok_or_else(|| {
+                                KmipError::Default("Missing data in Hash Response".to_owned())
+                            })
+                            .cloned(),
+                        Operation::MacResponse(response) => response
+                            .data
+                            .as_ref()
+                            .ok_or_else(|| {
+                                KmipError::Default("Missing data in Mac Response".to_owned())
+                            })
+                            .cloned(),
+                        unexpected_operation => Err(KmipError::Default(format!(
+                            "Unexpected operation in Message Response: {unexpected_operation}"
+                        ))),
+                    })
+            })
+            .collect()
     }
 }
 
@@ -717,9 +769,6 @@ impl<'de> Deserialize<'de> for MessageResponseBatchItem {
                             // serialized, we need to do the job by hand,
                             // using the `operation` enum.
                             response_payload = Some(match operation {
-                                OperationEnumeration::Encrypt => {
-                                    Operation::EncryptResponse(map.next_value()?)
-                                }
                                 OperationEnumeration::Create => {
                                     Operation::CreateResponse(map.next_value()?)
                                 }
@@ -729,8 +778,17 @@ impl<'de> Deserialize<'de> for MessageResponseBatchItem {
                                 OperationEnumeration::Certify => {
                                     Operation::CertifyResponse(map.next_value()?)
                                 }
-                                OperationEnumeration::Locate => {
-                                    Operation::LocateResponse(map.next_value()?)
+                                OperationEnumeration::Decrypt => {
+                                    Operation::DecryptResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::Destroy => {
+                                    Operation::DestroyResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::Encrypt => {
+                                    Operation::EncryptResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::Export => {
+                                    Operation::ExportResponse(map.next_value()?)
                                 }
                                 OperationEnumeration::Get => {
                                     Operation::GetResponse(map.next_value()?)
@@ -738,20 +796,17 @@ impl<'de> Deserialize<'de> for MessageResponseBatchItem {
                                 OperationEnumeration::GetAttributes => {
                                     Operation::GetAttributesResponse(map.next_value()?)
                                 }
-                                OperationEnumeration::Revoke => {
-                                    Operation::RevokeResponse(map.next_value()?)
-                                }
-                                OperationEnumeration::Destroy => {
-                                    Operation::DestroyResponse(map.next_value()?)
-                                }
-                                OperationEnumeration::Decrypt => {
-                                    Operation::DecryptResponse(map.next_value()?)
+                                OperationEnumeration::Locate => {
+                                    Operation::LocateResponse(map.next_value()?)
                                 }
                                 OperationEnumeration::Import => {
                                     Operation::ImportResponse(map.next_value()?)
                                 }
-                                OperationEnumeration::Export => {
-                                    Operation::ExportResponse(map.next_value()?)
+                                OperationEnumeration::MAC => {
+                                    Operation::MacResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::Revoke => {
+                                    Operation::RevokeResponse(map.next_value()?)
                                 }
                                 _ => {
                                     return Err(de::Error::missing_field(

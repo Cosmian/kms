@@ -228,7 +228,7 @@ fn test_serialization_deserialization() {
             x => panic!("unexpected 2nd level type : {x:?}"),
         },
         x => panic!("unexpected type : {x:?}"),
-    };
+    }
 }
 
 #[test]
@@ -958,7 +958,9 @@ pub(crate) fn test_message_enforce_enum() {
     };
     assert_eq!(
         to_ttlv(&req).unwrap_err().to_string(),
-        "mismatch number of batch items between header (`15`) and items list (`1`)".to_owned()
+        "Message::serialize: mismatch number of batch items between header (`15`) and items list \
+         (`1`)"
+            .to_owned()
     );
 
     let req = Message {
@@ -1079,7 +1081,9 @@ pub(crate) fn test_message_enforce_enum() {
     };
     assert_eq!(
         to_ttlv(&res).unwrap_err().to_string(),
-        "mismatch number of batch items between header (`22`) and items list (`1`)".to_owned()
+        "MessageResponse::serialize: mismatch number of batch items between header (`22`) and \
+         items list (`1`)"
+            .to_owned()
     );
 
     let res = MessageResponse {

@@ -3,8 +3,8 @@ use std::sync::Arc;
 use cosmian_kmip::kmip_2_1::{
     kmip_operations::{
         Certify, Create, CreateKeyPair, Decrypt, DeleteAttribute, Destroy, Encrypt, Export, Get,
-        GetAttributes, Import, Locate, Operation, ReKey, ReKeyKeyPair, Revoke, SetAttribute,
-        Validate,
+        GetAttributes, Hash, Import, Locate, Mac, Operation, ReKey, ReKeyKeyPair, Revoke,
+        SetAttribute, Validate,
     },
     ttlv::{deserializer::from_ttlv, TTLV},
 };
@@ -65,6 +65,16 @@ pub(crate) async fn dispatch(
             let resp = kms.get_attributes(req, user, database_params).await?;
             Operation::GetAttributesResponse(resp)
         }
+        "Hash" => {
+            let req = from_ttlv::<Hash>(ttlv)?;
+            let resp = kms.hash(req, user, database_params).await?;
+            Operation::HashResponse(resp)
+        }
+        "Mac" => {
+            let req = from_ttlv::<Mac>(ttlv)?;
+            let resp = kms.mac(req, user, database_params).await?;
+            Operation::MacResponse(resp)
+        }
         "SetAttribute" => {
             let req = from_ttlv::<SetAttribute>(ttlv)?;
             let resp = kms.set_attribute(req, user, database_params).await?;
@@ -92,7 +102,6 @@ pub(crate) async fn dispatch(
         }
         "ReKeyKeyPair" => {
             let req = from_ttlv::<ReKeyKeyPair>(ttlv)?;
-            #[allow(clippy::large_futures)]
             let resp = kms.rekey_keypair(req, user, database_params).await?;
             Operation::ReKeyKeyPairResponse(resp)
         }

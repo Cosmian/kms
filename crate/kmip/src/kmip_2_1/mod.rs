@@ -78,7 +78,7 @@ impl FromStr for KmipOperation {
             "locate" => Ok(Self::Locate),
             "rekey" => Ok(Self::Rekey),
             "revoke" => Ok(Self::Revoke),
-            _ => Err("Could not parse an operation {op}"),
+            _ => Err("Could not parse an operation"),
         }
     }
 }

@@ -7,42 +7,36 @@
 
 # See https://pre-commit.com for more information
 # See https://pre-commit.com/hooks.html for more hooks
-exclude: documentation/pandoc|documentation/overrides|crate/server/src/tests/test_utils.rs|.pre-commit-config.yaml|crate/server/src/routes/google_cse/jwt.rs|crate/server/src/routes/google_cse/python/openssl|documentation/docs/google_cse|crate/pkcs11/sys|documentation/docs/drawings|test_data|documentation/docs/benchmarks.md|crate/hsm/proteccio/driver
+exclude: documentation/pandoc|documentation/overrides|crate/server/src/tests/test_utils.rs|.pre-commit-config.yaml|crate/server/src/routes/google_cse/jwt.rs|crate/server/src/routes/google_cse/python/openssl|documentation/docs/google_cse|crate/pkcs11/sys|documentation/docs/drawings|test_data|documentation/docs/benchmarks.md|crate/hsm/proteccio/driver|crate/server/ui
 repos:
   - repo: https://github.com/compilerla/conventional-pre-commit
-    rev: v3.4.0
+    rev: v4.0.0
     hooks:
       - id: conventional-pre-commit
-        stages: [ commit-msg ]
-        args: [ ] # optional: list of Conventional Commits types to allow e.g. [feat, fix, ci, chore, test]
+        stages: [commit-msg]
+        args: [] # optional: list of Conventional Commits types to allow e.g. [feat, fix, ci, chore, test]
 
   - repo: https://github.com/igorshubovych/markdownlint-cli
-    rev: v0.42.0
+    rev: v0.44.0
     hooks:
       - id: markdownlint-fix
-        args:
-          [
-            --disable=MD013,
-            --disable=MD041,
-            --disable=MD046,
-            --fix,
-          ]
+        args: [--disable=MD013, --disable=MD041, --disable=MD046, --fix]
 
   - repo: https://github.com/tcort/markdown-link-check
-    rev: v3.12.2
+    rev: v3.13.7
     hooks:
       - id: markdown-link-check
-        args: [ -q, --config, .markdown-link-check.json ]
+        args: [-q, --config, .markdown-link-check.json]
 
   - repo: https://github.com/jumanjihouse/pre-commit-hook-yamlfmt
     rev: 0.2.3
     hooks:
       - id: yamlfmt
-        args: [ --mapping, "2", --sequence, "4", --offset, "2" ]
+        args: [--mapping, "2", --sequence, "4", --offset, "2"]
         exclude: ansible
 
   - repo: https://github.com/crate-ci/typos
-    rev: v1.25.0
+    rev: v1
     hooks:
       - id: typos
         exclude: documentation/docs/images/google_cse.drawio.svg|crate/test_server/src/test_jwt.rs|crate/pkcs11/documentation/veracrypt_ckms.svg|crate/server/src/tests/google_cse/|documentation/docs/pkcs11/images|crate/server/resources|documentation/docs/algorithms.md|crate/server/src/tests/certificates/chain/root/ca/|documentation/docs/pki/smime.md|documentation/docs/hsms/proteccio.md
@@ -58,7 +52,7 @@ repos:
         exclude: ^.git/|crate/server/src/tests/certificates/chain/root/ca
 
   - repo: https://github.com/sirosen/texthooks
-    rev: 0.6.7
+    rev: 0.6.8
     hooks:
       - id: fix-smartquotes
       - id: fix-ligatures
@@ -99,7 +93,7 @@ repos:
       - id: fix-byte-order-marker
       - id: fix-encoding-pragma
       - id: mixed-line-ending
-        args: [ --fix=lf ]
+        args: [--fix=lf]
       - id: name-tests-test
       - id: requirements-txt-fixer
       - id: sort-simple-yaml
@@ -107,34 +101,41 @@ repos:
         exclude: crate/crypto/src/openssl/x509_extensions.rs|documentation/docs/cli/main_commands.md
 
   - repo: https://github.com/psf/black
-    rev: 24.8.0
+    rev: 25.1.0
     hooks:
       - id: black
         # avoid clash with `double-quote-string-fixer`
-        args: [ --skip-string-normalization ]
+        args: [--skip-string-normalization]
 
   - repo: https://github.com/Cosmian/git-hooks.git
-    rev: v1.0.32
+    rev: v1.0.36
     hooks:
-      - id: cargo-format
-      # - id: dprint-toml-fix
-      # - id: cargo-upgrade
-      # - id: cargo-update
+      # - id: cargo-format
+      - id: dprint-toml-fix
+        stages: [manual]
+      - id: cargo-upgrade
+        stages: [manual]
+      - id: cargo-update
+        stages: [manual]
       - id: cargo-machete
       - id: cargo-build-kms
       - id: docker-compose-up
       - id: cargo-test
-        args: [ --, --skip, test_wrap_auth, --skip, google_cse, --skip, hsm ]
+        args: [--, --skip, test_wrap_auth, --skip, google_cse, --skip, hsm]
+      - id: cargo-build-all
+      - id: cargo-test
+        alias: cargo-test-all
+        args: [--all-features, --, --skip, test_wrap_auth, --skip, google_cse, --skip, hsm]
       - id: clippy-autofix-unreachable-pub
       - id: clippy-autofix-all-targets-all-features
       - id: clippy-autofix-all-targets
       - id: clippy-all-targets-all-features
       - id: clippy-all-targets
-      - id: cargo-format # in last du to clippy fixes
+      # - id: cargo-format # in last du to clippy fixes
       - id: docker-compose-down
 
   - repo: https://github.com/EmbarkStudios/cargo-deny
-    rev: 0.16.1
+    rev: 0.18.2
     hooks:
       - id: cargo-deny
-        args: [ --all-features, check ]
+        args: [--all-features, check]

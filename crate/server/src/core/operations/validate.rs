@@ -115,7 +115,7 @@ pub(crate) async fn validate_operation(
              not match"
                 .to_owned(),
         ));
-    };
+    }
 
     // Convert the certificates from bytes to X509
     let certificates = certificates
@@ -378,9 +378,9 @@ fn verify_chain_signature(certificates: &[X509]) -> KResult<ValidityIndicator> {
     )?;
 
     if !result {
-        return Err(KmsError::Certificate(
-            "Result of the function verify_cert: {result:?}".to_owned(),
-        ));
+        return Err(KmsError::Certificate(format!(
+            "Result of the function verify_cert: {result:?}"
+        )));
     }
 
     // verify signatures in cascade
@@ -503,7 +503,7 @@ async fn get_crl_bytes(uri_list: Vec<String>) -> KResult<HashMap<String, Vec<u8>
                     "Error that should not manifest".to_owned(),
                 ))
             }
-        };
+        }
     }
 
     debug!(
@@ -597,7 +597,7 @@ async fn verify_crls(certificates: Vec<X509>) -> KResult<ValidityIndicator> {
                         "Invalid CRL signature: {:?}",
                         crl.issuer_name()
                     )))
-                };
+                }
 
                 let res = crl_status_to_validity_indicator(&crl.get_by_cert(certificate));
                 debug!("Revocation status: result: {res:?}");

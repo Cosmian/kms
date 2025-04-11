@@ -13,9 +13,9 @@ doctest = false
 
 [dependencies]
 async-trait = { workspace = true }
-clap = { workspace = true, features = ["std", "cargo"] }
-cloudproof = { workspace = true }
-cloudproof_findex = { workspace = true }
+clap = { workspace = true, features = ["cargo", "std"] }
+cloudproof_findex = { version = "5.0", features = ["findex-redis"] }
+cosmian_crypto_core = { workspace = true }
 cosmian_kmip = { path = "../kmip" }
 cosmian_kms_crypto = { path = "../crypto" }
 cosmian_kms_interfaces = { path = "../interfaces" }
@@ -41,7 +41,7 @@ sqlx = { version = "0.8.2", default-features = false, features = [
   "sqlite",
 ] }
 thiserror = { workspace = true }
-tiny-keccak = "2.0.2"
+tiny-keccak = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tracing = { workspace = true }
 url = { workspace = true }

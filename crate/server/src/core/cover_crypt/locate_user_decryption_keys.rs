@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use cloudproof::reexport::cover_crypt::abe_policy::Attribute;
+use cosmian_cover_crypt::QualifiedAttribute;
 use cosmian_kmip::kmip_2_1::{
     kmip_objects::ObjectType,
     kmip_operations::Locate,
@@ -9,7 +9,7 @@ use cosmian_kmip::kmip_2_1::{
         StateEnumeration,
     },
 };
-use cosmian_kms_crypto::crypto::cover_crypt::attributes::attributes_as_vendor_attribute;
+use cosmian_kms_crypto::crypto::cover_crypt::attributes::qualified_attributes_as_vendor_attributes;
 use cosmian_kms_interfaces::SessionParams;
 
 use crate::{
@@ -17,19 +17,19 @@ use crate::{
     result::KResult,
 };
 
-/// Locate all the user decryption keys associated with the master private key
-/// and for the given policy attributes
-pub(crate) async fn locate_user_decryption_keys(
+/// Locate all the user decryption keys associated with the master secret key
+/// and for the given access structure attributes
+pub(crate) async fn locate_usk(
     kmip_server: &KMS,
-    master_private_key_uid: &str,
-    cover_crypt_policy_attributes_to_revoke: Option<Vec<Attribute>>,
+    master_secret_key_uid: &str,
+    cover_crypt_policy_attributes_to_revoke: Option<Vec<QualifiedAttribute>>,
     state: Option<StateEnumeration>,
     owner: &str,
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<Option<Vec<String>>> {
-    // Convert the policy attributes to vendor attributes
+    // Convert the access structure attributes to vendor attributes
     let vendor_attributes = match cover_crypt_policy_attributes_to_revoke {
-        Some(att) => Some(vec![attributes_as_vendor_attribute(&att)?]),
+        Some(att) => Some(vec![qualified_attributes_as_vendor_attributes(&att)?]),
         None => None,
     };
     // Search the user decryption keys that need to be refreshed
@@ -41,7 +41,7 @@ pub(crate) async fn locate_user_decryption_keys(
         link: Some(vec![Link {
             link_type: LinkType::ParentLink,
             linked_object_identifier: LinkedObjectIdentifier::TextString(
-                master_private_key_uid.to_owned(),
+                master_secret_key_uid.to_owned(),
             ),
         }]),
         ..Attributes::default()

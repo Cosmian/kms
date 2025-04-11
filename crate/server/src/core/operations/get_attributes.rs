@@ -146,7 +146,7 @@ pub(crate) async fn get_attributes(
         }
 
         req_attributes.extend(all_tags.iter().map(|t| AttributeReference::Standard(*t)));
-    };
+    }
 
     // request selected attributes
     let mut res = Attributes {

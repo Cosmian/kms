@@ -1,8 +1,7 @@
-use cloudproof::reexport::{
-    cover_crypt::{abe_policy::Policy, Covercrypt, MasterPublicKey, MasterSecretKey},
-    crypto_core::bytes_ser_de::Serializable,
-};
+use cosmian_cover_crypt::{api::Covercrypt, MasterPublicKey, MasterSecretKey};
+use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kmip::kmip_2_1::{
+    extra::VENDOR_ID_COSMIAN,
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
     kmip_objects::{Object, ObjectType},
     kmip_types::{
@@ -10,11 +9,14 @@ use cosmian_kmip::kmip_2_1::{
         LinkedObjectIdentifier,
     },
 };
+use tracing::debug;
 use zeroize::Zeroizing;
 
 use crate::{
     crypto::{
-        cover_crypt::attributes::{policy_from_attributes, upsert_policy_in_attributes},
+        cover_crypt::attributes::{
+            access_structure_from_attributes, VENDOR_ATTR_COVER_CRYPT_ACCESS_STRUCTURE,
+        },
         KeyPair,
     },
     error::CryptoError,
@@ -23,97 +25,76 @@ use crate::{
 /// Group a key UID with its KMIP Object
 pub type KmipKeyUidObject = (String, Object);
 
-/// Generate a `KeyPair` `(PrivateKey, MasterPublicKey)` from the attributes
-/// of a `CreateKeyPair` operation
+/// Generate a new Covercrypt master keypair the attributes of a `CreateKeyPair`
+/// operation.
 pub fn create_master_keypair(
     cover_crypt: &Covercrypt,
-    private_key_uid: &str,
+    private_key_uid: String,
     public_key_uid: &str,
-    common_attributes: &Option<Attributes>,
-    private_key_attributes: &Option<Attributes>,
-    public_key_attributes: &Option<Attributes>,
+    mut common_attributes: Attributes,
+    msk_attributes: Option<Attributes>,
+    mpk_attributes: Option<Attributes>,
+    sensitive: bool,
 ) -> Result<KeyPair, CryptoError> {
-    let any_attributes = common_attributes
-        .as_ref()
-        .or(private_key_attributes.as_ref())
-        .or(public_key_attributes.as_ref())
-        .ok_or_else(|| {
-            CryptoError::Kmip("Attributes must be provided in a CreateKeyPair request".to_owned())
-        })?;
+    let access_structure = access_structure_from_attributes(&common_attributes)?;
 
-    // verify that we can recover the policy
-    let policy = policy_from_attributes(any_attributes)?;
+    debug!("server: access_structure: {access_structure:?}");
 
-    // Now generate a master key using the CoverCrypt Engine
-    let (sk, pk) = cover_crypt
-        .generate_master_keys(&policy)
+    let (mut msk, _) = cover_crypt
+        .setup()
         .map_err(|e| CryptoError::Kmip(e.to_string()))?;
+    msk.access_structure = access_structure;
+    let mpk = cover_crypt.update_msk(&mut msk)?;
 
-    // Private Key generation
-    // First generate fresh attributes with that policy
-    let private_key_attributes = private_key_attributes
-        .as_ref()
-        .or(common_attributes.as_ref());
-    let sk_bytes = sk.serialize().map_err(|e| {
-        CryptoError::Kmip(format!(
-            "cover crypt: failed serializing the master private key: {e}"
-        ))
-    })?;
-    let private_key = create_master_private_key_object(
-        &sk_bytes,
-        &policy,
-        private_key_attributes,
+    // Removes the access structure from the common attributes.
+    common_attributes
+        .remove_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_ACCESS_STRUCTURE);
+
+    let msk_owm = create_msk_object(
+        msk.serialize()?,
+        msk_attributes.unwrap_or_else(|| common_attributes.clone()),
         public_key_uid,
+        sensitive,
     )?;
 
-    // Public Key generation
-    // First generate fresh attributes with that policy
-    let public_key_attributes = public_key_attributes
-        .as_ref()
-        .or(common_attributes.as_ref());
-    let pk_bytes = pk.serialize().map_err(|e| {
-        CryptoError::Kmip(format!(
-            "cover crypt: failed serializing the master public key: {e}"
-        ))
-    })?;
-    let public_key = create_master_public_key_object(
-        &pk_bytes,
-        &policy,
-        public_key_attributes,
+    let mpk_owm = create_mpk_object(
+        mpk.serialize()?,
+        mpk_attributes.unwrap_or(common_attributes),
         private_key_uid,
     )?;
 
-    Ok(KeyPair((private_key, public_key)))
+    Ok(KeyPair((msk_owm, mpk_owm)))
 }
 
-fn create_master_private_key_object(
-    key: &[u8],
-    policy: &Policy,
-    attributes: Option<&Attributes>,
-    master_public_key_uid: &str,
+pub fn create_msk_object(
+    msk_bytes: Zeroizing<Vec<u8>>,
+    mut attributes: Attributes,
+    mpk_uid: &str,
+    sensitive: bool,
 ) -> Result<Object, CryptoError> {
-    let mut attributes = attributes.cloned().unwrap_or_default();
+    debug!(
+        "create_msk_object: key len: {}, attributes: {attributes:?}",
+        msk_bytes.len()
+    );
+
     attributes.object_type = Some(ObjectType::PrivateKey);
     attributes.key_format_type = Some(KeyFormatType::CoverCryptSecretKey);
-    // Covercrypt keys are set to have unrestricted usage.
     attributes.set_cryptographic_usage_mask_bits(CryptographicUsageMask::Unrestricted);
-    // add the policy to the attributes
-    upsert_policy_in_attributes(&mut attributes, policy)?;
-    // link the private key to the public key
     attributes.link = Some(vec![Link {
         link_type: LinkType::PublicKeyLink,
-        linked_object_identifier: LinkedObjectIdentifier::TextString(
-            master_public_key_uid.to_owned(),
-        ),
+        linked_object_identifier: LinkedObjectIdentifier::TextString(mpk_uid.to_owned()),
     }]);
-    let cryptographic_length = Some(i32::try_from(key.len())? * 8);
+    attributes.sensitive = sensitive;
+
+    let cryptographic_length = Some(i32::try_from(msk_bytes.len())? * 8);
+
     Ok(Object::PrivateKey {
         key_block: KeyBlock {
             cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
             key_format_type: KeyFormatType::CoverCryptSecretKey,
             key_compression_type: None,
             key_value: KeyValue {
-                key_material: KeyMaterial::ByteString(Zeroizing::from(key.to_vec())),
+                key_material: KeyMaterial::ByteString(msk_bytes),
                 attributes: Some(attributes),
             },
             cryptographic_length,
@@ -126,26 +107,20 @@ fn create_master_private_key_object(
 /// Policy and optional additional attributes
 ///
 /// see `cover_crypt_unwrap_master_public_key` for the reverse operation
-fn create_master_public_key_object(
-    key: &[u8],
-    policy: &Policy,
-    attributes: Option<&Attributes>,
-    master_private_key_uid: &str,
+fn create_mpk_object(
+    key: Zeroizing<Vec<u8>>,
+    mut attributes: Attributes,
+    msk_uid: String,
 ) -> Result<Object, CryptoError> {
-    let mut attributes = attributes.cloned().unwrap_or_default();
     attributes.sensitive = false;
     attributes.object_type = Some(ObjectType::PublicKey);
     attributes.key_format_type = Some(KeyFormatType::CoverCryptPublicKey);
     // Covercrypt keys are set to have unrestricted usage.
     attributes.set_cryptographic_usage_mask_bits(CryptographicUsageMask::Unrestricted);
-    // add the policy to the attributes
-    upsert_policy_in_attributes(&mut attributes, policy)?;
     // link the public key to the private key
     attributes.link = Some(vec![Link {
         link_type: LinkType::PrivateKeyLink,
-        linked_object_identifier: LinkedObjectIdentifier::TextString(
-            master_private_key_uid.to_owned(),
-        ),
+        linked_object_identifier: LinkedObjectIdentifier::TextString(msk_uid),
     }]);
     let cryptographic_length = Some(i32::try_from(key.len())? * 8);
     Ok(Object::PublicKey {
@@ -154,7 +129,7 @@ fn create_master_public_key_object(
             key_format_type: KeyFormatType::CoverCryptPublicKey,
             key_compression_type: None,
             key_value: KeyValue {
-                key_material: KeyMaterial::ByteString(Zeroizing::from(key.to_vec())),
+                key_material: KeyMaterial::ByteString(key),
                 attributes: Some(attributes),
             },
             cryptographic_length,
@@ -163,63 +138,54 @@ fn create_master_public_key_object(
     })
 }
 
-pub fn covercrypt_keys_from_kmip_objects(
-    master_private_key: &Object,
-    master_public_key: &Object,
+pub fn cc_master_keypair_from_kmip_objects(
+    msk: &Object,
+    mpk: &Object,
 ) -> Result<(MasterSecretKey, MasterPublicKey), CryptoError> {
-    // Recover the CoverCrypt PrivateKey Object
-    let msk_key_block = master_private_key.key_block()?;
-    let msk_key_bytes = msk_key_block.key_bytes()?;
-    let msk = MasterSecretKey::deserialize(&msk_key_bytes).map_err(|e| {
-        CryptoError::Kmip(format!(
-            "Failed deserializing the CoverCrypt Master Private Key: {e}"
-        ))
-    })?;
+    let msk_bytes = msk.key_block()?.key_bytes()?;
+    let msk = MasterSecretKey::deserialize(&msk_bytes)
+        .map_err(|e| CryptoError::Kmip(format!("Failed deserializing the Covercrypt MSK: {e}")))?;
 
-    // Recover the CoverCrypt MasterPublicKey Object
-    let mpk_key_block = master_public_key.key_block()?;
-    let mpk_key_bytes = mpk_key_block.key_bytes()?;
-    let mpk = MasterPublicKey::deserialize(&mpk_key_bytes).map_err(|e| {
-        CryptoError::Kmip(format!(
-            "Failed deserializing the CoverCrypt Master Public Key: {e}"
-        ))
-    })?;
+    let mpk_bytes = mpk.key_block()?.key_bytes()?;
+    let mpk = MasterPublicKey::deserialize(&mpk_bytes)
+        .map_err(|e| CryptoError::Kmip(format!("Failed deserializing the Covercrypt MPK: {e}")))?;
 
     Ok((msk, mpk))
 }
 
-pub fn kmip_objects_from_covercrypt_keys(
-    policy: &Policy,
+pub fn kmip_objects_from_cc_master_keypair(
     msk: &MasterSecretKey,
     mpk: &MasterPublicKey,
-    msk_obj: KmipKeyUidObject,
-    mpk_obj: KmipKeyUidObject,
-) -> Result<(KmipKeyUidObject, KmipKeyUidObject), CryptoError> {
-    let updated_master_private_key_bytes = &msk.serialize().map_err(|e| {
-        CryptoError::Kmip(format!(
-            "Failed serializing the CoverCrypt Master Private Key: {e}"
-        ))
-    })?;
-    let updated_master_private_key = create_master_private_key_object(
-        updated_master_private_key_bytes,
-        policy,
-        Some(msk_obj.1.attributes()?),
-        &mpk_obj.0,
-    )?;
-    let updated_master_public_key_bytes = &mpk.serialize().map_err(|e| {
-        CryptoError::Kmip(format!(
-            "Failed serializing the CoverCrypt Master Public Key: {e}"
-        ))
-    })?;
-    let updated_master_public_key = create_master_public_key_object(
-        updated_master_public_key_bytes,
-        policy,
-        Some(mpk_obj.1.attributes()?),
-        &msk_obj.0,
-    )?;
+    mut msk_obj: Object,
+    mut mpk_obj: Object,
+) -> Result<(Object, Object), CryptoError> {
+    let msk_bytes = msk
+        .serialize()
+        .map_err(|e| CryptoError::Kmip(format!("Failed serializing the Covercrypt MSK: {e}")))?;
 
-    Ok((
-        (msk_obj.0, updated_master_private_key),
-        (mpk_obj.0, updated_master_public_key),
-    ))
+    match &mut msk_obj.key_block_mut()?.key_value.key_material {
+        KeyMaterial::ByteString(bytes) => {
+            *bytes = msk_bytes;
+            Ok(())
+        }
+        _ => Err(CryptoError::Kmip(
+            "wrong key material type for MSK".to_owned(),
+        )),
+    }?;
+
+    let mpk_bytes = mpk
+        .serialize()
+        .map_err(|e| CryptoError::Kmip(format!("Failed serializing the Covercrypt MPK: {e}")))?;
+
+    match &mut mpk_obj.key_block_mut()?.key_value.key_material {
+        KeyMaterial::ByteString(bytes) => {
+            *bytes = mpk_bytes;
+            Ok(())
+        }
+        _ => Err(CryptoError::Kmip(
+            "wrong key material type for MPK".to_owned(),
+        )),
+    }?;
+
+    Ok((msk_obj, mpk_obj))
 }
