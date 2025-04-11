@@ -4,12 +4,15 @@ use cloudproof::reexport::{
     cover_crypt::{abe_policy::AccessPolicy, Covercrypt, MasterPublicKey},
     crypto_core::bytes_ser_de::Serializable,
 };
-use cosmian_kmip::kmip_2_1::{
-    kmip_attributes::Attributes,
-    kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
-    kmip_objects::{Object, ObjectType, SymmetricKey},
-    kmip_operations::GetResponse,
-    kmip_types::{CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, WrappingMethod},
+use cosmian_kmip::{
+    kmip_0::kmip_types::CryptographicUsageMask,
+    kmip_2_1::{
+        kmip_attributes::Attributes,
+        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
+        kmip_objects::{Object, ObjectType, SymmetricKey},
+        kmip_operations::GetResponse,
+        kmip_types::{CryptographicAlgorithm, KeyFormatType, WrappingMethod},
+    },
 };
 use serde::{Deserialize, Serialize};
 use tracing::{debug, trace};

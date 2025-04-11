@@ -6,12 +6,11 @@ use std::{
 
 use clap::Parser;
 use cosmian_kms_client::{
+    cosmian_kmip::kmip_0::kmip_types::BlockCipherMode,
     kmip_2_1::{
         extra::BulkData,
         kmip_operations::{Decrypt, Encrypt},
-        kmip_types::{
-            BlockCipherMode, CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier,
-        },
+        kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
     },
     KmsClient,
 };

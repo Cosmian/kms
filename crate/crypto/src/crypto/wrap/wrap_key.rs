@@ -1,14 +1,14 @@
 use base64::{engine::general_purpose, Engine};
-use cosmian_kmip::kmip_2_1::{
-    kmip_data_structures::{
-        KeyBlock, KeyMaterial, KeyValue, KeyWrappingData, KeyWrappingSpecification,
-    },
-    kmip_objects::{
-        Certificate, Object, PGPKey, PrivateKey, PublicKey, SecretData, SplitKey, SymmetricKey,
-    },
-    kmip_types::{
-        BlockCipherMode, CryptographicAlgorithm, CryptographicUsageMask, EncodingOption,
-        KeyFormatType, PaddingMethod, WrappingMethod,
+use cosmian_kmip::{
+    kmip_0::kmip_types::{BlockCipherMode, CryptographicUsageMask, PaddingMethod},
+    kmip_2_1::{
+        kmip_data_structures::{
+            KeyBlock, KeyMaterial, KeyValue, KeyWrappingData, KeyWrappingSpecification,
+        },
+        kmip_objects::{
+            Certificate, Object, PGPKey, PrivateKey, PublicKey, SecretData, SplitKey, SymmetricKey,
+        },
+        kmip_types::{CryptographicAlgorithm, EncodingOption, KeyFormatType, WrappingMethod},
     },
 };
 use openssl::{

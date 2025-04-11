@@ -1,7 +1,9 @@
-use cosmian_kmip::kmip_2_1::{
-    kmip_objects,
-    kmip_objects::Object,
-    kmip_types::{CertificateType, LinkType},
+use cosmian_kmip::{
+    kmip_0::kmip_types::CertificateType,
+    kmip_2_1::{
+        kmip_objects::{self, Object},
+        kmip_types::LinkType,
+    },
 };
 use cosmian_pkcs11_module::traits::{Certificate, PublicKey};
 use x509_cert::{

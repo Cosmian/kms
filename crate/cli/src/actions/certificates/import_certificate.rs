@@ -3,10 +3,13 @@ use std::path::PathBuf;
 use clap::{Parser, ValueEnum};
 use cloudproof::reexport::crypto_core::reexport::x509_cert;
 use cosmian_kms_client::{
-    cosmian_kmip::kmip_2_1::{
-        kmip_attributes::Attributes,
-        kmip_objects::Object,
-        kmip_types::{CertificateType, KeyFormatType, LinkType, LinkedObjectIdentifier},
+    cosmian_kmip::{
+        kmip_0::kmip_types::CertificateType,
+        kmip_2_1::{
+            kmip_attributes::Attributes,
+            kmip_objects::Object,
+            kmip_types::{KeyFormatType, LinkType, LinkedObjectIdentifier},
+        },
     },
     import_object,
     kmip_2_1::kmip_objects,

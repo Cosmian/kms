@@ -246,7 +246,7 @@ async fn batch_get(
                 )),
                 Operation::GetAttributes(GetAttributes {
                     unique_identifier: Some(UniqueIdentifier::TextString(id.to_string())),
-                    attribute_references: None, //all attributes
+                    attribute_reference: None, //all attributes
                 }),
             ]
         })
@@ -309,7 +309,7 @@ async fn batch_export(
                 )),
                 Operation::GetAttributes(GetAttributes {
                     unique_identifier: Some(UniqueIdentifier::TextString(id.to_string())),
-                    attribute_references: Some(vec![AttributeReference::tags_reference()]), //tags
+                    attribute_reference: Some(vec![AttributeReference::tags_reference()]), //tags
                 }),
             ]
         })

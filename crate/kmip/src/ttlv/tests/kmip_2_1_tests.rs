@@ -14,7 +14,8 @@ use crate::{
         },
         kmip_types::{
             AsynchronousIndicator, AttestationType, BatchErrorContinuationOption, Credential,
-            ErrorReason, MessageExtension, Nonce, ProtocolVersion, ResultStatusEnumeration,
+            CryptographicUsageMask, ErrorReason, MessageExtension, Nonce, ProtocolVersion,
+            ResultStatusEnumeration,
         },
     },
     kmip_2_1::{
@@ -27,9 +28,9 @@ use crate::{
             Operation, Query, QueryResponse, SetAttribute,
         },
         kmip_types::{
-            CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, Link, LinkType,
-            LinkedObjectIdentifier, OperationEnumeration, QueryFunction, UniqueIdentifier,
-            VendorAttribute, VendorAttributeValue,
+            CryptographicAlgorithm, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
+            OperationEnumeration, QueryFunction, UniqueIdentifier, VendorAttribute,
+            VendorAttributeValue,
         },
     },
     ttlv::{from_ttlv, to_ttlv, KmipEnumerationVariant, TTLValue, TTLV},

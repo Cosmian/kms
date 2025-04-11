@@ -4,11 +4,11 @@ use base64::Engine;
 use clap::{Parser, ValueEnum};
 use cosmian_kms_client::{
     cosmian_kmip::{
-        kmip_0::kmip_types::HashingAlgorithm,
-        kmip_2_1::kmip_types::{BlockCipherMode, KeyFormatType},
+        kmip_0::kmip_types::{BlockCipherMode, HashingAlgorithm, PaddingMethod},
+        kmip_2_1::kmip_types::KeyFormatType,
     },
     der_to_pem, export_object,
-    kmip_2_1::kmip_types::{CryptographicAlgorithm, CryptographicParameters, PaddingMethod},
+    kmip_2_1::kmip_types::{CryptographicAlgorithm, CryptographicParameters},
     write_bytes_to_file, write_kmip_object_to_file, ExportObjectParams, KmsClient,
 };
 

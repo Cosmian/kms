@@ -2,14 +2,11 @@ use std::{collections::HashSet, sync::Arc};
 
 use async_recursion::async_recursion;
 use cosmian_kmip::{
-    kmip_0::kmip_types::ErrorReason,
+    kmip_0::kmip_types::{ErrorReason, RevocationReason, RevocationReasonCode},
     kmip_2_1::{
         kmip_objects::ObjectType,
         kmip_operations::{Revoke, RevokeResponse},
-        kmip_types::{
-            KeyFormatType, LinkType, RevocationReason, RevocationReasonCode, StateEnumeration,
-            UniqueIdentifier,
-        },
+        kmip_types::{KeyFormatType, LinkType, StateEnumeration, UniqueIdentifier},
         KmipOperation,
     },
 };

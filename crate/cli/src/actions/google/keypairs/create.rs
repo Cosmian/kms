@@ -1,6 +1,7 @@
 use base64::{engine::general_purpose, Engine};
 use clap::Parser;
 use cosmian_kms_client::{
+    cosmian_kmip::kmip_0::kmip_types::BlockCipherMode,
     export_object,
     kmip_2_1::{
         extra::{VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
@@ -8,9 +9,9 @@ use cosmian_kms_client::{
         kmip_objects::{Certificate, Object, ObjectType},
         kmip_operations::{Certify, GetAttributes},
         kmip_types::{
-            BlockCipherMode, CertificateAttributes, CryptographicAlgorithm,
-            CryptographicParameters, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
-            UniqueIdentifier, VendorAttribute, VendorAttributeValue,
+            CertificateAttributes, CryptographicAlgorithm, CryptographicParameters, KeyFormatType,
+            Link, LinkType, LinkedObjectIdentifier, UniqueIdentifier, VendorAttribute,
+            VendorAttributeValue,
         },
         requests::create_rsa_key_pair_request,
     },
@@ -121,7 +122,7 @@ impl CreateKeyPairsAction {
             let attributes_response = kms_rest_client
                 .get_attributes(GetAttributes {
                     unique_identifier: Some(UniqueIdentifier::TextString(id.to_string())),
-                    attribute_references: None,
+                    attribute_reference: None,
                 })
                 .await?;
             if attributes_response.attributes.object_type == Some(ObjectType::PrivateKey) {

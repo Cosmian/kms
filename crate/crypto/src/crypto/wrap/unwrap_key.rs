@@ -1,10 +1,10 @@
-use cosmian_kmip::kmip_2_1::{
-    kmip_attributes::Attributes,
-    kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
-    kmip_objects::Object,
-    kmip_types::{
-        BlockCipherMode, CryptographicAlgorithm, CryptographicUsageMask, EncodingOption,
-        KeyFormatType, PaddingMethod, WrappingMethod,
+use cosmian_kmip::{
+    kmip_0::kmip_types::{BlockCipherMode, CryptographicUsageMask, PaddingMethod},
+    kmip_2_1::{
+        kmip_attributes::Attributes,
+        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
+        kmip_objects::Object,
+        kmip_types::{CryptographicAlgorithm, EncodingOption, KeyFormatType, WrappingMethod},
     },
 };
 use openssl::pkey::{Id, PKey, Private};

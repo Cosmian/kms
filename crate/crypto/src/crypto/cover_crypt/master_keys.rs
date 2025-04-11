@@ -2,13 +2,16 @@ use cloudproof::reexport::{
     cover_crypt::{abe_policy::Policy, Covercrypt, MasterPublicKey, MasterSecretKey},
     crypto_core::bytes_ser_de::Serializable,
 };
-use cosmian_kmip::kmip_2_1::{
-    kmip_attributes::Attributes,
-    kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-    kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
-    kmip_types::{
-        CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, Link, LinkType,
-        LinkedObjectIdentifier, UniqueIdentifier,
+use cosmian_kmip::{
+    kmip_0::kmip_types::CryptographicUsageMask,
+    kmip_2_1::{
+        kmip_attributes::Attributes,
+        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+        kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
+        kmip_types::{
+            CryptographicAlgorithm, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
+            UniqueIdentifier,
+        },
     },
 };
 use zeroize::Zeroizing;

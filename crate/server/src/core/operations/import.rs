@@ -1,7 +1,7 @@
 use std::{collections::HashSet, sync::Arc};
 
 #[cfg(not(feature = "fips"))]
-use cosmian_kmip::kmip_2_1::kmip_types::CryptographicUsageMask;
+use cosmian_kmip::kmip_0::kmip_types::{CertificateType, CryptographicUsageMask};
 use cosmian_kmip::{
     kmip_0::kmip_types::KeyWrapType,
     kmip_2_1::{
@@ -9,8 +9,8 @@ use cosmian_kmip::{
         kmip_objects::{Certificate, Object, ObjectType, PrivateKey},
         kmip_operations::{Import, ImportResponse},
         kmip_types::{
-            CertificateAttributes, CertificateType, CryptographicAlgorithm, KeyFormatType,
-            LinkType, LinkedObjectIdentifier, StateEnumeration, UniqueIdentifier,
+            CertificateAttributes, CryptographicAlgorithm, KeyFormatType, LinkType,
+            LinkedObjectIdentifier, StateEnumeration, UniqueIdentifier,
         },
     },
 };

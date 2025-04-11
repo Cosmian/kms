@@ -1,6 +1,7 @@
 use clap::{Parser, ValueEnum};
 use cosmian_kms_client::{
-    kmip_2_1::kmip_types::{BlockCipherMode, CryptographicAlgorithm, CryptographicParameters},
+    cosmian_kmip::kmip_0::kmip_types::BlockCipherMode,
+    kmip_2_1::kmip_types::{CryptographicAlgorithm, CryptographicParameters},
     KmsClient,
 };
 use strum::EnumIter;

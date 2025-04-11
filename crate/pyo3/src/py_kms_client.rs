@@ -2,11 +2,15 @@ use cloudproof::reexport::{
     cover_crypt::abe_policy::{Attribute, EncryptionHint, Policy},
     crypto_core::bytes_ser_de::Deserializer,
 };
-use cosmian_kmip::kmip_2_1::{
-    kmip_operations::Get,
-    kmip_types::{CryptographicAlgorithm, RevocationReason, RevocationReasonCode},
-    requests::{
-        build_revoke_key_request, decrypt_request, encrypt_request, symmetric_key_create_request,
+use cosmian_kmip::{
+    kmip_0::kmip_types::{RevocationReason, RevocationReasonCode},
+    kmip_2_1::{
+        kmip_operations::Get,
+        kmip_types::CryptographicAlgorithm,
+        requests::{
+            build_revoke_key_request, decrypt_request, encrypt_request,
+            symmetric_key_create_request,
+        },
     },
 };
 use cosmian_kms_client::{

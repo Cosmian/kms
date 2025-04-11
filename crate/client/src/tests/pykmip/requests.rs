@@ -1,6 +1,8 @@
 use std::vec;
 
-use cosmian_kmip::kmip_1_4::kmip_attributes::Attribute;
+use cosmian_kmip::{
+    kmip_0::kmip_types::CryptographicUsageMask, kmip_1_4::kmip_attributes::Attribute,
+};
 use cosmian_logger::log_init;
 use tracing::info;
 
@@ -8,10 +10,7 @@ use crate::{
     kmip_1_4::{
         kmip_data_structures::TemplateAttribute,
         kmip_operations::{Create, Operation, Query},
-        kmip_types::{
-            CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, ObjectType,
-            QueryFunction,
-        },
+        kmip_types::{CryptographicAlgorithm, ObjectType, QueryFunction},
     },
     send_to_pykmip_server,
 };

@@ -6,13 +6,14 @@ use crate::kmip_2_1::extra::fips::{
 #[cfg(feature = "fips")]
 use crate::kmip_2_1_bail;
 use crate::{
+    kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
         kmip_attributes::Attributes,
         kmip_objects::ObjectType,
         kmip_operations::CreateKeyPair,
         kmip_types::{
-            CryptographicAlgorithm, CryptographicDomainParameters, CryptographicUsageMask,
-            KeyFormatType, RecommendedCurve, UniqueIdentifier,
+            CryptographicAlgorithm, CryptographicDomainParameters, KeyFormatType, RecommendedCurve,
+            UniqueIdentifier,
         },
     },
     KmipError,

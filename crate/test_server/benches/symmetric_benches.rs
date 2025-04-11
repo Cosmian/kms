@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+use cosmian_kmip::kmip_0::kmip_types::{BlockCipherMode, CryptographicUsageMask};
 use cosmian_kms_client::{
     reexport::cosmian_kmip::kmip_2_1::{
         extra::BulkData,
@@ -6,8 +7,7 @@ use cosmian_kms_client::{
         kmip_objects::ObjectType,
         kmip_operations::{Create, Decrypt, Encrypt},
         kmip_types::{
-            BlockCipherMode, CryptographicAlgorithm, CryptographicParameters,
-            CryptographicUsageMask, KeyFormatType, UniqueIdentifier,
+            CryptographicAlgorithm, CryptographicParameters, KeyFormatType, UniqueIdentifier,
         },
     },
     KmsClient, KmsClientError,

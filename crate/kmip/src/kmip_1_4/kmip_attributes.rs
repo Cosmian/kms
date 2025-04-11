@@ -10,13 +10,15 @@ use time::OffsetDateTime;
 use tracing::warn;
 
 use crate::{
+    kmip_0::kmip_types::{
+        AlternativeName, ApplicationSpecificInformation, CertificateType, CryptographicUsageMask,
+        KeyValueLocationType, RevocationReason, State, UsageLimits, X509CertificateIdentifier,
+    },
     kmip_1_4::{
         kmip_data_structures::CryptographicParameters,
         kmip_types::{
-            AlternativeName, ApplicationSpecificInformation, CertificateType,
-            CryptographicAlgorithm, CryptographicDomainParameters, CryptographicUsageMask, Digest,
-            DigitalSignatureAlgorithm, KeyValueLocationType, Link, Name, ObjectType,
-            RandomNumberGenerator, RevocationReason, State, UsageLimits, X509CertificateIdentifier,
+            CryptographicAlgorithm, CryptographicDomainParameters, Digest,
+            DigitalSignatureAlgorithm, Link, Name, ObjectType, RandomNumberGenerator,
         },
     },
     kmip_2_1::{self, kmip_types::VendorAttribute},
@@ -571,7 +573,7 @@ impl From<Attribute> for kmip_2_1::kmip_attributes::Attribute {
             }
             Attribute::CryptographicLength(v) => Self::CryptographicLength(v),
             Attribute::CryptographicParameters(v) => Self::CryptographicParameters(v.into()),
-            Attribute::CryptographicUsageMask(v) => Self::CryptographicUsageMask(v.into()),
+            Attribute::CryptographicUsageMask(v) => Self::CryptographicUsageMask(v),
             Attribute::DeactivationDate(v) => Self::DeactivationDate(v),
             Attribute::Description(v) => Self::Description(v),
             Attribute::Name(v) => Self::Name(v.into()),
@@ -582,24 +584,22 @@ impl From<Attribute> for kmip_2_1::kmip_attributes::Attribute {
                 Self::UniqueIdentifier(kmip_2_1::kmip_types::UniqueIdentifier::TextString(v))
             }
             Attribute::CryptographicAlgorithm(v) => Self::CryptographicAlgorithm(v.into()),
-            Attribute::CertificateType(v) => Self::CertificateType(v.into()),
+            Attribute::CertificateType(v) => Self::CertificateType(v),
             Attribute::CertificateLength(v) => Self::CertificateLength(v),
             Attribute::DigitalSignatureAlgorithm(v) => Self::DigitalSignatureAlgorithm(v.into()),
             Attribute::LeaseTime(v) => Self::LeaseTime(v),
-            Attribute::UsageLimits(v) => Self::UsageLimits(v.into()),
-            Attribute::State(v) => Self::State(v.into()),
+            Attribute::UsageLimits(v) => Self::UsageLimits(v),
+            Attribute::State(v) => Self::State(v),
             Attribute::InitialDate(v) => Self::InitialDate(v),
             Attribute::DestroyDate(v) => Self::DestroyDate(v),
             Attribute::CompromiseOccurrenceDate(v) => Self::CompromiseOccurrenceDate(v),
             Attribute::CompromiseDate(v) => Self::CompromiseDate(v),
-            Attribute::RevocationReason(v) => Self::RevocationReason(v.into()),
+            Attribute::RevocationReason(v) => Self::RevocationReason(v),
             Attribute::ArchiveDate(v) => Self::ArchiveDate(v),
             Attribute::ObjectGroup(v) => Self::ObjectGroup(v),
             Attribute::Fresh(v) => Self::Fresh(v),
             Attribute::Link(v) => Self::Link(v.into()),
-            Attribute::ApplicationSpecificInformation(v) => {
-                Self::ApplicationSpecificInformation(v.into())
-            }
+            Attribute::ApplicationSpecificInformation(v) => Self::ApplicationSpecificInformation(v),
             Attribute::ContactInformation(v) => Self::ContactInformation(v),
             Attribute::LastChangeDate(v) => Self::LastChangeDate(v),
             Attribute::CustomAttribute((n, v)) => Self::VendorAttribute(VendorAttribute {
@@ -607,9 +607,9 @@ impl From<Attribute> for kmip_2_1::kmip_attributes::Attribute {
                 attribute_name: n,
                 attribute_value: v.into(),
             }),
-            Attribute::AlternativeName(v) => Self::AlternativeName(v.into()),
+            Attribute::AlternativeName(v) => Self::AlternativeName(v),
             Attribute::KeyValuePresent(v) => Self::KeyValuePresent(v),
-            Attribute::KeyValueLocation(v) => Self::KeyValueLocation(v.into()),
+            Attribute::KeyValueLocation(v) => Self::KeyValueLocation(v),
             Attribute::OriginalCreationDate(v) => Self::OriginalCreationDate(v),
             Attribute::RandomNumberGenerator(v) => Self::RandomNumberGenerator(v.into()),
             Attribute::Comment(v) => Self::Comment(v),
@@ -640,54 +640,49 @@ impl TryFrom<kmip_2_1::kmip_attributes::Attribute> for Attribute {
         match attribute {
             kmip_2_1::kmip_attributes::Attribute::ActivationDate(v) => Ok(Self::ActivationDate(v)),
             kmip_2_1::kmip_attributes::Attribute::CryptographicDomainParameters(v) => {
-                Ok(Self::CryptographicDomainParameters(v.into()))
+                Ok(Self::CryptographicDomainParameters(v.try_into()?))
             }
             kmip_2_1::kmip_attributes::Attribute::CryptographicLength(v) => {
                 Ok(Self::CryptographicLength(v))
             }
             kmip_2_1::kmip_attributes::Attribute::CryptographicParameters(v) => {
-                Ok(Self::CryptographicParameters(v.into()))
+                Ok(Self::CryptographicParameters(v.try_into()?))
             }
             kmip_2_1::kmip_attributes::Attribute::CryptographicUsageMask(v) => {
-                Ok(Self::CryptographicUsageMask(v.into()))
+                Ok(Self::CryptographicUsageMask(v))
             }
             kmip_2_1::kmip_attributes::Attribute::DeactivationDate(v) => {
                 Ok(Self::DeactivationDate(v))
             }
             kmip_2_1::kmip_attributes::Attribute::Description(v) => Ok(Self::Description(v)),
-            kmip_2_1::kmip_attributes::Attribute::Name(v) => Ok(Self::Name(v.into())),
-            kmip_2_1::kmip_attributes::Attribute::ObjectType(v) => Ok(Self::ObjectType(v.into())),
+            kmip_2_1::kmip_attributes::Attribute::Name(v) => Ok(Self::Name(v.try_into()?)),
+            kmip_2_1::kmip_attributes::Attribute::ObjectType(v) => {
+                Ok(Self::ObjectType(v.try_into()?))
+            }
             kmip_2_1::kmip_attributes::Attribute::ProcessStartDate(v) => {
                 Ok(Self::ProcessStartDate(v))
             }
             kmip_2_1::kmip_attributes::Attribute::ProtectStopDate(v) => {
                 Ok(Self::ProtectStopDate(v))
             }
-            kmip_2_1::kmip_attributes::Attribute::UniqueIdentifier(kmip_id) => match kmip_id {
-                kmip_2_1::kmip_types::UniqueIdentifierTypeEnum(kmip_id_enum) => {
-                    match kmip_id_enum {
-                        kmip_2_1::kmip_types::_UniqueIdentifierTypeEnum__TextString(id) => {
-                            Ok(Self::UniqueIdentifier(id))
-                        }
-                        _ => Err("Unsupported Unique Identifier type".to_owned()),
-                    }
-                }
-            },
+            kmip_2_1::kmip_attributes::Attribute::UniqueIdentifier(v) => {
+                Ok(Self::UniqueIdentifier(v.to_string()))
+            }
             kmip_2_1::kmip_attributes::Attribute::CryptographicAlgorithm(v) => {
-                Ok(Self::CryptographicAlgorithm(v.into()))
+                Ok(Self::CryptographicAlgorithm(v.try_into()?))
             }
             kmip_2_1::kmip_attributes::Attribute::CertificateType(v) => {
-                Ok(Self::CertificateType(v.into()))
+                Ok(Self::CertificateType(v))
             }
             kmip_2_1::kmip_attributes::Attribute::CertificateLength(v) => {
                 Ok(Self::CertificateLength(v))
             }
             kmip_2_1::kmip_attributes::Attribute::DigitalSignatureAlgorithm(v) => {
-                Ok(Self::DigitalSignatureAlgorithm(v.into()))
+                Ok(Self::DigitalSignatureAlgorithm(v.try_into()?))
             }
             kmip_2_1::kmip_attributes::Attribute::LeaseTime(v) => Ok(Self::LeaseTime(v)),
-            kmip_2_1::kmip_attributes::Attribute::UsageLimits(v) => Ok(Self::UsageLimits(v.into())),
-            kmip_2_1::kmip_attributes::Attribute::State(v) => Ok(Self::State(v.into())),
+            kmip_2_1::kmip_attributes::Attribute::UsageLimits(v) => Ok(Self::UsageLimits(v)),
+            kmip_2_1::kmip_attributes::Attribute::State(v) => Ok(Self::State(v)),
             kmip_2_1::kmip_attributes::Attribute::InitialDate(v) => Ok(Self::InitialDate(v)),
             kmip_2_1::kmip_attributes::Attribute::DestroyDate(v) => Ok(Self::DestroyDate(v)),
             kmip_2_1::kmip_attributes::Attribute::CompromiseOccurrenceDate(v) => {
@@ -695,39 +690,43 @@ impl TryFrom<kmip_2_1::kmip_attributes::Attribute> for Attribute {
             }
             kmip_2_1::kmip_attributes::Attribute::CompromiseDate(v) => Ok(Self::CompromiseDate(v)),
             kmip_2_1::kmip_attributes::Attribute::RevocationReason(v) => {
-                Ok(Self::RevocationReason(v.into()))
+                Ok(Self::RevocationReason(v))
             }
             kmip_2_1::kmip_attributes::Attribute::ArchiveDate(v) => Ok(Self::ArchiveDate(v)),
             kmip_2_1::kmip_attributes::Attribute::ObjectGroup(v) => Ok(Self::ObjectGroup(v)),
             kmip_2_1::kmip_attributes::Attribute::Fresh(v) => Ok(Self::Fresh(v)),
-            kmip_2_1::kmip_attributes::Attribute::Link(v) => Ok(Self::Link(v.into())),
+            kmip_2_1::kmip_attributes::Attribute::Link(v) => Ok(Self::Link(v.try_into()?)),
             kmip_2_1::kmip_attributes::Attribute::ApplicationSpecificInformation(v) => {
-                Ok(Self::ApplicationSpecificInformation(v.into()))
+                Ok(Self::ApplicationSpecificInformation(v))
             }
             kmip_2_1::kmip_attributes::Attribute::ContactInformation(v) => {
                 Ok(Self::ContactInformation(v))
             }
             kmip_2_1::kmip_attributes::Attribute::LastChangeDate(v) => Ok(Self::LastChangeDate(v)),
             kmip_2_1::kmip_attributes::Attribute::VendorAttribute(vendor_attribute) => {
-                let kmip_id = vendor_attribute.vendor_identification;
-                let name = vendor_attribute.attribute_name;
+                let vendor_id = vendor_attribute.vendor_identification;
+                let name = if vendor_id.as_str() == "KMIP1" {
+                    vendor_attribute.attribute_name
+                } else {
+                    format!("{}:{}", vendor_id, vendor_attribute.attribute_name)
+                };
                 let value = vendor_attribute.attribute_value.into();
                 Ok(Self::CustomAttribute((name, value)))
             }
             kmip_2_1::kmip_attributes::Attribute::AlternativeName(v) => {
-                Ok(Self::AlternativeName(v.into()))
+                Ok(Self::AlternativeName(v))
             }
             kmip_2_1::kmip_attributes::Attribute::KeyValuePresent(v) => {
                 Ok(Self::KeyValuePresent(v))
             }
             kmip_2_1::kmip_attributes::Attribute::KeyValueLocation(v) => {
-                Ok(Self::KeyValueLocation(v.into()))
+                Ok(Self::KeyValueLocation(v))
             }
             kmip_2_1::kmip_attributes::Attribute::OriginalCreationDate(v) => {
                 Ok(Self::OriginalCreationDate(v))
             }
             kmip_2_1::kmip_attributes::Attribute::RandomNumberGenerator(v) => {
-                Ok(Self::RandomNumberGenerator(v.into()))
+                Ok(Self::RandomNumberGenerator(v.try_into()?))
             }
             kmip_2_1::kmip_attributes::Attribute::Pkcs12FriendlyName(v) => {
                 Ok(Self::Pkcs12FriendlyName(v))
@@ -741,8 +740,74 @@ impl TryFrom<kmip_2_1::kmip_attributes::Attribute> for Attribute {
             kmip_2_1::kmip_attributes::Attribute::NeverExtractable(v) => {
                 Ok(Self::NeverExtractable(v))
             }
-            kmip_2_1::kmip_attributes::Attribute::Unknown(v) => {
-                Err(format!("Unknown attribute: {v:?}").into())
+            kmip_2_1::kmip_attributes::Attribute::AttributeIndex(_) => Err(
+                KmipError::NotSupported("AttributeIndex is not supported in KMIP 1".to_owned()),
+            ),
+            kmip_2_1::kmip_attributes::Attribute::CertificateAttributes(_) => {
+                Err(KmipError::NotSupported(
+                    "CertificateAttributes is not supported in KMIP 1".to_owned(),
+                ))
+            }
+            kmip_2_1::kmip_attributes::Attribute::Critical(_) => Err(KmipError::NotSupported(
+                "Critical attribute is not supported in KMIP 1".to_owned(),
+            )),
+            kmip_2_1::kmip_attributes::Attribute::KeyFormatType(_) => Err(KmipError::NotSupported(
+                "KeyFormatType is not supported in KMIP 1".to_owned(),
+            )),
+            kmip_2_1::kmip_attributes::Attribute::NistKeyType(_) => Err(KmipError::NotSupported(
+                "NistKeyType is not supported in KMIP 1".to_owned(),
+            )),
+            kmip_2_1::kmip_attributes::Attribute::ObjectGroupMember(_) => Err(
+                KmipError::NotSupported("ObjectGroupMember is not supported in KMIP 1".to_owned()),
+            ),
+            kmip_2_1::kmip_attributes::Attribute::OpaqueDataType(_) => Err(
+                KmipError::NotSupported("OpaqueDataType is not supported in KMIP 1".to_owned()),
+            ),
+            kmip_2_1::kmip_attributes::Attribute::ProtectionLevel(_) => Err(
+                KmipError::NotSupported("ProtectionLevel is not supported in KMIP 1".to_owned()),
+            ),
+            kmip_2_1::kmip_attributes::Attribute::ProtectionPeriod(_) => Err(
+                KmipError::NotSupported("ProtectionPeriod is not supported in KMIP 1".to_owned()),
+            ),
+            kmip_2_1::kmip_attributes::Attribute::ProtectionStorageMasks(_) => {
+                Err(KmipError::NotSupported(
+                    "ProtectionStorageMasks is not supported in KMIP 1".to_owned(),
+                ))
+            }
+            kmip_2_1::kmip_attributes::Attribute::QuantumSafe(_) => Err(KmipError::NotSupported(
+                "QuantumSafe is not supported in KMIP 1".to_owned(),
+            )),
+            kmip_2_1::kmip_attributes::Attribute::RotateDate(_) => Err(KmipError::NotSupported(
+                "RotateDate is not supported in KMIP 1".to_owned(),
+            )),
+            kmip_2_1::kmip_attributes::Attribute::RotateGeneration(_) => Err(
+                KmipError::NotSupported("RotateGeneration is not supported in KMIP 1".to_owned()),
+            ),
+            kmip_2_1::kmip_attributes::Attribute::RotateInterval(_) => Err(
+                KmipError::NotSupported("RotateInterval is not supported in KMIP 1".to_owned()),
+            ),
+            kmip_2_1::kmip_attributes::Attribute::RotateLatest(_) => Err(KmipError::NotSupported(
+                "RotateLatest is not supported in KMIP 1".to_owned(),
+            )),
+            kmip_2_1::kmip_attributes::Attribute::RotateName(_) => Err(KmipError::NotSupported(
+                "RotateName is not supported in KMIP 1".to_owned(),
+            )),
+            kmip_2_1::kmip_attributes::Attribute::RotateOffset(_) => Err(KmipError::NotSupported(
+                "RotateOffset is not supported in KMIP 1".to_owned(),
+            )),
+            kmip_2_1::kmip_attributes::Attribute::ShortUniqueIdentifier(_) => {
+                Err(KmipError::NotSupported(
+                    "ShortUniqueIdentifier is not supported in KMIP 1".to_owned(),
+                ))
+            }
+            kmip_2_1::kmip_attributes::Attribute::X509CertificateIdentifier(v) => {
+                Ok(Self::X509CertificateIdentifier(v))
+            }
+            kmip_2_1::kmip_attributes::Attribute::X509CertificateIssuer(v) => {
+                Ok(Self::X509CertificateIssuer(v))
+            }
+            kmip_2_1::kmip_attributes::Attribute::X509CertificateSubject(v) => {
+                Ok(Self::X509CertificateSubject(v))
             }
         }
     }
@@ -824,7 +889,7 @@ impl From<Vec<Attribute>> for kmip_2_1::kmip_attributes::Attributes {
                     attributes.cryptographic_parameters = Some(v.into());
                 }
                 Attribute::CryptographicUsageMask(v) => {
-                    attributes.cryptographic_usage_mask = Some(v.into());
+                    attributes.cryptographic_usage_mask = Some(v);
                 }
                 Attribute::DeactivationDate(v) => {
                     attributes.deactivation_date = Some(v);
@@ -856,7 +921,7 @@ impl From<Vec<Attribute>> for kmip_2_1::kmip_attributes::Attributes {
                     attributes.cryptographic_algorithm = Some(v.into());
                 }
                 Attribute::CertificateType(v) => {
-                    attributes.certificate_type = Some(v.into());
+                    attributes.certificate_type = Some(v);
                 }
                 Attribute::CertificateLength(v) => {
                     attributes.certificate_length = Some(v);
@@ -881,10 +946,10 @@ impl From<Vec<Attribute>> for kmip_2_1::kmip_attributes::Attributes {
                     attributes.lease_time = Some(v);
                 }
                 Attribute::UsageLimits(v) => {
-                    attributes.usage_limits = Some(v.into());
+                    attributes.usage_limits = Some(v);
                 }
                 Attribute::State(v) => {
-                    attributes.state = Some(v.into());
+                    attributes.state = Some(v);
                 }
                 Attribute::InitialDate(v) => {
                     attributes.initial_date = Some(v);
@@ -899,7 +964,7 @@ impl From<Vec<Attribute>> for kmip_2_1::kmip_attributes::Attributes {
                     attributes.compromise_date = Some(v);
                 }
                 Attribute::RevocationReason(v) => {
-                    attributes.revocation_reason = Some(v.into());
+                    attributes.revocation_reason = Some(v);
                 }
                 Attribute::ArchiveDate(v) => {
                     attributes.archive_date = Some(v);
@@ -918,7 +983,7 @@ impl From<Vec<Attribute>> for kmip_2_1::kmip_attributes::Attributes {
                     // attributes.link = Some(v.into());
                 }
                 Attribute::ApplicationSpecificInformation(v) => {
-                    attributes.application_specific_information = Some(v.into());
+                    attributes.application_specific_information = Some(v);
                 }
                 Attribute::ContactInformation(v) => {
                     attributes.contact_information = Some(v);
@@ -935,13 +1000,13 @@ impl From<Vec<Attribute>> for kmip_2_1::kmip_attributes::Attributes {
                     });
                 }
                 Attribute::AlternativeName(v) => {
-                    attributes.alternative_name = Some(v.into());
+                    attributes.alternative_name = Some(v);
                 }
                 Attribute::KeyValuePresent(v) => {
                     attributes.key_value_present = Some(v);
                 }
                 Attribute::KeyValueLocation(v) => {
-                    attributes.key_value_location = Some(v.into());
+                    attributes.key_value_location = Some(v);
                 }
                 Attribute::OriginalCreationDate(v) => {
                     attributes.original_creation_date = Some(v);
@@ -969,16 +1034,3 @@ impl From<Vec<Attribute>> for kmip_2_1::kmip_attributes::Attributes {
         attributes
     }
 }
-
-// pub const VENDOR_ATTR_TAG: &str = "tag";
-
-// /// Constant to use to express there are no tags
-// pub const EMPTY_TAGS: [&str; 0] = [];
-
-// /// The vendor ID to use for Cosmian specific attributes
-// pub const VENDOR_ID_COSMIAN: &str = "cosmian";
-
-// /// The vendor attribute name to use for x.509 extensions
-// pub const VENDOR_ATTR_X509_EXTENSION: &str = "x509-extension";
-
-// pub const VENDOR_ATTR_AAD: &str = "aad";

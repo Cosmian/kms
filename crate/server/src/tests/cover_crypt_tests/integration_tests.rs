@@ -1,17 +1,17 @@
 use cloudproof::reexport::cover_crypt::abe_policy::{
     Attribute, DimensionBuilder, EncryptionHint, Policy,
 };
-use cosmian_kmip::kmip_2_1::{
-    extra::tagging::EMPTY_TAGS,
-    kmip_operations::{
-        CreateKeyPairResponse, CreateResponse, DecryptResponse, DecryptedData, DestroyResponse,
-        EncryptResponse, ReKeyKeyPairResponse, Revoke, RevokeResponse,
+use cosmian_kmip::{
+    kmip_0::kmip_types::{RevocationReason, RevocationReasonCode},
+    kmip_2_1::{
+        extra::tagging::EMPTY_TAGS,
+        kmip_operations::{
+            CreateKeyPairResponse, CreateResponse, DecryptResponse, DecryptedData, DestroyResponse,
+            EncryptResponse, ReKeyKeyPairResponse, Revoke, RevokeResponse,
+        },
+        kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
+        requests::{decrypt_request, encrypt_request},
     },
-    kmip_types::{
-        CryptographicAlgorithm, CryptographicParameters, RevocationReason, RevocationReasonCode,
-        UniqueIdentifier,
-    },
-    requests::{decrypt_request, encrypt_request},
 };
 use cosmian_kms_crypto::crypto::cover_crypt::{
     attributes::RekeyEditAction,

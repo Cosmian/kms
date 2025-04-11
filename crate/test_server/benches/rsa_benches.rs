@@ -4,14 +4,14 @@ use cosmian_kmip::kmip_0::{
     kmip_messages::{
         RequestMessage, RequestMessageBatchItemVersioned, RequestMessageHeader, ResponseMessage,
     },
-    kmip_types::{HashingAlgorithm, ProtocolVersion},
+    kmip_types::{HashingAlgorithm, PaddingMethod, ProtocolVersion},
 };
 use cosmian_kms_client::{
     kmip_2_1::requests::{create_rsa_key_pair_request, decrypt_request, encrypt_request},
     reexport::cosmian_kmip::kmip_2_1::{
         kmip_messages::RequestMessageBatchItem,
         kmip_operations::Operation,
-        kmip_types::{CryptographicAlgorithm, CryptographicParameters, PaddingMethod},
+        kmip_types::{CryptographicAlgorithm, CryptographicParameters},
     },
     KmsClient,
 };

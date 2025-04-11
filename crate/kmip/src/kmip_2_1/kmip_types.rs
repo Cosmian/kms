@@ -20,26 +20,16 @@ use uuid::Uuid;
 
 use crate::{
     error::KmipError,
-    kmip_0::kmip_types::{DRBGAlgorithm, FIPS186Variation, HashingAlgorithm, RNGAlgorithm},
+    kmip_0::kmip_types::{
+        BlockCipherMode, DRBGAlgorithm, FIPS186Variation, HashingAlgorithm, KeyRoleType,
+        MaskGenerator, PaddingMethod, RNGAlgorithm,
+    },
     kmip_2_1::extra::{tagging::VENDOR_ATTR_TAG, VENDOR_ID_COSMIAN},
     kmip_2_1_error,
     ttlv::TTLV,
 };
 
 pub const VENDOR_ATTR_AAD: &str = "aad";
-
-/// 4.7
-/// The Certificate Type attribute is a type of certificate (e.g., X.509).
-/// The Certificate Type value SHALL be set by the server when the certificate
-/// is created or registered and then SHALL NOT be changed or deleted before the
-/// object is destroyed.
-/// The PKCS7 format is a Cosmian extension from KMIP.
-#[kmip_enum]
-pub enum CertificateType {
-    X509 = 0x01,
-    PGP = 0x02,
-    PKCS7 = 0x8000_0001,
-}
 
 #[kmip_enum]
 pub enum CertificateRequestType {
@@ -51,12 +41,6 @@ pub enum CertificateRequestType {
 #[kmip_enum]
 pub enum OpaqueDataType {
     Unknown = 0x8000_0001,
-}
-
-#[kmip_enum]
-pub enum SecretDataType {
-    Password = 0x01,
-    Seed = 0x02,
 }
 
 #[kmip_enum]
@@ -334,125 +318,6 @@ pub enum KeyCompressionType {
     // Extensions 8XXXXXXX
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(transparent)]
-pub struct CryptographicUsageMask(pub(crate) u32);
-
-bitflags::bitflags! {
-#[allow(clippy::indexing_slicing)]
-    impl CryptographicUsageMask: u32 {
-        /// Allow for signing. Applies to Sign operation. Valid for PGP Key, Private Key
-        const Sign=0x0000_0001;
-        /// Allow for signature verification. Applies to Signature Verify and Validate
-        /// operations. Valid for PGP Key, Certificate and Public Key.
-        const Verify=0x0000_0002;
-        /// Allow for encryption. Applies to Encrypt operation. Valid for PGP Key,
-        /// Private Key, Public Key and Symmetric Key. Encryption for the purpose of
-        /// wrapping is separate Wrap Key value.
-        const Encrypt=0x0000_0004;
-        /// Allow for decryption. Applies to Decrypt operation. Valid for PGP Key,
-        /// Private Key, Public Key and Symmetric Key. Decryption for the purpose of
-        /// unwrapping is separate Unwrap Key value.
-        const Decrypt=0x0000_0008;
-        /// Allow for key wrapping. Applies to Get operation when wrapping is
-        /// required by Wrapping Specification is provided on the object used to
-        /// Wrap. Valid for PGP Key, Private Key and Symmetric Key. Note: even if
-        /// the underlying wrapping mechanism is encryption, this value is logically
-        /// separate.
-        const WrapKey=0x0000_0010;
-        /// Allow for key unwrapping. Applies to Get operation when unwrapping is
-        /// required on the object used to Unwrap. Valid for PGP Key, Private Key,
-        /// Public Key and Symmetric Key. Not interchangeable with Decrypt. Note:
-        /// even if the underlying unwrapping mechanism is decryption, this value is
-        /// logically separate.
-        const UnwrapKey=0x0000_0020;
-        /// Allow for MAC generation. Applies to MAC operation. Valid for Symmetric
-        /// Keys
-        const MACGenerate=0x0000_0080;
-        /// Allow for MAC verification. Applies to MAC Verify operation. Valid for
-        /// Symmetric Keys
-        const MACVerify=0x0000_0100;
-        /// Allow for key derivation. Applied to Derive Key operation. Valid for PGP
-        /// Keys, Private Keys, Public Keys, Secret Data and Symmetric Keys.
-        const DeriveKey=0x0000_0200;
-        /// Allow for Key Agreement. Valid for PGP Keys, Private Keys, Public Keys,
-        /// Secret Data and Symmetric Keys
-        const KeyAgreement=0x0000_0800;
-        /// Allow for Certificate Signing. Applies to Certify operation on a private key.
-        /// Valid for Private Keys.
-        const CertificateSign=0x0000_1000;
-        /// Allow for CRL Sign. Valid for Private Keys
-        const CRLSign=0x0000_2000;
-        /// Allow for Authentication. Valid for Secret Data.
-        const Authenticate=0x0010_0000;
-        /// Cryptographic Usage Mask contains no Usage Restrictions.
-        const Unrestricted=0x0020_0000;
-        // Extensions XXX00000
-    }
-}
-
-impl Serialize for CryptographicUsageMask {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serializer.serialize_i32(i32::try_from(self.bits()).map_err(serde::ser::Error::custom)?)
-    }
-}
-impl<'de> Deserialize<'de> for CryptographicUsageMask {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        struct CryptographicUsageMaskVisitor;
-
-        impl Visitor<'_> for CryptographicUsageMaskVisitor {
-            type Value = CryptographicUsageMask;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("struct CryptographicUsageMask")
-            }
-
-            fn visit_u32<E>(self, v: u32) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                Ok(CryptographicUsageMask(v))
-            }
-
-            // used by the TTLV representation
-            fn visit_i32<E>(self, v: i32) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                Ok(CryptographicUsageMask(
-                    u32::try_from(v).map_err(de::Error::custom)?,
-                ))
-            }
-
-            fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                Ok(CryptographicUsageMask(
-                    u32::try_from(v).map_err(de::Error::custom)?,
-                ))
-            }
-
-            // used by the direct JSON representation
-            fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                Ok(CryptographicUsageMask(
-                    u32::try_from(v).map_err(de::Error::custom)?,
-                ))
-            }
-        }
-        deserializer.deserialize_any(CryptographicUsageMaskVisitor)
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct ProtectionStorageMasks(u32);
@@ -725,33 +590,6 @@ impl From<UniqueIdentifier> for LinkedObjectIdentifier {
             UniqueIdentifier::Integer(i) => Self::Index(i64::from(i)),
         }
     }
-}
-
-#[kmip_enum]
-pub enum RevocationReasonCode {
-    Unspecified = 0x0000_0001,
-    KeyCompromise = 0x0000_0002,
-    CACompromise = 0x0000_0003,
-    AffiliationChanged = 0x0000_0004,
-    Superseded = 0x0000_0005,
-    CessationOfOperation = 0x0000_0006,
-    PrivilegeWithdrawn = 0x0000_0007,
-    //Extensions 8XXXXXXX
-}
-
-/// The Revocation Reason attribute is a structure used to indicate why the
-/// Managed Cryptographic Object was revoked (e.g., "compromised", "expired",
-/// "no longer used", etc.). This attribute is only set by the server as a part
-/// of the Revoke Operation.
-/// The Revocation Message is an OPTIONAL field that is used exclusively for
-/// audit trail/logging purposes and MAY contain additional information about
-/// why the object was revoked (e.g., "Laptop stolen", or "Machine
-/// decommissioned").
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
-pub struct RevocationReason {
-    pub revocation_reason_code: RevocationReasonCode,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub revocation_message: Option<String>,
 }
 
 /// The Link attribute is a structure used to create a link from one Managed
@@ -1340,85 +1178,6 @@ impl Default for WrappingMethod {
     }
 }
 
-#[allow(non_camel_case_types, clippy::enum_clike_unportable_variant)]
-#[derive(
-    KmipEnumSerialize,
-    Deserialize,
-    Copy,
-    Clone,
-    Debug,
-    Eq,
-    PartialEq,
-    EnumIter,
-    Display,
-    strum::IntoStaticStr,
-)]
-pub enum BlockCipherMode {
-    CBC = 0x0000_0001,
-    ECB = 0x0000_0002,
-    PCBC = 0x0000_0003,
-    CFB = 0x0000_0004,
-    OFB = 0x0000_0005,
-    CTR = 0x0000_0006,
-    CMAC = 0x0000_0007,
-    CCM = 0x0000_0008,
-    GCM = 0x0000_0009,
-    CBCMAC = 0x0000_000A,
-    XTS = 0x0000_000B,
-    AESKeyWrapPadding = 0x0000_000C,
-    // NISTKeyWrap refers to rfc5649
-    NISTKeyWrap = 0x0000_000D,
-    X9102AESKW = 0x0000_000E,
-    X9102TDKW = 0x0000_000F,
-    X9102AKW1 = 0x0000_0010,
-    X9102AKW2 = 0x0000_0011,
-    AEAD = 0x0000_0012,
-    // Extensions - 8XXXXXXX
-    GCMSIV = 0x8000_0002,
-}
-
-#[kmip_enum]
-pub enum PaddingMethod {
-    None = 0x1,
-    OAEP = 0x2,
-    PKCS5 = 0x3,
-    SSL3 = 0x4,
-    Zeros = 0x5,
-    ANSI_X923 = 0x6,
-    ISO10126 = 0x7,
-    PKCS1v15 = 0x8,
-    X931 = 0x9,
-    PSS = 0xA,
-}
-
-#[kmip_enum]
-pub enum KeyRoleType {
-    BDK = 0x0000_0001,
-    CVK = 0x0000_0002,
-    DEK = 0x0000_0003,
-    MKAC = 0x0000_0004,
-    MKSMC = 0x0000_0005,
-    MKSMI = 0x0000_0006,
-    MKDAC = 0x0000_0007,
-    MKDN = 0x0000_0008,
-    MKCP = 0x0000_0009,
-    MKOTH = 0x0000_000A,
-    KEK = 0x0000_000B,
-    MAC16609 = 0x0000_000C,
-    MAC97971 = 0x0000_000D,
-    MAC97972 = 0x0000_000E,
-    MAC97973 = 0x0000_000F,
-    MAC97974 = 0x0000_0010,
-    MAC97975 = 0x0000_0011,
-    ZPK = 0x0000_0012,
-    PVKIBM = 0x0000_0013,
-    PVKPVV = 0x0000_0014,
-    PVKOTH = 0x0000_0015,
-    DUKPT = 0x0000_0016,
-    IV = 0x0000_0017,
-    TRKBK = 0x0000_0018,
-}
-
 #[kmip_enum]
 pub enum DigitalSignatureAlgorithm {
     MD2WithRSAEncryption = 0x0000_0001,
@@ -1440,11 +1199,6 @@ pub enum DigitalSignatureAlgorithm {
     SHA3256WithRSAEncryption = 0x0000_0011,
     SHA3384WithRSAEncryption = 0x0000_0012,
     SHA3512WithRSAEncryption = 0x0000_0013,
-}
-
-#[kmip_enum]
-pub enum MaskGenerator {
-    MFG1 = 0x0000_0001,
 }
 
 /// The Cryptographic Parameters attribute is a structure that contains a set of
@@ -1771,48 +1525,6 @@ impl ValidityIndicator {
     }
 }
 
-/// `AlternativeName` structure for compact identification of objects using various name types
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
-#[serde(rename_all = "PascalCase")]
-pub struct AlternativeName {
-    /// Type of the alternative name
-    pub alternative_name_type: AlternativeNameType,
-    /// Value of the alternative name
-    pub alternative_name_value: String,
-}
-
-/// `AlternativeNameType` enumeration
-#[kmip_enum]
-pub enum AlternativeNameType {
-    UninterpretedTextString = 0x1,
-    URI = 0x2,
-    ObjectSerialNumber = 0x3,
-    EmailAddress = 0x4,
-    DNSName = 0x5,
-    X500DirectoryName = 0x6,
-    IPAddress = 0x7,
-}
-
-/// `ApplicationSpecificInformation` structure for storing application-specific data
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
-#[serde(rename_all = "PascalCase")]
-pub struct ApplicationSpecificInformation {
-    /// The application namespace
-    pub application_namespace: String,
-    /// The application data
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub application_data: Option<String>,
-}
-
-/// `KeyValueLocationType` enumeration indicates where a key value is stored
-#[kmip_enum]
-pub enum KeyValueLocationType {
-    Unspecified = 0x1,
-    OnPremise = 0x2,
-    OffPremise = 0x3,
-    OnPremiseOffPremise = 0x4,
-}
-
 /// `NistKeyType` enumeration used with NIST SP 800-56 and SP 800-108 operations
 #[kmip_enum]
 pub enum NistKeyType {
@@ -1862,36 +1574,6 @@ pub struct RandomNumberGenerator {
     pub prediction_resistance: Option<bool>,
 }
 
-/// State enumeration indicates the current state of a managed object
-#[kmip_enum]
-pub enum State {
-    PreActive = 0x1,
-    Active = 0x2,
-    Deactivated = 0x3,
-    Compromised = 0x4,
-    Destroyed = 0x5,
-    DestroyedCompromised = 0x6,
-}
-
-/// `UsageLimits` structure for limiting the usage of a managed cryptographic object
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
-#[serde(rename_all = "PascalCase")]
-pub struct UsageLimits {
-    /// The usage limits unit
-    pub usage_limits_unit: UsageLimitsUnit,
-    /// The usage limits count
-    pub usage_limits_count: i64,
-    /// The usage limits total
-    pub usage_limits_total: i64,
-}
-
-/// `UsageLimitsUnit` enumeration defines the unit for usage limits
-#[kmip_enum]
-pub enum UsageLimitsUnit {
-    Byte = 0x1,
-    Object = 0x2,
-}
-
 /// Name structure for identifying Managed Objects
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
@@ -1910,16 +1592,6 @@ pub enum NameType {
     DNS = 0x3,
     EmailAddress = 0x4,
     DistinguishedName = 0x5,
-}
-
-/// `X509CertificateIdentifier` structure for identifying X.509 certificates
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
-#[serde(rename_all = "PascalCase")]
-pub struct X509CertificateIdentifier {
-    /// The Certificate Issuer
-    pub issuer_distinguished_name: Vec<u8>,
-    /// The Certificate Serial Number
-    pub cxertificate_serial_number: Vec<u8>,
 }
 
 /// The `QueryFunction` is used to indicate what server information is being requested.

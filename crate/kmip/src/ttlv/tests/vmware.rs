@@ -11,14 +11,14 @@ use crate::{
             RequestMessage, RequestMessageBatchItemVersioned, ResponseMessage,
             ResponseMessageBatchItemVersioned,
         },
-        kmip_operations::{DiscoverVersions, DiscoverVersionsResponse},
+        kmip_operations::{DiscoverVersions, DiscoverVersionsResponse}, kmip_types::CryptographicUsageMask,
     },
     kmip_1_4::{
         self,
         kmip_attributes::{Attribute, CustomAttributeValue},
         kmip_data_structures::TemplateAttribute,
         kmip_operations::{AddAttribute, Create, CreateResponse, GetAttributes, GetAttributesResponse, Operation, Query, QueryResponse},
-        kmip_types::{CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, ObjectType},
+        kmip_types::{CryptographicAlgorithm,  KeyFormatType, ObjectType},
     },
     ttlv::{from_ttlv, KmipFlavor, TTLV},
 };

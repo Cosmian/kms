@@ -1,10 +1,13 @@
-use cosmian_kmip::kmip_2_1::{
-    kmip_attributes::Attributes,
-    kmip_objects::Object,
-    kmip_operations::{Decrypt, GetAttributes, Locate},
-    kmip_types::{
-        CryptographicAlgorithm, CryptographicParameters, KeyFormatType, PaddingMethod,
-        RecommendedCurve, UniqueIdentifier,
+use cosmian_kmip::{
+    kmip_0::kmip_types::PaddingMethod,
+    kmip_2_1::{
+        kmip_attributes::Attributes,
+        kmip_objects::Object,
+        kmip_operations::{Decrypt, GetAttributes, Locate},
+        kmip_types::{
+            CryptographicAlgorithm, CryptographicParameters, KeyFormatType, RecommendedCurve,
+            UniqueIdentifier,
+        },
     },
 };
 use cosmian_kms_client::{
@@ -210,7 +213,7 @@ pub(crate) async fn get_kms_object_attributes_async(
     let response = kms_client
         .get_attributes(GetAttributes {
             unique_identifier: Some(UniqueIdentifier::TextString(object_id.to_string())),
-            attribute_references: None,
+            attribute_reference: None,
         })
         .await?;
     Ok(response.attributes)

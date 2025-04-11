@@ -3,9 +3,10 @@ use std::fmt::Display;
 use clap::{Parser, ValueEnum};
 use cosmian_kms_client::{
     cosmian_kmip::{
-        kmip_0::kmip_types::HashingAlgorithm, kmip_2_1::kmip_types::CryptographicAlgorithm,
+        kmip_0::kmip_types::{HashingAlgorithm, PaddingMethod},
+        kmip_2_1::kmip_types::CryptographicAlgorithm,
     },
-    kmip_2_1::kmip_types::{CryptographicParameters, PaddingMethod},
+    kmip_2_1::kmip_types::CryptographicParameters,
     KmsClient,
 };
 

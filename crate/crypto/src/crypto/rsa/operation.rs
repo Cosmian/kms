@@ -3,13 +3,14 @@ use cosmian_kmip::kmip_2_1::extra::fips::{
     FIPS_MIN_RSA_MODULUS_LENGTH, FIPS_PRIVATE_RSA_MASK, FIPS_PUBLIC_RSA_MASK,
 };
 use cosmian_kmip::{
+    kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
         kmip_attributes::Attributes,
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
         kmip_types::{
-            CryptographicAlgorithm, CryptographicParameters, CryptographicUsageMask, KeyFormatType,
-            Link, LinkType, LinkedObjectIdentifier, UniqueIdentifier,
+            CryptographicAlgorithm, CryptographicParameters, KeyFormatType, Link, LinkType,
+            LinkedObjectIdentifier, UniqueIdentifier,
         },
     },
     SafeBigInt,

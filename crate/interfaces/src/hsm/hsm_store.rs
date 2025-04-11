@@ -6,13 +6,12 @@ use std::{collections::HashSet, path::PathBuf, sync::Arc};
 
 use async_trait::async_trait;
 use cosmian_kmip::{
+    kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
         kmip_attributes::Attributes,
         kmip_data_structures::{KeyBlock, KeyMaterial as KmipKeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType, PrivateKey, PublicKey, SymmetricKey},
-        kmip_types::{
-            CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, StateEnumeration,
-        },
+        kmip_types::{CryptographicAlgorithm, KeyFormatType, StateEnumeration},
     },
     SafeBigInt,
 };

@@ -17,13 +17,11 @@ use tracing::trace;
 use super::{
     kmip_attributes::Attributes,
     kmip_data_structures::{KeyBlock, KeyWrappingData},
-    kmip_types::{
-        CertificateRequestType, CertificateType, OpaqueDataType, SecretDataType, SplitKeyMethod,
-    },
+    kmip_types::{CertificateRequestType, OpaqueDataType, SplitKeyMethod},
 };
 use crate::{
     error::{result::KmipResult, KmipError},
-    kmip_0::kmip_types::ErrorReason,
+    kmip_0::kmip_types::{CertificateType, ErrorReason, SecretDataType},
 };
 
 /// A Managed Cryptographic Object that is a digital certificate.
@@ -161,10 +159,10 @@ pub struct SymmetricKey {
 ///
 /// Order matters: `SecretData` will be deserialized as a `PrivateKey` if it
 /// appears after despite the presence of `secret_data_type`
-/// 
+///
 /// Note: this enum is not "untagged" because we need the Variant name (which is the KMIP Object Name)
 /// in the json serialization for the Database.
-#[derive( Clone, Eq, Serialize, PartialEq, Debug, VariantNames)]
+#[derive(Clone, Eq, Serialize, PartialEq, Debug, VariantNames)]
 #[serde(rename_all = "PascalCase")]
 pub enum Object {
     /// A Managed Cryptographic Object that is a digital certificate.

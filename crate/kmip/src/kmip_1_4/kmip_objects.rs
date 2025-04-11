@@ -6,7 +6,11 @@ use strum::VariantNames;
 
 #[allow(clippy::wildcard_imports)]
 use super::{kmip_data_structures::KeyBlock, kmip_types::*};
-use crate::{error::KmipError, kmip_2_1};
+use crate::{
+    error::KmipError,
+    kmip_0::kmip_types::{CertificateType, SecretDataType},
+    kmip_2_1,
+};
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
@@ -18,7 +22,7 @@ pub struct Certificate {
 impl From<Certificate> for kmip_2_1::kmip_objects::Certificate {
     fn from(val: Certificate) -> Self {
         Self {
-            certificate_type: val.certificate_type.into(),
+            certificate_type: val.certificate_type,
             certificate_value: val.certificate_value,
         }
     }
@@ -34,7 +38,7 @@ pub struct SecretData {
 impl From<SecretData> for kmip_2_1::kmip_objects::SecretData {
     fn from(val: SecretData) -> Self {
         Self {
-            secret_data_type: val.secret_data_type.into(),
+            secret_data_type: val.secret_data_type,
             key_block: val.key_block.into(),
         }
     }

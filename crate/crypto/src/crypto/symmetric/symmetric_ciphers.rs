@@ -1,6 +1,8 @@
 use std::cmp::PartialEq;
 
-use cosmian_kmip::kmip_2_1::kmip_types::{BlockCipherMode, CryptographicAlgorithm};
+use cosmian_kmip::{
+    kmip_0::kmip_types::BlockCipherMode, kmip_2_1::kmip_types::CryptographicAlgorithm,
+};
 use openssl::{
     rand::rand_bytes,
     symm::{

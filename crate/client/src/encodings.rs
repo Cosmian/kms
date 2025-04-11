@@ -1,8 +1,11 @@
-use cosmian_kmip::kmip_2_1::{
-    kmip_attributes::Attributes,
-    kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-    kmip_objects::{Certificate, Object, ObjectType, PrivateKey, PublicKey},
-    kmip_types::{CertificateType, KeyFormatType},
+use cosmian_kmip::{
+    kmip_0::kmip_types::CertificateType,
+    kmip_2_1::{
+        kmip_attributes::Attributes,
+        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+        kmip_objects::{Certificate, Object, ObjectType, PrivateKey, PublicKey},
+        kmip_types::KeyFormatType,
+    },
 };
 use pem::{EncodeConfig, LineEnding};
 use zeroize::Zeroizing;
