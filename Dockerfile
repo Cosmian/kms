@@ -1,9 +1,9 @@
 #
 # KMS server
 #
-FROM rust:1.85.0-bullseye AS builder
+FROM rust:1.85.0-bookworm AS builder
 
-LABEL version="4.22.1"
+LABEL version="4.23.0"
 LABEL name="Cosmian KMS docker container"
 
 ENV OPENSSL_DIR=/usr/local/openssl
@@ -23,17 +23,15 @@ RUN if [ "$TARGETPLATFORM" = "linux/amd64" ]; then export ARCHITECTURE=x86_64; e
 
 # Conditional cargo build based on FIPS argument
 RUN if [ "$FIPS" = "true" ]; then \
-    FEATURES="fips" bash .github/scripts/build_ui.sh; \
     cargo build -p cosmian_cli -p cosmian_kms_server --release --no-default-features --features="fips"; \
     else \
-    bash .github/scripts/build_ui.sh; \
     cargo build -p cosmian_cli -p cosmian_kms_server --release --no-default-features; \
     fi
 
 #
 # KMS server
 #
-FROM debian:bullseye-slim AS kms-server
+FROM debian:bookworm-slim AS kms-server
 
 COPY --from=builder /root/kms/crate/server/ui                   /usr/local/cosmian/ui
 COPY --from=builder /root/kms/target/release/cosmian_kms        /usr/bin/cosmian_kms

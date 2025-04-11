@@ -2,6 +2,38 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.23.0] - 2025-04-10
+
+### 🚀 Features
+
+- Add digest and MAC KMIP operations ([#370](https://github.com/Cosmian/kms/pull/370))
+- Upgrade Covercrypt to v15 ([#382](https://github.com/Cosmian/kms/pull/382))
+- Add CBC encryption mode ([#395](https://github.com/Cosmian/kms/pull/395))
+- Add UI ([#391](https://github.com/Cosmian/kms/pull/391))
+
+### 🐛 Bug Fixes
+
+- Shrink docker images size using slim-bullseye base image ([#377](https://github.com/Cosmian/kms/pull/377))
+- Clean unneeded test files ([#392](https://github.com/Cosmian/kms/pull/392))
+- RUSTSEC-2025-0009: `ring`: Some AES functions may panic when overflow checking is enabled.
+- RUSTSEC-2025-0022: `openssl`: Use-After-Free in Md::fetch and Cipher::fetch
+
+### 🚜 Refactor
+
+- Move all CLI relative crates on <https://github.com/Cosmian/client> ([#383](https://github.com/Cosmian/kms/pull/383))
+
+### 📚 Documentation
+
+- Fix Google expected X509 extensions
+
+### 🧪 Testing
+
+- Add HSM tests using Utimaco simulator ([#380](https://github.com/Cosmian/kms/pull/380))
+
+### ⚙️ Miscellaneous Tasks
+
+- Reuse generic Github workflows ([#401](https://github.com/Cosmian/kms/pull/401))
+
 ## [4.22.1] - 2025-02-04
 
 ### 🧪 CI
