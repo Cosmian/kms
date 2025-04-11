@@ -5,7 +5,10 @@
 //! HSMs that implement the `HSM` interface have a blanket implementation of this interface called
 //! `HsmEncryptionOracle`.
 use async_trait::async_trait;
-use cosmian_kmip::kmip_2_1::kmip_types::{BlockCipherMode, CryptographicParameters, PaddingMethod};
+use cosmian_kmip::{
+    kmip_0::kmip_types::{BlockCipherMode, PaddingMethod},
+    kmip_2_1::kmip_types::CryptographicParameters,
+};
 use zeroize::Zeroizing;
 
 use crate::{InterfaceError, KeyType, error::InterfaceResult};

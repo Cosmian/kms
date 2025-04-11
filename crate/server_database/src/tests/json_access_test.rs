@@ -4,11 +4,14 @@ use cosmian_crypto_core::{
     CsRng,
     reexport::rand_core::{RngCore, SeedableRng},
 };
-use cosmian_kmip::kmip_2_1::{
-    kmip_attributes::Attributes,
-    kmip_objects::ObjectType,
-    kmip_types::{CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, StateEnumeration},
-    requests::create_symmetric_key_kmip_object,
+use cosmian_kmip::{
+    kmip_0::kmip_types::CryptographicUsageMask,
+    kmip_2_1::{
+        kmip_attributes::Attributes,
+        kmip_objects::ObjectType,
+        kmip_types::{CryptographicAlgorithm, KeyFormatType, StateEnumeration},
+        requests::create_symmetric_key_kmip_object,
+    },
 };
 use cosmian_kms_interfaces::{ObjectsStore, PermissionsStore, SessionParams};
 use uuid::Uuid;

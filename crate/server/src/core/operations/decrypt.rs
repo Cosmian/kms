@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
 use cosmian_kmip::{
-    kmip_0::kmip_types::ErrorReason,
+    kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, PaddingMethod},
     kmip_2_1::{
         extra::BulkData,
         kmip_objects::Object,
         kmip_operations::{Decrypt, DecryptResponse},
         kmip_types::{
-            CryptographicAlgorithm, CryptographicParameters, CryptographicUsageMask, KeyFormatType,
-            PaddingMethod, StateEnumeration, UniqueIdentifier,
+            CryptographicAlgorithm, CryptographicParameters, KeyFormatType, StateEnumeration,
+            UniqueIdentifier,
         },
         KmipOperation,
     },

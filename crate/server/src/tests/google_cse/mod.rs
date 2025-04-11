@@ -11,6 +11,7 @@ use actix_service::Service;
 use actix_web::dev::ServiceResponse;
 use base64::{engine::general_purpose, Engine};
 use cosmian_kmip::{
+    kmip_0::kmip_types::BlockCipherMode,
     kmip_2_1::{
         extra::{VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
         kmip_attributes::Attributes,
@@ -18,7 +19,7 @@ use cosmian_kmip::{
         kmip_objects::{Certificate, Object, ObjectType, PrivateKey},
         kmip_operations::{Certify, Get, Import, ImportResponse},
         kmip_types::{
-            BlockCipherMode, CertificateAttributes, CryptographicParameters, EncodingOption,
+            CertificateAttributes, CryptographicParameters, EncodingOption,
             EncryptionKeyInformation, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
             UniqueIdentifier, VendorAttribute, VendorAttributeValue, WrappingMethod,
         },

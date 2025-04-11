@@ -141,7 +141,7 @@ pub(crate) async fn get_attributes(
 
     trace!("Get Attributes: Attributes: {:?}", attributes);
 
-    let mut req_attributes = request.attribute_references.unwrap_or_default();
+    let mut req_attributes = request.attribute_reference.unwrap_or_default();
     trace!("Get Attributes: Requested attributes: {req_attributes:?}");
 
     // request all attributes
@@ -161,10 +161,7 @@ pub(crate) async fn get_attributes(
     }
 
     // request selected attributes
-    let mut res = Attributes {
-        object_type: Some(object_type),
-        ..Attributes::default()
-    };
+    let mut res = Attributes::default();
     for requested in req_attributes {
         match requested {
             AttributeReference::Vendor(VendorAttributeReference {
@@ -188,12 +185,6 @@ pub(crate) async fn get_attributes(
                 Tag::ActivationDate => {
                     res.activation_date = attributes.activation_date;
                 }
-                Tag::CertificateLength => {
-                    res.certificate_length = attributes.certificate_length;
-                }
-                Tag::CertificateType => {
-                    res.certificate_type = attributes.certificate_type;
-                }
                 Tag::CryptographicAlgorithm => {
                     res.cryptographic_algorithm = attributes.cryptographic_algorithm;
                 }
@@ -214,19 +205,8 @@ pub(crate) async fn get_attributes(
                 Tag::KeyFormatType => {
                     res.key_format_type = attributes.key_format_type;
                 }
-                Tag::Certificate => {
-                    if let Some(certificate_attributes) = attributes.certificate_attributes.clone()
-                    {
-                        res.certificate_attributes = Some(certificate_attributes);
-                    }
-                }
                 Tag::ObjectType => {
                     res.object_type = attributes.object_type;
-                }
-                Tag::VendorExtension => {
-                    if let Some(vendor_attributes) = attributes.vendor_attributes.clone() {
-                        res.vendor_attributes = Some(vendor_attributes);
-                    }
                 }
                 Tag::LinkType => {
                     trace!("Get Attributes: LinkType: {:?}", attributes.link);
@@ -236,7 +216,96 @@ pub(crate) async fn get_attributes(
                         }
                     }
                 }
-                _ => {}
+                Tag::UniqueIdentifier => {
+                    attributes
+                        .unique_identifier
+                        .clone_into(&mut res.unique_identifier);
+                }
+                Tag::Name => {
+                    attributes.name.clone_into(&mut res.name);
+                }
+                Tag::ObjectGroup => {
+                    attributes.object_group.clone_into(&mut res.object_group);
+                }
+                Tag::State => {
+                    res.state = attributes.state;
+                }
+                Tag::InitialDate => {
+                    res.initial_date = attributes.initial_date;
+                }
+                Tag::ArchiveDate => {
+                    res.archive_date = attributes.archive_date;
+                }
+                Tag::DeactivationDate => {
+                    res.deactivation_date = attributes.deactivation_date;
+                }
+                Tag::ProcessStartDate => {
+                    res.process_start_date = attributes.process_start_date;
+                }
+                Tag::ProtectStopDate => {
+                    res.protect_stop_date = attributes.protect_stop_date;
+                }
+                Tag::DestroyDate => {
+                    res.destroy_date = attributes.destroy_date;
+                }
+                Tag::CompromiseDate => {
+                    res.compromise_date = attributes.compromise_date;
+                }
+                Tag::CompromiseOccurrenceDate => {
+                    res.compromise_occurrence_date = attributes.compromise_occurrence_date;
+                }
+                Tag::RevocationReason => {
+                    attributes
+                        .revocation_reason
+                        .clone_into(&mut res.revocation_reason);
+                }
+                Tag::Certificate => {
+                    if let Some(certificate_attributes) = attributes.certificate_attributes.clone()
+                    {
+                        res.certificate_attributes = Some(certificate_attributes);
+                    }
+                }
+                Tag::VendorExtension => {
+                    if let Some(vendor_attributes) = attributes.vendor_attributes.clone() {
+                        res.vendor_attributes = Some(vendor_attributes);
+                    }
+                }
+                Tag::ApplicationSpecificInformation => {
+                    attributes
+                        .application_specific_information
+                        .clone_into(&mut res.application_specific_information);
+                }
+                Tag::Link => {
+                    attributes.link.clone_into(&mut res.link);
+                }
+                Tag::ContactInformation => {
+                    attributes
+                        .contact_information
+                        .clone_into(&mut res.contact_information);
+                }
+                Tag::LastChangeDate => {
+                    res.last_change_date = attributes.last_change_date;
+                }
+                Tag::Sensitive => {
+                    res.sensitive = attributes.sensitive;
+                }
+                Tag::AlwaysSensitive => {
+                    res.always_sensitive = attributes.always_sensitive;
+                }
+                Tag::Extractable => {
+                    res.extractable = attributes.extractable;
+                }
+                Tag::NeverExtractable => {
+                    res.never_extractable = attributes.never_extractable;
+                }
+                Tag::QuantumSafe => {
+                    res.quantum_safe = attributes.quantum_safe;
+                }
+                x => {
+                    return Err(KmsError::InvalidRequest(format!(
+                        "get: unsupported attribute {x} for {uid_or_tags}",
+                    )))
+                }
             },
         }
     }

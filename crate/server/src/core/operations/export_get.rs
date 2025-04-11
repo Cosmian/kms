@@ -3,14 +3,14 @@ use std::sync::Arc;
 use cosmian_kmip::{
     kmip_0::kmip_types::KeyWrapType,
     KmipError,
+    kmip_0::kmip_types::{CertificateType, CryptographicUsageMask, KeyWrapType},
     kmip_2_1::{
         kmip_attributes::Attributes,
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingSpecification},
         kmip_objects::{Certificate, Object, ObjectType, PrivateKey},
         kmip_operations::{Export, ExportResponse},
         kmip_types::{
-            CertificateType, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType,
-            LinkType, StateEnumeration, UniqueIdentifier,
+            CryptographicAlgorithm, KeyFormatType, LinkType, StateEnumeration, UniqueIdentifier,
         },
     },
 };

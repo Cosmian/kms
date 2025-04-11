@@ -114,22 +114,6 @@ impl From<WrappingMethod> for kmip_2_1::kmip_types::WrappingMethod {
     }
 }
 
-/// KMIP 1.4 Certificate Type Enumeration
-#[kmip_enum]
-pub enum CertificateType {
-    X509 = 0x1,
-    PGP = 0x2,
-}
-
-impl From<CertificateType> for kmip_2_1::kmip_types::CertificateType {
-    fn from(val: CertificateType) -> Self {
-        match val {
-            CertificateType::X509 => Self::X509,
-            CertificateType::PGP => Self::PGP,
-        }
-    }
-}
-
 /// KMIP 1.4 Split Key Method Enumeration
 #[kmip_enum]
 pub enum SplitKeyMethod {
@@ -149,22 +133,6 @@ impl From<SplitKeyMethod> for kmip_2_1::kmip_types::SplitKeyMethod {
             SplitKeyMethod::PolynomialSharingGf216 => Self::PolynomialSharingGf216,
             SplitKeyMethod::PolynomialSharingPrimeField => Self::PolynomialSharingPrimeField,
             SplitKeyMethod::PolynomialSharingGf28 => Self::PolynomialSharingGf28,
-        }
-    }
-}
-
-/// KMIP 1.4 Secret Data Type Enumeration
-#[kmip_enum]
-pub enum SecretDataType {
-    Password = 0x1,
-    Seed = 0x2,
-}
-
-impl From<SecretDataType> for kmip_2_1::kmip_types::SecretDataType {
-    fn from(val: SecretDataType) -> Self {
-        match val {
-            SecretDataType::Password => Self::Password,
-            SecretDataType::Seed => Self::Seed,
         }
     }
 }
@@ -446,209 +414,6 @@ impl TryFrom<kmip_2_1::kmip_types::CryptographicAlgorithm> for CryptographicAlgo
     }
 }
 
-/// KMIP 1.4 Block Cipher Mode Enumeration
-#[kmip_enum]
-pub enum BlockCipherMode {
-    CBC = 0x0000_0001,
-    ECB = 0x0000_0002,
-    PCBC = 0x0000_0003,
-    CFB = 0x0000_0004,
-    OFB = 0x0000_0005,
-    CTR = 0x0000_0006,
-    CMAC = 0x0000_0007,
-    CCM = 0x0000_0008,
-    GCM = 0x0000_0009,
-    // #[serde(rename = "CBC-MAC")]
-    CBCMAC = 0x0000_000A,
-    XTS = 0x0000_000B,
-    AESKeyWrapPadding = 0x0000_000C,
-    // NISTKeyWrap refers to rfc5649
-    NISTKeyWrap = 0x8000_000D,
-    // #[serde(rename = "X9.102 AESKW")]
-    X9102AESKW = 0x0000_000E,
-    // #[serde(rename = "X9.102 TDKW")]
-    X9102TDKW = 0x0000_000F,
-    // #[serde(rename = "X9.102 AKW1")]
-    X9102AKW1 = 0x0000_0010,
-    // #[serde(rename = "X9.102 AKW2")]
-    X9102AKW2 = 0x0000_0011,
-    AEAD = 0x0000_0012,
-    // Extensions - 8XXXXXXX
-    // AES GCM SIV
-    GCMSIV = 0x8000_0002,
-}
-
-impl From<BlockCipherMode> for kmip_2_1::kmip_types::BlockCipherMode {
-    fn from(val: BlockCipherMode) -> Self {
-        match val {
-            BlockCipherMode::CBC => Self::CBC,
-            BlockCipherMode::ECB => Self::ECB,
-            BlockCipherMode::PCBC => Self::PCBC,
-            BlockCipherMode::CFB => Self::CFB,
-            BlockCipherMode::OFB => Self::OFB,
-            BlockCipherMode::CTR => Self::CTR,
-            BlockCipherMode::CMAC => Self::CMAC,
-            BlockCipherMode::CCM => Self::CCM,
-            BlockCipherMode::GCM => Self::GCM,
-            BlockCipherMode::CBCMAC => Self::CBCMAC,
-            BlockCipherMode::XTS => Self::XTS,
-            BlockCipherMode::AESKeyWrapPadding => Self::AESKeyWrapPadding,
-            BlockCipherMode::NISTKeyWrap => Self::NISTKeyWrap,
-            BlockCipherMode::X9102AESKW => Self::X9102AESKW,
-            BlockCipherMode::X9102TDKW => Self::X9102TDKW,
-            BlockCipherMode::X9102AKW1 => Self::X9102AKW1,
-            BlockCipherMode::X9102AKW2 => Self::X9102AKW2,
-            BlockCipherMode::AEAD => Self::AEAD,
-            BlockCipherMode::GCMSIV => Self::GCMSIV,
-        }
-    }
-}
-
-/// KMIP 1.4 Padding Method Enumeration
-#[kmip_enum]
-pub enum PaddingMethod {
-    None = 0x1,
-    OAEP = 0x2,
-    PKCS5 = 0x3,
-    SSL3 = 0x4,
-    Zeros = 0x5,
-    // #[serde(rename = "ANSI X9.23")]
-    ANSI_X923 = 0x6,
-    // #[serde(rename = "ISO 10126")]
-    ISO10126 = 0x7,
-    // #[serde(rename = "PKCS1 v1.5")]
-    PKCS1v15 = 0x8,
-    // #[serde(rename = "X9.31")]
-    X931 = 0x9,
-    PSS = 0xA,
-}
-impl From<PaddingMethod> for kmip_2_1::kmip_types::PaddingMethod {
-    fn from(val: PaddingMethod) -> Self {
-        match val {
-            PaddingMethod::None => Self::None,
-            PaddingMethod::OAEP => Self::OAEP,
-            PaddingMethod::PKCS5 => Self::PKCS5,
-            PaddingMethod::SSL3 => Self::SSL3,
-            PaddingMethod::Zeros => Self::Zeros,
-            PaddingMethod::ANSI_X923 => Self::ANSI_X923,
-            PaddingMethod::ISO10126 => Self::ISO10126,
-            PaddingMethod::PKCS1v15 => Self::PKCS1v15,
-            PaddingMethod::X931 => Self::X931,
-            PaddingMethod::PSS => Self::PSS,
-        }
-    }
-}
-
-/// KMIP 1.4 Key Role Type Enumeration
-#[kmip_enum]
-pub enum KeyRoleType {
-    BDK = 0x1,
-    CVK = 0x2,
-    DEK = 0x3,
-    MKAC = 0x4,
-    MKSMC = 0x5,
-    MKSMI = 0x6,
-    MKDAC = 0x7,
-    MKDN = 0x8,
-    MKCP = 0x9,
-    MKOTH = 0xA,
-    KEK = 0xB,
-    MAC16609 = 0xC,
-    MAC97971 = 0xD,
-    MAC97972 = 0xE,
-    MAC97973 = 0xF,
-    MAC97974 = 0x10,
-    MAC97975 = 0x11,
-    ZPK = 0x12,
-    PVKIBM = 0x13,
-    PVKPVV = 0x14,
-    PVKOTH = 0x15,
-    DUKPT = 0x16,
-    IV = 0x17,
-    TRKBK = 0x18,
-}
-
-impl From<KeyRoleType> for kmip_2_1::kmip_types::KeyRoleType {
-    fn from(val: KeyRoleType) -> Self {
-        match val {
-            KeyRoleType::BDK => Self::BDK,
-            KeyRoleType::CVK => Self::CVK,
-            KeyRoleType::DEK => Self::DEK,
-            KeyRoleType::MKAC => Self::MKAC,
-            KeyRoleType::MKSMC => Self::MKSMC,
-            KeyRoleType::MKSMI => Self::MKSMI,
-            KeyRoleType::MKDAC => Self::MKDAC,
-            KeyRoleType::MKDN => Self::MKDN,
-            KeyRoleType::MKCP => Self::MKCP,
-            KeyRoleType::MKOTH => Self::MKOTH,
-            KeyRoleType::KEK => Self::KEK,
-            KeyRoleType::MAC16609 => Self::MAC16609,
-            KeyRoleType::MAC97971 => Self::MAC97971,
-            KeyRoleType::MAC97972 => Self::MAC97972,
-            KeyRoleType::MAC97973 => Self::MAC97973,
-            KeyRoleType::MAC97974 => Self::MAC97974,
-            KeyRoleType::MAC97975 => Self::MAC97975,
-            KeyRoleType::ZPK => Self::ZPK,
-            KeyRoleType::PVKIBM => Self::PVKIBM,
-            KeyRoleType::PVKPVV => Self::PVKPVV,
-            KeyRoleType::PVKOTH => Self::PVKOTH,
-            KeyRoleType::DUKPT => Self::DUKPT,
-            KeyRoleType::IV => Self::IV,
-            KeyRoleType::TRKBK => Self::TRKBK,
-        }
-    }
-}
-
-/// KMIP 1.4 State Enumeration
-#[kmip_enum]
-pub enum State {
-    PreActive = 0x1,
-    Active = 0x2,
-    Deactivated = 0x3,
-    Compromised = 0x4,
-    Destroyed = 0x5,
-    #[allow(non_camel_case_types)]
-    Destroyed_Compromised = 0x6,
-}
-
-impl From<State> for kmip_2_1::kmip_types::State {
-    fn from(val: State) -> Self {
-        match val {
-            State::PreActive => Self::PreActive,
-            State::Active => Self::Active,
-            State::Deactivated => Self::Deactivated,
-            State::Compromised => Self::Compromised,
-            State::Destroyed | State::Destroyed_Compromised => Self::Destroyed,
-        }
-    }
-}
-
-/// KMIP 1.4 Revocation Reason Code Enumeration
-#[kmip_enum]
-pub enum RevocationReasonCode {
-    Unspecified = 0x1,
-    KeyCompromise = 0x2,
-    CACompromise = 0x3,
-    AffiliationChanged = 0x4,
-    Superseded = 0x5,
-    CessationOfOperation = 0x6,
-    PrivilegeWithdrawn = 0x7,
-}
-
-impl From<RevocationReasonCode> for kmip_2_1::kmip_types::RevocationReasonCode {
-    fn from(val: RevocationReasonCode) -> Self {
-        match val {
-            RevocationReasonCode::Unspecified => Self::Unspecified,
-            RevocationReasonCode::KeyCompromise => Self::KeyCompromise,
-            RevocationReasonCode::CACompromise => Self::CACompromise,
-            RevocationReasonCode::AffiliationChanged => Self::AffiliationChanged,
-            RevocationReasonCode::Superseded => Self::Superseded,
-            RevocationReasonCode::CessationOfOperation => Self::CessationOfOperation,
-            RevocationReasonCode::PrivilegeWithdrawn => Self::PrivilegeWithdrawn,
-        }
-    }
-}
-
 /// KMIP 1.4 Link Type Enumeration
 #[kmip_enum]
 pub enum LinkType {
@@ -679,6 +444,38 @@ impl From<LinkType> for kmip_2_1::kmip_types::LinkType {
             LinkType::ChildLink => Self::ChildLink,
             LinkType::PreviousLink => Self::PreviousLink,
             LinkType::NextLink => Self::NextLink,
+        }
+    }
+}
+
+impl TryFrom<kmip_2_1::kmip_types::LinkType> for LinkType {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_types::LinkType) -> Result<Self, Self::Error> {
+        match value {
+            kmip_2_1::kmip_types::LinkType::CertificateLink => Ok(Self::CertificateLink),
+            kmip_2_1::kmip_types::LinkType::PublicKeyLink => Ok(Self::PublicKeyLink),
+            kmip_2_1::kmip_types::LinkType::PrivateKeyLink => Ok(Self::PrivateKeyLink),
+            kmip_2_1::kmip_types::LinkType::DerivationBaseObjectLink => {
+                Ok(Self::DerivationBaseObjectLink)
+            }
+            kmip_2_1::kmip_types::LinkType::DerivedKeyLink => Ok(Self::DerivedKeyLink),
+            kmip_2_1::kmip_types::LinkType::ReplacementObjectLink => {
+                Ok(Self::ReplacementObjectLink)
+            }
+            kmip_2_1::kmip_types::LinkType::ReplacedObjectLink => Ok(Self::ReplacedObjectLink),
+            kmip_2_1::kmip_types::LinkType::ParentLink => Ok(Self::ParentLink),
+            kmip_2_1::kmip_types::LinkType::ChildLink => Ok(Self::ChildLink),
+            kmip_2_1::kmip_types::LinkType::PreviousLink => Ok(Self::PreviousLink),
+            kmip_2_1::kmip_types::LinkType::NextLink => Ok(Self::NextLink),
+            kmip_2_1::kmip_types::LinkType::PKCS12CertificateLink
+            | kmip_2_1::kmip_types::LinkType::PKCS12PasswordLink
+            | kmip_2_1::kmip_types::LinkType::WrappingKeyLink => {
+                Err(KmipError::InvalidKmip14Value(
+                    ResultReason::InvalidField,
+                    "{value:?} is not  supported in KMIP 1.4".to_owned(),
+                ))
+            }
         }
     }
 }
@@ -977,22 +774,6 @@ pub enum ResultReason {
     GeneralFailure = 0x100,
 }
 
-/// KMIP 1.4 Usage Limits Unit Enumeration
-#[kmip_enum]
-pub enum UsageLimitsUnit {
-    Byte = 0x1,
-    Object = 0x2,
-}
-
-impl From<UsageLimitsUnit> for kmip_2_1::kmip_types::UsageLimitsUnit {
-    fn from(val: UsageLimitsUnit) -> Self {
-        match val {
-            UsageLimitsUnit::Byte => Self::Byte,
-            UsageLimitsUnit::Object => Self::Object,
-        }
-    }
-}
-
 /// KMIP 1.4 Encoding Option Enumeration
 #[kmip_enum]
 pub enum EncodingOption {
@@ -1014,52 +795,6 @@ impl From<EncodingOption> for kmip_2_1::kmip_types::EncodingOption {
 pub enum ObjectGroupMember {
     GroupMemberFresh = 0x1,
     GroupMemberDefault = 0x2,
-}
-
-/// KMIP 1.4 Alternative Name Type Enumeration
-#[kmip_enum]
-pub enum AlternativeNameType {
-    UninterpretedTextString = 0x1,
-    URI = 0x2,
-    ObjectSerialNumber = 0x3,
-    EmailAddress = 0x4,
-    DNSName = 0x5,
-    X500DirectoryName = 0x6,
-    IPAddress = 0x7,
-}
-
-impl From<AlternativeNameType> for kmip_2_1::kmip_types::AlternativeNameType {
-    fn from(val: AlternativeNameType) -> Self {
-        match val {
-            AlternativeNameType::UninterpretedTextString => Self::UninterpretedTextString,
-            AlternativeNameType::URI => Self::URI,
-            AlternativeNameType::ObjectSerialNumber => Self::ObjectSerialNumber,
-            AlternativeNameType::EmailAddress => Self::EmailAddress,
-            AlternativeNameType::DNSName => Self::DNSName,
-            AlternativeNameType::X500DirectoryName => Self::X500DirectoryName,
-            AlternativeNameType::IPAddress => Self::IPAddress,
-        }
-    }
-}
-
-/// KMIP 1.4 Key Value Location Type Enumeration
-#[kmip_enum]
-pub enum KeyValueLocationType {
-    Unspecified = 0x1,
-    OnPremise = 0x2,
-    OffPremise = 0x3,
-    OnPremiseOffPremise = 0x4,
-}
-
-impl From<KeyValueLocationType> for kmip_2_1::kmip_types::KeyValueLocationType {
-    fn from(val: KeyValueLocationType) -> Self {
-        match val {
-            KeyValueLocationType::Unspecified => Self::Unspecified,
-            KeyValueLocationType::OnPremise => Self::OnPremise,
-            KeyValueLocationType::OffPremise => Self::OffPremise,
-            KeyValueLocationType::OnPremiseOffPremise => Self::OnPremiseOffPremise,
-        }
-    }
 }
 
 #[kmip_enum]
@@ -1240,20 +975,6 @@ pub enum ClientRegistrationMethod {
     ServerOnDemand = 0x3,
     ClientGenerated = 0x4,
     ClientRegistered = 0x5,
-}
-
-/// KMIP 1.4 Mask Generator Enumeration
-#[kmip_enum]
-pub enum MaskGenerator {
-    MGF1 = 0x1,
-}
-
-impl From<MaskGenerator> for kmip_2_1::kmip_types::MaskGenerator {
-    fn from(val: MaskGenerator) -> Self {
-        match val {
-            MaskGenerator::MGF1 => Self::MFG1,
-        }
-    }
 }
 
 /// KMIP 1.4 Storage Status Mask Enumeration
@@ -1445,6 +1166,57 @@ impl From<DigitalSignatureAlgorithm> for kmip_2_1::kmip_types::DigitalSignatureA
     }
 }
 
+impl TryFrom<kmip_2_1::kmip_types::DigitalSignatureAlgorithm> for DigitalSignatureAlgorithm {
+    type Error = KmipError;
+
+    fn try_from(
+        value: kmip_2_1::kmip_types::DigitalSignatureAlgorithm,
+    ) -> Result<Self, Self::Error> {
+        Ok(match value {
+            kmip_2_1::kmip_types::DigitalSignatureAlgorithm::MD2WithRSAEncryption => {
+                Self::MD2WithRSAEncryption
+            }
+            kmip_2_1::kmip_types::DigitalSignatureAlgorithm::MD5WithRSAEncryption => {
+                Self::MD5WithRSAEncryption
+            }
+            kmip_2_1::kmip_types::DigitalSignatureAlgorithm::SHA1WithRSAEncryption => {
+                Self::SHA1WithRSAEncryption
+            }
+            kmip_2_1::kmip_types::DigitalSignatureAlgorithm::SHA224WithRSAEncryption => {
+                Self::SHA224WithRSAEncryption
+            }
+            kmip_2_1::kmip_types::DigitalSignatureAlgorithm::SHA256WithRSAEncryption => {
+                Self::SHA256WithRSAEncryption
+            }
+            kmip_2_1::kmip_types::DigitalSignatureAlgorithm::SHA384WithRSAEncryption => {
+                Self::SHA384WithRSAEncryption
+            }
+            kmip_2_1::kmip_types::DigitalSignatureAlgorithm::SHA512WithRSAEncryption => {
+                Self::SHA512WithRSAEncryption
+            }
+            kmip_2_1::kmip_types::DigitalSignatureAlgorithm::RSASSAPSS => Self::RSASSAPSS,
+            kmip_2_1::kmip_types::DigitalSignatureAlgorithm::DSAWithSHA1 => Self::DSAWithSHA1,
+            kmip_2_1::kmip_types::DigitalSignatureAlgorithm::DSAWithSHA224 => Self::DSAWithSHA224,
+            kmip_2_1::kmip_types::DigitalSignatureAlgorithm::DSAWithSHA256 => Self::DSAWithSHA256,
+            kmip_2_1::kmip_types::DigitalSignatureAlgorithm::ECDSAWithSHA1 => Self::ECDSAWithSHA1,
+            kmip_2_1::kmip_types::DigitalSignatureAlgorithm::ECDSAWithSHA224 => {
+                Self::ECDSAWithSHA224
+            }
+            kmip_2_1::kmip_types::DigitalSignatureAlgorithm::ECDSAWithSHA256
+            | kmip_2_1::kmip_types::DigitalSignatureAlgorithm::ECDSAWithSHA384
+            | kmip_2_1::kmip_types::DigitalSignatureAlgorithm::ECDSAWithSHA512 => {
+                Self::ECDSAWithSHA256
+            }
+            x => {
+                return Err(KmipError::InvalidKmip14Value(
+                    ResultReason::OperationNotSupported,
+                    format!("DigitalSignatureAlgorithm not supported in KMIP 1: {x:?}"),
+                ))
+            }
+        })
+    }
+}
+
 /// KMIP 1.4 Opaque Data Type Enumeration
 #[kmip_enum]
 pub enum OpaqueDataType {
@@ -1506,20 +1278,18 @@ impl From<CryptographicDomainParameters> for kmip_2_1::kmip_types::Cryptographic
     }
 }
 
-/// KMIP 1.4 X509 Certificate Identifier
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
-#[serde(rename_all = "PascalCase")]
-pub struct X509CertificateIdentifier {
-    pub issuer_distinguished_name: Vec<u8>,
-    pub cxertificate_serial_number: Vec<u8>,
-}
+impl TryFrom<kmip_2_1::kmip_types::CryptographicDomainParameters>
+    for CryptographicDomainParameters
+{
+    type Error = KmipError;
 
-impl From<X509CertificateIdentifier> for kmip_2_1::kmip_types::X509CertificateIdentifier {
-    fn from(val: X509CertificateIdentifier) -> Self {
-        Self {
-            issuer_distinguished_name: val.issuer_distinguished_name,
-            cxertificate_serial_number: val.cxertificate_serial_number,
-        }
+    fn try_from(
+        value: kmip_2_1::kmip_types::CryptographicDomainParameters,
+    ) -> Result<Self, Self::Error> {
+        Ok(Self {
+            qlength: value.qlength,
+            recommended_curve: value.recommended_curve.map(TryInto::try_into).transpose()?,
+        })
     }
 }
 
@@ -1531,141 +1301,6 @@ pub struct Digest {
     pub digest_value: Vec<u8>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub key_format_type: Option<KeyFormatType>,
-}
-
-/// KMIP 1.4 Cryptographic Usage Mask (bitmask)
-#[derive(Serialize, Deserialize, Clone, Debug, Copy, Eq, PartialEq)]
-pub struct CryptographicUsageMask(pub u32);
-
-bitflags::bitflags! {
-#[allow(clippy::indexing_slicing)]
-    impl CryptographicUsageMask: u32 {
-        /// Allow for signing. Applies to Sign operation. Valid for PGP Key, Private Key
-        const Sign=0x0000_0001;
-        /// Allow for signature verification. Applies to Signature Verify and Validate
-        /// operations. Valid for PGP Key, Certificate and Public Key.
-        const Verify=0x0000_0002;
-        /// Allow for encryption. Applies to Encrypt operation. Valid for PGP Key,
-        /// Private Key, Public Key and Symmetric Key. Encryption for the purpose of
-        /// wrapping is separate Wrap Key value.
-        const Encrypt=0x0000_0004;
-        /// Allow for decryption. Applies to Decrypt operation. Valid for PGP Key,
-        /// Private Key, Public Key and Symmetric Key. Decryption for the purpose of
-        /// unwrapping is separate Unwrap Key value.
-        const Decrypt=0x0000_0008;
-        /// Allow for key wrapping. Applies to Get operation when wrapping is
-        /// required by Wrapping Specification is provided on the object used to
-        /// Wrap. Valid for PGP Key, Private Key and Symmetric Key. Note: even if
-        /// the underlying wrapping mechanism is encryption, this value is logically
-        /// separate.
-        const WrapKey=0x0000_0010;
-        /// Allow for key unwrapping. Applies to Get operation when unwrapping is
-        /// required on the object used to Unwrap. Valid for PGP Key, Private Key,
-        /// Public Key and Symmetric Key. Not interchangeable with Decrypt. Note:
-        /// even if the underlying unwrapping mechanism is decryption, this value is
-        /// logically separate.
-        const UnwrapKey=0x0000_0020;
-        /// Allow for MAC generation. Applies to MAC operation. Valid for Symmetric
-        /// Keys
-        const MACGenerate=0x0000_0080;
-        /// Allow for MAC verification. Applies to MAC Verify operation. Valid for
-        /// Symmetric Keys
-        const MACVerify=0x0000_0100;
-        /// Allow for key derivation. Applied to Derive Key operation. Valid for PGP
-        /// Keys, Private Keys, Public Keys, Secret Data and Symmetric Keys.
-        const DeriveKey=0x0000_0200;
-        /// Allow for Key Agreement. Valid for PGP Keys, Private Keys, Public Keys,
-        /// Secret Data and Symmetric Keys
-        const KeyAgreement=0x0000_0800;
-        /// Allow for Certificate Signing. Applies to Certify operation on a private key.
-        /// Valid for Private Keys.
-        const CertificateSign=0x0000_1000;
-        /// Allow for CRL Sign. Valid for Private Keys
-        const CRLSign=0x0000_2000;
-        /// Allow for Authentication. Valid for Secret Data.
-        const Authenticate=0x0010_0000;
-        /// Cryptographic Usage Mask contains no Usage Restrictions.
-        const Unrestricted=0x0020_0000;
-        // Extensions XXX00000
-    }
-}
-
-impl From<CryptographicUsageMask> for kmip_2_1::kmip_types::CryptographicUsageMask {
-    fn from(val: CryptographicUsageMask) -> Self {
-        Self(val.0)
-    }
-}
-
-/// KMIP 1.4 Usage Limits
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
-#[serde(rename_all = "PascalCase")]
-pub struct UsageLimits {
-    pub usage_limits_total: i64,
-    pub usage_limits_count: i64,
-    pub usage_limits_unit: UsageLimitsUnit,
-}
-
-impl From<UsageLimits> for kmip_2_1::kmip_types::UsageLimits {
-    fn from(val: UsageLimits) -> Self {
-        Self {
-            usage_limits_unit: val.usage_limits_unit.into(),
-            usage_limits_count: val.usage_limits_count,
-            usage_limits_total: val.usage_limits_total,
-        }
-    }
-}
-
-/// KMIP 1.4 Revocation Reason
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
-#[serde(rename_all = "PascalCase")]
-pub struct RevocationReason {
-    pub revocation_reason_code: RevocationReasonCode,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub revocation_message: Option<String>,
-}
-
-impl From<RevocationReason> for kmip_2_1::kmip_types::RevocationReason {
-    fn from(val: RevocationReason) -> Self {
-        Self {
-            revocation_reason_code: val.revocation_reason_code.into(),
-            revocation_message: val.revocation_message,
-        }
-    }
-}
-
-/// KMIP 1.4 Application Specific Information
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
-#[serde(rename_all = "PascalCase")]
-pub struct ApplicationSpecificInformation {
-    pub application_namespace: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub application_data: Option<String>,
-}
-
-impl From<ApplicationSpecificInformation> for kmip_2_1::kmip_types::ApplicationSpecificInformation {
-    fn from(val: ApplicationSpecificInformation) -> Self {
-        Self {
-            application_namespace: val.application_namespace,
-            application_data: val.application_data,
-        }
-    }
-}
-
-/// KMIP 1.4 Alternative Name
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
-#[serde(rename_all = "PascalCase")]
-pub struct AlternativeName {
-    pub alternative_name_value: String,
-    pub alternative_name_type: AlternativeNameType,
-}
-
-impl From<AlternativeName> for kmip_2_1::kmip_types::AlternativeName {
-    fn from(val: AlternativeName) -> Self {
-        Self {
-            alternative_name_value: val.alternative_name_value,
-            alternative_name_type: val.alternative_name_type.into(),
-        }
-    }
 }
 
 /// KMIP 1.4 Random Number Generator
@@ -1695,12 +1330,32 @@ impl From<RandomNumberGenerator> for kmip_2_1::kmip_types::RandomNumberGenerator
             rng_algorithm: val.rng_algorithm,
             cryptographic_algorithm: val.cryptographic_algorithm.map(Into::into),
             cryptographic_length: val.cryptographic_length,
-            hashing_algorithm: val.hashing_algorithm.map(Into::into),
-            drbg_algorithm: val.drbg_algorithm.map(Into::into),
+            hashing_algorithm: val.hashing_algorithm,
+            drbg_algorithm: val.drbg_algorithm,
             recommended_curve: val.recommended_curve.map(Into::into),
-            fips186_variation: val.fips186_variation.map(Into::into),
+            fips186_variation: val.fips186_variation,
             prediction_resistance: val.prediction_resistance,
         }
+    }
+}
+
+impl TryFrom<kmip_2_1::kmip_types::RandomNumberGenerator> for RandomNumberGenerator {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_types::RandomNumberGenerator) -> Result<Self, Self::Error> {
+        Ok(Self {
+            rng_algorithm: value.rng_algorithm,
+            cryptographic_algorithm: value
+                .cryptographic_algorithm
+                .map(TryInto::try_into)
+                .transpose()?,
+            cryptographic_length: value.cryptographic_length,
+            hashing_algorithm: value.hashing_algorithm,
+            drbg_algorithm: value.drbg_algorithm,
+            recommended_curve: value.recommended_curve.map(TryInto::try_into).transpose()?,
+            fips186_variation: value.fips186_variation,
+            prediction_resistance: value.prediction_resistance,
+        })
     }
 }
 
@@ -1756,6 +1411,17 @@ impl From<Link> for kmip_2_1::kmip_types::Link {
     }
 }
 
+impl TryFrom<kmip_2_1::kmip_types::Link> for Link {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_types::Link) -> Result<Self, Self::Error> {
+        Ok(Self {
+            link_type: value.link_type.try_into()?,
+            linked_object_identifier: value.linked_object_identifier.try_into()?,
+        })
+    }
+}
+
 /// `LinkedObjectIdentifier` defines the format of the object reference in a link.
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum LinkedObjectIdentifier {
@@ -1767,6 +1433,23 @@ impl From<LinkedObjectIdentifier> for kmip_2_1::kmip_types::LinkedObjectIdentifi
         match val {
             LinkedObjectIdentifier::TextString(s) => Self::TextString(s),
         }
+    }
+}
+
+impl TryFrom<kmip_2_1::kmip_types::LinkedObjectIdentifier> for LinkedObjectIdentifier {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_types::LinkedObjectIdentifier) -> Result<Self, Self::Error> {
+        Ok(match value {
+            kmip_2_1::kmip_types::LinkedObjectIdentifier::TextString(s) => Self::TextString(s),
+            kmip_2_1::kmip_types::LinkedObjectIdentifier::Enumeration(_)
+            | kmip_2_1::kmip_types::LinkedObjectIdentifier::Index(_) => {
+                return Err(KmipError::InvalidKmip14Value(
+                    ResultReason::OperationNotSupported,
+                    format!("{value:?} not supported in KMIP 1"),
+                ))
+            }
+        })
     }
 }
 

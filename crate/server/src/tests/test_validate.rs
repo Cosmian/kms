@@ -2,11 +2,14 @@
 
 use std::{fs, path, sync::Arc};
 
-use cosmian_kmip::kmip_2_1::{
-    kmip_attributes::Attributes,
-    kmip_objects::{Certificate, Object, ObjectType},
-    kmip_operations::{Import, Validate},
-    kmip_types::{CertificateType, UniqueIdentifier, ValidityIndicator},
+use cosmian_kmip::{
+    kmip_0::kmip_types::CertificateType,
+    kmip_2_1::{
+        kmip_attributes::Attributes,
+        kmip_objects::{Certificate, Object, ObjectType},
+        kmip_operations::{Import, Validate},
+        kmip_types::{UniqueIdentifier, ValidityIndicator},
+    },
 };
 use tracing::debug;
 

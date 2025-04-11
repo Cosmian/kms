@@ -8,14 +8,13 @@ use base64::{Engine, engine::general_purpose::STANDARD};
 use chrono::{Duration, Utc};
 use clap::crate_version;
 use cosmian_kmip::{
-    kmip_0::kmip_types::{HashingAlgorithm, KeyWrapType},
+    kmip_0::kmip_types::{HashingAlgorithm, KeyWrapType, PaddingMethod},
     kmip_2_1::{
         kmip_data_structures::KeyMaterial,
         kmip_objects::{Object, PublicKey},
         kmip_operations::{Decrypt, Get},
         kmip_types::{
-            CryptographicAlgorithm, CryptographicParameters, KeyFormatType, PaddingMethod,
-            UniqueIdentifier,
+            CryptographicAlgorithm, CryptographicParameters, KeyFormatType, UniqueIdentifier,
         },
     },
 };

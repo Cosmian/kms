@@ -6,10 +6,14 @@ use cosmian_kmip::{
         },
         kmip_types::{ProtocolVersion, ResultStatusEnumeration},
     },
-    kmip_1_4::{
+    kmip_2_1::{
         kmip_messages::RequestMessageBatchItem,
+        kmip_objects::ObjectType,
         kmip_operations::{GetAttributes, Operation},
-        kmip_types::OperationEnumeration,
+        kmip_types::{
+            AttributeReference, CryptographicAlgorithm, OperationEnumeration, Tag,
+            UniqueIdentifier, VendorAttributeReference,
+        },
     },
     ttlv::KmipFlavor,
 };
@@ -38,25 +42,40 @@ fn test_get_attribute_1_4() {
 }
 
 pub(crate) fn get_attributes(client: &SocketClient, key_id: &str) {
+    let protocol_major = 2;
+    let kmip_flavor = if protocol_major == 2 {
+        KmipFlavor::Kmip2
+    } else {
+        KmipFlavor::Kmip1
+    };
+
     let request_message = RequestMessage {
         request_header: RequestMessageHeader {
             protocol_version: ProtocolVersion {
-                protocol_version_major: 1,
+                protocol_version_major: protocol_major,
                 protocol_version_minor: 1,
             },
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V21(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::GetAttributes,
                 ephemeral: None,
                 unique_batch_item_id: Some(b"12345".to_vec()),
                 request_payload: Operation::GetAttributes(GetAttributes {
-                    unique_identifier: key_id.to_owned(),
-                    attribute_name: Some(vec![
-                        "x-Product_Version".to_owned(),
-                        "x-Vendor".to_owned(),
+                    unique_identifier: Some(UniqueIdentifier::TextString(key_id.to_owned())),
+                    attribute_reference: Some(vec![
+                        AttributeReference::Vendor(VendorAttributeReference {
+                            vendor_identification: "KMIP1".to_owned(),
+                            attribute_name: "x-Product_Version".to_owned(),
+                        }),
+                        AttributeReference::Vendor(VendorAttributeReference {
+                            vendor_identification: "KMIP1".to_owned(),
+                            attribute_name: "x-Product".to_owned(),
+                        }),
+                        AttributeReference::Standard(Tag::CryptographicAlgorithm),
+                        AttributeReference::Standard(Tag::ObjectType),
                     ]),
                 }),
                 message_extension: None,
@@ -65,13 +84,13 @@ pub(crate) fn get_attributes(client: &SocketClient, key_id: &str) {
     };
 
     let response = client
-        .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip1, &request_message)
+        .send_request::<RequestMessage, ResponseMessage>(kmip_flavor, &request_message)
         .expect("Failed to send request");
 
     assert_eq!(
         response.response_header.protocol_version,
         ProtocolVersion {
-            protocol_version_major: 1,
+            protocol_version_major: protocol_major,
             protocol_version_minor: 1,
         }
     );
@@ -80,15 +99,30 @@ pub(crate) fn get_attributes(client: &SocketClient, key_id: &str) {
     let Some(response_batch_item) = response.batch_item.first() else {
         panic!("Expected response batch item");
     };
-    let ResponseMessageBatchItemVersioned::V14(batch_item) = response_batch_item else {
-        panic!("Expected V14 response message");
+    let ResponseMessageBatchItemVersioned::V21(batch_item) = response_batch_item else {
+        panic!("Expected V21 response message");
     };
     assert_eq!(batch_item.result_status, ResultStatusEnumeration::Success);
     assert_eq!(batch_item.unique_batch_item_id, Some(b"12345".to_vec()));
     let Some(Operation::GetAttributesResponse(response)) = &batch_item.response_payload else {
         panic!("Expected AddAttributeResponse");
     };
-    assert_eq!(response.unique_identifier, key_id.to_owned());
-    let attributes = response.attribute.as_ref().expect("Expected attributes");
-    assert_eq!(attributes.len(), 2);
+    assert_eq!(
+        response.unique_identifier,
+        UniqueIdentifier::TextString(key_id.to_owned())
+    );
+    let vendor_attributes = response
+        .attributes
+        .vendor_attributes
+        .as_ref()
+        .expect("Expected Vendor attributes");
+    assert_eq!(vendor_attributes.len(), 2);
+    assert_eq!(
+        response.attributes.cryptographic_algorithm,
+        Some(CryptographicAlgorithm::AES)
+    );
+    assert_eq!(
+        response.attributes.object_type,
+        Some(ObjectType::SymmetricKey)
+    );
 }

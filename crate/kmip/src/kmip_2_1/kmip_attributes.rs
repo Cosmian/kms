@@ -2,19 +2,20 @@ use serde::{Deserialize, Serialize};
 
 use super::kmip_types::VendorAttributeValue;
 use crate::{
-    kmip_0::kmip_types::ErrorReason,
+    kmip_0::kmip_types::{
+        AlternativeName, ApplicationSpecificInformation, CertificateType, CryptographicUsageMask,
+        ErrorReason, KeyValueLocationType, RevocationReason, State, UsageLimits,
+        X509CertificateIdentifier,
+    },
     kmip_2_1::{
         extra::VENDOR_ID_COSMIAN,
         kmip_objects::ObjectType,
         kmip_types::{
-            AlternativeName, ApplicationSpecificInformation, CertificateAttributes,
-            CertificateType, CryptographicAlgorithm, CryptographicDomainParameters,
-            CryptographicParameters, CryptographicUsageMask, DigitalSignatureAlgorithm,
-            KeyFormatType, KeyValueLocationType, Link, LinkType, LinkedObjectIdentifier, Name,
-            NistKeyType, ObjectGroupMember, OpaqueDataType, ProtectionLevel,
-            ProtectionStorageMasks, RandomNumberGenerator, RevocationReason, State,
-            UniqueIdentifier, UsageLimits, VendorAttribute, X509CertificateIdentifier,
-            VENDOR_ATTR_AAD,
+            CertificateAttributes, CryptographicAlgorithm, CryptographicDomainParameters,
+            CryptographicParameters, DigitalSignatureAlgorithm, KeyFormatType, Link, LinkType,
+            LinkedObjectIdentifier, Name, NistKeyType, ObjectGroupMember, OpaqueDataType,
+            ProtectionLevel, ProtectionStorageMasks, RandomNumberGenerator, UniqueIdentifier,
+            VendorAttribute, VENDOR_ATTR_AAD,
         },
     },
     KmipError,
@@ -1078,7 +1079,7 @@ pub enum Attribute {
 
 impl From<Attributes> for Vec<Attribute> {
     fn from(attributes: Attributes) -> Self {
-        let mut vec = Vec::new();
+        let mut vec = Self::new();
         if let Some(activation_date) = attributes.activation_date {
             vec.push(Attribute::ActivationDate(activation_date));
         }

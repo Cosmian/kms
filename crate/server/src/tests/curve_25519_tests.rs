@@ -18,7 +18,9 @@ use cosmian_kmip::{
             RequestMessage, RequestMessageBatchItemVersioned, RequestMessageHeader,
             ResponseMessageBatchItemVersioned,
         },
-        kmip_types::{ErrorReason, ProtocolVersion, ResultStatusEnumeration},
+        kmip_types::{
+            CryptographicUsageMask, ErrorReason, ProtocolVersion, ResultStatusEnumeration,
+        },
     },
     kmip_2_1::{
         extra::tagging::EMPTY_TAGS,
@@ -27,8 +29,8 @@ use cosmian_kmip::{
         kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
         kmip_operations::{Import, Operation},
         kmip_types::{
-            CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, LinkType,
-            LinkedObjectIdentifier, RecommendedCurve, UniqueIdentifier,
+            CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier,
+            RecommendedCurve, UniqueIdentifier,
         },
         requests::{
             create_ec_key_pair_request, get_ec_private_key_request, get_ec_public_key_request,

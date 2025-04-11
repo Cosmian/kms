@@ -1,15 +1,15 @@
 use cosmian_cover_crypt::{AccessPolicy, EncryptionHint, QualifiedAttribute};
-use cosmian_kmip::kmip_2_1::{
-    extra::tagging::EMPTY_TAGS,
-    kmip_operations::{
-        CreateKeyPairResponse, CreateResponse, DecryptResponse, Destroy, DestroyResponse,
-        EncryptResponse, ReKeyKeyPairResponse, Revoke, RevokeResponse,
+use cosmian_kmip::{
+    kmip_0::kmip_types::{RevocationReason, RevocationReasonCode},
+    kmip_2_1::{
+        extra::tagging::EMPTY_TAGS,
+        kmip_operations::{
+            CreateKeyPairResponse, CreateResponse, DecryptResponse, DecryptedData, DestroyResponse,
+            EncryptResponse, ReKeyKeyPairResponse, Revoke, RevokeResponse,
+        },
+        kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
+        requests::{decrypt_request, encrypt_request},
     },
-    kmip_types::{
-        CryptographicAlgorithm, CryptographicParameters, RevocationReason, RevocationReasonCode,
-        UniqueIdentifier,
-    },
-    requests::{decrypt_request, encrypt_request},
 };
 use cosmian_kms_client_utils::cover_crypt_utils::{
     build_create_covercrypt_master_keypair_request, build_create_covercrypt_usk_request,

@@ -1,6 +1,6 @@
 use cosmian_kmip::{
-    kmip_0::kmip_types::HashingAlgorithm,
-    kmip_2_1::kmip_types::{CryptographicAlgorithm, CryptographicParameters, PaddingMethod},
+    kmip_0::kmip_types::{HashingAlgorithm, PaddingMethod},
+    kmip_2_1::kmip_types::{CryptographicAlgorithm, CryptographicParameters},
 };
 
 pub mod ckm_rsa_aes_key_wrap;

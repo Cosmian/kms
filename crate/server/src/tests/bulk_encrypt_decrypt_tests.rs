@@ -1,5 +1,5 @@
 use cosmian_kmip::{
-    KmipError,
+    kmip_0::kmip_types::{BlockCipherMode, CryptographicUsageMask},
     kmip_2_1::{
         extra::BulkData,
         kmip_attributes::Attributes,
@@ -8,10 +8,10 @@ use cosmian_kmip::{
             Create, CreateResponse, Decrypt, DecryptResponse, Encrypt, EncryptResponse,
         },
         kmip_types::{
-            BlockCipherMode, CryptographicAlgorithm, CryptographicParameters,
-            CryptographicUsageMask, KeyFormatType, UniqueIdentifier,
+            CryptographicAlgorithm, CryptographicParameters, KeyFormatType, UniqueIdentifier,
         },
     },
+    KmipError,
 };
 use uuid::Uuid;
 

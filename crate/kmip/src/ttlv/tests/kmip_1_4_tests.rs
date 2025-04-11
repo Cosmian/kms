@@ -2,12 +2,12 @@ use cosmian_logger::log_init;
 use tracing::info;
 
 use crate::{
+    kmip_0::kmip_types::CryptographicUsageMask,
     kmip_1_4::{
         kmip_attributes::Attribute,
         kmip_data_structures::TemplateAttribute,
         kmip_types::{
-            CryptographicAlgorithm, CryptographicDomainParameters, CryptographicUsageMask, Name,
-            NameType, RecommendedCurve,
+            CryptographicAlgorithm, CryptographicDomainParameters, Name, NameType, RecommendedCurve,
         },
     },
     ttlv::{from_ttlv, to_ttlv},

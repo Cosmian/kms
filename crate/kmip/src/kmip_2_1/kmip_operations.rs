@@ -16,7 +16,7 @@ use super::{
     kmip_types::{
         AttributeReference, CertificateRequestType, CryptographicParameters, KeyCompressionType,
         KeyFormatType, ObjectGroupMember, OperationEnumeration, ProtectionStorageMasks,
-        QueryFunction, RevocationReason, StorageStatusMask, UniqueIdentifier, ValidityIndicator,
+        QueryFunction, StorageStatusMask, UniqueIdentifier, ValidityIndicator,
     },
 };
 use crate::{
@@ -24,7 +24,7 @@ use crate::{
     kmip_0::{
         kmip_data_structures::ValidationInformation,
         kmip_operations::{DiscoverVersions, DiscoverVersionsResponse},
-        kmip_types::{AttestationType, Direction, KeyWrapType},
+        kmip_types::{AttestationType, Direction, KeyWrapType, RevocationReason},
     },
     kmip_2_1::kmip_data_structures::{ProfileInformation, RNGParameters},
     Deserializer, Serializer,
@@ -892,11 +892,8 @@ pub struct GetAttributes {
     pub unique_identifier: Option<UniqueIdentifier>,
     /// Specifies an attribute associated with
     /// the object.
-    #[serde(
-        skip_serializing_if = "Option::is_none",
-        rename = "AttributeReferences"
-    )]
-    pub attribute_references: Option<Vec<AttributeReference>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attribute_reference: Option<Vec<AttributeReference>>,
 }
 
 impl Display for GetAttributes {
@@ -904,7 +901,7 @@ impl Display for GetAttributes {
         write!(
             f,
             "GetAttributes {{ unique_identifier: {:?}, attribute_references: {:?} }}",
-            self.unique_identifier, self.attribute_references
+            self.unique_identifier, self.attribute_reference
         )
     }
 }
@@ -913,7 +910,7 @@ impl From<String> for GetAttributes {
     fn from(uid: String) -> Self {
         Self {
             unique_identifier: Some(UniqueIdentifier::TextString(uid)),
-            attribute_references: None,
+            attribute_reference: None,
         }
     }
 }

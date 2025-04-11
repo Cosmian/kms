@@ -51,7 +51,7 @@ async fn get_attributes(kms: &Arc<KMS>, uid: &str, tag: Tag) -> KResult<GetAttri
     kms.get_attributes(
         GetAttributes {
             unique_identifier: Some(UniqueIdentifier::TextString(uid.to_owned())),
-            attribute_references: Some(vec![AttributeReference::Standard(tag)]),
+            attribute_reference: Some(vec![AttributeReference::Standard(tag)]),
         },
         USER,
         None,

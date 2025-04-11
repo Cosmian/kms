@@ -1,10 +1,12 @@
-use cosmian_kmip::kmip_2_1::{
-    kmip_attributes::Attributes,
-    kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-    kmip_objects::{Object, ObjectType, PublicKey},
-    kmip_types::{
-        CryptographicAlgorithm, CryptographicDomainParameters, CryptographicUsageMask,
-        KeyFormatType, RecommendedCurve,
+use cosmian_kmip::{
+    kmip_0::kmip_types::CryptographicUsageMask,
+    kmip_2_1::{
+        kmip_attributes::Attributes,
+        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+        kmip_objects::{Object, ObjectType, PublicKey},
+        kmip_types::{
+            CryptographicAlgorithm, CryptographicDomainParameters, KeyFormatType, RecommendedCurve,
+        },
     },
 };
 use num_bigint_dig::{BigInt, Sign};
@@ -475,12 +477,12 @@ pub fn openssl_public_key_to_kmip(
 #[allow(clippy::unwrap_used, clippy::panic, clippy::as_conversions)]
 #[cfg(test)]
 mod tests {
+    #[cfg(not(feature = "fips"))]
+    use cosmian_kmip::kmip_0::kmip_types::CryptographicUsageMask;
     #[cfg(feature = "fips")]
     use cosmian_kmip::kmip_2_1::extra::fips::{
         FIPS_PUBLIC_ECC_MASK_SIGN_ECDH, FIPS_PUBLIC_RSA_MASK,
     };
-    #[cfg(not(feature = "fips"))]
-    use cosmian_kmip::kmip_2_1::kmip_types::CryptographicUsageMask;
     use cosmian_kmip::kmip_2_1::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, PublicKey},

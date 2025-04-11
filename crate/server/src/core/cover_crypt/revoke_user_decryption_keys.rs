@@ -1,6 +1,9 @@
 use std::{collections::HashSet, sync::Arc};
 
-use cosmian_kmip::kmip_2_1::kmip_types::{RevocationReason, StateEnumeration, UniqueIdentifier};
+use cosmian_kmip::{
+    kmip_0::kmip_types::RevocationReason,
+    kmip_2_1::kmip_types::{StateEnumeration, UniqueIdentifier},
+};
 use cosmian_kms_interfaces::SessionParams;
 
 use super::locate_usk;

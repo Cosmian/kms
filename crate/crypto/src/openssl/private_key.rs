@@ -1,12 +1,11 @@
 use cosmian_kmip::{
-    SafeBigUint,
+    kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
         kmip_attributes::Attributes,
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType, PrivateKey},
         kmip_types::{
-            CryptographicAlgorithm, CryptographicDomainParameters, CryptographicUsageMask,
-            KeyFormatType, RecommendedCurve,
+            CryptographicAlgorithm, CryptographicDomainParameters, KeyFormatType, RecommendedCurve,
         },
     },
     SafeBigInt,
@@ -23,11 +22,11 @@ use zeroize::Zeroizing;
 
 use crate::{
     crypto::elliptic_curves::{
-        ED448_PRIVATE_KEY_LENGTH, ED25519_PRIVATE_KEY_LENGTH, X448_PRIVATE_KEY_LENGTH,
-        X25519_PRIVATE_KEY_LENGTH,
+        ED25519_PRIVATE_KEY_LENGTH, ED448_PRIVATE_KEY_LENGTH, X25519_PRIVATE_KEY_LENGTH,
+        X448_PRIVATE_KEY_LENGTH,
     },
     crypto_bail,
-    error::{CryptoError, result::CryptoResultHelper},
+    error::{result::CryptoResultHelper, CryptoError},
     pad_be_bytes,
 };
 
@@ -497,12 +496,12 @@ pub fn openssl_private_key_to_kmip(
 #[allow(clippy::unwrap_used, clippy::panic)]
 #[cfg(test)]
 mod tests {
+    #[cfg(not(feature = "fips"))]
+    use cosmian_kmip::kmip_0::kmip_types::CryptographicUsageMask;
     #[cfg(feature = "fips")]
     use cosmian_kmip::kmip_2_1::extra::fips::{
         FIPS_PRIVATE_ECC_MASK_SIGN_ECDH, FIPS_PRIVATE_RSA_MASK,
     };
-    #[cfg(not(feature = "fips"))]
-    use cosmian_kmip::kmip_2_1::kmip_types::CryptographicUsageMask;
     use cosmian_kmip::kmip_2_1::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, PrivateKey},

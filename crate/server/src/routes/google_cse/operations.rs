@@ -2,9 +2,12 @@ use std::sync::Arc;
 
 use base64::{Engine, engine::general_purpose};
 use clap::crate_version;
-use cosmian_kmip::kmip_2_1::{
-    kmip_operations::{Decrypt, Encrypt},
-    kmip_types::{BlockCipherMode, CryptographicParameters, UniqueIdentifier},
+use cosmian_kmip::{
+    kmip_0::kmip_types::BlockCipherMode,
+    kmip_2_1::{
+        kmip_operations::{Decrypt, Encrypt},
+        kmip_types::{CryptographicParameters, UniqueIdentifier},
+    },
 };
 use openssl::{
     hash::MessageDigest,
