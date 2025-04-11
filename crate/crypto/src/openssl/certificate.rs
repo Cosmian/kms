@@ -1,6 +1,9 @@
-use cosmian_kmip::kmip_2_1::{
-    kmip_objects::{Certificate, Object},
-    kmip_types::{CertificateAttributes, CertificateType},
+use cosmian_kmip::{
+    kmip_0::kmip_types::CertificateType,
+    kmip_2_1::{
+        kmip_objects::{Certificate, Object},
+        kmip_types::CertificateAttributes,
+    },
 };
 use openssl::{
     asn1::{Asn1Object, Asn1OctetString},

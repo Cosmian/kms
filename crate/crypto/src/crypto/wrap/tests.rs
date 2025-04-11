@@ -1,15 +1,18 @@
 #[cfg(feature = "fips")]
 use cosmian_kmip::kmip_2_1::extra::fips::FIPS_PUBLIC_RSA_MASK;
-use cosmian_kmip::kmip_2_1::{
-    kmip_attributes::Attributes,
-    kmip_data_structures::KeyWrappingData,
-    kmip_types::{CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType},
-    requests::create_symmetric_key_kmip_object,
-};
 #[cfg(not(feature = "fips"))]
 use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::KeyWrappingSpecification, kmip_objects::Object,
     kmip_types::EncodingOption,
+};
+use cosmian_kmip::{
+    kmip_0::kmip_types::CryptographicUsageMask,
+    kmip_2_1::{
+        kmip_attributes::Attributes,
+        kmip_data_structures::KeyWrappingData,
+        kmip_types::{CryptographicAlgorithm, KeyFormatType},
+        requests::create_symmetric_key_kmip_object,
+    },
 };
 #[cfg(not(feature = "fips"))]
 use openssl::{
@@ -36,6 +39,8 @@ use crate::{
 #[test]
 fn test_wrap_unwrap() -> Result<(), CryptoError> {
     // the symmetric wrapping key
+
+    use cosmian_kmip::kmip_0::kmip_types::CryptographicUsageMask;
 
     let mut sym_wrapping_key_bytes = vec![0; 32];
     rand_bytes(&mut sym_wrapping_key_bytes)?;

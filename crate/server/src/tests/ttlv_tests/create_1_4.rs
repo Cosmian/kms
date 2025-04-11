@@ -4,16 +4,14 @@ use cosmian_kmip::{
             RequestMessage, RequestMessageBatchItemVersioned, RequestMessageHeader,
             ResponseMessage, ResponseMessageBatchItemVersioned,
         },
-        kmip_types::{ProtocolVersion, ResultStatusEnumeration},
+        kmip_types::{CryptographicUsageMask, ProtocolVersion, ResultStatusEnumeration},
     },
     kmip_1_4::{
         kmip_attributes::Attribute,
         kmip_data_structures::TemplateAttribute,
         kmip_messages::RequestMessageBatchItem,
         kmip_operations::{Create, Operation},
-        kmip_types::{
-            CryptographicAlgorithm, CryptographicUsageMask, ObjectType, OperationEnumeration,
-        },
+        kmip_types::{CryptographicAlgorithm, ObjectType, OperationEnumeration},
     },
     ttlv::KmipFlavor,
 };

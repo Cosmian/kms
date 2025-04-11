@@ -14,7 +14,7 @@ use crate::{
     kmip_0::{
         kmip_data_structures::ValidationInformation,
         kmip_operations::{DiscoverVersions, DiscoverVersionsResponse},
-        kmip_types::{AttestationType, Direction, KeyWrapType},
+        kmip_types::{AttestationType, Direction, KeyWrapType, RevocationReason},
     },
     kmip_1_4::kmip_attributes::Attribute,
     kmip_2_1, KmipError, KmipResultHelper,
@@ -328,7 +328,7 @@ impl From<GetAttributes> for kmip_2_1::kmip_operations::GetAttributes {
             unique_identifier: Some(kmip_2_1::kmip_types::UniqueIdentifier::TextString(
                 get_attributes.unique_identifier,
             )),
-            attribute_references: get_attributes.attribute_name.map(|v| {
+            attribute_reference: get_attributes.attribute_name.map(|v| {
                 v.into_iter()
                     .map(|v| {
                         if v.starts_with("x-") || v.starts_with("y-") {
@@ -372,7 +372,7 @@ impl TryFrom<kmip_2_1::kmip_operations::GetAttributesResponse> for GetAttributes
         let attributes_2_1: Vec<kmip_2_1::kmip_attributes::Attribute> = value.attributes.into();
         let attributes_1_4: Vec<Attribute> = attributes_2_1
             .into_iter()
-            .flat_map(|v| v.try_into())
+            .flat_map(TryInto::try_into)
             .collect();
 
         Ok(Self {

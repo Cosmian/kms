@@ -5,6 +5,7 @@ mod create_1_4;
 mod create_2_1;
 mod discover_versions;
 mod get_attribute_1_4;
+mod get_attribute_2_1;
 mod query;
 
 const TEST_HOST: &str = "127.0.0.1";

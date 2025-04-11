@@ -4,14 +4,15 @@ use cosmian_kmip::kmip_2_1::extra::fips::{
     FIPS_PUBLIC_ECC_MASK_ECDH, FIPS_PUBLIC_ECC_MASK_SIGN, FIPS_PUBLIC_ECC_MASK_SIGN_ECDH,
 };
 use cosmian_kmip::{
+    kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
         kmip_attributes::Attributes,
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
         kmip_types::{
             CryptographicAlgorithm, CryptographicDomainParameters, CryptographicParameters,
-            CryptographicUsageMask, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
-            RecommendedCurve, UniqueIdentifier,
+            KeyFormatType, Link, LinkType, LinkedObjectIdentifier, RecommendedCurve,
+            UniqueIdentifier,
         },
     },
     SafeBigInt,
@@ -567,9 +568,12 @@ mod tests {
     };
     #[cfg(not(feature = "fips"))]
     use cosmian_kmip::kmip_2_1::kmip_data_structures::KeyMaterial;
-    use cosmian_kmip::kmip_2_1::{
-        kmip_attributes::Attributes,
-        kmip_types::{CryptographicAlgorithm, CryptographicUsageMask, RecommendedCurve},
+    use cosmian_kmip::{
+        kmip_0::kmip_types::CryptographicUsageMask,
+        kmip_2_1::{
+            kmip_attributes::Attributes,
+            kmip_types::{CryptographicAlgorithm, RecommendedCurve},
+        },
     };
     #[cfg(not(feature = "fips"))]
     use openssl::pkey::{Id, PKey};

@@ -12,8 +12,8 @@ use super::kmip_attributes::Attribute;
 use super::kmip_types::*;
 use crate::{
     kmip_0::kmip_types::{
-        DRBGAlgorithm, DestroyAction, FIPS186Variation, HashingAlgorithm, RNGAlgorithm,
-        ShreddingAlgorithm, UnwrapMode,
+        BlockCipherMode, DRBGAlgorithm, DestroyAction, FIPS186Variation, HashingAlgorithm,
+        KeyRoleType, MaskGenerator, PaddingMethod, RNGAlgorithm, ShreddingAlgorithm, UnwrapMode,
     },
     kmip_2_1, KmipError, SafeBigInt,
 };
@@ -971,25 +971,58 @@ pub struct CryptographicParameters {
 impl From<CryptographicParameters> for kmip_2_1::kmip_types::CryptographicParameters {
     fn from(val: CryptographicParameters) -> Self {
         Self {
-            block_cipher_mode: val.block_cipher_mode.map(Into::into),
-            padding_method: val.padding_method.map(Into::into),
-            hashing_algorithm: val.hashing_algorithm.map(Into::into),
-            key_role_type: val.key_role_type.map(Into::into),
+            block_cipher_mode: val.block_cipher_mode,
+            padding_method: val.padding_method,
+            hashing_algorithm: val.hashing_algorithm,
+            key_role_type: val.key_role_type,
             digital_signature_algorithm: val.digital_signature_algorithm.map(Into::into),
             cryptographic_algorithm: val.cryptographic_algorithm.map(Into::into),
-            random_iv: val.random_iv.map(Into::into),
-            iv_length: val.iv_length.map(Into::into),
-            tag_length: val.tag_length.map(Into::into),
-            fixed_field_length: val.fixed_field_length.map(Into::into),
-            invocation_field_length: val.invocation_field_length.map(Into::into),
-            counter_length: val.counter_length.map(Into::into),
-            initial_counter_value: val.initial_counter_value.map(Into::into),
-            salt_length: val.salt_length.map(Into::into),
-            mask_generator: val.mask_generator.map(Into::into),
-            mask_generator_hashing_algorithm: val.mask_generator_hashing_algorithm.map(Into::into),
-            p_source: val.p_source.map(Into::into),
-            trailer_field: val.trailer_field.map(Into::into),
+            random_iv: val.random_iv,
+            iv_length: val.iv_length,
+            tag_length: val.tag_length,
+            fixed_field_length: val.fixed_field_length,
+            invocation_field_length: val.invocation_field_length,
+            counter_length: val.counter_length,
+            initial_counter_value: val.initial_counter_value,
+            salt_length: val.salt_length,
+            mask_generator: val.mask_generator,
+            mask_generator_hashing_algorithm: val.mask_generator_hashing_algorithm,
+            p_source: val.p_source,
+            trailer_field: val.trailer_field,
         }
+    }
+}
+
+impl TryFrom<kmip_2_1::kmip_types::CryptographicParameters> for CryptographicParameters {
+    type Error = KmipError;
+
+    fn try_from(val: kmip_2_1::kmip_types::CryptographicParameters) -> Result<Self, Self::Error> {
+        Ok(Self {
+            block_cipher_mode: val.block_cipher_mode,
+            padding_method: val.padding_method,
+            hashing_algorithm: val.hashing_algorithm,
+            key_role_type: val.key_role_type,
+            digital_signature_algorithm: val
+                .digital_signature_algorithm
+                .map(TryInto::try_into)
+                .transpose()?,
+            cryptographic_algorithm: val
+                .cryptographic_algorithm
+                .map(TryInto::try_into)
+                .transpose()?,
+            random_iv: val.random_iv,
+            iv_length: val.iv_length,
+            tag_length: val.tag_length,
+            fixed_field_length: val.fixed_field_length,
+            invocation_field_length: val.invocation_field_length,
+            counter_length: val.counter_length,
+            initial_counter_value: val.initial_counter_value,
+            salt_length: val.salt_length,
+            mask_generator: val.mask_generator,
+            mask_generator_hashing_algorithm: val.mask_generator_hashing_algorithm,
+            p_source: val.p_source,
+            trailer_field: val.trailer_field,
+        })
     }
 }
 
