@@ -20,4 +20,3 @@ node_modules/
 **/cosmian-kms/sqlite-data*
 run.sh
 .aider/
-ui/
