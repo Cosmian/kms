@@ -1,7 +1,7 @@
 #
 # KMS server
 #
-FROM rust:1.85.0-bullseye AS builder
+FROM rust:1.85.0-bookworm AS builder
 
 LABEL version="4.23.0"
 LABEL name="Cosmian KMS docker container"
@@ -33,7 +33,7 @@ RUN if [ "$FIPS" = "true" ]; then \
 #
 # KMS server
 #
-FROM debian:bullseye-slim AS kms-server
+FROM debian:bookworm-slim AS kms-server
 
 COPY --from=builder /root/kms/crate/server/ui                   /usr/local/cosmian/ui
 COPY --from=builder /root/kms/target/release/cosmian_kms        /usr/bin/cosmian_kms
