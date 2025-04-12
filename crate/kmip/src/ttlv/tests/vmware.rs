@@ -365,8 +365,8 @@ const GET_ATTRIBUTES_RESPONSE: &str = "42007b0100000\
 
 #[test]
 fn get_attributes() {
-    log_init(Some("debug"));
-    // log_init(option_env!("RUST_LOG"));
+    // log_init(Some("debug"));
+    log_init(option_env!("RUST_LOG"));
     let request = hex::decode(GET_ATTRIBUTES).unwrap();
 
     let (major, minor) = TTLV::find_version(&request).unwrap();
@@ -420,18 +420,7 @@ fn get_attributes() {
 }
 
 const ADD_ATTRIBUTE: &str = 
-    "42007801000001b04200770100000038420069010000002042006a0200000004000000010000000042006b02000000\
-    040000000100000000\
-    42000d0200000004000000030000000042000f010000008042005c05000000040000000d00000000\
-    4200930800000008514c4b430100000042007901000000\
-    5842009407000000013200000000000000420008010000004042000a0700000011782d50726f647563745f5665\
-    7273696f6e0000000000000042000b0700000014372e302e33206275696c642d31393438303836360000000042\
-    000f010000006842005c05000000040000000d000000004200930800000008514c4b4302000000420079010000\
-    004042009407000000013200000000000000420008010000002842000a0700000008782d56656e646f72420000\
-    b070000000c564d776172652c20496e632e000000004200\
-    0f010000007042005c05000000040000000d000000004200930800000008514c4b430300000042007901000000\
-    4842009407000000013200000000000000420008010000003042000a0700000009782d50726f647563740000000000\
-    000042000b070000000e564d7761726520765370686572650000";
+    "42007801000001b04200770100000038420069010000002042006a0200000004000000010000000042006b0200000004000000010000000042000d0200000004000000030000000042000f010000008042005c05000000040000000d000000004200930800000008514c4b4301000000420079010000005842009407000000013100000000000000420008010000004042000a0700000011782d50726f647563745f56657273696f6e0000000000000042000b0700000014372e302e33206275696c642d31393438303836360000000042000f010000006842005c05000000040000000d000000004200930800000008514c4b4302000000420079010000004042009407000000013100000000000000420008010000002842000a0700000008782d56656e646f7242000b070000000c564d776172652c20496e632e0000000042000f010000007042005c05000000040000000d000000004200930800000008514c4b4303000000420079010000004842009407000000013100000000000000420008010000003042000a0700000009782d50726f647563740000000000000042000b070000000e564d7761726520765370686572650000";
 // The PyKMIP server does not support this operation, so the response is empty
 
 #[test]
@@ -457,7 +446,7 @@ fn add_attribute() {
     assert_eq!(
         batch_item.request_payload,
         Operation::AddAttribute(AddAttribute {
-            unique_identifier: "2".to_owned(),
+            unique_identifier: "1".to_owned(),
             attribute: Attribute::CustomAttribute((
                 "x-Product_Version".to_owned(),
                 CustomAttributeValue::TextString("7.0.3 build-19480866".to_owned())
@@ -472,7 +461,7 @@ fn add_attribute() {
     assert_eq!(
         batch_item.request_payload,
         Operation::AddAttribute(AddAttribute {
-            unique_identifier: "2".to_owned(),
+            unique_identifier: "1".to_owned(),
             attribute: Attribute::CustomAttribute((
                 "x-Vendor".to_owned(),
                 CustomAttributeValue::TextString("VMware, Inc.".to_owned())
@@ -487,7 +476,7 @@ fn add_attribute() {
     assert_eq!(
         batch_item.request_payload,
         Operation::AddAttribute(AddAttribute {
-            unique_identifier: "2".to_owned(),
+            unique_identifier: "1".to_owned(),
             attribute: Attribute::CustomAttribute((
                 "x-Product".to_owned(),
                 CustomAttributeValue::TextString("VMware vSphere".to_owned())
@@ -512,8 +501,8 @@ const GET_RESPONSE: &str =
 
 #[test]
 fn get() {
-    log_init(Some("debug"));
-    // log_init(option_env!("RUST_LOG"));
+    // log_init(Some("debug"));
+    log_init(option_env!("RUST_LOG"));
     let request = hex::decode(GET).unwrap();
 
     let (major, minor) = TTLV::find_version(&request).unwrap();

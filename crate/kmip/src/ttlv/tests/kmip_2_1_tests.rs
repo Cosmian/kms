@@ -22,7 +22,7 @@ use crate::{
         kmip_attributes::{Attribute, Attributes},
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_messages::{RequestMessageBatchItem, ResponseMessageBatchItem},
-        kmip_objects::{Object, ObjectType, PublicKey, SymmetricKey},
+        kmip_objects::{Object, ObjectType, PrivateKey, PublicKey, SymmetricKey},
         kmip_operations::{
             Create, DecryptResponse, Encrypt, Import, ImportResponse, Locate, LocateResponse,
             Operation, Query, QueryResponse, SetAttribute,
@@ -276,119 +276,6 @@ fn test_des_enum() {
 }
 
 #[test]
-fn test_key_material_vec_deserialization() {
-    log_init(option_env!("RUST_LOG"));
-    let bytes = Zeroizing::from(vec![
-        116, 104, 105, 115, 95, 105, 115, 95, 97, 95, 116, 101, 115, 116,
-    ]);
-    let ttlv = TTLV {
-        tag: "KeyMaterial".to_owned(),
-        value: TTLValue::Structure(vec![TTLV {
-            tag: "Key".to_owned(),
-            value: TTLValue::ByteString(bytes.to_vec()),
-        }]),
-    };
-    let km_: KeyMaterial = from_ttlv(ttlv).unwrap();
-    info!("{:?}", km_);
-    let km = KeyMaterial::TransparentSymmetricKey { key: bytes };
-    assert_eq!(km, km_);
-}
-
-#[test]
-fn test_key_material_big_int_deserialization() {
-    log_init(option_env!("RUST_LOG"));
-    let ttlv = TTLV {
-        tag: "KeyMaterial".to_owned(),
-        value: TTLValue::Structure(vec![
-            TTLV {
-                tag: "KeyTypeSer".to_owned(),
-                value: TTLValue::Enumeration(KmipEnumerationVariant {
-                    name: "DH".to_owned(),
-                    value: 0,
-                }),
-            },
-            TTLV {
-                tag: "P".to_owned(),
-                value: TTLValue::BigInteger(BigInt::from(u32::MAX).into()),
-            },
-            TTLV {
-                tag: "Q".to_owned(),
-                value: TTLValue::BigInteger(BigInt::from(1_u32).into()),
-            },
-            TTLV {
-                tag: "G".to_owned(),
-                value: TTLValue::BigInteger(BigInt::from(2_u32).into()),
-            },
-            TTLV {
-                tag: "X".to_owned(),
-                value: TTLValue::BigInteger(BigInt::from(u128::MAX).into()),
-            },
-        ]),
-    };
-    let km = KeyMaterial::TransparentDHPrivateKey {
-        p: BigInt::from(u32::MAX).into(),
-        q: Some(BigInt::from(1_u64).into()),
-        g: BigInt::from(2_u32).into(),
-        j: None,
-        x: SafeBigInt::from(BigInt::from(u128::MAX)).into(),
-    };
-    let ttlv_ = to_ttlv(&km).unwrap();
-    assert_eq!(ttlv, ttlv_);
-    let km_: KeyMaterial = from_ttlv(ttlv_).unwrap();
-    assert_eq!(km, km_);
-}
-
-#[test]
-fn test_big_int_deserialization() {
-    log_init(option_env!("RUST_LOG"));
-    let km = KeyMaterial::TransparentDHPrivateKey {
-        p: BigInt::from(u32::MAX).into(),
-        q: Some(BigInt::from(1_u64).into()),
-        g: BigInt::from(2_u32).into(),
-        j: None,
-        x: SafeBigInt::from(BigInt::from(u128::MAX - 1)).into(),
-    };
-    let j = serde_json::to_value(&km).unwrap();
-    let km_: KeyMaterial = serde_json::from_value(j).unwrap();
-    assert_eq!(km, km_);
-}
-
-#[test]
-fn test_aes_key_material() {
-    log_init(option_env!("RUST_LOG"));
-    let key_bytes: &[u8] = b"this_is_a_test";
-
-    // Serializer
-    let ttlv = to_ttlv(&aes_key_material(key_bytes)).unwrap();
-    info!("{:?}", ttlv);
-    assert_eq!(aes_key_material_ttlv(key_bytes), ttlv);
-
-    // Serialize
-    let json = serde_json::to_string_pretty(&ttlv).unwrap();
-    // Deserialize
-    let ttlv_from_json = serde_json::from_str::<TTLV>(&json).unwrap();
-    assert_eq!(ttlv, ttlv_from_json);
-
-    // Deserializer
-    let rec: KeyMaterial = from_ttlv(ttlv).unwrap();
-    assert_eq!(aes_key_material(key_bytes), rec);
-}
-
-#[test]
-fn test_aes_key_value() {
-    log_init(option_env!("RUST_LOG"));
-    let key_bytes: &[u8] = b"this_is_a_test";
-    //
-    let json = serde_json::to_value(aes_key_value(key_bytes)).unwrap();
-    let kv: KeyValue = serde_json::from_value(json).unwrap();
-    assert_eq!(aes_key_value(key_bytes), kv);
-
-    let ttlv = aes_key_value_ttlv(key_bytes);
-    let rec: KeyValue = from_ttlv(ttlv).unwrap();
-    assert_eq!(aes_key_value(key_bytes), rec);
-}
-
-#[test]
 fn test_aes_key_block() {
     log_init(option_env!("RUST_LOG"));
     let key_bytes: &[u8] = b"this_is_a_test";
@@ -592,7 +479,7 @@ fn test_object_public_key() {
     log_init(option_env!("RUST_LOG"));
     let key = Object::PublicKey(PublicKey {
         key_block: KeyBlock {
-            key_format_type: KeyFormatType::TransparentSymmetricKey,
+            key_format_type: KeyFormatType::Raw,
             key_compression_type: None,
             key_value: Some(KeyValue {
                 key_material: KeyMaterial::ByteString(Zeroizing::from(b"1231456".to_vec())),
@@ -638,7 +525,7 @@ fn test_import_public_key() {
     let key_bytes: &[u8] = b"this_is_a_test";
     let key = Object::PublicKey(PublicKey {
         key_block: KeyBlock {
-            key_format_type: KeyFormatType::TransparentSymmetricKey,
+            key_format_type: KeyFormatType::Raw,
             key_compression_type: None,
             key_value: Some(KeyValue {
                 key_material: KeyMaterial::ByteString(Zeroizing::from(key_bytes.to_vec())),
@@ -781,22 +668,6 @@ fn test_java_import_response() {
     let json = serde_json::to_string(&to_ttlv(&ir).unwrap()).unwrap();
     let ir_ = from_ttlv(serde_json::from_str::<TTLV>(&json).unwrap()).unwrap();
     assert_eq!(ir, ir_);
-}
-
-#[test]
-fn test_byte_string_key_material() {
-    log_init(option_env!("RUST_LOG"));
-    let key_bytes: &[u8] = b"this_is_a_test";
-    let key_value = KeyValue {
-        key_material: KeyMaterial::ByteString(Zeroizing::from(key_bytes.to_vec())),
-        attributes: Some(Attributes {
-            object_type: Some(ObjectType::SymmetricKey),
-            ..Attributes::default()
-        }),
-    };
-    let ttlv = to_ttlv(&key_value).unwrap();
-    let key_value_: KeyValue = from_ttlv(ttlv).unwrap();
-    assert_eq!(key_value, key_value_);
 }
 
 #[test]
@@ -1695,4 +1566,136 @@ pub(crate) fn test_message_response() {
         UniqueIdentifier::TextString("id_12345".to_owned())
     );
     assert_eq!(res, res_);
+}
+
+#[test]
+fn test_object_raw() {
+    log_init(option_env!("RUST_LOG"));
+    let object = Object::SymmetricKey(SymmetricKey {
+        key_block: KeyBlock {
+            key_format_type: KeyFormatType::Raw,
+            key_compression_type: None,
+            key_value: Some(KeyValue {
+                key_material: KeyMaterial::ByteString(Zeroizing::new(vec![0x01, 0x02, 0x03])),
+                attributes: None,
+            }),
+            cryptographic_algorithm: None,
+            cryptographic_length: None,
+            key_wrapping_data: None,
+        },
+    });
+
+    let ttlv = to_ttlv(&object).expect("Failed to convert Object to TTLV");
+    info!("TTLV: {:#?}", ttlv);
+
+    // Deserialize the TTLV back to Object
+    let deserialized_object: Object = from_ttlv(ttlv).expect("Failed to deserialize TTLV");
+
+    info!("Deserialized Object: {:#?}", deserialized_object);
+    assert_eq!(
+        object, deserialized_object,
+        "Deserialized Object does not match the original"
+    );
+
+    // JSON Serde
+    let json = serde_json::to_string_pretty(&object).expect("Failed to serialize to JSON");
+    info!("JSON: {}", json);
+    let deserialized_object_json: Object =
+        serde_json::from_str(&json).expect("Failed to deserialize from JSON");
+    assert_eq!(
+        object, deserialized_object_json,
+        "Deserialized Object from JSON does not match the original"
+    );
+}
+
+#[test]
+fn test_object_structured_sym() {
+    log_init(option_env!("RUST_LOG"));
+    let object = Object::SymmetricKey(SymmetricKey {
+        key_block: KeyBlock {
+            key_format_type: KeyFormatType::TransparentSymmetricKey,
+            key_compression_type: None,
+            key_value: Some(KeyValue {
+                key_material: KeyMaterial::TransparentSymmetricKey {
+                    key: Zeroizing::new(vec![0x01, 0x02, 0x03]),
+                },
+                attributes: None,
+            }),
+            cryptographic_algorithm: None,
+            cryptographic_length: None,
+            key_wrapping_data: None,
+        },
+    });
+
+    let ttlv = to_ttlv(&object).expect("Failed to convert Object to TTLV");
+    info!("TTLV: {:#?}", ttlv);
+
+    // Deserialize the TTLV back to Object
+    let deserialized_object: Object = from_ttlv(ttlv).expect("Failed to deserialize TTLV");
+
+    info!("Deserialized Object: {:#?}", deserialized_object);
+    assert_eq!(
+        object, deserialized_object,
+        "Deserialized Object does not match the original"
+    );
+
+    // JSON Serde
+    let json = serde_json::to_string_pretty(&object).expect("Failed to serialize to JSON");
+    info!("JSON: {}", json);
+    let deserialized_object_json: Object =
+        serde_json::from_str(&json).expect("Failed to deserialize from JSON");
+    assert_eq!(
+        object, deserialized_object_json,
+        "Deserialized Object from JSON does not match the original"
+    );
+}
+
+#[test]
+fn test_object_structured_rsa() {
+    log_init(option_env!("RUST_LOG"));
+    // log_init(Some("trace"));
+    let object = Object::PrivateKey(PrivateKey {
+        key_block: KeyBlock {
+            key_format_type: KeyFormatType::TransparentRSAPrivateKey,
+            key_compression_type: None,
+            key_value: Some(KeyValue {
+                key_material: KeyMaterial::TransparentRSAPrivateKey {
+                    modulus: Box::new(BigInt::from(1)),
+                    private_exponent: Some(Box::new(SafeBigInt::from(BigInt::from(1)))),
+                    public_exponent: Some(Box::new(BigInt::from(u128::MAX))),
+                    p: Some(Box::new(SafeBigInt::from(BigInt::from(2)))),
+                    q: Some(Box::new(SafeBigInt::from(BigInt::from(3)))),
+                    prime_exponent_p: Some(Box::new(SafeBigInt::from(BigInt::from(4)))),
+                    prime_exponent_q: Some(Box::new(SafeBigInt::from(BigInt::from(5)))),
+                    crt_coefficient: Some(Box::new(SafeBigInt::from(BigInt::from(6)))),
+                },
+                attributes: None,
+            }),
+            cryptographic_algorithm: None,
+            cryptographic_length: None,
+            key_wrapping_data: None,
+        },
+    });
+
+    let ttlv = to_ttlv(&object).expect("Failed to convert Object to TTLV");
+    info!("TTLV: {:#?}", ttlv);
+
+    // Deserialize the TTLV back to Object
+    let deserialized_object: Object = from_ttlv(ttlv).expect("Failed to deserialize TTLV");
+
+    info!("Deserialized Object: {:#?}", deserialized_object);
+    assert_eq!(
+        object, deserialized_object,
+        "Deserialized Object does not match the original"
+    );
+
+    // JSON Serde
+    let json = serde_json::to_string_pretty(&object).expect("Failed to serialize to JSON");
+    info!("JSON: {}", json);
+    let deserialized_object_json: Object =
+        serde_json::from_str(&json).expect("Failed to deserialize from JSON");
+    assert_eq!(
+        object, deserialized_object_json,
+        "Deserialized Object from JSON does not match the original"
+    );
 }

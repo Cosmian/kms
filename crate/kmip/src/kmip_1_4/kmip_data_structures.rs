@@ -296,7 +296,6 @@ impl<'de> DeserializeSeed<'de> for KeyValueDeserializer {
                 formatter.write_str("struct KeyValue")
             }
 
-            #[allow(clippy::expect_used)]
             fn visit_map<V>(self, mut map: V) -> Result<Self::Value, V::Error>
             where
                 V: MapAccess<'de>,
@@ -347,30 +346,6 @@ impl From<KeyValue> for kmip_2_1::kmip_data_structures::KeyValue {
         Self {
             key_material: val.key_material.into(),
             attributes: val.attributes.map(Into::into),
-        }
-    }
-}
-
-struct KeyMaterialSerializer {
-    key_format_type: KeyFormatType,
-    key_material: KeyMaterial,
-}
-
-impl Serialize for KeyMaterialSerializer {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        match self.key_format_type {
-            KeyFormatType::Raw => {
-                let KeyMaterial::ByteString(ref bytes) = self.key_material else {
-                    return Err(serde::ser::Error::custom(
-                        "KeyMaterialWrapper: Raw key format type must be a byte string",
-                    ))
-                };
-                serializer.serialize_bytes(bytes)
-            }
-            _ => self.key_material.serialize(serializer),
         }
     }
 }
@@ -460,6 +435,30 @@ pub enum KeyMaterial {
         recommended_curve: RecommendedCurve,
         q_string: Vec<u8>,
     },
+}
+
+struct KeyMaterialSerializer {
+    key_format_type: KeyFormatType,
+    key_material: KeyMaterial,
+}
+
+impl Serialize for KeyMaterialSerializer {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self.key_format_type {
+            KeyFormatType::Raw => {
+                let KeyMaterial::ByteString(ref bytes) = self.key_material else {
+                    return Err(serde::ser::Error::custom(
+                        "KeyMaterialWrapper: Raw key format type must be a byte string",
+                    ))
+                };
+                serializer.serialize_bytes(bytes)
+            }
+            _ => self.key_material.serialize(serializer),
+        }
+    }
 }
 
 impl Serialize for KeyMaterial {
@@ -632,7 +631,8 @@ impl Serialize for KeyMaterial {
                 st.end()
             }
             Self::ByteString(_zeroizing) => Err(serde::ser::Error::custom(
-                "KeyMaterial: Raw key format should have been formatted in KeyMaterialWrapper",
+                "KeyMaterial: only keys with Key Format Raw should have a key material as a byte \
+                 string",
             )),
         }
     }
@@ -972,10 +972,10 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
                                 }
                             }
                         }
-                        _ => {
-                            return Err(de::Error::custom(
-                                "unable to differentiate key material variant",
-                            ))
+                        f => {
+                            return Err(de::Error::custom(format!(
+                                "unsupported key format type: {f:?}, for the key material"
+                            )))
                         }
                     })
                 }

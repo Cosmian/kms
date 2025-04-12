@@ -1,4 +1,4 @@
-#[allow(clippy::expect_used)]
+#![allow(clippy::expect_used)]
 mod kmip_1_4_tests;
 mod kmip_2_1_tests;
 mod serialize_deserialize;
