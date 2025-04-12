@@ -224,9 +224,26 @@ impl From<KeyBlock> for kmip_2_1::kmip_data_structures::KeyBlock {
     }
 }
 
-// fn attributes_is_default_or_none<T: Default + PartialEq + Serialize>(val: &Option<T>) -> bool {
-//     val.as_ref().map_or(true, |v| *v == T::default())
-// }
+impl TryFrom<kmip_2_1::kmip_data_structures::KeyBlock> for KeyBlock {
+    type Error = KmipError;
+
+    fn try_from(val: kmip_2_1::kmip_data_structures::KeyBlock) -> Result<Self, Self::Error> {
+        Ok(Self {
+            key_format_type: val.key_format_type.try_into()?,
+            key_compression_type: val
+                .key_compression_type
+                .map(TryInto::try_into)
+                .transpose()?,
+            key_value: val.key_value.map(TryInto::try_into).transpose()?,
+            cryptographic_algorithm: val
+                .cryptographic_algorithm
+                .map(TryInto::try_into)
+                .transpose()?,
+            cryptographic_length: val.cryptographic_length,
+            key_wrapping_data: val.key_wrapping_data.map(TryInto::try_into).transpose()?,
+        })
+    }
+}
 
 /// 2.1.4 Key Value Object Structure
 /// The Key Value object is a structure used to represent the key material and associated
@@ -234,7 +251,7 @@ impl From<KeyBlock> for kmip_2_1::kmip_data_structures::KeyBlock {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KeyValue {
     pub key_material: KeyMaterial,
-    pub attributes: Option<Vec<Attribute>>,
+    pub attribute: Option<Vec<Attribute>>,
 }
 
 /// Structure used to serialize `KeyValue`
@@ -258,9 +275,9 @@ impl Serialize for KeyValueSerializer {
                 key_material: self.key_value.key_material.clone(),
             },
         )?;
-        if let Some(attributes) = &self.key_value.attributes {
+        if let Some(attributes) = &self.key_value.attribute {
             if !attributes.is_empty() {
-                st.serialize_field("Attributes", &self.key_value.attributes)?;
+                st.serialize_field("Attributes", &self.key_value.attribute)?;
             }
         }
         st.end()
@@ -282,7 +299,7 @@ impl<'de> DeserializeSeed<'de> for KeyValueDeserializer {
         #[serde(field_identifier)]
         enum Field {
             KeyMaterial,
-            Attributes,
+            Attribute,
         }
 
         struct KeyValueVisitor {
@@ -313,7 +330,7 @@ impl<'de> DeserializeSeed<'de> for KeyValueDeserializer {
                                 key_format_type: self.key_format_type,
                             })?);
                         }
-                        Field::Attributes => {
+                        Field::Attribute => {
                             if attributes.is_some() {
                                 return Err(de::Error::duplicate_field("Attributes"))
                             }
@@ -326,14 +343,14 @@ impl<'de> DeserializeSeed<'de> for KeyValueDeserializer {
                     key_material.ok_or_else(|| de::Error::missing_field("KeyMaterial"))?;
                 Ok(KeyValue {
                     key_material,
-                    attributes,
+                    attribute: attributes,
                 })
             }
         }
 
         deserializer.deserialize_struct(
             "KeyValue",
-            &["key_material", "attributes"],
+            &["key_material", "attribute"],
             KeyValueVisitor {
                 key_format_type: self.key_format_type,
             },
@@ -345,8 +362,29 @@ impl From<KeyValue> for kmip_2_1::kmip_data_structures::KeyValue {
     fn from(val: KeyValue) -> Self {
         Self {
             key_material: val.key_material.into(),
-            attributes: val.attributes.map(Into::into),
+            attributes: val.attribute.map(Into::into),
         }
+    }
+}
+
+impl TryFrom<kmip_2_1::kmip_data_structures::KeyValue> for KeyValue {
+    type Error = KmipError;
+
+    fn try_from(val: kmip_2_1::kmip_data_structures::KeyValue) -> Result<Self, Self::Error> {
+        let attributes_1_4 = val
+            .attributes
+            .map(|attr| {
+                let attrs: Vec<kmip_2_1::kmip_attributes::Attribute> = attr.into();
+                attrs
+                    .into_iter()
+                    .map(TryInto::try_into)
+                    .collect::<Result<Vec<Attribute>, KmipError>>()
+            })
+            .transpose()?;
+        Ok(Self {
+            key_material: val.key_material.try_into()?,
+            attribute: attributes_1_4,
+        })
     }
 }
 
@@ -1109,6 +1147,84 @@ impl From<KeyMaterial> for kmip_2_1::kmip_data_structures::KeyMaterial {
     }
 }
 
+impl TryFrom<kmip_2_1::kmip_data_structures::KeyMaterial> for KeyMaterial {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_data_structures::KeyMaterial) -> Result<Self, Self::Error> {
+        match value {
+            kmip_2_1::kmip_data_structures::KeyMaterial::TransparentSymmetricKey { key } => {
+                Ok(Self::TransparentSymmetricKey { key })
+            }
+            kmip_2_1::kmip_data_structures::KeyMaterial::TransparentDHPrivateKey {
+                p,
+                q,
+                g,
+                j,
+                x,
+            } => Ok(Self::TransparentDHPrivateKey { p, q, g, j, x }),
+            kmip_2_1::kmip_data_structures::KeyMaterial::TransparentDHPublicKey {
+                p,
+                q,
+                g,
+                j,
+                y,
+            } => Ok(Self::TransparentDHPublicKey { p, q, g, j, y }),
+            kmip_2_1::kmip_data_structures::KeyMaterial::TransparentDSAPrivateKey {
+                p,
+                q,
+                g,
+                x,
+            } => Ok(Self::TransparentDSAPrivateKey { p, q, g, x }),
+            kmip_2_1::kmip_data_structures::KeyMaterial::TransparentDSAPublicKey { p, q, g, y } => {
+                Ok(Self::TransparentDSAPublicKey { p, q, g, y })
+            }
+            kmip_2_1::kmip_data_structures::KeyMaterial::TransparentRSAPrivateKey {
+                modulus,
+                private_exponent,
+                public_exponent,
+                p,
+                q,
+                prime_exponent_p,
+                prime_exponent_q,
+                crt_coefficient,
+            } => Ok(Self::TransparentRSAPrivateKey {
+                modulus,
+                private_exponent,
+                public_exponent,
+                p,
+                q,
+                prime_exponent_p,
+                prime_exponent_q,
+                crt_coefficient,
+            }),
+            kmip_2_1::kmip_data_structures::KeyMaterial::TransparentRSAPublicKey {
+                modulus,
+                public_exponent,
+            } => Ok(Self::TransparentRSAPublicKey {
+                modulus,
+                public_exponent,
+            }),
+            kmip_2_1::kmip_data_structures::KeyMaterial::ByteString(zeroizing) => {
+                Ok(Self::ByteString(zeroizing))
+            }
+            kmip_2_1::kmip_data_structures::KeyMaterial::TransparentECPrivateKey {
+                recommended_curve,
+                d,
+            } => Ok(Self::TransparentECPrivateKey {
+                recommended_curve: recommended_curve.try_into()?,
+                d,
+            }),
+            kmip_2_1::kmip_data_structures::KeyMaterial::TransparentECPublicKey {
+                recommended_curve,
+                q_string,
+            } => Ok(Self::TransparentECPublicKey {
+                recommended_curve: recommended_curve.try_into()?,
+                q_string,
+            }),
+        }
+    }
+}
+
 /// 2.1.5 Key Wrapping Data Object Structure
 /// The Key Wrapping Data object is a structure that contains information about the
 /// wrapping of a key value. It includes the wrapping method, encryption key information,
@@ -1143,6 +1259,27 @@ impl From<KeyWrappingData> for kmip_2_1::kmip_data_structures::KeyWrappingData {
     }
 }
 
+impl TryFrom<kmip_2_1::kmip_data_structures::KeyWrappingData> for KeyWrappingData {
+    type Error = KmipError;
+
+    fn try_from(val: kmip_2_1::kmip_data_structures::KeyWrappingData) -> Result<Self, Self::Error> {
+        Ok(Self {
+            wrapping_method: val.wrapping_method.try_into()?,
+            encryption_key_information: val
+                .encryption_key_information
+                .map(TryInto::try_into)
+                .transpose()?,
+            mac_signature_key_information: val
+                .mac_signature_key_information
+                .map(TryInto::try_into)
+                .transpose()?,
+            mac_signature: val.mac_signature,
+            iv_counter_nonce: val.iv_counter_nonce,
+            encoding_option: val.encoding_option.map(TryInto::try_into).transpose()?,
+        })
+    }
+}
+
 /// Encryption Key Information Structure
 /// The Encryption Key Information is a structure containing a unique identifier and
 /// optional parameters used to encrypt the key.
@@ -1162,6 +1299,20 @@ impl From<EncryptionKeyInformation> for kmip_2_1::kmip_types::EncryptionKeyInfor
             ),
             cryptographic_parameters: val.cryptographic_parameters.map(Into::into),
         }
+    }
+}
+
+impl TryFrom<kmip_2_1::kmip_types::EncryptionKeyInformation> for EncryptionKeyInformation {
+    type Error = KmipError;
+
+    fn try_from(val: kmip_2_1::kmip_types::EncryptionKeyInformation) -> Result<Self, Self::Error> {
+        Ok(Self {
+            unique_identifier: val.unique_identifier.to_string(),
+            cryptographic_parameters: val
+                .cryptographic_parameters
+                .map(TryInto::try_into)
+                .transpose()?,
+        })
     }
 }
 
@@ -1187,6 +1338,22 @@ impl From<MacSignatureKeyInformation> for kmip_2_1::kmip_types::MacSignatureKeyI
     }
 }
 
+impl TryFrom<kmip_2_1::kmip_types::MacSignatureKeyInformation> for MacSignatureKeyInformation {
+    type Error = KmipError;
+
+    fn try_from(
+        val: kmip_2_1::kmip_types::MacSignatureKeyInformation,
+    ) -> Result<Self, Self::Error> {
+        Ok(Self {
+            unique_identifier: val.unique_identifier.to_string(),
+            cryptographic_parameters: val
+                .cryptographic_parameters
+                .map(TryInto::try_into)
+                .transpose()?,
+        })
+    }
+}
+
 /// 2.1.6 Key Wrapping Specification Object Structure
 /// The Key Wrapping Specification is a structure that provides information on how a key
 /// should be wrapped. It includes the wrapping method, encryption key information,
@@ -1204,6 +1371,18 @@ pub struct KeyWrappingSpecification {
     pub attribute_names: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub encoding_option: Option<EncodingOption>,
+}
+
+impl From<KeyWrappingSpecification> for kmip_2_1::kmip_data_structures::KeyWrappingSpecification {
+    fn from(val: KeyWrappingSpecification) -> Self {
+        Self {
+            wrapping_method: val.wrapping_method.into(),
+            encryption_key_information: val.encryption_key_information.map(Into::into),
+            encoding_option: val.encoding_option.map(Into::into),
+            mac_or_signature_key_information: val.mac_signature_key_information.map(Into::into),
+            attribute_name: val.attribute_names,
+        }
+    }
 }
 
 /// Cryptographic Parameters Structure

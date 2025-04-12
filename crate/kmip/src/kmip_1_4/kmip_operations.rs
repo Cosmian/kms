@@ -5,7 +5,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
-use tracing::debug;
+use tracing::{debug, trace};
 
 use super::kmip_objects::Certificate;
 #[allow(clippy::wildcard_imports)]
@@ -77,10 +77,13 @@ impl TryFrom<kmip_2_1::kmip_operations::CreateResponse> for CreateResponse {
 #[serde(rename_all = "PascalCase")]
 pub struct CreateKeyPair {
     /// Common template attributes that apply to both public and private key
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub common_template_attribute: Option<TemplateAttribute>,
     /// Template attributes that apply only to private key
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub private_key_template_attribute: Option<TemplateAttribute>,
     /// Template attributes that apply only to public key
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub public_key_template_attribute: Option<TemplateAttribute>,
 }
 
@@ -93,8 +96,10 @@ pub struct CreateKeyPairResponse {
     /// Unique ID of the public key  
     pub public_key_unique_identifier: String,
     /// Private key template attributes
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub private_key_template_attribute: Option<TemplateAttribute>,
     /// Public key template attributes
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub public_key_template_attribute: Option<TemplateAttribute>,
 }
 
@@ -107,6 +112,7 @@ pub struct Register {
     /// The object being registered
     pub object: Object,
     /// Template attributes for the object
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub template_attribute: Option<TemplateAttribute>,
 }
 
@@ -117,6 +123,7 @@ pub struct RegisterResponse {
     /// The unique identifier of the registered object
     pub unique_identifier: String,
     /// Template attributes applied to the object
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub template_attribute: Option<TemplateAttribute>,
 }
 
@@ -128,8 +135,10 @@ pub struct ReKey {
     /// Unique identifier of the symmetric key to be rekeyed
     pub unique_identifier: String,
     /// Offset from the initialization date of the new key
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub offset: Option<i32>,
     /// Template attributes for the new key
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub template_attribute: Option<TemplateAttribute>,
 }
 
@@ -140,6 +149,7 @@ pub struct ReKeyResponse {
     /// Unique identifier of the newly created key
     pub unique_identifier: String,
     /// Template attributes applied to the new key
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub template_attribute: Option<TemplateAttribute>,
 }
 
@@ -151,12 +161,16 @@ pub struct ReKeyKeyPair {
     /// Unique identifier of private key to be rekeyed
     pub private_key_unique_identifier: String,
     /// Offset from the initialization date of the new key pair
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub offset: Option<i32>,
     /// Common template attributes for both public and private key
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub common_template_attribute: Option<TemplateAttribute>,
     /// Template attributes for private key
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub private_key_template_attribute: Option<TemplateAttribute>,
     /// Template attributes for public key
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub public_key_template_attribute: Option<TemplateAttribute>,
 }
 
@@ -169,8 +183,10 @@ pub struct ReKeyKeyPairResponse {
     /// Unique identifier of new public key
     pub public_key_unique_identifier: String,
     /// Private key template attributes
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub private_key_template_attribute: Option<TemplateAttribute>,
     /// Public key template attributes
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub public_key_template_attribute: Option<TemplateAttribute>,
 }
 
@@ -185,8 +201,10 @@ pub struct DeriveKey {
     /// Information for the derivation process
     pub derivation_method: DerivationMethod,
     /// Parameters for derivation
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub derivation_parameters: Option<DerivationParameters>,
     /// Template attributes for the new key/secret
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub template_attribute: Option<TemplateAttribute>,
 }
 
@@ -197,6 +215,7 @@ pub struct DeriveKeyResponse {
     /// Unique identifier of derived object
     pub unique_identifier: String,
     /// Template attributes applied
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub template_attribute: Option<TemplateAttribute>,
 }
 
@@ -208,6 +227,7 @@ pub struct Certify {
     pub unique_identifier: String,
     pub certificate_request_type: CertificateRequestType,
     pub certificate_request_value: Vec<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub template_attribute: Option<TemplateAttribute>,
 }
 
@@ -216,6 +236,7 @@ pub struct Certify {
 #[serde(rename_all = "PascalCase")]
 pub struct CertifyResponse {
     pub unique_identifier: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub template_attribute: Option<TemplateAttribute>,
 }
 
@@ -227,6 +248,7 @@ pub struct ReCertify {
     pub unique_identifier: String,
     pub certificate_request_type: CertificateRequestType,
     pub certificate_request_value: Vec<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub template_attribute: Option<TemplateAttribute>,
 }
 
@@ -235,6 +257,7 @@ pub struct ReCertify {
 #[serde(rename_all = "PascalCase")]
 pub struct ReCertifyResponse {
     pub unique_identifier: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub template_attribute: Option<TemplateAttribute>,
 }
 
@@ -276,8 +299,11 @@ pub struct LocateResponse {
 #[serde(rename_all = "PascalCase")]
 pub struct Check {
     pub unique_identifier: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub usage_limits_count: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_usage_mask: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub lease_time: Option<bool>,
 }
 
@@ -286,8 +312,11 @@ pub struct Check {
 #[serde(rename_all = "PascalCase")]
 pub struct CheckResponse {
     pub unique_identifier: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub usage_limits_count: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_usage_mask: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub lease_time: Option<i32>,
 }
 
@@ -298,9 +327,26 @@ pub struct CheckResponse {
 #[serde(rename_all = "PascalCase")]
 pub struct Get {
     pub unique_identifier: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub key_format_type: Option<KeyFormatType>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub key_compression_type: Option<KeyCompressionType>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub key_wrapping_specification: Option<KeyWrappingSpecification>,
+}
+
+impl From<Get> for kmip_2_1::kmip_operations::Get {
+    fn from(get: Get) -> Self {
+        Self {
+            unique_identifier: Some(kmip_2_1::kmip_types::UniqueIdentifier::TextString(
+                get.unique_identifier,
+            )),
+            key_format_type: get.key_format_type.map(Into::into),
+            key_compression_type: get.key_compression_type.map(Into::into),
+            key_wrapping_specification: get.key_wrapping_specification.map(Into::into),
+            key_wrap_type: None,
+        }
+    }
 }
 
 /// Response to a Get request
@@ -310,6 +356,22 @@ pub struct GetResponse {
     pub object_type: ObjectType,
     pub unique_identifier: String,
     pub object: Object,
+}
+
+impl TryFrom<kmip_2_1::kmip_operations::GetResponse> for GetResponse {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_operations::GetResponse) -> Result<Self, Self::Error> {
+        trace!("Converting KMIP 2.1 GetResponse to KMIP 1.4: {value:#?}");
+
+        let object = Object::try_from(value.object)?;
+
+        Ok(Self {
+            object_type: value.object_type.try_into()?,
+            unique_identifier: value.unique_identifier.to_string(),
+            object,
+        })
+    }
 }
 
 /// 4.12 Get Attributes
@@ -461,6 +523,7 @@ pub struct ModifyAttributeResponse {
 pub struct DeleteAttribute {
     pub unique_identifier: String,
     pub attribute_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub attribute_index: Option<i32>,
 }
 
@@ -524,6 +587,7 @@ pub struct ActivateResponse {
 pub struct Revoke {
     pub unique_identifier: String,
     pub revocation_reason: RevocationReason,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub compromise_occurrence_date: Option<OffsetDateTime>,
 }
 
@@ -753,7 +817,9 @@ pub struct Poll {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct PollResponse {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub unique_identifier: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub operation: Box<Option<Operation>>,
 }
 
@@ -762,9 +828,12 @@ pub struct PollResponse {
 #[serde(rename_all = "PascalCase")]
 pub struct Encrypt {
     pub unique_identifier: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_parameters: Option<CryptographicParameters>,
     pub data: Vec<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub iv_counter_nonce: Option<Vec<u8>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub authenticated_encryption_additional_data: Option<Vec<u8>>,
 }
 
@@ -774,7 +843,9 @@ pub struct Encrypt {
 pub struct EncryptResponse {
     pub unique_identifier: String,
     pub data: Vec<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub iv_counter_nonce: Option<Vec<u8>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub authenticated_encryption_tag: Option<Vec<u8>>,
 }
 
@@ -783,10 +854,14 @@ pub struct EncryptResponse {
 #[serde(rename_all = "PascalCase")]
 pub struct Decrypt {
     pub unique_identifier: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_parameters: Option<CryptographicParameters>,
     pub data: Vec<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub iv_counter_nonce: Option<Vec<u8>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub authenticated_encryption_additional_data: Option<Vec<u8>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub authenticated_encryption_tag: Option<Vec<u8>>,
 }
 
@@ -803,6 +878,7 @@ pub struct DecryptResponse {
 #[serde(rename_all = "PascalCase")]
 pub struct Sign {
     pub unique_identifier: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_parameters: Option<CryptographicParameters>,
     pub data: Vec<u8>,
 }
@@ -820,6 +896,7 @@ pub struct SignResponse {
 #[serde(rename_all = "PascalCase")]
 pub struct SignatureVerify {
     pub unique_identifier: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_parameters: Option<CryptographicParameters>,
     pub data: Vec<u8>,
     pub signature_data: Vec<u8>,
@@ -838,6 +915,7 @@ pub struct SignatureVerifyResponse {
 #[serde(rename_all = "PascalCase")]
 pub struct MAC {
     pub unique_identifier: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_parameters: Option<CryptographicParameters>,
     pub data: Vec<u8>,
 }
@@ -855,6 +933,7 @@ pub struct MACResponse {
 #[serde(rename_all = "PascalCase")]
 pub struct MACVerify {
     pub unique_identifier: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_parameters: Option<CryptographicParameters>,
     pub data: Vec<u8>,
     pub mac_data: Vec<u8>,
@@ -900,6 +979,7 @@ pub struct RNGSeedResponse {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Hash {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_parameters: Option<CryptographicParameters>,
     pub data: Vec<u8>,
 }
@@ -918,7 +998,9 @@ pub struct CreateSplitKey {
     pub split_key_parts: i32,
     pub split_key_threshold: i32,
     pub split_key_method: SplitKeyMethod,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub parameter: Option<Vec<u8>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub template_attribute: Option<TemplateAttribute>,
 }
 
@@ -936,6 +1018,7 @@ pub struct CreateSplitKeyResponse {
 pub struct JoinSplitKey {
     pub split_key_parts: Vec<Vec<u8>>,
     pub split_key_method: SplitKeyMethod,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub parameter: Option<Vec<u8>>,
 }
 
@@ -952,9 +1035,13 @@ pub struct JoinSplitKeyResponse {
 pub struct Export {
     pub object_type: ObjectType,
     pub unique_identifier: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub key_wrap_type: Option<KeyWrapType>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub key_format_type: Option<KeyFormatType>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub key_compression_type: Option<KeyCompressionType>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub key_wrapping_specification: Option<KeyWrappingSpecification>,
 }
 
@@ -964,8 +1051,11 @@ pub struct Export {
 pub struct ExportResponse {
     pub object_type: ObjectType,
     pub unique_identifier: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub key_format_type: Option<KeyFormatType>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub key_compression_type: Option<KeyCompressionType>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub key_wrapping_data: Option<KeyWrappingData>,
     pub key_material: Vec<u8>,
 }
@@ -976,12 +1066,15 @@ pub struct ExportResponse {
 pub struct Import {
     pub object_type: ObjectType,
     pub unique_identifier: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub replace_existing: Option<bool>,
     /// If Not Wrapped, then the server SHALL unwrap the object before storing it,
     /// and return an error if the wrapping key is not available.  
     /// Otherwise, the server SHALL store the object as provided.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub key_wrap_type: Option<KeyWrapType>,
     /// All the object’s Attributes.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub attributes: Option<Vec<Attribute>>,
     /// The object being imported. The object and attributes MAY be wrapped.
     pub object: Object,
@@ -1446,7 +1539,7 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             // Operation::CheckResponse(check_response) => {
             //     Self::CheckResponse(check_response.into())
             // }
-            // Operation::Get(get) => Self::Get(get.into()),
+            Operation::Get(get) => Self::Get(get.into()),
             // Operation::GetResponse(get_response) => {
             //     Self::GetResponse(get_response.into())
             // }
@@ -1689,9 +1782,9 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             //     Self::CheckResponse(check_response.into())
             // }
             // Operation::Get(get) => Self::Get(get.into()),
-            // Operation::GetResponse(get_response) => {
-            //     Self::GetResponse(get_response.into())
-            // }
+            kmip_2_1::kmip_operations::Operation::GetResponse(get_response) => {
+                Self::GetResponse(get_response.try_into()?)
+            }
             // Operation::GetAttributes(get_attributes) => {
             //     Self::GetAttributes(get_attributes.into())
             // }

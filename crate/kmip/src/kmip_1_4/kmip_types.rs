@@ -42,6 +42,30 @@ impl From<KeyCompressionType> for kmip_2_1::kmip_types::KeyCompressionType {
     }
 }
 
+impl TryFrom<kmip_2_1::kmip_types::KeyCompressionType> for KeyCompressionType {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_types::KeyCompressionType) -> Result<Self, Self::Error> {
+        match value {
+            kmip_2_1::kmip_types::KeyCompressionType::ECPublicKeyTypeUncompressed => {
+                Ok(Self::ECPublicKeyTypeUncompressed)
+            }
+            kmip_2_1::kmip_types::KeyCompressionType::ECPublicKeyTypeX962CompressedPrime => {
+                Ok(Self::ECPublicKeyTypeX962CompressedPrime)
+            }
+            kmip_2_1::kmip_types::KeyCompressionType::ECPublicKeyTypeX962CompressedChar2 => {
+                Ok(Self::ECPublicKeyTypeX962CompressedChar2)
+            }
+            kmip_2_1::kmip_types::KeyCompressionType::ECPublicKeyTypeX962Hybrid => {
+                Err(KmipError::InvalidKmip14Value(
+                    ResultReason::InvalidField,
+                    "ECPublicKeyTypeX962Hybrid is not supported in KMIP 1".to_owned(),
+                ))
+            }
+        }
+    }
+}
+
 /// KMIP 1.4 Key Format Type Enumeration
 #[kmip_enum]
 pub enum KeyFormatType {
@@ -67,6 +91,9 @@ pub enum KeyFormatType {
     TransparentECPrivateKey = 0x14,
     TransparentECPublicKey = 0x15,
     PKCS12 = 0x16,
+    // Extensions
+    CoverCryptSecretKey = 0x8880_000C,
+    CoverCryptPublicKey = 0x8880_000D,
 }
 
 impl From<KeyFormatType> for kmip_2_1::kmip_types::KeyFormatType {
@@ -94,6 +121,63 @@ impl From<KeyFormatType> for kmip_2_1::kmip_types::KeyFormatType {
             | KeyFormatType::TransparentECDSAPrivateKey
             | KeyFormatType::TransparentECPrivateKey => Self::TransparentECPrivateKey,
             KeyFormatType::PKCS12 => Self::PKCS12,
+            KeyFormatType::CoverCryptSecretKey => Self::CoverCryptSecretKey,
+            KeyFormatType::CoverCryptPublicKey => Self::CoverCryptPublicKey,
+        }
+    }
+}
+
+impl TryFrom<kmip_2_1::kmip_types::KeyFormatType> for KeyFormatType {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_types::KeyFormatType) -> Result<Self, Self::Error> {
+        match value {
+            kmip_2_1::kmip_types::KeyFormatType::Raw => Ok(Self::Raw),
+            kmip_2_1::kmip_types::KeyFormatType::Opaque => Ok(Self::Opaque),
+            kmip_2_1::kmip_types::KeyFormatType::PKCS1 => Ok(Self::PKCS1),
+            kmip_2_1::kmip_types::KeyFormatType::PKCS8 => Ok(Self::PKCS8),
+            kmip_2_1::kmip_types::KeyFormatType::X509 => Ok(Self::X509),
+            kmip_2_1::kmip_types::KeyFormatType::ECPrivateKey => Ok(Self::ECPrivateKey),
+            kmip_2_1::kmip_types::KeyFormatType::TransparentSymmetricKey => {
+                Ok(Self::TransparentSymmetricKey)
+            }
+            kmip_2_1::kmip_types::KeyFormatType::TransparentDSAPrivateKey => {
+                Ok(Self::TransparentDSAPrivateKey)
+            }
+            kmip_2_1::kmip_types::KeyFormatType::TransparentDSAPublicKey => {
+                Ok(Self::TransparentDSAPublicKey)
+            }
+            kmip_2_1::kmip_types::KeyFormatType::TransparentRSAPrivateKey => {
+                Ok(Self::TransparentRSAPrivateKey)
+            }
+            kmip_2_1::kmip_types::KeyFormatType::TransparentRSAPublicKey => {
+                Ok(Self::TransparentRSAPublicKey)
+            }
+            kmip_2_1::kmip_types::KeyFormatType::TransparentDHPrivateKey => {
+                Ok(Self::TransparentDHPrivateKey)
+            }
+            kmip_2_1::kmip_types::KeyFormatType::TransparentDHPublicKey => {
+                Ok(Self::TransparentDHPublicKey)
+            }
+            kmip_2_1::kmip_types::KeyFormatType::CoverCryptSecretKey => {
+                Ok(Self::CoverCryptSecretKey)
+            }
+            kmip_2_1::kmip_types::KeyFormatType::CoverCryptPublicKey => {
+                Ok(Self::CoverCryptPublicKey)
+            }
+            kmip_2_1::kmip_types::KeyFormatType::PKCS12 => Ok(Self::PKCS12),
+            kmip_2_1::kmip_types::KeyFormatType::TransparentECPrivateKey
+            | kmip_2_1::kmip_types::KeyFormatType::TransparentECPublicKey
+            | kmip_2_1::kmip_types::KeyFormatType::PKCS10
+            | kmip_2_1::kmip_types::KeyFormatType::Pkcs12Legacy
+            | kmip_2_1::kmip_types::KeyFormatType::PKCS7
+            | kmip_2_1::kmip_types::KeyFormatType::EnclaveECKeyPair
+            | kmip_2_1::kmip_types::KeyFormatType::EnclaveECSharedKey => {
+                Err(KmipError::InvalidKmip14Value(
+                    ResultReason::InvalidField,
+                    format!("Key Format Type: {value:?}, is not supported in KMIP 1.4"),
+                ))
+            }
         }
     }
 }
@@ -120,6 +204,24 @@ impl From<WrappingMethod> for kmip_2_1::kmip_types::WrappingMethod {
     }
 }
 
+impl TryFrom<kmip_2_1::kmip_types::WrappingMethod> for WrappingMethod {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_types::WrappingMethod) -> Result<Self, Self::Error> {
+        match value {
+            kmip_2_1::kmip_types::WrappingMethod::Encrypt => Ok(Self::Encrypt),
+            kmip_2_1::kmip_types::WrappingMethod::MACSign => Ok(Self::MACSign),
+            kmip_2_1::kmip_types::WrappingMethod::EncryptThenMACSign => {
+                Ok(Self::EncryptThenMACSign)
+            }
+            kmip_2_1::kmip_types::WrappingMethod::MACSignThenEncrypt => {
+                Ok(Self::MACSignThenEncrypt)
+            }
+            kmip_2_1::kmip_types::WrappingMethod::TR31 => Ok(Self::TR31),
+        }
+    }
+}
+
 /// KMIP 1.4 Split Key Method Enumeration
 #[kmip_enum]
 pub enum SplitKeyMethod {
@@ -139,6 +241,25 @@ impl From<SplitKeyMethod> for kmip_2_1::kmip_types::SplitKeyMethod {
             SplitKeyMethod::PolynomialSharingGf216 => Self::PolynomialSharingGf216,
             SplitKeyMethod::PolynomialSharingPrimeField => Self::PolynomialSharingPrimeField,
             SplitKeyMethod::PolynomialSharingGf28 => Self::PolynomialSharingGf28,
+        }
+    }
+}
+
+impl TryFrom<kmip_2_1::kmip_types::SplitKeyMethod> for SplitKeyMethod {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_types::SplitKeyMethod) -> Result<Self, Self::Error> {
+        match value {
+            kmip_2_1::kmip_types::SplitKeyMethod::XOR => Ok(Self::XOR),
+            kmip_2_1::kmip_types::SplitKeyMethod::PolynomialSharingGf216 => {
+                Ok(Self::PolynomialSharingGf216)
+            }
+            kmip_2_1::kmip_types::SplitKeyMethod::PolynomialSharingPrimeField => {
+                Ok(Self::PolynomialSharingPrimeField)
+            }
+            kmip_2_1::kmip_types::SplitKeyMethod::PolynomialSharingGf28 => {
+                Ok(Self::PolynomialSharingGf28)
+            }
         }
     }
 }
@@ -796,6 +917,17 @@ impl From<EncodingOption> for kmip_2_1::kmip_types::EncodingOption {
     }
 }
 
+impl TryFrom<kmip_2_1::kmip_types::EncodingOption> for EncodingOption {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_types::EncodingOption) -> Result<Self, Self::Error> {
+        match value {
+            kmip_2_1::kmip_types::EncodingOption::NoEncoding => Ok(Self::NoEncoding),
+            kmip_2_1::kmip_types::EncodingOption::TTLVEncoding => Ok(Self::TTLVEncoding),
+        }
+    }
+}
+
 /// KMIP 1.4 Object Group Member Enumeration
 #[kmip_enum]
 pub enum ObjectGroupMember {
@@ -1234,6 +1366,16 @@ impl From<OpaqueDataType> for kmip_2_1::kmip_types::OpaqueDataType {
         match val {
             OpaqueDataType::Unknown => Self::Unknown,
         }
+    }
+}
+
+impl TryFrom<kmip_2_1::kmip_types::OpaqueDataType> for OpaqueDataType {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_types::OpaqueDataType) -> Result<Self, Self::Error> {
+        Ok(match value {
+            kmip_2_1::kmip_types::OpaqueDataType::Unknown => Self::Unknown,
+        })
     }
 }
 
