@@ -64,6 +64,9 @@ pub enum KeyFormatType {
     TransparentECDHPublicKey = 0x11,
     TransparentECMQVPrivateKey = 0x12,
     TransparentECMQVPublicKey = 0x13,
+    TransparentECPrivateKey = 0x14,
+    TransparentECPublicKey = 0x15,
+    PKCS12 = 0x16,
 }
 
 impl From<KeyFormatType> for kmip_2_1::kmip_types::KeyFormatType {
@@ -84,10 +87,13 @@ impl From<KeyFormatType> for kmip_2_1::kmip_types::KeyFormatType {
             KeyFormatType::TransparentDHPublicKey => Self::TransparentDHPublicKey,
             KeyFormatType::TransparentECDSAPublicKey
             | KeyFormatType::TransparentECMQVPublicKey
-            | KeyFormatType::TransparentECDHPublicKey => Self::TransparentECPublicKey,
+            | KeyFormatType::TransparentECDHPublicKey
+            | KeyFormatType::TransparentECPublicKey => Self::TransparentECPublicKey,
             KeyFormatType::TransparentECDHPrivateKey
             | KeyFormatType::TransparentECMQVPrivateKey
-            | KeyFormatType::TransparentECDSAPrivateKey => Self::TransparentECPrivateKey,
+            | KeyFormatType::TransparentECDSAPrivateKey
+            | KeyFormatType::TransparentECPrivateKey => Self::TransparentECPrivateKey,
+            KeyFormatType::PKCS12 => Self::PKCS12,
         }
     }
 }

@@ -202,7 +202,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
             }
             TTLValue::ByteString(b) => {
                 // if the TTLV value is a ByteString, the deserializer is attempting to deserialize the value
-                visitor.visit_bytes(b)
+                visitor.visit_seq(&mut ByteStringDeserializer::new(&self.current.tag, b))
             }
             TTLValue::DateTime(dt) => {
                 // if the TTLV value is a DateTime, the deserializer is attempting to deserialize the value
@@ -496,7 +496,9 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
             trace!("... text string: value: {}", s);
             visitor.visit_str(s)
         } else {
-            Err(TtlvError::from("Expected TextString value in TTLV"))
+            Err(TtlvError::from(
+                "deserialize_str: expected a TextString value in TTLV",
+            ))
         }
     }
 
@@ -509,13 +511,21 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         self.deserialize_str(visitor)
     }
 
-    #[instrument(skip(self, _visitor))]
-    fn deserialize_bytes<V>(self, _visitor: V) -> Result<V::Value>
+    #[instrument(skip(self, visitor))]
+    fn deserialize_bytes<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
+        // This is never called; all bytes deserialization goes via seq.
+        // One reason for this is that JSON deserialization always goes via seq
         trace!("deserialize_bytes: state:  {:?}", self.current);
-        unimplemented!("deserialize_bytes");
+        let element = self.fetch_element()?;
+        let TTLValue::ByteString(bytes) = &element.value else {
+            return Err(TtlvError::from(
+                "deserialize_bytes: expected a ByteString value in TTLV",
+            ));
+        };
+        visitor.visit_bytes(bytes)
     }
 
     #[instrument(skip(self, _visitor))]

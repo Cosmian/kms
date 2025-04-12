@@ -40,11 +40,12 @@ impl<'a, 'de: 'a> de::Deserializer<'de> for &mut ByteStringDeserializer<'a> {
         visitor.visit_u8(byte)
     }
 
+    #[instrument(skip(self, visitor))]
     fn deserialize_any<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by ByteString deserializer")
+        self.deserialize_u8(visitor)
     }
 
     fn deserialize_bool<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>

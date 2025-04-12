@@ -1,10 +1,10 @@
 use num_bigint_dig::BigInt;
 use serde::{
-    de,
-    de::{MapAccess, Visitor},
+    de::{self, DeserializeSeed, MapAccess, Visitor},
     ser::SerializeStruct,
     Deserialize, Serialize,
 };
+use tracing::{instrument, trace};
 use zeroize::Zeroizing;
 
 use super::kmip_attributes::Attribute;
@@ -57,20 +57,158 @@ pub enum CredentialValue {
 /// A Key Block object is a structure used to encapsulate all of the information that is
 /// closely associated with a cryptographic key. It contains information about the format
 /// of the key, the algorithm it supports, and its cryptographic length.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-#[serde(rename_all = "PascalCase")]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KeyBlock {
     pub key_format_type: KeyFormatType,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub key_compression_type: Option<KeyCompressionType>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub key_value: Option<KeyValue>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_algorithm: Option<CryptographicAlgorithm>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_length: Option<i32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub key_wrapping_data: Option<KeyWrappingData>,
+}
+
+impl Serialize for KeyBlock {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut st = serializer.serialize_struct("KeyBlock", 6)?;
+        st.serialize_field("KeyFormatType", &self.key_format_type)?;
+        if let Some(key_compression_type) = &self.key_compression_type {
+            st.serialize_field("KeyCompressionType", key_compression_type)?;
+        }
+        if let Some(key_value) = &self.key_value {
+            st.serialize_field(
+                "KeyValue",
+                &KeyValueSerializer {
+                    key_format_type: self.key_format_type,
+                    key_value: key_value.clone(),
+                },
+            )?;
+        }
+        if let Some(cryptographic_algorithm) = &self.cryptographic_algorithm {
+            st.serialize_field("CryptographicAlgorithm", cryptographic_algorithm)?;
+        }
+        if let Some(cryptographic_length) = &self.cryptographic_length {
+            st.serialize_field("CryptographicLength", cryptographic_length)?;
+        }
+        if let Some(key_wrapping_data) = &self.key_wrapping_data {
+            st.serialize_field("KeyWrappingData", key_wrapping_data)?;
+        }
+        st.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for KeyBlock {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize, Debug)]
+        #[serde(field_identifier)]
+        enum Field {
+            KeyFormatType,
+            KeyCompressionType,
+            KeyValue,
+            CryptographicAlgorithm,
+            CryptographicLength,
+            KeyWrappingData,
+        }
+
+        struct KeyBlockVisitor;
+
+        impl<'de> Visitor<'de> for KeyBlockVisitor {
+            type Value = KeyBlock;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("struct KeyBlock")
+            }
+
+            #[instrument(skip(self, map))]
+            fn visit_map<V>(self, mut map: V) -> Result<Self::Value, V::Error>
+            where
+                V: MapAccess<'de>,
+            {
+                let mut key_format_type: Option<KeyFormatType> = None;
+                let mut key_compression_type: Option<KeyCompressionType> = None;
+                let mut key_value: Option<KeyValue> = None;
+                let mut cryptographic_algorithm: Option<CryptographicAlgorithm> = None;
+                let mut cryptographic_length: Option<i32> = None;
+                let mut key_wrapping_data: Option<KeyWrappingData> = None;
+
+                while let Some(field) = map.next_key::<Field>()? {
+                    match field {
+                        Field::KeyFormatType => {
+                            if key_format_type.is_some() {
+                                return Err(de::Error::duplicate_field("KeyFormatType"))
+                            }
+                            key_format_type = Some(map.next_value()?);
+                        }
+                        Field::KeyCompressionType => {
+                            if key_compression_type.is_some() {
+                                return Err(de::Error::duplicate_field("KeyCompressionType"))
+                            }
+                            key_compression_type = Some(map.next_value()?);
+                        }
+                        Field::KeyValue => {
+                            if key_value.is_some() {
+                                return Err(de::Error::duplicate_field("KeyValue"))
+                            }
+                            key_value =
+                                Some(map.next_value_seed(KeyValueDeserializer {
+                                    key_format_type:
+                                        key_format_type.ok_or_else(|| {
+                                            de::Error::missing_field("KeyFormatType")
+                                        })?,
+                                })?);
+                        }
+                        Field::CryptographicAlgorithm => {
+                            if cryptographic_algorithm.is_some() {
+                                return Err(de::Error::duplicate_field("CryptographicAlgorithm"))
+                            }
+                            cryptographic_algorithm = Some(map.next_value()?);
+                        }
+                        Field::CryptographicLength => {
+                            if cryptographic_length.is_some() {
+                                return Err(de::Error::duplicate_field("CryptographicLength"))
+                            }
+                            cryptographic_length = Some(map.next_value()?);
+                        }
+                        Field::KeyWrappingData => {
+                            if key_wrapping_data.is_some() {
+                                return Err(de::Error::duplicate_field("KeyWrappingData"))
+                            }
+                            key_wrapping_data = Some(map.next_value()?);
+                        }
+                    }
+                }
+                let key_format_type =
+                    key_format_type.ok_or_else(|| de::Error::missing_field("KeyFormatType"))?;
+                Ok(KeyBlock {
+                    key_format_type,
+                    key_compression_type,
+                    key_value,
+                    cryptographic_algorithm,
+                    cryptographic_length,
+                    key_wrapping_data,
+                })
+            }
+        }
+
+        trace!("==> Deserializing KeyBlock");
+        deserializer.deserialize_struct(
+            "KeyBlock",
+            &[
+                "KeyFormatType",
+                "KeyCompressionType",
+                "KeyValue",
+                "CryptographicAlgorithm",
+                "CryptographicLength",
+                "KeyWrappingData",
+            ],
+            KeyBlockVisitor,
+        )
+    }
 }
 
 impl From<KeyBlock> for kmip_2_1::kmip_data_structures::KeyBlock {
@@ -86,19 +224,122 @@ impl From<KeyBlock> for kmip_2_1::kmip_data_structures::KeyBlock {
     }
 }
 
-fn attributes_is_default_or_none<T: Default + PartialEq + Serialize>(val: &Option<T>) -> bool {
-    val.as_ref().map_or(true, |v| *v == T::default())
-}
+// fn attributes_is_default_or_none<T: Default + PartialEq + Serialize>(val: &Option<T>) -> bool {
+//     val.as_ref().map_or(true, |v| *v == T::default())
+// }
 
 /// 2.1.4 Key Value Object Structure
 /// The Key Value object is a structure used to represent the key material and associated
 /// attributes within a Key Block structure.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-#[serde(rename_all = "PascalCase")]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KeyValue {
     pub key_material: KeyMaterial,
-    #[serde(skip_serializing_if = "attributes_is_default_or_none")]
     pub attributes: Option<Vec<Attribute>>,
+}
+
+/// Structure used to serialize `KeyValue`
+/// This structure maintains the `KeyFormatType` which is passed down
+/// to the serializer of the `KeyMaterial` called
+struct KeyValueSerializer {
+    key_format_type: KeyFormatType,
+    key_value: KeyValue,
+}
+
+impl Serialize for KeyValueSerializer {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut st = serializer.serialize_struct("KeyValue", 2)?;
+        st.serialize_field(
+            "KeyMaterial",
+            &KeyMaterialSerializer {
+                key_format_type: self.key_format_type,
+                key_material: self.key_value.key_material.clone(),
+            },
+        )?;
+        if let Some(attributes) = &self.key_value.attributes {
+            if !attributes.is_empty() {
+                st.serialize_field("Attributes", &self.key_value.attributes)?;
+            }
+        }
+        st.end()
+    }
+}
+
+struct KeyValueDeserializer {
+    key_format_type: KeyFormatType,
+}
+
+impl<'de> DeserializeSeed<'de> for KeyValueDeserializer {
+    type Value = KeyValue;
+
+    fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize, Debug)]
+        #[serde(field_identifier)]
+        enum Field {
+            KeyMaterial,
+            Attributes,
+        }
+
+        struct KeyValueVisitor {
+            key_format_type: KeyFormatType,
+        }
+
+        impl<'de> Visitor<'de> for KeyValueVisitor {
+            type Value = KeyValue;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("struct KeyValue")
+            }
+
+            #[allow(clippy::expect_used)]
+            fn visit_map<V>(self, mut map: V) -> Result<Self::Value, V::Error>
+            where
+                V: MapAccess<'de>,
+            {
+                let mut key_material: Option<KeyMaterial> = None;
+                let mut attributes: Option<Vec<Attribute>> = None;
+
+                while let Some(field) = map.next_key()? {
+                    match field {
+                        Field::KeyMaterial => {
+                            if key_material.is_some() {
+                                return Err(de::Error::duplicate_field("KeyMaterial"))
+                            }
+                            key_material = Some(map.next_value_seed(KeyMaterialDeserializer {
+                                key_format_type: self.key_format_type,
+                            })?);
+                        }
+                        Field::Attributes => {
+                            if attributes.is_some() {
+                                return Err(de::Error::duplicate_field("Attributes"))
+                            }
+                            attributes = Some(map.next_value()?);
+                        }
+                    }
+                }
+
+                let key_material =
+                    key_material.ok_or_else(|| de::Error::missing_field("KeyMaterial"))?;
+                Ok(KeyValue {
+                    key_material,
+                    attributes,
+                })
+            }
+        }
+
+        deserializer.deserialize_struct(
+            "KeyValue",
+            &["key_material", "attributes"],
+            KeyValueVisitor {
+                key_format_type: self.key_format_type,
+            },
+        )
+    }
 }
 
 impl From<KeyValue> for kmip_2_1::kmip_data_structures::KeyValue {
@@ -106,6 +347,30 @@ impl From<KeyValue> for kmip_2_1::kmip_data_structures::KeyValue {
         Self {
             key_material: val.key_material.into(),
             attributes: val.attributes.map(Into::into),
+        }
+    }
+}
+
+struct KeyMaterialSerializer {
+    key_format_type: KeyFormatType,
+    key_material: KeyMaterial,
+}
+
+impl Serialize for KeyMaterialSerializer {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self.key_format_type {
+            KeyFormatType::Raw => {
+                let KeyMaterial::ByteString(ref bytes) = self.key_material else {
+                    return Err(serde::ser::Error::custom(
+                        "KeyMaterialWrapper: Raw key format type must be a byte string",
+                    ))
+                };
+                serializer.serialize_bytes(bytes)
+            }
+            _ => self.key_material.serialize(serializer),
         }
     }
 }
@@ -197,30 +462,12 @@ pub enum KeyMaterial {
     },
 }
 
-#[allow(clippy::upper_case_acronyms)]
-#[derive(Serialize, Deserialize, Clone, Copy)]
-enum KeyTypeSer {
-    DH,
-    DSA,
-    RsaPublic,
-    RsaPrivate,
-    ECDSA,
-    ECDH,
-    ECMQV,
-    EC,
-}
-
 impl Serialize for KeyMaterial {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
         match self {
-            Self::ByteString(bytes) => {
-                let mut st = serializer.serialize_struct("KeyMaterial", 1)?;
-                st.serialize_field("ByteString", &**bytes)?;
-                st.end()
-            }
             Self::TransparentSymmetricKey { key } => {
                 let mut st = serializer.serialize_struct("KeyMaterial", 1)?;
                 st.serialize_field("Key", &**key)?;
@@ -228,7 +475,6 @@ impl Serialize for KeyMaterial {
             }
             Self::TransparentDHPrivateKey { p, q, g, j, x } => {
                 let mut st = serializer.serialize_struct("KeyMaterial", 6)?;
-                st.serialize_field("KeyTypeSer", &KeyTypeSer::DH)?;
                 st.serialize_field("P", &**p)?;
                 if let Some(q) = q {
                     st.serialize_field("Q", &**q)?;
@@ -242,7 +488,6 @@ impl Serialize for KeyMaterial {
             }
             Self::TransparentDHPublicKey { p, q, g, j, y } => {
                 let mut st = serializer.serialize_struct("KeyMaterial", 6)?;
-                st.serialize_field("KeyTypeSer", &KeyTypeSer::DH)?;
                 st.serialize_field("P", &**p)?;
                 if let Some(q) = q {
                     st.serialize_field("Q", &**q)?;
@@ -256,7 +501,6 @@ impl Serialize for KeyMaterial {
             }
             Self::TransparentDSAPrivateKey { p, q, g, x } => {
                 let mut st = serializer.serialize_struct("KeyMaterial", 5)?;
-                st.serialize_field("KeyTypeSer", &KeyTypeSer::DSA)?;
                 st.serialize_field("P", &**p)?;
                 st.serialize_field("Q", &**q)?;
                 st.serialize_field("G", &**g)?;
@@ -265,7 +509,6 @@ impl Serialize for KeyMaterial {
             }
             Self::TransparentDSAPublicKey { p, q, g, y } => {
                 let mut st = serializer.serialize_struct("KeyMaterial", 5)?;
-                st.serialize_field("KeyTypeSer", &KeyTypeSer::DSA)?;
                 st.serialize_field("P", &**p)?;
                 st.serialize_field("Q", &**q)?;
                 st.serialize_field("G", &**g)?;
@@ -283,7 +526,6 @@ impl Serialize for KeyMaterial {
                 crt_coefficient,
             } => {
                 let mut st = serializer.serialize_struct("KeyMaterial", 9)?;
-                st.serialize_field("KeyTypeSer", &KeyTypeSer::RsaPrivate)?;
                 st.serialize_field("Modulus", &**modulus)?;
                 if let Some(private_exponent) = private_exponent {
                     st.serialize_field("PrivateExponent", &***private_exponent)?;
@@ -313,7 +555,6 @@ impl Serialize for KeyMaterial {
                 public_exponent,
             } => {
                 let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
-                st.serialize_field("KeyTypeSer", &KeyTypeSer::RsaPublic)?;
                 st.serialize_field("Modulus", &**modulus)?;
                 st.serialize_field("PublicExponent", &**public_exponent)?;
                 st.end()
@@ -323,7 +564,6 @@ impl Serialize for KeyMaterial {
                 d,
             } => {
                 let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
-                st.serialize_field("KeyTypeSer", &KeyTypeSer::ECDSA)?;
                 st.serialize_field("RecommendedCurve", recommended_curve)?;
                 st.serialize_field("D", &***d)?;
                 st.end()
@@ -333,7 +573,6 @@ impl Serialize for KeyMaterial {
                 q_string,
             } => {
                 let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
-                st.serialize_field("KeyTypeSer", &KeyTypeSer::ECDSA)?;
                 st.serialize_field("RecommendedCurve", recommended_curve)?;
                 st.serialize_field("QString", q_string)?;
                 st.end()
@@ -343,7 +582,6 @@ impl Serialize for KeyMaterial {
                 d,
             } => {
                 let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
-                st.serialize_field("KeyTypeSer", &KeyTypeSer::ECDH)?;
                 st.serialize_field("RecommendedCurve", recommended_curve)?;
                 st.serialize_field("D", &***d)?;
                 st.end()
@@ -353,7 +591,6 @@ impl Serialize for KeyMaterial {
                 q_string,
             } => {
                 let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
-                st.serialize_field("KeyTypeSer", &KeyTypeSer::ECDH)?;
                 st.serialize_field("RecommendedCurve", recommended_curve)?;
                 st.serialize_field("QString", q_string)?;
                 st.end()
@@ -363,7 +600,6 @@ impl Serialize for KeyMaterial {
                 d,
             } => {
                 let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
-                st.serialize_field("KeyTypeSer", &KeyTypeSer::ECMQV)?;
                 st.serialize_field("RecommendedCurve", recommended_curve)?;
                 st.serialize_field("D", &***d)?;
                 st.end()
@@ -373,7 +609,6 @@ impl Serialize for KeyMaterial {
                 q_string,
             } => {
                 let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
-                st.serialize_field("KeyTypeSer", &KeyTypeSer::ECMQV)?;
                 st.serialize_field("RecommendedCurve", recommended_curve)?;
                 st.serialize_field("QString", q_string)?;
                 st.end()
@@ -383,7 +618,6 @@ impl Serialize for KeyMaterial {
                 d,
             } => {
                 let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
-                st.serialize_field("KeyTypeSer", &KeyTypeSer::EC)?;
                 st.serialize_field("RecommendedCurve", recommended_curve)?;
                 st.serialize_field("D", &***d)?;
                 st.end()
@@ -393,17 +627,25 @@ impl Serialize for KeyMaterial {
                 q_string,
             } => {
                 let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
-                st.serialize_field("KeyTypeSer", &KeyTypeSer::EC)?;
                 st.serialize_field("RecommendedCurve", recommended_curve)?;
                 st.serialize_field("QString", q_string)?;
                 st.end()
             }
+            Self::ByteString(_zeroizing) => Err(serde::ser::Error::custom(
+                "KeyMaterial: Raw key format should have been formatted in KeyMaterialWrapper",
+            )),
         }
     }
 }
 
-impl<'de> Deserialize<'de> for KeyMaterial {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+struct KeyMaterialDeserializer {
+    key_format_type: KeyFormatType,
+}
+
+impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
+    type Value = KeyMaterial;
+
+    fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
@@ -419,7 +661,6 @@ impl<'de> Deserialize<'de> for KeyMaterial {
             X,
             Y,
             Key,
-            KeyTypeSer,
             Modulus,
             PrivateExponent,
             PublicExponent,
@@ -430,7 +671,9 @@ impl<'de> Deserialize<'de> for KeyMaterial {
             QString,
         }
 
-        struct KeyMaterialVisitor;
+        struct KeyMaterialVisitor {
+            key_format_type: KeyFormatType,
+        }
 
         impl<'de> Visitor<'de> for KeyMaterialVisitor {
             type Value = KeyMaterial;
@@ -439,13 +682,31 @@ impl<'de> Deserialize<'de> for KeyMaterial {
                 formatter.write_str("struct KeyMaterialVisitor")
             }
 
+            /// This is called by the TTLV deserializer in `deserialize_seq`
+            /// which is itself called by the call to `deserializer.deserialize_any()` below
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: de::SeqAccess<'de>,
+            {
+                let mut bytestring = Vec::<u8>::new();
+                while let Some(byte) = seq.next_element()? {
+                    bytestring.push(byte);
+                }
+                if self.key_format_type == KeyFormatType::Raw {
+                    Ok(KeyMaterial::ByteString(Zeroizing::new(bytestring)))
+                } else {
+                    Err(de::Error::custom(
+                        "KeyMaterialVisitor: Raw key format type must be a byte string",
+                    ))
+                }
+            }
+
             #[allow(clippy::many_single_char_names)]
             fn visit_map<V>(self, mut map: V) -> Result<Self::Value, V::Error>
             where
                 V: MapAccess<'de>,
             {
                 let mut bytestring: Option<Zeroizing<Vec<u8>>> = None;
-                let mut key_type_ser: Option<KeyTypeSer> = None;
                 // Here `p` and `q` describes either a public value for DH or
                 // a prime secret factor for RSA. Kept as `BigInt`` and wrapped
                 // as `SafeBigInt` in RSA.
@@ -522,12 +783,6 @@ impl<'de> Deserialize<'de> for KeyMaterial {
                             }
                             key = Some(map.next_value()?);
                         }
-                        Field::KeyTypeSer => {
-                            if key_type_ser.is_some() {
-                                return Err(de::Error::duplicate_field("KeyTypeSer"))
-                            }
-                            key_type_ser = Some(map.next_value()?);
-                        }
                         Field::Modulus => {
                             if modulus.is_some() {
                                 return Err(de::Error::duplicate_field("Modulus"))
@@ -582,8 +837,9 @@ impl<'de> Deserialize<'de> for KeyMaterial {
                 if let Some(key) = key {
                     Ok(KeyMaterial::TransparentSymmetricKey { key })
                 } else {
-                    Ok(match key_type_ser {
-                        Some(KeyTypeSer::DH) => {
+                    Ok(match &self.key_format_type {
+                        KeyFormatType::TransparentDHPublicKey
+                        | KeyFormatType::TransparentDHPrivateKey => {
                             let p = p.ok_or_else(|| de::Error::missing_field("P for DH key"))?;
                             let g = g.ok_or_else(|| de::Error::missing_field("G for DH key"))?;
                             if let Some(x) = x {
@@ -595,7 +851,8 @@ impl<'de> Deserialize<'de> for KeyMaterial {
                                 KeyMaterial::TransparentDHPublicKey { p, q, g, j, y }
                             }
                         }
-                        Some(KeyTypeSer::DSA) => {
+                        KeyFormatType::TransparentDSAPublicKey
+                        | KeyFormatType::TransparentDSAPrivateKey => {
                             let p = p.ok_or_else(|| de::Error::missing_field("P for DSA key"))?;
                             let g = g.ok_or_else(|| de::Error::missing_field("G for DSA key"))?;
                             let q = q.ok_or_else(|| de::Error::missing_field("Q for DSA key"))?;
@@ -608,7 +865,7 @@ impl<'de> Deserialize<'de> for KeyMaterial {
                                 KeyMaterial::TransparentDSAPublicKey { p, q, g, y }
                             }
                         }
-                        Some(KeyTypeSer::RsaPublic) => {
+                        KeyFormatType::TransparentRSAPublicKey => {
                             let modulus = modulus.ok_or_else(|| {
                                 de::Error::missing_field("Modulus for RSA public key")
                             })?;
@@ -620,7 +877,7 @@ impl<'de> Deserialize<'de> for KeyMaterial {
                                 public_exponent,
                             }
                         }
-                        Some(KeyTypeSer::RsaPrivate) => {
+                        KeyFormatType::TransparentRSAPrivateKey => {
                             let modulus = modulus.ok_or_else(|| {
                                 de::Error::missing_field("Modulus for RSA private key")
                             })?;
@@ -635,7 +892,8 @@ impl<'de> Deserialize<'de> for KeyMaterial {
                                 crt_coefficient,
                             }
                         }
-                        Some(KeyTypeSer::ECDSA) => {
+                        KeyFormatType::TransparentECDSAPublicKey
+                        | KeyFormatType::TransparentECDSAPrivateKey => {
                             let recommended_curve = recommended_curve.ok_or_else(|| {
                                 de::Error::missing_field("RecommendedCurve for EC key")
                             })?;
@@ -654,7 +912,8 @@ impl<'de> Deserialize<'de> for KeyMaterial {
                                 }
                             }
                         }
-                        Some(KeyTypeSer::ECDH) => {
+                        KeyFormatType::TransparentECDHPublicKey
+                        | KeyFormatType::TransparentECDHPrivateKey => {
                             let recommended_curve = recommended_curve.ok_or_else(|| {
                                 de::Error::missing_field("RecommendedCurve for EC key")
                             })?;
@@ -673,7 +932,8 @@ impl<'de> Deserialize<'de> for KeyMaterial {
                                 }
                             }
                         }
-                        Some(KeyTypeSer::ECMQV) => {
+                        KeyFormatType::TransparentECMQVPublicKey
+                        | KeyFormatType::TransparentECMQVPrivateKey => {
                             let recommended_curve = recommended_curve.ok_or_else(|| {
                                 de::Error::missing_field("RecommendedCurve for EC key")
                             })?;
@@ -692,7 +952,8 @@ impl<'de> Deserialize<'de> for KeyMaterial {
                                 }
                             }
                         }
-                        Some(KeyTypeSer::EC) => {
+                        KeyFormatType::TransparentECPublicKey
+                        | KeyFormatType::TransparentECPrivateKey => {
                             let recommended_curve = recommended_curve.ok_or_else(|| {
                                 de::Error::missing_field("RecommendedCurve for EC key")
                             })?;
@@ -740,14 +1001,32 @@ impl<'de> Deserialize<'de> for KeyMaterial {
             "d",
             "q_string",
         ];
-        deserializer.deserialize_struct("KeyMaterial", FIELDS, KeyMaterialVisitor)
+
+        match self.key_format_type {
+            KeyFormatType::Raw => {
+                trace!("===> KeyMaterial: Deserializing Raw key format type");
+                // This will call visit_seq for both the TTLV and the JSON deserializer
+                deserializer.deserialize_any(KeyMaterialVisitor {
+                    key_format_type: self.key_format_type,
+                })
+            }
+            f => {
+                trace!("===> KeyMaterial: Deserializing key format type: {f:?}");
+                deserializer.deserialize_struct(
+                    "KeyMaterial",
+                    FIELDS,
+                    KeyMaterialVisitor {
+                        key_format_type: self.key_format_type,
+                    },
+                )
+            }
+        }
     }
 }
 
 impl From<KeyMaterial> for kmip_2_1::kmip_data_structures::KeyMaterial {
     fn from(val: KeyMaterial) -> Self {
         match val {
-            KeyMaterial::ByteString(bytes) => Self::ByteString(bytes),
             KeyMaterial::TransparentSymmetricKey { key } => Self::TransparentSymmetricKey { key },
             KeyMaterial::TransparentDHPrivateKey { p, q, g, j, x } => {
                 Self::TransparentDHPrivateKey { p, q, g, j, x }
@@ -825,6 +1104,7 @@ impl From<KeyMaterial> for kmip_2_1::kmip_data_structures::KeyMaterial {
                 recommended_curve: recommended_curve.into(),
                 q_string,
             },
+            KeyMaterial::ByteString(zeroizing) => Self::ByteString(zeroizing),
         }
     }
 }
