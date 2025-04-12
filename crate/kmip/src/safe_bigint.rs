@@ -1,13 +1,13 @@
 use std::ops::Deref;
 
 use num_bigint_dig::{BigInt, BigUint, Sign};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use zeroize::Zeroize;
 
 /// Holds a big integer secret information. Wraps around `BigInt` type which is
 /// essentially a pointer on the heap. Guarantees to be zeroized on drop with
 /// feature `zeroize` enabled from `num_bigint_dig` crate.
-#[derive(Debug, Eq, PartialEq, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SafeBigInt(BigInt);
 
 impl SafeBigInt {

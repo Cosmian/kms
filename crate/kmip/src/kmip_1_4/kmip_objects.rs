@@ -1,8 +1,12 @@
-use std::fmt::Display;
+use std::fmt::{self, Display};
 
 use num_bigint_dig::BigInt;
-use serde::{Deserialize, Serialize};
+use serde::{
+    de::{MapAccess, Visitor},
+    Deserialize, Serialize,
+};
 use strum::VariantNames;
+use tracing::trace;
 
 #[allow(clippy::wildcard_imports)]
 use super::{kmip_data_structures::KeyBlock, kmip_types::*};
@@ -72,7 +76,6 @@ impl From<SplitKey> for kmip_2_1::kmip_objects::SplitKey {
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
 pub struct SymmetricKey {
-    #[serde(rename = "KeyBlock")]
     pub key_block: KeyBlock,
 }
 
@@ -148,8 +151,7 @@ impl From<PGPKey> for kmip_2_1::kmip_objects::PGPKey {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, VariantNames)]
-#[serde(untagged)]
+#[derive(Debug, Serialize, Clone, Eq, PartialEq, VariantNames)]
 pub enum Object {
     Certificate(Certificate),
     SecretData(SecretData),
@@ -159,6 +161,80 @@ pub enum Object {
     PublicKey(PublicKey),
     OpaqueObject(OpaqueObject),
     PGPKey(PGPKey),
+}
+
+impl<'de> Deserialize<'de> for Object {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct ObjectVisitor;
+
+        impl<'de> Visitor<'de> for ObjectVisitor {
+            type Value = Object;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("an Object enumeration")
+            }
+
+            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+            where
+                A: MapAccess<'de>,
+            {
+                // let mut object_type: Option<ObjectType> = None;
+                if let Some(key) = map.next_key::<String>()? {
+                    trace!("Object Visitor: visit_map: key: {key:?}, ");
+                    if !Object::VARIANTS.contains(&key.as_str()) {
+                        return Err(serde::de::Error::custom(format!(
+                            "Unknown Object to deserialize: {key}. Known Objects are: {:?}",
+                            Object::VARIANTS
+                        )));
+                    }
+                    return match key.as_str() {
+                        "SymmetricKey" => {
+                            let key = map.next_value::<SymmetricKey>()?;
+                            Ok(Object::SymmetricKey(key))
+                        }
+                        "PublicKey" => {
+                            let key = map.next_value::<PublicKey>()?;
+                            Ok(Object::PublicKey(key))
+                        }
+                        "PrivateKey" => {
+                            let key = map.next_value::<PrivateKey>()?;
+                            Ok(Object::PrivateKey(key))
+                        }
+                        "SplitKey" => {
+                            let key = map.next_value::<SplitKey>()?;
+                            Ok(Object::SplitKey(key))
+                        }
+                        "SecretData" => {
+                            let key = map.next_value::<SecretData>()?;
+                            Ok(Object::SecretData(key))
+                        }
+                        "PGPKey" => {
+                            let key = map.next_value::<PGPKey>()?;
+                            Ok(Object::PGPKey(key))
+                        }
+                        "OpaqueObject" => {
+                            let key = map.next_value::<OpaqueObject>()?;
+                            Ok(Object::OpaqueObject(key))
+                        }
+                        "Certificate" => {
+                            let key = map.next_value::<Certificate>()?;
+                            Ok(Object::Certificate(key))
+                        }
+                        x => Err(serde::de::Error::custom(format!(
+                            "Invalid Object: {x}. One of the following is expected: {:?}",
+                            Object::VARIANTS
+                        ))),
+                    };
+                }
+                Err(serde::de::Error::custom("Invalid Object"))
+            }
+        }
+
+        deserializer.deserialize_map(ObjectVisitor)
+    }
 }
 
 impl Display for Object {
