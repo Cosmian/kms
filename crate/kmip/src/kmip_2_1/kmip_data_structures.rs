@@ -10,6 +10,7 @@ use serde::{
     ser::SerializeStruct,
     Deserialize, Serialize,
 };
+use tracing::instrument;
 use zeroize::Zeroizing;
 
 use super::{
@@ -743,6 +744,7 @@ impl<'de> Deserialize<'de> for KeyMaterial {
             }
 
             #[allow(clippy::many_single_char_names)]
+            #[instrument(skip(self, map))]
             fn visit_map<V>(self, mut map: V) -> Result<Self::Value, V::Error>
             where
                 V: MapAccess<'de>,
