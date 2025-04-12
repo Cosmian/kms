@@ -740,66 +740,26 @@ impl TryFrom<kmip_2_1::kmip_attributes::Attribute> for Attribute {
             kmip_2_1::kmip_attributes::Attribute::NeverExtractable(v) => {
                 Ok(Self::NeverExtractable(v))
             }
-            kmip_2_1::kmip_attributes::Attribute::AttributeIndex(_) => Err(
-                KmipError::NotSupported("AttributeIndex is not supported in KMIP 1".to_owned()),
-            ),
-            kmip_2_1::kmip_attributes::Attribute::CertificateAttributes(_) => {
-                Err(KmipError::NotSupported(
-                    "CertificateAttributes is not supported in KMIP 1".to_owned(),
-                ))
-            }
-            kmip_2_1::kmip_attributes::Attribute::Critical(_) => Err(KmipError::NotSupported(
-                "Critical attribute is not supported in KMIP 1".to_owned(),
+            kmip_2_1::kmip_attributes::Attribute::AttributeIndex(_)
+            | kmip_2_1::kmip_attributes::Attribute::CertificateAttributes(_)
+            | kmip_2_1::kmip_attributes::Attribute::Critical(_)
+            | kmip_2_1::kmip_attributes::Attribute::KeyFormatType(_)
+            | kmip_2_1::kmip_attributes::Attribute::NistKeyType(_)
+            | kmip_2_1::kmip_attributes::Attribute::ObjectGroupMember(_)
+            | kmip_2_1::kmip_attributes::Attribute::OpaqueDataType(_)
+            | kmip_2_1::kmip_attributes::Attribute::ProtectionLevel(_)
+            | kmip_2_1::kmip_attributes::Attribute::ProtectionPeriod(_)
+            | kmip_2_1::kmip_attributes::Attribute::ProtectionStorageMasks(_)
+            | kmip_2_1::kmip_attributes::Attribute::QuantumSafe(_)
+            | kmip_2_1::kmip_attributes::Attribute::RotateDate(_)
+            | kmip_2_1::kmip_attributes::Attribute::RotateGeneration(_)
+            | kmip_2_1::kmip_attributes::Attribute::RotateInterval(_)
+            | kmip_2_1::kmip_attributes::Attribute::RotateLatest(_)
+            | kmip_2_1::kmip_attributes::Attribute::RotateName(_)
+            | kmip_2_1::kmip_attributes::Attribute::RotateOffset(_)
+            | kmip_2_1::kmip_attributes::Attribute::ShortUniqueIdentifier(_) => Ok(Self::Comment(
+                format!("Unsupported KMIP 2 attribute: {attribute:?}"),
             )),
-            kmip_2_1::kmip_attributes::Attribute::KeyFormatType(_) => Err(KmipError::NotSupported(
-                "KeyFormatType is not supported in KMIP 1".to_owned(),
-            )),
-            kmip_2_1::kmip_attributes::Attribute::NistKeyType(_) => Err(KmipError::NotSupported(
-                "NistKeyType is not supported in KMIP 1".to_owned(),
-            )),
-            kmip_2_1::kmip_attributes::Attribute::ObjectGroupMember(_) => Err(
-                KmipError::NotSupported("ObjectGroupMember is not supported in KMIP 1".to_owned()),
-            ),
-            kmip_2_1::kmip_attributes::Attribute::OpaqueDataType(_) => Err(
-                KmipError::NotSupported("OpaqueDataType is not supported in KMIP 1".to_owned()),
-            ),
-            kmip_2_1::kmip_attributes::Attribute::ProtectionLevel(_) => Err(
-                KmipError::NotSupported("ProtectionLevel is not supported in KMIP 1".to_owned()),
-            ),
-            kmip_2_1::kmip_attributes::Attribute::ProtectionPeriod(_) => Err(
-                KmipError::NotSupported("ProtectionPeriod is not supported in KMIP 1".to_owned()),
-            ),
-            kmip_2_1::kmip_attributes::Attribute::ProtectionStorageMasks(_) => {
-                Err(KmipError::NotSupported(
-                    "ProtectionStorageMasks is not supported in KMIP 1".to_owned(),
-                ))
-            }
-            kmip_2_1::kmip_attributes::Attribute::QuantumSafe(_) => Err(KmipError::NotSupported(
-                "QuantumSafe is not supported in KMIP 1".to_owned(),
-            )),
-            kmip_2_1::kmip_attributes::Attribute::RotateDate(_) => Err(KmipError::NotSupported(
-                "RotateDate is not supported in KMIP 1".to_owned(),
-            )),
-            kmip_2_1::kmip_attributes::Attribute::RotateGeneration(_) => Err(
-                KmipError::NotSupported("RotateGeneration is not supported in KMIP 1".to_owned()),
-            ),
-            kmip_2_1::kmip_attributes::Attribute::RotateInterval(_) => Err(
-                KmipError::NotSupported("RotateInterval is not supported in KMIP 1".to_owned()),
-            ),
-            kmip_2_1::kmip_attributes::Attribute::RotateLatest(_) => Err(KmipError::NotSupported(
-                "RotateLatest is not supported in KMIP 1".to_owned(),
-            )),
-            kmip_2_1::kmip_attributes::Attribute::RotateName(_) => Err(KmipError::NotSupported(
-                "RotateName is not supported in KMIP 1".to_owned(),
-            )),
-            kmip_2_1::kmip_attributes::Attribute::RotateOffset(_) => Err(KmipError::NotSupported(
-                "RotateOffset is not supported in KMIP 1".to_owned(),
-            )),
-            kmip_2_1::kmip_attributes::Attribute::ShortUniqueIdentifier(_) => {
-                Err(KmipError::NotSupported(
-                    "ShortUniqueIdentifier is not supported in KMIP 1".to_owned(),
-                ))
-            }
             kmip_2_1::kmip_attributes::Attribute::X509CertificateIdentifier(v) => {
                 Ok(Self::X509CertificateIdentifier(v))
             }

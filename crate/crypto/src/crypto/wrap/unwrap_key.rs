@@ -142,7 +142,9 @@ pub fn update_key_block_with_unwrapped_key(
 ) -> Result<(), CryptoError> {
     // unwrap the key based on the encoding
     let key_value: KeyValue = match encoding {
-        EncodingOption::TTLVEncoding => serde_json::from_slice::<KeyValue>(plaintext.as_bytes())?,
+        EncodingOption::TTLVEncoding => {
+            KeyValue::from_ttlv_bytes(plaintext.as_bytes(), object_key_block.key_format_type)?
+        }
         EncodingOption::NoEncoding => {
             let key_material: KeyMaterial = match object_key_block.key_format_type {
                 KeyFormatType::TransparentSymmetricKey => KeyMaterial::TransparentSymmetricKey {

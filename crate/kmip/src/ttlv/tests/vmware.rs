@@ -501,8 +501,8 @@ const GET_RESPONSE: &str =
 
 #[test]
 fn get() {
-    // log_init(Some("debug"));
-    log_init(option_env!("RUST_LOG"));
+    log_init(Some("debug"));
+    // log_init(option_env!("RUST_LOG"));
     let request = hex::decode(GET).unwrap();
 
     let (major, minor) = TTLV::find_version(&request).unwrap();
@@ -563,7 +563,7 @@ fn get() {
                             237, 178, 254, 237, 12, 39, 148, 101, 57, 75, 65, 140, 199, 166, 19,
                             189,
                         ])),
-                        attributes: None
+                        attribute: None
                     }),
                     cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
                     cryptographic_length: Some(256),
