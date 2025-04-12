@@ -70,7 +70,7 @@ fn test_object_raw() {
             key_compression_type: None,
             key_value: Some(KeyValue {
                 key_material: KeyMaterial::ByteString(Zeroizing::new(vec![0x01, 0x02, 0x03])),
-                attributes: None,
+                attribute: None,
             }),
             cryptographic_algorithm: None,
             cryptographic_length: None,
@@ -112,7 +112,7 @@ fn test_object_structured_sym() {
                 key_material: KeyMaterial::TransparentSymmetricKey {
                     key: Zeroizing::new(vec![0x01, 0x02, 0x03]),
                 },
-                attributes: None,
+                attribute: None,
             }),
             cryptographic_algorithm: None,
             cryptographic_length: None,
@@ -162,7 +162,7 @@ fn test_object_structured_rsa() {
                     prime_exponent_q: Some(Box::new(SafeBigInt::from(BigInt::from(5)))),
                     crt_coefficient: Some(Box::new(SafeBigInt::from(BigInt::from(6)))),
                 },
-                attributes: None,
+                attribute: None,
             }),
             cryptographic_algorithm: None,
             cryptographic_length: None,

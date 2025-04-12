@@ -29,7 +29,9 @@ use crate::{
         RNGAlgorithm, ShreddingAlgorithm, UnwrapMode,
     },
     kmip_2_1::{kmip_attributes::Attribute, kmip_types::ItemType},
-    pad_be_bytes, SafeBigInt,
+    pad_be_bytes,
+    ttlv::{to_ttlv, KmipFlavor, TtlvDeserializer, TTLV},
+    SafeBigInt,
 };
 
 /// A Key Block object is a structure used to encapsulate all of the information
@@ -522,6 +524,7 @@ impl<'de> DeserializeSeed<'de> for KeyValueDeserializer {
 // }
 
 impl KeyValue {
+    /// Returns the `KeyValue` attributes if any, an error otherwise
     pub fn attributes(&self) -> Result<&Attributes, KmipError> {
         self.attributes.as_ref().ok_or_else(|| {
             KmipError::InvalidKmip21Value(
@@ -531,6 +534,7 @@ impl KeyValue {
         })
     }
 
+    /// Returns the `KeyValue` attributes if any, an error otherwise
     pub fn attributes_mut(&mut self) -> Result<&mut Attributes, KmipError> {
         self.attributes.as_mut().ok_or_else(|| {
             KmipError::InvalidKmip21Value(
@@ -540,6 +544,8 @@ impl KeyValue {
         })
     }
 
+    /// Returns the `KeyValue` key material bytes if any, an error otherwise
+    /// Only `KeyMaterial::ByteString` and `KeyMaterial::TransparentSymmetricKey` are supported
     pub fn raw_bytes(&self) -> Result<&[u8], KmipError> {
         match &self.key_material {
             KeyMaterial::TransparentSymmetricKey { key } => Ok(key),
@@ -549,6 +555,27 @@ impl KeyValue {
                 format!("The key has an invalid key material: {other}"),
             )),
         }
+    }
+
+    /// Returns the `KeyValue` key material bytes if any, an error otherwise
+    pub fn to_ttlv_bytes(&self, key_format_type: KeyFormatType) -> Result<Vec<u8>, KmipError> {
+        to_ttlv(&KeyValueSerializer {
+            key_format_type,
+            key_value: self.clone(),
+        })
+        .and_then(|ttlv| ttlv.to_bytes(KmipFlavor::Kmip2))
+        .map_err(Into::into)
+    }
+
+    /// Deserializes a `KeyValue` from the given TTLV bytes
+    pub fn from_ttlv_bytes(
+        bytes: &[u8],
+        key_format_type: KeyFormatType,
+    ) -> Result<Self, KmipError> {
+        let ttlv = TTLV::from_bytes(bytes, KmipFlavor::Kmip2)?;
+        KeyValueDeserializer { key_format_type }
+            .deserialize(&mut TtlvDeserializer::from_ttlv(ttlv))
+            .map_err(Into::into)
     }
 }
 

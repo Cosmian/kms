@@ -174,7 +174,13 @@ pub fn key_data_to_wrap(
     // wrap the key based on the encoding
     Ok(match key_wrapping_specification.get_encoding() {
         EncodingOption::TTLVEncoding => {
-            Zeroizing::from(serde_json::to_vec(&object_key_block.key_value)?)
+            let ttlv_bytes = object_key_block
+                .key_value
+                .as_ref()
+                .map(|kv| kv.to_ttlv_bytes(object_key_block.key_format_type))
+                .transpose()?
+                .ok_or_else(|| crypto_error!("Unable to wrap the key: key value is not set"))?;
+            Zeroizing::from(ttlv_bytes)
         }
         EncodingOption::NoEncoding => object_key_block.key_bytes()?,
     })

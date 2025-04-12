@@ -32,6 +32,17 @@ impl From<Certificate> for kmip_2_1::kmip_objects::Certificate {
     }
 }
 
+impl TryFrom<kmip_2_1::kmip_objects::Certificate> for Certificate {
+    type Error = KmipError;
+
+    fn try_from(val: kmip_2_1::kmip_objects::Certificate) -> Result<Self, Self::Error> {
+        Ok(Self {
+            certificate_type: val.certificate_type,
+            certificate_value: val.certificate_value,
+        })
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
 pub struct SecretData {
@@ -45,6 +56,17 @@ impl From<SecretData> for kmip_2_1::kmip_objects::SecretData {
             secret_data_type: val.secret_data_type,
             key_block: val.key_block.into(),
         }
+    }
+}
+
+impl TryFrom<kmip_2_1::kmip_objects::SecretData> for SecretData {
+    type Error = KmipError;
+
+    fn try_from(val: kmip_2_1::kmip_objects::SecretData) -> Result<Self, Self::Error> {
+        Ok(Self {
+            secret_data_type: val.secret_data_type,
+            key_block: val.key_block.try_into()?,
+        })
     }
 }
 
@@ -73,6 +95,21 @@ impl From<SplitKey> for kmip_2_1::kmip_objects::SplitKey {
     }
 }
 
+impl TryFrom<kmip_2_1::kmip_objects::SplitKey> for SplitKey {
+    type Error = KmipError;
+
+    fn try_from(val: kmip_2_1::kmip_objects::SplitKey) -> Result<Self, Self::Error> {
+        Ok(Self {
+            split_key_parts: val.split_key_parts,
+            key_part_identifier: val.key_part_identifier,
+            split_key_threshold: val.split_key_threshold,
+            split_key_method: val.split_key_method.try_into()?,
+            key_block: val.key_block.try_into()?,
+            prime_field_size: val.prime_field_size,
+        })
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
 pub struct SymmetricKey {
@@ -84,6 +121,16 @@ impl From<SymmetricKey> for kmip_2_1::kmip_objects::SymmetricKey {
         Self {
             key_block: val.key_block.into(),
         }
+    }
+}
+
+impl TryFrom<kmip_2_1::kmip_objects::SymmetricKey> for SymmetricKey {
+    type Error = KmipError;
+
+    fn try_from(val: kmip_2_1::kmip_objects::SymmetricKey) -> Result<Self, Self::Error> {
+        Ok(Self {
+            key_block: val.key_block.try_into()?,
+        })
     }
 }
 
@@ -102,6 +149,16 @@ impl From<PrivateKey> for kmip_2_1::kmip_objects::PrivateKey {
     }
 }
 
+impl TryFrom<kmip_2_1::kmip_objects::PrivateKey> for PrivateKey {
+    type Error = KmipError;
+
+    fn try_from(val: kmip_2_1::kmip_objects::PrivateKey) -> Result<Self, Self::Error> {
+        Ok(Self {
+            key_block: val.key_block.try_into()?,
+        })
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
 pub struct PublicKey {
@@ -114,6 +171,16 @@ impl From<PublicKey> for kmip_2_1::kmip_objects::PublicKey {
         Self {
             key_block: val.key_block.into(),
         }
+    }
+}
+
+impl TryFrom<kmip_2_1::kmip_objects::PublicKey> for PublicKey {
+    type Error = KmipError;
+
+    fn try_from(val: kmip_2_1::kmip_objects::PublicKey) -> Result<Self, Self::Error> {
+        Ok(Self {
+            key_block: val.key_block.try_into()?,
+        })
     }
 }
 
@@ -133,6 +200,17 @@ impl From<OpaqueObject> for kmip_2_1::kmip_objects::OpaqueObject {
     }
 }
 
+impl TryFrom<kmip_2_1::kmip_objects::OpaqueObject> for OpaqueObject {
+    type Error = KmipError;
+
+    fn try_from(val: kmip_2_1::kmip_objects::OpaqueObject) -> Result<Self, Self::Error> {
+        Ok(Self {
+            opaque_data_type: val.opaque_data_type.try_into()?,
+            opaque_data_value: val.opaque_data_value,
+        })
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
 pub struct PGPKey {
@@ -148,6 +226,17 @@ impl From<PGPKey> for kmip_2_1::kmip_objects::PGPKey {
             pgp_key_version: val.pgp_key_version,
             key_block: val.key_block.into(),
         }
+    }
+}
+
+impl TryFrom<kmip_2_1::kmip_objects::PGPKey> for PGPKey {
+    type Error = KmipError;
+
+    fn try_from(val: kmip_2_1::kmip_objects::PGPKey) -> Result<Self, Self::Error> {
+        Ok(Self {
+            pgp_key_version: val.pgp_key_version,
+            key_block: val.key_block.try_into()?,
+        })
     }
 }
 
@@ -366,6 +455,43 @@ impl From<Object> for kmip_2_1::kmip_objects::Object {
             Object::PublicKey(public) => Self::PublicKey(public.into()),
             Object::OpaqueObject(opaque) => Self::OpaqueObject(opaque.into()),
             Object::PGPKey(pgp) => Self::PGPKey(pgp.into()),
+        }
+    }
+}
+
+impl TryFrom<kmip_2_1::kmip_objects::Object> for Object {
+    type Error = KmipError;
+
+    fn try_from(val: kmip_2_1::kmip_objects::Object) -> Result<Self, Self::Error> {
+        match val {
+            kmip_2_1::kmip_objects::Object::Certificate(cert) => {
+                Ok(Self::Certificate(cert.try_into()?))
+            }
+            kmip_2_1::kmip_objects::Object::SecretData(secret) => {
+                Ok(Self::SecretData(secret.try_into()?))
+            }
+            kmip_2_1::kmip_objects::Object::SplitKey(split) => {
+                Ok(Self::SplitKey(split.try_into()?))
+            }
+            kmip_2_1::kmip_objects::Object::SymmetricKey(symmetric) => {
+                Ok(Self::SymmetricKey(symmetric.try_into()?))
+            }
+            kmip_2_1::kmip_objects::Object::PrivateKey(private) => {
+                Ok(Self::PrivateKey(private.try_into()?))
+            }
+            kmip_2_1::kmip_objects::Object::PublicKey(public) => {
+                Ok(Self::PublicKey(public.try_into()?))
+            }
+            kmip_2_1::kmip_objects::Object::OpaqueObject(opaque) => {
+                Ok(Self::OpaqueObject(opaque.try_into()?))
+            }
+            kmip_2_1::kmip_objects::Object::PGPKey(pgp) => Ok(Self::PGPKey(pgp.try_into()?)),
+            kmip_2_1::kmip_objects::Object::CertificateRequest(_certificate_request) => {
+                Err(KmipError::InvalidKmip14Object(
+                    ResultReason::InvalidField,
+                    "CertificateRequest is not supported in KMIP 1".to_owned(),
+                ))
+            }
         }
     }
 }
