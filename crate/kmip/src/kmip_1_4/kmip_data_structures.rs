@@ -277,7 +277,7 @@ impl Serialize for KeyValueSerializer {
         )?;
         if let Some(attributes) = &self.key_value.attribute {
             if !attributes.is_empty() {
-                st.serialize_field("Attributes", &self.key_value.attribute)?;
+                st.serialize_field("Attribute", &self.key_value.attribute)?;
             }
         }
         st.end()

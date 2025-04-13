@@ -5,6 +5,7 @@ mod create_1_4;
 mod create_2_1;
 mod discover_versions;
 mod get_1_4;
+mod get_2_1;
 mod get_attribute_1_4;
 mod get_attribute_2_1;
 mod query;
