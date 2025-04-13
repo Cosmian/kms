@@ -8,7 +8,7 @@ formal security evaluation from BSI.
 Using the Cosmian KMS PKCS#11 provider library, Veracrypt can use keys stored in the KMS to
 encrypt and decrypt volumes.
 
-![Veracrypt-ckms](./images/veracrypt_ckms.svg)
+![Veracrypt-cosmian](./images/veracrypt_ckms.svg)
 
 ## Installing the PKCS#11 provider library on Veracrypt
 

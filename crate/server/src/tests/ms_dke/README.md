@@ -39,7 +39,7 @@ future) public
 key `ms_dke_pub_key`.
 
 ```bash
-cargo run --bin ckms -- rsa keys import -f pem -t dke_key -p ms_dke_pub_key \
+cargo run --bin cosmian -- kms rsa keys import -f pem -t dke_key -p ms_dke_pub_key \
 crate/server/src/tests/ms_dke/private_key.pkcs8.pem ms_dke_priv_key
 ```
 
@@ -47,18 +47,18 @@ Import the public key with the tag `dke_key`, with a name `ms_dke_pub_key` and a
 key `ms_dke_priv_key`
 
 ```bash
-cargo run --bin ckms -- rsa keys import -f pem -t dke_key -k ms_dke_priv_key \
+cargo run --bin cosmian -- kms rsa keys import -f pem -t dke_key -k ms_dke_priv_key \
 crate/server/src/tests/ms_dke/public_key.pkcs8.pem ms_dke_pub_key
 
 ```
 
-Verify that you can export the keys using the `ckms` command line tool.
+Verify that you can export the keys using the `cosmian` command line tool.
 
 ```bash
 # public key
-cargo run --bin ckms -- rsa keys export -t dke_key -t _pk -f pkcs1-pem /tmp/pub_key.pkcs1.pem
+cargo run --bin cosmian -- kms rsa keys export -t dke_key -t _pk -f pkcs1-pem /tmp/pub_key.pkcs1.pem
 # private key
-cargo run --bin ckms -- rsa keys export -t dke_key -t _sk -f pkcs8-pem /tmp/priv_key.pkcs1.pem
+cargo run --bin cosmian -- kms rsa keys export -t dke_key -t _sk -f pkcs8-pem /tmp/priv_key.pkcs1.pem
 ```
 
 ## Grant access to the keys
@@ -67,8 +67,8 @@ The calls to the `ms_dke` endpoint are unauthenticated and hence made under the 
 you created the keys with a different user, you may have to grant accesses to `admin`:
 
 ```shell
-cargo run --bin ckms -- access-rights grant admin ms_dke_priv_key decrypt
-cargo run --bin ckms -- access-rights grant admin ms_dke_pub_key encrypt export get
+cargo run --bin cosmian -- kms access-rights grant admin ms_dke_priv_key decrypt
+cargo run --bin cosmian -- kms access-rights grant admin ms_dke_pub_key encrypt export get
 ```
 
 ## Check
