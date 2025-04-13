@@ -602,11 +602,24 @@ impl From<Attribute> for kmip_2_1::kmip_attributes::Attribute {
             Attribute::ApplicationSpecificInformation(v) => Self::ApplicationSpecificInformation(v),
             Attribute::ContactInformation(v) => Self::ContactInformation(v),
             Attribute::LastChangeDate(v) => Self::LastChangeDate(v),
-            Attribute::CustomAttribute((n, v)) => Self::VendorAttribute(VendorAttribute {
-                vendor_identification: "KMIP1".to_owned(),
-                attribute_name: n,
-                attribute_value: v.into(),
-            }),
+            Attribute::CustomAttribute((n, v)) => {
+                if n.starts_with("x-") || n.starts_with("y-") {
+                    let s = n.get(2..).unwrap_or("").to_owned();
+                    let s: Vec<&str> = s.split("::").collect();
+                    if s.len() == 2 {
+                        return Self::VendorAttribute(VendorAttribute {
+                            vendor_identification: (*s.first().unwrap_or(&"KMIP1")).to_owned(),
+                            attribute_name: (*s.get(1).unwrap_or(&n.as_str())).to_owned(),
+                            attribute_value: v.into(),
+                        });
+                    }
+                }
+                Self::VendorAttribute(VendorAttribute {
+                    vendor_identification: "KMIP1".to_owned(),
+                    attribute_name: n,
+                    attribute_value: v.into(),
+                })
+            }
             Attribute::AlternativeName(v) => Self::AlternativeName(v),
             Attribute::KeyValuePresent(v) => Self::KeyValuePresent(v),
             Attribute::KeyValueLocation(v) => Self::KeyValueLocation(v),
@@ -708,7 +721,7 @@ impl TryFrom<kmip_2_1::kmip_attributes::Attribute> for Attribute {
                 let name = if vendor_id.as_str() == "KMIP1" {
                     vendor_attribute.attribute_name
                 } else {
-                    format!("{}:{}", vendor_id, vendor_attribute.attribute_name)
+                    format!("y-{}::{}", vendor_id, vendor_attribute.attribute_name)
                 };
                 let value = vendor_attribute.attribute_value.into();
                 Ok(Self::CustomAttribute((name, value)))
