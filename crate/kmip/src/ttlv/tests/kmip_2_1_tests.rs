@@ -14,8 +14,8 @@ use crate::{
         },
         kmip_types::{
             AsynchronousIndicator, AttestationType, BatchErrorContinuationOption, Credential,
-            CryptographicUsageMask, ErrorReason, MessageExtension, Nonce, ProtocolVersion,
-            ResultStatusEnumeration,
+            CryptographicUsageMask, ErrorReason, MessageExtension, Nonce, PaddingMethod,
+            ProtocolVersion, ResultStatusEnumeration,
         },
     },
     kmip_2_1::{
@@ -28,9 +28,9 @@ use crate::{
             Operation, Query, QueryResponse, SetAttribute,
         },
         kmip_types::{
-            CryptographicAlgorithm, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
-            OperationEnumeration, QueryFunction, UniqueIdentifier, VendorAttribute,
-            VendorAttributeValue,
+            CryptographicAlgorithm, CryptographicParameters, KeyFormatType, Link, LinkType,
+            LinkedObjectIdentifier, OperationEnumeration, QueryFunction, UniqueIdentifier,
+            VendorAttribute, VendorAttributeValue,
         },
     },
     ttlv::{from_ttlv, to_ttlv, KmipEnumerationVariant, TTLValue, TTLV},
@@ -1697,5 +1697,54 @@ fn test_object_structured_rsa() {
     assert_eq!(
         object, deserialized_object_json,
         "Deserialized Object from JSON does not match the original"
+    );
+}
+
+#[test]
+fn test_key_value_ttlv() {
+    let key_format_type = KeyFormatType::Raw;
+    let kv = KeyValue {
+        key_material: KeyMaterial::ByteString(Zeroizing::new(vec![1, 2, 3])),
+        attributes: Some(Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            vendor_attributes: Some(vec![VendorAttribute {
+                vendor_identification: "VENDOR".to_owned(),
+                attribute_name: "TEST".to_owned(),
+                attribute_value: VendorAttributeValue::BigInteger(BigInt::from(12_345_678)),
+            }]),
+            ..Default::default()
+        }),
+    };
+    assert_eq!(
+        kv,
+        KeyValue::from_ttlv_bytes(&kv.to_ttlv_bytes(key_format_type).unwrap(), key_format_type)
+            .unwrap()
+    );
+    let key_format_type = KeyFormatType::TransparentRSAPublicKey;
+    let kv = KeyValue {
+        key_material: KeyMaterial::TransparentRSAPublicKey {
+            modulus: Box::new(BigInt::from(1)),
+            public_exponent: Box::new(BigInt::from(2)),
+        },
+        attributes: Some(Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+            vendor_attributes: Some(vec![VendorAttribute {
+                vendor_identification: "VENDOR".to_owned(),
+                attribute_name: "TEST".to_owned(),
+                attribute_value: VendorAttributeValue::Structure(
+                    to_ttlv(&CryptographicParameters {
+                        padding_method: Some(PaddingMethod::OAEP),
+                        ..Default::default()
+                    })
+                    .unwrap(),
+                ),
+            }]),
+            ..Default::default()
+        }),
+    };
+    assert_eq!(
+        kv,
+        KeyValue::from_ttlv_bytes(&kv.to_ttlv_bytes(key_format_type).unwrap(), key_format_type)
+            .unwrap()
     );
 }
