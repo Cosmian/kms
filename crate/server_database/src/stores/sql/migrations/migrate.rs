@@ -5,6 +5,7 @@ use cosmian_kmip::kmip_2_1::{
     kmip_objects::{
         Certificate, Object, OpaqueObject, PrivateKey, PublicKey, SecretData, SymmetricKey,
     },
+    kmip_types::KeyFormatType,
 };
 use cosmian_kms_interfaces::ObjectsStore;
 use serde_json::Value;
@@ -316,8 +317,21 @@ fn db_object_to_object(db_object: &Value) -> DbResult<Object> {
     })
 }
 
-/// Migrate the `KeyMaterial` which used `BigUin` to `KeyMaterial` which uses `BigInt`
+/// Migrate the `KeyMaterial` which used `BigUint` to `KeyMaterial` which uses `BigInt`
 fn migrate_key_material(content: &mut Value) -> Result<(), DbError> {
+    let key_format_type =
+        KeyFormatType::try_from(content["KeyBlock"]["KeyFormatType"].as_str().ok_or_else(
+            || {
+                DbError::DatabaseError(format!(
+                    "migration to 4.22.1+ failed: KeyFormatType not found in object: {content:?}",
+                ))
+            },
+        )?)
+        .map_err(|e| {
+            DbError::DatabaseError(format!(
+                "migration to 4.22.1+ failed: Unknown KeyFormatType not found in object: {e}"
+            ))
+        })?;
     let key_material_value = &content["KeyBlock"]["KeyValue"]["KeyMaterial"];
     let key_material_4_21: KeyMaterial421 = serde_json::from_value(key_material_value.clone())
         .map_err(|e| {
@@ -327,7 +341,7 @@ fn migrate_key_material(content: &mut Value) -> Result<(), DbError> {
         })?;
     let key_material: KeyMaterial = key_material_4_21.into();
     content["KeyBlock"]["KeyValue"]["KeyMaterial"] =
-        serde_json::to_value(key_material).map_err(|e| {
+        key_material.to_json_value(key_format_type).map_err(|e| {
             DbError::DatabaseError(format!(
                 "migration to 4.22.1+ failed: failed to replace KeyMaterial: {e}"
             ))
