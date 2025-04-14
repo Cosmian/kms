@@ -131,6 +131,11 @@ assets = [
     "500",
   ],
   [
+    "ui/dist/assets/*",
+    "usr/local/cosmian/ui/dist/assets/",
+    "500",
+  ],
+  [
     "target/release/cosmian_kms",
     "usr/sbin/cosmian_kms",
     "500",
@@ -161,6 +166,11 @@ assets = [
   [
     "ui/dist/*",
     "usr/local/cosmian/ui/dist/",
+    "500",
+  ],
+  [
+    "ui/dist/assets/*",
+    "usr/local/cosmian/ui/dist/assets/",
     "500",
   ],
   [
@@ -204,6 +214,7 @@ assets = [
 license = "BUSL-1.1"
 assets = [
   { source = "ui/dist/*", dest = "/usr/local/cosmian/ui/dist/", mode = "500" },
+  { source = "ui/dist/assets/*", dest = "/usr/local/cosmian/ui/dist/assets/", mode = "500" },
   { source = "target/release/cosmian_kms", dest = "/usr/sbin/cosmian_kms", mode = "500" },
   { source = "/usr/local/openssl/lib64/ossl-modules/legacy.so", dest = "/usr/local/openssl/lib64/ossl-modules/legacy.so", mode = "500" },
   { source = "../../README.md", dest = "/usr/share/doc/cosmian/README", mode = "644", doc = true },
