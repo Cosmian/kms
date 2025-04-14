@@ -485,193 +485,189 @@ impl Serialize for KeyMaterialSerializer {
     where
         S: serde::Serializer,
     {
-        match self.key_format_type {
-            KeyFormatType::Raw => {
-                let KeyMaterial::ByteString(ref bytes) = self.key_material else {
-                    return Err(serde::ser::Error::custom(
-                        "KeyMaterialWrapper: Raw key format type must be a byte string",
-                    ))
-                };
-                serializer.serialize_bytes(bytes)
+        if let KeyMaterial::ByteString(ref bytes) = self.key_material {
+            match self.key_format_type {
+                KeyFormatType::Raw
+                | KeyFormatType::ECPrivateKey
+                | KeyFormatType::Opaque
+                | KeyFormatType::PKCS1
+                | KeyFormatType::PKCS12
+                | KeyFormatType::PKCS8
+                | KeyFormatType::X509 => serializer.serialize_bytes(bytes),
+                x => Err(serde::ser::Error::custom(format!(
+                    "KeyMaterialWrapper: {x:?} key format type does not support byte strings"
+                ))),
             }
-            _ => self.key_material.serialize(serializer),
-        }
-    }
-}
-
-impl Serialize for KeyMaterial {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        match self {
-            Self::TransparentSymmetricKey { key } => {
-                let mut st = serializer.serialize_struct("KeyMaterial", 1)?;
-                st.serialize_field("Key", &**key)?;
-                st.end()
-            }
-            Self::TransparentDHPrivateKey { p, q, g, j, x } => {
-                let mut st = serializer.serialize_struct("KeyMaterial", 6)?;
-                st.serialize_field("P", &**p)?;
-                if let Some(q) = q {
+        } else {
+            match &self.key_material {
+                KeyMaterial::TransparentSymmetricKey { key } => {
+                    let mut st = serializer.serialize_struct("KeyMaterial", 1)?;
+                    st.serialize_field("Key", &**key)?;
+                    st.end()
+                }
+                KeyMaterial::TransparentDHPrivateKey { p, q, g, j, x } => {
+                    let mut st = serializer.serialize_struct("KeyMaterial", 6)?;
+                    st.serialize_field("P", &**p)?;
+                    if let Some(q) = q {
+                        st.serialize_field("Q", &**q)?;
+                    };
+                    st.serialize_field("G", &**g)?;
+                    if let Some(j) = j {
+                        st.serialize_field("J", &**j)?;
+                    };
+                    st.serialize_field("X", &***x)?;
+                    st.end()
+                }
+                KeyMaterial::TransparentDHPublicKey { p, q, g, j, y } => {
+                    let mut st = serializer.serialize_struct("KeyMaterial", 6)?;
+                    st.serialize_field("P", &**p)?;
+                    if let Some(q) = q {
+                        st.serialize_field("Q", &**q)?;
+                    };
+                    st.serialize_field("G", &**g)?;
+                    if let Some(j) = j {
+                        st.serialize_field("J", &**j)?;
+                    };
+                    st.serialize_field("Y", &**y)?;
+                    st.end()
+                }
+                KeyMaterial::TransparentDSAPrivateKey { p, q, g, x } => {
+                    let mut st = serializer.serialize_struct("KeyMaterial", 5)?;
+                    st.serialize_field("P", &**p)?;
                     st.serialize_field("Q", &**q)?;
-                };
-                st.serialize_field("G", &**g)?;
-                if let Some(j) = j {
-                    st.serialize_field("J", &**j)?;
-                };
-                st.serialize_field("X", &***x)?;
-                st.end()
-            }
-            Self::TransparentDHPublicKey { p, q, g, j, y } => {
-                let mut st = serializer.serialize_struct("KeyMaterial", 6)?;
-                st.serialize_field("P", &**p)?;
-                if let Some(q) = q {
+                    st.serialize_field("G", &**g)?;
+                    st.serialize_field("X", &***x)?;
+                    st.end()
+                }
+                KeyMaterial::TransparentDSAPublicKey { p, q, g, y } => {
+                    let mut st = serializer.serialize_struct("KeyMaterial", 5)?;
+                    st.serialize_field("P", &**p)?;
                     st.serialize_field("Q", &**q)?;
-                };
-                st.serialize_field("G", &**g)?;
-                if let Some(j) = j {
-                    st.serialize_field("J", &**j)?;
-                };
-                st.serialize_field("Y", &**y)?;
-                st.end()
-            }
-            Self::TransparentDSAPrivateKey { p, q, g, x } => {
-                let mut st = serializer.serialize_struct("KeyMaterial", 5)?;
-                st.serialize_field("P", &**p)?;
-                st.serialize_field("Q", &**q)?;
-                st.serialize_field("G", &**g)?;
-                st.serialize_field("X", &***x)?;
-                st.end()
-            }
-            Self::TransparentDSAPublicKey { p, q, g, y } => {
-                let mut st = serializer.serialize_struct("KeyMaterial", 5)?;
-                st.serialize_field("P", &**p)?;
-                st.serialize_field("Q", &**q)?;
-                st.serialize_field("G", &**g)?;
-                st.serialize_field("Y", &**y)?;
-                st.end()
-            }
-            Self::TransparentRSAPrivateKey {
-                modulus,
-                private_exponent,
-                public_exponent,
-                p,
-                q,
-                prime_exponent_p,
-                prime_exponent_q,
-                crt_coefficient,
-            } => {
-                let mut st = serializer.serialize_struct("KeyMaterial", 9)?;
-                st.serialize_field("Modulus", &**modulus)?;
-                if let Some(private_exponent) = private_exponent {
-                    st.serialize_field("PrivateExponent", &***private_exponent)?;
-                };
-                if let Some(public_exponent) = public_exponent {
+                    st.serialize_field("G", &**g)?;
+                    st.serialize_field("Y", &**y)?;
+                    st.end()
+                }
+                KeyMaterial::TransparentRSAPrivateKey {
+                    modulus,
+                    private_exponent,
+                    public_exponent,
+                    p,
+                    q,
+                    prime_exponent_p,
+                    prime_exponent_q,
+                    crt_coefficient,
+                } => {
+                    let mut st = serializer.serialize_struct("KeyMaterial", 9)?;
+                    st.serialize_field("Modulus", &**modulus)?;
+                    if let Some(private_exponent) = private_exponent {
+                        st.serialize_field("PrivateExponent", &***private_exponent)?;
+                    };
+                    if let Some(public_exponent) = public_exponent {
+                        st.serialize_field("PublicExponent", &**public_exponent)?;
+                    };
+                    if let Some(p) = p {
+                        st.serialize_field("P", &***p)?;
+                    };
+                    if let Some(q) = q {
+                        st.serialize_field("Q", &***q)?;
+                    };
+                    if let Some(prime_exponent_p) = prime_exponent_p {
+                        st.serialize_field("PrimeExponentP", &***prime_exponent_p)?;
+                    };
+                    if let Some(prime_exponent_q) = prime_exponent_q {
+                        st.serialize_field("PrimeExponentQ", &***prime_exponent_q)?;
+                    };
+                    if let Some(crt_coefficient) = crt_coefficient {
+                        st.serialize_field("CrtCoefficient", &***crt_coefficient)?;
+                    };
+                    st.end()
+                }
+                KeyMaterial::TransparentRSAPublicKey {
+                    modulus,
+                    public_exponent,
+                } => {
+                    let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
+                    st.serialize_field("Modulus", &**modulus)?;
                     st.serialize_field("PublicExponent", &**public_exponent)?;
-                };
-                if let Some(p) = p {
-                    st.serialize_field("P", &***p)?;
-                };
-                if let Some(q) = q {
-                    st.serialize_field("Q", &***q)?;
-                };
-                if let Some(prime_exponent_p) = prime_exponent_p {
-                    st.serialize_field("PrimeExponentP", &***prime_exponent_p)?;
-                };
-                if let Some(prime_exponent_q) = prime_exponent_q {
-                    st.serialize_field("PrimeExponentQ", &***prime_exponent_q)?;
-                };
-                if let Some(crt_coefficient) = crt_coefficient {
-                    st.serialize_field("CrtCoefficient", &***crt_coefficient)?;
-                };
-                st.end()
+                    st.end()
+                }
+                KeyMaterial::TransparentECDSAPrivateKey {
+                    recommended_curve,
+                    d,
+                } => {
+                    let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
+                    st.serialize_field("RecommendedCurve", recommended_curve)?;
+                    st.serialize_field("D", &***d)?;
+                    st.end()
+                }
+                KeyMaterial::TransparentECDSAPublicKey {
+                    recommended_curve,
+                    q_string,
+                } => {
+                    let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
+                    st.serialize_field("RecommendedCurve", recommended_curve)?;
+                    st.serialize_field("QString", q_string)?;
+                    st.end()
+                }
+                KeyMaterial::TransparentECDHPrivateKey {
+                    recommended_curve,
+                    d,
+                } => {
+                    let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
+                    st.serialize_field("RecommendedCurve", recommended_curve)?;
+                    st.serialize_field("D", &***d)?;
+                    st.end()
+                }
+                KeyMaterial::TransparentECDHPublicKey {
+                    recommended_curve,
+                    q_string,
+                } => {
+                    let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
+                    st.serialize_field("RecommendedCurve", recommended_curve)?;
+                    st.serialize_field("QString", q_string)?;
+                    st.end()
+                }
+                KeyMaterial::TransparentECMQVPrivateKey {
+                    recommended_curve,
+                    d,
+                } => {
+                    let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
+                    st.serialize_field("RecommendedCurve", recommended_curve)?;
+                    st.serialize_field("D", &***d)?;
+                    st.end()
+                }
+                KeyMaterial::TransparentECMQVPublicKey {
+                    recommended_curve,
+                    q_string,
+                } => {
+                    let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
+                    st.serialize_field("RecommendedCurve", recommended_curve)?;
+                    st.serialize_field("QString", q_string)?;
+                    st.end()
+                }
+                KeyMaterial::TransparentECPrivateKey {
+                    recommended_curve,
+                    d,
+                } => {
+                    let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
+                    st.serialize_field("RecommendedCurve", recommended_curve)?;
+                    st.serialize_field("D", &***d)?;
+                    st.end()
+                }
+                KeyMaterial::TransparentECPublicKey {
+                    recommended_curve,
+                    q_string,
+                } => {
+                    let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
+                    st.serialize_field("RecommendedCurve", recommended_curve)?;
+                    st.serialize_field("QString", q_string)?;
+                    st.end()
+                }
+                KeyMaterial::ByteString(_zeroizing) => Err(serde::ser::Error::custom(
+                    "KeyMaterial: only keys with Key Format Raw should have a key material as a \
+                     byte string",
+                )),
             }
-            Self::TransparentRSAPublicKey {
-                modulus,
-                public_exponent,
-            } => {
-                let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
-                st.serialize_field("Modulus", &**modulus)?;
-                st.serialize_field("PublicExponent", &**public_exponent)?;
-                st.end()
-            }
-            Self::TransparentECDSAPrivateKey {
-                recommended_curve,
-                d,
-            } => {
-                let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
-                st.serialize_field("RecommendedCurve", recommended_curve)?;
-                st.serialize_field("D", &***d)?;
-                st.end()
-            }
-            Self::TransparentECDSAPublicKey {
-                recommended_curve,
-                q_string,
-            } => {
-                let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
-                st.serialize_field("RecommendedCurve", recommended_curve)?;
-                st.serialize_field("QString", q_string)?;
-                st.end()
-            }
-            Self::TransparentECDHPrivateKey {
-                recommended_curve,
-                d,
-            } => {
-                let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
-                st.serialize_field("RecommendedCurve", recommended_curve)?;
-                st.serialize_field("D", &***d)?;
-                st.end()
-            }
-            Self::TransparentECDHPublicKey {
-                recommended_curve,
-                q_string,
-            } => {
-                let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
-                st.serialize_field("RecommendedCurve", recommended_curve)?;
-                st.serialize_field("QString", q_string)?;
-                st.end()
-            }
-            Self::TransparentECMQVPrivateKey {
-                recommended_curve,
-                d,
-            } => {
-                let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
-                st.serialize_field("RecommendedCurve", recommended_curve)?;
-                st.serialize_field("D", &***d)?;
-                st.end()
-            }
-            Self::TransparentECMQVPublicKey {
-                recommended_curve,
-                q_string,
-            } => {
-                let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
-                st.serialize_field("RecommendedCurve", recommended_curve)?;
-                st.serialize_field("QString", q_string)?;
-                st.end()
-            }
-            Self::TransparentECPrivateKey {
-                recommended_curve,
-                d,
-            } => {
-                let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
-                st.serialize_field("RecommendedCurve", recommended_curve)?;
-                st.serialize_field("D", &***d)?;
-                st.end()
-            }
-            Self::TransparentECPublicKey {
-                recommended_curve,
-                q_string,
-            } => {
-                let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
-                st.serialize_field("RecommendedCurve", recommended_curve)?;
-                st.serialize_field("QString", q_string)?;
-                st.end()
-            }
-            Self::ByteString(_zeroizing) => Err(serde::ser::Error::custom(
-                "KeyMaterial: only keys with Key Format Raw should have a key material as a byte \
-                 string",
-            )),
         }
     }
 }
@@ -730,12 +726,19 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
                 while let Some(byte) = seq.next_element()? {
                     bytestring.push(byte);
                 }
-                if self.key_format_type == KeyFormatType::Raw {
-                    Ok(KeyMaterial::ByteString(Zeroizing::new(bytestring)))
-                } else {
-                    Err(de::Error::custom(
+                match self.key_format_type {
+                    KeyFormatType::Raw
+                    | KeyFormatType::ECPrivateKey
+                    | KeyFormatType::Opaque
+                    | KeyFormatType::PKCS1
+                    | KeyFormatType::PKCS12
+                    | KeyFormatType::PKCS8
+                    | KeyFormatType::X509 => {
+                        Ok(KeyMaterial::ByteString(Zeroizing::new(bytestring)))
+                    }
+                    _ => Err(de::Error::custom(
                         "KeyMaterialVisitor: Raw key format type must be a byte string",
-                    ))
+                    )),
                 }
             }
 
@@ -1041,7 +1044,13 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
         ];
 
         match self.key_format_type {
-            KeyFormatType::Raw => {
+            KeyFormatType::Raw
+            | KeyFormatType::ECPrivateKey
+            | KeyFormatType::Opaque
+            | KeyFormatType::PKCS1
+            | KeyFormatType::PKCS12
+            | KeyFormatType::PKCS8
+            | KeyFormatType::X509 => {
                 trace!("===> KeyMaterial: Deserializing Raw key format type");
                 // This will call visit_seq for both the TTLV and the JSON deserializer
                 deserializer.deserialize_any(KeyMaterialVisitor {
