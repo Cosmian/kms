@@ -1,6 +1,9 @@
-use cosmian_kms_client::kmip_2_1::{
-    extra::VENDOR_ID_COSMIAN,
-    kmip_types::{CryptographicAlgorithm, CryptographicUsageMask, LinkType, Tag, VendorAttribute},
+use cosmian_kms_client::{
+    cosmian_kmip::kmip_0::kmip_types::CryptographicUsageMask,
+    kmip_2_1::{
+        extra::VENDOR_ID_COSMIAN,
+        kmip_types::{CryptographicAlgorithm, LinkType, Tag, VendorAttribute},
+    },
 };
 use kms_test_server::{start_default_test_kms_server, TestsContext};
 use strum::IntoEnumIterator;

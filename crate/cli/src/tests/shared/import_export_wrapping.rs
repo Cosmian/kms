@@ -6,10 +6,7 @@ use cosmian_kms_client::{
     cosmian_kmip::kmip_2_1::{
         kmip_attributes::Attributes,
         kmip_objects::Object,
-        kmip_types::{
-            CryptographicAlgorithm, CryptographicUsageMask, LinkType, UniqueIdentifier,
-            WrappingMethod,
-        },
+        kmip_types::{CryptographicAlgorithm, LinkType, UniqueIdentifier, WrappingMethod},
     },
     kmip_2_1::requests::create_symmetric_key_kmip_object,
     read_object_from_json_ttlv_file, write_kmip_object_to_file,
@@ -110,6 +107,8 @@ pub(crate) async fn test_import_export_wrap_rfc_5649() -> CliResult<()> {
 #[cfg(not(feature = "fips"))]
 #[tokio::test]
 pub(crate) async fn test_import_export_wrap_ecies() -> CliResult<()> {
+    use cosmian_kms_client::cosmian_kmip::kmip_0::kmip_types::CryptographicUsageMask;
+
     cosmian_logger::log_init(option_env!("RUST_LOG"));
     // create a temp dir
     let tmp_dir = TempDir::new()?;
