@@ -280,12 +280,14 @@ async fn update_as_destroyed(
         Attributes::default()
     } else {
         let key_block = object.key_block_mut()?;
-        key_block.key_value = Some(KeyValue {
+        let Some(KeyValue::Structure { attributes, .. }) = key_block.key_value.as_ref() else {
+            return Err(KmsError::Default(
+                "update_as_destroyd: key value not found in key".to_owned(),
+            ));
+        };
+        key_block.key_value = Some(KeyValue::Structure {
             key_material: KeyMaterial::ByteString(Zeroizing::from(vec![])),
-            attributes: key_block
-                .key_value
-                .as_ref()
-                .and_then(|f| f.attributes.clone()),
+            attributes: attributes.clone(),
         });
         key_block.attributes()?.clone()
     };

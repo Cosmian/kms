@@ -365,8 +365,8 @@ const GET_ATTRIBUTES_RESPONSE: &str = "42007b0100000\
 
 #[test]
 fn get_attributes() {
-    // log_init(Some("debug"));
-    log_init(option_env!("RUST_LOG"));
+    log_init(Some("debug"));
+    // log_init(option_env!("RUST_LOG"));
     let request = hex::decode(GET_ATTRIBUTES).unwrap();
 
     let (major, minor) = TTLV::find_version(&request).unwrap();
@@ -557,7 +557,7 @@ fn get() {
                 key_block: KeyBlock {
                     key_format_type: KeyFormatType::Raw,
                     key_compression_type: None,
-                    key_value: Some(KeyValue {
+                    key_value: Some(KeyValue::Structure {
                         key_material: KeyMaterial::ByteString(Zeroizing::new(vec![
                             28, 93, 157, 226, 168, 186, 247, 73, 3, 214, 98, 56, 37, 70, 192, 133,
                             237, 178, 254, 237, 12, 39, 148, 101, 57, 75, 65, 140, 199, 166, 19,

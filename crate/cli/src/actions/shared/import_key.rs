@@ -260,7 +260,7 @@ pub(crate) fn build_private_key_from_der_bytes(
         key_block: KeyBlock {
             key_format_type,
             key_compression_type: None,
-            key_value: Some(KeyValue {
+            key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::ByteString(bytes),
                 attributes: Some(Attributes::default()),
             }),
@@ -285,7 +285,7 @@ fn build_public_key_from_der_bytes(
         key_block: KeyBlock {
             key_format_type,
             key_compression_type: None,
-            key_value: Some(KeyValue {
+            key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::ByteString(bytes),
                 attributes: Some(Attributes::default()),
             }),
@@ -309,7 +309,7 @@ fn build_symmetric_key_from_bytes(
         key_block: KeyBlock {
             key_format_type: KeyFormatType::TransparentSymmetricKey,
             key_compression_type: None,
-            key_value: Some(KeyValue {
+            key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::TransparentSymmetricKey { key: bytes },
                 attributes: Some(Attributes::default()),
             }),

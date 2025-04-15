@@ -44,7 +44,7 @@ fn aes_key_material(key_value: &[u8]) -> KeyMaterial {
 }
 
 fn aes_key_value(key_value: &[u8]) -> KeyValue {
-    KeyValue {
+    KeyValue::Structure {
         key_material: aes_key_material(key_value),
         attributes: Some(Attributes {
             object_type: Some(ObjectType::SymmetricKey),
@@ -481,7 +481,7 @@ fn test_object_public_key() {
         key_block: KeyBlock {
             key_format_type: KeyFormatType::Raw,
             key_compression_type: None,
-            key_value: Some(KeyValue {
+            key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::ByteString(Zeroizing::from(b"1231456".to_vec())),
                 attributes: Some(Attributes {
                     object_type: Some(ObjectType::PublicKey),
@@ -527,7 +527,7 @@ fn test_import_public_key() {
         key_block: KeyBlock {
             key_format_type: KeyFormatType::Raw,
             key_compression_type: None,
-            key_value: Some(KeyValue {
+            key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::ByteString(Zeroizing::from(key_bytes.to_vec())),
                 attributes: Some(Attributes {
                     object_type: Some(ObjectType::PublicKey),
@@ -756,13 +756,19 @@ fn test_issue_deserialize_object_with_empty_attributes() {
     let object = Object::SymmetricKey(SymmetricKey {
         key_block: get_key_block(),
     });
+    let Some(KeyValue::Structure { key_material, .. }) =
+        object.key_block().unwrap().clone().key_value
+    else {
+        panic!("wrong key value type");
+    };
+    let original_key_material = key_material;
     let object_: Object = serialize_deserialize(&object).unwrap();
     match object_ {
         Object::SymmetricKey(SymmetricKey { key_block }) => {
-            assert_eq!(
-                get_key_block().key_value.map(|kv| kv.key_material),
-                key_block.key_value.map(|kv| kv.key_material)
-            );
+            let Some(KeyValue::Structure { key_material, .. }) = key_block.key_value else {
+                panic!("wrong key value type");
+            };
+            assert_eq!(original_key_material, key_material);
         }
         _ => panic!("wrong object type"),
     }
@@ -782,7 +788,7 @@ fn get_key_block() -> KeyBlock {
     KeyBlock {
         key_format_type: KeyFormatType::TransparentSymmetricKey,
         key_compression_type: None,
-        key_value: Some(KeyValue {
+        key_value: Some(KeyValue::Structure {
             key_material: KeyMaterial::TransparentSymmetricKey {
                 key: Zeroizing::from(
                     hex::decode(
@@ -1575,7 +1581,7 @@ fn test_object_raw() {
         key_block: KeyBlock {
             key_format_type: KeyFormatType::Raw,
             key_compression_type: None,
-            key_value: Some(KeyValue {
+            key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::ByteString(Zeroizing::new(vec![0x01, 0x02, 0x03])),
                 attributes: None,
             }),
@@ -1615,7 +1621,7 @@ fn test_object_structured_sym() {
         key_block: KeyBlock {
             key_format_type: KeyFormatType::TransparentSymmetricKey,
             key_compression_type: None,
-            key_value: Some(KeyValue {
+            key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::TransparentSymmetricKey {
                     key: Zeroizing::new(vec![0x01, 0x02, 0x03]),
                 },
@@ -1658,7 +1664,7 @@ fn test_object_structured_rsa() {
         key_block: KeyBlock {
             key_format_type: KeyFormatType::TransparentRSAPrivateKey,
             key_compression_type: None,
-            key_value: Some(KeyValue {
+            key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::TransparentRSAPrivateKey {
                     modulus: Box::new(BigInt::from(1)),
                     private_exponent: Some(Box::new(SafeBigInt::from(BigInt::from(1)))),
@@ -1703,7 +1709,7 @@ fn test_object_structured_rsa() {
 #[test]
 fn test_key_value_ttlv() {
     let key_format_type = KeyFormatType::Raw;
-    let kv = KeyValue {
+    let kv = KeyValue::Structure {
         key_material: KeyMaterial::ByteString(Zeroizing::new(vec![1, 2, 3])),
         attributes: Some(Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -1721,7 +1727,7 @@ fn test_key_value_ttlv() {
             .unwrap()
     );
     let key_format_type = KeyFormatType::TransparentRSAPublicKey;
-    let kv = KeyValue {
+    let kv = KeyValue::Structure {
         key_material: KeyMaterial::TransparentRSAPublicKey {
             modulus: Box::new(BigInt::from(1)),
             public_exponent: Box::new(BigInt::from(2)),

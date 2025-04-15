@@ -81,12 +81,16 @@ pub fn create_master_keypair(
     sk_tags.insert("_sk".to_owned());
     private_key_attributes.set_tags(sk_tags)?;
     // and set them on the object
-    private_key
-        .key_block_mut()?
-        .key_value
-        .as_mut()
-        .ok_or_else(|| CryptoError::Default("Key value not found in private key".to_owned()))?
-        .attributes = Some(private_key_attributes);
+    let Some(&mut KeyValue::Structure {
+        ref mut attributes, ..
+    }) = private_key.key_block_mut()?.key_value.as_mut()
+    else {
+        return Err(CryptoError::Default(
+            "Key value not found in private key".to_owned(),
+        ));
+    };
+    // Set the attributes on the key value
+    *attributes = Some(private_key_attributes.clone());
 
     // Public Key generation
     // First generate fresh attributes with that policy
@@ -113,12 +117,16 @@ pub fn create_master_keypair(
     pk_tags.insert("_pk".to_owned());
     public_key_attributes.set_tags(pk_tags)?;
     // and set them on the object
-    public_key
-        .key_block_mut()?
-        .key_value
-        .as_mut()
-        .ok_or_else(|| CryptoError::Default("Key value not found in public key".to_owned()))?
-        .attributes = Some(public_key_attributes);
+    let Some(&mut KeyValue::Structure {
+        ref mut attributes, ..
+    }) = public_key.key_block_mut()?.key_value.as_mut()
+    else {
+        return Err(CryptoError::Default(
+            "Key value not found in public key".to_owned(),
+        ));
+    };
+    // Set the attributes on the key value
+    *attributes = Some(public_key_attributes.clone());
 
     Ok(KeyPair((private_key, public_key)))
 }
@@ -148,7 +156,7 @@ fn create_master_private_key_object(
             cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
             key_format_type: KeyFormatType::CoverCryptSecretKey,
             key_compression_type: None,
-            key_value: Some(KeyValue {
+            key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::ByteString(Zeroizing::from(key.to_vec())),
                 attributes: Some(attributes),
             }),
@@ -189,7 +197,7 @@ fn create_master_public_key_object(
             cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
             key_format_type: KeyFormatType::CoverCryptPublicKey,
             key_compression_type: None,
-            key_value: Some(KeyValue {
+            key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::ByteString(Zeroizing::from(key.to_vec())),
                 attributes: Some(attributes),
             }),

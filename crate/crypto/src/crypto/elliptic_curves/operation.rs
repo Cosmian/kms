@@ -137,7 +137,7 @@ pub fn to_ec_public_key(
             cryptographic_algorithm: algorithm,
             key_format_type: KeyFormatType::TransparentECPublicKey,
             key_compression_type: None,
-            key_value: Some(KeyValue {
+            key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::TransparentECPublicKey {
                     recommended_curve: curve,
                     q_string: bytes.to_vec(),
@@ -204,7 +204,7 @@ pub fn to_ec_private_key(
             cryptographic_algorithm: algorithm,
             key_format_type: KeyFormatType::TransparentECPrivateKey,
             key_compression_type: None,
-            key_value: Some(KeyValue {
+            key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::TransparentECPrivateKey {
                     recommended_curve: curve,
                     d: Box::new(SafeBigInt::from_bytes_be(bytes)),
@@ -518,12 +518,15 @@ fn create_ec_key_pair(
     sk_tags.insert("_sk".to_owned());
     private_key_attributes.set_tags(sk_tags)?;
     // and set them on the object
-    private_key
-        .key_block_mut()?
-        .key_value
-        .as_mut()
-        .ok_or_else(|| CryptoError::Default("Key value not found in private key".to_owned()))?
-        .attributes = Some(private_key_attributes);
+    let Some(&mut KeyValue::Structure {
+        ref mut attributes, ..
+    }) = private_key.key_block_mut()?.key_value.as_mut()
+    else {
+        return Err(CryptoError::Default(
+            "Key value not found in the private key".to_owned(),
+        ));
+    };
+    *attributes = Some(private_key_attributes);
     trace!("create_approved_ecc_key_pair: private key converted OK");
 
     // Generate  KMIP public Key
@@ -547,12 +550,15 @@ fn create_ec_key_pair(
     pk_tags.insert("_pk".to_owned());
     public_key_attributes.set_tags(pk_tags)?;
     // and set them on the object
-    public_key
-        .key_block_mut()?
-        .key_value
-        .as_mut()
-        .ok_or_else(|| CryptoError::Default("Key value not found in public key".to_owned()))?
-        .attributes = Some(public_key_attributes);
+    let Some(&mut KeyValue::Structure {
+        ref mut attributes, ..
+    }) = public_key.key_block_mut()?.key_value.as_mut()
+    else {
+        return Err(CryptoError::Default(
+            "Key value not found in the public key".to_owned(),
+        ));
+    };
+    *attributes = Some(public_key_attributes);
     trace!("create_approved_ecc_key_pair: public key converted OK");
 
     Ok(KeyPair::new(private_key, public_key))
@@ -649,6 +655,8 @@ mod tests {
         // Create a Key pair
         // - the private key is a TransparentEcPrivateKey where the key value is the bytes of the scalar
         // - the public key is a TransparentEcPublicKey where the key value is the bytes of the Montgomery point
+
+        use cosmian_kmip::kmip_2_1::kmip_data_structures::KeyValue;
         let algorithm = CryptographicAlgorithm::EC;
         let private_key_attributes = Attributes {
             cryptographic_usage_mask: Some(CryptographicUsageMask::Unrestricted),
@@ -671,11 +679,15 @@ mod tests {
         //
         // public key
         //
-        let original_public_key_value = &wrap_key_pair.public_key().key_block().unwrap().key_value;
+        let Some(KeyValue::Structure { key_material, .. }) =
+            &wrap_key_pair.public_key().key_block().unwrap().key_value
+        else {
+            panic!("failed to get key value from public key in test_x25519_conversions")
+        };
         let KeyMaterial::TransparentECPublicKey {
             q_string: original_public_key_bytes,
             ..
-        } = &original_public_key_value.as_ref().unwrap().key_material
+        } = key_material
         else {
             panic!("Not a transparent public key")
         };
@@ -688,13 +700,15 @@ mod tests {
         //
         // private key
         //
-        let original_private_key_value =
-            &wrap_key_pair.private_key().key_block().unwrap().key_value;
-        let mut original_private_key_bytes =
-            match &original_private_key_value.as_ref().unwrap().key_material {
-                KeyMaterial::TransparentECPrivateKey { d, .. } => d.to_bytes_be().1,
-                _ => panic!("Not a transparent private key"),
-            };
+        let Some(KeyValue::Structure { key_material, .. }) =
+            &wrap_key_pair.private_key().key_block().unwrap().key_value
+        else {
+            panic!("failed to get key value from public key in test_x25519_conversions")
+        };
+        let mut original_private_key_bytes = match key_material {
+            KeyMaterial::TransparentECPrivateKey { d, .. } => d.to_bytes_be().1,
+            _ => panic!("Not a transparent private key"),
+        };
         pad_be_bytes(&mut original_private_key_bytes, X25519_PRIVATE_KEY_LENGTH);
         // try to convert to openssl
         let p_key =
@@ -781,6 +795,8 @@ mod tests {
         // Create a Key pair
         // - the private key is a TransparentEcPrivateKey where the key value is the bytes of the scalar
         // - the public key is a TransparentEcPublicKey where the key value is the bytes of the Montgomery point
+
+        use cosmian_kmip::kmip_2_1::kmip_data_structures::KeyValue;
         let algorithm = CryptographicAlgorithm::Ed448;
         let private_key_attributes = Attributes {
             cryptographic_usage_mask: Some(CryptographicUsageMask::Sign),
@@ -803,14 +819,21 @@ mod tests {
         //
         // public key
         //
-        let original_public_key_value = &wrap_key_pair.public_key().key_block().unwrap().key_value;
+        let Some(KeyValue::Structure {
+            ref key_material, ..
+        }) = wrap_key_pair
+            .public_key()
+            .key_block()
+            .unwrap()
+            .key_value
+            .as_ref()
+        else {
+            panic!("Key value not found in public key");
+        };
         let KeyMaterial::TransparentECPublicKey {
             q_string: original_public_key_bytes,
             ..
-        } = &original_public_key_value
-            .as_ref()
-            .expect("failed to get key material from public key in test_x448_conversions")
-            .key_material
+        } = key_material
         else {
             panic!("Not a transparent public key")
         };
@@ -823,13 +846,18 @@ mod tests {
         //
         // private key
         //
-        let original_private_key_value =
-            &wrap_key_pair.private_key().key_block().unwrap().key_value;
-        let mut original_private_key_bytes = match &original_private_key_value
+        let Some(KeyValue::Structure {
+            ref key_material, ..
+        }) = wrap_key_pair
+            .private_key()
+            .key_block()
+            .unwrap()
+            .key_value
             .as_ref()
-            .expect("failed to get key material from private key in test_x448_conversions")
-            .key_material
-        {
+        else {
+            panic!("Key value not found in private key");
+        };
+        let mut original_private_key_bytes = match key_material {
             KeyMaterial::TransparentECPrivateKey { d, .. } => d.to_bytes_be().1,
             _ => panic!("Not a transparent private key"),
         };

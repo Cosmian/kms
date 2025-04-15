@@ -152,7 +152,7 @@ pub fn update_key_block_with_unwrapped_key(
                 },
                 _ => KeyMaterial::ByteString(plaintext.to_vec().into()),
             };
-            KeyValue {
+            KeyValue::Structure {
                 key_material,
                 attributes: attributes.clone(),
             }

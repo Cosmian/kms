@@ -345,15 +345,15 @@ async fn handle_ttlv_bytes_inner(
         .map_err(|e| KmsError::InvalidRequest(format!("Failed to parse RequestMessage: {e}")))?;
 
     // log the request
-    debug!(target: "kmip", request_message=?request_message);
+    debug!("Request Message: {request_message:#?}");
 
-    let response = Box::pin(message(kms, request_message, username, None)).await?;
+    let response_message = Box::pin(message(kms, request_message, username, None)).await?;
 
     // log the response
-    debug!(target: "kmip", response_message=?response);
+    debug!("Response Message: {response_message:#?}");
 
     // serialize the response to TTLV
-    let response_ttlv = to_ttlv(&response)
+    let response_ttlv = to_ttlv(&response_message)
         .map_err(|e| KmsError::InvalidRequest(format!("Failed to serialize response: {e}")))?;
 
     // convert the TTLV to bytes
@@ -386,7 +386,6 @@ fn get_kmip_version(ttlv: &TTLV) -> KResult<(i32, i32)> {
             "The RequestMessage should have a RequestHeader".to_owned(),
         ));
     };
-    info!("RequestMessage: {:?}", children);
     let protocol_version = children
         .first()
         .context("The RequestMessage should have a ProtocolVersion")?;

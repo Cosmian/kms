@@ -52,7 +52,7 @@ pub fn wrapped_secret_key(
     };
 
     let cryptographic_length = Some(i32::try_from(sk.encrypted_symmetric_key.len())? * 8);
-    let key_value = KeyValue {
+    let key_value = KeyValue::Structure {
         key_material: KeyMaterial::ByteString(Zeroizing::from(sk.encrypted_symmetric_key)),
         attributes: Some(wrapped_key_attributes),
     };
@@ -142,23 +142,19 @@ impl TryFrom<&KeyBlock> for CoverCryptSymmetricKey {
                 "unwrapping an CoverCrypt Secret Key is not yet supported".to_owned(),
             ))
         }
-        serde_json::from_slice::<Self>(
-            match &sk
-                .key_value
-                .as_ref()
-                .ok_or_else(|| {
-                    CryptoError::Default("the Secret Key does not have a Key Value".to_owned())
-                })?
-                .key_material
-            {
-                KeyMaterial::TransparentSymmetricKey { key } => key,
-                other => {
-                    return Err(CryptoError::Kmip(format!(
-                        "Invalid key material for an CoverCrypt secret key: {other}"
-                    )))
-                }
-            },
-        )
+        let Some(KeyValue::Structure { key_material, .. }) = sk.key_value.as_ref() else {
+            return Err(CryptoError::Default(
+                "Key value not found in Covercrypt secret key".to_owned(),
+            ));
+        };
+        serde_json::from_slice::<Self>(match key_material {
+            KeyMaterial::TransparentSymmetricKey { key } => key,
+            other => {
+                return Err(CryptoError::Kmip(format!(
+                    "Invalid key material for an CoverCrypt secret key: {other}"
+                )))
+            }
+        })
         .map_err(|e| {
             CryptoError::Kmip(format!(
                 "failed deserializing the CoverCrypt Secret Key from the Key Material {e}"

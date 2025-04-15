@@ -42,14 +42,15 @@ pub(crate) fn unwrap_user_decryption_key_object(
             "Expected an CoverCrypt User Decryption Key".to_owned(),
         ))
     }
-    let bytes = match &key_block
-        .key_value
-        .as_ref()
-        .ok_or_else(|| {
-            CryptoError::Default("the Private Key does not have a Key Value".to_owned())
-        })?
-        .key_material
-    {
+    let Some(KeyValue::Structure {
+        ref key_material, ..
+    }) = key_block.key_value.as_ref()
+    else {
+        return Err(CryptoError::Default(
+            "Key value not found in Covercrypt user decryption key".to_owned(),
+        ));
+    };
+    let bytes = match key_material {
         KeyMaterial::ByteString(b) => b.clone(),
         x => {
             return Err(CryptoError::Kmip(format!(
@@ -167,7 +168,7 @@ impl UserDecryptionKeysHandler {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
                 key_format_type: KeyFormatType::CoverCryptSecretKey,
                 key_compression_type: None,
-                key_value: Some(KeyValue {
+                key_value: Some(KeyValue::Structure {
                     key_material: KeyMaterial::ByteString(user_decryption_key_bytes),
                     attributes: Some(attributes),
                 }),
@@ -210,7 +211,7 @@ impl UserDecryptionKeysHandler {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
                 key_format_type: KeyFormatType::CoverCryptSecretKey,
                 key_compression_type: None,
-                key_value: Some(KeyValue {
+                key_value: Some(KeyValue::Structure {
                     key_material: KeyMaterial::ByteString(user_decryption_key_bytes),
                     attributes: Some(usk_attributes),
                 }),

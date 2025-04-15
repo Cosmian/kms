@@ -114,7 +114,7 @@ fn key_block(key_format_type: KeyFormatType, bytes: Vec<u8>) -> KeyBlock {
     KeyBlock {
         key_format_type,
         key_compression_type: None,
-        key_value: Some(KeyValue {
+        key_value: Some(KeyValue::Structure {
             // No need to specify zeroizing as parameter type for this function
             // seems to only deal with public components.
             key_material: KeyMaterial::ByteString(Zeroizing::from(bytes)),

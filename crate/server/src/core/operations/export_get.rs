@@ -96,7 +96,7 @@ pub(crate) async fn export_get(
                     || owm.state() == StateEnumeration::Destroyed_Compromised)
             {
                 let key_block = owm.object_mut().key_block_mut()?;
-                key_block.key_value = Some(KeyValue {
+                key_block.key_value = Some(KeyValue::Structure {
                     key_material: KeyMaterial::ByteString(Zeroizing::from(vec![])),
                     attributes: None,
                 });
@@ -121,7 +121,7 @@ pub(crate) async fn export_get(
                     || owm.state() == StateEnumeration::Destroyed_Compromised)
             {
                 let key_block = owm.object_mut().key_block_mut()?;
-                key_block.key_value = Some(KeyValue {
+                key_block.key_value = Some(KeyValue::Structure {
                     key_material: KeyMaterial::ByteString(Zeroizing::from(vec![])),
                     attributes: None,
                 });
@@ -235,7 +235,7 @@ async fn post_process_private_key(
             || owm.state() == StateEnumeration::Destroyed_Compromised)
     {
         let key_block = owm.object_mut().key_block_mut()?;
-        key_block.key_value = Some(KeyValue {
+        key_block.key_value = Some(KeyValue::Structure {
             key_material: KeyMaterial::ByteString(Zeroizing::from(vec![])),
             attributes: None,
         });
@@ -314,15 +314,18 @@ async fn post_process_active_private_key(
     }
 
     // Make a copy of the existing attributes
-
-    upsert_links_in_attributes(
-        &mut attributes,
-        key_block
-            .key_value
-            .as_mut()
-            .and_then(|kv| kv.attributes.clone())
-            .get_or_insert(Attributes::default()),
-    );
+    let existing_attributes = {
+        let Some(&mut KeyValue::Structure {
+            ref mut attributes, ..
+        }) = key_block.key_value.as_mut()
+        else {
+            return Err(KmsError::Default(
+                "post_process_active_private_key: key value not found in key".to_owned(),
+            ));
+        };
+        attributes.get_or_insert(Attributes::default())
+    };
+    upsert_links_in_attributes(&mut attributes, existing_attributes);
 
     // parse the key to an openssl object
     let openssl_key = kmip_private_key_to_openssl(object_with_metadata.object())
@@ -343,9 +346,13 @@ async fn post_process_active_private_key(
             attributes.cryptographic_usage_mask,
         )?;
         // add the attributes back
+        let new_attributes = attributes;
         let key_block = object.key_block_mut()?;
-        if let Some(key_value) = key_block.key_value.as_mut() {
-            key_value.attributes = Some(attributes);
+        if let Some(&mut KeyValue::Structure {
+            ref mut attributes, ..
+        }) = key_block.key_value.as_mut()
+        {
+            *attributes = Some(new_attributes);
         }
 
         // wrap the key
@@ -397,9 +404,13 @@ async fn post_process_active_private_key(
         object_with_metadata.set_object(object);
     }
     // add the attributes back
+    let new_attributes = attributes;
     let key_block = object_with_metadata.object_mut().key_block_mut()?;
-    if let Some(key_value) = key_block.key_value.as_mut() {
-        key_value.attributes = Some(attributes);
+    if let Some(&mut KeyValue::Structure {
+        ref mut attributes, ..
+    }) = key_block.key_value.as_mut()
+    {
+        *attributes = Some(new_attributes);
     }
     Ok(())
 }
@@ -453,14 +464,18 @@ async fn process_public_key(
         .await
     }
 
-    upsert_links_in_attributes(
-        &mut attributes,
-        key_block
-            .key_value
-            .as_mut()
-            .and_then(|kv| kv.attributes.clone())
-            .get_or_insert(Attributes::default()),
-    );
+    let existing_attributes = {
+        let Some(&mut KeyValue::Structure {
+            ref mut attributes, ..
+        }) = key_block.key_value.as_mut()
+        else {
+            return Err(KmsError::Default(
+                "post_process_active_private_key: key value not found in key".to_owned(),
+            ));
+        };
+        attributes.get_or_insert(Attributes::default())
+    };
+    upsert_links_in_attributes(&mut attributes, existing_attributes);
 
     // parse the key to an openssl object
     let openssl_key = kmip_public_key_to_openssl(object_with_metadata.object())
@@ -480,9 +495,13 @@ async fn process_public_key(
             attributes.cryptographic_usage_mask,
         )?;
         // add the attributes back
+        let new_attributes = attributes;
         let key_block = object.key_block_mut()?;
-        if let Some(key_value) = key_block.key_value.as_mut() {
-            key_value.attributes = Some(attributes);
+        if let Some(&mut KeyValue::Structure {
+            ref mut attributes, ..
+        }) = key_block.key_value.as_mut()
+        {
+            *attributes = Some(new_attributes);
         }
 
         // wrap the key
@@ -525,9 +544,13 @@ async fn process_public_key(
     }
 
     // add the attributes back
+    let new_attributes = attributes;
     let key_block = object_with_metadata.object_mut().key_block_mut()?;
-    if let Some(key_value) = key_block.key_value.as_mut() {
-        key_value.attributes = Some(attributes);
+    if let Some(&mut KeyValue::Structure {
+        ref mut attributes, ..
+    }) = key_block.key_value.as_mut()
+    {
+        *attributes = Some(new_attributes);
     }
 
     Ok(())
@@ -665,14 +688,18 @@ async fn process_symmetric_key(
 
     // we have an unwrapped key, convert it to the pivotal format first,
     // which is getting the key bytes
-    let key_bytes = match key_block
-        .key_value
-        .as_mut()
-        .ok_or_else(|| {
-            KmsError::Default("export: missing key value for a symmetric key".to_owned())
-        })?
-        .key_material
-    {
+
+    let Some(&mut KeyValue::Structure {
+        ref mut key_material,
+        ref mut attributes,
+    }) = key_block.key_value.as_mut()
+    else {
+        return Err(KmsError::Default(
+            "process_symmetric_key: key value not found in key".to_owned(),
+        ));
+    };
+
+    let key_bytes = match key_material {
         KeyMaterial::ByteString(ref mut key_bytes) => key_bytes.clone(),
         KeyMaterial::TransparentSymmetricKey { ref mut key } => key.clone(),
         _ => kms_bail!("export: unsupported key material"),
@@ -687,12 +714,9 @@ async fn process_symmetric_key(
             )
         }
         // generate a key block in the default format, which is Raw
-        key_block.key_value = Some(KeyValue {
+        key_block.key_value = Some(KeyValue::Structure {
             key_material: KeyMaterial::ByteString(key_bytes),
-            attributes: key_block
-                .key_value
-                .as_ref()
-                .and_then(|kv| kv.attributes.clone()),
+            attributes: attributes.clone(),
         });
         key_block.key_format_type = KeyFormatType::Raw;
         key_block.attributes_mut()?.key_format_type = Some(KeyFormatType::Raw);
@@ -704,22 +728,16 @@ async fn process_symmetric_key(
     // The key  is not wrapped => export to desired format
     match key_format_type {
         Some(KeyFormatType::TransparentSymmetricKey) => {
-            key_block.key_value = Some(KeyValue {
+            key_block.key_value = Some(KeyValue::Structure {
                 key_material: KeyMaterial::TransparentSymmetricKey { key: key_bytes },
-                attributes: key_block
-                    .key_value
-                    .as_ref()
-                    .and_then(|kv| kv.attributes.clone()),
+                attributes: attributes.clone(),
             });
             key_block.key_format_type = KeyFormatType::TransparentSymmetricKey;
         }
         None | Some(KeyFormatType::Raw) => {
-            key_block.key_value = Some(KeyValue {
+            key_block.key_value = Some(KeyValue::Structure {
                 key_material: KeyMaterial::ByteString(key_bytes),
-                attributes: key_block
-                    .key_value
-                    .as_ref()
-                    .and_then(|kv| kv.attributes.clone()),
+                attributes: attributes.clone(),
             });
             key_block.key_format_type = KeyFormatType::Raw;
             key_block.attributes_mut()?.key_format_type = Some(KeyFormatType::Raw);
@@ -822,7 +840,7 @@ async fn build_pkcs12_for_private_key(
         key_block: KeyBlock {
             key_format_type: KeyFormatType::PKCS12,
             key_compression_type: None,
-            key_value: Some(KeyValue {
+            key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::ByteString(Zeroizing::from(pkcs12.to_der()?)),
                 // attributes are added later
                 attributes: None,

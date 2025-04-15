@@ -238,38 +238,41 @@ impl KeyBlock {
             )
         })?;
 
-        match &key_value.key_material {
-            KeyMaterial::ByteString(v) => Ok(v.clone()),
-            KeyMaterial::TransparentSymmetricKey { key } => Ok(key.clone()),
-            KeyMaterial::TransparentECPrivateKey {
-                d,
-                recommended_curve,
-            } => {
-                let mut d_vec = d.to_bytes_be().1;
-                let privkey_size = match recommended_curve {
-                    RecommendedCurve::P192 => 24,
-                    RecommendedCurve::P224 => 28,
-                    RecommendedCurve::P256
-                    | RecommendedCurve::CURVE25519
-                    | RecommendedCurve::CURVEED25519 => 32,
-                    RecommendedCurve::P384 => 48,
-                    RecommendedCurve::P521 => 66,
-                    RecommendedCurve::CURVE448 => 56,
-                    RecommendedCurve::CURVEED448 => 57,
-                    _ => d_vec.len(),
-                };
-                pad_be_bytes(&mut d_vec, privkey_size);
-                Ok(Zeroizing::new(d_vec))
-            }
-            KeyMaterial::TransparentECPublicKey { q_string, .. } => {
-                Ok(Zeroizing::new(q_string.clone()))
-            }
-            _ => Err(KmipError::InvalidKmip21Value(
-                ErrorReason::Invalid_Data_Type,
-                "Key bytes can only be recovered from ByteString or TransparentSymmetricKey key \
-                 material."
-                    .to_owned(),
-            )),
+        match key_value {
+            KeyValue::ByteString(v) => Ok(v.clone()),
+            KeyValue::Structure { key_material, .. } => match key_material {
+                KeyMaterial::ByteString(v) => Ok(v.clone()),
+                KeyMaterial::TransparentSymmetricKey { key } => Ok(key.clone()),
+                KeyMaterial::TransparentECPrivateKey {
+                    d,
+                    recommended_curve,
+                } => {
+                    let mut d_vec = d.to_bytes_be().1;
+                    let privkey_size = match recommended_curve {
+                        RecommendedCurve::P192 => 24,
+                        RecommendedCurve::P224 => 28,
+                        RecommendedCurve::P256
+                        | RecommendedCurve::CURVE25519
+                        | RecommendedCurve::CURVEED25519 => 32,
+                        RecommendedCurve::P384 => 48,
+                        RecommendedCurve::P521 => 66,
+                        RecommendedCurve::CURVE448 => 56,
+                        RecommendedCurve::CURVEED448 => 57,
+                        _ => d_vec.len(),
+                    };
+                    pad_be_bytes(&mut d_vec, privkey_size);
+                    Ok(Zeroizing::new(d_vec))
+                }
+                KeyMaterial::TransparentECPublicKey { q_string, .. } => {
+                    Ok(Zeroizing::new(q_string.clone()))
+                }
+                _ => Err(KmipError::InvalidKmip21Value(
+                    ErrorReason::Invalid_Data_Type,
+                    "Key bytes can only be recovered from ByteString or TransparentSymmetricKey \
+                     key material."
+                        .to_owned(),
+                )),
+            },
         }
     }
 
@@ -424,7 +427,7 @@ impl Serialize for KeyValueSerializer {
         S: serde::Serializer,
     {
         match &self.key_value {
-            KeyValue::ByteString(ref bytes) => return serializer.serialize_bytes(bytes),
+            KeyValue::ByteString(ref bytes) => serializer.serialize_bytes(bytes),
             KeyValue::Structure {
                 key_material,
                 attributes,
@@ -534,7 +537,7 @@ impl<'de> DeserializeSeed<'de> for KeyValueDeserializer {
 impl KeyValue {
     /// Returns the `KeyValue` attributes if any, an error otherwise
     pub fn attributes(&self) -> Result<&Attributes, KmipError> {
-        let KeyValue::Structure { attributes, .. } = self else {
+        let Self::Structure { attributes, .. } = self else {
             return Err(KmipError::InvalidKmip21Value(
                 ErrorReason::Invalid_Attribute_Value,
                 "key Value is wrapped".to_owned(),
@@ -550,7 +553,7 @@ impl KeyValue {
 
     /// Returns the `KeyValue` attributes if any, an error otherwise
     pub fn attributes_mut(&mut self) -> Result<&mut Attributes, KmipError> {
-        let KeyValue::Structure { attributes, .. } = self else {
+        let Self::Structure { attributes, .. } = self else {
             return Err(KmipError::InvalidKmip21Value(
                 ErrorReason::Invalid_Attribute_Value,
                 "key Value is wrapped".to_owned(),
@@ -567,7 +570,7 @@ impl KeyValue {
     /// Returns the `KeyValue` key material bytes if any, an error otherwise
     /// Only `KeyMaterial::ByteString` and `KeyMaterial::TransparentSymmetricKey` are supported
     pub fn raw_bytes(&self) -> Result<&[u8], KmipError> {
-        let KeyValue::Structure { key_material, .. } = self else {
+        let Self::Structure { key_material, .. } = self else {
             return Err(KmipError::InvalidKmip21Value(
                 ErrorReason::Invalid_Attribute_Value,
                 "key Value is wrapped".to_owned(),
