@@ -60,7 +60,7 @@ impl TryFrom<kmip_2_1::kmip_operations::CreateResponse> for CreateResponse {
     type Error = KmipError;
 
     fn try_from(value: kmip_2_1::kmip_operations::CreateResponse) -> Result<Self, Self::Error> {
-        debug!("Converting KMIP 2.1 CreateResponse to KMIP 1.4: {value:#?}");
+        trace!("Converting KMIP 2.1 CreateResponse to KMIP 1.4: {value:#?}");
 
         Ok(Self {
             object_type: value.object_type.try_into()?,
@@ -429,7 +429,7 @@ impl TryFrom<kmip_2_1::kmip_operations::GetAttributesResponse> for GetAttributes
     fn try_from(
         value: kmip_2_1::kmip_operations::GetAttributesResponse,
     ) -> Result<Self, Self::Error> {
-        debug!("Converting KMIP 2.1 GetAttributesResponse to KMIP 1.4: {value:#?}");
+        trace!("Converting KMIP 2.1 GetAttributesResponse to KMIP 1.4: {value:#?}");
 
         let attributes_2_1: Vec<kmip_2_1::kmip_attributes::Attribute> = value.attributes.into();
         let attributes_1_4: Vec<Attribute> = attributes_2_1
@@ -439,7 +439,11 @@ impl TryFrom<kmip_2_1::kmip_operations::GetAttributesResponse> for GetAttributes
 
         Ok(Self {
             unique_identifier: value.unique_identifier.to_string(),
-            attribute: Some(attributes_1_4),
+            attribute: if attributes_1_4.is_empty() {
+                None
+            } else {
+                Some(attributes_1_4)
+            },
         })
     }
 }

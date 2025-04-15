@@ -3,6 +3,7 @@ use std::sync::Arc;
 use cosmian_kmip::kmip_2_1::{
     extra::{tagging::VENDOR_ATTR_TAG, VENDOR_ID_COSMIAN},
     kmip_attributes::Attributes,
+    kmip_data_structures::KeyValue,
     kmip_objects::{Object, PrivateKey, PublicKey, SymmetricKey},
     kmip_operations::{GetAttributes, GetAttributesResponse},
     kmip_types::{
@@ -63,11 +64,13 @@ pub(crate) async fn get_attributes(
             owm.attributes().to_owned()
         }
         Object::PrivateKey(PrivateKey { key_block }) => {
-            let mut attributes = key_block
-                .key_value
-                .as_ref()
-                .and_then(|kv| kv.attributes.clone())
-                .unwrap_or_default();
+            let mut attributes = if let Some(KeyValue::Structure { attributes, .. }) =
+                key_block.key_value.as_ref()
+            {
+                attributes.clone().unwrap_or_default()
+            } else {
+                Attributes::default()
+            };
             attributes.object_type = Some(object_type);
             // is it a Covercrypt key?
             if key_block.key_format_type == KeyFormatType::CoverCryptSecretKey {
@@ -91,11 +94,13 @@ pub(crate) async fn get_attributes(
             }
         }
         Object::PublicKey(PublicKey { key_block }) => {
-            let mut attributes = key_block
-                .key_value
-                .as_ref()
-                .and_then(|kv| kv.attributes.clone())
-                .unwrap_or_default();
+            let mut attributes = if let Some(KeyValue::Structure { attributes, .. }) =
+                key_block.key_value.as_ref()
+            {
+                attributes.clone().unwrap_or_default()
+            } else {
+                Attributes::default()
+            };
             attributes.object_type = Some(object_type);
             // is it a Covercrypt key?
             if key_block.key_format_type == KeyFormatType::CoverCryptPublicKey {
@@ -119,11 +124,13 @@ pub(crate) async fn get_attributes(
             }
         }
         Object::SymmetricKey(SymmetricKey { key_block }) => {
-            let mut attributes = key_block
-                .key_value
-                .as_ref()
-                .and_then(|kv| kv.attributes.clone())
-                .unwrap_or_default();
+            let mut attributes = if let Some(KeyValue::Structure { attributes, .. }) =
+                key_block.key_value.as_ref()
+            {
+                attributes.clone().unwrap_or_default()
+            } else {
+                Attributes::default()
+            };
             attributes.object_type = Some(object_type);
             attributes.link.clone_from(&owm.attributes().link);
             attributes

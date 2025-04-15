@@ -92,7 +92,7 @@ pub fn to_rsa_public_key(
             cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
             key_format_type: KeyFormatType::TransparentRSAPublicKey,
             key_compression_type: None,
-            key_value: Some(KeyValue {
+            key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::TransparentRSAPublicKey {
                     modulus: Box::new(BigInt::from_bytes_be(Sign::Plus, &private_key.n().to_vec())),
                     public_exponent: Box::new(BigInt::from_bytes_be(
@@ -151,7 +151,7 @@ pub fn to_rsa_private_key(
             cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
             key_format_type: KeyFormatType::TransparentRSAPrivateKey,
             key_compression_type: None,
-            key_value: Some(KeyValue {
+            key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::TransparentRSAPrivateKey {
                     modulus: Box::new(BigInt::from_bytes_be(Sign::Plus, &private_key.n().to_vec())),
                     private_exponent: Some(Box::new(SafeBigInt::from_bytes_be(&Zeroizing::from(
@@ -263,12 +263,15 @@ pub fn create_rsa_key_pair(
     sk_tags.insert("_sk".to_owned());
     private_key_attributes.set_tags(sk_tags)?;
     // and set them on the object
-    private_key
-        .key_block_mut()?
-        .key_value
-        .as_mut()
-        .ok_or_else(|| CryptoError::Default("RSA: key value not found in private key".to_owned()))?
-        .attributes = Some(private_key_attributes);
+    let Some(&mut KeyValue::Structure {
+        ref mut attributes, ..
+    }) = private_key.key_block_mut()?.key_value.as_mut()
+    else {
+        return Err(CryptoError::Default(
+            "Key value not found in RSA private key".to_owned(),
+        ));
+    };
+    *attributes = Some(private_key_attributes);
 
     // Generate the KMIP RSA Public Key
     let mut public_key_attributes = public_key_attributes.unwrap_or_default();
@@ -290,12 +293,15 @@ pub fn create_rsa_key_pair(
     pk_tags.insert("_pk".to_owned());
     public_key_attributes.set_tags(pk_tags)?;
     // and set them on the object
-    public_key
-        .key_block_mut()?
-        .key_value
-        .as_mut()
-        .ok_or_else(|| CryptoError::Default("RSA: key value not found in public key".to_owned()))?
-        .attributes = Some(public_key_attributes);
+    let Some(&mut KeyValue::Structure {
+        ref mut attributes, ..
+    }) = public_key.key_block_mut()?.key_value.as_mut()
+    else {
+        return Err(CryptoError::Default(
+            "Key value not found in RSA public key".to_owned(),
+        ));
+    };
+    *attributes = Some(public_key_attributes);
 
     Ok(KeyPair::new(private_key, public_key))
 }

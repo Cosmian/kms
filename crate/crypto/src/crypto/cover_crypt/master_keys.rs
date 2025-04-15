@@ -93,7 +93,7 @@ pub fn create_msk_object(
             cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
             key_format_type: KeyFormatType::CoverCryptSecretKey,
             key_compression_type: None,
-            key_value: Some(KeyValue {
+            key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::ByteString(Zeroizing::from(key.to_vec())),
                 attributes: Some(attributes),
             }),
@@ -128,7 +128,7 @@ fn create_mpk_object(
             cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
             key_format_type: KeyFormatType::CoverCryptPublicKey,
             key_compression_type: None,
-            key_value: Some(KeyValue {
+            key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::ByteString(Zeroizing::from(key.to_vec())),
                 attributes: Some(attributes),
             }),

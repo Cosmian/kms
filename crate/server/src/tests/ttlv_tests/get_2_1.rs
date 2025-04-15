@@ -7,7 +7,7 @@ use cosmian_kmip::{
         kmip_types::{KeyWrapType, ProtocolVersion, ResultStatusEnumeration},
     },
     kmip_2_1::{
-        kmip_data_structures::KeyMaterial,
+        kmip_data_structures::{KeyMaterial, KeyValue},
         kmip_messages::RequestMessageBatchItem,
         kmip_objects::{Object, ObjectType},
         kmip_operations::{Get, Operation},
@@ -105,10 +105,10 @@ pub(crate) fn get_symmetric_key(client: &SocketClient, key_id: &str) {
     };
     assert_eq!(symmetric_key.key_block.key_format_type, KeyFormatType::Raw);
     assert_eq!(symmetric_key.key_block.key_compression_type, None);
-    let Some(key_value) = symmetric_key.key_block.key_value else {
+    let Some(KeyValue::Structure { key_material, .. }) = symmetric_key.key_block.key_value else {
         panic!("Expected key_value");
     };
-    let KeyMaterial::ByteString(bytes) = key_value.key_material else {
+    let KeyMaterial::ByteString(bytes) = key_material else {
         panic!("Expected ByteString");
     };
     assert_eq!(bytes.len(), 32);

@@ -225,7 +225,7 @@ async fn test_import_wrapped_symmetric_key() -> KResult<()> {
         key_block: KeyBlock {
             key_format_type: KeyFormatType::TransparentSymmetricKey,
             key_compression_type: None,
-            key_value: Some(KeyValue {
+            key_value: Some(KeyValue::Structure {
                 key_material,
                 attributes: None,
             }),

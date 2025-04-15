@@ -279,7 +279,7 @@ pub(crate) fn build_private_key_from_der_bytes(
         key_block: KeyBlock {
             key_format_type,
             key_compression_type: None,
-            key_value: Some(KeyValue {
+            key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::ByteString(bytes),
                 attributes: Some(Attributes::default()),
             }),
