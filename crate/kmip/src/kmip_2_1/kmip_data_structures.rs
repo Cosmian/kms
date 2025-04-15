@@ -282,10 +282,7 @@ impl KeyBlock {
         let key = self.key_bytes().map_err(|e| {
             KmipError::InvalidKmip21Value(ErrorReason::Invalid_Data_Type, e.to_string())
         })?;
-        let attributes = self
-            .key_value
-            .as_ref()
-            .and_then(|kv| kv.attributes.as_ref());
+        let attributes = self.attributes().ok();
         Ok((key, attributes))
     }
 
@@ -376,16 +373,21 @@ impl KeyBlock {
     #[must_use]
     pub fn cryptographic_algorithm(&self) -> Option<&CryptographicAlgorithm> {
         self.cryptographic_algorithm.as_ref().or_else(|| {
-            self.key_value
+            let Some(key_value) = &self.key_value else {
+                return None
+            };
+            let KeyValue::Structure { attributes, .. } = key_value else {
+                return None
+            };
+            attributes
                 .as_ref()
-                .and_then(|kv| kv.attributes.as_ref())
-                .and_then(|attributes| attributes.cryptographic_algorithm.as_ref())
+                .and_then(|a| a.cryptographic_algorithm.as_ref())
         })
     }
 }
 
 /// The Key Value is used only inside a Key Block and is either a Byte String or
-/// a:
+/// a structure:
 ///
 /// • The Key Value structure contains the key material, either as a byte string
 /// or as a Transparent Key structure, and OPTIONAL attribute information that
@@ -397,21 +399,15 @@ impl KeyBlock {
 /// • The Key Value Byte String is either the wrapped TTLV-encoded Key Value
 /// structure, or the wrapped un-encoded value of the Byte String Key Material
 /// field.
-#[derive(Clone, Eq, PartialEq, Debug)]
-#[allow(clippy::large_enum_variant)]
-pub struct KeyValue {
-    pub key_material: KeyMaterial,
-    pub attributes: Option<Attributes>,
-}
-
-impl Display for KeyValue {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "KeyValue {{ key_material: {}, attributes: {:?} }}",
-            self.key_material, self.attributes
-        )
-    }
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum KeyValue {
+    /// The key value is a byte string when key wrapped
+    ByteString(Zeroizing<Vec<u8>>),
+    /// The key value is a structure when the key is not wrapped
+    Structure {
+        key_material: KeyMaterial,
+        attributes: Option<Attributes>,
+    },
 }
 
 /// Structure used to serialize `KeyValue`
@@ -427,20 +423,28 @@ impl Serialize for KeyValueSerializer {
     where
         S: serde::Serializer,
     {
-        let mut st = serializer.serialize_struct("KeyValue", 2)?;
-        st.serialize_field(
-            "KeyMaterial",
-            &KeyMaterialSerializer {
-                key_format_type: self.key_format_type,
-                key_material: self.key_value.key_material.clone(),
-            },
-        )?;
-        if let Some(attributes) = &self.key_value.attributes {
-            if attributes != &Attributes::default() {
-                st.serialize_field("Attributes", &self.key_value.attributes)?;
+        match &self.key_value {
+            KeyValue::ByteString(ref bytes) => return serializer.serialize_bytes(bytes),
+            KeyValue::Structure {
+                key_material,
+                attributes,
+            } => {
+                let mut st = serializer.serialize_struct("KeyValue", 2)?;
+                st.serialize_field(
+                    "KeyMaterial",
+                    &KeyMaterialSerializer {
+                        key_format_type: self.key_format_type,
+                        key_material: key_material.clone(),
+                    },
+                )?;
+                if let Some(attributes) = attributes {
+                    if attributes != &Attributes::default() {
+                        st.serialize_field("Attributes", attributes)?;
+                    }
+                }
+                st.end()
             }
         }
-        st.end()
     }
 }
 
@@ -473,6 +477,19 @@ impl<'de> DeserializeSeed<'de> for KeyValueDeserializer {
                 formatter.write_str("struct KeyValue")
             }
 
+            /// This is called by the TTLV deserializer in `deserialize_seq`
+            /// which is itself called by the call to `deserializer.deserialize_any()` below
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: de::SeqAccess<'de>,
+            {
+                let mut bytestring = Vec::<u8>::new();
+                while let Some(byte) = seq.next_element()? {
+                    bytestring.push(byte);
+                }
+                Ok(KeyValue::ByteString(Zeroizing::new(bytestring)))
+            }
+
             fn visit_map<V>(self, mut map: V) -> Result<Self::Value, V::Error>
             where
                 V: MapAccess<'de>,
@@ -501,32 +518,29 @@ impl<'de> DeserializeSeed<'de> for KeyValueDeserializer {
 
                 let key_material =
                     key_material.ok_or_else(|| de::Error::missing_field("KeyMaterial"))?;
-                Ok(KeyValue {
+                Ok(KeyValue::Structure {
                     key_material,
                     attributes,
                 })
             }
         }
 
-        deserializer.deserialize_struct(
-            "KeyValue",
-            &["key_material", "attributes"],
-            KeyValueVisitor {
-                key_format_type: self.key_format_type,
-            },
-        )
+        deserializer.deserialize_any(KeyValueVisitor {
+            key_format_type: self.key_format_type,
+        })
     }
 }
-
-// // Attributes is default is a fix for https://github.com/Cosmian/kms/issues/92
-// fn attributes_is_default_or_none<T: Default + PartialEq + Serialize>(val: &Option<T>) -> bool {
-//     val.as_ref().map_or(true, |v| *v == T::default())
-// }
 
 impl KeyValue {
     /// Returns the `KeyValue` attributes if any, an error otherwise
     pub fn attributes(&self) -> Result<&Attributes, KmipError> {
-        self.attributes.as_ref().ok_or_else(|| {
+        let KeyValue::Structure { attributes, .. } = self else {
+            return Err(KmipError::InvalidKmip21Value(
+                ErrorReason::Invalid_Attribute_Value,
+                "key Value is wrapped".to_owned(),
+            ))
+        };
+        attributes.as_ref().ok_or_else(|| {
             KmipError::InvalidKmip21Value(
                 ErrorReason::Invalid_Attribute_Value,
                 "key is missing its attributes".to_owned(),
@@ -536,7 +550,13 @@ impl KeyValue {
 
     /// Returns the `KeyValue` attributes if any, an error otherwise
     pub fn attributes_mut(&mut self) -> Result<&mut Attributes, KmipError> {
-        self.attributes.as_mut().ok_or_else(|| {
+        let KeyValue::Structure { attributes, .. } = self else {
+            return Err(KmipError::InvalidKmip21Value(
+                ErrorReason::Invalid_Attribute_Value,
+                "key Value is wrapped".to_owned(),
+            ))
+        };
+        attributes.as_mut().ok_or_else(|| {
             KmipError::InvalidKmip21Value(
                 ErrorReason::Invalid_Attribute_Value,
                 "key is missing its mutable attributes".to_owned(),
@@ -547,7 +567,13 @@ impl KeyValue {
     /// Returns the `KeyValue` key material bytes if any, an error otherwise
     /// Only `KeyMaterial::ByteString` and `KeyMaterial::TransparentSymmetricKey` are supported
     pub fn raw_bytes(&self) -> Result<&[u8], KmipError> {
-        match &self.key_material {
+        let KeyValue::Structure { key_material, .. } = self else {
+            return Err(KmipError::InvalidKmip21Value(
+                ErrorReason::Invalid_Attribute_Value,
+                "key Value is wrapped".to_owned(),
+            ))
+        };
+        match &key_material {
             KeyMaterial::TransparentSymmetricKey { key } => Ok(key),
             KeyMaterial::ByteString(v) => Ok(v),
             other => Err(KmipError::Kmip21NotSupported(

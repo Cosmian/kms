@@ -7,6 +7,7 @@ use cloudproof::reexport::crypto_core::{
     CsRng,
 };
 use cosmian_kms_client::KMS_CLI_CONF_ENV;
+use cosmian_logger::log_init;
 use kms_test_server::start_default_test_kms_server;
 
 use super::SUB_COMMAND;
@@ -197,6 +198,7 @@ pub(crate) async fn test_create_symmetric_key() -> CliResult<()> {
 
 #[tokio::test]
 pub(crate) async fn test_create_wrapped_symmetric_key() -> CliResult<()> {
+    log_init(Some("debug"));
     let ctx = start_default_test_kms_server().await;
 
     let wrapping_key_id =

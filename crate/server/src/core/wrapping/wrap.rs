@@ -80,6 +80,10 @@ pub(crate) async fn wrap_key(
         .await?;
     }
     debug!("Key wrapped successfully by key {}", wrapping_key_uid);
+    debug!(
+        "The key block is now: {:#?}",
+        object_key_block
+    );
     Ok(())
 }
 
@@ -164,7 +168,8 @@ async fn wrap_using_kms(
         }
     }
     debug!(
-        "The user {user} can wrap with the key {wrapping_key_uid}. Encoding: {:?}, format: {}",
+        "The user: {user}, is authorized to wrap with the key {wrapping_key_uid}. Encoding: {:?}, \
+         format: {}",
         key_wrapping_specification.get_encoding(),
         object_key_block.key_format_type
     );
