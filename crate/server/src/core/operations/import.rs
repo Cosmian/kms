@@ -6,6 +6,7 @@ use cosmian_kmip::{
     kmip_0::kmip_types::KeyWrapType,
     kmip_2_1::{
         kmip_attributes::Attributes,
+        kmip_data_structures::KeyValue,
         kmip_objects::{Certificate, Object, ObjectType, PrivateKey},
         kmip_operations::{Import, ImportResponse},
         kmip_types::{
@@ -91,8 +92,9 @@ fn recover_tags(request_attributes: &Attributes, object: &Object) -> HashSet<Str
     }
     // try extracting the tags form the object attributes
     if let Ok(key_block) = object.key_block() {
-        if let Some(key_value) = key_block.key_value.as_ref() {
-            if let Some(attributes) = &key_value.attributes {
+        #[allow(clippy::collapsible_match)] // keep it simple and stupid
+        if let Some(KeyValue::Structure { attributes, .. }) = key_block.key_value.as_ref() {
+            if let Some(attributes) = attributes {
                 return attributes.get_tags();
             }
         }
@@ -152,8 +154,10 @@ pub(crate) async fn process_symmetric_key(
     };
 
     // Replace updated attributes in object structure.
-    if let Some(key_value) = object.key_block_mut()?.key_value.as_mut() {
-        key_value.attributes = Some(attributes.clone());
+    let new_attributes = attributes;
+    if let Some(KeyValue::Structure { attributes, .. }) = object.key_block_mut()?.key_value.as_mut()
+    {
+        *attributes = Some(new_attributes.clone());
     }
 
     Ok((
@@ -162,7 +166,7 @@ pub(crate) async fn process_symmetric_key(
             tags,
             replace_existing,
             object,
-            attributes,
+            new_attributes,
             uid,
         )],
     ))
@@ -298,8 +302,10 @@ async fn process_public_key(
     attributes.unique_identifier = Some(UniqueIdentifier::TextString(uid.clone()));
 
     // Replace updated attributes in object structure.
-    if let Some(key_value) = object.key_block_mut()?.key_value.as_mut() {
-        key_value.attributes = Some(attributes.clone());
+    let new_attributes = attributes;
+    if let Some(KeyValue::Structure { attributes, .. }) = object.key_block_mut()?.key_value.as_mut()
+    {
+        *attributes = Some(new_attributes.clone());
     }
 
     Ok((
@@ -308,7 +314,7 @@ async fn process_public_key(
             tags,
             replace_existing,
             object,
-            attributes,
+            new_attributes,
             uid,
         )],
     ))
@@ -390,8 +396,10 @@ async fn process_private_key(
     attributes.unique_identifier = Some(UniqueIdentifier::TextString(uid.clone()));
 
     // Replace updated attributes in object structure.
-    if let Some(key_value) = object.key_block_mut()?.key_value.as_mut() {
-        key_value.attributes = Some(attributes.clone());
+    let new_attributes = attributes;
+    if let Some(KeyValue::Structure { attributes, .. }) = object.key_block_mut()?.key_value.as_mut()
+    {
+        *attributes = Some(new_attributes.clone());
     }
 
     Ok((
@@ -400,7 +408,7 @@ async fn process_private_key(
             tags,
             replace_existing,
             object,
-            attributes,
+            new_attributes,
             uid,
         )],
     ))
@@ -494,8 +502,11 @@ fn process_pkcs12(
         // set tags in the attributes
         attributes.set_tags(private_key_tags.clone())?;
         //set the update attributes on the key
-        if let Some(key_value) = private_key.key_block_mut()?.key_value.as_mut() {
-            key_value.attributes = Some(attributes.clone());
+        let new_attributes = attributes;
+        if let Some(KeyValue::Structure { attributes, .. }) =
+            private_key.key_block_mut()?.key_value.as_mut()
+        {
+            *attributes = Some(new_attributes);
         }
         private_key
     };
@@ -546,8 +557,10 @@ fn process_pkcs12(
     let mut operations = Vec::with_capacity(2 + chain.len());
 
     //add link to certificate in the private key attributes
-    if let Some(kv) = private_key.key_block_mut()?.key_value.as_mut() {
-        let attributes = kv.attributes.get_or_insert(Attributes::default());
+    if let Some(KeyValue::Structure { attributes, .. }) =
+        private_key.key_block_mut()?.key_value.as_mut()
+    {
+        let attributes = attributes.get_or_insert(Attributes::default());
         //Note: it is unclear what link type should be used here according to KMIP
         // CertificateLink seems to be for public key only and there is not description
         // for PKCS12CertificateLink

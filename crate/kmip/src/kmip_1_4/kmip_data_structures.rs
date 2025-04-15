@@ -249,9 +249,14 @@ impl TryFrom<kmip_2_1::kmip_data_structures::KeyBlock> for KeyBlock {
 /// The Key Value object is a structure used to represent the key material and associated
 /// attributes within a Key Block structure.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct KeyValue {
-    pub key_material: KeyMaterial,
-    pub attribute: Option<Vec<Attribute>>,
+pub enum KeyValue {
+    /// The key value is a byte string when key wrapped
+    ByteString(Zeroizing<Vec<u8>>),
+    /// The key value is a structure when the key is not wrapped
+    Structure {
+        key_material: KeyMaterial,
+        attribute: Option<Vec<Attribute>>,
+    },
 }
 
 /// Structure used to serialize `KeyValue`
@@ -267,20 +272,28 @@ impl Serialize for KeyValueSerializer {
     where
         S: serde::Serializer,
     {
-        let mut st = serializer.serialize_struct("KeyValue", 2)?;
-        st.serialize_field(
-            "KeyMaterial",
-            &KeyMaterialSerializer {
-                key_format_type: self.key_format_type,
-                key_material: self.key_value.key_material.clone(),
-            },
-        )?;
-        if let Some(attributes) = &self.key_value.attribute {
-            if !attributes.is_empty() {
-                st.serialize_field("Attribute", &self.key_value.attribute)?;
+        match &self.key_value {
+            KeyValue::ByteString(ref bytes) => serializer.serialize_bytes(bytes),
+            KeyValue::Structure {
+                key_material,
+                attribute,
+            } => {
+                let mut st = serializer.serialize_struct("KeyValue", 2)?;
+                st.serialize_field(
+                    "KeyMaterial",
+                    &KeyMaterialSerializer {
+                        key_format_type: self.key_format_type,
+                        key_material: key_material.clone(),
+                    },
+                )?;
+                if let Some(attributes) = &attribute {
+                    if !attributes.is_empty() {
+                        st.serialize_field("Attribute", &attribute)?;
+                    }
+                }
+                st.end()
             }
         }
-        st.end()
     }
 }
 
@@ -313,6 +326,19 @@ impl<'de> DeserializeSeed<'de> for KeyValueDeserializer {
                 formatter.write_str("struct KeyValue")
             }
 
+            /// This is called by the TTLV deserializer in `deserialize_seq`
+            /// which is itself called by the call to `deserializer.deserialize_any()` below
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: de::SeqAccess<'de>,
+            {
+                let mut bytestring = Vec::<u8>::new();
+                while let Some(byte) = seq.next_element()? {
+                    bytestring.push(byte);
+                }
+                Ok(KeyValue::ByteString(Zeroizing::new(bytestring)))
+            }
+
             fn visit_map<V>(self, mut map: V) -> Result<Self::Value, V::Error>
             where
                 V: MapAccess<'de>,
@@ -341,28 +367,30 @@ impl<'de> DeserializeSeed<'de> for KeyValueDeserializer {
 
                 let key_material =
                     key_material.ok_or_else(|| de::Error::missing_field("KeyMaterial"))?;
-                Ok(KeyValue {
+                Ok(KeyValue::Structure {
                     key_material,
                     attribute: attributes,
                 })
             }
         }
 
-        deserializer.deserialize_struct(
-            "KeyValue",
-            &["key_material", "attribute"],
-            KeyValueVisitor {
-                key_format_type: self.key_format_type,
-            },
-        )
+        deserializer.deserialize_any(KeyValueVisitor {
+            key_format_type: self.key_format_type,
+        })
     }
 }
 
 impl From<KeyValue> for kmip_2_1::kmip_data_structures::KeyValue {
     fn from(val: KeyValue) -> Self {
-        Self {
-            key_material: val.key_material.into(),
-            attributes: val.attribute.map(Into::into),
+        match val {
+            KeyValue::ByteString(zeroizing) => Self::ByteString(zeroizing),
+            KeyValue::Structure {
+                key_material,
+                attribute,
+            } => Self::Structure {
+                key_material: key_material.into(),
+                attributes: attribute.map(Into::into),
+            },
         }
     }
 }
@@ -371,20 +399,29 @@ impl TryFrom<kmip_2_1::kmip_data_structures::KeyValue> for KeyValue {
     type Error = KmipError;
 
     fn try_from(val: kmip_2_1::kmip_data_structures::KeyValue) -> Result<Self, Self::Error> {
-        let attributes_1_4 = val
-            .attributes
-            .map(|attr| {
-                let attrs: Vec<kmip_2_1::kmip_attributes::Attribute> = attr.into();
-                attrs
-                    .into_iter()
-                    .map(TryInto::try_into)
-                    .collect::<Result<Vec<Attribute>, KmipError>>()
-            })
-            .transpose()?;
-        Ok(Self {
-            key_material: val.key_material.try_into()?,
-            attribute: attributes_1_4,
-        })
+        match val {
+            kmip_2_1::kmip_data_structures::KeyValue::ByteString(zeroizing) => {
+                Ok(Self::ByteString(zeroizing))
+            }
+            kmip_2_1::kmip_data_structures::KeyValue::Structure {
+                key_material,
+                attributes,
+            } => {
+                let attributes_1_4 = attributes
+                    .map(|attr| {
+                        let attrs: Vec<kmip_2_1::kmip_attributes::Attribute> = attr.into();
+                        attrs
+                            .into_iter()
+                            .map(TryInto::try_into)
+                            .collect::<Result<Vec<Attribute>, KmipError>>()
+                    })
+                    .transpose()?;
+                Ok(Self::Structure {
+                    key_material: key_material.try_into()?,
+                    attribute: attributes_1_4,
+                })
+            }
+        }
     }
 }
 

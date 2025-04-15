@@ -68,7 +68,7 @@ fn test_object_raw() {
         key_block: KeyBlock {
             key_format_type: KeyFormatType::Raw,
             key_compression_type: None,
-            key_value: Some(KeyValue {
+            key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::ByteString(Zeroizing::new(vec![0x01, 0x02, 0x03])),
                 attribute: None,
             }),
@@ -108,7 +108,7 @@ fn test_object_structured_sym() {
         key_block: KeyBlock {
             key_format_type: KeyFormatType::TransparentSymmetricKey,
             key_compression_type: None,
-            key_value: Some(KeyValue {
+            key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::TransparentSymmetricKey {
                     key: Zeroizing::new(vec![0x01, 0x02, 0x03]),
                 },
@@ -151,7 +151,7 @@ fn test_object_structured_rsa() {
         key_block: KeyBlock {
             key_format_type: KeyFormatType::TransparentRSAPrivateKey,
             key_compression_type: None,
-            key_value: Some(KeyValue {
+            key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::TransparentRSAPrivateKey {
                     modulus: Box::new(BigInt::from(1)),
                     private_exponent: Some(Box::new(SafeBigInt::from(BigInt::from(1)))),

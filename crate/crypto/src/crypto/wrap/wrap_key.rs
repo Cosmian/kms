@@ -2,9 +2,7 @@ use base64::{engine::general_purpose, Engine};
 use cosmian_kmip::{
     kmip_0::kmip_types::{BlockCipherMode, CryptographicUsageMask, PaddingMethod},
     kmip_2_1::{
-        kmip_data_structures::{
-            KeyBlock, KeyMaterial, KeyValue, KeyWrappingData, KeyWrappingSpecification,
-        },
+        kmip_data_structures::{KeyBlock, KeyValue, KeyWrappingData, KeyWrappingSpecification},
         kmip_objects::{
             Certificate, Object, PGPKey, PrivateKey, PublicKey, SecretData, SplitKey, SymmetricKey,
         },
@@ -128,23 +126,7 @@ pub fn update_key_block_with_wrapped_key(
     wrapped_key: Vec<u8>,
 ) {
     // wrap the key based on the encoding
-    match key_wrapping_specification.get_encoding() {
-        EncodingOption::TTLVEncoding => {
-            object_key_block.key_value = Some(KeyValue {
-                key_material: KeyMaterial::ByteString(wrapped_key.into()),
-                // not clear whether this should be filled or not
-                attributes: object_key_block
-                    .key_value
-                    .as_mut()
-                    .and_then(|kv| kv.attributes.clone()),
-            });
-        }
-        EncodingOption::NoEncoding => {
-            if let Some(key_value) = &mut object_key_block.key_value {
-                key_value.key_material = KeyMaterial::ByteString(wrapped_key.into());
-            }
-        }
-    }
+    object_key_block.key_value = Some(KeyValue::ByteString(wrapped_key.into()));
     object_key_block.key_wrapping_data = Some(key_wrapping_specification.get_key_wrapping_data());
 }
 

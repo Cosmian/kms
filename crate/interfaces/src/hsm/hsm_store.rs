@@ -330,7 +330,7 @@ fn to_object_with_metadata(
                 key_block: KeyBlock {
                     key_format_type: KeyFormatType::TransparentSymmetricKey,
                     key_compression_type: None,
-                    key_value: Some(KeyValue {
+                    key_value: Some(KeyValue::Structure {
                         key_material: kmip_key_material,
                         attributes: Some(attributes.clone()),
                     }),
@@ -399,7 +399,7 @@ fn to_object_with_metadata(
                 key_block: KeyBlock {
                     key_format_type: KeyFormatType::TransparentRSAPrivateKey,
                     key_compression_type: None,
-                    key_value: Some(KeyValue {
+                    key_value: Some(KeyValue::Structure {
                         key_material: kmip_key_material,
                         attributes: Some(attributes.clone()),
                     }),
@@ -454,7 +454,7 @@ fn to_object_with_metadata(
                 key_block: KeyBlock {
                     key_format_type: KeyFormatType::TransparentRSAPublicKey,
                     key_compression_type: None,
-                    key_value: Some(KeyValue {
+                    key_value: Some(KeyValue::Structure {
                         key_material: kmip_key_material,
                         attributes: Some(attributes.clone()),
                     }),
