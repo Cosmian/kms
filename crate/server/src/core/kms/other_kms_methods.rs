@@ -16,7 +16,7 @@ use cosmian_kms_crypto::crypto::symmetric::symmetric_ciphers::AES_256_GCM_KEY_LE
 use cosmian_kms_interfaces::{EncryptionOracle, SessionParams};
 use cosmian_kms_server_database::CachedUnwrappedObject;
 use openssl::rand::rand_bytes;
-use tracing::{debug, info, trace};
+use tracing::{debug, trace};
 use zeroize::Zeroizing;
 
 use crate::{
@@ -134,7 +134,7 @@ impl KMS {
                     rand_bytes(&mut symmetric_key)?;
                     let object = create_symmetric_key_kmip_object(&symmetric_key, attributes)?;
                     let attributes = object.attributes()?;
-                    info!("Created symmetric key: {:?}", attributes);
+                    debug!("Created symmetric key with attributes: {:?}", attributes);
                     let tags = attributes.get_tags();
                     let uid = attributes
                         .unique_identifier
