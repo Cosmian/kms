@@ -85,18 +85,23 @@ pub async fn start_kms_server(
             .context("start KMS server: failed instantiating the server")?,
     );
 
-    let socket_server_handle: Option<JoinHandle<()>> = if server_params.start_socket_server {
+    let (ss_command_tx, _socket_server_handle) = if server_params.start_socket_server {
+        let (tx, rx) = mpsc::channel::<KResult<()>>();
         // Start the socket server
-        Some(start_socket_server(kms_server.clone())?)
+        let socket_server_handle = start_socket_server(kms_server.clone(), rx)?;
+        (Some(tx), Some(socket_server_handle))
     } else {
-        None
+        (None, None)
     };
 
     // Log the server configuration
     info!("KMS Server configuration: {:#?}", server_params);
     let res = start_http_kms_server(kms_server.clone(), kms_server_handle_tx).await;
-    if let Some(ss_handle) = socket_server_handle {
-        ss_handle.await.context("socket server failed")?;
+    if let Some(ss_command_tx) = ss_command_tx {
+        // Send a shutdown command to the socket server
+        ss_command_tx
+            .send(Ok(()))
+            .context("start KMS server: failed sending shutdown command to socket server")?;
     }
     res
 }
@@ -114,13 +119,17 @@ pub async fn start_kms_server(
 /// # Returns
 /// * a `JoinHandle<()>` that represents the socket server thread.
 ///
-fn start_socket_server(kms_server: Arc<KMS>) -> KResult<JoinHandle<()>> {
+fn start_socket_server(
+    kms_server: Arc<KMS>,
+    command_receiver: mpsc::Receiver<KResult<()>>,
+) -> KResult<JoinHandle<()>> {
     // Start the socket server
     let socket_server =
         SocketServer::instantiate(&SocketServerParams::try_from(kms_server.params.as_ref())?)?;
     let tokio_handle = Handle::current();
-    let socket_server_handle =
-        socket_server.start_threaded(kms_server, move |username, request, kms_server| {
+    let socket_server_handle = socket_server.start_threaded(
+        kms_server,
+        move |username, request, kms_server| {
             trace!("request: {username} {}", hex::encode(request));
             // Handle the TTLV bytes received from the socket server
             // tokio: run async code in the current thread
@@ -128,7 +137,9 @@ fn start_socket_server(kms_server: Arc<KMS>) -> KResult<JoinHandle<()>> {
                 // Handle the TTLV bytes
                 handle_ttlv_bytes(username, request, &kms_server).await
             })
-        })?;
+        },
+        command_receiver,
+    )?;
     Ok(socket_server_handle)
 }
 
