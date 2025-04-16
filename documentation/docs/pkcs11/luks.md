@@ -24,20 +24,20 @@ default-hierarchy=unified
 ```
 
 Unfortunately, Ubuntu 22.04 does not provide p11-kit support, however the setup works fine for
-Ubuntu 23.10.
+Ubuntu 24.04.
 
 ### 1. Install the `p11-kit` package
 
-#### Ubuntu 23.10
+#### Ubuntu 24.04
 
 ```bash
-sudo apt install p11-kit
+sudo apt install p11-kit cryptsetup
 ```
 
 #### RHEL 9
 
 ```bash
-sudo dnf install p11-kit
+sudo dnf install p11-kit cryptsetup
 ```
 
 ### 2. Create the PKCS#11 configuration and module directories
@@ -103,7 +103,7 @@ cosmian_pkcs11: /usr/local/lib/libcosmian_pkcs11.so
 The PKCS#11 module uses the same configuration file as
 the [CLI](../../cosmian_cli/index.md).
 Since it may be run as a system user, the configuration file should be made available
-in `/etc/cosmian/kms.json`.
+in `/etc/cosmian/cosmian.toml`.
 
 See [Authenticating users to the KMS](../authentication.md) to learn
 how to configure the KMS to use Open ID connect or certificate authentication.
@@ -111,12 +111,11 @@ how to configure the KMS to use Open ID connect or certificate authentication.
 Here is an example configuration file for the PKCS#11 provider library accessing the KMS using a
 PKCS#12 file for authentication.
 
-```json
-{
-  "server_url": "https://kms.acme.com:9999",
-  "ssl_client_pkcs12_path": "./certificates/machine123.acme.p12",
-  "ssl_client_pkcs12_password": "machine123_pkcs12_password"
-}
+```toml
+[kms_config.http_config]
+server_url = "https://kms.acme.com:9999"
+ssl_client_pkcs12_path = "./certificates/machine123.acme.p12"
+ssl_client_pkcs12_password = "machine123_pkcs12_password"
 ```
 
 To use Open ID connect, install the [Cosmian CLI](../../cosmian_cli/index.md) from
@@ -149,7 +148,7 @@ openssl pkcs12 -export -out certificate.p12 -inkey private_key.pem -in cert.pem
 ### 4. Import the PKCS12 file into the Cosmian KMS using a `disk-encryption` tag
 
 ```bash
-cosmian kms certificates import -f pkcs12 -t disk-encryption certificate.p12
+cosmian kms certificates import -f pkcs12 -t disk-encryption certificate.p12 disk-encryption
 
 The private key in the PKCS12 file was imported with id: 6fc631...
 Tags:
@@ -212,6 +211,12 @@ The encrypted passphrase will be stored in the LUKS header in key slot 0.
 sudo cryptsetup luksFormat --type luks2 --key-slot 0 /dev/vda4
 ```
 
+or alternatively, if you created a file:
+
+```bash
+sudo cryptsetup luksFormat --type luks2 --key-slot 0 /path/to/file
+```
+
 Make sure to remember the passphrase, as it will be needed to unlock the partition
 during `cryptenroll` or when rotating the RSA keys.
 
@@ -225,21 +230,12 @@ The RSA key pair is searched opn the KMS using a tag controlled by
 the `COSMIAN_PKCS11_DISK_ENCRYPTION_TAG` environment variable.
 When not set, the default tag searched is `disk-encryption`.
 
-### 1. Verify that Cosmian-KMS token is available for the partition
-
-```bash
-> sudo systemd-cryptenroll /dev/vda4 --pkcs11-token-uri=list
-
-URI                                                                        LABEL       MANUFACTURER MODEL
-pkcs11:model=software;manufacturer=Cosmian;serial=x.y.z;token=Cosmian-KMS Cosmian-KMS Cosmian      software
-```
-
-### 2. Enroll the partition with the Cosmian KMS
+### 1. Enroll the partition with the Cosmian KMS
 
 ```bash
 # this is equivalent to
 # sudo COSMIAN_PKCS11_LOGGING_LEVEL=info COSMIAN_PKCS11_DISK_ENCRYPTION_TAG=disk-encryption systemd-cryptenroll /dev/vda4  --pkcs11-token-uri=pkcs11:token=Cosmian-KMS
-> sudo systemd-cryptenroll /dev/vda4  --pkcs11-token-uri=pkcs11:token=Cosmian-KMS
+> sudo systemd-cryptenroll --pkcs11-token-uri=pkcs11:token=Cosmian-KMS /dev/vda4
 
 🔐 Please enter current passphrase for disk /dev/vda4: *************
 cosmian-pkcs11 module logging at INFO level to file /var/log/cosmian-pkcs11.log

@@ -81,6 +81,7 @@ jobs:
       - run: find .
 
       - name: Creating zip to be attached to release
+        shell: bash
         run: |
           set -xe
           apt update -y
