@@ -105,11 +105,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         KeyFormatType::TransparentECPrivateKey
     );
     // check link to public key
-    let attributes = sk_key_block
-        .key_value
-        .as_ref()
-        .expect("key_value should not be empty for a private key")
-        .attributes()?;
+    let attributes = sk_key_block.attributes()?;
     assert_eq!(
         attributes
             .link
@@ -163,11 +159,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         KeyFormatType::TransparentECPublicKey
     );
     // check link to secret key
-    let attributes = pk_key_block
-        .key_value
-        .as_ref()
-        .expect("key_value should not be empty for a public key")
-        .attributes()?;
+    let attributes = pk_key_block.attributes()?;
     assert_eq!(
         attributes
             .link

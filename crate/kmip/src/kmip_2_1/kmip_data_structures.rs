@@ -291,28 +291,59 @@ impl KeyBlock {
 
     /// Returns the `Attributes` of that key block if any, an error otherwise
     pub fn attributes(&self) -> Result<&Attributes, KmipError> {
-        self.key_value
-            .as_ref()
-            .ok_or_else(|| {
-                KmipError::InvalidKmip21Value(
-                    ErrorReason::Invalid_Attribute_Value,
-                    "key is missing its key value".to_owned(),
-                )
-            })?
-            .attributes()
+        let Some(KeyValue::Structure { attributes, .. }) = &self.key_value else {
+            return Err(KmipError::InvalidKmip21Value(
+                ErrorReason::Invalid_Attribute_Value,
+                "The Object Key Value is wrapped. Attributes cannot be recovered".to_owned(),
+            ))
+        };
+        attributes.as_ref().ok_or_else(|| {
+            KmipError::InvalidKmip21Value(
+                ErrorReason::Invalid_Attribute_Value,
+                "The object has no attributes".to_owned(),
+            )
+        })
     }
 
     /// Returns the `Attributes` of that key block if any, an error otherwise
     pub fn attributes_mut(&mut self) -> Result<&mut Attributes, KmipError> {
-        self.key_value
-            .as_mut()
-            .ok_or_else(|| {
-                KmipError::InvalidKmip21Value(
-                    ErrorReason::Invalid_Attribute_Value,
-                    "key is missing its key value".to_owned(),
-                )
-            })?
-            .attributes_mut()
+        let Some(KeyValue::Structure {
+            ref mut attributes, ..
+        }) = &mut self.key_value
+        else {
+            return Err(KmipError::InvalidKmip21Value(
+                ErrorReason::Invalid_Attribute_Value,
+                "The Object Key Value is wrapped. Attributes cannot be recovered".to_owned(),
+            ))
+        };
+        attributes.as_mut().ok_or_else(|| {
+            KmipError::InvalidKmip21Value(
+                ErrorReason::Invalid_Attribute_Value,
+                "The object has no attributes".to_owned(),
+            )
+        })
+    }
+
+    /// Returns the `KeyMaterial` of that key block if any, an error otherwise
+    pub fn key_material(&self) -> Result<&KeyMaterial, KmipError> {
+        let Some(KeyValue::Structure { key_material, .. }) = &self.key_value else {
+            return Err(KmipError::InvalidKmip21Value(
+                ErrorReason::Invalid_Attribute_Value,
+                "The Object Key Value is wrapped. The Key Material cannot be recovered".to_owned(),
+            ))
+        };
+        Ok(key_material)
+    }
+
+    /// Returns the `KeyMaterial` of that key block if any, an error otherwise
+    pub fn key_material_mut(&mut self) -> Result<&mut KeyMaterial, KmipError> {
+        let Some(KeyValue::Structure { key_material, .. }) = &mut self.key_value else {
+            return Err(KmipError::InvalidKmip21Value(
+                ErrorReason::Invalid_Attribute_Value,
+                "The Object Key Value is wrapped. The Key Material cannot be recovered".to_owned(),
+            ))
+        };
+        Ok(key_material)
     }
 
     /// Returns the identifier of a linked object of a certain type, if it exists in the attributes
@@ -332,16 +363,7 @@ impl KeyBlock {
     /// is no such link.
     pub fn get_linked_object_id(&self, link_type: LinkType) -> Result<Option<String>, KmipError> {
         // Retrieve the attributes of this object
-        let attributes = self
-            .key_value
-            .as_ref()
-            .ok_or_else(|| {
-                KmipError::InvalidKmip21Value(
-                    ErrorReason::Invalid_Attribute_Value,
-                    "key is missing its key value".to_owned(),
-                )
-            })?
-            .attributes()?;
+        let attributes = self.attributes()?;
 
         // Retrieve the links attribute from the object attributes, if it exists
         let Some(links) = &attributes.link else {
@@ -535,38 +557,6 @@ impl<'de> DeserializeSeed<'de> for KeyValueDeserializer {
 }
 
 impl KeyValue {
-    /// Returns the `KeyValue` attributes if any, an error otherwise
-    pub fn attributes(&self) -> Result<&Attributes, KmipError> {
-        let Self::Structure { attributes, .. } = self else {
-            return Err(KmipError::InvalidKmip21Value(
-                ErrorReason::Invalid_Attribute_Value,
-                "key Value is wrapped".to_owned(),
-            ))
-        };
-        attributes.as_ref().ok_or_else(|| {
-            KmipError::InvalidKmip21Value(
-                ErrorReason::Invalid_Attribute_Value,
-                "key is missing its attributes".to_owned(),
-            )
-        })
-    }
-
-    /// Returns the `KeyValue` attributes if any, an error otherwise
-    pub fn attributes_mut(&mut self) -> Result<&mut Attributes, KmipError> {
-        let Self::Structure { attributes, .. } = self else {
-            return Err(KmipError::InvalidKmip21Value(
-                ErrorReason::Invalid_Attribute_Value,
-                "key Value is wrapped".to_owned(),
-            ))
-        };
-        attributes.as_mut().ok_or_else(|| {
-            KmipError::InvalidKmip21Value(
-                ErrorReason::Invalid_Attribute_Value,
-                "key is missing its mutable attributes".to_owned(),
-            )
-        })
-    }
-
     /// Returns the `KeyValue` key material bytes if any, an error otherwise
     /// Only `KeyMaterial::ByteString` and `KeyMaterial::TransparentSymmetricKey` are supported
     pub fn raw_bytes(&self) -> Result<&[u8], KmipError> {
@@ -898,7 +888,8 @@ impl Serialize for KeyMaterialSerializer {
                 | KeyFormatType::PKCS7
                 | KeyFormatType::PKCS8
                 | KeyFormatType::Pkcs12Legacy
-                | KeyFormatType::X509 => serializer.serialize_bytes(bytes),
+                | KeyFormatType::X509
+                | KeyFormatType::CoverCryptSecretKey | KeyFormatType::CoverCryptPublicKey => serializer.serialize_bytes(bytes),
                 x => Err(serde::ser::Error::custom(format!(
                     "KeyMaterialWrapper: {x:?} key format type does not support byte strings"
                 ))),
