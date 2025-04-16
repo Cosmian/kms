@@ -1,3 +1,5 @@
+# Veracrypt integration with Cosmian KMS
+
 The Cosmian KMS is integrated with [Veracrypt](https://www.veracrypt.fr/en/Home.html)
 disk encryption using the Cosmian KMS PKCS#11 provider library.
 
