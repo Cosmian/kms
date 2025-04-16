@@ -52,18 +52,11 @@ pub(crate) fn unwrap_user_decryption_key_object(
             )))
         }
     };
-    let attributes = key_block
-        .key_value
-        .as_ref()
-        .ok_or_else(|| {
-            CryptoError::Default("the Covercrypt Secret Key does not have a Key Value".to_owned())
-        })?
-        .attributes()
-        .map_err(|e| {
-            CryptoError::Kmip(format!(
-                "The CoverCrypt Master private key should have attributes: {e}"
-            ))
-        })?;
+    let attributes = key_block.attributes().map_err(|e| {
+        CryptoError::Kmip(format!(
+            "The CoverCrypt Master private key should have attributes: {e}"
+        ))
+    })?;
     Ok((bytes, attributes.clone()))
 }
 
