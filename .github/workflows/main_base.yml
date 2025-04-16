@@ -90,7 +90,7 @@ jobs:
           done
 
           # Warning, no all binaries in debug, only in release
-          if [ "${{ inputs.debug_or_release }}" == "release" ]; then
+          if [ "${{ inputs.debug_or_release }}" = "release" ]; then
             zip -r ubuntu_22_04-release.zip ubuntu_22_04-release
             zip -r windows-release.zip windows-release
             zip -r macos_intel-release.zip macos_intel-release
@@ -107,11 +107,9 @@ jobs:
           fi
           DESTINATION_DIR=/mnt/package/kms/$BRANCH
           ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p $DESTINATION_DIR
-          scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
-            *.zip \
-            cosmian@package.cosmian.com:$DESTINATION_DIR/
+          scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa *.zip cosmian@package.cosmian.com:$DESTINATION_DIR/
 
-          if [ "${{ inputs.debug_or_release }}" == "release" ]; then
+          if [ "${{ inputs.debug_or_release }}" = "release" ]; then
             ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p $DESTINATION_DIR/{rhel9,ubuntu-22.04,ubuntu-24.04}
 
             # RedHat 9 package
