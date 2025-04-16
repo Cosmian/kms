@@ -1,7 +1,7 @@
 use std::{
     io::{Read, Write},
     net::{TcpListener, TcpStream},
-    sync::{mpsc, Arc, Once},
+    sync::{mpsc, Arc, Once, RwLock},
     thread,
     time::Duration,
 };
@@ -117,14 +117,26 @@ impl SocketServer {
     /// # Errors
     /// - If the server fails to bind to the specified host and port
     /// - If an error occurs while handling a client connection
-    pub fn start<F>(&self, kms_server: &Arc<KMS>, request_handler: F) -> KResult<()>
+    pub fn start<F>(
+        &self,
+        kms_server: &Arc<KMS>,
+        request_handler: F,
+        command_receiver: mpsc::Receiver<KResult<()>>,
+    ) -> KResult<()>
     where
         F: Fn(&str, &[u8], Arc<KMS>) -> Vec<u8> + Send + Sync + 'static,
     {
         let addr = format!("{}:{}", self.host, self.port);
         let server_config = self.server_config.clone();
         let handler = Arc::new(request_handler);
-        Self::start_listening(kms_server, &addr, &server_config, &handler, None)?;
+        Self::start_listening(
+            kms_server,
+            &addr,
+            &server_config,
+            &handler,
+            command_receiver,
+            None,
+        )?;
         Ok(())
     }
 
@@ -148,6 +160,7 @@ impl SocketServer {
         &self,
         kms_server: Arc<KMS>,
         request_handler: F,
+        command_receiver: mpsc::Receiver<KResult<()>>,
     ) -> KResult<JoinHandle<()>>
     where
         F: Fn(&str, &[u8], Arc<KMS>) -> Vec<u8> + Send + Sync + 'static,
@@ -159,8 +172,14 @@ impl SocketServer {
 
         let thread_handle = tokio::spawn(async move {
             // we swallow the error if any, it will be received by the mpsc receiver
-            let _swallowed =
-                Self::start_listening(&kms_server, &addr, &server_config, &handler, Some(tx));
+            let _swallowed = Self::start_listening(
+                &kms_server,
+                &addr,
+                &server_config,
+                &handler,
+                command_receiver,
+                Some(tx),
+            );
         });
         trace!("Waiting for test socket server to start...");
         let state = rx
@@ -176,6 +195,7 @@ impl SocketServer {
         addr: &str,
         server_config: &Arc<ServerConfig>,
         handler: &Arc<F>,
+        command_receiver: mpsc::Receiver<KResult<()>>,
         start_notifier: Option<mpsc::Sender<KResult<()>>>,
     ) -> Result<(), KmsError>
     where
@@ -201,10 +221,54 @@ impl SocketServer {
             }
         };
 
+        // Setup for handling command receiver if it exists
+        let stop_requested = Arc::new(RwLock::new(false));
+        let stop_requested_clone = stop_requested.clone();
+        // Use a separate thread to listen for stop signals
+        let listener_clone = listener
+            .try_clone()
+            .context("Failed to clone TCP listener")?;
+        thread::spawn(move || {
+            if let Ok(result) = command_receiver.recv() {
+                // If we receive any message, signal to stop
+                debug!("Socket server received stop signal");
+                if let Err(e) = result {
+                    error!("Socket server stop signal contained error: {}", e);
+                }
+                // Trigger a connection to ourselves to break the accept loop
+                if let Ok(local_address) = listener_clone.local_addr() {
+                    let _c = TcpStream::connect(local_address);
+                    if let Ok(mut stop_requested) = stop_requested_clone.write() {
+                        *stop_requested = true;
+                    } else {
+                        error!("Socket server failed to write stop request");
+                    }
+                } else {
+                    error!("Socket server failed to get local address for stop signal");
+                }
+            }
+        });
+
         // Accept incoming connections
         for stream in listener.incoming() {
+            if *stop_requested
+                .read()
+                .context("Failed to read stop request")?
+            {
+                info!("Socket server shutting down due to stop request");
+                break;
+            }
+
             match stream {
                 Ok(mut stream) => {
+                    // Check if this is a self-connection to break the loop
+                    if *stop_requested
+                        .read()
+                        .context("Failed to read stop request")?
+                    {
+                        break;
+                    }
+                    // Accept incoming connections
                     let server_config = server_config.clone();
                     let handler = handler.clone();
                     // Spawn a new thread to handle the client connection
