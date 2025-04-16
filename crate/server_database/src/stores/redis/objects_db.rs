@@ -13,10 +13,10 @@ use cosmian_crypto_core::{
     RandomFixedSizeCBytes, SymmetricKey,
 };
 use cosmian_kmip::{
+    kmip_0::kmip_types::State,
     kmip_2_1::{
         kmip_attributes::Attributes,
         kmip_objects::{Object, ObjectType},
-        kmip_types::StateEnumeration,
     },
     KmipResultHelper,
 };
@@ -58,7 +58,7 @@ pub(crate) struct RedisDbObject {
     #[serde(rename = "w")]
     pub(crate) owner: String,
     #[serde(rename = "s")]
-    pub(crate) state: StateEnumeration,
+    pub(crate) state: State,
     #[serde(rename = "l")]
     pub(crate) tags: Option<HashSet<String>>,
     // We use and Option and skip[ serializing for ascending compatibility
@@ -71,7 +71,7 @@ impl RedisDbObject {
     pub(crate) const fn new(
         object: Object,
         owner: String,
-        state: StateEnumeration,
+        state: State,
         tags: Option<HashSet<String>>,
         attributes: Attributes,
     ) -> Self {

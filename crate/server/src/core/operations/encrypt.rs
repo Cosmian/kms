@@ -2,14 +2,13 @@ use std::sync::Arc;
 
 use cosmian_cover_crypt::api::Covercrypt;
 use cosmian_kmip::{
-    kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, PaddingMethod},
+    kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, PaddingMethod, State},
     kmip_2_1::{
         extra::BulkData,
         kmip_objects::{Certificate, Object},
         kmip_operations::{Encrypt, EncryptResponse},
         kmip_types::{
-            CryptographicAlgorithm, CryptographicParameters, KeyFormatType, StateEnumeration,
-            UniqueIdentifier,
+            CryptographicAlgorithm, CryptographicParameters, KeyFormatType, UniqueIdentifier,
         },
         KmipOperation,
     },
@@ -114,7 +113,7 @@ pub(crate) async fn encrypt(
             .ok_or_else(|| {
                 KmsError::InvalidRequest(format!("Encrypt: failed to retrieve key: {uid}"))
             })?;
-        if owm.state() != StateEnumeration::Active {
+        if owm.state() != State::Active {
             continue
         }
         //check user permissions - owner can always encrypt

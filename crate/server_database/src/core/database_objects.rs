@@ -4,8 +4,9 @@ use std::{
     sync::Arc,
 };
 
-use cosmian_kmip::kmip_2_1::{
-    kmip_attributes::Attributes, kmip_objects::Object, kmip_types::StateEnumeration,
+use cosmian_kmip::{
+    kmip_0::kmip_types::State,
+    kmip_2_1::{kmip_attributes::Attributes, kmip_objects::Object},
 };
 use cosmian_kms_interfaces::{AtomicOperation, ObjectWithMetadata, ObjectsStore, SessionParams};
 
@@ -283,7 +284,7 @@ impl Database {
     pub async fn update_state(
         &self,
         uid: &str,
-        state: StateEnumeration,
+        state: State,
         params: Option<Arc<dyn SessionParams>>,
     ) -> DbResult<()> {
         let db = self.get_object_store(uid).await?;
@@ -327,13 +328,13 @@ impl Database {
     pub async fn find(
         &self,
         researched_attributes: Option<&Attributes>,
-        state: Option<StateEnumeration>,
+        state: Option<State>,
         user: &str,
         user_must_be_owner: bool,
         params: Option<Arc<dyn SessionParams>>,
-    ) -> DbResult<Vec<(String, StateEnumeration, Attributes)>> {
+    ) -> DbResult<Vec<(String, State, Attributes)>> {
         let map = self.objects.read().await;
-        let mut results: Vec<(String, StateEnumeration, Attributes)> = Vec::new();
+        let mut results: Vec<(String, State, Attributes)> = Vec::new();
         for (_prefix, db) in map.iter() {
             results.extend(
                 db.find(

@@ -6,12 +6,12 @@ use std::{collections::HashSet, path::PathBuf, sync::Arc};
 
 use async_trait::async_trait;
 use cosmian_kmip::{
-    kmip_0::kmip_types::CryptographicUsageMask,
+    kmip_0::kmip_types::{CryptographicUsageMask, State},
     kmip_2_1::{
         kmip_attributes::Attributes,
         kmip_data_structures::{KeyBlock, KeyMaterial as KmipKeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType, PrivateKey, PublicKey, SymmetricKey},
-        kmip_types::{CryptographicAlgorithm, KeyFormatType, StateEnumeration},
+        kmip_types::{CryptographicAlgorithm, KeyFormatType},
     },
     SafeBigInt,
 };
@@ -149,7 +149,7 @@ impl ObjectsStore for HsmStore {
     async fn update_state(
         &self,
         uid: &str,
-        state: StateEnumeration,
+        state: State,
         params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
         // not supported for HSMs
@@ -230,11 +230,11 @@ impl ObjectsStore for HsmStore {
     async fn find(
         &self,
         researched_attributes: Option<&Attributes>,
-        state: Option<StateEnumeration>,
+        state: Option<State>,
         user: &str,
         user_must_be_owner: bool,
         params: Option<Arc<dyn SessionParams>>,
-    ) -> InterfaceResult<Vec<(String, StateEnumeration, Attributes)>> {
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
         todo!()
     }
 }
@@ -347,7 +347,7 @@ fn to_object_with_metadata(
                 uid.to_owned(),
                 object,
                 user.to_owned(),
-                StateEnumeration::Active,
+                State::Active,
                 attributes,
             ))
         }
@@ -416,7 +416,7 @@ fn to_object_with_metadata(
                 uid.to_owned(),
                 object,
                 user.to_owned(),
-                StateEnumeration::Active,
+                State::Active,
                 attributes,
             ))
         }
@@ -471,7 +471,7 @@ fn to_object_with_metadata(
                 uid.to_owned(),
                 object,
                 user.to_owned(),
-                StateEnumeration::Active,
+                State::Active,
                 attributes,
             ))
         }

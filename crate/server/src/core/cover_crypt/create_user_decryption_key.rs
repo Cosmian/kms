@@ -2,11 +2,14 @@ use std::sync::Arc;
 
 use cosmian_cover_crypt::{api::Covercrypt, MasterSecretKey};
 use cosmian_crypto_core::bytes_ser_de::Serializable;
-use cosmian_kmip::kmip_2_1::{
-    kmip_attributes::Attributes,
-    kmip_objects::{Object, ObjectType},
-    kmip_operations::{Create, CreateKeyPair, Get},
-    kmip_types::{KeyFormatType, StateEnumeration, UniqueIdentifier},
+use cosmian_kmip::{
+    kmip_0::kmip_types::State,
+    kmip_2_1::{
+        kmip_attributes::Attributes,
+        kmip_objects::{Object, ObjectType},
+        kmip_operations::Create,
+        kmip_types::KeyFormatType,
+    },
 };
 use cosmian_kms_crypto::crypto::cover_crypt::{
     attributes::access_policy_from_attributes, master_keys::create_msk_object,
@@ -45,7 +48,7 @@ pub(crate) async fn create_user_decryption_key(
         .await?
         .into_values()
     {
-        if owm.state() != StateEnumeration::Active {
+        if msk_owm.state() != State::Active {
             continue;
         }
 

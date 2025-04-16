@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
 use cosmian_kmip::{
-    kmip_0::kmip_types::ErrorReason,
+    kmip_0::kmip_types::{ErrorReason, State},
     kmip_2_1::{
         kmip_objects::ObjectType,
         kmip_operations::{ReKeyKeyPair, ReKeyKeyPairResponse},
-        kmip_types::{CryptographicAlgorithm, KeyFormatType, StateEnumeration},
+        kmip_types::{CryptographicAlgorithm, KeyFormatType},
     },
 use cosmian_cover_crypt::api::Covercrypt;
 use cosmian_kms_crypto::crypto::cover_crypt::attributes::rekey_edit_action_from_attributes;
@@ -49,7 +49,8 @@ pub(crate) async fn rekey_keypair(
         .into_values();
 
     for owm in owm_s {
-        if owm.state() != StateEnumeration::Active {
+        // only active objects
+        if owm.state() != State::Active {
             continue
         }
 

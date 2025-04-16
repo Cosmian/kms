@@ -10,8 +10,9 @@ use cloudproof_findex::{
     Label, Location,
 };
 use cosmian_crypto_core::{kdf256, FixedSizeCBytes, SymmetricKey};
-use cosmian_kmip::kmip_2_1::{
-    kmip_attributes::Attributes, kmip_objects::Object, kmip_types::StateEnumeration, KmipOperation,
+use cosmian_kmip::{
+    kmip_0::kmip_types::State,
+    kmip_2_1::{kmip_attributes::Attributes, kmip_objects::Object, KmipOperation},
 };
 use cosmian_kms_crypto::crypto::{password_derivation::derive_key_from_password, secret::Secret};
 use cosmian_kms_interfaces::{
@@ -141,7 +142,7 @@ impl RedisWithFindex {
         object: &Object,
         attributes: &Attributes,
         tags: Option<&HashSet<String>>,
-        state: StateEnumeration,
+        state: State,
         params: Option<Arc<dyn SessionParams>>,
     ) -> Result<RedisDbObject, DbError> {
         // additions to the index
@@ -196,7 +197,7 @@ impl RedisWithFindex {
                 object,
                 attributes,
                 Some(tags),
-                StateEnumeration::Active,
+                State::Active,
                 None,
             )
             .await?;
@@ -245,7 +246,7 @@ impl RedisWithFindex {
     async fn prepare_object_for_state_update(
         &self,
         uid: &str,
-        state: StateEnumeration,
+        state: State,
     ) -> Result<RedisDbObject, DbError> {
         let mut db_object = self
             .objects_db
@@ -345,7 +346,7 @@ impl ObjectsStore for RedisWithFindex {
     async fn update_state(
         &self,
         uid: &str,
-        state: StateEnumeration,
+        state: State,
         _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
         let db_object = self.prepare_object_for_state_update(uid, state).await?;
@@ -466,11 +467,11 @@ impl ObjectsStore for RedisWithFindex {
     async fn find(
         &self,
         researched_attributes: Option<&Attributes>,
-        state: Option<StateEnumeration>,
+        state: Option<State>,
         user: &str,
         user_must_be_owner: bool,
         _params: Option<Arc<dyn SessionParams>>,
-    ) -> InterfaceResult<Vec<(String, StateEnumeration, Attributes)>> {
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
         let mut keywords = {
             researched_attributes.map_or_else(HashSet::new, |attributes| {
                 let tags = attributes.get_tags();
@@ -554,7 +555,7 @@ impl PermissionsStore for RedisWithFindex {
         &self,
         user: &str,
         _params: Option<Arc<dyn SessionParams>>,
-    ) -> InterfaceResult<HashMap<String, (String, StateEnumeration, HashSet<KmipOperation>)>> {
+    ) -> InterfaceResult<HashMap<String, (String, State, HashSet<KmipOperation>)>> {
         let permissions = self
             .permissions_db
             .list_user_permissions(&self.findex_key, user)

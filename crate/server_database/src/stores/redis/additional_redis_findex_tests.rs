@@ -10,11 +10,10 @@ use cosmian_crypto_core::{
     CsRng, RandomFixedSizeCBytes, SymmetricKey,
 };
 use cosmian_kmip::{
+    kmip_0::kmip_types::State,
     kmip_2_1::{
-        kmip_attributes::Attributes,
-        kmip_types::{CryptographicAlgorithm, StateEnumeration},
-        requests::create_symmetric_key_kmip_object,
-        KmipOperation,
+        kmip_attributes::Attributes, kmip_types::CryptographicAlgorithm,
+        requests::create_symmetric_key_kmip_object, KmipOperation,
     },
     KmipResultHelper,
 };
@@ -82,7 +81,7 @@ pub(crate) async fn test_objects_db() -> DbResult<()> {
         &RedisDbObject::new(
             object.clone(),
             "owner".to_owned(),
-            StateEnumeration::Active,
+            State::Active,
             Some(HashSet::new()),
             object.attributes()?.clone(),
         ),
@@ -94,7 +93,7 @@ pub(crate) async fn test_objects_db() -> DbResult<()> {
         redis_db_object.object.key_block()?.key_bytes()?
     );
     assert_eq!(redis_db_object.owner, "owner");
-    assert_eq!(redis_db_object.state, StateEnumeration::Active);
+    assert_eq!(redis_db_object.state, State::Active);
 
     o_db.object_delete(uid).await?;
     assert!(o_db.object_get(uid).await?.is_none());

@@ -5,11 +5,11 @@ use cosmian_crypto_core::{
     CsRng,
 };
 use cosmian_kmip::{
-    kmip_0::kmip_types::CryptographicUsageMask,
+    kmip_0::kmip_types::{CryptographicUsageMask, State},
     kmip_2_1::{
         kmip_attributes::Attributes,
         kmip_objects::ObjectType,
-        kmip_types::{CryptographicAlgorithm, KeyFormatType, StateEnumeration, UniqueIdentifier},
+        kmip_types::{CryptographicAlgorithm, KeyFormatType, UniqueIdentifier},
         requests::create_symmetric_key_kmip_object,
     },
 };
@@ -77,7 +77,7 @@ pub(crate) async fn tags<DB: ObjectsStore + PermissionsStore>(
         ..Attributes::default()
     };
     expected_attributes.set_tags(["_kk".to_owned()])?;
-    assert_eq!(StateEnumeration::Active, owm.state());
+    assert_eq!(State::Active, owm.state());
     assert!(&symmetric_key == owm.object());
 
     let tags = db.retrieve_tags(owm.id(), db_params.clone()).await?;
@@ -100,7 +100,7 @@ pub(crate) async fn tags<DB: ObjectsStore + PermissionsStore>(
     if verify_attributes {
         assert_eq!(owm.attributes(), &expected_attributes);
     }
-    assert_eq!(owm.state(), StateEnumeration::Active);
+    assert_eq!(owm.state(), State::Active);
 
     let tags = db.retrieve_tags(owm.id(), db_params.clone()).await?;
     assert!(tags.contains("tag1"));
@@ -120,7 +120,7 @@ pub(crate) async fn tags<DB: ObjectsStore + PermissionsStore>(
     if verify_attributes {
         assert_eq!(owm.attributes(), &expected_attributes);
     }
-    assert_eq!(owm.state(), StateEnumeration::Active);
+    assert_eq!(owm.state(), State::Active);
     let tags = db.retrieve_tags(owm.id(), db_params.clone()).await?;
     assert!(tags.contains("tag1"));
     assert!(tags.contains("tag2"));
@@ -142,7 +142,7 @@ pub(crate) async fn tags<DB: ObjectsStore + PermissionsStore>(
     if verify_attributes {
         assert_eq!(owm.attributes(), &expected_attributes);
     }
-    assert_eq!(owm.state(), StateEnumeration::Active);
+    assert_eq!(owm.state(), State::Active);
     let tags = db.retrieve_tags(owm.id(), db_params.clone()).await?;
     assert!(tags.contains("tag1"));
     assert!(tags.contains("tag2"));

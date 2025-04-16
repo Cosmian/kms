@@ -1,8 +1,8 @@
 use std::{collections::HashSet, sync::Arc};
 
 use cosmian_kmip::{
-    kmip_0::kmip_types::RevocationReason,
-    kmip_2_1::kmip_types::{StateEnumeration, UniqueIdentifier},
+    kmip_0::kmip_types::{RevocationReason, State},
+    kmip_2_1::kmip_types::UniqueIdentifier,
 };
 use cosmian_kms_interfaces::SessionParams;
 
@@ -26,7 +26,7 @@ pub(crate) async fn revoke_user_decryption_keys(
         kms,
         master_secret_key_id,
         None,
-        Some(StateEnumeration::Active),
+        Some(State::Active),
         owner,
         params.clone(),
     )
