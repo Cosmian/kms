@@ -3,7 +3,7 @@ use std::{
     sync::Arc,
 };
 
-use cosmian_kmip::kmip_2_1::{kmip_types::StateEnumeration, KmipOperation};
+use cosmian_kmip::{kmip_0::kmip_types::State, kmip_2_1::KmipOperation};
 use cosmian_kms_interfaces::SessionParams;
 
 use super::Database;
@@ -20,7 +20,7 @@ impl Database {
         &self,
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
-    ) -> DbResult<HashMap<String, (String, StateEnumeration, HashSet<KmipOperation>)>> {
+    ) -> DbResult<HashMap<String, (String, State, HashSet<KmipOperation>)>> {
         Ok(self
             .permissions
             .list_user_operations_granted(user, params)

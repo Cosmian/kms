@@ -9,8 +9,8 @@ use actix_web::{
 };
 use base64::Engine;
 use cosmian_kmip::{
-    kmip_0::kmip_types::ErrorReason,
-    kmip_2_1::{kmip_objects::ObjectType, kmip_types::StateEnumeration},
+    kmip_0::kmip_types::{ErrorReason, State},
+    kmip_2_1::kmip_objects::ObjectType,
 };
 use tracing::{debug, error, trace};
 
@@ -53,7 +53,7 @@ async fn get_api_token(kms: &Arc<KMS>, api_token_id: &str) -> KResult<String> {
         )))
     }
     // only active objects
-    if owm.state() != StateEnumeration::Active {
+    if owm.state() != State::Active {
         return Err(KmsError::InvalidRequest(format!(
             "The symmetric key for API token: {api_token_id} is not active",
         )))

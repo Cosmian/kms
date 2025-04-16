@@ -4,11 +4,11 @@ use cloudproof::reexport::cover_crypt::{
     abe_policy::Policy, Covercrypt, MasterPublicKey, MasterSecretKey,
 };
 use cosmian_kmip::{
-    kmip_0::kmip_types::ErrorReason,
+    kmip_0::kmip_types::{ErrorReason, State},
     kmip_2_1::{
         kmip_objects::{Object, ObjectType, PrivateKey},
         kmip_operations::{Get, Import, ReKeyKeyPairResponse},
-        kmip_types::{LinkType, StateEnumeration, UniqueIdentifier},
+        kmip_types::{LinkType, UniqueIdentifier},
     },
 };
 use cosmian_kms_crypto::crypto::cover_crypt::{
@@ -289,7 +289,7 @@ async fn update_all_active_usk(
         kmip_server,
         &msk_obj.0,
         None,
-        Some(StateEnumeration::Active),
+        Some(State::Active),
         owner,
         params.clone(),
     )

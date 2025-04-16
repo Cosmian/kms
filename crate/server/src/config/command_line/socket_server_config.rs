@@ -3,7 +3,7 @@ use std::fmt::Display;
 use clap::Args;
 use serde::{Deserialize, Serialize};
 
-const DEFAULT_SOCKET_SERVER_PORT: u16 = 5695;
+const DEFAULT_SOCKET_SERVER_PORT: u16 = 5696;
 const DEFAULT_SOCKET_SERVER_HOSTNAME: &str = "0.0.0.0";
 
 #[derive(Args, Clone, Deserialize, Serialize)]

@@ -8,15 +8,18 @@ use cosmian_kmip::kmip_2_1::extra::fips::{
 };
 #[cfg(feature = "fips")]
 use cosmian_kmip::kmip_2_1::kmip_types::{CryptographicAlgorithm, CryptographicUsageMask};
-use cosmian_kmip::kmip_2_1::{
-    kmip_attributes::Attributes,
-    kmip_objects::{Object, ObjectType},
-    kmip_operations::{Certify, CertifyResponse, CreateKeyPair},
-    kmip_types::{
-        CertificateRequestType, KeyFormatType, LinkType, LinkedObjectIdentifier, StateEnumeration,
-        UniqueIdentifier,
+use cosmian_kmip::{
+    kmip_0::kmip_types::State,
+    kmip_2_1::{
+        kmip_attributes::Attributes,
+        kmip_objects::{Object, ObjectType},
+        kmip_operations::{Certify, CertifyResponse, CreateKeyPair},
+        kmip_types::{
+            CertificateRequestType, KeyFormatType, LinkType, LinkedObjectIdentifier,
+            UniqueIdentifier,
+        },
+        KmipOperation,
     },
-    KmipOperation,
 };
 use cosmian_kms_crypto::openssl::{
     certificate_attributes_to_subject_name, kmip_certificate_to_openssl,
@@ -90,7 +93,7 @@ pub(crate) async fn certify(
                         certificate,
                         attributes,
                         Some(tags),
-                        StateEnumeration::Active,
+                        State::Active,
                     )),
                 ],
                 unique_identifier,
@@ -125,7 +128,7 @@ pub(crate) async fn certify(
                         certificate,
                         certificate_attributes,
                         Some(tags),
-                        StateEnumeration::Active,
+                        State::Active,
                     )),
                     // update the public key
                     AtomicOperation::UpdateObject((
@@ -185,7 +188,7 @@ pub(crate) async fn certify(
                         keypair_data.private_key_object.clone(),
                         keypair_data.private_key_object.attributes()?.clone(),
                         Some(keypair_data.private_key_tags),
-                        StateEnumeration::Active,
+                        State::Active,
                     )),
                     // upsert the public key
                     AtomicOperation::Upsert((
@@ -193,7 +196,7 @@ pub(crate) async fn certify(
                         keypair_data.public_key_object.clone(),
                         keypair_data.public_key_object.attributes()?.clone(),
                         Some(keypair_data.public_key_tags),
-                        StateEnumeration::Active,
+                        State::Active,
                     )),
                     // upsert the certificate
                     AtomicOperation::Upsert((
@@ -201,7 +204,7 @@ pub(crate) async fn certify(
                         certificate,
                         certificate_attributes,
                         Some(tags),
-                        StateEnumeration::Active,
+                        State::Active,
                     )),
                 ],
                 unique_identifier,

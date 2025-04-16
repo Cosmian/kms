@@ -2,14 +2,13 @@ use std::sync::Arc;
 
 use cloudproof::reexport::cover_crypt::Covercrypt;
 use cosmian_kmip::{
-    kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, PaddingMethod},
+    kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, PaddingMethod, State},
     kmip_2_1::{
         extra::BulkData,
         kmip_objects::Object,
         kmip_operations::{Decrypt, DecryptResponse},
         kmip_types::{
-            CryptographicAlgorithm, CryptographicParameters, KeyFormatType, StateEnumeration,
-            UniqueIdentifier,
+            CryptographicAlgorithm, CryptographicParameters, KeyFormatType, UniqueIdentifier,
         },
         KmipOperation,
     },
@@ -115,7 +114,7 @@ pub(crate) async fn decrypt(
                     format!("Decrypt: failed to retrieve the key: {uid}"),
                 )
             })?;
-        if owm.state() != StateEnumeration::Active {
+        if owm.state() != State::Active {
             debug!("Decrypt: key: {uid} is not active");
             continue
         }

@@ -2,13 +2,13 @@ use std::{collections::HashSet, sync::Arc};
 
 use async_recursion::async_recursion;
 use cosmian_kmip::{
-    kmip_0::kmip_types::ErrorReason,
+    kmip_0::kmip_types::{ErrorReason, State},
     kmip_2_1::{
         kmip_attributes::Attributes,
         kmip_data_structures::{KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType},
         kmip_operations::{Destroy, DestroyResponse},
-        kmip_types::{KeyFormatType, LinkType, StateEnumeration, UniqueIdentifier},
+        kmip_types::{KeyFormatType, LinkType, UniqueIdentifier},
         KmipOperation,
     },
 };
@@ -114,7 +114,7 @@ pub(crate) async fn recursively_destroy_object(
 
         // Check if the object is already destroyed
         let object_type = owm.object().object_type();
-        if owm.state() == StateEnumeration::Destroyed
+        if owm.state() == State::Destroyed
             || (object_type != ObjectType::PrivateKey
                 && object_type != ObjectType::SymmetricKey
                 && object_type != ObjectType::Certificate
@@ -228,7 +228,7 @@ async fn destroy_core(
     unique_identifier: &str,
     remove: bool,
     object: &mut Object,
-    state: StateEnumeration,
+    state: State,
     kms: &KMS,
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<()> {
@@ -243,11 +243,11 @@ async fn destroy_core(
 /// This is a Cosmian specific operation
 async fn remove_from_database(
     unique_identifier: &str,
-    state: StateEnumeration,
+    state: State,
     kms: &KMS,
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<()> {
-    if state == StateEnumeration::Active {
+    if state == State::Active {
         return Err(KmsError::InvalidRequest(format!(
             "Object with unique identifier: {unique_identifier} is active. It must be revoked \
              first"
@@ -262,22 +262,22 @@ async fn remove_from_database(
 async fn update_as_destroyed(
     unique_identifier: &str,
     object: &mut Object,
-    state: StateEnumeration,
+    state: State,
     kms: &KMS,
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<()> {
     // map the state to the new state
     let new_state = match state {
-        StateEnumeration::Active => {
+        State::Active => {
             return Err(KmsError::InvalidRequest(format!(
                 "Object with unique identifier: {unique_identifier} is active. It must be revoked \
                  first"
             )))
         }
-        StateEnumeration::Deactivated | StateEnumeration::PreActive => StateEnumeration::Destroyed,
-        StateEnumeration::Compromised => StateEnumeration::Destroyed_Compromised,
+        State::Deactivated | State::PreActive => State::Destroyed,
+        State::Compromised => State::Destroyed_Compromised,
         // already destroyed, return
-        StateEnumeration::Destroyed | StateEnumeration::Destroyed_Compromised => return Ok(()),
+        State::Destroyed | State::Destroyed_Compromised => return Ok(()),
     };
 
     // the KMIP specs mandates that e KeyMaterial be destroyed

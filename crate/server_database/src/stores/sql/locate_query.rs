@@ -1,6 +1,6 @@
-use cosmian_kmip::kmip_2_1::{
-    kmip_attributes::Attributes,
-    kmip_types::{LinkedObjectIdentifier::TextString, StateEnumeration},
+use cosmian_kmip::{
+    kmip_0::kmip_types::State,
+    kmip_2_1::{kmip_attributes::Attributes, kmip_types::LinkedObjectIdentifier::TextString},
 };
 
 /// Handle different placeholders naming (bind parameter or
@@ -138,7 +138,7 @@ impl PlaceholderTrait for SqlitePlaceholder {}
 // TODO  protection against SQL Injection is not covered here
 pub(crate) fn query_from_attributes<P: PlaceholderTrait>(
     attributes: Option<&Attributes>,
-    state: Option<StateEnumeration>,
+    state: Option<State>,
     user: &str,
     user_must_be_owner: bool,
 ) -> String {

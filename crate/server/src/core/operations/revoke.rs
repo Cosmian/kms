@@ -2,11 +2,11 @@ use std::{collections::HashSet, sync::Arc};
 
 use async_recursion::async_recursion;
 use cosmian_kmip::{
-    kmip_0::kmip_types::{ErrorReason, RevocationReason, RevocationReasonCode},
+    kmip_0::kmip_types::{ErrorReason, RevocationReason, RevocationReasonCode, State},
     kmip_2_1::{
         kmip_objects::ObjectType,
         kmip_operations::{Revoke, RevokeResponse},
-        kmip_types::{KeyFormatType, LinkType, StateEnumeration, UniqueIdentifier},
+        kmip_types::{KeyFormatType, LinkType, UniqueIdentifier},
         KmipOperation,
     },
 };
@@ -103,7 +103,7 @@ pub(crate) async fn recursively_revoke_key(
             }
             if kms
                 .database
-                .update_state(&uid, StateEnumeration::Deactivated, params.clone())
+                .update_state(&uid, State::Deactivated, params.clone())
                 .await
                 .is_ok()
             {
@@ -124,7 +124,7 @@ pub(crate) async fn recursively_revoke_key(
         };
 
         let object_type = owm.object().object_type();
-        if owm.state() != StateEnumeration::Active && owm.state() != StateEnumeration::PreActive {
+        if owm.state() != State::Active && owm.state() != State::PreActive {
             continue
         }
         if object_type != ObjectType::PrivateKey
@@ -275,14 +275,14 @@ async fn revoke_key_core(
         | RevocationReasonCode::AffiliationChanged
         | RevocationReasonCode::Superseded
         | RevocationReasonCode::CessationOfOperation
-        | RevocationReasonCode::PrivilegeWithdrawn => StateEnumeration::Deactivated,
+        | RevocationReasonCode::PrivilegeWithdrawn => State::Deactivated,
         RevocationReasonCode::KeyCompromise | RevocationReasonCode::CACompromise => {
             if compromise_occurrence_date.is_none() {
                 kms_bail!(KmsError::InvalidRequest(
                     "A compromise date must be supplied in case of compromised object".to_owned()
                 ))
             }
-            StateEnumeration::Compromised
+            State::Compromised
         }
     };
     kms.database

@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
 use cosmian_kmip::{
-    kmip_0::kmip_types::CryptographicUsageMask,
+    kmip_0::kmip_types::{CryptographicUsageMask, State},
     kmip_2_1::{
         kmip_data_structures::{KeyBlock, KeyWrappingSpecification},
         kmip_objects::ObjectType,
-        kmip_types::{LinkType, StateEnumeration},
+        kmip_types::LinkType,
         KmipOperation,
     },
 };
@@ -80,10 +80,7 @@ pub(crate) async fn wrap_key(
         .await?;
     }
     debug!("Key wrapped successfully by key {}", wrapping_key_uid);
-    debug!(
-        "The key block is now: {:#?}",
-        object_key_block
-    );
+    debug!("The key block is now: {:#?}", object_key_block);
     Ok(())
 }
 
@@ -133,7 +130,7 @@ async fn wrap_using_kms(
         }
         _ => kms_bail!("wrap_key: unsupported object type: {}", object_type),
     };
-    if wrapping_key.state() != StateEnumeration::Active {
+    if wrapping_key.state() != State::Active {
         return Err(KmsError::NotSupported(format!(
             "The wrapping key {wrapping_key_uid} is not active"
         )));

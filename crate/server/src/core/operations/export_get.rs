@@ -1,15 +1,13 @@
 use std::sync::Arc;
 
 use cosmian_kmip::{
-    kmip_0::kmip_types::{CertificateType, CryptographicUsageMask, KeyWrapType},
+    kmip_0::kmip_types::{CertificateType, CryptographicUsageMask, KeyWrapType, State},
     kmip_2_1::{
         kmip_attributes::Attributes,
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingSpecification},
         kmip_objects::{Certificate, Object, ObjectType, PrivateKey},
         kmip_operations::{Export, ExportResponse},
-        kmip_types::{
-            CryptographicAlgorithm, KeyFormatType, LinkType, StateEnumeration, UniqueIdentifier,
-        },
+        kmip_types::{CryptographicAlgorithm, KeyFormatType, LinkType, UniqueIdentifier},
         KmipOperation,
     },
     KmipError,
@@ -92,8 +90,7 @@ pub(crate) async fn export_get(
         ObjectType::PublicKey => {
             // according to the KMIP specs the KeyMaterial is not returned if the object is destroyed
             if export
-                && (owm.state() == StateEnumeration::Destroyed
-                    || owm.state() == StateEnumeration::Destroyed_Compromised)
+                && (owm.state() == State::Destroyed || owm.state() == State::Destroyed_Compromised)
             {
                 let key_block = owm.object_mut().key_block_mut()?;
                 key_block.key_value = Some(KeyValue::Structure {
@@ -117,8 +114,7 @@ pub(crate) async fn export_get(
         ObjectType::SymmetricKey => {
             // according to the KMIP specs the KeyMaterial is not returned if the object is destroyed
             if export
-                && (owm.state() == StateEnumeration::Destroyed
-                    || owm.state() == StateEnumeration::Destroyed_Compromised)
+                && (owm.state() == State::Destroyed || owm.state() == State::Destroyed_Compromised)
             {
                 let key_block = owm.object_mut().key_block_mut()?;
                 key_block.key_value = Some(KeyValue::Structure {
@@ -231,8 +227,7 @@ async fn post_process_private_key(
     let is_pkcs12 = request.key_format_type == Some(KeyFormatType::PKCS12);
     // according to the KMIP specs the KeyMaterial is not returned if the object is destroyed
     if (operation_type == KmipOperation::Export)
-        && (owm.state() == StateEnumeration::Destroyed
-            || owm.state() == StateEnumeration::Destroyed_Compromised)
+        && (owm.state() == State::Destroyed || owm.state() == State::Destroyed_Compromised)
     {
         let key_block = owm.object_mut().key_block_mut()?;
         key_block.key_value = Some(KeyValue::Structure {

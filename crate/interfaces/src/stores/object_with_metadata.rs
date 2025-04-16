@@ -1,7 +1,8 @@
 use std::fmt::{self, Display, Formatter};
 
-use cosmian_kmip::kmip_2_1::{
-    kmip_attributes::Attributes, kmip_objects::Object, kmip_types::StateEnumeration,
+use cosmian_kmip::{
+    kmip_0::kmip_types::State,
+    kmip_2_1::{kmip_attributes::Attributes, kmip_objects::Object},
 };
 
 /// An object with its metadata such as owner, permissions and state
@@ -14,7 +15,7 @@ pub struct ObjectWithMetadata {
     // this is the object as registered in the DN. For a key, it may be wrapped or unwrapped
     object: Object,
     owner: String,
-    state: StateEnumeration,
+    state: State,
     attributes: Attributes,
 }
 
@@ -24,7 +25,7 @@ impl ObjectWithMetadata {
         id: String,
         object: Object,
         owner: String,
-        state: StateEnumeration,
+        state: State,
         attributes: Attributes,
     ) -> Self {
         Self {
@@ -65,7 +66,7 @@ impl ObjectWithMetadata {
     }
 
     #[must_use]
-    pub const fn state(&self) -> StateEnumeration {
+    pub const fn state(&self) -> State {
         self.state
     }
 

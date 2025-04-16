@@ -1,11 +1,14 @@
 use std::sync::Arc;
 
 use cloudproof::reexport::cover_crypt::Covercrypt;
-use cosmian_kmip::kmip_2_1::{
-    kmip_attributes::Attributes,
-    kmip_objects::{Object, ObjectType},
-    kmip_operations::Create,
-    kmip_types::{KeyFormatType, StateEnumeration},
+use cosmian_kmip::{
+    kmip_0::kmip_types::State,
+    kmip_2_1::{
+        kmip_attributes::Attributes,
+        kmip_objects::{Object, ObjectType},
+        kmip_operations::Create,
+        kmip_types::KeyFormatType,
+    },
 };
 use cosmian_kms_crypto::crypto::cover_crypt::{
     attributes::{access_policy_from_attributes, policy_from_attributes},
@@ -65,7 +68,7 @@ async fn create_user_decryption_key_(
         .await?
         .values()
     {
-        if msk_owm.state() != StateEnumeration::Active {
+        if msk_owm.state() != State::Active {
             continue;
         }
 

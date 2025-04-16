@@ -979,17 +979,6 @@ pub enum UsageLimitsUnit {
     Object = 0x2,
 }
 
-/// State enumeration indicates the current state of a managed object
-#[kmip_enum]
-pub enum State {
-    PreActive = 0x1,
-    Active = 0x2,
-    Deactivated = 0x3,
-    Compromised = 0x4,
-    Destroyed = 0x5,
-    DestroyedCompromised = 0x6,
-}
-
 #[kmip_enum]
 pub enum RevocationReasonCode {
     Unspecified = 0x0000_0001,
@@ -1067,4 +1056,43 @@ pub struct X509CertificateIdentifier {
     pub issuer_distinguished_name: Vec<u8>,
     /// The Certificate Serial Number
     pub certificate_serial_number: Vec<u8>,
+}
+
+/// This attribute is an indication of the State of an object as known to the
+/// key management server. The State SHALL NOT be changed by using the Modify
+/// Attribute operation on this attribute. The State SHALL only be changed by
+/// the server as a part of other operations or other server processes. An
+/// object SHALL be in one of the following states at any given time.
+///
+/// Note: The states correspond to those described in [SP800-57-1].
+#[kmip_enum]
+pub enum State {
+    /// Pre-Active: The object exists and SHALL NOT be used for any cryptographic purpose.
+    PreActive = 0x0000_0001,
+    /// Active: The object SHALL be transitioned to the Active state prior to being used for any
+    /// cryptographic purpose. The object SHALL only be used for all cryptographic purposes that
+    /// are allowed by its Cryptographic Usage Mask attribute. If a Process Start Date attribute is
+    /// set, then the object SHALL NOT be used for cryptographic purposes prior to the Process
+    /// Start Date. If a Protect Stop attribute is set, then the object SHALL NOT be used for
+    /// cryptographic purposes after the Process Stop Date.
+    Active = 0x0000_0002,
+    /// Deactivated: The object SHALL NOT be used for applying cryptographic protection (e.g.,
+    /// encryption, signing, wrapping, `MACing`, deriving) . The object SHALL only be used for
+    /// cryptographic purposes permitted by the Cryptographic Usage Mask attribute. The object
+    /// SHOULD only be used to process cryptographically-protected information (e.g., decryption,
+    /// signature verification, unwrapping, MAC verification under extraordinary circumstances and
+    /// when special permission is granted.
+    Deactivated = 0x0000_0003,
+    /// Compromised: The object SHALL NOT be used for applying cryptographic protection (e.g.,
+    /// encryption, signing, wrapping, `MACing`, deriving). The object SHOULD only be used to process
+    /// cryptographically-protected information (e.g., decryption, signature verification,
+    /// unwrapping, MAC verification in a client that is trusted to use managed objects that have
+    /// been compromised. The object SHALL only be used for cryptographic purposes permitted by the
+    /// Cryptographic Usage Mask attribute.
+    Compromised = 0x0000_0004,
+    /// Destroyed: The object SHALL NOT be used for any cryptographic purpose.
+    Destroyed = 0x0000_0005,
+    /// Destroyed Compromised: The object SHALL NOT be used for any cryptographic purpose; however
+    /// its compromised status SHOULD be retained for audit or security purposes.
+    Destroyed_Compromised = 0x0000_0006,
 }
