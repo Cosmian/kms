@@ -17,7 +17,10 @@ use crate::{
             ExportKeyFormat,
         },
     },
-    error::{result::CliResult, CliError},
+    error::{
+        result::{CliResult, CliResultHelper},
+        CliError,
+    },
     tests::{
         certificates::import::{import_certificate, ImportCertificateInput},
         shared::{export_key, import_key, ExportKeyParams, ImportKeyParams},
@@ -285,7 +288,8 @@ async fn import_encrypt_decrypt(
         wrap_key_id: Some(certificate_id),
         wrapping_algorithm: Some(WrappingAlgorithm::RsaAesKeyWrap),
         ..Default::default()
-    })?;
+    })
+    .context("wrapped export of private key")?;
 
     trace!("import private key with unwrap");
     debug!("\n\nImport a wrapped Private key but unwrap it into server");
@@ -300,7 +304,8 @@ async fn import_encrypt_decrypt(
         unwrap: true,
         replace_existing: true,
         authenticated_additional_data: None,
-    })?;
+    })
+    .context("private key import-unwrap")?;
     trace!("import private key with unwrap OK");
     debug!("\n\nImport a wrapped Private key but let is save it `as registered` into server");
     let wrapped_private_key_uid = import_key(ImportKeyParams {
@@ -365,6 +370,9 @@ async fn test_certificate_encrypt_using_prime224() -> CliResult<()> {
 // Edwards curve shall be used **for digital signature only**.
 // See NIST.SP.800-186 - Section 3.1.2 table 2 and NIST.FIPS.186-5.
 async fn test_certificate_encrypt_using_ed25519() -> CliResult<()> {
+    use cosmian_logger::log_init;
+
+    log_init(Some("info,cosmian_kmip=debug,cosmian_kms_client=debug,cosmian_kms_server=debug"));
     import_encrypt_decrypt("ED25519", None).await
 }
 

@@ -12,6 +12,7 @@ use cosmian_kms_client::{
     kmip_2_1::kmip_objects::{PrivateKey, PublicKey, SymmetricKey},
     objects_from_pem, read_bytes_from_file, read_object_from_json_ttlv_bytes, KmsClient,
 };
+use tracing::info;
 use zeroize::Zeroizing;
 
 use super::utils::{build_usage_mask_from_key_usage, KeyUsage};
@@ -129,13 +130,14 @@ impl ImportKeyAction {
     ///
     /// [`CliError`]: ../error/result/enum.CliError.html
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
+        info!("Importing key from file {:?}...", &self.key_file);
         let cryptographic_usage_mask = self
             .key_usage
             .as_deref()
             .and_then(build_usage_mask_from_key_usage);
         // read the key file
         let bytes = Zeroizing::from(read_bytes_from_file(&self.key_file)?);
-        let mut object = match &self.key_format {
+        let object = match &self.key_format {
             ImportKeyFormat::JsonTtlv => read_object_from_json_ttlv_bytes(&bytes)?,
             ImportKeyFormat::Pem => read_key_from_pem(&bytes)?,
             ImportKeyFormat::Sec1 => {
@@ -156,10 +158,6 @@ impl ImportKeyAction {
                 build_symmetric_key_from_bytes(CryptographicAlgorithm::ChaCha20, bytes)?
             }
         };
-        // Assign CryptographicUsageMask from command line arguments.
-        object
-            .attributes_mut()?
-            .set_cryptographic_usage_mask(cryptographic_usage_mask);
 
         let object_type = object.object_type();
 
@@ -195,7 +193,7 @@ impl ImportKeyAction {
             if let Some(data) = &self.authenticated_additional_data {
                 // If authenticated_additional_data are provided, must be added on key attributes for unwrapping
                 let aad = data.as_bytes();
-                object.attributes_mut()?.add_aad(aad);
+                import_attributes.add_aad(aad);
             }
         }
 

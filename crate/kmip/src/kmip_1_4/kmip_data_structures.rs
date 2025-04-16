@@ -772,12 +772,16 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
                     | KeyFormatType::PKCS1
                     | KeyFormatType::PKCS12
                     | KeyFormatType::PKCS8
-                    | KeyFormatType::X509 => {
+                    | KeyFormatType::X509
+                    | KeyFormatType::CoverCryptPublicKey
+                    | KeyFormatType::CoverCryptSecretKey => {
                         Ok(KeyMaterial::ByteString(Zeroizing::new(bytestring)))
                     }
-                    _ => Err(de::Error::custom(
-                        "KeyMaterialVisitor: Raw key format type must be a byte string",
-                    )),
+                    _ => Err(de::Error::custom(format!(
+                        "KeyMaterialVisitor: {:?} key format type is not expected to have a byte \
+                         string key material",
+                        self.key_format_type
+                    ))),
                 }
             }
 
@@ -1089,15 +1093,20 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
             | KeyFormatType::PKCS1
             | KeyFormatType::PKCS12
             | KeyFormatType::PKCS8
-            | KeyFormatType::X509 => {
-                trace!("===> KeyMaterial: Deserializing Raw key format type");
+            | KeyFormatType::X509
+            | KeyFormatType::CoverCryptPublicKey
+            | KeyFormatType::CoverCryptSecretKey => {
+                trace!(
+                    "===> KeyMaterial: Deserializing {:?} key format type as seq",
+                    self.key_format_type
+                );
                 // This will call visit_seq for both the TTLV and the JSON deserializer
                 deserializer.deserialize_any(KeyMaterialVisitor {
                     key_format_type: self.key_format_type,
                 })
             }
             f => {
-                trace!("===> KeyMaterial: Deserializing key format type: {f:?}");
+                trace!("===> KeyMaterial: Deserializing key format type: {f:?} as struct");
                 deserializer.deserialize_struct(
                     "KeyMaterial",
                     FIELDS,
