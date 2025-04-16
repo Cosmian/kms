@@ -530,7 +530,9 @@ impl Serialize for KeyMaterialSerializer {
                 | KeyFormatType::PKCS1
                 | KeyFormatType::PKCS12
                 | KeyFormatType::PKCS8
-                | KeyFormatType::X509 => serializer.serialize_bytes(bytes),
+                | KeyFormatType::X509
+                | KeyFormatType::CoverCryptSecretKey
+                | KeyFormatType::CoverCryptPublicKey => serializer.serialize_bytes(bytes),
                 x => Err(serde::ser::Error::custom(format!(
                     "KeyMaterialWrapper: {x:?} key format type does not support byte strings"
                 ))),

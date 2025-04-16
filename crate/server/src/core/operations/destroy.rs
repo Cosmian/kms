@@ -72,6 +72,8 @@ pub(crate) async fn recursively_destroy_object(
 
     let mut count = 0;
     for uid in uids {
+        // If the object has a prefix (external object store),
+        // destroy all the objects with this prefix
         if let Some(_prefix) = has_prefix(&uid) {
             // ensure user can destroy
             if !kms
@@ -98,6 +100,8 @@ pub(crate) async fn recursively_destroy_object(
             continue
         };
 
+        // Check if the object is owned by the user
+        // If the object is not owned by the user, check if the user has destroy permissions
         if user != owm.owner() {
             let permissions = kms
                 .database
@@ -107,6 +111,8 @@ pub(crate) async fn recursively_destroy_object(
                 continue
             }
         }
+
+        // Check if the object is already destroyed
         let object_type = owm.object().object_type();
         if owm.state() == StateEnumeration::Destroyed
             || (object_type != ObjectType::PrivateKey
@@ -116,8 +122,9 @@ pub(crate) async fn recursively_destroy_object(
         {
             continue
         }
-        count += 1;
+
         // perform the chain of destroy operations depending on the type of object
+        count += 1;
         let object_type = owm.object().object_type();
         match object_type {
             ObjectType::SymmetricKey | ObjectType::Certificate => {
@@ -280,16 +287,14 @@ async fn update_as_destroyed(
         Attributes::default()
     } else {
         let key_block = object.key_block_mut()?;
-        let Some(KeyValue::Structure { attributes, .. }) = key_block.key_value.as_ref() else {
-            return Err(KmsError::Default(
-                "update_as_destroyd: key value not found in key".to_owned(),
-            ));
-        };
+        let attributes = key_block.attributes().cloned().unwrap_or_default();
+        // Empty the Key Material
+        key_block.key_format_type = KeyFormatType::Raw;
         key_block.key_value = Some(KeyValue::Structure {
             key_material: KeyMaterial::ByteString(Zeroizing::from(vec![])),
-            attributes: attributes.clone(),
+            attributes: Some(attributes.clone()),
         });
-        key_block.attributes()?.clone()
+        attributes
     };
 
     kms.database

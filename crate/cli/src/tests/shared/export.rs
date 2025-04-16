@@ -498,11 +498,10 @@ pub(crate) async fn test_export_x25519() -> CliResult<()> {
         key_block.cryptographic_algorithm,
         Some(CryptographicAlgorithm::ECDH)
     );
-    let kv = &key_block.key_value;
     let KeyMaterial::TransparentECPrivateKey {
         d,
         recommended_curve,
-    } = &kv.as_ref().expect("Invalid key value type").key_material
+    } = &key_block.key_material()?
     else {
         panic!("Invalid key value type");
     };
@@ -556,11 +555,10 @@ pub(crate) async fn test_export_x25519() -> CliResult<()> {
         key_block.cryptographic_algorithm,
         Some(CryptographicAlgorithm::ECDH)
     );
-    let kv = &key_block.key_value;
     let KeyMaterial::TransparentECPublicKey {
         q_string,
         recommended_curve,
-    } = &kv.as_ref().expect("Invalid key value type").key_material
+    } = &key_block.key_material()?
     else {
         panic!("Invalid key value type")
     };

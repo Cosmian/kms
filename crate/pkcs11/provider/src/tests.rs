@@ -105,7 +105,7 @@ async fn load_p12() -> Result<String, Pkcs11Error> {
         key_block: KeyBlock {
             key_format_type: KeyFormatType::PKCS12,
             key_compression_type: None,
-            key_value: Some(KeyValue {
+            key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::ByteString(zeroize::Zeroizing::new(p12_bytes.to_vec())),
                 attributes: None,
             }),
