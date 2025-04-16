@@ -22,8 +22,8 @@ use crate::tests::ttlv_tests::{add_attribute_1_4::add_attributes, get_client};
 
 #[test]
 fn test_get_attribute_1_4() {
-    // log_init(option_env!("RUST_LOG"));
-    log_init(Some("debug"));
+    log_init(option_env!("RUST_LOG"));
+    // log_init(Some("debug"));
 
     let client = get_client();
 
@@ -57,6 +57,7 @@ pub(crate) fn get_attributes(client: &SocketClient, key_id: &str) {
                     attribute_name: Some(vec![
                         "x-Product_Version".to_owned(),
                         "x-Vendor".to_owned(),
+                        "State".to_owned(),
                     ]),
                 }),
                 message_extension: None,
@@ -90,5 +91,5 @@ pub(crate) fn get_attributes(client: &SocketClient, key_id: &str) {
     };
     assert_eq!(response.unique_identifier, key_id.to_owned());
     let attributes = response.attribute.as_ref().expect("Expected attributes");
-    assert_eq!(attributes.len(), 2);
+    assert_eq!(attributes.len(), 3);
 }
