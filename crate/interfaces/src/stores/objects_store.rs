@@ -1,8 +1,9 @@
 use std::{collections::HashSet, path::PathBuf, sync::Arc};
 
 use async_trait::async_trait;
-use cosmian_kmip::kmip_2_1::{
-    kmip_attributes::Attributes, kmip_objects::Object, kmip_types::StateEnumeration,
+use cosmian_kmip::{
+    kmip_0::kmip_types::State,
+    kmip_2_1::{kmip_attributes::Attributes, kmip_objects::Object},
 };
 use serde::{Deserialize, Serialize};
 
@@ -21,19 +22,11 @@ pub enum AtomicOperation {
     /// Create (uid, object, attributes, tags) - the state will be active
     Create((String, Object, Attributes, HashSet<String>)),
     /// Upsert (uid, object, attributes, tags, state) - the state be updated
-    Upsert(
-        (
-            String,
-            Object,
-            Attributes,
-            Option<HashSet<String>>,
-            StateEnumeration,
-        ),
-    ),
+    Upsert((String, Object, Attributes, Option<HashSet<String>>, State)),
     /// Update the object (uid, object, attributes, tags) - the state will be not be updated
     UpdateObject((String, Object, Attributes, Option<HashSet<String>>)),
     /// Update the state (uid, state)
-    UpdateState((String, StateEnumeration)),
+    UpdateState((String, State)),
     /// Delete (uid)
     Delete(String),
 }
@@ -101,7 +94,7 @@ pub trait ObjectsStore {
     async fn update_state(
         &self,
         uid: &str,
-        state: StateEnumeration,
+        state: State,
         params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()>;
 
@@ -145,9 +138,9 @@ pub trait ObjectsStore {
     async fn find(
         &self,
         researched_attributes: Option<&Attributes>,
-        state: Option<StateEnumeration>,
+        state: Option<State>,
         user: &str,
         user_must_be_owner: bool,
         params: Option<Arc<dyn SessionParams>>,
-    ) -> InterfaceResult<Vec<(String, StateEnumeration, Attributes)>>;
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>>;
 }

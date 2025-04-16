@@ -1,8 +1,11 @@
 use std::sync::Arc;
 
-use cosmian_kmip::kmip_2_1::{
-    kmip_operations::{Locate, LocateResponse},
-    kmip_types::{StateEnumeration, UniqueIdentifier},
+use cosmian_kmip::{
+    kmip_0::kmip_types::State,
+    kmip_2_1::{
+        kmip_operations::{Locate, LocateResponse},
+        kmip_types::UniqueIdentifier,
+    },
 };
 use cosmian_kms_crypto::crypto::cover_crypt::attributes::access_policy_from_attributes;
 use cosmian_kms_interfaces::SessionParams;
@@ -13,7 +16,7 @@ use crate::{core::KMS, result::KResult};
 pub(crate) async fn locate(
     kms: &KMS,
     request: Locate,
-    state: Option<StateEnumeration>,
+    state: Option<State>,
     user: &str,
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<LocateResponse> {

@@ -5,25 +5,25 @@ use std::{
 
 use async_trait::async_trait;
 use cloudproof_findex::{
-    Keyword, Location,
     implementations::redis::{FindexRedisError, RemovedLocationsFinder},
+    Keyword, Location,
 };
 use cosmian_crypto_core::{
-    Aes256Gcm, CsRng, Dem, Instantiable, Nonce, RandomFixedSizeCBytes, SymmetricKey,
-    reexport::rand_core::SeedableRng,
+    reexport::rand_core::SeedableRng, Aes256Gcm, CsRng, Dem, Instantiable, Nonce,
+    RandomFixedSizeCBytes, SymmetricKey,
 };
 use cosmian_kmip::{
-    KmipResultHelper,
+    kmip_0::kmip_types::State,
     kmip_2_1::{
         kmip_attributes::Attributes,
         kmip_objects::{Object, ObjectType},
-        kmip_types::StateEnumeration,
     },
+    KmipResultHelper,
 };
-use redis::{AsyncCommands, aio::ConnectionManager, pipe};
+use redis::{aio::ConnectionManager, pipe, AsyncCommands};
 use serde::{Deserialize, Serialize};
 
-use crate::{DbError, db_bail, error::DbResult};
+use crate::{db_bail, error::DbResult, DbError};
 
 /// Extract the keywords from the attributes
 pub(crate) fn keywords_from_attributes(attributes: &Attributes) -> HashSet<Keyword> {
@@ -58,7 +58,7 @@ pub(crate) struct RedisDbObject {
     #[serde(rename = "w")]
     pub(crate) owner: String,
     #[serde(rename = "s")]
-    pub(crate) state: StateEnumeration,
+    pub(crate) state: State,
     #[serde(rename = "l")]
     pub(crate) tags: Option<HashSet<String>>,
     // We use and Option and skip[ serializing for ascending compatibility
@@ -71,7 +71,7 @@ impl RedisDbObject {
     pub(crate) const fn new(
         object: Object,
         owner: String,
-        state: StateEnumeration,
+        state: State,
         tags: Option<HashSet<String>>,
         attributes: Attributes,
     ) -> Self {

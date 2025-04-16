@@ -85,7 +85,7 @@ pub async fn start_kms_server(
             .context("start KMS server: failed instantiating the server")?,
     );
 
-    let _socket_server_handle: Option<JoinHandle<()>> = if server_params.start_socket_server {
+    let socket_server_handle: Option<JoinHandle<()>> = if server_params.start_socket_server {
         // Start the socket server
         Some(start_socket_server(kms_server.clone())?)
     } else {
@@ -94,7 +94,11 @@ pub async fn start_kms_server(
 
     // Log the server configuration
     info!("KMS Server configuration: {:#?}", server_params);
-    start_http_kms_server(kms_server.clone(), kms_server_handle_tx).await
+    let res = start_http_kms_server(kms_server.clone(), kms_server_handle_tx).await;
+    if let Some(ss_handle) = socket_server_handle {
+        ss_handle.await.context("socket server failed")?;
+    }
+    res
 }
 
 /// Start a socket server that will handle TTLV bytes
@@ -119,9 +123,7 @@ fn start_socket_server(kms_server: Arc<KMS>) -> KResult<JoinHandle<()>> {
         socket_server.start_threaded(kms_server, move |username, request, kms_server| {
             trace!("request: {username} {}", hex::encode(request));
             // Handle the TTLV bytes received from the socket server
-
             // tokio: run async code in the current thread
-
             tokio_handle.block_on(async {
                 // Handle the TTLV bytes
                 handle_ttlv_bytes(username, request, &kms_server).await

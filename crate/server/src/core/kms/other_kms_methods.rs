@@ -6,11 +6,14 @@ use base64::{
     engine::general_purpose::{self, STANDARD as b64},
 };
 use cosmian_cover_crypt::api::Covercrypt;
-use cosmian_kmip::kmip_2_1::{
-    kmip_objects::Object,
-    kmip_operations::Create,
-    kmip_types::{CryptographicAlgorithm, KeyFormatType},
-    requests::create_symmetric_key_kmip_object,
+use cosmian_kmip::{
+    kmip_0::kmip_types::State,
+    kmip_2_1::{
+        kmip_objects::Object,
+        kmip_operations::Create,
+        kmip_types::{CryptographicAlgorithm, KeyFormatType},
+        requests::create_symmetric_key_kmip_object,
+    },
 };
 use cosmian_kms_crypto::crypto::symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH;
 use cosmian_kms_interfaces::{EncryptionOracle, SessionParams};
@@ -178,7 +181,7 @@ impl KMS {
 
         match &cryptographic_algorithm {
             CryptographicAlgorithm::CoverCrypt => {
-                let object = create_user_decryption_key(
+                let mut object = create_user_decryption_key(
                     self,
                     Covercrypt::default(),
                     create_request,
@@ -188,6 +191,8 @@ impl KMS {
                     privileged_users,
                 )
                 .await?;
+                // Update the attributes with state Active
+                object.attributes_mut()?.state = Some(State::Active);
                 let attributes = object.attributes()?;
                 let tags = attributes.get_tags();
                 let uid = attributes

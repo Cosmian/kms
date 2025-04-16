@@ -4,11 +4,12 @@ use cosmian_crypto_core::{
     reexport::rand_core::{RngCore, SeedableRng},
     CsRng,
 };
-use cosmian_kmip::kmip_2_1::{
-    kmip_attributes::Attributes,
-    kmip_types::{CryptographicAlgorithm, StateEnumeration},
-    requests::create_symmetric_key_kmip_object,
-    KmipOperation,
+use cosmian_kmip::{
+    kmip_0::kmip_types::State,
+    kmip_2_1::{
+        kmip_attributes::Attributes, kmip_types::CryptographicAlgorithm,
+        requests::create_symmetric_key_kmip_object, KmipOperation,
+    },
 };
 use cosmian_kms_interfaces::{ObjectsStore, PermissionsStore, SessionParams};
 use uuid::Uuid;
@@ -60,7 +61,7 @@ pub(crate) async fn owner<DB: ObjectsStore + PermissionsStore>(
         .retrieve(&uid, db_params.clone())
         .await?
         .ok_or_else(|| db_error!("Object not found"))?;
-    assert_eq!(StateEnumeration::Active, obj.state());
+    assert_eq!(State::Active, obj.state());
     assert_eq!(&symmetric_key, obj.object());
     assert_eq!(owner, obj.owner());
 
@@ -112,7 +113,7 @@ pub(crate) async fn owner<DB: ObjectsStore + PermissionsStore>(
     assert_eq!(objects.len(), 1);
     let (o_uid, o_state, _) = &objects[0];
     assert_eq!(o_uid, &uid);
-    assert_eq!(o_state, &StateEnumeration::Active);
+    assert_eq!(o_state, &State::Active);
 
     // We should not be able to find the object by specifying  that user_id_2 is the owner
     let objects = db
@@ -127,7 +128,7 @@ pub(crate) async fn owner<DB: ObjectsStore + PermissionsStore>(
         objects[&uid],
         (
             String::from(owner),
-            StateEnumeration::Active,
+            State::Active,
             vec![KmipOperation::Get].into_iter().collect(),
         )
     );

@@ -1,11 +1,9 @@
 use std::sync::Arc;
 
 use cosmian_kmip::{
-    kmip_0::kmip_types::CryptographicUsageMask,
+    kmip_0::kmip_types::{CryptographicUsageMask, State},
     kmip_2_1::{
-        kmip_data_structures::KeyBlock,
-        kmip_objects::ObjectType,
-        kmip_types::{LinkType, StateEnumeration},
+        kmip_data_structures::KeyBlock, kmip_objects::ObjectType, kmip_types::LinkType,
         KmipOperation,
     },
 };
@@ -135,7 +133,7 @@ async fn unwrap_using_kms(
         _ => kms_bail!("unwrap_key: unsupported object type: {}", object_type),
     };
     // check active state
-    if unwrapping_key.state() != StateEnumeration::Active {
+    if unwrapping_key.state() != State::Active {
         return Err(KmsError::NotSupported(format!(
             "The unwrapping key {unwrapping_key_uid} is not active"
         )));

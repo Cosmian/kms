@@ -3,7 +3,7 @@ use std::{collections::HashSet, sync::Arc};
 #[cfg(not(feature = "fips"))]
 use cosmian_kmip::kmip_0::kmip_types::{CertificateType, CryptographicUsageMask};
 use cosmian_kmip::{
-    kmip_0::kmip_types::KeyWrapType,
+    kmip_0::kmip_types::{KeyWrapType, State},
     kmip_2_1::{
         kmip_attributes::Attributes,
         kmip_data_structures::KeyValue,
@@ -11,7 +11,7 @@ use cosmian_kmip::{
         kmip_operations::{Import, ImportResponse},
         kmip_types::{
             CertificateAttributes, CryptographicAlgorithm, KeyFormatType, LinkType,
-            LinkedObjectIdentifier, StateEnumeration, UniqueIdentifier,
+            LinkedObjectIdentifier, UniqueIdentifier,
         },
     },
 };
@@ -447,13 +447,7 @@ fn single_operation(
         object_attributes.clone_from(&attributes);
     }
     if replace_existing {
-        AtomicOperation::Upsert((
-            uid,
-            object,
-            attributes,
-            Some(tags),
-            StateEnumeration::Active,
-        ))
+        AtomicOperation::Upsert((uid, object, attributes, Some(tags), State::Active))
     } else {
         AtomicOperation::Create((uid, object, attributes, tags))
     }

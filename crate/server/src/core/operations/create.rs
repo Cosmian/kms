@@ -61,11 +61,12 @@ pub(crate) async fn create(
         }
     };
 
-    // Wrap the key if a wrapping key is provided
+    // Copy the atttributes before the key gets wrapped
+    let attributes = object.attributes()?.clone();
 
-    // a copy of the unwrapped key if needed
+    // Wrap the key if a wrapping key is provided
     let mut unwrapped_key = None;
-    // This is a Cosmos specific extension
+    // This is a Cosmian specific extension
     let wrapping_key_id = request.attributes.remove_wrapping_key_id();
     // This is useful to store a key on the default data store but wrapped by a key stored in an HSM
     // extract the wrapping key id
@@ -98,7 +99,7 @@ pub(crate) async fn create(
             unique_identifier,
             owner,
             &object,
-            object.attributes()?,
+            &attributes,
             &tags,
             params,
         )

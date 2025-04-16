@@ -4,18 +4,16 @@ use cosmian_kmip::{
     kmip_0::{
         kmip_messages::{RequestMessage, ResponseMessage},
         kmip_operations::{DiscoverVersions, DiscoverVersionsResponse},
+        kmip_types::State,
     },
-    kmip_2_1::{
-        kmip_operations::{
-            AddAttribute, AddAttributeResponse, Certify, CertifyResponse, Create, CreateKeyPair,
-            CreateKeyPairResponse, CreateResponse, Decrypt, DecryptResponse, DeleteAttribute,
-            DeleteAttributeResponse, Destroy, DestroyResponse, Encrypt, EncryptResponse, Export,
-            ExportResponse, Get, GetAttributes, GetAttributesResponse, GetResponse, Import,
-            ImportResponse, Locate, LocateResponse, Query, QueryResponse, ReKey, ReKeyKeyPair,
-            ReKeyKeyPairResponse, ReKeyResponse, Revoke, RevokeResponse, SetAttribute,
-            SetAttributeResponse, Validate, ValidateResponse,
-        },
-        kmip_types::StateEnumeration,
+    kmip_2_1::kmip_operations::{
+        AddAttribute, AddAttributeResponse, Certify, CertifyResponse, Create, CreateKeyPair,
+        CreateKeyPairResponse, CreateResponse, Decrypt, DecryptResponse, DeleteAttribute,
+        DeleteAttributeResponse, Destroy, DestroyResponse, Encrypt, EncryptResponse, Export,
+        ExportResponse, Get, GetAttributes, GetAttributesResponse, GetResponse, Import,
+        ImportResponse, Locate, LocateResponse, Query, QueryResponse, ReKey, ReKeyKeyPair,
+        ReKeyKeyPairResponse, ReKeyResponse, Revoke, RevokeResponse, SetAttribute,
+        SetAttributeResponse, Validate, ValidateResponse,
     },
 };
 use cosmian_kms_interfaces::SessionParams;
@@ -440,7 +438,7 @@ impl KMS {
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<LocateResponse> {
-        operations::locate(self, request, Some(StateEnumeration::Active), user, params).await
+        operations::locate(self, request, Some(State::Active), user, params).await
     }
 
     /// This operation is used by the client to interrogate the server

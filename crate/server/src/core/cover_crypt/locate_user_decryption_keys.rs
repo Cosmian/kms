@@ -1,13 +1,15 @@
 use std::sync::Arc;
 
 use cosmian_cover_crypt::QualifiedAttribute;
-use cosmian_kmip::kmip_2_1::{
-    kmip_attributes::Attributes,
-    kmip_objects::ObjectType,
-    kmip_operations::Locate,
-    kmip_types::{
-        CryptographicAlgorithm, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
-        StateEnumeration,
+use cosmian_kmip::{
+    kmip_0::kmip_types::State,
+    kmip_2_1::{
+        kmip_attributes::Attributes,
+        kmip_objects::ObjectType,
+        kmip_operations::Locate,
+        kmip_types::{
+            CryptographicAlgorithm, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
+        },
     },
 };
 use cosmian_kms_crypto::crypto::cover_crypt::attributes::qualified_attributes_as_vendor_attributes;

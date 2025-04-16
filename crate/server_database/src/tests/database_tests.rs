@@ -4,12 +4,13 @@ use cosmian_crypto_core::{
     CsRng,
     reexport::rand_core::{RngCore, SeedableRng},
 };
-use cosmian_kmip::kmip_2_1::{
-    kmip_attributes::Attributes,
-    kmip_types::{
-        CryptographicAlgorithm, Link, LinkType, LinkedObjectIdentifier, StateEnumeration,
+use cosmian_kmip::{
+    kmip_0::kmip_types::State,
+    kmip_2_1::{
+        kmip_attributes::Attributes,
+        kmip_types::{CryptographicAlgorithm, Link, LinkType, LinkedObjectIdentifier},
+        requests::create_symmetric_key_kmip_object,
     },
-    requests::create_symmetric_key_kmip_object,
 };
 use cosmian_kms_interfaces::{AtomicOperation, ObjectsStore, SessionParams};
 use cosmian_logger::log_init;
@@ -74,14 +75,14 @@ pub(crate) async fn tx_and_list<DB: ObjectsStore>(
     match list.iter().find(|(id, _state, _attrs)| id == &uid_1) {
         Some((uid_, state_, _attrs)) => {
             assert_eq!(&uid_1, uid_);
-            assert_eq!(&StateEnumeration::Active, state_);
+            assert_eq!(&State::Active, state_);
         }
         None => db_bail!("The object 1, uid_1 should be in the list"),
     }
     match list.iter().find(|(id, _state, _attrs)| id == &uid_2) {
         Some((uid_, state_, _attrs)) => {
             assert_eq!(&uid_2, uid_);
-            assert_eq!(&StateEnumeration::Active, state_);
+            assert_eq!(&State::Active, state_);
         }
         None => db_bail!("The object 2, uid_2 should be in the list"),
     }
@@ -188,14 +189,14 @@ pub(crate) async fn atomic<DB: ObjectsStore>(
                 symmetric_key_1.clone(),
                 symmetric_key_1.attributes()?.clone(),
                 Some(HashSet::new()),
-                StateEnumeration::Deactivated,
+                State::Deactivated,
             )),
             AtomicOperation::Upsert((
                 uid_2.clone(),
                 symmetric_key_2.clone(),
                 symmetric_key_2.attributes()?.clone(),
                 Some(HashSet::new()),
-                StateEnumeration::Deactivated,
+                State::Deactivated,
             )),
         ],
         db_params.clone(),
@@ -207,14 +208,14 @@ pub(crate) async fn atomic<DB: ObjectsStore>(
             .await?
             .expect("uid_1 should be in the db")
             .state(),
-        StateEnumeration::Deactivated
+        State::Deactivated
     );
     assert_eq!(
         db.retrieve(&uid_2, db_params)
             .await?
             .expect("uid_2 should be in the db")
             .state(),
-        StateEnumeration::Deactivated
+        State::Deactivated
     );
     Ok(())
 }
@@ -256,7 +257,7 @@ pub(crate) async fn upsert<DB: ObjectsStore>(
         .retrieve(&uid, db_params.clone())
         .await?
         .expect("uid should be in the db");
-    assert_eq!(StateEnumeration::Active, owm.state());
+    assert_eq!(State::Active, owm.state());
     assert!(&symmetric_key == owm.object());
 
     let attributes = symmetric_key.attributes_mut()?;
@@ -273,7 +274,7 @@ pub(crate) async fn upsert<DB: ObjectsStore>(
             owm.object().clone(),
             attributes.clone(),
             Some(HashSet::new()),
-            StateEnumeration::Deactivated,
+            State::Deactivated,
         ))],
         db_params.clone(),
     )
@@ -283,7 +284,7 @@ pub(crate) async fn upsert<DB: ObjectsStore>(
         .retrieve(&uid, db_params.clone())
         .await?
         .expect("uid should be in the db");
-    assert_eq!(StateEnumeration::Deactivated, owm.state());
+    assert_eq!(State::Deactivated, owm.state());
     assert_eq!(
         owm.attributes()
             .link
@@ -347,7 +348,7 @@ pub(crate) async fn crud<DB: ObjectsStore>(
         .retrieve(&uid, db_params.clone())
         .await?
         .expect("uid should be in the db");
-    assert_eq!(StateEnumeration::Active, obj.state());
+    assert_eq!(State::Active, obj.state());
     assert!(&symmetric_key == obj.object());
 
     let attributes = symmetric_key.attributes_mut()?;
@@ -369,7 +370,7 @@ pub(crate) async fn crud<DB: ObjectsStore>(
         .retrieve(&uid, db_params.clone())
         .await?
         .expect("uid should be in the db");
-    assert_eq!(StateEnumeration::Active, obj.state());
+    assert_eq!(State::Active, obj.state());
     assert_eq!(
         obj.object()
             .attributes()?
@@ -380,14 +381,14 @@ pub(crate) async fn crud<DB: ObjectsStore>(
         LinkedObjectIdentifier::TextString("foo".to_owned())
     );
 
-    db.update_state(&uid, StateEnumeration::Deactivated, db_params.clone())
+    db.update_state(&uid, State::Deactivated, db_params.clone())
         .await?;
 
     let obj = db
         .retrieve(&uid, db_params.clone())
         .await?
         .expect("uid should be in the db");
-    assert_eq!(StateEnumeration::Deactivated, obj.state());
+    assert_eq!(State::Deactivated, obj.state());
     assert!(&symmetric_key == obj.object());
 
     db.delete(&uid, db_params.clone()).await?;

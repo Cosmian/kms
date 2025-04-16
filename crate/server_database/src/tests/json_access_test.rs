@@ -5,11 +5,11 @@ use cosmian_crypto_core::{
     reexport::rand_core::{RngCore, SeedableRng},
 };
 use cosmian_kmip::{
-    kmip_0::kmip_types::CryptographicUsageMask,
+    kmip_0::kmip_types::{CryptographicUsageMask, State},
     kmip_2_1::{
         kmip_attributes::Attributes,
         kmip_objects::ObjectType,
-        kmip_types::{CryptographicAlgorithm, KeyFormatType, StateEnumeration},
+        kmip_types::{CryptographicAlgorithm, KeyFormatType},
         requests::create_symmetric_key_kmip_object,
     },
 };
@@ -60,7 +60,7 @@ pub(crate) async fn json_access<DB: ObjectsStore + PermissionsStore>(
         .retrieve(&uid, db_params.clone())
         .await?
         .ok_or_else(|| db_error!("Object not found"))?;
-    assert_eq!(StateEnumeration::Active, obj.state());
+    assert_eq!(State::Active, obj.state());
     assert_eq!(&symmetric_key, obj.object());
 
     // Find with crypto algo attribute
@@ -73,7 +73,7 @@ pub(crate) async fn json_access<DB: ObjectsStore + PermissionsStore>(
     let found = db
         .find(
             researched_attributes.as_ref(),
-            Some(StateEnumeration::Active),
+            Some(State::Active),
             owner,
             true,
             db_params.clone(),
@@ -92,7 +92,7 @@ pub(crate) async fn json_access<DB: ObjectsStore + PermissionsStore>(
     let found = db
         .find(
             researched_attributes.as_ref(),
-            Some(StateEnumeration::Active),
+            Some(State::Active),
             owner,
             true,
             db_params.clone(),
@@ -112,7 +112,7 @@ pub(crate) async fn json_access<DB: ObjectsStore + PermissionsStore>(
     let found = db
         .find(
             researched_attributes.as_ref(),
-            Some(StateEnumeration::Active),
+            Some(State::Active),
             owner,
             true,
             db_params.clone(),
@@ -131,7 +131,7 @@ pub(crate) async fn json_access<DB: ObjectsStore + PermissionsStore>(
     let found = db
         .find(
             researched_attributes.as_ref(),
-            Some(StateEnumeration::Active),
+            Some(State::Active),
             owner,
             true,
             db_params.clone(),
@@ -153,7 +153,7 @@ pub(crate) async fn json_access<DB: ObjectsStore + PermissionsStore>(
     let found = db
         .find(
             researched_attributes.as_ref(),
-            Some(StateEnumeration::Active),
+            Some(State::Active),
             owner,
             true,
             db_params.clone(),
@@ -172,7 +172,7 @@ pub(crate) async fn json_access<DB: ObjectsStore + PermissionsStore>(
     let found = db
         .find(
             researched_attributes.as_ref(),
-            Some(StateEnumeration::Active),
+            Some(State::Active),
             owner,
             true,
             db_params.clone(),
@@ -190,7 +190,7 @@ pub(crate) async fn json_access<DB: ObjectsStore + PermissionsStore>(
     let found = db
         .find(
             researched_attributes.as_ref(),
-            Some(StateEnumeration::Active),
+            Some(State::Active),
             owner,
             true,
             db_params,

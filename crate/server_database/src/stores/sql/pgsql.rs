@@ -6,8 +6,9 @@ use std::{
 };
 
 use async_trait::async_trait;
-use cosmian_kmip::kmip_2_1::{
-    kmip_attributes::Attributes, kmip_objects::Object, kmip_types::StateEnumeration, KmipOperation,
+use cosmian_kmip::{
+    kmip_0::kmip_types::State,
+    kmip_2_1::{kmip_attributes::Attributes, kmip_objects::Object, KmipOperation},
 };
 use cosmian_kms_interfaces::{
     AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
@@ -59,7 +60,8 @@ fn pg_row_to_owm(row: &PgRow) -> Result<ObjectWithMetadata, DbError> {
     let attributes: Attributes = serde_json::from_value(row.get::<Value, _>(2))
         .context("failed deserializing the Attributes")?;
     let owner = row.get::<String, _>(3);
-    let state = StateEnumeration::try_from(row.get::<String, _>(4))?;
+    let state = State::try_from(row.get::<String, _>(4).as_str())
+        .map_err(|e| DbError::ConversionError(format!("failed converting the state: {e}")))?;
     Ok(ObjectWithMetadata::new(
         id, object, owner, state, attributes,
     ))
@@ -184,7 +186,7 @@ impl ObjectsStore for PgPool {
     async fn update_state(
         &self,
         uid: &str,
-        state: StateEnumeration,
+        state: State,
         _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
         let mut tx = self
@@ -277,11 +279,11 @@ impl ObjectsStore for PgPool {
     async fn find(
         &self,
         researched_attributes: Option<&Attributes>,
-        state: Option<StateEnumeration>,
+        state: Option<State>,
         user: &str,
         user_must_be_owner: bool,
         _params: Option<Arc<dyn SessionParams>>,
-    ) -> InterfaceResult<Vec<(String, StateEnumeration, Attributes)>> {
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
         Ok(find_(
             researched_attributes,
             state,
@@ -299,7 +301,7 @@ impl PermissionsStore for PgPool {
         &self,
         user: &str,
         _params: Option<Arc<dyn SessionParams>>,
-    ) -> InterfaceResult<HashMap<String, (String, StateEnumeration, HashSet<KmipOperation>)>> {
+    ) -> InterfaceResult<HashMap<String, (String, State, HashSet<KmipOperation>)>> {
         Ok(list_user_granted_access_rights_(user, &self.pool).await?)
     }
 
@@ -363,7 +365,7 @@ pub(crate) async fn create_(
         .bind(uid.clone())
         .bind(object_json)
         .bind(attributes_json)
-        .bind(StateEnumeration::Active.to_string())
+        .bind(State::Active.to_string())
         .bind(owner)
         .execute(&mut **executor)
         .await?;
@@ -452,7 +454,7 @@ pub(crate) async fn update_object_(
 
 pub(crate) async fn update_state_(
     uid: &str,
-    state: StateEnumeration,
+    state: State,
     executor: &mut Transaction<'_, Postgres>,
 ) -> DbResult<()> {
     sqlx::query(get_pgsql_query!("update-object-with-state"))
@@ -487,7 +489,7 @@ pub(crate) async fn upsert_(
     object: &Object,
     attributes: &Attributes,
     tags: Option<&HashSet<String>>,
-    state: StateEnumeration,
+    state: State,
     executor: &mut Transaction<'_, Postgres>,
 ) -> DbResult<()> {
     let object_json =
@@ -585,7 +587,7 @@ where
 pub(crate) async fn list_user_granted_access_rights_<'e, E>(
     user: &str,
     executor: E,
-) -> DbResult<HashMap<String, (String, StateEnumeration, HashSet<KmipOperation>)>>
+) -> DbResult<HashMap<String, (String, State, HashSet<KmipOperation>)>>
 where
     E: Executor<'e, Database = Postgres> + Copy,
 {
@@ -594,14 +596,16 @@ where
         .bind(user)
         .fetch_all(executor)
         .await?;
-    let mut ids: HashMap<String, (String, StateEnumeration, HashSet<KmipOperation>)> =
+    let mut ids: HashMap<String, (String, State, HashSet<KmipOperation>)> =
         HashMap::with_capacity(list.len());
     for row in list {
         ids.insert(
             row.get::<String, _>(0),
             (
                 row.get::<String, _>(1),
-                StateEnumeration::try_from(row.get::<String, _>(2))?,
+                State::try_from(row.get::<String, _>(2).as_str()).map_err(|e| {
+                    DbError::ConversionError(format!("failed converting the state: {e}"))
+                })?,
                 serde_json::from_value(
                     row.try_get::<Value, _>(3)
                         .context("failed deserializing the operations")?,
@@ -739,11 +743,11 @@ where
 
 pub(crate) async fn find_<'e, E>(
     researched_attributes: Option<&Attributes>,
-    state: Option<StateEnumeration>,
+    state: Option<State>,
     user: &str,
     user_must_be_owner: bool,
     executor: E,
-) -> DbResult<Vec<(String, StateEnumeration, Attributes)>>
+) -> DbResult<Vec<(String, State, Attributes)>>
 where
     E: Executor<'e, Database = Postgres> + Copy,
 {
@@ -761,7 +765,7 @@ where
 }
 
 /// Convert a list of rows into a list of qualified uids
-fn to_qualified_uids(rows: &[PgRow]) -> DbResult<Vec<(String, StateEnumeration, Attributes)>> {
+fn to_qualified_uids(rows: &[PgRow]) -> DbResult<Vec<(String, State, Attributes)>> {
     let mut uids = Vec::with_capacity(rows.len());
     for row in rows {
         let attrs: Attributes = match row.try_get::<Value, _>(2) {
@@ -773,7 +777,9 @@ fn to_qualified_uids(rows: &[PgRow]) -> DbResult<Vec<(String, StateEnumeration, 
 
         uids.push((
             row.get::<String, _>(0),
-            StateEnumeration::try_from(row.get::<String, _>(1))?,
+            State::try_from(row.get::<String, _>(1).as_str()).map_err(|e| {
+                DbError::ConversionError(format!("failed converting the state: {e}"))
+            })?,
             attrs,
         ));
     }
