@@ -889,7 +889,8 @@ impl Serialize for KeyMaterialSerializer {
                 | KeyFormatType::PKCS8
                 | KeyFormatType::Pkcs12Legacy
                 | KeyFormatType::X509
-                | KeyFormatType::CoverCryptSecretKey | KeyFormatType::CoverCryptPublicKey => serializer.serialize_bytes(bytes),
+                | KeyFormatType::CoverCryptSecretKey
+                | KeyFormatType::CoverCryptPublicKey => serializer.serialize_bytes(bytes),
                 x => Err(serde::ser::Error::custom(format!(
                     "KeyMaterialWrapper: {x:?} key format type does not support byte strings"
                 ))),
@@ -1082,12 +1083,16 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
                     | KeyFormatType::PKCS7
                     | KeyFormatType::PKCS8
                     | KeyFormatType::Pkcs12Legacy
-                    | KeyFormatType::X509 => {
+                    | KeyFormatType::X509
+                    | KeyFormatType::CoverCryptPublicKey
+                    | KeyFormatType::CoverCryptSecretKey => {
                         Ok(KeyMaterial::ByteString(Zeroizing::new(bytestring)))
                     }
-                    _ => Err(de::Error::custom(
-                        "KeyMaterialVisitor: Raw key format type must be a byte string",
-                    )),
+                    _ => Err(de::Error::custom(format!(
+                        "KeyMaterialVisitor: {:?} key format type is not expected to have a byte \
+                         string key material",
+                        self.key_format_type
+                    ))),
                 }
             }
 
@@ -1342,7 +1347,9 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
             | KeyFormatType::PKCS7
             | KeyFormatType::PKCS8
             | KeyFormatType::Pkcs12Legacy
-            | KeyFormatType::X509 => {
+            | KeyFormatType::X509
+            | KeyFormatType::CoverCryptPublicKey
+            | KeyFormatType::CoverCryptSecretKey => {
                 trace!(
                     "===> KeyMaterial: Deserializing Bytes String for key format type: {:?} ",
                     self.key_format_type
