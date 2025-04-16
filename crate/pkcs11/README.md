@@ -5,12 +5,7 @@
 
 [PKCS##11 documentation](https://www.cryptsoft.com/pkcs11doc/STANDARD/pkcs-11.pdf)
 
-1. `module` crate
+1. `sys` crate
 
-    The module crate exposes traits to create a PKCS#11 library. It is a modified fork of
-    the `native_pkcs11` crate from Google. The `module` crate is used to build the `provider` PKCS#11 library.
-
-2. `provider` crate
-
-    The provider crate is a PKCS#11 library that interfaces the KMS. It provides a PKCS#11 library that can be used by
-    applications such as LUKS to interface the KMS. The `provider` crate is built from the `module` crate.
+    The sys crate is generated from the cryptoki headers files using `bindgen` and provides Linux and Windows bindings for
+    the PKCS#11 API.
