@@ -655,12 +655,12 @@ pub(crate) async fn add_attribute(
             }
             attributes.short_unique_identifier = Some(short_unique_identifier);
         }
-        Attribute::State(state) => {
-            trace!("Add Attribute: State: {:?}", state);
-            if attributes.state.is_some() {
-                return Err(KmsError::InvalidRequest("State already exists".to_owned()));
-            }
-            attributes.state = Some(state);
+        Attribute::State(_state) => {
+            return Err(KmsError::InvalidRequest(
+                "Add Attribute: State cannot be modified. Use Revoke and Destroy to change the \
+                 object state"
+                    .to_owned(),
+            ));
         }
         Attribute::UsageLimits(usage_limits) => {
             trace!("Add Attribute: Usage Limits: {:?}", usage_limits);
