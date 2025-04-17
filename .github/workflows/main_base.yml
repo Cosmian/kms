@@ -132,8 +132,7 @@ jobs:
         with:
           files: |
             *.zip
-            rhel9-release/__w/kms/kms/target/x86_64-unknown-linux-gnu/generate-rpm/*.rpm \
-            ubuntu_22_04-release/home/runner/work/kms/kms/target/x86_64-unknown-linux-gnu/debian/*.deb \
+            rhel9-release/__w/kms/kms/target/x86_64-unknown-linux-gnu/generate-rpm/*.rpm
             ubuntu_24_04-release/home/runner/work/kms/kms/target/x86_64-unknown-linux-gnu/debian/*.deb
 
   public_documentation:
