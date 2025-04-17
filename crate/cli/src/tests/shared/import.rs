@@ -146,18 +146,26 @@ pub(crate) async fn test_import_cover_crypt() -> CliResult<()> {
 #[cfg(not(feature = "fips"))]
 #[tokio::test]
 pub(crate) async fn test_generate_export_import() -> CliResult<()> {
+    // use crate::actions::symmetric::keys::create_key::CreateKeyAction;
+
     use crate::actions::symmetric::keys::create_key::CreateKeyAction;
 
     log_init(option_env!("RUST_LOG"));
     let ctx = start_default_test_kms_server().await;
 
     // Covercrypt import/export test
-    let (private_key_id, _public_key_id) = create_cc_master_key_pair(
+    let (private_key_id, public_key_id) = create_cc_master_key_pair(
         &ctx.owner_client_conf_path,
         "--policy-specifications",
         "../../test_data/policy_specifications.json",
         &[],
         false,
+    )?;
+    export_import_test(
+        &ctx.owner_client_conf_path,
+        "cc",
+        &public_key_id,
+        CryptographicAlgorithm::CoverCrypt,
     )?;
     export_import_test(
         &ctx.owner_client_conf_path,
