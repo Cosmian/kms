@@ -113,6 +113,7 @@ impl UnwrapKeyAction {
             cli_bail!("one of the unwrapping options must be specified");
         };
 
+        // now, unwrap the key
         unwrap_key_block(object.key_block_mut()?, &unwrapping_key)?;
 
         // set the output file path to the input file path if not specified

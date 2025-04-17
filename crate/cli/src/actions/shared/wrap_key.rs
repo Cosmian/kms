@@ -131,6 +131,7 @@ impl WrapKeyAction {
             cli_bail!("one of the wrapping options must be specified");
         };
 
+        // Now wrap the key block with the wrapping key
         wrap_key_block(
             object.key_block_mut()?,
             &wrapping_key,

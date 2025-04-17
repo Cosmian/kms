@@ -268,8 +268,8 @@ impl KeyBlock {
                 }
                 _ => Err(KmipError::InvalidKmip21Value(
                     ErrorReason::Invalid_Data_Type,
-                    "Key bytes can only be recovered from ByteString or TransparentSymmetricKey \
-                     key material."
+                    "Key bytes can only be recovered from Raw symmetric keys, transparent \
+                     symmetric keys, and transparent EC keys"
                         .to_owned(),
                 )),
             },

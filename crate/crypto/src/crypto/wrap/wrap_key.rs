@@ -38,6 +38,7 @@ use crate::{
     crypto_bail, crypto_error,
     error::{result::CryptoResult, CryptoError},
     openssl::kmip_public_key_to_openssl,
+    CryptoResultHelper,
 };
 
 /// Wrap a key using a password
@@ -58,8 +59,8 @@ pub fn wrap_key_bytes(
     rfc5649_wrap(key, wrapping_secret.as_ref()).map_err(|e| CryptoError::Default(e.to_string()))
 }
 
-// The purpose of this function is to check the block cipher mode in the encryption key information against the wrapping key
-// It verifies the BlockCipherMode is only used for a `SymmetricKey` object
+/// The purpose of this function is to check the block cipher mode in the encryption key information against the wrapping key
+/// It verifies the `BlockCipherMode` is only used for a `SymmetricKey` object
 fn check_block_cipher_mode_in_encryption_key_information(
     wrapping_key: &Object,
     key_wrapping_specification: &KeyWrappingSpecification,
@@ -97,17 +98,24 @@ pub fn wrap_key_block(
     wrapping_key: &Object,
     key_wrapping_specification: &KeyWrappingSpecification,
 ) -> Result<(), CryptoError> {
+    // extract data to wrap
     let data_to_wrap = key_data_to_wrap(&object_key_block, key_wrapping_specification)?;
+
+    // check
     check_block_cipher_mode_in_encryption_key_information(
         wrapping_key,
         key_wrapping_specification,
     )?;
+
+    //wrap
     let ciphertext = wrap(
         wrapping_key,
         &key_wrapping_specification.get_key_wrapping_data(),
         &data_to_wrap,
         key_wrapping_specification.get_additional_authenticated_data(),
     )?;
+
+    // update the key block with the wrapped key
     update_key_block_with_wrapped_key(object_key_block, key_wrapping_specification, ciphertext);
 
     Ok(())
@@ -156,14 +164,24 @@ pub fn key_data_to_wrap(
     // wrap the key based on the encoding
     Ok(match key_wrapping_specification.get_encoding() {
         EncodingOption::TTLVEncoding => {
-            let ttlv_bytes = object_key_block
-                .key_value
-                .as_ref()
-                .map(|kv| kv.to_ttlv_bytes(object_key_block.key_format_type))
-                .transpose()?
-                .ok_or_else(|| crypto_error!("Unable to wrap the key: key value is not set"))?;
+            let Some(key_value) = object_key_block.key_value.as_ref() else {
+                crypto_bail!("Unable to wrap the key: key value is not set")
+            };
+            match key_value {
+                KeyValue::ByteString(_) => {
+                    crypto_bail!("Unable to wrap the key: key value is already wrapped")
+                }
+                KeyValue::Structure { .. } => {
+                    // ok
+                }
+            }
+            let ttlv_bytes = key_value
+                .to_ttlv_bytes(object_key_block.key_format_type)
+                .context("key wrapping: ")?;
             Zeroizing::from(ttlv_bytes)
         }
+        // According to the KMIP specs, only keys in Raw format can be wrapped
+        // with no encoding. The call to key_bytes() here, wil return more options than the spec.
         EncodingOption::NoEncoding => object_key_block.key_bytes()?,
     })
 }
