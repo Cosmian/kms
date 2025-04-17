@@ -112,7 +112,6 @@ pub fn wrap_key_block(
         wrapping_key,
         &key_wrapping_specification.get_key_wrapping_data(),
         &data_to_wrap,
-        key_wrapping_specification.get_additional_authenticated_data(),
     )?;
 
     // update the key block with the wrapped key
@@ -191,7 +190,6 @@ pub(crate) fn wrap(
     wrapping_key: &Object,
     key_wrapping_data: &KeyWrappingData,
     key_to_wrap: &[u8],
-    additional_authenticated_data: Option<&[u8]>,
 ) -> Result<Vec<u8>, CryptoError> {
     trace!("wrap: with object type: {:?}", wrapping_key.object_type());
     match wrapping_key {
@@ -256,7 +254,6 @@ pub(crate) fn wrap(
                         block_cipher_mode
                     );
                     let key_bytes = key_block.key_bytes()?;
-                    let aad = additional_authenticated_data.unwrap_or_default();
                     if block_cipher_mode == BlockCipherMode::GCM {
                         // wrap using aes GCM
                         let aead = SymCipher::from_algorithm_and_key_size(
@@ -268,7 +265,7 @@ pub(crate) fn wrap(
                         let nonce = random_nonce(aead)?;
 
                         let (ct, authenticated_encryption_tag) =
-                            encrypt(aead, &key_bytes, &nonce, aad, key_to_wrap)?;
+                            encrypt(aead, &key_bytes, &nonce, &[], key_to_wrap)?;
                         let mut ciphertext = Vec::with_capacity(
                             nonce.len() + ct.len() + authenticated_encryption_tag.len(),
                         );
@@ -277,9 +274,8 @@ pub(crate) fn wrap(
                         ciphertext.extend_from_slice(&authenticated_encryption_tag);
 
                         trace!(
-                            "wrap: nonce: {}, aad: {}, tag: {}",
+                            "wrap: nonce: {}, tag: {}",
                             general_purpose::STANDARD.encode(&nonce),
-                            general_purpose::STANDARD.encode(aad),
                             general_purpose::STANDARD.encode(&authenticated_encryption_tag),
                         );
 

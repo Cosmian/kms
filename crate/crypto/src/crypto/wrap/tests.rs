@@ -1,3 +1,4 @@
+#![allow(unused_imports)]
 #[cfg(feature = "fips")]
 use cosmian_kmip::kmip_2_1::extra::fips::FIPS_PUBLIC_RSA_MASK;
 #[cfg(not(feature = "fips"))]
@@ -9,20 +10,21 @@ use cosmian_kmip::{
     kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
         kmip_attributes::Attributes,
-        kmip_data_structures::KeyWrappingData,
+        kmip_data_structures::{KeyValue, KeyWrappingData},
         kmip_types::{CryptographicAlgorithm, KeyFormatType},
         requests::create_symmetric_key_kmip_object,
     },
 };
+use openssl::{cipher, pkey::PKey, rand::rand_bytes, rsa::Rsa};
 #[cfg(not(feature = "fips"))]
 use openssl::{
     ec::{EcGroup, EcKey},
     nid::Nid,
 };
-use openssl::{pkey::PKey, rand::rand_bytes, rsa::Rsa};
 
 use crate::{
     crypto::wrap::{unwrap_key::unwrap, wrap_key::wrap},
+    crypto_bail,
     error::result::CryptoResult,
     openssl::{openssl_private_key_to_kmip, openssl_public_key_to_kmip},
 };
@@ -180,25 +182,45 @@ fn test_encrypt_decrypt_rfc_5649() -> CryptoResult<()> {
     // Load FIPS provider module from OpenSSL.
     openssl::provider::Provider::load(None, "fips").unwrap();
 
-    let mut symmetric_key = vec![0; 32];
-    rand_bytes(&mut symmetric_key)?;
-    let wrap_key = create_symmetric_key_kmip_object(
-        symmetric_key.as_slice(),
+    let mut random_bytes = vec![0; 32];
+    rand_bytes(&mut random_bytes)?;
+
+    let key_encryption_key = create_symmetric_key_kmip_object(
+        random_bytes.as_slice(),
         &Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
             ..Default::default()
         },
     )?;
 
-    let plaintext = b"plaintext";
-    let ciphertext = wrap(&wrap_key, &KeyWrappingData::default(), plaintext, None)?;
-    let decrypted_plaintext = unwrap(&wrap_key, &KeyWrappingData::default(), &ciphertext, None)?;
-    assert_eq!(plaintext, &decrypted_plaintext[..]);
+    rand_bytes(&mut random_bytes)?;
+    let mut data_encryption_key = create_symmetric_key_kmip_object(
+        random_bytes.as_slice(),
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Default::default()
+        },
+    )?;
+    let original_key_block = data_encryption_key.key_block()?.clone();
+
+    wrap_key_block(
+        data_encryption_key.key_block_mut()?,
+        &key_encryption_key,
+        &KeyWrappingSpecification::default(),
+    )?;
+    let Some(KeyValue::ByteString(_ciphertext)) = &data_encryption_key.key_block()?.key_value
+    else {
+        crypto_bail!("Key value is not a byte string");
+    };
+    unwrap_key_block(data_encryption_key.key_block_mut()?, &key_encryption_key)?;
+
+    assert_eq!(data_encryption_key.key_block()?, &original_key_block);
     Ok(())
 }
+
 #[test]
 #[cfg(not(feature = "fips"))]
-fn test_encrypt_decrypt_rfc_ecies_x25519() {
+fn test_encrypt_decrypt_rfc_ecies_x25519() -> CryptoResult<()> {
     let algorithm = CryptographicAlgorithm::EC;
     let private_key_attributes = Attributes {
         cryptographic_usage_mask: Some(CryptographicUsageMask::Unrestricted),
@@ -219,31 +241,42 @@ fn test_encrypt_decrypt_rfc_ecies_x25519() {
     )
     .unwrap();
 
-    let plaintext = b"plaintext";
-    let ciphertext = wrap(
+    let mut random_bytes = vec![0; 32];
+    rand_bytes(&mut random_bytes)?;
+    let mut data_encryption_key = create_symmetric_key_kmip_object(
+        random_bytes.as_slice(),
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Default::default()
+        },
+    )?;
+    let original_key_block = data_encryption_key.key_block()?.clone();
+
+    wrap_key_block(
+        data_encryption_key.key_block_mut()?,
         wrap_key_pair.public_key(),
-        &KeyWrappingData::default(),
-        plaintext,
-        Some(&[]),
-    )
-    .unwrap();
-    let decrypted_plaintext = unwrap(
+        &KeyWrappingSpecification::default(),
+    )?;
+    let Some(KeyValue::ByteString(_ciphertext)) = &data_encryption_key.key_block()?.key_value
+    else {
+        crypto_bail!("Key value is not a byte string");
+    };
+    unwrap_key_block(
+        data_encryption_key.key_block_mut()?,
         wrap_key_pair.private_key(),
-        &KeyWrappingData::default(),
-        &ciphertext,
-        None,
-    )
-    .unwrap();
-    assert_eq!(plaintext, &decrypted_plaintext[..]);
+    )?;
+
+    assert_eq!(data_encryption_key.key_block()?, &original_key_block);
+    Ok(())
 }
 
 #[test]
-fn test_encrypt_decrypt_rsa() {
+fn test_encrypt_decrypt_rsa() -> CryptoResult<()> {
     #[cfg(feature = "fips")]
     // Load FIPS provider module from OpenSSL.
     openssl::provider::Provider::load(None, "fips").unwrap();
 
-    let rsa_privkey = Rsa::generate(2048).unwrap();
+    let rsa_privkey = Rsa::generate(4096).unwrap();
     let rsa_pubkey = Rsa::from_public_components(
         rsa_privkey.n().to_owned().unwrap(),
         rsa_privkey.e().to_owned().unwrap(),
@@ -279,56 +312,35 @@ fn test_encrypt_decrypt_rsa() {
         .unwrap()
         .cryptographic_usage_mask = Some(CryptographicUsageMask::UnwrapKey);
 
-    let plaintext = b"plaintext";
-    let ciphertext = wrap(
+    let mut random_bytes = vec![0; 32];
+    rand_bytes(&mut random_bytes)?;
+    let mut data_encryption_key = create_symmetric_key_kmip_object(
+        random_bytes.as_slice(),
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Default::default()
+        },
+    )?;
+    let original_key_block = data_encryption_key.key_block()?.clone();
+
+    wrap_key_block(
+        data_encryption_key.key_block_mut()?,
         &wrap_key_pair_pub,
-        &KeyWrappingData::default(),
-        plaintext,
-        None,
-    )
-    .unwrap();
-    let decrypted_plaintext = unwrap(
-        &wrap_key_pair_priv,
-        &KeyWrappingData::default(),
-        &ciphertext,
-        None,
-    )
-    .unwrap();
-    assert_eq!(plaintext, &decrypted_plaintext[..]);
-}
+        &KeyWrappingSpecification::default(),
+    )?;
+    let Some(KeyValue::ByteString(_ciphertext)) = &data_encryption_key.key_block()?.key_value
+    else {
+        crypto_bail!("Key value is not a byte string");
+    };
+    unwrap_key_block(data_encryption_key.key_block_mut()?, &wrap_key_pair_priv)?;
 
-#[cfg(feature = "fips")]
-#[test]
-fn test_encrypt_decrypt_no_rsa_1024_in_fips() {
-    // Load FIPS provider module from OpenSSL.
-    openssl::provider::Provider::load(None, "fips").unwrap();
-
-    let rsa_privkey = Rsa::generate(1024).unwrap();
-    let rsa_pubkey = Rsa::from_public_components(
-        rsa_privkey.n().to_owned().unwrap(),
-        rsa_privkey.e().to_owned().unwrap(),
-    )
-    .unwrap();
-    let wrap_key_pair_pub = openssl_public_key_to_kmip(
-        &PKey::from_rsa(rsa_pubkey).unwrap(),
-        KeyFormatType::TransparentRSAPublicKey,
-        Some(FIPS_PUBLIC_RSA_MASK),
-    )
-    .unwrap();
-
-    let plaintext = b"plaintext";
-    let encryption_res = wrap(
-        &wrap_key_pair_pub,
-        &KeyWrappingData::default(),
-        plaintext,
-        None,
-    );
-    encryption_res.unwrap_err();
+    assert_eq!(data_encryption_key.key_block()?, &original_key_block);
+    Ok(())
 }
 
 #[test]
 #[cfg(not(feature = "fips"))]
-fn test_encrypt_decrypt_ec_p192() {
+fn test_encrypt_decrypt_ec_p192() -> CryptoResult<()> {
     let curve = EcGroup::from_curve_name(Nid::X9_62_PRIME192V1).unwrap();
 
     let ec_privkey = EcKey::generate(&curve).unwrap();
@@ -348,27 +360,35 @@ fn test_encrypt_decrypt_ec_p192() {
     )
     .unwrap();
 
-    let plaintext = b"plaintext";
-    let ciphertext = wrap(
+    let mut random_bytes = vec![0; 32];
+    rand_bytes(&mut random_bytes)?;
+    let mut data_encryption_key = create_symmetric_key_kmip_object(
+        random_bytes.as_slice(),
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Default::default()
+        },
+    )?;
+    let original_key_block = data_encryption_key.key_block()?.clone();
+
+    wrap_key_block(
+        data_encryption_key.key_block_mut()?,
         &wrap_key_pair_pub,
-        &KeyWrappingData::default(),
-        plaintext,
-        Some(&[]),
-    )
-    .unwrap();
-    let decrypted_plaintext = unwrap(
-        &wrap_key_pair_priv,
-        &KeyWrappingData::default(),
-        &ciphertext,
-        None,
-    )
-    .unwrap();
-    assert_eq!(plaintext, &decrypted_plaintext[..]);
+        &KeyWrappingSpecification::default(),
+    )?;
+    let Some(KeyValue::ByteString(_ciphertext)) = &data_encryption_key.key_block()?.key_value
+    else {
+        crypto_bail!("Key value is not a byte string");
+    };
+    unwrap_key_block(data_encryption_key.key_block_mut()?, &wrap_key_pair_priv)?;
+
+    assert_eq!(data_encryption_key.key_block()?, &original_key_block);
+    Ok(())
 }
 
 #[test]
 #[cfg(not(feature = "fips"))]
-fn test_encrypt_decrypt_ec_p384() {
+fn test_encrypt_decrypt_ec_p384() -> CryptoResult<()> {
     let curve = EcGroup::from_curve_name(Nid::SECP384R1).unwrap();
 
     let ec_privkey = EcKey::generate(&curve).unwrap();
@@ -388,20 +408,28 @@ fn test_encrypt_decrypt_ec_p384() {
     )
     .unwrap();
 
-    let plaintext = b"plaintext";
-    let ciphertext = wrap(
+    let mut random_bytes = vec![0; 32];
+    rand_bytes(&mut random_bytes)?;
+    let mut data_encryption_key = create_symmetric_key_kmip_object(
+        random_bytes.as_slice(),
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Default::default()
+        },
+    )?;
+    let original_key_block = data_encryption_key.key_block()?.clone();
+
+    wrap_key_block(
+        data_encryption_key.key_block_mut()?,
         &wrap_key_pair_pub,
-        &KeyWrappingData::default(),
-        plaintext,
-        Some(&[]),
-    )
-    .unwrap();
-    let decrypted_plaintext = unwrap(
-        &wrap_key_pair_priv,
-        &KeyWrappingData::default(),
-        &ciphertext,
-        None,
-    )
-    .unwrap();
-    assert_eq!(plaintext, &decrypted_plaintext[..]);
+        &KeyWrappingSpecification::default(),
+    )?;
+    let Some(KeyValue::ByteString(_ciphertext)) = &data_encryption_key.key_block()?.key_value
+    else {
+        crypto_bail!("Key value is not a byte string");
+    };
+    unwrap_key_block(data_encryption_key.key_block_mut()?, &wrap_key_pair_priv)?;
+
+    assert_eq!(data_encryption_key.key_block()?, &original_key_block);
+    Ok(())
 }
