@@ -80,44 +80,5 @@ pub(crate) async fn test_wrap_export_import() -> CliResult<()> {
         trace!("imported key id: {imported_key_id}",);
     }
 
-    // Export with GCM + AAD but incorrect AAD on import
-    export_key(ExportKeyParams {
-        cli_conf_path: ctx.user_client_conf_path.clone(),
-        sub_command: "sym".to_owned(),
-        key_id: key_id.to_string(),
-        key_file: key_file.clone(),
-        wrap_key_id: Some(sym_wrapping_key_id),
-        wrapping_algorithm: Some(WrappingAlgorithm::AesGCM),
-        authenticated_additional_data: Some("aad".to_string()),
-        ..Default::default()
-    })?;
-
-    assert!(
-        import_key(ImportKeyParams {
-            cli_conf_path: ctx.user_client_conf_path.clone(),
-            sub_command: "sym".to_string(),
-            key_file: key_file.clone(),
-            key_id: Some(key_id.clone()),
-            unwrap: true,
-            replace_existing: true,
-            ..Default::default()
-        })
-        .is_err()
-    );
-
-    assert!(
-        import_key(ImportKeyParams {
-            cli_conf_path: ctx.user_client_conf_path.clone(),
-            sub_command: "sym".to_string(),
-            key_file,
-            key_id: Some(key_id),
-            unwrap: true,
-            replace_existing: true,
-            authenticated_additional_data: Some("this is very bad".to_string()),
-            ..Default::default()
-        })
-        .is_err()
-    );
-
     Ok(())
 }

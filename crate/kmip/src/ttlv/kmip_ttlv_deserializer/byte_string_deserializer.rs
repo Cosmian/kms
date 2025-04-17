@@ -24,8 +24,6 @@ impl<'a> ByteStringDeserializer<'a> {
         }
     }
 }
-
-#[allow(unused_variables)]
 impl<'a, 'de: 'a> de::Deserializer<'de> for &mut ByteStringDeserializer<'a> {
     type Error = TtlvError;
 
@@ -48,220 +46,275 @@ impl<'a, 'de: 'a> de::Deserializer<'de> for &mut ByteStringDeserializer<'a> {
         self.deserialize_u8(visitor)
     }
 
-    fn deserialize_bool<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
+    fn deserialize_bool<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by ByteString deserializer")
+        Err(de::Error::custom(
+            "deserialize_bool: should not be called by ByteString deserializer".to_owned(),
+        ))
     }
 
-    fn deserialize_i8<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
+    fn deserialize_i8<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by ByteString deserializer")
+        Err(de::Error::custom(
+            "deserialize_i8: should not be called by ByteString deserializer".to_owned(),
+        ))
     }
 
-    fn deserialize_i16<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
+    fn deserialize_i16<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by ByteString deserializer")
+        Err(de::Error::custom(
+            "deserialize_i16: should not be called by ByteString deserializer".to_owned(),
+        ))
     }
 
-    fn deserialize_i32<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
+    fn deserialize_i32<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by ByteString deserializer")
+        Err(de::Error::custom(
+            "deserialize_i32: should not be called by ByteString deserializer".to_owned(),
+        ))
     }
 
-    fn deserialize_i64<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
+    fn deserialize_i64<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by ByteString deserializer")
+        Err(de::Error::custom(
+            "deserialize_i64: should not be called by ByteString deserializer".to_owned(),
+        ))
     }
 
-    fn deserialize_u16<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
+    fn deserialize_u16<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by ByteString deserializer")
+        Err(de::Error::custom(
+            "deserialize_u16: should not be called by ByteString deserializer".to_owned(),
+        ))
     }
 
-    fn deserialize_u32<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
+    fn deserialize_u32<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by ByteString deserializer")
+        Err(de::Error::custom(
+            "deserialize_u32: should not be called by ByteString deserializer".to_owned(),
+        ))
     }
 
-    fn deserialize_u64<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
+    fn deserialize_u64<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by ByteString deserializer")
+        Err(de::Error::custom(
+            "deserialize_u64: should not be called by ByteString deserializer".to_owned(),
+        ))
     }
 
-    fn deserialize_f32<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
+    fn deserialize_f32<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by ByteString deserializer")
+        Err(de::Error::custom(
+            "deserialize_f32: should not be called by ByteString deserializer".to_owned(),
+        ))
     }
 
-    fn deserialize_f64<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
+    fn deserialize_f64<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by ByteString deserializer")
+        Err(de::Error::custom(
+            "deserialize_f64: should not be called by ByteString deserializer".to_owned(),
+        ))
     }
 
-    fn deserialize_char<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
+    fn deserialize_char<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by ByteString deserializer")
+        Err(de::Error::custom(
+            "deserialize_char: should not be called by ByteString deserializer".to_owned(),
+        ))
     }
 
-    fn deserialize_str<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
+    fn deserialize_str<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by ByteString deserializer")
+        Err(de::Error::custom(
+            "deserialize_str: should not be called by ByteString deserializer".to_owned(),
+        ))
     }
 
-    fn deserialize_string<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
+    fn deserialize_string<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by ByteString deserializer")
+        Err(de::Error::custom(
+            "deserialize_string: should not be called by ByteString deserializer".to_owned(),
+        ))
     }
 
-    fn deserialize_bytes<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
+    fn deserialize_bytes<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by ByteString deserializer")
+        Err(de::Error::custom(
+            "deserialize_bytes: should not be called by ByteString deserializer".to_owned(),
+        ))
     }
 
-    fn deserialize_byte_buf<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
+    fn deserialize_byte_buf<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by ByteString deserializer")
+        Err(de::Error::custom(
+            "deserialize_byte_buf: should not be called by ByteString deserializer".to_owned(),
+        ))
     }
 
-    fn deserialize_option<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
+    fn deserialize_option<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by ByteString deserializer")
+        Err(de::Error::custom(
+            "deserialize_option: should not be called by ByteString deserializer".to_owned(),
+        ))
     }
 
-    fn deserialize_unit<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
+    fn deserialize_unit<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by ByteString deserializer")
+        Err(de::Error::custom(
+            "deserialize_unit: should not be called by ByteString deserializer".to_owned(),
+        ))
     }
 
     fn deserialize_unit_struct<V>(
         self,
-        name: &'static str,
-        visitor: V,
+        _name: &'static str,
+        _visitor: V,
     ) -> std::result::Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by ByteString deserializer")
+        Err(de::Error::custom(
+            "deserialize_unit_struct: should not be called by ByteString deserializer".to_owned(),
+        ))
     }
 
     fn deserialize_newtype_struct<V>(
         self,
-        name: &'static str,
-        visitor: V,
+        _name: &'static str,
+        _visitor: V,
     ) -> std::result::Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by ByteString deserializer")
+        Err(de::Error::custom(
+            "deserialize_newtype_struct: should not be called by ByteString deserializer"
+                .to_owned(),
+        ))
     }
 
-    fn deserialize_seq<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
+    fn deserialize_seq<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by ByteString deserializer")
+        Err(de::Error::custom(
+            "deserialize_seq: should not be called by ByteString deserializer".to_owned(),
+        ))
     }
 
     fn deserialize_tuple<V>(
         self,
-        len: usize,
-        visitor: V,
+        _len: usize,
+        _visitor: V,
     ) -> std::result::Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by ByteString deserializer")
+        Err(de::Error::custom(
+            "deserialize_tuple: should not be called by ByteString deserializer".to_owned(),
+        ))
     }
 
     fn deserialize_tuple_struct<V>(
         self,
-        name: &'static str,
-        len: usize,
-        visitor: V,
+        _name: &'static str,
+        _len: usize,
+        _visitor: V,
     ) -> std::result::Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by ByteString deserializer")
+        Err(de::Error::custom(
+            "deserialize_tuple_struct: should not be called by ByteString deserializer".to_owned(),
+        ))
     }
 
-    fn deserialize_map<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
+    fn deserialize_map<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by ByteString deserializer")
+        Err(de::Error::custom(
+            "deserialize_map: should not be called by ByteString deserializer".to_owned(),
+        ))
     }
 
     fn deserialize_struct<V>(
         self,
-        name: &'static str,
-        fields: &'static [&'static str],
-        visitor: V,
+        _name: &'static str,
+        _fields: &'static [&'static str],
+        _visitor: V,
     ) -> std::result::Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by ByteString deserializer")
+        Err(de::Error::custom(
+            "deserialize_struct: should not be called by ByteString deserializer".to_owned(),
+        ))
     }
 
     fn deserialize_enum<V>(
         self,
-        name: &'static str,
-        variants: &'static [&'static str],
-        visitor: V,
+        _name: &'static str,
+        _variants: &'static [&'static str],
+        _visitor: V,
     ) -> std::result::Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by ByteString deserializer")
+        Err(de::Error::custom(
+            "deserialize_enum: should not be called by ByteString deserializer".to_owned(),
+        ))
     }
 
-    fn deserialize_identifier<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
+    fn deserialize_identifier<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by ByteString deserializer")
+        Err(de::Error::custom(
+            "deserialize_identifier: should not be called by ByteString deserializer".to_owned(),
+        ))
     }
 
-    fn deserialize_ignored_any<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
+    fn deserialize_ignored_any<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by ByteString deserializer")
+        Err(de::Error::custom(
+            "deserialize_ignored_any: should not be called by ByteString deserializer".to_owned(),
+        ))
     }
 }
 
