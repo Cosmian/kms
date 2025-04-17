@@ -97,7 +97,7 @@ impl<'a> AdjacentlyTaggedStructure {
         let (tag, content) = match &de.current.value {
             TTLValue::Structure(ttlvs) => (
                 TTLV {
-                    tag: "_t".to_owned(),
+                    tag: "Structure".to_owned(),
                     value: TTLValue::Enumeration(KmipEnumerationVariant {
                         value: 0,
                         name: "Structure".to_owned(),
@@ -112,7 +112,7 @@ impl<'a> AdjacentlyTaggedStructure {
             ),
             TTLValue::Integer(v) => (
                 TTLV {
-                    tag: "_t".to_owned(),
+                    tag: "Integer".to_owned(),
                     value: TTLValue::Enumeration(KmipEnumerationVariant {
                         value: 0,
                         name: "Integer".to_owned(),
@@ -125,7 +125,7 @@ impl<'a> AdjacentlyTaggedStructure {
             ),
             TTLValue::LongInteger(v) => (
                 TTLV {
-                    tag: "_t".to_owned(),
+                    tag: "LongInteger".to_owned(),
                     value: TTLValue::Enumeration(KmipEnumerationVariant {
                         value: 0,
                         name: "LongInteger".to_owned(),
@@ -138,7 +138,7 @@ impl<'a> AdjacentlyTaggedStructure {
             ),
             TTLValue::BigInteger(kmip_big_int) => (
                 TTLV {
-                    tag: "_t".to_owned(),
+                    tag: "BigInteger".to_owned(),
                     value: TTLValue::Enumeration(KmipEnumerationVariant {
                         value: 0,
                         name: "BigInteger".to_owned(),
@@ -151,7 +151,7 @@ impl<'a> AdjacentlyTaggedStructure {
             ),
             TTLValue::Enumeration(kmip_enumeration_variant) => (
                 TTLV {
-                    tag: "_t".to_owned(),
+                    tag: "Enumeration".to_owned(),
                     value: TTLValue::Enumeration(KmipEnumerationVariant {
                         value: 0,
                         name: "Enumeration".to_owned(),
@@ -164,7 +164,7 @@ impl<'a> AdjacentlyTaggedStructure {
             ),
             TTLValue::Boolean(v) => (
                 TTLV {
-                    tag: "_t".to_owned(),
+                    tag: "Boolean".to_owned(),
                     value: TTLValue::Enumeration(KmipEnumerationVariant {
                         value: 0,
                         name: "Boolean".to_owned(),
@@ -177,7 +177,7 @@ impl<'a> AdjacentlyTaggedStructure {
             ),
             TTLValue::TextString(s) => (
                 TTLV {
-                    tag: "_t".to_owned(),
+                    tag: "TextString".to_owned(),
                     value: TTLValue::Enumeration(KmipEnumerationVariant {
                         value: 0,
                         name: "TextString".to_owned(),
@@ -190,7 +190,7 @@ impl<'a> AdjacentlyTaggedStructure {
             ),
             TTLValue::ByteString(items) => (
                 TTLV {
-                    tag: "_t".to_owned(),
+                    tag: "ByteString".to_owned(),
                     value: TTLValue::Enumeration(KmipEnumerationVariant {
                         value: 0,
                         name: "ByteString".to_owned(),
@@ -203,7 +203,7 @@ impl<'a> AdjacentlyTaggedStructure {
             ),
             TTLValue::DateTime(offset_date_time) => (
                 TTLV {
-                    tag: "_t".to_owned(),
+                    tag: "DateTime".to_owned(),
                     value: TTLValue::Enumeration(KmipEnumerationVariant {
                         value: 0,
                         name: "DateTime".to_owned(),
@@ -216,7 +216,7 @@ impl<'a> AdjacentlyTaggedStructure {
             ),
             TTLValue::Interval(v) => (
                 TTLV {
-                    tag: "_t".to_owned(),
+                    tag: "Interval".to_owned(),
                     value: TTLValue::Enumeration(KmipEnumerationVariant {
                         value: 0,
                         name: "Interval".to_owned(),
@@ -229,7 +229,7 @@ impl<'a> AdjacentlyTaggedStructure {
             ),
             TTLValue::DateTimeExtended(dt) => (
                 TTLV {
-                    tag: "_t".to_owned(),
+                    tag: "DateTimeExtended".to_owned(),
                     value: TTLValue::Enumeration(KmipEnumerationVariant {
                         value: 0,
                         name: "DateTimeExtended".to_owned(),
@@ -299,7 +299,7 @@ impl<'de> MapAccess<'de> for AdjacentlyTaggedStructure {
     where
         K: DeserializeSeed<'de>,
     {
-        trace!("State ? {:?}", self.state);
+        trace!("Key: State ? {:?}", self.state);
 
         if self.state == State::Done {
             return Ok(None);
@@ -309,7 +309,10 @@ impl<'de> MapAccess<'de> for AdjacentlyTaggedStructure {
                 .deserialize(&mut TtlvDeserializer {
                     map_state: MapAccessState::Key,
                     child_index: 0,
-                    current: self.tag.clone(),
+                    current: TTLV {
+                        tag: "_t".to_owned(),
+                        value: TTLValue::TextString("_t".to_owned()),
+                    },
                     at_root: RwLock::new(true),
                 })
                 .map(Option::Some);
@@ -318,7 +321,10 @@ impl<'de> MapAccess<'de> for AdjacentlyTaggedStructure {
         seed.deserialize(&mut TtlvDeserializer {
             map_state: MapAccessState::Key,
             child_index: 0,
-            current: self.content.clone(),
+            current: TTLV {
+                tag: "_c".to_owned(),
+                value: TTLValue::TextString("_c".to_owned()),
+            },
             at_root: RwLock::new(true),
         })
         .map(Option::Some)
@@ -329,7 +335,7 @@ impl<'de> MapAccess<'de> for AdjacentlyTaggedStructure {
     where
         V: DeserializeSeed<'de>,
     {
-        trace!("State ? {:?}", self.state);
+        trace!("Value: State ? {:?}", self.state);
 
         if self.state == State::Tag {
             self.state = State::Content;
@@ -341,6 +347,7 @@ impl<'de> MapAccess<'de> for AdjacentlyTaggedStructure {
             });
         }
         self.state = State::Done;
+
         return seed.deserialize(&mut TtlvDeserializer {
             map_state: MapAccessState::Value,
             child_index: 0,

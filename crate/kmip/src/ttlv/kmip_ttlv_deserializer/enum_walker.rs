@@ -34,9 +34,10 @@ impl<'de> EnumAccess<'de> for EnumWalker<'_> {
         V: DeserializeSeed<'de>,
     {
         trace!("element:  {:?}", self.de.peek_element()?);
-        // The map state should already be set to value, but just in case
-        // this will tel deserialize_identifier to deserialize the variant of the TT:V, not the tag
-        self.de.map_state = MapAccessState::Value;
+        // // The map state should already be set to value, but just in case
+        // // this will tel deserialize_identifier to deserialize the variant of the TTLV, not the tag
+        self.de.map_state = MapAccessState::Key;
+        // Deserialize the variant identifier
         let val = seed.deserialize(&mut *self.de)?;
         Ok((val, self))
     }

@@ -9,6 +9,7 @@ use cosmian_kmip::{
     ttlv::{from_ttlv, TTLV},
 };
 use cosmian_kms_interfaces::SessionParams;
+use tracing::debug;
 
 use crate::{core::KMS, error::KmsError, kms_bail, result::KResult};
 
@@ -128,7 +129,9 @@ pub(crate) async fn dispatch(
             Operation::RevokeResponse(resp)
         }
         "SetAttribute" => {
+            debug!("SetAttribute TTLV {ttlv:#?}" );
             let req = from_ttlv::<SetAttribute>(ttlv)?;
+            debug!("SetAttribute: {req:?}");
             let resp = kms.set_attribute(req, user, database_params).await?;
             Operation::SetAttributeResponse(resp)
         }
