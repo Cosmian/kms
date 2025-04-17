@@ -25,7 +25,6 @@ use crate::{
         MaskGenerator, PaddingMethod, RNGAlgorithm,
     },
     kmip_2_1::extra::{tagging::VENDOR_ATTR_TAG, VENDOR_ID_COSMIAN},
-    ttlv::TTLV,
 };
 
 pub const VENDOR_ATTR_AAD: &str = "aad";
@@ -685,7 +684,7 @@ pub enum VendorAttributeValue {
     DateTime(OffsetDateTime),
     Interval(u32),
     DateTimeExtended(i128),
-    Structure(TTLV),
+    // no support for structure which is complex and does not bring much
 }
 
 /// The Certificate Attributes are the various items included in a certificate. The following list is based on RFC2253.

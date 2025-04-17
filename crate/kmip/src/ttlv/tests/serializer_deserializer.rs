@@ -1,5 +1,5 @@
 use cosmian_logger::log_init;
-use kmip_derive::KmipEnumSerialize;
+use kmip_derive::{kmip_enum, KmipEnumSerialize};
 use num_bigint_dig::{BigInt, BigUint};
 use serde::{Deserialize, Serialize};
 use time::{OffsetDateTime, UtcOffset};
@@ -215,10 +215,10 @@ fn test_ser_array() {
 
 #[test]
 fn test_enum_unit_variant() {
-    #[derive(
-        Deserialize, PartialEq, Eq, Debug, KmipEnumSerialize, Copy, Clone, strum::IntoStaticStr,
-    )]
-    #[repr(u32)]
+    use kmip_derive::KmipEnumDeserialize;
+    use strum::Display;
+
+    #[kmip_enum]
     enum Enumeration {
         Ten = 0x0A,
         Big = 0x1111_2222,
@@ -229,6 +229,7 @@ fn test_enum_unit_variant() {
     struct Test {
         an_enum: Enumeration,
     }
+    // log_init(Some("debug"));
     log_init(option_env!("RUST_LOG"));
 
     // Try with Ten
@@ -237,10 +238,14 @@ fn test_enum_unit_variant() {
     };
     // Serializer
     let ttlv = to_ttlv(&test).unwrap();
+    info!("TTLV:\n{ttlv:#?}");
 
     // Serialize
     let value = serde_json::to_value(&ttlv).unwrap();
-    info!("VALUE: {}", serde_json::to_string_pretty(&value).unwrap());
+    info!(
+        "JSON TTLV: {}",
+        serde_json::to_string_pretty(&value).unwrap()
+    );
     assert!(value.is_object());
     assert_eq!(value["tag"], "Test");
     assert_eq!(value["value"][0]["tag"], "AnEnum");

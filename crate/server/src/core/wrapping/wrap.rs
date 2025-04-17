@@ -3,15 +3,13 @@ use std::sync::Arc;
 use cosmian_kmip::{
     kmip_0::kmip_types::{CryptographicUsageMask, State},
     kmip_2_1::{
-        kmip_data_structures::{KeyBlock, KeyWrappingSpecification},
+        kmip_data_structures::{KeyBlock, KeyValue, KeyWrappingSpecification},
         kmip_objects::ObjectType,
         kmip_types::LinkType,
         KmipOperation,
     },
 };
-use cosmian_kms_crypto::crypto::wrap::{
-    key_data_to_wrap, update_key_block_with_wrapped_key, wrap_key_block,
-};
+use cosmian_kms_crypto::crypto::wrap::{key_data_to_wrap, wrap_key_block};
 use cosmian_kms_interfaces::SessionParams;
 use tracing::debug;
 
@@ -209,7 +207,11 @@ async fn wrap_using_encryption_oracle(
             )));
         }
     }
+
+    // Determine the key data to wrap based on the key format type and encoding
     let data_to_wrap = key_data_to_wrap(&object_key_block, key_wrapping_specification)?;
+
+    // encrypt the key using the encryption oracle
     let lock = kms.encryption_oracles.read().await;
     let encryption_oracle = lock.get(prefix).ok_or_else(|| {
         KmsError::InvalidRequest(format!(
@@ -217,19 +219,19 @@ async fn wrap_using_encryption_oracle(
         ))
     })?;
     let encrypted_content = encryption_oracle
-        .encrypt(
-            wrapping_key_uid,
-            data_to_wrap.as_slice(),
-            None,
-            key_wrapping_specification.get_additional_authenticated_data(),
-        )
+        .encrypt(wrapping_key_uid, data_to_wrap.as_slice(), None, None)
         .await?;
+
     let wrapped_key = [
         encrypted_content.iv.clone().unwrap_or_default(),
         encrypted_content.ciphertext.clone(),
         encrypted_content.tag.unwrap_or_default(),
     ]
     .concat();
-    update_key_block_with_wrapped_key(object_key_block, key_wrapping_specification, wrapped_key);
+
+    // update the key block with the wrapped key
+    object_key_block.key_value = Some(KeyValue::ByteString(wrapped_key.into()));
+    object_key_block.key_wrapping_data = Some(key_wrapping_specification.get_key_wrapping_data());
+
     Ok(())
 }
