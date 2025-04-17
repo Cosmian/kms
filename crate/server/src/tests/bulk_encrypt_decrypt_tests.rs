@@ -22,7 +22,7 @@ const NUM_MESSAGES: usize = 1000;
 #[allow(clippy::panic_in_result_fn)]
 async fn bulk_encrypt_decrypt() -> KResult<()> {
     cosmian_logger::log_init(option_env!("RUST_LOG"));
-    let app = test_utils::test_app(None).await;
+    let app = test_utils::test_app(None, None).await;
 
     let response: CreateResponse =
         test_utils::post(&app, aes_256_gcm_key_request(Vec::<String>::new())?).await?;

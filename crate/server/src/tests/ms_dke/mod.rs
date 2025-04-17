@@ -54,7 +54,7 @@ const ENCRYPTED_DATA: &str = r#"{
 async fn decrypt_data_test() -> KResult<()> {
     cosmian_logger::log_init(None);
 
-    let app = test_utils::test_app(None).await;
+    let app = test_utils::test_app(None, None).await;
 
     let pem: pem::Pem = pem::parse(RSA_PRIVATE_KEY.as_bytes())
         .map_err(|e| kms_error!(format!("cannot parse RSA private key: {}", e)))?;

@@ -44,7 +44,7 @@ use crate::{
             },
             create_key_pair::generate_key_pair_and_tags,
         },
-        retrieve_object_utils::retrieve_object_for_operation,
+        retrieve_object_utils::{retrieve_object_for_operation, user_has_permission},
     },
     error::KmsError,
     kms_bail,
@@ -64,6 +64,7 @@ pub(crate) async fn certify(
     request: Certify,
     user: &str,
     params: Option<Arc<dyn SessionParams>>,
+    privileged_users: Option<Vec<String>>,
 ) -> KResult<CertifyResponse> {
     trace!("Certify: {}", serde_json::to_string(&request)?);
     if request.protection_storage_masks.is_some() {
@@ -74,7 +75,7 @@ pub(crate) async fn certify(
     // generate_x509(get_issuer(get_subject)))
     // The code below could be rewritten in a more functional way
     // but this would require manipulating some sort of Monad Transformer
-    let subject = get_subject(kms, &request, user, params.clone()).await?;
+    let subject = get_subject(kms, &request, user, params.clone(), privileged_users).await?;
     trace!("Subject name: {:?}", subject.subject_name());
     let issuer = get_issuer(&subject, kms, &request, user, params.clone()).await?;
     trace!("Issuer Subject name: {:?}", issuer.subject_name());
@@ -261,6 +262,7 @@ async fn get_subject(
     request: &Certify,
     user: &str,
     params: Option<Arc<dyn SessionParams>>,
+    privileged_users: Option<Vec<String>>,
 ) -> KResult<Subject> {
     // Did the user provide a CSR?
     if let Some(pkcs10_bytes) = request.certificate_request_value.as_ref() {
@@ -291,7 +293,7 @@ async fn get_subject(
             KmipOperation::Certify,
             kms,
             user,
-            params,
+            params.clone(),
         )
         .await
         {
@@ -347,6 +349,25 @@ async fn get_subject(
     }
 
     // If we do not have a public key, we need to create a key pair
+
+    // For creation of an object, check that user has create access-right
+    if let Some(users) = privileged_users {
+        let has_permission = user_has_permission(
+            user,
+            None,
+            &cosmian_kmip::kmip_2_1::KmipOperation::Create,
+            kms,
+            params,
+        )
+        .await?;
+
+        if !has_permission && !users.iter().any(|u| u == user) {
+            kms_bail!(KmsError::Unauthorized(
+                "User does not have create access-right.".to_owned()
+            ))
+        }
+    }
+
     let sk_uid = UniqueIdentifier::default();
     let pk_uid = UniqueIdentifier::default();
     // We expect the attributes to contain the cryptographic algorithm and parameters

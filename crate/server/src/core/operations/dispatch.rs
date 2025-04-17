@@ -22,17 +22,26 @@ pub(crate) async fn dispatch(
     Ok(match ttlv.tag.as_str() {
         "Certify" => {
             let req = from_ttlv::<Certify>(ttlv)?;
-            let resp = kms.certify(req, user, database_params).await?;
+            let privileged_users = kms.params.privileged_users.clone();
+            let resp = kms
+                .certify(req, user, database_params, privileged_users)
+                .await?;
             Operation::CertifyResponse(resp)
         }
         "Create" => {
             let req = from_ttlv::<Create>(ttlv)?;
-            let resp = kms.create(req, user, database_params).await?;
+            let privileged_users = kms.params.privileged_users.clone();
+            let resp = kms
+                .create(req, user, database_params, privileged_users)
+                .await?;
             Operation::CreateResponse(resp)
         }
         "CreateKeyPair" => {
             let req = from_ttlv::<CreateKeyPair>(ttlv)?;
-            let resp = kms.create_key_pair(req, user, database_params).await?;
+            let privileged_users = kms.params.privileged_users.clone();
+            let resp = kms
+                .create_key_pair(req, user, database_params, privileged_users)
+                .await?;
             Operation::CreateKeyPairResponse(resp)
         }
         "Decrypt" => {
@@ -87,7 +96,10 @@ pub(crate) async fn dispatch(
         }
         "Import" => {
             let req = from_ttlv::<Import>(ttlv)?;
-            let resp = kms.import(req, user, database_params).await?;
+            let privileged_users = kms.params.privileged_users.clone();
+            let resp = kms
+                .import(req, user, database_params, privileged_users)
+                .await?;
             Operation::ImportResponse(resp)
         }
         "Locate" => {
@@ -102,7 +114,11 @@ pub(crate) async fn dispatch(
         }
         "ReKeyKeyPair" => {
             let req = from_ttlv::<ReKeyKeyPair>(ttlv)?;
-            let resp = kms.rekey_keypair(req, user, database_params).await?;
+            let privileged_users = kms.params.privileged_users.clone();
+
+            let resp = kms
+                .rekey_keypair(req, user, database_params, privileged_users)
+                .await?;
             Operation::ReKeyKeyPairResponse(resp)
         }
         "Revoke" => {

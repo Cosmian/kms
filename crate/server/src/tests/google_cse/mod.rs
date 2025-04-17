@@ -182,7 +182,7 @@ async fn test_cse_status() -> KResult<()> {
     log_init(None);
     // log_init(Some("debug,cosmian_kms_server=trace"));
 
-    let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned())).await;
+    let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned()), None).await;
 
     let response: StatusResponse = test_utils::get_with_uri(&app, "/google_cse/status").await?;
     tracing::debug!("status_request sent");
@@ -201,7 +201,7 @@ async fn test_cse_private_key_sign() -> KResult<()> {
     }
     log_init(None);
 
-    let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned())).await;
+    let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned()), None).await;
 
     // Import google CSE key
     import_google_cse_symmetric_key_with_access(&app).await?;
@@ -318,6 +318,7 @@ async fn test_create_pair_encrypt_decrypt() -> KResult<()> {
             },
             owner,
             None,
+            None,
         )
         .await?;
 
@@ -326,6 +327,7 @@ async fn test_create_pair_encrypt_decrypt() -> KResult<()> {
         .create_key_pair(
             create_rsa_key_pair_request(None, Vec::<String>::new(), 4096, false)?,
             owner,
+            None,
             None,
         )
         .await?;
@@ -385,7 +387,7 @@ async fn test_create_pair_encrypt_decrypt() -> KResult<()> {
         attributes,
         object: private_key,
     };
-    let intermediate_cert = kms.import(import_request, owner, None).await?;
+    let intermediate_cert = kms.import(import_request, owner, None, None).await?;
 
     // Certify the public key: sign created public key with issuer private key
     let attributes = Attributes {
@@ -414,7 +416,7 @@ async fn test_create_pair_encrypt_decrypt() -> KResult<()> {
     };
 
     let certificate_unique_identifier = kms
-        .certify(certify_request, owner, None)
+        .certify(certify_request, owner, None, None)
         .await?
         .unique_identifier;
 
@@ -488,7 +490,7 @@ async fn test_cse_private_key_decrypt(
         std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWT_ISSUER", JWT_ISSUER_URI);
     }
 
-    let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned())).await;
+    let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned()), None).await;
     // Import google CSE key
     import_google_cse_symmetric_key_with_access(&app).await?;
 
@@ -522,7 +524,7 @@ async fn test_encrypt_and_private_key_decrypt() -> KResult<()> {
         std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWT_ISSUER", JWT_ISSUER_URI);
     }
 
-    let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned())).await;
+    let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned()), None).await;
     // Import google CSE key
     import_google_cse_symmetric_key_with_access(&app).await?;
 
@@ -554,7 +556,7 @@ async fn test_cse_wrap_unwrap_key() -> KResult<()> {
 
     log_init(None);
 
-    let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned())).await;
+    let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned()), None).await;
 
     // Import google CSE key
     import_google_cse_symmetric_key_with_access(&app).await?;
@@ -605,7 +607,7 @@ async fn test_cse_privileged_wrap_unwrap_key() -> KResult<()> {
 
     log_init(None);
 
-    let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned())).await;
+    let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned()), None).await;
 
     // Import google CSE key
     import_google_cse_symmetric_key_with_access(&app).await?;
@@ -656,7 +658,7 @@ async fn test_cse_privileged_private_key_decrypt() -> KResult<()> {
 
     log_init(None);
 
-    let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned())).await;
+    let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned()), None).await;
 
     let path = std::env::current_dir()?;
     println!("The current directory is {}", path.display());
@@ -738,7 +740,7 @@ async fn test_cse_rewrap_key() -> KResult<()> {
 
     log_init(None);
 
-    let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned())).await;
+    let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned()), None).await;
 
     // Import google_cse key
     import_google_cse_symmetric_key_with_access(&app).await?;
@@ -773,7 +775,6 @@ async fn test_cse_rewrap_key() -> KResult<()> {
         )),
         user_id: "*".to_owned(),
         operation_types: vec![
-            KmipOperation::Create,
             KmipOperation::Destroy,
             KmipOperation::Get,
             KmipOperation::Encrypt,

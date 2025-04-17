@@ -138,7 +138,7 @@ pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError
             certificate_value: root_cert.clone(),
         },
     };
-    let res_root = kms.import(root_request, owner, None).await?;
+    let res_root = kms.import(root_request, owner, None, None).await?;
     // intermediate
     let intermediate_request = Import {
         unique_identifier: UniqueIdentifier::TextString(String::new()),
@@ -154,7 +154,7 @@ pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError
             certificate_value: intermediate_cert.clone(),
         },
     };
-    let res_intermediate = kms.import(intermediate_request, owner, None).await?;
+    let res_intermediate = kms.import(intermediate_request, owner, None, None).await?;
     // leaf1
     let leaf1_request = Import {
         unique_identifier: UniqueIdentifier::TextString(String::new()),
@@ -170,7 +170,7 @@ pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError
             certificate_value: leaf1_cert.clone(),
         },
     };
-    let res_leaf1 = kms.import(leaf1_request, owner, None).await?;
+    let res_leaf1 = kms.import(leaf1_request, owner, None, None).await?;
     // Only the root, it is valid by default
     let request = Validate {
         certificate: None,

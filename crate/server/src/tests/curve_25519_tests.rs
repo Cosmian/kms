@@ -39,7 +39,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         RecommendedCurve::CURVE25519,
         false,
     )?;
-    let response = kms.create_key_pair(request, owner, None).await?;
+    let response = kms.create_key_pair(request, owner, None, None).await?;
     // check that the private and public key exist
     // check secret key
     let sk_response = kms
@@ -175,7 +175,10 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         },
         object: pk.clone(),
     };
-    let new_uid = kms.import(request, owner, None).await?.unique_identifier;
+    let new_uid = kms
+        .import(request, owner, None, None)
+        .await?
+        .unique_identifier;
     // update
     let request = Import {
         unique_identifier: new_uid.clone(),
@@ -188,7 +191,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         },
         object: pk,
     };
-    let update_response = kms.import(request, owner, None).await?;
+    let update_response = kms.import(request, owner, None, None).await?;
     assert_eq!(new_uid, update_response.unique_identifier);
     Ok(())
 }

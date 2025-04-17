@@ -19,7 +19,7 @@ use crate::{
 };
 #[tokio::test]
 async fn test_re_key_with_tags() -> KResult<()> {
-    let app = test_utils::test_app(None).await;
+    let app = test_utils::test_app(None, None).await;
     // create Key Pair
     let mkp_tag = "mkp";
     let mkp_json_tag = serde_json::to_string(&[mkp_tag.to_owned()])?;
@@ -74,7 +74,7 @@ async fn test_re_key_with_tags() -> KResult<()> {
 async fn integration_tests_with_tags() -> KResult<()> {
     cosmian_logger::log_init(None);
 
-    let app = test_utils::test_app(None).await;
+    let app = test_utils::test_app(None, None).await;
     // create Key Pair
     let mkp_tag = "mkp";
     let mkp_json_tag = serde_json::to_string(&[mkp_tag.to_owned()])?;

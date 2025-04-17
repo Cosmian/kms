@@ -172,6 +172,7 @@ mod tests {
                 )?,
                 "user",
                 None,
+                None,
             )
             .await?
             .unique_identifier,

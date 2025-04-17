@@ -11,7 +11,7 @@ use crate::{result::KResult, tests::test_utils};
 #[tokio::test]
 async fn integration_tests_bulk() -> KResult<()> {
     // cosmian_logger::log_init("trace,hyper=info,reqwest=info");
-    let app = test_utils::test_app(None).await;
+    let app = test_utils::test_app(None, None).await;
 
     // Parse the json access_structure file
     let access_structure = r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["RnD","HR","MKG","FIN"]}"#;

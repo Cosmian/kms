@@ -84,6 +84,10 @@ pub struct ServerParams {
 
     /// The non-revocable keys ID used for demo purposes
     pub non_revocable_key_id: Option<Vec<String>>,
+
+    /// Users than have initial rights to create and grant access right for Create Kmip Operation
+    /// If None, all users can create and grant create access right.
+    pub privileged_users: Option<Vec<String>>,
 }
 
 /// Represents the server parameters.
@@ -177,6 +181,7 @@ impl ServerParams {
             },
             slot_passwords,
             non_revocable_key_id: conf.non_revocable_key_id,
+            privileged_users: conf.privileged_users,
         };
         debug!("try_from: server_params: {res:#?}");
 
@@ -279,6 +284,8 @@ impl fmt::Debug for ServerParams {
                 .collect::<Vec<String>>(),
         );
         let x = x.field("non_revocable_key_id", &self.non_revocable_key_id);
+        let x = x.field("privileged_users", &self.privileged_users);
+
         x.finish()
     }
 }
@@ -314,6 +321,7 @@ impl Clone for ServerParams {
                 .map(|s| (s, None))
                 .collect(),
             non_revocable_key_id: self.non_revocable_key_id.clone(),
+            privileged_users: self.privileged_users.clone(),
         }
     }
 }

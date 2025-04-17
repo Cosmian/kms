@@ -40,6 +40,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
             build_create_covercrypt_master_keypair_request(access_structure, EMPTY_TAGS, false)?,
             owner,
             None,
+            None,
         )
         .await?;
     debug!("  -> response {:?}", cr);
@@ -113,7 +114,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
         },
         object: pk.clone(),
     };
-    kms.import(request, owner, None).await.unwrap_err();
+    kms.import(request, owner, None, None).await.unwrap_err();
 
     // re-import public key - should succeed
     let request = Import {
@@ -127,7 +128,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
         },
         object: pk.clone(),
     };
-    let _update_response = kms.import(request, owner, None).await?;
+    let _update_response = kms.import(request, owner, None, None).await?;
 
     // User decryption key
     let access_policy = "(Department::MKG || Department::FIN) && Security Level::Confidential";
@@ -135,7 +136,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
     // ...via KeyPair
     debug!(" .... user key via Keypair");
     let request = build_create_covercrypt_usk_request(access_policy, &sk_uid, EMPTY_TAGS, false)?;
-    let cr = kms.create(request, owner, None).await?;
+    let cr = kms.create(request, owner, None, None).await?;
     debug!("Create Response for User Decryption Key {:?}", cr);
 
     let usk_uid = cr.unique_identifier.to_string();
@@ -164,7 +165,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
     // ...via Private key
     debug!(" .... user key via Private Key");
     let request = build_create_covercrypt_usk_request(access_policy, &sk_uid, EMPTY_TAGS, false)?;
-    let cr = kms.create(request, owner, None).await?;
+    let cr = kms.create(request, owner, None, None).await?;
     debug!("Create Response for User Decryption Key {:?}", cr);
 
     let usk_uid = cr.unique_identifier.to_string();
@@ -214,6 +215,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
         .create_key_pair(
             build_create_covercrypt_master_keypair_request(access_structure, EMPTY_TAGS, false)?,
             owner,
+            None,
             None,
         )
         .await?;
@@ -325,6 +327,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
             )?,
             owner,
             None,
+            None,
         )
         .await?;
     let secret_mkg_fin_user_key = &cr
@@ -420,7 +423,9 @@ async fn test_abe_json_access() -> KResult<()> {
         build_create_covercrypt_master_keypair_request(access_structure, EMPTY_TAGS, false)?;
 
     // create Key Pair
-    let ckr = kms.create_key_pair(master_keypair, owner, None).await?;
+    let ckr = kms
+        .create_key_pair(master_keypair, owner, None, None)
+        .await?;
     let master_secret_key_uid = ckr.private_key_unique_identifier.to_string();
 
     // define search criteria
@@ -463,6 +468,7 @@ async fn test_abe_json_access() -> KResult<()> {
             )?,
             owner,
             None,
+            None,
         )
         .await?;
     let secret_mkg_fin_user_key_id = &cr.unique_identifier;
@@ -498,6 +504,7 @@ async fn test_import_decrypt() -> KResult<()> {
         .create_key_pair(
             build_create_covercrypt_master_keypair_request(access_structure, EMPTY_TAGS, false)?,
             owner,
+            None,
             None,
         )
         .await?;
@@ -548,6 +555,7 @@ async fn test_import_decrypt() -> KResult<()> {
             )?,
             owner,
             None,
+            None,
         )
         .await?;
     let secret_mkg_fin_user_key = cr.unique_identifier.to_string();
@@ -580,7 +588,7 @@ async fn test_import_decrypt() -> KResult<()> {
         },
         object: gr_sk.object.clone(),
     };
-    kms.import(request, owner, None)
+    kms.import(request, owner, None, None)
         .await
         .context(&custom_sk_uid)?;
     // decrypt resource MKG + Confidential
@@ -615,7 +623,7 @@ async fn test_import_decrypt() -> KResult<()> {
         attributes: gr_sk.object.attributes()?.clone(),
         object: gr_sk.object.clone(),
     };
-    kms.import(request, owner, None)
+    kms.import(request, owner, None, None)
         .await
         .context(&custom_sk_uid)?;
     // decrypt resource MKG + Confidential
