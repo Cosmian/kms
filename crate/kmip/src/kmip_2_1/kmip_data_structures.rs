@@ -424,6 +424,7 @@ impl KeyBlock {
 /// • The Key Value Byte String is either the wrapped TTLV-encoded Key Value
 /// structure, or the wrapped un-encoded value of the Byte String Key Material
 /// field.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum KeyValue {
     /// The key value is a byte string when key wrapped
@@ -655,7 +656,7 @@ impl KeyWrappingData {
     /// If not present, the wrapped Key Value structure SHALL not have any encoding.
     #[must_use]
     pub fn get_encoding(&self) -> EncodingOption {
-        self.encoding_option.unwrap_or(EncodingOption::NoEncoding)
+        self.encoding_option.unwrap_or(EncodingOption::TTLVEncoding)
     }
 }
 

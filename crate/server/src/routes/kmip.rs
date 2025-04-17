@@ -155,9 +155,10 @@ pub(crate) async fn kmip_2_1_json(
     let ttlv = serde_json::from_str::<TTLV>(&body)?;
 
     let user = kms.get_user(&req_http);
-    info!(target: "kmip", user=user, tag=ttlv.tag.as_str(), "POST /kmip_2_1. Request: {:?} {}", ttlv.tag.as_str(), user);
+    info!(target: "kmip", user=user, tag=ttlv.tag.as_str(), "POST /kmip/2_1. Request: {:?} {}", ttlv.tag.as_str(), user);
 
     let ttlv = handle_ttlv_2_1(&kms, ttlv, &user, None).await?;
+
     Ok(Json(ttlv))
 }
 

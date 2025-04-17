@@ -3,13 +3,13 @@ use std::sync::Arc;
 use cosmian_kmip::{
     kmip_0::kmip_types::{CryptographicUsageMask, State},
     kmip_2_1::{
-        kmip_data_structures::KeyBlock, kmip_objects::ObjectType, kmip_types::LinkType,
+        kmip_data_structures::{KeyBlock, KeyValue},
+        kmip_objects::ObjectType,
+        kmip_types::LinkType,
         KmipOperation,
     },
 };
-use cosmian_kms_crypto::crypto::wrap::{
-    recover_wrapped_key, unwrap_key_block, update_key_block_with_unwrapped_key,
-};
+use cosmian_kms_crypto::crypto::wrap::{decode_unwrapped_key, unwrap_key_block};
 use cosmian_kms_interfaces::SessionParams;
 use tracing::debug;
 
@@ -170,7 +170,7 @@ async fn unwrap_using_kms(
     Ok(())
 }
 
-/// Wrap a key with a wrapping key using an encryption oracle
+/// Unwrap a key with a wrapping key using an encryption oracle
 async fn unwrap_using_encryption_oracle(
     object_key_block: &mut KeyBlock,
     kms: &KMS,
@@ -179,18 +179,11 @@ async fn unwrap_using_encryption_oracle(
     unwrapping_key_uid: &str,
     prefix: &str,
 ) -> KResult<()> {
-    // Extract authenticated additional data on attributes if exist
-    let aad = object_key_block.attributes_mut()?.remove_aad();
-    // fetch the key wrapping data
-    let key_wrapping_data = object_key_block.key_wrapping_data.as_ref().ok_or_else(|| {
-        KmsError::InvalidRequest("unwrap_key: key wrapping data is missing".to_owned())
-    })?;
-    // recover the wrapped key
-    let wrapped_key = recover_wrapped_key(object_key_block, key_wrapping_data)?;
     // determine the private key if a public key is passed
     let unwrapping_key_uid = unwrapping_key_uid
         .strip_suffix("_pk")
         .map_or_else(|| unwrapping_key_uid.to_owned(), ToString::to_string);
+
     //check permissions
     if !kms
         .database
@@ -211,6 +204,17 @@ async fn unwrap_using_encryption_oracle(
             )));
         }
     }
+
+    // fetch the key wrapping data
+    let key_wrapping_data = object_key_block.key_wrapping_data.as_ref().ok_or_else(|| {
+        KmsError::InvalidRequest("unwrap_key: key wrapping data is missing".to_owned())
+    })?;
+
+    // recover the wrapped key
+    let Some(KeyValue::ByteString(wrapped_key)) = object_key_block.key_value.as_ref() else {
+        kms_bail!("unable to unwrap key: key value is not a byte string")
+    };
+
     //decrypt the wrapped key
     let lock = kms.encryption_oracles.read().await;
     let encryption_oracle = lock.get(prefix).ok_or_else(|| {
@@ -219,19 +223,19 @@ async fn unwrap_using_encryption_oracle(
         ))
     })?;
     let plaintext = encryption_oracle
-        .decrypt(
-            &unwrapping_key_uid,
-            &wrapped_key.key_bytes,
-            None,
-            aad.as_deref(),
-        )
+        .decrypt(&unwrapping_key_uid, wrapped_key, None, None)
         .await?;
-    //update the key block with the unwrapped key
-    update_key_block_with_unwrapped_key(
-        object_key_block,
-        &wrapped_key.attributes,
-        wrapped_key.encoding,
-        &plaintext,
+
+    // decode the unwrapped key
+    let key_value = decode_unwrapped_key(
+        key_wrapping_data.get_encoding(),
+        object_key_block.key_format_type,
+        plaintext,
     )?;
+
+    // update the key block with the unwrapped key
+    object_key_block.key_value = Some(key_value);
+    object_key_block.key_wrapping_data = None;
+
     Ok(())
 }

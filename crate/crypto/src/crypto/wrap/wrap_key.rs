@@ -108,33 +108,17 @@ pub fn wrap_key_block(
     )?;
 
     //wrap
-    let ciphertext = wrap(
+    let wrapped_key = wrap(
         wrapping_key,
         &key_wrapping_specification.get_key_wrapping_data(),
         &data_to_wrap,
     )?;
 
     // update the key block with the wrapped key
-    update_key_block_with_wrapped_key(object_key_block, key_wrapping_specification, ciphertext);
+    object_key_block.key_value = Some(KeyValue::ByteString(Zeroizing::new(wrapped_key)));
+    object_key_block.key_wrapping_data = Some(key_wrapping_specification.get_key_wrapping_data());
 
     Ok(())
-}
-
-/// Post process the wrapped key block
-/// The key block is updated with the wrapped key
-/// The key wrapping data is updated with the key wrapping data
-/// # Arguments
-/// * `object_key_block` - the key block of the object to wrap
-/// * `key_wrapping_specification` - the key wrapping specification
-/// * `ciphertext` - the wrapped key
-pub fn update_key_block_with_wrapped_key(
-    object_key_block: &mut KeyBlock,
-    key_wrapping_specification: &KeyWrappingSpecification,
-    wrapped_key: Vec<u8>,
-) {
-    // wrap the key based on the encoding
-    object_key_block.key_value = Some(KeyValue::ByteString(wrapped_key.into()));
-    object_key_block.key_wrapping_data = Some(key_wrapping_specification.get_key_wrapping_data());
 }
 
 /// Determine the Key data to wrap

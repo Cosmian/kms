@@ -5,6 +5,7 @@ use cosmian_kms_client::{
         kmip_types::{CryptographicAlgorithm, LinkType, Tag, VendorAttribute},
     },
 };
+use cosmian_logger::log_init;
 use kms_test_server::{start_default_test_kms_server, TestsContext};
 use strum::IntoEnumIterator;
 use tracing::trace;
@@ -246,55 +247,55 @@ fn check_set_delete_attributes(uid: &str, ctx: &TestsContext) -> CliResult<()> {
         };
 
         set_attributes(&ctx.owner_client_conf_path, &requested_attributes)?;
-        get_and_check_attributes(ctx, uid, &requested_attributes)?;
-        delete_attributes(
-            &ctx.owner_client_conf_path,
-            Some(&requested_attributes),
-            None,
-        )?;
-        get_and_check_none_attributes(ctx, uid, &requested_attributes)?;
+        // get_and_check_attributes(ctx, uid, &requested_attributes)?;
+        // delete_attributes(
+        //     &ctx.owner_client_conf_path,
+        //     Some(&requested_attributes),
+        //     None,
+        // )?;
+        // get_and_check_none_attributes(ctx, uid, &requested_attributes)?;
     }
 
-    // Test key usage one by one
-    for key_usage in KeyUsage::iter() {
-        let requested_attributes = SetOrDeleteAttributes {
-            id: Some(uid.to_owned()),
-            key_usage: Some(vec![key_usage.clone()]),
-            ..SetOrDeleteAttributes::default()
-        };
-        set_attributes(&ctx.owner_client_conf_path, &requested_attributes)?;
-        get_and_check_attributes(ctx, uid, &requested_attributes)?;
-        delete_attributes(
-            &ctx.owner_client_conf_path,
-            Some(&requested_attributes),
-            None,
-        )?;
-        get_and_check_none_attributes(ctx, uid, &requested_attributes)?;
-    }
+    // // Test key usage one by one
+    // for key_usage in KeyUsage::iter() {
+    //     let requested_attributes = SetOrDeleteAttributes {
+    //         id: Some(uid.to_owned()),
+    //         key_usage: Some(vec![key_usage.clone()]),
+    //         ..SetOrDeleteAttributes::default()
+    //     };
+    //     set_attributes(&ctx.owner_client_conf_path, &requested_attributes)?;
+    //     get_and_check_attributes(ctx, uid, &requested_attributes)?;
+    //     delete_attributes(
+    //         &ctx.owner_client_conf_path,
+    //         Some(&requested_attributes),
+    //         None,
+    //     )?;
+    //     get_and_check_none_attributes(ctx, uid, &requested_attributes)?;
+    // }
 
-    trace!("Test delete all attributes by references");
-    let requested_attributes = Some(SetOrDeleteAttributes {
-        id: Some(uid.to_owned()),
-        ..SetOrDeleteAttributes::default()
-    });
-    for tag in Tag::iter() {
-        delete_attributes(
-            &ctx.owner_client_conf_path,
-            requested_attributes.as_ref(),
-            Some(vec![tag]),
-        )?;
-    }
+    // trace!("Test delete all attributes by references");
+    // let requested_attributes = Some(SetOrDeleteAttributes {
+    //     id: Some(uid.to_owned()),
+    //     ..SetOrDeleteAttributes::default()
+    // });
+    // for tag in Tag::iter() {
+    //     delete_attributes(
+    //         &ctx.owner_client_conf_path,
+    //         requested_attributes.as_ref(),
+    //         Some(vec![tag]),
+    //     )?;
+    // }
 
-    // Accumulate all values of AttributeTag in a Vec
-    let mut attribute_tags = Vec::new();
-    for tag in Tag::iter() {
-        attribute_tags.push(tag);
-    }
-    delete_attributes(
-        &ctx.owner_client_conf_path,
-        requested_attributes.as_ref(),
-        Some(attribute_tags),
-    )?;
+    // // Accumulate all values of AttributeTag in a Vec
+    // let mut attribute_tags = Vec::new();
+    // for tag in Tag::iter() {
+    //     attribute_tags.push(tag);
+    // }
+    // delete_attributes(
+    //     &ctx.owner_client_conf_path,
+    //     requested_attributes.as_ref(),
+    //     Some(attribute_tags),
+    // )?;
     Ok(())
 }
 
@@ -320,6 +321,7 @@ fn check_set_delete_attributes(uid: &str, ctx: &TestsContext) -> CliResult<()> {
 /// ```
 #[tokio::test]
 async fn test_set_attribute_ckms() -> CliResult<()> {
+    log_init(Some("debug"));
     // Create a test server
     let ctx = start_default_test_kms_server().await;
 

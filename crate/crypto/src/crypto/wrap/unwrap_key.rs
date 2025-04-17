@@ -84,46 +84,6 @@ pub fn unwrap_key_block(
     Ok(())
 }
 
-// pub struct WrappedKey {
-//     pub key_bytes: Zeroizing<Vec<u8>>,
-//     pub attributes: Option<Attributes>,
-//     pub encoding: EncodingOption,
-// }
-
-// /// Recover the wrapped key from the key block and key wrapping data
-// /// # Arguments
-// /// * `object_key_block` - the key block of the object to unwrap
-// /// * `key_wrapping_data` - the key wrapping data
-// /// # Returns
-// /// * `KResult<(Vec<u8>, Option<Attributes>, EncodingOption)>` - the recovered wrapped key, attributes, and encoding
-// ///
-// pub fn recover_wrapped_key(
-//     object_key_block: &KeyBlock,
-//     key_wrapping_data: &KeyWrappingData,
-// ) -> Result<WrappedKey, CryptoError> {
-//     // check that the wrapping method is supported
-//     if WrappingMethod::Encrypt != key_wrapping_data.wrapping_method {
-//         crypto_bail!("unable to unwrap key: only the Encrypt unwrapping method is supported")
-//     }
-
-//     let encoding = key_wrapping_data.get_encoding();
-//     Ok(match encoding {
-//         EncodingOption::TTLVEncoding => WrappedKey {
-//             key_bytes: object_key_block.key_bytes()?,
-//             attributes: object_key_block.attributes().ok().cloned(),
-//             encoding,
-//         },
-//         EncodingOption::NoEncoding => {
-//             let (bytes, attributes) = object_key_block.key_bytes_and_attributes()?;
-//             WrappedKey {
-//                 key_bytes: bytes,
-//                 attributes: attributes.cloned(),
-//                 encoding,
-//             }
-//         }
-//     })
-// }
-
 /// Unwrap a key using a wrapping key
 ///
 /// # Arguments
@@ -154,7 +114,6 @@ pub(crate) fn unwrap(
     let unwrapping_key_block = unwrapping_key
         .key_block()
         .context("Unable to unwrap: unwrapping key is not a key")?;
-    // unwrap the unwrapping key if necessary
     if unwrapping_key_block.key_wrapping_data.is_some() {
         crypto_bail!("unable to unwrap key: unwrapping key is wrapped and that is not supported")
     }
@@ -177,7 +136,24 @@ pub(crate) fn unwrap(
         }
     }?;
 
-    match key_wrapping_data.get_encoding() {
+    decode_unwrapped_key(key_wrapping_data.get_encoding(), key_format_type, plaintext)
+}
+
+/// Decode the unwrapped key into a `KeyValue`
+///
+/// # Arguments
+/// * `key_wrapping_data` - the key wrapping data
+/// * `key_format_type` - the expected key format type
+/// * `plaintext` - the unwrapped key bytes
+///
+/// # Returns
+/// * `KResult<KeyValue>` - the decoded key value
+pub fn decode_unwrapped_key(
+    encoding: EncodingOption,
+    key_format_type: KeyFormatType,
+    plaintext: Zeroizing<Vec<u8>>,
+) -> Result<KeyValue, CryptoError> {
+    match encoding {
         EncodingOption::TTLVEncoding => {
             // For TTLV encoding, convert the plaintext to a KeyValue using TTLV parsing
             KeyValue::from_ttlv_bytes(plaintext.as_bytes(), key_format_type).map_err(Into::into)
@@ -197,7 +173,7 @@ pub(crate) fn unwrap(
                 | KeyFormatType::CoverCryptSecretKey
                 | KeyFormatType::CoverCryptPublicKey => {
                     // For no encoding, create a structure with the plaintext as bytes
-                    let key_material = KeyMaterial::ByteString(plaintext.to_vec().into());
+                    let key_material = KeyMaterial::ByteString(plaintext);
                     Ok(KeyValue::Structure {
                         key_material,
                         attributes: Some(Attributes::default()),
@@ -205,9 +181,7 @@ pub(crate) fn unwrap(
                 }
                 KeyFormatType::TransparentSymmetricKey => {
                     // For no encoding, create a structure with the plaintext as bytes
-                    let key_material = KeyMaterial::TransparentSymmetricKey {
-                        key: plaintext.to_vec().into(),
-                    };
+                    let key_material = KeyMaterial::TransparentSymmetricKey { key: plaintext };
                     Ok(KeyValue::Structure {
                         key_material,
                         attributes: Some(Attributes::default()),

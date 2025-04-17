@@ -779,7 +779,7 @@ impl Attributes {
 
 /// Structure used in various operations to provide the New Attribute value in the request.
 /// Each variant corresponds to a field in the Attributes struct.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, strum::VariantNames)]
 #[allow(clippy::large_enum_variant)]
 pub enum Attribute {
     /// The Activation Date attribute contains the date and time when the

@@ -22,7 +22,6 @@ use crate::{
         },
     },
     kmip_2_1::{self, kmip_types::VendorAttribute},
-    ttlv::TTLV,
     KmipError,
 };
 
@@ -805,7 +804,6 @@ pub enum CustomAttributeValue {
     DateTime(OffsetDateTime),
     Interval(u32),
     DateTimeExtended(i128),
-    Structure(TTLV),
 }
 
 impl From<CustomAttributeValue> for kmip_2_1::kmip_types::VendorAttributeValue {
@@ -818,7 +816,6 @@ impl From<CustomAttributeValue> for kmip_2_1::kmip_types::VendorAttributeValue {
             CustomAttributeValue::Boolean(v) => Self::Boolean(v),
             CustomAttributeValue::DateTime(v) => Self::DateTime(v),
             CustomAttributeValue::Interval(v) => Self::Interval(v),
-            CustomAttributeValue::Structure(v) => Self::Structure(v),
             CustomAttributeValue::Integer(v) => Self::Integer(v),
             CustomAttributeValue::DateTimeExtended(v) => Self::DateTimeExtended(v),
         }
@@ -835,7 +832,6 @@ impl From<kmip_2_1::kmip_types::VendorAttributeValue> for CustomAttributeValue {
             kmip_2_1::kmip_types::VendorAttributeValue::Boolean(v) => Self::Boolean(v),
             kmip_2_1::kmip_types::VendorAttributeValue::DateTime(v) => Self::DateTime(v),
             kmip_2_1::kmip_types::VendorAttributeValue::Interval(v) => Self::Interval(v),
-            kmip_2_1::kmip_types::VendorAttributeValue::Structure(v) => Self::Structure(v),
             kmip_2_1::kmip_types::VendorAttributeValue::Integer(v) => Self::Integer(v),
             kmip_2_1::kmip_types::VendorAttributeValue::DateTimeExtended(v) => {
                 Self::DateTimeExtended(v)

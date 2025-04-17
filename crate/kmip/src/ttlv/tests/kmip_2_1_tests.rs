@@ -14,8 +14,8 @@ use crate::{
         },
         kmip_types::{
             AsynchronousIndicator, AttestationType, BatchErrorContinuationOption, Credential,
-            CryptographicUsageMask, ErrorReason, MessageExtension, Nonce, PaddingMethod,
-            ProtocolVersion, ResultStatusEnumeration,
+            CryptographicUsageMask, ErrorReason, MessageExtension, Nonce, ProtocolVersion,
+            ResultStatusEnumeration,
         },
     },
     kmip_2_1::{
@@ -28,9 +28,9 @@ use crate::{
             Operation, Query, QueryResponse, SetAttribute,
         },
         kmip_types::{
-            CryptographicAlgorithm, CryptographicParameters, KeyFormatType, Link, LinkType,
-            LinkedObjectIdentifier, OperationEnumeration, QueryFunction, UniqueIdentifier,
-            VendorAttribute, VendorAttributeValue,
+            CryptographicAlgorithm, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
+            OperationEnumeration, QueryFunction, UniqueIdentifier, VendorAttribute,
+            VendorAttributeValue,
         },
     },
     ttlv::{from_ttlv, to_ttlv, KmipEnumerationVariant, TTLValue, TTLV},
@@ -341,22 +341,23 @@ fn test_object_inside_struct() {
 
 #[test]
 fn test_vendor_attribute_value() {
+    // log_init(Some("trace"));
     log_init(option_env!("RUST_LOG"));
     let vendor_attribute_value =
         VendorAttributeValue::BigInteger(BigInt::from(123_456_789_000_u128));
 
     // Json
     let json = serde_json::to_string_pretty(&vendor_attribute_value).unwrap();
-    info!("{}", json);
+    info!("JSON:\n{}", json);
     let vendor_attribute_: VendorAttributeValue = serde_json::from_str(&json).unwrap();
     assert_eq!(vendor_attribute_value, vendor_attribute_);
 
     // Serializer
     let ttlv = to_ttlv(&vendor_attribute_value).unwrap();
-    info!("{:#?}", ttlv);
+    info!("TTLV:\n{:#?}", ttlv);
     // Serialize
     let json = serde_json::to_string_pretty(&ttlv).unwrap();
-    info!("{}", json);
+    info!("JSON TTLV:\n{}", json);
     // Deserialize
     let ttlv_from_json = serde_json::from_str::<TTLV>(&json).unwrap();
     assert_eq!(ttlv, ttlv_from_json);
@@ -373,10 +374,7 @@ fn test_vendor_attribute() {
     let vendor_attribute = VendorAttribute {
         vendor_identification: "Test Vendor".to_owned(),
         attribute_name: "Test Attribute".to_owned(),
-        attribute_value: VendorAttributeValue::Structure(TTLV {
-            tag: "TheTag".to_owned(),
-            value: TTLValue::TextString("The Content".to_owned()),
-        }),
+        attribute_value: VendorAttributeValue::LongInteger(123_456_789),
     };
 
     // Json
@@ -433,16 +431,7 @@ fn test_import_symmetric_key() {
         "DateTime",
         VendorAttributeValue::DateTime(OffsetDateTime::now_utc()),
     );
-    attributes.set_vendor_attribute(
-        "Vendor",
-        "struct",
-        VendorAttributeValue::Structure(
-            to_ttlv(&Attribute::CryptographicAlgorithm(
-                CryptographicAlgorithm::AES,
-            ))
-            .unwrap(),
-        ),
-    );
+    attributes.set_vendor_attribute("Vendor", "int", VendorAttributeValue::Integer(42));
 
     let import = Import {
         unique_identifier: UniqueIdentifier::TextString("unique_identifier".to_owned()),
@@ -1727,6 +1716,12 @@ fn test_key_value_ttlv() {
             .unwrap()
     );
     let key_format_type = KeyFormatType::TransparentRSAPublicKey;
+
+    // We loose milliseconds in the conversion
+    let time = OffsetDateTime::now_utc()
+        .replace_millisecond(0)
+        .expect("failed to set millisecond");
+
     let kv = KeyValue::Structure {
         key_material: KeyMaterial::TransparentRSAPublicKey {
             modulus: Box::new(BigInt::from(1)),
@@ -1737,13 +1732,7 @@ fn test_key_value_ttlv() {
             vendor_attributes: Some(vec![VendorAttribute {
                 vendor_identification: "VENDOR".to_owned(),
                 attribute_name: "TEST".to_owned(),
-                attribute_value: VendorAttributeValue::Structure(
-                    to_ttlv(&CryptographicParameters {
-                        padding_method: Some(PaddingMethod::OAEP),
-                        ..Default::default()
-                    })
-                    .unwrap(),
-                ),
+                attribute_value: VendorAttributeValue::DateTime(time),
             }]),
             ..Default::default()
         }),
@@ -1752,5 +1741,40 @@ fn test_key_value_ttlv() {
         kv,
         KeyValue::from_ttlv_bytes(&kv.to_ttlv_bytes(key_format_type).unwrap(), key_format_type)
             .unwrap()
+    );
+}
+
+#[test]
+fn test_set_attribute() {
+    // log_init(Some("trace"));
+    log_init(option_env!("RUST_LOG"));
+    let set_attribute = SetAttribute {
+        unique_identifier: Some(UniqueIdentifier::TextString(
+            "173cb39b-c95a-4e98-ae0d-3e8079e145e6".to_owned(),
+        )),
+        new_attribute: Attribute::CryptographicAlgorithm(CryptographicAlgorithm::AES),
+    };
+
+    let ttlv = to_ttlv(&set_attribute).unwrap();
+    info!("TTLV: {:#?}", ttlv);
+
+    // Deserialize the TTLV back to Object
+    let deserialized_set_attribute: SetAttribute =
+        from_ttlv(ttlv).expect("Failed to deserialize TTLV");
+
+    info!("Deserialized Object: {:#?}", deserialized_set_attribute);
+    assert_eq!(
+        set_attribute, deserialized_set_attribute,
+        "Deserialized Object does not match the original"
+    );
+
+    // JSON Serde
+    let json = serde_json::to_string_pretty(&set_attribute).expect("Failed to serialize to JSON");
+    info!("JSON: {}", json);
+    let deserialized_set_attribute_json: SetAttribute =
+        serde_json::from_str(&json).expect("Failed to deserialize from JSON");
+    assert_eq!(
+        set_attribute, deserialized_set_attribute_json,
+        "Deserialized Object from JSON does not match the original"
     );
 }

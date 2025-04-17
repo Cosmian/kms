@@ -22,7 +22,7 @@ pub(crate) async fn set_attribute(
     user: &str,
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<SetAttributeResponse> {
-    trace!("Set attribute: {}", serde_json::to_string(&request)?);
+    debug!("Set attribute: {request:#?}");
 
     // there must be an identifier
     let uid_or_tags = request
