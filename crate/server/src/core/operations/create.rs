@@ -11,7 +11,7 @@ use cosmian_kms_server_database::CachedUnwrappedObject;
 use tracing::{debug, trace};
 
 use crate::{
-    core::{wrapping::wrap_key, KMS},
+    core::{retrieve_object_utils::user_has_permission, wrapping::wrap_key, KMS},
     error::KmsError,
     kms_bail,
     result::KResult,
@@ -26,6 +26,21 @@ pub(crate) async fn create(
     trace!("Create: {}", serde_json::to_string(&request)?);
     if request.protection_storage_masks.is_some() {
         kms_bail!(KmsError::UnsupportedPlaceholder)
+    }
+
+    // For creation of ab object, check that user has create access-right
+    if !user_has_permission(
+        owner,
+        None,
+        &cosmian_kmip::kmip_2_1::KmipOperation::Create,
+        kms,
+        params.clone(),
+    )
+    .await?
+    {
+        kms_bail!(KmsError::Unauthorized(
+            "User does not have create access-right.".to_owned()
+        ))
     }
 
     let (unique_identifier, mut object, tags) = match &request.object_type {
