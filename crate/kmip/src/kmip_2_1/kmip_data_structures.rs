@@ -669,7 +669,7 @@ impl Default for KeyWrappingData {
             mac_signature_key_information: None,
             mac_signature: None,
             iv_counter_nonce: None,
-            encoding_option: Some(EncodingOption::NoEncoding),
+            encoding_option: Some(EncodingOption::TTLVEncoding),
         }
     }
 }
@@ -721,7 +721,7 @@ impl Default for KeyWrappingSpecification {
             encryption_key_information: None,
             mac_or_signature_key_information: None,
             attribute_name: None,
-            encoding_option: Some(EncodingOption::NoEncoding),
+            encoding_option: Some(EncodingOption::TTLVEncoding),
         }
     }
 }
@@ -731,7 +731,7 @@ impl KeyWrappingSpecification {
     /// If not present, the wrapped Key Value structure SHALL be TTLV encoded.
     #[must_use]
     pub fn get_encoding(&self) -> EncodingOption {
-        self.encoding_option.unwrap_or(EncodingOption::NoEncoding)
+        self.encoding_option.unwrap_or(EncodingOption::TTLVEncoding)
     }
 
     /// Returns the key wrapping data from the key wrapping specification
@@ -744,14 +744,6 @@ impl KeyWrappingSpecification {
             encoding_option: Some(self.get_encoding()),
             ..KeyWrappingData::default()
         }
-    }
-
-    /// Returns the additional authenticated data from the key wrapping specification
-    pub fn get_additional_authenticated_data(&self) -> Option<&[u8]> {
-        self.attribute_name
-            .as_ref()
-            .and_then(|attributes| attributes.first())
-            .map(String::as_bytes)
     }
 }
 
