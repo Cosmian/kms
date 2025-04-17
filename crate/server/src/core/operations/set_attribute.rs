@@ -354,9 +354,12 @@ pub(crate) async fn set_attribute(
             );
             attributes.short_unique_identifier = Some(short_unique_identifier);
         }
-        Attribute::State(state) => {
-            trace!("Set Attribute: State: {:?}", state);
-            attributes.state = Some(state);
+        Attribute::State(_state) => {
+            return Err(KmsError::InvalidRequest(
+                "Set Attribute: State cannot be set. Use Revoke and Destroy to change the object \
+                 state"
+                    .to_owned(),
+            ));
         }
         Attribute::UsageLimits(usage_limits) => {
             trace!("Set Attribute: Usage Limits: {:?}", usage_limits);
