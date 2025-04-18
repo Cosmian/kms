@@ -113,7 +113,7 @@ pub(crate) async fn dispatch(
             Operation::RevokeResponse(resp)
         }
         "SetAttribute" => {
-            debug!("SetAttribute TTLV {ttlv:#?}" );
+            debug!("SetAttribute TTLV {ttlv:#?}");
             let req = from_ttlv::<SetAttribute>(ttlv)?;
             debug!("SetAttribute: {req:?}");
             let resp = kms.set_attribute(req, user, database_params).await?;
