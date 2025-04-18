@@ -3,6 +3,8 @@ mod add_attribute_2_1;
 mod config;
 mod create_1_4;
 mod create_2_1;
+mod decrypt_1_4;
+mod decrypt_2_1;
 mod discover_versions;
 mod encrypt_1_4;
 mod encrypt_2_1;

@@ -122,7 +122,7 @@ fn decrypt_request(key_id: UniqueIdentifier, bulk_data: &BulkData) -> KResult<De
             ..CryptographicParameters::default()
         }),
         data: Some(bulk_data.serialize()?.to_vec()),
-        iv_counter_nonce: None,
+        i_v_counter_nonce: None,
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,

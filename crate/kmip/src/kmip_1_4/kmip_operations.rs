@@ -849,6 +849,7 @@ pub struct Encrypt {
     pub cryptographic_parameters: Option<CryptographicParameters>,
 
     /// The data to be encrypted.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<Vec<u8>>,
 
     /// The initialization vector, counter or
@@ -902,6 +903,7 @@ impl From<Encrypt> for kmip_2_1::kmip_operations::Encrypt {
 pub struct EncryptResponse {
     pub unique_identifier: String,
 
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<Vec<u8>>,
 
     /// The initialization vector, counter or
@@ -944,15 +946,72 @@ impl TryFrom<kmip_2_1::kmip_operations::EncryptResponse> for EncryptResponse {
 #[serde(rename_all = "PascalCase")]
 pub struct Decrypt {
     pub unique_identifier: String,
+
+    /// The Cryptographic Parameters (Block Cipher Mode, Padding Method) corresponding
+    /// to the particular decryption method requested.
+    /// If omitted then the Cryptographic Parameters associated
+    /// with the Managed Cryptographic Object with the lowest Attribute Index SHALL be used.
+    ///
+    /// If there are no Cryptographic Parameters associated with the Managed Cryptographic Object
+    /// and the algorithm requires parameters then the operation SHALL return
+    /// with a Result Status of Operation Failed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_parameters: Option<CryptographicParameters>,
-    pub data: Vec<u8>,
+
+    /// The data to be encrypted.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub iv_counter_nonce: Option<Vec<u8>>,
+    pub data: Option<Vec<u8>>,
+
+    /// The initialization vector, counter or
+    /// nonce to be used (where appropriate).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub i_v_counter_nonce: Option<Vec<u8>>,
+
+    /// Specifies the existing stream or by-
+    /// parts cryptographic operation (as
+    /// returned from a previous call to this
+    /// operation)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub correlation_value: Option<Vec<u8>>,
+
+    /// Initial operation as Boolean
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub init_indicator: Option<bool>,
+
+    /// Final operation as Boolean
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub final_indicator: Option<bool>,
+
+    /// Any additional data to be authenticated via the Authenticated Encryption
+    /// Tag. If supplied in multipart encryption,
+    /// this data MUST be supplied on the initial Decrypt request
     #[serde(skip_serializing_if = "Option::is_none")]
     pub authenticated_encryption_additional_data: Option<Vec<u8>>,
+
+    ///Specifies the tag that will be needed to authenticate the decrypted data.
+    /// If supplied in multipart decryption, this data MUST be supplied on the initial
+    /// Decrypt request
     #[serde(skip_serializing_if = "Option::is_none")]
     pub authenticated_encryption_tag: Option<Vec<u8>>,
+}
+
+impl From<Decrypt> for kmip_2_1::kmip_operations::Decrypt {
+    fn from(value: Decrypt) -> Self {
+        Self {
+            unique_identifier: Some(kmip_2_1::kmip_types::UniqueIdentifier::TextString(
+                value.unique_identifier,
+            )),
+            cryptographic_parameters: value.cryptographic_parameters.map(Into::into),
+            data: value.data.map(Into::into),
+            i_v_counter_nonce: value.i_v_counter_nonce,
+            correlation_value: value.correlation_value.map(Into::into),
+            init_indicator: value.init_indicator,
+            final_indicator: value.final_indicator,
+            authenticated_encryption_additional_data: value
+                .authenticated_encryption_additional_data,
+            authenticated_encryption_tag: value.authenticated_encryption_tag,
+        }
+    }
 }
 
 /// Response to a Decrypt request
@@ -960,7 +1019,30 @@ pub struct Decrypt {
 #[serde(rename_all = "PascalCase")]
 pub struct DecryptResponse {
     pub unique_identifier: String,
-    pub data: Vec<u8>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<Vec<u8>>,
+
+    /// Specifies the existing stream or by-
+    /// parts cryptographic operation (as
+    /// returned from a previous call to this
+    /// operation)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub correlation_value: Option<Vec<u8>>,
+}
+
+impl TryFrom<kmip_2_1::kmip_operations::DecryptResponse> for DecryptResponse {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_operations::DecryptResponse) -> Result<Self, Self::Error> {
+        trace!("Converting KMIP 2.1 DecryptResponse to KMIP 1.4: {value:#?}");
+
+        Ok(Self {
+            unique_identifier: value.unique_identifier.to_string(),
+            data: value.data.map(|d| d.to_vec()),
+            correlation_value: value.correlation_value,
+        })
+    }
 }
 
 /// 4.31 Sign
@@ -1747,9 +1829,7 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             // Operation::EncryptResponse(encrypt_response) => {
             //     Self::EncryptResponse(encrypt_response.into())
             // }
-            // Operation::Decrypt(decrypt) => {
-            //     Self::Decrypt(decrypt.into())
-            // }
+            Operation::Decrypt(decrypt) => Self::Decrypt(decrypt.into()),
             // Operation::DecryptResponse(decrypt_response) => {
             //     Self::DecryptResponse(decrypt_response.into())
             // }
@@ -1994,9 +2074,9 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             // Operation::Decrypt(decrypt) => {
             //     Self::Decrypt(decrypt.into())
             // }
-            // Operation::DecryptResponse(decrypt_response) => {
-            //     Self::DecryptResponse(decrypt_response.into())
-            // }
+            kmip_2_1::kmip_operations::Operation::DecryptResponse(decrypt_response) => {
+                Self::DecryptResponse(decrypt_response.try_into().context("DecryptResponse")?)
+            }
             // Operation::Sign(sign) => Self::Sign(sign.into()),
             // Operation::SignResponse(sign_response) => {
             //     Self::SignResponse(sign_response.into())

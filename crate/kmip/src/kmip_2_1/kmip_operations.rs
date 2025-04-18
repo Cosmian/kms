@@ -1162,6 +1162,7 @@ pub struct Decrypt {
     /// Unique Identifier.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unique_identifier: Option<UniqueIdentifier>,
+
     /// The Cryptographic Parameters (Block
     /// Cipher Mode, Padding Method)
     /// corresponding to the particular
@@ -1174,25 +1175,31 @@ pub struct Decrypt {
     /// Result Status of Operation Failed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_parameters: Option<CryptographicParameters>,
+
     /// The data to be decrypted.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<Vec<u8>>,
+
     /// The initialization vector, counter or
     /// nonce to be used (where appropriate)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub iv_counter_nonce: Option<Vec<u8>>,
+    pub i_v_counter_nonce: Option<Vec<u8>>,
+
     /// Specifies the existing stream or by-
     /// parts cryptographic operation (as
     /// returned from a previous call to this
     /// operation)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub correlation_value: Option<Vec<u8>>,
+
     /// Initial operation as Boolean
     #[serde(skip_serializing_if = "Option::is_none")]
     pub init_indicator: Option<bool>,
+
     /// Final operation as Boolean
     #[serde(skip_serializing_if = "Option::is_none")]
     pub final_indicator: Option<bool>,
+
     /// Additional data to be authenticated via
     /// the Authenticated Encryption Tag. If
     /// supplied in multi-part decryption, this
@@ -1200,6 +1207,7 @@ pub struct Decrypt {
     /// Decrypt request
     #[serde(skip_serializing_if = "Option::is_none")]
     pub authenticated_encryption_additional_data: Option<Vec<u8>>,
+
     /// Specifies the tag that will be needed to
     /// authenticate the decrypted data and
     /// the additional authenticated data. If
@@ -1221,7 +1229,7 @@ impl Display for Decrypt {
             self.unique_identifier,
             self.cryptographic_parameters,
             self.data,
-            self.iv_counter_nonce,
+            self.i_v_counter_nonce,
             self.correlation_value,
             self.init_indicator,
             self.final_indicator,

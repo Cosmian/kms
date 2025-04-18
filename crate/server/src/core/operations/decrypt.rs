@@ -199,7 +199,7 @@ async fn decrypt_using_encryption_oracle(
     prefix: &str,
 ) -> KResult<DecryptResponse> {
     let mut data = request
-        .iv_counter_nonce
+        .i_v_counter_nonce
         .as_ref()
         .map_or(vec![], Clone::clone);
     data.extend(
@@ -386,7 +386,7 @@ fn decrypt_single_with_symmetric_key(
         )
     })?;
     let (key_bytes, aead) = get_aead_and_key(owm, request)?;
-    let nonce = request.iv_counter_nonce.as_ref().ok_or_else(|| {
+    let nonce = request.i_v_counter_nonce.as_ref().ok_or_else(|| {
         KmsError::InvalidRequest("Decrypt: the nonce/IV must be provided".to_owned())
     })?;
     let aad = request
