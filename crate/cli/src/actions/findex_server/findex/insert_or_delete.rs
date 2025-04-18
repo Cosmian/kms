@@ -5,9 +5,8 @@ use std::{
 };
 
 use clap::Parser;
-use cosmian_findex::Value;
 use cosmian_findex_client::RestClient;
-use cosmian_findex_structs::{CUSTOM_WORD_LENGTH, Keyword, Keywords};
+use cosmian_findex_structs::{CUSTOM_WORD_LENGTH, Keyword, Keywords, Value};
 use cosmian_kms_client::KmsClient;
 use tracing::trace;
 

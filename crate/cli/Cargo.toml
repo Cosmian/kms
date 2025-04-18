@@ -82,8 +82,6 @@ cosmian_findex = { workspace = true, features = ["redis-mem", "test-utils"] }
 lazy_static = "1.5"
 openssl = { workspace = true }
 predicates = "3.1"
-rand = { workspace = true }
-rand_chacha = "0.9.0"
 regex = { version = "1.11", default-features = false }
 tempfile = "3.16"
 test_findex_server = { path = "../test_findex_server" }

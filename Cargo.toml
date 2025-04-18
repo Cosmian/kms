@@ -55,10 +55,13 @@ cosmian_cover_crypt = { version = "15.0", default-features = false }
 cosmian_cli = { path = "crate/cli" }
 cosmian_kms_client_utils = { path = "crate/client_utils" }
 cosmian_kms_client_wasm = { path = "crate/wasm" }
-cosmian_crypto_core = { version = "10.0.1", default-features = false, features = [
+cosmian_crypto_core = { version = "10.1.0", default-features = false, features = [
   "ser",
 ] }
-cosmian_findex = { git = "https://github.com/Cosmian/findex", default-features = false, rev = "98fcb6e97054e1bb9dddd7a0d620e27438cb91b7" }
+cosmian_findex = { git = "https://github.com/Cosmian/findex", features = [
+  "redis-mem",
+  "sqlite-mem",
+], rev = "6329b6b2f2b64b033e40b05cd12ca1c9b5ee376f" }
 cosmian_findex_server = { git = "https://www.github.com/Cosmian/findex-server", branch = "develop" }
 cosmian_findex_structs = { git = "https://www.github.com/Cosmian/findex-server", branch = "develop" }
 cosmian_http_client = { git = "https://www.github.com/Cosmian/http_client_server", tag = "0.1.1" }
@@ -76,7 +79,7 @@ log = { version = "0.4", default-features = false }
 num-format = "0.4"
 pem = "3.0"
 openssl = { version = "0.10", default-features = false }
-rand = "0.9"
+rand = "0.9.1"
 reqwest = { version = "0.11", default-features = false }
 serde = "1.0"
 serde_json = "1.0"

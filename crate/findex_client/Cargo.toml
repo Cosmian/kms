@@ -31,7 +31,5 @@ uuid = { workspace = true }
 
 [dev-dependencies]
 cosmian_findex = { workspace = true, features = ["test-utils"] }
-rand = { workspace = true }
-rand_chacha = "0.9.0"
 test_kms_server = { path = "../test_kms_server" }
 tokio = { workspace = true }

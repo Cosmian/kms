@@ -6,10 +6,10 @@ use std::{
 use cosmian_findex_client::{
     FindexRestClient, KmsEncryptionLayer, RestClient,
     reexport::cosmian_findex::{
-        Findex, IndexADT, MemoryEncryptionLayer, Value, generic_decode, generic_encode,
+        Findex, IndexADT, MemoryEncryptionLayer, generic_decode, generic_encode,
     },
 };
-use cosmian_findex_structs::{Keyword, Keywords, SearchResults};
+use cosmian_findex_structs::{Keyword, Keywords, SearchResults, Value};
 use cosmian_kms_client::KmsClient;
 use tokio::sync::Semaphore;
 use tracing::{debug, trace};

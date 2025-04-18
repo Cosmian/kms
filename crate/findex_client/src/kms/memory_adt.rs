@@ -39,7 +39,7 @@ impl<
         let (ciphertexts_and_tokens, old) = if let Some(word) = optional_word {
             // Zip words and tokens
             bindings_words.push(word); // size: n+1
-            tokens.push(token.clone()); // size: n+1
+            tokens.push(token); // size: n+1
 
             // Bulk Encrypt
             let mut ciphertexts = self.encrypt(&bindings_words, &tokens).await?;
@@ -66,7 +66,7 @@ impl<
         let cur = self
             .mem
             .guarded_write(
-                (token.clone(), old),
+                (token, old),
                 ciphertexts_and_tokens
                     .into_iter()
                     .map(|(w, a)| (a, w))
@@ -151,9 +151,12 @@ impl<
 mod tests {
     use std::sync::Arc;
 
+    use cosmian_crypto_core::{CsRng, Sampling, reexport::rand_core::SeedableRng};
     use cosmian_findex::{
         InMemory,
-        test_utils::{test_guarded_write_concurrent, test_single_write_and_read, test_wrong_guard},
+        test_utils::{
+            gen_seed, test_guarded_write_concurrent, test_single_write_and_read, test_wrong_guard,
+        },
     };
     use cosmian_findex_structs::CUSTOM_WORD_LENGTH;
     use cosmian_kms_client::{
@@ -164,8 +167,6 @@ mod tests {
         },
     };
     use cosmian_logger::log_init;
-    use rand::SeedableRng;
-    use rand_chacha::ChaChaRng;
     use test_kms_server::start_default_test_kms_server;
     use tokio::task;
 
@@ -214,7 +215,7 @@ mod tests {
     #[tokio::test]
     #[allow(clippy::panic_in_result_fn, clippy::unwrap_used)]
     async fn test_adt_encrypt_decrypt() -> ClientResult<()> {
-        let mut rng = ChaChaRng::from_os_rng();
+        let mut rng = CsRng::from_entropy();
         let tok = Address::<ADDRESS_LENGTH>::random(&mut rng);
         let ptx = [1; CUSTOM_WORD_LENGTH];
 
@@ -226,8 +227,8 @@ mod tests {
 
         handles.push(task::spawn(async move {
             for _ in 0..1_000 {
-                let ctx = layer.encrypt(&[ptx], &[tok.clone()]).await?.remove(0);
-                let res = layer.decrypt(&[ctx], &[tok.clone()]).await?.remove(0);
+                let ctx = layer.encrypt(&[ptx], &[tok]).await?.remove(0);
+                let res = layer.decrypt(&[ctx], &[tok]).await?.remove(0);
                 assert_eq!(ptx, res);
                 assert_eq!(ptx.len(), res.len());
             }
@@ -246,7 +247,7 @@ mod tests {
     #[tokio::test]
     async fn test_single_vector_push() -> ClientResult<()> {
         log_init(None);
-        let mut rng = ChaChaRng::from_os_rng();
+        let mut rng = CsRng::from_entropy();
 
         let ctx = start_default_test_kms_server().await;
         let layer = create_test_layer(ctx.owner_client_conf.kms_config.clone()).await?;
@@ -255,8 +256,8 @@ mod tests {
 
         assert_eq!(
             layer
-                .guarded_write((header_addr.clone(), None), vec![(
-                    header_addr.clone(),
+                .guarded_write((header_addr, None), vec![(
+                    header_addr,
                     [2; CUSTOM_WORD_LENGTH]
                 ),])
                 .await?,
@@ -276,7 +277,7 @@ mod tests {
     #[tokio::test]
     async fn test_twice_vector_push() -> ClientResult<()> {
         log_init(None);
-        let mut rng = ChaChaRng::from_os_rng();
+        let mut rng = CsRng::from_entropy();
         let ctx = start_default_test_kms_server().await;
         let layer = create_test_layer(ctx.owner_client_conf.kms_config.clone()).await?;
 
@@ -286,9 +287,9 @@ mod tests {
 
         assert_eq!(
             layer
-                .guarded_write((header_addr.clone(), None), vec![
-                    (header_addr.clone(), [2; CUSTOM_WORD_LENGTH]),
-                    (val_addr_1.clone(), [1; CUSTOM_WORD_LENGTH]),
+                .guarded_write((header_addr, None), vec![
+                    (header_addr, [2; CUSTOM_WORD_LENGTH]),
+                    (val_addr_1, [1; CUSTOM_WORD_LENGTH]),
                 ])
                 .await?,
             None
@@ -307,7 +308,7 @@ mod tests {
     #[tokio::test]
     async fn test_vector_push() -> ClientResult<()> {
         log_init(None);
-        let mut rng = ChaChaRng::from_os_rng();
+        let mut rng = CsRng::from_entropy();
         let ctx = start_default_test_kms_server().await;
         let layer = create_test_layer(ctx.owner_client_conf.kms_config.clone()).await?;
 
@@ -320,10 +321,10 @@ mod tests {
 
         assert_eq!(
             layer
-                .guarded_write((header_addr.clone(), None), vec![
-                    (header_addr.clone(), [2; CUSTOM_WORD_LENGTH]),
-                    (val_addr_1.clone(), [1; CUSTOM_WORD_LENGTH]),
-                    (val_addr_2.clone(), [1; CUSTOM_WORD_LENGTH])
+                .guarded_write((header_addr, None), vec![
+                    (header_addr, [2; CUSTOM_WORD_LENGTH]),
+                    (val_addr_1, [1; CUSTOM_WORD_LENGTH]),
+                    (val_addr_2, [1; CUSTOM_WORD_LENGTH])
                 ])
                 .await?,
             None
@@ -331,10 +332,10 @@ mod tests {
 
         assert_eq!(
             layer
-                .guarded_write((header_addr.clone(), None), vec![
-                    (header_addr.clone(), [2; CUSTOM_WORD_LENGTH]),
-                    (val_addr_1.clone(), [3; CUSTOM_WORD_LENGTH]),
-                    (val_addr_2.clone(), [3; CUSTOM_WORD_LENGTH])
+                .guarded_write((header_addr, None), vec![
+                    (header_addr, [2; CUSTOM_WORD_LENGTH]),
+                    (val_addr_1, [3; CUSTOM_WORD_LENGTH]),
+                    (val_addr_2, [3; CUSTOM_WORD_LENGTH])
                 ])
                 .await?,
             Some([2; CUSTOM_WORD_LENGTH])
@@ -342,10 +343,10 @@ mod tests {
 
         assert_eq!(
             layer
-                .guarded_write((header_addr.clone(), Some([2; CUSTOM_WORD_LENGTH])), vec![
-                    (header_addr.clone(), [4; CUSTOM_WORD_LENGTH]),
-                    (val_addr_3.clone(), [2; CUSTOM_WORD_LENGTH]),
-                    (val_addr_4.clone(), [2; CUSTOM_WORD_LENGTH])
+                .guarded_write((header_addr, Some([2; CUSTOM_WORD_LENGTH])), vec![
+                    (header_addr, [4; CUSTOM_WORD_LENGTH]),
+                    (val_addr_3, [2; CUSTOM_WORD_LENGTH]),
+                    (val_addr_4, [2; CUSTOM_WORD_LENGTH])
                 ])
                 .await?,
             Some([2; CUSTOM_WORD_LENGTH])
@@ -378,7 +379,7 @@ mod tests {
         let ctx = start_default_test_kms_server().await;
         let memory = create_test_layer(ctx.owner_client_conf.kms_config.clone()).await?;
 
-        test_single_write_and_read::<CUSTOM_WORD_LENGTH, _>(&memory, rand::random()).await;
+        test_single_write_and_read::<CUSTOM_WORD_LENGTH, _>(&memory, gen_seed()).await;
         Ok(())
     }
 
@@ -386,17 +387,17 @@ mod tests {
     async fn test_sequential_wrong_guard() -> ClientResult<()> {
         let ctx = start_default_test_kms_server().await;
         let memory = create_test_layer(ctx.owner_client_conf.kms_config.clone()).await?;
-        test_wrong_guard::<CUSTOM_WORD_LENGTH, _>(&memory, rand::random()).await;
+        test_wrong_guard::<CUSTOM_WORD_LENGTH, _>(&memory, gen_seed()).await;
         Ok(())
     }
 
-    #[ignore = "to be fixed"]
     #[tokio::test]
     async fn test_concurrent_read_write() -> ClientResult<()> {
         log_init(None);
         let ctx = start_default_test_kms_server().await;
         let memory = create_test_layer(ctx.owner_client_conf.kms_config.clone()).await?;
-        test_guarded_write_concurrent::<CUSTOM_WORD_LENGTH, _>(&memory, rand::random()).await;
+        test_guarded_write_concurrent::<CUSTOM_WORD_LENGTH, _>(&memory, gen_seed(), Some(100))
+            .await;
         Ok(())
     }
 }

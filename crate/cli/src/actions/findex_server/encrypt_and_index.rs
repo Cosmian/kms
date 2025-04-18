@@ -7,13 +7,11 @@ use std::{
 use clap::Parser;
 use cosmian_findex_client::{
     RestClient,
-    reexport::{
-        cosmian_findex::Value,
-        cosmian_findex_structs::{
-            CUSTOM_WORD_LENGTH, EncryptedEntries, Keyword, KeywordToDataSetsMap, Uuids,
-        },
+    reexport::cosmian_findex_structs::{
+        CUSTOM_WORD_LENGTH, EncryptedEntries, Keyword, KeywordToDataSetsMap, Uuids,
     },
 };
+use cosmian_findex_structs::Value;
 use cosmian_kms_client::{
     KmsClient, reexport::cosmian_kms_client_utils::symmetric_utils::DataEncryptionAlgorithm,
 };
