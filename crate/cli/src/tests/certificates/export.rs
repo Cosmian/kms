@@ -215,7 +215,8 @@ async fn test_import_export_p12_25519() {
 
 #[tokio::test]
 async fn test_import_p12_rsa() {
-    log_init(Some("debug"));
+    log_init(option_env!("RUST_LOG"));
+    // log_init(Some("debug"));
     let tmp_dir = TempDir::new().unwrap();
     let tmp_path = tmp_dir.path();
     //load the PKCS#12 file

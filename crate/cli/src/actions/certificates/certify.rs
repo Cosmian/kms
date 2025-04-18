@@ -326,35 +326,35 @@ impl CertifyAction {
                 Algorithm::NistP192 => {
                     ec_algorithm(
                         &mut attributes,
-                        CryptographicAlgorithm::EC,
+                        CryptographicAlgorithm::ECDH,
                         RecommendedCurve::P192,
                     );
                 }
                 Algorithm::NistP224 => {
                     ec_algorithm(
                         &mut attributes,
-                        CryptographicAlgorithm::EC,
+                        CryptographicAlgorithm::ECDH,
                         RecommendedCurve::P224,
                     );
                 }
                 Algorithm::NistP256 => {
                     ec_algorithm(
                         &mut attributes,
-                        CryptographicAlgorithm::EC,
+                        CryptographicAlgorithm::ECDH,
                         RecommendedCurve::P256,
                     );
                 }
                 Algorithm::NistP384 => {
                     ec_algorithm(
                         &mut attributes,
-                        CryptographicAlgorithm::EC,
+                        CryptographicAlgorithm::ECDH,
                         RecommendedCurve::P384,
                     );
                 }
                 Algorithm::NistP521 => {
                     ec_algorithm(
                         &mut attributes,
-                        CryptographicAlgorithm::EC,
+                        CryptographicAlgorithm::ECDH,
                         RecommendedCurve::P521,
                     );
                 }
@@ -362,7 +362,7 @@ impl CertifyAction {
                 Algorithm::X25519 => {
                     ec_algorithm(
                         &mut attributes,
-                        CryptographicAlgorithm::EC,
+                        CryptographicAlgorithm::ECDH,
                         RecommendedCurve::CURVE25519,
                     );
                 }
@@ -378,7 +378,7 @@ impl CertifyAction {
                 Algorithm::X448 => {
                     ec_algorithm(
                         &mut attributes,
-                        CryptographicAlgorithm::EC,
+                        CryptographicAlgorithm::ECDH,
                         RecommendedCurve::CURVE448,
                     );
                 }

@@ -474,7 +474,7 @@ fn test_object_public_key() {
                 key_material: KeyMaterial::ByteString(Zeroizing::from(b"1231456".to_vec())),
                 attributes: Some(Attributes {
                     object_type: Some(ObjectType::PublicKey),
-                    cryptographic_algorithm: Some(CryptographicAlgorithm::EC),
+                    cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
                     cryptographic_length: Some(256),
                     cryptographic_usage_mask: Some(CryptographicUsageMask::Encrypt),
                     key_format_type: Some(KeyFormatType::TransparentECPublicKey),
@@ -520,7 +520,7 @@ fn test_import_public_key() {
                 key_material: KeyMaterial::ByteString(Zeroizing::from(key_bytes.to_vec())),
                 attributes: Some(Attributes {
                     object_type: Some(ObjectType::PublicKey),
-                    cryptographic_algorithm: Some(CryptographicAlgorithm::EC),
+                    cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
                     cryptographic_length: Some(256),
                     cryptographic_usage_mask: Some(CryptographicUsageMask::Encrypt),
                     key_format_type: Some(KeyFormatType::TransparentECPublicKey),

@@ -36,8 +36,8 @@ fn test_query() {
 
 #[test]
 fn test_create_aes_symmetric_key() {
-    // log_init(option_env!("RUST_LOG"));
-    log_init(Some("debug"));
+    log_init(option_env!("RUST_LOG"));
+    // log_init(Some("debug"));
     let attributes = vec![
         Attribute::CryptographicAlgorithm(CryptographicAlgorithm::AES),
         Attribute::CryptographicLength(128),

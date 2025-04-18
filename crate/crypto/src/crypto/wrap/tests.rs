@@ -63,7 +63,7 @@ fn test_wrap_unwrap() -> Result<(), CryptoError> {
         },
     )?;
 
-    let algorithm = CryptographicAlgorithm::EC;
+    let algorithm = CryptographicAlgorithm::ECDH;
     let private_key_attributes = Attributes {
         cryptographic_usage_mask: Some(CryptographicUsageMask::UnwrapKey),
         ..Attributes::default()
@@ -72,9 +72,6 @@ fn test_wrap_unwrap() -> Result<(), CryptoError> {
         cryptographic_usage_mask: Some(CryptographicUsageMask::WrapKey),
         ..Attributes::default()
     };
-
-    // let private_key_mask = Some(CryptographicUsageMask::Unrestricted);
-    // let public_key_mask = Some(CryptographicUsageMask::Unrestricted);
 
     let wrapping_key_pair = create_x25519_key_pair(
         "wrapping_private_key_uid",
@@ -219,7 +216,7 @@ fn test_encrypt_decrypt_rfc_5649() -> CryptoResult<()> {
 #[test]
 #[cfg(not(feature = "fips"))]
 fn test_encrypt_decrypt_rfc_ecies_x25519() -> CryptoResult<()> {
-    let algorithm = CryptographicAlgorithm::EC;
+    let algorithm = CryptographicAlgorithm::ECDH;
     let private_key_attributes = Attributes {
         cryptographic_usage_mask: Some(CryptographicUsageMask::Unrestricted),
         ..Attributes::default()

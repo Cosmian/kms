@@ -197,7 +197,7 @@ pub(crate) fn password_wrap_import_test(
         );
         assert_eq!(
             wrapped_object.key_wrapping_data().unwrap().encoding_option,
-            Some(EncodingOption::NoEncoding)
+            Some(EncodingOption::TTLVEncoding)
         );
         assert_ne!(wrapped_object.key_block()?.key_bytes()?, key_bytes);
         unwrap(
@@ -240,7 +240,7 @@ pub(crate) fn password_wrap_import_test(
 
         assert_eq!(
             wrapped_object.key_wrapping_data().unwrap().encoding_option,
-            Some(EncodingOption::NoEncoding)
+            Some(EncodingOption::TTLVEncoding)
         );
         assert_ne!(wrapped_object.key_block()?.key_bytes()?, key_bytes);
         unwrap(

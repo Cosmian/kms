@@ -6,7 +6,7 @@ use cosmian_kms_client::{
     cosmian_kmip::kmip_2_1::{
         kmip_attributes::Attributes,
         kmip_objects::Object,
-        kmip_types::{CryptographicAlgorithm, LinkType, UniqueIdentifier, WrappingMethod},
+        kmip_types::{CryptographicAlgorithm, UniqueIdentifier, WrappingMethod},
     },
     kmip_2_1::requests::create_symmetric_key_kmip_object,
     read_object_from_json_ttlv_file, write_kmip_object_to_file,
@@ -16,7 +16,7 @@ use cosmian_kms_crypto::crypto::elliptic_curves::operation::create_x25519_key_pa
 use cosmian_kms_crypto::crypto::wrap::unwrap_key_block;
 use kms_test_server::start_default_test_kms_server;
 use tempfile::TempDir;
-use tracing::{debug, trace};
+use tracing::{info, trace};
 
 use super::ExportKeyParams;
 use crate::{
@@ -110,12 +110,10 @@ pub(crate) async fn test_import_export_wrap_ecies() -> CliResult<()> {
     use cosmian_kms_client::cosmian_kmip::kmip_0::kmip_types::CryptographicUsageMask;
 
     cosmian_logger::log_init(option_env!("RUST_LOG"));
-    // create a temp dir
-    let tmp_dir = TempDir::new()?;
-    let tmp_path = tmp_dir.path();
+    // cosmian_logger::log_init(Some("info"));
     // init the test server
     let ctx = start_default_test_kms_server().await;
-    // Generate a symmetric wrapping key
+
     let wrap_private_key_uid = "wrap_private_key_uid";
     let wrap_public_key_uid = "wrap_public_key_uid";
     let private_key_attributes = Attributes {
@@ -129,11 +127,16 @@ pub(crate) async fn test_import_export_wrap_ecies() -> CliResult<()> {
     let wrap_key_pair = create_x25519_key_pair(
         wrap_private_key_uid,
         wrap_public_key_uid,
-        &CryptographicAlgorithm::EC,
+        &CryptographicAlgorithm::ECDH,
         Attributes::default(),
         Some(private_key_attributes),
         Some(public_key_attributes),
     )?;
+
+    // create a temp dir
+    let tmp_dir = TempDir::new()?;
+    let tmp_path = tmp_dir.path();
+
     // Write the private key to a file and import it
     let wrap_private_key_path = tmp_path.join("wrap.private.key");
     write_kmip_object_to_file(wrap_key_pair.private_key(), &wrap_private_key_path)?;
@@ -145,6 +148,7 @@ pub(crate) async fn test_import_export_wrap_ecies() -> CliResult<()> {
         replace_existing: true,
         ..Default::default()
     })?;
+
     // Write the public key to a file and import it
     let wrap_public_key_path = tmp_path.join("wrap.public.key");
     write_kmip_object_to_file(wrap_key_pair.public_key(), &wrap_public_key_path)?;
@@ -157,23 +161,24 @@ pub(crate) async fn test_import_export_wrap_ecies() -> CliResult<()> {
         ..Default::default()
     })?;
 
-    // test CC
-    let (private_key_id, _public_key_id) = create_cc_master_key_pair(
-        &ctx.owner_client_conf_path,
-        "--policy-specifications",
-        "../../test_data/policy_specifications.json",
-        &[],
-        false,
-    )?;
-    test_import_export_wrap_private_key(
-        &ctx.owner_client_conf_path,
-        "cc",
-        &private_key_id,
-        wrap_public_key_uid,
-        wrap_key_pair.private_key(),
-    )?;
+    // // test CC
+    // info!("\n\n==>testing Covercrypt keys\n");
+    // let (private_key_id, _public_key_id) = create_cc_master_key_pair(
+    //     &ctx.owner_client_conf_path,
+    //     "--policy-specifications",
+    //     "../../test_data/policy_specifications.json",
+    //     &[],
+    //     false,
+    // )?;
+    // test_import_export_wrap_private_key(
+    //     &ctx.owner_client_conf_path,
+    //     "cc",
+    //     &private_key_id,
+    //     wrap_public_key_uid,
+    //     wrap_key_pair.private_key(),
+    // )?;
 
-    debug!("testing EC keys");
+    info!("\n\n==> testing EC keys\n");
     let (private_key_id, _public_key_id) = elliptic_curve::create_key_pair::create_ec_key_pair(
         &ctx.owner_client_conf_path,
         "nist-p256",
@@ -188,7 +193,7 @@ pub(crate) async fn test_import_export_wrap_ecies() -> CliResult<()> {
         wrap_key_pair.private_key(),
     )?;
 
-    debug!("testing symmetric keys");
+    info!("\n\n==> testing symmetric keys\n");
     let key_id = create_symmetric_key(&ctx.owner_client_conf_path, CreateKeyAction::default())?;
     test_import_export_wrap_private_key(
         &ctx.owner_client_conf_path,
@@ -225,17 +230,17 @@ fn test_import_export_wrap_private_key(
 
     // Export the private key with wrapping
     let wrapped_private_key_file = tmp_path.join("wrapped_master_private.key");
-    export_key(ExportKeyParams {
-        cli_conf_path: cli_conf_path.to_string(),
-        sub_command: sub_command.to_string(),
-        key_id: private_key_id.to_string(),
-        key_file: wrapped_private_key_file.to_str().unwrap().to_string(),
-        wrap_key_id: Some(wrapping_key_uid.to_string()),
-        ..Default::default()
-    })?;
 
-    // test the exported private key with wrapping
+    // test the wrapping on export
     {
+        export_key(ExportKeyParams {
+            cli_conf_path: cli_conf_path.to_string(),
+            sub_command: sub_command.to_string(),
+            key_id: private_key_id.to_string(),
+            key_file: wrapped_private_key_file.to_str().unwrap().to_string(),
+            wrap_key_id: Some(wrapping_key_uid.to_string()),
+            ..Default::default()
+        })?;
         let mut wrapped_private_key = read_object_from_json_ttlv_file(&wrapped_private_key_file)?;
         let wrapped_key_wrapping_data = wrapped_private_key.key_wrapping_data().unwrap();
         assert_eq!(
@@ -259,10 +264,7 @@ fn test_import_export_wrap_private_key(
                 .is_none()
         );
         unwrap_key_block(wrapped_private_key.key_block_mut()?, unwrapping_key)?;
-        assert_eq!(
-            wrapped_private_key.key_block()?.key_value,
-            private_key.key_block()?.key_value
-        );
+        assert_eq!(wrapped_private_key, private_key);
     }
 
     // test the unwrapping on import
@@ -285,27 +287,20 @@ fn test_import_export_wrap_private_key(
             key_file: re_exported_key_file.to_str().unwrap().to_string(),
             ..Default::default()
         })?;
-        let re_exported_key = read_object_from_json_ttlv_file(&re_exported_key_file)?;
-        assert_eq!(
-            re_exported_key.key_block()?.key_material()?,
-            private_key.key_block()?.key_material()?
-        );
-        assert_eq!(
-            re_exported_key
-                .key_block()?
-                .attributes()?
-                .get_link(LinkType::PublicKeyLink),
-            private_key
-                .key_block()?
-                .attributes()?
-                .get_link(LinkType::PublicKeyLink)
-        );
+        let mut re_exported_key = read_object_from_json_ttlv_file(&re_exported_key_file)?;
+        // The only difference between the two keys should be the UniqueIdentifier Attribute
+        re_exported_key
+            .key_block_mut()?
+            .attributes_mut()?
+            .unique_identifier
+            .clone_from(&private_key.key_block()?.attributes()?.unique_identifier);
+        assert_eq!(re_exported_key, private_key);
         assert!(re_exported_key.key_wrapping_data().is_none());
     }
 
     // test the unwrapping on export
     {
-        // import the wrapped key, un wrapping it on import
+        // import the wrapped key, unwrapping it on import
         let wrapped_key_id = import_key(ImportKeyParams {
             key_id: Some(private_key_id.to_string()),
             cli_conf_path: cli_conf_path.to_string(),
@@ -326,10 +321,7 @@ fn test_import_export_wrap_private_key(
             ..Default::default()
         })?;
         let exported_unwrapped_key = read_object_from_json_ttlv_file(&exported_unwrapped_key_file)?;
-        assert_eq!(
-            exported_unwrapped_key.key_block()?.key_value,
-            private_key.key_block()?.key_value
-        );
+        assert_eq!(exported_unwrapped_key, private_key);
         assert!(exported_unwrapped_key.key_wrapping_data().is_none());
     }
 

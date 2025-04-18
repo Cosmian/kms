@@ -372,7 +372,9 @@ async fn test_certificate_encrypt_using_prime224() -> CliResult<()> {
 async fn test_certificate_encrypt_using_ed25519() -> CliResult<()> {
     use cosmian_logger::log_init;
 
-    log_init(Some("info,cosmian_kmip=debug,cosmian_kms_client=debug,cosmian_kms_server=debug"));
+    // log_init(Some("info,cosmian_kmip=debug,cosmian_kms_client=debug,cosmian_kms_server=debug"));
+    log_init(option_env!("RUST_LOG"));
+
     import_encrypt_decrypt("ED25519", None).await
 }
 

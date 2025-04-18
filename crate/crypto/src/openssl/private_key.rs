@@ -5,7 +5,8 @@ use cosmian_kmip::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType, PrivateKey},
         kmip_types::{
-            CryptographicAlgorithm, CryptographicDomainParameters, KeyFormatType, RecommendedCurve,
+            CryptographicAlgorithm, CryptographicDomainParameters, CryptographicParameters,
+            KeyFormatType, RecommendedCurve,
         },
     },
     SafeBigInt,
@@ -322,6 +323,10 @@ pub fn openssl_private_key_to_kmip(
                         key_format_type: Some(KeyFormatType::TransparentRSAPrivateKey),
                         object_type: Some(ObjectType::PrivateKey),
                         cryptographic_usage_mask,
+                        cryptographic_parameters: Some(CryptographicParameters {
+                            cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+                            ..CryptographicParameters::default()
+                        }),
                         ..Attributes::default()
                     }),
                 }),
@@ -410,7 +415,10 @@ pub fn openssl_private_key_to_kmip(
                             recommended_curve: Some(recommended_curve),
                             ..CryptographicDomainParameters::default()
                         }),
-                        cryptographic_parameters: None,
+                        cryptographic_parameters: Some(CryptographicParameters {
+                            cryptographic_algorithm: Some(cryptographic_algorithm),
+                            ..CryptographicParameters::default()
+                        }),
                         cryptographic_usage_mask,
                         ..Attributes::default()
                     }),
@@ -442,6 +450,10 @@ pub fn openssl_private_key_to_kmip(
                         key_format_type: Some(KeyFormatType::PKCS8),
                         object_type: Some(ObjectType::PrivateKey),
                         cryptographic_usage_mask,
+                        cryptographic_parameters: Some(CryptographicParameters {
+                            cryptographic_algorithm,
+                            ..CryptographicParameters::default()
+                        }),
                         ..Attributes::default()
                     }),
                 }),

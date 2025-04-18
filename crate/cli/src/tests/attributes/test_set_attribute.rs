@@ -321,7 +321,8 @@ fn check_set_delete_attributes(uid: &str, ctx: &TestsContext) -> CliResult<()> {
 /// ```
 #[tokio::test]
 async fn test_set_attribute_ckms() -> CliResult<()> {
-    log_init(Some("debug"));
+    // log_init(Some("debug"));
+    log_init(option_env!("RUST_LOG"));
     // Create a test server
     let ctx = start_default_test_kms_server().await;
 

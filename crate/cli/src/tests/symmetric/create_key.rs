@@ -198,7 +198,8 @@ pub(crate) async fn test_create_symmetric_key() -> CliResult<()> {
 
 #[tokio::test]
 pub(crate) async fn test_create_wrapped_symmetric_key() -> CliResult<()> {
-    log_init(Some("debug"));
+    log_init(option_env!("RUST_LOG"));
+    // log_init(Some("debug"));
     let ctx = start_default_test_kms_server().await;
 
     let wrapping_key_id =

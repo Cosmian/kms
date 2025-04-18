@@ -143,7 +143,7 @@ impl CreateKeyAction {
                 key_bytes.as_slice(),
                 &Attributes {
                     cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-                    sensitive: Some(self.sensitive),
+                    sensitive: if self.sensitive { Some(true) } else { None },
                     ..Default::default()
                 },
             )?;
