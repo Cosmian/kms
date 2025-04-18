@@ -6,9 +6,7 @@ use std::{
 use clap::Parser;
 use serde::{Deserialize, Serialize};
 
-use super::{
-    HttpConfig, JwtAuthConfig, MainDBConfig, WorkspaceConfig, ui_config::UiConfig,
-};
+use super::{ui_config::UiConfig, HttpConfig, JwtAuthConfig, MainDBConfig, WorkspaceConfig};
 use crate::{error::KmsError, result::KResult, telemetry::TelemetryConfig};
 
 const DEFAULT_COSMIAN_KMS_CONF: &str = "/etc/cosmian/kms.toml";
@@ -36,6 +34,7 @@ impl Default for ClapConfig {
             hsm_slot: vec![],
             hsm_password: vec![],
             non_revocable_key_id: None,
+            privileged_users: None,
         }
     }
 }
@@ -134,6 +133,11 @@ pub struct ClapConfig {
 
     #[clap(verbatim_doc_comment, long, env = "KMS_PUBLIC_URL")]
     pub kms_public_url: Option<String>,
+
+    /// Users than have initial rights to create and grant access right for Create Kmip Operation
+    /// If None, all users can create and grant create access right.
+    #[clap(long)]
+    pub privileged_users: Option<Vec<String>>,
 }
 
 impl ClapConfig {

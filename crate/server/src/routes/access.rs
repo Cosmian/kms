@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use actix_web::{
     get, post,
-    web::{Data, Json, Path},
+    web::{self, Data, Json, Path},
     HttpRequest,
 };
 use cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier;
@@ -81,6 +81,7 @@ pub(crate) async fn grant_access(
     req: HttpRequest,
     access: Json<Access>,
     kms: Data<Arc<KMS>>,
+    privileged_users: web::Data<Option<Vec<String>>>,
 ) -> KResult<Json<SuccessResponse>> {
     let span = tracing::span!(tracing::Level::INFO, "grant_access");
     let _enter = span.enter();
@@ -94,7 +95,13 @@ pub(crate) async fn grant_access(
         "POST /access/grant {access:?} {user}"
     );
 
-    kms.grant_access(&access, &user, database_params).await?;
+    kms.grant_access(
+        &access,
+        &user,
+        database_params,
+        privileged_users.as_ref().clone(),
+    )
+    .await?;
     debug!(
         "Access granted on {:?} for {:?} to {}",
         access.unique_identifier, access.operation_types, access.user_id
@@ -111,6 +118,7 @@ pub(crate) async fn revoke_access(
     req: HttpRequest,
     access: Json<Access>,
     kms: Data<Arc<KMS>>,
+    privileged_users: web::Data<Option<Vec<String>>>,
 ) -> KResult<Json<SuccessResponse>> {
     let span = tracing::span!(tracing::Level::INFO, "revoke_access");
     let _enter = span.enter();
@@ -124,7 +132,13 @@ pub(crate) async fn revoke_access(
         "POST /access/revoke {access:?} {user}"
     );
 
-    kms.revoke_access(&access, &user, database_params).await?;
+    kms.revoke_access(
+        &access,
+        &user,
+        database_params,
+        privileged_users.as_ref().clone(),
+    )
+    .await?;
     debug!(
         "Access revoke on {:?} for {:?} to {}",
         access.unique_identifier, access.operation_types, access.user_id

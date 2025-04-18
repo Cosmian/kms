@@ -28,19 +28,24 @@ impl KMS {
         access: &Access,
         owner: &str,
         params: Option<Arc<dyn SessionParams>>,
+        privileged_users: Option<Vec<String>>,
     ) -> KResult<()> {
         // if create access right is set, grant access Create for * object
         let mut updated_operations_types = access.operation_types.clone();
         if updated_operations_types.contains(&KmipOperation::Create) {
             updated_operations_types.retain(|op| op != &KmipOperation::Create);
-            self.database
-                .grant_operations(
-                    "*",
-                    &access.user_id,
-                    HashSet::from([KmipOperation::Create]),
-                    params.clone(),
-                )
-                .await?;
+            if let Some(users) = privileged_users {
+                if !users.contains(&access.user_id) {
+                    self.database
+                        .grant_operations(
+                            "*",
+                            &access.user_id,
+                            HashSet::from([KmipOperation::Create]),
+                            params.clone(),
+                        )
+                        .await?;
+                }
+            }
         }
 
         if !updated_operations_types.is_empty() {
@@ -90,19 +95,24 @@ impl KMS {
         access: &Access,
         owner: &str,
         params: Option<Arc<dyn SessionParams>>,
+        privileged_users: Option<Vec<String>>,
     ) -> KResult<()> {
         // if create access right is set, revoke access Create for * object
         let mut updated_operations_types = access.operation_types.clone();
         if updated_operations_types.contains(&KmipOperation::Create) {
             updated_operations_types.retain(|op| op != &KmipOperation::Create);
-            self.database
-                .remove_operations(
-                    "*",
-                    &access.user_id,
-                    HashSet::from([KmipOperation::Create]),
-                    params.clone(),
-                )
-                .await?;
+            if let Some(users) = privileged_users {
+                if !users.contains(&access.user_id) {
+                    self.database
+                        .remove_operations(
+                            "*",
+                            &access.user_id,
+                            HashSet::from([KmipOperation::Create]),
+                            params.clone(),
+                        )
+                        .await?;
+                }
+            }
         }
 
         if !updated_operations_types.is_empty() {
