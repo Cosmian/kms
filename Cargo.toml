@@ -81,7 +81,7 @@ num_cpus = "1.16"
 num-format = "0.4"
 num-traits = "0.2"
 num-bigint-dig = { version = "0.8", default-features = false }
-openssl = { version = "0.10.70", default-features = false }
+openssl = { version = "0.10", default-features = false }
 pem = "3.0"
 pyo3 = { version = "0.20", default-features = false }
 rand = "0.9"
