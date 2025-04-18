@@ -88,8 +88,16 @@ impl KMS {
         request: Create,
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
+        privileged_users: Option<Vec<String>>,
     ) -> KResult<CreateResponse> {
-        Box::pin(operations::create(self, request, user, params)).await
+        Box::pin(operations::create(
+            self,
+            request,
+            user,
+            params,
+            privileged_users,
+        ))
+        .await
     }
 
     /// This operation requests the server to generate a new public/private key
@@ -112,8 +120,9 @@ impl KMS {
         request: CreateKeyPair,
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
+        privileged_users: Option<Vec<String>>,
     ) -> KResult<CreateKeyPairResponse> {
-        operations::create_key_pair(self, request, user, params).await
+        operations::create_key_pair(self, request, user, params, privileged_users).await
     }
 
     /// This operation requests the server to perform a decryption operation on

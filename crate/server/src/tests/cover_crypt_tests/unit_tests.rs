@@ -10,7 +10,9 @@ use cosmian_kmip::kmip_2_1::{
     },
     requests::{decrypt_request, encrypt_request},
 };
-use cosmian_kms_client_utils::cover_crypt_utils::{build_create_covercrypt_master_keypair_request, build_create_covercrypt_usk_request};
+use cosmian_kms_client_utils::cover_crypt_utils::{
+    build_create_covercrypt_master_keypair_request, build_create_covercrypt_usk_request,
+};
 use tracing::debug;
 use uuid::Uuid;
 
@@ -37,6 +39,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
         .create_key_pair(
             build_create_covercrypt_master_keypair_request(access_structure, EMPTY_TAGS, false)?,
             owner,
+            None,
             None,
         )
         .await?;
@@ -212,6 +215,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
         .create_key_pair(
             build_create_covercrypt_master_keypair_request(access_structure, EMPTY_TAGS, false)?,
             owner,
+            None,
             None,
         )
         .await?;
@@ -418,7 +422,9 @@ async fn test_abe_json_access() -> KResult<()> {
         build_create_covercrypt_master_keypair_request(access_structure, EMPTY_TAGS, false)?;
 
     // create Key Pair
-    let ckr = kms.create_key_pair(master_keypair, owner, None).await?;
+    let ckr = kms
+        .create_key_pair(master_keypair, owner, None, None)
+        .await?;
     let master_secret_key_uid = ckr.private_key_unique_identifier.to_string();
 
     // define search criteria
@@ -496,6 +502,7 @@ async fn test_import_decrypt() -> KResult<()> {
         .create_key_pair(
             build_create_covercrypt_master_keypair_request(access_structure, EMPTY_TAGS, false)?,
             owner,
+            None,
             None,
         )
         .await?;

@@ -40,7 +40,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     // request key pair creation
     let request =
         create_ec_key_pair_request(None, EMPTY_TAGS, RecommendedCurve::CURVE25519, false)?;
-    let response = kms.create_key_pair(request, owner, None).await?;
+    let response = kms.create_key_pair(request, owner, None, None).await?;
     // check that the private and public key exist
     // check secret key
     let sk_response = kms
@@ -318,7 +318,7 @@ async fn test_database_user_tenant() -> KResult<()> {
     // request key pair creation
     let request =
         create_ec_key_pair_request(None, EMPTY_TAGS, RecommendedCurve::CURVE25519, false)?;
-    let response = kms.create_key_pair(request, owner, None).await?;
+    let response = kms.create_key_pair(request, owner, None, None).await?;
 
     // check that we can get the private and public key
     // check secret key

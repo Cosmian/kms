@@ -39,7 +39,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         RecommendedCurve::CURVE25519,
         false,
     )?;
-    let response = kms.create_key_pair(request, owner, None).await?;
+    let response = kms.create_key_pair(request, owner, None, None).await?;
     // check that the private and public key exist
     // check secret key
     let sk_response = kms
@@ -289,7 +289,8 @@ async fn test_curve_25519_multiple() -> KResult<()> {
     );
 
     #[cfg(not(feature = "fips"))]
-    let Some(Operation::CreateKeyPairResponse(_)) = &response.items[1].response_payload else {
+    let Some(Operation::CreateKeyPairResponse(_)) = &response.items[1].response_payload
+    else {
         panic!("not a create key pair response payload");
     };
 
@@ -323,7 +324,8 @@ async fn test_curve_25519_multiple() -> KResult<()> {
     );
 
     #[cfg(not(feature = "fips"))]
-    let Some(Operation::CreateKeyPairResponse(_)) = &response.items[3].response_payload else {
+    let Some(Operation::CreateKeyPairResponse(_)) = &response.items[3].response_payload
+    else {
         panic!("not a create key pair response payload");
     };
 

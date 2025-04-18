@@ -249,6 +249,8 @@ impl fmt::Debug for ClapConfig {
                 .collect::<Vec<&str>>(),
         );
         let x = x.field("non_revocable_key_id", &self.non_revocable_key_id);
+        let x = x.field("privileged_users", &self.privileged_users);
+
         x.finish()
     }
 }

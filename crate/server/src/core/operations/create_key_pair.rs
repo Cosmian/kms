@@ -7,15 +7,15 @@ use cosmian_kmip::kmip_2_1::{
 };
 #[cfg(not(feature = "fips"))]
 use cosmian_kms_crypto::crypto::elliptic_curves::operation::{
-    create_x448_key_pair, create_x25519_key_pair,
+    create_x25519_key_pair, create_x448_key_pair,
 };
 use cosmian_kms_crypto::crypto::{
-    KeyPair,
     cover_crypt::master_keys::create_master_keypair,
     elliptic_curves::operation::{
-        create_approved_ecc_key_pair, create_ed448_key_pair, create_ed25519_key_pair,
+        create_approved_ecc_key_pair, create_ed25519_key_pair, create_ed448_key_pair,
     },
     rsa::operation::create_rsa_key_pair,
+    KeyPair,
 };
 use cosmian_kms_interfaces::{AtomicOperation, SessionParams};
 #[cfg(not(feature = "fips"))]
@@ -24,7 +24,7 @@ use tracing::{debug, trace};
 use uuid::Uuid;
 
 use crate::{
-    core::{KMS, retrieve_object_utils::user_has_permission},
+    core::{retrieve_object_utils::user_has_permission, KMS},
     error::KmsError,
     kms_bail,
     result::KResult,
@@ -35,22 +35,26 @@ pub(crate) async fn create_key_pair(
     request: CreateKeyPair,
     owner: &str,
     params: Option<Arc<dyn SessionParams>>,
+    privileged_users: Option<Vec<String>>,
 ) -> KResult<CreateKeyPairResponse> {
     trace!("Create key pair: {}", serde_json::to_string(&request)?);
 
     // For creation of ab object, check that user has create access-right
-    if !user_has_permission(
-        owner,
-        None,
-        &cosmian_kmip::kmip_2_1::KmipOperation::Create,
-        kms,
-        params.clone(),
-    )
-    .await?
-    {
-        kms_bail!(KmsError::Unauthorized(
-            "User does not have create access-right.".to_owned()
-        ))
+    if let Some(users) = privileged_users {
+        let has_permission = user_has_permission(
+            owner,
+            None,
+            &cosmian_kmip::kmip_2_1::KmipOperation::Create,
+            kms,
+            params.clone(),
+        )
+        .await?;
+
+        if !has_permission && !users.iter().any(|u| u == owner) {
+            kms_bail!(KmsError::Unauthorized(
+                "User does not have create access-right.".to_owned()
+            ))
+        }
     }
 
     if request.common_protection_storage_masks.is_some()

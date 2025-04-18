@@ -193,6 +193,7 @@ mod tests {
             hsm_slot: vec![],
             hsm_password: vec![],
             non_revocable_key_id: None,
+            privileged_users: None,
         };
 
         let toml_string = r#"

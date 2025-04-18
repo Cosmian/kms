@@ -22,6 +22,7 @@ pub(crate) async fn create(
     mut request: Create,
     owner: &str,
     params: Option<Arc<dyn SessionParams>>,
+    privileged_users: Option<Vec<String>>,
 ) -> KResult<CreateResponse> {
     trace!("Create: {}", serde_json::to_string(&request)?);
     if request.protection_storage_masks.is_some() {
@@ -29,18 +30,21 @@ pub(crate) async fn create(
     }
 
     // For creation of ab object, check that user has create access-right
-    if !user_has_permission(
-        owner,
-        None,
-        &cosmian_kmip::kmip_2_1::KmipOperation::Create,
-        kms,
-        params.clone(),
-    )
-    .await?
-    {
-        kms_bail!(KmsError::Unauthorized(
-            "User does not have create access-right.".to_owned()
-        ))
+    if let Some(users) = privileged_users {
+        let has_permission = user_has_permission(
+            owner,
+            None,
+            &cosmian_kmip::kmip_2_1::KmipOperation::Create,
+            kms,
+            params.clone(),
+        )
+        .await?;
+
+        if !has_permission && !users.iter().any(|u| u == owner) {
+            kms_bail!(KmsError::Unauthorized(
+                "User does not have create access-right.".to_owned()
+            ))
+        }
     }
 
     let (unique_identifier, mut object, tags) = match &request.object_type {

@@ -27,12 +27,18 @@ pub(crate) async fn dispatch(
         }
         "Create" => {
             let req = from_ttlv::<Create>(ttlv)?;
-            let resp = kms.create(req, user, database_params).await?;
+            let privileged_users = kms.params.privileged_users.clone();
+            let resp = kms
+                .create(req, user, database_params, privileged_users)
+                .await?;
             Operation::CreateResponse(resp)
         }
         "CreateKeyPair" => {
             let req = from_ttlv::<CreateKeyPair>(ttlv)?;
-            let resp = kms.create_key_pair(req, user, database_params).await?;
+            let privileged_users = kms.params.privileged_users.clone();
+            let resp = kms
+                .create_key_pair(req, user, database_params, privileged_users)
+                .await?;
             Operation::CreateKeyPairResponse(resp)
         }
         "Decrypt" => {

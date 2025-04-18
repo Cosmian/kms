@@ -326,6 +326,7 @@ async fn test_create_pair_encrypt_decrypt() -> KResult<()> {
             create_rsa_key_pair_request(None, Vec::<String>::new(), 4096, false)?,
             owner,
             None,
+            None,
         )
         .await?;
 
