@@ -8,7 +8,7 @@ use cosmian_kmip::{
     },
     kmip_2_1::{
         kmip_messages::RequestMessageBatchItem,
-        kmip_operations::{Encrypt, Operation},
+        kmip_operations::{Decrypt, Operation},
         kmip_types::{
             CryptographicAlgorithm, CryptographicParameters, OperationEnumeration, UniqueIdentifier,
         },
@@ -18,13 +18,12 @@ use cosmian_kmip::{
 use cosmian_kms_client::SocketClient;
 use cosmian_logger::log_init;
 use log::info;
-use zeroize::Zeroizing;
 
 use super::create_1_4::create_symmetric_key;
-use crate::tests::ttlv_tests::get_client;
+use crate::tests::ttlv_tests::{encrypt_1_4::encrypt, get_client};
 
 #[test]
-fn test_encrypt_2_1() {
+fn test_decrypt_2_1() {
     log_init(option_env!("RUST_LOG"));
     // log_init(Some("debug"));
 
@@ -35,10 +34,20 @@ fn test_encrypt_2_1() {
     info!("Key ID: {}", key_id);
 
     // Get the symmetric key
-    encrypt(&client, &key_id, b"Hello, world!", None);
+    let (nonce, data, tag) = encrypt(&client, &key_id, b"Hello, world!", None);
+
+    let data = decrypt(&client, &key_id, &nonce, &data, &tag, None);
+    assert_eq!(data, b"Hello, world!");
 }
 
-pub(crate) fn encrypt(client: &SocketClient, key_id: &str, data: &[u8], aad: Option<&[u8]>) {
+pub(crate) fn decrypt(
+    client: &SocketClient,
+    key_id: &str,
+    nonce: &[u8],
+    data: &[u8],
+    tag: &[u8],
+    aad: Option<&[u8]>,
+) -> Vec<u8> {
     let protocol_major = 2;
     let kmip_flavor = if protocol_major == 2 {
         KmipFlavor::Kmip2
@@ -57,22 +66,23 @@ pub(crate) fn encrypt(client: &SocketClient, key_id: &str, data: &[u8], aad: Opt
         },
         batch_item: vec![RequestMessageBatchItemVersioned::V21(
             RequestMessageBatchItem {
-                operation: OperationEnumeration::Encrypt,
+                operation: OperationEnumeration::Decrypt,
                 ephemeral: None,
                 unique_batch_item_id: Some(b"12345".to_vec()),
-                request_payload: Operation::Encrypt(Encrypt {
+                request_payload: Operation::Decrypt(Decrypt {
                     unique_identifier: Some(UniqueIdentifier::TextString(key_id.to_owned())),
                     cryptographic_parameters: Some(CryptographicParameters {
                         block_cipher_mode: Some(BlockCipherMode::GCM),
                         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
                         ..Default::default()
                     }),
-                    data: Some(Zeroizing::new(data.to_vec())),
-                    i_v_counter_nonce: None,
+                    data: Some(data.to_vec()),
+                    i_v_counter_nonce: Some(nonce.to_vec()),
                     correlation_value: None,
                     init_indicator: None,
                     final_indicator: None,
                     authenticated_encryption_additional_data: aad.map(Vec::from),
+                    authenticated_encryption_tag: Some(tag.to_vec()),
                 }),
                 message_extension: None,
             },
@@ -100,11 +110,11 @@ pub(crate) fn encrypt(client: &SocketClient, key_id: &str, data: &[u8], aad: Opt
     };
     assert_eq!(batch_item.result_status, ResultStatusEnumeration::Success);
     assert_eq!(batch_item.unique_batch_item_id, Some(b"12345".to_vec()));
-    let Some(Operation::EncryptResponse(response)) = &batch_item.response_payload else {
+    let Some(Operation::DecryptResponse(response)) = &batch_item.response_payload else {
         panic!("Expected AddAttributeResponse");
     };
     assert_eq!(response.unique_identifier.to_string(), key_id.to_owned());
     assert!(response.data.is_some());
-    assert!(response.i_v_counter_nonce.is_some());
-    assert!(response.authenticated_encryption_tag.is_some());
+    let data = response.data.as_ref().unwrap();
+    data.to_vec()
 }

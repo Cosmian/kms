@@ -399,7 +399,7 @@ async fn decrypt(
                 block_cipher_mode: Some(BlockCipherMode::GCM),
                 ..Default::default()
             }),
-            iv_counter_nonce: iv.map(Vec::from),
+            i_v_counter_nonce: iv.map(Vec::from),
             data: data.map(Vec::from),
             authenticated_encryption_tag: tag.map(Vec::from),
             ..Default::default()

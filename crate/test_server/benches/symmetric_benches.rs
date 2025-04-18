@@ -359,7 +359,7 @@ fn decrypt_request(
         unique_identifier: Some(key_id),
         cryptographic_parameters: Some(cryptographic_parameters),
         data: Some(data),
-        iv_counter_nonce: nonce,
+        i_v_counter_nonce: nonce,
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,

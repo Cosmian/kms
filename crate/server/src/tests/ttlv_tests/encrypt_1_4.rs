@@ -36,7 +36,12 @@ fn test_encrypt_1_4() {
     encrypt(&client, &key_id, b"Hello, world!", None);
 }
 
-pub(crate) fn encrypt(client: &SocketClient, key_id: &str, data: &[u8], aad: Option<&[u8]>) {
+pub(crate) fn encrypt(
+    client: &SocketClient,
+    key_id: &str,
+    data: &[u8],
+    aad: Option<&[u8]>,
+) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
     let protocol_major = 1;
     let kmip_flavor = if protocol_major == 2 {
         KmipFlavor::Kmip2
@@ -105,4 +110,10 @@ pub(crate) fn encrypt(client: &SocketClient, key_id: &str, data: &[u8], aad: Opt
     assert!(response.data.is_some());
     assert!(response.i_v_counter_nonce.is_some());
     assert!(response.authenticated_encryption_tag.is_some());
+
+    (
+        response.i_v_counter_nonce.clone().unwrap(),
+        response.data.clone().unwrap(),
+        response.authenticated_encryption_tag.clone().unwrap(),
+    )
 }
