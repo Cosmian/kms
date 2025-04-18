@@ -217,7 +217,7 @@ async fn encrypt_using_encryption_oracle(
     Ok(EncryptResponse {
         unique_identifier: UniqueIdentifier::TextString(uid.to_owned()),
         data: Some(encrypted_content.ciphertext.clone()),
-        iv_counter_nonce: encrypted_content.iv,
+        i_v_counter_nonce: encrypted_content.iv,
         correlation_value: request.correlation_value.clone(),
         authenticated_encryption_tag: encrypted_content.tag,
     })
@@ -279,7 +279,7 @@ pub(crate) fn encrypt_bulk(
                 request.data = Some(plaintext.clone());
                 let (key_bytes, cipher) = get_key_and_cipher(&request, owm)?;
                 let nonce = request
-                    .iv_counter_nonce
+                    .i_v_counter_nonce
                     .clone()
                     .unwrap_or(random_nonce(cipher)?);
                 let (ciphertext, tag) = sym_encrypt(cipher, &key_bytes, &nonce, aad, &plaintext)?;
@@ -317,7 +317,7 @@ pub(crate) fn encrypt_bulk(
     Ok(EncryptResponse {
         unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
         data: Some(BulkData::new(ciphertexts).serialize()?.to_vec()),
-        iv_counter_nonce: None,
+        i_v_counter_nonce: None,
         correlation_value: request.correlation_value,
         authenticated_encryption_tag: None,
     })
@@ -333,7 +333,7 @@ fn encrypt_with_symmetric_key(
         KmsError::InvalidRequest("Encrypt: data to encrypt must be provided".to_owned())
     })?;
     let nonce = request
-        .iv_counter_nonce
+        .i_v_counter_nonce
         .clone()
         .unwrap_or(random_nonce(aead)?);
     let aad = request
@@ -346,7 +346,7 @@ fn encrypt_with_symmetric_key(
     Ok(EncryptResponse {
         unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
         data: Some(ciphertext),
-        iv_counter_nonce: Some(nonce),
+        i_v_counter_nonce: Some(nonce),
         correlation_value: request.correlation_value.clone(),
         authenticated_encryption_tag: Some(tag),
     })
@@ -466,7 +466,7 @@ fn encrypt_with_pkey(
     Ok(EncryptResponse {
         unique_identifier: UniqueIdentifier::TextString(key_id.to_owned()),
         data: Some(ciphertext),
-        iv_counter_nonce: None,
+        i_v_counter_nonce: None,
         correlation_value: request.correlation_value.clone(),
         authenticated_encryption_tag: None,
     })
