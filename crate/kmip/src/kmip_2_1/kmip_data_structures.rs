@@ -880,10 +880,11 @@ impl Serialize for KeyMaterialSerializer {
                 | KeyFormatType::PKCS12
                 | KeyFormatType::PKCS7
                 | KeyFormatType::PKCS8
-                | KeyFormatType::Pkcs12Legacy
                 | KeyFormatType::X509
                 | KeyFormatType::CoverCryptSecretKey
                 | KeyFormatType::CoverCryptPublicKey => serializer.serialize_bytes(bytes),
+                #[cfg(not(feature = "fips"))]
+                KeyFormatType::Pkcs12Legacy => serializer.serialize_bytes(bytes),
                 x => Err(serde::ser::Error::custom(format!(
                     "KeyMaterialWrapper: {x:?} key format type does not support byte strings"
                 ))),
@@ -1064,10 +1065,13 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
                     | KeyFormatType::PKCS12
                     | KeyFormatType::PKCS7
                     | KeyFormatType::PKCS8
-                    | KeyFormatType::Pkcs12Legacy
                     | KeyFormatType::X509
                     | KeyFormatType::CoverCryptPublicKey
                     | KeyFormatType::CoverCryptSecretKey => {
+                        Ok(KeyMaterial::ByteString(Zeroizing::new(bytestring)))
+                    }
+                    #[cfg(not(feature = "fips"))]
+                    KeyFormatType::Pkcs12Legacy => {
                         Ok(KeyMaterial::ByteString(Zeroizing::new(bytestring)))
                     }
                     _ => Err(de::Error::custom(format!(
@@ -1328,10 +1332,20 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
             | KeyFormatType::PKCS12
             | KeyFormatType::PKCS7
             | KeyFormatType::PKCS8
-            | KeyFormatType::Pkcs12Legacy
             | KeyFormatType::X509
             | KeyFormatType::CoverCryptPublicKey
             | KeyFormatType::CoverCryptSecretKey => {
+                trace!(
+                    "===> KeyMaterial: Deserializing Bytes String for key format type: {:?} ",
+                    self.key_format_type
+                );
+                // This will call visit_seq for both the TTLV and the JSON deserializer
+                deserializer.deserialize_any(KeyMaterialVisitor {
+                    key_format_type: self.key_format_type,
+                })
+            }
+            #[cfg(not(feature = "fips"))]
+            KeyFormatType::Pkcs12Legacy => {
                 trace!(
                     "===> KeyMaterial: Deserializing Bytes String for key format type: {:?} ",
                     self.key_format_type
