@@ -6,7 +6,7 @@ use cosmian_kmip::{
     kmip_2_1::{
         extra::tagging::EMPTY_TAGS,
         kmip_attributes::Attributes,
-        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
+        kmip_data_structures::{KeyBlock, KeyValue, KeyWrappingData},
         kmip_objects::{Object, ObjectType, PrivateKey, PublicKey, SymmetricKey},
         kmip_operations::{Get, Import},
         kmip_types::{
@@ -211,16 +211,13 @@ async fn test_import_wrapped_symmetric_key() -> KResult<()> {
     let wrapped_symmetric_key = [0_u8; 32];
     let aesgcm_nonce = [0_u8; 12];
 
-    let key_material = KeyMaterial::ByteString(Zeroizing::from(wrapped_symmetric_key.to_vec()));
-
     let symmetric_key = Object::SymmetricKey(SymmetricKey {
         key_block: KeyBlock {
             key_format_type: KeyFormatType::TransparentSymmetricKey,
             key_compression_type: None,
-            key_value: Some(KeyValue::Structure {
-                key_material,
-                attributes: None,
-            }),
+            key_value: Some(KeyValue::ByteString(Zeroizing::from(
+                wrapped_symmetric_key.to_vec(),
+            ))),
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
             cryptographic_length: Some(i32::try_from(wrapped_symmetric_key.len())? * 8),
             key_wrapping_data: Some(KeyWrappingData {

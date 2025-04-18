@@ -1,13 +1,14 @@
-//! Socket client for communicating with a `PyKMIP` server over TLS socket
+//! Socket client for communicating with a `PyKMIP` server over TLS socket.
 //! This client uses a PKCS#12 client certificate for authentication
-//! and a server CA certificate for verifying the server's certificate
+//! and a server CA certificate for verifying the server's certificate.
 //! The client is thread-safe and can be shared across threads
 //! using `Arc`
 use std::{
+    collections::HashMap,
     fmt,
     io::{Read, Write},
     net::TcpStream,
-    sync::Arc,
+    sync::{Arc, Mutex, OnceLock},
 };
 
 use cosmian_kmip::ttlv::{from_ttlv, to_ttlv, KmipFlavor, TTLV};
@@ -32,9 +33,9 @@ pub struct SocketClientConfig {
     pub server_ca_cert_pem: String,
 }
 
-/// Client for communicating with a `PyKMIP` server over TLS socket
+/// Client for communicating with a `PyKMIP` server over TLS socket.
 /// This client uses a PKCS#12 client certificate for authentication
-/// and a server CA certificate for verifying the server's certificate
+/// and a server CA certificate for verifying the server's certificate.
 /// The client is thread-safe and can be shared across threads
 /// using `Arc`
 pub struct SocketClient {
@@ -45,9 +46,27 @@ pub struct SocketClient {
 impl SocketClient {
     /// Create a new `PyKMIP` socket client with the specified configuration
     pub fn new(config: SocketClientConfig) -> KmsClientResult<Self> {
-        // Create client identity from cert and key
-        let identity = Identity::from_pkcs12(&config.client_p12, &config.client_p12_secret)
-            .context("Failed to create identity from client PKCS#12")?;
+        // Create or retrieve client identity from cache
+        // The reason we need this is that macOS keychain will sometimes complain
+        // that "The specified item already exists in the keychain" when trying to create an identity
+        let identity = {
+            // Use a static cache for identities to avoid repeated parsing of PKCS12 files
+            static IDENTITY_CACHE: OnceLock<Mutex<HashMap<Vec<u8>, Identity>>> = OnceLock::new();
+            let cache = IDENTITY_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+
+            let mut cache = cache.lock().expect("Identity cache lock poisoned");
+
+            // Try to get from cache first
+            if let Some(cached_identity) = cache.get(&config.client_p12) {
+                cached_identity.clone()
+            } else {
+                // Create new identity and cache it
+                let identity = Identity::from_pkcs12(&config.client_p12, &config.client_p12_secret)
+                    .context("Failed to create identity from client PKCS#12")?;
+                cache.insert(config.client_p12.clone(), identity.clone());
+                identity
+            }
+        };
 
         // Build TLS connector with client certificate authentication
         let connector = TlsConnector::builder()
