@@ -3167,7 +3167,7 @@ dependencies = [
 
 [[package]]
 name = "kmip-derive"
-version = "0.1.0"
+version = "4.22.2"
 dependencies = [
  "quote",
  "syn",
