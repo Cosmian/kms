@@ -995,7 +995,7 @@ async fn cse_wrapped_key_decrypt(
             ..Default::default()
         }),
         data: Some(ciphertext.to_vec()),
-        iv_counter_nonce: Some(iv_counter_nonce.to_vec()),
+        i_v_counter_nonce: Some(iv_counter_nonce.to_vec()),
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,
