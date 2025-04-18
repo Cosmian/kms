@@ -42,7 +42,7 @@ pub fn encrypt_request(
         )),
         cryptographic_parameters,
         data: Some(data_to_encrypt),
-        iv_counter_nonce: nonce,
+        i_v_counter_nonce: nonce,
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,

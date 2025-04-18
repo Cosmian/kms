@@ -6,6 +6,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use tracing::{debug, trace};
+use zeroize::Zeroizing;
 
 use super::kmip_objects::Certificate;
 #[allow(clippy::wildcard_imports)]
@@ -832,13 +833,67 @@ pub struct PollResponse {
 #[serde(rename_all = "PascalCase")]
 pub struct Encrypt {
     pub unique_identifier: String,
+
+    /// The Cryptographic Parameters (Block
+    /// Cipher Mode, Padding Method,
+    /// `RandomIV`) corresponding to the
+    /// particular encryption method
+    /// requested.
+    /// If there are no Cryptographic
+    /// Parameters associated with the
+    /// Managed Cryptographic Object and
+    /// the algorithm requires parameters then
+    /// the operation SHALL return with a
+    /// Result Status of Operation Failed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_parameters: Option<CryptographicParameters>,
-    pub data: Vec<u8>,
+
+    /// The data to be encrypted.
+    pub data: Option<Vec<u8>>,
+
+    /// The initialization vector, counter or
+    /// nonce to be used (where appropriate).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub iv_counter_nonce: Option<Vec<u8>>,
+    pub i_v_counter_nonce: Option<Vec<u8>>,
+
+    /// Specifies the existing stream or by-
+    /// parts cryptographic operation (as
+    /// returned from a previous call to this
+    /// operation)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub correlation_value: Option<Vec<u8>>,
+
+    /// Initial operation as Boolean
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub init_indicator: Option<bool>,
+
+    /// Final operation as Boolean
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub final_indicator: Option<bool>,
+
+    /// Any additional data to be authenticated via the Authenticated Encryption
+    /// Tag. If supplied in multi-part encryption,
+    /// this data MUST be supplied on the initial Encrypt request
     #[serde(skip_serializing_if = "Option::is_none")]
     pub authenticated_encryption_additional_data: Option<Vec<u8>>,
+}
+
+impl From<Encrypt> for kmip_2_1::kmip_operations::Encrypt {
+    fn from(value: Encrypt) -> Self {
+        Self {
+            unique_identifier: Some(kmip_2_1::kmip_types::UniqueIdentifier::TextString(
+                value.unique_identifier,
+            )),
+            cryptographic_parameters: value.cryptographic_parameters.map(Into::into),
+            data: value.data.map(Zeroizing::new),
+            i_v_counter_nonce: value.i_v_counter_nonce,
+            correlation_value: value.correlation_value.map(Into::into),
+            init_indicator: value.init_indicator,
+            final_indicator: value.final_indicator,
+            authenticated_encryption_additional_data: value
+                .authenticated_encryption_additional_data,
+        }
+    }
 }
 
 /// Response to an Encrypt request
@@ -846,11 +901,42 @@ pub struct Encrypt {
 #[serde(rename_all = "PascalCase")]
 pub struct EncryptResponse {
     pub unique_identifier: String,
-    pub data: Vec<u8>,
+
+    pub data: Option<Vec<u8>>,
+
+    /// The initialization vector, counter or
+    /// nonce to be used (where appropriate).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub iv_counter_nonce: Option<Vec<u8>>,
+    pub i_v_counter_nonce: Option<Vec<u8>>,
+
+    /// Specifies the existing stream or by-
+    /// parts cryptographic operation (as
+    /// returned from a previous call to this
+    /// operation)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub correlation_value: Option<Vec<u8>>,
+
+    /// Specifies the tag that will be needed to authenticate the decrypted data.
+    /// Only returned on completion of the encryption of the last of the plaintext
+    /// by an authenticated encryption cipher.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub authenticated_encryption_tag: Option<Vec<u8>>,
+}
+
+impl TryFrom<kmip_2_1::kmip_operations::EncryptResponse> for EncryptResponse {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_operations::EncryptResponse) -> Result<Self, Self::Error> {
+        trace!("Converting KMIP 2.1 EncryptResponse to KMIP 1.4: {value:#?}");
+
+        Ok(Self {
+            unique_identifier: value.unique_identifier.to_string(),
+            data: value.data,
+            i_v_counter_nonce: value.i_v_counter_nonce,
+            correlation_value: value.correlation_value,
+            authenticated_encryption_tag: value.authenticated_encryption_tag,
+        })
+    }
 }
 
 /// 4.30 Decrypt
@@ -1657,9 +1743,7 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             // Operation::PollResponse(poll_response) => {
             //     Self::PollResponse(poll_response.into())
             // }
-            // Operation::Encrypt(encrypt) => {
-            //     Self::Encrypt(encrypt.into())
-            // }
+            Operation::Encrypt(encrypt) => Self::Encrypt(encrypt.into()),
             // Operation::EncryptResponse(encrypt_response) => {
             //     Self::EncryptResponse(encrypt_response.into())
             // }
@@ -1904,9 +1988,9 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             // Operation::Encrypt(encrypt) => {
             //     Self::Encrypt(encrypt.into())
             // }
-            // Operation::EncryptResponse(encrypt_response) => {
-            //     Self::EncryptResponse(encrypt_response.into())
-            // }
+            kmip_2_1::kmip_operations::Operation::EncryptResponse(encrypt_response) => {
+                Self::EncryptResponse(encrypt_response.try_into().context("EncryptResponse")?)
+            }
             // Operation::Decrypt(decrypt) => {
             //     Self::Decrypt(decrypt.into())
             // }

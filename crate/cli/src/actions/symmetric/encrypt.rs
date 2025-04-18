@@ -224,7 +224,7 @@ impl EncryptAction {
 
         // extract the nonce and write it
         let nonce = encrypt_response
-            .iv_counter_nonce
+            .i_v_counter_nonce
             .context("the nonce is empty")?;
 
         // extract the ciphertext and write it

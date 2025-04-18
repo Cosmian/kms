@@ -66,7 +66,7 @@ impl KmsEncryptResponse {
     /// Returns:
     ///     bytes
     pub fn iv_counter_nonce(&self, py: Python) -> PyResult<Py<PyBytes>> {
-        let bytes = self.0.iv_counter_nonce.clone().unwrap_or_default();
+        let bytes = self.0.i_v_counter_nonce.clone().unwrap_or_default();
         Ok(PyBytes::new(py, &bytes).into())
     }
 

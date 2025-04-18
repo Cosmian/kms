@@ -348,7 +348,7 @@ async fn encrypt(
         let elapsed = start.elapsed().as_micros();
         let ciphertext = Zeroizing::new(
             [
-                response.iv_counter_nonce.unwrap_or_default(),
+                response.i_v_counter_nonce.unwrap_or_default(),
                 response.data.unwrap_or_default(),
                 response.authenticated_encryption_tag.unwrap_or_default(),
             ]

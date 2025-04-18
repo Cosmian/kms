@@ -1443,7 +1443,7 @@ impl From<KeyWrappingSpecification> for kmip_2_1::kmip_data_structures::KeyWrapp
 }
 
 /// Cryptographic Parameters Structure
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 #[serde(rename_all = "PascalCase")]
 pub struct CryptographicParameters {
     #[serde(skip_serializing_if = "Option::is_none")]

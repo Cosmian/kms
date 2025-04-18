@@ -214,7 +214,7 @@ pub(crate) async fn encrypt(
     // Query the KMS with your kmip data and get the key pair ids
     let encrypt_response = kms_rest_client.encrypt(encrypt_request).await?;
 
-    let nonce = encrypt_response.iv_counter_nonce;
+    let nonce = encrypt_response.i_v_counter_nonce;
     let data = encrypt_response
         .data
         .ok_or_else(|| KmsClientError::UnexpectedError("No data".to_string()))?;
@@ -231,7 +231,7 @@ fn encrypt_request(
         unique_identifier: Some(key_id),
         cryptographic_parameters: Some(cryptographic_parameters),
         data: Some(data),
-        iv_counter_nonce: None,
+        i_v_counter_nonce: None,
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,
