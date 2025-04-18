@@ -1,9 +1,9 @@
 use std::{collections::HashSet, sync::Arc};
 
 #[cfg(not(feature = "fips"))]
-use cosmian_kmip::kmip_0::kmip_types::{CertificateType, CryptographicUsageMask};
+use cosmian_kmip::kmip_0::kmip_types::CryptographicUsageMask;
 use cosmian_kmip::{
-    kmip_0::kmip_types::{KeyWrapType, State},
+    kmip_0::kmip_types::{CertificateType, KeyWrapType, State},
     kmip_2_1::{
         kmip_attributes::Attributes,
         kmip_data_structures::KeyValue,

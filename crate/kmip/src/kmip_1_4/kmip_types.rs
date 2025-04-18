@@ -169,13 +169,19 @@ impl TryFrom<kmip_2_1::kmip_types::KeyFormatType> for KeyFormatType {
             kmip_2_1::kmip_types::KeyFormatType::TransparentECPrivateKey
             | kmip_2_1::kmip_types::KeyFormatType::TransparentECPublicKey
             | kmip_2_1::kmip_types::KeyFormatType::PKCS10
-            | kmip_2_1::kmip_types::KeyFormatType::Pkcs12Legacy
             | kmip_2_1::kmip_types::KeyFormatType::PKCS7
             | kmip_2_1::kmip_types::KeyFormatType::EnclaveECKeyPair
             | kmip_2_1::kmip_types::KeyFormatType::EnclaveECSharedKey => {
                 Err(KmipError::InvalidKmip14Value(
                     ResultReason::InvalidField,
                     format!("Key Format Type: {value:?}, is not supported in KMIP 1.4"),
+                ))
+            }
+            #[cfg(not(feature = "fips"))]
+            kmip_2_1::kmip_types::KeyFormatType::Pkcs12Legacy => {
+                Err(KmipError::InvalidKmip14Value(
+                    ResultReason::InvalidField,
+                    "Key Format Type: PKCS12Legacy is not supported in KMIP 1.4".to_owned(),
                 ))
             }
         }

@@ -2,14 +2,13 @@
 use cosmian_kmip::kmip_2_1::extra::fips::FIPS_PUBLIC_RSA_MASK;
 #[cfg(not(feature = "fips"))]
 use cosmian_kmip::kmip_2_1::{
-    kmip_data_structures::KeyWrappingSpecification, kmip_objects::Object,
-    kmip_types::EncodingOption,
+    kmip_data_structures::KeyWrappingData, kmip_objects::Object, kmip_types::EncodingOption,
 };
 use cosmian_kmip::{
     kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
         kmip_attributes::Attributes,
-        kmip_data_structures::{KeyValue, KeyWrappingData},
+        kmip_data_structures::{KeyValue, KeyWrappingSpecification},
         kmip_types::{CryptographicAlgorithm, KeyFormatType},
         requests::create_symmetric_key_kmip_object,
     },
@@ -22,14 +21,9 @@ use openssl::{
 use openssl::{pkey::PKey, rand::rand_bytes, rsa::Rsa};
 
 #[cfg(not(feature = "fips"))]
+use crate::{crypto::elliptic_curves::operation::create_x25519_key_pair, error::CryptoError};
 use crate::{
-    crypto::{
-        elliptic_curves::operation::create_x25519_key_pair,
-        wrap::{unwrap_key::unwrap_key_block, wrap_key_block},
-    },
-    error::CryptoError,
-};
-use crate::{
+    crypto::wrap::{unwrap_key_block, wrap_key_block},
     crypto_bail,
     error::result::CryptoResult,
     openssl::{openssl_private_key_to_kmip, openssl_public_key_to_kmip},

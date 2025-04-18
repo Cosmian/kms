@@ -168,10 +168,18 @@ pub fn decode_unwrapped_key(
                 | KeyFormatType::PKCS12
                 | KeyFormatType::PKCS7
                 | KeyFormatType::PKCS8
-                | KeyFormatType::Pkcs12Legacy
                 | KeyFormatType::X509
                 | KeyFormatType::CoverCryptSecretKey
                 | KeyFormatType::CoverCryptPublicKey => {
+                    // For no encoding, create a structure with the plaintext as bytes
+                    let key_material = KeyMaterial::ByteString(plaintext);
+                    Ok(KeyValue::Structure {
+                        key_material,
+                        attributes: Some(Attributes::default()),
+                    })
+                }
+                #[cfg(not(feature = "fips"))]
+                KeyFormatType::Pkcs12Legacy => {
                     // For no encoding, create a structure with the plaintext as bytes
                     let key_material = KeyMaterial::ByteString(plaintext);
                     Ok(KeyValue::Structure {

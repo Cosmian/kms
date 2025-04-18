@@ -310,10 +310,12 @@ pub fn create_rsa_key_pair(
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-    use cosmian_kmip::kmip_2_1::{
-        extra::fips::{FIPS_PRIVATE_RSA_MASK, FIPS_PUBLIC_RSA_MASK},
-        kmip_attributes::Attributes,
-        kmip_types::CryptographicUsageMask,
+    use cosmian_kmip::{
+        kmip_0::kmip_types::CryptographicUsageMask,
+        kmip_2_1::{
+            extra::fips::{FIPS_PRIVATE_RSA_MASK, FIPS_PUBLIC_RSA_MASK},
+            kmip_attributes::Attributes,
+        },
     };
 
     use crate::crypto::rsa::operation::create_rsa_key_pair;
