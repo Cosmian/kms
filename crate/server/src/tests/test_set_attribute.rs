@@ -79,7 +79,7 @@ async fn delete_attribute(kms: &Arc<KMS>, delete_request: DeleteAttribute) -> KR
 
 #[tokio::test]
 pub(crate) async fn test_set_attribute_server() -> KResult<()> {
-    log_init(None);
+    log_init(option_env!("RUST_LOG"));
 
     let clap_config = https_clap_config();
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);

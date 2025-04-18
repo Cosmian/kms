@@ -416,8 +416,8 @@ async fn test_rfc5649_aes_gcm_client_side() -> CliResult<()> {
 
 #[tokio::test]
 async fn test_client_side_encryption_with_buffer() -> CliResult<()> {
-    // log_init(option_env!("RUST_LOG"));
-    log_init(Some("info"));
+    log_init(option_env!("RUST_LOG"));
+    // log_init(Some("info"));
 
     let ctx = start_default_test_kms_server().await;
     let kek = create_symmetric_key(

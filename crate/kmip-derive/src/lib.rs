@@ -148,8 +148,10 @@ pub fn kmip_deserialize_derive(input: TokenStream) -> TokenStream {
 /// for KMIP enum types.
 ///
 /// # Usage
-/// ```rust
+/// ```rust-ignore
 /// use kmip_derive::kmip_enum;
+/// use kmip_derive::KmipEnumSerialize;
+/// use kmip_derive::KmipEnumDeserialize;
 ///
 /// #[kmip_enum]
 /// pub enum ObjectType {

@@ -104,7 +104,7 @@ mod tests {
 
     #[test]
     pub(crate) fn test_save() {
-        log_init(None);
+        log_init(option_env!("RUST_LOG"));
 
         let conf_path_str = "/tmp/kms.toml";
         KmsClientConfig::default().to_toml(conf_path_str).unwrap();
@@ -114,7 +114,7 @@ mod tests {
 
     #[test]
     pub(crate) fn test_load() {
-        log_init(None);
+        log_init(option_env!("RUST_LOG"));
         // valid conf
         unsafe {
             env::set_var(KMS_CLI_CONF_ENV, "../../test_data/configs/kms.toml");

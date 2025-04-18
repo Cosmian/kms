@@ -144,7 +144,7 @@ impl KmsActions {
 /// # Errors
 /// - If the configuration file is not found or invalid
 pub async fn ckms_main() -> CliResult<()> {
-    log_init(None);
+    log_init(option_env!("RUST_LOG"));
     let cli_opts = KmsCli::parse();
     let config = cli_opts.kms_options.prepare_config()?;
 

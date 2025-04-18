@@ -270,6 +270,7 @@ pub(crate) async fn test_ownership_and_grant() -> CliResult<()> {
 
 #[tokio::test]
 pub(crate) async fn test_grant_error() -> CliResult<()> {
+    log_init(option_env!("RUST_LOG"));
     let ctx = start_default_test_kms_server_with_cert_auth().await;
     let key_id = gen_key(&ctx.owner_client_conf_path)?;
 
@@ -311,6 +312,7 @@ pub(crate) async fn test_grant_error() -> CliResult<()> {
 
 #[tokio::test]
 pub(crate) async fn test_revoke_access() -> CliResult<()> {
+    log_init(option_env!("RUST_LOG"));
     // the client conf will use the owner cert
     let ctx = start_default_test_kms_server_with_cert_auth().await;
     let key_id = gen_key(&ctx.owner_client_conf_path)?;
@@ -399,6 +401,7 @@ pub(crate) async fn test_revoke_access() -> CliResult<()> {
 
 #[tokio::test]
 pub(crate) async fn test_list_access_rights() -> CliResult<()> {
+    log_init(option_env!("RUST_LOG"));
     let ctx = start_default_test_kms_server_with_cert_auth().await;
     let key_id = gen_key(&ctx.owner_client_conf_path)?;
 
@@ -423,6 +426,7 @@ pub(crate) async fn test_list_access_rights() -> CliResult<()> {
 
 #[tokio::test]
 pub(crate) async fn test_list_access_rights_error() -> CliResult<()> {
+    log_init(option_env!("RUST_LOG"));
     let ctx = start_default_test_kms_server_with_cert_auth().await;
     assert!(list_access(&ctx.user_client_conf_path, "BAD KEY").is_err());
     Ok(())
@@ -430,6 +434,7 @@ pub(crate) async fn test_list_access_rights_error() -> CliResult<()> {
 
 #[tokio::test]
 pub(crate) async fn test_list_owned_objects() -> CliResult<()> {
+    log_init(option_env!("RUST_LOG"));
     let ctx = start_default_test_kms_server_with_cert_auth().await;
     let key_id = gen_key(&ctx.owner_client_conf_path)?;
 
@@ -467,6 +472,7 @@ pub(crate) async fn test_list_owned_objects() -> CliResult<()> {
 
 #[tokio::test]
 pub(crate) async fn test_access_right_obtained() -> CliResult<()> {
+    log_init(option_env!("RUST_LOG"));
     let ctx = start_default_test_kms_server_with_cert_auth().await;
     let key_id = gen_key(&ctx.owner_client_conf_path)?;
 
@@ -500,6 +506,7 @@ pub(crate) async fn test_access_right_obtained() -> CliResult<()> {
 
 #[tokio::test]
 pub(crate) async fn test_ownership_and_grant_wildcard_user() -> CliResult<()> {
+    log_init(option_env!("RUST_LOG"));
     // the client conf will use the owner cert
     let ctx = start_default_test_kms_server_with_cert_auth().await;
     let key_id = gen_key(&ctx.owner_client_conf_path)?;
@@ -619,6 +626,7 @@ pub(crate) async fn test_ownership_and_grant_wildcard_user() -> CliResult<()> {
 
 #[tokio::test]
 pub(crate) async fn test_access_right_obtained_using_wildcard() -> CliResult<()> {
+    log_init(option_env!("RUST_LOG"));
     let ctx = start_default_test_kms_server_with_cert_auth().await;
     let key_id = gen_key(&ctx.owner_client_conf_path)?;
 
@@ -657,6 +665,7 @@ pub(crate) async fn test_access_right_obtained_using_wildcard() -> CliResult<()>
 
 #[tokio::test]
 pub(crate) async fn test_grant_multiple_operations() -> CliResult<()> {
+    log_init(option_env!("RUST_LOG"));
     let ctx = start_default_test_kms_server_with_cert_auth().await;
     let key_id = gen_key(&ctx.owner_client_conf_path)?;
 
