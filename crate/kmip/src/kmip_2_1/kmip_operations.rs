@@ -1037,6 +1037,7 @@ pub struct Encrypt {
     /// Unique Identifier
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unique_identifier: Option<UniqueIdentifier>,
+
     /// The Cryptographic Parameters (Block
     /// Cipher Mode, Padding Method,
     /// `RandomIV`) corresponding to the
@@ -1050,25 +1051,31 @@ pub struct Encrypt {
     /// Result Status of Operation Failed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_parameters: Option<CryptographicParameters>,
+
     /// The data to be encrypted
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<Zeroizing<Vec<u8>>>,
+
     /// The initialization vector, counter or
     /// nonce to be used (where appropriate).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub iv_counter_nonce: Option<Vec<u8>>,
+    pub i_v_counter_nonce: Option<Vec<u8>>,
+
     /// Specifies the existing stream or by-
     /// parts cryptographic operation (as
     /// returned from a previous call to this
     /// operation)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub correlation_value: Option<Vec<u8>>,
+
     /// Initial operation as Boolean
     #[serde(skip_serializing_if = "Option::is_none")]
     pub init_indicator: Option<bool>,
+
     /// Final operation as Boolean
     #[serde(skip_serializing_if = "Option::is_none")]
     pub final_indicator: Option<bool>,
+
     /// Any additional data to be authenticated via the Authenticated Encryption
     /// Tag. If supplied in multi-part encryption,
     /// this data MUST be supplied on the initial Encrypt request
@@ -1086,7 +1093,7 @@ impl Display for Encrypt {
             self.unique_identifier,
             self.cryptographic_parameters,
             self.data,
-            self.iv_counter_nonce,
+            self.i_v_counter_nonce,
             self.correlation_value,
             self.init_indicator,
             self.final_indicator,
@@ -1112,7 +1119,7 @@ pub struct EncryptResponse {
     /// algorithm requires the provision of an
     /// IV/Counter/Nonce.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub iv_counter_nonce: Option<Vec<u8>>,
+    pub i_v_counter_nonce: Option<Vec<u8>>,
     /// Specifies the stream or by-parts value
     /// to be provided in subsequent calls to
     /// this operation for performing
@@ -1137,7 +1144,7 @@ impl Display for EncryptResponse {
              correlation_value: {:?}, authenticated_encryption_tag: {:?} }}",
             self.unique_identifier,
             self.data,
-            self.iv_counter_nonce,
+            self.i_v_counter_nonce,
             self.correlation_value,
             self.authenticated_encryption_tag
         )

@@ -213,7 +213,7 @@ pub async fn wrap(
         unique_identifier: Some(UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned())),
         cryptographic_parameters: None,
         data: Some(general_purpose::STANDARD.decode(&request.key)?.into()),
-        iv_counter_nonce: None,
+        i_v_counter_nonce: None,
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,
@@ -225,7 +225,7 @@ pub async fn wrap(
     let data = dek.data.ok_or_else(|| {
         KmsError::InvalidRequest("Invalid wrapped key - missing data.".to_owned())
     })?;
-    let iv_counter_nonce = dek.iv_counter_nonce.ok_or_else(|| {
+    let iv_counter_nonce = dek.i_v_counter_nonce.ok_or_else(|| {
         KmsError::InvalidRequest("Invalid wrapped key - missing nonce.".to_owned())
     })?;
     let authenticated_encryption_tag = dek.authenticated_encryption_tag.ok_or_else(|| {
@@ -651,7 +651,7 @@ pub async fn privileged_wrap(
         unique_identifier: Some(UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned())),
         cryptographic_parameters: None,
         data: Some(general_purpose::STANDARD.decode(&request.key)?.into()),
-        iv_counter_nonce: None,
+        i_v_counter_nonce: None,
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,
@@ -663,7 +663,7 @@ pub async fn privileged_wrap(
     let data = dek.data.ok_or_else(|| {
         KmsError::InvalidRequest("Invalid wrapped key - missing data.".to_owned())
     })?;
-    let iv_counter_nonce = dek.iv_counter_nonce.ok_or_else(|| {
+    let iv_counter_nonce = dek.i_v_counter_nonce.ok_or_else(|| {
         KmsError::InvalidRequest("Invalid wrapped key - missing nonce.".to_owned())
     })?;
     let authenticated_encryption_tag = dek.authenticated_encryption_tag.ok_or_else(|| {
@@ -896,7 +896,7 @@ pub async fn rewrap(
         unique_identifier: Some(UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned())),
         cryptographic_parameters: None,
         data: Some(unwrapped_data.clone()),
-        iv_counter_nonce: None,
+        i_v_counter_nonce: None,
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,
@@ -908,7 +908,7 @@ pub async fn rewrap(
     let data = encrypt_response.data.ok_or_else(|| {
         KmsError::InvalidRequest("Invalid wrapped key - missing data.".to_owned())
     })?;
-    let iv_counter_nonce = encrypt_response.iv_counter_nonce.ok_or_else(|| {
+    let iv_counter_nonce = encrypt_response.i_v_counter_nonce.ok_or_else(|| {
         KmsError::InvalidRequest("Invalid wrapped key - missing nonce.".to_owned())
     })?;
     let authenticated_encryption_tag =
