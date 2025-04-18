@@ -407,7 +407,9 @@ async fn post_process_active_private_key(
     let key_block = object_with_metadata.object_mut().key_block_mut()?;
 
     // Merge the correct cryptographic attributes in the attributes
-    attributes.merge(key_block.attributes()?, true);
+    if let Ok(key_block_attributes) = key_block.attributes() {
+        attributes.merge(key_block_attributes, true);
+    }
 
     // add the attributes back
     *key_block.attributes_mut()? = attributes;
