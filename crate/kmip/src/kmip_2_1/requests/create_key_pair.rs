@@ -62,7 +62,7 @@ pub fn create_rsa_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
         key_format_type: Some(KeyFormatType::TransparentRSAPrivateKey),
         object_type: Some(ObjectType::PrivateKey),
         unique_identifier: private_key_id,
-        sensitive: Some(sensitive),
+        sensitive: if sensitive { Some(true) } else { None },
         ..Attributes::default()
     };
 
@@ -153,7 +153,7 @@ const fn build_algorithm_from_curve(curve: RecommendedCurve) -> CryptographicAlg
     match curve {
         RecommendedCurve::CURVEED25519 => CryptographicAlgorithm::Ed25519,
         RecommendedCurve::CURVEED448 => CryptographicAlgorithm::Ed448,
-        _ => CryptographicAlgorithm::EC,
+        _ => CryptographicAlgorithm::ECDH,
     }
 }
 
@@ -193,7 +193,7 @@ pub fn create_ec_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
         key_format_type: Some(KeyFormatType::ECPrivateKey),
         object_type: Some(ObjectType::PrivateKey),
         unique_identifier: private_key_id,
-        sensitive: Some(sensitive),
+        sensitive: if sensitive { Some(true) } else { None },
         ..Attributes::default()
     };
 

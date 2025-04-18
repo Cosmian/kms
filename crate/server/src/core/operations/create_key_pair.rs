@@ -201,6 +201,7 @@ pub(crate) fn generate_key_pair(
                     #[cfg(not(feature = "fips"))]
                     {
                         if cryptographic_algorithm == CryptographicAlgorithm::ECDSA
+                            || cryptographic_algorithm == CryptographicAlgorithm::ECDH
                             || cryptographic_algorithm == CryptographicAlgorithm::EC
                         {
                             kms_bail!(KmsError::NotSupported(
@@ -235,6 +236,7 @@ pub(crate) fn generate_key_pair(
                     {
                         if cryptographic_algorithm == CryptographicAlgorithm::ECDSA
                             || cryptographic_algorithm == CryptographicAlgorithm::EC
+                            || cryptographic_algorithm == CryptographicAlgorithm::ECDH
                         {
                             kms_bail!(KmsError::NotSupported(
                                 "Edwards curve can't be created for EC or ECDSA".to_owned()
