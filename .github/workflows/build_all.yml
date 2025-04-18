@@ -54,7 +54,7 @@ jobs:
             artifacts: |
               /usr/local/openssl/lib64/ossl-modules/legacy.so
 
-          - distribution: macos-14
+          - distribution: macos-15
             archive-name: macos_arm
             target: aarch64-apple-darwin
             artifacts: |
