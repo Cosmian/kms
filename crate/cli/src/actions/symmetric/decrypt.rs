@@ -10,8 +10,10 @@ use cosmian_kms_client::{
     export_object,
     kmip_2_1::{
         kmip_attributes::Attributes,
-        kmip_data_structures::KeyWrappingData,
-        kmip_types::{CryptographicAlgorithm, CryptographicParameters, KeyFormatType},
+        kmip_data_structures::{KeyBlock, KeyValue, KeyWrappingData},
+        kmip_types::{
+            CryptographicAlgorithm, CryptographicParameters, EncodingOption, KeyFormatType,
+        },
         requests::{create_symmetric_key_kmip_object, decrypt_request},
     },
     read_bytes_from_file, ExportObjectParams, KmsClient,
@@ -400,15 +402,25 @@ impl DecryptAction {
         let mut encapsulation = vec![0; encaps_length as usize];
         ct.read_exact(&mut encapsulation)?;
 
-        // Create the KMIP object corresponding to the DEK
+        // Create the KMIP object corresponding to the DEK which is a wrapped key
         let mut dek_object = create_symmetric_key_kmip_object(
-            &encapsulation,
+            &[0_u8; 32],
             &Attributes {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
                 ..Default::default()
             },
         )?;
-        dek_object.key_block_mut()?.key_wrapping_data = Some(KeyWrappingData::default());
+        *dek_object.key_block_mut()? = KeyBlock {
+            key_format_type: KeyFormatType::Raw,
+            key_compression_type: None,
+            key_value: Some(KeyValue::ByteString(Zeroizing::new(encapsulation))),
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            cryptographic_length: Some(i32::try_from(encaps_length)?),
+            key_wrapping_data: Some(KeyWrappingData {
+                encoding_option: Some(EncodingOption::NoEncoding),
+                ..Default::default()
+            }),
+        };
 
         // recover the DEK
         unwrap_key_block(dek_object.key_block_mut()?, &unwrapping_key)?;

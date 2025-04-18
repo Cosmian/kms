@@ -146,8 +146,6 @@ pub(crate) async fn test_import_cover_crypt() -> CliResult<()> {
 #[cfg(not(feature = "fips"))]
 #[tokio::test]
 pub(crate) async fn test_generate_export_import() -> CliResult<()> {
-    // use crate::actions::symmetric::keys::create_key::CreateKeyAction;
-
     use crate::actions::symmetric::keys::create_key::CreateKeyAction;
 
     log_init(option_env!("RUST_LOG"));

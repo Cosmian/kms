@@ -247,7 +247,7 @@ pub(crate) async fn test_locate_elliptic_curve() -> CliResult<()> {
     let ids = locate(
         &ctx.owner_client_conf_path,
         Some(&["test_ec"]),
-        Some("Ec"),
+        Some("ECDH"),
         None,
         None,
     )?;
@@ -279,7 +279,7 @@ pub(crate) async fn test_locate_elliptic_curve() -> CliResult<()> {
     let ids = locate(
         &ctx.owner_client_conf_path,
         Some(&["test_ec"]),
-        Some("eC"),
+        Some("ECDH"),
         None,
         Some("TransparentECPrivateKey"),
     )?;

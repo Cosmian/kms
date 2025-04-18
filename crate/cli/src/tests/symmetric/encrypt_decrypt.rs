@@ -2,9 +2,11 @@ use std::{fs, path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
 use cosmian_kms_client::{read_bytes_from_file, KmsClient, KMS_CLI_CONF_ENV};
+use cosmian_logger::log_init;
 use kms_test_server::start_default_test_kms_server;
 use strum::IntoEnumIterator;
 use tempfile::TempDir;
+use tracing::info;
 
 use super::SUB_COMMAND;
 use crate::{
@@ -215,6 +217,7 @@ async fn test_aes_xts_server_side() -> CliResult<()> {
 #[cfg(not(feature = "fips"))]
 #[tokio::test]
 async fn test_aes_gcm_siv_server_side() -> CliResult<()> {
+    log_init(option_env!("RUST_LOG"));
     let ctx = start_default_test_kms_server().await;
     let dek = create_symmetric_key(
         &ctx.owner_client_conf_path,
@@ -413,6 +416,9 @@ async fn test_rfc5649_aes_gcm_client_side() -> CliResult<()> {
 
 #[tokio::test]
 async fn test_client_side_encryption_with_buffer() -> CliResult<()> {
+    // log_init(option_env!("RUST_LOG"));
+    log_init(Some("info"));
+
     let ctx = start_default_test_kms_server().await;
     let kek = create_symmetric_key(
         &ctx.owner_client_conf_path,
@@ -440,6 +446,8 @@ async fn test_client_side_encryption_with_buffer() -> CliResult<()> {
             if dea == DataEncryptionAlgorithm::AesXts {
                 continue;
             }
+
+            info!("HERE {size} {dea:?}");
             let ciphertext = EncryptAction::default().client_side_encrypt_with_buffer(
                 &dek,
                 &encapsulation,
@@ -449,6 +457,7 @@ async fn test_client_side_encryption_with_buffer() -> CliResult<()> {
                 Some(hex::encode(b"my_auth_data").into_bytes()),
             )?;
 
+            info!("THERE {size} {dea:?}");
             let cleartext = DecryptAction::default()
                 .client_side_decrypt_with_buffer(
                     &kms_rest_client,

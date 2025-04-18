@@ -22,7 +22,7 @@ use super::create_1_4::create_symmetric_key;
 use crate::tests::ttlv_tests::get_client;
 
 #[test]
-fn test_add_attribute_1_4() {
+fn test_add_attribute_2_1() {
     log_init(option_env!("RUST_LOG"));
     // log_init(Some("debug"));
 
