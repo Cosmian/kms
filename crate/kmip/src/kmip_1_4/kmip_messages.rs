@@ -235,6 +235,9 @@ impl<'de> Deserialize<'de> for RequestMessageBatchItem {
                                     Operation::Locate(map.next_value()?)
                                 }
                                 OperationEnumeration::Query => Operation::Query(map.next_value()?),
+                                OperationEnumeration::Register => {
+                                    Operation::Register(map.next_value()?)
+                                }
                                 OperationEnumeration::Revoke => {
                                     Operation::Revoke(map.next_value()?)
                                 }

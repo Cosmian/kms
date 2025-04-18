@@ -40,6 +40,7 @@ use cosmian_kmip::{
 use cosmian_kms_crypto::crypto::elliptic_curves::{
     CURVE_25519_Q_LENGTH_BITS, operation::to_ec_public_key,
 };
+use uuid::Uuid;
 
 use crate::{
     config::ServerParams,
@@ -50,11 +51,11 @@ use crate::{
 };
 
 #[tokio::test]
-async fn test_curve_25519_key_pair() -> KResult<()> {
+async fn test_curve_25519() -> KResult<()> {
     let clap_config = https_clap_config();
 
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = "eyJhbGciOiJSUzI1Ni";
+    let owner = Uuid::new_v4().to_string();
 
     // request key pair creation
     let request = create_ec_key_pair_request(
@@ -74,7 +75,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
                     .as_str()
                     .context("no string for the private_key_unique_identifier")?,
             ),
-            owner,
+            &owner,
             None,
         )
         .await?;
@@ -133,7 +134,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
                     .as_str()
                     .context("no string for the public_key_unique_identifier")?,
             ),
-            owner,
+            &owner,
             None,
         )
         .await?;
@@ -225,7 +226,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
     let clap_config = https_clap_config();
 
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = "eyJhbGciOiJSUzI1Ni";
+    let owner = Uuid::new_v4().to_string();
 
     let request = RequestMessage {
         request_header: RequestMessageHeader {
@@ -252,7 +253,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
         ],
     };
 
-    let response = kms.message(request, owner, None).await?;
+    let response = kms.message(request, &owner, None).await?;
     assert_eq!(response.response_header.batch_count, 2);
 
     let request = RequestMessage {
@@ -301,7 +302,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
         ],
     };
 
-    let response = kms.message(request, owner, None).await?;
+    let response = kms.message(request, &owner, None).await?;
     assert_eq!(response.response_header.batch_count, 4);
     assert_eq!(response.batch_item.len(), 4);
 
