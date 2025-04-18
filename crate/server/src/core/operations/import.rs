@@ -154,13 +154,7 @@ pub(crate) async fn process_symmetric_key(
     attributes.object_type = Some(ObjectType::SymmetricKey);
     // set the unique identifier
     attributes.unique_identifier = Some(UniqueIdentifier::TextString(uid.clone()));
-    // force the usage mask to unrestricted if not in FIPS mode
-    #[cfg(not(feature = "fips"))]
-    // In non-FIPS mode, if no CryptographicUsageMask has been specified,
-    // default to Unrestricted.
-    if attributes.cryptographic_usage_mask.is_none() {
-        attributes.set_cryptographic_usage_mask(Some(CryptographicUsageMask::Unrestricted));
-    }
+
     // set the tags in the attributes
     attributes.set_tags(tags.clone())?;
     // merge the object attributes with the request attributes without overwriting
@@ -173,11 +167,17 @@ pub(crate) async fn process_symmetric_key(
         attributes.cryptographic_algorithm = Some(CryptographicAlgorithm::AES);
     };
 
+    // force the usage mask to unrestricted if not in FIPS mode
+    #[cfg(not(feature = "fips"))]
+    // In non-FIPS mode, if no CryptographicUsageMask has been specified,
+    // default to Unrestricted.
+    if attributes.cryptographic_usage_mask.is_none() {
+        attributes.set_cryptographic_usage_mask(Some(CryptographicUsageMask::Unrestricted));
+    }
+
     // Replace updated attributes in object structure.
-    let new_attributes = attributes;
-    if let Some(KeyValue::Structure { attributes, .. }) = object.key_block_mut()?.key_value.as_mut()
-    {
-        *attributes = Some(new_attributes.clone());
+    if let Ok(attrs) = object.key_block_mut()?.attributes_mut() {
+        *attrs = attributes.clone();
     }
 
     Ok((
@@ -186,7 +186,7 @@ pub(crate) async fn process_symmetric_key(
             tags,
             replace_existing,
             object,
-            new_attributes,
+            attributes,
             uid,
         )],
     ))
@@ -232,15 +232,17 @@ fn process_certificate(request: Import) -> Result<(String, Vec<AtomicOperation>)
     attributes.certificate_attributes = Some(openssl_x509_to_certificate_attributes(&certificate));
     // set the tags in the attributes
     attributes.set_tags(tags.clone())?;
+
+    // Merge the object attributes with the request attributes without overwriting
+    // Certificates do not hold attributes at this stage
+    if let Ok(object_attributes) = object.attributes() {
+        attributes.merge(object_attributes, false);
+    }
+
     // if not in FIPS mode, set the CryptographicUsageMask to Unrestricted
     #[cfg(not(feature = "fips"))]
     if attributes.cryptographic_usage_mask.is_none() {
         attributes.cryptographic_usage_mask = Some(CryptographicUsageMask::Unrestricted);
-    }
-    // Merge the object attributes with the request attributes without overwriting
-    // 9Certificates do not hold attributes at this stage
-    if let Ok(object_attributes) = object.attributes() {
-        attributes.merge(object_attributes, false);
     }
 
     Ok((
@@ -322,10 +324,8 @@ async fn process_public_key(
     attributes.unique_identifier = Some(UniqueIdentifier::TextString(uid.clone()));
 
     // Replace updated attributes in object structure.
-    let new_attributes = attributes;
-    if let Some(KeyValue::Structure { attributes, .. }) = object.key_block_mut()?.key_value.as_mut()
-    {
-        *attributes = Some(new_attributes.clone());
+    if let Ok(attrs) = object.key_block_mut()?.attributes_mut() {
+        *attrs = attributes.clone();
     }
 
     Ok((
@@ -334,7 +334,7 @@ async fn process_public_key(
             tags,
             replace_existing,
             object,
-            new_attributes,
+            attributes,
             uid,
         )],
     ))
@@ -415,11 +415,9 @@ async fn process_private_key(
     // set the unique identifier
     attributes.unique_identifier = Some(UniqueIdentifier::TextString(uid.clone()));
 
-    // Replace updated attributes in object structure.
-    let new_attributes = attributes;
-    if let Some(KeyValue::Structure { attributes, .. }) = object.key_block_mut()?.key_value.as_mut()
-    {
-        *attributes = Some(new_attributes.clone());
+    // Replace updated attributes in object structure if the object is not wrapped.
+    if let Ok(attrs) = object.key_block_mut()?.attributes_mut() {
+        *attrs = attributes.clone();
     }
 
     Ok((
@@ -428,7 +426,7 @@ async fn process_private_key(
             tags,
             replace_existing,
             object,
-            new_attributes,
+            attributes,
             uid,
         )],
     ))

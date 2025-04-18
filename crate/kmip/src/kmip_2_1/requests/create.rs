@@ -100,7 +100,7 @@ pub fn symmetric_key_create_request<T: IntoIterator<Item = impl AsRef<str>>>(
         key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
         object_type: Some(ObjectType::SymmetricKey),
         unique_identifier: key_id,
-        sensitive: Some(sensitive),
+        sensitive: if sensitive { Some(true) } else { None },
         ..Attributes::default()
     };
     attributes.set_tags(tags)?;

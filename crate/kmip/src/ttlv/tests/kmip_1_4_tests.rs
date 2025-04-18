@@ -32,7 +32,7 @@ fn test_template_attributes() {
                 name_value: "http://localhost".to_owned(),
                 name_type: NameType::URI,
             }),
-            Attribute::CryptographicAlgorithm(CryptographicAlgorithm::EC),
+            Attribute::CryptographicAlgorithm(CryptographicAlgorithm::ECDH),
             Attribute::CryptographicLength(128),
             Attribute::CryptographicDomainParameters(CryptographicDomainParameters {
                 qlength: Some(256),

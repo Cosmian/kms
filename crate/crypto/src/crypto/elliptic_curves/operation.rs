@@ -230,7 +230,7 @@ pub fn to_ec_private_key(
                             public_key_uid.to_owned(),
                         ),
                     }]),
-                    sensitive: Some(sensitive),
+                    sensitive: if sensitive { Some(true) } else { None },
                     ..Attributes::default()
                 }),
             }),
@@ -518,15 +518,7 @@ fn create_ec_key_pair(
     sk_tags.insert("_sk".to_owned());
     private_key_attributes.set_tags(sk_tags)?;
     // and set them on the object
-    let Some(&mut KeyValue::Structure {
-        ref mut attributes, ..
-    }) = private_key.key_block_mut()?.key_value.as_mut()
-    else {
-        return Err(CryptoError::Default(
-            "Key value not found in the private key".to_owned(),
-        ));
-    };
-    *attributes = Some(private_key_attributes);
+    *private_key.key_block_mut()?.attributes_mut()? = private_key_attributes;
     trace!("create_approved_ecc_key_pair: private key converted OK");
 
     // Generate  KMIP public Key
@@ -550,15 +542,7 @@ fn create_ec_key_pair(
     pk_tags.insert("_pk".to_owned());
     public_key_attributes.set_tags(pk_tags)?;
     // and set them on the object
-    let Some(&mut KeyValue::Structure {
-        ref mut attributes, ..
-    }) = public_key.key_block_mut()?.key_value.as_mut()
-    else {
-        return Err(CryptoError::Default(
-            "Key value not found in the public key".to_owned(),
-        ));
-    };
-    *attributes = Some(public_key_attributes);
+    *public_key.key_block_mut()?.attributes_mut()? = public_key_attributes;
     trace!("create_approved_ecc_key_pair: public key converted OK");
 
     Ok(KeyPair::new(private_key, public_key))
@@ -657,7 +641,7 @@ mod tests {
         // - the public key is a TransparentEcPublicKey where the key value is the bytes of the Montgomery point
 
         use cosmian_kmip::kmip_2_1::kmip_data_structures::KeyValue;
-        let algorithm = CryptographicAlgorithm::EC;
+        let algorithm = CryptographicAlgorithm::ECDH;
         let private_key_attributes = Attributes {
             cryptographic_usage_mask: Some(CryptographicUsageMask::Unrestricted),
             ..Attributes::default()
@@ -722,7 +706,7 @@ mod tests {
     }
 
     fn keypair_generation(curve: RecommendedCurve) {
-        let algorithm = CryptographicAlgorithm::EC;
+        let algorithm = CryptographicAlgorithm::ECDH;
         let private_key_attributes = Attributes {
             cryptographic_usage_mask: Some(CryptographicUsageMask::Sign),
             ..Attributes::default()
@@ -1135,7 +1119,7 @@ mod tests {
         // Load FIPS provider module from OpenSSL.
         Provider::load(None, "fips").unwrap();
 
-        let algorithm = CryptographicAlgorithm::EC;
+        let algorithm = CryptographicAlgorithm::ECDH;
         let private_key_attributes = Attributes {
             cryptographic_usage_mask: Some(CryptographicUsageMask::Decrypt),
             ..Attributes::default()

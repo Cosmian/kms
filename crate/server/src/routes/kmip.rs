@@ -439,7 +439,8 @@ mod tests {
 
     #[test]
     fn error_response_message() {
-        log_init(Some("debug"));
+        // log_init(Some("debug"));
+        log_init(option_env!("RUST_LOG"));
         let response = super::invalid_response_message(1, 0, "Unknown Error".to_owned());
         assert_eq!(response.response_header.batch_count, 1);
         assert_eq!(response.batch_item.len(), 1);
