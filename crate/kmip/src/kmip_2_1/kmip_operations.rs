@@ -9,17 +9,19 @@ use zeroize::Zeroizing;
 use super::{
     kmip_attributes::{Attribute, Attributes},
     kmip_data_structures::{
-        CapabilityInformation, DefaultsInformation, ExtensionInformation, KeyWrappingSpecification,
-        ServerInformation,
+        CapabilityInformation, DefaultsInformation, DerivationParameters, ExtensionInformation,
+        KeyWrappingSpecification, ServerInformation,
     },
     kmip_objects::{Object, ObjectType},
     kmip_types::{
-        AttributeReference, CertificateRequestType, CryptographicParameters, KeyCompressionType,
-        KeyFormatType, ObjectGroupMember, OperationEnumeration, ProtectionStorageMasks,
-        QueryFunction, StorageStatusMask, UniqueIdentifier, ValidityIndicator,
+        AttributeReference, CertificateRequestType, CryptographicParameters, DerivationMethod,
+        KeyCompressionType, KeyFormatType, ObjectGroupMember, OperationEnumeration,
+        ProtectionStorageMasks, QueryFunction, StorageStatusMask, UniqueIdentifier,
+        ValidityIndicator,
     },
 };
 use crate::{
+    Deserializer, Serializer,
     error::KmipError,
     kmip_0::{
         kmip_data_structures::ValidationInformation,
@@ -27,7 +29,6 @@ use crate::{
         kmip_types::{AttestationType, Direction, KeyWrapType, RevocationReason},
     },
     kmip_2_1::kmip_data_structures::{ProfileInformation, RNGParameters},
-    Deserializer, Serializer,
 };
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
@@ -58,22 +59,14 @@ pub enum Operation {
     GetResponse(GetResponse),
     GetAttributes(GetAttributes),
     GetAttributesResponse(GetAttributesResponse),
-    Import(Import),
-    ImportResponse(ImportResponse),
-    SetAttribute(SetAttribute),
-    SetAttributeResponse(SetAttributeResponse),
-    DeleteAttribute(DeleteAttribute),
-    DeleteAttributeResponse(DeleteAttributeResponse),
-    Encrypt(Encrypt),
-    EncryptResponse(EncryptResponse),
-    Decrypt(Decrypt),
-    DecryptResponse(DecryptResponse),
     Hash(Hash),
     HashResponse(HashResponse),
     Import(Import),
     ImportResponse(ImportResponse),
     Locate(Locate),
     LocateResponse(LocateResponse),
+    Mac(Mac),
+    MacResponse(MacResponse),
     Query(Query),
     QueryResponse(QueryResponse),
     Revoke(Revoke),
@@ -106,15 +99,14 @@ impl Operation {
             | Self::GetAttributes(_)
             | Self::Hash(_)
             | Self::Locate(_)
+            | Self::Mac(_)
             | Self::Query(_)
             | Self::Revoke(_)
             | Self::ReKey(_)
             | Self::ReKeyKeyPair(_)
-            | Self::Destroy(_)
             | Self::Validate(_)
             | Self::DiscoverVersions(_)
-            | Self::SetAttribute(_)
-            | Self::Validate(_) => Direction::Request,
+            | Self::SetAttribute(_) => Direction::Request,
 
             Self::AddAttributeResponse(_)
             | Self::CertifyResponse(_)
@@ -128,9 +120,6 @@ impl Operation {
             | Self::GetResponse(_)
             | Self::GetAttributesResponse(_)
             | Self::SetAttributeResponse(_)
-            | Self::DeleteAttributeResponse(_)
-            | Self::EncryptResponse(_)
-            | Self::DecryptResponse(_)
             | Self::ImportResponse(_)
             | Self::HashResponse(_)
             | Self::LocateResponse(_)
@@ -138,7 +127,6 @@ impl Operation {
             | Self::RevokeResponse(_)
             | Self::ReKeyResponse(_)
             | Self::ReKeyKeyPairResponse(_)
-            | Self::DestroyResponse(_)
             | Self::QueryResponse(_)
             | Self::ValidateResponse(_)
             | Self::DiscoverVersionsResponse(_) => Direction::Response,
@@ -164,10 +152,6 @@ impl Operation {
             Self::DiscoverVersions(_) | Self::DiscoverVersionsResponse(_) => {
                 OperationEnumeration::DiscoverVersions
             }
-            Self::Decrypt(_) | Self::DecryptResponse(_) => OperationEnumeration::Decrypt,
-            Self::DeleteAttribute(_) | Self::DeleteAttributeResponse(_) => {
-                OperationEnumeration::DeleteAttribute
-            }
             Self::Encrypt(_) | Self::EncryptResponse(_) => OperationEnumeration::Encrypt,
             Self::Export(_) | Self::ExportResponse(_) => OperationEnumeration::Export,
             Self::Get(_) | Self::GetResponse(_) => OperationEnumeration::Get,
@@ -177,6 +161,7 @@ impl Operation {
             Self::Import(_) | Self::ImportResponse(_) => OperationEnumeration::Import,
             Self::Hash(_) | Self::HashResponse(_) => OperationEnumeration::Hash,
             Self::Locate(_) | Self::LocateResponse(_) => OperationEnumeration::Locate,
+            Self::Mac(_) | Self::MacResponse(_) => OperationEnumeration::MAC,
             Self::Query(_) | Self::QueryResponse(_) => OperationEnumeration::Query,
             Self::ReKey(_) | Self::ReKeyResponse(_) => OperationEnumeration::ReKey,
             Self::ReKeyKeyPair(_) | Self::ReKeyKeyPairResponse(_) => {
@@ -186,15 +171,10 @@ impl Operation {
             Self::SetAttribute(_) | Self::SetAttributeResponse(_) => {
                 OperationEnumeration::SetAttribute
             }
-            Self::SetAttribute(_) | Self::SetAttributeResponse(_) => {
-                OperationEnumeration::SetAttribute
-            }
             Self::Validate(_) | Self::ValidateResponse(_) => OperationEnumeration::Validate,
         }
     }
 }
-
-
 
 /// This operation requests the server to add a new attribute instance to be associated with
 /// a Managed Object and set its value. The request contains the Unique Identifier of the
@@ -435,108 +415,257 @@ impl Display for CreateKeyPairResponse {
     }
 }
 
-
-/// Import
-///
-/// This operation requests the server to Import a Managed Object specified by
-/// its Unique Identifier. The request specifies the object being imported and
-/// all the attributes to be assigned to the object. The attribute rules for
-/// each attribute for "Initially set by" and "When implicitly set" SHALL NOT be
-/// enforced as all attributes MUST be set to the supplied values rather than
-/// any server generated values.
-///
-/// The response contains the Unique Identifier provided in the request or
-/// assigned by the server. The server SHALL copy the Unique Identifier returned
-/// by this operation into the ID Placeholder variable.
-/// `https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html#_Toc57115657`
-///
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Serialize, Deserialize, Default, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
-pub struct Import {
-    /// The Unique Identifier of the object to be imported
-    pub unique_identifier: UniqueIdentifier,
-    /// Determines the type of object being imported.
-    pub object_type: ObjectType,
-    /// A Boolean.  If specified and true then any existing object with the same
-    /// Unique Identifier SHALL be replaced by this operation. If absent or
-    /// false and an object exists with the same Unique Identifier then an error
-    /// SHALL be returned.
+pub struct Decrypt {
+    /// The Unique Identifier of the Managed
+    /// Cryptographic Object that is the key to
+    /// use for the decryption operation. If
+    /// omitted, then the ID Placeholder value
+    /// SHALL be used by the server as the
+    /// Unique Identifier.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub replace_existing: Option<bool>,
-    /// If Not Wrapped then the server SHALL unwrap the object before storing
-    /// it, and return an error if the wrapping key is not available.
-    /// Otherwise the server SHALL store the object as provided.
+    pub unique_identifier: Option<UniqueIdentifier>,
+
+    /// The Cryptographic Parameters (Block
+    /// Cipher Mode, Padding Method)
+    /// corresponding to the particular
+    /// decryption method requested.
+    /// If there are no Cryptographic
+    /// Parameters associated with the
+    /// Managed Cryptographic Object and
+    /// the algorithm requires parameters then
+    /// the operation SHALL return with a
+    /// Result Status of Operation Failed.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub key_wrap_type: Option<KeyWrapType>,
-    /// Specifies object attributes to be associated with the new object.
-    pub attributes: Attributes,
-    /// The object being imported. The object and attributes MAY be wrapped.
-    pub object: Object,
+    pub cryptographic_parameters: Option<CryptographicParameters>,
+
+    /// The data to be decrypted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<Vec<u8>>,
+
+    /// The initialization vector, counter or
+    /// nonce to be used (where appropriate)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub i_v_counter_nonce: Option<Vec<u8>>,
+
+    /// Specifies the existing stream or by-
+    /// parts cryptographic operation (as
+    /// returned from a previous call to this
+    /// operation)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub correlation_value: Option<Vec<u8>>,
+
+    /// Initial operation as Boolean
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub init_indicator: Option<bool>,
+
+    /// Final operation as Boolean
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub final_indicator: Option<bool>,
+
+    /// Additional data to be authenticated via
+    /// the Authenticated Encryption Tag. If
+    /// supplied in multi-part decryption, this
+    /// data MUST be supplied on the initial
+    /// Decrypt request
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub authenticated_encryption_additional_data: Option<Vec<u8>>,
+
+    /// Specifies the tag that will be needed to
+    /// authenticate the decrypted data and
+    /// the additional authenticated data. If
+    /// supplied in multi-part decryption, this
+    /// data MUST be supplied on the initial
+    /// Decrypt request
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub authenticated_encryption_tag: Option<Vec<u8>>,
 }
 
-impl Display for Import {
+impl Display for Decrypt {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "Import {{ unique_identifier: {}, object_type: {}, replace_existing: {:?}, \
-             key_wrap_type: {:?}, attributes: {:?}, object: {} }}",
+            "Decrypt {{ unique_identifier: {:?}, cryptographic_parameters: {:?}, data: {:?}, \
+             iv_counter_nonce: {:?}, correlation_value: {:?}, init_indicator: {:?}, \
+             final_indicator: {:?}, authenticated_encryption_additional_data: {:?}, \
+             authenticated_encryption_tag: {:?} }}",
             self.unique_identifier,
-            self.object_type,
-            self.replace_existing,
-            self.key_wrap_type,
-            self.attributes,
-            self.object
+            self.cryptographic_parameters,
+            self.data,
+            self.i_v_counter_nonce,
+            self.correlation_value,
+            self.init_indicator,
+            self.final_indicator,
+            self.authenticated_encryption_additional_data,
+            self.authenticated_encryption_tag
         )
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
-#[serde(rename_all = "PascalCase")]
-pub struct ImportResponse {
-    /// The Unique Identifier of the newly imported object.
-    pub unique_identifier: UniqueIdentifier,
+/// When decrypting data with Cover Crypt we can have some
+/// additional metadata stored inside the header and encrypted
+/// with de DEM. We need to return these data to the user but
+/// the KMIP protocol do not provide a way to do it. So we prepend
+/// the decrypted bytes with the decrypted additional metadata.
+/// This struct is not useful (and shouldn't be use) if the user
+/// ask to encrypt with something else than Cover Crypt (for example an AES encrypt.)
+/// See also `DataToEncrypt` struct.
+/// The binary format of this struct is:
+/// 1. LEB128 unsigned length of the metadata
+/// 2. metadata decrypted bytes
+/// 3. data decrypted
+pub struct DecryptedData {
+    pub metadata: Vec<u8>,
+    pub plaintext: Zeroizing<Vec<u8>>,
 }
 
-impl Display for ImportResponse {
+impl TryInto<Vec<u8>> for DecryptedData {
+    type Error = KmipError;
+
+    fn try_into(self) -> Result<Vec<u8>, Self::Error> {
+        let mut ser = Serializer::new();
+        ser.write_vec(&self.metadata)?;
+
+        let mut result = ser.finalize().to_vec();
+        result.extend_from_slice(&self.plaintext);
+        Ok(result)
+    }
+}
+
+impl TryFrom<&[u8]> for DecryptedData {
+    type Error = KmipError;
+
+    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+        let mut de = Deserializer::new(bytes);
+
+        // Read the metadata
+        let metadata = de.read_vec()?;
+
+        // Remaining is the decrypted plaintext
+        let plaintext = Zeroizing::from(de.finalize());
+
+        Ok(Self {
+            metadata,
+            plaintext,
+        })
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct DecryptResponse {
+    /// The Unique Identifier of the Managed
+    /// Cryptographic Object that was the key
+    /// used for the decryption operation.
+    pub unique_identifier: UniqueIdentifier,
+    /// The decrypted data
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<Zeroizing<Vec<u8>>>,
+    /// Specifies the stream or by-parts value
+    /// to be provided in subsequent calls to
+    /// this operation for performing
+    /// cryptographic operations.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub correlation_value: Option<Vec<u8>>,
+}
+
+impl Display for DecryptResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "ImportResponse {{ unique_identifier: {} }}",
+            "DecryptResponse {{ unique_identifier: {}, data: {:?}, correlation_value: {:?} }}",
+            self.unique_identifier, self.data, self.correlation_value
+        )
+    }
+}
+
+#[derive(Default, Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct DeleteAttribute {
+    /// Determines the object whose attributes are being deleted. If omitted, then the ID Placeholder value is used by the server as the Unique Identifier.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<UniqueIdentifier>,
+    /// Specifies the attribute associated with the object to be deleted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_attribute: Option<Attribute>,
+    /// Specifies the reference for the attribute associated with the object to be deleted.
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        rename = "AttributeReferences"
+    )]
+    pub attribute_references: Option<Vec<AttributeReference>>,
+}
+
+impl Display for DeleteAttribute {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "DeleteAttribute {{ unique_identifier: {:?}, current_attribute: {:?}, \
+             attribute_references: {:?} }}",
+            self.unique_identifier, self.current_attribute, self.attribute_references
+        )
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct DeleteAttributeResponse {
+    /// The Unique Identifier of the object
+    pub unique_identifier: UniqueIdentifier,
+}
+
+impl Display for DeleteAttributeResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "DeleteAttributeResponse {{ unique_identifier: {} }}",
             self.unique_identifier
         )
     }
 }
 
-#[allow(non_camel_case_types)]
-pub enum DerivationMethod {
-    PBKDF2 = 0x0000_0001,
-    HASH = 0x0000_0002,
-    HMAC = 0x0000_0003,
-    ENCRYPT = 0x0000_0004,
-    NIST800_108C = 0x0000_0005,
-    NIST800_108F = 0x0000_0006,
-    NIST800_108DPI = 0x0000_0007,
-    Asymmetric_Key = 0x0000_0008,
-    AWS_Signature_Version_4 = 0x0000_0009,
-    HKDF = 0x0000_000A,
-    // Extensions items available at values 8XXX_XXXX.
+#[derive(Serialize, Deserialize, PartialEq, Eq, Default, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct Destroy {
+    /// Determines the object being destroyed. If omitted, then the ID
+    /// Placeholder value is used by the server as the Unique Identifier.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<UniqueIdentifier>,
+    /// Remove the object from the server's database.
+    /// This is a Cosmian extension; the KMIP specification mandates that objects
+    /// metadata should be kept even if the object is destroyed. This extension allows
+    /// for the removal of the object metadata, typically for GDPR compliance and fixing
+    /// creation errors.
+    #[serde(skip_serializing_if = "<&bool>::not", default)]
+    pub remove: bool,
 }
 
-// TODO - derive key using DeriveKey operation.
-#[allow(dead_code)]
-pub struct DerivationParameters {
-    /// Depends on the PRF.
-    cryptographic_parameters: Option<CryptographicParameters>,
-    /// Depends on the PRF and mode of operation: an empty IV is assumed if not
-    /// provided.
-    initialization_vector: Option<Vec<u8>>,
-    /// Mandatory unless the Unique Identifier of a Secret Data object is
-    /// provided. May be repeated.
-    derivation_data: Option<Zeroizing<Vec<u8>>>,
-    /// Mandatory if Derivation method is PBKDF2.
-    salt: Option<Vec<u8>>,
-    /// Mandatory if derivation method is PBKDF2.
-    iteration_count: Option<i32>,
+impl Display for Destroy {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Destroy {{ unique_identifier: {:?} }}",
+            self.unique_identifier
+        )
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct DestroyResponse {
+    /// The Unique Identifier of the object.
+    pub unique_identifier: UniqueIdentifier,
+}
+
+impl Display for DestroyResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "DestroyResponse {{ unique_identifier: {} }}",
+            self.unique_identifier
+        )
+    }
 }
 
 /// `DeriveKey`
@@ -550,6 +679,8 @@ pub struct DerivationParameters {
 /// server SHALL return an error. For all derivation methods, the client SHALL
 /// specify the desired length of the derived key or Secret Data object using
 /// the Cryptographic Length attribute.
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[serde(rename_all = "PascalCase")]
 pub struct DeriveKey {
     /// Determines the type of object to be created.
     pub object_type: ObjectType,
@@ -567,6 +698,131 @@ pub struct DeriveKey {
     /// length and algorithm SHALL always be specified for the creation of a
     /// symmetric key.
     pub attributes: Attributes,
+}
+
+#[derive(Serialize, Deserialize, Default, PartialEq, Eq, Clone, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct Encrypt {
+    /// The Unique Identifier of the Managed
+    /// Cryptographic Object that is the key to
+    /// use for the encryption operation. If
+    /// omitted, then the ID Placeholder value
+    /// SHALL be used by the server as the
+    /// Unique Identifier
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<UniqueIdentifier>,
+
+    /// The Cryptographic Parameters (Block
+    /// Cipher Mode, Padding Method,
+    /// `RandomIV`) corresponding to the
+    /// particular encryption method
+    /// requested.
+    /// If there are no Cryptographic
+    /// Parameters associated with the
+    /// Managed Cryptographic Object and
+    /// the algorithm requires parameters then
+    /// the operation SHALL return with a
+    /// Result Status of Operation Failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cryptographic_parameters: Option<CryptographicParameters>,
+
+    /// The data to be encrypted
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<Zeroizing<Vec<u8>>>,
+
+    /// The initialization vector, counter or
+    /// nonce to be used (where appropriate).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub i_v_counter_nonce: Option<Vec<u8>>,
+
+    /// Specifies the existing stream or by-
+    /// parts cryptographic operation (as
+    /// returned from a previous call to this
+    /// operation)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub correlation_value: Option<Vec<u8>>,
+
+    /// Initial operation as Boolean
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub init_indicator: Option<bool>,
+
+    /// Final operation as Boolean
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub final_indicator: Option<bool>,
+
+    /// Any additional data to be authenticated via the Authenticated Encryption
+    /// Tag. If supplied in multi-part encryption,
+    /// this data MUST be supplied on the initial Encrypt request
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub authenticated_encryption_additional_data: Option<Vec<u8>>,
+}
+
+impl Display for Encrypt {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Encrypt {{ unique_identifier: {:?}, cryptographic_parameters: {:?}, data: {:?}, \
+             iv_counter_nonce: {:?}, correlation_value: {:?}, init_indicator: {:?}, \
+             final_indicator: {:?}, authenticated_encryption_additional_data: {:?} }}",
+            self.unique_identifier,
+            self.cryptographic_parameters,
+            self.data,
+            self.i_v_counter_nonce,
+            self.correlation_value,
+            self.init_indicator,
+            self.final_indicator,
+            self.authenticated_encryption_additional_data,
+        )
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct EncryptResponse {
+    /// The Unique Identifier of the Managed
+    /// Cryptographic Object that was the key
+    /// used for the encryption operation.
+    pub unique_identifier: UniqueIdentifier,
+    /// The encrypted data (as a Byte String).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<Vec<u8>>,
+    /// The value used if the Cryptographic
+    /// Parameters specified Random IV and
+    /// the IV/Counter/Nonce value was not
+    /// provided in the request and the
+    /// algorithm requires the provision of an
+    /// IV/Counter/Nonce.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub i_v_counter_nonce: Option<Vec<u8>>,
+    /// Specifies the stream or by-parts value
+    /// to be provided in subsequent calls to
+    /// this operation for performing
+    /// cryptographic operations.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub correlation_value: Option<Vec<u8>>,
+    /// Specifies the tag that will be needed to
+    /// authenticate the decrypted data (and
+    /// any "additional data"). Only returned on
+    /// completion of the encryption of the last
+    /// of the plaintext by an authenticated
+    /// encryption cipher.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub authenticated_encryption_tag: Option<Vec<u8>>,
+}
+
+impl Display for EncryptResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "EncryptResponse {{ unique_identifier: {}, data: {:?}, iv_counter_nonce: {:?}, \
+             correlation_value: {:?}, authenticated_encryption_tag: {:?} }}",
+            self.unique_identifier,
+            self.data,
+            self.i_v_counter_nonce,
+            self.correlation_value,
+            self.authenticated_encryption_tag
+        )
+    }
 }
 
 /// Export
@@ -944,374 +1200,128 @@ impl Display for GetAttributesResponse {
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Default, Debug)]
 #[serde(rename_all = "PascalCase")]
-pub struct SetAttribute {
-    /// The Unique Identifier of the object. If omitted, then the ID Placeholder value is used by the server as the Unique Identifier.
+pub struct Hash {
+    /// The Cryptographic Parameters (Hashing Algorithm) corresponding to the particular hash method requested.
+    pub cryptographic_parameters: CryptographicParameters,
+    /// The data to be hashed.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub unique_identifier: Option<UniqueIdentifier>,
-    /// Specifies the new value for the attribute associated with the object.
-    pub new_attribute: Attribute,
-}
-
-impl Display for SetAttribute {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "SetAttribute {{ unique_identifier: {:?}, new_attribute: {:?} }}",
-            self.unique_identifier, self.new_attribute
-        )
-    }
-}
-
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
-#[serde(rename_all = "PascalCase")]
-pub struct SetAttributeResponse {
-    /// The Unique Identifier of the object
-    pub unique_identifier: UniqueIdentifier,
-}
-
-impl Display for SetAttributeResponse {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "SetAttributeResponse {{ unique_identifier: {} }}",
-            self.unique_identifier
-        )
-    }
-}
-
-#[derive(Default, Serialize, Deserialize, PartialEq, Eq, Debug)]
-#[serde(rename_all = "PascalCase")]
-pub struct DeleteAttribute {
-    /// Determines the object whose attributes are being deleted. If omitted, then the ID Placeholder value is used by the server as the Unique Identifier.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub unique_identifier: Option<UniqueIdentifier>,
-    /// Specifies the attribute associated with the object to be deleted.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub current_attribute: Option<Attribute>,
-    /// Specifies the reference for the attribute associated with the object to be deleted.
-    #[serde(
-        skip_serializing_if = "Option::is_none",
-        rename = "AttributeReferences"
-    )]
-    pub attribute_references: Option<Vec<AttributeReference>>,
-}
-
-impl Display for DeleteAttribute {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "DeleteAttribute {{ unique_identifier: {:?}, current_attribute: {:?}, \
-             attribute_references: {:?} }}",
-            self.unique_identifier, self.current_attribute, self.attribute_references
-        )
-    }
-}
-
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
-#[serde(rename_all = "PascalCase")]
-pub struct DeleteAttributeResponse {
-    /// The Unique Identifier of the object
-    pub unique_identifier: UniqueIdentifier,
-}
-
-impl Display for DeleteAttributeResponse {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "DeleteAttributeResponse {{ unique_identifier: {} }}",
-            self.unique_identifier
-        )
-    }
-}
-
-#[derive(Serialize, Deserialize, Default, PartialEq, Eq, Clone, Debug)]
-#[serde(rename_all = "PascalCase")]
-pub struct Encrypt {
-    /// The Unique Identifier of the Managed
-    /// Cryptographic Object that is the key to
-    /// use for the encryption operation. If
-    /// omitted, then the ID Placeholder value
-    /// SHALL be used by the server as the
-    /// Unique Identifier
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub unique_identifier: Option<UniqueIdentifier>,
-
-    /// The Cryptographic Parameters (Block
-    /// Cipher Mode, Padding Method,
-    /// `RandomIV`) corresponding to the
-    /// particular encryption method
-    /// requested.
-    /// If there are no Cryptographic
-    /// Parameters associated with the
-    /// Managed Cryptographic Object and
-    /// the algorithm requires parameters then
-    /// the operation SHALL return with a
-    /// Result Status of Operation Failed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cryptographic_parameters: Option<CryptographicParameters>,
-
-    /// The data to be encrypted
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<Zeroizing<Vec<u8>>>,
-
-    /// The initialization vector, counter or
-    /// nonce to be used (where appropriate).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub i_v_counter_nonce: Option<Vec<u8>>,
-
-    /// Specifies the existing stream or by-
-    /// parts cryptographic operation (as
-    /// returned from a previous call to this
-    /// operation)
+    pub data: Option<Vec<u8>>,
+    /// Specifies the existing stream or by-parts cryptographic operation (as returned from a previous call to this operation).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub correlation_value: Option<Vec<u8>>,
-
     /// Initial operation as Boolean
     #[serde(skip_serializing_if = "Option::is_none")]
     pub init_indicator: Option<bool>,
-
     /// Final operation as Boolean
     #[serde(skip_serializing_if = "Option::is_none")]
     pub final_indicator: Option<bool>,
-
-    /// Any additional data to be authenticated via the Authenticated Encryption
-    /// Tag. If supplied in multi-part encryption,
-    /// this data MUST be supplied on the initial Encrypt request
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub authenticated_encryption_additional_data: Option<Vec<u8>>,
 }
 
-impl Display for Encrypt {
+impl Display for Hash {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "Encrypt {{ unique_identifier: {:?}, cryptographic_parameters: {:?}, data: {:?}, \
-             iv_counter_nonce: {:?}, correlation_value: {:?}, init_indicator: {:?}, \
-             final_indicator: {:?}, authenticated_encryption_additional_data: {:?} }}",
-            self.unique_identifier,
+            "Hash {{ cryptographic_parameters: {:?}, data: {:?}, correlation_value: {:?}, \
+             init_indicator: {:?}, final_indicator: {:?} }}",
             self.cryptographic_parameters,
             self.data,
-            self.i_v_counter_nonce,
             self.correlation_value,
             self.init_indicator,
-            self.final_indicator,
-            self.authenticated_encryption_additional_data,
+            self.final_indicator
         )
     }
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 #[serde(rename_all = "PascalCase")]
-pub struct EncryptResponse {
-    /// The Unique Identifier of the Managed
-    /// Cryptographic Object that was the key
-    /// used for the encryption operation.
-    pub unique_identifier: UniqueIdentifier,
-    /// The encrypted data (as a Byte String).
+pub struct HashResponse {
+    /// The hashed data (as a Byte String).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<Vec<u8>>,
-    /// The value used if the Cryptographic
-    /// Parameters specified Random IV and
-    /// the IV/Counter/Nonce value was not
-    /// provided in the request and the
-    /// algorithm requires the provision of an
-    /// IV/Counter/Nonce.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub i_v_counter_nonce: Option<Vec<u8>>,
-    /// Specifies the stream or by-parts value
-    /// to be provided in subsequent calls to
-    /// this operation for performing
-    /// cryptographic operations.
+    /// Specifies the stream or by-parts value to be provided in subsequent calls to this operation for performing cryptographic operations.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub correlation_value: Option<Vec<u8>>,
-    /// Specifies the tag that will be needed to
-    /// authenticate the decrypted data (and
-    /// any "additional data"). Only returned on
-    /// completion of the encryption of the last
-    /// of the plaintext by an authenticated
-    /// encryption cipher.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub authenticated_encryption_tag: Option<Vec<u8>>,
 }
 
-impl Display for EncryptResponse {
+impl Display for HashResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "EncryptResponse {{ unique_identifier: {}, data: {:?}, iv_counter_nonce: {:?}, \
-             correlation_value: {:?}, authenticated_encryption_tag: {:?} }}",
-            self.unique_identifier,
-            self.data,
-            self.i_v_counter_nonce,
-            self.correlation_value,
-            self.authenticated_encryption_tag
+            "HashResponse {{ data: {:?}, correlation_value: {:?} }}",
+            self.data, self.correlation_value
         )
     }
 }
 
-#[derive(Serialize, Deserialize, Default, PartialEq, Eq, Clone, Debug)]
-#[serde(rename_all = "PascalCase")]
-pub struct Decrypt {
-    /// The Unique Identifier of the Managed
-    /// Cryptographic Object that is the key to
-    /// use for the decryption operation. If
-    /// omitted, then the ID Placeholder value
-    /// SHALL be used by the server as the
-    /// Unique Identifier.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub unique_identifier: Option<UniqueIdentifier>,
-
-    /// The Cryptographic Parameters (Block
-    /// Cipher Mode, Padding Method)
-    /// corresponding to the particular
-    /// decryption method requested.
-    /// If there are no Cryptographic
-    /// Parameters associated with the
-    /// Managed Cryptographic Object and
-    /// the algorithm requires parameters then
-    /// the operation SHALL return with a
-    /// Result Status of Operation Failed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cryptographic_parameters: Option<CryptographicParameters>,
-
-    /// The data to be decrypted.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<Vec<u8>>,
-
-    /// The initialization vector, counter or
-    /// nonce to be used (where appropriate)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub i_v_counter_nonce: Option<Vec<u8>>,
-
-    /// Specifies the existing stream or by-
-    /// parts cryptographic operation (as
-    /// returned from a previous call to this
-    /// operation)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub correlation_value: Option<Vec<u8>>,
-
-    /// Initial operation as Boolean
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub init_indicator: Option<bool>,
-
-    /// Final operation as Boolean
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub final_indicator: Option<bool>,
-
-    /// Additional data to be authenticated via
-    /// the Authenticated Encryption Tag. If
-    /// supplied in multi-part decryption, this
-    /// data MUST be supplied on the initial
-    /// Decrypt request
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub authenticated_encryption_additional_data: Option<Vec<u8>>,
-
-    /// Specifies the tag that will be needed to
-    /// authenticate the decrypted data and
-    /// the additional authenticated data. If
-    /// supplied in multi-part decryption, this
-    /// data MUST be supplied on the initial
-    /// Decrypt request
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub authenticated_encryption_tag: Option<Vec<u8>>,
-}
-
-impl Display for Decrypt {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Decrypt {{ unique_identifier: {:?}, cryptographic_parameters: {:?}, data: {:?}, \
-             iv_counter_nonce: {:?}, correlation_value: {:?}, init_indicator: {:?}, \
-             final_indicator: {:?}, authenticated_encryption_additional_data: {:?}, \
-             authenticated_encryption_tag: {:?} }}",
-            self.unique_identifier,
-            self.cryptographic_parameters,
-            self.data,
-            self.i_v_counter_nonce,
-            self.correlation_value,
-            self.init_indicator,
-            self.final_indicator,
-            self.authenticated_encryption_additional_data,
-            self.authenticated_encryption_tag
-        )
-    }
-}
-
-/// When decrypting data with Cover Crypt we can have some
-/// additional metadata stored inside the header and encrypted
-/// with de DEM. We need to return these data to the user but
-/// the KMIP protocol do not provide a way to do it. So we prepend
-/// the decrypted bytes with the decrypted additional metadata.
-/// This struct is not useful (and shouldn't be use) if the user
-/// ask to encrypt with something else than Cover Crypt (for example an AES encrypt.)
-/// See also `DataToEncrypt` struct.
-/// The binary format of this struct is:
-/// 1. LEB128 unsigned length of the metadata
-/// 2. metadata decrypted bytes
-/// 3. data decrypted
-pub struct DecryptedData {
-    pub metadata: Vec<u8>,
-    pub plaintext: Zeroizing<Vec<u8>>,
-}
-
-impl TryInto<Vec<u8>> for DecryptedData {
-    type Error = KmipError;
-
-    fn try_into(self) -> Result<Vec<u8>, Self::Error> {
-        let mut ser = Serializer::new();
-        ser.write_vec(&self.metadata)?;
-
-        let mut result = ser.finalize().to_vec();
-        result.extend_from_slice(&self.plaintext);
-        Ok(result)
-    }
-}
-
-impl TryFrom<&[u8]> for DecryptedData {
-    type Error = KmipError;
-
-    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
-        let mut de = Deserializer::new(bytes);
-
-        // Read the metadata
-        let metadata = de.read_vec()?;
-
-        // Remaining is the decrypted plaintext
-        let plaintext = Zeroizing::from(de.finalize());
-
-        Ok(Self {
-            metadata,
-            plaintext,
-        })
-    }
-}
-
+/// Import
+///
+/// This operation requests the server to Import a Managed Object specified by
+/// its Unique Identifier. The request specifies the object being imported and
+/// all the attributes to be assigned to the object. The attribute rules for
+/// each attribute for "Initially set by" and "When implicitly set" SHALL NOT be
+/// enforced as all attributes MUST be set to the supplied values rather than
+/// any server generated values.
+///
+/// The response contains the Unique Identifier provided in the request or
+/// assigned by the server. The server SHALL copy the Unique Identifier returned
+/// by this operation into the ID Placeholder variable.
+/// `https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html#_Toc57115657`
+///
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 #[serde(rename_all = "PascalCase")]
-pub struct DecryptResponse {
-    /// The Unique Identifier of the Managed
-    /// Cryptographic Object that was the key
-    /// used for the decryption operation.
+pub struct Import {
+    /// The Unique Identifier of the object to be imported
     pub unique_identifier: UniqueIdentifier,
-    /// The decrypted data
+    /// Determines the type of object being imported.
+    pub object_type: ObjectType,
+    /// A Boolean.  If specified and true then any existing object with the same
+    /// Unique Identifier SHALL be replaced by this operation. If absent or
+    /// false and an object exists with the same Unique Identifier then an error
+    /// SHALL be returned.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<Zeroizing<Vec<u8>>>,
-    /// Specifies the stream or by-parts value
-    /// to be provided in subsequent calls to
-    /// this operation for performing
-    /// cryptographic operations.
+    pub replace_existing: Option<bool>,
+    /// If Not Wrapped then the server SHALL unwrap the object before storing
+    /// it, and return an error if the wrapping key is not available.
+    /// Otherwise the server SHALL store the object as provided.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub correlation_value: Option<Vec<u8>>,
+    pub key_wrap_type: Option<KeyWrapType>,
+    /// Specifies object attributes to be associated with the new object.
+    pub attributes: Attributes,
+    /// The object being imported. The object and attributes MAY be wrapped.
+    pub object: Object,
 }
 
-impl Display for DecryptResponse {
+impl Display for Import {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "DecryptResponse {{ unique_identifier: {}, data: {:?}, correlation_value: {:?} }}",
-            self.unique_identifier, self.data, self.correlation_value
+            "Import {{ unique_identifier: {}, object_type: {}, replace_existing: {:?}, \
+             key_wrap_type: {:?}, attributes: {:?}, object: {} }}",
+            self.unique_identifier,
+            self.object_type,
+            self.replace_existing,
+            self.key_wrap_type,
+            self.attributes,
+            self.object
+        )
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "PascalCase")]
+pub struct ImportResponse {
+    /// The Unique Identifier of the newly imported object.
+    pub unique_identifier: UniqueIdentifier,
+}
+
+impl Display for ImportResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "ImportResponse {{ unique_identifier: {} }}",
+            self.unique_identifier
         )
     }
 }
@@ -1464,6 +1474,140 @@ impl Display for LocateResponse {
             self.located_items, self.unique_identifiers
         )
     }
+}
+
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Default, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct Mac {
+    /// The Unique Identifier of the Managed Cryptographic Object that is the key to use for the MAC operation. If omitted, then the ID Placeholder value SHALL be used by the server as the Unique Identifier.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<UniqueIdentifier>,
+    /// The Cryptographic Parameters (Hashing Algorithm) corresponding to the particular hash method requested.
+    pub cryptographic_parameters: CryptographicParameters,
+    /// The data to be hashed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<Vec<u8>>,
+    /// Specifies the existing stream or by-parts cryptographic operation (as returned from a previous call to this operation).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub correlation_value: Option<Vec<u8>>,
+    /// Initial operation as Boolean
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub init_indicator: Option<bool>,
+    /// Final operation as Boolean
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub final_indicator: Option<bool>,
+}
+
+impl Display for Mac {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Mac {{ unique_identifier: {:?}, cryptographic_parameters: {:?}, data: {:?}, \
+             correlation_value: {:?}, init_indicator: {:?}, final_indicator: {:?} }}",
+            self.unique_identifier,
+            self.cryptographic_parameters,
+            self.data,
+            self.correlation_value,
+            self.init_indicator,
+            self.final_indicator
+        )
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct MacResponse {
+    /// The Unique Identifier of the Managed Cryptographic Object that is the key used for the MAC operation.
+    pub unique_identifier: UniqueIdentifier,
+    /// The hashed data (as a Byte String).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<Vec<u8>>,
+    /// Specifies the stream or by-parts value to be provided in subsequent calls to this operation for performing cryptographic operations.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub correlation_value: Option<Vec<u8>>,
+}
+
+impl Display for MacResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "MacResponse {{ data: {:?}, correlation_value: {:?} }}",
+            self.data, self.correlation_value
+        )
+    }
+}
+
+#[derive(Serialize, Deserialize, Default, PartialEq, Eq, Clone, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct Query {
+    /// Determines what information about the server is being queried.
+    /// If omitted, then the server SHALL return all information that the
+    /// client is allowed to see.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub query_function: Option<Vec<QueryFunction>>,
+}
+
+impl Display for Query {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "Query {{ query_functions: {:?} }}", self.query_function)
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct QueryResponse {
+    /// List of operations supported by the server.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub operation: Option<Vec<OperationEnumeration>>,
+
+    /// List of object types that the server supports.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub object_type: Option<Vec<ObjectType>>,
+
+    /// List of vendor extensions supported by the server.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vendor_identification: Option<String>,
+
+    /// List of namespaces supported by the server.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub application_namespaces: Option<Vec<String>>,
+
+    /// Detailed information about the server.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub server_information: Option<ServerInformation>,
+
+    /// List of extensions supported by the server.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extension_information: Option<Vec<ExtensionInformation>>,
+
+    /// List of attestation types supported by the server.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attestation_types: Option<Vec<AttestationType>>,
+
+    /// The RNG Parameters base object is a structure that contains a mandatory RNG Algorithm
+    /// and a set of OPTIONAL fields that describe a Random Number Generator
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rng_parameters: Option<Vec<RNGParameters>>,
+
+    /// List of profiles supported by the server.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub profiles_information: Option<Vec<ProfileInformation>>,
+
+    /// List of supported validation authorities.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub validation_information: Option<Vec<ValidationInformation>>,
+
+    /// List of supported capabilities.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub capability_information: Option<Vec<CapabilityInformation>>,
+
+    /// List of default profiles.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub defaults_information: Option<DefaultsInformation>,
+
+    /// Protection Storage Masks supported by the server.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub protection_storage_masks: Option<ProtectionStorageMasks>,
 }
 
 /// Revoke
@@ -1692,163 +1836,46 @@ impl Display for ReKeyKeyPairResponse {
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Default, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 #[serde(rename_all = "PascalCase")]
-pub struct Destroy {
-    /// Determines the object being destroyed. If omitted, then the ID
-    /// Placeholder value is used by the server as the Unique Identifier.
+pub struct SetAttribute {
+    /// The Unique Identifier of the object. If omitted, then the ID Placeholder value is used by the server as the Unique Identifier.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unique_identifier: Option<UniqueIdentifier>,
-    /// Remove the object from the server's database.
-    /// This is a Cosmian extension; the KMIP specification mandates that objects
-    /// metadata should be kept even if the object is destroyed. This extension allows
-    /// for the removal of the object metadata, typically for GDPR compliance and fixing
-    /// creation errors.
-    #[serde(skip_serializing_if = "<&bool>::not", default)]
-    pub remove: bool,
+    /// Specifies the new value for the attribute associated with the object.
+    pub new_attribute: Attribute,
 }
 
-impl Display for Destroy {
+impl Display for SetAttribute {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "Destroy {{ unique_identifier: {:?} }}",
-            self.unique_identifier
+            "SetAttribute {{ unique_identifier: {:?}, new_attribute: {:?} }}",
+            self.unique_identifier, self.new_attribute
         )
     }
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 #[serde(rename_all = "PascalCase")]
-pub struct DestroyResponse {
-    /// The Unique Identifier of the object.
+pub struct SetAttributeResponse {
+    /// The Unique Identifier of the object
     pub unique_identifier: UniqueIdentifier,
 }
 
-impl Display for DestroyResponse {
+impl Display for SetAttributeResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "DestroyResponse {{ unique_identifier: {} }}",
+            "SetAttributeResponse {{ unique_identifier: {} }}",
             self.unique_identifier
         )
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "PascalCase")]
-pub struct Hash {
-    /// The Cryptographic Parameters (Hashing Algorithm) corresponding to the particular hash method requested.
-    pub cryptographic_parameters: CryptographicParameters,
-    /// The data to be hashed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<Vec<u8>>,
-    /// Specifies the existing stream or by-parts cryptographic operation (as returned from a previous call to this operation).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub correlation_value: Option<Vec<u8>>,
-    /// Initial operation as Boolean
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub init_indicator: Option<bool>,
-    /// Final operation as Boolean
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub final_indicator: Option<bool>,
-}
-
-impl Display for Hash {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Hash {{ cryptographic_parameters: {:?}, data: {:?}, correlation_value: {:?}, \
-             init_indicator: {:?}, final_indicator: {:?} }}",
-            self.cryptographic_parameters,
-            self.data,
-            self.correlation_value,
-            self.init_indicator,
-            self.final_indicator
-        )
-    }
-}
-
-#[derive(Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "PascalCase")]
-pub struct HashResponse {
-    /// The hashed data (as a Byte String).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<Vec<u8>>,
-    /// Specifies the stream or by-parts value to be provided in subsequent calls to this operation for performing cryptographic operations.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub correlation_value: Option<Vec<u8>>,
-}
-
-impl Display for HashResponse {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "HashResponse {{ data: {:?}, correlation_value: {:?} }}",
-            self.data, self.correlation_value
-        )
-    }
-}
-
-#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "PascalCase")]
-pub struct Mac {
-    /// The Unique Identifier of the Managed Cryptographic Object that is the key to use for the MAC operation. If omitted, then the ID Placeholder value SHALL be used by the server as the Unique Identifier.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub unique_identifier: Option<UniqueIdentifier>,
-    /// The Cryptographic Parameters (Hashing Algorithm) corresponding to the particular hash method requested.
-    pub cryptographic_parameters: CryptographicParameters,
-    /// The data to be hashed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<Vec<u8>>,
-    /// Specifies the existing stream or by-parts cryptographic operation (as returned from a previous call to this operation).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub correlation_value: Option<Vec<u8>>,
-    /// Initial operation as Boolean
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub init_indicator: Option<bool>,
-    /// Final operation as Boolean
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub final_indicator: Option<bool>,
-}
-
-impl Display for Mac {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Mac {{ unique_identifier: {:?}, cryptographic_parameters: {:?}, data: {:?}, \
-             correlation_value: {:?}, init_indicator: {:?}, final_indicator: {:?} }}",
-            self.unique_identifier,
-            self.cryptographic_parameters,
-            self.data,
-            self.correlation_value,
-            self.init_indicator,
-            self.final_indicator
-        )
-    }
-}
-
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "PascalCase")]
-pub struct MacResponse {
-    /// The Unique Identifier of the Managed Cryptographic Object that is the key used for the MAC operation.
-    pub unique_identifier: UniqueIdentifier,
-    /// The hashed data (as a Byte String).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<Vec<u8>>,
-    /// Specifies the stream or by-parts value to be provided in subsequent calls to this operation for performing cryptographic operations.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub correlation_value: Option<Vec<u8>>,
-}
-
-impl Display for MacResponse {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "MacResponse {{ data: {:?}, correlation_value: {:?} }}",
-            self.data, self.correlation_value
-        )
-    }
+pub struct StatusResponse {
+    pub kacls_url: String,
 }
 
 /// Validate
@@ -1907,82 +1934,4 @@ impl Display for ValidateResponse {
             self.validity_indicator
         )
     }
-}
-
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct StatusResponse {
-    pub kacls_url: String,
-}
-
-#[derive(Serialize, Deserialize, Default, PartialEq, Eq, Clone, Debug)]
-#[serde(rename_all = "PascalCase")]
-pub struct Query {
-    /// Determines what information about the server is being queried.
-    /// If omitted, then the server SHALL return all information that the
-    /// client is allowed to see.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub query_function: Option<Vec<QueryFunction>>,
-}
-
-impl Display for Query {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "Query {{ query_functions: {:?} }}", self.query_function)
-    }
-}
-
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
-#[serde(rename_all = "PascalCase")]
-pub struct QueryResponse {
-    /// List of operations supported by the server.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub operation: Option<Vec<OperationEnumeration>>,
-
-    /// List of object types that the server supports.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub object_type: Option<Vec<ObjectType>>,
-
-    /// List of vendor extensions supported by the server.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub vendor_identification: Option<String>,
-
-    /// List of namespaces supported by the server.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub application_namespaces: Option<Vec<String>>,
-
-    /// Detailed information about the server.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub server_information: Option<ServerInformation>,
-
-    /// List of extensions supported by the server.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub extension_information: Option<Vec<ExtensionInformation>>,
-
-    /// List of attestation types supported by the server.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub attestation_types: Option<Vec<AttestationType>>,
-
-    /// The RNG Parameters base object is a structure that contains a mandatory RNG Algorithm
-    /// and a set of OPTIONAL fields that describe a Random Number Generator
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub rng_parameters: Option<Vec<RNGParameters>>,
-
-    /// List of profiles supported by the server.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub profiles_information: Option<Vec<ProfileInformation>>,
-
-    /// List of supported validation authorities.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub validation_information: Option<Vec<ValidationInformation>>,
-
-    /// List of supported capabilities.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub capability_information: Option<Vec<CapabilityInformation>>,
-
-    /// List of default profiles.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub defaults_information: Option<DefaultsInformation>,
-
-    /// Protection Storage Masks supported by the server.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub protection_storage_masks: Option<ProtectionStorageMasks>,
 }

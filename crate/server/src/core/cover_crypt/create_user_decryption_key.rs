@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use cosmian_cover_crypt::{api::Covercrypt, MasterSecretKey};
+use cosmian_cover_crypt::{MasterSecretKey, api::Covercrypt};
 use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kmip::{
     kmip_0::kmip_types::State,
@@ -115,7 +115,7 @@ fn create_user_decryption_key_(
     let mut usk_handler = UserDecryptionKeysHandler::instantiate(cover_crypt, &mut msk);
 
     let usk_obj = usk_handler
-        .create_usk_object(access_policy, Some(create_attributes), owm.id())
+        .create_usk_object(access_policy, create_attributes, owm.id())
         .map_err(KmsError::from)?;
 
     let msk_bytes = msk.serialize()?;

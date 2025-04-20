@@ -8,11 +8,11 @@ use std::{
     fmt::{Display, Formatter},
 };
 
-use kmip_derive::{kmip_enum, KmipEnumDeserialize, KmipEnumSerialize};
+use kmip_derive::{KmipEnumDeserialize, KmipEnumSerialize, kmip_enum};
 use num_bigint_dig::BigInt;
 use serde::{
-    de::{self, Visitor},
     Deserialize, Serialize,
+    de::{self, Visitor},
 };
 use strum::Display;
 use time::OffsetDateTime;
@@ -24,7 +24,7 @@ use crate::{
         BlockCipherMode, DRBGAlgorithm, FIPS186Variation, HashingAlgorithm, KeyRoleType,
         MaskGenerator, PaddingMethod, RNGAlgorithm,
     },
-    kmip_2_1::extra::{tagging::VENDOR_ATTR_TAG, VENDOR_ID_COSMIAN},
+    kmip_2_1::extra::{VENDOR_ID_COSMIAN, tagging::VENDOR_ATTR_TAG},
 };
 
 pub const VENDOR_ATTR_AAD: &str = "aad";
@@ -216,6 +216,21 @@ impl Default for CryptographicDomainParameters {
             recommended_curve: Some(RecommendedCurve::default()),
         }
     }
+}
+
+#[kmip_enum]
+pub enum DerivationMethod {
+    PBKDF2 = 0x0000_0001,
+    HASH = 0x0000_0002,
+    HMAC = 0x0000_0003,
+    ENCRYPT = 0x0000_0004,
+    NIST800_108C = 0x0000_0005,
+    NIST800_108F = 0x0000_0006,
+    NIST800_108DPI = 0x0000_0007,
+    Asymmetric_Key = 0x0000_0008,
+    AWS_Signature_Version_4 = 0x0000_0009,
+    HKDF = 0x0000_000A,
+    // Extensions items available at values 8XXX_XXXX.
 }
 
 #[kmip_enum]

@@ -5,8 +5,8 @@ use tracing::{instrument, trace};
 
 use super::TtlvDeserializer;
 use crate::ttlv::{
-    kmip_ttlv_deserializer::deserializer::MapAccessState, KmipEnumerationVariant, TTLValue,
-    TtlvError, TTLV,
+    KmipEnumerationVariant, TTLV, TTLValue, TtlvError,
+    kmip_ttlv_deserializer::deserializer::MapAccessState,
 };
 
 #[derive(Debug, PartialEq, Eq)]
@@ -54,7 +54,7 @@ enum State {
 /// value: Structure(
 ///     [
 ///         TTLV {
-///             tag: "_t",
+///             tag: "BigInteger",
 ///             value: Enumeration(
 ///                 KmipEnumerationVariant {
 ///                     value: "0x00000002",
@@ -82,18 +82,15 @@ enum State {
 /// ),
 /// }
 /// ```
-///
-/// ... then let the walker wlak the new structure.
-
 pub(super) struct AdjacentlyTaggedStructure {
     state: State,
     tag: TTLV,
     content: TTLV,
 }
 
-impl<'a> AdjacentlyTaggedStructure {
+impl AdjacentlyTaggedStructure {
     #[instrument(skip(de))]
-    pub(super) fn new(de: &'a mut TtlvDeserializer) -> Self {
+    pub(super) fn new(de: &mut TtlvDeserializer) -> Self {
         let (tag, content) = match &de.current.value {
             TTLValue::Structure(ttlvs) => (
                 TTLV {

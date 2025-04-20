@@ -1,14 +1,14 @@
 use core::fmt;
 
 use serde::{
-    de::{self, MapAccess, SeqAccess, Visitor},
     Deserialize,
+    de::{self, MapAccess, SeqAccess, Visitor},
 };
 use serde_json::Value;
-use time::{format_description::well_known::Iso8601, OffsetDateTime};
+use time::{OffsetDateTime, format_description::well_known::Iso8601};
 use tracing::{instrument, trace};
 
-use super::{kmip_big_int::KmipBigInt, TTLV};
+use super::{TTLV, kmip_big_int::KmipBigInt};
 use crate::ttlv::{KmipEnumerationVariant, TTLValue};
 
 impl<'de> Deserialize<'de> for TTLV {
@@ -316,7 +316,7 @@ impl<'de> Deserialize<'de> for KmipEnumerationVariant {
     {
         struct KmipEnumVisitor;
 
-        impl<'de> Visitor<'de> for KmipEnumVisitor {
+        impl Visitor<'_> for KmipEnumVisitor {
             type Value = KmipEnumerationVariant;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {

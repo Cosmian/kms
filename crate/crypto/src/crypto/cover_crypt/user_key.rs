@@ -1,4 +1,4 @@
-use cosmian_cover_crypt::{api::Covercrypt, AccessPolicy, MasterSecretKey, UserSecretKey};
+use cosmian_cover_crypt::{AccessPolicy, MasterSecretKey, UserSecretKey, api::Covercrypt};
 use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kmip::{
     kmip_0::kmip_types::CryptographicUsageMask,
@@ -79,7 +79,7 @@ impl<'a> UserDecryptionKeysHandler<'a> {
     pub fn create_usk_object(
         &mut self,
         access_policy_str: &str,
-        attributes: Option<&Attributes>,
+        create_attributes: &Attributes,
         msk_id: &str,
     ) -> Result<Object, CryptoError> {
         //

@@ -12,13 +12,14 @@ use super::kmip_objects::Certificate;
 #[allow(clippy::wildcard_imports)]
 use super::{kmip_data_structures::*, kmip_objects::Object, kmip_types::*};
 use crate::{
+    KmipError, KmipResultHelper,
     kmip_0::{
         kmip_data_structures::ValidationInformation,
         kmip_operations::{DiscoverVersions, DiscoverVersionsResponse},
         kmip_types::{AttestationType, Direction, KeyWrapType, RevocationReason},
     },
     kmip_1_4::kmip_attributes::Attribute,
-    kmip_2_1, KmipError, KmipResultHelper,
+    kmip_2_1,
 };
 
 /// 4.1 Create
@@ -888,7 +889,7 @@ impl From<Encrypt> for kmip_2_1::kmip_operations::Encrypt {
             cryptographic_parameters: value.cryptographic_parameters.map(Into::into),
             data: value.data.map(Zeroizing::new),
             i_v_counter_nonce: value.i_v_counter_nonce,
-            correlation_value: value.correlation_value.map(Into::into),
+            correlation_value: value.correlation_value,
             init_indicator: value.init_indicator,
             final_indicator: value.final_indicator,
             authenticated_encryption_additional_data: value
@@ -1002,9 +1003,9 @@ impl From<Decrypt> for kmip_2_1::kmip_operations::Decrypt {
                 value.unique_identifier,
             )),
             cryptographic_parameters: value.cryptographic_parameters.map(Into::into),
-            data: value.data.map(Into::into),
+            data: value.data,
             i_v_counter_nonce: value.i_v_counter_nonce,
-            correlation_value: value.correlation_value.map(Into::into),
+            correlation_value: value.correlation_value,
             init_indicator: value.init_indicator,
             final_indicator: value.final_indicator,
             authenticated_encryption_additional_data: value

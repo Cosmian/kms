@@ -1,4 +1,4 @@
-use cosmian_cover_crypt::{api::Covercrypt, MasterPublicKey, MasterSecretKey};
+use cosmian_cover_crypt::{MasterPublicKey, MasterSecretKey, api::Covercrypt};
 use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kmip::{
     kmip_0::kmip_types::CryptographicUsageMask,
@@ -8,7 +8,6 @@ use cosmian_kmip::{
         kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
         kmip_types::{
             CryptographicAlgorithm, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
-            UniqueIdentifier,
         },
     },
 };
@@ -17,10 +16,10 @@ use zeroize::Zeroizing;
 
 use crate::{
     crypto::{
-        cover_crypt::attributes::{
-            access_structure_from_attributes, VENDOR_ATTR_COVER_CRYPT_ACCESS_STRUCTURE,
-        },
         KeyPair,
+        cover_crypt::attributes::{
+            VENDOR_ATTR_COVER_CRYPT_ACCESS_STRUCTURE, access_structure_from_attributes,
+        },
     },
     error::CryptoError,
 };
@@ -112,7 +111,7 @@ fn create_mpk_object(
     mut attributes: Attributes,
     msk_uid: String,
 ) -> Result<Object, CryptoError> {
-    attributes.sensitive = false;
+    attributes.sensitive = None;
     attributes.object_type = Some(ObjectType::PublicKey);
     attributes.key_format_type = Some(KeyFormatType::CoverCryptPublicKey);
     // Covercrypt keys are set to have unrestricted usage.

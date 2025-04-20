@@ -1,16 +1,16 @@
-use cosmian_cover_crypt::{api::Covercrypt, traits::KemAc, AccessPolicy, MasterPublicKey};
+use cosmian_cover_crypt::{AccessPolicy, MasterPublicKey, api::Covercrypt, traits::KemAc};
 use cosmian_crypto_core::{
+    Aes256Gcm, Dem, Instantiable, Nonce, RandomFixedSizeCBytes, SymmetricKey,
     bytes_ser_de::{Deserializer, Serializable, Serializer},
     reexport::zeroize::Zeroizing,
-    Aes256Gcm, Dem, Instantiable, Nonce, RandomFixedSizeCBytes, SymmetricKey,
 };
 use cosmian_kmip::{
+    DataToEncrypt,
     kmip_2_1::{
         kmip_objects::Object,
         kmip_operations::{Encrypt, EncryptResponse},
         kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
     },
-    DataToEncrypt,
 };
 use tracing::{debug, trace};
 
@@ -174,7 +174,7 @@ impl EncryptionSystem for CoverCryptEncryption {
 
         Ok(EncryptResponse {
             unique_identifier: UniqueIdentifier::TextString(self.public_key_uid.clone()),
-            data: Some(encrypted_data),
+            data: encrypted_data,
             i_v_counter_nonce: None,
             correlation_value: None,
             authenticated_encryption_tag: ad.map(<[u8]>::to_vec),
