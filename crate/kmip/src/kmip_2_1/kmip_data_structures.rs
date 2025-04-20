@@ -6,9 +6,9 @@ use std::{
 
 use num_bigint_dig::BigInt;
 use serde::{
+    Deserialize, Serialize,
     de::{self, DeserializeSeed, MapAccess, Visitor},
     ser::SerializeStruct,
-    Deserialize, Serialize,
 };
 use tracing::{instrument, trace};
 use zeroize::Zeroizing;
@@ -17,12 +17,13 @@ use super::{
     kmip_attributes::Attributes,
     kmip_objects::ObjectType,
     kmip_types::{
-        CryptographicAlgorithm, EncodingOption, EncryptionKeyInformation, KeyCompressionType,
-        KeyFormatType, LinkType, LinkedObjectIdentifier, MacSignatureKeyInformation, ProfileName,
-        RNGMode, RecommendedCurve, WrappingMethod,
+        CryptographicAlgorithm, CryptographicParameters, EncodingOption, EncryptionKeyInformation,
+        KeyCompressionType, KeyFormatType, LinkType, LinkedObjectIdentifier,
+        MacSignatureKeyInformation, ProfileName, RNGMode, RecommendedCurve, WrappingMethod,
     },
 };
 use crate::{
+    SafeBigInt,
     error::KmipError,
     kmip_0::kmip_types::{
         DRBGAlgorithm, DestroyAction, ErrorReason, FIPS186Variation, HashingAlgorithm,
@@ -30,9 +31,24 @@ use crate::{
     },
     kmip_2_1::{kmip_attributes::Attribute, kmip_types::ItemType},
     pad_be_bytes,
-    ttlv::{to_ttlv, KmipFlavor, TtlvDeserializer, TTLV},
-    SafeBigInt,
+    ttlv::{KmipFlavor, TTLV, TtlvDeserializer, to_ttlv},
 };
+
+#[derive(Clone, Eq, Serialize, Deserialize, PartialEq, Debug)]
+pub struct DerivationParameters {
+    /// Depends on the PRF.
+    cryptographic_parameters: Option<CryptographicParameters>,
+    /// Depends on the PRF and mode of operation: an empty IV is assumed if not
+    /// provided.
+    initialization_vector: Option<Vec<u8>>,
+    /// Mandatory unless the Unique Identifier of a Secret Data object is
+    /// provided. May be repeated.
+    derivation_data: Option<Zeroizing<Vec<u8>>>,
+    /// Mandatory if Derivation method is PBKDF2.
+    salt: Option<Vec<u8>>,
+    /// Mandatory if derivation method is PBKDF2.
+    iteration_count: Option<i32>,
+}
 
 /// A Key Block object is a structure used to encapsulate all of the information
 /// that is closely associated with a cryptographic key.
@@ -88,13 +104,10 @@ impl Serialize for KeyBlock {
             st.serialize_field("KeyCompressionType", key_compression_type)?;
         }
         if let Some(key_value) = &self.key_value {
-            st.serialize_field(
-                "KeyValue",
-                &KeyValueSerializer {
-                    key_format_type: self.key_format_type,
-                    key_value: key_value.clone(),
-                },
-            )?;
+            st.serialize_field("KeyValue", &KeyValueSerializer {
+                key_format_type: self.key_format_type,
+                key_value: key_value.clone(),
+            })?;
         }
         if let Some(cryptographic_algorithm) = &self.cryptographic_algorithm {
             st.serialize_field("CryptographicAlgorithm", cryptographic_algorithm)?;
@@ -456,13 +469,10 @@ impl Serialize for KeyValueSerializer {
                 attributes,
             } => {
                 let mut st = serializer.serialize_struct("KeyValue", 2)?;
-                st.serialize_field(
-                    "KeyMaterial",
-                    &KeyMaterialSerializer {
-                        key_format_type: self.key_format_type,
-                        key_material: key_material.clone(),
-                    },
-                )?;
+                st.serialize_field("KeyMaterial", &KeyMaterialSerializer {
+                    key_format_type: self.key_format_type,
+                    key_material: key_material.clone(),
+                })?;
                 if let Some(attributes) = attributes {
                     if attributes != &Attributes::default() {
                         st.serialize_field("Attributes", attributes)?;
@@ -1357,13 +1367,9 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
             }
             f => {
                 trace!("===> KeyMaterial: Deserializing Structure for key format type: {f:?}");
-                deserializer.deserialize_struct(
-                    "KeyMaterial",
-                    FIELDS,
-                    KeyMaterialVisitor {
-                        key_format_type: self.key_format_type,
-                    },
-                )
+                deserializer.deserialize_struct("KeyMaterial", FIELDS, KeyMaterialVisitor {
+                    key_format_type: self.key_format_type,
+                })
             }
         }
     }

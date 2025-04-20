@@ -79,7 +79,7 @@ impl<'a> UserDecryptionKeysHandler<'a> {
     pub fn create_usk_object(
         &mut self,
         access_policy_str: &str,
-        attributes: Option<&Attributes>,
+        create_attributes: &Attributes,
         msk_id: &str,
     ) -> Result<Object, CryptoError> {
         //

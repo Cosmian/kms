@@ -1,8 +1,8 @@
 use num_bigint_dig::BigInt;
 use serde::{
+    Deserialize, Serialize,
     de::{self, DeserializeSeed, MapAccess, Visitor},
     ser::SerializeStruct,
-    Deserialize, Serialize,
 };
 use tracing::{instrument, trace};
 use zeroize::Zeroizing;
@@ -11,11 +11,12 @@ use super::kmip_attributes::Attribute;
 #[allow(clippy::wildcard_imports)]
 use super::kmip_types::*;
 use crate::{
+    KmipError, SafeBigInt,
     kmip_0::kmip_types::{
         BlockCipherMode, DRBGAlgorithm, DestroyAction, FIPS186Variation, HashingAlgorithm,
         KeyRoleType, MaskGenerator, PaddingMethod, RNGAlgorithm, ShreddingAlgorithm, UnwrapMode,
     },
-    kmip_2_1, KmipError, SafeBigInt,
+    kmip_2_1,
 };
 
 /// 2.1.2 Credential Object Structure
@@ -78,13 +79,10 @@ impl Serialize for KeyBlock {
             st.serialize_field("KeyCompressionType", key_compression_type)?;
         }
         if let Some(key_value) = &self.key_value {
-            st.serialize_field(
-                "KeyValue",
-                &KeyValueSerializer {
-                    key_format_type: self.key_format_type,
-                    key_value: key_value.clone(),
-                },
-            )?;
+            st.serialize_field("KeyValue", &KeyValueSerializer {
+                key_format_type: self.key_format_type,
+                key_value: key_value.clone(),
+            })?;
         }
         if let Some(cryptographic_algorithm) = &self.cryptographic_algorithm {
             st.serialize_field("CryptographicAlgorithm", cryptographic_algorithm)?;
@@ -218,7 +216,7 @@ impl From<KeyBlock> for kmip_2_1::kmip_data_structures::KeyBlock {
             key_compression_type: val.key_compression_type.map(Into::into),
             key_value: val.key_value.map(Into::into),
             cryptographic_algorithm: val.cryptographic_algorithm.map(Into::into),
-            cryptographic_length: val.cryptographic_length.map(Into::into),
+            cryptographic_length: val.cryptographic_length,
             key_wrapping_data: val.key_wrapping_data.map(Into::into),
         }
     }
@@ -279,13 +277,10 @@ impl Serialize for KeyValueSerializer {
                 attribute,
             } => {
                 let mut st = serializer.serialize_struct("KeyValue", 2)?;
-                st.serialize_field(
-                    "KeyMaterial",
-                    &KeyMaterialSerializer {
-                        key_format_type: self.key_format_type,
-                        key_material: key_material.clone(),
-                    },
-                )?;
+                st.serialize_field("KeyMaterial", &KeyMaterialSerializer {
+                    key_format_type: self.key_format_type,
+                    key_material: key_material.clone(),
+                })?;
                 if let Some(attributes) = &attribute {
                     if !attributes.is_empty() {
                         st.serialize_field("Attribute", &attribute)?;
@@ -1107,13 +1102,9 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
             }
             f => {
                 trace!("===> KeyMaterial: Deserializing key format type: {f:?} as struct");
-                deserializer.deserialize_struct(
-                    "KeyMaterial",
-                    FIELDS,
-                    KeyMaterialVisitor {
-                        key_format_type: self.key_format_type,
-                    },
-                )
+                deserializer.deserialize_struct("KeyMaterial", FIELDS, KeyMaterialVisitor {
+                    key_format_type: self.key_format_type,
+                })
             }
         }
     }
@@ -1845,10 +1836,10 @@ impl TryFrom<kmip_2_1::kmip_data_structures::CapabilityInformation> for Capabili
             attestation_capability: value.attestation_capability,
             batch_undo_capability: value.batch_undo_capability,
             batch_continue_capability: value.batch_continue_capability,
-            unwrap_mode: value.unwrap_mode.map(Into::into),
-            destroy_action: value.destroy_action.map(Into::into),
-            shredding_algorithm: value.shredding_algorithm.map(Into::into),
-            rng_mode: value.rng_mode.map(Into::into),
+            unwrap_mode: value.unwrap_mode,
+            destroy_action: value.destroy_action,
+            shredding_algorithm: value.shredding_algorithm,
+            rng_mode: value.rng_mode,
         })
     }
 }
@@ -1924,8 +1915,8 @@ impl TryFrom<kmip_2_1::kmip_data_structures::RNGParameters> for RNGParameters {
                 .map(TryInto::try_into)
                 .transpose()?,
             cryptographic_length: val.cryptographic_length,
-            hashing_algorithm: val.hashing_algorithm.map(Into::into),
-            drbg_algorithm: val.drbg_algorithm.map(Into::into),
+            hashing_algorithm: val.hashing_algorithm,
+            drbg_algorithm: val.drbg_algorithm,
             recommended_curve: val.recommended_curve.map(TryInto::try_into).transpose()?,
             fips186_variation: val.fips186_variation,
             prediction_resistance: val.prediction_resistance,

@@ -39,7 +39,7 @@ pub fn encrypt_request(
             key_unique_identifier.to_owned(),
         )),
         cryptographic_parameters,
-        data: Some(data_to_encrypt),
+        data: Some(Zeroizing::new(data_to_encrypt)),
         i_v_counter_nonce: nonce,
         correlation_value: None,
         init_indicator: None,

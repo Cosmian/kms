@@ -1,13 +1,13 @@
 #![allow(non_camel_case_types)]
 
-use kmip_derive::{kmip_enum, KmipEnumDeserialize, KmipEnumSerialize};
+use kmip_derive::{KmipEnumDeserialize, KmipEnumSerialize, kmip_enum};
 use serde::{Deserialize, Serialize};
 use strum::Display;
 
 use crate::{
+    KmipError,
     kmip_0::kmip_types::{DRBGAlgorithm, FIPS186Variation, HashingAlgorithm, RNGAlgorithm},
     kmip_2_1::{self},
-    KmipError,
 };
 
 /// KMIP 1.4 Credential Type Enumeration
@@ -1128,8 +1128,6 @@ pub enum StorageStatusMask {
     Archival = 0x2,
     Destroyed = 0x4,
 }
-
-/// KMIP 1.4 Cryptographic Usage Mask Flags
 
 /// KMIP 1.4 Recommended Curve Enumeration
 #[kmip_enum]

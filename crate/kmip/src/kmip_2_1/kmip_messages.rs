@@ -20,9 +20,9 @@ use std::fmt::{self, Display, Formatter};
 /// The batched responses MAY contain a mixture of synchronous and
 /// asynchronous responses only if the Asynchronous Indicator is present in the header.
 use serde::{
+    Deserialize, Serialize,
     de::{self, MapAccess, Visitor},
     ser::{self, SerializeStruct},
-    Deserialize, Serialize,
 };
 
 use super::{kmip_operations::Operation, kmip_types::OperationEnumeration};
@@ -71,7 +71,7 @@ impl Display for RequestMessageBatchItem {
 }
 impl RequestMessageBatchItem {
     #[must_use]
-    pub fn new(request: Operation) -> Self {
+    pub const fn new(request: Operation) -> Self {
         Self {
             operation: request.operation_enum(),
             ephemeral: None,
@@ -346,7 +346,10 @@ impl ResponseMessageBatchItem {
     }
 
     #[must_use]
-    pub fn new_with_response(result_status: ResultStatusEnumeration, response: Operation) -> Self {
+    pub const fn new_with_response(
+        result_status: ResultStatusEnumeration,
+        response: Operation,
+    ) -> Self {
         Self {
             result_status,
             operation: Some(response.operation_enum()),

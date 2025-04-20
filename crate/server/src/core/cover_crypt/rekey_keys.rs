@@ -1,18 +1,19 @@
 use std::{ops::AsyncFn, sync::Arc};
 
-
+use cosmian_cover_crypt::{MasterPublicKey, MasterSecretKey, api::Covercrypt};
 use cosmian_kmip::{
-    kmip_0::kmip_types::{ErrorReason, State},
+    kmip_0::kmip_types::StateEnumeration,
     kmip_2_1::{
-        kmip_objects::{Object, ObjectType, PrivateKey},
+        kmip_attributes::Attribute::ObjectType,
+        kmip_objects::Object,
         kmip_operations::{Get, Import, ReKeyKeyPairResponse},
-        kmip_types::{LinkType, UniqueIdentifier},
+        kmip_types::UniqueIdentifier,
     },
-use cosmian_cover_crypt::{api::Covercrypt, MasterPublicKey, MasterSecretKey};
+};
 use cosmian_kms_crypto::crypto::cover_crypt::{
-    attributes::{deserialize_access_policy, RekeyEditAction},
+    attributes::{RekeyEditAction, deserialize_access_policy},
     master_keys::{
-        cc_master_keypair_from_kmip_objects, kmip_objects_from_cc_master_keypair, KmipKeyUidObject,
+        KmipKeyUidObject, cc_master_keypair_from_kmip_objects, kmip_objects_from_cc_master_keypair,
     },
     user_key::UserDecryptionKeysHandler,
 };
@@ -236,24 +237,11 @@ async fn get_master_keys(
         ));
     }
 
-    // Get policy associated with the master private key
-    let private_key_attributes = msk.attributes()?;
-    let policy = policy_from_attributes(private_key_attributes)?;
-
-    // Recover the Master Public Key
-    let Object::PrivateKey(PrivateKey { key_block }) = &msk else {
-        return Err(KmsError::Kmip21Error(
-            ErrorReason::Invalid_Object_Type,
-            "KmsError::KmipErrorIP Private Key".to_owned(),
-        ))
-    };
-
-
     let mpk_uid = msk_obj
         .key_block()?
         .get_linked_object_id(LinkType::PublicKeyLink)?
         .ok_or_else(|| {
-            KmsError::Kmip21Error(
+            KmsError::KmipError(
                 ErrorReason::Invalid_Object_Type,
                 "Private key MUST contain a public key link".to_owned(),
             )
@@ -324,7 +312,7 @@ async fn update_all_active_usk(
         kmip_server,
         msk_uid,
         None,
-        Some(State::Active),
+        Some(StateEnumeration::Active),
         owner,
         params.clone(),
     )
@@ -370,7 +358,7 @@ async fn update_usk(
         key_wrap_type: None,
         attributes: usk_obj
             .attributes()
-            .map_err(|e| KmsError::Kmip21Error(ErrorReason::Attribute_Not_Found, e.to_string()))?
+            .map_err(|e| KmsError::KmipError(ErrorReason::Attribute_Not_Found, e.to_string()))?
             .clone(),
         object: usk_obj,
     };

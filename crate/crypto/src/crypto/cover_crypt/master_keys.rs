@@ -8,7 +8,6 @@ use cosmian_kmip::{
         kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
         kmip_types::{
             CryptographicAlgorithm, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
-            UniqueIdentifier,
         },
     },
 };
@@ -112,7 +111,7 @@ fn create_mpk_object(
     mut attributes: Attributes,
     msk_uid: String,
 ) -> Result<Object, CryptoError> {
-    attributes.sensitive = false;
+    attributes.sensitive = None;
     attributes.object_type = Some(ObjectType::PublicKey);
     attributes.key_format_type = Some(KeyFormatType::CoverCryptPublicKey);
     // Covercrypt keys are set to have unrestricted usage.

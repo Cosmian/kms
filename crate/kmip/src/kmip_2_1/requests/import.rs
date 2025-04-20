@@ -1,3 +1,5 @@
+use tracing::trace;
+
 use crate::{
     kmip_0::kmip_types::KeyWrapType,
     kmip_2_1::{
