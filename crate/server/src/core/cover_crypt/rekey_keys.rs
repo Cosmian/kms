@@ -2,12 +2,11 @@ use std::{ops::AsyncFn, sync::Arc};
 
 use cosmian_cover_crypt::{MasterPublicKey, MasterSecretKey, api::Covercrypt};
 use cosmian_kmip::{
-    kmip_0::kmip_types::StateEnumeration,
+    kmip_0::kmip_types::{ErrorReason, State},
     kmip_2_1::{
-        kmip_attributes::Attribute::ObjectType,
-        kmip_objects::Object,
+        kmip_objects::{Object, ObjectType},
         kmip_operations::{Get, Import, ReKeyKeyPairResponse},
-        kmip_types::UniqueIdentifier,
+        kmip_types::{LinkType, UniqueIdentifier},
     },
 };
 use cosmian_kms_crypto::crypto::cover_crypt::{
@@ -210,7 +209,7 @@ async fn get_master_keys(
         .key_block()?
         .get_linked_object_id(LinkType::PublicKeyLink)?
         .ok_or_else(|| {
-            KmsError::KmipError(
+            KmsError::Kmip21Error(
                 ErrorReason::Invalid_Object_Type,
                 "Private key MUST contain a public key link".to_owned(),
             )
@@ -272,7 +271,7 @@ async fn update_all_active_usk(
         kmip_server,
         msk_uid,
         None,
-        Some(StateEnumeration::Active),
+        Some(State::Active),
         owner,
         params.clone(),
     )
@@ -309,7 +308,7 @@ async fn update_usk(
         key_wrap_type: None,
         attributes: usk_obj
             .attributes()
-            .map_err(|e| KmsError::KmipError(ErrorReason::Attribute_Not_Found, e.to_string()))?
+            .map_err(|e| KmsError::Kmip21Error(ErrorReason::Attribute_Not_Found, e.to_string()))?
             .clone(),
         object: usk_obj,
     };

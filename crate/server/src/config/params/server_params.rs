@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt};
+use std::{collections::HashMap, fmt, path::PathBuf};
 
 use cosmian_kms_server_database::MainDbParams;
 use openssl::x509::X509;
@@ -54,10 +54,9 @@ pub struct ServerParams {
     /// The public URL of the exposed KMS server
     pub kms_public_url: Option<String>,
 
-    /// The certificate used to verify the client TLS certificates
-    /// used for authentication
-    pub authority_cert_file: Option<X509>,
-
+    // /// The certificate used to verify the client TLS certificates
+    // /// used for authentication
+    // pub authority_cert_file: Option<X509>,
     /// The hostname of the HTTP server
     pub http_hostname: String,
 
@@ -134,7 +133,6 @@ impl ServerParams {
             );
         }
 
-        let http_params = HttpParams::try_from(&conf.http)?;
         let tls_params = TlsParams::try_from(&conf.tls, &conf.http)?;
 
         let slot_passwords: HashMap<usize, Option<String>> = conf
@@ -163,10 +161,7 @@ impl ServerParams {
             http_hostname: conf.http.hostname,
             http_port: conf.http.port,
             tls_params,
-            hostname: conf.http.hostname,
-            port: conf.http.port,
             kms_public_url: conf.kms_public_url,
-            http_params,
             default_username: conf.default_username,
             force_default_username: conf.force_default_username,
             api_token_id: conf.http.api_token_id,
@@ -243,5 +238,3 @@ impl fmt::Debug for ServerParams {
         debug_struct.finish_non_exhaustive()
     }
 }
-
-

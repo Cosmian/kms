@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use cosmian_cover_crypt::api::Covercrypt;
 use cosmian_kmip::{
     kmip_0::kmip_types::{ErrorReason, State},
     kmip_2_1::{
@@ -7,13 +8,13 @@ use cosmian_kmip::{
         kmip_operations::{ReKeyKeyPair, ReKeyKeyPairResponse},
         kmip_types::{CryptographicAlgorithm, KeyFormatType},
     },
-use cosmian_cover_crypt::api::Covercrypt;
+};
 use cosmian_kms_crypto::crypto::cover_crypt::attributes::rekey_edit_action_from_attributes;
 use cosmian_kms_interfaces::SessionParams;
 use tracing::trace;
 
 use crate::{
-    core::{cover_crypt::rekey_keypair_cover_crypt, KMS},
+    core::{KMS, cover_crypt::rekey_keypair_cover_crypt},
     error::KmsError,
     kms_bail,
     result::{KResult, KResultHelper},
@@ -74,7 +75,7 @@ pub(crate) async fn rekey_keypair(
                 user,
                 action,
                 params,
-                owm.attributes().sensitive,
+                owm.attributes().sensitive.unwrap_or_default(),
             ))
             .await
             .context("Rekey keypair: Covercrypt rekey failed")

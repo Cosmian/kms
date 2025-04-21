@@ -2,8 +2,8 @@ use std::{collections::HashSet, sync::Arc};
 
 use actix_web::HttpRequest;
 use base64::{
-    engine::general_purpose::{self, STANDARD as b64},
     Engine as _,
+    engine::general_purpose::{self, STANDARD as b64},
 };
 use cosmian_cover_crypt::api::Covercrypt;
 use cosmian_kmip::{
@@ -23,7 +23,7 @@ use tracing::{debug, trace};
 use zeroize::Zeroizing;
 
 use crate::{
-    core::{cover_crypt::create_user_decryption_key, wrapping::unwrap_key, KMS},
+    core::{KMS, cover_crypt::create_user_decryption_key, wrapping::unwrap_key},
     error::KmsError,
     result::{KResult, KResultHelper},
 };
@@ -186,7 +186,7 @@ impl KMS {
                     create_request,
                     owner,
                     params,
-                    create_request.attributes.sensitive,
+                    create_request.attributes.sensitive.unwrap_or_default(),
                 )
                 .await?;
                 // Update the attributes with state Active
