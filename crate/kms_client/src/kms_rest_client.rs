@@ -1,22 +1,16 @@
 use cosmian_http_client::HttpClient;
 // re-export the kmip module as kmip
-use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::{
-    kmip_operations::{
-        Certify, CertifyResponse, Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse,
-        Decrypt, DecryptResponse, Destroy, DestroyResponse, Encrypt, EncryptResponse, Export,
-        ExportResponse, Get, GetAttributes, GetAttributesResponse, GetResponse, Import,
-        ImportResponse, Locate, LocateResponse, ReKeyKeyPair, ReKeyKeyPairResponse, Revoke,
-        RevokeResponse, StatusResponse, Validate, ValidateResponse,
-    },
-    ttlv::{TTLV, deserializer::from_ttlv, serializer::to_ttlv},
+use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::kmip_operations::{
+    Certify, CertifyResponse, Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse,
+    Decrypt, DecryptResponse, Destroy, DestroyResponse, Encrypt, EncryptResponse, Export,
+    ExportResponse, Get, GetAttributes, GetAttributesResponse, GetResponse, Import, ImportResponse,
+    Locate, LocateResponse, ReKeyKeyPair, ReKeyKeyPairResponse, Revoke, RevokeResponse,
+    StatusResponse, Validate, ValidateResponse,
 };
 use cosmian_kms_client_utils::reexport::{
-    cosmian_kmip::kmip_2_1::{
-        kmip_messages::{Message, MessageResponse},
-        kmip_operations::{
-            DeleteAttribute, DeleteAttributeResponse, Hash, HashResponse, Mac, MacResponse, ReKey,
-            ReKeyResponse, SetAttribute, SetAttributeResponse,
-        },
+    cosmian_kmip::kmip_2_1::kmip_operations::{
+        DeleteAttribute, DeleteAttributeResponse, Hash, HashResponse, Mac, MacResponse, ReKey,
+        ReKeyResponse, SetAttribute, SetAttributeResponse,
     },
     cosmian_kms_access::access::{
         Access, AccessRightsObtainedResponse, ObjectOwnedResponse, SuccessResponse,
@@ -29,6 +23,10 @@ use tracing::trace;
 
 use crate::{
     KmsClientConfig,
+    cosmian_kmip::{
+        kmip_0::kmip_messages::{RequestMessage, ResponseMessage},
+        ttlv::{TTLV, from_ttlv, to_ttlv},
+    },
     error::{KmsClientError, result::KmsClientResultHelper},
 };
 
@@ -482,8 +480,12 @@ impl KmsClient {
     /// The field contents are also determined by whether the message is a request or a response.
     /// The message payload is determined by the specific operation being requested
     /// or to which is being replied.
-    pub async fn message(&self, request: Message) -> Result<MessageResponse, KmsClientError> {
-        self.post_ttlv::<Message, MessageResponse>(&request).await
+    pub async fn message(
+        &self,
+        request: RequestMessage,
+    ) -> Result<ResponseMessage, KmsClientError> {
+        self.post_ttlv::<RequestMessage, ResponseMessage>(&request)
+            .await
     }
 
     /// This operation requests the server to create a new database.
@@ -662,7 +664,7 @@ impl KmsClient {
                 "<==\n{}",
                 serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_owned())
             );
-            return from_ttlv(&ttlv).map_err(|e| KmsClientError::ResponseFailed(e.to_string()))
+            return from_ttlv(ttlv).map_err(|e| KmsClientError::ResponseFailed(e.to_string()))
         }
 
         // process error

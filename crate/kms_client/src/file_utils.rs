@@ -9,9 +9,9 @@ use cosmian_kms_client_utils::export_utils::tag_from_object;
 use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{
-    cosmian_kmip::kmip_2_1::{
-        kmip_objects::Object,
-        ttlv::{TTLV, deserializer::from_ttlv, serializer::to_ttlv},
+    cosmian_kmip::{
+        kmip_2_1::kmip_objects::Object,
+        ttlv::{TTLV, from_ttlv, to_ttlv},
     },
     error::{KmsClientError, result::KmsClientResultHelper},
 };
@@ -49,7 +49,7 @@ pub fn read_object_from_json_ttlv_bytes(bytes: &[u8]) -> Result<Object, KmsClien
     let ttlv = serde_json::from_slice::<TTLV>(bytes)
         .with_context(|| "failed parsing the object from the bytes")?;
     // Deserialize the object
-    let object: Object = from_ttlv(&ttlv)?;
+    let object: Object = from_ttlv(ttlv)?;
     Ok(object)
 }
 

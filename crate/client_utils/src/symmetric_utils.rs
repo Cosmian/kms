@@ -1,6 +1,7 @@
 use clap::ValueEnum;
-use cosmian_kmip::kmip_2_1::kmip_types::{
-    BlockCipherMode, CryptographicAlgorithm, CryptographicParameters,
+use cosmian_kmip::{
+    kmip_0::kmip_types::BlockCipherMode,
+    kmip_2_1::kmip_types::{CryptographicAlgorithm, CryptographicParameters},
 };
 use serde::Deserialize;
 use strum::{Display, EnumIter};

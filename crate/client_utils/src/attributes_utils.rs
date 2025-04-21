@@ -1,8 +1,9 @@
 use std::{collections::HashMap, fmt::Display, str::FromStr};
 
 use clap::ValueEnum;
-use cosmian_kmip::kmip_2_1::kmip_types::{
-    Attribute, Attributes, CryptographicAlgorithm, Link, LinkType, LinkedObjectIdentifier, Tag,
+use cosmian_kmip::kmip_2_1::{
+    kmip_attributes::{Attribute, Attributes},
+    kmip_types::{CryptographicAlgorithm, Link, LinkType, LinkedObjectIdentifier, Tag},
 };
 use serde_json::Value;
 use strum::{EnumIter, EnumString, IntoEnumIterator};
@@ -482,7 +483,7 @@ pub fn build_selected_attribute(
     let attribute = match attribute_name {
         "activation_date" => {
             let activation_date = attribute_value
-                .parse::<u64>()
+                .parse::<i64>()
                 .map_err(|e| UtilsError::Default(e.to_string()))?;
             Attribute::ActivationDate(activation_date)
         }
@@ -510,34 +511,34 @@ pub fn build_selected_attribute(
             };
             Attribute::CryptographicUsageMask(cryptographic_usage_mask)
         }
-        "public_key_id" => Attribute::Links(vec![Link {
+        "public_key_id" => Attribute::Link(Link {
             link_type: LinkType::PublicKeyLink,
             linked_object_identifier: LinkedObjectIdentifier::TextString(attribute_value),
-        }]),
-        "private_key_id" => Attribute::Links(vec![Link {
+        }),
+        "private_key_id" => Attribute::Link(Link {
             link_type: LinkType::PrivateKeyLink,
             linked_object_identifier: LinkedObjectIdentifier::TextString(attribute_value),
-        }]),
-        "certificate_id" => Attribute::Links(vec![Link {
+        }),
+        "certificate_id" => Attribute::Link(Link {
             link_type: LinkType::CertificateLink,
             linked_object_identifier: LinkedObjectIdentifier::TextString(attribute_value),
-        }]),
-        "pkcs12_certificate_id" => Attribute::Links(vec![Link {
+        }),
+        "pkcs12_certificate_id" => Attribute::Link(Link {
             link_type: LinkType::PKCS12CertificateLink,
             linked_object_identifier: LinkedObjectIdentifier::TextString(attribute_value),
-        }]),
-        "pkcs12_password_certificate" => Attribute::Links(vec![Link {
+        }),
+        "pkcs12_password_certificate" => Attribute::Link(Link {
             link_type: LinkType::PKCS12PasswordLink,
             linked_object_identifier: LinkedObjectIdentifier::TextString(attribute_value),
-        }]),
-        "parent_id" => Attribute::Links(vec![Link {
+        }),
+        "parent_id" => Attribute::Link(Link {
             link_type: LinkType::ParentLink,
             linked_object_identifier: LinkedObjectIdentifier::TextString(attribute_value),
-        }]),
-        "child_id" => Attribute::Links(vec![Link {
+        }),
+        "child_id" => Attribute::Link(Link {
             link_type: LinkType::ChildLink,
             linked_object_identifier: LinkedObjectIdentifier::TextString(attribute_value),
-        }]),
+        }),
 
         _ => Err(UtilsError::Default(format!(
             "Unknown attribute name: {attribute_name}"

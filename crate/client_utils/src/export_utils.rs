@@ -1,14 +1,16 @@
 use std::fmt::Display;
 
 use clap::ValueEnum;
-use cosmian_kmip::kmip_2_1::{
-    kmip_data_structures::KeyWrappingSpecification,
-    kmip_objects::{Object, ObjectType},
-    kmip_operations::{Export, Get},
-    kmip_types::{
-        BlockCipherMode, CryptographicAlgorithm, CryptographicParameters, EncodingOption,
-        EncryptionKeyInformation, HashingAlgorithm, KeyFormatType, PaddingMethod, UniqueIdentifier,
-        WrappingMethod,
+use cosmian_kmip::{
+    kmip_0::kmip_types::{BlockCipherMode, HashingAlgorithm, PaddingMethod},
+    kmip_2_1::{
+        kmip_data_structures::KeyWrappingSpecification,
+        kmip_objects::{Object, ObjectType},
+        kmip_operations::{Export, Get},
+        kmip_types::{
+            CryptographicAlgorithm, CryptographicParameters, EncodingOption,
+            EncryptionKeyInformation, KeyFormatType, UniqueIdentifier, WrappingMethod,
+        },
     },
 };
 use pem::{EncodeConfig, LineEnding};

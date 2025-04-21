@@ -2,10 +2,11 @@ use std::fmt::{Display, Formatter};
 
 use clap::ValueEnum;
 use cosmian_kmip::kmip_2_1::{
+    kmip_attributes::Attributes,
     kmip_objects::ObjectType,
     kmip_operations::Certify,
     kmip_types::{
-        Attributes, CertificateAttributes, CertificateRequestType, CryptographicAlgorithm,
+        CertificateAttributes, CertificateRequestType, CryptographicAlgorithm,
         CryptographicDomainParameters, KeyFormatType, LinkType, LinkedObjectIdentifier,
         RecommendedCurve, UniqueIdentifier,
     },
@@ -95,7 +96,9 @@ pub fn build_certify_request(
     }
 
     // set the number of requested days
-    attributes.set_requested_validity_days(number_of_days);
+    attributes.set_requested_validity_days(i32::try_from(number_of_days).map_err(|_| {
+        UtilsError::Default("number of days must be a positive integer".to_owned())
+    })?);
 
     // A certificate id has been provided
     if let Some(certificate_id) = &certificate_id {
@@ -115,13 +118,13 @@ pub fn build_certify_request(
             _ => Some(CertificateRequestType::PEM),
         };
     } else if let Some(public_key_to_certify) = &public_key_id_to_certify {
-        attributes.certificate_attributes = Some(Box::new(
-            CertificateAttributes::parse_subject_line(subject_name.as_ref().ok_or_else(|| {
+        attributes.certificate_attributes = Some(CertificateAttributes::parse_subject_line(
+            subject_name.as_ref().ok_or_else(|| {
                 UtilsError::Default(
                     "subject name is required when certifying a public key".to_owned(),
                 )
-            })?)?,
-        ));
+            })?,
+        )?);
         unique_identifier = Some(UniqueIdentifier::TextString(
             public_key_to_certify.to_string(),
         ));
@@ -130,11 +133,11 @@ pub fn build_certify_request(
             certificate_id_to_renew.clone(),
         ));
     } else if generate_key_pair {
-        attributes.certificate_attributes = Some(Box::new(
-            CertificateAttributes::parse_subject_line(subject_name.as_ref().ok_or_else(|| {
+        attributes.certificate_attributes = Some(CertificateAttributes::parse_subject_line(
+            subject_name.as_ref().ok_or_else(|| {
                 UtilsError::Default("subject name is required when generating a keypair".to_owned())
-            })?)?,
-        ));
+            })?,
+        )?);
         match algorithm {
             #[cfg(not(feature = "fips"))]
             Algorithm::RSA1024 => {

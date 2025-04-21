@@ -1,10 +1,14 @@
-use cosmian_kmip::kmip_2_1::{
-    extra::VENDOR_ID_COSMIAN,
-    kmip_objects::ObjectType,
-    kmip_operations::{Create, CreateKeyPair},
-    kmip_types::{
-        Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, Link, LinkType,
-        LinkedObjectIdentifier, VendorAttribute,
+use cosmian_kmip::{
+    kmip_0::kmip_types::CryptographicUsageMask,
+    kmip_2_1::{
+        extra::VENDOR_ID_COSMIAN,
+        kmip_attributes::Attributes,
+        kmip_objects::ObjectType,
+        kmip_operations::{Create, CreateKeyPair},
+        kmip_types::{
+            CryptographicAlgorithm, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
+            VendorAttribute, VendorAttributeValue,
+        },
     },
 };
 
@@ -23,7 +27,7 @@ pub fn build_create_covercrypt_master_keypair_request<T: IntoIterator<Item = imp
     let vendor_attributes = VendorAttribute {
         vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
         attribute_name: VENDOR_ATTR_COVER_CRYPT_ACCESS_STRUCTURE.to_owned(),
-        attribute_value: access_structure.as_bytes().to_vec(),
+        attribute_value: VendorAttributeValue::ByteString(access_structure.as_bytes().to_vec()),
     };
     let mut attributes = Attributes {
         object_type: Some(ObjectType::PrivateKey),
@@ -31,7 +35,7 @@ pub fn build_create_covercrypt_master_keypair_request<T: IntoIterator<Item = imp
         key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
         vendor_attributes: Some(vec![vendor_attributes]),
         cryptographic_usage_mask: Some(CryptographicUsageMask::Unrestricted),
-        sensitive,
+        sensitive: if sensitive { Some(true) } else { None },
         ..Attributes::default()
     };
     attributes.set_tags(tags)?;
@@ -51,7 +55,7 @@ pub fn build_create_covercrypt_usk_request<T: IntoIterator<Item = impl AsRef<str
     let vendor_attributes: VendorAttribute = VendorAttribute {
         vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
         attribute_name: VENDOR_ATTR_COVER_CRYPT_ACCESS_POLICY.to_owned(),
-        attribute_value: access_policy.as_bytes().to_vec(),
+        attribute_value: VendorAttributeValue::ByteString(access_policy.as_bytes().to_vec()),
     };
     let mut attributes = Attributes {
         object_type: Some(ObjectType::PrivateKey),
@@ -65,7 +69,7 @@ pub fn build_create_covercrypt_usk_request<T: IntoIterator<Item = impl AsRef<str
             ),
         }]),
         cryptographic_usage_mask: Some(CryptographicUsageMask::Unrestricted),
-        sensitive,
+        sensitive: if sensitive { Some(true) } else { None },
         ..Attributes::default()
     };
     attributes.set_tags(tags)?;

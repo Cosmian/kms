@@ -1,9 +1,8 @@
 use cosmian_kmip::kmip_2_1::{
+    kmip_attributes::Attributes,
     kmip_objects::ObjectType,
     kmip_operations::Locate,
-    kmip_types::{
-        Attributes, CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier,
-    },
+    kmip_types::{CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier},
 };
 
 use crate::error::UtilsError;

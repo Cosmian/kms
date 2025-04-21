@@ -1,11 +1,10 @@
 use std::io;
 
 use cosmian_http_client::HttpClientError;
-use cosmian_kms_client_utils::reexport::cosmian_kmip::{
-    KmipError,
-    kmip_2_1::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
-};
+use cosmian_kms_client_utils::reexport::cosmian_kmip::KmipError;
 use thiserror::Error;
+
+use crate::cosmian_kmip::{kmip_0::kmip_types::ErrorReason, ttlv::TtlvError};
 
 pub(crate) mod result;
 
@@ -63,6 +62,12 @@ pub enum KmsClientError {
     TryFromIntError(#[from] std::num::TryFromIntError),
 }
 
+impl From<String> for KmsClientError {
+    fn from(e: String) -> Self {
+        Self::Default(e)
+    }
+}
+
 impl From<TtlvError> for KmsClientError {
     fn from(e: TtlvError) -> Self {
         Self::TtlvError(e.to_string())
@@ -96,10 +101,10 @@ impl From<der::Error> for KmsClientError {
 impl From<KmipError> for KmsClientError {
     fn from(e: KmipError) -> Self {
         match e {
-            KmipError::InvalidKmipValue(r, s) => Self::InvalidKmipValue(r, s),
-            KmipError::InvalidKmipObject(r, s) => Self::InvalidKmipObject(r, s),
-            KmipError::KmipNotSupported(r, s) => Self::KmipNotSupported(r, s),
-            KmipError::Kmip(r, s) => Self::KmipError(r, s),
+            KmipError::InvalidKmip21Value(r, s) => Self::InvalidKmipValue(r, s),
+            KmipError::InvalidKmip21Object(r, s) => Self::InvalidKmipObject(r, s),
+            KmipError::Kmip21NotSupported(r, s) => Self::KmipNotSupported(r, s),
+            KmipError::Kmip21(r, s) => Self::KmipError(r, s),
             KmipError::NotSupported(s)
             | KmipError::Default(s)
             | KmipError::InvalidSize(s)
@@ -117,6 +122,9 @@ impl From<KmipError> for KmsClientError {
                 ErrorReason::Codec_Error,
                 format!("Deserialization: invalid size: {actual}, expected: {expected}"),
             ),
+            KmipError::InvalidKmip14Value(r, s)
+            | KmipError::InvalidKmip14Object(r, s)
+            | KmipError::Kmip14(r, s) => Self::KmipError(r.into(), s),
         }
     }
 }

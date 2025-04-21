@@ -1,9 +1,6 @@
 use std::num::TryFromIntError;
 
-use cosmian_kmip::{
-    KmipError,
-    kmip_2_1::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
-};
+use cosmian_kmip::{KmipError, kmip_0::kmip_types::ErrorReason, ttlv::TtlvError};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -54,10 +51,13 @@ impl From<TryFromIntError> for UtilsError {
 impl From<KmipError> for UtilsError {
     fn from(e: KmipError) -> Self {
         match e {
-            KmipError::InvalidKmipValue(r, s)
-            | KmipError::InvalidKmipObject(r, s)
-            | KmipError::KmipNotSupported(r, s)
-            | KmipError::Kmip(r, s) => Self::KmipError(r, s),
+            KmipError::InvalidKmip21Value(r, s)
+            | KmipError::InvalidKmip21Object(r, s)
+            | KmipError::Kmip21NotSupported(r, s)
+            | KmipError::Kmip21(r, s) => Self::KmipError(r, s),
+            KmipError::InvalidKmip14Value(r, s)
+            | KmipError::InvalidKmip14Object(r, s)
+            | KmipError::Kmip14(r, s) => Self::KmipError(r.into(), s),
             KmipError::NotSupported(s)
             | KmipError::Default(s)
             | KmipError::InvalidSize(s)

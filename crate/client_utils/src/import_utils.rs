@@ -1,10 +1,12 @@
 use clap::ValueEnum;
-use cosmian_kmip::kmip_2_1::{
-    kmip_objects::ObjectType,
-    kmip_types::{
-        CryptographicAlgorithm, CryptographicUsageMask, LinkType, LinkedObjectIdentifier,
+use cosmian_kmip::{
+    kmip_0::kmip_types::{CertificateType, CryptographicUsageMask},
+    kmip_2_1::{
+        kmip_attributes::Attributes,
+        kmip_objects::{Certificate, ObjectType, PrivateKey, PublicKey, SymmetricKey},
+        kmip_types::{CryptographicAlgorithm, LinkType, LinkedObjectIdentifier},
     },
-    ttlv::{TTLV, deserializer::from_ttlv},
+    ttlv::{TTLV, from_ttlv},
 };
 use serde::Deserialize;
 use strum::{EnumIter, EnumString};
@@ -94,14 +96,14 @@ pub fn build_private_key_from_der_bytes(
     key_format_type: KeyFormatType,
     bytes: Zeroizing<Vec<u8>>,
 ) -> Object {
-    Object::PrivateKey {
+    Object::PrivateKey(PrivateKey {
         key_block: KeyBlock {
             key_format_type,
             key_compression_type: None,
-            key_value: KeyValue {
+            key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::ByteString(bytes),
                 attributes: Some(Attributes::default()),
-            },
+            }),
             // According to the KMIP spec, the cryptographic algorithm is not required
             // as long as it can be recovered from the Key Format Type or the Key Value.
             // Also it should not be specified if the cryptographic length is not specified.
@@ -110,7 +112,7 @@ pub fn build_private_key_from_der_bytes(
             cryptographic_length: None,
             key_wrapping_data: None,
         },
-    }
+    })
 }
 
 // Here the zeroizing type on public key bytes is overkill, but it aligns with
@@ -119,14 +121,14 @@ fn build_public_key_from_der_bytes(
     key_format_type: KeyFormatType,
     bytes: Zeroizing<Vec<u8>>,
 ) -> Object {
-    Object::PublicKey {
+    Object::PublicKey(PublicKey {
         key_block: KeyBlock {
             key_format_type,
             key_compression_type: None,
-            key_value: KeyValue {
+            key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::ByteString(bytes),
                 attributes: Some(Attributes::default()),
-            },
+            }),
             // According to the KMIP spec, the cryptographic algorithm is not required
             // as long as it can be recovered from the Key Format Type or the Key Value.
             // Also it should not be specified if the cryptographic length is not specified.
@@ -135,7 +137,7 @@ fn build_public_key_from_der_bytes(
             cryptographic_length: None,
             key_wrapping_data: None,
         },
-    }
+    })
 }
 
 fn build_symmetric_key_from_bytes(
@@ -143,19 +145,19 @@ fn build_symmetric_key_from_bytes(
     bytes: Zeroizing<Vec<u8>>,
 ) -> Result<Object, UtilsError> {
     let len = i32::try_from(bytes.len())? * 8;
-    Ok(Object::SymmetricKey {
+    Ok(Object::SymmetricKey(SymmetricKey {
         key_block: KeyBlock {
             key_format_type: KeyFormatType::TransparentSymmetricKey,
             key_compression_type: None,
-            key_value: KeyValue {
+            key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::TransparentSymmetricKey { key: bytes },
                 attributes: Some(Attributes::default()),
-            },
+            }),
             cryptographic_algorithm: Some(cryptographic_algorithm),
             cryptographic_length: Some(len),
             key_wrapping_data: None,
         },
-    })
+    }))
 }
 
 #[must_use]
@@ -190,14 +192,14 @@ pub fn read_object_from_json_ttlv_bytes(bytes: &[u8]) -> Result<Object, UtilsErr
     // Read the object from the file
     let ttlv = serde_json::from_slice::<TTLV>(bytes)?;
     // Deserialize the object
-    let object: Object = from_ttlv(&ttlv)?;
+    let object: Object = from_ttlv(ttlv)?;
     Ok(object)
 }
 
 use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
     kmip_objects::Object,
-    kmip_types::{Attributes, CertificateType, KeyFormatType},
+    kmip_types::KeyFormatType,
 };
 use zeroize::Zeroizing;
 
@@ -244,21 +246,27 @@ pub fn objects_from_pem(bytes: &[u8]) -> Result<Vec<Object>, UtilsError> {
             |kft: KeyFormatType| key_block(kft, pem.contents().to_vec());
 
         match pem.tag() {
-            "RSA PRIVATE KEY" => objects.push(Object::PrivateKey {
+            "RSA PRIVATE KEY" => objects.push(Object::PrivateKey(PrivateKey {
                 key_block: key_block_with_format_type(KeyFormatType::PKCS1),
-            }),
-            "RSA PUBLIC KEY" => objects.insert(0, Object::PublicKey {
-                key_block: key_block_with_format_type(KeyFormatType::PKCS1),
-            }),
-            "PRIVATE KEY" => objects.push(Object::PrivateKey {
+            })),
+            "RSA PUBLIC KEY" => objects.insert(
+                0,
+                Object::PublicKey(PublicKey {
+                    key_block: key_block_with_format_type(KeyFormatType::PKCS1),
+                }),
+            ),
+            "PRIVATE KEY" => objects.push(Object::PrivateKey(PrivateKey {
                 key_block: key_block_with_format_type(KeyFormatType::PKCS8),
-            }),
-            "PUBLIC KEY" => objects.insert(0, Object::PublicKey {
-                key_block: key_block_with_format_type(KeyFormatType::PKCS8),
-            }),
-            "EC PRIVATE KEY" => objects.push(Object::PrivateKey {
+            })),
+            "PUBLIC KEY" => objects.insert(
+                0,
+                Object::PublicKey(PublicKey {
+                    key_block: key_block_with_format_type(KeyFormatType::PKCS8),
+                }),
+            ),
+            "EC PRIVATE KEY" => objects.push(Object::PrivateKey(PrivateKey {
                 key_block: key_block_with_format_type(KeyFormatType::ECPrivateKey),
-            }),
+            })),
             "EC PUBLIC KEY" => {
                 return Err(UtilsError::NotSupported(
                     "PEM files with EC PUBLIC KEY are not supported: SEC1 should be reserved for \
@@ -266,10 +274,10 @@ pub fn objects_from_pem(bytes: &[u8]) -> Result<Vec<Object>, UtilsError> {
                         .to_owned(),
                 ))
             }
-            "CERTIFICATE" => objects.push(Object::Certificate {
+            "CERTIFICATE" => objects.push(Object::Certificate(Certificate {
                 certificate_type: CertificateType::X509,
                 certificate_value: pem.into_contents(),
-            }),
+            })),
             "X509 CRL" => {
                 return Err(UtilsError::NotSupported(
                     "X509 CRL not supported on this server".to_owned(),
@@ -299,12 +307,12 @@ fn key_block(key_format_type: KeyFormatType, bytes: Vec<u8>) -> KeyBlock {
     KeyBlock {
         key_format_type,
         key_compression_type: None,
-        key_value: KeyValue {
+        key_value: Some(KeyValue::Structure {
             // No need to specify zeroizing as parameter type for this function
             // seems to only deal with public components.
             key_material: KeyMaterial::ByteString(Zeroizing::from(bytes)),
             attributes: Some(Attributes::default()),
-        },
+        }),
         // According to the KMIP spec, the cryptographic algorithm is not required
         // as long as it can be recovered from the Key Format Type or the Key Value.
         // Also, it should not be specified if the cryptographic length is not specified.

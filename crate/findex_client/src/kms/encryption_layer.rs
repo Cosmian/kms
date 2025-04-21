@@ -1,7 +1,10 @@
 use cosmian_findex::{ADDRESS_LENGTH, Address, MemoryADT};
 use cosmian_kms_client::{
     KmsClient,
-    kmip_2_1::{kmip_messages::MessageResponse, kmip_types::ResultStatusEnumeration},
+    cosmian_kmip::kmip_0::{
+        kmip_messages::{ResponseMessage, ResponseMessageBatchItemVersioned},
+        kmip_types::ResultStatusEnumeration,
+    },
 };
 use tracing::trace;
 
@@ -42,12 +45,13 @@ impl<
         }
     }
 
-    fn extract_words(message_response: &MessageResponse) -> ClientResult<Vec<[u8; WORD_LENGTH]>> {
-        if !message_response
-            .items
-            .iter()
-            .all(|item| item.result_status == ResultStatusEnumeration::Success)
-        {
+    fn extract_words(message_response: &ResponseMessage) -> ClientResult<Vec<[u8; WORD_LENGTH]>> {
+        if !message_response.batch_item.iter().all(|item| {
+            let ResponseMessageBatchItemVersioned::V21(item) = item else {
+                return false;
+            };
+            item.result_status == ResultStatusEnumeration::Success
+        }) {
             return Err(ClientError::Default(
                 "One or more operations failed in the batch".to_owned(),
             ));
