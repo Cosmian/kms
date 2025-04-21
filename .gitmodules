@@ -1,3 +1,0 @@
-[submodule "cli"]
-    path = cli
-    url = https://github.com/Cosmian/cli.git
