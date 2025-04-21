@@ -1,6 +1,6 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, DeriveInput};
+use syn::{DeriveInput, parse_macro_input};
 
 /// Serialize a KMIP enum variant with both the variant name and value.
 /// The name and the value are part of the KMIP specification. The name is used
@@ -95,7 +95,7 @@ pub fn kmip_deserialize_derive(input: TokenStream) -> TokenStream {
                 // Deserialize either a number or a string
                 struct EnumVisitor;
 
-                impl<'de> serde::de::Visitor<'de> for EnumVisitor {
+                impl serde::de::Visitor<'_> for EnumVisitor {
                     type Value = #name;
 
                     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -107,7 +107,6 @@ pub fn kmip_deserialize_derive(input: TokenStream) -> TokenStream {
                     where
                         E: serde::de::Error,
                     {
-                        use strum::FromRepr;
                         let value = value as u32;
                         #name::from_repr(value).ok_or_else(|| {
                             E::invalid_value(
@@ -172,13 +171,9 @@ pub fn kmip_deserialize_derive(input: TokenStream) -> TokenStream {
 /// This simplifies the definition of KMIP enums by combining all necessary derives into a single attribute.
 #[proc_macro_attribute]
 pub fn kmip_enum(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    let mut input = parse_macro_input!(item as DeriveInput);
+    let input = parse_macro_input!(item as DeriveInput);
 
-    // Add repr(u32) attribute if not already present
-    let repr_attr = syn::parse_quote!(#[repr(u32)]);
-    input.attrs.push(repr_attr);
-
-    // Create the additional derives
+    // Create the derives
     let expanded = quote! {
         #[derive(
             KmipEnumSerialize,
@@ -195,6 +190,7 @@ pub fn kmip_enum(_attr: TokenStream, item: TokenStream) -> TokenStream {
             strum::IntoStaticStr,
             strum::FromRepr
         )]
+        #[repr(u32)]
         #[allow(non_camel_case_types)]
         #input
     };

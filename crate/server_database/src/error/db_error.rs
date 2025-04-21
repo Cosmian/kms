@@ -1,15 +1,16 @@
 use std::array::TryFromSliceError;
 
 use cloudproof_findex::implementations::redis::FindexRedisError;
-use cosmian_kmip::{
-    kmip_0::kmip_types::ErrorReason, kmip_1_4::kmip_types::ResultReason, KmipError,
-};
 use cosmian_crypto_core::CryptoCoreError;
-use cosmian_kmip::{kmip_2_1::kmip_operations::ErrorReason, KmipError};
+use cosmian_kmip::{
+    KmipError, kmip_0::kmip_types::ErrorReason, kmip_1_4::kmip_types::ResultReason,
+};
 use cosmian_kms_crypto::CryptoError;
 use cosmian_kms_interfaces::InterfaceError;
 use redis::ErrorKind;
 use thiserror::Error;
+
+use crate::DbError::CryptographicError;
 
 // Each error type must have a corresponding HTTP status code (see `kmip_endpoint.rs`)
 #[derive(Error, Debug, Clone)]
@@ -163,7 +164,28 @@ impl From<InterfaceError> for DbError {
 
 impl From<CryptoCoreError> for DbError {
     fn from(e: CryptoCoreError) -> Self {
-        Self::CryptographicError(e.to_string())
+        CryptographicError(e.to_string())
+    }
+}
+
+impl From<CryptoError> for DbError {
+    fn from(e: CryptoError) -> Self {
+        match e {
+            CryptoError::Kmip(s) => Self::Kmip21Error(ErrorReason::Codec_Error, s),
+            CryptoError::InvalidSize(s) => Self::InvalidRequest(s),
+            CryptoError::InvalidTag(s) => Self::InvalidRequest(s),
+            CryptoError::Derivation(s) => Self::InvalidRequest(s),
+            CryptoError::IndexingSlicing(s) => Self::InvalidRequest(s),
+            CryptoError::ObjectNotFound(s) => Self::ItemNotFound(s),
+            CryptoError::ConversionError(e)
+            | CryptoError::Default(e)
+            | CryptoError::NotSupported(e)
+            | CryptoError::OpenSSL(e) => CryptographicError(e),
+            CryptoError::Io(e) => CryptographicError(e.to_string()),
+            CryptoError::SerdeJsonError(e) => CryptographicError(e.to_string()),
+            CryptoError::Covercrypt(e) => CryptographicError(e.to_string()),
+            CryptoError::TryFromSliceError(e) => CryptographicError(e.to_string()),
+        }
     }
 }
 
@@ -201,12 +223,6 @@ impl From<KmipError> for DbError {
             | KmipError::InvalidKmip14Object(result_reason, e)
             | KmipError::Kmip14(result_reason, e) => Self::Kmip14Error(result_reason, e),
         }
-    }
-}
-
-impl From<CryptoError> for DbError {
-    fn from(e: CryptoError) -> Self {
-        Self::CryptographicError(e.to_string())
     }
 }
 

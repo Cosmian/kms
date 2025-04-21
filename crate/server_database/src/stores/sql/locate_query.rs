@@ -122,7 +122,6 @@ impl PlaceholderTrait for PgSqlPlaceholder {
 
     /// Format the JSON path to extract an attribute
     /// from the `objects.attributes` JSON field
-    #[must_use]
     fn format_json_path(attribute_names: &[&str]) -> String {
         attribute_names.join(",")
     }

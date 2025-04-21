@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use strum::Display;
 
 use crate::{
-    KmipError,
+    KmipError, kmip_0,
     kmip_0::kmip_types::{DRBGAlgorithm, FIPS186Variation, HashingAlgorithm, RNGAlgorithm},
     kmip_2_1::{self},
 };
@@ -905,6 +905,42 @@ pub enum ResultReason {
     NotExtractable = 0x17,
     ObjectAlreadyExists = 0x18,
     GeneralFailure = 0x100,
+}
+
+impl From<ResultReason> for kmip_0::kmip_types::ErrorReason {
+    fn from(val: ResultReason) -> Self {
+        match val {
+            ResultReason::ItemNotFound => Self::Item_Not_Found,
+            ResultReason::ResponseTooLarge => Self::Response_Too_Large,
+            ResultReason::AuthenticationNotSuccessful => Self::Authentication_Not_Successful,
+            ResultReason::InvalidMessage => Self::Invalid_Message,
+            ResultReason::OperationNotSupported => Self::Operation_Not_Supported,
+            ResultReason::MissingData => Self::Missing_Data,
+            ResultReason::InvalidField => Self::Invalid_Field,
+            ResultReason::FeatureNotSupported => Self::Feature_Not_Supported,
+            ResultReason::OperationCanceled => Self::Operation_Canceled_By_Requester,
+            ResultReason::CryptographicFailure => Self::Cryptographic_Failure,
+            ResultReason::IllegalOperation => Self::Operation_Not_Supported,
+            ResultReason::PermissionDenied => Self::Permission_Denied,
+            ResultReason::ObjectArchived => Self::Object_Archived,
+            ResultReason::IndexOutOfBounds => Self::Codec_Error,
+            ResultReason::ApplicationNamespaceNotSupported => {
+                Self::Application_Namespace_Not_Supported
+            }
+            ResultReason::KeyFormatTypeNotSupported => Self::Key_Format_Type_Not_Supported,
+            ResultReason::KeyCompressionTypeNotSupported => {
+                Self::Key_Compression_Type_Not_Supported
+            }
+            ResultReason::EncodingOptionError => Self::Encoding_Option_Error,
+            ResultReason::KeyValueNotPresent => Self::Key_Value_Not_Present,
+            ResultReason::AttestationRequired => Self::Attestation_Required,
+            ResultReason::AttestationFailed => Self::Attestation_Failed,
+            ResultReason::Sensitive => Self::Sensitive,
+            ResultReason::NotExtractable => Self::Not_Extractable,
+            ResultReason::ObjectAlreadyExists => Self::Object_Already_Exists,
+            ResultReason::GeneralFailure => Self::General_Failure,
+        }
+    }
 }
 
 /// KMIP 1.4 Encoding Option Enumeration

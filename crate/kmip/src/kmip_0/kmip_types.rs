@@ -1,11 +1,10 @@
 use std::fmt;
 
-use kmip_derive::{kmip_enum, KmipEnumDeserialize, KmipEnumSerialize};
+use kmip_derive::{KmipEnumDeserialize, KmipEnumSerialize, kmip_enum};
 use serde::{
-    de,
+    Deserialize, Serialize, de,
     de::{MapAccess, Visitor},
     ser::SerializeStruct,
-    Deserialize, Serialize,
 };
 use strum::Display;
 
@@ -55,7 +54,7 @@ pub enum AsynchronousIndicator {
     /// (returning an Asynchronous Correlation Value for a batch item) or synchronously.
     /// The method or policy by which the server determines whether or not to process
     /// an individual batch item asynchronously is a decision of the server and
-    /// is outside of the scope of this protocol.
+    /// is outside the scope of this protocol.
     Optional = 0x0000_0002,
     /// The server SHALL NOT process any batch item asynchronously.
     /// All batch items SHALL be processed synchronously.
@@ -290,7 +289,7 @@ impl<'de> Deserialize<'de> for Credential {
         impl<'de> Visitor<'de> for CredentialVisitor {
             type Value = Credential;
 
-            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
                 formatter.write_str("struct Credential")
             }
 

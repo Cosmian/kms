@@ -47,12 +47,5 @@ ignored = ["rust-ini", "sha3"]
 
 [dev-dependencies]
 hex = { workspace = true, features = ["std"] }
-native-tls = { workspace = true }
 num-traits = { workspace = true }
 rand = { workspace = true }
-reqwest = { workspace = true, features = [
-    "blocking",
-    "json",
-    "stream",
-    "native-tls",
-] }
