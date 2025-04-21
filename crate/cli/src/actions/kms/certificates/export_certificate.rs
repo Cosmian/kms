@@ -2,8 +2,10 @@ use std::path::PathBuf;
 
 use clap::Parser;
 use cosmian_kms_client::{
-    ExportObjectParams, KmsClient, export_object,
-    kmip_2_1::{kmip_objects::Object, ttlv::serializer::to_ttlv},
+    ExportObjectParams, KmsClient,
+    cosmian_kmip::ttlv::to_ttlv,
+    export_object,
+    kmip_2_1::kmip_objects::{Certificate, Object, PrivateKey},
     reexport::cosmian_kms_client_utils::export_utils::{
         CertificateExportFormat, prepare_certificate_export_elements,
     },
@@ -97,19 +99,22 @@ impl ExportCertificateAction {
             prepare_certificate_export_elements(&self.output_format, self.pkcs12_password.clone());
 
         // export the object
-        let (id, object, export_attributes) =
-            export_object(client_connector, &id, ExportObjectParams {
+        let (id, object, export_attributes) = export_object(
+            client_connector,
+            &id,
+            ExportObjectParams {
                 wrapping_key_id: wrapping_key_id.as_deref(),
                 allow_revoked: self.allow_revoked,
                 key_format_type: Some(key_format_type),
                 ..ExportObjectParams::default()
-            })
-            .await?;
+            },
+        )
+        .await?;
 
         match &object {
-            Object::Certificate {
+            Object::Certificate(Certificate {
                 certificate_value, ..
-            } => {
+            }) => {
                 match self.output_format {
                     CertificateExportFormat::JsonTtlv => {
                         // save it to a file
@@ -138,7 +143,7 @@ impl ExportCertificateAction {
                 }
             }
             // PKCS12 is exported as a private key object
-            Object::PrivateKey { key_block } => {
+            Object::PrivateKey(PrivateKey { key_block }) => {
                 let p12_bytes = key_block.key_bytes()?.to_vec();
                 // save it to a file
                 write_bytes_to_file(&p12_bytes, &self.certificate_file)?;

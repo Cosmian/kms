@@ -5,10 +5,11 @@ use cosmian_kms_client::{
     KmsClient,
     cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier,
     kmip_2_1::{
+        kmip_attributes::Attribute,
         kmip_operations::{SetAttribute, SetAttributeResponse},
         kmip_types::{
-            self, Attribute, CryptographicAlgorithm, Link, LinkType, LinkedObjectIdentifier,
-            VendorAttribute,
+            self, CryptographicAlgorithm, Link, LinkType, LinkedObjectIdentifier, VendorAttribute,
+            VendorAttributeValue,
         },
     },
     reexport::cosmian_kms_client_utils::import_utils::{KeyUsage, build_usage_mask_from_key_usage},
@@ -118,11 +119,11 @@ impl TryFrom<&VendorAttributeCli> for Attribute {
                 .clone()
                 .unwrap_or_default(),
             attribute_name: vendor_attribute.attribute_name.clone().unwrap_or_default(),
-            attribute_value: hex::decode(
+            attribute_value: VendorAttributeValue::ByteString(hex::decode(
                 vendor_attribute.attribute_value.clone().unwrap_or_default(),
-            )?,
+            )?),
         };
-        Ok(Self::VendorAttributes(vec![vendor_attribute]))
+        Ok(Self::VendorAttribute(vendor_attribute))
     }
 }
 
@@ -136,9 +137,9 @@ impl TryFrom<&VendorAttributeCli> for VendorAttribute {
                 .clone()
                 .unwrap_or_default(),
             attribute_name: vendor_attribute.attribute_name.clone().unwrap_or_default(),
-            attribute_value: hex::decode(
+            attribute_value: VendorAttributeValue::ByteString(hex::decode(
                 vendor_attribute.attribute_value.clone().unwrap_or_default(),
-            )?,
+            )?),
         };
         Ok(vendor_attribute)
     }
@@ -158,7 +159,7 @@ pub struct SetOrDeleteAttributes {
 
     /// Set the activation date of the key. Epoch time (or Unix time) in milliseconds.
     #[clap(long, short = 'd')]
-    pub(crate) activation_date: Option<u64>,
+    pub(crate) activation_date: Option<i64>,
 
     /// The cryptographic algorithm used by the key.
     #[clap(long, short = 'a')]
@@ -237,66 +238,66 @@ impl SetOrDeleteAttributes {
         }
 
         if let Some(public_key_id) = &self.public_key_id {
-            let attribute = Attribute::Links(vec![Link {
+            let attribute = Attribute::Link(Link {
                 link_type: LinkType::PublicKeyLink,
                 linked_object_identifier: LinkedObjectIdentifier::TextString(public_key_id.clone()),
-            }]);
+            });
             result.push(attribute);
         }
 
         if let Some(private_key_id) = &self.private_key_id {
-            let attribute = Attribute::Links(vec![Link {
+            let attribute = Attribute::Link(Link {
                 link_type: LinkType::PrivateKeyLink,
                 linked_object_identifier: LinkedObjectIdentifier::TextString(
                     private_key_id.clone(),
                 ),
-            }]);
+            });
             result.push(attribute);
         }
 
         if let Some(certificate_id) = &self.certificate_id {
-            let attribute = Attribute::Links(vec![Link {
+            let attribute = Attribute::Link(Link {
                 link_type: LinkType::CertificateLink,
                 linked_object_identifier: LinkedObjectIdentifier::TextString(
                     certificate_id.clone(),
                 ),
-            }]);
+            });
             result.push(attribute);
         }
 
         if let Some(pkcs12_certificate_id) = &self.pkcs12_certificate_id {
-            let attribute = Attribute::Links(vec![Link {
+            let attribute = Attribute::Link(Link {
                 link_type: LinkType::PKCS12CertificateLink,
                 linked_object_identifier: LinkedObjectIdentifier::TextString(
                     pkcs12_certificate_id.clone(),
                 ),
-            }]);
+            });
             result.push(attribute);
         }
 
         if let Some(pkcs12_password_certificate) = &self.pkcs12_password_certificate {
-            let attribute = Attribute::Links(vec![Link {
+            let attribute = Attribute::Link(Link {
                 link_type: LinkType::PKCS12PasswordLink,
                 linked_object_identifier: LinkedObjectIdentifier::TextString(
-                    pkcs12_password_certificate.clone(),
+                    pkcs12_password_certificate.clne(),
                 ),
-            }]);
+            });
             result.push(attribute);
         }
 
         if let Some(parent_id) = &self.parent_id {
-            let attribute = Attribute::Links(vec![Link {
+            let attribute = Attribute::Link(Link {
                 link_type: LinkType::ParentLink,
                 linked_object_identifier: LinkedObjectIdentifier::TextString(parent_id.clone()),
-            }]);
+            });
             result.push(attribute);
         }
 
         if let Some(child_id) = &self.child_id {
-            let attribute = Attribute::Links(vec![Link {
+            let attribute = Attribute::Link(Link {
                 link_type: LinkType::ChildLink,
                 linked_object_identifier: LinkedObjectIdentifier::TextString(child_id.clone()),
-            }]);
+            });
             result.push(attribute);
         }
 

@@ -5,12 +5,12 @@ use cosmian_cover_crypt::{EncryptionHint, MasterPublicKey, QualifiedAttribute};
 use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kms_client::{
     ExportObjectParams, KmsClient,
-    cosmian_kmip::KmipResultHelper,
-    export_object,
-    kmip_2_1::{
-        kmip_objects::Object,
-        ttlv::{TTLV, deserializer::from_ttlv},
+    cosmian_kmip::{
+        KmipResultHelper,
+        ttlv::{TTLV, from_ttlv},
     },
+    export_object,
+    kmip_2_1::kmip_objects::Object,
     read_from_json_file,
 };
 use cosmian_kms_crypto::{
@@ -69,15 +69,19 @@ pub struct ViewAction {
 impl ViewAction {
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CosmianResult<()> {
         let object: Object = if let Some(id) = &self.key_id {
-            export_object(kms_rest_client, id, ExportObjectParams {
-                unwrap: true,
-                ..ExportObjectParams::default()
-            })
+            export_object(
+                kms_rest_client,
+                id,
+                ExportObjectParams {
+                    unwrap: true,
+                    ..ExportObjectParams::default()
+                },
+            )
             .await?
             .1
         } else if let Some(key_file) = &self.key_file {
             let ttlv: TTLV = read_from_json_file(key_file)?;
-            from_ttlv(&ttlv)?
+            from_ttlv(ttlv)?
         } else {
             cli_bail!("either a key ID or a key TTLV file must be supplied");
         };
