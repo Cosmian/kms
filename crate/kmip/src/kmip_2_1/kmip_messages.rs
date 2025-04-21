@@ -26,9 +26,68 @@ use serde::{
 };
 
 use super::{kmip_operations::Operation, kmip_types::OperationEnumeration};
-use crate::kmip_0::kmip_types::{
-    Direction, ErrorReason, MessageExtension, ResultStatusEnumeration,
+use crate::{
+    KmipError,
+    error::result::KmipResult,
+    kmip_0::{
+        kmip_messages::{ResponseMessage, ResponseMessageBatchItemVersioned},
+        kmip_types::{Direction, ErrorReason, MessageExtension, ResultStatusEnumeration},
+    },
 };
+
+impl ResponseMessage {
+    pub fn extract_items_data(&self) -> KmipResult<Vec<Vec<u8>>> {
+        self.batch_item
+            .iter()
+            .map(|item| {
+                let ResponseMessageBatchItemVersioned::V21(payload) = item else {
+                    return Err(KmipError::Default(
+                        "Unsupported response message version".to_owned(),
+                    ));
+                };
+                payload
+                    .response_payload
+                    .as_ref()
+                    .ok_or_else(|| {
+                        KmipError::Default("Missing operation in Message Response".to_owned())
+                    })
+                    .and_then(|response_payload| match response_payload {
+                        Operation::DecryptResponse(response) => response
+                            .data
+                            .as_ref()
+                            .map(|data| data.to_vec())
+                            .ok_or_else(|| {
+                                KmipError::Default("Missing data in Decrypt Response".to_owned())
+                            }),
+                        Operation::EncryptResponse(response) => response
+                            .data
+                            .as_ref()
+                            .ok_or_else(|| {
+                                KmipError::Default("Missing data in Encrypt Response".to_owned())
+                            })
+                            .cloned(),
+                        Operation::HashResponse(response) => response
+                            .data
+                            .as_ref()
+                            .ok_or_else(|| {
+                                KmipError::Default("Missing data in Hash Response".to_owned())
+                            })
+                            .cloned(),
+                        Operation::MacResponse(response) => response
+                            .data
+                            .as_ref()
+                            .ok_or_else(|| {
+                                KmipError::Default("Missing data in Mac Response".to_owned())
+                            })
+                            .cloned(),
+                        unexpected_operation => Err(KmipError::Default(format!(
+                            "Unexpected operation in Message Response: {unexpected_operation:?}"
+                        ))),
+                    })
+            })
+            .collect()
+    }
+}
 
 /// Batch item for a message request
 ///

@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use cosmian_cover_crypt::api::Covercrypt;
 use cosmian_kmip::{
     kmip_0::kmip_types::{ErrorReason, State},
     kmip_2_1::{
@@ -7,7 +8,7 @@ use cosmian_kmip::{
         kmip_operations::{ReKeyKeyPair, ReKeyKeyPairResponse},
         kmip_types::{CryptographicAlgorithm, KeyFormatType},
     },
-use cosmian_cover_crypt::api::Covercrypt;
+};
 use cosmian_kms_crypto::crypto::cover_crypt::attributes::rekey_edit_action_from_attributes;
 use cosmian_kms_interfaces::SessionParams;
 use tracing::trace;

@@ -10,10 +10,10 @@ use cosmian_kmip::{
         AddAttribute, AddAttributeResponse, Certify, CertifyResponse, Create, CreateKeyPair,
         CreateKeyPairResponse, CreateResponse, Decrypt, DecryptResponse, DeleteAttribute,
         DeleteAttributeResponse, Destroy, DestroyResponse, Encrypt, EncryptResponse, Export,
-        ExportResponse, Get, GetAttributes, GetAttributesResponse, GetResponse, Import,
-        ImportResponse, Locate, LocateResponse, Query, QueryResponse, ReKey, ReKeyKeyPair,
-        ReKeyKeyPairResponse, ReKeyResponse, Revoke, RevokeResponse, SetAttribute,
-        SetAttributeResponse, Validate, ValidateResponse,
+        ExportResponse, Get, GetAttributes, GetAttributesResponse, GetResponse, Hash, HashResponse,
+        Import, ImportResponse, Locate, LocateResponse, Mac, MacResponse, Query, QueryResponse,
+        ReKey, ReKeyKeyPair, ReKeyKeyPairResponse, ReKeyResponse, Revoke, RevokeResponse,
+        SetAttribute, SetAttributeResponse, Validate, ValidateResponse,
     },
 };
 use cosmian_kms_interfaces::SessionParams;
@@ -480,10 +480,10 @@ impl KMS {
 
     pub(crate) async fn message(
         &self,
-        request: Message,
+        request: RequestMessage,
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
-    ) -> KResult<MessageResponse> {
+    ) -> KResult<ResponseMessage> {
         // This is a large future, hence pinning
         Box::pin(operations::message(self, request, user, params)).await
     }

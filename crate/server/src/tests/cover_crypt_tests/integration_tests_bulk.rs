@@ -1,4 +1,3 @@
-use cloudproof::reexport::cover_crypt::abe_policy::{DimensionBuilder, EncryptionHint, Policy};
 use cosmian_kmip::{
     kmip_0::{
         kmip_messages::{
@@ -36,12 +35,16 @@ async fn integration_tests_bulk() -> KResult<()> {
         batch_item: vec![
             RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
                 Operation::CreateKeyPair(build_create_covercrypt_master_keypair_request(
-                    &policy, EMPTY_TAGS, false,
+                    &access_structure,
+                    EMPTY_TAGS,
+                    false,
                 )?),
             )),
             RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
                 Operation::CreateKeyPair(build_create_covercrypt_master_keypair_request(
-                    &policy, EMPTY_TAGS, false,
+                    &access_structure,
+                    EMPTY_TAGS,
+                    false,
                 )?),
             )),
         ],

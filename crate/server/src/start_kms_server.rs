@@ -1,4 +1,7 @@
-use std::sync::{mpsc, Arc};
+use std::{
+    path::PathBuf,
+    sync::{Arc, mpsc},
+};
 
 use actix_cors::Cors;
 use actix_files::Files;
@@ -24,13 +27,13 @@ use crate::{
     error::KmsError,
     kms_bail,
     middlewares::{AuthTransformer, JwksManager, JwtConfig, SslAuth, extract_peer_certificate},
-    middlewares::{extract_peer_certificate, AuthTransformer, JwksManager, JwtConfig, SslAuth},
     result::{KResult, KResultHelper},
     routes::{
         access, get_version,
         google_cse::{self, GoogleCseConfig},
+        kmip,
         kmip::handle_ttlv_bytes,
-        kmip, ms_dke,
+        ms_dke,
         ui_auth::configure_auth_routes,
     },
     socket_server::{SocketServer, SocketServerParams},
