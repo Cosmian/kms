@@ -55,10 +55,10 @@ opt-level = 0
 [workspace.dependencies]
 actix-rt = "2.10"
 actix-server = { version = "2.5", default-features = false }
-actix-web = { version = "4.9", default-features = false }
+actix-web = { version = "4.10", default-features = false }
 async-trait = "0.1"
 base64 = "0.22"
-bitflags = "2.8"
+bitflags = "2.9"
 chrono = "0.4"
 clap = { version = "4.5", default-features = false }
 cosmian_findex = { git = "https://github.com/Cosmian/findex", default-features = false, rev = "6329b6b2f2b64b033e40b05cd12ca1c9b5ee376f" }
@@ -101,8 +101,8 @@ strum = { version = "0.25", default-features = false }
 thiserror = "2.0"
 time = "0.3"
 tiny-keccak = "2.0"
-tempfile = "3.16"
-tokio = { version = "1.43", default-features = false }
+tempfile = "3.19"
+tokio = { version = "1.44", default-features = false }
 tracing-subscriber = { version = "0.3", default-features = false }
 tracing = "0.1"
 url = "2.5"
