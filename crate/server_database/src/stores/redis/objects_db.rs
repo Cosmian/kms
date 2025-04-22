@@ -39,11 +39,9 @@ pub(crate) fn keywords_from_attributes(attributes: &Attributes) -> HashSet<Keywo
     }
     if let Some(links) = &attributes.link {
         for link in links {
-            match serde_json::to_vec(link) {
-                Ok(bytes) => keywords.insert(Keyword::from(bytes.as_slice())),
-                // ignore malformed links (this should never be possible)
-                Err(_) => continue,
-            };
+            if let Ok(bytes) = serde_json::to_vec(link) {
+                keywords.insert(Keyword::from(bytes.as_slice()));
+            }
         }
     }
     keywords

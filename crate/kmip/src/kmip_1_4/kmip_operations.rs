@@ -1242,7 +1242,7 @@ pub struct Import {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub replace_existing: Option<bool>,
     /// If Not Wrapped, then the server SHALL unwrap the object before storing it,
-    /// and return an error if the wrapping key is not available.  
+    /// and return an error if the wrapping key is not available.
     /// Otherwise, the server SHALL store the object as provided.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub key_wrap_type: Option<KeyWrapType>,

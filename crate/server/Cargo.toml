@@ -74,10 +74,10 @@ num-bigint-dig = { workspace = true, features = [
 oauth2 = "5.0.0"
 openidconnect = "4.0.0"
 openssl = { workspace = true }
-opentelemetry = "0.29"
-opentelemetry-otlp = { version = "0.29", features = ["tonic"] }
-opentelemetry-semantic-conventions = { version = "0.29" }
-opentelemetry_sdk = { version = "0.29", features = ["rt-tokio"] }
+opentelemetry = "0.23.0"
+opentelemetry-otlp = { version = "0.16.0", features = ["tonic"] }
+opentelemetry-semantic-conventions = { version = "0.15.0" }
+opentelemetry_sdk = { version = "0.23.0", features = ["rt-tokio"] }
 proteccio_pkcs11_loader = { path = "../hsm/proteccio" }
 # Important: align the rustls version with reqwest rustls dependency
 # When using client certificate authentication, reqwest will use the

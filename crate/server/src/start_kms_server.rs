@@ -25,7 +25,6 @@ use crate::{
     config::{JwtAuthConfig, ServerParams},
     core::KMS,
     error::KmsError,
-    kms_bail,
     middlewares::{AuthTransformer, JwksManager, JwtConfig, SslAuth, extract_peer_certificate},
     result::{KResult, KResultHelper},
     routes::{
@@ -320,8 +319,8 @@ pub async fn prepare_kms_server(
             format!(
                 "http{}://{}:{}",
                 if builder.is_some() { "s" } else { "" },
-                &kms_server.params.hostname,
-                &kms_server.params.port
+                &kms_server.params.http_hostname,
+                &kms_server.params.http_port
             )
         },
         |url| url,

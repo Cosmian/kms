@@ -2,7 +2,7 @@ use serde::de::{DeserializeSeed, MapAccess};
 use tracing::{instrument, trace};
 
 use super::TtlvDeserializer;
-use crate::ttlv::{kmip_ttlv_deserializer::deserializer::MapAccessState, TTLValue, TtlvError};
+use crate::ttlv::{TTLValue, TtlvError, kmip_ttlv_deserializer::deserializer::MapAccessState};
 
 /// The `StructureWalker` is used to deserialize a struct as a map of property -> values
 /// It is called by the main deserializer when receiving Visitor requests to `deserialize_struct`
@@ -11,7 +11,7 @@ pub(super) struct StructureWalker<'a> {
 }
 
 impl<'a> StructureWalker<'a> {
-    pub(super) fn new(de: &'a mut TtlvDeserializer) -> Self {
+    pub(super) const fn new(de: &'a mut TtlvDeserializer) -> Self {
         StructureWalker { de }
     }
 }

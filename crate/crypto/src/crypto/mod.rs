@@ -56,12 +56,12 @@ impl KeyPair {
     }
 
     /// Get the private key
-    pub fn private_key_mut(&mut self) -> &mut Object {
+    pub const fn private_key_mut(&mut self) -> &mut Object {
         &mut self.0.0
     }
 
     /// Get the public key
-    pub fn public_key_mut(&mut self) -> &mut Object {
+    pub const fn public_key_mut(&mut self) -> &mut Object {
         &mut self.0.1
     }
 }

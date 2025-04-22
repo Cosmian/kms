@@ -172,10 +172,10 @@ impl From<CryptoError> for DbError {
     fn from(e: CryptoError) -> Self {
         match e {
             CryptoError::Kmip(s) => Self::Kmip21Error(ErrorReason::Codec_Error, s),
-            CryptoError::InvalidSize(s) => Self::InvalidRequest(s),
-            CryptoError::InvalidTag(s) => Self::InvalidRequest(s),
-            CryptoError::Derivation(s) => Self::InvalidRequest(s),
-            CryptoError::IndexingSlicing(s) => Self::InvalidRequest(s),
+            CryptoError::InvalidSize(s)
+            | CryptoError::InvalidTag(s)
+            | CryptoError::Derivation(s)
+            | CryptoError::IndexingSlicing(s) => Self::InvalidRequest(s),
             CryptoError::ObjectNotFound(s) => Self::ItemNotFound(s),
             CryptoError::ConversionError(e)
             | CryptoError::Default(e)

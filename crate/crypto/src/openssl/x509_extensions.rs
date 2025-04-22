@@ -4,11 +4,11 @@ use ini::Ini;
 use openssl::{
     nid::Nid,
     x509::{
+        X509Extension, X509v3Context,
         extension::{
             AuthorityKeyIdentifier, BasicConstraints, ExtendedKeyUsage, KeyUsage,
             SubjectAlternativeName, SubjectKeyIdentifier,
         },
-        X509Extension, X509v3Context,
     },
 };
 use tracing::warn;
@@ -42,7 +42,8 @@ pub fn parse_v3_ca_from_file(
 ) -> Result<Vec<X509Extension>, CryptoError> {
     let conf = Ini::load_from_file(extension_file).map_err(|e| {
         CryptoError::NotSupported(format!(
-            "cannot read x509 extension file: `{extension_file:?}`. Reason: {e}"
+            "cannot read x509 extension file: `{}`. Reason: {e}",
+            extension_file.display()
         ))
     })?;
     parse_v3_ca(&conf, x509_context)

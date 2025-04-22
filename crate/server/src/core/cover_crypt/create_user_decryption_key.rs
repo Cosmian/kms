@@ -7,8 +7,8 @@ use cosmian_kmip::{
     kmip_2_1::{
         kmip_attributes::Attributes,
         kmip_objects::{Object, ObjectType},
-        kmip_operations::Create,
-        kmip_types::KeyFormatType,
+        kmip_operations::{Create, Import},
+        kmip_types::{KeyFormatType, UniqueIdentifier},
     },
 };
 use cosmian_kms_crypto::crypto::cover_crypt::{
@@ -48,7 +48,7 @@ pub(crate) async fn create_user_decryption_key(
         .await?
         .into_values()
     {
-        if msk_owm.state() != State::Active {
+        if owm.state() != State::Active {
             continue;
         }
 

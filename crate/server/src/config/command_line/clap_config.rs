@@ -6,10 +6,13 @@ use std::{
 use clap::Parser;
 use serde::{Deserialize, Serialize};
 
-use super::{
-    HttpConfig, JwtAuthConfig, MainDBConfig, WorkspaceConfig, ui_config::UiConfig,
+use super::{HttpConfig, JwtAuthConfig, MainDBConfig, WorkspaceConfig, ui_config::UiConfig};
+use crate::{
+    config::{SocketServerConfig, TlsConfig},
+    error::KmsError,
+    result::KResult,
+    telemetry::TelemetryConfig,
 };
-use crate::{error::KmsError, result::KResult, telemetry::TelemetryConfig};
 
 const DEFAULT_COSMIAN_KMS_CONF: &str = "/etc/cosmian/kms.toml";
 const DEFAULT_USERNAME: &str = "admin";

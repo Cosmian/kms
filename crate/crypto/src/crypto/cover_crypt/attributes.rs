@@ -144,7 +144,7 @@ pub fn access_policy_from_attributes(attributes: &Attributes) -> Result<String, 
                         "the Access Policy is not a byte string".to_owned(),
                     ));
                 };
-                String::from_utf8(bytes.to_vec()).map_err(|e| {
+                String::from_utf8(bytes.clone()).map_err(|e| {
                     CryptoError::Kmip(format!(
                         "failed to read Access Policy string from the (vendor) attributes bytes: \
                          {e}"

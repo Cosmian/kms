@@ -61,7 +61,7 @@ pub fn create_master_keypair(
     )?;
 
     let mpk_owm = create_mpk_object(
-        mpk.serialize()?,
+        &mpk.serialize()?,
         mpk_attributes.unwrap_or(common_attributes),
         private_key_uid,
     )?;
@@ -109,7 +109,7 @@ pub fn create_msk_object(
 ///
 /// see `cover_crypt_unwrap_master_public_key` for the reverse operation
 fn create_mpk_object(
-    key: Zeroizing<Vec<u8>>,
+    key: &Zeroizing<Vec<u8>>,
     mut attributes: Attributes,
     msk_uid: String,
 ) -> Result<Object, CryptoError> {

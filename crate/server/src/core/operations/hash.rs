@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use cosmian_kmip::kmip_2_1::{
-    kmip_operations::{Hash, HashResponse},
-    kmip_types::HashingAlgorithm,
+use cosmian_kmip::{
+    kmip_0::kmip_types::HashingAlgorithm,
+    kmip_2_1::kmip_operations::{Hash, HashResponse},
 };
 use cosmian_kms_interfaces::SessionParams;
 use openssl::hash::{Hasher, MessageDigest};
