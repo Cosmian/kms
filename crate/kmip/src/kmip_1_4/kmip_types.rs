@@ -914,13 +914,14 @@ impl From<ResultReason> for kmip_0::kmip_types::ErrorReason {
             ResultReason::ResponseTooLarge => Self::Response_Too_Large,
             ResultReason::AuthenticationNotSuccessful => Self::Authentication_Not_Successful,
             ResultReason::InvalidMessage => Self::Invalid_Message,
-            ResultReason::OperationNotSupported => Self::Operation_Not_Supported,
+            ResultReason::IllegalOperation | ResultReason::OperationNotSupported => {
+                Self::Operation_Not_Supported
+            }
             ResultReason::MissingData => Self::Missing_Data,
             ResultReason::InvalidField => Self::Invalid_Field,
             ResultReason::FeatureNotSupported => Self::Feature_Not_Supported,
             ResultReason::OperationCanceled => Self::Operation_Canceled_By_Requester,
             ResultReason::CryptographicFailure => Self::Cryptographic_Failure,
-            ResultReason::IllegalOperation => Self::Operation_Not_Supported,
             ResultReason::PermissionDenied => Self::Permission_Denied,
             ResultReason::ObjectArchived => Self::Object_Archived,
             ResultReason::IndexOutOfBounds => Self::Codec_Error,

@@ -1,10 +1,5 @@
 use std::{collections::HashSet, sync::Arc};
 
-use actix_web::HttpRequest;
-use base64::{
-    Engine as _,
-    engine::general_purpose::{self, STANDARD as b64},
-};
 use cosmian_cover_crypt::api::Covercrypt;
 use cosmian_kmip::{
     kmip_0::kmip_types::State,

@@ -1,13 +1,11 @@
 use std::{collections::HashMap, fmt, path::PathBuf};
 
 use cosmian_kms_server_database::MainDbParams;
-use openssl::x509::X509;
 use tracing::{debug, warn};
 
 use super::TlsParams;
 use crate::{
     config::{ClapConfig, DEFAULT_COSMIAN_UI_DIST_PATH, IdpConfig, OidcConfig},
-    kms_bail,
     result::KResult,
 };
 

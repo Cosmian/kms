@@ -6,13 +6,13 @@ use std::{
 
 use async_trait::async_trait;
 use cloudproof_findex::{
-    implementations::redis::FindexRedis, parameters::MASTER_KEY_LENGTH, IndexedValue, Keyword,
-    Label, Location,
+    IndexedValue, Keyword, Label, Location, implementations::redis::FindexRedis,
+    parameters::MASTER_KEY_LENGTH,
 };
-use cosmian_crypto_core::{kdf256, FixedSizeCBytes, SymmetricKey};
+use cosmian_crypto_core::{FixedSizeCBytes, SymmetricKey, kdf256};
 use cosmian_kmip::{
     kmip_0::kmip_types::State,
-    kmip_2_1::{kmip_attributes::Attributes, kmip_objects::Object, KmipOperation},
+    kmip_2_1::{KmipOperation, kmip_attributes::Attributes, kmip_objects::Object},
 };
 use cosmian_kms_crypto::crypto::{password_derivation::derive_key_from_password, secret::Secret};
 use cosmian_kms_interfaces::{
@@ -24,7 +24,7 @@ use tracing::trace;
 use uuid::Uuid;
 
 use super::{
-    objects_db::{keywords_from_attributes, ObjectsDB, RedisDbObject, DB_KEY_LENGTH},
+    objects_db::{DB_KEY_LENGTH, ObjectsDB, RedisDbObject, keywords_from_attributes},
     permissions::PermissionsDB,
 };
 use crate::{
@@ -524,7 +524,7 @@ impl ObjectsStore for RedisWithFindex {
         Ok(redis_db_objects
             .into_iter()
             .filter(|(uid, redis_db_object)| {
-                state.map_or(true, |state| redis_db_object.state == state)
+                state.is_none_or(|state| redis_db_object.state == state)
                     && (if redis_db_object.owner == user {
                         true
                     } else {

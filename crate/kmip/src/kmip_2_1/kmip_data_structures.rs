@@ -104,10 +104,13 @@ impl Serialize for KeyBlock {
             st.serialize_field("KeyCompressionType", key_compression_type)?;
         }
         if let Some(key_value) = &self.key_value {
-            st.serialize_field("KeyValue", &KeyValueSerializer {
-                key_format_type: self.key_format_type,
-                key_value: key_value.clone(),
-            })?;
+            st.serialize_field(
+                "KeyValue",
+                &KeyValueSerializer {
+                    key_format_type: self.key_format_type,
+                    key_value: key_value.clone(),
+                },
+            )?;
         }
         if let Some(cryptographic_algorithm) = &self.cryptographic_algorithm {
             st.serialize_field("CryptographicAlgorithm", cryptographic_algorithm)?;
@@ -469,10 +472,13 @@ impl Serialize for KeyValueSerializer {
                 attributes,
             } => {
                 let mut st = serializer.serialize_struct("KeyValue", 2)?;
-                st.serialize_field("KeyMaterial", &KeyMaterialSerializer {
-                    key_format_type: self.key_format_type,
-                    key_material: key_material.clone(),
-                })?;
+                st.serialize_field(
+                    "KeyMaterial",
+                    &KeyMaterialSerializer {
+                        key_format_type: self.key_format_type,
+                        key_material: key_material.clone(),
+                    },
+                )?;
                 if let Some(attributes) = attributes {
                     if attributes != &Attributes::default() {
                         st.serialize_field("Attributes", attributes)?;
@@ -909,11 +915,11 @@ impl Serialize for KeyMaterialSerializer {
                 st.serialize_field("P", &**p)?;
                 if let Some(q) = q {
                     st.serialize_field("Q", &**q)?;
-                };
+                }
                 st.serialize_field("G", &**g)?;
                 if let Some(j) = j {
                     st.serialize_field("J", &**j)?;
-                };
+                }
                 st.serialize_field("X", &***x)?;
                 st.end()
             }
@@ -922,11 +928,11 @@ impl Serialize for KeyMaterialSerializer {
                 st.serialize_field("P", &**p)?;
                 if let Some(q) = q {
                     st.serialize_field("Q", &**q)?;
-                };
+                }
                 st.serialize_field("G", &**g)?;
                 if let Some(j) = j {
                     st.serialize_field("J", &**j)?;
-                };
+                }
                 st.serialize_field("Y", &**y)?;
                 st.end()
             }
@@ -960,25 +966,25 @@ impl Serialize for KeyMaterialSerializer {
                 st.serialize_field("Modulus", &**modulus)?;
                 if let Some(private_exponent) = private_exponent {
                     st.serialize_field("PrivateExponent", &***private_exponent)?;
-                };
+                }
                 if let Some(public_exponent) = public_exponent {
                     st.serialize_field("PublicExponent", &**public_exponent)?;
-                };
+                }
                 if let Some(p) = p {
                     st.serialize_field("P", &***p)?;
-                };
+                }
                 if let Some(q) = q {
                     st.serialize_field("Q", &***q)?;
-                };
+                }
                 if let Some(prime_exponent_p) = prime_exponent_p {
                     st.serialize_field("PrimeExponentP", &***prime_exponent_p)?;
-                };
+                }
                 if let Some(prime_exponent_q) = prime_exponent_q {
                     st.serialize_field("PrimeExponentQ", &***prime_exponent_q)?;
-                };
+                }
                 if let Some(crt_coefficient) = crt_coefficient {
                     st.serialize_field("CrtCoefficient", &***crt_coefficient)?;
-                };
+                }
                 st.end()
             }
             KeyMaterial::TransparentRSAPublicKey {
@@ -1367,9 +1373,13 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
             }
             f => {
                 trace!("===> KeyMaterial: Deserializing Structure for key format type: {f:?}");
-                deserializer.deserialize_struct("KeyMaterial", FIELDS, KeyMaterialVisitor {
-                    key_format_type: self.key_format_type,
-                })
+                deserializer.deserialize_struct(
+                    "KeyMaterial",
+                    FIELDS,
+                    KeyMaterialVisitor {
+                        key_format_type: self.key_format_type,
+                    },
+                )
             }
         }
     }

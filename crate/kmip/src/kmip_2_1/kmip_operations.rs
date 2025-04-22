@@ -921,7 +921,7 @@ impl From<String> for Export {
 impl From<&String> for Export {
     // Create a ExportRequest for an object to be returned "as registered"
     fn from(uid: &String) -> Self {
-        Self::from(uid.to_string())
+        Self::from(uid.clone())
     }
 }
 impl From<&str> for Export {

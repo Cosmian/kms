@@ -3,10 +3,10 @@ use std::sync::Arc;
 use cosmian_kmip::{
     kmip_2_1::kmip_operations::{
         Certify, Create, CreateKeyPair, Decrypt, DeleteAttribute, Destroy, Encrypt, Export, Get,
-        GetAttributes, Import, Locate, Operation, Query, ReKey, ReKeyKeyPair, Revoke, SetAttribute,
-        Validate,
+        GetAttributes, Hash, Import, Locate, Mac, Operation, Query, ReKey, ReKeyKeyPair, Revoke,
+        SetAttribute, Validate,
     },
-    ttlv::{from_ttlv, TTLV},
+    ttlv::{TTLV, from_ttlv},
 };
 use cosmian_kms_interfaces::SessionParams;
 use tracing::debug;

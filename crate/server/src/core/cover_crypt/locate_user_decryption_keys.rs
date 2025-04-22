@@ -26,7 +26,7 @@ pub(crate) async fn locate_usk(
     kmip_server: &KMS,
     master_secret_key_uid: &str,
     cover_crypt_policy_attributes_to_revoke: Option<Vec<QualifiedAttribute>>,
-    state: Option<StateEnumeration>,
+    state: Option<State>,
     owner: &str,
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<Option<Vec<String>>> {

@@ -68,7 +68,7 @@ pub struct UserDecryptionKeysHandler<'a> {
 }
 
 impl<'a> UserDecryptionKeysHandler<'a> {
-    pub fn instantiate(cover_crypt: &'a Covercrypt, msk: &'a mut MasterSecretKey) -> Self {
+    pub const fn instantiate(cover_crypt: &'a Covercrypt, msk: &'a mut MasterSecretKey) -> Self {
         Self { cover_crypt, msk }
     }
 

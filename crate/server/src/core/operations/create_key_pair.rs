@@ -315,15 +315,24 @@ pub(crate) fn generate_key_pair(
             request.private_key_attributes,
             request.public_key_attributes,
         ),
-        CryptographicAlgorithm::CoverCrypt => create_master_keypair(
-            &Covercrypt::default(),
-            private_key_uid.to_owned(),
-            public_key_uid,
-            common_attributes,
-            request.private_key_attributes,
-            request.public_key_attributes,
-            sensitive,
-        ),
+        CryptographicAlgorithm::CoverCrypt => {
+            let sensitive = request
+                .private_key_attributes
+                .as_ref()
+                .or(Some(&common_attributes))
+                .and_then(|att| att.sensitive)
+                .unwrap_or_default();
+
+            create_master_keypair(
+                &Covercrypt::default(),
+                private_key_uid.to_owned(),
+                public_key_uid,
+                common_attributes,
+                request.private_key_attributes,
+                request.public_key_attributes,
+                sensitive,
+            )
+        }
         other => {
             kms_bail!(KmsError::NotSupported(format!(
                 "The creation of a keypair for algorithm: {other:?} is not supported"

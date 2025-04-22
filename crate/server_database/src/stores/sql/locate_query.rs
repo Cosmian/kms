@@ -234,7 +234,7 @@ ON objects.id = matched_tags.id"
         // ObjectType
         if let Some(object_type) = attributes.object_type {
             query = format!("{query} AND {} = '{object_type}'", P::extract_object_type());
-        };
+        }
 
         // Link
         if let Some(links) = &attributes.link {

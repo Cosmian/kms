@@ -5,8 +5,8 @@ use tracing::{instrument, trace};
 
 use super::{Result, TtlvDeserializer};
 use crate::{
-    ttlv::{kmip_ttlv_deserializer::deserializer::MapAccessState, TtlvError},
     KmipResultHelper,
+    ttlv::{TtlvError, kmip_ttlv_deserializer::deserializer::MapAccessState},
 };
 
 pub(super) struct EnumWalker<'a> {
@@ -14,7 +14,7 @@ pub(super) struct EnumWalker<'a> {
 }
 
 impl<'a> EnumWalker<'a> {
-    pub(super) fn new(de: &'a mut TtlvDeserializer) -> Self {
+    pub(super) const fn new(de: &'a mut TtlvDeserializer) -> Self {
         EnumWalker { de }
     }
 }
@@ -54,8 +54,7 @@ impl<'de> VariantAccess<'de> for EnumWalker<'_> {
     fn unit_variant(self) -> Result<()> {
         trace!(
             "unit_variant: child index: {}, current: {:?}",
-            self.de.child_index,
-            self.de.current
+            self.de.child_index, self.de.current
         );
         Ok(())
     }
@@ -91,8 +90,7 @@ impl<'de> VariantAccess<'de> for EnumWalker<'_> {
     {
         trace!(
             "tuple_variant of len: {len}, child index: {}, current: {:?}",
-            self.de.child_index,
-            self.de.current
+            self.de.child_index, self.de.current
         );
         unimplemented!("tuple_variant");
     }

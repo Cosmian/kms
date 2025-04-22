@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use super::kmip_types::VendorAttributeValue;
 use crate::{
+    KmipError,
     kmip_0::kmip_types::{
         AlternativeName, ApplicationSpecificInformation, CertificateType, CryptographicUsageMask,
         ErrorReason, KeyValueLocationType, RevocationReason, State, UsageLimits,
@@ -15,10 +16,9 @@ use crate::{
             CryptographicParameters, DigitalSignatureAlgorithm, KeyFormatType, Link, LinkType,
             LinkedObjectIdentifier, Name, NistKeyType, ObjectGroupMember, OpaqueDataType,
             ProtectionLevel, ProtectionStorageMasks, RandomNumberGenerator, UniqueIdentifier,
-            VendorAttribute, VENDOR_ATTR_AAD,
+            VENDOR_ATTR_AAD, VendorAttribute,
         },
     },
-    KmipError,
 };
 
 /// The following subsections describe the attributes that are associated with
@@ -585,12 +585,12 @@ impl Attributes {
     }
 
     /// Set the attributes's object type.
-    pub fn set_object_type(&mut self, object_type: ObjectType) {
+    pub const fn set_object_type(&mut self, object_type: ObjectType) {
         self.object_type = Some(object_type);
     }
 
     /// Set the attributes's `CryptographicUsageMask`.
-    pub fn set_cryptographic_usage_mask(&mut self, mask: Option<CryptographicUsageMask>) {
+    pub const fn set_cryptographic_usage_mask(&mut self, mask: Option<CryptographicUsageMask>) {
         self.cryptographic_usage_mask = mask;
     }
 

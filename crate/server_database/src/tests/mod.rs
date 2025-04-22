@@ -18,10 +18,8 @@ use self::{
 use crate::{
     error::DbResult,
     stores::{
-        CachedSqlCipher, MySqlPool, PgPool, REDIS_WITH_FINDEX_MASTER_KEY_LENGTH, RedisWithFindex,
-        SqlCipherSessionParams, SqlitePool,
+        MySqlPool, PgPool, REDIS_WITH_FINDEX_MASTER_KEY_LENGTH, RedisWithFindex, SqlitePool,
         additional_redis_findex_tests::{test_corner_case, test_objects_db, test_permissions_db},
-        MySqlPool, PgPool, RedisWithFindex, SqlitePool, REDIS_WITH_FINDEX_MASTER_KEY_LENGTH,
     },
     tests::{database_tests::atomic, list_uids_for_tags_test::list_uids_for_tags_test},
 };
@@ -161,7 +159,7 @@ pub(crate) async fn test_migrate_sqlite() -> DbResult<()> {
         "src/tests/migrate/kms_4.17.0.sqlite",
         "src/tests/migrate/kms_4.22.1.sqlite",
     ] {
-        debug!("==> Migrating {}", sqlite_path);
+        debug!("==> Migrating {sqlite_path}");
         let tmp_dir = TempDir::new()?;
         let tmp_path = tmp_dir.path();
         let tmp_file_path = tmp_path.join("kms.db");

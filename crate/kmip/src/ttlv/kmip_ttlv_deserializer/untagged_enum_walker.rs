@@ -3,8 +3,8 @@ use tracing::{instrument, trace};
 
 use super::TtlvDeserializer;
 use crate::{
-    ttlv::{kmip_ttlv_deserializer::deserializer::MapAccessState, TTLValue, TtlvError},
     KmipResultHelper,
+    ttlv::{TTLValue, TtlvError, kmip_ttlv_deserializer::deserializer::MapAccessState},
 };
 
 /// The `UntaggedEnumWalker` is used to deserialize a struct as a map of property -> values
@@ -15,7 +15,7 @@ pub(super) struct UntaggedEnumWalker<'a> {
 }
 
 impl<'a> UntaggedEnumWalker<'a> {
-    pub(super) fn new(de: &'a mut TtlvDeserializer) -> Self {
+    pub(super) const fn new(de: &'a mut TtlvDeserializer) -> Self {
         UntaggedEnumWalker {
             de,
             completed: false,
