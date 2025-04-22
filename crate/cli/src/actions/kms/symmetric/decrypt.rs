@@ -8,6 +8,7 @@ use clap::Parser;
 use cosmian_kms_client::{
     ExportObjectParams, KmsClient, export_object,
     kmip_2_1::{
+        kmip_attributes::Attributes,
         kmip_data_structures::KeyWrappingData,
         kmip_types::{CryptographicAlgorithm, CryptographicParameters, KeyFormatType},
         requests::{create_symmetric_key_kmip_object, decrypt_request},
@@ -362,8 +363,13 @@ impl DecryptAction {
         ct.read_exact(&mut encapsulation)?;
 
         // Create the KMIP object corresponding to the DEK
-        let mut dek_object =
-            create_symmetric_key_kmip_object(&encapsulation, CryptographicAlgorithm::AES, false)?;
+        let mut dek_object = create_symmetric_key_kmip_object(
+            &encapsulation,
+            &Attributes {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                ..Default::default()
+            },
+        )?;
         dek_object.key_block_mut()?.key_wrapping_data = Some(KeyWrappingData::default());
 
         // recover the DEK

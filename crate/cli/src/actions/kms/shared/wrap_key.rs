@@ -8,7 +8,7 @@ use cosmian_kms_client::{
         kmip_data_structures::KeyWrappingSpecification, kmip_types::CryptographicAlgorithm,
     },
     export_object,
-    kmip_2_1::requests::create_symmetric_key_kmip_object,
+    kmip_2_1::{kmip_attributes::Attributes, requests::create_symmetric_key_kmip_object},
     read_object_from_json_ttlv_file, write_kmip_object_to_file,
 };
 use cosmian_kms_crypto::crypto::{
@@ -95,7 +95,13 @@ impl WrapKeyAction {
             let key_bytes = general_purpose::STANDARD
                 .decode(b64)
                 .with_context(|| "failed decoding the wrap key")?;
-            create_symmetric_key_kmip_object(&key_bytes, CryptographicAlgorithm::AES, false)?
+            create_symmetric_key_kmip_object(
+                &key_bytes,
+                &Attributes {
+                    cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                    ..Default::default()
+                },
+            )?
         } else if let Some(password) = &self.wrap_password {
             let key_bytes = derive_key_from_password::<SYMMETRIC_WRAPPING_KEY_SIZE>(
                 &[0_u8; 16],
@@ -104,8 +110,10 @@ impl WrapKeyAction {
 
             let symmetric_key_object = create_symmetric_key_kmip_object(
                 key_bytes.as_ref(),
-                CryptographicAlgorithm::AES,
-                false,
+                &Attributes {
+                    cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                    ..Default::default()
+                },
             )?;
 
             // Print the wrapping key for user.

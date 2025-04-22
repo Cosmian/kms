@@ -57,6 +57,7 @@ pub use file_utils::{
     write_kmip_object_to_file, write_single_decrypted_data, write_single_encrypted_data,
 };
 pub use kms_rest_client::KmsClient;
+pub use socket_client::SocketClient;
 
 mod batch_utils;
 mod config;
@@ -64,6 +65,7 @@ mod error;
 mod export_utils;
 mod file_utils;
 mod kms_rest_client;
+mod socket_client;
 
 pub mod reexport {
     pub use cosmian_http_client;

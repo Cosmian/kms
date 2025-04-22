@@ -1,13 +1,13 @@
 [workspace]
 members = [
-  "crate/cli",
-  "crate/findex_client",
-  "crate/kms_client",
-  "crate/gui",
-  "crate/pkcs11/module",
-  "crate/pkcs11/provider",
-  "crate/client_utils",
-  "crate/wasm",
+    "crate/cli",
+    "crate/findex_client",
+    "crate/kms_client",
+    "crate/gui",
+    "crate/pkcs11/module",
+    "crate/pkcs11/provider",
+    "crate/client_utils",
+    "crate/wasm",
 ]
 
 # Do that if you don't want to enable `dev` feature by default due to the `dev-dependencies` of the cli.
@@ -20,8 +20,8 @@ version = "0.3.0"
 edition = "2024"
 rust-version = "1.85.0"
 authors = [
-  "Bruno Grieder <bruno.grieder@cosmian.com>",
-  "Emmanuel Coste <emmanuel.coste@cosmian.com>",
+    "Bruno Grieder <bruno.grieder@cosmian.com>",
+    "Emmanuel Coste <emmanuel.coste@cosmian.com>",
 ]
 license = "BUSL-1.1" # "Business Source License 1.1"
 license-file = "LICENSE"
@@ -56,27 +56,28 @@ cosmian_cli = { path = "crate/cli" }
 cosmian_kms_client_utils = { path = "crate/client_utils" }
 cosmian_kms_client_wasm = { path = "crate/wasm" }
 cosmian_crypto_core = { version = "10.1.0", default-features = false, features = [
-  "ser",
+    "ser",
 ] }
 cosmian_findex = { git = "https://github.com/Cosmian/findex", features = [
-  "redis-mem",
-  "sqlite-mem",
+    "redis-mem",
+    "sqlite-mem",
 ], rev = "6329b6b2f2b64b033e40b05cd12ca1c9b5ee376f" }
 cosmian_findex_server = { git = "https://www.github.com/Cosmian/findex-server", branch = "develop" }
 cosmian_findex_structs = { git = "https://www.github.com/Cosmian/findex-server", branch = "develop" }
 cosmian_http_client = { git = "https://www.github.com/Cosmian/http_client_server", tag = "0.1.1" }
 cosmian_logger = { git = "https://www.github.com/Cosmian/http_client_server", tag = "0.1.0" }
-pkcs11_sys = { git = "https://www.github.com/Cosmian/kms", branch = "kmip_1" }
-cosmian_kmip = { git = "https://www.github.com/Cosmian/kms", branch = "kmip_1" }
-cosmian_kms_access = { git = "https://www.github.com/Cosmian/kms", branch = "kmip_1" }
-cosmian_kms_crypto = { git = "https://www.github.com/Cosmian/kms", branch = "kmip_1" }
-cosmian_kms_server = { git = "https://www.github.com/Cosmian/kms", branch = "kmip_1" }
-cosmian_kms_server_database = { git = "https://www.github.com/Cosmian/kms", branch = "kmip_1" }
+pkcs11_sys = { path = "../crate/pkcs11/sys" }#{ git = "https://www.github.com/Cosmian/kms", branch = "kmip_1" }
+cosmian_kmip = { path = "../crate/kmip" }#{ git = "https://www.github.com/Cosmian/kms", branch = "kmip_1" }
+cosmian_kms_access = { path = "../crate/access" }#{ git = "https://www.github.com/Cosmian/kms", branch = "kmip_1" }
+cosmian_kms_crypto = { path = "../crate/crypto" }#{ git = "https://www.github.com/Cosmian/kms", branch = "kmip_1" }
+cosmian_kms_server = { path = "../crate/server" }#{ git = "https://www.github.com/Cosmian/kms", branch = "kmip_1" }
+cosmian_kms_server_database = { path = "../crate/server_database" }#{ git = "https://www.github.com/Cosmian/kms", branch = "kmip_1" }
 der = { version = "0.7", default-features = false }
 hex = { version = "0.4", default-features = false }
 leb128 = "0.2"
 log = { version = "0.4", default-features = false }
 num-format = "0.4"
+native-tls = "0.2"
 pem = "3.0"
 openssl = { version = "0.10", default-features = false }
 rand = "0.9.1"

@@ -1,6 +1,7 @@
-use cosmian_kms_client::reexport::cosmian_kmip::kmip_2_1::{
-    kmip_objects::Object,
-    kmip_types::{CertificateType, LinkType},
+use cosmian_kms_client::{
+    cosmian_kmip::kmip_0::kmip_types::CertificateType,
+    kmip_2_1,
+    reexport::cosmian_kmip::kmip_2_1::{kmip_objects::Object, kmip_types::LinkType},
 };
 use cosmian_pkcs11_module::traits::{Certificate, PublicKey};
 use x509_cert::{
@@ -27,11 +28,11 @@ impl TryFrom<KmsObject> for Pkcs11Certificate {
 
     fn try_from(kms_object: KmsObject) -> Result<Self, Self::Error> {
         match kms_object.object {
-            Object::Certificate {
+            Object::Certificate(kmip_2_1::kmip_objects::Certificate {
                 certificate_type,
                 certificate_value,
                 ..
-            } => match certificate_type {
+            }) => match certificate_type {
                 CertificateType::X509 => Ok(Self {
                     certificate: X509Certificate::from_der(&certificate_value).map_err(|e| {
                         Pkcs11Error::ServerError(format!(

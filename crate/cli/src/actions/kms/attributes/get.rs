@@ -97,7 +97,7 @@ impl GetAttributesAction {
         } = kms_rest_client
             .get_attributes(GetAttributes {
                 unique_identifier: Some(UniqueIdentifier::TextString(id)),
-                attribute_references: Some(references),
+                attribute_reference: Some(references),
             })
             .await?;
 

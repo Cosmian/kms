@@ -20,6 +20,8 @@ cosmian_crypto_core = { workspace = true }
 cosmian_http_client = { workspace = true }
 cosmian_kms_client_utils = { path = "../client_utils" }
 der = { workspace = true }
+hex = { workspace = true }
+native-tls = { workspace = true }
 pem = { workspace = true }
 reqwest = { workspace = true, features = ["default", "json", "native-tls"] }
 serde = { workspace = true }

@@ -3,11 +3,8 @@ use std::fmt::Display;
 use clap::{Parser, ValueEnum};
 use cosmian_kms_client::{
     KmsClient,
-    cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier,
-    kmip_2_1::{
-        kmip_operations::Mac,
-        kmip_types::{CryptographicParameters, HashingAlgorithm},
-    },
+    cosmian_kmip::{kmip_0::kmip_types::HashingAlgorithm, kmip_2_1::kmip_types::UniqueIdentifier},
+    kmip_2_1::{kmip_operations::Mac, kmip_types::CryptographicParameters},
 };
 
 use crate::{actions::console, error::result::CosmianResult};

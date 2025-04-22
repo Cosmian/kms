@@ -3,8 +3,10 @@ use std::path::PathBuf;
 use base64::{Engine as _, engine::general_purpose};
 use clap::Parser;
 use cosmian_kms_client::{
-    ExportObjectParams, KmsClient, cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm,
-    export_object, kmip_2_1::requests::create_symmetric_key_kmip_object,
+    ExportObjectParams, KmsClient,
+    cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm,
+    export_object,
+    kmip_2_1::{kmip_attributes::Attributes, requests::create_symmetric_key_kmip_object},
     read_object_from_json_ttlv_file, write_kmip_object_to_file,
 };
 use cosmian_kms_crypto::crypto::wrap::unwrap_key_block;
@@ -93,7 +95,13 @@ impl UnwrapKeyAction {
             let key_bytes = general_purpose::STANDARD
                 .decode(b64)
                 .with_context(|| "failed decoding the unwrap key")?;
-            create_symmetric_key_kmip_object(&key_bytes, CryptographicAlgorithm::AES, false)?
+            create_symmetric_key_kmip_object(
+                &key_bytes,
+                &Attributes {
+                    cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                    ..Default::default()
+                },
+            )?
         } else if let Some(key_id) = &self.unwrap_key_id {
             trace!("unwrap using the KMS server with the unique identifier of the unwrapping key");
             export_object(kms_rest_client, key_id, ExportObjectParams::default())

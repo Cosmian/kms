@@ -44,7 +44,7 @@ pub(crate) async fn batch_operations(
         .into_iter()
         .map(|item| {
             let ResponseMessageBatchItemVersioned::V21(item) = item else {
-                return Err(KmsClientError::Default("Invalid response".to_string()));
+                return Err(KmsClientError::Default("Invalid response".to_owned()));
             };
             if let Some(payload) = item.response_payload {
                 Ok(payload)
@@ -59,5 +59,4 @@ pub(crate) async fn batch_operations(
         .collect::<Vec<_>>()
         .into_iter()
         .collect::<Result<Vec<_>, _>>()
-        .map_err(Into::into)
 }

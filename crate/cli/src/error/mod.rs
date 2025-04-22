@@ -11,7 +11,10 @@ use cosmian_findex_client::{
         cosmian_http_client::HttpClientError,
     },
 };
-use cosmian_kms_client::{KmsClientError, reexport::cosmian_kms_client_utils::error::UtilsError};
+use cosmian_kms_client::{
+    KmsClientError, cosmian_kmip::ttlv::TtlvError,
+    reexport::cosmian_kms_client_utils::error::UtilsError,
+};
 use thiserror::Error;
 
 use crate::actions::kms::google::GoogleApiError;
@@ -82,7 +85,7 @@ pub enum CosmianError {
     #[error(transparent)]
     TryFromIntError(#[from] std::num::TryFromIntError),
     #[error(transparent)]
-    TTLVError(#[from] cosmian_kms_client::reexport::cosmian_kmip::kmip_2_1::ttlv::error::TtlvError),
+    TTLVError(#[from] TtlvError),
     #[error(transparent)]
     UrlParsing(#[from] url::ParseError),
     #[error("invalid options: {0}")]

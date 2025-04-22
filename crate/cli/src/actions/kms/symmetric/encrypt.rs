@@ -8,6 +8,7 @@ use clap::Parser;
 use cosmian_kms_client::{
     ExportObjectParams, KmsClient, export_object,
     kmip_2_1::{
+        kmip_attributes::Attributes,
         kmip_data_structures::KeyWrappingSpecification,
         kmip_types::{CryptographicAlgorithm, CryptographicParameters, KeyFormatType},
         requests::{create_symmetric_key_kmip_object, encrypt_request},
@@ -216,7 +217,7 @@ impl EncryptAction {
 
         // extract the nonce and write it
         let nonce = encrypt_response
-            .iv_counter_nonce
+            .i_v_counter_nonce
             .context("the nonce is empty")?;
 
         // extract the ciphertext and write it
@@ -382,15 +383,24 @@ impl EncryptAction {
         };
 
         // First export the KEK locally
-        let wrapping_key = export_object(kms_rest_client, kek_id, ExportObjectParams {
-            key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
-            ..ExportObjectParams::default()
-        })
+        let wrapping_key = export_object(
+            kms_rest_client,
+            kek_id,
+            ExportObjectParams {
+                key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
+                ..ExportObjectParams::default()
+            },
+        )
         .await?
         .1;
         // Create the KMIP object corresponding to the DEK
-        let mut dek_object =
-            create_symmetric_key_kmip_object(&dek, CryptographicAlgorithm::AES, false)?;
+        let mut dek_object = create_symmetric_key_kmip_object(
+            &dek,
+            &Attributes {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                ..Default::default()
+            },
+        )?;
 
         // Wrap the DEK with the KEK
         wrap_key_block(

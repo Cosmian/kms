@@ -96,7 +96,7 @@ pub fn build_certify_request(
     }
 
     // set the number of requested days
-    attributes.set_requested_validity_days(i32::try_from(number_of_days).map_err(|_| {
+    attributes.set_requested_validity_days(i32::try_from(number_of_days).map_err(|_e| {
         UtilsError::Default("number of days must be a positive integer".to_owned())
     })?);
 
@@ -125,9 +125,7 @@ pub fn build_certify_request(
                 )
             })?,
         )?);
-        unique_identifier = Some(UniqueIdentifier::TextString(
-            public_key_to_certify.to_string(),
-        ));
+        unique_identifier = Some(UniqueIdentifier::TextString(public_key_to_certify.clone()));
     } else if let Some(certificate_id_to_renew) = &certificate_id_to_re_certify {
         unique_identifier = Some(UniqueIdentifier::TextString(
             certificate_id_to_renew.clone(),

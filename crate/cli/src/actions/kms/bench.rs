@@ -7,12 +7,11 @@ use std::{
 use clap::Parser;
 use cosmian_kms_client::{
     KmsClient,
+    cosmian_kmip::kmip_0::kmip_types::BlockCipherMode,
     kmip_2_1::{
         extra::BulkData,
         kmip_operations::{Decrypt, Encrypt},
-        kmip_types::{
-            BlockCipherMode, CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier,
-        },
+        kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
     },
 };
 use num_format::{CustomFormat, Grouping, ToFormattedString};
@@ -345,7 +344,7 @@ async fn encrypt(
         let elapsed = start.elapsed().as_micros();
         let ciphertext = Zeroizing::new(
             [
-                response.iv_counter_nonce.unwrap_or_default(),
+                response.i_v_counter_nonce.unwrap_or_default(),
                 response.data.unwrap_or_default(),
                 response.authenticated_encryption_tag.unwrap_or_default(),
             ]
@@ -396,7 +395,7 @@ async fn decrypt(
                 block_cipher_mode: Some(BlockCipherMode::GCM),
                 ..Default::default()
             }),
-            iv_counter_nonce: iv.map(Vec::from),
+            i_v_counter_nonce: iv.map(Vec::from),
             data: data.map(Vec::from),
             authenticated_encryption_tag: tag.map(Vec::from),
             ..Default::default()

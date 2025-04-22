@@ -67,11 +67,12 @@ pub fn read_object_from_json_ttlv_file(object_file: &PathBuf) -> Result<Object, 
 pub fn write_bytes_to_file(bytes: &[u8], file: &impl AsRef<Path>) -> Result<(), KmsClientError> {
     fs::write(file, bytes).with_context(|| {
         format!(
-            "failed writing {} bytes to {:?}",
+            "failed writing {} bytes to {}",
             bytes.len(),
-            file.as_ref()
+            file.as_ref().display()
         )
-    })
+    })?;
+    Ok(())
 }
 
 /// Write a JSON object to a file
@@ -213,7 +214,8 @@ pub fn write_bulk_decrypted_data(
             Some(output_file) if nb_chunks > 1 => {
                 let file_name = input_file.file_name().ok_or_else(|| {
                     KmsClientError::Conversion(format!(
-                        "cannot get file name from input file {input_file:?}",
+                        "cannot get file name from input file {}",
+                        input_file.display()
                     ))
                 })?;
                 output_file.join(PathBuf::from(file_name).with_extension("plain"))
@@ -272,7 +274,8 @@ pub fn write_bulk_encrypted_data(
             Some(output_file) if nb_chunks > 1 => {
                 let file_name = input_file.file_name().ok_or_else(|| {
                     KmsClientError::Conversion(format!(
-                        "cannot get file name from input file {input_file:?}",
+                        "cannot get file name from input file {}",
+                        input_file.display()
                     ))
                 })?;
                 output_file.join(PathBuf::from(file_name).with_extension("enc"))

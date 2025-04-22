@@ -279,7 +279,7 @@ impl SetOrDeleteAttributes {
             let attribute = Attribute::Link(Link {
                 link_type: LinkType::PKCS12PasswordLink,
                 linked_object_identifier: LinkedObjectIdentifier::TextString(
-                    pkcs12_password_certificate.clne(),
+                    pkcs12_password_certificate.clone(),
                 ),
             });
             result.push(attribute);
