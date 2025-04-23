@@ -1659,7 +1659,6 @@ version = "4.23.0"
 dependencies = [
  "bincode",
  "const-oid",
- "cosmian_crypto_core 10.1.0",
  "hex",
  "log",
  "once_cell",
