@@ -6,14 +6,20 @@ use cosmian_kmip::{
             RequestMessage, RequestMessageBatchItemVersioned, RequestMessageHeader,
             ResponseMessageBatchItemVersioned,
         },
-        kmip_types::{ErrorReason, ProtocolVersion, ResultStatusEnumeration},
+        kmip_types::{
+            BlockCipherMode, ErrorReason, HashingAlgorithm, ProtocolVersion,
+            ResultStatusEnumeration,
+        },
     },
     kmip_2_1::{
         extra::tagging::EMPTY_TAGS,
         kmip_messages::RequestMessageBatchItem,
-        kmip_operations::{Decrypt, Locate, Operation},
-        kmip_types::{OperationEnumeration, RecommendedCurve, UniqueIdentifier},
-        requests::create_ec_key_pair_request,
+        kmip_operations::{Decrypt, Encrypt, Locate, Mac, Operation},
+        kmip_types::{
+            CryptographicAlgorithm, CryptographicParameters, OperationEnumeration,
+            RecommendedCurve, UniqueIdentifier,
+        },
+        requests::{create_ec_key_pair_request, symmetric_key_create_request},
     },
     ttlv::to_ttlv,
 };
@@ -31,7 +37,7 @@ async fn test_kmip_mac_messages() -> KResult<()> {
 
     let clap_config = https_clap_config();
 
-    let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
+    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     let symmetric_key_request = symmetric_key_create_request(
@@ -60,11 +66,15 @@ async fn test_kmip_mac_messages() -> KResult<()> {
 
     // prepare and send the single message
     let items_number = 100_000;
-    let items: Vec<MessageBatchItem> = (0..items_number)
-        .map(|_| MessageBatchItem::new(Operation::Mac(mac_request.clone())))
+    let items: Vec<RequestMessageBatchItemVersioned> = (0..items_number)
+        .map(|_| {
+            RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(Operation::Mac(
+                mac_request.clone(),
+            )))
+        })
         .collect();
-    let message_request = Message {
-        header: MessageHeader {
+    let message_request = RequestMessage {
+        request_header: RequestMessageHeader {
             protocol_version: ProtocolVersion {
                 protocol_version_major: 1,
                 protocol_version_minor: 0,
@@ -75,13 +85,16 @@ async fn test_kmip_mac_messages() -> KResult<()> {
             batch_count: items_number,
             ..Default::default()
         },
-        items,
+        batch_item: items,
     };
 
     let response = kms.message(message_request, owner, None).await?;
-    assert_eq!(response.header.batch_count, items_number);
+    assert_eq!(response.response_header.batch_count, items_number);
     // Check that all operations succeeded
-    for item in &response.items {
+    for item in &response.batch_item {
+        let ResponseMessageBatchItemVersioned::V21(item) = item else {
+            panic!("not a V21 response");
+        };
         assert_eq!(item.result_status, ResultStatusEnumeration::Success);
         assert_eq!(item.operation, Some(OperationEnumeration::MAC));
         assert!(matches!(
@@ -89,7 +102,10 @@ async fn test_kmip_mac_messages() -> KResult<()> {
             Some(Operation::MacResponse(_))
         ));
     }
-    assert_eq!(response.items.len(), items_number as usize);
+    assert_eq!(
+        response.batch_item.len(),
+        usize::try_from(items_number).unwrap()
+    );
 
     Ok(())
 }
@@ -99,7 +115,7 @@ async fn test_kmip_mac_messages() -> KResult<()> {
 async fn test_encrypt_kmip_messages() -> KResult<()> {
     // cosmian_logger::log_init("info,hyper=info,reqwest=info");
     let clap_config = https_clap_config();
-    let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
+    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
     let owner = "eyJhbGciOiJSUzI1Ni";
     // Create a symmetric key first
 
@@ -126,18 +142,22 @@ async fn test_encrypt_kmip_messages() -> KResult<()> {
             ..Default::default()
         }),
         data: Some(vec![0_u8; 32].into()),
-        iv_counter_nonce: Some(vec![0_u8; 16]),
+        i_v_counter_nonce: Some(vec![0_u8; 16]),
         ..Default::default()
     };
 
     // prepare and send multiple encrypt requests
     let items_number = 100_000;
-    let items: Vec<MessageBatchItem> = (0..items_number)
-        .map(|_| MessageBatchItem::new(Operation::Encrypt(encrypt_request.clone())))
+    let items: Vec<RequestMessageBatchItemVersioned> = (0..items_number)
+        .map(|_| {
+            RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(Operation::Encrypt(
+                encrypt_request.clone(),
+            )))
+        })
         .collect();
 
-    let message_request = Message {
-        header: MessageHeader {
+    let message_request = RequestMessage {
+        request_header: RequestMessageHeader {
             protocol_version: ProtocolVersion {
                 protocol_version_major: 1,
                 protocol_version_minor: 0,
@@ -146,15 +166,21 @@ async fn test_encrypt_kmip_messages() -> KResult<()> {
             batch_count: items_number,
             ..Default::default()
         },
-        items,
+        batch_item: items,
     };
 
     let response = kms.message(message_request, owner, None).await?;
-    assert_eq!(response.header.batch_count, items_number);
-    assert_eq!(response.items.len(), items_number as usize);
+    assert_eq!(response.response_header.batch_count, items_number);
+    assert_eq!(
+        response.batch_item.len(),
+        usize::try_from(items_number).unwrap()
+    );
 
     // Check that all operations succeeded
-    for item in response.items {
+    for item in response.batch_item {
+        let ResponseMessageBatchItemVersioned::V21(item) = item else {
+            panic!("not a V21 response");
+        };
         assert_eq!(item.result_status, ResultStatusEnumeration::Success);
         assert_eq!(item.operation, Some(OperationEnumeration::Encrypt));
         assert!(matches!(

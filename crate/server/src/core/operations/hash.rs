@@ -67,9 +67,9 @@ pub(crate) async fn hash_operation(
 mod tests {
     use std::sync::Arc;
 
-    use cosmian_kmip::kmip_2_1::{
-        kmip_operations::Hash,
-        kmip_types::{CryptographicParameters, HashingAlgorithm},
+    use cosmian_kmip::{
+        kmip_0::kmip_types::HashingAlgorithm,
+        kmip_2_1::{kmip_operations::Hash, kmip_types::CryptographicParameters},
     };
 
     use crate::{
@@ -78,7 +78,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_server_hash_operation() -> KResult<()> {
-        let kms = Arc::new(KMS::instantiate(ServerParams::try_from(https_clap_config())?).await?);
+        let kms = Arc::new(
+            KMS::instantiate(Arc::new(ServerParams::try_from(https_clap_config())?)).await?,
+        );
 
         let expected_hash = vec![
             253, 23, 128, 166, 252, 158, 224, 218, 178, 108, 235, 75, 57, 65, 171, 3, 230, 108,
@@ -112,7 +114,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_server_hash_operation_with_correlation() -> KResult<()> {
-        let kms = Arc::new(KMS::instantiate(ServerParams::try_from(https_clap_config())?).await?);
+        let kms = Arc::new(
+            KMS::instantiate(Arc::new(ServerParams::try_from(https_clap_config())?)).await?,
+        );
 
         // Test with correlation value and init indicator
         let request = Hash {
@@ -125,7 +129,7 @@ mod tests {
             init_indicator: Some(true),
             final_indicator: Some(true),
         };
-        assert!(kms.hash(request, "test", None).await.is_err());
+        kms.hash(request, "test", None).await.unwrap_err();
 
         // Test different hashing algorithms
         for algorithm in [
@@ -176,7 +180,7 @@ mod tests {
             init_indicator: None,
             final_indicator: None,
         };
-        assert!(kms.hash(request, "test", None).await.is_err());
+        kms.hash(request, "test", None).await.unwrap_err();
 
         Ok(())
     }

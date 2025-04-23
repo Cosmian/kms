@@ -55,9 +55,8 @@ impl JwksManager {
                 KmsError::ServerError(format!("cannot lock last_update for write. Error: {e:?}"))
             })?;
 
-            let can_be_refreshed = last_update.map_or(true, |lu| {
-                (lu + Duration::seconds(REFRESH_INTERVAL)) < Utc::now()
-            });
+            let can_be_refreshed = last_update
+                .is_none_or(|lu| (lu + Duration::seconds(REFRESH_INTERVAL)) < Utc::now());
 
             if can_be_refreshed {
                 *last_update = Some(Utc::now());

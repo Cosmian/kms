@@ -2,7 +2,7 @@ use cosmian_kmip::{
     kmip_0::kmip_types::{RevocationReason, RevocationReasonCode},
     kmip_2_1::{
         kmip_operations::{
-            CreateKeyPairResponse, CreateResponse, DecryptResponse, DecryptedData, DestroyResponse,
+            CreateKeyPairResponse, CreateResponse, DecryptResponse, Destroy, DestroyResponse,
             EncryptResponse, ReKeyKeyPairResponse, Revoke, RevokeResponse,
         },
         kmip_types::UniqueIdentifier,
@@ -300,7 +300,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
         unique_identifier: Some(UniqueIdentifier::TextString(udk1_json_tag.clone())),
         remove: false,
     };
-    let destroy_response: DestroyResponse = test_utils::post(&app, &request).await?;
+    let destroy_response: DestroyResponse = test_utils::post_2_1(&app, &request).await?;
     assert_eq!(
         &udk1_json_tag,
         &destroy_response

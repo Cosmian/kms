@@ -114,7 +114,11 @@ pub(crate) async fn get_key(
     }
 }
 
-async fn _get_key(key_tag: &str, req_http: HttpRequest, kms: &Arc<KMS>) -> KResult<KeyData> {
+async fn internal_get_key(
+    key_tag: &str,
+    req_http: HttpRequest,
+    kms: &Arc<KMS>,
+) -> KResult<KeyData> {
     let user = kms.get_user(&req_http);
     let dke_service_url = kms
         .params

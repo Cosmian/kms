@@ -13,29 +13,31 @@ mod get_2_1;
 mod get_attribute_1_4;
 mod get_attribute_2_1;
 mod query;
+mod socket_client;
 
 const TEST_HOST: &str = "127.0.0.1";
 const TEST_PORT: u16 = 11112;
 
 use std::{
-    sync::{mpsc, Arc, OnceLock},
+    sync::{Arc, OnceLock, mpsc},
     thread,
     time::Duration,
 };
 
 use actix_web::dev::ServerHandle;
-use cosmian_kms_client::{KmsClientError, SocketClient, SocketClientConfig};
 use futures::executor::block_on;
-use tracing::{error, info, trace};
+use socket_client::{SocketClient, SocketClientConfig};
+use tracing::{info, trace};
 
 use crate::{
-    config::ServerParams, start_kms_server::start_kms_server, tests::test_utils::https_clap_config,
+    config::ServerParams, error::KmsError, start_kms_server::start_kms_server,
+    tests::test_utils::https_clap_config,
 };
 
 /// The test server context maintains a strong ref to the handles.
 struct TestServerCtx {
     server_handle: ServerHandle,
-    thread_handle: Option<thread::JoinHandle<Result<(), KmsClientError>>>,
+    thread_handle: Option<thread::JoinHandle<Result<(), KmsError>>>,
 }
 
 impl Drop for TestServerCtx {
@@ -72,10 +74,6 @@ fn start_test_server() -> &'static TestServerCtx {
                 .enable_all()
                 .build()?
                 .block_on(start_kms_server(Arc::new(server_params), Some(tx)))
-                .map_err(|e| {
-                    error!("Failed to start KMS server: {}", e);
-                    KmsClientError::UnexpectedError(e.to_string())
-                })
         });
         trace!("Waiting for test KMS server to start...");
         let server_handle = rx

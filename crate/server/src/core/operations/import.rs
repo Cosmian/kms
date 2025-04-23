@@ -26,7 +26,7 @@ use tracing::{debug, trace};
 use uuid::Uuid;
 
 use crate::{
-    core::{wrapping::unwrap_key, KMS},
+    core::{KMS, wrapping::unwrap_key},
     error::KmsError,
     kms_bail,
     result::KResult,
@@ -165,7 +165,7 @@ pub(crate) async fn process_symmetric_key(
     // make sure we have a CryptographicAlgorithm set; default to AES
     if attributes.cryptographic_algorithm.is_none() {
         attributes.cryptographic_algorithm = Some(CryptographicAlgorithm::AES);
-    };
+    }
 
     // force the usage mask to unrestricted if not in FIPS mode
     #[cfg(not(feature = "fips"))]
@@ -580,7 +580,7 @@ fn process_pkcs12(
             LinkType::PKCS12CertificateLink,
             LinkedObjectIdentifier::TextString(leaf_certificate_id.clone()),
         );
-    };
+    }
     // Create an operation to set the private key
     let private_key_attributes = private_key.attributes()?.clone();
     operations.push(single_operation(
@@ -689,8 +689,7 @@ fn process_pkcs12(
 pub(crate) fn upsert_links_in_attributes(attributes: &mut Attributes, links_to_add: &Attributes) {
     trace!(
         "Upserting imported links in attributes: existing attributes links={:?}, links_to_add={:?}",
-        attributes.link,
-        links_to_add.link
+        attributes.link, links_to_add.link
     );
     if let Some(new_links) = links_to_add.link.as_ref() {
         for new_link in new_links {

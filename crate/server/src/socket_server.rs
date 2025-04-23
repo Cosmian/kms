@@ -1,7 +1,7 @@
 use std::{
     io::{Read, Write},
     net::{TcpListener, TcpStream},
-    sync::{mpsc, Arc, Once, RwLock},
+    sync::{Arc, Once, RwLock, mpsc},
     thread,
     time::Duration,
 };
@@ -9,9 +9,9 @@ use std::{
 use log::warn;
 use openssl::pkcs12::ParsedPkcs12_2;
 use rustls::{
-    pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer},
-    server::WebPkiClientVerifier,
     RootCertStore, ServerConfig, ServerConnection, Stream,
+    pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer, pem::PemObject},
+    server::WebPkiClientVerifier,
 };
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, trace};
@@ -282,7 +282,7 @@ impl SocketServer {
                     });
                 }
                 Err(e) => {
-                    warn!("Socket server: connection failed: {}", e);
+                    warn!("Socket server: connection failed: {e}");
                 }
             }
         }

@@ -5,6 +5,7 @@ use std::{
 };
 
 use cosmian_kmip::kmip_2_1::{
+    KmipOperation,
     kmip_objects::{Certificate, Object},
     kmip_operations::{Validate, ValidateResponse},
     kmip_types::{UniqueIdentifier, ValidityIndicator},

@@ -279,7 +279,7 @@ pub async fn prepare_kms_server(
         .params
         .tls_params
         .as_ref()
-        .map_or(false, |tls_params| tls_params.client_ca_cert_pem.is_some());
+        .is_some_and(|tls_params| tls_params.client_ca_cert_pem.is_some());
 
     // Determine the address to bind the server to.
     let address = format!(

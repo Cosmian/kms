@@ -14,11 +14,10 @@ use cosmian_kmip::{
     },
     ttlv::KmipFlavor,
 };
-use cosmian_kms_client::SocketClient;
 use cosmian_logger::log_init;
 use log::info;
 
-use super::create_1_4::create_symmetric_key;
+use super::{create_1_4::create_symmetric_key, socket_client::SocketClient};
 use crate::tests::ttlv_tests::get_client;
 
 #[test]
@@ -30,7 +29,7 @@ fn test_encrypt_1_4() {
 
     // Create a symmetric key
     let key_id = create_symmetric_key(&client);
-    info!("Key ID: {}", key_id);
+    info!("Key ID: {key_id}");
 
     // Get the symmetric key
     encrypt(&client, &key_id, b"Hello, world!", None);
