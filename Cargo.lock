@@ -1330,7 +1330,6 @@ dependencies = [
 name = "cosmian_findex_client"
 version = "4.23.0"
 dependencies = [
- "backtrace-on-stack-overflow",
  "base64 0.22.1",
  "cosmian_crypto_core 10.1.0",
  "cosmian_findex 7.0.0",
