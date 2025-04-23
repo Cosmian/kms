@@ -5,12 +5,12 @@ use cosmian_crypto_core::{
 use cosmian_kms_client::{
     cosmian_kmip::kmip_2_1::{
         kmip_objects::Object,
-        kmip_types::{
-            CryptographicAlgorithm, CryptographicUsageMask, LinkType, UniqueIdentifier,
-            WrappingMethod,
-        },
+        kmip_types::{CryptographicAlgorithm, LinkType, UniqueIdentifier, WrappingMethod},
     },
-    kmip_2_1::requests::create_symmetric_key_kmip_object,
+    kmip_2_1::{
+        kmip_attributes::Attributes, kmip_data_structures::KeyValue,
+        requests::create_symmetric_key_kmip_object,
+    },
     read_object_from_json_ttlv_file,
     reexport::cosmian_kms_client_utils::import_utils::KeyUsage,
     write_kmip_object_to_file,
@@ -46,8 +46,14 @@ pub(crate) async fn test_import_export_wrap_rfc_5649() -> CosmianResult<()> {
     let mut rng = CsRng::from_entropy();
     let mut wrap_key_bytes = vec![0; 32];
     rng.fill_bytes(&mut wrap_key_bytes);
-    let wrap_key =
-        create_symmetric_key_kmip_object(&wrap_key_bytes, CryptographicAlgorithm::AES, false)?;
+    let wrap_key = create_symmetric_key_kmip_object(
+        &wrap_key_bytes,
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+
+            ..Default::default()
+        },
+    )?;
     write_kmip_object_to_file(&wrap_key, &wrap_key_path)?;
 
     // import the wrapping key
@@ -106,6 +112,8 @@ pub(crate) async fn test_import_export_wrap_rfc_5649() -> CosmianResult<()> {
 #[cfg(not(feature = "fips"))]
 #[tokio::test]
 pub(crate) async fn test_import_export_wrap_ecies() -> CosmianResult<()> {
+    use cosmian_kms_client::kmip_0::kmip_types::CryptographicUsageMask;
+
     cosmian_logger::log_init(None);
     // create a temp dir
     let tmp_dir = TempDir::new()?;
@@ -118,10 +126,23 @@ pub(crate) async fn test_import_export_wrap_ecies() -> CosmianResult<()> {
     let wrap_key_pair = create_x25519_key_pair(
         wrap_private_key_uid,
         wrap_public_key_uid,
-        Some(CryptographicAlgorithm::EC),
-        Some(CryptographicUsageMask::Decrypt | CryptographicUsageMask::UnwrapKey),
-        Some(CryptographicUsageMask::Encrypt | CryptographicUsageMask::WrapKey),
-        false,
+        &CryptographicAlgorithm::EC,
+        Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::EC),
+            ..Default::default()
+        },
+        Some(Attributes {
+            cryptographic_usage_mask: Some(
+                CryptographicUsageMask::Decrypt | CryptographicUsageMask::UnwrapKey,
+            ),
+            ..Default::default()
+        }),
+        Some(Attributes {
+            cryptographic_usage_mask: Some(
+                CryptographicUsageMask::Encrypt | CryptographicUsageMask::WrapKey,
+            ),
+            ..Default::default()
+        }),
     )?;
     // Write the private key to a file and import it
     let wrap_private_key_path = tmp_path.join("wrap.private.key");
@@ -272,10 +293,23 @@ fn test_import_export_wrap_private_key(
             ..Default::default()
         })?;
         let re_exported_key = read_object_from_json_ttlv_file(&re_exported_key_file)?;
-        assert!(
-            re_exported_key.key_block()?.key_value.key_material
-                == private_key.key_block()?.key_value.key_material
-        );
+        let re_exported_key_material = {
+            let Some(KeyValue::Structure { key_material, .. }) =
+                &re_exported_key.key_block()?.key_value
+            else {
+                panic!("Key value is not a structure");
+            };
+            key_material
+        };
+        let private_key_key_material = {
+            let Some(KeyValue::Structure { key_material, .. }) =
+                &private_key.key_block()?.key_value
+            else {
+                panic!("Key value is not a structure");
+            };
+            key_material
+        };
+        assert_eq!(re_exported_key_material, private_key_key_material);
         assert_eq!(
             re_exported_key
                 .key_block()?

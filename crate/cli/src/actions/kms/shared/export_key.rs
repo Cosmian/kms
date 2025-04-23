@@ -135,15 +135,21 @@ impl ExportKeyAction {
             prepare_key_export_elements(&self.key_format, &self.wrapping_algorithm)?;
 
         // export the object
-        let (id, object, _) = export_object(kms_rest_client, &id, ExportObjectParams {
-            unwrap: self.unwrap,
-            wrapping_key_id: self.wrap_key_id.as_deref(),
-            allow_revoked: self.allow_revoked,
-            key_format_type,
-            encode_to_ttlv,
-            wrapping_cryptographic_parameters,
-            authenticated_encryption_additional_data: self.authenticated_additional_data.clone(),
-        })
+        let (id, object, _) = export_object(
+            kms_rest_client,
+            &id,
+            ExportObjectParams {
+                unwrap: self.unwrap,
+                wrapping_key_id: self.wrap_key_id.as_deref(),
+                allow_revoked: self.allow_revoked,
+                key_format_type,
+                encode_to_ttlv,
+                wrapping_cryptographic_parameters,
+                authenticated_encryption_additional_data: self
+                    .authenticated_additional_data
+                    .clone(),
+            },
+        )
         .await?;
 
         // write the object to a file
@@ -178,7 +184,7 @@ impl ExportKeyAction {
             "The key {} of type {} was exported to {:?}",
             &id,
             object.object_type(),
-            &self.key_file
+            self.key_file.display()
         );
         let mut stdout = console::Stdout::new(&stdout);
         stdout.set_unique_identifier(id);

@@ -37,7 +37,7 @@ impl KeyPairsCommands {
             Self::Enable(action) => action.run(&kms_rest_client.config).await,
             Self::Disable(action) => action.run(&kms_rest_client.config).await,
             Self::Obliterate(action) => action.run(&kms_rest_client.config).await,
-            Self::Create(action) => action.run(kms_rest_client).await,
+            Self::Create(action) => Box::pin(action.run(kms_rest_client)).await,
         }
     }
 }

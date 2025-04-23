@@ -870,18 +870,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "async-sqlite"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e56a86b242350ea4ff78866f8253182dd49dddb1decd4e596b918098ed250fd2"
-dependencies = [
- "crossbeam-channel",
- "futures-channel",
- "futures-util",
- "rusqlite",
-]
-
-[[package]]
 name = "async-stream"
 version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1782,7 +1770,7 @@ dependencies = [
  "cosmian_findex_structs",
  "cosmian_kms_client",
  "cosmian_kms_crypto",
- "cosmian_logger",
+ "cosmian_logger 0.1.1",
  "csv",
  "der",
  "hex",
@@ -1797,7 +1785,7 @@ dependencies = [
  "reqwest 0.11.27",
  "serde",
  "serde_json",
- "strum 0.25.0",
+ "strum",
  "tempfile",
  "test_findex_server",
  "test_kms_server",
@@ -1921,7 +1909,6 @@ version = "7.0.0"
 source = "git+https://github.com/Cosmian/findex?rev=6329b6b2f2b64b033e40b05cd12ca1c9b5ee376f#6329b6b2f2b64b033e40b05cd12ca1c9b5ee376f"
 dependencies = [
  "aes",
- "async-sqlite",
  "cosmian_crypto_core 10.1.0",
  "redis 0.28.2",
  "tokio",
@@ -1938,7 +1925,7 @@ dependencies = [
  "cosmian_findex_structs",
  "cosmian_http_client",
  "cosmian_kms_client",
- "cosmian_logger",
+ "cosmian_logger 0.1.1",
  "reqwest 0.11.27",
  "serde",
  "test_kms_server",
@@ -1965,7 +1952,7 @@ dependencies = [
  "cosmian_crypto_core 10.1.0",
  "cosmian_findex 7.0.0",
  "cosmian_findex_structs",
- "cosmian_logger",
+ "cosmian_logger 0.1.0",
  "dotenvy",
  "futures",
  "openssl",
@@ -2008,8 +1995,9 @@ dependencies = [
 
 [[package]]
 name = "cosmian_http_client"
-version = "0.1.0"
-source = "git+https://www.github.com/Cosmian/http_client_server?tag=0.1.1#136f269493316677cce12bfa0a65456414e12d64"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "58f76ac31d536d790fded13033cd27725ac3cbd382662659671131b13810bdf3"
 dependencies = [
  "actix-web",
  "derive_more 0.99.19",
@@ -2030,14 +2018,14 @@ name = "cosmian_kmip"
 version = "4.23.0"
 dependencies = [
  "bitflags 2.9.0",
- "cosmian_logger",
+ "cosmian_logger 0.1.0",
  "hex",
  "kmip-derive",
  "leb128",
  "num-bigint-dig",
  "serde",
  "serde_json",
- "strum 0.27.1",
+ "strum",
  "thiserror 2.0.12",
  "time",
  "tracing",
@@ -2077,6 +2065,7 @@ dependencies = [
  "cosmian_http_client",
  "cosmian_kms_client_utils",
  "der",
+ "hex",
  "native-tls",
  "pem",
  "reqwest 0.11.27",
@@ -2099,7 +2088,7 @@ dependencies = [
  "pem",
  "serde",
  "serde_json",
- "strum 0.25.0",
+ "strum",
  "thiserror 2.0.12",
  "tracing",
  "zeroize",
@@ -2132,7 +2121,7 @@ dependencies = [
  "cosmian_cover_crypt",
  "cosmian_crypto_core 10.1.0",
  "cosmian_kmip",
- "cosmian_logger",
+ "cosmian_logger 0.1.0",
  "hex",
  "num-bigint-dig",
  "openssl",
@@ -2195,16 +2184,16 @@ dependencies = [
  "oauth2 5.0.0",
  "openidconnect",
  "openssl",
- "opentelemetry 0.23.0",
+ "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry-semantic-conventions",
- "opentelemetry_sdk 0.23.0",
+ "opentelemetry_sdk",
  "proteccio_pkcs11_loader",
  "reqwest 0.11.27",
  "rustls 0.23.26",
  "serde",
  "serde_json",
- "strum 0.27.1",
+ "strum",
  "thiserror 2.0.12",
  "time",
  "tokio",
@@ -2258,11 +2247,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "cosmian_logger"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1653b919f4235dc2f5a5fbdc6a822f309e0a992a828411e6f0ae4bfb19d66f16"
+dependencies = [
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "cosmian_pkcs11"
 version = "0.3.0"
 dependencies = [
  "cosmian_kms_client",
- "cosmian_logger",
+ "cosmian_logger 0.1.1",
  "cosmian_pkcs11_module",
  "etcetera",
  "p256",
@@ -2296,7 +2295,7 @@ dependencies = [
  "rand 0.9.1",
  "rsa",
  "serial_test",
- "strum_macros 0.26.4",
+ "strum_macros",
  "thiserror 2.0.12",
  "tracing",
  "tracing-subscriber",
@@ -2370,15 +2369,6 @@ checksum = "6b50826342786a51a89e2da3a28f1c32b06e387201bc2d19791f622c673706b1"
 dependencies = [
  "cast",
  "itertools 0.10.5",
-]
-
-[[package]]
-name = "crossbeam-channel"
-version = "0.5.15"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "82b8f8f868b36967f9606790d1903570de9ceaf870a7bf9fbbd3016d636a2cb2"
-dependencies = [
- "crossbeam-utils",
 ]
 
 [[package]]
@@ -3036,18 +3026,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fallible-iterator"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2acce4a10f12dc2fb14a218589d4f1f62ef011b2d0cc4b3cb1bba8e94da14649"
-
-[[package]]
-name = "fallible-streaming-iterator"
-version = "0.1.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7360491ce676a36bf9bb3c56c1aa791658183a54d2744120f27285738d90465a"
-
-[[package]]
 name = "fastrand"
 version = "1.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3595,9 +3573,6 @@ name = "hashbrown"
 version = "0.14.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e5274423e17b7c9fc20b6e7e208532f9b19825d82dfd615708b70edd83df41f1"
-dependencies = [
- "ahash 0.8.11",
-]
 
 [[package]]
 name = "hashbrown"
@@ -3608,15 +3583,6 @@ dependencies = [
  "allocator-api2",
  "equivalent",
  "foldhash",
-]
-
-[[package]]
-name = "hashlink"
-version = "0.9.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6ba4ff7128dee98c7dc9794b6a411377e1404dba1c97deb8d1a55297bd25d8af"
-dependencies = [
- "hashbrown 0.14.5",
 ]
 
 [[package]]
@@ -5193,20 +5159,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "opentelemetry"
-version = "0.29.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9e87237e2775f74896f9ad219d26a2081751187eb7c9f5c58dde20a23b95d16c"
-dependencies = [
- "futures-core",
- "futures-sink",
- "js-sys",
- "pin-project-lite",
- "thiserror 2.0.12",
- "tracing",
-]
-
-[[package]]
 name = "opentelemetry-otlp"
 version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5215,9 +5167,9 @@ dependencies = [
  "async-trait",
  "futures-core",
  "http 0.2.12",
- "opentelemetry 0.23.0",
+ "opentelemetry",
  "opentelemetry-proto",
- "opentelemetry_sdk 0.23.0",
+ "opentelemetry_sdk",
  "prost",
  "thiserror 1.0.69",
  "tokio",
@@ -5230,8 +5182,8 @@ version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "984806e6cf27f2b49282e2a05e288f30594f3dbc74eb7a6e99422bc48ed78162"
 dependencies = [
- "opentelemetry 0.23.0",
- "opentelemetry_sdk 0.23.0",
+ "opentelemetry",
+ "opentelemetry_sdk",
  "prost",
  "tonic",
 ]
@@ -5252,31 +5204,16 @@ dependencies = [
  "futures-channel",
  "futures-executor",
  "futures-util",
+ "glob",
  "lazy_static",
  "once_cell",
- "opentelemetry 0.23.0",
+ "opentelemetry",
  "ordered-float 4.6.0",
  "percent-encoding",
  "rand 0.8.5",
  "thiserror 1.0.69",
  "tokio",
  "tokio-stream",
-]
-
-[[package]]
-name = "opentelemetry_sdk"
-version = "0.29.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "afdefb21d1d47394abc1ba6c57363ab141be19e27cc70d0e422b7f303e4d290b"
-dependencies = [
- "futures-channel",
- "futures-executor",
- "futures-util",
- "glob",
- "opentelemetry 0.29.1",
- "percent-encoding",
- "rand 0.9.1",
- "thiserror 2.0.12",
 ]
 
 [[package]]
@@ -6172,20 +6109,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rusqlite"
-version = "0.32.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7753b721174eb8ff87a9a0e799e2d7bc3749323e773db92e0984debb00019d6e"
-dependencies = [
- "bitflags 2.9.0",
- "fallible-iterator",
- "fallible-streaming-iterator",
- "hashlink 0.9.1",
- "libsqlite3-sys",
- "smallvec",
-]
-
-[[package]]
 name = "rust-ini"
 version = "0.21.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6854,7 +6777,7 @@ dependencies = [
  "futures-io",
  "futures-util",
  "hashbrown 0.15.2",
- "hashlink 0.10.0",
+ "hashlink",
  "indexmap 2.9.0",
  "log",
  "memchr",
@@ -7050,30 +6973,11 @@ checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 
 [[package]]
 name = "strum"
-version = "0.25.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "290d54ea6f91c969195bdbcd7442c8c2a2ba87da8bf60a7ee86a235d4bc1e125"
-
-[[package]]
-name = "strum"
 version = "0.27.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f64def088c51c9510a8579e3c5d67c65349dcf755e5479ad3d010aa6454e2c32"
 dependencies = [
- "strum_macros 0.27.1",
-]
-
-[[package]]
-name = "strum_macros"
-version = "0.26.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4c6bee85a5a24955dc440386795aa378cd9cf82acd5f764469152d2270e581be"
-dependencies = [
- "heck 0.5.0",
- "proc-macro2",
- "quote",
- "rustversion",
- "syn 2.0.100",
+ "strum_macros",
 ]
 
 [[package]]
@@ -7222,7 +7126,7 @@ dependencies = [
  "actix-server",
  "cosmian_findex_client",
  "cosmian_findex_server",
- "cosmian_logger",
+ "cosmian_logger 0.1.1",
  "criterion",
  "tokio",
  "tracing",
@@ -7238,8 +7142,9 @@ dependencies = [
  "cosmian_cli",
  "cosmian_kms_server",
  "cosmian_kms_server_database",
- "cosmian_logger",
+ "cosmian_logger 0.1.1",
  "criterion",
+ "hex",
  "serde_json",
  "tempfile",
  "tokio",
@@ -7721,14 +7626,14 @@ dependencies = [
 
 [[package]]
 name = "tracing-opentelemetry"
-version = "0.30.0"
+version = "0.24.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd8e764bd6f5813fd8bebc3117875190c5b0415be8f7f8059bffb6ecd979c444"
+checksum = "f68803492bf28ab40aeccaecc7021096bd256baf7ca77c3d425d89b35a7be4e4"
 dependencies = [
  "js-sys",
  "once_cell",
- "opentelemetry 0.29.1",
- "opentelemetry_sdk 0.29.0",
+ "opentelemetry",
+ "opentelemetry_sdk",
  "smallvec",
  "tracing",
  "tracing-core",

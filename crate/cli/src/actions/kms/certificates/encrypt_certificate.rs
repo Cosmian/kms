@@ -107,8 +107,8 @@ impl EncryptCertificateAction {
             .with_context(|| "failed to write the encrypted file")?;
 
         console::Stdout::new(&format!(
-            "The encrypted file is available at {:?}",
-            &output_file
+            "The encrypted file is available at {}",
+            output_file.display()
         ))
         .write()?;
 

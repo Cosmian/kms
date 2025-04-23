@@ -137,8 +137,10 @@ impl ImportKeyAction {
 
         // print the response
         let stdout = format!(
-            "The {:?} in file {:?} was imported with id: {}",
-            object_type, &self.key_file, unique_identifier,
+            "The {:?} in file {} was imported with id: {}",
+            object_type,
+            self.key_file.display(),
+            unique_identifier,
         );
         let mut stdout = console::Stdout::new(&stdout);
         stdout.set_tags(Some(&self.tags));

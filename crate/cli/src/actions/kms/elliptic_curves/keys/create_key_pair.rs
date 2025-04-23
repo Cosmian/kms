@@ -13,9 +13,9 @@ use crate::{
 /// Create an elliptic curve key pair
 ///
 ///  - The public is used to encrypt
-///      and can be safely shared.
+///    and can be safely shared.
 ///  - The private key is used to decrypt
-///      and must be kept secret.
+///    and must be kept secret.
 ///
 /// Run this subcommand with --help to see the list of supported curves.
 /// Default to NIST P256

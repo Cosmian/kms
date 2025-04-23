@@ -67,7 +67,7 @@ impl ClientConfig {
     /// not a valid toml file.
     pub fn save(&self, conf_path: Option<PathBuf>) -> Result<(), CosmianError> {
         let conf_path_buf = Self::location(conf_path)?;
-        println!("Saving configuration to: {conf_path_buf:?}");
+        println!("Saving configuration to: {}", conf_path_buf.display());
 
         Ok(self.to_toml(conf_path_buf.to_str().ok_or_else(|| {
             CosmianError::Default("Unable to convert the configuration path to a string".to_owned())

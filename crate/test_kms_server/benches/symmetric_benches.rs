@@ -1,13 +1,14 @@
 #![allow(dead_code)]
 use cosmian_cli::reexport::cosmian_kms_client::{
     KmsClient, KmsClientError,
-    reexport::cosmian_kmip::kmip_2_1::{
+    kmip_0::kmip_types::{BlockCipherMode, CryptographicUsageMask},
+    kmip_2_1::{
         extra::BulkData,
+        kmip_attributes::Attributes,
         kmip_objects::ObjectType,
         kmip_operations::{Create, Decrypt, Encrypt},
         kmip_types::{
-            Attributes, BlockCipherMode, CryptographicAlgorithm, CryptographicParameters,
-            CryptographicUsageMask, KeyFormatType, UniqueIdentifier,
+            CryptographicAlgorithm, CryptographicParameters, KeyFormatType, UniqueIdentifier,
         },
     },
 };
@@ -214,7 +215,7 @@ pub(crate) async fn encrypt(
     // Query the KMS with your kmip data and get the key pair ids
     let encrypt_response = kms_rest_client.encrypt(encrypt_request).await?;
 
-    let nonce = encrypt_response.iv_counter_nonce;
+    let nonce = encrypt_response.i_v_counter_nonce;
     let data = encrypt_response
         .data
         .ok_or_else(|| KmsClientError::UnexpectedError("No data".to_string()))?;
@@ -231,7 +232,7 @@ fn encrypt_request(
         unique_identifier: Some(key_id),
         cryptographic_parameters: Some(cryptographic_parameters),
         data: Some(data),
-        iv_counter_nonce: None,
+        i_v_counter_nonce: None,
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,
@@ -360,7 +361,7 @@ fn decrypt_request(
         unique_identifier: Some(key_id),
         cryptographic_parameters: Some(cryptographic_parameters),
         data: Some(data),
-        iv_counter_nonce: nonce,
+        i_v_counter_nonce: nonce,
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,

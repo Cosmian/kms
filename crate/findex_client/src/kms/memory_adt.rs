@@ -39,7 +39,7 @@ impl<
         let (ciphertexts_and_tokens, old) = if let Some(word) = optional_word {
             // Zip words and tokens
             bindings_words.push(word); // size: n+1
-            tokens.push(token.clone()); // size: n+1
+            tokens.push(token); // size: n+1
 
             // Bulk Encrypt
             let mut ciphertexts = self.encrypt(&bindings_words, &tokens).await?;
@@ -66,7 +66,7 @@ impl<
         let cur = self
             .mem
             .guarded_write(
-                (token.clone(), old),
+                (token, old),
                 ciphertexts_and_tokens
                     .into_iter()
                     .map(|(w, a)| (a, w))
@@ -408,7 +408,7 @@ mod tests {
         log_init(None);
         let ctx = start_default_test_kms_server().await;
         let memory = create_test_layer(ctx.owner_client_conf.kms_config.clone()).await?;
-        test_guarded_write_concurrent::<CUSTOM_WORD_LENGTH, _>(&memory, gen_seed()).await;
+        test_guarded_write_concurrent::<CUSTOM_WORD_LENGTH, _>(&memory, gen_seed(), None).await;
         Ok(())
     }
 }

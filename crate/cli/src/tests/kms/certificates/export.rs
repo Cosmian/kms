@@ -2,10 +2,11 @@ use std::process::Command;
 
 use assert_cmd::prelude::CommandCargoExt;
 use cosmian_kms_client::{
+    cosmian_kmip::ttlv::{TTLV, from_ttlv},
     kmip_2_1::{
-        kmip_objects::Object,
-        kmip_types::{Attributes, KeyFormatType, LinkType},
-        ttlv::{TTLV, deserializer::from_ttlv},
+        kmip_attributes::Attributes,
+        kmip_objects::{Certificate, Object},
+        kmip_types::{KeyFormatType, LinkType},
     },
     read_from_json_file, read_object_from_json_ttlv_file,
     reexport::cosmian_kms_client_utils::{
@@ -111,10 +112,10 @@ async fn test_import_export_p12_25519() {
     )
     .unwrap();
     let cert = read_object_from_json_ttlv_file(&tmp_exported_cert).unwrap();
-    let Object::Certificate {
+    let Object::Certificate(Certificate {
         certificate_value: cert_x509_der,
         ..
-    } = &cert
+    }) = &cert
     else {
         panic!("wrong object type")
     };
@@ -123,7 +124,7 @@ async fn test_import_export_p12_25519() {
         parsed_p12.cert.as_ref().unwrap().to_der().unwrap()
     );
     let cert_attributes_ttlv: TTLV = read_from_json_file(&tmp_exported_cert_attr).unwrap();
-    let cert_attributes: Attributes = from_ttlv(&cert_attributes_ttlv).unwrap();
+    let cert_attributes: Attributes = from_ttlv(cert_attributes_ttlv).unwrap();
     let issuer_id = cert_attributes.get_link(LinkType::CertificateLink).unwrap();
 
     // export the chain - there should be only one certificate in the chain
@@ -137,10 +138,10 @@ async fn test_import_export_p12_25519() {
     )
     .unwrap();
     let issuer_cert = read_object_from_json_ttlv_file(&tmp_exported_cert).unwrap();
-    let Object::Certificate {
+    let Object::Certificate(Certificate {
         certificate_value: issuer_cert_x509_der,
         ..
-    } = &issuer_cert
+    }) = &issuer_cert
     else {
         panic!("wrong object type")
     };
@@ -158,7 +159,7 @@ async fn test_import_export_p12_25519() {
     // this test  is deactivated because another test imports this certificate with the same id
     // and a link to its issuer which may make this test fail. This test passes when run alone.
     let issuer_cert_attributes_ttlv: TTLV = read_from_json_file(&tmp_exported_cert_attr).unwrap();
-    let issuer_cert_attributes: Attributes = from_ttlv(&issuer_cert_attributes_ttlv).unwrap();
+    let issuer_cert_attributes: Attributes = from_ttlv(issuer_cert_attributes_ttlv).unwrap();
     assert!(
         issuer_cert_attributes
             .get_link(LinkType::CertificateLink)
@@ -282,14 +283,19 @@ async fn test_export_pkcs7() -> Result<(), CosmianError> {
     let (root_ca_id, _, issuer_private_key_id) = import_root_and_intermediate(ctx)?;
 
     // Certify the CSR with the intermediate CA
-    let certificate_id = certify(&ctx.owner_client_conf_path, CertifyOp {
-        generate_keypair: true,
-        algorithm: Some(Algorithm::RSA4096),
-        subject_name: Some("C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_string()),
-        issuer_private_key_id: Some(issuer_private_key_id.clone()),
-        tags: Some(vec!["certify_a_csr_test".to_owned()]),
-        ..CertifyOp::default()
-    })?;
+    let certificate_id = certify(
+        &ctx.owner_client_conf_path,
+        CertifyOp {
+            generate_keypair: true,
+            algorithm: Some(Algorithm::RSA4096),
+            subject_name: Some(
+                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_string(),
+            ),
+            issuer_private_key_id: Some(issuer_private_key_id.clone()),
+            tags: Some(vec!["certify_a_csr_test".to_owned()]),
+            ..CertifyOp::default()
+        },
+    )?;
 
     let tmp_exported_pkcs7: std::path::PathBuf = tmp_dir.path().join("exported_p7.p7pem");
 
@@ -456,23 +462,31 @@ async fn test_export_root_and_intermediate_pkcs12() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
 
     // Generate a self-signed root CA
-    let ca_id = certify(&ctx.owner_client_conf_path, CertifyOp {
-        generate_keypair: true,
-        algorithm: Some(Algorithm::NistP256),
-        subject_name: Some("C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test CA".to_string()),
-        ..Default::default()
-    })?;
+    let ca_id = certify(
+        &ctx.owner_client_conf_path,
+        CertifyOp {
+            generate_keypair: true,
+            algorithm: Some(Algorithm::NistP256),
+            subject_name: Some(
+                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test CA".to_string(),
+            ),
+            ..Default::default()
+        },
+    )?;
 
     // Certify an intermediate CA with the root CA
-    let intermediate_id = certify(&ctx.owner_client_conf_path, CertifyOp {
-        issuer_certificate_id: Some(ca_id),
-        generate_keypair: true,
-        algorithm: Some(Algorithm::NistP256),
-        subject_name: Some(
-            "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Intermediate".to_string(),
-        ),
-        ..Default::default()
-    })?;
+    let intermediate_id = certify(
+        &ctx.owner_client_conf_path,
+        CertifyOp {
+            issuer_certificate_id: Some(ca_id),
+            generate_keypair: true,
+            algorithm: Some(Algorithm::NistP256),
+            subject_name: Some(
+                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Intermediate".to_string(),
+            ),
+            ..Default::default()
+        },
+    )?;
 
     // export the intermediate CA to PKCS#12
     let tmp_dir = TempDir::new()?;
@@ -507,12 +521,17 @@ async fn test_export_import_legacy_p12() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
 
     // Generate a self-signed root CA
-    let cert_id = certify(&ctx.owner_client_conf_path, CertifyOp {
-        generate_keypair: true,
-        algorithm: Some(Algorithm::NistP256),
-        subject_name: Some("C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Cert".to_string()),
-        ..Default::default()
-    })?;
+    let cert_id = certify(
+        &ctx.owner_client_conf_path,
+        CertifyOp {
+            generate_keypair: true,
+            algorithm: Some(Algorithm::NistP256),
+            subject_name: Some(
+                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Cert".to_string(),
+            ),
+            ..Default::default()
+        },
+    )?;
 
     // export the certificate to legacy PKCS#12
     let tmp_dir = TempDir::new()?;

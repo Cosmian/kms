@@ -39,7 +39,7 @@ impl CovercryptCommands {
     pub async fn process(&self, kms_rest_client: &KmsClient) -> CosmianResult<()> {
         match self {
             Self::AccessStructure(command) => command.process(kms_rest_client).await?,
-            Self::Keys(command) => command.process(kms_rest_client).await?,
+            Self::Keys(command) => Box::pin(command.process(kms_rest_client)).await?,
             Self::Encrypt(action) => action.run(kms_rest_client).await?,
             Self::Decrypt(action) => action.run(kms_rest_client).await?,
         }

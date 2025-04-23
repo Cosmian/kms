@@ -137,7 +137,10 @@ impl EncryptAction {
             .write_all(&data)
             .with_context(|| "failed to write the encrypted file")?;
 
-        let stdout = format!("The encrypted file is available at {output_file:?}");
+        let stdout = format!(
+            "The encrypted file is available at {}",
+            output_file.display()
+        );
         console::Stdout::new(&stdout).write()?;
 
         Ok(())

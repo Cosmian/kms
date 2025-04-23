@@ -25,7 +25,7 @@ cosmian_kms_access = { workspace = true }
 pem = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-strum.workspace = true
+strum = { workspace = true, features = ["std", "derive", "strum_macros"] }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 zeroize = { workspace = true }

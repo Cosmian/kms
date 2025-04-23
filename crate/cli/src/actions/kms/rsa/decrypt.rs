@@ -143,7 +143,10 @@ impl DecryptAction {
             .write_all(&plaintext)
             .with_context(|| "Fail to write the plain file")?;
 
-        let stdout = format!("The decrypted file is available at {output_file:?}");
+        let stdout = format!(
+            "The decrypted file is available at {}",
+            output_file.display()
+        );
         let mut stdout = console::Stdout::new(&stdout);
         stdout.set_tags(self.tags.as_ref());
         stdout.write()?;

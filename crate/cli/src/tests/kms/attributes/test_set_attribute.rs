@@ -1,9 +1,8 @@
 use cosmian_kms_client::{
+    kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
         extra::VENDOR_ID_COSMIAN,
-        kmip_types::{
-            CryptographicAlgorithm, CryptographicUsageMask, LinkType, Tag, VendorAttribute,
-        },
+        kmip_types::{CryptographicAlgorithm, LinkType, Tag, VendorAttribute},
     },
     reexport::cosmian_kms_client_utils::import_utils::{KeyUsage, build_usage_mask_from_key_usage},
 };
@@ -58,7 +57,7 @@ fn get_and_check_attributes(
     trace!("get_and_check_attributes: {get_attributes:?}");
 
     if let Some(activation_date) = requested_attributes.activation_date {
-        let date: u64 = serde_json::from_value(
+        let date: i64 = serde_json::from_value(
             get_attributes
                 .get(&Tag::ActivationDate.to_string())
                 .unwrap()
@@ -330,13 +329,18 @@ async fn test_set_attribute() -> CosmianResult<()> {
     check_set_delete_attributes(&uid, ctx)?;
 
     // Certify the CSR without issuer i.e. self signed
-    let uid = certify(&ctx.owner_client_conf_path, CertifyOp {
-        generate_keypair: true,
-        algorithm: Some(Algorithm::NistP256),
-        subject_name: Some("C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_string()),
-        tags: Some(vec!["certify_self_signed".to_owned()]),
-        ..Default::default()
-    })?;
+    let uid = certify(
+        &ctx.owner_client_conf_path,
+        CertifyOp {
+            generate_keypair: true,
+            algorithm: Some(Algorithm::NistP256),
+            subject_name: Some(
+                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_string(),
+            ),
+            tags: Some(vec!["certify_self_signed".to_owned()]),
+            ..Default::default()
+        },
+    )?;
     check_set_delete_attributes(&uid, ctx)?;
 
     Ok(())

@@ -148,8 +148,10 @@ impl WrapKeyAction {
         write_kmip_object_to_file(&object, &output_file)?;
 
         let stdout = format!(
-            "The key of type {:?} in file {:?} was wrapped in file: {:?}",
-            object_type, self.key_file_in, &output_file
+            "The key of type {:?} in file {} was wrapped in file: {}",
+            object_type,
+            self.key_file_in.display(),
+            output_file.display()
         );
         console::Stdout::new(&stdout).write()?;
 

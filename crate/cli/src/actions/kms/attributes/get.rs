@@ -114,8 +114,8 @@ impl GetAttributesAction {
             debug!("GetAttributes response for {unique_identifier}: {}", json);
             write_bytes_to_file(json.as_bytes(), output_file)?;
             let stdout = format!(
-                "The attributes for {unique_identifier} were exported to {:?}",
-                &output_file
+                "The attributes for {unique_identifier} were exported to {}",
+                output_file.display()
             );
             console::Stdout::new(&stdout).write()?;
         } else {

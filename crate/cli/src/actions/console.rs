@@ -42,7 +42,7 @@ impl TryFrom<&str> for OutputFormat {
 
 #[derive(Serialize, Debug, Default)]
 pub struct Stdout {
-    stdout: String,
+    str_out: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     unique_identifier: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -69,7 +69,7 @@ impl Stdout {
     #[must_use]
     pub fn new(stdout: &str) -> Self {
         Self {
-            stdout: stdout.to_string(),
+            str_out: stdout.to_string(),
             ..Default::default()
         }
     }
@@ -139,8 +139,8 @@ impl Stdout {
         match output_format {
             OutputFormat::Text => {
                 // Print the output in text format
-                if !self.stdout.is_empty() {
-                    println!("{}", self.stdout);
+                if !self.str_out.is_empty() {
+                    println!("{}", self.str_out);
                 }
 
                 // Print the unique identifier if present

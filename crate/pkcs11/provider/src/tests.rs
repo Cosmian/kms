@@ -1,5 +1,6 @@
 use cosmian_kms_client::{
     KmsClient,
+    kmip_2_1::{kmip_attributes::Attributes, kmip_objects::PrivateKey},
     reexport::cosmian_kmip::kmip_2_1::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::Object,
@@ -44,19 +45,34 @@ async fn create_keys(
     kms_rest_client: &KmsClient,
     disk_encryption_tag: &str,
 ) -> Result<(), Pkcs11Error> {
-    let vol1 = create_symmetric_key_kmip_object(&[1, 2, 3, 4], CryptographicAlgorithm::AES, false)?;
+    let vol1 = create_symmetric_key_kmip_object(
+        &[1, 2, 3, 4],
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Default::default()
+        },
+    )?;
     debug!("vol1: {}", vol1);
-    let import_object_request =
-        import_object_request(Some("vol1".to_owned()), vol1, None, false, true, [
-            disk_encryption_tag,
-            "vol1",
-        ]);
+    let import_object_request = import_object_request(
+        Some("vol1".to_owned()),
+        vol1,
+        None,
+        false,
+        true,
+        [disk_encryption_tag, "vol1"],
+    );
     let _vol1_id = kms_rest_client
         .import(import_object_request)
         .await?
         .unique_identifier;
 
-    let vol2 = create_symmetric_key_kmip_object(&[4, 5, 6, 7], CryptographicAlgorithm::AES, false)?;
+    let vol2 = create_symmetric_key_kmip_object(
+        &[4, 5, 6, 7],
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Default::default()
+        },
+    )?;
     let import_object_request_2 =
         cosmian_kms_client::reexport::cosmian_kmip::kmip_2_1::requests::import_object_request(
             Some("vol2".to_owned()),
@@ -80,14 +96,14 @@ async fn load_p12(disk_encryption_tag: &str) -> Result<String, Pkcs11Error> {
     let kms_rest_client = KmsClient::new_with_config(ctx.owner_client_conf.kms_config.clone())?;
     let p12_bytes = include_bytes!("../../../../test_data/pkcs11/certificate.p12");
 
-    let p12_sk = Object::PrivateKey {
+    let p12_sk = Object::PrivateKey(PrivateKey {
         key_block: KeyBlock {
             key_format_type: KeyFormatType::PKCS12,
             key_compression_type: None,
-            key_value: KeyValue {
+            key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::ByteString(zeroize::Zeroizing::new(p12_bytes.to_vec())),
                 attributes: None,
-            },
+            }),
             // According to the KMIP spec, the cryptographic algorithm is not required
             // as long as it can be recovered from the Key Format Type or the Key Value.
             // Also, it should not be specified if the cryptographic length is not specified.
@@ -96,13 +112,16 @@ async fn load_p12(disk_encryption_tag: &str) -> Result<String, Pkcs11Error> {
             cryptographic_length: None,
             key_wrapping_data: None,
         },
-    };
+    });
 
-    let import_object_request =
-        import_object_request(Some("test.p12".to_owned()), p12_sk, None, false, true, [
-            disk_encryption_tag,
-            "luks_volume",
-        ]);
+    let import_object_request = import_object_request(
+        Some("test.p12".to_owned()),
+        p12_sk,
+        None,
+        false,
+        true,
+        [disk_encryption_tag, "luks_volume"],
+    );
     let p12_id = kms_rest_client
         .import(import_object_request)
         .await?

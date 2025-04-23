@@ -45,13 +45,12 @@ impl RekeyAction {
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CosmianResult<()> {
         let uid = get_key_uid(self.msk_uid.as_ref(), self.tags.as_ref(), KEY_ID)?;
 
-        let res = kms_rest_client
-            .rekey_keypair(build_rekey_keypair_request(
-                &uid,
-                &RekeyEditAction::RekeyAccessPolicy(self.access_policy.clone()),
-            )?)
-            .await
-            .with_context(|| "failed rekeying the master keys")?;
+        let res = Box::pin(kms_rest_client.rekey_keypair(build_rekey_keypair_request(
+            &uid,
+            &RekeyEditAction::RekeyAccessPolicy(self.access_policy.clone()),
+        )?))
+        .await
+        .with_context(|| "failed rekeying the master keys")?;
 
         let stdout = format!(
             "The MSK {} and MPK {} were rekeyed for the access policy {:?}",

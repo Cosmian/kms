@@ -50,28 +50,25 @@ opt-level = 0
 actix-server = { version = "2.5", default-features = false }
 base64 = "0.22"
 clap = { version = "4.5", default-features = false }
+cosmian_cli = { path = "crate/cli" }
 cosmian_config_utils = { git = "https://www.github.com/Cosmian/http_client_server", tag = "0.1.0" }
 cosmian_cover_crypt = { version = "15.0", default-features = false }
-cosmian_cli = { path = "crate/cli" }
-cosmian_kms_client_utils = { path = "crate/client_utils" }
-cosmian_kms_client_wasm = { path = "crate/wasm" }
 cosmian_crypto_core = { version = "10.1.0", default-features = false, features = [
     "ser",
 ] }
-cosmian_findex = { git = "https://github.com/Cosmian/findex", features = [
-    "redis-mem",
-    "sqlite-mem",
-], rev = "6329b6b2f2b64b033e40b05cd12ca1c9b5ee376f" }
+cosmian_findex = { git = "https://github.com/Cosmian/findex", default-features = false, rev = "6329b6b2f2b64b033e40b05cd12ca1c9b5ee376f" }
 cosmian_findex_server = { git = "https://www.github.com/Cosmian/findex-server", branch = "develop" }
 cosmian_findex_structs = { git = "https://www.github.com/Cosmian/findex-server", branch = "develop" }
-cosmian_http_client = { git = "https://www.github.com/Cosmian/http_client_server", tag = "0.1.1" }
-cosmian_logger = { git = "https://www.github.com/Cosmian/http_client_server", tag = "0.1.0" }
-pkcs11_sys = { path = "../crate/pkcs11/sys" }#{ git = "https://www.github.com/Cosmian/kms", branch = "kmip_1" }
-cosmian_kmip = { path = "../crate/kmip" }#{ git = "https://www.github.com/Cosmian/kms", branch = "kmip_1" }
-cosmian_kms_access = { path = "../crate/access" }#{ git = "https://www.github.com/Cosmian/kms", branch = "kmip_1" }
-cosmian_kms_crypto = { path = "../crate/crypto" }#{ git = "https://www.github.com/Cosmian/kms", branch = "kmip_1" }
-cosmian_kms_server = { path = "../crate/server" }#{ git = "https://www.github.com/Cosmian/kms", branch = "kmip_1" }
-cosmian_kms_server_database = { path = "../crate/server_database" }#{ git = "https://www.github.com/Cosmian/kms", branch = "kmip_1" }
+cosmian_http_client = "0.1.1"
+cosmian_kms_client_utils = { path = "crate/client_utils" }
+cosmian_kms_client_wasm = { path = "crate/wasm" }
+cosmian_logger = "0.1.1"
+pkcs11_sys = { path = "../crate/pkcs11/sys" } #{ git = "https://www.github.com/Cosmian/kms", branch = "kmip_1" }
+cosmian_kmip = { path = "../crate/kmip" } #{ git = "https://www.github.com/Cosmian/kms", branch = "kmip_1" }
+cosmian_kms_access = { path = "../crate/access" } #{ git = "https://www.github.com/Cosmian/kms", branch = "kmip_1" }
+cosmian_kms_crypto = { path = "../crate/crypto" } #{ git = "https://www.github.com/Cosmian/kms", branch = "kmip_1" }
+cosmian_kms_server = { path = "../crate/server" } #{ git = "https://www.github.com/Cosmian/kms", branch = "kmip_1" }
+cosmian_kms_server_database = { path = "../crate/server_database" } #{ git = "https://www.github.com/Cosmian/kms", branch = "kmip_1" }
 der = { version = "0.7", default-features = false }
 hex = { version = "0.4", default-features = false }
 leb128 = "0.2"
@@ -84,7 +81,7 @@ rand = "0.9.1"
 reqwest = { version = "0.11", default-features = false }
 serde = "1.0"
 serde_json = "1.0"
-strum = { version = "0.25", default-features = false }
+strum = { version = "0.27", default-features = false }
 thiserror = "2.0"
 tokio = { version = "1.43", default-features = false }
 tracing = "0.1"

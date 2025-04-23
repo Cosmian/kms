@@ -1,7 +1,10 @@
 use std::process::Command;
 
 use assert_cmd::prelude::CommandCargoExt;
-use cosmian_kms_client::read_object_from_json_ttlv_file;
+use cosmian_kms_client::{
+    kmip_2_1::kmip_data_structures::{KeyMaterial, KeyValue},
+    read_object_from_json_ttlv_file,
+};
 use tempfile::TempDir;
 use test_kms_server::start_default_test_kms_server;
 use tracing::trace;
@@ -84,10 +87,11 @@ fn assert_destroyed(cli_conf_path: &str, key_id: &str, remove: bool) -> CosmianR
     } else {
         assert!(export_res.is_ok());
         let object = read_object_from_json_ttlv_file(&tmp_path.join("output.export"))?;
-        match &object.key_block()?.key_value.key_material {
-            cosmian_kms_client::cosmian_kmip::kmip_2_1::kmip_data_structures::KeyMaterial::ByteString(
-                v,
-            ) => {
+        let Some(KeyValue::Structure { key_material, .. }) = &object.key_block()?.key_value else {
+            cli_bail!("Invalid key value");
+        };
+        match &key_material {
+            KeyMaterial::ByteString(v) => {
                 assert!(v.is_empty());
             }
             _ => cli_bail!("Invalid key material"),

@@ -93,7 +93,7 @@ impl CreateKeyAction {
             let mut object = create_symmetric_key_kmip_object(
                 key_bytes.as_slice(),
                 &Attributes {
-                    cryptographic_algorithm: Some(algorithm.clone()),
+                    cryptographic_algorithm: Some(algorithm),
                     ..Default::default()
                 },
             )?;

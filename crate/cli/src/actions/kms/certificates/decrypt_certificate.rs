@@ -93,8 +93,8 @@ impl DecryptCertificateAction {
             .with_context(|| "Fail to write the plaintext file")?;
 
         console::Stdout::new(&format!(
-            "The decrypted file is available at {:?}",
-            &output_file
+            "The decrypted file is available at {}",
+            output_file.display()
         ))
         .write()?;
 

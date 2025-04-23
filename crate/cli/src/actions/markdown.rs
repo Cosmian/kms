@@ -26,7 +26,7 @@ impl MarkdownAction {
         write_command(&mut output, "", "", cmd)?;
         let mut f = File::create(&self.markdown_file)?;
         f.write_all(output.as_bytes())?;
-        println!("Markdown generated to {:?}", &self.markdown_file);
+        println!("Markdown generated to {}", self.markdown_file.display());
         Ok(())
     }
 }

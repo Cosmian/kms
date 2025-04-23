@@ -1,4 +1,5 @@
-use cosmian_findex::{KEY_LENGTH, Secret};
+use cosmian_crypto_core::Secret;
+use cosmian_findex::KEY_LENGTH;
 use cosmian_kms_client::{KmsClient, kmip_2_1::kmip_operations::Get};
 use zeroize::Zeroizing;
 

@@ -29,9 +29,9 @@ use crate::{
 /// - in X509 PEM format (pem)
 /// - in PKCS12 format including private key, certificate and chain (pkcs12)
 /// - in legacy PKCS12 format (pkcs12-legacy), compatible with openssl 1.x,
-///    for keystores that do not support the new format
-///    (e.g. Java keystores, `macOS` Keychains,...)
-///    This format is not available in FIPS mode.
+///   for keystores that do not support the new format
+///   (e.g. Java keystores, `macOS` Keychains,...)
+///   This format is not available in FIPS mode.
 /// - in PKCS7 format including the entire certificates chain (pkcs7)
 ///
 /// When using tags to retrieve rather than the unique id,
@@ -158,8 +158,9 @@ impl ExportCertificateAction {
         }
 
         let mut stdout = format!(
-            "The certificate {} was exported to {:?}",
-            &id, &self.certificate_file
+            "The certificate {} was exported to {}",
+            &id,
+            self.certificate_file.display()
         );
 
         // write attributes to a file
@@ -167,8 +168,9 @@ impl ExportCertificateAction {
             let attributes_file = self.certificate_file.with_extension("attributes.json");
             write_json_object_to_file(&to_ttlv(&export_attributes)?, &attributes_file)?;
             let stdout_attributes = format!(
-                "The attributes of the certificate {} were exported to {:?}",
-                &id, &attributes_file
+                "The attributes of the certificate {} were exported to {}",
+                &id,
+                attributes_file.display()
             );
             stdout = format!("{stdout} - {stdout_attributes}");
         }
