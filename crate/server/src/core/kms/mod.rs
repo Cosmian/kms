@@ -4,7 +4,7 @@ mod permissions;
 
 use std::{collections::HashMap, sync::Arc};
 
-use cosmian_kms_interfaces::{EncryptionOracle, HsmEncryptionOracle, HsmStore, ObjectsStore, HSM};
+use cosmian_kms_interfaces::{EncryptionOracle, HSM, HsmEncryptionOracle, HsmStore, ObjectsStore};
 use cosmian_kms_server_database::Database;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use proteccio_pkcs11_loader::Proteccio;
@@ -25,9 +25,9 @@ pub struct KMS {
 
     /// The database is made of two parts:
     /// - The objects' store that stores the cryptographic objects.
-    ///    The Object store may be backed by multiple databases or HSMs
-    ///    and store the cryptographic objects and their attributes.
-    ///    Objects are spread across the underlying stores based on their ID prefix.
+    ///   The Object store may be backed by multiple databases or HSMs
+    ///   and store the cryptographic objects and their attributes.
+    ///   Objects are spread across the underlying stores based on their ID prefix.
     /// - The permissions store that stores the permissions granted to users on the objects.
     pub(crate) database: Database,
 

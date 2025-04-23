@@ -1183,7 +1183,7 @@ dependencies = [
  "cosmian_config_utils",
  "cosmian_cover_crypt",
  "cosmian_crypto_core 10.1.0",
- "cosmian_findex 7.0.0 (git+https://github.com/Cosmian/findex?rev=98fcb6e97054e1bb9dddd7a0d620e27438cb91b7)",
+ "cosmian_findex 7.0.0",
  "cosmian_findex_client",
  "cosmian_findex_structs",
  "cosmian_kms_client",
@@ -1329,22 +1329,8 @@ dependencies = [
  "aes",
  "cosmian_crypto_core 10.1.0",
  "redis 0.28.2",
+ "tokio",
  "xts-mode",
-]
-
-[[package]]
-name = "cosmian_findex"
-version = "7.0.0"
-source = "git+https://github.com/Cosmian/findex?rev=98fcb6e97054e1bb9dddd7a0d620e27438cb91b7#98fcb6e97054e1bb9dddd7a0d620e27438cb91b7"
-dependencies = [
- "aes",
- "rand 0.9.1",
- "rand_chacha 0.9.0",
- "rand_core 0.9.3",
- "redis 0.28.2",
- "tiny-keccak",
- "xts-mode",
- "zeroize",
 ]
 
 [[package]]
@@ -1353,7 +1339,7 @@ version = "4.23.0"
 dependencies = [
  "base64 0.22.1",
  "cosmian_crypto_core 10.1.0",
- "cosmian_findex 7.0.0 (git+https://github.com/Cosmian/findex?rev=98fcb6e97054e1bb9dddd7a0d620e27438cb91b7)",
+ "cosmian_findex 7.0.0",
  "cosmian_findex_structs",
  "cosmian_http_client",
  "cosmian_kms_client",
@@ -1382,7 +1368,7 @@ dependencies = [
  "chrono",
  "clap",
  "cosmian_crypto_core 10.1.0",
- "cosmian_findex 7.0.0 (git+https://github.com/Cosmian/findex?rev=6329b6b2f2b64b033e40b05cd12ca1c9b5ee376f)",
+ "cosmian_findex 7.0.0",
  "cosmian_findex_structs",
  "cosmian_logger",
  "dotenvy",
@@ -1408,7 +1394,7 @@ source = "git+https://www.github.com/Cosmian/findex-server?branch=develop#bdad80
 dependencies = [
  "base64 0.22.1",
  "cosmian_crypto_core 10.1.0",
- "cosmian_findex 7.0.0 (git+https://github.com/Cosmian/findex?rev=6329b6b2f2b64b033e40b05cd12ca1c9b5ee376f)",
+ "cosmian_findex 7.0.0",
  "thiserror 2.0.12",
  "tracing",
  "uuid",
@@ -1697,7 +1683,7 @@ dependencies = [
  "rand 0.9.1",
  "rsa",
  "serial_test",
- "strum_macros 0.26.4",
+ "strum_macros",
  "thiserror 2.0.12",
  "tracing",
  "tracing-subscriber",
@@ -5269,20 +5255,7 @@ version = "0.27.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f64def088c51c9510a8579e3c5d67c65349dcf755e5479ad3d010aa6454e2c32"
 dependencies = [
- "strum_macros 0.27.1",
-]
-
-[[package]]
-name = "strum_macros"
-version = "0.26.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4c6bee85a5a24955dc440386795aa378cd9cf82acd5f764469152d2270e581be"
-dependencies = [
- "heck",
- "proc-macro2",
- "quote",
- "rustversion",
- "syn",
+ "strum_macros",
 ]
 
 [[package]]
@@ -5419,6 +5392,7 @@ dependencies = [
  "cosmian_kms_server_database",
  "cosmian_logger",
  "criterion",
+ "hex",
  "serde_json",
  "tempfile",
  "tokio",

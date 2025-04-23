@@ -1,7 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     fs, path,
-    sync::Arc,
+    sync::{Arc, LazyLock},
 };
 
 use cosmian_kmip::kmip_2_1::{
@@ -27,9 +27,8 @@ use crate::{
     result::KResult,
 };
 
-lazy_static::lazy_static! {
-    static ref CRL_CACHE_MAP: tokio::sync::RwLock<HashMap<String, Vec<u8>>> = tokio::sync::RwLock::new(HashMap::new());
-}
+static CRL_CACHE_MAP: LazyLock<tokio::sync::RwLock<HashMap<String, Vec<u8>>>> =
+    LazyLock::new(|| tokio::sync::RwLock::new(HashMap::new()));
 
 /// This operation requests the server to validate a certificate chain and return
 /// information on its validity.
