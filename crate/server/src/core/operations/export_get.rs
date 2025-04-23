@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use cosmian_kmip::{
+    KmipError,
     kmip_2_1::{
+        KmipOperation,
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingSpecification},
         kmip_objects::{Object, ObjectType},
         kmip_operations::{Export, ExportResponse},
@@ -9,9 +11,7 @@ use cosmian_kmip::{
             Attributes, CertificateType, CryptographicAlgorithm, CryptographicUsageMask,
             KeyFormatType, KeyWrapType, LinkType, StateEnumeration, UniqueIdentifier,
         },
-        KmipOperation,
     },
-    KmipError,
 };
 use cosmian_kms_crypto::openssl::{
     kmip_certificate_to_openssl, kmip_private_key_to_openssl, kmip_public_key_to_openssl,
@@ -26,16 +26,16 @@ use openssl::{
     stack::Stack,
     x509::X509,
 };
-use tracing::trace;
+use tracing::{debug, trace};
 use zeroize::Zeroizing;
 
 use crate::{
     core::{
+        KMS,
         certificate::{retrieve_certificate_for_private_key, retrieve_private_key_for_certificate},
         operations::import::upsert_imported_links_in_attributes,
         retrieve_object_utils::retrieve_object_for_operation,
         wrapping::wrap_key,
-        KMS,
     },
     error::KmsError,
     kms_bail,
@@ -228,6 +228,7 @@ async fn post_process_private_key(
     #[cfg(feature = "fips")]
     let is_pkcs12 = request.key_format_type == Some(KeyFormatType::PKCS12);
     // according to the KMIP specs the KeyMaterial is not returned if the object is destroyed
+    trace!("post_process_private_key: operation type: {operation_type:?}");
     if (operation_type == KmipOperation::Export)
         && (owm.state() == StateEnumeration::Destroyed
             || owm.state() == StateEnumeration::Destroyed_Compromised)
@@ -273,6 +274,7 @@ async fn post_process_active_private_key(
     user: &str,
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<()> {
+    trace!("post_process_active_private_key: key_format_type: {key_format_type:?}",);
     // First perform any necessary unwrapping to the expected type
     transform_to_key_wrap_type(
         object_with_metadata,
@@ -353,6 +355,10 @@ async fn post_process_active_private_key(
 
     //No wrapping requested: export the private key to the requested format
     if let Some(key_format_type) = key_format_type {
+        debug!(
+            "export: exporting private key with format: {:?}",
+            key_format_type
+        );
         #[cfg(not(feature = "fips"))]
         let supported_formats = [
             KeyFormatType::PKCS1,

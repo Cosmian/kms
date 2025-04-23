@@ -62,6 +62,7 @@ nav:
   - Quick start: quick_start.md
   - Use cases and integrations:
       - Encrypting and decrypting at scale: encrypting_and_decrypting_at_scale.md
+      - S/MIME Email encryption: pki/smime.md
       - Google workspace Client-Side Encryption (CSE):
           - Getting started: google_cse/index.md
           - Configuring the .well-known file: google_cse/configuring-the-well-known-file-and-server.md
@@ -77,7 +78,8 @@ nav:
           - Veracrypt: pkcs11/veracrypt.md
           - LUKS: pkcs11/luks.md
           - Cryhod: pkcs11/cryhod.md
-      - S/MIME Email encryption: pki/smime.md
+      - Oracle Database Transparent Data Encryption (TDE):
+          - Integration: oracle/tde.md
       - API Endpoints: api.md
   - Installation:
       - Getting started: installation/installation_getting_started.md
