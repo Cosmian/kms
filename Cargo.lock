@@ -1622,7 +1622,9 @@ dependencies = [
 name = "cosmian_pkcs11"
 version = "4.23.0"
 dependencies = [
- "cosmian_kms_client",
+ "cosmian_cli",
+ "cosmian_crypto_core 10.1.0",
+ "cosmian_kmip",
  "cosmian_logger 0.1.1",
  "cosmian_pkcs11_module",
  "etcetera",
@@ -1648,7 +1650,7 @@ version = "4.23.0"
 dependencies = [
  "bincode",
  "const-oid",
- "cosmian_logger",
+ "cosmian_logger 0.1.1",
  "hex",
  "log",
  "once_cell",
