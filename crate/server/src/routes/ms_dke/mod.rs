@@ -1,11 +1,10 @@
 use std::{default::Default, sync::Arc};
 
 use actix_web::{
-    get, post,
+    HttpRequest, HttpResponse, get, post,
     web::{Data, Json, Path},
-    HttpRequest, HttpResponse,
 };
-use base64::{engine::general_purpose::STANDARD, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD};
 use chrono::{Duration, Utc};
 use clap::crate_version;
 use cosmian_kmip::{
@@ -115,7 +114,11 @@ pub(crate) async fn get_key(
     }
 }
 
-async fn _get_key(key_tag: &str, req_http: HttpRequest, kms: &Arc<KMS>) -> KResult<KeyData> {
+async fn internal_get_key(
+    key_tag: &str,
+    req_http: HttpRequest,
+    kms: &Arc<KMS>,
+) -> KResult<KeyData> {
     let user = kms.get_user(&req_http);
     let dke_service_url = kms
         .params

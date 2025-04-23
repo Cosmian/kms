@@ -4,14 +4,17 @@ use cosmian_kmip::kmip_2_1::{
     extra::tagging::EMPTY_TAGS,
     kmip_attributes::Attributes,
     kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
-    kmip_operations::{DecryptedData, Get, Import, Locate},
+    kmip_operations::{Get, Import, Locate},
     kmip_types::{
         CryptographicAlgorithm, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
         UniqueIdentifier,
     },
     requests::{decrypt_request, encrypt_request},
 };
-use cosmian_kms_client_utils::cover_crypt_utils::{build_create_covercrypt_master_keypair_request, build_create_covercrypt_usk_request};
+use cosmian_kms_client_utils::cover_crypt_utils::{
+    build_create_covercrypt_master_keypair_request, build_create_covercrypt_usk_request,
+};
+use cosmian_logger::log_init;
 use tracing::debug;
 use uuid::Uuid;
 

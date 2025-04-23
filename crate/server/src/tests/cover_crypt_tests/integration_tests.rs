@@ -4,7 +4,7 @@ use cosmian_kmip::{
     kmip_2_1::{
         extra::tagging::EMPTY_TAGS,
         kmip_operations::{
-            CreateKeyPairResponse, CreateResponse, DecryptResponse, DecryptedData, DestroyResponse,
+            CreateKeyPairResponse, CreateResponse, DecryptResponse, Destroy, DestroyResponse,
             EncryptResponse, ReKeyKeyPairResponse, Revoke, RevokeResponse,
         },
         kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
@@ -32,7 +32,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     let create_key_pair =
         build_create_covercrypt_master_keypair_request(access_structure, EMPTY_TAGS, false)?;
     let create_key_pair_response: CreateKeyPairResponse =
-        test_utils::post(&app, &create_key_pair).await?;
+        test_utils::post_2_1(&app, &create_key_pair).await?;
 
     let private_key_unique_identifier = create_key_pair_response
         .private_key_unique_identifier
@@ -60,10 +60,10 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         }),
     )?;
 
-        let encrypt_response: EncryptResponse = test_utils::post_2_1(&app, request).await?;
-        let encrypted_data = encrypt_response
-            .data
-            .expect("There should be encrypted data");
+    let encrypt_response: EncryptResponse = test_utils::post_2_1(&app, request).await?;
+    let encrypted_data = encrypt_response
+        .data
+        .expect("There should be encrypted data");
 
     // Create a user decryption key
     let access_policy = "(Department::MKG || Department::FIN) && Security Level::Top Secret";
@@ -73,7 +73,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         EMPTY_TAGS,
         false,
     )?;
-    let create_response: CreateResponse = test_utils::post(&app, request).await?;
+    let create_response: CreateResponse = test_utils::post_2_1(&app, request).await?;
     let user_decryption_key_identifier = create_response
         .unique_identifier
         .as_str()
@@ -158,7 +158,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         Some(authentication_data.clone()),
         None,
     );
-    let decrypt_response: DecryptResponse = test_utils::post(&app, &request).await?;
+    let decrypt_response: DecryptResponse = test_utils::post_2_1(&app, &request).await?;
 
     let decrypted_data = decrypt_response
         .data
@@ -191,7 +191,10 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
             unique_identifier: Some(UniqueIdentifier::TextString(
                 user_decryption_key_identifier_1.to_owned(),
             )),
-            revocation_reason: RevocationReason::TextString("Revocation test".to_owned()),
+            revocation_reason: RevocationReason {
+                revocation_reason_code: RevocationReasonCode::Unspecified,
+                revocation_message: Some("Revocation test".to_owned()),
+            },
             compromise_occurrence_date: None,
         },
     )
@@ -251,7 +254,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         None,
     );
     let post_ttlv_decrypt: KResult<DecryptResponse> = test_utils::post_2_1(&app, &request).await;
-    assert!(post_ttlv_decrypt.is_err());
+    post_ttlv_decrypt.unwrap_err();
 
     // decrypt
     let request = decrypt_request(
@@ -262,7 +265,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         Some(authentication_data.clone()),
         None,
     );
-    let decrypt_response: DecryptResponse = test_utils::post_21(&app, &request).await?;
+    let decrypt_response: DecryptResponse = test_utils::post_2_1(&app, &request).await?;
     let decrypted_data = decrypt_response
         .data
         .context("There should be decrypted data")?;
@@ -289,7 +292,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         None,
     );
     let post_ttlv_decrypt: KResult<DecryptResponse> = test_utils::post_2_1(&app, &request).await;
-    assert!(post_ttlv_decrypt.is_err());
+    post_ttlv_decrypt.unwrap_err();
 
     let encryption_policy = "Security Level::Confidential && (Department::IT || Department::RnD)";
 
@@ -380,7 +383,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         }),
     )?;
     let encrypt_response: KResult<EncryptResponse> = test_utils::post_2_1(&app, &request).await;
-    assert!(encrypt_response.is_err());
+    encrypt_response.unwrap_err();
 
     //
     // Delete attribute
@@ -410,7 +413,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         }),
     )?;
     let encrypt_response: KResult<EncryptResponse> = test_utils::post_2_1(&app, &request).await;
-    assert!(encrypt_response.is_err());
+    encrypt_response.unwrap_err();
 
     //
     // Destroy user decryption key

@@ -15,9 +15,9 @@ use cosmian_kmip::{
     },
     ttlv::KmipFlavor,
 };
-use cosmian_kms_client::SocketClient;
 use cosmian_logger::log_init;
 
+use super::socket_client::SocketClient;
 use crate::tests::ttlv_tests::get_client;
 
 #[test]

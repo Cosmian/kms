@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
 use actix_web::{
-    post,
+    HttpRequest, HttpResponse, post,
     web::{Bytes, Data, Json},
-    HttpRequest, HttpResponse,
 };
 use cosmian_kmip::{
+    KmipResultHelper,
     kmip_0::{
         kmip_messages::{
             RequestMessage, ResponseMessage, ResponseMessageBatchItemVersioned,
@@ -13,8 +13,7 @@ use cosmian_kmip::{
         },
         kmip_types::ProtocolVersion,
     },
-    ttlv::{from_ttlv, to_ttlv, KmipEnumerationVariant, KmipFlavor, TTLValue, TTLV},
-    KmipResultHelper,
+    ttlv::{KmipEnumerationVariant, KmipFlavor, TTLV, TTLValue, from_ttlv, to_ttlv},
 };
 use cosmian_kms_interfaces::SessionParams;
 use reqwest::header::CONTENT_TYPE;
@@ -23,8 +22,8 @@ use tracing::{debug, error, info};
 
 use crate::{
     core::{
-        operations::{dispatch, message},
         KMS,
+        operations::{dispatch, message},
     },
     error::KmsError,
     result::KResult,
@@ -457,7 +456,7 @@ mod tests {
             cosmian_kmip::kmip_0::kmip_types::ResultStatusEnumeration::OperationFailed
         );
         let ttlv = super::to_ttlv(&response).unwrap();
-        info!("Response TTLV: {:?}", ttlv);
+        info!("Response TTLV: {ttlv:?}");
         assert_eq!(ttlv.tag, "ResponseMessage");
         let bytes = super::TTLV::to_bytes(&ttlv, cosmian_kmip::ttlv::KmipFlavor::Kmip1).unwrap();
         info!("\n{:?}", &bytes);

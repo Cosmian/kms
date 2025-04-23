@@ -86,7 +86,11 @@ proteccio_pkcs11_loader = { path = "../hsm/proteccio" }
 # use openssl
 # The default features is to guarantee that the native-tls crate will be used
 reqwest = { workspace = true, features = ["default", "json"] }
-rustls = { version = "0.23", features = ["tls12", "std", "aws_lc_rs"], default-features = false }
+rustls = { version = "0.23", features = [
+    "tls12",
+    "std",
+    "aws_lc_rs",
+], default-features = false }
 serde = { workspace = true }
 serde_json = { workspace = true }
 strum = { workspace = true, features = ["std", "derive", "strum_macros"] }
@@ -95,7 +99,7 @@ time = { workspace = true, features = ["local-offset", "formatting"] }
 tokio = { workspace = true, features = ["full"] }
 toml = "0.8"
 tracing = { workspace = true }
-tracing-opentelemetry = "0.30"
+tracing-opentelemetry = "0.24"
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 url = { workspace = true }
 utimaco_pkcs11_loader = { path = "../hsm/utimaco" }
@@ -107,6 +111,7 @@ zeroize = { workspace = true }
 actix-http = "3.10"
 cosmian_kms_client_utils = { workspace = true }
 cosmian_logger = { workspace = true }
+native-tls = { workspace = true }
 pem = { workspace = true }
 tempfile = { workspace = true }
 

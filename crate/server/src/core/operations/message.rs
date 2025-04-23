@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use cosmian_kmip::{
+    KmipResultHelper,
     kmip_0::{
         kmip_messages::{
             RequestMessage, RequestMessageBatchItemVersioned, ResponseMessage,
@@ -10,7 +11,6 @@ use cosmian_kmip::{
     },
     kmip_2_1::{kmip_messages::ResponseMessageBatchItem, kmip_operations::Operation},
     ttlv::KmipFlavor,
-    KmipResultHelper,
 };
 use cosmian_kms_interfaces::SessionParams;
 use time::OffsetDateTime;
@@ -165,11 +165,17 @@ async fn process_operation(
         Operation::GetAttributes(kmip_request) => {
             Operation::GetAttributesResponse(kms.get_attributes(kmip_request, user, params).await?)
         }
+        Operation::Hash(kmip_request) => {
+            Operation::HashResponse(kms.hash(kmip_request, user, params).await?)
+        }
         Operation::Import(kmip_request) => {
             Operation::ImportResponse(kms.import(kmip_request, user, params).await?)
         }
         Operation::Locate(kmip_request) => {
             Operation::LocateResponse(kms.locate(kmip_request, user, params).await?)
+        }
+        Operation::Mac(kmip_request) => {
+            Operation::MacResponse(kms.mac(kmip_request, user, params).await?)
         }
         Operation::Query(kmip_request) => Operation::QueryResponse(kms.query(kmip_request).await?),
         Operation::ReKey(kmip_request) => {
@@ -199,8 +205,10 @@ async fn process_operation(
         | Operation::ExportResponse(_)
         | Operation::GetAttributesResponse(_)
         | Operation::GetResponse(_)
+        | Operation::HashResponse(_)
         | Operation::ImportResponse(_)
         | Operation::LocateResponse(_)
+        | Operation::MacResponse(_)
         | Operation::QueryResponse(_)
         | Operation::ReKeyKeyPairResponse(_)
         | Operation::ReKeyResponse(_)
