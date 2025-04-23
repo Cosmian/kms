@@ -31,7 +31,7 @@ jobs:
       toolchain: ${{ inputs.toolchain }}
 
   build:
-    uses: Cosmian/reusable_workflows/.github/workflows/build_all.yml@develop
+    uses: Cosmian/reusable_workflows/.github/workflows/build_all.yml@stackoverflow
     secrets: inherit
     with:
       toolchain: ${{ inputs.toolchain }}
