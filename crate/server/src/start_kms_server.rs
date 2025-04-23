@@ -439,11 +439,11 @@ pub async fn prepare_kms_server(
 
         app.service(default_scope)
     })
-    .client_disconnect_timeout(std::time::Duration::from_secs(30)) // default: 5s
-    .tls_handshake_timeout(std::time::Duration::from_secs(18)) // default: 3s
-    .keep_alive(std::time::Duration::from_secs(90)) // default: 5s
-    .client_request_timeout(std::time::Duration::from_secs(90)) // default: 5s
-    .shutdown_timeout(180); // default: 30s
+    .client_disconnect_timeout(std::time::Duration::from_secs(30 * 5)) // default: 5s
+    .tls_handshake_timeout(std::time::Duration::from_secs(18 * 5)) // default: 3s
+    .keep_alive(std::time::Duration::from_secs(90 * 5)) // default: 5s
+    .client_request_timeout(std::time::Duration::from_secs(90 * 5)) // default: 5s
+    .shutdown_timeout(180 * 5); // default: 30s
 
     Ok(match builder {
         Some(cert_auth_builder) => {
