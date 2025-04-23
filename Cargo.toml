@@ -1,23 +1,20 @@
 [workspace]
 default-members = ["cli/crate/cli", "crate/server"]
 members = [
-  "cli/crate/cli",
-  "cli/crate/kms_client",
-  "cli/crate/pkcs11/module",
-  "cli/crate/pkcs11/provider",
-  "crate/access",
-  "crate/crypto",
-  "crate/hsm/proteccio",
-  "crate/hsm/utimaco",
-  "crate/hsm/base_hsm",
-  "crate/interfaces",
-  "crate/kmip",
-  "crate/pyo3",
-  "crate/pkcs11/module",
-  "crate/pkcs11/provider",
-  "crate/pkcs11/sys",
-  "crate/server",
-  "crate/server_database",
+    "cli/crate/cli",
+    "cli/crate/kms_client",
+    "cli/crate/pkcs11/module",
+    "cli/crate/pkcs11/provider",
+    "crate/access",
+    "crate/crypto",
+    "crate/hsm/proteccio",
+    "crate/hsm/utimaco",
+    "crate/hsm/base_hsm",
+    "crate/interfaces",
+    "crate/kmip",
+    "crate/pkcs11/sys",
+    "crate/server",
+    "crate/server_database",
 ]
 # Do that if you don't want to enable `dev` feature by default due to the `dev-dependencies` of the cli.
 # For more details, read: https://doc.rust-lang.org/cargo/reference/resolver.html#feature-resolver-version-2
@@ -27,10 +24,10 @@ resolver = "2"
 [workspace.package]
 version = "4.24.0"
 edition = "2021"
-rust-version = "1.80.0"
+rust-version = "1.86.0"
 authors = [
-  "Bruno Grieder <bruno.grieder@cosmian.com>",
-  "Emmanuel Coste <emmanuel.coste@cosmian.com>",
+    "Bruno Grieder <bruno.grieder@cosmian.com>",
+    "Emmanuel Coste <emmanuel.coste@cosmian.com>",
 ]
 license = "BUSL-1.1" # "Business Source License 1.1"
 license-file = "LICENSE"
@@ -70,7 +67,7 @@ cosmian_findex_structs = { git = "https://www.github.com/Cosmian/findex-server",
 cosmian_config_utils = "0.1.1"
 cosmian_cover_crypt = "15.0"
 cosmian_crypto_core = { version = "10.1", default-features = false, features = [
-  "ser",
+    "ser",
 ] }
 cosmian_http_client = "0.1.1"
 cosmian_kmip = { path = "crate/kmip" }
@@ -96,23 +93,23 @@ num-bigint-dig = { version = "0.8", default-features = false }
 openssl = { version = "0.10", default-features = false }
 pem = "3.0"
 pkcs11_sys = { path = "crate/pkcs11/sys" }
-pyo3 = { version = "0.20", default-features = false }
 rand = "0.9"
 reqwest = { version = "0.11", default-features = false }
 rustls = "0.23.25"
 serde = "1.0.217"
 serde_json = "1.0.138"
 sha3 = { version = "0.10", default-features = false }
-strum = { version = "0.25", default-features = false }
-thiserror = "2.0"
-time = "0.3"
-tiny-keccak = "2.0"
-tempfile = "3.19"
-tokio = { version = "1.44", default-features = false }
+strum = { version = "0.27", default-features = false }
+strum_macros = { version = "0.27.0", default-features = false }
+thiserror = "2.0.11"
+time = "0.3.37"
+tiny-keccak = "2.0.2"
+tempfile = "3.16.0"
+tokio = { version = "1.42", default-features = false }
 tracing-subscriber = { version = "0.3", default-features = false }
 tracing = "0.1"
 url = "2.5"
-uuid = "1.12.1"
+uuid = "1.11.1"
 version-compare = "0.2.0"
 x509-cert = { version = "0.2", default-features = false }
 x509-parser = "0.17"
