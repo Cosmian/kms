@@ -142,11 +142,7 @@ impl ServerParams {
             .iter()
             .zip(&conf.hsm_password)
             .map(|(s, p)| {
-                let password = if p.is_empty() {
-                    None
-                } else {
-                    Some(p.to_string())
-                };
+                let password = if p.is_empty() { None } else { Some(p.clone()) };
                 (*s, password)
             })
             .collect();

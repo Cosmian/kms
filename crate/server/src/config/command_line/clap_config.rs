@@ -169,8 +169,9 @@ impl ClapConfig {
                     conf_path
                 } else {
                     println!(
-                        "WARNING: Configuration file {conf_path:?} not found. Fallback to the \
-                         default path: {DEFAULT_COSMIAN_KMS_CONF}"
+                        "WARNING: Configuration file {} not found. Fallback to the default path: \
+                         {DEFAULT_COSMIAN_KMS_CONF}",
+                        conf_path.display()
                     );
                     // fallback to the default path
                     PathBuf::from(DEFAULT_COSMIAN_KMS_CONF)
@@ -182,24 +183,28 @@ impl ClapConfig {
             drop(Self::parse()); // Do that do catch --help or --version even if we use a conf file
 
             println!(
-                "Configuration file {conf:?} found. Command line arguments and env variables are \
-                 ignored."
+                "Configuration file {} found. Command line arguments and env variables are \
+                 ignored.",
+                conf.display()
             );
 
             let conf_content = std::fs::read_to_string(&conf).map_err(|e| {
                 KmsError::ServerError(format!(
-                    "Cannot read KMS server config at: {conf:?} - {e:?}"
+                    "Cannot read KMS server config at: {} - {e:?}",
+                    conf.display()
                 ))
             })?;
             toml::from_str(&conf_content).map_err(|e| {
                 KmsError::ServerError(format!(
-                    "Cannot parse kms server config at: {conf:?} - {e:?}"
+                    "Cannot parse kms server config at: {} - {e:?}",
+                    conf.display()
                 ))
             })?
         } else {
             println!(
-                "WARNING: Configuration file {conf:?} not found. Using command line arguments and \
-                 env variables."
+                "WARNING: Configuration file {} not found. Using command line arguments and env \
+                 variables.",
+                conf.display()
             );
             Self::parse()
         };

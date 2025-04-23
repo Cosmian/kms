@@ -25,9 +25,9 @@ pub struct KMS {
 
     /// The database is made of two parts:
     /// - The objects' store that stores the cryptographic objects.
-    ///    The Object store may be backed by multiple databases or HSMs
-    ///    and store the cryptographic objects and their attributes.
-    ///    Objects are spread across the underlying stores based on their ID prefix.
+    ///   The Object store may be backed by multiple databases or HSMs
+    ///   and store the cryptographic objects and their attributes.
+    ///   Objects are spread across the underlying stores based on their ID prefix.
     /// - The permissions store that stores the permissions granted to users on the objects.
     pub(crate) database: Database,
 
