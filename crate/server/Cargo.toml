@@ -85,7 +85,7 @@ proteccio_pkcs11_loader = { path = "../hsm/proteccio" }
 # implementations depending on the operating system. On linux, it will
 # use openssl
 # The default features is to guarantee that the native-tls crate will be used
-reqwest = { workspace = true, features = ["default", "json"] }
+reqwest = { workspace = true, features = ["default", "json", "native-tls"] }
 rustls = { version = "0.23", features = [
     "tls12",
     "std",
