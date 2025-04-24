@@ -1,6 +1,7 @@
 use std::{fmt, path::PathBuf};
 
 use openssl::pkcs12::{ParsedPkcs12_2, Pkcs12};
+use x509_parser::pem::Pem;
 
 use crate::{
     config::{HttpConfig, TlsConfig},
@@ -78,6 +79,17 @@ fn open_p12(p12_file: &PathBuf, p12_password: &str) -> Result<ParsedPkcs12_2, Km
 
 impl fmt::Debug for TlsParams {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let ca_cert = if let Some(cert) = &self.client_ca_cert_pem {
+            let pem = Pem::iter_from_buffer(cert)
+                .next()
+                .transpose()
+                .map_err(|_e| fmt::Error)?
+                .ok_or(fmt::Error)?;
+            let x509 = pem.parse_x509().map_err(|_e| fmt::Error)?;
+            x509.subject().to_string()
+        } else {
+            "[N/A]".to_owned()
+        };
         f.debug_struct("TlsParams")
             .field(
                 "p12",
@@ -85,7 +97,7 @@ impl fmt::Debug for TlsParams {
                     format!("{:?}", cert.subject_name())
                 }),
             )
-            .field("authority_cert_file ? ", &self.client_ca_cert_pem.is_some())
+            .field("authority_cert_file: ", &ca_cert)
             .finish()
     }
 }
