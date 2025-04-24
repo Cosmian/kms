@@ -81,6 +81,7 @@ jobs:
       - run: find .
 
       - name: Creating zip to be attached to release
+        shell: bash
         run: |
           set -xe
           apt update -y
@@ -90,7 +91,7 @@ jobs:
           done
 
           # Warning, no all binaries in debug, only in release
-          if [ "${{ inputs.debug_or_release }}" == "release" ]; then
+          if [ "${{ inputs.debug_or_release }}" = "release" ]; then
             zip -r ubuntu_22_04-release.zip ubuntu_22_04-release
             zip -r windows-release.zip windows-release
             zip -r macos_intel-release.zip macos_intel-release
@@ -107,11 +108,9 @@ jobs:
           fi
           DESTINATION_DIR=/mnt/package/kms/$BRANCH
           ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p $DESTINATION_DIR
-          scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
-            *.zip \
-            cosmian@package.cosmian.com:$DESTINATION_DIR/
+          scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa *.zip cosmian@package.cosmian.com:$DESTINATION_DIR/
 
-          if [ "${{ inputs.debug_or_release }}" == "release" ]; then
+          if [ "${{ inputs.debug_or_release }}" = "release" ]; then
             ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p $DESTINATION_DIR/{rhel9,ubuntu-22.04,ubuntu-24.04}
 
             # RedHat 9 package
@@ -134,8 +133,7 @@ jobs:
         with:
           files: |
             *.zip
-            rhel9-release/__w/kms/kms/target/x86_64-unknown-linux-gnu/generate-rpm/*.rpm \
-            ubuntu_22_04-release/home/runner/work/kms/kms/target/x86_64-unknown-linux-gnu/debian/*.deb \
+            rhel9-release/__w/kms/kms/target/x86_64-unknown-linux-gnu/generate-rpm/*.rpm
             ubuntu_24_04-release/home/runner/work/kms/kms/target/x86_64-unknown-linux-gnu/debian/*.deb
 
   public_documentation:

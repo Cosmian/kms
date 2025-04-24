@@ -103,14 +103,14 @@ x509-parser = { workspace = true }
 zeroize = { workspace = true }
 
 [dev-dependencies]
-actix-http = "3.6"
+actix-http = "3.10"
 cosmian_kms_client_utils = { workspace = true }
 cosmian_logger = { workspace = true }
 pem = { workspace = true }
 tempfile = { workspace = true }
 
 [build-dependencies]
-actix-http = "3.6"
+actix-http = "3.10"
 time = { workspace = true, features = ["local-offset", "formatting"] }
 
 # ------------------------------------------------------------------------------
@@ -128,6 +128,11 @@ assets = [
   [
     "ui/dist/*",
     "usr/local/cosmian/ui/dist/",
+    "500",
+  ],
+  [
+    "ui/dist/assets/*",
+    "usr/local/cosmian/ui/dist/assets/",
     "500",
   ],
   [
@@ -161,6 +166,11 @@ assets = [
   [
     "ui/dist/*",
     "usr/local/cosmian/ui/dist/",
+    "500",
+  ],
+  [
+    "ui/dist/assets/*",
+    "usr/local/cosmian/ui/dist/assets/",
     "500",
   ],
   [
@@ -204,6 +214,7 @@ assets = [
 license = "BUSL-1.1"
 assets = [
   { source = "ui/dist/*", dest = "/usr/local/cosmian/ui/dist/", mode = "500" },
+  { source = "ui/dist/assets/*", dest = "/usr/local/cosmian/ui/dist/assets/", mode = "500" },
   { source = "target/release/cosmian_kms", dest = "/usr/sbin/cosmian_kms", mode = "500" },
   { source = "/usr/local/openssl/lib64/ossl-modules/legacy.so", dest = "/usr/local/openssl/lib64/ossl-modules/legacy.so", mode = "500" },
   { source = "../../README.md", dest = "/usr/share/doc/cosmian/README", mode = "644", doc = true },

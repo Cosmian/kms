@@ -22,9 +22,9 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "4.23.0"
+version = "4.24.0"
 edition = "2021"
-rust-version = "1.71.0"
+rust-version = "1.80.0"
 authors = [
   "Bruno Grieder <bruno.grieder@cosmian.com>",
   "Emmanuel Coste <emmanuel.coste@cosmian.com>",
@@ -55,21 +55,21 @@ opt-level = 0
 [workspace.dependencies]
 actix-rt = "2.10"
 actix-server = { version = "2.5", default-features = false }
-actix-web = { version = "4.9", default-features = false }
+actix-web = { version = "4.10", default-features = false }
 async-trait = "0.1"
 base64 = "0.22"
-bitflags = "2.8"
+bitflags = "2.9"
 chrono = "0.4"
 clap = { version = "4.5", default-features = false }
-cosmian_findex = { git = "https://github.com/Cosmian/findex", default-features = false, rev = "98fcb6e97054e1bb9dddd7a0d620e27438cb91b7" }
+cosmian_findex = { git = "https://github.com/Cosmian/findex", default-features = false, rev = "6329b6b2f2b64b033e40b05cd12ca1c9b5ee376f" }
 cosmian_findex_server = { git = "https://www.github.com/Cosmian/findex-server", branch = "develop" }
 cosmian_findex_structs = { git = "https://www.github.com/Cosmian/findex-server", branch = "develop" }
-cosmian_config_utils = { git = "https://www.github.com/Cosmian/http_client_server", tag = "0.1.0" }
+cosmian_config_utils = "0.1.1"
 cosmian_cover_crypt = "15.0"
-cosmian_crypto_core = { version = "10.0.1", default-features = false, features = [
+cosmian_crypto_core = { version = "10.1", default-features = false, features = [
   "ser",
 ] }
-cosmian_http_client = { git = "https://www.github.com/Cosmian/http_client_server", tag = "0.1.1" }
+cosmian_http_client = "0.1.1"
 cosmian_kmip = { path = "crate/kmip" }
 cosmian_kms_access = { path = "crate/access" }
 cosmian_kms_client = { path = "cli/crate/kms_client" }
@@ -77,7 +77,7 @@ cosmian_kms_client_utils = { path = "cli/crate/client_utils" }
 cosmian_kms_crypto = { path = "crate/crypto" }
 cosmian_kms_server = { path = "crate/server" }
 cosmian_kms_server_database = { path = "crate/server_database" }
-cosmian_logger = { git = "https://www.github.com/Cosmian/http_client_server", tag = "0.1.0" }
+cosmian_logger = "0.1.1"
 der = { version = "0.7", default-features = false }
 hex = { version = "0.4", default-features = false }
 lazy_static = "1.5"
@@ -101,8 +101,8 @@ strum = { version = "0.25", default-features = false }
 thiserror = "2.0"
 time = "0.3"
 tiny-keccak = "2.0"
-tempfile = "3.16"
-tokio = { version = "1.43", default-features = false }
+tempfile = "3.19"
+tokio = { version = "1.44", default-features = false }
 tracing-subscriber = { version = "0.3", default-features = false }
 tracing = "0.1"
 url = "2.5"

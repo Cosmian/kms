@@ -137,7 +137,7 @@ pub fn kmip_public_key_to_openssl(public_key: &Object) -> Result<PKey<Public>, C
             ),
         },
         f => crypto_bail!(
-            "Unsupported key format type: {f:?}, for tr transforming a {} to openssl",
+            "Unsupported key format type: {f:?}, for transforming a {} to openssl",
             public_key.object_type()
         ),
     };
