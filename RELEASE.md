@@ -3,8 +3,8 @@
 ## Table of contents
 
 - [Release](#release)
-    - [Table of contents](#table-of-contents)
-    - [Step by step](#step-by-step)
+  - [Table of contents](#table-of-contents)
+  - [Step by step](#step-by-step)
 
 ## Step by step
 
@@ -35,7 +35,7 @@ To proceed a new release, please follow the steps below:
 3. Update the version X.Y.Z almost everywhere:
 
    - Update in Cargo.toml
-   - In Dockerfile and Dockerfile.fips
+   - In Dockerfile
    - In README.md
    - In documentation folder
 
