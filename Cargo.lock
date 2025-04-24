@@ -1475,8 +1475,6 @@ dependencies = [
  "cosmian_http_client",
  "cosmian_kms_client_utils",
  "der",
- "hex",
- "native-tls",
  "pem",
  "reqwest 0.11.27",
  "serde",
@@ -1662,13 +1660,18 @@ dependencies = [
 name = "cosmian_pkcs11"
 version = "4.23.0"
 dependencies = [
- "cosmian_kms_client",
+ "cosmian_cli",
+ "cosmian_crypto_core 10.1.0",
+ "cosmian_kmip",
  "cosmian_logger 0.1.1",
  "cosmian_pkcs11_module",
  "etcetera",
+ "hex",
  "p256",
  "pkcs1",
+ "pkcs11_sys",
  "serde_json",
+ "serial_test",
  "sha3",
  "test_kms_server",
  "thiserror 2.0.12",
@@ -1687,7 +1690,7 @@ version = "4.23.0"
 dependencies = [
  "bincode",
  "const-oid",
- "cosmian_crypto_core 10.1.0",
+ "cosmian_logger 0.1.1",
  "hex",
  "log",
  "once_cell",
@@ -1697,10 +1700,9 @@ dependencies = [
  "rand 0.9.1",
  "rsa",
  "serial_test",
- "strum_macros",
+ "strum_macros 0.26.4",
  "thiserror 2.0.12",
  "tracing",
- "tracing-subscriber",
  "zeroize",
 ]
 
@@ -5269,7 +5271,20 @@ version = "0.27.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f64def088c51c9510a8579e3c5d67c65349dcf755e5479ad3d010aa6454e2c32"
 dependencies = [
- "strum_macros",
+ "strum_macros 0.27.1",
+]
+
+[[package]]
+name = "strum_macros"
+version = "0.26.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4c6bee85a5a24955dc440386795aa378cd9cf82acd5f764469152d2270e581be"
+dependencies = [
+ "heck",
+ "proc-macro2",
+ "quote",
+ "rustversion",
+ "syn",
 ]
 
 [[package]]
