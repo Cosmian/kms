@@ -65,8 +65,8 @@ pub enum Operation {
     ImportResponse(ImportResponse),
     Locate(Locate),
     LocateResponse(LocateResponse),
-    Mac(Mac),
-    MacResponse(MacResponse),
+    Mac(MAC),
+    MacResponse(MACResponse),
     Query(Query),
     QueryResponse(QueryResponse),
     Revoke(Revoke),
@@ -1478,12 +1478,12 @@ impl Display for LocateResponse {
 
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Default, Debug)]
 #[serde(rename_all = "PascalCase")]
-pub struct Mac {
+pub struct MAC {
     /// The Unique Identifier of the Managed Cryptographic Object that is the key to use for the MAC operation. If omitted, then the ID Placeholder value SHALL be used by the server as the Unique Identifier.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unique_identifier: Option<UniqueIdentifier>,
     /// The Cryptographic Parameters (Hashing Algorithm) corresponding to the particular hash method requested.
-    pub cryptographic_parameters: CryptographicParameters,
+    pub cryptographic_parameters: Option<CryptographicParameters>,
     /// The data to be hashed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<Vec<u8>>,
@@ -1498,7 +1498,7 @@ pub struct Mac {
     pub final_indicator: Option<bool>,
 }
 
-impl Display for Mac {
+impl Display for MAC {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -1515,24 +1515,26 @@ impl Display for Mac {
 }
 
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Debug)]
-#[serde(rename_all = "PascalCase")]
-pub struct MacResponse {
+pub struct MACResponse {
     /// The Unique Identifier of the Managed Cryptographic Object that is the key used for the MAC operation.
+    #[serde(rename = "UniqueIdentifier")]
     pub unique_identifier: UniqueIdentifier,
     /// The hashed data (as a Byte String).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<Vec<u8>>,
+    #[serde(rename = "MACData")]
+    pub mac_data: Option<Vec<u8>>,
     /// Specifies the stream or by-parts value to be provided in subsequent calls to this operation for performing cryptographic operations.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "CorrelationValue")]
     pub correlation_value: Option<Vec<u8>>,
 }
 
-impl Display for MacResponse {
+impl Display for MACResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "MacResponse {{ data: {:?}, correlation_value: {:?} }}",
-            self.data, self.correlation_value
+            self.mac_data, self.correlation_value
         )
     }
 }

@@ -20,15 +20,16 @@ use std::fmt::{self, Display, Formatter};
 /// The batched responses MAY contain a mixture of synchronous and
 /// asynchronous responses only if the Asynchronous Indicator is present in the header.
 use serde::{
+    Deserialize, Serialize,
     de::{self, MapAccess, Visitor},
     ser::{self, SerializeStruct},
-    Deserialize, Serialize,
 };
 
 use super::{kmip_operations::Operation, kmip_types::OperationEnumeration};
 use crate::{
+    KmipError, KmipResultHelper,
     kmip_0::kmip_types::{Direction, ErrorReason, MessageExtension, ResultStatusEnumeration},
-    kmip_2_1, KmipError, KmipResultHelper,
+    kmip_2_1,
 };
 
 /// Batch item for a message request
@@ -234,6 +235,7 @@ impl<'de> Deserialize<'de> for RequestMessageBatchItem {
                                 OperationEnumeration::Locate => {
                                     Operation::Locate(map.next_value()?)
                                 }
+                                OperationEnumeration::MAC => Operation::MAC(map.next_value()?),
                                 OperationEnumeration::Query => Operation::Query(map.next_value()?),
                                 OperationEnumeration::Register => {
                                     Operation::Register(map.next_value()?)

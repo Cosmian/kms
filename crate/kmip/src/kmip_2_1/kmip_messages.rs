@@ -74,7 +74,7 @@ impl ResponseMessage {
                             })
                             .cloned(),
                         Operation::MacResponse(response) => response
-                            .data
+                            .mac_data
                             .as_ref()
                             .ok_or_else(|| {
                                 KmipError::Default("Missing data in Mac Response".to_owned())

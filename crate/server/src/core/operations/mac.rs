@@ -4,7 +4,7 @@ use cosmian_kmip::{
     kmip_0::kmip_types::HashingAlgorithm,
     kmip_2_1::{
         KmipOperation,
-        kmip_operations::{Mac, MacResponse},
+        kmip_operations::{MAC, MACResponse},
         kmip_types::UniqueIdentifier,
     },
 };
@@ -43,10 +43,10 @@ fn compute_hmac(key: &[u8], data: &[u8], algorithm: HashingAlgorithm) -> KResult
 
 pub(crate) async fn mac(
     kms: &KMS,
-    request: Mac,
+    request: MAC,
     user: &str,
     params: Option<Arc<dyn SessionParams>>,
-) -> KResult<MacResponse> {
+) -> KResult<MACResponse> {
     trace!("Mac: {}", serde_json::to_string(&request)?);
 
     let uid = request
@@ -59,6 +59,9 @@ pub(crate) async fn mac(
 
     let algorithm = request
         .cryptographic_parameters
+        .ok_or_else(|| {
+            KmsError::InvalidRequest("Cryptographic parameters are required".to_owned())
+        })?
         .hashing_algorithm
         .ok_or_else(|| KmsError::InvalidRequest("Hashing algorithm is required".to_owned()))?;
     trace!("Mac: algorithm: {algorithm:?}");
@@ -78,9 +81,9 @@ pub(crate) async fn mac(
         compute_hmac(key_bytes.as_slice(), &data, algorithm)?
     };
 
-    let response = MacResponse {
+    let response = MACResponse {
         unique_identifier: UniqueIdentifier::TextString(uid.to_owned()),
-        data: (!request.init_indicator.unwrap_or(false)).then_some(digest.clone()),
+        mac_data: (!request.init_indicator.unwrap_or(false)).then_some(digest.clone()),
         correlation_value: request.init_indicator.unwrap_or(false).then_some(digest),
     };
     trace!(
@@ -100,7 +103,7 @@ mod tests {
         kmip_0::kmip_types::HashingAlgorithm,
         kmip_2_1::{
             extra::tagging::EMPTY_TAGS,
-            kmip_operations::Mac,
+            kmip_operations::MAC,
             kmip_types::{CryptographicAlgorithm, CryptographicParameters},
             requests::symmetric_key_create_request,
         },
@@ -185,51 +188,51 @@ mod tests {
             .unique_identifier,
         );
 
-        let request = Mac {
+        let request = MAC {
             unique_identifier: unique_identifier.clone(),
-            cryptographic_parameters: CryptographicParameters {
+            cryptographic_parameters: Some(CryptographicParameters {
                 hashing_algorithm: Some(HashingAlgorithm::SHA3256),
                 ..Default::default()
-            },
+            }),
             data: Some(vec![1, 2, 3]),
             correlation_value: None,
             init_indicator: None,
             final_indicator: None,
         };
         let response = kms.mac(request, "user", None).await?;
-        assert_eq!(response.data.unwrap().len(), 32);
+        assert_eq!(response.mac_data.unwrap().len(), 32);
         assert_eq!(response.correlation_value, None);
 
         // Stream initialization
-        let request = Mac {
+        let request = MAC {
             unique_identifier: unique_identifier.clone(),
-            cryptographic_parameters: CryptographicParameters {
+            cryptographic_parameters: Some(CryptographicParameters {
                 hashing_algorithm: Some(HashingAlgorithm::SHA3256),
                 ..Default::default()
-            },
+            }),
             data: Some(vec![1, 2, 3]),
             correlation_value: None,
             init_indicator: Some(true),
             final_indicator: None,
         };
         let response = kms.mac(request, "user", None).await?;
-        assert_eq!(response.data, None);
+        assert_eq!(response.mac_data, None);
         assert_eq!(response.correlation_value.clone().unwrap().len(), 32);
 
         // Stream finalization
-        let request = Mac {
+        let request = MAC {
             unique_identifier,
-            cryptographic_parameters: CryptographicParameters {
+            cryptographic_parameters: Some(CryptographicParameters {
                 hashing_algorithm: Some(HashingAlgorithm::SHA3256),
                 ..Default::default()
-            },
+            }),
             data: Some(vec![1, 2, 3]),
             correlation_value: response.correlation_value,
             init_indicator: None,
             final_indicator: Some(true),
         };
         let response = kms.mac(request, "user", None).await?;
-        assert_eq!(response.data.unwrap().len(), 32);
+        assert_eq!(response.mac_data.unwrap().len(), 32);
         assert_eq!(response.correlation_value, None);
         Ok(())
     }

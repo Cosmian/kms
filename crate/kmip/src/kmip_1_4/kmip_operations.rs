@@ -1090,15 +1090,47 @@ pub struct MAC {
     pub unique_identifier: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_parameters: Option<CryptographicParameters>,
-    pub data: Vec<u8>,
+    /// The data to be hashed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<Vec<u8>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub correlation_value: Option<Vec<u8>>,
+    /// Initial operation as Boolean
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub init_indicator: Option<bool>,
+    /// Final operation as Boolean
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub final_indicator: Option<bool>,
+}
+
+impl From<MAC> for kmip_2_1::kmip_operations::MAC {
+    fn from(value: MAC) -> Self {
+        Self {
+            unique_identifier: Some(kmip_2_1::kmip_types::UniqueIdentifier::TextString(
+                value.unique_identifier,
+            )),
+            cryptographic_parameters: value.cryptographic_parameters.map(Into::into),
+            data: value.data,
+            correlation_value: value.correlation_value,
+            init_indicator: value.init_indicator,
+            final_indicator: value.final_indicator,
+        }
+    }
 }
 
 /// Response to a MAC request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-#[serde(rename_all = "PascalCase")]
 pub struct MACResponse {
+    #[serde(rename = "UniqueIdentifier")]
     pub unique_identifier: String,
-    pub mac_data: Vec<u8>,
+    /// The hashed data (as a Byte String).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "MACData")]
+    pub mac_data: Option<Vec<u8>>,
+    /// Specifies the stream or by-parts value to be provided in subsequent calls to this operation for performing cryptographic operations.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "CorrelationValue")]
+    pub correlation_value: Option<Vec<u8>>,
 }
 
 /// 4.34 MAC Verify
@@ -1846,7 +1878,7 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             //         signature_verify_response.into(),
             //     )
             // }
-            // Operation::MAC(mac) => Self::MAC(mac.into()),
+            Operation::MAC(mac) => Self::Mac(mac.into()),
             // Operation::MACResponse(mac_response) => {
             //     Self::MACResponse(mac_response.into())
             // }
@@ -1878,7 +1910,7 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             }
             op => {
                 return Err(KmipError::NotSupported(format!(
-                    "KMIP 2.1 does not support Request Operation: {op:?}"
+                    "KMIP 2.1 does not support Request Operation: {op:?} response"
                 )))
             }
         })

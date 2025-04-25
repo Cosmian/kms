@@ -14,7 +14,7 @@ use cosmian_kmip::{
     kmip_2_1::{
         extra::tagging::EMPTY_TAGS,
         kmip_messages::RequestMessageBatchItem,
-        kmip_operations::{Decrypt, Encrypt, Locate, Mac, Operation},
+        kmip_operations::{Decrypt, Encrypt, Locate, MAC, Operation},
         kmip_types::{
             CryptographicAlgorithm, CryptographicParameters, OperationEnumeration,
             RecommendedCurve, UniqueIdentifier,
@@ -54,12 +54,12 @@ async fn test_kmip_mac_messages() -> KResult<()> {
             .await?
             .unique_identifier,
     );
-    let mac_request = Mac {
+    let mac_request = MAC {
         unique_identifier,
-        cryptographic_parameters: CryptographicParameters {
+        cryptographic_parameters: Some(CryptographicParameters {
             hashing_algorithm: Some(HashingAlgorithm::SHA3512),
             ..Default::default()
-        },
+        }),
         data: Some(vec![0; 32]),
         ..Default::default()
     };
