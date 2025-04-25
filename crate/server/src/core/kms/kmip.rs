@@ -11,7 +11,7 @@ use cosmian_kmip::{
         CreateKeyPairResponse, CreateResponse, Decrypt, DecryptResponse, DeleteAttribute,
         DeleteAttributeResponse, Destroy, DestroyResponse, Encrypt, EncryptResponse, Export,
         ExportResponse, Get, GetAttributes, GetAttributesResponse, GetResponse, Hash, HashResponse,
-        Import, ImportResponse, Locate, LocateResponse, Mac, MacResponse, Query, QueryResponse,
+        Import, ImportResponse, Locate, LocateResponse, MAC, MACResponse, Query, QueryResponse,
         ReKey, ReKeyKeyPair, ReKeyKeyPairResponse, ReKeyResponse, Revoke, RevokeResponse,
         SetAttribute, SetAttributeResponse, Validate, ValidateResponse,
     },
@@ -471,10 +471,10 @@ impl KMS {
     /// The success or failure of the operation is indicated by the Result Status (and if failure the Result Reason) in the response header.
     pub(crate) async fn mac(
         &self,
-        request: Mac,
+        request: MAC,
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
-    ) -> KResult<MacResponse> {
+    ) -> KResult<MACResponse> {
         operations::mac(self, request, user, params).await
     }
 
