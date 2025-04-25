@@ -104,6 +104,11 @@ pub(crate) async fn dispatch(
             let resp = kms.locate(req, user, database_params).await?;
             Operation::LocateResponse(resp)
         }
+        "MAC" => {
+            let req = from_ttlv::<MAC>(ttlv)?;
+            let resp = kms.mac(req, user, database_params).await?;
+            Operation::MACResponse(resp)
+        }
         "Query" => {
             let req = from_ttlv::<Query>(ttlv)?;
             let resp = kms.query(req).await?;
