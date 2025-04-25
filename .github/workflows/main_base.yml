@@ -30,7 +30,7 @@ jobs:
     with:
       toolchain: ${{ inputs.toolchain }}
 
-  build:
+  build: # Build on Ubuntu 22/24, Rocky 8/9, MacOS 13/15 and Windows 22
     uses: Cosmian/reusable_workflows/.github/workflows/build_all.yml@develop
     secrets: inherit
     with:
@@ -56,7 +56,7 @@ jobs:
       fips: true
 
   ##############################################################################
-  ### Releases
+  ### Push binaries on package.cosmian.com and make Release
   ##############################################################################
   push-artifacts:
     needs:
