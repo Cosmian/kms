@@ -73,7 +73,7 @@ impl ResponseMessage {
                                 KmipError::Default("Missing data in Hash Response".to_owned())
                             })
                             .cloned(),
-                        Operation::MacResponse(response) => response
+                        Operation::MACResponse(response) => response
                             .mac_data
                             .as_ref()
                             .ok_or_else(|| {
@@ -292,6 +292,7 @@ impl<'de> Deserialize<'de> for RequestMessageBatchItem {
                                 OperationEnumeration::Locate => {
                                     Operation::Locate(map.next_value()?)
                                 }
+                                OperationEnumeration::MAC => Operation::MAC(map.next_value()?),
                                 OperationEnumeration::Query => Operation::Query(map.next_value()?),
                                 OperationEnumeration::Revoke => {
                                     Operation::Revoke(map.next_value()?)
@@ -636,6 +637,9 @@ impl<'de> Deserialize<'de> for ResponseMessageBatchItem {
                                 }
                                 OperationEnumeration::Locate => {
                                     Operation::LocateResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::MAC => {
+                                    Operation::MACResponse(map.next_value()?)
                                 }
                                 OperationEnumeration::Query => {
                                     Operation::QueryResponse(map.next_value()?)

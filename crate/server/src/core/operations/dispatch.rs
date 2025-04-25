@@ -80,7 +80,7 @@ pub(crate) async fn dispatch(
         "Mac" => {
             let req = from_ttlv::<MAC>(ttlv)?;
             let resp = kms.mac(req, user, database_params).await?;
-            Operation::MacResponse(resp)
+            Operation::MACResponse(resp)
         }
         "Import" => {
             let req = from_ttlv::<Import>(ttlv)?;

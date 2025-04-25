@@ -65,8 +65,8 @@ pub enum Operation {
     ImportResponse(ImportResponse),
     Locate(Locate),
     LocateResponse(LocateResponse),
-    Mac(MAC),
-    MacResponse(MACResponse),
+    MAC(MAC),
+    MACResponse(MACResponse),
     Query(Query),
     QueryResponse(QueryResponse),
     Revoke(Revoke),
@@ -99,7 +99,7 @@ impl Operation {
             | Self::GetAttributes(_)
             | Self::Hash(_)
             | Self::Locate(_)
-            | Self::Mac(_)
+            | Self::MAC(_)
             | Self::Query(_)
             | Self::Revoke(_)
             | Self::ReKey(_)
@@ -123,7 +123,7 @@ impl Operation {
             | Self::ImportResponse(_)
             | Self::HashResponse(_)
             | Self::LocateResponse(_)
-            | Self::MacResponse(_)
+            | Self::MACResponse(_)
             | Self::RevokeResponse(_)
             | Self::ReKeyResponse(_)
             | Self::ReKeyKeyPairResponse(_)
@@ -161,7 +161,7 @@ impl Operation {
             Self::Import(_) | Self::ImportResponse(_) => OperationEnumeration::Import,
             Self::Hash(_) | Self::HashResponse(_) => OperationEnumeration::Hash,
             Self::Locate(_) | Self::LocateResponse(_) => OperationEnumeration::Locate,
-            Self::Mac(_) | Self::MacResponse(_) => OperationEnumeration::MAC,
+            Self::MAC(_) | Self::MACResponse(_) => OperationEnumeration::MAC,
             Self::Query(_) | Self::QueryResponse(_) => OperationEnumeration::Query,
             Self::ReKey(_) | Self::ReKeyResponse(_) => OperationEnumeration::ReKey,
             Self::ReKeyKeyPair(_) | Self::ReKeyKeyPairResponse(_) => {

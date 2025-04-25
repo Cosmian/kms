@@ -68,7 +68,7 @@ async fn test_kmip_mac_messages() -> KResult<()> {
     let items_number = 100_000;
     let items: Vec<RequestMessageBatchItemVersioned> = (0..items_number)
         .map(|_| {
-            RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(Operation::Mac(
+            RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(Operation::MAC(
                 mac_request.clone(),
             )))
         })
@@ -76,8 +76,8 @@ async fn test_kmip_mac_messages() -> KResult<()> {
     let message_request = RequestMessage {
         request_header: RequestMessageHeader {
             protocol_version: ProtocolVersion {
-                protocol_version_major: 1,
-                protocol_version_minor: 0,
+                protocol_version_major: 2,
+                protocol_version_minor: 1,
             },
             maximum_response_size: Some(9999),
             // wrong number of items but it is only checked
@@ -99,7 +99,7 @@ async fn test_kmip_mac_messages() -> KResult<()> {
         assert_eq!(item.operation, Some(OperationEnumeration::MAC));
         assert!(matches!(
             item.response_payload,
-            Some(Operation::MacResponse(_))
+            Some(Operation::MACResponse(_))
         ));
     }
     assert_eq!(
@@ -159,8 +159,8 @@ async fn test_encrypt_kmip_messages() -> KResult<()> {
     let message_request = RequestMessage {
         request_header: RequestMessageHeader {
             protocol_version: ProtocolVersion {
-                protocol_version_major: 1,
-                protocol_version_minor: 0,
+                protocol_version_major: 2,
+                protocol_version_minor: 1,
             },
             maximum_response_size: Some(9999),
             batch_count: items_number,
