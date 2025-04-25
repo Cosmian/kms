@@ -186,8 +186,7 @@ vcpkg integrate install
 
 Once OpenSSL is installed, you can build the KMS. To avoid the _additive feature_ issues, the main artifacts - the CLI,
 the KMS server and the PKCS11 provider - should directly be built using `cargo build --release` within their own crate,
-not
-from the project root.
+not from the project root.
 
 Build the server and CLI binaries:
 
