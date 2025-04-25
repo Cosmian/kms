@@ -18,6 +18,7 @@ use cosmian_kms_crypto::crypto::{
     rsa::operation::create_rsa_key_pair,
 };
 use cosmian_kms_interfaces::{AtomicOperation, SessionParams};
+use log::info;
 #[cfg(not(feature = "fips"))]
 use tracing::warn;
 use tracing::{debug, trace};
@@ -55,7 +56,9 @@ pub(crate) async fn create_key_pair(
     trace!("create_key_pair: sk_uid: {sk_uid}, pk_uid: {pk_uid}");
 
     let private_key_attributes = key_pair.private_key().attributes()?.clone();
+    info!("==> private_key_attributes: {private_key_attributes:?}");
     let public_key_attributes = key_pair.public_key().attributes()?.clone();
+    info!("==> public_key_attributes: {public_key_attributes:?}");
 
     let operations = vec![
         AtomicOperation::Create((

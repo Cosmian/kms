@@ -88,6 +88,12 @@ pub fn create_msk_object(
         linked_object_identifier: LinkedObjectIdentifier::TextString(mpk_uid.to_owned()),
     }]);
     attributes.sensitive = if sensitive { Some(true) } else { None };
+
+    // Add the "_sk" system tag to the attributes
+    let mut tags = attributes.get_tags();
+    tags.insert("_sk".to_owned());
+    attributes.set_tags(tags)?;
+
     let cryptographic_length = Some(i32::try_from(msk_bytes.len())? * 8);
     Ok(Object::PrivateKey(PrivateKey {
         key_block: KeyBlock {
@@ -123,6 +129,12 @@ fn create_mpk_object(
         link_type: LinkType::PrivateKeyLink,
         linked_object_identifier: LinkedObjectIdentifier::TextString(msk_uid),
     }]);
+
+    // Add the "_pk" system tag to the attributes
+    let mut tags = attributes.get_tags();
+    tags.insert("_pk".to_owned());
+    attributes.set_tags(tags)?;
+
     let cryptographic_length = Some(i32::try_from(key.len())? * 8);
     Ok(Object::PublicKey(PublicKey {
         key_block: KeyBlock {
