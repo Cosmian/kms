@@ -1133,6 +1133,18 @@ pub struct MACResponse {
     pub correlation_value: Option<Vec<u8>>,
 }
 
+impl TryFrom<kmip_2_1::kmip_operations::MACResponse> for MACResponse {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_operations::MACResponse) -> Result<Self, Self::Error> {
+        Ok(Self {
+            unique_identifier: value.unique_identifier.to_string(),
+            mac_data: value.mac_data,
+            correlation_value: value.correlation_value,
+        })
+    }
+}
+
 /// 4.34 MAC Verify
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
@@ -1878,7 +1890,7 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             //         signature_verify_response.into(),
             //     )
             // }
-            Operation::MAC(mac) => Self::Mac(mac.into()),
+            Operation::MAC(mac) => Self::MAC(mac.into()),
             // Operation::MACResponse(mac_response) => {
             //     Self::MACResponse(mac_response.into())
             // }
@@ -2123,9 +2135,9 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             //     )
             // }
             // Operation::MAC(mac) => Self::MAC(mac.into()),
-            // Operation::MACResponse(mac_response) => {
-            //     Self::MACResponse(mac_response.into())
-            // }
+            kmip_2_1::kmip_operations::Operation::MACResponse(mac_response) => {
+                Self::MACResponse(mac_response.try_into()?)
+            }
             // Operation::MACVerify(mac_verify) => {
             //     Self::MACVerify(mac_verify.into())
             // }

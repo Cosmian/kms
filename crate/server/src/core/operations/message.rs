@@ -174,8 +174,8 @@ async fn process_operation(
         Operation::Locate(kmip_request) => {
             Operation::LocateResponse(kms.locate(kmip_request, user, params).await?)
         }
-        Operation::Mac(kmip_request) => {
-            Operation::MacResponse(kms.mac(kmip_request, user, params).await?)
+        Operation::MAC(kmip_request) => {
+            Operation::MACResponse(kms.mac(kmip_request, user, params).await?)
         }
         Operation::Query(kmip_request) => Operation::QueryResponse(kms.query(kmip_request).await?),
         Operation::ReKey(kmip_request) => {
@@ -208,7 +208,7 @@ async fn process_operation(
         | Operation::HashResponse(_)
         | Operation::ImportResponse(_)
         | Operation::LocateResponse(_)
-        | Operation::MacResponse(_)
+        | Operation::MACResponse(_)
         | Operation::QueryResponse(_)
         | Operation::ReKeyKeyPairResponse(_)
         | Operation::ReKeyResponse(_)
