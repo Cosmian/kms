@@ -6,12 +6,14 @@ use std::{
 use clap::Parser;
 use serde::{Deserialize, Serialize};
 
-use super::{HttpConfig, JwtAuthConfig, MainDBConfig, WorkspaceConfig, ui_config::UiConfig};
+use super::{
+    HttpConfig, JwtAuthConfig, MainDBConfig, WorkspaceConfig, logging::LoggingConfig,
+    ui_config::UiConfig,
+};
 use crate::{
     config::{SocketServerConfig, TlsConfig},
     error::KmsError,
     result::KResult,
-    telemetry::TelemetryConfig,
 };
 
 const DEFAULT_COSMIAN_KMS_CONF: &str = "/etc/cosmian/kms.toml";
@@ -34,7 +36,7 @@ impl Default for ClapConfig {
             google_cse_disable_tokens_validation: false,
             google_cse_kacls_url: None,
             ms_dke_service_url: None,
-            telemetry: TelemetryConfig::default(),
+            logging: LoggingConfig::default(),
             info: false,
             hsm_admin: HSM_ADMIN.to_owned(),
             hsm_model: "proteccio".to_owned(),
@@ -106,7 +108,7 @@ pub struct ClapConfig {
     pub ms_dke_service_url: Option<String>,
 
     #[clap(flatten)]
-    pub telemetry: TelemetryConfig,
+    pub logging: LoggingConfig,
 
     /// Print the server configuration information and exit
     #[clap(long, default_value = "false")]
@@ -247,7 +249,7 @@ impl fmt::Debug for ClapConfig {
             "Microsoft Double Key Encryption URL",
             &self.ms_dke_service_url,
         );
-        let x = x.field("telemetry", &self.telemetry);
+        let x = x.field("telemetry", &self.logging);
         let x = x.field("info", &self.info);
         let x = x.field("HSM admin username", &self.hsm_admin);
         let x = x.field(

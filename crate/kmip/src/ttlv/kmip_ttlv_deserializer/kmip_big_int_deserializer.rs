@@ -371,7 +371,7 @@ impl<'de> de::Deserializer<'de> for &mut KmipBigIntDeserializer {
 impl<'de> SeqAccess<'de> for KmipBigIntDeserializer {
     type Error = TtlvError;
 
-    #[instrument(skip(self, seed))]
+    #[instrument(level = "trace", skip(self, seed))]
     fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>>
     where
         T: DeserializeSeed<'de>,

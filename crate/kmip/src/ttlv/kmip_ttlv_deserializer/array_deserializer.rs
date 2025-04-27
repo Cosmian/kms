@@ -2,7 +2,7 @@ use serde::de::{DeserializeSeed, SeqAccess};
 use tracing::{instrument, trace};
 
 use super::{Result, TtlvDeserializer};
-use crate::ttlv::{TtlvError, TTLV};
+use crate::ttlv::{TTLV, TtlvError};
 
 // The `ArrayDeserializer` is used to deserialize an array from struct elements
 /// It is called by the main deserializer when receiving Visitor requests to `deserialize_seq`
@@ -31,7 +31,7 @@ impl<'a> ArrayDeserializer<'a> {
 impl<'a, 'de: 'a> SeqAccess<'de> for ArrayDeserializer<'a> {
     type Error = TtlvError;
 
-    #[instrument(skip(self, seed))]
+    #[instrument(level = "trace", skip(self, seed))]
     fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>>
     where
         T: DeserializeSeed<'de>,

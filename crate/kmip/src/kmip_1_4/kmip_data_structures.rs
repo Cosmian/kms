@@ -125,7 +125,7 @@ impl<'de> Deserialize<'de> for KeyBlock {
                 formatter.write_str("struct KeyBlock")
             }
 
-            #[instrument(skip(self, map))]
+            #[instrument(level = "trace", skip(self, map))]
             fn visit_map<V>(self, mut map: V) -> Result<Self::Value, V::Error>
             where
                 V: MapAccess<'de>,

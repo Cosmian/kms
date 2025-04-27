@@ -64,8 +64,6 @@ pub mod result;
 pub mod routes;
 pub mod socket_server;
 pub mod start_kms_server;
-pub mod telemetry;
-
 #[allow(
     clippy::panic,
     clippy::panic_in_result_fn,

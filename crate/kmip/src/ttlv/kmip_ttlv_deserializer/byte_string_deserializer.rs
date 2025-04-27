@@ -38,7 +38,7 @@ impl<'a, 'de: 'a> de::Deserializer<'de> for &mut ByteStringDeserializer<'a> {
         visitor.visit_u8(byte)
     }
 
-    #[instrument(skip(self, visitor))]
+    #[instrument(level = "trace", skip(self, visitor))]
     fn deserialize_any<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
@@ -321,7 +321,7 @@ impl<'a, 'de: 'a> de::Deserializer<'de> for &mut ByteStringDeserializer<'a> {
 impl<'a, 'de: 'a> SeqAccess<'de> for ByteStringDeserializer<'a> {
     type Error = TtlvError;
 
-    #[instrument(skip(self, seed))]
+    #[instrument(level = "trace", skip(self, seed))]
     fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>>
     where
         T: DeserializeSeed<'de>,

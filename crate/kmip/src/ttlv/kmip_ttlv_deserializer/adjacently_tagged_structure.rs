@@ -89,7 +89,7 @@ pub(super) struct AdjacentlyTaggedStructure {
 }
 
 impl AdjacentlyTaggedStructure {
-    #[instrument(skip(de))]
+    #[instrument(level = "trace", skip(de))]
     pub(super) fn new(de: &mut TtlvDeserializer) -> Self {
         let (tag, content) = match &de.current.value {
             TTLValue::Structure(ttlvs) => (
@@ -291,7 +291,7 @@ fn further_expand_ttlv_struct(ttlv: &TTLV) -> TTLV {
 impl<'de> MapAccess<'de> for AdjacentlyTaggedStructure {
     type Error = TtlvError;
 
-    #[instrument(skip(self, seed))]
+    #[instrument(level = "trace", skip(self, seed))]
     fn next_key_seed<K>(&mut self, seed: K) -> std::result::Result<Option<K::Value>, Self::Error>
     where
         K: DeserializeSeed<'de>,
@@ -327,7 +327,7 @@ impl<'de> MapAccess<'de> for AdjacentlyTaggedStructure {
         .map(Option::Some)
     }
 
-    #[instrument(skip(self, seed))]
+    #[instrument(level = "trace", skip(self, seed))]
     fn next_value_seed<V>(&mut self, seed: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: DeserializeSeed<'de>,

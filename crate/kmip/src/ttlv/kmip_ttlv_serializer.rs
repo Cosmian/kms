@@ -2,18 +2,18 @@ use std::fmt::Debug;
 
 use num_bigint_dig::{BigInt, BigUint};
 use serde::{
+    Serialize,
     ser::{
         self, Error, SerializeMap, SerializeSeq, SerializeStruct, SerializeStructVariant,
         SerializeTuple, SerializeTupleVariant,
     },
-    Serialize,
 };
 use time::OffsetDateTime;
 // use strum::VariantNames;
 use tracing::{debug, instrument, trace};
 use zeroize::Zeroizing;
 
-use super::{error::TtlvError, TTLValue, TTLV};
+use super::{TTLV, TTLValue, error::TtlvError};
 // use crate::{kmip_1_4, kmip_2_1, ttlv::KmipEnumerationVariant};
 use crate::ttlv::KmipEnumerationVariant;
 
@@ -150,7 +150,7 @@ impl ser::Serializer for &mut TtlvSerializer {
     // Here we go with the simple methods. The following 12 methods receive one
     // of the primitive types of the data model and map it to JSON by appending
     // into the output string.
-    #[instrument(skip(self))]
+    #[instrument(level = "trace", skip(self))]
     fn serialize_bool(self, v: bool) -> Result<Self::Ok> {
         self.current_mut()?.value = TTLValue::Boolean(v);
         Ok(())
@@ -158,28 +158,28 @@ impl ser::Serializer for &mut TtlvSerializer {
 
     // TTLV does not distinguish between integers of size < 32,
     // so we serialize all integers as i32
-    #[instrument(skip(self))]
+    #[instrument(level = "trace", skip(self))]
     fn serialize_i8(self, v: i8) -> Result<Self::Ok> {
         self.serialize_i32(i32::from(v))
     }
 
     // TTLV does not distinguish between integers of size < 32,
     // so we serialize all integers as i32
-    #[instrument(skip(self))]
+    #[instrument(level = "trace", skip(self))]
     fn serialize_i16(self, v: i16) -> Result<Self::Ok> {
         self.serialize_i32(i32::from(v))
     }
 
     // TTLV does not distinguish between integers of size < 32,
     // so we serialize all integers as i32
-    #[instrument(skip(self))]
+    #[instrument(level = "trace", skip(self))]
     fn serialize_i32(self, v: i32) -> Result<Self::Ok> {
         self.current_mut()?.value = TTLValue::Integer(v);
         Ok(())
     }
 
     // Serialize a 64-bit signed integer as a TTLV Long Integer
-    #[instrument(skip(self))]
+    #[instrument(level = "trace", skip(self))]
     fn serialize_i64(self, v: i64) -> Result<Self::Ok> {
         self.current_mut()?.value = TTLValue::LongInteger(v);
         Ok(())
@@ -187,14 +187,14 @@ impl ser::Serializer for &mut TtlvSerializer {
 
     // TTLV does not distinguish between integers of size < 32,
     // so we serialize all integers as i32
-    #[instrument(skip(self))]
+    #[instrument(level = "trace", skip(self))]
     fn serialize_u8(self, v: u8) -> Result<Self::Ok> {
         self.serialize_i32(i32::from(v))
     }
 
     // TTLV does not distinguish between integers of size < 32,
     // so we serialize all integers as i32
-    #[instrument(skip(self))]
+    #[instrument(level = "trace", skip(self))]
     fn serialize_u16(self, v: u16) -> Result<Self::Ok> {
         self.serialize_i32(i32::from(v))
     }
@@ -203,7 +203,7 @@ impl ser::Serializer for &mut TtlvSerializer {
     // so we serialize all integers as i32
     // This may overflow if the value is too large, so we need to check
     // the value is within the range of i32
-    #[instrument(skip(self))]
+    #[instrument(level = "trace", skip(self))]
     fn serialize_u32(self, v: u32) -> Result<Self::Ok> {
         self.serialize_i32(v.try_into().map_err(|_e| {
             TtlvError::custom(format!(
@@ -215,7 +215,7 @@ impl ser::Serializer for &mut TtlvSerializer {
     // Serialize a 64-bit unsigned integer as a TTLV Long Integer
     // This may overflow if the value is too large, so we need to check
     // the value is within the range of i64
-    #[instrument(skip(self))]
+    #[instrument(level = "trace", skip(self))]
     fn serialize_u64(self, v: u64) -> Result<Self::Ok> {
         self.serialize_i64(v.try_into().map_err(|_e| {
             TtlvError::custom(format!(
@@ -225,7 +225,7 @@ impl ser::Serializer for &mut TtlvSerializer {
     }
 
     // TTLV has no support for floating point numbers
-    #[instrument(skip(self, _v))]
+    #[instrument(level = "trace", skip(self, _v))]
     fn serialize_f32(self, _v: f32) -> Result<Self::Ok> {
         Err(TtlvError::custom(
             "'value f32' is unsupported in TTLV".to_owned(),
@@ -233,7 +233,7 @@ impl ser::Serializer for &mut TtlvSerializer {
     }
 
     // TTLV has no support for floating point numbers
-    #[instrument(skip(self, _v))]
+    #[instrument(level = "trace", skip(self, _v))]
     fn serialize_f64(self, _v: f64) -> Result<Self::Ok> {
         Err(TtlvError::custom(
             "'value f64' is unsupported in TTLV".to_owned(),
@@ -242,21 +242,21 @@ impl ser::Serializer for &mut TtlvSerializer {
 
     // Serialize a char as a single-character string. Other formats may
     // represent this differently.
-    #[instrument(skip(self))]
+    #[instrument(level = "trace", skip(self))]
     fn serialize_char(self, v: char) -> Result<Self::Ok> {
         self.current_mut()?.value = TTLValue::TextString(format!("{v}"));
         Ok(())
     }
 
     // Serialize a str as a TTLV string
-    #[instrument(skip(self))]
+    #[instrument(level = "trace", skip(self))]
     fn serialize_str(self, v: &str) -> Result<Self::Ok> {
         self.current_mut()?.value = TTLValue::TextString(v.to_owned());
         Ok(())
     }
 
     // Serialize a byte array as a TTLV byte string
-    #[instrument(skip(self))]
+    #[instrument(level = "trace", skip(self))]
     fn serialize_bytes(self, v: &[u8]) -> Result<Self::Ok> {
         self.current_mut()?.value = TTLValue::ByteString(v.to_owned());
         Ok(())
@@ -299,7 +299,7 @@ impl ser::Serializer for &mut TtlvSerializer {
     /// of a structure goes back to the start and replaces the zero length
     /// value in the TTLV Structure "header" with the actual length as the bytes
     /// to replace would no longer exist.
-    #[instrument(skip(self))]
+    #[instrument(level = "trace", skip(self))]
     fn serialize_none(self) -> Result<Self::Ok> {
         Err(TtlvError::custom(
             "'Option.None' is unsupported in TTLV".to_owned(),
@@ -307,7 +307,7 @@ impl ser::Serializer for &mut TtlvSerializer {
     }
 
     // A present optional is represented as just the contained value.
-    #[instrument(skip(self, value))]
+    #[instrument(level = "trace", skip(self, value))]
     fn serialize_some<T>(self, value: &T) -> Result<Self::Ok>
     where
         T: ?Sized + Serialize,
@@ -385,7 +385,7 @@ impl ser::Serializer for &mut TtlvSerializer {
     }
 
     // The type of () in Rust, no such value exists in TTLV
-    #[instrument(skip(self))]
+    #[instrument(level = "trace", skip(self))]
     fn serialize_unit(self) -> Result<Self::Ok> {
         Err(TtlvError::custom(
             "'value ()' is unsupported in TTLV".to_owned(),
@@ -393,7 +393,7 @@ impl ser::Serializer for &mut TtlvSerializer {
     }
 
     // The type of `()` in Rust, no such value exists in TTLV
-    #[instrument(skip(self))]
+    #[instrument(level = "trace", skip(self))]
     fn serialize_unit_struct(self, name: &'static str) -> Result<Self::Ok> {
         Err(TtlvError::custom(format!(
             "cannot map the 'unit struct' {name}, ujnit_struct is unsupported in TTLV"
@@ -402,7 +402,7 @@ impl ser::Serializer for &mut TtlvSerializer {
 
     // For example the `E::A` and `E::B` in `enum E { A, B }`
     // This is where all the KMIP types are serialized
-    #[instrument(skip(self))]
+    #[instrument(level = "trace", skip(self))]
     fn serialize_unit_variant(
         self,
         name: &'static str,
@@ -419,7 +419,7 @@ impl ser::Serializer for &mut TtlvSerializer {
 
     // A newtype_struct is for example struct `Millimeters(u8)`
     // We want to intercept Intervals here
-    #[instrument(skip(self, value))]
+    #[instrument(level = "trace", skip(self, value))]
     fn serialize_newtype_struct<T>(self, name: &'static str, value: &T) -> Result<Self::Ok>
     where
         T: ?Sized + Serialize,
@@ -458,7 +458,7 @@ impl ser::Serializer for &mut TtlvSerializer {
     // This is typically called when serializing an `Attribute` enumeration
     // The serialized value is inside a TTLV structure that has a tag
     // that is the name of the enum variant
-    #[instrument(skip(self, value))]
+    #[instrument(level = "trace", skip(self, value))]
     fn serialize_newtype_variant<T>(
         self,
         name: &'static str,
@@ -515,7 +515,7 @@ impl ser::Serializer for &mut TtlvSerializer {
     /// method `serialize_element`, that will be called for each item in the sequence.
     /// Finally, the method `end` will be called to close the sequence and make the `Array` TTLV the current
     /// element of the serializer.
-    #[instrument(skip(self))]
+    #[instrument(level = "trace", skip(self))]
     fn serialize_seq(self, len: Option<usize>) -> Result<Self::SerializeSeq> {
         // A receiver has been added on the stack, which will be flattened
         // when returned, since TTLV flattens arrays to the parent structure
@@ -544,7 +544,7 @@ impl ser::Serializer for &mut TtlvSerializer {
     // represent tuples more efficiently by omitting the length, since tuple
     // means that the corresponding `Deserialize implementation will know the
     // length without needing to look at the serialized data.
-    #[instrument(skip(self))]
+    #[instrument(level = "trace", skip(self))]
     fn serialize_tuple(self, len: usize) -> Result<Self::SerializeTuple> {
         trace!(
             "serialize_tuple of len {len}. Current: {:?}",
@@ -554,7 +554,7 @@ impl ser::Serializer for &mut TtlvSerializer {
     }
 
     // A named tuple, for example struct Rgb(u8, u8, u8)
-    #[instrument(skip(self))]
+    #[instrument(level = "trace", skip(self))]
     fn serialize_tuple_struct(
         self,
         name: &'static str,
@@ -568,7 +568,7 @@ impl ser::Serializer for &mut TtlvSerializer {
     }
 
     // For example, the E::T in enum E { T(u8, u8) }.
-    #[instrument(skip(self))]
+    #[instrument(level = "trace", skip(self))]
     fn serialize_tuple_variant(
         self,
         name: &'static str,
@@ -591,7 +591,7 @@ impl ser::Serializer for &mut TtlvSerializer {
     // the length may or may not be known before iterating through all the entries.
     // When deserializing, the length is determined by looking at the serialized
     // data.
-    #[instrument(skip(self))]
+    #[instrument(level = "trace", skip(self))]
     fn serialize_map(self, len: Option<usize>) -> Result<Self::SerializeMap> {
         trace!(
             "serialize_map of len: {len:?}. Current: {:?}",
@@ -605,7 +605,7 @@ impl ser::Serializer for &mut TtlvSerializer {
     // and will be known at deserialization time
     // without looking at the serialized data,
     // for example, struct S { r: u8, g: u8, b: u8 }.
-    #[instrument(skip(self))]
+    #[instrument(level = "trace", skip(self))]
     fn serialize_struct(self, name: &'static str, len: usize) -> Result<Self::SerializeStruct> {
         if let Some(parent) = self.stack.peek_mut() {
             // the children will be handled in SerializeStruct impl
@@ -635,7 +635,7 @@ impl ser::Serializer for &mut TtlvSerializer {
 
     // For example, the E::S in enum E { S { r: u8, g: u8, b: u8 } }
     // same as Struct
-    #[instrument(skip(self))]
+    #[instrument(level = "trace", skip(self))]
     fn serialize_struct_variant(
         self,
         name: &'static str,
@@ -671,7 +671,7 @@ impl SerializeSeq for &mut TtlvSerializer {
     type Ok = ();
 
     // Serialize a single element of the sequence.
-    #[instrument(skip(self, value))]
+    #[instrument(level = "trace", skip(self, value))]
     fn serialize_element<T>(&mut self, value: &T) -> Result<Self::Ok>
     where
         T: ?Sized + Serialize,
@@ -679,8 +679,7 @@ impl SerializeSeq for &mut TtlvSerializer {
         let tag = self.stack.peek().map_or("", |parent| parent.tag.as_str());
         trace!(
             "Seq Element: serializing a seq element with tag {}, stack is: {:?}",
-            tag,
-            self.stack
+            tag, self.stack
         );
         // push a new TTLV element on the stack with the tag
         self.stack.push(TTLV {
@@ -708,7 +707,7 @@ impl SerializeSeq for &mut TtlvSerializer {
     }
 
     // Close the sequence.
-    #[instrument(skip(self))]
+    #[instrument(level = "trace", skip(self))]
     fn end(self) -> Result<Self::Ok> {
         trace!(
             "Finished serializing the sequence, the parent is: {:?}",
@@ -723,7 +722,7 @@ impl SerializeTuple for &mut TtlvSerializer {
     type Error = TtlvError;
     type Ok = ();
 
-    #[instrument(skip(self, value))]
+    #[instrument(level = "trace", skip(self, value))]
     fn serialize_element<T>(&mut self, value: &T) -> Result<Self::Ok>
     where
         T: ?Sized + Serialize,
@@ -741,7 +740,7 @@ impl ser::SerializeTupleStruct for &mut TtlvSerializer {
     type Error = TtlvError;
     type Ok = ();
 
-    //#[instrument(skip(self, value))]
+    //#[instrument(level = "trace",  skip(self, value))]
     fn serialize_field<T>(&mut self, value: &T) -> Result<Self::Ok>
     where
         T: ?Sized + Serialize,
@@ -760,7 +759,7 @@ impl SerializeTupleVariant for &mut TtlvSerializer {
     type Error = TtlvError;
     type Ok = ();
 
-    //#[instrument(skip(_value))]
+    //#[instrument(level = "trace",  skip(_value))]
     fn serialize_field<T>(&mut self, _value: &T) -> Result<Self::Ok>
     where
         T: ?Sized + Serialize,
@@ -770,7 +769,7 @@ impl SerializeTupleVariant for &mut TtlvSerializer {
         ))
     }
 
-    // #[instrument(skip(self))]
+    // #[instrument(level = "trace",  skip(self))]
     fn end(self) -> Result<Self::Ok> {
         Err(TtlvError::custom(
             "'tuple variant' is unsupported in TTLV".to_owned(),
@@ -788,7 +787,7 @@ impl SerializeMap for &mut TtlvSerializer {
     type Error = TtlvError;
     type Ok = ();
 
-    //#[instrument(skip(self, _key))]
+    //#[instrument(level = "trace",  skip(self, _key))]
     fn serialize_key<T>(&mut self, _key: &T) -> Result<Self::Ok>
     where
         T: ?Sized + Serialize,
@@ -801,7 +800,7 @@ impl SerializeMap for &mut TtlvSerializer {
     // It doesn't make a difference whether the colon is printed at the end of
     // `serialize_key` or at the beginning of `serialize_value`. In this case
     // the code is a bit simpler having it here.
-    //#[instrument(skip(_value))]
+    //#[instrument(level = "trace",  skip(_value))]
     fn serialize_value<T>(&mut self, _value: &T) -> Result<Self::Ok>
     where
         T: ?Sized + Serialize,
@@ -811,7 +810,7 @@ impl SerializeMap for &mut TtlvSerializer {
         ))
     }
 
-    // #[instrument(skip(self))]
+    // #[instrument(level = "trace",  skip(self))]
     fn end(self) -> Result<Self::Ok> {
         Ok(())
     }
@@ -822,7 +821,7 @@ impl SerializeStruct for &mut TtlvSerializer {
     type Error = TtlvError;
     type Ok = ();
 
-    #[instrument(skip(self, value))]
+    #[instrument(level = "trace", skip(self, value))]
     fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<Self::Ok>
     where
         T: ?Sized + Serialize,
@@ -996,7 +995,7 @@ impl SerializeStruct for &mut TtlvSerializer {
         Ok(())
     }
 
-    #[instrument(skip(self))]
+    #[instrument(level = "trace", skip(self))]
     fn end(self) -> Result<Self::Ok> {
         collapse_adjacently_tagged_structure(self.current_mut()?);
         trace!("Structure finalized, stack: {:?} ", self.stack);
@@ -1082,7 +1081,7 @@ impl SerializeStructVariant for &mut TtlvSerializer {
     type Error = TtlvError;
     type Ok = ();
 
-    #[instrument(skip(self, value))]
+    #[instrument(level = "trace", skip(self, value))]
     fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<Self::Ok>
     where
         T: ?Sized + Serialize,
@@ -1090,7 +1089,7 @@ impl SerializeStructVariant for &mut TtlvSerializer {
         <&mut TtlvSerializer as SerializeStruct>::serialize_field(self, key, value)
     }
 
-    #[instrument(skip(self))]
+    #[instrument(level = "trace", skip(self))]
     fn end(self) -> Result<Self::Ok> {
         <&mut TtlvSerializer as SerializeStruct>::end(self)
     }

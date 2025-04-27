@@ -112,7 +112,7 @@ fn check_ecc_mask_algorithm_compliance(
 /// X25519, Ed25519, X448, Ed448, P-192, P-224, P-256, P-384, P-521.
 ///
 /// `pkey_bits_number` is passed independently of `len(bytes)` since some key
-/// sizes are not multiple of 8 thus it cannot be computed by taking the byte
+/// sizes are not multiple of 8, thus it cannot be computed by taking the byte
 /// array length.
 ///
 /// No check performed.
@@ -176,7 +176,7 @@ pub fn to_ec_public_key(
 /// X25519, Ed25519, X448, Ed448, P-192, P-224, P-256, P-384, P-521.
 ///
 /// `pkey_bits_number` is passed independently of `len(bytes)` since some key
-/// sizes are not multiple of 8 thus it cannot be computed by taking the byte
+/// sizes are not multiple of 8, thus it cannot be computed by taking the byte
 /// array length.
 ///
 /// No check performed.

@@ -18,7 +18,7 @@ use cosmian_kmip::{
 use cosmian_kms_interfaces::SessionParams;
 use reqwest::header::CONTENT_TYPE;
 use serde_json::Value;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, span};
 
 use crate::{
     core::{
@@ -148,7 +148,7 @@ pub(crate) async fn kmip_2_1_json(
     body: String,
     kms: Data<Arc<KMS>>,
 ) -> KResult<Json<TTLV>> {
-    let span = tracing::span!(tracing::Level::INFO, "kmip_2_1");
+    let span = tracing::span!(tracing::Level::ERROR, "kmip_2_1");
     let _enter = span.enter();
 
     let ttlv = serde_json::from_str::<TTLV>(&body)?;
@@ -167,7 +167,7 @@ pub(crate) async fn kmip_2_1_json(
 /// the TTLV-serialized response.
 ///
 /// The input request could be either a single KMIP `Operation` or
-/// multiple KMIP `Operation`s serialized in a single KMIP `Message`
+/// multiple KMIP `Operation` serialized in a single KMIP `Message`
 async fn handle_ttlv_2_1(
     kms: &KMS,
     ttlv: TTLV,
@@ -206,6 +206,9 @@ pub(crate) async fn kmip(
     body: Bytes,
     kms: Data<Arc<KMS>>,
 ) -> KResult<HttpResponse> {
+    let span = span!(tracing::Level::TRACE, "kmip");
+    let _guard = span.enter();
+
     let content_type = req_http
         .headers()
         .get(CONTENT_TYPE)
@@ -227,6 +230,9 @@ pub(crate) async fn kmip_json(
     body: Bytes,
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
+    let span = span!(tracing::Level::TRACE, "json");
+    let _guard = span.enter();
+
     let json = kmip_json_inner(req_http, body, kms)
         .await
         .unwrap_or_else(|e| {
@@ -276,7 +282,10 @@ pub(crate) async fn kmip_binary(
     body: Bytes,
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
-    let span = tracing::span!(tracing::Level::INFO, "kmip_binary");
+    let span = span!(tracing::Level::TRACE, "binary");
+    let _guard = span.enter();
+
+    let span = tracing::span!(tracing::Level::ERROR, "kmip_binary");
     let _enter = span.enter();
 
     // Recover the user from the request
