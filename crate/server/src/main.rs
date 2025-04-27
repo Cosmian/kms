@@ -6,8 +6,8 @@ use cosmian_kms_server::{
     config::{ClapConfig, ServerParams},
     result::KResult,
     start_kms_server::start_kms_server,
-    telemetry::initialize_telemetry,
 };
+use cosmian_logger::{TelemetryConfig, TracingConfig, tracing_init};
 use dotenvy::dotenv;
 use openssl::provider::Provider;
 #[cfg(feature = "timeout")]
@@ -51,11 +51,28 @@ async fn main() -> KResult<()> {
         }
     }
 
-    // Start the telemetry
-    initialize_telemetry(&clap_config.telemetry)?;
+    // initialize the tracing system
+    // &clap_config.telemetry
+    let _otel_guard = tracing_init(&TracingConfig {
+        service_name: "cosmian_kms".to_string(),
+        otlp: clap_config
+            .logging
+            .otlp
+            .as_ref()
+            .map(|url| TelemetryConfig {
+                version: option_env!("CARGO_PKG_VERSION").map(String::from),
+                environment: clap_config.logging.environment.clone(),
+                otlp_url: url.to_owned(),
+                enable_metering: clap_config.logging.enable_metering,
+            })
+            .clone(),
+        no_log_to_stdout: clap_config.logging.quiet,
+        log_to_syslog: clap_config.logging.log_to_syslog,
+        rust_log: clap_config.logging.rust_log.clone(),
+    });
 
     //TODO: For an unknown reason, this span never goes to OTLP
-    let span = span!(tracing::Level::INFO, "start");
+    let span = span!(tracing::Level::TRACE, "kms");
     let _guard = span.enter();
 
     // print openssl version
@@ -128,13 +145,9 @@ async fn main() -> KResult<()> {
 mod tests {
     use std::path::PathBuf;
 
-    use cosmian_kms_server::{
-        config::{
-            ClapConfig, HttpConfig, JwtAuthConfig, MainDBConfig, OidcConfig, UiConfig,
-            SocketServerConfig, TlsConfig,
-            WorkspaceConfig,
-        },
-        telemetry::TelemetryConfig,
+    use cosmian_kms_server::config::{
+        ClapConfig, HttpConfig, JwtAuthConfig, LoggingConfig, MainDBConfig, OidcConfig,
+        SocketServerConfig, TlsConfig, UiConfig, WorkspaceConfig,
     };
 
     #[test]
@@ -194,9 +207,13 @@ mod tests {
             google_cse_disable_tokens_validation: false,
             google_cse_kacls_url: Some("[google cse kacls url]".to_owned()),
             ms_dke_service_url: Some("[ms dke service url]".to_owned()),
-            telemetry: TelemetryConfig {
+            logging: LoggingConfig {
+                rust_log: Some("info,cosmian_kms=debug".to_owned()),
                 otlp: Some("http://localhost:4317".to_owned()),
                 quiet: false,
+                log_to_syslog: false,
+                enable_metering: false,
+                environment: Some("development".to_owned()),
             },
             info: false,
             hsm_model: "".to_string(),
@@ -236,7 +253,7 @@ socket_server_hostname = "0.0.0.0"
 [tls]
 tls_p12_file = "[tls p12 file]"
 tls_p12_password = "[tls p12 password]"
-authority_cert_file = "[authority cert file]"
+clients_ca_cert_file = "[authority cert file]"
 
 [http]
 port = 443
@@ -260,9 +277,13 @@ ui_oidc_logout_url = "[logout url]"
 root_data_path = "[root data path]"
 tmp_path = "[tmp path]"
 
-[telemetry]
+[logging]
+rust_log = "info,cosmian_kms=debug"
 otlp = "http://localhost:4317"
 quiet = false
+log_to_syslog = false
+enable_metering = false
+environment = "development"
 "#;
 
         assert_eq!(toml_string.trim(), toml::to_string(&config).unwrap().trim());

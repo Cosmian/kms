@@ -305,16 +305,14 @@ impl<'de> de::Deserializer<'de> for &mut OffsetDateTimeDeserializer {
 impl<'de> SeqAccess<'de> for OffsetDateTimeDeserializer {
     type Error = TtlvError;
 
-    #[instrument(skip(self, seed))]
+    #[instrument(level = "trace", skip(self, seed))]
     fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>>
     where
         T: DeserializeSeed<'de>,
     {
         trace!(
             "deserializing OffsetDateTime at tag: {}, value: {}, index: {}",
-            self.tag,
-            self.dt,
-            self.index
+            self.tag, self.dt, self.index
         );
 
         if self.index >= 9 {

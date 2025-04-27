@@ -60,10 +60,10 @@ cosmian_kms_access = { path = "../access" }
 cosmian_kms_crypto = { path = "../crypto" }
 cosmian_kms_interfaces = { path = "../interfaces" }
 cosmian_kms_server_database = { path = "../server_database" }
+cosmian_logger = { workspace = true }
 dotenvy = "0.15"
 futures = "0.3"
 hex = { workspace = true, features = ["serde"] }
-lazy_static = { workspace = true }
 log = { workspace = true }
 num-bigint-dig = { workspace = true, features = [
     "std",
@@ -74,10 +74,6 @@ num-bigint-dig = { workspace = true, features = [
 oauth2 = "5.0.0"
 openidconnect = "4.0.0"
 openssl = { workspace = true }
-opentelemetry = "0.23.0"
-opentelemetry-otlp = { version = "0.16.0", features = ["tonic"] }
-opentelemetry-semantic-conventions = { version = "0.15.0" }
-opentelemetry_sdk = { version = "0.23.0", features = ["rt-tokio"] }
 proteccio_pkcs11_loader = { path = "../hsm/proteccio" }
 # Important: align the rustls version with reqwest rustls dependency
 # When using client certificate authentication, reqwest will use the

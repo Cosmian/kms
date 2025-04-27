@@ -28,7 +28,7 @@ impl<'de> EnumAccess<'de> for EnumWalker<'_> {
     type Error = TtlvError;
     type Variant = Self;
 
-    #[instrument(skip(self, seed))]
+    #[instrument(level = "trace", skip(self, seed))]
     fn variant_seed<V>(self, seed: V) -> Result<(V::Value, Self::Variant)>
     where
         V: DeserializeSeed<'de>,
@@ -50,7 +50,7 @@ impl<'de> VariantAccess<'de> for EnumWalker<'_> {
 
     // If the `Visitor` expected this variant to be a unit variant, the input
     // should have been the plain string case handled in `deserialize_enum`.
-    #[instrument(skip(self))]
+    #[instrument(level = "trace", skip(self))]
     fn unit_variant(self) -> Result<()> {
         trace!(
             "unit_variant: child index: {}, current: {:?}",
@@ -62,7 +62,7 @@ impl<'de> VariantAccess<'de> for EnumWalker<'_> {
     /// `variant` is called to identify which variant to deserialize.
     /// This is typically call for the Attribute enumeration
     /// Tell the derializwr to deserialize the content of the next struct as the variant value
-    #[instrument(skip(self, seed))]
+    #[instrument(level = "trace", skip(self, seed))]
     fn newtype_variant_seed<T>(self, seed: T) -> Result<T::Value>
     where
         T: DeserializeSeed<'de>,
@@ -83,7 +83,7 @@ impl<'de> VariantAccess<'de> for EnumWalker<'_> {
 
     // Tuple variants are not in KMIP but, if any,
     // deserialize as a sequence of data here.
-    #[instrument(skip(self, _visitor))]
+    #[instrument(level = "trace", skip(self, _visitor))]
     fn tuple_variant<V>(self, len: usize, _visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
@@ -97,7 +97,7 @@ impl<'de> VariantAccess<'de> for EnumWalker<'_> {
 
     // Struct variants are represented in JSON as `{ NAME: { K: V, ... } }` so
     // deserialize the inner map here.
-    #[instrument(skip(self, _visitor))]
+    #[instrument(level = "trace", skip(self, _visitor))]
     fn struct_variant<V>(self, fields: &'static [&'static str], _visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,

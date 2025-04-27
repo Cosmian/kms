@@ -23,7 +23,7 @@ pub(crate) async fn list_owned_objects(
     req: HttpRequest,
     kms: Data<Arc<KMS>>,
 ) -> KResult<Json<Vec<ObjectOwnedResponse>>> {
-    let span = tracing::span!(tracing::Level::INFO, "list_owned_objects");
+    let span = tracing::span!(tracing::Level::ERROR, "list_owned_objects");
     let _enter = span.enter();
 
     let user = kms.get_user(&req);
@@ -41,7 +41,7 @@ pub(crate) async fn list_access_rights_obtained(
     req: HttpRequest,
     kms: Data<Arc<KMS>>,
 ) -> KResult<Json<Vec<AccessRightsObtainedResponse>>> {
-    let span = tracing::span!(tracing::Level::INFO, "list_access_rights_obtained");
+    let span = tracing::span!(tracing::Level::ERROR, "list_access_rights_obtained");
     let _enter = span.enter();
 
     let user = kms.get_user(&req);
@@ -59,7 +59,7 @@ pub(crate) async fn list_accesses(
     object_id: Path<(String,)>,
     kms: Data<Arc<KMS>>,
 ) -> KResult<Json<Vec<UserAccessResponse>>> {
-    let span = tracing::span!(tracing::Level::INFO, "list_accesses");
+    let span = tracing::span!(tracing::Level::ERROR, "list_accesses");
     let _enter = span.enter();
 
     let object_id = UniqueIdentifier::TextString(object_id.to_owned().0);
@@ -79,7 +79,7 @@ pub(crate) async fn grant_access(
     kms: Data<Arc<KMS>>,
     privileged_users: web::Data<Option<Vec<String>>>,
 ) -> KResult<Json<SuccessResponse>> {
-    let span = tracing::span!(tracing::Level::INFO, "grant_access");
+    let span = tracing::span!(tracing::Level::ERROR, "grant_access");
     let _enter = span.enter();
 
     let access = access.into_inner();
@@ -115,7 +115,7 @@ pub(crate) async fn revoke_access(
     kms: Data<Arc<KMS>>,
     privileged_users: web::Data<Option<Vec<String>>>,
 ) -> KResult<Json<SuccessResponse>> {
-    let span = tracing::span!(tracing::Level::INFO, "revoke_access");
+    let span = tracing::span!(tracing::Level::ERROR, "revoke_access");
     let _enter = span.enter();
 
     let access = access.into_inner();

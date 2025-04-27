@@ -77,7 +77,7 @@ cosmian_kms_client_utils = { path = "cli/crate/client_utils" }
 cosmian_kms_crypto = { path = "crate/crypto" }
 cosmian_kms_server = { path = "crate/server" }
 cosmian_kms_server_database = { path = "crate/server_database" }
-cosmian_logger = "0.1.1"
+cosmian_logger = { git = "https://github.com/Cosmian/http_client_server", rev = "aa6ab58baceb1633beb92a564413bb36e87da15e" }
 der = { version = "0.7", default-features = false }
 hex = { version = "0.4", default-features = false }
 lazy_static = "1.5"

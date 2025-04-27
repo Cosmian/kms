@@ -26,7 +26,7 @@ impl<'a> UntaggedEnumWalker<'a> {
 impl<'a, 'de: 'a> MapAccess<'de> for UntaggedEnumWalker<'a> {
     type Error = TtlvError;
 
-    #[instrument(skip(self, seed))]
+    #[instrument(level = "trace", skip(self, seed))]
     fn next_key_seed<K>(&mut self, seed: K) -> std::result::Result<Option<K::Value>, Self::Error>
     where
         K: DeserializeSeed<'de>,
@@ -47,7 +47,7 @@ impl<'a, 'de: 'a> MapAccess<'de> for UntaggedEnumWalker<'a> {
         seed.deserialize(&mut *self.de).map(Some)
     }
 
-    #[instrument(skip(self, seed))]
+    #[instrument(level = "trace", skip(self, seed))]
     fn next_value_seed<V>(&mut self, seed: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: DeserializeSeed<'de>,

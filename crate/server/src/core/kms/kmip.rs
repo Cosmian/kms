@@ -37,6 +37,9 @@ impl KMS {
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<AddAttributeResponse> {
+        let span = tracing::span!(tracing::Level::ERROR, "add_attribute");
+        let _enter = span.enter();
+
         Box::pin(operations::add_attribute(self, request, user, params)).await
     }
 
@@ -70,6 +73,9 @@ impl KMS {
         params: Option<Arc<dyn SessionParams>>,
         privileged_users: Option<Vec<String>>,
     ) -> KResult<CertifyResponse> {
+        let span = tracing::span!(tracing::Level::ERROR, "certify");
+        let _enter = span.enter();
+
         Box::pin(operations::certify(self, request, user, params)).await
     }
 
@@ -120,6 +126,9 @@ impl KMS {
         params: Option<Arc<dyn SessionParams>>,
         privileged_users: Option<Vec<String>>,
     ) -> KResult<CreateKeyPairResponse> {
+        let span = tracing::span!(tracing::Level::ERROR, "create_key_pair");
+        let _enter = span.enter();
+
         Box::pin(operations::create_key_pair(self, request, user, params)).await
     }
 
@@ -146,6 +155,9 @@ impl KMS {
         _user: &str,
         _params: Option<Arc<dyn SessionParams>>,
     ) -> DiscoverVersionsResponse {
+        let span = tracing::span!(tracing::Level::ERROR, "discover_versions");
+        let _enter = span.enter();
+
         operations::discover_versions(request).await
     }
 
@@ -173,6 +185,9 @@ impl KMS {
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<DecryptResponse> {
+        let span = tracing::span!(tracing::Level::ERROR, "decrypt");
+        let _enter = span.enter();
+
         Box::pin(operations::decrypt(self, request, user, params)).await
     }
 
@@ -183,6 +198,9 @@ impl KMS {
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<DeleteAttributeResponse> {
+        let span = tracing::span!(tracing::Level::ERROR, "encrypt");
+        let _enter = span.enter();
+
         operations::delete_attribute(self, request, user, params).await
     }
 
@@ -197,6 +215,9 @@ impl KMS {
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<DestroyResponse> {
+        let span = tracing::span!(tracing::Level::ERROR, "destroy");
+        let _enter = span.enter();
+
         operations::destroy_operation(self, request, user, params).await
     }
 
@@ -234,6 +255,9 @@ impl KMS {
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<EncryptResponse> {
+        let span = tracing::span!(tracing::Level::ERROR, "encrypt");
+        let _enter = span.enter();
+
         Box::pin(operations::encrypt(self, request, user, params)).await
     }
 
@@ -251,6 +275,9 @@ impl KMS {
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<ExportResponse> {
+        let span = tracing::span!(tracing::Level::ERROR, "export");
+        let _enter = span.enter();
+
         operations::export(self, request, user, params).await
     }
 
@@ -281,6 +308,9 @@ impl KMS {
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<GetResponse> {
+        let span = tracing::span!(tracing::Level::ERROR, "get");
+        let _enter = span.enter();
+
         operations::get(self, request, user, params).await
     }
 
@@ -300,6 +330,9 @@ impl KMS {
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<GetAttributesResponse> {
+        let span = tracing::span!(tracing::Level::ERROR, "get_attributes");
+        let _enter = span.enter();
+
         operations::get_attributes(self, request, user, params).await
     }
 
@@ -315,6 +348,9 @@ impl KMS {
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<HashResponse> {
+        let span = tracing::span!(tracing::Level::ERROR, "hash");
+        let _enter = span.enter();
+
         operations::hash_operation(self, request, user, params).await
     }
 
@@ -338,6 +374,9 @@ impl KMS {
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<ImportResponse> {
+        let span = tracing::span!(tracing::Level::ERROR, "import");
+        let _enter = span.enter();
+
         // Box::pin :: see https://rust-lang.github.io/rust-clippy/master/index.html#large_futures
         Box::pin(operations::import(self, request, user, params)).await
     }
@@ -438,6 +477,9 @@ impl KMS {
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<LocateResponse> {
+        let span = tracing::span!(tracing::Level::ERROR, "locate");
+        let _enter = span.enter();
+
         operations::locate(self, request, Some(State::Active), user, params).await
     }
 
@@ -459,6 +501,9 @@ impl KMS {
     ///         Query Capabilities
     ///         Query Client Registration Methods
     pub(crate) async fn query(&self, request: Query) -> KResult<QueryResponse> {
+        let span = tracing::span!(tracing::Level::ERROR, "query");
+        let _enter = span.enter();
+
         operations::query(request).await
     }
 
@@ -475,6 +520,9 @@ impl KMS {
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<MACResponse> {
+        let span = tracing::span!(tracing::Level::ERROR, "mac");
+        let _enter = span.enter();
+
         operations::mac(self, request, user, params).await
     }
 
@@ -484,6 +532,9 @@ impl KMS {
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<ResponseMessage> {
+        let span = tracing::span!(tracing::Level::ERROR, "message");
+        let _enter = span.enter();
+
         // This is a large future, hence pinning
         Box::pin(operations::message(self, request, user, params)).await
     }
@@ -520,6 +571,9 @@ impl KMS {
         params: Option<Arc<dyn SessionParams>>,
         privileged_users: Option<Vec<String>>,
     ) -> KResult<ReKeyKeyPairResponse> {
+        let span = tracing::span!(tracing::Level::ERROR, "rekey_keypair");
+        let _enter = span.enter();
+
         Box::pin(operations::rekey_keypair(self, request, user, params)).await
     }
 
@@ -538,6 +592,9 @@ impl KMS {
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<ReKeyResponse> {
+        let span = tracing::span!(tracing::Level::ERROR, "rekey");
+        let _enter = span.enter();
+
         Box::pin(operations::rekey(self, request, user, params)).await
     }
 
@@ -548,6 +605,9 @@ impl KMS {
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<SetAttributeResponse> {
+        let span = tracing::span!(tracing::Level::ERROR, "set_attribute");
+        let _enter = span.enter();
+
         operations::set_attribute(self, request, user, params).await
     }
 
@@ -557,6 +617,9 @@ impl KMS {
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<ValidateResponse> {
+        let span = tracing::span!(tracing::Level::ERROR, "validate");
+        let _enter = span.enter();
+
         operations::validate_operation(self, request, user, params).await
     }
 
@@ -578,6 +641,9 @@ impl KMS {
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<RevokeResponse> {
+        let span = tracing::span!(tracing::Level::ERROR, "revoke");
+        let _enter = span.enter();
+
         operations::revoke_operation(self, request, user, params).await
     }
 }
