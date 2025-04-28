@@ -1,4 +1,4 @@
-use base64::{engine::general_purpose, Engine};
+use base64::{Engine, engine::general_purpose};
 use cosmian_kmip::{
     kmip_0::kmip_types::{BlockCipherMode, CryptographicUsageMask, PaddingMethod},
     kmip_2_1::{
@@ -22,7 +22,9 @@ use crate::crypto::elliptic_curves::ecies::ecies_encrypt;
 #[cfg(not(feature = "fips"))]
 use crate::crypto::rsa::ckm_rsa_pkcs::ckm_rsa_pkcs_key_wrap;
 use crate::{
+    CryptoResultHelper,
     crypto::{
+        FIPS_MIN_SALT_SIZE,
         password_derivation::derive_key_from_password,
         rsa::{
             ckm_rsa_aes_key_wrap::ckm_rsa_aes_key_wrap,
@@ -30,15 +32,13 @@ use crate::{
         },
         symmetric::{
             rfc5649::rfc5649_wrap,
-            symmetric_ciphers::{encrypt, random_nonce, SymCipher},
+            symmetric_ciphers::{SymCipher, encrypt, random_nonce},
         },
         wrap::common::rsa_parameters,
-        FIPS_MIN_SALT_SIZE,
     },
     crypto_bail, crypto_error,
-    error::{result::CryptoResult, CryptoError},
+    error::{CryptoError, result::CryptoResult},
     openssl::kmip_public_key_to_openssl,
-    CryptoResultHelper,
 };
 
 /// Wrap a key using a password
@@ -87,7 +87,6 @@ fn check_block_cipher_mode_in_encryption_key_information(
 /// The key is wrapped using the wrapping key
 ///
 /// # Arguments
-/// * `rng` - the random number generator
 /// * `object_key_block` - the key block of the object to wrap
 /// * `wrapping_key` - the wrapping key
 /// * `key_wrapping_specification` - the key wrapping specification
@@ -132,6 +131,7 @@ pub fn key_data_to_wrap(
     object_key_block: &&mut KeyBlock,
     key_wrapping_specification: &KeyWrappingSpecification,
 ) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
+    trace!("key_data_to_wrap: key_wrapping_specification: {key_wrapping_specification:?}");
     if object_key_block.key_wrapping_data.is_some() {
         crypto_bail!("unable to wrap the key: it is already wrapped")
     }
@@ -164,7 +164,7 @@ pub fn key_data_to_wrap(
             Zeroizing::from(ttlv_bytes)
         }
         // According to the KMIP specs, only keys in Raw format can be wrapped
-        // with no encoding. The call to key_bytes() here, wil return more options than the spec.
+        // with no encoding. The call to key_bytes() here, will return more options than the spec.
         EncodingOption::NoEncoding => object_key_block.key_bytes()?,
     })
 }
@@ -239,6 +239,7 @@ pub(crate) fn wrap(
                     );
                     let key_bytes = key_block.key_bytes()?;
                     if block_cipher_mode == BlockCipherMode::GCM {
+                        debug!("wrap: using GCM");
                         // wrap using aes GCM
                         let aead = SymCipher::from_algorithm_and_key_size(
                             cryptographic_algorithm,
@@ -265,7 +266,7 @@ pub(crate) fn wrap(
 
                         Ok(ciphertext)
                     } else {
-                        // wrap using rfc_5649
+                        trace!("wrap: using RFC-5649");
                         let ciphertext = rfc5649_wrap(key_to_wrap, &key_bytes)?;
                         Ok(ciphertext)
                     }
