@@ -1,4 +1,4 @@
-Cosmian KMS may be installed on a variety of platforms, including Docker, Ubuntu, RHEL, MacOS, and Windows.
+Cosmian KMS may be installed on a variety of platforms, including Docker, Ubuntu, Rocky Linux, MacOS, and Windows.
 
 It is also available on the major cloud providers marketplaces, prepackaged to run confidentially in a Cosmian VM.
 Please check [this page](./marketplace_guide.md) for more information.
@@ -96,15 +96,21 @@ For high availability and scalability, please refer to the [high availability gu
     sudo systemctl start cosmian_kms
     ```
 
-=== "RHEL 9"
+=== "Rocky Linux 9"
 
     Download package and install it:
 
     ```sh
-    sudo dnf update && dnf install -y wget
-    wget https://package.cosmian.com/kms/4.24.0/rhel9/cosmian_kms_server-4.24.0-1.x86_64.rpm
+    sudo dnf update && sudo dnf install -y wget
+    wget https://package.cosmian.com/kms/4.24.0/rockylinux9/cosmian_kms_server-4.24.0-1.x86_64.rpm
     sudo dnf install ./cosmian_kms_server-4.24.0-1.x86_64.rpm
     cosmian_kms --version
+    ```
+
+    To start the KMS, run:
+
+    ```sh
+    sudo systemctl start cosmian_kms
     ```
 
 === "MacOS"
