@@ -84,6 +84,11 @@ impl Serialize for RequestMessage {
             .map_err(|err| ser::Error::custom(format!("failed to convert batch count: {err:?}")))?;
         // check batch item count
         let num_items = self.batch_item.len();
+        if num_items == 0 {
+            return Err(ser::Error::custom(
+                "A request message must contain at least one batch item",
+            ));
+        }
         if header_batch_count != num_items {
             return Err(ser::Error::custom(format!(
                 "mismatch count of batch items between header (`{}`) and actual items count (`{}`)",
@@ -417,7 +422,8 @@ pub struct ResponseMessageHeader {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub server_hashed_password: Option<Vec<u8>>,
 
-    /// REQUIRED in Attestation Required error message if client set Attestation Capable Indicator to True in the request
+    /// REQUIRED in Attestation.
+    /// Required error message if client set Attestation Capable Indicator to True in the request
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attestation_type: Option<Vec<AttestationType>>,
 

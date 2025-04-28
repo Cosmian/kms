@@ -15,7 +15,7 @@ use crate::{
         kmip_operations::{Operation, Query},
         kmip_types::{OperationEnumeration, QueryFunction},
     },
-    ttlv::{from_ttlv, to_ttlv, TTLVBytesDeserializer, TTLVBytesSerializer, TTLV},
+    ttlv::{TTLV, TTLVBytesDeserializer, TTLVBytesSerializer, from_ttlv, to_ttlv},
 };
 
 #[test]

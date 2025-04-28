@@ -18,6 +18,7 @@ use cosmian_kmip::{
 use cosmian_kms_interfaces::SessionParams;
 use reqwest::header::CONTENT_TYPE;
 use serde_json::Value;
+use time::OffsetDateTime;
 use tracing::{debug, error, info, span};
 
 use crate::{
@@ -60,6 +61,10 @@ fn error_response_ttlv(major: i32, minor: i32, error_message: &str) -> TTLV {
                                 value: TTLValue::Integer(minor),
                             },
                         ]),
+                    },
+                    TTLV {
+                        tag: "TimeStamp".to_owned(),
+                        value: TTLValue::DateTime(OffsetDateTime::now_utc()),
                     },
                     TTLV {
                         tag: "BatchCount".to_owned(),
@@ -237,7 +242,7 @@ pub(crate) async fn kmip_json(
         .await
         .unwrap_or_else(|e| {
             error!(target: "kmip", "Failed to process request: {}", e);
-            error_response_ttlv(1, 0, &e.to_string())
+            error_response_ttlv(2, 1, &e.to_string())
         });
     HttpResponse::Ok()
         .content_type("application/json")
@@ -469,5 +474,31 @@ mod tests {
         assert_eq!(ttlv.tag, "ResponseMessage");
         let bytes = super::TTLV::to_bytes(&ttlv, cosmian_kmip::ttlv::KmipFlavor::Kmip1).unwrap();
         info!("\n{:?}", &bytes);
+    }
+}
+
+#[allow(clippy::expect_used)]
+#[cfg(test)]
+mod local_tests {
+    use cosmian_kmip::{
+        kmip_0::kmip_messages::ResponseMessage,
+        ttlv::{KmipFlavor, TTLV, from_ttlv},
+    };
+
+    use crate::routes::kmip::TTLV_ERROR_RESPONSE;
+
+    #[test]
+    fn test_error_response_message_ttlv() {
+        let ttlv = super::error_response_ttlv(2, 1, "error message");
+        // make sure we can parse the TTLV
+        let _response: ResponseMessage = from_ttlv(ttlv).expect("Failed to parse response");
+    }
+
+    #[test]
+    fn test_error_response_message_binary() {
+        let ttlv = TTLV::from_bytes(&TTLV_ERROR_RESPONSE, KmipFlavor::Kmip1)
+            .expect("Failed to parse response");
+        // make sure we can parse the TTLV
+        let _response: ResponseMessage = from_ttlv(ttlv).expect("Failed to parse response");
     }
 }
