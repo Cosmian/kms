@@ -95,8 +95,6 @@ time = { workspace = true, features = ["local-offset", "formatting"] }
 tokio = { workspace = true, features = ["full"] }
 toml = "0.8"
 tracing = { workspace = true }
-tracing-opentelemetry = "0.24"
-tracing-subscriber = { workspace = true, features = ["env-filter"] }
 url = { workspace = true }
 utimaco_pkcs11_loader = { path = "../hsm/utimaco" }
 uuid = { workspace = true, features = ["v4"] }

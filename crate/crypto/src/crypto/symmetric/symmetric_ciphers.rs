@@ -11,6 +11,7 @@ use openssl::{
         encrypt_aead as openssl_encrypt_aead,
     },
 };
+use tracing::trace;
 use zeroize::Zeroizing;
 
 #[cfg(not(feature = "fips"))]
@@ -233,6 +234,10 @@ impl SymCipher {
         block_cipher_mode: Option<BlockCipherMode>,
         key_size: usize,
     ) -> Result<Self, CryptoError> {
+        trace!(
+            "from_algorithm_and_key_size: algorithm: {algorithm:?}, block_cipher_mode: \
+             {block_cipher_mode:?}, key_size: {key_size}"
+        );
         match algorithm {
             CryptographicAlgorithm::AES => {
                 let block_cipher_mode = block_cipher_mode.unwrap_or(BlockCipherMode::GCM);
@@ -241,7 +246,7 @@ impl SymCipher {
                         AES_128_GCM_KEY_LENGTH => Ok(Self::Aes128Gcm),
                         AES_256_GCM_KEY_LENGTH => Ok(Self::Aes256Gcm),
                         _ => crypto_bail!(CryptoError::NotSupported(
-                            "AES key must be 16 or 32 bytes long for AES GCM ".to_owned()
+                            "AES key must be 16 or 32 bytes long for AES GCM".to_owned()
                         )),
                     },
                     BlockCipherMode::CBC => match key_size {
