@@ -1,4 +1,4 @@
-## Setting up KMS Server for vCenter
+# Setting up KMS Server for vCenter
 
 This guide shows you how to:
 
@@ -9,15 +9,15 @@ This guide shows you how to:
 5. **Export the certificate bundle to PKCS#12**
 6. **Configure the KMS server (`kms.toml`)**
 
-You’ll use these certificates to connect your KMS instance to a vCenter environment.
+You'll use these certificates to connect your KMS instance to a vCenter environment.
 
 ---
 
 ## Prerequisites
 
-- OpenSSL (≥ 1.1.1) installed and on your PATH  
-- A working copy of `openssl.cnf` with a `[ v3_ca ]` section  
-- UNIX shell (bash, zsh, etc.)  
+- OpenSSL (≥ 1.1.1) installed and on your PATH
+- A working copy of `openssl.cnf` with a `[ v3_ca ]` section
+- UNIX shell (bash, zsh, etc.)
 - A directory to store your certificates, e.g. `/etc/ssl/{{ORG_NAME}}_certs`
 
 ---
@@ -28,7 +28,7 @@ Create a 2048-bit RSA private key for your CA, then issue a self-signed root cer
 
 ```bash
 # 1. Generate CA private key
-oenssl genrsa -out ca.key 2048
+openssl genrsa -out ca.key 2048
 
 # 2. Create self-signed CA certificate (10 year validity)
 openssl req -x509 -nodes -days 3650 \
@@ -39,8 +39,8 @@ openssl req -x509 -nodes -days 3650 \
   -subj "/C=<COUNTRY>/ST=<STATE>/L=<CITY>/O=<ORG_NAME>/OU=<UNIT>/CN=<CA_COMMON_NAME>"
 ```
 
-- **`ca.key`**: CA private key (keep this highly secure!)  
-- **`ca.crt`**: Public root certificate, used to sign and verify downstream certificates  
+- **`ca.key`**: CA private key (keep this highly secure!)
+- **`ca.crt`**: Public root certificate, used to sign and verify downstream certificates
 
 ---
 
@@ -57,8 +57,8 @@ openssl req -newkey rsa:2048 -nodes \
   -addext "extendedKeyUsage = clientAuth, serverAuth"
 ```
 
-- **`server.key`**: Server’s private key  
-- **`server.csr`**: Certificate Signing Request, with `clientAuth` & `serverAuth` EKUs  
+- **`server.key`**: Server's private key
+- **`server.csr`**: Certificate Signing Request, with `clientAuth` & `serverAuth` EKUs
 
 ---
 
@@ -78,7 +78,7 @@ extendedKeyUsage = clientAuth,serverAuth\n") \
   -extensions req_ext
 ```
 
-- **`server.crt`**: The signed certificate, valid for 1 year  
+- **`server.crt`**: The signed certificate, valid for 1 year
 
 ---
 
@@ -91,7 +91,8 @@ openssl x509 -in server.crt -text -noout | grep -A1 "Extended Key Usage"
 ```
 
 Expected output:
-```
+
+```sh
             X509v3 Extended Key Usage:
                 TLS Web Server Authentication, TLS Web Client Authentication
 ```
@@ -112,8 +113,8 @@ openssl pkcs12 -export \
   -passout pass:<P12_PASSWORD>
 ```
 
-- **`server.p12`**: PKCS#12 archive containing your key and certificates  
-- **`<P12_PASSWORD>`**: Password to unlock the archive — use a strong secret!  
+- **`server.p12`**: PKCS#12 archive containing your key and certificates
+- **`<P12_PASSWORD>`**: Password to unlock the archive — use a strong secret!
 
 ---
 
@@ -136,6 +137,7 @@ authority_cert_file = "/etc/ssl/{{ORG_NAME}}_certs/ca.crt"
 ```
 
 Start the KMS with:
+
 ```bash
 systemctl start cosmian_kms
 ```
@@ -144,40 +146,49 @@ systemctl start cosmian_kms
 
 ## vCenter Integration
 
-### Step 1: Go on your vCenter UI and add a Key Provider 
-![Step 1 – Go on vCenter configuration and set kms](images/vcenter-step01.png)
+### Step 1: Go on your vCenter UI and add a Key Provider
+
+![Step 1 – Go on vCenter configuration and set KMS](images/vcenter-step01.png)
 
 ### Step 2: Add new Standard KMS Provider
 
 ![Step 2 – Add KMS provider in vCenter](images/vcenter-step02.png)
 
-### Step 3: Set up your Standard Key Provider 
-![Step 3 - Set your Cosmian Kms ](images/vcenter-step03.png)
+### Step 3: Set up your Standard Key Provider
 
-### Step 4: Trust the newly added Cosmian KMS 
-![Step 4 - Set your Cosmian Kms ](images/vcenter-step04.png)
+![Step 3 - Set your Cosmian KMS ](images/vcenter-step03.png)
+
+### Step 4: Trust the newly added Cosmian KMS
+
+![Step 4 - Set your Cosmian KMS ](images/vcenter-step04.png)
 
 ### Step 5: Establish Trust with the Cosmian KMS
-![Step 5 - Set your Cosmian Kms ](images/vcenter-step05_1.png)
----
-![Step 5 - Set your Cosmian Kms ](images/vcenter-step05_2.png)
----
-![Step 5 - Set your Cosmian Kms ](images/vcenter-step05_3.png)
 
-### Step 6: Go on the kms server and get .crt and .key certificates 
+![Step 5 - Set your Cosmian KMS ](images/vcenter-step05_1.png)
+
+---
+
+![Step 5 - Set your Cosmian KMS ](images/vcenter-step05_2.png)
+
+---
+![Step 5 - Set your Cosmian KMS ](images/vcenter-step05_3.png)
+
+### Step 6: Go on the KMS server and get .crt and .key certificates
+
 ![Step 6 - Get KMS certificates ](images/vcenter-step06.png)
 
 ### Step 7: Upload KMS Credentials and establish trust
+
 ![Step 7 - Upload KMS Credentials ](images/vcenter-step07.png)
 
 ### Step 8: Your KMS is connected
-![Step 8 - Set your Cosmian Kms ](images/vcenter-step08.png)
+
+![Step 8 - Set your Cosmian KMS ](images/vcenter-step08.png)
 
 ### Bonus: Encrypt your Virtual Machine
+
 ![Step 9 – Final verification screen](images/vcenter-step09.png)
 
 ---
 
 > _Keep all private keys secure and back up your CA key (`ca.key`) offline in an encrypted vault._
-
-
