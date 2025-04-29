@@ -4,7 +4,7 @@ use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::KeyWrappingSpecification,
     kmip_objects::ObjectType,
     kmip_operations::{Create, CreateResponse},
-    kmip_types::{EncryptionKeyInformation, UniqueIdentifier},
+    kmip_types::{EncodingOption, EncryptionKeyInformation, UniqueIdentifier},
 };
 use cosmian_kms_interfaces::SessionParams;
 use cosmian_kms_server_database::CachedUnwrappedObject;
@@ -64,6 +64,7 @@ pub(crate) async fn create(
                     unique_identifier: UniqueIdentifier::TextString(wrapping_key_id),
                     cryptographic_parameters: None,
                 }),
+                encoding_option: Some(EncodingOption::NoEncoding),
                 ..Default::default()
             },
             kms,

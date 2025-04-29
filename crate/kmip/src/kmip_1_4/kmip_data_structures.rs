@@ -274,7 +274,7 @@ impl Serialize for KeyValueSerializer {
         S: serde::Serializer,
     {
         match &self.key_value {
-            KeyValue::ByteString(ref bytes) => serializer.serialize_bytes(bytes),
+            KeyValue::ByteString(bytes) => serializer.serialize_bytes(bytes),
             KeyValue::Structure {
                 key_material,
                 attribute,

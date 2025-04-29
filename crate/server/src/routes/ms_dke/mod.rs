@@ -173,8 +173,8 @@ async fn internal_get_key(
                                 // make the key valid for one day
                                 let now = Utc::now();
                                 let later = now + Duration::days(1);
-                                let formatted = later.format("%Y-%m-%dT%H:%M:%S").to_string();
-                                formatted
+                                
+                                later.format("%Y-%m-%dT%H:%M:%S").to_string()
                             },
                         },
                     })

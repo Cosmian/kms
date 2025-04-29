@@ -801,9 +801,7 @@ mod tests {
         //
         // public key
         //
-        let Some(KeyValue::Structure {
-            ref key_material, ..
-        }) = wrap_key_pair
+        let Some(KeyValue::Structure { key_material, .. }) = wrap_key_pair
             .public_key()
             .key_block()
             .unwrap()
@@ -828,9 +826,7 @@ mod tests {
         //
         // private key
         //
-        let Some(KeyValue::Structure {
-            ref key_material, ..
-        }) = wrap_key_pair
+        let Some(KeyValue::Structure { key_material, .. }) = wrap_key_pair
             .private_key()
             .key_block()
             .unwrap()

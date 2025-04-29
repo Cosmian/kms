@@ -77,7 +77,7 @@ pub fn kmip_private_key_to_openssl(private_key: &Object) -> Result<PKey<Private>
         }
         KeyFormatType::TransparentRSAPrivateKey => {
             let Some(KeyValue::Structure {
-                ref key_material, ..
+                 key_material, ..
             }) = key_block.key_value.as_ref()
             else {
                 return Err(CryptoError::Default(
@@ -160,7 +160,7 @@ pub fn kmip_private_key_to_openssl(private_key: &Object) -> Result<PKey<Private>
         }
         KeyFormatType::TransparentECPrivateKey => {
             let Some(KeyValue::Structure {
-                ref key_material, ..
+                 key_material, ..
             }) = key_block.key_value.as_ref()
             else {
                 return Err(CryptoError::Default(
