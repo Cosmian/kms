@@ -33,27 +33,27 @@ fn main() {
         match hex::decode(input) {
             Ok(bytes) => match TTLV::from_bytes(&bytes, cosmian_kmip::ttlv::KmipFlavor::Kmip1) {
                 Ok(ttlv) => {
-                    println!("{:#?}", ttlv);
+                    println!("{ttlv:#?}");
                     if input.starts_with("420078") {
                         let Ok(request) = from_ttlv::<RequestMessage>(ttlv) else {
                             println!("Error converting TTLV to RequestMessage");
                             continue;
                         };
-                        println!("{:#?}", request);
+                        println!("{request:#?}");
                     } else if input.starts_with("42007b") || input.starts_with("42007B") {
                         let Ok(response) = from_ttlv::<ResponseMessage>(ttlv) else {
                             println!("Error converting TTLV to ResponseMessage");
                             continue;
                         };
-                        println!("{:#?}", response);
+                        println!("{response:#?}");
                     } else {
                         println!("Unknown message type");
                     }
                 }
-                Err(e) => println!("Error parsing TTLV: {}", e),
+                Err(e) => println!("Error parsing TTLV: {e}"),
             },
             Err(e) => {
-                println!("Error parsing hex string: {}", e);
+                println!("Error parsing hex string: {e}");
             }
         }
     }

@@ -37,7 +37,7 @@ pub(crate) fn unwrap_user_decryption_key_object(
         ))
     }
     let Some(KeyValue::Structure {
-        ref key_material, ..
+         key_material, ..
     }) = key_block.key_value.as_ref()
     else {
         return Err(CryptoError::Default(

@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.24.0] - 2025-04-23
+
+### 🚀 Features
+
+- Add support Oracle Transparent Database Encryption (TDE) using Oracle Key Vault (#396)
+
+### ⚙️ Miscellaneous Tasks
+
+- Add missing artifacts on tags ([#407](https://github.com/Cosmian/kms/pull/407))
+- Missing folder assets in DEB/RPM ([#406](https://github.com/Cosmian/kms/pull/406))
+- Align docker build image to wasm-pack prebuild binary for ARM cross-build
+
 ## [4.23.0] - 2025-04-10
 
 ### 🚀 Features

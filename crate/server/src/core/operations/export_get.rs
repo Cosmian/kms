@@ -693,8 +693,8 @@ async fn process_symmetric_key(
     };
 
     let key_bytes = match key_material {
-        KeyMaterial::ByteString(ref mut key_bytes) => key_bytes.clone(),
-        KeyMaterial::TransparentSymmetricKey { ref mut key } => key.clone(),
+        KeyMaterial::ByteString(key_bytes) => key_bytes.clone(),
+        KeyMaterial::TransparentSymmetricKey { key } => key.clone(),
         _ => kms_bail!("export: unsupported key material"),
     };
 
