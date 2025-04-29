@@ -324,7 +324,7 @@ impl KeyBlock {
     /// Returns the `Attributes` of that key block if any, an error otherwise
     pub fn attributes_mut(&mut self) -> Result<&mut Attributes, KmipError> {
         let Some(KeyValue::Structure {
-            ref mut attributes, ..
+            attributes, ..
         }) = &mut self.key_value
         else {
             return Err(KmipError::InvalidKmip21Value(
@@ -466,7 +466,7 @@ impl Serialize for KeyValueSerializer {
         S: serde::Serializer,
     {
         match &self.key_value {
-            KeyValue::ByteString(ref bytes) => serializer.serialize_bytes(bytes),
+            KeyValue::ByteString( bytes) => serializer.serialize_bytes(bytes),
             KeyValue::Structure {
                 key_material,
                 attributes,

@@ -77,7 +77,7 @@ pub fn kmip_public_key_to_openssl(public_key: &Object) -> Result<PKey<Public>, C
         }
         KeyFormatType::TransparentRSAPublicKey => {
             let Some(KeyValue::Structure {
-                ref key_material, ..
+                 key_material, ..
             }) = key_block.key_value.as_ref()
             else {
                 return Err(CryptoError::Default(
@@ -106,7 +106,7 @@ pub fn kmip_public_key_to_openssl(public_key: &Object) -> Result<PKey<Public>, C
         }
         KeyFormatType::TransparentECPublicKey => {
             let Some(KeyValue::Structure {
-                ref key_material, ..
+                 key_material, ..
             }) = key_block.key_value.as_ref()
             else {
                 return Err(CryptoError::Default(

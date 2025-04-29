@@ -12,7 +12,7 @@ use crate::{InterfaceResult, ObjectWithMetadata, stores::SessionParams};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 /// The state of the database
-pub enum DbState {
+pub(super) enum DbState {
     Ready,
     Upgrading,
 }
