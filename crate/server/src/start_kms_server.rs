@@ -87,36 +87,25 @@ pub async fn start_kms_server(
             .context("start KMS server: failed instantiating the server")?,
     );
 
-    // Start socket server if enabled and port is available
-    let socket_server = if server_params.start_socket_server {
-        // Check if port is available before starting the server
-        let addr = format!("{}:{}",
-            server_params.socket_server_hostname,
-            server_params.socket_server_port
-        );
-        if std::net::TcpListener::bind(&addr).is_ok() {
-            let (tx, rx) = mpsc::channel();
-            let handle = start_socket_server(kms_server.clone(), rx)?;
-            Some((tx, handle))
-        } else {
-            debug!("Socket server port {} already in use, skipping", server_params.socket_server_port);
-            None
-        }
+    let (ss_command_tx, _socket_server_handle) = if server_params.start_socket_server {
+        let (tx, rx) = mpsc::channel::<KResult<()>>();
+        // Start the socket server
+        let socket_server_handle = start_socket_server(kms_server.clone(), rx)?;
+        (Some(tx), Some(socket_server_handle))
     } else {
-        None
+        (None, None)
     };
 
-    // Log configuration and start HTTP server
+    // Log the server configuration
     info!("KMS Server configuration: {:#?}", server_params);
-    let http_result = start_http_kms_server(kms_server.clone(), kms_server_handle_tx).await;
-
-    // Shutdown socket server if it was started
-    if let Some((tx, handle)) = socket_server {
-        tx.send(Ok(())).context("failed sending socket server shutdown command")?;
-        handle.await.context("failed waiting for socket server shutdown")?;
+    let res = start_http_kms_server(kms_server.clone(), kms_server_handle_tx).await;
+    if let Some(ss_command_tx) = ss_command_tx {
+        // Send a shutdown command to the socket server
+        ss_command_tx
+            .send(Ok(()))
+            .context("start KMS server: failed sending shutdown command to socket server")?;
     }
-
-    http_result
+    res
 }
 
 /// Start a socket server that will handle TTLV bytes
