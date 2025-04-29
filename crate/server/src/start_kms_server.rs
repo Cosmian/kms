@@ -87,7 +87,7 @@ pub async fn start_kms_server(
             .context("start KMS server: failed instantiating the server")?,
     );
 
-    let (ss_command_tx, _socket_server_handle) = if server_params.start_socket_server {
+    let (ss_command_tx, socket_server_handle) = if server_params.start_socket_server {
         let (tx, rx) = mpsc::channel::<KResult<()>>();
         // Start the socket server
         let socket_server_handle = start_socket_server(kms_server.clone(), rx)?;
@@ -104,6 +104,10 @@ pub async fn start_kms_server(
         ss_command_tx
             .send(Ok(()))
             .context("start KMS server: failed sending shutdown command to socket server")?;
+        // Wait for the socket server to complete
+        if let Some(handle) = socket_server_handle {
+            handle.await.context("Failed to wait for socket server shutdown")?;
+        }
     }
     res
 }
