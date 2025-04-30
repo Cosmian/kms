@@ -11,7 +11,7 @@ use cosmian_kms_server_database::CachedUnwrappedObject;
 use tracing::{debug, trace};
 
 use crate::{
-    core::{wrapping::wrap_key, KMS},
+    core::{KMS, wrapping::wrap_key},
     error::KmsError,
     kms_bail,
     result::KResult,

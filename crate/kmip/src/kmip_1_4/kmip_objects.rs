@@ -2,8 +2,8 @@ use std::fmt::{self, Display};
 
 use num_bigint_dig::BigInt;
 use serde::{
-    de::{MapAccess, Visitor},
     Deserialize, Serialize,
+    de::{MapAccess, Visitor},
 };
 use strum::VariantNames;
 use tracing::trace;

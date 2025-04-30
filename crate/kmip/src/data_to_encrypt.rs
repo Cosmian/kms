@@ -1,4 +1,4 @@
-use crate::{error::KmipError, kmip_0::kmip_types::ErrorReason, Deserializer, Serializer};
+use crate::{Deserializer, Serializer, error::KmipError, kmip_0::kmip_types::ErrorReason};
 
 /// Structure used to encrypt with Covercrypt or ECIES
 ///

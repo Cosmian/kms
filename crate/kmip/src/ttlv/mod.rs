@@ -8,10 +8,10 @@ mod wire;
 
 pub use error::TtlvError;
 pub(crate) use kmip_big_int::KmipBigInt;
-pub use kmip_ttlv_deserializer::{from_ttlv, TtlvDeserializer};
+pub use kmip_ttlv_deserializer::{TtlvDeserializer, from_ttlv};
 pub(super) mod kmip_ttlv_serializer;
-pub use kmip_ttlv_serializer::{to_ttlv, TtlvSerializer};
-pub use ttlv_struct::{KmipEnumerationVariant, KmipFlavor, TTLValue, TtlvType, TTLV};
+pub use kmip_ttlv_serializer::{TtlvSerializer, to_ttlv};
+pub use ttlv_struct::{KmipEnumerationVariant, KmipFlavor, TTLV, TTLValue, TtlvType};
 pub use wire::{TTLVBytesDeserializer, TTLVBytesSerializer};
 
 #[allow(

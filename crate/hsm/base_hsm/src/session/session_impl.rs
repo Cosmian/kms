@@ -42,7 +42,7 @@ use cosmian_kms_interfaces::{
     KeyType, RsaPrivateKeyMaterial, RsaPublicKeyMaterial,
 };
 use pkcs11_sys::*;
-use rand::{rngs::OsRng, TryRngCore};
+use rand::{TryRngCore, rngs::OsRng};
 use tracing::debug;
 use zeroize::Zeroizing;
 
@@ -232,9 +232,7 @@ impl Session {
                 HError::Default("C_FindObjectsFinal not available on library".to_string())
             })?(self.session_handle);
             if rv != CKR_OK {
-                return Err(HError::Default(format!(
-                    "C_FindObjectsFinal failed: {rv}"
-                )));
+                return Err(HError::Default(format!("C_FindObjectsFinal failed: {rv}")));
             }
 
             if object_count == 0 {
@@ -546,9 +544,9 @@ impl Session {
                 &mut encrypted_data_len,
             );
             if rv != CKR_OK {
-                return Err(HError::Default(
-                    format!("Failed to get encrypted data length. Error code: {rv}"),
-                ));
+                return Err(HError::Default(format!(
+                    "Failed to get encrypted data length. Error code: {rv}"
+                )));
             }
 
             let mut encrypted_data = vec![0u8; encrypted_data_len as usize];

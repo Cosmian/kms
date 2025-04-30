@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use crate::ttlv::{error::TtlvError, wire::kmip_tag::KmipTag, TTLValue, TtlvType, TTLV};
+use crate::ttlv::{TTLV, TTLValue, TtlvType, error::TtlvError, wire::kmip_tag::KmipTag};
 
 /// Write a tag as a 3-byte big-endian integer
 fn write_tag<W: Write, TAG: KmipTag>(writer: &mut W, tag_str: &str) -> Result<(), TtlvError> {
@@ -150,14 +150,14 @@ mod tests {
     use std::str::FromStr;
 
     use num_bigint_dig::BigInt;
-    use time::{macros::datetime, OffsetDateTime};
+    use time::{OffsetDateTime, macros::datetime};
 
     use crate::{
         kmip_1_4, kmip_2_1,
         ttlv::{
+            KmipBigInt, KmipEnumerationVariant, TTLV, TTLVBytesSerializer, TTLValue, TtlvError,
+            TtlvType,
             wire::ttlv_bytes_serializer::{write_length, write_tag, write_type},
-            KmipBigInt, KmipEnumerationVariant, TTLVBytesSerializer, TTLValue, TtlvError, TtlvType,
-            TTLV,
         },
     };
 

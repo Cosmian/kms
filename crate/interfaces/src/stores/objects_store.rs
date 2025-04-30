@@ -7,7 +7,7 @@ use cosmian_kmip::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::{stores::SessionParams, InterfaceResult, ObjectWithMetadata};
+use crate::{InterfaceResult, ObjectWithMetadata, stores::SessionParams};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

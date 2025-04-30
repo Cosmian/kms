@@ -8,7 +8,7 @@ use std::{
 use async_trait::async_trait;
 use cosmian_kmip::{
     kmip_0::kmip_types::State,
-    kmip_2_1::{kmip_attributes::Attributes, kmip_objects::Object, KmipOperation},
+    kmip_2_1::{KmipOperation, kmip_attributes::Attributes, kmip_objects::Object},
 };
 use cosmian_kms_interfaces::{
     AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
@@ -17,24 +17,23 @@ use cosmian_kms_interfaces::{
 use rawsql::Loader;
 use serde_json::Value;
 use sqlx::{
-    sqlite::{SqliteConnectOptions, SqlitePoolOptions, SqliteRow},
     ConnectOptions, Executor, Pool, Row, Sqlite, Transaction,
+    sqlite::{SqliteConnectOptions, SqlitePoolOptions, SqliteRow},
 };
 use tracing::{debug, trace};
 use uuid::Uuid;
 
 use crate::{
-    db_bail, db_error,
+    DbError, db_bail, db_error,
     error::{DbResult, DbResultHelper},
     stores::{
+        SQLITE_QUERIES,
         sql::{
             database::SqlDatabase,
-            locate_query::{query_from_attributes, SqlitePlaceholder},
+            locate_query::{SqlitePlaceholder, query_from_attributes},
             main_store::SqlMainStore,
         },
-        SQLITE_QUERIES,
     },
-    DbError,
 };
 
 #[macro_export]

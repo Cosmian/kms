@@ -9,11 +9,11 @@ use openssl::{
     asn1::{Asn1Object, Asn1OctetString},
     nid::Nid,
     sha::Sha1,
-    x509::{X509Extension, X509Name, X509NameBuilder, X509},
+    x509::{X509, X509Extension, X509Name, X509NameBuilder},
 };
 use x509_parser::prelude::{FromDer, X509Certificate};
 
-use crate::error::{result::CryptoResultHelper, CryptoError};
+use crate::error::{CryptoError, result::CryptoResultHelper};
 
 /// Generate a KMIP certificate from an OpenSSL certificate
 pub fn openssl_certificate_to_kmip(certificate: &X509) -> Result<Object, CryptoError> {

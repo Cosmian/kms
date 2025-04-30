@@ -6,7 +6,7 @@ use std::{
 use async_trait::async_trait;
 use cosmian_kmip::{kmip_0::kmip_types::State, kmip_2_1::KmipOperation};
 
-use crate::{stores::SessionParams, InterfaceResult};
+use crate::{InterfaceResult, stores::SessionParams};
 
 /// Trait that the stores must implement to store permissions
 #[async_trait(?Send)]

@@ -1,8 +1,8 @@
-use std::io::{stdin, stdout, Write};
+use std::io::{Write, stdin, stdout};
 
 use cosmian_kmip::{
     kmip_0::kmip_messages::{RequestMessage, ResponseMessage},
-    ttlv::{from_ttlv, TTLV},
+    ttlv::{TTLV, from_ttlv},
 };
 
 /// A simple command-line parser for TTLV messages.

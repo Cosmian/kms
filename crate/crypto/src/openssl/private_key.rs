@@ -1,4 +1,5 @@
 use cosmian_kmip::{
+    SafeBigInt,
     kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
         kmip_attributes::Attributes,
@@ -9,7 +10,6 @@ use cosmian_kmip::{
             KeyFormatType, RecommendedCurve,
         },
     },
-    SafeBigInt,
 };
 use num_bigint_dig::{BigInt, BigUint, IntoBigUint, Sign};
 use openssl::{
@@ -23,11 +23,11 @@ use zeroize::Zeroizing;
 
 use crate::{
     crypto::elliptic_curves::{
-        ED25519_PRIVATE_KEY_LENGTH, ED448_PRIVATE_KEY_LENGTH, X25519_PRIVATE_KEY_LENGTH,
-        X448_PRIVATE_KEY_LENGTH,
+        ED448_PRIVATE_KEY_LENGTH, ED25519_PRIVATE_KEY_LENGTH, X448_PRIVATE_KEY_LENGTH,
+        X25519_PRIVATE_KEY_LENGTH,
     },
     crypto_bail,
-    error::{result::CryptoResultHelper, CryptoError},
+    error::{CryptoError, result::CryptoResultHelper},
     pad_be_bytes,
 };
 
@@ -76,9 +76,7 @@ pub fn kmip_private_key_to_openssl(private_key: &Object) -> Result<PKey<Private>
             PKey::from_ec_key(ec_key)?
         }
         KeyFormatType::TransparentRSAPrivateKey => {
-            let Some(KeyValue::Structure {
-                 key_material, ..
-            }) = key_block.key_value.as_ref()
+            let Some(KeyValue::Structure { key_material, .. }) = key_block.key_value.as_ref()
             else {
                 return Err(CryptoError::Default(
                     "Key value not found in Transparent RSA private key".to_owned(),
@@ -159,9 +157,7 @@ pub fn kmip_private_key_to_openssl(private_key: &Object) -> Result<PKey<Private>
             }
         }
         KeyFormatType::TransparentECPrivateKey => {
-            let Some(KeyValue::Structure {
-                 key_material, ..
-            }) = key_block.key_value.as_ref()
+            let Some(KeyValue::Structure { key_material, .. }) = key_block.key_value.as_ref()
             else {
                 return Err(CryptoError::Default(
                     "Key value not found in Transparent EC private key".to_owned(),

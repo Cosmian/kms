@@ -5,14 +5,14 @@ use std::{
 
 use async_trait::async_trait;
 use cloudproof_findex::{
+    IndexedValue, Keyword, Location,
     implementations::redis::{FindexRedis, FindexRedisError, RemovedLocationsFinder},
     parameters::MASTER_KEY_LENGTH,
-    IndexedValue, Keyword, Location,
 };
 use cosmian_crypto_core::{FixedSizeCBytes, SymmetricKey};
 use cosmian_kmip::kmip_2_1::KmipOperation;
 
-use crate::{error::DbResult, DbError};
+use crate::{DbError, error::DbResult};
 
 /// The struct we store for each permission.
 /// We store the permission itself as a Location.

@@ -8,7 +8,7 @@ use cosmian_kms_interfaces::SessionParams;
 
 use super::locate_usk;
 use crate::{
-    core::{operations::recursively_revoke_key, KMS},
+    core::{KMS, operations::recursively_revoke_key},
     result::KResult,
 };
 

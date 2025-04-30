@@ -6,12 +6,12 @@ use std::{
 
 use lru::LruCache;
 use pkcs11_sys::{
-    CKF_RW_SESSION, CKF_SERIAL_SESSION, CKR_OK, CKR_USER_ALREADY_LOGGED_IN, CKU_USER, CK_FLAGS,
-    CK_OBJECT_HANDLE, CK_SESSION_HANDLE, CK_SLOT_ID, CK_ULONG, CK_UTF8CHAR_PTR,
+    CK_FLAGS, CK_OBJECT_HANDLE, CK_SESSION_HANDLE, CK_SLOT_ID, CK_ULONG, CK_UTF8CHAR_PTR,
+    CKF_RW_SESSION, CKF_SERIAL_SESSION, CKR_OK, CKR_USER_ALREADY_LOGGED_IN, CKU_USER,
 };
 use tracing::warn;
 
-use crate::{hsm_lib::HsmLib, HError, HResult, Session};
+use crate::{HError, HResult, Session, hsm_lib::HsmLib};
 
 /// A cache structure that maps byte vectors to CK_OBJECT_HANDLE values using an LRU (Least Recently Used) strategy.
 ///

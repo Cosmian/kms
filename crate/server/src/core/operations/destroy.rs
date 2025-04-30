@@ -4,12 +4,12 @@ use async_recursion::async_recursion;
 use cosmian_kmip::{
     kmip_0::kmip_types::{ErrorReason, State},
     kmip_2_1::{
+        KmipOperation,
         kmip_attributes::Attributes,
         kmip_data_structures::{KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType},
         kmip_operations::{Destroy, DestroyResponse},
         kmip_types::{KeyFormatType, LinkType, UniqueIdentifier},
-        KmipOperation,
     },
 };
 use cosmian_kms_interfaces::SessionParams;
@@ -18,9 +18,9 @@ use zeroize::Zeroizing;
 
 use crate::{
     core::{
+        KMS,
         cover_crypt::destroy_user_decryption_keys,
         uid_utils::{has_prefix, uids_from_unique_identifier},
-        KMS,
     },
     error::KmsError,
     kms_bail,

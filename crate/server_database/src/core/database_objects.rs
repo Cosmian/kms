@@ -11,8 +11,8 @@ use cosmian_kmip::{
 use cosmian_kms_interfaces::{AtomicOperation, ObjectWithMetadata, ObjectsStore, SessionParams};
 
 use crate::{
-    error::{DbError, DbResult},
     Database,
+    error::{DbError, DbResult},
 };
 
 /// Struct representing the database and providing methods to manipulate objects within it.

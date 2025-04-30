@@ -6,6 +6,7 @@ use crate::kmip_2_1::extra::fips::{
 #[cfg(feature = "fips")]
 use crate::kmip_2_1_bail;
 use crate::{
+    KmipError,
     kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
         kmip_attributes::Attributes,
@@ -16,7 +17,6 @@ use crate::{
             UniqueIdentifier,
         },
     },
-    KmipError,
 };
 /// Build a `CreateKeyPairRequest` for a RSA key pair.
 pub fn create_rsa_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(

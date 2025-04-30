@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use zeroize::Zeroizing;
 
 use crate::{
-    encryption_oracle::EncryptedContent, CryptoAlgorithm, InterfaceResult, KeyMetadata, KeyType,
+    CryptoAlgorithm, InterfaceResult, KeyMetadata, KeyType, encryption_oracle::EncryptedContent,
 };
 
 /// Supported key algorithms

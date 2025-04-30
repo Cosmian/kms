@@ -13,6 +13,7 @@ use cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm;
 use cosmian_kmip::{
     kmip_0::kmip_types::State,
     kmip_2_1::{
+        KmipOperation,
         kmip_attributes::Attributes,
         kmip_objects::{Object, ObjectType},
         kmip_operations::{Certify, CertifyResponse, CreateKeyPair},
@@ -20,7 +21,6 @@ use cosmian_kmip::{
             CertificateRequestType, KeyFormatType, LinkType, LinkedObjectIdentifier,
             UniqueIdentifier,
         },
-        KmipOperation,
     },
 };
 use cosmian_kms_crypto::openssl::{
@@ -34,12 +34,13 @@ use openssl::{
     hash::MessageDigest,
     pkey::Id,
     sha::Sha1,
-    x509::{X509Req, X509},
+    x509::{X509, X509Req},
 };
 use tracing::{debug, info, trace};
 
 use crate::{
     core::{
+        KMS,
         certificate::retrieve_issuer_private_key_and_certificate,
         operations::{
             certify::{
@@ -49,7 +50,6 @@ use crate::{
             create_key_pair::generate_key_pair,
         },
         retrieve_object_utils::retrieve_object_for_operation,
-        KMS,
     },
     error::KmsError,
     kms_bail,

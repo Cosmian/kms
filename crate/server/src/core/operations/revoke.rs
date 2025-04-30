@@ -4,10 +4,10 @@ use async_recursion::async_recursion;
 use cosmian_kmip::{
     kmip_0::kmip_types::{ErrorReason, RevocationReason, RevocationReasonCode, State},
     kmip_2_1::{
+        KmipOperation,
         kmip_objects::ObjectType,
         kmip_operations::{Revoke, RevokeResponse},
         kmip_types::{KeyFormatType, LinkType, UniqueIdentifier},
-        KmipOperation,
     },
 };
 use cosmian_kms_interfaces::SessionParams;
@@ -15,9 +15,9 @@ use tracing::{debug, trace};
 
 use crate::{
     core::{
+        KMS,
         cover_crypt::revoke_user_decryption_keys,
         uid_utils::{has_prefix, uids_from_unique_identifier},
-        KMS,
     },
     error::KmsError,
     kms_bail,

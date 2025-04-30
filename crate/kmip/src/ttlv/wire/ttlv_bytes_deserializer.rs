@@ -3,8 +3,8 @@ use std::io::Read;
 use time::OffsetDateTime;
 
 use crate::ttlv::{
-    error::TtlvError, kmip_big_int::KmipBigInt, wire::kmip_tag::KmipTag, KmipEnumerationVariant,
-    TTLValue, TtlvType, TTLV,
+    KmipEnumerationVariant, TTLV, TTLValue, TtlvType, error::TtlvError, kmip_big_int::KmipBigInt,
+    wire::kmip_tag::KmipTag,
 };
 
 pub struct TTLVBytesDeserializer<R> {
@@ -165,8 +165,8 @@ mod tests {
     use crate::{
         kmip_1_4,
         ttlv::{
-            wire::ttlv_bytes_serializer::TTLVBytesSerializer, KmipEnumerationVariant, TTLValue,
-            TTLV,
+            KmipEnumerationVariant, TTLV, TTLValue,
+            wire::ttlv_bytes_serializer::TTLVBytesSerializer,
         },
     };
 

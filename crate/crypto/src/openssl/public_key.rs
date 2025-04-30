@@ -22,7 +22,7 @@ use zeroize::Zeroizing;
 
 use crate::{
     crypto_bail, crypto_error,
-    error::{result::CryptoResultHelper, CryptoError},
+    error::{CryptoError, result::CryptoResultHelper},
 };
 
 /// Convert a KMIP Public key to openssl `PKey<Public>`
@@ -76,9 +76,7 @@ pub fn kmip_public_key_to_openssl(public_key: &Object) -> Result<PKey<Public>, C
             PKey::public_key_from_der(&key_bytes)?
         }
         KeyFormatType::TransparentRSAPublicKey => {
-            let Some(KeyValue::Structure {
-                 key_material, ..
-            }) = key_block.key_value.as_ref()
+            let Some(KeyValue::Structure { key_material, .. }) = key_block.key_value.as_ref()
             else {
                 return Err(CryptoError::Default(
                     "Key value not found in Transparent RSA public key".to_owned(),
@@ -105,9 +103,7 @@ pub fn kmip_public_key_to_openssl(public_key: &Object) -> Result<PKey<Public>, C
             }
         }
         KeyFormatType::TransparentECPublicKey => {
-            let Some(KeyValue::Structure {
-                 key_material, ..
-            }) = key_block.key_value.as_ref()
+            let Some(KeyValue::Structure { key_material, .. }) = key_block.key_value.as_ref()
             else {
                 return Err(CryptoError::Default(
                     "Key value not found in ransparent EC public key".to_owned(),

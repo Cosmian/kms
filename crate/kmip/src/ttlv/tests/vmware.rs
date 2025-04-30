@@ -26,7 +26,7 @@ use crate::{
         },
         kmip_types::{CryptographicAlgorithm, KeyFormatType, ObjectType},
     },
-    ttlv::{from_ttlv, KmipFlavor, TTLV},
+    ttlv::{KmipFlavor, TTLV, from_ttlv},
 };
 
 const DISCOVER_VERSIONS_1: &str = "42007801000000604200770100000038420069010000002042006a02000000040000000100000000\

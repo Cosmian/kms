@@ -36,10 +36,7 @@ pub(crate) fn unwrap_user_decryption_key_object(
             "Expected an Covercrypt User Decryption Key".to_owned(),
         ))
     }
-    let Some(KeyValue::Structure {
-         key_material, ..
-    }) = key_block.key_value.as_ref()
-    else {
+    let Some(KeyValue::Structure { key_material, .. }) = key_block.key_value.as_ref() else {
         return Err(CryptoError::Default(
             "Key value not found in Covercrypt user decryption key".to_owned(),
         ));

@@ -20,7 +20,7 @@ use cosmian_kmip::{
     },
 };
 use cosmian_kms_crypto::crypto::{
-    elliptic_curves::operation::to_ec_public_key, CURVE_25519_Q_LENGTH_BITS,
+    CURVE_25519_Q_LENGTH_BITS, elliptic_curves::operation::to_ec_public_key,
 };
 use tracing::trace;
 use uuid::Uuid;

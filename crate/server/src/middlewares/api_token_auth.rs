@@ -2,10 +2,10 @@ use std::{rc::Rc, sync::Arc};
 
 use actix_service::Service;
 use actix_web::{
+    Error, HttpResponse,
     body::{BoxBody, EitherBody},
     dev::{ServiceRequest, ServiceResponse},
     http::header,
-    Error, HttpResponse,
 };
 use base64::Engine;
 use cosmian_kmip::{

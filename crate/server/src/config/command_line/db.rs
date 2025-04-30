@@ -2,7 +2,7 @@ use std::{fmt::Display, path::PathBuf};
 
 use clap::Args;
 use cloudproof_findex::Label;
-use cosmian_kms_server_database::{redis_master_key_from_password, MainDbParams};
+use cosmian_kms_server_database::{MainDbParams, redis_master_key_from_password};
 use serde::{Deserialize, Serialize};
 use url::Url;
 

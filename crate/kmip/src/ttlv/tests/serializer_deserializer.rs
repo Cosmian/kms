@@ -1,11 +1,11 @@
 use cosmian_logger::log_init;
-use kmip_derive::{kmip_enum, KmipEnumSerialize};
+use kmip_derive::{KmipEnumSerialize, kmip_enum};
 use num_bigint_dig::{BigInt, BigUint};
 use serde::{Deserialize, Serialize};
 use time::{OffsetDateTime, UtcOffset};
 use tracing::info;
 
-use crate::ttlv::{from_ttlv, to_ttlv, ttlv_struct::TTLV, KmipEnumerationVariant, TTLValue};
+use crate::ttlv::{KmipEnumerationVariant, TTLValue, from_ttlv, to_ttlv, ttlv_struct::TTLV};
 
 #[test]
 fn test_ser_int() {
