@@ -3,8 +3,10 @@ use std::sync::Arc;
 use base64::{Engine, engine::general_purpose};
 use clap::crate_version;
 use cosmian_kmip::kmip_2_1::{
-    kmip_operations::{Decrypt, Encrypt},
-    kmip_types::{BlockCipherMode, CryptographicParameters, UniqueIdentifier},
+    // kmip_objects::ObjectType,
+    kmip_objects::ObjectType,
+    kmip_operations::{Decrypt, Encrypt, Get},
+    kmip_types::{BlockCipherMode, CryptographicParameters, HashingAlgorithm, UniqueIdentifier},
 };
 use openssl::{
     hash::MessageDigest,
@@ -22,7 +24,7 @@ use super::GoogleCseConfig;
 use crate::{
     core::{
         KMS,
-        operations::{decrypt, encrypt},
+        operations::{decrypt, encrypt, get},
     },
     error::KmsError,
     kms_ensure,
@@ -195,7 +197,7 @@ pub async fn wrap(
     let roles = &[Role::Writer, Role::Upgrader];
 
     // get the user and resource name
-    let (user, resource_name) = get_user_and_resource_name(
+    let (user, _resource_name) = get_user_and_resource_name(
         &application,
         roles,
         &request.authentication,
@@ -204,38 +206,58 @@ pub async fn wrap(
         kms,
     )
     .await?;
+    let resource_name = Some(general_purpose::STANDARD.decode("coco")?);
 
     debug!("wrap: wrap dek");
-    let encryption_request = Encrypt {
+    // Check google_cse key type
+    let get_request = Get {
         unique_identifier: Some(UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned())),
-        cryptographic_parameters: None,
-        data: Some(general_purpose::STANDARD.decode(&request.key)?.into()),
+        ..Get::default()
+    };
+    let google_cse_key = get(kms, get_request, &user, None).await?;
+    let cse_key_id = match google_cse_key.object_type {
+        ObjectType::SymmetricKey => Ok(UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned())),
+        ObjectType::PrivateKey => Ok(UniqueIdentifier::TextString(format!(
+            "{}{}",
+            GOOGLE_CSE_ID, "_pk"
+        ))),
+        _ => Err(KmsError::NotSupported(
+            "Google CSE key type is not supported for CSE operations".to_owned(),
+        )),
+    }?;
+
+    // Encrypt DEK
+    let mut bytes = general_purpose::STANDARD.decode(&request.key)?;
+    bytes.extend(resource_name.clone().unwrap_or_default());
+
+    let encryption_request = Encrypt {
+        unique_identifier: Some(cse_key_id),
+        cryptographic_parameters: Some(CryptographicParameters {
+            padding_method: None,
+            hashing_algorithm: Some(HashingAlgorithm::SHA256),
+            ..CryptographicParameters::default()
+        }),
+        data: Some(bytes.into()),
         iv_counter_nonce: None,
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,
-        authenticated_encryption_additional_data: resource_name,
+        authenticated_encryption_additional_data: None,
     };
     let dek = encrypt(kms, encryption_request, &user, None).await?;
 
     // re-extract the bytes from the key
-    let data = dek.data.ok_or_else(|| {
-        KmsError::InvalidRequest("Invalid wrapped key - missing data.".to_owned())
-    })?;
-    let iv_counter_nonce = dek.iv_counter_nonce.ok_or_else(|| {
-        KmsError::InvalidRequest("Invalid wrapped key - missing nonce.".to_owned())
-    })?;
-    let authenticated_encryption_tag = dek.authenticated_encryption_tag.ok_or_else(|| {
-        KmsError::InvalidRequest("Invalid wrapped key - authenticated encryption tag.".to_owned())
-    })?;
+    let mut wrapped_dek = Vec::new();
 
-    let mut wrapped_dek = Vec::with_capacity(
-        iv_counter_nonce.len() + data.len() + authenticated_encryption_tag.len(),
-    );
-    wrapped_dek.extend_from_slice(&iv_counter_nonce);
-    wrapped_dek.extend_from_slice(&data);
-    wrapped_dek.extend_from_slice(&authenticated_encryption_tag);
-
+    if let Some(iv_counter_nonce) = &dek.iv_counter_nonce {
+        wrapped_dek.extend_from_slice(iv_counter_nonce);
+    }
+    if let Some(data) = &dek.data {
+        wrapped_dek.extend_from_slice(data);
+    }
+    if let Some(authenticated_encryption_tag) = &dek.authenticated_encryption_tag {
+        wrapped_dek.extend_from_slice(authenticated_encryption_tag);
+    }
     debug!("wrap: exiting with success");
     Ok(WrapResponse {
         wrapped_key: general_purpose::STANDARD.encode(wrapped_dek),
@@ -960,51 +982,114 @@ async fn cse_wrapped_key_decrypt(
 ) -> KResult<Zeroizing<Vec<u8>>> {
     debug!("cse_wrapped_key_decrypt: wrapped_key: {wrapped_key}");
     let wrapped_key_bytes = general_purpose::STANDARD.decode(&wrapped_key)?;
-    let len = wrapped_key_bytes.len();
-    if len < TAG_LENGTH + NONCE_LENGTH {
-        return Err(KmsError::InvalidRequest(
-            "Invalid wrapped key - insufficient length.".to_owned(),
-        ));
-    }
-    let iv_counter_nonce = wrapped_key_bytes.get(..NONCE_LENGTH).ok_or_else(|| {
-        KmsError::InvalidRequest("Invalid wrapped key - missing nonce.".to_owned())
-    })?;
-    let ciphertext = wrapped_key_bytes
-        .get(NONCE_LENGTH..len - TAG_LENGTH)
-        .ok_or_else(|| {
-            KmsError::InvalidRequest("Invalid wrapped key - missing ciphertext.".to_owned())
-        })?;
-    let authenticated_tag = wrapped_key_bytes.get(len - TAG_LENGTH..).ok_or_else(|| {
-        KmsError::InvalidRequest("Invalid wrapped key - missing authenticated tag.".to_owned())
-    })?;
-
-    trace!(
-        "cse_wrapped_key_decrypt: iv_counter_nonce: {}, ciphertext: {}, authenticated_tag: {}",
-        general_purpose::STANDARD.encode(iv_counter_nonce),
-        general_purpose::STANDARD.encode(ciphertext),
-        general_purpose::STANDARD.encode(authenticated_tag)
-    );
-
-    let decryption_request = Decrypt {
-        unique_identifier: Some(wrapping_key_id),
-        cryptographic_parameters: Some(CryptographicParameters {
-            block_cipher_mode: Some(BlockCipherMode::GCM),
-            ..Default::default()
-        }),
-        data: Some(ciphertext.to_vec()),
-        iv_counter_nonce: Some(iv_counter_nonce.to_vec()),
-        correlation_value: None,
-        init_indicator: None,
-        final_indicator: None,
-        authenticated_encryption_additional_data: resource_name,
-        authenticated_encryption_tag: Some(authenticated_tag.to_vec()),
+    // Check google_cse key type
+    let get_request = Get {
+        unique_identifier: Some(UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned())),
+        ..Get::default()
     };
+    let google_cse_key = get(kms, get_request, &user, None).await?;
+    let decryption_request = match google_cse_key.object_type {
+        ObjectType::SymmetricKey => {
+            debug!("decrypt with AES");
+            let len = wrapped_key_bytes.len();
+            if len < TAG_LENGTH + NONCE_LENGTH {
+                return Err(KmsError::InvalidRequest(
+                    "Invalid wrapped key - insufficient length.".to_owned(),
+                ));
+            }
+            let iv_counter_nonce = wrapped_key_bytes.get(..NONCE_LENGTH).ok_or_else(|| {
+                KmsError::InvalidRequest("Invalid wrapped key - missing nonce.".to_owned())
+            })?;
+            let ciphertext = wrapped_key_bytes
+                .get(NONCE_LENGTH..len - TAG_LENGTH)
+                .ok_or_else(|| {
+                    KmsError::InvalidRequest("Invalid wrapped key - missing ciphertext.".to_owned())
+                })?;
+            let authenticated_tag = wrapped_key_bytes.get(len - TAG_LENGTH..).ok_or_else(|| {
+                KmsError::InvalidRequest(
+                    "Invalid wrapped key - missing authenticated tag.".to_owned(),
+                )
+            })?;
+
+            trace!(
+                "cse_wrapped_key_decrypt: iv_counter_nonce: {}, ciphertext: {}, \
+                 authenticated_tag: {}",
+                general_purpose::STANDARD.encode(iv_counter_nonce),
+                general_purpose::STANDARD.encode(ciphertext),
+                general_purpose::STANDARD.encode(authenticated_tag)
+            );
+
+            let decryption_request = Decrypt {
+                unique_identifier: Some(wrapping_key_id),
+                cryptographic_parameters: Some(CryptographicParameters {
+                    block_cipher_mode: Some(BlockCipherMode::GCM),
+                    ..Default::default()
+                }),
+                data: Some(ciphertext.to_vec()),
+                iv_counter_nonce: Some(iv_counter_nonce.to_vec()),
+                correlation_value: None,
+                init_indicator: None,
+                final_indicator: None,
+                authenticated_encryption_additional_data: None,
+                authenticated_encryption_tag: Some(authenticated_tag.to_vec()),
+            };
+            Ok(decryption_request)
+        }
+        ObjectType::PrivateKey => {
+            debug!("decrypt with RSA");
+            let decryption_request = Decrypt {
+                unique_identifier: Some(wrapping_key_id),
+                cryptographic_parameters: Some(CryptographicParameters {
+                    padding_method: None,
+                    hashing_algorithm: Some(HashingAlgorithm::SHA256),
+                    ..CryptographicParameters::default()
+                }),
+                data: Some(wrapped_key_bytes),
+                iv_counter_nonce: None,
+                correlation_value: None,
+                init_indicator: None,
+                final_indicator: None,
+                authenticated_encryption_additional_data: None,
+                authenticated_encryption_tag: None,
+            };
+            Ok(decryption_request)
+        }
+        _ => Err(KmsError::NotSupported(
+            "Google CSE key type is not supported for CSE operations".to_owned(),
+        )),
+    }?;
     let key = decrypt(kms, decryption_request, &user, None).await?;
 
     let data = key.data.ok_or_else(|| {
         KmsError::InvalidRequest("Invalid decrypted key - missing data.".to_owned())
     })?;
-    Ok(data)
+
+    if data.len() < 48 {
+        // Not enough bytes to include a resource name
+        match resource_name {
+            Some(_) => {
+                return Err(KmsError::InvalidRequest(
+                    "Invalid key decryption - invalid resource_name.".to_owned(),
+                ))
+            }
+            None => return Ok(data),
+        };
+    }
+
+    let (unwrapped_key, unwrapped_resource_name_bytes) = data.split_at(48);
+
+    resource_name.map_or_else(
+        || Ok(unwrapped_key.to_vec().into()),
+        |resource_name| {
+            if unwrapped_resource_name_bytes == resource_name.as_slice() {
+                Ok(unwrapped_key.to_vec().into())
+            } else {
+                Err(KmsError::InvalidRequest(
+                    "Invalid key decryption - invalid resource_name.".to_owned(),
+                ))
+            }
+        },
+    )
 }
 
 /// Compute resource key hash
