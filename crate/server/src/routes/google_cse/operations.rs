@@ -649,22 +649,17 @@ pub async fn privileged_wrap(
     let dek = encrypt(kms, encryption_request, &user, None).await?;
 
     // re-extract the bytes from the key
-    let data = dek.data.ok_or_else(|| {
-        KmsError::InvalidRequest("Invalid wrapped key - missing data.".to_owned())
-    })?;
-    let iv_counter_nonce = dek.iv_counter_nonce.ok_or_else(|| {
-        KmsError::InvalidRequest("Invalid wrapped key - missing nonce.".to_owned())
-    })?;
-    let authenticated_encryption_tag = dek.authenticated_encryption_tag.ok_or_else(|| {
-        KmsError::InvalidRequest("Invalid wrapped key - authenticated encryption tag.".to_owned())
-    })?;
+    let mut wrapped_dek = Vec::new();
 
-    let mut wrapped_dek = Vec::with_capacity(
-        iv_counter_nonce.len() + data.len() + authenticated_encryption_tag.len(),
-    );
-    wrapped_dek.extend_from_slice(&iv_counter_nonce);
-    wrapped_dek.extend_from_slice(&data);
-    wrapped_dek.extend_from_slice(&authenticated_encryption_tag);
+    if let Some(iv_counter_nonce) = &dek.iv_counter_nonce {
+        wrapped_dek.extend_from_slice(iv_counter_nonce);
+    }
+    if let Some(data) = &dek.data {
+        wrapped_dek.extend_from_slice(data);
+    }
+    if let Some(authenticated_encryption_tag) = &dek.authenticated_encryption_tag {
+        wrapped_dek.extend_from_slice(authenticated_encryption_tag);
+    }
 
     debug!("privileged_wrap: exiting with success");
     Ok(PrivilegedWrapResponse {
@@ -986,7 +981,7 @@ async fn cse_wrapped_key_decrypt(
                 correlation_value: None,
                 init_indicator: None,
                 final_indicator: None,
-                authenticated_encryption_additional_data: None,
+                authenticated_encryption_additional_data: resource_name,
                 authenticated_encryption_tag: Some(authenticated_tag.to_vec()),
             };
 
