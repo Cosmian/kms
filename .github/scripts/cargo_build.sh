@@ -13,10 +13,12 @@ set -ex
 
 ROOT_FOLDER=$(pwd)
 
-if [ "$DEBUG_OR_RELEASE" = "release" ]; then
-  # Build the UI in release mode
+# Build UI
+if [ -f /etc/lsb-release ]; then
   bash .github/scripts/build_ui.sh
+fi
 
+if [ "$DEBUG_OR_RELEASE" = "release" ]; then
   # First build the Debian and RPM packages. It must come at first since
   # after this step `cosmian` and `cosmian_kms` are built with custom features flags (fips for example).
   rm -rf target/"$TARGET"/debian
