@@ -5,7 +5,7 @@ use std::{
 
 use cosmian_kmip::{
     kmip_0::kmip_types::State,
-    kmip_2_1::{kmip_attributes::Attributes, kmip_types::UniqueIdentifier, KmipOperation},
+    kmip_2_1::{KmipOperation, kmip_attributes::Attributes, kmip_types::UniqueIdentifier},
 };
 use serde::{Deserialize, Serialize};
 

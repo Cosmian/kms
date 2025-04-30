@@ -1,12 +1,12 @@
 use tracing::{debug, error};
 
 use crate::{
+    DbError,
     error::DbResult,
     stores::{
-        migrate::{DbState, KMS_VERSION_BEFORE_MIGRATION_SUPPORT},
         RedisWithFindex,
+        migrate::{DbState, KMS_VERSION_BEFORE_MIGRATION_SUPPORT},
     },
-    DbError,
 };
 
 // We cannot implement Migrate for RedisWithFindex or else we would face the following issue:

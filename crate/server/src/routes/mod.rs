@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use actix_web::{
-    get,
-    http::{header, StatusCode},
+    HttpRequest, HttpResponse, HttpResponseBuilder, get,
+    http::{StatusCode, header},
     web::{Data, Json},
 };
 use clap::crate_version;

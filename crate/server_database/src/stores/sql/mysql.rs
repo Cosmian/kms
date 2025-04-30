@@ -8,7 +8,7 @@ use std::{
 use async_trait::async_trait;
 use cosmian_kmip::{
     kmip_0::kmip_types::State,
-    kmip_2_1::{kmip_attributes::Attributes, kmip_objects::Object, KmipOperation},
+    kmip_2_1::{KmipOperation, kmip_attributes::Attributes, kmip_objects::Object},
 };
 use cosmian_kms_interfaces::{
     AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
@@ -17,8 +17,8 @@ use cosmian_kms_interfaces::{
 use rawsql::Loader;
 use serde_json::Value;
 use sqlx::{
-    mysql::{MySqlConnectOptions, MySqlPoolOptions, MySqlRow},
     ConnectOptions, Executor, MySql, Pool, Row, Transaction,
+    mysql::{MySqlConnectOptions, MySqlPoolOptions, MySqlRow},
 };
 use tracing::{debug, trace};
 use uuid::Uuid;
@@ -27,12 +27,12 @@ use crate::{
     db_bail, db_error,
     error::{DbError, DbResult, DbResultHelper},
     stores::{
+        MYSQL_QUERIES,
         sql::{
             database::SqlDatabase,
-            locate_query::{query_from_attributes, MySqlPlaceholder},
+            locate_query::{MySqlPlaceholder, query_from_attributes},
             main_store::SqlMainStore,
         },
-        MYSQL_QUERIES,
     },
 };
 

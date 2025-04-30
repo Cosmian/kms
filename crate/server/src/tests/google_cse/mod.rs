@@ -9,10 +9,11 @@ use std::{
 use actix_http::{Request, body::MessageBody};
 use actix_service::Service;
 use actix_web::dev::ServiceResponse;
-use base64::{engine::general_purpose, Engine};
+use base64::{Engine, engine::general_purpose};
 use cosmian_kmip::{
     kmip_0::kmip_types::BlockCipherMode,
     kmip_2_1::{
+        KmipOperation,
         extra::{VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
         kmip_attributes::Attributes,
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingSpecification},
@@ -24,9 +25,8 @@ use cosmian_kmip::{
             UniqueIdentifier, VendorAttribute, VendorAttributeValue, WrappingMethod,
         },
         requests::create_rsa_key_pair_request,
-        KmipOperation,
     },
-    ttlv::{from_ttlv, TTLV},
+    ttlv::{TTLV, from_ttlv},
 };
 use cosmian_kms_access::access::{Access, SuccessResponse};
 use cosmian_kms_crypto::crypto::certificates::EXTENSION_CONFIG;

@@ -13,6 +13,7 @@ use cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm;
 use cosmian_kmip::{
     kmip_0::kmip_types::State,
     kmip_2_1::{
+        KmipOperation,
         kmip_attributes::Attributes,
         kmip_objects::{Object, ObjectType},
         kmip_operations::{Certify, CertifyResponse, CreateKeyPair},
@@ -20,7 +21,6 @@ use cosmian_kmip::{
             CertificateRequestType, KeyFormatType, LinkType, LinkedObjectIdentifier,
             UniqueIdentifier,
         },
-        KmipOperation,
     },
 };
 use cosmian_kms_crypto::openssl::{

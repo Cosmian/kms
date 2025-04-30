@@ -2,7 +2,7 @@
 use rawsql::Loader;
 use sqlx::{Executor, IntoArguments, Pool};
 
-use crate::{error::DbResult, DbError};
+use crate::{DbError, error::DbResult};
 
 pub(crate) trait SqlDatabase<DB>
 where

@@ -4,9 +4,9 @@ use tracing::trace;
 use zeroize::Zeroizing;
 
 use crate::{
-    error::{result::KmipResult, KmipError},
-    kmip_0::kmip_types::ErrorReason,
     Deserializer, Serializer,
+    error::{KmipError, result::KmipResult},
+    kmip_0::kmip_types::ErrorReason,
 };
 
 /// Bulk Data is a structure that holds a list of zeroizing byte arrays

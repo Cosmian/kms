@@ -4,7 +4,7 @@ use actix_web::{dev::ServerHandle, error::QueryPayloadError};
 use cloudproof_findex::implementations::redis::FindexRedisError;
 use cosmian_crypto_core::CryptoCoreError;
 use cosmian_kmip::{
-    kmip_0::kmip_types::ErrorReason, kmip_1_4::kmip_types::ResultReason, ttlv::TtlvError, KmipError,
+    KmipError, kmip_0::kmip_types::ErrorReason, kmip_1_4::kmip_types::ResultReason, ttlv::TtlvError,
 };
 use cosmian_kms_crypto::CryptoError;
 use cosmian_kms_interfaces::InterfaceError;

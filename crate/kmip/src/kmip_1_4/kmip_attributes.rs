@@ -2,14 +2,15 @@ use std::fmt::{self, Formatter};
 
 use num_bigint_dig::BigInt;
 use serde::{
+    Deserialize, Serialize,
     de::{self, MapAccess, Visitor},
     ser::SerializeStruct,
-    Deserialize, Serialize,
 };
 use time::OffsetDateTime;
 use tracing::warn;
 
 use crate::{
+    KmipError,
     kmip_0::kmip_types::{
         AlternativeName, ApplicationSpecificInformation, CertificateType, CryptographicUsageMask,
         KeyValueLocationType, RevocationReason, State, UsageLimits, X509CertificateIdentifier,
@@ -22,7 +23,6 @@ use crate::{
         },
     },
     kmip_2_1::{self, kmip_types::VendorAttribute},
-    KmipError,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]

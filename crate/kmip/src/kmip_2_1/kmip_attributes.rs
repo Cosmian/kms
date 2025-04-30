@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use super::kmip_types::VendorAttributeValue;
 use crate::{
+    KmipError,
     kmip_0::kmip_types::{
         AlternativeName, ApplicationSpecificInformation, CertificateType, CryptographicUsageMask,
         ErrorReason, KeyValueLocationType, RevocationReason, State, UsageLimits,
@@ -15,10 +16,9 @@ use crate::{
             CryptographicParameters, DigitalSignatureAlgorithm, KeyFormatType, Link, LinkType,
             LinkedObjectIdentifier, Name, NistKeyType, ObjectGroupMember, OpaqueDataType,
             ProtectionLevel, ProtectionStorageMasks, RandomNumberGenerator, UniqueIdentifier,
-            VendorAttribute, VENDOR_ATTR_AAD,
+            VENDOR_ATTR_AAD, VendorAttribute,
         },
     },
-    KmipError,
 };
 
 /// The following subsections describe the attributes that are associated with

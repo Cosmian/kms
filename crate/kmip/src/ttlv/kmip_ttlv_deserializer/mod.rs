@@ -6,10 +6,10 @@ mod enum_walker;
 mod offset_date_time_deserializer;
 mod structure_walker;
 mod untagged_enum_walker;
-pub use deserializer::{from_ttlv, TtlvDeserializer};
+pub use deserializer::{TtlvDeserializer, from_ttlv};
 mod kmip_big_int_deserializer;
 
-use super::{TTLValue, TtlvError, TTLV};
+use super::{TTLV, TTLValue, TtlvError};
 
 type Result<T> = std::result::Result<T, TtlvError>;
 

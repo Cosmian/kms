@@ -13,12 +13,12 @@ use sqlx::{Executor, IntoArguments, Row};
 use tracing::{debug, error, info, trace};
 
 use crate::{
+    DbError,
     error::{DbResult, DbResultHelper},
     stores::{
         migrate::{DbState, Migrate},
         sql::{database::SqlDatabase, migrations::key_material_old::KeyMaterial421},
     },
-    DbError,
 };
 
 #[async_trait(?Send)]

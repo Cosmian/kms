@@ -1,14 +1,14 @@
 use std::{collections::HashSet, sync::Arc};
 
 use cosmian_crypto_core::{
-    reexport::rand_core::{RngCore, SeedableRng},
     CsRng,
+    reexport::rand_core::{RngCore, SeedableRng},
 };
 use cosmian_kmip::{
     kmip_0::kmip_types::State,
     kmip_2_1::{
-        kmip_attributes::Attributes, kmip_types::CryptographicAlgorithm,
-        requests::create_symmetric_key_kmip_object, KmipOperation,
+        KmipOperation, kmip_attributes::Attributes, kmip_types::CryptographicAlgorithm,
+        requests::create_symmetric_key_kmip_object,
     },
 };
 use cosmian_kms_interfaces::{ObjectsStore, PermissionsStore, SessionParams};

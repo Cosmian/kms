@@ -2,7 +2,7 @@ use cosmian_logger::log_init;
 use num_bigint_dig::BigInt;
 use time::OffsetDateTime;
 
-use crate::ttlv::ttlv_struct::{KmipEnumerationVariant, TTLValue, TTLV};
+use crate::ttlv::ttlv_struct::{KmipEnumerationVariant, TTLV, TTLValue};
 
 #[test]
 fn test_enumeration() {

@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use cosmian_kmip::kmip_2_1::{
-    extra::{tagging::VENDOR_ATTR_TAG, VENDOR_ID_COSMIAN},
+    KmipOperation,
+    extra::{VENDOR_ID_COSMIAN, tagging::VENDOR_ATTR_TAG},
     kmip_attributes::Attributes,
     kmip_data_structures::KeyValue,
     kmip_objects::{Object, PrivateKey, PublicKey, SymmetricKey},

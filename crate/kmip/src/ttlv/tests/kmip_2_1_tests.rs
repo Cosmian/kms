@@ -1,12 +1,13 @@
 use cosmian_logger::log_init;
 use num_bigint_dig::BigInt;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use time::OffsetDateTime;
 use tracing::{debug, info, trace};
 use zeroize::Zeroizing;
 
 use crate::{
-    error::{result::KmipResult, KmipError},
+    SafeBigInt,
+    error::{KmipError, result::KmipResult},
     kmip_0::{
         kmip_messages::{
             RequestMessage, RequestMessageBatchItemVersioned, RequestMessageHeader,
@@ -33,8 +34,7 @@ use crate::{
             VendorAttributeValue,
         },
     },
-    ttlv::{from_ttlv, to_ttlv, KmipEnumerationVariant, TTLValue, TTLV},
-    SafeBigInt,
+    ttlv::{KmipEnumerationVariant, TTLV, TTLValue, from_ttlv, to_ttlv},
 };
 
 fn aes_key_material(key_value: &[u8]) -> KeyMaterial {

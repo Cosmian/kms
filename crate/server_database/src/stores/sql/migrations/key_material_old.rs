@@ -1,14 +1,13 @@
 use std::fmt::Display;
 
 use cosmian_kmip::{
-    kmip_2_1::{kmip_data_structures::KeyMaterial, kmip_types::RecommendedCurve},
     SafeBigInt,
+    kmip_2_1::{kmip_data_structures::KeyMaterial, kmip_types::RecommendedCurve},
 };
 use num_bigint_dig::{BigInt, BigUint, Sign};
 use serde::{
-    de,
+    Deserialize, Serialize, de,
     de::{MapAccess, Visitor},
-    Deserialize, Serialize,
 };
 use zeroize::Zeroizing;
 

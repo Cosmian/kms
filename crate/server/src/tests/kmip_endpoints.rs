@@ -8,7 +8,7 @@ use cosmian_kmip::{
         kmip_operations::{Operation, Query},
         kmip_types::{OperationEnumeration, QueryFunction},
     },
-    ttlv::{to_ttlv, TTLV},
+    ttlv::{TTLV, to_ttlv},
 };
 use cosmian_logger::log_init;
 

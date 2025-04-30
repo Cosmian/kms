@@ -1,9 +1,9 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info};
-use version_compare::{compare, Cmp};
+use version_compare::{Cmp, compare};
 
-use crate::{error::DbResult, DbError};
+use crate::{DbError, error::DbResult};
 
 pub(crate) const KMS_VERSION_BEFORE_MIGRATION_SUPPORT: &str = "4.12.0";
 

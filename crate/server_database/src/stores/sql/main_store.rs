@@ -4,12 +4,12 @@ use rawsql::Loader;
 use sqlx::{Executor, IntoArguments, Transaction};
 
 use crate::{
+    DbError,
     error::{DbResult, DbResultHelper},
     stores::{
         migrate::{DbState, Migrate},
-        sql::database::{get_query, SqlDatabase},
+        sql::database::{SqlDatabase, get_query},
     },
-    DbError,
 };
 
 #[async_trait(?Send)]

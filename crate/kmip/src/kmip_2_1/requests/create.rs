@@ -2,6 +2,7 @@ use uuid::Uuid;
 use zeroize::Zeroizing;
 
 use crate::{
+    KmipError,
     kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
         kmip_attributes::Attributes,
@@ -10,7 +11,6 @@ use crate::{
         kmip_operations::Create,
         kmip_types::{CryptographicAlgorithm, KeyFormatType, UniqueIdentifier},
     },
-    KmipError,
 };
 
 /// Create a symmetric key for the given algorithm
