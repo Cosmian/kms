@@ -2,7 +2,6 @@ use serde::{Deserialize, Serialize};
 
 use super::kmip_types::VendorAttributeValue;
 use crate::{
-    KmipError,
     kmip_0::kmip_types::{
         AlternativeName, ApplicationSpecificInformation, CertificateType, CryptographicUsageMask,
         ErrorReason, KeyValueLocationType, RevocationReason, State, UsageLimits,
@@ -16,9 +15,10 @@ use crate::{
             CryptographicParameters, DigitalSignatureAlgorithm, KeyFormatType, Link, LinkType,
             LinkedObjectIdentifier, Name, NistKeyType, ObjectGroupMember, OpaqueDataType,
             ProtectionLevel, ProtectionStorageMasks, RandomNumberGenerator, UniqueIdentifier,
-            VENDOR_ATTR_AAD, VendorAttribute,
+            VendorAttribute, VENDOR_ATTR_AAD,
         },
     },
+    KmipError,
 };
 
 /// The following subsections describe the attributes that are associated with
@@ -604,7 +604,7 @@ impl Attributes {
     }
 
     /// Check that `flag` bit is set in object's `CryptographicUsageMask`.
-    /// If FIPS mode is disabled, check if Unrestricted bit is set too.
+    /// If FIPS mode is disabled, check if the Unrestricted bit is set too.
     ///
     /// Return `true` if `flag` has at least one bit set in self's attributes,
     /// return `false` otherwise.
