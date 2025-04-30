@@ -10,7 +10,7 @@ written in [**Rust**](https://www.rust-lang.org/) that presents some unique feat
 
 - the ability to confidentially run in a public cloud — or any zero-trust environment — using
   Cosmian VM. See our cloud-ready confidential KMS on the
-  [Azure, GCP, and AWS marketplaces](https://cosmian.com/marketplaces/) and
+  [Azure, GCP, and AWS marketplaces](https://cosmian.com/marketplaces/) andtest_aes_gcm
   our [deployment guide](documentation/docs/installation/marketplace_guide.md)
 - support of state-of-the-art authentication mechanisms (see [authentication](./documentation/docs/authentication.md))
 - out-of-the-box support of

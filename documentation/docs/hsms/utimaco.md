@@ -35,7 +35,7 @@ hsm_slot = [0, 0, ] # example [0,4] for slots 0 and 4
 hsm_password = ["<password>", "<password>", ] # example ["pass0", "pass4"] for slots 0 and 4
 ```
 
-Even if only one slot is used, the `hsm_slot` and `hsm_password` parameters must be arrays.
+The `hsm_slot` and `hsm_password` parameters must be arrays even if only one slot is used.
 
 When the KMS is started from the command line, the HSM support can be enabled by using the following arguments:
 
@@ -46,20 +46,24 @@ When the KMS is started from the command line, the HSM support can be enabled by
 --hsm-slot <number_of_2and_slot> --hsm-password <password_of_2and_slot>
 ```
 
-The `hsm-model` parameter is the HSM model to be used; use `utimaco`.
+The `hsm-model` parameter is the HSM model; use `utimaco`.
 
-The `hsm-admin` parameter is the username of the HSM administrator. The HSM administrator is the only user that can create objects on the HSM via the KMIP `Create` operation the delegate other operations to other users. (see below)
+The `hsm-admin` parameter is the username of the HSM administrator.
+The HSM administrator is the only user who can create objects on the HSM via the KMIP `Create` operation
+and delegate other operations to other users.
+(see below)
 
-The `hsm-slot` and `hsm-password` parameters are the slot number and user password of the HSM slots to be used by the KMS. These arguments can be repeated multiple times to specify multiple slots.
+The `hsm-slot` and `hsm-password` parameters are the slot number and user password of the HSM slots used by the KMS.
+These arguments can be repeated multiple times to specify various slots.
 
 ### Using the simulator
 
-Utimaco provides a simulator that can be used in lieu of a physical HSM to test your installation.
+Utimaco provides a simulator that can be used instead of a physical HSM to test your installation.
 The simulator is a 32-bit Linux i386 library (it also exists as a Windows binary).
 
-To install the simulator on a Debian based (e.g. Ubuntu) Linux amd64/x86_64, follow these general steps.
+Follow these general steps to install the simulator on a Debian-based (e.g., Ubuntu) Linux amd64/x86_64.
 
-1. Enable 32 bit support
+1. Enable 32-bit support
 
     ```bash
     sudo dpkg --add-architecture i386
@@ -84,7 +88,9 @@ To install the simulator on a Debian based (e.g. Ubuntu) Linux amd64/x86_64, fol
 
 4. Initialize a slot and create the Security Officer and User pins.
 
-    Due to a bug (?)  in the simulator, the Security Officer PIN must be set **then changed** before the User PIN can be set, and **then changed** as well.
+    Due to a bug (?) in the simulator,
+   the Security Officer PIN must be set **then changed** before the User PIN can be set,
+   and **then changed** as well.
 
     ```bash
     # Set the SO PIN to 11223344

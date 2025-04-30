@@ -2,17 +2,17 @@ use std::sync::Arc;
 
 use cosmian_cover_crypt::api::Covercrypt;
 use cosmian_kmip::{
-    KmipError,
     kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, PaddingMethod, State},
     kmip_2_1::{
-        KmipOperation,
         extra::BulkData,
         kmip_objects::{Certificate, Object},
         kmip_operations::{Encrypt, EncryptResponse},
         kmip_types::{
             CryptographicAlgorithm, CryptographicParameters, KeyFormatType, UniqueIdentifier,
         },
+        KmipOperation,
     },
+    KmipError,
 };
 #[cfg(not(feature = "fips"))]
 use cosmian_kms_crypto::crypto::elliptic_curves::ecies::ecies_encrypt;
@@ -20,13 +20,13 @@ use cosmian_kms_crypto::crypto::elliptic_curves::ecies::ecies_encrypt;
 use cosmian_kms_crypto::crypto::rsa::ckm_rsa_pkcs::ckm_rsa_pkcs_encrypt;
 use cosmian_kms_crypto::{
     crypto::{
-        EncryptionSystem,
         cover_crypt::encryption::CoverCryptEncryption,
         rsa::{
             ckm_rsa_aes_key_wrap::ckm_rsa_aes_key_wrap,
             ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_encrypt, default_cryptographic_parameters,
         },
-        symmetric::symmetric_ciphers::{SymCipher, encrypt as sym_encrypt, random_nonce},
+        symmetric::symmetric_ciphers::{encrypt as sym_encrypt, random_nonce, SymCipher},
+        EncryptionSystem,
     },
     openssl::kmip_public_key_to_openssl,
 };
@@ -40,8 +40,8 @@ use zeroize::Zeroizing;
 
 use crate::{
     core::{
-        KMS,
         uid_utils::{has_prefix, uids_from_unique_identifier},
+        KMS,
     },
     error::KmsError,
     kms_bail,
@@ -58,7 +58,7 @@ pub(crate) async fn encrypt(
 ) -> KResult<EncryptResponse> {
     trace!("Encrypt: {}", serde_json::to_string(&request)?);
 
-    // we do not (yet) support continuation cases
+    //We do not (yet) support continuation cases
     let data = request.data.as_ref().ok_or_else(|| {
         KmsError::InvalidRequest("Encrypt: data to encrypt must be provided".to_owned())
     })?;
@@ -73,15 +73,15 @@ pub(crate) async fn encrypt(
         .context("Encrypt")?;
     trace!("Encrypt: candidate uids: {uids:?}");
 
-    // Determine which uid to select. The decision process is as follows: loop through the uids
-    // 1. if the uid has a prefix, try using that
-    // 2. if the uid does not have a prefix, fetch the corresponding object and check that
+    // Determine which UID to select. The decision process is as follows: loop through the uids
+    // 1. If the UID has a prefix, try using that
+    // 2. If the UID does not have a prefix, fetch the corresponding object and check that
     //   a- the object is active
-    //   b- the object is a public Key, a Symmetric Key or a Certificate
+    //   b- the object is a public Key, a Symmetric Key, or a Certificate
     //
-    // Permissions check are done AFTER the object is fetched in the default database
+    // Permissions checks are done AFTER the object is fetched in the default database
     // to avoid calling `database.is_object_owned_by()` and hence a double call to the DB
-    // for each uid. This also is based on the high probability that there sill be a single object
+    // for each uid. This is also based on the high probability that there is still a single object
     // in the candidate list.
 
     let mut selected_owm = None;
@@ -103,7 +103,10 @@ pub(crate) async fn encrypt(
                     continue
                 }
             }
-            debug!("Encrypt: user: {user} is authorized to encrypt using: {uid}");
+            debug!(
+                "Encrypt: user: {user} is authorized to encrypt using: {uid} from decryption \
+                 oracle"
+            );
             return encrypt_using_encryption_oracle(kms, &request, data, &uid, prefix).await;
         }
         let owm = kms
@@ -136,8 +139,10 @@ pub(crate) async fn encrypt(
             break
         }
         if let Object::SymmetricKey { .. } | Object::PublicKey { .. } = owm.object() {
-            let attributes = owm.object().attributes().cloned().unwrap_or_default();
-            trace!("encrypt: attributes: {attributes:?}");
+            // If an HSM wraps the object, likely the wrapping will be done with NoEncoding
+            // and the attributes of the object will be empty. Use the metadata attributes.
+            let attributes = owm.attributes();
+            trace!("encrypt: attributes: {attributes:#?}");
             if !attributes.is_usage_authorized_for(CryptographicUsageMask::Encrypt)? {
                 continue
             }
@@ -162,10 +167,10 @@ pub(crate) async fn encrypt(
             );
         }
     }
-    // it may be a bulk encryption request, if not, fallback to single encryption
+    //It may be a bulk encryption request; if not, fallback to single encryption
     match BulkData::deserialize(data) {
         Ok(bulk_data) => {
-            // it is a bulk encryption request
+            //It is a bulk encryption request
             encrypt_bulk(&owm, request, bulk_data)
         }
         Err(_) => {
@@ -176,14 +181,16 @@ pub(crate) async fn encrypt(
 }
 
 /// Encrypt using an encryption oracle.
+///
 /// # Arguments
 /// * `kms` - the KMS
-/// * `request` - the encrypt request
+/// * `request` - the encrypted request
 /// * `data` - the data to encrypt
 /// * `uid` - the unique identifier of the key
 /// * `prefix` - the prefix of the encryption oracle
+///
 /// # Returns
-/// * the encrypt response
+/// * the encrypted response
 async fn encrypt_using_encryption_oracle(
     kms: &KMS,
     request: &Encrypt,

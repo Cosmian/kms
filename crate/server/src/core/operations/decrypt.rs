@@ -4,13 +4,13 @@ use cosmian_cover_crypt::api::Covercrypt;
 use cosmian_kmip::{
     kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, PaddingMethod, State},
     kmip_2_1::{
-        KmipOperation,
         extra::BulkData,
         kmip_objects::Object,
         kmip_operations::{Decrypt, DecryptResponse},
         kmip_types::{
             CryptographicAlgorithm, CryptographicParameters, KeyFormatType, UniqueIdentifier,
         },
+        KmipOperation,
     },
 };
 #[cfg(not(feature = "fips"))]
@@ -19,13 +19,13 @@ use cosmian_kms_crypto::crypto::elliptic_curves::ecies::ecies_decrypt;
 use cosmian_kms_crypto::crypto::rsa::ckm_rsa_pkcs::ckm_rsa_pkcs_decrypt;
 use cosmian_kms_crypto::{
     crypto::{
-        DecryptionSystem,
         cover_crypt::{attributes, decryption::CovercryptDecryption},
         rsa::{
             ckm_rsa_aes_key_wrap::ckm_rsa_aes_key_unwrap,
             ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_key_decrypt, default_cryptographic_parameters,
         },
-        symmetric::symmetric_ciphers::{SymCipher, decrypt as sym_decrypt},
+        symmetric::symmetric_ciphers::{decrypt as sym_decrypt, SymCipher},
+        DecryptionSystem,
     },
     openssl::kmip_private_key_to_openssl,
 };
@@ -36,8 +36,8 @@ use zeroize::Zeroizing;
 
 use crate::{
     core::{
-        KMS,
         uid_utils::{has_prefix, uids_from_unique_identifier},
+        KMS,
     },
     error::KmsError,
     kms_bail,
@@ -67,17 +67,17 @@ pub(crate) async fn decrypt(
         .context("Decrypt")?;
     debug!("Decrypt: candidate uids: {uids:?}");
 
-    // Determine which uid to select. The decision process is as follows: loop through the uids
-    // 1. if the uid has a prefix, try using that
-    // 2. if the uid does not have a prefix, fetch the corresponding object and check that
+    // Determine which UID to select. The decision process is as follows: loop through the uids
+    // 1. If the UID has a prefix, try using that
+    // 2. If the UID does not have a prefix, fetch the corresponding object and check that
     //   a- the object is active
     //   b- the object is a Private Key, a Symmetric Key
     //   c- the object is authorized for Decryption
     //
-    // Permissions check are done AFTER the object is fetched in the default database
+    // Permissions checks are done AFTER the object is fetched in the default database
     // to avoid calling `database.is_object_owned_by()` and hence a double call to the DB
-    // for each uid. This also is based on the high probability that there sill be a single object
-    // in the candidates list.
+    // for each uid. This is also based on the high probability that there is still a single object
+    // in the candidates' list.
     let mut selected_owm = None;
     for uid in uids {
         if let Some(prefix) = has_prefix(&uid) {
@@ -118,7 +118,9 @@ pub(crate) async fn decrypt(
             debug!("Decrypt: key: {uid} is not active");
             continue
         }
-        let attributes = owm.object().attributes().cloned().unwrap_or_default();
+        // If an HSM wraps the object, likely the wrapping will be done with NoEncoding
+        // and the attributes of the object will be empty. Use the metadata attributes.
+        let attributes = owm.attributes();
         if !attributes.is_usage_authorized_for(CryptographicUsageMask::Decrypt)? {
             debug!("Decrypt: key: {uid} is not authorized for decryption");
             continue
@@ -144,10 +146,10 @@ pub(crate) async fn decrypt(
             break
         }
         if let Object::PrivateKey { .. } = owm.object() {
-            // is it a Covercrypt secret key?
+            //Is it a Covercrypt secret key?
             if attributes.key_format_type == Some(KeyFormatType::CoverCryptSecretKey) {
                 // does it have an access access structure that allows decryption?
-                if attributes::access_policy_from_attributes(&attributes).is_err() {
+                if attributes::access_policy_from_attributes(attributes).is_err() {
                     continue
                 }
             }
@@ -175,12 +177,14 @@ pub(crate) async fn decrypt(
     )
 }
 
-/// Decrypt using an decryption oracle.
+/// Decrypt using a decryption oracle.
+///
 /// # Arguments
 /// * `kms` - the KMS
 /// * `request` - the decrypt request
 /// * `uid` - the unique identifier of the key
 /// * `prefix` - the prefix of the decryption oracle
+///
 /// # Returns
 /// * the decrypt response
 async fn decrypt_using_encryption_oracle(
