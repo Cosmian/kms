@@ -15,7 +15,7 @@ use cosmian_kmip::kmip_2_1::{
 use cosmian_kms_interfaces::SessionParams;
 
 use crate::{
-    core::{operations, KMS},
+    core::{KMS, operations},
     result::KResult,
 };
 

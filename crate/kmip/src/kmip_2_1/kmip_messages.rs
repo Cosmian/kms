@@ -21,9 +21,9 @@ use std::fmt::{self, Display, Formatter};
 /// asynchronous responses only if the Asynchronous Indicator is present in the header.
 use chrono::Utc;
 use serde::{
+    Deserialize, Serialize,
     de::{self, MapAccess, Visitor},
     ser::{self, SerializeStruct},
-    Deserialize, Serialize,
 };
 
 use super::{
@@ -33,7 +33,7 @@ use super::{
         MessageExtension, Nonce, OperationEnumeration, ProtocolVersion, ResultStatusEnumeration,
     },
 };
-use crate::{error::result::KmipResult, KmipError};
+use crate::{KmipError, error::result::KmipResult};
 
 #[derive(Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]

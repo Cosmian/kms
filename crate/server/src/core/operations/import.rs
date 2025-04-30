@@ -27,7 +27,7 @@ use tracing::{debug, trace};
 use uuid::Uuid;
 
 use crate::{
-    core::{wrapping::unwrap_key, KMS},
+    core::{KMS, wrapping::unwrap_key},
     error::KmsError,
     kms_bail,
     result::KResult,
@@ -118,16 +118,13 @@ pub(crate) async fn process_symmetric_key(
         uid => uid,
     };
 
-    Ok((
-        uid.clone(),
-        vec![single_operation(
-            tags,
-            replace_existing,
-            object,
-            attributes,
-            uid,
-        )],
-    ))
+    Ok((uid.clone(), vec![single_operation(
+        tags,
+        replace_existing,
+        object,
+        attributes,
+        uid,
+    )]))
 }
 
 fn process_certificate(request: Import) -> Result<(String, Vec<AtomicOperation>), KmsError> {
@@ -182,16 +179,13 @@ fn process_certificate(request: Import) -> Result<(String, Vec<AtomicOperation>)
         ..Attributes::default()
     };
 
-    Ok((
-        uid.clone(),
-        vec![single_operation(
-            user_tags,
-            replace_existing,
-            object,
-            certificate_attributes,
-            uid,
-        )],
-    ))
+    Ok((uid.clone(), vec![single_operation(
+        user_tags,
+        replace_existing,
+        object,
+        certificate_attributes,
+        uid,
+    )]))
 }
 
 async fn process_public_key(
@@ -260,16 +254,13 @@ async fn process_public_key(
         uid => uid,
     };
 
-    Ok((
-        uid.clone(),
-        vec![single_operation(
-            tags,
-            replace_existing,
-            object,
-            attributes,
-            uid,
-        )],
-    ))
+    Ok((uid.clone(), vec![single_operation(
+        tags,
+        replace_existing,
+        object,
+        attributes,
+        uid,
+    )]))
 }
 
 async fn process_private_key(
@@ -323,16 +314,13 @@ async fn process_private_key(
             uid => uid,
         };
 
-        return Ok((
-            uid.clone(),
-            vec![single_operation(
-                tags,
-                replace_existing,
-                object,
-                attributes,
-                uid,
-            )],
-        ))
+        return Ok((uid.clone(), vec![single_operation(
+            tags,
+            replace_existing,
+            object,
+            attributes,
+            uid,
+        )]))
     }
 
     // PKCS12  have their own processing
@@ -355,16 +343,13 @@ async fn process_private_key(
         &mut attributes,
         request.unique_identifier.as_str().unwrap_or_default(),
     )?;
-    Ok((
-        sk_uid.clone(),
-        vec![single_operation(
-            sk_tags,
-            replace_existing,
-            sk,
-            attributes,
-            sk_uid,
-        )],
-    ))
+    Ok((sk_uid.clone(), vec![single_operation(
+        sk_tags,
+        replace_existing,
+        sk,
+        attributes,
+        sk_uid,
+    )]))
 }
 
 /// Convert an openssl private key to a KMIP private key
@@ -647,8 +632,7 @@ pub(crate) fn upsert_imported_links_in_attributes(
 ) {
     trace!(
         "Upserting imported links in attributes: existing attributes links={:?}, links_to_add={:?}",
-        attributes.link,
-        links_to_add.link
+        attributes.link, links_to_add.link
     );
     if let Some(new_links) = links_to_add.link.as_ref() {
         for new_link in new_links {

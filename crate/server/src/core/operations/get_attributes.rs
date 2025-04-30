@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
 use cosmian_kmip::kmip_2_1::{
-    extra::{tagging::VENDOR_ATTR_TAG, VENDOR_ID_COSMIAN},
+    KmipOperation,
+    extra::{VENDOR_ID_COSMIAN, tagging::VENDOR_ATTR_TAG},
     kmip_objects::Object,
     kmip_operations::{GetAttributes, GetAttributesResponse},
     kmip_types::{
         AttributeReference, Attributes, KeyFormatType, LinkType, Tag, UniqueIdentifier,
         VendorAttribute, VendorAttributeReference,
     },
-    KmipOperation,
 };
 use cosmian_kms_crypto::openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl};
 use cosmian_kms_interfaces::SessionParams;
@@ -17,11 +17,11 @@ use tracing::{debug, trace};
 
 use crate::{
     core::{
+        KMS,
         operations::export_get::{
             openssl_private_key_to_kmip_default_format, openssl_public_key_to_kmip_default_format,
         },
         retrieve_object_utils::retrieve_object_for_operation,
-        KMS,
     },
     error::KmsError,
     result::{KResult, KResultHelper},

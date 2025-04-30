@@ -13,7 +13,7 @@ use cosmian_kms_crypto::crypto::cover_crypt::attributes::qualified_attributes_as
 use cosmian_kms_interfaces::SessionParams;
 
 use crate::{
-    core::{operations, KMS},
+    core::{KMS, operations},
     result::KResult,
 };
 

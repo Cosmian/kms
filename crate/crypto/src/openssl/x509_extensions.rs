@@ -4,11 +4,11 @@ use ini::Ini;
 use openssl::{
     nid::Nid,
     x509::{
+        X509Extension, X509v3Context,
         extension::{
             AuthorityKeyIdentifier, BasicConstraints, ExtendedKeyUsage, KeyUsage,
             SubjectAlternativeName, SubjectKeyIdentifier,
         },
-        X509Extension, X509v3Context,
     },
 };
 use tracing::warn;

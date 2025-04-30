@@ -1,6 +1,7 @@
 use zeroize::Zeroizing;
 
 use crate::{
+    KmipError,
     kmip_2_1::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType},
@@ -10,7 +11,6 @@ use crate::{
             UniqueIdentifier,
         },
     },
-    KmipError,
 };
 
 /// Create a symmetric key for the given algorithm

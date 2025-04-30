@@ -11,7 +11,7 @@ use cosmian_kms_interfaces::SessionParams;
 use tracing::trace;
 
 use crate::{
-    core::{cover_crypt::rekey_keypair_cover_crypt, KMS},
+    core::{KMS, cover_crypt::rekey_keypair_cover_crypt},
     error::KmsError,
     kms_bail,
     result::{KResult, KResultHelper},

@@ -4,8 +4,8 @@ use std::{
 };
 
 use serde::{
-    de::{self, MapAccess, Visitor},
     Deserialize, Serialize,
+    de::{self, MapAccess, Visitor},
 };
 use strum::Display;
 use zeroize::Zeroizing;

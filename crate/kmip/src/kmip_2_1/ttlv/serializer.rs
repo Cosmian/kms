@@ -1,12 +1,12 @@
 use num_bigint_dig::BigUint;
 use serde::{
-    ser::{self, Error, SerializeSeq},
     Serialize,
+    ser::{self, Error, SerializeSeq},
 };
 use tracing::{debug, trace};
 use zeroize::Zeroizing;
 
-use super::{error::TtlvError, TTLVEnumeration, TTLValue, TTLV};
+use super::{TTLV, TTLVEnumeration, TTLValue, error::TtlvError};
 use crate::kmip_2_1::kmip_objects::{Object, ObjectType};
 
 type Result<T> = std::result::Result<T, TtlvError>;
@@ -463,8 +463,7 @@ impl ser::SerializeSeq for &mut TTLVSerializer {
     {
         trace!(
             "Before serialize seq element {:?} #### {:?}",
-            self.parents,
-            self.current
+            self.parents, self.current
         );
         value.serialize(&mut **self)?;
 
@@ -490,8 +489,7 @@ impl ser::SerializeSeq for &mut TTLVSerializer {
         }
         trace!(
             "After serialize seq element {:?} #### {:?}",
-            self.parents,
-            self.current
+            self.parents, self.current
         );
         Ok(())
     }
@@ -510,8 +508,7 @@ impl ser::SerializeSeq for &mut TTLVSerializer {
         };
         trace!(
             "After serialize seq end {:?} #### {:?}",
-            self.parents,
-            self.current
+            self.parents, self.current
         );
         Ok(())
     }
@@ -662,8 +659,7 @@ impl ser::SerializeStruct for &mut TTLVSerializer {
         key.clone_into(&mut self.current.tag);
         trace!(
             "Before serialize field {:?} #### {:?}",
-            self.parents,
-            self.current
+            self.parents, self.current
         );
 
         match value.detect() {
@@ -699,8 +695,7 @@ impl ser::SerializeStruct for &mut TTLVSerializer {
         }
         trace!(
             "After serialize field {:?} #### {:?}",
-            self.parents,
-            self.current
+            self.parents, self.current
         );
         Ok(())
     }
@@ -718,8 +713,7 @@ impl ser::SerializeStruct for &mut TTLVSerializer {
         };
         trace!(
             "After serialize struct fields end {:?} #### {:?}",
-            self.parents,
-            self.current
+            self.parents, self.current
         );
         Ok(())
     }

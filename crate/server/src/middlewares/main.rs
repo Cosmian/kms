@@ -7,17 +7,17 @@ use std::{
 
 use actix_service::{Service, Transform};
 use actix_web::{
+    Error, HttpMessage,
     body::{BoxBody, EitherBody},
     dev::{ServiceRequest, ServiceResponse},
-    Error, HttpMessage,
 };
 use futures::{
-    future::{ok, Ready},
     Future,
+    future::{Ready, ok},
 };
 use tracing::debug;
 
-use super::{manage_api_token_request, manage_jwt_request, PeerCommonName};
+use super::{PeerCommonName, manage_api_token_request, manage_jwt_request};
 use crate::{core::KMS, middlewares::jwt::JwtConfig};
 
 #[derive(Clone)]

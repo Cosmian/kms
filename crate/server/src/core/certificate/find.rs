@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
 use cosmian_kmip::kmip_2_1::{
-    kmip_types::{LinkType, LinkedObjectIdentifier},
     KmipOperation,
+    kmip_types::{LinkType, LinkedObjectIdentifier},
 };
 use cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams};
 use tracing::trace;
 
 use crate::{
-    core::{retrieve_object_utils::retrieve_object_for_operation, KMS},
+    core::{KMS, retrieve_object_utils::retrieve_object_for_operation},
     error::KmsError,
     kms_bail,
     result::{KResult, KResultHelper},
@@ -30,8 +30,7 @@ pub(crate) async fn retrieve_issuer_private_key_and_certificate(
 ) -> KResult<(ObjectWithMetadata, ObjectWithMetadata)> {
     trace!(
         "Retrieving issuer private key and certificate: private_key_id: {:?}, certificate_id: {:?}",
-        private_key_id,
-        certificate_id
+        private_key_id, certificate_id
     );
     if let (Some(private_key_id), Some(certificate_id)) = (&private_key_id, &certificate_id) {
         // Retrieve the certificate

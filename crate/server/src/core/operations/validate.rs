@@ -5,24 +5,24 @@ use std::{
 };
 
 use cosmian_kmip::kmip_2_1::{
+    KmipOperation,
     kmip_objects::Object,
     kmip_operations::{Validate, ValidateResponse},
     kmip_types::{UniqueIdentifier, ValidityIndicator},
-    KmipOperation,
 };
 use cosmian_kms_interfaces::SessionParams;
 use openssl::{
     asn1::Asn1Time,
     stack::Stack,
     x509::{
-        store::X509StoreBuilder, CrlStatus, DistPointNameRef, DistPointRef, GeneralNameRef,
-        X509Crl, X509StoreContext, X509,
+        CrlStatus, DistPointNameRef, DistPointRef, GeneralNameRef, X509, X509Crl, X509StoreContext,
+        store::X509StoreBuilder,
     },
 };
 use tracing::{debug, trace, warn};
 
 use crate::{
-    core::{retrieve_object_utils::retrieve_object_for_operation, KMS},
+    core::{KMS, retrieve_object_utils::retrieve_object_for_operation},
     error::KmsError,
     result::KResult,
 };
