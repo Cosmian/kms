@@ -64,6 +64,7 @@ dotenvy = "0.15"
 futures = "0.3"
 hex = { workspace = true, features = ["serde"] }
 lazy_static = { workspace = true }
+leb128 = { workspace = true }
 log = { workspace = true }
 num-bigint-dig = { workspace = true, features = [
   "std",

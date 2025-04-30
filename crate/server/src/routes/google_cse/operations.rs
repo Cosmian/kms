@@ -8,6 +8,7 @@ use cosmian_kmip::kmip_2_1::{
     kmip_operations::{Decrypt, Encrypt, Get},
     kmip_types::{BlockCipherMode, CryptographicParameters, HashingAlgorithm, UniqueIdentifier},
 };
+use leb128::write::unsigned;
 use openssl::{
     hash::MessageDigest,
     md::Md,
@@ -197,7 +198,7 @@ pub async fn wrap(
     let roles = &[Role::Writer, Role::Upgrader];
 
     // get the user and resource name
-    let (user, _resource_name) = get_user_and_resource_name(
+    let (user, resource_name) = get_user_and_resource_name(
         &application,
         roles,
         &request.authentication,
@@ -206,7 +207,6 @@ pub async fn wrap(
         kms,
     )
     .await?;
-    let resource_name = Some(general_purpose::STANDARD.decode("coco")?);
 
     debug!("wrap: wrap dek");
     // Check google_cse key type
@@ -226,10 +226,16 @@ pub async fn wrap(
         )),
     }?;
 
-    // Encrypt DEK
-    let mut bytes = general_purpose::STANDARD.decode(&request.key)?;
-    bytes.extend(resource_name.clone().unwrap_or_default());
+    // Concatenate key bytes and resource_name
+    let key_bytes = general_purpose::STANDARD.decode(&request.key)?;
+    let resource_bytes = resource_name.unwrap_or_default();
+    let mut bytes = Vec::new();
+    let len_u64: u64 = key_bytes.len().try_into()?;
+    unsigned(&mut bytes, len_u64)?;
+    bytes.extend_from_slice(&key_bytes);
+    bytes.extend_from_slice(&resource_bytes);
 
+    // Encrypt DEK
     let encryption_request = Encrypt {
         unique_identifier: Some(cse_key_id),
         cryptographic_parameters: Some(CryptographicParameters {
@@ -1064,32 +1070,44 @@ async fn cse_wrapped_key_decrypt(
         KmsError::InvalidRequest("Invalid decrypted key - missing data.".to_owned())
     })?;
 
-    if data.len() < 48 {
-        // Not enough bytes to include a resource name
-        match resource_name {
-            Some(_) => {
-                return Err(KmsError::InvalidRequest(
-                    "Invalid key decryption - invalid resource_name.".to_owned(),
-                ))
-            }
-            None => return Ok(data),
-        };
+    let (key_len, leb_len) = {
+        let data_vec = data.to_vec();
+        let mut slice = data_vec.as_slice();
+        let key_len: usize = leb128::read::unsigned(&mut slice)
+            .map_err(|e| KmsError::ConversionError(format!("leb conversion error: {e:?}")))?
+            .try_into()?;
+        let leb_len = data.len() - slice.len();
+        (key_len, leb_len)
+    };
+
+    // Check total length
+    if data.len() < leb_len + key_len {
+        return Err(KmsError::InvalidRequest(
+            "Invalid decrypted key - length mismatch.".to_owned(),
+        ));
     }
 
-    let (unwrapped_key, unwrapped_resource_name_bytes) = data.split_at(48);
+    let split = leb_len + key_len;
+    let unwrapped_key = data.get(leb_len..split).ok_or_else(|| {
+        KmsError::InvalidRequest(
+            "Invalid key decryption - unwrapped_key slice out of bounds.".to_owned(),
+        )
+    })?;
+    let resource_bytes = data.get(split..).ok_or_else(|| {
+        KmsError::InvalidRequest(
+            "Invalid key decryption - resource_bytes slice out of bounds.".to_owned(),
+        )
+    })?;
 
-    resource_name.map_or_else(
-        || Ok(unwrapped_key.to_vec().into()),
-        |resource_name| {
-            if unwrapped_resource_name_bytes == resource_name.as_slice() {
-                Ok(unwrapped_key.to_vec().into())
-            } else {
-                Err(KmsError::InvalidRequest(
-                    "Invalid key decryption - invalid resource_name.".to_owned(),
-                ))
-            }
-        },
-    )
+    match &resource_name {
+        Some(expected) if resource_bytes != expected.as_slice() => Err(KmsError::InvalidRequest(
+            "Invalid key decryption - invalid resource_name.".to_owned(),
+        )),
+        None if !resource_bytes.is_empty() => Err(KmsError::InvalidRequest(
+            "Invalid key decryption - unexpected resource_name.".to_owned(),
+        )),
+        _ => Ok(unwrapped_key.to_vec().into()),
+    }
 }
 
 /// Compute resource key hash
