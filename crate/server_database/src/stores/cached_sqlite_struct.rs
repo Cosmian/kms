@@ -2,8 +2,8 @@ use std::{
     collections::HashMap,
     fmt,
     sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc, RwLock,
+        atomic::{AtomicUsize, Ordering},
     },
     time::SystemTime,
 };
@@ -516,8 +516,8 @@ mod tests {
         secret::Secret, symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH,
     };
     use sqlx::{
-        sqlite::{SqliteConnectOptions, SqlitePoolOptions},
         ConnectOptions,
+        sqlite::{SqliteConnectOptions, SqlitePoolOptions},
     };
 
     use super::{FSCNeighborEntry, FreeableSqliteCache, KMSSqliteCache};

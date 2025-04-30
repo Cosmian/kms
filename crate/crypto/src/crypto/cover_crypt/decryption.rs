@@ -1,7 +1,7 @@
-use cosmian_cover_crypt::{api::Covercrypt, traits::KemAc, Error, UserSecretKey, XEnc};
+use cosmian_cover_crypt::{Error, UserSecretKey, XEnc, api::Covercrypt, traits::KemAc};
 use cosmian_crypto_core::{
-    bytes_ser_de::{Deserializer, Serializable, Serializer},
     Aes256Gcm, Dem, FixedSizeCBytes, Instantiable, Nonce, SymmetricKey,
+    bytes_ser_de::{Deserializer, Serializable, Serializer},
 };
 use cosmian_kmip::kmip_2_1::{
     kmip_objects::Object,
@@ -14,7 +14,7 @@ use zeroize::Zeroizing;
 use super::user_key::unwrap_user_decryption_key_object;
 use crate::{
     crypto::DecryptionSystem,
-    error::{result::CryptoResult, CryptoError},
+    error::{CryptoError, result::CryptoResult},
 };
 
 /// Decrypt a single block of data encrypted using an hybrid encryption mode

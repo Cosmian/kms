@@ -7,8 +7,8 @@ use openssl::rand::rand_bytes;
 #[cfg(not(feature = "fips"))]
 use crate::crypto::symmetric::symmetric_ciphers::AES_128_GCM_SIV_MAC_LENGTH;
 use crate::crypto::symmetric::symmetric_ciphers::{
-    decrypt, encrypt, random_key, random_nonce, Mode, SymCipher, AES_128_GCM_MAC_LENGTH,
-    AES_128_XTS_MAC_LENGTH, AES_256_GCM_MAC_LENGTH, AES_256_XTS_MAC_LENGTH,
+    AES_128_GCM_MAC_LENGTH, AES_128_XTS_MAC_LENGTH, AES_256_GCM_MAC_LENGTH, AES_256_XTS_MAC_LENGTH,
+    Mode, SymCipher, decrypt, encrypt, random_key, random_nonce,
 };
 
 #[test]

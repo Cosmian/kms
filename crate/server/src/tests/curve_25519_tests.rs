@@ -14,7 +14,7 @@ use cosmian_kmip::kmip_2_1::{
     requests::{create_ec_key_pair_request, get_ec_private_key_request, get_ec_public_key_request},
 };
 use cosmian_kms_crypto::crypto::elliptic_curves::{
-    operation::to_ec_public_key, CURVE_25519_Q_LENGTH_BITS,
+    CURVE_25519_Q_LENGTH_BITS, operation::to_ec_public_key,
 };
 
 use crate::{

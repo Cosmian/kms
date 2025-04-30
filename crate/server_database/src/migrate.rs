@@ -1,5 +1,5 @@
 use tracing::trace;
-use version_compare::{compare, Cmp};
+use version_compare::{Cmp, compare};
 
 use crate::error::{DbError, DbResult};
 

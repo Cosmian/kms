@@ -8,9 +8,9 @@ use std::{
 use async_trait::async_trait;
 use clap::crate_version;
 use cosmian_kmip::kmip_2_1::{
+    KmipOperation,
     kmip_objects::Object,
     kmip_types::{Attributes, StateEnumeration},
-    KmipOperation,
 };
 use cosmian_kms_interfaces::{
     AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
@@ -18,21 +18,20 @@ use cosmian_kms_interfaces::{
 };
 use serde_json::Value;
 use sqlx::{
-    postgres::{PgConnectOptions, PgPoolOptions, PgRow},
     ConnectOptions, Executor, Pool, Postgres, Row, Transaction,
+    postgres::{PgConnectOptions, PgPoolOptions, PgRow},
 };
 use tracing::{debug, trace};
 use uuid::Uuid;
 
 use crate::{
-    db_bail, db_error,
+    KMS_VERSION_BEFORE_MIGRATION_SUPPORT, db_bail, db_error,
     error::{DbError, DbResult, DbResultHelper},
     migrate::do_migration,
     stores::{
-        locate_query::{query_from_attributes, PgSqlPlaceholder},
         DBObject, PGSQL_QUERIES,
+        locate_query::{PgSqlPlaceholder, query_from_attributes},
     },
-    KMS_VERSION_BEFORE_MIGRATION_SUPPORT,
 };
 
 #[macro_export]

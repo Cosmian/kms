@@ -7,7 +7,7 @@ use std::{
 
 use zeroize::Zeroizing;
 
-use crate::{kmip_bail, KmipError};
+use crate::{KmipError, kmip_bail};
 
 /// A `Serializable` object can easily be serialized and deserialized into an
 /// array of bytes.
@@ -273,8 +273,8 @@ pub fn test_serialization<T: PartialEq + Debug + Serializable>(v: &T) -> Result<
 mod tests {
     use rand::RngCore;
 
-    use super::{to_leb128_len, Deserializer, Serializable, Serializer};
-    use crate::{kmip_bail, KmipError};
+    use super::{Deserializer, Serializable, Serializer, to_leb128_len};
+    use crate::{KmipError, kmip_bail};
 
     /// We don't have a non-fixed size implementation of Serializable inside
     /// `crypto_core` so just have a dummy implementation here.

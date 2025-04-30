@@ -1,9 +1,9 @@
 use crate::{
+    KmipError,
     kmip_2_1::{
         kmip_operations::Revoke,
         kmip_types::{RevocationReason, UniqueIdentifier},
     },
-    KmipError,
 };
 
 /// Build a `Revoke` request to revoke the key identified by `unique_identifier`

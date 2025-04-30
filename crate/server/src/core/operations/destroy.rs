@@ -2,11 +2,11 @@ use std::{collections::HashSet, sync::Arc};
 
 use async_recursion::async_recursion;
 use cosmian_kmip::kmip_2_1::{
+    KmipOperation,
     kmip_data_structures::{KeyMaterial, KeyValue},
     kmip_objects::{Object, ObjectType},
     kmip_operations::{Destroy, DestroyResponse, ErrorReason},
     kmip_types::{Attributes, KeyFormatType, LinkType, StateEnumeration, UniqueIdentifier},
-    KmipOperation,
 };
 use cosmian_kms_interfaces::SessionParams;
 use tracing::{debug, trace};
@@ -14,9 +14,9 @@ use zeroize::Zeroizing;
 
 use crate::{
     core::{
+        KMS,
         cover_crypt::destroy_user_decryption_keys,
         uid_utils::{has_prefix, uids_from_unique_identifier},
-        KMS,
     },
     error::KmsError,
     kms_bail,

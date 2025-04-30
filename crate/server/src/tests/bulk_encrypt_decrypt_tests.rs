@@ -1,4 +1,5 @@
 use cosmian_kmip::{
+    KmipError,
     kmip_2_1::{
         extra::BulkData,
         kmip_objects::ObjectType,
@@ -10,7 +11,6 @@ use cosmian_kmip::{
             CryptographicUsageMask, KeyFormatType, UniqueIdentifier,
         },
     },
-    KmipError,
 };
 use uuid::Uuid;
 

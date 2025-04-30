@@ -10,7 +10,9 @@ use cosmian_kmip::kmip_2_1::{
     },
     requests::{decrypt_request, encrypt_request},
 };
-use cosmian_kms_client_utils::cover_crypt_utils::{build_create_covercrypt_master_keypair_request, build_create_covercrypt_usk_request};
+use cosmian_kms_client_utils::cover_crypt_utils::{
+    build_create_covercrypt_master_keypair_request, build_create_covercrypt_usk_request,
+};
 use tracing::debug;
 use uuid::Uuid;
 

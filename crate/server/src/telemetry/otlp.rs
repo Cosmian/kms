@@ -1,6 +1,6 @@
 use opentelemetry::KeyValue;
 use opentelemetry_otlp::WithExportConfig;
-use opentelemetry_sdk::{runtime, trace as sdktrace, Resource};
+use opentelemetry_sdk::{Resource, runtime, trace as sdktrace};
 use opentelemetry_semantic_conventions::resource::SERVICE_NAME;
 
 use crate::{error::KmsError, result::KResult};

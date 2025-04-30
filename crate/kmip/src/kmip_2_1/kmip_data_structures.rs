@@ -5,14 +5,15 @@ use std::{
 
 use num_bigint_dig::BigUint;
 use serde::{
+    Deserialize, Serialize,
     de::{self, MapAccess, Visitor},
     ser::SerializeStruct,
-    Deserialize, Serialize,
 };
 use zeroize::Zeroizing;
 
 use super::kmip_types::{LinkType, LinkedObjectIdentifier};
 use crate::{
+    SafeBigUint,
     error::KmipError,
     kmip_2_1::{
         kmip_operations::ErrorReason,
@@ -22,7 +23,7 @@ use crate::{
             WrappingMethod,
         },
     },
-    pad_be_bytes, SafeBigUint,
+    pad_be_bytes,
 };
 
 /// A Key Block object is a structure used to encapsulate all of the information

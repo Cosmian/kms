@@ -1,6 +1,6 @@
 use std::{env, fs, path::Path};
 
-use time::{ext::NumericalDuration, format_description::well_known::Rfc2822, OffsetDateTime};
+use time::{OffsetDateTime, ext::NumericalDuration, format_description::well_known::Rfc2822};
 
 const DEMO_TIMEOUT: i64 = 90; // 3 months in days
 
