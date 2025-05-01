@@ -7,8 +7,8 @@ use clap::Parser;
 use serde::{Deserialize, Serialize};
 
 use super::{
-    logging::LoggingConfig, ui_config::UiConfig, HttpConfig, JwtAuthConfig, MainDBConfig,
-    WorkspaceConfig,
+    HttpConfig, JwtAuthConfig, MainDBConfig, WorkspaceConfig, logging::LoggingConfig,
+    ui_config::UiConfig,
 };
 use crate::{
     config::{SocketServerConfig, TlsConfig},

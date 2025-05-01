@@ -5,7 +5,7 @@ use tracing::{debug, warn};
 
 use super::TlsParams;
 use crate::{
-    config::{ClapConfig, IdpConfig, OidcConfig, DEFAULT_COSMIAN_UI_DIST_PATH},
+    config::{ClapConfig, DEFAULT_COSMIAN_UI_DIST_PATH, IdpConfig, OidcConfig},
     result::KResult,
 };
 

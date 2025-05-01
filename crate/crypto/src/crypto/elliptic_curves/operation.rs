@@ -4,6 +4,7 @@ use cosmian_kmip::kmip_2_1::extra::fips::{
     FIPS_PUBLIC_ECC_MASK_SIGN_ECDH,
 };
 use cosmian_kmip::{
+    SafeBigInt,
     kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
         kmip_attributes::Attributes,
@@ -15,7 +16,6 @@ use cosmian_kmip::{
             UniqueIdentifier,
         },
     },
-    SafeBigInt,
 };
 use openssl::{
     bn::BigNumContext,
@@ -29,7 +29,7 @@ use zeroize::Zeroizing;
 use crate::{
     crypto::KeyPair,
     crypto_bail,
-    error::{result::CryptoResult, CryptoError},
+    error::{CryptoError, result::CryptoResult},
 };
 
 #[cfg(feature = "fips")]
@@ -573,11 +573,11 @@ mod tests {
     use super::{check_ecc_mask_against_flags, check_ecc_mask_algorithm_compliance};
     use super::{create_approved_ecc_key_pair, create_ed25519_key_pair};
     #[cfg(not(feature = "fips"))]
-    use super::{create_x25519_key_pair, create_x448_key_pair};
+    use super::{create_x448_key_pair, create_x25519_key_pair};
     #[cfg(feature = "fips")]
     use crate::crypto::elliptic_curves::operation::create_ed448_key_pair;
     #[cfg(not(feature = "fips"))]
-    use crate::crypto::elliptic_curves::{X25519_PRIVATE_KEY_LENGTH, X448_PRIVATE_KEY_LENGTH};
+    use crate::crypto::elliptic_curves::{X448_PRIVATE_KEY_LENGTH, X25519_PRIVATE_KEY_LENGTH};
     use crate::openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl};
     #[cfg(not(feature = "fips"))]
     use crate::pad_be_bytes;

@@ -7,7 +7,7 @@ use cosmian_kms_server::{
     result::KResult,
     start_kms_server::start_kms_server,
 };
-use cosmian_logger::{tracing_init, TelemetryConfig, TracingConfig};
+use cosmian_logger::{TelemetryConfig, TracingConfig, tracing_init};
 use dotenvy::dotenv;
 use openssl::provider::Provider;
 #[cfg(feature = "timeout")]

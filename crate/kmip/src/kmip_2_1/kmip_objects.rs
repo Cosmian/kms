@@ -5,11 +5,11 @@ use std::{
     hash::{DefaultHasher, Hash, Hasher},
 };
 
-use kmip_derive::{kmip_enum, KmipEnumDeserialize, KmipEnumSerialize};
+use kmip_derive::{KmipEnumDeserialize, KmipEnumSerialize, kmip_enum};
 use num_bigint_dig::BigInt;
 use serde::{
-    de::{MapAccess, Visitor}, Deserialize,
-    Serialize,
+    Deserialize, Serialize,
+    de::{MapAccess, Visitor},
 };
 use strum::{Display, VariantNames};
 use tracing::trace;
@@ -20,7 +20,7 @@ use super::{
     kmip_types::{CertificateRequestType, OpaqueDataType, SplitKeyMethod},
 };
 use crate::{
-    error::{result::KmipResult, KmipError},
+    error::{KmipError, result::KmipResult},
     kmip_0::kmip_types::{CertificateType, ErrorReason, SecretDataType},
 };
 

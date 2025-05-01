@@ -18,7 +18,7 @@ use tracing::{debug, trace};
 use zeroize::Zeroizing;
 
 use crate::{
-    core::{cover_crypt::create_user_decryption_key, wrapping::unwrap_object, KMS},
+    core::{KMS, cover_crypt::create_user_decryption_key, wrapping::unwrap_object},
     error::KmsError,
     result::{KResult, KResultHelper},
 };
