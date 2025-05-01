@@ -1,17 +1,16 @@
 use std::sync::Arc;
 
 use cosmian_kmip::kmip_2_1::{
-    kmip_data_structures::KeyWrappingSpecification,
     kmip_objects::ObjectType,
     kmip_operations::{Create, CreateResponse},
-    kmip_types::{EncodingOption, EncryptionKeyInformation, UniqueIdentifier},
+    kmip_types::UniqueIdentifier,
 };
 use cosmian_kms_interfaces::SessionParams;
-use cosmian_kms_server_database::CachedUnwrappedObject;
 use tracing::{debug, trace};
+use uuid::Uuid;
 
 use crate::{
-    core::{wrapping::wrap_object, KMS},
+    core::{KMS, wrapping::wrap_and_cache},
     error::KmsError,
     kms_bail,
     result::KResult,
@@ -19,7 +18,7 @@ use crate::{
 
 pub(crate) async fn create(
     kms: &KMS,
-    mut request: Create,
+    request: Create,
     owner: &str,
     params: Option<Arc<dyn SessionParams>>,
     privileged_users: Option<Vec<String>>,
@@ -61,54 +60,22 @@ pub(crate) async fn create(
         }
     };
 
+    // make sure we have a unique identifier
+    let unique_identifier = UniqueIdentifier::TextString(
+        unique_identifier.unwrap_or_else(|| Uuid::new_v4().to_string()),
+    );
+
     // Copy the attributes before the key gets wrapped
     let attributes = object.attributes()?.clone();
 
-    // Wrap the key if a wrapping key is provided
-    let mut unwrapped_object = None;
-
-    // This is a Cosmian-specific extension
-    // to wrap the key with a wrapping key stored in the database
-    // or in the HSM.
-    // Either the user has provided a wrapping key id or a key wrapping key is
-    // provided in the parameters.
-    let wrapping_key_id = request
-        .attributes
-        .remove_wrapping_key_id()
-        .or_else(|| kms.params.key_wrapping_key.clone());
-    // This is useful to store a key on the default data store but wrapped by a key stored in an HSM
-    // extract the wrapping key id
-    if let Some(wrapping_key_id) = wrapping_key_id {
-        // make a copy of the unwrapped key
-        unwrapped_object = Some(object.clone());
-
-        // wrap the current object
-        wrap_object(
-            &mut object,
-            &KeyWrappingSpecification {
-                encryption_key_information: Some(EncryptionKeyInformation {
-                    unique_identifier: UniqueIdentifier::TextString(wrapping_key_id),
-                    cryptographic_parameters: None,
-                }),
-                // The KMIP specification defaults to TTLV encoding,
-                // but most HSMs will not be able
-                // to handle the larger number of bytes
-                // this entails.
-                encoding_option: Some(EncodingOption::NoEncoding),
-                ..Default::default()
-            },
-            kms,
-            owner,
-            params.clone(),
-        )
-        .await?;
-    }
+    // Wrap the object if requested by the user or on the server params
+    wrap_and_cache(kms, owner, params.clone(), &unique_identifier, &mut object).await?;
 
     // create the object in the database
     let uid = kms
         .database
         .create(
-            unique_identifier,
+            Some(unique_identifier.to_string()),
             owner,
             &object,
             &attributes,
@@ -120,21 +87,6 @@ pub(crate) async fn create(
         "Created KMS Object of type {:?} with id {uid}",
         &object.object_type(),
     );
-
-    // store the unwrapped object in cache if wrapped
-    if let Some(unwrapped_object) = unwrapped_object {
-        // add the key to the unwrapped cache
-        kms.database
-            .unwrapped_cache()
-            .insert(
-                uid.clone(),
-                Ok(CachedUnwrappedObject::new(
-                    object.key_signature()?,
-                    unwrapped_object,
-                )),
-            )
-            .await;
-    }
 
     Ok(CreateResponse {
         object_type: request.object_type,

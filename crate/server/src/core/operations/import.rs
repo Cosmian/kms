@@ -26,7 +26,10 @@ use tracing::{debug, trace};
 use uuid::Uuid;
 
 use crate::{
-    core::{wrapping::unwrap_object, KMS},
+    core::{
+        KMS,
+        wrapping::{unwrap_object, wrap_and_cache},
+    },
     error::KmsError,
     kms_bail,
     result::KResult,
@@ -140,7 +143,7 @@ pub(crate) async fn process_symmetric_key(
     let mut object = request.object;
     // Unwrap the Object if required.
     if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
-        unwrap_object(&mut object, kms, owner, params).await?;
+        unwrap_object(&mut object, kms, owner, params.clone()).await?;
     }
 
     // Tag the object as a symmetric key
@@ -178,6 +181,16 @@ pub(crate) async fn process_symmetric_key(
     if let Ok(attrs) = object.key_block_mut()?.attributes_mut() {
         *attrs = attributes.clone();
     }
+
+    // Wrap the object if requested by the user or on the server params
+    wrap_and_cache(
+        kms,
+        owner,
+        params,
+        &UniqueIdentifier::TextString(uid.clone()),
+        &mut object,
+    )
+    .await?;
 
     Ok((
         uid.clone(),
@@ -269,7 +282,7 @@ async fn process_public_key(
     // Unwrap the key_block if required.
     {
         if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
-            unwrap_object(&mut object, kms, owner, params).await?;
+            unwrap_object(&mut object, kms, owner, params.clone()).await?;
         }
     }
 
@@ -326,6 +339,16 @@ async fn process_public_key(
         *attrs = attributes.clone();
     }
 
+    // Wrap the object if requested by the user or on the server params
+    wrap_and_cache(
+        kms,
+        owner,
+        params,
+        &UniqueIdentifier::TextString(uid.clone()),
+        &mut object,
+    )
+    .await?;
+
     Ok((
         uid.clone(),
         vec![single_operation(
@@ -350,18 +373,22 @@ async fn process_private_key(
     // Process based on the key block type.
     let mut object = request.object;
     if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
-        unwrap_object(&mut object, kms, owner, params).await?;
+        unwrap_object(&mut object, kms, owner, params.clone()).await?;
     }
 
     // PKCS12  have their own processing
     if object.key_block()?.key_format_type == KeyFormatType::PKCS12 {
         //PKCS#12 contains more than just a private key, perform specific processing
-        return process_pkcs12(
+        return Box::pin(process_pkcs12(
+            kms,
+            owner,
+            params,
             &request.unique_identifier,
             object,
             request.attributes,
             replace_existing,
-        );
+        ))
+        .await;
     }
 
     // Tag the object as a private key
@@ -417,6 +444,16 @@ async fn process_private_key(
         *attrs = attributes.clone();
     }
 
+    // Wrap the object if requested by the user or on the server params
+    wrap_and_cache(
+        kms,
+        owner,
+        params,
+        &UniqueIdentifier::TextString(uid.clone()),
+        &mut object,
+    )
+    .await?;
+
     Ok((
         uid.clone(),
         vec![single_operation(
@@ -449,7 +486,10 @@ fn single_operation(
 }
 
 #[allow(clippy::ref_option)]
-fn process_pkcs12(
+async fn process_pkcs12(
+    kms: &KMS,
+    owner: &str,
+    params: Option<Arc<dyn SessionParams>>,
     unique_identifier: &UniqueIdentifier,
     object: Object,
     request_attributes: Attributes,
@@ -578,6 +618,15 @@ fn process_pkcs12(
             LinkedObjectIdentifier::TextString(leaf_certificate_id.clone()),
         );
     }
+    // Wrap the private key if requested by the user or on the server params
+    wrap_and_cache(
+        kms,
+        owner,
+        params,
+        &UniqueIdentifier::TextString(private_key_id.clone()),
+        &mut private_key,
+    )
+    .await?;
     // Create an operation to set the private key
     let private_key_attributes = private_key.attributes()?.clone();
     operations.push(single_operation(

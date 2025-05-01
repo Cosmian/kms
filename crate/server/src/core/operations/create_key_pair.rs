@@ -24,7 +24,7 @@ use tracing::{debug, trace};
 use uuid::Uuid;
 
 use crate::{
-    core::{KMS, retrieve_object_utils::user_has_permission},
+    core::{KMS, wrapping::wrap_and_cache},
     error::KmsError,
     kms_bail,
     result::KResult,
@@ -74,12 +74,31 @@ pub(crate) async fn create_key_pair(
             std::string::ToString::to_string,
         );
     let pk_uid = sk_uid.clone() + "_pk";
-    let key_pair = generate_key_pair(request, &sk_uid, &pk_uid)?;
+    let mut key_pair = generate_key_pair(request, &sk_uid, &pk_uid)?;
 
     trace!("create_key_pair: sk_uid: {sk_uid}, pk_uid: {pk_uid}");
 
-    let private_key_attributes = key_pair.private_key().attributes()?.clone();
-    let public_key_attributes = key_pair.public_key().attributes()?.clone();
+    let private_key = key_pair.private_key_mut();
+    wrap_and_cache(
+        kms,
+        owner,
+        params.clone(),
+        &UniqueIdentifier::TextString(sk_uid.clone()),
+        private_key,
+    )
+    .await?;
+    let private_key_attributes = private_key.attributes()?.clone();
+
+    let public_key = key_pair.public_key_mut();
+    wrap_and_cache(
+        kms,
+        owner,
+        params.clone(),
+        &UniqueIdentifier::TextString(pk_uid.clone()),
+        public_key,
+    )
+    .await?;
+    let public_key_attributes = public_key.attributes()?.clone();
 
     let operations = vec![
         AtomicOperation::Create((

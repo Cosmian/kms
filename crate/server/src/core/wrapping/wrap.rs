@@ -5,12 +5,13 @@ use cosmian_kmip::{
     kmip_2_1::{
         kmip_data_structures::{KeyBlock, KeyValue, KeyWrappingSpecification},
         kmip_objects::{Object, ObjectType},
-        kmip_types::LinkType,
+        kmip_types::{EncodingOption, EncryptionKeyInformation, LinkType, UniqueIdentifier},
         KmipOperation,
     },
 };
 use cosmian_kms_crypto::crypto::wrap::{key_data_to_wrap, wrap_key_block};
 use cosmian_kms_interfaces::SessionParams;
+use cosmian_kms_server_database::CachedUnwrappedObject;
 use tracing::debug;
 
 use crate::{
@@ -19,6 +20,93 @@ use crate::{
     kms_bail,
     result::{KResult, KResultHelper},
 };
+
+/// Wrap the object and store the unwrapped object in the unwrapped cache
+///
+/// This is a Cosmian-specific extension
+/// to wrap the key with a wrapping key stored in the database
+/// or in the HSM.
+/// Either the user has provided a wrapping key id or a key wrapping key is
+/// provided in the parameters.
+///
+/// The wrapping key id is stored in the database
+/// or in the HSM.
+///
+/// The unwrapped object is stored in the unwrapped cache
+///
+/// # Arguments
+///
+/// * `kms` - The KMS instance
+/// * `request` - The request to create the object
+/// * `owner` - The owner of the object
+/// * `params` - The parameters to use
+/// * `unique_identifier` - The unique identifier of the object
+/// * `object` - The object to wrap
+///
+pub(crate) async fn wrap_and_cache(
+    kms: &KMS,
+    owner: &str,
+    params: Option<Arc<dyn SessionParams>>,
+    unique_identifier: &UniqueIdentifier,
+    object: &mut Object,
+) -> Result<(), KmsError> {
+    if object.is_wrapped() {
+        // The object is already wrapped
+        return Ok(());
+    }
+
+    // This is a Cosmian-specific extension
+    // to wrap the key with a wrapping key stored in the database
+    // or in the HSM.
+    // Either the user has provided a wrapping key id or a key wrapping key is
+    // provided in the parameters.
+    let Some(wrapping_key_id) = object
+        .attributes_mut()?
+        .remove_wrapping_key_id()
+        .or_else(|| kms.params.key_wrapping_key.clone())
+    else {
+        // no wrapping key provided
+        return Ok(());
+    };
+    // This is useful to store a key on the default data store but wrapped by a key stored in an HSM
+    // extract the wrapping key id
+    // make a copy of the unwrapped key
+    let unwrapped_object = object.clone();
+
+    // wrap the current object
+    wrap_object(
+        object,
+        &KeyWrappingSpecification {
+            encryption_key_information: Some(EncryptionKeyInformation {
+                unique_identifier: UniqueIdentifier::TextString(wrapping_key_id),
+                cryptographic_parameters: None,
+            }),
+            // The KMIP specification defaults to TTLV encoding,
+            // but most HSMs will not be able
+            // to handle the larger number of bytes
+            // this entails.
+            encoding_option: Some(EncodingOption::NoEncoding),
+            ..Default::default()
+        },
+        kms,
+        owner,
+        params,
+    )
+    .await?;
+
+    // store the unwrapped object in the unwrapped cache
+    kms.database
+        .unwrapped_cache()
+        .insert(
+            unique_identifier.to_string(),
+            Ok(CachedUnwrappedObject::new(
+                object.key_signature()?,
+                unwrapped_object,
+            )),
+        )
+        .await;
+    Ok(())
+}
 
 /// Wrap an Object with a wrapping key
 /// The wrapping key is fetched from the database

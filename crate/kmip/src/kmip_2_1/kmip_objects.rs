@@ -5,11 +5,11 @@ use std::{
     hash::{DefaultHasher, Hash, Hasher},
 };
 
-use kmip_derive::{KmipEnumDeserialize, KmipEnumSerialize, kmip_enum};
+use kmip_derive::{kmip_enum, KmipEnumDeserialize, KmipEnumSerialize};
 use num_bigint_dig::BigInt;
 use serde::{
-    Deserialize, Serialize,
-    de::{MapAccess, Visitor},
+    de::{MapAccess, Visitor}, Deserialize,
+    Serialize,
 };
 use strum::{Display, VariantNames};
 use tracing::trace;
@@ -20,7 +20,7 @@ use super::{
     kmip_types::{CertificateRequestType, OpaqueDataType, SplitKeyMethod},
 };
 use crate::{
-    error::{KmipError, result::KmipResult},
+    error::{result::KmipResult, KmipError},
     kmip_0::kmip_types::{CertificateType, ErrorReason, SecretDataType},
 };
 
@@ -437,35 +437,6 @@ impl Object {
         }
     }
 
-    // /// Deserialization is untagged and the `ObjectType` is not at
-    // /// an adjacent level in the structure. Correction code needs to be
-    // /// run post-serialization
-    // /// see `Object` for details
-    // #[must_use]
-    // pub fn post_fix(object_type: ObjectType, object: Self) -> Self {
-    //     match object_type {
-    //         ObjectType::SymmetricKey => match object {
-    //             Self::PrivateKey { key_block } | Self::PublicKey { key_block } => {
-    //                 Self::SymmetricKey(SymmetricKey { key_block })
-    //             }
-    //             _ => object,
-    //         },
-    //         ObjectType::PublicKey => match object {
-    //             Self::SymmetricKey(SymmetricKey { key_block }) | Self::PrivateKey { key_block } => {
-    //                 Self::PublicKey { key_block }
-    //             }
-    //             _ => object,
-    //         },
-    //         ObjectType::PrivateKey => match object {
-    //             Self::SymmetricKey(SymmetricKey { key_block }) | Self::PublicKey { key_block } => {
-    //                 Self::PrivateKey { key_block }
-    //             }
-    //             _ => object,
-    //         },
-    //         _ => object,
-    //     }
-    // }
-
     /// Return the key signature if this is a Key.
     /// The value is the `SipHash` of the key block key bytes.
     pub fn key_signature(&self) -> KmipResult<u64> {
@@ -476,6 +447,14 @@ impl Object {
                 hasher.finish()
             })
         })
+    }
+
+    /// Determines if the object is wrapped
+    #[must_use]
+    pub fn is_wrapped(&self) -> bool {
+        self.key_block()
+            .map(|kb| kb.key_wrapping_data.is_some())
+            .unwrap_or(false)
     }
 }
 
