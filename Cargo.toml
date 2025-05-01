@@ -24,7 +24,7 @@ resolver = "2"
 [workspace.package]
 version = "4.24.0"
 edition = "2024"
-rust-version = "1.86.0"
+rust-version = "1.85.0"
 authors = [
     "Bruno Grieder <bruno.grieder@cosmian.com>",
     "Emmanuel Coste <emmanuel.coste@cosmian.com>",
@@ -67,7 +67,7 @@ cosmian_findex_structs = { git = "https://www.github.com/Cosmian/findex-server",
 cosmian_config_utils = "0.2"
 cosmian_cover_crypt = "15.0"
 cosmian_crypto_core = { version = "10.1", default-features = false, features = [
-    "ser",
+  "ser",
 ] }
 cosmian_http_client = "0.2"
 cosmian_kmip = { path = "crate/kmip" }
@@ -82,7 +82,7 @@ der = { version = "0.7", default-features = false }
 hex = { version = "0.4", default-features = false }
 lazy_static = "1.5"
 leb128 = "0.2"
-libloading = "0.8.6"
+libloading = "0.8"
 log = { version = "0.4", default-features = false }
 lru = "0.12"
 native-tls = { version = "0.2", default-features = false }
@@ -104,13 +104,12 @@ strum_macros = { version = "0.27", default-features = false }
 thiserror = "2.0"
 time = "0.3"
 tiny-keccak = "2.0"
-tempfile = "3.16.0"
-tokio = { version = "1.42", default-features = false }
+tempfile = "3.19"
+tokio = { version = "1.44", default-features = false }
 tracing-subscriber = { version = "0.3", default-features = false }
 tracing = "0.1"
 url = "2.5"
-uuid = "1.11.1"
-version-compare = "0.2.0"
+uuid = "=1.11.1"
 x509-cert = { version = "0.2", default-features = false }
 x509-parser = "0.17"
 zeroize = { version = "1.8", default-features = false }

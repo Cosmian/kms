@@ -18,7 +18,7 @@ fips = []
 
 [dependencies]
 bitflags = { workspace = true }
-cosmian_logger = { workspace = true }
+cosmian_logger = "0.1.1"
 hex = { workspace = true, features = ["std"] }
 kmip-derive = { path = "../kmip-derive" }
 leb128 = { workspace = true }

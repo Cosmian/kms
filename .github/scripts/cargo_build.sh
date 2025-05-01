@@ -13,7 +13,7 @@ set -ex
 
 ROOT_FOLDER=$(pwd)
 
-# Build UI
+# Build the UI in release mode
 if [ -f /etc/lsb-release ]; then
   bash .github/scripts/build_ui.sh
 fi
