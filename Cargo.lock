@@ -1434,7 +1434,7 @@ name = "cosmian_kmip"
 version = "4.24.0"
 dependencies = [
  "bitflags 2.9.0",
- "cosmian_logger 0.2.0",
+ "cosmian_logger 0.1.1",
  "hex",
  "kmip-derive",
  "leb128",
@@ -1639,6 +1639,16 @@ dependencies = [
 name = "cosmian_logger"
 version = "0.1.0"
 source = "git+https://www.github.com/Cosmian/http_client_server?tag=0.1.0#66c4e05ebbfa6d205ae16bacf99d197bab3a70a9"
+dependencies = [
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "cosmian_logger"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1653b919f4235dc2f5a5fbdc6a822f309e0a992a828411e6f0ae4bfb19d66f16"
 dependencies = [
  "tracing",
  "tracing-subscriber",
