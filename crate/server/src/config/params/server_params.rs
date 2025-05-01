@@ -5,7 +5,7 @@ use tracing::{debug, warn};
 
 use super::TlsParams;
 use crate::{
-    config::{ClapConfig, DEFAULT_COSMIAN_UI_DIST_PATH, IdpConfig, OidcConfig},
+    config::{ClapConfig, IdpConfig, OidcConfig, DEFAULT_COSMIAN_UI_DIST_PATH},
     result::KResult,
 };
 
@@ -66,7 +66,7 @@ pub struct ServerParams {
 
     /// This setting enables the Google Workspace Client Side Encryption feature of this KMS server.
     ///
-    /// It should contain the external URL of this server as configured in Google Workspace client side encryption settings
+    /// It should contain the external URL of this server as configured in Google Workspace client side encryption settings.
     /// For instance, if this server is running on domain `cse.my_domain.com`,
     /// the URL should be something like <https://cse.my_domain.com/google_cse>
     pub google_cse_kacls_url: Option<String>,
@@ -92,6 +92,9 @@ pub struct ServerParams {
 
     /// HSM slot passwords number
     pub slot_passwords: HashMap<usize, Option<String>>,
+
+    /// The Key Wrapping Key if any
+    pub key_wrapping_key: Option<String>,
 
     /// The non-revocable keys ID used for demo purposes
     pub non_revocable_key_id: Option<Vec<String>>,
@@ -173,6 +176,7 @@ impl ServerParams {
                 Some(conf.hsm_model)
             },
             slot_passwords,
+            key_wrapping_key: conf.key_wrapping_key,
             non_revocable_key_id: conf.non_revocable_key_id,
             privileged_users: conf.privileged_users,
         };

@@ -1,15 +1,15 @@
 use std::sync::Arc;
 
 use cosmian_kmip::{
-    KmipError,
     kmip_0::kmip_types::{CertificateType, CryptographicUsageMask, KeyWrapType, State},
     kmip_2_1::{
-        KmipOperation,
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingSpecification},
         kmip_objects::{Certificate, Object, ObjectType, PrivateKey},
         kmip_operations::{Export, ExportResponse},
         kmip_types::{CryptographicAlgorithm, KeyFormatType, LinkType, UniqueIdentifier},
+        KmipOperation,
     },
+    KmipError,
 };
 use cosmian_kms_crypto::openssl::{
     kmip_certificate_to_openssl, kmip_private_key_to_openssl, kmip_public_key_to_openssl,
@@ -29,11 +29,11 @@ use zeroize::Zeroizing;
 
 use crate::{
     core::{
-        KMS,
         certificate::{retrieve_certificate_for_private_key, retrieve_private_key_for_certificate},
         operations::import::upsert_links_in_attributes,
         retrieve_object_utils::retrieve_object_for_operation,
-        wrapping::wrap_key,
+        wrapping::wrap_object,
+        KMS,
     },
     error::KmsError,
     kms_bail,
@@ -290,7 +290,8 @@ async fn post_process_active_private_key(
     .await?;
 
     let mut attributes = object_with_metadata.attributes().clone();
-    let key_block = object_with_metadata.object_mut().key_block_mut()?;
+    let object = object_with_metadata.object_mut();
+    let key_block = object.key_block_mut()?;
 
     // If the key is still wrapped then the exported `KeyFormatType` must be the default (`None`)
     if key_block.key_wrapping_data.is_some() {
@@ -308,7 +309,7 @@ async fn post_process_active_private_key(
     // Covercrypt keys cannot be post-processed, process them here
     if key_block.cryptographic_algorithm == Some(CryptographicAlgorithm::CoverCrypt) {
         return process_covercrypt_key(
-            key_block,
+            object,
             key_wrapping_specification,
             key_format_type,
             kms,
@@ -346,12 +347,11 @@ async fn post_process_active_private_key(
 
         // Get the key block
         let key_block = object.key_block_mut()?;
-
         // add the attributes back
         *key_block.attributes_mut()? = attributes;
 
         // wrap the key
-        wrap_key(key_block, key_wrapping_specification, kms, user, params).await?;
+        wrap_object(&mut object, key_wrapping_specification, kms, user, params).await?;
         // reassign the wrapped key
         object_with_metadata.set_object(object);
         return Ok(())
@@ -438,7 +438,8 @@ async fn process_public_key(
 
     //make a copy of the existing attributes
     let mut attributes = object_with_metadata.attributes().clone();
-    let key_block = object_with_metadata.object_mut().key_block_mut()?;
+    let object = object_with_metadata.object_mut();
+    let key_block = object.key_block_mut()?;
 
     // If the key is still wrapped then the exported `KeyFormatType` must be the default (`None`)
     if key_block.key_wrapping_data.is_some() {
@@ -456,7 +457,7 @@ async fn process_public_key(
     // process Covercrypt keys
     if key_block.cryptographic_algorithm == Some(CryptographicAlgorithm::CoverCrypt) {
         return process_covercrypt_key(
-            key_block,
+            object,
             key_wrapping_specification,
             key_format_type,
             kms,
@@ -497,14 +498,7 @@ async fn process_public_key(
         }
 
         // wrap the key
-        wrap_key(
-            object.key_block_mut()?,
-            key_wrapping_specification,
-            kms,
-            user,
-            params,
-        )
-        .await?;
+        wrap_object(&mut object, key_wrapping_specification, kms, user, params).await?;
         // reassign the wrapped key
         *object_with_metadata.object_mut() = object;
         return Ok(())
@@ -572,7 +566,7 @@ async fn unwrap_if_requested(
 
 #[allow(clippy::ref_option)]
 async fn process_covercrypt_key(
-    key_block: &mut KeyBlock,
+    covercrypt_key: &mut Object,
     key_wrapping_specification: &Option<KeyWrappingSpecification>,
     key_format_type: &Option<KeyFormatType>,
     kms: &KMS,
@@ -588,7 +582,14 @@ async fn process_covercrypt_key(
             )
         }
         // wrap the key
-        wrap_key(key_block, key_wrapping_specification, kms, user, params).await?;
+        wrap_object(
+            covercrypt_key,
+            key_wrapping_specification,
+            kms,
+            user,
+            params,
+        )
+        .await?;
     }
     Ok(())
 }
@@ -664,7 +665,8 @@ async fn process_symmetric_key(
     )
     .await?;
 
-    let key_block = object_with_metadata.object_mut().key_block_mut()?;
+    let object = object_with_metadata.object_mut();
+    let key_block = object.key_block_mut()?;
 
     // If the key is still wrapped the the export KeyFormatType must be the default (none)
     if key_block.key_wrapping_data.is_some() {
@@ -714,7 +716,7 @@ async fn process_symmetric_key(
         key_block.key_format_type = KeyFormatType::Raw;
         key_block.attributes_mut()?.key_format_type = Some(KeyFormatType::Raw);
         // wrap the key
-        wrap_key(key_block, key_wrapping_specification, kms, user, params).await?;
+        wrap_object(object, key_wrapping_specification, kms, user, params).await?;
         return Ok(())
     }
 

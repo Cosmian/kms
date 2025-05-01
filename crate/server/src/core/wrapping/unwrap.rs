@@ -3,10 +3,10 @@ use std::sync::Arc;
 use cosmian_kmip::{
     kmip_0::kmip_types::{CryptographicUsageMask, State},
     kmip_2_1::{
-        KmipOperation,
         kmip_data_structures::{KeyBlock, KeyValue},
-        kmip_objects::ObjectType,
+        kmip_objects::{Object, ObjectType},
         kmip_types::LinkType,
+        KmipOperation,
     },
 };
 use cosmian_kms_crypto::crypto::wrap::{decode_unwrapped_key, unwrap_key_block};
@@ -14,38 +14,45 @@ use cosmian_kms_interfaces::SessionParams;
 use tracing::debug;
 
 use crate::{
-    core::{KMS, uid_utils::has_prefix},
+    core::{uid_utils::has_prefix, KMS},
     error::KmsError,
     kms_bail,
     result::{KResult, KResultHelper},
 };
 
-/// Unwrap a key
-/// This function is used to unwrap a key before storing it in the database
+/// Unwrap an Object
+/// This function is used to unwrap an object before storing it in the database
 ///
 /// # Arguments
-/// * `object_key_block`    - the key block of the object to unwrap
-/// * `kms`                 - the KMS
-/// * `user`                - the user accessing the unwrapping key
-/// * `params`              - the extra database parameters
+/// * `object` - the object to unwrap
+/// * `kms` - the KMS
+/// * `user` - the user accessing the unwrapping key
+/// * `params` - the extra database parameters
 ///
 /// # Returns
-/// * `KResult<()>`         - the result of the operation
-pub(crate) async fn unwrap_key(
-    object_key_block: &mut KeyBlock,
+/// * `KResult<()>` - the result of the operation
+pub(crate) async fn unwrap_object(
+    object: &mut Object,
     kms: &KMS,
     user: &str,
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<()> {
+    let object_key_block = object.key_block_mut().map_err(|e| {
+        KmsError::InvalidRequest(format!(
+            "unwrap_object: not key block to unwrap in object: {e}",
+        ))
+    })?;
     let key_wrapping_data = object_key_block.key_wrapping_data.as_ref().ok_or_else(|| {
-        KmsError::InvalidRequest("unwrap_key: key wrapping data is missing".to_owned())
+        KmsError::InvalidRequest("unwrap_object: key wrapping data is missing".to_owned())
     })?;
 
     let unwrapping_key_uid = key_wrapping_data
         .encryption_key_information
         .as_ref()
         .ok_or_else(|| {
-            KmsError::InvalidRequest("unwrap_key: encryption key information is missing".to_owned())
+            KmsError::InvalidRequest(
+                "unwrap_object: encryption key information is missing".to_owned(),
+            )
         })?
         .unique_identifier
         .to_string();

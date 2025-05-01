@@ -1,7 +1,6 @@
 use cosmian_kmip::{
     kmip_0::kmip_types::{BlockCipherMode, CryptographicUsageMask, PaddingMethod},
     kmip_2_1::{
-        kmip_attributes::Attributes,
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
         kmip_objects::Object,
         kmip_types::{CryptographicAlgorithm, EncodingOption, KeyFormatType},
@@ -18,7 +17,6 @@ use crate::crypto::elliptic_curves::ecies::ecies_decrypt;
 use crate::crypto::rsa::ckm_rsa_pkcs::ckm_rsa_pkcs_key_unwrap;
 use crate::{
     crypto::{
-        FIPS_MIN_SALT_SIZE,
         password_derivation::derive_key_from_password,
         rsa::{
             ckm_rsa_aes_key_wrap::ckm_rsa_aes_key_unwrap,
@@ -26,12 +24,13 @@ use crate::{
         },
         symmetric::{
             rfc5649::rfc5649_unwrap,
-            symmetric_ciphers::{SymCipher, decrypt},
+            symmetric_ciphers::{decrypt, SymCipher},
         },
         wrap::common::rsa_parameters,
+        FIPS_MIN_SALT_SIZE,
     },
     crypto_bail,
-    error::{CryptoError, result::CryptoResultHelper},
+    error::{result::CryptoResultHelper, CryptoError},
     openssl::kmip_private_key_to_openssl,
 };
 
@@ -175,7 +174,7 @@ pub fn decode_unwrapped_key(
                     let key_material = KeyMaterial::ByteString(plaintext);
                     Ok(KeyValue::Structure {
                         key_material,
-                        attributes: Some(Attributes::default()),
+                        attributes: None,
                     })
                 }
                 #[cfg(not(feature = "fips"))]
@@ -184,7 +183,7 @@ pub fn decode_unwrapped_key(
                     let key_material = KeyMaterial::ByteString(plaintext);
                     Ok(KeyValue::Structure {
                         key_material,
-                        attributes: Some(Attributes::default()),
+                        attributes: None,
                     })
                 }
                 KeyFormatType::TransparentSymmetricKey => {
@@ -192,7 +191,7 @@ pub fn decode_unwrapped_key(
                     let key_material = KeyMaterial::TransparentSymmetricKey { key: plaintext };
                     Ok(KeyValue::Structure {
                         key_material,
-                        attributes: Some(Attributes::default()),
+                        attributes: None,
                     })
                 }
 

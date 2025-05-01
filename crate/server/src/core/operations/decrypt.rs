@@ -4,13 +4,13 @@ use cosmian_cover_crypt::api::Covercrypt;
 use cosmian_kmip::{
     kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, PaddingMethod, State},
     kmip_2_1::{
-        KmipOperation,
         extra::BulkData,
         kmip_objects::Object,
         kmip_operations::{Decrypt, DecryptResponse},
         kmip_types::{
             CryptographicAlgorithm, CryptographicParameters, KeyFormatType, UniqueIdentifier,
         },
+        KmipOperation,
     },
 };
 #[cfg(not(feature = "fips"))]
@@ -19,13 +19,13 @@ use cosmian_kms_crypto::crypto::elliptic_curves::ecies::ecies_decrypt;
 use cosmian_kms_crypto::crypto::rsa::ckm_rsa_pkcs::ckm_rsa_pkcs_decrypt;
 use cosmian_kms_crypto::{
     crypto::{
-        DecryptionSystem,
         cover_crypt::{attributes, decryption::CovercryptDecryption},
         rsa::{
             ckm_rsa_aes_key_wrap::ckm_rsa_aes_key_unwrap,
             ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_key_decrypt, default_cryptographic_parameters,
         },
-        symmetric::symmetric_ciphers::{SymCipher, decrypt as sym_decrypt},
+        symmetric::symmetric_ciphers::{decrypt as sym_decrypt, SymCipher},
+        DecryptionSystem,
     },
     openssl::kmip_private_key_to_openssl,
 };
@@ -36,8 +36,8 @@ use zeroize::Zeroizing;
 
 use crate::{
     core::{
-        KMS,
         uid_utils::{has_prefix, uids_from_unique_identifier},
+        KMS,
     },
     error::KmsError,
     kms_bail,
@@ -120,7 +120,10 @@ pub(crate) async fn decrypt(
         }
         // If an HSM wraps the object, likely the wrapping will be done with NoEncoding
         // and the attributes of the object will be empty. Use the metadata attributes.
-        let attributes = owm.attributes();
+        let attributes = owm
+            .object()
+            .attributes()
+            .unwrap_or_else(|_| owm.attributes());
         if !attributes.is_usage_authorized_for(CryptographicUsageMask::Decrypt)? {
             debug!("Decrypt: key: {uid} is not authorized for decryption");
             continue

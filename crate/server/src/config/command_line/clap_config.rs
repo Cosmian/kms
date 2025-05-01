@@ -7,8 +7,8 @@ use clap::Parser;
 use serde::{Deserialize, Serialize};
 
 use super::{
-    HttpConfig, JwtAuthConfig, MainDBConfig, WorkspaceConfig, logging::LoggingConfig,
-    ui_config::UiConfig,
+    logging::LoggingConfig, ui_config::UiConfig, HttpConfig, JwtAuthConfig, MainDBConfig,
+    WorkspaceConfig,
 };
 use crate::{
     config::{SocketServerConfig, TlsConfig},
@@ -42,6 +42,7 @@ impl Default for ClapConfig {
             hsm_model: "proteccio".to_owned(),
             hsm_slot: vec![],
             hsm_password: vec![],
+            key_wrapping_key: None,
             non_revocable_key_id: None,
             privileged_users: None,
         }
@@ -142,6 +143,10 @@ pub struct ClapConfig {
     #[clap(verbatim_doc_comment, long, requires = "hsm_slot")]
     pub hsm_password: Vec<String>,
 
+    /// Force all keys imported or created in the KMS, which are not protected by a key wrapping key,
+    /// to be protected by the specified key wrapping key
+    pub key_wrapping_key: Option<String>,
+
     /// The non-revocable keys ID used for demo purposes
     #[clap(long, hide = true)]
     pub non_revocable_key_id: Option<Vec<String>>,
@@ -157,10 +162,11 @@ pub struct ClapConfig {
 
 impl ClapConfig {
     /// # Errors
-    /// Fails if the configuration file is not found or if the configuration file is not valid
-    /// or if the configuration file cannot be read
-    /// or if the configuration file cannot be parsed
-    /// or if the configuration file is not a valid toml file
+    /// Fails if the configuration file is not found,
+    /// or if the configuration file is not valid,
+    /// or if the configuration file cannot be read,
+    /// or if the configuration file cannot be parsed,
+    /// or if the configuration file is not a valid toml file.
     #[allow(clippy::print_stdout)] // Logging is not being initialized yet, just use standard prints
     pub fn load_from_file() -> KResult<Self> {
         let conf = std::env::var("COSMIAN_KMS_CONF").map_or_else(
@@ -275,6 +281,7 @@ impl fmt::Debug for ClapConfig {
                 .map(|_| "********")
                 .collect::<Vec<&str>>(),
         );
+        let x = x.field("key wrapping key", &self.key_wrapping_key);
         let x = x.field("non_revocable_key_id", &self.non_revocable_key_id);
         let x = x.field("privileged_users", &self.privileged_users);
 

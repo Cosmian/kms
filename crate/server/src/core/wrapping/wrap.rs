@@ -3,10 +3,10 @@ use std::sync::Arc;
 use cosmian_kmip::{
     kmip_0::kmip_types::{CryptographicUsageMask, State},
     kmip_2_1::{
-        KmipOperation,
         kmip_data_structures::{KeyBlock, KeyValue, KeyWrappingSpecification},
-        kmip_objects::ObjectType,
+        kmip_objects::{Object, ObjectType},
         kmip_types::LinkType,
+        KmipOperation,
     },
 };
 use cosmian_kms_crypto::crypto::wrap::{key_data_to_wrap, wrap_key_block};
@@ -14,31 +14,36 @@ use cosmian_kms_interfaces::SessionParams;
 use tracing::debug;
 
 use crate::{
-    core::{KMS, uid_utils::has_prefix},
+    core::{uid_utils::has_prefix, KMS},
     error::KmsError,
     kms_bail,
     result::{KResult, KResultHelper},
 };
 
-/// Wrap a key with a wrapping key
+/// Wrap an Object with a wrapping key
 /// The wrapping key is fetched from the database
 /// The key is wrapped using the wrapping key
 ///
 /// # Arguments
-/// * `object_key_block` - the key block of the object to wrap
+/// * `object` - the object to wrap
 /// * `key_wrapping_specification` - the key wrapping specification
 /// * `kms` - the kms
 /// * `user` - the user performing the call
 /// * `params` - the extra database parameters
 /// # Returns
 /// * `KResult<()>` - the result of the operation
-pub(crate) async fn wrap_key(
-    object_key_block: &mut KeyBlock,
+pub(crate) async fn wrap_object(
+    object: &mut Object,
     key_wrapping_specification: &KeyWrappingSpecification,
     kms: &KMS,
     user: &str,
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<()> {
+    // get the key block
+    let object_key_block = object.key_block_mut().map_err(|e| {
+        KmsError::InvalidRequest(format!("wrap_object: not key block to wrap in object: {e}",))
+    })?;
+
     // recover the wrapping key uid
     let wrapping_key_uid = match &key_wrapping_specification.encryption_key_information {
         Some(eki) => eki

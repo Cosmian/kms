@@ -18,7 +18,7 @@ use tracing::{debug, trace};
 use zeroize::Zeroizing;
 
 use crate::{
-    core::{KMS, cover_crypt::create_user_decryption_key, wrapping::unwrap_key},
+    core::{cover_crypt::create_user_decryption_key, wrapping::unwrap_object, KMS},
     error::KmsError,
     result::{KResult, KResultHelper},
 };
@@ -73,8 +73,7 @@ impl KMS {
         let unwrap_local = async {
             let key_signature = object.key_signature()?;
             let mut unwrapped_object = object.clone();
-            let key_block = unwrapped_object.key_block_mut()?;
-            unwrap_key(key_block, self, user, params).await?;
+            unwrap_object(&mut unwrapped_object, self, user, params).await?;
             Ok(CachedUnwrappedObject::new(key_signature, unwrapped_object))
         };
 

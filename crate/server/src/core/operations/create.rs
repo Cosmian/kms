@@ -11,7 +11,7 @@ use cosmian_kms_server_database::CachedUnwrappedObject;
 use tracing::{debug, trace};
 
 use crate::{
-    core::{KMS, retrieve_object_utils::user_has_permission, wrapping::wrap_key},
+    core::{wrapping::wrap_object, KMS},
     error::KmsError,
     kms_bail,
     result::KResult,
@@ -61,28 +61,39 @@ pub(crate) async fn create(
         }
     };
 
-    // Copy the atttributes before the key gets wrapped
+    // Copy the attributes before the key gets wrapped
     let attributes = object.attributes()?.clone();
 
     // Wrap the key if a wrapping key is provided
-    let mut unwrapped_key = None;
-    // This is a Cosmian specific extension
-    let wrapping_key_id = request.attributes.remove_wrapping_key_id();
+    let mut unwrapped_object = None;
+
+    // This is a Cosmian-specific extension
+    // to wrap the key with a wrapping key stored in the database
+    // or in the HSM.
+    // Either the user has provided a wrapping key id or a key wrapping key is
+    // provided in the parameters.
+    let wrapping_key_id = request
+        .attributes
+        .remove_wrapping_key_id()
+        .or_else(|| kms.params.key_wrapping_key.clone());
     // This is useful to store a key on the default data store but wrapped by a key stored in an HSM
     // extract the wrapping key id
     if let Some(wrapping_key_id) = wrapping_key_id {
         // make a copy of the unwrapped key
-        unwrapped_key = Some(object.clone());
+        unwrapped_object = Some(object.clone());
 
         // wrap the current object
-        let key_block = object.key_block_mut()?;
-        wrap_key(
-            key_block,
+        wrap_object(
+            &mut object,
             &KeyWrappingSpecification {
                 encryption_key_information: Some(EncryptionKeyInformation {
                     unique_identifier: UniqueIdentifier::TextString(wrapping_key_id),
                     cryptographic_parameters: None,
                 }),
+                // The KMIP specification defaults to TTLV encoding,
+                // but most HSMs will not be able
+                // to handle the larger number of bytes
+                // this entails.
                 encoding_option: Some(EncodingOption::NoEncoding),
                 ..Default::default()
             },
@@ -111,7 +122,7 @@ pub(crate) async fn create(
     );
 
     // store the unwrapped object in cache if wrapped
-    if let Some(unwrapped_key) = unwrapped_key {
+    if let Some(unwrapped_object) = unwrapped_object {
         // add the key to the unwrapped cache
         kms.database
             .unwrapped_cache()
@@ -119,7 +130,7 @@ pub(crate) async fn create(
                 uid.clone(),
                 Ok(CachedUnwrappedObject::new(
                     object.key_signature()?,
-                    unwrapped_key,
+                    unwrapped_object,
                 )),
             )
             .await;

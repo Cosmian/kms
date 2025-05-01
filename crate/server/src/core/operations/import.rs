@@ -26,7 +26,7 @@ use tracing::{debug, trace};
 use uuid::Uuid;
 
 use crate::{
-    core::{KMS, wrapping::unwrap_key},
+    core::{wrapping::unwrap_object, KMS},
     error::KmsError,
     kms_bail,
     result::KResult,
@@ -140,8 +140,7 @@ pub(crate) async fn process_symmetric_key(
     let mut object = request.object;
     // Unwrap the Object if required.
     if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
-        let object_key_block = object.key_block_mut()?;
-        unwrap_key(object_key_block, kms, owner, params).await?;
+        unwrap_object(&mut object, kms, owner, params).await?;
     }
 
     // Tag the object as a symmetric key
@@ -270,8 +269,7 @@ async fn process_public_key(
     // Unwrap the key_block if required.
     {
         if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
-            let object_key_block = object.key_block_mut()?;
-            unwrap_key(object_key_block, kms, owner, params).await?;
+            unwrap_object(&mut object, kms, owner, params).await?;
         }
     }
 
@@ -352,8 +350,7 @@ async fn process_private_key(
     // Process based on the key block type.
     let mut object = request.object;
     if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
-        let object_key_block = object.key_block_mut()?;
-        unwrap_key(object_key_block, kms, owner, params).await?;
+        unwrap_object(&mut object, kms, owner, params).await?;
     }
 
     // PKCS12  have their own processing

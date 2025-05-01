@@ -2,17 +2,17 @@ use std::sync::Arc;
 
 use cosmian_cover_crypt::api::Covercrypt;
 use cosmian_kmip::{
-    KmipError,
     kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, PaddingMethod, State},
     kmip_2_1::{
-        KmipOperation,
         extra::BulkData,
         kmip_objects::{Certificate, Object},
         kmip_operations::{Encrypt, EncryptResponse},
         kmip_types::{
             CryptographicAlgorithm, CryptographicParameters, KeyFormatType, UniqueIdentifier,
         },
+        KmipOperation,
     },
+    KmipError,
 };
 #[cfg(not(feature = "fips"))]
 use cosmian_kms_crypto::crypto::elliptic_curves::ecies::ecies_encrypt;
@@ -20,13 +20,13 @@ use cosmian_kms_crypto::crypto::elliptic_curves::ecies::ecies_encrypt;
 use cosmian_kms_crypto::crypto::rsa::ckm_rsa_pkcs::ckm_rsa_pkcs_encrypt;
 use cosmian_kms_crypto::{
     crypto::{
-        EncryptionSystem,
         cover_crypt::encryption::CoverCryptEncryption,
         rsa::{
             ckm_rsa_aes_key_wrap::ckm_rsa_aes_key_wrap,
             ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_encrypt, default_cryptographic_parameters,
         },
-        symmetric::symmetric_ciphers::{SymCipher, encrypt as sym_encrypt, random_nonce},
+        symmetric::symmetric_ciphers::{encrypt as sym_encrypt, random_nonce, SymCipher},
+        EncryptionSystem,
     },
     openssl::kmip_public_key_to_openssl,
 };
@@ -40,8 +40,8 @@ use zeroize::Zeroizing;
 
 use crate::{
     core::{
-        KMS,
         uid_utils::{has_prefix, uids_from_unique_identifier},
+        KMS,
     },
     error::KmsError,
     kms_bail,
@@ -141,7 +141,10 @@ pub(crate) async fn encrypt(
         if let Object::SymmetricKey { .. } | Object::PublicKey { .. } = owm.object() {
             // If an HSM wraps the object, likely the wrapping will be done with NoEncoding
             // and the attributes of the object will be empty. Use the metadata attributes.
-            let attributes = owm.attributes();
+            let attributes = owm
+                .object()
+                .attributes()
+                .unwrap_or_else(|_| owm.attributes());
             trace!("encrypt: attributes: {attributes:#?}");
             if !attributes.is_usage_authorized_for(CryptographicUsageMask::Encrypt)? {
                 continue
