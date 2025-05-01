@@ -176,7 +176,7 @@ impl ServerParams {
                 Some(conf.hsm_model)
             },
             slot_passwords,
-            key_wrapping_key: conf.key_wrapping_key,
+            key_wrapping_key: conf.key_encryption_key,
             non_revocable_key_id: conf.non_revocable_key_id,
             privileged_users: conf.privileged_users,
         };

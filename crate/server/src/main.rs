@@ -220,7 +220,7 @@ mod tests {
             hsm_admin: "".to_string(),
             hsm_slot: vec![],
             hsm_password: vec![],
-            key_wrapping_key: Some("key wrapping key".to_owned()),
+            key_encryption_key: Some("key wrapping key".to_owned()),
             non_revocable_key_id: None,
             privileged_users: None,
         };

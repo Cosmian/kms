@@ -12,7 +12,7 @@ use cosmian_kmip::{
 use cosmian_kms_crypto::crypto::wrap::{key_data_to_wrap, wrap_key_block};
 use cosmian_kms_interfaces::SessionParams;
 use cosmian_kms_server_database::CachedUnwrappedObject;
-use tracing::debug;
+use tracing::{debug, warn};
 
 use crate::{
     core::{KMS, uid_utils::has_prefix},
@@ -68,6 +68,13 @@ pub(crate) async fn wrap_and_cache(
         // no wrapping key provided
         return Ok(());
     };
+
+    // Cannot wrap yourself
+    if wrapping_key_id == unique_identifier.to_string() {
+        warn!("Key {wrapping_key_id} attempted to wrap itself");
+        return Ok(());
+    }
+
     // This is useful to store a key on the default data store but wrapped by a key stored in an HSM
     // extract the wrapping key id
     // make a copy of the unwrapped key

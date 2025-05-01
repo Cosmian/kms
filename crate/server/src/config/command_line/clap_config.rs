@@ -42,7 +42,7 @@ impl Default for ClapConfig {
             hsm_model: "proteccio".to_owned(),
             hsm_slot: vec![],
             hsm_password: vec![],
-            key_wrapping_key: None,
+            key_encryption_key: None,
             non_revocable_key_id: None,
             privileged_users: None,
         }
@@ -143,9 +143,9 @@ pub struct ClapConfig {
     #[clap(verbatim_doc_comment, long, requires = "hsm_slot")]
     pub hsm_password: Vec<String>,
 
-    /// Force all keys imported or created in the KMS, which are not protected by a key wrapping key,
-    /// to be protected by the specified key wrapping key
-    pub key_wrapping_key: Option<String>,
+    /// Force all keys imported or created in the KMS, which are not protected by a key encryption key,
+    /// to be wrapped by the specified key encryption key (KEK)
+    pub key_encryption_key: Option<String>,
 
     /// The non-revocable keys ID used for demo purposes
     #[clap(long, hide = true)]
@@ -161,6 +161,8 @@ pub struct ClapConfig {
 }
 
 impl ClapConfig {
+    /// Load the configuration from the default configuration file
+    ///
     /// # Errors
     /// Fails if the configuration file is not found,
     /// or if the configuration file is not valid,
@@ -281,7 +283,7 @@ impl fmt::Debug for ClapConfig {
                 .map(|_| "********")
                 .collect::<Vec<&str>>(),
         );
-        let x = x.field("key wrapping key", &self.key_wrapping_key);
+        let x = x.field("key wrapping key", &self.key_encryption_key);
         let x = x.field("non_revocable_key_id", &self.non_revocable_key_id);
         let x = x.field("privileged_users", &self.privileged_users);
 
