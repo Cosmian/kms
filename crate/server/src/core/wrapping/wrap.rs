@@ -82,6 +82,23 @@ pub(crate) async fn wrap_and_cache(
     // make a copy of the unwrapped key
     let unwrapped_object = object.clone();
 
+    // The KMIP specification defaults to TTLV encoding,
+    // but most HSMs will not be able
+    // to handle the larger number of bytes
+    // this entails. So If we can recover bytes from a key, we
+    // use the more compact No Encoding, otherwise we use the default TTLV Encoding.
+    let encoding = if let Ok(_) = object
+        .key_block()
+        .map_err(|e| {
+            KmsError::InvalidRequest(format!("wrap_object: no key block to wrap in object: {e}",))
+        })?
+        .key_bytes()
+    {
+        EncodingOption::NoEncoding
+    } else {
+        EncodingOption::TTLVEncoding
+    };
+
     // wrap the current object
     wrap_object(
         object,
@@ -90,11 +107,7 @@ pub(crate) async fn wrap_and_cache(
                 unique_identifier: UniqueIdentifier::TextString(wrapping_key_id),
                 cryptographic_parameters: None,
             }),
-            // The KMIP specification defaults to TTLV encoding,
-            // but most HSMs will not be able
-            // to handle the larger number of bytes
-            // this entails.
-            encoding_option: Some(EncodingOption::TTLVEncoding),
+            encoding_option: Some(encoding),
             ..Default::default()
         },
         kms,

@@ -545,7 +545,9 @@ impl Session {
             );
             if rv != CKR_OK {
                 return Err(HError::Default(format!(
-                    "Failed to get encrypted data length. Error code: {rv}"
+                    "Failed to allocate encrypted data length. Data to encrypt is likely too big: \
+                     {} bytes. Error code: {rv}",
+                    data.len()
                 )));
             }
 

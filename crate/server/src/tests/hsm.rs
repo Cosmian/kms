@@ -44,7 +44,8 @@ fn hsm_clap_config(owner: &str, kek: Option<String>) -> ClapConfig {
 
 #[tokio::test]
 async fn test_create_key() -> KResult<()> {
-    log_init(Some("info,cosmian_kms_server=debug"));
+    // log_init(Some("info,cosmian_kms_server=debug"));
+    log_init(option_env!("RUST_LOG"));
 
     let kek_uid = format!("hsm::0::{}", Uuid::new_v4());
     let owner = Uuid::new_v4().to_string();

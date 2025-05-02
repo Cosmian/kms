@@ -259,6 +259,7 @@ impl KeyBlock {
             KeyValue::Structure { key_material, .. } => match key_material {
                 KeyMaterial::ByteString(v) => Ok(v.clone()),
                 KeyMaterial::TransparentSymmetricKey { key } => Ok(key.clone()),
+                // For EC Keys: this is equivalent to an openssl raw private key
                 KeyMaterial::TransparentECPrivateKey {
                     d,
                     recommended_curve,

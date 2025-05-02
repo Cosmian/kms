@@ -120,11 +120,13 @@ pub fn wrap_key_block(
     Ok(())
 }
 
-/// Determine the Key data to wrap
-/// The key data is determined based on the encoding
+/// Determine the Key data to wrap.
+/// The key data is determined based on the encoding.
+///
 /// # Arguments
 /// * `object_key_block` - the key block of the object to wrap
 /// * `key_wrapping_specification` - the key wrapping specification
+///
 /// # Returns
 /// * `KResult<Zeroizing<Vec<u8>>>` - the key data to wrap
 pub fn key_data_to_wrap(

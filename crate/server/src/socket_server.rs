@@ -231,20 +231,32 @@ impl SocketServer {
         thread::spawn(move || {
             if let Ok(result) = command_receiver.recv() {
                 // If we receive any message, signal to stop
-                debug!("Socket server received stop signal");
+                debug!("Socket server received stop signal: {result:?}",);
                 if let Err(e) = result {
                     error!("Socket server stop signal contained error: {}", e);
                 }
-                // Trigger a connection to ourselves to break the accept loop
-                if let Ok(local_address) = listener_clone.local_addr() {
-                    let _c = TcpStream::connect(local_address);
-                    if let Ok(mut stop_requested) = stop_requested_clone.write() {
-                        *stop_requested = true;
+                if let Ok(mut stop_requested) = stop_requested_clone.try_write().map_err(|e| {
+                    error!(
+                        "Socket server failed to acquire write lock for stop request: {}",
+                        e
+                    );
+                }) {
+                    *stop_requested = true;
+                    // Trigger a connection to ourselves to break the `accept` loop
+                    if let Ok(local_address) = listener_clone.local_addr() {
+                        if let Ok(_c) =
+                            TcpStream::connect_timeout(&local_address, Duration::from_secs(5))
+                                .map_err(|e| {
+                                    error!("Socket server failed to connect to itself: {}", e);
+                                })
+                        {
+                            info!("Socket server stop signal sent");
+                        }
                     } else {
-                        error!("Socket server failed to write stop request");
+                        error!("Socket server failed to get local address for stop signal");
                     }
                 } else {
-                    error!("Socket server failed to get local address for stop signal");
+                    error!("Socket server failed to write stop request");
                 }
             }
         });
