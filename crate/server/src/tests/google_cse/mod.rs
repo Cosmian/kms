@@ -749,10 +749,10 @@ async fn test_cse_rewrap_key() -> KResult<()> {
     // Import original_kms google_cse key
     let original_symmetric_key = read_bytes_from_file(&PathBuf::from(
         "../../documentation/docs/google_cse/original_kms_cse_key.demo.key.json",
-    ))
-    .unwrap();
+    ))?;
 
-    let object = read_object_from_json_ttlv_bytes(&original_symmetric_key).unwrap();
+    let object = read_object_from_json_ttlv_bytes(&original_symmetric_key)
+        .context("failed parsing the key from the json file")?;
 
     // We defined that original kms imported key must be importing under the original_kacls_url as ID
     let import_original_key_request = Import {
