@@ -113,7 +113,8 @@ async fn test_kmip_mac_messages() -> KResult<()> {
 #[tokio::test]
 #[allow(clippy::as_conversions)]
 async fn test_encrypt_kmip_messages() -> KResult<()> {
-    // cosmian_logger::log_init("info,hyper=info,reqwest=info");
+    // log_init(option_env!("RUST_LOG"));
+    log_init(Some("debug"));
     let clap_config = https_clap_config();
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
     let owner = "eyJhbGciOiJSUzI1Ni";
