@@ -39,7 +39,12 @@ async fn test_cover_crypt_keys() -> KResult<()> {
     debug!("ABE Create Master Key Pair");
     let cr = kms
         .create_key_pair(
-            build_create_covercrypt_master_keypair_request(access_structure, EMPTY_TAGS, false)?,
+            build_create_covercrypt_master_keypair_request(
+                access_structure,
+                EMPTY_TAGS,
+                false,
+                None,
+            )?,
             owner,
             None,
             None,
@@ -215,7 +220,12 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     // create Key Pair
     let ckr = kms
         .create_key_pair(
-            build_create_covercrypt_master_keypair_request(access_structure, EMPTY_TAGS, false)?,
+            build_create_covercrypt_master_keypair_request(
+                access_structure,
+                EMPTY_TAGS,
+                false,
+                None,
+            )?,
             owner,
             None,
             None,
@@ -326,6 +336,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
                 master_secret_key_id,
                 EMPTY_TAGS,
                 false,
+                None,
             )?,
             owner,
             None,
@@ -422,7 +433,7 @@ async fn test_abe_json_access() -> KResult<()> {
     let access_structure = r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["RnD","HR","MKG","FIN"]}"#;
     // Create CC master key pair
     let master_keypair =
-        build_create_covercrypt_master_keypair_request(access_structure, EMPTY_TAGS, false)?;
+        build_create_covercrypt_master_keypair_request(access_structure, EMPTY_TAGS, false, None)?;
 
     // create Key Pair
     let ckr = kms
@@ -467,6 +478,7 @@ async fn test_abe_json_access() -> KResult<()> {
                 &master_secret_key_uid,
                 EMPTY_TAGS,
                 false,
+                None,
             )?,
             owner,
             None,
@@ -505,7 +517,12 @@ async fn test_import_decrypt() -> KResult<()> {
     // create Key Pair
     let cr = kms
         .create_key_pair(
-            build_create_covercrypt_master_keypair_request(access_structure, EMPTY_TAGS, false)?,
+            build_create_covercrypt_master_keypair_request(
+                access_structure,
+                EMPTY_TAGS,
+                false,
+                None,
+            )?,
             owner,
             None,
             None,
@@ -555,6 +572,7 @@ async fn test_import_decrypt() -> KResult<()> {
                 &sk_uid,
                 EMPTY_TAGS,
                 false,
+                None,
             )?,
             owner,
             None,

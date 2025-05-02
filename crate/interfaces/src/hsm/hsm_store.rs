@@ -391,7 +391,7 @@ fn to_object_with_metadata(
                 prime_exponent_q: Some(Box::new(SafeBigInt::from_bytes_be(
                     km.exponent_2.as_slice(),
                 ))),
-                crt_coefficient: Some(Box::new(SafeBigInt::from_bytes_be(
+                c_r_t_coefficient: Some(Box::new(SafeBigInt::from_bytes_be(
                     km.coefficient.as_slice(),
                 ))),
             };

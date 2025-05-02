@@ -128,7 +128,7 @@ pub fn to_rsa_public_key(
     Ok(output)
 }
 
-/// Convert to RSA KMIP Private Key.
+/// Convert an openssl RSA key to a KMIP RSA Private Key.
 pub fn to_rsa_private_key(
     private_key: &Rsa<Private>,
     pkey_bits_number: u32,
@@ -171,7 +171,7 @@ pub fn to_rsa_private_key(
                     prime_exponent_q: private_key.dmq1().map(|dmq1| {
                         Box::new(SafeBigInt::from_bytes_be(&Zeroizing::from(dmq1.to_vec())))
                     }),
-                    crt_coefficient: private_key.iqmp().map(|iqmp| {
+                    c_r_t_coefficient: private_key.iqmp().map(|iqmp| {
                         Box::new(SafeBigInt::from_bytes_be(&Zeroizing::from(iqmp.to_vec())))
                     }),
                 },

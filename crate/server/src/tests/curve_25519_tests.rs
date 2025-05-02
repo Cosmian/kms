@@ -52,6 +52,7 @@ async fn test_curve_25519() -> KResult<()> {
         EMPTY_TAGS,
         RecommendedCurve::CURVE25519,
         false,
+        None,
     )?;
     let response = kms.create_key_pair(request, owner, None, None).await?;
     // check that the private and public key exist
@@ -234,6 +235,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
                     EMPTY_TAGS,
                     RecommendedCurve::CURVE25519,
                     false,
+                    None,
                 )?),
             )),
             RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(Operation::Locate(
@@ -262,6 +264,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
                     EMPTY_TAGS,
                     RecommendedCurve::CURVE25519,
                     false,
+                    None,
                 )?),
             )),
             RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
@@ -270,6 +273,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
                     EMPTY_TAGS,
                     RecommendedCurve::CURVEED25519,
                     false,
+                    None,
                 )?),
             )),
             RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
@@ -278,6 +282,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
                     EMPTY_TAGS,
                     RecommendedCurve::SECP256K1,
                     false,
+                    None,
                 )?),
             )),
             RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
@@ -286,6 +291,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
                     EMPTY_TAGS,
                     RecommendedCurve::CURVEED25519,
                     false,
+                    None,
                 )?),
             )),
         ],

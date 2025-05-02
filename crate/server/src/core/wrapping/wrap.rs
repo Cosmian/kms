@@ -12,7 +12,7 @@ use cosmian_kmip::{
 use cosmian_kms_crypto::crypto::wrap::{key_data_to_wrap, wrap_key_block};
 use cosmian_kms_interfaces::SessionParams;
 use cosmian_kms_server_database::CachedUnwrappedObject;
-use tracing::{debug, warn};
+use tracing::{debug, trace, warn};
 
 use crate::{
     core::{KMS, uid_utils::has_prefix},
@@ -94,7 +94,7 @@ pub(crate) async fn wrap_and_cache(
             // but most HSMs will not be able
             // to handle the larger number of bytes
             // this entails.
-            encoding_option: Some(EncodingOption::NoEncoding),
+            encoding_option: Some(EncodingOption::TTLVEncoding),
             ..Default::default()
         },
         kms,
@@ -180,7 +180,7 @@ pub(crate) async fn wrap_object(
         .await?;
     }
     debug!("Key wrapped successfully by key {}", wrapping_key_uid);
-    debug!("The key block is now: {:#?}", object_key_block);
+    trace!("The key block is now: {:#?}", object_key_block);
     Ok(())
 }
 

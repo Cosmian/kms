@@ -472,7 +472,7 @@ impl From<KeyMaterial421> for KeyMaterial {
                     .map(|prime_exponent_p| Box::new(SafeBigInt::from(*prime_exponent_p))),
                 prime_exponent_q: prime_exponent_q
                     .map(|prime_exponent_q| Box::new(SafeBigInt::from(*prime_exponent_q))),
-                crt_coefficient: crt_coefficient
+                c_r_t_coefficient: crt_coefficient
                     .map(|crt_coefficient| Box::new(SafeBigInt::from(*crt_coefficient))),
             },
             KeyMaterial421::TransparentECPrivateKey {

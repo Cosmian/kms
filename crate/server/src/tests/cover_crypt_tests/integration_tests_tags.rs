@@ -29,7 +29,7 @@ async fn test_re_key_with_tags() -> KResult<()> {
     let access_structure = r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["RnD","HR","MKG","FIN"]}"#;
 
     let create_key_pair =
-        build_create_covercrypt_master_keypair_request(access_structure, [mkp_tag], false)?;
+        build_create_covercrypt_master_keypair_request(access_structure, [mkp_tag], false, None)?;
     let create_key_pair_response: CreateKeyPairResponse =
         test_utils::post_2_1(&app, &create_key_pair).await?;
 
@@ -84,7 +84,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
     let access_structure = r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["RnD","HR","MKG","FIN"]}"#;
 
     let create_key_pair =
-        build_create_covercrypt_master_keypair_request(access_structure, [mkp_tag], false)?;
+        build_create_covercrypt_master_keypair_request(access_structure, [mkp_tag], false, None)?;
     let create_key_pair_response: CreateKeyPairResponse =
         test_utils::post_2_1(&app, &create_key_pair).await?;
 
@@ -119,6 +119,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
         &private_key_unique_identifier.to_string(),
         [udk_tag],
         false,
+        None,
     )?;
     let _create_response: CreateResponse = test_utils::post_2_1(&app, request).await?;
     // let user_decryption_key_identifier = &create_response.unique_identifier;
@@ -170,6 +171,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
         &private_key_unique_identifier.to_string(),
         [udk1_tag],
         false,
+        None,
     )?;
     let _create_response: CreateResponse = test_utils::post_2_1(&app, &request).await?;
 
@@ -183,6 +185,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
         &private_key_unique_identifier.to_string(),
         [udk2_tag],
         false,
+        None,
     )?;
     let _create_response2: CreateResponse = test_utils::post_2_1(&app, &request).await?;
 

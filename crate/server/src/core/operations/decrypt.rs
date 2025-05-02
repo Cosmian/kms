@@ -277,7 +277,7 @@ fn decrypt_bulk(
                     data: Some(ciphertext.to_vec()),
                     ..request.clone()
                 };
-                let response = decrypt_with_public_key(owm, &request)?;
+                let response = decrypt_with_private_key(owm, &request)?;
                 plaintexts.push(response.data.unwrap_or_default());
             }
         }
@@ -351,7 +351,7 @@ fn decrypt_single(owm: &ObjectWithMetadata, request: &Decrypt) -> KResult<Decryp
                 "dispatch_decrypt: matching on public key format type: {:?}",
                 key_block.key_format_type
             );
-            decrypt_with_public_key(owm, request)
+            decrypt_with_private_key(owm, request)
         }
 
         KeyFormatType::TransparentSymmetricKey | KeyFormatType::Raw => {
@@ -437,7 +437,7 @@ fn get_aead_and_key(
     Ok((key_bytes, aead))
 }
 
-fn decrypt_with_public_key(
+fn decrypt_with_private_key(
     owm: &ObjectWithMetadata,
     request: &Decrypt,
 ) -> KResult<DecryptResponse> {

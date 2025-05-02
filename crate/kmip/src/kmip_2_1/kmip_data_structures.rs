@@ -807,7 +807,7 @@ pub enum KeyMaterial {
         q: Option<Box<SafeBigInt>>,
         prime_exponent_p: Option<Box<SafeBigInt>>,
         prime_exponent_q: Option<Box<SafeBigInt>>,
-        crt_coefficient: Option<Box<SafeBigInt>>,
+        c_r_t_coefficient: Option<Box<SafeBigInt>>,
     },
     TransparentECPrivateKey {
         recommended_curve: RecommendedCurve,
@@ -957,7 +957,7 @@ impl Serialize for KeyMaterialSerializer {
                 q,
                 prime_exponent_p,
                 prime_exponent_q,
-                crt_coefficient,
+                c_r_t_coefficient: crt_coefficient,
             } => {
                 let mut st = serializer.serialize_struct("KeyMaterial", 9)?;
                 st.serialize_field("Modulus", &**modulus)?;
@@ -980,7 +980,7 @@ impl Serialize for KeyMaterialSerializer {
                     st.serialize_field("PrimeExponentQ", &***prime_exponent_q)?;
                 }
                 if let Some(crt_coefficient) = crt_coefficient {
-                    st.serialize_field("CrtCoefficient", &***crt_coefficient)?;
+                    st.serialize_field("CRTCoefficient", &***crt_coefficient)?;
                 }
                 st.end()
             }
@@ -1043,7 +1043,7 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
             PublicExponent,
             PrimeExponentP,
             PrimeExponentQ,
-            CrtCoefficient,
+            CRTCoefficient,
             RecommendedCurve,
             QString,
         }
@@ -1208,7 +1208,7 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
                             }
                             prime_exponent_q = Some(Box::new(map.next_value()?));
                         }
-                        Field::CrtCoefficient => {
+                        Field::CRTCoefficient => {
                             if crt_coefficient.is_some() {
                                 return Err(de::Error::duplicate_field("CrtCoefficient"))
                             }
@@ -1284,7 +1284,7 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
                                 q: q.map(|q| Box::new(SafeBigInt::from(*q))),
                                 prime_exponent_p,
                                 prime_exponent_q,
-                                crt_coefficient,
+                                c_r_t_coefficient: crt_coefficient,
                             }
                         }
                         KeyFormatType::TransparentECPublicKey

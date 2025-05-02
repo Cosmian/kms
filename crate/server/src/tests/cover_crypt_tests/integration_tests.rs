@@ -30,7 +30,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
 
     // create Key Pair
     let create_key_pair =
-        build_create_covercrypt_master_keypair_request(access_structure, EMPTY_TAGS, false)?;
+        build_create_covercrypt_master_keypair_request(access_structure, EMPTY_TAGS, false, None)?;
     let create_key_pair_response: CreateKeyPairResponse =
         test_utils::post_2_1(&app, &create_key_pair).await?;
 
@@ -72,6 +72,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         private_key_unique_identifier,
         EMPTY_TAGS,
         false,
+        None,
     )?;
     let create_response: CreateResponse = test_utils::post_2_1(&app, request).await?;
     let user_decryption_key_identifier = create_response
@@ -127,6 +128,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         private_key_unique_identifier,
         EMPTY_TAGS,
         false,
+        None,
     )?;
     let create_response: CreateResponse = test_utils::post_2_1(&app, &request).await?;
     let user_decryption_key_identifier_1 = create_response
@@ -142,6 +144,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         private_key_unique_identifier,
         EMPTY_TAGS,
         false,
+        None,
     )?;
     let create_response2: CreateResponse = test_utils::post_2_1(&app, &request).await?;
     let user_decryption_key_identifier_2 = &create_response2

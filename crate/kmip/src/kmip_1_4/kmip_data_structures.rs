@@ -1153,7 +1153,7 @@ impl From<KeyMaterial> for kmip_2_1::kmip_data_structures::KeyMaterial {
                 q,
                 prime_exponent_p,
                 prime_exponent_q,
-                crt_coefficient,
+                c_r_t_coefficient: crt_coefficient,
             },
             KeyMaterial::TransparentRSAPublicKey {
                 modulus,
@@ -1244,7 +1244,7 @@ impl TryFrom<kmip_2_1::kmip_data_structures::KeyMaterial> for KeyMaterial {
                 q,
                 prime_exponent_p,
                 prime_exponent_q,
-                crt_coefficient,
+                c_r_t_coefficient: crt_coefficient,
             } => Ok(Self::TransparentRSAPrivateKey {
                 modulus,
                 private_exponent,

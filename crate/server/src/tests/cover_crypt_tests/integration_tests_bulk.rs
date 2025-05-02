@@ -38,6 +38,7 @@ async fn integration_tests_bulk() -> KResult<()> {
                     access_structure,
                     EMPTY_TAGS,
                     false,
+                    None,
                 )?),
             )),
             RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
@@ -45,6 +46,7 @@ async fn integration_tests_bulk() -> KResult<()> {
                     access_structure,
                     EMPTY_TAGS,
                     false,
+                    None,
                 )?),
             )),
         ],

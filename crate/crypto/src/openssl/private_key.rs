@@ -91,7 +91,7 @@ pub fn kmip_private_key_to_openssl(private_key: &Object) -> Result<PKey<Private>
                     q,
                     prime_exponent_p,
                     prime_exponent_q,
-                    crt_coefficient,
+                    c_r_t_coefficient: crt_coefficient,
                 } => {
                     let mut rsa_private_key_builder = RsaPrivateKeyBuilder::new(
                         BigNum::from_slice(&modulus.to_bytes_be().1)?,
@@ -310,7 +310,7 @@ pub fn openssl_private_key_to_kmip(
                             .map(|pep| Box::new(SafeBigInt::from(pep))),
                         prime_exponent_q: prime_exponent_q
                             .map(|peq| Box::new(SafeBigInt::from(peq))),
-                        crt_coefficient: crt_coefficient
+                        c_r_t_coefficient: crt_coefficient
                             .map(|crt_coeff| Box::new(SafeBigInt::from(crt_coeff))),
                     },
                     attributes: Some(Attributes {
@@ -678,7 +678,7 @@ mod tests {
                             q,
                             prime_exponent_p,
                             prime_exponent_q,
-                            crt_coefficient,
+                            c_r_t_coefficient: crt_coefficient,
                         },
                     ..
                 }),

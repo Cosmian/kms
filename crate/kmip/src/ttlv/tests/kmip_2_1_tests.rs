@@ -1662,7 +1662,7 @@ fn test_object_structured_rsa() {
                     q: Some(Box::new(SafeBigInt::from(BigInt::from(3)))),
                     prime_exponent_p: Some(Box::new(SafeBigInt::from(BigInt::from(4)))),
                     prime_exponent_q: Some(Box::new(SafeBigInt::from(BigInt::from(5)))),
-                    crt_coefficient: Some(Box::new(SafeBigInt::from(BigInt::from(6)))),
+                    c_r_t_coefficient: Some(Box::new(SafeBigInt::from(BigInt::from(6)))),
                 },
                 attributes: None,
             }),

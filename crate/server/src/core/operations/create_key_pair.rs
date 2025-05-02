@@ -74,44 +74,46 @@ pub(crate) async fn create_key_pair(
             std::string::ToString::to_string,
         );
     let pk_uid = sk_uid.clone() + "_pk";
-    let mut key_pair = generate_key_pair(request, &sk_uid, &pk_uid)?;
+    let key_pair = generate_key_pair(request, &sk_uid, &pk_uid)?;
 
     trace!("create_key_pair: sk_uid: {sk_uid}, pk_uid: {pk_uid}");
 
-    let private_key = key_pair.private_key_mut();
+    let mut private_key = key_pair.private_key().to_owned();
+    let private_key_attributes = private_key.attributes()?.clone();
+    let private_key_tags = private_key.attributes()?.get_tags();
     wrap_and_cache(
         kms,
         owner,
         params.clone(),
         &UniqueIdentifier::TextString(sk_uid.clone()),
-        private_key,
+        &mut private_key,
     )
     .await?;
-    let private_key_attributes = private_key.attributes()?.clone();
 
-    let public_key = key_pair.public_key_mut();
+    let mut public_key = key_pair.public_key().to_owned();
+    let public_key_attributes = public_key.attributes()?.clone();
+    let public_key_tags = public_key.attributes()?.get_tags();
     wrap_and_cache(
         kms,
         owner,
         params.clone(),
         &UniqueIdentifier::TextString(pk_uid.clone()),
-        public_key,
+        &mut public_key,
     )
     .await?;
-    let public_key_attributes = public_key.attributes()?.clone();
 
     let operations = vec![
         AtomicOperation::Create((
             sk_uid.clone(),
-            key_pair.private_key().to_owned(),
+            private_key.clone(),
             private_key_attributes,
-            key_pair.private_key().attributes()?.get_tags(),
+            private_key_tags,
         )),
         AtomicOperation::Create((
             pk_uid.clone(),
-            key_pair.public_key().to_owned(),
+            public_key.clone(),
             public_key_attributes,
-            key_pair.public_key().attributes()?.get_tags(),
+            public_key_tags,
         )),
     ];
     let ids = kms.database.atomic(owner, &operations, params).await?;
