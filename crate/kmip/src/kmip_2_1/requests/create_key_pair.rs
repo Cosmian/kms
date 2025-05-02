@@ -24,6 +24,7 @@ pub fn create_rsa_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
     tags: T,
     cryptographic_length: usize,
     sensitive: bool,
+    wrapping_key_id: Option<&String>,
 ) -> Result<CreateKeyPair, KmipError> {
     #[cfg(feature = "fips")]
     let private_key_mask = FIPS_PRIVATE_RSA_MASK;
@@ -47,6 +48,9 @@ pub fn create_rsa_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
         object_type: Some(ObjectType::PrivateKey),
         ..Attributes::default()
     };
+    if let Some(wrap_key_id) = wrapping_key_id {
+        common_attributes.set_wrapping_key_id(wrap_key_id);
+    }
 
     // Add the tags.
     common_attributes.set_tags(tags)?;
@@ -163,6 +167,7 @@ pub fn create_ec_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
     tags: T,
     recommended_curve: RecommendedCurve,
     sensitive: bool,
+    wrapping_key_id: Option<&String>,
 ) -> Result<CreateKeyPair, KmipError> {
     let private_key_mask = build_mask_from_curve(recommended_curve, true)?;
     let public_key_mask = build_mask_from_curve(recommended_curve, false)?;
@@ -179,6 +184,9 @@ pub fn create_ec_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
         object_type: Some(ObjectType::PrivateKey),
         ..Attributes::default()
     };
+    if let Some(wrap_key_id) = wrapping_key_id {
+        common_attributes.set_wrapping_key_id(wrap_key_id);
+    }
 
     // Add the tags.
     common_attributes.set_tags(tags)?;

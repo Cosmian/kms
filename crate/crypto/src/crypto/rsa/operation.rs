@@ -301,6 +301,8 @@ pub fn create_rsa_key_pair(
     };
     *attributes = Some(public_key_attributes);
 
+    debug!("RSA key pair generated: private key id: {private_key_uid}");
+
     Ok(KeyPair::new(private_key, public_key))
 }
 

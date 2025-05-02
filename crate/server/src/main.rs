@@ -236,7 +236,7 @@ hsm_model = ""
 hsm_admin = ""
 hsm_slot = []
 hsm_password = []
-key_wrapping_key = "key wrapping key"
+key_encryption_key = "key wrapping key"
 kms_public_url = "[kms_public_url]"
 
 [db]

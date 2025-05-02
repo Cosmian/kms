@@ -71,7 +71,9 @@ pub(crate) async fn wrap_and_cache(
 
     // Cannot wrap yourself
     if wrapping_key_id == unique_identifier.to_string() {
-        warn!("Key {wrapping_key_id} attempted to wrap itself");
+        if kms.params.key_wrapping_key.is_none() {
+            warn!("Key {wrapping_key_id} attempted to wrap itself");
+        }
         return Ok(());
     }
 
