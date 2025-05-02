@@ -124,8 +124,8 @@ async fn main() -> KResult<()> {
 
     #[cfg(feature = "timeout")]
     info!("Feature Timeout enabled");
-    #[cfg(feature = "insecure")]
-    info!("Feature Insecure enabled");
+    #[cfg(test)]
+    info!("Feature Test enabled");
 
     #[cfg(feature = "timeout")]
     {

@@ -70,12 +70,14 @@ repos:
     rev: v5.0.0
     hooks:
       - id: check-added-large-files
+        exclude: ui/public
       - id: check-ast
       - id: check-byte-order-marker
       - id: check-builtin-literals
       - id: check-case-conflict
       - id: check-docstring-first
       - id: check-json
+        exclude: ui
       - id: check-merge-conflict
       - id: check-symlinks
       - id: check-toml
@@ -86,7 +88,8 @@ repos:
       - id: debug-statements
       - id: destroyed-symlinks
       - id: detect-private-key
-        exclude: crate/server/src/tests/ms_dke|crate/server/src/routes/google_cse/python/openssl/blue.key|crate/test_server/certificates|crate/pkcs11/provider/test_data|crate/server/src/tests/certificates/chain/root/ca/private|crate/server/src/tests/certificates/chain/root/ca/intermediate/private|documentation/docs/pki/smime.md|crate/cli/src/tests/google_cmd/identities.rs|crate/server/src/tests/google_cse/init_kms_cse.sh
+        exclude: test_data|documentation/docs|crate/cli/src/tests/kms/google_cmd/identities.rs|crate/server/src/tests
+
       - id: double-quote-string-fixer
       - id: end-of-file-fixer
         exclude: documentation/docs/cli/main_commands.md|documentation/docs
@@ -119,11 +122,12 @@ repos:
       - id: cargo-update
         stages: [manual]
       - id: cargo-machete
-      - id: cargo-build-kms
+      - id: cargo-build
       - id: docker-compose-up
       - id: cargo-test
         args: [--, --skip, test_wrap_auth, --skip, google_cse, --skip, hsm]
-      - id: cargo-build-all
+      - id: cargo-build
+        args: [--all-features]
       - id: cargo-test
         alias: cargo-test-all
         args: [--all-features, --, --skip, test_wrap_auth, --skip, google_cse, --skip, hsm]
