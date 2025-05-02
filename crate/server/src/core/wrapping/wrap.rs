@@ -87,12 +87,13 @@ pub(crate) async fn wrap_and_cache(
     // to handle the larger number of bytes
     // this entails. So If we can recover bytes from a key, we
     // use the more compact No Encoding, otherwise we use the default TTLV Encoding.
-    let encoding = if let Ok(_) = object
+    let encoding = if object
         .key_block()
         .map_err(|e| {
             KmsError::InvalidRequest(format!("wrap_object: no key block to wrap in object: {e}",))
         })?
         .key_bytes()
+        .is_ok()
     {
         EncodingOption::NoEncoding
     } else {
