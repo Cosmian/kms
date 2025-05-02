@@ -94,6 +94,7 @@ nav:
       - Enabling TLS: tls.md
       - Logging and telemetry: logging.md
       - User interface: ui.md
+      - Setting Cosmian KMS for vCenter: vcenter.md
   - Certifications and compliance:
       - FIPS 140-3: fips.md
       - Cryptographic algorithms:
