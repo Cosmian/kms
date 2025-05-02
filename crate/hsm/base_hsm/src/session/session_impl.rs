@@ -41,7 +41,7 @@ use cosmian_kms_interfaces::{
     CryptoAlgorithm, EncryptedContent, HsmObject, HsmObjectFilter, KeyMaterial, KeyMetadata,
     KeyType, RsaPrivateKeyMaterial, RsaPublicKeyMaterial,
 };
-use cosmian_pkcs11_sys::*;
+use pkcs11_sys::*;
 use rand::{TryRngCore, rngs::OsRng};
 use tracing::debug;
 use zeroize::Zeroizing;

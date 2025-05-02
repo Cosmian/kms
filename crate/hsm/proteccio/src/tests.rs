@@ -12,8 +12,8 @@ use cosmian_kms_base_hsm::{
     test_helpers::{get_hsm_password, initialize_logging},
 };
 use cosmian_kms_interfaces::{HsmObjectFilter, KeyMaterial, KeyType};
-use cosmian_pkcs11_sys::{CK_C_INITIALIZE_ARGS, CK_RV, CK_VOID_PTR, CKF_OS_LOCKING_OK, CKR_OK};
 use libloading::Library;
+use pkcs11_sys::{CK_C_INITIALIZE_ARGS, CK_RV, CK_VOID_PTR, CKF_OS_LOCKING_OK, CKR_OK};
 use tracing::info;
 use uuid::Uuid;
 

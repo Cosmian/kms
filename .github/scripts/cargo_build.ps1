@@ -10,7 +10,7 @@ function BuildProject
         [string]$BuildType
     )
 
-    $env:RUST_LOG = "cosmian_cli=debug,cosmian_kms_server=error,cosmian_kmip=error,test_kms_server=trace"
+    $env:RUST_LOG = "cosmian_kms_cli=debug,cosmian_kms_server=error,cosmian_kmip=error,test_kms_server=trace"
     # Add target
     rustup target add x86_64-pc-windows-msvc
 
@@ -18,7 +18,7 @@ function BuildProject
     Get-ChildItem -Recurse $env:OPENSSL_DIR
 
     # Build `cosmian`
-    Get-ChildItem cli\crate\cli
+    Get-ChildItem crate\cli
     if ($BuildType -eq "release")
     {
         cargo build --release --target x86_64-pc-windows-msvc
@@ -27,7 +27,7 @@ function BuildProject
     {
         cargo build --target x86_64-pc-windows-msvc
     }
-    Get-ChildItem ..\..\..
+    Get-ChildItem ..\..
 
     # Check dynamic links
     $ErrorActionPreference = "SilentlyContinue"

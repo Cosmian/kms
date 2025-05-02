@@ -6,7 +6,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use cosmian_pkcs11_sys::{CK_INFO, CKR_OK};
+use pkcs11_sys::{CK_INFO, CKR_OK};
 
 use crate::{HError, HResult, SlotManager, hsm_lib::HsmLib};
 

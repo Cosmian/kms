@@ -64,7 +64,9 @@ fi
 rustup target add "$TARGET"
 
 if [ -f /etc/lsb-release ]; then
-  bash .github/scripts/test_utimaco.sh
+  bash "$ROOT_FOLDER"/Cosmian/reusable_scripts/test_utimaco.sh
+  HSM_USER_PASSWORD="12345678" cargo test -p utimaco_pkcs11_loader --target "$TARGET" --features utimaco -- tests::test_all
+  rm -rf hsm-simulator
 fi
 
 if [ -z "$OPENSSL_DIR" ]; then
@@ -75,10 +77,7 @@ fi
 # shellcheck disable=SC2086
 cargo build --target $TARGET $RELEASE $FEATURES
 
-COSMIAN_EXE="target/$TARGET/$DEBUG_OR_RELEASE/cosmian"
 COSMIAN_KMS_EXE="target/$TARGET/$DEBUG_OR_RELEASE/cosmian_kms"
-
-./"$COSMIAN_EXE" -h
 
 # Must use OpenSSL with this specific version 3.2.0
 OPENSSL_VERSION_REQUIRED="3.2.0"
@@ -89,10 +88,8 @@ if [ -z "$correct_openssl_version_found" ]; then
 fi
 
 if [ "$(uname)" = "Linux" ]; then
-  ldd "$COSMIAN_EXE" | grep ssl && exit 1
   ldd "$COSMIAN_KMS_EXE" | grep ssl && exit 1
 else
-  otool -L "$COSMIAN_EXE" | grep openssl && exit 1
   otool -L "$COSMIAN_KMS_EXE" | grep openssl && exit 1
 fi
 
@@ -103,6 +100,9 @@ export RUST_LOG="cosmian_cli=info,cosmian_kms_server=error,cosmian_kmip=error,te
 
 # shellcheck disable=SC2086
 cargo build --target $TARGET $RELEASE $FEATURES
+
+# Needed for tests
+cargo install --version 0.6.36 cargo-hack --force
 
 declare -a DATABASES=('redis-findex' 'sqlite' 'postgresql' 'mysql')
 for KMS_TEST_DB in "${DATABASES[@]}"; do
@@ -124,18 +124,23 @@ for KMS_TEST_DB in "${DATABASES[@]}"; do
   fi
 
   export KMS_TEST_DB="$KMS_TEST_DB"
-  # shellcheck disable=SC2086
-  cargo test --workspace --lib --target $TARGET $RELEASE $FEATURES \
-    --exclude cosmian_kms_client_utils \
-    --exclude cosmian_findex_client \
-    --exclude cosmian_gui \
-    --exclude cosmian_kms_client \
-    --exclude cosmian_pkcs11_module \
-    --exclude cosmian_pkcs11 \
-    --exclude test_findex_server \
-    --exclude test_kms_server \
-    --exclude cosmian_kms_client_wasm \
-    -- --nocapture $SKIP_SERVICES_TESTS
+
+  if [ -n "$FEATURES" ]; then
+    # Not all crate have fips feature. Must exclude them.
+    # shellcheck disable=SC2086
+    cargo hack test --all --lib --target $TARGET $RELEASE $FEATURES \
+      --exclude kmip-derive \
+      --exclude cosmian_kms_access \
+      --exclude cosmian_kms_interfaces \
+      --exclude cosmian_kms_server_database \
+      --exclude cosmian_kms_base_hsm \
+      --exclude utimaco_pkcs11_loader \
+      --exclude proteccio_pkcs11_loader \
+      -- --nocapture $SKIP_SERVICES_TESTS
+  else
+    # shellcheck disable=SC2086
+    cargo hack test --all --lib --target $TARGET $RELEASE -- --nocapture $SKIP_SERVICES_TESTS
+  fi
 done
 
 # shellcheck disable=SC2086

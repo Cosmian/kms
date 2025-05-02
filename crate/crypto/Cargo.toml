@@ -27,7 +27,7 @@ cosmian_crypto_core = { workspace = true, features = [
   "blake",
   "chacha",
 ] }
-cosmian_kmip = { workspace = true }
+cosmian_kmip = { path = "../kmip" }
 cosmian_logger = { workspace = true }
 hex = { workspace = true }
 num-bigint-dig = { workspace = true, features = [
