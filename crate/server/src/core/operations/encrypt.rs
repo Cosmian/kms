@@ -35,7 +35,7 @@ use openssl::{
     pkey::{Id, PKey, Public},
     x509::X509,
 };
-use tracing::{debug, trace};
+use tracing::{debug, info, trace};
 use zeroize::Zeroizing;
 
 use crate::{
@@ -170,8 +170,12 @@ pub(crate) async fn encrypt(
             );
         }
     }
+
+    // plaintext length for logging
+    let plaintext_len = request.data.as_ref().map(|d| d.len()).unwrap_or(0);
+
     //It may be a bulk encryption request; if not, fallback to single encryption
-    match BulkData::deserialize(data) {
+    let res = match BulkData::deserialize(data) {
         Ok(bulk_data) => {
             //It is a bulk encryption request
             encrypt_bulk(&owm, request, bulk_data)
@@ -180,7 +184,16 @@ pub(crate) async fn encrypt(
             // fallback to single encryption
             encrypt_single(&owm, &request)
         }
-    }
+    }?;
+
+    info!(
+        uid = owm.id(),
+        user = user,
+        "Encrypted data of: {} bytes -> ciphertext length: {}",
+        plaintext_len,
+        res.data.as_ref().map(|d| d.len()).unwrap_or(0),
+    );
+    Ok(res)
 }
 
 /// Encrypt using an encryption oracle.
@@ -374,7 +387,8 @@ fn get_key_and_cipher(
     // Make sure that the key used to encrypt can be used to encrypt.
     if !owm
         .object()
-        .attributes()?
+        .attributes()
+        .unwrap_or_else(|_| owm.attributes())
         .is_usage_authorized_for(CryptographicUsageMask::Encrypt)?
     {
         return Err(KmsError::Kmip21Error(
@@ -423,7 +437,8 @@ fn encrypt_with_public_key(
     // Make sure that the key used to encrypt can be used to encrypt.
     if !owm
         .object()
-        .attributes()?
+        .attributes()
+        .unwrap_or_else(|_| owm.attributes())
         .is_usage_authorized_for(CryptographicUsageMask::Encrypt)?
     {
         return Err(KmsError::Kmip21Error(

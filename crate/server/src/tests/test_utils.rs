@@ -34,21 +34,7 @@ pub(crate) fn https_clap_config() -> ClapConfig {
 }
 
 pub(crate) fn https_clap_config_opts(google_cse_kacls_url: Option<String>) -> ClapConfig {
-    // Set the absolute path of the project directory
-    let project_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .join(Path::new("test_data/sqlite"));
-
-    // get the current date and time as an ISO 8601 string usinf OffsetDateTime
-    let now = OffsetDateTime::now_utc().format(&Iso8601::DEFAULT).unwrap();
-
-    let sqlite_path = project_dir.join(format!("{now}.sqlite"));
-    if sqlite_path.exists() {
-        std::fs::remove_file(&sqlite_path).unwrap();
-    }
+    let sqlite_path = get_tmp_sqlite_path();
 
     ClapConfig {
         socket_server: SocketServerConfig {
@@ -66,12 +52,27 @@ pub(crate) fn https_clap_config_opts(google_cse_kacls_url: Option<String>) -> Cl
             database_type: Some("sqlite".to_owned()),
             database_url: None,
             sqlite_path,
-            clear_database: true,
+            clear_database: false,
             ..Default::default()
         },
         google_cse_kacls_url,
         ..Default::default()
     }
+}
+
+pub(crate) fn get_tmp_sqlite_path() -> PathBuf {
+    // Set the absolute path of the project directory
+    let project_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join(Path::new("test_data/sqlite"));
+
+    // get the current date and time as an ISO 8601 string usinf OffsetDateTime
+    let now = OffsetDateTime::now_utc().format(&Iso8601::DEFAULT).unwrap();
+
+    project_dir.join(format!("{now}.sqlite"))
 }
 
 pub(crate) async fn test_app(

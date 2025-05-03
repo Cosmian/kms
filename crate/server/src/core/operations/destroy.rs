@@ -13,7 +13,7 @@ use cosmian_kmip::{
     },
 };
 use cosmian_kms_interfaces::SessionParams;
-use tracing::{debug, trace};
+use tracing::{debug, info, trace};
 use zeroize::Zeroizing;
 
 use crate::{
@@ -49,6 +49,7 @@ pub(crate) async fn destroy_operation(
         HashSet::new(),
     )
     .await?;
+
     Ok(DestroyResponse {
         unique_identifier: unique_identifier.clone(),
     })
@@ -91,7 +92,7 @@ pub(crate) async fn recursively_destroy_object(
             }
             kms.database.delete(&uid, params.clone()).await?;
             count += 1;
-            debug!("Destroy: object {uid} destroyed by user: {user}");
+            info!(uid = uid, user = user, "Destroyed object");
             continue
         }
 

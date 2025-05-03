@@ -6,7 +6,7 @@ use cosmian_kmip::kmip_2_1::{
     kmip_types::UniqueIdentifier,
 };
 use cosmian_kms_interfaces::SessionParams;
-use tracing::{debug, trace};
+use tracing::{info, trace};
 use uuid::Uuid;
 
 use crate::{
@@ -83,8 +83,10 @@ pub(crate) async fn create(
             params,
         )
         .await?;
-    debug!(
-        "Created KMS Object of type {:?} with id {uid}",
+    info!(
+        uid = uid,
+        user = owner,
+        "Created Object of type {:?}",
         &object.object_type(),
     );
 

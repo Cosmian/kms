@@ -24,7 +24,7 @@ use openssl::{
     stack::Stack,
     x509::X509,
 };
-use tracing::{debug, trace};
+use tracing::{debug, info, trace};
 use zeroize::Zeroizing;
 
 use crate::{
@@ -196,6 +196,13 @@ pub(crate) async fn export_get(
             )
         }
     }
+
+    info!(
+        uid = owm.id(),
+        user = user,
+        "Exported object of type: {}",
+        owm.object().object_type()
+    );
 
     Ok(ExportResponse {
         object_type: owm.object().object_type(),

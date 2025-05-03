@@ -552,7 +552,7 @@ impl TryFrom<&[u8]> for DecryptedData {
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone)]
 #[serde(rename_all = "PascalCase")]
 pub struct DecryptResponse {
     /// The Unique Identifier of the Managed
@@ -776,7 +776,7 @@ impl Display for Encrypt {
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone)]
 #[serde(rename_all = "PascalCase")]
 pub struct EncryptResponse {
     /// The Unique Identifier of the Managed

@@ -31,7 +31,7 @@ use cosmian_kms_crypto::{
 };
 use cosmian_kms_interfaces::{CryptoAlgorithm, ObjectWithMetadata, SessionParams};
 use openssl::pkey::{Id, PKey, Private};
-use tracing::{debug, trace};
+use tracing::{debug, info, trace};
 use zeroize::Zeroizing;
 
 use crate::{
@@ -174,10 +174,20 @@ pub(crate) async fn decrypt(
             .with_context(|| format!("Decrypt: the key: {}, cannot be unwrapped.", owm.id()))?,
     );
 
-    BulkData::deserialize(data).map_or_else(
+    let res = BulkData::deserialize(data).map_or_else(
         |_| decrypt_single(&owm, &request),
         |bulk_data| decrypt_bulk(&owm, &request, bulk_data),
-    )
+    )?;
+
+    info!(
+        uid = owm.id(),
+        user = user,
+        "Decrypted ciphertext of: {} bytes -> plaintext length: {}",
+        request.data.as_ref().map(|d| d.len()).unwrap_or(0),
+        res.data.as_ref().map(|d| d.len()).unwrap_or(0),
+    );
+
+    Ok(res)
 }
 
 /// Decrypt using a decryption oracle.

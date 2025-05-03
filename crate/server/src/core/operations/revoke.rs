@@ -11,7 +11,7 @@ use cosmian_kmip::{
     },
 };
 use cosmian_kms_interfaces::SessionParams;
-use tracing::{debug, trace};
+use tracing::{debug, info, trace};
 
 use crate::{
     core::{
@@ -243,11 +243,12 @@ pub(crate) async fn recursively_revoke_key(
                 "revoke operation is not supported for object type {x:?}"
             ))),
         }
-        debug!(
-            "Object type: {}, with unique identifier: {}, revoked by user {}",
+
+        info!(
+            uid = owm.id(),
+            user = user,
+            "Revoked object type: {}",
             owm.object().object_type(),
-            owm.id(),
-            user
         );
     }
 
