@@ -10,7 +10,7 @@ use serde::{
     de::{self, DeserializeSeed, MapAccess, Visitor},
     ser::SerializeStruct,
 };
-use tracing::{instrument, trace};
+use tracing::{debug, instrument, trace};
 use zeroize::Zeroizing;
 
 use super::{
@@ -163,6 +163,7 @@ impl<'de> Deserialize<'de> for KeyBlock {
                 let mut key_wrapping_data: Option<KeyWrappingData> = None;
 
                 while let Some(field) = map.next_key::<Field>()? {
+                    debug!("Deserializing KeyBlock field: {:?}", field);
                     match field {
                         Field::KeyFormatType => {
                             if key_format_type.is_some() {
@@ -180,13 +181,15 @@ impl<'de> Deserialize<'de> for KeyBlock {
                             if key_value.is_some() {
                                 return Err(de::Error::duplicate_field("KeyValue"))
                             }
-                            key_value =
-                                Some(map.next_value_seed(KeyValueDeserializer {
-                                    key_format_type:
-                                        key_format_type.ok_or_else(|| {
-                                            de::Error::missing_field("KeyFormatType")
-                                        })?,
-                                })?);
+                            debug!("here");
+                            key_value = Some(map.next_value_seed(KeyValueDeserializer {
+                                key_format_type: key_format_type.ok_or_else(|| {
+                                    de::Error::missing_field(
+                                        "KeyFormatType must be known to deserialize the KeyValue",
+                                    )
+                                })?,
+                            })?);
+                            debug!("Done KeyValue: {:?}", key_value);
                         }
                         Field::CryptographicAlgorithm => {
                             if cryptographic_algorithm.is_some() {

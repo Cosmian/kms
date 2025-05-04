@@ -2,7 +2,10 @@ use cosmian_logger::log_init;
 use num_bigint_dig::BigInt;
 use time::OffsetDateTime;
 
-use crate::ttlv::ttlv_struct::{KmipEnumerationVariant, TTLV, TTLValue};
+use crate::{
+    kmip_2_1::kmip_objects::Object,
+    ttlv::ttlv_struct::{KmipEnumerationVariant, TTLV, TTLValue},
+};
 
 #[test]
 fn test_enumeration() {
@@ -265,4 +268,79 @@ fn test_arrays() {
             ]),
         }])
     );
+}
+
+#[test]
+fn test_mixed_fields_order() {
+    log_init(option_env!("RUST_LOG"));
+    // log_init(Some("trace"));
+    let json = r#"
+{
+  "SymmetricKey": {
+    "KeyBlock": {
+      "KeyValue": {
+        "Attributes": {
+          "Attribute": [
+            {
+              "AttributeName": "tag",
+              "AttributeValue": {
+                "_c": "[\"_kk\"]",
+                "_t": "TextString"
+              },
+              "VendorIdentification": "cosmian"
+            }
+          ],
+          "ObjectType": "SymmetricKey",
+          "KeyFormatType": "TransparentSymmetricKey",
+          "UniqueIdentifier": "0a44dd07-2916-4ebd-9c00-ff5394422300",
+          "CryptographicLength": 256,
+          "CryptographicAlgorithm": "AES",
+          "CryptographicUsageMask": 2108
+        },
+        "KeyMaterial": {
+          "Key": [
+            179,
+            52,
+            155,
+            4,
+            85,
+            226,
+            254,
+            21,
+            55,
+            38,
+            77,
+            156,
+            144,
+            87,
+            57,
+            174,
+            5,
+            97,
+            106,
+            208,
+            184,
+            60,
+            218,
+            113,
+            248,
+            222,
+            160,
+            115,
+            253,
+            0,
+            249,
+            89
+          ]
+        }
+      },
+      "KeyFormatType": "TransparentSymmetricKey",
+      "CryptographicLength": 256,
+      "CryptographicAlgorithm": "AES"
+    }
+  }
+}    
+    "#;
+    // the key format type must be known to deserialize the key value
+    assert!(serde_json::from_str::<Object>(json).is_err());
 }

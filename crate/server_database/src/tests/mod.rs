@@ -121,6 +121,7 @@ pub(crate) async fn test_sqlite() -> DbResult<()> {
 #[tokio::test]
 pub(crate) async fn test_postgresql() -> DbResult<()> {
     log_init(option_env!("RUST_LOG"));
+    // log_init(Some("trace"));
     Box::pin(json_access(&get_pgsql().await?, None)).await?;
     find_attributes(&get_pgsql().await?, None).await?;
     owner(&get_pgsql().await?, None).await?;

@@ -1,6 +1,6 @@
 -- name: create-table-parameters
 CREATE TABLE IF NOT EXISTS parameters (
-  name VARCHAR(40) PRIMARY KEY,
+  name VARCHAR(128) PRIMARY KEY,
   value VARCHAR(256)
 );
 
@@ -18,7 +18,7 @@ DELETE FROM parameters WHERE name=?;
 -- name: create-table-objects
 CREATE TABLE IF NOT EXISTS objects
 (
-    id         VARCHAR(40) PRIMARY KEY,
+    id         VARCHAR(128) PRIMARY KEY,
     object     json NOT NULL,
     attributes json NOT NULL,
     state      VARCHAR(32),
@@ -33,7 +33,7 @@ SHOW COLUMNS FROM objects LIKE 'attributes';
 -- name: create-table-read_access
 CREATE TABLE IF NOT EXISTS read_access
 (
-    id          VARCHAR(40),
+    id          VARCHAR(128),
     userid      VARCHAR(255),
     permissions json NOT NULL,
     UNIQUE (id, userid)
@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS read_access
 -- name: create-table-tags
 CREATE TABLE IF NOT EXISTS tags
 (
-    id  VARCHAR(40),
+    id  VARCHAR(128),
     tag VARCHAR(255),
     UNIQUE (id, tag)
 );

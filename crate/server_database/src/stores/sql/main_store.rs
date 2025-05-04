@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use cosmian_kms_interfaces::{InterfaceError, InterfaceResult};
 use rawsql::Loader;
 use sqlx::{Executor, IntoArguments, Transaction};
+use tracing::debug;
 
 use crate::{
     DbError,
@@ -56,6 +57,7 @@ where
     /// If the store can't be instantiated
     async fn start(&self, clear_database: bool) -> InterfaceResult<()> {
         let is_new_instance = setup_database(self).await?;
+        debug!("Database setup complete, is new instance? {is_new_instance}");
         if is_new_instance {
             self.set_current_db_version(env!("CARGO_PKG_VERSION"))
                 .await?;
@@ -179,7 +181,7 @@ where
         .map_err(DbError::from)?;
 
     // Old table context used between version 4.13.0 and 4.22.1
-    let _unused = sqlx::query("DROP TABLE context")
+    let _unused = sqlx::query("DROP TABLE IF EXISTS context ")
         .execute(&mut **executor)
         .await;
 

@@ -59,7 +59,7 @@ macro_rules! get_sqlite_query {
 /// The `ObjectWithMetadata` corresponding to the row
 fn sqlite_row_to_owm(row: &SqliteRow) -> Result<ObjectWithMetadata, DbError> {
     let id = row.get::<String, _>(0);
-    let object: Object = serde_json::from_slice(&row.get::<Vec<u8>, _>(1))
+    let object: Object = serde_json::from_str(&row.get::<String, _>(1))
         .context("failed deserializing the object")?;
     let raw_attributes = row.get::<Value, _>(2);
     let attributes = serde_json::from_value(raw_attributes)?;
@@ -364,7 +364,7 @@ pub(crate) async fn create_(
     executor: &mut Transaction<'_, Sqlite>,
 ) -> DbResult<String> {
     let object_json =
-        serde_json::to_value(object).context("failed serializing the object to JSON")?;
+        serde_json::to_string_pretty(object).context("failed serializing the object to JSON")?;
 
     let attributes_json =
         serde_json::to_value(attributes).context("failed serializing the attributes to JSON")?;
@@ -430,7 +430,7 @@ pub(crate) async fn update_object_(
     executor: &mut Transaction<'_, Sqlite>,
 ) -> DbResult<()> {
     let object_json =
-        serde_json::to_value(object).context("failed serializing the object to JSON")?;
+        serde_json::to_string_pretty(object).context("failed serializing the object to JSON")?;
 
     let attributes_json =
         serde_json::to_value(attributes).context("failed serializing the attributes to JSON")?;
@@ -507,7 +507,7 @@ pub(crate) async fn upsert_(
          {tags:?}\n    state: {state:?}\n    owner: {owner}"
     );
     let object_json =
-        serde_json::to_value(object).context("failed serializing the object to JSON")?;
+        serde_json::to_string_pretty(object).context("failed serializing the object to JSON")?;
 
     let attributes_json =
         serde_json::to_value(attributes).context("failed serializing the attributes to JSON")?;

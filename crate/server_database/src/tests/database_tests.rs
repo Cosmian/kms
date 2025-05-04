@@ -349,7 +349,7 @@ pub(crate) async fn crud<DB: ObjectsStore>(
         .await?
         .expect("uid should be in the db");
     assert_eq!(State::Active, obj.state());
-    assert!(&symmetric_key == obj.object());
+    assert_eq!(&symmetric_key, obj.object());
 
     let attributes = symmetric_key.attributes_mut()?;
     attributes.link = Some(vec![Link {
