@@ -17,6 +17,8 @@ use cosmian_kmip::{
         requests::symmetric_key_create_request,
     },
 };
+use cosmian_logger::log_init;
+use tracing::info;
 const EMPTY_TAGS: [&str; 0] = [];
 
 use crate::{
@@ -25,7 +27,23 @@ use crate::{
 };
 
 mod ec_dek;
+mod rsa_dek;
 mod symmetric_dek;
+
+/// The HSM simulator does not like tests in parallell,
+/// so we run them sequentially from here
+#[tokio::test]
+async fn test_all() {
+    log_init(Some("info,cosmian_kms_server=info"));
+    // log_init(option_env!("RUST_LOG"));
+
+    info!("HSM: wrapped_symmetric_dek");
+    symmetric_dek::test_wrapped_symmetric_dek().await.unwrap();
+    info!("HSM: wrapped_ec_dek");
+    ec_dek::test_wrapped_ec_dek().await.unwrap();
+    info!("HSM: wrapped_rsa_dek");
+    rsa_dek::test_wrapped_rsa_dek().await.unwrap();
+}
 
 fn hsm_clap_config(owner: &str, kek: Option<String>) -> ClapConfig {
     let mut clap_config = https_clap_config();

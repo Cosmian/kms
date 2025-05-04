@@ -1,11 +1,12 @@
 use std::sync::Arc;
 
-use cosmian_kmip::kmip_2_1::{
-    kmip_operations::Operation,
-    kmip_types::{
-        CryptographicAlgorithm, CryptographicParameters, RecommendedCurve, UniqueIdentifier,
+use cosmian_kmip::{
+    kmip_0::kmip_types::PaddingMethod,
+    kmip_2_1::{
+        kmip_operations::Operation,
+        kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
+        requests::{create_rsa_key_pair_request, decrypt_request, encrypt_request},
     },
-    requests::{create_ec_key_pair_request, decrypt_request, encrypt_request},
 };
 use uuid::Uuid;
 
@@ -20,7 +21,7 @@ use crate::{
     },
 };
 
-pub(super) async fn test_wrapped_ec_dek() -> KResult<()> {
+pub(super) async fn test_wrapped_rsa_dek() -> KResult<()> {
     let kek_uid = format!("hsm::0::{}", Uuid::new_v4());
     let owner = Uuid::new_v4().to_string();
 
@@ -35,14 +36,14 @@ pub(super) async fn test_wrapped_ec_dek() -> KResult<()> {
 
     // create a DEK
     let dek_uid = Uuid::new_v4().to_string();
-    create_ec_dek(&dek_uid, &kek_uid, &owner, &kms).await?;
+    create_rsa_dek(&dek_uid, &kek_uid, &owner, &kms).await?;
 
     // Encrypt with the DEK - using the unwrapped value in cache
     let data = b"hello world";
-    let ciphertext = ec_encrypt(&&format!("{dek_uid}_pk"), &owner, &kms, data).await?;
-    assert_eq!(ciphertext.len(), 28 + 16 + 5 + data.len());
+    let ciphertext = rsa_encrypt(&&format!("{dek_uid}_pk"), &owner, &kms, data).await?;
+    assert_eq!(ciphertext.len(), 2048 / 8);
     // Decrypt with the DEK - using the unwrapped value in cache
-    let plaintext = ec_decrypt(&dek_uid, &owner, &kms, &ciphertext).await?;
+    let plaintext = rsa_decrypt(&dek_uid, &owner, &kms, &ciphertext).await?;
     assert_eq!(data.to_vec(), plaintext);
 
     // stop the kms
@@ -54,10 +55,10 @@ pub(super) async fn test_wrapped_ec_dek() -> KResult<()> {
 
     // Encrypt with the DEK - unwrapping the DEK reloaded from the DB
     let data = b"hello world";
-    let ciphertext = ec_encrypt(&format!("{dek_uid}_pk"), &owner, &kms, data).await?;
-    assert_eq!(ciphertext.len(), 28 + 16 + 5 + data.len());
+    let ciphertext = rsa_encrypt(&format!("{dek_uid}_pk"), &owner, &kms, data).await?;
+    assert_eq!(ciphertext.len(), 2048 / 8);
     // Decrypt with the DEK - using the unwrapped DEK in cache
-    let plaintext = ec_decrypt(&dek_uid, &owner, &kms, &ciphertext).await?;
+    let plaintext = rsa_decrypt(&dek_uid, &owner, &kms, &ciphertext).await?;
     assert_eq!(data.to_vec(), plaintext);
 
     // Revoke and destroy all
@@ -68,11 +69,11 @@ pub(super) async fn test_wrapped_ec_dek() -> KResult<()> {
     Ok(())
 }
 
-async fn create_ec_dek(dek_uid: &str, kek_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<()> {
-    let create_request = create_ec_key_pair_request(
+async fn create_rsa_dek(dek_uid: &str, kek_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<()> {
+    let create_request = create_rsa_key_pair_request(
         Some(UniqueIdentifier::TextString(dek_uid.to_owned())),
         EMPTY_TAGS,
-        RecommendedCurve::P256,
+        2048,
         false,
         Some(&kek_uid.to_owned()),
     )?;
@@ -96,7 +97,7 @@ async fn create_ec_dek(dek_uid: &str, kek_uid: &str, owner: &str, kms: &Arc<KMS>
     Ok(())
 }
 
-async fn ec_encrypt(dek_uid: &str, owner: &str, kms: &Arc<KMS>, data: &[u8]) -> KResult<Vec<u8>> {
+async fn rsa_encrypt(dek_uid: &str, owner: &str, kms: &Arc<KMS>, data: &[u8]) -> KResult<Vec<u8>> {
     let request = encrypt_request(
         dek_uid,
         None,
@@ -104,7 +105,8 @@ async fn ec_encrypt(dek_uid: &str, owner: &str, kms: &Arc<KMS>, data: &[u8]) -> 
         None,
         None,
         Some(CryptographicParameters {
-            cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
+            cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+            padding_method: Some(PaddingMethod::OAEP),
             ..Default::default()
         }),
     )?;
@@ -123,7 +125,7 @@ async fn ec_encrypt(dek_uid: &str, owner: &str, kms: &Arc<KMS>, data: &[u8]) -> 
     Ok(response.data.unwrap_or_default())
 }
 
-async fn ec_decrypt(
+async fn rsa_decrypt(
     dek_uid: &str,
     owner: &str,
     kms: &Arc<KMS>,
@@ -136,7 +138,8 @@ async fn ec_decrypt(
         None,
         None,
         Some(CryptographicParameters {
-            cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
+            cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+            padding_method: Some(PaddingMethod::OAEP),
             ..Default::default()
         }),
     );

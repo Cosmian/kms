@@ -112,7 +112,7 @@ fn create_user_decryption_key_(
         ));
     }
 
-    let mut msk = MasterSecretKey::deserialize(&owm.object().key_block()?.symmetric_key_bytes()?)?;
+    let mut msk = MasterSecretKey::deserialize(&owm.object().key_block()?.covercrypt_key_bytes()?)?;
     let mut usk_handler = UserDecryptionKeysHandler::instantiate(cover_crypt, &mut msk);
 
     let usk_obj = usk_handler

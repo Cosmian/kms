@@ -238,6 +238,24 @@ impl<'de> Deserialize<'de> for KeyBlock {
 }
 
 impl KeyBlock {
+    /// Return the wrapped key bytes if the object is wrapped, an error otherwise
+    pub fn wrapped_key_bytes(&self) -> Result<Zeroizing<Vec<u8>>, KmipError> {
+        let key_value = self.key_value.as_ref().ok_or_else(|| {
+            KmipError::InvalidKmip21Value(
+                ErrorReason::Invalid_Attribute_Value,
+                "wrapped_key_bytes: key is missing its key value".to_owned(),
+            )
+        })?;
+
+        match key_value {
+            KeyValue::ByteString(v) => Ok(v.clone()),
+            KeyValue::Structure { .. } => Err(KmipError::InvalidKmip21Value(
+                ErrorReason::Invalid_Object_Type,
+                "wrapped_key_bytes: the key is not wrapped".to_owned(),
+            )),
+        }
+    }
+
     /// Return the key material of a symmetric key, raw or transparent.
     pub fn symmetric_key_bytes(&self) -> Result<Zeroizing<Vec<u8>>, KmipError> {
         let key_value = self.key_value.as_ref().ok_or_else(|| {
@@ -251,7 +269,7 @@ impl KeyBlock {
             KeyValue::ByteString(_) => Err(KmipError::InvalidKmip21Value(
                 ErrorReason::Invalid_Object_Type,
                 "Key bytes cannot be recovered from wrapped keys".to_owned(),
-            )), //Ok(v.clone()),
+            )),
             KeyValue::Structure { key_material, .. } => match key_material {
                 KeyMaterial::ByteString(v) => Ok(v.clone()),
                 KeyMaterial::TransparentSymmetricKey { key } => Ok(key.clone()),
@@ -264,9 +282,61 @@ impl KeyBlock {
         }
     }
 
+    /// Return the key material of a covercrypt key, raw or transparent.
+    pub fn covercrypt_key_bytes(&self) -> Result<Zeroizing<Vec<u8>>, KmipError> {
+        let key_value = self.key_value.as_ref().ok_or_else(|| {
+            KmipError::InvalidKmip21Value(
+                ErrorReason::Invalid_Attribute_Value,
+                "key is missing its key value".to_owned(),
+            )
+        })?;
+
+        match key_value {
+            KeyValue::ByteString(_) => Err(KmipError::InvalidKmip21Value(
+                ErrorReason::Invalid_Object_Type,
+                "Key bytes cannot be recovered from wrapped keys".to_owned(),
+            )),
+            KeyValue::Structure { key_material, .. } => {
+                if let KeyMaterial::ByteString(v) = key_material {
+                    return Ok(v.clone())
+                }
+                Err(KmipError::InvalidKmip21Value(
+                    ErrorReason::Invalid_Object_Type,
+                    "Key bytes can only be recovered from Covercrypt keys".to_owned(),
+                ))
+            }
+        }
+    }
+
+    /// Return the PKCS#12 bytes in a Private Key
+    pub fn pkcs12_bytes(&self) -> Result<Zeroizing<Vec<u8>>, KmipError> {
+        let key_value = self.key_value.as_ref().ok_or_else(|| {
+            KmipError::InvalidKmip21Value(
+                ErrorReason::Invalid_Attribute_Value,
+                "key is missing its key value".to_owned(),
+            )
+        })?;
+
+        match key_value {
+            KeyValue::ByteString(_) => Err(KmipError::InvalidKmip21Value(
+                ErrorReason::Invalid_Object_Type,
+                "PKCS#12 bytes cannot be recovered from wrapped keys".to_owned(),
+            )),
+            KeyValue::Structure { key_material, .. } => {
+                if let KeyMaterial::ByteString(v) = key_material {
+                    return Ok(v.clone())
+                }
+                Err(KmipError::InvalidKmip21Value(
+                    ErrorReason::Invalid_Object_Type,
+                    "PKCS#12 bytes can only be recovered this key".to_owned(),
+                ))
+            }
+        }
+    }
+
     /// Extract the raw bytes from the EC key material.
     /// These bytes are the same as the ones in openssl rwa bytes
-    pub fn ec_raw_bytes(&self) -> Result<Vec<u8>, KmipError> {
+    pub fn ec_raw_bytes(&self) -> Result<Zeroizing<Vec<u8>>, KmipError> {
         let KeyValue::Structure { key_material, .. } =
             self.key_value.as_ref().ok_or_else(|| {
                 KmipError::InvalidKmip21Value(
@@ -301,9 +371,11 @@ impl KeyBlock {
                     _ => d_vec.len(),
                 };
                 pad_be_bytes(&mut d_vec, privkey_size);
-                Ok(d_vec)
+                Ok(Zeroizing::new(d_vec))
             }
-            KeyMaterial::TransparentECPublicKey { q_string, .. } => Ok(q_string.clone()),
+            KeyMaterial::TransparentECPublicKey { q_string, .. } => {
+                Ok(Zeroizing::new(q_string.clone()))
+            }
             _ => Err(KmipError::InvalidKmip21Value(
                 ErrorReason::Invalid_Data_Type,
                 "Elliptic Curve raw bytes can only be recovered from EC keys".to_owned(),

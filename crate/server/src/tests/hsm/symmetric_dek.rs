@@ -8,7 +8,6 @@ use cosmian_kmip::{
         requests::{decrypt_request, encrypt_request, symmetric_key_create_request},
     },
 };
-use cosmian_logger::log_init;
 use uuid::Uuid;
 
 use crate::{
@@ -22,11 +21,7 @@ use crate::{
     },
 };
 
-#[tokio::test]
-async fn test_wrapped_symmetric_dek() -> KResult<()> {
-    // log_init(Some("info,cosmian_kms_server=debug"));
-    log_init(option_env!("RUST_LOG"));
-
+pub(super) async fn test_wrapped_symmetric_dek() -> KResult<()> {
     let kek_uid = format!("hsm::0::{}", Uuid::new_v4());
     let owner = Uuid::new_v4().to_string();
 
