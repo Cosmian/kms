@@ -172,7 +172,7 @@ pub(crate) async fn encrypt(
     }
 
     // plaintext length for logging
-    let plaintext_len = request.data.as_ref().map(|d| d.len()).unwrap_or(0);
+    let plaintext_len = request.data.as_ref().map_or(0, |d| d.len());
 
     //It may be a bulk encryption request; if not, fallback to single encryption
     let res = match BulkData::deserialize(data) {
@@ -191,7 +191,7 @@ pub(crate) async fn encrypt(
         user = user,
         "Encrypted data of: {} bytes -> ciphertext length: {}",
         plaintext_len,
-        res.data.as_ref().map(|d| d.len()).unwrap_or(0),
+        res.data.as_ref().map_or(0, Vec::len),
     );
     Ok(res)
 }

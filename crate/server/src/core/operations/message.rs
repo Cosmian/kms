@@ -38,7 +38,10 @@ pub(crate) async fn message(
         user = user,
         "KMIP Request message with {} operation(s): {:?}",
         request.batch_item.len(),
-        request.batch_item[..request.batch_item.len().min(10)]
+        request
+            .batch_item
+            .get(..request.batch_item.len().min(10))
+            .unwrap_or(&[])
             .iter()
             .map(|bi| match bi {
                 RequestMessageBatchItemVersioned::V14(item) => item.operation.into(),

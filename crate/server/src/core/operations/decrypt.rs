@@ -183,8 +183,8 @@ pub(crate) async fn decrypt(
         uid = owm.id(),
         user = user,
         "Decrypted ciphertext of: {} bytes -> plaintext length: {}",
-        request.data.as_ref().map(|d| d.len()).unwrap_or(0),
-        res.data.as_ref().map(|d| d.len()).unwrap_or(0),
+        request.data.as_ref().map_or(0, Vec::len),
+        res.data.as_ref().map_or(0, |d| d.len()),
     );
 
     Ok(res)
