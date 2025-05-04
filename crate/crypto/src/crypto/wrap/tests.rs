@@ -13,6 +13,7 @@ use cosmian_kmip::{
         requests::create_symmetric_key_kmip_object,
     },
 };
+#[cfg(not(feature = "fips"))]
 use cosmian_logger::log_init;
 #[cfg(not(feature = "fips"))]
 use openssl::{
@@ -20,6 +21,7 @@ use openssl::{
     nid::Nid,
 };
 use openssl::{pkey::PKey, rand::rand_bytes, rsa::Rsa};
+#[cfg(not(feature = "fips"))]
 use tracing::info;
 
 #[cfg(not(feature = "fips"))]
