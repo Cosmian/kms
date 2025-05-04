@@ -85,7 +85,8 @@ pub(crate) async fn wrap_and_cache(
     // The KMIP specification defaults to TTLV encoding,
     // but most HSMs will not be able
     // to handle the larger number of bytes
-    // this entails. So If we can recover bytes from a key, we
+    // this entails.
+    // So If we can recover bytes from a symmetric key, we
     // use the more compact No Encoding, otherwise we use the default TTLV Encoding.
     let encoding = if object
         .key_block()

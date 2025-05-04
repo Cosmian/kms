@@ -268,7 +268,7 @@ impl KeyBlock {
         match key_value {
             KeyValue::ByteString(_) => Err(KmipError::InvalidKmip21Value(
                 ErrorReason::Invalid_Object_Type,
-                "Key bytes cannot be recovered from wrapped keys".to_owned(),
+                "symmetric_key_bytes: key bytes cannot be recovered from wrapped keys".to_owned(),
             )),
             KeyValue::Structure { key_material, .. } => match key_material {
                 KeyMaterial::ByteString(v) => Ok(v.clone()),
@@ -294,7 +294,7 @@ impl KeyBlock {
         match key_value {
             KeyValue::ByteString(_) => Err(KmipError::InvalidKmip21Value(
                 ErrorReason::Invalid_Object_Type,
-                "Key bytes cannot be recovered from wrapped keys".to_owned(),
+                "Covercrypt key bytes: key bytes cannot be recovered from wrapped keys".to_owned(),
             )),
             KeyValue::Structure { key_material, .. } => {
                 if let KeyMaterial::ByteString(v) = key_material {
@@ -308,19 +308,19 @@ impl KeyBlock {
         }
     }
 
-    /// Return the PKCS#12 bytes in a Private Key
-    pub fn pkcs12_bytes(&self) -> Result<Zeroizing<Vec<u8>>, KmipError> {
+    /// Return the PKCS#1 or PKCS#8 or PKCS#12 DER bytes of a key
+    pub fn pkcs_der_bytes(&self) -> Result<Zeroizing<Vec<u8>>, KmipError> {
         let key_value = self.key_value.as_ref().ok_or_else(|| {
             KmipError::InvalidKmip21Value(
                 ErrorReason::Invalid_Attribute_Value,
-                "key is missing its key value".to_owned(),
+                "pkcs_der_bytes: key is missing its key value".to_owned(),
             )
         })?;
 
         match key_value {
             KeyValue::ByteString(_) => Err(KmipError::InvalidKmip21Value(
                 ErrorReason::Invalid_Object_Type,
-                "PKCS#12 bytes cannot be recovered from wrapped keys".to_owned(),
+                "PKCS DER bytes cannot be recovered from wrapped keys".to_owned(),
             )),
             KeyValue::Structure { key_material, .. } => {
                 if let KeyMaterial::ByteString(v) = key_material {
@@ -328,7 +328,7 @@ impl KeyBlock {
                 }
                 Err(KmipError::InvalidKmip21Value(
                     ErrorReason::Invalid_Object_Type,
-                    "PKCS#12 bytes can only be recovered this key".to_owned(),
+                    "PKCS DER bytes can only be recovered this key".to_owned(),
                 ))
             }
         }

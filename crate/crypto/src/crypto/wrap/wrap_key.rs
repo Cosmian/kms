@@ -166,7 +166,8 @@ pub fn key_data_to_wrap(
             Zeroizing::from(ttlv_bytes)
         }
         // According to the KMIP specs, only keys in Raw format can be wrapped
-        // with no encoding. The call to key_bytes() here, will return more options than the spec.
+        // with no encoding.
+        // The call to key_bytes() here, will all get Transparent Symmetric Keys.
         EncodingOption::NoEncoding => object_key_block
             .symmetric_key_bytes()
             .context("key_data_to_wrap")?,
@@ -283,7 +284,7 @@ pub(crate) fn wrap(
                 }
                 // this really is SPKI
                 KeyFormatType::PKCS8 => {
-                    let p_key = PKey::public_key_from_der(&key_block.symmetric_key_bytes()?)?;
+                    let p_key = PKey::public_key_from_der(&key_block.pkcs_der_bytes()?)?;
                     wrap_with_public_key(&p_key, key_wrapping_data, key_to_wrap)
                 }
                 x => {

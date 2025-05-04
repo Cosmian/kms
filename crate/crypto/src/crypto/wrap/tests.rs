@@ -13,12 +13,14 @@ use cosmian_kmip::{
         requests::create_symmetric_key_kmip_object,
     },
 };
+use cosmian_logger::log_init;
 #[cfg(not(feature = "fips"))]
 use openssl::{
     ec::{EcGroup, EcKey},
     nid::Nid,
 };
 use openssl::{pkey::PKey, rand::rand_bytes, rsa::Rsa};
+use tracing::info;
 
 #[cfg(not(feature = "fips"))]
 use crate::{crypto::elliptic_curves::operation::create_x25519_key_pair, error::CryptoError};
@@ -32,9 +34,9 @@ use crate::{
 #[cfg(not(feature = "fips"))]
 #[test]
 fn test_wrap_unwrap() -> Result<(), CryptoError> {
-    // the symmetric wrapping key
-
     use cosmian_kmip::kmip_0::kmip_types::CryptographicUsageMask;
+
+    log_init(option_env!("RUST_LOG"));
 
     let mut sym_wrapping_key_bytes = vec![0; 32];
     rand_bytes(&mut sym_wrapping_key_bytes)?;
@@ -85,20 +87,27 @@ fn test_wrap_unwrap() -> Result<(), CryptoError> {
     )?;
 
     // wrap the symmetric key with a symmetric key
+    info!("===> Wrapping symmetric key with symmetric key");
     wrap_test(&sym_wrapping_key, &sym_wrapping_key, &mut sym_key_to_wrap)?;
+
     // wrap the asymmetric key with a symmetric key
+    info!("===> Wrapping asymmetric key with symmetric key");
     wrap_test(
         &sym_wrapping_key,
         &sym_wrapping_key,
         key_pair_to_wrap.private_key_mut(),
     )?;
+
     // wrap the symmetric key with an asymmetric key
+    info!("===> Wrapping symmetric key with asymmetric key");
     wrap_test(
         wrapping_key_pair.public_key(),
         wrapping_key_pair.private_key(),
         &mut sym_key_to_wrap,
     )?;
+
     // wrap the asymmetric key with an asymmetric key
+    info!("===> Wrapping asymmetric key with asymmetric key");
     wrap_test(
         wrapping_key_pair.public_key(),
         wrapping_key_pair.private_key(),
@@ -113,7 +122,10 @@ fn wrap_test(
     unwrapping_key: &Object,
     key_to_wrap: &mut Object,
 ) -> Result<(), CryptoError> {
-    let key_to_wrap_bytes = key_to_wrap.key_block()?.symmetric_key_bytes()?;
+    let key_to_wrap_bytes = match key_to_wrap {
+        Object::SymmetricKey(_) => key_to_wrap.key_block()?.symmetric_key_bytes()?,
+        _ => key_to_wrap.key_block()?.ec_raw_bytes()?,
+    };
 
     // no encoding
     {
@@ -127,7 +139,7 @@ fn wrap_test(
             },
         )?;
         assert_ne!(
-            key_to_wrap.key_block()?.symmetric_key_bytes()?,
+            key_to_wrap.key_block()?.wrapped_key_bytes()?,
             key_to_wrap_bytes
         );
         assert_eq!(
@@ -137,7 +149,10 @@ fn wrap_test(
         // unwrap
         unwrap_key_block(key_to_wrap.key_block_mut()?, unwrapping_key)?;
         assert_eq!(
-            key_to_wrap.key_block()?.symmetric_key_bytes()?,
+            match key_to_wrap {
+                Object::SymmetricKey(_) => key_to_wrap.key_block()?.symmetric_key_bytes()?,
+                _ => key_to_wrap.key_block()?.ec_raw_bytes()?,
+            },
             key_to_wrap_bytes
         );
         assert_eq!(key_to_wrap.key_block()?.key_wrapping_data, None);
@@ -155,7 +170,7 @@ fn wrap_test(
             },
         )?;
         assert_ne!(
-            key_to_wrap.key_block()?.symmetric_key_bytes()?,
+            key_to_wrap.key_block()?.wrapped_key_bytes()?,
             key_to_wrap_bytes
         );
         assert_eq!(
@@ -168,7 +183,10 @@ fn wrap_test(
         // unwrap
         unwrap_key_block(key_to_wrap.key_block_mut()?, unwrapping_key)?;
         assert_eq!(
-            key_to_wrap.key_block()?.symmetric_key_bytes()?,
+            match key_to_wrap {
+                Object::SymmetricKey(_) => key_to_wrap.key_block()?.symmetric_key_bytes()?,
+                _ => key_to_wrap.key_block()?.ec_raw_bytes()?,
+            },
             key_to_wrap_bytes
         );
         assert_eq!(key_to_wrap.key_block()?.key_wrapping_data, None);

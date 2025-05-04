@@ -129,7 +129,7 @@ pub(crate) fn unwrap(
             unwrap_with_private_key(&p_key, key_wrapping_data, wrapped_key)
         }
         KeyFormatType::PKCS8 => {
-            let p_key = PKey::private_key_from_der(&unwrapping_key_block.symmetric_key_bytes()?)?;
+            let p_key = PKey::private_key_from_der(&unwrapping_key_block.pkcs_der_bytes()?)?;
             unwrap_with_private_key(&p_key, key_wrapping_data, wrapped_key)
         }
         x => {

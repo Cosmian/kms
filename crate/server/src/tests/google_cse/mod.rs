@@ -361,7 +361,7 @@ async fn test_create_pair_encrypt_decrypt() -> KResult<()> {
         .await?
         .object
         .key_block()?
-        .symmetric_key_bytes()?;
+        .wrapped_key_bytes()?;
     debug!(
         "wrapped_key_bytes: {}",
         general_purpose::STANDARD.encode(&wrapped_key_bytes)
@@ -465,7 +465,7 @@ async fn test_create_pair_encrypt_decrypt() -> KResult<()> {
 
     // Encrypt with the RSA public key
     let rsa_public_key =
-        Rsa::public_key_from_der_pkcs1(&rsa_public_key.object.key_block()?.symmetric_key_bytes()?)?;
+        Rsa::public_key_from_der_pkcs1(&rsa_public_key.object.key_block()?.pkcs_der_bytes()?)?;
 
     let encrypted_data_encryption_key = rsa_encrypt(rsa_public_key, &dek)?;
     debug!(

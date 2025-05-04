@@ -497,7 +497,7 @@ async fn process_pkcs12(
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     // recover the PKCS#12 bytes from the object
     let pkcs12_bytes = match object {
-        Object::PrivateKey(PrivateKey { key_block }) => key_block.pkcs12_bytes()?,
+        Object::PrivateKey(PrivateKey { key_block }) => key_block.pkcs_der_bytes()?,
         _ => kms_bail!("The PKCS12 object is not correctly formatted"),
     };
     let user_tags = request_attributes.get_tags();
