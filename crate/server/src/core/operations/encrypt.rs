@@ -397,7 +397,7 @@ fn get_key_and_cipher(
         ))
     }
     let key_block = owm.object().key_block()?;
-    let key_bytes = key_block.key_bytes()?;
+    let key_bytes = key_block.symmetric_key_bytes()?;
     let aead = match key_block.key_format_type {
         KeyFormatType::TransparentSymmetricKey | KeyFormatType::Raw => {
             // recover the cryptographic algorithm from the request or the key block or default to AES

@@ -129,7 +129,7 @@ pub(crate) fn unwrap(
             unwrap_with_private_key(&p_key, key_wrapping_data, wrapped_key)
         }
         KeyFormatType::PKCS8 => {
-            let p_key = PKey::private_key_from_der(&unwrapping_key_block.key_bytes()?)?;
+            let p_key = PKey::private_key_from_der(&unwrapping_key_block.symmetric_key_bytes()?)?;
             unwrap_with_private_key(&p_key, key_wrapping_data, wrapped_key)
         }
         x => {
@@ -232,7 +232,7 @@ fn unwrap_with_symmetric_key(
 
     // Extract the wrapping key bytes from the unwrapping key block
     let unwrap_secret = unwrapping_key_block
-        .key_bytes()
+        .symmetric_key_bytes()
         .context("unwrapping key bytes:")?;
 
     // If not AES GCM, unwrap using RFC 5649 (a.k.a NIST Key Wrap)

@@ -77,7 +77,7 @@ pub(crate) async fn mac(
         compute_hmac(&correlation_value, &data, algorithm)?
     } else {
         let owm = retrieve_object_for_operation(uid, KmipOperation::Get, kms, user, params).await?;
-        let key_bytes = owm.object().key_block()?.key_bytes()?;
+        let key_bytes = owm.object().key_block()?.symmetric_key_bytes()?;
         compute_hmac(key_bytes.as_slice(), &data, algorithm)?
     };
 

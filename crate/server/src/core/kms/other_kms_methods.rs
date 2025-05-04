@@ -56,7 +56,7 @@ impl KMS {
         match self.database.unwrapped_cache().peek(uid).await {
             Some(Ok(u)) => {
                 // Note: In theory, the cache should always be in sync...
-                if u.key_signature() == object.key_signature()? {
+                if u.fingerprint() == object.fingerprint()? {
                     debug!("Unwrapped cache hit");
                     return Ok(u.unwrapped_object().clone());
                 }
@@ -71,10 +71,10 @@ impl KMS {
 
         // local async future that unwraps the object
         let unwrap_local = async {
-            let key_signature = object.key_signature()?;
+            let fingerprint = object.fingerprint()?;
             let mut unwrapped_object = object.clone();
             unwrap_object(&mut unwrapped_object, self, user, params).await?;
-            Ok(CachedUnwrappedObject::new(key_signature, unwrapped_object))
+            Ok(CachedUnwrappedObject::new(fingerprint, unwrapped_object))
         };
 
         // cache miss, try to unwrap

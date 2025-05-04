@@ -438,7 +438,7 @@ fn get_aead_and_key(
         .cryptographic_parameters
         .as_ref()
         .and_then(|cp| cp.block_cipher_mode);
-    let key_bytes = key_block.key_bytes()?;
+    let key_bytes = key_block.symmetric_key_bytes()?;
     let aead = SymCipher::from_algorithm_and_key_size(
         cryptographic_algorithm,
         block_cipher_mode,

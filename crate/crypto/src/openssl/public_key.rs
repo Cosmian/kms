@@ -64,14 +64,14 @@ pub fn kmip_public_key_to_openssl(public_key: &Object) -> Result<PKey<Public>, C
     // Convert the key to the default storage format: SPKI DER (RFC 5480)
     let pk: PKey<Public> = match key_block.key_format_type {
         KeyFormatType::PKCS1 => {
-            let key_bytes = key_block.key_bytes()?;
+            let key_bytes = key_block.symmetric_key_bytes()?;
             // parse the RSA public key to make sure it is correct
             let rsa_public_key = Rsa::public_key_from_der_pkcs1(&key_bytes)?;
             PKey::from_rsa(rsa_public_key)?
         }
         // This really is a SPKI as specified by RFC 5480
         KeyFormatType::PKCS8 => {
-            let key_bytes = key_block.key_bytes()?;
+            let key_bytes = key_block.symmetric_key_bytes()?;
             // This key may be an RSA or EC key
             PKey::public_key_from_der(&key_bytes)?
         }

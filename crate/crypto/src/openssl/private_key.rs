@@ -57,19 +57,19 @@ pub fn kmip_private_key_to_openssl(private_key: &Object) -> Result<PKey<Private>
     };
     let pk: PKey<Private> = match key_block.key_format_type {
         KeyFormatType::PKCS1 => {
-            let key_bytes = key_block.key_bytes()?;
+            let key_bytes = key_block.symmetric_key_bytes()?;
             // parse the RSA private key to make sure it is correct
             let rsa_private_key = Rsa::private_key_from_der(&key_bytes)?;
             PKey::from_rsa(rsa_private_key)?
         }
         // This really is a SPKI as specified by RFC 5480
         KeyFormatType::PKCS8 => {
-            let key_bytes = key_block.key_bytes()?;
+            let key_bytes = key_block.symmetric_key_bytes()?;
             // This key may be an RSA or EC key
             PKey::private_key_from_der(&key_bytes)?
         }
         KeyFormatType::ECPrivateKey => {
-            let key_bytes = key_block.key_bytes()?;
+            let key_bytes = key_block.symmetric_key_bytes()?;
             // this is the (not so appropriate) value for SEC1
             let ec_key = EcKey::private_key_from_der(&key_bytes)?;
             ec_key.check_key()?;

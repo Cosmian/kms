@@ -155,11 +155,11 @@ pub fn cc_master_keypair_from_kmip_objects(
     msk: &Object,
     mpk: &Object,
 ) -> Result<(MasterSecretKey, MasterPublicKey), CryptoError> {
-    let msk_bytes = msk.key_block()?.key_bytes()?;
+    let msk_bytes = msk.key_block()?.symmetric_key_bytes()?;
     let msk = MasterSecretKey::deserialize(&msk_bytes)
         .map_err(|e| CryptoError::Kmip(format!("Failed deserializing the Covercrypt MSK: {e}")))?;
 
-    let mpk_bytes = mpk.key_block()?.key_bytes()?;
+    let mpk_bytes = mpk.key_block()?.symmetric_key_bytes()?;
     let mpk = MasterPublicKey::deserialize(&mpk_bytes)
         .map_err(|e| CryptoError::Kmip(format!("Failed deserializing the Covercrypt MPK: {e}")))?;
 

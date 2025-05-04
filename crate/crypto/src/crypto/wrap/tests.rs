@@ -113,7 +113,7 @@ fn wrap_test(
     unwrapping_key: &Object,
     key_to_wrap: &mut Object,
 ) -> Result<(), CryptoError> {
-    let key_to_wrap_bytes = key_to_wrap.key_block()?.key_bytes()?;
+    let key_to_wrap_bytes = key_to_wrap.key_block()?.symmetric_key_bytes()?;
 
     // no encoding
     {
@@ -126,14 +126,20 @@ fn wrap_test(
                 ..Default::default()
             },
         )?;
-        assert_ne!(key_to_wrap.key_block()?.key_bytes()?, key_to_wrap_bytes);
+        assert_ne!(
+            key_to_wrap.key_block()?.symmetric_key_bytes()?,
+            key_to_wrap_bytes
+        );
         assert_eq!(
             key_to_wrap.key_block()?.key_wrapping_data,
             Some(KeyWrappingData::default())
         );
         // unwrap
         unwrap_key_block(key_to_wrap.key_block_mut()?, unwrapping_key)?;
-        assert_eq!(key_to_wrap.key_block()?.key_bytes()?, key_to_wrap_bytes);
+        assert_eq!(
+            key_to_wrap.key_block()?.symmetric_key_bytes()?,
+            key_to_wrap_bytes
+        );
         assert_eq!(key_to_wrap.key_block()?.key_wrapping_data, None);
     }
 
@@ -148,7 +154,10 @@ fn wrap_test(
                 ..Default::default()
             },
         )?;
-        assert_ne!(key_to_wrap.key_block()?.key_bytes()?, key_to_wrap_bytes);
+        assert_ne!(
+            key_to_wrap.key_block()?.symmetric_key_bytes()?,
+            key_to_wrap_bytes
+        );
         assert_eq!(
             key_to_wrap.key_block()?.key_wrapping_data,
             Some(KeyWrappingData {
@@ -158,7 +167,10 @@ fn wrap_test(
         );
         // unwrap
         unwrap_key_block(key_to_wrap.key_block_mut()?, unwrapping_key)?;
-        assert_eq!(key_to_wrap.key_block()?.key_bytes()?, key_to_wrap_bytes);
+        assert_eq!(
+            key_to_wrap.key_block()?.symmetric_key_bytes()?,
+            key_to_wrap_bytes
+        );
         assert_eq!(key_to_wrap.key_block()?.key_wrapping_data, None);
     }
 

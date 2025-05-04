@@ -92,7 +92,7 @@ pub(crate) async fn wrap_and_cache(
         .map_err(|e| {
             KmsError::InvalidRequest(format!("wrap_object: no key block to wrap in object: {e}",))
         })?
-        .key_bytes()
+        .symmetric_key_bytes()
         .is_ok()
     {
         EncodingOption::NoEncoding
@@ -123,7 +123,7 @@ pub(crate) async fn wrap_and_cache(
         .insert(
             unique_identifier.to_string(),
             Ok(CachedUnwrappedObject::new(
-                object.key_signature()?,
+                object.fingerprint()?,
                 unwrapped_object,
             )),
         )

@@ -30,7 +30,7 @@ use crate::{
         RNGAlgorithm, ShreddingAlgorithm, UnwrapMode,
     },
     kmip_2_1::{kmip_attributes::Attribute, kmip_types::ItemType},
-    // pad_be_bytes,
+    pad_be_bytes,
     ttlv::{KmipFlavor, TTLV, TtlvDeserializer, to_ttlv},
 };
 
@@ -238,15 +238,8 @@ impl<'de> Deserialize<'de> for KeyBlock {
 }
 
 impl KeyBlock {
-    /// Give a slice view on the key bytes (which may be wrapped)
-    /// Returns an error if there is no valid key material
-    /// For a transparent symmetric key, this is the key itself
-    /// For a wrapped key, this is the wrapped key
-    /// For a Transparent EC Private key it is big endian representation
-    /// of the scalar of the private key which is also the .
-    /// For a Transparent EC Public key it is the raw bytes of Q string (the EC point)
-    /// Other keys are not supported.
-    pub fn key_bytes(&self) -> Result<Zeroizing<Vec<u8>>, KmipError> {
+    /// Return the key material of a symmetric key, raw or transparent.
+    pub fn symmetric_key_bytes(&self) -> Result<Zeroizing<Vec<u8>>, KmipError> {
         let key_value = self.key_value.as_ref().ok_or_else(|| {
             KmipError::InvalidKmip21Value(
                 ErrorReason::Invalid_Attribute_Value,
@@ -255,41 +248,66 @@ impl KeyBlock {
         })?;
 
         match key_value {
-            KeyValue::ByteString(v) => Ok(v.clone()),
+            KeyValue::ByteString(_) => Err(KmipError::InvalidKmip21Value(
+                ErrorReason::Invalid_Object_Type,
+                "Key bytes cannot be recovered from wrapped keys".to_owned(),
+            )), //Ok(v.clone()),
             KeyValue::Structure { key_material, .. } => match key_material {
                 KeyMaterial::ByteString(v) => Ok(v.clone()),
                 KeyMaterial::TransparentSymmetricKey { key } => Ok(key.clone()),
-                // // For EC Keys: this is equivalent to an openssl raw private key
-                // KeyMaterial::TransparentECPrivateKey {
-                //     d,
-                //     recommended_curve,
-                // } => {
-                //     let mut d_vec = d.to_bytes_be().1;
-                //     let privkey_size = match recommended_curve {
-                //         RecommendedCurve::P192 => 24,
-                //         RecommendedCurve::P224 => 28,
-                //         RecommendedCurve::P256
-                //         | RecommendedCurve::CURVE25519
-                //         | RecommendedCurve::CURVEED25519 => 32,
-                //         RecommendedCurve::P384 => 48,
-                //         RecommendedCurve::P521 => 66,
-                //         RecommendedCurve::CURVE448 => 56,
-                //         RecommendedCurve::CURVEED448 => 57,
-                //         _ => d_vec.len(),
-                //     };
-                //     pad_be_bytes(&mut d_vec, privkey_size);
-                //     Ok(Zeroizing::new(d_vec))
-                // }
-                // KeyMaterial::TransparentECPublicKey { q_string, .. } => {
-                //     Ok(Zeroizing::new(q_string.clone()))
-                // }
                 _ => Err(KmipError::InvalidKmip21Value(
-                    ErrorReason::Invalid_Data_Type,
-                    "Key bytes can only be recovered from Raw symmetric keys, transparent \
-                     symmetric keys, and transparent EC keys"
+                    ErrorReason::Invalid_Object_Type,
+                    "Key bytes can only be recovered from raw and transparent symmetric keys"
                         .to_owned(),
                 )),
             },
+        }
+    }
+
+    /// Extract the raw bytes from the EC key material.
+    /// These bytes are the same as the ones in openssl rwa bytes
+    pub fn ec_raw_bytes(&self) -> Result<Vec<u8>, KmipError> {
+        let KeyValue::Structure { key_material, .. } =
+            self.key_value.as_ref().ok_or_else(|| {
+                KmipError::InvalidKmip21Value(
+                    ErrorReason::Invalid_Object_Type,
+                    "ec_raw_bytes: the key is missing its key value".to_owned(),
+                )
+            })?
+        else {
+            return Err(KmipError::InvalidKmip21Value(
+                ErrorReason::Invalid_Object_Type,
+                "ec_raw_bytes: the key is wrapped".to_owned(),
+            ))
+        };
+        match key_material {
+            KeyMaterial::TransparentECPrivateKey { d, .. } => {
+                let mut d_vec = d.to_bytes_be().1;
+                let privkey_size = match key_material {
+                    KeyMaterial::TransparentECPrivateKey {
+                        recommended_curve, ..
+                    } => match recommended_curve {
+                        RecommendedCurve::P192 => 24,
+                        RecommendedCurve::P224 => 28,
+                        RecommendedCurve::P256
+                        | RecommendedCurve::CURVE25519
+                        | RecommendedCurve::CURVEED25519 => 32,
+                        RecommendedCurve::P384 => 48,
+                        RecommendedCurve::P521 => 66,
+                        RecommendedCurve::CURVE448 => 56,
+                        RecommendedCurve::CURVEED448 => 57,
+                        _ => d_vec.len(),
+                    },
+                    _ => d_vec.len(),
+                };
+                pad_be_bytes(&mut d_vec, privkey_size);
+                Ok(d_vec)
+            }
+            KeyMaterial::TransparentECPublicKey { q_string, .. } => Ok(q_string.clone()),
+            _ => Err(KmipError::InvalidKmip21Value(
+                ErrorReason::Invalid_Data_Type,
+                "Elliptic Curve raw bytes can only be recovered from EC keys".to_owned(),
+            )),
         }
     }
 
@@ -299,7 +317,7 @@ impl KeyBlock {
     pub fn key_bytes_and_attributes(
         &self,
     ) -> Result<(Zeroizing<Vec<u8>>, Option<&Attributes>), KmipError> {
-        let key = self.key_bytes().map_err(|e| {
+        let key = self.symmetric_key_bytes().map_err(|e| {
             KmipError::InvalidKmip21Value(ErrorReason::Invalid_Data_Type, e.to_string())
         })?;
         let attributes = self.attributes().ok();

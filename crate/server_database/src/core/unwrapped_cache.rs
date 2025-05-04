@@ -13,7 +13,7 @@ use crate::error::DbResult;
 /// It contains the unwrapped object and the key signature
 #[derive(Clone)]
 pub struct CachedUnwrappedObject {
-    key_signature: u64,
+    fingerprint: u64,
     unwrapped_object: Object,
 }
 
@@ -21,14 +21,14 @@ impl CachedUnwrappedObject {
     #[must_use]
     pub const fn new(key_signature: u64, unwrapped_object: Object) -> Self {
         Self {
-            key_signature,
+            fingerprint: key_signature,
             unwrapped_object,
         }
     }
 
     #[must_use]
-    pub const fn key_signature(&self) -> u64 {
-        self.key_signature
+    pub const fn fingerprint(&self) -> u64 {
+        self.fingerprint
     }
 
     #[must_use]
@@ -62,15 +62,15 @@ impl UnwrappedCache {
     }
 
     /// Validate the cache for a given object
-    /// If the key signature is different, the cache is invalidated
+    /// If the object fingerprint is different, the cache is invalidated
     /// and the value is removed.
     pub async fn validate_cache(&self, uid: &str, object: &Object) {
-        if let Ok(key_signature) = object.key_signature() {
+        if let Ok(fingerprint) = object.fingerprint() {
             let mut cache = self.cache.write().await;
             // invalidate the value in cache if the signature is different
             match cache.peek(uid) {
                 Some(Ok(cached_object)) => {
-                    if cached_object.key_signature() != key_signature {
+                    if cached_object.fingerprint() != fingerprint {
                         trace!("Invalidating the cache for {}", uid);
                         cache.pop(uid);
                     }

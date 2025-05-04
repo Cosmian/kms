@@ -169,7 +169,7 @@ async fn test_curve_25519() -> KResult<()> {
         LinkedObjectIdentifier::TextString(response.private_key_unique_identifier.to_string())
     );
     // test import of public key
-    let pk_bytes = pk.key_block()?.key_bytes()?;
+    let pk_bytes = pk.key_block()?.symmetric_key_bytes()?;
     assert_eq!(pk_bytes.len(), X25519_PUBLIC_KEY_LENGTH);
     let pk = to_ec_public_key(
         &pk_bytes,

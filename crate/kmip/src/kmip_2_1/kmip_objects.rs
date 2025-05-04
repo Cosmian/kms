@@ -22,6 +22,7 @@ use super::{
 use crate::{
     error::{KmipError, result::KmipResult},
     kmip_0::kmip_types::{CertificateType, ErrorReason, SecretDataType},
+    ttlv::{KmipFlavor, to_ttlv},
 };
 
 /// A Managed Cryptographic Object that is a digital certificate.
@@ -437,16 +438,17 @@ impl Object {
         }
     }
 
-    /// Return the key signature if this is a Key.
+    /// Return the fingerprint of this object.
     /// The value is the `SipHash` of the key block key bytes.
-    pub fn key_signature(&self) -> KmipResult<u64> {
-        self.key_block().and_then(|kb| {
-            kb.key_bytes().map(|kb| {
+    pub fn fingerprint(&self) -> KmipResult<u64> {
+        to_ttlv(&self)
+            .and_then(|ttlv| ttlv.to_bytes(KmipFlavor::Kmip2))
+            .map_err(KmipError::from)
+            .map(|bytes| {
                 let mut hasher = DefaultHasher::new();
-                kb.hash(&mut hasher);
+                bytes.hash(&mut hasher);
                 hasher.finish()
             })
-        })
     }
 
     /// Determines if the object is wrapped
