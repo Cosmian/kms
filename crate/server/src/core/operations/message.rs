@@ -9,12 +9,15 @@ use cosmian_kmip::{
         },
         kmip_types::{ErrorReason, ResultStatusEnumeration},
     },
-    kmip_2_1::{kmip_messages::ResponseMessageBatchItem, kmip_operations::Operation},
+    kmip_2_1::{
+        kmip_messages::ResponseMessageBatchItem, kmip_operations::Operation,
+        kmip_types::OperationEnumeration,
+    },
     ttlv::KmipFlavor,
 };
 use cosmian_kms_interfaces::SessionParams;
 use time::OffsetDateTime;
-use tracing::trace;
+use tracing::{info, trace};
 
 use crate::{core::KMS, error::KmsError, result::KResult};
 
@@ -31,6 +34,18 @@ pub(crate) async fn message(
     user: &str,
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<ResponseMessage> {
+    info!(
+        user = user,
+        "KMIP Request message with {} operation(s): {:?}",
+        request.batch_item.len(),
+        request.batch_item[..request.batch_item.len().min(10)]
+            .iter()
+            .map(|bi| match bi {
+                RequestMessageBatchItemVersioned::V14(item) => item.operation.into(),
+                RequestMessageBatchItemVersioned::V21(item) => item.operation,
+            })
+            .collect::<Vec<OperationEnumeration>>(),
+    );
     trace!("Entering message KMIP operation: {request:?}");
 
     let mut response_items = Vec::new();

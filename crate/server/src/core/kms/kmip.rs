@@ -17,7 +17,6 @@ use cosmian_kmip::{
     },
 };
 use cosmian_kms_interfaces::SessionParams;
-use tracing::debug;
 
 use crate::{
     core::{KMS, operations},
@@ -533,10 +532,6 @@ impl KMS {
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<ResponseMessage> {
-        debug!(
-            "KMIP Request message with {} operation(s); user : {user}",
-            request.batch_item.len(),
-        );
         let span = tracing::span!(tracing::Level::ERROR, "message");
         let _enter = span.enter();
 

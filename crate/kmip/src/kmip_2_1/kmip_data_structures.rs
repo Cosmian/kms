@@ -30,7 +30,7 @@ use crate::{
         RNGAlgorithm, ShreddingAlgorithm, UnwrapMode,
     },
     kmip_2_1::{kmip_attributes::Attribute, kmip_types::ItemType},
-    pad_be_bytes,
+    // pad_be_bytes,
     ttlv::{KmipFlavor, TTLV, TtlvDeserializer, to_ttlv},
 };
 
@@ -259,30 +259,30 @@ impl KeyBlock {
             KeyValue::Structure { key_material, .. } => match key_material {
                 KeyMaterial::ByteString(v) => Ok(v.clone()),
                 KeyMaterial::TransparentSymmetricKey { key } => Ok(key.clone()),
-                // For EC Keys: this is equivalent to an openssl raw private key
-                KeyMaterial::TransparentECPrivateKey {
-                    d,
-                    recommended_curve,
-                } => {
-                    let mut d_vec = d.to_bytes_be().1;
-                    let privkey_size = match recommended_curve {
-                        RecommendedCurve::P192 => 24,
-                        RecommendedCurve::P224 => 28,
-                        RecommendedCurve::P256
-                        | RecommendedCurve::CURVE25519
-                        | RecommendedCurve::CURVEED25519 => 32,
-                        RecommendedCurve::P384 => 48,
-                        RecommendedCurve::P521 => 66,
-                        RecommendedCurve::CURVE448 => 56,
-                        RecommendedCurve::CURVEED448 => 57,
-                        _ => d_vec.len(),
-                    };
-                    pad_be_bytes(&mut d_vec, privkey_size);
-                    Ok(Zeroizing::new(d_vec))
-                }
-                KeyMaterial::TransparentECPublicKey { q_string, .. } => {
-                    Ok(Zeroizing::new(q_string.clone()))
-                }
+                // // For EC Keys: this is equivalent to an openssl raw private key
+                // KeyMaterial::TransparentECPrivateKey {
+                //     d,
+                //     recommended_curve,
+                // } => {
+                //     let mut d_vec = d.to_bytes_be().1;
+                //     let privkey_size = match recommended_curve {
+                //         RecommendedCurve::P192 => 24,
+                //         RecommendedCurve::P224 => 28,
+                //         RecommendedCurve::P256
+                //         | RecommendedCurve::CURVE25519
+                //         | RecommendedCurve::CURVEED25519 => 32,
+                //         RecommendedCurve::P384 => 48,
+                //         RecommendedCurve::P521 => 66,
+                //         RecommendedCurve::CURVE448 => 56,
+                //         RecommendedCurve::CURVEED448 => 57,
+                //         _ => d_vec.len(),
+                //     };
+                //     pad_be_bytes(&mut d_vec, privkey_size);
+                //     Ok(Zeroizing::new(d_vec))
+                // }
+                // KeyMaterial::TransparentECPublicKey { q_string, .. } => {
+                //     Ok(Zeroizing::new(q_string.clone()))
+                // }
                 _ => Err(KmipError::InvalidKmip21Value(
                     ErrorReason::Invalid_Data_Type,
                     "Key bytes can only be recovered from Raw symmetric keys, transparent \

@@ -265,7 +265,12 @@ async fn kmip_json_inner(req_http: HttpRequest, body: Bytes, kms: Data<Arc<KMS>>
     // Check the KMIP version
     let (major, minor) = get_kmip_version(&ttlv)?;
 
-    info!(target: "kmip", user=user, tag=ttlv.tag.as_str(), "POST /kmip {}.{} JSON. Request: {:?} {}",major ,minor, ttlv.tag.as_str(), user);
+    info!(
+        target: "kmip",
+        user=user,
+        tag=ttlv.tag.as_str(),
+        "POST /kmip {}.{} JSON. Request: {:?} {}", major ,minor, ttlv.tag.as_str(), user
+    );
 
     if major == 2 && minor == 1 {
         let ttlv = handle_ttlv_2_1(&kms, ttlv, &user, None).await?;
@@ -306,36 +311,30 @@ pub(crate) async fn kmip_binary(
 }
 
 /// Handle KMIP requests in TTLV binary format
-pub(crate) async fn handle_ttlv_bytes(
-    username: &str,
-    ttlv_bytes: &[u8],
-    kms: &Arc<KMS>,
-) -> Vec<u8> {
+pub(crate) async fn handle_ttlv_bytes(user: &str, ttlv_bytes: &[u8], kms: &Arc<KMS>) -> Vec<u8> {
     let Ok((major, minor)) = TTLV::find_version(ttlv_bytes) else {
         error!(target: "kmip", "Failed to find KMIP version");
         return vec![];
     };
-    Box::pin(handle_ttlv_bytes_inner(
-        username, ttlv_bytes, major, minor, kms,
-    ))
-    .await
-    .unwrap_or_else(|e| {
-        let response_message = invalid_response_message(major, minor, e.to_string());
-        // convert to TTLV
-        let response_ttlv = to_ttlv(&response_message).unwrap_or_else(|e| {
-            error!(target: "kmip", "Failed to convert response message to TTLV: {}", e);
-            error_response_ttlv(major, minor, e.to_string().as_str())
-        });
-        // convert to bytes
-        TTLV::to_bytes(&response_ttlv, KmipFlavor::Kmip2).unwrap_or_else(|e| {
-            error!(target: "kmip", "Failed to convert TTLV to bytes: {}", e);
-            TTLV_ERROR_RESPONSE.to_vec()
+    Box::pin(handle_ttlv_bytes_inner(user, ttlv_bytes, major, minor, kms))
+        .await
+        .unwrap_or_else(|e| {
+            let response_message = invalid_response_message(major, minor, e.to_string());
+            // convert to TTLV
+            let response_ttlv = to_ttlv(&response_message).unwrap_or_else(|e| {
+                error!(target: "kmip", "Failed to convert response message to TTLV: {}", e);
+                error_response_ttlv(major, minor, e.to_string().as_str())
+            });
+            // convert to bytes
+            TTLV::to_bytes(&response_ttlv, KmipFlavor::Kmip2).unwrap_or_else(|e| {
+                error!(target: "kmip", "Failed to convert TTLV to bytes: {}", e);
+                TTLV_ERROR_RESPONSE.to_vec()
+            })
         })
-    })
 }
 
 async fn handle_ttlv_bytes_inner(
-    username: &str,
+    user: &str,
     ttlv_bytes: &[u8],
     major: i32,
     minor: i32,
@@ -354,6 +353,13 @@ async fn handle_ttlv_bytes_inner(
     // parse the TTLV bytes
     let ttlv = TTLV::from_bytes(ttlv_bytes, kmip_flavor).context("Failed to parse TTLV")?;
 
+    info!(
+        target: "kmip",
+        user=user,
+        tag=ttlv.tag.as_str(),
+        "POST /kmip {}.{} Binary. Request: {:?} {}", major, minor, ttlv.tag.as_str(), user
+    );
+
     // parse the Request Message
     let request_message = from_ttlv::<RequestMessage>(ttlv)
         .map_err(|e| KmsError::InvalidRequest(format!("Failed to parse RequestMessage: {e}")))?;
@@ -361,7 +367,7 @@ async fn handle_ttlv_bytes_inner(
     // log the request
     debug!("Request Message: {request_message:#?}");
 
-    let response_message = Box::pin(message(kms, request_message, username, None)).await?;
+    let response_message = Box::pin(message(kms, request_message, user, None)).await?;
 
     // log the response
     debug!("Response Message: {response_message:#?}");

@@ -20,7 +20,7 @@ use cosmian_kms_crypto::crypto::{
 use cosmian_kms_interfaces::{AtomicOperation, SessionParams};
 #[cfg(not(feature = "fips"))]
 use tracing::warn;
-use tracing::{debug, trace};
+use tracing::{debug, info, trace};
 use uuid::Uuid;
 
 use crate::{
@@ -80,7 +80,8 @@ pub(crate) async fn create_key_pair(
 
     let mut private_key = key_pair.private_key().to_owned();
     let private_key_attributes = private_key.attributes()?.clone();
-    let private_key_tags = private_key.attributes()?.get_tags();
+    let private_key_tags = private_key_attributes.get_tags();
+    let cryptographic_algorithm = private_key_attributes.cryptographic_algorithm;
     wrap_and_cache(
         kms,
         owner,
@@ -92,7 +93,7 @@ pub(crate) async fn create_key_pair(
 
     let mut public_key = key_pair.public_key().to_owned();
     let public_key_attributes = public_key.attributes()?.clone();
-    let public_key_tags = public_key.attributes()?.get_tags();
+    let public_key_tags = public_key_attributes.get_tags();
     wrap_and_cache(
         kms,
         owner,
@@ -124,7 +125,14 @@ pub(crate) async fn create_key_pair(
     let pk_uid = ids
         .get(1)
         .ok_or_else(|| KmsError::ServerError("Public key id not available".to_owned()))?;
-    debug!("Created key pair: sk: {sk_uid}, pk: {pk_uid}");
+
+    info!(
+        uid = sk_uid,
+        user = owner,
+        "Created Key Pair with cryptographic algorithm {:?}",
+        cryptographic_algorithm
+    );
+
     Ok(CreateKeyPairResponse {
         private_key_unique_identifier: UniqueIdentifier::TextString(sk_uid.to_owned()),
         public_key_unique_identifier: UniqueIdentifier::TextString(pk_uid.to_owned()),

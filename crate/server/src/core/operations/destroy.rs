@@ -152,7 +152,8 @@ pub(crate) async fn recursively_destroy_object(
                 // destroy any linked public key
                 if let Some(public_key_id) = owm
                     .object()
-                    .attributes()?
+                    .attributes()
+                    .unwrap_or_else(|_| owm.attributes())
                     .get_link(LinkType::PublicKeyLink)
                     .map(|l| l.to_string())
                 {
@@ -180,7 +181,8 @@ pub(crate) async fn recursively_destroy_object(
                 // destroy any linked private key
                 if let Some(private_key_id) = owm
                     .object()
-                    .attributes()?
+                    .attributes()
+                    .unwrap_or_else(|_| owm.attributes())
                     .get_link(LinkType::PrivateKeyLink)
                     .map(|l| l.to_string())
                 {

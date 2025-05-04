@@ -112,9 +112,11 @@ pub(crate) fn unwrap(
 
     let unwrapping_key_block = unwrapping_key
         .key_block()
-        .context("Unable to unwrap: unwrapping key is not a key")?;
+        .context("Unable to unwrap: the key encryption key is not a key")?;
     if unwrapping_key_block.key_wrapping_data.is_some() {
-        crypto_bail!("unable to unwrap key: unwrapping key is wrapped and that is not supported")
+        crypto_bail!(
+            "unable to unwrap: the key encryption key is wrapped and that is not supported"
+        )
     }
 
     let plaintext = match unwrapping_key_block.key_format_type {
@@ -131,7 +133,7 @@ pub(crate) fn unwrap(
             unwrap_with_private_key(&p_key, key_wrapping_data, wrapped_key)
         }
         x => {
-            crypto_bail!("Unable to unwrap key: format not supported for unwrapping: {x:?}")
+            crypto_bail!("Unable to unwrap: the key encryption key format is not supported: {x:?}")
         }
     }?;
 
@@ -196,7 +198,10 @@ pub fn decode_unwrapped_key(
                 }
 
                 f => {
-                    crypto_bail!("Unable to unwrap key: format not supported for unwrapping: {f:?}")
+                    crypto_bail!(
+                        "Unable to decode the unwrapped key using No Encoding, its format is not \
+                         supported: {f:?}"
+                    )
                 }
             }
         }
