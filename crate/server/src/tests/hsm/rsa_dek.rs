@@ -40,7 +40,7 @@ pub(super) async fn test_wrapped_rsa_dek() -> KResult<()> {
 
     // Encrypt with the DEK - using the unwrapped value in cache
     let data = b"hello world";
-    let ciphertext = rsa_encrypt(&&format!("{dek_uid}_pk"), &owner, &kms, data).await?;
+    let ciphertext = rsa_encrypt(&format!("{dek_uid}_pk"), &owner, &kms, data).await?;
     assert_eq!(ciphertext.len(), 2048 / 8);
     // Decrypt with the DEK - using the unwrapped value in cache
     let plaintext = rsa_decrypt(&dek_uid, &owner, &kms, &ciphertext).await?;
@@ -112,7 +112,7 @@ async fn rsa_encrypt(dek_uid: &str, owner: &str, kms: &Arc<KMS>, data: &[u8]) ->
     )?;
     let response = send_message(kms.clone(), owner, vec![Operation::Encrypt(request)]).await?;
     let Operation::EncryptResponse(response) = response
-        .get(0)
+        .first()
         .ok_or_else(|| KmsError::ServerError("no response".to_owned()))?
     else {
         return Err(KmsError::ServerError("invalid response".to_owned()))
@@ -132,7 +132,7 @@ async fn rsa_decrypt(
     ciphertext: &[u8],
 ) -> KResult<Vec<u8>> {
     let request = decrypt_request(
-        &dek_uid,
+        dek_uid,
         None,
         ciphertext.to_vec(),
         None,
@@ -145,7 +145,7 @@ async fn rsa_decrypt(
     );
     let response = send_message(kms.clone(), owner, vec![Operation::Decrypt(request)]).await?;
     let Operation::DecryptResponse(response) = response
-        .get(0)
+        .first()
         .ok_or_else(|| KmsError::ServerError("no response".to_owned()))?
     else {
         return Err(KmsError::ServerError("invalid response".to_owned()))

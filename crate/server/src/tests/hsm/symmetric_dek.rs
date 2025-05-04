@@ -103,7 +103,7 @@ async fn symmetric_encrypt(
     data: &[u8],
 ) -> KResult<Vec<u8>> {
     let request = encrypt_request(
-        &dek_uid,
+        dek_uid,
         None,
         data.to_vec(),
         None,
@@ -116,7 +116,7 @@ async fn symmetric_encrypt(
     )?;
     let response = send_message(kms.clone(), owner, vec![Operation::Encrypt(request)]).await?;
     let Operation::EncryptResponse(response) = response
-        .get(0)
+        .first()
         .ok_or_else(|| KmsError::ServerError("no response".to_owned()))?
     else {
         return Err(KmsError::ServerError("invalid response".to_owned()))
@@ -145,7 +145,7 @@ async fn symmetric_decrypt(
     let tag = ciphertext[ciphertext.len() - 16..].to_vec();
 
     let request = decrypt_request(
-        &dek_uid,
+        dek_uid,
         Some(nonce),
         enc,
         Some(tag),
@@ -158,7 +158,7 @@ async fn symmetric_decrypt(
     );
     let response = send_message(kms.clone(), owner, vec![Operation::Decrypt(request)]).await?;
     let Operation::DecryptResponse(response) = response
-        .get(0)
+        .first()
         .ok_or_else(|| KmsError::ServerError("no response".to_owned()))?
     else {
         return Err(KmsError::ServerError("invalid response".to_owned()))
