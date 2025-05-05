@@ -33,7 +33,8 @@ use crate::{
 #[tokio::test]
 #[allow(clippy::as_conversions)]
 async fn test_kmip_mac_messages() -> KResult<()> {
-    log_init(None);
+    // Disable most logging
+    log_init(Some("warn"));
 
     let clap_config = https_clap_config();
 
@@ -107,14 +108,15 @@ async fn test_kmip_mac_messages() -> KResult<()> {
         usize::try_from(items_number).unwrap()
     );
 
+    log_init(option_env!("RUST_LOG"));
     Ok(())
 }
 
 #[tokio::test]
 #[allow(clippy::as_conversions)]
 async fn test_encrypt_kmip_messages() -> KResult<()> {
-    // log_init(option_env!("RUST_LOG"));
-    log_init(Some("debug"));
+    // Disable most logging
+    log_init(Some("warn"));
     let clap_config = https_clap_config();
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
     let owner = "eyJhbGciOiJSUzI1Ni";
@@ -190,6 +192,7 @@ async fn test_encrypt_kmip_messages() -> KResult<()> {
         ));
     }
 
+    log_init(option_env!("RUST_LOG"));
     Ok(())
 }
 
