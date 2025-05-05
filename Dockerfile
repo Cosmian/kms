@@ -19,7 +19,7 @@ WORKDIR /root/kms
 
 ARG TARGETPLATFORM
 RUN if [ "$TARGETPLATFORM" = "linux/amd64" ]; then export ARCHITECTURE=x86_64; elif [ "$TARGETPLATFORM" = "linux/arm/v7" ]; then export ARCHITECTURE=arm; elif [ "$TARGETPLATFORM" = "linux/arm64" ]; then export ARCHITECTURE=arm64; else export ARCHITECTURE=x86_64; fi \
-    && bash /root/kms/.github/scripts/get_openssl_binaries.sh
+    && bash /root/reusable_scripts/.github/scripts/get_openssl_binaries.sh
 
 # Conditional cargo build based on FIPS argument
 RUN if [ "$FIPS" = "true" ]; then \
