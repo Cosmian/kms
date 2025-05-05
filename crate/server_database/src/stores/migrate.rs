@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, error, info};
+use tracing::{debug, error};
 use version_compare::{Cmp, compare};
 
 use crate::{DbError, error::DbResult};
@@ -22,14 +22,14 @@ pub(crate) enum DbState {
 pub(crate) trait Migrate<DB> {
     /// Migrate the database to the latest version
     async fn migrate(&self) -> DbResult<()> {
-        fn lower_equal(version: &str, target: &str) -> DbResult<bool> {
+        fn lower(version: &str, target: &str) -> DbResult<bool> {
             let cmp = compare(version, target).map_err(|()| {
                 DbError::DatabaseError(format!(
                     "Error comparing versions. The current DB version: {version}, cannot be \
                      parsed."
                 ))
             })?;
-            Ok(matches!(cmp, Cmp::Lt | Cmp::Eq))
+            Ok(matches!(cmp, Cmp::Lt))
         }
 
         let db_state = self.get_db_state().await?.unwrap_or(DbState::Ready);
@@ -48,18 +48,17 @@ pub(crate) trait Migrate<DB> {
         let kms_version = env!("CARGO_PKG_VERSION");
         debug!("Database version: {current_db_version}, Current KMS version: {kms_version}");
 
-        if lower_equal(&current_db_version, "4.22.1")? {
-            info!("Migrating database from version {current_db_version} to {kms_version}.");
-            self.set_db_state(DbState::Upgrading).await?;
-            if lower_equal(&current_db_version, KMS_VERSION_BEFORE_MIGRATION_SUPPORT)? {
-                self.migrate_from_4_12_0_to_4_13_0().await?;
-            }
-            self.migrate_to_4_22_2().await?;
-            self.set_current_db_version(kms_version).await?;
-            self.set_db_state(DbState::Ready).await?;
-        } else {
-            debug!("  ==> database is up to date.");
+        if lower(&current_db_version, "5.0.0")? {
+            let msg = format!(
+                "Database version {current_db_version} cannot be upgraded to version \
+                 5.0.0.\nPlease export all keys using standard formats such as PKCS#8 or Raw and \
+                 reimport them in this KMS version."
+            );
+            error!("{}", msg);
+            return Err(DbError::DatabaseError(msg));
         }
+
+        debug!("  ==> database is up to date.");
 
         Ok(())
     }
@@ -81,6 +80,7 @@ pub(crate) trait Migrate<DB> {
     /// Before the version 4.13.0, the KMIP attributes were stored in the object table (via the objects themselves).
     /// The new column attributes allow storing the KMIP attributes in a dedicated column
     /// even for KMIP objects that do not have KMIP attributes (such as Certificates).
+    #[allow(dead_code)]
     async fn migrate_from_4_12_0_to_4_13_0(&self) -> DbResult<()>;
 
     /// Objects stored in the `objects` table have now migrated from
@@ -107,5 +107,7 @@ pub(crate) trait Migrate<DB> {
     ///         }
     ///    }
     /// }
+    ///
+    #[allow(dead_code)]
     async fn migrate_to_4_22_2(&self) -> DbResult<()>;
 }

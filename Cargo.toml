@@ -22,7 +22,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "4.24.0"
+version = "5.0.0"
 edition = "2024"
 rust-version = "1.85.0"
 authors = [
@@ -67,7 +67,7 @@ cosmian_findex_structs = { git = "https://www.github.com/Cosmian/findex-server",
 cosmian_config_utils = "0.2"
 cosmian_cover_crypt = "15.0"
 cosmian_crypto_core = { version = "10.1", default-features = false, features = [
-  "ser",
+    "ser",
 ] }
 cosmian_http_client = "0.2"
 cosmian_kmip = { path = "crate/kmip" }

@@ -2,13 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
-## [5.0.0] - 2025-04-30
+## [5.0.0] - 2025-05-08
 
 ### 🚀 Features
 
+- Support for KMIP 1.0, 1.1, 1.2, 1.3, 1.4, 2.0, 2.1
+- Binary TTLV for all KMIP versions on port 5696
+- JSON TTLV for all KMIP versions on port 9998, endpoint /kmip
+- VMware support
+- Possible automatic key wrapping on Create and Import
+- Better telemetry using OTLP and logs to syslog
 - Run KMS server with privileged users ([#408](https://github.com/Cosmian/kms/pull/408)):
     - These users can grant or revoke create access rights for other users
-    - Without create access right or privileged status, users can't create or import objects to KMS
+    - Without `Create` access right or privileged status, users can't create or import objects to KMS
+
+
+### 🐛 Bug Fixes
+
+- Multiple fixes in KMIP 2.1 TTLV formats
+
+### ⚙️ Miscellaneous Tasks
+
+- More extensive coverage of KMIP attributes
+- Database schema changes
+
 
 ## [4.24.0] - 2025-04-23
 
@@ -111,7 +128,8 @@ All notable changes to this project will be documented in this file.
 
 ### 🚀 Features
 
-- Add server param to disable (if needed) Google CSE JWT token validation ([#349](https://github.com/Cosmian/kms/pull/349))
+- Add server param to disable (if needed) Google CSE JWT token
+  validation ([#349](https://github.com/Cosmian/kms/pull/349))
 - Add remove option to `Destroy` + Object not found error message fix ([#357](https://github.com/Cosmian/kms/pull/357))
 
 ### 🐛 Bug Fixes
@@ -149,15 +167,16 @@ All notable changes to this project will be documented in this file.
         - the ability to perform the Create, Destroy, Export, Encrypt, and Decrypt operations on the HSM
         - the ability to create keys in the KMS which are wrapped by a key in the HSM
     - the database components are now in a separate crate `server_database`. They are now split in 2 implementations:
-    Objects store and Permissions store
+      Objects store and Permissions store
     - a new `interfaces` crate gathers interfaces to be implemented by new external components. Interfaces include:
         - Object Store
         - Permissions Store
         - Encryption Oracle
     - key unique identifiers now support prefixes. Object Stores, Permissions stores, and Encryption Oracles can be
-    registered against the prefixes.
-    - support for the `Sensitive` Attribute in addition to the ability to wrap a key by another key has been added to all
-    keys creations
+      registered against the prefixes.
+    - support for the `Sensitive` Attribute in addition to the ability to wrap a key by another key has been added to
+      all
+      keys creations
 - Make keys non revocable on server ([#341](https://github.com/Cosmian/kms/pull/341))
 - Docker for Linux ARM and keep support for MacOS Intel ([#343](https://github.com/Cosmian/kms/pull/343))
 

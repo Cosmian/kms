@@ -26,6 +26,7 @@ use crate::{
     tests::test_utils::https_clap_config,
 };
 
+#[cfg(not(feature = "fips"))]
 mod ec_dek;
 mod rsa_dek;
 mod symmetric_dek;
@@ -34,15 +35,17 @@ mod symmetric_dek;
 /// so we run them sequentially from here
 #[tokio::test]
 async fn test_all() {
-    log_init(Some("info,cosmian_kms_server=info"));
-    // log_init(option_env!("RUST_LOG"));
+    log_init(option_env!("RUST_LOG"));
 
     info!("HSM: wrapped_symmetric_dek");
     symmetric_dek::test_wrapped_symmetric_dek().await.unwrap();
-    info!("HSM: wrapped_ec_dek");
-    ec_dek::test_wrapped_ec_dek().await.unwrap();
     info!("HSM: wrapped_rsa_dek");
     rsa_dek::test_wrapped_rsa_dek().await.unwrap();
+    #[cfg(not(feature = "fips"))]
+    {
+        info!("HSM: wrapped_ec_dek");
+        ec_dek::test_wrapped_ec_dek().await.unwrap();
+    }
 }
 
 fn hsm_clap_config(owner: &str, kek: Option<String>) -> ClapConfig {

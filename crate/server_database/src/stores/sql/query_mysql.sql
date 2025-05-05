@@ -1,32 +1,40 @@
 -- name: create-table-parameters
-CREATE TABLE IF NOT EXISTS parameters (
-  name VARCHAR(128) PRIMARY KEY,
-  value VARCHAR(256)
+CREATE TABLE IF NOT EXISTS parameters
+(
+    name  VARCHAR(128) PRIMARY KEY,
+    value VARCHAR(256)
 );
 
 -- name: upsert-parameter
-INSERT INTO parameters (name,value) VALUES (?, ?)
-    ON DUPLICATE KEY UPDATE value=VALUES(value);
+INSERT INTO parameters (name, value)
+VALUES (?, ?)
+ON DUPLICATE KEY UPDATE value=VALUES(value);
 
 -- name: select-parameter
-SELECT value FROM parameters WHERE name=?;
+SELECT value
+FROM parameters
+WHERE name = ?;
 
 -- name: delete-parameter
-DELETE FROM parameters WHERE name=?;
+DELETE
+FROM parameters
+WHERE name = ?;
 
 
 -- name: create-table-objects
 CREATE TABLE IF NOT EXISTS objects
 (
     id         VARCHAR(128) PRIMARY KEY,
-    object     json NOT NULL,
+    object     TEXT NOT NULL,
     attributes json NOT NULL,
     state      VARCHAR(32),
     owner      VARCHAR(255)
 );
+
 -- name: add-column-attributes
 ALTER TABLE objects
     ADD COLUMN attributes json;
+
 -- name: has-column-attributes
 SHOW COLUMNS FROM objects LIKE 'attributes';
 
@@ -66,8 +74,8 @@ VALUES (?, ?, ?, ?, ?);
 
 -- name: select-object
 SELECT objects.id, objects.object, objects.attributes, objects.owner, objects.state
-    FROM objects
-    WHERE objects.id = ?;
+FROM objects
+WHERE objects.id = ?;
 
 -- name: update-object-with-object
 UPDATE objects
