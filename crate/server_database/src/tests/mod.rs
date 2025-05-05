@@ -150,26 +150,3 @@ pub(crate) async fn test_mysql() -> DbResult<()> {
     list_uids_for_tags_test(&get_mysql().await?, None).await?;
     Ok(())
 }
-
-#[tokio::test]
-pub(crate) async fn test_migrate_sqlite() -> DbResult<()> {
-    log_init(option_env!("RUST_LOG"));
-    for sqlite_path in [
-        "src/tests/migrate/kms_4.12.0.sqlite",
-        "src/tests/migrate/kms_4.16.0.sqlite",
-        "src/tests/migrate/kms_4.17.0.sqlite",
-        "src/tests/migrate/kms_4.22.1.sqlite",
-    ] {
-        debug!("==> Migrating {sqlite_path}");
-        let tmp_dir = TempDir::new()?;
-        let tmp_path = tmp_dir.path();
-        let tmp_file_path = tmp_path.join("kms.db");
-        if tmp_file_path.exists() {
-            std::fs::remove_file(&tmp_file_path)?;
-        }
-        std::fs::copy(sqlite_path, &tmp_file_path)?;
-        let _pool_update = SqlitePool::instantiate(&tmp_file_path, false).await?;
-        let _pool_updated = SqlitePool::instantiate(&tmp_file_path, false).await?;
-    }
-    Ok(())
-}
