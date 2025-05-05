@@ -57,6 +57,7 @@ pub(crate) fn https_clap_config_opts(google_cse_kacls_url: Option<String>) -> Cl
 
 pub(crate) async fn test_app(
     google_cse_kacls_url: Option<String>,
+    privileged_users: Option<Vec<String>>,
 ) -> impl Service<Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error> {
     let clap_config = https_clap_config_opts(google_cse_kacls_url);
 
@@ -70,9 +71,15 @@ pub(crate) async fn test_app(
 
     let mut app = App::new()
         .app_data(Data::new(kms_server.clone()))
+        .app_data(web::Data::new(privileged_users))
         .service(routes::kmip::kmip_2_1)
+        .service(routes::access::list_owned_objects)
+        .service(routes::access::list_access_rights_obtained)
+        .service(routes::access::list_accesses)
         .service(routes::access::grant_access)
-        .service(routes::access::revoke_access);
+        .service(routes::access::revoke_access)
+        .service(routes::access::get_create_access)
+        .service(routes::access::get_privileged_access);
 
     let google_cse_jwt_config = google_cse_auth()
         .await

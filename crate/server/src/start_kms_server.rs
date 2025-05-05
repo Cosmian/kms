@@ -286,6 +286,8 @@ pub async fn prepare_kms_server(
     // Should we enable the MS DKE Service ?
     let enable_ms_dke = kms_server.params.ms_dke_service_url.is_some();
 
+    let privileged_users: Option<Vec<String>> = kms_server.params.privileged_users.clone();
+
     // Generate key for actix session cookie encryption and elements for UI exposure
     let secret_key: Key = Key::generate();
 
@@ -302,89 +304,90 @@ pub async fn prepare_kms_server(
     );
 
     // Create the `HttpServer` instance.
-    let server = HttpServer::new(move || {
-        // Create an `App` instance and configure the passed data and the various scopes
-        let mut app = App::new()
-            .wrap(IdentityMiddleware::default())
-            .wrap(
-                SessionMiddleware::builder(CookieSessionStore::default(), secret_key.clone())
-                    .cookie_path("/".to_owned())
-                    .cookie_http_only(false)
-                    .cookie_name("auth_session".to_owned())
-                    .cookie_same_site(actix_web::cookie::SameSite::None)
-                    .cookie_secure(true)
-                    .session_lifecycle(
-                        PersistentSession::default().session_ttl(Duration::hours(24)),
-                    )
-                    .build(),
-            )
-            .app_data(Data::new(kms_server.clone())) // Set the shared reference to the `KMS` instance.
-            .app_data(PayloadConfig::new(10_000_000_000)) // Set the maximum size of the request payload.
-            .app_data(JsonConfig::default().limit(10_000_000_000)); // Set the maximum size of the JSON request payload.
+    let server = HttpServer::new({
+        move || {
+            // Create an `App` instance and configure the passed data and the various scopes
+            let mut app = App::new()
+                .wrap(IdentityMiddleware::default())
+                .wrap(
+                    SessionMiddleware::builder(CookieSessionStore::default(), secret_key.clone())
+                        .cookie_path("/".to_owned())
+                        .cookie_http_only(false)
+                        .cookie_name("auth_session".to_owned())
+                        .cookie_same_site(actix_web::cookie::SameSite::None)
+                        .cookie_secure(true)
+                        .session_lifecycle(
+                            PersistentSession::default().session_ttl(Duration::hours(24)),
+                        )
+                        .build(),
+                )
+                .app_data(Data::new(kms_server.clone())) // Set the shared reference to the `KMS` instance.
+                .app_data(PayloadConfig::new(10_000_000_000)) // Set the maximum size of the request payload.
+                .app_data(JsonConfig::default().limit(10_000_000_000)); // Set the maximum size of the JSON request payload.
 
-        if kms_server.params.google_cse_kacls_url.is_some() {
-            // The scope for the Google Client-Side Encryption endpoints served from /google_cse
-            let google_cse_scope = web::scope("/google_cse")
-                .app_data(Data::new(google_cse_jwt_config.clone()))
-                .wrap(Cors::permissive())
-                .service(google_cse::digest)
-                .service(google_cse::private_key_sign)
-                .service(google_cse::private_key_decrypt)
-                .service(google_cse::privileged_private_key_decrypt)
-                .service(google_cse::privileged_unwrap)
-                .service(google_cse::privileged_wrap)
-                .service(google_cse::rewrap)
-                .service(google_cse::get_status)
-                .service(google_cse::unwrap)
-                .service(google_cse::wrap)
-                .service(google_cse::wrapprivatekey);
-            app = app.service(google_cse_scope);
-        }
+            if kms_server.params.google_cse_kacls_url.is_some() {
+                // The scope for the Google Client-Side Encryption endpoints served from /google_cse
+                let google_cse_scope = web::scope("/google_cse")
+                    .app_data(Data::new(google_cse_jwt_config.clone()))
+                    .wrap(Cors::permissive())
+                    .service(google_cse::digest)
+                    .service(google_cse::private_key_sign)
+                    .service(google_cse::private_key_decrypt)
+                    .service(google_cse::privileged_private_key_decrypt)
+                    .service(google_cse::privileged_unwrap)
+                    .service(google_cse::privileged_wrap)
+                    .service(google_cse::rewrap)
+                    .service(google_cse::get_status)
+                    .service(google_cse::unwrap)
+                    .service(google_cse::wrap)
+                    .service(google_cse::wrapprivatekey);
+                app = app.service(google_cse_scope);
+            }
 
-        if enable_ms_dke {
-            // The scope for the Microsoft Double Key Encryption endpoints served from /ms_dke
-            let ms_dke_scope = web::scope("/ms_dke")
-                .wrap(Cors::permissive())
-                .service(ms_dke::version)
-                .service(ms_dke::get_key)
-                .service(ms_dke::decrypt);
-            app = app.service(ms_dke_scope);
-        }
+            if enable_ms_dke {
+                // The scope for the Microsoft Double Key Encryption endpoints served from /ms_dke
+                let ms_dke_scope = web::scope("/ms_dke")
+                    .wrap(Cors::permissive())
+                    .service(ms_dke::version)
+                    .service(ms_dke::get_key)
+                    .service(ms_dke::decrypt);
+                app = app.service(ms_dke_scope);
+            }
 
-        let ui_index_folder = kms_server.params.ui_index_html_folder.clone();
-        if ui_index_folder.join("index.html").exists() {
-            info!("Serving UI from {}", ui_index_folder.display());
-            let oidc_config = kms_server.params.ui_oidc_auth.clone();
+            let ui_index_folder = kms_server.params.ui_index_html_folder.clone();
+            if ui_index_folder.join("index.html").exists() {
+                info!("Serving UI from {}", ui_index_folder.display());
+                let oidc_config = kms_server.params.ui_oidc_auth.clone();
 
-            let auth_type: Option<String> = if jwt_configurations.is_some() {
-                Some("JWT".to_owned())
-            } else if use_cert_auth {
-                Some("CERT".to_owned())
-            } else {
-                None
-            };
+                let auth_type: Option<String> = if jwt_configurations.is_some() {
+                    Some("JWT".to_owned())
+                } else if use_cert_auth {
+                    Some("CERT".to_owned())
+                } else {
+                    None
+                };
 
-            let spa_routes = [
-                "/login",
-                "/locate",
-                "/sym{_:.*}",
-                "/rsa{_:.*}",
-                "/ec{_:.*}",
-                "/cc{_:.*}",
-                "/certificates{_:.*}",
-                "/attributes{_:.*}",
-                "/access-rights{_:.*}",
-            ];
-            let mut auth_routes = web::scope("/ui")
-                .app_data(web::Data::new(oidc_config))
-                .app_data(web::Data::new(kms_public_url.clone()))
-                .app_data(web::Data::new(ui_index_folder.clone()))
-                .app_data(web::Data::new(auth_type))
-                .wrap(Cors::permissive())
-                .configure(configure_auth_routes);
-            // Add all SPA routes
-            for route in spa_routes {
-                auth_routes = auth_routes.route(
+                let spa_routes = [
+                    "/login",
+                    "/locate",
+                    "/sym{_:.*}",
+                    "/rsa{_:.*}",
+                    "/ec{_:.*}",
+                    "/cc{_:.*}",
+                    "/certificates{_:.*}",
+                    "/attributes{_:.*}",
+                    "/access-rights{_:.*}",
+                ];
+                let mut auth_routes = web::scope("/ui")
+                    .app_data(web::Data::new(oidc_config))
+                    .app_data(web::Data::new(kms_public_url.clone()))
+                    .app_data(web::Data::new(ui_index_folder.clone()))
+                    .app_data(web::Data::new(auth_type))
+                    .wrap(Cors::permissive())
+                    .configure(configure_auth_routes);
+                // Add all SPA routes
+                for route in spa_routes {
+                    auth_routes = auth_routes.route(
                     route,
                     web::get().to(
                         move |req: HttpRequest, ui_index_folder: web::Data<PathBuf>| async move {
@@ -392,52 +395,56 @@ pub async fn prepare_kms_server(
                         },
                     ),
                 );
+                }
+                // Add static files service
+                auth_routes = auth_routes.service(
+                    Files::new("/", ui_index_folder)
+                        .index_file("index.html")
+                        .use_last_modified(true)
+                        .use_etag(true)
+                        .prefer_utf8(true),
+                );
+                // Add the auth_routes to the main app
+                app = app.service(auth_routes);
+            } else {
+                trace!(
+                    "No UI folder containing index.html found at {}",
+                    ui_index_folder.display()
+                );
             }
-            // Add static files service
-            auth_routes = auth_routes.service(
-                Files::new("/", ui_index_folder)
-                    .index_file("index.html")
-                    .use_last_modified(true)
-                    .use_etag(true)
-                    .prefer_utf8(true),
-            );
-            // Add the auth_routes to the main app
-            app = app.service(auth_routes);
-        } else {
-            trace!(
-                "No UI folder containing index.html found at {}",
-                ui_index_folder.display()
-            );
+
+            // The default scope serves from the root / the KMIP, permissions, and tee endpoints
+            let default_scope = web::scope("")
+                .app_data(web::Data::new(privileged_users.clone()))
+                .wrap(AuthTransformer::new(
+                    kms_server.clone(),
+                    jwt_configurations.clone(),
+                )) // Use JWT for authentication if necessary.
+                .wrap(Condition::new(use_cert_auth, SslAuth)) // Use certificates for authentication if necessary.
+                // Enable CORS for the application.
+                // Since Actix is running the middlewares in reverse order, it's important that the
+                // CORS middleware is the last one so that the auth middlewares do not run on
+                // preflight (OPTION) requests.
+                .wrap(Cors::permissive())
+                .service(kmip::kmip_2_1)
+                .service(access::list_owned_objects)
+                .service(access::list_access_rights_obtained)
+                .service(access::list_accesses)
+                .service(access::grant_access)
+                .service(access::revoke_access)
+                .service(access::get_create_access)
+                .service(access::get_privileged_access)
+                .service(get_version);
+
+            // The default scope is extended with the /new_database endpoint if the application is using an encrypted SQLite database.
+            let default_scope = if kms_server.is_using_sqlite_enc() {
+                default_scope.service(add_new_database)
+            } else {
+                default_scope
+            };
+
+            app.service(default_scope)
         }
-
-        // The default scope serves from the root / the KMIP, permissions, and tee endpoints
-        let default_scope = web::scope("")
-            .wrap(AuthTransformer::new(
-                kms_server.clone(),
-                jwt_configurations.clone(),
-            )) // Use JWT for authentication if necessary.
-            .wrap(Condition::new(use_cert_auth, SslAuth)) // Use certificates for authentication if necessary.
-            // Enable CORS for the application.
-            // Since Actix is running the middlewares in reverse order, it's important that the
-            // CORS middleware is the last one so that the auth middlewares do not run on
-            // preflight (OPTION) requests.
-            .wrap(Cors::permissive())
-            .service(kmip::kmip_2_1)
-            .service(access::list_owned_objects)
-            .service(access::list_access_rights_obtained)
-            .service(access::list_accesses)
-            .service(access::grant_access)
-            .service(access::revoke_access)
-            .service(get_version);
-
-        // The default scope is extended with the /new_database endpoint if the application is using an encrypted SQLite database.
-        let default_scope = if kms_server.is_using_sqlite_enc() {
-            default_scope.service(add_new_database)
-        } else {
-            default_scope
-        };
-
-        app.service(default_scope)
     })
     .client_disconnect_timeout(std::time::Duration::from_secs(30)) // default: 5s
     .tls_handshake_timeout(std::time::Duration::from_secs(18)) // default: 3s

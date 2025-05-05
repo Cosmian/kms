@@ -39,8 +39,9 @@ impl KMS {
         request: Import,
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
+        privileged_users: Option<Vec<String>>,
     ) -> KResult<ImportResponse> {
-        operations::import(self, request, user, params).await
+        operations::import(self, request, user, params, privileged_users).await
     }
 
     /// This request is used to generate a Certificate object for a public key.
@@ -71,8 +72,9 @@ impl KMS {
         request: Certify,
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
+        privileged_users: Option<Vec<String>>,
     ) -> KResult<CertifyResponse> {
-        operations::certify(self, request, user, params).await
+        operations::certify(self, request, user, params, privileged_users).await
     }
 
     /// This operation requests the server to generate a new symmetric key or
@@ -88,8 +90,16 @@ impl KMS {
         request: Create,
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
+        privileged_users: Option<Vec<String>>,
     ) -> KResult<CreateResponse> {
-        Box::pin(operations::create(self, request, user, params)).await
+        Box::pin(operations::create(
+            self,
+            request,
+            user,
+            params,
+            privileged_users,
+        ))
+        .await
     }
 
     /// This operation requests the server to generate a new public/private key
@@ -112,8 +122,9 @@ impl KMS {
         request: CreateKeyPair,
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
+        privileged_users: Option<Vec<String>>,
     ) -> KResult<CreateKeyPairResponse> {
-        operations::create_key_pair(self, request, user, params).await
+        operations::create_key_pair(self, request, user, params, privileged_users).await
     }
 
     /// This operation requests the server to perform a decryption operation on
@@ -440,8 +451,9 @@ impl KMS {
         request: ReKeyKeyPair,
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
+        privileged_users: Option<Vec<String>>,
     ) -> KResult<ReKeyKeyPairResponse> {
-        operations::rekey_keypair(self, request, user, params).await
+        operations::rekey_keypair(self, request, user, params, privileged_users).await
     }
 
     /// This request is used to generate a replacement key for an existing symmetric key. It is analogous to the Create operation, except that attributes of the replacement key are copied from the existing key, with the exception of the attributes listed in Re-key Attribute Requirements.

@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.0.0] - 2025-04-30
+
+### 🚀 Features
+
+- Run KMS server with privileged users ([#408](https://github.com/Cosmian/kms/pull/408)):
+    - These users can grant or revoke create access rights for other users
+    - Without create access right or privileged status, users can't create or import objects to KMS
+
 ## [4.24.0] - 2025-04-23
 
 ### 🚀 Features

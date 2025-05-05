@@ -28,6 +28,7 @@ use crate::{core::cover_crypt::locate_usk, error::KmsError, kms_bail, result::KR
 /// - `AddAttribute`: Add new attributes to the access structure.
 /// - `RenameAttribute`: Rename attributes in the access structure.
 #[allow(clippy::large_futures)]
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn rekey_keypair_cover_crypt(
     kmip_server: &KMS,
     cover_crypt: Covercrypt,
@@ -36,6 +37,7 @@ pub(crate) async fn rekey_keypair_cover_crypt(
     action: RekeyEditAction,
     params: Option<Arc<dyn SessionParams>>,
     _sensitive: bool,
+    privileged_users: Option<Vec<String>>,
 ) -> KResult<ReKeyKeyPairResponse> {
     trace!("Internal rekey key pair Covercrypt");
     let mpk_uid = match action {
@@ -55,10 +57,12 @@ pub(crate) async fn rekey_keypair_cover_crypt(
                         msk,
                         owner,
                         params.clone(),
+                        &privileged_users,
                     )
                     .await?;
                     Ok(())
                 },
+                &privileged_users,
             )
             .await?
         }
@@ -78,10 +82,12 @@ pub(crate) async fn rekey_keypair_cover_crypt(
                         msk,
                         owner,
                         params.clone(),
+                        &privileged_users,
                     )
                     .await?;
                     Ok(())
                 },
+                &privileged_users,
             )
             .await?
         }
@@ -103,47 +109,70 @@ pub(crate) async fn rekey_keypair_cover_crypt(
                         msk,
                         owner,
                         params.clone(),
+                        &privileged_users,
                     )
                     .await?;
                     Ok(())
                 },
+                &privileged_users,
             )
             .await?
         }
         RekeyEditAction::DisableAttribute(attrs) => {
-            update_master_keys(kmip_server, owner, params, &msk_uid, async |msk, mpk| {
-                attrs
-                    .iter()
-                    .try_for_each(|attr| msk.access_structure.disable_attribute(attr))?;
-                *mpk = cover_crypt.update_msk(msk)?;
-                Ok(())
-            })
+            update_master_keys(
+                kmip_server,
+                owner,
+                params,
+                &msk_uid,
+                async |msk, mpk| {
+                    attrs
+                        .iter()
+                        .try_for_each(|attr| msk.access_structure.disable_attribute(attr))?;
+                    *mpk = cover_crypt.update_msk(msk)?;
+                    Ok(())
+                },
+                &privileged_users,
+            )
             .await?
         }
         RekeyEditAction::RenameAttribute(pairs_attr_name) => {
-            update_master_keys(kmip_server, owner, params, &msk_uid, async |msk, mpk| {
-                pairs_attr_name
-                    .iter()
-                    .try_for_each(|(ap_attributes, new_name)| {
-                        msk.access_structure
-                            .rename_attribute(ap_attributes, new_name.clone())
-                    })?;
-                *mpk = cover_crypt.update_msk(msk)?;
-                Ok(())
-            })
+            update_master_keys(
+                kmip_server,
+                owner,
+                params,
+                &msk_uid,
+                async |msk, mpk| {
+                    pairs_attr_name
+                        .iter()
+                        .try_for_each(|(ap_attributes, new_name)| {
+                            msk.access_structure
+                                .rename_attribute(ap_attributes, new_name.clone())
+                        })?;
+                    *mpk = cover_crypt.update_msk(msk)?;
+                    Ok(())
+                },
+                &privileged_users,
+            )
             .await?
         }
         RekeyEditAction::AddAttribute(attrs_properties) => {
-            update_master_keys(kmip_server, owner, params, &msk_uid, async |msk, mpk| {
-                attrs_properties
-                    .iter()
-                    .try_for_each(|(attr, encryption_hint, _after)| {
-                        msk.access_structure
-                            .add_attribute(attr.clone(), *encryption_hint, None)
-                    })?;
-                *mpk = cover_crypt.update_msk(msk)?;
-                Ok(())
-            })
+            update_master_keys(
+                kmip_server,
+                owner,
+                params,
+                &msk_uid,
+                async |msk, mpk| {
+                    attrs_properties
+                        .iter()
+                        .try_for_each(|(attr, encryption_hint, _after)| {
+                            msk.access_structure
+                                .add_attribute(attr.clone(), *encryption_hint, None)
+                        })?;
+                    *mpk = cover_crypt.update_msk(msk)?;
+                    Ok(())
+                },
+                &privileged_users,
+            )
             .await?
         }
     };
@@ -163,6 +192,7 @@ pub(crate) async fn update_master_keys(
     params: Option<Arc<dyn SessionParams>>,
     msk_uid: &String,
     mutator: impl AsyncFn(&mut MasterSecretKey, &mut MasterPublicKey) -> KResult<()>,
+    privileged_users: &Option<Vec<String>>,
 ) -> KResult<String> {
     let (msk_obj, (mpk_uid, mpk_obj)) =
         get_master_keys(server, msk_uid, owner, params.clone()).await?;
@@ -179,6 +209,7 @@ pub(crate) async fn update_master_keys(
         params,
         (msk_uid.clone(), msk_obj),
         (mpk_uid.clone(), mpk_obj),
+        privileged_users,
     )
     .await?;
 
@@ -227,6 +258,7 @@ async fn import_rekeyed_master_keys(
     params: Option<Arc<dyn SessionParams>>,
     msk: KmipKeyUidObject,
     mpk: KmipKeyUidObject,
+    privileged_users: &Option<Vec<String>>,
 ) -> KResult<()> {
     let import_request = Import {
         unique_identifier: UniqueIdentifier::TextString(msk.0),
@@ -238,7 +270,12 @@ async fn import_rekeyed_master_keys(
     };
 
     kmip_server
-        .import(import_request, owner, params.clone())
+        .import(
+            import_request,
+            owner,
+            params.clone(),
+            privileged_users.clone(),
+        )
         .await?;
 
     let import_request = Import {
@@ -250,7 +287,9 @@ async fn import_rekeyed_master_keys(
         object: mpk.1,
     };
 
-    kmip_server.import(import_request, owner, params).await?;
+    kmip_server
+        .import(import_request, owner, params, privileged_users.clone())
+        .await?;
 
     Ok(())
 }
@@ -263,6 +302,7 @@ async fn update_all_active_usk(
     msk: &mut MasterSecretKey,
     owner: &str,
     params: Option<Arc<dyn SessionParams>>,
+    privileged_users: &Option<Vec<String>>,
 ) -> KResult<()> {
     let res = locate_usk(
         kmip_server,
@@ -277,7 +317,15 @@ async fn update_all_active_usk(
     if let Some(uids) = &res {
         let mut handler = UserDecryptionKeysHandler::instantiate(cover_crypt, msk);
         for usk_uid in uids {
-            update_usk(&mut handler, usk_uid, kmip_server, owner, params.clone()).await?;
+            update_usk(
+                &mut handler,
+                usk_uid,
+                kmip_server,
+                owner,
+                params.clone(),
+                privileged_users,
+            )
+            .await?;
         }
     }
 
@@ -291,6 +339,7 @@ async fn update_usk(
     kmip_server: &KMS,
     owner: &str,
     params: Option<Arc<dyn SessionParams>>,
+    privileged_users: &Option<Vec<String>>,
 ) -> KResult<()> {
     let res = kmip_server
         .get(Get::from(usk_uid), owner, params.clone())
@@ -310,7 +359,9 @@ async fn update_usk(
         object: usk_obj,
     };
 
-    kmip_server.import(req, owner, params).await?;
+    kmip_server
+        .import(req, owner, params, privileged_users.clone())
+        .await?;
 
     Ok(())
 }

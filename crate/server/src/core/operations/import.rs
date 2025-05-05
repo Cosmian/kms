@@ -27,7 +27,7 @@ use tracing::{debug, trace};
 use uuid::Uuid;
 
 use crate::{
-    core::{KMS, wrapping::unwrap_key},
+    core::{KMS, retrieve_object_utils::user_has_permission, wrapping::unwrap_key},
     error::KmsError,
     kms_bail,
     result::KResult,
@@ -39,6 +39,7 @@ pub(crate) async fn import(
     request: Import,
     owner: &str,
     params: Option<Arc<dyn SessionParams>>,
+    privileged_users: Option<Vec<String>>,
 ) -> KResult<ImportResponse> {
     trace!("Entering import KMIP operation: {}", request);
     // Unique identifiers starting with `[` are reserved for queries on tags
@@ -53,6 +54,25 @@ pub(crate) async fn import(
     {
         kms_bail!("Importing objects with unique identifiers starting with `[` is not supported");
     }
+
+    // For creation of an object, check that user has create access-right
+    if let Some(users) = privileged_users {
+        let has_permission = user_has_permission(
+            owner,
+            None,
+            &cosmian_kmip::kmip_2_1::KmipOperation::Create,
+            kms,
+            params.clone(),
+        )
+        .await?;
+
+        if !has_permission && !users.iter().any(|u| u == owner) {
+            kms_bail!(KmsError::Unauthorized(
+                "User does not have create access-right.".to_owned()
+            ))
+        }
+    }
+
     // process the request based on the object type
     let (uid, operations) = match request.object.object_type() {
         ObjectType::SymmetricKey => {

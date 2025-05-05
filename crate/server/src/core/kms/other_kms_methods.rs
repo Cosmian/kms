@@ -288,6 +288,7 @@ impl KMS {
         create_request: &Create,
         owner: &str,
         params: Option<Arc<dyn SessionParams>>,
+        privileged_users: Option<Vec<String>>,
     ) -> KResult<(Option<String>, Object, HashSet<String>)> {
         trace!("Internal create private key");
         let attributes = &create_request.attributes;
@@ -320,6 +321,7 @@ impl KMS {
                     owner,
                     params,
                     create_request.attributes.sensitive,
+                    privileged_users,
                 )
                 .await?;
                 Ok((uid, object, tags))

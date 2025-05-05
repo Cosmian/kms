@@ -102,3 +102,13 @@ impl From<(String, (String, StateEnumeration, HashSet<KmipOperation>))>
 pub struct SuccessResponse {
     pub success: String,
 }
+
+#[derive(Serialize)]
+pub struct CreatePermissionResponse {
+    pub has_create_permission: bool,
+}
+
+#[derive(Serialize)]
+pub struct PrivilegedAccessResponse {
+    pub has_privileged_access: bool,
+}

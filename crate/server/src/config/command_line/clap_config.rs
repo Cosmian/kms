@@ -34,6 +34,7 @@ impl Default for ClapConfig {
             hsm_slot: vec![],
             hsm_password: vec![],
             non_revocable_key_id: None,
+            privileged_users: None,
         }
     }
 }
@@ -132,6 +133,11 @@ pub struct ClapConfig {
 
     #[clap(verbatim_doc_comment, long, env = "KMS_PUBLIC_URL")]
     pub kms_public_url: Option<String>,
+
+    /// Users than have initial rights to create and grant access right for Create Kmip Operation
+    /// If None, all users can create and grant create access right.
+    #[clap(long)]
+    pub privileged_users: Option<Vec<String>>,
 }
 
 impl ClapConfig {
@@ -243,6 +249,8 @@ impl fmt::Debug for ClapConfig {
                 .collect::<Vec<&str>>(),
         );
         let x = x.field("non_revocable_key_id", &self.non_revocable_key_id);
+        let x = x.field("privileged_users", &self.privileged_users);
+
         x.finish()
     }
 }

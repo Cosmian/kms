@@ -23,15 +23,39 @@ use tracing::warn;
 use tracing::{debug, trace};
 use uuid::Uuid;
 
-use crate::{core::KMS, error::KmsError, kms_bail, result::KResult};
+use crate::{
+    core::{KMS, retrieve_object_utils::user_has_permission},
+    error::KmsError,
+    kms_bail,
+    result::KResult,
+};
 
 pub(crate) async fn create_key_pair(
     kms: &KMS,
     request: CreateKeyPair,
     owner: &str,
     params: Option<Arc<dyn SessionParams>>,
+    privileged_users: Option<Vec<String>>,
 ) -> KResult<CreateKeyPairResponse> {
     trace!("Create key pair: {}", serde_json::to_string(&request)?);
+
+    // For creation of an object, check that user has create access-right
+    if let Some(users) = privileged_users {
+        let has_permission = user_has_permission(
+            owner,
+            None,
+            &cosmian_kmip::kmip_2_1::KmipOperation::Create,
+            kms,
+            params.clone(),
+        )
+        .await?;
+
+        if !has_permission && !users.iter().any(|u| u == owner) {
+            kms_bail!(KmsError::Unauthorized(
+                "User does not have create access-right.".to_owned()
+            ))
+        }
+    }
 
     if request.common_protection_storage_masks.is_some()
         || request.private_protection_storage_masks.is_some()
