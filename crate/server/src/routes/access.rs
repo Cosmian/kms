@@ -17,7 +17,7 @@ use crate::{
 };
 
 /// List objects owned by the current user
-/// i.e. objects for which the user has full access
+/// i.e., objects for which the user has full access
 #[get("/access/owned")]
 pub(crate) async fn list_owned_objects(
     req: HttpRequest,
@@ -34,7 +34,7 @@ pub(crate) async fn list_owned_objects(
     Ok(Json(list))
 }
 
-/// List objects not owned by the user but for which an access
+/// List objects not owned by the user, but for which access
 /// has been obtained by the user
 #[get("/access/obtained")]
 pub(crate) async fn list_access_rights_obtained(
@@ -90,13 +90,8 @@ pub(crate) async fn grant_access(
         "POST /access/grant {access:?} {user}"
     );
 
-    kms.grant_access(
-        &access,
-        &user,
-        database_params,
-        privileged_users.as_ref().clone(),
-    )
-    .await?;
+    kms.grant_access(&access, &user, None, privileged_users.as_ref().clone())
+        .await?;
     debug!(
         "Access granted on {:?} for {:?} to {}",
         access.unique_identifier, access.operation_types, access.user_id
@@ -113,7 +108,7 @@ pub(crate) async fn revoke_access(
     req: HttpRequest,
     access: Json<Access>,
     kms: Data<Arc<KMS>>,
-    privileged_users: web::Data<Option<Vec<String>>>,
+    privileged_users: Data<Option<Vec<String>>>,
 ) -> KResult<Json<SuccessResponse>> {
     let span = tracing::span!(tracing::Level::ERROR, "revoke_access");
     let _enter = span.enter();
@@ -126,13 +121,8 @@ pub(crate) async fn revoke_access(
         "POST /access/revoke {access:?} {user}"
     );
 
-    kms.revoke_access(
-        &access,
-        &user,
-        database_params,
-        privileged_users.as_ref().clone(),
-    )
-    .await?;
+    kms.revoke_access(&access, &user, None, privileged_users.as_ref().clone())
+        .await?;
     debug!(
         "Access revoke on {:?} for {:?} to {}",
         access.unique_identifier, access.operation_types, access.user_id
@@ -153,7 +143,6 @@ pub(crate) async fn get_create_access(
     let span = tracing::span!(tracing::Level::INFO, "get_create_access");
     let _enter = span.enter();
 
-    let database_params = kms.get_sqlite_enc_secrets(&req)?;
     let user = kms.get_user(&req);
 
     let has_create_permission = match privileged_users.as_ref() {
@@ -164,7 +153,7 @@ pub(crate) async fn get_create_access(
                 None,
                 &cosmian_kmip::kmip_2_1::KmipOperation::Create,
                 &kms,
-                database_params.clone(),
+                None,
             )
             .await?
         }
@@ -175,7 +164,7 @@ pub(crate) async fn get_create_access(
     }))
 }
 
-/// Get if user is privileged user
+/// Get if a user is a privileged user
 #[get("/access/privileged")]
 pub(crate) async fn get_privileged_access(
     req: HttpRequest,

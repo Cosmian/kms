@@ -28,6 +28,7 @@ use uuid::Uuid;
 use crate::{
     core::{
         KMS,
+        retrieve_object_utils::user_has_permission,
         wrapping::{unwrap_object, wrap_and_cache},
     },
     error::KmsError,
@@ -46,7 +47,7 @@ pub(crate) async fn import(
     trace!("Entering import KMIP operation: {}", request);
     // Unique identifiers starting with `[` are reserved for queries on tags
     // see tagging
-    // For instance, a request for unique identifier `[tag1]` will
+    // For instance, a request for a unique identifier `[tag1]` will
     // attempt to find a valid single object tagged with `tag1`
     if request
         .unique_identifier
@@ -57,7 +58,7 @@ pub(crate) async fn import(
         kms_bail!("Importing objects with unique identifiers starting with `[` is not supported");
     }
 
-    // For creation of an object, check that user has create access-right
+    // To create an object, check that the user has `Create` access right
     if let Some(users) = privileged_users {
         let has_permission = user_has_permission(
             owner,
@@ -75,7 +76,7 @@ pub(crate) async fn import(
         }
     }
 
-    // process the request based on the object type
+    // process the request based on the object type,
     let (uid, operations) = match request.object.object_type() {
         ObjectType::SymmetricKey => {
             Box::pin(process_symmetric_key(kms, request, owner, params.clone())).await?
@@ -160,7 +161,7 @@ pub(crate) async fn process_symmetric_key(
     // set the tags in the attributes
     attributes.set_tags(tags.clone())?;
     // merge the object attributes with the request attributes without overwriting
-    // this will recover exiting links for instance
+    //This will recover existing links, for instance
     if let Ok(object_attributes) = object.key_block()?.attributes() {
         attributes.merge(object_attributes, false);
     }
@@ -223,7 +224,7 @@ fn process_certificate(request: Import) -> Result<(String, Vec<AtomicOperation>)
         ))),
     }?;
 
-    // parse the certificate as an openssl object to convert it to the pivot
+    // parse the certificate as an OpenSSL object to convert it to the pivot
     let certificate = X509::from_der(&certificate_der_bytes)?;
     // convert the certificate to a KMIP object
     let object = openssl_certificate_to_kmip(&certificate)?;
@@ -299,12 +300,12 @@ async fn process_public_key(
     // build the attributes from the request attributes
     let mut attributes = request.attributes;
     // merge the object attributes with the request attributes without overwriting
-    // this will recover exiting links for instance
+    //This will recover existing links, for instance
     if let Ok(object_attributes) = object.attributes() {
         attributes.merge(object_attributes, false);
     }
 
-    // If the key is not wrapped and not a Covercrypt Key, try to parse it as an openssl object and
+    // If the key is not wrapped and not a Covercrypt Key, try to parse it as an OpenSSL object and
     // import it as a PKCS8
     // TODO: add Covercrypt keys when support for SPKI is added
     // TODO: https://github.com/Cosmian/cover_crypt/issues/118
@@ -376,9 +377,9 @@ async fn process_private_key(
         unwrap_object(&mut object, kms, owner, params.clone()).await?;
     }
 
-    // PKCS12  have their own processing
+    // PKCS12 has its own processing
     if object.key_block()?.key_format_type == KeyFormatType::PKCS12 {
-        //PKCS#12 contains more than just a private key, perform specific processing
+        //PKCS#12 contains more than just a private key, and performs specific processing
         return Box::pin(process_pkcs12(
             kms,
             owner,
@@ -409,7 +410,7 @@ async fn process_private_key(
         attributes.merge(object_attributes, false);
     }
 
-    // If the key is not wrapped and not a Covercrypt Key, try to parse it as an openssl object and
+    // If the key is not wrapped and not a Covercrypt Key, try to parse it as an OpenSSL object and
     // import it as a PKCS8
     // TODO: remove Covercrypt keys from this exception when support for PKCS#8 is added
     // TODO: https://github.com/Cosmian/cover_crypt/issues/118
@@ -439,7 +440,7 @@ async fn process_private_key(
     // set the unique identifier
     attributes.unique_identifier = Some(UniqueIdentifier::TextString(uid.clone()));
 
-    // Replace updated attributes in object structure if the object is not wrapped.
+    // Replace updated attributes in the object structure if the object is not wrapped.
     if let Ok(attrs) = object.key_block_mut()?.attributes_mut() {
         *attrs = attributes.clone();
     }
@@ -524,10 +525,10 @@ async fn process_pkcs12(
         uid if uid.is_empty() => Uuid::new_v4().to_string(),
         uid => format!("{uid}_sk"),
     };
-    // Build the private key id
+    // Build the private key ID
     let private_key_id = format!("{leaf_certificate_id}_sk");
 
-    // First build the tuples (id,Object) for the private key, the leaf certificate
+    // First, build the tuples (id, Object) for the private key, the leaf certificate
     // and the chain certificates
 
     // build the private key
@@ -600,7 +601,7 @@ async fn process_pkcs12(
     );
 
     //
-    // Stage 2 update the attributes and tags
+    // Stage 2: update the attributes and tags
     // and create the corresponding operations
     //
     let mut operations = Vec::with_capacity(2 + chain.len());
@@ -611,7 +612,7 @@ async fn process_pkcs12(
     {
         let attributes = attributes.get_or_insert(Attributes::default());
         //Note: it is unclear what link type should be used here according to KMIP
-        // CertificateLink seems to be for public key only and there is not description
+        // CertificateLink seems to be for public key only, and there is no description
         // for PKCS12CertificateLink
         attributes.set_link(
             LinkType::PKCS12CertificateLink,

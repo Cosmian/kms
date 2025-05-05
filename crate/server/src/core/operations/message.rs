@@ -146,19 +146,23 @@ async fn process_operation(
     request_operation: Operation,
 ) -> Result<Operation, KmsError> {
     trace!("Processing KMIP operation: {request_operation:?} with user: {user:?}");
+    let privileged_users = kms.params.privileged_users.clone();
     Ok(match request_operation {
         Operation::AddAttribute(add_attribute) => {
             Operation::AddAttributeResponse(kms.add_attribute(add_attribute, user, params).await?)
         }
-        Operation::Certify(kmip_request) => {
-            Operation::CertifyResponse(kms.certify(kmip_request, user, params).await?)
-        }
-        Operation::Create(kmip_request) => {
-            Operation::CreateResponse(kms.create(kmip_request, user, params).await?)
-        }
-        Operation::CreateKeyPair(kmip_request) => {
-            Operation::CreateKeyPairResponse(kms.create_key_pair(kmip_request, user, params).await?)
-        }
+        Operation::Certify(kmip_request) => Operation::CertifyResponse(
+            kms.certify(kmip_request, user, params, privileged_users)
+                .await?,
+        ),
+        Operation::Create(kmip_request) => Operation::CreateResponse(
+            kms.create(kmip_request, user, params, privileged_users)
+                .await?,
+        ),
+        Operation::CreateKeyPair(kmip_request) => Operation::CreateKeyPairResponse(
+            kms.create_key_pair(kmip_request, user, params, privileged_users)
+                .await?,
+        ),
         Operation::Decrypt(kmip_request) => {
             Operation::DecryptResponse(kms.decrypt(kmip_request, user, params).await?)
         }
@@ -186,9 +190,10 @@ async fn process_operation(
         Operation::Hash(kmip_request) => {
             Operation::HashResponse(kms.hash(kmip_request, user, params).await?)
         }
-        Operation::Import(kmip_request) => {
-            Operation::ImportResponse(kms.import(kmip_request, user, params).await?)
-        }
+        Operation::Import(kmip_request) => Operation::ImportResponse(
+            kms.import(kmip_request, user, params, privileged_users)
+                .await?,
+        ),
         Operation::Locate(kmip_request) => {
             Operation::LocateResponse(kms.locate(kmip_request, user, params).await?)
         }
@@ -199,9 +204,10 @@ async fn process_operation(
         Operation::ReKey(kmip_request) => {
             Operation::ReKeyResponse(kms.rekey(kmip_request, user, params).await?)
         }
-        Operation::ReKeyKeyPair(kmip_request) => {
-            Operation::ReKeyKeyPairResponse(kms.rekey_keypair(kmip_request, user, params).await?)
-        }
+        Operation::ReKeyKeyPair(kmip_request) => Operation::ReKeyKeyPairResponse(
+            kms.rekey_keypair(kmip_request, user, params, privileged_users)
+                .await?,
+        ),
         Operation::Revoke(kmip_request) => {
             Operation::RevokeResponse(kms.revoke(kmip_request, user, params).await?)
         }

@@ -76,7 +76,7 @@ pub(crate) async fn rekey_keypair(
                 user,
                 action,
                 params,
-                owm.attributes().sensitive,
+                owm.attributes().sensitive.unwrap_or(false),
                 privileged_users,
             ))
             .await

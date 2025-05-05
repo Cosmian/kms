@@ -76,7 +76,14 @@ impl KMS {
         let span = tracing::span!(tracing::Level::ERROR, "certify");
         let _enter = span.enter();
 
-        Box::pin(operations::certify(self, request, user, params)).await
+        Box::pin(operations::certify(
+            self,
+            request,
+            user,
+            params,
+            privileged_users,
+        ))
+        .await
     }
 
     /// This operation requests the server to generate a new symmetric key or
@@ -129,7 +136,14 @@ impl KMS {
         let span = tracing::span!(tracing::Level::ERROR, "create_key_pair");
         let _enter = span.enter();
 
-        Box::pin(operations::create_key_pair(self, request, user, params)).await
+        Box::pin(operations::create_key_pair(
+            self,
+            request,
+            user,
+            params,
+            privileged_users,
+        ))
+        .await
     }
 
     /// This request is used by the client to determine a list of protocol versions
@@ -359,26 +373,34 @@ impl KMS {
     /// imported and all the attributes to be assigned to the object. The
     /// attribute rules for each attribute for "Initially set by" and "When
     /// implicitly set" SHALL NOT be enforced as all attributes MUST be set
-    /// to the supplied values rather than any server generated values.
+    /// to the supplied values rather than any server-generated values.
     /// The response contains the Unique Identifier provided in the request or
     /// assigned by the server. The server SHALL copy the Unique Identifier
     /// returned by this operation into the ID Placeholder variable.
     ///
     /// Cosmian specific: unique identifiers starting with `[` are reserved
     /// for queries on tags. See tagging.
-    /// For instance, a request for unique identifier `[tag1]` will
+    /// For instance, a request for a unique identifier `[tag1]` will
     /// attempt to find a valid single object tagged with `tag1`
     pub(crate) async fn import(
         &self,
         request: Import,
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
+        privileged_users: Option<Vec<String>>,
     ) -> KResult<ImportResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "import");
         let _enter = span.enter();
 
         // Box::pin :: see https://rust-lang.github.io/rust-clippy/master/index.html#large_futures
-        Box::pin(operations::import(self, request, user, params)).await
+        Box::pin(operations::import(
+            self,
+            request,
+            user,
+            params,
+            privileged_users,
+        ))
+        .await
     }
 
     /// This operation requests that the server search for one or more Managed
@@ -574,7 +596,14 @@ impl KMS {
         let span = tracing::span!(tracing::Level::ERROR, "rekey_keypair");
         let _enter = span.enter();
 
-        Box::pin(operations::rekey_keypair(self, request, user, params)).await
+        Box::pin(operations::rekey_keypair(
+            self,
+            request,
+            user,
+            params,
+            privileged_users,
+        ))
+        .await
     }
 
     /// This request is used to generate a replacement key for an existing symmetric key. It is analogous to the Create operation, except that attributes of the replacement key are copied from the existing key, with the exception of the attributes listed in Re-key Attribute Requirements.

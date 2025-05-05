@@ -181,7 +181,7 @@ impl KMS {
                     create_request,
                     owner,
                     params,
-                    create_request.attributes.sensitive,
+                    create_request.attributes.sensitive.unwrap_or(false),
                     privileged_users,
                 )
                 .await?;

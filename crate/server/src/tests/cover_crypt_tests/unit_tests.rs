@@ -142,17 +142,18 @@ async fn test_cover_crypt_keys() -> KResult<()> {
 
     // ...via KeyPair
     debug!(" .... user key via Keypair");
-    let request = build_create_covercrypt_usk_request(access_policy, &sk_uid, EMPTY_TAGS, false)?;
+    let request =
+        build_create_covercrypt_usk_request(access_policy, &sk_uid, EMPTY_TAGS, false, None)?;
     let cr = kms.create(request, owner, None, None).await?;
     debug!("Create Response for User Decryption Key {:?}", cr);
 
     let usk_uid = cr.unique_identifier.to_string();
-    // check the generated id is an UUID
+    // check the generated ID is a UUID
     let usk_uid_ =
         Uuid::parse_str(&usk_uid).map_err(|e| KmsError::InvalidRequest(e.to_string()))?;
     assert_eq!(&usk_uid, &usk_uid_.to_string());
 
-    // get object
+    // get the object
     let gr = kms.get(Get::from(usk_uid.as_str()), owner, None).await?;
     let object = &gr.object;
     assert_eq!(
@@ -171,17 +172,18 @@ async fn test_cover_crypt_keys() -> KResult<()> {
 
     // ...via Private key
     debug!(" .... user key via Private Key");
-    let request = build_create_covercrypt_usk_request(access_policy, &sk_uid, EMPTY_TAGS, false)?;
+    let request =
+        build_create_covercrypt_usk_request(access_policy, &sk_uid, EMPTY_TAGS, false, None)?;
     let cr = kms.create(request, owner, None, None).await?;
     debug!("Create Response for User Decryption Key {:?}", cr);
 
     let usk_uid = cr.unique_identifier.to_string();
-    // check the generated id is an UUID
+    // check the generated ID is a UUID
     let usk_uid_ =
         Uuid::parse_str(&usk_uid).map_err(|e| KmsError::InvalidRequest(e.to_string()))?;
     assert_eq!(&usk_uid, &usk_uid_.to_string());
 
-    // get object
+    // get the object
     let gr = kms.get(Get::from(usk_uid.as_str()), owner, None).await?;
     let object = &gr.object;
     assert_eq!(
@@ -266,7 +268,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     );
     let confidential_mkg_encrypted_data = er.data.context("There should be encrypted data")?;
 
-    // check it doesn't work with invalid tenant
+    // check if it doesn't work with an invalid tenant
     let er = kms
         .encrypt(
             encrypt_request(
@@ -309,7 +311,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     );
     let secret_fin_encrypted_data = er.data.context("There should be encrypted data")?;
 
-    // check it doesn't work with invalid tenant
+    // check if it doesn't work with an invalid tenant
     let er = kms
         .encrypt(
             encrypt_request(
@@ -367,7 +369,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     let decrypted_data = dr.data.context("There should be decrypted data")?;
     assert_eq!(confidential_mkg_data, &**decrypted_data);
 
-    // check it doesn't work with invalid tenant
+    // check if it doesn't work with an invalid tenant
     let dr = kms
         .decrypt(
             decrypt_request(
@@ -404,7 +406,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
 
     assert_eq!(secret_fin_data, &**decrypted_data);
 
-    // check it doesn't work with invalid tenant
+    // check if it doesn't work with an invalid tenant
     let dr = kms
         .decrypt(
             decrypt_request(
@@ -602,7 +604,7 @@ async fn test_import_decrypt() -> KResult<()> {
         replace_existing: Some(false),
         key_wrap_type: None,
         // Bad attributes. Import will succeed, but
-        // researched attributes won't matched stored attributes
+        // researched attributes won't match stored attributes
         attributes: Attributes {
             object_type: Some(ObjectType::PrivateKey),
             ..Attributes::default()
@@ -627,8 +629,8 @@ async fn test_import_decrypt() -> KResult<()> {
             None,
         )
         .await?;
-    // Decryption used to fails: import attributes were incorrect;
-    // this seems fixed since #71. Leaving the test in case this pops-up again
+    // Decryption used to fail: import attributes were incorrect;
+    // this seems fixed since #71. Leaving the test in case this pops up again
     let decrypted_data = dr.data.context("There should be decrypted data")?;
     assert_eq!(confidential_mkg_data, &**decrypted_data);
 
@@ -639,8 +641,8 @@ async fn test_import_decrypt() -> KResult<()> {
         object_type: ObjectType::PrivateKey,
         replace_existing: Some(false),
         key_wrap_type: None,
-        // Okay! attributes are correctly set in the import request
-        // These attributes are matching the object's one
+        // Okay! The attributes are correctly set in the import request
+        // These attributes match the object's one
         attributes: gr_sk.object.attributes()?.clone(),
         object: gr_sk.object.clone(),
     };

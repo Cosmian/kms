@@ -45,13 +45,13 @@ async fn test_kmip_endpoints() -> KResult<()> {
     };
 
     let fut = async {
-        let app = test_utils::test_app(None).await;
+        let app = test_utils::test_app(None, None).await;
         let _ttlv: TTLV =
             test_utils::post_json_with_uri(&app, to_ttlv(&request_message)?, "/kmip").await?;
         Ok::<(), KmsError>(())
     };
     // There are many futures called in the test, and they will be stacked
-    // leading o a stack overflow. We need to use Box::pin to send them to the heap and avoid this.
+    // leading to a stack overflow. We need to use Box::pin to send them to the heap and avoid this.
     Box::pin(fut).await?;
     Ok(())
 }

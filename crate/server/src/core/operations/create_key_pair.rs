@@ -24,7 +24,7 @@ use tracing::{debug, info, trace};
 use uuid::Uuid;
 
 use crate::{
-    core::{KMS, wrapping::wrap_and_cache},
+    core::{KMS, retrieve_object_utils::user_has_permission, wrapping::wrap_and_cache},
     error::KmsError,
     kms_bail,
     result::KResult,
@@ -39,7 +39,7 @@ pub(crate) async fn create_key_pair(
 ) -> KResult<CreateKeyPairResponse> {
     trace!("Create key pair: {}", serde_json::to_string(&request)?);
 
-    // For creation of an object, check that user has create access-right
+    // To create a key pair, check that the user has `Create` access right
     if let Some(users) = privileged_users {
         let has_permission = user_has_permission(
             owner,

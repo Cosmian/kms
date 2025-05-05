@@ -42,7 +42,7 @@ pub(crate) async fn retrieve_object_for_operation(
             continue
         }
 
-        if user_has_permission(user, owm, &operation_type, kms, params.clone()).await? {
+        if user_has_permission(user, Some(owm), &operation_type, kms, params.clone()).await? {
             let mut owm = owm.to_owned();
             // update the state on the object attributes
             let state = owm.state();

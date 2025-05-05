@@ -43,9 +43,9 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
 
     // request key pair creation
     let request =
-        create_ec_key_pair_request(None, EMPTY_TAGS, RecommendedCurve::CURVE25519, false)?;
+        create_ec_key_pair_request(None, EMPTY_TAGS, RecommendedCurve::CURVE25519, false, None)?;
     let response = kms.create_key_pair(request, owner, None, None).await?;
-    // check that the private and public key exist
+    // check that the private and public keys exist
     // check secret key
     let sk_response = kms
         .get(
@@ -84,7 +84,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         sk_key_block.key_format_type,
         KeyFormatType::TransparentECPrivateKey
     );
-    //check link to public key
+    //check the link to a public key
     let attr = sk_key_block.attributes()?;
     assert_eq!(
         attr.link
@@ -321,7 +321,7 @@ async fn test_database_user_tenant() -> KResult<()> {
 
     // request key pair creation
     let request =
-        create_ec_key_pair_request(None, EMPTY_TAGS, RecommendedCurve::CURVE25519, false)?;
+        create_ec_key_pair_request(None, EMPTY_TAGS, RecommendedCurve::CURVE25519, false, None)?;
     let response = kms.create_key_pair(request, owner, None, None).await?;
 
     // check that we can get the private and public key
