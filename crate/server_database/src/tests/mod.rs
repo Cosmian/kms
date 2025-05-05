@@ -5,7 +5,6 @@ use std::path::Path;
 use cosmian_kms_crypto::crypto::secret::Secret;
 use cosmian_logger::log_init;
 use tempfile::TempDir;
-use tracing::log::debug;
 
 use self::{
     database_tests::{crud, tx_and_list, upsert},
