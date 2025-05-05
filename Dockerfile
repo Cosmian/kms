@@ -31,15 +31,12 @@ RUN if [ "$FIPS" = "true" ]; then \
 #
 # KMS server
 #
-FROM debian:bookworm-slim AS kms-server
+FROM debian:bookworm-20250428-slim AS kms-server
 
 COPY --from=builder /root/kms/crate/server/ui                   /usr/local/cosmian/ui
 COPY --from=builder /root/kms/target/release/cosmian_kms        /usr/bin/cosmian_kms
 COPY --from=builder /root/kms/target/release/cosmian            /usr/bin/cosmian
 COPY --from=builder /usr/local/openssl                          /usr/local/openssl
-#
-# Create working directory
-#
 
 EXPOSE 9998
 
