@@ -261,6 +261,8 @@ fn get_application(reason: &str) -> String {
         "meet".to_owned()
     } else if reason.contains("calendar") {
         "calendar".to_owned()
+    } else if reason.contains("migration") {
+        "migration".to_owned()
     } else {
         "drive".to_owned()
     };
