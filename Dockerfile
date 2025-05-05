@@ -13,6 +13,8 @@ ARG FIPS=false
 
 WORKDIR /root
 
+RUN git clone https://github.com/Cosmian/reusable_scripts.git
+
 COPY . /root/kms
 
 WORKDIR /root/kms
