@@ -117,6 +117,9 @@ pub(crate) fn decode_jwt_authorization_token(
 
     trace!("looking for kid `{kid}` JWKS:\n{:?}", jwt_config.jwks);
 
+    let issuer_uri = jwt_config.jwt_issuer_uri.clone();
+    trace!("Try to validate token:\n{token:?} \n {issuer_uri:?}");
+
     let jwk = &jwt_config.jwks.find(&kid)?.ok_or_else(|| {
         KmsError::Unauthorized("[Google CSE auth] Specified key not found in set".to_owned())
     })?;
@@ -350,7 +353,7 @@ mod tests {
         routes::google_cse::{
             self,
             jwt::{
-                JWKS_URI, JWT_ISSUER_URI, decode_jwt_authorization_token, jwt_authorization_config,
+                decode_jwt_authorization_token, jwt_authorization_config, JWKS_URI, JWT_ISSUER_URI,
             },
             operations::WrapRequest,
         },
@@ -422,7 +425,8 @@ mod tests {
         // because we don't know the URL of the Google Drive authorization token API.
         unsafe {
             std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWKS_URI", JWKS_URI);
-            std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWT_ISSUER", JWT_ISSUER_URI); // the token has been issued by Google Accounts (post request)
+            std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWT_ISSUER", JWT_ISSUER_URI);
+            // the token has been issued by Google Accounts (post request)
         }
         let jwt_authorization_config = jwt_authorization_config(&jwks_manager);
         trace!("{jwt_authorization_config:#?}");
