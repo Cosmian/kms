@@ -37,7 +37,6 @@ use crate::{
 /// # Arguments
 ///
 /// * `kms` - The KMS instance
-/// * `request` - The request to create the object
 /// * `owner` - The owner of the object
 /// * `params` - The parameters to use
 /// * `unique_identifier` - The unique identifier of the object

@@ -218,7 +218,7 @@ where
 {
     let hex: Option<String> = if v.is_string() {
         let s = v.as_str().map(ToOwned::to_owned).ok_or_else(|| {
-            de::Error::custom(format!("deserialize_interger: failde parsing string {v}"))
+            de::Error::custom(format!("deserialize_integer: failed parsing string {v}"))
         })?;
         if s.get(0..2) != Some("0x") {
             return Err(de::Error::custom(format!(

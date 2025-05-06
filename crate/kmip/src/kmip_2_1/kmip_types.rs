@@ -678,9 +678,9 @@ impl Display for VendorAttribute {
 /// Any data type or structure.
 /// If a structure, only TTLV is supported.
 ///
-/// The reason to use ajacently tagged enum is to allow for JSON serialization
-/// without lossing the type information for `ByteString`, `DateTime` and `BigInteger`
-/// which all serialize to arrays in JSON, making deserialization impossible wihout
+/// The reason to use adjacently tagged enum is to allow for JSON serialization
+/// without losing the type information for `ByteString`, `DateTime` and `BigInteger`
+/// which all serialize to arrays in JSON, making deserialization impossible without
 /// type indication.
 /// The same is true for `Integer` and `LongInteger` which serialize to numbers in JSON.
 ///

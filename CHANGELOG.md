@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### 🚀 Features
 
-- Support for KMIP 1.0, 1.1, 1.2, 1.3, 1.4, 2.0, 2.1
+- Support for KMIP 1.0, 1.1, 1.2, 1.3, 1.4, 2.0, 2.1 ([#412](https://github.com/Cosmian/kms/pull/412))
 - Binary TTLV for all KMIP versions on port 5696
 - JSON TTLV for all KMIP versions on port 9998, endpoint /kmip
 - VMware support
@@ -16,6 +16,10 @@ All notable changes to this project will be documented in this file.
     - These users can grant or revoke create access rights for other users
     - Without `Create` access right or privileged status, users can't create or import objects to KMS
 
+### 🚜 Refactor
+
+- Rationalize SQL implementation ([#379](https://github.com/Cosmian/kms/issues/379))
+- Rust KeyBlock implementation not fully compliant with KMIP 2.1 specs ([#76](https://github.com/Cosmian/kms/issues/76))
 
 ### 🐛 Bug Fixes
 
@@ -26,12 +30,11 @@ All notable changes to this project will be documented in this file.
 - More extensive coverage of KMIP attributes
 - Database schema changes
 
-
 ## [4.24.0] - 2025-04-23
 
 ### 🚀 Features
 
-- Add support Oracle Transparent Database Encryption (TDE) using Oracle Key Vault (#396)
+- Add support Oracle Transparent Database Encryption (TDE) using Oracle Key Vault ([#396](https://github.com/Cosmian/kms/pull/396))
 
 ### ⚙️ Miscellaneous Tasks
 

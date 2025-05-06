@@ -1252,7 +1252,7 @@ fn normative_request_message_test() {
       {"tag":"QueryFunction", "type":"Enumeration", "value":"QueryObjects"}
     ]}
   ]}
-]}    
+]}
     "#;
     // Deserialize
     let ttlv: TTLV = serde_json::from_str(ttlv_string).unwrap();

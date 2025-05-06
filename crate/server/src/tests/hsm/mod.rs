@@ -31,7 +31,7 @@ mod ec_dek;
 mod rsa_dek;
 mod symmetric_dek;
 
-/// The HSM simulator does not like tests in parallell,
+/// The HSM simulator does not like tests in parallel,
 /// so we run them sequentially from here
 #[tokio::test]
 async fn test_all() {

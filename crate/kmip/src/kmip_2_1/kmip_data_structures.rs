@@ -1582,7 +1582,7 @@ pub struct ExtensionInformation {
 
 /// The Object Defaults is a structure that details the values that the server will use
 /// if the client omits them on factory methods for objects. The structure list the Attributes
-/// nd their values by Object Type enumeration, as well as the Object Group(s)
+/// and their values by Object Type enumeration, as well as the Object Group(s)
 /// for which such defaults pertain (if not pertinent to ALL Object Group values)
 #[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]

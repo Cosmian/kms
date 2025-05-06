@@ -103,7 +103,7 @@ impl Default for TtlvSerializer {
 /// Serialize an Object to TTLV
 ///
 /// The way this works is as follows: say we are starting with a Source object
-/// 1. The Serialize implementation of the Source object will map the objec to Serde Data Model
+/// 1. The Serialize implementation of the Source object will map the object to Serde Data Model
 /// 2. The TTLV Serializer will then serialize the Serde Data Model to TTLV
 ///
 /// KMIP objects use the default Serde serialization.
@@ -342,7 +342,7 @@ impl ser::Serializer for &mut TtlvSerializer {
                 Detected::ByteString((*self).to_vec())
             }
         }
-        // BigUint shoould go and be replace by BigInt everywhere
+        // BigUint should go and be replace by BigInt everywhere
         impl Detect for &BigUint {
             fn detect(&self) -> Detected {
                 debug!("serializing a Big Uint {:?}", self);
@@ -473,7 +473,7 @@ impl ser::Serializer for &mut TtlvSerializer {
             "serialize_newtype_variant, name: {name}::{variant} (variant index: {variant_index})"
         );
 
-        // First we want to kmow if this variant has a parent. If not the user is
+        // First we want to know if this variant has a parent. If not the user is
         // trying to serialize a newtype variant directly as root
         let has_parent = self.stack.peek().is_some();
 

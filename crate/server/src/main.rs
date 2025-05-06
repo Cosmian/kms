@@ -52,7 +52,6 @@ async fn main() -> KResult<()> {
     }
 
     // initialize the tracing system
-    // &clap_config.telemetry
     let _otel_guard = tracing_init(&TracingConfig {
         service_name: "cosmian_kms".to_string(),
         otlp: clap_config

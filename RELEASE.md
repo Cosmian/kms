@@ -3,8 +3,8 @@
 ## Table of contents
 
 - [Release](#release)
-  - [Table of contents](#table-of-contents)
-  - [Step by step](#step-by-step)
+    - [Table of contents](#table-of-contents)
+    - [Step by step](#step-by-step)
 
 ## Step by step
 

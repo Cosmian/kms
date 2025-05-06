@@ -7,10 +7,10 @@ With the feature `openssl`, the library provides conversions from KMIP objects t
 
 For specific Cosmian crypto-systems, you can use the [cosmian_kmip](https://github.com/Cosmian/kms/tree/main/crate/kmip) to generate KMIP data with an abstraction level.
 
-
 ## Enumerations
 
 Enumerations are used for two different purposes:
+
 - to hold the variant names and values of `Attributes` such as those described in chapter 4 of the KMIP 2.1 standard
 - to offer alternative representations of the same value
 
@@ -43,6 +43,7 @@ pub enum CryptographicAlgorithm {
     ...
 }
 ```
+
 To be correctly serialized, the enumeration must implement the `KmipEnumSerialize` trait, as well as `Copy` and the `strum::IntoStaticStr`. They must also be annotated with `#[repr(u32)]` and `#[allow(non_camel_case_types)]`.
 
 For details, see the `kmip-derive` crate and the `KmipEnumSerialize` trait.

@@ -24,4 +24,4 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 zeroize = { workspace = true, default-features = true }
-serde = { version = "1.0.217", features = ["derive"] }
+serde = { workspace = true, features = ["derive"] }

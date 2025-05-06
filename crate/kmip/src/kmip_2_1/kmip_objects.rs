@@ -139,7 +139,7 @@ pub struct SymmetricKey {
 // 1. Make sure the variant name is identical to the struct name it holds
 // 2. Make sure that the Deserialize implementation is updated
 // and that the Deserializer understands your changes
-// 3. Make sure that any struct you create that holds an Object, holds it in a proprety
+// 3. Make sure that any struct you create that holds an Object, holds it in a property
 // called `object`, which is serialized using Pascal Case, i.e. it becomes `Object`.
 // Check `Import` as an example
 

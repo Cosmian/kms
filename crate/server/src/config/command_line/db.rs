@@ -25,7 +25,7 @@ pub struct MainDBConfig {
     #[clap(
         long,
         env("KMS_DATABASE_TYPE"),
-        value_parser(["postgresql", "mysql", "sqlite",  "redis-findex"]),
+        value_parser(["postgresql", "mysql", "sqlite", "redis-findex"]),
         verbatim_doc_comment
     )]
     pub database_type: Option<String>,
@@ -38,7 +38,7 @@ pub struct MainDBConfig {
     )]
     pub database_url: Option<String>,
 
-    /// The directory path of the sqlite or sqlite-enc
+    /// The directory path of the sqlite
     #[clap(
         long,
         env = "KMS_SQLITE_PATH",

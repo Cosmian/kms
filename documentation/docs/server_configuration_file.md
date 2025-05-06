@@ -52,7 +52,7 @@ hsm_password = ["<password_of_1st_slot1>", "<password_of_2bd_slot2>", ...]
 
 # Check the database pages for more information
 [db]
-database_type = "postgresql", "mysql", "sqlite", "sqlite-enc", "redis-findex"
+database_type = "postgresql", "mysql", "sqlite", "redis-findex"
 database_url = "<database-url>"
 sqlite_path = "<sqlite-path>"
 redis_master_password = "<redis master password>"

@@ -217,7 +217,7 @@ docker build . --network=host \
 
 ## Running the unit and integration tests
 
-By default, tests are run using `cargo test` and an SQLCipher backend (called `sqlite-enc`).
+By default, tests are run using `cargo test` and an SQLCipher backend (called `sqlite`).
 This can be influenced by setting the `KMS_TEST_DB` environment variable to
 
 - `sqlite`, for plain SQLite
@@ -249,7 +249,7 @@ log_init(option_env!("RUST_LOG"));
 ## Development: running the server with cargo
 
 To run the server with cargo, you need to set the `RUST_LOG` environment variable to the desired
-log level and select the correct backend (which defaults to `sqlite-enc`).
+log level and select the correct backend (which defaults to `sqlite`).
 
 ```sh
 RUST_LOG="info,cosmian_kms_server=debug" \

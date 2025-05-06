@@ -8,7 +8,10 @@ The list of arguments can be printed using the `--help` command line option.
 
 Cosmian Key Management Service
 
-Usage: cosmian_kms [OPTIONS]
+Usage: cosmian_kms [OPTIONS] [KEY_ENCRYPTION_KEY]
+
+Arguments:
+  [KEY_ENCRYPTION_KEY]  Force all keys imported or created in the KMS, which are not protected by a key encryption key, to be wrapped by the specified key encryption key (KEK)
 
 Options:
       --database-type <DATABASE_TYPE>
@@ -16,14 +19,13 @@ Options:
           - postgresql: `PostgreSQL`. The database url must be provided
           - mysql: `MySql` or `MariaDB`. The database url must be provided
           - sqlite: `SQLite`. The data will be stored at the `sqlite_path` directory
-          - sqlite-enc: `SQLite` encrypted at rest. the data will be stored at the `sqlite_path` directory.
             A key must be supplied on every call
           - redis-findex: a Redis database with encrypted data and encrypted indexes thanks to Findex.
-            The Redis url must be provided, as well as the redis-master-password and the redis-findex-label [env: KMS_DATABASE_TYPE=] [possible values: postgresql, mysql, sqlite, sqlite-enc, redis-findex]
+            The Redis url must be provided, as well as the redis-master-password and the redis-findex-label [env: KMS_DATABASE_TYPE=] [possible values: postgresql, mysql, sqlite, redis-findex]
       --database-url <DATABASE_URL>
           The url of the database for postgresql, mysql or findex-redis [env: KMS_DATABASE_URL=]
       --sqlite-path <SQLITE_PATH>
-          The directory path of the sqlite or sqlite-enc [env: KMS_SQLITE_PATH=] [default: ./sqlite-data]
+          The directory path of the sqlite [env: KMS_SQLITE_PATH=] [default: ./sqlite-data]
       --redis-master-password <REDIS_MASTER_PASSWORD>
           redis-findex: a master password used to encrypt the Redis data and indexes [env: KMS_REDIS_MASTER_PASSWORD=]
       --redis-findex-label <REDIS_FINDEX_LABEL>
@@ -31,18 +33,30 @@ Options:
       --clear-database
           Clear the database on start.
           WARNING: This will delete ALL the data in the database [env: KMS_CLEAR_DATABASE=]
-      --port <PORT>
-          The KMS server port [env: KMS_PORT=] [default: 9998]
-      --hostname <HOSTNAME>
-          The KMS server hostname [env: KMS_HOSTNAME=] [default: 0.0.0.0]
-      --https-p12-file <HTTPS_P12_FILE>
-          The KMS server optional PKCS#12 Certificates and Key file. If provided, this will start the server in HTTPS mode [env: KMS_HTTPS_P12_FILE=]
-      --https-p12-password <HTTPS_P12_PASSWORD>
+      --socket-server-start
+          Start the KMIP socket server? If this is set to true, the TLS config must be provided, featuring a server PKCS#12 file and a client certificate authority certificate file [env: KMS_SOCKET_SERVER_START=]
+      --socket-server-port <SOCKET_SERVER_PORT>
+          The KMS socket server port [env: KMS_SOCKET_SERVER_PORT=] [default: 5696]
+      --socket-server-hostname <SOCKET_SERVER_HOSTNAME>
+          The KMS socket server hostname [env: KMS_SOCKET_SERVER_HOSTNAME=] [default: 0.0.0.0]
+      --tls-p12-file <TLS_P12_FILE>
+          The KMS server optional PKCS#12 Certificates and Key file. Mandatory when starting the socket server. If provided, this will start the HTTP server in HTTPS mode [env: KMS_HTTPS_P12_FILE=]
+      --tls-p12-password <TLS_P12_PASSWORD>
           The password to open the PKCS#12 Certificates and Key file [env: KMS_HTTPS_P12_PASSWORD=]
-      --authority-cert-file <AUTHORITY_CERT_FILE>
-          The server optional authority X509 certificate in PEM format used to validate the client certificate presented for authentication. If provided, this will require clients to present a certificate signed by this authority for authentication. The server must run in TLS mode for this to be used [env: KMS_AUTHORITY_CERT_FILE=]
+      --clients-ca-cert-file <CLIENTS_CA_CERT_FILE>
+          The server optional authority X509 certificate in PEM format used to validate the client certificate presented for authentication. If provided, this will require clients to present a certificate signed by this authority for authentication. Mandatory when starting the socket server [env: KMS_CLIENTS_CA_CERT_FILE=]
+      --port <PORT>
+          The KMS HTTP server port [env: KMS_PORT=] [default: 9998]
+      --hostname <HOSTNAME>
+          The KMS HTTP server hostname [env: KMS_HOSTNAME=] [default: 0.0.0.0]
       --api-token-id <API_TOKEN_ID>
-          The API token to use for authentication [env: KMS_API_TOKEN=]
+          An optional API token to use for authentication on the HTTP server [env: KMS_API_TOKEN=]
+      --https-p12-file <HTTPS_P12_FILE>
+          DEPRECATED: use the TLS section instead The KMS server optional PKCS#12 Certificates and Key file. If provided, this will start the server in HTTPS mode [env: KMS_HTTPS_P12_FILE=]
+      --https-p12-password <HTTPS_P12_PASSWORD>
+          DEPRECATED: use the TLS section instead The password to open the PKCS#12 Certificates and Key file [env: KMS_HTTPS_P12_PASSWORD=]
+      --authority-cert-file <AUTHORITY_CERT_FILE>
+          DEPRECATED: use the TLS section instead The server optional authority X509 certificate in PEM format used to validate the client certificate presented for authentication. If provided, this will require clients to present a certificate signed by this authority for authentication. The server must run in TLS mode for this to be used [env: KMS_AUTHORITY_CERT_FILE=]
       --jwt-issuer-uri <JWT_ISSUER_URI>...
           The issuer URI of the JWT token [env: KMS_JWT_ISSUER_URI=]
       --jwks-uri <JWKS_URI>...
@@ -73,11 +87,21 @@ Options:
           This setting disables the validation of the tokens used by the Google Workspace CSE feature of this server [env: KMS_GOOGLE_CSE_DISABLE_TOKENS_VALIDATION=]
       --ms-dke-service-url <MS_DKE_SERVICE_URL>
           This setting enables the Microsoft Double Key Encryption service feature of this server. [env: KMS_MS_DKE_SERVICE_URL=]
+      --rust-log <RUST_LOG>
+          An alternative to setting the `RUST_LOG` environment variable.
+          Setting this variable will override the `RUST_LOG` environment variable [env: KMS_RUST_LOG=]
       --otlp <OTLP>
-          The OTLP collector URL
-          (for instance, <http://localhost:4317>) [env: KMS_OTLP_URL=]
+          The OTLP collector URL for gRPC
+          (for instance, <http://localhost:4317>)
+          If not set, the telemetry system will not be initialized [env: KMS_OTLP_URL=]
       --quiet
           Do not log to stdout [env: KMS_LOG_QUIET=]
+      --log-to-syslog
+          Log to syslog [env: KMS_LOG_TO_SYSLOG=]
+      --enable-metering
+          Enable metering in addition to tracing when telemetry is enabled [env: KMS_ENABLE_METERING=]
+      --environment <ENVIRONMENT>
+          The name of the environment (development, test, production, etc.) This will be added to the telemetry data if telemetry is enabled [env: KMS_ENVIRONMENT=] [default: development]
       --info
           Print the server configuration information and exit
       --hsm-model <HSM_MODEL>
@@ -100,6 +124,8 @@ Options:
           see `--hsm_slot` for more information
       --kms-public-url <KMS_PUBLIC_URL>
           [env: KMS_PUBLIC_URL=]
+      --privileged-users <PRIVILEGED_USERS>
+          Users than have initial rights to create and grant access right for Create Kmip Operation If None, all users can create and grant create access right
   -h, --help
           Print help (see more with '--help')
   -V, --version

@@ -10,7 +10,7 @@ const DEFAULT_SOCKET_SERVER_HOSTNAME: &str = "0.0.0.0";
 #[serde(default)]
 pub struct SocketServerConfig {
     /// Start the KMIP socket server?
-    /// If this is set to true, the TLS config nust be provided, featuring
+    /// If this is set to true, the TLS config must be provided, featuring
     /// a server PKCS#12 file and a client certificate authority certificate file
     #[clap(long, env = "KMS_SOCKET_SERVER_START", default_value_t = false)]
     pub socket_server_start: bool,

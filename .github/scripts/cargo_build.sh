@@ -99,17 +99,17 @@ fi
 find . -type d -name cosmian-kms -exec rm -rf \{\} \; -print || true
 rm -f /tmp/*.toml
 
-export RUST_LOG="cosmian_cli=debug,cosmian_kms_server=info,cosmian_kmip=error,test_kms_server=info"
+export RUST_LOG="cosmian_cli=info,cosmian_kms_server=error,cosmian_kmip=error,test_kms_server=trace"
 
 # shellcheck disable=SC2086
 cargo build --target $TARGET $RELEASE $FEATURES
 
-declare -a DATABASES=('redis-findex' 'sqlite' 'sqlite-enc' 'postgresql' 'mysql')
+declare -a DATABASES=('redis-findex' 'sqlite' 'postgresql' 'mysql')
 for KMS_TEST_DB in "${DATABASES[@]}"; do
   echo "Database KMS: $KMS_TEST_DB"
 
   # for now, discard tests on postgresql and mysql
-  if [ "$KMS_TEST_DB" = "sqlite-enc" ] || [ "$KMS_TEST_DB" = "postgresql" ] || [ "$KMS_TEST_DB" = "mysql" ]; then
+  if [ "$KMS_TEST_DB" = "postgresql" ] || [ "$KMS_TEST_DB" = "mysql" ]; then
     continue
   fi
 

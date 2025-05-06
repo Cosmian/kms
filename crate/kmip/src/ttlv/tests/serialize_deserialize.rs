@@ -339,7 +339,7 @@ fn test_mixed_fields_order() {
       "CryptographicAlgorithm": "AES"
     }
   }
-}    
+}
     "#;
     // the key format type must be known to deserialize the key value
     serde_json::from_str::<Object>(json).unwrap_err();

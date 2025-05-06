@@ -12,7 +12,6 @@ configuration.
         - [PostgreSQL](#postgresql)
         - [MySQL or MariaDB](#mysql-or-mariadb)
         - [Redis with Findex](#redis-with-findex-1)
-        - [SQLite encrypted](#sqlite-encrypted)
 - [Clearing the database](#clearing-the-database)
 - [Database migration](#database-migration)
 <!-- TOC -->
@@ -22,8 +21,7 @@ configuration.
 All databases but SQLite and SQLite encrypted can be used in a high-availability setup.
 
 The **SQLite** database can serve high loads and millions of objects, and is very suitable
-for scenarios that do not demand high availability. To use SQLIte encrypted, see
-the [SQLite encrypted](#sqlite-encrypted) section.
+for scenarios that do not demand high availability.
 
 ### Redis with Findex
 
@@ -168,83 +166,6 @@ For Redis with Findex, the `--redis-master-password` and `--redis-findex-label` 
     ```
 
 - Redis (with-Findex), use:
-
-#### SQLite encrypted
-
-=== "kms.toml"
-
-    ```toml
-    [db]
-    database_type = "sqlite-enc"
-    sqlite_path = "./sqlite-data"
-    ```
-
-=== "Command line arguments"
-
-    ```sh
-    --database-type=sqlite-enc \
-    --sqlite-path="./sqlite-data"
-    ```
-
-It requires now to install the [Cosmian CLI](../cosmian_cli/index.md) and create a new encrypted database.
-
-!!! important "Important: encrypted databases must be created first"
-
-    Before using an encrypted database, you must create it by either using the [Cosmian CLI](../cosmian_cli/index.md)
-    or calling the `POST /new_database` endpoint.
-    The call will return a secret
-
-    === "cosmian CLI"
-
-        ```sh
-        ➜ cosmian kms new-database
-
-        eyJncm91cF9pZCI6MzE0ODQ3NTQzOTU4OTM2Mjk5OTY2ODU4MTY1NzE0MTk0MjU5NjUyLCJrZXkiOiIzZDAyNzg3YjUyZGY5OTYzNGNkOTVmM2QxODEyNDk4YTRiZWU1Nzc1NmM5NDI0NjdhZDI5ZTYxZjFmMmM0OWViIn0=
-        ```
-
-    === "curl"
-
-        ```sh
-        ➜ curl -X POST https://my-server:9998/new_database
-
-        "eyJncm91cF9pZCI6MzE0ODQ3NTQzOTU4OTM2Mjk5OTY2ODU4MTY1NzE0MTk0MjU5NjUyLCJrZXkiOiIzZDAyNzg3YjUyZGY5OTYzNGNkOTVmM2QxODEyNDk4YTRiZWU1Nzc1NmM5NDI0NjdhZDI5ZTYxZjFmMmM0OWViIn0="%
-        ```
-        The secret is the value between the quotes `""`.
-
-    Warning:
-
-    - This secret is only displayed **once** and is **not stored**
-        anywhere on the server.
-    - Each call to `new_database` will create a **new additional** database.
-      It will not return the secret of the last created database,
-      and it will not overwrite the last created database.
-
-Once an encrypted database is created, the secret must be passed in every subsequent query to the
-KMS server.
-Passing the correct secret "auto-selects" the correct encrypted database: multiple encrypted
-databases can be used concurrently on the same KMS server.
-
-=== "cosmian CLI"
-
-    The secret must be set in `database_secret` property of the CLI `cosmian.json` configuration file,
-    and it will be used for all subsequent calls to the KMS server.
-
-    ```toml
-    [kms_config.http_config]
-    server_url = "http://127.0.0.1:9990"
-    access_token = "eyJhbGciOiJSUzI1NiIsInR5cCI6Ik...yaJbDDql3A"
-    database_secret = "eyJncm91cF9pZCI6MTI5N...MWIwYjE5ZmNlN2U3In0="
-    ```
-
-=== "curl"
-
-    The secret must be passed using a `DatabaseSecret` HTTP header, e.g.
-
-    ```sh
-    curl \
-    -H "DatabaseSecret: eyJncm91cF9pZCI6MzE0ODQ3NTQzOTU4OTM2Mjk5OTY2ODU4MTY1NzE0MTk0MjU5NjUyLCJrZXkiOiIzZDAyNzg3YjUyZGY5OTYzNGNkOTVmM2QxODEyNDk4YTRiZWU1Nzc1NmM5NDI0NjdhZDI5ZTYxZjFmMmM0OWViIn0=" \
-    http://localhost:9998/objects/owned
-    ```
 
 ## Clearing the database
 

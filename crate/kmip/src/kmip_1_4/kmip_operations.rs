@@ -95,7 +95,7 @@ pub struct CreateKeyPair {
 pub struct CreateKeyPairResponse {
     /// Unique ID of the private key
     pub private_key_unique_identifier: String,
-    /// Unique ID of the public key  
+    /// Unique ID of the public key
     pub public_key_unique_identifier: String,
     /// Private key template attributes
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -156,7 +156,7 @@ pub struct ReKeyResponse {
 }
 
 /// 4.5 Re-key Key Pair
-/// This operation requests the server to generate a replacement key pair for an existing public/private key pair.  
+/// This operation requests the server to generate a replacement key pair for an existing public/private key pair.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct ReKeyKeyPair {
@@ -467,7 +467,7 @@ pub struct GetAttributeListResponse {
 }
 
 /// 4.14 Add Attribute
-/// This operation requests that the server add a new attribute or append attribute values to an existing attribute.  
+/// This operation requests that the server add a new attribute or append attribute values to an existing attribute.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct AddAttribute {
@@ -1290,7 +1290,7 @@ pub struct Import {
     /// Otherwise, the server SHALL store the object as provided.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub key_wrap_type: Option<KeyWrapType>,
-    /// All the object’s Attributes.
+    /// All the object's Attributes.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attributes: Option<Vec<Attribute>>,
     /// The object being imported. The object and attributes MAY be wrapped.
