@@ -326,8 +326,7 @@ mod tests {
 basicConstraints=CA:TRUE,pathlen:0
 keyUsage=keyCertSign,digitalSignature
 extendedKeyUsage=emailProtection
-crlDistributionPoints=URI:http://cse.example.com/crl.pem
-";
+crlDistributionPoints=URI:http://cse.example.com/crl.pem";
 
         let mut x509_builder = X509::builder().unwrap();
         let x509_context = x509_builder.x509v3_context(None, None);
@@ -381,7 +380,13 @@ crlDistributionPoints=URI:http://cse.example.com/crl.pem
     Signature Value:
 
 ";
-        assert_eq!(cert.split_once("X509v3 extensions:\n").unwrap().1, cert_);
+        assert_eq!(
+            cert.split_once("X509v3 extensions:\n")
+                .unwrap()
+                .1
+                .replace('\n', ""),
+            cert_.replace('\n', "")
+        );
 
         for ext in &exts_with_x509_parser {
             info!("\n\next: {:?}", ext);

@@ -4,6 +4,7 @@ use cosmian_kmip::{
     kmip_0::kmip_types::{CryptographicUsageMask, State},
     kmip_2_1::{
         KmipOperation,
+        kmip_attributes::Attributes,
         kmip_data_structures::{KeyBlock, KeyValue, KeyWrappingSpecification},
         kmip_objects::{Object, ObjectType},
         kmip_types::{EncodingOption, EncryptionKeyInformation, LinkType, UniqueIdentifier},
@@ -26,10 +27,10 @@ use crate::{
 /// This is a Cosmian-specific extension
 /// to wrap the key with a wrapping key stored in the database
 /// or in the HSM.
-/// Either the user has provided a wrapping key id or a key wrapping key is
-/// provided in the parameters.
+/// Either the user has provided a wrapping key ID or a key wrapping key is
+/// supplied in the parameters.
 ///
-/// The wrapping key id is stored in the database
+/// The wrapping key ID is stored in the database
 /// or in the HSM.
 ///
 /// The unwrapped object is stored in the unwrapped cache
@@ -57,11 +58,12 @@ pub(crate) async fn wrap_and_cache(
     // This is a Cosmian-specific extension
     // to wrap the key with a wrapping key stored in the database
     // or in the HSM.
-    // Either the user has provided a wrapping key id or a key wrapping key is
+    // Either the user has provided a wrapping key ID or a key wrapping key is
     // provided in the parameters.
     let Some(wrapping_key_id) = object
-        .attributes_mut()?
-        .remove_wrapping_key_id()
+        .attributes_mut()
+        .ok()
+        .and_then(Attributes::remove_wrapping_key_id)
         .or_else(|| kms.params.key_wrapping_key.clone())
     else {
         // no wrapping key provided

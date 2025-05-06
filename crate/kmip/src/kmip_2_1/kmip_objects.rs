@@ -145,24 +145,6 @@ pub struct SymmetricKey {
 
 /// Object Types
 /// Section 2 of KMIP Reference 2.1
-///
-/// A KMIP Object. The top level structure
-/// Serialization is carried out internally tagged :
-/// `https://serde.rs/enum-representations.html#internally-tagged`
-/// This is likely not KMIP compliant therefore
-/// some JSON gimmicks may be required in and out
-///
-/// Deserialization is untagged and the `ObjectType` is not at
-/// an adjacent level in the structure. Correction code needs to be
-/// run post-serialization: for instance `PrivateKey` and `SymmetricKey`
-/// share the same internal structure a `SingleKeyBlock`; since `PrivateKey`
-/// appears first, a `SymmetricKey` will be deserialized as a `PrivateKey`
-///
-/// Order matters: `SecretData` will be deserialized as a `PrivateKey` if it
-/// appears after despite the presence of `secret_data_type`
-///
-/// Note: this enum is not "untagged" because we need the Variant name (which is the KMIP Object Name)
-/// in the json serialization for the Database.
 #[derive(Clone, Eq, Serialize, PartialEq, Debug, VariantNames)]
 #[serde(rename_all = "PascalCase")]
 pub enum Object {
@@ -408,11 +390,6 @@ impl Object {
     }
 
     /// Returns the `Attributes` of that object if any, an error otherwise
-    pub fn into_attributes(&self) -> Result<&Attributes, KmipError> {
-        self.key_block()?.attributes()
-    }
-
-    /// Returns the `Attributes` of that object if any, an error otherwise
     pub fn attributes(&self) -> Result<&Attributes, KmipError> {
         self.key_block()?.attributes()
     }
@@ -486,7 +463,7 @@ impl TryInto<Vec<u8>> for Object {
     }
 }
 
-/// The type of a KMIP Objects
+/// The type of a KMIP object
 #[kmip_enum]
 pub enum ObjectType {
     Certificate = 0x0000_0001,

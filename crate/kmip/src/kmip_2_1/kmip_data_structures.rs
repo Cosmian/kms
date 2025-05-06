@@ -453,7 +453,7 @@ impl KeyBlock {
         Ok(key_material)
     }
 
-    /// Returns the identifier of a linked object of a certain type, if it exists in the attributes
+    /// Returns the identifier of a linked object of a particular type if it exists in the attributes
     /// of this object.
     ///
     /// # Arguments

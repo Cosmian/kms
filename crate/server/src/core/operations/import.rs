@@ -103,7 +103,7 @@ pub(crate) async fn import(
     })
 }
 
-/// If the user specified tags, we will use these and remove them from the request,
+/// If the user specified tags, we will use these and remove them from the request.
 /// else we will use the tags with the object attributes
 /// If no tags are found, an empty set is returned
 fn recover_tags(request_attributes: &Attributes, object: &Object) -> HashSet<String> {
@@ -114,13 +114,14 @@ fn recover_tags(request_attributes: &Attributes, object: &Object) -> HashSet<Str
         tags.retain(|t| !t.starts_with('_'));
         return tags;
     }
-    // try extracting the tags form the object attributes
+    // try extracting the tags from the object attributes
     if let Ok(key_block) = object.key_block() {
-        #[allow(clippy::collapsible_match)] // keep it simple and stupid
-        if let Some(KeyValue::Structure { attributes, .. }) = key_block.key_value.as_ref() {
-            if let Some(attributes) = attributes {
-                return attributes.get_tags();
-            }
+        if let Some(KeyValue::Structure {
+            attributes: Some(attributes),
+            ..
+        }) = key_block.key_value.as_ref()
+        {
+            return attributes.get_tags();
         }
     }
     HashSet::new()
@@ -151,7 +152,7 @@ pub(crate) async fn process_symmetric_key(
     let mut tags = recover_tags(&request.attributes, &object);
     tags.insert("_kk".to_owned());
 
-    // request attributes will hold the final attributes of the object
+    //Request attributes will hold the final attributes of the object.
     let mut attributes = request.attributes;
     // force the object type to be SymmetricKey
     attributes.object_type = Some(ObjectType::SymmetricKey);
@@ -178,9 +179,14 @@ pub(crate) async fn process_symmetric_key(
         attributes.set_cryptographic_usage_mask(Some(CryptographicUsageMask::Unrestricted));
     }
 
-    // Replace updated attributes in object structure.
-    if let Ok(attrs) = object.key_block_mut()?.attributes_mut() {
-        *attrs = attributes.clone();
+    // Replace updated attributes in the object structure.
+    if let Ok(key_block) = object.key_block_mut() {
+        if let Some(KeyValue::Structure {
+            attributes: attrs, ..
+        }) = key_block.key_value.as_mut()
+        {
+            *attrs = Some(attributes.clone());
+        }
     }
 
     // Wrap the object if requested by the user or on the server params
@@ -206,7 +212,7 @@ pub(crate) async fn process_symmetric_key(
 }
 
 fn process_certificate(request: Import) -> Result<(String, Vec<AtomicOperation>), KmsError> {
-    // check if the object will be replaced if it already exists
+    // check if the object will be replaced if it already exists.
     let replace_existing = request.replace_existing.unwrap_or(false);
 
     // Tag the object as a certificate
@@ -335,9 +341,14 @@ async fn process_public_key(
     // set the unique identifier
     attributes.unique_identifier = Some(UniqueIdentifier::TextString(uid.clone()));
 
-    // Replace updated attributes in object structure.
-    if let Ok(attrs) = object.key_block_mut()?.attributes_mut() {
-        *attrs = attributes.clone();
+    // Replace updated attributes in the object structure.
+    if let Ok(key_block) = object.key_block_mut() {
+        if let Some(KeyValue::Structure {
+            attributes: attrs, ..
+        }) = key_block.key_value.as_mut()
+        {
+            *attrs = Some(attributes.clone());
+        }
     }
 
     // Wrap the object if requested by the user or on the server params
@@ -441,8 +452,13 @@ async fn process_private_key(
     attributes.unique_identifier = Some(UniqueIdentifier::TextString(uid.clone()));
 
     // Replace updated attributes in the object structure if the object is not wrapped.
-    if let Ok(attrs) = object.key_block_mut()?.attributes_mut() {
-        *attrs = attributes.clone();
+    if let Ok(key_block) = object.key_block_mut() {
+        if let Some(KeyValue::Structure {
+            attributes: attrs, ..
+        }) = key_block.key_value.as_mut()
+        {
+            *attrs = Some(attributes.clone());
+        }
     }
 
     // Wrap the object if requested by the user or on the server params
@@ -551,12 +567,12 @@ async fn process_pkcs12(
         private_key_tags.insert("_sk".to_owned());
         // set tags in the attributes
         attributes.set_tags(private_key_tags.clone())?;
-        //set the update attributes on the key
-        let new_attributes = attributes;
-        if let Some(KeyValue::Structure { attributes, .. }) =
-            private_key.key_block_mut()?.key_value.as_mut()
+        //set the updated attributes on the key
+        if let Some(KeyValue::Structure {
+            attributes: attrs, ..
+        }) = private_key.key_block_mut()?.key_value.as_mut()
         {
-            *attributes = Some(new_attributes);
+            *attrs = Some(attributes);
         }
         private_key
     };

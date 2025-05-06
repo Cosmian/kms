@@ -21,7 +21,7 @@ use crate::{
 };
 
 /// Unwrap an Object
-/// This function is used to unwrap an object before storing it in the database
+/// This function is used to unwrap an object
 ///
 /// # Arguments
 /// * `object` - the object to unwrap
@@ -37,6 +37,10 @@ pub(crate) async fn unwrap_object(
     user: &str,
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<()> {
+    if !object.is_wrapped() {
+        debug!("unwrap_object: object is not wrapped, no need to unwrap");
+        return Ok(());
+    }
     let object_key_block = object.key_block_mut().map_err(|e| {
         KmsError::InvalidRequest(format!(
             "unwrap_object: not key block to unwrap in object: {e}",
@@ -101,10 +105,10 @@ async fn unwrap_using_kms(
         .context("wrap using KMS")?;
     let unwrapping_key = unwrapping_key.ok_or_else(|| {
         KmsError::NotSupported(format!(
-            "The wrapping key {unwrapping_key_uid} does not exist or is not accessible"
+            "The wrapping key {unwrapping_key_uid} does not exist or is not accessible."
         ))
     })?;
-    // in the case the key is a PublicKey or Certificate, we need to fetch the corresponding private key
+    //In the case the key is a PublicKey or Certificate, we need to fetch the corresponding private key
     let object_type = unwrapping_key.object().object_type();
     let unwrapping_key = match object_type {
         ObjectType::PrivateKey | ObjectType::SymmetricKey => unwrapping_key,
@@ -186,7 +190,7 @@ async fn unwrap_using_encryption_oracle(
     unwrapping_key_uid: &str,
     prefix: &str,
 ) -> KResult<()> {
-    // determine the private key if a public key is passed
+    //Determine the private key if a public key is passed
     let unwrapping_key_uid = unwrapping_key_uid
         .strip_suffix("_pk")
         .map_or_else(|| unwrapping_key_uid.to_owned(), ToString::to_string);
@@ -206,7 +210,7 @@ async fn unwrap_using_encryption_oracle(
             .any(|p| [KmipOperation::Decrypt, KmipOperation::Get].contains(p))
         {
             return Err(KmsError::NotSupported(format!(
-                "The user {user} does not have the permission to unwrap the using the key \
+                "The user {user} does not have the permission to unwrap using the key \
                  {unwrapping_key_uid}"
             )));
         }
