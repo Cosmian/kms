@@ -128,7 +128,7 @@ The KMS server validates the JWT `aud` claim against this value if set
 
 The Cosmian KMS server supports concurrent identity providers. To handle multiple identity
 providers concurrently, repeat each parameter (`jwt-issuer-uri`, `jwks-uri` and optionally
-`jwt-audience`), keeping them in the same order.
+`jwt-audience`), keeping them in the same order. To set an identity provider configuration element to None, set its value to an empty string.
 
 Example:
 

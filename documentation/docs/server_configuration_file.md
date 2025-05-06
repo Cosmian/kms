@@ -88,6 +88,7 @@ jwt_issuer_uri = ["<jwt issuer uri>"]
 # The JWKS (Json Web Key Set) URI of the JWT token
 # To handle multiple identity managers, add different parameters under each argument
 #  (jwt-issuer-uri, jwks-uri and optionally jwt-audience), keeping them in the same order
+# To set an identity provider configuration element to None, set its value to an empty string.
 # For Auth0, this would be `https://<your-tenant>.<region>.auth0.com/.well-known/jwks.json`
 # For Google, this would be `https://www.googleapis.com/oauth2/v3/certs`
 # Defaults to `<jwt-issuer-uri>/.well-known/jwks.json` if not set
