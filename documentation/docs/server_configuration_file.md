@@ -50,6 +50,10 @@ hsm_admin = "<hsm admin username>" #for Create operation on HSM
 hsm_slot = [1, 2, ...]
 hsm_password = ["<password_of_1st_slot1>", "<password_of_2bd_slot2>", ...]
 
+# This setting defines users than have initial rights to create and grant access right for Create Kmip Operation
+# If not set, all users can create and grant create access right
+privileged_users = [ "<user_id_1>", "<user_id_2>" ]
+
 # Check the database pages for more information
 [db]
 database_type = "postgresql", "mysql", "sqlite", "redis-findex"
@@ -113,7 +117,7 @@ quiet = false
 
 # Generic configuration to edit path to static UI application files
 [ui_config]
-ui_index_html_folder = "/Users/celia-std/Documents/kms/ui/dist"
+ui_index_html_folder = "path/kms/ui/dist"
 # Configuration for the handling of authentication with JWT from the KMS UI
 [ui_config.ui_oidc_auth]
 ui_oidc_client_id = "<client id>"
