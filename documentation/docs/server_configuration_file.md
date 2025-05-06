@@ -92,14 +92,14 @@ tls_p12_password = "[tls p12 password]"
 clients_ca_cert_file = "[authority cert file]"
 
 # The socket server listens to KMIP binary requests on the IANA-registered 4696 port.
-# The socket server will only start if the TLS configuration is provided **and** client certificate authentication 
+# The socket server will only start if the TLS configuration is provided **and** client certificate authentication
 # is enabled.
 [socket_server]
 # Start the socket server. See comments above on conditions for starting the server.
 socket_server_start = false
 # The socket server port - defaults to 5696
 socket_server_port = 5696
-# The socket server hostname - defaults to "0.0.0.0" 
+# The socket server hostname - defaults to "0.0.0.0"
 socket_server_hostname = "0.0.0.0"
 
 # The HTTP server listens to KMIP requests on the /kmip and /kmip/2_1 endpoints.
@@ -122,7 +122,8 @@ hostname = "0.0.0.0"
 jwt_issuer_uri = ["<jwt issuer uri>"]
 # The JWKS (Json Web Key Set) URI of the JWT token
 # To handle multiple identity managers, add different parameters under each argument
-#  (jwt-issuer-uri, jwks-uri, and optionally jwt-audience), keeping them in the same order
+#  (jwt-issuer-uri, jwks-uri and optionally jwt-audience), keeping them in the same order
+# To set an identity provider configuration element to None, set its value to an empty string.
 # For Auth0, this would be `https://<your-tenant>.<region>.auth0.com/.well-known/jwks.json`
 # For Google, this would be `https://www.googleapis.com/oauth2/v3/certs`
 # Defaults to `<jwt-issuer-uri>/.well-known/jwks.json` if not set
