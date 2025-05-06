@@ -5,7 +5,7 @@ In addition, the server exposes a few additional endpoints for authorization ope
 
 ## Calling the KMIP API
 
-This API is documented in the [KMIP section](./kmip_2_1/json_ttlv_api.md) of this manual.
+This API is documented in the [KMIP section](./kmip/json_ttlv_api.md) of this manual.
 
 ### Calling the authorization API
 

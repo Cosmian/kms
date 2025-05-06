@@ -7,7 +7,7 @@ algorithms are also listed with the corresponding NIST standard.
 
 Keys and certificates for all the listed algorithms can be generated, imported, exported, wrapped,
 unwrapped... using
-the Cosmian KMS server [API](./kmip_2_1/json_ttlv_api.md)
+the Cosmian KMS server [API](./kmip/json_ttlv_api.md)
 or [Cosmian CLI](../cosmian_cli/index.md)
 
 Should you require a specific algorithm or standard to be supported, please directly open a ticket
@@ -25,7 +25,7 @@ retrieved and used.
 The supported key-wrapping algorithms are:
 
 | Algorithm            | Wrap Key Type                        | FIPS mode           | Description                                                                                                     |
-| -------------------- | ------------------------------------ | ------------------- | --------------------------------------------------------------------------------------------------------------- |
+|----------------------|--------------------------------------|---------------------|-----------------------------------------------------------------------------------------------------------------|
 | AES-KWP              | Symmetric key wrapping               | NIST SP 800-38F     | Symmetric key-wrapping with padding as defined in [RFC5649](https://tools.ietf.org/html/rfc5649).               |
 | CKM_RSA_PKCS         | RSA PKCS#1 v1.5                      | Not anymore         | RSA WITH PKCS#1 v1.5 padding - removed by NIST approved algorithms for key wrapping in FIPS 140-3               |
 | CKM_RSA_PKCS_OAEP    | RSA key wrapping                     | NIST 800-56B rev. 2 | RSA OAEP with NIST approved hashing functions for RSA key size 2048, 3072 or 4096 bits.                         |
@@ -47,7 +47,7 @@ Encryption can be performed using a key or a certificate. Decryption can be perf
 The supported encryption algorithms are:
 
 | Algorithm         | Encryption Key Type                                     | FIPS mode           | Description                                                                                                              |
-| ----------------- | ------------------------------------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+|-------------------|---------------------------------------------------------|---------------------|--------------------------------------------------------------------------------------------------------------------------|
 | Covercrypt        | Covercrypt                                              | No                  | A fast post-quantum attribute based scheme: [Covercrypt](https://github.com/Cosmian/cover_crypt).                        |
 | AES GCM           | Symmetric authenticated encryption with additional data | NIST FIPS 197       | The NIST standardized symmetric encryption in [FIPS 197](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.197-upd1.pdf). |
 | AES XTS           | Symmetric, not authenticated                            | NIST SP 800-38E     | Used in disk encryption. Requires 2 keys (e.g. a double-sized key)                                                       |
@@ -194,7 +194,7 @@ Signature is only supported via the `Certify` operation, which is used to create
 either by signing a certificate request, or building it from an existing public key.
 
 | Algorithm | Signature Key Type                                    | FIPS mode                                               | Description                                                                                                               |
-| --------- | ----------------------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+|-----------|-------------------------------------------------------|---------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------|
 | ECDSA     | P-192, P-224, P-256, P-384, P384, P-521, X25519, X448 | **Restricted** to curves P-224, P-256, P-384 and P-521. | See [FIPS-186.5](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf) and NIST.SP.800-186 - Section 3.1.2 table 2. |
 | EdDSA     | Ed25519, Ed448                                        | Yes                                                     | See [FIPS-186.5](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf).                                             |
 
