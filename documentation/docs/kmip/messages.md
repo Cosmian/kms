@@ -1,24 +1,30 @@
-In [chapter 8](https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html#_Toc57115738), the KMIP 2.1
-specification defines Messages functionality, which is the proper way to send/receive multiple requests/responses at
-once in KMIP (also called bulk mode).
+[Chapter 8](https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html#_Toc57115738) of the KMIP 2.1
+specification defines the Messages functionality, which enables sending/receiving multiple requests/responses at
+once (also known as bulk mode).
+This is the standard way to communicate with the KMIP server using the Binary protocol on port 4696 ot the JSON protocol
+on port 9998 and endpoint `/kmip`.
 
-One can insert multiple requests in a single Message query.
-These requests are processed sequentially and simultaneously by the server.
-The requests wrapped into the batch items are totally independent.
+The `/kmip/2_1` endpoint is a Cosmian extension allowing the posting of Operations directly to the server without
+the need for a `RequestMessage` wrapper.
+This is particularly useful for operations like `Encrypt` and `Decrypt`.
 
-For each message request sent, a message response is returned, yielding a result status of the requested operation, and
-potentially associated result data or error messages.
+Multiple operations can be included in a single `RequestMessage` query.
+The server processes these operations sequentially, though they appear to execute simultaneously.
+Each batch item contains an independent request.
+
+For every request message sent, the server returns a response message containing the result status of the requested
+operation,
+along with any relevant result data or error messages.
 
 ### Request and response example
 
-Two operation requests and their responses are packed into a single Message, with one `CreateKeyPair` operation and
-one `Locate` operation.
+A single `RequestMessage`, with one `CreateKeyPair` operation and one `Locate` operation.
 
 === "Message Request"
 
     ```json
     {
-        "tag": "Message",
+        "tag": "RequestMessage",
         "type": "Structure",
         "value": [ {
             "tag": "Header",
@@ -46,7 +52,7 @@ one `Locate` operation.
                 "value": 2,
             } ]
         }, {
-            "tag": "Items",
+            "tag": "BatchItem",
             "type": "Structure",
             "value": [ {
                 "tag": "Items",
@@ -98,7 +104,7 @@ one `Locate` operation.
                     } ],
                 } ],
             }, {
-                "tag": "Items",
+                "tag": "BatchItem",
                 "type": "Structure",
                 "value": [ {
                     "tag": "Operation",
@@ -122,7 +128,7 @@ one `Locate` operation.
 
     ```json
     {
-        "tag": "Message",
+        "tag": "ResponseMessage",
         "type": "Structure",
         "value": [ {
             "tag": "Header",
@@ -149,7 +155,7 @@ one `Locate` operation.
                 "value": 2,
             } ]
         }, {
-            "tag": "Items",
+            "tag": "BatchItem",
             "type": "Structure",
             "value": [ {
                 "tag": "Items",
@@ -176,7 +182,7 @@ one `Locate` operation.
                     } ],
                 } ],
             }, {
-                "tag": "Items",
+                "tag": "BtachItem",
                 "type": "Structure",
                 "value": [ {
                     "tag": "Operation",
