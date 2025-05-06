@@ -20,7 +20,14 @@ const JWT_ISSUER_URI: &str = "https://accounts.google.com";
 #[cfg(test)]
 const JWKS_URI: &str = "https://www.googleapis.com/oauth2/v3/certs";
 
-static APPLICATIONS: &[&str; 5] = &["meet", "drive", "gmail", "calendar", "migration"];
+static APPLICATIONS: &[&str; 6] = &[
+    "meet",
+    "drive",
+    "gmail",
+    "calendar",
+    "migration",
+    "gmail-sta",
+];
 
 #[allow(clippy::or_fun_call)]
 fn get_jwks_uri(application: &str) -> String {
