@@ -21,7 +21,7 @@ sudo apt-get install fonts-noto-mono fonts-noto pandoc-citeproc librsvg2-bin
 sudo apt-get install fonts-noto-mono fonts-noto pandoc librsvg2-bin
 ```
 
-#### MacOS pre requisites
+#### MacOS pre-requisites
 
 ```sh
 brew install pandoc librsvg
@@ -56,4 +56,4 @@ mkdocs serve -a 0.0.0.0:8003
 
 Open a browser window at `http://[MACHINE_IP / LOCALHOST]:8003`
 
-The doc is live rendered when editing the Markdown files.
+The doc is live-rendered when editing the Markdown files.
