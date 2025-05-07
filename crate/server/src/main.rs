@@ -66,6 +66,7 @@ async fn main() -> KResult<()> {
             })
             .clone(),
         no_log_to_stdout: clap_config.logging.quiet,
+        #[cfg(not(target_os = "windows"))]
         log_to_syslog: clap_config.logging.log_to_syslog,
         rust_log: clap_config.logging.rust_log.clone(),
     });
