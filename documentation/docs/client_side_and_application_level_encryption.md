@@ -9,20 +9,20 @@ The KMS offers two mechanisms for encrypting and decrypting data:
 
 <!-- TOC -->
 
-* [Calling the KMS API](#calling-the-kms-api)
-    * [Parallelization, concurrency, and batching](#parallelization-concurrency-and-batching)
-    * [Efficient batching](#efficient-batching)
-        * [The KMIP way](#the-kmip-way)
-        * [Optimized batching](#optimized-batching)
-        * [Encoding scheme](#encoding-scheme)
-    * [Performance heuristics](#performance-heuristics)
-* [Using the Cosmian CLI client](#using-the-cosmian-cli-client)
-    * [Server-side encryption and decryption](#server-side-encryption-and-decryption)
-        * [Available ciphers](#available-ciphers)
-        * [Format of the encrypted file](#format-of-the-encrypted-file)
-    * [Client-side encryption and decryption](#client-side-encryption-and-decryption)
-        * [Available ciphers](#available-ciphers-1)
-        * [Format of the encrypted file](#format-of-the-encrypted-file-1)
+- [Calling the KMS API](#calling-the-kms-api)
+    - [Parallelization, concurrency, and batching](#parallelization-concurrency-and-batching)
+    - [Efficient batching](#efficient-batching)
+        - [The KMIP way](#the-kmip-way)
+        - [Optimized batching](#optimized-batching)
+        - [Encoding scheme](#encoding-scheme)
+    - [Performance heuristics](#performance-heuristics)
+- [Using the Cosmian CLI client](#using-the-cosmian-cli-client)
+    - [Server-side encryption and decryption](#server-side-encryption-and-decryption)
+        - [Available ciphers](#available-ciphers)
+        - [Format of the encrypted file](#format-of-the-encrypted-file)
+    - [Client-side encryption and decryption](#client-side-encryption-and-decryption)
+        - [Available ciphers](#available-ciphers-1)
+        - [Format of the encrypted file](#format-of-the-encrypted-file-1)
 
 <!-- TOC -->
 

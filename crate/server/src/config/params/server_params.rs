@@ -56,9 +56,6 @@ pub struct ServerParams {
     /// The public URL of the exposed KMS server
     pub kms_public_url: Option<String>,
 
-    // /// The certificate used to verify the client TLS certificates
-    // /// used for authentication
-    // pub authority_cert_file: Option<X509>,
     /// The hostname of the HTTP server
     pub http_hostname: String,
 
