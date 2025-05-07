@@ -5,5 +5,5 @@ on: workflow_dispatch
 
 jobs:
   cleanup:
-    uses: Cosmian/reusable_workflows/.github/workflows/cleanup_cache.yml@move_ci_scripts
+    uses: Cosmian/reusable_workflows/.github/workflows/cleanup_cache.yml@develop
     secrets: inherit
