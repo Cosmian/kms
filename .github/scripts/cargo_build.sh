@@ -64,7 +64,7 @@ fi
 rustup target add "$TARGET"
 
 if [ -f /etc/lsb-release ]; then
-  bash .github/scripts/test_utimaco.sh
+  bash $ROOT_FOLDER/Cosmian/reusable_scripts/.github/scripts/test_utimaco.sh
 fi
 
 if [ -z "$OPENSSL_DIR" ]; then
