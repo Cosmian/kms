@@ -64,7 +64,9 @@ fi
 rustup target add "$TARGET"
 
 if [ -f /etc/lsb-release ]; then
-  bash .github/scripts/test_utimaco.sh
+  bash $ROOT_FOLDER/Cosmian/reusable_scripts/.github/scripts/test_utimaco.sh
+  HSM_USER_PASSWORD="12345678" cargo test -p utimaco_pkcs11_loader --target $TARGET --features utimaco -- tests::test_all
+  rm -rf hsm-simulator
 fi
 
 if [ -z "$OPENSSL_DIR" ]; then
