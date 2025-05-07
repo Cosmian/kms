@@ -15,11 +15,11 @@ const DEFAULT_TMP_PATH: &str = "/tmp";
 #[serde(default)]
 pub struct WorkspaceConfig {
     /// The root folder where the KMS will store its data
-    /// A relative path is taken relative to the user HOME directory
+    /// A relative path is taken relative to the user's HOME directory
     #[clap(long, env = "KMS_ROOT_DATA_PATH", default_value = DEFAULT_ROOT_DATA_PATH)]
     pub root_data_path: PathBuf,
 
-    /// The folder to store temporary data (non-persistent data readable by no-one but the current instance during the current execution)
+    /// The folder to store temporary data (non-persistent data readable by no one but the current instance during the current execution)
     #[clap(long, env = "KMS_TMP_PATH", default_value = DEFAULT_TMP_PATH)]
     pub tmp_path: PathBuf,
 }

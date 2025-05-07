@@ -16,12 +16,12 @@ pub const DEFAULT_SQLITE_PATH: &str = "./sqlite-data";
 #[serde(default)]
 pub struct MainDBConfig {
     /// The main database of the KMS server that holds default cryptographic objects and permissions.
-    /// - postgresql: `PostgreSQL`. The database url must be provided
-    /// - mysql: `MySql` or `MariaDB`. The database url must be provided
+    /// - postgresql: `PostgreSQL`. The database URL must be provided
+    /// - mysql: `MySql` or `MariaDB`. The database URL must be provided
     /// - sqlite: `SQLite`. The data will be stored at the `sqlite_path` directory
     ///   A key must be supplied on every call
     /// - redis-findex: a Redis database with encrypted data and encrypted indexes thanks to Findex.
-    ///   The Redis url must be provided, as well as the redis-master-password and the redis-findex-label
+    ///   The Redis URL must be provided, as well as the redis-master-password and the redis-findex-label
     #[clap(
         long,
         env("KMS_DATABASE_TYPE"),
@@ -30,7 +30,7 @@ pub struct MainDBConfig {
     )]
     pub database_type: Option<String>,
 
-    /// The url of the database for postgresql, mysql or findex-redis
+    /// The URL of the database for postgresql, mysql, or findex-redis
     #[clap(
         long,
         env = "KMS_DATABASE_URL",

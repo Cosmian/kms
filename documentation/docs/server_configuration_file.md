@@ -5,15 +5,15 @@ the [command line arguments](./server_cli.md) are ignored.
 
 By default, the configuration filepath is retrieved in the following order:
 
-1. if the environment variable `COSMIAN_KMS_CONF` is set and the path behind exists, the KMS server will use this
+1. If the environment variable `COSMIAN_KMS_CONF` is set and the path behind exists, the KMS server will use this
    configuration file,
-2. otherwise if a file is found at `/etc/cosmian/kms.toml`, the KMS server will use this file.
-3. finally, if none of the above is found, the KMS server will use the [command line arguments](./server_cli.md)
+2. Otherwise, if a file is found at `/etc/cosmian/kms.toml`, the KMS server will use this file.
+3. Finally, if none of the above is found, the KMS server will use the [command line arguments](./server_cli.md)
 
 The file should be a TOML file with the following structure:
 
 ```toml
-# The default username to use when no authentication method is provided
+# The default username to use when no authentication method is provided.
 default_username = "admin"
 # When an authentication method is provided, perform the authentication
 # but always use the default username instead of the one provided by the authentication method
@@ -21,7 +21,7 @@ force_default_username = false
 
 # This setting enables the Google Workspace Client Side Encryption feature of this KMS server.
 # It should contain the external URL of this server as configured
-# in Google Workspace client side encryption settings For instance,
+# in Google Workspace client-side encryption settings. For instance,
 # if this server is running on domain `cse.my_domain.com`,
 # the URL should be something like <https://cse.my_domain.com/google_cse>
 google_cse_kacls_url = "<google cse kacls url>"
@@ -30,31 +30,37 @@ google_cse_kacls_url = "<google cse kacls url>"
 # Useful for testing purposes
 google-cse-disable-tokens-validation = false
 
-# This setting enables the Microsoft Double Key Encryption service feature of this server.
+# This setting enables this server's Microsoft Double Key Encryption service feature.
 # It should contain the external URL of this server as configured in Azure App Registrations
 # as the DKE Service (<https://learn.microsoft.com/en-us/purview/double-key-encryption-setup#register-your-key-store>)
 # The URL should be something like <https://cse.my_domain.com/ms_dke>
 ms_dke_service_url = "<ms dke service url>"
 
 # This setting defines the public URL where the KMS is accessible (e.g., behind a proxy).
-# It is primarily used during the authentication flow initiated from the KMS UI
+# It is primarily used during the authentication flow initiated from the KMS UI.
+# See the [ui_config] section below.
 kms_public_url = "kms-public-url"
 
 # Print the server configuration information and exit
 info = false
 
 # The following fields are only needed if an HSM is used.
-# Check the HSMs pages for more information.
+# Check the HSMs documentation pages for more information.
 hsm_model = "<hsm_name>"
 hsm_admin = "<hsm admin username>" #for Create operation on HSM
 hsm_slot = [1, 2, ...]
 hsm_password = ["<password_of_1st_slot1>", "<password_of_2bd_slot2>", ...]
 
-# This setting defines users than have initial rights to create and grant access right for Create Kmip Operation
-# If not set, all users can create and grant create access right
-privileged_users = [ "<user_id_1>", "<user_id_2>" ]
+# Force all newly created and imported keys to be wrapped by the key specified in this field.
+# This is most useful to ensure that an HSM key wraps all keys in the KMS database.
+# Note: This setting is ignored when a key is imported in JSON TTLV format, and that key is already wrapped.
+key_encryption_key = "kek ID"
 
-# Check the database pages for more information
+# All users can create and import objects in the KMS by default.
+# When this setting contains a user ID list, only these users can create and import objects.
+privileged_users = ["<user_id_1>", "<user_id_2>"]
+
+# Check the database configuration documentation pages for more information
 [db]
 database_type = "postgresql", "mysql", "sqlite", "redis-findex"
 database_url = "<database-url>"
@@ -63,62 +69,91 @@ redis_master_password = "<redis master password>"
 redis_findex_label = "<redis findex label>"
 clear_database = false
 
-# Check the Enabling TLS pages for more information
+# TLS configuration of the Socket server and HTTP server
+[tls]
+# The KMS server's optional PKCS#12 Certificates and Key file.
+# If provided, this will start the server in HTTPS mode.
+tls_p12_file = "[tls p12 file]"
+# The password to open the PKCS#12 Certificates and Key file.
+tls_p12_password = "[tls p12 password]"
+# The server's optional authority X509 certificate in PEM format
+# used to validate the client certificate presented for authentication.
+# If provided, clients must present a certificate signed by this authority for authentication.
+# The server must run in TLS mode for this to be used.
+clients_ca_cert_file = "[authority cert file]"
+
+# The socket server listens to KMIP binary requests on the IANA-registered 4696 port.
+# The socket server will only start if the TLS configuration is provided **and** client certificate authentication 
+# is enabled.
+[socket_server]
+# Start the socket server. See comments above on conditions for starting the server.
+socket_server_start = false
+# The socket server port - defaults to 5696
+socket_server_port = 5696
+# The socket server hostname - defaults to "0.0.0.0" 
+socket_server_hostname = "0.0.0.0"
+
+# The HTTP server listens to KMIP requests on the /kmip and /kmip/2_1 endpoints.
+# It also serves the web UI on the /ui endpoint.
+# If the TLS configuration is provided, the server will start in HTTPS mode.
 [http]
 # The KMS server port - defaults to 9998
 port = 9998
 # The KMS server hostname - defaults to 0.0.0.0
-hostname = "<hostname>"
-# The KMS server optional PKCS#12 Certificates and Key file.
-# If provided, this will start the server in HTTPS mode
-https_p12_file = "<https p12 file>"
-# The password to open the PKCS#12 Certificates and Key file
-https_p12_password = "<https p12 password>"
-#  The server optional authority X509 certificate in PEM format
-# used to validate the client certificate presented for authentication.
-# If provided, this will require clients to present a certificate signed by this authority for authentication.
-# The server must run in TLS mode for this to be used
-authority_cert_file = "<authority cert file>"
+hostname = "0.0.0.0"
 
-# Check the Authenticating Users for more information
+# Check the Authenticating Users documentation pages for more information.
 [auth]
 # The issuer URI of the JWT token
 # To handle multiple identity managers, add different parameters
-# under each argument (jwt-issuer-uri, jwks-uri and optionally jwt-audience),
+# under each argument (jwt-issuer-uri, jwks-uri, and optionally jwt-audience),
 # keeping them in the same order in the three lists.
 # For Auth0, this is the delegated authority domain configured on Auth0, for instance `https://<your-tenant>.<region>.auth0.com/`
 # For Google, this would be `https://accounts.google.com`
 jwt_issuer_uri = ["<jwt issuer uri>"]
 # The JWKS (Json Web Key Set) URI of the JWT token
 # To handle multiple identity managers, add different parameters under each argument
-#  (jwt-issuer-uri, jwks-uri and optionally jwt-audience), keeping them in the same order
+#  (jwt-issuer-uri, jwks-uri, and optionally jwt-audience), keeping them in the same order
 # For Auth0, this would be `https://<your-tenant>.<region>.auth0.com/.well-known/jwks.json`
 # For Google, this would be `https://www.googleapis.com/oauth2/v3/certs`
 # Defaults to `<jwt-issuer-uri>/.well-known/jwks.json` if not set
 jwks_uri = ["<jwks uri>"]
 # The audience of the JWT token
-# Optional: the server will validate the JWT `aud` claim against this value if set
+# Optional: The server will validate the JWT `aud` claim against this value if set
 jwt_audience = ["<jwt audience>"]
 
 [workspace]
 # The root folder where the KMS will store its data
-# A relative path is taken relative to the user HOME directory
+# A relative path is taken relative to the user's HOME directory
 root_data_path = "./cosmian-kms"
 # The folder to store temporary data (non-persistent data readable
-# by no-one but the current instance during the current execution)
+# by no one but the current instance during the current execution)
 tmp_path = "/tmp"
 
-# Check the logging pages for more information
-[telemetry]
-# The Open Telemetry OTLP collector URL
-otlp = "<url of the OTLP collector>"
-# Do not log to stdout
+# Check the logging documentation pages for more information
+[logging]
+# The log level of the KMS server. This is an alternative to the `RUST_LOG` environment variable.
+rust_log = "info,cosmian_kms=debug"
+# The Open Telemetry OTLP collector URL.
+otlp = "http://localhost:4317"
+# If set to true, the KMS server will not output logs to stdout. Telemetry will still be sent to the OTLP collector,
+# if configured.
 quiet = false
+# If set to true, the KMS server will log to syslog instead of stdout.
+log_to_syslog = false
+# If set to true, the Telemetry will also contain metering events in addition to tracing events.
+enable_metering = false
+# When using telemetry, this setting will show the KMS environment: "production", "development", "staging", "testing"...
+environment = "development"
 
-# Generic configuration to edit path to static UI application files
+# Generic configuration to edit the path to static UI application files
+# To use the Web UI, ensure the `kms_public_url` is set to the correct public URL above.
 [ui_config]
 ui_index_html_folder = "path/kms/ui/dist"
-# Configuration for the handling of authentication with JWT from the KMS UI
+
+# Configuration for the handling of authentication with OIDC from the KMS UI.
+# This is used to authenticate users when they access the KMS UI.
+# The same Identity Provider must **also** be configured in the [auth] section above.
 [ui_config.ui_oidc_auth]
 ui_oidc_client_id = "<client id>"
 ui_oidc_client_secret = "<client secret>" (optional)

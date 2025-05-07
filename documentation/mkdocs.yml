@@ -79,8 +79,10 @@ nav:
           - Veracrypt: pkcs11/veracrypt.md
           - LUKS: pkcs11/luks.md
           - Cryhod: pkcs11/cryhod.md
-      - Oracle Database Transparent Data Encryption (TDE):
-          - Integration: oracle/tde.md
+      - Oracle Database Transparent Data Encryption (TDE): oracle/tde.md
+      - VMware vCenter: vcenter.md
+      - User Defined Function for PySpark, Databricks,... in Python: python_udf/index.md
+      - Snowflake Native App: snowflake/index.md
       - API Endpoints: api.md
   - Installation:
       - Getting started: installation/installation_getting_started.md
@@ -95,7 +97,6 @@ nav:
       - Enabling TLS: tls.md
       - Logging and telemetry: logging.md
       - User interface: ui.md
-      - Setting Cosmian KMS for vCenter: vcenter.md
   - Certifications and compliance:
       - FIPS 140-3: fips.md
       - Cryptographic algorithms:

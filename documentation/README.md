@@ -4,8 +4,8 @@ The main documentation of the KMS is in [docs/index.md](./docs/index.md)
 
 ## Installing Rendering Tools
 
-You **do not need these tools** to author the doc and should probably **not** install LaTeX.
-Vs-code has all the necessary support for it.
+You do not need these tools to author the documentation and should probably not install LaTeX.
+VS Code has all the necessary support for it.
 
 However, if you want to see how it looks fully rendered, you must install `mkdocs`
 
@@ -44,7 +44,7 @@ git+https://gitlab.com/myriacore/pandoc-kroki-filter.git
 
 ### Using mkdocs
 
-From the root of the project, run
+From the root of the project, run:
 
 ```bash
 cd documentation/

@@ -30,6 +30,11 @@ pub struct LoggingConfig {
 
     /// The name of the environment (development, test, production, etc.)
     /// This will be added to the telemetry data if telemetry is enabled
-    #[clap(long, env("KMS_ENVIRONMENT"), default_value = "development")]
+    #[clap(
+        long,
+        env("KMS_ENVIRONMENT"),
+        default_value = "development",
+        verbatim_doc_comment
+    )]
     pub environment: Option<String>,
 }

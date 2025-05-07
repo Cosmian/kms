@@ -9,18 +9,18 @@ use serde::{Deserialize, Serialize};
 pub struct TlsConfig {
     /// The KMS server optional PKCS#12 Certificates and Key file.
     /// Mandatory when starting the socket server.
-    /// If provided, this will start the HTTP server in HTTPS mode.
-    #[clap(long, env = "KMS_HTTPS_P12_FILE")]
+    /// When provided, the Socket and HTTP server will start in TLS Mode.
+    #[clap(long, env = "KMS_HTTPS_P12_FILE", verbatim_doc_comment)]
     pub tls_p12_file: Option<PathBuf>,
 
     /// The password to open the PKCS#12 Certificates and Key file
-    #[clap(long, env = "KMS_HTTPS_P12_PASSWORD")]
+    #[clap(long, env = "KMS_HTTPS_P12_PASSWORD", verbatim_doc_comment)]
     pub tls_p12_password: Option<String>,
 
-    /// The server optional authority X509 certificate in PEM format used to validate the client certificate presented for authentication.
-    /// If provided, this will require clients to present a certificate signed by this authority for authentication.
-    /// Mandatory when starting the socket server.
-    #[clap(long, env = "KMS_CLIENTS_CA_CERT_FILE")]
+    /// The server's optional X. 509 certificate in PEM format validates the client certificate presented for authentication.
+    /// If provided, clients must present a certificate signed by this authority for authentication.
+    /// Mandatory to start the socket server.
+    #[clap(long, env = "KMS_CLIENTS_CA_CERT_FILE", verbatim_doc_comment)]
     pub clients_ca_cert_file: Option<PathBuf>,
 }
 

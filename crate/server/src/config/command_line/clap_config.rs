@@ -80,15 +80,15 @@ pub struct ClapConfig {
 
     /// When an authentication method is provided, perform the authentication
     /// but always use the default username instead of the one provided by the authentication method
-    #[clap(long, env = "KMS_FORCE_DEFAULT_USERNAME")]
+    #[clap(long, env = "KMS_FORCE_DEFAULT_USERNAME", verbatim_doc_comment)]
     pub force_default_username: bool,
 
     /// This setting enables the Google Workspace Client Side Encryption feature of this KMS server.
     ///
-    /// It should contain the external URL of this server as configured in Google Workspace client side encryption settings
-    /// For instance, if this server is running on domain `cse.my_domain.com`,
-    /// the URL should be something like <https://cse.my_domain.com/google_cse>
-    #[clap(long, env = "KMS_GOOGLE_CSE_KACLS_URL")]
+    /// It should contain the external URL of this server as configured in Google Workspace client-side encryption settings.
+    /// For instance, if this server is running on the domain `cse.my_domain.com`.
+    /// The URL should be something like <https://cse.my_domain.com/google_cse>
+    #[clap(long, env = "KMS_GOOGLE_CSE_KACLS_URL", verbatim_doc_comment)]
     pub google_cse_kacls_url: Option<String>,
 
     /// This setting disables the validation of the tokens used by the Google Workspace CSE feature of this server.
@@ -118,7 +118,12 @@ pub struct ClapConfig {
 
     /// The HSM model.
     /// Trustway Proteccio and Utimaco General purpose HSMs are supported.
-    #[clap(verbatim_doc_comment, long,value_parser(["proteccio", "utimaco"]), default_value = "proteccio")]
+    #[clap(
+        verbatim_doc_comment,
+        long,
+        value_parser(["proteccio", "utimaco"]),
+        default_value = "proteccio"
+    )]
     pub hsm_model: String,
 
     /// The username of the HSM admin.
@@ -147,16 +152,17 @@ pub struct ClapConfig {
     /// to be wrapped by the specified key encryption key (KEK)
     pub key_encryption_key: Option<String>,
 
-    /// The non-revocable keys ID used for demo purposes
+    /// The non-revocable key ID used for demo purposes
     #[clap(long, hide = true)]
     pub non_revocable_key_id: Option<Vec<String>>,
 
     #[clap(verbatim_doc_comment, long, env = "KMS_PUBLIC_URL")]
     pub kms_public_url: Option<String>,
 
-    /// Users than have initial rights to create and grant access right for Create Kmip Operation
-    /// If None, all users can create and grant create access right.
-    #[clap(long)]
+    /// List of users who have the right to create and import Objects
+    /// and grant access rights for Create Kmip Operation
+    /// If not set, all users can create and import objects in the KMS (default).
+    #[clap(long, verbatim_doc_comment)]
     pub privileged_users: Option<Vec<String>>,
 }
 
