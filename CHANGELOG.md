@@ -2,7 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
-## [5.0.0] - 2025-05-08
+## [5.0.0] - 2025-05-07
+
+**WARNING**: This is a breaking change release.
+Databases created with version 4.x.x are not compatible with version 5.0.0.
+Please export your keys using standard formats (PKCS#8, PEM, etc.) and re-import them after upgrading.
 
 ### 🚀 Features
 
@@ -34,7 +38,8 @@ All notable changes to this project will be documented in this file.
 
 ### 🚀 Features
 
-- Add support Oracle Transparent Database Encryption (TDE) using Oracle Key Vault ([#396](https://github.com/Cosmian/kms/pull/396))
+- Add support Oracle Transparent Database Encryption (TDE) using Oracle Key
+  Vault ([#396](https://github.com/Cosmian/kms/pull/396))
 
 ### ⚙️ Miscellaneous Tasks
 
