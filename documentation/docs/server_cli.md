@@ -3,6 +3,8 @@ configured using command line options.
 
 The list of arguments can be printed using the `--help` command line option.
 
+=== "Docker"
+
 ```sh
 -> docker run --rm ghcr.io/cosmian/kms:latest --help
 
@@ -104,4 +106,34 @@ Options:
           Print help (see more with '--help')
   -V, --version
           Print version
+```
+
+=== "Cosmian CLI"
+
+```sh
+-> cosmian kms --help
+Handle KMS actions
+
+Usage: cosmian kms <COMMAND>
+
+Commands:
+  access-rights   Manage the users' access rights to the cryptographic objects
+  attributes      Get/Set/Delete the KMIP object attributes
+  cc              Manage Covercrypt keys and policies. Rotate attributes. Encrypt and decrypt data
+  certificates    Manage certificates. Create, import, destroy and revoke. Encrypt and decrypt data
+  ec              Manage elliptic curve keys. Encrypt and decrypt data using ECIES
+  google          Manage google elements. Handle key pairs and identities from Gmail API
+  locate          Locate cryptographic objects inside the KMS
+  login           Login to the Identity Provider of the KMS server using the `OAuth2` authorization code flow.
+  logout          Logout from the Identity Provider.
+  hash            Hash arbitrary data.
+  mac             Hash arbitrary data with a MAC key.
+  new-database    Initialize a new user encrypted database and return the secret (`SQLCipher` only).
+  rsa             Manage RSA keys. Encrypt and decrypt data using RSA keys
+  server-version  Print the version of the server
+  sym             Manage symmetric keys. Encrypt and decrypt data
+  help            Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help  Print help
 ```

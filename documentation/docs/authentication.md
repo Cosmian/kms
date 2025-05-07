@@ -45,15 +45,31 @@ must be provided in PEM format using the `--authority-cert-file` option.
 
 !!! info "Example client TLS authentication."
 
+=== "Docker"
+
     ```sh
     docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest \
         --https-p12-file kms.server.p12  --https-p12-password password \
         --authority-cert-file verifier.cert.pem
     ```
 
-The server extracts the username from the client certificate's subject common name (CN) unless
-the `--force-default-username` option (or the `KMS_FORCE_DEFAULT_USERNAME` environment variable) is
-set, in which case the server uses the default username.
+=== "Cosmian CLI"
+
+    The default configuration file is located at `~/.cosmian/cosmian.toml` where ~ is your home folder and by default, Cosmian CLI use no authentication when connecting the KMS.
+
+    The configuration file should be edited manually to reflect the actual configuration of the KMS.
+
+    ```toml
+    [kms_config.http_config]
+    server_url = "http://0.0.0.0:9998"
+    ssl_client_pkcs12_path = "./certificates/kms.server.p12"
+    ssl_client_pkcs12_password = "password"
+    verified_cert = "verifier.cert.pem"
+    ```
+
+    The server extracts the username from the client certificate's subject common name (CN) unless
+    the `--force-default-username` option (or the `KMS_FORCE_DEFAULT_USERNAME` environment variable) is
+    set, in which case the server uses the default username.
 
 ### Authenticating using JWT access tokens
 
@@ -91,6 +107,8 @@ environment variables):
 
 !!! info "Example of JWT Configuration"
 
+=== "Docker"
+
     Below is an example of a JWT configuration for the KMS server using Google as the authorization
     server.
 
@@ -101,127 +119,164 @@ environment variables):
         --jwt-audience=cosmian_kms
     ```
 
-##### JWT issuer URI
+    ##### JWT issuer URI
 
-The issuer URI of the JWT token is called to validate the token signature.
+    The issuer URI of the JWT token is called to validate the token signature.
 
-- server option: `--jwt-issuer-uri <JWT_ISSUER_URI>`
-- env. variable: `KMS_JWT_ISSUER_URI=[<JWT_ISSUER_URI>]`
+    - server option: `--jwt-issuer-uri <JWT_ISSUER_URI>`
+    - env. variable: `KMS_JWT_ISSUER_URI=[<JWT_ISSUER_URI>]`
 
-##### JWKS URI
+    ##### JWKS URI
 
-The optional JWKS (JSON Web Key Set) URI of the JWT token is called to retrieve the keyset on server
-start.
-Defaults to `<jwt-issuer-uri>/.well-known/jwks.json` if not set.
+    The optional JWKS (JSON Web Key Set) URI of the JWT token is called to retrieve the keyset on server
+    start.
+    Defaults to `<jwt-issuer-uri>/.well-known/jwks.json` if not set.
 
-- server option: `--jwks-uri <JWKS_URI>`
-- env. variable: `KMS_JWKS_URI=[<JWKS_URI>]`
+    - server option: `--jwks-uri <JWKS_URI>`
+    - env. variable: `KMS_JWKS_URI=[<JWKS_URI>]`
 
-##### JWT audience
+    ##### JWT audience
 
-The KMS server validates the JWT `aud` claim against this value if set
+    The KMS server validates the JWT `aud` claim against this value if set
 
-- server option: `--jwt-audience <JWT_AUDIENCE>`
-- env. variable: `KMS_JWT_AUDIENCE=[<JWT_AUDIENCE>]`
+    - server option: `--jwt-audience <JWT_AUDIENCE>`
+    - env. variable: `KMS_JWT_AUDIENCE=[<JWT_AUDIENCE>]`
 
-#### Support for concurrent Identity Providers
+    #### Support for concurrent Identity Providers
 
-The Cosmian KMS server supports concurrent identity providers. To handle multiple identity
-providers concurrently, repeat each parameter (`jwt-issuer-uri`, `jwks-uri` and optionally
-`jwt-audience`), keeping them in the same order.
+    The Cosmian KMS server supports concurrent identity providers. To handle multiple identity
+    providers concurrently, repeat each parameter (`jwt-issuer-uri`, `jwks-uri` and optionally
+    `jwt-audience`), keeping them in the same order.
 
-Example:
+    Example:
 
-```shell
---jwt-issuer-uri=https://accounts.google.com \
---jwks-uri=https://www.googleapis.com/oauth2/v3/certs \
---jwt-audience=cosmian_kms \
---jwt-issuer-uri=https://login.microsoftonline.com/<TENANT_ID>/discovery/v2.0/ \
---jwks-uri=https://login.microsoftonline.com/<TENANT_ID>/discovery/v2.0/keys \
---jwt-audience=<CLIENT_ID>
-```
+    ```shell
+    --jwt-issuer-uri=https://accounts.google.com \
+    --jwks-uri=https://www.googleapis.com/oauth2/v3/certs \
+    --jwt-audience=cosmian_kms \
+    --jwt-issuer-uri=https://login.microsoftonline.com/<TENANT_ID>/discovery/v2.0/ \
+    --jwks-uri=https://login.microsoftonline.com/<TENANT_ID>/discovery/v2.0/keys \
+    --jwt-audience=<CLIENT_ID>
+    ```
 
-#### Common Identity Providers
+    #### Common Identity Providers
 
-##### Google ID tokens
+    ##### Google ID tokens
 
-Use the following options to configure the KMS server for Google ID tokens:
+    Use the following options to configure the KMS server for Google ID tokens:
 
-```sh
---jwt-issuer-uri=https://accounts.google.com
---jwks-uri=https://www.googleapis.com/oauth2/v3/certs
-```
+    ```sh
+    --jwt-issuer-uri=https://accounts.google.com
+    --jwks-uri=https://www.googleapis.com/oauth2/v3/certs
+    ```
 
-##### Auth0
+    ##### Auth0
 
-Use the following options to configure the KMS server for Auth0:
+    Use the following options to configure the KMS server for Auth0:
 
-```sh
---jwt-issuer-uri=https://<your-tenant>.<region>.auth0.com/
---jwks-uri=https://<your-tenant>.<region>.auth0.com/.well-known/jwks.json
-```
+    ```sh
+    --jwt-issuer-uri=https://<your-tenant>.<region>.auth0.com/
+    --jwks-uri=https://<your-tenant>.<region>.auth0.com/.well-known/jwks.json
+    ```
 
-Note: the `/` is mandatory at the end of the issuer URL; if not present the `iss` will not validate
+    Note: the `/` is mandatory at the end of the issuer URL; if not present the `iss` will not validate
 
-##### Google Firebase
+    ##### Google Firebase
 
-Use the following options to configure the KMS server for Google Firebase:
+    Use the following options to configure the KMS server for Google Firebase:
 
-```sh
---jwt-issuer-uri=https://securetoken.google.com/<YOUR-PROJECT-ID>
---jwks-uri=https://www.googleapis.com/service_accounts/v1/metadata/x509/securetoken@system.gserviceaccount.com
-```
+    ```sh
+    --jwt-issuer-uri=https://securetoken.google.com/<YOUR-PROJECT-ID>
+    --jwks-uri=https://www.googleapis.com/service_accounts/v1/metadata/x509/securetoken@system.gserviceaccount.com
+    ```
 
-##### Okta
+    ##### Okta
 
-Use the following options to configure the KMS server for Okta:
+    Use the following options to configure the KMS server for Okta:
 
-```sh
---jwt-issuer-uri=https://<OKTA_TENANT_NAME>.com
---jwks-uri=https://<OKTA_TENANT_NAME>.com/oauth2/v1/keys
---jwt-audience=<OKTA_CLIENT_ID>
-```
+    ```sh
+    --jwt-issuer-uri=https://<OKTA_TENANT_NAME>.com
+    --jwks-uri=https://<OKTA_TENANT_NAME>.com/oauth2/v1/keys
+    --jwt-audience=<OKTA_CLIENT_ID>
+    ```
 
-##### Microsoft Entra ID
+    ##### Microsoft Entra ID
 
-Use the following options to configure the KMS server for Microsoft Entra ID:
+    Use the following options to configure the KMS server for Microsoft Entra ID:
 
-```sh
---jwt-issuer-uri=https://login.microsoftonline.com/<TENANT_ID>/discovery/v2.0/
---jwks-uri=https://login.microsoftonline.com/<TENANT_ID>/discovery/v2.0/keys
---jwt-audience=<CLIENT_ID>
-```
+    ```sh
+    --jwt-issuer-uri=https://login.microsoftonline.com/<TENANT_ID>/discovery/v2.0/
+    --jwks-uri=https://login.microsoftonline.com/<TENANT_ID>/discovery/v2.0/keys
+    --jwt-audience=<CLIENT_ID>
+    ```
 
-### Authenticating using an API Token
+    ### Authenticating using an API Token
 
-The server can be configured to authenticate using an API token passed in the `Authorization`
-header.
+    The server can be configured to authenticate using an API token passed in the `Authorization`
+    header.
 
-To proceed, follow these steps:
+    To proceed, follow these steps:
 
-- run Cosmian KMS server without API token authentication
-- generate a symmetric key and export it from the server
-- restart the server with the `--api-token-id` option
-- configure `cosmian` client with a `access_token` containing the API token in base64.
+    - run Cosmian KMS server without API token authentication
+    - generate a symmetric key and export it from the server
+    - restart the server with the `--api-token-id` option
+    - configure `cosmian` client with a `access_token` containing the API token in base64.
 
-To generate a new API token, use the `cosmian` CLI and save the symmetric key unique identifier (<
-SYMMETRIC_KEY_ID>):
+    To generate a new API token, use the `cosmian` CLI and save the symmetric key unique identifier (<
+    SYMMETRIC_KEY_ID>):
 
-```sh
-cosmian kms sym keys create
-```
+    ```sh
+    cosmian kms sym keys create
+    ```
 
-Then export the symmetric key content in base64:
+    Then export the symmetric key content in base64:
 
-```sh
-cosmian kms sym keys export -k <SYMMETRIC_KEY_ID> f base64 api_token.base64
-```
+    ```sh
+    cosmian kms sym keys export -k <SYMMETRIC_KEY_ID> f base64 api_token.base64
+    ```
 
-Reconfigure `cosmian` client with the previous base64 encoded key as `access_token`.
-Your `cosmian` is now ready to authenticate using the API token.
+    Reconfigure `cosmian` client with the previous base64 encoded key as `access_token`.
+    Your `cosmian` is now ready to authenticate using the API token.
 
-And finally, restart the server with the `--api-token-id` option.
+    And finally, restart the server with the `--api-token-id` option.
 
-```sh
---api_token_id <SYMMETRIC_KEY_ID>
-```
+    ```sh
+    --api_token_id <SYMMETRIC_KEY_ID>
+    ```
+
+=== "Cosmian CLI"
+
+    When authenticating using OAuth2 or Open ID Connect, the oauth2_conf field should be set
+    in the configuration file to provide the necessary information to first authenticate to Identity Provider
+    and get a token to authenticate to the KMS server.
+
+    Getting a Token from an Identity Provider is performed using the cosmian kms login command.
+    The token will be saved in the cosmian configuration file.
+    To remove the token, use the cosmian kms logout command.
+
+    The oauth2_conf field is a TOML object with the following fields:
+
+        client_id: the client ID to use when authenticating to the Identity Provider
+        client_secret: the client secret to use when authenticating to the Identity Provider
+        authorize_url: the URL to use when authorizing the client
+        token_url: the URL to use when requesting an access token
+        scopes: the optional list of scopes to request when authenticating to the KMS server
+
+    Example Google Identity Provider configuration:
+
+    ```toml
+    [kms_config.http_config]
+    server_url = "http://127.0.0.1:9998"
+
+    [kms_config.http_config.oauth2_conf]
+    client_id = "99999999-abababababababababab.apps.googleusercontent.com"
+    client_secret = "XXX"
+    authorize_url = "https://accounts.google.com/o/oauth2/v2/auth"
+    token_url = "https://oauth2.googleapis.com/token"
+    scopes = ["openid", "email"]
+    ```
+
+    When you run the cosmian kms login command, the CLI will provide a URL for you to open in your browser.
+    This URL initiates the login flow and sends the user token back to the CLI using a
+    redirect_url set to a local URL (http://localhost/), as the CLI runs on your local machine.
+    Ensure that your Identity Provider configuration permits this type of URL.
