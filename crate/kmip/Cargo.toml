@@ -6,6 +6,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+description = "Cosmian KMIP library"
 
 [lib]
 # doc test linking as a separate binary is extremely slow

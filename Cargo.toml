@@ -61,9 +61,9 @@ base64 = "0.22"
 bitflags = "2.9"
 chrono = "0.4"
 clap = { version = "4.5", default-features = false }
-cosmian_findex = { git = "https://github.com/Cosmian/findex", default-features = false, rev = "6329b6b2f2b64b033e40b05cd12ca1c9b5ee376f" }
-cosmian_findex_server = { git = "https://www.github.com/Cosmian/findex-server", branch = "develop" }
-cosmian_findex_structs = { git = "https://www.github.com/Cosmian/findex-server", branch = "develop" }
+cosmian_findex = { version = "7.1", default-features = false }
+cosmian_findex_server = "0.3"
+cosmian_findex_structs = "0.3"
 cosmian_config_utils = "0.2"
 cosmian_cover_crypt = "15.0"
 cosmian_crypto_core = { version = "10.1", default-features = false, features = [
