@@ -236,8 +236,8 @@ used, CKM_RSA_PKCS (v1.5) are supported for RSA keys. The hashing algorithm is f
 
 When using RSA, the maximum message size in bytes is:
 
-- PKCS#1 v1.5: (key size in bits / 8) - 11
-- OAEP: (key size in bits / 8) - 66
+* PKCS#1 v1.5: (key size in bits / 8) - 11
+* OAEP: (key size in bits / 8) - 66
 
 To encrypt a message with the public key `hsm::4::my_rsa_key_pk` and the CKM RSA PKCS OAEP algorithm, the following
 command can be used:

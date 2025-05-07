@@ -189,13 +189,13 @@ pub fn kmip_private_key_to_openssl(private_key: &Object) -> Result<PKey<Private>
                         PKey::private_key_from_raw_bytes(&privkey_vec, Id::ED448)?
                     }
                     other => {
-                        let bi: BigInt = BigInt::from(*d.clone());
-                        let bui = bi.into_biguint().ok_or_else(|| {
+                        let big_i: BigInt = BigInt::from(*d.clone());
+                        let big_ui = big_i.into_biguint().ok_or_else(|| {
                             CryptoError::ConversionError(
                                 "Failed converting the scalar BigInt to a BigUint".to_owned(),
                             )
                         })?;
-                        ec_private_key_from_scalar(&bui, *other)?
+                        ec_private_key_from_scalar(&big_ui, *other)?
                     }
                 },
                 x => crypto_bail!(

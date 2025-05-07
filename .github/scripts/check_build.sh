@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -ex
+set -e
 
 # Install cargo deny if not already installed
 # cargo install --version 0.18.2 cargo-deny --locked

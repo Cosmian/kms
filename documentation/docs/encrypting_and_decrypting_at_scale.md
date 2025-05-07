@@ -47,7 +47,7 @@ To maintain strong security while preserving performance, Cosmian KMS can be bac
 
 - HSM integration details are explained in the [HSM support section](./hsms/index.md)
 - HSM master keys wrap all application keys handled by the KMS
-- This protects keys at rest while only exposing the cleartext application keys in memory cache; the cach expiration
+- This protects keys at rest while only exposing the cleartext application keys in memory cache; the cache expiration
   delay is configurable
 - Supported HSMs include [Trustway Proteccio](./hsms/proteccio.md) and [Utimaco](./hsms/utimaco.md)
 

@@ -1,6 +1,7 @@
 use std::{fmt, path::PathBuf};
 
 use openssl::pkcs12::{ParsedPkcs12_2, Pkcs12};
+use tracing::debug;
 use x509_parser::pem::Pem;
 
 use crate::{
@@ -35,6 +36,7 @@ impl TlsParams {
     ///
     /// This function can return an error if there is an issue reading the PKCS#12 file or parsing it.
     pub fn try_from(config: &TlsConfig, deprecated_config: &HttpConfig) -> KResult<Option<Self>> {
+        debug!("try_from: tls_config: {config:#?}, deprecated_config: {deprecated_config:#?}");
         let p12 = if let (Some(p12_file), Some(p12_password)) =
             (&config.tls_p12_file, &config.tls_p12_password)
         {
@@ -69,12 +71,12 @@ impl TlsParams {
 /// Opens a PKCS#12 file and parses it into a `TlsParams` object.
 fn open_p12(p12_file: &PathBuf, p12_password: &str) -> Result<ParsedPkcs12_2, KmsError> {
     // Open and read the file into a byte vector
-    let der_bytes = std::fs::read(p12_file)?;
+    let der_bytes = std::fs::read(p12_file).context("TLS configuration. Failed opening P12")?;
     // Parse the byte vector as a PKCS#12 object
     let sealed_p12 = Pkcs12::from_der(der_bytes.as_slice())?;
     sealed_p12
         .parse2(p12_password)
-        .context("TLS configuration. Failed opening P12")
+        .context("TLS configuration. Failed parsing P12")
 }
 
 impl fmt::Debug for TlsParams {

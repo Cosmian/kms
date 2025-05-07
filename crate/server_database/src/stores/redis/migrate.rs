@@ -19,7 +19,7 @@ impl RedisWithFindex {
         if db_state != DbState::Ready {
             let error_string = "Database is not in a ready state; it is either upgrading or a \
                                 previous upgrading failed. Bailing out. Please wait for the \
-                                migration to complete ot restore a previous version of the \
+                                migration to complete or restore a previous version of the \
                                 database.";
             error!(error_string,);
             return Err(DbError::DatabaseError("error_string".to_owned()));

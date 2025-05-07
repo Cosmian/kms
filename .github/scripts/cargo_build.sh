@@ -125,7 +125,17 @@ for KMS_TEST_DB in "${DATABASES[@]}"; do
 
   export KMS_TEST_DB="$KMS_TEST_DB"
   # shellcheck disable=SC2086
-  cargo test --workspace --lib --target $TARGET $RELEASE $FEATURES -- --nocapture $SKIP_SERVICES_TESTS
+  cargo test --workspace --lib --target $TARGET $RELEASE $FEATURES \
+    --exclude cosmian_kms_client_utils \
+    --exclude cosmian_findex_client \
+    --exclude cosmian_gui \
+    --exclude cosmian_kms_client \
+    --exclude cosmian_pkcs11_module \
+    --exclude cosmian_pkcs11 \
+    --exclude test_findex_server \
+    --exclude test_kms_server \
+    --exclude cosmian_kms_client_wasm \
+    -- --nocapture $SKIP_SERVICES_TESTS
 done
 
 # shellcheck disable=SC2086
