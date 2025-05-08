@@ -54,6 +54,18 @@ Options:
           
           [env: KMS_CLEAR_DATABASE=]
 
+      --unwrapped-cache-max-age <UNWRAPPED_CACHE_MAX_AGE>
+          When a wrapped object is fetched from the database,
+          it is unwrapped and stored in the unwrapped cache.
+          This option specifies the maximum age in minutes of the unwrapped objects in the cache
+          after its last use.
+          The default is 15 minutes.
+          About 2/3 of the objects will be evicted after this time; the other 1/3 will be evicted
+          after a maximum of 150% of the time.
+          
+          [env: KMS_UNWRAPPED_CACHE_MAX_AGE=]
+          [default: 15]
+
       --socket-server-start
           Start the KMIP socket server? If this is set to true, the TLS config must be provided, featuring a server PKCS#12 file and a client certificate authority certificate file
           

@@ -76,8 +76,9 @@ pub(crate) fn get_tmp_sqlite_path() -> PathBuf {
 
     // get the current date and time as an ISO 8601 string using OffsetDateTime
     let now = OffsetDateTime::now_utc().format(&Iso8601::DEFAULT).unwrap();
+    let name = now.replace(":", "-");
 
-    project_dir.join(format!("{now}.sqlite"))
+    project_dir.join(format!("{name}.sqlite"))
 }
 
 pub(crate) async fn test_app(
