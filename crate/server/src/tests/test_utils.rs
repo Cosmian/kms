@@ -67,7 +67,7 @@ pub(crate) fn get_tmp_sqlite_path() -> PathBuf {
         .expect("Cannot get parent directory of CARGO_MANIFEST_DIR")
         .parent()
         .expect("Cannot get parent of parent directory of CARGO_MANIFEST_DIR")
-        .join(Path::new("test_data/sqlite"));
+        .join(Path::new("test_data").join("sqlite"));
 
     // Create the directory if it doesn't exist
     if !project_dir.exists() {
@@ -97,7 +97,7 @@ pub(crate) async fn test_app(
 
     let mut app = App::new()
         .app_data(Data::new(kms_server.clone()))
-        .app_data(web::Data::new(privileged_users))
+        .app_data(Data::new(privileged_users))
         .service(routes::kmip::kmip_2_1_json)
         .service(routes::kmip::kmip)
         .service(routes::access::list_owned_objects)
