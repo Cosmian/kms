@@ -22,7 +22,7 @@ pub struct ServerParams {
     /// The UI distribution folder
     pub ui_index_html_folder: PathBuf,
 
-    /// The OIDC config used to handle login from UI
+    /// The OIDC config used to handle login from the UI
     pub ui_oidc_auth: OidcConfig,
 
     /// The username to use if no authentication method is provided
@@ -75,10 +75,11 @@ pub struct ServerParams {
     /// The URL should be something like <https://cse.my_domain.com/google_cse>
     pub google_cse_kacls_url: Option<String>,
 
-    /// This setting disables the validation of the tokens used by the Google Workspace CSE feature of this server.
+    /// This setting turns off the validation of the tokens
+    /// used by this server's Google Workspace CSE feature.
     pub google_cse_disable_tokens_validation: bool,
 
-    /// This setting enables the Microsoft Double Key Encryption service feature of this server.
+    /// This setting enables this server's Microsoft Double Key Encryption service feature.
     ///
     /// It should contain the external URL of this server as configured in
     /// App Registrations of Azure as the DKE Service.
@@ -97,7 +98,7 @@ pub struct ServerParams {
     /// HSM slot passwords number
     pub slot_passwords: HashMap<usize, Option<String>>,
 
-    /// The Key Wrapping Key if any
+    /// The Key Wrapping Key, if any
     pub key_wrapping_key: Option<String>,
 
     /// The non-revocable key ID used for demo purposes
@@ -110,7 +111,7 @@ pub struct ServerParams {
 
 /// Represents the server parameters.
 impl ServerParams {
-    /// Tries to create a `ServerParams` instance from the given `ClapConfig`.
+    /// Tries to create a `ServerParams` instance from `ClapConfig`.
     ///
     /// # Arguments
     ///

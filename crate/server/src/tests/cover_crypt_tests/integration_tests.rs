@@ -24,7 +24,8 @@ use crate::{
 };
 #[tokio::test]
 async fn integration_tests_use_ids_no_tags() -> KResult<()> {
-    cosmian_logger::log_init(None);
+    cosmian_logger::log_init(Some("debug"));
+    // cosmian_logger::log_init(None);
     let app = test_utils::test_app(None, None).await;
     let access_structure = r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["RnD","HR","MKG","FIN"]}"#;
 
@@ -247,7 +248,8 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         .data
         .expect("There should be encrypted data");
 
-    // Make sure first user decryption key cannot decrypt new encrypted message (message being encrypted with new `MKG` value)
+    // Make sure the first user decryption key cannot decrypt the new encrypted message
+    // (message being encrypted with the new `MKG` value)
     let request = decrypt_request(
         user_decryption_key_identifier_1,
         None,
@@ -276,7 +278,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     assert_eq!(data, &*decrypted_data);
 
     //
-    // Prune old keys associated to the access policy
+    // Prune old keys associated with the access policy
     let request = build_rekey_keypair_request(
         private_key_unique_identifier,
         &RekeyEditAction::PruneAccessPolicy(ap_to_edit),
@@ -285,7 +287,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         test_utils::post_2_1(&app, &request).await;
     rekey_keypair_response?;
 
-    // test user2 can no longer decrypt old message
+    // test user2 can no longer decrypt the old message
     let request = decrypt_request(
         user_decryption_key_identifier_2,
         None,
@@ -400,7 +402,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         test_utils::post_2_1(&app, &request).await;
     rekey_keypair_response?;
 
-    // Encrypt for removed attribute will fail
+    // Encrypt for the removed attribute will fail
     let data = b"New hr data";
     let encryption_policy = "Security Level::Confidential && Department::HumanResources";
 
