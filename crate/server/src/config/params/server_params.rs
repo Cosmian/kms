@@ -72,7 +72,7 @@ pub struct ServerParams {
     ///
     /// It should contain the external URL of this server as configured in Google Workspace client-side encryption settings.
     /// For instance, if this server is running on the domain `cse.my_domain.com`,
-    /// the URL should be something like <https://cse.my_domain.com/google_cse>
+    /// The URL should be something like <https://cse.my_domain.com/google_cse>
     pub google_cse_kacls_url: Option<String>,
 
     /// This setting disables the validation of the tokens used by the Google Workspace CSE feature of this server.

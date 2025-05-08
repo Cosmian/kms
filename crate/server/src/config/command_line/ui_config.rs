@@ -1,7 +1,10 @@
 use clap::Args;
 use serde::{Deserialize, Serialize};
 
+#[cfg(not(target_os = "windows"))]
 pub const DEFAULT_COSMIAN_UI_DIST_PATH: &str = "/usr/local/cosmian/ui/dist/";
+#[cfg(target_os = "windows")]
+pub const DEFAULT_COSMIAN_UI_DIST_PATH: &str = "C:\\ProgramData\\cosmian";
 
 #[derive(Debug, Args, Deserialize, Serialize, Clone)]
 #[serde(default)]
