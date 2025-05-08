@@ -149,7 +149,7 @@ fn start_socket_server(
 ///
 /// # Arguments
 ///
-/// * `server_params` - An instance of `ServerParams` that contains the settings for the server.
+/// * `server_params` - An instance of `ServerParams` containing the server's settings.
 /// * `server_handle_transmitter` - An optional sender channel of type `mpsc::Sender<ServerHandle>` that can be used to manage server state.
 ///
 /// # Errors
@@ -217,7 +217,7 @@ fn spa_index_handler(req: &HttpRequest, ui_index_html_folder: &PathBuf) -> actix
     }
 }
 
-/// Prepare server for the application.
+/// Prepare the server for the application.
 ///
 /// Creates an `HttpServer` instance,
 /// configures the routes for the application, and sets the request timeout. The server can be

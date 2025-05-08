@@ -64,12 +64,17 @@ pub(crate) fn get_tmp_sqlite_path() -> PathBuf {
     // Set the absolute path of the project directory
     let project_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
-        .unwrap()
+        .expect("Cannot get parent directory of CARGO_MANIFEST_DIR")
         .parent()
-        .unwrap()
+        .expect("Cannot get parent of parent directory of CARGO_MANIFEST_DIR")
         .join(Path::new("test_data/sqlite"));
 
-    // get the current date and time as an ISO 8601 string usinf OffsetDateTime
+    // Create the directory if it doesn't exist
+    if !project_dir.exists() {
+        std::fs::create_dir_all(&project_dir).expect("Failed to create test_data/sqlite directory");
+    }
+
+    // get the current date and time as an ISO 8601 string using OffsetDateTime
     let now = OffsetDateTime::now_utc().format(&Iso8601::DEFAULT).unwrap();
 
     project_dir.join(format!("{now}.sqlite"))

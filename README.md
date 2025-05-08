@@ -8,7 +8,9 @@ The **Cosmian KMS** is a high-performance,
 [FIPS 140-3 compliant](./documentation/docs/fips.md) server application
 written in [**Rust**](https://www.rust-lang.org/) that presents some unique features, such as:
 
-- the ability to confidentially run in a public cloud — or any zero-trust environment — using
+- large scale encryption and decryption of
+  data [see this documentation](./documentation/docs/encrypting_and_decrypting_at_scale.md)
+- the ability to confidentially run in a public cloud, or any zero-trust environment, using
   Cosmian VM. See our cloud-ready confidential KMS on the
   [Azure, GCP, and AWS marketplaces](https://cosmian.com/marketplaces/)
   our [deployment guide](documentation/docs/installation/marketplace_guide.md)
@@ -17,14 +19,15 @@ written in [**Rust**](https://www.rust-lang.org/) that presents some unique feat
   [Google Workspace Client Side Encryption (CSE)](./documentation/docs/google_cse/index.md)
 - out-of-the-box support
   of [Microsoft Double Key Encryption (DKE)](./documentation/docs/ms_dke/index.md)
-- support for the [Proteccio HSM](./documentation/docs/hsms/index.md) with KMS keys wrapped by the HSM
+- support for the [Proteccio adn Utimaco HSM](./documentation/docs/hsms/index.md) with KMS keys wrapped by the HSM
 - [Veracrypt](./documentation/docs/pkcs11/veracrypt.md)
   and [LUKS](./documentation/docs/pkcs11/luks.md) disk encryption support
 - [FIPS 140-3](./documentation/docs/fips.md) mode gated behind the feature `fips`
 - a [JSON KMIP 2.1](./documentation/docs/kmip_2_1/index.md) compliant interface
+- Oracle DB [TDE support](./documentation/docs/oracle/tde.md)
 - a full-featured client [command line and graphical interface](https://docs.cosmian.com/cosmian_cli/)
 - a [high-availability mode](documentation/docs/installation/high_availability_mode.md) with simple horizontal scaling
-- a support of Python, Javascript, Dart, Rust, C/C++, and Java clients (see the `cloudproof` libraries
+- a support of Python, JavaScript, Dart, Rust, C/C++, and Java clients (see the `cloudproof` libraries
   on [Cosmian Github](https://github.com/Cosmian))
 - integrated with [OpenTelemetry](https://opentelemetry.io/)
 
@@ -38,7 +41,7 @@ Please refer to the list of [supported algorithms](./documentation/docs/algorith
 
 As a **PKI** it can manage root and intermediate certificates, sign and verify certificates, use
 their public keys to encrypt and decrypt data.
-Certificates can be exported under various formats including _PKCS#12_ modern and legacy flavor,
+Certificates can be exported under various formats, including _PKCS#12_ modern and legacy flavor,
 to be used in various applications, such as in _S/MIME_ encrypted emails.
 
 The KMS has extensive online [documentation](https://docs.cosmian.com/key_management_system/)
@@ -48,7 +51,7 @@ The KMS has extensive online [documentation](https://docs.cosmian.com/key_manage
         - [Example](#example)
     - [Repository content](#repository-content)
     - [Building the KMS](#building-the-kms)
-        - [Linux or MacOS (CPU Intel or MacOs ARM)](#linux-or-macos-cpu-intel-or-macos-arm)
+        - [Linux or MacOS (CPU Intel or MacOS ARM)](#linux-or-macos-cpu-intel-or-macos-arm)
         - [Windows](#windows)
         - [Build the KMS](#build-the-kms)
         - [Build the Docker Ubuntu container](#build-the-docker-ubuntu-container)
@@ -74,7 +77,8 @@ docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest
 ```
 
 Then, use the CLI to issue commands to the KMS.
-The CLI, called `cosmian`, can be either downloaded from [Cosmian packages](https://package.cosmian.com/kms/) or built and
+The CLI, called `cosmian`, can be either downloaded from [Cosmian packages](https://package.cosmian.com/kms/) or built
+and
 launched from this GitHub project by running
 
 ```sh
@@ -144,11 +148,11 @@ First, pull the git submodule for client requirements such as CLI and UI:
 git submodule update --recursive --init
 ````
 
-Then OpenSSL v3.2.0 is required to build the KMS.
+Then, OpenSSL v3.2.0 is required to build the KMS.
 
 ### Linux or MacOS (CPU Intel or MacOs ARM)
 
-Retrieve OpenSSL v3.2.0 (already build) with the following commands:
+Retrieve OpenSSL v3.2.0 (already built) with the following commands:
 
 ```sh
 export OPENSSL_DIR=/usr/local/openssl
@@ -169,12 +173,16 @@ bash .github/scripts/get_openssl_binaries.sh
 The files `vcpkg.json` and `vcpkg_fips.json` are provided in the repository to install OpenSSL v3.2.0:
 
 ```powershell
-vcpkg install --triplet x64-windows-static
-vcpkg integrate install
-$env:OPENSSL_DIR = "$env:VCPKG_INSTALLATION_ROOT\packages\openssl_x64-windows-static"
+vcpkg install --triplet x64-windows-static # arm64-windows-static for ARM64
 ```
 
-For a FIPS compliant build, use the following commands (in order to build fips.dll), run also:
+vcpkg integrate install
+$env:OPENSSL_DIR = "$env:VCPKG_INSTALLATION_ROOT\packages\openssl_x64-windows-static" # openssl_arm64-windows-static for
+ARM64
+
+```
+
+For a FIPS compliant build, use the following commands (to build fips.dll), also run:
 
 ```powershell
 Copy-Item -Path "vcpkg_fips.json" -Destination "vcpkg.json"
@@ -185,7 +193,7 @@ vcpkg integrate install
 ### Build the KMS
 
 Once OpenSSL is installed, you can build the KMS. To avoid the _additive feature_ issues, the main artifacts - the CLI,
-the KMS server and the PKCS11 provider - should directly be built using `cargo build --release` within their own crate,
+the KMS server and the PKCS11 provider should be directly built using `cargo build --release` within their crate,
 not from the project root.
 
 Build the server and CLI binaries:
@@ -200,7 +208,7 @@ cargo build --release
 
 ### Build the Docker Ubuntu container
 
-You can build a docker containing the KMS server as follows:
+You can build a Docker containing the KMS server as follows:
 
 ```sh
 docker build . --network=host -t kms

@@ -17,7 +17,7 @@ use tracing::{debug, info, span};
 #[cfg(feature = "timeout")]
 mod expiry;
 
-/// The main entrypoint of the program.
+/// The main entry point of the program.
 ///
 /// This function sets up the necessary environment variables and logging options,
 /// then parses the command line arguments using [`ClapConfig::parse()`](https://docs.rs/clap/latest/clap/struct.ClapConfig.html#method.parse).
@@ -51,7 +51,7 @@ async fn main() -> KResult<()> {
         }
     }
 
-    // initialize the tracing system
+    //Initialize the tracing system
     let _otel_guard = tracing_init(&TracingConfig {
         service_name: "cosmian_kms".to_string(),
         otlp: clap_config
@@ -92,15 +92,15 @@ async fn main() -> KResult<()> {
         openssl::version::number()
     );
 
-    // For an explanation of openssl providers, see
-    // see https://docs.openssl.org/3.1/man7/crypto/#openssl-providers
+    // For an explanation of OpenSSL providers,
+    //  https://docs.openssl.org/3.1/man7/crypto/#openssl-providers
 
-    // In FIPS mode, we only load the fips provider
+    // In FIPS mode, we only load the FIPS provider
     #[cfg(feature = "fips")]
     Provider::load(None, "fips")?;
 
     // Not in FIPS mode and version > 3.0: load the default provider and the legacy provider
-    // so that we can use the legacy algorithms
+    // so that we can use the legacy algorithms.
     // particularly those used for old PKCS#12 formats
     #[cfg(not(feature = "fips"))]
     if openssl::version::number() >= 0x30000000 {
@@ -212,6 +212,7 @@ mod tests {
                 rust_log: Some("info,cosmian_kms=debug".to_owned()),
                 otlp: Some("http://localhost:4317".to_owned()),
                 quiet: false,
+                #[cfg(not(target_os = "windows"))]
                 log_to_syslog: false,
                 enable_metering: false,
                 environment: Some("development".to_owned()),
