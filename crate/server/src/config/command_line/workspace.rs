@@ -6,7 +6,10 @@ use std::{
 use clap::Args;
 use serde::{Deserialize, Serialize};
 
-use crate::{kms_error, result::KResult};
+use crate::{
+    kms_error,
+    result::{KResult, KResultHelper},
+};
 
 const DEFAULT_ROOT_DATA_PATH: &str = "./cosmian-kms";
 const DEFAULT_TMP_PATH: &str = "/tmp";
@@ -88,7 +91,8 @@ impl WorkspaceConfig {
         };
 
         if !path.exists() {
-            fs::create_dir_all(&path)?;
+            fs::create_dir_all(&path)
+                .context(&format!("finalize_directory_path: {}", path.display()))?;
         }
 
         fs::canonicalize(path).map_err(|e| kms_error!(e))

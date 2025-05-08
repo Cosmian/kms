@@ -7,7 +7,10 @@ use serde::{Deserialize, Serialize};
 use url::Url;
 
 use super::workspace::WorkspaceConfig;
-use crate::{kms_bail, kms_error, result::KResult};
+use crate::{
+    kms_bail, kms_error,
+    result::{KResult, KResultHelper},
+};
 
 pub const DEFAULT_SQLITE_PATH: &str = "./sqlite-data";
 
@@ -164,19 +167,24 @@ impl MainDBConfig {
         if let Some(database_type) = &self.database_type {
             return Ok(match database_type.as_str() {
                 "postgresql" => {
-                    let url = ensure_url(self.database_url.as_deref(), "KMS_POSTGRES_URL")?;
+                    let url = ensure_url(self.database_url.as_deref(), "KMS_POSTGRES_URL")
+                        .context("db:init")?;
                     MainDbParams::Postgres(url)
                 }
                 "mysql" => {
-                    let url = ensure_url(self.database_url.as_deref(), "KMS_MYSQL_URL")?;
+                    let url = ensure_url(self.database_url.as_deref(), "KMS_MYSQL_URL")
+                        .context("db:init")?;
                     MainDbParams::Mysql(url)
                 }
                 "sqlite" => {
-                    let path = workspace.finalize_directory(&self.sqlite_path)?;
+                    let path = workspace
+                        .finalize_directory(&self.sqlite_path)
+                        .context("db:init")?;
                     MainDbParams::Sqlite(path)
                 }
                 "redis-findex" => {
-                    let url = ensure_url(self.database_url.as_deref(), "KMS_REDIS_URL")?;
+                    let url = ensure_url(self.database_url.as_deref(), "KMS_REDIS_URL")
+                        .context("db:init")?;
                     // Check if a Redis master password was provided
                     let redis_master_password = ensure_value(
                         self.redis_master_password.as_deref(),
@@ -184,7 +192,8 @@ impl MainDBConfig {
                         "KMS_REDIS_MASTER_PASSWORD",
                     )?;
                     // Generate the symmetric key from the master password
-                    let master_key = redis_master_key_from_password(&redis_master_password)?;
+                    let master_key = redis_master_key_from_password(&redis_master_password)
+                        .context("db:init")?;
                     let redis_findex_label = ensure_value(
                         self.redis_findex_label.as_deref(),
                         "redis-findex-label",
@@ -200,7 +209,9 @@ impl MainDBConfig {
             });
         }
         // No database configuration provided; use the default config
-        let path = workspace.finalize_directory(&self.sqlite_path)?;
+        let path = workspace
+            .finalize_directory(&self.sqlite_path)
+            .context("db:init; workspace finalize")?;
         Ok(MainDbParams::Sqlite(path))
     }
 }
