@@ -86,7 +86,8 @@ pub(crate) async fn test_app(
 ) -> impl Service<Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error> {
     let clap_config = https_clap_config_opts(google_cse_kacls_url);
 
-    let server_params = Arc::new(ServerParams::try_from(clap_config).unwrap());
+    let server_params =
+        Arc::new(ServerParams::try_from(clap_config).expect("cannot create server params"));
 
     let kms_server = Arc::new(
         KMS::instantiate(server_params)

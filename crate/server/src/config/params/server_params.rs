@@ -7,7 +7,7 @@ use super::TlsParams;
 use crate::{
     config::{ClapConfig, DEFAULT_COSMIAN_UI_DIST_PATH, IdpConfig, OidcConfig},
     error::KmsError,
-    result::KResult,
+    result::{KResult, KResultHelper},
 };
 
 /// This structure is the context used by the server
@@ -143,7 +143,8 @@ impl ServerParams {
             );
         }
 
-        let tls_params = TlsParams::try_from(&conf.tls, &conf.http)?;
+        let tls_params =
+            TlsParams::try_from(&conf.tls, &conf.http).context("failed to create TLS params")?;
 
         let slot_passwords: HashMap<usize, Option<String>> = conf
             .hsm_slot
@@ -156,10 +157,17 @@ impl ServerParams {
             .collect();
 
         let res = Self {
-            identity_provider_configurations: conf.auth.extract_idp_configs()?,
+            identity_provider_configurations: conf
+                .auth
+                .extract_idp_configs()
+                .context("failed initializing IdPs")?,
             ui_index_html_folder,
             ui_oidc_auth: conf.ui_config.ui_oidc_auth,
-            main_db_params: Some(conf.db.init(&conf.workspace.init()?)?),
+            main_db_params: Some(
+                conf.db
+                    .init(&conf.workspace.init().context("failed to init workspace")?)
+                    .context("failed to init DB")?,
+            ),
             clear_db_on_start: conf.db.clear_database,
             unwrapped_cache_max_age: if conf.db.unwrapped_cache_max_age == 0 {
                 return Err(KmsError::NotSupported(
