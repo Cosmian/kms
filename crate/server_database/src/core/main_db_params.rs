@@ -11,14 +11,14 @@ use url::Url;
 use crate::stores::REDIS_WITH_FINDEX_MASTER_KEY_LENGTH;
 
 pub enum MainDbParams {
-    /// contains the dir of the sqlite db file (not the db file itself)
+    /// contains the directory of the `SQLite` DB file (not the DB file itself)
     Sqlite(PathBuf),
-    /// contains the Postgres connection URL
+    /// contains the `Postgres` connection URL
     Postgres(Url),
-    /// contains the `MySql` connection URL
+    /// contains the `MySQL` connection URL
     Mysql(Url),
     /// contains
-    /// - the Redis connection URL
+    /// - the `Redis` connection URL
     /// - the master key used to encrypt the DB and the Index
     /// - a public arbitrary label that can be changed to rotate the Findex ciphertexts without changing the key
     RedisFindex(
@@ -83,6 +83,6 @@ impl fmt::Debug for MainDbParams {
 
 #[derive(Debug)]
 pub enum AdditionalObjectStoresParams {
-    /// Proteccio HSM: the Object UIDs prefix, HSM admin username and the slot passwords
+    /// Proteccio HSM: the Object UIDs prefix, HSM admin username, and the slot passwords
     ProteccioHsm((String, String, HashMap<usize, Option<String>>)),
 }

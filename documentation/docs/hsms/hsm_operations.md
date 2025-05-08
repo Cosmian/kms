@@ -10,6 +10,7 @@ In addition to managing its own keys, Cosmian KMS can act as a proxy to an HSM t
 * [Using the wrapped KMS key](#using-the-wrapped-kms-key)
     * [Small data: encrypting server-side](#small-data-encrypting-server-side)
         * [Large data: encrypting client side with key wrapping](#large-data-encrypting-client-side-with-key-wrapping)
+* [The Unwrapped Objects Cache](#the-unwrapped-objects-cache)
 * [HSM KMIP operations](#hsm-kmip-operations)
     * [Create](#create)
     * [Destroy](#destroy)
@@ -22,8 +23,7 @@ In addition to managing its own keys, Cosmian KMS can act as a proxy to an HSM t
 ## HSM keys
 
 HSM keys are prefixed keys. They are created with a unique identifier that is prefixed by the `hsm` keyword and the
-slot
-number in the form:
+slot number in the form:
 
 ```shell
 hsm::<slot_number>::<key_identifier>
@@ -102,10 +102,10 @@ To encrypt a large file with the key `my_sym_key` client side, the following com
 The encrypted file is available at "/tmp/large.enc"
 ```
 
-In this case, an ephemeral symmetric key (the Data Encryption Key, DEK)
-is generated and used to encrypt the data. The DEK is then encrypted/wrapped with RFC4659 (a.k.a NIST AES Key Wrap)
-with the key `my_sym_key`, called the Key Encryption Key, KEK. The wrapping of the DEK by the KEK
-is stored at the beginning of the encrypted file.
+In this case, an ephemeral symmetric key (the Data Encryption Key, DEK) is generated and used to encrypt the data.
+The DEK is then encrypted/wrapped with RFC4659 (a.k.a NIST AES Key Wrap) with the key `my_sym_key`,
+called the Key Encryption Key, KEK.
+The wrapping of the DEK by the KEK is stored at the beginning of the encrypted file.
 At rest, in the KMS database, `my_sym_key` is stored encrypted/wrapped with the HSM key `hsm::4::my_rsa_key_pk`.
 
 To decrypt a large file with the KEK `my_sym_key` client side, the following command can be used:
@@ -115,6 +115,21 @@ To decrypt a large file with the KEK `my_sym_key` client side, the following com
   --key-encryption-algorithm rfc5649 --output-file /tmp/large.recoverd.bin /tmp/large.enc
 The decrypted file is available at "/tmp/large.recoverd.bin"
 ```
+
+## The Unwrapped Objects Cache
+
+The unwrapped cache is a memory cache, and it is not persistent. The unwrapped cache is used to store unwrapped objects
+that are fetched from the database.
+
+When a wrapped object is fetched from the database, it is unwrapped and stored in the unwrapped cache.
+Further calls to the same object will use the unwrapped object from the cache until the cache expires.
+
+The time in minutes after an unused object is evicted from the cache is configurable
+using the `unwrapped_cache_max_age` setting. The default is 15 minutes.
+
+When HSM keys wrap objects, a long expiration time will reduce the number of calls made to HSM to unwrap the object.
+However, increasing the cache time will increase the memory the KMS server uses and expose the key in clear text
+in the memory for a longer time.
 
 ## HSM KMIP operations
 
@@ -224,8 +239,8 @@ When using RSA, the maximum message size in bytes is:
 - PKCS#1 v1.5: (key size in bits / 8) - 11
 - OAEP: (key size in bits / 8) - 66
 
-To encrypt a message with the public key `hsm::4::my_rsa_key_pk` and the CKM RSA PKCS OAEP algorithm,
-the following command can be used:
+To encrypt a message with the public key `hsm::4::my_rsa_key_pk` and the CKM RSA PKCS OAEP algorithm, the following
+command can be used:
 
 ```shell
 ❯ cosmian kms rsa encrypt --key-id hsm::4::my_rsa_key_pk --encryption-algorithm ckm-rsa-pkcs-oaep \

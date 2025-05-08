@@ -53,11 +53,11 @@ hsm_password = ["<password_of_1st_slot1>", "<password_of_2bd_slot2>", ...]
 
 # Force all newly created and imported keys to be wrapped by the key specified in this field.
 # This is most useful to ensure that an HSM key wraps all keys in the KMS database.
-# Note: This setting is ignored when a key is imported in JSON TTLV format, and that key is already wrapped.
+# Note: This setting is ignored when a key is imported in JSON TTLV format and is already wrapped.
 key_encryption_key = "kek ID"
 
 # All users can create and import objects in the KMS by default.
-# When this setting contains a user ID list, only these users can create and import objects.
+# Only these users can create and import objects when this setting contains a user ID list.
 privileged_users = ["<user_id_1>", "<user_id_2>"]
 
 # Check the database configuration documentation pages for more information
@@ -67,14 +67,23 @@ database_url = "<database-url>"
 sqlite_path = "<sqlite-path>"
 redis_master_password = "<redis master password>"
 redis_findex_label = "<redis findex label>"
+# Clear the database at startup. WARNING: This will delete all objects in the database.
 clear_database = false
+# When a wrapped object is fetched from the database,
+# it is unwrapped and stored in the unwrapped cache.
+# This option specifies the maximum age in minutes of the unwrapped objects in the cache
+# after its last use.
+# The default is 15 minutes.
+# About 2/3 of the objects will be evicted after this time; the other 1/3 will be evicted
+# after a maximum of 150% of the time.
+unwrapped_cache_max_age = 15 # minutes
 
 # TLS configuration of the Socket server and HTTP server
 [tls]
 # The KMS server's optional PKCS#12 Certificates and Key file.
 # If provided, this will start the server in HTTPS mode.
 tls_p12_file = "[tls p12 file]"
-# The password to open the PKCS#12 Certificates and Key file.
+# The password to open the PKCS#12 certificates and key file.
 tls_p12_password = "[tls p12 password]"
 # The server's optional authority X509 certificate in PEM format
 # used to validate the client certificate presented for authentication.
@@ -141,7 +150,7 @@ otlp = "http://localhost:4317"
 quiet = false
 # If set to true, the KMS server will log to syslog instead of stdout.
 log_to_syslog = false
-# If set to true, the Telemetry will also contain metering events in addition to tracing events.
+# The Telemetry will also contain metering and tracing events if set to true.
 enable_metering = false
 # When using telemetry, this setting will show the KMS environment: "production", "development", "staging", "testing"...
 environment = "development"

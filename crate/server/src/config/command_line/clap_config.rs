@@ -91,7 +91,8 @@ pub struct ClapConfig {
     #[clap(long, env = "KMS_GOOGLE_CSE_KACLS_URL", verbatim_doc_comment)]
     pub google_cse_kacls_url: Option<String>,
 
-    /// This setting disables the validation of the tokens used by the Google Workspace CSE feature of this server.
+    /// This setting turns off the validation of the tokens
+    /// used by this server's Google Workspace CSE feature.
     #[clap(
         long,
         requires = "google_cse_kacls_url",
@@ -100,7 +101,7 @@ pub struct ClapConfig {
     )]
     pub google_cse_disable_tokens_validation: bool,
 
-    /// This setting enables the Microsoft Double Key Encryption service feature of this server.
+    /// This setting enables this server's Microsoft Double Key Encryption service feature.
     ///
     /// It should contain the external URL of this server as configured in Azure App Registrations
     /// as the DKE Service (<https://learn.microsoft.com/en-us/purview/double-key-encryption-setup#register-your-key-store>)
@@ -160,7 +161,7 @@ pub struct ClapConfig {
     pub kms_public_url: Option<String>,
 
     /// List of users who have the right to create and import Objects
-    /// and grant access rights for Create Kmip Operation
+    /// and grant access rights for Create Kmip Operation.
     /// If not set, all users can create and import objects in the KMS (default).
     #[clap(long, verbatim_doc_comment)]
     pub privileged_users: Option<Vec<String>>,
@@ -174,7 +175,7 @@ impl ClapConfig {
     /// or if the configuration file is not valid,
     /// or if the configuration file cannot be read,
     /// or if the configuration file cannot be parsed,
-    /// or if the configuration file is not a valid toml file.
+    /// or if the configuration file is not a valid TOML file.
     #[allow(clippy::print_stdout)] // Logging is not being initialized yet, just use standard prints
     pub fn load_from_file() -> KResult<Self> {
         let conf = std::env::var("COSMIAN_KMS_CONF").map_or_else(

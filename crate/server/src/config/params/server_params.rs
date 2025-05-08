@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt, path::PathBuf};
+use std::{collections::HashMap, fmt, path::PathBuf, time::Duration};
 
 use cosmian_kms_server_database::MainDbParams;
 use tracing::{debug, warn};
@@ -6,6 +6,7 @@ use tracing::{debug, warn};
 use super::TlsParams;
 use crate::{
     config::{ClapConfig, DEFAULT_COSMIAN_UI_DIST_PATH, IdpConfig, OidcConfig},
+    error::KmsError,
     result::KResult,
 };
 
@@ -37,6 +38,9 @@ pub struct ServerParams {
     /// Whether to clear the database on start
     pub clear_db_on_start: bool,
 
+    /// The maximum age of unwrapped objects in the cache
+    pub unwrapped_cache_max_age: Duration,
+
     /// Whether the socket server should be started
     pub start_socket_server: bool,
 
@@ -61,13 +65,13 @@ pub struct ServerParams {
     /// The port of the HTTP server
     pub http_port: u16,
 
-    /// The API authentication token used both server and client side
+    /// The API authentication token is used on both the server and client sides
     pub api_token_id: Option<String>,
 
     /// This setting enables the Google Workspace Client Side Encryption feature of this KMS server.
     ///
-    /// It should contain the external URL of this server as configured in Google Workspace client side encryption settings.
-    /// For instance, if this server is running on domain `cse.my_domain.com`,
+    /// It should contain the external URL of this server as configured in Google Workspace client-side encryption settings.
+    /// For instance, if this server is running on the domain `cse.my_domain.com`,
     /// the URL should be something like <https://cse.my_domain.com/google_cse>
     pub google_cse_kacls_url: Option<String>,
 
@@ -96,11 +100,11 @@ pub struct ServerParams {
     /// The Key Wrapping Key if any
     pub key_wrapping_key: Option<String>,
 
-    /// The non-revocable keys ID used for demo purposes
+    /// The non-revocable key ID used for demo purposes
     pub non_revocable_key_id: Option<Vec<String>>,
 
-    /// Users than have initial rights to create and grant access right for Create Kmip Operation
-    /// If None, all users can create and grant create access right.
+    /// Users who have initial rights to create and grant access rights for Create Kmip Operation
+    /// If None, all users can create and grant create access rights.
     pub privileged_users: Option<Vec<String>>,
 }
 
@@ -156,6 +160,13 @@ impl ServerParams {
             ui_oidc_auth: conf.ui_config.ui_oidc_auth,
             main_db_params: Some(conf.db.init(&conf.workspace.init()?)?),
             clear_db_on_start: conf.db.clear_database,
+            unwrapped_cache_max_age: if conf.db.unwrapped_cache_max_age == 0 {
+                return Err(KmsError::NotSupported(
+                    "unwrapped_cache_max_age must be greater than 0".to_owned(),
+                ));
+            } else {
+                Duration::from_secs(conf.db.unwrapped_cache_max_age * 60)
+            },
             start_socket_server: conf.socket_server.socket_server_start,
             socket_server_hostname: conf.socket_server.socket_server_hostname,
             socket_server_port: conf.socket_server.socket_server_port,
@@ -200,6 +211,7 @@ impl fmt::Debug for ServerParams {
             .field("force_default_username", &self.force_default_username)
             .field("main_db_params", &self.main_db_params)
             .field("clear_db_on_start", &self.clear_db_on_start)
+            .field("unwrapped_cache_max_age", &self.unwrapped_cache_max_age)
             .field("non_revocable_key_id", &self.non_revocable_key_id);
 
         if self.start_socket_server {

@@ -18,9 +18,9 @@ use crate::{config::ServerParams, error::KmsError, kms_bail, result::KResult};
 /// A Key Management System that partially implements KMIP 2.1
 ///
 /// `https://www.oasis-open.org/committees/tc_home.php?wg_abbrev=kmip`
-/// and other operations that are not part of KMIP such as Google CSE or Microsoft DKE.
+/// and other operations not part of KMIP, such as Google CSE or Microsoft DKE.
 pub struct KMS {
-    /// The server parameters built from the configuration file or command line arguments.
+    /// The server parameters are built from the configuration file or command line arguments.
     pub(crate) params: Arc<ServerParams>,
 
     /// The database is made of two parts:
@@ -66,6 +66,7 @@ impl KMS {
             main_db_params,
             server_params.clear_db_on_start,
             object_stores,
+            server_params.unwrapped_cache_max_age,
         )
         .await?;
 

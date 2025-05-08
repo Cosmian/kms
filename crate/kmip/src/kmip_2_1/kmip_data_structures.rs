@@ -10,7 +10,7 @@ use serde::{
     de::{self, DeserializeSeed, MapAccess, Visitor},
     ser::SerializeStruct,
 };
-use tracing::{debug, instrument, trace};
+use tracing::{instrument, trace};
 use zeroize::Zeroizing;
 
 use super::{
@@ -64,7 +64,7 @@ pub struct KeyBlock {
     pub key_value: Option<KeyValue>,
 
     /// MAY be omitted only if this information is available from the Key Value.
-    /// Does not apply to Secret Data  or Opaque.
+    /// Does not apply to Secret Data or Opaque.
     /// If present, the Cryptographic Length SHALL also be present.
     pub cryptographic_algorithm: Option<CryptographicAlgorithm>,
 
@@ -163,7 +163,6 @@ impl<'de> Deserialize<'de> for KeyBlock {
                 let mut key_wrapping_data: Option<KeyWrappingData> = None;
 
                 while let Some(field) = map.next_key::<Field>()? {
-                    debug!("Deserializing KeyBlock field: {:?}", field);
                     match field {
                         Field::KeyFormatType => {
                             if key_format_type.is_some() {
@@ -181,7 +180,6 @@ impl<'de> Deserialize<'de> for KeyBlock {
                             if key_value.is_some() {
                                 return Err(de::Error::duplicate_field("KeyValue"))
                             }
-                            debug!("here");
                             key_value = Some(map.next_value_seed(KeyValueDeserializer {
                                 key_format_type: key_format_type.ok_or_else(|| {
                                     de::Error::missing_field(
@@ -189,7 +187,6 @@ impl<'de> Deserialize<'de> for KeyBlock {
                                     )
                                 })?,
                             })?);
-                            debug!("Done KeyValue: {:?}", key_value);
                         }
                         Field::CryptographicAlgorithm => {
                             if cryptographic_algorithm.is_some() {

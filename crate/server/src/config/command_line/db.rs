@@ -20,7 +20,7 @@ pub struct MainDBConfig {
     /// - mysql: `MySql` or `MariaDB`. The database URL must be provided
     /// - sqlite: `SQLite`. The data will be stored at the `sqlite_path` directory
     ///   A key must be supplied on every call
-    /// - redis-findex: a Redis database with encrypted data and encrypted indexes thanks to Findex.
+    /// - redis-findex: a Redis database with encrypted data and indexes thanks to Findex.
     ///   The Redis URL must be provided, as well as the redis-master-password and the redis-findex-label
     #[clap(
         long,
@@ -30,7 +30,7 @@ pub struct MainDBConfig {
     )]
     pub database_type: Option<String>,
 
-    /// The URL of the database for postgresql, mysql, or findex-redis
+    /// The URL of the database for `Postgres`, `MySQL`, or `Findex-Redis`
     #[clap(
         long,
         env = "KMS_DATABASE_URL",
@@ -38,7 +38,7 @@ pub struct MainDBConfig {
     )]
     pub database_url: Option<String>,
 
-    /// The directory path of the sqlite
+    /// The directory path of the `SQLite`
     #[clap(
         long,
         env = "KMS_SQLITE_PATH",
@@ -68,6 +68,21 @@ pub struct MainDBConfig {
     /// WARNING: This will delete ALL the data in the database
     #[clap(long, env = "KMS_CLEAR_DATABASE", verbatim_doc_comment)]
     pub clear_database: bool,
+
+    /// When a wrapped object is fetched from the database,
+    /// it is unwrapped and stored in the unwrapped cache.
+    /// This option specifies the maximum age in minutes of the unwrapped objects in the cache
+    /// after its last use.
+    /// The default is 15 minutes.
+    /// About 2/3 of the objects will be evicted after this time; the other 1/3 will be evicted
+    /// after a maximum of 150% of the time.
+    #[clap(
+        long,
+        env = "KMS_UNWRAPPED_CACHE_MAX_AGE",
+        default_value = "15",
+        verbatim_doc_comment
+    )]
+    pub unwrapped_cache_max_age: u64,
 }
 
 impl Default for MainDBConfig {
@@ -77,6 +92,7 @@ impl Default for MainDBConfig {
             database_type: None,
             database_url: None,
             clear_database: false,
+            unwrapped_cache_max_age: 15,
             redis_master_password: None,
             redis_findex_label: None,
         }
@@ -142,8 +158,8 @@ impl MainDBConfig {
     /// - The DB parameters
     ///
     /// # Errors
-    /// - If both Postgres and MariaDB/MySQL URL are set
-    /// - If `SQLCipher` is set along with Postgres or MariaDB/MySQL URL
+    /// - If both Postgres and MariaDB/MySQL URLs are set
+    /// - If `SQLCipher` is set along with a Postgres or MariaDB/MySQL URL
     pub(crate) fn init(&self, workspace: &WorkspaceConfig) -> KResult<MainDbParams> {
         if let Some(database_type) = &self.database_type {
             return Ok(match database_type.as_str() {

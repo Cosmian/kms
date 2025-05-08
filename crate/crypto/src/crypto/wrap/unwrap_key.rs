@@ -115,7 +115,7 @@ pub(crate) fn unwrap(
         .context("Unable to unwrap: the key encryption key is not a key")?;
     if unwrapping_key_block.key_wrapping_data.is_some() {
         crypto_bail!(
-            "unable to unwrap: the key encryption key is wrapped and that is not supported"
+            "unable to unwrap: the key encryption key is wrapped, and that is not supported"
         )
     }
 
@@ -124,7 +124,7 @@ pub(crate) fn unwrap(
             unwrap_with_symmetric_key(key_wrapping_data, wrapped_key, unwrapping_key_block)
         }
         KeyFormatType::TransparentECPrivateKey | KeyFormatType::TransparentRSAPrivateKey => {
-            // convert to an openssl private key
+            // convert to an OpenSSL private key
             let p_key = kmip_private_key_to_openssl(unwrapping_key)?;
             unwrap_with_private_key(&p_key, key_wrapping_data, wrapped_key)
         }
