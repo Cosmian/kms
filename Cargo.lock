@@ -754,9 +754,9 @@ dependencies = [
 
 [[package]]
 name = "binstring"
-version = "0.1.2"
+version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed79c2a8151273c70956b5e3cdfdc1ff6c1a8b9779ba59c6807d281b32ee2f86"
+checksum = "9a3a3c2603413428303761fae99d4b6d936404208221a44eba47d7c1e6dd03a3"
 
 [[package]]
 name = "bitflags"
@@ -1191,7 +1191,7 @@ dependencies = [
  "cosmian_config_utils",
  "cosmian_cover_crypt",
  "cosmian_crypto_core 10.1.0",
- "cosmian_findex 7.0.0",
+ "cosmian_findex 7.1.0",
  "cosmian_findex_client",
  "cosmian_findex_structs",
  "cosmian_kms_client",
@@ -1332,11 +1332,16 @@ dependencies = [
 
 [[package]]
 name = "cosmian_findex"
-version = "7.0.0"
-source = "git+https://github.com/Cosmian/findex?rev=6329b6b2f2b64b033e40b05cd12ca1c9b5ee376f#6329b6b2f2b64b033e40b05cd12ca1c9b5ee376f"
+version = "7.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "abc2ce562374fb7bd202a123bce41f26328895901d8161923fa62c41dd551235"
 dependencies = [
  "aes",
  "cosmian_crypto_core 10.1.0",
+ "criterion",
+ "futures",
+ "rand 0.9.1",
+ "rand_distr",
  "redis 0.28.2",
  "tokio",
  "xts-mode",
@@ -1348,7 +1353,7 @@ version = "5.0.0"
 dependencies = [
  "base64 0.22.1",
  "cosmian_crypto_core 10.1.0",
- "cosmian_findex 7.0.0",
+ "cosmian_findex 7.1.0",
  "cosmian_findex_structs",
  "cosmian_http_client",
  "cosmian_kms_client",
@@ -1365,7 +1370,8 @@ dependencies = [
 [[package]]
 name = "cosmian_findex_server"
 version = "0.3.0"
-source = "git+https://www.github.com/Cosmian/findex-server?branch=develop#bdad80bbc61b006f16ce2d50dfdb5bf6d8344347"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0218d8054281baa909541102270b0d72ebf9124dd1705833615f4e8c75a70281"
 dependencies = [
  "actix-cors",
  "actix-identity",
@@ -1377,9 +1383,9 @@ dependencies = [
  "chrono",
  "clap",
  "cosmian_crypto_core 10.1.0",
- "cosmian_findex 7.0.0",
+ "cosmian_findex 7.1.0",
  "cosmian_findex_structs",
- "cosmian_logger 0.1.0",
+ "cosmian_logger 0.1.1",
  "dotenvy",
  "futures",
  "openssl",
@@ -1399,11 +1405,12 @@ dependencies = [
 [[package]]
 name = "cosmian_findex_structs"
 version = "0.3.0"
-source = "git+https://www.github.com/Cosmian/findex-server?branch=develop#bdad80bbc61b006f16ce2d50dfdb5bf6d8344347"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5ae9704419dab9b8e28c30a8a5aa46c0f4e866ddc58ff9083073ce3b25c48b17"
 dependencies = [
  "base64 0.22.1",
  "cosmian_crypto_core 10.1.0",
- "cosmian_findex 7.0.0",
+ "cosmian_findex 7.1.0",
  "thiserror 2.0.12",
  "tracing",
  "uuid",
@@ -1465,9 +1472,9 @@ version = "5.0.0"
 dependencies = [
  "async-trait",
  "cosmian_kms_interfaces",
+ "cosmian_pkcs11_sys",
  "libloading",
  "lru",
- "pkcs11_sys",
  "rand 0.9.1",
  "thiserror 2.0.12",
  "tracing",
@@ -1637,15 +1644,6 @@ dependencies = [
 
 [[package]]
 name = "cosmian_logger"
-version = "0.1.0"
-source = "git+https://www.github.com/Cosmian/http_client_server?tag=0.1.0#66c4e05ebbfa6d205ae16bacf99d197bab3a70a9"
-dependencies = [
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "cosmian_logger"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1653b919f4235dc2f5a5fbdc6a822f309e0a992a828411e6f0ae4bfb19d66f16"
@@ -1684,11 +1682,11 @@ dependencies = [
  "cosmian_kmip",
  "cosmian_logger 0.2.0",
  "cosmian_pkcs11_module",
+ "cosmian_pkcs11_sys",
  "etcetera",
  "hex",
  "p256",
  "pkcs1",
- "pkcs11_sys",
  "serde_json",
  "serial_test",
  "sha3",
@@ -1710,12 +1708,12 @@ dependencies = [
  "bincode",
  "const-oid",
  "cosmian_logger 0.2.0",
+ "cosmian_pkcs11_sys",
  "hex",
  "log",
  "once_cell",
  "p256",
  "pkcs1",
- "pkcs11_sys",
  "rand 0.9.1",
  "rsa",
  "serial_test",
@@ -1723,6 +1721,13 @@ dependencies = [
  "thiserror 2.0.12",
  "tracing",
  "zeroize",
+]
+
+[[package]]
+name = "cosmian_pkcs11_sys"
+version = "0.2.17"
+dependencies = [
+ "bindgen",
 ]
 
 [[package]]
@@ -1775,6 +1780,8 @@ dependencies = [
  "num-traits",
  "once_cell",
  "oorandom",
+ "plotters",
+ "rayon",
  "regex",
  "serde",
  "serde_derive",
@@ -1792,6 +1799,25 @@ checksum = "6b50826342786a51a89e2da3a28f1c32b06e387201bc2d19791f622c673706b1"
 dependencies = [
  "cast",
  "itertools 0.10.5",
+]
+
+[[package]]
+name = "crossbeam-deque"
+version = "0.8.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9dd111b7b7f7d55b72c0a6ae361660ee5853c9af73f70c3c2ef6858b950e2e51"
+dependencies = [
+ "crossbeam-epoch",
+ "crossbeam-utils",
+]
+
+[[package]]
+name = "crossbeam-epoch"
+version = "0.9.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5b82ac4a3c2ca9c3460964f020e1402edd5753411d7737aa39c3714ad1b5420e"
+dependencies = [
+ "crossbeam-utils",
 ]
 
 [[package]]
@@ -1891,9 +1917,9 @@ dependencies = [
 
 [[package]]
 name = "ct-codecs"
-version = "1.1.3"
+version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b916ba8ce9e4182696896f015e8a5ae6081b305f74690baa8465e35f5a142ea4"
+checksum = "dd0d274c65cbc1c34703d2fc2ce0fb892ff68f4516b677671a2f238a30b9b2b2"
 
 [[package]]
 name = "ctr"
@@ -2630,9 +2656,9 @@ checksum = "d231dfb89cfffdbc30e7fc41579ed6066ad03abda9e567ccafae602b97ec5024"
 
 [[package]]
 name = "hermit-abi"
-version = "0.5.0"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fbd780fe5cc30f81464441920d82ac8740e2e46b29a6fad543ddd075229ce37e"
+checksum = "f154ce46856750ed433c8649605bf7ed2de3bc35fd9d2a9f30cddd873c80cb08"
 
 [[package]]
 name = "hex"
@@ -3119,7 +3145,7 @@ version = "0.4.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e04d7f318608d35d4b61ddd75cbdaee86b023ebe2bd5a66ee0915f0bf93095a9"
 dependencies = [
- "hermit-abi 0.5.0",
+ "hermit-abi 0.5.1",
  "libc",
  "windows-sys 0.59.0",
 ]
@@ -4025,13 +4051,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pkcs11_sys"
-version = "0.2.17"
-dependencies = [
- "bindgen",
-]
-
-[[package]]
 name = "pkcs5"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4063,6 +4082,34 @@ name = "pkg-config"
 version = "0.3.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7edddbd0b52d732b21ad9a5fab5c704c14cd949e5e9a1ec5929a24fded1b904c"
+
+[[package]]
+name = "plotters"
+version = "0.3.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5aeb6f403d7a4911efb1e33402027fc44f29b5bf6def3effcc22d7bb75f2b747"
+dependencies = [
+ "num-traits",
+ "plotters-backend",
+ "plotters-svg",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
+name = "plotters-backend"
+version = "0.3.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "df42e13c12958a16b3f7f4386b9ab1f3e7933914ecea48da7139435263a4172a"
+
+[[package]]
+name = "plotters-svg"
+version = "0.3.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "51bae2ac328883f7acdfea3d66a7c35751187f870bc81f94563733a154d7a670"
+dependencies = [
+ "plotters-backend",
+]
 
 [[package]]
 name = "poly1305"
@@ -4189,8 +4236,8 @@ version = "5.0.0"
 dependencies = [
  "cosmian_kms_base_hsm",
  "cosmian_kms_interfaces",
+ "cosmian_pkcs11_sys",
  "libloading",
- "pkcs11_sys",
  "tracing",
  "uuid",
 ]
@@ -4324,10 +4371,40 @@ dependencies = [
 ]
 
 [[package]]
+name = "rand_distr"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6a8615d50dcf34fa31f7ab52692afec947c4dd0ab803cc87cb3b0b4570ff7463"
+dependencies = [
+ "num-traits",
+ "rand 0.9.1",
+]
+
+[[package]]
 name = "rawsql"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f70b36c8415361d34d90adf494f45bc18e568f909b5946d27c79559ddd812fa8"
+
+[[package]]
+name = "rayon"
+version = "1.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b418a60154510ca1a002a752ca9714984e21e4241e804d32555251faf8b78ffa"
+dependencies = [
+ "either",
+ "rayon-core",
+]
+
+[[package]]
+name = "rayon-core"
+version = "1.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1465873a3dfdaa8ae7cb14b4383657caab0b3e8a0aa9ae8e04b044854c8dfce2"
+dependencies = [
+ "crossbeam-deque",
+ "crossbeam-utils",
+]
 
 [[package]]
 name = "redis"
@@ -6064,8 +6141,8 @@ version = "5.0.0"
 dependencies = [
  "cosmian_kms_base_hsm",
  "cosmian_kms_interfaces",
+ "cosmian_pkcs11_sys",
  "libloading",
- "pkcs11_sys",
  "tracing",
  "tracing-subscriber",
  "uuid",
