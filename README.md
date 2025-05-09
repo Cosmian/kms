@@ -24,7 +24,7 @@ The Cosmian KMS presents some unique features, such as:
   [Google Workspace Client Side Encryption (CSE)](./documentation/docs/google_cse/index.md)
 - out-of-the-box support
   of [Microsoft Double Key Encryption (DKE)](./documentation/docs/ms_dke/index.md)
-- support for the [Proteccio adn Utimaco HSMs](./documentation/docs/hsms/index.md) with KMS keys wrapped by the HSM
+- support for the [Proteccio and Utimaco HSMs](./documentation/docs/hsms/index.md) with KMS keys wrapped by the HSM
 - [Veracrypt](./documentation/docs/pkcs11/veracrypt.md)
   and [LUKS](./documentation/docs/pkcs11/luks.md) disk encryption support
 - [FIPS 140-3](./documentation/docs/fips.md) mode gated behind the feature `fips`
@@ -53,7 +53,6 @@ to be used in various applications, such as in _S/MIME_ encrypted emails.
 
 The KMS has extensive online [documentation](https://docs.cosmian.com/key_management_system/)
 
-
 - [Quick start](#quick-start)
     - [Example](#example)
 - [Repository content](#repository-content)
@@ -71,7 +70,7 @@ The KMS has extensive online [documentation](https://docs.cosmian.com/key_manage
 
 ## Quick start
 
-Pre-built binaries [are available](https://package.cosmian.com/kms/4.24.0/)
+Pre-built binaries [are available](https://package.cosmian.com/kms/5.0.0/)
 for Linux, MacOS, and Windows, as well as Docker images. To run the server binary, OpenSSL must be
 available in your path (see "building the KMS" below for details); other binaries do not have this
 requirement.
