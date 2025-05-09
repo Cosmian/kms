@@ -21,7 +21,7 @@ fips = []
 bitflags = { workspace = true }
 cosmian_logger = "0.1.1"
 hex = { workspace = true, features = ["std"] }
-kmip-derive = { path = "../kmip-derive" }
+kmip-derive = { workspace = true }
 leb128 = { workspace = true }
 num-bigint-dig = { workspace = true, features = [
     "std",

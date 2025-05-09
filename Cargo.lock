@@ -1459,10 +1459,42 @@ dependencies = [
 ]
 
 [[package]]
+name = "cosmian_kmip"
+version = "5.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d1f31d793a09e6b0ecc7d921150d489366c26d80f2a5ceb0202ff2c9276622b1"
+dependencies = [
+ "bitflags 2.9.0",
+ "cosmian_logger 0.1.1",
+ "hex",
+ "kmip-derive",
+ "leb128",
+ "num-bigint-dig",
+ "serde",
+ "serde_json",
+ "strum",
+ "thiserror 2.0.12",
+ "time",
+ "tracing",
+ "uuid",
+ "zeroize",
+]
+
+[[package]]
 name = "cosmian_kms_access"
 version = "5.0.0"
 dependencies = [
- "cosmian_kmip",
+ "cosmian_kmip 5.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde",
+]
+
+[[package]]
+name = "cosmian_kms_access"
+version = "5.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "246f79db0e5808f1f4bc0c7520e10e8d1039bb01533778c3dcbe7fe6b450017f"
+dependencies = [
+ "cosmian_kmip 5.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde",
 ]
 
@@ -1471,7 +1503,7 @@ name = "cosmian_kms_base_hsm"
 version = "5.0.0"
 dependencies = [
  "async-trait",
- "cosmian_kms_interfaces",
+ "cosmian_kms_interfaces 5.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "libloading",
  "lru",
  "pkcs11_sys",
@@ -1506,8 +1538,8 @@ dependencies = [
  "base64 0.22.1",
  "clap",
  "cosmian_config_utils",
- "cosmian_kmip",
- "cosmian_kms_access",
+ "cosmian_kmip 5.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "cosmian_kms_access 5.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "pem",
  "serde",
  "serde_json",
@@ -1526,7 +1558,7 @@ dependencies = [
  "base64 0.22.1",
  "cosmian_cover_crypt",
  "cosmian_crypto_core 10.1.0",
- "cosmian_kmip",
+ "cosmian_kmip 5.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "cosmian_logger 0.2.0",
  "hex",
  "num-bigint-dig",
@@ -1546,7 +1578,23 @@ name = "cosmian_kms_interfaces"
 version = "5.0.0"
 dependencies = [
  "async-trait",
- "cosmian_kmip",
+ "cosmian_kmip 5.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "num-bigint-dig",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.12",
+ "tracing",
+ "zeroize",
+]
+
+[[package]]
+name = "cosmian_kms_interfaces"
+version = "5.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f8c82f652d92d41bdee121a508a11bfd01e6ef1f1594a526ba19ab86719cbcd9"
+dependencies = [
+ "async-trait",
+ "cosmian_kmip 5.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "num-bigint-dig",
  "serde",
  "serde_json",
@@ -1576,11 +1624,11 @@ dependencies = [
  "cloudproof_findex",
  "cosmian_cover_crypt",
  "cosmian_crypto_core 10.1.0",
- "cosmian_kmip",
- "cosmian_kms_access",
+ "cosmian_kmip 5.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "cosmian_kms_access 5.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "cosmian_kms_client_utils",
  "cosmian_kms_crypto",
- "cosmian_kms_interfaces",
+ "cosmian_kms_interfaces 5.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "cosmian_kms_server_database",
  "cosmian_logger 0.2.0",
  "dotenvy",
@@ -1619,9 +1667,9 @@ dependencies = [
  "async-trait",
  "cloudproof_findex",
  "cosmian_crypto_core 10.1.0",
- "cosmian_kmip",
+ "cosmian_kmip 5.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "cosmian_kms_crypto",
- "cosmian_kms_interfaces",
+ "cosmian_kms_interfaces 5.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "cosmian_logger 0.2.0",
  "hex",
  "lru",
@@ -1679,7 +1727,7 @@ version = "5.0.0"
 dependencies = [
  "cosmian_cli",
  "cosmian_crypto_core 10.1.0",
- "cosmian_kmip",
+ "cosmian_kmip 5.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "cosmian_logger 0.2.0",
  "cosmian_pkcs11_module",
  "etcetera",
@@ -3249,6 +3297,8 @@ dependencies = [
 [[package]]
 name = "kmip-derive"
 version = "5.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f09fc18967a62572fdaf82f2577cd4440d1e337cff30d8b01c846fe00e12f85"
 dependencies = [
  "quote",
  "syn",
@@ -4235,7 +4285,7 @@ name = "proteccio_pkcs11_loader"
 version = "5.0.0"
 dependencies = [
  "cosmian_kms_base_hsm",
- "cosmian_kms_interfaces",
+ "cosmian_kms_interfaces 5.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "libloading",
  "pkcs11_sys",
  "tracing",
@@ -6140,7 +6190,7 @@ name = "utimaco_pkcs11_loader"
 version = "5.0.0"
 dependencies = [
  "cosmian_kms_base_hsm",
- "cosmian_kms_interfaces",
+ "cosmian_kms_interfaces 5.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "libloading",
  "pkcs11_sys",
  "tracing",

@@ -13,10 +13,10 @@ doctest = false
 
 [dependencies]
 async-trait = { workspace = true }
-cosmian_kms_interfaces = { path = "../../interfaces" }
+cosmian_kms_interfaces = { workspace = true }
 libloading = { workspace = true }
 lru = { workspace = true }
-pkcs11_sys = { path = "../../pkcs11/sys" }
+pkcs11_sys = { workspace = true }
 rand = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
