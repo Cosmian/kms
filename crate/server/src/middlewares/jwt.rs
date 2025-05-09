@@ -72,11 +72,15 @@ impl JwtConfig {
         let token: &str = bearer.get(1).ok_or_else(|| {
             KmsError::Unauthorized("Bad authorization header content (missing token)".to_owned())
         })?;
-        self.decode_authentication_token(token)
+        self.decode_authentication_token(token, true)
     }
 
     /// Decode a json web token (JWT)
-    pub(crate) fn decode_authentication_token(&self, token: &str) -> KResult<UserClaim> {
+    pub(crate) fn decode_authentication_token(
+        &self,
+        token: &str,
+        validate_subject: bool,
+    ) -> KResult<UserClaim> {
         kms_ensure!(
             !token.is_empty(),
             KmsError::Unauthorized("token is empty".to_owned())
@@ -89,12 +93,14 @@ impl JwtConfig {
         let mut validations = vec![
             #[cfg(not(test))]
             alcoholic_jwt::Validation::Issuer(self.jwt_issuer_uri.clone()),
-            alcoholic_jwt::Validation::SubjectPresent,
             #[cfg(not(feature = "insecure"))]
             alcoholic_jwt::Validation::NotExpired,
         ];
         if let Some(jwt_audience) = &self.jwt_audience {
             validations.push(alcoholic_jwt::Validation::Audience(jwt_audience.clone()));
+        }
+        if validate_subject {
+            validations.push(alcoholic_jwt::Validation::SubjectPresent);
         }
 
         // If a JWKS contains multiple keys, the correct KID first

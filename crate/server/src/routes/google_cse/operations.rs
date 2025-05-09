@@ -980,29 +980,26 @@ pub struct RewrapResponse {
 pub async fn rewrap(
     request: RewrapRequest,
     kacls_url: &str,
-    _cse_config: &Arc<Option<GoogleCseConfig>>,
+    cse_config: &Arc<Option<GoogleCseConfig>>,
     kms: &Arc<KMS>,
 ) -> KResult<RewrapResponse> {
     debug!("rewrap: entering");
-    // let application = get_application(&request.reason);
-    // let roles = [Role::Migrator];
-    // let authorization_token = validate_cse_authorization_token(
-    //     &request.authorization,
-    //     kms,
-    //     cse_config,
-    //     &application,
-    //     Some(&roles),
-    // )
-    // .await?;
+    let application = get_application(&request.reason);
+    let roles = [Role::Migrator];
+    let authorization_token = validate_cse_authorization_token(
+        &request.authorization,
+        kms,
+        cse_config,
+        &application,
+        Some(&roles),
+    )
+    .await?;
 
-    // let perimeter_id = authorization_token.perimeter_id.unwrap_or_default();
-    // let resource_name = authorization_token.resource_name.unwrap_or_default();
-    // let user = authorization_token.email.ok_or_else(|| {
-    //     KmsError::Unauthorized("Authorization token should contain an email".to_owned())
-    // })?;
-    let user = "user".to_owned();
-    let perimeter_id = "perimeter_id".to_owned();
-    let resource_name = "resource_name".to_owned();
+    let perimeter_id = authorization_token.perimeter_id.unwrap_or_default();
+    let resource_name = authorization_token.resource_name.unwrap_or_default();
+    let user = authorization_token.email.ok_or_else(|| {
+        KmsError::Unauthorized("Authorization token should contain an email".to_owned())
+    })?;
 
     debug!("rewrap: unwrap key using imported original KMS wrapping key");
     // Forge token with KACLS info
