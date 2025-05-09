@@ -6,7 +6,7 @@ use tracing::{debug, warn};
 
 use super::HttpParams;
 use crate::{
-    config::{ClapConfig, DEFAULT_COSMIAN_UI_DIST_PATH, IdpConfig, OidcConfig},
+    config::{ClapConfig, IdpConfig, OidcConfig, DEFAULT_COSMIAN_UI_DIST_PATH},
     kms_bail,
     result::KResult,
 };
@@ -62,6 +62,9 @@ pub struct ServerParams {
 
     /// This setting disables the validation of the tokens used by the Google Workspace CSE feature of this server.
     pub google_cse_disable_tokens_validation: bool,
+
+    /// It should contain the list of KACLS server URLs that can access this server for Google CSE migration, through the privilegedunwrap endpoint
+    pub google_cse_incoming_url_whitelist: Option<Vec<String>>,
 
     /// This setting enables the Microsoft Double Key Encryption service feature of this server.
     ///
@@ -172,6 +175,7 @@ impl ServerParams {
             api_token_id: conf.http.api_token_id,
             google_cse_disable_tokens_validation: conf.google_cse_disable_tokens_validation,
             google_cse_kacls_url: conf.google_cse_kacls_url,
+            google_cse_incoming_url_whitelist: conf.google_cse_incoming_url_whitelist,
             ms_dke_service_url: conf.ms_dke_service_url,
             hsm_admin: conf.hsm_admin,
             hsm_model: if slot_passwords.is_empty() {
@@ -261,6 +265,16 @@ impl fmt::Debug for ServerParams {
         } else {
             x
         };
+        let x = if let Some(google_cse_incoming_url_whitelist) =
+            &self.google_cse_incoming_url_whitelist
+        {
+            x.field(
+                "google_cse_incoming_url_whitelist",
+                &google_cse_incoming_url_whitelist,
+            )
+        } else {
+            x
+        };
         let x = x.field("ms_dke_service_url", &self.ms_dke_service_url);
         let x = x.field("api_token_id", &self.api_token_id);
         let x = x.field("HSM_username", &self.hsm_admin);
@@ -311,6 +325,7 @@ impl Clone for ServerParams {
             api_token_id: self.api_token_id.clone(),
             google_cse_disable_tokens_validation: self.google_cse_disable_tokens_validation,
             google_cse_kacls_url: self.google_cse_kacls_url.clone(),
+            google_cse_incoming_url_whitelist: self.google_cse_incoming_url_whitelist.clone(),
             ms_dke_service_url: self.ms_dke_service_url.clone(),
             hsm_admin: self.hsm_admin.clone(),
             hsm_model: self.hsm_model.clone(),

@@ -2,8 +2,9 @@ use core::fmt;
 use std::sync::Arc;
 
 use actix_web::{
-    HttpRequest, HttpResponse, ResponseError, get, post,
+    get, post,
     web::{Data, Json},
+    HttpRequest, HttpResponse, ResponseError,
 };
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info, trace};
@@ -13,7 +14,7 @@ use crate::{core::KMS, error::KmsError, result::KResult};
 mod jwt;
 pub mod operations;
 
-pub use jwt::{GoogleCseConfig, jwt_authorization_config, list_jwks_uri};
+pub use jwt::{jwt_authorization_config, list_jwks_uri, list_jwt_configurations, GoogleCseConfig};
 
 use self::operations::{
     DigestRequest, PrivilegedPrivateKeyDecryptRequest, PrivilegedUnwrapRequest,
@@ -70,6 +71,23 @@ pub(crate) async fn get_status(
         )
     })?;
     Ok(Json(operations::get_status(kacls_url)))
+}
+
+/// Expose RSA Public key elements for migration
+#[get("/certs")]
+pub(crate) async fn certs(kms: Data<Arc<KMS>>) -> KResult<Json<operations::CertsResponse>> {
+    info!("GET /certs");
+    let kms = kms.into_inner();
+    let kacls_url = &kms.params.google_cse_kacls_url.clone().ok_or_else(|| {
+        KmsError::ServerError(
+            "Google CSE KACLS URL is empty. Expected: <https://cse.mydomain.com/google_cse>"
+                .to_owned(),
+        )
+    })?;
+
+    Ok(Json(
+        operations::display_rsa_public_key(&kms, &kacls_url).await?,
+    ))
 }
 
 fn prepare_post_params<T>(
@@ -164,8 +182,17 @@ pub(crate) async fn rewrap(
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
     let (request, cse_config) = prepare_post_params("rewrap", request, cse_config);
+    let kacls_url = match kms.params.google_cse_kacls_url.clone() {
+        Some(url) => url,
+        None => {
+            return CseErrorReply::from(&KmsError::InvalidRequest(
+                "Error getting current KACLS url".to_owned(),
+            ))
+            .into();
+        }
+    };
 
-    match operations::rewrap(request, &cse_config, &kms)
+    match operations::rewrap(request, &kacls_url, &cse_config, &kms)
         .await
         .map(Json)
     {

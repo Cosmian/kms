@@ -6,7 +6,7 @@ use std::{
 use clap::Parser;
 use serde::{Deserialize, Serialize};
 
-use super::{HttpConfig, JwtAuthConfig, MainDBConfig, WorkspaceConfig, ui_config::UiConfig};
+use super::{ui_config::UiConfig, HttpConfig, JwtAuthConfig, MainDBConfig, WorkspaceConfig};
 use crate::{error::KmsError, result::KResult, telemetry::TelemetryConfig};
 
 const DEFAULT_COSMIAN_KMS_CONF: &str = "/etc/cosmian/kms.toml";
@@ -26,6 +26,7 @@ impl Default for ClapConfig {
             force_default_username: false,
             google_cse_disable_tokens_validation: false,
             google_cse_kacls_url: None,
+            google_cse_incoming_url_whitelist: None,
             ms_dke_service_url: None,
             telemetry: TelemetryConfig::default(),
             info: false,
@@ -83,6 +84,10 @@ pub struct ClapConfig {
         default_value = "false"
     )]
     pub google_cse_disable_tokens_validation: bool,
+
+    /// It should contain the list of KACLS server URLs that can access this server for Google CSE migration, through the privilegedunwrap endpoint
+    #[clap(long, env = "KMS_GOOGLE_CSE_INCOMING_URL_WHITELIST")]
+    pub google_cse_incoming_url_whitelist: Option<Vec<String>>,
 
     /// This setting enables the Microsoft Double Key Encryption service feature of this server.
     ///

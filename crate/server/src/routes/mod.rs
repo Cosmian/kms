@@ -1,10 +1,11 @@
 use std::sync::Arc;
 
 use actix_web::{
-    HttpRequest, HttpResponse, HttpResponseBuilder, get,
-    http::{StatusCode, header},
+    get,
+    http::{header, StatusCode},
     post,
     web::{Data, Json},
+    HttpRequest, HttpResponse, HttpResponseBuilder,
 };
 use clap::crate_version;
 use tracing::{error, info, warn};
