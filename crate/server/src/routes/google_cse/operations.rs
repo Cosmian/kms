@@ -1,14 +1,24 @@
-use std::sync::Arc;
+use std::{
+    hash::{DefaultHasher, Hash, Hasher},
+    sync::Arc,
+};
 
-use base64::{Engine, engine::general_purpose};
+use base64::{engine::general_purpose, Engine};
+use chrono::{Duration, Utc};
 use clap::crate_version;
 use cosmian_kmip::{
     kmip_0::kmip_types::BlockCipherMode,
     kmip_2_1::{
         kmip_operations::{Decrypt, Encrypt},
         kmip_types::{CryptographicParameters, UniqueIdentifier},
+use cosmian_kmip::kmip_2_1::{
+    kmip_objects::ObjectType,
+    kmip_operations::{Decrypt, Encrypt, Get},
+    kmip_types::{
+        BlockCipherMode, CryptographicParameters, KeyFormatType, KeyWrapType, UniqueIdentifier,
     },
 };
+use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
 use openssl::{
     hash::MessageDigest,
     md::Md,
@@ -17,6 +27,7 @@ use openssl::{
     rsa::{Padding, Rsa},
     sign::Signer,
 };
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, trace};
 use zeroize::Zeroizing;
@@ -24,8 +35,8 @@ use zeroize::Zeroizing;
 use super::GoogleCseConfig;
 use crate::{
     core::{
-        KMS,
         operations::{decrypt, encrypt},
+        KMS,
     },
     error::KmsError,
     kms_ensure,
@@ -119,8 +130,63 @@ pub fn get_status(kacls_url: &str) -> StatusResponse {
             "status".to_owned(),
             "unwrap".to_owned(),
             "wrap".to_owned(),
-            "wrapprivatekey".to_owned(),
         ],
+    }
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+pub struct CertsResponse {
+    pub kty: String,
+    #[serde(rename = "use")]
+    pub use_: String,
+    pub alg: String,
+    pub n: String,
+    pub e: String,
+    pub kid: String,
+}
+
+/// Returns the public key to decode KACLS token for migration.
+///
+/// # Returns
+/// - `CertsResponse`: The elements of RSA public key.
+#[must_use]
+pub async fn display_rsa_public_key(
+    kms: &Arc<KMS>,
+    current_kacls_url: &str,
+) -> KResult<CertsResponse> {
+    debug!("get rsa public key");
+    let op = Get {
+        unique_identifier: Some(UniqueIdentifier::TextString(format!(
+            "{GOOGLE_CSE_ID}_rsa_pk"
+        ))),
+        key_format_type: Some(KeyFormatType::TransparentRSAPublicKey),
+        key_wrap_type: Some(KeyWrapType::NotWrapped),
+        key_compression_type: None,
+        key_wrapping_specification: None,
+    };
+    let resp = kms.get(op, "", None).await?;
+    if resp.object_type == ObjectType::PublicKey {
+        let key_material = resp.object.key_block()?.key_value.key_material.clone();
+        match key_material {
+            cosmian_kmip::kmip_2_1::kmip_data_structures::KeyMaterial::TransparentRSAPublicKey {
+                        modulus, public_exponent
+            } => Ok(
+                CertsResponse {
+                    kty: "RSA".to_owned(),
+                    use_: "sig".to_owned(),
+                    alg: "RS256".to_owned(),
+                    n: modulus.to_string(),
+                    e: public_exponent.to_string(),
+                    kid: calculate_hash::<str>(current_kacls_url).to_string(),
+                }),
+            _ => Err(KmsError::InvalidRequest(
+                "Invalid RSA Public key fetch. No exponent and modulus".to_owned(),
+            )),
+        }
+    } else {
+        Err(KmsError::InvalidRequest(
+            "Invalid RSA Public key fetch.".to_owned(),
+        ))
     }
 }
 
@@ -712,6 +778,7 @@ pub async fn privileged_unwrap(
     kms: &Arc<KMS>,
 ) -> KResult<PrivilegedUnwrapResponse> {
     debug!("privileged_unwrap: entering");
+    // decode token with configuration on the fly is OK ?
     let user =
         validate_cse_authentication_token(&request.authentication, cse_config, kms, false).await?;
     let resource_name = request.resource_name.into_bytes();
@@ -835,6 +902,48 @@ pub async fn privileged_private_key_decrypt(
     Ok(response)
 }
 
+#[derive(Serialize)]
+struct Claims {
+    iss: String,
+    aud: String,
+    exp: usize,
+    iat: usize,
+    kacls_url: String,
+    resource_name: String,
+}
+
+fn calculate_hash<T: Hash + ?Sized>(t: &T) -> u64 {
+    let mut s = DefaultHasher::new();
+    t.hash(&mut s);
+    s.finish()
+}
+
+fn create_jwt(
+    private_key_bytes: &[u8],
+    current_kacls_url: &str,
+    original_kacls_url: &str,
+    resource_name: &str,
+) -> KResult<String> {
+    let now = Utc::now();
+    let claims = Claims {
+        iss: current_kacls_url.to_owned(),
+        aud: "kacls_migration".to_owned(),
+        kacls_url: original_kacls_url.to_owned(),
+        resource_name: resource_name.to_owned(),
+        iat: now.timestamp() as usize,
+        exp: (now + Duration::minutes(60)).timestamp() as usize,
+    };
+
+    let mut header = Header::new(Algorithm::RS256);
+    header.kid = Some(calculate_hash::<str>(current_kacls_url).to_string());
+
+    let encoding_key = EncodingKey::from_rsa_der(private_key_bytes);
+
+    let token = encode(&header, &claims, &encoding_key)
+        .map_err(|e| KmsError::Default(format!("Error encoding token: {e}")))?;
+    Ok(token)
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct RewrapRequest {
     pub authorization: String,
@@ -859,29 +968,81 @@ pub struct RewrapResponse {
 /// Will return `KmsError` if if authentication with tokens is incorrect, or if encryption fails
 pub async fn rewrap(
     request: RewrapRequest,
-    cse_config: &Arc<Option<GoogleCseConfig>>,
+    kacls_url: &str,
+    _cse_config: &Arc<Option<GoogleCseConfig>>,
     kms: &Arc<KMS>,
 ) -> KResult<RewrapResponse> {
     debug!("rewrap: entering");
+    // let application = get_application(&request.reason);
+    // let roles = [Role::Migrator];
+    // let authorization_token = validate_cse_authorization_token(
+    //     &request.authorization,
+    //     kms,
+    //     cse_config,
+    //     &application,
+    //     Some(&roles),
+    // )
+    // .await?;
 
-    let application = get_application(&request.reason);
-    let roles = [Role::Migrator];
-    let authorization_token = validate_cse_authorization_token(
-        &request.authorization,
-        kms,
-        cse_config,
-        &application,
-        Some(&roles),
-    )
-    .await?;
-
-    let perimeter_id = authorization_token.perimeter_id.unwrap_or_default();
-    let resource_name = authorization_token.resource_name.unwrap_or_default();
-    let user = authorization_token.email.ok_or_else(|| {
-        KmsError::Unauthorized("Authorization token should contain an email".to_owned())
-    })?;
+    // let perimeter_id = authorization_token.perimeter_id.unwrap_or_default();
+    // let resource_name = authorization_token.resource_name.unwrap_or_default();
+    // let user = authorization_token.email.ok_or_else(|| {
+    //     KmsError::Unauthorized("Authorization token should contain an email".to_owned())
+    // })?;
+    let user = "user".to_owned();
+    let perimeter_id = "perimeter_id".to_owned();
+    let resource_name = "resource_name".to_owned();
 
     debug!("rewrap: unwrap key using imported original KMS wrapping key");
+    // Forge token with KACLS info
+    let op = Get {
+        unique_identifier: Some(UniqueIdentifier::TextString(format!("{GOOGLE_CSE_ID}_rsa"))),
+        key_format_type: Some(KeyFormatType::PKCS1),
+        key_wrap_type: Some(KeyWrapType::NotWrapped),
+        key_compression_type: None,
+        key_wrapping_specification: None,
+    };
+    let resp = kms.get(op, &user, None).await?;
+    if resp.object_type == ObjectType::PrivateKey {
+        let key_material = resp.object.key_block()?.key_value.key_material.clone();
+        let private_key_bytes = match key_material {
+            cosmian_kmip::kmip_2_1::kmip_data_structures::KeyMaterial::ByteString(bytes) => {
+                Ok(bytes)
+            }
+            _ => Err(KmsError::InvalidRequest(
+                "Invalid RSA Private key fetch. No ByteString".to_owned(),
+            )),
+        }?;
+
+        let authentication_token = create_jwt(
+            &private_key_bytes,
+            kacls_url,
+            &request.original_kacls_url,
+            &resource_name,
+        )?;
+        println!("{:?}", authentication_token);
+
+        let request_body = PrivilegedUnwrapRequest {
+            authentication: authentication_token,
+            wrapped_key: request.wrapped_key.clone(),
+            reason: request.reason,
+            resource_name: resource_name.clone(),
+        };
+        let client = Client::new();
+        let response = client
+            .post(&format!("{}/privilegedunwrap", request.original_kacls_url))
+            .json(&request_body)
+            .send()
+            .await?;
+
+        let status = response.status();
+        let body = response.text().await?;
+        println!("{:?} - {:?}", status, body,)
+    } else {
+        KmsError::InvalidRequest("Invalid RSA Private key ID. Not RSA Private key".to_owned());
+    }
+
+    // Request privilegedunwrap to original KMS
     let unwrapped_data: Zeroizing<Vec<u8>> = cse_wrapped_key_decrypt(
         request.wrapped_key,
         // We consider that the key used by the previous KMS to wrap elements was imported under

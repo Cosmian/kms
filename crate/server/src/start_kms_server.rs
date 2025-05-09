@@ -1,18 +1,18 @@
 use std::{
     path::PathBuf,
-    sync::{Arc, mpsc},
+    sync::{mpsc, Arc},
 };
 
 use actix_cors::Cors;
 use actix_files::Files;
 use actix_identity::IdentityMiddleware;
-use actix_session::{SessionMiddleware, config::PersistentSession, storage::CookieSessionStore};
+use actix_session::{config::PersistentSession, storage::CookieSessionStore, SessionMiddleware};
 use actix_web::{
-    App, HttpRequest, HttpResponse, HttpServer,
-    cookie::{Key, time::Duration},
+    cookie::{time::Duration, Key},
     dev::ServerHandle,
     middleware::Condition,
     web::{self, Data, JsonConfig, PayloadConfig},
+    App, HttpRequest, HttpResponse, HttpServer,
 };
 use openssl::{
     ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod, SslVerifyMode},
@@ -25,7 +25,8 @@ use crate::{
     config::{JwtAuthConfig, ServerParams},
     core::KMS,
     error::KmsError,
-    middlewares::{AuthTransformer, JwksManager, JwtConfig, SslAuth, extract_peer_certificate},
+    kms_bail,
+    middlewares::{extract_peer_certificate, AuthTransformer, JwksManager, JwtConfig, SslAuth},
     result::{KResult, KResultHelper},
     routes::{
         access, get_version,
@@ -255,12 +256,14 @@ pub async fn prepare_kms_server(
             .collect();
         // Add the one from google if cse is enabled
         if enable_google_cse_authentication {
-            all_jwks_uris.extend(google_cse::list_jwks_uri());
+            all_jwks_uris.extend(google_cse::list_jwks_uri(
+                kms_server.params.google_cse_incoming_url_whitelist.clone(),
+            ));
         }
 
         let jwks_manager = Arc::new(JwksManager::new(all_jwks_uris).await?);
 
-        let built_jwt_configurations = identity_provider_configurations
+        let mut built_jwt_configurations = identity_provider_configurations
             .iter()
             .map(|idp_config| JwtConfig {
                 jwt_issuer_uri: idp_config.jwt_issuer_uri.clone(),
@@ -268,6 +271,21 @@ pub async fn prepare_kms_server(
                 jwt_audience: idp_config.jwt_audience.clone(),
             })
             .collect::<Vec<_>>();
+
+        // Add the one from google if cse is enabled and some external urls are whitelisted
+        if enable_google_cse_authentication
+            && kms_server
+                .params
+                .google_cse_incoming_url_whitelist
+                .is_some()
+        {
+            match &kms_server.params.google_cse_incoming_url_whitelist {
+                Some(white_list) => built_jwt_configurations.extend(
+                    google_cse::list_jwt_configurations(white_list, jwks_manager.clone()),
+                ),
+                None => {}
+            }
+        }
 
         (Some(Arc::new(built_jwt_configurations)), Some(jwks_manager))
     } else {
@@ -302,9 +320,11 @@ pub async fn prepare_kms_server(
             )?,
             authorization: google_cse::jwt_authorization_config(&jwks_manager),
         };
+        debug!("OK {:?}", google_cse_config);
         trace!("Google CSE JWT Config: {:#?}", google_cse_config);
         Some(google_cse_config)
     } else {
+        debug!("KO");
         None
     };
 
@@ -364,7 +384,7 @@ pub async fn prepare_kms_server(
                 .service(google_cse::get_status)
                 .service(google_cse::unwrap)
                 .service(google_cse::wrap)
-                .service(google_cse::wrapprivatekey);
+                .service(google_cse::certs);
             app = app.service(google_cse_scope);
         }
 

@@ -48,10 +48,31 @@ fn get_jwks_uri(application: &str) -> String {
 
 /// List the possible JWKS URI for all the supported application
 #[must_use]
-pub fn list_jwks_uri() -> Vec<String> {
-    APPLICATIONS
+pub fn list_jwks_uri(url_whitelist: Option<Vec<String>>) -> Vec<String> {
+    let mut uris = APPLICATIONS
         .iter()
         .map(|app| get_jwks_uri(app))
+        .collect::<Vec<_>>();
+
+    if let Some(whitelist) = url_whitelist {
+        uris.extend(whitelist.into_iter().map(|uri| format!("{uri}/certs")));
+    }
+
+    uris
+}
+
+#[must_use]
+pub fn list_jwt_configurations(
+    url_whitelist: &Vec<String>,
+    jwks_manager: Arc<JwksManager>,
+) -> Vec<JwtConfig> {
+    url_whitelist
+        .iter()
+        .map(|url| JwtConfig {
+            jwt_issuer_uri: url.clone(),
+            jwks: jwks_manager.clone(),
+            jwt_audience: Some("kacls_migration".to_owned()),
+        })
         .collect::<Vec<_>>()
 }
 
@@ -377,7 +398,7 @@ mod tests {
         routes::google_cse::{
             self,
             jwt::{
-                JWKS_URI, JWT_ISSUER_URI, decode_jwt_authorization_token, jwt_authorization_config,
+                decode_jwt_authorization_token, jwt_authorization_config, JWKS_URI, JWT_ISSUER_URI,
             },
             operations::WrapRequest,
         },

@@ -7,13 +7,14 @@ use clap::Parser;
 use serde::{Deserialize, Serialize};
 
 use super::{
-    HttpConfig, JwtAuthConfig, MainDBConfig, WorkspaceConfig, logging::LoggingConfig,
-    ui_config::UiConfig,
+    logging::LoggingConfig, ui_config::UiConfig, HttpConfig, JwtAuthConfig, MainDBConfig,
+    WorkspaceConfig,
 };
 use crate::{
     config::{SocketServerConfig, TlsConfig},
     error::KmsError,
     result::KResult,
+    telemetry::TelemetryConfig,
 };
 
 const DEFAULT_COSMIAN_KMS_CONF: &str = "/etc/cosmian/kms.toml";
@@ -35,6 +36,7 @@ impl Default for ClapConfig {
             force_default_username: false,
             google_cse_disable_tokens_validation: false,
             google_cse_kacls_url: None,
+            google_cse_incoming_url_whitelist: None,
             ms_dke_service_url: None,
             logging: LoggingConfig::default(),
             info: false,
@@ -101,7 +103,11 @@ pub struct ClapConfig {
     )]
     pub google_cse_disable_tokens_validation: bool,
 
-    /// This setting enables this server's Microsoft Double Key Encryption service feature.
+    /// It should contain the list of KACLS server URLs that can access this server for Google CSE migration, through the privilegedunwrap endpoint
+    #[clap(long, env = "KMS_GOOGLE_CSE_INCOMING_URL_WHITELIST")]
+    pub google_cse_incoming_url_whitelist: Option<Vec<String>>,
+
+    /// This setting enables the Microsoft Double Key Encryption service feature of this server.
     ///
     /// It should contain the external URL of this server as configured in Azure App Registrations
     /// as the DKE Service (<https://learn.microsoft.com/en-us/purview/double-key-encryption-setup#register-your-key-store>)

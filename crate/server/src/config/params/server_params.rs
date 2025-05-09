@@ -5,8 +5,9 @@ use tracing::{debug, warn};
 
 use super::TlsParams;
 use crate::{
-    config::{ClapConfig, DEFAULT_COSMIAN_UI_DIST_PATH, IdpConfig, OidcConfig},
+    config::{ClapConfig, IdpConfig, OidcConfig, DEFAULT_COSMIAN_UI_DIST_PATH},
     error::KmsError,
+    kms_bail,
     result::{KResult, KResultHelper},
 };
 
@@ -76,7 +77,10 @@ pub struct ServerParams {
     /// used by this server's Google Workspace CSE feature.
     pub google_cse_disable_tokens_validation: bool,
 
-    /// This setting enables this server's Microsoft Double Key Encryption service feature.
+    /// It should contain the list of KACLS server URLs that can access this server for Google CSE migration, through the privilegedunwrap endpoint
+    pub google_cse_incoming_url_whitelist: Option<Vec<String>>,
+
+    /// This setting enables the Microsoft Double Key Encryption service feature of this server.
     ///
     /// It should contain the external URL of this server as configured in
     /// App Registrations of Azure as the DKE Service.
@@ -185,6 +189,7 @@ impl ServerParams {
             api_token_id: conf.http.api_token_id,
             google_cse_disable_tokens_validation: conf.google_cse_disable_tokens_validation,
             google_cse_kacls_url: conf.google_cse_kacls_url,
+            google_cse_incoming_url_whitelist: conf.google_cse_incoming_url_whitelist,
             ms_dke_service_url: conf.ms_dke_service_url,
             hsm_admin: conf.hsm_admin,
             hsm_model: if slot_passwords.is_empty() {
@@ -235,6 +240,10 @@ impl fmt::Debug for ServerParams {
             .field(
                 "google_cse_disable_tokens_validation",
                 &self.google_cse_disable_tokens_validation,
+            )
+            .field(
+                "google_cse_incoming_url_whitelist",
+                &self.google_cse_incoming_url_whitelist,
             )
             .field("ms_dke_service_url", &self.ms_dke_service_url);
 
