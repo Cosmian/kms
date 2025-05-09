@@ -4,8 +4,8 @@ use std::{
 };
 
 use base64::{
-    engine::{general_purpose, general_purpose::URL_SAFE_NO_PAD},
     Engine,
+    engine::{general_purpose, general_purpose::URL_SAFE_NO_PAD},
 };
 use chrono::{Duration, Utc};
 use clap::crate_version;
@@ -16,7 +16,7 @@ use cosmian_kmip::kmip_2_1::{
         BlockCipherMode, CryptographicParameters, KeyFormatType, KeyWrapType, UniqueIdentifier,
     },
 };
-use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
+use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
 use openssl::{
     hash::MessageDigest,
     md::Md,
@@ -33,8 +33,8 @@ use zeroize::Zeroizing;
 use super::GoogleCseConfig;
 use crate::{
     core::{
-        operations::{decrypt, encrypt},
         KMS,
+        operations::{decrypt, encrypt},
     },
     error::KmsError,
     kms_ensure,

@@ -6,7 +6,7 @@ use tracing::{debug, warn};
 
 use super::HttpParams;
 use crate::{
-    config::{ClapConfig, IdpConfig, OidcConfig, DEFAULT_COSMIAN_UI_DIST_PATH},
+    config::{ClapConfig, DEFAULT_COSMIAN_UI_DIST_PATH, IdpConfig, OidcConfig},
     kms_bail,
     result::KResult,
 };
