@@ -4,9 +4,8 @@
 ![Build status](https://github.com/Cosmian/kms/actions/workflows/main_release.yml/badge.svg?branch=main)
 
 The **Cosmian KMS** is a high-performance,
-[**open-source**](https://github.com/Cosmian/kms),
-[FIPS 140-3 compliant](./documentation/docs/fips.md) server application
-written in [**Rust**](https://www.rust-lang.org/) 
+open-source [FIPS 140-3 compliant](./documentation/docs/fips.md) server application
+written in [Rust](https://www.rust-lang.org/) 
 
 ![KMS WebUI](./documentation/docs/images/kms-ui.png)
 
@@ -23,12 +22,14 @@ The Cosmian KMS presents some unique features, such as:
   [Google Workspace Client Side Encryption (CSE)](./documentation/docs/google_cse/index.md)
 - out-of-the-box support
   of [Microsoft Double Key Encryption (DKE)](./documentation/docs/ms_dke/index.md)
-- support for the [Proteccio adn Utimaco HSM](./documentation/docs/hsms/index.md) with KMS keys wrapped by the HSM
+- support for the [Proteccio adn Utimaco HSMs](./documentation/docs/hsms/index.md) with KMS keys wrapped by the HSM
 - [Veracrypt](./documentation/docs/pkcs11/veracrypt.md)
   and [LUKS](./documentation/docs/pkcs11/luks.md) disk encryption support
 - [FIPS 140-3](./documentation/docs/fips.md) mode gated behind the feature `fips`
 - a [JSON KMIP 2.1](./documentation/docs/kmip_2_1/index.md) compliant interface
 - Oracle DB [TDE support](./documentation/docs/oracle/tde.md)
+- VMWare [vCenter Trust Key Provider integration](./documentation/docs/vcenter.md)
+- User Defined Functions for [Big Data](./documentation/docs/python_udf/index.md) including [snowflake](./documentation/docs/snowflake/index.md)
 - a full-featured client [command line and graphical interface](https://docs.cosmian.com/cosmian_cli/)
 - a [high-availability mode](documentation/docs/installation/high_availability_mode.md) with simple horizontal scaling
 - a support of Python, JavaScript, Dart, Rust, C/C++, and Java clients (see the `cloudproof` libraries
