@@ -51,21 +51,21 @@ to be used in various applications, such as in _S/MIME_ encrypted emails.
 
 The KMS has extensive online [documentation](https://docs.cosmian.com/key_management_system/)
 
-- [Cosmian KMS](#cosmian-kms)
-    - [Quick start](#quick-start)
-        - [Example](#example)
-    - [Repository content](#repository-content)
-    - [Building the KMS](#building-the-kms)
-        - [Linux or MacOS (CPU Intel or MacOS ARM)](#linux-or-macos-cpu-intel-or-macos-arm)
-        - [Windows](#windows)
-        - [Build the KMS](#build-the-kms)
-        - [Build the Docker Ubuntu container](#build-the-docker-ubuntu-container)
-    - [Running the unit and integration tests](#running-the-unit-and-integration-tests)
-    - [Development: running the server with cargo](#development-running-the-server-with-cargo)
-    - [Server parameters](#server-parameters)
-    - [Use the KMS inside a Cosmian VM on SEV/TDX](#use-the-kms-inside-a-cosmian-vm-on-sevtdx)
-    - [Releases](#releases)
-    - [Benchmarks](#benchmarks)
+
+- [Quick start](#quick-start)
+    - [Example](#example)
+- [Repository content](#repository-content)
+- [Building the KMS](#building-the-kms)
+    - [Linux or MacOS (CPU Intel or MacOS ARM)](#linux-or-macos-cpu-intel-or-macos-arm)
+    - [Windows](#windows)
+    - [Build the KMS](#build-the-kms)
+    - [Build the Docker Ubuntu container](#build-the-docker-ubuntu-container)
+- [Running the unit and integration tests](#running-the-unit-and-integration-tests)
+- [Development: running the server with cargo](#development-running-the-server-with-cargo)
+- [Server parameters](#server-parameters)
+- [Use the KMS inside a Cosmian VM on SEV/TDX](#use-the-kms-inside-a-cosmian-vm-on-sevtdx)
+- [Releases](#releases)
+- [Benchmarks](#benchmarks)
 
 ## Quick start
 
@@ -179,12 +179,9 @@ The files `vcpkg.json` and `vcpkg_fips.json` are provided in the repository to i
 
 ```powershell
 vcpkg install --triplet x64-windows-static # arm64-windows-static for ARM64
-```
 
 vcpkg integrate install
-$env:OPENSSL_DIR = "$env:VCPKG_INSTALLATION_ROOT\packages\openssl_x64-windows-static" # openssl_arm64-windows-static for
-ARM64
-
+$env:OPENSSL_DIR = "$env:VCPKG_INSTALLATION_ROOT\packages\openssl_x64-windows-static" # openssl_arm64-windows-static for ARM64
 ```
 
 For a FIPS compliant build, use the following commands (to build fips.dll), also run:
