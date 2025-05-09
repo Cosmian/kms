@@ -5,7 +5,9 @@
 
 The **Cosmian KMS** is a high-performance,
 open-source [FIPS 140-3 compliant](./documentation/docs/fips.md) server application
-written in [Rust](https://www.rust-lang.org/) 
+written in [Rust](https://www.rust-lang.org/).
+
+Online [documentation](https://docs.cosmian.com/key_management_system/)
 
 ![KMS WebUI](./documentation/docs/images/kms-ui.png)
 
