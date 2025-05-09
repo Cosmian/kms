@@ -3,7 +3,10 @@ use std::{
     sync::Arc,
 };
 
-use base64::{engine::general_purpose, Engine};
+use base64::{
+    engine::{general_purpose, general_purpose::URL_SAFE_NO_PAD},
+    Engine,
+};
 use chrono::{Duration, Utc};
 use clap::crate_version;
 use cosmian_kmip::{
@@ -181,8 +184,8 @@ pub async fn display_rsa_public_key(
                         kty: "RSA".to_owned(),
                         use_: "sig".to_owned(),
                         alg: "RS256".to_owned(),
-                        n: modulus.to_string(),
-                        e: public_exponent.to_string(),
+                        n: URL_SAFE_NO_PAD.encode(modulus.to_bytes_be()),
+                        e: URL_SAFE_NO_PAD.encode(public_exponent.to_bytes_be()),
                         kid: calculate_hash::<str>(current_kacls_url).to_string(),
                     }],
                 }),
