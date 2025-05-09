@@ -16,7 +16,7 @@ async-trait = { workspace = true }
 cosmian_kms_interfaces = { workspace = true }
 libloading = { workspace = true }
 lru = { workspace = true }
-pkcs11_sys = { workspace = true }
+cosmian_pkcs11_sys = { workspace = true }
 rand = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }

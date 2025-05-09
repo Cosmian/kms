@@ -4,11 +4,11 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use lru::LruCache;
-use pkcs11_sys::{
+use cosmian_pkcs11_sys::{
     CK_FLAGS, CK_OBJECT_HANDLE, CK_SESSION_HANDLE, CK_SLOT_ID, CK_ULONG, CK_UTF8CHAR_PTR,
     CKF_RW_SESSION, CKF_SERIAL_SESSION, CKR_OK, CKR_USER_ALREADY_LOGGED_IN, CKU_USER,
 };
+use lru::LruCache;
 use tracing::warn;
 
 use crate::{HError, HResult, Session, hsm_lib::HsmLib};

@@ -6,7 +6,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "utimaco HSM PKCS#11 loader"
+description = "Utimaco HSM PKCS#11 loader"
 
 [lib]
 doctest = false
@@ -15,7 +15,7 @@ doctest = false
 cosmian_kms_base_hsm = { workspace = true }
 cosmian_kms_interfaces = { workspace = true }
 libloading = { workspace = true }
-pkcs11_sys = { workspace = true }
+cosmian_pkcs11_sys = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 

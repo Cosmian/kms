@@ -1,5 +1,5 @@
 [package]
-name = "pkcs11_sys"
+name = "cosmian_pkcs11_sys"
 version = "0.2.17"
 authors = [
   "Brandon Weeks <bweeks@google.com>",
