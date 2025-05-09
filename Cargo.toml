@@ -71,7 +71,7 @@ cosmian_crypto_core = { version = "10.1", default-features = false, features = [
 ] }
 cosmian_http_client = "0.2"
 
-# Local crates have been also declared here to simplify publishing - centralizing the versions
+### Local crates have been also declared here to simplify publishing - centralizing the versions
 kmip-derive = { path = "crate/kmip-derive" }
 cosmian_kmip = { path = "crate/kmip" }
 cosmian_kms_access = { path = "crate/access" }
@@ -83,7 +83,7 @@ proteccio_pkcs11_loader = { path = "crate/hsm/proteccio" }
 utimaco_pkcs11_loader = { path = "crate/hsm/utimaco" }
 cosmian_kms_server_database = { path = "crate/server_database" }
 cosmian_kms_server = { path = "crate/server" }
-# Uncomment the following lines if you want to publish new crates
+### Uncomment the following lines if you want to publish new crates
 # kmip-derive = "5.0"
 # cosmian_kmip = "5.0"
 # cosmian_kms_access = "5.0"
