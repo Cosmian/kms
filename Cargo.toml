@@ -97,8 +97,14 @@ cosmian_kms_server = { path = "crate/server" }
 # cosmian_kms_server = "5.0"
 
 # Client crates
+cosmian_findex_client = { path = "cli/crate/findex_client" }
 cosmian_kms_client = { path = "cli/crate/kms_client" }
 cosmian_kms_client_utils = { path = "cli/crate/client_utils" }
+cosmian_cli = { path = "cli/crate/cli" }
+cosmian_pkcs11_module = { path = "cli/crate/pkcs11/module" }
+test_findex_server = { path = "cli/crate/test_findex_server" }
+test_kms_server = { path = "cli/crate/test_kms_server" }
+
 cosmian_logger = "0.2"
 der = { version = "0.7", default-features = false }
 hex = { version = "0.4", default-features = false }
