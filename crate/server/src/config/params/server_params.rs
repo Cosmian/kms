@@ -7,7 +7,6 @@ use super::TlsParams;
 use crate::{
     config::{ClapConfig, IdpConfig, OidcConfig, DEFAULT_COSMIAN_UI_DIST_PATH},
     error::KmsError,
-    kms_bail,
     result::{KResult, KResultHelper},
 };
 

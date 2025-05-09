@@ -25,7 +25,6 @@ use crate::{
     config::{JwtAuthConfig, ServerParams},
     core::KMS,
     error::KmsError,
-    kms_bail,
     middlewares::{extract_peer_certificate, AuthTransformer, JwksManager, JwtConfig, SslAuth},
     result::{KResult, KResultHelper},
     routes::{

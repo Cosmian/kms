@@ -14,7 +14,6 @@ use crate::{
     config::{SocketServerConfig, TlsConfig},
     error::KmsError,
     result::KResult,
-    telemetry::TelemetryConfig,
 };
 
 const DEFAULT_COSMIAN_KMS_CONF: &str = "/etc/cosmian/kms.toml";

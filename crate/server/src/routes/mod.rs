@@ -3,7 +3,6 @@ use std::sync::Arc;
 use actix_web::{
     get,
     http::{header, StatusCode},
-    post,
     web::{Data, Json},
     HttpRequest, HttpResponse, HttpResponseBuilder,
 };

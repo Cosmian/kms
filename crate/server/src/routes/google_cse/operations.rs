@@ -10,15 +10,12 @@ use base64::{
 use chrono::{Duration, Utc};
 use clap::crate_version;
 use cosmian_kmip::{
-    kmip_0::kmip_types::BlockCipherMode,
+    kmip_0::kmip_types::{BlockCipherMode, KeyWrapType},
     kmip_2_1::{
-        kmip_operations::{Decrypt, Encrypt},
-        kmip_types::{CryptographicParameters, UniqueIdentifier},
-use cosmian_kmip::kmip_2_1::{
-    kmip_objects::ObjectType,
-    kmip_operations::{Decrypt, Encrypt, Get},
-    kmip_types::{
-        BlockCipherMode, CryptographicParameters, KeyFormatType, KeyWrapType, UniqueIdentifier,
+        kmip_data_structures::{KeyMaterial, KeyValue},
+        kmip_objects::ObjectType,
+        kmip_operations::{Decrypt, Encrypt, Get},
+        kmip_types::{CryptographicParameters, KeyFormatType, UniqueIdentifier},
     },
 };
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
@@ -174,23 +171,27 @@ pub async fn display_rsa_public_key(
     };
     let resp = kms.get(op, "", None).await?;
     if resp.object_type == ObjectType::PublicKey {
-        let key_material = resp.object.key_block()?.key_value.key_material.clone();
-        match key_material {
-            cosmian_kmip::kmip_2_1::kmip_data_structures::KeyMaterial::TransparentRSAPublicKey {
-                        modulus, public_exponent
-            } => Ok(
-                CertsResponse {
+        match &resp.object.key_block()?.key_value {
+            Some(KeyValue::Structure { key_material, .. }) => match key_material {
+                KeyMaterial::TransparentRSAPublicKey {
+                    modulus,
+                    public_exponent,
+                } => Ok(CertsResponse {
                     keys: vec![PublicKeyElements {
                         kty: "RSA".to_owned(),
                         use_: "sig".to_owned(),
                         alg: "RS256".to_owned(),
-                        n: URL_SAFE_NO_PAD.encode(modulus.to_bytes_be()),
-                        e: URL_SAFE_NO_PAD.encode(public_exponent.to_bytes_be()),
+                        n: URL_SAFE_NO_PAD.encode(modulus.to_bytes_be().1),
+                        e: URL_SAFE_NO_PAD.encode(public_exponent.to_bytes_be().1),
                         kid: calculate_hash::<str>(current_kacls_url).to_string(),
                     }],
                 }),
+                _ => Err(KmsError::InvalidRequest(
+                    "Invalid RSA Public key fetch. No exponent and modulus".to_owned(),
+                )),
+            },
             _ => Err(KmsError::InvalidRequest(
-                "Invalid RSA Public key fetch. No exponent and modulus".to_owned(),
+                "Expected structured KeyValue for RSA public key".to_owned(),
             )),
         }
     } else {
@@ -1014,13 +1015,10 @@ pub async fn rewrap(
     };
     let resp = kms.get(op, &user, None).await?;
     if resp.object_type == ObjectType::PrivateKey {
-        let key_material = resp.object.key_block()?.key_value.key_material.clone();
-        let private_key_bytes = match key_material {
-            cosmian_kmip::kmip_2_1::kmip_data_structures::KeyMaterial::ByteString(bytes) => {
-                Ok(bytes)
-            }
+        let private_key_bytes = match &resp.object.key_block()?.key_value {
+            Some(KeyValue::ByteString(bytes)) => Ok(bytes),
             _ => Err(KmsError::InvalidRequest(
-                "Invalid RSA Private key fetch. No ByteString".to_owned(),
+                "Invalid RSA Private key fetch. Expected ByteString".to_owned(),
             )),
         }?;
 
