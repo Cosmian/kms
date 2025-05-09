@@ -232,6 +232,7 @@ default_username = "[default username]"
 force_default_username = false
 google_cse_kacls_url = "[google cse kacls url]"
 google_cse_disable_tokens_validation = false
+google_cse_incoming_url_whitelist = ["[kacls_url_1]", "[kacls_url_2]"]
 ms_dke_service_url = "[ms dke service url]"
 info = false
 hsm_model = ""

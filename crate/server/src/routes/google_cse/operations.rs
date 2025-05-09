@@ -135,7 +135,7 @@ pub fn get_status(kacls_url: &str) -> StatusResponse {
 }
 
 #[derive(Deserialize, Serialize, Debug)]
-pub struct CertsResponse {
+pub struct PublicKeyElements {
     pub kty: String,
     #[serde(rename = "use")]
     pub use_: String,
@@ -143,6 +143,11 @@ pub struct CertsResponse {
     pub n: String,
     pub e: String,
     pub kid: String,
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+pub struct CertsResponse {
+    keys: Vec<PublicKeyElements>,
 }
 
 /// Returns the public key to decode KACLS token for migration.
@@ -172,12 +177,14 @@ pub async fn display_rsa_public_key(
                         modulus, public_exponent
             } => Ok(
                 CertsResponse {
-                    kty: "RSA".to_owned(),
-                    use_: "sig".to_owned(),
-                    alg: "RS256".to_owned(),
-                    n: modulus.to_string(),
-                    e: public_exponent.to_string(),
-                    kid: calculate_hash::<str>(current_kacls_url).to_string(),
+                    keys: vec![PublicKeyElements {
+                        kty: "RSA".to_owned(),
+                        use_: "sig".to_owned(),
+                        alg: "RS256".to_owned(),
+                        n: modulus.to_string(),
+                        e: public_exponent.to_string(),
+                        kid: calculate_hash::<str>(current_kacls_url).to_string(),
+                    }],
                 }),
             _ => Err(KmsError::InvalidRequest(
                 "Invalid RSA Public key fetch. No exponent and modulus".to_owned(),
