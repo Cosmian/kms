@@ -4,17 +4,19 @@ use crate::kmip_2_1::extra::fips::{
     FIPS_PUBLIC_ECC_MASK_SIGN, FIPS_PUBLIC_ECC_MASK_SIGN_ECDH, FIPS_PUBLIC_RSA_MASK,
 };
 #[cfg(feature = "fips")]
-use crate::kmip_bail;
+use crate::kmip_2_1_bail;
 use crate::{
+    KmipError,
+    kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
+        kmip_attributes::Attributes,
         kmip_objects::ObjectType,
         kmip_operations::CreateKeyPair,
         kmip_types::{
-            Attributes, CryptographicAlgorithm, CryptographicDomainParameters,
-            CryptographicUsageMask, KeyFormatType, RecommendedCurve, UniqueIdentifier,
+            CryptographicAlgorithm, CryptographicDomainParameters, KeyFormatType, RecommendedCurve,
+            UniqueIdentifier,
         },
     },
-    KmipError,
 };
 /// Build a `CreateKeyPairRequest` for a RSA key pair.
 pub fn create_rsa_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
@@ -22,6 +24,7 @@ pub fn create_rsa_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
     tags: T,
     cryptographic_length: usize,
     sensitive: bool,
+    wrapping_key_id: Option<&String>,
 ) -> Result<CreateKeyPair, KmipError> {
     #[cfg(feature = "fips")]
     let private_key_mask = FIPS_PRIVATE_RSA_MASK;
@@ -45,6 +48,9 @@ pub fn create_rsa_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
         object_type: Some(ObjectType::PrivateKey),
         ..Attributes::default()
     };
+    if let Some(wrap_key_id) = wrapping_key_id {
+        common_attributes.set_wrapping_key_id(wrap_key_id);
+    }
 
     // Add the tags.
     common_attributes.set_tags(tags)?;
@@ -60,7 +66,7 @@ pub fn create_rsa_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
         key_format_type: Some(KeyFormatType::TransparentRSAPrivateKey),
         object_type: Some(ObjectType::PrivateKey),
         unique_identifier: private_key_id,
-        sensitive,
+        sensitive: if sensitive { Some(true) } else { None },
         ..Attributes::default()
     };
 
@@ -115,7 +121,7 @@ fn build_mask_from_curve(
         (false, RecommendedCurve::CURVEED25519 | RecommendedCurve::CURVEED448) => {
             FIPS_PUBLIC_ECC_MASK_SIGN
         }
-        (_, other) => kmip_bail!(
+        (_, other) => kmip_2_1_bail!(
             "Building mask from unsupported curve in FIPS mode: curve {}",
             other
         ),
@@ -151,7 +157,7 @@ const fn build_algorithm_from_curve(curve: RecommendedCurve) -> CryptographicAlg
     match curve {
         RecommendedCurve::CURVEED25519 => CryptographicAlgorithm::Ed25519,
         RecommendedCurve::CURVEED448 => CryptographicAlgorithm::Ed448,
-        _ => CryptographicAlgorithm::EC,
+        _ => CryptographicAlgorithm::ECDH,
     }
 }
 
@@ -161,6 +167,7 @@ pub fn create_ec_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
     tags: T,
     recommended_curve: RecommendedCurve,
     sensitive: bool,
+    wrapping_key_id: Option<&String>,
 ) -> Result<CreateKeyPair, KmipError> {
     let private_key_mask = build_mask_from_curve(recommended_curve, true)?;
     let public_key_mask = build_mask_from_curve(recommended_curve, false)?;
@@ -177,6 +184,9 @@ pub fn create_ec_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
         object_type: Some(ObjectType::PrivateKey),
         ..Attributes::default()
     };
+    if let Some(wrap_key_id) = wrapping_key_id {
+        common_attributes.set_wrapping_key_id(wrap_key_id);
+    }
 
     // Add the tags.
     common_attributes.set_tags(tags)?;
@@ -191,7 +201,7 @@ pub fn create_ec_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
         key_format_type: Some(KeyFormatType::ECPrivateKey),
         object_type: Some(ObjectType::PrivateKey),
         unique_identifier: private_key_id,
-        sensitive,
+        sensitive: if sensitive { Some(true) } else { None },
         ..Attributes::default()
     };
 

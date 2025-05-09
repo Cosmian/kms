@@ -1,11 +1,11 @@
 # API
 
-The Cosmian KMS server implements the JSON TTLV profile of the KMIP 2.1 specification.
+The Cosmian KMS server implements the JSON TTLV profile of the KMIP 1.x and 2.x specifications.
 In addition, the server exposes a few additional endpoints for authorization operations.
 
 ## Calling the KMIP API
 
-This API is documented in the [KMIP section](./kmip_2_1/json_ttlv_api.md) of this manual.
+This API is documented in the [KMIP section](./kmip/json_ttlv_api.md) of this manual.
 
 ### Calling the authorization API
 

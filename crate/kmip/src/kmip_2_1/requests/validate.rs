@@ -1,6 +1,6 @@
 use crate::{
-    kmip_2_1::{kmip_operations::Validate, kmip_types::UniqueIdentifier},
     KmipError,
+    kmip_2_1::{kmip_operations::Validate, kmip_types::UniqueIdentifier},
 };
 
 /// Build a `Validate` request to validate a certificate chain.

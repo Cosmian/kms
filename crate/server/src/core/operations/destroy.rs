@@ -1,22 +1,26 @@
 use std::{collections::HashSet, sync::Arc};
 
 use async_recursion::async_recursion;
-use cosmian_kmip::kmip_2_1::{
-    kmip_data_structures::{KeyMaterial, KeyValue},
-    kmip_objects::{Object, ObjectType},
-    kmip_operations::{Destroy, DestroyResponse, ErrorReason},
-    kmip_types::{Attributes, KeyFormatType, LinkType, StateEnumeration, UniqueIdentifier},
-    KmipOperation,
+use cosmian_kmip::{
+    kmip_0::kmip_types::{ErrorReason, State},
+    kmip_2_1::{
+        KmipOperation,
+        kmip_attributes::Attributes,
+        kmip_data_structures::{KeyMaterial, KeyValue},
+        kmip_objects::{Object, ObjectType},
+        kmip_operations::{Destroy, DestroyResponse},
+        kmip_types::{KeyFormatType, LinkType, UniqueIdentifier},
+    },
 };
 use cosmian_kms_interfaces::SessionParams;
-use tracing::{debug, trace};
+use tracing::{debug, info, trace};
 use zeroize::Zeroizing;
 
 use crate::{
     core::{
+        KMS,
         cover_crypt::destroy_user_decryption_keys,
         uid_utils::{has_prefix, uids_from_unique_identifier},
-        KMS,
     },
     error::KmsError,
     kms_bail,
@@ -45,6 +49,7 @@ pub(crate) async fn destroy_operation(
         HashSet::new(),
     )
     .await?;
+
     Ok(DestroyResponse {
         unique_identifier: unique_identifier.clone(),
     })
@@ -68,6 +73,8 @@ pub(crate) async fn recursively_destroy_object(
 
     let mut count = 0;
     for uid in uids {
+        // If the object has a prefix (external object store),
+        // destroy all the objects with this prefix
         if let Some(_prefix) = has_prefix(&uid) {
             // ensure user can destroy
             if !kms
@@ -85,7 +92,7 @@ pub(crate) async fn recursively_destroy_object(
             }
             kms.database.delete(&uid, params.clone()).await?;
             count += 1;
-            debug!("Destroy: object {uid} destroyed by user: {user}");
+            info!(uid = uid, user = user, "Destroyed object");
             continue
         }
 
@@ -94,6 +101,8 @@ pub(crate) async fn recursively_destroy_object(
             continue
         };
 
+        // Check if the object is owned by the user
+        // If the object is not owned by the user, check if the user has destroy permissions
         if user != owm.owner() {
             let permissions = kms
                 .database
@@ -103,8 +112,10 @@ pub(crate) async fn recursively_destroy_object(
                 continue
             }
         }
+
+        // Check if the object is already destroyed
         let object_type = owm.object().object_type();
-        if owm.state() == StateEnumeration::Destroyed
+        if owm.state() == State::Destroyed
             || (object_type != ObjectType::PrivateKey
                 && object_type != ObjectType::SymmetricKey
                 && object_type != ObjectType::Certificate
@@ -112,8 +123,9 @@ pub(crate) async fn recursively_destroy_object(
         {
             continue
         }
-        count += 1;
+
         // perform the chain of destroy operations depending on the type of object
+        count += 1;
         let object_type = owm.object().object_type();
         match object_type {
             ObjectType::SymmetricKey | ObjectType::Certificate => {
@@ -140,7 +152,8 @@ pub(crate) async fn recursively_destroy_object(
                 // destroy any linked public key
                 if let Some(public_key_id) = owm
                     .object()
-                    .attributes()?
+                    .attributes()
+                    .unwrap_or_else(|_| owm.attributes())
                     .get_link(LinkType::PublicKeyLink)
                     .map(|l| l.to_string())
                 {
@@ -168,7 +181,8 @@ pub(crate) async fn recursively_destroy_object(
                 // destroy any linked private key
                 if let Some(private_key_id) = owm
                     .object()
-                    .attributes()?
+                    .attributes()
+                    .unwrap_or_else(|_| owm.attributes())
                     .get_link(LinkType::PrivateKeyLink)
                     .map(|l| l.to_string())
                 {
@@ -203,7 +217,7 @@ pub(crate) async fn recursively_destroy_object(
     }
 
     if count == 0 {
-        return Err(KmsError::KmipError(
+        return Err(KmsError::Kmip21Error(
             ErrorReason::Item_Not_Found,
             unique_identifier.to_string(),
         ))
@@ -217,7 +231,7 @@ async fn destroy_core(
     unique_identifier: &str,
     remove: bool,
     object: &mut Object,
-    state: StateEnumeration,
+    state: State,
     kms: &KMS,
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<()> {
@@ -232,11 +246,11 @@ async fn destroy_core(
 /// This is a Cosmian specific operation
 async fn remove_from_database(
     unique_identifier: &str,
-    state: StateEnumeration,
+    state: State,
     kms: &KMS,
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<()> {
-    if state == StateEnumeration::Active {
+    if state == State::Active {
         return Err(KmsError::InvalidRequest(format!(
             "Object with unique identifier: {unique_identifier} is active. It must be revoked \
              first"
@@ -251,22 +265,22 @@ async fn remove_from_database(
 async fn update_as_destroyed(
     unique_identifier: &str,
     object: &mut Object,
-    state: StateEnumeration,
+    state: State,
     kms: &KMS,
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<()> {
     // map the state to the new state
     let new_state = match state {
-        StateEnumeration::Active => {
+        State::Active => {
             return Err(KmsError::InvalidRequest(format!(
                 "Object with unique identifier: {unique_identifier} is active. It must be revoked \
                  first"
             )))
         }
-        StateEnumeration::Deactivated | StateEnumeration::PreActive => StateEnumeration::Destroyed,
-        StateEnumeration::Compromised => StateEnumeration::Destroyed_Compromised,
+        State::Deactivated | State::PreActive => State::Destroyed,
+        State::Compromised => State::Destroyed_Compromised,
         // already destroyed, return
-        StateEnumeration::Destroyed | StateEnumeration::Destroyed_Compromised => return Ok(()),
+        State::Destroyed | State::Destroyed_Compromised => return Ok(()),
     };
 
     // the KMIP specs mandates that e KeyMaterial be destroyed
@@ -276,11 +290,14 @@ async fn update_as_destroyed(
         Attributes::default()
     } else {
         let key_block = object.key_block_mut()?;
-        key_block.key_value = KeyValue {
+        let attributes = key_block.attributes().cloned().unwrap_or_default();
+        // Empty the Key Material
+        key_block.key_format_type = KeyFormatType::Raw;
+        key_block.key_value = Some(KeyValue::Structure {
             key_material: KeyMaterial::ByteString(Zeroizing::from(vec![])),
-            attributes: key_block.key_value.attributes.clone(),
-        };
-        key_block.attributes()?.clone()
+            attributes: Some(attributes.clone()),
+        });
+        attributes
     };
 
     kms.database

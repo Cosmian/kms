@@ -2,10 +2,9 @@
 
 The **KMS User Interface (UI)** is a web-based application served from the **KMS server**, allowing users to perform key management operations easily.
 
-
 ## Authentication Configuration
 
-The UI follows the **KMS server’s authentication** method. The authentication requirements depend on the server mode:
+The UI follows the **KMS server's authentication** method. The authentication requirements depend on the server mode:
 
 - **Admin Mode**: No authentication is required.
 - **Certificate Authentication**: The browser must be configured with the appropriate client certificate.
@@ -33,7 +32,6 @@ the TOML file:
 ```toml
 kms_public_url = "your_kms_public_url"
 ```
-
 
 #### 2. Using Command-Line Arguments
 

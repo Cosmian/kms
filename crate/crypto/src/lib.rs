@@ -54,14 +54,14 @@
 // required to detect generic type in Serializer
 #![feature(min_specialization)]
 
-pub use error::{result::CryptoResultHelper, CryptoError};
+pub use error::{CryptoError, result::CryptoResultHelper};
 
 pub mod crypto;
 mod error;
 pub mod openssl;
 
 pub fn pad_be_bytes(bytes: &mut Vec<u8>, size: usize) {
-    while bytes.len() != size {
+    while bytes.len() < size {
         bytes.insert(0, 0);
     }
 }

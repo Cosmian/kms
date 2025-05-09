@@ -1,17 +1,20 @@
 use std::sync::Arc;
 
 use cosmian_cover_crypt::api::Covercrypt;
-use cosmian_kmip::kmip_2_1::{
-    kmip_objects::ObjectType,
-    kmip_operations::{ErrorReason, ReKeyKeyPair, ReKeyKeyPairResponse},
-    kmip_types::{CryptographicAlgorithm, KeyFormatType, StateEnumeration},
+use cosmian_kmip::{
+    kmip_0::kmip_types::{ErrorReason, State},
+    kmip_2_1::{
+        kmip_objects::ObjectType,
+        kmip_operations::{ReKeyKeyPair, ReKeyKeyPairResponse},
+        kmip_types::{CryptographicAlgorithm, KeyFormatType},
+    },
 };
 use cosmian_kms_crypto::crypto::cover_crypt::attributes::rekey_edit_action_from_attributes;
 use cosmian_kms_interfaces::SessionParams;
 use tracing::trace;
 
 use crate::{
-    core::{cover_crypt::rekey_keypair_cover_crypt, KMS},
+    core::{KMS, cover_crypt::rekey_keypair_cover_crypt},
     error::KmsError,
     kms_bail,
     result::{KResult, KResultHelper},
@@ -22,6 +25,7 @@ pub(crate) async fn rekey_keypair(
     request: ReKeyKeyPair,
     user: &str,
     params: Option<Arc<dyn SessionParams>>,
+    privileged_users: Option<Vec<String>>,
 ) -> KResult<ReKeyKeyPairResponse> {
     trace!("Internal rekey key pair");
 
@@ -47,7 +51,8 @@ pub(crate) async fn rekey_keypair(
         .into_values();
 
     for owm in owm_s {
-        if owm.state() != StateEnumeration::Active {
+        // only active objects
+        if owm.state() != State::Active {
             continue
         }
 
@@ -71,9 +76,11 @@ pub(crate) async fn rekey_keypair(
                 user,
                 action,
                 params,
-                owm.attributes().sensitive,
+                owm.attributes().sensitive.unwrap_or(false),
+                privileged_users,
             ))
             .await
+            .context("Rekey keypair: Covercrypt rekey failed")
         } else if let Some(other) = attributes.cryptographic_algorithm {
             kms_bail!(KmsError::NotSupported(format!(
                 "The rekey of a key pair for algorithm: {other:?} is not yet supported"
@@ -86,7 +93,7 @@ pub(crate) async fn rekey_keypair(
         ))
     }
 
-    Err(KmsError::KmipError(
+    Err(KmsError::Kmip21Error(
         ErrorReason::Item_Not_Found,
         uid_or_tags.to_owned(),
     ))

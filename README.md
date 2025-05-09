@@ -4,27 +4,37 @@
 ![Build status](https://github.com/Cosmian/kms/actions/workflows/main_release.yml/badge.svg?branch=main)
 
 The **Cosmian KMS** is a high-performance,
-[**open-source**](https://github.com/Cosmian/kms),
-[FIPS 140-3 compliant](./documentation/docs/fips.md) server application
-written in [**Rust**](https://www.rust-lang.org/) that presents some unique features, such as:
+open-source [FIPS 140-3 compliant](./documentation/docs/fips.md) server application
+written in [Rust](https://www.rust-lang.org/).
 
-- the ability to confidentially run in a public cloud — or any zero-trust environment — using
+Online [documentation](https://docs.cosmian.com/key_management_system/)
+
+![KMS WebUI](./documentation/docs/images/kms-ui.png)
+
+The Cosmian KMS presents some unique features, such as:
+
+- large scale encryption and decryption of
+  data [see this documentation](./documentation/docs/encrypting_and_decrypting_at_scale.md)
+- the ability to confidentially run in a public cloud, or any zero-trust environment, using
   Cosmian VM. See our cloud-ready confidential KMS on the
-  [Azure, GCP, and AWS marketplaces](https://cosmian.com/marketplaces/) and
+  [Azure, GCP, and AWS marketplaces](https://cosmian.com/marketplaces/)
   our [deployment guide](documentation/docs/installation/marketplace_guide.md)
 - support of state-of-the-art authentication mechanisms (see [authentication](./documentation/docs/authentication.md))
 - out-of-the-box support of
   [Google Workspace Client Side Encryption (CSE)](./documentation/docs/google_cse/index.md)
 - out-of-the-box support
   of [Microsoft Double Key Encryption (DKE)](./documentation/docs/ms_dke/index.md)
-- support for the [Proteccio HSM](./documentation/docs/hsms/index.md) with KMS keys wrapped by the HSM
+- support for the [Proteccio and Utimaco HSMs](./documentation/docs/hsms/index.md) with KMS keys wrapped by the HSM
 - [Veracrypt](./documentation/docs/pkcs11/veracrypt.md)
   and [LUKS](./documentation/docs/pkcs11/luks.md) disk encryption support
 - [FIPS 140-3](./documentation/docs/fips.md) mode gated behind the feature `fips`
-- a [JSON KMIP 2.1](./documentation/docs/kmip_2_1/index.md) compliant interface
+- a [binary and JSON KMIP 1.0-1.4 and 2.0-2.1](./documentation/docs/kmip/index.md) compliant interface
+- Oracle DB [TDE support](./documentation/docs/oracle/tde.md)
+- VMWare [vCenter Trust Key Provider integration](./documentation/docs/vcenter.md)
+- User Defined Functions for [Big Data](./documentation/docs/python_udf/index.md) including [snowflake](./documentation/docs/snowflake/index.md)
 - a full-featured client [command line and graphical interface](https://docs.cosmian.com/cosmian_cli/)
 - a [high-availability mode](documentation/docs/installation/high_availability_mode.md) with simple horizontal scaling
-- a support of Python, Javascript, Dart, Rust, C/C++, and Java clients (see the `cloudproof` libraries
+- a support of Python, JavaScript, Dart, Rust, C/C++, and Java clients (see the `cloudproof` libraries
   on [Cosmian Github](https://github.com/Cosmian))
 - integrated with [OpenTelemetry](https://opentelemetry.io/)
 
@@ -38,30 +48,29 @@ Please refer to the list of [supported algorithms](./documentation/docs/algorith
 
 As a **PKI** it can manage root and intermediate certificates, sign and verify certificates, use
 their public keys to encrypt and decrypt data.
-Certificates can be exported under various formats including _PKCS#12_ modern and legacy flavor,
+Certificates can be exported under various formats, including _PKCS#12_ modern and legacy flavor,
 to be used in various applications, such as in _S/MIME_ encrypted emails.
 
 The KMS has extensive online [documentation](https://docs.cosmian.com/key_management_system/)
 
-- [Cosmian KMS](#cosmian-kms)
-    - [Quick start](#quick-start)
-        - [Example](#example)
-    - [Repository content](#repository-content)
-    - [Building the KMS](#building-the-kms)
-        - [Linux or MacOS (CPU Intel or MacOs ARM)](#linux-or-macos-cpu-intel-or-macos-arm)
-        - [Windows](#windows)
-        - [Build the KMS](#build-the-kms)
-        - [Build the Docker Ubuntu container](#build-the-docker-ubuntu-container)
-    - [Running the unit and integration tests](#running-the-unit-and-integration-tests)
-    - [Development: running the server with cargo](#development-running-the-server-with-cargo)
-    - [Server parameters](#server-parameters)
-    - [Use the KMS inside a Cosmian VM on SEV/TDX](#use-the-kms-inside-a-cosmian-vm-on-sevtdx)
-    - [Releases](#releases)
-    - [Benchmarks](#benchmarks)
+- [Quick start](#quick-start)
+    - [Example](#example)
+- [Repository content](#repository-content)
+- [Building the KMS](#building-the-kms)
+    - [Linux or MacOS (CPU Intel or MacOS ARM)](#linux-or-macos-cpu-intel-or-macos-arm)
+    - [Windows](#windows)
+    - [Build the KMS](#build-the-kms)
+    - [Build the Docker Ubuntu container](#build-the-docker-ubuntu-container)
+- [Running the unit and integration tests](#running-the-unit-and-integration-tests)
+- [Development: running the server with cargo](#development-running-the-server-with-cargo)
+- [Server parameters](#server-parameters)
+- [Use the KMS inside a Cosmian VM on SEV/TDX](#use-the-kms-inside-a-cosmian-vm-on-sevtdx)
+- [Releases](#releases)
+- [Benchmarks](#benchmarks)
 
 ## Quick start
 
-Pre-built binaries [are available](https://package.cosmian.com/kms/4.24.0/)
+Pre-built binaries [are available](https://package.cosmian.com/kms/5.0.0/)
 for Linux, MacOS, and Windows, as well as Docker images. To run the server binary, OpenSSL must be
 available in your path (see "building the KMS" below for details); other binaries do not have this
 requirement.
@@ -74,7 +83,8 @@ docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest
 ```
 
 Then, use the CLI to issue commands to the KMS.
-The CLI, called `cosmian`, can be either downloaded from [Cosmian packages](https://package.cosmian.com/kms/) or built and
+The CLI, called `cosmian`, can be either downloaded from [Cosmian packages](https://package.cosmian.com/kms/) or built
+and
 launched from this GitHub project by running
 
 ```sh
@@ -144,11 +154,11 @@ First, pull the git submodule for client requirements such as CLI and UI:
 git submodule update --recursive --init
 ````
 
-Then OpenSSL v3.2.0 is required to build the KMS.
+Then, OpenSSL v3.2.0 is required to build the KMS.
 
 ### Linux or MacOS (CPU Intel or MacOs ARM)
 
-Retrieve OpenSSL v3.2.0 (already build) with the following commands:
+Retrieve OpenSSL v3.2.0 (already built) with the following commands:
 
 ```sh
 export OPENSSL_DIR=/usr/local/openssl
@@ -169,12 +179,13 @@ bash .github/scripts/get_openssl_binaries.sh
 The files `vcpkg.json` and `vcpkg_fips.json` are provided in the repository to install OpenSSL v3.2.0:
 
 ```powershell
-vcpkg install --triplet x64-windows-static
+vcpkg install --triplet x64-windows-static # arm64-windows-static for ARM64
+
 vcpkg integrate install
-$env:OPENSSL_DIR = "$env:VCPKG_INSTALLATION_ROOT\packages\openssl_x64-windows-static"
+$env:OPENSSL_DIR = "$env:VCPKG_INSTALLATION_ROOT\packages\openssl_x64-windows-static" # openssl_arm64-windows-static for ARM64
 ```
 
-For a FIPS compliant build, use the following commands (in order to build fips.dll), run also:
+For a FIPS compliant build, use the following commands (to build fips.dll), also run:
 
 ```powershell
 Copy-Item -Path "vcpkg_fips.json" -Destination "vcpkg.json"
@@ -185,9 +196,8 @@ vcpkg integrate install
 ### Build the KMS
 
 Once OpenSSL is installed, you can build the KMS. To avoid the _additive feature_ issues, the main artifacts - the CLI,
-the KMS server and the PKCS11 provider - should directly be built using `cargo build --release` within their own crate,
-not
-from the project root.
+the KMS server and the PKCS11 provider should be directly built using `cargo build --release` within their crate,
+not from the project root.
 
 Build the server and CLI binaries:
 
@@ -201,7 +211,7 @@ cargo build --release
 
 ### Build the Docker Ubuntu container
 
-You can build a docker containing the KMS server as follows:
+You can build a Docker containing the KMS server as follows:
 
 ```sh
 docker build . --network=host -t kms
@@ -218,7 +228,7 @@ docker build . --network=host \
 
 ## Running the unit and integration tests
 
-By default, tests are run using `cargo test` and an SQLCipher backend (called `sqlite-enc`).
+By default, tests are run using `cargo test` and an SQLCipher backend (called `sqlite`).
 This can be influenced by setting the `KMS_TEST_DB` environment variable to
 
 - `sqlite`, for plain SQLite
@@ -250,7 +260,7 @@ log_init(option_env!("RUST_LOG"));
 ## Development: running the server with cargo
 
 To run the server with cargo, you need to set the `RUST_LOG` environment variable to the desired
-log level and select the correct backend (which defaults to `sqlite-enc`).
+log level and select the correct backend (which defaults to `sqlite`).
 
 ```sh
 RUST_LOG="info,cosmian_kms_server=debug" \

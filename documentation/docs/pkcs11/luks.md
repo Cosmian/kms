@@ -34,7 +34,7 @@ Ubuntu 24.04.
 sudo apt install p11-kit cryptsetup
 ```
 
-#### RHEL 9
+#### Rocky Linux 9
 
 ```bash
 sudo dnf install p11-kit cryptsetup

@@ -1,10 +1,10 @@
-use cosmian_kmip::kmip_2_1::kmip_types::HashingAlgorithm;
+use cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm;
 use openssl::{
     hash::MessageDigest,
     md::{Md, MdRef},
 };
 
-use crate::{crypto_error, CryptoError};
+use crate::{CryptoError, crypto_error};
 
 pub fn hashing_algorithm_to_openssl(
     hashing_algorithm: HashingAlgorithm,

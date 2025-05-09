@@ -1,15 +1,17 @@
 use std::{collections::HashSet, sync::Arc};
 
 use cosmian_crypto_core::{
-    reexport::rand_core::{RngCore, SeedableRng},
     CsRng,
+    reexport::rand_core::{RngCore, SeedableRng},
 };
-use cosmian_kmip::kmip_2_1::{
-    kmip_objects::ObjectType,
-    kmip_types::{
-        Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, StateEnumeration,
+use cosmian_kmip::{
+    kmip_0::kmip_types::{CryptographicUsageMask, State},
+    kmip_2_1::{
+        kmip_attributes::Attributes,
+        kmip_objects::ObjectType,
+        kmip_types::{CryptographicAlgorithm, KeyFormatType},
+        requests::create_symmetric_key_kmip_object,
     },
-    requests::create_symmetric_key_kmip_object,
 };
 use cosmian_kms_interfaces::{ObjectsStore, PermissionsStore, SessionParams};
 use uuid::Uuid;
@@ -28,8 +30,13 @@ pub(crate) async fn json_access<DB: ObjectsStore + PermissionsStore>(
 
     let mut symmetric_key_bytes = vec![0; 32];
     rng.fill_bytes(&mut symmetric_key_bytes);
-    let symmetric_key =
-        create_symmetric_key_kmip_object(&symmetric_key_bytes, CryptographicAlgorithm::AES, false)?;
+    let symmetric_key = create_symmetric_key_kmip_object(
+        &symmetric_key_bytes,
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Attributes::default()
+        },
+    )?;
 
     let uid = Uuid::new_v4().to_string();
 
@@ -53,8 +60,8 @@ pub(crate) async fn json_access<DB: ObjectsStore + PermissionsStore>(
         .retrieve(&uid, db_params.clone())
         .await?
         .ok_or_else(|| db_error!("Object not found"))?;
-    assert_eq!(StateEnumeration::Active, obj.state());
-    assert!(&symmetric_key == obj.object());
+    assert_eq!(State::Active, obj.state());
+    assert_eq!(&symmetric_key, obj.object());
 
     // Find with crypto algo attribute
 
@@ -66,7 +73,7 @@ pub(crate) async fn json_access<DB: ObjectsStore + PermissionsStore>(
     let found = db
         .find(
             researched_attributes.as_ref(),
-            Some(StateEnumeration::Active),
+            Some(State::Active),
             owner,
             true,
             db_params.clone(),
@@ -85,7 +92,7 @@ pub(crate) async fn json_access<DB: ObjectsStore + PermissionsStore>(
     let found = db
         .find(
             researched_attributes.as_ref(),
-            Some(StateEnumeration::Active),
+            Some(State::Active),
             owner,
             true,
             db_params.clone(),
@@ -105,7 +112,7 @@ pub(crate) async fn json_access<DB: ObjectsStore + PermissionsStore>(
     let found = db
         .find(
             researched_attributes.as_ref(),
-            Some(StateEnumeration::Active),
+            Some(State::Active),
             owner,
             true,
             db_params.clone(),
@@ -124,7 +131,7 @@ pub(crate) async fn json_access<DB: ObjectsStore + PermissionsStore>(
     let found = db
         .find(
             researched_attributes.as_ref(),
-            Some(StateEnumeration::Active),
+            Some(State::Active),
             owner,
             true,
             db_params.clone(),
@@ -146,7 +153,7 @@ pub(crate) async fn json_access<DB: ObjectsStore + PermissionsStore>(
     let found = db
         .find(
             researched_attributes.as_ref(),
-            Some(StateEnumeration::Active),
+            Some(State::Active),
             owner,
             true,
             db_params.clone(),
@@ -165,7 +172,7 @@ pub(crate) async fn json_access<DB: ObjectsStore + PermissionsStore>(
     let found = db
         .find(
             researched_attributes.as_ref(),
-            Some(StateEnumeration::Active),
+            Some(State::Active),
             owner,
             true,
             db_params.clone(),
@@ -183,7 +190,7 @@ pub(crate) async fn json_access<DB: ObjectsStore + PermissionsStore>(
     let found = db
         .find(
             researched_attributes.as_ref(),
-            Some(StateEnumeration::Active),
+            Some(State::Active),
             owner,
             true,
             db_params,

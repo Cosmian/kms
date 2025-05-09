@@ -1,7 +1,7 @@
 use std::ptr;
 
+use cosmian_pkcs11_sys::*;
 use libloading::Library;
-use pkcs11_sys::*;
 
 use crate::{HError, HResult};
 

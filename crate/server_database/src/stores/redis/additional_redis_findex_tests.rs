@@ -2,20 +2,20 @@ use std::{collections::HashSet, sync::Arc};
 
 use async_trait::async_trait;
 use cloudproof_findex::{
-    implementations::redis::{FindexRedis, FindexRedisError, RemovedLocationsFinder},
     Location,
+    implementations::redis::{FindexRedis, FindexRedisError, RemovedLocationsFinder},
 };
 use cosmian_crypto_core::{
-    reexport::rand_core::{RngCore, SeedableRng},
     CsRng, RandomFixedSizeCBytes, SymmetricKey,
+    reexport::rand_core::{RngCore, SeedableRng},
 };
 use cosmian_kmip::{
-    kmip_2_1::{
-        kmip_types::{CryptographicAlgorithm, StateEnumeration},
-        requests::create_symmetric_key_kmip_object,
-        KmipOperation,
-    },
     KmipResultHelper,
+    kmip_0::kmip_types::State,
+    kmip_2_1::{
+        KmipOperation, kmip_attributes::Attributes, kmip_types::CryptographicAlgorithm,
+        requests::create_symmetric_key_kmip_object,
+    },
 };
 use redis::aio::ConnectionManager;
 use tracing::trace;
@@ -46,7 +46,7 @@ async fn clear_all(mgr: &mut ConnectionManager) -> DbResult<()> {
 }
 
 pub(crate) async fn test_objects_db() -> DbResult<()> {
-    cosmian_logger::log_init(Some("test_objects_db=info"));
+    cosmian_logger::log_init(option_env!("RUST_LOG"));
     trace!("test_objects_db");
 
     let mut rng = CsRng::from_entropy();
@@ -55,17 +55,23 @@ pub(crate) async fn test_objects_db() -> DbResult<()> {
 
     let db_key = SymmetricKey::new(&mut rng);
     let o_db = ObjectsDB::new(mgr.clone(), &db_key);
+    // clean up
+    redis::cmd("FLUSHDB")
+        .query_async::<_, ()>(&mut mgr.clone())
+        .await?;
 
     // single upsert - get - delete
     let uid = "test_objects_db";
 
     let mut symmetric_key = vec![0; 32];
     rng.fill_bytes(&mut symmetric_key);
-    let object =
-        create_symmetric_key_kmip_object(&symmetric_key, CryptographicAlgorithm::AES, false)?;
-
-    // clean up
-    o_db.clear_all().await?;
+    let object = create_symmetric_key_kmip_object(
+        &symmetric_key,
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Default::default()
+        },
+    )?;
 
     // check that the object is not there
     assert!(o_db.object_get(uid).await?.is_none());
@@ -75,7 +81,7 @@ pub(crate) async fn test_objects_db() -> DbResult<()> {
         &RedisDbObject::new(
             object.clone(),
             "owner".to_owned(),
-            StateEnumeration::Active,
+            State::Active,
             Some(HashSet::new()),
             object.attributes()?.clone(),
         ),
@@ -83,11 +89,11 @@ pub(crate) async fn test_objects_db() -> DbResult<()> {
     .await?;
     let redis_db_object = o_db.object_get(uid).await?.context("object not found")?;
     assert_eq!(
-        object.key_block()?.key_bytes()?,
-        redis_db_object.object.key_block()?.key_bytes()?
+        object.key_block()?.symmetric_key_bytes()?,
+        redis_db_object.object.key_block()?.symmetric_key_bytes()?
     );
     assert_eq!(redis_db_object.owner, "owner");
-    assert_eq!(redis_db_object.state, StateEnumeration::Active);
+    assert_eq!(redis_db_object.state, State::Active);
 
     o_db.object_delete(uid).await?;
     assert!(o_db.object_get(uid).await?.is_none());

@@ -4,7 +4,7 @@ use std::{
 };
 
 use actix_web::{HttpMessage, HttpRequest};
-use cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier;
+use cosmian_kmip::kmip_2_1::{KmipOperation, kmip_types::UniqueIdentifier};
 use cosmian_kms_access::access::{
     Access, AccessRightsObtainedResponse, ObjectOwnedResponse, UserAccessResponse,
 };
@@ -28,41 +28,73 @@ impl KMS {
         access: &Access,
         owner: &str,
         params: Option<Arc<dyn SessionParams>>,
+        privileged_users: Option<Vec<String>>,
     ) -> KResult<()> {
-        let uid = access
-            .unique_identifier
-            .as_ref()
-            .ok_or(KmsError::UnsupportedPlaceholder)?
-            .as_str()
-            .context("unique_identifier is not a string")?;
-
-        // check the object identified by its `uid` is really owned by `owner`
-        if !self
-            .database
-            .is_object_owned_by(uid, owner, params.clone())
-            .await?
-        {
-            kms_bail!(KmsError::Unauthorized(format!(
-                "Object with uid `{uid}` is not owned by owner `{owner}`"
-            )))
+        // if create access right is set, grant access Create for * object
+        let mut updated_operations_types = access.operation_types.clone();
+        if updated_operations_types.contains(&KmipOperation::Create) {
+            updated_operations_types.retain(|op| op != &KmipOperation::Create);
+            if let Some(users) = privileged_users {
+                if !users.contains(&owner.to_owned()) {
+                    kms_bail!(KmsError::Unauthorized(
+                        "Only privileged users can grant/revoke create access right to a user."
+                            .to_owned()
+                    ))
+                }
+                let user_id = &access.user_id;
+                if users.contains(user_id) {
+                    kms_bail!(KmsError::Unauthorized(format!(
+                        "User `{user_id}` is a privileged user - create access right can't be \
+                         granted or revoked."
+                    )))
+                }
+                self.database
+                    .grant_operations(
+                        "*",
+                        user_id,
+                        HashSet::from([KmipOperation::Create]),
+                        params.clone(),
+                    )
+                    .await?;
+            }
         }
 
-        // check if an owner is trying to grant themselves
-        if owner == access.user_id {
-            kms_bail!(KmsError::Unauthorized(
-                "You can't grant yourself, you have already all rights on your own objects"
-                    .to_owned()
-            ))
-        }
+        if !updated_operations_types.is_empty() {
+            let uid = access
+                .unique_identifier
+                .as_ref()
+                .ok_or(KmsError::UnsupportedPlaceholder)?
+                .as_str()
+                .context("unique_identifier is not a string")?;
 
-        self.database
-            .grant_operations(
-                uid,
-                &access.user_id,
-                HashSet::from_iter(access.operation_types.clone()),
-                params,
-            )
-            .await?;
+            // check the object identified by its `uid` is really owned by `owner`
+            if !self
+                .database
+                .is_object_owned_by(uid, owner, params.clone())
+                .await?
+            {
+                kms_bail!(KmsError::Unauthorized(format!(
+                    "Object with uid `{uid}` is not owned by owner `{owner}`"
+                )))
+            }
+
+            // check if an owner is trying to grant themselves
+            if owner == access.user_id {
+                kms_bail!(KmsError::Unauthorized(
+                    "You can't grant yourself, you have already all rights on your own objects"
+                        .to_owned()
+                ))
+            }
+
+            self.database
+                .grant_operations(
+                    uid,
+                    &access.user_id,
+                    HashSet::from_iter(updated_operations_types),
+                    params,
+                )
+                .await?;
+        }
         Ok(())
     }
 
@@ -74,41 +106,73 @@ impl KMS {
         access: &Access,
         owner: &str,
         params: Option<Arc<dyn SessionParams>>,
+        privileged_users: Option<Vec<String>>,
     ) -> KResult<()> {
-        let uid = access
-            .unique_identifier
-            .as_ref()
-            .ok_or(KmsError::UnsupportedPlaceholder)?
-            .as_str()
-            .context("unique_identifier is not a string")?;
-
-        // check the object identified by its `uid` is really owned by `owner`
-        if !self
-            .database
-            .is_object_owned_by(uid, owner, params.clone())
-            .await?
-        {
-            kms_bail!(KmsError::Unauthorized(format!(
-                "Object with uid `{uid}` is not owned by owner `{owner}`"
-            )))
+        // if create access right is set, revoke access Create for * object
+        let mut updated_operations_types = access.operation_types.clone();
+        if updated_operations_types.contains(&KmipOperation::Create) {
+            updated_operations_types.retain(|op| op != &KmipOperation::Create);
+            if let Some(users) = privileged_users {
+                if !users.contains(&owner.to_owned()) {
+                    kms_bail!(KmsError::Unauthorized(
+                        "Only privileged users can grant/revoke create access right to a user."
+                            .to_owned()
+                    ))
+                }
+                let user_id = &access.user_id;
+                if users.contains(user_id) {
+                    kms_bail!(KmsError::Unauthorized(format!(
+                        "User `{user_id}` is a privileged user - create access right can't be \
+                         granted or revoked."
+                    )))
+                }
+                self.database
+                    .remove_operations(
+                        "*",
+                        user_id,
+                        HashSet::from([KmipOperation::Create]),
+                        params.clone(),
+                    )
+                    .await?;
+            }
         }
 
-        // check if owner is trying to revoke itself
-        if owner == access.user_id {
-            kms_bail!(KmsError::Unauthorized(
-                "You can't revoke yourself, you should keep all rights on your own objects"
-                    .to_owned()
-            ))
-        }
+        if !updated_operations_types.is_empty() {
+            let uid = access
+                .unique_identifier
+                .as_ref()
+                .ok_or(KmsError::UnsupportedPlaceholder)?
+                .as_str()
+                .context("unique_identifier is not a string")?;
 
-        self.database
-            .remove_operations(
-                uid,
-                &access.user_id,
-                HashSet::from_iter(access.operation_types.clone()),
-                params,
-            )
-            .await?;
+            // check the object identified by its `uid` is really owned by `owner`
+            if !self
+                .database
+                .is_object_owned_by(uid, owner, params.clone())
+                .await?
+            {
+                kms_bail!(KmsError::Unauthorized(format!(
+                    "Object with uid `{uid}` is not owned by owner `{owner}`"
+                )))
+            }
+
+            // check if owner is trying to revoke itself
+            if owner == access.user_id {
+                kms_bail!(KmsError::Unauthorized(
+                    "You can't revoke yourself, you should keep all rights on your own objects"
+                        .to_owned()
+                ))
+            }
+
+            self.database
+                .remove_operations(
+                    uid,
+                    &access.user_id,
+                    HashSet::from_iter(updated_operations_types),
+                    params,
+                )
+                .await?;
+        }
         Ok(())
     }
 

@@ -3,70 +3,52 @@
 
 // see CryptographicUsageMask
 #![allow(non_upper_case_globals)]
-use std::fmt::{self, Display, Formatter};
-
-use serde::{
-    de::{self, MapAccess, Visitor},
-    ser::SerializeStruct,
-    Deserialize, Serialize,
+use std::{
+    fmt,
+    fmt::{Display, Formatter},
 };
-use strum::{Display, EnumIter, EnumString};
-use tracing::trace;
+
+use kmip_derive::{KmipEnumDeserialize, KmipEnumSerialize, kmip_enum};
+use num_bigint_dig::BigInt;
+use serde::{
+    Deserialize, Serialize,
+    de::{self, Visitor},
+};
+use strum::Display;
+use time::OffsetDateTime;
 use uuid::Uuid;
 
-use super::kmip_objects::ObjectType;
 use crate::{
     error::KmipError,
-    kmip_2_1::{
-        extra::{tagging::VENDOR_ATTR_TAG, VENDOR_ID_COSMIAN},
-        kmip_operations::ErrorReason,
+    kmip_0::kmip_types::{
+        BlockCipherMode, DRBGAlgorithm, FIPS186Variation, HashingAlgorithm, KeyRoleType,
+        MaskGenerator, PaddingMethod, RNGAlgorithm,
     },
-    kmip_error,
+    kmip_2_1::extra::{VENDOR_ID_COSMIAN, tagging::VENDOR_ATTR_TAG},
 };
+
 pub const VENDOR_ATTR_AAD: &str = "aad";
 
-/// `CertificateType`
-///
-/// The Certificate Type attribute is a type of certificate (e.g., X.509).
-/// The Certificate Type value SHALL be set by the server when the certificate
-/// is created or registered and then SHALL NOT be changed or deleted before the
-/// object is destroyed.
-/// The PKCS7 format is a Cosmian extension from KMIP.
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
-#[allow(clippy::enum_clike_unportable_variant)]
-#[repr(u32)]
-pub enum CertificateType {
-    X509 = 0x01,
-    PGP = 0x02,
-    PKCS7 = 0x8000_0001,
-}
-
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, EnumString)]
+#[kmip_enum]
 pub enum CertificateRequestType {
     CRMF = 0x01,
     PKCS10 = 0x02,
     PEM = 0x03,
 }
 
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
-#[allow(clippy::enum_clike_unportable_variant)]
-#[repr(u32)]
+#[kmip_enum]
 pub enum OpaqueDataType {
     Unknown = 0x8000_0001,
 }
 
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
-#[allow(clippy::enum_clike_unportable_variant)]
-pub enum SecretDataType {
-    Password = 0x01,
-    Seed = 0x02,
-}
-
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
+#[kmip_enum]
 pub enum SplitKeyMethod {
     XOR = 0x0000_0001,
+    // #[serde(rename = "Polynomial Sharing GF (2^16)")]
     PolynomialSharingGf216 = 0x0000_0002,
+    // #[serde(rename = "Polynomial Sharing Prime Field")]
     PolynomialSharingPrimeField = 0x0000_0003,
+    // #[serde(rename = "Polynomial Sharing GF (2^8)")]
     PolynomialSharingGf28 = 0x0000_0004,
 }
 
@@ -100,11 +82,7 @@ pub enum SplitKeyMethod {
 ///  - `TransparentSymmetricKey` for symmetric keys
 ///  - Raw for opaque objects and Secret Data
 ///
-#[allow(clippy::enum_clike_unportable_variant)]
-#[derive(
-    Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, EnumIter, Display, EnumString,
-)]
-#[repr(u32)]
+#[kmip_enum]
 pub enum KeyFormatType {
     Raw = 0x01,
     Opaque = 0x02,
@@ -123,14 +101,14 @@ pub enum KeyFormatType {
     TransparentECPublicKey = 0x15,
     PKCS12 = 0x16,
     PKCS10 = 0x17,
-    #[cfg(not(feature = "fips"))]
     /// This mode is to support legacy, but common, PKCS#12 formats that use
     /// `PBE_WITHSHA1AND40BITRC2_CBC` for the encryption algorithm of certificate,
     /// `PBE_WITHSHA1AND3_KEY_TRIPLEDES_CBC` for the encryption algorithm of the key
-    /// and SHA-1 for the MAC.
+    /// and SHA-1 for the `MAC`.
     /// This is not a standard PKCS#12 format but is used by some software
     /// such as Java `KeyStores`, Mac OS X Keychains, and some versions of OpenSSL (1x).
     /// Use PKCS12 instead for standard (newer) PKCS#12 format.
+    #[cfg(not(feature = "fips"))]
     Pkcs12Legacy = 0x8880_0001,
     PKCS7 = 0x8880_0002,
     // Available slot 0x8880_0003,
@@ -146,26 +124,10 @@ pub enum KeyFormatType {
     CoverCryptPublicKey = 0x8880_000D,
 }
 
-#[allow(non_camel_case_types)]
-#[allow(clippy::enum_clike_unportable_variant)]
-#[derive(
-    Serialize,
-    Deserialize,
-    Copy,
-    Clone,
-    Debug,
-    Display,
-    Eq,
-    PartialEq,
-    EnumIter,
-    EnumString,
-    Default,
-)]
-#[repr(u32)]
+#[kmip_enum]
 pub enum CryptographicAlgorithm {
     DES = 0x0000_0001,
     THREE_DES = 0x0000_0002,
-    #[default]
     AES = 0x0000_0003,
     /// This is `CKM_RSA_PKCS_OAEP` from PKCS#11
     /// see <https://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html>#_Toc408226895
@@ -231,8 +193,6 @@ pub enum CryptographicAlgorithm {
     CoverCryptBulk = 0x8880_0005,
 }
 
-/// `CryptographicDomainParameters`
-///
 /// The Cryptographic Domain Parameters attribute (4.14) is a structure that
 /// contains fields that MAY need to be specified in the Create Key Pair Request
 /// Payload. Specific fields MAY only pertain to certain types of Managed
@@ -244,7 +204,7 @@ pub enum CryptographicAlgorithm {
 #[serde(rename_all = "PascalCase")]
 pub struct CryptographicDomainParameters {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub q_length: Option<i32>,
+    pub qlength: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub recommended_curve: Option<RecommendedCurve>,
 }
@@ -252,16 +212,28 @@ pub struct CryptographicDomainParameters {
 impl Default for CryptographicDomainParameters {
     fn default() -> Self {
         Self {
-            q_length: Some(256),
+            qlength: Some(256),
             recommended_curve: Some(RecommendedCurve::default()),
         }
     }
 }
 
-#[allow(non_camel_case_types)]
-#[allow(clippy::enum_clike_unportable_variant)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display, EnumString)]
-#[repr(u32)]
+#[kmip_enum]
+pub enum DerivationMethod {
+    PBKDF2 = 0x0000_0001,
+    HASH = 0x0000_0002,
+    HMAC = 0x0000_0003,
+    ENCRYPT = 0x0000_0004,
+    NIST800_108C = 0x0000_0005,
+    NIST800_108F = 0x0000_0006,
+    NIST800_108DPI = 0x0000_0007,
+    Asymmetric_Key = 0x0000_0008,
+    AWS_Signature_Version_4 = 0x0000_0009,
+    HKDF = 0x0000_000A,
+    // Extensions items available at values 8XXX_XXXX.
+}
+
+#[kmip_enum]
 pub enum RecommendedCurve {
     P192 = 0x0000_0001,
     K163 = 0x0000_0002,
@@ -326,6 +298,7 @@ pub enum RecommendedCurve {
     BRAINPOOLP256T1 = 0x0000_003E,
     BRAINPOOLP320R1 = 0x0000_003F,
     BRAINPOOLP320T1 = 0x0000_0040,
+    BRAINPOOLP384R1 = 0x0000_0041,
     BRAINPOOLP384T1 = 0x0000_0042,
     BRAINPOOLP512R1 = 0x0000_0043,
     BRAINPOOLP512T1 = 0x0000_0044,
@@ -349,133 +322,13 @@ impl Default for RecommendedCurve {
     }
 }
 
-#[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, EnumString)]
+#[kmip_enum]
 pub enum KeyCompressionType {
     ECPublicKeyTypeUncompressed = 0x0000_0001,
     ECPublicKeyTypeX962CompressedPrime = 0x0000_0002,
     ECPublicKeyTypeX962CompressedChar2 = 0x0000_0003,
     ECPublicKeyTypeX962Hybrid = 0x0000_0004,
     // Extensions 8XXXXXXX
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-#[repr(transparent)]
-pub struct CryptographicUsageMask(u32);
-
-bitflags::bitflags! {
-#[allow(clippy::indexing_slicing)]
-    impl CryptographicUsageMask: u32 {
-        /// Allow for signing. Applies to Sign operation. Valid for PGP Key, Private Key
-        const Sign=0x0000_0001;
-        /// Allow for signature verification. Applies to Signature Verify and Validate
-        /// operations. Valid for PGP Key, Certificate and Public Key.
-        const Verify=0x0000_0002;
-        /// Allow for encryption. Applies to Encrypt operation. Valid for PGP Key,
-        /// Private Key, Public Key and Symmetric Key. Encryption for the purpose of
-        /// wrapping is separate Wrap Key value.
-        const Encrypt=0x0000_0004;
-        /// Allow for decryption. Applies to Decrypt operation. Valid for PGP Key,
-        /// Private Key, Public Key and Symmetric Key. Decryption for the purpose of
-        /// unwrapping is separate Unwrap Key value.
-        const Decrypt=0x0000_0008;
-        /// Allow for key wrapping. Applies to Get operation when wrapping is
-        /// required by Wrapping Specification is provided on the object used to
-        /// Wrap. Valid for PGP Key, Private Key and Symmetric Key. Note: even if
-        /// the underlying wrapping mechanism is encryption, this value is logically
-        /// separate.
-        const WrapKey=0x0000_0010;
-        /// Allow for key unwrapping. Applies to Get operation when unwrapping is
-        /// required on the object used to Unwrap. Valid for PGP Key, Private Key,
-        /// Public Key and Symmetric Key. Not interchangeable with Decrypt. Note:
-        /// even if the underlying unwrapping mechanism is decryption, this value is
-        /// logically separate.
-        const UnwrapKey=0x0000_0020;
-        /// Allow for MAC generation. Applies to MAC operation. Valid for Symmetric
-        /// Keys
-        const MACGenerate=0x0000_0080;
-        /// Allow for MAC verification. Applies to MAC Verify operation. Valid for
-        /// Symmetric Keys
-        const MACVerify=0x0000_0100;
-        /// Allow for key derivation. Applied to Derive Key operation. Valid for PGP
-        /// Keys, Private Keys, Public Keys, Secret Data and Symmetric Keys.
-        const DeriveKey=0x0000_0200;
-        /// Allow for Key Agreement. Valid for PGP Keys, Private Keys, Public Keys,
-        /// Secret Data and Symmetric Keys
-        const KeyAgreement=0x0000_0800;
-        /// Allow for Certificate Signing. Applies to Certify operation on a private key.
-        /// Valid for Private Keys.
-        const CertificateSign=0x0000_1000;
-        /// Allow for CRL Sign. Valid for Private Keys
-        const CRLSign=0x0000_2000;
-        /// Allow for Authentication. Valid for Secret Data.
-        const Authenticate=0x0010_0000;
-        /// Cryptographic Usage Mask contains no Usage Restrictions.
-        const Unrestricted=0x0020_0000;
-        // Extensions XXX00000
-    }
-}
-
-impl Serialize for CryptographicUsageMask {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serializer.serialize_i32(i32::try_from(self.bits()).map_err(serde::ser::Error::custom)?)
-    }
-}
-impl<'de> Deserialize<'de> for CryptographicUsageMask {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        struct CryptographicUsageMaskVisitor;
-
-        impl Visitor<'_> for CryptographicUsageMaskVisitor {
-            type Value = CryptographicUsageMask;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("struct CryptographicUsageMask")
-            }
-
-            fn visit_u32<E>(self, v: u32) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                Ok(CryptographicUsageMask(v))
-            }
-
-            // used by the TTLV representation
-            fn visit_i32<E>(self, v: i32) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                Ok(CryptographicUsageMask(
-                    u32::try_from(v).map_err(de::Error::custom)?,
-                ))
-            }
-
-            fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                Ok(CryptographicUsageMask(
-                    u32::try_from(v).map_err(de::Error::custom)?,
-                ))
-            }
-
-            // used by the direct JSON representation
-            fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                Ok(CryptographicUsageMask(
-                    u32::try_from(v).map_err(de::Error::custom)?,
-                ))
-            }
-        }
-        deserializer.deserialize_any(CryptographicUsageMaskVisitor)
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -564,9 +417,7 @@ impl<'de> Deserialize<'de> for ProtectionStorageMasks {
     }
 }
 
-#[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
-#[serde(rename_all = "PascalCase")]
+#[kmip_enum]
 pub enum ObjectGroupMember {
     Group_Member_Fresh = 0x0000_0001,
     Group_Member_Default = 0x0000_0002,
@@ -648,8 +499,7 @@ impl<'de> Deserialize<'de> for StorageStatusMask {
     }
 }
 
-#[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, Display, PartialEq, EnumIter)]
+#[kmip_enum]
 pub enum LinkType {
     /// For Certificate objects: the parent certificate for a certificate in a
     /// certificate chain. For Public Key objects: the corresponding
@@ -696,14 +546,11 @@ pub enum LinkType {
     //Extensions 8XXXXXXX
 }
 
-/// `UniqueIdentifierEnumeration`
-///
 /// The following values may be specified in an operation request for a Unique
 /// Identifier: If multiple unique identifiers would be referenced then the
 /// operation is repeated for each of them. If an operation appears
 /// multiple times in a request, it is the most recent that is referred to.
-#[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display, Hash)]
+#[kmip_enum]
 pub enum UniqueIdentifierEnumeration {
     IDPlaceholder = 0x0000_0001,
     Certify = 0x0000_0002,
@@ -758,40 +605,6 @@ impl From<UniqueIdentifier> for LinkedObjectIdentifier {
     }
 }
 
-#[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display)]
-pub enum RevocationReasonEnumeration {
-    Unspecified = 0x0000_0001,
-    KeyCompromise = 0x0000_0002,
-    CACompromise = 0x0000_0003,
-    AffiliationChanged = 0x0000_0004,
-    Superseded = 0x0000_0005,
-    CessationOfOperation = 0x0000_0006,
-    PrivilegeWithdrawn = 0x0000_0007,
-    //Extensions 8XXXXXXX
-}
-
-/// `RevocationReason`
-///
-/// The Revocation Reason attribute is a structure used to indicate why the
-/// Managed Cryptographic Object was revoked (e.g., "compromised", "expired",
-/// "no longer used", etc.). This attribute is only set by the server as a part
-/// of the Revoke Operation.
-/// The Revocation Message is an OPTIONAL field that is used exclusively for
-/// audit trail/logging purposes and MAY contain additional information about
-/// why the object was revoked (e.g., "Laptop stolen", or "Machine
-/// decommissioned").
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
-#[serde(untagged)]
-pub enum RevocationReason {
-    /// Unique Identifier Enumeration
-    Enumeration(RevocationReasonEnumeration),
-    /// Revocation Message
-    TextString(String),
-}
-
-/// Link
-///
 /// The Link attribute is a structure used to create a link from one Managed
 /// Cryptographic Object to another, closely related target Managed
 /// Cryptographic Object. The link has a type, and the allowed types differ,
@@ -825,8 +638,6 @@ pub struct Link {
     pub linked_object_identifier: LinkedObjectIdentifier,
 }
 
-/// `VendorAttribute`
-///
 /// A vendor specific Attribute is a structure used for sending and receiving
 /// a Managed Object attribute. The Vendor Identification
 /// and Attribute Name are text-strings that are used to identify the attribute.
@@ -849,7 +660,7 @@ pub struct VendorAttribute {
     /// i.e. [A-Za-z0-9_.])
     pub vendor_identification: String,
     pub attribute_name: String,
-    pub attribute_value: Vec<u8>,
+    pub attribute_value: VendorAttributeValue,
 }
 
 impl Display for VendorAttribute {
@@ -857,629 +668,38 @@ impl Display for VendorAttribute {
         write!(
             f,
             "VendorAttribute {{ vendor_identification: {}, attribute_name: {}, attribute_value: \
-             {} }}",
-            self.vendor_identification,
-            self.attribute_name,
-            hex::encode(&self.attribute_value)
+             {:?} }}",
+            self.vendor_identification, self.attribute_name, self.attribute_value
         )
     }
 }
 
-/// Attributes
+/// The value of a Vendor Attribute
+/// Any data type or structure.
+/// If a structure, only TTLV is supported.
 ///
-/// The following subsections describe the attributes that are associated with
-/// Managed Objects. Attributes that an object MAY have multiple instances of
-/// are referred to as multi-instance attributes. All instances of an attribute
-/// SHOULD have a different value. Similarly, attributes which an object SHALL
-/// only have at most one instance of are referred to as single-instance
-/// attributes. Attributes are able to be obtained by a client from the server
-/// using the Get Attribute operation. Some attributes are able to be set by the
-/// Add Attribute operation or updated by the Modify Attribute operation, and
-/// some are able to be deleted by the Delete Attribute operation if they no
-/// longer apply to the Managed Object. Read-only attributes are attributes that
-/// SHALL NOT be modified by either server or client, and that SHALL NOT be
-/// deleted by a client.
-/// When attributes are returned by the server (e.g., via a Get Attributes
-/// operation), the attribute value returned SHALL NOT differ for different
-/// clients unless specifically noted against each attribute. The first table in
-/// each subsection contains the attribute name in the first row. This name is
-/// the canonical name used when managing attributes using the Get Attributes,
-/// Get Attribute List, Add Attribute, Modify Attribute, and Delete Attribute
-/// operations. A server SHALL NOT delete attributes without receiving a request
-/// from a client until the object is destroyed. After an object is destroyed,
-/// the server MAY retain all, some or none of the object attributes,
-/// depending on the object type and server policy.
-// TODO: there are 56 attributes in the specs. Only a handful are implemented here
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Default)]
-#[serde(rename_all = "PascalCase")]
-pub struct Attributes {
-    /// The Activation Date attribute contains the date and time when the
-    /// Managed Object MAY begin to be used. This time corresponds to state
-    /// transition. The object SHALL NOT be used for any cryptographic
-    /// purpose before the Activation Date has been reached. Once the state
-    /// transition from Pre-Active has occurred, then this attribute SHALL
-    /// NOT be changed or deleted before the object is destroyed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub activation_date: Option<u64>, // epoch millis
-
-    /// The Certificate Attributes are the various items included in a certificate.
-    /// The following list is based on RFC2253.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub certificate_attributes: Option<Box<CertificateAttributes>>,
-
-    /// The Certificate Type attribute is a type of certificate (e.g., X.509).
-    /// The Certificate Type value SHALL be set by the server when the certificate
-    /// is created or registered and then SHALL NOT be changed or deleted
-    /// before the object is destroyed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub certificate_type: Option<CertificateType>,
-
-    /// The Certificate Length attribute is the length in bytes of the Certificate object.
-    /// The Certificate Length SHALL be set by the server when the object is created or registered,
-    /// and then SHALL NOT be changed or deleted before the object is destroyed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub certificate_length: Option<i32>,
-
-    /// The Cryptographic Algorithm of an object. The Cryptographic Algorithm of
-    /// a Certificate object identifies the algorithm for the public key
-    /// contained within the Certificate. The digital signature algorithm used
-    /// to sign the Certificate is identified in the Digital Signature
-    /// Algorithm attribute. This attribute SHALL be set by the server when
-    /// the object is created or registered and then SHALL NOT be changed or
-    /// deleted before the object is destroyed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cryptographic_algorithm: Option<CryptographicAlgorithm>,
-
-    /// For keys, Cryptographic Length is the length in bits of the clear-text
-    /// cryptographic key material of the Managed Cryptographic Object. For
-    /// certificates, Cryptographic Length is the length in bits of the public
-    /// key contained within the Certificate. This attribute SHALL be set by the
-    /// server when the object is created or registered, and then SHALL NOT
-    /// be changed or deleted before the object is destroyed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cryptographic_length: Option<i32>,
-
-    /// The Cryptographic Domain Parameters attribute is a structure that
-    /// contains fields that MAY need to be specified in the Create Key Pair
-    /// Request Payload. Specific fields MAY only pertain to certain types
-    /// of Managed Cryptographic Objects. The domain parameter Q-length
-    /// corresponds to the bit length of parameter Q (refer to
-    /// [RFC7778](https://www.rfc-editor.org/rfc/rfc7778.txt),
-    /// [SEC2](https://www.secg.org/sec2-v2.pdf) and
-    /// [SP800-56A](https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-56Ar3.pdf)).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cryptographic_domain_parameters: Option<CryptographicDomainParameters>,
-
-    /// See `CryptographicParameters`
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cryptographic_parameters: Option<CryptographicParameters>,
-
-    /// The Cryptographic Usage Mask attribute defines the cryptographic usage
-    /// of a key. This is a bit mask that indicates to the client which
-    /// cryptographic functions MAY be performed using the key, and which ones
-    /// SHALL NOT be performed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cryptographic_usage_mask: Option<CryptographicUsageMask>,
-
-    /// 4.26 The Key Format Type attribute is a required attribute of a
-    /// Cryptographic Object. It is set by the server, but a particular Key
-    /// Format Type MAY be requested by the client if the cryptographic material
-    /// is produced by the server (i.e., Create, Create Key Pair, Create
-    /// Split Key, Re-key, Re-key Key Pair, Derive Key) on the
-    /// client's behalf. The server SHALL comply with the client's requested
-    /// format or SHALL fail the request. When the server calculates a
-    /// Digest for the object, it SHALL compute the digest on the data in the
-    /// assigned Key Format Type, as well as a digest in the default KMIP Key
-    /// Format Type for that type of key and the algorithm requested (if a
-    /// non-default value is specified).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub key_format_type: Option<KeyFormatType>,
-
-    /// The Link attribute is a structure used to create a link from one Managed
-    /// Cryptographic Object to another, closely related target Managed
-    /// Cryptographic Object. The link has a type, and the allowed types differ,
-    /// depending on the Object Type of the Managed Cryptographic Object, as
-    /// listed below. The Linked Object Identifier identifies the target
-    /// Managed Cryptographic Object by its Unique Identifier. The link contains
-    /// information about the association between the Managed Objects (e.g., the
-    /// private key corresponding to a public key; the parent certificate
-    /// for a certificate in a chain; or for a derived symmetric key, the base
-    /// key from which it was derived).
-    /// The Link attribute SHOULD be present for private keys and public keys
-    /// for which a certificate chain is stored by the server, and for
-    /// certificates in a certificate chain. Note that it is possible for a
-    /// Managed Object to have multiple instances of the Link attribute (e.g., a
-    /// Private Key has links to the associated certificate, as well as the
-    /// associated public key; a Certificate object has links to both the
-    /// public key and to the certificate of the certification authority (CA)
-    /// that signed the certificate).
-    /// It is also possible that a Managed Object does not have links to
-    /// associated cryptographic objects. This MAY occur in cases where the
-    /// associated key material is not available to the server or client (e.g.,
-    /// the registration of a CA Signer certificate with a server, where the
-    /// corresponding private key is held in a different manner)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub link: Option<Vec<Link>>,
-
-    /// The Object Typeof a Managed Object (e.g., public key, private key,
-    /// symmetric key, etc.) SHALL be set by the server when the object is
-    /// created or registered and then SHALL NOT be changed or deleted before
-    /// the object is destroyed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub object_type: Option<ObjectType>,
-
-    /// If True then the server SHALL prevent the object value being retrieved (via the Get operation) unless it is
-    // wrapped by another key. The server SHALL set the value to False if the value is not provided by the
-    // client.
-    #[serde(default)]
-    pub sensitive: bool,
-
-    /// The Unique Identifier is generated by the key management system
-    /// to uniquely identify a Managed Object. It is only REQUIRED to be unique
-    /// within the identifier space managed by a single key management system,
-    /// however this identifier SHOULD be globally unique in order to allow
-    /// for a key management server export of such objects.
-    /// This attribute SHALL be assigned by the key management system at creation
-    /// or registration time, and then SHALL NOT be changed or deleted
-    /// before the object is destroyed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub unique_identifier: Option<UniqueIdentifier>,
-
-    /// A vendor specific Attribute is a structure used for sending and
-    /// receiving a Managed Object attribute. The Vendor Identification and
-    /// Attribute Name are text-strings that are used to identify the attribute.
-    /// The Attribute Value is either a primitive data type or structured
-    /// object, depending on the attribute. Vendor identification values "x"
-    /// and "y" are reserved for KMIP v2.0 and later implementations referencing
-    /// KMIP v1.x Custom Attributes.
-    /// Vendor Attributes created by the client with Vendor Identification "x"
-    /// are not created (provided during object creation), set, added,
-    /// adjusted, modified or deleted by the server. Vendor Attributes
-    /// created by the server with Vendor Identification "y" are not created
-    /// (provided during object creation), set, added, adjusted, modified or
-    /// deleted by the client.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub vendor_attributes: Option<Vec<VendorAttribute>>,
-}
-
-impl Attributes {
-    /// Add a vendor attribute to the list of vendor attributes.
-    pub fn add_vendor_attribute(&mut self, vendor_attribute: VendorAttribute) -> &mut Self {
-        if let Some(vas) = &mut self.vendor_attributes {
-            vas.push(vendor_attribute);
-        } else {
-            self.vendor_attributes = Some(vec![vendor_attribute]);
-        }
-        self
-    }
-
-    /// Set a vendor attribute to the list of vendor attributes replacing one with an existing value
-    /// if any
-    pub fn set_vendor_attribute(
-        &mut self,
-        vendor_identification: &str,
-        attribute_name: &str,
-        attribute_value: Vec<u8>,
-    ) -> &mut Self {
-        let va = self.get_vendor_attribute_mut(vendor_identification, attribute_name);
-        va.attribute_value = attribute_value;
-        self
-    }
-
-    /// Return the vendor attribute with the given vendor identification and
-    /// attribute name.
-    #[must_use]
-    pub fn get_vendor_attribute_value(
-        &self,
-        vendor_identification: &str,
-        attribute_name: &str,
-    ) -> Option<&[u8]> {
-        self.vendor_attributes.as_ref().and_then(|vas| {
-            vas.iter()
-                .find(|&va| {
-                    va.vendor_identification == vendor_identification
-                        && va.attribute_name == attribute_name
-                })
-                .map(|va| va.attribute_value.as_slice())
-        })
-    }
-
-    /// Return the vendor attribute with the given vendor identification
-    /// and remove it from the vendor attributes.
-    #[must_use]
-    pub fn extract_vendor_attribute_value(
-        &mut self,
-        vendor_identification: &str,
-        attribute_name: &str,
-    ) -> Option<Vec<u8>> {
-        let value = self
-            .get_vendor_attribute_value(vendor_identification, attribute_name)
-            .map(<[u8]>::to_vec);
-        if value.is_some() {
-            self.remove_vendor_attribute(vendor_identification, attribute_name);
-        }
-        value
-    }
-
-    /// Return the vendor attribute with the given vendor identification and
-    /// attribute name. If the attribute does not exist, an empty
-    /// vendor attribute is created and returned.
-    #[must_use]
-    #[allow(clippy::indexing_slicing)]
-    pub fn get_vendor_attribute_mut(
-        &mut self,
-        vendor_identification: &str,
-        attribute_name: &str,
-    ) -> &mut VendorAttribute {
-        let vas = self.vendor_attributes.get_or_insert_with(Vec::new);
-        let position = vas.iter().position(|va| {
-            va.vendor_identification == vendor_identification && va.attribute_name == attribute_name
-        });
-        let len = vas.len();
-        match position {
-            None => {
-                vas.push(VendorAttribute {
-                    vendor_identification: vendor_identification.to_owned(),
-                    attribute_name: attribute_name.to_owned(),
-                    attribute_value: vec![],
-                });
-                &mut vas[len]
-            }
-            Some(position) => &mut vas[position],
-        }
-    }
-
-    /// Remove a vendor attribute from the list of vendor attributes.
-    pub fn remove_vendor_attribute(&mut self, vendor_identification: &str, attribute_name: &str) {
-        if let Some(vas) = self.vendor_attributes.as_mut() {
-            vas.retain(|va| {
-                va.vendor_identification != vendor_identification
-                    || va.attribute_name != attribute_name
-            });
-            if vas.is_empty() {
-                self.vendor_attributes = None;
-            }
-        }
-    }
-
-    /// Get the link to the object.
-    #[must_use]
-    pub fn get_link(&self, link_type: LinkType) -> Option<LinkedObjectIdentifier> {
-        self.link.as_ref().and_then(|links| {
-            links
-                .iter()
-                .find(|&l| l.link_type == link_type)
-                .map(|l| l.linked_object_identifier.clone())
-        })
-    }
-
-    /// Remove the link from the attributes
-    pub fn remove_link(&mut self, link_type: LinkType) {
-        if let Some(links) = self.link.as_mut() {
-            links.retain(|l| l.link_type != link_type);
-            if links.is_empty() {
-                self.link = None;
-            }
-        }
-    }
-
-    /// Get the parent id of the object.
-    #[must_use]
-    pub fn get_parent_id(&self) -> Option<LinkedObjectIdentifier> {
-        self.get_link(LinkType::ParentLink)
-    }
-
-    /// Set a link to an object.
-    /// If a link of the same type already exists, it is removed.
-    /// There can only be one link of a given type.
-    pub fn set_link(
-        &mut self,
-        link_type: LinkType,
-        linked_object_identifier: LinkedObjectIdentifier,
-    ) {
-        self.remove_link(link_type);
-        let links = self.link.get_or_insert_with(Vec::new);
-        links.push(Link {
-            link_type,
-            linked_object_identifier,
-        });
-    }
-
-    /// Set the attributes's object type.
-    pub fn set_object_type(&mut self, object_type: ObjectType) {
-        self.object_type = Some(object_type);
-    }
-
-    /// Set the attributes's `CryptographicUsageMask`.
-    pub fn set_cryptographic_usage_mask(&mut self, mask: Option<CryptographicUsageMask>) {
-        self.cryptographic_usage_mask = mask;
-    }
-
-    /// Set the bits in `mask` to the attributes's `CryptographicUsageMask` bits.
-    pub fn set_cryptographic_usage_mask_bits(&mut self, mask: CryptographicUsageMask) {
-        let mask = self
-            .cryptographic_usage_mask
-            .map_or(mask, |attr_mask| attr_mask | mask);
-
-        self.cryptographic_usage_mask = Some(mask);
-    }
-
-    /// Check that `flag` bit is set in object's `CryptographicUsageMask`.
-    /// If FIPS mode is disabled, check if Unrestricted bit is set too.
-    ///
-    /// Return `true` if `flag` has at least one bit set in self's attributes,
-    /// return `false` otherwise.
-    /// Raise error if object's `CryptographicUsageMask` is None.
-    pub fn is_usage_authorized_for(&self, flag: CryptographicUsageMask) -> Result<bool, KmipError> {
-        let usage_mask = self.cryptographic_usage_mask.ok_or_else(|| {
-            KmipError::InvalidKmipValue(
-                ErrorReason::Incompatible_Cryptographic_Usage_Mask,
-                "CryptographicUsageMask is None".to_owned(),
-            )
-        })?;
-
-        #[cfg(not(feature = "fips"))]
-        // In non-FIPS mode, Unrestricted can be allowed.
-        let flag = flag | CryptographicUsageMask::Unrestricted;
-
-        Ok((usage_mask & flag).bits() != 0)
-    }
-
-    /// Remove the authenticated additional data from the attributes and return it - for AESGCM unwrapping
-    #[must_use]
-    pub fn remove_aad(&mut self) -> Option<Vec<u8>> {
-        let aad = self
-            .get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_AAD)
-            .map(|value: &[u8]| value.to_vec());
-
-        if aad.is_some() {
-            self.remove_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_AAD);
-        }
-        aad
-    }
-
-    /// Add the authenticated additional data to the attributes - for AESGCM unwrapping
-    pub fn add_aad(&mut self, value: &[u8]) {
-        let va = VendorAttribute {
-            vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
-            attribute_name: VENDOR_ATTR_AAD.to_owned(),
-            attribute_value: value.to_vec(),
-        };
-        self.add_vendor_attribute(va);
-    }
-}
-
-/// Structure used in various operations to provide the New Attribute value in the request.
-#[derive(Clone, Debug, PartialEq, Eq, EnumString)]
-#[allow(clippy::large_enum_variant)]
-pub enum Attribute {
-    ActivationDate(u64),
-    CryptographicAlgorithm(CryptographicAlgorithm),
-    CryptographicLength(i32),
-    CryptographicParameters(CryptographicParameters),
-    CryptographicDomainParameters(CryptographicDomainParameters),
-    CryptographicUsageMask(CryptographicUsageMask),
-    Links(Vec<Link>),
-    VendorAttributes(Vec<VendorAttribute>),
-}
-
-impl Display for Attribute {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::ActivationDate(activation_date) => {
-                write!(f, "ActivationDate: {activation_date}")
-            }
-            Self::CryptographicAlgorithm(crypto_algorithm) => {
-                write!(f, "CryptographicAlgorithm: {crypto_algorithm}")
-            }
-            Self::CryptographicLength(crypto_length) => {
-                write!(f, "CryptographicLength: {crypto_length}")
-            }
-            Self::CryptographicParameters(crypto_parameters) => {
-                write!(f, "CryptographicParameters: {crypto_parameters:?}")
-            }
-            Self::CryptographicDomainParameters(crypto_domain_parameters) => {
-                write!(
-                    f,
-                    "CryptographicDomainParameters: {crypto_domain_parameters:?}"
-                )
-            }
-            Self::CryptographicUsageMask(crypto_usage_mask) => {
-                write!(f, "CryptographicUsageMask: {crypto_usage_mask:?}")
-            }
-            Self::Links(links) => write!(f, "Links: {links:?}"),
-            Self::VendorAttributes(vendor_attributes) => {
-                write!(f, "VendorAttributes: {vendor_attributes:?}")
-            }
-        }
-    }
-}
-
-impl Serialize for Attribute {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        match self {
-            Self::ActivationDate(activation_date) => {
-                let mut st = serializer.serialize_struct("Attribute", 1)?;
-                st.serialize_field("ActivationDate", activation_date)?;
-                st.end()
-            }
-            Self::CryptographicAlgorithm(crypto_algorithm) => {
-                let mut st = serializer.serialize_struct("Attribute", 1)?;
-                st.serialize_field("CryptographicAlgorithm", crypto_algorithm)?;
-                st.end()
-            }
-            Self::CryptographicLength(crypto_length) => {
-                let mut st = serializer.serialize_struct("Attribute", 1)?;
-                st.serialize_field("CryptographicLength", crypto_length)?;
-                st.end()
-            }
-            Self::CryptographicParameters(crypto_parameters) => {
-                let mut st = serializer.serialize_struct("Attribute", 1)?;
-                st.serialize_field("CryptographicParameters", crypto_parameters)?;
-                st.end()
-            }
-            Self::CryptographicDomainParameters(crypto_domain_parameters) => {
-                let mut st = serializer.serialize_struct("Attribute", 1)?;
-                st.serialize_field("CryptographicDomainParameters", crypto_domain_parameters)?;
-                st.end()
-            }
-            Self::CryptographicUsageMask(crypto_usage_mask) => {
-                let mut st = serializer.serialize_struct("Attribute", 1)?;
-                st.serialize_field("CryptographicUsageMask", crypto_usage_mask)?;
-                st.end()
-            }
-            Self::Links(links) => {
-                let mut st = serializer.serialize_struct("Attribute", links.len())?;
-                for link in links {
-                    st.serialize_field("Link", link)?;
-                }
-                st.end()
-            }
-            Self::VendorAttributes(vendor_attributes) => {
-                let mut st = serializer.serialize_struct("Attribute", vendor_attributes.len())?;
-                for vendor_attribute in vendor_attributes {
-                    st.serialize_field("VendorAttribute", vendor_attribute)?;
-                }
-                st.end()
-            }
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for Attribute {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        #[derive(Deserialize, Debug)]
-        #[serde(field_identifier)]
-        enum Field {
-            ActivationDate,
-            CryptographicAlgorithm,
-            CryptographicLength,
-            CryptographicParameters,
-            CryptographicDomainParameters,
-            CryptographicUsageMask,
-            Link,
-            VendorAttribute,
-        }
-
-        struct AttributeVisitor;
-
-        impl<'de> Visitor<'de> for AttributeVisitor {
-            type Value = Attribute;
-
-            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                formatter.write_str("struct AttributeVisitor")
-            }
-
-            fn visit_map<V>(self, mut map: V) -> Result<Self::Value, V::Error>
-            where
-                V: MapAccess<'de>,
-            {
-                let mut activation_date: Option<u64> = None;
-                let mut cryptographic_algorithm: Option<CryptographicAlgorithm> = None;
-                let mut cryptographic_length: Option<i32> = None;
-                let mut cryptographic_parameters: Option<CryptographicParameters> = None;
-                let mut cryptographic_domain_parameters: Option<CryptographicDomainParameters> =
-                    None;
-                let mut cryptographic_usage_mask: Option<CryptographicUsageMask> = None;
-                let mut links: Vec<Link> = Vec::new();
-                let mut vendor_attributes: Vec<VendorAttribute> = Vec::new();
-
-                while let Some(key) = map.next_key()? {
-                    trace!("visit_map: Key: {key:?}");
-                    match key {
-                        Field::ActivationDate => {
-                            if activation_date.is_some() {
-                                return Err(de::Error::duplicate_field("activation_date"))
-                            }
-                            activation_date = Some(map.next_value()?);
-                        }
-                        Field::CryptographicAlgorithm => {
-                            if cryptographic_algorithm.is_some() {
-                                return Err(de::Error::duplicate_field("cryptographic_algorithm"))
-                            }
-                            cryptographic_algorithm = Some(map.next_value()?);
-                        }
-                        Field::CryptographicLength => {
-                            if cryptographic_length.is_some() {
-                                return Err(de::Error::duplicate_field("cryptographic_length"))
-                            }
-                            cryptographic_length = Some(map.next_value()?);
-                        }
-                        Field::CryptographicParameters => {
-                            if cryptographic_parameters.is_some() {
-                                return Err(de::Error::duplicate_field("cryptographic_parameters"))
-                            }
-                            cryptographic_parameters = Some(map.next_value()?);
-                        }
-                        Field::CryptographicDomainParameters => {
-                            if cryptographic_domain_parameters.is_some() {
-                                return Err(de::Error::duplicate_field(
-                                    "cryptographic_domain_parameters",
-                                ))
-                            }
-                            cryptographic_domain_parameters = Some(map.next_value()?);
-                        }
-                        Field::CryptographicUsageMask => {
-                            if cryptographic_usage_mask.is_some() {
-                                return Err(de::Error::duplicate_field("cryptographic_usage_mask"))
-                            }
-                            cryptographic_usage_mask = Some(map.next_value()?);
-                        }
-                        Field::Link => {
-                            links.push(map.next_value()?);
-                        }
-                        Field::VendorAttribute => {
-                            vendor_attributes.push(map.next_value()?);
-                        }
-                    }
-                }
-
-                trace!("Attribute::deserialize: Link: {:?}", links);
-                if let Some(activation_date) = activation_date {
-                    return Ok(Attribute::ActivationDate(activation_date))
-                } else if let Some(cryptographic_algorithm) = cryptographic_algorithm {
-                    return Ok(Attribute::CryptographicAlgorithm(cryptographic_algorithm))
-                } else if let Some(cryptographic_length) = cryptographic_length {
-                    return Ok(Attribute::CryptographicLength(cryptographic_length))
-                } else if let Some(cryptographic_parameters) = cryptographic_parameters {
-                    return Ok(Attribute::CryptographicParameters(cryptographic_parameters))
-                } else if let Some(cryptographic_domain_parameters) =
-                    cryptographic_domain_parameters
-                {
-                    return Ok(Attribute::CryptographicDomainParameters(
-                        cryptographic_domain_parameters,
-                    ))
-                } else if let Some(cryptographic_usage_mask) = cryptographic_usage_mask {
-                    return Ok(Attribute::CryptographicUsageMask(cryptographic_usage_mask))
-                } else if !links.is_empty() {
-                    return Ok(Attribute::Links(links))
-                } else if !vendor_attributes.is_empty() {
-                    return Ok(Attribute::VendorAttributes(vendor_attributes))
-                }
-
-                Ok(Attribute::ActivationDate(0))
-            }
-        }
-
-        const FIELDS: &[&str] = &[
-            "activation_date",
-            "cryptographic_algorithm",
-            "cryptographic_length",
-            "cryptographic_parameters",
-            "cryptographic_domain_parameters",
-            "cryptographic_usage_mask",
-            "link",
-            "public_key_link",
-            "vendor_attributes",
-        ];
-        deserializer.deserialize_struct("Attribute", FIELDS, AttributeVisitor)
-    }
+/// The reason to use adjacently tagged enum is to allow for JSON serialization
+/// without losing the type information for `ByteString`, `DateTime` and `BigInteger`
+/// which all serialize to arrays in JSON, making deserialization impossible without
+/// type indication.
+/// The same is true for `Integer` and `LongInteger` which serialize to numbers in JSON.
+///
+/// The serialization and deserialization to TTLV of this adjacently tagged enum
+/// involves special treatment in the KMIP serializer and deserializer.
+/// In particular, the name of the variants must match the `TTLValue` variant names EXACTLY.
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[serde(tag = "_t", content = "_c")]
+pub enum VendorAttributeValue {
+    TextString(String),
+    Integer(i32),
+    LongInteger(i64),
+    BigInteger(BigInt),
+    ByteString(Vec<u8>),
+    Boolean(bool),
+    DateTime(OffsetDateTime),
+    Interval(u32),
+    DateTimeExtended(i128),
+    // no support for structure which is complex and does not bring much
 }
 
 /// The Certificate Attributes are the various items included in a certificate. The following list is based on RFC2253.
@@ -1613,18 +833,14 @@ impl AttributeReference {
     }
 }
 
-#[allow(non_camel_case_types)]
-#[allow(clippy::enum_variant_names)]
-#[derive(
-    Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display, EnumString, EnumIter, Hash,
-)]
+#[kmip_enum]
 pub enum Tag {
     ActivationDate = 0x42_0001,
     ApplicationData = 0x42_0002,
     ApplicationNamespace = 0x42_0003,
-    ApplicationSpecific_Information = 0x42_0004,
+    ApplicationSpecificInformation = 0x42_0004,
     ArchiveDate = 0x42_0005,
-    AsynchronousCorrelation_Value = 0x42_0006,
+    AsynchronousCorrelationValue = 0x42_0006,
     AsynchronousIndicator = 0x42_0007,
     Attribute = 0x42_0008,
     AttributeName = 0x42_000A,
@@ -1685,7 +901,7 @@ pub enum Tag {
     LinkType = 0x42_004B,
     LinkedObjectIdentifier = 0x42_004C,
     MACSignature = 0x42_004D,
-    MACSignatureKey_Information = 0x42_004E,
+    MACSignatureKeyInformation = 0x42_004E,
     MaximumItems = 0x42_004F,
     MaximumResponseSize = 0x42_0050,
     MessageExtension = 0x42_0051,
@@ -1961,8 +1177,7 @@ pub enum Tag {
 }
 
 /// Indicates the method used to wrap the Key Value.
-#[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
+#[kmip_enum]
 pub enum WrappingMethod {
     Encrypt = 0x0000_0001,
     MACSign = 0x0000_0002,
@@ -1976,102 +1191,7 @@ impl Default for WrappingMethod {
     }
 }
 
-#[allow(non_camel_case_types, clippy::enum_clike_unportable_variant)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, EnumIter, Display)]
-#[repr(u32)]
-pub enum BlockCipherMode {
-    CBC = 0x0000_0001,
-    ECB = 0x0000_0002,
-    PCBC = 0x0000_0003,
-    CFB = 0x0000_0004,
-    OFB = 0x0000_0005,
-    CTR = 0x0000_0006,
-    CMAC = 0x0000_0007,
-    CCM = 0x0000_0008,
-    GCM = 0x0000_0009,
-    CBCMAC = 0x0000_000A,
-    XTS = 0x0000_000B,
-    AESKeyWrapPadding = 0x0000_000C,
-    // NISTKeyWrap refers to rfc5649
-    NISTKeyWrap = 0x0000_000D,
-    X9102AESKW = 0x0000_000E,
-    X9102TDKW = 0x0000_000F,
-    X9102AKW1 = 0x0000_0010,
-    X9102AKW2 = 0x0000_0011,
-    AEAD = 0x0000_0012,
-    // Extensions - 8XXXXXXX
-    // AES GCM SIV
-    GCMSIV = 0x8000_0002,
-}
-
-#[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
-pub enum PaddingMethod {
-    None = 0x0000_0001,
-    OAEP = 0x0000_0002,
-    PKCS5 = 0x0000_0003,
-    SSL3 = 0x0000_0004,
-    Zeros = 0x0000_0005,
-    ANSIX923 = 0x0000_0006,
-    ISO10126 = 0x0000_0007,
-    PKCS1v15 = 0x0000_0008,
-    X931 = 0x0000_0009,
-    PSS = 0x0000_000A,
-}
-
-#[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
-pub enum HashingAlgorithm {
-    MD2 = 0x0000_0001,
-    MD4 = 0x0000_0002,
-    MD5 = 0x0000_0003,
-    SHA1 = 0x0000_0004,
-    SHA224 = 0x0000_0005,
-    SHA256 = 0x0000_0006,
-    SHA384 = 0x0000_0007,
-    SHA512 = 0x0000_0008,
-    RIPEMD_160 = 0x0000_0009,
-    Tiger = 0x0000_000A,
-    Whirlpool = 0x0000_000B,
-    SHA512224 = 0x0000_000C,
-    SHA512256 = 0x0000_000D,
-    SHA3224 = 0x0000_000E,
-    SHA3256 = 0x0000_000F,
-    SHA3384 = 0x0000_0010,
-    SHA3512 = 0x0000_0011,
-}
-
-#[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
-pub enum KeyRoleType {
-    BDK = 0x0000_0001,
-    CVK = 0x0000_0002,
-    DEK = 0x0000_0003,
-    MKAC = 0x0000_0004,
-    MKSMC = 0x0000_0005,
-    MKSMI = 0x0000_0006,
-    MKDAC = 0x0000_0007,
-    MKDN = 0x0000_0008,
-    MKCP = 0x0000_0009,
-    MKOTH = 0x0000_000A,
-    KEK = 0x0000_000B,
-    MAC16609 = 0x0000_000C,
-    MAC97971 = 0x0000_000D,
-    MAC97972 = 0x0000_000E,
-    MAC97973 = 0x0000_000F,
-    MAC97974 = 0x0000_0010,
-    MAC97975 = 0x0000_0011,
-    ZPK = 0x0000_0012,
-    PVKIBM = 0x0000_0013,
-    PVKPVV = 0x0000_0014,
-    PVKOTH = 0x0000_0015,
-    DUKPT = 0x0000_0016,
-    IV = 0x0000_0017,
-    TRKBK = 0x0000_0018,
-}
-
-#[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
+#[kmip_enum]
 pub enum DigitalSignatureAlgorithm {
     MD2WithRSAEncryption = 0x0000_0001,
     MD5WithRSAEncryption = 0x0000_0002,
@@ -2094,14 +1214,6 @@ pub enum DigitalSignatureAlgorithm {
     SHA3512WithRSAEncryption = 0x0000_0013,
 }
 
-#[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
-pub enum MaskGenerator {
-    MFG1 = 0x0000_0001,
-}
-
-/// `CryptographicParameters`
-///
 /// The Cryptographic Parameters attribute is a structure that contains a set of
 /// OPTIONAL fields that describe certain cryptographic parameters to be used
 /// when performing cryptographic operations using the object. Specific fields
@@ -2152,24 +1264,24 @@ pub struct CryptographicParameters {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub random_iv: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub iv_length: Option<u64>,
+    pub iv_length: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub tag_length: Option<u64>,
+    pub tag_length: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub fixed_field_length: Option<u64>,
+    pub fixed_field_length: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub invocation_field_length: Option<u64>,
+    pub invocation_field_length: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub counter_length: Option<u64>,
+    pub counter_length: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub initial_counter_value: Option<u64>,
+    pub initial_counter_value: Option<i32>,
     /// if omitted, defaults to the block size of the Mask Generator Hashing
     /// Algorithm Cosmian extension: In AES: used as the number of
     /// additional data at the end of the submitted data that become part of
     /// the MAC calculation. These additional data are removed
     /// from the encrypted data
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub salt_length: Option<u64>,
+    pub salt_length: Option<i32>,
     /// if omitted defaults to MGF1
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mask_generator: Option<MaskGenerator>,
@@ -2179,7 +1291,7 @@ pub struct CryptographicParameters {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub p_source: Option<Vec<u8>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub trailer_field: Option<u64>,
+    pub trailer_field: Option<i32>,
 }
 
 /// Contains the Unique Identifier value of the encryption key and
@@ -2200,87 +1312,13 @@ pub struct MacSignatureKeyInformation {
     pub cryptographic_parameters: Option<CryptographicParameters>,
 }
 
-#[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
+#[kmip_enum]
 pub enum EncodingOption {
     /// the wrapped-encoded value of the Byte String Key Material field in
     /// the Key Value structure
     NoEncoding = 0x0000_0001,
     /// the wrapped TTLV-encoded Key Value structure
     TTLVEncoding = 0x0000_0002,
-}
-
-#[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, EnumString)]
-pub enum KeyWrapType {
-    NotWrapped = 0x0000_0001,
-    AsRegistered = 0x0000_0002,
-}
-
-/// `StateEnumeration`
-///
-/// This attribute is an indication of the State of an object as known to the
-/// key management server. The State SHALL NOT be changed by using the Modify
-/// Attribute operation on this attribute. The State SHALL only be changed by
-/// the server as a part of other operations or other server processes. An
-/// object SHALL be in one of the following states at any given time.
-///
-/// Note: The states correspond to those described in [SP800-57-1].
-#[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display, EnumIter, Hash)]
-pub enum StateEnumeration {
-    /// Pre-Active: The object exists and SHALL NOT be used for any cryptographic purpose.
-    PreActive = 0x0000_0001,
-    /// Active: The object SHALL be transitioned to the Active state prior to being used for any
-    /// cryptographic purpose. The object SHALL only be used for all cryptographic purposes that
-    /// are allowed by its Cryptographic Usage Mask attribute. If a Process Start Date attribute is
-    /// set, then the object SHALL NOT be used for cryptographic purposes prior to the Process
-    /// Start Date. If a Protect Stop attribute is set, then the object SHALL NOT be used for
-    /// cryptographic purposes after the Process Stop Date.
-    Active = 0x0000_0002,
-    /// Deactivated: The object SHALL NOT be used for applying cryptographic protection (e.g.,
-    /// encryption, signing, wrapping, `MACing`, deriving) . The object SHALL only be used for
-    /// cryptographic purposes permitted by the Cryptographic Usage Mask attribute. The object
-    /// SHOULD only be used to process cryptographically-protected information (e.g., decryption,
-    /// signature verification, unwrapping, MAC verification under extraordinary circumstances and
-    /// when special permission is granted.
-    Deactivated = 0x0000_0003,
-    /// Compromised: The object SHALL NOT be used for applying cryptographic protection (e.g.,
-    /// encryption, signing, wrapping, `MACing`, deriving). The object SHOULD only be used to process
-    /// cryptographically-protected information (e.g., decryption, signature verification,
-    /// unwrapping, MAC verification in a client that is trusted to use managed objects that have
-    /// been compromised. The object SHALL only be used for cryptographic purposes permitted by the
-    /// Cryptographic Usage Mask attribute.
-    Compromised = 0x0000_0004,
-    /// Destroyed: The object SHALL NOT be used for any cryptographic purpose.
-    Destroyed = 0x0000_0005,
-    /// Destroyed Compromised: The object SHALL NOT be used for any cryptographic purpose; however
-    /// its compromised status SHOULD be retained for audit or security purposes.
-    Destroyed_Compromised = 0x0000_0006,
-}
-
-impl TryFrom<&str> for StateEnumeration {
-    type Error = KmipError;
-
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        match value {
-            "PreActive" => Ok(Self::PreActive),
-            "Active" => Ok(Self::Active),
-            "Deactivated" => Ok(Self::Deactivated),
-            "Compromised" => Ok(Self::Compromised),
-            "Destroyed" => Ok(Self::Destroyed),
-            "Destroyed_Compromised" => Ok(Self::Destroyed_Compromised),
-            _ => Err(kmip_error!("Invalid StateEnumeration value: {value}")),
-        }
-    }
-}
-
-impl TryFrom<String> for StateEnumeration {
-    type Error = KmipError;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        Self::try_from(value.as_str())
-    }
 }
 
 /// The Unique Identifier is generated by the key management system
@@ -2321,11 +1359,7 @@ impl From<&UniqueIdentifier> for String {
         value.to_string()
     }
 }
-impl From<UniqueIdentifier> for String {
-    fn from(value: UniqueIdentifier) -> Self {
-        value.to_string()
-    }
-}
+
 impl UniqueIdentifier {
     /// Returns the value as a string if it is a `TextString`
     #[must_use]
@@ -2352,535 +1386,15 @@ impl From<LinkedObjectIdentifier> for UniqueIdentifier {
     }
 }
 
-/// This field contains the version number of the protocol, ensuring that
-/// the protocol is fully understood by both communicating parties.
-///
-/// The version number SHALL be specified in two parts, major and minor.
-///
-/// Servers and clients SHALL support backward compatibility with versions
-/// of the protocol with the same major version.
-///
-/// Support for backward compatibility with different major versions is OPTIONAL.
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
-#[serde(rename_all = "PascalCase")]
-pub struct ProtocolVersion {
-    pub protocol_version_major: u32,
-    pub protocol_version_minor: u32,
-}
-
-/// The KMIP version 2.1 is used as the reference
-/// for the implementation here
-impl Default for ProtocolVersion {
-    fn default() -> Self {
-        Self {
-            protocol_version_major: 2,
-            protocol_version_minor: 1,
-        }
-    }
-}
-
-impl fmt::Display for ProtocolVersion {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "{}.{}",
-            self.protocol_version_major, self.protocol_version_minor
-        )
-    }
-}
-
-/// This Enumeration indicates whether the client is able to accept
-/// an asynchronous response.
-///
-/// If not present in a request, then Prohibited is assumed.
-///
-/// If the value is Prohibited, the server SHALL process the request synchronously.
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
-pub enum AsynchronousIndicator {
-    /// The server SHALL process all batch items in the request asynchronously
-    /// (returning an Asynchronous Correlation Value for each batch item).
-    Mandatory = 0x0000_0001,
-    /// The server MAY process each batch item in the request either asynchronously
-    /// (returning an Asynchronous Correlation Value for a batch item) or synchronously.
-    /// The method or policy by which the server determines whether or not to process
-    /// an individual batch item asynchronously is a decision of the server and
-    /// is outside of the scope of this protocol.
-    Optional = 0x0000_0002,
-    /// The server SHALL NOT process any batch item asynchronously.
-    /// All batch items SHALL be processed synchronously.
-    Prohibited = 0x0000_0003,
-}
-
-/// Types of attestation supported by the server
-#[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
-pub enum AttestationType {
-    TPM_Quote = 0x0000_0001,
-    TCG_Integrity_Report = 0x0000_0002,
-    SAML_Assertion = 0x0000_0003,
-}
-
-/// A Credential is a structure used for client identification purposes
-/// and is not managed by the key management system
-/// (e.g., user id/password pairs, Kerberos tokens, etc.).
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum Credential {
-    UsernameAndPassword {
-        username: String,
-        password: Option<String>,
-    },
-    Device {
-        device_serial_number: Option<String>,
-        password: Option<String>,
-        device_identifier: Option<String>,
-        network_identifier: Option<String>,
-        machine_identifier: Option<String>,
-        media_identifier: Option<String>,
-    },
-    Attestation {
-        nonce: Nonce,
-        attestation_type: AttestationType,
-        attestation_measurement: Option<Vec<u8>>,
-        attestation_assertion: Option<Vec<u8>>,
-    },
-    OneTimePassword {
-        username: String,
-        password: Option<String>,
-        one_time_password: String,
-    },
-    HashedPassword {
-        username: String,
-        timestamp: u64, // epoch millis
-        hashing_algorithm: Option<HashingAlgorithm>,
-        hashed_password: Vec<u8>,
-    },
-    Ticket {
-        ticket_type: TicketType,
-        ticket_value: Vec<u8>,
-    },
-}
-
-impl Credential {
-    #[allow(dead_code)]
-    const fn value(&self) -> u32 {
-        match *self {
-            Self::UsernameAndPassword { .. } => 0x0000_0001,
-            Self::Device { .. } => 0x0000_0002,
-            Self::Attestation { .. } => 0x0000_0003,
-            Self::OneTimePassword { .. } => 0x0000_0004,
-            Self::HashedPassword { .. } => 0x0000_0005,
-            Self::Ticket { .. } => 0x0000_0006,
-        }
-    }
-}
-
-impl Serialize for Credential {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        match self {
-            Self::UsernameAndPassword { username, password } => {
-                let mut st = serializer.serialize_struct("UsernameAndPassword", 2)?;
-                st.serialize_field("Username", username)?;
-                if let Some(password) = password {
-                    st.serialize_field("Password", password)?;
-                }
-                st.end()
-            }
-            Self::Device {
-                device_serial_number,
-                password,
-                device_identifier,
-                network_identifier,
-                machine_identifier,
-                media_identifier,
-            } => {
-                let mut st = serializer.serialize_struct("Device", 6)?;
-                if let Some(device_serial_number) = device_serial_number {
-                    st.serialize_field("DeviceSerialNumber", device_serial_number)?;
-                }
-                if let Some(password) = password {
-                    st.serialize_field("Password", password)?;
-                }
-                if let Some(device_identifier) = device_identifier {
-                    st.serialize_field("DeviceIdentifier", device_identifier)?;
-                }
-                if let Some(network_identifier) = network_identifier {
-                    st.serialize_field("NetworkIdentifier", network_identifier)?;
-                }
-                if let Some(machine_identifier) = machine_identifier {
-                    st.serialize_field("MachineIdentifier", machine_identifier)?;
-                }
-                if let Some(media_identifier) = media_identifier {
-                    st.serialize_field("MediaIdentifier", media_identifier)?;
-                }
-                st.end()
-            }
-            Self::Attestation {
-                nonce,
-                attestation_type,
-                attestation_measurement,
-                attestation_assertion,
-            } => {
-                let mut st = serializer.serialize_struct("Attestation", 4)?;
-                st.serialize_field("Nonce", nonce)?;
-                st.serialize_field("AttestationType", attestation_type)?;
-                if let Some(attestation_measurement) = attestation_measurement {
-                    st.serialize_field("AttestationMeasurement", attestation_measurement)?;
-                }
-                if let Some(attestation_assertion) = attestation_assertion {
-                    st.serialize_field("AttestationAssertion", attestation_assertion)?;
-                }
-                st.end()
-            }
-            Self::OneTimePassword {
-                username,
-                password,
-                one_time_password,
-            } => {
-                let mut st = serializer.serialize_struct("OneTimePassword", 3)?;
-                st.serialize_field("Username", username)?;
-                if let Some(password) = password {
-                    st.serialize_field("Password", password)?;
-                }
-                st.serialize_field("OneTimePassword", one_time_password)?;
-                st.end()
-            }
-            Self::HashedPassword {
-                username,
-                timestamp,
-                hashing_algorithm,
-                hashed_password,
-            } => {
-                let mut st = serializer.serialize_struct("HashedPassword", 4)?;
-                st.serialize_field("Username", username)?;
-                st.serialize_field("Timestamp", timestamp)?;
-                if let Some(hashing_algorithm) = hashing_algorithm {
-                    st.serialize_field("HashingAlgorithm", hashing_algorithm)?;
-                }
-                st.serialize_field("HashedPassword", hashed_password)?;
-                st.end()
-            }
-            Self::Ticket {
-                ticket_type,
-                ticket_value,
-            } => {
-                let mut st = serializer.serialize_struct("Ticket", 2)?;
-                st.serialize_field("TicketType", ticket_type)?;
-                st.serialize_field("TicketValue", ticket_value)?;
-                st.end()
-            }
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for Credential {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        #[serde(field_identifier)]
-        enum Field {
-            Username,
-            Password,
-            DeviceSerialNumber,
-            DeviceIdentifier,
-            NetworkIdentifier,
-            MachineIdentifier,
-            MediaIdentifier,
-            Nonce,
-            AttestationType,
-            AttestationMeasurement,
-            AttestationAssertion,
-            OneTimePassword,
-            Timestamp,
-            HashingAlgorithm,
-            HashedPassword,
-            TicketType,
-            TicketValue,
-        }
-
-        struct CredentialVisitor;
-
-        impl<'de> Visitor<'de> for CredentialVisitor {
-            type Value = Credential;
-
-            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                formatter.write_str("struct Credential")
-            }
-
-            fn visit_map<V>(self, mut map: V) -> Result<Self::Value, V::Error>
-            where
-                V: MapAccess<'de>,
-            {
-                let mut username: Option<String> = None;
-                let mut password: Option<String> = None;
-                let mut device_serial_number: Option<String> = None;
-                let mut device_identifier: Option<String> = None;
-                let mut network_identifier: Option<String> = None;
-                let mut machine_identifier: Option<String> = None;
-                let mut media_identifier: Option<String> = None;
-                let mut nonce: Option<Nonce> = None;
-                let mut attestation_type: Option<AttestationType> = None;
-                let mut attestation_measurement: Option<Vec<u8>> = None;
-                let mut attestation_assertion: Option<Vec<u8>> = None;
-                let mut one_time_password: Option<String> = None;
-                let mut timestamp: Option<u64> = None;
-                let mut hashing_algorithm: Option<HashingAlgorithm> = None;
-                let mut hashed_password: Option<Vec<u8>> = None;
-                let mut ticket_type: Option<TicketType> = None;
-                let mut ticket_value: Option<Vec<u8>> = None;
-
-                while let Some(key) = map.next_key()? {
-                    match key {
-                        Field::Username => {
-                            if username.is_some() {
-                                return Err(de::Error::duplicate_field("username"))
-                            }
-                            username = Some(map.next_value()?);
-                        }
-                        Field::Password => {
-                            if password.is_some() {
-                                return Err(de::Error::duplicate_field("password"))
-                            }
-                            password = Some(map.next_value()?);
-                        }
-                        Field::DeviceSerialNumber => {
-                            if device_serial_number.is_some() {
-                                return Err(de::Error::duplicate_field("device_serial_number"))
-                            }
-                            device_serial_number = Some(map.next_value()?);
-                        }
-                        Field::DeviceIdentifier => {
-                            if device_identifier.is_some() {
-                                return Err(de::Error::duplicate_field("device_identifier"))
-                            }
-                            device_identifier = Some(map.next_value()?);
-                        }
-                        Field::NetworkIdentifier => {
-                            if network_identifier.is_some() {
-                                return Err(de::Error::duplicate_field("network_identifier"))
-                            }
-                            network_identifier = Some(map.next_value()?);
-                        }
-                        Field::MachineIdentifier => {
-                            if machine_identifier.is_some() {
-                                return Err(de::Error::duplicate_field("machine_identifier"))
-                            }
-                            machine_identifier = Some(map.next_value()?);
-                        }
-                        Field::MediaIdentifier => {
-                            if media_identifier.is_some() {
-                                return Err(de::Error::duplicate_field("media_identifier"))
-                            }
-                            media_identifier = Some(map.next_value()?);
-                        }
-                        Field::Nonce => {
-                            if nonce.is_some() {
-                                return Err(de::Error::duplicate_field("nonce"))
-                            }
-                            nonce = Some(map.next_value()?);
-                        }
-                        Field::AttestationType => {
-                            if attestation_type.is_some() {
-                                return Err(de::Error::duplicate_field("attestation_type"))
-                            }
-                            attestation_type = Some(map.next_value()?);
-                        }
-                        Field::AttestationMeasurement => {
-                            if attestation_measurement.is_some() {
-                                return Err(de::Error::duplicate_field(
-                                    "attestation_measurement_type",
-                                ))
-                            }
-                            attestation_measurement = Some(map.next_value()?);
-                        }
-                        Field::AttestationAssertion => {
-                            if attestation_assertion.is_some() {
-                                return Err(de::Error::duplicate_field("attestation_assertion"))
-                            }
-                            attestation_assertion = Some(map.next_value()?);
-                        }
-                        Field::OneTimePassword => {
-                            if one_time_password.is_some() {
-                                return Err(de::Error::duplicate_field("one_time_password"))
-                            }
-                            one_time_password = Some(map.next_value()?);
-                        }
-                        Field::Timestamp => {
-                            if timestamp.is_some() {
-                                return Err(de::Error::duplicate_field("timestamp"))
-                            }
-                            timestamp = Some(map.next_value()?);
-                        }
-                        Field::HashingAlgorithm => {
-                            if hashing_algorithm.is_some() {
-                                return Err(de::Error::duplicate_field("hashing_algorithm"))
-                            }
-                            hashing_algorithm = Some(map.next_value()?);
-                        }
-                        Field::HashedPassword => {
-                            if hashed_password.is_some() {
-                                return Err(de::Error::duplicate_field("hashed_password"))
-                            }
-                            hashed_password = Some(map.next_value()?);
-                        }
-                        Field::TicketType => {
-                            if ticket_type.is_some() {
-                                return Err(de::Error::duplicate_field("ticket_type"))
-                            }
-                            ticket_type = Some(map.next_value()?);
-                        }
-                        Field::TicketValue => {
-                            if ticket_value.is_some() {
-                                return Err(de::Error::duplicate_field("ticket_value"))
-                            }
-                            ticket_value = Some(map.next_value()?);
-                        }
-                    }
-                }
-
-                if let (Some(nonce), Some(attestation_type)) = (nonce, attestation_type) {
-                    return Ok(Credential::Attestation {
-                        nonce,
-                        attestation_type,
-                        attestation_measurement,
-                        attestation_assertion,
-                    })
-                } else if let (Some(ticket_type), Some(ticket_value)) = (ticket_type, ticket_value)
-                {
-                    return Ok(Credential::Ticket {
-                        ticket_type,
-                        ticket_value,
-                    })
-                } else if let Some(username) = username {
-                    if let (Some(timestamp), Some(hashed_password)) = (timestamp, hashed_password) {
-                        return Ok(Credential::HashedPassword {
-                            username,
-                            timestamp,
-                            hashing_algorithm,
-                            hashed_password,
-                        })
-                    } else if let Some(one_time_password) = one_time_password {
-                        return Ok(Credential::OneTimePassword {
-                            username,
-                            password,
-                            one_time_password,
-                        })
-                    }
-
-                    return Ok(Credential::UsernameAndPassword { username, password })
-                }
-
-                Ok(Credential::Device {
-                    device_serial_number,
-                    password,
-                    device_identifier,
-                    network_identifier,
-                    machine_identifier,
-                    media_identifier,
-                })
-            }
-        }
-
-        const FIELDS: &[&str] = &[
-            "username",
-            "password",
-            "device_serial_number",
-            "device_identifier",
-            "network_identifier",
-            "machine_identifier",
-            "media_identifier",
-            "nonce",
-            "attestation_type",
-            "attestation_measurement",
-            "attestation_assertion",
-            "one_time_password",
-            "timestamp",
-            "hashing_algorithm",
-            "hashed_password",
-            "ticket_type",
-            "ticket_value",
-        ];
-        deserializer.deserialize_struct("Credential", FIELDS, CredentialVisitor)
-    }
-}
-
-#[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
-pub enum TicketType {
-    Login = 0x0000_0001,
-}
-
-/// A Nonce object is a structure used by the server to send a random value to the client.
-///
-/// The Nonce Identifier is assigned by the server and used to identify the Nonce object.
-/// The Nonce Value consists of the random data created by the server.
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
-#[serde(rename_all = "PascalCase")]
-pub struct Nonce {
-    pub nonce_id: Vec<u8>,
-    pub nonce_value: Vec<u8>,
-}
-
-/// This option SHALL only be present if the Batch Count is greater than 1.
-/// This option SHALL have one of three values (Undo, Stop or Continue).
-/// If not specified, then Stop is assumed.
-#[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
-pub enum BatchErrorContinuationOption {
-    /// If any operation in the request fails, then the server SHALL undo all the previous operations.
-    ///
-    /// Batch item fails and Result Status is set to Operation Failed.
-    /// Responses to batch items that have already been processed are returned normally.
-    /// Responses to batch items that have not been processed are not returned.
-    Undo,
-    Stop,
-    Continue,
-}
-
-/// The Message Extension is an OPTIONAL structure that MAY be appended to any Batch Item.
-///
-/// It is used to extend protocol messages for the purpose of adding vendor-specified extensions.
-/// The Message Extension is a structure that SHALL contain the Vendor Identification,
-/// Criticality Indicator, and Vendor Extension fields.
-///
-/// The Vendor Identification SHALL be a text string that uniquely identifies the vendor,
-/// allowing a client to determine if it is able to parse and understand the extension.
-///
-/// If a client or server receives a protocol message containing a message extension
-/// that it does not understand, then its actions depend on the Criticality Indicator.
-///
-/// If the indicator is True (i.e., Critical), and the receiver does not understand the extension,
-/// then the receiver SHALL reject the entire message.
-/// If the indicator is False (i.e., Non-Critical), and the receiver does not
-/// understand the extension, then the receiver MAY process the rest of the message as
-/// if the extension were not present.
-///
-/// The Vendor Extension structure SHALL contain vendor-specific extensions.
-#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
-#[serde(rename_all = "PascalCase")]
-pub struct MessageExtension {
-    /// Text String (with usage limited to alphanumeric, underscore and period –
-    /// i.e. [A-Za-z0-9_.])
-    pub vendor_identification: String,
-    pub criticality_indicator: bool,
-    // Vendor extension structure is not precisely defined by KMIP reference
-    pub vendor_extension: Vec<u8>,
-}
-
-#[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display)]
+#[kmip_enum]
 pub enum OperationEnumeration {
     Create = 0x0000_0001,
     CreateKeyPair = 0x0000_0002,
     Register = 0x0000_0003,
-    Rekey = 0x0000_0004,
+    ReKey = 0x0000_0004,
     DeriveKey = 0x0000_0005,
     Certify = 0x0000_0006,
-    Recertify = 0x0000_0007,
+    ReCertify = 0x0000_0007,
     Locate = 0x0000_0008,
     Check = 0x0000_0009,
     Get = 0x0000_000A,
@@ -2902,7 +1416,7 @@ pub enum OperationEnumeration {
     Poll = 0x0000_001A,
     Notify = 0x0000_001B,
     Put = 0x0000_001C,
-    RekeyKeyPair = 0x0000_001D,
+    ReKeyKeyPair = 0x0000_001D,
     DiscoverVersions = 0x0000_001E,
     Encrypt = 0x0000_001F,
     Decrypt = 0x0000_0020,
@@ -2935,20 +1449,9 @@ pub enum OperationEnumeration {
     Ping = 0x0000_003B,
 }
 
-#[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display)]
-pub enum ResultStatusEnumeration {
-    Success = 0x0000_0000,
-    OperationFailed = 0x0000_0001,
-    OperationPending = 0x0000_0002,
-    OperationUndone = 0x0000_0003,
-}
-
 /// An Enumeration object indicating whether the certificate chain is valid,
 /// invalid, or unknown.
-#[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display)]
-#[repr(u32)]
+#[kmip_enum]
 pub enum ValidityIndicator {
     Valid = 0x0000_0000,
     Invalid = 0x0000_0001,
@@ -2967,10 +1470,181 @@ impl ValidityIndicator {
 
     #[must_use]
     pub const fn from_bool(b: bool) -> Self {
-        if b {
-            Self::Valid
-        } else {
-            Self::Invalid
-        }
+        if b { Self::Valid } else { Self::Invalid }
     }
+}
+
+/// `NistKeyType` enumeration used with NIST SP 800-56 and SP 800-108 operations
+#[kmip_enum]
+pub enum NistKeyType {
+    AESP1 = 0x1,
+    AESP2 = 0x2,
+    AESP3 = 0x3,
+    AESP4 = 0x4,
+    AESP5 = 0x5,
+    TDES2 = 0x6,
+    TDES3 = 0x7,
+    DESRW128 = 0x8,
+    DESRW192 = 0x9,
+    DESRW256 = 0xA,
+    HMACSHA1 = 0xB,
+    HMACSHA224 = 0xC,
+    HMACSHA256 = 0xD,
+    HMACSHA384 = 0xE,
+    HMACSHA512 = 0xF,
+}
+
+/// `ProtectionLevel` enumeration indicates the level of protection required for an object
+#[kmip_enum]
+pub enum ProtectionLevel {
+    Software = 0x1,
+    Hardware = 0x2,
+    Hybrid = 0x3,
+}
+
+/// `RandomNumberGenerator` structure contains details of the random number generation
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "PascalCase")]
+pub struct RandomNumberGenerator {
+    pub rng_algorithm: RNGAlgorithm,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cryptographic_algorithm: Option<CryptographicAlgorithm>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cryptographic_length: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hashing_algorithm: Option<HashingAlgorithm>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub drbg_algorithm: Option<DRBGAlgorithm>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recommended_curve: Option<RecommendedCurve>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fips186_variation: Option<FIPS186Variation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prediction_resistance: Option<bool>,
+}
+
+/// Name structure for identifying Managed Objects
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "PascalCase")]
+pub struct Name {
+    /// The Name Value
+    pub name_value: String,
+    /// The Name Type
+    pub name_type: NameType,
+}
+
+/// `NameType` enumeration defines the type of name used to identify managed objects
+#[kmip_enum]
+pub enum NameType {
+    UninterpretedTextString = 0x1,
+    URI = 0x2,
+    DNS = 0x3,
+    EmailAddress = 0x4,
+    DistinguishedName = 0x5,
+}
+
+/// The `QueryFunction` is used to indicate what server information is being requested.
+#[kmip_enum]
+pub enum QueryFunction {
+    QueryOperations = 0x000_0001,
+    QueryObjects = 0x000_0002,
+    QueryServerInformation = 0x000_0003,
+    QueryApplicationNamespaces = 0x000_0004,
+    QueryExtensionList = 0x000_0005,
+    QueryExtensionMap = 0x000_0006,
+    QueryAttestationTypes = 0x000_0007,
+    QueryRNGs = 0x000_0008,
+    QueryValidations = 0x000_0009,
+    QueryProfiles = 0x000_000A,
+    QueryCapabilities = 0x000_000B,
+    QueryClientRegistrationMethods = 0x000_000C,
+    QueryDefaultsInformation = 0x000_000D,
+    QueryStorageProtectionMasks = 0x000_000E,
+}
+
+/// Random Number Generation Mode enumeration
+#[kmip_enum]
+pub enum RNGMode {
+    Unspecified = 0x01,
+    SharedInstantiation = 0x02,
+    NonSharedInstantiation = 0x03,
+}
+
+/// Methods by which clients can register with a KMIP server.
+#[kmip_enum]
+pub enum ClientRegistrationMethod {
+    /// The client is not required to register.
+    Unspecified = 0x0000_0001,
+    /// The client must register using server-defined method.
+    ServerPreRegistered = 0x0000_0002,
+    /// The client registers by providing a password to the server.
+    ServerPreregisteredPadding = 0x0000_0003,
+    /// The server accepts clients with specific platform configurations.
+    ServerTrustedPlatformModule = 0x0000_0004,
+    /// The server validates the client based on attestation data.
+    ServerClientAttestation = 0x0000_0005,
+    /// Server-specific registration method.
+    ServerCustom = 0x0000_0006,
+}
+
+/// Supported profile identifiers in the KMIP specification.
+#[kmip_enum]
+pub enum ProfileName {
+    CompleteServerBasic = 0x0000_0104,
+    CompleteServerTLSv12 = 0x0000_0105,
+    TapeLibraryClient = 0x0000_0106,
+    TapeLibraryServer = 0x0000_0107,
+    SymmetricKeyLifecycleClient = 0x0000_0108,
+    SymmetricKeyLifecycleServer = 0x0000_0109,
+    AsymmetricKeyLifecycleClient = 0x0000_010A,
+    AsymmetricKeyLifecycleServer = 0x0000_010B,
+    BasicCryptographicClient = 0x0000_010C,
+    BasicCryptographicServer = 0x0000_010D,
+    AdvancedCryptographicClient = 0x0000_010E,
+    AdvancedCryptographicServer = 0x0000_010F,
+    RNGCryptographicClient = 0x0000_0110,
+    RNGCryptographicServer = 0x0000_0111,
+    BasicSymmetricKeyFoundryClient = 0x0000_0112,
+    IntermediateSymmetricKeyFoundryClient = 0x0000_0113,
+    AdvancedSymmetricKeyFoundryClient = 0x0000_0114,
+    SymmetricKeyFoundryServer = 0x0000_0115,
+    OpaqueMangedObjectStoreClient = 0x0000_0116,
+    OpaqueMangedObjectStoreServer = 0x0000_0117,
+    Reserved118 = 0x0000_0118,
+    Reserved119 = 0x0000_0119,
+    Reserved11A = 0x0000_011A,
+    Reserved11B = 0x0000_011B,
+    StorageArrayWithSelfEncryptingDriveClient = 0x0000_011C,
+    StorageArrayWithSelfEncryptingDriveServer = 0x0000_011D,
+    HTTPSClient = 0x0000_011E,
+    HTTPSServer = 0x0000_011F,
+    JSONClient = 0x0000_0120,
+    JSONServer = 0x0000_0121,
+    XMLClient = 0x0000_0122,
+    XMLServer = 0x0000_0123,
+    AESXTSClient = 0x0000_0124,
+    AESXTSServer = 0x0000_0125,
+    QuantumSafeClient = 0x0000_0126,
+    QuantumSafeServer = 0x0000_0127,
+    PKCS11Client = 0x0000_0128,
+    PKCS11Server = 0x0000_0129,
+    BaselineClient = 0x0000_012A,
+    BaselineServer = 0x0000_012B,
+    CompleteServer = 0x0000_012C,
+}
+
+/// Types of items that can be used in TTLV encoding.
+#[kmip_enum]
+pub enum ItemType {
+    Structure = 0x0000_0001,
+    Integer = 0x0000_0002,
+    LongInteger = 0x0000_0003,
+    BigInteger = 0x0000_0004,
+    Enumeration = 0x0000_0005,
+    Boolean = 0x0000_0006,
+    TextString = 0x0000_0007,
+    ByteString = 0x0000_0008,
+    DateTime = 0x0000_0009,
+    Interval = 0x0000_000A,
+    DateTimeExtended = 0x0000_000B,
 }

@@ -1,4 +1,4 @@
-use cosmian_kmip::kmip_2_1::kmip_operations::ErrorReason;
+use cosmian_kmip::kmip_0::kmip_types::ErrorReason;
 
 use crate::error::KmsError;
 

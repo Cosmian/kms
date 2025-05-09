@@ -1,11 +1,13 @@
+use std::sync::Arc;
+
 #[cfg(not(feature = "fips"))]
 use cosmian_kmip::KmipResultHelper;
 use cosmian_kms_server::{
     config::{ClapConfig, ServerParams},
     result::KResult,
     start_kms_server::start_kms_server,
-    telemetry::initialize_telemetry,
 };
+use cosmian_logger::{TelemetryConfig, TracingConfig, tracing_init};
 use dotenvy::dotenv;
 use openssl::provider::Provider;
 #[cfg(feature = "timeout")]
@@ -15,7 +17,7 @@ use tracing::{debug, info, span};
 #[cfg(feature = "timeout")]
 mod expiry;
 
-/// The main entrypoint of the program.
+/// The main entry point of the program.
 ///
 /// This function sets up the necessary environment variables and logging options,
 /// then parses the command line arguments using [`ClapConfig::parse()`](https://docs.rs/clap/latest/clap/struct.ClapConfig.html#method.parse).
@@ -49,11 +51,28 @@ async fn main() -> KResult<()> {
         }
     }
 
-    // Start the telemetry
-    initialize_telemetry(&clap_config.telemetry)?;
+    //Initialize the tracing system
+    let _otel_guard = tracing_init(&TracingConfig {
+        service_name: "cosmian_kms".to_string(),
+        otlp: clap_config
+            .logging
+            .otlp
+            .as_ref()
+            .map(|url| TelemetryConfig {
+                version: option_env!("CARGO_PKG_VERSION").map(String::from),
+                environment: clap_config.logging.environment.clone(),
+                otlp_url: url.to_owned(),
+                enable_metering: clap_config.logging.enable_metering,
+            })
+            .clone(),
+        no_log_to_stdout: clap_config.logging.quiet,
+        #[cfg(not(target_os = "windows"))]
+        log_to_syslog: clap_config.logging.log_to_syslog,
+        rust_log: clap_config.logging.rust_log.clone(),
+    });
 
     //TODO: For an unknown reason, this span never goes to OTLP
-    let span = span!(tracing::Level::INFO, "start");
+    let span = span!(tracing::Level::TRACE, "kms");
     let _guard = span.enter();
 
     // print openssl version
@@ -73,15 +92,15 @@ async fn main() -> KResult<()> {
         openssl::version::number()
     );
 
-    // For an explanation of openssl providers, see
-    // see https://docs.openssl.org/3.1/man7/crypto/#openssl-providers
+    // For an explanation of OpenSSL providers,
+    //  https://docs.openssl.org/3.1/man7/crypto/#openssl-providers
 
-    // In FIPS mode, we only load the fips provider
+    // In FIPS mode, we only load the FIPS provider
     #[cfg(feature = "fips")]
     Provider::load(None, "fips")?;
 
     // Not in FIPS mode and version > 3.0: load the default provider and the legacy provider
-    // so that we can use the legacy algorithms
+    // so that we can use the legacy algorithms.
     // particularly those used for old PKCS#12 formats
     #[cfg(not(feature = "fips"))]
     if openssl::version::number() >= 0x30000000 {
@@ -96,7 +115,7 @@ async fn main() -> KResult<()> {
     debug!("Command line config: {clap_config:#?}");
 
     // Parse the Server Config from the command line arguments
-    let server_params = ServerParams::try_from(clap_config)?;
+    let server_params = Arc::new(ServerParams::try_from(clap_config)?);
 
     if info_only {
         info!("Server started with --info. Exiting");
@@ -126,12 +145,9 @@ async fn main() -> KResult<()> {
 mod tests {
     use std::path::PathBuf;
 
-    use cosmian_kms_server::{
-        config::{
-            ClapConfig, HttpConfig, JwtAuthConfig, MainDBConfig, OidcConfig, UiConfig,
-            WorkspaceConfig,
-        },
-        telemetry::TelemetryConfig,
+    use cosmian_kms_server::config::{
+        ClapConfig, HttpConfig, JwtAuthConfig, LoggingConfig, MainDBConfig, OidcConfig,
+        SocketServerConfig, TlsConfig, UiConfig, WorkspaceConfig,
     };
 
     #[test]
@@ -144,14 +160,23 @@ mod tests {
                 redis_master_password: Some("[redis master password]".to_owned()),
                 redis_findex_label: Some("[redis findex label]".to_owned()),
                 clear_database: false,
+                unwrapped_cache_max_age: 15,
+            },
+            socket_server: SocketServerConfig {
+                socket_server_start: false,
+                socket_server_port: 5696,
+                socket_server_hostname: "0.0.0.0".to_string(),
+            },
+            tls: TlsConfig {
+                tls_p12_file: Some(PathBuf::from("[tls p12 file]")),
+                tls_p12_password: Some("[tls p12 password]".to_owned()),
+                clients_ca_cert_file: Some(PathBuf::from("[authority cert file]")),
             },
             http: HttpConfig {
                 port: 443,
                 hostname: "[hostname]".to_owned(),
-                https_p12_file: Some(PathBuf::from("[https p12 file]")),
-                https_p12_password: Some("[https p12 password]".to_owned()),
-                authority_cert_file: Some(PathBuf::from("[authority cert file]")),
                 api_token_id: None,
+                ..Default::default()
             },
             auth: JwtAuthConfig {
                 jwt_issuer_uri: Some(vec![
@@ -183,16 +208,23 @@ mod tests {
             google_cse_disable_tokens_validation: false,
             google_cse_kacls_url: Some("[google cse kacls url]".to_owned()),
             ms_dke_service_url: Some("[ms dke service url]".to_owned()),
-            telemetry: TelemetryConfig {
+            logging: LoggingConfig {
+                rust_log: Some("info,cosmian_kms=debug".to_owned()),
                 otlp: Some("http://localhost:4317".to_owned()),
                 quiet: false,
+                #[cfg(not(target_os = "windows"))]
+                log_to_syslog: false,
+                enable_metering: false,
+                environment: Some("development".to_owned()),
             },
             info: false,
             hsm_model: "".to_string(),
             hsm_admin: "".to_string(),
             hsm_slot: vec![],
             hsm_password: vec![],
+            key_encryption_key: Some("key wrapping key".to_owned()),
             non_revocable_key_id: None,
+            privileged_users: None,
         };
 
         let toml_string = r#"
@@ -206,6 +238,7 @@ hsm_model = ""
 hsm_admin = ""
 hsm_slot = []
 hsm_password = []
+key_encryption_key = "key wrapping key"
 kms_public_url = "[kms_public_url]"
 
 [db]
@@ -215,13 +248,21 @@ sqlite_path = "[sqlite path]"
 redis_master_password = "[redis master password]"
 redis_findex_label = "[redis findex label]"
 clear_database = false
+unwrapped_cache_max_age = 15
+
+[socket_server]
+socket_server_start = false
+socket_server_port = 5696
+socket_server_hostname = "0.0.0.0"
+
+[tls]
+tls_p12_file = "[tls p12 file]"
+tls_p12_password = "[tls p12 password]"
+clients_ca_cert_file = "[authority cert file]"
 
 [http]
 port = 443
 hostname = "[hostname]"
-https_p12_file = "[https p12 file]"
-https_p12_password = "[https p12 password]"
-authority_cert_file = "[authority cert file]"
 
 [auth]
 jwt_issuer_uri = ["[jwt issuer uri 1]", "[jwt issuer uri 2]"]
@@ -241,12 +282,15 @@ ui_oidc_logout_url = "[logout url]"
 root_data_path = "[root data path]"
 tmp_path = "[tmp path]"
 
-[telemetry]
+[logging]
+rust_log = "info,cosmian_kms=debug"
 otlp = "http://localhost:4317"
 quiet = false
+log_to_syslog = false
+enable_metering = false
+environment = "development"
 "#;
 
-        // println!("{}", toml::to_string(&config).unwrap().trim());
         assert_eq!(toml_string.trim(), toml::to_string(&config).unwrap().trim());
     }
 }

@@ -52,7 +52,7 @@ pub fn ecies_encrypt(public_key: &PKey<Public>, plaintext: &[u8]) -> Result<Vec<
 /// operator, `R` the ephemeral public key on the curve, `ct` the encrypted data
 /// and `tag` the authentication tag forged during encryption.
 ///
-/// The IV for decryption is computed by taking the hash of the recipient public
+/// The IV for decryption is computed by taking the hash of the recipient's public
 /// key and the ephemeral public key.
 ///
 /// Return the plaintext.

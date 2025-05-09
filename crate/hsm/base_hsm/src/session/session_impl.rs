@@ -41,8 +41,8 @@ use cosmian_kms_interfaces::{
     CryptoAlgorithm, EncryptedContent, HsmObject, HsmObjectFilter, KeyMaterial, KeyMetadata,
     KeyType, RsaPrivateKeyMaterial, RsaPublicKeyMaterial,
 };
-use pkcs11_sys::*;
-use rand::{rngs::OsRng, TryRngCore};
+use cosmian_pkcs11_sys::*;
+use rand::{TryRngCore, rngs::OsRng};
 use tracing::debug;
 use zeroize::Zeroizing;
 
@@ -55,7 +55,7 @@ fn generate_random_nonce<const T: usize>() -> HResult<[u8; T]> {
     let mut bytes = [0u8; T];
     OsRng
         .try_fill_bytes(&mut bytes)
-        .map_err(|e| HError::Default(format!("Error generating random nonce: {}", e)))?;
+        .map_err(|e| HError::Default(format!("Error generating random nonce: {e}")))?;
     Ok(bytes)
 }
 
@@ -211,7 +211,7 @@ impl Session {
                 template.len() as CK_ULONG,
             );
             if rv != CKR_OK {
-                return Err(HError::Default(format!("C_FindObjectsInit failed: {}", rv)));
+                return Err(HError::Default(format!("C_FindObjectsInit failed: {rv}")));
             }
 
             let mut object_handle: CK_OBJECT_HANDLE = 0;
@@ -225,17 +225,14 @@ impl Session {
                 &mut object_count,
             );
             if rv != CKR_OK {
-                return Err(HError::Default(format!("C_FindObjects failed: {}", rv)));
+                return Err(HError::Default(format!("C_FindObjects failed: {rv}")));
             }
 
             let rv = self.hsm.C_FindObjectsFinal.ok_or_else(|| {
                 HError::Default("C_FindObjectsFinal not available on library".to_string())
             })?(self.session_handle);
             if rv != CKR_OK {
-                return Err(HError::Default(format!(
-                    "C_FindObjectsFinal failed: {}",
-                    rv
-                )));
+                return Err(HError::Default(format!("C_FindObjectsFinal failed: {rv}")));
             }
 
             if object_count == 0 {
@@ -547,9 +544,11 @@ impl Session {
                 &mut encrypted_data_len,
             );
             if rv != CKR_OK {
-                return Err(HError::Default(
-                    "Failed to get encrypted data length".to_string(),
-                ));
+                return Err(HError::Default(format!(
+                    "Failed to allocate encrypted data length. Data to encrypt is likely too big: \
+                     {} bytes. Error code: {rv}",
+                    data.len()
+                )));
             }
 
             let mut encrypted_data = vec![0u8; encrypted_data_len as usize];
@@ -792,7 +791,7 @@ impl Session {
             return Ok(None);
         }
         let label = String::from_utf8(label_bytes)
-            .map_err(|e| HError::Default(format!("Failed to convert label to string: {}", e)))?;
+            .map_err(|e| HError::Default(format!("Failed to convert label to string: {e}")))?;
         Ok(Some(HsmObject::new(
             KeyMaterial::RsaPrivateKey(RsaPrivateKeyMaterial {
                 modulus,
@@ -863,7 +862,7 @@ impl Session {
             return Ok(None);
         }
         let label = String::from_utf8(label_bytes)
-            .map_err(|e| HError::Default(format!("Failed to convert label to string: {}", e)))?;
+            .map_err(|e| HError::Default(format!("Failed to convert label to string: {e}")))?;
         Ok(Some(HsmObject::new(
             KeyMaterial::RsaPublicKey(RsaPublicKeyMaterial {
                 modulus,
@@ -923,7 +922,7 @@ impl Session {
             return Ok(None);
         }
         let label = String::from_utf8(label_bytes)
-            .map_err(|e| HError::Default(format!("Failed to convert label to string: {}", e)))?;
+            .map_err(|e| HError::Default(format!("Failed to convert label to string: {e}")))?;
         Ok(Some(HsmObject::new(
             KeyMaterial::AesKey(Zeroizing::new(key_value)),
             label,
@@ -1015,13 +1014,13 @@ impl Session {
                         return Ok(None);
                     }
                     String::from_utf8(label_bytes).map_err(|e| {
-                        HError::Default(format!("Failed to convert label to string: {}", e))
+                        HError::Default(format!("Failed to convert label to string: {e}"))
                     })?
                 };
                 Ok(Some(KeyMetadata {
                     key_type,
                     key_length_in_bits: usize::try_from(key_size).map_err(|e| {
-                        HError::Default(format!("Failed to convert key size to usize: {}", e))
+                        HError::Default(format!("Failed to convert key size to usize: {e}"))
                     })? * 8,
                     sensitive: sensitive == CK_TRUE,
                     id: label,
@@ -1075,7 +1074,7 @@ impl Session {
                     String::new()
                 } else {
                     String::from_utf8(label_bytes).map_err(|e| {
-                        HError::Default(format!("Failed to convert label to string: {}", e))
+                        HError::Default(format!("Failed to convert label to string: {e}"))
                     })?
                 };
                 let sensitive = sensitive == CK_TRUE;

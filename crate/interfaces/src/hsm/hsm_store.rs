@@ -4,25 +4,24 @@
 #![allow(unused_variables)]
 use std::{collections::HashSet, path::PathBuf, sync::Arc};
 
+use KmipKeyMaterial::TransparentRSAPublicKey;
 use async_trait::async_trait;
 use cosmian_kmip::{
+    SafeBigInt,
+    kmip_0::kmip_types::{CryptographicUsageMask, State},
     kmip_2_1::{
+        kmip_attributes::Attributes,
         kmip_data_structures::{KeyBlock, KeyMaterial as KmipKeyMaterial, KeyValue},
-        kmip_objects::{Object, ObjectType},
-        kmip_types::{
-            Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType,
-            StateEnumeration,
-        },
+        kmip_objects::{Object, ObjectType, PrivateKey, PublicKey, SymmetricKey},
+        kmip_types::{CryptographicAlgorithm, KeyFormatType},
     },
-    SafeBigUint,
 };
-use num_bigint_dig::BigUint;
+use num_bigint_dig::{BigInt, Sign};
 use tracing::debug;
-use KmipKeyMaterial::TransparentRSAPublicKey;
 
 use crate::{
-    AtomicOperation, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject, InterfaceError,
-    InterfaceResult, KeyMaterial, ObjectWithMetadata, ObjectsStore, SessionParams, HSM,
+    AtomicOperation, HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject, InterfaceError,
+    InterfaceResult, KeyMaterial, ObjectWithMetadata, ObjectsStore, SessionParams,
 };
 
 pub struct HsmStore {
@@ -43,10 +42,6 @@ impl HsmStore {
 impl ObjectsStore for HsmStore {
     fn filename(&self, _group_id: u128) -> Option<PathBuf> {
         None
-    }
-
-    async fn migrate(&self, _params: Option<Arc<dyn SessionParams>>) -> InterfaceResult<()> {
-        Ok(())
     }
 
     // Only single keys are created using this call,
@@ -103,7 +98,7 @@ impl ObjectsStore for HsmStore {
                 usize::try_from(*key_length).map_err(|e| {
                     InterfaceError::InvalidRequest(format!("Invalid key length: {e}"))
                 })?,
-                attributes.sensitive,
+                attributes.sensitive.unwrap_or_default(),
             )
             .await?;
         debug!("Created HSM AES Key of length {key_length} with id {uid}",);
@@ -154,7 +149,7 @@ impl ObjectsStore for HsmStore {
     async fn update_state(
         &self,
         uid: &str,
-        state: StateEnumeration,
+        state: State,
         params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
         // not supported for HSMs
@@ -197,7 +192,7 @@ impl ObjectsStore for HsmStore {
                     usize::try_from(attributes.cryptographic_length.unwrap_or(2048)).map_err(
                         |e| InterfaceError::InvalidRequest(format!("Invalid key length: {e}")),
                     )?,
-                    attributes.sensitive,
+                    attributes.sensitive.unwrap_or_default(),
                 )
                 .await?;
             return Ok(vec![
@@ -235,11 +230,11 @@ impl ObjectsStore for HsmStore {
     async fn find(
         &self,
         researched_attributes: Option<&Attributes>,
-        state: Option<StateEnumeration>,
+        state: Option<State>,
         user: &str,
         user_must_be_owner: bool,
         params: Option<Arc<dyn SessionParams>>,
-    ) -> InterfaceResult<Vec<(String, StateEnumeration, Attributes)>> {
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
         todo!()
     }
 }
@@ -331,14 +326,14 @@ fn to_object_with_metadata(
                 .set_tags(tags)
                 .map_err(|e| InterfaceError::InvalidRequest(format!("Invalid tags: {e}")))?;
             let kmip_key_material = KmipKeyMaterial::TransparentSymmetricKey { key: bytes.clone() };
-            let object = Object::SymmetricKey {
+            let object = Object::SymmetricKey(SymmetricKey {
                 key_block: KeyBlock {
                     key_format_type: KeyFormatType::TransparentSymmetricKey,
                     key_compression_type: None,
-                    key_value: KeyValue {
+                    key_value: Some(KeyValue::Structure {
                         key_material: kmip_key_material,
                         attributes: Some(attributes.clone()),
-                    },
+                    }),
                     cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
                     cryptographic_length: Some(
                         8 * i32::try_from(bytes.len()).map_err(|e| {
@@ -347,12 +342,12 @@ fn to_object_with_metadata(
                     ),
                     key_wrapping_data: None,
                 },
-            };
+            });
             Ok(ObjectWithMetadata::new(
                 uid.to_owned(),
                 object,
                 user.to_owned(),
-                StateEnumeration::Active,
+                State::Active,
                 attributes,
             ))
         }
@@ -380,33 +375,34 @@ fn to_object_with_metadata(
                 .set_tags(tags)
                 .map_err(|e| InterfaceError::InvalidRequest(format!("Invalid tags: {e}")))?;
             let kmip_key_material = KmipKeyMaterial::TransparentRSAPrivateKey {
-                modulus: Box::new(BigUint::from_bytes_be(km.modulus.as_slice())),
-                private_exponent: Some(Box::new(SafeBigUint::from_bytes_be(
+                modulus: Box::new(BigInt::from_bytes_be(Sign::Plus, km.modulus.as_slice())),
+                private_exponent: Some(Box::new(SafeBigInt::from_bytes_be(
                     km.private_exponent.as_slice(),
                 ))),
-                public_exponent: Some(Box::new(BigUint::from_bytes_be(
+                public_exponent: Some(Box::new(BigInt::from_bytes_be(
+                    Sign::Plus,
                     km.public_exponent.as_slice(),
                 ))),
-                p: Some(Box::new(SafeBigUint::from_bytes_be(km.prime_1.as_slice()))),
-                q: Some(Box::new(SafeBigUint::from_bytes_be(km.prime_2.as_slice()))),
-                prime_exponent_p: Some(Box::new(SafeBigUint::from_bytes_be(
+                p: Some(Box::new(SafeBigInt::from_bytes_be(km.prime_1.as_slice()))),
+                q: Some(Box::new(SafeBigInt::from_bytes_be(km.prime_2.as_slice()))),
+                prime_exponent_p: Some(Box::new(SafeBigInt::from_bytes_be(
                     km.exponent_1.as_slice(),
                 ))),
-                prime_exponent_q: Some(Box::new(SafeBigUint::from_bytes_be(
+                prime_exponent_q: Some(Box::new(SafeBigInt::from_bytes_be(
                     km.exponent_2.as_slice(),
                 ))),
-                crt_coefficient: Some(Box::new(SafeBigUint::from_bytes_be(
+                c_r_t_coefficient: Some(Box::new(SafeBigInt::from_bytes_be(
                     km.coefficient.as_slice(),
                 ))),
             };
-            let object = Object::PrivateKey {
+            let object = Object::PrivateKey(PrivateKey {
                 key_block: KeyBlock {
                     key_format_type: KeyFormatType::TransparentRSAPrivateKey,
                     key_compression_type: None,
-                    key_value: KeyValue {
+                    key_value: Some(KeyValue::Structure {
                         key_material: kmip_key_material,
                         attributes: Some(attributes.clone()),
-                    },
+                    }),
                     cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                     cryptographic_length: Some(
                         8 * i32::try_from(km.modulus.len()).map_err(|e| {
@@ -415,12 +411,12 @@ fn to_object_with_metadata(
                     ),
                     key_wrapping_data: None,
                 },
-            };
+            });
             Ok(ObjectWithMetadata::new(
                 uid.to_owned(),
                 object,
                 user.to_owned(),
-                StateEnumeration::Active,
+                State::Active,
                 attributes,
             ))
         }
@@ -448,17 +444,20 @@ fn to_object_with_metadata(
                 .set_tags(tags)
                 .map_err(|e| InterfaceError::InvalidRequest(format!("Invalid tags: {e}")))?;
             let kmip_key_material = TransparentRSAPublicKey {
-                modulus: Box::new(BigUint::from_bytes_be(km.modulus.as_slice())),
-                public_exponent: Box::new(BigUint::from_bytes_be(km.public_exponent.as_slice())),
+                modulus: Box::new(BigInt::from_bytes_be(Sign::Plus, km.modulus.as_slice())),
+                public_exponent: Box::new(BigInt::from_bytes_be(
+                    Sign::Plus,
+                    km.public_exponent.as_slice(),
+                )),
             };
-            let object = Object::PublicKey {
+            let object = Object::PublicKey(PublicKey {
                 key_block: KeyBlock {
                     key_format_type: KeyFormatType::TransparentRSAPublicKey,
                     key_compression_type: None,
-                    key_value: KeyValue {
+                    key_value: Some(KeyValue::Structure {
                         key_material: kmip_key_material,
                         attributes: Some(attributes.clone()),
-                    },
+                    }),
                     cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                     cryptographic_length: Some(
                         i32::try_from(km.modulus.len()).map_err(|e| {
@@ -467,12 +466,12 @@ fn to_object_with_metadata(
                     ),
                     key_wrapping_data: None,
                 },
-            };
+            });
             Ok(ObjectWithMetadata::new(
                 uid.to_owned(),
                 object,
                 user.to_owned(),
-                StateEnumeration::Active,
+                State::Active,
                 attributes,
             ))
         }

@@ -1,11 +1,11 @@
 use zeroize::Zeroizing;
 
 use crate::{
+    DataToEncrypt, KmipError,
     kmip_2_1::{
         kmip_operations::Encrypt,
         kmip_types::{CryptographicParameters, UniqueIdentifier},
     },
-    DataToEncrypt, KmipError,
 };
 
 /// Build an Encryption Request to encrypt the provided `plaintext`.
@@ -39,8 +39,8 @@ pub fn encrypt_request(
             key_unique_identifier.to_owned(),
         )),
         cryptographic_parameters,
-        data: Some(Zeroizing::from(data_to_encrypt)),
-        iv_counter_nonce: nonce,
+        data: Some(Zeroizing::new(data_to_encrypt)),
+        i_v_counter_nonce: nonce,
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,

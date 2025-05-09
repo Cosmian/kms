@@ -1,23 +1,24 @@
 use std::{default::Default, sync::Arc};
 
 use actix_web::{
-    get, post,
+    HttpRequest, HttpResponse, get, post,
     web::{Data, Json, Path},
-    HttpRequest, HttpResponse,
 };
-use base64::{engine::general_purpose::STANDARD, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD};
 use chrono::{Duration, Utc};
 use clap::crate_version;
-use cosmian_kmip::kmip_2_1::{
-    kmip_data_structures::KeyMaterial,
-    kmip_objects::Object,
-    kmip_operations::{Decrypt, Get},
-    kmip_types::{
-        CryptographicAlgorithm, CryptographicParameters, HashingAlgorithm, KeyFormatType,
-        KeyWrapType, PaddingMethod, UniqueIdentifier,
+use cosmian_kmip::{
+    kmip_0::kmip_types::{HashingAlgorithm, KeyWrapType, PaddingMethod},
+    kmip_2_1::{
+        kmip_data_structures::{KeyMaterial, KeyValue},
+        kmip_objects::{Object, PublicKey},
+        kmip_operations::{Decrypt, Get},
+        kmip_types::{
+            CryptographicAlgorithm, CryptographicParameters, KeyFormatType, UniqueIdentifier,
+        },
     },
 };
-use num_bigint_dig::BigUint;
+use num_bigint_dig::BigInt;
 use serde::{Deserialize, Serialize};
 use tracing::{info, log::trace};
 use url::Url;
@@ -118,7 +119,6 @@ async fn internal_get_key(
     req_http: HttpRequest,
     kms: &Arc<KMS>,
 ) -> KResult<KeyData> {
-    let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
     let user = kms.get_user(&req_http);
     let dke_service_url = kms
         .params
@@ -136,48 +136,54 @@ async fn internal_get_key(
         key_compression_type: None,
         key_wrapping_specification: None,
     };
-    let resp = kms.get(op, &user, database_params).await?;
+    let resp = kms.get(op, &user, None).await?;
     match resp.object {
-        Object::PublicKey { key_block, .. } => match key_block.key_value.key_material {
-            KeyMaterial::TransparentRSAPublicKey {
-                modulus,
-                public_exponent,
-            } => {
-                let key_id = resp.unique_identifier.as_str().ok_or_else(|| {
-                    kms_error!(
-                        "MS DKE: The RSA public key does not have a text unique identifier. This \
-                         is not supported"
-                    )
-                })?;
-                let mut existing_path = dke_service_url.path().to_owned();
-                // remove the trailing / if any
-                if existing_path.ends_with('/') {
-                    existing_path.pop();
-                }
-                dke_service_url.set_path(&format!("{existing_path}/{key_tag}/{key_id}"));
-                Ok(KeyData {
-                    key: DkePublicKey {
-                        key_type: KeyType::RSA,
-                        modulus: STANDARD.encode(modulus.to_bytes_be()),
-                        exponent: big_uint_to_u32(&public_exponent),
-                        algorithm: Algorithm::Rs256,
-                        key_id: dke_service_url.to_string(),
-                    },
-                    cache: DkePublicKeyCache {
-                        expiration: {
-                            // make the key valid for one day
-                            let now = Utc::now();
-                            let later = now + Duration::days(1);
-                            let formatted = later.format("%Y-%m-%dT%H:%M:%S").to_string();
-                            formatted
+        Object::PublicKey(PublicKey { key_block, .. }) => {
+            let Some(KeyValue::Structure { key_material, .. }) = key_block.key_value.as_ref()
+            else {
+                kms_bail!("MS DKE: The public key block does not contain the key value")
+            };
+            match key_material {
+                KeyMaterial::TransparentRSAPublicKey {
+                    modulus,
+                    public_exponent,
+                } => {
+                    let key_id = resp.unique_identifier.as_str().ok_or_else(|| {
+                        kms_error!(
+                            "MS DKE: The RSA public key does not have a text unique identifier. \
+                             This is not supported"
+                        )
+                    })?;
+                    let mut existing_path = dke_service_url.path().to_owned();
+                    // remove the trailing / if any
+                    if existing_path.ends_with('/') {
+                        existing_path.pop();
+                    }
+                    dke_service_url.set_path(&format!("{existing_path}/{key_tag}/{key_id}"));
+                    Ok(KeyData {
+                        key: DkePublicKey {
+                            key_type: KeyType::RSA,
+                            modulus: STANDARD.encode(modulus.to_bytes_be().1),
+                            exponent: big_int_to_u32(public_exponent),
+                            algorithm: Algorithm::Rs256,
+                            key_id: dke_service_url.to_string(),
                         },
-                    },
-                })
+                        cache: DkePublicKeyCache {
+                            expiration: {
+                                // make the key valid for one day
+                                let now = Utc::now();
+                                let later = now + Duration::days(1);
+
+                                later.format("%Y-%m-%dT%H:%M:%S").to_string()
+                            },
+                        },
+                    })
+                }
+                _ => {
+                    kms_bail!("MS DKE: Invalid Key Material for a transparent RSA public key")
+                }
             }
-            _ => {
-                kms_bail!("MS DKE: Invalid Key Material for a transparent RSA public key")
-            }
-        },
+        }
         _ => kms_bail!("MS DKE: Invalid key type {}", resp.object_type),
     }
 }
@@ -222,7 +228,6 @@ async fn internal_decrypt(
     req_http: HttpRequest,
     kms: &Arc<KMS>,
 ) -> KResult<DecryptedData> {
-    let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
     let user = kms.get_user(&req_http);
     let decrypt_request = Decrypt {
         unique_identifier: Some(UniqueIdentifier::TextString(
@@ -237,7 +242,7 @@ async fn internal_decrypt(
         }),
         ..Decrypt::default()
     };
-    let response = kms.decrypt(decrypt_request, &user, database_params).await?;
+    let response = kms.decrypt(decrypt_request, &user, None).await?;
     Ok(DecryptedData {
         value: STANDARD.encode(
             response
@@ -248,8 +253,8 @@ async fn internal_decrypt(
 }
 
 #[allow(clippy::indexing_slicing)]
-fn big_uint_to_u32(bu: &BigUint) -> u32 {
-    let bytes = bu.to_bytes_be();
+fn big_int_to_u32(bu: &BigInt) -> u32 {
+    let (_, bytes) = bu.to_bytes_be();
     let len = bytes.len();
     let min = std::cmp::min(4, len);
     let mut padded = [0_u8; 4];
@@ -261,23 +266,23 @@ fn big_uint_to_u32(bu: &BigUint) -> u32 {
 mod tests {
     #![allow(clippy::unwrap_used)]
     use chrono::{DateTime, Utc};
-    use num_bigint_dig::BigUint;
+    use num_bigint_dig::BigInt;
 
-    use crate::routes::ms_dke::big_uint_to_u32;
+    use crate::routes::ms_dke::big_int_to_u32;
 
     #[test]
     fn test_big_uint() {
-        let bu = BigUint::from(12_u8);
-        assert_eq!(1, bu.to_bytes_be().len());
-        assert_eq!(12, big_uint_to_u32(&bu));
+        let bu = BigInt::from(12_u8);
+        assert_eq!(1, bu.to_bytes_be().1.len());
+        assert_eq!(12, big_int_to_u32(&bu));
 
-        let bu = BigUint::from(1_u32 << 31);
-        assert_eq!(4, bu.to_bytes_be().len());
-        assert_eq!(1_u32 << 31, big_uint_to_u32(&bu));
+        let bu = BigInt::from(1_u32 << 31);
+        assert_eq!(4, bu.to_bytes_be().1.len());
+        assert_eq!(1_u32 << 31, big_int_to_u32(&bu));
 
-        let bu = BigUint::from(1_u64 << 32);
-        assert_eq!(5, bu.to_bytes_be().len());
-        assert_eq!(0, big_uint_to_u32(&bu));
+        let bu = BigInt::from(1_u64 << 32);
+        assert_eq!(5, bu.to_bytes_be().1.len());
+        assert_eq!(0, big_int_to_u32(&bu));
     }
 
     #[test]

@@ -1,10 +1,11 @@
 use cosmian_kmip::kmip_2_1::{
+    kmip_attributes::Attributes,
     kmip_objects::ObjectType,
     kmip_operations::ReKeyKeyPair,
-    kmip_types::{Attributes, CryptographicAlgorithm, KeyFormatType, UniqueIdentifier},
+    kmip_types::{CryptographicAlgorithm, KeyFormatType, UniqueIdentifier},
 };
 
-use super::attributes::{rekey_edit_action_as_vendor_attribute, RekeyEditAction};
+use super::attributes::{RekeyEditAction, rekey_edit_action_as_vendor_attribute};
 use crate::error::CryptoError;
 
 /// Build a `ReKeyKeyPair` request.

@@ -4,14 +4,14 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use lru::LruCache;
-use pkcs11_sys::{
-    CKF_RW_SESSION, CKF_SERIAL_SESSION, CKR_OK, CKR_USER_ALREADY_LOGGED_IN, CKU_USER, CK_FLAGS,
-    CK_OBJECT_HANDLE, CK_SESSION_HANDLE, CK_SLOT_ID, CK_ULONG, CK_UTF8CHAR_PTR,
+use cosmian_pkcs11_sys::{
+    CK_FLAGS, CK_OBJECT_HANDLE, CK_SESSION_HANDLE, CK_SLOT_ID, CK_ULONG, CK_UTF8CHAR_PTR,
+    CKF_RW_SESSION, CKF_SERIAL_SESSION, CKR_OK, CKR_USER_ALREADY_LOGGED_IN, CKU_USER,
 };
+use lru::LruCache;
 use tracing::warn;
 
-use crate::{hsm_lib::HsmLib, HError, HResult, Session};
+use crate::{HError, HResult, Session, hsm_lib::HsmLib};
 
 /// A cache structure that maps byte vectors to CK_OBJECT_HANDLE values using an LRU (Least Recently Used) strategy.
 ///
@@ -85,17 +85,21 @@ pub struct SlotManager {
 
 impl SlotManager {
     /// Create a new SlotManager instance for the specified slot.
-    /// If a login password is provided, the slot will be authenticated with the HSM.
+    /// If a login password is provided, the HSM will authenticate the slot.
+    ///
     /// # Arguments
-    /// * `hsm_lib` - A thread-safe reference to the HSM library interface
-    /// * `slot_id` - The unique identifier for this HSM slot
-    /// * `login_password` - An optional password to authenticate the slot
+    /// * `hsm_lib` - A thread-safe reference to the HSM library interface.
+    /// * `slot_id` - The unique identifier for this HSM slot.
+    /// * `login_password` - An optional password to authenticate the slot.
+    ///
     /// # Returns
-    /// * `PResult<SlotManager>` - A result containing the SlotManager instance
+    /// * `PResult<SlotManager>` - A result containing the SlotManager instance.
+    ///
     /// # Errors
-    /// * If the slot cannot be opened or authenticated, an error is returned
-    /// * If the HSM library does not support the necessary functions, an error is returned
-    /// * If the HSM returns an error during session creation or login, an error is returned
+    /// * An error is returned if the slot cannot be opened or authenticated.
+    /// * An error is returned if the HSM library does not support the necessary functions.
+    /// * If the HSM returns an error during session creation or login, an error is returned.
+    ///
     /// # Safety
     /// This function calls unsafe FFI functions from the HSM library to open a session and authenticate the slot.
     /// The function is safe to call, but care must be taken when using the resulting SlotManager instance.
@@ -132,13 +136,16 @@ impl SlotManager {
     /// Open a new session with the HSM slot.
     /// The session can be read-only or read-write, depending on the `read_write` parameter.
     /// # Arguments
-    /// * `read_write` - A boolean flag indicating whether the session should be read-write
+    /// * `read_write` - A boolean flag indicating whether the session should be read-write.
+    ///
     /// # Returns
-    /// * `PResult<Session>` - A result containing the new session instance
+    /// * `PResult<Session>` - A result containing the new session instance.
+    ///
     /// # Errors
-    /// * If the session cannot be opened, an error is returned
-    /// * If the HSM library does not support the necessary functions, an error is returned
-    /// * If the HSM returns an error during session creation, an error is returned
+    /// * An error is returned if the session cannot be opened.
+    /// * An error is returned if the HSM library does not support the necessary functions.
+    /// * If the HSM returns an error during session creation, an error is returned.
+    ///
     /// # Safety
     /// This function calls unsafe FFI functions from the HSM library to open a session.
     /// The function is safe to call, but care must be taken when using the resulting Session instance.
@@ -174,7 +181,7 @@ impl SlotManager {
             })?(slot_id, flags, ptr::null_mut(), None, &mut session_handle);
             if rv != CKR_OK {
                 return Err(HError::Default(format!(
-                    "HSM: Failed opening a session: {rv}å"
+                    "HSM: Failed opening a session: {rv}"
                 )));
             }
             if let Some(password) = login_password.as_ref() {

@@ -4,8 +4,7 @@ use actix_web::{dev::ServerHandle, error::QueryPayloadError};
 use cloudproof_findex::implementations::redis::FindexRedisError;
 use cosmian_crypto_core::CryptoCoreError;
 use cosmian_kmip::{
-    KmipError,
-    kmip_2_1::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
+    KmipError, kmip_0::kmip_types::ErrorReason, kmip_1_4::kmip_types::ResultReason, ttlv::TtlvError,
 };
 use cosmian_kms_crypto::CryptoError;
 use cosmian_kms_interfaces::InterfaceError;
@@ -56,7 +55,11 @@ pub enum KmsError {
 
     // Any errors on KMIP format due to mistake of the user
     #[error("{0}: {1}")]
-    KmipError(ErrorReason, String),
+    Kmip21Error(ErrorReason, String),
+
+    // Any errors on KMIP format due to mistake of the user
+    #[error("{0}: {1}")]
+    Kmip14Error(ResultReason, String),
 
     // When a user requests something not supported by the server
     #[error("Not Supported: {0}")]
@@ -66,7 +69,7 @@ pub enum KmsError {
     Redis(String),
 
     // When a user requests an endpoint which does not exist
-    #[error("Not Supported route: {0}")]
+    #[error("Route not supported: {0}")]
     RouteNotFound(String),
 
     // Any errors related to a bad behavior of the server but not related to the user input
@@ -96,15 +99,15 @@ impl KmsError {
     #[must_use]
     pub(crate) fn reason(&self, reason: ErrorReason) -> Self {
         match self {
-            Self::KmipError(_r, e) => Self::KmipError(reason, e.clone()),
-            e => Self::KmipError(reason, e.to_string()),
+            Self::Kmip21Error(_r, e) => Self::Kmip21Error(reason, e.clone()),
+            e => Self::Kmip21Error(reason, e.to_string()),
         }
     }
 }
 
 impl From<TtlvError> for KmsError {
     fn from(e: TtlvError) -> Self {
-        Self::KmipError(ErrorReason::Codec_Error, e.to_string())
+        Self::Kmip21Error(ErrorReason::Codec_Error, e.to_string())
     }
 }
 
@@ -201,10 +204,10 @@ impl From<reqwest::Error> for KmsError {
 impl From<KmipError> for KmsError {
     fn from(e: KmipError) -> Self {
         match e {
-            KmipError::InvalidKmipValue(r, s)
-            | KmipError::InvalidKmipObject(r, s)
-            | KmipError::Kmip(r, s) => Self::KmipError(r, s),
-            KmipError::KmipNotSupported(_, s)
+            KmipError::InvalidKmip21Value(r, s)
+            | KmipError::InvalidKmip21Object(r, s)
+            | KmipError::Kmip21(r, s) => Self::Kmip21Error(r, s),
+            KmipError::Kmip21NotSupported(_, s)
             | KmipError::NotSupported(s)
             | KmipError::Default(s)
             | KmipError::InvalidSize(s)
@@ -216,12 +219,15 @@ impl From<KmipError> for KmsError {
             KmipError::TryFromSliceError(t) => Self::NotSupported(t.to_string()),
             KmipError::SerdeJsonError(e) => Self::NotSupported(e.to_string()),
             KmipError::Deserialization(e) | KmipError::Serialization(e) => {
-                Self::KmipError(ErrorReason::Codec_Error, e)
+                Self::Kmip21Error(ErrorReason::Codec_Error, e)
             }
-            KmipError::DeserializationSize(expected, actual) => Self::KmipError(
+            KmipError::DeserializationSize(expected, actual) => Self::Kmip21Error(
                 ErrorReason::Codec_Error,
                 format!("Deserialization: invalid size: {actual}, expected: {expected}"),
             ),
+            KmipError::InvalidKmip14Value(result_reason, e)
+            | KmipError::InvalidKmip14Object(result_reason, e)
+            | KmipError::Kmip14(result_reason, e) => Self::Kmip14Error(result_reason, e),
         }
     }
 }

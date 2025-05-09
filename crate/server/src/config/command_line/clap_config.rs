@@ -7,9 +7,14 @@ use clap::Parser;
 use serde::{Deserialize, Serialize};
 
 use super::{
-    HttpConfig, JwtAuthConfig, MainDBConfig, WorkspaceConfig, ui_config::UiConfig,
+    HttpConfig, JwtAuthConfig, MainDBConfig, WorkspaceConfig, logging::LoggingConfig,
+    ui_config::UiConfig,
 };
-use crate::{error::KmsError, result::KResult, telemetry::TelemetryConfig};
+use crate::{
+    config::{SocketServerConfig, TlsConfig},
+    error::KmsError,
+    result::KResult,
+};
 
 const DEFAULT_COSMIAN_KMS_CONF: &str = "/etc/cosmian/kms.toml";
 const DEFAULT_USERNAME: &str = "admin";
@@ -19,6 +24,8 @@ impl Default for ClapConfig {
     fn default() -> Self {
         Self {
             db: MainDBConfig::default(),
+            socket_server: SocketServerConfig::default(),
+            tls: TlsConfig::default(),
             http: HttpConfig::default(),
             kms_public_url: None,
             auth: JwtAuthConfig::default(),
@@ -29,13 +36,15 @@ impl Default for ClapConfig {
             google_cse_disable_tokens_validation: false,
             google_cse_kacls_url: None,
             ms_dke_service_url: None,
-            telemetry: TelemetryConfig::default(),
+            logging: LoggingConfig::default(),
             info: false,
             hsm_admin: HSM_ADMIN.to_owned(),
             hsm_model: "proteccio".to_owned(),
             hsm_slot: vec![],
             hsm_password: vec![],
+            key_encryption_key: None,
             non_revocable_key_id: None,
+            privileged_users: None,
         }
     }
 }
@@ -46,6 +55,12 @@ impl Default for ClapConfig {
 pub struct ClapConfig {
     #[clap(flatten)]
     pub db: MainDBConfig,
+
+    #[clap(flatten)]
+    pub socket_server: SocketServerConfig,
+
+    #[clap(flatten)]
+    pub tls: TlsConfig,
 
     #[clap(flatten)]
     pub http: HttpConfig,
@@ -65,18 +80,19 @@ pub struct ClapConfig {
 
     /// When an authentication method is provided, perform the authentication
     /// but always use the default username instead of the one provided by the authentication method
-    #[clap(long, env = "KMS_FORCE_DEFAULT_USERNAME")]
+    #[clap(long, env = "KMS_FORCE_DEFAULT_USERNAME", verbatim_doc_comment)]
     pub force_default_username: bool,
 
     /// This setting enables the Google Workspace Client Side Encryption feature of this KMS server.
     ///
-    /// It should contain the external URL of this server as configured in Google Workspace client side encryption settings
-    /// For instance, if this server is running on domain `cse.my_domain.com`,
-    /// the URL should be something like <https://cse.my_domain.com/google_cse>
-    #[clap(long, env = "KMS_GOOGLE_CSE_KACLS_URL")]
+    /// It should contain the external URL of this server as configured in Google Workspace client-side encryption settings.
+    /// For instance, if this server is running on the domain `cse.my_domain.com`.
+    /// The URL should be something like <https://cse.my_domain.com/google_cse>
+    #[clap(long, env = "KMS_GOOGLE_CSE_KACLS_URL", verbatim_doc_comment)]
     pub google_cse_kacls_url: Option<String>,
 
-    /// This setting disables the validation of the tokens used by the Google Workspace CSE feature of this server.
+    /// This setting turns off the validation of the tokens
+    /// used by this server's Google Workspace CSE feature.
     #[clap(
         long,
         requires = "google_cse_kacls_url",
@@ -85,7 +101,7 @@ pub struct ClapConfig {
     )]
     pub google_cse_disable_tokens_validation: bool,
 
-    /// This setting enables the Microsoft Double Key Encryption service feature of this server.
+    /// This setting enables this server's Microsoft Double Key Encryption service feature.
     ///
     /// It should contain the external URL of this server as configured in Azure App Registrations
     /// as the DKE Service (<https://learn.microsoft.com/en-us/purview/double-key-encryption-setup#register-your-key-store>)
@@ -95,7 +111,7 @@ pub struct ClapConfig {
     pub ms_dke_service_url: Option<String>,
 
     #[clap(flatten)]
-    pub telemetry: TelemetryConfig,
+    pub logging: LoggingConfig,
 
     /// Print the server configuration information and exit
     #[clap(long, default_value = "false")]
@@ -103,7 +119,12 @@ pub struct ClapConfig {
 
     /// The HSM model.
     /// Trustway Proteccio and Utimaco General purpose HSMs are supported.
-    #[clap(verbatim_doc_comment, long,value_parser(["proteccio", "utimaco"]), default_value = "proteccio")]
+    #[clap(
+        verbatim_doc_comment,
+        long,
+        value_parser(["proteccio", "utimaco"]),
+        default_value = "proteccio"
+    )]
     pub hsm_model: String,
 
     /// The username of the HSM admin.
@@ -128,20 +149,33 @@ pub struct ClapConfig {
     #[clap(verbatim_doc_comment, long, requires = "hsm_slot")]
     pub hsm_password: Vec<String>,
 
-    /// The non-revocable keys ID used for demo purposes
+    /// Force all keys imported or created in the KMS, which are not protected by a key encryption key,
+    /// to be wrapped by the specified key encryption key (KEK)
+    pub key_encryption_key: Option<String>,
+
+    /// The non-revocable key ID used for demo purposes
     #[clap(long, hide = true)]
     pub non_revocable_key_id: Option<Vec<String>>,
 
     #[clap(verbatim_doc_comment, long, env = "KMS_PUBLIC_URL")]
     pub kms_public_url: Option<String>,
+
+    /// List of users who have the right to create and import Objects
+    /// and grant access rights for Create Kmip Operation.
+    /// If not set, all users can create and import objects in the KMS (default).
+    #[clap(long, verbatim_doc_comment)]
+    pub privileged_users: Option<Vec<String>>,
 }
 
 impl ClapConfig {
+    /// Load the configuration from the default configuration file
+    ///
     /// # Errors
-    /// Fails if the configuration file is not found or if the configuration file is not valid
-    /// or if the configuration file cannot be read
-    /// or if the configuration file cannot be parsed
-    /// or if the configuration file is not a valid toml file
+    /// Fails if the configuration file is not found,
+    /// or if the configuration file is not valid,
+    /// or if the configuration file cannot be read,
+    /// or if the configuration file cannot be parsed,
+    /// or if the configuration file is not a valid TOML file.
     #[allow(clippy::print_stdout)] // Logging is not being initialized yet, just use standard prints
     pub fn load_from_file() -> KResult<Self> {
         let conf = std::env::var("COSMIAN_KMS_CONF").map_or_else(
@@ -152,8 +186,9 @@ impl ClapConfig {
                     conf_path
                 } else {
                     println!(
-                        "WARNING: Configuration file {conf_path:?} not found. Fallback to the \
-                         default path: {DEFAULT_COSMIAN_KMS_CONF}"
+                        "WARNING: Configuration file {} not found. Fallback to the default path: \
+                         {DEFAULT_COSMIAN_KMS_CONF}",
+                        conf_path.display()
                     );
                     // fallback to the default path
                     PathBuf::from(DEFAULT_COSMIAN_KMS_CONF)
@@ -165,24 +200,28 @@ impl ClapConfig {
             drop(Self::parse()); // Do that do catch --help or --version even if we use a conf file
 
             println!(
-                "Configuration file {conf:?} found. Command line arguments and env variables are \
-                 ignored."
+                "Configuration file {} found. Command line arguments and env variables are \
+                 ignored.",
+                conf.display()
             );
 
             let conf_content = std::fs::read_to_string(&conf).map_err(|e| {
                 KmsError::ServerError(format!(
-                    "Cannot read KMS server config at: {conf:?} - {e:?}"
+                    "Cannot read KMS server config at: {} - {e:?}",
+                    conf.display()
                 ))
             })?;
             toml::from_str(&conf_content).map_err(|e| {
                 KmsError::ServerError(format!(
-                    "Cannot parse kms server config at: {conf:?} - {e:?}"
+                    "Cannot parse kms server config at: {} - {e:?}",
+                    conf.display()
                 ))
             })?
         } else {
             println!(
-                "WARNING: Configuration file {conf:?} not found. Using command line arguments and \
-                 env variables."
+                "WARNING: Configuration file {} not found. Using command line arguments and env \
+                 variables.",
+                conf.display()
             );
             Self::parse()
         };
@@ -197,6 +236,13 @@ impl fmt::Debug for ClapConfig {
         let x = x.field("db", &self.db);
         let x = if self.auth.jwt_issuer_uri.is_some() {
             x.field("auth", &self.auth)
+        } else {
+            x
+        };
+        let x = x.field("socket server", &self.socket_server);
+        let x = x.field("TLS", &self.tls);
+        let x = if self.socket_server.socket_server_start {
+            x.field("socket server", &self.socket_server)
         } else {
             x
         };
@@ -224,7 +270,7 @@ impl fmt::Debug for ClapConfig {
             "Microsoft Double Key Encryption URL",
             &self.ms_dke_service_url,
         );
-        let x = x.field("telemetry", &self.telemetry);
+        let x = x.field("telemetry", &self.logging);
         let x = x.field("info", &self.info);
         let x = x.field("HSM admin username", &self.hsm_admin);
         let x = x.field(
@@ -244,7 +290,10 @@ impl fmt::Debug for ClapConfig {
                 .map(|_| "********")
                 .collect::<Vec<&str>>(),
         );
+        let x = x.field("key wrapping key", &self.key_encryption_key);
         let x = x.field("non_revocable_key_id", &self.non_revocable_key_id);
+        let x = x.field("privileged_users", &self.privileged_users);
+
         x.finish()
     }
 }

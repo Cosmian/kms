@@ -1,5 +1,5 @@
-mod http_params;
 mod server_params;
+mod tls_params;
 
-pub use http_params::HttpParams;
 pub use server_params::ServerParams;
+pub use tls_params::TlsParams;

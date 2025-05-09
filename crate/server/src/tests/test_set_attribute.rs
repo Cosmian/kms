@@ -26,14 +26,15 @@
 use std::{collections::HashSet, sync::Arc};
 
 use cosmian_crypto_core::{
-    reexport::rand_core::{RngCore, SeedableRng},
     CsRng,
+    reexport::rand_core::{RngCore, SeedableRng},
 };
 use cosmian_kmip::kmip_2_1::{
+    kmip_attributes::{Attribute, Attributes},
     kmip_operations::{DeleteAttribute, GetAttributes, GetAttributesResponse, SetAttribute},
     kmip_types::{
-        Attribute, AttributeReference, CryptographicAlgorithm, Link, LinkType,
-        LinkedObjectIdentifier, Tag, UniqueIdentifier,
+        AttributeReference, CryptographicAlgorithm, Link, LinkType, LinkedObjectIdentifier, Tag,
+        UniqueIdentifier,
     },
     requests::create_symmetric_key_kmip_object,
 };
@@ -50,7 +51,7 @@ async fn get_attributes(kms: &Arc<KMS>, uid: &str, tag: Tag) -> KResult<GetAttri
     kms.get_attributes(
         GetAttributes {
             unique_identifier: Some(UniqueIdentifier::TextString(uid.to_owned())),
-            attribute_references: Some(vec![AttributeReference::Standard(tag)]),
+            attribute_reference: Some(vec![AttributeReference::Standard(tag)]),
         },
         USER,
         None,
@@ -78,10 +79,10 @@ async fn delete_attribute(kms: &Arc<KMS>, delete_request: DeleteAttribute) -> KR
 
 #[tokio::test]
 pub(crate) async fn test_set_attribute_server() -> KResult<()> {
-    log_init(None);
+    log_init(option_env!("RUST_LOG"));
 
     let clap_config = https_clap_config();
-    let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
+    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
 
     let mut rng = CsRng::from_entropy();
 
@@ -90,8 +91,10 @@ pub(crate) async fn test_set_attribute_server() -> KResult<()> {
     rng.fill_bytes(&mut symmetric_key);
     let sym_key_object = create_symmetric_key_kmip_object(
         symmetric_key.as_slice(),
-        CryptographicAlgorithm::AES,
-        false,
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Attributes::default()
+        },
     )?;
     let uid = Uuid::new_v4().to_string();
 
@@ -173,14 +176,14 @@ async fn set_link_attribute_and_remove_it(
     let get_response = get_attributes(kms, uid, tag).await?;
     assert!(get_response.attributes.link.is_none());
 
-    let links = vec![Link {
+    let link = Link {
         link_type,
         linked_object_identifier: LinkedObjectIdentifier::TextString("my_link".to_owned()),
-    }];
-    set_attribute(kms, uid, Attribute::Links(links.clone())).await?;
+    };
+    set_attribute(kms, uid, Attribute::Link(link.clone())).await?;
 
     let get_response = get_attributes(kms, uid, tag).await?;
-    assert_eq!(get_response.attributes.link, Some(links));
+    assert_eq!(get_response.attributes.link, Some(vec![link]));
 
     kms.delete_attribute(
         DeleteAttribute {

@@ -1,11 +1,15 @@
 use std::sync::Arc;
 
-use cosmian_cover_crypt::{api::Covercrypt, MasterSecretKey};
+use cosmian_cover_crypt::{MasterSecretKey, api::Covercrypt};
 use cosmian_crypto_core::bytes_ser_de::Serializable;
-use cosmian_kmip::kmip_2_1::{
-    kmip_objects::{Object, ObjectType},
-    kmip_operations::{Create, Import},
-    kmip_types::{Attributes, KeyFormatType, StateEnumeration, UniqueIdentifier},
+use cosmian_kmip::{
+    kmip_0::kmip_types::State,
+    kmip_2_1::{
+        kmip_attributes::Attributes,
+        kmip_objects::{Object, ObjectType},
+        kmip_operations::{Create, Import},
+        kmip_types::{KeyFormatType, UniqueIdentifier},
+    },
 };
 use cosmian_kms_crypto::crypto::cover_crypt::{
     attributes::access_policy_from_attributes, master_keys::create_msk_object,
@@ -27,6 +31,7 @@ pub(crate) async fn create_user_decryption_key(
     owner: &str,
     params: Option<Arc<dyn SessionParams>>,
     sensitive: bool,
+    privileged_users: Option<Vec<String>>,
 ) -> KResult<Object> {
     let msk_uid_or_tags = create_request
         .attributes
@@ -44,7 +49,7 @@ pub(crate) async fn create_user_decryption_key(
         .await?
         .into_values()
     {
-        if owm.state() != StateEnumeration::Active {
+        if owm.state() != State::Active {
             continue;
         }
 
@@ -83,7 +88,7 @@ pub(crate) async fn create_user_decryption_key(
         };
 
         kmip_server
-            .import(import_request, owner, params.clone())
+            .import(import_request, owner, params.clone(), privileged_users)
             .await?;
 
         return Ok(usk_obj);
@@ -107,11 +112,11 @@ fn create_user_decryption_key_(
         ));
     }
 
-    let mut msk = MasterSecretKey::deserialize(&owm.object().key_block()?.key_bytes()?)?;
+    let mut msk = MasterSecretKey::deserialize(&owm.object().key_block()?.covercrypt_key_bytes()?)?;
     let mut usk_handler = UserDecryptionKeysHandler::instantiate(cover_crypt, &mut msk);
 
     let usk_obj = usk_handler
-        .create_usk_object(access_policy, Some(create_attributes), owm.id())
+        .create_usk_object(access_policy, create_attributes, owm.id())
         .map_err(KmsError::from)?;
 
     let msk_bytes = msk.serialize()?;

@@ -3,9 +3,9 @@ use std::{
     fmt,
 };
 
-use cosmian_kmip::kmip_2_1::{
-    KmipOperation,
-    kmip_types::{Attributes, StateEnumeration, UniqueIdentifier},
+use cosmian_kmip::{
+    kmip_0::kmip_types::State,
+    kmip_2_1::{KmipOperation, kmip_attributes::Attributes, kmip_types::UniqueIdentifier},
 };
 use serde::{Deserialize, Serialize};
 
@@ -44,7 +44,7 @@ pub struct UserAccessResponse {
 #[derive(Deserialize, Serialize, Debug)] // Debug is required by ok_json()
 pub struct ObjectOwnedResponse {
     pub object_id: UniqueIdentifier,
-    pub state: StateEnumeration,
+    pub state: State,
     pub attributes: Attributes,
 }
 impl fmt::Display for ObjectOwnedResponse {
@@ -60,8 +60,8 @@ impl fmt::Display for ObjectOwnedResponse {
         )
     }
 }
-impl From<(String, StateEnumeration, Attributes)> for ObjectOwnedResponse {
-    fn from(e: (String, StateEnumeration, Attributes)) -> Self {
+impl From<(String, State, Attributes)> for ObjectOwnedResponse {
+    fn from(e: (String, State, Attributes)) -> Self {
         Self {
             object_id: UniqueIdentifier::TextString(e.0),
             state: e.1,
@@ -73,7 +73,7 @@ impl From<(String, StateEnumeration, Attributes)> for ObjectOwnedResponse {
 pub struct AccessRightsObtainedResponse {
     pub object_id: UniqueIdentifier,
     pub owner_id: String,
-    pub state: StateEnumeration,
+    pub state: State,
     pub operations: HashSet<KmipOperation>,
 }
 impl fmt::Display for AccessRightsObtainedResponse {
@@ -85,10 +85,8 @@ impl fmt::Display for AccessRightsObtainedResponse {
         )
     }
 }
-impl From<(String, (String, StateEnumeration, HashSet<KmipOperation>))>
-    for AccessRightsObtainedResponse
-{
-    fn from(e: (String, (String, StateEnumeration, HashSet<KmipOperation>))) -> Self {
+impl From<(String, (String, State, HashSet<KmipOperation>))> for AccessRightsObtainedResponse {
+    fn from(e: (String, (String, State, HashSet<KmipOperation>))) -> Self {
         Self {
             object_id: UniqueIdentifier::TextString(e.0),
             owner_id: e.1.0,
@@ -101,4 +99,14 @@ impl From<(String, (String, StateEnumeration, HashSet<KmipOperation>))>
 #[derive(Deserialize, Serialize, Debug)] // Debug is required by ok_json()
 pub struct SuccessResponse {
     pub success: String,
+}
+
+#[derive(Serialize)]
+pub struct CreatePermissionResponse {
+    pub has_create_permission: bool,
+}
+
+#[derive(Serialize)]
+pub struct PrivilegedAccessResponse {
+    pub has_privileged_access: bool,
 }

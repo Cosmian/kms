@@ -6,9 +6,9 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use pkcs11_sys::{CKR_OK, CK_INFO};
+use cosmian_pkcs11_sys::{CK_INFO, CKR_OK};
 
-use crate::{hsm_lib::HsmLib, HError, HResult, SlotManager};
+use crate::{HError, HResult, SlotManager, hsm_lib::HsmLib};
 
 struct SlotState {
     password: Option<String>,

@@ -94,9 +94,7 @@ impl JwtConfig {
             alcoholic_jwt::Validation::NotExpired,
         ];
         if let Some(jwt_audience) = &self.jwt_audience {
-            validations.push(alcoholic_jwt::Validation::Audience(
-                jwt_audience.to_string(),
-            ));
+            validations.push(alcoholic_jwt::Validation::Audience(jwt_audience.clone()));
         }
 
         // If a JWKS contains multiple keys, the correct KID first

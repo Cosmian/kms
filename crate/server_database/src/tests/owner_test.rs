@@ -1,13 +1,15 @@
 use std::{collections::HashSet, sync::Arc};
 
 use cosmian_crypto_core::{
-    reexport::rand_core::{RngCore, SeedableRng},
     CsRng,
+    reexport::rand_core::{RngCore, SeedableRng},
 };
-use cosmian_kmip::kmip_2_1::{
-    kmip_types::{CryptographicAlgorithm, StateEnumeration},
-    requests::create_symmetric_key_kmip_object,
-    KmipOperation,
+use cosmian_kmip::{
+    kmip_0::kmip_types::State,
+    kmip_2_1::{
+        KmipOperation, kmip_attributes::Attributes, kmip_types::CryptographicAlgorithm,
+        requests::create_symmetric_key_kmip_object,
+    },
 };
 use cosmian_kms_interfaces::{ObjectsStore, PermissionsStore, SessionParams};
 use uuid::Uuid;
@@ -26,8 +28,13 @@ pub(crate) async fn owner<DB: ObjectsStore + PermissionsStore>(
     let user_id_2 = "user_id_2@example.org";
     let mut symmetric_key_bytes = vec![0; 32];
     rng.fill_bytes(&mut symmetric_key_bytes);
-    let symmetric_key =
-        create_symmetric_key_kmip_object(&symmetric_key_bytes, CryptographicAlgorithm::AES, false)?;
+    let symmetric_key = create_symmetric_key_kmip_object(
+        &symmetric_key_bytes,
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Attributes::default()
+        },
+    )?;
     let uid = Uuid::new_v4().to_string();
 
     db.create(
@@ -54,8 +61,8 @@ pub(crate) async fn owner<DB: ObjectsStore + PermissionsStore>(
         .retrieve(&uid, db_params.clone())
         .await?
         .ok_or_else(|| db_error!("Object not found"))?;
-    assert_eq!(StateEnumeration::Active, obj.state());
-    assert!(&symmetric_key == obj.object());
+    assert_eq!(State::Active, obj.state());
+    assert_eq!(&symmetric_key, obj.object());
     assert_eq!(owner, obj.owner());
 
     // Grant `Get` operation to `userid 1`
@@ -106,7 +113,7 @@ pub(crate) async fn owner<DB: ObjectsStore + PermissionsStore>(
     assert_eq!(objects.len(), 1);
     let (o_uid, o_state, _) = &objects[0];
     assert_eq!(o_uid, &uid);
-    assert_eq!(o_state, &StateEnumeration::Active);
+    assert_eq!(o_state, &State::Active);
 
     // We should not be able to find the object by specifying  that user_id_2 is the owner
     let objects = db
@@ -121,7 +128,7 @@ pub(crate) async fn owner<DB: ObjectsStore + PermissionsStore>(
         objects[&uid],
         (
             String::from(owner),
-            StateEnumeration::Active,
+            State::Active,
             vec![KmipOperation::Get].into_iter().collect(),
         )
     );

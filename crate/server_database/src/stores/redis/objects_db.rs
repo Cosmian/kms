@@ -5,24 +5,25 @@ use std::{
 
 use async_trait::async_trait;
 use cloudproof_findex::{
-    implementations::redis::{FindexRedisError, RemovedLocationsFinder},
     Keyword, Location,
+    implementations::redis::{FindexRedisError, RemovedLocationsFinder},
 };
 use cosmian_crypto_core::{
-    reexport::rand_core::SeedableRng, Aes256Gcm, CsRng, Dem, Instantiable, Nonce,
-    RandomFixedSizeCBytes, SymmetricKey,
+    Aes256Gcm, CsRng, Dem, Instantiable, Nonce, RandomFixedSizeCBytes, SymmetricKey,
+    reexport::rand_core::SeedableRng,
 };
 use cosmian_kmip::{
-    kmip_2_1::{
-        kmip_objects::{Object, ObjectType},
-        kmip_types::{Attributes, StateEnumeration},
-    },
     KmipResultHelper,
+    kmip_0::kmip_types::State,
+    kmip_2_1::{
+        kmip_attributes::Attributes,
+        kmip_objects::{Object, ObjectType},
+    },
 };
-use redis::{aio::ConnectionManager, pipe, AsyncCommands};
+use redis::{AsyncCommands, aio::ConnectionManager, pipe};
 use serde::{Deserialize, Serialize};
 
-use crate::{db_bail, error::DbResult, DbError};
+use crate::{DbError, db_bail, error::DbResult};
 
 /// Extract the keywords from the attributes
 pub(crate) fn keywords_from_attributes(attributes: &Attributes) -> HashSet<Keyword> {
@@ -38,11 +39,9 @@ pub(crate) fn keywords_from_attributes(attributes: &Attributes) -> HashSet<Keywo
     }
     if let Some(links) = &attributes.link {
         for link in links {
-            match serde_json::to_vec(link) {
-                Ok(bytes) => keywords.insert(Keyword::from(bytes.as_slice())),
-                // ignore malformed links (this should never be possible)
-                Err(_) => continue,
-            };
+            if let Ok(bytes) = serde_json::to_vec(link) {
+                keywords.insert(Keyword::from(bytes.as_slice()));
+            }
         }
     }
     keywords
@@ -57,7 +56,7 @@ pub(crate) struct RedisDbObject {
     #[serde(rename = "w")]
     pub(crate) owner: String,
     #[serde(rename = "s")]
-    pub(crate) state: StateEnumeration,
+    pub(crate) state: State,
     #[serde(rename = "l")]
     pub(crate) tags: Option<HashSet<String>>,
     // We use and Option and skip[ serializing for ascending compatibility
@@ -70,7 +69,7 @@ impl RedisDbObject {
     pub(crate) const fn new(
         object: Object,
         owner: String,
-        state: StateEnumeration,
+        state: State,
         tags: Option<HashSet<String>>,
         attributes: Attributes,
     ) -> Self {
@@ -208,8 +207,7 @@ impl ObjectsDB {
         if ciphertext.is_empty() {
             return Ok(None)
         }
-        let mut dbo: RedisDbObject = self.decrypt_object(uid, &ciphertext)?;
-        dbo.object = Object::post_fix(dbo.object_type, dbo.object);
+        let dbo: RedisDbObject = self.decrypt_object(uid, &ciphertext)?;
         Ok(Some(dbo))
     }
 
@@ -233,8 +231,7 @@ impl ObjectsDB {
             if ciphertext.is_empty() {
                 continue
             }
-            let mut dbo: RedisDbObject = self.decrypt_object(uid, &ciphertext)?;
-            dbo.object = Object::post_fix(dbo.object_type, dbo.object);
+            let dbo: RedisDbObject = self.decrypt_object(uid, &ciphertext)?;
             results.insert(uid.to_string(), dbo);
         }
         Ok(results)
@@ -290,18 +287,6 @@ impl ObjectsDB {
         }
         pipeline.query_async::<_, ()>(&mut self.mgr.clone()).await?;
         Ok(res)
-    }
-
-    /// Clear all data
-    ///
-    /// # Warning
-    /// This is definitive
-    #[cfg(test)]
-    pub(crate) async fn clear_all(&self) -> DbResult<()> {
-        redis::cmd("FLUSHDB")
-            .query_async::<_, ()>(&mut self.mgr.clone())
-            .await?;
-        Ok(())
     }
 }
 

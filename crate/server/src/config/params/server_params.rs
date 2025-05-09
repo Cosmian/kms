@@ -1,19 +1,20 @@
-use std::{collections::HashMap, fmt, path::PathBuf};
+use std::{collections::HashMap, fmt, path::PathBuf, time::Duration};
 
 use cosmian_kms_server_database::MainDbParams;
-use openssl::x509::X509;
 use tracing::{debug, warn};
 
-use super::HttpParams;
+use super::TlsParams;
 use crate::{
     config::{ClapConfig, DEFAULT_COSMIAN_UI_DIST_PATH, IdpConfig, OidcConfig},
-    kms_bail,
-    result::KResult,
+    error::KmsError,
+    result::{KResult, KResultHelper},
 };
 
 /// This structure is the context used by the server
 /// while it is running. There is a singleton instance
 /// shared between all threads.
+#[allow(clippy::struct_excessive_bools)]
+#[derive(Default)]
 pub struct ServerParams {
     /// The JWT Config if Auth is enabled
     pub identity_provider_configurations: Option<Vec<IdpConfig>>,
@@ -21,7 +22,7 @@ pub struct ServerParams {
     /// The UI distribution folder
     pub ui_index_html_folder: PathBuf,
 
-    /// The OIDC config used to handle login from UI
+    /// The OIDC config used to handle login from the UI
     pub ui_oidc_auth: OidcConfig,
 
     /// The username to use if no authentication method is provided
@@ -37,33 +38,45 @@ pub struct ServerParams {
     /// Whether to clear the database on start
     pub clear_db_on_start: bool,
 
-    pub hostname: String,
+    /// The maximum age of unwrapped objects in the cache
+    pub unwrapped_cache_max_age: Duration,
 
-    pub port: u16,
+    /// Whether the socket server should be started
+    pub start_socket_server: bool,
 
-    pub http_params: HttpParams,
+    /// The socket server hostname
+    pub socket_server_hostname: String,
+
+    /// The socket server port
+    pub socket_server_port: u16,
+
+    /// The TLS parameters of the server
+    pub tls_params: Option<TlsParams>,
 
     /// The public URL of the exposed KMS server
     pub kms_public_url: Option<String>,
 
-    /// The certificate used to verify the client TLS certificates
-    /// used for authentication
-    pub authority_cert_file: Option<X509>,
+    /// The hostname of the HTTP server
+    pub http_hostname: String,
 
-    /// The API authentication token used both server and client side
+    /// The port of the HTTP server
+    pub http_port: u16,
+
+    /// The API authentication token is used on both the server and client sides
     pub api_token_id: Option<String>,
 
     /// This setting enables the Google Workspace Client Side Encryption feature of this KMS server.
     ///
-    /// It should contain the external URL of this server as configured in Google Workspace client side encryption settings
-    /// For instance, if this server is running on domain `cse.my_domain.com`,
-    /// the URL should be something like <https://cse.my_domain.com/google_cse>
+    /// It should contain the external URL of this server as configured in Google Workspace client-side encryption settings.
+    /// For instance, if this server is running on the domain `cse.my_domain.com`,
+    /// The URL should be something like <https://cse.my_domain.com/google_cse>
     pub google_cse_kacls_url: Option<String>,
 
-    /// This setting disables the validation of the tokens used by the Google Workspace CSE feature of this server.
+    /// This setting turns off the validation of the tokens
+    /// used by this server's Google Workspace CSE feature.
     pub google_cse_disable_tokens_validation: bool,
 
-    /// This setting enables the Microsoft Double Key Encryption service feature of this server.
+    /// This setting enables this server's Microsoft Double Key Encryption service feature.
     ///
     /// It should contain the external URL of this server as configured in
     /// App Registrations of Azure as the DKE Service.
@@ -82,13 +95,20 @@ pub struct ServerParams {
     /// HSM slot passwords number
     pub slot_passwords: HashMap<usize, Option<String>>,
 
-    /// The non-revocable keys ID used for demo purposes
+    /// The Key Wrapping Key, if any
+    pub key_wrapping_key: Option<String>,
+
+    /// The non-revocable key ID used for demo purposes
     pub non_revocable_key_id: Option<Vec<String>>,
+
+    /// Users who have initial rights to create and grant access rights for Create Kmip Operation
+    /// If None, all users can create and grant create access rights.
+    pub privileged_users: Option<Vec<String>>,
 }
 
 /// Represents the server parameters.
 impl ServerParams {
-    /// Tries to create a `ServerParams` instance from the given `ClapConfig`.
+    /// Tries to create a `ServerParams` instance from `ClapConfig`.
     ///
     /// # Arguments
     ///
@@ -120,51 +140,48 @@ impl ServerParams {
             );
         }
 
-        let http_params = HttpParams::try_from(&conf.http)?;
-
-        // Should we verify the client TLS certificates?
-        let authority_cert_file = conf
-            .http
-            .authority_cert_file
-            .map(|cert_file| {
-                if http_params.is_running_https() {
-                    Self::load_cert(&cert_file)
-                } else {
-                    kms_bail!(
-                        "The authority certificate file can only be used when the server is \
-                         running in HTTPS mode"
-                    )
-                }
-            })
-            .transpose()?;
+        let tls_params =
+            TlsParams::try_from(&conf.tls, &conf.http).context("failed to create TLS params")?;
 
         let slot_passwords: HashMap<usize, Option<String>> = conf
             .hsm_slot
             .iter()
             .zip(&conf.hsm_password)
             .map(|(s, p)| {
-                let password = if p.is_empty() {
-                    None
-                } else {
-                    Some(p.to_string())
-                };
+                let password = if p.is_empty() { None } else { Some(p.clone()) };
                 (*s, password)
             })
             .collect();
 
         let res = Self {
-            identity_provider_configurations: conf.auth.extract_idp_configs()?,
+            identity_provider_configurations: conf
+                .auth
+                .extract_idp_configs()
+                .context("failed initializing IdPs")?,
             ui_index_html_folder,
             ui_oidc_auth: conf.ui_config.ui_oidc_auth,
-            main_db_params: Some(conf.db.init(&conf.workspace.init()?)?),
+            main_db_params: Some(
+                conf.db
+                    .init(&conf.workspace.init().context("failed to init workspace")?)
+                    .context("failed to init DB")?,
+            ),
             clear_db_on_start: conf.db.clear_database,
-            hostname: conf.http.hostname,
-            port: conf.http.port,
+            unwrapped_cache_max_age: if conf.db.unwrapped_cache_max_age == 0 {
+                return Err(KmsError::NotSupported(
+                    "unwrapped_cache_max_age must be greater than 0".to_owned(),
+                ));
+            } else {
+                Duration::from_secs(conf.db.unwrapped_cache_max_age * 60)
+            },
+            start_socket_server: conf.socket_server.socket_server_start,
+            socket_server_hostname: conf.socket_server.socket_server_hostname,
+            socket_server_port: conf.socket_server.socket_server_port,
+            http_hostname: conf.http.hostname,
+            http_port: conf.http.port,
+            tls_params,
             kms_public_url: conf.kms_public_url,
-            http_params,
             default_username: conf.default_username,
             force_default_username: conf.force_default_username,
-            authority_cert_file,
             api_token_id: conf.http.api_token_id,
             google_cse_disable_tokens_validation: conf.google_cse_disable_tokens_validation,
             google_cse_kacls_url: conf.google_cse_kacls_url,
@@ -176,144 +193,71 @@ impl ServerParams {
                 Some(conf.hsm_model)
             },
             slot_passwords,
+            key_wrapping_key: conf.key_encryption_key,
             non_revocable_key_id: conf.non_revocable_key_id,
+            privileged_users: conf.privileged_users,
         };
         debug!("try_from: server_params: {res:#?}");
 
         Ok(res)
     }
-
-    /// Loads the certificate from the given file path.
-    ///
-    /// # Arguments
-    ///
-    /// * `authority_cert_file` - The path to the authority certificate file.
-    ///
-    /// # Returns
-    ///
-    /// Returns a `KResult` containing the loaded `X509` certificate if successful, or an error if the loading fails.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the certificate file cannot be read or if the parsing of the certificate fails.
-    fn load_cert(authority_cert_file: &PathBuf) -> KResult<X509> {
-        // Open and read the file into a byte vector
-        let pem_bytes = std::fs::read(authority_cert_file)?;
-
-        // Parse the byte vector as a X509 object
-        let x509 = X509::from_pem(pem_bytes.as_slice())?;
-        Ok(x509)
-    }
 }
 
 impl fmt::Debug for ServerParams {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut x = f.debug_struct("");
-        let x = x
-            .field(
-                "kms_url",
-                &format!(
-                    "http{}://{}:{}",
-                    if self.http_params.is_running_https() {
-                        "s"
-                    } else {
-                        ""
-                    },
-                    &self.hostname,
-                    &self.port
-                ),
-            )
-            .field("db_params", &self.main_db_params)
-            .field("clear_db_on_start", &self.clear_db_on_start);
-        let x = if let Some(identity_provider_configurations) =
-            &self.identity_provider_configurations
-        {
-            x.field(
-                "identity_provider_configurations",
-                &identity_provider_configurations,
-            )
-        } else {
-            x
-        };
-        let x = x.field("kms_public_url", &self.kms_public_url);
-        let x = x.field("ui_index_html_folder", &self.ui_index_html_folder);
-        let x = x.field("ui_oidc_auth", &self.ui_oidc_auth);
-        let x = if let Some(verify_cert) = &self.authority_cert_file {
-            x.field("verify_cert CN", verify_cert.subject_name())
-        } else {
-            x
-        };
-        let x = x
-            .field("default_username", &self.default_username)
-            .field("force_default_username", &self.force_default_username);
-        let x = x.field("http_params", &self.http_params);
-        let x = x.field(
-            "google_cse_disable_tokens_validation",
-            &self.google_cse_disable_tokens_validation,
-        );
-        let x = if let Some(google_cse_kacls_url) = &self.google_cse_kacls_url {
-            x.field("google_cse_kacls_url", &google_cse_kacls_url)
-        } else {
-            x
-        };
-        let x = x.field("ms_dke_service_url", &self.ms_dke_service_url);
-        let x = x.field("api_token_id", &self.api_token_id);
-        let x = x.field("HSM_username", &self.hsm_admin);
-        let x = x.field(
-            "hsm_model",
-            if self.slot_passwords.is_empty() {
-                &"NO HSM"
-            } else {
-                &self.hsm_model
-            },
-        );
-        let x = x.field(
-            "slot_passwords",
-            &self
-                .slot_passwords
-                .iter()
-                .map(|(s, p)| {
-                    let p = if p.is_some() { "********" } else { "" };
-                    format!("{s} -> {p}")
-                })
-                .collect::<Vec<String>>(),
-        );
-        let x = x.field("non_revocable_key_id", &self.non_revocable_key_id);
-        x.finish()
-    }
-}
+        let mut debug_struct = f.debug_struct("ServerParams");
 
-/// Creates a partial clone of the `ServerParams`
-/// the `DbParams`, PKCS#12 information and Proteccio password are not copied
-/// since it may contain sensitive material
-impl Clone for ServerParams {
-    fn clone(&self) -> Self {
-        Self {
-            identity_provider_configurations: self.identity_provider_configurations.clone(),
-            ui_index_html_folder: self.ui_index_html_folder.clone(),
-            ui_oidc_auth: self.ui_oidc_auth.clone(),
-            default_username: self.default_username.clone(),
-            force_default_username: self.force_default_username,
-            main_db_params: None,
-            clear_db_on_start: self.clear_db_on_start,
-            hostname: self.hostname.clone(),
-            port: self.port,
-            kms_public_url: self.kms_public_url.clone(),
-            http_params: HttpParams::Http,
-            authority_cert_file: self.authority_cert_file.clone(),
-            api_token_id: self.api_token_id.clone(),
-            google_cse_disable_tokens_validation: self.google_cse_disable_tokens_validation,
-            google_cse_kacls_url: self.google_cse_kacls_url.clone(),
-            ms_dke_service_url: self.ms_dke_service_url.clone(),
-            hsm_admin: self.hsm_admin.clone(),
-            hsm_model: self.hsm_model.clone(),
-            slot_passwords: self
-                .slot_passwords
-                .clone()
-                .into_keys()
-                .map(|s| (s, None))
-                .collect(),
-            non_revocable_key_id: self.non_revocable_key_id.clone(),
+        // Add all fields systematically
+        debug_struct
+            .field(
+                "identity_provider_configurations",
+                &self.identity_provider_configurations,
+            )
+            .field("default_username", &self.default_username)
+            .field("force_default_username", &self.force_default_username)
+            .field("main_db_params", &self.main_db_params)
+            .field("clear_db_on_start", &self.clear_db_on_start)
+            .field("unwrapped_cache_max_age", &self.unwrapped_cache_max_age)
+            .field("non_revocable_key_id", &self.non_revocable_key_id);
+
+        if self.start_socket_server {
+            debug_struct
+                .field("socket_server_hostname", &self.socket_server_hostname)
+                .field("socket_server_port", &self.socket_server_port);
+        } else {
+            debug_struct.field("socket_server", &"disabled");
         }
+
+        debug_struct
+            .field("tls_params", &self.tls_params)
+            .field("api_token_id", &self.api_token_id)
+            .field("google_cse_kacls_url", &self.google_cse_kacls_url)
+            .field(
+                "google_cse_disable_tokens_validation",
+                &self.google_cse_disable_tokens_validation,
+            )
+            .field("ms_dke_service_url", &self.ms_dke_service_url);
+
+        if self.hsm_model.is_some() {
+            debug_struct
+                .field("hsm_admin", &self.hsm_admin)
+                .field("hsm_model", &self.hsm_model);
+        } else {
+            debug_struct.field("hsm_model", &"no HSM configured");
+        }
+
+        debug_struct.field(
+            "kms_url",
+            &format!(
+                "http{}://{}:{}",
+                if self.tls_params.is_some() { "s" } else { "" },
+                &self.http_hostname,
+                &self.http_port
+            ),
+        );
+        debug_struct.field("non_revocable_key_id", &self.non_revocable_key_id);
+        debug_struct.field("privileged_users", &self.privileged_users);
+
+        debug_struct.finish_non_exhaustive()
     }
 }

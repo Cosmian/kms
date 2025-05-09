@@ -1,23 +1,23 @@
 use std::{collections::HashSet, sync::Arc};
 
 use async_recursion::async_recursion;
-use cosmian_kmip::kmip_2_1::{
-    kmip_objects::ObjectType,
-    kmip_operations::{ErrorReason, Revoke, RevokeResponse},
-    kmip_types::{
-        KeyFormatType, LinkType, RevocationReason, RevocationReasonEnumeration, StateEnumeration,
-        UniqueIdentifier,
+use cosmian_kmip::{
+    kmip_0::kmip_types::{ErrorReason, RevocationReason, RevocationReasonCode, State},
+    kmip_2_1::{
+        KmipOperation,
+        kmip_objects::ObjectType,
+        kmip_operations::{Revoke, RevokeResponse},
+        kmip_types::{KeyFormatType, LinkType, UniqueIdentifier},
     },
-    KmipOperation,
 };
 use cosmian_kms_interfaces::SessionParams;
-use tracing::{debug, trace};
+use tracing::{debug, info, trace};
 
 use crate::{
     core::{
+        KMS,
         cover_crypt::revoke_user_decryption_keys,
         uid_utils::{has_prefix, uids_from_unique_identifier},
-        KMS,
     },
     error::KmsError,
     kms_bail,
@@ -71,7 +71,7 @@ pub(crate) async fn revoke_operation(
 pub(crate) async fn recursively_revoke_key(
     unique_identifier: &UniqueIdentifier,
     revocation_reason: RevocationReason,
-    compromise_occurrence_date: Option<u64>,
+    compromise_occurrence_date: Option<i64>,
     kms: &KMS,
     user: &str,
     params: Option<Arc<dyn SessionParams>>,
@@ -103,7 +103,7 @@ pub(crate) async fn recursively_revoke_key(
             }
             if kms
                 .database
-                .update_state(&uid, StateEnumeration::Deactivated, params.clone())
+                .update_state(&uid, State::Deactivated, params.clone())
                 .await
                 .is_ok()
             {
@@ -124,7 +124,7 @@ pub(crate) async fn recursively_revoke_key(
         };
 
         let object_type = owm.object().object_type();
-        if owm.state() != StateEnumeration::Active && owm.state() != StateEnumeration::PreActive {
+        if owm.state() != State::Active && owm.state() != State::PreActive {
             continue
         }
         if object_type != ObjectType::PrivateKey
@@ -179,7 +179,8 @@ pub(crate) async fn recursively_revoke_key(
                 // revoke any linked public key
                 if let Some(public_key_id) = owm
                     .object()
-                    .attributes()?
+                    .attributes()
+                    .unwrap_or_else(|_| owm.attributes())
                     .get_link(LinkType::PublicKeyLink)
                     .map(|l| l.to_string())
                 {
@@ -212,7 +213,8 @@ pub(crate) async fn recursively_revoke_key(
                 // revoke any linked private key
                 if let Some(private_key_id) = owm
                     .object()
-                    .attributes()?
+                    .attributes()
+                    .unwrap_or_else(|_| owm.attributes())
                     .get_link(LinkType::PrivateKeyLink)
                     .map(|l| l.to_string())
                 {
@@ -243,16 +245,17 @@ pub(crate) async fn recursively_revoke_key(
                 "revoke operation is not supported for object type {x:?}"
             ))),
         }
-        debug!(
-            "Object type: {}, with unique identifier: {}, revoked by user {}",
+
+        info!(
+            uid = owm.id(),
+            user = user,
+            "Revoked object type: {}",
             owm.object().object_type(),
-            owm.id(),
-            user
         );
     }
 
     if count == 0 {
-        return Err(KmsError::KmipError(
+        return Err(KmsError::Kmip21Error(
             ErrorReason::Item_Not_Found,
             unique_identifier.to_string(),
         ))
@@ -266,29 +269,24 @@ pub(crate) async fn recursively_revoke_key(
 async fn revoke_key_core(
     unique_identifier: &str,
     revocation_reason: RevocationReason,
-    compromise_occurrence_date: Option<u64>,
+    compromise_occurrence_date: Option<i64>,
     kms: &KMS,
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<()> {
-    let state = match revocation_reason {
-        RevocationReason::Enumeration(e) => match e {
-            RevocationReasonEnumeration::Unspecified
-            | RevocationReasonEnumeration::AffiliationChanged
-            | RevocationReasonEnumeration::Superseded
-            | RevocationReasonEnumeration::CessationOfOperation
-            | RevocationReasonEnumeration::PrivilegeWithdrawn => StateEnumeration::Deactivated,
-            RevocationReasonEnumeration::KeyCompromise
-            | RevocationReasonEnumeration::CACompromise => {
-                if compromise_occurrence_date.is_none() {
-                    kms_bail!(KmsError::InvalidRequest(
-                        "A compromise date must be supplied in case of compromised object"
-                            .to_owned()
-                    ))
-                }
-                StateEnumeration::Compromised
+    let state = match revocation_reason.revocation_reason_code {
+        RevocationReasonCode::Unspecified
+        | RevocationReasonCode::AffiliationChanged
+        | RevocationReasonCode::Superseded
+        | RevocationReasonCode::CessationOfOperation
+        | RevocationReasonCode::PrivilegeWithdrawn => State::Deactivated,
+        RevocationReasonCode::KeyCompromise | RevocationReasonCode::CACompromise => {
+            if compromise_occurrence_date.is_none() {
+                kms_bail!(KmsError::InvalidRequest(
+                    "A compromise date must be supplied in case of compromised object".to_owned()
+                ))
             }
-        },
-        RevocationReason::TextString(_) => StateEnumeration::Deactivated,
+            State::Compromised
+        }
     };
     kms.database
         .update_state(unique_identifier, state, params)

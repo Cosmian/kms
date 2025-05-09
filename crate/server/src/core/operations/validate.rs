@@ -1,35 +1,34 @@
 use std::{
     collections::{HashMap, HashSet},
     fs, path,
-    sync::Arc,
+    sync::{Arc, LazyLock},
 };
 
 use cosmian_kmip::kmip_2_1::{
-    kmip_objects::Object,
+    KmipOperation,
+    kmip_objects::{Certificate, Object},
     kmip_operations::{Validate, ValidateResponse},
     kmip_types::{UniqueIdentifier, ValidityIndicator},
-    KmipOperation,
 };
 use cosmian_kms_interfaces::SessionParams;
 use openssl::{
     asn1::Asn1Time,
     stack::Stack,
     x509::{
-        store::X509StoreBuilder, CrlStatus, DistPointNameRef, DistPointRef, GeneralNameRef,
-        X509Crl, X509StoreContext, X509,
+        CrlStatus, DistPointNameRef, DistPointRef, GeneralNameRef, X509, X509Crl, X509StoreContext,
+        store::X509StoreBuilder,
     },
 };
 use tracing::{debug, trace, warn};
 
 use crate::{
-    core::{retrieve_object_utils::retrieve_object_for_operation, KMS},
+    core::{KMS, retrieve_object_utils::retrieve_object_for_operation},
     error::KmsError,
     result::KResult,
 };
 
-lazy_static::lazy_static! {
-    static ref CRL_CACHE_MAP: tokio::sync::RwLock<HashMap<String, Vec<u8>>> = tokio::sync::RwLock::new(HashMap::new());
-}
+static CRL_CACHE_MAP: LazyLock<tokio::sync::RwLock<HashMap<String, Vec<u8>>>> =
+    LazyLock::new(|| tokio::sync::RwLock::new(HashMap::new()));
 
 /// This operation requests the server to validate a certificate chain and return
 /// information on its validity.
@@ -649,10 +648,10 @@ async fn certificate_by_uid(
     )
     .await?;
 
-    if let Object::Certificate {
+    if let Object::Certificate(Certificate {
         certificate_type: _,
         certificate_value,
-    } = uid_owm.object()
+    }) = uid_owm.object()
     {
         Ok(certificate_value.clone())
     } else {

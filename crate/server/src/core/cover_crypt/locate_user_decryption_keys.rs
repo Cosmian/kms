@@ -1,19 +1,22 @@
 use std::sync::Arc;
 
 use cosmian_cover_crypt::QualifiedAttribute;
-use cosmian_kmip::kmip_2_1::{
-    kmip_objects::ObjectType,
-    kmip_operations::Locate,
-    kmip_types::{
-        Attributes, CryptographicAlgorithm, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
-        StateEnumeration,
+use cosmian_kmip::{
+    kmip_0::kmip_types::State,
+    kmip_2_1::{
+        kmip_attributes::Attributes,
+        kmip_objects::ObjectType,
+        kmip_operations::Locate,
+        kmip_types::{
+            CryptographicAlgorithm, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
+        },
     },
 };
 use cosmian_kms_crypto::crypto::cover_crypt::attributes::qualified_attributes_as_vendor_attributes;
 use cosmian_kms_interfaces::SessionParams;
 
 use crate::{
-    core::{operations, KMS},
+    core::{KMS, operations},
     result::KResult,
 };
 
@@ -23,7 +26,7 @@ pub(crate) async fn locate_usk(
     kmip_server: &KMS,
     master_secret_key_uid: &str,
     cover_crypt_policy_attributes_to_revoke: Option<Vec<QualifiedAttribute>>,
-    state: Option<StateEnumeration>,
+    state: Option<State>,
     owner: &str,
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<Option<Vec<String>>> {

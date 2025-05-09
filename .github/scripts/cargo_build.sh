@@ -8,15 +8,17 @@ set -ex
 # export TARGET=aarch64-apple-darwin
 # export DEBUG_OR_RELEASE=debug
 # export OPENSSL_DIR=/usr/local/openssl
-# export SKIP_SERVICES_TESTS="--skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse --skip hsm"
+# export SKIP_SERVICES_TESTS="--skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse --skip hsm --skip pykmip"
 # export FEATURES="fips"
 
 ROOT_FOLDER=$(pwd)
 
-if [ "$DEBUG_OR_RELEASE" = "release" ]; then
-  # Build the UI in release mode
+# Build the UI in release mode
+if [ -f /etc/lsb-release ]; then
   bash .github/scripts/build_ui.sh
+fi
 
+if [ "$DEBUG_OR_RELEASE" = "release" ]; then
   # First build the Debian and RPM packages. It must come at first since
   # after this step `cosmian` and `cosmian_kms` are built with custom features flags (fips for example).
   rm -rf target/"$TARGET"/debian
@@ -97,17 +99,17 @@ fi
 find . -type d -name cosmian-kms -exec rm -rf \{\} \; -print || true
 rm -f /tmp/*.toml
 
-export RUST_LOG="cosmian_cli=debug,cosmian_kms_server=info,cosmian_kmip=error,test_kms_server=info"
+export RUST_LOG="cosmian_cli=info,cosmian_kms_server=error,cosmian_kmip=error,test_kms_server=trace"
 
 # shellcheck disable=SC2086
 cargo build --target $TARGET $RELEASE $FEATURES
 
-declare -a DATABASES=('redis-findex' 'sqlite' 'sqlite-enc' 'postgresql' 'mysql')
+declare -a DATABASES=('redis-findex' 'sqlite' 'postgresql' 'mysql')
 for KMS_TEST_DB in "${DATABASES[@]}"; do
   echo "Database KMS: $KMS_TEST_DB"
 
   # for now, discard tests on postgresql and mysql
-  if [ "$KMS_TEST_DB" = "sqlite-enc" ] || [ "$KMS_TEST_DB" = "postgresql" ] || [ "$KMS_TEST_DB" = "mysql" ]; then
+  if [ "$KMS_TEST_DB" = "postgresql" ] || [ "$KMS_TEST_DB" = "mysql" ]; then
     continue
   fi
 
@@ -123,7 +125,17 @@ for KMS_TEST_DB in "${DATABASES[@]}"; do
 
   export KMS_TEST_DB="$KMS_TEST_DB"
   # shellcheck disable=SC2086
-  cargo test --workspace --lib --target $TARGET $RELEASE $FEATURES -- --nocapture $SKIP_SERVICES_TESTS
+  cargo test --workspace --lib --target $TARGET $RELEASE $FEATURES \
+    --exclude cosmian_kms_client_utils \
+    --exclude cosmian_findex_client \
+    --exclude cosmian_gui \
+    --exclude cosmian_kms_client \
+    --exclude cosmian_pkcs11_module \
+    --exclude cosmian_pkcs11 \
+    --exclude test_findex_server \
+    --exclude test_kms_server \
+    --exclude cosmian_kms_client_wasm \
+    -- --nocapture $SKIP_SERVICES_TESTS
 done
 
 # shellcheck disable=SC2086

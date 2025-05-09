@@ -2,6 +2,9 @@ mod clap_config;
 mod db;
 mod http_config;
 mod jwt_auth_config;
+mod logging;
+mod socket_server_config;
+mod tls_config;
 mod ui_config;
 mod workspace;
 
@@ -9,5 +12,8 @@ pub use clap_config::ClapConfig;
 pub use db::{DEFAULT_SQLITE_PATH, MainDBConfig};
 pub use http_config::HttpConfig;
 pub use jwt_auth_config::JwtAuthConfig;
+pub use logging::LoggingConfig;
+pub use socket_server_config::SocketServerConfig;
+pub use tls_config::TlsConfig;
 pub use ui_config::{DEFAULT_COSMIAN_UI_DIST_PATH, OidcConfig, UiConfig};
 pub use workspace::WorkspaceConfig;

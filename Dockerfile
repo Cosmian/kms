@@ -1,9 +1,9 @@
 #
 # KMS server
 #
-FROM rust:1.85.0-bookworm AS builder
+FROM rust:1.86.0-bookworm AS builder
 
-LABEL version="4.24.0"
+LABEL version="5.0.0"
 LABEL name="Cosmian KMS docker container"
 
 ENV OPENSSL_DIR=/usr/local/openssl
@@ -31,15 +31,12 @@ RUN if [ "$FIPS" = "true" ]; then \
 #
 # KMS server
 #
-FROM debian:bookworm-slim AS kms-server
+FROM debian:bookworm-20250428-slim AS kms-server
 
 COPY --from=builder /root/kms/crate/server/ui                   /usr/local/cosmian/ui
 COPY --from=builder /root/kms/target/release/cosmian_kms        /usr/bin/cosmian_kms
 COPY --from=builder /root/kms/target/release/cosmian            /usr/bin/cosmian
 COPY --from=builder /usr/local/openssl                          /usr/local/openssl
-#
-# Create working directory
-#
 
 EXPOSE 9998
 

@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
 use cosmian_kmip::kmip_2_1::{
-    kmip_operations::{Export, ExportResponse},
     KmipOperation,
+    kmip_operations::{Export, ExportResponse},
 };
 use cosmian_kms_interfaces::SessionParams;
 use tracing::trace;
 
 use crate::{
-    core::{operations::export_get, KMS},
+    core::{KMS, operations::export_get},
     result::KResult,
 };
 
@@ -25,5 +25,12 @@ pub(crate) async fn export(
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<ExportResponse> {
     trace!("Export: {}", serde_json::to_string(&request)?);
-    export_get(kms, request, KmipOperation::Export, user, params).await
+    Box::pin(export_get(
+        kms,
+        request,
+        KmipOperation::Export,
+        user,
+        params,
+    ))
+    .await
 }

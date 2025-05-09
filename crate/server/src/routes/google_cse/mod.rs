@@ -2,9 +2,8 @@ use core::fmt;
 use std::sync::Arc;
 
 use actix_web::{
-    get, post,
+    HttpRequest, HttpResponse, ResponseError, get, post,
     web::{Data, Json},
-    HttpRequest, HttpResponse, ResponseError,
 };
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info, trace};
@@ -14,7 +13,7 @@ use crate::{core::KMS, error::KmsError, result::KResult};
 mod jwt;
 pub mod operations;
 
-pub use jwt::{jwt_authorization_config, list_jwks_uri, GoogleCseConfig};
+pub use jwt::{GoogleCseConfig, jwt_authorization_config, list_jwks_uri};
 
 use self::operations::{
     DigestRequest, PrivilegedPrivateKeyDecryptRequest, PrivilegedUnwrapRequest,

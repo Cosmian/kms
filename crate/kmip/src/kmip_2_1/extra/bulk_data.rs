@@ -4,9 +4,9 @@ use tracing::trace;
 use zeroize::Zeroizing;
 
 use crate::{
-    error::{result::KmipResult, KmipError},
-    kmip_2_1::kmip_operations::ErrorReason,
     Deserializer, Serializer,
+    error::{KmipError, result::KmipResult},
+    kmip_0::kmip_types::ErrorReason,
 };
 
 /// Bulk Data is a structure that holds a list of zeroizing byte arrays
@@ -42,7 +42,7 @@ impl BulkData {
     pub fn deserialize(serialized: &[u8]) -> Result<Self, KmipError> {
         if !Self::is_bulk_data(serialized) {
             trace!("Not a BulkData");
-            return Err(KmipError::InvalidKmipObject(
+            return Err(KmipError::InvalidKmip21Object(
                 ErrorReason::Illegal_Object_Type,
                 "Not a BulkData".to_owned(),
             ));

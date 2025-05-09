@@ -1,22 +1,27 @@
 use std::{cmp::min, collections::HashSet, default::Default, sync::Arc};
 
 #[cfg(feature = "fips")]
+use cosmian_kmip::kmip_0::kmip_types::CryptographicUsageMask;
+#[cfg(feature = "fips")]
 use cosmian_kmip::kmip_2_1::extra::fips::{
     FIPS_PRIVATE_ECC_MASK_ECDH, FIPS_PRIVATE_ECC_MASK_SIGN, FIPS_PRIVATE_ECC_MASK_SIGN_ECDH,
     FIPS_PRIVATE_RSA_MASK, FIPS_PUBLIC_ECC_MASK_ECDH, FIPS_PUBLIC_ECC_MASK_SIGN,
     FIPS_PUBLIC_ECC_MASK_SIGN_ECDH, FIPS_PUBLIC_RSA_MASK,
 };
 #[cfg(feature = "fips")]
-use cosmian_kmip::kmip_2_1::kmip_types::{CryptographicAlgorithm, CryptographicUsageMask};
-use cosmian_kmip::kmip_2_1::{
-    extra::{VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
-    kmip_objects::{Object, ObjectType},
-    kmip_operations::{Certify, CertifyResponse, CreateKeyPair},
-    kmip_types::{
-        Attributes, CertificateRequestType, KeyFormatType, LinkType, LinkedObjectIdentifier,
-        StateEnumeration, UniqueIdentifier,
+use cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm;
+use cosmian_kmip::{
+    kmip_0::kmip_types::State,
+    kmip_2_1::{
+        KmipOperation,
+        kmip_attributes::Attributes,
+        kmip_objects::{Object, ObjectType},
+        kmip_operations::{Certify, CertifyResponse, CreateKeyPair},
+        kmip_types::{
+            CertificateRequestType, KeyFormatType, LinkType, LinkedObjectIdentifier,
+            UniqueIdentifier,
+        },
     },
-    KmipOperation,
 };
 use cosmian_kms_crypto::openssl::{
     certificate_attributes_to_subject_name, kmip_certificate_to_openssl,
@@ -29,22 +34,22 @@ use openssl::{
     hash::MessageDigest,
     pkey::Id,
     sha::Sha1,
-    x509::{X509Req, X509},
+    x509::{X509, X509Req},
 };
 use tracing::{debug, info, trace};
 
 use crate::{
     core::{
+        KMS,
         certificate::retrieve_issuer_private_key_and_certificate,
         operations::{
             certify::{
                 issuer::Issuer,
                 subject::{KeyPairData, Subject},
             },
-            create_key_pair::generate_key_pair_and_tags,
+            create_key_pair::generate_key_pair,
         },
-        retrieve_object_utils::retrieve_object_for_operation,
-        KMS,
+        retrieve_object_utils::{retrieve_object_for_operation, user_has_permission},
     },
     error::KmsError,
     kms_bail,
@@ -64,6 +69,7 @@ pub(crate) async fn certify(
     request: Certify,
     user: &str,
     params: Option<Arc<dyn SessionParams>>,
+    privileged_users: Option<Vec<String>>,
 ) -> KResult<CertifyResponse> {
     trace!("Certify: {}", serde_json::to_string(&request)?);
     if request.protection_storage_masks.is_some() {
@@ -74,7 +80,7 @@ pub(crate) async fn certify(
     // generate_x509(get_issuer(get_subject)))
     // The code below could be rewritten in a more functional way
     // but this would require manipulating some sort of Monad Transformer
-    let subject = get_subject(kms, &request, user, params.clone()).await?;
+    let subject = get_subject(kms, &request, user, params.clone(), privileged_users).await?;
     trace!("Subject name: {:?}", subject.subject_name());
     let issuer = get_issuer(&subject, kms, &request, user, params.clone()).await?;
     trace!("Issuer Subject name: {:?}", issuer.subject_name());
@@ -91,7 +97,7 @@ pub(crate) async fn certify(
                         certificate,
                         attributes,
                         Some(tags),
-                        StateEnumeration::Active,
+                        State::Active,
                     )),
                 ],
                 unique_identifier,
@@ -126,7 +132,7 @@ pub(crate) async fn certify(
                         certificate,
                         certificate_attributes,
                         Some(tags),
-                        StateEnumeration::Active,
+                        State::Active,
                     )),
                     // update the public key
                     AtomicOperation::UpdateObject((
@@ -186,7 +192,7 @@ pub(crate) async fn certify(
                         keypair_data.private_key_object.clone(),
                         keypair_data.private_key_object.attributes()?.clone(),
                         Some(keypair_data.private_key_tags),
-                        StateEnumeration::Active,
+                        State::Active,
                     )),
                     // upsert the public key
                     AtomicOperation::Upsert((
@@ -194,7 +200,7 @@ pub(crate) async fn certify(
                         keypair_data.public_key_object.clone(),
                         keypair_data.public_key_object.attributes()?.clone(),
                         Some(keypair_data.public_key_tags),
-                        StateEnumeration::Active,
+                        State::Active,
                     )),
                     // upsert the certificate
                     AtomicOperation::Upsert((
@@ -202,7 +208,7 @@ pub(crate) async fn certify(
                         certificate,
                         certificate_attributes,
                         Some(tags),
-                        StateEnumeration::Active,
+                        State::Active,
                     )),
                 ],
                 unique_identifier,
@@ -261,6 +267,7 @@ async fn get_subject(
     request: &Certify,
     user: &str,
     params: Option<Arc<dyn SessionParams>>,
+    privileged_users: Option<Vec<String>>,
 ) -> KResult<Subject> {
     // Did the user provide a CSR?
     if let Some(pkcs10_bytes) = request.certificate_request_value.as_ref() {
@@ -291,7 +298,7 @@ async fn get_subject(
             KmipOperation::Certify,
             kms,
             user,
-            params,
+            params.clone(),
         )
         .await
         {
@@ -347,6 +354,25 @@ async fn get_subject(
     }
 
     // If we do not have a public key, we need to create a key pair
+
+    // For creation of an object, check that user has create access-right
+    if let Some(users) = privileged_users {
+        let has_permission = user_has_permission(
+            user,
+            None,
+            &cosmian_kmip::kmip_2_1::KmipOperation::Create,
+            kms,
+            params,
+        )
+        .await?;
+
+        if !has_permission && !users.iter().any(|u| u == user) {
+            kms_bail!(KmsError::Unauthorized(
+                "User does not have create access-right.".to_owned()
+            ))
+        }
+    }
+
     let sk_uid = UniqueIdentifier::default();
     let pk_uid = UniqueIdentifier::default();
     // We expect the attributes to contain the cryptographic algorithm and parameters
@@ -382,7 +408,7 @@ async fn get_subject(
         public_key_attributes: public_attributes,
     };
     info!("Creating key pair for certification - private key: {sk_uid}, public key: {pk_uid}");
-    let (key_pair, sk_tags, pk_tags) = generate_key_pair_and_tags(
+    let key_pair = generate_key_pair(
         create_key_pair_request,
         &sk_uid.to_string(),
         &pk_uid.to_string(),
@@ -394,10 +420,10 @@ async fn get_subject(
         KeyPairData {
             private_key_id: sk_uid,
             private_key_object: key_pair.private_key().to_owned(),
-            private_key_tags: sk_tags,
+            private_key_tags: key_pair.private_key().attributes()?.get_tags(),
             public_key_id: pk_uid,
             public_key_object: key_pair.public_key().to_owned(),
-            public_key_tags: pk_tags,
+            public_key_tags: key_pair.public_key().attributes()?.get_tags(),
         },
         subject_name,
     ))
@@ -576,6 +602,8 @@ fn build_and_sign_certificate(
     debug!("Building and signing certificate");
     // recover the attributes
     let mut attributes = request.attributes.unwrap_or_default();
+    // Set the object type
+    attributes.object_type = Some(ObjectType::Certificate);
 
     // remove any link that helped identify the issuer
     // these will be properly re-added later
@@ -595,8 +623,7 @@ fn build_and_sign_certificate(
     // Create a new Asn1Time object for the current time
     let now = Asn1Time::days_from_now(0).context("could not get a date in ASN.1")?;
     // retrieve the number of days for the validity of the certificate
-    let mut number_of_days =
-        u32::try_from(attributes.extract_requested_validity_days()?.unwrap_or(365))?;
+    let mut number_of_days = u32::try_from(attributes.remove_validity_days().unwrap_or(365))?;
     trace!("Number of days: {}", number_of_days);
 
     // the number of days cannot exceed that of the issuer certificate
@@ -620,11 +647,10 @@ fn build_and_sign_certificate(
 
     // Extensions supplied using an extension attribute
     // This requires knowing the issuer certificate
-    if let Some(extensions) =
-        attributes.get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_X509_EXTENSION)
-    {
-        let extensions_as_str = String::from_utf8(extensions.to_vec())?;
+    if let Some(extensions) = attributes.remove_x509_extension_file() {
+        let extensions_as_str = String::from_utf8(extensions)?;
         debug!("OpenSSL Extensions: {}", extensions_as_str);
+        // Create a new X509V3Context object for the issuer certificate
         let context = x509_builder.x509v3_context(issuer.certificate(), None);
         x509_extensions::parse_v3_ca_from_str(&extensions_as_str, &context)?
             .into_iter()
@@ -670,7 +696,7 @@ fn build_and_sign_certificate(
 
     // Add certificate attributes
     let certificate_attributes = openssl_x509_to_certificate_attributes(&x509);
-    attributes.certificate_attributes = Some(Box::new(certificate_attributes));
+    attributes.certificate_attributes = Some(certificate_attributes);
 
     Ok((
         openssl_certificate_to_kmip(&x509).map_err(KmsError::from)?,

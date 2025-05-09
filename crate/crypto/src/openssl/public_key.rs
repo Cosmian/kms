@@ -1,12 +1,15 @@
-use cosmian_kmip::kmip_2_1::{
-    kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-    kmip_objects::{Object, ObjectType},
-    kmip_types::{
-        Attributes, CryptographicAlgorithm, CryptographicDomainParameters, CryptographicUsageMask,
-        KeyFormatType, RecommendedCurve,
+use cosmian_kmip::{
+    kmip_0::kmip_types::CryptographicUsageMask,
+    kmip_2_1::{
+        kmip_attributes::Attributes,
+        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+        kmip_objects::{Object, ObjectType, PublicKey},
+        kmip_types::{
+            CryptographicAlgorithm, CryptographicDomainParameters, KeyFormatType, RecommendedCurve,
+        },
     },
 };
-use num_bigint_dig::BigUint;
+use num_bigint_dig::{BigInt, Sign};
 use openssl::{
     bn::{BigNum, BigNumContext},
     ec::{EcGroup, EcKey, EcPoint, PointConversionForm},
@@ -19,7 +22,7 @@ use zeroize::Zeroizing;
 
 use crate::{
     crypto_bail, crypto_error,
-    error::{result::CryptoResultHelper, CryptoError},
+    error::{CryptoError, result::CryptoResultHelper},
 };
 
 /// Convert a KMIP Public key to openssl `PKey<Public>`
@@ -55,87 +58,105 @@ use crate::{
 pub fn kmip_public_key_to_openssl(public_key: &Object) -> Result<PKey<Public>, CryptoError> {
     trace!("kmip_public_key_to_openssl: {}", public_key);
     let key_block = match public_key {
-        Object::PublicKey { key_block } => key_block,
+        Object::PublicKey(PublicKey { key_block }) => key_block,
         x => crypto_bail!("Invalid Object: {}. KMIP Public Key expected", x),
     };
     // Convert the key to the default storage format: SPKI DER (RFC 5480)
     let pk: PKey<Public> = match key_block.key_format_type {
         KeyFormatType::PKCS1 => {
-            let key_bytes = key_block.key_bytes()?;
+            let key_bytes = key_block.pkcs_der_bytes()?;
             // parse the RSA public key to make sure it is correct
             let rsa_public_key = Rsa::public_key_from_der_pkcs1(&key_bytes)?;
             PKey::from_rsa(rsa_public_key)?
         }
         // This really is a SPKI as specified by RFC 5480
         KeyFormatType::PKCS8 => {
-            let key_bytes = key_block.key_bytes()?;
+            let key_bytes = key_block.pkcs_der_bytes()?;
             // This key may be an RSA or EC key
             PKey::public_key_from_der(&key_bytes)?
         }
-        KeyFormatType::TransparentRSAPublicKey => match &key_block.key_value.key_material {
-            KeyMaterial::TransparentRSAPublicKey {
-                modulus,
-                public_exponent,
-            } => {
-                trace!("Key format type: TransparentRSAPublicKey");
-                let rsa_public_key = Rsa::from_public_components(
-                    BigNum::from_slice(&modulus.to_bytes_be())?,
-                    BigNum::from_slice(&public_exponent.to_bytes_be())?,
-                )?;
-                trace!("Key format type: convert Rsa<Public> openssl object");
-                PKey::from_rsa(rsa_public_key)?
+        KeyFormatType::TransparentRSAPublicKey => {
+            let Some(KeyValue::Structure { key_material, .. }) = key_block.key_value.as_ref()
+            else {
+                return Err(CryptoError::Default(
+                    "Key value not found in Transparent RSA public key".to_owned(),
+                ));
+            };
+            match key_material {
+                KeyMaterial::TransparentRSAPublicKey {
+                    modulus,
+                    public_exponent,
+                } => {
+                    trace!("Key format type: TransparentRSAPublicKey");
+                    let rsa_public_key = Rsa::from_public_components(
+                        BigNum::from_slice(&modulus.to_bytes_be().1)?,
+                        BigNum::from_slice(&public_exponent.to_bytes_be().1)?,
+                    )?;
+                    trace!("Key format type: convert Rsa<Public> openssl object");
+                    PKey::from_rsa(rsa_public_key)?
+                }
+                invalid_key_material => crypto_bail!(
+                    "Invalid Transparent RSA public key material: expected \
+                     TransparentRSAPublicKey but got: {} ",
+                    invalid_key_material
+                ),
             }
-            invalid_key_material => crypto_bail!(
-                "Invalid Transparent RSA public key material: expected TransparentRSAPublicKey \
-                 but got: {} ",
-                invalid_key_material
-            ),
-        },
-        KeyFormatType::TransparentECPublicKey => match &key_block.key_value.key_material {
-            KeyMaterial::TransparentECPublicKey {
-                recommended_curve,
-                q_string,
-            } => match recommended_curve {
-                // P-CURVES
-                #[cfg(not(feature = "fips"))]
-                RecommendedCurve::P192 => {
-                    ec_public_key_from_point_encoding(q_string, Nid::X9_62_PRIME192V1)?
-                }
-                RecommendedCurve::P224 => {
-                    ec_public_key_from_point_encoding(q_string, Nid::SECP224R1)?
-                }
-                RecommendedCurve::P256 => {
-                    ec_public_key_from_point_encoding(q_string, Nid::X9_62_PRIME256V1)?
-                }
-                RecommendedCurve::P384 => {
-                    ec_public_key_from_point_encoding(q_string, Nid::SECP384R1)?
-                }
-                RecommendedCurve::P521 => {
-                    ec_public_key_from_point_encoding(q_string, Nid::SECP521R1)?
-                }
+        }
+        KeyFormatType::TransparentECPublicKey => {
+            let Some(KeyValue::Structure { key_material, .. }) = key_block.key_value.as_ref()
+            else {
+                return Err(CryptoError::Default(
+                    "Key value not found in ransparent EC public key".to_owned(),
+                ));
+            };
+            match key_material {
+                KeyMaterial::TransparentECPublicKey {
+                    recommended_curve,
+                    q_string,
+                } => match recommended_curve {
+                    // P-CURVES
+                    #[cfg(not(feature = "fips"))]
+                    RecommendedCurve::P192 => {
+                        ec_public_key_from_point_encoding(q_string, Nid::X9_62_PRIME192V1)?
+                    }
+                    RecommendedCurve::P224 => {
+                        ec_public_key_from_point_encoding(q_string, Nid::SECP224R1)?
+                    }
+                    RecommendedCurve::P256 => {
+                        ec_public_key_from_point_encoding(q_string, Nid::X9_62_PRIME256V1)?
+                    }
+                    RecommendedCurve::P384 => {
+                        ec_public_key_from_point_encoding(q_string, Nid::SECP384R1)?
+                    }
+                    RecommendedCurve::P521 => {
+                        ec_public_key_from_point_encoding(q_string, Nid::SECP521R1)?
+                    }
 
-                RecommendedCurve::CURVE25519 => {
-                    PKey::public_key_from_raw_bytes(q_string, Id::X25519)?
-                }
-                RecommendedCurve::CURVE448 => PKey::public_key_from_raw_bytes(q_string, Id::X448)?,
-                RecommendedCurve::CURVEED25519 => {
-                    PKey::public_key_from_raw_bytes(q_string, Id::ED25519)?
-                }
-                RecommendedCurve::CURVEED448 => {
-                    PKey::public_key_from_raw_bytes(q_string, Id::ED448)?
-                }
-                unsupported_curve => {
-                    crypto_bail!(
-                        "Unsupported curve: {:?} for a Transparent EC Public Key",
-                        unsupported_curve
-                    )
-                }
-            },
-            _ => crypto_bail!(
-                "Invalid key material for a Transparent EC public key format: \
-                 TransparentECPublicKey expected"
-            ),
-        },
+                    RecommendedCurve::CURVE25519 => {
+                        PKey::public_key_from_raw_bytes(q_string, Id::X25519)?
+                    }
+                    RecommendedCurve::CURVE448 => {
+                        PKey::public_key_from_raw_bytes(q_string, Id::X448)?
+                    }
+                    RecommendedCurve::CURVEED25519 => {
+                        PKey::public_key_from_raw_bytes(q_string, Id::ED25519)?
+                    }
+                    RecommendedCurve::CURVEED448 => {
+                        PKey::public_key_from_raw_bytes(q_string, Id::ED448)?
+                    }
+                    unsupported_curve => {
+                        crypto_bail!(
+                            "Unsupported curve: {:?} for a Transparent EC Public Key",
+                            unsupported_curve
+                        )
+                    }
+                },
+                _ => crypto_bail!(
+                    "Invalid key material for a Transparent EC public key format: \
+                     TransparentECPublicKey expected"
+                ),
+            }
+        }
         f => crypto_bail!(
             "Unsupported key format type: {f:?}, for transforming a {} to openssl",
             public_key.object_type()
@@ -185,7 +206,7 @@ pub fn openssl_public_key_to_kmip(
             let cryptographic_length = Some(i32::try_from(rsa_public_key.size())? * 8);
             KeyBlock {
                 key_format_type,
-                key_value: KeyValue {
+                key_value: Some(KeyValue::Structure {
                     key_material: KeyMaterial::ByteString(Zeroizing::from(
                         rsa_public_key.public_key_to_der_pkcs1()?,
                     )),
@@ -197,7 +218,7 @@ pub fn openssl_public_key_to_kmip(
                         cryptographic_usage_mask,
                         ..Attributes::default()
                     }),
-                },
+                }),
                 cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                 cryptographic_length,
                 key_wrapping_data: None,
@@ -215,7 +236,7 @@ pub fn openssl_public_key_to_kmip(
             };
             KeyBlock {
                 key_format_type,
-                key_value: KeyValue {
+                key_value: Some(KeyValue::Structure {
                     key_material: KeyMaterial::ByteString(spki_der),
                     attributes: Some(Attributes {
                         cryptographic_algorithm,
@@ -225,7 +246,7 @@ pub fn openssl_public_key_to_kmip(
                         cryptographic_usage_mask,
                         ..Attributes::default()
                     }),
-                },
+                }),
                 cryptographic_algorithm,
                 cryptographic_length,
                 key_wrapping_data: None,
@@ -238,10 +259,14 @@ pub fn openssl_public_key_to_kmip(
                 .context("The public key is not an openssl RSA public key")?;
             KeyBlock {
                 key_format_type,
-                key_value: KeyValue {
+                key_value: Some(KeyValue::Structure {
                     key_material: KeyMaterial::TransparentRSAPublicKey {
-                        modulus: Box::new(BigUint::from_bytes_be(&rsa_public_key.n().to_vec())),
-                        public_exponent: Box::new(BigUint::from_bytes_be(
+                        modulus: Box::new(BigInt::from_bytes_be(
+                            Sign::Plus,
+                            &rsa_public_key.n().to_vec(),
+                        )),
+                        public_exponent: Box::new(BigInt::from_bytes_be(
+                            Sign::Plus,
                             &rsa_public_key.e().to_vec(),
                         )),
                     },
@@ -253,7 +278,7 @@ pub fn openssl_public_key_to_kmip(
                         cryptographic_usage_mask,
                         ..Attributes::default()
                     }),
-                },
+                }),
                 cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                 cryptographic_length,
                 key_wrapping_data: None,
@@ -294,7 +319,7 @@ pub fn openssl_public_key_to_kmip(
                     };
                     KeyBlock {
                         key_format_type,
-                        key_value: KeyValue {
+                        key_value: Some(KeyValue::Structure {
                             key_material: KeyMaterial::TransparentECPublicKey {
                                 recommended_curve,
                                 q_string: point_encoding,
@@ -313,7 +338,7 @@ pub fn openssl_public_key_to_kmip(
                                 cryptographic_usage_mask,
                                 ..Attributes::default()
                             }),
-                        },
+                        }),
                         cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
                         cryptographic_length,
                         key_wrapping_data: None,
@@ -324,7 +349,7 @@ pub fn openssl_public_key_to_kmip(
                     let q_string = public_key.raw_public_key()?;
                     KeyBlock {
                         key_format_type,
-                        key_value: KeyValue {
+                        key_value: Some(KeyValue::Structure {
                             key_material: KeyMaterial::TransparentECPublicKey {
                                 recommended_curve: RecommendedCurve::CURVE25519,
                                 q_string,
@@ -343,7 +368,7 @@ pub fn openssl_public_key_to_kmip(
                                 cryptographic_usage_mask,
                                 ..Attributes::default()
                             }),
-                        },
+                        }),
                         cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
                         cryptographic_length,
                         key_wrapping_data: None,
@@ -354,7 +379,7 @@ pub fn openssl_public_key_to_kmip(
                     let q_string = public_key.raw_public_key()?;
                     KeyBlock {
                         key_format_type,
-                        key_value: KeyValue {
+                        key_value: Some(KeyValue::Structure {
                             key_material: KeyMaterial::TransparentECPublicKey {
                                 recommended_curve: RecommendedCurve::CURVEED25519,
                                 q_string,
@@ -373,7 +398,7 @@ pub fn openssl_public_key_to_kmip(
                                 cryptographic_usage_mask,
                                 ..Attributes::default()
                             }),
-                        },
+                        }),
                         cryptographic_algorithm: Some(CryptographicAlgorithm::Ed25519),
                         cryptographic_length,
                         key_wrapping_data: None,
@@ -384,7 +409,7 @@ pub fn openssl_public_key_to_kmip(
                     let q_string = public_key.raw_public_key()?;
                     KeyBlock {
                         key_format_type,
-                        key_value: KeyValue {
+                        key_value: Some(KeyValue::Structure {
                             key_material: KeyMaterial::TransparentECPublicKey {
                                 recommended_curve: RecommendedCurve::CURVE448,
                                 q_string,
@@ -403,7 +428,7 @@ pub fn openssl_public_key_to_kmip(
                                 cryptographic_usage_mask,
                                 ..Attributes::default()
                             }),
-                        },
+                        }),
                         cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
                         cryptographic_length,
                         key_wrapping_data: None,
@@ -414,7 +439,7 @@ pub fn openssl_public_key_to_kmip(
                     let q_string = public_key.raw_public_key()?;
                     KeyBlock {
                         key_format_type,
-                        key_value: KeyValue {
+                        key_value: Some(KeyValue::Structure {
                             key_material: KeyMaterial::TransparentECPublicKey {
                                 recommended_curve: RecommendedCurve::CURVEED448,
                                 q_string,
@@ -433,7 +458,7 @@ pub fn openssl_public_key_to_kmip(
                                 cryptographic_usage_mask,
                                 ..Attributes::default()
                             }),
-                        },
+                        }),
                         cryptographic_algorithm: Some(CryptographicAlgorithm::Ed448),
                         cryptographic_length,
                         key_wrapping_data: None,
@@ -450,21 +475,21 @@ pub fn openssl_public_key_to_kmip(
         }
     };
 
-    Ok(Object::PublicKey { key_block })
+    Ok(Object::PublicKey(PublicKey { key_block }))
 }
 
 #[allow(clippy::unwrap_used, clippy::panic, clippy::as_conversions)]
 #[cfg(test)]
 mod tests {
+    #[cfg(not(feature = "fips"))]
+    use cosmian_kmip::kmip_0::kmip_types::CryptographicUsageMask;
     #[cfg(feature = "fips")]
     use cosmian_kmip::kmip_2_1::extra::fips::{
         FIPS_PUBLIC_ECC_MASK_SIGN_ECDH, FIPS_PUBLIC_RSA_MASK,
     };
-    #[cfg(not(feature = "fips"))]
-    use cosmian_kmip::kmip_2_1::kmip_types::CryptographicUsageMask;
     use cosmian_kmip::kmip_2_1::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-        kmip_objects::Object,
+        kmip_objects::{Object, PublicKey},
         kmip_types::{KeyFormatType, RecommendedCurve},
     };
     use openssl::{
@@ -491,15 +516,15 @@ mod tests {
         // SPKI (== KMIP PKCS#8)
         let object = openssl_public_key_to_kmip(public_key, kft, mask).unwrap();
         let object_ = object.clone();
-        let Object::PublicKey { key_block } = object else {
+        let Object::PublicKey(PublicKey { key_block }) = object else {
             panic!("Invalid key block")
         };
         let KeyBlock {
             key_value:
-                KeyValue {
+                Some(KeyValue::Structure {
                     key_material: KeyMaterial::ByteString(key_value),
                     ..
-                },
+                }),
             ..
         } = key_block
         else {
@@ -555,19 +580,19 @@ mod tests {
             openssl_public_key_to_kmip(public_key, KeyFormatType::TransparentRSAPublicKey, mask)
                 .unwrap();
         let object_ = object.clone();
-        let Object::PublicKey { key_block } = object else {
+        let Object::PublicKey(PublicKey { key_block }) = object else {
             panic!("Invalid key block")
         };
         let KeyBlock {
             key_value:
-                KeyValue {
+                Some(KeyValue::Structure {
                     key_material:
                         KeyMaterial::TransparentRSAPublicKey {
                             modulus,
                             public_exponent,
                         },
                     ..
-                },
+                }),
             ..
         } = key_block
         else {
@@ -575,8 +600,8 @@ mod tests {
         };
         let public_key_ = PKey::from_rsa(
             Rsa::from_public_components(
-                BigNum::from_slice(&modulus.to_bytes_be()).unwrap(),
-                BigNum::from_slice(&public_exponent.to_bytes_be()).unwrap(),
+                BigNum::from_slice(&modulus.to_bytes_be().1).unwrap(),
+                BigNum::from_slice(&public_exponent.to_bytes_be().1).unwrap(),
             )
             .unwrap(),
         )
@@ -612,20 +637,20 @@ mod tests {
             openssl_public_key_to_kmip(public_key, KeyFormatType::TransparentECPublicKey, mask)
                 .unwrap();
         let object_ = object.clone();
-        let Object::PublicKey { key_block } = object else {
+        let Object::PublicKey(PublicKey { key_block }) = object else {
             panic!("Invalid key block")
         };
 
         let KeyBlock {
             key_value:
-                KeyValue {
+                Some(KeyValue::Structure {
                     key_material:
                         KeyMaterial::TransparentECPublicKey {
                             q_string,
                             recommended_curve,
                         },
                     ..
-                },
+                }),
             ..
         } = key_block
         else {

@@ -1,112 +1,29 @@
-use std::{collections::HashSet, fs, sync::Arc};
+use std::{collections::HashSet, sync::Arc};
 
-use actix_web::HttpRequest;
-use base64::{
-    engine::general_purpose::{self, STANDARD as b64},
-    Engine as _,
-};
 use cosmian_cover_crypt::api::Covercrypt;
-use cosmian_kmip::kmip_2_1::{
-    kmip_objects::Object,
-    kmip_operations::Create,
-    kmip_types::{Attributes, CryptographicAlgorithm, KeyFormatType},
-    requests::create_symmetric_key_kmip_object,
+use cosmian_kmip::{
+    kmip_0::kmip_types::State,
+    kmip_2_1::{
+        kmip_objects::Object,
+        kmip_operations::Create,
+        kmip_types::{CryptographicAlgorithm, KeyFormatType},
+        requests::create_symmetric_key_kmip_object,
+    },
 };
-use cosmian_kms_crypto::crypto::{
-    secret::Secret, symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH,
-};
+use cosmian_kms_crypto::crypto::symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH;
 use cosmian_kms_interfaces::{EncryptionOracle, SessionParams};
-use cosmian_kms_server_database::{CachedUnwrappedObject, MainDbParams, SqlCipherSessionParams};
+use cosmian_kms_server_database::CachedUnwrappedObject;
 use openssl::rand::rand_bytes;
 use tracing::{debug, trace};
-use uuid::Uuid;
 use zeroize::Zeroizing;
 
 use crate::{
-    core::{cover_crypt::create_user_decryption_key, wrapping::unwrap_key, KMS},
+    core::{KMS, cover_crypt::create_user_decryption_key, wrapping::unwrap_object},
     error::KmsError,
-    kms_bail,
     result::{KResult, KResultHelper},
 };
 
 impl KMS {
-    /// Adds a new encrypted `SQLite` database to the KMS server.
-    ///
-    /// # Returns
-    ///
-    /// Returns a base64-encoded string that represents the token associated with the new database.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the KMS server does not allow this operation or if an error occurs while
-    /// generating the new database or key.
-    pub(crate) async fn add_new_database(&self) -> KResult<String> {
-        if !self.is_using_sqlite_enc() {
-            kms_bail!(KmsError::InvalidRequest(
-                "add_new_database: not an encrypted sqlite: this server does not allow this \
-                 operation"
-                    .to_owned()
-            ));
-        }
-
-        // Generate a new group id
-        let uid: u128 = loop {
-            let uid = Uuid::new_v4().to_u128_le();
-            if let Some(database) = self.database.filename(uid).await {
-                if !database.exists() {
-                    // Create an empty file (to book the group id)
-                    fs::File::create(database)?;
-                    break uid
-                }
-            }
-        };
-
-        // Encode ExtraDatabaseParams
-        let params = SqlCipherSessionParams {
-            group_id: uid,
-            key: Secret::new_random()?,
-        };
-
-        let token = b64.encode(serde_json::to_vec(&params)?);
-
-        // Create a fake query to initialize the database
-        // Note: if we don't proceed like that, the password will be set at the first query of the user
-        // which let him put the password he wants.
-        self.database
-            .find(None, None, "", true, Some(Arc::new(params)))
-            .await?;
-
-        Ok(token)
-    }
-
-    /// Get the `SqliteEnc` database secrets from the request
-    /// The secrets are encoded in the `DatabaseSecret` header
-    pub(crate) fn get_sqlite_enc_secrets(
-        &self,
-        req_http: &HttpRequest,
-    ) -> KResult<Option<Arc<dyn SessionParams>>> {
-        if !self.is_using_sqlite_enc() {
-            return Ok(None);
-        }
-        let secrets = req_http
-            .headers()
-            .get("DatabaseSecret")
-            .and_then(|h| h.to_str().ok().map(ToString::to_string))
-            .ok_or_else(|| {
-                KmsError::Unauthorized("Missing DatabaseSecret header in the query".to_owned())
-            })?;
-
-        let secrets = general_purpose::STANDARD.decode(secrets).map_err(|e| {
-            KmsError::Unauthorized(format!("DatabaseSecret header cannot be decoded: {e}"))
-        })?;
-
-        Ok(Some(Arc::new(
-            serde_json::from_slice::<SqlCipherSessionParams>(&secrets).map_err(|e| {
-                KmsError::Unauthorized(format!("DatabaseSecret header cannot be read: {e}"))
-            })?,
-        )))
-    }
-
     /// Unwrap the object (if need be) and return the unwrapped object.
     /// The unwrapped object is cached in memory.
     /// # Arguments
@@ -139,7 +56,7 @@ impl KMS {
         match self.database.unwrapped_cache().peek(uid).await {
             Some(Ok(u)) => {
                 // Note: In theory, the cache should always be in sync...
-                if u.key_signature() == object.key_signature()? {
+                if u.fingerprint() == object.fingerprint()? {
                     debug!("Unwrapped cache hit");
                     return Ok(u.unwrapped_object().clone());
                 }
@@ -154,11 +71,10 @@ impl KMS {
 
         // local async future that unwraps the object
         let unwrap_local = async {
-            let key_signature = object.key_signature()?;
+            let fingerprint = object.fingerprint()?;
             let mut unwrapped_object = object.clone();
-            let key_block = unwrapped_object.key_block_mut()?;
-            unwrap_key(key_block, self, user, params).await?;
-            Ok(CachedUnwrappedObject::new(key_signature, unwrapped_object))
+            unwrap_object(&mut unwrapped_object, self, user, params).await?;
+            Ok(CachedUnwrappedObject::new(fingerprint, unwrapped_object))
         };
 
         // cache miss, try to unwrap
@@ -178,36 +94,6 @@ impl KMS {
         result
     }
 
-    /// Determines if the application is using an encrypted `SQLite` database.
-    ///
-    /// # Arguments
-    ///
-    /// * `kms_server` - A reference-counted pointer to the KMS instance.
-    ///
-    /// # Returns
-    ///
-    /// * `bool` - Returns `true` if the application is using an encrypted `SQLite` database, otherwise `false`.
-    ///
-    /// # Examples
-    ///
-    /// Basic usage:
-    ///
-    /// ```
-    /// let kms_server = Arc::new(KMS::new(...)); // Initialize your KMS instance as required
-    /// if is_using_sqlite_enc(&kms_server) {
-    ///     println!("Using encrypted SQLite database.");
-    /// } else {
-    ///     println!("Not using encrypted SQLite database.");
-    /// }
-    /// ```
-    pub(crate) const fn is_using_sqlite_enc(&self) -> bool {
-        if let Some(db_params) = &self.params.main_db_params {
-            matches!(db_params, MainDbParams::SqliteEnc(_))
-        } else {
-            false
-        }
-    }
-
     /// Create a new symmetric key and the corresponding system tags
     /// The tags will contain the user tags and the following:
     ///  - "_kk"
@@ -224,18 +110,6 @@ impl KMS {
             )
         })?;
 
-        // recover tags
-        let mut tags = attributes.get_tags();
-        Attributes::check_user_tags(&tags)?;
-        //update the tags
-        tags.insert("_kk".to_owned());
-
-        // recover uid
-        let uid = attributes
-            .unique_identifier
-            .as_ref()
-            .map(ToString::to_string);
-
         match cryptographic_algorithm {
             CryptographicAlgorithm::AES
             | CryptographicAlgorithm::ChaCha20
@@ -246,10 +120,7 @@ impl KMS {
             | CryptographicAlgorithm::SHA3512
             | CryptographicAlgorithm::SHAKE128
             | CryptographicAlgorithm::SHAKE256 => match attributes.key_format_type {
-                None => Err(KmsError::InvalidRequest(
-                    "Unable to create a symmetric key, the format type is not specified".to_owned(),
-                )),
-                Some(KeyFormatType::TransparentSymmetricKey) => {
+                None | Some(KeyFormatType::TransparentSymmetricKey) => {
                     // create the key
                     let key_len = attributes
                         .cryptographic_length
@@ -258,12 +129,14 @@ impl KMS {
                         .map_or(AES_256_GCM_KEY_LENGTH, |v| v);
                     let mut symmetric_key = Zeroizing::from(vec![0; key_len]);
                     rand_bytes(&mut symmetric_key)?;
-                    let object = create_symmetric_key_kmip_object(
-                        &symmetric_key,
-                        *cryptographic_algorithm,
-                        attributes.sensitive,
-                    )?;
-
+                    let object = create_symmetric_key_kmip_object(&symmetric_key, attributes)?;
+                    let attributes = object.attributes()?;
+                    debug!("Created symmetric key with attributes: {:?}", attributes);
+                    let tags = attributes.get_tags();
+                    let uid = attributes
+                        .unique_identifier
+                        .as_ref()
+                        .map(ToString::to_string);
                     //return the object and the tags
                     Ok((uid, object, tags))
                 }
@@ -279,7 +152,7 @@ impl KMS {
 
     /// Create a private key and the corresponding system tags
     /// The tags will contain the user tags and the following:
-    ///  - "_sk"
+    ///  - "_uk"
     ///  - the KMIP cryptographic algorithm in lower case prepended with "_"
     ///
     /// Only Covercrypt user decryption keys can be created using this function
@@ -288,6 +161,7 @@ impl KMS {
         create_request: &Create,
         owner: &str,
         params: Option<Arc<dyn SessionParams>>,
+        privileged_users: Option<Vec<String>>,
     ) -> KResult<(Option<String>, Object, HashSet<String>)> {
         trace!("Internal create private key");
         let attributes = &create_request.attributes;
@@ -299,29 +173,26 @@ impl KMS {
             )
         })?;
 
-        // recover tags
-        let mut tags = attributes.get_tags();
-        Attributes::check_user_tags(&tags)?;
-        //update the tags
-        tags.insert("_uk".to_owned());
-
-        // recover uid
-        let uid = attributes
-            .unique_identifier
-            .as_ref()
-            .map(std::string::ToString::to_string);
-
         match &cryptographic_algorithm {
             CryptographicAlgorithm::CoverCrypt => {
-                let object = create_user_decryption_key(
+                let mut object = create_user_decryption_key(
                     self,
                     Covercrypt::default(),
                     create_request,
                     owner,
                     params,
-                    create_request.attributes.sensitive,
+                    create_request.attributes.sensitive.unwrap_or(false),
+                    privileged_users,
                 )
                 .await?;
+                // Update the attributes with state Active
+                object.attributes_mut()?.state = Some(State::Active);
+                let attributes = object.attributes()?;
+                let tags = attributes.get_tags();
+                let uid = attributes
+                    .unique_identifier
+                    .as_ref()
+                    .map(ToString::to_string);
                 Ok((uid, object, tags))
             }
             other => Err(KmsError::NotSupported(format!(

@@ -12,7 +12,7 @@ pub struct JwtAuthConfig {
     /// The issuer URI of the JWT token
     ///
     /// To handle multiple identity managers, add different parameters under each argument
-    /// (jwt-issuer-uri, jwks-uri and optionally jwt-audience), keeping them in
+    /// (jwt-issuer-uri, jwks-uri, and optionally jwt-audience), keeping them in
     /// the same order :
     ///
     /// --jwt-issuer-uri <`JWT_ISSUER_URI_1`> <`JWT_ISSUER_URI_2`>
@@ -26,10 +26,10 @@ pub struct JwtAuthConfig {
     #[clap(long, env = "KMS_JWT_ISSUER_URI", num_args = 1..)]
     pub jwt_issuer_uri: Option<Vec<String>>,
 
-    /// The JWKS (Json Web Key Set) URI of the JWT token
+    /// The JWKS (JSON Web Key Set) URI of the JWT token
     ///
     /// To handle multiple identity managers, add different parameters under each argument
-    /// (jwt-issuer-uri, jwks-uri and optionally jwt-audience), keeping them in
+    /// (jwt-issuer-uri, jwks-uri, and optionally jwt-audience), keeping them in
     /// the same order
     ///
     /// For Auth0, this would be `https://<your-tenant>.<region>.auth0.com/.well-known/jwks.json`
@@ -42,7 +42,7 @@ pub struct JwtAuthConfig {
 
     /// The audience of the JWT token
     ///
-    /// Optional: the server will validate the JWT `aud` claim against this value if set
+    /// Optional: The server will validate the JWT `aud` claim against this value if set
     #[clap(long, env = "KMS_JST_AUDIENCE", num_args = 1..)]
     pub jwt_audience: Option<Vec<String>>,
 }
@@ -79,11 +79,11 @@ impl JwtAuthConfig {
 
                 kms_ensure!(
                     jwks_uris.len() == issuer_uris.len(),
-                    "If jwks_uri are provided, they should match each provided jwt_issuer_uri."
+                    "If jwks_uri is provided, it should match each provided jwt_issuer_uri."
                 );
                 kms_ensure!(
                     audiences.len() == issuer_uris.len(),
-                    "If jwt_audience are provided, they should match each provided jwt_issuer_uri."
+                    "If jwt_audience is provided, it should match each provided jwt_issuer_uri."
                 );
 
                 Ok(issuer_uris

@@ -1,9 +1,9 @@
-use cosmian_kmip::kmip_2_1::{
-    kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
-    kmip_objects::Object,
-    kmip_types::{
-        Attributes, BlockCipherMode, CryptographicAlgorithm, CryptographicUsageMask,
-        EncodingOption, KeyFormatType, PaddingMethod, WrappingMethod,
+use cosmian_kmip::{
+    kmip_0::kmip_types::{BlockCipherMode, CryptographicUsageMask, PaddingMethod},
+    kmip_2_1::{
+        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
+        kmip_objects::Object,
+        kmip_types::{CryptographicAlgorithm, EncodingOption, KeyFormatType},
     },
 };
 use openssl::pkey::{Id, PKey, Private};
@@ -17,6 +17,7 @@ use crate::crypto::elliptic_curves::ecies::ecies_decrypt;
 use crate::crypto::rsa::ckm_rsa_pkcs::ckm_rsa_pkcs_key_unwrap;
 use crate::{
     crypto::{
+        FIPS_MIN_SALT_SIZE,
         password_derivation::derive_key_from_password,
         rsa::{
             ckm_rsa_aes_key_wrap::ckm_rsa_aes_key_unwrap,
@@ -24,13 +25,12 @@ use crate::{
         },
         symmetric::{
             rfc5649::rfc5649_unwrap,
-            symmetric_ciphers::{decrypt, SymCipher},
+            symmetric_ciphers::{SymCipher, decrypt},
         },
         wrap::common::rsa_parameters,
-        FIPS_MIN_SALT_SIZE,
     },
     crypto_bail,
-    error::{result::CryptoResultHelper, CryptoError},
+    error::{CryptoError, result::CryptoResultHelper},
     openssl::kmip_private_key_to_openssl,
 };
 
@@ -59,116 +59,47 @@ pub fn unwrap_key_block(
     object_key_block: &mut KeyBlock,
     unwrapping_key: &Object,
 ) -> Result<(), CryptoError> {
-    // Extract authenticated additional data on attributes if exist
-    let aad = object_key_block.attributes_mut()?.remove_aad();
-
     // check that the key wrapping data is present
     let key_wrapping_data = object_key_block
         .key_wrapping_data
         .as_ref()
         .context("unable to unwrap key: key wrapping data is missing")?;
 
-    let wrapped_key = recover_wrapped_key(object_key_block, key_wrapping_data)?;
+    let Some(KeyValue::ByteString(wrapped_key)) = object_key_block.key_value.as_ref() else {
+        crypto_bail!("unable to unwrap key: key value is not a byte string")
+    };
 
-    let plaintext = unwrap(
+    let key_value = unwrap(
         unwrapping_key,
         key_wrapping_data,
-        wrapped_key.key_bytes.as_ref(),
-        aad.as_deref(),
+        wrapped_key,
+        object_key_block.key_format_type,
     )?;
 
-    update_key_block_with_unwrapped_key(
-        object_key_block,
-        &wrapped_key.attributes,
-        wrapped_key.encoding,
-        &plaintext,
-    )?;
-
-    Ok(())
-}
-
-pub struct WrappedKey {
-    pub key_bytes: Zeroizing<Vec<u8>>,
-    pub attributes: Option<Attributes>,
-    pub encoding: EncodingOption,
-}
-
-/// Recover the wrapped key from the key block and key wrapping data
-/// # Arguments
-/// * `object_key_block` - the key block of the object to unwrap
-/// * `key_wrapping_data` - the key wrapping data
-/// # Returns
-/// * `KResult<(Vec<u8>, Option<Attributes>, EncodingOption)>` - the recovered wrapped key, attributes, and encoding
-///
-pub fn recover_wrapped_key(
-    object_key_block: &KeyBlock,
-    key_wrapping_data: &KeyWrappingData,
-) -> Result<WrappedKey, CryptoError> {
-    // check that the wrapping method is supported
-    if WrappingMethod::Encrypt != key_wrapping_data.wrapping_method {
-        crypto_bail!("unable to unwrap key: only the Encrypt unwrapping method is supported")
-    }
-
-    let encoding = key_wrapping_data.get_encoding();
-    Ok(match encoding {
-        EncodingOption::TTLVEncoding => WrappedKey {
-            key_bytes: object_key_block.key_bytes()?,
-            attributes: object_key_block.attributes().ok().cloned(),
-            encoding,
-        },
-        EncodingOption::NoEncoding => {
-            let (bytes, attributes) = object_key_block.key_bytes_and_attributes()?;
-            WrappedKey {
-                key_bytes: bytes,
-                attributes: attributes.cloned(),
-                encoding,
-            }
-        }
-    })
-}
-
-/// Update the key block with the unwrapped key
-/// # Arguments
-/// * `object_key_block` - the key block of the object to update
-/// * `attributes` - the attributes of the key
-/// * `encoding` - the encoding of the key
-/// * `plaintext` - the unwrapped key
-pub fn update_key_block_with_unwrapped_key(
-    object_key_block: &mut KeyBlock,
-    attributes: &Option<Attributes>,
-    encoding: EncodingOption,
-    plaintext: &Zeroizing<Vec<u8>>,
-) -> Result<(), CryptoError> {
-    // unwrap the key based on the encoding
-    let key_value: KeyValue = match encoding {
-        EncodingOption::TTLVEncoding => serde_json::from_slice::<KeyValue>(plaintext.as_bytes())?,
-        EncodingOption::NoEncoding => {
-            let key_material: KeyMaterial = match object_key_block.key_format_type {
-                KeyFormatType::TransparentSymmetricKey => KeyMaterial::TransparentSymmetricKey {
-                    key: plaintext.to_vec().into(),
-                },
-                _ => KeyMaterial::ByteString(plaintext.to_vec().into()),
-            };
-            KeyValue {
-                key_material,
-                attributes: attributes.clone(),
-            }
-        }
-    };
-    // update the object with the unwrapped key value, and remove the wrapping data
-    object_key_block.key_value = key_value;
+    // update the key block with the unwrapped key
+    object_key_block.key_value = Some(key_value);
     object_key_block.key_wrapping_data = None;
-    // we assume that the key_block KeyFormatType is valid
+
     Ok(())
 }
 
-/// Decrypt bytes using the unwrapping key
+/// Unwrap a key using a wrapping key
+///
+/// # Arguments
+/// * `unwrapping_key` - the unwrapping key
+/// * `key_wrapping_data` - the key wrapping data
+/// * `wrapped_key` - the wrapped key
+/// * `key_format_type` - the unwrapped key expected key format type
+/// * `aad` - the additional authenticated data
+///
+/// # Returns
+/// * `KResult<KeyValue>` - the unwrapped key
 pub(crate) fn unwrap(
     unwrapping_key: &Object,
     key_wrapping_data: &KeyWrappingData,
-    ciphertext: &[u8],
-    aad: Option<&[u8]>,
-) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
+    wrapped_key: &[u8],
+    key_format_type: KeyFormatType,
+) -> Result<KeyValue, CryptoError> {
     // Make sure that the key used to unwrap can be used to unwrap.
     if !unwrapping_key
         .attributes()?
@@ -181,71 +112,184 @@ pub(crate) fn unwrap(
 
     let unwrapping_key_block = unwrapping_key
         .key_block()
-        .context("Unable to unwrap: unwrapping key is not a key")?;
-    // unwrap the unwrapping key if necessary
+        .context("Unable to unwrap: the key encryption key is not a key")?;
     if unwrapping_key_block.key_wrapping_data.is_some() {
-        crypto_bail!("unable to unwrap key: unwrapping key is wrapped and that is not supported")
+        crypto_bail!(
+            "unable to unwrap: the key encryption key is wrapped, and that is not supported"
+        )
     }
+
     let plaintext = match unwrapping_key_block.key_format_type {
         KeyFormatType::TransparentSymmetricKey => {
-            let block_cipher_mode = key_wrapping_data
-                .encryption_key_information
-                .clone()
-                .and_then(|information| information.cryptographic_parameters)
-                .and_then(|parameters| parameters.block_cipher_mode);
-            let unwrap_secret = unwrapping_key_block.key_bytes()?;
-
-            if block_cipher_mode == Some(BlockCipherMode::GCM) {
-                // unwrap using aes Gcm
-                let len = ciphertext.len();
-                if len < TAG_LENGTH + NONCE_LENGTH {
-                    crypto_bail!("Invalid wrapped key - insufficient length.");
-                }
-                let aead = SymCipher::Aes256Gcm;
-                let nonce = ciphertext
-                    .get(..NONCE_LENGTH)
-                    .ok_or_else(|| CryptoError::IndexingSlicing("unwrap: nonce".to_owned()))?;
-                let wrapped_key_bytes =
-                    ciphertext
-                        .get(NONCE_LENGTH..len - TAG_LENGTH)
-                        .ok_or_else(|| {
-                            CryptoError::IndexingSlicing("unwrap: wrapped_key_bytes".to_owned())
-                        })?;
-                let tag = ciphertext
-                    .get(len - TAG_LENGTH..)
-                    .ok_or_else(|| CryptoError::IndexingSlicing("unwrap: tag".to_owned()))?;
-                let authenticated_data = aad.unwrap_or_default();
-                let plaintext = decrypt(
-                    aead,
-                    &unwrap_secret,
-                    nonce,
-                    authenticated_data,
-                    wrapped_key_bytes,
-                    tag,
-                )?;
-                Ok(plaintext)
-            } else {
-                // unwrap using rfc_5649
-                let plaintext = rfc5649_unwrap(ciphertext, &unwrap_secret)?;
-                Ok(plaintext)
-            }
+            unwrap_with_symmetric_key(key_wrapping_data, wrapped_key, unwrapping_key_block)
         }
         KeyFormatType::TransparentECPrivateKey | KeyFormatType::TransparentRSAPrivateKey => {
-            // convert to an openssl private key
+            // convert to an OpenSSL private key
             let p_key = kmip_private_key_to_openssl(unwrapping_key)?;
-            unwrap_with_private_key(&p_key, key_wrapping_data, ciphertext)
+            unwrap_with_private_key(&p_key, key_wrapping_data, wrapped_key)
         }
         KeyFormatType::PKCS8 => {
-            let p_key = PKey::private_key_from_der(&unwrapping_key_block.key_bytes()?)?;
-            unwrap_with_private_key(&p_key, key_wrapping_data, ciphertext)
+            let p_key = PKey::private_key_from_der(&unwrapping_key_block.pkcs_der_bytes()?)?;
+            unwrap_with_private_key(&p_key, key_wrapping_data, wrapped_key)
         }
         x => {
-            crypto_bail!("Unable to unwrap key: format not supported for unwrapping: {x:?}")
+            crypto_bail!("Unable to unwrap: the key encryption key format is not supported: {x:?}")
         }
     }?;
-    Ok(plaintext)
+
+    decode_unwrapped_key(key_wrapping_data.get_encoding(), key_format_type, plaintext)
 }
 
+/// Decode the unwrapped key into a `KeyValue`
+///
+/// # Arguments
+/// * `key_wrapping_data` - the key wrapping data
+/// * `key_format_type` - the expected key format type
+/// * `plaintext` - the unwrapped key bytes
+///
+/// # Returns
+/// * `KResult<KeyValue>` - the decoded key value
+pub fn decode_unwrapped_key(
+    encoding: EncodingOption,
+    key_format_type: KeyFormatType,
+    plaintext: Zeroizing<Vec<u8>>,
+) -> Result<KeyValue, CryptoError> {
+    match encoding {
+        EncodingOption::TTLVEncoding => {
+            // For TTLV encoding, convert the plaintext to a KeyValue using TTLV parsing
+            KeyValue::from_ttlv_bytes(plaintext.as_bytes(), key_format_type).map_err(Into::into)
+        }
+        EncodingOption::NoEncoding => {
+            match key_format_type {
+                KeyFormatType::Raw
+                | KeyFormatType::ECPrivateKey
+                | KeyFormatType::Opaque
+                | KeyFormatType::PKCS1
+                | KeyFormatType::PKCS10
+                | KeyFormatType::PKCS12
+                | KeyFormatType::PKCS7
+                | KeyFormatType::PKCS8
+                | KeyFormatType::X509
+                | KeyFormatType::CoverCryptSecretKey
+                | KeyFormatType::CoverCryptPublicKey => {
+                    // For no encoding, create a structure with the plaintext as bytes
+                    let key_material = KeyMaterial::ByteString(plaintext);
+                    Ok(KeyValue::Structure {
+                        key_material,
+                        attributes: None,
+                    })
+                }
+                #[cfg(not(feature = "fips"))]
+                KeyFormatType::Pkcs12Legacy => {
+                    // For no encoding, create a structure with the plaintext as bytes
+                    let key_material = KeyMaterial::ByteString(plaintext);
+                    Ok(KeyValue::Structure {
+                        key_material,
+                        attributes: None,
+                    })
+                }
+                KeyFormatType::TransparentSymmetricKey => {
+                    // For no encoding, create a structure with the plaintext as bytes
+                    let key_material = KeyMaterial::TransparentSymmetricKey { key: plaintext };
+                    Ok(KeyValue::Structure {
+                        key_material,
+                        attributes: None,
+                    })
+                }
+
+                f => {
+                    crypto_bail!(
+                        "Unable to decode the unwrapped key using No Encoding, its format is not \
+                         supported: {f:?}"
+                    )
+                }
+            }
+        }
+    }
+}
+
+/// Unwrap a key using a symmetric key
+///
+/// # Arguments
+/// * `key_wrapping_data` - the key wrapping data
+/// * `ciphertext` - the ciphertext to unwrap
+/// * `aad` - the additional authenticated data
+/// * `unwrapping_key_block` - the unwrapping key block
+///
+/// # Returns
+/// * `KResult<Vec<u8>>` - the unwrapped key bytes (which may be TTLV Encoded)
+fn unwrap_with_symmetric_key(
+    key_wrapping_data: &KeyWrappingData,
+    ciphertext: &[u8],
+    unwrapping_key_block: &KeyBlock,
+) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
+    // Extract the block cipher mode from the key wrapping data
+    let block_cipher_mode = key_wrapping_data
+        .encryption_key_information
+        .clone()
+        .and_then(|information| information.cryptographic_parameters)
+        .and_then(|parameters| parameters.block_cipher_mode);
+
+    // Extract the wrapping key bytes from the unwrapping key block
+    let unwrap_secret = unwrapping_key_block
+        .symmetric_key_bytes()
+        .context("unwrapping key bytes:")?;
+
+    // If not AES GCM, unwrap using RFC 5649 (a.k.a NIST Key Wrap)
+    if block_cipher_mode == Some(BlockCipherMode::GCM) {
+        aes_gcm_unwrap(ciphertext, &unwrap_secret)
+    } else {
+        // unwrap using rfc_5649
+        rfc5649_unwrap(ciphertext, &unwrap_secret)
+    }
+}
+
+/// Unwrap a key using AES GCM
+///
+/// # Arguments
+/// * `ciphertext` - the ciphertext to unwrap
+/// * `aad` - the additional authenticated data
+/// * `unwrap_secret` - the unwrapping key
+///
+/// # Returns
+/// * `KResult<Vec<u8>>` - the unwrapped key
+fn aes_gcm_unwrap(
+    ciphertext: &[u8],
+    unwrap_secret: &Zeroizing<Vec<u8>>,
+) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
+    // unwrap using aes Gcm
+    let len = ciphertext.len();
+    if len < TAG_LENGTH + NONCE_LENGTH {
+        crypto_bail!("Invalid wrapped key - insufficient length.");
+    }
+    let aead = SymCipher::Aes256Gcm;
+    let nonce = ciphertext
+        .get(..NONCE_LENGTH)
+        .ok_or_else(|| CryptoError::IndexingSlicing("unwrap: nonce".to_owned()))?;
+    let wrapped_key_bytes = ciphertext
+        .get(NONCE_LENGTH..len - TAG_LENGTH)
+        .ok_or_else(|| CryptoError::IndexingSlicing("unwrap: wrapped_key_bytes".to_owned()))?;
+    let tag = ciphertext
+        .get(len - TAG_LENGTH..)
+        .ok_or_else(|| CryptoError::IndexingSlicing("unwrap: tag".to_owned()))?;
+    decrypt(aead, unwrap_secret, nonce, &[], wrapped_key_bytes, tag)
+}
+
+/// Unwrap a key using a private key
+///
+/// # Arguments
+/// * `private_key` - the private key to use for unwrapping
+/// * `key_wrapping_data` - the key wrapping data
+/// * `ciphertext` - the ciphertext to unwrap
+///
+/// # Returns
+/// * `KResult<Vec<u8>>` - the unwrapped key
+///
+/// # Errors
+/// * If the private key is not a valid key
+/// * If the key wrapping data is not valid
+/// * If the ciphertext is not valid
+/// * If the unwrapping fails
 fn unwrap_with_private_key(
     private_key: &PKey<Private>,
     key_wrapping_data: &KeyWrappingData,
@@ -264,6 +308,20 @@ fn unwrap_with_private_key(
     }
 }
 
+/// Unwrap a key using RSA OAEP or `PKCS1v15` or RSA AES key wrap
+///
+/// # Arguments
+/// * `private_key` - the private key to use for unwrapping
+/// * `key_wrapping_data` - the key wrapping data
+/// * `wrapped_key` - the wrapped key to unwrap
+/// # Returns
+/// * `KResult<Vec<u8>>` - the unwrapped key
+///
+/// # Errors
+/// * If the private key is not a valid key
+/// * If the key wrapping data is not valid
+/// * If the wrapped key is not valid
+/// * If the unwrapping fails
 fn unwrap_with_rsa(
     private_key: &PKey<Private>,
     key_wrapping_data: &KeyWrappingData,

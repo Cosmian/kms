@@ -5,17 +5,17 @@ use std::{
 
 use async_trait::async_trait;
 use cloudproof_findex::{
+    IndexedValue, Keyword, Location,
     implementations::redis::{FindexRedis, FindexRedisError, RemovedLocationsFinder},
     parameters::MASTER_KEY_LENGTH,
-    IndexedValue, Keyword, Location,
 };
 use cosmian_crypto_core::{FixedSizeCBytes, SymmetricKey};
 use cosmian_kmip::kmip_2_1::KmipOperation;
 
-use crate::{error::DbResult, DbError};
+use crate::{DbError, error::DbResult};
 
-/// The struct we store for each permission
-/// We store the permission itself as a Location
+/// The struct we store for each permission.
+/// We store the permission itself as a Location.
 /// Keeping the object uid and user id is necessary to be able to query
 /// the database for all permissions for a given object or user because
 /// there is no convenient access to the callback for a search

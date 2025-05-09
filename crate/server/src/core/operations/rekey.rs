@@ -1,15 +1,18 @@
 use std::sync::Arc;
 
-use cosmian_kmip::kmip_2_1::{
-    kmip_objects::ObjectType,
-    kmip_operations::{Create, Import, ReKey, ReKeyResponse},
-    kmip_types::{StateEnumeration, UniqueIdentifier},
+use cosmian_kmip::{
+    kmip_0::kmip_types::State,
+    kmip_2_1::{
+        kmip_objects::ObjectType,
+        kmip_operations::{Create, Import, ReKey, ReKeyResponse},
+        kmip_types::UniqueIdentifier,
+    },
 };
 use cosmian_kms_interfaces::SessionParams;
 use tracing::{debug, trace};
 
 use crate::{
-    core::{operations::import::process_symmetric_key, KMS},
+    core::{KMS, operations::import::process_symmetric_key},
     error::KmsError,
     kms_bail,
     result::{KResult, KResultHelper},
@@ -44,7 +47,7 @@ pub(crate) async fn rekey(
         .into_values()
     {
         // only active objects
-        if owm.state() != StateEnumeration::Active {
+        if owm.state() != State::Active {
             continue
         }
         // only symmetric keys
@@ -69,8 +72,13 @@ pub(crate) async fn rekey(
             attributes: new_object.attributes()?.clone(),
             object: new_object,
         };
-        let (uid, operations) =
-            process_symmetric_key(kms, import_request, owner, params.clone()).await?;
+        let (uid, operations) = Box::pin(process_symmetric_key(
+            kms,
+            import_request,
+            owner,
+            params.clone(),
+        ))
+        .await?;
 
         // execute the operations
         kms.database

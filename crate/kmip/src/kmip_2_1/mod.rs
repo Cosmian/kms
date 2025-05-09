@@ -3,13 +3,13 @@ use std::{fmt, str::FromStr};
 use serde::{Deserialize, Serialize};
 
 pub mod extra;
+pub mod kmip_attributes;
 pub mod kmip_data_structures;
 pub mod kmip_messages;
 pub mod kmip_objects;
 pub mod kmip_operations;
 pub mod kmip_types;
 pub mod requests;
-pub mod ttlv;
 
 /// Operation types that can get or create objects
 /// These operations use `retrieve` or `get` methods.

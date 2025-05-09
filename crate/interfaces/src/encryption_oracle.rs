@@ -5,10 +5,13 @@
 //! HSMs that implement the `HSM` interface have a blanket implementation of this interface called
 //! `HsmEncryptionOracle`.
 use async_trait::async_trait;
-use cosmian_kmip::kmip_2_1::kmip_types::{BlockCipherMode, CryptographicParameters, PaddingMethod};
+use cosmian_kmip::{
+    kmip_0::kmip_types::{BlockCipherMode, PaddingMethod},
+    kmip_2_1::kmip_types::CryptographicParameters,
+};
 use zeroize::Zeroizing;
 
-use crate::{error::InterfaceResult, InterfaceError, KeyType};
+use crate::{InterfaceError, KeyType, error::InterfaceResult};
 
 #[derive(Debug)]
 pub struct KeyMetadata {
@@ -69,10 +72,10 @@ pub struct EncryptedContent {
 pub trait EncryptionOracle: Send + Sync {
     /// Encrypt data
     /// # Arguments
-    /// * `uid` - the ID of the key to use for encryption
-    /// * `data` - the data to encrypt
-    /// * `cryptographic_algorithm` - the cryptographic algorithm to use for encryption
-    /// * `authenticated_encryption_additional_data` - the additional data to use for authenticated encryption
+    /// * `uid` - the ID of the key to use for encryption.
+    /// * `data` - the data to encrypt.
+    /// * `cryptographic_algorithm` - the cryptographic algorithm to use for encryption.
+    /// * `authenticated_encryption_additional_data` - the additional data to use for authenticated encryption.
     /// # Returns
     /// * `Vec<u8>` - the encrypted data
     async fn encrypt(
@@ -85,10 +88,10 @@ pub trait EncryptionOracle: Send + Sync {
 
     /// Decrypt data
     /// # Arguments
-    /// * `uid` - the ID of the key to use for decryption
-    /// * `data` - the data to decrypt
-    /// * `cryptographic_algorithm` - the cryptographic algorithm to use for decryption
-    /// * `authenticated_encryption_additional_data` - the additional data to use for authenticated decryption
+    /// * `uid` - the ID of the key to use for decryption.
+    /// * `data` - the data to decrypt.
+    /// * `cryptographic_algorithm` - the cryptographic algorithm to use for decryption.
+    /// * `authenticated_encryption_additional_data` - the additional data to use for authenticated decryption.
     /// # Returns
     /// * `Vec<u8>` - the decrypted data
     async fn decrypt(
