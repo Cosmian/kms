@@ -26,7 +26,7 @@ The Cosmian KMS presents some unique features, such as:
 - [Veracrypt](./documentation/docs/pkcs11/veracrypt.md)
   and [LUKS](./documentation/docs/pkcs11/luks.md) disk encryption support
 - [FIPS 140-3](./documentation/docs/fips.md) mode gated behind the feature `fips`
-- a [JSON KMIP 2.1](./documentation/docs/kmip_2_1/index.md) compliant interface
+- a [binary and JSON KMIP 1.0-1.4 and 2.0-2.1](./documentation/docs/kmip/index.md) compliant interface
 - Oracle DB [TDE support](./documentation/docs/oracle/tde.md)
 - VMWare [vCenter Trust Key Provider integration](./documentation/docs/vcenter.md)
 - User Defined Functions for [Big Data](./documentation/docs/python_udf/index.md) including [snowflake](./documentation/docs/snowflake/index.md)
