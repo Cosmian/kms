@@ -6,7 +6,11 @@
 The **Cosmian KMS** is a high-performance,
 [**open-source**](https://github.com/Cosmian/kms),
 [FIPS 140-3 compliant](./documentation/docs/fips.md) server application
-written in [**Rust**](https://www.rust-lang.org/) that presents some unique features, such as:
+written in [**Rust**](https://www.rust-lang.org/) 
+
+![KMS WebUI](./documentation/docs/images/kms-ui.png)
+
+The Cosmian KMS presents some unique features, such as:
 
 - large scale encryption and decryption of
   data [see this documentation](./documentation/docs/encrypting_and_decrypting_at_scale.md)
