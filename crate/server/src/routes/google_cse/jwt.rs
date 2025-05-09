@@ -219,7 +219,7 @@ pub(crate) async fn validate_cse_authentication_token(
 
     let mut decoded_token = None;
     for idp_config in cse_config.authentication.iter() {
-        if let Ok(token) = idp_config.decode_authentication_token(authentication_token) {
+        if let Ok(token) = idp_config.decode_authentication_token(authentication_token, false) {
             // store the decoded claim and break the loop if decoding succeeds
             decoded_token = Some(token);
             break;
