@@ -9,6 +9,7 @@ use cosmian_kms_server_database::Database;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use proteccio_pkcs11_loader::Proteccio;
 use tokio::sync::RwLock;
+use tracing::trace;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use utimaco_pkcs11_loader::Utimaco;
 
@@ -17,16 +18,16 @@ use crate::{config::ServerParams, error::KmsError, kms_bail, result::KResult};
 /// A Key Management System that partially implements KMIP 2.1
 ///
 /// `https://www.oasis-open.org/committees/tc_home.php?wg_abbrev=kmip`
-/// and other operations that are not part of KMIP such as Google CSE or Microsoft DKE.
+/// and other operations not part of KMIP, such as Google CSE or Microsoft DKE.
 pub struct KMS {
-    /// The server parameters built from the configuration file or command line arguments.
-    pub(crate) params: ServerParams,
+    /// The server parameters are built from the configuration file or command line arguments.
+    pub(crate) params: Arc<ServerParams>,
 
     /// The database is made of two parts:
     /// - The objects' store that stores the cryptographic objects.
-    ///    The Object store may be backed by multiple databases or HSMs
-    ///    and store the cryptographic objects and their attributes.
-    ///    Objects are spread across the underlying stores based on their ID prefix.
+    ///   The Object store may be backed by multiple databases or HSMs
+    ///   and store the cryptographic objects and their attributes.
+    ///   Objects are spread across the underlying stores based on their ID prefix.
     /// - The permissions store that stores the permissions granted to users on the objects.
     pub(crate) database: Database,
 
@@ -43,7 +44,10 @@ impl KMS {
     /// # Returns
     /// A new KMS instance.
     #[allow(clippy::as_conversions)]
-    pub(crate) async fn instantiate(server_params: ServerParams) -> KResult<Self> {
+    pub(crate) async fn instantiate(server_params: Arc<ServerParams>) -> KResult<Self> {
+        trace!("KMS::instantiate, params: {server_params:?}");
+
+        // Instantiate the HSM if any; the code has support for multiple concurrent HSMs
         let hsm = Self::instantiate_hsm(&server_params)?;
 
         // Instantiate the main database
@@ -62,6 +66,7 @@ impl KMS {
             main_db_params,
             server_params.clear_db_on_start,
             object_stores,
+            server_params.unwrapped_cache_max_age,
         )
         .await?;
 

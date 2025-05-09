@@ -1,21 +1,22 @@
 use std::sync::Arc;
 
-use cosmian_kmip::kmip_2_1::{
-    kmip_operations::{
+use cosmian_kmip::{
+    kmip_2_1::kmip_operations::{
         Certify, Create, CreateKeyPair, Decrypt, DeleteAttribute, Destroy, Encrypt, Export, Get,
-        GetAttributes, Hash, Import, Locate, Mac, Operation, ReKey, ReKeyKeyPair, Revoke,
+        GetAttributes, Hash, Import, Locate, MAC, Operation, Query, ReKey, ReKeyKeyPair, Revoke,
         SetAttribute, Validate,
     },
-    ttlv::{TTLV, deserializer::from_ttlv},
+    ttlv::{TTLV, from_ttlv},
 };
 use cosmian_kms_interfaces::SessionParams;
+use tracing::debug;
 
 use crate::{core::KMS, error::KmsError, kms_bail, result::KResult};
 
 /// Dispatch operation depending on the TTLV tag
 pub(crate) async fn dispatch(
     kms: &KMS,
-    ttlv: &TTLV,
+    ttlv: TTLV,
     user: &str,
     database_params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<Operation> {
@@ -49,6 +50,11 @@ pub(crate) async fn dispatch(
             let resp = kms.decrypt(req, user, database_params).await?;
             Operation::DecryptResponse(resp)
         }
+        "DeleteAttribute" => {
+            let req = from_ttlv::<DeleteAttribute>(ttlv)?;
+            let resp = kms.delete_attribute(req, user, database_params).await?;
+            Operation::DeleteAttributeResponse(resp)
+        }
         "Destroy" => {
             let req = from_ttlv::<Destroy>(ttlv)?;
             let resp = kms.destroy(req, user, database_params).await?;
@@ -74,25 +80,16 @@ pub(crate) async fn dispatch(
             let resp = kms.get_attributes(req, user, database_params).await?;
             Operation::GetAttributesResponse(resp)
         }
+
         "Hash" => {
             let req = from_ttlv::<Hash>(ttlv)?;
             let resp = kms.hash(req, user, database_params).await?;
             Operation::HashResponse(resp)
         }
         "Mac" => {
-            let req = from_ttlv::<Mac>(ttlv)?;
+            let req = from_ttlv::<MAC>(ttlv)?;
             let resp = kms.mac(req, user, database_params).await?;
-            Operation::MacResponse(resp)
-        }
-        "SetAttribute" => {
-            let req = from_ttlv::<SetAttribute>(ttlv)?;
-            let resp = kms.set_attribute(req, user, database_params).await?;
-            Operation::SetAttributeResponse(resp)
-        }
-        "DeleteAttribute" => {
-            let req = from_ttlv::<DeleteAttribute>(ttlv)?;
-            let resp = kms.delete_attribute(req, user, database_params).await?;
-            Operation::DeleteAttributeResponse(resp)
+            Operation::MACResponse(resp)
         }
         "Import" => {
             let req = from_ttlv::<Import>(ttlv)?;
@@ -106,6 +103,16 @@ pub(crate) async fn dispatch(
             let req = from_ttlv::<Locate>(ttlv)?;
             let resp = kms.locate(req, user, database_params).await?;
             Operation::LocateResponse(resp)
+        }
+        "MAC" => {
+            let req = from_ttlv::<MAC>(ttlv)?;
+            let resp = kms.mac(req, user, database_params).await?;
+            Operation::MACResponse(resp)
+        }
+        "Query" => {
+            let req = from_ttlv::<Query>(ttlv)?;
+            let resp = kms.query(req).await?;
+            Operation::QueryResponse(resp)
         }
         "ReKey" => {
             let req = from_ttlv::<ReKey>(ttlv)?;
@@ -125,6 +132,13 @@ pub(crate) async fn dispatch(
             let req = from_ttlv::<Revoke>(ttlv)?;
             let resp = kms.revoke(req, user, database_params).await?;
             Operation::RevokeResponse(resp)
+        }
+        "SetAttribute" => {
+            debug!("SetAttribute TTLV {ttlv:#?}");
+            let req = from_ttlv::<SetAttribute>(ttlv)?;
+            debug!("SetAttribute: {req:?}");
+            let resp = kms.set_attribute(req, user, database_params).await?;
+            Operation::SetAttributeResponse(resp)
         }
         "Validate" => {
             let req = from_ttlv::<Validate>(ttlv)?;

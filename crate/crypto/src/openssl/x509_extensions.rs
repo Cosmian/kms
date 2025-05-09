@@ -42,7 +42,8 @@ pub fn parse_v3_ca_from_file(
 ) -> Result<Vec<X509Extension>, CryptoError> {
     let conf = Ini::load_from_file(extension_file).map_err(|e| {
         CryptoError::NotSupported(format!(
-            "cannot read x509 extension file: `{extension_file:?}`. Reason: {e}"
+            "cannot read x509 extension file: `{}`. Reason: {e}",
+            extension_file.display()
         ))
     })?;
     parse_v3_ca(&conf, x509_context)
@@ -319,14 +320,13 @@ mod tests {
 
     #[test]
     fn test_parse_ext_file() {
-        log_init(Some("info,hyper=info,reqwest=info"));
+        log_init(option_env!("RUST_LOG"));
 
         let ext_file = r"[ v3_ca ]
 basicConstraints=CA:TRUE,pathlen:0
 keyUsage=keyCertSign,digitalSignature
 extendedKeyUsage=emailProtection
-crlDistributionPoints=URI:http://cse.example.com/crl.pem
-";
+crlDistributionPoints=URI:http://cse.example.com/crl.pem";
 
         let mut x509_builder = X509::builder().unwrap();
         let x509_context = x509_builder.x509v3_context(None, None);
@@ -380,7 +380,13 @@ crlDistributionPoints=URI:http://cse.example.com/crl.pem
     Signature Value:
 
 ";
-        assert_eq!(cert.split_once("X509v3 extensions:\n").unwrap().1, cert_);
+        assert_eq!(
+            cert.split_once("X509v3 extensions:\n")
+                .unwrap()
+                .1
+                .replace('\n', ""),
+            cert_.replace('\n', "")
+        );
 
         for ext in &exts_with_x509_parser {
             info!("\n\next: {:?}", ext);
@@ -462,7 +468,7 @@ crlDistributionPoints=URI:http://cse.example.com/crl.pem
     /// see: <https://support.google.com/a/answer/7300887?fl=1&sjid=2466928410660190479-NA#zippy=%2Croot-ca%2Cintermediate-ca-certificates-other-than-from-issuing-intermediate-ca%2Cintermediate-ca-certificate-that-issues-the-end-entity>
     #[test]
     fn test_parse_extensions_gmail() {
-        log_init(Some("info,hyper=info,reqwest=info"));
+        log_init(option_env!("RUST_LOG"));
 
         let ext_file = r"[ v3_ca ]
 basicConstraints=critical,CA:TRUE,pathlen:0

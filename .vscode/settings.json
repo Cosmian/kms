@@ -18,6 +18,7 @@
     "ECIES",
     "findex",
     "Findex",
+    "fips",
     "gpsw",
     "Gpsw",
     "jwks",
@@ -27,12 +28,15 @@
     "mozilla",
     "mysql",
     "nginx",
+    "OAEP",
     "openssl",
     "pkcs",
     "pkey",
+    "plaintexts",
     "postgres",
     "postgresql",
     "recv",
+    "repr",
     "Seedable",
     "sqlcipher",
     "sqlite",
@@ -48,6 +52,8 @@
     "uuid",
     "Uuid",
     "zeroizable",
+    "zeroize",
+    "Zeroizing",
     "zerorize"
   ],
   "[md]": {
@@ -68,9 +74,20 @@
     "editor.formatOnSaveMode": "file"
   },
   "rust-analyzer.showUnlinkedFileNotification": false,
-  "rust-analyzer.cargo.features": [
-    "utimaco",
-    "proteccio"
+  "editor.formatOnSave": true,
+  "sqltools.connections": [
+    {
+      "previewLimit": 50,
+      "driver": "SQLite",
+      "database": "${workspaceFolder:kms}/crate/server_database/src/tests/migrate/kms_4.22.1.sqlite",
+      "name": "4.22.1"
+    },
+    {
+      "previewLimit": 50,
+      "driver": "SQLite",
+      "database": "${workspaceFolder:kms}/test_data/sqlite/82680b51-a0a1-4252-8c6c-ca20a14d6d2d.sqlite/kms.db",
+      "name": "test"
+    }
   ],
-  "editor.formatOnSave": true
+  "sqltools.useNodeRuntime": true
 }

@@ -1,6 +1,9 @@
 #![allow(clippy::unwrap_used, clippy::print_stdout, clippy::expect_used)]
 
-use std::{env::temp_dir, path::PathBuf, sync::Arc};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use actix_http::Request;
 use actix_web::{
@@ -11,13 +14,14 @@ use actix_web::{
     test::{self, call_service, read_body},
     web::{self, Data},
 };
-use cosmian_kmip::kmip_2_1::ttlv::{TTLV, deserializer::from_ttlv, serializer::to_ttlv};
+use cosmian_kmip::ttlv::{TTLV, from_ttlv, to_ttlv};
 use serde::{Serialize, de::DeserializeOwned};
-use uuid::Uuid;
+use time::{OffsetDateTime, format_description::well_known::Iso8601};
+use tracing::info;
 
 use super::google_cse::utils::google_cse_auth;
 use crate::{
-    config::{ClapConfig, HttpConfig, MainDBConfig, ServerParams},
+    config::{ClapConfig, MainDBConfig, ServerParams, SocketServerConfig, TlsConfig},
     core::KMS,
     kms_bail,
     result::KResult,
@@ -30,29 +34,52 @@ pub(crate) fn https_clap_config() -> ClapConfig {
 }
 
 pub(crate) fn https_clap_config_opts(google_cse_kacls_url: Option<String>) -> ClapConfig {
-    let tmp_dir = temp_dir();
-    let uuid = Uuid::new_v4();
-    let sqlite_path = tmp_dir.join(format!("{uuid}.sqlite"));
-    if sqlite_path.exists() {
-        std::fs::remove_file(&sqlite_path).unwrap();
-    }
+    let sqlite_path = get_tmp_sqlite_path();
 
     ClapConfig {
-        http: HttpConfig {
-            https_p12_file: Some(PathBuf::from("src/tests/kmserver.acme.com.p12")),
-            https_p12_password: Some("password".to_owned()),
+        socket_server: SocketServerConfig {
+            socket_server_start: true,
             ..Default::default()
+        },
+        tls: TlsConfig {
+            tls_p12_file: Some(PathBuf::from(
+                "../../test_data/client_server/server/kmserver.acme.com.p12",
+            )),
+            tls_p12_password: Some("password".to_owned()),
+            clients_ca_cert_file: Some(PathBuf::from("../../test_data/client_server/ca/ca.crt")),
         },
         db: MainDBConfig {
             database_type: Some("sqlite".to_owned()),
             database_url: None,
             sqlite_path,
-            clear_database: true,
+            clear_database: false,
             ..Default::default()
         },
         google_cse_kacls_url,
         ..Default::default()
     }
+}
+
+pub(crate) fn get_tmp_sqlite_path() -> PathBuf {
+    // Set the absolute path of the project directory
+    let project_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("Cannot get parent directory of CARGO_MANIFEST_DIR")
+        .parent()
+        .expect("Cannot get parent of parent directory of CARGO_MANIFEST_DIR")
+        .join(Path::new("test_data").join("sqlite"));
+
+    // Create the directory if it doesn't exist
+    if !project_dir.exists() {
+        std::fs::create_dir_all(&project_dir).expect("Failed to create test_data/sqlite directory");
+    }
+
+    // get the current date and time as an ISO 8601 string using OffsetDateTime
+    let now = OffsetDateTime::now_utc().format(&Iso8601::DEFAULT).unwrap();
+    // replace the ":" with "-" to make it a valid filename
+    let name = now.replace(':', "-");
+
+    project_dir.join(format!("{name}.sqlite"))
 }
 
 pub(crate) async fn test_app(
@@ -61,7 +88,8 @@ pub(crate) async fn test_app(
 ) -> impl Service<Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error> {
     let clap_config = https_clap_config_opts(google_cse_kacls_url);
 
-    let server_params = ServerParams::try_from(clap_config).unwrap();
+    let server_params =
+        Arc::new(ServerParams::try_from(clap_config).expect("cannot create server params"));
 
     let kms_server = Arc::new(
         KMS::instantiate(server_params)
@@ -71,8 +99,9 @@ pub(crate) async fn test_app(
 
     let mut app = App::new()
         .app_data(Data::new(kms_server.clone()))
-        .app_data(web::Data::new(privileged_users))
-        .service(routes::kmip::kmip_2_1)
+        .app_data(Data::new(privileged_users))
+        .service(routes::kmip::kmip_2_1_json)
+        .service(routes::kmip::kmip)
         .service(routes::access::list_owned_objects)
         .service(routes::access::list_access_rights_obtained)
         .service(routes::access::list_accesses)
@@ -104,7 +133,7 @@ pub(crate) async fn test_app(
     test::init_service(app).await
 }
 
-pub(crate) async fn post<B, O, R, S>(app: &S, operation: O) -> KResult<R>
+pub(crate) async fn post_2_1<B, O, R, S>(app: &S, operation: O) -> KResult<R>
 where
     O: Serialize,
     R: DeserializeOwned,
@@ -124,12 +153,12 @@ where
         );
     }
     let body = read_body(res).await;
-    let json: TTLV = serde_json::from_slice(&body)?;
-    let result: R = from_ttlv(&json)?;
+    let ttlv: TTLV = serde_json::from_slice(&body)?;
+    let result: R = from_ttlv(ttlv)?;
     Ok(result)
 }
 
-pub(crate) async fn post_with_uri<B, O, R, S>(app: &S, operation: O, uri: &str) -> KResult<R>
+pub(crate) async fn post_json_with_uri<B, O, R, S>(app: &S, operation: O, uri: &str) -> KResult<R>
 where
     O: Serialize,
     R: DeserializeOwned,
@@ -148,11 +177,12 @@ where
             String::from_utf8(read_body(res).await.to_vec()).unwrap_or_else(|_| "[N/A".to_owned())
         );
     }
+    info!("Response: {:?}", res.status());
     let body = read_body(res).await;
     Ok(serde_json::from_slice(&body)?)
 }
 
-pub(crate) async fn get_with_uri<B, R, S>(app: &S, uri: &str) -> KResult<R>
+pub(crate) async fn get_json_with_uri<B, R, S>(app: &S, uri: &str) -> KResult<R>
 where
     R: DeserializeOwned,
     S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,

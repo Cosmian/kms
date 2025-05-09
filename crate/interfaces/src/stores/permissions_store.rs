@@ -4,7 +4,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use cosmian_kmip::kmip_2_1::{KmipOperation, kmip_types::StateEnumeration};
+use cosmian_kmip::{kmip_0::kmip_types::State, kmip_2_1::KmipOperation};
 
 use crate::{InterfaceResult, stores::SessionParams};
 
@@ -20,7 +20,7 @@ pub trait PermissionsStore {
         &self,
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
-    ) -> InterfaceResult<HashMap<String, (String, StateEnumeration, HashSet<KmipOperation>)>>;
+    ) -> InterfaceResult<HashMap<String, (String, State, HashSet<KmipOperation>)>>;
 
     /// List all the KMIP operations granted per `user`
     /// This is called by the owner only

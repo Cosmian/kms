@@ -1,20 +1,20 @@
 [workspace]
 default-members = ["cli/crate/cli", "crate/server"]
 members = [
-  "cli/crate/cli",
-  "cli/crate/kms_client",
-  "cli/crate/pkcs11/module",
-  "cli/crate/pkcs11/provider",
-  "crate/access",
-  "crate/crypto",
-  "crate/hsm/proteccio",
-  "crate/hsm/utimaco",
-  "crate/hsm/base_hsm",
-  "crate/interfaces",
-  "crate/kmip",
-  "crate/pkcs11/sys",
-  "crate/server",
-  "crate/server_database",
+    "cli/crate/cli",
+    "cli/crate/kms_client",
+    "cli/crate/pkcs11/module",
+    "cli/crate/pkcs11/provider",
+    "crate/access",
+    "crate/crypto",
+    "crate/hsm/proteccio",
+    "crate/hsm/utimaco",
+    "crate/hsm/base_hsm",
+    "crate/interfaces",
+    "crate/kmip",
+    "crate/pkcs11/sys",
+    "crate/server",
+    "crate/server_database",
 ]
 # Do that if you don't want to enable `dev` feature by default due to the `dev-dependencies` of the cli.
 # For more details, read: https://doc.rust-lang.org/cargo/reference/resolver.html#feature-resolver-version-2
@@ -22,12 +22,12 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "4.24.0"
-edition = "2021"
-rust-version = "1.80.0"
+version = "5.0.0"
+edition = "2024"
+rust-version = "1.85.0"
 authors = [
-  "Bruno Grieder <bruno.grieder@cosmian.com>",
-  "Emmanuel Coste <emmanuel.coste@cosmian.com>",
+    "Bruno Grieder <bruno.grieder@cosmian.com>",
+    "Emmanuel Coste <emmanuel.coste@cosmian.com>",
 ]
 license = "BUSL-1.1" # "Business Source License 1.1"
 license-file = "LICENSE"
@@ -64,12 +64,12 @@ clap = { version = "4.5", default-features = false }
 cosmian_findex = { git = "https://github.com/Cosmian/findex", default-features = false, rev = "6329b6b2f2b64b033e40b05cd12ca1c9b5ee376f" }
 cosmian_findex_server = { git = "https://www.github.com/Cosmian/findex-server", branch = "develop" }
 cosmian_findex_structs = { git = "https://www.github.com/Cosmian/findex-server", branch = "develop" }
-cosmian_config_utils = "0.1.1"
+cosmian_config_utils = "0.2"
 cosmian_cover_crypt = "15.0"
 cosmian_crypto_core = { version = "10.1", default-features = false, features = [
-  "ser",
+    "ser",
 ] }
-cosmian_http_client = "0.1.1"
+cosmian_http_client = "0.2"
 cosmian_kmip = { path = "crate/kmip" }
 cosmian_kms_access = { path = "crate/access" }
 cosmian_kms_client = { path = "cli/crate/kms_client" }
@@ -77,7 +77,7 @@ cosmian_kms_client_utils = { path = "cli/crate/client_utils" }
 cosmian_kms_crypto = { path = "crate/crypto" }
 cosmian_kms_server = { path = "crate/server" }
 cosmian_kms_server_database = { path = "crate/server_database" }
-cosmian_logger = "0.1.1"
+cosmian_logger = "0.2"
 der = { version = "0.7", default-features = false }
 hex = { version = "0.4", default-features = false }
 lazy_static = "1.5"
@@ -85,19 +85,22 @@ leb128 = "0.2"
 libloading = "0.8"
 log = { version = "0.4", default-features = false }
 lru = "0.12"
+native-tls = { version = "0.2", default-features = false }
 num_cpus = "1.16"
 num-format = "0.4"
+num-traits = "0.2"
 num-bigint-dig = { version = "0.8", default-features = false }
 openssl = { version = "0.10", default-features = false }
 pem = "3.0"
 pkcs11_sys = { path = "crate/pkcs11/sys" }
-pyo3 = { version = "0.20", default-features = false }
 rand = "0.9"
 reqwest = { version = "0.11", default-features = false }
+rustls = "0.23"
 serde = "1.0"
 serde_json = "1.0"
 sha3 = { version = "0.10", default-features = false }
-strum = { version = "0.25", default-features = false }
+strum = { version = "0.27", default-features = false }
+strum_macros = { version = "0.27", default-features = false }
 thiserror = "2.0"
 time = "0.3"
 tiny-keccak = "2.0"

@@ -4,8 +4,8 @@ The main documentation of the KMS is in [docs/index.md](./docs/index.md)
 
 ## Installing Rendering Tools
 
-You **do not need these tools** to author the doc and should probably **not** install LaTeX.
-Vs-code has all the necessary support for it.
+You do not need these tools to author the documentation and should probably not install LaTeX.
+VS Code has all the necessary support for it.
 
 However, if you want to see how it looks fully rendered, you must install `mkdocs`
 
@@ -21,7 +21,7 @@ sudo apt-get install fonts-noto-mono fonts-noto pandoc-citeproc librsvg2-bin
 sudo apt-get install fonts-noto-mono fonts-noto pandoc librsvg2-bin
 ```
 
-#### MacOS pre requisites
+#### MacOS pre-requisites
 
 ```sh
 brew install pandoc librsvg
@@ -44,7 +44,7 @@ git+https://gitlab.com/myriacore/pandoc-kroki-filter.git
 
 ### Using mkdocs
 
-From the root of the project, run
+From the root of the project, run:
 
 ```bash
 cd documentation/
@@ -56,4 +56,4 @@ mkdocs serve -a 0.0.0.0:8003
 
 Open a browser window at `http://[MACHINE_IP / LOCALHOST]:8003`
 
-The doc is live rendered when editing the Markdown files.
+The doc is live-rendered when editing the Markdown files.

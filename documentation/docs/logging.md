@@ -5,10 +5,17 @@ change the log level and send traces to an [OpenTelemetry](https://opentelemetry
 
 ## Adjusting the log level
 
-The log level can be adjusted by setting the `RUST_LOG` environment variable. The following log
-levels are available: `trace`, `debug`, `info`, `warn`, `error`.
+The log level can be adjusted by setting either:
 
-The default value is set to
+- the `RUST_LOG` environment variable. The following log
+- the `rust_log` setting in the TOML configuration file in the `[logging]` section.
+- the `--rust-log` command line argument.
+
+The available levels are: `trace`, `debug`, `info`, `warn`, `error`.
+
+The default value is set to `info`.
+
+Example of setting the log level using the `RUST_LOG` environment variable:
 
 ```bash
 RUST_LOG=info,cosmian=info,cosmian_kms_server=info,actix_web=info,sqlx::query=error,mysql=info"
@@ -34,12 +41,29 @@ RUST_LOG=info,cosmian=info,cosmian_kms_server=info,actix_web=debug,sqlx::query=e
 **WARNING**: Setting the log level to `debug` or `trace` may leak sensitive information in the
 logs
 
+## Console and syslog logging
+
+Logging to the console is enabled by default, but can be disabled by setting either:
+
+- the `quiet` parameter in the TOML configuration file in the `[logging]` section,
+- the `--quiet` command line argument
+- the `KMS_LOG_QUIET` environment variable to `true`.
+
+Instead of being sent to stdout on Linux, the logs can be sent to syslog by setting either:
+
+- the `log_to_syslog` parameter in the TOML configuration file in the `[logging]` section,
+- the `--log-to-syslog` command line argument
+- the `KMS_LOG_TO_SYSLOG` environment variable to `true`.
+
 ## Using the OTLP telemetry
 
-The server can send traces to an [OpenTelemetry](https://opentelemetry.io/) collector that
-supports the OTLP protocol.
-To enable this feature, set the `--otlp` command line argument or `KMS_OTLP_URL` environment
-variable to the URL of the collector. For example:
+The server can send traces to an [OpenTelemetry](https://opentelemetry.io/) collector that supports the OTLP protocol.
+To enable this feature, set either:
+
+- the `oltp` parameter in the TOML configuration file in the `[logging]` section,
+- the `--otlp` command line argument
+- the `KMS_OTLP_URL` environment variable
+  to the URL of the collector. For example:
 
 ```bash
 KMS_OTLP_URL="http://localhost:4317"
@@ -47,14 +71,15 @@ KMS_OTLP_URL="http://localhost:4317"
 
 The traces will contain the following information:
 
-- the start configuration of the KMS server
-- the KMIP requests
-- the requests that are linked to access-rights management
+- The start configuration of the KMS server
+- The KMIP requests
+- The requests that are linked to access rights management
 
 The content of the traces is adjusted by the log level set above.
 
-In addition, logs to the console can be disabled by setting the `--quiet` command line argument or
-`KMS_LOG_QUIET` environment variable to `true`.
+The traces will also contain metering events if the `enable_metering` feature is enabled.
+
+### Testing the telemetry
 
 To test the OpenTelemetry collector, start a Jaeger server with the following command:
 
@@ -66,4 +91,6 @@ Then start the KMS locally with the following command:
 
 ```bash
 ./cosmian_kms_server --otlp http://localhost:4317 --quiet
+```
+
 ```

@@ -13,35 +13,38 @@ doctest = false
 
 [dependencies]
 async-trait = { workspace = true }
-clap = { workspace = true, features = ["cargo", "std"] }
 cloudproof_findex = { version = "5.0", features = ["findex-redis"] }
 cosmian_crypto_core = { workspace = true }
 cosmian_kmip = { path = "../kmip" }
 cosmian_kms_crypto = { path = "../crypto" }
 cosmian_kms_interfaces = { path = "../interfaces" }
 hex = { workspace = true }
-lazy_static = { workspace = true }
 lru = { workspace = true }
+num-bigint-dig = { workspace = true, features = [
+    "std",
+    "rand",
+    "serde",
+    "zeroize",
+] }
 num_cpus = { workspace = true }
 rawsql = "0.1"
 redis = { version = "0.23", features = [
-  "aio",
-  "ahash",
-  "script",
-  "connection-manager",
-  "tokio-comp",
+    "aio",
+    "ahash",
+    "script",
+    "connection-manager",
+    "tokio-comp",
 ] }
 serde = { workspace = true }
-serde_json = { workspace = true }
+serde_json = { workspace = true, features = ["preserve_order"] }
 sqlx = { version = "0.8.5", default-features = false, features = [
-  "json",
-  "runtime-tokio-native-tls",
-  "mysql",
-  "postgres",
-  "sqlite",
+    "json",
+    "runtime-tokio-native-tls",
+    "mysql",
+    "postgres",
+    "sqlite",
 ] }
 thiserror = { workspace = true }
-tiny-keccak = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tracing = { workspace = true }
 url = { workspace = true }

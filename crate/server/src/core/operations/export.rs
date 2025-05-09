@@ -25,5 +25,12 @@ pub(crate) async fn export(
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<ExportResponse> {
     trace!("Export: {}", serde_json::to_string(&request)?);
-    export_get(kms, request, KmipOperation::Export, user, params).await
+    Box::pin(export_get(
+        kms,
+        request,
+        KmipOperation::Export,
+        user,
+        params,
+    ))
+    .await
 }

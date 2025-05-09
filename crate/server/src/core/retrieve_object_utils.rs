@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
-use cosmian_kmip::kmip_2_1::{
-    KmipOperation, kmip_operations::ErrorReason, kmip_types::StateEnumeration,
+use cosmian_kmip::{
+    kmip_0::kmip_types::{ErrorReason, State},
+    kmip_2_1::KmipOperation,
 };
 use cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams};
 use tracing::trace;
@@ -37,16 +38,23 @@ pub(crate) async fn retrieve_object_for_operation(
         .await?
         .values()
     {
-        if !(owm.state() == StateEnumeration::Active || operation_type == KmipOperation::Export) {
+        if !(owm.state() == State::Active || operation_type == KmipOperation::Export) {
             continue
         }
 
         if user_has_permission(user, Some(owm), &operation_type, kms, params.clone()).await? {
-            return Ok(owm.to_owned())
+            let mut owm = owm.to_owned();
+            // update the state on the object attributes
+            let state = owm.state();
+            owm.attributes_mut().state = Some(state);
+            if let Ok(ref mut attributes) = owm.object_mut().attributes_mut() {
+                attributes.state = Some(state);
+            }
+            return Ok(owm)
         }
     }
 
-    Err(KmsError::KmipError(
+    Err(KmsError::Kmip21Error(
         ErrorReason::Object_Not_Found,
         format!("object not found for identifier {uid_or_tags}",),
     ))

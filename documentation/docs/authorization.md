@@ -9,6 +9,7 @@ The authorization system in the Cosmian Key Management Service (KMS) operates ba
    that particular object. The owner retains the authority to withdraw these access rights at any given time.
 
 ## Privileged users
+
 By default, all users are allowed to create or import objects in the KMS.
 
 However, when the KMS server is configured with a list of privileged users, object creation rights are restricted as follows:

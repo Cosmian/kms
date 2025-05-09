@@ -1,14 +1,16 @@
 use std::sync::Arc;
 
 use cosmian_cover_crypt::api::Covercrypt;
-use cosmian_kmip::kmip_2_1::{
-    KmipOperation,
-    extra::BulkData,
-    kmip_objects::Object,
-    kmip_operations::{Decrypt, DecryptResponse, ErrorReason},
-    kmip_types::{
-        CryptographicAlgorithm, CryptographicParameters, CryptographicUsageMask, KeyFormatType,
-        PaddingMethod, StateEnumeration, UniqueIdentifier,
+use cosmian_kmip::{
+    kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, PaddingMethod, State},
+    kmip_2_1::{
+        KmipOperation,
+        extra::BulkData,
+        kmip_objects::Object,
+        kmip_operations::{Decrypt, DecryptResponse},
+        kmip_types::{
+            CryptographicAlgorithm, CryptographicParameters, KeyFormatType, UniqueIdentifier,
+        },
     },
 };
 #[cfg(not(feature = "fips"))]
@@ -29,7 +31,7 @@ use cosmian_kms_crypto::{
 };
 use cosmian_kms_interfaces::{CryptoAlgorithm, ObjectWithMetadata, SessionParams};
 use openssl::pkey::{Id, PKey, Private};
-use tracing::{debug, trace};
+use tracing::{debug, info, trace};
 use zeroize::Zeroizing;
 
 use crate::{
@@ -65,17 +67,17 @@ pub(crate) async fn decrypt(
         .context("Decrypt")?;
     debug!("Decrypt: candidate uids: {uids:?}");
 
-    // Determine which uid to select. The decision process is as follows: loop through the uids
-    // 1. if the uid has a prefix, try using that
-    // 2. if the uid does not have a prefix, fetch the corresponding object and check that
+    // Determine which UID to select. The decision process is as follows: loop through the uids
+    // 1. If the UID has a prefix, try using that
+    // 2. If the UID does not have a prefix, fetch the corresponding object and check that
     //   a- the object is active
     //   b- the object is a Private Key, a Symmetric Key
     //   c- the object is authorized for Decryption
     //
-    // Permissions check are done AFTER the object is fetched in the default database
+    // Permissions checks are done AFTER the object is fetched in the default database
     // to avoid calling `database.is_object_owned_by()` and hence a double call to the DB
-    // for each uid. This also is based on the high probability that there sill be a single object
-    // in the candidates list.
+    // for each uid. This is also based on the high probability that there is still a single object
+    // in the candidates' list.
     let mut selected_owm = None;
     for uid in uids {
         if let Some(prefix) = has_prefix(&uid) {
@@ -92,6 +94,7 @@ pub(crate) async fn decrypt(
                     .iter()
                     .any(|p| [KmipOperation::Decrypt, KmipOperation::Get].contains(p))
                 {
+                    debug!("Decrypt: user: {user} is not authorized to decrypt using: {uid}");
                     continue
                 }
             }
@@ -105,16 +108,24 @@ pub(crate) async fn decrypt(
             .retrieve_object(&uid, params.clone())
             .await?
             .ok_or_else(|| {
-                KmsError::KmipError(
+                debug!("Decrypt: failed to retrieve the key: {uid}");
+                KmsError::Kmip21Error(
                     ErrorReason::Item_Not_Found,
                     format!("Decrypt: failed to retrieve the key: {uid}"),
                 )
             })?;
-        if owm.state() != StateEnumeration::Active {
+        if owm.state() != State::Active {
+            debug!("Decrypt: key: {uid} is not active");
             continue
         }
-        let attributes = owm.object().attributes().cloned().unwrap_or_default();
+        // If an HSM wraps the object, likely the wrapping will be done with NoEncoding
+        // and the attributes of the object will be empty. Use the metadata attributes.
+        let attributes = owm
+            .object()
+            .attributes()
+            .unwrap_or_else(|_| owm.attributes());
         if !attributes.is_usage_authorized_for(CryptographicUsageMask::Decrypt)? {
+            debug!("Decrypt: key: {uid} is not authorized for decryption");
             continue
         }
         //check user permissions - owner can always decrypt
@@ -127,6 +138,7 @@ pub(crate) async fn decrypt(
                 .iter()
                 .any(|p| [KmipOperation::Decrypt, KmipOperation::Get].contains(p))
             {
+                debug!("Decrypt: user: {user} is not authorized to decrypt using: {uid}");
                 continue
             }
         }
@@ -137,10 +149,10 @@ pub(crate) async fn decrypt(
             break
         }
         if let Object::PrivateKey { .. } = owm.object() {
-            // is it a Covercrypt secret key?
+            //Is it a Covercrypt secret key?
             if attributes.key_format_type == Some(KeyFormatType::CoverCryptSecretKey) {
                 // does it have an access access structure that allows decryption?
-                if attributes::access_policy_from_attributes(&attributes).is_err() {
+                if attributes::access_policy_from_attributes(attributes).is_err() {
                     continue
                 }
             }
@@ -149,7 +161,7 @@ pub(crate) async fn decrypt(
         }
     }
     let mut owm = selected_owm.ok_or_else(|| {
-        KmsError::KmipError(
+        KmsError::Kmip21Error(
             ErrorReason::Item_Not_Found,
             format!("Decrypt: no valid key for id: {unique_identifier}"),
         )
@@ -162,18 +174,30 @@ pub(crate) async fn decrypt(
             .with_context(|| format!("Decrypt: the key: {}, cannot be unwrapped.", owm.id()))?,
     );
 
-    BulkData::deserialize(data).map_or_else(
+    let res = BulkData::deserialize(data).map_or_else(
         |_| decrypt_single(&owm, &request),
         |bulk_data| decrypt_bulk(&owm, &request, bulk_data),
-    )
+    )?;
+
+    info!(
+        uid = owm.id(),
+        user = user,
+        "Decrypted ciphertext of: {} bytes -> plaintext length: {}",
+        request.data.as_ref().map_or(0, Vec::len),
+        res.data.as_ref().map_or(0, |d| d.len()),
+    );
+
+    Ok(res)
 }
 
-/// Decrypt using an decryption oracle.
+/// Decrypt using a decryption oracle.
+///
 /// # Arguments
 /// * `kms` - the KMS
 /// * `request` - the decrypt request
 /// * `uid` - the unique identifier of the key
 /// * `prefix` - the prefix of the decryption oracle
+///
 /// # Returns
 /// * the decrypt response
 async fn decrypt_using_encryption_oracle(
@@ -183,7 +207,7 @@ async fn decrypt_using_encryption_oracle(
     prefix: &str,
 ) -> KResult<DecryptResponse> {
     let mut data = request
-        .iv_counter_nonce
+        .i_v_counter_nonce
         .as_ref()
         .map_or(vec![], Clone::clone);
     data.extend(
@@ -263,7 +287,7 @@ fn decrypt_bulk(
                     data: Some(ciphertext.to_vec()),
                     ..request.clone()
                 };
-                let response = decrypt_with_public_key(owm, &request)?;
+                let response = decrypt_with_private_key(owm, &request)?;
                 plaintexts.push(response.data.unwrap_or_default());
             }
         }
@@ -337,7 +361,7 @@ fn decrypt_single(owm: &ObjectWithMetadata, request: &Decrypt) -> KResult<Decryp
                 "dispatch_decrypt: matching on public key format type: {:?}",
                 key_block.key_format_type
             );
-            decrypt_with_public_key(owm, request)
+            decrypt_with_private_key(owm, request)
         }
 
         KeyFormatType::TransparentSymmetricKey | KeyFormatType::Raw => {
@@ -370,7 +394,7 @@ fn decrypt_single_with_symmetric_key(
         )
     })?;
     let (key_bytes, aead) = get_aead_and_key(owm, request)?;
-    let nonce = request.iv_counter_nonce.as_ref().ok_or_else(|| {
+    let nonce = request.i_v_counter_nonce.as_ref().ok_or_else(|| {
         KmsError::InvalidRequest("Decrypt: the nonce/IV must be provided".to_owned())
     })?;
     let aad = request
@@ -414,7 +438,7 @@ fn get_aead_and_key(
         .cryptographic_parameters
         .as_ref()
         .and_then(|cp| cp.block_cipher_mode);
-    let key_bytes = key_block.key_bytes()?;
+    let key_bytes = key_block.symmetric_key_bytes()?;
     let aead = SymCipher::from_algorithm_and_key_size(
         cryptographic_algorithm,
         block_cipher_mode,
@@ -423,7 +447,7 @@ fn get_aead_and_key(
     Ok((key_bytes, aead))
 }
 
-fn decrypt_with_public_key(
+fn decrypt_with_private_key(
     owm: &ObjectWithMetadata,
     request: &Decrypt,
 ) -> KResult<DecryptResponse> {

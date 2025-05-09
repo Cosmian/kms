@@ -80,11 +80,7 @@ pub use core::{
 };
 mod error;
 pub use error::DbError;
-mod migrate;
 mod stores;
-pub use stores::{SqlCipherSessionParams, redis_master_key_from_password};
-
-pub const KMS_VERSION_BEFORE_MIGRATION_SUPPORT: &str = "4.12.0";
-
+pub use stores::redis_master_key_from_password;
 #[cfg(test)]
 mod tests;

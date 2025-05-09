@@ -4,12 +4,14 @@ use cosmian_crypto_core::{
     CsRng,
     reexport::rand_core::{RngCore, SeedableRng},
 };
-use cosmian_kmip::kmip_2_1::{
-    kmip_objects::ObjectType,
-    kmip_types::{
-        Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, StateEnumeration,
+use cosmian_kmip::{
+    kmip_0::kmip_types::{CryptographicUsageMask, State},
+    kmip_2_1::{
+        kmip_attributes::Attributes,
+        kmip_objects::ObjectType,
+        kmip_types::{CryptographicAlgorithm, KeyFormatType, UniqueIdentifier},
+        requests::create_symmetric_key_kmip_object,
     },
-    requests::create_symmetric_key_kmip_object,
 };
 use cosmian_kms_interfaces::{ObjectsStore, PermissionsStore, SessionParams};
 use uuid::Uuid;
@@ -24,17 +26,23 @@ pub(crate) async fn tags<DB: ObjectsStore + PermissionsStore>(
     cosmian_logger::log_init(None);
     let mut rng = CsRng::from_entropy();
 
+    let owner = "eyJhbGciOiJSUzI1Ni";
+    let uid = Uuid::new_v4().to_string();
     // create a symmetric key with tags
     let mut symmetric_key_bytes = vec![0; 32];
     rng.fill_bytes(&mut symmetric_key_bytes);
     // create a symmetric key
-    let symmetric_key =
-        create_symmetric_key_kmip_object(&symmetric_key_bytes, CryptographicAlgorithm::AES, false)?;
+    let symmetric_key = create_symmetric_key_kmip_object(
+        &symmetric_key_bytes,
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
+            ..Attributes::default()
+        },
+    )?;
 
     // insert into DB
 
-    let owner = "eyJhbGciOiJSUzI1Ni";
-    let uid = Uuid::new_v4().to_string();
     let uid_ = db
         .create(
             Some(uid.clone()),
@@ -53,7 +61,7 @@ pub(crate) async fn tags<DB: ObjectsStore + PermissionsStore>(
         .await?
         .ok_or_else(|| db_error!("Object not found"))?;
 
-    let expected_attributes = Attributes {
+    let mut expected_attributes = Attributes {
         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
         cryptographic_length: Some(256),
         cryptographic_usage_mask: Some(
@@ -65,9 +73,11 @@ pub(crate) async fn tags<DB: ObjectsStore + PermissionsStore>(
         ),
         key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
         object_type: Some(ObjectType::SymmetricKey),
+        unique_identifier: Some(UniqueIdentifier::TextString(owm.id().to_owned())),
         ..Attributes::default()
     };
-    assert_eq!(StateEnumeration::Active, owm.state());
+    expected_attributes.set_tags(["_kk".to_owned()])?;
+    assert_eq!(State::Active, owm.state());
     assert!(&symmetric_key == owm.object());
 
     let tags = db.retrieve_tags(owm.id(), db_params.clone()).await?;
@@ -90,7 +100,7 @@ pub(crate) async fn tags<DB: ObjectsStore + PermissionsStore>(
     if verify_attributes {
         assert_eq!(owm.attributes(), &expected_attributes);
     }
-    assert_eq!(owm.state(), StateEnumeration::Active);
+    assert_eq!(owm.state(), State::Active);
 
     let tags = db.retrieve_tags(owm.id(), db_params.clone()).await?;
     assert!(tags.contains("tag1"));
@@ -110,7 +120,7 @@ pub(crate) async fn tags<DB: ObjectsStore + PermissionsStore>(
     if verify_attributes {
         assert_eq!(owm.attributes(), &expected_attributes);
     }
-    assert_eq!(owm.state(), StateEnumeration::Active);
+    assert_eq!(owm.state(), State::Active);
     let tags = db.retrieve_tags(owm.id(), db_params.clone()).await?;
     assert!(tags.contains("tag1"));
     assert!(tags.contains("tag2"));
@@ -132,7 +142,7 @@ pub(crate) async fn tags<DB: ObjectsStore + PermissionsStore>(
     if verify_attributes {
         assert_eq!(owm.attributes(), &expected_attributes);
     }
-    assert_eq!(owm.state(), StateEnumeration::Active);
+    assert_eq!(owm.state(), State::Active);
     let tags = db.retrieve_tags(owm.id(), db_params.clone()).await?;
     assert!(tags.contains("tag1"));
     assert!(tags.contains("tag2"));

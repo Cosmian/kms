@@ -1,6 +1,6 @@
-use cosmian_kmip::kmip_2_1::{
-    kmip_data_structures::KeyWrappingData,
-    kmip_types::{CryptographicAlgorithm, HashingAlgorithm, PaddingMethod},
+use cosmian_kmip::{
+    kmip_0::kmip_types::{HashingAlgorithm, PaddingMethod},
+    kmip_2_1::{kmip_data_structures::KeyWrappingData, kmip_types::CryptographicAlgorithm},
 };
 
 pub(crate) fn rsa_parameters(

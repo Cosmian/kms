@@ -1,4 +1,4 @@
-use crate::{Deserializer, Serializer, error::KmipError, kmip_2_1::kmip_operations::ErrorReason};
+use crate::{Deserializer, Serializer, error::KmipError, kmip_0::kmip_types::ErrorReason};
 
 /// Structure used to encrypt with Covercrypt or ECIES
 ///
@@ -52,7 +52,7 @@ impl DataToEncrypt {
             .map(|ep| (!ep.is_empty()).then_some(ep))?
             .map(|ep| {
                 String::from_utf8(ep).map_err(|e| {
-                    KmipError::Kmip(
+                    KmipError::Kmip21(
                         ErrorReason::Invalid_Message,
                         format!("failed deserializing the encryption policy string: {e}"),
                     )

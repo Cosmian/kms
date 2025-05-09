@@ -1,11 +1,20 @@
-use std::num::NonZeroUsize;
+use std::{
+    collections::HashMap,
+    num::NonZeroUsize,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use cosmian_kmip::kmip_2_1::kmip_objects::Object;
 use lru::LruCache;
-use tokio::sync::RwLock;
 #[cfg(test)]
 use tokio::sync::RwLockReadGuard;
-use tracing::trace;
+use tokio::sync::{
+    RwLock,
+    mpsc::{self, Receiver, Sender},
+    oneshot,
+};
+use tracing::{debug, trace, warn};
 
 use crate::error::DbResult;
 
@@ -13,7 +22,7 @@ use crate::error::DbResult;
 /// It contains the unwrapped object and the key signature
 #[derive(Clone)]
 pub struct CachedUnwrappedObject {
-    key_signature: u64,
+    fingerprint: u64,
     unwrapped_object: Object,
 }
 
@@ -21,14 +30,14 @@ impl CachedUnwrappedObject {
     #[must_use]
     pub const fn new(key_signature: u64, unwrapped_object: Object) -> Self {
         Self {
-            key_signature,
+            fingerprint: key_signature,
             unwrapped_object,
         }
     }
 
     #[must_use]
-    pub const fn key_signature(&self) -> u64 {
-        self.key_signature
+    pub const fn fingerprint(&self) -> u64 {
+        self.fingerprint
     }
 
     #[must_use]
@@ -38,39 +47,134 @@ impl CachedUnwrappedObject {
 }
 
 /// The cache of unwrapped objects
-/// The key is the uid of the object
+/// The key is the UID of the object
 /// The value is the unwrapped object
 /// The value is a `Err(KmsError)` if the object cannot be unwrapped
 pub struct UnwrappedCache {
-    cache: RwLock<LruCache<String, DbResult<CachedUnwrappedObject>>>,
+    cache: Arc<RwLock<LruCache<String, DbResult<CachedUnwrappedObject>>>>,
+    access_timestamps: Arc<RwLock<HashMap<String, Instant>>>,
+    access_sender: Option<Sender<String>>,
+    gc_interval: Duration,
+    max_age: Duration,
+    shutdown_sender: Option<oneshot::Sender<()>>,
 }
 
-impl Default for UnwrappedCache {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
+/// The cache of unwrapped objects
+///
+/// The key is the UID of the object
+/// The value is the unwrapped object
 impl UnwrappedCache {
+    /// Create a new cache with a configurable max age setting.
+    /// The max age is the time after which an object is considered stale.
+    /// The garbage collection interval is set to `max_age x 1.5`
+    ///
+    /// # Arguments
+    /// * `max_age` - The maximum age of an object in the cache before it is considered stale.
+    #[allow(clippy::missing_panics_doc)]
     #[must_use]
-    pub fn new() -> Self {
-        #[allow(unsafe_code)]
-        let max = unsafe { NonZeroUsize::new_unchecked(100) };
-        Self {
-            cache: RwLock::new(LruCache::new(max)),
+    pub fn new(max_age: Duration) -> Self {
+        let max_size = NonZeroUsize::new(100).expect("100 is not zero. This will never trigger");
+
+        let (tx, rx) = mpsc::channel(100_000);
+        let (shutdown_tx, shutdown_rx) = oneshot::channel();
+        let cache = Arc::new(RwLock::new(LruCache::new(max_size)));
+        let access_timestamps = Arc::new(RwLock::new(HashMap::new()));
+        let gc_interval = max_age + max_age / 2;
+
+        let unwrapped_cache = Self {
+            cache,
+            access_timestamps,
+            access_sender: Some(tx),
+            gc_interval,
+            max_age,
+            shutdown_sender: Some(shutdown_tx),
+        };
+
+        unwrapped_cache.spawn_gc_thread(rx, shutdown_rx);
+        unwrapped_cache
+    }
+
+    // Spawn a thread to handle garbage collection
+    fn spawn_gc_thread(&self, mut rx: Receiver<String>, mut shutdown_rx: oneshot::Receiver<()>) {
+        let timestamps = self.access_timestamps.clone();
+        let cache = self.cache.clone();
+        let interval = self.gc_interval;
+        let max_age = self.max_age;
+
+        tokio::spawn(async move {
+            let mut interval_timer = tokio::time::interval(interval);
+
+            loop {
+                tokio::select! {
+                    // Check for shutdown signal
+                    shutdown = &mut shutdown_rx => {
+                        if shutdown.is_ok() {
+                            debug!("Cache garbage collection thread shutting down");
+                            break;
+                        }
+                    }
+
+                    // Process access timestamp updates
+                    Some(key) = rx.recv() => {
+                        let mut timestamps_lock = timestamps.write().await;
+                        timestamps_lock.insert(key, Instant::now());
+                    }
+
+                    // Run garbage collection at the configured interval
+                    _ = interval_timer.tick() => {
+                        debug!("Running cache garbage collection");
+                        let now = Instant::now();
+                        let mut keys_to_remove = Vec::new();
+
+                        // Find stale keys
+                        {
+                            let timestamps_lock = timestamps.read().await;
+                            for (key, last_access) in timestamps_lock.iter() {
+                                if now.duration_since(*last_access) > max_age {
+                                    keys_to_remove.push(key.clone());
+                                }
+                            }
+                        }
+
+                        // Remove stale keys
+                        if !keys_to_remove.is_empty() {
+                            let mut timestamps_lock = timestamps.write().await;
+                            let mut cache_lock = cache.write().await;
+
+                            for key in &keys_to_remove {
+                                timestamps_lock.remove(key);
+                                cache_lock.pop(key);
+                            }
+
+                            debug!("Garbage collected {} stale cache entries", keys_to_remove.len());
+                        }
+                    }
+                }
+            }
+
+            debug!("Cache garbage collection thread terminated");
+        });
+    }
+
+    // Record a timestamp for a cache access
+    async fn record_access(&self, uid: &str) {
+        if let Some(sender) = &self.access_sender {
+            if let Err(e) = sender.send(uid.to_string()).await {
+                warn!("Failed to send cache access timestamp: {}", e);
+            }
         }
     }
 
     /// Validate the cache for a given object
-    /// If the key signature is different, the cache is invalidated
+    /// If the object fingerprint is different, the cache is invalidated
     /// and the value is removed.
     pub async fn validate_cache(&self, uid: &str, object: &Object) {
-        if let Ok(key_signature) = object.key_signature() {
+        if let Ok(fingerprint) = object.fingerprint() {
             let mut cache = self.cache.write().await;
             // invalidate the value in cache if the signature is different
             match cache.peek(uid) {
                 Some(Ok(cached_object)) => {
-                    if cached_object.key_signature() != key_signature {
+                    if cached_object.fingerprint() != fingerprint {
                         trace!("Invalidating the cache for {}", uid);
                         cache.pop(uid);
                     }
@@ -90,16 +194,25 @@ impl UnwrappedCache {
     /// Clear a value from the cache
     pub async fn clear_cache(&self, uid: &str) {
         self.cache.write().await.pop(uid);
+        self.access_timestamps.write().await.remove(uid);
     }
 
     /// Peek into the cache
     pub async fn peek(&self, uid: &str) -> Option<DbResult<CachedUnwrappedObject>> {
-        self.cache.read().await.peek(uid).cloned()
+        let res = self.cache.read().await.peek(uid).cloned();
+        if res.is_some() {
+            self.record_access(uid).await;
+        }
+        res
     }
 
     /// Insert into the cache
     pub async fn insert(&self, uid: String, unwrapped_object: DbResult<CachedUnwrappedObject>) {
-        self.cache.write().await.put(uid, unwrapped_object);
+        self.cache.write().await.put(uid.clone(), unwrapped_object);
+        self.access_timestamps
+            .write()
+            .await
+            .insert(uid, Instant::now());
     }
 
     #[cfg(test)]
@@ -110,17 +223,33 @@ impl UnwrappedCache {
     }
 }
 
+impl Drop for UnwrappedCache {
+    fn drop(&mut self) {
+        // Send shutdown signal to the GC thread when the cache is dropped
+        if let Some(shutdown_tx) = self.shutdown_sender.take() {
+            // We can't do much if sending fails, just ignore the error
+            // This would happen if the receiver was already dropped
+            let _ = shutdown_tx.send(());
+            debug!("Sent shutdown signal to cache garbage collection thread");
+        }
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::panic_in_result_fn)]
 mod tests {
-    use std::collections::{HashMap, HashSet};
+    use std::{
+        collections::{HashMap, HashSet},
+        time::Duration,
+    };
 
     use cosmian_crypto_core::{
         CsRng,
         reexport::rand_core::{RngCore, SeedableRng},
     };
     use cosmian_kmip::kmip_2_1::{
-        kmip_types::CryptographicAlgorithm, requests::create_symmetric_key_kmip_object,
+        kmip_attributes::Attributes, kmip_types::CryptographicAlgorithm,
+        requests::create_symmetric_key_kmip_object,
     };
     use cosmian_logger::log_init;
     use tempfile::TempDir;
@@ -131,12 +260,19 @@ mod tests {
     #[tokio::test]
     #[allow(clippy::unwrap_used, clippy::panic_in_result_fn)]
     async fn test_lru_cache() -> DbResult<()> {
+        // log_init(Some("debug"));
         log_init(option_env!("RUST_LOG"));
 
         let dir = TempDir::new()?;
 
         let main_db_params = MainDbParams::Sqlite(dir.path().to_owned());
-        let database = Database::instantiate(&main_db_params, true, HashMap::new()).await?;
+        let database = Database::instantiate(
+            &main_db_params,
+            true,
+            HashMap::new(),
+            Duration::from_millis(100),
+        )
+        .await?;
 
         let mut rng = CsRng::from_entropy();
 
@@ -146,8 +282,10 @@ mod tests {
         // create a symmetric key
         let symmetric_key = create_symmetric_key_kmip_object(
             &symmetric_key_bytes,
-            CryptographicAlgorithm::AES,
-            false,
+            &Attributes {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                ..Attributes::default()
+            },
         )?;
 
         // insert into DB
@@ -178,6 +316,78 @@ mod tests {
             assert!(cache.await.peek(&uid).is_none());
         }
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_garbage_collection() -> DbResult<()> {
+        // log_init(Some("debug"));
+        log_init(option_env!("RUST_LOG"));
+
+        // Create a cache with a short GC interval and max age
+        let cache = super::UnwrappedCache::new(
+            Duration::from_millis(100), // Keys expire after 100 ms, GC runs every 150 ms.
+        );
+
+        // Insert an item
+        let uid = "test_item".to_string();
+        let object = super::CachedUnwrappedObject::new(
+            123,
+            create_symmetric_key_kmip_object(
+                &[0; 32],
+                &Attributes {
+                    cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                    ..Attributes::default()
+                },
+            )?,
+        );
+        cache.insert(uid.clone(), Ok(object)).await;
+
+        // Verify it's in the cache
+        assert!(cache.peek(&uid).await.is_some());
+
+        // Wait for the item to be garbage collected
+        tokio::time::sleep(Duration::from_millis(350)).await;
+
+        // The item should be gone
+        assert!(cache.peek(&uid).await.is_none());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_gc_thread_shutdown() -> DbResult<()> {
+        // log_init(Some("debug"));
+        log_init(option_env!("RUST_LOG"));
+
+        // Create a scope to ensure the cache is dropped
+        {
+            let cache = super::UnwrappedCache::new(Duration::from_millis(100));
+
+            // Insert an item
+            let uid = "test_item".to_string();
+            let object = super::CachedUnwrappedObject::new(
+                123,
+                create_symmetric_key_kmip_object(
+                    &[0; 32],
+                    &Attributes {
+                        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                        ..Attributes::default()
+                    },
+                )?,
+            );
+            cache.insert(uid.clone(), Ok(object)).await;
+
+            // Verify it's in the cache
+            assert!(cache.peek(&uid).await.is_some());
+        }
+
+        // Cache has been dropped here, thread should be shutting down
+        // Give some time for the thread to process the shutdown signal
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        // We can't directly test that the thread has been terminated,
+        // but this test ensures the Drop implementation is called properly
         Ok(())
     }
 }

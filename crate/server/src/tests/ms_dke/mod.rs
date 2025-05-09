@@ -1,13 +1,16 @@
 #![allow(clippy::unwrap_used, clippy::print_stdout)]
 
 use base64::{Engine, engine::general_purpose::STANDARD};
-use cosmian_kmip::kmip_2_1::{
-    kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-    kmip_objects::{Object, ObjectType},
-    kmip_operations::{Decrypt, DecryptResponse, Import, ImportResponse},
-    kmip_types::{
-        Attributes, CryptographicAlgorithm, CryptographicParameters, HashingAlgorithm,
-        KeyFormatType, PaddingMethod, UniqueIdentifier,
+use cosmian_kmip::{
+    kmip_0::kmip_types::{HashingAlgorithm, PaddingMethod},
+    kmip_2_1::{
+        kmip_attributes::Attributes,
+        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+        kmip_objects::{Object, ObjectType, PublicKey},
+        kmip_operations::{Decrypt, DecryptResponse, Import, ImportResponse},
+        kmip_types::{
+            CryptographicAlgorithm, CryptographicParameters, KeyFormatType, UniqueIdentifier,
+        },
     },
 };
 
@@ -65,21 +68,21 @@ async fn decrypt_data_test() -> KResult<()> {
         replace_existing: Some(true),
         key_wrap_type: None,
         attributes: Attributes::default(),
-        object: Object::PublicKey {
+        object: Object::PublicKey(PublicKey {
             key_block: KeyBlock {
                 key_format_type: KeyFormatType::PKCS8,
                 key_compression_type: None,
-                key_value: KeyValue {
+                key_value: Some(KeyValue::Structure {
                     key_material: KeyMaterial::ByteString(pem.contents().to_vec().into()),
                     attributes: None,
-                },
+                }),
                 cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                 cryptographic_length: None,
                 key_wrapping_data: None,
             },
-        },
+        }),
     };
-    let import_response: ImportResponse = test_utils::post(&app, &import_key).await?;
+    let import_response: ImportResponse = test_utils::post_2_1(&app, &import_key).await?;
     let key_id = import_response.unique_identifier;
 
     // encrypted data
@@ -97,7 +100,7 @@ async fn decrypt_data_test() -> KResult<()> {
         data: Some(ciphertext),
         ..Decrypt::default()
     };
-    let decrypt_response: DecryptResponse = test_utils::post(&app, &decrypt_request).await?;
+    let decrypt_response: DecryptResponse = test_utils::post_2_1(&app, &decrypt_request).await?;
     println!("plaintext: {:?}", decrypt_response.data);
     println!(
         "plaintext len: {:?}",

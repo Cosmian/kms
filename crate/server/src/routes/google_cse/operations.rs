@@ -2,9 +2,12 @@ use std::sync::Arc;
 
 use base64::{Engine, engine::general_purpose};
 use clap::crate_version;
-use cosmian_kmip::kmip_2_1::{
-    kmip_operations::{Decrypt, Encrypt},
-    kmip_types::{BlockCipherMode, CryptographicParameters, UniqueIdentifier},
+use cosmian_kmip::{
+    kmip_0::kmip_types::BlockCipherMode,
+    kmip_2_1::{
+        kmip_operations::{Decrypt, Encrypt},
+        kmip_types::{CryptographicParameters, UniqueIdentifier},
+    },
 };
 use openssl::{
     hash::MessageDigest,
@@ -210,19 +213,19 @@ pub async fn wrap(
         unique_identifier: Some(UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned())),
         cryptographic_parameters: None,
         data: Some(general_purpose::STANDARD.decode(&request.key)?.into()),
-        iv_counter_nonce: None,
+        i_v_counter_nonce: None,
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,
         authenticated_encryption_additional_data: resource_name,
     };
-    let dek = encrypt(kms, encryption_request, &user, None).await?;
+    let dek = Box::pin(encrypt(kms, encryption_request, &user, None)).await?;
 
     // re-extract the bytes from the key
     let data = dek.data.ok_or_else(|| {
         KmsError::InvalidRequest("Invalid wrapped key - missing data.".to_owned())
     })?;
-    let iv_counter_nonce = dek.iv_counter_nonce.ok_or_else(|| {
+    let iv_counter_nonce = dek.i_v_counter_nonce.ok_or_else(|| {
         KmsError::InvalidRequest("Invalid wrapped key - missing nonce.".to_owned())
     })?;
     let authenticated_encryption_tag = dek.authenticated_encryption_tag.ok_or_else(|| {
@@ -648,19 +651,19 @@ pub async fn privileged_wrap(
         unique_identifier: Some(UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned())),
         cryptographic_parameters: None,
         data: Some(general_purpose::STANDARD.decode(&request.key)?.into()),
-        iv_counter_nonce: None,
+        i_v_counter_nonce: None,
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,
         authenticated_encryption_additional_data: Some(resource_name),
     };
-    let dek = encrypt(kms, encryption_request, &user, None).await?;
+    let dek = Box::pin(encrypt(kms, encryption_request, &user, None)).await?;
 
     // re-extract the bytes from the key
     let data = dek.data.ok_or_else(|| {
         KmsError::InvalidRequest("Invalid wrapped key - missing data.".to_owned())
     })?;
-    let iv_counter_nonce = dek.iv_counter_nonce.ok_or_else(|| {
+    let iv_counter_nonce = dek.i_v_counter_nonce.ok_or_else(|| {
         KmsError::InvalidRequest("Invalid wrapped key - missing nonce.".to_owned())
     })?;
     let authenticated_encryption_tag = dek.authenticated_encryption_tag.ok_or_else(|| {
@@ -893,19 +896,19 @@ pub async fn rewrap(
         unique_identifier: Some(UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned())),
         cryptographic_parameters: None,
         data: Some(unwrapped_data.clone()),
-        iv_counter_nonce: None,
+        i_v_counter_nonce: None,
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,
         authenticated_encryption_additional_data: Some(resource_name.clone().into_bytes()),
     };
-    let encrypt_response = encrypt(kms, encryption_request, &user, None).await?;
+    let encrypt_response = Box::pin(encrypt(kms, encryption_request, &user, None)).await?;
 
     // re-extract the bytes from the key
     let data = encrypt_response.data.ok_or_else(|| {
         KmsError::InvalidRequest("Invalid wrapped key - missing data.".to_owned())
     })?;
-    let iv_counter_nonce = encrypt_response.iv_counter_nonce.ok_or_else(|| {
+    let iv_counter_nonce = encrypt_response.i_v_counter_nonce.ok_or_else(|| {
         KmsError::InvalidRequest("Invalid wrapped key - missing nonce.".to_owned())
     })?;
     let authenticated_encryption_tag =
@@ -992,14 +995,14 @@ async fn cse_wrapped_key_decrypt(
             ..Default::default()
         }),
         data: Some(ciphertext.to_vec()),
-        iv_counter_nonce: Some(iv_counter_nonce.to_vec()),
+        i_v_counter_nonce: Some(iv_counter_nonce.to_vec()),
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,
         authenticated_encryption_additional_data: resource_name,
         authenticated_encryption_tag: Some(authenticated_tag.to_vec()),
     };
-    let key = decrypt(kms, decryption_request, &user, None).await?;
+    let key = Box::pin(decrypt(kms, decryption_request, &user, None)).await?;
 
     let data = key.data.ok_or_else(|| {
         KmsError::InvalidRequest("Invalid decrypted key - missing data.".to_owned())

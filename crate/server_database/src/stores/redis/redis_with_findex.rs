@@ -10,10 +10,9 @@ use cloudproof_findex::{
     parameters::MASTER_KEY_LENGTH,
 };
 use cosmian_crypto_core::{FixedSizeCBytes, SymmetricKey, kdf256};
-use cosmian_kmip::kmip_2_1::{
-    KmipOperation,
-    kmip_objects::Object,
-    kmip_types::{Attributes, StateEnumeration},
+use cosmian_kmip::{
+    kmip_0::kmip_types::State,
+    kmip_2_1::{KmipOperation, kmip_attributes::Attributes, kmip_objects::Object},
 };
 use cosmian_kms_crypto::crypto::{password_derivation::derive_key_from_password, secret::Secret};
 use cosmian_kms_interfaces::{
@@ -31,7 +30,7 @@ use super::{
 use crate::{
     db_error,
     error::{DbError, DbResult},
-    stores::redis::objects_db::RedisOperation,
+    stores::{migrate::DbState, redis::objects_db::RedisOperation},
 };
 
 pub(crate) const REDIS_WITH_FINDEX_MASTER_KEY_LENGTH: usize = 32;
@@ -63,6 +62,7 @@ fn intersect_all<I: IntoIterator<Item = HashSet<Location>>>(sets: I) -> HashSet<
 
 #[derive(Clone)]
 pub(crate) struct RedisWithFindex {
+    pub(crate) mgr: ConnectionManager,
     objects_db: Arc<ObjectsDB>,
     permissions_db: PermissionsDB,
     findex: Arc<FindexRedis>,
@@ -75,6 +75,7 @@ impl RedisWithFindex {
         redis_url: &str,
         master_key: Secret<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>,
         label: &[u8],
+        clear_database: bool,
     ) -> DbResult<Self> {
         // derive an Findex Key
         let mut findex_key = SymmetricKey::<MASTER_KEY_LENGTH>::default();
@@ -97,13 +98,38 @@ impl RedisWithFindex {
         let findex =
             Arc::new(FindexRedis::connect_with_manager(mgr.clone(), objects_db.clone()).await?);
         let permissions_db = PermissionsDB::new(findex.clone(), label);
-        Ok(Self {
+
+        if clear_database {
+            redis::cmd("FLUSHDB")
+                .query_async::<_, ()>(&mut mgr.clone())
+                .await?;
+        }
+
+        let count: usize = redis::cmd("DBSIZE")
+            .query_async(&mut mgr.clone())
+            .await
+            .map_err(|e| DbError::DatabaseError(format!("Failed to get Redis DB size: {e}")))?;
+        trace!("Redis DB size: {count}");
+
+        let redis_with_findex = Self {
+            mgr,
             objects_db,
             permissions_db,
             findex,
             findex_key,
             label: Label::from(label),
-        })
+        };
+
+        if count == 0 {
+            redis_with_findex
+                .set_current_db_version(env!("CARGO_PKG_VERSION"))
+                .await?;
+            redis_with_findex.set_db_state(DbState::Ready).await?;
+        } else {
+            redis_with_findex.migrate().await?;
+        }
+
+        Ok(redis_with_findex)
     }
 
     /// Prepare an object for upsert
@@ -116,7 +142,7 @@ impl RedisWithFindex {
         object: &Object,
         attributes: &Attributes,
         tags: Option<&HashSet<String>>,
-        state: StateEnumeration,
+        state: State,
         params: Option<Arc<dyn SessionParams>>,
     ) -> Result<RedisDbObject, DbError> {
         // additions to the index
@@ -171,7 +197,7 @@ impl RedisWithFindex {
                 object,
                 attributes,
                 Some(tags),
-                StateEnumeration::Active,
+                State::Active,
                 None,
             )
             .await?;
@@ -220,7 +246,7 @@ impl RedisWithFindex {
     async fn prepare_object_for_state_update(
         &self,
         uid: &str,
-        state: StateEnumeration,
+        state: State,
     ) -> Result<RedisDbObject, DbError> {
         let mut db_object = self
             .objects_db
@@ -237,10 +263,6 @@ impl RedisWithFindex {
 impl ObjectsStore for RedisWithFindex {
     fn filename(&self, _group_id: u128) -> Option<PathBuf> {
         None
-    }
-
-    async fn migrate(&self, _params: Option<Arc<dyn SessionParams>>) -> InterfaceResult<()> {
-        unimplemented!("Redis-with-Findex does not support migrate operation");
     }
 
     /// Insert the given Object in the database.
@@ -324,7 +346,7 @@ impl ObjectsStore for RedisWithFindex {
     async fn update_state(
         &self,
         uid: &str,
-        state: StateEnumeration,
+        state: State,
         _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
         let db_object = self.prepare_object_for_state_update(uid, state).await?;
@@ -445,11 +467,11 @@ impl ObjectsStore for RedisWithFindex {
     async fn find(
         &self,
         researched_attributes: Option<&Attributes>,
-        state: Option<StateEnumeration>,
+        state: Option<State>,
         user: &str,
         user_must_be_owner: bool,
         _params: Option<Arc<dyn SessionParams>>,
-    ) -> InterfaceResult<Vec<(String, StateEnumeration, Attributes)>> {
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
         let mut keywords = {
             researched_attributes.map_or_else(HashSet::new, |attributes| {
                 let tags = attributes.get_tags();
@@ -502,7 +524,7 @@ impl ObjectsStore for RedisWithFindex {
         Ok(redis_db_objects
             .into_iter()
             .filter(|(uid, redis_db_object)| {
-                state.map_or(true, |state| redis_db_object.state == state)
+                state.is_none_or(|state| redis_db_object.state == state)
                     && (if redis_db_object.owner == user {
                         true
                     } else {
@@ -533,7 +555,7 @@ impl PermissionsStore for RedisWithFindex {
         &self,
         user: &str,
         _params: Option<Arc<dyn SessionParams>>,
-    ) -> InterfaceResult<HashMap<String, (String, StateEnumeration, HashSet<KmipOperation>)>> {
+    ) -> InterfaceResult<HashMap<String, (String, State, HashSet<KmipOperation>)>> {
         let permissions = self
             .permissions_db
             .list_user_permissions(&self.findex_key, user)

@@ -6,7 +6,7 @@ use zeroize::Zeroizing;
 use crate::{
     Deserializer, Serializer,
     error::{KmipError, result::KmipResult},
-    kmip_2_1::kmip_operations::ErrorReason,
+    kmip_0::kmip_types::ErrorReason,
 };
 
 /// Bulk Data is a structure that holds a list of zeroizing byte arrays
@@ -42,7 +42,7 @@ impl BulkData {
     pub fn deserialize(serialized: &[u8]) -> Result<Self, KmipError> {
         if !Self::is_bulk_data(serialized) {
             trace!("Not a BulkData");
-            return Err(KmipError::InvalidKmipObject(
+            return Err(KmipError::InvalidKmip21Object(
                 ErrorReason::Illegal_Object_Type,
                 "Not a BulkData".to_owned(),
             ));
@@ -99,10 +99,13 @@ mod tests {
         ];
         let bulk_data = BulkData::new(data.clone());
         let serialized = bulk_data.serialize().unwrap();
-        assert_eq!(serialized.to_vec(), vec![
-            0x87, 0x87, 0x03, 0x03, 0x01, 0x02, 0x03, 0x03, 0x04, 0x05, 0x06, 0x0A, 0x07, 0x07,
-            0x07, 0x07, 0x07, 0x07, 0x07, 0x07, 0x07, 0x07
-        ]);
+        assert_eq!(
+            serialized.to_vec(),
+            vec![
+                0x87, 0x87, 0x03, 0x03, 0x01, 0x02, 0x03, 0x03, 0x04, 0x05, 0x06, 0x0A, 0x07, 0x07,
+                0x07, 0x07, 0x07, 0x07, 0x07, 0x07, 0x07, 0x07
+            ]
+        );
         let deserialized = BulkData::deserialize(&serialized).unwrap();
         assert_eq!(data, deserialized.0);
     }

@@ -1,18 +1,22 @@
 use std::sync::Arc;
 
 use cosmian_crypto_core::X25519_PUBLIC_KEY_LENGTH;
-use cosmian_kmip::kmip_2_1::{
-    extra::tagging::EMPTY_TAGS,
-    kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
-    kmip_objects::{Object, ObjectType},
-    kmip_operations::{Get, Import},
-    kmip_types::{
-        Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, KeyWrapType,
-        LinkType, LinkedObjectIdentifier, RecommendedCurve, UniqueIdentifier, WrappingMethod,
-    },
-    requests::{
-        create_ec_key_pair_request, get_ec_private_key_request, get_ec_public_key_request,
-        symmetric_key_create_request,
+use cosmian_kmip::{
+    kmip_0::kmip_types::{CryptographicUsageMask, KeyWrapType},
+    kmip_2_1::{
+        extra::tagging::EMPTY_TAGS,
+        kmip_attributes::Attributes,
+        kmip_data_structures::{KeyBlock, KeyValue, KeyWrappingData},
+        kmip_objects::{Object, ObjectType, PrivateKey, PublicKey, SymmetricKey},
+        kmip_operations::{Get, Import},
+        kmip_types::{
+            CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier,
+            RecommendedCurve, UniqueIdentifier, WrappingMethod,
+        },
+        requests::{
+            create_ec_key_pair_request, get_ec_private_key_request, get_ec_public_key_request,
+            symmetric_key_create_request,
+        },
     },
 };
 use cosmian_kms_crypto::crypto::{
@@ -34,14 +38,14 @@ use crate::{
 async fn test_curve_25519_key_pair() -> KResult<()> {
     let clap_config = https_clap_config();
 
-    let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
+    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     // request key pair creation
     let request =
-        create_ec_key_pair_request(None, EMPTY_TAGS, RecommendedCurve::CURVE25519, false)?;
+        create_ec_key_pair_request(None, EMPTY_TAGS, RecommendedCurve::CURVE25519, false, None)?;
     let response = kms.create_key_pair(request, owner, None, None).await?;
-    // check that the private and public key exist
+    // check that the private and public keys exist
     // check secret key
     let sk_response = kms
         .get(
@@ -61,7 +65,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         .context("no string for the unique_identifier")?;
     let sk = &sk_response.object;
     let sk_key_block = match sk {
-        Object::PrivateKey { key_block } => key_block.clone(),
+        Object::PrivateKey(PrivateKey { key_block }) => key_block.clone(),
         _ => {
             return Err(KmsError::ServerError(
                 "Expected a KMIP Private Key".to_owned(),
@@ -80,8 +84,8 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         sk_key_block.key_format_type,
         KeyFormatType::TransparentECPrivateKey
     );
-    //check link to public key
-    let attr = sk_key_block.key_value.attributes()?;
+    //check the link to a public key
+    let attr = sk_key_block.attributes()?;
     assert_eq!(
         attr.link
             .as_ref()
@@ -114,7 +118,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         .await?;
     let pk = &pk_response.object;
     let pk_key_block = match &pk {
-        Object::PublicKey { key_block } => key_block.clone(),
+        Object::PublicKey(PublicKey { key_block }) => key_block.clone(),
         _ => {
             return Err(KmsError::ServerError(
                 "Expected a KMIP Public Key".to_owned(),
@@ -134,7 +138,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         KeyFormatType::TransparentECPublicKey
     );
     // check link to secret key
-    let attr = pk_key_block.key_value.attributes()?;
+    let attr = pk_key_block.attributes()?;
     assert_eq!(
         attr.link
             .as_ref()
@@ -152,7 +156,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         LinkedObjectIdentifier::TextString(response.private_key_unique_identifier.to_string())
     );
     // test import of public key
-    let pk_bytes = pk_key_block.key_bytes()?;
+    let pk_bytes = pk_key_block.ec_raw_bytes()?;
     assert_eq!(pk_bytes.len(), X25519_PUBLIC_KEY_LENGTH);
     let pk = to_ec_public_key(
         &pk_bytes,
@@ -201,22 +205,19 @@ async fn test_import_wrapped_symmetric_key() -> KResult<()> {
 
     let clap_config = https_clap_config();
 
-    let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
+    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     let wrapped_symmetric_key = [0_u8; 32];
     let aesgcm_nonce = [0_u8; 12];
 
-    let key_material = KeyMaterial::ByteString(Zeroizing::from(wrapped_symmetric_key.to_vec()));
-
-    let symmetric_key = Object::SymmetricKey {
+    let symmetric_key = Object::SymmetricKey(SymmetricKey {
         key_block: KeyBlock {
             key_format_type: KeyFormatType::TransparentSymmetricKey,
             key_compression_type: None,
-            key_value: KeyValue {
-                key_material,
-                attributes: None,
-            },
+            key_value: Some(KeyValue::ByteString(Zeroizing::from(
+                wrapped_symmetric_key.to_vec(),
+            ))),
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
             cryptographic_length: Some(i32::try_from(wrapped_symmetric_key.len())? * 8),
             key_wrapping_data: Some(KeyWrappingData {
@@ -225,7 +226,7 @@ async fn test_import_wrapped_symmetric_key() -> KResult<()> {
                 ..KeyWrappingData::default()
             }),
         },
-    };
+    });
 
     let uid = Uuid::new_v4().to_string();
 
@@ -257,7 +258,7 @@ async fn test_create_transparent_symmetric_key() -> KResult<()> {
 
     let clap_config = https_clap_config();
 
-    let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
+    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     let request = symmetric_key_create_request(
@@ -315,12 +316,12 @@ async fn test_database_user_tenant() -> KResult<()> {
 
     let clap_config = https_clap_config();
 
-    let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
+    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     // request key pair creation
     let request =
-        create_ec_key_pair_request(None, EMPTY_TAGS, RecommendedCurve::CURVE25519, false)?;
+        create_ec_key_pair_request(None, EMPTY_TAGS, RecommendedCurve::CURVE25519, false, None)?;
     let response = kms.create_key_pair(request, owner, None, None).await?;
 
     // check that we can get the private and public key
@@ -365,7 +366,7 @@ async fn test_database_user_tenant() -> KResult<()> {
             None,
         )
         .await;
-    assert!(sk_response.is_err());
+    sk_response.unwrap_err();
 
     let pk_response = kms
         .get(
@@ -379,7 +380,7 @@ async fn test_database_user_tenant() -> KResult<()> {
             None,
         )
         .await;
-    assert!(pk_response.is_err());
+    pk_response.unwrap_err();
 
     Ok(())
 }

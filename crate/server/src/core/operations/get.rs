@@ -25,7 +25,8 @@ pub(crate) async fn get(
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<GetResponse> {
     trace!("Get: {}", serde_json::to_string(&request)?);
-    let response = export_get(kms, request, KmipOperation::Get, user, params)
+    // Box::pin :: see https://rust-lang.github.io/rust-clippy/master/index.html#large_futures
+    let response = Box::pin(export_get(kms, request, KmipOperation::Get, user, params))
         .await
         .map(Into::into)?;
     Ok(response)

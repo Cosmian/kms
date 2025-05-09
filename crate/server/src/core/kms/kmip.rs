@@ -1,16 +1,20 @@
 use std::sync::Arc;
 
-use cosmian_kmip::kmip_2_1::{
-    kmip_messages::{Message, MessageResponse},
-    kmip_operations::{
-        Certify, CertifyResponse, Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse,
-        Decrypt, DecryptResponse, DeleteAttribute, DeleteAttributeResponse, Destroy,
-        DestroyResponse, Encrypt, EncryptResponse, Export, ExportResponse, Get, GetAttributes,
-        GetAttributesResponse, GetResponse, Hash, HashResponse, Import, ImportResponse, Locate,
-        LocateResponse, Mac, MacResponse, ReKey, ReKeyKeyPair, ReKeyKeyPairResponse, ReKeyResponse,
-        Revoke, RevokeResponse, SetAttribute, SetAttributeResponse, Validate, ValidateResponse,
+use cosmian_kmip::{
+    kmip_0::{
+        kmip_messages::{RequestMessage, ResponseMessage},
+        kmip_operations::{DiscoverVersions, DiscoverVersionsResponse},
+        kmip_types::State,
     },
-    kmip_types::StateEnumeration,
+    kmip_2_1::kmip_operations::{
+        AddAttribute, AddAttributeResponse, Certify, CertifyResponse, Create, CreateKeyPair,
+        CreateKeyPairResponse, CreateResponse, Decrypt, DecryptResponse, DeleteAttribute,
+        DeleteAttributeResponse, Destroy, DestroyResponse, Encrypt, EncryptResponse, Export,
+        ExportResponse, Get, GetAttributes, GetAttributesResponse, GetResponse, Hash, HashResponse,
+        Import, ImportResponse, Locate, LocateResponse, MAC, MACResponse, Query, QueryResponse,
+        ReKey, ReKeyKeyPair, ReKeyKeyPairResponse, ReKeyResponse, Revoke, RevokeResponse,
+        SetAttribute, SetAttributeResponse, Validate, ValidateResponse,
+    },
 };
 use cosmian_kms_interfaces::SessionParams;
 
@@ -20,28 +24,23 @@ use crate::{
 };
 
 impl KMS {
-    /// This operation requests the server to Import a Managed Object specified
-    /// by its Unique Identifier. The request specifies the object being
-    /// imported and all the attributes to be assigned to the object. The
-    /// attribute rules for each attribute for "Initially set by" and "When
-    /// implicitly set" SHALL NOT be enforced as all attributes MUST be set
-    /// to the supplied values rather than any server generated values.
-    /// The response contains the Unique Identifier provided in the request or
-    /// assigned by the server. The server SHALL copy the Unique Identifier
-    /// returned by this operations into the ID Placeholder variable.
-    ///
-    /// Cosmian specific: unique identifiers starting with `[` are reserved
-    /// for queries on tags. See tagging.
-    /// For instance, a request for unique identifier `[tag1]` will
-    /// attempt to find a valid single object tagged with `tag1`
-    pub(crate) async fn import(
+    /// This operation requests the server to add a new attribute instance to be associated with a
+    /// Managed Object and set its value. The request contains the Unique Identifier of the
+    /// Managed Object to which the attribute pertains, along with the attribute name and value.
+    /// For single-instance attributes, this creates the attribute value. For multi-instance
+    /// attributes, this is how the first and subsequent values are created. Existing attribute
+    /// values SHALL NOT be changed by this operation. Read-Only attributes SHALL NOT be added
+    /// using the Add Attribute operation.
+    pub(crate) async fn add_attribute(
         &self,
-        request: Import,
+        request: AddAttribute,
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
-        privileged_users: Option<Vec<String>>,
-    ) -> KResult<ImportResponse> {
-        operations::import(self, request, user, params, privileged_users).await
+    ) -> KResult<AddAttributeResponse> {
+        let span = tracing::span!(tracing::Level::ERROR, "add_attribute");
+        let _enter = span.enter();
+
+        Box::pin(operations::add_attribute(self, request, user, params)).await
     }
 
     /// This request is used to generate a Certificate object for a public key.
@@ -74,7 +73,17 @@ impl KMS {
         params: Option<Arc<dyn SessionParams>>,
         privileged_users: Option<Vec<String>>,
     ) -> KResult<CertifyResponse> {
-        operations::certify(self, request, user, params, privileged_users).await
+        let span = tracing::span!(tracing::Level::ERROR, "certify");
+        let _enter = span.enter();
+
+        Box::pin(operations::certify(
+            self,
+            request,
+            user,
+            params,
+            privileged_users,
+        ))
+        .await
     }
 
     /// This operation requests the server to generate a new symmetric key or
@@ -124,7 +133,46 @@ impl KMS {
         params: Option<Arc<dyn SessionParams>>,
         privileged_users: Option<Vec<String>>,
     ) -> KResult<CreateKeyPairResponse> {
-        operations::create_key_pair(self, request, user, params, privileged_users).await
+        let span = tracing::span!(tracing::Level::ERROR, "create_key_pair");
+        let _enter = span.enter();
+
+        Box::pin(operations::create_key_pair(
+            self,
+            request,
+            user,
+            params,
+            privileged_users,
+        ))
+        .await
+    }
+
+    /// This request is used by the client to determine a list of protocol versions
+    /// that is supported by the server.
+    /// The request payload contains an optional list of protocol versions
+    /// that is supported by the client. The protocol versions SHALL be ranked
+    /// in order of preference (highest preference first).
+    //
+    // The response payload contains a list of protocol versions that is supported by the server.
+    // The protocol versions are ranked in order of preference (highest preference first).
+    // If the client provides the server with a list of supported protocol versions
+    // in the request payload, the server SHALL return only the protocol versions
+    // that are supported by both the client and server.
+    // The server SHOULD list all the protocol versions supported by both client and server.
+    // If the protocol version specified in the request header is not specified in the request
+    // payload and the server does not support any protocol version specified in the request payload,
+    // the server SHALL return an empty list in the response payload.
+    // If no protocol versions are specified in the request payload,
+    // the server SHOULD simply return all the protocol versions that are supported by the server.
+    pub(crate) async fn discover_versions(
+        &self,
+        request: DiscoverVersions,
+        _user: &str,
+        _params: Option<Arc<dyn SessionParams>>,
+    ) -> DiscoverVersionsResponse {
+        let span = tracing::span!(tracing::Level::ERROR, "discover_versions");
+        let _enter = span.enter();
+
+        operations::discover_versions(request).await
     }
 
     /// This operation requests the server to perform a decryption operation on
@@ -151,7 +199,10 @@ impl KMS {
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<DecryptResponse> {
-        operations::decrypt(self, request, user, params).await
+        let span = tracing::span!(tracing::Level::ERROR, "decrypt");
+        let _enter = span.enter();
+
+        Box::pin(operations::decrypt(self, request, user, params)).await
     }
 
     /// This operation requests the server to delete an attribute associated with a Managed Object. The request contains the Unique Identifier of the Managed Object whose attribute is to be deleted, the Current Attribute of the attribute. Attributes that are always REQUIRED to have a value SHALL never be deleted by this operation. Attempting to delete a non-existent attribute or specifying an Current Attribute for which there exists no attribute value SHALL result in an error. If no Current Attribute is specified in the request, and an Attribute Reference is specified, then all instances of the specified attribute SHALL be deleted.
@@ -161,6 +212,9 @@ impl KMS {
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<DeleteAttributeResponse> {
+        let span = tracing::span!(tracing::Level::ERROR, "encrypt");
+        let _enter = span.enter();
+
         operations::delete_attribute(self, request, user, params).await
     }
 
@@ -175,6 +229,9 @@ impl KMS {
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<DestroyResponse> {
+        let span = tracing::span!(tracing::Level::ERROR, "destroy");
+        let _enter = span.enter();
+
         operations::destroy_operation(self, request, user, params).await
     }
 
@@ -212,7 +269,10 @@ impl KMS {
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<EncryptResponse> {
-        operations::encrypt(self, request, user, params).await
+        let span = tracing::span!(tracing::Level::ERROR, "encrypt");
+        let _enter = span.enter();
+
+        Box::pin(operations::encrypt(self, request, user, params)).await
     }
 
     /// This operation requests that the server returns a Managed Object specified by its Unique Identifier,
@@ -229,6 +289,9 @@ impl KMS {
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<ExportResponse> {
+        let span = tracing::span!(tracing::Level::ERROR, "export");
+        let _enter = span.enter();
+
         operations::export(self, request, user, params).await
     }
 
@@ -252,13 +315,16 @@ impl KMS {
     /// as determined by using the private key's Public Key link to get the
     /// corresponding public key (where relevant), and then using that
     /// public key's PKCS#12 Certificate Link to get the base certificate, and
-    /// then using each certificate's Ce
+    /// then using each certificate's Certificate Link to get the next.
     pub(crate) async fn get(
         &self,
         request: Get,
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<GetResponse> {
+        let span = tracing::span!(tracing::Level::ERROR, "get");
+        let _enter = span.enter();
+
         operations::get(self, request, user, params).await
     }
 
@@ -278,6 +344,9 @@ impl KMS {
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<GetAttributesResponse> {
+        let span = tracing::span!(tracing::Level::ERROR, "get_attributes");
+        let _enter = span.enter();
+
         operations::get_attributes(self, request, user, params).await
     }
 
@@ -293,7 +362,45 @@ impl KMS {
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<HashResponse> {
+        let span = tracing::span!(tracing::Level::ERROR, "hash");
+        let _enter = span.enter();
+
         operations::hash_operation(self, request, user, params).await
+    }
+
+    /// This operation requests the server to Import a Managed Object specified
+    /// by its Unique Identifier. The request specifies the object being
+    /// imported and all the attributes to be assigned to the object. The
+    /// attribute rules for each attribute for "Initially set by" and "When
+    /// implicitly set" SHALL NOT be enforced as all attributes MUST be set
+    /// to the supplied values rather than any server-generated values.
+    /// The response contains the Unique Identifier provided in the request or
+    /// assigned by the server. The server SHALL copy the Unique Identifier
+    /// returned by this operation into the ID Placeholder variable.
+    ///
+    /// Cosmian specific: unique identifiers starting with `[` are reserved
+    /// for queries on tags. See tagging.
+    /// For instance, a request for a unique identifier `[tag1]` will
+    /// attempt to find a valid single object tagged with `tag1`
+    pub(crate) async fn import(
+        &self,
+        request: Import,
+        user: &str,
+        params: Option<Arc<dyn SessionParams>>,
+        privileged_users: Option<Vec<String>>,
+    ) -> KResult<ImportResponse> {
+        let span = tracing::span!(tracing::Level::ERROR, "import");
+        let _enter = span.enter();
+
+        // Box::pin :: see https://rust-lang.github.io/rust-clippy/master/index.html#large_futures
+        Box::pin(operations::import(
+            self,
+            request,
+            user,
+            params,
+            privileged_users,
+        ))
+        .await
     }
 
     /// This operation requests that the server search for one or more Managed
@@ -380,7 +487,7 @@ impl KMS {
     ///
     /// The Storage Status Mask field is used to indicate whether on-line
     /// objects (not archived or destroyed), archived objects, destroyed objects
-    /// or any combination of the above are to be searched.The server SHALL NOT
+    /// or any combination of the above are to be searched. The server SHALL NOT
     /// return unique identifiers for objects that are destroyed unless the
     /// Storage Status Mask field includes the Destroyed Storage indicator. The
     /// server SHALL NOT return unique identifiers for objects that are archived
@@ -392,7 +499,34 @@ impl KMS {
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<LocateResponse> {
-        operations::locate(self, request, Some(StateEnumeration::Active), user, params).await
+        let span = tracing::span!(tracing::Level::ERROR, "locate");
+        let _enter = span.enter();
+
+        operations::locate(self, request, Some(State::Active), user, params).await
+    }
+
+    /// This operation is used by the client to interrogate the server
+    /// to determine its capabilities and/or protocol mechanisms.
+    /// The Query operation SHOULD be invocable by unauthenticated clients
+    /// to interrogate server features and functions.
+    /// The Query Function field in the request SHALL contain one or more of the following items:
+    ///         Query Operations
+    ///         Query Objects
+    ///         Query Server Information
+    ///         Query Application Namespaces
+    ///         Query Extension List
+    ///         Query Extension Map
+    ///         Query Attestation Types
+    ///         Query RNGs
+    ///         Query Validations
+    ///         Query Profiles
+    ///         Query Capabilities
+    ///         Query Client Registration Methods
+    pub(crate) async fn query(&self, request: Query) -> KResult<QueryResponse> {
+        let span = tracing::span!(tracing::Level::ERROR, "query");
+        let _enter = span.enter();
+
+        operations::query(request).await
     }
 
     /// This operation requests the server to perform message authentication code (MAC) operation on the provided data using a Managed Cryptographic Object as the key for the MAC operation.
@@ -404,19 +538,25 @@ impl KMS {
     /// The success or failure of the operation is indicated by the Result Status (and if failure the Result Reason) in the response header.
     pub(crate) async fn mac(
         &self,
-        request: Mac,
+        request: MAC,
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
-    ) -> KResult<MacResponse> {
+    ) -> KResult<MACResponse> {
+        let span = tracing::span!(tracing::Level::ERROR, "mac");
+        let _enter = span.enter();
+
         operations::mac(self, request, user, params).await
     }
 
     pub(crate) async fn message(
         &self,
-        request: Message,
+        request: RequestMessage,
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
-    ) -> KResult<MessageResponse> {
+    ) -> KResult<ResponseMessage> {
+        let span = tracing::span!(tracing::Level::ERROR, "message");
+        let _enter = span.enter();
+
         // This is a large future, hence pinning
         Box::pin(operations::message(self, request, user, params)).await
     }
@@ -453,7 +593,17 @@ impl KMS {
         params: Option<Arc<dyn SessionParams>>,
         privileged_users: Option<Vec<String>>,
     ) -> KResult<ReKeyKeyPairResponse> {
-        operations::rekey_keypair(self, request, user, params, privileged_users).await
+        let span = tracing::span!(tracing::Level::ERROR, "rekey_keypair");
+        let _enter = span.enter();
+
+        Box::pin(operations::rekey_keypair(
+            self,
+            request,
+            user,
+            params,
+            privileged_users,
+        ))
+        .await
     }
 
     /// This request is used to generate a replacement key for an existing symmetric key. It is analogous to the Create operation, except that attributes of the replacement key are copied from the existing key, with the exception of the attributes listed in Re-key Attribute Requirements.
@@ -471,7 +621,10 @@ impl KMS {
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<ReKeyResponse> {
-        operations::rekey(self, request, user, params).await
+        let span = tracing::span!(tracing::Level::ERROR, "rekey");
+        let _enter = span.enter();
+
+        Box::pin(operations::rekey(self, request, user, params)).await
     }
 
     /// This operation requests the server to either add or modify an attribute. The request contains the Unique Identifier of the Managed Object to which the attribute pertains, along with the attribute and value. If the object did not have any instances of the attribute, one is created. If the object had exactly one instance, then it is modified. If it has more than one instance an error is raised. Read-Only attributes SHALL NOT be added or modified using this operation.
@@ -481,6 +634,9 @@ impl KMS {
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<SetAttributeResponse> {
+        let span = tracing::span!(tracing::Level::ERROR, "set_attribute");
+        let _enter = span.enter();
+
         operations::set_attribute(self, request, user, params).await
     }
 
@@ -490,6 +646,9 @@ impl KMS {
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<ValidateResponse> {
+        let span = tracing::span!(tracing::Level::ERROR, "validate");
+        let _enter = span.enter();
+
         operations::validate_operation(self, request, user, params).await
     }
 
@@ -511,6 +670,9 @@ impl KMS {
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<RevokeResponse> {
+        let span = tracing::span!(tracing::Level::ERROR, "revoke");
+        let _enter = span.enter();
+
         operations::revoke_operation(self, request, user, params).await
     }
 }

@@ -1,29 +1,30 @@
-By default the server runs using a [SQLite](https://www.sqlite.org/) database, but it can be configured to use a choice
+By default, the server runs using a [SQLite](https://www.sqlite.org/) database, but it can be configured to use a choice
 of databases: SQLite encrypted, [PostgreSQL](https://www.postgresql.org/), [Maria DB](https://mariadb.org/),
 and [MySQL](https://www.mysql.com/), as well as [Redis](https://redis.io/), using
 the [Redis-with-Findex](#redis-with-findex)
 configuration.
 
 <!-- TOC -->
-- [Selecting the database](#selecting-the-database)
-    - [Redis with Findex](#redis-with-findex)
-- [Configuring the database](#configuring-the-database)
-    - [SQLite](#sqlite)
-        - [PostgreSQL](#postgresql)
-        - [MySQL or MariaDB](#mysql-or-mariadb)
-        - [Redis with Findex](#redis-with-findex-1)
-        - [SQLite encrypted](#sqlite-encrypted)
-- [Clearing the database](#clearing-the-database)
-- [Database migration](#database-migration)
+
+* [Selecting the database](#selecting-the-database)
+    * [Redis with Findex](#redis-with-findex)
+* [Configuring the database](#configuring-the-database)
+    * [SQLite](#sqlite)
+        * [PostgreSQL](#postgresql)
+        * [MySQL or MariaDB](#mysql-or-mariadb)
+        * [Redis with Findex](#redis-with-findex-1)
+* [Clearing the database](#clearing-the-database)
+* [Database migration](#database-migration)
+* [The Unwrapped Objects Cache](#the-unwrapped-objects-cache)
+
 <!-- TOC -->
 
 ## Selecting the database
 
-All databases but SQLite and SQLite encrypted can be used in a high-availability setup.
+All databases, except SQLite, can be used in a high-availability setup.
 
 The **SQLite** database can serve high loads and millions of objects, and is very suitable
-for scenarios that do not demand high availability. To use SQLIte encrypted, see
-the [SQLite encrypted](#sqlite-encrypted) section.
+for scenarios that do not demand high availability.
 
 ### Redis with Findex
 
@@ -87,8 +88,8 @@ This is the default configuration. To use SQLite, no additional configuration is
     ```
 
 !!!info "Setting up a PostgreSQL database"
-    Before running the server, a dedicated database with a dedicated user should be created on the PostgreSQL instance.
-    These sample instructions create a database called `kms` owned by a user `kms_user` with password `kms_password`:
+Before running the server, a dedicated database with a dedicated user should be created on the PostgreSQL instance.
+These sample instructions create a database called `kms` owned by a user `kms_user` with password `kms_password`:
 
     1. Connect to psql under user `postgres`
     ```sh
@@ -122,9 +123,9 @@ This is the default configuration. To use SQLite, no additional configuration is
     --database-url=mysql://kms_user:kms_password@mariadb:3306/kms
     ```
 
-!!!info "Using a certificate to authenticate to MySQL or Maria DB"
+!!!info "Using a certificate to authenticate to MySQL or MariaDB"
 
-    Use a certificate to authenticate to MySQL or Maria DB with the `mysql-user-cert-file` option to
+    Use a certificate to authenticate to MySQL or MariaDB with the `mysql-user-cert-file` option to
     specify the certificate file name.
 
     **Docker Example**: say the certificate is called `cert.p12`
@@ -143,9 +144,9 @@ This is the default configuration. To use SQLite, no additional configuration is
 
 For Redis with Findex, the `--redis-master-password` and `--redis-findex-label` options must also be specified:
 
-- the `redis-master-password` is the password from which keys will be derived (using Argon 2) to encrypt the Redis data
+- The `redis-master-password` is the password from which keys will be derived (using Argon 2) to encrypt the Redis data
   and indexes.
-- the `redis-findex-label` is a public arbitrary label that can be changed to rotate the Findex ciphertexts without
+- The `redis-findex-label` is a public, arbitrary label that can be changed to rotate the Findex ciphertexts without
   changing the password/key.
 
 === "kms.toml"
@@ -169,89 +170,12 @@ For Redis with Findex, the `--redis-master-password` and `--redis-findex-label` 
 
 - Redis (with-Findex), use:
 
-#### SQLite encrypted
-
-=== "kms.toml"
-
-    ```toml
-    [db]
-    database_type = "sqlite-enc"
-    sqlite_path = "./sqlite-data"
-    ```
-
-=== "Command line arguments"
-
-    ```sh
-    --database-type=sqlite-enc \
-    --sqlite-path="./sqlite-data"
-    ```
-
-It requires now to install the [Cosmian CLI](../cosmian_cli/index.md) and create a new encrypted database.
-
-!!! important "Important: encrypted databases must be created first"
-
-    Before using an encrypted database, you must create it by either using the [Cosmian CLI](../cosmian_cli/index.md)
-    or calling the `POST /new_database` endpoint.
-    The call will return a secret
-
-    === "cosmian CLI"
-
-        ```sh
-        ➜ cosmian kms new-database
-
-        eyJncm91cF9pZCI6MzE0ODQ3NTQzOTU4OTM2Mjk5OTY2ODU4MTY1NzE0MTk0MjU5NjUyLCJrZXkiOiIzZDAyNzg3YjUyZGY5OTYzNGNkOTVmM2QxODEyNDk4YTRiZWU1Nzc1NmM5NDI0NjdhZDI5ZTYxZjFmMmM0OWViIn0=
-        ```
-
-    === "curl"
-
-        ```sh
-        ➜ curl -X POST https://my-server:9998/new_database
-
-        "eyJncm91cF9pZCI6MzE0ODQ3NTQzOTU4OTM2Mjk5OTY2ODU4MTY1NzE0MTk0MjU5NjUyLCJrZXkiOiIzZDAyNzg3YjUyZGY5OTYzNGNkOTVmM2QxODEyNDk4YTRiZWU1Nzc1NmM5NDI0NjdhZDI5ZTYxZjFmMmM0OWViIn0="%
-        ```
-        The secret is the value between the quotes `""`.
-
-    Warning:
-
-    - This secret is only displayed **once** and is **not stored**
-        anywhere on the server.
-    - Each call to `new_database` will create a **new additional** database.
-      It will not return the secret of the last created database,
-      and it will not overwrite the last created database.
-
-Once an encrypted database is created, the secret must be passed in every subsequent query to the
-KMS server.
-Passing the correct secret "auto-selects" the correct encrypted database: multiple encrypted
-databases can be used concurrently on the same KMS server.
-
-=== "cosmian CLI"
-
-    The secret must be set in `database_secret` property of the CLI `cosmian.json` configuration file,
-    and it will be used for all subsequent calls to the KMS server.
-
-    ```toml
-    [kms_config.http_config]
-    server_url = "http://127.0.0.1:9990"
-    access_token = "eyJhbGciOiJSUzI1NiIsInR5cCI6Ik...yaJbDDql3A"
-    database_secret = "eyJncm91cF9pZCI6MTI5N...MWIwYjE5ZmNlN2U3In0="
-    ```
-
-=== "curl"
-
-    The secret must be passed using a `DatabaseSecret` HTTP header, e.g.
-
-    ```sh
-    curl \
-    -H "DatabaseSecret: eyJncm91cF9pZCI6MzE0ODQ3NTQzOTU4OTM2Mjk5OTY2ODU4MTY1NzE0MTk0MjU5NjUyLCJrZXkiOiIzZDAyNzg3YjUyZGY5OTYzNGNkOTVmM2QxODEyNDk4YTRiZWU1Nzc1NmM5NDI0NjdhZDI5ZTYxZjFmMmM0OWViIn0=" \
-    http://localhost:9998/objects/owned
-    ```
-
 ## Clearing the database
 
-The KMS server can be configured to automatically clear the database on restart.
+The KMS server can be configured to clear the database on restart automatically.
 
 !!! warning "Warning: this operation is irreversible"
-    The cleanup operation will delete all objects and keys stored in the database.
+The cleanup operation will delete all objects and keys stored in the database.
 
 === "kms.toml"
 
@@ -259,6 +183,7 @@ The KMS server can be configured to automatically clear the database on restart.
     [db]
     cleanup_on_startup = true
     ```
+
 === "Command line arguments"
 
     ```sh
@@ -270,7 +195,7 @@ The KMS server can be configured to automatically clear the database on restart.
 Depending on the KMS database evolution, a migration can happen between 2 versions of the KMS server. It will be clearly
 written in the CHANGELOG.md. In that case, a generic database upgrade mechanism is run on startup.
 
-At first, the table `context` is responsible for storing the version of the software run and the state of the database.
+At first, the table `context` is responsible for storing the software run's version and the database's state.
 The state can be one of the following:
 
 - `ready`: the database is ready to be used
@@ -279,14 +204,29 @@ The state can be one of the following:
 On startup, the server checks if the software version is greater than the last version run:
 
 - if no, it simply starts;
-- if yes:
+- If yes:
 
     - it looks for all upgrades to apply in order from the last version run to this version;
     - if there is any to run, it sets an upgrading flag on the db state field in the context table;
-    - it runs all the upgrades in order;
+    - it runs all the upgrades in order.
     - it sets the flag from upgrading to ready;
 
 On every call to the database, a check is performed on the db state field to check if the database is upgrading. If yes,
 calls fail.
 
-Upgrades resist to being interrupted in the middle and resumed from start if that happens.
+Upgrades resist being interrupted in the middle and resumed from the start if that happens.
+
+## The Unwrapped Objects Cache
+
+The unwrapped cache is a memory cache, and it is not persistent. The unwrapped cache is used to store unwrapped objects
+that are fetched from the database.
+
+When a wrapped object is fetched from the database, it is unwrapped and stored in the unwrapped cache.
+Further calls to the same object will use the unwrapped object from the cache until the cache expires.
+
+The time in minutes after which an unused object is evicted from the cache is configurable
+using the `unwrapped_cache_max_age` setting. The default is 15 minutes.
+
+When HSM keys wrap objects, a long expiration time will reduce the number of calls made to HSM to unwrap the object.
+However, increasing the cache time will increase the memory used by the KMS server and expose the key in clear text
+in the memory for a longer time.

@@ -8,8 +8,9 @@ use actix_web::{
     http::header,
 };
 use base64::Engine;
-use cosmian_kmip::kmip_2_1::{
-    kmip_objects::ObjectType, kmip_operations::ErrorReason, kmip_types::StateEnumeration,
+use cosmian_kmip::{
+    kmip_0::kmip_types::{ErrorReason, State},
+    kmip_2_1::kmip_objects::ObjectType,
 };
 use tracing::{debug, error, trace};
 
@@ -40,7 +41,7 @@ async fn get_api_token(kms: &Arc<KMS>, api_token_id: &str) -> KResult<String> {
         .retrieve_object(api_token_id, None)
         .await?
         .ok_or_else(|| {
-            KmsError::KmipError(
+            KmsError::Kmip21Error(
                 ErrorReason::Item_Not_Found,
                 format!("The symmetric key of unique identifier {api_token_id} could not be found"),
             )
@@ -52,14 +53,14 @@ async fn get_api_token(kms: &Arc<KMS>, api_token_id: &str) -> KResult<String> {
         )))
     }
     // only active objects
-    if owm.state() != StateEnumeration::Active {
+    if owm.state() != State::Active {
         return Err(KmsError::InvalidRequest(format!(
             "The symmetric key for API token: {api_token_id} is not active",
         )))
     }
     // Get the API token bytes in base64
     Ok(base64::engine::general_purpose::STANDARD
-        .encode(owm.object().key_block()?.key_bytes()?)
+        .encode(owm.object().key_block()?.symmetric_key_bytes()?)
         .to_lowercase())
 }
 

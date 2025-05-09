@@ -15,12 +15,13 @@ doctest = false
 async-trait = { workspace = true }
 cosmian_kmip = { path = "../kmip" }
 num-bigint-dig = { workspace = true, features = [
-  "std",
-  "rand",
-  "serde",
-  "zeroize",
+    "std",
+    "rand",
+    "serde",
+    "zeroize",
 ] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 zeroize = { workspace = true, default-features = true }
+serde = { workspace = true, features = ["derive"] }

@@ -1,15 +1,17 @@
 use cosmian_kmip::{
-    SafeBigUint,
+    SafeBigInt,
+    kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
+        kmip_attributes::Attributes,
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-        kmip_objects::{Object, ObjectType},
+        kmip_objects::{Object, ObjectType, PrivateKey},
         kmip_types::{
-            Attributes, CryptographicAlgorithm, CryptographicDomainParameters,
-            CryptographicUsageMask, KeyFormatType, RecommendedCurve,
+            CryptographicAlgorithm, CryptographicDomainParameters, CryptographicParameters,
+            KeyFormatType, RecommendedCurve,
         },
     },
 };
-use num_bigint_dig::BigUint;
+use num_bigint_dig::{BigInt, BigUint, IntoBigUint, Sign};
 use openssl::{
     bn::{BigNum, BigNumContext},
     ec::{EcGroup, EcKey, EcPoint},
@@ -50,122 +52,159 @@ use crate::{
 ///
 pub fn kmip_private_key_to_openssl(private_key: &Object) -> Result<PKey<Private>, CryptoError> {
     let key_block = match private_key {
-        Object::PrivateKey { key_block } => key_block,
+        Object::PrivateKey(PrivateKey { key_block }) => key_block,
         x => crypto_bail!("Invalid Object: {}. KMIP Private Key expected", x),
     };
     let pk: PKey<Private> = match key_block.key_format_type {
         KeyFormatType::PKCS1 => {
-            let key_bytes = key_block.key_bytes()?;
+            let key_bytes = key_block.pkcs_der_bytes()?;
             // parse the RSA private key to make sure it is correct
             let rsa_private_key = Rsa::private_key_from_der(&key_bytes)?;
             PKey::from_rsa(rsa_private_key)?
         }
         // This really is a SPKI as specified by RFC 5480
         KeyFormatType::PKCS8 => {
-            let key_bytes = key_block.key_bytes()?;
+            let key_bytes = key_block.pkcs_der_bytes()?;
             // This key may be an RSA or EC key
             PKey::private_key_from_der(&key_bytes)?
         }
         KeyFormatType::ECPrivateKey => {
-            let key_bytes = key_block.key_bytes()?;
+            let key_bytes = key_block.pkcs_der_bytes()?;
             // this is the (not so appropriate) value for SEC1
             let ec_key = EcKey::private_key_from_der(&key_bytes)?;
             ec_key.check_key()?;
             PKey::from_ec_key(ec_key)?
         }
-        KeyFormatType::TransparentRSAPrivateKey => match &key_block.key_value.key_material {
-            KeyMaterial::TransparentRSAPrivateKey {
-                modulus,
-                private_exponent,
-                public_exponent,
-                p,
-                q,
-                prime_exponent_p,
-                prime_exponent_q,
-                crt_coefficient,
-            } => {
-                let mut rsa_private_key_builder = RsaPrivateKeyBuilder::new(
-                    BigNum::from_slice(&modulus.to_bytes_be())?,
-                    BigNum::from_slice(
-                        &public_exponent
-                            .clone()
-                            .context(
-                                "the public exponent is required for Transparent RSA Private Keys",
-                            )?
-                            .to_bytes_be(),
-                    )?,
-                    BigNum::from_slice(
-                        &private_exponent
-                            .clone()
-                            .context(
-                                "the private exponent is required for Transparent RSA Private Keys",
-                            )?
-                            .to_bytes_be(),
-                    )?,
-                )?;
-                if let Some(p) = p {
-                    if let Some(q) = q {
-                        rsa_private_key_builder = rsa_private_key_builder
-                            .set_factors(
-                                BigNum::from_slice(&p.clone().to_bytes_be())?,
-                                BigNum::from_slice(&q.clone().to_bytes_be())?,
-                            )
-                            .context("Failed to set 'p' and 'q' on the RSA Private key")?;
-                    }
-                }
-                if let Some(prime_exponent_p) = prime_exponent_p {
-                    if let Some(prime_exponent_q) = prime_exponent_q {
-                        if let Some(crt_coefficient) = crt_coefficient {
+        KeyFormatType::TransparentRSAPrivateKey => {
+            let Some(KeyValue::Structure { key_material, .. }) = key_block.key_value.as_ref()
+            else {
+                return Err(CryptoError::Default(
+                    "Key value not found in Transparent RSA private key".to_owned(),
+                ));
+            };
+            match key_material {
+                KeyMaterial::TransparentRSAPrivateKey {
+                    modulus,
+                    private_exponent,
+                    public_exponent,
+                    p,
+                    q,
+                    prime_exponent_p,
+                    prime_exponent_q,
+                    c_r_t_coefficient: crt_coefficient,
+                } => {
+                    let mut rsa_private_key_builder = RsaPrivateKeyBuilder::new(
+                        BigNum::from_slice(&modulus.to_bytes_be().1)?,
+                        BigNum::from_slice(
+                            &public_exponent
+                                .clone()
+                                .context(
+                                    "the public exponent is required for Transparent RSA Private \
+                                     Keys",
+                                )?
+                                .to_bytes_be()
+                                .1,
+                        )?,
+                        BigNum::from_slice(
+                            &private_exponent
+                                .clone()
+                                .context(
+                                    "the private exponent is required for Transparent RSA Private \
+                                     Keys",
+                                )?
+                                .to_bytes_be()
+                                .1,
+                        )?,
+                    )?;
+                    if let Some(p) = p {
+                        if let Some(q) = q {
                             rsa_private_key_builder = rsa_private_key_builder
-                                .set_crt_params(
-                                    BigNum::from_slice(&prime_exponent_p.clone().to_bytes_be())?,
-                                    BigNum::from_slice(&prime_exponent_q.clone().to_bytes_be())?,
-                                    BigNum::from_slice(&crt_coefficient.clone().to_bytes_be())?,
+                                .set_factors(
+                                    BigNum::from_slice(&p.clone().to_bytes_be().1)?,
+                                    BigNum::from_slice(&q.clone().to_bytes_be().1)?,
                                 )
-                                .context("Failed to set CRT parameters on the RSA Private key")?;
+                                .context("Failed to set 'p' and 'q' on the RSA Private key")?;
                         }
                     }
+                    if let Some(prime_exponent_p) = prime_exponent_p {
+                        if let Some(prime_exponent_q) = prime_exponent_q {
+                            if let Some(crt_coefficient) = crt_coefficient {
+                                rsa_private_key_builder = rsa_private_key_builder
+                                    .set_crt_params(
+                                        BigNum::from_slice(
+                                            &prime_exponent_p.clone().to_bytes_be().1,
+                                        )?,
+                                        BigNum::from_slice(
+                                            &prime_exponent_q.clone().to_bytes_be().1,
+                                        )?,
+                                        BigNum::from_slice(
+                                            &crt_coefficient.clone().to_bytes_be().1,
+                                        )?,
+                                    )
+                                    .context(
+                                        "Failed to set CRT parameters on the RSA Private key",
+                                    )?;
+                            }
+                        }
+                    }
+                    let rsa_private_key = rsa_private_key_builder.build();
+                    PKey::from_rsa(rsa_private_key)?
                 }
-                let rsa_private_key = rsa_private_key_builder.build();
-                PKey::from_rsa(rsa_private_key)?
+                _ => crypto_bail!(
+                    "Invalid Transparent RSA private key material: TransparentRSAPrivateKey \
+                     expected"
+                ),
             }
-            _ => crypto_bail!(
-                "Invalid Transparent RSA private key material: TransparentRSAPrivateKey expected"
-            ),
-        },
-        KeyFormatType::TransparentECPrivateKey => match &key_block.key_value.key_material {
-            KeyMaterial::TransparentECPrivateKey {
-                d,
-                recommended_curve,
-            } => match recommended_curve {
-                RecommendedCurve::CURVE25519 => {
-                    let mut privkey_vec = d.to_bytes_be();
-                    pad_be_bytes(&mut privkey_vec, X25519_PRIVATE_KEY_LENGTH);
-                    PKey::private_key_from_raw_bytes(&privkey_vec, Id::X25519)?
-                }
-                RecommendedCurve::CURVE448 => {
-                    let mut privkey_vec = d.to_bytes_be();
-                    pad_be_bytes(&mut privkey_vec, X448_PRIVATE_KEY_LENGTH);
-                    PKey::private_key_from_raw_bytes(&privkey_vec, Id::X448)?
-                }
-                RecommendedCurve::CURVEED25519 => {
-                    let mut privkey_vec = d.to_bytes_be();
-                    pad_be_bytes(&mut privkey_vec, ED25519_PRIVATE_KEY_LENGTH);
-                    PKey::private_key_from_raw_bytes(&privkey_vec, Id::ED25519)?
-                }
-                RecommendedCurve::CURVEED448 => {
-                    let mut privkey_vec = d.to_bytes_be();
-                    pad_be_bytes(&mut privkey_vec, ED448_PRIVATE_KEY_LENGTH);
-                    PKey::private_key_from_raw_bytes(&privkey_vec, Id::ED448)?
-                }
-                other => ec_private_key_from_scalar(d, *other)?,
-            },
-            x => crypto_bail!(
-                "KMIP key to openssl: invalid Transparent EC private key material: {}: \
-                 TransparentECPrivateKey expected",
-                x
-            ),
-        },
+        }
+        KeyFormatType::TransparentECPrivateKey => {
+            let Some(KeyValue::Structure { key_material, .. }) = key_block.key_value.as_ref()
+            else {
+                return Err(CryptoError::Default(
+                    "Key value not found in Transparent EC private key".to_owned(),
+                ));
+            };
+            match key_material {
+                KeyMaterial::TransparentECPrivateKey {
+                    d,
+                    recommended_curve,
+                } => match recommended_curve {
+                    RecommendedCurve::CURVE25519 => {
+                        let mut privkey_vec = d.to_bytes_be().1;
+                        pad_be_bytes(&mut privkey_vec, X25519_PRIVATE_KEY_LENGTH);
+                        PKey::private_key_from_raw_bytes(&privkey_vec, Id::X25519)?
+                    }
+                    RecommendedCurve::CURVE448 => {
+                        let mut privkey_vec = d.to_bytes_be().1;
+                        pad_be_bytes(&mut privkey_vec, X448_PRIVATE_KEY_LENGTH);
+                        PKey::private_key_from_raw_bytes(&privkey_vec, Id::X448)?
+                    }
+                    RecommendedCurve::CURVEED25519 => {
+                        let mut privkey_vec = d.to_bytes_be().1;
+                        pad_be_bytes(&mut privkey_vec, ED25519_PRIVATE_KEY_LENGTH);
+                        PKey::private_key_from_raw_bytes(&privkey_vec, Id::ED25519)?
+                    }
+                    RecommendedCurve::CURVEED448 => {
+                        let mut privkey_vec = d.to_bytes_be().1;
+                        pad_be_bytes(&mut privkey_vec, ED448_PRIVATE_KEY_LENGTH);
+                        PKey::private_key_from_raw_bytes(&privkey_vec, Id::ED448)?
+                    }
+                    other => {
+                        let big_i: BigInt = BigInt::from(*d.clone());
+                        let big_ui = big_i.into_biguint().ok_or_else(|| {
+                            CryptoError::ConversionError(
+                                "Failed converting the scalar BigInt to a BigUint".to_owned(),
+                            )
+                        })?;
+                        ec_private_key_from_scalar(&big_ui, *other)?
+                    }
+                },
+                x => crypto_bail!(
+                    "KMIP key to openssl: invalid Transparent EC private key material: {}: \
+                     TransparentECPrivateKey expected",
+                    x
+                ),
+            }
+        }
         f => crypto_bail!(
             "Unsupported key format type: {:?}, for a Transparent EC private key",
             f
@@ -209,7 +248,8 @@ fn ec_private_key_from_scalar(
 /// Convert an openssl private key to a KMIP private Key (`Object::PrivateKey`) of the given `KeyFormatType`
 pub fn openssl_private_key_to_kmip(
     private_key: &PKey<Private>,
-    key_format_type: KeyFormatType,
+    #[cfg(not(feature = "fips"))] mut key_format_type: KeyFormatType,
+    #[cfg(feature = "fips")] key_format_type: KeyFormatType,
     cryptographic_usage_mask: Option<CryptographicUsageMask>,
 ) -> Result<Object, CryptoError> {
     let cryptographic_length = Some(i32::try_from(private_key.bits())?);
@@ -225,50 +265,53 @@ pub fn openssl_private_key_to_kmip(
     // Legacy PKCS12 is the same as PKCS12 for the private key,
     // which will be exported as PKCS#8
     #[cfg(not(feature = "fips"))]
-    let key_format_type = if key_format_type == KeyFormatType::Pkcs12Legacy {
-        KeyFormatType::PKCS12
-    } else {
-        key_format_type
-    };
+    {
+        if key_format_type == KeyFormatType::Pkcs12Legacy {
+            key_format_type = KeyFormatType::PKCS12;
+        }
+    }
 
     let key_block = match key_format_type {
         KeyFormatType::TransparentRSAPrivateKey => {
             let rsa_private_key = private_key
                 .rsa()
                 .context("the provided openssl key is not an RSA private key")?;
-            let modulus = BigUint::from_bytes_be(rsa_private_key.n().to_vec().as_slice());
-            let public_exponent = BigUint::from_bytes_be(rsa_private_key.e().to_vec().as_slice());
-            let private_exponent = BigUint::from_bytes_be(rsa_private_key.d().to_vec().as_slice());
+            let modulus =
+                BigInt::from_bytes_be(Sign::Plus, rsa_private_key.n().to_vec().as_slice());
+            let public_exponent =
+                BigInt::from_bytes_be(Sign::Plus, rsa_private_key.e().to_vec().as_slice());
+            let private_exponent =
+                BigInt::from_bytes_be(Sign::Plus, rsa_private_key.d().to_vec().as_slice());
             let p = rsa_private_key
                 .p()
-                .map(|p| BigUint::from_bytes_be(p.to_vec().as_slice()));
+                .map(|p| BigInt::from_bytes_be(Sign::Plus, p.to_vec().as_slice()));
             let q = rsa_private_key
                 .q()
-                .map(|q| BigUint::from_bytes_be(q.to_vec().as_slice()));
+                .map(|q| BigInt::from_bytes_be(Sign::Plus, q.to_vec().as_slice()));
             let prime_exponent_p = rsa_private_key
                 .dmp1()
-                .map(|dmp1| BigUint::from_bytes_be(dmp1.to_vec().as_slice()));
+                .map(|dmp1| BigInt::from_bytes_be(Sign::Plus, dmp1.to_vec().as_slice()));
             let prime_exponent_q = rsa_private_key
                 .dmq1()
-                .map(|dmpq1| BigUint::from_bytes_be(dmpq1.to_vec().as_slice()));
+                .map(|dmpq1| BigInt::from_bytes_be(Sign::Plus, dmpq1.to_vec().as_slice()));
             let crt_coefficient = rsa_private_key
                 .iqmp()
-                .map(|iqmp| BigUint::from_bytes_be(iqmp.to_vec().as_slice()));
+                .map(|iqmp| BigInt::from_bytes_be(Sign::Plus, iqmp.to_vec().as_slice()));
             KeyBlock {
                 key_format_type,
-                key_value: KeyValue {
+                key_value: Some(KeyValue::Structure {
                     key_material: KeyMaterial::TransparentRSAPrivateKey {
                         modulus: Box::new(modulus),
-                        private_exponent: Some(Box::new(SafeBigUint::from(private_exponent))),
+                        private_exponent: Some(Box::new(SafeBigInt::from(private_exponent))),
                         public_exponent: Some(Box::new(public_exponent)),
-                        p: p.map(|p| Box::new(SafeBigUint::from(p))),
-                        q: q.map(|q| Box::new(SafeBigUint::from(q))),
+                        p: p.map(|p| Box::new(SafeBigInt::from(p))),
+                        q: q.map(|q| Box::new(SafeBigInt::from(q))),
                         prime_exponent_p: prime_exponent_p
-                            .map(|pep| Box::new(SafeBigUint::from(pep))),
+                            .map(|pep| Box::new(SafeBigInt::from(pep))),
                         prime_exponent_q: prime_exponent_q
-                            .map(|peq| Box::new(SafeBigUint::from(peq))),
-                        crt_coefficient: crt_coefficient
-                            .map(|crt_coeff| Box::new(SafeBigUint::from(crt_coeff))),
+                            .map(|peq| Box::new(SafeBigInt::from(peq))),
+                        c_r_t_coefficient: crt_coefficient
+                            .map(|crt_coeff| Box::new(SafeBigInt::from(crt_coeff))),
                     },
                     attributes: Some(Attributes {
                         cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
@@ -276,9 +319,13 @@ pub fn openssl_private_key_to_kmip(
                         key_format_type: Some(KeyFormatType::TransparentRSAPrivateKey),
                         object_type: Some(ObjectType::PrivateKey),
                         cryptographic_usage_mask,
+                        cryptographic_parameters: Some(CryptographicParameters {
+                            cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+                            ..CryptographicParameters::default()
+                        }),
                         ..Attributes::default()
                     }),
-                },
+                }),
                 cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                 cryptographic_length,
                 key_wrapping_data: None,
@@ -287,7 +334,7 @@ pub fn openssl_private_key_to_kmip(
         }
         KeyFormatType::TransparentECPrivateKey => {
             let (recommended_curve, cryptographic_algorithm, d) = match private_key.id() {
-                // This is likely a curve 25519 or 448 key (i.e. a non standardized curve)
+                // This is a likely curve 25519 or 448 keys (i.e., a non-standardized curve)
                 Id::EC => {
                     let ec_key = private_key
                         .ec_key()
@@ -344,10 +391,10 @@ pub fn openssl_private_key_to_kmip(
             let cryptographic_length = Some(i32::try_from(private_key.bits())?);
             KeyBlock {
                 key_format_type,
-                key_value: KeyValue {
+                key_value: Some(KeyValue::Structure {
                     key_material: KeyMaterial::TransparentECPrivateKey {
                         recommended_curve,
-                        d: Box::new(SafeBigUint::from(d)),
+                        d: Box::new(SafeBigInt::from(d)),
                     },
                     attributes: Some(Attributes {
                         activation_date: None,
@@ -364,11 +411,14 @@ pub fn openssl_private_key_to_kmip(
                             recommended_curve: Some(recommended_curve),
                             ..CryptographicDomainParameters::default()
                         }),
-                        cryptographic_parameters: None,
+                        cryptographic_parameters: Some(CryptographicParameters {
+                            cryptographic_algorithm: Some(cryptographic_algorithm),
+                            ..CryptographicParameters::default()
+                        }),
                         cryptographic_usage_mask,
                         ..Attributes::default()
                     }),
-                },
+                }),
                 cryptographic_algorithm: Some(cryptographic_algorithm),
                 cryptographic_length,
                 key_wrapping_data: None,
@@ -386,7 +436,7 @@ pub fn openssl_private_key_to_kmip(
 
             KeyBlock {
                 key_format_type: KeyFormatType::PKCS8,
-                key_value: KeyValue {
+                key_value: Some(KeyValue::Structure {
                     key_material: KeyMaterial::ByteString(Zeroizing::from(
                         private_key.private_key_to_pkcs8()?,
                     )),
@@ -396,9 +446,13 @@ pub fn openssl_private_key_to_kmip(
                         key_format_type: Some(KeyFormatType::PKCS8),
                         object_type: Some(ObjectType::PrivateKey),
                         cryptographic_usage_mask,
+                        cryptographic_parameters: Some(CryptographicParameters {
+                            cryptographic_algorithm,
+                            ..CryptographicParameters::default()
+                        }),
                         ..Attributes::default()
                     }),
-                },
+                }),
                 cryptographic_algorithm,
                 cryptographic_length,
                 key_wrapping_data: None,
@@ -412,7 +466,7 @@ pub fn openssl_private_key_to_kmip(
                 .context("the private key is not an openssl EC key")?;
             KeyBlock {
                 key_format_type,
-                key_value: KeyValue {
+                key_value: Some(KeyValue::Structure {
                     key_material: KeyMaterial::ByteString(Zeroizing::from(
                         ec_key.private_key_to_der()?,
                     )),
@@ -424,7 +478,7 @@ pub fn openssl_private_key_to_kmip(
                         cryptographic_usage_mask,
                         ..Attributes::default()
                     }),
-                },
+                }),
                 cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
                 cryptographic_length,
                 key_wrapping_data: None,
@@ -437,7 +491,7 @@ pub fn openssl_private_key_to_kmip(
                 .context("the private key is not an openssl RSA key")?;
             KeyBlock {
                 key_format_type,
-                key_value: KeyValue {
+                key_value: Some(KeyValue::Structure {
                     key_material: KeyMaterial::ByteString(Zeroizing::from(
                         rsa_private_key.private_key_to_der()?,
                     )),
@@ -449,7 +503,7 @@ pub fn openssl_private_key_to_kmip(
                         cryptographic_usage_mask,
                         ..Attributes::default()
                     }),
-                },
+                }),
                 cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                 cryptographic_length,
                 key_wrapping_data: None,
@@ -461,23 +515,24 @@ pub fn openssl_private_key_to_kmip(
             f
         ),
     };
-    Ok(Object::PrivateKey { key_block })
+    Ok(Object::PrivateKey(PrivateKey { key_block }))
 }
 
-#[allow(clippy::unwrap_used, clippy::panic, clippy::as_conversions)]
+#[allow(clippy::unwrap_used, clippy::panic)]
 #[cfg(test)]
 mod tests {
+    #[cfg(not(feature = "fips"))]
+    use cosmian_kmip::kmip_0::kmip_types::CryptographicUsageMask;
     #[cfg(feature = "fips")]
     use cosmian_kmip::kmip_2_1::extra::fips::{
         FIPS_PRIVATE_ECC_MASK_SIGN_ECDH, FIPS_PRIVATE_RSA_MASK,
     };
-    #[cfg(not(feature = "fips"))]
-    use cosmian_kmip::kmip_2_1::kmip_types::CryptographicUsageMask;
     use cosmian_kmip::kmip_2_1::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-        kmip_objects::Object,
+        kmip_objects::{Object, PrivateKey},
         kmip_types::{KeyFormatType, RecommendedCurve},
     };
+    use cosmian_logger::log_init;
     use openssl::{
         bn::BigNum,
         ec::{EcGroup, EcKey, EcPoint},
@@ -505,15 +560,15 @@ mod tests {
         // PKCS#X
         let object = openssl_private_key_to_kmip(private_key, kft, mask).unwrap();
         let object_ = object.clone();
-        let Object::PrivateKey { key_block } = object else {
+        let Object::PrivateKey(PrivateKey { key_block }) = object else {
             panic!("Invalid key block")
         };
         let KeyBlock {
             key_value:
-                KeyValue {
+                Some(KeyValue::Structure {
                     key_material: KeyMaterial::ByteString(key_value),
                     ..
-                },
+                }),
             ..
         } = key_block
         else {
@@ -563,15 +618,15 @@ mod tests {
         let object =
             openssl_private_key_to_kmip(private_key, KeyFormatType::ECPrivateKey, mask).unwrap();
         let object_ = object.clone();
-        let Object::PrivateKey { key_block } = object else {
+        let Object::PrivateKey(PrivateKey { key_block }) = object else {
             panic!("Invalid key block")
         };
         let KeyBlock {
             key_value:
-                KeyValue {
+                Some(KeyValue::Structure {
                     key_material: KeyMaterial::ByteString(key_value),
                     ..
-                },
+                }),
             ..
         } = key_block
         else {
@@ -608,12 +663,12 @@ mod tests {
             openssl_private_key_to_kmip(private_key, KeyFormatType::TransparentRSAPrivateKey, mask)
                 .unwrap();
         let object_ = object.clone();
-        let Object::PrivateKey { key_block } = object else {
+        let Object::PrivateKey(PrivateKey { key_block }) = object else {
             panic!("Invalid key block")
         };
         let KeyBlock {
             key_value:
-                KeyValue {
+                Some(KeyValue::Structure {
                     key_material:
                         KeyMaterial::TransparentRSAPrivateKey {
                             modulus,
@@ -623,10 +678,10 @@ mod tests {
                             q,
                             prime_exponent_p,
                             prime_exponent_q,
-                            crt_coefficient,
+                            c_r_t_coefficient: crt_coefficient,
                         },
                     ..
-                },
+                }),
             ..
         } = key_block
         else {
@@ -634,14 +689,14 @@ mod tests {
         };
         let private_key_ = PKey::from_rsa(
             Rsa::from_private_components(
-                BigNum::from_slice(&modulus.to_bytes_be()).unwrap(),
-                BigNum::from_slice(&public_exponent.unwrap().to_bytes_be()).unwrap(),
-                BigNum::from_slice(&private_exponent.unwrap().to_bytes_be()).unwrap(),
-                BigNum::from_slice(&p.unwrap().to_bytes_be()).unwrap(),
-                BigNum::from_slice(&q.unwrap().to_bytes_be()).unwrap(),
-                BigNum::from_slice(&prime_exponent_p.unwrap().to_bytes_be()).unwrap(),
-                BigNum::from_slice(&prime_exponent_q.unwrap().to_bytes_be()).unwrap(),
-                BigNum::from_slice(&crt_coefficient.unwrap().to_bytes_be()).unwrap(),
+                BigNum::from_slice(&modulus.to_bytes_be().1).unwrap(),
+                BigNum::from_slice(&public_exponent.unwrap().to_bytes_be().1).unwrap(),
+                BigNum::from_slice(&private_exponent.unwrap().to_bytes_be().1).unwrap(),
+                BigNum::from_slice(&p.unwrap().to_bytes_be().1).unwrap(),
+                BigNum::from_slice(&q.unwrap().to_bytes_be().1).unwrap(),
+                BigNum::from_slice(&prime_exponent_p.unwrap().to_bytes_be().1).unwrap(),
+                BigNum::from_slice(&prime_exponent_q.unwrap().to_bytes_be().1).unwrap(),
+                BigNum::from_slice(&crt_coefficient.unwrap().to_bytes_be().1).unwrap(),
             )
             .unwrap(),
         )
@@ -681,19 +736,19 @@ mod tests {
             openssl_private_key_to_kmip(private_key, KeyFormatType::TransparentECPrivateKey, mask)
                 .unwrap();
         let object_ = object.clone();
-        let Object::PrivateKey { key_block } = object else {
+        let Object::PrivateKey(PrivateKey { key_block }) = object else {
             panic!("Invalid key block")
         };
         let KeyBlock {
             key_value:
-                KeyValue {
+                Some(KeyValue::Structure {
                     key_material:
                         KeyMaterial::TransparentECPrivateKey {
                             d,
                             recommended_curve,
                         },
                     ..
-                },
+                }),
             ..
         } = key_block
         else {
@@ -701,10 +756,10 @@ mod tests {
         };
         assert_eq!(recommended_curve, curve);
 
-        let mut privkey_vec = d.to_bytes_be();
+        let mut privkey_vec = d.to_bytes_be().1;
 
         // privkey size on curve.
-        let bytes_key_size = 1 + ((key_size as usize - 1) / 8);
+        let bytes_key_size = 1 + ((usize::try_from(key_size).unwrap() - 1) / 8);
 
         pad_be_bytes(&mut privkey_vec, bytes_key_size);
         if id == Id::EC {
@@ -750,6 +805,8 @@ mod tests {
 
     #[test]
     fn test_conversion_rsa_private_key() {
+        log_init(option_env!("RUST_LOG"));
+
         #[cfg(feature = "fips")]
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
@@ -766,6 +823,8 @@ mod tests {
     #[test]
     #[cfg(not(feature = "fips"))]
     fn test_conversion_ec_p_192_private_key() {
+        log_init(option_env!("RUST_LOG"));
+
         let key_size = 192;
         let ec_group = EcGroup::from_curve_name(Nid::X9_62_PRIME192V1).unwrap();
         let ec_key = EcKey::generate(&ec_group).unwrap();
@@ -787,6 +846,8 @@ mod tests {
 
     #[test]
     fn test_conversion_ec_p_224_private_key() {
+        log_init(option_env!("RUST_LOG"));
+
         #[cfg(feature = "fips")]
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
@@ -812,12 +873,14 @@ mod tests {
 
     #[test]
     fn test_conversion_ec_p_256_private_key() {
+        log_init(option_env!("RUST_LOG"));
+
         #[cfg(feature = "fips")]
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
 
         let key_size = 256;
-        let ec_group = EcGroup::from_curve_name(openssl::nid::Nid::X9_62_PRIME256V1).unwrap();
+        let ec_group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1).unwrap();
         let ec_key = EcKey::generate(&ec_group).unwrap();
         let ec_public_key = ec_key.public_key().to_owned(&ec_group).unwrap();
         let private_key = PKey::from_ec_key(ec_key).unwrap();
@@ -837,12 +900,14 @@ mod tests {
 
     #[test]
     fn test_conversion_ec_p_384_private_key() {
+        log_init(option_env!("RUST_LOG"));
+
         #[cfg(feature = "fips")]
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
 
         let key_size = 384;
-        let ec_group = EcGroup::from_curve_name(openssl::nid::Nid::SECP384R1).unwrap();
+        let ec_group = EcGroup::from_curve_name(Nid::SECP384R1).unwrap();
         let ec_key = EcKey::generate(&ec_group).unwrap();
         let ec_public_key = ec_key.public_key().to_owned(&ec_group).unwrap();
         let private_key = PKey::from_ec_key(ec_key).unwrap();
@@ -862,12 +927,14 @@ mod tests {
 
     #[test]
     fn test_conversion_ec_p_521_private_key() {
+        log_init(option_env!("RUST_LOG"));
+
         #[cfg(feature = "fips")]
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
 
         let key_size = 521;
-        let ec_group = EcGroup::from_curve_name(openssl::nid::Nid::SECP521R1).unwrap();
+        let ec_group = EcGroup::from_curve_name(Nid::SECP521R1).unwrap();
         let ec_key = EcKey::generate(&ec_group).unwrap();
         let ec_public_key = ec_key.public_key().to_owned(&ec_group).unwrap();
         let private_key = PKey::from_ec_key(ec_key).unwrap();
@@ -888,6 +955,8 @@ mod tests {
     #[test]
     #[cfg(not(feature = "fips"))]
     fn test_conversion_ec_x25519_private_key() {
+        log_init(option_env!("RUST_LOG"));
+
         let key_size = 253;
         let private_key = PKey::generate_x25519().unwrap();
 
@@ -904,6 +973,8 @@ mod tests {
 
     #[test]
     fn test_conversion_ec_ed25519_private_key() {
+        log_init(option_env!("RUST_LOG"));
+
         #[cfg(feature = "fips")]
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
@@ -925,6 +996,8 @@ mod tests {
     #[test]
     #[cfg(not(feature = "fips"))]
     fn test_conversion_ec_x448_private_key() {
+        log_init(option_env!("RUST_LOG"));
+
         let key_size = 448;
         let private_key = PKey::generate_x448().unwrap();
 
@@ -941,6 +1014,8 @@ mod tests {
 
     #[test]
     fn test_conversion_ec_ed448_private_key() {
+        log_init(option_env!("RUST_LOG"));
+
         #[cfg(feature = "fips")]
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();

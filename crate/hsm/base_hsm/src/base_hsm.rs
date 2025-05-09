@@ -28,10 +28,13 @@ impl BaseHsm {
         let hsm_lib = Arc::new(HsmLib::instantiate(path)?);
         let mut slots = HashMap::with_capacity(passwords.len());
         for (k, v) in passwords.iter() {
-            slots.insert(*k, SlotState {
-                password: v.clone(),
-                slot: None,
-            });
+            slots.insert(
+                *k,
+                SlotState {
+                    password: v.clone(),
+                    slot: None,
+                },
+            );
         }
         Ok(BaseHsm {
             hsm_lib,

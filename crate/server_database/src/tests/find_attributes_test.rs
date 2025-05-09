@@ -4,13 +4,14 @@ use cosmian_crypto_core::{
     CsRng,
     reexport::rand_core::{RngCore, SeedableRng},
 };
-use cosmian_kmip::kmip_2_1::{
-    kmip_objects::ObjectType,
-    kmip_types::{
-        Attributes, CryptographicAlgorithm, Link, LinkType, LinkedObjectIdentifier,
-        StateEnumeration,
+use cosmian_kmip::{
+    kmip_0::kmip_types::State,
+    kmip_2_1::{
+        kmip_attributes::Attributes,
+        kmip_objects::ObjectType,
+        kmip_types::{CryptographicAlgorithm, Link, LinkType, LinkedObjectIdentifier},
+        requests::create_symmetric_key_kmip_object,
     },
-    requests::create_symmetric_key_kmip_object,
 };
 use cosmian_kms_interfaces::{ObjectsStore, SessionParams};
 use uuid::Uuid;
@@ -30,8 +31,13 @@ pub(crate) async fn find_attributes<DB: ObjectsStore>(
 
     let mut symmetric_key_bytes = vec![0; 32];
     rng.fill_bytes(&mut symmetric_key_bytes);
-    let mut symmetric_key =
-        create_symmetric_key_kmip_object(&symmetric_key_bytes, CryptographicAlgorithm::AES, false)?;
+    let mut symmetric_key = create_symmetric_key_kmip_object(
+        &symmetric_key_bytes,
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Attributes::default()
+        },
+    )?;
 
     let uid = Uuid::new_v4().to_string();
 
@@ -60,7 +66,7 @@ pub(crate) async fn find_attributes<DB: ObjectsStore>(
         .retrieve(&uid, db_params.clone())
         .await?
         .ok_or_else(|| db_error!("Object not found"))?;
-    assert_eq!(StateEnumeration::Active, obj.state());
+    assert_eq!(State::Active, obj.state());
     assert!(&symmetric_key == obj.object());
     assert_eq!(
         obj.object().attributes()?.link.as_ref().unwrap()[0].linked_object_identifier,
@@ -75,7 +81,7 @@ pub(crate) async fn find_attributes<DB: ObjectsStore>(
     let found = db
         .find(
             researched_attributes.as_ref(),
-            Some(StateEnumeration::Active),
+            Some(State::Active),
             owner,
             true,
             db_params.clone(),
@@ -98,7 +104,7 @@ pub(crate) async fn find_attributes<DB: ObjectsStore>(
     let found = db
         .find(
             researched_attributes.as_ref(),
-            Some(StateEnumeration::Active),
+            Some(State::Active),
             owner,
             true,
             db_params,

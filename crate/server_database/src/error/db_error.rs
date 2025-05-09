@@ -2,11 +2,15 @@ use std::array::TryFromSliceError;
 
 use cloudproof_findex::implementations::redis::FindexRedisError;
 use cosmian_crypto_core::CryptoCoreError;
-use cosmian_kmip::{KmipError, kmip_2_1::kmip_operations::ErrorReason};
+use cosmian_kmip::{
+    KmipError, kmip_0::kmip_types::ErrorReason, kmip_1_4::kmip_types::ResultReason,
+};
 use cosmian_kms_crypto::CryptoError;
 use cosmian_kms_interfaces::InterfaceError;
 use redis::ErrorKind;
 use thiserror::Error;
+
+use crate::DbError::CryptographicError;
 
 // Each error type must have a corresponding HTTP status code (see `kmip_endpoint.rs`)
 #[derive(Error, Debug, Clone)]
@@ -52,7 +56,11 @@ pub enum DbError {
 
     // Any errors on KMIP format due to mistake of the user
     #[error("{0}: {1}")]
-    KmipError(ErrorReason, String),
+    Kmip14Error(ResultReason, String),
+
+    // Any errors on KMIP format due to mistake of the user
+    #[error("{0}: {1}")]
+    Kmip21Error(ErrorReason, String),
 
     // When a user requests something not supported by the server
     #[error("Not Supported: {0}")]
@@ -65,7 +73,7 @@ pub enum DbError {
     Redis(String),
 
     // When a user requests an endpoint which does not exist
-    #[error("Not Supported route: {0}")]
+    #[error("Route not supported: {0}")]
     RouteNotFound(String),
 
     // Any errors related to a bad behavior of the server but not related to the user input
@@ -156,7 +164,28 @@ impl From<InterfaceError> for DbError {
 
 impl From<CryptoCoreError> for DbError {
     fn from(e: CryptoCoreError) -> Self {
-        Self::CryptographicError(e.to_string())
+        CryptographicError(e.to_string())
+    }
+}
+
+impl From<CryptoError> for DbError {
+    fn from(e: CryptoError) -> Self {
+        match e {
+            CryptoError::Kmip(s) => Self::Kmip21Error(ErrorReason::Codec_Error, s),
+            CryptoError::InvalidSize(s)
+            | CryptoError::InvalidTag(s)
+            | CryptoError::Derivation(s)
+            | CryptoError::IndexingSlicing(s) => Self::InvalidRequest(s),
+            CryptoError::ObjectNotFound(s) => Self::ItemNotFound(s),
+            CryptoError::ConversionError(e)
+            | CryptoError::Default(e)
+            | CryptoError::NotSupported(e)
+            | CryptoError::OpenSSL(e) => CryptographicError(e),
+            CryptoError::Io(e) => CryptographicError(e.to_string()),
+            CryptoError::SerdeJsonError(e) => CryptographicError(e.to_string()),
+            CryptoError::Covercrypt(e) => CryptographicError(e.to_string()),
+            CryptoError::TryFromSliceError(e) => CryptographicError(e.to_string()),
+        }
     }
 }
 
@@ -169,10 +198,10 @@ impl From<FindexRedisError> for DbError {
 impl From<KmipError> for DbError {
     fn from(e: KmipError) -> Self {
         match e {
-            KmipError::InvalidKmipValue(r, s)
-            | KmipError::InvalidKmipObject(r, s)
-            | KmipError::Kmip(r, s) => Self::KmipError(r, s),
-            KmipError::KmipNotSupported(_, s)
+            KmipError::InvalidKmip21Value(r, s)
+            | KmipError::InvalidKmip21Object(r, s)
+            | KmipError::Kmip21(r, s) => Self::Kmip21Error(r, s),
+            KmipError::Kmip21NotSupported(_, s)
             | KmipError::NotSupported(s)
             | KmipError::Default(s)
             | KmipError::InvalidSize(s)
@@ -184,19 +213,16 @@ impl From<KmipError> for DbError {
             KmipError::TryFromSliceError(s) => Self::ConversionError(s.to_string()),
             KmipError::SerdeJsonError(s) => Self::ConversionError(s.to_string()),
             KmipError::Deserialization(e) | KmipError::Serialization(e) => {
-                Self::KmipError(ErrorReason::Codec_Error, e)
+                Self::Kmip21Error(ErrorReason::Codec_Error, e)
             }
-            KmipError::DeserializationSize(expected, actual) => Self::KmipError(
+            KmipError::DeserializationSize(expected, actual) => Self::Kmip21Error(
                 ErrorReason::Codec_Error,
                 format!("Deserialization: invalid size: {actual}, expected: {expected}"),
             ),
+            KmipError::InvalidKmip14Value(result_reason, e)
+            | KmipError::InvalidKmip14Object(result_reason, e)
+            | KmipError::Kmip14(result_reason, e) => Self::Kmip14Error(result_reason, e),
         }
-    }
-}
-
-impl From<CryptoError> for DbError {
-    fn from(e: CryptoError) -> Self {
-        Self::CryptographicError(e.to_string())
     }
 }
 

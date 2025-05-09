@@ -1,14 +1,15 @@
 use cosmian_cover_crypt::{AccessPolicy, EncryptionHint, QualifiedAttribute};
-use cosmian_kmip::kmip_2_1::{
-    extra::tagging::EMPTY_TAGS,
-    kmip_operations::{
-        CreateKeyPairResponse, CreateResponse, DecryptResponse, Destroy, DestroyResponse,
-        EncryptResponse, ReKeyKeyPairResponse, Revoke, RevokeResponse,
+use cosmian_kmip::{
+    kmip_0::kmip_types::{RevocationReason, RevocationReasonCode},
+    kmip_2_1::{
+        extra::tagging::EMPTY_TAGS,
+        kmip_operations::{
+            CreateKeyPairResponse, CreateResponse, DecryptResponse, Destroy, DestroyResponse,
+            EncryptResponse, ReKeyKeyPairResponse, Revoke, RevokeResponse,
+        },
+        kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
+        requests::{decrypt_request, encrypt_request},
     },
-    kmip_types::{
-        CryptographicAlgorithm, CryptographicParameters, RevocationReason, UniqueIdentifier,
-    },
-    requests::{decrypt_request, encrypt_request},
 };
 use cosmian_kms_client_utils::cover_crypt_utils::{
     build_create_covercrypt_master_keypair_request, build_create_covercrypt_usk_request,
@@ -23,15 +24,17 @@ use crate::{
 };
 #[tokio::test]
 async fn integration_tests_use_ids_no_tags() -> KResult<()> {
+    // cosmian_logger::log_init(Some("debug"));
     cosmian_logger::log_init(None);
+
     let app = test_utils::test_app(None, None).await;
     let access_structure = r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["RnD","HR","MKG","FIN"]}"#;
 
     // create Key Pair
     let create_key_pair =
-        build_create_covercrypt_master_keypair_request(access_structure, EMPTY_TAGS, false)?;
+        build_create_covercrypt_master_keypair_request(access_structure, EMPTY_TAGS, false, None)?;
     let create_key_pair_response: CreateKeyPairResponse =
-        test_utils::post(&app, &create_key_pair).await?;
+        test_utils::post_2_1(&app, &create_key_pair).await?;
 
     let private_key_unique_identifier = create_key_pair_response
         .private_key_unique_identifier
@@ -59,7 +62,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         }),
     )?;
 
-    let encrypt_response: EncryptResponse = test_utils::post(&app, request).await?;
+    let encrypt_response: EncryptResponse = test_utils::post_2_1(&app, request).await?;
     let encrypted_data = encrypt_response
         .data
         .expect("There should be encrypted data");
@@ -71,8 +74,9 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         private_key_unique_identifier,
         EMPTY_TAGS,
         false,
+        None,
     )?;
-    let create_response: CreateResponse = test_utils::post(&app, request).await?;
+    let create_response: CreateResponse = test_utils::post_2_1(&app, request).await?;
     let user_decryption_key_identifier = create_response
         .unique_identifier
         .as_str()
@@ -88,7 +92,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         None,
     );
 
-    let decrypt_response: DecryptResponse = test_utils::post(&app, request).await?;
+    let decrypt_response: DecryptResponse = test_utils::post_2_1(&app, request).await?;
 
     let decrypted_data = decrypt_response
         .data
@@ -112,7 +116,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         None,
     )?;
 
-    let encrypt_response: EncryptResponse = test_utils::post(&app, &request).await?;
+    let encrypt_response: EncryptResponse = test_utils::post_2_1(&app, &request).await?;
 
     let encrypted_data = encrypt_response
         .data
@@ -126,8 +130,9 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         private_key_unique_identifier,
         EMPTY_TAGS,
         false,
+        None,
     )?;
-    let create_response: CreateResponse = test_utils::post(&app, &request).await?;
+    let create_response: CreateResponse = test_utils::post_2_1(&app, &request).await?;
     let user_decryption_key_identifier_1 = create_response
         .unique_identifier
         .as_str()
@@ -141,8 +146,9 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         private_key_unique_identifier,
         EMPTY_TAGS,
         false,
+        None,
     )?;
-    let create_response2: CreateResponse = test_utils::post(&app, &request).await?;
+    let create_response2: CreateResponse = test_utils::post_2_1(&app, &request).await?;
     let user_decryption_key_identifier_2 = &create_response2
         .unique_identifier
         .as_str()
@@ -157,7 +163,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         Some(authentication_data.clone()),
         None,
     );
-    let decrypt_response: DecryptResponse = test_utils::post(&app, &request).await?;
+    let decrypt_response: DecryptResponse = test_utils::post_2_1(&app, &request).await?;
 
     let decrypted_data = decrypt_response
         .data
@@ -175,7 +181,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         None,
     );
 
-    let decrypt_response: DecryptResponse = test_utils::post(&app, &request).await?;
+    let decrypt_response: DecryptResponse = test_utils::post_2_1(&app, &request).await?;
 
     let decrypted_data = decrypt_response
         .data
@@ -184,13 +190,19 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     assert_eq!(data, &*decrypted_data);
 
     // Revoke key of user 1
-    let _revoke_response: RevokeResponse = test_utils::post(&app, &Revoke {
-        unique_identifier: Some(UniqueIdentifier::TextString(
-            user_decryption_key_identifier_1.to_owned(),
-        )),
-        revocation_reason: RevocationReason::TextString("Revocation test".to_owned()),
-        compromise_occurrence_date: None,
-    })
+    let _revoke_response: RevokeResponse = test_utils::post_2_1(
+        &app,
+        &Revoke {
+            unique_identifier: Some(UniqueIdentifier::TextString(
+                user_decryption_key_identifier_1.to_owned(),
+            )),
+            revocation_reason: RevocationReason {
+                revocation_reason_code: RevocationReasonCode::Unspecified,
+                revocation_message: Some("Revocation test".to_owned()),
+            },
+            compromise_occurrence_date: None,
+        },
+    )
     .await?;
 
     //
@@ -200,7 +212,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         private_key_unique_identifier,
         &RekeyEditAction::RekeyAccessPolicy(ap_to_edit.clone()),
     )?;
-    let rekey_keypair_response: ReKeyKeyPairResponse = test_utils::post(&app, &request).await?;
+    let rekey_keypair_response: ReKeyKeyPairResponse = test_utils::post_2_1(&app, &request).await?;
     assert_eq!(
         rekey_keypair_response
             .private_key_unique_identifier
@@ -232,12 +244,13 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
             ..Default::default()
         }),
     )?;
-    let encrypt_response: EncryptResponse = test_utils::post(&app, &request).await?;
+    let encrypt_response: EncryptResponse = test_utils::post_2_1(&app, &request).await?;
     let new_encrypted_data = encrypt_response
         .data
         .expect("There should be encrypted data");
 
-    // Make sure first user decryption key cannot decrypt new encrypted message (message being encrypted with new `MKG` value)
+    // Make sure the first user decryption key cannot decrypt the new encrypted message
+    // (message being encrypted with the new `MKG` value)
     let request = decrypt_request(
         user_decryption_key_identifier_1,
         None,
@@ -246,8 +259,8 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         Some(authentication_data.clone()),
         None,
     );
-    let post_ttlv_decrypt: KResult<DecryptResponse> = test_utils::post(&app, &request).await;
-    assert!(post_ttlv_decrypt.is_err());
+    let post_ttlv_decrypt: KResult<DecryptResponse> = test_utils::post_2_1(&app, &request).await;
+    post_ttlv_decrypt.unwrap_err();
 
     // decrypt
     let request = decrypt_request(
@@ -258,7 +271,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         Some(authentication_data.clone()),
         None,
     );
-    let decrypt_response: DecryptResponse = test_utils::post(&app, &request).await?;
+    let decrypt_response: DecryptResponse = test_utils::post_2_1(&app, &request).await?;
     let decrypted_data = decrypt_response
         .data
         .context("There should be decrypted data")?;
@@ -266,16 +279,16 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     assert_eq!(data, &*decrypted_data);
 
     //
-    // Prune old keys associated to the access policy
+    // Prune old keys associated with the access policy
     let request = build_rekey_keypair_request(
         private_key_unique_identifier,
         &RekeyEditAction::PruneAccessPolicy(ap_to_edit),
     )?;
     let rekey_keypair_response: KResult<ReKeyKeyPairResponse> =
-        test_utils::post(&app, &request).await;
+        test_utils::post_2_1(&app, &request).await;
     rekey_keypair_response?;
 
-    // test user2 can no longer decrypt old message
+    // test user2 can no longer decrypt the old message
     let request = decrypt_request(
         user_decryption_key_identifier_2,
         None,
@@ -284,8 +297,8 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         Some(authentication_data.clone()),
         None,
     );
-    let post_ttlv_decrypt: KResult<DecryptResponse> = test_utils::post(&app, &request).await;
-    assert!(post_ttlv_decrypt.is_err());
+    let post_ttlv_decrypt: KResult<DecryptResponse> = test_utils::post_2_1(&app, &request).await;
+    post_ttlv_decrypt.unwrap_err();
 
     let encryption_policy = "Security Level::Confidential && (Department::IT || Department::RnD)";
 
@@ -298,7 +311,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         )]),
     )?;
     let rekey_keypair_response: KResult<ReKeyKeyPairResponse> =
-        test_utils::post(&app, &request).await;
+        test_utils::post_2_1(&app, &request).await;
     rekey_keypair_response?;
 
     // Encrypt for new attribute
@@ -315,7 +328,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
             ..Default::default()
         }),
     )?;
-    let encrypt_response: KResult<EncryptResponse> = test_utils::post(&app, &request).await;
+    let encrypt_response: KResult<EncryptResponse> = test_utils::post_2_1(&app, &request).await;
     encrypt_response?;
 
     //
@@ -328,7 +341,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         )]),
     )?;
     let rekey_keypair_response: KResult<ReKeyKeyPairResponse> =
-        test_utils::post(&app, &request).await;
+        test_utils::post_2_1(&app, &request).await;
     rekey_keypair_response?;
 
     // Encrypt for renamed attribute
@@ -346,7 +359,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
             ..Default::default()
         }),
     )?;
-    let encrypt_response: KResult<EncryptResponse> = test_utils::post(&app, &request).await;
+    let encrypt_response: KResult<EncryptResponse> = test_utils::post_2_1(&app, &request).await;
     encrypt_response?;
 
     //
@@ -356,7 +369,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         &RekeyEditAction::DisableAttribute(vec![QualifiedAttribute::from(("Department", "MKG"))]),
     )?;
     let rekey_keypair_response: KResult<ReKeyKeyPairResponse> =
-        test_utils::post(&app, &request).await;
+        test_utils::post_2_1(&app, &request).await;
     rekey_keypair_response?;
 
     // Encrypt with disabled ABE attribute will fail
@@ -375,8 +388,8 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
             ..Default::default()
         }),
     )?;
-    let encrypt_response: KResult<EncryptResponse> = test_utils::post(&app, &request).await;
-    assert!(encrypt_response.is_err());
+    let encrypt_response: KResult<EncryptResponse> = test_utils::post_2_1(&app, &request).await;
+    encrypt_response.unwrap_err();
 
     //
     // Delete attribute
@@ -387,10 +400,10 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         ]),
     )?;
     let rekey_keypair_response: KResult<ReKeyKeyPairResponse> =
-        test_utils::post(&app, &request).await;
+        test_utils::post_2_1(&app, &request).await;
     rekey_keypair_response?;
 
-    // Encrypt for removed attribute will fail
+    // Encrypt for the removed attribute will fail
     let data = b"New hr data";
     let encryption_policy = "Security Level::Confidential && Department::HumanResources";
 
@@ -405,8 +418,8 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
             ..Default::default()
         }),
     )?;
-    let encrypt_response: KResult<EncryptResponse> = test_utils::post(&app, &request).await;
-    assert!(encrypt_response.is_err());
+    let encrypt_response: KResult<EncryptResponse> = test_utils::post_2_1(&app, &request).await;
+    encrypt_response.unwrap_err();
 
     //
     // Destroy user decryption key
@@ -416,7 +429,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         )),
         remove: false,
     };
-    let destroy_response: DestroyResponse = test_utils::post(&app, &request).await?;
+    let destroy_response: DestroyResponse = test_utils::post_2_1(&app, &request).await?;
     assert_eq!(
         user_decryption_key_identifier_1,
         destroy_response

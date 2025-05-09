@@ -1,14 +1,19 @@
 use cosmian_cover_crypt::{AccessPolicy, MasterSecretKey, UserSecretKey, api::Covercrypt};
 use cosmian_crypto_core::bytes_ser_de::Serializable;
-use cosmian_kmip::kmip_2_1::{
-    kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-    kmip_objects::{Object, ObjectType},
-    kmip_types::{
-        Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, Link, LinkType,
-        LinkedObjectIdentifier,
+use cosmian_kmip::{
+    kmip_0::kmip_types::CryptographicUsageMask,
+    kmip_2_1::{
+        kmip_attributes::Attributes,
+        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+        kmip_objects::{Object, ObjectType, PrivateKey},
+        kmip_types::{
+            CryptographicAlgorithm, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
+            UniqueIdentifier,
+        },
     },
 };
 use tracing::trace;
+use uuid::Uuid;
 use zeroize::Zeroizing;
 
 use crate::{
@@ -23,7 +28,7 @@ pub(crate) fn unwrap_user_decryption_key_object(
     user_decryption_key: &Object,
 ) -> Result<(Zeroizing<Vec<u8>>, Attributes), CryptoError> {
     let key_block = match &user_decryption_key {
-        Object::PrivateKey { key_block } => key_block.clone(),
+        Object::PrivateKey(PrivateKey { key_block }) => key_block.clone(),
         _ => return Err(CryptoError::Kmip("Expected a KMIP Private Key".to_owned())),
     };
     if key_block.key_format_type != KeyFormatType::CoverCryptSecretKey {
@@ -31,7 +36,12 @@ pub(crate) fn unwrap_user_decryption_key_object(
             "Expected an Covercrypt User Decryption Key".to_owned(),
         ))
     }
-    let bytes = match &key_block.key_value.key_material {
+    let Some(KeyValue::Structure { key_material, .. }) = key_block.key_value.as_ref() else {
+        return Err(CryptoError::Default(
+            "Key value not found in Covercrypt user decryption key".to_owned(),
+        ));
+    };
+    let bytes = match key_material {
         KeyMaterial::ByteString(b) => b.clone(),
         x => {
             return Err(CryptoError::Kmip(format!(
@@ -39,9 +49,9 @@ pub(crate) fn unwrap_user_decryption_key_object(
             )))
         }
     };
-    let attributes = key_block.key_value.attributes().map_err(|e| {
+    let attributes = key_block.attributes().map_err(|e| {
         CryptoError::Kmip(format!(
-            "The Covercrypt User Decryption Key should have attributes: {e}"
+            "The CoverCrypt Master private key should have attributes: {e}"
         ))
     })?;
     Ok((bytes, attributes.clone()))
@@ -55,7 +65,7 @@ pub struct UserDecryptionKeysHandler<'a> {
 }
 
 impl<'a> UserDecryptionKeysHandler<'a> {
-    pub fn instantiate(cover_crypt: &'a Covercrypt, msk: &'a mut MasterSecretKey) -> Self {
+    pub const fn instantiate(cover_crypt: &'a Covercrypt, msk: &'a mut MasterSecretKey) -> Self {
         Self { cover_crypt, msk }
     }
 
@@ -66,7 +76,7 @@ impl<'a> UserDecryptionKeysHandler<'a> {
     pub fn create_usk_object(
         &mut self,
         access_policy_str: &str,
-        attributes: Option<&Attributes>,
+        create_attributes: &Attributes,
         msk_id: &str,
     ) -> Result<Object, CryptoError> {
         //
@@ -85,10 +95,30 @@ impl<'a> UserDecryptionKeysHandler<'a> {
         })?;
         let user_decryption_key_len = user_decryption_key_bytes.len();
 
-        let mut attributes = attributes.cloned().unwrap_or_default();
+        // Tag the object as a private key
+        let mut tags = create_attributes.get_tags();
+        tags.insert("_uk".to_owned());
+
+        // Set the unique identifier, if not provided, generate a new one
+        let uid = match create_attributes
+            .unique_identifier
+            .as_ref()
+            .map(ToString::to_string)
+            .unwrap_or_default()
+        {
+            uid if uid.is_empty() => Uuid::new_v4().to_string(),
+            uid => uid,
+        };
+
+        let mut attributes = create_attributes.clone();
         attributes.object_type = Some(ObjectType::PrivateKey);
+        attributes.cryptographic_algorithm = Some(CryptographicAlgorithm::CoverCrypt);
         // Covercrypt keys are set to have unrestricted usage.
         attributes.set_cryptographic_usage_mask_bits(CryptographicUsageMask::Unrestricted);
+        // set the tags in the attributes
+        attributes.set_tags(tags.clone())?;
+        // set the unique identifier
+        attributes.unique_identifier = Some(UniqueIdentifier::TextString(uid));
 
         // Add the access policy to the attributes
         upsert_access_policy_in_attributes(&mut attributes, access_policy_str)?;
@@ -99,19 +129,19 @@ impl<'a> UserDecryptionKeysHandler<'a> {
             linked_object_identifier: LinkedObjectIdentifier::TextString(msk_id.to_owned()),
         }]);
         let cryptographic_length = Some(i32::try_from(user_decryption_key_len)? * 8);
-        Ok(Object::PrivateKey {
+        Ok(Object::PrivateKey(PrivateKey {
             key_block: KeyBlock {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
                 key_format_type: KeyFormatType::CoverCryptSecretKey,
                 key_compression_type: None,
-                key_value: KeyValue {
+                key_value: Some(KeyValue::Structure {
                     key_material: KeyMaterial::ByteString(user_decryption_key_bytes),
                     attributes: Some(attributes),
-                },
+                }),
                 cryptographic_length,
                 key_wrapping_data: None,
             },
-        })
+        }))
     }
 
     /// Refresh the user decryption key according to the (new) policy of the master key
@@ -142,18 +172,18 @@ impl<'a> UserDecryptionKeysHandler<'a> {
             CryptoError::Kmip(format!("covercrypt: failed serializing the user key: {e}"))
         })?;
         let cryptographic_length = Some(i32::try_from(user_decryption_key_bytes.len())? * 8);
-        Ok(Object::PrivateKey {
+        Ok(Object::PrivateKey(PrivateKey {
             key_block: KeyBlock {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
                 key_format_type: KeyFormatType::CoverCryptSecretKey,
                 key_compression_type: None,
-                key_value: KeyValue {
+                key_value: Some(KeyValue::Structure {
                     key_material: KeyMaterial::ByteString(user_decryption_key_bytes),
                     attributes: Some(usk_attributes),
-                },
+                }),
                 cryptographic_length,
                 key_wrapping_data: None,
             },
-        })
+        }))
     }
 }

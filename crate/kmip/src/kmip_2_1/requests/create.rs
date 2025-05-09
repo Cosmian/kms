@@ -1,63 +1,79 @@
+use uuid::Uuid;
 use zeroize::Zeroizing;
 
 use crate::{
     KmipError,
+    kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
+        kmip_attributes::Attributes,
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-        kmip_objects::{Object, ObjectType},
+        kmip_objects::{Object, ObjectType, SymmetricKey},
         kmip_operations::Create,
-        kmip_types::{
-            Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType,
-            UniqueIdentifier,
-        },
+        kmip_types::{CryptographicAlgorithm, KeyFormatType, UniqueIdentifier},
     },
 };
 
 /// Create a symmetric key for the given algorithm
 pub fn create_symmetric_key_kmip_object(
     key_bytes: &[u8],
-    cryptographic_algorithm: CryptographicAlgorithm,
-    sensitive: bool,
+    create_attributes: &Attributes,
 ) -> Result<Object, KmipError> {
+    let mut tags = create_attributes.get_tags();
+    tags.insert("_kk".to_owned());
+    // The cryptographic algorithm must be specified
+    let cryptographic_algorithm = create_attributes.cryptographic_algorithm.ok_or_else(|| {
+        KmipError::NotSupported(
+            "the cryptographic algorithm must be specified for symmetric key creation".to_owned(),
+        )
+    })?;
+    // Generate a new UID if none is provided.
+    let uid = match &create_attributes
+        .unique_identifier
+        .as_ref()
+        .map(ToString::to_string)
+        .unwrap_or_default()
+    {
+        uid if uid.is_empty() => Uuid::new_v4().to_string(),
+        uid => uid.to_owned(),
+    };
     // this length is in bits
     let cryptographic_length = Some(i32::try_from(key_bytes.len())? * 8);
-
-    let attributes = Attributes {
-        object_type: Some(ObjectType::SymmetricKey),
-        cryptographic_algorithm: Some(cryptographic_algorithm),
-        cryptographic_length,
-        cryptographic_usage_mask: Some(
-            CryptographicUsageMask::Encrypt
-                | CryptographicUsageMask::Decrypt
-                | CryptographicUsageMask::WrapKey
-                | CryptographicUsageMask::UnwrapKey
-                | CryptographicUsageMask::KeyAgreement,
-        ),
-        key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
-        sensitive,
-        ..Attributes::default()
-    };
+    let mut attributes = create_attributes.clone();
+    attributes.object_type = Some(ObjectType::SymmetricKey);
+    attributes.cryptographic_algorithm = Some(cryptographic_algorithm);
+    attributes.cryptographic_length = cryptographic_length;
+    attributes.cryptographic_usage_mask = Some(
+        CryptographicUsageMask::Encrypt
+            | CryptographicUsageMask::Decrypt
+            | CryptographicUsageMask::WrapKey
+            | CryptographicUsageMask::UnwrapKey
+            | CryptographicUsageMask::KeyAgreement,
+    );
+    attributes.key_format_type = Some(KeyFormatType::TransparentSymmetricKey);
+    attributes.unique_identifier = Some(UniqueIdentifier::TextString(uid));
+    // set the tags in the attributes
+    attributes.set_tags(tags)?;
 
     // The default format for a symmetric key is Raw
     //  according to sec. 4.26 Key Format Type of the KMIP 2.1 specs:
     //  see https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html#_Toc57115585
     // The key created here has a format of TransparentSymmetricKey
     // This is no a problem since when it is exported, it is by default converted to a Raw key
-    Ok(Object::SymmetricKey {
+    Ok(Object::SymmetricKey(SymmetricKey {
         key_block: KeyBlock {
             cryptographic_algorithm: Some(cryptographic_algorithm),
             key_format_type: KeyFormatType::TransparentSymmetricKey,
             key_compression_type: None,
-            key_value: KeyValue {
+            key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::TransparentSymmetricKey {
                     key: Zeroizing::from(key_bytes.to_vec()),
                 },
                 attributes: Some(attributes),
-            },
+            }),
             cryptographic_length,
             key_wrapping_data: None,
         },
-    })
+    }))
 }
 
 /// Build a `Create` request for a symmetric key
@@ -84,7 +100,7 @@ pub fn symmetric_key_create_request<T: IntoIterator<Item = impl AsRef<str>>>(
         key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
         object_type: Some(ObjectType::SymmetricKey),
         unique_identifier: key_id,
-        sensitive,
+        sensitive: if sensitive { Some(true) } else { None },
         ..Attributes::default()
     };
     attributes.set_tags(tags)?;

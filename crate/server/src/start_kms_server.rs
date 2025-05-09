@@ -18,21 +18,24 @@ use openssl::{
     ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod, SslVerifyMode},
     x509::store::X509StoreBuilder,
 };
+use tokio::{runtime::Handle, task::JoinHandle};
 use tracing::{debug, info, trace};
 
 use crate::{
-    config::{self, JwtAuthConfig, ServerParams},
+    config::{JwtAuthConfig, ServerParams},
     core::KMS,
     error::KmsError,
-    kms_bail,
     middlewares::{AuthTransformer, JwksManager, JwtConfig, SslAuth, extract_peer_certificate},
     result::{KResult, KResultHelper},
     routes::{
-        access, add_new_database, get_version,
+        access, get_version,
         google_cse::{self, GoogleCseConfig},
-        kmip, ms_dke,
+        kmip,
+        kmip::handle_ttlv_bytes,
+        ms_dke,
         ui_auth::configure_auth_routes,
     },
+    socket_server::{SocketServer, SocketServerParams},
 };
 
 /// Starts the Key Management System (KMS) server based on the provided configuration.
@@ -45,19 +48,19 @@ use crate::{
 ///
 /// # Arguments
 ///
-/// * `server_params` - An instance of `ServerParams` that contains the settings for the server.
+/// * `server_params` - An instance of `ServerParams` containing the server's settings.
 /// * `server_handle_transmitter` - An optional sender channel of type `mpsc::Sender<ServerHandle>` that can be used to manage server state.
 ///
 /// # Errors
 ///
-/// This function will return an error if any of the server starting methods fails.
+/// This function will return an error if any server starting methods fail.
 pub async fn start_kms_server(
-    server_params: ServerParams,
+    server_params: Arc<ServerParams>,
     kms_server_handle_tx: Option<mpsc::Sender<ServerHandle>>,
 ) -> KResult<()> {
     // OpenSSL is loaded now, so that tests can use the correct provider(s)
 
-    // For an explanation of openssl providers, see
+    // For an explanation of OpenSSL providers, see
     //  https://docs.openssl.org/3.1/man7/crypto/#openssl-providers
 
     // In FIPS mode, we only load the fips provider
@@ -78,101 +81,116 @@ pub async fn start_kms_server(
         openssl::provider::Provider::load(None, "default")?
     };
 
-    // Log the server configuration
-    info!("KMS Server configuration: {:#?}", server_params);
-    match &server_params.http_params {
-        config::HttpParams::Https(_) => {
-            start_https_kms_server(server_params, kms_server_handle_tx).await
-        }
-        config::HttpParams::Http => {
-            start_plain_http_kms_server(server_params, kms_server_handle_tx).await
-        }
-    }
-}
+    let kms_server = Arc::new(
+        KMS::instantiate(server_params.clone())
+            .await
+            .context("start KMS server: failed instantiating the server")?,
+    );
 
-/// Start a plain HTTP KMS server
-///
-/// This function will instantiate and prepare the KMS server and run it on a plain HTTP connection
-///
-/// # Arguments
-///
-/// * `server_params` - An instance of `ServerParams` that contains the settings for the server.
-/// * `server_handle_transmitter` - An optional sender channel of type `mpsc::Sender<ServerHandle>` that can be used to manage server state.
-///
-/// # Errors
-///
-/// This function returns an error if:
-/// - The KMS server cannot be instantiated or prepared
-/// - The server fails to run
-async fn start_plain_http_kms_server(
-    server_params: ServerParams,
-    server_handle_transmitter: Option<mpsc::Sender<ServerHandle>>,
-) -> KResult<()> {
-    // Instantiate and prepare the KMS server
-    let kms_server = Arc::new(KMS::instantiate(server_params).await?);
-
-    // Prepare the server
-    let server = prepare_kms_server(kms_server, None).await?;
-
-    // send the server handle to the caller
-    if let Some(tx) = &server_handle_transmitter {
-        tx.send(server.handle())?;
-    }
-
-    info!("Starting the HTTP KMS server...");
-    // Run the server and return the result
-    server.await.map_err(Into::into)
-}
-
-/// Start an HTTPS KMS server using a PKCS#12 certificate file
-///
-/// # Arguments
-///
-/// * `server_params` - An instance of `ServerParams` that contains the settings for the server.
-/// * `server_handle_transmitter` - An optional sender channel of type `mpsc::Sender<ServerHandle>` that can be used to manage server state.
-///
-/// # Errors
-///
-/// This function returns an error if:
-/// - The path to the PKCS#12 certificate file is not provided in the config
-/// - The file cannot be opened or read
-/// - The file is not a valid PKCS#12 format or the password is incorrect
-/// - The SSL acceptor cannot be created or configured with the certificate and key
-/// - The KMS server cannot be instantiated or prepared
-/// - The server fails to run
-async fn start_https_kms_server(
-    server_params: ServerParams,
-    server_handle_transmitter: Option<mpsc::Sender<ServerHandle>>,
-) -> KResult<()> {
-    let config::HttpParams::Https(p12) = &server_params.http_params else {
-        kms_bail!("http/s: a PKCS#12 file must be provided")
+    let (ss_command_tx, _socket_server_handle) = if server_params.start_socket_server {
+        let (tx, rx) = mpsc::channel::<KResult<()>>();
+        // Start the socket server
+        let socket_server_handle = start_socket_server(kms_server.clone(), rx)?;
+        (Some(tx), Some(socket_server_handle))
+    } else {
+        (None, None)
     };
 
-    // Create and configure an SSL acceptor with the certificate and key
-    let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls())?;
-    if let Some(pkey) = &p12.pkey {
-        builder.set_private_key(pkey)?;
+    // Log the server configuration
+    info!("KMS Server configuration: {:#?}", server_params);
+    let res = start_http_kms_server(kms_server.clone(), kms_server_handle_tx).await;
+    if let Some(ss_command_tx) = ss_command_tx {
+        // Send a shutdown command to the socket server
+        ss_command_tx
+            .send(Ok(()))
+            .context("start KMS server: failed sending shutdown command to socket server")?;
     }
-    if let Some(cert) = &p12.cert {
-        builder.set_certificate(cert)?;
-    }
-    if let Some(chain) = &p12.ca {
-        for x in chain {
-            builder.add_extra_chain_cert(x.to_owned())?;
-        }
-    }
+    res
+}
 
-    if let Some(verify_cert) = &server_params.authority_cert_file {
-        // This line sets the mode to verify peer (client) certificates
-        builder.set_verify(SslVerifyMode::PEER | SslVerifyMode::FAIL_IF_NO_PEER_CERT);
-        let mut store_builder = X509StoreBuilder::new()?;
-        store_builder.add_cert(verify_cert.clone())?;
-        builder.set_verify_cert_store(store_builder.build())?;
-    }
+/// Start a socket server that will handle TTLV bytes
+///
+/// # Arguments
+/// * `server_params` - An instance of `ServerParams` containing the server's settings.
+///
+/// # Errors
+/// This function returns an error if:
+/// - The socket server cannot be instantiated or started
+/// - The server fails to run
+///
+/// # Returns
+/// * a `JoinHandle<()>` that represents the socket server thread.
+///
+fn start_socket_server(
+    kms_server: Arc<KMS>,
+    command_receiver: mpsc::Receiver<KResult<()>>,
+) -> KResult<JoinHandle<()>> {
+    // Start the socket server
+    let socket_server =
+        SocketServer::instantiate(&SocketServerParams::try_from(kms_server.params.as_ref())?)?;
+    let tokio_handle = Handle::current();
+    let socket_server_handle = socket_server.start_threaded(
+        kms_server,
+        move |username, request, kms_server| {
+            trace!("request: {username} {}", hex::encode(request));
+            // Handle the TTLV bytes received from the socket server
+            // tokio: run async code in the current thread
+            tokio_handle.block_on(async {
+                // Handle the TTLV bytes
+                handle_ttlv_bytes(username, request, &kms_server).await
+            })
+        },
+        command_receiver,
+    )?;
+    Ok(socket_server_handle)
+}
+
+/// Start an HTTP(S) KMS server
+///
+/// # Arguments
+///
+/// * `server_params` - An instance of `ServerParams` containing the server's settings.
+/// * `server_handle_transmitter` - An optional sender channel of type `mpsc::Sender<ServerHandle>` that can be used to manage server state.
+///
+/// # Errors
+/// This function returns an error if:
+/// - The server cannot be instantiated or started
+/// - The server fails to run
+async fn start_http_kms_server(
+    kms_server: Arc<KMS>,
+    server_handle_transmitter: Option<mpsc::Sender<ServerHandle>>,
+) -> KResult<()> {
+    let server_params = &kms_server.params;
+    let ssl_acceptor_builder = if let Some(tls_params) = &server_params.tls_params {
+        let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls())?;
+        if let Some(pkey) = &tls_params.p12.pkey {
+            builder.set_private_key(pkey)?;
+        }
+        if let Some(cert) = &tls_params.p12.cert {
+            builder.set_certificate(cert)?;
+        }
+        if let Some(chain) = &tls_params.p12.ca {
+            for x in chain {
+                builder.add_extra_chain_cert(x.to_owned())?;
+            }
+        }
+
+        if let Some(verify_cert) = &tls_params.client_ca_cert_pem {
+            // This line sets the mode to verify peer (client) certificates
+            builder.set_verify(SslVerifyMode::PEER | SslVerifyMode::FAIL_IF_NO_PEER_CERT);
+            let x509_cert = openssl::x509::X509::from_pem(verify_cert)
+                .context("Failed to parse the client CA certificate")?;
+            let mut store_builder = X509StoreBuilder::new()?;
+            store_builder.add_cert(x509_cert)?;
+            builder.set_verify_cert_store(store_builder.build())?;
+        }
+        Some(builder)
+    } else {
+        None
+    };
 
     // Instantiate and prepare the KMS server
-    let kms_server = Arc::new(KMS::instantiate(server_params).await?);
-    let server = prepare_kms_server(kms_server, Some(builder)).await?;
+    let server = prepare_kms_server(kms_server, ssl_acceptor_builder).await?;
 
     // send the server handle to the caller
     if let Some(tx) = &server_handle_transmitter {
@@ -199,7 +217,7 @@ fn spa_index_handler(req: &HttpRequest, ui_index_html_folder: &PathBuf) -> actix
     }
 }
 
-/// Prepare server for the application.
+/// Prepare the server for the application.
 ///
 /// Creates an `HttpServer` instance,
 /// configures the routes for the application, and sets the request timeout. The server can be
@@ -257,10 +275,17 @@ pub async fn prepare_kms_server(
     };
 
     // Determine if Client Cert Auth should be used for authentication.
-    let use_cert_auth = kms_server.params.authority_cert_file.is_some();
+    let use_cert_auth = kms_server
+        .params
+        .tls_params
+        .as_ref()
+        .is_some_and(|tls_params| tls_params.client_ca_cert_pem.is_some());
 
     // Determine the address to bind the server to.
-    let address = format!("{}:{}", kms_server.params.hostname, kms_server.params.port);
+    let address = format!(
+        "{}:{}",
+        kms_server.params.http_hostname, kms_server.params.http_port
+    );
 
     // Get the Google Client-Side Encryption JWT authorization config
     debug!("Enable Google CSE JWT Authorization: {enable_google_cse_authentication}");
@@ -283,7 +308,7 @@ pub async fn prepare_kms_server(
         None
     };
 
-    // Should we enable the MS DKE Service ?
+    // Should we enable the MS DKE Service?
     let enable_ms_dke = kms_server.params.ms_dke_service_url.is_some();
 
     let privileged_users: Option<Vec<String>> = kms_server.params.privileged_users.clone();
@@ -296,98 +321,97 @@ pub async fn prepare_kms_server(
             format!(
                 "http{}://{}:{}",
                 if builder.is_some() { "s" } else { "" },
-                &kms_server.params.hostname,
-                &kms_server.params.port
+                &kms_server.params.http_hostname,
+                &kms_server.params.http_port
             )
         },
         |url| url,
     );
 
     // Create the `HttpServer` instance.
-    let server = HttpServer::new({
-        move || {
-            // Create an `App` instance and configure the passed data and the various scopes
-            let mut app = App::new()
-                .wrap(IdentityMiddleware::default())
-                .wrap(
-                    SessionMiddleware::builder(CookieSessionStore::default(), secret_key.clone())
-                        .cookie_path("/".to_owned())
-                        .cookie_http_only(false)
-                        .cookie_name("auth_session".to_owned())
-                        .cookie_same_site(actix_web::cookie::SameSite::None)
-                        .cookie_secure(true)
-                        .session_lifecycle(
-                            PersistentSession::default().session_ttl(Duration::hours(24)),
-                        )
-                        .build(),
-                )
-                .app_data(Data::new(kms_server.clone())) // Set the shared reference to the `KMS` instance.
-                .app_data(PayloadConfig::new(10_000_000_000)) // Set the maximum size of the request payload.
-                .app_data(JsonConfig::default().limit(10_000_000_000)); // Set the maximum size of the JSON request payload.
+    let server = HttpServer::new(move || {
+        // Create an `App` instance and configure the passed data and the various scopes
+        let mut app = App::new()
+            .wrap(IdentityMiddleware::default())
+            .wrap(
+                SessionMiddleware::builder(CookieSessionStore::default(), secret_key.clone())
+                    .cookie_path("/".to_owned())
+                    .cookie_http_only(false)
+                    .cookie_name("auth_session".to_owned())
+                    .cookie_same_site(actix_web::cookie::SameSite::None)
+                    .cookie_secure(true)
+                    .session_lifecycle(
+                        PersistentSession::default().session_ttl(Duration::hours(24)),
+                    )
+                    .build(),
+            )
+            .app_data(Data::new(kms_server.clone())) // Set the shared reference to the `KMS` instance.
+            .app_data(PayloadConfig::new(10_000_000_000)) // Set the maximum size of the request payload.
+            .app_data(JsonConfig::default().limit(10_000_000_000)); // Set the maximum size of the JSON request payload.
 
-            if kms_server.params.google_cse_kacls_url.is_some() {
-                // The scope for the Google Client-Side Encryption endpoints served from /google_cse
-                let google_cse_scope = web::scope("/google_cse")
-                    .app_data(Data::new(google_cse_jwt_config.clone()))
-                    .wrap(Cors::permissive())
-                    .service(google_cse::digest)
-                    .service(google_cse::private_key_sign)
-                    .service(google_cse::private_key_decrypt)
-                    .service(google_cse::privileged_private_key_decrypt)
-                    .service(google_cse::privileged_unwrap)
-                    .service(google_cse::privileged_wrap)
-                    .service(google_cse::rewrap)
-                    .service(google_cse::get_status)
-                    .service(google_cse::unwrap)
-                    .service(google_cse::wrap)
-                    .service(google_cse::wrapprivatekey);
-                app = app.service(google_cse_scope);
-            }
+        if kms_server.params.google_cse_kacls_url.is_some() {
+            // The scope for the Google Client-Side Encryption endpoints served from /google_cse
+            let google_cse_scope = web::scope("/google_cse")
+                .app_data(Data::new(google_cse_jwt_config.clone()))
+                .wrap(Cors::permissive())
+                .service(google_cse::digest)
+                .service(google_cse::private_key_sign)
+                .service(google_cse::private_key_decrypt)
+                .service(google_cse::privileged_private_key_decrypt)
+                .service(google_cse::privileged_unwrap)
+                .service(google_cse::privileged_wrap)
+                .service(google_cse::rewrap)
+                .service(google_cse::get_status)
+                .service(google_cse::unwrap)
+                .service(google_cse::wrap)
+                .service(google_cse::wrapprivatekey);
+            app = app.service(google_cse_scope);
+        }
 
-            if enable_ms_dke {
-                // The scope for the Microsoft Double Key Encryption endpoints served from /ms_dke
-                let ms_dke_scope = web::scope("/ms_dke")
-                    .wrap(Cors::permissive())
-                    .service(ms_dke::version)
-                    .service(ms_dke::get_key)
-                    .service(ms_dke::decrypt);
-                app = app.service(ms_dke_scope);
-            }
+        if enable_ms_dke {
+            // The scope for the Microsoft Double Key Encryption endpoints served from /ms_dke
+            let ms_dke_scope = web::scope("/ms_dke")
+                .wrap(Cors::permissive())
+                .service(ms_dke::version)
+                .service(ms_dke::get_key)
+                .service(ms_dke::decrypt);
+            app = app.service(ms_dke_scope);
+        }
 
-            let ui_index_folder = kms_server.params.ui_index_html_folder.clone();
-            if ui_index_folder.join("index.html").exists() {
-                info!("Serving UI from {}", ui_index_folder.display());
-                let oidc_config = kms_server.params.ui_oidc_auth.clone();
+        let ui_index_folder = kms_server.params.ui_index_html_folder.clone();
+        if ui_index_folder.join("index.html").exists() {
+            info!("Serving UI from {}", ui_index_folder.display());
+            let oidc_config = kms_server.params.ui_oidc_auth.clone();
 
-                let auth_type: Option<String> = if jwt_configurations.is_some() {
-                    Some("JWT".to_owned())
-                } else if use_cert_auth {
-                    Some("CERT".to_owned())
-                } else {
-                    None
-                };
+            let auth_type: Option<String> = if jwt_configurations.is_some() {
+                Some("JWT".to_owned())
+            } else if use_cert_auth {
+                Some("CERT".to_owned())
+            } else {
+                None
+            };
 
-                let spa_routes = [
-                    "/login",
-                    "/locate",
-                    "/sym{_:.*}",
-                    "/rsa{_:.*}",
-                    "/ec{_:.*}",
-                    "/cc{_:.*}",
-                    "/certificates{_:.*}",
-                    "/attributes{_:.*}",
-                    "/access-rights{_:.*}",
-                ];
-                let mut auth_routes = web::scope("/ui")
-                    .app_data(web::Data::new(oidc_config))
-                    .app_data(web::Data::new(kms_public_url.clone()))
-                    .app_data(web::Data::new(ui_index_folder.clone()))
-                    .app_data(web::Data::new(auth_type))
-                    .wrap(Cors::permissive())
-                    .configure(configure_auth_routes);
-                // Add all SPA routes
-                for route in spa_routes {
-                    auth_routes = auth_routes.route(
+            let spa_routes = [
+                "/login",
+                "/locate",
+                "/sym{_:.*}",
+                "/rsa{_:.*}",
+                "/ec{_:.*}",
+                "/cc{_:.*}",
+                "/certificates{_:.*}",
+                "/attributes{_:.*}",
+                "/access-rights{_:.*}",
+            ];
+            let mut auth_routes = web::scope("/ui")
+                .app_data(web::Data::new(oidc_config))
+                .app_data(web::Data::new(kms_public_url.clone()))
+                .app_data(web::Data::new(ui_index_folder.clone()))
+                .app_data(web::Data::new(auth_type))
+                .wrap(Cors::permissive())
+                .configure(configure_auth_routes);
+            // Add all SPA routes
+            for route in spa_routes {
+                auth_routes = auth_routes.route(
                     route,
                     web::get().to(
                         move |req: HttpRequest, ui_index_folder: web::Data<PathBuf>| async move {
@@ -395,56 +419,49 @@ pub async fn prepare_kms_server(
                         },
                     ),
                 );
-                }
-                // Add static files service
-                auth_routes = auth_routes.service(
-                    Files::new("/", ui_index_folder)
-                        .index_file("index.html")
-                        .use_last_modified(true)
-                        .use_etag(true)
-                        .prefer_utf8(true),
-                );
-                // Add the auth_routes to the main app
-                app = app.service(auth_routes);
-            } else {
-                trace!(
-                    "No UI folder containing index.html found at {}",
-                    ui_index_folder.display()
-                );
             }
-
-            // The default scope serves from the root / the KMIP, permissions, and tee endpoints
-            let default_scope = web::scope("")
-                .app_data(web::Data::new(privileged_users.clone()))
-                .wrap(AuthTransformer::new(
-                    kms_server.clone(),
-                    jwt_configurations.clone(),
-                )) // Use JWT for authentication if necessary.
-                .wrap(Condition::new(use_cert_auth, SslAuth)) // Use certificates for authentication if necessary.
-                // Enable CORS for the application.
-                // Since Actix is running the middlewares in reverse order, it's important that the
-                // CORS middleware is the last one so that the auth middlewares do not run on
-                // preflight (OPTION) requests.
-                .wrap(Cors::permissive())
-                .service(kmip::kmip_2_1)
-                .service(access::list_owned_objects)
-                .service(access::list_access_rights_obtained)
-                .service(access::list_accesses)
-                .service(access::grant_access)
-                .service(access::revoke_access)
-                .service(access::get_create_access)
-                .service(access::get_privileged_access)
-                .service(get_version);
-
-            // The default scope is extended with the /new_database endpoint if the application is using an encrypted SQLite database.
-            let default_scope = if kms_server.is_using_sqlite_enc() {
-                default_scope.service(add_new_database)
-            } else {
-                default_scope
-            };
-
-            app.service(default_scope)
+            // Add static files service
+            auth_routes = auth_routes.service(
+                Files::new("/", ui_index_folder)
+                    .index_file("index.html")
+                    .use_last_modified(true)
+                    .use_etag(true)
+                    .prefer_utf8(true),
+            );
+            // Add the auth_routes to the main app
+            app = app.service(auth_routes);
+        } else {
+            trace!(
+                "No UI folder containing index.html found at {}",
+                ui_index_folder.display()
+            );
         }
+
+        // The default scope serves from the root / the KMIP, permissions, and TEE endpoints
+        let default_scope = web::scope("")
+            .app_data(Data::new(privileged_users.clone()))
+            .wrap(AuthTransformer::new(
+                kms_server.clone(),
+                jwt_configurations.clone(),
+            )) // Use JWT for authentication if necessary.
+            .wrap(Condition::new(use_cert_auth, SslAuth)) // Use certificates for authentication if necessary.
+            // Enable CORS for the application.
+            // Since Actix is running the middlewares in reverse order, it's important that the
+            // CORS middleware is the last one, so that the auth middlewares do not run on
+            // preflight (OPTION) requests.
+            .wrap(Cors::permissive())
+            .service(kmip::kmip_2_1_json)
+            .service(kmip::kmip)
+            .service(access::list_owned_objects)
+            .service(access::list_access_rights_obtained)
+            .service(access::list_accesses)
+            .service(access::grant_access)
+            .service(access::revoke_access)
+            .service(access::get_create_access)
+            .service(access::get_privileged_access)
+            .service(get_version);
+
+        app.service(default_scope)
     })
     .client_disconnect_timeout(std::time::Duration::from_secs(30)) // default: 5s
     .tls_handshake_timeout(std::time::Duration::from_secs(18)) // default: 3s

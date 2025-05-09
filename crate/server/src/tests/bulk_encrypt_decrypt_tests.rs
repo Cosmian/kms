@@ -1,14 +1,15 @@
 use cosmian_kmip::{
     KmipError,
+    kmip_0::kmip_types::{BlockCipherMode, CryptographicUsageMask},
     kmip_2_1::{
         extra::BulkData,
+        kmip_attributes::Attributes,
         kmip_objects::ObjectType,
         kmip_operations::{
             Create, CreateResponse, Decrypt, DecryptResponse, Encrypt, EncryptResponse,
         },
         kmip_types::{
-            Attributes, BlockCipherMode, CryptographicAlgorithm, CryptographicParameters,
-            CryptographicUsageMask, KeyFormatType, UniqueIdentifier,
+            CryptographicAlgorithm, CryptographicParameters, KeyFormatType, UniqueIdentifier,
         },
     },
 };
@@ -25,7 +26,7 @@ async fn bulk_encrypt_decrypt() -> KResult<()> {
     let app = test_utils::test_app(None, None).await;
 
     let response: CreateResponse =
-        test_utils::post(&app, aes_256_gcm_key_request(Vec::<String>::new())?).await?;
+        test_utils::post_2_1(&app, aes_256_gcm_key_request(Vec::<String>::new())?).await?;
     let key_id = response.unique_identifier;
 
     let mut messages = Vec::with_capacity(NUM_MESSAGES);
@@ -35,7 +36,7 @@ async fn bulk_encrypt_decrypt() -> KResult<()> {
     }
 
     // Bulk encrypt the messages
-    let response: EncryptResponse = test_utils::post(
+    let response: EncryptResponse = test_utils::post_2_1(
         &app,
         encrypt_request(key_id.clone(), &BulkData::from(messages.clone()))?,
     )
@@ -49,7 +50,7 @@ async fn bulk_encrypt_decrypt() -> KResult<()> {
 
     // Bulk decrypt the messages
     let response: DecryptResponse =
-        test_utils::post(&app, decrypt_request(key_id.clone(), &ciphertexts)?).await?;
+        test_utils::post_2_1(&app, decrypt_request(key_id.clone(), &ciphertexts)?).await?;
     let plaintexts = BulkData::deserialize(
         response
             .data
@@ -104,7 +105,7 @@ fn encrypt_request(key_id: UniqueIdentifier, bulk_data: &BulkData) -> KResult<En
             ..CryptographicParameters::default()
         }),
         data: Some(bulk_data.serialize()?),
-        iv_counter_nonce: None,
+        i_v_counter_nonce: None,
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,
@@ -121,7 +122,7 @@ fn decrypt_request(key_id: UniqueIdentifier, bulk_data: &BulkData) -> KResult<De
             ..CryptographicParameters::default()
         }),
         data: Some(bulk_data.serialize()?.to_vec()),
-        iv_counter_nonce: None,
+        i_v_counter_nonce: None,
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,

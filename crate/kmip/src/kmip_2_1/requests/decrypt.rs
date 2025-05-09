@@ -22,7 +22,7 @@ pub fn decrypt_request(
         )),
         cryptographic_parameters,
         data: Some(ciphertext),
-        iv_counter_nonce: nonce,
+        i_v_counter_nonce: nonce,
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,

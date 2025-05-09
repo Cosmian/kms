@@ -175,7 +175,7 @@ impl EncryptionSystem for CoverCryptEncryption {
         Ok(EncryptResponse {
             unique_identifier: UniqueIdentifier::TextString(self.public_key_uid.clone()),
             data: encrypted_data,
-            iv_counter_nonce: None,
+            i_v_counter_nonce: None,
             correlation_value: None,
             authenticated_encryption_tag: ad.map(<[u8]>::to_vec),
         })

@@ -7,3 +7,4 @@ pub(crate) mod permissions;
 
 #[cfg(test)]
 pub(crate) mod additional_redis_findex_tests;
+mod migrate;

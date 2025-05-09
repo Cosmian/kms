@@ -1,16 +1,19 @@
 use std::sync::Arc;
 
-use cosmian_kmip::kmip_2_1::{
-    KmipOperation,
-    kmip_data_structures::{KeyBlock, KeyWrappingSpecification},
-    kmip_objects::ObjectType,
-    kmip_types::{CryptographicUsageMask, LinkType, StateEnumeration},
+use cosmian_kmip::{
+    kmip_0::kmip_types::{CryptographicUsageMask, State},
+    kmip_2_1::{
+        KmipOperation,
+        kmip_attributes::Attributes,
+        kmip_data_structures::{KeyBlock, KeyValue, KeyWrappingSpecification},
+        kmip_objects::{Object, ObjectType},
+        kmip_types::{EncodingOption, EncryptionKeyInformation, LinkType, UniqueIdentifier},
+    },
 };
-use cosmian_kms_crypto::crypto::wrap::{
-    key_data_to_wrap, update_key_block_with_wrapped_key, wrap_key_block,
-};
+use cosmian_kms_crypto::crypto::wrap::{key_data_to_wrap, wrap_key_block};
 use cosmian_kms_interfaces::SessionParams;
-use tracing::debug;
+use cosmian_kms_server_database::CachedUnwrappedObject;
+use tracing::{debug, trace, warn};
 
 use crate::{
     core::{KMS, uid_utils::has_prefix},
@@ -19,25 +22,141 @@ use crate::{
     result::{KResult, KResultHelper},
 };
 
-/// Wrap a key with a wrapping key
+/// Wrap the object and store the unwrapped object in the unwrapped cache
+///
+/// This is a Cosmian-specific extension
+/// to wrap the key with a wrapping key stored in the database
+/// or in the HSM.
+/// Either the user has provided a wrapping key ID or a key wrapping key is
+/// supplied in the parameters.
+///
+/// The wrapping key ID is stored in the database
+/// or in the HSM.
+///
+/// The unwrapped object is stored in the unwrapped cache
+///
+/// # Arguments
+///
+/// * `kms` - The KMS instance
+/// * `owner` - The owner of the object
+/// * `params` - The parameters to use
+/// * `unique_identifier` - The unique identifier of the object
+/// * `object` - The object to wrap
+///
+pub(crate) async fn wrap_and_cache(
+    kms: &KMS,
+    owner: &str,
+    params: Option<Arc<dyn SessionParams>>,
+    unique_identifier: &UniqueIdentifier,
+    object: &mut Object,
+) -> Result<(), KmsError> {
+    if object.is_wrapped() {
+        // The object is already wrapped
+        return Ok(());
+    }
+
+    // This is a Cosmian-specific extension
+    // to wrap the key with a wrapping key stored in the database
+    // or in the HSM.
+    // Either the user has provided a wrapping key ID or a key wrapping key is
+    // provided in the parameters.
+    let Some(wrapping_key_id) = object
+        .attributes_mut()
+        .ok()
+        .and_then(Attributes::remove_wrapping_key_id)
+        .or_else(|| kms.params.key_wrapping_key.clone())
+    else {
+        // no wrapping key provided
+        return Ok(());
+    };
+
+    // Cannot wrap yourself
+    if wrapping_key_id == unique_identifier.to_string() {
+        if kms.params.key_wrapping_key.is_none() {
+            warn!("Key {wrapping_key_id} attempted to wrap itself");
+        }
+        return Ok(());
+    }
+
+    // This is useful to store a key on the default data store but wrapped by a key stored in an HSM
+    // extract the wrapping key id
+    // make a copy of the unwrapped key
+    let unwrapped_object = object.clone();
+
+    // The KMIP specification defaults to TTLV encoding,
+    // but most HSMs will not be able
+    // to handle the larger number of bytes
+    // this entails.
+    // So If we can recover bytes from a symmetric key, we
+    // use the more compact No Encoding, otherwise we use the default TTLV Encoding.
+    let encoding = if object
+        .key_block()
+        .map_err(|e| {
+            KmsError::InvalidRequest(format!("wrap_object: no key block to wrap in object: {e}",))
+        })?
+        .symmetric_key_bytes()
+        .is_ok()
+    {
+        EncodingOption::NoEncoding
+    } else {
+        EncodingOption::TTLVEncoding
+    };
+
+    // wrap the current object
+    wrap_object(
+        object,
+        &KeyWrappingSpecification {
+            encryption_key_information: Some(EncryptionKeyInformation {
+                unique_identifier: UniqueIdentifier::TextString(wrapping_key_id),
+                cryptographic_parameters: None,
+            }),
+            encoding_option: Some(encoding),
+            ..Default::default()
+        },
+        kms,
+        owner,
+        params,
+    )
+    .await?;
+
+    // store the unwrapped object in the unwrapped cache
+    kms.database
+        .unwrapped_cache()
+        .insert(
+            unique_identifier.to_string(),
+            Ok(CachedUnwrappedObject::new(
+                object.fingerprint()?,
+                unwrapped_object,
+            )),
+        )
+        .await;
+    Ok(())
+}
+
+/// Wrap an Object with a wrapping key
 /// The wrapping key is fetched from the database
 /// The key is wrapped using the wrapping key
 ///
 /// # Arguments
-/// * `object_key_block` - the key block of the object to wrap
+/// * `object` - the object to wrap
 /// * `key_wrapping_specification` - the key wrapping specification
 /// * `kms` - the kms
 /// * `user` - the user performing the call
 /// * `params` - the extra database parameters
 /// # Returns
 /// * `KResult<()>` - the result of the operation
-pub(crate) async fn wrap_key(
-    object_key_block: &mut KeyBlock,
+pub(crate) async fn wrap_object(
+    object: &mut Object,
     key_wrapping_specification: &KeyWrappingSpecification,
     kms: &KMS,
     user: &str,
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<()> {
+    // get the key block
+    let object_key_block = object.key_block_mut().map_err(|e| {
+        KmsError::InvalidRequest(format!("wrap_object: not key block to wrap in object: {e}",))
+    })?;
+
     // recover the wrapping key uid
     let wrapping_key_uid = match &key_wrapping_specification.encryption_key_information {
         Some(eki) => eki
@@ -77,6 +196,7 @@ pub(crate) async fn wrap_key(
         .await?;
     }
     debug!("Key wrapped successfully by key {}", wrapping_key_uid);
+    trace!("The key block is now: {:#?}", object_key_block);
     Ok(())
 }
 
@@ -126,7 +246,7 @@ async fn wrap_using_kms(
         }
         _ => kms_bail!("wrap_key: unsupported object type: {}", object_type),
     };
-    if wrapping_key.state() != StateEnumeration::Active {
+    if wrapping_key.state() != State::Active {
         return Err(KmsError::NotSupported(format!(
             "The wrapping key {wrapping_key_uid} is not active"
         )));
@@ -161,7 +281,8 @@ async fn wrap_using_kms(
         }
     }
     debug!(
-        "The user {user} can wrap with the key {wrapping_key_uid}. Encoding: {:?}, format: {}",
+        "The user: {user}, is authorized to wrap with the key {wrapping_key_uid}. Encoding: {:?}, \
+         format: {}",
         key_wrapping_specification.get_encoding(),
         object_key_block.key_format_type
     );
@@ -204,7 +325,11 @@ async fn wrap_using_encryption_oracle(
             )));
         }
     }
+
+    // Determine the key data to wrap based on the key format type and encoding
     let data_to_wrap = key_data_to_wrap(&object_key_block, key_wrapping_specification)?;
+
+    // encrypt the key using the encryption oracle
     let lock = kms.encryption_oracles.read().await;
     let encryption_oracle = lock.get(prefix).ok_or_else(|| {
         KmsError::InvalidRequest(format!(
@@ -212,19 +337,19 @@ async fn wrap_using_encryption_oracle(
         ))
     })?;
     let encrypted_content = encryption_oracle
-        .encrypt(
-            wrapping_key_uid,
-            data_to_wrap.as_slice(),
-            None,
-            key_wrapping_specification.get_additional_authenticated_data(),
-        )
+        .encrypt(wrapping_key_uid, data_to_wrap.as_slice(), None, None)
         .await?;
+
     let wrapped_key = [
         encrypted_content.iv.clone().unwrap_or_default(),
         encrypted_content.ciphertext.clone(),
         encrypted_content.tag.unwrap_or_default(),
     ]
     .concat();
-    update_key_block_with_wrapped_key(object_key_block, key_wrapping_specification, wrapped_key);
+
+    // update the key block with the wrapped key
+    object_key_block.key_value = Some(KeyValue::ByteString(wrapped_key.into()));
+    object_key_block.key_wrapping_data = Some(key_wrapping_specification.get_key_wrapping_data());
+
     Ok(())
 }

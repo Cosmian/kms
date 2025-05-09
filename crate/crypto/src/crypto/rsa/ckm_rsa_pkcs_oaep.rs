@@ -12,9 +12,9 @@
 //!  - NIST FIPS 202: SHA3-224, SHA3-256, SHA3-384, SHA3-512 (<https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.202.pdf>)
 //!
 //! The scheme can be used for both encryption and key wrapping
+use cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm;
 #[cfg(feature = "fips")]
 use cosmian_kmip::kmip_2_1::extra::fips::FIPS_MIN_RSA_MODULUS_LENGTH;
-use cosmian_kmip::kmip_2_1::kmip_types::HashingAlgorithm;
 use openssl::{
     md::MdRef,
     pkey::{PKey, Private, Public},
@@ -182,7 +182,7 @@ fn init_ckm_rsa_pkcs_oaep_decryption_context(
 #[allow(clippy::panic_in_result_fn, clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
-    use cosmian_kmip::kmip_2_1::kmip_types::HashingAlgorithm;
+    use cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm;
     use openssl::pkey::PKey;
     use zeroize::Zeroizing;
 
