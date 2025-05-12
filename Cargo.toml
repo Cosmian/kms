@@ -111,6 +111,7 @@ der = { version = "0.7", default-features = false }
 hex = { version = "0.4", default-features = false }
 lazy_static = "1.5"
 leb128 = "0.2"
+libc = { version = "0.2", default-features = false }
 libloading = "0.8"
 log = { version = "0.4", default-features = false }
 lru = "0.12"
