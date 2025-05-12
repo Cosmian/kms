@@ -4,8 +4,8 @@ use std::{
 };
 
 use base64::{
-    engine::{general_purpose, general_purpose::URL_SAFE_NO_PAD},
     Engine,
+    engine::{general_purpose, general_purpose::URL_SAFE_NO_PAD},
 };
 use chrono::{Duration, Utc};
 use clap::crate_version;
@@ -18,7 +18,7 @@ use cosmian_kmip::{
         kmip_types::{CryptographicParameters, KeyFormatType, UniqueIdentifier},
     },
 };
-use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
+use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
 use openssl::{
     hash::MessageDigest,
     md::Md,
@@ -35,8 +35,8 @@ use zeroize::Zeroizing;
 use super::GoogleCseConfig;
 use crate::{
     core::{
-        operations::{decrypt, encrypt},
         KMS,
+        operations::{decrypt, encrypt},
     },
     error::KmsError,
     kms_ensure,
@@ -154,7 +154,8 @@ pub struct CertsResponse {
 ///
 /// # Returns
 /// - `CertsResponse`: The elements of RSA public key.
-#[must_use]
+/// # Errors
+/// - Error is raised when public RSA key can't be found
 pub async fn display_rsa_public_key(
     kms: &Arc<KMS>,
     current_kacls_url: &str,
@@ -941,8 +942,8 @@ fn create_jwt(
         aud: "kacls_migration".to_owned(),
         kacls_url: original_kacls_url.to_owned(),
         resource_name: resource_name.to_owned(),
-        iat: now.timestamp() as usize,
-        exp: (now + Duration::minutes(60)).timestamp() as usize,
+        iat: usize::try_from(now.timestamp())?,
+        exp: usize::try_from((now + Duration::minutes(60)).timestamp())?,
     };
 
     let mut header = Header::new(Algorithm::RS256);
@@ -1020,12 +1021,12 @@ pub async fn rewrap(
         }?;
 
         let authentication_token = create_jwt(
-            &private_key_bytes,
+            private_key_bytes,
             kacls_url,
             &request.original_kacls_url,
             &resource_name,
         )?;
-        println!("{:?}", authentication_token);
+        debug!("{authentication_token:?}");
 
         let request_body = PrivilegedUnwrapRequest {
             authentication: authentication_token,
@@ -1035,16 +1036,18 @@ pub async fn rewrap(
         };
         let client = Client::new();
         let response = client
-            .post(&format!("{}/privilegedunwrap", request.original_kacls_url))
+            .post(format!("{}/privilegedunwrap", request.original_kacls_url))
             .json(&request_body)
             .send()
             .await?;
 
         let status = response.status();
         let body = response.text().await?;
-        println!("{:?} - {:?}", status, body,)
+        debug!("STATUS {status:?} - BODY {body:?}");
     } else {
-        KmsError::InvalidRequest("Invalid RSA Private key ID. Not RSA Private key".to_owned());
+        return Err(KmsError::InvalidRequest(
+            "Invalid RSA Private key ID. Not RSA Private key.".to_owned(),
+        ));
     }
 
     // Request privilegedunwrap to original KMS

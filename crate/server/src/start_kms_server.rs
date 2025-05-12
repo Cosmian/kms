@@ -1,18 +1,18 @@
 use std::{
     path::PathBuf,
-    sync::{mpsc, Arc},
+    sync::{Arc, mpsc},
 };
 
 use actix_cors::Cors;
 use actix_files::Files;
 use actix_identity::IdentityMiddleware;
-use actix_session::{config::PersistentSession, storage::CookieSessionStore, SessionMiddleware};
+use actix_session::{SessionMiddleware, config::PersistentSession, storage::CookieSessionStore};
 use actix_web::{
-    cookie::{time::Duration, Key},
+    App, HttpRequest, HttpResponse, HttpServer,
+    cookie::{Key, time::Duration},
     dev::ServerHandle,
     middleware::Condition,
     web::{self, Data, JsonConfig, PayloadConfig},
-    App, HttpRequest, HttpResponse, HttpServer,
 };
 use openssl::{
     ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod, SslVerifyMode},
@@ -25,7 +25,7 @@ use crate::{
     config::{JwtAuthConfig, ServerParams},
     core::KMS,
     error::KmsError,
-    middlewares::{extract_peer_certificate, AuthTransformer, JwksManager, JwtConfig, SslAuth},
+    middlewares::{AuthTransformer, JwksManager, JwtConfig, SslAuth, extract_peer_certificate},
     result::{KResult, KResultHelper},
     routes::{
         access, get_version,
@@ -278,11 +278,11 @@ pub async fn prepare_kms_server(
                 .google_cse_incoming_url_whitelist
                 .is_some()
         {
-            match &kms_server.params.google_cse_incoming_url_whitelist {
-                Some(white_list) => built_jwt_configurations.extend(
-                    google_cse::list_jwt_configurations(white_list, jwks_manager.clone()),
-                ),
-                None => {}
+            if let Some(white_list) = &kms_server.params.google_cse_incoming_url_whitelist {
+                built_jwt_configurations.extend(google_cse::list_jwt_configurations(
+                    white_list,
+                    &jwks_manager,
+                ));
             }
         }
 

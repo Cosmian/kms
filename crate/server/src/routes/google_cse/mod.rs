@@ -85,7 +85,7 @@ pub(crate) async fn certs(kms: Data<Arc<KMS>>) -> KResult<Json<operations::Certs
     })?;
 
     Ok(Json(
-        operations::display_rsa_public_key(&kms, &kacls_url).await?,
+        operations::display_rsa_public_key(&kms, kacls_url).await?,
     ))
 }
 
@@ -181,14 +181,11 @@ pub(crate) async fn rewrap(
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
     let (request, cse_config) = prepare_post_params("rewrap", request, cse_config);
-    let kacls_url = match kms.params.google_cse_kacls_url.clone() {
-        Some(url) => url,
-        None => {
-            return CseErrorReply::from(&KmsError::InvalidRequest(
-                "Error getting current KACLS url".to_owned(),
-            ))
-            .into();
-        }
+    let Some(kacls_url) = kms.params.google_cse_kacls_url.clone() else {
+        return CseErrorReply::from(&KmsError::InvalidRequest(
+            "Error getting current KACLS url".to_owned(),
+        ))
+        .into();
     };
 
     match operations::rewrap(request, &kacls_url, &cse_config, &kms)

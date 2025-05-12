@@ -63,8 +63,8 @@ pub fn list_jwks_uri(url_whitelist: Option<Vec<String>>) -> Vec<String> {
 
 #[must_use]
 pub fn list_jwt_configurations(
-    url_whitelist: &Vec<String>,
-    jwks_manager: Arc<JwksManager>,
+    url_whitelist: &[String],
+    jwks_manager: &Arc<JwksManager>,
 ) -> Vec<JwtConfig> {
     url_whitelist
         .iter()
@@ -425,7 +425,7 @@ mod tests {
         let wrap_request: WrapRequest = serde_json::from_str(&wrap_request).unwrap();
 
         let uris = {
-            let mut uris = google_cse::list_jwks_uri();
+            let mut uris = google_cse::list_jwks_uri(None);
             uris.push(JwtAuthConfig::uri(JWT_ISSUER_URI, Some(JWKS_URI)));
             uris
         };
@@ -446,7 +446,7 @@ mod tests {
         };
 
         let authentication_token = jwt_authentication_config
-            .decode_authentication_token(&wrap_request.authentication)
+            .decode_authentication_token(&wrap_request.authentication, true)
             .unwrap();
         info!("AUTHENTICATION token: {:?}", authentication_token);
         assert_eq!(

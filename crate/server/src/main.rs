@@ -207,6 +207,7 @@ mod tests {
             force_default_username: false,
             google_cse_disable_tokens_validation: false,
             google_cse_kacls_url: Some("[google cse kacls url]".to_owned()),
+            google_cse_incoming_url_whitelist: None,
             ms_dke_service_url: Some("[ms dke service url]".to_owned()),
             logging: LoggingConfig {
                 rust_log: Some("info,cosmian_kms=debug".to_owned()),

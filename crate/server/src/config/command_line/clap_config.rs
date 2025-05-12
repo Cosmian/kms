@@ -7,8 +7,8 @@ use clap::Parser;
 use serde::{Deserialize, Serialize};
 
 use super::{
-    logging::LoggingConfig, ui_config::UiConfig, HttpConfig, JwtAuthConfig, MainDBConfig,
-    WorkspaceConfig,
+    HttpConfig, JwtAuthConfig, MainDBConfig, WorkspaceConfig, logging::LoggingConfig,
+    ui_config::UiConfig,
 };
 use crate::{
     config::{SocketServerConfig, TlsConfig},
@@ -270,6 +270,10 @@ impl fmt::Debug for ClapConfig {
         let x = x.field(
             "Google Workspace CSE, KACLS URL",
             &self.google_cse_kacls_url,
+        );
+        let x = x.field(
+            "Google Workspace CSE, incoming URL whitelist",
+            &self.google_cse_incoming_url_whitelist,
         );
         let x = x.field(
             "Microsoft Double Key Encryption URL",

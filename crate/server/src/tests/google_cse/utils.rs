@@ -59,7 +59,7 @@ pub(crate) async fn generate_google_jwt() -> KResult<String> {
 }
 
 pub(crate) async fn google_cse_auth() -> KResult<GoogleCseConfig> {
-    let mut uris = google_cse::list_jwks_uri();
+    let mut uris = google_cse::list_jwks_uri(None);
 
     uris.push(JwtAuthConfig::uri(
         GOOGLE_JWT_ISSUER_URI,
