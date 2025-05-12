@@ -4,8 +4,8 @@ use std::{
 };
 
 use base64::{
-    Engine,
     engine::{general_purpose, general_purpose::URL_SAFE_NO_PAD},
+    Engine,
 };
 use chrono::{Duration, Utc};
 use clap::crate_version;
@@ -18,7 +18,7 @@ use cosmian_kmip::{
         kmip_types::{CryptographicParameters, KeyFormatType, UniqueIdentifier},
     },
 };
-use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
+use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
 use openssl::{
     hash::MessageDigest,
     md::Md,
@@ -35,8 +35,8 @@ use zeroize::Zeroizing;
 use super::GoogleCseConfig;
 use crate::{
     core::{
-        KMS,
         operations::{decrypt, encrypt},
+        KMS,
     },
     error::KmsError,
     kms_ensure,
@@ -171,6 +171,7 @@ pub async fn display_rsa_public_key(
         key_wrapping_specification: None,
     };
     let resp = kms.get(op, "", None).await?;
+    debug!("REST - {resp:?}");
     if resp.object_type == ObjectType::PublicKey {
         match &resp.object.key_block()?.key_value {
             Some(KeyValue::Structure { key_material, .. }) => match key_material {
@@ -986,7 +987,8 @@ pub async fn rewrap(
 ) -> KResult<RewrapResponse> {
     debug!("rewrap: entering");
     let application = get_application(&request.reason);
-    let roles = [Role::Migrator];
+    let roles = [Role::Reader];
+    // let roles = [Role::Migrator];
     let authorization_token = validate_cse_authorization_token(
         &request.authorization,
         kms,
@@ -1014,12 +1016,16 @@ pub async fn rewrap(
     let resp = kms.get(op, &user, None).await?;
     if resp.object_type == ObjectType::PrivateKey {
         let private_key_bytes = match &resp.object.key_block()?.key_value {
-            Some(KeyValue::ByteString(bytes)) => Ok(bytes),
+            Some(KeyValue::Structure { key_material, .. }) => match key_material {
+                KeyMaterial::ByteString(bytes) => Ok(bytes),
+                _ => Err(KmsError::InvalidRequest(
+                    "Invalid RSA Private key fetch. Expected ByteString".to_owned(),
+                )),
+            },
             _ => Err(KmsError::InvalidRequest(
-                "Invalid RSA Private key fetch. Expected ByteString".to_owned(),
+                "Expected structured KeyValue for RSA Private key".to_owned(),
             )),
         }?;
-
         let authentication_token = create_jwt(
             private_key_bytes,
             kacls_url,
