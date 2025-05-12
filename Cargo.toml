@@ -5,6 +5,7 @@ members = [
     "cli/crate/kms_client",
     "cli/crate/pkcs11/module",
     "cli/crate/pkcs11/provider",
+    "cli/crate/sqlserver_ekm",
     "crate/access",
     "crate/crypto",
     "crate/hsm/proteccio",
