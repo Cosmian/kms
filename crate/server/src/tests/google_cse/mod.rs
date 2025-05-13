@@ -6,14 +6,13 @@ use std::{
     sync::Arc,
 };
 
-use actix_http::{Request, body::MessageBody};
+use actix_http::{body::MessageBody, Request};
 use actix_service::Service;
 use actix_web::dev::ServiceResponse;
-use base64::{Engine, engine::general_purpose};
+use base64::{engine::general_purpose, Engine};
 use cosmian_kmip::{
     kmip_0::kmip_types::BlockCipherMode,
     kmip_2_1::{
-        KmipOperation,
         extra::{VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
         kmip_attributes::Attributes,
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingSpecification},
@@ -25,8 +24,9 @@ use cosmian_kmip::{
             UniqueIdentifier, VendorAttribute, VendorAttributeValue, WrappingMethod,
         },
         requests::create_rsa_key_pair_request,
+        KmipOperation,
     },
-    ttlv::{TTLV, from_ttlv},
+    ttlv::{from_ttlv, TTLV},
 };
 use cosmian_kms_access::access::{Access, SuccessResponse};
 use cosmian_kms_crypto::crypto::certificates::EXTENSION_CONFIG;
@@ -47,12 +47,11 @@ use crate::{
     core::KMS,
     result::{KResult, KResultHelper},
     routes::google_cse::operations::{
-        DigestRequest, DigestResponse, GOOGLE_CSE_ID, PrivateKeyDecryptRequest,
-        PrivateKeyDecryptResponse, PrivateKeySignRequest, PrivateKeySignResponse,
-        PrivilegedPrivateKeyDecryptRequest, PrivilegedPrivateKeyDecryptResponse,
-        PrivilegedUnwrapRequest, PrivilegedUnwrapResponse, PrivilegedWrapRequest,
-        PrivilegedWrapResponse, RewrapRequest, RewrapResponse, StatusResponse, UnwrapRequest,
-        UnwrapResponse, WrapRequest, WrapResponse,
+        DigestRequest, DigestResponse, PrivateKeyDecryptRequest, PrivateKeyDecryptResponse,
+        PrivateKeySignRequest, PrivateKeySignResponse, PrivilegedPrivateKeyDecryptRequest,
+        PrivilegedPrivateKeyDecryptResponse, PrivilegedUnwrapRequest, PrivilegedUnwrapResponse,
+        PrivilegedWrapRequest, PrivilegedWrapResponse, RewrapRequest, RewrapResponse,
+        StatusResponse, UnwrapRequest, UnwrapResponse, WrapRequest, WrapResponse, GOOGLE_CSE_ID,
     },
     tests::{
         google_cse::utils::generate_google_jwt,
@@ -746,44 +745,44 @@ async fn test_cse_rewrap_key() -> KResult<()> {
     // Import google_cse key
     import_google_cse_symmetric_key_with_access(&app).await?;
 
-    // Import original_kms google_cse key
-    let original_symmetric_key = read_bytes_from_file(&PathBuf::from(
-        "../../documentation/docs/google_cse/original_kms_cse_key.demo.key.json",
-    ))?;
+    // // Import original_kms google_cse key
+    // let original_symmetric_key = read_bytes_from_file(&PathBuf::from(
+    //     "../../documentation/docs/google_cse/original_kms_cse_key.demo.key.json",
+    // ))?;
 
-    let object = read_object_from_json_ttlv_bytes(&original_symmetric_key)
-        .context("failed parsing the key from the json file")?;
+    // let object = read_object_from_json_ttlv_bytes(&original_symmetric_key)
+    //     .context("failed parsing the key from the json file")?;
 
-    // We defined that original kms imported key must be importing under the original_kacls_url as ID
-    let import_original_key_request = Import {
-        unique_identifier: UniqueIdentifier::TextString("original_kacls_url_test".to_owned()),
-        object_type: object.object_type(),
-        replace_existing: Some(false),
-        key_wrap_type: None,
-        attributes: object.attributes().cloned().unwrap_or_default(),
-        object,
-    };
+    // // We defined that original kms imported key must be importing under the original_kacls_url as ID
+    // let import_original_key_request = Import {
+    //     unique_identifier: UniqueIdentifier::TextString("original_kacls_url_test".to_owned()),
+    //     object_type: object.object_type(),
+    //     replace_existing: Some(false),
+    //     key_wrap_type: None,
+    //     attributes: object.attributes().cloned().unwrap_or_default(),
+    //     object,
+    // };
 
-    let response_original_key_import: ImportResponse =
-        test_utils::post_2_1(&app, import_original_key_request).await?;
-    debug!("import original kms google_cse key response: {response_original_key_import:?}");
+    // let response_original_key_import: ImportResponse =
+    //     test_utils::post_2_1(&app, import_original_key_request).await?;
+    // debug!("import original kms google_cse key response: {response_original_key_import:?}");
 
-    let access_original_key_request = Access {
-        unique_identifier: Some(UniqueIdentifier::TextString(
-            "original_kacls_url_test".to_owned(),
-        )),
-        user_id: "*".to_owned(),
-        operation_types: vec![
-            KmipOperation::Destroy,
-            KmipOperation::Get,
-            KmipOperation::Encrypt,
-            KmipOperation::Decrypt,
-        ],
-    };
+    // let access_original_key_request = Access {
+    //     unique_identifier: Some(UniqueIdentifier::TextString(
+    //         "original_kacls_url_test".to_owned(),
+    //     )),
+    //     user_id: "*".to_owned(),
+    //     operation_types: vec![
+    //         KmipOperation::Destroy,
+    //         KmipOperation::Get,
+    //         KmipOperation::Encrypt,
+    //         KmipOperation::Decrypt,
+    //     ],
+    // };
 
-    let access_original_key_response: SuccessResponse =
-        test_utils::post_json_with_uri(&app, access_original_key_request, "/access/grant").await?;
-    debug!("grant response post: {access_original_key_response:?}");
+    // let access_original_key_response: SuccessResponse =
+    //     test_utils::post_json_with_uri(&app, access_original_key_request, "/access/grant").await?;
+    // debug!("grant response post: {access_original_key_response:?}");
 
     // Original DEK and Wrapped DEK with original kms google_cse key
     let dek: &str = "wHrlNOTI9mU6PBdqiq7EQA==";

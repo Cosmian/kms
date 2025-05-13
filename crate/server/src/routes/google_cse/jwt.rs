@@ -321,6 +321,8 @@ pub(crate) async fn validate_cse_authorization_token(
             "Authorization token should contain an resource_name".to_owned(),
         ))
     }
+
+    // TODO: Revert after testing
     // #[cfg(not(feature = "insecure"))]
     // if let Some(kacls_url) = authorization_token.kacls_url.clone() {
     //     kms_ensure!(
@@ -398,7 +400,7 @@ mod tests {
         routes::google_cse::{
             self,
             jwt::{
-                JWKS_URI, JWT_ISSUER_URI, decode_jwt_authorization_token, jwt_authorization_config,
+                decode_jwt_authorization_token, jwt_authorization_config, JWKS_URI, JWT_ISSUER_URI,
             },
             operations::WrapRequest,
         },

@@ -4,8 +4,8 @@ use std::{
 };
 
 use base64::{
-    Engine,
     engine::{general_purpose, general_purpose::URL_SAFE_NO_PAD},
+    Engine,
 };
 use chrono::{Duration, Utc};
 use clap::crate_version;
@@ -18,7 +18,7 @@ use cosmian_kmip::{
         kmip_types::{CryptographicParameters, KeyFormatType, UniqueIdentifier},
     },
 };
-use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
+use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
 use openssl::{
     hash::MessageDigest,
     md::Md,
@@ -35,8 +35,8 @@ use zeroize::Zeroizing;
 use super::GoogleCseConfig;
 use crate::{
     core::{
-        KMS,
         operations::{decrypt, encrypt},
+        KMS,
     },
     error::KmsError,
     kms_ensure,
@@ -738,7 +738,10 @@ pub async fn privileged_unwrap(
     // decode token with configuration on the fly is OK ?
     let user =
         validate_cse_authentication_token(&request.authentication, cse_config, kms, false).await?;
+    let r = request.resource_name.clone();
+
     let resource_name = request.resource_name.into_bytes();
+    debug!("Resource {r:?}");
 
     debug!("privileged_unwrap: unwrap key");
     let data: Zeroizing<Vec<u8>> = cse_wrapped_key_decrypt(
@@ -932,7 +935,7 @@ pub async fn rewrap(
     debug!("rewrap: entering");
     let application = get_application(&request.reason);
     let roles = [Role::Reader];
-    // let roles = [Role::Migrator];
+    // let roles = [Role::Migrator]; TODO: After testing, reverse to migrator role
     let authorization_token = validate_cse_authorization_token(
         &request.authorization,
         kms,
@@ -957,6 +960,7 @@ pub async fn rewrap(
         key_compression_type: None,
         key_wrapping_specification: None,
     };
+    // TODO: user should be admin ?
     let resp = kms.get(op, &user, None).await?;
     if resp.object_type == ObjectType::PrivateKey {
         let private_key_bytes = match &resp.object.key_block()?.key_value {
