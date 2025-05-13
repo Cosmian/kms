@@ -19,17 +19,6 @@ default_username = "admin"
 # but always use the default username instead of the one provided by the authentication method
 force_default_username = false
 
-# This setting enables the Google Workspace Client Side Encryption feature of this KMS server.
-# It should contain the external URL of this server as configured
-# in Google Workspace client-side encryption settings. For instance,
-# if this server is running on domain `cse.my_domain.com`,
-# the URL should be something like <https://cse.my_domain.com/google_cse>
-google_cse_kacls_url = "<google cse kacls url>"
-
-# This setting disables the validation of the tokens used by the Google Workspace CSE feature of this server
-# Useful for testing purposes
-google-cse-disable-tokens-validation = false
-
 # This setting enables this server's Microsoft Double Key Encryption service feature.
 # It should contain the external URL of this server as configured in Azure App Registrations
 # as the DKE Service (<https://learn.microsoft.com/en-us/purview/double-key-encryption-setup#register-your-key-store>)
@@ -37,8 +26,11 @@ google-cse-disable-tokens-validation = false
 ms_dke_service_url = "<ms dke service url>"
 
 # This setting defines the public URL where the KMS is accessible (e.g., behind a proxy).
-# It is primarily used during the authentication flow initiated from the KMS UI.
-# See the [ui_config] section below.
+# It is used :
+# -  during the authentication flow initiated from the KMS UI. See the [ui_config] section below.
+# - for cse endpoints: it is required if google cse configuration is activated ;
+# If this server is running on the domain `cse.my_domain.com` with this public URL,
+# The configured URL from Google admin  should be something like <https://cse.my_domain.com/google_cse>
 kms_public_url = "kms-public-url"
 
 # Print the server configuration information and exit
@@ -169,4 +161,20 @@ ui_oidc_client_id = "<client id>"
 ui_oidc_client_secret = "<client secret>" (optional)
 ui_oidc_issuer_url = "<issuer-url>"
 ui_oidc_logout_url = "<logout-url>"
+
+[google_cse_config]
+# This setting turns on endpoints handling Google CSE feature
+google_cse_enable = false
+
+# This setting disables the validation of the tokens used by the Google Workspace CSE feature of this server
+# Useful for testing purposes
+google_cse_disable_tokens_validation = false
+
+# This setting contains the list of KACLS server URLs that can access this server for Google CSE migration, through
+# the privilegedunwrap endpoint (used to fetch exposed jwks on server start)
+google_cse_incoming_url_whitelist = ["[kacls_url_1]", "[kacls_url_2]"]
+
+# Base64-encoded RSA private key used to ensure consistency of certificate handling and privileged unwrap operations
+# across server restarts and multiple server instances. If not provided, a random key will be generated at server startup.
+google_cse_migration_key = "<google_cse_existing_migration_key>"
 ```

@@ -33,7 +33,7 @@ pub(crate) fn https_clap_config() -> ClapConfig {
     https_clap_config_opts(None)
 }
 
-pub(crate) fn https_clap_config_opts(google_cse_kacls_url: Option<String>) -> ClapConfig {
+pub(crate) fn https_clap_config_opts(kms_public_url: Option<String>) -> ClapConfig {
     let sqlite_path = get_tmp_sqlite_path();
 
     ClapConfig {
@@ -55,7 +55,7 @@ pub(crate) fn https_clap_config_opts(google_cse_kacls_url: Option<String>) -> Cl
             clear_database: false,
             ..Default::default()
         },
-        google_cse_kacls_url,
+        kms_public_url,
         ..Default::default()
     }
 }
@@ -83,10 +83,10 @@ pub(crate) fn get_tmp_sqlite_path() -> PathBuf {
 }
 
 pub(crate) async fn test_app(
-    google_cse_kacls_url: Option<String>,
+    kms_public_url: Option<String>,
     privileged_users: Option<Vec<String>>,
 ) -> impl Service<Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error> {
-    let clap_config = https_clap_config_opts(google_cse_kacls_url);
+    let clap_config = https_clap_config_opts(kms_public_url);
 
     let server_params =
         Arc::new(ServerParams::try_from(clap_config).expect("cannot create server params"));
@@ -126,6 +126,7 @@ pub(crate) async fn test_app(
         .service(routes::google_cse::privileged_unwrap)
         .service(routes::google_cse::privileged_private_key_decrypt)
         .service(routes::google_cse::digest)
+        .service(routes::google_cse::certs)
         .service(routes::google_cse::rewrap);
 
     app = app.service(google_cse_scope);

@@ -4,8 +4,8 @@ use std::{
 };
 
 use base64::{
-    engine::{general_purpose, general_purpose::URL_SAFE_NO_PAD},
     Engine,
+    engine::{general_purpose, general_purpose::URL_SAFE_NO_PAD},
 };
 use chrono::{Duration, Utc};
 use clap::crate_version;
@@ -18,7 +18,7 @@ use cosmian_kmip::{
         kmip_types::{CryptographicParameters, KeyFormatType, UniqueIdentifier},
     },
 };
-use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
+use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
 use openssl::{
     hash::MessageDigest,
     md::Md,
@@ -35,8 +35,8 @@ use zeroize::Zeroizing;
 use super::GoogleCseConfig;
 use crate::{
     core::{
-        operations::{decrypt, encrypt},
         KMS,
+        operations::{decrypt, encrypt},
     },
     error::KmsError,
     kms_ensure,
@@ -228,7 +228,7 @@ async fn get_user_and_resource_name(
     cse_config: &Arc<Option<GoogleCseConfig>>,
     kms: &Arc<KMS>,
 ) -> KResult<(String, Option<Vec<u8>>)> {
-    if kms.params.google_cse_disable_tokens_validation {
+    if kms.params.google_cse.google_cse_disable_tokens_validation {
         debug!("get_user_and_resource_name: no token validation");
         Ok((kms.params.default_username.clone(), None))
     } else {

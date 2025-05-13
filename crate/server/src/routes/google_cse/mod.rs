@@ -63,13 +63,19 @@ pub(crate) async fn get_status(
 ) -> KResult<Json<operations::StatusResponse>> {
     info!("GET /google_cse/status {}", kms.get_user(&req));
 
-    let kacls_url = &kms.params.google_cse_kacls_url.clone().ok_or_else(|| {
-        KmsError::ServerError(
-            "Google CSE KACLS URL is empty. Expected: <https://cse.mydomain.com/google_cse>"
-                .to_owned(),
-        )
-    })?;
-    Ok(Json(operations::get_status(kacls_url)))
+    let base_url = kms
+        .params
+        .kms_public_url
+        .as_ref()
+        .ok_or_else(|| {
+            KmsError::ServerError(
+                "Google CSE KACLS URL can't be built: missing KMS_PUBLIC_URL".to_owned(),
+            )
+        })?
+        .trim_end_matches('/');
+
+    let google_cse_kacls_url = format!("{base_url}/google_cse");
+    Ok(Json(operations::get_status(&google_cse_kacls_url)))
 }
 
 /// Expose RSA Public key elements for migration
@@ -77,15 +83,21 @@ pub(crate) async fn get_status(
 pub(crate) async fn certs(kms: Data<Arc<KMS>>) -> KResult<Json<operations::CertsResponse>> {
     info!("GET /certs");
     let kms = kms.into_inner();
-    let kacls_url = &kms.params.google_cse_kacls_url.clone().ok_or_else(|| {
-        KmsError::ServerError(
-            "Google CSE KACLS URL is empty. Expected: <https://cse.mydomain.com/google_cse>"
-                .to_owned(),
-        )
-    })?;
+    let base_url = kms
+        .params
+        .kms_public_url
+        .as_ref()
+        .ok_or_else(|| {
+            KmsError::ServerError(
+                "Google CSE KACLS URL can't be built: missing KMS_PUBLIC_URL".to_owned(),
+            )
+        })?
+        .trim_end_matches('/');
+
+    let google_cse_kacls_url = format!("{base_url}/google_cse");
 
     Ok(Json(
-        operations::display_rsa_public_key(&kms, kacls_url).await?,
+        operations::display_rsa_public_key(&kms, &google_cse_kacls_url).await?,
     ))
 }
 
@@ -181,14 +193,16 @@ pub(crate) async fn rewrap(
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
     let (request, cse_config) = prepare_post_params("rewrap", request, cse_config);
-    let Some(kacls_url) = kms.params.google_cse_kacls_url.clone() else {
+    let Some(base_url) = kms.params.kms_public_url.clone() else {
         return CseErrorReply::from(&KmsError::InvalidRequest(
-            "Error getting current KACLS url".to_owned(),
+            "Google CSE KACLS URL can't be built: missing KMS_PUBLIC_URL".to_owned(),
         ))
         .into();
     };
 
-    match operations::rewrap(request, &kacls_url, &cse_config, &kms)
+    let google_cse_kacls_url = format!("{:?}/google_cse", base_url.trim_end_matches('/'));
+
+    match operations::rewrap(request, &google_cse_kacls_url, &cse_config, &kms)
         .await
         .map(Json)
     {

@@ -1,18 +1,18 @@
 use std::{
     path::PathBuf,
-    sync::{mpsc, Arc},
+    sync::{Arc, mpsc},
 };
 
 use actix_cors::Cors;
 use actix_files::Files;
 use actix_identity::IdentityMiddleware;
-use actix_session::{config::PersistentSession, storage::CookieSessionStore, SessionMiddleware};
+use actix_session::{SessionMiddleware, config::PersistentSession, storage::CookieSessionStore};
 use actix_web::{
-    cookie::{time::Duration, Key},
+    App, HttpRequest, HttpResponse, HttpServer,
+    cookie::{Key, time::Duration},
     dev::ServerHandle,
     middleware::Condition,
     web::{self, Data, JsonConfig, PayloadConfig},
-    App, HttpRequest, HttpResponse, HttpServer,
 };
 use cosmian_kmip::{
     kmip_0::kmip_types::KeyWrapType,
@@ -34,7 +34,7 @@ use crate::{
     config::{JwtAuthConfig, ServerParams},
     core::KMS,
     error::KmsError,
-    middlewares::{extract_peer_certificate, AuthTransformer, JwksManager, JwtConfig, SslAuth},
+    middlewares::{AuthTransformer, JwksManager, JwtConfig, SslAuth, extract_peer_certificate},
     result::{KResult, KResultHelper},
     routes::{
         access, get_version,
@@ -287,8 +287,12 @@ pub async fn prepare_kms_server(
     builder: Option<SslAcceptorBuilder>,
 ) -> KResult<actix_web::dev::Server> {
     // Check if this auth server is enabled for Google Client-Side Encryption
-    let enable_google_cse_authentication = kms_server.params.google_cse_kacls_url.is_some()
-        && !kms_server.params.google_cse_disable_tokens_validation;
+    let enable_google_cse_authentication = kms_server.params.google_cse.google_cse_enable
+        && !kms_server
+            .params
+            .google_cse
+            .google_cse_disable_tokens_validation
+        && kms_server.params.kms_public_url.is_some();
 
     // Prepare the JWT configurations and the JWKS manager if the server is using JWT for authentication.
     let (jwt_configurations, jwks_manager) = if let Some(identity_provider_configurations) =
@@ -304,7 +308,11 @@ pub async fn prepare_kms_server(
         // Add the one from google if cse is enabled
         if enable_google_cse_authentication {
             all_jwks_uris.extend(google_cse::list_jwks_uri(
-                kms_server.params.google_cse_incoming_url_whitelist.clone(),
+                kms_server
+                    .params
+                    .google_cse
+                    .google_cse_incoming_url_whitelist
+                    .clone(),
             ));
         }
 
@@ -320,20 +328,18 @@ pub async fn prepare_kms_server(
             .collect::<Vec<_>>();
 
         // Add the one from google if cse is enabled and some external urls are whitelisted
-        if enable_google_cse_authentication
-            && kms_server
+        if enable_google_cse_authentication {
+            if let Some(white_list) = &kms_server
                 .params
+                .google_cse
                 .google_cse_incoming_url_whitelist
-                .is_some()
-        {
-            if let Some(white_list) = &kms_server.params.google_cse_incoming_url_whitelist {
+            {
                 built_jwt_configurations.extend(google_cse::list_jwt_configurations(
                     white_list,
                     &jwks_manager,
                 ));
             }
         }
-
         (Some(Arc::new(built_jwt_configurations)), Some(jwks_manager))
     } else {
         (None, None)
@@ -414,7 +420,9 @@ pub async fn prepare_kms_server(
             .app_data(PayloadConfig::new(10_000_000_000)) // Set the maximum size of the request payload.
             .app_data(JsonConfig::default().limit(10_000_000_000)); // Set the maximum size of the JSON request payload.
 
-        if kms_server.params.google_cse_kacls_url.is_some() {
+        if kms_server.params.kms_public_url.is_some()
+            && kms_server.params.google_cse.google_cse_enable
+        {
             // The scope for the Google Client-Side Encryption endpoints served from /google_cse
             let google_cse_scope = web::scope("/google_cse")
                 .app_data(Data::new(google_cse_jwt_config.clone()))

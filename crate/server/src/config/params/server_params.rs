@@ -5,7 +5,7 @@ use tracing::{debug, warn};
 
 use super::TlsParams;
 use crate::{
-    config::{ClapConfig, DEFAULT_COSMIAN_UI_DIST_PATH, IdpConfig, OidcConfig},
+    config::{ClapConfig, DEFAULT_COSMIAN_UI_DIST_PATH, GoogleCseConfig, IdpConfig, OidcConfig},
     error::KmsError,
     result::{KResult, KResultHelper},
 };
@@ -24,6 +24,9 @@ pub struct ServerParams {
 
     /// The OIDC config used to handle login from the UI
     pub ui_oidc_auth: OidcConfig,
+
+    /// The Google CSE config
+    pub google_cse: GoogleCseConfig,
 
     /// The username to use if no authentication method is provided
     pub default_username: String,
@@ -53,7 +56,9 @@ pub struct ServerParams {
     /// The TLS parameters of the server
     pub tls_params: Option<TlsParams>,
 
-    /// The public URL of the exposed KMS server
+    /// The exposed URL of the KMS - this is required if google cse configuration is activated.
+    /// If this server is running on the domain `cse.my_domain.com` with this public URL,
+    /// The configured URL from Google admin  should be something like <https://cse.my_domain.com/google_cse>
     pub kms_public_url: Option<String>,
 
     /// The hostname of the HTTP server
@@ -64,20 +69,6 @@ pub struct ServerParams {
 
     /// The API authentication token is used on both the server and client sides
     pub api_token_id: Option<String>,
-
-    /// This setting enables the Google Workspace Client Side Encryption feature of this KMS server.
-    ///
-    /// It should contain the external URL of this server as configured in Google Workspace client-side encryption settings.
-    /// For instance, if this server is running on the domain `cse.my_domain.com`,
-    /// The URL should be something like <https://cse.my_domain.com/google_cse>
-    pub google_cse_kacls_url: Option<String>,
-
-    /// This setting turns off the validation of the tokens
-    /// used by this server's Google Workspace CSE feature.
-    pub google_cse_disable_tokens_validation: bool,
-
-    /// It should contain the list of KACLS server URLs that can access this server for Google CSE migration, through the privilegedunwrap endpoint
-    pub google_cse_incoming_url_whitelist: Option<Vec<String>>,
 
     /// This setting enables the Microsoft Double Key Encryption service feature of this server.
     ///
@@ -186,9 +177,7 @@ impl ServerParams {
             default_username: conf.default_username,
             force_default_username: conf.force_default_username,
             api_token_id: conf.http.api_token_id,
-            google_cse_disable_tokens_validation: conf.google_cse_disable_tokens_validation,
-            google_cse_kacls_url: conf.google_cse_kacls_url,
-            google_cse_incoming_url_whitelist: conf.google_cse_incoming_url_whitelist,
+            google_cse: conf.google_cse_config,
             ms_dke_service_url: conf.ms_dke_service_url,
             hsm_admin: conf.hsm_admin,
             hsm_model: if slot_passwords.is_empty() {
@@ -235,17 +224,25 @@ impl fmt::Debug for ServerParams {
         debug_struct
             .field("tls_params", &self.tls_params)
             .field("api_token_id", &self.api_token_id)
-            .field("google_cse_kacls_url", &self.google_cse_kacls_url)
-            .field(
-                "google_cse_disable_tokens_validation",
-                &self.google_cse_disable_tokens_validation,
-            )
-            .field(
-                "google_cse_incoming_url_whitelist",
-                &self.google_cse_incoming_url_whitelist,
-            )
             .field("ms_dke_service_url", &self.ms_dke_service_url);
-
+        if self.google_cse.google_cse_enable {
+            debug_struct
+                .field("google_cse_enable", &self.google_cse.google_cse_enable)
+                .field(
+                    "google_cse_disable_tokens_validation",
+                    &self.google_cse.google_cse_disable_tokens_validation,
+                )
+                .field(
+                    "google_cse_incoming_url_whitelist",
+                    &self.google_cse.google_cse_incoming_url_whitelist,
+                )
+                .field(
+                    "google_cse_migration_key",
+                    &self.google_cse.google_cse_migration_key,
+                );
+        } else {
+            debug_struct.field("google_cse_enable", &self.google_cse.google_cse_enable);
+        }
         if self.hsm_model.is_some() {
             debug_struct
                 .field("hsm_admin", &self.hsm_admin)

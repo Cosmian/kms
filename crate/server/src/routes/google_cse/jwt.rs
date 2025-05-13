@@ -209,12 +209,18 @@ pub(crate) async fn validate_cse_authentication_token(
                 .to_owned(),
         )
     })?;
-    let google_cse_kacls_url = &kms.params.google_cse_kacls_url.clone().ok_or_else(|| {
-        KmsError::ServerError(
-            "Google CSE KACLS URL is empty. Expected: <https://cse.mydomain.com/google_cse>"
-                .to_owned(),
-        )
-    })?;
+    let base_url = kms
+        .params
+        .kms_public_url
+        .as_ref()
+        .ok_or_else(|| {
+            KmsError::ServerError(
+                "Google CSE KACLS URL can't be built: missing KMS_PUBLIC_URL".to_owned(),
+            )
+        })?
+        .trim_end_matches('/');
+
+    let google_cse_kacls_url = format!("{base_url}/google_cse");
     trace!("validate token: KACLS URL {google_cse_kacls_url}");
 
     let mut decoded_token = None;
@@ -233,7 +239,7 @@ pub(crate) async fn validate_cse_authentication_token(
     #[cfg(not(feature = "insecure"))]
     if let Some(kacls_url) = authentication_token.kacls_url {
         kms_ensure!(
-            &kacls_url == google_cse_kacls_url,
+            kacls_url == google_cse_kacls_url,
             KmsError::Unauthorized(format!(
                 "KACLS URLs should match: expected: {google_cse_kacls_url}, got: {kacls_url} "
             ))
@@ -274,12 +280,18 @@ pub(crate) async fn validate_cse_authorization_token(
 ) -> KResult<UserClaim> {
     debug!("validate_cse_authorization_token: entering");
 
-    let google_cse_kacls_url = &kms.params.google_cse_kacls_url.clone().ok_or_else(|| {
-        KmsError::ServerError(
-            "Google CSE KACLS URL is empty. Expected: <https://cse.mydomain.com/google_cse>"
-                .to_owned(),
-        )
-    })?;
+    let base_url = kms
+        .params
+        .kms_public_url
+        .as_ref()
+        .ok_or_else(|| {
+            KmsError::ServerError(
+                "Google CSE KACLS URL can't be built: missing KMS_PUBLIC_URL".to_owned(),
+            )
+        })?
+        .trim_end_matches('/');
+
+    let google_cse_kacls_url = format!("{base_url}/google_cse");
     trace!("validate_cse_authorization_token: KACLS URL {google_cse_kacls_url}");
 
     let cse_config = cse_config.as_ref().ok_or_else(|| {
@@ -326,7 +338,7 @@ pub(crate) async fn validate_cse_authorization_token(
     // #[cfg(not(feature = "insecure"))]
     // if let Some(kacls_url) = authorization_token.kacls_url.clone() {
     //     kms_ensure!(
-    //         &kacls_url == google_cse_kacls_url,
+    //         kacls_url == google_cse_kacls_url,
     //         KmsError::Unauthorized(format!(
     //             "KACLS URLs should match: expected: {google_cse_kacls_url}, got: {kacls_url} "
     //         ))
@@ -400,7 +412,7 @@ mod tests {
         routes::google_cse::{
             self,
             jwt::{
-                decode_jwt_authorization_token, jwt_authorization_config, JWKS_URI, JWT_ISSUER_URI,
+                JWKS_URI, JWT_ISSUER_URI, decode_jwt_authorization_token, jwt_authorization_config,
             },
             operations::WrapRequest,
         },
