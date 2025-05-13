@@ -161,7 +161,7 @@ pub async fn display_rsa_public_key(
     current_kacls_url: &str,
 ) -> KResult<CertsResponse> {
     debug!("get rsa public key");
-    let op = Get {
+    let get_request = Get {
         unique_identifier: Some(UniqueIdentifier::TextString(format!(
             "{GOOGLE_CSE_ID}_rsa_pk"
         ))),
@@ -170,8 +170,7 @@ pub async fn display_rsa_public_key(
         key_compression_type: None,
         key_wrapping_specification: None,
     };
-    let resp = kms.get(op, "", None).await?;
-    debug!("REST - {resp:?}");
+    let resp = kms.get(get_request, "admin", None).await?;
     if resp.object_type == ObjectType::PublicKey {
         match &resp.object.key_block()?.key_value {
             Some(KeyValue::Structure { key_material, .. }) => match key_material {
@@ -953,7 +952,7 @@ pub async fn rewrap(
 
     debug!("rewrap: unwrap key using imported original KMS wrapping key");
     // Forge token with KACLS info
-    let op = Get {
+    let get_request = Get {
         unique_identifier: Some(UniqueIdentifier::TextString(format!("{GOOGLE_CSE_ID}_rsa"))),
         key_format_type: Some(KeyFormatType::PKCS1),
         key_wrap_type: Some(KeyWrapType::NotWrapped),
@@ -961,7 +960,7 @@ pub async fn rewrap(
         key_wrapping_specification: None,
     };
     // TODO: user should be admin ?
-    let resp = kms.get(op, &user, None).await?;
+    let resp = kms.get(get_request, "admin", None).await?;
     if resp.object_type == ObjectType::PrivateKey {
         let private_key_bytes = match &resp.object.key_block()?.key_value {
             Some(KeyValue::Structure { key_material, .. }) => match key_material {

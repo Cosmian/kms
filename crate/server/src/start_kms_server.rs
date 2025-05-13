@@ -1,18 +1,27 @@
 use std::{
     path::PathBuf,
-    sync::{Arc, mpsc},
+    sync::{mpsc, Arc},
 };
 
 use actix_cors::Cors;
 use actix_files::Files;
 use actix_identity::IdentityMiddleware;
-use actix_session::{SessionMiddleware, config::PersistentSession, storage::CookieSessionStore};
+use actix_session::{config::PersistentSession, storage::CookieSessionStore, SessionMiddleware};
 use actix_web::{
-    App, HttpRequest, HttpResponse, HttpServer,
-    cookie::{Key, time::Duration},
+    cookie::{time::Duration, Key},
     dev::ServerHandle,
     middleware::Condition,
     web::{self, Data, JsonConfig, PayloadConfig},
+    App, HttpRequest, HttpResponse, HttpServer,
+};
+use cosmian_kmip::{
+    kmip_0::kmip_types::KeyWrapType,
+    kmip_2_1::{
+        kmip_objects::ObjectType,
+        kmip_operations::Get,
+        kmip_types::{KeyFormatType, UniqueIdentifier},
+        requests::create_rsa_key_pair_request,
+    },
 };
 use openssl::{
     ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod, SslVerifyMode},
@@ -25,7 +34,7 @@ use crate::{
     config::{JwtAuthConfig, ServerParams},
     core::KMS,
     error::KmsError,
-    middlewares::{AuthTransformer, JwksManager, JwtConfig, SslAuth, extract_peer_certificate},
+    middlewares::{extract_peer_certificate, AuthTransformer, JwksManager, JwtConfig, SslAuth},
     result::{KResult, KResultHelper},
     routes::{
         access, get_version,
@@ -36,6 +45,7 @@ use crate::{
         ui_auth::configure_auth_routes,
     },
     socket_server::{SocketServer, SocketServerParams},
+    start_kms_server::google_cse::operations::GOOGLE_CSE_ID,
 };
 
 /// Starts the Key Management System (KMS) server based on the provided configuration.
@@ -81,12 +91,50 @@ pub async fn start_kms_server(
         openssl::provider::Provider::load(None, "default")?
     };
 
+    // Instanciate KMS
     let kms_server = Arc::new(
         KMS::instantiate(server_params.clone())
             .await
             .context("start KMS server: failed instantiating the server")?,
     );
 
+    let get_request = Get {
+        unique_identifier: Some(UniqueIdentifier::TextString(format!("{GOOGLE_CSE_ID}_rsa"))),
+        key_format_type: Some(KeyFormatType::PKCS1),
+        key_wrap_type: Some(KeyWrapType::NotWrapped),
+        key_compression_type: None,
+        key_wrapping_specification: None,
+    };
+
+    match kms_server.get(get_request, "admin", None).await {
+        Ok(resp) if resp.object_type == ObjectType::PrivateKey => {
+            info!("RSA Keypair for Google CSE already exists.");
+        }
+        Err(_) => {
+            info!("RSA Keypair for Google CSE not found, creating one.");
+
+            let create_request = create_rsa_key_pair_request(
+                Some(UniqueIdentifier::TextString(format!("{GOOGLE_CSE_ID}_rsa"))),
+                Vec::<String>::new(),
+                4096,
+                false,
+                None,
+            )?;
+
+            let uid = kms_server
+                .create_key_pair(create_request, "admin", None, None)
+                .await?;
+            debug!("Created new RSA keypair with UID: {uid:?}");
+        }
+        Ok(resp) => {
+            debug!(
+                "Unexpected object type for Google CSE RSA keypair: {:?}",
+                resp.object_type
+            );
+        }
+    }
+
+    // Handle sockets
     let (ss_command_tx, _socket_server_handle) = if server_params.start_socket_server {
         let (tx, rx) = mpsc::channel::<KResult<()>>();
         // Start the socket server
@@ -319,11 +367,9 @@ pub async fn prepare_kms_server(
             )?,
             authorization: google_cse::jwt_authorization_config(&jwks_manager),
         };
-        // debug!("OK {:?}", google_cse_config);
         trace!("Google CSE JWT Config: {:#?}", google_cse_config);
         Some(google_cse_config)
     } else {
-        debug!("KO");
         None
     };
 
