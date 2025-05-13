@@ -288,39 +288,11 @@ pub async fn wrap(
     .await?;
 
     debug!("wrap: wrap dek");
-    let encryption_request = Encrypt {
-        unique_identifier: Some(UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned())),
-        cryptographic_parameters: None,
-        data: Some(general_purpose::STANDARD.decode(&request.key)?.into()),
-        i_v_counter_nonce: None,
-        correlation_value: None,
-        init_indicator: None,
-        final_indicator: None,
-        authenticated_encryption_additional_data: resource_name,
-    };
-    let dek = Box::pin(encrypt(kms, encryption_request, &user, None)).await?;
-
-    // re-extract the bytes from the key
-    let data = dek.data.ok_or_else(|| {
-        KmsError::InvalidRequest("Invalid wrapped key - missing data.".to_owned())
-    })?;
-    let iv_counter_nonce = dek.i_v_counter_nonce.ok_or_else(|| {
-        KmsError::InvalidRequest("Invalid wrapped key - missing nonce.".to_owned())
-    })?;
-    let authenticated_encryption_tag = dek.authenticated_encryption_tag.ok_or_else(|| {
-        KmsError::InvalidRequest("Invalid wrapped key - authenticated encryption tag.".to_owned())
-    })?;
-
-    let mut wrapped_dek = Vec::with_capacity(
-        iv_counter_nonce.len() + data.len() + authenticated_encryption_tag.len(),
-    );
-    wrapped_dek.extend_from_slice(&iv_counter_nonce);
-    wrapped_dek.extend_from_slice(&data);
-    wrapped_dek.extend_from_slice(&authenticated_encryption_tag);
+    let wrapped_dek = cse_key_encrypt(request.key, user, resource_name, kms).await?;
 
     debug!("wrap: exiting with success");
     Ok(WrapResponse {
-        wrapped_key: general_purpose::STANDARD.encode(wrapped_dek),
+        wrapped_key: wrapped_dek,
     })
 }
 
@@ -728,39 +700,11 @@ pub async fn privileged_wrap(
 
     debug!("privileged_wrap: wrap dek");
     let resource_name = request.resource_name.into_bytes();
-    let encryption_request = Encrypt {
-        unique_identifier: Some(UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned())),
-        cryptographic_parameters: None,
-        data: Some(general_purpose::STANDARD.decode(&request.key)?.into()),
-        i_v_counter_nonce: None,
-        correlation_value: None,
-        init_indicator: None,
-        final_indicator: None,
-        authenticated_encryption_additional_data: Some(resource_name),
-    };
-    let dek = Box::pin(encrypt(kms, encryption_request, &user, None)).await?;
-
-    // re-extract the bytes from the key
-    let data = dek.data.ok_or_else(|| {
-        KmsError::InvalidRequest("Invalid wrapped key - missing data.".to_owned())
-    })?;
-    let iv_counter_nonce = dek.i_v_counter_nonce.ok_or_else(|| {
-        KmsError::InvalidRequest("Invalid wrapped key - missing nonce.".to_owned())
-    })?;
-    let authenticated_encryption_tag = dek.authenticated_encryption_tag.ok_or_else(|| {
-        KmsError::InvalidRequest("Invalid wrapped key - authenticated encryption tag.".to_owned())
-    })?;
-
-    let mut wrapped_dek = Vec::with_capacity(
-        iv_counter_nonce.len() + data.len() + authenticated_encryption_tag.len(),
-    );
-    wrapped_dek.extend_from_slice(&iv_counter_nonce);
-    wrapped_dek.extend_from_slice(&data);
-    wrapped_dek.extend_from_slice(&authenticated_encryption_tag);
+    let wrapped_dek = cse_key_encrypt(request.key, user, Some(resource_name), kms).await?;
 
     debug!("privileged_wrap: exiting with success");
     Ok(PrivilegedWrapResponse {
-        wrapped_key: general_purpose::STANDARD.encode(wrapped_dek),
+        wrapped_key: wrapped_dek,
     })
 }
 
@@ -1050,52 +994,24 @@ pub async fn rewrap(
             .json::<PrivilegedUnwrapResponse>()
             .await?;
 
-        let unwrapped_key = response.key.as_bytes().to_vec();
+        let unwrapped_key = response.key;
 
         debug!("rewrap: wrap key using current KMS");
-        let encryption_request = Encrypt {
-            unique_identifier: Some(UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned())),
-            cryptographic_parameters: None,
-            data: Some(unwrapped_key.clone().into()),
-            i_v_counter_nonce: None,
-            correlation_value: None,
-            init_indicator: None,
-            final_indicator: None,
-            authenticated_encryption_additional_data: Some(resource_name.clone().into_bytes()),
-        };
-
-        let encrypt_response = Box::pin(encrypt(kms, encryption_request, &user, None)).await?;
-
-        // re-extract the bytes from the key
-        let data = encrypt_response.data.ok_or_else(|| {
-            KmsError::InvalidRequest("Invalid wrapped key - missing data.".to_owned())
-        })?;
-        let iv_counter_nonce = encrypt_response.i_v_counter_nonce.ok_or_else(|| {
-            KmsError::InvalidRequest("Invalid wrapped key - missing nonce.".to_owned())
-        })?;
-        let authenticated_encryption_tag = encrypt_response
-            .authenticated_encryption_tag
-            .ok_or_else(|| {
-                KmsError::InvalidRequest(
-                    "Invalid wrapped key - authenticated encryption tag.".to_owned(),
-                )
-            })?;
-
-        let mut wrapped_key = Vec::with_capacity(
-            iv_counter_nonce.len() + data.len() + authenticated_encryption_tag.len(),
-        );
-        wrapped_key.extend_from_slice(&iv_counter_nonce);
-        wrapped_key.extend_from_slice(&data);
-        wrapped_key.extend_from_slice(&authenticated_encryption_tag);
+        let resource_name_bytes = resource_name.clone().into_bytes();
+        let wrapped_dek =
+            cse_key_encrypt(unwrapped_key.clone(), user, Some(resource_name_bytes), kms).await?;
 
         debug!("rewrap: encode base64 wrapped_key to generate resource_key_hash");
-        let base64_digest =
-            compute_resource_key_hash(&resource_name, &perimeter_id, &unwrapped_key.into())?;
+        let base64_digest = compute_resource_key_hash(
+            &resource_name,
+            &perimeter_id,
+            &unwrapped_key.as_bytes().to_vec().into(),
+        )?;
 
         debug!("rewrap: exiting with success");
         Ok(RewrapResponse {
             resource_key_hash: base64_digest,
-            wrapped_key: general_purpose::STANDARD.encode(wrapped_key),
+            wrapped_key: general_purpose::STANDARD.encode(wrapped_dek),
         })
     } else {
         Err(KmsError::InvalidRequest(
@@ -1113,7 +1029,6 @@ pub async fn rewrap(
 /// * `user` - A string identifying the user associated with the key.
 /// * `resource_name` - Bytes identifying the resource the key has been made for.
 /// * `kms` - the KMS Server instance
-/// * `database_params` - An optional `ExtraDatabaseParams` containing additional parameters for database operations.
 ///
 /// # Returns
 /// The decrypted key bytes
@@ -1175,6 +1090,60 @@ async fn cse_wrapped_key_decrypt(
         KmsError::InvalidRequest("Invalid decrypted key - missing data.".to_owned())
     })?;
     Ok(data)
+}
+
+/// Encrypt a key
+/// Tries to encrypt it, using the `resource_name`.
+///
+/// # Arguments
+/// * `key` - A base64-encoded string representing the key to wrap.
+/// * `user` - A string identifying the user associated with the key.
+/// * `resource_name` - Bytes identifying the resource the key has been made for.
+/// * `kms` - the KMS Server instance
+///
+/// # Returns
+/// The encrypted key bytes
+///
+/// # Errors
+/// Returns an error if decoding base64 fails, encrypting the key fails, or extracting the key bytes fails.
+///
+async fn cse_key_encrypt(
+    key: String,
+    user: String,
+    resource_name: Option<Vec<u8>>,
+    kms: &Arc<KMS>,
+) -> KResult<String> {
+    let encryption_request = Encrypt {
+        unique_identifier: Some(UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned())),
+        cryptographic_parameters: None,
+        data: Some(general_purpose::STANDARD.decode(&key)?.into()),
+        i_v_counter_nonce: None,
+        correlation_value: None,
+        init_indicator: None,
+        final_indicator: None,
+        authenticated_encryption_additional_data: resource_name,
+    };
+    let dek = Box::pin(encrypt(kms, encryption_request, &user, None)).await?;
+
+    // re-extract the bytes from the key
+    let data = dek.data.ok_or_else(|| {
+        KmsError::InvalidRequest("Invalid wrapped key - missing data.".to_owned())
+    })?;
+    let iv_counter_nonce = dek.i_v_counter_nonce.ok_or_else(|| {
+        KmsError::InvalidRequest("Invalid wrapped key - missing nonce.".to_owned())
+    })?;
+    let authenticated_encryption_tag = dek.authenticated_encryption_tag.ok_or_else(|| {
+        KmsError::InvalidRequest("Invalid wrapped key - authenticated encryption tag.".to_owned())
+    })?;
+
+    let mut wrapped_dek = Vec::with_capacity(
+        iv_counter_nonce.len() + data.len() + authenticated_encryption_tag.len(),
+    );
+    wrapped_dek.extend_from_slice(&iv_counter_nonce);
+    wrapped_dek.extend_from_slice(&data);
+    wrapped_dek.extend_from_slice(&authenticated_encryption_tag);
+
+    Ok(general_purpose::STANDARD.encode(wrapped_dek))
 }
 
 /// Compute resource key hash
