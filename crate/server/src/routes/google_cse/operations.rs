@@ -4,8 +4,8 @@ use std::{
 };
 
 use base64::{
-    engine::{general_purpose, general_purpose::URL_SAFE_NO_PAD},
     Engine,
+    engine::{general_purpose, general_purpose::URL_SAFE_NO_PAD},
 };
 use chrono::{Duration, Utc};
 use clap::crate_version;
@@ -18,7 +18,7 @@ use cosmian_kmip::{
         kmip_types::{CryptographicParameters, KeyFormatType, UniqueIdentifier},
     },
 };
-use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
+use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
 use openssl::{
     hash::MessageDigest,
     md::Md,
@@ -35,8 +35,8 @@ use zeroize::Zeroizing;
 use super::GoogleCseConfig;
 use crate::{
     core::{
-        operations::{decrypt, encrypt},
         KMS,
+        operations::{decrypt, encrypt},
     },
     error::KmsError,
     kms_ensure,
@@ -1045,51 +1045,35 @@ pub async fn rewrap(
             .post(format!("{}/privilegedunwrap", request.original_kacls_url))
             .json(&request_body)
             .send()
+            .await?
+            .error_for_status()?
+            .json::<PrivilegedUnwrapResponse>()
             .await?;
 
-        let status = response.status();
-        let body = response.text().await?;
-        debug!("STATUS {status:?} - BODY {body:?}");
-    } else {
-        return Err(KmsError::InvalidRequest(
-            "Invalid RSA Private key ID. Not RSA Private key.".to_owned(),
-        ));
-    }
+        let unwrapped_key = response.key.as_bytes().to_vec();
 
-    // Request privilegedunwrap to original KMS
-    let unwrapped_data: Zeroizing<Vec<u8>> = cse_wrapped_key_decrypt(
-        request.wrapped_key,
-        // We consider that the key used by the previous KMS to wrap elements was imported under
-        // the original_kacls_url as an ID
-        UniqueIdentifier::TextString(request.original_kacls_url),
-        user.clone(),
-        Some(resource_name.clone().into_bytes()),
-        kms,
-    )
-    .await?;
+        debug!("rewrap: wrap key using current KMS");
+        let encryption_request = Encrypt {
+            unique_identifier: Some(UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned())),
+            cryptographic_parameters: None,
+            data: Some(unwrapped_key.clone().into()),
+            i_v_counter_nonce: None,
+            correlation_value: None,
+            init_indicator: None,
+            final_indicator: None,
+            authenticated_encryption_additional_data: Some(resource_name.clone().into_bytes()),
+        };
 
-    debug!("rewrap: wrap key using current KMS");
-    let encryption_request = Encrypt {
-        unique_identifier: Some(UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned())),
-        cryptographic_parameters: None,
-        data: Some(unwrapped_data.clone()),
-        i_v_counter_nonce: None,
-        correlation_value: None,
-        init_indicator: None,
-        final_indicator: None,
-        authenticated_encryption_additional_data: Some(resource_name.clone().into_bytes()),
-    };
-    let encrypt_response = Box::pin(encrypt(kms, encryption_request, &user, None)).await?;
+        let encrypt_response = Box::pin(encrypt(kms, encryption_request, &user, None)).await?;
 
-    // re-extract the bytes from the key
-    let data = encrypt_response.data.ok_or_else(|| {
-        KmsError::InvalidRequest("Invalid wrapped key - missing data.".to_owned())
-    })?;
-    let iv_counter_nonce = encrypt_response.i_v_counter_nonce.ok_or_else(|| {
-        KmsError::InvalidRequest("Invalid wrapped key - missing nonce.".to_owned())
-    })?;
-    let authenticated_encryption_tag =
-        encrypt_response
+        // re-extract the bytes from the key
+        let data = encrypt_response.data.ok_or_else(|| {
+            KmsError::InvalidRequest("Invalid wrapped key - missing data.".to_owned())
+        })?;
+        let iv_counter_nonce = encrypt_response.i_v_counter_nonce.ok_or_else(|| {
+            KmsError::InvalidRequest("Invalid wrapped key - missing nonce.".to_owned())
+        })?;
+        let authenticated_encryption_tag = encrypt_response
             .authenticated_encryption_tag
             .ok_or_else(|| {
                 KmsError::InvalidRequest(
@@ -1097,21 +1081,27 @@ pub async fn rewrap(
                 )
             })?;
 
-    let mut wrapped_key = Vec::with_capacity(
-        iv_counter_nonce.len() + data.len() + authenticated_encryption_tag.len(),
-    );
-    wrapped_key.extend_from_slice(&iv_counter_nonce);
-    wrapped_key.extend_from_slice(&data);
-    wrapped_key.extend_from_slice(&authenticated_encryption_tag);
+        let mut wrapped_key = Vec::with_capacity(
+            iv_counter_nonce.len() + data.len() + authenticated_encryption_tag.len(),
+        );
+        wrapped_key.extend_from_slice(&iv_counter_nonce);
+        wrapped_key.extend_from_slice(&data);
+        wrapped_key.extend_from_slice(&authenticated_encryption_tag);
 
-    debug!("rewrap: encode base64 wrapped_key to generate resource_key_hash");
-    let base64_digest = compute_resource_key_hash(&resource_name, &perimeter_id, &unwrapped_data)?;
+        debug!("rewrap: encode base64 wrapped_key to generate resource_key_hash");
+        let base64_digest =
+            compute_resource_key_hash(&resource_name, &perimeter_id, &unwrapped_key.into())?;
 
-    debug!("rewrap: exiting with success");
-    Ok(RewrapResponse {
-        resource_key_hash: base64_digest,
-        wrapped_key: general_purpose::STANDARD.encode(wrapped_key),
-    })
+        debug!("rewrap: exiting with success");
+        Ok(RewrapResponse {
+            resource_key_hash: base64_digest,
+            wrapped_key: general_purpose::STANDARD.encode(wrapped_key),
+        })
+    } else {
+        Err(KmsError::InvalidRequest(
+            "Invalid RSA Private key ID. Not RSA Private key.".to_owned(),
+        ))
+    }
 }
 
 /// Decrypts a wrapped key
