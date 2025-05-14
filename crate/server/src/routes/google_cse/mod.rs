@@ -310,3 +310,14 @@ pub(crate) async fn private_key_decrypt(
         Err(e) => CseErrorReply::from(&e).into(),
     }
 }
+
+#[post("/delegate")]
+pub(crate) async fn delegate(
+    _req_http: HttpRequest,
+    _request: Json<WrapPrivateKeyRequest>,
+    _cse_config: Data<Option<GoogleCseConfig>>,
+    _kms: Data<Arc<KMS>>,
+) -> HttpResponse {
+    info!("POST /google_cse/delegate: not implemented yet");
+    HttpResponse::Ok().finish()
+}

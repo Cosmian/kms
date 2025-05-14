@@ -103,6 +103,7 @@ utimaco_pkcs11_loader = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 x509-parser = { workspace = true }
 zeroize = { workspace = true }
+pem.workspace = true
 
 [dev-dependencies]
 actix-http = "3.10"

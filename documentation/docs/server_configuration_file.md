@@ -174,7 +174,7 @@ google_cse_disable_tokens_validation = false
 # the privilegedunwrap endpoint (used to fetch exposed jwks on server start)
 google_cse_incoming_url_whitelist = ["[kacls_url_1]", "[kacls_url_2]"]
 
-# Base64-encoded RSA private key used to ensure consistency of certificate handling and privileged unwrap operations
+# PEM PKCS8 RSA private key used to ensure consistency of certificate handling and privileged unwrap operations
 # across server restarts and multiple server instances. If not provided, a random key will be generated at server startup.
 google_cse_migration_key = "<google_cse_existing_migration_key>"
 ```

@@ -23,7 +23,7 @@ pub struct GoogleCseConfig {
     #[clap(long, env = "KMS_GOOGLE_CSE_INCOMING_URL_WHITELIST")]
     pub google_cse_incoming_url_whitelist: Option<Vec<String>>,
 
-    /// Base64-encoded RSA private key used to ensure consistency of certificate handling and privileged unwrap operations
+    /// PEM PKCS8 RSA private key used to ensure consistency of certificate handling and privileged unwrap operations
     /// across server restarts and multiple server instances. If not provided, a random key will be generated at server startup.
     #[clap(long, env = "KMS_GOOGLE_CSE_MIGRATION_KEY")]
     pub google_cse_migration_key: Option<String>,

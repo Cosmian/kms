@@ -127,7 +127,8 @@ pub(crate) async fn test_app(
         .service(routes::google_cse::privileged_private_key_decrypt)
         .service(routes::google_cse::digest)
         .service(routes::google_cse::certs)
-        .service(routes::google_cse::rewrap);
+        .service(routes::google_cse::rewrap)
+        .service(routes::google_cse::delegate);
 
     app = app.service(google_cse_scope);
 
