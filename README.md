@@ -164,6 +164,8 @@ Retrieve OpenSSL v3.2.0 (already built) with the following commands:
 export OPENSSL_DIR=/usr/local/openssl
 sudo mkdir -p ${OPENSSL_DIR}
 sudo chown -R $USER ${OPENSSL_DIR}
+git clone https://github.com/Cosmian/reusable_scripts.git
+cd reusable_scripts
 bash .github/scripts/get_openssl_binaries.sh
 ```
 
