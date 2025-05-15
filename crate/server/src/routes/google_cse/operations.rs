@@ -940,7 +940,7 @@ pub struct RewrapResponse {
     pub wrapped_key: String,
 }
 
-/// Migrate from the old Key Access Control List Service (KACLS1) to the newer KACLS2.
+/// Migrate from the old Key Access Control List Service (original KACLS) to the newer KACLS2.
 ///
 /// This function takes a Data Encryption Key (DEK) wrapped with KACLS1's wrap API and returns
 /// a DEK wrapped with KACLS2's wrap API.
@@ -1009,16 +1009,16 @@ pub async fn rewrap(
         }
     };
 
-    // Create JWT for KACLS1
+    // Create JWT for original KACLS
     let jwt = create_jwt(
         private_key_bytes,
         kacls_url,
         &request.original_kacls_url,
         &resource_name,
     )?;
-    debug!("Generated JWT for KACLS1: {jwt:?}");
+    debug!("Generated JWT for original KACLS: {jwt:?}");
 
-    // Call privileged unwrap on original KACLS1
+    // Call privileged unwrap on original KACLS
     let unwrap_request = PrivilegedUnwrapRequest {
         authentication: jwt,
         wrapped_key: request.wrapped_key.clone(),
