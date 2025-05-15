@@ -9,16 +9,17 @@ use std::{
 use actix_http::{Request, body::MessageBody};
 use actix_service::Service;
 use actix_web::dev::ServiceResponse;
+use alcoholic_jwt::{JWKS, token_kid, validate};
 use base64::{Engine, engine::general_purpose};
 use cosmian_kmip::{
-    kmip_0::kmip_types::BlockCipherMode,
+    kmip_0::kmip_types::{BlockCipherMode, KeyWrapType},
     kmip_2_1::{
         KmipOperation,
         extra::{VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
         kmip_attributes::Attributes,
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingSpecification},
         kmip_objects::{Certificate, Object, ObjectType, PrivateKey},
-        kmip_operations::{Certify, Get, Import, ImportResponse},
+        kmip_operations::{Certify, Get, GetResponse, Import, ImportResponse},
         kmip_types::{
             CertificateAttributes, CryptographicParameters, EncodingOption,
             EncryptionKeyInformation, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
@@ -45,14 +46,14 @@ use zeroize::Zeroizing;
 use crate::{
     config::ServerParams,
     core::KMS,
+    error::KmsError,
     result::{KResult, KResultHelper},
     routes::google_cse::operations::{
-        DigestRequest, DigestResponse, GOOGLE_CSE_ID, PrivateKeyDecryptRequest,
-        PrivateKeyDecryptResponse, PrivateKeySignRequest, PrivateKeySignResponse,
-        PrivilegedPrivateKeyDecryptRequest, PrivilegedPrivateKeyDecryptResponse,
-        PrivilegedUnwrapRequest, PrivilegedUnwrapResponse, PrivilegedWrapRequest,
-        PrivilegedWrapResponse, RewrapRequest, RewrapResponse, StatusResponse, UnwrapRequest,
-        UnwrapResponse, WrapRequest, WrapResponse,
+        GOOGLE_CSE_ID, PrivateKeyDecryptRequest, PrivateKeyDecryptResponse, PrivateKeySignRequest,
+        PrivateKeySignResponse, PrivilegedPrivateKeyDecryptRequest,
+        PrivilegedPrivateKeyDecryptResponse, PrivilegedUnwrapRequest, PrivilegedUnwrapResponse,
+        PrivilegedWrapRequest, PrivilegedWrapResponse, StatusResponse, UnwrapRequest,
+        UnwrapResponse, WrapRequest, WrapResponse, create_jwt,
     },
     tests::{
         google_cse::utils::generate_google_jwt,
@@ -733,7 +734,7 @@ async fn test_cse_privileged_private_key_decrypt() -> KResult<()> {
 }
 
 #[tokio::test]
-async fn test_cse_rewrap_key() -> KResult<()> {
+async fn test_cse_custom_jwt() -> KResult<()> {
     unsafe {
         std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWKS_URI", JWKS_URI);
         std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWT_ISSUER", JWT_ISSUER_URI);
@@ -741,99 +742,82 @@ async fn test_cse_rewrap_key() -> KResult<()> {
 
     log_init(None);
 
-    let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned()), None).await;
+    let app = test_utils::test_app(Some("https://127.0.0.1:9998".to_owned()), None).await;
 
-    // Import google_cse key
-    import_google_cse_symmetric_key_with_access(&app).await?;
+    let resource_name = "resource_name_test".to_owned();
+    let kacls_url = "https://127.0.0.1:9998/google_cse";
 
-    // // Import original_kms google_cse key
-    // let original_symmetric_key = read_bytes_from_file(&PathBuf::from(
-    //     "../../documentation/docs/google_cse/original_kms_cse_key.demo.key.json",
-    // ))?;
+    // Generate custom JWT
+    let get_request = Get {
+        unique_identifier: Some(UniqueIdentifier::TextString(format!("{GOOGLE_CSE_ID}_rsa"))),
+        key_format_type: Some(KeyFormatType::PKCS1),
+        key_wrap_type: Some(KeyWrapType::NotWrapped),
+        key_compression_type: None,
+        key_wrapping_specification: None,
+    };
 
-    // let object = read_object_from_json_ttlv_bytes(&original_symmetric_key)
-    //     .context("failed parsing the key from the json file")?;
+    let response: GetResponse = test_utils::post_2_1(&app, get_request).await?;
 
-    // // We defined that original kms imported key must be importing under the original_kacls_url as ID
-    // let import_original_key_request = Import {
-    //     unique_identifier: UniqueIdentifier::TextString("original_kacls_url_test".to_owned()),
-    //     object_type: object.object_type(),
-    //     replace_existing: Some(false),
-    //     key_wrap_type: None,
-    //     attributes: object.attributes().cloned().unwrap_or_default(),
-    //     object,
-    // };
+    let private_key_bytes = match response.object_type {
+        ObjectType::PrivateKey => match &response.object.key_block()?.key_value {
+            Some(KeyValue::Structure {
+                key_material: KeyMaterial::ByteString(bytes),
+                ..
+            }) => bytes,
+            _ => {
+                return Err(KmsError::InvalidRequest(
+                    "Expected ByteString key material for RSA private key.".to_owned(),
+                ))
+            }
+        },
+        _ => {
+            return Err(KmsError::InvalidRequest(
+                "Invalid RSA Private key ID. Not an RSA Private key.".to_owned(),
+            ));
+        }
+    };
 
-    // let response_original_key_import: ImportResponse =
-    //     test_utils::post_2_1(&app, import_original_key_request).await?;
-    // debug!("import original kms google_cse key response: {response_original_key_import:?}");
+    // Create JWT
+    let token = create_jwt(private_key_bytes, kacls_url, kacls_url, &resource_name)
+        .expect("JWT creation failed");
 
-    // let access_original_key_request = Access {
-    //     unique_identifier: Some(UniqueIdentifier::TextString(
-    //         "original_kacls_url_test".to_owned(),
-    //     )),
-    //     user_id: "*".to_owned(),
-    //     operation_types: vec![
-    //         KmipOperation::Destroy,
-    //         KmipOperation::Get,
-    //         KmipOperation::Encrypt,
-    //         KmipOperation::Decrypt,
-    //     ],
-    // };
+    assert!(!token.is_empty(), "Generated token should not be empty");
 
-    // let access_original_key_response: SuccessResponse =
-    //     test_utils::post_json_with_uri(&app, access_original_key_request, "/access/grant").await?;
-    // debug!("grant response post: {access_original_key_response:?}");
-
-    // Original DEK and Wrapped DEK with original kms google_cse key
-    let dek: &str = "wHrlNOTI9mU6PBdqiq7EQA==";
-    let wrapped_dek = "k+rlNR98tECJk8ZXhYOYUgCQFh14E2U24UkBslqZhcipcUQ6Kj9OuIIhnAc=";
-
-    // Rewrap DEK with current KMS
-    let token: String = generate_google_jwt()
+    // Decode JWT and check content
+    let jwks: JWKS = test_utils::get_json_with_uri(&app, "/google_cse/certs")
         .await
-        .expect("Error on token generation");
-    let rewrap_request = RewrapRequest {
-        authorization: token.clone(),
-        original_kacls_url: "original_kacls_url_test".to_owned(),
-        wrapped_key: wrapped_dek.to_owned(),
-        reason: String::new(),
-    };
+        .expect("Failed to fetch JWKS");
 
-    let rewrap_response: RewrapResponse =
-        test_utils::post_json_with_uri(&app, rewrap_request, "/google_cse/rewrap").await?;
-    debug!("rewrapping key response post: {rewrap_response:?}");
+    debug!("jwks {:?}", jwks);
 
-    // Unwrap DEK and compare it to the initial DEK
-    let rewrapped_key = rewrap_response.wrapped_key;
+    let validations = vec![
+        #[cfg(not(test))]
+        alcoholic_jwt::Validation::Issuer("https://127.0.0.1/google_cse"),
+        #[cfg(not(feature = "insecure"))]
+        alcoholic_jwt::Validation::NotExpired,
+    ];
 
-    let unwrap_request = PrivilegedUnwrapRequest {
-        authentication: token.clone(),
-        resource_name: String::new(),
-        wrapped_key: rewrapped_key.clone(),
-        reason: String::new(),
-    };
+    let kid = token_kid(&token)
+        .expect("Failed to decode token headers")
+        .expect("No 'kid' claim present in token");
 
-    let unwrap_response: PrivilegedUnwrapResponse =
-        test_utils::post_json_with_uri(&app, unwrap_request, "/google_cse/privilegedunwrap")
-            .await?;
-
-    assert_eq!(dek, unwrap_response.key);
-
-    // Compare the generated resource_key_hash to the one computed on the digest endpoint
-    let digest_request = DigestRequest {
-        authorization: token.clone(),
-        wrapped_key: rewrapped_key,
-        reason: String::new(),
-    };
-    debug!("digest key request post");
-    let digest_response: DigestResponse =
-        test_utils::post_json_with_uri(&app, digest_request, "/google_cse/digest").await?;
-
-    assert_eq!(
-        digest_response.resource_key_hash,
-        rewrap_response.resource_key_hash
+    assert!(
+        !kid.is_empty(),
+        "Token should contain a non-empty 'kid' claim"
     );
+
+    let jwk = jwks.find(&kid).expect("Specified key not found in set");
+
+    let claims = validate(&token, jwk, validations).expect("Token validation has failed!");
+
+    assert!(
+        claims.claims.as_object().is_some_and(|m| !m.is_empty()),
+        "Token claims should be a non-empty JSON object"
+    );
+
+    if let Some(issuer) = claims.claims.get("iss") {
+        assert_eq!(issuer, kacls_url, "Issuer claim should match expected URL");
+    }
 
     Ok(())
 }

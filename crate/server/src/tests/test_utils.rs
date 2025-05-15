@@ -21,11 +21,14 @@ use tracing::info;
 
 use super::google_cse::utils::google_cse_auth;
 use crate::{
-    config::{ClapConfig, MainDBConfig, ServerParams, SocketServerConfig, TlsConfig},
+    config::{
+        ClapConfig, GoogleCseConfig, MainDBConfig, ServerParams, SocketServerConfig, TlsConfig,
+    },
     core::KMS,
     kms_bail,
     result::KResult,
     routes,
+    start_kms_server::handle_google_cse_rsa_keypair,
 };
 
 #[allow(dead_code)]
@@ -56,6 +59,12 @@ pub(crate) fn https_clap_config_opts(kms_public_url: Option<String>) -> ClapConf
             ..Default::default()
         },
         kms_public_url,
+        google_cse_config: GoogleCseConfig {
+            google_cse_enable: true,
+            google_cse_disable_tokens_validation: true,
+            google_cse_incoming_url_whitelist: None,
+            google_cse_migration_key: None,
+        },
         ..Default::default()
     }
 }
@@ -92,10 +101,17 @@ pub(crate) async fn test_app(
         Arc::new(ServerParams::try_from(clap_config).expect("cannot create server params"));
 
     let kms_server = Arc::new(
-        KMS::instantiate(server_params)
+        KMS::instantiate(server_params.clone())
             .await
             .expect("cannot instantiate KMS server"),
     );
+
+    // Handle Google RSA Keypair for CSE Kacls migration
+    if server_params.google_cse.google_cse_enable {
+        handle_google_cse_rsa_keypair(&kms_server, &server_params)
+            .await
+            .expect("start KMS server: failed managing Google CSE RSA Keypair");
+    }
 
     let mut app = App::new()
         .app_data(Data::new(kms_server.clone()))
