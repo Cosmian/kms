@@ -89,5 +89,9 @@
       "name": "test"
     }
   ],
-  "sqltools.useNodeRuntime": true
+  "sqltools.useNodeRuntime": true,
+  "files.watcherExclude": {
+    "**/target": true
+  },
+  "git.ignoreLimitWarning": true
 }

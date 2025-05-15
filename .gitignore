@@ -20,3 +20,6 @@ node_modules/
 **/cosmian-kms/sqlite-data*
 run.sh
 .aider/
+
+# vcpkg install of openssl on windows may end up here
+vcpkg_installed/
