@@ -201,7 +201,10 @@ mod tests {
             google_cse_config: GoogleCseConfig {
                 google_cse_enable: false,
                 google_cse_disable_tokens_validation: false,
-                google_cse_incoming_url_whitelist: None,
+                google_cse_incoming_url_whitelist: Some(vec![
+                    "[kacls_url_1]".to_owned(),
+                    "[kacls_url_2]".to_owned(),
+                ]),
                 google_cse_migration_key: None,
             },
             kms_public_url: Some("[kms_public_url]".to_owned()),
