@@ -318,7 +318,6 @@ pub(crate) async fn validate_cse_authorization_token(
             KmsError::Unauthorized("Authorization token should contain a role".to_owned())
         })?;
         let roles_str: Vec<&str> = roles.iter().map(Role::as_role_str).collect();
-        println!("ROLES {:?} --- {:?}", role, roles_str);
         kms_ensure!(
             roles_str.contains(&role.as_str()),
             KmsError::Unauthorized(format!(
