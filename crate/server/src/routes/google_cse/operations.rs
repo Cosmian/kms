@@ -742,12 +742,6 @@ pub async fn privileged_unwrap(
     };
     let resource_name = request.resource_name.clone();
 
-    debug!(
-        "Resource {:?} {:?}",
-        resource_name,
-        resource_name.clone().into_bytes()
-    ); // TODO: Remove
-
     debug!("privileged_unwrap: unwrap key");
     let data: Zeroizing<Vec<u8>> = cse_wrapped_key_decrypt(
         request.wrapped_key,
@@ -1042,17 +1036,10 @@ pub async fn rewrap(
         .await?
         .key;
 
-    debug!("UNWRAPPED {unwrapped_key}"); // TODO: REMOVE
-    debug!(
-        "Resource {:?} {:?}",
-        resource_name,
-        resource_name.clone().into_bytes()
-    ); // TODO: REMOVE
-
     // Wrap with current KMS (KACLS2)
     debug!("rewrap: re-wrapping key with current KMS");
     let resource_name_bytes = resource_name.clone().into_bytes();
-    let wrapped_key =
+    let re_wrapped_key =
         cse_key_encrypt(unwrapped_key.clone(), user, Some(resource_name_bytes), kms).await?;
 
     // Compute resource key hash
@@ -1066,7 +1053,7 @@ pub async fn rewrap(
     debug!("rewrap: success");
     Ok(RewrapResponse {
         resource_key_hash,
-        wrapped_key: general_purpose::STANDARD.encode(wrapped_key),
+        wrapped_key: re_wrapped_key,
     })
 }
 /// Decrypts a wrapped key
