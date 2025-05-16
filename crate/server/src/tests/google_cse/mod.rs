@@ -32,6 +32,7 @@ use cosmian_kmip::{
 use cosmian_kms_access::access::{Access, SuccessResponse};
 use cosmian_kms_crypto::crypto::certificates::EXTENSION_CONFIG;
 use cosmian_logger::log_init;
+use hex::{FromHex, ToHex};
 use openssl::{
     hash::MessageDigest,
     pkey::{PKey, Private, Public},
@@ -53,7 +54,7 @@ use crate::{
         PrivateKeySignResponse, PrivilegedPrivateKeyDecryptRequest,
         PrivilegedPrivateKeyDecryptResponse, PrivilegedUnwrapRequest, PrivilegedUnwrapResponse,
         PrivilegedWrapRequest, PrivilegedWrapResponse, StatusResponse, UnwrapRequest,
-        UnwrapResponse, WrapRequest, WrapResponse, create_jwt,
+        UnwrapResponse, WrapRequest, WrapResponse, compute_resource_key_hash, create_jwt,
     },
     tests::{
         google_cse::utils::generate_google_jwt,
@@ -177,6 +178,44 @@ fn test_ossl_sign_verify() -> KResult<()> {
     verifier.update(&digest)?;
 
     assert!(verifier.verify(&signature)?);
+
+    Ok(())
+}
+
+/// Test resource key hash computing, from Google officiale documentation exampless
+#[tokio::test]
+async fn test_cse_resource_key_hash() -> KResult<()> {
+    let dek = "6a68079290123ed8f23c845cc8bda91cd961c0246b79446662919e336920cbef";
+    let dek_data = Vec::from_hex(dek).unwrap();
+
+    let resource_name: String =
+        "//googleapis.com/testcase/hJB0PzRI7nl79LC18qaV8WMDCBALBSs9BREcq79MfVw".to_owned();
+
+    let base64_digest = compute_resource_key_hash(&resource_name, "", &dek_data.into()).unwrap();
+    let bytes = general_purpose::STANDARD.decode(base64_digest).unwrap();
+    let hex_digest = bytes.encode_hex::<String>();
+
+    let expected_digest = "4d9aafeb06cd0e812d0f3c10f18573a5aee4c86300a104fad9b258f0b71bd813";
+
+    assert_eq!(hex_digest, expected_digest);
+
+    let dek_bis = "05b62b91cb66f19e27789fb69eb680fac113a70a120178d6cfa6b1b4cb11bb95";
+
+    let dek_data_bis = Vec::from_hex(dek_bis).unwrap();
+
+    let resource_name_bis: String =
+        "//googleapis.com/testcase/od8yfZiS5ZF2RN27X4ClalsV6LobL2FwKRk4qOJxWdE".to_owned();
+
+    let perimeter = "perimeter1";
+
+    let base64_digest_bis =
+        compute_resource_key_hash(&resource_name_bis, perimeter, &dek_data_bis.into()).unwrap();
+    let bytes_bis = general_purpose::STANDARD.decode(base64_digest_bis).unwrap();
+    let hex_digest_bis = bytes_bis.encode_hex::<String>();
+
+    let expected_digest_bis = "1b6231a171bc10ef99dd3b08f0742620811a59191570284d32b674c531cc2da5";
+
+    assert_eq!(hex_digest_bis, expected_digest_bis);
 
     Ok(())
 }

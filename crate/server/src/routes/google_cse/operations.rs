@@ -4,8 +4,8 @@ use std::{
 };
 
 use base64::{
-    engine::{general_purpose, general_purpose::URL_SAFE_NO_PAD},
     Engine,
+    engine::{general_purpose, general_purpose::URL_SAFE_NO_PAD},
 };
 use chrono::{Duration, Utc};
 use clap::crate_version;
@@ -18,7 +18,7 @@ use cosmian_kmip::{
         kmip_types::{CryptographicParameters, KeyFormatType, UniqueIdentifier},
     },
 };
-use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
+use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
 use openssl::{
     hash::MessageDigest,
     md::Md,
@@ -35,8 +35,8 @@ use zeroize::Zeroizing;
 use super::GoogleCseConfig;
 use crate::{
     core::{
-        operations::{decrypt, encrypt},
         KMS,
+        operations::{decrypt, encrypt},
     },
     error::KmsError,
     kms_ensure,
@@ -1200,7 +1200,7 @@ async fn cse_key_encrypt(
 /// # Errors
 /// Returns an error if encoding base64 fails, or if signing key fails.
 ///
-fn compute_resource_key_hash(
+pub fn compute_resource_key_hash(
     resource_name: &str,
     perimeter_id: &str,
     unwrapped_key_bytes: &Zeroizing<Vec<u8>>,
