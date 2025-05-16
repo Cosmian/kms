@@ -4,8 +4,8 @@ use std::{
 };
 
 use base64::{
-    Engine,
     engine::{general_purpose, general_purpose::URL_SAFE_NO_PAD},
+    Engine,
 };
 use chrono::{Duration, Utc};
 use clap::crate_version;
@@ -18,7 +18,7 @@ use cosmian_kmip::{
         kmip_types::{CryptographicParameters, KeyFormatType, UniqueIdentifier},
     },
 };
-use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
+use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
 use openssl::{
     hash::MessageDigest,
     md::Md,
@@ -35,8 +35,8 @@ use zeroize::Zeroizing;
 use super::GoogleCseConfig;
 use crate::{
     core::{
-        KMS,
         operations::{decrypt, encrypt},
+        KMS,
     },
     error::KmsError,
     kms_ensure,
@@ -961,7 +961,7 @@ pub async fn rewrap(
 
     // Authorization & identity
     let application = get_application(&request.reason);
-    let roles = [Role::Reader];
+    let roles = [Role::Reader, Role::Writer];
     // let roles = [Role::Migrator]; TODO: After testing, reverse to migrator role
     let token = validate_cse_authorization_token(
         &request.authorization,
