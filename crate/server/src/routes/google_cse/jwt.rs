@@ -334,16 +334,15 @@ pub(crate) async fn validate_cse_authorization_token(
         ))
     }
 
-    // TODO: Revert after testing
-    // #[cfg(not(feature = "insecure"))]
-    // if let Some(kacls_url) = authorization_token.kacls_url.clone() {
-    //     kms_ensure!(
-    //         kacls_url == google_cse_kacls_url,
-    //         KmsError::Unauthorized(format!(
-    //             "KACLS URLs should match: expected: {google_cse_kacls_url}, got: {kacls_url} "
-    //         ))
-    //     );
-    // }
+    #[cfg(not(feature = "insecure"))]
+    if let Some(kacls_url) = authorization_token.kacls_url.clone() {
+        kms_ensure!(
+            kacls_url == google_cse_kacls_url,
+            KmsError::Unauthorized(format!(
+                "KACLS URLs should match: expected: {google_cse_kacls_url}, got: {kacls_url} "
+            ))
+        );
+    }
 
     if authorization_token.email.is_none() {
         return Err(KmsError::Unauthorized(

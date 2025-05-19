@@ -961,8 +961,7 @@ pub async fn rewrap(
 
     // Authorization & identity
     let application = get_application(&request.reason);
-    let roles = [Role::Reader, Role::Migrator];
-    // let roles = [Role::Migrator]; TODO: After testing, reverse to migrator role
+    let roles = [Role::Migrator];
     let token = validate_cse_authorization_token(
         &request.authorization,
         kms,
