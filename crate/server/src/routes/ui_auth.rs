@@ -56,7 +56,7 @@ pub(crate) async fn login(
     )
     .set_redirect_uri(redirect_url);
 
-    let (auth_url, csrf_token, _nonce) = client
+    let (auth_url, csrf_token, nonce) = client
         .authorize_url(
             CoreAuthenticationFlow::AuthorizationCode,
             CsrfToken::new_random,
@@ -73,6 +73,9 @@ pub(crate) async fn login(
     if let Err(e) = session.insert("csrf_token", csrf_token.secret()) {
         return HttpResponse::InternalServerError()
             .body(format!("Failed to insert csrf_token: {e:?}"));
+    }
+    if let Err(e) = session.insert("nonce", nonce) {
+        return HttpResponse::InternalServerError().body(format!("Failed to insert nonce: {e:?}"));
     }
 
     // Redirect to Identity Provider
@@ -105,6 +108,12 @@ pub(crate) async fn callback(
         Ok(Some(csrf_token)) => Some(csrf_token),
         Ok(None) => return HttpResponse::BadRequest().body("Missing CSRF token"),
         Err(_) => return HttpResponse::InternalServerError().body("Failed to retrieve CSRF token"),
+    };
+
+    let stored_nonce = match session.get::<String>("nonce") {
+        Ok(Some(nonce)) => Nonce::new(nonce),
+        Ok(None) => return HttpResponse::BadRequest().body("Missing nonce"),
+        Err(_) => return HttpResponse::InternalServerError().body("Failed to retrieve nonce"),
     };
 
     // Validate CSRF token
@@ -179,18 +188,38 @@ pub(crate) async fn callback(
                     .body(format!("Failed to get token result: {e}"));
             }
         };
-
         if let Some(id_token) = token_result.extra_fields().id_token() {
             let id_token_str = id_token.to_owned();
-            if session.insert("id_token", id_token_str).is_err() {
-                return HttpResponse::InternalServerError().body("Failed to store id_token");
+            let id_token_verifier = client.id_token_verifier();
+
+            match id_token.claims(&id_token_verifier, &stored_nonce) {
+                Ok(claims) => {
+                    let user_id = claims.email();
+
+                    if session.insert("id_token", &id_token_str).is_err() {
+                        return HttpResponse::InternalServerError().json(serde_json::json!({
+                            "error": "Failed to store id_token"
+                        }));
+                    }
+
+                    if let Some(user_id) = user_id {
+                        if session.insert("user_id", user_id.to_owned()).is_err() {
+                            return HttpResponse::InternalServerError().json(serde_json::json!({
+                                "error": "Failed to store user_id"
+                            }));
+                        }
+                    }
+                }
+                Err(_) => {
+                    return HttpResponse::InternalServerError().json(serde_json::json!({
+                        "error": "Failed to verify or parse claims"
+                    }));
+                }
             }
         } else {
-            return HttpResponse::InternalServerError().json({
-                serde_json::json!({
-                    "error": "Error getting id_token"
-                })
-            });
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Error getting id_token"
+            }));
         }
     }
 
@@ -201,15 +230,19 @@ pub(crate) async fn callback(
 
 #[get("/token")]
 pub(crate) async fn token(session: Session) -> HttpResponse {
-    // Retrieve access token from session
-    match session.get::<String>("id_token") {
-        Ok(Some(id_token)) => HttpResponse::Ok().json(serde_json::json!({
+    // Retrieve id_token and user_id from session
+    match (
+        session.get::<String>("id_token"),
+        session.get::<String>("user_id"),
+    ) {
+        (Ok(Some(id_token)), Ok(Some(user_id))) => HttpResponse::Ok().json(serde_json::json!({
             "id_token": id_token,
+            "user_id": user_id,
         })),
-        Ok(None) => HttpResponse::Unauthorized().json(serde_json::json!({
-            "error": "No ID token found"
+        (Ok(None), _) | (_, Ok(None)) => HttpResponse::Unauthorized().json(serde_json::json!({
+            "error": "No ID token or user ID found"
         })),
-        Err(_) => HttpResponse::InternalServerError().json(serde_json::json!({
+        _ => HttpResponse::InternalServerError().json(serde_json::json!({
             "error": "Failed to retrieve session data"
         })),
     }
