@@ -222,19 +222,25 @@ Options:
 
           [env: KMS_FORCE_DEFAULT_USERNAME=]
 
-      --google-cse-kacls-url <GOOGLE_CSE_KACLS_URL>
-          This setting enables the Google Workspace Client Side Encryption feature of this KMS server.
-
-          It should contain the external URL of this server as configured in Google Workspace client-side encryption settings.
-          For instance, if this server is running on the domain `cse.my_domain.com`.
-          The URL should be something like <https://cse.my_domain.com/google_cse>
-
-          [env: KMS_GOOGLE_CSE_KACLS_URL=]
+      --google-cse-enable
+          This setting turns on endpoints handling Google CSE feature
+          [env: KMS_GOOGLE_CSE_ENABLE=]
 
       --google-cse-disable-tokens-validation
           This setting disables the validation of the tokens used by the Google Workspace CSE feature of this server
 
           [env: KMS_GOOGLE_CSE_DISABLE_TOKENS_VALIDATION=]
+
+      --google-cse-incoming-url-whitelist
+          This setting contains the list of KACLS server URLs that can access this server for Google CSE migration, through
+          the privilegedunwrap endpoint (used to fetch exposed jwks on server start)
+          [env: KMS_GOOGLE_CSE_INCOMING_URL_WHITELIST=]
+
+
+      --google-cse-migration-key
+          PEM PKCS8 RSA private key used to ensure consistency of certificate handling and privileged unwrap operations
+          across server restarts and multiple server instances. If not provided, a random key will be generated at server startup.
+          [env: KMS_GOOGLE_CSE_MIGRATION_KEY=]
 
       --ms-dke-service-url <MS_DKE_SERVICE_URL>
           This setting enables the Microsoft Double Key Encryption service feature of this server.
@@ -313,6 +319,12 @@ Options:
           see `--hsm_slot` for more information
 
       --kms-public-url <KMS_PUBLIC_URL>
+            The setting defining the public URL where the KMS is accessible (e.g., behind a proxy).
+            It is used :
+                -  during the authentication flow initiated from the KMS UI. See the [ui_config] section below.
+                - for cse endpoints: it is required if google cse configuration is activated ;
+            If this server is running on the domain `cse.my_domain.com` with this public URL, the configured URL from
+            Google admin should be something like <https://cse.my_domain.com/google_cse>
           [env: KMS_PUBLIC_URL=]
 
       --privileged-users <PRIVILEGED_USERS>
