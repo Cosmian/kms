@@ -43,7 +43,7 @@ pub struct JwtAuthConfig {
     /// The audience of the JWT token
     ///
     /// Optional: the server will validate the JWT `aud` claim against this value if set - to set an identity provider configuration element to None, set its value to an empty string.
-    #[clap(long, env = "KMS_JST_AUDIENCE", num_args = 1..)]
+    #[clap(long, env = "KMS_JWT_AUDIENCE", num_args = 1..)]
     pub jwt_audience: Option<Vec<String>>,
 }
 
@@ -72,7 +72,7 @@ impl JwtAuthConfig {
                         || vec![None; issuer_uris.len()],
                         |vec| {
                             vec.into_iter()
-                                .map(|s: String| if s.is_empty() { None } else { Some(s) })
+                                .map(|s: String| (!s.is_empty()).then_some(s))
                                 .collect()
                         },
                     )

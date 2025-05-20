@@ -89,17 +89,22 @@ pub async fn handle_google_cse_rsa_keypair(
         key_wrapping_specification: None,
     };
 
-    match kms_server.get(get_request, "admin", None).await {
-        Ok(resp) if matches!(resp.object_type, ObjectType::PrivateKey) => {
-            info!("RSA Keypair for Google CSE already exists.");
-            return Ok(());
-        }
-        Ok(resp) => {
-            return Err(KmsError::CryptographicError(format!(
-                "Unexpected object type for Google CSE RSA keypair: {:?}",
-                resp.object_type
-            )));
-        }
+    match kms_server
+        .get(get_request, &server_params.default_username, None)
+        .await
+    {
+        Ok(resp) => match resp.object_type {
+            ObjectType::PrivateKey => {
+                info!("RSA Keypair for Google CSE already exists.");
+                return Ok(());
+            }
+            _ => {
+                return Err(KmsError::CryptographicError(format!(
+                    "Unexpected object type for Google CSE RSA keypair: {:?}",
+                    resp.object_type
+                )));
+            }
+        },
         Err(_) => {
             info!("RSA Keypair for Google CSE not found from existing DB.");
         }
@@ -172,7 +177,12 @@ pub async fn handle_google_cse_rsa_keypair(
             vec![],
         );
         let imported_sk = kms_server
-            .import(import_request_sk, "admin", None, None)
+            .import(
+                import_request_sk,
+                &server_params.default_username,
+                None,
+                None,
+            )
             .await?;
 
         // Import PublicKey
@@ -185,7 +195,12 @@ pub async fn handle_google_cse_rsa_keypair(
             vec![],
         );
         let imported_pk = kms_server
-            .import(import_request_pk, "admin", None, None)
+            .import(
+                import_request_pk,
+                &server_params.default_username,
+                None,
+                None,
+            )
             .await?;
 
         debug!("Imported RSA keypair with UID: {imported_sk:?} -- {imported_pk:?}");
@@ -201,7 +216,7 @@ pub async fn handle_google_cse_rsa_keypair(
         )?;
 
         let uid = kms_server
-            .create_key_pair(create_request, "admin", None, None)
+            .create_key_pair(create_request, &server_params.default_username, None, None)
             .await?;
 
         debug!("Created new RSA keypair with UID: {uid:?}");
@@ -253,7 +268,7 @@ pub async fn start_kms_server(
         openssl::provider::Provider::load(None, "default")?
     };
 
-    // Instanciate KMS
+    // Instantiate KMS
     let kms_server = Arc::new(
         KMS::instantiate(server_params.clone())
             .await

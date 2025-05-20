@@ -64,7 +64,7 @@ cosmian_logger = { workspace = true }
 dotenvy = "0.15"
 futures = "0.3"
 hex = { workspace = true, features = ["serde"] }
-jsonwebtoken = "9.3.1"
+jsonwebtoken = "9.3"
 lazy_static = { workspace = true }
 log = { workspace = true }
 num-bigint-dig = { workspace = true, features = [

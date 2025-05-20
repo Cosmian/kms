@@ -121,7 +121,7 @@ jwt_issuer_uri = ["<jwt issuer uri>"]
 # Defaults to `<jwt-issuer-uri>/.well-known/jwks.json` if not set
 jwks_uri = ["<jwks uri>"]
 # The audience of the JWT token
-# Optional: The server will validate the JWT `aud` claim against this value if set
+# Optional: the server will validate the JWT `aud` claim against this value if set
 jwt_audience = ["<jwt audience>"]
 
 [workspace]

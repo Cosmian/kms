@@ -55,6 +55,38 @@ impl From<CseErrorReply> for HttpResponse {
     }
 }
 
+/// Builds the full Google CSE KACLS URL using the base KMS public URL.
+///
+/// This function constructs a URL like `https://<kms_public_url>/google_cse`
+/// by retrieving and trimming the `kms_public_url` from the KMS configuration.
+///
+/// # Arguments
+///
+/// * `kms` - A reference-counted pointer to the KMS instance containing configuration parameters.
+///
+/// # Returns
+///
+/// Returns `Ok(String)` containing the fully constructed Google CSE URL if the `kms_public_url` is set.
+///
+/// # Errors
+///
+/// Returns a `KmsError::ServerError` if the `kms_public_url` is not configured (`None`).
+///
+pub fn build_google_cse_url(kms: &Arc<KMS>) -> KResult<String> {
+    let base_url = kms
+        .params
+        .kms_public_url
+        .as_ref()
+        .ok_or_else(|| {
+            KmsError::ServerError(
+                "Google CSE KACLS URL can't be built: missing KMS_PUBLIC_URL".to_owned(),
+            )
+        })?
+        .trim_end_matches('/');
+
+    Ok(format!("{base_url}/google_cse"))
+}
+
 /// Get the status for Google CSE and the URL of the deployed KACLS (Key Access Control List Service)
 #[get("/status")]
 pub(crate) async fn get_status(
@@ -63,18 +95,8 @@ pub(crate) async fn get_status(
 ) -> KResult<Json<operations::StatusResponse>> {
     info!("GET /google_cse/status {}", kms.get_user(&req));
 
-    let base_url = kms
-        .params
-        .kms_public_url
-        .as_ref()
-        .ok_or_else(|| {
-            KmsError::ServerError(
-                "Google CSE KACLS URL can't be built: missing KMS_PUBLIC_URL".to_owned(),
-            )
-        })?
-        .trim_end_matches('/');
+    let google_cse_kacls_url = build_google_cse_url(&kms)?;
 
-    let google_cse_kacls_url = format!("{base_url}/google_cse");
     Ok(Json(operations::get_status(&google_cse_kacls_url)))
 }
 
@@ -82,19 +104,8 @@ pub(crate) async fn get_status(
 #[get("/certs")]
 pub(crate) async fn certs(kms: Data<Arc<KMS>>) -> KResult<Json<operations::CertsResponse>> {
     info!("GET /certs");
-    let kms = kms.into_inner();
-    let base_url = kms
-        .params
-        .kms_public_url
-        .as_ref()
-        .ok_or_else(|| {
-            KmsError::ServerError(
-                "Google CSE KACLS URL can't be built: missing KMS_PUBLIC_URL".to_owned(),
-            )
-        })?
-        .trim_end_matches('/');
 
-    let google_cse_kacls_url = format!("{base_url}/google_cse");
+    let google_cse_kacls_url = build_google_cse_url(&kms)?;
 
     Ok(Json(
         operations::display_rsa_public_key(&kms, &google_cse_kacls_url).await?,

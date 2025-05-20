@@ -170,7 +170,9 @@ pub async fn display_rsa_public_key(
         key_compression_type: None,
         key_wrapping_specification: None,
     };
-    let resp = kms.get(get_request, "admin", None).await?;
+    let resp = kms
+        .get(get_request, &kms.params.default_username, None)
+        .await?;
     if resp.object_type == ObjectType::PublicKey {
         match &resp.object.key_block()?.key_value {
             Some(KeyValue::Structure { key_material, .. }) => match key_material {
@@ -987,7 +989,9 @@ pub async fn rewrap(
         key_wrapping_specification: None,
     };
 
-    let response = kms.get(get_request, "admin", None).await?;
+    let response = kms
+        .get(get_request, &kms.params.default_username, None)
+        .await?;
 
     let private_key_bytes = match response.object_type {
         ObjectType::PrivateKey => match &response.object.key_block()?.key_value {
