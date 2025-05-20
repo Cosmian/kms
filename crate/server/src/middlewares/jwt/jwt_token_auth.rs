@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use actix_identity::Identity;
 use actix_web::{FromRequest, dev::ServiceRequest, http::header};
-use tracing::{debug, error, trace};
+use tracing::{debug, trace};
 
 use super::UserClaim;
 use crate::{
@@ -77,8 +77,6 @@ pub(crate) async fn handle_jwt(
         )
         .unwrap_or_default();
 
-    trace!("Checking JWT identity: {identity}");
-
     // Try to extract and validate the user claim
     let mut private_claim = extract_user_claim(&configs, &identity);
 
@@ -104,7 +102,7 @@ pub(crate) async fn handle_jwt(
         }
         Ok(None) => {
             // JWT is valid but missing the required email claim
-            error!(
+            debug!(
                 "{:?} {} 401 unauthorized, no email in JWT",
                 req.method(),
                 req.path()
@@ -114,9 +112,9 @@ pub(crate) async fn handle_jwt(
         Err(jwt_log_errors) => {
             // JWT validation failed
             for error in &jwt_log_errors {
-                tracing::error!("{error:?}");
+                tracing::debug!("{error:?}");
             }
-            error!(
+            debug!(
                 "{:?} {} 401 unauthorized: bad JWT",
                 req.method(),
                 req.path(),

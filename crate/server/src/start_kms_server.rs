@@ -376,7 +376,9 @@ async fn start_http_kms_server(
 
         if let Some(verify_cert) = &tls_params.client_ca_cert_pem {
             // This line sets the mode to verify peer (client) certificates
-            builder.set_verify(SslVerifyMode::PEER | SslVerifyMode::FAIL_IF_NO_PEER_CERT);
+            // sending the client cert is optional so that
+            // we can handle multiple authentication modes at the same time (WT token, API token)
+            builder.set_verify(SslVerifyMode::PEER);
             let x509_cert = openssl::x509::X509::from_pem(verify_cert)
                 .context("Failed to parse the client CA certificate")?;
             let mut store_builder = X509StoreBuilder::new()?;

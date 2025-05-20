@@ -136,9 +136,7 @@ where
             error!("Authentication method configured, but no authentication provided");
             return Box::pin(async move {
                 Ok(req
-                    .into_response(
-                        HttpResponse::Unauthorized().body("No authentication method configured"),
-                    )
+                    .into_response(HttpResponse::Unauthorized().body("No authentication provided."))
                     .map_into_right_body())
             });
         }
