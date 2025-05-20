@@ -37,7 +37,10 @@ use crate::{
     config::{JwtAuthConfig, ServerParams},
     core::KMS,
     error::KmsError,
-    middlewares::{AuthTransformer, JwksManager, JwtConfig, SslAuth, extract_peer_certificate},
+    middlewares::{
+        ApiTokenAuth, EnsureAuth, JwksManager, JwtAuth, JwtConfig, SslAuth,
+        extract_peer_certificate,
+    },
     result::{KResult, KResultHelper},
     routes::{
         access, get_version,
@@ -250,7 +253,7 @@ pub async fn start_kms_server(
     // For an explanation of OpenSSL providers, see
     //  https://docs.openssl.org/3.1/man7/crypto/#openssl-providers
 
-    // In FIPS mode, we only load the fips provider
+    // In FIPS mode, we only load the FIPS provider
     #[cfg(feature = "fips")]
     let _provider = openssl::provider::Provider::load(None, "fips")?;
 
@@ -399,9 +402,9 @@ async fn start_http_kms_server(
     server.await.map_err(Into::into)
 }
 
-/// This function handles a request to an inner path of the static UI and redirect
+/// This function handles a request to an inner path of the static UI and redirects
 /// it to the index.html file, so that the routing renders the appropriate component
-fn spa_index_handler(req: &HttpRequest, ui_index_html_folder: &PathBuf) -> actix_web::HttpResponse {
+fn spa_index_handler(req: &HttpRequest, ui_index_html_folder: &PathBuf) -> HttpResponse {
     let index_html_path = PathBuf::from(ui_index_html_folder).join("index.html");
     info!("Serving index.html from {}", index_html_path.display());
     match actix_files::NamedFile::open(index_html_path) {
@@ -424,8 +427,7 @@ fn spa_index_handler(req: &HttpRequest, ui_index_html_folder: &PathBuf) -> actix
 /// `builder`: An optional `SslAcceptorBuilder` to configure the SSL encryption for the server.
 ///
 /// # Returns
-/// Returns a `Result` type that contains a `Server` instance if successful, or an error if
-/// something went wrong.
+/// Returns a `Result` type that contains a `Server` instance if successful, or an error if something went wrong.
 ///
 /// # Errors
 /// This function can return the following errors:
@@ -442,7 +444,7 @@ pub async fn prepare_kms_server(
             .google_cse_disable_tokens_validation
         && kms_server.params.kms_public_url.is_some();
 
-    // Prepare the JWT configurations and the JWKS manager if the server is using JWT for authentication.
+    // Prepare the JWT configurations and the JWKS manager if the server uses JWT for authentication.
     let (jwt_configurations, jwks_manager) = if let Some(identity_provider_configurations) =
         &kms_server.params.identity_provider_configurations
     {
@@ -453,7 +455,7 @@ pub async fn prepare_kms_server(
                 JwtAuthConfig::uri(&idp_config.jwt_issuer_uri, idp_config.jwks_uri.as_deref())
             })
             .collect();
-        // Add the one from google if cse is enabled
+        // Add the one from Google if CSE is enabled.
         if enable_google_cse_authentication {
             all_jwks_uris.extend(google_cse::list_jwks_uri(
                 kms_server
@@ -475,7 +477,7 @@ pub async fn prepare_kms_server(
             })
             .collect::<Vec<_>>();
 
-        // Add the one from google if cse is enabled and some external urls are whitelisted
+        // Add the one from Google if CSE is enabled and some external urls are whitelisted
         if enable_google_cse_authentication {
             if let Some(white_list) = &kms_server
                 .params
@@ -488,9 +490,9 @@ pub async fn prepare_kms_server(
                 ));
             }
         }
-        (Some(Arc::new(built_jwt_configurations)), Some(jwks_manager))
+        (Arc::new(built_jwt_configurations), Some(jwks_manager))
     } else {
-        (None, None)
+        (Arc::new(Vec::new()), None)
     };
 
     // Determine if Client Cert Auth should be used for authentication.
@@ -514,11 +516,14 @@ pub async fn prepare_kms_server(
                 "No JWKS manager to handle Google CSE JWT authorization".to_owned(),
             ));
         };
+        if jwt_configurations.is_empty() {
+            return Err(KmsError::ServerError(
+                "Google CSE JWT authorization requires configuring at least one identity provider."
+                    .to_owned(),
+            ));
+        }
         let google_cse_config = GoogleCseConfig {
-            authentication: jwt_configurations.clone().context(
-                "When using Google client-side encryption, an identity provider used to \
-                 authenticate Google Workspace users must be configured.",
-            )?,
+            authentication: jwt_configurations.clone(),
             authorization: google_cse::jwt_authorization_config(&jwks_manager),
         };
         trace!("Google CSE JWT Config: {:#?}", google_cse_config);
@@ -605,7 +610,7 @@ pub async fn prepare_kms_server(
             info!("Serving UI from {}", ui_index_folder.display());
             let oidc_config = kms_server.params.ui_oidc_auth.clone();
 
-            let auth_type: Option<String> = if jwt_configurations.is_some() {
+            let auth_type: Option<String> = if !jwt_configurations.is_empty() {
                 Some("JWT".to_owned())
             } else if use_cert_auth {
                 Some("CERT".to_owned())
@@ -625,10 +630,10 @@ pub async fn prepare_kms_server(
                 "/access-rights{_:.*}",
             ];
             let mut auth_routes = web::scope("/ui")
-                .app_data(web::Data::new(oidc_config))
-                .app_data(web::Data::new(kms_public_url.clone()))
-                .app_data(web::Data::new(ui_index_folder.clone()))
-                .app_data(web::Data::new(auth_type))
+                .app_data(Data::new(oidc_config))
+                .app_data(Data::new(kms_public_url.clone()))
+                .app_data(Data::new(ui_index_folder.clone()))
+                .app_data(Data::new(auth_type))
                 .wrap(Cors::permissive())
                 .configure(configure_auth_routes);
             // Add all SPA routes
@@ -659,12 +664,23 @@ pub async fn prepare_kms_server(
             );
         }
 
+        let use_jwt_auth = !jwt_configurations.is_empty();
+        let use_api_token_auth = kms_server.params.api_token_id.is_some();
+
         // The default scope serves from the root / the KMIP, permissions, and TEE endpoints
         let default_scope = web::scope("")
             .app_data(Data::new(privileged_users.clone()))
-            .wrap(AuthTransformer::new(
+            .wrap(EnsureAuth::new(
                 kms_server.clone(),
-                jwt_configurations.clone(),
+                use_jwt_auth || use_cert_auth || use_api_token_auth,
+            ))
+            .wrap(Condition::new(
+                use_api_token_auth,
+                ApiTokenAuth::new(kms_server.clone()),
+            ))
+            .wrap(Condition::new(
+                use_jwt_auth,
+                JwtAuth::new(jwt_configurations.clone()),
             )) // Use JWT for authentication if necessary.
             .wrap(Condition::new(use_cert_auth, SslAuth)) // Use certificates for authentication if necessary.
             // Enable CORS for the application.

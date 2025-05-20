@@ -75,7 +75,7 @@ impl JwksManager {
 
     /// Refresh the JWK Set by making an external HTTP call to all the `uris`.
     ///
-    /// The JWK Sets are fetched in parallel and warns about failures
+    /// The JWK Sets are fetched in parallel and warn about failures
     /// without stopping the whole fetch process.
     async fn fetch_all(uris: &[String]) -> HashMap<String, JWKS> {
         let client = reqwest::Client::new();

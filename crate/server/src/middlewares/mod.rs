@@ -1,17 +1,21 @@
-mod main;
-pub(crate) use main::AuthTransformer;
-
-mod jwt_token_auth;
-pub(crate) use jwt_token_auth::{JwtAuthClaim, manage_jwt_request};
-
 mod ssl_auth;
-pub(crate) use ssl_auth::{PeerCommonName, SslAuth, extract_peer_certificate};
+pub(crate) use ssl_auth::{SslAuth, extract_peer_certificate};
+
+mod api_token;
+pub(crate) use api_token::ApiTokenAuth;
+
+mod ensure_auth;
+pub(crate) use ensure_auth::EnsureAuth;
 
 mod jwt;
-pub(crate) use jwt::{JwtConfig, JwtTokenHeaders, UserClaim};
+pub(crate) use jwt::{JwksManager, JwtAuth, JwtConfig, JwtTokenHeaders, UserClaim};
 
-mod jwks;
-pub(crate) use jwks::JwksManager;
-
-mod api_token_auth;
-pub(crate) use api_token_auth::manage_api_token_request;
+/// Represents an authenticated user
+///
+/// This struct is stored in the request extensions after successful
+/// authentication and can be used by request handlers.
+#[derive(Debug, Clone)]
+pub(crate) struct AuthenticatedUser {
+    /// The authenticated username
+    pub username: String,
+}
