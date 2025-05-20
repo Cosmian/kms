@@ -1,3 +1,9 @@
+//! JWT Configuration Module
+//!
+//! This module contains configuration structures and validation logic for JWT (JSON Web Token)
+//! authentication. It defines the claims and headers structures, and provides utilities for
+//! processing and validating JWT tokens.
+
 use std::sync::Arc;
 
 use alcoholic_jwt::token_kid;

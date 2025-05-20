@@ -1,3 +1,8 @@
+//! JWT Authentication Middleware
+//!
+//! This module contains the middleware implementation for JWT-based authentication.
+//! It verifies and validates JWT tokens in incoming requests.
+
 use std::{
     pin::Pin,
     rc::Rc,

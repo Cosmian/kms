@@ -1,3 +1,9 @@
+//! JWT Authentication Module
+//!
+//! This module provides JWT (JSON Web Token) based authentication for the KMS server.
+//! It includes components for token validation, JWKS (JSON Web Key Set) management,
+//! and middleware integration.
+
 mod jwt_config;
 pub(crate) use jwt_config::{JwtConfig, JwtTokenHeaders, UserClaim};
 

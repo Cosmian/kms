@@ -1,8 +1,7 @@
-// filepath: /Users/bgrieder/projects/kms/crate/server/src/middlewares/api_token_auth/api_token_middleware.rs
 //! API Token Authentication Middleware
 //!
 //! This module contains the middleware implementation for API token-based authentication.
-//! It provides a separate authentication pipeline that can be used independently from
+//! It provides a separate authentication pipeline that can be used independently of
 //! other authentication methods.
 
 use std::{

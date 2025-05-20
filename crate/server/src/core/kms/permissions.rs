@@ -244,21 +244,21 @@ impl KMS {
 
     /// Get the user from the request depending on the authentication method.
     pub(crate) fn get_user(&self, req_http: &HttpRequest) -> String {
-        let default_username = self.params.default_username.clone();
-
         if self.params.force_default_username {
+            let default_username = self.params.default_username.clone();
             debug!(
                 "Authenticated using forced default user: {}",
                 default_username
             );
             return default_username
         }
-        // if there is a JWT token, use it in priority
         let user = req_http
             .extensions()
             .get::<AuthenticatedUser>()
-            .map(|au| au.username.clone())
-            .unwrap_or(default_username);
+            .map_or_else(
+                || self.params.default_username.clone(),
+                |au| au.username.clone(),
+            );
         debug!("Authenticated user: {}", user);
         user
     }

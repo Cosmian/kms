@@ -1,3 +1,9 @@
+//! SSL/TLS Authentication Middleware
+//!
+//! This module provides SSL/TLS client certificate-based authentication for the KMS server.
+//! It extracts client certificates from TLS connections and validates them to authenticate
+//! users based on the certificate's Common Name (CN) field.
+
 use std::{
     any::Any,
     pin::Pin,
@@ -21,8 +27,6 @@ use openssl::{nid::Nid, x509::X509};
 use tracing::{debug, trace};
 
 use crate::{error::KmsError, kms_bail, middlewares::AuthenticatedUser, result::KResult};
-// see this https://github.com/actix/actix-web/pull/1754#issuecomment-716192605
-// for inspiration
 
 /// The extension struct holding the peer certificate during the connection.
 ///

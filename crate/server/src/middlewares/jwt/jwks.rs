@@ -1,3 +1,9 @@
+//! JWKS (JSON Web Key Set) Manager
+//!
+//! This module provides functionality for managing and refreshing JSON Web Key Sets (JWKS),
+//! which are essential for JWT token signature verification. The manager caches key sets
+//! and refreshes them periodically to ensure up-to-date validation.
+
 use std::{collections::HashMap, sync::RwLock};
 
 use alcoholic_jwt::{JWK, JWKS};

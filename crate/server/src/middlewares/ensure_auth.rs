@@ -1,9 +1,9 @@
-// filepath: /Users/bgrieder/projects/kms/crate/server/src/middlewares/no_auth/mod.rs
-//! No Authentication Middleware
+//! Authentication Fallback Middleware
 //!
-//! This middleware ensures authentication when no other authentication methods are configured.:
-//! - Return the default username from KMS server parameters if configured
-//! - Return a 401 Unauthorized response otherwise
+//! This middleware ensures some form of authentication is present when a request reaches this point.
+//! It provides a fallback mechanism that:
+//! - Uses the default username from KMS server parameters if configured
+//! - Returns a 401 Unauthorized response if no authentication is configured
 
 use std::{
     pin::Pin,
