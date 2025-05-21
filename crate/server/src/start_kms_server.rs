@@ -555,7 +555,7 @@ pub async fn prepare_kms_server(
             .wrap(
                 SessionMiddleware::builder(CookieSessionStore::default(), secret_key.clone())
                     .cookie_path("/".to_owned())
-                    .cookie_http_only(false)
+                    .cookie_http_only(true)
                     .cookie_name("auth_session".to_owned())
                     .cookie_same_site(actix_web::cookie::SameSite::None)
                     .cookie_secure(true)
