@@ -94,6 +94,7 @@ nav:
       - Command line arguments: server_cli.md
       - Databases: database.md
       - Authenticating users to the server: authentication.md
+      - PKCE Authentication: pkce_authentication.md
       - Authorizing users with access rights: authorization.md
       - Enabling TLS: tls.md
       - Logging and telemetry: logging.md

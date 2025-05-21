@@ -84,6 +84,20 @@ Authorization: Bearer <JWT_TOKEN>
 
 The server extracts the username from the token's `email` claim.
 
+#### PKCE Support
+
+The KMS authentication system supports PKCE (Proof Key for Code Exchange) for JWT authentication, which eliminates the need for client secrets. PKCE is a more secure OAuth 2.0 flow for public clients that don't need to store client secrets. The client generates a code verifier and code challenge pair, using the code challenge during authorization and the code verifier during token exchange.
+
+This is particularly useful for:
+- Mobile applications
+- Single-page applications
+- Desktop applications
+- Any client that cannot securely store a client secret
+
+When using PKCE, client secrets become optional in the OAuth2 configuration. The authorization server validates the code verifier against the previously provided code challenge, ensuring secure authentication without exposing client secrets.
+
+For detailed information about implementing PKCE authentication with the KMS, see the [PKCE Authentication](pkce_authentication.md) guide.
+
 #### Multiple Identity Providers
 
 To support multiple identity providers, repeat the parameters in matching order:

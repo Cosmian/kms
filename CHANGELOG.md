@@ -7,9 +7,15 @@ All notable changes to this project will be documented in this file.
 ### 🚀 Features
 
 - Support custom JWT authentication for external KACLS using an RSA keypair in the Google CSE migration flow
-- Expose RSA public key via the new `/certs` endpoint
+- Expose the RSA public key via the new `/certs` endpoint
 - Rewrite `/rewrap` endpoint to fully support the migration flow logic
 - Rewrite `/privilegedunwrap` endpoint to properly integrate with the migration process
+- Support for PKCE (Proof Key for Code Exchange) authentication from the CLI with the Cosmian KMS
+- Concurrent multi-factor authentication with clear cascading rules (OIDC / Client Certificates / API TOken)
+
+### 🐛 Bug Fixes
+
+- Unclear cascading rules in multi-factor authentication
 
 ### 🚜 Refactor
 
@@ -29,6 +35,9 @@ All notable changes to this project will be documented in this file.
 
 - Revise the Google CSE documentation section for clarity and accuracy
 - Add a new section on migrating Google CSE data from Drive, including practical steps and examples
+- PKCE documentation with configuration examples
+- Improved authentication documentation, both client and server side
+ 
 
 ## [5.0.0] - 2025-05-07
 
