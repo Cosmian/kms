@@ -1,5 +1,4 @@
 default_username = "admin"
-google_cse_kacls_url = "https://cse.my_domain.com/google_cse"
 
 [http]
 port = 8585

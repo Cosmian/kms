@@ -80,11 +80,11 @@ Once this is complete, the screen on refresh should turn to this:
 ## Configuring the Key Management Server
 
 The KMS must be behind a valid TLS certificate when started.
-Assuming it is running at `https://cse.example.com`, you should add the External Key Service with KACLS URL `https://cse.example.com/google_cse` in the Client-Side Encryption page of the Google Workspace admin console.
+Assuming it is running at `https://cse.example.com` (kms-public-url parameter from server configuration), you should add the External Key Service with KACLS URL `https://cse.example.com/google_cse` in the Client-Side Encryption page of the Google Workspace admin console.
 
 !!! important
-    To enable Client Side Encryption on the Cosmian KMS server, it must be started with the `--google-cse-kacls-url` option.
-    This option is the URL at which the KMS will serve the Key Access Control Lists (KACLs) for the Google CSE service.
+    To enable Client Side Encryption on the Cosmian KMS server, it must be started with the `--kms-public-url` option, and the `--google-cse-enable` option.
+    This URL option is at which the KMS will serve the Key Access Control Lists (KACLs) for the Google CSE service.
     The KACLs are used by the Google CSE service to determine which users have access to which keys.
     The KACLs are served by the KMS at the URL `https://cse.example.com/google_cse` in the example above.
 
@@ -95,7 +95,8 @@ Assuming Google is the Identity Provider, the KMS should be started with the fol
 ```sh
 --jwt-issuer-uri=https://accounts.google.com
 --jwks-uri=https://www.googleapis.com/oauth2/v3/certs
---google-cse-kacls-url=https://cse.example.com/google_cse
+--kms-public-url=https://cse.example.com
+--google-cse-enable
 ```
 
 For example, if you are using the docker image, you can run the following command:
@@ -104,7 +105,8 @@ For example, if you are using the docker image, you can run the following comman
 docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest \
     --jwt-issuer-uri=https://accounts.google.com \
     --jwks-uri=https://www.googleapis.com/oauth2/v3/certs \
-    --google-cse-kacls-url=https://cse.example.com/google_cse
+    --kms-public-url=https://cse.example.com \
+    --google-cse-enable
 ```
 
 ![external keys service](./images/configure_external_key_service.png)

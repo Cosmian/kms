@@ -1,5 +1,6 @@
 mod clap_config;
 mod db;
+mod google_cse_config;
 mod http_config;
 mod jwt_auth_config;
 mod logging;
@@ -10,6 +11,7 @@ mod workspace;
 
 pub use clap_config::ClapConfig;
 pub use db::{DEFAULT_SQLITE_PATH, MainDBConfig};
+pub use google_cse_config::GoogleCseConfig;
 pub use http_config::HttpConfig;
 pub use jwt_auth_config::JwtAuthConfig;
 pub use logging::LoggingConfig;

@@ -13,7 +13,7 @@ use crate::{core::KMS, error::KmsError, result::KResult};
 mod jwt;
 pub mod operations;
 
-pub use jwt::{GoogleCseConfig, jwt_authorization_config, list_jwks_uri};
+pub use jwt::{GoogleCseConfig, jwt_authorization_config, list_jwks_uri, list_jwt_configurations};
 
 use self::operations::{
     DigestRequest, PrivilegedPrivateKeyDecryptRequest, PrivilegedUnwrapRequest,
@@ -55,6 +55,38 @@ impl From<CseErrorReply> for HttpResponse {
     }
 }
 
+/// Builds the full Google CSE KACLS URL using the base KMS public URL.
+///
+/// This function constructs a URL like `https://<kms_public_url>/google_cse`
+/// by retrieving and trimming the `kms_public_url` from the KMS configuration.
+///
+/// # Arguments
+///
+/// * `kms` - A reference-counted pointer to the KMS instance containing configuration parameters.
+///
+/// # Returns
+///
+/// Returns `Ok(String)` containing the fully constructed Google CSE URL if the `kms_public_url` is set.
+///
+/// # Errors
+///
+/// Returns a `KmsError::ServerError` if the `kms_public_url` is not configured (`None`).
+///
+pub fn build_google_cse_url(kms: &Arc<KMS>) -> KResult<String> {
+    let base_url = kms
+        .params
+        .kms_public_url
+        .as_ref()
+        .ok_or_else(|| {
+            KmsError::ServerError(
+                "Google CSE KACLS URL can't be built: missing KMS_PUBLIC_URL".to_owned(),
+            )
+        })?
+        .trim_end_matches('/');
+
+    Ok(format!("{base_url}/google_cse"))
+}
+
 /// Get the status for Google CSE and the URL of the deployed KACLS (Key Access Control List Service)
 #[get("/status")]
 pub(crate) async fn get_status(
@@ -63,13 +95,21 @@ pub(crate) async fn get_status(
 ) -> KResult<Json<operations::StatusResponse>> {
     info!("GET /google_cse/status {}", kms.get_user(&req));
 
-    let kacls_url = &kms.params.google_cse_kacls_url.clone().ok_or_else(|| {
-        KmsError::ServerError(
-            "Google CSE KACLS URL is empty. Expected: <https://cse.mydomain.com/google_cse>"
-                .to_owned(),
-        )
-    })?;
-    Ok(Json(operations::get_status(kacls_url)))
+    let google_cse_kacls_url = build_google_cse_url(&kms)?;
+
+    Ok(Json(operations::get_status(&google_cse_kacls_url)))
+}
+
+/// Expose RSA Public key elements for migration
+#[get("/certs")]
+pub(crate) async fn certs(kms: Data<Arc<KMS>>) -> KResult<Json<operations::CertsResponse>> {
+    info!("GET /certs");
+
+    let google_cse_kacls_url = build_google_cse_url(&kms)?;
+
+    Ok(Json(
+        operations::display_rsa_public_key(&kms, &google_cse_kacls_url).await?,
+    ))
 }
 
 fn prepare_post_params<T>(
@@ -164,8 +204,16 @@ pub(crate) async fn rewrap(
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
     let (request, cse_config) = prepare_post_params("rewrap", request, cse_config);
+    let Some(base_url) = kms.params.kms_public_url.clone() else {
+        return CseErrorReply::from(&KmsError::InvalidRequest(
+            "Google CSE KACLS URL can't be built: missing KMS_PUBLIC_URL".to_owned(),
+        ))
+        .into();
+    };
 
-    match operations::rewrap(request, &cse_config, &kms)
+    let google_cse_kacls_url = format!("{base_url}/google_cse",);
+
+    match operations::rewrap(request, &google_cse_kacls_url, &cse_config, &kms)
         .await
         .map(Json)
     {
@@ -272,4 +320,15 @@ pub(crate) async fn private_key_decrypt(
         Ok(response) => HttpResponse::Ok().json(response),
         Err(e) => CseErrorReply::from(&e).into(),
     }
+}
+
+#[post("/delegate")]
+pub(crate) async fn delegate(
+    _req_http: HttpRequest,
+    _request: Json<WrapPrivateKeyRequest>,
+    _cse_config: Data<Option<GoogleCseConfig>>,
+    _kms: Data<Arc<KMS>>,
+) -> HttpResponse {
+    info!("POST /google_cse/delegate: not implemented yet");
+    HttpResponse::Ok().finish()
 }

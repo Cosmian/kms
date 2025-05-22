@@ -19,14 +19,17 @@ pub(crate) async fn login(
 ) -> HttpResponse {
     let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
 
-    let Ok(http_client) = oauth2::reqwest::ClientBuilder::new().build() else {
+    let Ok(http_client) = openidconnect::reqwest::ClientBuilder::new().build() else {
         return HttpResponse::InternalServerError().body("Failed to build HTTP client")
     };
 
     let issuer_url = match &oidc_config.ui_oidc_issuer_url {
         Some(url) => match IssuerUrl::new(url.clone()) {
             Ok(valid_url) => valid_url,
-            Err(_) => return HttpResponse::InternalServerError().body("Invalid issuer URL"),
+            Err(err) => {
+                return HttpResponse::InternalServerError()
+                    .body(format!("Invalid issuer URL: {err}"))
+            }
         },
         None => return HttpResponse::InternalServerError().body("Issuer URL is missing"),
     };
@@ -40,11 +43,14 @@ pub(crate) async fn login(
         None => return HttpResponse::InternalServerError().body("Client ID is missing"),
     };
 
-    let Ok(provider_metadata) =
-        CoreProviderMetadata::discover_async(issuer_url, &http_client).await
-    else {
-        return HttpResponse::InternalServerError().body("Failed to fetch provider metadata")
-    };
+    let provider_metadata =
+        match CoreProviderMetadata::discover_async(issuer_url, &http_client).await {
+            Ok(metadata) => metadata,
+            Err(err) => {
+                return HttpResponse::InternalServerError()
+                    .body(format!("Failed to fetch provider metadata: {err}"));
+            }
+        };
 
     let client = CoreClient::from_provider_metadata(
         provider_metadata,
@@ -56,7 +62,7 @@ pub(crate) async fn login(
     )
     .set_redirect_uri(redirect_url);
 
-    let (auth_url, csrf_token, _nonce) = client
+    let (auth_url, csrf_token, nonce) = client
         .authorize_url(
             CoreAuthenticationFlow::AuthorizationCode,
             CsrfToken::new_random,
@@ -73,6 +79,9 @@ pub(crate) async fn login(
     if let Err(e) = session.insert("csrf_token", csrf_token.secret()) {
         return HttpResponse::InternalServerError()
             .body(format!("Failed to insert csrf_token: {e:?}"));
+    }
+    if let Err(e) = session.insert("nonce", nonce) {
+        return HttpResponse::InternalServerError().body(format!("Failed to insert nonce: {e:?}"));
     }
 
     // Redirect to Identity Provider
@@ -96,15 +105,28 @@ pub(crate) async fn callback(
     let stored_pkce_verifier = match session.get::<String>("pkce_verifier") {
         Ok(Some(v)) => Some(PkceCodeVerifier::new(v)),
         Ok(None) => return HttpResponse::BadRequest().body("Missing PKCE verifier"),
-        Err(_) => {
-            return HttpResponse::InternalServerError().body("Failed to retrieve PKCE verifier")
+        Err(e) => {
+            return HttpResponse::InternalServerError()
+                .body(format!("Failed to retrieve PKCE verifier: {e}"))
         }
     };
 
     let stored_csrf_token = match session.get::<String>("csrf_token") {
         Ok(Some(csrf_token)) => Some(csrf_token),
         Ok(None) => return HttpResponse::BadRequest().body("Missing CSRF token"),
-        Err(_) => return HttpResponse::InternalServerError().body("Failed to retrieve CSRF token"),
+        Err(e) => {
+            return HttpResponse::InternalServerError()
+                .body(format!("Failed to retrieve CSRF token: {e}"))
+        }
+    };
+
+    let stored_nonce = match session.get::<String>("nonce") {
+        Ok(Some(nonce)) => Nonce::new(nonce),
+        Ok(None) => return HttpResponse::BadRequest().body("Missing nonce"),
+        Err(e) => {
+            return HttpResponse::InternalServerError()
+                .body(format!("Failed to retrieve nonce: {e}"))
+        }
     };
 
     // Validate CSRF token
@@ -121,7 +143,7 @@ pub(crate) async fn callback(
         None => return HttpResponse::BadRequest().body("Missing authorization code"),
     };
 
-    let Ok(http_client) = oauth2::reqwest::ClientBuilder::new().build() else {
+    let Ok(http_client) = openidconnect::reqwest::ClientBuilder::new().build() else {
         return HttpResponse::InternalServerError().body("Failed to build HTTP client")
     };
 
@@ -129,7 +151,9 @@ pub(crate) async fn callback(
     let issuer_url = match &oidc_config.ui_oidc_issuer_url {
         Some(url) => match IssuerUrl::new(url.clone()) {
             Ok(valid_url) => valid_url,
-            Err(_) => return HttpResponse::InternalServerError().body("Invalid issuer URL"),
+            Err(e) => {
+                return HttpResponse::InternalServerError().body(format!("Invalid issuer URL: {e}"))
+            }
         },
         None => return HttpResponse::InternalServerError().body("Issuer URL is missing"),
     };
@@ -143,11 +167,14 @@ pub(crate) async fn callback(
         None => return HttpResponse::InternalServerError().body("Client ID is missing"),
     };
 
-    let Ok(provider_metadata) =
-        CoreProviderMetadata::discover_async(issuer_url, &http_client).await
-    else {
-        return HttpResponse::InternalServerError().body("Failed to fetch provider metadata")
-    };
+    let provider_metadata =
+        match CoreProviderMetadata::discover_async(issuer_url, &http_client).await {
+            Ok(metadata) => metadata,
+            Err(err) => {
+                return HttpResponse::InternalServerError()
+                    .body(format!("Failed to fetch provider metadata: {err}"));
+            }
+        };
 
     let client = CoreClient::from_provider_metadata(
         provider_metadata,
@@ -179,18 +206,38 @@ pub(crate) async fn callback(
                     .body(format!("Failed to get token result: {e}"));
             }
         };
-
         if let Some(id_token) = token_result.extra_fields().id_token() {
             let id_token_str = id_token.to_owned();
-            if session.insert("id_token", id_token_str).is_err() {
-                return HttpResponse::InternalServerError().body("Failed to store id_token");
+            let id_token_verifier = client.id_token_verifier();
+
+            match id_token.claims(&id_token_verifier, &stored_nonce) {
+                Ok(claims) => {
+                    let user_id = claims.email();
+
+                    if session.insert("id_token", &id_token_str).is_err() {
+                        return HttpResponse::InternalServerError().json(serde_json::json!({
+                            "error": "Failed to store id_token"
+                        }));
+                    }
+
+                    if let Some(user_id) = user_id {
+                        if session.insert("user_id", user_id.to_owned()).is_err() {
+                            return HttpResponse::InternalServerError().json(serde_json::json!({
+                                "error": "Failed to store user_id"
+                            }));
+                        }
+                    }
+                }
+                Err(_) => {
+                    return HttpResponse::InternalServerError().json(serde_json::json!({
+                        "error": "Failed to verify or parse claims"
+                    }));
+                }
             }
         } else {
-            return HttpResponse::InternalServerError().json({
-                serde_json::json!({
-                    "error": "Error getting id_token"
-                })
-            });
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Error getting id_token"
+            }));
         }
     }
 
@@ -201,15 +248,19 @@ pub(crate) async fn callback(
 
 #[get("/token")]
 pub(crate) async fn token(session: Session) -> HttpResponse {
-    // Retrieve access token from session
-    match session.get::<String>("id_token") {
-        Ok(Some(id_token)) => HttpResponse::Ok().json(serde_json::json!({
+    // Retrieve id_token and user_id from session
+    match (
+        session.get::<String>("id_token"),
+        session.get::<String>("user_id"),
+    ) {
+        (Ok(Some(id_token)), Ok(Some(user_id))) => HttpResponse::Ok().json(serde_json::json!({
             "id_token": id_token,
+            "user_id": user_id,
         })),
-        Ok(None) => HttpResponse::Unauthorized().json(serde_json::json!({
-            "error": "No ID token found"
+        (Ok(None), _) | (_, Ok(None)) => HttpResponse::Unauthorized().json(serde_json::json!({
+            "error": "No ID token or user ID found"
         })),
-        Err(_) => HttpResponse::InternalServerError().json(serde_json::json!({
+        _ => HttpResponse::InternalServerError().json(serde_json::json!({
             "error": "Failed to retrieve session data"
         })),
     }
@@ -226,7 +277,9 @@ pub(crate) async fn logout(
     let mut logout_url = match &oidc_config.ui_oidc_logout_url {
         Some(url) => match Url::parse(url) {
             Ok(parsed_url) => parsed_url,
-            Err(_) => return HttpResponse::InternalServerError().body("Invalid logout URL"),
+            Err(e) => {
+                return HttpResponse::InternalServerError().body(format!("Invalid logout URL: {e}"))
+            }
         },
         None => return HttpResponse::InternalServerError().body("Logout URL is missing"),
     };

@@ -19,17 +19,6 @@ default_username = "admin"
 # but always use the default username instead of the one provided by the authentication method
 force_default_username = false
 
-# This setting enables the Google Workspace Client Side Encryption feature of this KMS server.
-# It should contain the external URL of this server as configured
-# in Google Workspace client-side encryption settings. For instance,
-# if this server is running on domain `cse.my_domain.com`,
-# the URL should be something like <https://cse.my_domain.com/google_cse>
-google_cse_kacls_url = "<google cse kacls url>"
-
-# This setting disables the validation of the tokens used by the Google Workspace CSE feature of this server
-# Useful for testing purposes
-google-cse-disable-tokens-validation = false
-
 # This setting enables this server's Microsoft Double Key Encryption service feature.
 # It should contain the external URL of this server as configured in Azure App Registrations
 # as the DKE Service (<https://learn.microsoft.com/en-us/purview/double-key-encryption-setup#register-your-key-store>)
@@ -37,8 +26,11 @@ google-cse-disable-tokens-validation = false
 ms_dke_service_url = "<ms dke service url>"
 
 # This setting defines the public URL where the KMS is accessible (e.g., behind a proxy).
-# It is primarily used during the authentication flow initiated from the KMS UI.
-# See the [ui_config] section below.
+# It is used :
+# -  during the authentication flow initiated from the KMS UI. See the [ui_config] section below.
+# - for cse endpoints: it is required if google cse configuration is activated ;
+# If this server is running on the domain `cse.my_domain.com` with this public URL,
+# The configured URL from Google admin should be something like <https://cse.my_domain.com/google_cse>
 kms_public_url = "kms-public-url"
 
 # Print the server configuration information and exit
@@ -92,14 +84,14 @@ tls_p12_password = "[tls p12 password]"
 clients_ca_cert_file = "[authority cert file]"
 
 # The socket server listens to KMIP binary requests on the IANA-registered 4696 port.
-# The socket server will only start if the TLS configuration is provided **and** client certificate authentication 
+# The socket server will only start if the TLS configuration is provided **and** client certificate authentication
 # is enabled.
 [socket_server]
 # Start the socket server. See comments above on conditions for starting the server.
 socket_server_start = false
 # The socket server port - defaults to 5696
 socket_server_port = 5696
-# The socket server hostname - defaults to "0.0.0.0" 
+# The socket server hostname - defaults to "0.0.0.0"
 socket_server_hostname = "0.0.0.0"
 
 # The HTTP server listens to KMIP requests on the /kmip and /kmip/2_1 endpoints.
@@ -122,13 +114,14 @@ hostname = "0.0.0.0"
 jwt_issuer_uri = ["<jwt issuer uri>"]
 # The JWKS (Json Web Key Set) URI of the JWT token
 # To handle multiple identity managers, add different parameters under each argument
-#  (jwt-issuer-uri, jwks-uri, and optionally jwt-audience), keeping them in the same order
+#  (jwt-issuer-uri, jwks-uri and optionally jwt-audience), keeping them in the same order
+# To set an identity provider configuration element to None, set its value to an empty string.
 # For Auth0, this would be `https://<your-tenant>.<region>.auth0.com/.well-known/jwks.json`
 # For Google, this would be `https://www.googleapis.com/oauth2/v3/certs`
 # Defaults to `<jwt-issuer-uri>/.well-known/jwks.json` if not set
 jwks_uri = ["<jwks uri>"]
 # The audience of the JWT token
-# Optional: The server will validate the JWT `aud` claim against this value if set
+# Optional: the server will validate the JWT `aud` claim against this value if set
 jwt_audience = ["<jwt audience>"]
 
 [workspace]
@@ -168,4 +161,20 @@ ui_oidc_client_id = "<client id>"
 ui_oidc_client_secret = "<client secret>" (optional)
 ui_oidc_issuer_url = "<issuer-url>"
 ui_oidc_logout_url = "<logout-url>"
+
+[google_cse_config]
+# This setting turns on endpoints handling Google CSE feature
+google_cse_enable = false
+
+# This setting disables the validation of the tokens used by the Google Workspace CSE feature of this server
+# Useful for testing purposes
+google_cse_disable_tokens_validation = false
+
+# This setting contains the list of KACLS server URLs that can access this server for Google CSE migration, through
+# the privilegedunwrap endpoint (used to fetch exposed jwks on server start)
+google_cse_incoming_url_whitelist = ["[kacls_url_1]", "[kacls_url_2]"]
+
+# PEM PKCS8 RSA private key used to ensure consistency of certificate handling and privileged unwrap operations
+# across server restarts and multiple server instances. If not provided, a random key will be generated at server startup.
+google_cse_migration_key = "<google_cse_existing_migration_key>"
 ```

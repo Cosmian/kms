@@ -146,8 +146,8 @@ mod tests {
     use std::path::PathBuf;
 
     use cosmian_kms_server::config::{
-        ClapConfig, HttpConfig, JwtAuthConfig, LoggingConfig, MainDBConfig, OidcConfig,
-        SocketServerConfig, TlsConfig, UiConfig, WorkspaceConfig,
+        ClapConfig, GoogleCseConfig, HttpConfig, JwtAuthConfig, LoggingConfig, MainDBConfig,
+        OidcConfig, SocketServerConfig, TlsConfig, UiConfig, WorkspaceConfig,
     };
 
     #[test]
@@ -198,6 +198,15 @@ mod tests {
                     ui_oidc_logout_url: Some("[logout url]".to_owned()),
                 },
             },
+            google_cse_config: GoogleCseConfig {
+                google_cse_enable: false,
+                google_cse_disable_tokens_validation: false,
+                google_cse_incoming_url_whitelist: Some(vec![
+                    "[kacls_url_1]".to_owned(),
+                    "[kacls_url_2]".to_owned(),
+                ]),
+                google_cse_migration_key: None,
+            },
             kms_public_url: Some("[kms_public_url]".to_owned()),
             workspace: WorkspaceConfig {
                 root_data_path: PathBuf::from("[root data path]"),
@@ -205,8 +214,6 @@ mod tests {
             },
             default_username: "[default username]".to_owned(),
             force_default_username: false,
-            google_cse_disable_tokens_validation: false,
-            google_cse_kacls_url: Some("[google cse kacls url]".to_owned()),
             ms_dke_service_url: Some("[ms dke service url]".to_owned()),
             logging: LoggingConfig {
                 rust_log: Some("info,cosmian_kms=debug".to_owned()),
@@ -230,8 +237,6 @@ mod tests {
         let toml_string = r#"
 default_username = "[default username]"
 force_default_username = false
-google_cse_kacls_url = "[google cse kacls url]"
-google_cse_disable_tokens_validation = false
 ms_dke_service_url = "[ms dke service url]"
 info = false
 hsm_model = ""
@@ -277,6 +282,11 @@ ui_oidc_client_id = "[client id]"
 ui_oidc_client_secret = "[client secret]"
 ui_oidc_issuer_url = "[issuer url]"
 ui_oidc_logout_url = "[logout url]"
+
+[google_cse_config]
+google_cse_enable = false
+google_cse_disable_tokens_validation = false
+google_cse_incoming_url_whitelist = ["[kacls_url_1]", "[kacls_url_2]"]
 
 [workspace]
 root_data_path = "[root data path]"

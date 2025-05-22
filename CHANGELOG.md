@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.1.0] - 2025-05-22
+
+### 🚀 Features
+
+- Support custom JWT authentication for external KACLS using an RSA keypair in the Google CSE migration flow
+- Expose RSA public key via the new `/certs` endpoint
+- Rewrite `/rewrap` endpoint to fully support the migration flow logic
+- Rewrite `/privilegedunwrap` endpoint to properly integrate with the migration process
+
+### 🚜 Refactor
+
+- Refactor server configuration to include a dedicated google_cse section
+- Derive the Google CSE KACLS URL from the public_url configuration value for better flexibility
+
+### ⚙️ Miscellaneous Tasks
+
+- Expose user_id in the response from the /token endpoint for improved UI identification
+
+### 🧪 Testing
+
+- Add unit tests for Google CSE digest computation, validating against Google's official documentation appendix
+- Test custom JWT generation and parsing to ensure compatibility and correctness
+
+### 📚 Documentation
+
+- Revise the Google CSE documentation section for clarity and accuracy
+- Add a new section on migrating Google CSE data from Drive, including practical steps and examples
+
 ## [5.0.0] - 2025-05-07
 
 **WARNING**: This is a breaking change release.

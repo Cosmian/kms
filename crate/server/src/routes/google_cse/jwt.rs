@@ -10,6 +10,7 @@ use crate::{
     kms_ensure,
     middlewares::{JwksManager, JwtConfig, JwtTokenHeaders, UserClaim},
     result::KResult,
+    routes::google_cse::build_google_cse_url,
 };
 
 // Default JWT issuer URI
@@ -20,20 +21,59 @@ const JWT_ISSUER_URI: &str = "https://accounts.google.com";
 #[cfg(test)]
 const JWKS_URI: &str = "https://www.googleapis.com/oauth2/v3/certs";
 
-static APPLICATIONS: &[&str; 4] = &["meet", "drive", "gmail", "calendar"];
+static APPLICATIONS: &[&str; 6] = &[
+    "meet",
+    "drive",
+    "gmail",
+    "calendar",
+    "migration",
+    "gmail-sta",
+];
 
 #[allow(clippy::or_fun_call)]
 fn get_jwks_uri(application: &str) -> String {
-    std::env::var(format!("KMS_GOOGLE_CSE_{}_JWKS_URI", application.to_uppercase()))
-    .unwrap_or_else(|_| format!("https://www.googleapis.com/service_accounts/v1/jwk/gsuitecse-tokenissuer-{application}@system.gserviceaccount.com"))
+    if application == "migration" {
+        "https://www.googleapis.com/service_accounts/v1/jwk/apps-security-cse-kaclscommunication@system.gserviceaccount.com".to_owned()
+    } else {
+        std::env::var(format!(
+            "KMS_GOOGLE_CSE_{}_JWKS_URI",
+            application.to_uppercase()
+        ))
+        .unwrap_or_else(|_| {
+            format!(
+                "https://www.googleapis.com/service_accounts/v1/jwk/gsuitecse-tokenissuer-{application}@system.gserviceaccount.com"
+            )
+        })
+    }
 }
 
 /// List the possible JWKS URI for all the supported application
 #[must_use]
-pub fn list_jwks_uri() -> Vec<String> {
-    APPLICATIONS
+pub fn list_jwks_uri(url_whitelist: Option<Vec<String>>) -> Vec<String> {
+    let mut uris = APPLICATIONS
         .iter()
         .map(|app| get_jwks_uri(app))
+        .collect::<Vec<_>>();
+
+    if let Some(whitelist) = url_whitelist {
+        uris.extend(whitelist.into_iter().map(|uri| format!("{uri}/certs")));
+    }
+
+    uris
+}
+
+#[must_use]
+pub fn list_jwt_configurations(
+    url_whitelist: &[String],
+    jwks_manager: &Arc<JwksManager>,
+) -> Vec<JwtConfig> {
+    url_whitelist
+        .iter()
+        .map(|url| JwtConfig {
+            jwt_issuer_uri: url.clone(),
+            jwks: jwks_manager.clone(),
+            jwt_audience: Some("kacls_migration".to_owned()),
+        })
         .collect::<Vec<_>>()
 }
 
@@ -43,11 +83,17 @@ fn jwt_authorization_config_application(
     application: &str,
     jwks_manager: Arc<JwksManager>,
 ) -> Arc<JwtConfig> {
-    let jwt_issuer_uri = std::env::var(format!(
-        "KMS_GOOGLE_CSE_{}_JWT_ISSUER",
-        application.to_uppercase()
-    ))
-    .unwrap_or_else(|_| format!("gsuitecse-tokenissuer-{application}@system.gserviceaccount.com"));
+    let jwt_issuer_uri = if application == "migration" {
+        "apps-security-cse-kaclscommunication@system.gserviceaccount.com".to_owned()
+    } else {
+        std::env::var(format!(
+            "KMS_GOOGLE_CSE_{}_JWT_ISSUER",
+            application.to_uppercase()
+        ))
+        .unwrap_or_else(|_| {
+            format!("gsuitecse-tokenissuer-{application}@system.gserviceaccount.com")
+        })
+    };
 
     let jwt_audience = Some(
         std::env::var("KMS_GOOGLE_CSE_AUDIENCE").unwrap_or_else(|_| "cse-authorization".to_owned()),
@@ -117,6 +163,9 @@ pub(crate) fn decode_jwt_authorization_token(
 
     trace!("looking for kid `{kid}` JWKS:\n{:?}", jwt_config.jwks);
 
+    let issuer_uri = jwt_config.jwt_issuer_uri.clone();
+    trace!("Try to validate token:\n{token:?} \n {issuer_uri:?}");
+
     let jwk = &jwt_config.jwks.find(&kid)?.ok_or_else(|| {
         KmsError::Unauthorized("[Google CSE auth] Specified key not found in set".to_owned())
     })?;
@@ -161,17 +210,13 @@ pub(crate) async fn validate_cse_authentication_token(
                 .to_owned(),
         )
     })?;
-    let google_cse_kacls_url = &kms.params.google_cse_kacls_url.clone().ok_or_else(|| {
-        KmsError::ServerError(
-            "Google CSE KACLS URL is empty. Expected: <https://cse.mydomain.com/google_cse>"
-                .to_owned(),
-        )
-    })?;
+    let google_cse_kacls_url = build_google_cse_url(kms)?;
+
     trace!("validate token: KACLS URL {google_cse_kacls_url}");
 
     let mut decoded_token = None;
     for idp_config in cse_config.authentication.iter() {
-        if let Ok(token) = idp_config.decode_authentication_token(authentication_token) {
+        if let Ok(token) = idp_config.decode_authentication_token(authentication_token, false) {
             // store the decoded claim and break the loop if decoding succeeds
             decoded_token = Some(token);
             break;
@@ -185,7 +230,7 @@ pub(crate) async fn validate_cse_authentication_token(
     #[cfg(not(feature = "insecure"))]
     if let Some(kacls_url) = authentication_token.kacls_url {
         kms_ensure!(
-            &kacls_url == google_cse_kacls_url,
+            kacls_url == google_cse_kacls_url,
             KmsError::Unauthorized(format!(
                 "KACLS URLs should match: expected: {google_cse_kacls_url}, got: {kacls_url} "
             ))
@@ -206,7 +251,7 @@ pub(crate) async fn validate_cse_authentication_token(
             })?
     } else {
         // For `privileged_unwrap` endpoint, google_email or email claim are not provided in authentication token
-        "admin".to_owned()
+        kms.params.default_username.clone()
     };
 
     trace!("authentication token validated for {authentication_email}");
@@ -226,12 +271,8 @@ pub(crate) async fn validate_cse_authorization_token(
 ) -> KResult<UserClaim> {
     debug!("validate_cse_authorization_token: entering");
 
-    let google_cse_kacls_url = &kms.params.google_cse_kacls_url.clone().ok_or_else(|| {
-        KmsError::ServerError(
-            "Google CSE KACLS URL is empty. Expected: <https://cse.mydomain.com/google_cse>"
-                .to_owned(),
-        )
-    })?;
+    let google_cse_kacls_url = build_google_cse_url(kms)?;
+
     trace!("validate_cse_authorization_token: KACLS URL {google_cse_kacls_url}");
 
     let cse_config = cse_config.as_ref().ok_or_else(|| {
@@ -273,10 +314,11 @@ pub(crate) async fn validate_cse_authorization_token(
             "Authorization token should contain an resource_name".to_owned(),
         ))
     }
+
     #[cfg(not(feature = "insecure"))]
     if let Some(kacls_url) = authorization_token.kacls_url.clone() {
         kms_ensure!(
-            &kacls_url == google_cse_kacls_url,
+            kacls_url == google_cse_kacls_url,
             KmsError::Unauthorized(format!(
                 "KACLS URLs should match: expected: {google_cse_kacls_url}, got: {kacls_url} "
             ))
@@ -377,7 +419,7 @@ mod tests {
         let wrap_request: WrapRequest = serde_json::from_str(&wrap_request).unwrap();
 
         let uris = {
-            let mut uris = google_cse::list_jwks_uri();
+            let mut uris = google_cse::list_jwks_uri(None);
             uris.push(JwtAuthConfig::uri(JWT_ISSUER_URI, Some(JWKS_URI)));
             uris
         };
@@ -398,7 +440,7 @@ mod tests {
         };
 
         let authentication_token = jwt_authentication_config
-            .decode_authentication_token(&wrap_request.authentication)
+            .decode_authentication_token(&wrap_request.authentication, true)
             .unwrap();
         info!("AUTHENTICATION token: {:?}", authentication_token);
         assert_eq!(
@@ -422,7 +464,8 @@ mod tests {
         // because we don't know the URL of the Google Drive authorization token API.
         unsafe {
             std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWKS_URI", JWKS_URI);
-            std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWT_ISSUER", JWT_ISSUER_URI); // the token has been issued by Google Accounts (post request)
+            std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWT_ISSUER", JWT_ISSUER_URI);
+            // the token has been issued by Google Accounts (post request)
         }
         let jwt_authorization_config = jwt_authorization_config(&jwks_manager);
         trace!("{jwt_authorization_config:#?}");
