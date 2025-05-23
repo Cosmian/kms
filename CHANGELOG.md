@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### 🐛 Bug Fixes
 
-- Safer handling of Google CSE authorization token decoding
+- Safer handling of Google CSE authorization token decoding (#431)
 
 ## [5.1.0] - 2025-05-22
 
