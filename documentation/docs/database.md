@@ -36,10 +36,10 @@ with Findex offers post-quantum resistance on encrypted data and encrypted index
 
 **Redis-with-Findex** is most useful when:
 
-- KMS servers are run inside a confidential VM or an enclave. In this case, the secret used to encrypt the Redis data
+* KMS servers are run inside a confidential VM or an enclave. In this case, the secret used to encrypt the Redis data
   and indexes, is protected by the VM or enclave and cannot be recovered at runtime by inspecting the KMS servers'
   memory.
-- KMS servers are run by a trusted party but the Redis backend is managed by an untrusted third party.
+* KMS servers are run by a trusted party but the Redis backend is managed by an untrusted third party.
 
 Redis-with-Findex is the database selected
 to [run the Cosmian KMS in the cloud or any other zero-trust environment](installation/marketplace_guide.md).
@@ -48,8 +48,8 @@ to [run the Cosmian KMS in the cloud or any other zero-trust environment](instal
 
 The database parameters may be configured either:
 
-- the [TOML configuration file](./server_configuration_file.md)
-- or the [arguments passed to the server](./server_cli.md) on the command line.
+* the [TOML configuration file](./server_configuration_file.md)
+* or the [arguments passed to the server](./server_cli.md) on the command line.
 
 ### SQLite
 
@@ -144,9 +144,9 @@ These sample instructions create a database called `kms` owned by a user `kms_us
 
 For Redis with Findex, the `--redis-master-password` and `--redis-findex-label` options must also be specified:
 
-- The `redis-master-password` is the password from which keys will be derived (using Argon 2) to encrypt the Redis data
+* The `redis-master-password` is the password from which keys will be derived (using Argon 2) to encrypt the Redis data
   and indexes.
-- The `redis-findex-label` is a public, arbitrary label that can be changed to rotate the Findex ciphertexts without
+* The `redis-findex-label` is a public, arbitrary label that can be changed to rotate the Findex ciphertexts without
   changing the password/key.
 
 === "kms.toml"
@@ -168,7 +168,7 @@ For Redis with Findex, the `--redis-master-password` and `--redis-findex-label` 
     --redis-findex-label=label
     ```
 
-- Redis (with-Findex), use:
+* Redis (with-Findex), use:
 
 ## Clearing the database
 
@@ -198,18 +198,18 @@ written in the CHANGELOG.md. In that case, a generic database upgrade mechanism 
 At first, the table `context` is responsible for storing the software run's version and the database's state.
 The state can be one of the following:
 
-- `ready`: the database is ready to be used
-- `upgrading`: the database is being upgraded
+* `ready`: the database is ready to be used
+* `upgrading`: the database is being upgraded
 
 On startup, the server checks if the software version is greater than the last version run:
 
-- if no, it simply starts;
-- If yes:
+* if no, it simply starts;
+* If yes:
 
-    - it looks for all upgrades to apply in order from the last version run to this version;
-    - if there is any to run, it sets an upgrading flag on the db state field in the context table;
-    - it runs all the upgrades in order.
-    - it sets the flag from upgrading to ready;
+    * it looks for all upgrades to apply in order from the last version run to this version;
+    * if there is any to run, it sets an upgrading flag on the db state field in the context table;
+    * it runs all the upgrades in order.
+    * it sets the flag from upgrading to ready;
 
 On every call to the database, a check is performed on the db state field to check if the database is upgrading. If yes,
 calls fail.

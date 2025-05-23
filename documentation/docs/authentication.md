@@ -1,227 +1,233 @@
-The KMS server can start in authenticated or non-authenticated mode (the default).
+# Authentication
 
-## Non-authenticated mode
+The KMS server offers flexible authentication options, supporting multiple authentication methods that can operate independently or in combination with each other, providing multi-factor authentication capabilities.
 
-In non-authenticated mode, the server maps all requests to the default user, configured using
-the `--default-username` option (or the `KMS_DEFAULT_USERNAME` environment variable). This user will
-default to `admin` if not set.
+## Authentication Modes
+
+### Non-authenticated Mode (Default)
+
+By default, if no authentication methods are configured, the server operates in non-authenticated mode. All requests are mapped to the default user, which can be configured using:
 
 ```sh
 --default-username <DEFAULT_USERNAME>
-    The default username to use when no authentication method is provided
+    The default username to use when no authentication is configured
 
     [env: KMS_DEFAULT_USERNAME=]
     [default: admin]
 ```
 
-## Authenticated mode
+### Authenticated Mode
 
-In authenticated mode, the server requires authentication for all requests. The authentication
-method can be either (one of them is enough):
+When one or more authentication methods are enabled, the server requires successful authentication for all requests. The authentication mechanism works in a cascading fashion, attempting each configured method until one succeeds.
 
-- a TLS client certificate and the server will extract the username from the certificate's subject
-  common name (CN)
-- or using native TLS combined with [Open ID-compliant](https://openid.net/) JWT access tokens or TLS client certificates. The server extracts from the JWT token the username from the token's subject (sub) claim
-- an API token passed in the `Authorization` header configured both at the client and server
-  side (the user being `default-username`)
+## Available Authentication Methods
 
-The server can be configured to use multiple authentication methods concurrently:
+The KMS server supports three primary authentication methods:
 
-- if the server is started with TLS client certificate authentication, the client MUST provide a
-  valid certificate issued by the authority certificate provided by the server ;
-- if server only provides JWT and API token authentication, client MUST provide a valid JWT token OR
-  an API token in the `Authorization` header. Server will first try to authenticate using the JWT
-  token, then the API token if JWT token is not provided.
+1. **TLS Client Certificates**: Authentication based on X.509 client certificates
+2. **JWT Tokens**: Authentication with OpenID-compliant JWT access tokens
+3. **API Tokens**: Authentication using a pre-shared API token
 
-At the end, if the `--force-default-username` option (or the `KMS_FORCE_DEFAULT_USERNAME`
-environment
-variable) is set, the server still performs the authentication but maps all requests to the default
-username.
+These methods can be used individually or in combination for enhanced security.
 
-### Authenticating using TLS client certificates
+## Authentication Flow
 
-The server must be started using TLS, and the certificate used to verify the clients' certificate
-must be provided in PEM format using the `--authority-cert-file` option.
+When multiple authentication methods are configured, the server follows this process:
 
-!!! info "Example client TLS authentication."
+1. If TLS Client Certificate authentication is enabled and a valid certificate is presented, the user is authenticated
+2. If JWT authentication is enabled and a valid JWT token is presented, the user is authenticated
+3. If API Token authentication is enabled and a valid token is presented, the user is authenticated
+4. If all configured authentication methods fail, access is denied with a 401 Unauthorized response
 
-    ```sh
-    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest \
-        --https-p12-file kms.server.p12  --https-p12-password password \
-        --authority-cert-file verifier.cert.pem
-    ```
+A successful authentication at any step will grant access and subsequent authentication methods will be skipped.
 
-The server extracts the username from the client certificate's subject common name (CN) unless
-the `--force-default-username` option (or the `KMS_FORCE_DEFAULT_USERNAME` environment variable) is
-set, in which case the server uses the default username.
+## Configuring Authentication Methods
 
-### Authenticating using JWT access tokens
+### TLS Client Certificate Authentication
 
-The server supports [JWT access tokens](https://jwt.io/) which are compatible
-with [Open ID Connect](https://openid.net/connect/).
-
-The server validates the JWT tokens signatures using the token
-issuer [JSON Web Key Set (JWKS)](https://datatracker.ietf.org/doc/html/rfc7517.) that is pulled on
-server start.
-
-#### The JWT token
-
-The JWT token must be passed to the endpoints of the KMS server using the HTTP Authorization header:
+To enable certificate-based authentication, the server must be started with TLS and a certificate authority (CA) for client verification:
 
 ```sh
-Authorization: Bearer <TOKEN>
+docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest \
+    --https-p12-file kms.server.p12 \
+    --https-p12-password password \
+    --authority-cert-file client_ca.cert.pem
 ```
 
-The JWT token should contain the following claims:
+The server extracts the username from the certificate's Subject Common Name (CN) field. Specifically, the Common Name of the client certificate subject is used directly as the username for authentication purposes. If the certificate is valid but does not contain a Common Name, authentication will fail.
 
-- `iss`: The issuer of the token. This should be the authorization server URL.
-- `sub`: The subject of the token. This should be the email address of the user.
-- `aud`: The audience of the token. OPTIONAL: this should be identical to the one set on the KMS
-  server.
-- `exp`: The expiration time of the token. This should be a timestamp in the future.
-- `iat`: The time the token was issued. This should be a timestamp in the past.
+Example of a subject with a CN field:
 
-On the `cosmian` command line interface, the token is configured in the client configuration. Please
-refer to the [Cosmian CLI](../cosmian_cli/index.md) for more details.
+```text
+C=FR, ST=Ile-de-France, L=Paris, O=Cosmian Tech, CN=john.doe@example.com
+```
 
-#### Configuring the KMS server for JWT authentication
+In this example, `john.doe@example.com` would become the authenticated username.
 
-The KMS server JWT authentication is configured using three command line options (or corresponding
-environment variables):
+Clients must present a valid certificate signed by the specified authority.
 
-!!! info "Example of JWT Configuration"
+### JWT Token Authentication
 
-    Below is an example of a JWT configuration for the KMS server using Google as the authorization
-    server.
+The server supports JWT tokens compatible with [OpenID Connect](https://openid.net/connect/). Configure JWT authentication with:
 
-    ```sh
-    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest \
-        --jwt-issuer-uri=https://accounts.google.com \
-        --jwks-uri=https://www.googleapis.com/oauth2/v3/certs \
-        --jwt-audience=cosmian_kms
-    ```
+```sh
+docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest \
+    --jwt-issuer-uri=https://accounts.google.com \
+    --jwks-uri=https://www.googleapis.com/oauth2/v3/certs \
+    --jwt-audience=cosmian_kms
+```
 
-##### JWT issuer URI
+JWT tokens must be passed in the HTTP Authorization header:
 
-The issuer URI of the JWT token is called to validate the token signature.
+```text
+Authorization: Bearer <JWT_TOKEN>
+```
 
-- server option: `--jwt-issuer-uri <JWT_ISSUER_URI>`
-- env. variable: `KMS_JWT_ISSUER_URI=[<JWT_ISSUER_URI>]`
+The server extracts the username from the token's `email` claim.
 
-##### JWKS URI
+#### PKCE Support
 
-The optional JWKS (JSON Web Key Set) URI of the JWT token is called to retrieve the keyset on server
-start.
-Defaults to `<jwt-issuer-uri>/.well-known/jwks.json` if not set.
+The KMS authentication system supports PKCE (Proof Key for Code Exchange) for JWT authentication, which eliminates the need for client secrets. PKCE is a more secure OAuth 2.0 flow for public clients that don't need to store client secrets. The client generates a code verifier and code challenge pair, using the code challenge during authorization and the code verifier during token exchange.
 
-- server option: `--jwks-uri <JWKS_URI>`
-- env. variable: `KMS_JWKS_URI=[<JWKS_URI>]`
+This is particularly useful for:
 
-##### JWT audience
+- Mobile applications
+- Single-page applications
+- Desktop applications
+- Any client that cannot securely store a client secret
 
-The KMS server validates the JWT `aud` claim against this value if set
+When using PKCE, client secrets become optional in the OAuth2 configuration. The authorization server validates the code verifier against the previously provided code challenge, ensuring secure authentication without exposing client secrets.
 
-- server option: `--jwt-audience <JWT_AUDIENCE>`
-- env. variable: `KMS_JWT_AUDIENCE=[<JWT_AUDIENCE>]`
+For detailed information about implementing PKCE authentication with the KMS, see the [PKCE Authentication](pkce_authentication.md) guide.
 
-#### Support for concurrent Identity Providers
+#### Multiple Identity Providers
 
-The Cosmian KMS server supports concurrent identity providers. To handle multiple identity
-providers concurrently, repeat each parameter (`jwt-issuer-uri`, `jwks-uri` and optionally
-`jwt-audience`), keeping them in the same order. To set an identity provider configuration element to None, set its value to an empty string.
+To support multiple identity providers, repeat the parameters in matching order:
 
-Example:
-
-```shell
+```sh
 --jwt-issuer-uri=https://accounts.google.com \
 --jwks-uri=https://www.googleapis.com/oauth2/v3/certs \
 --jwt-audience=cosmian_kms \
---jwt-issuer-uri=https://login.microsoftonline.com/<TENANT_ID>/discovery/v2.0/ \
+--jwt-issuer-uri=https://login.microsoftonline.com/<TENANT_ID>/v2.0 \
 --jwks-uri=https://login.microsoftonline.com/<TENANT_ID>/discovery/v2.0/keys \
 --jwt-audience=<CLIENT_ID>
 ```
 
-#### Common Identity Providers
+### API Token Authentication
 
-##### Google ID tokens
+API Token authentication uses a symmetric key stored in the KMS as the authentication token:
 
-Use the following options to configure the KMS server for Google ID tokens:
+1. Generate a symmetric key and note its ID:
+
+   ```sh
+   cosmian kms sym keys create
+   ```
+
+2. Export the key in base64 format:
+
+   ```sh
+   cosmian kms sym keys export -k <SYMMETRIC_KEY_ID> -f base64 api_token.base64
+   ```
+
+3. Start the server with the API token ID:
+
+   ```sh
+   docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest \
+       --api-token-id <SYMMETRIC_KEY_ID>
+   ```
+
+4. Configure the client to use the API token:
+
+   ```text
+   Authorization: Bearer <BASE64_TOKEN>
+   ```
+
+When using API token authentication, the authenticated user will be the default username.
+
+## Force Default Username
+
+If you want to enforce a consistent username regardless of the authentication method, use:
+
+```sh
+--force-default-username <true|false>
+    Force using the default username regardless of the authentication method
+
+    [env: KMS_FORCE_DEFAULT_USERNAME=]
+    [default: false]
+```
+
+When enabled, the server still performs the authentication validation to ensure the client has valid credentials, but it ignores the username that would normally be extracted (such as the certificate's Common Name or JWT email claim) and instead maps all authenticated requests to the default username.
+
+This feature is particularly useful in scenarios where:
+
+- You want consistent user identity across all requests regardless of authentication method
+- You prefer to manage access control independently from the authentication credentials
+- You're transitioning between authentication methods but need to maintain consistent audit trails
+
+When `force-default-username` is enabled with multiple authentication methods, the server will still cascade through the authentication methods, but always use the default username upon successful authentication.
+
+## Multi-Factor Authentication Examples
+
+### Example 1: Client Certificate and JWT Authentication
+
+```sh
+docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest \
+    --https-p12-file kms.server.p12 \
+    --https-p12-password password \
+    --authority-cert-file client_ca.cert.pem \
+    --jwt-issuer-uri=https://accounts.google.com \
+    --jwks-uri=https://www.googleapis.com/oauth2/v3/certs
+```
+
+In this configuration:
+
+- Clients can authenticate using either a valid client certificate or a valid JWT token
+- If both are provided, the certificate is checked first
+
+### Example 2: JWT and API Token Authentication
+
+```sh
+docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest \
+    --jwt-issuer-uri=https://accounts.google.com \
+    --jwks-uri=https://www.googleapis.com/oauth2/v3/certs \
+    --api-token-id <SYMMETRIC_KEY_ID>
+```
+
+In this configuration:
+
+- Clients can authenticate using either a valid JWT token or the API token
+- JWT authentication is attempted first, followed by API token verification
+
+## Common Identity Provider Configurations
+
+### Google ID Tokens
 
 ```sh
 --jwt-issuer-uri=https://accounts.google.com
 --jwks-uri=https://www.googleapis.com/oauth2/v3/certs
 ```
 
-##### Auth0
-
-Use the following options to configure the KMS server for Auth0:
+### Auth0
 
 ```sh
 --jwt-issuer-uri=https://<your-tenant>.<region>.auth0.com/
 --jwks-uri=https://<your-tenant>.<region>.auth0.com/.well-known/jwks.json
 ```
 
-Note: the `/` is mandatory at the end of the issuer URL; if not present the `iss` will not validate
+Note: the trailing `/` is required in the issuer URI
 
-##### Google Firebase
-
-Use the following options to configure the KMS server for Google Firebase:
+### Microsoft Entra ID (Azure AD)
 
 ```sh
---jwt-issuer-uri=https://securetoken.google.com/<YOUR-PROJECT-ID>
---jwks-uri=https://www.googleapis.com/service_accounts/v1/metadata/x509/securetoken@system.gserviceaccount.com
+--jwt-issuer-uri=https://login.microsoftonline.com/<TENANT_ID>/v2.0
+--jwks-uri=https://login.microsoftonline.com/<TENANT_ID>/discovery/v2.0/keys
+--jwt-audience=<CLIENT_ID>
 ```
 
-##### Okta
-
-Use the following options to configure the KMS server for Okta:
+### Okta
 
 ```sh
 --jwt-issuer-uri=https://<OKTA_TENANT_NAME>.com
 --jwks-uri=https://<OKTA_TENANT_NAME>.com/oauth2/v1/keys
 --jwt-audience=<OKTA_CLIENT_ID>
-```
-
-##### Microsoft Entra ID
-
-Use the following options to configure the KMS server for Microsoft Entra ID:
-
-```sh
---jwt-issuer-uri=https://login.microsoftonline.com/<TENANT_ID>/discovery/v2.0/
---jwks-uri=https://login.microsoftonline.com/<TENANT_ID>/discovery/v2.0/keys
---jwt-audience=<CLIENT_ID>
-```
-
-### Authenticating using an API Token
-
-The server can be configured to authenticate using an API token passed in the `Authorization`
-header.
-
-To proceed, follow these steps:
-
-- run Cosmian KMS server without API token authentication
-- generate a symmetric key and export it from the server
-- restart the server with the `--api-token-id` option
-- configure `cosmian` client with a `access_token` containing the API token in base64.
-
-To generate a new API token, use the `cosmian` CLI and save the symmetric key unique identifier (<
-SYMMETRIC_KEY_ID>):
-
-```sh
-cosmian kms sym keys create
-```
-
-Then export the symmetric key content in base64:
-
-```sh
-cosmian kms sym keys export -k <SYMMETRIC_KEY_ID> f base64 api_token.base64
-```
-
-Reconfigure `cosmian` client with the previous base64 encoded key as `access_token`.
-Your `cosmian` is now ready to authenticate using the API token.
-
-And finally, restart the server with the `--api-token-id` option.
-
-```sh
---api_token_id <SYMMETRIC_KEY_ID>
 ```

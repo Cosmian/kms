@@ -80,6 +80,7 @@ repos:
       - id: check-symlinks
       - id: check-toml
       - id: check-vcs-permalinks
+        exclude: crate/kmip/src/ttlv/kmip_ttlv_deserializer
       - id: check-xml
       - id: check-yaml
       - id: debug-statements
