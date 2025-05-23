@@ -113,10 +113,14 @@ where
         self.service.poll_ready(ctx)
     }
 
-    /// Processes each request by applying to ensure authentication
+    /// Handles incoming requests to ensure authentication requirements are met.
     ///
-    /// If a default username is configured in the KMS server, it will be used as the
-    /// authenticated user. Otherwise, a 401 Unauthorized response is returned.
+    /// - If the request is already authenticated (contains an `AuthenticatedUser`),
+    /// it passes the request to the next service.
+    /// - If any authentication method is configured but not provided,
+    /// responds with 401 Unauthorized.
+    /// - If no authentication is configured, it injects the default username (if set)
+    /// as the authenticated user and passes the request to the next service.
     fn call(&self, req: ServiceRequest) -> Self::Future {
         let service = self.service.clone();
 

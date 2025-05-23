@@ -86,6 +86,9 @@ scopes = [
 # client_secret = <-- Not Set
 ```
 
+*Note*: the Google IdP officially support PKCE, but still requires a client secret. 
+
+
 2. KMS Server Configuration
 
 _important_: on Entra ID, configure the redirect URL to be for Native/Desktop (not Single Page Application)

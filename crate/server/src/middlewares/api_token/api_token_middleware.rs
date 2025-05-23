@@ -121,7 +121,7 @@ where
         Box::pin(async move {
             if req.extensions().contains::<AuthenticatedUser>() {
                 debug!(
-                    "JWT: An authenticated user was found; there is no need to authenticate \
+                    "API Token Middleware: An authenticated user was found; there is no need to authenticate \
                      twice..."
                 );
             } else {

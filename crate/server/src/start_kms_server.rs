@@ -503,6 +503,11 @@ pub async fn prepare_kms_server(
         .tls_params
         .as_ref()
         .is_some_and(|tls_params| tls_params.client_ca_cert_pem.is_some());
+    // Determine if API Token Auth should be used for authentication.
+    let use_jwt_auth = !jwt_configurations.is_empty();
+    // Determine if API Token Auth should be used for authentication.
+    let use_api_token_auth = kms_server.params.api_token_id.is_some();
+
 
     // Determine the address to bind the server to.
     let address = format!(
@@ -612,7 +617,7 @@ pub async fn prepare_kms_server(
             info!("Serving UI from {}", ui_index_folder.display());
             let oidc_config = kms_server.params.ui_oidc_auth.clone();
 
-            let auth_type: Option<String> = if !jwt_configurations.is_empty() {
+            let auth_type: Option<String> = if use_jwt_auth {
                 Some("JWT".to_owned())
             } else if use_cert_auth {
                 Some("CERT".to_owned())
@@ -666,8 +671,6 @@ pub async fn prepare_kms_server(
             );
         }
 
-        let use_jwt_auth = !jwt_configurations.is_empty();
-        let use_api_token_auth = kms_server.params.api_token_id.is_some();
 
         // The default scope serves from the root / the KMIP, permissions, and TEE endpoints
         let default_scope = web::scope("")

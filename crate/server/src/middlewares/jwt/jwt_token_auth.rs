@@ -23,17 +23,17 @@ use crate::{
 ///
 /// # Parameters
 /// * `configs` - List of JWT configurations to try
-/// * `identity` - The JWT token string
+/// * `token` - The JWT token string
 ///
 /// # Returns
 /// * `Ok(UserClaim)` - Successfully validated user claim
 /// * `Err(Vec<KmsError>)` - List of errors from failed validation attempts
-fn extract_user_claim(configs: &[JwtConfig], identity: &str) -> Result<UserClaim, Vec<KmsError>> {
+fn extract_user_claim(configs: &[JwtConfig], token: &str) -> Result<UserClaim, Vec<KmsError>> {
     let mut jwt_log_errors = Vec::new();
 
     // Try each JWT configuration until one succeeds
     for idp_config in configs {
-        match idp_config.decode_bearer_header(identity) {
+        match idp_config.decode_bearer_header(token) {
             Ok(user_claim) => return Ok(user_claim),
             Err(error) => {
                 jwt_log_errors.push(error);
@@ -71,7 +71,7 @@ pub(crate) async fn handle_jwt(
                 // If Identity extraction fails, try the Authorization header
                 req.headers()
                     .get(header::AUTHORIZATION)
-                    .and_then(|h| h.to_str().ok().map(std::string::ToString::to_string))
+                    .and_then(|h| h.to_str().ok().map(ToString::to_string))
             },
             |identity| identity.id().ok(),
         )

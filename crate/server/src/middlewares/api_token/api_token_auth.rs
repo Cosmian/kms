@@ -117,9 +117,6 @@ pub(crate) async fn handle_api_token(kms_server: &Arc<KMS>, req: &ServiceRequest
         .trim_start()
         .to_lowercase();
 
-    trace!("API Token: {api_token}");
-    trace!("Client API Token: {client_token}");
-
     // Compare the client token with the stored token
     if client_token == api_token.as_str() {
         debug!("Token authentication successful");
