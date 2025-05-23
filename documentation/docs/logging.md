@@ -92,5 +92,3 @@ Then start the KMS locally with the following command:
 ```bash
 ./cosmian_kms_server --otlp http://localhost:4317 --quiet
 ```
-
-```

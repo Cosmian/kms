@@ -38,45 +38,51 @@ pub(crate) async fn import_root_and_intermediate(
     ctx: &TestsContext,
 ) -> KmsCliResult<(String, String, String)> {
     // import Root CA
-    let root_ca_id = ImportCertificateAction {
-        certificate_file: Some(PathBuf::from("../../test_data/certificates/csr/ca.crt")),
-        input_format: CertificateInputFormat::Pem,
-        certificate_id: Some(Uuid::new_v4().to_string()),
-        replace_existing: true,
-        ..Default::default()
-    }
-    .run(ctx.get_owner_client())
+    let root_ca_id = Box::pin(
+        ImportCertificateAction {
+            certificate_file: Some(PathBuf::from("../../test_data/certificates/csr/ca.crt")),
+            input_format: CertificateInputFormat::Pem,
+            certificate_id: Some(Uuid::new_v4().to_string()),
+            replace_existing: true,
+            ..Default::default()
+        }
+        .run(ctx.get_owner_client()),
+    )
     .await?
     .unwrap();
 
     // import Intermediate CA
-    let intermediate_ca_id = ImportCertificateAction {
-        certificate_file: Some(PathBuf::from(
-            "../../test_data/certificates/csr/intermediate.crt",
-        )),
-        input_format: CertificateInputFormat::Pem,
-        certificate_id: Some(Uuid::new_v4().to_string()),
-        replace_existing: true,
-        tags: vec!["root_ca".to_string()],
-        ..Default::default()
-    }
-    .run(ctx.get_owner_client())
+    let intermediate_ca_id = Box::pin(
+        ImportCertificateAction {
+            certificate_file: Some(PathBuf::from(
+                "../../test_data/certificates/csr/intermediate.crt",
+            )),
+            input_format: CertificateInputFormat::Pem,
+            certificate_id: Some(Uuid::new_v4().to_string()),
+            replace_existing: true,
+            tags: vec!["root_ca".to_string()],
+            ..Default::default()
+        }
+        .run(ctx.get_owner_client()),
+    )
     .await?
     .unwrap();
 
     // import Intermediate p12
-    let intermediate_ca_private_key_id = ImportCertificateAction {
-        certificate_file: Some(PathBuf::from(
-            "../../test_data/certificates/csr/intermediate.p12",
-        )),
-        input_format: CertificateInputFormat::Pkcs12,
-        pkcs12_password: Some("secret".to_owned()),
-        certificate_id: Some(Uuid::new_v4().to_string()),
-        replace_existing: true,
-        tags: vec!["intermediate_ca".to_string()],
-        ..Default::default()
-    }
-    .run(ctx.get_owner_client())
+    let intermediate_ca_private_key_id = Box::pin(
+        ImportCertificateAction {
+            certificate_file: Some(PathBuf::from(
+                "../../test_data/certificates/csr/intermediate.p12",
+            )),
+            input_format: CertificateInputFormat::Pkcs12,
+            pkcs12_password: Some("secret".to_owned()),
+            certificate_id: Some(Uuid::new_v4().to_string()),
+            replace_existing: true,
+            tags: vec!["intermediate_ca".to_string()],
+            ..Default::default()
+        }
+        .run(ctx.get_owner_client()),
+    )
     .await?
     .unwrap();
 
@@ -325,7 +331,7 @@ async fn test_certify_a_csr_without_extensions() -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server().await;
     // import signers
     let (root_id, intermediate_id, issuer_private_key_id) =
-        import_root_and_intermediate(ctx).await?;
+        Box::pin(import_root_and_intermediate(ctx)).await?;
 
     // Certify the CSR with the intermediate CA
     let certificate_id = CertifyAction {
@@ -499,7 +505,7 @@ async fn test_certify_renew_a_certificate() -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server().await;
     // import signers
     let (root_id, intermediate_id, issuer_private_key_id) =
-        import_root_and_intermediate(ctx).await?;
+        Box::pin(import_root_and_intermediate(ctx)).await?;
 
     // Certify the CSR with the intermediate CA
     let certificate_id = CertifyAction {
@@ -557,7 +563,7 @@ async fn test_certify_issue_with_subject_name() -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server().await;
     // import signers
     let (root_id, intermediate_id, issuer_private_key_id) =
-        import_root_and_intermediate(ctx).await?;
+        Box::pin(import_root_and_intermediate(ctx)).await?;
 
     // Certify the CSR with the intermediate CA
     let certificate_id = CertifyAction {

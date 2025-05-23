@@ -21,7 +21,7 @@ use crate::{
 
 #[cfg(feature = "fips")]
 async fn import_revoked_certificate_encrypt(curve_name: &str) -> KmsCliResult<()> {
-    use crate::actions::certificates::encrypt_certificate::EncryptCertificateAction;
+    use crate::actions::kms::certificates::encrypt_certificate::EncryptCertificateAction;
 
     let ctx = start_default_test_kms_server().await;
 
@@ -38,30 +38,34 @@ async fn import_revoked_certificate_encrypt(curve_name: &str) -> KmsCliResult<()
     // assert!(!output_file.exists());
 
     debug!("\n\nImport Certificate");
-    let root_certificate_id = ImportCertificateAction {
-        certificate_file: Some(PathBuf::from(format!(
-            "../../test_data/certificates/openssl/{curve_name}-cert.pem"
-        ))),
-        input_format: CertificateInputFormat::Pem,
-        replace_existing: true,
-        tags: vec![curve_name.to_string()],
-        ..Default::default()
-    }
-    .run(ctx.get_owner_client())
+    let root_certificate_id = Box::pin(
+        ImportCertificateAction {
+            certificate_file: Some(PathBuf::from(format!(
+                "../../test_data/certificates/openssl/{curve_name}-cert.pem"
+            ))),
+            input_format: CertificateInputFormat::Pem,
+            replace_existing: true,
+            tags: vec![curve_name.to_string()],
+            ..Default::default()
+        }
+        .run(ctx.get_owner_client()),
+    )
     .await?;
 
     debug!("\n\nImport Certificate");
-    let certificate_id = ImportCertificateAction {
-        certificate_file: Some(PathBuf::from(format!(
-            "../../test_data/certificates/openssl/{curve_name}-revoked.crt"
-        ))),
-        input_format: CertificateInputFormat::Pem,
-        issuer_certificate_id: Some(root_certificate_id.unwrap()),
-        replace_existing: true,
-        tags: vec![curve_name.to_string()],
-        ..Default::default()
-    }
-    .run(ctx.get_owner_client())
+    let certificate_id = Box::pin(
+        ImportCertificateAction {
+            certificate_file: Some(PathBuf::from(format!(
+                "../../test_data/certificates/openssl/{curve_name}-revoked.crt"
+            ))),
+            input_format: CertificateInputFormat::Pem,
+            issuer_certificate_id: Some(root_certificate_id.unwrap()),
+            replace_existing: true,
+            tags: vec![curve_name.to_string()],
+            ..Default::default()
+        }
+        .run(ctx.get_owner_client()),
+    )
     .await?;
 
     debug!("\n\nEncrypt with certificate");
@@ -84,7 +88,7 @@ async fn import_revoked_certificate_encrypt(curve_name: &str) -> KmsCliResult<()
 #[tokio::test]
 #[ignore]
 async fn test_import_revoked_certificate_encrypt_prime256() -> KmsCliResult<()> {
-    import_revoked_certificate_encrypt("prime256v1").await
+    Box::pin(import_revoked_certificate_encrypt("prime256v1")).await
 }
 
 #[tokio::test]
@@ -92,40 +96,46 @@ async fn test_validate_cli() -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server().await;
 
     info!("importing root cert");
-    let root_certificate_id = ImportCertificateAction {
-        certificate_file: Some(PathBuf::from(
-            "../../test_data/certificates/chain/ca.cert.pem",
-        )),
-        input_format: CertificateInputFormat::Pem,
-        replace_existing: true,
-        ..Default::default()
-    }
-    .run(ctx.get_owner_client())
+    let root_certificate_id = Box::pin(
+        ImportCertificateAction {
+            certificate_file: Some(PathBuf::from(
+                "../../test_data/certificates/chain/ca.cert.pem",
+            )),
+            input_format: CertificateInputFormat::Pem,
+            replace_existing: true,
+            ..Default::default()
+        }
+        .run(ctx.get_owner_client()),
+    )
     .await?;
 
     info!("importing intermediate cert");
-    let intermediate_certificate_id = ImportCertificateAction {
-        certificate_file: Some(PathBuf::from(
-            "../../test_data/certificates/chain/intermediate.cert.pem",
-        )),
-        input_format: CertificateInputFormat::Pem,
-        issuer_certificate_id: root_certificate_id.clone(),
-        replace_existing: true,
-        ..Default::default()
-    }
-    .run(ctx.get_owner_client())
+    let intermediate_certificate_id = Box::pin(
+        ImportCertificateAction {
+            certificate_file: Some(PathBuf::from(
+                "../../test_data/certificates/chain/intermediate.cert.pem",
+            )),
+            input_format: CertificateInputFormat::Pem,
+            issuer_certificate_id: root_certificate_id.clone(),
+            replace_existing: true,
+            ..Default::default()
+        }
+        .run(ctx.get_owner_client()),
+    )
     .await?;
 
-    let leaf1_certificate_id = ImportCertificateAction {
-        certificate_file: Some(PathBuf::from(
-            "../../test_data/certificates/chain/leaf1.cert.pem",
-        )),
-        input_format: CertificateInputFormat::Pem,
-        issuer_certificate_id: intermediate_certificate_id.clone(),
-        replace_existing: true,
-        ..Default::default()
-    }
-    .run(ctx.get_owner_client())
+    let leaf1_certificate_id = Box::pin(
+        ImportCertificateAction {
+            certificate_file: Some(PathBuf::from(
+                "../../test_data/certificates/chain/leaf1.cert.pem",
+            )),
+            input_format: CertificateInputFormat::Pem,
+            issuer_certificate_id: intermediate_certificate_id.clone(),
+            replace_existing: true,
+            ..Default::default()
+        }
+        .run(ctx.get_owner_client()),
+    )
     .await?;
     info!("leaf1 cert imported: {leaf1_certificate_id:?}");
 

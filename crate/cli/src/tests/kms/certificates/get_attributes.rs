@@ -20,18 +20,20 @@ async fn test_get_attributes_p12() -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server().await;
 
     //import the certificate
-    let imported_p12_sk_uid = ImportCertificateAction {
-        certificate_file: Some(PathBuf::from(
-            "../../test_data/certificates/csr/intermediate.p12",
-        )),
-        input_format: CertificateInputFormat::Pkcs12,
-        pkcs12_password: Some("secret".to_owned()),
-        certificate_id: Some("get_attributes_test_p12_cert".to_string()),
-        replace_existing: true,
-        tags: vec!["import_pkcs12".to_string()],
-        ..Default::default()
-    }
-    .run(ctx.get_owner_client())
+    let imported_p12_sk_uid = Box::pin(
+        ImportCertificateAction {
+            certificate_file: Some(PathBuf::from(
+                "../../test_data/certificates/csr/intermediate.p12",
+            )),
+            input_format: CertificateInputFormat::Pkcs12,
+            pkcs12_password: Some("secret".to_owned()),
+            certificate_id: Some("get_attributes_test_p12_cert".to_string()),
+            replace_existing: true,
+            tags: vec!["import_pkcs12".to_string()],
+            ..Default::default()
+        }
+        .run(ctx.get_owner_client()),
+    )
     .await?;
 
     //get the attributes of the private key and check that they are correct

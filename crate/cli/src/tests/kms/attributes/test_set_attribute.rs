@@ -155,7 +155,7 @@ async fn get_and_check_attributes(
     Ok(())
 }
 
-#[expect(clippy::cognitive_complexity)]
+#[allow(clippy::cognitive_complexity)]
 async fn get_and_check_none_attributes(
     ctx: &TestsContext,
     uid: &str,

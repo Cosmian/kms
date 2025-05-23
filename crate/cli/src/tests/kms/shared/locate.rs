@@ -39,7 +39,7 @@ pub(crate) async fn test_locate_cover_crypt() -> KmsCliResult<()> {
             sensitive: false,
             wrapping_key_id: None,
         };
-        let key_ids = action.run(ctx.get_owner_client()).await?;
+        let key_ids = Box::pin(action.run(ctx.get_owner_client())).await?;
         (key_ids.0, key_ids.1)
     };
 
@@ -358,7 +358,7 @@ pub(crate) async fn test_locate_grant() -> KmsCliResult<()> {
             sensitive: false,
             wrapping_key_id: None,
         };
-        let key_ids = action.run(ctx.get_owner_client()).await?;
+        let key_ids = Box::pin(action.run(ctx.get_owner_client())).await?;
         (key_ids.0, key_ids.1)
     };
 

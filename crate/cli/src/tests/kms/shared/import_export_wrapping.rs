@@ -73,7 +73,7 @@ pub(crate) async fn test_import_export_wrap_rfc_5649() -> KmsCliResult<()> {
             sensitive: false,
             wrapping_key_id: None,
         };
-        let key_ids = action.run(ctx.get_owner_client()).await?;
+        let key_ids = Box::pin(action.run(ctx.get_owner_client())).await?;
         (key_ids.0, key_ids.1)
     };
     test_import_export_wrap_private_key(ctx, &private_key_id, &wrap_key_uid, &wrap_key).await?;
@@ -159,7 +159,7 @@ pub(crate) async fn test_import_export_wrap_ecies() -> KmsCliResult<()> {
             sensitive: false,
             wrapping_key_id: None,
         };
-        let key_ids = action.run(ctx.get_owner_client()).await?;
+        let key_ids = Box::pin(action.run(ctx.get_owner_client())).await?;
         (key_ids.0, key_ids.1)
     };
     test_import_export_wrap_private_key(

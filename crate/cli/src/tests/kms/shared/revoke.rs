@@ -126,11 +126,15 @@ async fn test_revoke_cover_crypt() -> KmsCliResult<()> {
 
     // Check revocation of all keys when the private key is revoked
     {
-        let (master_secret_key_id, master_public_key_id) = CreateMasterKeyPairAction {
-            specification: PathBuf::from("../../test_data/access_structure_specifications.json"),
-            ..Default::default()
-        }
-        .run(ctx.get_owner_client())
+        let (master_secret_key_id, master_public_key_id) = Box::pin(
+            CreateMasterKeyPairAction {
+                specification: PathBuf::from(
+                    "../../test_data/access_structure_specifications.json",
+                ),
+                ..Default::default()
+            }
+            .run(ctx.get_owner_client()),
+        )
         .await?;
 
         let user_key_id_1 = CreateUserKeyAction {
@@ -167,11 +171,15 @@ async fn test_revoke_cover_crypt() -> KmsCliResult<()> {
 
     // Check revocation of all keys when the public key is revoked
     {
-        let (master_secret_key_id, master_public_key_id) = CreateMasterKeyPairAction {
-            specification: PathBuf::from("../../test_data/access_structure_specifications.json"),
-            ..Default::default()
-        }
-        .run(ctx.get_owner_client())
+        let (master_secret_key_id, master_public_key_id) = Box::pin(
+            CreateMasterKeyPairAction {
+                specification: PathBuf::from(
+                    "../../test_data/access_structure_specifications.json",
+                ),
+                ..Default::default()
+            }
+            .run(ctx.get_owner_client()),
+        )
         .await?;
 
         let user_key_id_1 = CreateUserKeyAction {
@@ -208,11 +216,15 @@ async fn test_revoke_cover_crypt() -> KmsCliResult<()> {
 
     // Check that revoking a user key does not revoke anything else
     {
-        let (master_secret_key_id, master_public_key_id) = CreateMasterKeyPairAction {
-            specification: PathBuf::from("../../test_data/access_structure_specifications.json"),
-            ..Default::default()
-        }
-        .run(ctx.get_owner_client())
+        let (master_secret_key_id, master_public_key_id) = Box::pin(
+            CreateMasterKeyPairAction {
+                specification: PathBuf::from(
+                    "../../test_data/access_structure_specifications.json",
+                ),
+                ..Default::default()
+            }
+            .run(ctx.get_owner_client()),
+        )
         .await?;
 
         let user_key_id_1 = CreateUserKeyAction {

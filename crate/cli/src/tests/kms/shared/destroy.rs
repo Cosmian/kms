@@ -358,7 +358,7 @@ async fn test_destroy_cover_crypt() -> KmsCliResult<()> {
                 sensitive: false,
                 wrapping_key_id: None,
             };
-            let key_ids = action.run(ctx.get_owner_client()).await?;
+            let key_ids = Box::pin(Box::pin(action.run(ctx.get_owner_client()))).await?;
             (key_ids.0.to_string(), key_ids.1.to_string())
         };
 
@@ -433,7 +433,7 @@ async fn test_destroy_cover_crypt() -> KmsCliResult<()> {
                 sensitive: false,
                 wrapping_key_id: None,
             };
-            let key_ids = action.run(ctx.get_owner_client()).await?;
+            let key_ids = Box::pin(action.run(ctx.get_owner_client())).await?;
             (key_ids.0.to_string(), key_ids.1.to_string())
         };
 
@@ -508,7 +508,7 @@ async fn test_destroy_cover_crypt() -> KmsCliResult<()> {
                 sensitive: false,
                 wrapping_key_id: None,
             };
-            let key_ids = action.run(ctx.get_owner_client()).await?;
+            let key_ids = Box::pin(action.run(ctx.get_owner_client())).await?;
             (key_ids.0.to_string(), key_ids.1.to_string())
         };
 

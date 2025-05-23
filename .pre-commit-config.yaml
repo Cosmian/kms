@@ -88,7 +88,7 @@ repos:
       - id: debug-statements
       - id: destroyed-symlinks
       - id: detect-private-key
-        exclude: test_data|documentation/docs|crate/cli/src/tests/kms/google_cmd/identities.rs
+        exclude: test_data|documentation/docs|crate/cli/src/tests/kms/google_cmd/identities.rs|crate/server/src/tests
 
       - id: double-quote-string-fixer
       - id: end-of-file-fixer

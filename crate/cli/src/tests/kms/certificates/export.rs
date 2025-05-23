@@ -49,18 +49,20 @@ async fn test_import_export_p12_25519() -> KmsCliResult<()> {
     let p12 = Pkcs12::from_der(p12_bytes).unwrap();
     let parsed_p12 = p12.parse2("secret").unwrap();
     //import the certificate
-    let imported_p12_sk = ImportCertificateAction {
-        certificate_file: Some(PathBuf::from(
-            "../../test_data/certificates/another_p12/server.p12",
-        )),
-        input_format: CertificateInputFormat::Pkcs12,
-        pkcs12_password: Some("secret".to_owned()),
-        certificate_id: Some(Uuid::new_v4().to_string()),
-        replace_existing: true,
-        tags: vec!["import_pkcs12".to_string()],
-        ..Default::default()
-    }
-    .run(ctx.get_owner_client())
+    let imported_p12_sk = Box::pin(
+        ImportCertificateAction {
+            certificate_file: Some(PathBuf::from(
+                "../../test_data/certificates/another_p12/server.p12",
+            )),
+            input_format: CertificateInputFormat::Pkcs12,
+            pkcs12_password: Some("secret".to_owned()),
+            certificate_id: Some(Uuid::new_v4().to_string()),
+            replace_existing: true,
+            tags: vec!["import_pkcs12".to_string()],
+            ..Default::default()
+        }
+        .run(ctx.get_owner_client()),
+    )
     .await?;
 
     //
@@ -231,18 +233,20 @@ async fn test_import_p12_rsa() {
     let p12 = Pkcs12::from_der(p12_bytes).unwrap();
     let parsed_p12 = p12.parse2("secret").unwrap();
     //import the certificate
-    let imported_p12_sk = ImportCertificateAction {
-        certificate_file: Some(PathBuf::from(
-            "../../test_data/certificates/csr/intermediate.p12",
-        )),
-        input_format: CertificateInputFormat::Pkcs12,
-        pkcs12_password: Some("secret".to_owned()),
-        certificate_id: Some(Uuid::new_v4().to_string()),
-        replace_existing: true,
-        tags: vec!["import_pkcs12".to_string()],
-        ..Default::default()
-    }
-    .run(ctx.get_owner_client())
+    let imported_p12_sk = Box::pin(
+        ImportCertificateAction {
+            certificate_file: Some(PathBuf::from(
+                "../../test_data/certificates/csr/intermediate.p12",
+            )),
+            input_format: CertificateInputFormat::Pkcs12,
+            pkcs12_password: Some("secret".to_owned()),
+            certificate_id: Some(Uuid::new_v4().to_string()),
+            replace_existing: true,
+            tags: vec!["import_pkcs12".to_string()],
+            ..Default::default()
+        }
+        .run(ctx.get_owner_client()),
+    )
     .await
     .unwrap();
 
@@ -283,7 +287,8 @@ async fn test_export_pkcs7() -> Result<(), KmsCliError> {
     // Create a test server
     let ctx = start_default_test_kms_server().await;
     // import signers
-    let (root_ca_id, _, issuer_private_key_id) = import_root_and_intermediate(ctx).await?;
+    let (root_ca_id, _, issuer_private_key_id) =
+        Box::pin(import_root_and_intermediate(ctx)).await?;
 
     // Certify the CSR with the intermediate CA
     let certificate_id = CertifyAction {
@@ -394,14 +399,16 @@ async fn test_self_signed_export_loop() -> KmsCliResult<()> {
     .await?;
 
     // try re-importing the PKCS#12
-    ImportCertificateAction {
-        certificate_file: Some(tmp_exported_cert.clone()),
-        input_format: CertificateInputFormat::Pkcs12,
-        pkcs12_password: Some("secret".to_owned()),
-        certificate_id: Some(Uuid::new_v4().to_string()),
-        ..Default::default()
-    }
-    .run(ctx.get_owner_client())
+    Box::pin(
+        ImportCertificateAction {
+            certificate_file: Some(tmp_exported_cert.clone()),
+            input_format: CertificateInputFormat::Pkcs12,
+            pkcs12_password: Some("secret".to_owned()),
+            certificate_id: Some(Uuid::new_v4().to_string()),
+            ..Default::default()
+        }
+        .run(ctx.get_owner_client()),
+    )
     .await?;
 
     Ok(())
@@ -452,14 +459,16 @@ async fn test_export_root_and_intermediate_pkcs12() -> KmsCliResult<()> {
     .await?;
 
     // try re-importing the PKCS#12
-    ImportCertificateAction {
-        certificate_file: Some(tmp_exported_cert.clone()),
-        input_format: CertificateInputFormat::Pkcs12,
-        pkcs12_password: Some("secret".to_owned()),
-        certificate_id: Some(Uuid::new_v4().to_string()),
-        ..Default::default()
-    }
-    .run(ctx.get_owner_client())
+    Box::pin(
+        ImportCertificateAction {
+            certificate_file: Some(tmp_exported_cert.clone()),
+            input_format: CertificateInputFormat::Pkcs12,
+            pkcs12_password: Some("secret".to_owned()),
+            certificate_id: Some(Uuid::new_v4().to_string()),
+            ..Default::default()
+        }
+        .run(ctx.get_owner_client()),
+    )
     .await?;
 
     Ok(())
@@ -497,14 +506,16 @@ async fn test_export_import_legacy_p12() -> KmsCliResult<()> {
     .await?;
 
     // try re-importing the PKCS#12
-    ImportCertificateAction {
-        certificate_file: Some(tmp_exported_cert.clone()),
-        input_format: CertificateInputFormat::Pkcs12,
-        pkcs12_password: Some("secret".to_owned()),
-        certificate_id: Some(Uuid::new_v4().to_string()),
-        ..Default::default()
-    }
-    .run(ctx.get_owner_client())
+    Box::pin(
+        ImportCertificateAction {
+            certificate_file: Some(tmp_exported_cert.clone()),
+            input_format: CertificateInputFormat::Pkcs12,
+            pkcs12_password: Some("secret".to_owned()),
+            certificate_id: Some(Uuid::new_v4().to_string()),
+            ..Default::default()
+        }
+        .run(ctx.get_owner_client()),
+    )
     .await?;
 
     Ok(())

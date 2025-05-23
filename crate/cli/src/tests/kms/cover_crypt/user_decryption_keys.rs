@@ -21,7 +21,7 @@ pub(crate) async fn test_user_decryption_key() -> KmsCliResult<()> {
             sensitive: false,
             wrapping_key_id: None,
         };
-        let key_ids = action.run(ctx.get_owner_client()).await?;
+        let key_ids = Box::pin(action.run(ctx.get_owner_client())).await?;
         (key_ids.0.to_string(), key_ids.1.to_string())
     };
 
@@ -54,7 +54,7 @@ pub(crate) async fn test_user_decryption_key_error() -> KmsCliResult<()> {
             sensitive: false,
             wrapping_key_id: None,
         };
-        let key_ids = action.run(ctx.get_owner_client()).await?;
+        let key_ids = Box::pin(action.run(ctx.get_owner_client())).await?;
         (key_ids.0.to_string(), key_ids.1.to_string())
     };
 

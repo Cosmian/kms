@@ -56,37 +56,43 @@ async fn test_certificate_import_encrypt(
     .run(ctx.get_owner_client())
     .await?;
 
-    let root_certificate_id = ImportCertificateAction {
-        certificate_file: Some(format!("../../test_data/certificates/{ca_path}").into()),
-        input_format: CertificateInputFormat::Pem,
-        replace_existing: true,
-        tags: tags.clone(),
-        ..Default::default()
-    }
-    .run(ctx.get_owner_client())
+    let root_certificate_id = Box::pin(
+        ImportCertificateAction {
+            certificate_file: Some(format!("../../test_data/certificates/{ca_path}").into()),
+            input_format: CertificateInputFormat::Pem,
+            replace_existing: true,
+            tags: tags.clone(),
+            ..Default::default()
+        }
+        .run(ctx.get_owner_client()),
+    )
     .await?;
 
-    let subca_certificate_id = ImportCertificateAction {
-        certificate_file: Some(format!("../../test_data/certificates/{subca_path}").into()),
-        input_format: CertificateInputFormat::Pem,
-        replace_existing: true,
-        issuer_certificate_id: root_certificate_id,
-        tags: tags.clone(),
-        ..Default::default()
-    }
-    .run(ctx.get_owner_client())
+    let subca_certificate_id = Box::pin(
+        ImportCertificateAction {
+            certificate_file: Some(format!("../../test_data/certificates/{subca_path}").into()),
+            input_format: CertificateInputFormat::Pem,
+            replace_existing: true,
+            issuer_certificate_id: root_certificate_id,
+            tags: tags.clone(),
+            ..Default::default()
+        }
+        .run(ctx.get_owner_client()),
+    )
     .await?;
 
-    let certificate_id = ImportCertificateAction {
-        certificate_file: Some(format!("../../test_data/certificates/{cert_path}").into()),
-        input_format: CertificateInputFormat::Pem,
-        private_key_id: Some(private_key_id.to_string()),
-        issuer_certificate_id: subca_certificate_id,
-        replace_existing: true,
-        tags: tags.clone(),
-        ..Default::default()
-    }
-    .run(ctx.get_owner_client())
+    let certificate_id = Box::pin(
+        ImportCertificateAction {
+            certificate_file: Some(format!("../../test_data/certificates/{cert_path}").into()),
+            input_format: CertificateInputFormat::Pem,
+            private_key_id: Some(private_key_id.to_string()),
+            issuer_certificate_id: subca_certificate_id,
+            replace_existing: true,
+            tags: tags.clone(),
+            ..Default::default()
+        }
+        .run(ctx.get_owner_client()),
+    )
     .await?;
 
     debug!("\n\nEncrypt With Certificate");
@@ -126,14 +132,14 @@ async fn test_certificate_import_encrypt(
 #[tokio::test]
 #[cfg(not(feature = "fips"))]
 async fn test_certificate_import_ca_and_encrypt_using_x25519() -> KmsCliResult<()> {
-    test_certificate_import_encrypt(
+    Box::pin(test_certificate_import_encrypt(
         "p12/root.pem",
         "p12/subca.pem",
         "p12/cert.pem",
         "p12/cert.key",
         &["external_certificate"],
         None,
-    )
+    ))
     .await
 }
 
@@ -176,18 +182,20 @@ async fn import_encrypt_decrypt(
     .await?;
 
     debug!("\n\nImport Certificate");
-    let certificate_id = ImportCertificateAction {
-        certificate_file: Some(
-            format!("../../test_data/certificates/openssl/{filename}-cert.pem").into(),
-        ),
-        input_format: CertificateInputFormat::Pem,
-        private_key_id: Some(private_key_id.to_string()),
-        replace_existing: true,
-        tags: tags.clone(),
-        key_usage: Some(vec![KeyUsage::Encrypt]),
-        ..Default::default()
-    }
-    .run(ctx.get_owner_client())
+    let certificate_id = Box::pin(
+        ImportCertificateAction {
+            certificate_file: Some(
+                format!("../../test_data/certificates/openssl/{filename}-cert.pem").into(),
+            ),
+            input_format: CertificateInputFormat::Pem,
+            private_key_id: Some(private_key_id.to_string()),
+            replace_existing: true,
+            tags: tags.clone(),
+            key_usage: Some(vec![KeyUsage::Encrypt]),
+            ..Default::default()
+        }
+        .run(ctx.get_owner_client()),
+    )
     .await?;
 
     debug!("\n\nEncrypt With Certificate");
@@ -226,13 +234,13 @@ async fn import_encrypt_decrypt(
 #[cfg(not(feature = "fips"))]
 // P-192 should not be used in FIPS mode. See NIST.SP.800-186 - Section 3.2.1.1.
 async fn test_certificate_encrypt_using_prime192() -> KmsCliResult<()> {
-    import_encrypt_decrypt("prime192v1", None).await
+    Box::pin(import_encrypt_decrypt("prime192v1", None)).await
 }
 
 #[tokio::test]
 #[cfg(not(feature = "fips"))]
 async fn test_certificate_encrypt_using_prime224() -> KmsCliResult<()> {
-    import_encrypt_decrypt("secp224r1", None).await
+    Box::pin(import_encrypt_decrypt("secp224r1", None)).await
 }
 
 #[tokio::test]
@@ -240,30 +248,42 @@ async fn test_certificate_encrypt_using_prime224() -> KmsCliResult<()> {
 // Edwards curve shall be used **for digital signature only**.
 // See NIST.SP.800-186 - Section 3.1.2 table 2 and NIST.FIPS.186-5.
 async fn test_certificate_encrypt_using_ed25519() -> KmsCliResult<()> {
-    import_encrypt_decrypt("ED25519", None).await
+    Box::pin(import_encrypt_decrypt("ED25519", None)).await
 }
 
 #[tokio::test]
 #[cfg(not(feature = "fips"))]
 async fn test_certificate_encrypt_using_prime256() -> KmsCliResult<()> {
-    import_encrypt_decrypt("prime256v1", None).await
+    Box::pin(import_encrypt_decrypt("prime256v1", None)).await
 }
 
 #[tokio::test]
 #[cfg(not(feature = "fips"))]
 async fn test_certificate_encrypt_using_secp384r1() -> KmsCliResult<()> {
-    import_encrypt_decrypt("secp384r1", None).await
+    Box::pin(import_encrypt_decrypt("secp384r1", None)).await
 }
 
 #[tokio::test]
 #[cfg(not(feature = "fips"))]
 async fn test_certificate_encrypt_using_secp521r1() -> KmsCliResult<()> {
-    import_encrypt_decrypt("secp521r1", None).await
+    Box::pin(import_encrypt_decrypt("secp521r1", None)).await
 }
 
 #[tokio::test]
 async fn test_certificate_encrypt_using_rsa() -> KmsCliResult<()> {
-    import_encrypt_decrypt("rsa-2048", Some(RsaEncryptionAlgorithm::CkmRsaAesKeyWrap)).await?;
-    import_encrypt_decrypt("rsa-3072", Some(RsaEncryptionAlgorithm::CkmRsaAesKeyWrap)).await?;
-    import_encrypt_decrypt("rsa-4096", Some(RsaEncryptionAlgorithm::CkmRsaAesKeyWrap)).await
+    Box::pin(import_encrypt_decrypt(
+        "rsa-2048",
+        Some(RsaEncryptionAlgorithm::CkmRsaAesKeyWrap),
+    ))
+    .await?;
+    Box::pin(import_encrypt_decrypt(
+        "rsa-3072",
+        Some(RsaEncryptionAlgorithm::CkmRsaAesKeyWrap),
+    ))
+    .await?;
+    Box::pin(import_encrypt_decrypt(
+        "rsa-4096",
+        Some(RsaEncryptionAlgorithm::CkmRsaAesKeyWrap),
+    ))
+    .await
 }

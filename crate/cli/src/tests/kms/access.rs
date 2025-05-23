@@ -914,6 +914,7 @@ pub(crate) async fn test_grant_with_without_object_uid() -> KmsCliResult<()> {
 }
 
 #[tokio::test]
+#[allow(clippy::large_stack_frames)]
 pub(crate) async fn test_privileged_users() -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server_with_privileged_users(vec![
         "tech@cosmian.com".to_owned(),

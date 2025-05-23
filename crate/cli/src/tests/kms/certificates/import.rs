@@ -15,54 +15,62 @@ async fn test_certificate_import_different_format() -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server().await;
 
     // import as TTLV JSON
-    ImportCertificateAction {
-        certificate_file: Some(PathBuf::from(
-            "../../test_data/certificates/exported_certificate_ttlv.json",
-        )),
-        input_format: CertificateInputFormat::JsonTtlv,
-        certificate_id: Some(Uuid::new_v4().to_string()),
-        replace_existing: true,
-        ..Default::default()
-    }
-    .run(ctx.get_owner_client())
+    Box::pin(
+        ImportCertificateAction {
+            certificate_file: Some(PathBuf::from(
+                "../../test_data/certificates/exported_certificate_ttlv.json",
+            )),
+            input_format: CertificateInputFormat::JsonTtlv,
+            certificate_id: Some(Uuid::new_v4().to_string()),
+            replace_existing: true,
+            ..Default::default()
+        }
+        .run(ctx.get_owner_client()),
+    )
     .await?;
 
     // import as PEM
-    ImportCertificateAction {
-        certificate_file: Some(PathBuf::from("../../test_data/certificates/ca.crt")),
-        input_format: CertificateInputFormat::Pem,
-        certificate_id: None,
-        replace_existing: true,
-        ..Default::default()
-    }
-    .run(ctx.get_owner_client())
+    Box::pin(
+        ImportCertificateAction {
+            certificate_file: Some(PathBuf::from("../../test_data/certificates/ca.crt")),
+            input_format: CertificateInputFormat::Pem,
+            certificate_id: None,
+            replace_existing: true,
+            ..Default::default()
+        }
+        .run(ctx.get_owner_client()),
+    )
     .await?;
 
     // import a chain
-    ImportCertificateAction {
-        certificate_file: Some(PathBuf::from(
-            "../../test_data/certificates/mozilla_IncludedRootsPEM.txt",
-        )),
-        input_format: CertificateInputFormat::Chain,
-        certificate_id: None,
-        replace_existing: true,
-        tags: vec!["import_chain".to_string()],
-        ..Default::default()
-    }
-    .run(ctx.get_owner_client())
+    Box::pin(
+        ImportCertificateAction {
+            certificate_file: Some(PathBuf::from(
+                "../../test_data/certificates/mozilla_IncludedRootsPEM.txt",
+            )),
+            input_format: CertificateInputFormat::Chain,
+            certificate_id: None,
+            replace_existing: true,
+            tags: vec!["import_chain".to_string()],
+            ..Default::default()
+        }
+        .run(ctx.get_owner_client()),
+    )
     .await?;
 
     // import a PKCS12
-    ImportCertificateAction {
-        certificate_file: Some(PathBuf::from("../../test_data/certificates/p12/output.p12")),
-        input_format: CertificateInputFormat::Pkcs12,
-        pkcs12_password: Some("secret".to_owned()),
-        certificate_id: None,
-        replace_existing: true,
-        tags: vec!["import_pkcs12".to_string()],
-        ..Default::default()
-    }
-    .run(ctx.get_owner_client())
+    Box::pin(
+        ImportCertificateAction {
+            certificate_file: Some(PathBuf::from("../../test_data/certificates/p12/output.p12")),
+            input_format: CertificateInputFormat::Pkcs12,
+            pkcs12_password: Some("secret".to_owned()),
+            certificate_id: None,
+            replace_existing: true,
+            tags: vec!["import_pkcs12".to_string()],
+            ..Default::default()
+        }
+        .run(ctx.get_owner_client()),
+    )
     .await?;
 
     Ok(())

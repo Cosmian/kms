@@ -1359,7 +1359,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_cli"
-version = "5.0.0"
+version = "5.1.1"
 dependencies = [
  "actix-rt",
  "actix-server",
@@ -1403,7 +1403,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_client"
-version = "5.0.0"
+version = "5.1.1"
 dependencies = [
  "cosmian_crypto_core 10.1.0",
  "cosmian_http_client",
@@ -1438,11 +1438,11 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_client_wasm"
-version = "5.0.0"
+version = "5.1.1"
 dependencies = [
  "base64 0.22.1",
  "cosmian_kms_client_utils",
- "getrandom 0.2.15",
+ "getrandom 0.2.16",
  "js-sys",
  "pem",
  "serde",
@@ -1455,7 +1455,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_crypto"
-version = "5.0.0"
+version = "5.1.1"
 dependencies = [
  "aes-gcm-siv",
  "argon2",
@@ -6024,7 +6024,7 @@ version = "1.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b913a3b5fe84142e269d63cc62b64319ccaf89b748fc31fe025177f767a756c4"
 dependencies = [
- "getrandom 0.2.15",
+ "getrandom 0.2.16",
 ]
 
 [[package]]

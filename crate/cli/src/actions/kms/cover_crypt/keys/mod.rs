@@ -38,7 +38,7 @@ impl KeysCommands {
     pub async fn process(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
         match self {
             Self::CreateMasterKeyPair(action) => {
-                action.run(kms_rest_client).await?;
+                Box::pin(action.run(kms_rest_client)).await?;
             }
             Self::CreateUserKey(action) => {
                 action.run(kms_rest_client).await?;

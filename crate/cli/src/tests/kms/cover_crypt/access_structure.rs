@@ -26,13 +26,15 @@ async fn test_view_access_structure() -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server().await;
 
     // generate a new master key pair
-    let (_master_secret_key_id, master_public_key_id) = CreateMasterKeyPairAction {
-        specification: PathBuf::from("../../test_data/access_structure_specifications.json"),
-        tags: vec![],
-        sensitive: false,
-        wrapping_key_id: None,
-    }
-    .run(ctx.get_owner_client())
+    let (_master_secret_key_id, master_public_key_id) = Box::pin(
+        CreateMasterKeyPairAction {
+            specification: PathBuf::from("../../test_data/access_structure_specifications.json"),
+            tags: vec![],
+            sensitive: false,
+            wrapping_key_id: None,
+        }
+        .run(ctx.get_owner_client()),
+    )
     .await?;
 
     // create a temp dir
@@ -81,13 +83,15 @@ async fn test_edit_access_structure() -> KmsCliResult<()> {
     let recovered_file = tmp_path.join("plain.txt");
 
     // generate a new master key pair
-    let (master_secret_key_id, master_public_key_id) = CreateMasterKeyPairAction {
-        specification: PathBuf::from("../../test_data/access_structure_specifications.json"),
-        tags: vec![],
-        sensitive: false,
-        wrapping_key_id: None,
-    }
-    .run(ctx.get_owner_client())
+    let (master_secret_key_id, master_public_key_id) = Box::pin(
+        CreateMasterKeyPairAction {
+            specification: PathBuf::from("../../test_data/access_structure_specifications.json"),
+            tags: vec![],
+            sensitive: false,
+            wrapping_key_id: None,
+        }
+        .run(ctx.get_owner_client()),
+    )
     .await?;
 
     let user_decryption_key = CreateUserKeyAction {
