@@ -10,6 +10,3 @@ queries, allowing you to implement column-level encryption without modifying you
 You can find the Snowflake Native App on [GitHub](https://github.com/Cosmian/kms_snowflake_native_app/), where
 comprehensive documentation covers deployment procedures, configuration options, and usage examples to help you get
 started quickly.
-
-
-

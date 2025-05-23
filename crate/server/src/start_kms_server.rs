@@ -508,7 +508,6 @@ pub async fn prepare_kms_server(
     // Determine if API Token Auth should be used for authentication.
     let use_api_token_auth = kms_server.params.api_token_id.is_some();
 
-
     // Determine the address to bind the server to.
     let address = format!(
         "{}:{}",
@@ -670,7 +669,6 @@ pub async fn prepare_kms_server(
                 ui_index_folder.display()
             );
         }
-
 
         // The default scope serves from the root / the KMIP, permissions, and TEE endpoints
         let default_scope = web::scope("")

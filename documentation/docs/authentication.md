@@ -57,7 +57,8 @@ docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest \
 The server extracts the username from the certificate's Subject Common Name (CN) field. Specifically, the Common Name of the client certificate subject is used directly as the username for authentication purposes. If the certificate is valid but does not contain a Common Name, authentication will fail.
 
 Example of a subject with a CN field:
-```
+
+```text
 C=FR, ST=Ile-de-France, L=Paris, O=Cosmian Tech, CN=john.doe@example.com
 ```
 
@@ -78,7 +79,7 @@ docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest \
 
 JWT tokens must be passed in the HTTP Authorization header:
 
-```
+```text
 Authorization: Bearer <JWT_TOKEN>
 ```
 
@@ -89,6 +90,7 @@ The server extracts the username from the token's `email` claim.
 The KMS authentication system supports PKCE (Proof Key for Code Exchange) for JWT authentication, which eliminates the need for client secrets. PKCE is a more secure OAuth 2.0 flow for public clients that don't need to store client secrets. The client generates a code verifier and code challenge pair, using the code challenge during authorization and the code verifier during token exchange.
 
 This is particularly useful for:
+
 - Mobile applications
 - Single-page applications
 - Desktop applications
@@ -116,23 +118,27 @@ To support multiple identity providers, repeat the parameters in matching order:
 API Token authentication uses a symmetric key stored in the KMS as the authentication token:
 
 1. Generate a symmetric key and note its ID:
+
    ```sh
    cosmian kms sym keys create
    ```
 
 2. Export the key in base64 format:
+
    ```sh
    cosmian kms sym keys export -k <SYMMETRIC_KEY_ID> -f base64 api_token.base64
    ```
 
 3. Start the server with the API token ID:
+
    ```sh
    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest \
        --api-token-id <SYMMETRIC_KEY_ID>
    ```
 
 4. Configure the client to use the API token:
-   ```
+
+   ```text
    Authorization: Bearer <BASE64_TOKEN>
    ```
 
@@ -153,6 +159,7 @@ If you want to enforce a consistent username regardless of the authentication me
 When enabled, the server still performs the authentication validation to ensure the client has valid credentials, but it ignores the username that would normally be extracted (such as the certificate's Common Name or JWT email claim) and instead maps all authenticated requests to the default username.
 
 This feature is particularly useful in scenarios where:
+
 - You want consistent user identity across all requests regardless of authentication method
 - You prefer to manage access control independently from the authentication credentials
 - You're transitioning between authentication methods but need to maintain consistent audit trails
@@ -173,6 +180,7 @@ docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest \
 ```
 
 In this configuration:
+
 - Clients can authenticate using either a valid client certificate or a valid JWT token
 - If both are provided, the certificate is checked first
 
@@ -186,25 +194,30 @@ docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest \
 ```
 
 In this configuration:
+
 - Clients can authenticate using either a valid JWT token or the API token
 - JWT authentication is attempted first, followed by API token verification
 
 ## Common Identity Provider Configurations
 
 ### Google ID Tokens
+
 ```sh
 --jwt-issuer-uri=https://accounts.google.com
 --jwks-uri=https://www.googleapis.com/oauth2/v3/certs
 ```
 
 ### Auth0
+
 ```sh
 --jwt-issuer-uri=https://<your-tenant>.<region>.auth0.com/
 --jwks-uri=https://<your-tenant>.<region>.auth0.com/.well-known/jwks.json
 ```
+
 Note: the trailing `/` is required in the issuer URI
 
 ### Microsoft Entra ID (Azure AD)
+
 ```sh
 --jwt-issuer-uri=https://login.microsoftonline.com/<TENANT_ID>/v2.0
 --jwks-uri=https://login.microsoftonline.com/<TENANT_ID>/discovery/v2.0/keys
@@ -212,6 +225,7 @@ Note: the trailing `/` is required in the issuer URI
 ```
 
 ### Okta
+
 ```sh
 --jwt-issuer-uri=https://<OKTA_TENANT_NAME>.com
 --jwks-uri=https://<OKTA_TENANT_NAME>.com/oauth2/v1/keys

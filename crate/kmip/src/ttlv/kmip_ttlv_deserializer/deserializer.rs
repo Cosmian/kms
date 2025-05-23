@@ -668,10 +668,10 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
             TTLValue::DateTime(dt) => {
                 // if human_readable is not on the deserializer and the `time` crate (feature serde-human-readable),
                 // `deserialize_tuple` will be called on the deserializer
-                // see https://github.com/time-rs/time/blob/main/time/src/serde/mod.rs#L320
+                // see <https://github.com/time-rs/time/blob/main/time/src/serde/mod.rs#L320>
                 // The `OffsetDateTime` visitor expects calls to `visit_seq` passing all the elements
                 // og the tuple in order (year, day of year, hour, etc..)
-                // see https://github.com/time-rs/time/blob/main/time/src/serde/visitor.rs#L80
+                // see <https://github.com/time-rs/time/blob/main/time/src/serde/visitor.rs#L80>
 
                 let seq_access = OffsetDateTimeDeserializer::new(&self.current.tag, *dt);
                 visitor.visit_seq(seq_access)

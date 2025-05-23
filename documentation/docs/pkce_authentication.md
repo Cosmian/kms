@@ -37,80 +37,77 @@ PKCE enhances the security of OAuth 2.0 authentication flows by eliminating the 
 
 The KMS client library now supports PKCE authentication with optional client secrets:
 
-
-**Example: Entra ID**
-
-1. CLI configuration
-
-```toml
-[kms_config.http_config.oauth2_conf]
-client_id = "f052524e-7518-40e7-2579-219c0b48b125"
-authorize_url = "https://login.microsoftonline.com/612da4de-35c0-42de-ba56-174c4e562c96/oauth2/authorize"
-token_url = "https://login.microsoftonline.com/612da4de-35c0-42de-f3c6-174b69062c96/oauth2/token"
-scopes = [
-    "email",
-    "openid",
-]
-# client_secret = <-- Not Set
-```
-
-2. KMS Server Configuration
-
-_important_: on Entra ID, configure the redirect URL (http://localhost:17899/authorization) to be for Native/Desktop (not Single Page Application)
-
-```toml
-[auth]
-# The issuer URI of the JWT token
-jwt_issuer_uri = [
-    "https://login.microsoftonline.com/612da4de-35c0-42de-f3c6-174b69062c96/v2.0",
-]
-# The JWKS (Json Web Key Set) URI of the JWT token
-jwks_uri = [
-    "https://login.microsoftonline.com/612da4de-35c0-42de-f3c6-174b69062c96/discovery/v2.0/keys",
-]
-```
-
-**Example: Auth0**
+#### Example: Entra ID
 
 1. CLI configuration
 
-```toml
-[kms_config.http_config.oauth2_conf]
-client_id = "OUfH4FuzDAW99Ck3R4Rb7ROziOZEalIH"
-authorize_url = "https://acme.eu.auth0.com/authorize"
-token_url = "https://acme.eu.auth0.com/oauth/token"
-scopes = [
-    "email",
-    "openid",
-]
-# client_secret = <-- Not Set
-```
-
-*Note*: the Google IdP officially support PKCE, but still requires a client secret. 
-
+    ```toml
+    [kms_config.http_config.oauth2_conf]
+    client_id = "f052524e-7518-40e7-2579-219c0b48b125"
+    authorize_url = "https://login.microsoftonline.com/612da4de-35c0-42de-ba56-174c4e562c96/oauth2/authorize"
+    token_url = "https://login.microsoftonline.com/612da4de-35c0-42de-f3c6-174b69062c96/oauth2/token"
+    scopes = [
+        "email",
+        "openid",
+    ]
+    # client_secret = <-- Not Set
+    ```
 
 2. KMS Server Configuration
 
-_important_: on Entra ID, configure the redirect URL to be for Native/Desktop (not Single Page Application)
+    _important_: on Entra ID, configure the redirect URL (<http://localhost:17899/authorization>) to be for Native/Desktop (not Single Page Application)
 
-```toml
-[auth]
-# The issuer URI of the JWT token
-jwt_issuer_uri = [
-    "https://acme.eu.auth0.com/",
-]
-# The JWKS (Json Web Key Set) URI of the JWT token
-jwks_uri = [
-    "https://acme.eu.auth0.com/.well-known/jwks.json",
-]
-```
+    ```toml
+    [auth]
+    # The issuer URI of the JWT token
+    jwt_issuer_uri = [
+        "https://login.microsoftonline.com/612da4de-35c0-42de-f3c6-174b69062c96/v2.0",
+    ]
+    # The JWKS (Json Web Key Set) URI of the JWT token
+    jwks_uri = [
+        "https://login.microsoftonline.com/612da4de-35c0-42de-f3c6-174b69062c96/discovery/v2.0/keys",
+    ]
+    ```
 
+#### Example: Auth0
 
+1. CLI configuration
 
-The client code handles:
-- Code challenge generation using SHA-256
-- Automatic inclusion of PKCE parameters in authorization requests
-- Code verifier inclusion during token exchange
+    ```toml
+    [kms_config.http_config.oauth2_conf]
+    client_id = "OUfH4FuzDAW99Ck3R4Rb7ROziOZEalIH"
+    authorize_url = "https://acme.eu.auth0.com/authorize"
+    token_url = "https://acme.eu.auth0.com/oauth/token"
+    scopes = [
+        "email",
+        "openid",
+    ]
+    # client_secret = <-- Not Set
+    ```
+
+    _Note_: the Google IdP officially support PKCE, but still requires a client secret.
+
+2. KMS Server Configuration
+
+    _important_: on Entra ID, configure the redirect URL to be for Native/Desktop (not Single Page Application)
+
+    ```toml
+    [auth]
+    # The issuer URI of the JWT token
+    jwt_issuer_uri = [
+        "https://acme.eu.auth0.com/",
+    ]
+    # The JWKS (Json Web Key Set) URI of the JWT token
+    jwks_uri = [
+        "https://acme.eu.auth0.com/.well-known/jwks.json",
+    ]
+    ```
+
+    The client code handles:
+
+    - Code challenge generation using SHA-256
+    - Automatic inclusion of PKCE parameters in authorization requests
+    - Code verifier inclusion during token exchange
 
 ### Server-Side Handling
 
@@ -120,7 +117,6 @@ The KMS server validates JWT tokens using JWKS (JSON Web Key Sets), which is com
 2. Validates the token's signature using the JWKS endpoint
 3. Verifies the token's claims (issuer, audience, expiration, etc.)
 4. Extracts the user's identity from the email claim
-
 
 ## Transitioning from Client Secret to PKCE
 

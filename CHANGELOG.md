@@ -37,7 +37,6 @@ All notable changes to this project will be documented in this file.
 - Add a new section on migrating Google CSE data from Drive, including practical steps and examples
 - PKCE documentation with configuration examples
 - Improved authentication documentation, both client and server side
- 
 
 ## [5.0.0] - 2025-05-07
 

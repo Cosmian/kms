@@ -121,8 +121,8 @@ where
         Box::pin(async move {
             if req.extensions().contains::<AuthenticatedUser>() {
                 debug!(
-                    "API Token Middleware: An authenticated user was found; there is no need to authenticate \
-                     twice..."
+                    "API Token Middleware: An authenticated user was found; there is no need to \
+                     authenticate twice..."
                 );
             } else {
                 match handle_api_token(&kms_server, &req).await {
