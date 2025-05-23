@@ -64,6 +64,7 @@ cosmian_logger = { workspace = true }
 dotenvy = "0.15"
 futures = "0.3"
 hex = { workspace = true, features = ["serde"] }
+jsonwebtoken = "9.3"
 log = { workspace = true }
 num-bigint-dig = { workspace = true, features = [
     "std",
@@ -71,7 +72,6 @@ num-bigint-dig = { workspace = true, features = [
     "serde",
     "zeroize",
 ] }
-oauth2 = "5.0.0"
 openidconnect = "4.0.0"
 openssl = { workspace = true }
 proteccio_pkcs11_loader = { workspace = true }
@@ -87,6 +87,7 @@ rustls = { version = "0.23", features = [
     "std",
     "aws_lc_rs",
 ], default-features = false }
+rsa = "0.9.8"
 serde = { workspace = true }
 serde_json = { workspace = true }
 strum = { workspace = true, features = ["std", "derive", "strum_macros"] }
@@ -100,11 +101,13 @@ utimaco_pkcs11_loader = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 x509-parser = { workspace = true }
 zeroize = { workspace = true }
+pem.workspace = true
 
 [dev-dependencies]
 actix-http = "3.10"
 cosmian_kms_client_utils = { workspace = true }
 cosmian_logger = { workspace = true }
+mockall = { version = "0.13" }
 native-tls = { workspace = true }
 pem = { workspace = true }
 tempfile = { workspace = true }

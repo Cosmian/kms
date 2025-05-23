@@ -15,7 +15,7 @@ use crate::{
     core::KMS,
     error::KmsError,
     kms_bail,
-    middlewares::{JwtAuthClaim, PeerCommonName},
+    middlewares::AuthenticatedUser,
     result::{KResult, KResultHelper},
 };
 
@@ -30,7 +30,7 @@ impl KMS {
         params: Option<Arc<dyn SessionParams>>,
         privileged_users: Option<Vec<String>>,
     ) -> KResult<()> {
-        // if create access right is set, grant access Create for * object
+        // if create access right is set, grant access to Create for the * object
         let mut updated_operations_types = access.operation_types.clone();
         if updated_operations_types.contains(&KmipOperation::Create) {
             updated_operations_types.retain(|op| op != &KmipOperation::Create);
@@ -156,10 +156,10 @@ impl KMS {
                 )))
             }
 
-            // check if owner is trying to revoke itself
+            // check if the owner is trying to revoke itself
             if owner == access.user_id {
                 kms_bail!(KmsError::Unauthorized(
-                    "You can't revoke yourself, you should keep all rights on your own objects"
+                    "You cannot revoke yourself; you should keep all rights to your objects."
                         .to_owned()
                 ))
             }
@@ -242,30 +242,23 @@ impl KMS {
         Ok(ids)
     }
 
-    /// Get the user from the request depending on the authentication method
-    /// The user is encoded in the JWT `Authorization` header
-    /// If the header is not present, the user is extracted from the client certificate
-    /// If the client certificate is not present, the user is extracted from the configuration file
+    /// Get the user from the request depending on the authentication method.
     pub(crate) fn get_user(&self, req_http: &HttpRequest) -> String {
-        let default_username = self.params.default_username.clone();
-
         if self.params.force_default_username {
+            let default_username = self.params.default_username.clone();
             debug!(
                 "Authenticated using forced default user: {}",
                 default_username
             );
             return default_username
         }
-        // if there is a JWT token, use it in priority
-        let user = req_http.extensions().get::<JwtAuthClaim>().map_or_else(
-            || {
-                req_http
-                    .extensions()
-                    .get::<PeerCommonName>()
-                    .map_or(default_username, |claim| claim.common_name.clone())
-            },
-            |claim| claim.email.clone(),
-        );
+        let user = req_http
+            .extensions()
+            .get::<AuthenticatedUser>()
+            .map_or_else(
+                || self.params.default_username.clone(),
+                |au| au.username.clone(),
+            );
         debug!("Authenticated user: {}", user);
         user
     }

@@ -14,6 +14,18 @@ use actix_web::{
     middleware::Condition,
     web::{self, Data, JsonConfig, PayloadConfig},
 };
+use cosmian_kmip::{
+    kmip_0::kmip_types::KeyWrapType,
+    kmip_2_1::{
+        kmip_attributes::Attributes,
+        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+        kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
+        kmip_operations::Get,
+        kmip_types::{KeyFormatType, LinkType, LinkedObjectIdentifier, UniqueIdentifier},
+        requests::{create_rsa_key_pair_request, import_object_request},
+    },
+};
+use cosmian_kms_crypto::openssl::kmip_private_key_to_openssl;
 use openssl::{
     ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod, SslVerifyMode},
     x509::store::X509StoreBuilder,
@@ -25,7 +37,10 @@ use crate::{
     config::{JwtAuthConfig, ServerParams},
     core::KMS,
     error::KmsError,
-    middlewares::{AuthTransformer, JwksManager, JwtConfig, SslAuth, extract_peer_certificate},
+    middlewares::{
+        ApiTokenAuth, EnsureAuth, JwksManager, JwtAuth, JwtConfig, SslAuth,
+        extract_peer_certificate,
+    },
     result::{KResult, KResultHelper},
     routes::{
         access, get_version,
@@ -36,7 +51,182 @@ use crate::{
         ui_auth::configure_auth_routes,
     },
     socket_server::{SocketServer, SocketServerParams},
+    start_kms_server::google_cse::operations::GOOGLE_CSE_ID,
 };
+
+/// Handles the initialization or import of the Google CSE RSA keypair in the KMS.
+///
+/// This function performs the following logic:
+/// 1. Attempts to retrieve the RSA keypair for Google CSE from the KMS.
+/// 2. If the keypair exists and is valid, the function returns successfully.
+/// 3. If the keypair is not found and a migration PEM key is provided in the `ServerParams`,
+///    the key is imported along with its derived public key.
+/// 4. If no key exists and no migration key is available, a new RSA keypair is created and stored.
+///
+/// This ensures that the KMS either reuses an existing RSA keypair, imports one for migration purposes,
+/// or generates a new one, depending on availability and configuration.
+///
+/// # Arguments
+///
+/// * `kms_server` - A reference-counted pointer to the KMS instance, used to interact with the key management backend.
+/// * `server_params` - A reference-counted pointer to the server configuration, which may contain a migration key.
+///
+/// # Errors
+///
+/// Returns a `KmsError` if:
+/// * The RSA keypair fetch, import, or creation fails.
+/// * The migration PEM key is malformed or cannot be parsed.
+/// * Conversion between KMIP and OpenSSL formats fails.
+pub async fn handle_google_cse_rsa_keypair(
+    kms_server: &Arc<KMS>,
+    server_params: &Arc<ServerParams>,
+) -> KResult<()> {
+    let uid_sk = format!("{GOOGLE_CSE_ID}_rsa");
+    let uid_pk = format!("{GOOGLE_CSE_ID}_rsa_pk");
+
+    let get_request = Get {
+        unique_identifier: Some(UniqueIdentifier::TextString(uid_sk.clone())),
+        key_format_type: Some(KeyFormatType::PKCS1),
+        key_wrap_type: Some(KeyWrapType::NotWrapped),
+        key_compression_type: None,
+        key_wrapping_specification: None,
+    };
+
+    match kms_server
+        .get(get_request, &server_params.default_username, None)
+        .await
+    {
+        Ok(resp) => match resp.object_type {
+            ObjectType::PrivateKey => {
+                info!("RSA Keypair for Google CSE already exists.");
+                return Ok(());
+            }
+            _ => {
+                return Err(KmsError::CryptographicError(format!(
+                    "Unexpected object type for Google CSE RSA keypair: {:?}",
+                    resp.object_type
+                )));
+            }
+        },
+        Err(_) => {
+            info!("RSA Keypair for Google CSE not found from existing DB.");
+        }
+    }
+
+    if let Some(migration_key_pem) = &server_params.google_cse.google_cse_migration_key {
+        info!("Found Google CSE migration key, importing it.");
+
+        let key_bytes = pem::parse(migration_key_pem)
+            .map_err(|e| {
+                KmsError::CryptographicError(format!(
+                    "Error parsing google_cse_migration PEM key: {e}"
+                ))
+            })?
+            .contents()
+            .to_vec();
+
+        // Build PrivateKey object
+        let object_sk = Object::PrivateKey(PrivateKey {
+            key_block: KeyBlock {
+                key_format_type: KeyFormatType::PKCS8,
+                key_compression_type: None,
+                key_value: Some(KeyValue::Structure {
+                    key_material: KeyMaterial::ByteString(key_bytes.into()),
+                    attributes: Some(Attributes::default()),
+                }),
+                cryptographic_algorithm: None,
+                cryptographic_length: None,
+                key_wrapping_data: None,
+            },
+        });
+
+        let mut import_attributes_sk = object_sk.attributes().cloned().unwrap_or_default();
+        import_attributes_sk.set_link(
+            LinkType::PublicKeyLink,
+            LinkedObjectIdentifier::TextString(uid_pk.clone()),
+        );
+
+        // Generate matching public key
+        let openssl_sk = kmip_private_key_to_openssl(&object_sk)?;
+        let openssl_pk_bytes = openssl_sk.public_key_to_der()?;
+
+        let object_pk = Object::PublicKey(PublicKey {
+            key_block: KeyBlock {
+                key_format_type: KeyFormatType::PKCS8,
+                key_compression_type: None,
+                key_value: Some(KeyValue::Structure {
+                    key_material: KeyMaterial::ByteString(openssl_pk_bytes.into()),
+                    attributes: Some(Attributes::default()),
+                }),
+                cryptographic_algorithm: None,
+                cryptographic_length: None,
+                key_wrapping_data: None,
+            },
+        });
+
+        let mut import_attributes_pk = object_pk.attributes().cloned().unwrap_or_default();
+        import_attributes_pk.set_link(
+            LinkType::PrivateKeyLink,
+            LinkedObjectIdentifier::TextString(uid_sk.clone()),
+        );
+
+        // Import PrivateKey
+        let import_request_sk = import_object_request::<Vec<String>>(
+            Some(uid_sk.clone()),
+            object_sk,
+            Some(import_attributes_sk),
+            false,
+            false,
+            vec![],
+        );
+        let imported_sk = kms_server
+            .import(
+                import_request_sk,
+                &server_params.default_username,
+                None,
+                None,
+            )
+            .await?;
+
+        // Import PublicKey
+        let import_request_pk = import_object_request::<Vec<String>>(
+            Some(uid_pk.clone()),
+            object_pk,
+            Some(import_attributes_pk),
+            false,
+            false,
+            vec![],
+        );
+        let imported_pk = kms_server
+            .import(
+                import_request_pk,
+                &server_params.default_username,
+                None,
+                None,
+            )
+            .await?;
+
+        debug!("Imported RSA keypair with UID: {imported_sk:?} -- {imported_pk:?}");
+    } else {
+        info!("No migration key found, creating new RSA keypair.");
+
+        let create_request = create_rsa_key_pair_request::<Vec<String>>(
+            Some(UniqueIdentifier::TextString(uid_sk)),
+            Vec::new(),
+            4096,
+            false,
+            None,
+        )?;
+
+        let uid = kms_server
+            .create_key_pair(create_request, &server_params.default_username, None, None)
+            .await?;
+
+        debug!("Created new RSA keypair with UID: {uid:?}");
+    }
+
+    Ok(())
+}
 
 /// Starts the Key Management System (KMS) server based on the provided configuration.
 ///
@@ -63,7 +253,7 @@ pub async fn start_kms_server(
     // For an explanation of OpenSSL providers, see
     //  https://docs.openssl.org/3.1/man7/crypto/#openssl-providers
 
-    // In FIPS mode, we only load the fips provider
+    // In FIPS mode, we only load the FIPS provider
     #[cfg(feature = "fips")]
     let _provider = openssl::provider::Provider::load(None, "fips")?;
 
@@ -81,12 +271,21 @@ pub async fn start_kms_server(
         openssl::provider::Provider::load(None, "default")?
     };
 
+    // Instantiate KMS
     let kms_server = Arc::new(
         KMS::instantiate(server_params.clone())
             .await
             .context("start KMS server: failed instantiating the server")?,
     );
 
+    // Handle Google RSA Keypair for CSE Kacls migration
+    if server_params.google_cse.google_cse_enable {
+        handle_google_cse_rsa_keypair(&kms_server, &server_params)
+            .await
+            .context("start KMS server: failed managing Google CSE RSA Keypair")?;
+    }
+
+    // Handle sockets
     let (ss_command_tx, _socket_server_handle) = if server_params.start_socket_server {
         let (tx, rx) = mpsc::channel::<KResult<()>>();
         // Start the socket server
@@ -177,7 +376,9 @@ async fn start_http_kms_server(
 
         if let Some(verify_cert) = &tls_params.client_ca_cert_pem {
             // This line sets the mode to verify peer (client) certificates
-            builder.set_verify(SslVerifyMode::PEER | SslVerifyMode::FAIL_IF_NO_PEER_CERT);
+            // sending the client cert is optional so that
+            // we can handle multiple authentication modes at the same time (WT token, API token)
+            builder.set_verify(SslVerifyMode::PEER);
             let x509_cert = openssl::x509::X509::from_pem(verify_cert)
                 .context("Failed to parse the client CA certificate")?;
             let mut store_builder = X509StoreBuilder::new()?;
@@ -203,9 +404,9 @@ async fn start_http_kms_server(
     server.await.map_err(Into::into)
 }
 
-/// This function handles a request to an inner path of the static UI and redirect
+/// This function handles a request to an inner path of the static UI and redirects
 /// it to the index.html file, so that the routing renders the appropriate component
-fn spa_index_handler(req: &HttpRequest, ui_index_html_folder: &PathBuf) -> actix_web::HttpResponse {
+fn spa_index_handler(req: &HttpRequest, ui_index_html_folder: &PathBuf) -> HttpResponse {
     let index_html_path = PathBuf::from(ui_index_html_folder).join("index.html");
     info!("Serving index.html from {}", index_html_path.display());
     match actix_files::NamedFile::open(index_html_path) {
@@ -228,8 +429,7 @@ fn spa_index_handler(req: &HttpRequest, ui_index_html_folder: &PathBuf) -> actix
 /// `builder`: An optional `SslAcceptorBuilder` to configure the SSL encryption for the server.
 ///
 /// # Returns
-/// Returns a `Result` type that contains a `Server` instance if successful, or an error if
-/// something went wrong.
+/// Returns a `Result` type that contains a `Server` instance if successful, or an error if something went wrong.
 ///
 /// # Errors
 /// This function can return the following errors:
@@ -239,10 +439,14 @@ pub async fn prepare_kms_server(
     builder: Option<SslAcceptorBuilder>,
 ) -> KResult<actix_web::dev::Server> {
     // Check if this auth server is enabled for Google Client-Side Encryption
-    let enable_google_cse_authentication = kms_server.params.google_cse_kacls_url.is_some()
-        && !kms_server.params.google_cse_disable_tokens_validation;
+    let enable_google_cse_authentication = kms_server.params.google_cse.google_cse_enable
+        && !kms_server
+            .params
+            .google_cse
+            .google_cse_disable_tokens_validation
+        && kms_server.params.kms_public_url.is_some();
 
-    // Prepare the JWT configurations and the JWKS manager if the server is using JWT for authentication.
+    // Prepare the JWT configurations and the JWKS manager if the server uses JWT for authentication.
     let (jwt_configurations, jwks_manager) = if let Some(identity_provider_configurations) =
         &kms_server.params.identity_provider_configurations
     {
@@ -253,14 +457,20 @@ pub async fn prepare_kms_server(
                 JwtAuthConfig::uri(&idp_config.jwt_issuer_uri, idp_config.jwks_uri.as_deref())
             })
             .collect();
-        // Add the one from google if cse is enabled
+        // Add the one from Google if CSE is enabled.
         if enable_google_cse_authentication {
-            all_jwks_uris.extend(google_cse::list_jwks_uri());
+            all_jwks_uris.extend(google_cse::list_jwks_uri(
+                kms_server
+                    .params
+                    .google_cse
+                    .google_cse_incoming_url_whitelist
+                    .clone(),
+            ));
         }
 
         let jwks_manager = Arc::new(JwksManager::new(all_jwks_uris).await?);
 
-        let built_jwt_configurations = identity_provider_configurations
+        let mut built_jwt_configurations = identity_provider_configurations
             .iter()
             .map(|idp_config| JwtConfig {
                 jwt_issuer_uri: idp_config.jwt_issuer_uri.clone(),
@@ -269,9 +479,22 @@ pub async fn prepare_kms_server(
             })
             .collect::<Vec<_>>();
 
-        (Some(Arc::new(built_jwt_configurations)), Some(jwks_manager))
+        // Add the one from Google if CSE is enabled and some external urls are whitelisted
+        if enable_google_cse_authentication {
+            if let Some(white_list) = &kms_server
+                .params
+                .google_cse
+                .google_cse_incoming_url_whitelist
+            {
+                built_jwt_configurations.extend(google_cse::list_jwt_configurations(
+                    white_list,
+                    &jwks_manager,
+                ));
+            }
+        }
+        (Arc::new(built_jwt_configurations), Some(jwks_manager))
     } else {
-        (None, None)
+        (Arc::new(Vec::new()), None)
     };
 
     // Determine if Client Cert Auth should be used for authentication.
@@ -280,6 +503,10 @@ pub async fn prepare_kms_server(
         .tls_params
         .as_ref()
         .is_some_and(|tls_params| tls_params.client_ca_cert_pem.is_some());
+    // Determine if API Token Auth should be used for authentication.
+    let use_jwt_auth = !jwt_configurations.is_empty();
+    // Determine if API Token Auth should be used for authentication.
+    let use_api_token_auth = kms_server.params.api_token_id.is_some();
 
     // Determine the address to bind the server to.
     let address = format!(
@@ -295,11 +522,14 @@ pub async fn prepare_kms_server(
                 "No JWKS manager to handle Google CSE JWT authorization".to_owned(),
             ));
         };
+        if jwt_configurations.is_empty() {
+            return Err(KmsError::ServerError(
+                "Google CSE JWT authorization requires configuring at least one identity provider."
+                    .to_owned(),
+            ));
+        }
         let google_cse_config = GoogleCseConfig {
-            authentication: jwt_configurations.clone().context(
-                "When using Google client-side encryption, an identity provider used to \
-                 authenticate Google Workspace users must be configured.",
-            )?,
+            authentication: jwt_configurations.clone(),
             authorization: google_cse::jwt_authorization_config(&jwks_manager),
         };
         trace!("Google CSE JWT Config: {:#?}", google_cse_config);
@@ -336,7 +566,7 @@ pub async fn prepare_kms_server(
             .wrap(
                 SessionMiddleware::builder(CookieSessionStore::default(), secret_key.clone())
                     .cookie_path("/".to_owned())
-                    .cookie_http_only(false)
+                    .cookie_http_only(true)
                     .cookie_name("auth_session".to_owned())
                     .cookie_same_site(actix_web::cookie::SameSite::None)
                     .cookie_secure(true)
@@ -349,7 +579,9 @@ pub async fn prepare_kms_server(
             .app_data(PayloadConfig::new(10_000_000_000)) // Set the maximum size of the request payload.
             .app_data(JsonConfig::default().limit(10_000_000_000)); // Set the maximum size of the JSON request payload.
 
-        if kms_server.params.google_cse_kacls_url.is_some() {
+        if kms_server.params.kms_public_url.is_some()
+            && kms_server.params.google_cse.google_cse_enable
+        {
             // The scope for the Google Client-Side Encryption endpoints served from /google_cse
             let google_cse_scope = web::scope("/google_cse")
                 .app_data(Data::new(google_cse_jwt_config.clone()))
@@ -364,7 +596,8 @@ pub async fn prepare_kms_server(
                 .service(google_cse::get_status)
                 .service(google_cse::unwrap)
                 .service(google_cse::wrap)
-                .service(google_cse::wrapprivatekey);
+                .service(google_cse::certs)
+                .service(google_cse::delegate);
             app = app.service(google_cse_scope);
         }
 
@@ -383,7 +616,7 @@ pub async fn prepare_kms_server(
             info!("Serving UI from {}", ui_index_folder.display());
             let oidc_config = kms_server.params.ui_oidc_auth.clone();
 
-            let auth_type: Option<String> = if jwt_configurations.is_some() {
+            let auth_type: Option<String> = if use_jwt_auth {
                 Some("JWT".to_owned())
             } else if use_cert_auth {
                 Some("CERT".to_owned())
@@ -403,10 +636,10 @@ pub async fn prepare_kms_server(
                 "/access-rights{_:.*}",
             ];
             let mut auth_routes = web::scope("/ui")
-                .app_data(web::Data::new(oidc_config))
-                .app_data(web::Data::new(kms_public_url.clone()))
-                .app_data(web::Data::new(ui_index_folder.clone()))
-                .app_data(web::Data::new(auth_type))
+                .app_data(Data::new(oidc_config))
+                .app_data(Data::new(kms_public_url.clone()))
+                .app_data(Data::new(ui_index_folder.clone()))
+                .app_data(Data::new(auth_type))
                 .wrap(Cors::permissive())
                 .configure(configure_auth_routes);
             // Add all SPA routes
@@ -440,9 +673,17 @@ pub async fn prepare_kms_server(
         // The default scope serves from the root / the KMIP, permissions, and TEE endpoints
         let default_scope = web::scope("")
             .app_data(Data::new(privileged_users.clone()))
-            .wrap(AuthTransformer::new(
+            .wrap(EnsureAuth::new(
                 kms_server.clone(),
-                jwt_configurations.clone(),
+                use_jwt_auth || use_cert_auth || use_api_token_auth,
+            ))
+            .wrap(Condition::new(
+                use_api_token_auth,
+                ApiTokenAuth::new(kms_server.clone()),
+            ))
+            .wrap(Condition::new(
+                use_jwt_auth,
+                JwtAuth::new(jwt_configurations.clone()),
             )) // Use JWT for authentication if necessary.
             .wrap(Condition::new(use_cert_auth, SslAuth)) // Use certificates for authentication if necessary.
             // Enable CORS for the application.

@@ -1,3 +1,9 @@
+//! JWKS (JSON Web Key Set) Manager
+//!
+//! This module provides functionality for managing and refreshing JSON Web Key Sets (JWKS),
+//! which are essential for JWT token signature verification. The manager caches key sets
+//! and refreshes them periodically to ensure up-to-date validation.
+
 use std::{collections::HashMap, sync::RwLock};
 
 use alcoholic_jwt::{JWK, JWKS};
@@ -75,7 +81,7 @@ impl JwksManager {
 
     /// Refresh the JWK Set by making an external HTTP call to all the `uris`.
     ///
-    /// The JWK Sets are fetched in parallel and warns about failures
+    /// The JWK Sets are fetched in parallel and warn about failures
     /// without stopping the whole fetch process.
     async fn fetch_all(uris: &[String]) -> HashMap<String, JWKS> {
         let client = reqwest::Client::new();

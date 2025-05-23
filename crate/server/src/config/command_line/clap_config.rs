@@ -7,8 +7,8 @@ use clap::Parser;
 use serde::{Deserialize, Serialize};
 
 use super::{
-    HttpConfig, JwtAuthConfig, MainDBConfig, WorkspaceConfig, logging::LoggingConfig,
-    ui_config::UiConfig,
+    GoogleCseConfig, HttpConfig, JwtAuthConfig, MainDBConfig, WorkspaceConfig,
+    logging::LoggingConfig, ui_config::UiConfig,
 };
 use crate::{
     config::{SocketServerConfig, TlsConfig},
@@ -30,11 +30,10 @@ impl Default for ClapConfig {
             kms_public_url: None,
             auth: JwtAuthConfig::default(),
             ui_config: UiConfig::default(),
+            google_cse_config: GoogleCseConfig::default(),
             workspace: WorkspaceConfig::default(),
             default_username: DEFAULT_USERNAME.to_owned(),
             force_default_username: false,
-            google_cse_disable_tokens_validation: false,
-            google_cse_kacls_url: None,
             ms_dke_service_url: None,
             logging: LoggingConfig::default(),
             info: false,
@@ -72,6 +71,9 @@ pub struct ClapConfig {
     pub ui_config: UiConfig,
 
     #[clap(flatten)]
+    pub google_cse_config: GoogleCseConfig,
+
+    #[clap(flatten)]
     pub workspace: WorkspaceConfig,
 
     /// The default username to use when no authentication method is provided
@@ -83,25 +85,7 @@ pub struct ClapConfig {
     #[clap(long, env = "KMS_FORCE_DEFAULT_USERNAME", verbatim_doc_comment)]
     pub force_default_username: bool,
 
-    /// This setting enables the Google Workspace Client Side Encryption feature of this KMS server.
-    ///
-    /// It should contain the external URL of this server as configured in Google Workspace client-side encryption settings.
-    /// For instance, if this server is running on the domain `cse.my_domain.com`.
-    /// The URL should be something like <https://cse.my_domain.com/google_cse>
-    #[clap(long, env = "KMS_GOOGLE_CSE_KACLS_URL", verbatim_doc_comment)]
-    pub google_cse_kacls_url: Option<String>,
-
-    /// This setting turns off the validation of the tokens
-    /// used by this server's Google Workspace CSE feature.
-    #[clap(
-        long,
-        requires = "google_cse_kacls_url",
-        env = "KMS_GOOGLE_CSE_DISABLE_TOKENS_VALIDATION",
-        default_value = "false"
-    )]
-    pub google_cse_disable_tokens_validation: bool,
-
-    /// This setting enables this server's Microsoft Double Key Encryption service feature.
+    /// This setting enables the Microsoft Double Key Encryption service feature of this server.
     ///
     /// It should contain the external URL of this server as configured in Azure App Registrations
     /// as the DKE Service (<https://learn.microsoft.com/en-us/purview/double-key-encryption-setup#register-your-key-store>)
@@ -157,12 +141,15 @@ pub struct ClapConfig {
     #[clap(long, hide = true)]
     pub non_revocable_key_id: Option<Vec<String>>,
 
+    /// The exposed URL of the KMS - this is required if google cse configuration is activated.
+    /// If this server is running on the domain `cse.my_domain.com` with this public URL,
+    /// The configured URL from Google admin  should be something like <https://cse.my_domain.com/google_cse>
+    /// The URL is also used during authentication flow initiated from the KMS UI.
     #[clap(verbatim_doc_comment, long, env = "KMS_PUBLIC_URL")]
     pub kms_public_url: Option<String>,
 
     /// List of users who have the right to create and import Objects
     /// and grant access rights for Create Kmip Operation.
-    /// If not set, all users can create and import objects in the KMS (default).
     #[clap(long, verbatim_doc_comment)]
     pub privileged_users: Option<Vec<String>>,
 }
@@ -258,14 +245,29 @@ impl fmt::Debug for ClapConfig {
         let x = x.field("workspace", &self.workspace);
         let x = x.field("default username", &self.default_username);
         let x = x.field("force default username", &self.force_default_username);
-        let x = x.field(
-            "Google Workspace CSE, disable tokens validation",
-            &self.google_cse_disable_tokens_validation,
-        );
-        let x = x.field(
-            "Google Workspace CSE, KACLS URL",
-            &self.google_cse_kacls_url,
-        );
+        let x = if self.google_cse_config.google_cse_enable {
+            x.field(
+                "google_cse_enable",
+                &self.google_cse_config.google_cse_enable,
+            )
+            .field(
+                "google_cse_disable_tokens_validation",
+                &self.google_cse_config.google_cse_disable_tokens_validation,
+            )
+            .field(
+                "google_cse_incoming_url_whitelist",
+                &self.google_cse_config.google_cse_incoming_url_whitelist,
+            )
+            .field(
+                "google_cse_migration_key",
+                &self.google_cse_config.google_cse_migration_key,
+            )
+        } else {
+            x.field(
+                "google_cse_enable",
+                &self.google_cse_config.google_cse_enable,
+            )
+        };
         let x = x.field(
             "Microsoft Double Key Encryption URL",
             &self.ms_dke_service_url,

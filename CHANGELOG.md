@@ -2,6 +2,42 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.1.0] - 2025-05-22
+
+### 🚀 Features
+
+- Support custom JWT authentication for external KACLS using an RSA keypair in the Google CSE migration flow
+- Expose the RSA public key via the new `/certs` endpoint
+- Rewrite `/rewrap` endpoint to fully support the migration flow logic
+- Rewrite `/privilegedunwrap` endpoint to properly integrate with the migration process
+- Support for PKCE (Proof Key for Code Exchange) authentication from the CLI with the Cosmian KMS
+- Concurrent multi-factor authentication with clear cascading rules (OIDC / Client Certificates / API Token)
+
+### 🐛 Bug Fixes
+
+- Unclear cascading rules in multi-factor authentication
+
+### 🚜 Refactor
+
+- Refactor server configuration to include a dedicated google_cse section
+- Derive the Google CSE KACLS URL from the public_url configuration value for better flexibility
+
+### ⚙️ Miscellaneous Tasks
+
+- Expose user_id in the response from the /token endpoint for improved UI identification
+
+### 🧪 Testing
+
+- Add unit tests for Google CSE digest computation, validating against Google's official documentation appendix
+- Test custom JWT generation and parsing to ensure compatibility and correctness
+
+### 📚 Documentation
+
+- Revise the Google CSE documentation section for clarity and accuracy
+- Add a new section on migrating Google CSE data from Drive, including practical steps and examples
+- PKCE documentation with configuration examples
+- Improved authentication documentation, both client and server side
+
 ## [5.0.0] - 2025-05-07
 
 **WARNING**: This is a breaking change release.
@@ -38,14 +74,14 @@ Please export your keys using standard formats (PKCS#8, PEM, etc.) and re-import
 
 ### 🚀 Features
 
-- Add support Oracle Transparent Database Encryption (TDE) using Oracle Key
+- Add support for Oracle Transparent Database Encryption (TDE) using Oracle Key
   Vault ([#396](https://github.com/Cosmian/kms/pull/396))
 
 ### ⚙️ Miscellaneous Tasks
 
 - Add missing artifacts on tags ([#407](https://github.com/Cosmian/kms/pull/407))
 - Missing folder assets in DEB/RPM ([#406](https://github.com/Cosmian/kms/pull/406))
-- Align docker build image to wasm-pack prebuild binary for ARM cross-build
+- Align Docker build image to the wasm-pack prebuild binary for ARM cross-build
 
 ## [4.23.0] - 2025-04-10
 
@@ -96,7 +132,7 @@ Please export your keys using standard formats (PKCS#8, PEM, etc.) and re-import
 - Fixed HSM base code dangling pointer issue in `release` mode
 - Fixed unwanted `ValueEnum` in `cosmian sym encrypt`
 - Remove ckms linux packages in favor of cosmian packages ([#366](https://github.com/Cosmian/kms/pull/366))
-- Rename binary `cosmian_kms_server` to `cosmian_kms` - reuse same name as marketplace images
+- Rename binary `cosmian_kms_server` to `cosmian_kms` - reuse the same name as marketplace images
 
 ### 📚 Documentation
 
@@ -150,7 +186,7 @@ Please export your keys using standard formats (PKCS#8, PEM, etc.) and re-import
 - Fix bad links and mkdocs formatting
 - Simple review ([#358](https://github.com/Cosmian/kms/pull/358)
 - Explain default KMS configuration on CVM ([#359](https://github.com/Cosmian/kms/pull/359)
-- Better build with mkdocs; faster mermaid support and better Katex support
+- Better build with mkdocs; faster Mermaid support and better Katex support
 
 ## [4.20.1] - 2024-12-09
 
@@ -173,7 +209,7 @@ Please export your keys using standard formats (PKCS#8, PEM, etc.) and re-import
 - HSM support ([#344](https://github.com/Cosmian/kms/pull/344))
     - support for the Proteccio HSM that provides both
         - the ability to perform the Create, Destroy, Export, Encrypt, and Decrypt operations on the HSM
-        - the ability to create keys in the KMS which are wrapped by a key in the HSM
+        - the ability to create keys in the KMS that are wrapped by a key in the HSM
     - the database components are now in a separate crate `server_database`. They are now split in 2 implementations:
       Objects store and Permissions store
     - a new `interfaces` crate gathers interfaces to be implemented by new external components. Interfaces include:
