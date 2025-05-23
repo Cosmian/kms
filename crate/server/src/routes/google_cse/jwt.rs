@@ -164,6 +164,7 @@ pub(crate) fn decode_jwt_authorization_token(
     trace!("looking for kid `{kid}` JWKS:\n{:?}", jwt_config.jwks);
 
     let issuer_uri = jwt_config.jwt_issuer_uri.clone();
+
     trace!("Try to validate token:\n{token:?} \n {issuer_uri:?}");
 
     let jwk = &jwt_config.jwks.find(&kid)?.ok_or_else(|| {
@@ -266,7 +267,6 @@ pub(crate) async fn validate_cse_authorization_token(
     authorization_token: &str,
     kms: &Arc<KMS>,
     cse_config: &Option<GoogleCseConfig>,
-    application: &str,
     roles: Option<&[Role]>,
 ) -> KResult<UserClaim> {
     debug!("validate_cse_authorization_token: entering");
@@ -282,14 +282,26 @@ pub(crate) async fn validate_cse_authorization_token(
         )
     })?;
 
-    let jwt_config = cse_config.authorization.get(application).ok_or_else(|| {
-        KmsError::NotSupported(format!(
-            "no JWT config available for application: {application} "
-        ))
+    // Try all JWT configs in the authorization map until one successfully decodes the token
+    let mut decoded_token = None;
+    for (app_name, jwt_config) in &cse_config.authorization {
+        if let Ok((token, jwt_headers)) =
+            decode_jwt_authorization_token(jwt_config, authorization_token)
+        {
+            trace!("token decoded with {app_name} jwt config");
+
+            decoded_token = Some((token, jwt_headers));
+            break;
+        }
+    }
+
+    let (authorization_token, jwt_headers) = decoded_token.ok_or_else(|| {
+        KmsError::Unauthorized(
+            "Failed to decode authorization token with any configured JWT authorization config"
+                .to_owned(),
+        )
     })?;
-    trace!("jwt_config: application {application} -> JWT config: {jwt_config:#?}");
-    let (authorization_token, jwt_headers) =
-        decode_jwt_authorization_token(jwt_config, authorization_token)?;
+
     trace!("authorization token: {authorization_token:?}");
     trace!("authorization token headers: {jwt_headers:?}");
 
@@ -347,15 +359,13 @@ pub(crate) async fn validate_tokens(
     authorization_token: &str,
     kms: &Arc<KMS>,
     cse_config: &Option<GoogleCseConfig>,
-    application: &str,
     roles: Option<&[Role]>,
 ) -> KResult<TokenExtractedContent> {
     let authentication_email =
         validate_cse_authentication_token(authentication_token, cse_config, kms, true).await?;
 
     let authorization_token =
-        validate_cse_authorization_token(authorization_token, kms, cse_config, application, roles)
-            .await?;
+        validate_cse_authorization_token(authorization_token, kms, cse_config, roles).await?;
     let authorization_email = authorization_token.email.ok_or_else(|| {
         KmsError::Unauthorized("Authorization token should contain an email".to_owned())
     })?;
