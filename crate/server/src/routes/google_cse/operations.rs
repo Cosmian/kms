@@ -223,7 +223,6 @@ pub struct WrapResponse {
 /// along with the CSE configuration, application context, and optional roles. It performs
 /// validation on the tokens and extracts the relevant content if the validation is successful.
 async fn get_user_and_resource_name(
-    application: &str,
     roles: &[Role],
     authentication_token: &str,
     authorization_token: &str,
@@ -240,7 +239,6 @@ async fn get_user_and_resource_name(
             authorization_token,
             kms,
             cse_config,
-            application,
             Some(roles),
         )
         .await?;
@@ -272,14 +270,11 @@ pub async fn wrap(
 ) -> KResult<WrapResponse> {
     debug!("wrap: entering");
 
-    let application = get_application(&request.reason);
-
     // the possible roles to wrap a key
     let roles = &[Role::Writer, Role::Upgrader];
 
     // get the user and resource name
     let (user, resource_name) = get_user_and_resource_name(
-        &application,
         roles,
         &request.authentication,
         &request.authorization,
@@ -310,21 +305,6 @@ pub struct UnwrapResponse {
     pub key: String,
 }
 
-fn get_application(reason: &str) -> String {
-    trace!("get_application: reason: {reason}");
-    let application = if reason.contains("Meet") {
-        "meet".to_owned()
-    } else if reason.contains("calendar") {
-        "calendar".to_owned()
-    } else if reason.contains("migration") {
-        "migration".to_owned()
-    } else {
-        "drive".to_owned()
-    };
-    trace!("get_application: application: {application}");
-    application
-}
-
 /// Unwraps a wrapped Data Encryption Key (DEK) using the specified authentication and authorization tokens.
 ///
 /// See [doc](https://developers.google.com/workspace/cse/reference/wrap) and
@@ -347,14 +327,11 @@ pub async fn unwrap(
 ) -> KResult<UnwrapResponse> {
     debug!("unwrap: entering");
 
-    let application = get_application(&request.reason);
-
     // the possible roles to unwrap a key
     let roles = &[Role::Writer, Role::Reader];
 
     // get the user and resource name
     let (user, resource_name) = get_user_and_resource_name(
-        &application,
         roles,
         &request.authentication,
         &request.authorization,
@@ -435,7 +412,6 @@ pub async fn private_key_sign(
 
     // get the user and resource name
     let (user, _resource_name) = get_user_and_resource_name(
-        "gmail",
         roles,
         &request.authentication,
         &request.authorization,
@@ -542,7 +518,6 @@ pub async fn private_key_decrypt(
 
     // get the user and resource name
     let (user, _resource_name) = get_user_and_resource_name(
-        "gmail",
         roles,
         &request.authentication,
         &request.authorization,
@@ -634,13 +609,10 @@ pub async fn digest(
 ) -> KResult<DigestResponse> {
     debug!("digest: entering");
 
-    let application = get_application(&request.reason);
-
     let authorization_token = validate_cse_authorization_token(
         &request.authorization,
         kms,
         cse_config,
-        &application,
         Some(&[Role::Verifier]),
     )
     .await?;
@@ -962,16 +934,10 @@ pub async fn rewrap(
     debug!("rewrap: entering");
 
     // Authorization & identity
-    let application = get_application(&request.reason);
     let roles = [Role::Migrator];
-    let token = validate_cse_authorization_token(
-        &request.authorization,
-        kms,
-        cse_config,
-        &application,
-        Some(&roles),
-    )
-    .await?;
+    let token =
+        validate_cse_authorization_token(&request.authorization, kms, cse_config, Some(&roles))
+            .await?;
 
     let perimeter_id = token.perimeter_id.unwrap_or_default();
     let resource_name = token.resource_name.unwrap_or_default();

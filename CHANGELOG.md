@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.1.1] - 2025-05-23
+
+### 🐛 Bug Fixes
+
+- Safer handling of Google CSE authorization token decoding (#431)
+
 ## [5.1.0] - 2025-05-22
 
 ### 🚀 Features
