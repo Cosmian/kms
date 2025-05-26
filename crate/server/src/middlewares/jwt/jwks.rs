@@ -8,6 +8,7 @@ use std::{collections::HashMap, sync::RwLock};
 
 use alcoholic_jwt::{JWK, JWKS};
 use chrono::{DateTime, Duration, Utc};
+use serde_json::Value;
 
 use crate::{error::KmsError, result::KResult};
 
@@ -94,11 +95,29 @@ impl JwksManager {
                 async move {
                     tracing::debug!("fetching {jwks_uri}");
                     match client.get(&jwks_uri).send().await {
-                        Ok(resp) => match resp.json::<JWKS>().await {
-                            Ok(jwks) => {
-                                tracing::info!("+ fetched {jwks_uri}");
-                                Some((jwks_uri, jwks))
-                            }
+                        Ok(resp) => match resp.json::<Value>().await {
+                            Ok(json_value) => json_value.get("keys").map_or_else(
+                                || {
+                                    tracing::error!("JSON key 'keys' not found in JWKS!");
+                                    None
+                                },
+                                |keys| {
+                                    let jwks: Vec<Value> = match keys {
+                                        Value::Array(array) => array
+                                            .clone()
+                                            .into_iter()
+                                            .filter(|v| {
+                                                serde_json::from_str::<JWK>(&v.to_string()).is_ok()
+                                            })
+                                            .collect::<Vec<Value>>(),
+                                        _ => vec![],
+                                    };
+                                    let jwks = Value::Array(jwks);
+
+                                    serde_json::from_str::<JWKS>(&jwks.to_string())
+                                        .map_or(None, |jwks| Some((jwks_uri, jwks)))
+                                },
+                            ),
                             Err(e) => {
                                 tracing::warn!(
                                     "Unable to get content as JWKS for `{jwks_uri}`: {e}"
