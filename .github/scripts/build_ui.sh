@@ -35,14 +35,15 @@ fi
 cargo install --version 0.13.1 wasm-pack --force
 
 # Build WASM component
-cd cli/crate/wasm
+cd crate/wasm
 # shellcheck disable=SC2086
 RUSTUP_TOOLCHAIN="nightly-2025-01-01" wasm-pack build --target web --release $FEATURES
 
 # Copy WASM artifacts to UI directory
-rm -rf ../../ui/src/wasm/
-mkdir -p ../../ui/src/wasm/
-cp -R pkg ../../ui/src/wasm/
+WASM_DIR="../../ui/src/wasm/"
+rm -rf "$WASM_DIR"
+mkdir -p "$WASM_DIR"
+cp -R pkg "$WASM_DIR"
 
 # Build UI
 cd ../../ui # current path: ./cli/ui
@@ -51,7 +52,7 @@ npm install
 npm run build
 
 # Deploy built UI to root
-cd ../.. # current path: ./
+cd .. # current path: ./
 rm -rf crate/server/ui/
 mkdir -p crate/server/ui/
-cp -R cli/ui/dist crate/server/ui/
+cp -R ui/dist crate/server/ui/

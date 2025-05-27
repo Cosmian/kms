@@ -1,0 +1,11 @@
+[kms_config]
+print_json = false
+
+[kms_config.http_config]
+server_url = "http://0.0.0.0:9998"
+
+[findex_config.http_config]
+accept_invalid_certs = true
+server_url = "https://0.0.0.0:6660"
+ssl_client_pkcs12_path = "../../test_data/certificates/client_server/owner/owner.client.acme.com.p12"
+ssl_client_pkcs12_password = "password"

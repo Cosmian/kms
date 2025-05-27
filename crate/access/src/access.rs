@@ -35,13 +35,13 @@ impl fmt::Display for Access {
     }
 }
 
-#[derive(Deserialize, Serialize, Debug)] // Debug is required by ok_json()
+#[derive(Deserialize, Serialize, Clone, PartialEq, Eq, Debug)] // Debug is required by ok_json()
 pub struct UserAccessResponse {
     pub user_id: String,
     /// A `BTreeSet` is used to keep results sorted
     pub operations: BTreeSet<KmipOperation>,
 }
-#[derive(Deserialize, Serialize, Debug)] // Debug is required by ok_json()
+#[derive(Deserialize, Serialize, Clone, PartialEq, Eq, Debug)] // Debug is required by ok_json()
 pub struct ObjectOwnedResponse {
     pub object_id: UniqueIdentifier,
     pub state: State,
@@ -69,7 +69,7 @@ impl From<(String, State, Attributes)> for ObjectOwnedResponse {
         }
     }
 }
-#[derive(Deserialize, Serialize, Debug)] // Debug is required by ok_json()
+#[derive(Deserialize, Serialize, Clone, Debug)] // Debug is required by ok_json()
 pub struct AccessRightsObtainedResponse {
     pub object_id: UniqueIdentifier,
     pub owner_id: String,

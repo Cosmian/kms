@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
-    fs, path,
+    path,
     sync::{Arc, LazyLock},
 };
 
@@ -341,6 +341,10 @@ fn sort_certificates(certificates: &[X509]) -> KResult<Vec<X509>> {
 /// * If the verification of individual certificates in the chain fails.
 /// ```
 fn verify_chain_signature(certificates: &[X509]) -> KResult<ValidityIndicator> {
+    trace!(
+        "verify_chain_signature: entering: number of certificates: {}",
+        certificates.len()
+    );
     if certificates.is_empty() {
         return Err(KmsError::Certificate(
             "Certificate chain is empty".to_owned(),
@@ -377,8 +381,10 @@ fn verify_chain_signature(certificates: &[X509]) -> KResult<ValidityIndicator> {
     )?;
 
     if !result {
+        // Get the last error message from the context
         return Err(KmsError::Certificate(format!(
-            "Result of the function verify_cert: {result:?}"
+            "Result of the function verify_cert: {result:?}. Error message: {}",
+            context.error()
         )));
     }
 
@@ -493,7 +499,7 @@ async fn get_crl_bytes(uri_list: Vec<String>) -> KResult<HashMap<String, Vec<u8>
                     continue;
                 }
 
-                let crl_bytes = fs::read(path::Path::new(&path))?;
+                let crl_bytes = std::fs::read(path::Path::new(&path))?;
                 crls.insert(path.clone(), crl_bytes.clone());
                 result.insert(path, crl_bytes);
             }

@@ -1,0 +1,5 @@
+[ v3_ca ]
+basicConstraints=CA:TRUE,pathlen:0
+keyUsage=keyCertSign,digitalSignature
+extendedKeyUsage=emailProtection
+crlDistributionPoints=URI:https://package.cosmian.com/kms/crl_tests/intermediate.crl.pem
