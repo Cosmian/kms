@@ -37,7 +37,7 @@ import RsaKeyCreateForm from "./RsaKeysCreate";
 import SymKeyCreateForm from "./SymKeysCreate";
 import SymmetricDecryptForm from "./SymmetricDecrypt";
 import SymmetricEncryptForm from "./SymmetricEncrypt";
-import { AuthMethod, fetchAuthMethod, fetchIdToken } from "./utils";
+import { AuthMethod, fetchAuthMethod, fetchIdToken, getNoTTLVRequest } from "./utils";
 import init from "./wasm/pkg";
 
 type AppContentProps = {
@@ -50,6 +50,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode }) =>
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [isAuthLoading, setIsAuthLoading] = useState(false);
     const [authMethod, setAuthMethod] = useState<AuthMethod>("None");
+    const [loginError, setLoginError] = useState<undefined | string>(undefined);
 
     useEffect(() => {
         const location = window.location.origin; // WHEN USING REAL URL/IP
@@ -62,9 +63,18 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode }) =>
             if (authMethod == "JWT") {
                 const data = await fetchIdToken(location);
                 if (data) {
-                    setIdToken(data.id_token);
-                    setUserId(data.user_id);
-                    setIsAuthenticated(true);
+                    try {
+                        const version = await getNoTTLVRequest("/version", data.id_token, location);
+                        if (version) {
+                            setIdToken(data.id_token);
+                            setUserId(data.user_id);
+                            setIsAuthenticated(true);
+                            setLoginError(undefined);
+                        }
+                    } catch (error) {
+                        console.log(error);
+                        setLoginError(`An error occured: ${error}`);
+                    }
                 }
             }
             setIsAuthLoading(false);
@@ -80,7 +90,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode }) =>
         <Routes>
             {!isAuthenticated && authMethod === "JWT" ? (
                 <>
-                    <Route path="/login" element={<LoginPage auth={true} />} />
+                    <Route path="/login" element={<LoginPage auth={true} error={loginError} />} />
                     <Route path="*" element={<Navigate to="/login" replace />} />
                 </>
             ) : (
