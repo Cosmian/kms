@@ -8,9 +8,10 @@ use std::{collections::HashMap, sync::RwLock};
 
 use alcoholic_jwt::{JWK, JWKS};
 use chrono::{DateTime, Duration, Utc};
-use serde_json::Value;
+use reqwest::Client;
+use serde_json::{Value, json};
 
-use crate::{error::KmsError, result::KResult};
+use crate::{error::KmsError, kms_bail, kms_error, result::KResult};
 
 static REFRESH_INTERVAL: i64 = 60; // in secs
 
@@ -85,59 +86,74 @@ impl JwksManager {
     /// The JWK Sets are fetched in parallel and warn about failures
     /// without stopping the whole fetch process.
     async fn fetch_all(uris: &[String]) -> HashMap<String, JWKS> {
-        let client = reqwest::Client::new();
-
-        let jwks_downloads = uris
-            .iter()
-            .map(|jwks_uri| {
-                let client = &client;
-                let jwks_uri = jwks_uri.clone();
-                async move {
-                    tracing::debug!("fetching {jwks_uri}");
-                    match client.get(&jwks_uri).send().await {
-                        Ok(resp) => match resp.json::<Value>().await {
-                            Ok(json_value) => json_value.get("keys").map_or_else(
-                                || {
-                                    tracing::error!("JSON key 'keys' not found in JWKS!");
-                                    None
-                                },
-                                |keys| {
-                                    let jwks: Vec<Value> = match keys {
-                                        Value::Array(array) => array
-                                            .clone()
-                                            .into_iter()
-                                            .filter(|v| {
-                                                serde_json::from_str::<JWK>(&v.to_string()).is_ok()
-                                            })
-                                            .collect::<Vec<Value>>(),
-                                        _ => vec![],
-                                    };
-                                    let jwks = Value::Array(jwks);
-
-                                    serde_json::from_str::<JWKS>(&jwks.to_string())
-                                        .map_or(None, |jwks| Some((jwks_uri, jwks)))
-                                },
-                            ),
-                            Err(e) => {
-                                tracing::warn!(
-                                    "Unable to get content as JWKS for `{jwks_uri}`: {e}"
-                                );
-                                None
-                            }
-                        },
-                        Err(e) => {
-                            tracing::warn!("Unable to download JWKS `{jwks_uri}`: {e}");
-                            None
-                        }
-                    }
-                }
-            })
-            .collect::<Vec<_>>();
-
+        // Create a vector of futures to fetch JWKS from each URI
+        let jwks_downloads: Vec<_> = uris.iter().map(parse_jwks).collect();
+        // Use `join_all` to fetch all JWKS in parallel
         futures::future::join_all(jwks_downloads)
             .await
             .into_iter()
+            .filter(|res| {
+                //log errors and filter them out
+                res.as_ref()
+                    .map_err(|e| {
+                        tracing::warn!("Fetch JWKS: {e}");
+                    })
+                    .is_ok()
+            })
             .flatten()
             .collect::<HashMap<_, _>>()
     }
+}
+
+/// Fetch a JWKS from the provided URI and parse it.
+///
+/// This function will log errors for invalid JWKs
+/// but it will not stop the process if one fails.
+/// It returns a tuple of the URI and the parsed JWKS.
+async fn parse_jwks(jwks_uri: &String) -> KResult<(String, JWKS)> {
+    tracing::debug!("fetching {jwks_uri}");
+    // Fetch the JWKS from the provided URI
+    let client = Client::new();
+    let response = client
+        .get(jwks_uri)
+        .send()
+        .await
+        .map_err(|e| kms_error!("Failed to fetch JWKS from {jwks_uri}: {e}"))?;
+    // Check if the response status is successful
+    let json_value = response
+        .json::<Value>()
+        .await
+        .map_err(|e| kms_error!("Failed to parse JWKS response from {jwks_uri}: {e}"))?;
+    // Ensure that the JSON value contains the "keys" field
+    let Some(keys) = json_value.get("keys") else {
+        kms_bail!("JSON key 'keys' not found in JWKS at {jwks_uri}");
+    };
+    // Ensure that the keys are an array of valid JWKs
+    let jwks = match keys {
+        Value::Array(array) => array
+            .clone()
+            .into_iter()
+            .filter(|v| match serde_json::from_value::<JWK>(v.clone()) {
+                Ok(jwk) => {
+                    tracing::debug!("Found valid JWK in JWKS at `{jwks_uri}`: {jwk:#?}");
+                    true
+                }
+                Err(e) => {
+                    tracing::debug!("Ignoring invalid JWK in JWKS at `{jwks_uri}`: {e}: {v:#?}",);
+                    false
+                }
+            })
+            .collect::<Vec<Value>>(),
+        _ => vec![],
+    };
+    // If no valid JWKs are found, return an error
+    if jwks.is_empty() {
+        kms_bail!("No valid JWK found in JWKS at `{jwks_uri}`");
+    }
+    // Attempt to deserialize the JWKS from the JSON value
+    let jwks = json!({"keys": Value::Array(jwks)});
+    let jwks = serde_json::from_value::<JWKS>(jwks.clone()).map_err(|e| {
+        kms_error!("Failed to reconstruct JWKS from array of JWK at `{jwks_uri}`: {e}: {jwks:#?}")
+    })?;
+    Ok((jwks_uri.clone(), jwks))
 }
