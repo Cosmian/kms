@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.2.0] - 2025-05-27
+
+### 🚀 Features
+
+- Support for JWKS (JSON Web Key Set) that provides JWK not appropriate for OIDC authentication (#433)
+
 ## [5.1.1] - 2025-05-23
 
 ### 🐛 Bug Fixes
