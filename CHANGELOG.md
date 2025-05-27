@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### 🚀 Features
 
-- Support for JWKS (JSON Web Key Set) that provides JWK not appropriate for OIDC authentication
+- Support for JWKS (JSON Web Key Set) that provides JWK not appropriate for OIDC authentication (#433)
 
 ## [5.1.1] - 2025-05-23
 
