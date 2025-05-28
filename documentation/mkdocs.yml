@@ -84,6 +84,7 @@ nav:
       - User Defined Function for PySpark, Databricks,... in Python: python_udf/index.md
       - Snowflake Native App: snowflake/index.md
       - API Endpoints: api.md
+      - EKM: ekm.md
   - Installation:
       - Getting started: installation/installation_getting_started.md
       - Deploying in a Cosmian Confidential VM: installation/marketplace_guide.md
