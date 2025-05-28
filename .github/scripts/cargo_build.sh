@@ -95,7 +95,7 @@ fi
 find . -type d -name cosmian-kms -exec rm -rf \{\} \; -print || true
 rm -f /tmp/*.toml
 
-export RUST_LOG="cosmian_kms_cli=trace,cosmian_kms_server=trace,cosmian_kmip=error,test_kms_server=trace"
+export RUST_LOG="cosmian_kms_cli=error,cosmian_kms_server=error,cosmian_kmip=error,test_kms_server=error"
 
 # shellcheck disable=SC2086
 cargo build --target $TARGET $RELEASE $FEATURES
@@ -121,16 +121,8 @@ for KMS_TEST_DB in "${DATABASES[@]}"; do
 
   export KMS_TEST_DB="$KMS_TEST_DB"
 
-  if [ "$DEBUG_OR_RELEASE" = "debug" ]; then
-    # shellcheck disable=SC2086
-    cargo test --workspace --lib --target $TARGET $RELEASE $FEATURES -- --nocapture $SKIP_SERVICES_TESTS
-  else
-    # In release mode, cargo test being too greedy, we need to specify the packages to test
-    # shellcheck disable=SC2086
-    cargo test \
-      -p cosmian_kms_server \
-      --workspace --lib --target $TARGET $RELEASE $FEATURES -- --nocapture $SKIP_SERVICES_TESTS
-  fi
+  # shellcheck disable=SC2086
+  cargo test --workspace --lib --target $TARGET $RELEASE $FEATURES -- --nocapture $SKIP_SERVICES_TESTS
 done
 
 # shellcheck disable=SC2086
