@@ -128,7 +128,6 @@ for KMS_TEST_DB in "${DATABASES[@]}"; do
     # In release mode, cargo test being too greedy, we need to specify the packages to test
     # shellcheck disable=SC2086
     cargo test \
-      -p cosmian_kms_cli \
       -p cosmian_kms_server \
       --workspace --lib --target $TARGET $RELEASE $FEATURES -- --nocapture $SKIP_SERVICES_TESTS
   fi
