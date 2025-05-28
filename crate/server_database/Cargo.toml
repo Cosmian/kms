@@ -28,7 +28,7 @@ num-bigint-dig = { workspace = true, features = [
 ] }
 num_cpus = { workspace = true }
 rawsql = "0.1"
-redis = { version = "0.23", features = [
+redis = { version = "0.31", features = [
     "aio",
     "ahash",
     "script",
