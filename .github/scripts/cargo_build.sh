@@ -121,8 +121,17 @@ for KMS_TEST_DB in "${DATABASES[@]}"; do
 
   export KMS_TEST_DB="$KMS_TEST_DB"
 
-  # shellcheck disable=SC2086
-  cargo test --workspace --lib --target $TARGET $RELEASE $FEATURES -- --nocapture $SKIP_SERVICES_TESTS
+  if [ "$DEBUG_OR_RELEASE" = "debug" ]; then
+    # shellcheck disable=SC2086
+    cargo test --workspace --lib --target $TARGET $RELEASE $FEATURES -- --nocapture $SKIP_SERVICES_TESTS
+  else
+    # In release mode, cargo test being too greedy, we need to specify the packages to test
+    # shellcheck disable=SC2086
+    cargo test \
+      -p cosmian_kms_cli \
+      -p cosmian_kms_server \
+      --workspace --lib --target $TARGET $RELEASE $FEATURES -- --nocapture $SKIP_SERVICES_TESTS
+  fi
 done
 
 # shellcheck disable=SC2086
