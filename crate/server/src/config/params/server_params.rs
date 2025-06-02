@@ -5,7 +5,10 @@ use tracing::{debug, warn};
 
 use super::TlsParams;
 use crate::{
-    config::{ClapConfig, DEFAULT_COSMIAN_UI_DIST_PATH, GoogleCseConfig, IdpConfig, OidcConfig},
+    config::{
+        ClapConfig, DEFAULT_COSMIAN_UI_DIST_PATH, GoogleCseConfig, IdpConfig, OidcConfig,
+        params::proxy_params::ProxyParams,
+    },
     error::KmsError,
     result::{KResult, KResultHelper},
 };
@@ -56,7 +59,10 @@ pub struct ServerParams {
     /// The TLS parameters of the server
     pub tls_params: Option<TlsParams>,
 
-    /// The exposed URL of the KMS - this is required if google cse configuration is activated.
+    /// The (forward) proxy parameters, if any
+    pub proxy_params: Option<ProxyParams>,
+
+    /// The exposed URL of the KMS - this is required if Google CSE configuration is activated.
     /// If this server is running on the domain `cse.my_domain.com` with this public URL,
     /// The configured URL from Google admin  should be something like <https://cse.my_domain.com/google_cse>
     pub kms_public_url: Option<String>,
@@ -189,6 +195,8 @@ impl ServerParams {
             key_wrapping_key: conf.key_encryption_key,
             non_revocable_key_id: conf.non_revocable_key_id,
             privileged_users: conf.privileged_users,
+            proxy_params: ProxyParams::try_from(&conf.proxy)
+                .context("failed to create ProxyParams")?,
         };
         debug!("try_from: server_params: {res:#?}");
 

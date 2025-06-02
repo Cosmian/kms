@@ -2,7 +2,7 @@ mod command_line;
 mod params;
 
 pub use command_line::*;
-pub use params::{ServerParams, TlsParams};
+pub use params::{ProxyParams, ServerParams, TlsParams};
 
 #[derive(Debug, Clone)]
 pub struct IdpConfig {

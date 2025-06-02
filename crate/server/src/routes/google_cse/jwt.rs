@@ -136,7 +136,7 @@ pub(crate) fn decode_jwt_authorization_token(
     );
 
     let validations = vec![
-        #[cfg(not(test))]
+        #[cfg(all(not(test), not(feature = "insecure")))]
         alcoholic_jwt::Validation::Audience(
             jwt_config
                 .jwt_audience
@@ -228,7 +228,7 @@ pub(crate) async fn validate_cse_authentication_token(
             "Fail to decode authentication token with the given config".to_owned(),
         )
     })?;
-    #[cfg(not(feature = "insecure"))]
+    #[cfg(all(not(test), not(feature = "insecure")))]
     if let Some(kacls_url) = authentication_token.kacls_url {
         kms_ensure!(
             kacls_url == google_cse_kacls_url,
@@ -305,7 +305,7 @@ pub(crate) async fn validate_cse_authorization_token(
     trace!("authorization token: {authorization_token:?}");
     trace!("authorization token headers: {jwt_headers:?}");
 
-    #[cfg(not(feature = "insecure"))]
+    #[cfg(all(not(test), not(feature = "insecure")))]
     if let Some(roles) = roles {
         let role = authorization_token.role.as_ref().ok_or_else(|| {
             KmsError::Unauthorized("Authorization token should contain a role".to_owned())
@@ -320,14 +320,13 @@ pub(crate) async fn validate_cse_authorization_token(
         );
     }
 
-    #[cfg(not(feature = "insecure"))]
+    #[cfg(all(not(test), not(feature = "insecure")))]
     if authorization_token.resource_name.is_none() {
         return Err(KmsError::Unauthorized(
             "Authorization token should contain an resource_name".to_owned(),
         ))
     }
-
-    #[cfg(not(feature = "insecure"))]
+    #[cfg(all(not(test), not(feature = "insecure")))]
     if let Some(kacls_url) = authorization_token.kacls_url.clone() {
         kms_ensure!(
             kacls_url == google_cse_kacls_url,
@@ -433,7 +432,7 @@ mod tests {
             uris.push(JwtAuthConfig::uri(JWT_ISSUER_URI, Some(JWKS_URI)));
             uris
         };
-        let jwks_manager = Arc::new(JwksManager::new(uris).await.unwrap());
+        let jwks_manager = Arc::new(JwksManager::new(uris, None).await.unwrap());
         jwks_manager.refresh().await.unwrap();
 
         let client_id = std::env::var("TEST_GOOGLE_OAUTH_CLIENT_ID").unwrap();

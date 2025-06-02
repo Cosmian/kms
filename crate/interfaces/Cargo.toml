@@ -13,7 +13,7 @@ doctest = false
 
 [dependencies]
 async-trait = { workspace = true }
-cosmian_kmip = { workspace = true }
+cosmian_kmip = { path = "../kmip" }
 num-bigint-dig = { workspace = true, features = [
     "std",
     "rand",

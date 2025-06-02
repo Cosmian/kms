@@ -1,0 +1,81 @@
+[package]
+name = "cosmian_kms_cli"
+version.workspace = true
+authors.workspace = true
+categories = ["security"]
+edition.workspace = true
+keywords = ["kms", "cosmian"]
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = """
+Command Line Interface used to manage the KMS server
+
+If any assistance is needed, please either visit the Cosmian technical documentation at https://docs.cosmian.com
+or contact the Cosmian support team on Discord https://discord.com/invite/7kPMNtHpnz
+"""
+
+[lib]
+# doc test linking as a separate binary is extremely slow
+# and is not needed for internal lib
+doctest = false
+
+[features]
+fips = [
+  "cosmian_kms_client/fips",
+  "cosmian_kms_crypto/fips",
+  "cosmian_kmip/fips",
+  "test_kms_server/fips",
+]
+
+[dependencies]
+base64 = { workspace = true }
+clap = { workspace = true, features = [
+  "help",
+  "env",
+  "std",
+  "usage",
+  "error-context",
+  "derive",
+  "cargo",
+] }
+cosmian_config_utils = { workspace = true }
+cosmian_cover_crypt = { workspace = true }
+cosmian_crypto_core = { workspace = true }
+cosmian_kmip = { path = "../kmip" } # only to be reexported, not used directly
+cosmian_kms_client = { path = "../kms_client" }
+cosmian_kms_crypto = { path = "../crypto" }
+cosmian_logger = { workspace = true }
+csv = "1.3.1"
+der = { workspace = true, features = ["pem"] }
+hex = { workspace = true }
+jwt-simple = { version = "0.12", default-features = false, features = [
+  "pure-rust",
+] }
+leb128 = { workspace = true }
+num-format = { workspace = true }
+pem = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+strum = { workspace = true }
+test_kms_server = { path = "../test_kms_server" }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+tracing = { workspace = true }
+url = { workspace = true }
+uuid = { workspace = true }
+x509-cert = { workspace = true, features = ["pem"] }
+zeroize = { workspace = true }
+
+[dev-dependencies]
+actix-rt = "2.10"
+actix-server = { workspace = true }
+assert_cmd = "2.0"
+const-oid = { version = "0.9", features = ["db"] }
+lazy_static = "1.5"
+openssl = { workspace = true }
+predicates = "3.1"
+regex = { version = "1.11", default-features = false }
+tempfile = "3.19"
+x509-parser = { workspace = true, features = ["verify"] }

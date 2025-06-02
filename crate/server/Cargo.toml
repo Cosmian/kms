@@ -55,11 +55,11 @@ clap = { workspace = true, features = [
 cloudproof_findex = { version = "5.0", features = ["findex-redis"] }
 cosmian_cover_crypt = { workspace = true }
 cosmian_crypto_core = { workspace = true }
-cosmian_kmip = { workspace = true }
-cosmian_kms_access = { workspace = true }
-cosmian_kms_crypto = { workspace = true }
-cosmian_kms_interfaces = { workspace = true }
-cosmian_kms_server_database = { workspace = true }
+cosmian_kmip = { path = "../kmip" }
+cosmian_kms_access = { path = "../access" }
+cosmian_kms_crypto = { path = "../crypto" }
+cosmian_kms_interfaces = { path = "../interfaces" }
+cosmian_kms_server_database = { path = "../server_database" }
 cosmian_logger = { workspace = true }
 dotenvy = "0.15"
 futures = "0.3"
@@ -74,14 +74,14 @@ num-bigint-dig = { workspace = true, features = [
 ] }
 openidconnect = "4.0.0"
 openssl = { workspace = true }
-proteccio_pkcs11_loader = { workspace = true }
+proteccio_pkcs11_loader = { path = "../hsm/proteccio" }
 # Important: align the rustls version with reqwest rustls dependency
 # When using client certificate authentication, reqwest will use the
 # native-tls crate to create an Identity; this will be different backend
 # implementations depending on the operating system. On linux, it will
 # use openssl
 # The default features is to guarantee that the native-tls crate will be used
-reqwest = { workspace = true, features = ["default", "json", "native-tls"] }
+reqwest = { workspace = true, features = ["default", "json", "native-tls", "socks"] }
 rustls = { version = "0.23", features = [
     "tls12",
     "std",
@@ -97,7 +97,7 @@ tokio = { workspace = true, features = ["full"] }
 toml = "0.8"
 tracing = { workspace = true }
 url = { workspace = true }
-utimaco_pkcs11_loader = { workspace = true }
+utimaco_pkcs11_loader = { path = "../hsm/utimaco" }
 uuid = { workspace = true, features = ["v4"] }
 x509-parser = { workspace = true }
 zeroize = { workspace = true }
@@ -105,7 +105,7 @@ pem.workspace = true
 
 [dev-dependencies]
 actix-http = "3.10"
-cosmian_kms_client_utils = { workspace = true }
+cosmian_kms_client_utils = { path = "../client_utils" }
 cosmian_logger = { workspace = true }
 mockall = { version = "0.13" }
 native-tls = { workspace = true }

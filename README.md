@@ -53,24 +53,25 @@ to be used in various applications, such as in _S/MIME_ encrypted emails.
 
 The KMS has extensive online [documentation](https://docs.cosmian.com/key_management_system/)
 
-- [Quick start](#quick-start)
-    - [Example](#example)
-- [Repository content](#repository-content)
-- [Building the KMS](#building-the-kms)
-    - [Linux or MacOS (CPU Intel or MacOS ARM)](#linux-or-macos-cpu-intel-or-macos-arm)
-    - [Windows](#windows)
-    - [Build the KMS](#build-the-kms)
-    - [Build the Docker Ubuntu container](#build-the-docker-ubuntu-container)
-- [Running the unit and integration tests](#running-the-unit-and-integration-tests)
-- [Development: running the server with cargo](#development-running-the-server-with-cargo)
-- [Server parameters](#server-parameters)
-- [Use the KMS inside a Cosmian VM on SEV/TDX](#use-the-kms-inside-a-cosmian-vm-on-sevtdx)
-- [Releases](#releases)
-- [Benchmarks](#benchmarks)
+- [Cosmian KMS](#cosmian-kms)
+    - [Quick start](#quick-start)
+        - [Example](#example)
+    - [Repository content](#repository-content)
+    - [Building the KMS](#building-the-kms)
+        - [Linux or MacOS (CPU Intel or MacOs ARM)](#linux-or-macos-cpu-intel-or-macos-arm)
+        - [Windows](#windows)
+        - [Build the KMS](#build-the-kms)
+        - [Build the Docker Ubuntu container](#build-the-docker-ubuntu-container)
+    - [Running the unit and integration tests](#running-the-unit-and-integration-tests)
+    - [Development: running the server with cargo](#development-running-the-server-with-cargo)
+    - [Server parameters](#server-parameters)
+    - [Use the KMS inside a Cosmian VM on SEV/TDX](#use-the-kms-inside-a-cosmian-vm-on-sevtdx)
+    - [Releases](#releases)
+    - [Benchmarks](#benchmarks)
 
 ## Quick start
 
-Pre-built binaries [are available](https://package.cosmian.com/kms/5.2.0/)
+Pre-built binaries [are available](https://package.cosmian.com/kms/5.3.0/)
 for Linux, MacOS, and Windows, as well as Docker images. To run the server binary, OpenSSL must be
 available in your path (see "building the KMS" below for details); other binaries do not have this
 requirement.
@@ -148,10 +149,10 @@ directory.
 
 ## Building the KMS
 
-First, pull the git submodule for client requirements such as CLI and UI:
+First, pull the git submodule for CI requirements such as downloading OpenSSL binaries:
 
 ```sh
-git submodule update --recursive --init
+git submodule update --init --recursive
 ````
 
 Then, OpenSSL v3.2.0 is required to build the KMS.
@@ -164,7 +165,7 @@ Retrieve OpenSSL v3.2.0 (already built) with the following commands:
 export OPENSSL_DIR=/usr/local/openssl
 sudo mkdir -p ${OPENSSL_DIR}
 sudo chown -R $USER ${OPENSSL_DIR}
-bash .github/scripts/get_openssl_binaries.sh
+bash .github/reusable_scripts/get_openssl_binaries.sh
 ```
 
 ### Windows
@@ -205,7 +206,7 @@ Build the server and CLI binaries:
 cd crate/server
 cargo build --release
 cd ../..
-cd cli/crate/cli
+cd crate/cli
 cargo build --release
 ```
 

@@ -126,7 +126,7 @@ pub(crate) async fn test_app(
         .service(routes::access::get_create_access)
         .service(routes::access::get_privileged_access);
 
-    let google_cse_jwt_config = google_cse_auth()
+    let google_cse_jwt_config = google_cse_auth(None)
         .await
         .expect("cannot setup Google CSE auth");
 

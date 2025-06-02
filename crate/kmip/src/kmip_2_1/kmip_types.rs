@@ -1360,6 +1360,12 @@ impl From<&UniqueIdentifier> for String {
     }
 }
 
+impl From<&str> for UniqueIdentifier {
+    fn from(value: &str) -> Self {
+        Self::TextString(value.to_owned())
+    }
+}
+
 impl UniqueIdentifier {
     /// Returns the value as a string if it is a `TextString`
     #[must_use]
