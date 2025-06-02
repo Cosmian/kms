@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.3.0] - 2025-06-02
+
+### 🚀 Features
+
+- Support for outbound proxy to fetch the JWKS (JSON Web Key Set)
+
 ## [5.2.0] - 2025-05-27
 
 ### 🚀 Features

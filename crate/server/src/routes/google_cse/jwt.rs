@@ -432,7 +432,7 @@ mod tests {
             uris.push(JwtAuthConfig::uri(JWT_ISSUER_URI, Some(JWKS_URI)));
             uris
         };
-        let jwks_manager = Arc::new(JwksManager::new(uris).await.unwrap());
+        let jwks_manager = Arc::new(JwksManager::new(uris, None).await.unwrap());
         jwks_manager.refresh().await.unwrap();
 
         let client_id = std::env::var("TEST_GOOGLE_OAUTH_CLIENT_ID").unwrap();
