@@ -147,7 +147,7 @@ mod tests {
 
     use cosmian_kms_server::config::{
         ClapConfig, GoogleCseConfig, HttpConfig, JwtAuthConfig, LoggingConfig, MainDBConfig,
-        OidcConfig, SocketServerConfig, TlsConfig, UiConfig, WorkspaceConfig,
+        OidcConfig, ProxyConfig, SocketServerConfig, TlsConfig, UiConfig, WorkspaceConfig,
     };
 
     #[test]
@@ -177,6 +177,13 @@ mod tests {
                 hostname: "[hostname]".to_owned(),
                 api_token_id: None,
                 ..Default::default()
+            },
+            proxy: ProxyConfig {
+                url: Some("https://proxy.example.com:8080".to_owned()),
+                basic_auth_username: Some("[proxy username]".to_owned()),
+                basic_auth_password: Some("[proxy password]".to_owned()),
+                custom_auth_header: None,
+                exclusion_list: Some(vec!["domain1".to_owned(), "domain2".to_owned()]),
             },
             auth: JwtAuthConfig {
                 jwt_issuer_uri: Some(vec![
@@ -268,6 +275,12 @@ clients_ca_cert_file = "[authority cert file]"
 [http]
 port = 443
 hostname = "[hostname]"
+
+[proxy]
+url = "https://proxy.example.com:8080"
+basic_auth_username = "[proxy username]"
+basic_auth_password = "[proxy password]"
+exclusion_list = ["domain1", "domain2"]
 
 [auth]
 jwt_issuer_uri = ["[jwt issuer uri 1]", "[jwt issuer uri 2]"]

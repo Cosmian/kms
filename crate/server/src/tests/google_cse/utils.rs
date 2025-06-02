@@ -3,7 +3,7 @@ use std::sync::Arc;
 use serde::Deserialize;
 
 use crate::{
-    config::JwtAuthConfig,
+    config::{JwtAuthConfig, ProxyParams},
     error::KmsError,
     middlewares::{JwksManager, JwtConfig},
     result::KResult,
@@ -58,14 +58,16 @@ pub(crate) async fn generate_google_jwt() -> KResult<String> {
     Ok(id_token)
 }
 
-pub(crate) async fn google_cse_auth() -> KResult<GoogleCseConfig> {
+pub(crate) async fn google_cse_auth(
+    proxy_params: Option<&ProxyParams>,
+) -> KResult<GoogleCseConfig> {
     let mut uris = google_cse::list_jwks_uri(None);
 
     uris.push(JwtAuthConfig::uri(
         GOOGLE_JWT_ISSUER_URI,
         Some(GOOGLE_JWKS_URI),
     ));
-    let jwks_manager = Arc::new(JwksManager::new(uris).await?);
+    let jwks_manager = Arc::new(JwksManager::new(uris, proxy_params).await?);
     let jwt_config = JwtConfig {
         jwt_issuer_uri: GOOGLE_JWT_ISSUER_URI.to_owned(),
         jwks: jwks_manager.clone(),

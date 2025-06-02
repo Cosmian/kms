@@ -1,4 +1,4 @@
-use std::{fmt::Display, path::PathBuf};
+use std::fmt::Display;
 
 use clap::Args;
 use serde::{Deserialize, Serialize};
@@ -6,43 +6,65 @@ use serde::{Deserialize, Serialize};
 #[derive(Args, Clone, Deserialize, Serialize)]
 #[serde(default)]
 #[derive(Default)]
-pub struct TlsConfig {
-    /// The KMS server optional PKCS#12 Certificates and Key file.
-    /// Mandatory when starting the socket server.
-    /// When provided, the Socket and HTTP server will start in TLS Mode.
-    #[clap(long, env = "KMS_HTTPS_P12_FILE", verbatim_doc_comment)]
-    pub tls_p12_file: Option<PathBuf>,
+pub struct ProxyConfig {
+    /// The proxy URL:
+    ///   - e.g., "https://secure.example" for an HTTP proxy
+    ///   - e.g., "socks5://192.168.1.1:9000" for a SOCKS proxy
+    #[clap(long, env = "KMS_PROXY_URL", verbatim_doc_comment)]
+    pub url: Option<String>,
 
-    /// The password to open the PKCS#12 Certificates and Key file
-    #[clap(long, env = "KMS_HTTPS_P12_PASSWORD", verbatim_doc_comment)]
-    pub tls_p12_password: Option<String>,
+    /// Set the Proxy-Authorization header username using Basic auth.
+    #[clap(long, env = "KMS_PROXY_BASIC_AUTH_USERNAME", verbatim_doc_comment)]
+    pub basic_auth_username: Option<String>,
 
-    /// The server's optional X. 509 certificate in PEM format validates the client certificate presented for authentication.
-    /// If provided, clients must present a certificate signed by this authority for authentication.
-    /// Mandatory to start the socket server.
-    #[clap(long, env = "KMS_CLIENTS_CA_CERT_FILE", verbatim_doc_comment)]
-    pub clients_ca_cert_file: Option<PathBuf>,
+    /// Set the Proxy-Authorization header password using Basic auth.
+    #[clap(long, env = "KMS_PROXY_BASIC_AUTH_PASSWORD", verbatim_doc_comment)]
+    pub basic_auth_password: Option<String>,
+
+    /// Set the Proxy-Authorization header to a specified value.
+    #[clap(long, env = "KMS_PROXY_CUSTOM_AUTH_HEADER", verbatim_doc_comment)]
+    pub custom_auth_header: Option<String>,
+
+    /// The No Proxy exclusion list to this Proxy
+    #[clap(long, env = "KMS_PROXY_NO_PROXY", verbatim_doc_comment)]
+    pub exclusion_list: Option<Vec<String>>,
 }
 
-impl Display for TlsConfig {
+impl Display for ProxyConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.tls_p12_file.is_some() {
-            write!(f, "Pkcs12 file: {:?}, ", self.tls_p12_file.as_ref())?;
-            if let Some(https_p12_password) = &self.tls_p12_password {
-                write!(f, "password: {}, ", https_p12_password.replace('.', "*"))?;
-            }
-            write!(
-                f,
-                "clients' CA cert file: {:?}",
-                self.clients_ca_cert_file.as_ref()
-            )
+        if let Some(url) = &self.url {
+            write!(f, "Proxy URL: {url}, ")?;
         } else {
-            write!(f, "No TLS config")
+            write!(f, "No Proxy URL, ")?;
+        }
+
+        if let Some(username) = &self.basic_auth_username {
+            write!(f, "Basic Auth Username: {username}, ")?;
+        } else {
+            write!(f, "No Basic Auth Username, ")?;
+        }
+
+        if let Some(password) = &self.basic_auth_password {
+            write!(f, "Basic Auth Password: {}, ", password.replace('.', "*"))?;
+        } else {
+            write!(f, "No Basic Auth Password, ")?;
+        }
+
+        if let Some(header) = &self.custom_auth_header {
+            write!(f, "Custom Auth Header: {header}, ")?;
+        } else {
+            write!(f, "No Custom Auth Header, ")?;
+        }
+
+        if let Some(exclusion_list) = &self.exclusion_list {
+            write!(f, "No Proxy Exclusion List: {:?}", exclusion_list)
+        } else {
+            write!(f, "No No-Proxy Exclusion List")
         }
     }
 }
 
-impl std::fmt::Debug for TlsConfig {
+impl std::fmt::Debug for ProxyConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!("{}", &self))
     }

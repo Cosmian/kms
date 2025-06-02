@@ -11,7 +11,7 @@ use super::{
     logging::LoggingConfig, ui_config::UiConfig,
 };
 use crate::{
-    config::{SocketServerConfig, TlsConfig},
+    config::{ProxyConfig, SocketServerConfig, TlsConfig},
     error::KmsError,
     result::KResult,
 };
@@ -27,6 +27,7 @@ impl Default for ClapConfig {
             socket_server: SocketServerConfig::default(),
             tls: TlsConfig::default(),
             http: HttpConfig::default(),
+            proxy: ProxyConfig::default(),
             kms_public_url: None,
             auth: JwtAuthConfig::default(),
             ui_config: UiConfig::default(),
@@ -63,6 +64,9 @@ pub struct ClapConfig {
 
     #[clap(flatten)]
     pub http: HttpConfig,
+
+    #[clap(flatten)]
+    pub proxy: ProxyConfig,
 
     #[clap(flatten)]
     pub auth: JwtAuthConfig,
@@ -141,10 +145,10 @@ pub struct ClapConfig {
     #[clap(long, hide = true)]
     pub non_revocable_key_id: Option<Vec<String>>,
 
-    /// The exposed URL of the KMS - this is required if google cse configuration is activated.
+    /// The exposed URL of the KMS - this is required if Google CSE configuration is activated.
     /// If this server is running on the domain `cse.my_domain.com` with this public URL,
     /// The configured URL from Google admin  should be something like <https://cse.my_domain.com/google_cse>
-    /// The URL is also used during authentication flow initiated from the KMS UI.
+    /// The URL is also used during the authentication flow initiated from the KMS UI.
     #[clap(verbatim_doc_comment, long, env = "KMS_PUBLIC_URL")]
     pub kms_public_url: Option<String>,
 
@@ -226,6 +230,7 @@ impl fmt::Debug for ClapConfig {
         } else {
             x
         };
+        let x = x.field("proxy", &self.proxy);
         let x = x.field("socket server", &self.socket_server);
         let x = x.field("TLS", &self.tls);
         let x = if self.socket_server.socket_server_start {

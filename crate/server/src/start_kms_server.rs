@@ -468,7 +468,9 @@ pub async fn prepare_kms_server(
             ));
         }
 
-        let jwks_manager = Arc::new(JwksManager::new(all_jwks_uris).await?);
+        let jwks_manager = Arc::new(
+            JwksManager::new(all_jwks_uris, kms_server.params.proxy_params.as_ref()).await?,
+        );
 
         let mut built_jwt_configurations = identity_provider_configurations
             .iter()
