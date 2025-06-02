@@ -30,6 +30,9 @@ impl ProxyParams {
     ///
     /// # Arguments
     /// * `config` - The `ProxyConfig` object containing the configuration parameters.
+    ///
+    /// # Errors
+    /// This function can return an error if there is an issue parsing the URL or if the URL is invalid.
     pub fn try_from(config: &ProxyConfig) -> KResult<Option<Self>> {
         debug!("try_from: proxy_config: {config:#?}");
         if let Some(url) = &config.proxy_url {

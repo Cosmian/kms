@@ -144,7 +144,7 @@ async fn parse_jwks(
         if !proxy_params.exclusion_list.is_empty() {
             proxy = proxy.no_proxy(reqwest::NoProxy::from_string(
                 &proxy_params.exclusion_list.join(","),
-            ))
+            ));
         }
         client = client.proxy(proxy);
     }

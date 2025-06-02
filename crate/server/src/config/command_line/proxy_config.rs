@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Default)]
 pub struct ProxyConfig {
     /// The proxy URL:
-    ///   - e.g., "https://secure.example" for an HTTP proxy
-    ///   - e.g., "socks5://192.168.1.1:9000" for a SOCKS proxy
+    ///   - e.g., `https://secure.example` for an HTTP proxy
+    ///   - e.g., `socks5://192.168.1.1:9000` for a SOCKS proxy
     #[clap(long, env = "KMS_PROXY_URL", verbatim_doc_comment)]
     pub proxy_url: Option<String>,
 
@@ -57,7 +57,7 @@ impl Display for ProxyConfig {
         }
 
         if let Some(exclusion_list) = &self.proxy_exclusion_list {
-            write!(f, "No Proxy Exclusion List: {:?}", exclusion_list)
+            write!(f, "No Proxy Exclusion List: {exclusion_list:?}")
         } else {
             write!(f, "No No-Proxy Exclusion List")
         }
