@@ -179,11 +179,11 @@ mod tests {
                 ..Default::default()
             },
             proxy: ProxyConfig {
-                url: Some("https://proxy.example.com:8080".to_owned()),
-                basic_auth_username: Some("[proxy username]".to_owned()),
-                basic_auth_password: Some("[proxy password]".to_owned()),
-                custom_auth_header: None,
-                exclusion_list: Some(vec!["domain1".to_owned(), "domain2".to_owned()]),
+                proxy_url: Some("https://proxy.example.com:8080".to_owned()),
+                proxy_basic_auth_username: Some("[proxy username]".to_owned()),
+                proxy_basic_auth_password: Some("[proxy password]".to_owned()),
+                proxy_custom_auth_header: None,
+                proxy_exclusion_list: Some(vec!["domain1".to_owned(), "domain2".to_owned()]),
             },
             auth: JwtAuthConfig {
                 jwt_issuer_uri: Some(vec![

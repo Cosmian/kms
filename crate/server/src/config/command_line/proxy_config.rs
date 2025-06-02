@@ -11,52 +11,52 @@ pub struct ProxyConfig {
     ///   - e.g., "https://secure.example" for an HTTP proxy
     ///   - e.g., "socks5://192.168.1.1:9000" for a SOCKS proxy
     #[clap(long, env = "KMS_PROXY_URL", verbatim_doc_comment)]
-    pub url: Option<String>,
+    pub proxy_url: Option<String>,
 
     /// Set the Proxy-Authorization header username using Basic auth.
     #[clap(long, env = "KMS_PROXY_BASIC_AUTH_USERNAME", verbatim_doc_comment)]
-    pub basic_auth_username: Option<String>,
+    pub proxy_basic_auth_username: Option<String>,
 
     /// Set the Proxy-Authorization header password using Basic auth.
     #[clap(long, env = "KMS_PROXY_BASIC_AUTH_PASSWORD", verbatim_doc_comment)]
-    pub basic_auth_password: Option<String>,
+    pub proxy_basic_auth_password: Option<String>,
 
     /// Set the Proxy-Authorization header to a specified value.
     #[clap(long, env = "KMS_PROXY_CUSTOM_AUTH_HEADER", verbatim_doc_comment)]
-    pub custom_auth_header: Option<String>,
+    pub proxy_custom_auth_header: Option<String>,
 
     /// The No Proxy exclusion list to this Proxy
     #[clap(long, env = "KMS_PROXY_NO_PROXY", verbatim_doc_comment)]
-    pub exclusion_list: Option<Vec<String>>,
+    pub proxy_exclusion_list: Option<Vec<String>>,
 }
 
 impl Display for ProxyConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(url) = &self.url {
+        if let Some(url) = &self.proxy_url {
             write!(f, "Proxy URL: {url}, ")?;
         } else {
             write!(f, "No Proxy URL, ")?;
         }
 
-        if let Some(username) = &self.basic_auth_username {
+        if let Some(username) = &self.proxy_basic_auth_username {
             write!(f, "Basic Auth Username: {username}, ")?;
         } else {
             write!(f, "No Basic Auth Username, ")?;
         }
 
-        if let Some(password) = &self.basic_auth_password {
+        if let Some(password) = &self.proxy_basic_auth_password {
             write!(f, "Basic Auth Password: {}, ", password.replace('.', "*"))?;
         } else {
             write!(f, "No Basic Auth Password, ")?;
         }
 
-        if let Some(header) = &self.custom_auth_header {
+        if let Some(header) = &self.proxy_custom_auth_header {
             write!(f, "Custom Auth Header: {header}, ")?;
         } else {
             write!(f, "No Custom Auth Header, ")?;
         }
 
-        if let Some(exclusion_list) = &self.exclusion_list {
+        if let Some(exclusion_list) = &self.proxy_exclusion_list {
             write!(f, "No Proxy Exclusion List: {:?}", exclusion_list)
         } else {
             write!(f, "No No-Proxy Exclusion List")
