@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### 🚀 Features
 
-- Support for outbound proxy to fetch the JWKS (JSON Web Key Set)
+- Support for outbound proxy to fetch the JWKS (JSON Web Key Set) (#439)
 
 ## [5.2.0] - 2025-05-27
 
