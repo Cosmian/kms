@@ -277,10 +277,10 @@ port = 443
 hostname = "[hostname]"
 
 [proxy]
-url = "https://proxy.example.com:8080"
-basic_auth_username = "[proxy username]"
-basic_auth_password = "[proxy password]"
-exclusion_list = ["domain1", "domain2"]
+proxy_url = "https://proxy.example.com:8080"
+proxy_basic_auth_username = "[proxy username]"
+proxy_basic_auth_password = "[proxy password]"
+proxy_exclusion_list = ["domain1", "domain2"]
 
 [auth]
 jwt_issuer_uri = ["[jwt issuer uri 1]", "[jwt issuer uri 2]"]

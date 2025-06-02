@@ -109,15 +109,15 @@ hostname = "0.0.0.0"
 # The URL of the proxy server, including the protocol and port.
 #   - e.g., "https://secure.example" for an HTTP proxy
 #   - e.g., "socks5://192.168.1.1:9000" for a SOCKS proxy
-url = "https://proxy.example.com:8080"
+proxy_url = "https://proxy.example.com:8080"
 # The username to use for basic authentication with the proxy server.
-basic_auth_username = "[proxy username]"
+proxy_basic_auth_username = "[proxy username]"
 # The password to use for basic authentication with the proxy server.   
-basic_auth_password = "[proxy password]"
+proxy_basic_auth_password = "[proxy password]"
 # Use a custom proxy authentication header instead of the standard Basic authentication.
-custom_auth_header = "my_custom_auth_token"
+proxy_custom_auth_header = "my_custom_auth_token"
 # The list of domains to exclude from the proxy.
-exclusion_list = ["domain1", "domain2"]
+proxy_exclusion_list = ["domain1", "domain2"]
 
 # Check the Authenticating Users documentation pages for more information.
 [auth]
