@@ -52,7 +52,7 @@ impl fmt::Debug for ProxyParams {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ProxyParams")
             .field("url", &self.url)
-            .field("basi_auth_username", &self.basic_auth_username)
+            .field("basic_auth_username", &self.basic_auth_username)
             .field("basic_auth_password", &self.basic_auth_password)
             .field("custom_auth_header", &self.custom_auth_header)
             .field("exclusion_list", &self.exclusion_list)
