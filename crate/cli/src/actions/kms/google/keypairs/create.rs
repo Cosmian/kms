@@ -1,7 +1,6 @@
-use base64::{Engine, engine::general_purpose};
+use base64::{engine::general_purpose, Engine};
 use clap::Parser;
 use cosmian_kms_client::{
-    ExportObjectParams, KmsClient,
     cosmian_kmip::kmip_0::kmip_types::BlockCipherMode,
     export_object,
     kmip_2_1::{
@@ -16,6 +15,7 @@ use cosmian_kms_client::{
         },
         requests::create_rsa_key_pair_request,
     },
+    ExportObjectParams, KmsClient,
 };
 use cosmian_kms_crypto::crypto::certificates::EXTENSION_CONFIG;
 use serde::{Deserialize, Serialize};
@@ -256,6 +256,8 @@ impl CreateKeyPairsAction {
             }) = pkcs7_object
             {
                 tracing::info!("Processing {email:?}.");
+                println!("KACLS URL {:?}", kacls_url.await?.kacls_url);
+
                 Self::post_keypair(
                     &gmail_client.await?,
                     certificate_value,
