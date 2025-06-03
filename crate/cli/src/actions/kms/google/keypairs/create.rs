@@ -250,19 +250,21 @@ impl CreateKeyPairsAction {
             println!("Dry run mode - key pair not pushed to Gmail API");
         } else {
             let email = &self.user_id;
-            println!("[{email}] - Pushing new keypair to Gmail API");
+            println!("[{email}] - Pushing new keypair to Gmail APO");
+            let url = kacls_url.await?.kacls_url;
+            println!("KACLS URL {:?}", url);
+
             if let Object::Certificate(Certificate {
                 certificate_value, ..
             }) = pkcs7_object
             {
                 tracing::info!("Processing {email:?}.");
-                println!("KACLS URL {:?}", kacls_url.await?.kacls_url);
 
                 Self::post_keypair(
                     &gmail_client.await?,
                     certificate_value,
                     general_purpose::STANDARD.encode(wrapped_key_bytes.clone()),
-                    kacls_url.await?.kacls_url,
+                    url,
                 )
                 .await?;
                 tracing::info!("Key pair inserted for {email:?}.");
