@@ -24,11 +24,11 @@ use crate::{
     Deserializer, Serializer,
     error::KmipError,
     kmip_0::{
-        kmip_data_structures::{ServerInformation, ValidationInformation},
+        kmip_data_structures::ValidationInformation,
         kmip_operations::{DiscoverVersions, DiscoverVersionsResponse},
         kmip_types::{AttestationType, Direction, KeyWrapType, RevocationReason},
     },
-    kmip_2_1::kmip_data_structures::{ProfileInformation, RNGParameters},
+    kmip_2_1::kmip_data_structures::{ProfileInformation, RNGParameters, ServerInformation},
 };
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]

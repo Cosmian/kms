@@ -1933,3 +1933,37 @@ impl TryFrom<kmip_2_1::kmip_data_structures::RNGParameters> for RNGParameters {
         })
     }
 }
+
+/// The Server Information structure provides metadata about the KMIP server.
+/// The spec does not specify what should be in the structure and examples
+/// show an empty structure…
+#[derive(Serialize, Deserialize, Default, PartialEq, Eq, Debug, Clone)]
+#[serde(rename_all = "PascalCase")]
+pub struct ServerInformation {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    empty: Option<String>,
+}
+
+impl From<ServerInformation> for kmip_2_1::kmip_data_structures::ServerInformation {
+    fn from(_: ServerInformation) -> Self {
+        Self {
+            server_name: None,
+            server_serial_number: None,
+            server_version: None,
+            server_load: None,
+            product_name: None,
+            build_level: None,
+            build_date: None,
+            cluster_info: None,
+            alternative_failover_endpoints: None,
+        }
+    }
+}
+
+impl TryFrom<kmip_2_1::kmip_data_structures::ServerInformation> for ServerInformation {
+    type Error = KmipError;
+
+    fn try_from(_: kmip_2_1::kmip_data_structures::ServerInformation) -> Result<Self, Self::Error> {
+        Ok(Self { empty: None })
+    }
+}

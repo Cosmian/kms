@@ -16,7 +16,8 @@ use crate::tests::ttlv_tests::get_client;
 
 #[test]
 fn test_query() {
-    log_init(option_env!("RUST_LOG"));
+    log_init(Some("debug"));
+    // log_init(option_env!("RUST_LOG"));
     test_query_(1, 2);
     info!("Test KMIP 1 ==> OK");
     test_query_(2, 1);

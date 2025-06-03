@@ -14,7 +14,7 @@ use super::{kmip_data_structures::*, kmip_objects::Object, kmip_types::*};
 use crate::{
     KmipError, KmipResultHelper,
     kmip_0::{
-        kmip_data_structures::{ServerInformation, ValidationInformation},
+        kmip_data_structures::ValidationInformation,
         kmip_operations::{DiscoverVersions, DiscoverVersionsResponse},
         kmip_types::{AttestationType, Direction, KeyWrapType, RevocationReason},
     },
@@ -786,7 +786,10 @@ impl TryFrom<kmip_2_1::kmip_operations::QueryResponse> for QueryResponse {
             operation,
             object_type,
             vendor_identification: value.vendor_identification,
-            server_information: value.server_information,
+            server_information: value
+                .server_information
+                .map(TryInto::try_into)
+                .transpose()?,
             extension_information,
             attestation_types: value.attestation_types,
             rng_parameters,

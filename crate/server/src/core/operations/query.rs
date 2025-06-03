@@ -1,10 +1,8 @@
-use cosmian_kmip::{
-    kmip_0::kmip_data_structures::ServerInformation,
-    kmip_2_1::{
-        kmip_objects::ObjectType,
-        kmip_operations::{Query, QueryResponse},
-        kmip_types::{OperationEnumeration, QueryFunction},
-    },
+use cosmian_kmip::kmip_2_1::{
+    kmip_data_structures::ServerInformation,
+    kmip_objects::ObjectType,
+    kmip_operations::{Query, QueryResponse},
+    kmip_types::{OperationEnumeration, QueryFunction},
 };
 use tracing::trace;
 
