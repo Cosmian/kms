@@ -74,7 +74,6 @@ For more information, visit [docs.cosmian.com/cosmian_vm/overview/](https://docs
 
 ### Proteccio HSM
 
-- Trustway Proteccio NetHSM provides FIPS 140-2 Level 3 compliant hardware security for cryptographic keys
 - Certified Common Criteria EAL4+ and qualified at the Enhanced level by the French National Cybersecurity Agency (
   ANSSI)
 - Complies with eIDAS regulation for qualified electronic signature and seal creation devices

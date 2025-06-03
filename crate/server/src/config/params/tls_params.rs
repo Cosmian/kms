@@ -11,7 +11,8 @@ use crate::{
 };
 
 /// The TLS parameters of the API server
-pub struct TlsParams {
+pub struct git status
+TlsParams {
     /// The TLS private key and certificate of the HTTP server and Socket server
     pub p12: ParsedPkcs12_2,
     /// The certificate used to verify the client TLS certificates
