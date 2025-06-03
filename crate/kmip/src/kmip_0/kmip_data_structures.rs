@@ -40,7 +40,7 @@ pub struct ValidationInformation {
 ///
 /// Not this is 2.1 specific, but the 1.4 spec only specifies this must be a structure;
 /// so we use the same structure for both versions.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 #[serde(rename_all = "PascalCase")]
 pub struct ServerInformation {
     #[serde(skip_serializing_if = "Option::is_none")]
