@@ -6,6 +6,7 @@ OLD_VERSION="$1"
 NEW_VERSION="$2"
 
 sed -i "s/$OLD_VERSION/$NEW_VERSION/g" Cargo.toml
+sed -i "s/$OLD_VERSION/$NEW_VERSION/g" crate/server_database/Cargo.toml
 sed -i "s/$OLD_VERSION/$NEW_VERSION/g" Dockerfile
 sed -i "s/$OLD_VERSION/$NEW_VERSION/g" ui/package.json
 sed -i "s/$OLD_VERSION/$NEW_VERSION/g" documentation/docs/index.md
