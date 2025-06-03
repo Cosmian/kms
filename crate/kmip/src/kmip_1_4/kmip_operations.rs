@@ -786,10 +786,7 @@ impl TryFrom<kmip_2_1::kmip_operations::QueryResponse> for QueryResponse {
             operation,
             object_type,
             vendor_identification: value.vendor_identification,
-            server_information: value
-                .server_information
-                .map(TryInto::try_into)
-                .transpose()?,
+            server_information: None,
             extension_information,
             attestation_types: value.attestation_types,
             rng_parameters,

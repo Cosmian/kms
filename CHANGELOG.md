@@ -7,7 +7,7 @@ All notable changes to this project will be documented in this file.
 ### 🐛 Bug Fixes
 
 - Migrated Vendor Information of KMIP 1.x to a structure; however, the specification does not specify the structure
-  format. This change returns an empty structure for KMIP 1.x.
+  format. This change ignores the `ServerInformation` query and does not return anything for KMIP 1.x.
 
 ## [5.3.0] - 2025-06-02
 
