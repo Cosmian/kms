@@ -10,7 +10,7 @@ use super::{
     kmip_attributes::{Attribute, Attributes},
     kmip_data_structures::{
         CapabilityInformation, DefaultsInformation, DerivationParameters, ExtensionInformation,
-        KeyWrappingSpecification, ServerInformation,
+        KeyWrappingSpecification,
     },
     kmip_objects::{Object, ObjectType},
     kmip_types::{
@@ -24,7 +24,7 @@ use crate::{
     Deserializer, Serializer,
     error::KmipError,
     kmip_0::{
-        kmip_data_structures::ValidationInformation,
+        kmip_data_structures::{ServerInformation, ValidationInformation},
         kmip_operations::{DiscoverVersions, DiscoverVersionsResponse},
         kmip_types::{AttestationType, Direction, KeyWrapType, RevocationReason},
     },

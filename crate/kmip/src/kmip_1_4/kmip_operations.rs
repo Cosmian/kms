@@ -14,7 +14,7 @@ use super::{kmip_data_structures::*, kmip_objects::Object, kmip_types::*};
 use crate::{
     KmipError, KmipResultHelper,
     kmip_0::{
-        kmip_data_structures::ValidationInformation,
+        kmip_data_structures::{ServerInformation, ValidationInformation},
         kmip_operations::{DiscoverVersions, DiscoverVersionsResponse},
         kmip_types::{AttestationType, Direction, KeyWrapType, RevocationReason},
     },
@@ -708,7 +708,7 @@ pub struct QueryResponse {
 
     /// Detailed information about the server.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub server_information: Option<String>,
+    pub server_information: Option<ServerInformation>,
 
     /// List of extensions supported by the server.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -786,7 +786,7 @@ impl TryFrom<kmip_2_1::kmip_operations::QueryResponse> for QueryResponse {
             operation,
             object_type,
             vendor_identification: value.vendor_identification,
-            server_information: value.server_information.map(|s| s.to_string()),
+            server_information: value.server_information,
             extension_information,
             attestation_types: value.attestation_types,
             rng_parameters,
