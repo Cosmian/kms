@@ -36,7 +36,7 @@ pub struct CreateKeyPairsAction {
     user_id: String,
 
     /// CSE key ID to wrap exported user private key
-    #[clap(long, short = 'w', required = true)]
+    #[clap(long, required = true)]
     cse_key_id: String,
 
     /// The issuer private key id
