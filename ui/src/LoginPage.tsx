@@ -49,8 +49,6 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error }) => {
                             ACCESS KMS
                         </Button>
                     )}
-                    {/* Accessible Error Message */}
-                    <div id="error-message" role="alert" aria-live="polite" className="text-red-500 text-sm mt-2"></div>
                 </div>
             </div>
         </div>
