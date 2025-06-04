@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.3.1] - 2025-06-04
+
+### 🐛 Bug Fixes
+
+- Fix clap error on cse keypair command
+
 ## [5.3.0] - 2025-06-02
 
 ### 🚀 Features
