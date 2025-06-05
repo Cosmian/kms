@@ -652,8 +652,8 @@ where
         .await?;
 
     row.map_or(Ok(HashSet::new()), |row| {
-        let perms_raw = row.get::<Vec<u8>, _>(0);
-        serde_json::from_slice(&perms_raw).context("failed deserializing the permissions")
+        let perms_raw = row.get::<Value,_>(0);
+        serde_json::from_value(perms_raw).context("failed deserializing the permissions")
     })
 }
 
@@ -772,14 +772,9 @@ where
 fn to_qualified_uids(rows: &[MySqlRow]) -> DbResult<Vec<(String, State, Attributes)>> {
     let mut uids = Vec::with_capacity(rows.len());
     for row in rows {
-        let raw = row.get::<Vec<u8>, _>(2);
-        let attrs = if raw.is_empty() {
-            Attributes::default()
-        } else {
-            let attrs: Attributes =
-                serde_json::from_slice(&raw).context("failed deserializing attributes")?;
-            attrs
-        };
+        let raw = row.get::<Value,_>(2);
+        let attrs: Attributes =
+                    serde_json::from_value(raw).context("failed deserializing attributes")?;
 
         uids.push((
             row.get::<String, _>(0),
