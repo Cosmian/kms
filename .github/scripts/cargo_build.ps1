@@ -43,12 +43,12 @@ function BuildProject
     if ($BuildType -eq "release")
     {
         cargo build --release --target x86_64-pc-windows-msvc
-        cargo test --release --target x86_64-pc-windows-msvc -- --nocapture --skip test_sql_cipher --skip test_sqlite --skip test_mysql --skip test_postgresql --skip test_redis --skip google_cse --skip hsm --skip pykmip
+        cargo test  --release --target x86_64-pc-windows-msvc -- --nocapture --skip sql --skip redis --skip google_cse --skip hsm
     }
     else
     {
         cargo build --target x86_64-pc-windows-msvc
-        cargo test --target x86_64-pc-windows-msvc -- --nocapture --skip test_sql_cipher --skip test_sqlite --skip test_mysql --skip test_postgresql --skip test_redis --skip google_cse --skip hsm --skip pykmip
+        cargo test  --target x86_64-pc-windows-msvc -- --nocapture --skip sql --skip redis --skip google_cse --skip hsm
     }
     Get-ChildItem ..\..
 
