@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### 🐛 Bug Fixes
 
-- Support for MySQL 8.0.42 and higher
+- Support for MySQL 8.0.42 and higher (#443)
 
 ## [5.3.1] - 2025-06-04
 
