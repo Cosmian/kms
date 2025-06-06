@@ -8,7 +8,7 @@ set -ex
 # export TARGET=aarch64-apple-darwin
 # export DEBUG_OR_RELEASE=debug
 # export OPENSSL_DIR=/usr/local/openssl
-# export SKIP_SERVICES_TESTS="--skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse --skip hsm --skip pykmip"
+# export SKIP_SERVICES_TESTS="--skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse --skip hsm"
 # export FEATURES="fips"
 
 ROOT_FOLDER=$(pwd)
@@ -104,8 +104,8 @@ declare -a DATABASES=('redis-findex' 'sqlite' 'postgresql' 'mysql')
 for KMS_TEST_DB in "${DATABASES[@]}"; do
   echo "Database KMS: $KMS_TEST_DB"
 
-  # for now, discard tests on postgresql and mysql
-  if [ "$KMS_TEST_DB" = "postgresql" ] || [ "$KMS_TEST_DB" = "mysql" ]; then
+  # for now, discard tests on mysql
+  if [ "$KMS_TEST_DB" = "mysql" ]; then
     continue
   fi
 
