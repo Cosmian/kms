@@ -53,6 +53,7 @@ async fn get_pgsql() -> DbResult<PgPool> {
 
 // To run local tests with a MariaDB in Docker, run
 // docker run --name mariadb --env MARIADB_DATABASE=kms  --env MARIADB_USER=kms --env MARIADB_PASSWORD=kms --env MARIADB_ROOT_PASSWORD=cosmian -p 3306:3306 -d mariadb
+// docker run --name mysql --env MYSQL_DATABASE=kms  --env MYSQL_USER=kms --env MYSQL_PASSWORD=kms --env MYSQL_ROOT_PASSWORD=cosmian -p 3306:3306 -d mysql:8.0.42
 async fn get_mysql() -> DbResult<MySqlPool> {
     let mysql_url = option_env!("KMS_MYSQL_URL").unwrap_or("mysql://kms:kms@localhost:3306/kms");
     let my_sql = MySqlPool::instantiate(mysql_url, true).await?;

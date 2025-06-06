@@ -9,14 +9,13 @@ services:
       - POSTGRES_DB=kms
       - POSTGRES_PASSWORD=kms
       - PGDATA=/tmp/postgres2
-  mariadb:
-    image: mariadb
+  mysql:
+    image: mysql
     ports:
       - 3306:3306
     environment:
-      - MARIADB_DATABASE=kms
-      - MARIADB_USER=kms
-      - MARIADB_PASSWORD=kms
+      - MYSQL_USER=kms
+      - MYSQL_PASSWORD=kms
       - MYSQL_DATABASE=kms
       - MYSQL_ROOT_PASSWORD=kms
   redis:
