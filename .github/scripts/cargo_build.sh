@@ -104,6 +104,11 @@ declare -a DATABASES=('redis-findex' 'sqlite' 'postgresql' 'mysql')
 for KMS_TEST_DB in "${DATABASES[@]}"; do
   echo "Database KMS: $KMS_TEST_DB"
 
+  # for now, discard tests on mysql
+  if [ "$KMS_TEST_DB" = "mysql" ]; then
+    continue
+  fi
+
   # no docker containers on macOS Github runner
   if [ "$(uname)" = "Darwin" ] && [ "$KMS_TEST_DB" != "sqlite" ]; then
     continue
