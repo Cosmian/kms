@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.3.2] - 2025-06-04
+
+### 🐛 Bug Fixes
+
+- Support for MySQL 8.0.42 and higher
+
 ## [5.3.1] - 2025-06-04
 
 ### 🐛 Bug Fixes
