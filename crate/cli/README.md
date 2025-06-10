@@ -1,7 +1,6 @@
 # Cosmian CLI
 
-KMS or Findex server can be managed using the `cosmian` command line interface (CLI) or its graphical
-client `cosmian_gui`.
+This command line interface (CLI) is used to manage the KMS server. In the current KMS repository, the `cosmian_kms_cli` is only used for testing purposes. The CLI is built using the `cosmian` crate on repository <https://github.com/Cosmian/cli>.
 
 ## Build
 
