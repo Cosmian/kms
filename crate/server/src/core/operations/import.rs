@@ -109,7 +109,7 @@ pub(crate) async fn import(
 /// If the user specified tags, we will use these and remove them from the request.
 /// else we will use the tags with the object attributes
 /// If no tags are found, an empty set is returned
-fn recover_tags(request_attributes: &Attributes, object: &Object) -> HashSet<String> {
+pub(crate) fn recover_tags(request_attributes: &Attributes, object: &Object) -> HashSet<String> {
     // extract the tags from the request attributes
     let mut tags = request_attributes.get_tags();
     if !tags.is_empty() {
@@ -214,7 +214,9 @@ pub(crate) async fn process_symmetric_key(
     ))
 }
 
-fn process_certificate(request: Import) -> Result<(String, Vec<AtomicOperation>), KmsError> {
+pub(crate) fn process_certificate(
+    request: Import,
+) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     // check if the object will be replaced if it already exists.
     let replace_existing = request.replace_existing.unwrap_or(false);
 
@@ -279,7 +281,7 @@ fn process_certificate(request: Import) -> Result<(String, Vec<AtomicOperation>)
     ))
 }
 
-async fn process_public_key(
+pub(crate) async fn process_public_key(
     kms: &KMS,
     request: Import,
     owner: &str,
@@ -376,7 +378,7 @@ async fn process_public_key(
     ))
 }
 
-async fn process_private_key(
+pub(crate) async fn process_private_key(
     kms: &KMS,
     request: Import,
     owner: &str,
