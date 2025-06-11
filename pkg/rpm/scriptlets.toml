@@ -1,5 +1,25 @@
+pre_install_script = '''
+#!/bin/bash -ex
+
+# Backup existing configuration
+KMS_CONFIG="/etc/cosmian/kms.toml"
+if [ -f $KMS_CONFIG ]; then
+  timestamp=$(date '+%Y%m%d_%H%M%S')
+  # Double backup just in case
+  cp $KMS_CONFIG /etc/cosmian/"$timestamp"_kms.toml
+  cp $KMS_CONFIG /etc/cosmian/kms.toml.bak
+fi
+
+'''
+
 post_install_script = '''
 #!/bin/bash -ex
+
+# Restore existing configuration
+KMS_CONFIG="/etc/cosmian/kms.toml.bak"
+if [ -f $KMS_CONFIG ]; then
+  cp $KMS_CONFIG /etc/cosmian/kms.toml
+fi
 
 systemctl enable cosmian_kms.service
 systemctl stop cosmian_kms.service
