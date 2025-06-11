@@ -131,7 +131,7 @@ Please export your keys using standard formats (PKCS#8, PEM, etc.) and re-import
 
 ### 🚜 Refactor
 
-- Move all CLI relative crates on <https://github.com/Cosmian/client> ([#383](https://github.com/Cosmian/kms/pull/383))
+- Move all CLI relative crates on <https://github.com/Cosmian/cli> ([#383](https://github.com/Cosmian/kms/pull/383))
 
 ### 📚 Documentation
 
