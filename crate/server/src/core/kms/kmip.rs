@@ -13,8 +13,9 @@ use cosmian_kms_server_database::reexport::{
             DeleteAttributeResponse, Destroy, DestroyResponse, Encrypt, EncryptResponse, Export,
             ExportResponse, Get, GetAttributes, GetAttributesResponse, GetResponse, Hash,
             HashResponse, Import, ImportResponse, Locate, LocateResponse, MAC, MACResponse, Query,
-            QueryResponse, ReKey, ReKeyKeyPair, ReKeyKeyPairResponse, ReKeyResponse, Revoke,
-            RevokeResponse, SetAttribute, SetAttributeResponse, Validate, ValidateResponse,
+            QueryResponse, ReKey, ReKeyKeyPair, ReKeyKeyPairResponse, ReKeyResponse, Register,
+            RegisterResponse, Revoke, RevokeResponse, SetAttribute, SetAttributeResponse, Validate,
+            ValidateResponse,
         },
     },
     cosmian_kms_interfaces::SessionParams,
@@ -561,6 +562,27 @@ impl KMS {
 
         // This is a large future, hence pinning
         Box::pin(operations::message(self, request, user, params)).await
+    }
+
+    pub(crate) async fn register(
+        &self,
+        request: Register,
+        user: &str,
+        params: Option<Arc<dyn SessionParams>>,
+        privileged_users: Option<Vec<String>>,
+    ) -> KResult<RegisterResponse> {
+        let span = tracing::span!(tracing::Level::ERROR, "register");
+        let _enter = span.enter();
+
+        // Box::pin :: see https://rust-lang.github.io/rust-clippy/master/index.html#large_futures
+        Box::pin(operations::register(
+            self,
+            request,
+            user,
+            params,
+            privileged_users,
+        ))
+        .await
     }
 
     // This request is used to generate a replacement key pair for an existing
