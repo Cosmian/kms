@@ -1664,7 +1664,7 @@ impl Display for Register {
 
 impl From<Register> for Import {
     fn from(register: Register) -> Self {
-        Import {
+        Self {
             unique_identifier: UniqueIdentifier::from(""),
             object_type: register.object_type,
             replace_existing: Some(false),

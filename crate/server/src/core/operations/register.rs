@@ -51,11 +51,11 @@ pub(crate) async fn register(
         }
     }
 
-    if &request.object_type != &request.object.object_type() {
+    if request.object_type != request.object.object_type() {
         kms_bail!(KmsError::InconsistentOperation(
             "Specified object type does not match the type of object to register.".to_owned()
         ))
-    };
+    }
 
     // process the request based on the object type,
     let (uid, operations) = match request.object.object_type() {
