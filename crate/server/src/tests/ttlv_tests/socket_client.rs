@@ -1,4 +1,4 @@
-//! Socket client for communicating with a `PyKMIP` server over TLS socket.
+//! Socket client for communicating with a `py_kmip` server over TLS socket.
 //! This client uses a PKCS#12 client certificate for authentication
 //! and a server CA certificate for verifying the server's certificate.
 //! The client is thread-safe and can be shared across threads
@@ -20,7 +20,7 @@ use tracing::debug;
 
 use crate::result::{KResult, KResultHelper};
 
-/// Configuration for the `PyKMIP` socket client
+/// Configuration for the `py_kmip` socket client
 #[derive(Clone)]
 pub(super) struct SocketClientConfig {
     /// Server hostmeet
@@ -35,7 +35,7 @@ pub(super) struct SocketClientConfig {
     pub server_ca_cert_pem: String,
 }
 
-/// Client for communicating with a `PyKMIP` server over TLS socket.
+/// Client for communicating with a `py_kmip` server over TLS socket.
 ///
 /// This client uses a PKCS#12 client certificate for authentication
 /// and a server CA certificate for verifying the server's certificate.
@@ -47,7 +47,7 @@ pub(super) struct SocketClient {
 }
 
 impl SocketClient {
-    /// Create a new `PyKMIP` socket client with the specified configuration
+    /// Create a new `py_kmip` socket client with the specified configuration
     ///
     /// # Arguments
     /// * `config` - Configuration for the socket client
@@ -163,7 +163,7 @@ impl SocketClient {
 
         // Connect to server
         let stream = TcpStream::connect((self.config.host.as_str(), self.config.port))
-            .context("Failed to connect to PyKMIP server")?;
+            .context("Failed to connect to py_kmip server")?;
 
         // Establish TLS connection
         let mut tls_stream = self
