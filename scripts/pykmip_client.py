@@ -31,8 +31,6 @@ def main():
 
     args = parser.parse_args()
 
-    print(f"Using configuration file: {args.configuration}")
-
     try:
         # Create KMIP client using KMIPProxy directly (more reliable)
         # Use minimal SSL verification for testing
@@ -42,8 +40,7 @@ def main():
 
 
         if args.verbose:
-            print(f"Connecting to KMIP server at {args.host}:{args.port}")
-            print(f"Using certificates: cert={args.cert}, key={args.key}")
+            print(f"Connecting to KMIP server using configuration: {args.configuration}")
 
         # Open connection
         proxy.open()

@@ -25,6 +25,7 @@ use serde::{
     de::{MapAccess, Visitor},
     ser::{self, SerializeStruct},
 };
+use time::OffsetDateTime;
 
 use super::kmip_types::{
     AsynchronousIndicator, AttestationType, BatchErrorContinuationOption, Credential, Nonce,
@@ -236,7 +237,7 @@ pub struct RequestMessageHeader {
     pub batch_order_option: Option<bool>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub time_stamp: Option<u64>, // epoch millis
+    pub time_stamp: Option<OffsetDateTime>,
 
     /// This field contains the number of Batch Items in a message and is REQUIRED.
     ///
@@ -412,7 +413,7 @@ pub struct ResponseMessageHeader {
     pub protocol_version: ProtocolVersion,
 
     /// The time stamp when the response was created
-    pub time_stamp: i64,
+    pub time_stamp: OffsetDateTime,
 
     /// The nonce provided by the server if the operation is asynchronous
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -449,7 +450,7 @@ impl Default for ResponseMessageHeader {
                 protocol_version_major: 0,
                 protocol_version_minor: 0,
             },
-            time_stamp: 0,
+            time_stamp: OffsetDateTime::UNIX_EPOCH,
             nonce: None,
             server_hashed_password: None,
             attestation_type: None,

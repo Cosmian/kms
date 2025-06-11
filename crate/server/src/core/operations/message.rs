@@ -129,7 +129,7 @@ pub(crate) async fn message(
             client_correlation_value: None,
             server_correlation_value: None,
             attestation_type: None,
-            time_stamp: OffsetDateTime::now_utc().unix_timestamp(),
+            time_stamp: OffsetDateTime::now_utc(),
             nonce: None,
             server_hashed_password: None,
         },
