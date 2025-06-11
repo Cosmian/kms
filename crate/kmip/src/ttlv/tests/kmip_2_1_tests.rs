@@ -884,7 +884,7 @@ pub(crate) fn test_message_enforce_enum() {
                 protocol_version_minor: 1,
             },
             batch_count: 1,
-            time_stamp: 1_697_201_574,
+            time_stamp: OffsetDateTime::from_unix_timestamp(1_697_201_574).unwrap(),
             ..Default::default()
         },
         batch_item: vec![ResponseMessageBatchItemVersioned::V21(
@@ -915,7 +915,7 @@ pub(crate) fn test_message_enforce_enum() {
                 protocol_version_minor: 1,
             },
             batch_count: 1,
-            time_stamp: 1_697_201_574,
+            time_stamp: OffsetDateTime::from_unix_timestamp(1_697_201_574).unwrap(),
             ..Default::default()
         },
         batch_item: vec![ResponseMessageBatchItemVersioned::V21(
@@ -944,7 +944,7 @@ pub(crate) fn test_message_enforce_enum() {
                 protocol_version_minor: 1,
             },
             batch_count: 1,
-            time_stamp: 1_697_201_574,
+            time_stamp: OffsetDateTime::from_unix_timestamp(1_697_201_574).unwrap(),
             ..Default::default()
         },
         batch_item: vec![ResponseMessageBatchItemVersioned::V21(
@@ -968,7 +968,7 @@ pub(crate) fn test_message_enforce_enum() {
             client_correlation_value: Some("client_123".to_owned()),
             server_correlation_value: Some("server_234".to_owned()),
             attestation_type: Some(vec![AttestationType::TPM_Quote]),
-            time_stamp: 1_697_201_574,
+            time_stamp: OffsetDateTime::from_unix_timestamp(1_697_201_574).unwrap(),
             nonce: Some(Nonce {
                 nonce_id: vec![5, 6, 7],
                 nonce_value: vec![8, 9, 0],
@@ -1436,7 +1436,7 @@ pub(crate) fn test_message_request() {
             }]),
             batch_error_continuation_option: Some(BatchErrorContinuationOption::Undo),
             batch_order_option: Some(true),
-            time_stamp: Some(1_950_940_403),
+            time_stamp: Some(OffsetDateTime::from_unix_timestamp(1_950_940_403).unwrap()),
         },
         batch_item: vec![RequestMessageBatchItemVersioned::V21(
             RequestMessageBatchItem {
@@ -1482,7 +1482,7 @@ pub(crate) fn test_message_response() {
             client_correlation_value: Some("client_123".to_owned()),
             server_correlation_value: Some("server_234".to_owned()),
             attestation_type: Some(vec![AttestationType::TPM_Quote]),
-            time_stamp: 1_697_201_574,
+            time_stamp: OffsetDateTime::from_unix_timestamp(1_697_201_574).unwrap(),
             nonce: Some(Nonce {
                 nonce_id: vec![5, 6, 7],
                 nonce_value: vec![8, 9, 0],

@@ -161,26 +161,7 @@ EOF
     print_status "Created scripts/activate_venv.sh for easy activation"
 }
 
-# Generate test certificates if they don't exist
-setup_certificates() {
-    print_status "Setting up test certificates..."
-    
-    if [[ -f "test_data/client_server/ca.crt" ]] && [[ -f "test_data/client_server/owner.client.acme.com.crt" ]]; then
-        print_status "Test certificates already exist"
-    else
-        print_status "Generating test certificates..."
-        
-        cd test_data/client_server
-        if [[ -f "generate_certs.sh" ]]; then
-            bash generate_certs.sh
-            print_status "Test certificates generated"
-        else
-            print_error "Certificate generation script not found"
-            exit 1
-        fi
-        cd ../..
-    fi
-}
+
 
 # Create PyKMIP configuration
 create_config() {
@@ -255,7 +236,6 @@ main() {
     check_directory
     check_python
     setup_venv_and_pykmip
-    setup_certificates
     create_config
     test_setup
     show_next_steps
