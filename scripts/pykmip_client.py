@@ -15,7 +15,6 @@ Usage:
 import argparse
 import sys
 import json
-import ssl
 from kmip.services.kmip_client import KMIPProxy
 from kmip.core import enums
 
@@ -23,11 +22,7 @@ from kmip.core import enums
 
 def main():
     parser = argparse.ArgumentParser(description='PyKMIP Client for KMIP Server Testing')
-    parser.add_argument('--host', required=True, help='KMIP server hostname')
-    parser.add_argument('--port', type=int, required=True, help='KMIP server port')
-    parser.add_argument('--cert', required=True, help='Client certificate file path')
-    parser.add_argument('--key', required=True, help='Client private key file path')
-    parser.add_argument('--ca', required=True, help='CA certificate file path')
+    parser.add_argument('--configuration', required=True, help='Configuration file path')
     parser.add_argument('--operation', default='query', 
                        choices=['query', 'create', 'get', 'destroy', 'encrypt_decrypt', 'create_keypair', 'locate'],
                        help='KMIP operation to perform')
@@ -36,18 +31,15 @@ def main():
 
     args = parser.parse_args()
 
+    print(f"Using configuration file: {args.configuration}")
+
     try:
         # Create KMIP client using KMIPProxy directly (more reliable)
         # Use minimal SSL verification for testing
         proxy = KMIPProxy(
-            host=args.host,
-            port=args.port,
-            certfile=args.cert,
-            keyfile=args.key,
-            ca_certs=args.ca,  
-            cert_reqs=ssl.CERT_NONE,  # Disable certificate verification
-            config_file=None  # Don't use config file
+            config_file=args.configuration
         )
+
 
         if args.verbose:
             print(f"Connecting to KMIP server at {args.host}:{args.port}")
