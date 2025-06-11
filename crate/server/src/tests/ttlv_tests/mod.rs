@@ -12,6 +12,7 @@ mod get_1_4;
 mod get_2_1;
 mod get_attribute_1_4;
 mod get_attribute_2_1;
+mod py_kmip;
 mod query;
 mod socket_client;
 
