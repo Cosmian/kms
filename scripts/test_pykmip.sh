@@ -12,12 +12,8 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Configuration
-KMS_HOST="127.0.0.1"
-KMS_PORT="5696"
-CERT_PATH="test_data/client_server/owner/owner.client.acme.com.crt"
-KEY_PATH="test_data/client_server/owner/owner.client.acme.com.key"
-CA_PATH="test_data/client_server/ca/ca.crt"
 PYKMIP_SCRIPT="scripts/pykmip_client.py"
+PYKMIP_CONF="scripts/pykmip.conf"
 PYTHON_CMD="python"  # Will use python from venv after activation
 
 # Function to print colored output
@@ -66,44 +62,21 @@ check_prerequisites() {
         exit 1
     fi
 
-    # Check if certificates exist
-    if [[ ! -f "$CERT_PATH" ]]; then
-        print_error "Client certificate not found: $CERT_PATH"
-        print_warning "Run: cd test_data/client_server && ./generate_certs.sh"
-        exit 1
-    fi
-
-    if [[ ! -f "$KEY_PATH" ]]; then
-        print_error "Client key not found: $KEY_PATH"
-        exit 1
-    fi
-
-    if [[ ! -f "$CA_PATH" ]]; then
-        print_error "CA certificate not found: $CA_PATH"
-        exit 1
-    fi
-
     # Check if PyKMIP script exists
     if [[ ! -f "$PYKMIP_SCRIPT" ]]; then
         print_error "PyKMIP client script not found: $PYKMIP_SCRIPT"
+        exit 1
+    fi    
+    
+    # Check if PyKMIP CONF exists
+    if [[ ! -f "$PYKMIP_CONF" ]]; then
+        print_error "PyKMIP client configuration not found: $PYKMIP_CONF"
         exit 1
     fi
 
     print_status "All prerequisites satisfied"
 }
 
-# Function to test server connectivity
-test_connectivity() {
-    print_status "Testing server connectivity..."
-    
-    if timeout 5 bash -c "</dev/tcp/$KMS_HOST/$KMS_PORT" &> /dev/null; then
-        print_status "Server is reachable at $KMS_HOST:$KMS_PORT"
-    else
-        print_error "Cannot connect to server at $KMS_HOST:$KMS_PORT"
-        print_warning "Make sure the KMS server is running with socket server enabled"
-        exit 1
-    fi
-}
 
 # Function to run a PyKMIP operation
 run_operation() {
@@ -114,17 +87,15 @@ run_operation() {
     
     local cmd_args=(
         "$PYKMIP_SCRIPT"
-        "--host" "$KMS_HOST"
-        "--port" "$KMS_PORT"
-        "--cert" "$CERT_PATH"
-        "--key" "$KEY_PATH"
-        "--ca" "$CA_PATH"
+        "--configuration" "$PYKMIP_CONF"
         "--operation" "$operation"
     )
     
     if [[ "$verbose" == "true" ]]; then
         cmd_args+=("--verbose")
     fi
+
+    echo "Executing: ${cmd_args[*]}"
     
     if python "${cmd_args[@]}"; then
         print_status "$operation operation completed successfully"
@@ -229,16 +200,13 @@ main() {
     case $command in
         check)
             check_prerequisites
-            test_connectivity
             ;;
         query|create|get|destroy|encrypt_decrypt|create_keypair|locate)
             check_prerequisites
-            test_connectivity
             run_operation "$command" "$verbose"
             ;;
         all)
             check_prerequisites
-            test_connectivity
             run_all_operations "$verbose"
             ;;
         rust-test)
