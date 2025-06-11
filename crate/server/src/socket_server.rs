@@ -42,7 +42,7 @@ pub(crate) fn initialize_aws_lc_crypto_provider() {
     }
 }
 
-/// Configuration for the `PyKMIP` socket server
+/// Configuration for the `py_kmip` socket server
 #[derive(Clone)]
 pub struct SocketServerParams<'a> {
     /// Server host
@@ -78,7 +78,7 @@ impl<'a> TryFrom<&'a ServerParams> for SocketServerParams<'a> {
     }
 }
 
-/// Server for handling `PyKMIP` requests over TLS socket
+/// Server for handling `py_kmip` requests over TLS socket
 pub struct SocketServer {
     host: String,
     port: u16,
@@ -86,7 +86,7 @@ pub struct SocketServer {
 }
 
 impl SocketServer {
-    /// Create a new `PyKMIP` socket server with the specified configuration
+    /// Create a new `py_kmip` socket server with the specified configuration
     ///
     /// # Errors
     /// - If the server certificates and key are invalid

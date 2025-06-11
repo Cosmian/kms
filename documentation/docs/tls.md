@@ -1,6 +1,6 @@
 The KMS activates two internal listeners: a socket server and an HTTP server.
 
-The socket server listens to KMIP binary requests on the IANA-registered 4696 port.
+The socket server listens to KMIP binary requests on the IANA-registered 5696 port.
 The socket server will only start if the TLS configuration is provided **and** client certificate authentication is
 enabled.
 
