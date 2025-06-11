@@ -95,7 +95,7 @@ run_operation() {
         cmd_args+=("--verbose")
     fi
 
-    echo "Executing: ${cmd_args[*]}"
+    print_status "Executing: ${cmd_args[*]}"
     
     if python "${cmd_args[@]}"; then
         print_status "$operation operation completed successfully"

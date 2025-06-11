@@ -1,4 +1,5 @@
 use cosmian_logger::log_init;
+use time::OffsetDateTime;
 use tracing::info;
 
 use crate::{
@@ -84,7 +85,7 @@ fn test_pykmip_response_message_1_4() {
                 protocol_version_major: 1,
                 protocol_version_minor: 4,
             },
-            time_stamp: 1_742_583_404_i64,
+            time_stamp: OffsetDateTime::from_unix_timestamp(1_742_583_404).unwrap(),
             batch_count: 1,
             ..Default::default()
         },
