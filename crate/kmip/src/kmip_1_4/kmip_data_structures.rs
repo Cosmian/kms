@@ -1974,19 +1974,18 @@ impl TryFrom<kmip_2_1::kmip_data_structures::ServerInformation> for ServerInform
     type Error = KmipError;
 
     fn try_from(
-        _value: kmip_2_1::kmip_data_structures::ServerInformation,
+        value: kmip_2_1::kmip_data_structures::ServerInformation,
     ) -> Result<Self, Self::Error> {
-        // Ok(Self {
-        //     server_name: value.server_name,
-        //     server_serial_number: value.server_serial_number,
-        //     server_version: value.server_version,
-        //     server_load: value.server_load,
-        //     product_name: value.product_name,
-        //     build_level: value.build_level,
-        //     build_date: value.build_date,
-        //     cluster_info: value.cluster_info,
-        //     alternative_failover_endpoints: value.alternative_failover_endpoints,
-        // })
-        Ok(Self::default())
+        Ok(Self {
+            server_name: value.server_name,
+            server_serial_number: value.server_serial_number,
+            server_version: value.server_version,
+            server_load: value.server_load,
+            product_name: value.product_name,
+            build_level: value.build_level,
+            build_date: value.build_date,
+            cluster_info: value.cluster_info,
+            alternative_failover_endpoints: value.alternative_failover_endpoints,
+        })
     }
 }
