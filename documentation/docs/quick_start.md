@@ -13,8 +13,7 @@ To run a KMS where the database will survive restarts, run:
 docker run  -p 9998:9998 --name kms --volume cosmian-kms:/cosmian-kms  ghcr.io/cosmian/kms:latest
 ```
 
-If you do not have Docker available, install a binary for your platform
-from [Cosmian packages](https://package.cosmian.com/kms/).
+If you do not have Docker available, install a Cosmian KMS server as described in [installation guide](./installation/installation_getting_started.md):
 
 ## Using the Web UI
 
