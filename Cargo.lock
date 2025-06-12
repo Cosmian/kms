@@ -1362,6 +1362,7 @@ dependencies = [
  "tempfile",
  "test_kms_server",
  "thiserror 2.0.12",
+ "time",
  "tokio",
  "tracing",
  "url",
@@ -1402,6 +1403,7 @@ dependencies = [
  "serde_json",
  "strum",
  "thiserror 2.0.12",
+ "time",
  "tracing",
  "zeroize",
 ]
