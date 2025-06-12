@@ -41,7 +41,7 @@ pub(crate) async fn test_create_symmetric_key() -> KmsCliResult<()> {
         .await?;
     }
 
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     {
         // ChaCha20 256 bit key
         CreateKeyAction {

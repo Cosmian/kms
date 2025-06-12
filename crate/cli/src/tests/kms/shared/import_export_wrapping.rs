@@ -17,7 +17,7 @@ use cosmian_kms_client::{
     reexport::cosmian_kms_client_utils::import_utils::KeyUsage,
     write_kmip_object_to_file,
 };
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 use cosmian_kms_crypto::crypto::elliptic_curves::operation::create_x25519_key_pair;
 use cosmian_kms_crypto::crypto::wrap::unwrap_key_block;
 use tempfile::TempDir;
@@ -93,7 +93,7 @@ pub(crate) async fn test_import_export_wrap_rfc_5649() -> KmsCliResult<()> {
     Ok(())
 }
 
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 #[tokio::test]
 pub(crate) async fn test_import_export_wrap_ecies() -> KmsCliResult<()> {
     use cosmian_kms_client::kmip_0::kmip_types::CryptographicUsageMask;

@@ -16,7 +16,7 @@ use cosmian_kms_crypto::openssl::{
     openssl_private_key_to_kmip, openssl_public_key_to_kmip,
 };
 use cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams};
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 use openssl::{hash::MessageDigest, nid::Nid};
 use openssl::{
     pkcs7::Pkcs7,
@@ -136,9 +136,9 @@ pub(crate) async fn export_get(
         }
         ObjectType::Certificate => {
             if let Some(key_format_type) = &request.key_format_type {
-                #[cfg(feature = "fips")]
+                #[cfg(not(feature = "non-fips"))]
                 let is_pkcs12 = *key_format_type == KeyFormatType::PKCS12;
-                #[cfg(not(feature = "fips"))]
+                #[cfg(feature = "non-fips")]
                 let is_pkcs12 = *key_format_type == KeyFormatType::PKCS12
                     || *key_format_type == KeyFormatType::Pkcs12Legacy;
                 if is_pkcs12 {
@@ -172,11 +172,12 @@ pub(crate) async fn export_get(
                     owm = Box::pin(post_process_pkcs7(kms, operation_type, user, params, owm))
                         .await?;
                 }
-                #[cfg(feature = "fips")]
+
+                #[cfg(not(feature = "non-fips"))]
                 let is_wrong_format = *key_format_type != KeyFormatType::X509
                     && *key_format_type != KeyFormatType::PKCS7
                     && *key_format_type != KeyFormatType::PKCS12;
-                #[cfg(not(feature = "fips"))]
+                #[cfg(feature = "non-fips")]
                 let is_wrong_format = *key_format_type != KeyFormatType::X509
                     && *key_format_type != KeyFormatType::PKCS7
                     && *key_format_type != KeyFormatType::PKCS12
@@ -230,10 +231,11 @@ async fn post_process_private_key(
         operation_type
     );
     // determine if the user wants a PKCS#12
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     let is_pkcs12 = request.key_format_type == Some(KeyFormatType::PKCS12)
         || request.key_format_type == Some(KeyFormatType::Pkcs12Legacy);
-    #[cfg(feature = "fips")]
+
+    #[cfg(not(feature = "non-fips"))]
     let is_pkcs12 = request.key_format_type == Some(KeyFormatType::PKCS12);
     // according to the KMIP specs the KeyMaterial is not returned if the object is destroyed
     trace!("post_process_private_key: operation type: {operation_type:?}");
@@ -370,7 +372,7 @@ async fn post_process_active_private_key(
             "export: exporting private key with format: {:?}",
             key_format_type
         );
-        #[cfg(not(feature = "fips"))]
+        #[cfg(feature = "non-fips")]
         let supported_formats = [
             KeyFormatType::PKCS1,
             KeyFormatType::PKCS8,
@@ -380,7 +382,8 @@ async fn post_process_active_private_key(
             KeyFormatType::PKCS12,
             KeyFormatType::Pkcs12Legacy,
         ];
-        #[cfg(feature = "fips")]
+
+        #[cfg(not(feature = "non-fips"))]
         let supported_formats = [
             KeyFormatType::PKCS1,
             KeyFormatType::PKCS8,
@@ -823,7 +826,7 @@ async fn build_pkcs12_for_private_key(
         .cert(&certificate)
         .ca(chain);
 
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     {
         // support for OLD PKCS#12 formats
         if request.key_format_type == Some(KeyFormatType::Pkcs12Legacy) {

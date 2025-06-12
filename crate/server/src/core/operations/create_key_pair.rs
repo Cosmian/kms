@@ -5,7 +5,7 @@ use cosmian_kmip::kmip_2_1::{
     kmip_operations::{CreateKeyPair, CreateKeyPairResponse},
     kmip_types::{CryptographicAlgorithm, RecommendedCurve, UniqueIdentifier},
 };
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 use cosmian_kms_crypto::crypto::elliptic_curves::operation::{
     create_x448_key_pair, create_x25519_key_pair,
 };
@@ -18,7 +18,7 @@ use cosmian_kms_crypto::crypto::{
     rsa::operation::create_rsa_key_pair,
 };
 use cosmian_kms_interfaces::{AtomicOperation, SessionParams};
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 use tracing::warn;
 use tracing::{debug, info, trace};
 use uuid::Uuid;
@@ -195,7 +195,7 @@ pub(crate) fn generate_key_pair(
             let curve = domain_parameters.recommended_curve.unwrap_or_default();
 
             match curve {
-                #[cfg(not(feature = "fips"))]
+                #[cfg(feature = "non-fips")]
                 // Generate a P-192 Key Pair. Not FIPS-140-3 compliant. **This curve is for
                 // legacy-use only** as it provides less than 112 bits of security.
                 //
@@ -222,7 +222,7 @@ pub(crate) fn generate_key_pair(
                     request.private_key_attributes,
                     request.public_key_attributes,
                 ),
-                #[cfg(not(feature = "fips"))]
+                #[cfg(feature = "non-fips")]
                 RecommendedCurve::CURVE25519 => create_x25519_key_pair(
                     private_key_uid,
                     public_key_uid,
@@ -231,7 +231,7 @@ pub(crate) fn generate_key_pair(
                     request.private_key_attributes,
                     request.public_key_attributes,
                 ),
-                #[cfg(not(feature = "fips"))]
+                #[cfg(feature = "non-fips")]
                 RecommendedCurve::CURVE448 => create_x448_key_pair(
                     private_key_uid,
                     public_key_uid,
@@ -241,7 +241,7 @@ pub(crate) fn generate_key_pair(
                     request.public_key_attributes,
                 ),
                 RecommendedCurve::CURVEED25519 => {
-                    #[cfg(feature = "fips")]
+                    #[cfg(not(feature = "non-fips"))]
                     // Ed25519 not allowed for ECDH nor ECDSA.
                     // see NIST.SP.800-186 - Section 3.1.2 table 2.
                     {
@@ -251,7 +251,7 @@ pub(crate) fn generate_key_pair(
                                 .to_owned()
                         ))
                     }
-                    #[cfg(not(feature = "fips"))]
+                    #[cfg(feature = "non-fips")]
                     {
                         if cryptographic_algorithm == CryptographicAlgorithm::ECDSA
                             || cryptographic_algorithm == CryptographicAlgorithm::ECDH
@@ -275,7 +275,7 @@ pub(crate) fn generate_key_pair(
                     }
                 }
                 RecommendedCurve::CURVEED448 => {
-                    #[cfg(feature = "fips")]
+                    #[cfg(not(feature = "non-fips"))]
                     {
                         // Ed448 not allowed for ECDH nor ECDSA.
                         // see NIST.SP.800-186 - Section 3.1.2 table 2.
@@ -285,7 +285,7 @@ pub(crate) fn generate_key_pair(
                                 .to_owned()
                         ))
                     }
-                    #[cfg(not(feature = "fips"))]
+                    #[cfg(feature = "non-fips")]
                     {
                         if cryptographic_algorithm == CryptographicAlgorithm::ECDSA
                             || cryptographic_algorithm == CryptographicAlgorithm::EC

@@ -4,7 +4,7 @@ use cosmian_kmip::{
 };
 
 pub mod ckm_rsa_aes_key_wrap;
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 pub mod ckm_rsa_pkcs;
 pub mod ckm_rsa_pkcs_oaep;
 pub mod operation;

@@ -1,6 +1,6 @@
 use std::{collections::HashSet, sync::Arc};
 
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 use cosmian_kmip::kmip_0::kmip_types::CryptographicUsageMask;
 use cosmian_kmip::{
     kmip_0::kmip_types::{CertificateType, KeyWrapType, State},
@@ -172,7 +172,7 @@ pub(crate) async fn process_symmetric_key(
     }
 
     // force the usage mask to unrestricted if not in FIPS mode
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     // In non-FIPS mode, if no CryptographicUsageMask has been specified,
     // default to Unrestricted.
     if attributes.cryptographic_usage_mask.is_none() {
@@ -259,7 +259,7 @@ fn process_certificate(request: Import) -> Result<(String, Vec<AtomicOperation>)
     }
 
     // if not in FIPS mode, set the CryptographicUsageMask to Unrestricted
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     if attributes.cryptographic_usage_mask.is_none() {
         attributes.cryptographic_usage_mask = Some(CryptographicUsageMask::Unrestricted);
     }
@@ -330,7 +330,7 @@ async fn process_public_key(
         }
     }
 
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     // In non-FIPS mode, if no CryptographicUsageMask has been specified,
     // default to Unrestricted.
     if attributes.cryptographic_usage_mask.is_none() {
@@ -440,7 +440,7 @@ async fn process_private_key(
         }
     }
 
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     // In non-FIPS mode, if no CryptographicUsageMask has been specified,
     // default to Unrestricted.
     if attributes.cryptographic_usage_mask.is_none() {

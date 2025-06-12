@@ -10,39 +10,39 @@ use crate::error::UtilsError;
 #[derive(Default, Debug, Clone, Copy, EnumString, ValueEnum)]
 #[strum(serialize_all = "kebab-case")]
 pub enum Curve {
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     NistP192,
     NistP224,
     #[default]
     NistP256,
     NistP384,
     NistP521,
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     X25519,
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     Ed25519,
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     X448,
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     Ed448,
 }
 
 impl From<Curve> for RecommendedCurve {
     fn from(curve: Curve) -> Self {
         match curve {
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             Curve::NistP192 => Self::P192,
             Curve::NistP224 => Self::P224,
             Curve::NistP256 => Self::P256,
             Curve::NistP384 => Self::P384,
             Curve::NistP521 => Self::P521,
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             Curve::X25519 => Self::CURVE25519,
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             Curve::Ed25519 => Self::CURVEED25519,
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             Curve::X448 => Self::CURVE448,
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             Curve::Ed448 => Self::CURVEED448,
         }
     }
@@ -50,7 +50,7 @@ impl From<Curve> for RecommendedCurve {
 
 #[derive(Debug, Clone, Copy, Default, EnumString, ValueEnum)]
 pub enum SymmetricAlgorithm {
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     Chacha20,
     #[default]
     Aes,
@@ -61,7 +61,7 @@ pub enum SymmetricAlgorithm {
 impl Display for SymmetricAlgorithm {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             Self::Chacha20 => write!(f, "chacha20"),
             Self::Aes => write!(f, "aes"),
             Self::Sha3 => write!(f, "sha3"),
@@ -86,7 +86,7 @@ pub fn prepare_sym_key_elements(
     };
     let algorithm = match algorithm {
         SymmetricAlgorithm::Aes => CryptographicAlgorithm::AES,
-        #[cfg(not(feature = "fips"))]
+        #[cfg(feature = "non-fips")]
         SymmetricAlgorithm::Chacha20 => CryptographicAlgorithm::ChaCha20,
         SymmetricAlgorithm::Sha3 => match number_of_bits {
             224 => CryptographicAlgorithm::SHA3224,

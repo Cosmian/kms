@@ -1,7 +1,7 @@
 use clap::Subcommand;
 use cosmian_kms_client::{KmsClient, KmsClientConfig};
 
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 use super::cover_crypt::CovercryptCommands;
 use crate::{
     actions::kms::{
@@ -22,7 +22,7 @@ pub enum KmsActions {
     Attributes(AttributesCommands),
     #[clap(hide = true)]
     Bench(BenchAction),
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     #[command(subcommand)]
     Cc(CovercryptCommands),
     #[command(subcommand)]
@@ -58,7 +58,7 @@ impl KmsActions {
             Self::AccessRights(action) => action.process(kms_rest_client).await?,
             Self::Attributes(action) => action.process(kms_rest_client).await?,
             Self::Bench(action) => action.process(kms_rest_client).await?,
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             Self::Cc(action) => action.process(kms_rest_client).await?,
             Self::Certificates(action) => {
                 Box::pin(action.process(kms_rest_client)).await?;

@@ -1,4 +1,4 @@
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 pub mod ecies;
 pub mod operation;
 

@@ -229,7 +229,7 @@ impl DecryptAction {
             DataEncryptionAlgorithm::AesCbc | DataEncryptionAlgorithm::AesGcm => {
                 aad.unwrap_or_default()
             }
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             DataEncryptionAlgorithm::AesGcmSiv | DataEncryptionAlgorithm::Chacha20Poly1305 => {
                 aad.unwrap_or_default()
             }
@@ -352,7 +352,7 @@ impl DecryptAction {
         let aad = match data_encryption_algorithm {
             DataEncryptionAlgorithm::AesXts | DataEncryptionAlgorithm::AesCbc => vec![],
             DataEncryptionAlgorithm::AesGcm => aad.unwrap_or_default(),
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             DataEncryptionAlgorithm::AesGcmSiv | DataEncryptionAlgorithm::Chacha20Poly1305 => {
                 aad.unwrap_or_default()
             }

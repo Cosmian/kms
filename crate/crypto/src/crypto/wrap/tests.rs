@@ -1,6 +1,6 @@
-#[cfg(feature = "fips")]
+#[cfg(not(feature = "non-fips"))]
 use cosmian_kmip::kmip_2_1::extra::fips::FIPS_PUBLIC_RSA_MASK;
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::KeyWrappingData, kmip_objects::Object, kmip_types::EncodingOption,
 };
@@ -13,18 +13,18 @@ use cosmian_kmip::{
         requests::create_symmetric_key_kmip_object,
     },
 };
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 use cosmian_logger::log_init;
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 use openssl::{
     ec::{EcGroup, EcKey},
     nid::Nid,
 };
 use openssl::{pkey::PKey, rand::rand_bytes, rsa::Rsa};
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 use tracing::info;
 
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 use crate::{crypto::elliptic_curves::operation::create_x25519_key_pair, error::CryptoError};
 use crate::{
     crypto::wrap::{unwrap_key_block, wrap_key_block},
@@ -33,7 +33,7 @@ use crate::{
     openssl::{openssl_private_key_to_kmip, openssl_public_key_to_kmip},
 };
 
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 #[test]
 fn test_wrap_unwrap() -> Result<(), CryptoError> {
     use cosmian_kmip::kmip_0::kmip_types::CryptographicUsageMask;
@@ -118,7 +118,7 @@ fn test_wrap_unwrap() -> Result<(), CryptoError> {
     Ok(())
 }
 
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 fn wrap_test(
     wrapping_key: &Object,
     unwrapping_key: &Object,
@@ -199,7 +199,7 @@ fn wrap_test(
 
 #[test]
 fn test_encrypt_decrypt_rfc_5649() -> CryptoResult<()> {
-    #[cfg(feature = "fips")]
+    #[cfg(not(feature = "non-fips"))]
     // Load FIPS provider module from OpenSSL.
     openssl::provider::Provider::load(None, "fips").unwrap();
 
@@ -240,7 +240,7 @@ fn test_encrypt_decrypt_rfc_5649() -> CryptoResult<()> {
 }
 
 #[test]
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 fn test_encrypt_decrypt_rfc_ecies_x25519() -> CryptoResult<()> {
     let algorithm = CryptographicAlgorithm::ECDH;
     let private_key_attributes = Attributes {
@@ -293,7 +293,6 @@ fn test_encrypt_decrypt_rfc_ecies_x25519() -> CryptoResult<()> {
 
 #[test]
 fn test_encrypt_decrypt_rsa() -> CryptoResult<()> {
-    #[cfg(feature = "fips")]
     // Load FIPS provider module from OpenSSL.
     openssl::provider::Provider::load(None, "fips").unwrap();
 
@@ -303,10 +302,9 @@ fn test_encrypt_decrypt_rsa() -> CryptoResult<()> {
         rsa_privkey.e().to_owned().unwrap(),
     )
     .unwrap();
-
-    #[cfg(feature = "fips")]
+    #[cfg(not(feature = "non-fips"))]
     let crypto_usage_mask = Some(FIPS_PUBLIC_RSA_MASK);
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     let crypto_usage_mask = Some(CryptographicUsageMask::Unrestricted);
 
     let mut wrap_key_pair_pub = openssl_public_key_to_kmip(
@@ -360,7 +358,7 @@ fn test_encrypt_decrypt_rsa() -> CryptoResult<()> {
 }
 
 #[test]
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 fn test_encrypt_decrypt_ec_p192() -> CryptoResult<()> {
     let curve = EcGroup::from_curve_name(Nid::X9_62_PRIME192V1).unwrap();
 
@@ -408,7 +406,7 @@ fn test_encrypt_decrypt_ec_p192() -> CryptoResult<()> {
 }
 
 #[test]
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 fn test_encrypt_decrypt_ec_p384() -> CryptoResult<()> {
     let curve = EcGroup::from_curve_name(Nid::SECP384R1).unwrap();
 

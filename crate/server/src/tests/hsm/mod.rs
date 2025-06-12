@@ -26,7 +26,7 @@ use crate::{
     tests::test_utils::https_clap_config,
 };
 
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 mod ec_dek;
 mod rsa_dek;
 mod symmetric_dek;
@@ -41,7 +41,7 @@ async fn test_all() {
     symmetric_dek::test_wrapped_symmetric_dek().await.unwrap();
     info!("HSM: wrapped_rsa_dek");
     rsa_dek::test_wrapped_rsa_dek().await.unwrap();
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     {
         info!("HSM: wrapped_ec_dek");
         ec_dek::test_wrapped_ec_dek().await.unwrap();

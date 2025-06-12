@@ -9,7 +9,7 @@ set -ex
 # export DEBUG_OR_RELEASE=debug
 # export OPENSSL_DIR=/usr/local/openssl
 # export SKIP_SERVICES_TESTS="--skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse --skip hsm"
-# export FEATURES="fips"
+# export FEATURES="non-fips"
 
 ROOT_FOLDER=$(pwd)
 
@@ -20,18 +20,18 @@ fi
 
 if [ "$DEBUG_OR_RELEASE" = "release" ]; then
   # First build the Debian and RPM packages. It must come at first since
-  # after this step `cosmian` and `cosmian_kms` are built with custom features flags (fips for example).
+  # after this step `cosmian` and `cosmian_kms` are built with custom features flags (non-fips for example).
   rm -rf target/"$TARGET"/debian
   rm -rf target/"$TARGET"/generate-rpm
   if [ -f /etc/redhat-release ]; then
     cd crate/server && cargo build --target "$TARGET" --release && cd -
     cargo install --version 0.16.0 cargo-generate-rpm --force
     cd "$ROOT_FOLDER"
-    cargo generate-rpm --target "$TARGET" -p crate/server --metadata-overwrite=pkg/rpm/scriptlets.toml
+    cargo generate-rpm --target "$TARGET" -p crate/server --variant non-fips --metadata-overwrite=pkg/rpm/scriptlets.toml
   elif [ -f /etc/lsb-release ]; then
     cargo install --version 2.4.0 cargo-deb --force
     if [ -n "$FEATURES" ]; then
-      cargo deb --target "$TARGET" -p cosmian_kms_server --variant fips
+      cargo deb --target "$TARGET" -p cosmian_kms_server --variant non-fips
     else
       cargo deb --target "$TARGET" -p cosmian_kms_server
     fi

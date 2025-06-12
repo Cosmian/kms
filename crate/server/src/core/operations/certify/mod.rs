@@ -1,15 +1,17 @@
 use std::{cmp::min, collections::HashSet, default::Default, sync::Arc};
 
-#[cfg(feature = "fips")]
-use cosmian_kmip::kmip_0::kmip_types::CryptographicUsageMask;
-#[cfg(feature = "fips")]
-use cosmian_kmip::kmip_2_1::extra::fips::{
-    FIPS_PRIVATE_ECC_MASK_ECDH, FIPS_PRIVATE_ECC_MASK_SIGN, FIPS_PRIVATE_ECC_MASK_SIGN_ECDH,
-    FIPS_PRIVATE_RSA_MASK, FIPS_PUBLIC_ECC_MASK_ECDH, FIPS_PUBLIC_ECC_MASK_SIGN,
-    FIPS_PUBLIC_ECC_MASK_SIGN_ECDH, FIPS_PUBLIC_RSA_MASK,
+#[cfg(not(feature = "non-fips"))]
+use cosmian_kmip::{
+    kmip_0::kmip_types::CryptographicUsageMask,
+    kmip_2_1::{
+        extra::fips::{
+            FIPS_PRIVATE_ECC_MASK_ECDH, FIPS_PRIVATE_ECC_MASK_SIGN,
+            FIPS_PRIVATE_ECC_MASK_SIGN_ECDH, FIPS_PRIVATE_RSA_MASK, FIPS_PUBLIC_ECC_MASK_ECDH,
+            FIPS_PUBLIC_ECC_MASK_SIGN, FIPS_PUBLIC_ECC_MASK_SIGN_ECDH, FIPS_PUBLIC_RSA_MASK,
+        },
+        kmip_types::CryptographicAlgorithm,
+    },
 };
-#[cfg(feature = "fips")]
-use cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm;
 use cosmian_kmip::{
     kmip_0::kmip_types::State,
     kmip_2_1::{
@@ -222,7 +224,7 @@ pub(crate) async fn certify(
     Ok(CertifyResponse { unique_identifier })
 }
 
-#[cfg(feature = "fips")]
+#[cfg(not(feature = "non-fips"))]
 fn cryptographic_usage_mask_private_key(
     cryptographic_algorithm: CryptographicAlgorithm,
 ) -> KResult<CryptographicUsageMask> {
@@ -239,7 +241,7 @@ fn cryptographic_usage_mask_private_key(
     })
 }
 
-#[cfg(feature = "fips")]
+#[cfg(not(feature = "non-fips"))]
 fn cryptographic_usage_mask_public_key(
     cryptographic_algorithm: CryptographicAlgorithm,
 ) -> KResult<CryptographicUsageMask> {
@@ -376,7 +378,7 @@ async fn get_subject(
     let sk_uid = UniqueIdentifier::default();
     let pk_uid = UniqueIdentifier::default();
     // We expect the attributes to contain the cryptographic algorithm and parameters
-    #[cfg(feature = "fips")]
+    #[cfg(not(feature = "non-fips"))]
     let (private_attributes, public_attributes) = {
         let cryptographic_algorithm = attributes.cryptographic_algorithm.ok_or_else(|| {
             KmsError::InvalidRequest(
@@ -397,7 +399,7 @@ async fn get_subject(
         };
         (Some(private_attributes), Some(public_attributes))
     };
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     let (private_attributes, public_attributes) = (None, None);
     let create_key_pair_request = CreateKeyPair {
         common_attributes: Some(attributes.to_owned()),

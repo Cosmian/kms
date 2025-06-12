@@ -256,7 +256,7 @@ impl EncryptAction {
         let aad = match data_encryption_algorithm {
             DataEncryptionAlgorithm::AesXts | DataEncryptionAlgorithm::AesCbc => vec![],
             DataEncryptionAlgorithm::AesGcm => aad.unwrap_or_default(),
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             DataEncryptionAlgorithm::Chacha20Poly1305 | DataEncryptionAlgorithm::AesGcmSiv => {
                 aad.unwrap_or_default()
             }
@@ -338,9 +338,9 @@ impl EncryptAction {
         let dek = match data_encryption_algorithm {
             DataEncryptionAlgorithm::AesGcm => random_key(SymCipher::Aes256Gcm)?,
             DataEncryptionAlgorithm::AesCbc => random_key(SymCipher::Aes256Cbc)?,
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             DataEncryptionAlgorithm::Chacha20Poly1305 => random_key(SymCipher::Chacha20Poly1305)?,
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             DataEncryptionAlgorithm::AesGcmSiv => random_key(SymCipher::Aes256Gcm)?,
             DataEncryptionAlgorithm::AesXts => random_key(SymCipher::Aes256Xts)?,
         };
@@ -383,9 +383,9 @@ impl EncryptAction {
         let dek: Zeroizing<Vec<u8>> = match data_encryption_algorithm {
             DataEncryptionAlgorithm::AesCbc => random_key(SymCipher::Aes256Cbc)?,
             DataEncryptionAlgorithm::AesGcm => random_key(SymCipher::Aes256Gcm)?,
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             DataEncryptionAlgorithm::Chacha20Poly1305 => random_key(SymCipher::Chacha20Poly1305)?,
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             DataEncryptionAlgorithm::AesGcmSiv => random_key(SymCipher::Aes256Gcm)?,
             DataEncryptionAlgorithm::AesXts => random_key(SymCipher::Aes256Xts)?,
         };
@@ -451,7 +451,7 @@ impl EncryptAction {
         let aad = match data_encryption_algorithm {
             DataEncryptionAlgorithm::AesXts | DataEncryptionAlgorithm::AesCbc => vec![],
             DataEncryptionAlgorithm::AesGcm => aad.unwrap_or_default(),
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             DataEncryptionAlgorithm::Chacha20Poly1305 | DataEncryptionAlgorithm::AesGcmSiv => {
                 aad.unwrap_or_default()
             }

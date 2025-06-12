@@ -24,10 +24,10 @@ insecure = []
 # The binary won't start after a date chosen at compile-time
 timeout = []
 # Enable FIPS module feature build. KMS builds in FIPS mode when this is enabled.
-fips = [
-    "cosmian_kmip/fips",
-    "cosmian_kms_crypto/fips",
-    "cosmian_kms_client_utils/fips",
+non-fips = [
+    "cosmian_kmip/non-fips",
+    "cosmian_kms_crypto/non-fips",
+    "cosmian_kms_client_utils/non-fips",
 ]
 
 [dependencies]
@@ -154,8 +154,18 @@ assets = [
         "400",
     ],
     [
-        "/usr/local/openssl/lib64/ossl-modules/legacy.so",
-        "usr/local/openssl/lib64/ossl-modules/legacy.so",
+        "/usr/local/openssl/lib64/ossl-modules/fips.so",
+        "usr/local/openssl/lib64/ossl-modules/fips.so",
+        "400",
+    ],
+    [
+        "/usr/local/openssl/ssl/openssl.cnf",
+        "usr/local/openssl/ssl/openssl.cnf",
+        "400",
+    ],
+    [
+        "/usr/local/openssl/ssl/fipsmodule.cnf",
+        "usr/local/openssl/ssl/fipsmodule.cnf",
         "400",
     ],
 ]
@@ -163,8 +173,8 @@ systemd-units = [
     { unit-name = "cosmian_kms", unit-scripts = "../../pkg", enable = true, start = false, restart-after-upgrade = false },
 ]
 
-[package.metadata.deb.variants.fips]
-features = ["fips"]
+[package.metadata.deb.variants.non-fips]
+features = ["non-fips"]
 assets = [
     [
         "ui/dist/*",
@@ -192,18 +202,8 @@ assets = [
         "400",
     ],
     [
-        "/usr/local/openssl/lib64/ossl-modules/fips.so",
-        "usr/local/openssl/lib64/ossl-modules/fips.so",
-        "400",
-    ],
-    [
-        "/usr/local/openssl/ssl/openssl.cnf",
-        "usr/local/openssl/ssl/openssl.cnf",
-        "400",
-    ],
-    [
-        "/usr/local/openssl/ssl/fipsmodule.cnf",
-        "usr/local/openssl/ssl/fipsmodule.cnf",
+        "/usr/local/openssl/lib64/ossl-modules/legacy.so",
+        "usr/local/openssl/lib64/ossl-modules/legacy.so",
         "400",
     ],
 ]
@@ -226,3 +226,6 @@ assets = [
 ]
 auto-req = "no" # do not try to discover .so dependencies
 require-sh = true
+
+[package.metadata.generate-rpm.variants.non-fips]
+features = ["non-fips"]

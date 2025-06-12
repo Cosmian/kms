@@ -220,7 +220,7 @@ fn ec_private_key_from_scalar(
 ) -> Result<PKey<Private>, CryptoError> {
     let (nid, privkey_size) = match curve {
         // P-CURVES
-        #[cfg(not(feature = "fips"))]
+        #[cfg(feature = "non-fips")]
         RecommendedCurve::P192 => (Nid::X9_62_PRIME192V1, 24),
         RecommendedCurve::P256 => (Nid::X9_62_PRIME256V1, 32),
         RecommendedCurve::P224 => (Nid::SECP224R1, 28),
@@ -248,13 +248,13 @@ fn ec_private_key_from_scalar(
 /// Convert an openssl private key to a KMIP private Key (`Object::PrivateKey`) of the given `KeyFormatType`
 pub fn openssl_private_key_to_kmip(
     private_key: &PKey<Private>,
-    #[cfg(not(feature = "fips"))] mut key_format_type: KeyFormatType,
-    #[cfg(feature = "fips")] key_format_type: KeyFormatType,
+    #[cfg(feature = "non-fips")] mut key_format_type: KeyFormatType,
+    #[cfg(not(feature = "non-fips"))] key_format_type: KeyFormatType,
     cryptographic_usage_mask: Option<CryptographicUsageMask>,
 ) -> Result<Object, CryptoError> {
     let cryptographic_length = Some(i32::try_from(private_key.bits())?);
 
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     // When not in FIPS mode, None defaults to Unrestricted.
     let cryptographic_usage_mask = if cryptographic_usage_mask.is_none() {
         Some(CryptographicUsageMask::Unrestricted)
@@ -264,7 +264,7 @@ pub fn openssl_private_key_to_kmip(
 
     // Legacy PKCS12 is the same as PKCS12 for the private key,
     // which will be exported as PKCS#8
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     {
         if key_format_type == KeyFormatType::Pkcs12Legacy {
             key_format_type = KeyFormatType::PKCS12;
@@ -343,7 +343,7 @@ pub fn openssl_private_key_to_kmip(
                     let recommended_curve = match ec_key.group().curve_name() {
                         Some(nid) => match nid {
                             // P-CURVES
-                            #[cfg(not(feature = "fips"))]
+                            #[cfg(feature = "non-fips")]
                             Nid::X9_62_PRIME192V1 => RecommendedCurve::P192,
                             Nid::SECP224R1 => RecommendedCurve::P224,
                             Nid::X9_62_PRIME256V1 => RecommendedCurve::P256,
@@ -521,9 +521,9 @@ pub fn openssl_private_key_to_kmip(
 #[allow(clippy::unwrap_used, clippy::panic)]
 #[cfg(test)]
 mod tests {
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     use cosmian_kmip::kmip_0::kmip_types::CryptographicUsageMask;
-    #[cfg(feature = "fips")]
+    #[cfg(not(feature = "non-fips"))]
     use cosmian_kmip::kmip_2_1::extra::fips::{
         FIPS_PRIVATE_ECC_MASK_SIGN_ECDH, FIPS_PRIVATE_RSA_MASK,
     };
@@ -552,9 +552,9 @@ mod tests {
         key_size: u32,
         kft: KeyFormatType,
     ) {
-        #[cfg(feature = "fips")]
+        #[cfg(not(feature = "non-fips"))]
         let mask = Some(FIPS_PRIVATE_RSA_MASK);
-        #[cfg(not(feature = "fips"))]
+        #[cfg(feature = "non-fips")]
         let mask = Some(CryptographicUsageMask::Unrestricted);
 
         // PKCS#X
@@ -609,9 +609,9 @@ mod tests {
     }
 
     fn test_private_key_conversion_sec1(private_key: &PKey<Private>, id: Id, key_size: u32) {
-        #[cfg(feature = "fips")]
+        #[cfg(not(feature = "non-fips"))]
         let mask = Some(FIPS_PRIVATE_ECC_MASK_SIGN_ECDH);
-        #[cfg(not(feature = "fips"))]
+        #[cfg(feature = "non-fips")]
         let mask = Some(CryptographicUsageMask::Unrestricted);
 
         // SEC1.
@@ -654,9 +654,9 @@ mod tests {
         id: Id,
         key_size: u32,
     ) {
-        #[cfg(feature = "fips")]
+        #[cfg(not(feature = "non-fips"))]
         let mask = Some(FIPS_PRIVATE_RSA_MASK);
-        #[cfg(not(feature = "fips"))]
+        #[cfg(feature = "non-fips")]
         let mask = Some(CryptographicUsageMask::Unrestricted);
 
         let object =
@@ -726,9 +726,9 @@ mod tests {
         id: Id,
         key_size: u32,
     ) {
-        #[cfg(feature = "fips")]
+        #[cfg(not(feature = "non-fips"))]
         let mask = Some(FIPS_PRIVATE_ECC_MASK_SIGN_ECDH);
-        #[cfg(not(feature = "fips"))]
+        #[cfg(feature = "non-fips")]
         let mask = Some(CryptographicUsageMask::Unrestricted);
 
         // Transparent EC.
@@ -807,7 +807,7 @@ mod tests {
     fn test_conversion_rsa_private_key() {
         log_init(option_env!("RUST_LOG"));
 
-        #[cfg(feature = "fips")]
+        #[cfg(not(feature = "non-fips"))]
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
 
@@ -821,7 +821,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     fn test_conversion_ec_p_192_private_key() {
         log_init(option_env!("RUST_LOG"));
 
@@ -847,8 +847,7 @@ mod tests {
     #[test]
     fn test_conversion_ec_p_224_private_key() {
         log_init(option_env!("RUST_LOG"));
-
-        #[cfg(feature = "fips")]
+        #[cfg(not(feature = "non-fips"))]
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
 
@@ -875,7 +874,7 @@ mod tests {
     fn test_conversion_ec_p_256_private_key() {
         log_init(option_env!("RUST_LOG"));
 
-        #[cfg(feature = "fips")]
+        #[cfg(not(feature = "non-fips"))]
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
 
@@ -902,7 +901,7 @@ mod tests {
     fn test_conversion_ec_p_384_private_key() {
         log_init(option_env!("RUST_LOG"));
 
-        #[cfg(feature = "fips")]
+        #[cfg(not(feature = "non-fips"))]
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
 
@@ -929,7 +928,7 @@ mod tests {
     fn test_conversion_ec_p_521_private_key() {
         log_init(option_env!("RUST_LOG"));
 
-        #[cfg(feature = "fips")]
+        #[cfg(not(feature = "non-fips"))]
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
 
@@ -953,7 +952,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     fn test_conversion_ec_x25519_private_key() {
         log_init(option_env!("RUST_LOG"));
 
@@ -975,7 +974,7 @@ mod tests {
     fn test_conversion_ec_ed25519_private_key() {
         log_init(option_env!("RUST_LOG"));
 
-        #[cfg(feature = "fips")]
+        #[cfg(not(feature = "non-fips"))]
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
 
@@ -994,7 +993,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     fn test_conversion_ec_x448_private_key() {
         log_init(option_env!("RUST_LOG"));
 
@@ -1016,7 +1015,7 @@ mod tests {
     fn test_conversion_ec_ed448_private_key() {
         log_init(option_env!("RUST_LOG"));
 
-        #[cfg(feature = "fips")]
+        #[cfg(not(feature = "non-fips"))]
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
 

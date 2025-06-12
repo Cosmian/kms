@@ -19,17 +19,17 @@ use crate::error::UtilsError;
 #[derive(ValueEnum, Clone, Copy, EnumString, Debug)]
 #[strum(serialize_all = "kebab-case")]
 pub enum Algorithm {
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     NistP192,
     NistP224,
     NistP256,
     NistP384,
     NistP521,
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     Ed25519,
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     Ed448,
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     RSA1024,
     RSA2048,
     RSA3072,
@@ -39,17 +39,17 @@ pub enum Algorithm {
 impl Display for Algorithm {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             Self::NistP192 => write!(f, "nist-p192"),
             Self::NistP224 => write!(f, "nist-p224"),
             Self::NistP256 => write!(f, "nist-p256"),
             Self::NistP384 => write!(f, "nist-p384"),
             Self::NistP521 => write!(f, "nist-p521"),
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             Self::Ed25519 => write!(f, "ed25519"),
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             Self::Ed448 => write!(f, "ed448"),
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             Self::RSA1024 => write!(f, "rsa1024"),
             Self::RSA2048 => write!(f, "rsa2048"),
             Self::RSA3072 => write!(f, "rsa3072"),
@@ -137,7 +137,7 @@ pub fn build_certify_request(
             })?,
         )?);
         match algorithm {
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             Algorithm::RSA1024 => {
                 rsa_algorithm(&mut attributes, 1024);
             }
@@ -150,7 +150,7 @@ pub fn build_certify_request(
             Algorithm::RSA4096 => {
                 rsa_algorithm(&mut attributes, 4096);
             }
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             Algorithm::NistP192 => {
                 ec_algorithm(
                     &mut attributes,
@@ -186,7 +186,7 @@ pub fn build_certify_request(
                     RecommendedCurve::P521,
                 );
             }
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             Algorithm::Ed25519 => {
                 ec_algorithm(
                     &mut attributes,
@@ -194,7 +194,7 @@ pub fn build_certify_request(
                     RecommendedCurve::CURVEED25519,
                 );
             }
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             Algorithm::Ed448 => {
                 ec_algorithm(
                     &mut attributes,

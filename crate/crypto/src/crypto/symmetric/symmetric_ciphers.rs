@@ -14,7 +14,7 @@ use openssl::{
 use tracing::trace;
 use zeroize::Zeroizing;
 
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 use super::aes_gcm_siv_not_openssl;
 use crate::{
     crypto::symmetric::rfc5649::{rfc5649_unwrap, rfc5649_wrap},
@@ -63,22 +63,22 @@ pub const AES_256_XTS_TWEAK_LENGTH: usize = 16;
 /// AES 256 XTS has no authentication.
 pub const AES_256_XTS_MAC_LENGTH: usize = 0;
 /// AES 128 `GCM_SIV` key length in bytes.
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 pub const AES_128_GCM_SIV_KEY_LENGTH: usize = 16;
 /// AES 128 `GCM_SIV` nonce length in bytes.
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 pub const AES_128_GCM_SIV_IV_LENGTH: usize = 12;
 /// AES 128 `GCM_SIV` mac length in bytes.
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 pub const AES_128_GCM_SIV_MAC_LENGTH: usize = 16;
 /// AES 256 `GCM_SIV` key length in bytes.
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 pub const AES_256_GCM_SIV_KEY_LENGTH: usize = 32;
 /// AES 256 `GCM_SIV` nonce length in bytes.
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 pub const AES_256_GCM_SIV_IV_LENGTH: usize = 12;
 /// AES 256 `GCM_SIV` mac length in bytes.
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 pub const AES_256_GCM_SIV_MAC_LENGTH: usize = 16;
 
 /// RFC 5649 with a 16-byte KEK.
@@ -94,13 +94,13 @@ pub const RFC5649_32_IV_LENGTH: usize = 0;
 /// RFC5649 has no authentication.
 pub const RFC5649_32_MAC_LENGTH: usize = 0;
 
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 /// Chacha20-Poly1305 key length in bytes.
 pub const CHACHA20_POLY1305_KEY_LENGTH: usize = 32;
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 /// Chacha20-Poly1305 iv length in bytes.
 pub const CHACHA20_POLY1305_IV_LENGTH: usize = 12;
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 /// Chacha20-Poly1305 tag/mac length in bytes.
 pub const CHACHA20_POLY1305_MAC_LENGTH: usize = 16;
 
@@ -131,11 +131,11 @@ pub enum SymCipher {
     Aes256Xts,
     Rfc5649_16,
     Rfc5649_32,
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     Aes128GcmSiv,
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     Aes256GcmSiv,
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     Chacha20Poly1305,
 }
 
@@ -154,9 +154,9 @@ impl SymCipher {
                     "RFC5649 is not supported in this version of openssl".to_owned()
                 ))
             }
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             Self::Chacha20Poly1305 => Ok(Cipher::chacha20_poly1305()),
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             Self::Aes128GcmSiv | Self::Aes256GcmSiv => {
                 //TODO: openssl supports AES GCM SIV but the rust openssl crate does not expose it
                 crypto_bail!(CryptoError::NotSupported(
@@ -178,11 +178,11 @@ impl SymCipher {
             Self::Aes256Xts => AES_256_XTS_MAC_LENGTH,
             Self::Rfc5649_16 => RFC5649_16_MAC_LENGTH,
             Self::Rfc5649_32 => RFC5649_32_MAC_LENGTH,
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             Self::Chacha20Poly1305 => CHACHA20_POLY1305_MAC_LENGTH,
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             Self::Aes128GcmSiv => AES_128_GCM_SIV_MAC_LENGTH,
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             Self::Aes256GcmSiv => AES_256_GCM_SIV_MAC_LENGTH,
         }
     }
@@ -199,11 +199,11 @@ impl SymCipher {
             Self::Aes256Xts => AES_256_XTS_TWEAK_LENGTH,
             Self::Rfc5649_16 => RFC5649_16_IV_LENGTH,
             Self::Rfc5649_32 => RFC5649_32_IV_LENGTH,
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             Self::Chacha20Poly1305 => CHACHA20_POLY1305_IV_LENGTH,
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             Self::Aes128GcmSiv => AES_128_GCM_SIV_IV_LENGTH,
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             Self::Aes256GcmSiv => AES_256_GCM_SIV_IV_LENGTH,
         }
     }
@@ -220,11 +220,11 @@ impl SymCipher {
             Self::Aes256Xts => AES_256_XTS_KEY_LENGTH,
             Self::Rfc5649_16 => RFC5649_16_KEY_LENGTH,
             Self::Rfc5649_32 => RFC5649_32_KEY_LENGTH,
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             Self::Chacha20Poly1305 => CHACHA20_POLY1305_KEY_LENGTH,
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             Self::Aes128GcmSiv => AES_128_GCM_SIV_KEY_LENGTH,
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             Self::Aes256GcmSiv => AES_256_GCM_SIV_KEY_LENGTH,
         }
     }
@@ -263,7 +263,7 @@ impl SymCipher {
                             "AES key must be 32 or 64 bytes long for AES XTS".to_owned()
                         )),
                     },
-                    #[cfg(not(feature = "fips"))]
+                    #[cfg(feature = "non-fips")]
                     BlockCipherMode::GCMSIV => match key_size {
                         AES_128_GCM_SIV_KEY_LENGTH => Ok(Self::Aes128GcmSiv),
                         AES_256_GCM_SIV_KEY_LENGTH => Ok(Self::Aes256GcmSiv),
@@ -285,7 +285,7 @@ impl SymCipher {
                     }
                 }
             }
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             CryptographicAlgorithm::ChaCha20 | CryptographicAlgorithm::ChaCha20Poly1305 => {
                 match key_size {
                     32 => Ok(Self::Chacha20Poly1305),
@@ -352,7 +352,7 @@ pub fn encrypt(
                 openssl_encrypt(sym_cipher.to_openssl_cipher()?, key, Some(nonce), plaintext)?;
             Ok((ciphertext, vec![]))
         }
-        #[cfg(not(feature = "fips"))]
+        #[cfg(feature = "non-fips")]
         SymCipher::Aes128GcmSiv | SymCipher::Aes256GcmSiv => {
             aes_gcm_siv_not_openssl::encrypt(key, nonce, aad, plaintext)
         }
@@ -402,7 +402,7 @@ pub fn decrypt(
                 ciphertext,
             )?)
         }
-        #[cfg(not(feature = "fips"))]
+        #[cfg(feature = "non-fips")]
         SymCipher::Aes128GcmSiv | SymCipher::Aes256GcmSiv => {
             aes_gcm_siv_not_openssl::decrypt(key, nonce, aad, ciphertext, tag)?
         }
@@ -444,7 +444,7 @@ impl StreamCipher {
         aad: &[u8],
     ) -> Result<Self, CryptoError> {
         match sym_cipher {
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             SymCipher::Aes128GcmSiv | SymCipher::Aes256GcmSiv => {
                 //TODO: the pure Rust crate does not support streaming. When openssl id exposed, this should be fixed
                 Err(CryptoError::NotSupported(

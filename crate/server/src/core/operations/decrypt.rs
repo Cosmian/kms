@@ -13,9 +13,9 @@ use cosmian_kmip::{
         },
     },
 };
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 use cosmian_kms_crypto::crypto::elliptic_curves::ecies::ecies_decrypt;
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 use cosmian_kms_crypto::crypto::rsa::ckm_rsa_pkcs::ckm_rsa_pkcs_decrypt;
 use cosmian_kms_crypto::{
     crypto::{
@@ -462,7 +462,7 @@ fn decrypt_with_private_key(
             request.cryptographic_parameters.as_ref(),
             ciphertext,
         )?,
-        #[cfg(not(feature = "fips"))]
+        #[cfg(feature = "non-fips")]
         Id::EC | Id::X25519 | Id::ED25519 => ecies_decrypt(&private_key, ciphertext)?,
         other => {
             kms_bail!("Decrypt with PKey: private key type not supported: {other:?}")
@@ -494,7 +494,7 @@ fn decrypt_with_rsa(
         (CryptographicAlgorithm::RSA, PaddingMethod::OAEP) => {
             ckm_rsa_pkcs_oaep_key_decrypt(private_key, hashing_fn, ciphertext)?
         }
-        #[cfg(not(feature = "fips"))]
+        #[cfg(feature = "non-fips")]
         (CryptographicAlgorithm::RSA, PaddingMethod::PKCS1v15) => {
             ckm_rsa_pkcs_decrypt(private_key, ciphertext)?
         }

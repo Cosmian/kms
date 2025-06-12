@@ -14,9 +14,9 @@ use cosmian_kmip::{
         },
     },
 };
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 use cosmian_kms_crypto::crypto::elliptic_curves::ecies::ecies_encrypt;
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 use cosmian_kms_crypto::crypto::rsa::ckm_rsa_pkcs::ckm_rsa_pkcs_encrypt;
 use cosmian_kms_crypto::{
     crypto::{
@@ -487,7 +487,7 @@ fn encrypt_with_pkey(
             request.cryptographic_parameters.as_ref(),
             plaintext,
         )?,
-        #[cfg(not(feature = "fips"))]
+        #[cfg(feature = "non-fips")]
         Id::EC | Id::X25519 | Id::ED25519 => ecies_encrypt(public_key, plaintext)?,
         other => {
             kms_bail!("Encrypt: public key type not supported: {other:?}")
@@ -515,7 +515,7 @@ fn encrypt_with_rsa(
         CryptographicAlgorithm::RSA => match padding {
             PaddingMethod::None => ckm_rsa_aes_key_wrap(public_key, hashing_fn, plaintext)?,
             PaddingMethod::OAEP => ckm_rsa_pkcs_oaep_encrypt(public_key, hashing_fn, plaintext)?,
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             PaddingMethod::PKCS1v15 => ckm_rsa_pkcs_encrypt(public_key, plaintext)?,
             _ => kms_bail!("Unable to encrypt with RSA: padding method not supported: {padding:?}"),
         },

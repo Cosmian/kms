@@ -21,11 +21,11 @@ or contact the Cosmian support team on Discord https://discord.com/invite/7kPMNt
 doctest = false
 
 [features]
-fips = [
-  "cosmian_kms_client/fips",
-  "cosmian_kms_crypto/fips",
-  "cosmian_kmip/fips",
-  "test_kms_server/fips",
+non-fips = [
+  "cosmian_kms_client/non-fips",
+  "cosmian_kms_crypto/non-fips",
+  "cosmian_kmip/non-fips",
+  "test_kms_server/non-fips",
 ]
 
 [dependencies]

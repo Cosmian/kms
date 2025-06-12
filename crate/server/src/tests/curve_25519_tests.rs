@@ -314,15 +314,15 @@ async fn test_curve_25519_multiple() -> KResult<()> {
     };
 
     // Should fail in fips mode since ed25519 for ECDH is not allowed.
-    #[cfg(feature = "fips")]
+    #[cfg(not(feature = "non-fips"))]
     assert_eq!(
         batch_item.result_status,
         ResultStatusEnumeration::OperationFailed
     );
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     assert_eq!(batch_item.result_status, ResultStatusEnumeration::Success);
 
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     let Some(Operation::CreateKeyPairResponse(_)) = &batch_item.response_payload else {
         panic!("not a create key pair response payload");
     };
@@ -353,15 +353,15 @@ async fn test_curve_25519_multiple() -> KResult<()> {
     };
 
     // Should fail in fips mode since ed25519 for ECDH is not allowed.
-    #[cfg(feature = "fips")]
+    #[cfg(not(feature = "non-fips"))]
     assert_eq!(
         batch_item.result_status,
         ResultStatusEnumeration::OperationFailed
     );
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     assert_eq!(batch_item.result_status, ResultStatusEnumeration::Success);
 
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     let Some(Operation::CreateKeyPairResponse(_)) = &batch_item.response_payload else {
         panic!("not a create key pair response payload");
     };
