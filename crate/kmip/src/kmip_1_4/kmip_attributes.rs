@@ -27,19 +27,19 @@ use crate::{
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Attribute {
-    ActivationDate(i64),
+    ActivationDate(OffsetDateTime),
     AlternativeName(AlternativeName),
     AlwaysSensitive(bool),
     ApplicationSpecificInformation(ApplicationSpecificInformation),
-    ArchiveDate(i64),
+    ArchiveDate(OffsetDateTime),
     CertificateIdentifier(String),
     CertificateIssuer(String),
     CertificateLength(i32),
     CertificateSubject(String),
     CertificateType(CertificateType),
     Comment(String),
-    CompromiseDate(i64),
-    CompromiseOccurrenceDate(i64),
+    CompromiseDate(OffsetDateTime),
+    CompromiseOccurrenceDate(OffsetDateTime),
     ContactInformation(String),
     CryptographicAlgorithm(CryptographicAlgorithm),
     CryptographicDomainParameters(CryptographicDomainParameters),
@@ -47,17 +47,17 @@ pub enum Attribute {
     CryptographicParameters(CryptographicParameters),
     CryptographicUsageMask(CryptographicUsageMask),
     CustomAttribute((String, CustomAttributeValue)),
-    DeactivationDate(i64),
+    DeactivationDate(OffsetDateTime),
     Description(String),
-    DestroyDate(i64),
+    DestroyDate(OffsetDateTime),
     DigitalSignatureAlgorithm(DigitalSignatureAlgorithm),
     Digest(Digest),
     Extractable(bool),
     Fresh(bool),
-    InitialDate(i64),
+    InitialDate(OffsetDateTime),
     KeyValueLocation(KeyValueLocationType),
     KeyValuePresent(bool),
-    LastChangeDate(i64),
+    LastChangeDate(OffsetDateTime),
     LeaseTime(i64),
     Link(Link),
     Name(Name),
@@ -65,10 +65,10 @@ pub enum Attribute {
     ObjectGroup(String),
     ObjectType(ObjectType),
     OperationPolicyName(String),
-    OriginalCreationDate(i64),
+    OriginalCreationDate(OffsetDateTime),
     Pkcs12FriendlyName(String),
-    ProcessStartDate(i64),
-    ProtectStopDate(i64),
+    ProcessStartDate(OffsetDateTime),
+    ProtectStopDate(OffsetDateTime),
     RandomNumberGenerator(RandomNumberGenerator),
     RevocationReason(RevocationReason),
     Sensitive(bool),
@@ -432,35 +432,35 @@ impl<'de> Deserialize<'de> for Attribute {
                         Ok(Attribute::State(value))
                     }
                     "Initial Date" => {
-                        let value: i64 = map.next_value()?;
+                        let value: OffsetDateTime = map.next_value()?;
                         Ok(Attribute::InitialDate(value))
                     }
                     "Activation Date" => {
-                        let value: i64 = map.next_value()?;
+                        let value: OffsetDateTime = map.next_value()?;
                         Ok(Attribute::ActivationDate(value))
                     }
                     "Process Start Date" => {
-                        let value: i64 = map.next_value()?;
+                        let value: OffsetDateTime = map.next_value()?;
                         Ok(Attribute::ProcessStartDate(value))
                     }
                     "Protect Stop Date" => {
-                        let value: i64 = map.next_value()?;
+                        let value: OffsetDateTime = map.next_value()?;
                         Ok(Attribute::ProtectStopDate(value))
                     }
                     "Deactivation Date" => {
-                        let value: i64 = map.next_value()?;
+                        let value: OffsetDateTime = map.next_value()?;
                         Ok(Attribute::DeactivationDate(value))
                     }
                     "Destroy Date" => {
-                        let value: i64 = map.next_value()?;
+                        let value: OffsetDateTime = map.next_value()?;
                         Ok(Attribute::DestroyDate(value))
                     }
                     "Compromise Occurrence Date" => {
-                        let value: i64 = map.next_value()?;
+                        let value: OffsetDateTime = map.next_value()?;
                         Ok(Attribute::CompromiseOccurrenceDate(value))
                     }
                     "Compromise Date" => {
-                        let value: i64 = map.next_value()?;
+                        let value: OffsetDateTime = map.next_value()?;
                         Ok(Attribute::CompromiseDate(value))
                     }
                     "Revocation Reason" => {
@@ -468,7 +468,7 @@ impl<'de> Deserialize<'de> for Attribute {
                         Ok(Attribute::RevocationReason(value))
                     }
                     "Archive Date" => {
-                        let value: i64 = map.next_value()?;
+                        let value: OffsetDateTime = map.next_value()?;
                         Ok(Attribute::ArchiveDate(value))
                     }
                     "Object Group" => {
@@ -492,7 +492,7 @@ impl<'de> Deserialize<'de> for Attribute {
                         Ok(Attribute::ContactInformation(value))
                     }
                     "Last Change Date" => {
-                        let value: i64 = map.next_value()?;
+                        let value: OffsetDateTime = map.next_value()?;
                         Ok(Attribute::LastChangeDate(value))
                     }
                     "Alternative Name" => {
@@ -508,7 +508,7 @@ impl<'de> Deserialize<'de> for Attribute {
                         Ok(Attribute::KeyValueLocation(value))
                     }
                     "Original Creation Date" => {
-                        let value: i64 = map.next_value()?;
+                        let value: OffsetDateTime = map.next_value()?;
                         Ok(Attribute::OriginalCreationDate(value))
                     }
                     "Random Number Generator" => {
