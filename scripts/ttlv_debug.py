@@ -4,9 +4,6 @@ TTLV Debug Script - Captures raw KMIP messages for analysis
 """
 
 import argparse
-import sys
-import socket
-import ssl
 import binascii
 import struct
 from io import BytesIO
@@ -50,15 +47,15 @@ class TTLVDebugProxy(KMIPProxy):
             ttlv_type = header[3]
             length = int.from_bytes(header[4:8], 'big')
             
-            print(f"Response Header:")
+            print("Response Header:")
             print(f"  Tag: 0x{tag:06X} ({self._tag_name(tag)})")
             print(f"  Type: {ttlv_type} ({self._type_name(ttlv_type)})")
             print(f"  Length: {length}")
             
             # This is where the error occurs - PyKMIP expects type 9 (Structure) but gets type 3 (BigInteger)
             if ttlv_type == 3:
-                print(f"  ⚠️  WARNING: Received BigInteger (3) instead of expected Structure (9)")
-                print(f"      This is likely the cause of the parsing error!")
+                print("  ⚠️  WARNING: Received BigInteger (3) instead of expected Structure (9)")
+                print("      This is likely the cause of the parsing error!")
             
             # Read the rest of the message
             remaining = self._recv_exact(length)
