@@ -48,11 +48,11 @@ const SymmetricEncryptForm: React.FC = () => {
             );
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
-                const { IvCounterNonce, Data, AuthenticatedEncryptionTag } = await parse_encrypt_ttlv_response(result_str);
-                const combinedData = new Uint8Array(IvCounterNonce.length + Data.length + AuthenticatedEncryptionTag.length);
-                combinedData.set(IvCounterNonce, 0);
-                combinedData.set(Data, IvCounterNonce.length);
-                combinedData.set(AuthenticatedEncryptionTag, IvCounterNonce.length + Data.length);
+                const { IVCounterNonce, Data, AuthenticatedEncryptionTag } = await parse_encrypt_ttlv_response(result_str);
+                const combinedData = new Uint8Array(IVCounterNonce.length + Data.length + AuthenticatedEncryptionTag.length);
+                combinedData.set(IVCounterNonce, 0);
+                combinedData.set(Data, IVCounterNonce.length);
+                combinedData.set(AuthenticatedEncryptionTag, IVCounterNonce.length + Data.length);
                 const mimeType = "application/octet-stream";
                 const filename = `${values.fileName}.enc`;
                 downloadFile(combinedData, filename, mimeType);
