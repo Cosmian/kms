@@ -62,7 +62,7 @@ def test_discover_versions_with_debug():
         
         print("🔍 Calling discover_versions...")
         supported_versions = proxy.discover_versions()
-        print(f"✅ discover_versions succeeded!")
+        print("✅ discover_versions succeeded!")
         print(f"   Supported versions: {[str(v) for v in supported_versions]}")
         
         proxy.close()
@@ -94,7 +94,7 @@ def test_discover_versions_with_debug():
                 pass
         
         import traceback
-        print(f"\n🔍 Full traceback:")
+        print("\n🔍 Full traceback:")
         traceback.print_exc()
         
         if 'proxy' in locals():
@@ -155,6 +155,6 @@ if __name__ == "__main__":
     if working_version:
         print(f"\n✅ SUCCESS: KMIP {working_version.value} works!")
     else:
-        print(f"\n❌ FAILURE: No KMIP version works")
+        print("\n❌ FAILURE: No KMIP version works")
         print("\nThis confirms the issue is a fundamental TTLV encoding incompatibility")
         print("between PyKMIP and Cosmian KMS server.")
