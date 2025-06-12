@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.3.3] - 2025-06-12
+
+### 🐛 Bug Fixes
+
+- In UI, fix `IvCounterNonce` (#446)
+- *(Linux packages)* Save and restore conf during installation
+
+### 📚 Documentation
+
+- Remove reference of cosmian_gui
+- Markdown fixes
+
+### ⚙️ Miscellaneous Tasks
+
+- Rename cli repo
+- *(windows)* Reduce verbosity
+
 ## [5.3.2] - 2025-06-04
 
 ### 🐛 Bug Fixes
