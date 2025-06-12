@@ -39,6 +39,7 @@ use cosmian_kmip::kmip_2_1::{
     requests::create_symmetric_key_kmip_object,
 };
 use cosmian_logger::log_init;
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::{
@@ -112,12 +113,14 @@ pub(crate) async fn test_set_attribute_server() -> KResult<()> {
     //
     // Start tests
     //
+    let timestamp = 42;
+    let offset_datetime = OffsetDateTime::from_unix_timestamp(timestamp).unwrap();
     set_activation_date_and_remove_it(
         &kms,
         &uid,
         DeleteAttribute {
             unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
-            current_attribute: Some(Attribute::ActivationDate(42)),
+            current_attribute: Some(Attribute::ActivationDate(offset_datetime)),
             attribute_references: None,
         },
     )
@@ -153,10 +156,16 @@ async fn set_activation_date_and_remove_it(
     assert!(get_response.attributes.activation_date.is_none());
 
     // Set activation date
-    set_attribute(kms, uid, Attribute::ActivationDate(42)).await?;
+    let timestamp = 42;
+    let offset_datetime = OffsetDateTime::from_unix_timestamp(timestamp).unwrap();
+
+    set_attribute(kms, uid, Attribute::ActivationDate(offset_datetime)).await?;
     // and check if it is set correctly
     let get_response = get_attributes(kms, uid, Tag::ActivationDate).await?;
-    assert_eq!(get_response.attributes.activation_date, Some(42));
+    assert_eq!(
+        get_response.attributes.activation_date,
+        Some(offset_datetime)
+    );
     // Remove activation date
     delete_attribute(kms, delete_request).await?;
     // and check if it is removed

@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use time::OffsetDateTime;
 
 use super::kmip_types::VendorAttributeValue;
 use crate::{
@@ -54,7 +55,7 @@ pub struct Attributes {
     /// transition from Pre-Active has occurred, then this attribute SHALL
     /// NOT be changed or deleted before the object is destroyed.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub activation_date: Option<i64>, // epoch millis
+    pub activation_date: Option<OffsetDateTime>, // epoch millis
 
     /// The Alternative Name attribute is a variable length text string that is associated
     /// with the unique identifier of the object. It may be used as an alternative name to
@@ -79,7 +80,7 @@ pub struct Attributes {
     /// The Archive Date attribute contains the date and time when the Managed Object was
     /// transferred to the Archive state in the Object States table.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub archive_date: Option<i64>,
+    pub archive_date: Option<OffsetDateTime>,
 
     /// The Attribute Index attribute is used to identify distinct instances of multi-instance attributes.
     /// The combination of the attribute name and the Attribute Index SHALL be unique
@@ -114,12 +115,12 @@ pub struct Attributes {
     /// The Compromise Date attribute contains the date and time when the Managed Object
     /// entered the Compromised state in the Object States table.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub compromise_date: Option<i64>,
+    pub compromise_date: Option<OffsetDateTime>,
 
     /// The Compromise Occurrence Date attribute contains the date and time when the
     /// Managed Object was first believed to be compromised.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub compromise_occurrence_date: Option<i64>,
+    pub compromise_occurrence_date: Option<OffsetDateTime>,
 
     /// The Contact Information attribute is a text string that MAY be used to identify
     /// or provide information about the Contact for the Managed Object.
@@ -176,7 +177,7 @@ pub struct Attributes {
     /// Managed Object SHALL NOT be used for any purpose, except for deletion,
     /// destruction, or re-activation.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub deactivation_date: Option<i64>,
+    pub deactivation_date: Option<OffsetDateTime>,
 
     /// The Description attribute is a string containing a description of the object.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -185,7 +186,7 @@ pub struct Attributes {
     /// The Destroy Date attribute contains the date and time when the Managed Object
     /// was destroyed.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub destroy_date: Option<i64>,
+    pub destroy_date: Option<OffsetDateTime>,
 
     /// The Digital Signature Algorithm attribute specifies the digital signature algorithm
     /// that is used with the signing key.
@@ -205,7 +206,7 @@ pub struct Attributes {
     /// The Initial Date attribute contains the date and time when the Managed Object
     /// was first created or registered at the server.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub initial_date: Option<i64>,
+    pub initial_date: Option<OffsetDateTime>,
 
     /// 4.26 The Key Format Type attribute is a required attribute of a
     /// Cryptographic Object. It is set by the server, but a particular Key
@@ -234,7 +235,7 @@ pub struct Attributes {
     /// The Last Change Date attribute contains the date and time of the last change
     /// to the Managed Object.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub last_change_date: Option<i64>,
+    pub last_change_date: Option<OffsetDateTime>,
 
     /// The Lease Time attribute is the length of time in seconds that the object MAY
     /// be retained by the client.
@@ -309,7 +310,7 @@ pub struct Attributes {
     /// The Original Creation Date attribute contains the date and time the object
     /// was created by the client that first created it.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub original_creation_date: Option<i64>,
+    pub original_creation_date: Option<OffsetDateTime>,
 
     /// The PKCS#12 Friendly Name attribute is a string used to identify the key
     /// material stored within a PKCS#12 object.
@@ -319,12 +320,12 @@ pub struct Attributes {
     /// The Process Start Date attribute is the date and time that a managed object
     /// is considered to enter the processing state.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub process_start_date: Option<i64>,
+    pub process_start_date: Option<OffsetDateTime>,
 
     /// The Protect Stop Date attribute is the date and time that a managed object
     /// is considered to enter the protected state.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub protect_stop_date: Option<i64>,
+    pub protect_stop_date: Option<OffsetDateTime>,
 
     /// The Protection Level attribute indicates the level of protection required for a object.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -359,7 +360,7 @@ pub struct Attributes {
     /// of a Managed Cryptographic Object. The Rotate Date attribute SHALL be set by
     /// the server when the Rotate operation successfully completes.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub rotate_date: Option<i64>,
+    pub rotate_date: Option<OffsetDateTime>,
 
     /// The Rotate Generation attribute specifies the generation of the last rotation
     /// of a Managed Cryptographic Object. The Rotate Generation attribute SHALL be set
@@ -788,7 +789,7 @@ pub enum Attribute {
     /// purpose before the Activation Date has been reached. Once the state
     /// transition from Pre-Active has occurred, then this attribute SHALL
     /// NOT be changed or deleted before the object is destroyed.
-    ActivationDate(i64),
+    ActivationDate(OffsetDateTime),
 
     /// The Alternative Name attribute is a variable length text string that is associated
     /// with the unique identifier of the object. It may be used as an alternative name to
@@ -809,7 +810,7 @@ pub enum Attribute {
 
     /// The Archive Date attribute contains the date and time when the Managed Object was
     /// transferred to the Archive state in the Object States table.
-    ArchiveDate(i64),
+    ArchiveDate(OffsetDateTime),
 
     /// The Attribute Index attribute is used to identify distinct instances of multi-instance attributes.
     /// The combination of the attribute name and the Attribute Index SHALL be unique
@@ -837,11 +838,11 @@ pub enum Attribute {
 
     /// The Compromise Date attribute contains the date and time when the Managed Object
     /// entered the Compromised state in the Object States table.
-    CompromiseDate(i64),
+    CompromiseDate(OffsetDateTime),
 
     /// The Compromise Occurrence Date attribute contains the date and time when the
     /// Managed Object was first believed to be compromised.
-    CompromiseOccurrenceDate(i64),
+    CompromiseOccurrenceDate(OffsetDateTime),
 
     /// The Contact Information attribute is a text string that MAY be used to identify
     /// or provide information about the Contact for the Managed Object.
@@ -886,14 +887,14 @@ pub enum Attribute {
     /// The Deactivation Date attribute contains the date and time when the
     /// Managed Object SHALL NOT be used for any purpose, except for deletion,
     /// destruction, or re-activation.
-    DeactivationDate(i64),
+    DeactivationDate(OffsetDateTime),
 
     /// The Description attribute is a string containing a description of the object.
     Description(String),
 
     /// The Destroy Date attribute contains the date and time when the Managed Object
     /// was destroyed.
-    DestroyDate(i64),
+    DestroyDate(OffsetDateTime),
 
     /// The Digital Signature Algorithm attribute specifies the digital signature algorithm
     /// that is used with the signing key.
@@ -909,7 +910,7 @@ pub enum Attribute {
 
     /// The Initial Date attribute contains the date and time when the Managed Object
     /// was first created or registered at the server.
-    InitialDate(i64),
+    InitialDate(OffsetDateTime),
 
     /// The Key Format Type attribute is a required attribute of a
     /// Cryptographic Object. It is set by the server, but a particular Key
@@ -926,7 +927,7 @@ pub enum Attribute {
 
     /// The Last Change Date attribute contains the date and time of the last change
     /// to the Managed Object.
-    LastChangeDate(i64),
+    LastChangeDate(OffsetDateTime),
 
     /// The Lease Time attribute is the length of time in seconds that the object MAY
     /// be retained by the client.
@@ -970,7 +971,7 @@ pub enum Attribute {
 
     /// The Original Creation Date attribute contains the date and time the object
     /// was created by the client that first created it.
-    OriginalCreationDate(i64),
+    OriginalCreationDate(OffsetDateTime),
 
     /// The PKCS#12 Friendly Name attribute is a string used to identify the key
     /// material stored within a PKCS#12 object.
@@ -978,11 +979,11 @@ pub enum Attribute {
 
     /// The Process Start Date attribute is the date and time that a managed object
     /// is considered to enter the processing state.
-    ProcessStartDate(i64),
+    ProcessStartDate(OffsetDateTime),
 
     /// The Protect Stop Date attribute is the date and time that a managed object
     /// is considered to enter the protected state.
-    ProtectStopDate(i64),
+    ProtectStopDate(OffsetDateTime),
 
     /// The Protection Level attribute indicates the level of protection required for a object.
     ProtectionLevel(ProtectionLevel),
@@ -1010,7 +1011,7 @@ pub enum Attribute {
     /// The Rotate Date attribute specifies the date and time for the last rotation
     /// of a Managed Cryptographic Object. The Rotate Date attribute SHALL be set by
     /// the server when the Rotate operation successfully completes.
-    RotateDate(i64),
+    RotateDate(OffsetDateTime),
 
     /// The Rotate Generation attribute specifies the generation of the last rotation
     /// of a Managed Cryptographic Object. The Rotate Generation attribute SHALL be set

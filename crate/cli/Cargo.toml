@@ -60,6 +60,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 strum = { workspace = true }
 test_kms_server = { path = "../test_kms_server" }
+time = "0.3"
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tracing = { workspace = true }
