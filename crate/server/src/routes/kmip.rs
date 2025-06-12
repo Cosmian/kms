@@ -4,6 +4,7 @@ use actix_web::{
     HttpRequest, HttpResponse, post,
     web::{Bytes, Data, Json},
 };
+use cosmian_kms_interfaces::SessionParams;
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         self, KmipResultHelper,
@@ -322,6 +323,7 @@ pub(crate) async fn handle_ttlv_bytes(user: &str, ttlv_bytes: &[u8], kms: &Arc<K
         .await
         .unwrap_or_else(|e| {
             let response_message = invalid_response_message(major, minor, e.to_string());
+            warn!(target: "kmip", "Failed to process request:\n{response_message:#?}");
             // convert to TTLV
             let response_ttlv = to_ttlv(&response_message).unwrap_or_else(|e| {
                 error!(target: "kmip", "Failed to convert response message to TTLV: {}", e);
