@@ -74,33 +74,67 @@ def perform_query(proxy, verbose=False):
     if verbose:
         print("Performing Query operation...")
 
-    # Query for server information using QueryFunction enums
-    result = proxy.query(
-        query_functions=[
-            enums.QueryFunction.QUERY_OBJECTS,
-            enums.QueryFunction.QUERY_OPERATIONS,
-            enums.QueryFunction.QUERY_SERVER_INFORMATION,
-            enums.QueryFunction.QUERY_APPLICATION_NAMESPACES,
-            enums.QueryFunction.QUERY_EXTENSION_LIST,
-            enums.QueryFunction.QUERY_CAPABILITIES
-        ]
-    )
+    try:
+        # Query for server information using QueryFunction enums
+        result = proxy.query(
+            query_functions=[
+                enums.QueryFunction.QUERY_OBJECTS,
+                enums.QueryFunction.QUERY_OPERATIONS,
+                enums.QueryFunction.QUERY_SERVER_INFORMATION,
+                enums.QueryFunction.QUERY_APPLICATION_NAMESPACES,
+                enums.QueryFunction.QUERY_EXTENSION_LIST,
+                enums.QueryFunction.QUERY_CAPABILITIES
+            ]
+        )
 
-    response = {
-        "operation": "Query",
-        "status": "success",
-        "objects": result.objects if hasattr(result, 'objects') else [],
-        "operations": [op.value for op in result.operations] if hasattr(result, 'operations') else [],
-        "server_information": result.server_information if hasattr(result, 'server_information') else {},
-        "namespaces": result.namespaces if hasattr(result, 'namespaces') else [],
-        "extensions": result.extensions if hasattr(result, 'extensions') else [],
-        "capabilities": result.capabilities if hasattr(result, 'capabilities') else []
-    }
+        # Check if query operation succeeded
+        if hasattr(result, 'result_status'):
+            if result.result_status.value == enums.ResultStatus.SUCCESS:
+                response = {
+                    "operation": "Query",
+                    "status": "success",
+                    "objects": result.objects if hasattr(result, 'objects') else [],
+                    "operations": [op.value for op in result.operations] if hasattr(result, 'operations') else [],
+                    "server_information": result.server_information if hasattr(result, 'server_information') else {},
+                    "namespaces": result.namespaces if hasattr(result, 'namespaces') else [],
+                    "extensions": result.extensions if hasattr(result, 'extensions') else [],
+                    "capabilities": result.capabilities if hasattr(result, 'capabilities') else []
+                }
+            else:
+                # Query failed
+                error_msg = f"Query operation failed: {result.result_reason}"
+                if hasattr(result, 'result_message') and result.result_message:
+                    error_msg += f" - {result.result_message}"
+                
+                response = {
+                    "operation": "Query",
+                    "status": "error",
+                    "error": error_msg
+                }
+        else:
+            # Fallback - assume success if no status field (shouldn't happen)
+            response = {
+                "operation": "Query",
+                "status": "success",
+                "objects": result.objects if hasattr(result, 'objects') else [],
+                "operations": [op.value for op in result.operations] if hasattr(result, 'operations') else [],
+                "server_information": result.server_information if hasattr(result, 'server_information') else {},
+                "namespaces": result.namespaces if hasattr(result, 'namespaces') else [],
+                "extensions": result.extensions if hasattr(result, 'extensions') else [],
+                "capabilities": result.capabilities if hasattr(result, 'capabilities') else []
+            }
 
-    if verbose:
-        print("Query operation completed successfully")
+        if verbose:
+            print("Query operation completed successfully")
 
-    return response
+        return response
+    
+    except Exception as e:
+        return {
+            "operation": "Query",
+            "status": "error",
+            "error": str(e)
+        }
 
 def perform_create_symmetric_key(proxy, verbose=False):
     """Create a symmetric key"""
@@ -135,16 +169,40 @@ def perform_create_symmetric_key(proxy, verbose=False):
         # Create the key using proper KMIPProxy API
         result = proxy.create(enums.ObjectType.SYMMETRIC_KEY, template)
         
-        # Extract UID from result
-        uid = result.uuid if hasattr(result, 'uuid') else str(result)
-
-        response = {
-            "operation": "Create",
-            "status": "success",
-            "uid": uid,
-            "algorithm": "AES",
-            "length": 256
-        }
+        # Check if create operation actually succeeded
+        if hasattr(result, 'result_status'):
+            if result.result_status.value == enums.ResultStatus.SUCCESS:
+                # Extract UID from successful result
+                uid = result.uuid if hasattr(result, 'uuid') else str(result)
+                
+                response = {
+                    "operation": "Create",
+                    "status": "success",
+                    "uid": uid,
+                    "algorithm": "AES",
+                    "length": 256
+                }
+            else:
+                # Create failed
+                error_msg = f"Create operation failed: {result.result_reason}"
+                if hasattr(result, 'result_message') and result.result_message:
+                    error_msg += f" - {result.result_message}"
+                
+                response = {
+                    "operation": "Create",
+                    "status": "error",
+                    "error": error_msg
+                }
+        else:
+            # Fallback - assume success if no status field (shouldn't happen)
+            uid = result.uuid if hasattr(result, 'uuid') else str(result)
+            response = {
+                "operation": "Create",
+                "status": "success",
+                "uid": uid,
+                "algorithm": "AES",
+                "length": 256
+            }
 
         if verbose:
             print(f"Created symmetric key with UID: {uid}")
@@ -180,6 +238,20 @@ def perform_get_attributes(proxy, verbose=False):
         
         template = cobjects.TemplateAttribute(attributes=[algorithm_attr, length_attr])
         result = proxy.create(enums.ObjectType.SYMMETRIC_KEY, template)
+        
+        # Check if create operation succeeded first
+        if hasattr(result, 'result_status') and result.result_status.value != enums.ResultStatus.SUCCESS:
+            # Create failed
+            error_msg = f"Create operation failed: {result.result_reason}"
+            if hasattr(result, 'result_message') and result.result_message:
+                error_msg += f" - {result.result_message}"
+            
+            return {
+                "operation": "GetAttributes",
+                "status": "error",
+                "error": error_msg
+            }
+        
         uid = result.uuid if hasattr(result, 'uuid') else str(result)
 
         # Get attributes for the created key 
@@ -279,14 +351,38 @@ def perform_destroy(proxy, verbose=False):
             print(f"Created key with UID: {uid}")
 
         # Then destroy it
-        proxy.destroy(uid)
-
-        response = {
-            "operation": "Destroy",
-            "status": "success",
-            "uid": uid,
-            "message": "Key created and destroyed successfully"
-        }
+        destroy_result = proxy.destroy(uuid=uid)
+        
+        # Check if destroy actually succeeded
+        if hasattr(destroy_result, 'result_status'):
+            if destroy_result.result_status.value == enums.ResultStatus.SUCCESS:
+                response = {
+                    "operation": "Destroy",
+                    "status": "success",
+                    "uid": uid,
+                    "message": "Key created and destroyed successfully"
+                }
+            else:
+                # Destroy failed
+                error_msg = f"Destroy operation failed: {destroy_result.result_reason}"
+                if hasattr(destroy_result, 'result_message') and destroy_result.result_message:
+                    error_msg += f" - {destroy_result.result_message}"
+                
+                response = {
+                    "operation": "Destroy",
+                    "status": "error",
+                    "uid": uid,
+                    "error": error_msg,
+                    "note": "Key was created successfully but destroy failed"
+                }
+        else:
+            # Fallback if result structure is unexpected
+            response = {
+                "operation": "Destroy",
+                "status": "success",
+                "uid": uid,
+                "message": "Key created and destroyed successfully (result status unknown)"
+            }
 
         if verbose:
             print(f"Destroyed key with UID: {uid}")
@@ -330,49 +426,66 @@ def perform_encrypt_decrypt(proxy, verbose=False):
         # Test data to encrypt
         test_data = b"Hello, PyKMIP from Rust!"
         
-        # Encrypt the data
-        encrypt_result = proxy.encrypt(
-            uid,
-            data=test_data,
-            cryptographic_algorithm=enums.CryptographicAlgorithm.AES,
-            cryptographic_parameters={
-                'block_cipher_mode': enums.BlockCipherMode.CBC,
-                'padding_method': enums.PaddingMethod.PKCS5
+        try:
+            # Encrypt the data (use default parameters)
+            encrypt_result = proxy.encrypt(
+                data=test_data,
+                unique_identifier=uid
+            )
+
+            if verbose:
+                print("Data encrypted successfully")
+
+            # Decrypt the data  
+            decrypt_result = proxy.decrypt(
+                data=encrypt_result['data'],
+                unique_identifier=uid
+            )
+
+            if verbose:
+                print("Data decrypted successfully")
+
+            # Verify the decrypted data matches original
+            success = decrypt_result['data'] == test_data
+
+            response = {
+                "operation": "EncryptDecrypt",
+                "status": "success" if success else "error",
+                "uid": uid,
+                "original_data": test_data.hex(),
+                "encrypted_data": encrypt_result['data'].hex(),
+                "decrypted_data": decrypt_result['data'].hex(),
+                "verification": "passed" if success else "failed"
             }
-        )
-
-        if verbose:
-            print("Data encrypted successfully")
-
-        # Decrypt the data
-        decrypt_result = proxy.decrypt(
-            uid,
-            data=encrypt_result.data,
-            cryptographic_algorithm=enums.CryptographicAlgorithm.AES,
-            cryptographic_parameters={
-                'block_cipher_mode': enums.BlockCipherMode.CBC,
-                'padding_method': enums.PaddingMethod.PKCS5
-            }
-        )
-
-        if verbose:
-            print("Data decrypted successfully")
-
-        # Verify the decrypted data matches original
-        success = decrypt_result.data == test_data
-
-        response = {
-            "operation": "EncryptDecrypt",
-            "status": "success" if success else "error",
-            "uid": uid,
-            "original_data": test_data.hex(),
-            "encrypted_data": encrypt_result.data.hex(),
-            "decrypted_data": decrypt_result.data.hex(),
-            "verification": "passed" if success else "failed"
-        }
+            
+        except Exception as crypto_error:
+            error_msg = str(crypto_error)
+            
+            # Check for known compatibility issues
+            if "Invalid length used to read Base" in error_msg or "StreamNotEmptyError" in error_msg:
+                response = {
+                    "operation": "EncryptDecrypt",
+                    "status": "error",
+                    "uid": uid,
+                    "error": "KMIP version compatibility issue with encrypt/decrypt operations",
+                    "technical_details": f"PyKMIP 1.2 parser incompatible with Cosmian KMS response format: {error_msg}",
+                    "note": "Key creation succeeded, but encrypt/decrypt has protocol parsing issues",
+                    "workaround": "Use direct REST API or update PyKMIP for KMIP 2.x compatibility"
+                }
+            else:
+                response = {
+                    "operation": "EncryptDecrypt",
+                    "status": "error",
+                    "uid": uid,
+                    "error": error_msg
+                }
 
         # Clean up - destroy the test key
-        proxy.destroy(uid)
+        try:
+            proxy.destroy(uid)
+        except:
+            if verbose:
+                print("Note: Could not clean up test key")
 
         return response
 
@@ -477,30 +590,57 @@ def perform_locate(proxy, verbose=False):
         # Locate all objects (no specific criteria)
         result = proxy.locate()
         
-        # Extract UIDs from the result
-        if hasattr(result, 'uuids') and result.uuids:
-            located_uids = result.uuids
-            count = len(located_uids)
-        elif hasattr(result, 'unique_identifiers') and result.unique_identifiers:
-            located_uids = result.unique_identifiers
-            count = len(located_uids)
+        # Check if locate operation succeeded
+        if hasattr(result, 'result_status'):
+            if result.result_status.value == enums.ResultStatus.SUCCESS:
+                # Extract UIDs from the successful result
+                if hasattr(result, 'uuids') and result.uuids:
+                    located_uids = result.uuids
+                    count = len(located_uids)
+                elif hasattr(result, 'unique_identifiers') and result.unique_identifiers:
+                    located_uids = result.unique_identifiers
+                    count = len(located_uids)
+                else:
+                    # Handle case where result format is different
+                    located_uids = []
+                    count = 0
+                    if verbose:
+                        print(f"Locate result type: {type(result)}")
+                        print(f"Locate result attributes: {[attr for attr in dir(result) if not attr.startswith('_')]}")
+
+                response = {
+                    "operation": "Locate",
+                    "status": "success",
+                    "located_objects": located_uids,
+                    "count": count
+                }
+            else:
+                # Locate failed
+                error_msg = f"Locate operation failed: {result.result_reason}"
+                if hasattr(result, 'result_message') and result.result_message:
+                    error_msg += f" - {result.result_message}"
+                
+                response = {
+                    "operation": "Locate",
+                    "status": "error",
+                    "error": error_msg
+                }
         else:
-            # Handle case where result format is different
+            # Fallback - assume success if no status field (shouldn't happen)
             located_uids = []
             count = 0
-            if verbose:
-                print(f"Locate result type: {type(result)}")
-                print(f"Locate result attributes: {[attr for attr in dir(result) if not attr.startswith('_')]}")
-
-        response = {
-            "operation": "Locate",
-            "status": "success",
-            "located_objects": located_uids,
-            "count": count
-        }
+            response = {
+                "operation": "Locate",
+                "status": "success",
+                "located_objects": located_uids,
+                "count": count
+            }
 
         if verbose:
-            print(f"Located {count} objects on server")
+            if response["status"] == "success":
+                print(f"Located {response['count']} objects on server")
+            else:
+                print(f"Locate operation failed")
 
         return response
 
