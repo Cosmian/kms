@@ -127,39 +127,22 @@ verify_certificates() {
     print_info "Checking test certificates..."
     
     cert_files=(
-        "test_data/client_server/ca.crt"
-        "test_data/client_server/owner.client.acme.com.crt"
-        "test_data/client_server/owner.client.acme.com.key"
-        "test_data/client_server/kmserver.acme.com.p12"
+        "test_data/client_server/ca/ca.crt"
+        "test_data/client_server/owner/owner.client.acme.com.crt"
+        "test_data/client_server/owner/owner.client.acme.com.key"
+        "test_data/client_server/server/kmserver.acme.com.p12"
     )
     
     for cert_file in "${cert_files[@]}"; do
         if [[ ! -f "$cert_file" ]]; then
             print_error "Certificate file not found: $cert_file"
-            print_warning "Run: cd test_data/client_server && ./generate_certs.sh"
             exit 1
         fi
     done
     print_status "All required certificate files exist"
 }
 
-# Verify Rust test module
-verify_rust_tests() {
-    print_info "Checking Rust test module..."
-    
-    if [[ ! -f "crate/server/src/tests/ttlv_tests/py_kmip/mod.rs" ]]; then
-        print_error "PyKMIP Rust test module not found"
-        exit 1
-    fi
-    print_status "PyKMIP Rust test module exists"
-    
-    # Check if the Python path is correctly set to use venv
-    if grep -q ".venv/bin/python" "crate/server/src/tests/ttlv_tests/py_kmip/mod.rs"; then
-        print_status "Rust tests configured to use virtual environment"
-    else
-        print_warning "Rust tests may not be using virtual environment Python"
-    fi
-}
+
 
 # Test PyKMIP client operations (without server)
 test_client_operations() {
@@ -216,7 +199,6 @@ main() {
     verify_pykmip
     verify_scripts
     verify_certificates
-    verify_rust_tests
     test_client_operations
     show_summary
 }
