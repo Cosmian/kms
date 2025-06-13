@@ -1468,7 +1468,7 @@ pub struct LocateResponse {
     pub located_items: Option<i32>,
     /// The Unique Identifier of the located objects.
     #[serde(skip_serializing_if = "Option::is_none", rename = "UniqueIdentifier")]
-    pub unique_identifiers: Option<Vec<UniqueIdentifier>>,
+    pub unique_identifier: Option<Vec<UniqueIdentifier>>,
 }
 
 impl Display for LocateResponse {
@@ -1476,7 +1476,7 @@ impl Display for LocateResponse {
         write!(
             f,
             "LocateResponse {{ located_items: {:?}, unique_identifiers: {:?} }}",
-            self.located_items, self.unique_identifiers
+            self.located_items, self.unique_identifier
         )
     }
 }
