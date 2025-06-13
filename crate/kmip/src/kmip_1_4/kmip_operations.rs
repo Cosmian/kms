@@ -707,11 +707,34 @@ pub struct Destroy {
     pub unique_identifier: String,
 }
 
+impl From<Destroy> for kmip_2_1::kmip_operations::Destroy {
+    fn from(destroy: Destroy) -> Self {
+        Self {
+            unique_identifier: Some(kmip_2_1::kmip_types::UniqueIdentifier::TextString(
+                destroy.unique_identifier,
+            )),
+            remove: false,
+        }
+    }
+}
+
 /// Response to a Destroy request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct DestroyResponse {
     pub unique_identifier: String,
+}
+
+impl TryFrom<kmip_2_1::kmip_operations::DestroyResponse> for DestroyResponse {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_operations::DestroyResponse) -> Result<Self, Self::Error> {
+        trace!("Converting KMIP 2.1 DestroyResponse to KMIP 1.4: {value:#?}");
+
+        Ok(Self {
+            unique_identifier: value.unique_identifier.to_string(),
+        })
+    }
 }
 
 /// 4.22 Archive
@@ -1894,9 +1917,7 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             Operation::DiscoverVersionsResponse(discover_versions_response) => {
                 Self::DiscoverVersionsResponse(discover_versions_response)
             }
-            // Operation::Destroy(destroy) => {
-            //     Self::Destroy(destroy.into())
-            // }
+            Operation::Destroy(destroy) => Self::Destroy(destroy.into()),
             // Operation::DestroyResponse(destroy_response) => {
             //     Self::DestroyResponse(destroy_response.into())
             // }
@@ -2121,6 +2142,9 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             // Operation::DeriveKeyResponse(derive_key_response) => {
             //     Self::DeriveKeyResponse(derive_key_response.into())
             // }
+            kmip_2_1::kmip_operations::Operation::DestroyResponse(destroy_response) => {
+                Self::DestroyResponse(destroy_response.try_into().context("DestroyResponse")?)
+            }
             kmip_2_1::kmip_operations::Operation::DiscoverVersions(discover_versions) => {
                 Self::DiscoverVersions(discover_versions)
             }
