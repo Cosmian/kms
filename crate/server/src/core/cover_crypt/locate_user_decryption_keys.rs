@@ -59,7 +59,7 @@ pub(crate) async fn locate_usk(
     };
     let locate_response =
         operations::locate(kmip_server, locate_request, state, owner, params).await?;
-    Ok(locate_response.unique_identifiers.map(|ids| {
+    Ok(locate_response.unique_identifier.map(|ids| {
         ids.into_iter()
             .map(|id| id.to_string())
             .collect::<Vec<String>>()

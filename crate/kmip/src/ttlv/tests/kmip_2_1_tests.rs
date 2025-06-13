@@ -1495,7 +1495,7 @@ pub(crate) fn test_message_response() {
                 unique_batch_item_id: Some(b"1234".to_vec()),
                 response_payload: Some(Operation::LocateResponse(LocateResponse {
                     located_items: Some(134),
-                    unique_identifiers: Some(vec![UniqueIdentifier::TextString(
+                    unique_identifier: Some(vec![UniqueIdentifier::TextString(
                         "some_id".to_owned(),
                     )]),
                 })),
