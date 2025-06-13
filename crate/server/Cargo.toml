@@ -112,6 +112,7 @@ time = { workspace = true, features = ["local-offset", "formatting"] }
 # ------------------------------------------------------------------------------
 # START DEBIAN PACKAGING
 [package.metadata.deb]
+features = ["non-fips"]
 maintainer = "Cosmian support team <tech@cosmian.com>"
 maintainer-scripts = "../../pkg/deb/"
 copyright = "2025, Cosmian Tech SAS <tech@cosmian.com>"
@@ -120,6 +121,44 @@ changelog = "../../CHANGELOG.md"
 section = "security"
 priority = "optional"
 depends = ""
+assets = [
+    [
+        "ui/dist/*",
+        "usr/local/cosmian/ui/dist/",
+        "500",
+    ],
+    [
+        "ui/dist/assets/*",
+        "usr/local/cosmian/ui/dist/assets/",
+        "500",
+    ],
+    [
+        "target/release/cosmian_kms",
+        "usr/sbin/cosmian_kms",
+        "500",
+    ],
+    [
+        "../../README.md",
+        "usr/share/doc/cosmian/README",
+        "644",
+    ],
+    [
+        "../../pkg/kms.toml",
+        "etc/cosmian/",
+        "400",
+    ],
+    [
+        "/usr/local/openssl/lib64/ossl-modules/legacy.so",
+        "usr/local/openssl/lib64/ossl-modules/legacy.so",
+        "400",
+    ],
+]
+systemd-units = [
+    { unit-name = "cosmian_kms", unit-scripts = "../../pkg", enable = true, start = false, restart-after-upgrade = false },
+]
+
+[package.metadata.deb.variants.fips]
+features = []
 assets = [
     [
         "ui/dist/*",
@@ -162,44 +201,7 @@ assets = [
         "400",
     ],
 ]
-systemd-units = [
-    { unit-name = "cosmian_kms", unit-scripts = "../../pkg", enable = true, start = false, restart-after-upgrade = false },
-]
 
-[package.metadata.deb.variants.non-fips]
-features = ["non-fips"]
-assets = [
-    [
-        "ui/dist/*",
-        "usr/local/cosmian/ui/dist/",
-        "500",
-    ],
-    [
-        "ui/dist/assets/*",
-        "usr/local/cosmian/ui/dist/assets/",
-        "500",
-    ],
-    [
-        "target/release/cosmian_kms",
-        "usr/sbin/cosmian_kms",
-        "500",
-    ],
-    [
-        "../../README.md",
-        "usr/share/doc/cosmian/README",
-        "644",
-    ],
-    [
-        "../../pkg/kms.toml",
-        "etc/cosmian/",
-        "400",
-    ],
-    [
-        "/usr/local/openssl/lib64/ossl-modules/legacy.so",
-        "usr/local/openssl/lib64/ossl-modules/legacy.so",
-        "400",
-    ],
-]
 
 # END DEBIAN PACKAGING
 # ------------------------------------------------------------------------------
@@ -219,6 +221,4 @@ assets = [
 ]
 auto-req = "no" # do not try to discover .so dependencies
 require-sh = true
-
-[package.metadata.generate-rpm.variants.non-fips]
 features = ["non-fips"]
