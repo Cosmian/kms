@@ -53,7 +53,7 @@ info = false
 [db]
 database_type = "sqlite"
 # database_url = "<database-url>"
-sqlite_path = "scripts/cosmian-kms.db"
+sqlite_path = "."
 # redis_master_password = "<redis master password>"
 # redis_findex_label = "<redis findex label>"
 # Clear the database at startup. WARNING: This will delete all objects in the database.
