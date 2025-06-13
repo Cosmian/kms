@@ -182,38 +182,62 @@ def perform_get_attributes(proxy, verbose=False):
         result = proxy.create(enums.ObjectType.SYMMETRIC_KEY, template)
         uid = result.uuid if hasattr(result, 'uuid') else str(result)
 
-        # Get attributes for the created key (simplified)
+        # Get attributes for the created key 
         try:
-            attributes = proxy.get_attributes(uuid=uid)
-            attribute_count = len(attributes) if attributes else 0
-        except Exception as get_error:
-            # If getting attributes fails, just report that we created the key successfully
-            if verbose:
-                print(f"Note: get_attributes failed ({get_error}), but key creation succeeded")
-            attribute_count = "unknown (get_attributes failed)"
-            attributes = []
-
-        # Parse attributes safely if we got them
-        parsed_attributes = {}
-        if attributes:
+            # First try to get specific attributes that we know PyKMIP supports
+            supported_attributes = [
+                "Cryptographic Algorithm",
+                "Cryptographic Length", 
+                "Cryptographic Usage Mask",
+                "State",
+                "Unique Identifier"
+            ]
+            
+            attributes_result = proxy.get_attributes(uuid=uid, attribute_names=supported_attributes)
+            
+            # Extract attributes from the result object
+            if hasattr(attributes_result, 'attributes'):
+                attributes = attributes_result.attributes
+            else:
+                # Debug what's in the result
+                if verbose:
+                    print(f"GetAttributes result type: {type(attributes_result)}")
+                    print(f"Result attributes: {[attr for attr in dir(attributes_result) if not attr.startswith('_')]}")
+                attributes = []
+            
+            # Parse attributes safely
+            parsed_attributes = {}
             for attr in attributes:
                 try:
                     attr_name = attr.attribute_name.value if hasattr(attr.attribute_name, 'value') else str(attr.attribute_name)
                     attr_value = str(attr.attribute_value)
                     parsed_attributes[attr_name] = attr_value
                 except Exception as attr_error:
-                    # Skip problematic attributes
                     if verbose:
                         print(f"Skipping attribute due to parsing error: {attr_error}")
                     continue
-
-        response = {
-            "operation": "GetAttributes",
-            "status": "success",
-            "uid": uid,
-            "attribute_count": attribute_count,
-            "attributes": parsed_attributes
-        }
+            
+            response = {
+                "operation": "GetAttributes",
+                "status": "success",
+                "uid": uid,
+                "attribute_count": len(parsed_attributes),
+                "attributes": parsed_attributes
+            }
+            
+        except Exception as get_error:
+            # If getting specific attributes fails, report the actual error
+            error_msg = str(get_error)
+            if "No value type for COMMENT" in error_msg:
+                error_msg = "PyKMIP doesn't support COMMENT attribute (KMIP 2.1 extension used by Cosmian KMS)"
+            
+            response = {
+                "operation": "GetAttributes",
+                "status": "error",
+                "uid": uid,
+                "error": error_msg,
+                "note": "Key was created successfully, but attribute retrieval failed"
+            }
 
         if verbose:
             print(f"Retrieved attributes for UID: {uid}")
