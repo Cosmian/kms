@@ -1,10 +1,10 @@
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 use cosmian_kms_client::reexport::cosmian_kms_client_utils::export_utils::ExportKeyFormat;
 use cosmian_kms_client::reexport::cosmian_kms_client_utils::{
     create_utils::SymmetricAlgorithm, symmetric_utils::DataEncryptionAlgorithm,
 };
 use cosmian_logger::log_init;
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 use tempfile::TempDir;
 use test_kms_server::TestsContext;
 use tracing::info;
@@ -65,7 +65,7 @@ pub(crate) async fn test_wrap_with_aes_gcm(ctx: &TestsContext) -> KmsCliResult<(
     .await
 }
 
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 pub(crate) async fn test_wrap_with_rsa_oaep(ctx: &TestsContext) -> KmsCliResult<()> {
     use crate::{
         actions::kms::rsa::keys::create_key_pair::CreateKeyPairAction,
@@ -118,7 +118,7 @@ pub(crate) async fn test_wrap_with_rsa_oaep(ctx: &TestsContext) -> KmsCliResult<
     .await
 }
 
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 pub(crate) async fn test_unwrap_on_export(ctx: &TestsContext) -> KmsCliResult<()> {
     use crate::actions::kms::{
         rsa::keys::create_key_pair::CreateKeyPairAction, shared::ExportKeyAction,

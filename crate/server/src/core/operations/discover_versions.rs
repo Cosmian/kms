@@ -1,4 +1,4 @@
-use cosmian_kmip::kmip_0::{
+use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::{
     kmip_operations::{DiscoverVersions, DiscoverVersionsResponse},
     kmip_types::ProtocolVersion,
 };

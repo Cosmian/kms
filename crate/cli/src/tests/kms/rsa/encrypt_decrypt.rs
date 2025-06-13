@@ -16,7 +16,7 @@ use crate::{
     error::result::KmsCliResult,
 };
 
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs() -> KmsCliResult<()> {
     // to enable this, add cosmian_logger = { workspace = true } to dev-dependencies in Cargo.toml

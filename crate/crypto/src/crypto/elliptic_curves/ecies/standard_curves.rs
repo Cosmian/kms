@@ -199,7 +199,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     fn test_ecies_encrypt_decrypt_p_curves() {
         test_ecies_encrypt_decrypt(Nid::X9_62_PRIME192V1);
         test_ecies_encrypt_decrypt(Nid::SECP224R1);

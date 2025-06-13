@@ -13,7 +13,7 @@
 //!
 //! The scheme can be used for both encryption and key wrapping
 use cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm;
-#[cfg(feature = "fips")]
+#[cfg(not(feature = "non-fips"))]
 use cosmian_kmip::kmip_2_1::extra::fips::FIPS_MIN_RSA_MODULUS_LENGTH;
 use openssl::{
     md::MdRef,
@@ -22,7 +22,7 @@ use openssl::{
 };
 use zeroize::Zeroizing;
 
-#[cfg(feature = "fips")]
+#[cfg(not(feature = "non-fips"))]
 use crate::crypto_bail;
 use crate::{error::CryptoError, openssl::hashing_algorithm_to_openssl_ref};
 
@@ -81,7 +81,7 @@ fn init_ckm_rsa_pkcs_oaep_encryption_context(
     hash_fn: HashingAlgorithm,
 ) -> Result<(PkeyCtx<Public>, Vec<u8>), CryptoError> {
     let rsa_pub_key = pub_key.rsa()?;
-    #[cfg(feature = "fips")]
+    #[cfg(not(feature = "non-fips"))]
     if pub_key.bits() < FIPS_MIN_RSA_MODULUS_LENGTH {
         crypto_bail!(
             "CKM_RSA_OAEP encryption error: RSA key has insufficient size: expected >= {} bits \
@@ -154,7 +154,7 @@ fn init_ckm_rsa_pkcs_oaep_decryption_context(
     hash_fn: HashingAlgorithm,
 ) -> Result<(PkeyCtx<Private>, Zeroizing<Vec<u8>>), CryptoError> {
     let rsa_priv_key = priv_key.rsa()?;
-    #[cfg(feature = "fips")]
+    #[cfg(not(feature = "non-fips"))]
     if priv_key.bits() < FIPS_MIN_RSA_MODULUS_LENGTH {
         crypto_bail!(
             "CKM_RSA_OAEP decryption error: RSA key has insufficient size: expected >= {} bits \
@@ -196,7 +196,7 @@ mod tests {
     #[test]
     fn test_ckm_rsa_pkcs_oaep() -> Result<(), CryptoError> {
         // Load FIPS provider module from OpenSSL.
-        #[cfg(feature = "fips")]
+        #[cfg(not(feature = "non-fips"))]
         openssl::provider::Provider::load(None, "fips").unwrap();
 
         let priv_key = PKey::from_rsa(openssl::rsa::Rsa::generate(2048)?)?;

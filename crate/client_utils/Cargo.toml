@@ -15,7 +15,7 @@ crate-type = ["cdylib", "rlib"]
 doctest = false
 
 [features]
-fips = ["cosmian_kmip/fips"]
+non-fips = ["cosmian_kmip/non-fips"]
 
 [dependencies]
 base64.workspace = true

@@ -5,7 +5,7 @@ use cosmian_kms_client::{
 use cosmian_logger::log_init;
 use test_kms_server::start_default_test_kms_server_with_cert_auth;
 
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 use crate::actions::kms::cover_crypt::keys::{
     create_key_pair::CreateMasterKeyPairAction, create_user_key::CreateUserKeyAction,
 };
@@ -17,7 +17,7 @@ use crate::{
     error::result::KmsCliResult,
 };
 
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 #[tokio::test]
 pub(crate) async fn test_locate_cover_crypt() -> KmsCliResult<()> {
     use std::path::PathBuf;
@@ -338,7 +338,7 @@ pub(crate) async fn test_locate_symmetric_key() -> KmsCliResult<()> {
     Ok(())
 }
 
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 #[tokio::test]
 pub(crate) async fn test_locate_grant() -> KmsCliResult<()> {
     // init the test server

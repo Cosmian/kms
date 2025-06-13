@@ -1,26 +1,28 @@
 use std::sync::Arc;
 
-use cosmian_crypto_core::X25519_PUBLIC_KEY_LENGTH;
-use cosmian_kmip::{
-    kmip_0::kmip_types::{CryptographicUsageMask, KeyWrapType},
-    kmip_2_1::{
-        extra::tagging::EMPTY_TAGS,
-        kmip_attributes::Attributes,
-        kmip_data_structures::{KeyBlock, KeyValue, KeyWrappingData},
-        kmip_objects::{Object, ObjectType, PrivateKey, PublicKey, SymmetricKey},
-        kmip_operations::{Get, Import},
-        kmip_types::{
-            CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier,
-            RecommendedCurve, UniqueIdentifier, WrappingMethod,
-        },
-        requests::{
-            create_ec_key_pair_request, get_ec_private_key_request, get_ec_public_key_request,
-            symmetric_key_create_request,
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::{
+        kmip_0::kmip_types::{CryptographicUsageMask, KeyWrapType},
+        kmip_2_1::{
+            extra::tagging::EMPTY_TAGS,
+            kmip_attributes::Attributes,
+            kmip_data_structures::{KeyBlock, KeyValue, KeyWrappingData},
+            kmip_objects::{Object, ObjectType, PrivateKey, PublicKey, SymmetricKey},
+            kmip_operations::{Get, Import},
+            kmip_types::{
+                CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier,
+                RecommendedCurve, UniqueIdentifier, WrappingMethod,
+            },
+            requests::{
+                create_ec_key_pair_request, get_ec_private_key_request, get_ec_public_key_request,
+                symmetric_key_create_request,
+            },
         },
     },
-};
-use cosmian_kms_crypto::crypto::{
-    CURVE_25519_Q_LENGTH_BITS, elliptic_curves::operation::to_ec_public_key,
+    cosmian_kms_crypto::{
+        crypto::{CURVE_25519_Q_LENGTH_BITS, elliptic_curves::operation::to_ec_public_key},
+        reexport::cosmian_crypto_core::X25519_PUBLIC_KEY_LENGTH,
+    },
 };
 use tracing::trace;
 use uuid::Uuid;

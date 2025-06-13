@@ -1,10 +1,12 @@
 use std::sync::Arc;
 
-use cosmian_kmip::{
-    kmip_0::kmip_types::{ErrorReason, State},
-    kmip_2_1::KmipOperation,
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::{
+        kmip_0::kmip_types::{ErrorReason, State},
+        kmip_2_1::KmipOperation,
+    },
+    cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams},
 };
-use cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams};
 use tracing::trace;
 
 use crate::{core::KMS, error::KmsError, result::KResult};

@@ -4,13 +4,10 @@ use std::{
 };
 
 use async_trait::async_trait;
+#[cfg(feature = "non-fips")]
 use cloudproof_findex::{
     Keyword, Location,
     implementations::redis::{FindexRedisError, RemovedLocationsFinder},
-};
-use cosmian_crypto_core::{
-    Aes256Gcm, CsRng, Dem, Instantiable, Nonce, RandomFixedSizeCBytes, SymmetricKey,
-    reexport::rand_core::SeedableRng,
 };
 use cosmian_kmip::{
     KmipResultHelper,
@@ -19,6 +16,10 @@ use cosmian_kmip::{
         kmip_attributes::Attributes,
         kmip_objects::{Object, ObjectType},
     },
+};
+use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
+    Aes256Gcm, CsRng, Dem, Instantiable, Nonce, RandomFixedSizeCBytes, SymmetricKey,
+    reexport::rand_core::SeedableRng,
 };
 use redis::{AsyncCommands, aio::ConnectionManager, pipe};
 use serde::{Deserialize, Serialize};

@@ -1,7 +1,8 @@
 use std::{collections::HashSet, sync::Arc};
 
-use cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier;
-use cosmian_kms_interfaces::SessionParams;
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier, cosmian_kms_interfaces::SessionParams,
+};
 
 use crate::{
     core::KMS,

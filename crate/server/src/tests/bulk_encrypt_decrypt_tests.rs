@@ -1,4 +1,4 @@
-use cosmian_kmip::{
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
     KmipError,
     kmip_0::kmip_types::{BlockCipherMode, CryptographicUsageMask},
     kmip_2_1::{

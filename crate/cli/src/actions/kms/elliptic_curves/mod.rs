@@ -2,13 +2,13 @@ use clap::Parser;
 use cosmian_kms_client::KmsClient;
 
 use self::keys::KeysCommands;
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 use self::{decrypt::DecryptAction, encrypt::EncryptAction};
 use crate::error::result::KmsCliResult;
 
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 pub(crate) mod decrypt;
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 pub(crate) mod encrypt;
 pub(crate) mod keys;
 
@@ -17,9 +17,9 @@ pub(crate) mod keys;
 pub enum EllipticCurveCommands {
     #[command(subcommand)]
     Keys(KeysCommands),
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     Encrypt(EncryptAction),
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     Decrypt(DecryptAction),
 }
 
@@ -37,9 +37,9 @@ impl EllipticCurveCommands {
     pub async fn process(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
         match self {
             Self::Keys(command) => command.process(kms_rest_client).await?,
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             Self::Encrypt(action) => action.run(kms_rest_client).await?,
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             Self::Decrypt(action) => action.run(kms_rest_client).await?,
         }
         Ok(())

@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
-use cosmian_kmip::kmip_2_1::{
+use cosmian_kms_client_utils::cover_crypt_utils::{
+    build_create_covercrypt_master_keypair_request, build_create_covercrypt_usk_request,
+};
+use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
     extra::tagging::EMPTY_TAGS,
     kmip_attributes::Attributes,
     kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
@@ -10,9 +13,6 @@ use cosmian_kmip::kmip_2_1::{
         UniqueIdentifier,
     },
     requests::{decrypt_request, encrypt_request},
-};
-use cosmian_kms_client_utils::cover_crypt_utils::{
-    build_create_covercrypt_master_keypair_request, build_create_covercrypt_usk_request,
 };
 use cosmian_logger::log_init;
 use tracing::debug;

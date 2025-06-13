@@ -14,18 +14,20 @@ use actix_web::{
     middleware::Condition,
     web::{self, Data, JsonConfig, PayloadConfig},
 };
-use cosmian_kmip::{
-    kmip_0::kmip_types::KeyWrapType,
-    kmip_2_1::{
-        kmip_attributes::Attributes,
-        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-        kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
-        kmip_operations::Get,
-        kmip_types::{KeyFormatType, LinkType, LinkedObjectIdentifier, UniqueIdentifier},
-        requests::{create_rsa_key_pair_request, import_object_request},
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::{
+        kmip_0::kmip_types::KeyWrapType,
+        kmip_2_1::{
+            kmip_attributes::Attributes,
+            kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+            kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
+            kmip_operations::Get,
+            kmip_types::{KeyFormatType, LinkType, LinkedObjectIdentifier, UniqueIdentifier},
+            requests::{create_rsa_key_pair_request, import_object_request},
+        },
     },
+    cosmian_kms_crypto::openssl::kmip_private_key_to_openssl,
 };
-use cosmian_kms_crypto::openssl::kmip_private_key_to_openssl;
 use openssl::{
     ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod, SslVerifyMode},
     x509::store::X509StoreBuilder,
@@ -254,13 +256,13 @@ pub async fn start_kms_server(
     //  https://docs.openssl.org/3.1/man7/crypto/#openssl-providers
 
     // In FIPS mode, we only load the FIPS provider
-    #[cfg(feature = "fips")]
+    #[cfg(not(feature = "non-fips"))]
     let _provider = openssl::provider::Provider::load(None, "fips")?;
 
     // Not in FIPS mode and version > 3.0: load the default provider and the legacy provider
     // so that we can use the legacy algorithms,
     // particularly those used for old PKCS#12 formats
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     let _provider = if openssl::version::number() >= 0x3000_0000 {
         debug!("OpenSSL: loading the legacy provider");
         openssl::provider::Provider::try_load(None, "legacy", true)

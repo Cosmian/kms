@@ -14,7 +14,7 @@ description = "Cosmian KMS REST Client"
 doctest = false
 
 [features]
-fips = ["cosmian_kms_client_utils/fips"]
+non-fips = ["cosmian_kms_client_utils/non-fips"]
 
 [dependencies]
 cosmian_crypto_core = { workspace = true }

@@ -17,9 +17,9 @@ use tracing::{debug, trace};
 use zeroize::Zeroizing;
 
 use super::WRAPPING_SECRET_LENGTH;
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 use crate::crypto::elliptic_curves::ecies::ecies_encrypt;
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 use crate::crypto::rsa::ckm_rsa_pkcs::ckm_rsa_pkcs_key_wrap;
 use crate::{
     CryptoResultHelper,
@@ -310,7 +310,7 @@ fn wrap_with_public_key(
 ) -> Result<Vec<u8>, CryptoError> {
     match public_key.id() {
         Id::RSA => wrap_with_rsa(public_key, key_wrapping_data, key_to_wrap),
-        #[cfg(not(feature = "fips"))]
+        #[cfg(feature = "non-fips")]
         Id::EC | Id::X25519 | Id::ED25519 => ecies_encrypt(public_key, key_to_wrap),
         other => Err(crypto_error!(
             "Unable to wrap key: wrapping public key type not supported: {other:?}"
@@ -329,7 +329,7 @@ fn wrap_with_rsa(
         CryptographicAlgorithm::RSA => match padding {
             PaddingMethod::None => ckm_rsa_aes_key_wrap(public_key, hashing_fn, key_to_wrap),
             PaddingMethod::OAEP => ckm_rsa_pkcs_oaep_key_wrap(public_key, hashing_fn, key_to_wrap),
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             PaddingMethod::PKCS1v15 => ckm_rsa_pkcs_key_wrap(public_key, key_to_wrap),
             _ => crypto_bail!(
                 "Unable to wrap key with RSA: padding method not supported: {padding:?}"

@@ -12,20 +12,20 @@ use crate::error::UtilsError;
 #[derive(ValueEnum, Debug, Clone, Copy, Default, EnumIter, PartialEq, Eq, Display, Deserialize)]
 #[strum(serialize_all = "kebab-case")]
 pub enum DataEncryptionAlgorithm {
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     Chacha20Poly1305,
     #[default]
     AesGcm,
     AesCbc,
     AesXts,
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     AesGcmSiv,
 }
 
 impl From<DataEncryptionAlgorithm> for CryptographicParameters {
     fn from(value: DataEncryptionAlgorithm) -> Self {
         match value {
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             DataEncryptionAlgorithm::Chacha20Poly1305 => Self {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::ChaCha20Poly1305),
                 ..Self::default()
@@ -45,7 +45,7 @@ impl From<DataEncryptionAlgorithm> for CryptographicParameters {
                 block_cipher_mode: Some(BlockCipherMode::XTS),
                 ..Self::default()
             },
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             DataEncryptionAlgorithm::AesGcmSiv => Self {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
                 block_cipher_mode: Some(BlockCipherMode::GCMSIV),
@@ -96,22 +96,22 @@ pub const AES_256_XTS_TWEAK_LENGTH: usize = 16;
 /// AES 256 XTS has no authentication.
 pub const AES_256_XTS_MAC_LENGTH: usize = 0;
 /// AES 128 `GCM_SIV` key length in bytes.
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 pub const AES_128_GCM_SIV_KEY_LENGTH: usize = 16;
 /// AES 128 `GCM_SIV` nonce length in bytes.
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 pub const AES_128_GCM_SIV_IV_LENGTH: usize = 12;
 /// AES 128 `GCM_SIV` mac length in bytes.
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 pub const AES_128_GCM_SIV_MAC_LENGTH: usize = 16;
 /// AES 256 `GCM_SIV` key length in bytes.
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 pub const AES_256_GCM_SIV_KEY_LENGTH: usize = 32;
 /// AES 256 `GCM_SIV` nonce length in bytes.
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 pub const AES_256_GCM_SIV_IV_LENGTH: usize = 12;
 /// AES 256 `GCM_SIV` mac length in bytes.
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 pub const AES_256_GCM_SIV_MAC_LENGTH: usize = 16;
 
 /// RFC 5649 with a 16-byte KEK.
@@ -127,13 +127,13 @@ pub const RFC5649_32_IV_LENGTH: usize = 0;
 /// RFC5649 has no authentication.
 pub const RFC5649_32_MAC_LENGTH: usize = 0;
 
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 /// Chacha20-Poly1305 key length in bytes.
 pub const CHACHA20_POLY1305_KEY_LENGTH: usize = 32;
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 /// Chacha20-Poly1305 iv length in bytes.
 pub const CHACHA20_POLY1305_IV_LENGTH: usize = 12;
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 /// Chacha20-Poly1305 tag/mac length in bytes.
 pub const CHACHA20_POLY1305_MAC_LENGTH: usize = 16;
 
@@ -163,7 +163,7 @@ pub fn parse_decrypt_elements(
                 ))
             }
         },
-        #[cfg(not(feature = "fips"))]
+        #[cfg(feature = "non-fips")]
         CryptographicAlgorithm::ChaCha20Poly1305 | CryptographicAlgorithm::ChaCha20 => {
             (CHACHA20_POLY1305_IV_LENGTH, CHACHA20_POLY1305_MAC_LENGTH)
         }

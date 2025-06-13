@@ -1,24 +1,30 @@
 use std::{collections::HashSet, sync::Arc};
 
-use cosmian_cover_crypt::api::Covercrypt;
-use cosmian_kmip::{
-    kmip_0::kmip_types::State,
-    kmip_2_1::{
-        kmip_objects::Object,
-        kmip_operations::Create,
-        kmip_types::{CryptographicAlgorithm, KeyFormatType},
-        requests::create_symmetric_key_kmip_object,
+#[cfg(feature = "non-fips")]
+use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_types::State;
+#[cfg(feature = "non-fips")]
+use cosmian_kms_server_database::reexport::cosmian_kms_crypto::reexport::cosmian_cover_crypt::api::Covercrypt;
+use cosmian_kms_server_database::{
+    CachedUnwrappedObject,
+    reexport::{
+        cosmian_kmip::kmip_2_1::{
+            kmip_objects::Object,
+            kmip_operations::Create,
+            kmip_types::{CryptographicAlgorithm, KeyFormatType},
+            requests::create_symmetric_key_kmip_object,
+        },
+        cosmian_kms_crypto::crypto::symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH,
+        cosmian_kms_interfaces::{EncryptionOracle, SessionParams},
     },
 };
-use cosmian_kms_crypto::crypto::symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH;
-use cosmian_kms_interfaces::{EncryptionOracle, SessionParams};
-use cosmian_kms_server_database::CachedUnwrappedObject;
 use openssl::rand::rand_bytes;
 use tracing::{debug, trace};
 use zeroize::Zeroizing;
 
+#[cfg(feature = "non-fips")]
+use crate::core::cover_crypt::create_user_decryption_key;
 use crate::{
-    core::{KMS, cover_crypt::create_user_decryption_key, wrapping::unwrap_object},
+    core::{KMS, wrapping::unwrap_object},
     error::KmsError,
     result::{KResult, KResultHelper},
 };
@@ -156,6 +162,39 @@ impl KMS {
     ///  - the KMIP cryptographic algorithm in lower case prepended with "_"
     ///
     /// Only Covercrypt user decryption keys can be created using this function
+    #[allow(clippy::unused_async)]
+    #[cfg(not(feature = "non-fips"))]
+    pub(crate) async fn create_private_key_and_tags(
+        &self,
+        create_request: &Create,
+        _owner: &str,
+        _params: Option<Arc<dyn SessionParams>>,
+        _privileged_users: Option<Vec<String>>,
+    ) -> KResult<(Option<String>, Object, HashSet<String>)> {
+        trace!("Internal create private key");
+        let attributes = &create_request.attributes;
+
+        // check that the cryptographic algorithm is specified
+        let cryptographic_algorithm = &attributes.cryptographic_algorithm.ok_or_else(|| {
+            KmsError::InvalidRequest(
+                "the cryptographic algorithm must be specified for private key creation".to_owned(),
+            )
+        })?;
+
+        let other = &cryptographic_algorithm;
+        Err(KmsError::NotSupported(format!(
+            "the creation of a private key for algorithm: {other:?} is not supported"
+        )))
+    }
+
+    /// Create a private key and the corresponding system tags
+    /// The tags will contain the user tags and the following:
+    ///  - "_uk"
+    ///  - the KMIP cryptographic algorithm in lower case prepended with "_"
+    ///
+    /// Only Covercrypt user decryption keys can be created using this function
+    #[allow(clippy::unused_async)]
+    #[cfg(feature = "non-fips")]
     pub(crate) async fn create_private_key_and_tags(
         &self,
         create_request: &Create,

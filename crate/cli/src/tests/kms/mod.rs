@@ -2,7 +2,7 @@ mod access;
 mod attributes;
 mod auth_tests;
 mod certificates;
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 mod cover_crypt;
 mod elliptic_curve;
 mod google_cmd;

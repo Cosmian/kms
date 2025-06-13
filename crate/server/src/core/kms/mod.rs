@@ -4,8 +4,12 @@ mod permissions;
 
 use std::{collections::HashMap, sync::Arc};
 
-use cosmian_kms_interfaces::{EncryptionOracle, HSM, HsmEncryptionOracle, HsmStore, ObjectsStore};
-use cosmian_kms_server_database::Database;
+use cosmian_kms_server_database::{
+    Database,
+    reexport::cosmian_kms_interfaces::{
+        EncryptionOracle, HSM, HsmEncryptionOracle, HsmStore, ObjectsStore,
+    },
+};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use proteccio_pkcs11_loader::Proteccio;
 use tokio::sync::RwLock;

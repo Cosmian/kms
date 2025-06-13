@@ -81,6 +81,15 @@ pub use core::{
 mod error;
 pub use error::DbError;
 mod stores;
+#[cfg(feature = "non-fips")]
 pub use stores::redis_master_key_from_password;
 #[cfg(test)]
 mod tests;
+
+pub mod reexport {
+    #[cfg(feature = "non-fips")]
+    pub use cloudproof_findex;
+    pub use cosmian_kmip;
+    pub use cosmian_kms_crypto;
+    pub use cosmian_kms_interfaces;
+}

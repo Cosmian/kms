@@ -15,7 +15,7 @@ crate-type = ["cdylib", "rlib"]
 doctest = false
 
 [features]
-fips = ["cosmian_kms_client_utils/fips"]
+non-fips = ["cosmian_kms_client_utils/non-fips"]
 default = ["getrandom/js"]
 
 [dependencies]

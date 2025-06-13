@@ -1,11 +1,15 @@
 use std::path::PathBuf;
 
-use cosmian_cover_crypt::{
-    AccessPolicy, EncryptedHeader, MasterSecretKey, UserSecretKey, api::Covercrypt,
-};
-use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable, test_serialization};
 use cosmian_kms_client::reexport::cosmian_kms_client_utils::import_utils::KeyUsage;
-use cosmian_kms_crypto::crypto::cover_crypt::access_structure::access_structure_from_json_file;
+use cosmian_kms_crypto::{
+    crypto::cover_crypt::access_structure::access_structure_from_json_file,
+    reexport::{
+        cosmian_cover_crypt::{
+            AccessPolicy, EncryptedHeader, MasterSecretKey, UserSecretKey, api::Covercrypt,
+        },
+        cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable, test_serialization},
+    },
+};
 use cosmian_logger::log_init;
 use tempfile::TempDir;
 use test_kms_server::start_default_test_kms_server;

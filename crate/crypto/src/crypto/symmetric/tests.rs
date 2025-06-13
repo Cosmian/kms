@@ -1,10 +1,8 @@
 #![allow(clippy::unwrap_used)]
 
-#[cfg(feature = "fips")]
-use openssl::provider::Provider;
-use openssl::rand::rand_bytes;
+use openssl::{provider::Provider, rand::rand_bytes};
 
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 use crate::crypto::symmetric::symmetric_ciphers::AES_128_GCM_SIV_MAC_LENGTH;
 use crate::crypto::symmetric::symmetric_ciphers::{
     AES_128_GCM_MAC_LENGTH, AES_128_XTS_MAC_LENGTH, AES_256_GCM_MAC_LENGTH, AES_256_XTS_MAC_LENGTH,
@@ -13,7 +11,6 @@ use crate::crypto::symmetric::symmetric_ciphers::{
 
 #[test]
 fn test_encrypt_decrypt_aes_gcm_128() {
-    #[cfg(feature = "fips")]
     // Load FIPS provider module from OpenSSL.
     Provider::load(None, "fips").unwrap();
 
@@ -40,7 +37,6 @@ fn test_encrypt_decrypt_aes_gcm_128() {
 
 #[test]
 fn test_encrypt_decrypt_aes_gcm_256() {
-    #[cfg(feature = "fips")]
     // Load FIPS provider module from OpenSSL.
     Provider::load(None, "fips").unwrap();
 
@@ -67,7 +63,6 @@ fn test_encrypt_decrypt_aes_gcm_256() {
 
 #[test]
 fn test_encrypt_decrypt_aes_xts_128() {
-    #[cfg(feature = "fips")]
     // Load FIPS provider module from OpenSSL.
     Provider::load(None, "fips").unwrap();
 
@@ -91,7 +86,6 @@ fn test_encrypt_decrypt_aes_xts_128() {
 
 #[test]
 fn test_encrypt_decrypt_aes_xts_256() {
-    #[cfg(feature = "fips")]
     // Load FIPS provider module from OpenSSL.
     Provider::load(None, "fips").unwrap();
 
@@ -113,7 +107,7 @@ fn test_encrypt_decrypt_aes_xts_256() {
     assert_eq!(decrypted_data.to_vec(), message);
 }
 
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 #[test]
 fn test_encrypt_decrypt_chacha20_poly1305() {
     let mut message = vec![0_u8; 42];
@@ -143,10 +137,9 @@ fn test_encrypt_decrypt_chacha20_poly1305() {
     assert_eq!(decrypted_data.to_vec(), message);
 }
 
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 #[test]
 fn test_encrypt_decrypt_aes_gcm_siv_128() {
-    #[cfg(feature = "fips")]
     // Load FIPS provider module from OpenSSL.
     Provider::load(None, "fips").unwrap();
 
@@ -178,10 +171,9 @@ fn test_encrypt_decrypt_aes_gcm_siv_128() {
     assert_eq!(decrypted_data.to_vec(), message);
 }
 
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 #[test]
 fn test_encrypt_decrypt_aes_gcm_siv_256() {
-    #[cfg(feature = "fips")]
     // Load FIPS provider module from OpenSSL.
     Provider::load(None, "fips").unwrap();
 
@@ -215,7 +207,6 @@ fn test_encrypt_decrypt_aes_gcm_siv_256() {
 
 #[test]
 fn aes_gcm_streaming_test() {
-    #[cfg(feature = "fips")]
     // Load FIPS provider module from OpenSSL.
     Provider::load(None, "fips").unwrap();
 
@@ -264,7 +255,7 @@ fn aes_gcm_streaming_test() {
     );
 }
 
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 #[test]
 fn chacha_streaming_test() {
     let mut message1 = vec![0_u8; 42];
@@ -314,7 +305,6 @@ fn chacha_streaming_test() {
 
 #[test]
 fn aes_xts_streaming_test() {
-    #[cfg(feature = "fips")]
     // Load FIPS provider module from OpenSSL.
     Provider::load(None, "fips").unwrap();
 
