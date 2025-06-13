@@ -371,7 +371,23 @@ impl From<Locate> for kmip_2_1::kmip_operations::Locate {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct LocateResponse {
-    pub unique_identifiers: Vec<String>,
+    pub unique_identifier: Vec<String>,
+}
+
+impl TryFrom<kmip_2_1::kmip_operations::LocateResponse> for LocateResponse {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_operations::LocateResponse) -> Result<Self, Self::Error> {
+        trace!("Converting KMIP 2.1 LocateResponse to KMIP 1.4: {value:#?}");
+
+        Ok(Self {
+            unique_identifier: value
+                .unique_identifier
+                .into_iter()
+                .map(|ids| ids.iter().map(ToString::to_string).collect())
+                .collect(),
+        })
+    }
 }
 
 /// 4.10 Check
@@ -2148,12 +2164,12 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             // Operation::Locate(locate) => {
             //     Self::Locate(locate.into())
             // }
-            // Operation::LocateResponse(locate_response) => {
-            //     Self::LocateResponse(locate_response.into())
-            // }
+            kmip_2_1::kmip_operations::Operation::LocateResponse(locate_response) => {
+                Self::LocateResponse(locate_response.try_into().context("LocateResponse")?)
+            }
             // Operation::MAC(mac) => Self::MAC(mac.into()),
             kmip_2_1::kmip_operations::Operation::MACResponse(mac_response) => {
-                Self::MACResponse(mac_response.try_into()?)
+                Self::MACResponse(mac_response.try_into().context("MACResponse")?)
             }
             // Operation::MACVerify(mac_verify) => {
             //     Self::MACVerify(mac_verify.into())
