@@ -1,14 +1,16 @@
 use std::sync::Arc;
 
-use cosmian_kmip::{
-    kmip_0::kmip_types::HashingAlgorithm,
-    kmip_2_1::{
-        KmipOperation,
-        kmip_operations::{MAC, MACResponse},
-        kmip_types::UniqueIdentifier,
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::{
+        kmip_0::kmip_types::HashingAlgorithm,
+        kmip_2_1::{
+            KmipOperation,
+            kmip_operations::{MAC, MACResponse},
+            kmip_types::UniqueIdentifier,
+        },
     },
+    cosmian_kms_interfaces::SessionParams,
 };
-use cosmian_kms_interfaces::SessionParams;
 use openssl::{md::Md, md_ctx::MdCtx, pkey::PKey};
 use tracing::{debug, trace};
 
@@ -103,7 +105,7 @@ pub(crate) async fn mac(
 mod tests {
     use std::sync::Arc;
 
-    use cosmian_kmip::{
+    use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_0::kmip_types::HashingAlgorithm,
         kmip_2_1::{
             extra::tagging::EMPTY_TAGS,

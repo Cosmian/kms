@@ -14,18 +14,20 @@ use actix_web::{
     middleware::Condition,
     web::{self, Data, JsonConfig, PayloadConfig},
 };
-use cosmian_kmip::{
-    kmip_0::kmip_types::KeyWrapType,
-    kmip_2_1::{
-        kmip_attributes::Attributes,
-        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-        kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
-        kmip_operations::Get,
-        kmip_types::{KeyFormatType, LinkType, LinkedObjectIdentifier, UniqueIdentifier},
-        requests::{create_rsa_key_pair_request, import_object_request},
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::{
+        kmip_0::kmip_types::KeyWrapType,
+        kmip_2_1::{
+            kmip_attributes::Attributes,
+            kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+            kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
+            kmip_operations::Get,
+            kmip_types::{KeyFormatType, LinkType, LinkedObjectIdentifier, UniqueIdentifier},
+            requests::{create_rsa_key_pair_request, import_object_request},
+        },
     },
+    cosmian_kms_crypto::openssl::kmip_private_key_to_openssl,
 };
-use cosmian_kms_crypto::openssl::kmip_private_key_to_openssl;
 use openssl::{
     ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod, SslVerifyMode},
     x509::store::X509StoreBuilder,

@@ -2,7 +2,7 @@
 
 use std::{fs, path, sync::Arc};
 
-use cosmian_kmip::{
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::CertificateType,
     kmip_2_1::{
         kmip_attributes::Attributes,

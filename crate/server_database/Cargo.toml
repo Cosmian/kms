@@ -11,10 +11,15 @@ description = "Crate containing the database for the Cosmian KMS server and the 
 [lib]
 doctest = false
 
+[features]
+non-fips = [
+    "cosmian_kms_crypto/non-fips",
+    "cosmian_kmip/non-fips",
+]
+
 [dependencies]
 async-trait = { workspace = true }
 cloudproof_findex = { version = "5.0", features = ["findex-redis"] }
-cosmian_crypto_core = { workspace = true }
 cosmian_kmip = { path = "../kmip" }
 cosmian_kms_crypto = { path = "../crypto" }
 cosmian_kms_interfaces = { path = "../interfaces" }

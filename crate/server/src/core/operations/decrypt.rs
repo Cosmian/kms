@@ -1,35 +1,38 @@
 use std::sync::Arc;
 
-use cosmian_cover_crypt::api::Covercrypt;
-use cosmian_kmip::{
-    kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, PaddingMethod, State},
-    kmip_2_1::{
-        KmipOperation,
-        extra::BulkData,
-        kmip_objects::Object,
-        kmip_operations::{Decrypt, DecryptResponse},
-        kmip_types::{
-            CryptographicAlgorithm, CryptographicParameters, KeyFormatType, UniqueIdentifier,
-        },
-    },
-};
 #[cfg(feature = "non-fips")]
-use cosmian_kms_crypto::crypto::elliptic_curves::ecies::ecies_decrypt;
-#[cfg(feature = "non-fips")]
-use cosmian_kms_crypto::crypto::rsa::ckm_rsa_pkcs::ckm_rsa_pkcs_decrypt;
-use cosmian_kms_crypto::{
+use cosmian_kms_server_database::reexport::cosmian_kms_crypto::{
     crypto::{
-        DecryptionSystem,
-        cover_crypt::{attributes, decryption::CovercryptDecryption},
-        rsa::{
-            ckm_rsa_aes_key_wrap::ckm_rsa_aes_key_unwrap,
-            ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_key_decrypt, default_cryptographic_parameters,
-        },
-        symmetric::symmetric_ciphers::{SymCipher, decrypt as sym_decrypt},
+        DecryptionSystem, cover_crypt::decryption::CovercryptDecryption,
+        elliptic_curves::ecies::ecies_decrypt, rsa::ckm_rsa_pkcs::ckm_rsa_pkcs_decrypt,
     },
-    openssl::kmip_private_key_to_openssl,
+    reexport::cosmian_cover_crypt::api::Covercrypt,
 };
-use cosmian_kms_interfaces::{CryptoAlgorithm, ObjectWithMetadata, SessionParams};
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::{
+        kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, PaddingMethod, State},
+        kmip_2_1::{
+            KmipOperation,
+            extra::BulkData,
+            kmip_objects::Object,
+            kmip_operations::{Decrypt, DecryptResponse},
+            kmip_types::{
+                CryptographicAlgorithm, CryptographicParameters, KeyFormatType, UniqueIdentifier,
+            },
+        },
+    },
+    cosmian_kms_crypto::{
+        crypto::{
+            rsa::{
+                ckm_rsa_aes_key_wrap::ckm_rsa_aes_key_unwrap,
+                ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_key_decrypt, default_cryptographic_parameters,
+            },
+            symmetric::symmetric_ciphers::{SymCipher, decrypt as sym_decrypt},
+        },
+        openssl::kmip_private_key_to_openssl,
+    },
+    cosmian_kms_interfaces::{CryptoAlgorithm, ObjectWithMetadata, SessionParams},
+};
 use openssl::pkey::{Id, PKey, Private};
 use tracing::{debug, info, trace};
 use zeroize::Zeroizing;
@@ -150,9 +153,11 @@ pub(crate) async fn decrypt(
         }
         if let Object::PrivateKey { .. } = owm.object() {
             //Is it a Covercrypt secret key?
+            #[cfg(feature = "non-fips")]
             if attributes.key_format_type == Some(KeyFormatType::CoverCryptSecretKey) {
                 // does it have an access access structure that allows decryption?
-                if attributes::access_policy_from_attributes(attributes).is_err() {
+                use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::access_policy_from_attributes;
+                if access_policy_from_attributes(attributes).is_err() {
                     continue
                 }
             }
@@ -267,6 +272,7 @@ fn decrypt_bulk(
     let mut plaintexts = Vec::with_capacity(bulk_data.len());
 
     match &key_block.key_format_type {
+        #[cfg(feature = "non-fips")]
         KeyFormatType::CoverCryptSecretKey => {
             for ciphertext in <BulkData as Into<Vec<Zeroizing<Vec<u8>>>>>::into(bulk_data) {
                 let request = Decrypt {
@@ -351,6 +357,7 @@ fn decrypt_single(owm: &ObjectWithMetadata, request: &Decrypt) -> KResult<Decryp
     trace!("decrypt_single: entering");
     let key_block = owm.object().key_block()?;
     match &key_block.key_format_type {
+        #[cfg(feature = "non-fips")]
         KeyFormatType::CoverCryptSecretKey => decrypt_with_covercrypt(owm, request),
 
         KeyFormatType::TransparentECPrivateKey
@@ -374,6 +381,7 @@ fn decrypt_single(owm: &ObjectWithMetadata, request: &Decrypt) -> KResult<Decryp
     }
 }
 
+#[cfg(feature = "non-fips")]
 fn decrypt_with_covercrypt(
     owm: &ObjectWithMetadata,
     request: &Decrypt,

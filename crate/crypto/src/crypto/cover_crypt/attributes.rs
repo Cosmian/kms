@@ -8,12 +8,13 @@ use cosmian_kmip::kmip_2_1::{
 use serde::{Deserialize, Serialize};
 
 use super::access_structure::access_structure_from_str;
-use crate::error::CryptoError;
-
-pub const VENDOR_ATTR_COVER_CRYPT_ATTR: &str = "cover_crypt_attributes";
-pub const VENDOR_ATTR_COVER_CRYPT_ACCESS_STRUCTURE: &str = "cover_crypt_access_structure";
-pub const VENDOR_ATTR_COVER_CRYPT_ACCESS_POLICY: &str = "cover_crypt_access_policy";
-pub const VENDOR_ATTR_COVER_CRYPT_REKEY_ACTION: &str = "cover_crypt_rekey_action";
+use crate::{
+    crypto::{
+        VENDOR_ATTR_COVER_CRYPT_ACCESS_POLICY, VENDOR_ATTR_COVER_CRYPT_ACCESS_STRUCTURE,
+        VENDOR_ATTR_COVER_CRYPT_ATTR, VENDOR_ATTR_COVER_CRYPT_REKEY_ACTION,
+    },
+    error::CryptoError,
+};
 
 /// Convert an access structure to a vendor attribute
 pub fn access_structure_as_vendor_attribute(
@@ -126,32 +127,6 @@ pub fn access_policy_as_vendor_attribute(
         attribute_name: VENDOR_ATTR_COVER_CRYPT_ACCESS_POLICY.to_owned(),
         attribute_value: VendorAttributeValue::ByteString(access_policy.as_bytes().to_vec()),
     })
-}
-
-/// Extract an `Covercrypt` Access policy from attributes
-pub fn access_policy_from_attributes(attributes: &Attributes) -> Result<String, CryptoError> {
-    attributes
-        .get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_ACCESS_POLICY)
-        .map_or_else(
-            || {
-                Err(CryptoError::Kmip(
-                    "the attributes do not contain an Access Policy".to_owned(),
-                ))
-            },
-            |bytes| {
-                let VendorAttributeValue::ByteString(bytes) = bytes else {
-                    return Err(CryptoError::Kmip(
-                        "the Access Policy is not a byte string".to_owned(),
-                    ));
-                };
-                String::from_utf8(bytes.clone()).map_err(|e| {
-                    CryptoError::Kmip(format!(
-                        "failed to read Access Policy string from the (vendor) attributes bytes: \
-                         {e}"
-                    ))
-                })
-            },
-        )
 }
 
 /// Add or replace an access policy in attributes in place

@@ -1,11 +1,10 @@
 use std::array::TryFromSliceError;
 
 use cloudproof_findex::implementations::redis::FindexRedisError;
-use cosmian_crypto_core::CryptoCoreError;
 use cosmian_kmip::{
     KmipError, kmip_0::kmip_types::ErrorReason, kmip_1_4::kmip_types::ResultReason,
 };
-use cosmian_kms_crypto::CryptoError;
+use cosmian_kms_crypto::{CryptoError, reexport::cosmian_crypto_core::CryptoCoreError};
 use cosmian_kms_interfaces::InterfaceError;
 use redis::ErrorKind;
 use thiserror::Error;
@@ -183,6 +182,7 @@ impl From<CryptoError> for DbError {
             | CryptoError::OpenSSL(e) => CryptographicError(e),
             CryptoError::Io(e) => CryptographicError(e.to_string()),
             CryptoError::SerdeJsonError(e) => CryptographicError(e.to_string()),
+            #[cfg(feature = "non-fips")]
             CryptoError::Covercrypt(e) => CryptographicError(e.to_string()),
             CryptoError::TryFromSliceError(e) => CryptographicError(e.to_string()),
         }

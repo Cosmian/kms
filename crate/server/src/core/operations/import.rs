@@ -1,26 +1,29 @@
 use std::{collections::HashSet, sync::Arc};
 
 #[cfg(feature = "non-fips")]
-use cosmian_kmip::kmip_0::kmip_types::CryptographicUsageMask;
-use cosmian_kmip::{
-    kmip_0::kmip_types::{CertificateType, KeyWrapType, State},
-    kmip_2_1::{
-        kmip_attributes::Attributes,
-        kmip_data_structures::KeyValue,
-        kmip_objects::{Certificate, Object, ObjectType, PrivateKey},
-        kmip_operations::{Import, ImportResponse},
-        kmip_types::{
-            CertificateAttributes, CryptographicAlgorithm, KeyFormatType, LinkType,
-            LinkedObjectIdentifier, UniqueIdentifier,
+use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_types::CryptographicUsageMask;
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::{
+        self,
+        kmip_0::kmip_types::{CertificateType, KeyWrapType, State},
+        kmip_2_1::{
+            kmip_attributes::Attributes,
+            kmip_data_structures::KeyValue,
+            kmip_objects::{Certificate, Object, ObjectType, PrivateKey},
+            kmip_operations::{Import, ImportResponse},
+            kmip_types::{
+                CertificateAttributes, CryptographicAlgorithm, KeyFormatType, LinkType,
+                LinkedObjectIdentifier, UniqueIdentifier,
+            },
         },
     },
+    cosmian_kms_crypto::openssl::{
+        kmip_private_key_to_openssl, kmip_public_key_to_openssl, openssl_certificate_to_kmip,
+        openssl_private_key_to_kmip, openssl_public_key_to_kmip,
+        openssl_x509_to_certificate_attributes,
+    },
+    cosmian_kms_interfaces::{AtomicOperation, SessionParams},
 };
-use cosmian_kms_crypto::openssl::{
-    kmip_private_key_to_openssl, kmip_public_key_to_openssl, openssl_certificate_to_kmip,
-    openssl_private_key_to_kmip, openssl_public_key_to_kmip,
-    openssl_x509_to_certificate_attributes,
-};
-use cosmian_kms_interfaces::{AtomicOperation, SessionParams};
 use openssl::x509::X509;
 use tracing::{debug, trace};
 use uuid::Uuid;

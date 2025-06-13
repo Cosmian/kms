@@ -30,7 +30,9 @@ pub(crate) use create::create;
 pub(crate) use create_key_pair::create_key_pair;
 pub(crate) use decrypt::decrypt;
 pub(crate) use delete_attribute::delete_attribute;
-pub(crate) use destroy::{destroy_operation, recursively_destroy_object};
+pub(crate) use destroy::destroy_operation;
+#[cfg(feature = "non-fips")]
+pub(crate) use destroy::recursively_destroy_object;
 pub(crate) use discover_versions::discover_versions;
 pub(crate) use dispatch::dispatch;
 pub(crate) use encrypt::encrypt;
@@ -46,6 +48,8 @@ pub(crate) use message::message;
 pub(crate) use query::query;
 pub(crate) use rekey::rekey;
 pub(crate) use rekey_keypair::rekey_keypair;
-pub(crate) use revoke::{recursively_revoke_key, revoke_operation};
+#[cfg(feature = "non-fips")]
+pub(crate) use revoke::recursively_revoke_key;
+pub(crate) use revoke::revoke_operation;
 pub(crate) use set_attribute::set_attribute;
 pub(crate) use validate::validate_operation;

@@ -9,7 +9,7 @@ use base64::{
 };
 use chrono::{Duration, Utc};
 use clap::crate_version;
-use cosmian_kmip::{
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::{BlockCipherMode, KeyWrapType},
     kmip_2_1::{
         kmip_data_structures::{KeyMaterial, KeyValue},

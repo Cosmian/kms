@@ -1,22 +1,27 @@
 use std::{collections::HashSet, sync::Arc};
 
 use async_recursion::async_recursion;
-use cosmian_kmip::{
-    kmip_0::kmip_types::{ErrorReason, RevocationReason, RevocationReasonCode, State},
-    kmip_2_1::{
-        KmipOperation,
-        kmip_objects::ObjectType,
-        kmip_operations::{Revoke, RevokeResponse},
-        kmip_types::{KeyFormatType, LinkType, UniqueIdentifier},
+#[cfg(feature = "non-fips")]
+use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::KeyFormatType;
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::{
+        kmip_0::kmip_types::{ErrorReason, RevocationReason, RevocationReasonCode, State},
+        kmip_2_1::{
+            KmipOperation,
+            kmip_objects::ObjectType,
+            kmip_operations::{Revoke, RevokeResponse},
+            kmip_types::{LinkType, UniqueIdentifier},
+        },
     },
+    cosmian_kms_interfaces::SessionParams,
 };
-use cosmian_kms_interfaces::SessionParams;
 use tracing::{debug, info, trace};
 
+#[cfg(feature = "non-fips")]
+use crate::core::cover_crypt::revoke_user_decryption_keys;
 use crate::{
     core::{
         KMS,
-        cover_crypt::revoke_user_decryption_keys,
         uid_utils::{has_prefix, uids_from_unique_identifier},
     },
     error::KmsError,
@@ -164,6 +169,7 @@ pub(crate) async fn recursively_revoke_key(
                 //add this key to the ids to skip
                 ids_to_skip.insert(owm.id().to_owned());
                 // for Covercrypt, if that is a master secret key, revoke the user decryption keys
+                #[cfg(feature = "non-fips")]
                 if owm.object().key_block()?.key_format_type == KeyFormatType::CoverCryptSecretKey {
                     revoke_user_decryption_keys(
                         owm.id(),

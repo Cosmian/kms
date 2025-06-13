@@ -40,8 +40,6 @@ clap = { workspace = true, features = [
   "cargo",
 ] }
 cosmian_config_utils = { workspace = true }
-cosmian_cover_crypt = { workspace = true }
-cosmian_crypto_core = { workspace = true }
 cosmian_kmip = { path = "../kmip" } # only to be reexported, not used directly
 cosmian_kms_client = { path = "../kms_client" }
 cosmian_kms_crypto = { path = "../crypto" }

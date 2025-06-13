@@ -65,7 +65,6 @@ bitflags = "2.9"
 chrono = "0.4"
 clap = { version = "4.5", default-features = false }
 cosmian_config_utils = "0.2"
-cosmian_cover_crypt = "15.0"
 cosmian_crypto_core = { version = "10.1", default-features = false, features = [
     "ser",
 ] }

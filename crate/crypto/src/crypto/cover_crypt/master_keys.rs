@@ -17,10 +17,8 @@ use zeroize::Zeroizing;
 
 use crate::{
     crypto::{
-        KeyPair,
-        cover_crypt::attributes::{
-            VENDOR_ATTR_COVER_CRYPT_ACCESS_STRUCTURE, access_structure_from_attributes,
-        },
+        KeyPair, VENDOR_ATTR_COVER_CRYPT_ACCESS_STRUCTURE,
+        cover_crypt::attributes::access_structure_from_attributes,
     },
     error::CryptoError,
 };

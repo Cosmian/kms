@@ -4,18 +4,20 @@ use actix_web::{
     HttpRequest, HttpResponse, post,
     web::{Bytes, Data, Json},
 };
-use cosmian_kmip::{
-    KmipResultHelper,
-    kmip_0::{
-        kmip_messages::{
-            RequestMessage, ResponseMessage, ResponseMessageBatchItemVersioned,
-            ResponseMessageHeader,
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::{
+        self, KmipResultHelper,
+        kmip_0::{
+            kmip_messages::{
+                RequestMessage, ResponseMessage, ResponseMessageBatchItemVersioned,
+                ResponseMessageHeader,
+            },
+            kmip_types::ProtocolVersion,
         },
-        kmip_types::ProtocolVersion,
+        ttlv::{KmipEnumerationVariant, KmipFlavor, TTLV, TTLValue, from_ttlv, to_ttlv},
     },
-    ttlv::{KmipEnumerationVariant, KmipFlavor, TTLV, TTLValue, from_ttlv, to_ttlv},
+    cosmian_kms_interfaces::SessionParams,
 };
-use cosmian_kms_interfaces::SessionParams;
 use reqwest::header::CONTENT_TYPE;
 use serde_json::Value;
 use time::OffsetDateTime;
@@ -452,7 +454,8 @@ fn get_kmip_version(ttlv: &TTLV) -> KResult<(i32, i32)> {
 #[allow(clippy::expect_used)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-    use cosmian_kmip::kmip_0::kmip_messages::ResponseMessageBatchItemVersioned;
+    use cosmian_kms_client_utils::reexport::cosmian_kmip;
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_messages::ResponseMessageBatchItemVersioned;
     use cosmian_logger::log_init;
     use log::info;
 
@@ -486,7 +489,7 @@ mod tests {
 #[allow(clippy::expect_used)]
 #[cfg(test)]
 mod local_tests {
-    use cosmian_kmip::{
+    use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_0::kmip_messages::ResponseMessage,
         ttlv::{KmipFlavor, TTLV, from_ttlv},
     };

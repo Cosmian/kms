@@ -1,4 +1,5 @@
-use cosmian_kmip::{
+use cosmian_kms_client_utils::reexport::cosmian_kmip;
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::{
         kmip_messages::{
             RequestMessage, RequestMessageBatchItemVersioned, RequestMessageHeader,

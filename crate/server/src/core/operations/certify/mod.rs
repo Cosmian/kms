@@ -1,7 +1,7 @@
 use std::{cmp::min, collections::HashSet, default::Default, sync::Arc};
 
 #[cfg(not(feature = "non-fips"))]
-use cosmian_kmip::{
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
         extra::fips::{
@@ -12,25 +12,28 @@ use cosmian_kmip::{
         kmip_types::CryptographicAlgorithm,
     },
 };
-use cosmian_kmip::{
-    kmip_0::kmip_types::State,
-    kmip_2_1::{
-        KmipOperation,
-        kmip_attributes::Attributes,
-        kmip_objects::{Object, ObjectType},
-        kmip_operations::{Certify, CertifyResponse, CreateKeyPair},
-        kmip_types::{
-            CertificateRequestType, KeyFormatType, LinkType, LinkedObjectIdentifier,
-            UniqueIdentifier,
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip,
+    cosmian_kmip::{
+        kmip_0::kmip_types::State,
+        kmip_2_1::{
+            KmipOperation,
+            kmip_attributes::Attributes,
+            kmip_objects::{Object, ObjectType},
+            kmip_operations::{Certify, CertifyResponse, CreateKeyPair},
+            kmip_types::{
+                CertificateRequestType, KeyFormatType, LinkType, LinkedObjectIdentifier,
+                UniqueIdentifier,
+            },
         },
     },
+    cosmian_kms_crypto::openssl::{
+        certificate_attributes_to_subject_name, kmip_certificate_to_openssl,
+        kmip_private_key_to_openssl, openssl_certificate_to_kmip,
+        openssl_x509_to_certificate_attributes, x509_extensions,
+    },
+    cosmian_kms_interfaces::{AtomicOperation, ObjectWithMetadata, SessionParams},
 };
-use cosmian_kms_crypto::openssl::{
-    certificate_attributes_to_subject_name, kmip_certificate_to_openssl,
-    kmip_private_key_to_openssl, openssl_certificate_to_kmip,
-    openssl_x509_to_certificate_attributes, x509_extensions,
-};
-use cosmian_kms_interfaces::{AtomicOperation, ObjectWithMetadata, SessionParams};
 use openssl::{
     asn1::{Asn1Integer, Asn1Time},
     hash::MessageDigest,

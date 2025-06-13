@@ -9,12 +9,14 @@ use cloudproof_findex::{
     IndexedValue, Keyword, Label, Location, implementations::redis::FindexRedis,
     parameters::MASTER_KEY_LENGTH,
 };
-use cosmian_crypto_core::{FixedSizeCBytes, SymmetricKey, kdf256};
 use cosmian_kmip::{
     kmip_0::kmip_types::State,
     kmip_2_1::{KmipOperation, kmip_attributes::Attributes, kmip_objects::Object},
 };
-use cosmian_kms_crypto::crypto::{password_derivation::derive_key_from_password, secret::Secret};
+use cosmian_kms_crypto::{
+    crypto::{password_derivation::derive_key_from_password, secret::Secret},
+    reexport::cosmian_crypto_core::{FixedSizeCBytes, SymmetricKey, kdf256},
+};
 use cosmian_kms_interfaces::{
     AtomicOperation, InterfaceResult, ObjectWithMetadata, ObjectsStore, PermissionsStore,
     SessionParams,

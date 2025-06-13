@@ -1,19 +1,21 @@
 use std::sync::Arc;
 
-use cosmian_kmip::kmip_2_1::{
-    KmipOperation,
-    extra::{VENDOR_ID_COSMIAN, tagging::VENDOR_ATTR_TAG},
-    kmip_attributes::Attributes,
-    kmip_data_structures::KeyValue,
-    kmip_objects::{Object, PrivateKey, PublicKey, SymmetricKey},
-    kmip_operations::{GetAttributes, GetAttributesResponse},
-    kmip_types::{
-        AttributeReference, KeyFormatType, LinkType, Tag, UniqueIdentifier, VendorAttribute,
-        VendorAttributeReference,
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::kmip_2_1::{
+        KmipOperation,
+        extra::{VENDOR_ID_COSMIAN, tagging::VENDOR_ATTR_TAG},
+        kmip_attributes::Attributes,
+        kmip_data_structures::KeyValue,
+        kmip_objects::{Object, PrivateKey, PublicKey, SymmetricKey},
+        kmip_operations::{GetAttributes, GetAttributesResponse},
+        kmip_types::{
+            AttributeReference, KeyFormatType, LinkType, Tag, UniqueIdentifier, VendorAttribute,
+            VendorAttributeReference,
+        },
     },
+    cosmian_kms_crypto::openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl},
+    cosmian_kms_interfaces::SessionParams,
 };
-use cosmian_kms_crypto::openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl};
-use cosmian_kms_interfaces::SessionParams;
 use strum::IntoEnumIterator;
 use tracing::{debug, trace};
 

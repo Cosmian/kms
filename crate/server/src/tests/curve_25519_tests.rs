@@ -1,33 +1,36 @@
 use std::sync::Arc;
 
-use cosmian_crypto_core::X25519_PUBLIC_KEY_LENGTH;
-use cosmian_kmip::{
-    kmip_0::{
-        kmip_messages::{
-            RequestMessage, RequestMessageBatchItemVersioned, RequestMessageHeader,
-            ResponseMessageBatchItemVersioned,
+use cosmian_kms_client_utils::reexport::cosmian_kmip;
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::{
+        kmip_0::{
+            kmip_messages::{
+                RequestMessage, RequestMessageBatchItemVersioned, RequestMessageHeader,
+                ResponseMessageBatchItemVersioned,
+            },
+            kmip_types::{
+                CryptographicUsageMask, ErrorReason, ProtocolVersion, ResultStatusEnumeration,
+            },
         },
-        kmip_types::{
-            CryptographicUsageMask, ErrorReason, ProtocolVersion, ResultStatusEnumeration,
+        kmip_2_1::{
+            extra::tagging::EMPTY_TAGS,
+            kmip_attributes::Attributes,
+            kmip_messages::RequestMessageBatchItem,
+            kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
+            kmip_operations::{Import, Operation},
+            kmip_types::{
+                CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier,
+                RecommendedCurve, UniqueIdentifier,
+            },
+            requests::{
+                create_ec_key_pair_request, get_ec_private_key_request, get_ec_public_key_request,
+            },
         },
     },
-    kmip_2_1::{
-        extra::tagging::EMPTY_TAGS,
-        kmip_attributes::Attributes,
-        kmip_messages::RequestMessageBatchItem,
-        kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
-        kmip_operations::{Import, Operation},
-        kmip_types::{
-            CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier,
-            RecommendedCurve, UniqueIdentifier,
-        },
-        requests::{
-            create_ec_key_pair_request, get_ec_private_key_request, get_ec_public_key_request,
-        },
+    cosmian_kms_crypto::{
+        crypto::elliptic_curves::{CURVE_25519_Q_LENGTH_BITS, operation::to_ec_public_key},
+        reexport::cosmian_crypto_core::X25519_PUBLIC_KEY_LENGTH,
     },
-};
-use cosmian_kms_crypto::crypto::elliptic_curves::{
-    CURVE_25519_Q_LENGTH_BITS, operation::to_ec_public_key,
 };
 use uuid::Uuid;
 

@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
-#[cfg(feature = "non-fips")]
-use cosmian_kmip::KmipResultHelper;
 use cosmian_kms_server::{
     config::{ClapConfig, ServerParams},
     result::KResult,
     start_kms_server::start_kms_server,
 };
+#[cfg(feature = "non-fips")]
+use cosmian_kms_server_database::reexport::cosmian_kmip::KmipResultHelper;
 use cosmian_logger::{TelemetryConfig, TracingConfig, tracing_init};
 use dotenvy::dotenv;
 use openssl::provider::Provider;

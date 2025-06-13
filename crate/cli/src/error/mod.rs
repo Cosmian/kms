@@ -8,6 +8,8 @@ use cosmian_kms_client::{
     cosmian_kmip::ttlv::TtlvError,
     reexport::{cosmian_http_client::HttpClientError, cosmian_kms_client_utils::error::UtilsError},
 };
+#[cfg(feature = "non-fips")]
+use cosmian_kms_crypto::reexport::cosmian_cover_crypt;
 use thiserror::Error;
 
 use crate::actions::kms::google::GoogleApiError;
@@ -29,6 +31,7 @@ pub enum KmsCliError {
     Conversion(String),
     #[error(transparent)]
     ConfigUtilsError(#[from] ConfigUtilsError),
+    #[cfg(feature = "non-fips")]
     #[error(transparent)]
     CovercryptError(#[from] cosmian_cover_crypt::Error),
     #[error(transparent)]
