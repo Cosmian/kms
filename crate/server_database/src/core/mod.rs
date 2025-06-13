@@ -5,6 +5,7 @@ mod database_permissions;
 
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
+#[cfg(feature = "non-fips")]
 use cosmian_kms_crypto::{crypto::secret::Secret, reexport::cosmian_crypto_core::FixedSizeCBytes};
 use cosmian_kms_interfaces::{ObjectsStore, PermissionsStore};
 use tokio::sync::RwLock;
@@ -16,9 +17,9 @@ pub use main_db_params::{AdditionalObjectStoresParams, MainDbParams};
 mod unwrapped_cache;
 
 pub use crate::core::unwrapped_cache::{CachedUnwrappedObject, UnwrappedCache};
-use crate::stores::{
-    MySqlPool, PgPool, REDIS_WITH_FINDEX_MASTER_KEY_LENGTH, RedisWithFindex, SqlitePool,
-};
+use crate::stores::{MySqlPool, PgPool, SqlitePool};
+#[cfg(feature = "non-fips")]
+use crate::stores::{REDIS_WITH_FINDEX_MASTER_KEY_LENGTH, RedisWithFindex};
 
 /// The `Database` struct represents the core database functionalities, including object management,
 /// permission checks, and caching mechanisms for unwrapped keys.
@@ -79,6 +80,7 @@ impl Database {
                 let db = Arc::new(MySqlPool::instantiate(url.as_str(), clear_db_on_start).await?);
                 Self::new(db.clone(), db, cache_max_age)
             }
+            #[cfg(feature = "non-fips")]
             MainDbParams::RedisFindex(url, master_key, label) => {
                 // There is no reason to keep a copy of the key in the shared config
                 // So we are going to create a "zeroizable" copy which will be passed to Redis with Findex

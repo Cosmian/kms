@@ -2,11 +2,12 @@ use std::{array::TryFromSliceError, sync::mpsc::SendError};
 
 use actix_web::{dev::ServerHandle, error::QueryPayloadError};
 #[cfg(feature = "non-fips")]
+use cosmian_kms_server_database::reexport::cloudproof_findex::implementations::redis::FindexRedisError;
+#[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::reexport::cosmian_cover_crypt;
 use cosmian_kms_server_database::{
     DbError,
     reexport::{
-        cloudproof_findex::implementations::redis::FindexRedisError,
         cosmian_kmip::{
             KmipError, kmip_0::kmip_types::ErrorReason, kmip_1_4::kmip_types::ResultReason,
             ttlv::TtlvError,
@@ -147,6 +148,7 @@ impl From<CryptoCoreError> for KmsError {
     }
 }
 
+#[cfg(feature = "non-fips")]
 impl From<FindexRedisError> for KmsError {
     fn from(e: FindexRedisError) -> Self {
         Self::Findex(e.to_string())

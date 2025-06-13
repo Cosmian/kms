@@ -1,8 +1,10 @@
 use std::{fmt::Display, path::PathBuf};
 
 use clap::Args;
+use cosmian_kms_server_database::MainDbParams;
+#[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::{
-    MainDbParams, redis_master_key_from_password, reexport::cloudproof_findex::Label,
+    redis_master_key_from_password, reexport::cloudproof_findex::Label,
 };
 use serde::{Deserialize, Serialize};
 use url::Url;
@@ -183,6 +185,7 @@ impl MainDBConfig {
                         .context("db:init")?;
                     MainDbParams::Sqlite(path)
                 }
+                #[cfg(feature = "non-fips")]
                 "redis-findex" => {
                     let url = ensure_url(self.database_url.as_deref(), "KMS_REDIS_URL")
                         .context("db:init")?;
@@ -233,6 +236,7 @@ fn ensure_url(database_url: Option<&str>, alternate_env_variable: &str) -> KResu
     Ok(url)
 }
 
+#[cfg(feature = "non-fips")]
 fn ensure_value(
     value: Option<&str>,
     option_name: &str,

@@ -15,11 +15,12 @@ doctest = false
 non-fips = [
     "cosmian_kms_crypto/non-fips",
     "cosmian_kmip/non-fips",
+    "cloudproof_findex/findex-redis",
 ]
 
 [dependencies]
 async-trait = { workspace = true }
-cloudproof_findex = { version = "5.0", features = ["findex-redis"] }
+cloudproof_findex = { version = "5.0", optional = true }
 cosmian_kmip = { path = "../kmip" }
 cosmian_kms_crypto = { path = "../crypto" }
 cosmian_kms_interfaces = { path = "../interfaces" }

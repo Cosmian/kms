@@ -1,14 +1,16 @@
+mod migrate;
+#[cfg(feature = "non-fips")]
 mod redis;
 mod sql;
-
-mod migrate;
 
 use std::sync::LazyLock;
 
 use rawsql::Loader;
-#[cfg(test)]
+#[cfg(all(test, feature = "non-fips"))]
 pub(crate) use redis::additional_redis_findex_tests;
+#[cfg(feature = "non-fips")]
 pub use redis::redis_master_key_from_password;
+#[cfg(feature = "non-fips")]
 pub(crate) use redis::{REDIS_WITH_FINDEX_MASTER_KEY_LENGTH, RedisWithFindex};
 pub(crate) use sql::{MySqlPool, PgPool, SqlitePool};
 

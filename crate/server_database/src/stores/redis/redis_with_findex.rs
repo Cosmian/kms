@@ -5,6 +5,7 @@ use std::{
 };
 
 use async_trait::async_trait;
+#[cfg(feature = "non-fips")]
 use cloudproof_findex::{
     IndexedValue, Keyword, Label, Location, implementations::redis::FindexRedis,
     parameters::MASTER_KEY_LENGTH,

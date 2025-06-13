@@ -4,10 +4,13 @@ use std::{
     path::PathBuf,
 };
 
+#[cfg(feature = "non-fips")]
 use cloudproof_findex::Label;
+#[cfg(feature = "non-fips")]
 use cosmian_kms_crypto::reexport::cosmian_crypto_core::SymmetricKey;
 use url::Url;
 
+#[cfg(feature = "non-fips")]
 use crate::stores::REDIS_WITH_FINDEX_MASTER_KEY_LENGTH;
 
 pub enum MainDbParams {
@@ -21,6 +24,7 @@ pub enum MainDbParams {
     /// - the `Redis` connection URL
     /// - the master key used to encrypt the DB and the Index
     /// - a public arbitrary label that can be changed to rotate the Findex ciphertexts without changing the key
+    #[cfg(feature = "non-fips")]
     RedisFindex(
         Url,
         SymmetricKey<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>,
@@ -36,6 +40,7 @@ impl MainDbParams {
             Self::Sqlite(_) => "Sqlite",
             Self::Postgres(_) => "PostgreSQL",
             Self::Mysql(_) => "MySql/MariaDB",
+            #[cfg(feature = "non-fips")]
             Self::RedisFindex(_, _, _) => "Redis-Findex",
         }
     }
@@ -47,6 +52,7 @@ impl Display for MainDbParams {
             Self::Sqlite(path) => write!(f, "sqlite: {}", path.display()),
             Self::Postgres(url) => write!(f, "postgres: {}", redact_url(url)),
             Self::Mysql(url) => write!(f, "mysql: {}", redact_url(url)),
+            #[cfg(feature = "non-fips")]
             Self::RedisFindex(url, _, label) => {
                 write!(
                     f,

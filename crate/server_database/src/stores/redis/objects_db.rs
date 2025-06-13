@@ -4,6 +4,7 @@ use std::{
 };
 
 use async_trait::async_trait;
+#[cfg(feature = "non-fips")]
 use cloudproof_findex::{
     Keyword, Location,
     implementations::redis::{FindexRedisError, RemovedLocationsFinder},
