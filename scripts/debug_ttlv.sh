@@ -74,11 +74,7 @@ run_simple_debug() {
 # Run TTLV debug
 run_ttlv_debug() {
     print_header "RUNNING DETAILED TTLV STRUCTURE DEBUG"
-    
-    print_warning "This will show detailed TTLV binary data and structure analysis"
-    read -p "Continue? (y/N): " -n 1 -r
-    echo
-    
+       
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         if source .venv/bin/activate && python scripts/ttlv_debug.py; then
             print_status "TTLV debug completed"

@@ -1293,47 +1293,47 @@ impl From<Attributes> for Vec<Attribute> {
 
 impl From<Vec<Attribute>> for Attributes {
     fn from(attributes: Vec<Attribute>) -> Self {
-        let mut attrs = Attributes::default();
+        let mut attrs = Self::default();
         for attribute in attributes {
             match attribute {
                 Attribute::ActivationDate(value) => attrs.activation_date = Some(value),
                 Attribute::AlternativeName(value) => attrs.alternative_name = Some(value),
                 Attribute::AlwaysSensitive(value) => attrs.always_sensitive = Some(value),
                 Attribute::ApplicationSpecificInformation(value) => {
-                    attrs.application_specific_information = Some(value)
+                    attrs.application_specific_information = Some(value);
                 }
                 Attribute::ArchiveDate(value) => attrs.archive_date = Some(value),
                 Attribute::AttributeIndex(value) => attrs.attribute_index = Some(value),
                 Attribute::CertificateAttributes(value) => {
-                    attrs.certificate_attributes = Some(value)
+                    attrs.certificate_attributes = Some(value);
                 }
                 Attribute::CertificateType(value) => attrs.certificate_type = Some(value),
                 Attribute::CertificateLength(value) => attrs.certificate_length = Some(value),
                 Attribute::Comment(value) => attrs.comment = Some(value),
                 Attribute::CompromiseDate(value) => attrs.compromise_date = Some(value),
                 Attribute::CompromiseOccurrenceDate(value) => {
-                    attrs.compromise_occurrence_date = Some(value)
+                    attrs.compromise_occurrence_date = Some(value);
                 }
                 Attribute::ContactInformation(value) => attrs.contact_information = Some(value),
                 Attribute::Critical(value) => attrs.critical = Some(value),
                 Attribute::CryptographicAlgorithm(value) => {
-                    attrs.cryptographic_algorithm = Some(value)
+                    attrs.cryptographic_algorithm = Some(value);
                 }
                 Attribute::CryptographicDomainParameters(value) => {
-                    attrs.cryptographic_domain_parameters = Some(value)
+                    attrs.cryptographic_domain_parameters = Some(value);
                 }
                 Attribute::CryptographicLength(value) => attrs.cryptographic_length = Some(value),
                 Attribute::CryptographicParameters(value) => {
-                    attrs.cryptographic_parameters = Some(value)
+                    attrs.cryptographic_parameters = Some(value);
                 }
                 Attribute::CryptographicUsageMask(value) => {
-                    attrs.cryptographic_usage_mask = Some(value)
+                    attrs.cryptographic_usage_mask = Some(value);
                 }
                 Attribute::DeactivationDate(value) => attrs.deactivation_date = Some(value),
                 Attribute::Description(value) => attrs.description = Some(value),
                 Attribute::DestroyDate(value) => attrs.destroy_date = Some(value),
                 Attribute::DigitalSignatureAlgorithm(value) => {
-                    attrs.digital_signature_algorithm = Some(value)
+                    attrs.digital_signature_algorithm = Some(value);
                 }
                 Attribute::Extractable(value) => attrs.extractable = Some(value),
                 Attribute::Fresh(value) => attrs.fresh = Some(value),
@@ -1355,7 +1355,7 @@ impl From<Vec<Attribute>> for Attributes {
                 Attribute::ObjectType(value) => attrs.object_type = Some(value),
                 Attribute::OpaqueDataType(value) => attrs.opaque_data_type = Some(value),
                 Attribute::OriginalCreationDate(value) => {
-                    attrs.original_creation_date = Some(value)
+                    attrs.original_creation_date = Some(value);
                 }
                 Attribute::Pkcs12FriendlyName(value) => attrs.pkcs_12_friendly_name = Some(value),
                 Attribute::ProcessStartDate(value) => attrs.process_start_date = Some(value),
@@ -1363,11 +1363,11 @@ impl From<Vec<Attribute>> for Attributes {
                 Attribute::ProtectionLevel(value) => attrs.protection_level = Some(value),
                 Attribute::ProtectionPeriod(value) => attrs.protection_period = Some(value),
                 Attribute::ProtectionStorageMasks(value) => {
-                    attrs.protection_storage_masks = Some(value)
+                    attrs.protection_storage_masks = Some(value);
                 }
                 Attribute::QuantumSafe(value) => attrs.quantum_safe = Some(value),
                 Attribute::RandomNumberGenerator(value) => {
-                    attrs.random_number_generator = Some(value)
+                    attrs.random_number_generator = Some(value);
                 }
                 Attribute::RevocationReason(value) => attrs.revocation_reason = Some(value),
                 Attribute::RotateDate(value) => attrs.rotate_date = Some(value),
@@ -1378,7 +1378,7 @@ impl From<Vec<Attribute>> for Attributes {
                 Attribute::RotateOffset(value) => attrs.rotate_offset = Some(value),
                 Attribute::Sensitive(value) => attrs.sensitive = Some(value),
                 Attribute::ShortUniqueIdentifier(value) => {
-                    attrs.short_unique_identifier = Some(value)
+                    attrs.short_unique_identifier = Some(value);
                 }
                 Attribute::State(value) => attrs.state = Some(value),
                 Attribute::UniqueIdentifier(value) => attrs.unique_identifier = Some(value),
@@ -1390,13 +1390,13 @@ impl From<Vec<Attribute>> for Attributes {
                         .push(value);
                 }
                 Attribute::X509CertificateIdentifier(value) => {
-                    attrs.x_509_certificate_identifier = Some(value)
+                    attrs.x_509_certificate_identifier = Some(value);
                 }
                 Attribute::X509CertificateIssuer(value) => {
-                    attrs.x_509_certificate_issuer = Some(value)
+                    attrs.x_509_certificate_issuer = Some(value);
                 }
                 Attribute::X509CertificateSubject(value) => {
-                    attrs.x_509_certificate_subject = Some(value)
+                    attrs.x_509_certificate_subject = Some(value);
                 }
                 // NeverExtractable is not included in Attributes, so we ignore it
                 Attribute::NeverExtractable(_) => {}

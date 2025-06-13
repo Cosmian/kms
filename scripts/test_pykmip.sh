@@ -97,13 +97,20 @@ run_operation() {
 
     print_status "Executing: ${cmd_args[*]}"
     
-    if python "${cmd_args[@]}"; then
-        print_status "$operation operation completed successfully"
-        return 0
-    else
-        print_error "$operation operation failed"
+    # Capture both stdout and stderr
+    local output
+    output=$(python "${cmd_args[@]}" 2>&1)
+    
+    echo "$output"
+    
+    # Check if the response contains status: error
+    if echo "$output" | grep -q '"status": "error"'; then
+        print_error "$operation operation failed - KMIP response status is error"
         return 1
     fi
+    
+    print_status "$operation operation completed successfully"
+    return 0
 }
 
 # Function to run all operations
@@ -111,16 +118,26 @@ run_all_operations() {
     local verbose=${1:-false}
     
     operations=("query" "create" "get" "destroy" "encrypt_decrypt" "create_keypair" "locate")
+    failed_operations=()
     
     for op in "${operations[@]}"; do
         if ! run_operation "$op" "$verbose"; then
             print_error "Operation $op failed, stopping"
-            exit 1
+            failed_operations+=("$op")
         fi
         echo
     done
     
-    print_status "All PyKMIP operations completed successfully!"
+    # Report final results
+    if [ ${#failed_operations[@]} -eq 0 ]; then
+        print_status "All PyKMIP operations completed successfully"
+    else
+        print_error "${#failed_operations[@]} out of ${#operations[@]} operations failed:"
+        for failed_op in "${failed_operations[@]}"; do
+            print_error "  - $failed_op"
+        done
+        exit 1
+    fi
 }
 
 # Function to run Rust tests

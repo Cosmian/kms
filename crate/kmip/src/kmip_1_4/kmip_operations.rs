@@ -122,6 +122,23 @@ pub struct CreateKeyPairResponse {
     pub public_key_template_attribute: Option<TemplateAttribute>,
 }
 
+impl TryFrom<kmip_2_1::kmip_operations::CreateKeyPairResponse> for CreateKeyPairResponse {
+    type Error = KmipError;
+
+    fn try_from(
+        value: kmip_2_1::kmip_operations::CreateKeyPairResponse,
+    ) -> Result<Self, Self::Error> {
+        trace!("Converting KMIP 2.1 CreateKeyPairResponse to KMIP 1.4: {value:#?}");
+
+        Ok(Self {
+            private_key_unique_identifier: value.private_key_unique_identifier.to_string(),
+            public_key_unique_identifier: value.public_key_unique_identifier.to_string(),
+            private_key_template_attribute: None,
+            public_key_template_attribute: None,
+        })
+    }
+}
+
 /// 4.3 Register
 /// This operation requests the server to register a Managed Object that was created by the client
 /// or obtained by the client through some other means.
@@ -2061,11 +2078,13 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             // Operation::CreateKeyPair(create_key_pair) => {
             //     Self::CreateKeyPair(create_key_pair.into())
             // }
-            // Operation::CreateKeyPairResponse(create_key_pair_response) => {
-            //     Self::CreateKeyPairResponse(
-            //         create_key_pair_response.into(),
-            //     )
-            // }
+            kmip_2_1::kmip_operations::Operation::CreateKeyPairResponse(
+                create_key_pair_response,
+            ) => Self::CreateKeyPairResponse(
+                create_key_pair_response
+                    .try_into()
+                    .context("CreateKeyPairResponse")?,
+            ),
             // Operation::Decrypt(decrypt) => {
             //     Self::Decrypt(decrypt.into())
             // }
@@ -2235,7 +2254,8 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             // }
             op => {
                 return Err(KmipError::NotSupported(format!(
-                    "KMIP 2.1 does not support Response Operation: {op:?}"
+                    "Conversion from KMIP 2.1 to KMIP 1.x is not supported for Response \
+                     Operation: {op:?}"
                 )))
             }
         })
