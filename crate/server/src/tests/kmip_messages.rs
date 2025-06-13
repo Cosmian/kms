@@ -279,7 +279,7 @@ async fn test_kmip_messages() -> KResult<()> {
     // locate response contains only 2 keys, the pair that was created
     // by the first batch item, because processing is sequential and order is preserved
     assert_eq!(locate_response.located_items, Some(2));
-    let locate_uids = locate_response.unique_identifiers.clone().unwrap();
+    let locate_uids = locate_response.unique_identifier.clone().unwrap();
     assert_eq!(locate_uids.len(), 2);
     assert!(locate_uids.contains(&create_keypair_response.private_key_unique_identifier));
     assert!(locate_uids.contains(&create_keypair_response.public_key_unique_identifier));

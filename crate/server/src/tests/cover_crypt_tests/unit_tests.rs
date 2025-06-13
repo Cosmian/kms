@@ -500,7 +500,7 @@ async fn test_abe_json_access() -> KResult<()> {
     // now we have 1 key
     assert_eq!(locate_response.located_items.unwrap(), 1);
     assert_eq!(
-        &locate_response.unique_identifiers.unwrap()[0],
+        &locate_response.unique_identifier.unwrap()[0],
         secret_mkg_fin_user_key_id
     );
 
