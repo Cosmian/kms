@@ -15,7 +15,7 @@ doctest = false
 
 [features]
 # Enable FIPS module feature build. KMS builds in FIPS mode when this is enabled.
-fips = []
+non-fips = []
 
 [dependencies]
 bitflags = { workspace = true }

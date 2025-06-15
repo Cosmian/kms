@@ -4,11 +4,11 @@ use cosmian_kms_client::{
     cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm,
     kmip_2_1::kmip_types::UniqueIdentifier, read_object_from_json_ttlv_file,
 };
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 use cosmian_logger::log_init;
 use test_kms_server::start_default_test_kms_server;
 
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 use crate::actions::kms::{
     cover_crypt::keys::create_key_pair::CreateMasterKeyPairAction,
     elliptic_curves::keys::create_key_pair::CreateKeyPairAction as CreateEcKeyPairAction,
@@ -19,7 +19,7 @@ use crate::{
     error::{KmsCliError, result::KmsCliResult},
 };
 
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 #[tokio::test]
 pub(crate) async fn test_import_cover_crypt() -> KmsCliResult<()> {
     use tempfile::TempDir;
@@ -78,7 +78,7 @@ pub(crate) async fn test_import_cover_crypt() -> KmsCliResult<()> {
     Ok(())
 }
 
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 #[tokio::test]
 pub(crate) async fn test_generate_export_import() -> KmsCliResult<()> {
     log_init(option_env!("RUST_LOG"));

@@ -1,14 +1,16 @@
 use std::sync::Arc;
 
-use cosmian_kmip::{
-    kmip_0::kmip_types::State,
-    kmip_2_1::{
-        kmip_objects::ObjectType,
-        kmip_operations::{Create, Import, ReKey, ReKeyResponse},
-        kmip_types::UniqueIdentifier,
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::{
+        kmip_0::kmip_types::State,
+        kmip_2_1::{
+            kmip_objects::ObjectType,
+            kmip_operations::{Create, Import, ReKey, ReKeyResponse},
+            kmip_types::UniqueIdentifier,
+        },
     },
+    cosmian_kms_interfaces::SessionParams,
 };
-use cosmian_kms_interfaces::SessionParams;
 use tracing::{debug, trace};
 
 use crate::{

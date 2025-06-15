@@ -11,9 +11,9 @@ use x509_parser::nom::AsBytes;
 use zeroize::Zeroizing;
 
 use super::WRAPPING_SECRET_LENGTH;
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 use crate::crypto::elliptic_curves::ecies::ecies_decrypt;
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 use crate::crypto::rsa::ckm_rsa_pkcs::ckm_rsa_pkcs_key_unwrap;
 use crate::{
     crypto::{
@@ -179,7 +179,7 @@ pub fn decode_unwrapped_key(
                         attributes: None,
                     })
                 }
-                #[cfg(not(feature = "fips"))]
+                #[cfg(feature = "non-fips")]
                 KeyFormatType::Pkcs12Legacy => {
                     // For no encoding, create a structure with the plaintext as bytes
                     let key_material = KeyMaterial::ByteString(plaintext);
@@ -297,7 +297,7 @@ fn unwrap_with_private_key(
 ) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
     match private_key.id() {
         Id::RSA => unwrap_with_rsa(private_key, key_wrapping_data, ciphertext),
-        #[cfg(not(feature = "fips"))]
+        #[cfg(feature = "non-fips")]
         Id::EC | Id::X25519 | Id::ED25519 => ecies_decrypt(private_key, ciphertext),
         other => {
             crypto_bail!(
@@ -334,7 +334,7 @@ fn unwrap_with_rsa(
             PaddingMethod::OAEP => {
                 ckm_rsa_pkcs_oaep_key_unwrap(private_key, hashing_fn, wrapped_key)
             }
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             PaddingMethod::PKCS1v15 => ckm_rsa_pkcs_key_unwrap(private_key, wrapped_key),
             _ => crypto_bail!(
                 "Unable to unwrap key with RSA: padding method not supported: {padding:?}"

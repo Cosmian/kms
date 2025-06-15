@@ -1,21 +1,25 @@
-use cosmian_cover_crypt::{AccessPolicy, EncryptionHint, QualifiedAttribute};
-use cosmian_kmip::{
-    kmip_0::kmip_types::{RevocationReason, RevocationReasonCode},
-    kmip_2_1::{
-        extra::tagging::EMPTY_TAGS,
-        kmip_operations::{
-            CreateKeyPairResponse, CreateResponse, DecryptResponse, Destroy, DestroyResponse,
-            EncryptResponse, ReKeyKeyPairResponse, Revoke, RevokeResponse,
-        },
-        kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
-        requests::{decrypt_request, encrypt_request},
-    },
-};
 use cosmian_kms_client_utils::cover_crypt_utils::{
     build_create_covercrypt_master_keypair_request, build_create_covercrypt_usk_request,
 };
-use cosmian_kms_crypto::crypto::cover_crypt::{
-    attributes::RekeyEditAction, kmip_requests::build_rekey_keypair_request,
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::{
+        kmip_0::kmip_types::{RevocationReason, RevocationReasonCode},
+        kmip_2_1::{
+            extra::tagging::EMPTY_TAGS,
+            kmip_operations::{
+                CreateKeyPairResponse, CreateResponse, DecryptResponse, Destroy, DestroyResponse,
+                EncryptResponse, ReKeyKeyPairResponse, Revoke, RevokeResponse,
+            },
+            kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
+            requests::{decrypt_request, encrypt_request},
+        },
+    },
+    cosmian_kms_crypto::{
+        crypto::cover_crypt::{
+            attributes::RekeyEditAction, kmip_requests::build_rekey_keypair_request,
+        },
+        reexport::cosmian_cover_crypt::{AccessPolicy, EncryptionHint, QualifiedAttribute},
+    },
 };
 
 use crate::{

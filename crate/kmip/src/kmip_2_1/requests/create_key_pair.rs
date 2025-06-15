@@ -1,10 +1,5 @@
-#[cfg(feature = "fips")]
-use crate::kmip_2_1::extra::fips::{
-    FIPS_PRIVATE_ECC_MASK_SIGN, FIPS_PRIVATE_ECC_MASK_SIGN_ECDH, FIPS_PRIVATE_RSA_MASK,
-    FIPS_PUBLIC_ECC_MASK_SIGN, FIPS_PUBLIC_ECC_MASK_SIGN_ECDH, FIPS_PUBLIC_RSA_MASK,
-};
-#[cfg(feature = "fips")]
-use crate::kmip_2_1_bail;
+#[cfg(not(feature = "non-fips"))]
+use crate::kmip_2_1::extra::fips::{FIPS_PRIVATE_RSA_MASK, FIPS_PUBLIC_RSA_MASK};
 use crate::{
     KmipError,
     kmip_0::kmip_types::CryptographicUsageMask,
@@ -18,6 +13,15 @@ use crate::{
         },
     },
 };
+#[cfg(not(feature = "non-fips"))]
+use crate::{
+    kmip_2_1::extra::fips::{
+        FIPS_PRIVATE_ECC_MASK_SIGN, FIPS_PRIVATE_ECC_MASK_SIGN_ECDH, FIPS_PUBLIC_ECC_MASK_SIGN,
+        FIPS_PUBLIC_ECC_MASK_SIGN_ECDH,
+    },
+    kmip_2_1_bail,
+};
+
 /// Build a `CreateKeyPairRequest` for a RSA key pair.
 pub fn create_rsa_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
     private_key_id: Option<UniqueIdentifier>,
@@ -26,14 +30,14 @@ pub fn create_rsa_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
     sensitive: bool,
     wrapping_key_id: Option<&String>,
 ) -> Result<CreateKeyPair, KmipError> {
-    #[cfg(feature = "fips")]
+    #[cfg(not(feature = "non-fips"))]
     let private_key_mask = FIPS_PRIVATE_RSA_MASK;
-    #[cfg(feature = "fips")]
+    #[cfg(not(feature = "non-fips"))]
     let public_key_mask = FIPS_PUBLIC_RSA_MASK;
 
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     let private_key_mask = CryptographicUsageMask::Unrestricted;
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     let public_key_mask = CryptographicUsageMask::Unrestricted;
 
     let algorithm = CryptographicAlgorithm::RSA;
@@ -95,7 +99,7 @@ pub fn create_rsa_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
 /// For more information see documents
 /// - NIST.SP.800-186 - Section 3.1.2 table 2.
 /// - NIST.FIPS.186-5
-#[cfg(feature = "fips")]
+#[cfg(not(feature = "non-fips"))]
 fn build_mask_from_curve(
     curve: RecommendedCurve,
     is_private_mask: bool,
@@ -136,7 +140,7 @@ fn build_mask_from_curve(
 /// For more information see documents
 /// - NIST.SP.800-186 - Section 3.1.2 table 2.
 /// - NIST.FIPS.186-5
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 #[allow(clippy::unnecessary_wraps)]
 const fn build_mask_from_curve(
     _curve: RecommendedCurve,

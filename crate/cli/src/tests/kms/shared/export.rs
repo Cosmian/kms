@@ -1,4 +1,4 @@
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 use std::path::{Path, PathBuf};
 
 use cosmian_kms_client::{
@@ -7,7 +7,7 @@ use cosmian_kms_client::{
     read_bytes_from_file, read_object_from_json_ttlv_file,
     reexport::cosmian_kms_client_utils::export_utils::{ExportKeyFormat, WrappingAlgorithm},
 };
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 use cosmian_kms_client::{
     kmip_2_1::{
         kmip_data_structures::KeyMaterial,
@@ -16,14 +16,14 @@ use cosmian_kms_client::{
     pad_be_bytes,
 };
 use cosmian_logger::log_init;
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 use openssl::pkey::{Id, PKey};
 use tempfile::TempDir;
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 use test_kms_server::TestsContext;
 use test_kms_server::start_default_test_kms_server;
 
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 use crate::actions::kms::cover_crypt::keys::{
     create_key_pair::CreateMasterKeyPairAction, create_user_key::CreateUserKeyAction,
 };
@@ -242,7 +242,7 @@ pub(crate) async fn test_export_wrapped() -> KmsCliResult<()> {
     Ok(())
 }
 
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 #[tokio::test]
 pub(crate) async fn test_export_covercrypt() -> KmsCliResult<()> {
     async fn export_cc_test(
@@ -335,7 +335,7 @@ pub(crate) async fn test_export_covercrypt() -> KmsCliResult<()> {
     Ok(())
 }
 
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 #[tokio::test]
 pub(crate) async fn test_export_error_cover_crypt() -> KmsCliResult<()> {
     // create a temp dir
@@ -381,7 +381,7 @@ pub(crate) async fn test_export_error_cover_crypt() -> KmsCliResult<()> {
     Ok(())
 }
 
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 #[tokio::test]
 pub(crate) async fn test_export_x25519() -> KmsCliResult<()> {
     // create a temp dir
@@ -632,7 +632,7 @@ pub(crate) async fn test_sensitive_rsa_key() -> KmsCliResult<()> {
     Ok(())
 }
 
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 #[tokio::test]
 pub(crate) async fn test_sensitive_covercrypt_key() -> KmsCliResult<()> {
     // create a temp dir

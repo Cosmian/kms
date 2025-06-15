@@ -289,7 +289,7 @@ pub enum CertificateExportFormat {
     #[default]
     Pem,
     Pkcs12,
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     Pkcs12Legacy,
     Pkcs7,
 }
@@ -304,7 +304,7 @@ pub fn prepare_certificate_export_elements(
             (KeyFormatType::X509, None)
         }
         CertificateExportFormat::Pkcs12 => (KeyFormatType::PKCS12, pkcs12_password),
-        #[cfg(not(feature = "fips"))]
+        #[cfg(feature = "non-fips")]
         CertificateExportFormat::Pkcs12Legacy => (KeyFormatType::Pkcs12Legacy, pkcs12_password),
         CertificateExportFormat::Pkcs7 => (KeyFormatType::PKCS7, None),
     }

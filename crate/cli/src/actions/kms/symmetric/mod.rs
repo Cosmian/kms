@@ -46,11 +46,11 @@ impl SymmetricCommands {
 #[derive(ValueEnum, Debug, Clone, Copy, EnumIter, Display)]
 #[strum(serialize_all = "kebab-case")]
 pub enum KeyEncryptionAlgorithm {
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     Chacha20Poly1305,
     AesGcm,
     AesXts,
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     AesGcmSiv,
     RFC5649,
 }
@@ -58,7 +58,7 @@ pub enum KeyEncryptionAlgorithm {
 impl From<KeyEncryptionAlgorithm> for CryptographicParameters {
     fn from(value: KeyEncryptionAlgorithm) -> Self {
         match value {
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             KeyEncryptionAlgorithm::Chacha20Poly1305 => Self {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::ChaCha20Poly1305),
                 ..Self::default()
@@ -73,7 +73,7 @@ impl From<KeyEncryptionAlgorithm> for CryptographicParameters {
                 block_cipher_mode: Some(BlockCipherMode::XTS),
                 ..Self::default()
             },
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             KeyEncryptionAlgorithm::AesGcmSiv => Self {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
                 block_cipher_mode: Some(BlockCipherMode::GCMSIV),

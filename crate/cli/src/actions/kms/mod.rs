@@ -4,7 +4,7 @@ pub mod attributes;
 pub mod bench;
 pub mod certificates;
 pub mod console;
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 pub mod cover_crypt;
 pub mod elliptic_curves;
 pub mod google;

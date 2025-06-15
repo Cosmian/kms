@@ -81,6 +81,7 @@ fn postgres_db_config() -> MainDBConfig {
     }
 }
 
+#[cfg(feature = "non-fips")]
 fn redis_findex_db_config() -> MainDBConfig {
     trace!("TESTS: using redis-findex");
     let url = if let Ok(var_env) = env::var("REDIS_HOST") {
@@ -101,6 +102,7 @@ fn redis_findex_db_config() -> MainDBConfig {
 
 fn get_db_config() -> MainDBConfig {
     env::var_os("KMS_TEST_DB").map_or_else(sqlite_db_config, |v| match v.to_str().unwrap_or("") {
+        #[cfg(feature = "non-fips")]
         "redis-findex" => redis_findex_db_config(),
         "mysql" => mysql_db_config(),
         "postgresql" => postgres_db_config(),

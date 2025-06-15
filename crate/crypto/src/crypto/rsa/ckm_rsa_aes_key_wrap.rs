@@ -1,5 +1,5 @@
 use cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm;
-#[cfg(feature = "fips")]
+#[cfg(not(feature = "non-fips"))]
 use cosmian_kmip::kmip_2_1::extra::fips::FIPS_MIN_RSA_MODULUS_LENGTH;
 use openssl::{
     pkey::{PKey, Private, Public},
@@ -74,7 +74,7 @@ pub fn ckm_rsa_aes_key_unwrap(
 ) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
     let rsa_privkey = p_key.rsa()?;
 
-    #[cfg(feature = "fips")]
+    #[cfg(not(feature = "non-fips"))]
     if p_key.bits() < FIPS_MIN_RSA_MODULUS_LENGTH {
         crypto_bail!(
             "CKM_RSA_AES: CKM_RSA_OAEP decryption error: RSA key has insufficient size: expected \
@@ -127,7 +127,7 @@ mod tests {
 
     #[test]
     fn test_rsa_kem_wrap_unwrap() -> Result<(), CryptoError> {
-        #[cfg(feature = "fips")]
+        #[cfg(not(feature = "non-fips"))]
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
 

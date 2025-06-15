@@ -1,11 +1,14 @@
 use std::sync::Arc;
 
-use cosmian_kmip::kmip_2_1::{
-    kmip_objects::ObjectType,
-    kmip_operations::{Create, CreateResponse},
-    kmip_types::UniqueIdentifier,
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip,
+    cosmian_kmip::kmip_2_1::{
+        kmip_objects::ObjectType,
+        kmip_operations::{Create, CreateResponse},
+        kmip_types::UniqueIdentifier,
+    },
+    cosmian_kms_interfaces::SessionParams,
 };
-use cosmian_kms_interfaces::SessionParams;
 use tracing::{info, trace};
 use uuid::Uuid;
 

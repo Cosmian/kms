@@ -4,12 +4,9 @@ use cosmian_kms_client::{
     kmip_2_1::kmip_types::ValidityIndicator,
     reexport::cosmian_kms_client_utils::import_utils::CertificateInputFormat,
 };
-#[cfg(feature = "fips")]
 use tempfile::TempDir;
 use test_kms_server::start_default_test_kms_server;
-#[cfg(feature = "fips")]
-use tracing::debug;
-use tracing::info;
+use tracing::{debug, info};
 
 use crate::{
     actions::kms::certificates::{
@@ -19,7 +16,6 @@ use crate::{
     error::result::KmsCliResult,
 };
 
-#[cfg(feature = "fips")]
 async fn import_revoked_certificate_encrypt(curve_name: &str) -> KmsCliResult<()> {
     use crate::actions::kms::certificates::encrypt_certificate::EncryptCertificateAction;
 
@@ -84,7 +80,6 @@ async fn import_revoked_certificate_encrypt(curve_name: &str) -> KmsCliResult<()
     Ok(())
 }
 
-#[cfg(feature = "fips")]
 #[tokio::test]
 #[ignore]
 async fn test_import_revoked_certificate_encrypt_prime256() -> KmsCliResult<()> {

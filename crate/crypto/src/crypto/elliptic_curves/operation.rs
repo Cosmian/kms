@@ -1,4 +1,4 @@
-#[cfg(feature = "fips")]
+#[cfg(not(feature = "non-fips"))]
 use cosmian_kmip::kmip_2_1::extra::fips::{
     FIPS_PRIVATE_ECC_MASK_SIGN, FIPS_PRIVATE_ECC_MASK_SIGN_ECDH, FIPS_PUBLIC_ECC_MASK_SIGN,
     FIPS_PUBLIC_ECC_MASK_SIGN_ECDH,
@@ -32,7 +32,7 @@ use crate::{
     error::{CryptoError, result::CryptoResult},
 };
 
-#[cfg(feature = "fips")]
+#[cfg(not(feature = "non-fips"))]
 /// Check that bits set in `mask` are only bits set in `flags`. If any bit set
 /// in `mask` is not set in `flags`, raise an error.
 ///
@@ -69,7 +69,7 @@ fn check_ecc_mask_against_flags(
     Ok(())
 }
 
-#[cfg(feature = "fips")]
+#[cfg(not(feature = "non-fips"))]
 /// Check that
 /// - `algorithm` is among `allowed` algorithms.
 /// - `algorithm` is compliant with usage mask provided for private and public key components.
@@ -239,7 +239,7 @@ pub fn to_ec_private_key(
 }
 
 /// Generate an X25519 Key Pair. Not FIPS 140-3 compliant.
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 pub fn create_x25519_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
@@ -269,7 +269,7 @@ pub fn create_x25519_key_pair(
 }
 
 /// Generate an X448 Key Pair. Not FIPS 140-3 compliant.
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 pub fn create_x448_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
@@ -311,7 +311,7 @@ pub fn create_ed25519_key_pair(
     private_key_attributes: Option<Attributes>,
     public_key_attributes: Option<Attributes>,
 ) -> Result<KeyPair, CryptoError> {
-    #[cfg(feature = "fips")]
+    #[cfg(not(feature = "non-fips"))]
     {
         // Cryptographic Usage Masks
         let private_key_mask = private_key_attributes
@@ -363,8 +363,7 @@ pub fn create_ed448_key_pair(
     public_key_attributes: Option<Attributes>,
 ) -> Result<KeyPair, CryptoError> {
     trace!("create_ed448_key_pair");
-
-    #[cfg(feature = "fips")]
+    #[cfg(not(feature = "non-fips"))]
     {
         // Cryptographic Usage Masks
         let private_key_mask = private_key_attributes
@@ -411,7 +410,7 @@ pub fn create_approved_ecc_key_pair(
     private_key_attributes: Option<Attributes>,
     public_key_attributes: Option<Attributes>,
 ) -> Result<KeyPair, CryptoError> {
-    #[cfg(feature = "fips")]
+    #[cfg(not(feature = "non-fips"))]
     {
         // Cryptographic Usage Masks
         let private_key_mask = private_key_attributes
@@ -435,7 +434,7 @@ pub fn create_approved_ecc_key_pair(
     }
 
     let curve_nid = match curve {
-        #[cfg(not(feature = "fips"))]
+        #[cfg(feature = "non-fips")]
         RecommendedCurve::P192 => Nid::X9_62_PRIME192V1,
         RecommendedCurve::P224 => Nid::SECP224R1,
         RecommendedCurve::P256 => Nid::X9_62_PRIME256V1,
@@ -549,12 +548,13 @@ fn create_ec_key_pair(
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 #[cfg(test)]
 mod tests {
-    #[cfg(feature = "fips")]
+
+    #[cfg(not(feature = "non-fips"))]
     use cosmian_kmip::kmip_2_1::extra::fips::{
         FIPS_PRIVATE_ECC_MASK_ECDH, FIPS_PRIVATE_ECC_MASK_SIGN, FIPS_PRIVATE_ECC_MASK_SIGN_ECDH,
         FIPS_PUBLIC_ECC_MASK_ECDH, FIPS_PUBLIC_ECC_MASK_SIGN, FIPS_PUBLIC_ECC_MASK_SIGN_ECDH,
     };
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     use cosmian_kmip::kmip_2_1::kmip_data_structures::KeyMaterial;
     use cosmian_kmip::{
         kmip_0::kmip_types::CryptographicUsageMask,
@@ -563,28 +563,28 @@ mod tests {
             kmip_types::{CryptographicAlgorithm, RecommendedCurve},
         },
     };
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     use openssl::pkey::{Id, PKey};
     // Load FIPS provider module from OpenSSL.
-    #[cfg(feature = "fips")]
+    #[cfg(not(feature = "non-fips"))]
     use openssl::provider::Provider;
 
-    #[cfg(feature = "fips")]
+    #[cfg(not(feature = "non-fips"))]
     use super::{check_ecc_mask_against_flags, check_ecc_mask_algorithm_compliance};
     use super::{create_approved_ecc_key_pair, create_ed25519_key_pair};
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     use super::{create_x448_key_pair, create_x25519_key_pair};
-    #[cfg(feature = "fips")]
+    #[cfg(not(feature = "non-fips"))]
     use crate::crypto::elliptic_curves::operation::create_ed448_key_pair;
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     use crate::crypto::elliptic_curves::{X448_PRIVATE_KEY_LENGTH, X25519_PRIVATE_KEY_LENGTH};
     use crate::openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl};
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     use crate::pad_be_bytes;
 
     #[test]
     fn test_ed25519_keypair_generation() {
-        #[cfg(feature = "fips")]
+        #[cfg(not(feature = "non-fips"))]
         // Load FIPS provider module from OpenSSL.
         Provider::load(None, "fips").unwrap();
 
@@ -632,7 +632,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     fn test_x25519_conversions() {
         // Create a Key pair
         // - the private key is a TransparentEcPrivateKey where the key value is the bytes of the scalar
@@ -753,14 +753,14 @@ mod tests {
     }
 
     #[test]
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     fn test_p192_keypair_generation() {
         keypair_generation(RecommendedCurve::P192);
     }
 
     #[test]
     fn test_approved_ecc_keypair_generation() {
-        #[cfg(feature = "fips")]
+        #[cfg(not(feature = "non-fips"))]
         // Load FIPS provider module from OpenSSL.
         Provider::load(None, "fips").unwrap();
 
@@ -772,7 +772,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     fn test_x448_conversions() {
         // Create a Key pair
         // - the private key is a TransparentEcPrivateKey where the key value is the bytes of the scalar
@@ -852,7 +852,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "fips")]
+    #[cfg(not(feature = "non-fips"))]
     fn test_mask_flags_exact() {
         // Load FIPS provider module from OpenSSL.
         Provider::load(None, "fips").unwrap();
@@ -873,7 +873,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "fips")]
+    #[cfg(not(feature = "non-fips"))]
     fn test_mask_flags_correct() {
         // Load FIPS provider module from OpenSSL.
         Provider::load(None, "fips").unwrap();
@@ -892,7 +892,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "fips")]
+    #[cfg(not(feature = "non-fips"))]
     fn test_mask_flags_none() {
         // Load FIPS provider module from OpenSSL.
         Provider::load(None, "fips").unwrap();
@@ -905,7 +905,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "fips")]
+    #[cfg(not(feature = "non-fips"))]
     fn test_mask_flags_all() {
         // Load FIPS provider module from OpenSSL.
         Provider::load(None, "fips").unwrap();
@@ -932,7 +932,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "fips")]
+    #[cfg(not(feature = "non-fips"))]
     fn test_mask_flags_fips_sign() {
         // Load FIPS provider module from OpenSSL.
         Provider::load(None, "fips").unwrap();
@@ -949,7 +949,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "fips")]
+    #[cfg(not(feature = "non-fips"))]
     fn test_mask_flags_fips_dh() {
         // Load FIPS provider module from OpenSSL.
         Provider::load(None, "fips").unwrap();
@@ -978,7 +978,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "fips")]
+    #[cfg(not(feature = "non-fips"))]
     /// This test should fail for unrestricted should not happen in FIPS mode.
     fn test_mask_flags_unrestricted1() {
         // Load FIPS provider module from OpenSSL.
@@ -993,7 +993,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "fips")]
+    #[cfg(not(feature = "non-fips"))]
     /// This test should fail for unrestricted should not happen in FIPS mode.
     fn test_mask_flags_unrestricted2() {
         // Load FIPS provider module from OpenSSL.
@@ -1011,7 +1011,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "fips")]
+    #[cfg(not(feature = "non-fips"))]
     /// This test should fail for unrestricted should not happen in FIPS mode.
     fn test_mask_flags_incorrect1() {
         // Load FIPS provider module from OpenSSL.
@@ -1026,7 +1026,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "fips")]
+    #[cfg(not(feature = "non-fips"))]
     /// This test should fail for unrestricted should not happen in FIPS mode.
     fn test_mask_flags_incorrect2() {
         // Load FIPS provider module from OpenSSL.
@@ -1041,7 +1041,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "fips")]
+    #[cfg(not(feature = "non-fips"))]
     /// This test should fail for unrestricted should not happen in FIPS mode.
     fn test_mask_flags_incorrect3() {
         // Load FIPS provider module from OpenSSL.
@@ -1062,7 +1062,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "fips")]
+    #[cfg(not(feature = "non-fips"))]
     fn test_check_ecc_algo_contains() {
         // Load FIPS provider module from OpenSSL.
         Provider::load(None, "fips").unwrap();
@@ -1087,7 +1087,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "fips")]
+    #[cfg(not(feature = "non-fips"))]
     fn test_check_ecc_algo_not_contains() {
         // Load FIPS provider module from OpenSSL.
         Provider::load(None, "fips").unwrap();
@@ -1108,7 +1108,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "fips")]
+    #[cfg(not(feature = "non-fips"))]
     fn test_create_ecc_keys_bad_mask() {
         // Load FIPS provider module from OpenSSL.
         Provider::load(None, "fips").unwrap();
@@ -1219,7 +1219,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "fips")]
+    #[cfg(not(feature = "non-fips"))]
     fn test_create_ecc_keys_bad_algorithm() {
         // Load FIPS provider module from OpenSSL.
         Provider::load(None, "fips").unwrap();
@@ -1247,7 +1247,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "fips")]
+    #[cfg(not(feature = "non-fips"))]
     fn test_create_ecc_keys_incorrect_mask_and_algorithm_ecdh() {
         // Load FIPS provider module from OpenSSL.
         Provider::load(None, "fips").unwrap();
@@ -1285,7 +1285,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "fips")]
+    #[cfg(not(feature = "non-fips"))]
     fn test_create_ecc_keys_incorrect_mask_and_algorithm_ecdsa() {
         // Load FIPS provider module from OpenSSL.
         Provider::load(None, "fips").unwrap();
@@ -1317,7 +1317,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "fips")]
+    #[cfg(not(feature = "non-fips"))]
     fn test_create_ecc_keys_incorrect_private_mask() {
         // Load FIPS provider module from OpenSSL.
         Provider::load(None, "fips").unwrap();
@@ -1347,7 +1347,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "fips")]
+    #[cfg(not(feature = "non-fips"))]
     fn test_create_ecc_keys_incorrect_public_mask() {
         // Load FIPS provider module from OpenSSL.
         Provider::load(None, "fips").unwrap();

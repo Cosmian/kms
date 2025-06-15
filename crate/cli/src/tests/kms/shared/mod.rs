@@ -3,9 +3,9 @@ pub(crate) mod export;
 pub(crate) mod export_import;
 pub(crate) mod import;
 pub(crate) mod import_export_encodings;
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 pub(crate) mod import_export_wrapping;
 pub(crate) mod locate;
 pub(crate) mod revoke;
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 pub(crate) mod wrap_unwrap;

@@ -108,7 +108,7 @@ pub enum KeyFormatType {
     /// This is not a standard PKCS#12 format but is used by some software
     /// such as Java `KeyStores`, Mac OS X Keychains, and some versions of OpenSSL (1x).
     /// Use PKCS12 instead for standard (newer) PKCS#12 format.
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     Pkcs12Legacy = 0x8880_0001,
     PKCS7 = 0x8880_0002,
     // Available slot 0x8880_0003,
@@ -310,13 +310,13 @@ pub enum RecommendedCurve {
 }
 
 impl Default for RecommendedCurve {
-    #[cfg(feature = "fips")]
     /// Defaulting to highest security FIPS compliant curve.
+    #[cfg(not(feature = "non-fips"))]
     fn default() -> Self {
         Self::P521
     }
 
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     fn default() -> Self {
         Self::CURVE25519
     }

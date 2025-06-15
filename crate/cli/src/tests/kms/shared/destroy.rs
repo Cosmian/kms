@@ -6,7 +6,7 @@ use tempfile::TempDir;
 use test_kms_server::{TestsContext, start_default_test_kms_server};
 use tracing::trace;
 
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 use crate::actions::kms::cover_crypt::keys::{
     create_key_pair::CreateMasterKeyPairAction, create_user_key::CreateUserKeyAction,
 };
@@ -340,7 +340,7 @@ async fn test_destroy_and_remove_ec_key() -> KmsCliResult<()> {
     Ok(())
 }
 
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_destroy_cover_crypt() -> KmsCliResult<()> {
     use std::path::PathBuf;

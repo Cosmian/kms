@@ -129,7 +129,7 @@ impl ExportCertificateAction {
                         // PKCS12 is exported as a private key object
                         cli_bail!("PKCS12: invalid object returned by the server.");
                     }
-                    #[cfg(not(feature = "fips"))]
+                    #[cfg(feature = "non-fips")]
                     CertificateExportFormat::Pkcs12Legacy => {
                         // PKCS12 is exported as a private key object
                         cli_bail!("PKCS12: invalid object returned by the server.");

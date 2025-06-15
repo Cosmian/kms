@@ -7,7 +7,7 @@ use actix_web::{
 use base64::{Engine, engine::general_purpose::STANDARD};
 use chrono::{Duration, Utc};
 use clap::crate_version;
-use cosmian_kmip::{
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::{HashingAlgorithm, KeyWrapType, PaddingMethod},
     kmip_2_1::{
         kmip_data_structures::{KeyMaterial, KeyValue},

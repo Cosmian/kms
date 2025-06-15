@@ -1,14 +1,21 @@
 use std::{array::TryFromSliceError, sync::mpsc::SendError};
 
 use actix_web::{dev::ServerHandle, error::QueryPayloadError};
-use cloudproof_findex::implementations::redis::FindexRedisError;
-use cosmian_crypto_core::CryptoCoreError;
-use cosmian_kmip::{
-    KmipError, kmip_0::kmip_types::ErrorReason, kmip_1_4::kmip_types::ResultReason, ttlv::TtlvError,
+#[cfg(feature = "non-fips")]
+use cosmian_kms_server_database::reexport::cloudproof_findex::implementations::redis::FindexRedisError;
+#[cfg(feature = "non-fips")]
+use cosmian_kms_server_database::reexport::cosmian_kms_crypto::reexport::cosmian_cover_crypt;
+use cosmian_kms_server_database::{
+    DbError,
+    reexport::{
+        cosmian_kmip::{
+            KmipError, kmip_0::kmip_types::ErrorReason, kmip_1_4::kmip_types::ResultReason,
+            ttlv::TtlvError,
+        },
+        cosmian_kms_crypto::{CryptoError, reexport::cosmian_crypto_core::CryptoCoreError},
+        cosmian_kms_interfaces::InterfaceError,
+    },
 };
-use cosmian_kms_crypto::CryptoError;
-use cosmian_kms_interfaces::InterfaceError;
-use cosmian_kms_server_database::DbError;
 use thiserror::Error;
 use x509_parser::prelude::{PEMError, X509Error};
 
@@ -141,6 +148,7 @@ impl From<CryptoCoreError> for KmsError {
     }
 }
 
+#[cfg(feature = "non-fips")]
 impl From<FindexRedisError> for KmsError {
     fn from(e: FindexRedisError) -> Self {
         Self::Findex(e.to_string())
@@ -177,6 +185,7 @@ impl From<serde_json::Error> for KmsError {
     }
 }
 
+#[cfg(feature = "non-fips")]
 impl From<cosmian_cover_crypt::Error> for KmsError {
     fn from(e: cosmian_cover_crypt::Error) -> Self {
         Self::InvalidRequest(e.to_string())

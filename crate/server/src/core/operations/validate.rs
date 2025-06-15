@@ -4,13 +4,15 @@ use std::{
     sync::{Arc, LazyLock},
 };
 
-use cosmian_kmip::kmip_2_1::{
-    KmipOperation,
-    kmip_objects::{Certificate, Object},
-    kmip_operations::{Validate, ValidateResponse},
-    kmip_types::{UniqueIdentifier, ValidityIndicator},
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::kmip_2_1::{
+        KmipOperation,
+        kmip_objects::{Certificate, Object},
+        kmip_operations::{Validate, ValidateResponse},
+        kmip_types::{UniqueIdentifier, ValidityIndicator},
+    },
+    cosmian_kms_interfaces::SessionParams,
 };
-use cosmian_kms_interfaces::SessionParams;
 use openssl::{
     asn1::Asn1Time,
     stack::Stack,

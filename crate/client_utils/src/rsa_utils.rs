@@ -10,7 +10,7 @@ use strum::EnumString;
 
 #[derive(ValueEnum, Debug, Clone, Copy, EnumString, Deserialize)]
 pub enum RsaEncryptionAlgorithm {
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     // a.k.a PKCS#1 v1.5 RSA
     CkmRsaPkcs,
     // a.k.a PKCS#1 RSA OAEP
@@ -29,7 +29,7 @@ impl RsaEncryptionAlgorithm {
     #[must_use]
     pub fn to_cryptographic_parameters(self, hash_fn: HashFn) -> CryptographicParameters {
         match self {
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             Self::CkmRsaPkcs => CryptographicParameters {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                 padding_method: Some(PaddingMethod::PKCS1v15),
@@ -56,7 +56,7 @@ impl RsaEncryptionAlgorithm {
         match self {
             Self::CkmRsaPkcsOaep => "ckm-rsa-pkcs-oaep",
             Self::CkmRsaAesKeyWrap => "ckm-rsa-aes-key-wrap",
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             Self::CkmRsaPkcs => "ckm-rsa-pkcs",
         }
     }

@@ -1,8 +1,6 @@
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use cosmian_cover_crypt::{AccessStructure, EncryptionHint, MasterPublicKey, QualifiedAttribute};
-use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kms_client::{
     ExportObjectParams, KmsClient,
     cosmian_kmip::{
@@ -17,6 +15,12 @@ use cosmian_kms_crypto::{
     CryptoError,
     crypto::cover_crypt::{
         attributes::RekeyEditAction, kmip_requests::build_rekey_keypair_request,
+    },
+    reexport::{
+        cosmian_cover_crypt::{
+            AccessStructure, EncryptionHint, MasterPublicKey, QualifiedAttribute,
+        },
+        cosmian_crypto_core::bytes_ser_de::Serializable,
     },
 };
 

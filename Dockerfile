@@ -23,9 +23,9 @@ RUN if [ "$TARGETPLATFORM" = "linux/amd64" ]; then export ARCHITECTURE=x86_64; e
 
 # Conditional cargo build based on FIPS argument
 RUN if [ "$FIPS" = "true" ]; then \
-    cargo build -p cosmian_kms_server --release --no-default-features --features="fips"; \
-    else \
     cargo build -p cosmian_kms_server --release --no-default-features; \
+    else \
+    cargo build -p cosmian_kms_server --release --no-default-features --features="non-fips"; \
     fi
 
 #

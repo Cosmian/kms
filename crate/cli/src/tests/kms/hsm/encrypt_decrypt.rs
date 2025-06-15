@@ -1,23 +1,23 @@
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 use std::{fs, path::PathBuf};
 
 use cosmian_kms_client::reexport::cosmian_kms_client_utils::{
     create_utils::SymmetricAlgorithm, symmetric_utils::DataEncryptionAlgorithm,
 };
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 use cosmian_kms_client::{
     read_bytes_from_file,
     reexport::cosmian_kms_client_utils::rsa_utils::{HashFn, RsaEncryptionAlgorithm},
 };
 use cosmian_logger::log_init;
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 use tempfile::TempDir;
 use test_kms_server::TestsContext;
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 use tracing::trace;
 use uuid::Uuid;
 
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 use crate::actions::kms::rsa::{
     decrypt::DecryptAction, encrypt::EncryptAction, keys::create_key_pair::CreateKeyPairAction,
 };
@@ -51,7 +51,7 @@ pub(crate) async fn test_aes_gcm(ctx: &TestsContext) -> KmsCliResult<()> {
     .await
 }
 
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 pub(crate) async fn test_rsa_pkcs_oaep(ctx: &TestsContext) -> KmsCliResult<()> {
     log_init(None);
 
@@ -140,7 +140,7 @@ pub(crate) async fn test_rsa_pkcs_oaep(ctx: &TestsContext) -> KmsCliResult<()> {
     Ok(())
 }
 
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 pub(crate) async fn test_rsa_pkcs_v15(ctx: &TestsContext) -> KmsCliResult<()> {
     log_init(None);
 

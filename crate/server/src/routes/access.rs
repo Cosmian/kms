@@ -4,10 +4,12 @@ use actix_web::{
     HttpRequest, get, post,
     web::{self, Data, Json, Path},
 };
-use cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier;
 use cosmian_kms_access::access::{
     Access, AccessRightsObtainedResponse, CreatePermissionResponse, ObjectOwnedResponse,
     PrivilegedAccessResponse, SuccessResponse, UserAccessResponse,
+};
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    self, kmip_2_1::kmip_types::UniqueIdentifier,
 };
 use tracing::{debug, info};
 

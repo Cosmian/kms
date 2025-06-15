@@ -1,36 +1,42 @@
 use std::sync::Arc;
 
-use cosmian_cover_crypt::api::Covercrypt;
-use cosmian_kmip::{
-    KmipError,
-    kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, PaddingMethod, State},
-    kmip_2_1::{
-        KmipOperation,
-        extra::BulkData,
-        kmip_objects::{Certificate, Object},
-        kmip_operations::{Encrypt, EncryptResponse},
-        kmip_types::{
-            CryptographicAlgorithm, CryptographicParameters, KeyFormatType, UniqueIdentifier,
+#[cfg(feature = "non-fips")]
+use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::EncryptionSystem;
+#[cfg(feature = "non-fips")]
+use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::elliptic_curves::ecies::ecies_encrypt;
+#[cfg(feature = "non-fips")]
+use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::rsa::ckm_rsa_pkcs::ckm_rsa_pkcs_encrypt;
+#[cfg(feature = "non-fips")]
+use cosmian_kms_server_database::reexport::cosmian_kms_crypto::{
+    crypto::cover_crypt::encryption::CoverCryptEncryption,
+    reexport::cosmian_cover_crypt::api::Covercrypt,
+};
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::{
+        KmipError,
+        kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, PaddingMethod, State},
+        kmip_2_1::{
+            KmipOperation,
+            extra::BulkData,
+            kmip_objects::{Certificate, Object},
+            kmip_operations::{Encrypt, EncryptResponse},
+            kmip_types::{
+                CryptographicAlgorithm, CryptographicParameters, KeyFormatType, UniqueIdentifier,
+            },
         },
     },
-};
-#[cfg(not(feature = "fips"))]
-use cosmian_kms_crypto::crypto::elliptic_curves::ecies::ecies_encrypt;
-#[cfg(not(feature = "fips"))]
-use cosmian_kms_crypto::crypto::rsa::ckm_rsa_pkcs::ckm_rsa_pkcs_encrypt;
-use cosmian_kms_crypto::{
-    crypto::{
-        EncryptionSystem,
-        cover_crypt::encryption::CoverCryptEncryption,
-        rsa::{
-            ckm_rsa_aes_key_wrap::ckm_rsa_aes_key_wrap,
-            ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_encrypt, default_cryptographic_parameters,
+    cosmian_kms_crypto::{
+        crypto::{
+            rsa::{
+                ckm_rsa_aes_key_wrap::ckm_rsa_aes_key_wrap,
+                ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_encrypt, default_cryptographic_parameters,
+            },
+            symmetric::symmetric_ciphers::{SymCipher, encrypt as sym_encrypt, random_nonce},
         },
-        symmetric::symmetric_ciphers::{SymCipher, encrypt as sym_encrypt, random_nonce},
+        openssl::kmip_public_key_to_openssl,
     },
-    openssl::kmip_public_key_to_openssl,
+    cosmian_kms_interfaces::{CryptoAlgorithm, ObjectWithMetadata, SessionParams},
 };
-use cosmian_kms_interfaces::{CryptoAlgorithm, ObjectWithMetadata, SessionParams};
 use openssl::{
     pkey::{Id, PKey, Public},
     x509::X509,
@@ -449,6 +455,7 @@ fn encrypt_with_public_key(
 
     let key_block = owm.object().key_block()?;
     match &key_block.key_format_type {
+        #[cfg(feature = "non-fips")]
         KeyFormatType::CoverCryptPublicKey => {
             CoverCryptEncryption::instantiate(Covercrypt::default(), owm.id(), owm.object())?
                 .encrypt(request)
@@ -487,7 +494,7 @@ fn encrypt_with_pkey(
             request.cryptographic_parameters.as_ref(),
             plaintext,
         )?,
-        #[cfg(not(feature = "fips"))]
+        #[cfg(feature = "non-fips")]
         Id::EC | Id::X25519 | Id::ED25519 => ecies_encrypt(public_key, plaintext)?,
         other => {
             kms_bail!("Encrypt: public key type not supported: {other:?}")
@@ -515,7 +522,7 @@ fn encrypt_with_rsa(
         CryptographicAlgorithm::RSA => match padding {
             PaddingMethod::None => ckm_rsa_aes_key_wrap(public_key, hashing_fn, plaintext)?,
             PaddingMethod::OAEP => ckm_rsa_pkcs_oaep_encrypt(public_key, hashing_fn, plaintext)?,
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             PaddingMethod::PKCS1v15 => ckm_rsa_pkcs_encrypt(public_key, plaintext)?,
             _ => kms_bail!("Unable to encrypt with RSA: padding method not supported: {padding:?}"),
         },

@@ -177,7 +177,7 @@ impl TryFrom<kmip_2_1::kmip_types::KeyFormatType> for KeyFormatType {
                     format!("Key Format Type: {value:?}, is not supported in KMIP 1.4"),
                 ))
             }
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             kmip_2_1::kmip_types::KeyFormatType::Pkcs12Legacy => {
                 Err(KmipError::InvalidKmip14Value(
                     ResultReason::InvalidField,

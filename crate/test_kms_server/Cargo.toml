@@ -14,7 +14,7 @@ description = "Run a test KMS server for testing purposes"
 doctest = false
 
 [features]
-fips = ["cosmian_kms_client/fips", "cosmian_kms_server/fips"]
+non-fips = ["cosmian_kms_client/non-fips", "cosmian_kms_server/non-fips"]
 
 [[bench]]
 name = "benches"

@@ -1,14 +1,16 @@
 use std::sync::Arc;
 
-use cosmian_kmip::{
-    kmip_2_1::kmip_operations::{
-        Certify, Create, CreateKeyPair, Decrypt, DeleteAttribute, Destroy, Encrypt, Export, Get,
-        GetAttributes, Hash, Import, Locate, MAC, Operation, Query, ReKey, ReKeyKeyPair, Revoke,
-        SetAttribute, Validate,
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::{
+        kmip_2_1::kmip_operations::{
+            Certify, Create, CreateKeyPair, Decrypt, DeleteAttribute, Destroy, Encrypt, Export,
+            Get, GetAttributes, Hash, Import, Locate, MAC, Operation, Query, ReKey, ReKeyKeyPair,
+            Revoke, SetAttribute, Validate,
+        },
+        ttlv::{TTLV, from_ttlv},
     },
-    ttlv::{TTLV, from_ttlv},
+    cosmian_kms_interfaces::SessionParams,
 };
-use cosmian_kms_interfaces::SessionParams;
 use tracing::debug;
 
 use crate::{core::KMS, error::KmsError, kms_bail, result::KResult};
