@@ -26,12 +26,18 @@ pub struct MainDBConfig {
     /// - mysql: `MySql` or `MariaDB`. The database URL must be provided
     /// - sqlite: `SQLite`. The data will be stored at the `sqlite_path` directory
     ///   A key must be supplied on every call
-    /// - redis-findex: a Redis database with encrypted data and indexes thanks to Findex.
+    /// - redis-findex [non-FIPS]: a Redis database with encrypted data and indexes thanks to Findex.
     ///   The Redis URL must be provided, as well as the redis-master-password and the redis-findex-label
     #[clap(
         long,
         env("KMS_DATABASE_TYPE"),
-        value_parser(["postgresql", "mysql", "sqlite", "redis-findex"]),
+        value_parser([
+            "postgresql",
+            "mysql",
+            "sqlite",
+            #[cfg(feature = "non-fips")]
+            "redis-findex"
+        ]),
         verbatim_doc_comment
     )]
     pub database_type: Option<String>,
@@ -40,7 +46,12 @@ pub struct MainDBConfig {
     #[clap(
         long,
         env = "KMS_DATABASE_URL",
-        required_if_eq_any([("database_type", "postgresql"), ("database_type", "mysql"), ("database_type", "redis-findex")])
+        required_if_eq_any([
+            ("database_type", "postgresql"),
+            ("database_type", "mysql"),
+            #[cfg(feature = "non-fips")]
+            ("database_type", "redis-findex")
+        ])
     )]
     pub database_url: Option<String>,
 
@@ -54,6 +65,7 @@ pub struct MainDBConfig {
     pub sqlite_path: PathBuf,
 
     /// redis-findex: a master password used to encrypt the Redis data and indexes
+    #[cfg(feature = "non-fips")]
     #[clap(
         long,
         env = "KMS_REDIS_MASTER_PASSWORD",
@@ -63,6 +75,7 @@ pub struct MainDBConfig {
 
     /// redis-findex: a public arbitrary label that can be changed to rotate the Findex ciphertexts
     /// without changing the key
+    #[cfg(feature = "non-fips")]
     #[clap(
         long,
         env = "KMS_REDIS_FINDEX_LABEL",
@@ -99,7 +112,9 @@ impl Default for MainDBConfig {
             database_url: None,
             clear_database: false,
             unwrapped_cache_max_age: 15,
+            #[cfg(feature = "non-fips")]
             redis_master_password: None,
+            #[cfg(feature = "non-fips")]
             redis_findex_label: None,
         }
     }
@@ -126,6 +141,7 @@ impl Display for MainDBConfig {
                         .map_or("[INVALID URL]", |url| url.as_str())
                 ),
                 "sqlite" => write!(f, "sqlite: {}", self.sqlite_path.display()),
+                #[cfg(feature = "non-fips")]
                 "redis-findex" => write!(
                     f,
                     "redis-findex: {}, password: [****], label: 0x{}",

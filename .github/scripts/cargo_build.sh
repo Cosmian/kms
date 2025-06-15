@@ -104,6 +104,12 @@ declare -a DATABASES=('redis-findex' 'sqlite' 'postgresql' 'mysql')
 for KMS_TEST_DB in "${DATABASES[@]}"; do
   echo "Database KMS: $KMS_TEST_DB"
 
+  # Skip redis-findex in FIPS mode since it is not supported in FIPS mode
+  if [ "$KMS_TEST_DB" = "redis-findex" ] && [ -z "$FEATURES" ]; then
+    echo "Skipping redis-findex in FIPS mode."
+    continue
+  fi
+
   # for now, discard tests on mysql
   if [ "$KMS_TEST_DB" = "mysql" ]; then
     continue

@@ -141,6 +141,7 @@ async fn main() -> KResult<()> {
     Ok(())
 }
 
+#[cfg(feature = "non-fips")]
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
@@ -157,7 +158,9 @@ mod tests {
                 database_type: Some("[redis-findex, postgresql,...]".to_owned()),
                 database_url: Some("[redis urls]".to_owned()),
                 sqlite_path: PathBuf::from("[sqlite path]"),
+                #[cfg(feature = "non-fips")]
                 redis_master_password: Some("[redis master password]".to_owned()),
+                #[cfg(feature = "non-fips")]
                 redis_findex_label: Some("[redis findex label]".to_owned()),
                 clear_database: false,
                 unwrapped_cache_max_age: 15,

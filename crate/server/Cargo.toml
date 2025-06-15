@@ -23,7 +23,7 @@ doctest = false
 insecure = []
 # The binary won't start after a date chosen at compile-time
 timeout = []
-# Enable FIPS module feature build. KMS builds in FIPS mode when this is enabled.
+# Enable extra cryptographic mechanisms which are non-FIPS compliant.
 non-fips = [
     "cosmian_kms_client_utils/non-fips",
     "cosmian_kms_server_database/non-fips",
