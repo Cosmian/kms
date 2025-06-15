@@ -96,7 +96,7 @@ pub(crate) async fn test_redis_with_findex() -> DbResult<()> {
     Ok(())
 }
 
-/// Run the tests with a SQLite database.
+/// Run the tests with a `SQLite` database.
 /// For additional logging, run the tests with
 /// ```Rust
 /// log_init(Some(

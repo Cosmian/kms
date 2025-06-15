@@ -732,7 +732,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
     ///     },
     /// ```
     ///
-    /// The TTLV for a SymmetricKey object would look like this:
+    /// The TTLV for a `SymmetricKey` object would look like this:
     /// ```Rust
     /// TTLV {
     ///    tag: "SymmetricKey",
@@ -744,7 +744,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
     ///  ])
     /// }
     /// ```
-    /// Recovering the tag "SymmetricKey" and passing it to the visitor helps the visitor to determine
+    /// Recovering the tag "`SymmetricKey`" and passing it to the visitor helps the visitor to determine
     /// that it should use the `Object::SymmetricKey` variant, since all variants have the same structure.
     #[instrument(level = "trace", skip(self, visitor))]
     fn deserialize_map<V>(self, visitor: V) -> Result<V::Value>

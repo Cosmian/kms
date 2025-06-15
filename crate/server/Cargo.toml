@@ -51,8 +51,8 @@ clap = { workspace = true, features = [
     "derive",
     "cargo",
 ] }
-cosmian_kms_access = { path = "../access" }
-cosmian_kms_server_database = { path = "../server_database" }
+cosmian_kms_access = { path = "../access", version = "5.3.3" }
+cosmian_kms_server_database = { path = "../server_database", version = "5.3.3" }
 cosmian_logger = { workspace = true }
 dotenvy = "0.15"
 futures = "0.3"
@@ -67,14 +67,19 @@ num-bigint-dig = { workspace = true, features = [
 ] }
 openidconnect = "4.0.0"
 openssl = { workspace = true }
-proteccio_pkcs11_loader = { path = "../hsm/proteccio" }
+proteccio_pkcs11_loader = { path = "../hsm/proteccio", version = "5.3.3" }
 # Important: align the rustls version with reqwest rustls dependency
 # When using client certificate authentication, reqwest will use the
 # native-tls crate to create an Identity; this will be different backend
 # implementations depending on the operating system. On linux, it will
 # use openssl
 # The default features is to guarantee that the native-tls crate will be used
-reqwest = { workspace = true, features = ["default", "json", "native-tls", "socks"] }
+reqwest = { workspace = true, features = [
+    "default",
+    "json",
+    "native-tls",
+    "socks",
+] }
 rustls = { version = "0.23", features = [
     "tls12",
     "std",
@@ -90,7 +95,7 @@ tokio = { workspace = true, features = ["full"] }
 toml = "0.8"
 tracing = { workspace = true }
 url = { workspace = true }
-utimaco_pkcs11_loader = { path = "../hsm/utimaco" }
+utimaco_pkcs11_loader = { path = "../hsm/utimaco", version = "5.3.3" }
 uuid = { workspace = true, features = ["v4"] }
 x509-parser = { workspace = true }
 zeroize = { workspace = true }
@@ -98,7 +103,7 @@ pem.workspace = true
 
 [dev-dependencies]
 actix-http = "3.10"
-cosmian_kms_client_utils = { path = "../client_utils" }
+cosmian_kms_client_utils = { path = "../client_utils", version = "5.3.3" }
 cosmian_logger = { workspace = true }
 mockall = { version = "0.13" }
 native-tls = { workspace = true }

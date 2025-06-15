@@ -21,9 +21,9 @@ non-fips = [
 [dependencies]
 async-trait = { workspace = true }
 cloudproof_findex = { version = "5.0", optional = true }
-cosmian_kmip = { path = "../kmip" }
-cosmian_kms_crypto = { path = "../crypto" }
-cosmian_kms_interfaces = { path = "../interfaces" }
+cosmian_kmip = { path = "../kmip", version = "5.3.3" }
+cosmian_kms_crypto = { path = "../crypto", version = "5.3.3" }
+cosmian_kms_interfaces = { path = "../interfaces", version = "5.3.3" }
 hex = { workspace = true }
 lru = { workspace = true }
 num-bigint-dig = { workspace = true, features = [
