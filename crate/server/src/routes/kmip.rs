@@ -362,7 +362,7 @@ async fn handle_ttlv_bytes_inner(
         tag=ttlv.tag.as_str(),
         "POST /kmip {}.{} Binary. Request: {:?} {}", major, minor, ttlv.tag.as_str(), user
     );
-    info!(
+    debug!(
         target: "kmip",
         user=user,
         tag=ttlv.tag.as_str(),
@@ -376,7 +376,10 @@ async fn handle_ttlv_bytes_inner(
     // log the request
     debug!("Request Message: {request_message:#?}");
 
-    let response_message = Box::pin(message(kms, request_message, user, None)).await?;
+    let mut response_message = Box::pin(message(kms, request_message, user, None)).await?;
+
+    // Perform 1.1 and 1.2 Response Tweaks to ensure compatibility
+    perform_response_tweaks(&mut response_message, major, minor);
 
     // log the response
     debug!("Response Message: {response_message:#?}");
@@ -384,6 +387,8 @@ async fn handle_ttlv_bytes_inner(
     // serialize the response to TTLV
     let response_ttlv = to_ttlv(&response_message)
         .map_err(|e| KmsError::InvalidRequest(format!("Failed to serialize response: {e}")))?;
+
+    debug!("Response Message TTLV: {response_ttlv:#?}");
 
     // convert the TTLV to bytes
     let response_bytes = TTLV::to_bytes(&response_ttlv, kmip_flavor)
@@ -516,5 +521,33 @@ mod local_tests {
             .expect("Failed to parse response");
         // make sure we can parse the TTLV
         let _response: ResponseMessage = from_ttlv(ttlv).expect("Failed to parse response");
+    }
+}
+
+/// Perform response tweaks for KMIP 1.1 and 1.2 since we only support structures for KMIP 1.4 and 2.1
+fn perform_response_tweaks(response: &mut ResponseMessage, major: i32, minor: i32) {
+    // KMIP 1.1 and 1.2 Response Tweaks
+    if major == 1 && minor <= 2 {
+        // Encrypt Response does not have the Authenticated Encryption Tag,
+        // so we must concatenate the value with the Data field
+        for batch_item in &mut response.batch_item {
+            let ResponseMessageBatchItemVersioned::V14(item) = batch_item else {
+                continue; // Skip if not V14
+            };
+            // If the operation is Encrypt and the response payload is present,
+            // we need to concatenate the Authenticated Encryption Tag with the Data field
+            // Check if the operation is Encrypt
+            if let Some(cosmian_kmip::kmip_1_4::kmip_operations::Operation::EncryptResponse(
+                encrypt_response,
+            )) = item.response_payload.as_mut()
+            {
+                // Concatenate the Authenticated Encryption Tag with the Data field
+                if let Some(auth_tag) = encrypt_response.authenticated_encryption_tag.take() {
+                    if let Some(data) = encrypt_response.data.as_mut() {
+                        data.extend_from_slice(&auth_tag);
+                    }
+                }
+            }
+        }
     }
 }
