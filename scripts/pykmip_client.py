@@ -968,15 +968,34 @@ def perform_encrypt(proxy, verbose=False):
             }
             
         except Exception as crypto_error:
+            import traceback
             error_msg = str(crypto_error)
+            full_traceback = traceback.format_exc()
             
-            response = {
-                "operation": "Encrypt",
-                "status": "error",
-                "uid": uid,
-                "error": error_msg,
-                "note": "Key was created successfully but encrypt operation failed"
-            }
+            if verbose:
+                print(f"Full error traceback:\n{full_traceback}")
+            
+            # Check for known KMIP compatibility issues
+            if "Invalid length used to read Base" in error_msg or "StreamNotEmptyError" in error_msg:
+                response = {
+                    "operation": "Encrypt",
+                    "status": "error",
+                    "uid": uid,
+                    "error": "KMIP version compatibility issue with encrypt operation",
+                    "technical_details": f"PyKMIP 1.2 parser incompatible with Cosmian KMS response format: {error_msg}",
+                    "note": "Key creation succeeded, but encrypt operation has protocol parsing issues",
+                    "workaround": "Use direct REST API or update PyKMIP for KMIP 2.x compatibility",
+                    "full_traceback": full_traceback if verbose else None
+                }
+            else:
+                response = {
+                    "operation": "Encrypt",
+                    "status": "error",
+                    "uid": uid,
+                    "error": error_msg,
+                    "note": "Key was created successfully but encrypt operation failed",
+                    "full_traceback": full_traceback if verbose else None
+                }
 
         return response
 
