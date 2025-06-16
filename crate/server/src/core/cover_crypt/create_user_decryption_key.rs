@@ -1,21 +1,27 @@
 use std::sync::Arc;
 
-use cosmian_cover_crypt::{MasterSecretKey, api::Covercrypt};
-use cosmian_crypto_core::bytes_ser_de::Serializable;
-use cosmian_kmip::{
-    kmip_0::kmip_types::State,
-    kmip_2_1::{
-        kmip_attributes::Attributes,
-        kmip_objects::{Object, ObjectType},
-        kmip_operations::{Create, Import},
-        kmip_types::{KeyFormatType, UniqueIdentifier},
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::{
+        kmip_0::kmip_types::State,
+        kmip_2_1::{
+            kmip_attributes::Attributes,
+            kmip_objects::{Object, ObjectType},
+            kmip_operations::{Create, Import},
+            kmip_types::{KeyFormatType, LinkType, UniqueIdentifier},
+        },
     },
+    cosmian_kms_crypto::{
+        crypto::{
+            access_policy_from_attributes,
+            cover_crypt::{master_keys::create_msk_object, user_key::UserDecryptionKeysHandler},
+        },
+        reexport::{
+            cosmian_cover_crypt::{MasterSecretKey, api::Covercrypt},
+            cosmian_crypto_core::bytes_ser_de::Serializable,
+        },
+    },
+    cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams},
 };
-use cosmian_kms_crypto::crypto::cover_crypt::{
-    attributes::access_policy_from_attributes, master_keys::create_msk_object,
-    user_key::UserDecryptionKeysHandler,
-};
-use cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams};
 use tracing::{debug, trace};
 
 use super::KMS;
@@ -128,7 +134,7 @@ fn create_user_decryption_key_(
 
     let msk_attributes = owm.object().attributes()?;
     let mpk_link = msk_attributes
-        .get_link(cosmian_kmip::kmip_2_1::kmip_types::LinkType::PublicKeyLink)
+        .get_link(LinkType::PublicKeyLink)
         .ok_or_else(|| {
             KmsError::InconsistentOperation(
                 "The server can't create a decryption key: the master secret key has no public \

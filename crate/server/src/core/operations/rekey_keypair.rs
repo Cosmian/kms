@@ -1,35 +1,45 @@
 use std::sync::Arc;
 
-use cosmian_cover_crypt::api::Covercrypt;
-use cosmian_kmip::{
-    kmip_0::kmip_types::{ErrorReason, State},
-    kmip_2_1::{
-        kmip_objects::ObjectType,
-        kmip_operations::{ReKeyKeyPair, ReKeyKeyPairResponse},
-        kmip_types::{CryptographicAlgorithm, KeyFormatType},
-    },
+#[cfg(feature = "non-fips")]
+use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm;
+#[cfg(feature = "non-fips")]
+use cosmian_kms_server_database::reexport::cosmian_kms_crypto::{
+    crypto::cover_crypt::attributes::rekey_edit_action_from_attributes,
+    reexport::cosmian_cover_crypt::api::Covercrypt,
 };
-use cosmian_kms_crypto::crypto::cover_crypt::attributes::rekey_edit_action_from_attributes;
-use cosmian_kms_interfaces::SessionParams;
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::{
+        kmip_0::kmip_types::{ErrorReason, State},
+        kmip_2_1::{
+            kmip_objects::ObjectType,
+            kmip_operations::{ReKeyKeyPair, ReKeyKeyPairResponse},
+            kmip_types::KeyFormatType,
+        },
+    },
+    cosmian_kms_interfaces::SessionParams,
+};
 use tracing::trace;
 
+#[cfg(feature = "non-fips")]
+use crate::core::cover_crypt::rekey_keypair_cover_crypt;
 use crate::{
-    core::{KMS, cover_crypt::rekey_keypair_cover_crypt},
+    core::KMS,
     error::KmsError,
     kms_bail,
     result::{KResult, KResultHelper},
 };
 
+#[allow(clippy::used_underscore_binding)]
 pub(crate) async fn rekey_keypair(
     kms: &KMS,
     request: ReKeyKeyPair,
-    user: &str,
+    _user: &str,
     params: Option<Arc<dyn SessionParams>>,
-    privileged_users: Option<Vec<String>>,
+    _privileged_users: Option<Vec<String>>,
 ) -> KResult<ReKeyKeyPairResponse> {
     trace!("Internal rekey key pair");
 
-    let attributes = request.private_key_attributes.as_ref().ok_or_else(|| {
+    let _attributes = request.private_key_attributes.as_ref().ok_or_else(|| {
         KmsError::InvalidRequest(
             "Rekey keypair: the private key attributes must be supplied".to_owned(),
         )
@@ -67,21 +77,22 @@ pub(crate) async fn rekey_keypair(
             }
         }
 
-        if Some(CryptographicAlgorithm::CoverCrypt) == attributes.cryptographic_algorithm {
-            let action = rekey_edit_action_from_attributes(attributes)?;
+        #[cfg(feature = "non-fips")]
+        if Some(CryptographicAlgorithm::CoverCrypt) == _attributes.cryptographic_algorithm {
+            let action = rekey_edit_action_from_attributes(_attributes)?;
             return Box::pin(rekey_keypair_cover_crypt(
                 kms,
                 Covercrypt::default(),
                 owm.id().to_owned(),
-                user,
+                _user,
                 action,
                 params,
                 owm.attributes().sensitive.unwrap_or(false),
-                privileged_users,
+                _privileged_users,
             ))
             .await
             .context("Rekey keypair: Covercrypt rekey failed")
-        } else if let Some(other) = attributes.cryptographic_algorithm {
+        } else if let Some(other) = _attributes.cryptographic_algorithm {
             kms_bail!(KmsError::NotSupported(format!(
                 "The rekey of a key pair for algorithm: {other:?} is not yet supported"
             )))

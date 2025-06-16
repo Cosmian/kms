@@ -302,7 +302,7 @@ mod tests {
     #[test]
     pub(crate) fn test_wrap1() {
         const TEST_SIZE_LIMIT: usize = 100;
-        #[cfg(feature = "fips")]
+        #[cfg(not(feature = "non-fips"))]
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
 
@@ -336,7 +336,7 @@ mod tests {
 
     #[test]
     pub(crate) fn test_wrap_large_length() {
-        #[cfg(feature = "fips")]
+        #[cfg(not(feature = "non-fips"))]
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
 
@@ -361,7 +361,7 @@ mod tests {
 
     #[test]
     pub(crate) fn test_wrap_small_length() {
-        #[cfg(feature = "fips")]
+        #[cfg(not(feature = "non-fips"))]
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
 
@@ -384,7 +384,7 @@ mod tests {
 
     #[test]
     pub(crate) fn test_wrap_bad_key_size() {
-        #[cfg(feature = "fips")]
+        #[cfg(not(feature = "non-fips"))]
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
 
@@ -415,7 +415,7 @@ mod tests {
 
     #[test]
     pub(crate) fn test_wrap_bad_input_size() {
-        #[cfg(feature = "fips")]
+        #[cfg(not(feature = "non-fips"))]
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
 
@@ -429,7 +429,7 @@ mod tests {
 
     #[test]
     pub(crate) fn test_wrap_bad_input_content() {
-        #[cfg(feature = "fips")]
+        #[cfg(not(feature = "non-fips"))]
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
 

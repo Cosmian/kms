@@ -10,9 +10,9 @@ use openssl::{
 };
 use zeroize::Zeroizing;
 
-#[cfg(feature = "fips")]
+#[cfg(not(feature = "non-fips"))]
 use super::FIPS_MIN_RSA_MODULUS_LENGTH;
-#[cfg(feature = "fips")]
+#[cfg(not(feature = "non-fips"))]
 use crate::crypto_bail;
 use crate::error::CryptoError;
 

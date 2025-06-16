@@ -1,7 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::print_stdout)]
 
 use base64::{Engine, engine::general_purpose::STANDARD};
-use cosmian_kmip::{
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::{HashingAlgorithm, PaddingMethod},
     kmip_2_1::{
         kmip_attributes::Attributes,

@@ -1,22 +1,24 @@
 use std::sync::Arc;
 
-use cosmian_kmip::{
-    kmip_0::{
-        kmip_messages::{RequestMessage, ResponseMessage},
-        kmip_operations::{DiscoverVersions, DiscoverVersionsResponse},
-        kmip_types::State,
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::{
+        kmip_0::{
+            kmip_messages::{RequestMessage, ResponseMessage},
+            kmip_operations::{DiscoverVersions, DiscoverVersionsResponse},
+            kmip_types::State,
+        },
+        kmip_2_1::kmip_operations::{
+            AddAttribute, AddAttributeResponse, Certify, CertifyResponse, Create, CreateKeyPair,
+            CreateKeyPairResponse, CreateResponse, Decrypt, DecryptResponse, DeleteAttribute,
+            DeleteAttributeResponse, Destroy, DestroyResponse, Encrypt, EncryptResponse, Export,
+            ExportResponse, Get, GetAttributes, GetAttributesResponse, GetResponse, Hash,
+            HashResponse, Import, ImportResponse, Locate, LocateResponse, MAC, MACResponse, Query,
+            QueryResponse, ReKey, ReKeyKeyPair, ReKeyKeyPairResponse, ReKeyResponse, Revoke,
+            RevokeResponse, SetAttribute, SetAttributeResponse, Validate, ValidateResponse,
+        },
     },
-    kmip_2_1::kmip_operations::{
-        AddAttribute, AddAttributeResponse, Certify, CertifyResponse, Create, CreateKeyPair,
-        CreateKeyPairResponse, CreateResponse, Decrypt, DecryptResponse, DeleteAttribute,
-        DeleteAttributeResponse, Destroy, DestroyResponse, Encrypt, EncryptResponse, Export,
-        ExportResponse, Get, GetAttributes, GetAttributesResponse, GetResponse, Hash, HashResponse,
-        Import, ImportResponse, Locate, LocateResponse, MAC, MACResponse, Query, QueryResponse,
-        ReKey, ReKeyKeyPair, ReKeyKeyPairResponse, ReKeyResponse, Revoke, RevokeResponse,
-        SetAttribute, SetAttributeResponse, Validate, ValidateResponse,
-    },
+    cosmian_kms_interfaces::SessionParams,
 };
-use cosmian_kms_interfaces::SessionParams;
 
 use crate::{
     core::{KMS, operations},

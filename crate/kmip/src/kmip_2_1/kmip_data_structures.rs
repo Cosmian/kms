@@ -987,7 +987,7 @@ impl Serialize for KeyMaterialSerializer {
                 | KeyFormatType::X509
                 | KeyFormatType::CoverCryptSecretKey
                 | KeyFormatType::CoverCryptPublicKey => serializer.serialize_bytes(bytes),
-                #[cfg(not(feature = "fips"))]
+                #[cfg(feature = "non-fips")]
                 KeyFormatType::Pkcs12Legacy => serializer.serialize_bytes(bytes),
                 x => Err(serde::ser::Error::custom(format!(
                     "KeyMaterialWrapper: {x:?} key format type does not support byte strings"
@@ -1174,7 +1174,7 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
                     | KeyFormatType::CoverCryptSecretKey => {
                         Ok(KeyMaterial::ByteString(Zeroizing::new(bytestring)))
                     }
-                    #[cfg(not(feature = "fips"))]
+                    #[cfg(feature = "non-fips")]
                     KeyFormatType::Pkcs12Legacy => {
                         Ok(KeyMaterial::ByteString(Zeroizing::new(bytestring)))
                     }
@@ -1448,7 +1448,7 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
                     key_format_type: self.key_format_type,
                 })
             }
-            #[cfg(not(feature = "fips"))]
+            #[cfg(feature = "non-fips")]
             KeyFormatType::Pkcs12Legacy => {
                 trace!(
                     "===> KeyMaterial: Deserializing Bytes String for key format type: {:?} ",

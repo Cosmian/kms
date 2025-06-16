@@ -1,3 +1,3 @@
 pub(crate) mod create_key_pair;
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 pub(crate) mod encrypt_decrypt;

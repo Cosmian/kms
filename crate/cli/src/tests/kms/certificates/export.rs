@@ -474,7 +474,7 @@ async fn test_export_root_and_intermediate_pkcs12() -> KmsCliResult<()> {
     Ok(())
 }
 
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_export_import_legacy_p12() -> KmsCliResult<()> {
     // Create a test server

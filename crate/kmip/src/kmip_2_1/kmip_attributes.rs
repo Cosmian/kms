@@ -617,7 +617,7 @@ impl Attributes {
             )
         })?;
 
-        #[cfg(not(feature = "fips"))]
+        #[cfg(feature = "non-fips")]
         // In non-FIPS mode, Unrestricted can be allowed.
         let flag = flag | CryptographicUsageMask::Unrestricted;
 

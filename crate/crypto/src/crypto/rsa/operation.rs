@@ -1,4 +1,4 @@
-#[cfg(feature = "fips")]
+#[cfg(not(feature = "non-fips"))]
 use cosmian_kmip::kmip_2_1::extra::fips::{
     FIPS_MIN_RSA_MODULUS_LENGTH, FIPS_PRIVATE_RSA_MASK, FIPS_PUBLIC_RSA_MASK,
 };
@@ -20,11 +20,11 @@ use openssl::{pkey::Private, rsa::Rsa};
 use tracing::{debug, trace};
 use zeroize::Zeroizing;
 
-#[cfg(feature = "fips")]
+#[cfg(not(feature = "non-fips"))]
 use crate::crypto_bail;
 use crate::{CryptoResultHelper, crypto::KeyPair, error::CryptoError};
 
-#[cfg(feature = "fips")]
+#[cfg(not(feature = "non-fips"))]
 /// Check that bits set in `mask` are only bits set in `flags`. If any bit set
 /// in `mask` is not set in `flags`, raise an error.
 ///
@@ -59,7 +59,7 @@ fn check_rsa_mask_against_flags(
     Ok(())
 }
 
-#[cfg(feature = "fips")]
+#[cfg(not(feature = "non-fips"))]
 /// Check that `mask` is compliant with FIPS restrictions for private and public
 /// key components. For example an RSA pubic key must not be used for decryption
 /// in FIPS mode.
@@ -216,7 +216,8 @@ pub fn create_rsa_key_pair(
             .ok_or_else(|| CryptoError::Default("Invalid RSA key size".to_owned()))?,
     )?;
     debug!("RSA key pair generation: size in bits: {key_size_in_bits}");
-    #[cfg(feature = "fips")]
+
+    #[cfg(not(feature = "non-fips"))]
     if key_size_in_bits < FIPS_MIN_RSA_MODULUS_LENGTH {
         crypto_bail!(
             "FIPS 140 mode requires a minimum key length of {} bits",
@@ -230,7 +231,8 @@ pub fn create_rsa_key_pair(
     let public_key_mask = public_key_attributes
         .as_ref()
         .and_then(|attr| attr.cryptographic_usage_mask);
-    #[cfg(feature = "fips")]
+
+    #[cfg(not(feature = "non-fips"))]
     check_rsa_mask_compliance(private_key_mask, public_key_mask)?;
 
     // recover tags and clean them up from the common attributes
@@ -306,7 +308,7 @@ pub fn create_rsa_key_pair(
     Ok(KeyPair::new(private_key, public_key))
 }
 
-#[cfg(feature = "fips")]
+#[cfg(not(feature = "non-fips"))]
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {

@@ -1,36 +1,34 @@
 // This file exists to standardize key-derivation across all KMS crates
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 use argon2::Argon2;
-#[cfg(feature = "fips")]
+#[cfg(not(feature = "non-fips"))]
 use openssl::{hash::MessageDigest, pkcs5::pbkdf2_hmac};
 
 use super::secret::Secret;
-#[cfg(feature = "fips")]
+#[cfg(not(feature = "non-fips"))]
 use crate::crypto_bail;
 use crate::error::CryptoError;
 
 /// Minimum random salt size in bytes to use when deriving keys.
 pub const FIPS_MIN_SALT_SIZE: usize = 16;
 
-#[cfg(feature = "fips")]
 /// Output size in bits of the hash function used in PBKDF2.
 pub const FIPS_HLEN: usize = 512;
-#[cfg(feature = "fips")]
+
 /// Minimum key length in bits to be derived in FIPS mode.
 pub const FIPS_MIN_KLEN: usize = 112;
-#[cfg(feature = "fips")]
+
 /// Max key length in bits authorized is (2^32 - 1) x hLen.
 /// Source: NIST.FIPS.800-132 - Section 5.3.
 pub const FIPS_MAX_KLEN: usize = ((1 << 32) - 1) * FIPS_HLEN;
 
-#[cfg(feature = "fips")]
 /// OWASP recommended parameter for SHA-512 chosen following NIST.FIPS.800-132
 /// recommendations.
 pub const FIPS_MIN_ITER: usize = 210_000;
 
 /// Derive a key into a LENGTH bytes key using Argon 2 by default, and PBKDF2
 /// with SHA512 in FIPS mode.
-#[cfg(feature = "fips")]
+#[cfg(not(feature = "non-fips"))]
 pub fn derive_key_from_password<const LENGTH: usize>(
     salt: &[u8; FIPS_MIN_SALT_SIZE],
     password: &[u8],
@@ -55,7 +53,7 @@ pub fn derive_key_from_password<const LENGTH: usize>(
 
 /// Derive a key into a LENGTH bytes key using Argon 2 by default, and PBKDF2
 /// with SHA512 in FIPS mode.
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 pub fn derive_key_from_password<const LENGTH: usize>(
     salt: &[u8; FIPS_MIN_SALT_SIZE],
     password: &[u8],
@@ -72,8 +70,8 @@ pub fn derive_key_from_password<const LENGTH: usize>(
 #[test]
 #[allow(clippy::unwrap_used)]
 fn test_password_derivation() {
-    #[cfg(feature = "fips")]
     // Load FIPS provider module from OpenSSL.
+    #[cfg(not(feature = "non-fips"))]
     openssl::provider::Provider::load(None, "fips").unwrap();
 
     let salt = b"rediswithfindex_";
@@ -85,7 +83,7 @@ fn test_password_derivation() {
 
 #[test]
 #[allow(clippy::unwrap_used)]
-#[cfg(feature = "fips")]
+#[cfg(not(feature = "non-fips"))]
 fn test_password_derivation_bad_size() {
     const BIG_KEY_LENGTH: usize = (((1 << 32) - 1) * 512) / 8 + 1;
     // Load FIPS provider module from OpenSSL.

@@ -13,15 +13,11 @@ doctest = false
 
 [dependencies]
 async-trait = { workspace = true }
-cosmian_kms_interfaces = { path = "../../interfaces" }
+cosmian_kms_interfaces = { path = "../../interfaces", version = "5.3.3" }
 libloading = { workspace = true }
 lru = { workspace = true }
 pkcs11-sys = { workspace = true }
 rand = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
 zeroize = { workspace = true }
-
-[dev-dependencies]
-tracing-subscriber = { workspace = true, features = ["env-filter"] }

@@ -11,26 +11,28 @@ use actix_service::Service;
 use actix_web::dev::ServiceResponse;
 use alcoholic_jwt::{JWKS, token_kid, validate};
 use base64::{Engine, engine::general_purpose};
-use cosmian_kmip::{
-    kmip_0::kmip_types::{BlockCipherMode, KeyWrapType},
-    kmip_2_1::{
-        KmipOperation,
-        extra::{VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
-        kmip_attributes::Attributes,
-        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingSpecification},
-        kmip_objects::{Certificate, Object, ObjectType, PrivateKey},
-        kmip_operations::{Certify, Get, GetResponse, Import, ImportResponse},
-        kmip_types::{
-            CertificateAttributes, CryptographicParameters, EncodingOption,
-            EncryptionKeyInformation, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
-            UniqueIdentifier, VendorAttribute, VendorAttributeValue, WrappingMethod,
-        },
-        requests::create_rsa_key_pair_request,
-    },
-    ttlv::{TTLV, from_ttlv},
-};
 use cosmian_kms_access::access::{Access, SuccessResponse};
-use cosmian_kms_crypto::crypto::certificates::EXTENSION_CONFIG;
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::{
+        kmip_0::kmip_types::{BlockCipherMode, KeyWrapType},
+        kmip_2_1::{
+            KmipOperation,
+            extra::{VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
+            kmip_attributes::Attributes,
+            kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingSpecification},
+            kmip_objects::{Certificate, Object, ObjectType, PrivateKey},
+            kmip_operations::{Certify, Get, GetResponse, Import, ImportResponse},
+            kmip_types::{
+                CertificateAttributes, CryptographicParameters, EncodingOption,
+                EncryptionKeyInformation, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
+                UniqueIdentifier, VendorAttribute, VendorAttributeValue, WrappingMethod,
+            },
+            requests::create_rsa_key_pair_request,
+        },
+        ttlv::{TTLV, from_ttlv},
+    },
+    cosmian_kms_crypto::crypto::certificates::EXTENSION_CONFIG,
+};
 use cosmian_logger::log_init;
 use hex::{FromHex, ToHex};
 use openssl::{

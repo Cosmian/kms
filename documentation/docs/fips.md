@@ -19,8 +19,9 @@ Cosmian
 produces [pre-built Ubuntu 22.04 FIPS mode binaries](https://package.cosmian.com/kms/5.3.3/ubuntu-22.04/)
 and docker containers of the KMS (on gcr.io).
 
-Alternatively, you can build the FIPS mode version from source, using the `--features fips` flag:
+By default, the Cosmian KMS is built with FIPS compliance enabled.
+Alternatively, you can enable all cryptographic mechanisms by building from source, using the `--features non-fips` flag:
 
 ```shell
-cargo build --release --features fips
+cargo build --release --features non-fips
 ```

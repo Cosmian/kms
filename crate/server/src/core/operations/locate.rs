@@ -1,14 +1,16 @@
 use std::sync::Arc;
 
-use cosmian_kmip::{
-    kmip_0::kmip_types::State,
-    kmip_2_1::{
-        kmip_operations::{Locate, LocateResponse},
-        kmip_types::UniqueIdentifier,
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::{
+        kmip_0::kmip_types::State,
+        kmip_2_1::{
+            kmip_operations::{Locate, LocateResponse},
+            kmip_types::UniqueIdentifier,
+        },
     },
+    cosmian_kms_crypto::crypto::access_policy_from_attributes,
+    cosmian_kms_interfaces::SessionParams,
 };
-use cosmian_kms_crypto::crypto::cover_crypt::attributes::access_policy_from_attributes;
-use cosmian_kms_interfaces::SessionParams;
 use tracing::trace;
 
 use crate::{core::KMS, result::KResult};
@@ -29,13 +31,11 @@ pub(crate) async fn locate(
     trace!("Found {} objects: {:?}", uids_attrs.len(), uids_attrs);
     // Filter the uids that match the access access structure
     let mut uids = Vec::new();
-    if !uids_attrs.is_empty() {
+    if access_policy_from_attributes(&request.attributes).is_err() {
         for (uid, _, attributes) in uids_attrs {
             trace!("UID: {:?}, Attributes: {:?}", uid, attributes);
             // If there is no access access structure, do not match and add, otherwise compare the access policies
-            if access_policy_from_attributes(&request.attributes).is_err() {
-                uids.push(UniqueIdentifier::TextString(uid));
-            }
+            uids.push(UniqueIdentifier::TextString(uid));
         }
     }
 

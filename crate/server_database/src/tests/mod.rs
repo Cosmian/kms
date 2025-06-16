@@ -2,6 +2,7 @@
 
 use std::path::Path;
 
+#[cfg(feature = "non-fips")]
 use cosmian_kms_crypto::crypto::secret::Secret;
 use cosmian_logger::log_init;
 use tempfile::TempDir;
@@ -14,12 +15,15 @@ use self::{
     permissions_test::permissions,
     tagging_tests::tags,
 };
+#[cfg(feature = "non-fips")]
+use crate::stores::additional_redis_findex_tests::{
+    test_corner_case, test_objects_db, test_permissions_db,
+};
+#[cfg(feature = "non-fips")]
+use crate::stores::{REDIS_WITH_FINDEX_MASTER_KEY_LENGTH, RedisWithFindex};
 use crate::{
     error::DbResult,
-    stores::{
-        MySqlPool, PgPool, REDIS_WITH_FINDEX_MASTER_KEY_LENGTH, RedisWithFindex, SqlitePool,
-        additional_redis_findex_tests::{test_corner_case, test_objects_db, test_permissions_db},
-    },
+    stores::{MySqlPool, PgPool, SqlitePool},
     tests::{database_tests::atomic, list_uids_for_tags_test::list_uids_for_tags_test},
 };
 
@@ -31,6 +35,7 @@ mod owner_test;
 mod permissions_test;
 mod tagging_tests;
 
+#[cfg(feature = "non-fips")]
 pub(crate) fn get_redis_url() -> String {
     std::env::var("REDIS_HOST").map_or_else(
         |_| "redis://localhost:6379".to_owned(),
@@ -62,6 +67,7 @@ async fn get_mysql() -> DbResult<MySqlPool> {
 
 // To run local tests with a Redis in Docker (and local storage - needed for transactions), run
 // docker run --name redis -p 6379:6379 -d redis redis-server --save 60 1 --loglevel verbose
+#[cfg(feature = "non-fips")]
 async fn get_redis_with_findex() -> DbResult<RedisWithFindex> {
     let redis_url = get_redis_url();
     let redis_url = option_env!("KMS_REDIS_URL").unwrap_or(&redis_url);
@@ -70,6 +76,7 @@ async fn get_redis_with_findex() -> DbResult<RedisWithFindex> {
     Ok(redis_findex)
 }
 
+#[cfg(feature = "non-fips")]
 #[tokio::test]
 pub(crate) async fn test_redis_with_findex() -> DbResult<()> {
     log_init(option_env!("RUST_LOG"));
@@ -89,7 +96,7 @@ pub(crate) async fn test_redis_with_findex() -> DbResult<()> {
     Ok(())
 }
 
-/// Run the tests with a SQLite database.
+/// Run the tests with a `SQLite` database.
 /// For additional logging, run the tests with
 /// ```Rust
 /// log_init(Some(

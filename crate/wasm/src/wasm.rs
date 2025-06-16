@@ -845,7 +845,7 @@ pub fn parse_export_certificate_ttlv_response(
                     ))
                     .map_err(|e| JsValue::from(e.to_string()))?
                 }
-                #[cfg(not(feature = "fips"))]
+                #[cfg(feature = "non-fips")]
                 CertificateExportFormat::Pkcs12Legacy => {
                     // PKCS12 is exported as a private key object
                     Err(UtilsError::Default(

@@ -37,8 +37,8 @@ jobs:
       toolchain: ${{ inputs.toolchain }}
       debug_or_release: ${{ inputs.debug_or_release }}
 
-  not-fips-image:
-    name: Not FIPS image build and tests
+  non-fips-image:
+    name: Non-FIPS image build and tests
     uses: Cosmian/reusable_workflows/.github/workflows/build_docker_image.yml@develop
     with:
       prefix: ''

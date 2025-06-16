@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
-#[cfg(not(feature = "fips"))]
-use cosmian_kmip::KmipResultHelper;
 use cosmian_kms_server::{
     config::{ClapConfig, ServerParams},
     result::KResult,
     start_kms_server::start_kms_server,
 };
+#[cfg(feature = "non-fips")]
+use cosmian_kms_server_database::reexport::cosmian_kmip::KmipResultHelper;
 use cosmian_logger::{TelemetryConfig, TracingConfig, tracing_init};
 use dotenvy::dotenv;
 use openssl::provider::Provider;
@@ -76,7 +76,7 @@ async fn main() -> KResult<()> {
     let _guard = span.enter();
 
     // print openssl version
-    #[cfg(feature = "fips")]
+
     info!(
         "OpenSSL FIPS mode version: {}, in {}, number: {:x}",
         openssl::version::version(),
@@ -84,7 +84,7 @@ async fn main() -> KResult<()> {
         openssl::version::number()
     );
 
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     info!(
         "OpenSSL default mode, version: {}, in {}, number: {:x}",
         openssl::version::version(),
@@ -96,13 +96,13 @@ async fn main() -> KResult<()> {
     //  https://docs.openssl.org/3.1/man7/crypto/#openssl-providers
 
     // In FIPS mode, we only load the FIPS provider
-    #[cfg(feature = "fips")]
+    #[cfg(not(feature = "non-fips"))]
     Provider::load(None, "fips")?;
 
     // Not in FIPS mode and version > 3.0: load the default provider and the legacy provider
     // so that we can use the legacy algorithms.
     // particularly those used for old PKCS#12 formats
-    #[cfg(not(feature = "fips"))]
+    #[cfg(feature = "non-fips")]
     if openssl::version::number() >= 0x30000000 {
         Provider::try_load(None, "legacy", true)
             .context("export: unable to load the openssl legacy provider")?;
@@ -141,6 +141,7 @@ async fn main() -> KResult<()> {
     Ok(())
 }
 
+#[cfg(feature = "non-fips")]
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
@@ -157,7 +158,9 @@ mod tests {
                 database_type: Some("[redis-findex, postgresql,...]".to_owned()),
                 database_url: Some("[redis urls]".to_owned()),
                 sqlite_path: PathBuf::from("[sqlite path]"),
+                #[cfg(feature = "non-fips")]
                 redis_master_password: Some("[redis master password]".to_owned()),
+                #[cfg(feature = "non-fips")]
                 redis_findex_label: Some("[redis findex label]".to_owned()),
                 clear_database: false,
                 unwrapped_cache_max_age: 15,

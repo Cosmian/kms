@@ -4,11 +4,13 @@ use std::{
 };
 
 use actix_web::{HttpMessage, HttpRequest};
-use cosmian_kmip::kmip_2_1::{KmipOperation, kmip_types::UniqueIdentifier};
 use cosmian_kms_access::access::{
     Access, AccessRightsObtainedResponse, ObjectOwnedResponse, UserAccessResponse,
 };
-use cosmian_kms_interfaces::SessionParams;
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::kmip_2_1::{KmipOperation, kmip_types::UniqueIdentifier},
+    cosmian_kms_interfaces::SessionParams,
+};
 use tracing::debug;
 
 use crate::{

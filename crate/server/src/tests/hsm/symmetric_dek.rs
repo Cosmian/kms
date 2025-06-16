@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use cosmian_kmip::{
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::BlockCipherMode,
     kmip_2_1::{
         kmip_operations::Operation,

@@ -15,14 +15,14 @@ crate-type = ["cdylib", "rlib"]
 doctest = false
 
 [features]
-fips = ["cosmian_kmip/fips"]
+non-fips = ["cosmian_kmip/non-fips"]
 
 [dependencies]
 base64.workspace = true
 clap = { workspace = true, features = ["std", "derive"] }
 cosmian_config_utils = { workspace = true }
-cosmian_kmip = { path = "../kmip" }
-cosmian_kms_access = { path = "../access" }
+cosmian_kmip = { path = "../kmip", version = "5.3.3" }
+cosmian_kms_access = { path = "../access", version = "5.3.3" }
 pem = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

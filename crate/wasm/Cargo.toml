@@ -15,12 +15,12 @@ crate-type = ["cdylib", "rlib"]
 doctest = false
 
 [features]
-fips = ["cosmian_kms_client_utils/fips"]
+non-fips = ["cosmian_kms_client_utils/non-fips"]
 default = ["getrandom/js"]
 
 [dependencies]
 base64.workspace = true
-cosmian_kms_client_utils = { path = "../client_utils" }
+cosmian_kms_client_utils = { path = "../client_utils", version = "5.3.3" }
 getrandom = { version = "0.2", features = ["js"], optional = true }
 js-sys = "0.3.77"
 pem = { workspace = true }

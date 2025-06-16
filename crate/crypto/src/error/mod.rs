@@ -47,6 +47,7 @@ pub enum CryptoError {
     #[error(transparent)]
     TryFromSliceError(#[from] std::array::TryFromSliceError),
 
+    #[cfg(feature = "non-fips")]
     #[error(transparent)]
     Covercrypt(#[from] cosmian_cover_crypt::Error),
 }

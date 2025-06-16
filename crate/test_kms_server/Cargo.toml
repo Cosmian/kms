@@ -14,7 +14,7 @@ description = "Run a test KMS server for testing purposes"
 doctest = false
 
 [features]
-fips = ["cosmian_kms_client/fips", "cosmian_kms_server/fips"]
+non-fips = ["cosmian_kms_client/non-fips", "cosmian_kms_server/non-fips"]
 
 [[bench]]
 name = "benches"
@@ -22,8 +22,10 @@ harness = false
 
 [dependencies]
 actix-server = { workspace = true }
-cosmian_kms_client = { path = "../kms_client" }
-cosmian_kms_server = { path = "../server", features = ["insecure"] }
+cosmian_kms_client = { path = "../kms_client", version = "5.3.3" }
+cosmian_kms_server = { path = "../server", features = [
+  "insecure",
+], version = "5.3.3" }
 cosmian_logger = { workspace = true }
 serde_json = { workspace = true }
 tempfile = "3.19"

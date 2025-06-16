@@ -15,13 +15,12 @@ doctest = false
 
 [features]
 # Enable FIPS module feature build. KMS builds in FIPS mode when this is enabled.
-fips = []
+non-fips = []
 
 [dependencies]
 bitflags = { workspace = true }
-cosmian_logger = "0.1.1"
 hex = { workspace = true, features = ["std"] }
-kmip-derive = { path = "../kmip-derive" }
+kmip-derive = { path = "../kmip-derive", version = "5.3.3" }
 leb128 = { workspace = true }
 num-bigint-dig = { workspace = true, features = [
     "std",
@@ -47,6 +46,7 @@ zeroize = { workspace = true, features = ["zeroize_derive", "std", "serde"] }
 ignored = ["rust-ini", "sha3"]
 
 [dev-dependencies]
+cosmian_logger = "0.1.1"
 hex = { workspace = true, features = ["std"] }
 num-traits = { workspace = true }
 rand = { workspace = true }

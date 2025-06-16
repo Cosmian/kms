@@ -1,10 +1,12 @@
 use std::sync::Arc;
 
-use cosmian_kmip::kmip_2_1::{
-    KmipOperation,
-    kmip_types::{LinkType, LinkedObjectIdentifier},
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::kmip_2_1::{
+        KmipOperation,
+        kmip_types::{LinkType, LinkedObjectIdentifier},
+    },
+    cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams},
 };
-use cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams};
 use tracing::trace;
 
 use crate::{

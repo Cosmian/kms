@@ -65,3 +65,10 @@ pub fn pad_be_bytes(bytes: &mut Vec<u8>, size: usize) {
         bytes.insert(0, 0);
     }
 }
+
+pub mod reexport {
+    #[cfg(feature = "non-fips")]
+    pub use cosmian_cover_crypt;
+    pub use cosmian_crypto_core;
+    pub use cosmian_kmip;
+}

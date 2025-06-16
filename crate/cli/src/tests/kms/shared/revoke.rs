@@ -113,7 +113,7 @@ async fn test_revoke_ec_key() -> KmsCliResult<()> {
     Ok(())
 }
 
-#[cfg(not(feature = "fips"))]
+#[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_revoke_cover_crypt() -> KmsCliResult<()> {
     use std::path::PathBuf;

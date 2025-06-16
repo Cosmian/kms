@@ -1,4 +1,4 @@
-use cosmian_kmip::kmip_2_1::{
+use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
     kmip_data_structures::ServerInformation,
     kmip_objects::ObjectType,
     kmip_operations::{Query, QueryResponse},

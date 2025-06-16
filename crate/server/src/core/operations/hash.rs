@@ -1,10 +1,12 @@
 use std::sync::Arc;
 
-use cosmian_kmip::{
-    kmip_0::kmip_types::HashingAlgorithm,
-    kmip_2_1::kmip_operations::{Hash, HashResponse},
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::{
+        kmip_0::kmip_types::HashingAlgorithm,
+        kmip_2_1::kmip_operations::{Hash, HashResponse},
+    },
+    cosmian_kms_interfaces::SessionParams,
 };
-use cosmian_kms_interfaces::SessionParams;
 use openssl::hash::{Hasher, MessageDigest};
 use tracing::trace;
 
@@ -67,7 +69,7 @@ pub(crate) async fn hash_operation(
 mod tests {
     use std::sync::Arc;
 
-    use cosmian_kmip::{
+    use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_0::kmip_types::HashingAlgorithm,
         kmip_2_1::{kmip_operations::Hash, kmip_types::CryptographicParameters},
     };

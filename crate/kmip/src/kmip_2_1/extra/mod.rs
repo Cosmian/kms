@@ -1,6 +1,6 @@
 mod bulk_data;
 mod certificates;
-#[cfg(feature = "fips")]
+
 pub mod fips;
 pub mod tagging;
 mod wrap_on_create;
