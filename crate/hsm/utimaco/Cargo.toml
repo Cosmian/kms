@@ -16,11 +16,11 @@ cosmian_kms_base_hsm = { path = "../base_hsm", version = "5.3.3" }
 cosmian_kms_interfaces = { path = "../../interfaces", version = "5.3.3" }
 libloading = { workspace = true }
 pkcs11-sys = { workspace = true }
-tracing = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
-tracing-subscriber = { workspace = true, features = ["env-filter"] }
+tracing = { workspace = true }
+cosmian_logger = { workspace = true }
 uuid = { workspace = true }
 
 [features]

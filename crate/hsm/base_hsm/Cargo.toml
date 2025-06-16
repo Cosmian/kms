@@ -20,8 +20,4 @@ pkcs11-sys = { workspace = true }
 rand = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
 zeroize = { workspace = true }
-
-[dev-dependencies]
-tracing-subscriber = { workspace = true, features = ["env-filter"] }

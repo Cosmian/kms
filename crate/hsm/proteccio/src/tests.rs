@@ -9,9 +9,10 @@ use std::{collections::HashMap, ptr, sync::Arc, thread};
 
 use cosmian_kms_base_hsm::{
     AesKeySize, HError, HResult, HsmEncryptionAlgorithm, RsaKeySize, SlotManager,
-    test_helpers::{get_hsm_password, initialize_logging},
+    test_helpers::get_hsm_password,
 };
 use cosmian_kms_interfaces::{HsmObjectFilter, KeyMaterial, KeyType};
+use cosmian_logger::log_init;
 use libloading::Library;
 use pkcs11_sys::{CK_C_INITIALIZE_ARGS, CK_RV, CK_VOID_PTR, CKF_OS_LOCKING_OK, CKR_OK};
 use tracing::info;
@@ -66,7 +67,7 @@ fn test_hsm_low_level_test() -> HResult<()> {
 
 #[test]
 fn test_hsm_get_info() -> HResult<()> {
-    initialize_logging();
+    log_init(None);
     let hsm = Proteccio::instantiate("/lib/libnethsm.so", HashMap::new())?;
     let info = hsm.get_info()?;
     info!("Connected to the HSM: {info}");
@@ -75,7 +76,7 @@ fn test_hsm_get_info() -> HResult<()> {
 
 #[test]
 fn test_hsm_generate_aes_key() -> HResult<()> {
-    initialize_logging();
+    log_init(None);
     let key_id = Uuid::new_v4().to_string();
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
@@ -117,7 +118,7 @@ fn test_hsm_generate_aes_key() -> HResult<()> {
 
 #[test]
 fn test_hsm_generate_rsa_keypair() -> HResult<()> {
-    initialize_logging();
+    log_init(None);
     let sk_id = Uuid::new_v4().to_string();
     let pk_id = sk_id.clone() + "_pk ";
     let slot = get_slot()?;
@@ -178,7 +179,7 @@ fn test_hsm_generate_rsa_keypair() -> HResult<()> {
 
 #[test]
 fn test_hsm_rsa_key_wrap() -> HResult<()> {
-    initialize_logging();
+    log_init(None);
     let key_id = Uuid::new_v4().to_string();
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
@@ -201,7 +202,7 @@ fn test_hsm_rsa_key_wrap() -> HResult<()> {
 
 #[test]
 fn test_hsm_rsa_pkcs_encrypt() -> HResult<()> {
-    initialize_logging();
+    log_init(None);
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
     let data = b"Hello, World!";
@@ -223,7 +224,7 @@ fn test_hsm_rsa_pkcs_encrypt() -> HResult<()> {
 
 #[test]
 fn test_hsm_rsa_oaep_encrypt() -> HResult<()> {
-    initialize_logging();
+    log_init(None);
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
     let data = b"Hello, World!";
@@ -245,7 +246,7 @@ fn test_hsm_rsa_oaep_encrypt() -> HResult<()> {
 
 #[test]
 fn test_hsm_aes_gcm_encrypt() -> HResult<()> {
-    initialize_logging();
+    log_init(None);
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
     let data = b"Hello, World!";
@@ -273,7 +274,7 @@ fn test_hsm_aes_gcm_encrypt() -> HResult<()> {
 
 #[test]
 fn test_hsm_multi_threaded_rsa_encrypt_decrypt_test() -> HResult<()> {
-    initialize_logging();
+    log_init(None);
 
     // Initialize the HSM once and share it across threads
     let slot = get_slot()?;
@@ -314,7 +315,7 @@ fn test_hsm_multi_threaded_rsa_encrypt_decrypt_test() -> HResult<()> {
 
 #[test]
 fn test_hsm_list_objects() -> HResult<()> {
-    initialize_logging();
+    log_init(None);
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
     let objects = session.list_objects(HsmObjectFilter::Any)?;
@@ -373,7 +374,7 @@ fn test_hsm_list_objects() -> HResult<()> {
 
 #[test]
 fn test_hsm_get_key_metadata() -> HResult<()> {
-    initialize_logging();
+    log_init(None);
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
 
@@ -439,7 +440,7 @@ fn test_hsm_get_key_metadata() -> HResult<()> {
 
 #[test]
 fn test_hsm_destroy_all() -> HResult<()> {
-    initialize_logging();
+    log_init(None);
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
     let objects = session.list_objects(HsmObjectFilter::Any)?;

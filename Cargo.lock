@@ -1326,7 +1326,6 @@ dependencies = [
  "rand 0.9.1",
  "thiserror 2.0.12",
  "tracing",
- "tracing-subscriber",
  "zeroize",
 ]
 
@@ -4071,6 +4070,7 @@ version = "5.3.3"
 dependencies = [
  "cosmian_kms_base_hsm",
  "cosmian_kms_interfaces",
+ "cosmian_logger 0.2.0",
  "libloading",
  "pkcs11-sys",
  "tracing",
@@ -5873,10 +5873,10 @@ version = "5.3.3"
 dependencies = [
  "cosmian_kms_base_hsm",
  "cosmian_kms_interfaces",
+ "cosmian_logger 0.2.0",
  "libloading",
  "pkcs11-sys",
  "tracing",
- "tracing-subscriber",
  "uuid",
 ]
 
