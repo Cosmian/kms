@@ -970,34 +970,13 @@ def perform_encrypt(proxy, verbose=False):
         except Exception as crypto_error:
             error_msg = str(crypto_error)
             
-            # Check for known KMIP compatibility issues
-            if "Invalid length used to read Base" in error_msg or "StreamNotEmptyError" in error_msg:
-                response = {
-                    "operation": "Encrypt",
-                    "status": "error",
-                    "uid": uid,
-                    "error": "KMIP version compatibility issue with encrypt operation",
-                    "technical_details": f"PyKMIP 1.2 parser incompatible with Cosmian KMS response format: {error_msg}",
-                    "note": "Key creation succeeded, but encrypt operation has protocol parsing issues",
-                    "workaround": "Use direct REST API or update PyKMIP for KMIP 2.x compatibility"
-                }
-            else:
-                response = {
-                    "operation": "Encrypt",
-                    "status": "error",
-                    "uid": uid,
-                    "error": error_msg,
-                    "note": "Key was created successfully but encrypt operation failed"
-                }
-
-        # Clean up the test key (best effort)
-        try:
-            if verbose:
-                print(f"Cleaning up test key: {uid}")
-            proxy.destroy(uuid=uid)
-        except:
-            if verbose:
-                print("Note: Could not clean up test key")
+            response = {
+                "operation": "Encrypt",
+                "status": "error",
+                "uid": uid,
+                "error": error_msg,
+                "note": "Key was created successfully but encrypt operation failed"
+            }
 
         return response
 
