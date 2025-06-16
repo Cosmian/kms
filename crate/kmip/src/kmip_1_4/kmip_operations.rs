@@ -687,10 +687,23 @@ pub struct ActivateResponse {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Revoke {
-    pub unique_identifier: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<String>,
     pub revocation_reason: RevocationReason,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub compromise_occurrence_date: Option<OffsetDateTime>,
+}
+
+impl From<Revoke> for kmip_2_1::kmip_operations::Revoke {
+    fn from(revoke: Revoke) -> Self {
+        Self {
+            unique_identifier: revoke
+                .unique_identifier
+                .map(kmip_2_1::kmip_types::UniqueIdentifier::TextString),
+            revocation_reason: revoke.revocation_reason,
+            compromise_occurrence_date: revoke.compromise_occurrence_date,
+        }
+    }
 }
 
 /// Response to a Revoke request
@@ -698,6 +711,16 @@ pub struct Revoke {
 #[serde(rename_all = "PascalCase")]
 pub struct RevokeResponse {
     pub unique_identifier: String,
+}
+
+impl TryFrom<kmip_2_1::kmip_operations::RevokeResponse> for RevokeResponse {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_operations::RevokeResponse) -> Result<Self, Self::Error> {
+        Ok(Self {
+            unique_identifier: value.unique_identifier.to_string(),
+        })
+    }
 }
 
 /// 4.21 Destroy
@@ -2019,9 +2042,7 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             //         rekey_key_pair_response.into(),
             //     )
             // }
-            // Operation::Revoke(revoke) => {
-            //     Self::Revoke(revoke.into())
-            // }
+            Operation::Revoke(revoke) => Self::Revoke(revoke.into()),
             // Operation::RevokeResponse(revoke_response) => {
             //     Self::RevokeResponse(revoke_response.into())
             // }
@@ -2257,9 +2278,9 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             // Operation::Revoke(revoke) => {
             //     Self::Revoke(revoke.into())
             // }
-            // Operation::RevokeResponse(revoke_response) => {
-            //     Self::RevokeResponse(revoke_response.into())
-            // }
+            kmip_2_1::kmip_operations::Operation::RevokeResponse(revoke_response) => {
+                Self::RevokeResponse(revoke_response.try_into().context("RevokeResponse")?)
+            }
             // Operation::RNGRetrieve(rng_retrieve) => {
             //     Self::RNGRetrieve(rng_retrieve.into())
             // }

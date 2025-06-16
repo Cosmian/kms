@@ -356,12 +356,17 @@ async fn handle_ttlv_bytes_inner(
 
     // parse the TTLV bytes
     let ttlv = TTLV::from_bytes(ttlv_bytes, kmip_flavor).context("Failed to parse TTLV")?;
-
     info!(
         target: "kmip",
         user=user,
         tag=ttlv.tag.as_str(),
         "POST /kmip {}.{} Binary. Request: {:?} {}", major, minor, ttlv.tag.as_str(), user
+    );
+    info!(
+        target: "kmip",
+        user=user,
+        tag=ttlv.tag.as_str(),
+        "Parsed TTLV: {ttlv:#?}"
     );
 
     // parse the Request Message
