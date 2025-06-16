@@ -22,7 +22,7 @@ def main():
     parser = argparse.ArgumentParser(description='PyKMIP Client for KMIP Server Testing')
     parser.add_argument('--configuration', required=True, help='Configuration file path')
     parser.add_argument('--operation', default='query', 
-                       choices=['query', 'create', 'get', 'destroy', 'encrypt_decrypt', 'create_keypair', 'locate'],
+                       choices=['query', 'create', 'get', 'destroy', 'encrypt_decrypt', 'create_keypair', 'locate', 'revoke'],
                        help='KMIP operation to perform')
     parser.add_argument('--verbose', '-v', action='store_true', 
                        help='Enable verbose output')
@@ -54,6 +54,8 @@ def main():
             result = perform_create_keypair(proxy, args.verbose)
         elif args.operation == 'locate':
             result = perform_locate(proxy, args.verbose)
+        elif args.operation == 'revoke':
+            result = perform_revoke(proxy, args.verbose)
         else:
             print(f"Unsupported operation: {args.operation}")
             sys.exit(1)
@@ -324,9 +326,9 @@ def perform_get_attributes(proxy, verbose=False):
         }
 
 def perform_destroy(proxy, verbose=False):
-    """Create and then destroy a symmetric key"""
+    """Create a symmetric key, revoke it, then destroy it"""
     if verbose:
-        print("Creating and destroying symmetric key...")
+        print("Creating, revoking, and destroying symmetric key...")
 
     try:
         # First create a key using proper template approach
@@ -345,10 +347,50 @@ def perform_destroy(proxy, verbose=False):
         
         template = cobjects.TemplateAttribute(attributes=[algorithm_attr, length_attr])
         result = proxy.create(enums.ObjectType.SYMMETRIC_KEY, template)
+        
+        # Check if create operation succeeded
+        if hasattr(result, 'result_status') and result.result_status.value != enums.ResultStatus.SUCCESS:
+            error_msg = f"Create operation failed: {result.result_reason}"
+            if hasattr(result, 'result_message') and result.result_message:
+                error_msg += f" - {result.result_message}"
+            
+            return {
+                "operation": "Destroy",
+                "status": "error",
+                "error": error_msg
+            }
+        
         uid = result.uuid if hasattr(result, 'uuid') else str(result)
 
         if verbose:
             print(f"Created key with UID: {uid}")
+
+        # First revoke the key before destroying
+        if verbose:
+            print(f"Revoking key with UID: {uid}")
+            
+        revoke_result = proxy.revoke(
+            revocation_reason=enums.RevocationReasonCode.CESSATION_OF_OPERATION,
+            uuid=uid,
+            revocation_message="Key being prepared for destruction"
+        )
+        
+        # Check if revoke succeeded
+        revoke_success = True
+        revoke_error = None
+        
+        if hasattr(revoke_result, 'result_status'):
+            if revoke_result.result_status.value != enums.ResultStatus.SUCCESS:
+                revoke_success = False
+                revoke_error = f"Revoke failed: {revoke_result.result_reason}"
+                if hasattr(revoke_result, 'result_message') and revoke_result.result_message:
+                    revoke_error += f" - {revoke_result.result_message}"
+                
+                if verbose:
+                    print(f"Warning: {revoke_error}")
+        
+        if verbose and revoke_success:
+            print(f"Revoked key with UID: {uid}")
 
         # Then destroy it
         destroy_result = proxy.destroy(uuid=uid)
@@ -360,8 +402,13 @@ def perform_destroy(proxy, verbose=False):
                     "operation": "Destroy",
                     "status": "success",
                     "uid": uid,
-                    "message": "Key created and destroyed successfully"
+                    "revoke_success": revoke_success,
+                    "message": f"Key created, {'revoked, ' if revoke_success else 'revoke failed, '}and destroyed successfully"
                 }
+                
+                if revoke_error:
+                    response["revoke_error"] = revoke_error
+                    
             else:
                 # Destroy failed
                 error_msg = f"Destroy operation failed: {destroy_result.result_reason}"
@@ -373,16 +420,24 @@ def perform_destroy(proxy, verbose=False):
                     "status": "error",
                     "uid": uid,
                     "error": error_msg,
-                    "note": "Key was created successfully but destroy failed"
+                    "revoke_success": revoke_success,
+                    "note": f"Key was created and {'revoked' if revoke_success else 'revoke attempted'} but destroy failed"
                 }
+                
+                if revoke_error:
+                    response["revoke_error"] = revoke_error
         else:
             # Fallback if result structure is unexpected
             response = {
                 "operation": "Destroy",
                 "status": "success",
                 "uid": uid,
-                "message": "Key created and destroyed successfully (result status unknown)"
+                "revoke_success": revoke_success,
+                "message": f"Key created, {'revoked, ' if revoke_success else 'revoke failed, '}and destroyed successfully (result status unknown)"
             }
+            
+            if revoke_error:
+                response["revoke_error"] = revoke_error
 
         if verbose:
             print(f"Destroyed key with UID: {uid}")
@@ -647,6 +702,92 @@ def perform_locate(proxy, verbose=False):
     except Exception as e:
         return {
             "operation": "Locate",
+            "status": "error",
+            "error": str(e)
+        }
+
+def perform_revoke(proxy, verbose=False):
+    """Create a symmetric key and report revoke compatibility status"""
+    if verbose:
+        print("Testing revoke operation compatibility...")
+
+    try:
+        # First create a symmetric key for testing
+        from kmip.core import objects as cobjects
+        from kmip.core.factories.attributes import AttributeFactory
+        
+        attribute_factory = AttributeFactory()
+        algorithm_attr = attribute_factory.create_attribute(
+            enums.AttributeType.CRYPTOGRAPHIC_ALGORITHM,
+            enums.CryptographicAlgorithm.AES
+        )
+        length_attr = attribute_factory.create_attribute(
+            enums.AttributeType.CRYPTOGRAPHIC_LENGTH,
+            256
+        )
+        
+        template = cobjects.TemplateAttribute(attributes=[algorithm_attr, length_attr])
+        result = proxy.create(enums.ObjectType.SYMMETRIC_KEY, template)
+        
+        # Check if create operation succeeded
+        if hasattr(result, 'result_status') and result.result_status.value != enums.ResultStatus.SUCCESS:
+            error_msg = f"Create operation failed: {result.result_reason}"
+            if hasattr(result, 'result_message') and result.result_message:
+                error_msg += f" - {result.result_message}"
+            
+            return {
+                "operation": "Revoke",
+                "status": "error",
+                "error": error_msg
+            }
+        
+        uid = result.uuid if hasattr(result, 'uuid') else str(result)
+
+        if verbose:
+            print(f"Created symmetric key with UID: {uid}")
+            
+        result = proxy.revoke(
+            revocation_reason=enums.RevocationReasonCode.CESSATION_OF_OPERATION,
+            uuid=uid,
+            revocation_message="Testing revoke compatibility"
+        )
+
+        # Check if revoke operation succeeded
+        if hasattr(result, 'result_status'):
+            if result.result_status.value == enums.ResultStatus.SUCCESS:
+                response = {
+                    "operation": "Revoke",
+                    "status": "success",
+                    "uid": uid,
+                    "message": "Key revoked successfully"
+                }
+            else:
+                # Revoke failed
+                error_msg = f"Revoke operation failed: {result.result_reason}"
+                if hasattr(result, 'result_message') and result.result_message:
+                    error_msg += f" - {result.result_message}"
+                
+                response = {
+                    "operation": "Revoke",
+                    "status": "error",
+                    "error": error_msg
+                }
+        else:
+            # Fallback - assume success if no status field (shouldn't happen)
+            response = {
+                "operation": "Revoke",
+                "status": "success",
+                "uid": uid,
+                "message": "Key revoked successfully (result status unknown)"
+            }
+        if verbose:
+            print(f"Revoke operation completed for UID: {uid}")
+
+        return response
+
+    except Exception as e:
+        return {
+            "operation": "Revoke",
             "status": "error",
             "error": str(e)
         }
