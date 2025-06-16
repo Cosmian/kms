@@ -6,7 +6,6 @@ This script demonstrates and explains the KMIP version compatibility issue
 between PyKMIP and Cosmian KMS encrypt/decrypt operations.
 """
 
-import sys
 from kmip.services.kmip_client import KMIPProxy
 from kmip.core import enums
 
