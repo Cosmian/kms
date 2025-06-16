@@ -158,7 +158,7 @@ run_operation() {
 run_all_operations() {
     local verbose=${1:-false}
     
-    operations=("query" "create" "get" "revoke" "destroy" "encrypt_decrypt" "create_keypair" "locate")
+    operations=("discover_versions" "query" "create" "get" "revoke" "destroy" "encrypt_decrypt" "create_keypair" "locate")
     failed_operations=()
     successful_operations=()
     
@@ -201,12 +201,6 @@ run_all_operations() {
         done
         echo ""
         
-        print_warning "These operations have known KMIP compatibility issues:"
-        print_warning "- revoke: Parameter name mismatch (revocation_reason vs revocation_reason_code)"
-        print_warning "- destroy: KMIP 1.x to 2.1 conversion not supported + revoke dependency"
-        print_warning "- encrypt_decrypt: TTLV response parsing incompatibility"
-        echo ""
-        
         return 1
     else
         print_success "ALL operations completed successfully!"
@@ -235,6 +229,7 @@ show_usage() {
     echo ""
     echo "Commands:"
     echo "  check            Check prerequisites and connectivity"
+    echo "  discover_versions Run PyKMIP discover versions operation"
     echo "  query            Run PyKMIP query operation"
     echo "  create           Run PyKMIP create operation"
     echo "  get              Run PyKMIP get operation"
@@ -276,7 +271,7 @@ main() {
                 show_usage
                 exit 0
                 ;;
-            check|query|create|get|revoke|destroy|encrypt_decrypt|create_keypair|locate|all|rust-test)
+            check|discover_versions|query|create|get|revoke|destroy|encrypt_decrypt|create_keypair|locate|all|rust-test)
                 command=$1
                 shift
                 ;;
@@ -292,7 +287,7 @@ main() {
         check)
             check_prerequisites
             ;;
-        query|create|get|revoke|destroy|encrypt_decrypt|create_keypair|locate)
+        discover_versions|query|create|get|revoke|destroy|encrypt_decrypt|create_keypair|locate)
             check_prerequisites
             run_operation "$command" "$verbose"
             ;;

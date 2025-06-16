@@ -22,7 +22,7 @@ def main():
     parser = argparse.ArgumentParser(description='PyKMIP Client for KMIP Server Testing')
     parser.add_argument('--configuration', required=True, help='Configuration file path')
     parser.add_argument('--operation', default='query', 
-                       choices=['query', 'create', 'get', 'destroy', 'encrypt_decrypt', 'create_keypair', 'locate', 'revoke'],
+                       choices=['query', 'create', 'get', 'destroy', 'encrypt_decrypt', 'create_keypair', 'locate', 'revoke', 'discover_versions'],
                        help='KMIP operation to perform')
     parser.add_argument('--verbose', '-v', action='store_true', 
                        help='Enable verbose output')
@@ -56,6 +56,8 @@ def main():
             result = perform_locate(proxy, args.verbose)
         elif args.operation == 'revoke':
             result = perform_revoke(proxy, args.verbose)
+        elif args.operation == 'discover_versions':
+            result = perform_discover_versions(proxy, args.verbose)
         else:
             print(f"Unsupported operation: {args.operation}")
             sys.exit(1)
@@ -788,6 +790,109 @@ def perform_revoke(proxy, verbose=False):
     except Exception as e:
         return {
             "operation": "Revoke",
+            "status": "error",
+            "error": str(e)
+        }
+
+def perform_discover_versions(proxy, verbose=False):
+    """Discover supported KMIP versions and protocol information"""
+    if verbose:
+        print("Discovering supported KMIP versions...")
+
+    try:
+        # In KMIP, version discovery is typically done through:
+        # 1. Initial connection negotiation (which PyKMIP handles automatically)
+        # 2. Query operation for server information
+        # 3. Inspecting the negotiated protocol version
+        
+        # Get server information through query operation
+        try:
+            query_result = proxy.query(
+                query_functions=[
+                    enums.QueryFunction.QUERY_SERVER_INFORMATION,
+                    enums.QueryFunction.QUERY_CAPABILITIES
+                ]
+            )
+            
+            # Check if query succeeded
+            if hasattr(query_result, 'result_status') and query_result.result_status.value != enums.ResultStatus.SUCCESS:
+                return {
+                    "operation": "DiscoverVersions",
+                    "status": "error",
+                    "error": f"Query failed: {query_result.result_reason}"
+                }
+                
+        except Exception as query_error:
+            return {
+                "operation": "DiscoverVersions", 
+                "status": "error",
+                "error": f"Failed to query server information: {str(query_error)}"
+            }
+
+        # Extract version and server information
+        version_info = {}
+        
+        # Get negotiated protocol version from the proxy
+        if hasattr(proxy, 'protocol_version'):
+            version_info['negotiated_protocol_version'] = str(proxy.protocol_version)
+        elif hasattr(proxy, '_protocol_version'):
+            version_info['negotiated_protocol_version'] = str(proxy._protocol_version)
+        else:
+            version_info['negotiated_protocol_version'] = "unknown"
+            
+        # Get server information if available
+        server_info = {}
+        if hasattr(query_result, 'server_information') and query_result.server_information:
+            server_info = query_result.server_information
+            
+        # Get supported operations (indicates version capabilities)
+        supported_operations = []
+        if hasattr(query_result, 'operations') and query_result.operations:
+            supported_operations = [op.value for op in query_result.operations]
+            
+        # Determine likely supported KMIP versions based on operations
+        supported_versions = []
+        
+        # Basic KMIP 1.0 operations
+        basic_ops = {1, 2, 3, 4, 8, 10}  # Create, Locate, Get, GetAttributes, Destroy, Query
+        if basic_ops.issubset(set(supported_operations)):
+            supported_versions.append("1.0")
+            
+        # KMIP 1.1+ operations
+        if 20 in supported_operations:  # Revoke
+            supported_versions.append("1.1+")
+            
+        # KMIP 1.2+ operations  
+        if 32 in supported_operations:  # Encrypt
+            supported_versions.append("1.2+")
+            
+        # KMIP 2.0+ operations
+        advanced_ops = {29, 19, 23}  # More advanced operations
+        if any(op in supported_operations for op in advanced_ops):
+            supported_versions.append("2.0+")
+
+        if verbose:
+            print(f"Negotiated protocol version: {version_info.get('negotiated_protocol_version', 'unknown')}")
+            print(f"Supported operations: {supported_operations}")
+            print(f"Inferred KMIP versions: {supported_versions}")
+
+        response = {
+            "operation": "DiscoverVersions",
+            "status": "success",
+            "negotiated_version": version_info.get('negotiated_protocol_version', 'unknown'),
+            "supported_operations": supported_operations,
+            "supported_operations_count": len(supported_operations),
+            "inferred_kmip_versions": supported_versions,
+            "server_information": server_info,
+            "version_discovery_method": "query_based_inference",
+            "note": "Version discovery based on negotiated protocol and supported operations"
+        }
+
+        return response
+
+    except Exception as e:
+        return {
+            "operation": "DiscoverVersions",
             "status": "error",
             "error": str(e)
         }
