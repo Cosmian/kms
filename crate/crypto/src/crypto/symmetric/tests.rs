@@ -12,6 +12,7 @@ use crate::crypto::symmetric::symmetric_ciphers::{
 #[test]
 fn test_encrypt_decrypt_aes_gcm_128() {
     // Load FIPS provider module from OpenSSL.
+    #[cfg(not(feature = "non-fips"))]
     Provider::load(None, "fips").unwrap();
 
     let mut message = vec![0_u8; 42];
@@ -38,6 +39,7 @@ fn test_encrypt_decrypt_aes_gcm_128() {
 #[test]
 fn test_encrypt_decrypt_aes_gcm_256() {
     // Load FIPS provider module from OpenSSL.
+    #[cfg(not(feature = "non-fips"))]
     Provider::load(None, "fips").unwrap();
 
     let mut message = vec![0_u8; 42];
@@ -64,6 +66,7 @@ fn test_encrypt_decrypt_aes_gcm_256() {
 #[test]
 fn test_encrypt_decrypt_aes_xts_128() {
     // Load FIPS provider module from OpenSSL.
+    #[cfg(not(feature = "non-fips"))]
     Provider::load(None, "fips").unwrap();
 
     let mut message = vec![0_u8; 42];
@@ -87,6 +90,7 @@ fn test_encrypt_decrypt_aes_xts_128() {
 #[test]
 fn test_encrypt_decrypt_aes_xts_256() {
     // Load FIPS provider module from OpenSSL.
+    #[cfg(not(feature = "non-fips"))]
     Provider::load(None, "fips").unwrap();
 
     let mut message = vec![0_u8; 42];
@@ -208,6 +212,7 @@ fn test_encrypt_decrypt_aes_gcm_siv_256() {
 #[test]
 fn aes_gcm_streaming_test() {
     // Load FIPS provider module from OpenSSL.
+    #[cfg(not(feature = "non-fips"))]
     Provider::load(None, "fips").unwrap();
 
     let mut message1 = vec![0_u8; 42];
@@ -306,6 +311,7 @@ fn chacha_streaming_test() {
 #[test]
 fn aes_xts_streaming_test() {
     // Load FIPS provider module from OpenSSL.
+    #[cfg(not(feature = "non-fips"))]
     Provider::load(None, "fips").unwrap();
 
     let mut message1 = vec![0_u8; 42];

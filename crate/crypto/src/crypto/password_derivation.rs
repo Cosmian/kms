@@ -71,6 +71,7 @@ pub fn derive_key_from_password<const LENGTH: usize>(
 #[allow(clippy::unwrap_used)]
 fn test_password_derivation() {
     // Load FIPS provider module from OpenSSL.
+    #[cfg(not(feature = "non-fips"))]
     openssl::provider::Provider::load(None, "fips").unwrap();
 
     let salt = b"rediswithfindex_";

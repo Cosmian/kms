@@ -702,6 +702,7 @@ mod tests {
     #[test]
     fn test_conversion_rsa_public_key() {
         // Load FIPS provider module from OpenSSL.
+        #[cfg(not(feature = "non-fips"))]
         openssl::provider::Provider::load(None, "fips").unwrap();
 
         let key_size = 2048;
@@ -744,6 +745,7 @@ mod tests {
     #[test]
     fn test_conversion_ec_p_224_public_key() {
         // Load FIPS provider module from OpenSSL.
+        #[cfg(not(feature = "non-fips"))]
         openssl::provider::Provider::load(None, "fips").unwrap();
 
         let key_size = 224;
@@ -769,6 +771,7 @@ mod tests {
     #[test]
     fn test_conversion_ec_p_256_public_key() {
         // Load FIPS provider module from OpenSSL.
+        #[cfg(not(feature = "non-fips"))]
         openssl::provider::Provider::load(None, "fips").unwrap();
 
         let key_size = 256;
@@ -794,6 +797,7 @@ mod tests {
     #[test]
     fn test_conversion_ec_p_384_public_key() {
         // Load FIPS provider module from OpenSSL.
+        #[cfg(not(feature = "non-fips"))]
         openssl::provider::Provider::load(None, "fips").unwrap();
 
         let key_size = 384;
@@ -819,6 +823,7 @@ mod tests {
     #[test]
     fn test_conversion_ec_p_521_public_key() {
         // Load FIPS provider module from OpenSSL.
+        #[cfg(not(feature = "non-fips"))]
         openssl::provider::Provider::load(None, "fips").unwrap();
 
         let key_size = 521;
@@ -863,6 +868,7 @@ mod tests {
     #[test]
     fn test_conversion_ec_ed25519_public_key() {
         // Load FIPS provider module from OpenSSL.
+        #[cfg(not(feature = "non-fips"))]
         openssl::provider::Provider::load(None, "fips").unwrap();
 
         let key_size = 256;
@@ -903,6 +909,7 @@ mod tests {
     #[test]
     fn test_conversion_ec_ed448_public_key() {
         // Load FIPS provider module from OpenSSL.
+        #[cfg(not(feature = "non-fips"))]
         openssl::provider::Provider::load(None, "fips").unwrap();
 
         let key_size = 456;

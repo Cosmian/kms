@@ -294,6 +294,7 @@ fn test_encrypt_decrypt_rfc_ecies_x25519() -> CryptoResult<()> {
 #[test]
 fn test_encrypt_decrypt_rsa() -> CryptoResult<()> {
     // Load FIPS provider module from OpenSSL.
+    #[cfg(not(feature = "non-fips"))]
     openssl::provider::Provider::load(None, "fips").unwrap();
 
     let rsa_privkey = Rsa::generate(4096).unwrap();
