@@ -36,6 +36,8 @@ use crate::{
 #[serde(untagged)]
 #[allow(clippy::large_enum_variant)]
 pub enum Operation {
+    Activate(Activate),
+    ActivateResponse(ActivateResponse),
     AddAttribute(AddAttribute),
     AddAttributeResponse(AddAttributeResponse),
     Certify(Certify),
@@ -86,7 +88,8 @@ impl Operation {
     #[must_use]
     pub const fn direction(&self) -> Direction {
         match self {
-            Self::AddAttribute(_)
+            Self::Activate(_)
+            | Self::AddAttribute(_)
             | Self::Certify(_)
             | Self::Create(_)
             | Self::CreateKeyPair(_)
@@ -109,7 +112,8 @@ impl Operation {
             | Self::DiscoverVersions(_)
             | Self::SetAttribute(_) => Direction::Request,
 
-            Self::AddAttributeResponse(_)
+            Self::ActivateResponse(_)
+            | Self::AddAttributeResponse(_)
             | Self::CertifyResponse(_)
             | Self::CreateResponse(_)
             | Self::CreateKeyPairResponse(_)
@@ -137,6 +141,7 @@ impl Operation {
     #[must_use]
     pub const fn operation_enum(&self) -> OperationEnumeration {
         match self {
+            Self::Activate(_) | Self::ActivateResponse(_) => OperationEnumeration::Activate,
             Self::AddAttribute(_) | Self::AddAttributeResponse(_) => {
                 OperationEnumeration::AddAttribute
             }
@@ -175,6 +180,24 @@ impl Operation {
             Self::Validate(_) | Self::ValidateResponse(_) => OperationEnumeration::Validate,
         }
     }
+}
+
+/// This operation requests the server to activate a Managed Object.
+/// The operation SHALL only be performed on an object in the Pre-Active state
+/// and has the effect of changing its state to Active, and setting its Activation Date to the current date and time
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct Activate {
+    /// Determines the object being activated. If omitted,
+    /// then the ID Placeholder value is used by the server as the Unique Identifier.
+    pub unique_identifier: UniqueIdentifier,
+}
+
+/// Response to an Activate request
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
+pub struct ActivateResponse {
+    pub unique_identifier: UniqueIdentifier,
 }
 
 /// This operation requests the server to add a new attribute instance to be associated with
