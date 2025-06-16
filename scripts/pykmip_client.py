@@ -22,7 +22,7 @@ def main():
     parser = argparse.ArgumentParser(description='PyKMIP Client for KMIP Server Testing')
     parser.add_argument('--configuration', required=True, help='Configuration file path')
     parser.add_argument('--operation', default='query', 
-                       choices=['query', 'create', 'get', 'destroy', 'encrypt_decrypt', 'create_keypair', 'locate', 'revoke', 'discover_versions'],
+                       choices=['query', 'create', 'get', 'destroy', 'encrypt_decrypt', 'create_keypair', 'locate', 'revoke', 'discover_versions', 'encrypt'],
                        help='KMIP operation to perform')
     parser.add_argument('--verbose', '-v', action='store_true', 
                        help='Enable verbose output')
@@ -58,6 +58,8 @@ def main():
             result = perform_revoke(proxy, args.verbose)
         elif args.operation == 'discover_versions':
             result = perform_discover_versions(proxy, args.verbose)
+        elif args.operation == 'encrypt':
+            result = perform_encrypt(proxy, args.verbose)
         else:
             print(f"Unsupported operation: {args.operation}")
             sys.exit(1)
@@ -893,6 +895,115 @@ def perform_discover_versions(proxy, verbose=False):
     except Exception as e:
         return {
             "operation": "DiscoverVersions",
+            "status": "error",
+            "error": str(e)
+        }
+
+def perform_encrypt(proxy, verbose=False):
+    """Create a symmetric key and test encrypt operation only"""
+    if verbose:
+        print("Testing encrypt operation...")
+
+    try:
+        # Create a symmetric key for encryption using proper template approach
+        from kmip.core import objects as cobjects
+        from kmip.core.factories.attributes import AttributeFactory
+        
+        attribute_factory = AttributeFactory()
+        algorithm_attr = attribute_factory.create_attribute(
+            enums.AttributeType.CRYPTOGRAPHIC_ALGORITHM,
+            enums.CryptographicAlgorithm.AES
+        )
+        length_attr = attribute_factory.create_attribute(
+            enums.AttributeType.CRYPTOGRAPHIC_LENGTH,
+            256
+        )
+        
+        template = cobjects.TemplateAttribute(attributes=[algorithm_attr, length_attr])
+        result = proxy.create(enums.ObjectType.SYMMETRIC_KEY, template)
+        
+        # Check if create operation succeeded
+        if hasattr(result, 'result_status') and result.result_status.value != enums.ResultStatus.SUCCESS:
+            error_msg = f"Create operation failed: {result.result_reason}"
+            if hasattr(result, 'result_message') and result.result_message:
+                error_msg += f" - {result.result_message}"
+            
+            return {
+                "operation": "Encrypt",
+                "status": "error",
+                "error": error_msg
+            }
+        
+        uid = result.uuid if hasattr(result, 'uuid') else str(result)
+
+        if verbose:
+            print(f"Created encryption key with UID: {uid}")
+
+        # Test data to encrypt
+        test_data = b"Hello, PyKMIP Encrypt Test!"
+        
+        try:
+            if verbose:
+                print(f"Attempting to encrypt data: {test_data}")
+            
+            # Encrypt the data (use default parameters)
+            encrypt_result = proxy.encrypt(
+                data=test_data,
+                unique_identifier=uid
+            )
+
+            if verbose:
+                print("Data encrypted successfully")
+                print(f"Encrypted data length: {len(encrypt_result.get('data', b''))}")
+
+            response = {
+                "operation": "Encrypt",
+                "status": "success",
+                "uid": uid,
+                "original_data": test_data.hex(),
+                "original_data_length": len(test_data),
+                "encrypted_data": encrypt_result.get('data', b'').hex(),
+                "encrypted_data_length": len(encrypt_result.get('data', b'')),
+                "message": "Data encrypted successfully"
+            }
+            
+        except Exception as crypto_error:
+            error_msg = str(crypto_error)
+            
+            # Check for known KMIP compatibility issues
+            if "Invalid length used to read Base" in error_msg or "StreamNotEmptyError" in error_msg:
+                response = {
+                    "operation": "Encrypt",
+                    "status": "error",
+                    "uid": uid,
+                    "error": "KMIP version compatibility issue with encrypt operation",
+                    "technical_details": f"PyKMIP 1.2 parser incompatible with Cosmian KMS response format: {error_msg}",
+                    "note": "Key creation succeeded, but encrypt operation has protocol parsing issues",
+                    "workaround": "Use direct REST API or update PyKMIP for KMIP 2.x compatibility"
+                }
+            else:
+                response = {
+                    "operation": "Encrypt",
+                    "status": "error",
+                    "uid": uid,
+                    "error": error_msg,
+                    "note": "Key was created successfully but encrypt operation failed"
+                }
+
+        # Clean up the test key (best effort)
+        try:
+            if verbose:
+                print(f"Cleaning up test key: {uid}")
+            proxy.destroy(uuid=uid)
+        except:
+            if verbose:
+                print("Note: Could not clean up test key")
+
+        return response
+
+    except Exception as e:
+        return {
+            "operation": "Encrypt",
             "status": "error",
             "error": str(e)
         }

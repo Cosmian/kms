@@ -676,11 +676,31 @@ pub struct Activate {
     pub unique_identifier: String,
 }
 
+impl From<Activate> for kmip_2_1::kmip_operations::Activate {
+    fn from(activate: Activate) -> Self {
+        Self {
+            unique_identifier: kmip_2_1::kmip_types::UniqueIdentifier::TextString(
+                activate.unique_identifier,
+            ),
+        }
+    }
+}
+
 /// Response to an Activate request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct ActivateResponse {
     pub unique_identifier: String,
+}
+
+impl TryFrom<kmip_2_1::kmip_operations::ActivateResponse> for ActivateResponse {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_operations::ActivateResponse) -> Result<Self, Self::Error> {
+        Ok(Self {
+            unique_identifier: value.unique_identifier.to_string(),
+        })
+    }
 }
 
 /// 4.20 Revoke
@@ -1481,88 +1501,88 @@ impl TryFrom<kmip_2_1::kmip_operations::ImportResponse> for ImportResponse {
 #[serde(untagged)]
 #[allow(clippy::large_enum_variant)]
 pub enum Operation {
-    Create(Create),
-    CreateResponse(CreateResponse),
-    CreateKeyPair(CreateKeyPair),
-    CreateKeyPairResponse(CreateKeyPairResponse),
-    Register(Register),
-    RegisterResponse(RegisterResponse),
-    ReKey(ReKey),
-    ReKeyResponse(ReKeyResponse),
-    ReKeyKeyPair(ReKeyKeyPair),
-    ReKeyKeyPairResponse(ReKeyKeyPairResponse),
-    DeriveKey(DeriveKey),
-    DeriveKeyResponse(DeriveKeyResponse),
+    Activate(Activate),
+    ActivateResponse(ActivateResponse),
+    AddAttribute(AddAttribute),
+    AddAttributeResponse(AddAttributeResponse),
+    Archive(Archive),
+    ArchiveResponse(ArchiveResponse),
+    Cancel(Cancel),
+    CancelResponse(CancelResponse),
     Certify(Certify),
     CertifyResponse(CertifyResponse),
-    ReCertify(ReCertify),
-    ReCertifyResponse(ReCertifyResponse),
-    Locate(Locate),
-    LocateResponse(LocateResponse),
     Check(Check),
     CheckResponse(CheckResponse),
+    Create(Create),
+    CreateKeyPair(CreateKeyPair),
+    CreateKeyPairResponse(CreateKeyPairResponse),
+    CreateResponse(CreateResponse),
+    CreateSplitKey(CreateSplitKey),
+    CreateSplitKeyResponse(CreateSplitKeyResponse),
+    Decrypt(Decrypt),
+    DecryptResponse(DecryptResponse),
+    DeleteAttribute(DeleteAttribute),
+    DeleteAttributeResponse(DeleteAttributeResponse),
+    DeriveKey(DeriveKey),
+    DeriveKeyResponse(DeriveKeyResponse),
+    Destroy(Destroy),
+    DestroyResponse(DestroyResponse),
+    DiscoverVersions(DiscoverVersions),
+    DiscoverVersionsResponse(DiscoverVersionsResponse),
+    Encrypt(Encrypt),
+    EncryptResponse(EncryptResponse),
+    Export(Export),
+    ExportResponse(ExportResponse),
     Get(Get),
-    GetResponse(GetResponse),
     GetAttributes(GetAttributes),
     GetAttributesResponse(GetAttributesResponse),
     GetAttributeList(GetAttributeList),
     GetAttributeListResponse(GetAttributeListResponse),
-    AddAttribute(AddAttribute),
-    AddAttributeResponse(AddAttributeResponse),
-    ModifyAttribute(ModifyAttribute),
-    ModifyAttributeResponse(ModifyAttributeResponse),
-    DeleteAttribute(DeleteAttribute),
-    DeleteAttributeResponse(DeleteAttributeResponse),
-    ObtainLease(ObtainLease),
-    ObtainLeaseResponse(ObtainLeaseResponse),
+    GetResponse(GetResponse),
     GetUsageAllocation(GetUsageAllocation),
     GetUsageAllocationResponse(GetUsageAllocationResponse),
-    Activate(Activate),
-    ActivateResponse(ActivateResponse),
-    Revoke(Revoke),
-    RevokeResponse(RevokeResponse),
-    Destroy(Destroy),
-    DestroyResponse(DestroyResponse),
-    Archive(Archive),
-    ArchiveResponse(ArchiveResponse),
-    Recover(Recover),
-    RecoverResponse(RecoverResponse),
-    Validate(Validate),
-    ValidateResponse(ValidateResponse),
-    Query(Query),
-    QueryResponse(QueryResponse),
-    DiscoverVersions(DiscoverVersions),
-    DiscoverVersionsResponse(DiscoverVersionsResponse),
-    Cancel(Cancel),
-    CancelResponse(CancelResponse),
-    Poll(Poll),
-    PollResponse(PollResponse),
-    Encrypt(Encrypt),
-    EncryptResponse(EncryptResponse),
-    Decrypt(Decrypt),
-    DecryptResponse(DecryptResponse),
-    Sign(Sign),
-    SignResponse(SignResponse),
-    SignatureVerify(SignatureVerify),
-    SignatureVerifyResponse(SignatureVerifyResponse),
+    Hash(Hash),
+    HashResponse(HashResponse),
+    Import(Import),
+    ImportResponse(ImportResponse),
+    JoinSplitKey(JoinSplitKey),
+    JoinSplitKeyResponse(JoinSplitKeyResponse),
+    Locate(Locate),
+    LocateResponse(LocateResponse),
     MAC(MAC),
     MACResponse(MACResponse),
     MACVerify(MACVerify),
     MACVerifyResponse(MACVerifyResponse),
+    ModifyAttribute(ModifyAttribute),
+    ModifyAttributeResponse(ModifyAttributeResponse),
+    ObtainLease(ObtainLease),
+    ObtainLeaseResponse(ObtainLeaseResponse),
+    Poll(Poll),
+    PollResponse(PollResponse),
+    Query(Query),
+    QueryResponse(QueryResponse),
+    ReCertify(ReCertify),
+    ReCertifyResponse(ReCertifyResponse),
+    Recover(Recover),
+    RecoverResponse(RecoverResponse),
+    Register(Register),
+    RegisterResponse(RegisterResponse),
+    ReKey(ReKey),
+    ReKeyKeyPair(ReKeyKeyPair),
+    ReKeyKeyPairResponse(ReKeyKeyPairResponse),
+    ReKeyResponse(ReKeyResponse),
     RNGRetrieve(RNGRetrieve),
     RNGRetrieveResponse(RNGRetrieveResponse),
     RNGSeed(RNGSeed),
     RNGSeedResponse(RNGSeedResponse),
-    Hash(Hash),
-    HashResponse(HashResponse),
-    CreateSplitKey(CreateSplitKey),
-    CreateSplitKeyResponse(CreateSplitKeyResponse),
-    JoinSplitKey(JoinSplitKey),
-    JoinSplitKeyResponse(JoinSplitKeyResponse),
-    Export(Export),
-    ExportResponse(ExportResponse),
-    Import(Import),
-    ImportResponse(ImportResponse),
+    Revoke(Revoke),
+    RevokeResponse(RevokeResponse),
+    Sign(Sign),
+    SignResponse(SignResponse),
+    SignatureVerify(SignatureVerify),
+    SignatureVerifyResponse(SignatureVerifyResponse),
+    Validate(Validate),
+    ValidateResponse(ValidateResponse),
 }
 
 impl Operation {
@@ -1870,9 +1890,7 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
 
     fn try_from(value: Operation) -> Result<Self, Self::Error> {
         Ok(match value {
-            // Operation::Activate(activate) => {
-            //     Self::Activate(activate.into())
-            // }
+            Operation::Activate(activate) => Self::Activate(activate.into()),
             // Operation::ActivateResponse(activate_response) => {
             //     Self::ActivateResponse(activate_response.into())
             // }
@@ -2096,9 +2114,9 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             // Operation::Activate(activate) => {
             //     Self::Activate(activate.into())
             // }
-            // Operation::ActivateResponse(activate_response) => {
-            //     Self::ActivateResponse(activate_response.into())
-            // }
+            kmip_2_1::kmip_operations::Operation::ActivateResponse(activate_response) => {
+                Self::ActivateResponse(activate_response.try_into().context("ActivateResponse")?)
+            }
             // Operation::AddAttribute(add_attribute) => {
             //     Self::AddAttribute(add_attribute.into())
             // }
@@ -2131,7 +2149,7 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             //     Self::Create(create.into())
             // }
             kmip_2_1::kmip_operations::Operation::CreateResponse(create_response) => {
-                Self::CreateResponse(create_response.try_into()?)
+                Self::CreateResponse(create_response.try_into().context("CreateResponse")?)
             }
             // Operation::CreateKeyPair(create_key_pair) => {
             //     Self::CreateKeyPair(create_key_pair.into())
