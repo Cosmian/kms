@@ -236,7 +236,7 @@ show_usage() {
     echo "  encrypt          Run PyKMIP encrypt operation"
     echo "  revoke           Run PyKMIP revoke operation"
     echo "  destroy          Run PyKMIP destroy operation"
-    echo "  decrypt.         Run PyKMIP encrypt/decrypt test"
+    echo "  decrypt          Run PyKMIP encrypt/decrypt test"
     echo "  create_keypair   Run PyKMIP create key pair operation"
     echo "  locate           Run PyKMIP locate operation"
     echo "  all              Run all PyKMIP operations"
