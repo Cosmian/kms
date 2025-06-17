@@ -22,7 +22,7 @@ def main():
     parser = argparse.ArgumentParser(description='PyKMIP Client for KMIP Server Testing')
     parser.add_argument('--configuration', required=True, help='Configuration file path')
     parser.add_argument('--operation', default='query', 
-                       choices=['create', 'create_keypair', 'decrypt', 'destroy', 'discover_versions', 'encrypt', 'get', 'locate', 'query', 'revoke'],
+                       choices=['activate', 'create', 'create_keypair', 'decrypt', 'destroy', 'discover_versions', 'encrypt', 'get', 'locate', 'query', 'revoke'],
                        help='KMIP operation to perform')
     parser.add_argument('--verbose', '-v', action='store_true', 
                        help='Enable verbose output')
@@ -40,7 +40,9 @@ def main():
         proxy.open()
 
         # Perform the requested operation
-        if args.operation == 'create':
+        if args.operation == 'activate':
+            result = perform_activate(proxy, args.verbose)
+        elif args.operation == 'create':
             result = perform_create_symmetric_key(proxy, args.verbose)
         elif args.operation == 'create_keypair':
             result = perform_create_keypair(proxy, args.verbose)
@@ -993,6 +995,121 @@ def perform_encrypt(proxy, verbose=False):
     except Exception as e:
         return {
             "operation": "Encrypt",
+            "status": "error",
+            "error": str(e)
+        }
+
+def perform_activate(proxy, verbose=False):
+    """Create a symmetric key and test activate operation"""
+    if verbose:
+        print("Testing activate operation...")
+
+    try:
+        # Create a symmetric key first to have something to activate
+        from kmip.core import objects as cobjects
+        from kmip.core.factories.attributes import AttributeFactory
+        
+        attribute_factory = AttributeFactory()
+        algorithm_attr = attribute_factory.create_attribute(
+            enums.AttributeType.CRYPTOGRAPHIC_ALGORITHM,
+            enums.CryptographicAlgorithm.AES
+        )
+        length_attr = attribute_factory.create_attribute(
+            enums.AttributeType.CRYPTOGRAPHIC_LENGTH,
+            256
+        )
+        
+        template = cobjects.TemplateAttribute(attributes=[algorithm_attr, length_attr])
+        result = proxy.create(enums.ObjectType.SYMMETRIC_KEY, template)
+        
+        # Check if create operation succeeded
+        if hasattr(result, 'result_status') and result.result_status.value != enums.ResultStatus.SUCCESS:
+            error_msg = f"Create operation failed: {result.result_reason}"
+            if hasattr(result, 'result_message') and result.result_message:
+                error_msg += f" - {result.result_message}"
+            
+            return {
+                "operation": "Activate",
+                "status": "error",
+                "error": error_msg
+            }
+        
+        # Extract UID properly - handle UniqueIdentifier objects
+        if hasattr(result, 'uuid'):
+            if hasattr(result.uuid, 'value'):
+                uid = result.uuid.value  # Extract string from UniqueIdentifier object
+            else:
+                uid = str(result.uuid)
+        else:
+            uid = str(result)
+
+        if verbose:
+            print(f"Created key for activation with UID: {uid}")
+
+        try:
+            if verbose:
+                print(f"Attempting to activate object: {uid}")
+            
+            # Activate the object
+            activate_result = proxy.activate(uuid=uid)
+
+            # Check if activate operation succeeded
+            if hasattr(activate_result, 'result_status') and activate_result.result_status.value != enums.ResultStatus.SUCCESS:
+                error_msg = f"Activate operation failed: {activate_result.result_reason}"
+                if hasattr(activate_result, 'result_message') and activate_result.result_message:
+                    error_msg += f" - {activate_result.result_message}"
+                
+                response = {
+                    "operation": "Activate",
+                    "status": "error",
+                    "uid": uid,
+                    "error": error_msg,
+                    "note": "Key was created successfully but activate operation failed"
+                }
+            else:
+                if verbose:
+                    print("Object activated successfully")
+
+                # Extract activated UID properly
+                activated_uid = uid  # default fallback
+                if hasattr(activate_result, 'uuid'):
+                    if hasattr(activate_result.uuid, 'value'):
+                        activated_uid = activate_result.uuid.value
+                    else:
+                        activated_uid = str(activate_result.uuid)
+
+                response = {
+                    "operation": "Activate",
+                    "status": "success",
+                    "uid": uid,
+                    "message": "Object activated successfully",
+                    "activated_uid": activated_uid
+                }
+            
+        except Exception as activate_error:
+            import traceback
+            error_msg = str(activate_error)
+            full_traceback = traceback.format_exc()
+            
+            if verbose:
+                print(f"Activate error traceback:\n{full_traceback}")
+            
+            response = {
+                "operation": "Activate",
+                "status": "error",
+                "uid": uid,
+                "error": error_msg,
+                "note": "Key was created successfully but activate operation failed",
+                "full_traceback": full_traceback if verbose else None
+            }
+
+        # Clean up the test key (best effort)
+
+        return response
+
+    except Exception as e:
+        return {
+            "operation": "Activate",
             "status": "error",
             "error": str(e)
         }
