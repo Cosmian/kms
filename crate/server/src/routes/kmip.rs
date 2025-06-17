@@ -370,8 +370,10 @@ async fn handle_ttlv_bytes_inner(
     );
 
     // parse the Request Message
-    let request_message = from_ttlv::<RequestMessage>(ttlv)
+    let mut request_message = from_ttlv::<RequestMessage>(ttlv)
         .map_err(|e| KmsError::InvalidRequest(format!("Failed to parse RequestMessage: {e}")))?;
+
+    perform_request_tweaks(&mut request_message, major, minor);
 
     // log the request
     debug!("Request Message: {request_message:#?}");
@@ -545,6 +547,72 @@ fn perform_response_tweaks(response: &mut ResponseMessage, major: i32, minor: i3
                 if let Some(auth_tag) = encrypt_response.authenticated_encryption_tag.take() {
                     if let Some(data) = encrypt_response.data.as_mut() {
                         data.extend_from_slice(&auth_tag);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Perform response tweaks for KMIP 1.1 and 1.2 since we only support structures for KMIP 1.4 and 2.1
+fn perform_request_tweaks(response: &mut RequestMessage, major: i32, minor: i32) {
+    // KMIP 1.1 and 1.2 Response Tweaks
+    if major == 1 && minor <= 2 {
+        // Decrypt we request does not have the Authenticated Encryption Tag,
+        // so we must extract it from the data field when the encryption algorith is an authenticated encryption algorithm
+        for batch_item in &mut response.batch_item {
+            let RequestMessageBatchItemVersioned::V14(item) = batch_item else {
+                continue; // Skip if not V14
+            };
+            // If the operation is Encrypt and the response payload is present,
+            // we need to extract the Authenticated Encryption Tag from the Data field
+            // when the encryption algorithm is an authenticated encryption algorithm
+            if let cosmian_kmip::kmip_1_4::kmip_operations::Operation::Decrypt(decrypt) =
+                &mut item.request_payload
+            {
+                // Check if the encryption algorithm is an authenticated encryption algorithm
+                let cryptographic_parameters =
+                    decrypt.cryptographic_parameters.clone().unwrap_or_else(|| {
+                        cosmian_kmip::kmip_1_4::kmip_data_structures::CryptographicParameters {
+                            cryptographic_algorithm: Some(
+                                cosmian_kmip::kmip_1_4::kmip_types::CryptographicAlgorithm::AES,
+                            ),
+                            block_cipher_mode: Some(BlockCipherMode::GCM),
+                            ..Default::default()
+                        }
+                    });
+                if cryptographic_parameters.cryptographic_algorithm.as_ref()
+                    == Some(&cosmian_kmip::kmip_1_4::kmip_types::CryptographicAlgorithm::AES)
+                {
+                    let block_cipher_mode = cryptographic_parameters
+                        .block_cipher_mode
+                        .as_ref()
+                        .unwrap_or(&BlockCipherMode::GCM);
+
+                    let len = match block_cipher_mode {
+                        BlockCipherMode::GCM | BlockCipherMode::GCMSIV => 16,
+                        BlockCipherMode::CBC | BlockCipherMode::ECB | BlockCipherMode::XTS => 0,
+                        x => {
+                            warn!(
+                                "Unsupported Block Cipher Mode for AES : {x:?}. The Authenticated \
+                                 Encryption Tag will NOT be extracted."
+                            );
+                            0
+                        }
+                    };
+                    if len > 0 {
+                        // Extract the Authenticated Encryption Tag from the Data field
+                        if let Some(data) = &mut decrypt.data {
+                            // Assuming the last `len` bytes are the Authenticated Encryption Tag
+                            if data.len() >= len {
+                                debug!(
+                                    "This is a {major}.{minor} Decrypt message. Extracting \
+                                     Authenticated Encryption Tag of length {len} from Data field"
+                                );
+                                let auth_tag = data.split_off(data.len() - len);
+                                decrypt.authenticated_encryption_tag = Some(auth_tag);
+                            }
+                        }
                     }
                 }
             }

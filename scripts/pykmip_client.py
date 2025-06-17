@@ -22,7 +22,7 @@ def main():
     parser = argparse.ArgumentParser(description='PyKMIP Client for KMIP Server Testing')
     parser.add_argument('--configuration', required=True, help='Configuration file path')
     parser.add_argument('--operation', default='query', 
-                       choices=['query', 'create', 'get', 'destroy', 'encrypt_decrypt', 'create_keypair', 'locate', 'revoke', 'discover_versions', 'encrypt'],
+                       choices=['create', 'create_keypair', 'decrypt', 'destroy', 'discover_versions', 'encrypt', 'get', 'locate', 'query', 'revoke'],
                        help='KMIP operation to perform')
     parser.add_argument('--verbose', '-v', action='store_true', 
                        help='Enable verbose output')
@@ -40,26 +40,26 @@ def main():
         proxy.open()
 
         # Perform the requested operation
-        if args.operation == 'query':
-            result = perform_query(proxy, args.verbose)
-        elif args.operation == 'create':
+        if args.operation == 'create':
             result = perform_create_symmetric_key(proxy, args.verbose)
-        elif args.operation == 'get':
-            result = perform_get_attributes(proxy, args.verbose)
-        elif args.operation == 'destroy':
-            result = perform_destroy(proxy, args.verbose)
-        elif args.operation == 'encrypt_decrypt':
-            result = perform_encrypt_decrypt(proxy, args.verbose)
         elif args.operation == 'create_keypair':
             result = perform_create_keypair(proxy, args.verbose)
-        elif args.operation == 'locate':
-            result = perform_locate(proxy, args.verbose)
-        elif args.operation == 'revoke':
-            result = perform_revoke(proxy, args.verbose)
+        elif args.operation == 'decrypt':
+            result = perform_decrypt(proxy, args.verbose)
+        elif args.operation == 'destroy':
+            result = perform_destroy(proxy, args.verbose)
         elif args.operation == 'discover_versions':
             result = perform_discover_versions(proxy, args.verbose)
         elif args.operation == 'encrypt':
             result = perform_encrypt(proxy, args.verbose)
+        elif args.operation == 'get':
+            result = perform_get_attributes(proxy, args.verbose)
+        elif args.operation == 'locate':
+            result = perform_locate(proxy, args.verbose)
+        elif args.operation == 'query':
+            result = perform_query(proxy, args.verbose)
+        elif args.operation == 'revoke':
+            result = perform_revoke(proxy, args.verbose)
         else:
             print(f"Unsupported operation: {args.operation}")
             sys.exit(1)
@@ -455,7 +455,7 @@ def perform_destroy(proxy, verbose=False):
             "error": str(e)
         }
 
-def perform_encrypt_decrypt(proxy, verbose=False):
+def perform_decrypt(proxy: KMIPProxy, verbose=False):
     """Create a key, encrypt some data, then decrypt it"""
     if verbose:
         print("Testing encrypt/decrypt operations...")
@@ -468,8 +468,14 @@ def perform_encrypt_decrypt(proxy, verbose=False):
         attribute_factory = AttributeFactory()
         algorithm_attr = attribute_factory.create_attribute(
             enums.AttributeType.CRYPTOGRAPHIC_ALGORITHM,
-            enums.CryptographicAlgorithm.AES
+            enums.CryptographicAlgorithm.AES,            
         )
+        # Use GCM mode for encryption - PyKMIP doen't support the BlockCipherMode attribute
+        # The KMS will default to AES-GCM if no mode is specified
+        # blockcipher_mode_attr = attribute_factory.create_attribute(
+        #     enums.AttributeType.BLOCK_CIPHER_MODE,
+        #     enums.BlockCipherMode.GCM
+        # )
         length_attr = attribute_factory.create_attribute(
             enums.AttributeType.CRYPTOGRAPHIC_LENGTH,
             256
@@ -492,12 +498,16 @@ def perform_encrypt_decrypt(proxy, verbose=False):
                 unique_identifier=uid
             )
 
+            ciphertext = encrypt_result['data'] if 'data' in encrypt_result else None
+            iv_counter_nonce = encrypt_result.get('iv_counter_nonce', None)
+
             if verbose:
                 print("Data encrypted successfully")
 
             # Decrypt the data  
             decrypt_result = proxy.decrypt(
-                data=encrypt_result['data'],
+                data=ciphertext,
+                iv_counter_nonce=iv_counter_nonce,
                 unique_identifier=uid
             )
 
@@ -508,49 +518,30 @@ def perform_encrypt_decrypt(proxy, verbose=False):
             success = decrypt_result['data'] == test_data
 
             response = {
-                "operation": "EncryptDecrypt",
+                "operation": "Decrypt",
                 "status": "success" if success else "error",
                 "uid": uid,
-                "original_data": test_data.hex(),
+                "original_data ": test_data.hex(),
                 "encrypted_data": encrypt_result['data'].hex(),
                 "decrypted_data": decrypt_result['data'].hex(),
-                "verification": "passed" if success else "failed"
+                "verification  ": "passed" if success else "failed"
             }
             
         except Exception as crypto_error:
-            error_msg = str(crypto_error)
-            
-            # Check for known compatibility issues
-            if "Invalid length used to read Base" in error_msg or "StreamNotEmptyError" in error_msg:
-                response = {
-                    "operation": "EncryptDecrypt",
-                    "status": "error",
-                    "uid": uid,
-                    "error": "KMIP version compatibility issue with encrypt/decrypt operations",
-                    "technical_details": f"PyKMIP 1.2 parser incompatible with Cosmian KMS response format: {error_msg}",
-                    "note": "Key creation succeeded, but encrypt/decrypt has protocol parsing issues",
-                    "workaround": "Use direct REST API or update PyKMIP for KMIP 2.x compatibility"
-                }
-            else:
-                response = {
-                    "operation": "EncryptDecrypt",
-                    "status": "error",
-                    "uid": uid,
-                    "error": error_msg
-                }
+            error_msg = str(crypto_error)            
+            response = {
+                "operation": "Decrypt",
+                "status": "error",
+                "uid": uid,
+                "error": error_msg
+            }
 
-        # Clean up - destroy the test key
-        try:
-            proxy.destroy(uid)
-        except:
-            if verbose:
-                print("Note: Could not clean up test key")
 
         return response
 
     except Exception as e:
         return {
-            "operation": "EncryptDecrypt", 
+            "operation": "Decrypt", 
             "status": "error",
             "error": str(e)
         }
