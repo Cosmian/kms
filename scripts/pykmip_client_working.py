@@ -188,12 +188,12 @@ def perform_create_symmetric_key(proxy, verbose=False):
         # Create the key using proper KMIPProxy API
         result = proxy.create(enums.ObjectType.SYMMETRIC_KEY, template)
 
+        # Extract UID first (always available)
+        uid = str(result.uuid) if hasattr(result, 'uuid') else str(result)
+
         # Check if create operation actually succeeded
         if hasattr(result, 'result_status'):
             if result.result_status.value == enums.ResultStatus.SUCCESS:
-                # Extract UID from successful result
-                uid = result.uuid if hasattr(result, 'uuid') else str(result)
-
                 response = {
                     "operation": "Create",
                     "status": "success",
@@ -214,7 +214,6 @@ def perform_create_symmetric_key(proxy, verbose=False):
                 }
         else:
             # Fallback - assume success if no status field (shouldn't happen)
-            uid = result.uuid if hasattr(result, 'uuid') else str(result)
             response = {
                 "operation": "Create",
                 "status": "success",
@@ -721,7 +720,7 @@ def perform_locate(proxy, verbose=False):
             if response["status"] == "success":
                 print(f"Located {response['count']} objects on server")
             else:
-                print(f"Locate operation failed")
+                print("Locate operation failed")
 
         return response
 
@@ -1008,26 +1007,14 @@ def perform_encrypt(proxy, verbose=False):
                 print(f"Full error traceback:\n{full_traceback}")
 
             # Check for known KMIP compatibility issues
-            if "Invalid length used to read Base" in error_msg or "StreamNotEmptyError" in error_msg:
-                response = {
-                    "operation": "Encrypt",
-                    "status": "error",
-                    "uid": uid,
-                    "error": "KMIP version compatibility issue with encrypt operation",
-                    "technical_details": f"PyKMIP 1.2 parser incompatible with Cosmian KMS response format: {error_msg}",
-                    "note": "Key creation succeeded, but encrypt operation has protocol parsing issues",
-                    "workaround": "Use direct REST API or update PyKMIP for KMIP 2.x compatibility",
-                    "full_traceback": full_traceback if verbose else None
-                }
-            else:
-                response = {
-                    "operation": "Encrypt",
-                    "status": "error",
-                    "uid": uid,
-                    "error": error_msg,
-                    "note": "Key was created successfully but encrypt operation failed",
-                    "full_traceback": full_traceback if verbose else None
-                }
+            response = {
+                "operation": "Encrypt",
+                "status": "error",
+                "uid": uid,
+                "error": error_msg,
+                "note": "Key was created successfully but encrypt operation failed",
+                "full_traceback": full_traceback if verbose else None
+            }
 
         return response
 
@@ -1265,7 +1252,3 @@ def perform_mac(proxy, verbose=False):
             "status": "error",
             "error": str(e)
         }
-
-
-if __name__ == "__main__":
-    main()
