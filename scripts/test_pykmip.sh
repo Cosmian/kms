@@ -158,7 +158,7 @@ run_operation() {
 run_all_operations() {
     local verbose=${1:-false}
     
-    operations=("discover_versions" "query" "create" "activate" "get" "encrypt" "revoke" "destroy" "decrypt" "create_keypair" "locate")
+    operations=("discover_versions" "query" "create" "activate" "get" "encrypt" "mac" "revoke" "destroy" "decrypt" "create_keypair" "locate")
     failed_operations=()
     successful_operations=()
     
@@ -235,6 +235,7 @@ show_usage() {
     echo "  activate         Run PyKMIP activate operation"
     echo "  get              Run PyKMIP get operation"
     echo "  encrypt          Run PyKMIP encrypt operation"
+    echo "  mac              Run PyKMIP MAC operation"
     echo "  revoke           Run PyKMIP revoke operation"
     echo "  destroy          Run PyKMIP destroy operation"
     echo "  decrypt          Run PyKMIP encrypt/decrypt test"
@@ -273,7 +274,7 @@ main() {
                 show_usage
                 exit 0
                 ;;
-            check|discover_versions|query|create|activate|get|encrypt|revoke|destroy|decrypt|create_keypair|locate|all|rust-test)
+            check|discover_versions|query|create|activate|get|encrypt|mac|revoke|destroy|decrypt|create_keypair|locate|all|rust-test)
                 command=$1
                 shift
                 ;;
@@ -289,7 +290,7 @@ main() {
         check)
             check_prerequisites
             ;;
-        discover_versions|query|create|activate|get|encrypt|revoke|destroy|decrypt|create_keypair|locate)
+        discover_versions|query|create|activate|get|encrypt|mac|revoke|destroy|decrypt|create_keypair|locate)
             check_prerequisites
             run_operation "$command" "$verbose"
             ;;
