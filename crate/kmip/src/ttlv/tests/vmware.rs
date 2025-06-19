@@ -263,9 +263,10 @@ fn query() {
     };
     assert_eq!(
         response_operation.vendor_identification,
-        Some("py_kmip 0.11.0.dev1 Software Server".to_owned())
+        Some("PyKMIP 0.11.0.dev1 Software Server".to_owned())
     );
 }
+
 const CREATE: &str =
     "420078010000013042007701000000384200690100000020\
     42006a0200000004000000010000000042006b0200000004000000010000000042000d02000000040000000100000000\
