@@ -25,7 +25,7 @@ def main():
     parser.add_argument('--configuration', required=True,
                         help='Configuration file path')
     parser.add_argument('--operation', default='query',
-                        choices=['activate', 'certify', 'create', 'create_keypair', 'decrypt', 'destroy',
+                        choices=['activate', 'create', 'create_keypair', 'decrypt', 'destroy',
                                  'discover_versions', 'encrypt', 'get', 'locate', 'mac', 'query', 'revoke'],
                         help='KMIP operation to perform')
     parser.add_argument('--verbose', '-v', action='store_true',
@@ -47,9 +47,12 @@ def main():
         # Perform the requested operation
         if args.operation == 'activate':
             result = perform_activate(proxy, args.verbose)
-        elif args.operation == 'certify':
-            from pykmip_certify import perform_certify
-            result = perform_certify(proxy, args.verbose)
+        # Certify operation is not implemented in PyKMIP,
+        # the solution in this script is a workaround that simulates certification
+        # nd uses operations not (yet) implemented in the KMS => Comment out
+        # elif args.operation == 'certify':
+        #     from pykmip_certify import perform_certify
+        #     result = perform_certify(proxy, args.verbose)
         elif args.operation == 'create':
             result = perform_create_symmetric_key(proxy, args.verbose)
         elif args.operation == 'create_keypair':

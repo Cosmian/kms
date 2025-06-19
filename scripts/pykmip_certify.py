@@ -205,7 +205,7 @@ def perform_certify(proxy, verbose=False):
         # Clean up the test keys (best effort)
         try:
             if verbose:
-                print(f"Cleaning up test keys...")
+                print("Cleaning up test keys...")
             if private_key_uid:
                 proxy.destroy(uuid=private_key_uid)
             if public_key_uid:

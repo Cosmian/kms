@@ -158,7 +158,7 @@ run_operation() {
 run_all_operations() {
     local verbose=${1:-false}
     
-    operations=("activate" "certify" "create" "create_keypair" "decrypt" "destroy" "discover_versions" "encrypt" "get" "locate" "mac" "query" "revoke")
+    operations=("activate" "create" "create_keypair" "decrypt" "destroy" "discover_versions" "encrypt" "get" "locate" "mac" "query" "revoke")
     failed_operations=()
     successful_operations=()
     
@@ -221,6 +221,8 @@ run_rust_tests() {
 }
 
 # Function to show usage
+# Certify is not directly implemented by PyKMIP client, so it's commented out for now
+# the pykmip_certify.py is a workaround but it invokes Operations not supported by the Cosmian KMS
 show_usage() {
     echo "PyKMIP Integration Test Runner"
     echo ""
@@ -230,7 +232,7 @@ show_usage() {
     echo "Commands:"
     echo "  check            Check prerequisites and connectivity"
     echo "  activate         Run PyKMIP activate operation"
-    echo "  certify          Run PyKMIP certify operation"
+    # echo "  certify          Run PyKMIP certify operation"
     echo "  create           Run PyKMIP create operation"
     echo "  create_keypair   Run PyKMIP create key pair operation"
     echo "  decrypt          Run PyKMIP encrypt/decrypt test"
@@ -275,7 +277,7 @@ main() {
                 show_usage
                 exit 0
                 ;;
-            all|activate|certify|check|create|create_keypair|decrypt|destroy|discover_versions|encrypt|get|locate|mac|query|revoke|rust-test)
+            all|activate|check|create|create_keypair|decrypt|destroy|discover_versions|encrypt|get|locate|mac|query|revoke|rust-test)
                 command=$1
                 shift
                 ;;
@@ -291,7 +293,7 @@ main() {
         check)
             check_prerequisites
             ;;
-        activate|certify|create|create_keypair|decrypt|destroy|discover_versions|encrypt|get|locate|mac|query|revoke)
+        activate|create|create_keypair|decrypt|destroy|discover_versions|encrypt|get|locate|mac|query|revoke)
             check_prerequisites
             run_operation "$command" "$verbose"
             ;;

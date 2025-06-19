@@ -67,6 +67,7 @@ All notable changes to this project will be documented in this file.
 
 - In UI, fix `IvCounterNonce` (#446)
 - *(Linux packages)* Save and restore conf during installation
+- Interoperability fixes with PyKMIP
 
 ### 📚 Documentation
 
