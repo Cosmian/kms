@@ -1410,7 +1410,8 @@ pub(crate) fn test_simple_message_request() {
 
 #[test]
 pub(crate) fn test_message_request() {
-    log_init(option_env!("RUST_LOG"));
+    // log_init(option_env!("RUST_LOG"));
+    log_init(Some("info,cosmian_kms_server=debug"));
 
     let req = RequestMessage {
         request_header: RequestMessageHeader {
@@ -1456,6 +1457,7 @@ pub(crate) fn test_message_request() {
         )],
     };
     let ttlv = to_ttlv(&req).unwrap();
+    info!("TTLV: {:#?}", ttlv);
     let req_: RequestMessage = from_ttlv(ttlv).unwrap();
     let RequestMessageBatchItemVersioned::V21(batch_item) = &req_.batch_item[0] else {
         panic!("not a v2.1 batch item");
