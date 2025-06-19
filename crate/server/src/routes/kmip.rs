@@ -4,16 +4,15 @@ use actix_web::{
     HttpRequest, HttpResponse, post,
     web::{Bytes, Data, Json},
 };
-use cosmian_kms_interfaces::SessionParams;
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         self, KmipResultHelper,
         kmip_0::{
             kmip_messages::{
-                RequestMessage, ResponseMessage, ResponseMessageBatchItemVersioned,
-                ResponseMessageHeader,
+                RequestMessage, RequestMessageBatchItemVersioned, ResponseMessage,
+                ResponseMessageBatchItemVersioned, ResponseMessageHeader,
             },
-            kmip_types::ProtocolVersion,
+            kmip_types::{BlockCipherMode, ProtocolVersion},
         },
         ttlv::{KmipEnumerationVariant, KmipFlavor, TTLV, TTLValue, from_ttlv, to_ttlv},
     },
@@ -22,7 +21,7 @@ use cosmian_kms_server_database::reexport::{
 use reqwest::header::CONTENT_TYPE;
 use serde_json::Value;
 use time::OffsetDateTime;
-use tracing::{debug, error, info, span};
+use tracing::{debug, error, info, span, warn};
 
 use crate::{
     core::{
