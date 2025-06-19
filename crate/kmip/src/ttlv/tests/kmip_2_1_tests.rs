@@ -1410,8 +1410,8 @@ pub(crate) fn test_simple_message_request() {
 
 #[test]
 pub(crate) fn test_message_request() {
-    // log_init(option_env!("RUST_LOG"));
-    log_init(Some("info,cosmian_kms_server=debug"));
+    log_init(option_env!("RUST_LOG"));
+    // log_init(Some("info,cosmian_kms_server=debug"));
 
     let req = RequestMessage {
         request_header: RequestMessageHeader {
