@@ -642,6 +642,51 @@ fn test_date_time() {
 }
 
 #[test]
+fn test_date_time_optional() {
+    #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+    #[serde(rename_all = "PascalCase")]
+    struct Test {
+        date_time: Option<OffsetDateTime>,
+    }
+    // log_init(Some("info"));
+    log_init(option_env!("RUST_LOG"));
+
+    let test = Test {
+        date_time: Some(
+            OffsetDateTime::new_utc(
+                time::Date::from_calendar_date(2021, time::Month::October, 1).unwrap(),
+                time::Time::from_hms(12, 34, 56).unwrap(),
+            )
+            .to_offset(UtcOffset::from_hms(-1, -2, 3).unwrap()),
+        ),
+    };
+    // Serializer
+    let ttlv = to_ttlv(&test).unwrap();
+    info!("TTLV: {ttlv:#?}");
+    assert_eq!(
+        format!("{ttlv:?}"),
+        r#"TTLV { tag: "Test", value: Structure([TTLV { tag: "DateTime", value: DateTime(2021-10-01 11:32:53.0 -01:02:03) }]) }"#
+    );
+
+    // Serialize
+    let value = serde_json::to_value(&ttlv).unwrap();
+    info!("VALUE: {}", serde_json::to_string_pretty(&value).unwrap());
+    assert!(value.is_object());
+    assert_eq!(value["tag"], "Test");
+    assert_eq!(value["value"][0]["tag"], "DateTime");
+    assert_eq!(value["value"][0]["type"], "DateTime");
+    assert_eq!(value["value"][0]["value"], "2021-10-01T12:34:56Z");
+
+    // Deserialize
+    let re_ttlv = serde_json::from_value::<TTLV>(value).unwrap();
+    assert_eq!(ttlv, re_ttlv);
+
+    // Deserializer
+    let rec: Test = from_ttlv(re_ttlv).unwrap();
+    assert_eq!(test, rec);
+}
+
+#[test]
 fn test_date_time_extended() {
     #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
     #[serde(rename_all = "PascalCase")]

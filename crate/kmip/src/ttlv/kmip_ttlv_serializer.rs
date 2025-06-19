@@ -321,6 +321,7 @@ impl ser::Serializer for &mut TtlvSerializer {
             ByteString(Vec<u8>),
             BigUint(BigUint),
             BigInt(BigInt),
+            DateTime(OffsetDateTime),
         }
         trait Detect {
             fn detect(&self) -> Detected;
@@ -356,6 +357,13 @@ impl ser::Serializer for &mut TtlvSerializer {
             }
         }
 
+        impl Detect for &OffsetDateTime {
+            fn detect(&self) -> Detected {
+                debug!("serializing a Date Time {:?}", self);
+                Detected::DateTime(*self.to_owned())
+            }
+        }
+
         match value.detect() {
             Detected::Other => value.serialize(self),
             Detected::ByteString(byte_string) => {
@@ -379,6 +387,13 @@ impl ser::Serializer for &mut TtlvSerializer {
                     .peek_mut()
                     .ok_or_else(|| TtlvError::custom("no TTLV found".to_owned()))?
                     .value = TTLValue::BigInteger(big_int.into());
+                Ok(())
+            }
+            Detected::DateTime(date_time) => {
+                self.stack
+                    .peek_mut()
+                    .ok_or_else(|| TtlvError::custom("no TTLV found".to_owned()))?
+                    .value = TTLValue::DateTime(date_time);
                 Ok(())
             }
         }
