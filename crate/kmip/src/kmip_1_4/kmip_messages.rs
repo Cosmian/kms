@@ -198,6 +198,9 @@ impl<'de> Deserialize<'de> for RequestMessageBatchItem {
                             // serialized, we need to do the job by hand,
                             // using the `operation` enum.
                             request_payload = Some(match operation {
+                                OperationEnumeration::Activate => {
+                                    Operation::Activate(map.next_value()?)
+                                }
                                 OperationEnumeration::AddAttribute => {
                                     Operation::AddAttribute(map.next_value()?)
                                 }
