@@ -1780,3 +1780,39 @@ fn test_set_attribute() {
         "Deserialized Object from JSON does not match the original"
     );
 }
+
+#[test]
+fn test_set_attribute_with_link() {
+    // log_init(option_env!("RUST_LOG"));
+    log_init(Some("info"));
+
+    let response_message = ResponseMessage {
+        response_header: ResponseMessageHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 1,
+                protocol_version_minor: 0,
+            },
+            batch_count: 1,
+            ..Default::default()
+        },
+        batch_item: vec![ResponseMessageBatchItemVersioned::V21(
+            ResponseMessageBatchItem {
+                result_status: ResultStatusEnumeration::OperationFailed,
+                result_reason: Some(ErrorReason::Operation_Not_Supported),
+                result_message: Some("Unrecoverable error".to_owned()),
+                operation: None,
+                unique_batch_item_id: None,
+                asynchronous_correlation_value: None,
+                response_payload: None,
+                message_extension: None,
+            },
+        )],
+    };
+
+    let ttlv = to_ttlv(&response_message).unwrap();
+    info!("TTLV: {:#?}", ttlv);
+    let bytes = ttlv
+        .to_bytes(crate::ttlv::KmipFlavor::Kmip2)
+        .expect("Failed to convert TTLV to bytes");
+    info!("Serialized TTLV bytes: {:?}", bytes);
+}
