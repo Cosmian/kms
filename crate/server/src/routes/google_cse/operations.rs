@@ -558,8 +558,10 @@ pub async fn private_key_decrypt(
     ctx.decrypt_init()?;
     if request.algorithm == "RSA/ECB/PKCS1Padding" {
         ctx.set_rsa_padding(Padding::PKCS1)?;
-    } else if let Some(label) = request.rsa_oaep_label {
-        ctx.set_rsa_oaep_label(label.as_bytes())?;
+    } else {
+        if let Some(label) = request.rsa_oaep_label {
+            ctx.set_rsa_oaep_label(label.as_bytes())?;
+        }
         ctx.set_rsa_padding(Padding::PKCS1_OAEP)?;
         if request.algorithm == "RSA/ECB/OAEPwithSHA-1andMGF1Padding" {
             ctx.set_rsa_oaep_md(Md::sha1())?;
@@ -575,12 +577,7 @@ pub async fn private_key_decrypt(
                 "Decryption algorithm not handled.".to_owned(),
             ))
         }
-    } else {
-        return Err(KmsError::InvalidRequest(
-            "Missing RSA OAEP label if not using PKCS1 algorithm".to_owned(),
-        ))
     }
-
     let allocation_size = ctx.decrypt(&encrypted_dek, None)?;
     debug!("private_key_decrypt: allocation_size: {allocation_size}");
     let mut dek = vec![0_u8; allocation_size];
