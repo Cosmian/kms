@@ -17,6 +17,7 @@ import sys
 import json
 from kmip.services.kmip_client import KMIPProxy
 from kmip.core import enums
+import traceback
 
 
 def main():
@@ -82,7 +83,7 @@ def main():
         # Output result as JSON for easy parsing
         print(json.dumps(result, indent=2))
 
-    except Exception as e:
+    except (ConnectionError, TimeoutError, ValueError, KeyError, AttributeError, TypeError, IOError) as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 
@@ -151,7 +152,9 @@ def perform_query(proxy, verbose=False):
 
         return response
 
-    except Exception as e:
+    # Catch specific exceptions we expect might occur during query
+    except (ConnectionError, TimeoutError, ValueError, KeyError,
+            AttributeError, TypeError, IOError) as e:
         return {
             "operation": "Query",
             "status": "error",
@@ -234,11 +237,24 @@ def perform_create_symmetric_key(proxy, verbose=False):
 
         return response
 
-    except Exception as e:
+    except (ValueError, AttributeError, TypeError) as e:
         return {
             "operation": "Create",
             "status": "error",
             "error": str(e)
+        }
+    except ConnectionError as e:
+        return {
+            "operation": "Create",
+            "status": "error",
+            "error": f"Connection error: {str(e)}"
+        }
+    # pylint: disable=broad-exception-caught
+    except Exception as e:  # Still catch any unexpected exceptions as fallback
+        return {
+            "operation": "Create",
+            "status": "error",
+            "error": f"Unexpected error: {str(e)}"
         }
 
 
@@ -315,7 +331,7 @@ def perform_get_attributes(proxy, verbose=False):
                         attr.attribute_name, 'value') else str(attr.attribute_name)
                     attr_value = str(attr.attribute_value)
                     parsed_attributes[attr_name] = attr_value
-                except Exception as attr_error:
+                except (ValueError, AttributeError, TypeError) as attr_error:
                     if verbose:
                         print(
                             f"Skipping attribute due to parsing error: {attr_error}")
@@ -329,7 +345,7 @@ def perform_get_attributes(proxy, verbose=False):
                 "attributes": parsed_attributes
             }
 
-        except Exception as get_error:
+        except (ValueError, AttributeError, TypeError, ConnectionError, IOError) as get_error:
             # If getting specific attributes fails, report the actual error
             error_msg = str(get_error)
             if "No value type for COMMENT" in error_msg:
@@ -348,7 +364,7 @@ def perform_get_attributes(proxy, verbose=False):
 
         return response
 
-    except Exception as e:
+    except (ConnectionError, TimeoutError, ValueError, KeyError, AttributeError, TypeError, IOError) as e:
         return {
             "operation": "GetAttributes",
             "status": "error",
@@ -476,7 +492,8 @@ def perform_destroy(proxy, verbose=False):
 
         return response
 
-    except Exception as e:
+    except (ConnectionError, TimeoutError, ValueError, KeyError,
+            AttributeError, TypeError, IOError) as e:
         return {
             "operation": "Destroy",
             "status": "error",
@@ -557,7 +574,7 @@ def perform_decrypt(proxy: KMIPProxy, verbose=False):
                 "verification  ": "passed" if success else "failed"
             }
 
-        except Exception as crypto_error:
+        except (ValueError, TypeError, AttributeError, ConnectionError, IOError) as crypto_error:
             error_msg = str(crypto_error)
             response = {
                 "operation": "Decrypt",
@@ -568,7 +585,7 @@ def perform_decrypt(proxy: KMIPProxy, verbose=False):
 
         return response
 
-    except Exception as e:
+    except (ConnectionError, TimeoutError, ValueError, KeyError, AttributeError, TypeError, IOError) as e:
         return {
             "operation": "Decrypt",
             "status": "error",
@@ -619,7 +636,7 @@ def perform_create_keypair(proxy, verbose=False):
 
         # Check if operation actually succeeded
         if hasattr(result, 'result_status') and result.result_status.value != enums.ResultStatus.SUCCESS:
-            raise Exception(
+            raise ValueError(
                 f"Create key pair failed: {result.result_reason} - {result.result_message}")
 
         # Extract UIDs from result - try different possible attribute names
@@ -659,7 +676,8 @@ def perform_create_keypair(proxy, verbose=False):
 
         return response
 
-    except Exception as e:
+    except (ConnectionError, TimeoutError, ValueError, KeyError,
+            AttributeError, TypeError, IOError) as e:
         return {
             "operation": "CreateKeyPair",
             "status": "error",
@@ -727,11 +745,12 @@ def perform_locate(proxy, verbose=False):
             if response["status"] == "success":
                 print(f"Located {response['count']} objects on server")
             else:
-                print(f"Locate operation failed")
+                print("Locate operation failed")
 
         return response
 
-    except Exception as e:
+    except (ConnectionError, TimeoutError, ValueError, KeyError,
+            AttributeError, TypeError, IOError) as e:
         return {
             "operation": "Locate",
             "status": "error",
@@ -819,7 +838,8 @@ def perform_revoke(proxy, verbose=False):
 
         return response
 
-    except Exception as e:
+    except (ConnectionError, TimeoutError, ValueError, KeyError,
+            AttributeError, TypeError, IOError) as e:
         return {
             "operation": "Revoke",
             "status": "error",
@@ -855,7 +875,8 @@ def perform_discover_versions(proxy, verbose=False):
                     "error": f"Query failed: {query_result.result_reason}"
                 }
 
-        except Exception as query_error:
+        except (ConnectionError, TimeoutError, ValueError, KeyError, AttributeError,
+                TypeError, IOError) as query_error:
             return {
                 "operation": "DiscoverVersions",
                 "status": "error",
@@ -870,6 +891,7 @@ def perform_discover_versions(proxy, verbose=False):
             version_info['negotiated_protocol_version'] = str(
                 proxy.protocol_version)
         elif hasattr(proxy, '_protocol_version'):
+            # pylint: disable=protected-access
             version_info['negotiated_protocol_version'] = str(
                 proxy._protocol_version)
         else:
@@ -927,7 +949,8 @@ def perform_discover_versions(proxy, verbose=False):
 
         return response
 
-    except Exception as e:
+    except (ConnectionError, TimeoutError, ValueError, KeyError, AttributeError,
+            TypeError, IOError) as e:
         return {
             "operation": "DiscoverVersions",
             "status": "error",
@@ -1005,8 +1028,7 @@ def perform_encrypt(proxy, verbose=False):
                 "message": "Data encrypted successfully"
             }
 
-        except Exception as crypto_error:
-            import traceback
+        except (ValueError, TypeError, AttributeError, ConnectionError, IOError) as crypto_error:
             error_msg = str(crypto_error)
             full_traceback = traceback.format_exc()
 
@@ -1037,7 +1059,8 @@ def perform_encrypt(proxy, verbose=False):
 
         return response
 
-    except Exception as e:
+    except (ConnectionError, TimeoutError, ValueError, KeyError, AttributeError,
+            TypeError, IOError) as e:
         return {
             "operation": "Encrypt",
             "status": "error",
@@ -1133,8 +1156,8 @@ def perform_activate(proxy, verbose=False):
                     "activated_uid": activated_uid
                 }
 
-        except Exception as activate_error:
-            import traceback
+        except (ConnectionError, TimeoutError, ValueError, KeyError,
+                AttributeError, TypeError, IOError) as activate_error:
             error_msg = str(activate_error)
             full_traceback = traceback.format_exc()
 
@@ -1154,7 +1177,8 @@ def perform_activate(proxy, verbose=False):
 
         return response
 
-    except Exception as e:
+    except (ConnectionError, TimeoutError, ValueError, KeyError,
+            AttributeError, TypeError, IOError) as e:
         return {
             "operation": "Activate",
             "status": "error",
@@ -1249,8 +1273,8 @@ def perform_mac(proxy, verbose=False):
                 if hasattr(mac_result.mac_data, 'value') and mac_result.mac_data.value:
                     mac_hex = mac_result.mac_data.value.hex()
                     mac_length = len(mac_result.mac_data.value)
-        except Exception:
-            mac_hex = "Error extracting MAC data"
+        except (ValueError, AttributeError, TypeError) as extract_error:
+            mac_hex = f"Error extracting MAC data: {str(extract_error)}"
 
         response = {
             "operation": "MAC",
@@ -1265,7 +1289,8 @@ def perform_mac(proxy, verbose=False):
 
         return response
 
-    except Exception as e:
+    except (ConnectionError, TimeoutError, ValueError, KeyError,
+            AttributeError, TypeError, IOError) as e:
         return {
             "operation": "MAC",
             "status": "error",
