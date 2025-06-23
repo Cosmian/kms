@@ -7,6 +7,7 @@ the KMIP Certify operation testing functionality.
 """
 
 from kmip.core import enums
+import traceback
 
 
 def perform_certify(proxy, verbose=False):
@@ -170,8 +171,7 @@ def perform_certify(proxy, verbose=False):
                     "note": "KMIP CERTIFY operation simulated via key pair creation and signing"
                 }
 
-        except Exception as sign_error:
-            import traceback
+        except (ValueError, TypeError, AttributeError, RuntimeError, ConnectionError) as sign_error:
             error_msg = str(sign_error)
             full_traceback = traceback.format_exc()
 
@@ -210,13 +210,13 @@ def perform_certify(proxy, verbose=False):
                 proxy.destroy(uuid=private_key_uid)
             if public_key_uid:
                 proxy.destroy(uuid=public_key_uid)
-        except:
+        except (ConnectionError, RuntimeError, ValueError, AttributeError) as cleanup_error:
             if verbose:
-                print("Note: Could not clean up test keys")
+                print(f"Note: Could not clean up test keys: {cleanup_error}")
 
         return response
 
-    except Exception as e:
+    except (ValueError, TypeError, AttributeError, RuntimeError, ConnectionError, ImportError) as e:
         return {
             "operation": "Certify",
             "status": "error",
