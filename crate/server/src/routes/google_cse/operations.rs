@@ -420,12 +420,7 @@ pub async fn private_key_sign(
     )
     .await?;
 
-    debug!("private_key_sign: check algorithm");
-    kms_ensure!(
-        request.algorithm == "SHA256withRSA",
-        "Only SHA256withRSA is supported"
-    );
-
+    debug!("private_key_sign: decrypt private key");
     // Unwrap private key which has been previously wrapped using AES
     let private_key_der = cse_wrapped_key_decrypt(
         request.wrapped_private_key,
@@ -443,8 +438,21 @@ pub async fn private_key_sign(
     debug!("private_key_sign: build signer");
     let mut ctx = PkeyCtx::new(&private_key)?;
     ctx.sign_init()?;
-    ctx.set_rsa_padding(Padding::PKCS1)?;
-    ctx.set_signature_md(Md::sha256())?;
+    let (padding, md) = match request.algorithm.as_str() {
+        "SHA1withRSA" => (Padding::PKCS1, Md::sha1()),
+        "SHA256withRSA" => (Padding::PKCS1, Md::sha256()),
+        "SHA512withRSA" => (Padding::PKCS1, Md::sha512()),
+        "SHA1withRSA/PSS" => (Padding::PKCS1_PSS, Md::sha1()),
+        "SHA256withRSA/PSS" => (Padding::PKCS1_PSS, Md::sha256()),
+        "SHA512withRSA/PSS" => (Padding::PKCS1_PSS, Md::sha512()),
+        _ => {
+            return Err(KmsError::InvalidRequest(
+                "Decryption algorithm not handled.".to_owned(),
+            ));
+        }
+    };
+    ctx.set_rsa_padding(padding)?;
+    ctx.set_signature_md(md)?;
     let digest = general_purpose::STANDARD.decode(request.digest)?;
     let allocation_size = ctx.sign(&digest, None)?;
 
