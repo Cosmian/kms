@@ -9,322 +9,408 @@ The PyKMIP compatibility tests serve to:
 - Ensure interoperability with existing KMIP client implementations
 - Catch any regression issues that might break compatibility with PyKMIP clients
 - Validate that common KMIP operations work as expected across different client implementations
+- Test edge cases and error handling for unsupported operations
 
 ## Prerequisites
 
 - Python 3.x installed on your system
 - PyKMIP library (will be installed by setup script)
-- Cosmian KMS server running and accessible
+- Cosmian KMS server running and accessible with KMIP socket server enabled
 - All scripts must be executed from the **project root directory** (not from within the `scripts/` directory)
+- Virtual environment (.venv) set up and activated for Python dependencies
 
-## Testing Workflow
+## Quick Start
 
-The PyKMIP compatibility testing follows a structured workflow. Each step must be executed in order to ensure proper setup and validation.
-
-### 1. Query Server Status
-
-Before running any PyKMIP tests, verify that your KMS server is running and accessible:
+The fastest way to test PyKMIP compatibility is to use the automated test runner:
 
 ```bash
-# Check if the KMS server is running
-curl -f http://localhost:9998/status || echo "KMS server not accessible"
-
-# Or check the server logs to ensure it's properly started
-tail -f /path/to/kms/server.log
-```
-
-Ensure the server is:
-- Running and accepting connections
-- Properly configured for KMIP protocol support
-- Accessible on the expected host and port
-
-You can also perform a basic KMIP query operation to test connectivity:
-
-```bash
-# Run from project root - test basic KMIP connectivity
-./scripts/pykmip_client.py --configuration scripts/pykmip.conf --operation query
-```
-
-This initial query will:
-- Test the KMIP protocol handshake
-- Verify authentication is working
-- Confirm the server supports the required KMIP operations
-- Report server capabilities and supported protocol versions
-
-If this query fails, resolve connectivity and configuration issues before proceeding to the next steps.
-
-### 2. Setup PyKMIP Environment
-
-```bash
-# Run from project root
+# 1. Set up the environment (from project root)
 ./scripts/setup_pykmip.sh
+
+# 2. Start the KMS server (in another terminal)
+COSMIAN_KMS_CONF=./scripts/kms.toml cargo run --bin cosmian_kms
+
+# 3. Run all compatibility tests
+./scripts/test_pykmip.sh all
+
+# 4. Or run specific operations
+./scripts/test_pykmip.sh query -v
+./scripts/test_pykmip.sh create
+./scripts/test_pykmip.sh check
 ```
 
-This script will:
-- Install the PyKMIP library and its dependencies
-- Set up the Python virtual environment if needed
-- Prepare the necessary configuration files
-- Verify that all required components are properly installed
+The test runner automatically:
+- Activates the Python virtual environment
+- Validates prerequisites and connectivity
+- Executes the requested operations with proper error handling
+- Provides detailed output and status reporting
+- Runs with timeout protection to prevent hanging tests
 
-### 3. Verify PyKMIP Configuration (Optional but Recommended)
+## Supported Operations
 
-```bash
-# Run from project root
-./scripts/verify_pykmip.sh
-```
+The current test suite supports the following KMIP operations:
 
-This verification script will:
-- Check that the PyKMIP client can connect to the KMS server
-- Validate the configuration file settings
-- Perform basic connectivity tests
-- Ensure the server is responding to KMIP requests correctly
-- Report any configuration issues that need to be addressed
+### Core Operations
+- **query** - Discover server capabilities and protocol versions
+- **create** - Create symmetric keys
+- **create_keypair** - Create RSA key pairs
+- **get** - Retrieve object attributes
+- **destroy** - Delete objects from the server
+- **locate** - Find objects by search criteria
 
-### 4. Run Compatibility Tests
+### Cryptographic Operations  
+- **encrypt** - Encrypt data using managed keys
+- **decrypt** - Decrypt data using managed keys
+- **mac** - Generate Message Authentication Codes
+- **activate** - Activate objects for use
 
-```bash
-# Run from project root
-./scripts/test_pykmip.sh
-```
+### Management Operations
+- **revoke** - Revoke objects and certificates
+- **discover_versions** - Discover supported KMIP protocol versions
 
-This comprehensive test script will:
-- Execute a series of KMIP operations using the PyKMIP client
-- Test common operations such as:
-  - Key creation and management
-  - Encryption and decryption operations
-  - Certificate handling
-  - Attribute management
-- Validate that all responses have successful status codes
-- Continue running all tests even if individual operations fail
-- Provide a detailed summary of test results
+### Special Commands
+- **all** - Execute all supported operations in sequence
+- **check** - Validate prerequisites and connectivity
+- **rust-test** - Run Rust-based PyKMIP integration tests
+
+### Experimental/Unsupported Operations
+- **certify** - Certificate signing (implemented via separate module `pykmip_certify.py`, uses operations not yet supported by Cosmian KMS)
+
+Note: Some operations may fail due to server limitations or KMIP 1.x compatibility constraints. The test runner handles these gracefully and provides detailed error reporting.
 
 ## Understanding Test Results
 
-The test script will output detailed information for each operation:
+The test script provides comprehensive output for each operation with clear status indicators:
 
-- **Success case**: Operation completes with `"status": "success"` in the JSON response
-- **Failure case**: Operation returns `"status": "error"` or encounters an exception
-
-Example successful output:
+### Success Case
+Operations that complete successfully will show:
 ```json
 {
-  "operation": "CreateKeyPair",
-  "status": "success",
-  "unique_identifier": "abc123-def456-789"
+  "operation": "Create",
+  "status": "success", 
+  "unique_identifier": "abc123-def456-789",
+  "additional_info": {...}
 }
 ```
 
-Example failure output:
+### Failure Case  
+Operations that fail will show:
 ```json
 {
-  "operation": "EncryptDecrypt", 
+  "operation": "MAC",
   "status": "error",
-  "error": "Invalid parameter provided"
+  "error": "Invalid parameter provided",
+  "details": "Cryptographic algorithm not supported"
 }
 ```
+
+### Test Summary
+After running all operations, you'll see a summary like:
+```
+======================================
+FINAL TEST RESULTS SUMMARY
+======================================
+✅ SUCCESSFUL operations (8/12):
+  ✅ query
+  ✅ create
+  ✅ get
+  ✅ destroy
+  ✅ encrypt
+  ✅ decrypt
+  ✅ locate
+  ✅ discover_versions
+
+❌ FAILED operations (4/12):
+  ❌ mac
+  ❌ activate  
+  ❌ revoke
+  ❌ create_keypair
+```
+
+### Operation Status Types
+- **✅ SUCCESS**: Operation completed and returned successful status
+- **❌ FAILED**: Operation returned error status or threw exception  
+- **⚠️ TIMEOUT**: Operation timed out after 30 seconds
+- **🔍 UNSUPPORTED**: Operation not supported by server or KMIP version
 
 ## Troubleshooting
 
 ### Common Issues
 
 1. **Script execution fails**: Ensure you're running from the project root, not from `scripts/`
-2. **PyKMIP import errors**: Run `setup_pykmip.sh` to install dependencies
-3. **Connection refused**: Verify the KMS server is running and accessible
-4. **Configuration errors**: Check `scripts/pykmip.conf` for correct server settings
+   ```bash
+   # Wrong - don't do this
+   cd scripts && ./test_pykmip.sh
+   
+   # Correct - run from project root
+   ./scripts/test_pykmip.sh all
+   ```
 
-### File Structure
+2. **PyKMIP import errors**: Run `setup_pykmip.sh` to install dependencies
+   ```
+   Error: No module named 'kmip'  
+   Solution: ./scripts/setup_pykmip.sh
+   ```
+
+3. **Connection refused**: Verify the KMS server is running with KMIP socket server enabled
+   ```
+   Error: Connection refused on port 5696
+   Solution: Check server is running and socket_server_start = true in config
+   ```
+
+4. **Virtual environment not found**: The test runner requires a .venv directory
+   ```
+   Error: Virtual environment not found
+   Solution: Run ./scripts/setup_pykmip.sh to create .venv
+   ```
+
+5. **TLS/Certificate errors**: Verify certificate paths and validity
+   ```
+   Error: [SSL: CERTIFICATE_VERIFY_FAILED]
+   Solution: Check certificate files in test_data/client_server/
+   ```
+
+6. **Operation timeouts**: Some operations may timeout due to server processing time
+   ```
+   Error: Operation timed out after 30 seconds
+   Solution: Check server logs, increase timeout, or use -v for verbose output
+   ```
+
+### Advanced Troubleshooting
+
+Enable verbose output to see detailed operation information:
+```bash
+./scripts/test_pykmip.sh query -v
+```
+
+Check server logs while running tests:
+```bash
+# In another terminal
+tail -f logs/server.log
+```
+
+Test connectivity manually:
+```bash
+./scripts/test_pykmip.sh check
+```
+
+Run individual operations to isolate issues:
+```bash
+./scripts/test_pykmip.sh create -v
+./scripts/test_pykmip.sh get -v
+```
+
+## File Structure
+
+The PyKMIP test suite consists of the following files:
 
 ```
 scripts/
-├── README_PYKMIP.md          # This documentation
-├── setup_pykmip.sh           # Environment setup script
-├── verify_pykmip.sh          # Configuration verification script  
-├── test_pykmip.sh            # Main compatibility test suite
-├── pykmip_client.py          # PyKMIP client wrapper
-└── pykmip.conf               # PyKMIP configuration file
+├── README_PYKMIP.md              # This documentation
+├── setup_pykmip.sh               # Environment setup script
+├── verify_pykmip.sh              # Configuration verification script  
+├── test_pykmip.sh                # Main compatibility test runner
+├── pykmip_client.py              # PyKMIP client implementation (12 operations)
+├── pykmip_certify.py             # Separate certify operation module
+├── pykmip.conf                   # PyKMIP configuration file
+├── kms.toml                      # KMS server configuration for testing
+├── activate_venv.sh              # Virtual environment activation helper
+└── certify_implementation_summary.py  # Certify operation analysis script
 ```
+
+### Key Files
+
+- **`test_pykmip.sh`**: Main test runner with colored output, timeout protection, and comprehensive error handling
+- **`pykmip_client.py`**: Core client implementing 12 KMIP operations with JSON output formatting
+- **`pykmip_certify.py`**: Modular implementation of certificate-related operations (experimental)
+- **`pykmip.conf`**: Configuration file with TLS settings, authentication, and server connection details
+- **`kms.toml`**: KMS server configuration optimized for PyKMIP compatibility testing
 
 ## Configuration
 
-The `pykmip.conf` file contains the connection settings for the PyKMIP client. Ensure the following parameters match your KMS server setup:
-- Server hostname/IP address
-- Port number
-- Authentication credentials
-- TLS/SSL settings
+The `pykmip.conf` file contains the connection settings for the PyKMIP client. Key configuration sections:
 
-## Contributing
-
-When adding new PyKMIP compatibility tests:
-1. Add new operations to the `operations` array in `test_pykmip.sh`
-2. Ensure proper error handling and status checking
-3. Update this README if new setup steps are required
-4. Test both success and failure scenarios
-
-## Available Operations
-
-The following operations are currently supported by the PyKMIP client script:
-
-### 1. Query
-
-```bash
-# Activate virtual environment first
-source .venv/bin/activate
-
-python scripts/pykmip_client.py \
-    --host 127.0.0.1 --port 5696 \
-    --cert test_data/client_server/owner/owner.client.acme.com.crt \
-    --key test_data/client_server/owner/owner.client.acme.com.key \
-    --ca test_data/client_server/ca/ca.crt \
-    --operation query
+### Server Connection
+```ini
+[server]
+host=127.0.0.1
+port=5696
 ```
 
-### 2. Create
-
-```bash
-# Activate virtual environment first
-source .venv/bin/activate
-
-python scripts/pykmip_client.py \
-    --host 127.0.0.1 --port 5696 \
-    --cert test_data/client_server/owner/owner.client.acme.com.crt \
-    --key test_data/client_server/owner/owner.client.acme.com.key \
-    --ca test_data/client_server/ca/ca.crt \
-    --operation create
+### TLS Configuration
+```ini
+[tls]
+client_cert_file=test_data/client_server/owner/owner.client.acme.com.crt
+client_key_file=test_data/client_server/owner/owner.client.acme.com.key
+ca_cert_file=test_data/client_server/ca/ca.crt
 ```
 
-### 3. Get
-Retrieves attributes for an object:
-
-```bash
-# Activate virtual environment first
-source .venv/bin/activate
-
-python scripts/pykmip_client.py \
-    --host 127.0.0.1 --port 5696 \
-    --cert test_data/client_server/owner/owner.client.acme.com.crt \
-    --key test_data/client_server/owner/owner.client.acme.com.key \
-    --ca test_data/client_server/ca/ca.crt \
-    --operation get
+### Protocol Settings
+```ini
+[protocol]
+kmip_version=1.0
 ```
 
-### 4. Destroy
-Creates and then destroys a key:
+Ensure these parameters match your KMS server setup:
+- Server hostname/IP and port (default: 127.0.0.1:5696)
+- TLS certificate paths (must exist and be valid)
+- KMIP protocol version compatibility
 
-```bash
-# Activate virtual environment first
-source .venv/bin/activate
+### KMS Server Configuration
 
-python scripts/pykmip_client.py \
-    --host 127.0.0.1 --port 5696 \
-    --cert test_data/client_server/owner/owner.client.acme.com.crt \
-    --key test_data/client_server/owner/owner.client.acme.com.key \
-    --ca test_data/client_server/ca/ca.crt \
-    --operation destroy
-```
-
-
-## Troubleshooting
-
-### Common Issues
-
-1. **PyKMIP not installed**
-   ```
-   Error: No module named 'kmip'
-   ```
-   Solution: Run `./scripts/setup_pykmip.sh` to set up the virtual environment
-
-2. **Virtual environment not activated**
-   ```
-   Error: python: command not found
-   ```
-   Solution: Activate the virtual environment with `source .venv/bin/activate`
-
-3. **Certificate issues**
-   ```
-   Error: [SSL: CERTIFICATE_VERIFY_FAILED]
-   ```
-   Solution: Ensure certificates are generated and paths are correct
-
-4. **Server not running**
-   ```
-   Error: Connection refused
-   ```
-   Solution: Make sure the KMS server is running with socket server enabled
-
-5. **Port conflicts**
-   ```
-   Error: Address already in use
-   ```
-   Solution: Use a different port or stop conflicting services
-
-### Debugging
-
-Enable verbose output:
-
-```bash
-# Activate virtual environment first
-source .venv/bin/activate
-
-python scripts/pykmip_client.py \
-    --host 127.0.0.1 --port 5696 \
-    --cert test_data/client_server/owner/owner.client.acme.com.crt \
-    --key test_data/client_server/owner/owner.client.acme.com.key \
-    --ca test_data/client_server/ca/ca.crt \
-    --operation query \
-    --verbose
-```
-
-## Server Configuration
-
-To enable PyKMIP clients, your KMS server must have the socket server enabled:
+Your KMS server must be configured to accept KMIP connections. Key settings in `scripts/kms.toml`:
 
 ```toml
-[socket_server]
+[server]
+# Enable KMIP socket server
 socket_server_start = true
 socket_server_port = 5696
 socket_server_hostname = "0.0.0.0"
 
 [tls]
+# Server certificate and key
 tls_p12_file = "test_data/client_server/server/kmserver.acme.com.p12"
 tls_p12_password = "password"
 clients_ca_cert_file = "test_data/client_server/ca/ca.crt"
 ```
 
-## Advanced Usage
+## Contributing
 
-### Custom Operations
+When adding new PyKMIP compatibility tests:
 
-Extend the PyKMIP client script to support additional operations:
+1. **Add new operations** to the `operations` array in `test_pykmip.sh`:
+   ```bash
+   operations=("activate" "create" "create_keypair" "decrypt" "destroy" 
+               "discover_versions" "encrypt" "get" "locate" "mac" "query" "revoke")
+   ```
 
-```python
-def perform_encrypt(proxy, plaintext, uid):
-    """Encrypt data using a specific key"""
-    result = proxy.encrypt(
-        uid,
-        plaintext.encode(),
-        cryptographic_algorithm=enums.CryptographicAlgorithm.AES,
-        cryptographic_parameters={
-            'block_cipher_mode': enums.BlockCipherMode.CBC,
-            'padding_method': enums.PaddingMethod.PKCS5
-        }
-    )
-    return result
+2. **Implement operation functions** in `pykmip_client.py`:
+   ```python
+   def perform_new_operation(proxy, verbose=False):
+       """Implement new KMIP operation"""
+       if verbose:
+           print("Performing new operation...")
+       # Implementation here
+       return {"operation": "NewOperation", "status": "success"}
+   ```
+
+3. **Add to argument parser** choices in `pykmip_client.py`:
+   ```python
+   parser.add_argument('--operation', default='query',
+                       choices=['activate', 'create', ..., 'new_operation'],
+                       help='KMIP operation to perform')
+   ```
+
+4. **Update help text** in `test_pykmip.sh` to include the new operation
+
+5. **Handle modular operations** like certify by creating separate files:
+   - Create `pykmip_operation.py` for complex operations
+   - Import and call from main client: `from pykmip_operation import perform_operation`
+
+6. **Test both success and failure scenarios** to ensure proper error handling
+
+7. **Update this README** if new setup steps or dependencies are required
+
+### Testing Best Practices
+
+- Always test with both verbose (`-v`) and normal output modes
+- Verify operations work individually and in the "all" test suite
+- Check for JSON serialization issues with complex data types
+- Ensure timeout handling works correctly for long-running operations
+- Document any server limitations or KMIP version constraints
+
+## Available Operations (Detailed Examples)
+
+### Using the Test Runner (Recommended)
+
+The test runner (`test_pykmip.sh`) automatically handles environment setup and provides consistent output formatting:
+
+```bash
+# Run all operations with summary report
+./scripts/test_pykmip.sh all
+
+# Run specific operation with verbose output  
+./scripts/test_pykmip.sh query -v
+
+# Check prerequisites and connectivity
+./scripts/test_pykmip.sh check
+
+# Run individual operations
+./scripts/test_pykmip.sh create
+./scripts/test_pykmip.sh encrypt
+./scripts/test_pykmip.sh mac
 ```
 
-### Batch Operations
+### Manual Client Usage (Advanced)
 
-PyKMIP supports batch operations for efficiency:
+For direct client access with custom parameters:
 
-```python
-def perform_batch_operations(proxy):
-    """Perform multiple operations in a single request"""
-    operations = [
-        ('create', {...}),
-        ('get', {...}),
-        ('destroy', {...})
-    ]
-    return proxy.batch(operations)
+#### 1. Query Server Capabilities
+```bash
+source .venv/bin/activate
+python scripts/pykmip_client.py \
+    --configuration scripts/pykmip.conf \
+    --operation query \
+    --verbose
 ```
+
+#### 2. Create Symmetric Key
+```bash
+source .venv/bin/activate
+python scripts/pykmip_client.py \
+    --configuration scripts/pykmip.conf \
+    --operation create
+```
+
+#### 3. Create RSA Key Pair
+```bash
+source .venv/bin/activate  
+python scripts/pykmip_client.py \
+    --configuration scripts/pykmip.conf \
+    --operation create_keypair
+```
+
+#### 4. Test Encryption/Decryption
+```bash
+source .venv/bin/activate
+python scripts/pykmip_client.py \
+    --configuration scripts/pykmip.conf \
+    --operation encrypt
+
+python scripts/pykmip_client.py \
+    --configuration scripts/pykmip.conf \
+    --operation decrypt
+```
+
+#### 5. Activate Objects
+```bash
+source .venv/bin/activate
+python scripts/pykmip_client.py \
+    --configuration scripts/pykmip.conf \
+    --operation activate
+```
+
+### Operation Categories
+
+#### ✅ Fully Supported Operations
+- **query**: Discover server capabilities - always works
+- **create**: Create symmetric keys - core functionality  
+- **get**: Retrieve object attributes - essential for key management
+- **encrypt/decrypt**: Basic cryptographic operations
+- **discover_versions**: KMIP protocol version discovery
+
+#### ⚠️ Partially Supported Operations  
+- **create_keypair**: RSA key pair creation (may have parameter limitations)
+- **locate**: Object search (depends on search criteria support)
+- **destroy**: Object deletion (requires proper object lifecycle)
+
+#### ❌ Known Problematic Operations
+- **mac**: MAC generation (cryptographic parameter issues)
+- **activate**: Object activation (JSON serialization issues with some objects)
+- **revoke**: Object revocation (complex certificate workflows)
+
+#### 🧪 Experimental Operations
+- **certify**: Certificate operations (separate module, uses unsupported operations)
 
 ## Integration with CI/CD
 
@@ -335,13 +421,44 @@ Add PyKMIP tests to your continuous integration:
 - name: Setup PyKMIP virtual environment
   run: ./scripts/setup_pykmip.sh
 
-- name: Run PyKMIP integration tests
-  run: cargo test test_pykmip --package cosmian_kms_server
+- name: Start KMS server for testing
+  run: |
+    COSMIAN_KMS_CONF=./scripts/kms.toml cargo run --bin cosmian_kms &
+    sleep 10  # Wait for server to start
+
+- name: Run PyKMIP compatibility tests
+  run: ./scripts/test_pykmip.sh all
+
+- name: Run Rust PyKMIP integration tests  
+  run: ./scripts/test_pykmip.sh rust-test
 ```
+
+## Known Limitations and Compatibility
+
+### KMIP 1.x Constraints
+- Some operations may not be supported in KMIP 1.0 mode
+- Cosmian KMS implements KMIP 1.x with some extensions
+- Certificate operations (certify) have limited support due to protocol version
+
+### Server Limitations
+- MAC operations may fail due to cryptographic parameter handling
+- Some advanced cryptographic algorithms may not be supported
+- Object lifecycle management has specific requirements
+
+### PyKMIP Client Limitations  
+- JSON serialization issues with some KMIP objects (e.g., UniqueIdentifier)
+- Limited error reporting for complex operations
+- Timeout handling may need adjustment for slow operations
+
+### Workarounds
+- Use modular operation files (like `pykmip_certify.py`) for complex operations
+- Implement JSON serialization fixes for problematic objects
+- Use the test runner for consistent error handling and reporting
 
 ## Related Documentation
 
-- [KMIP Protocol Support](../documentation/docs/kmip/index.md)
-- [TLS Configuration](../documentation/docs/tls.md)
+- [KMIP Protocol Support](../documentation/docs/algorithms.md)
+- [TLS Configuration](../crate/server/README.md)
 - [Authentication](../documentation/docs/authentication.md)
 - [PyKMIP Official Documentation](https://pykmip.readthedocs.io/)
+- [Cosmian KMS Server Documentation](../crate/server/README.md)
