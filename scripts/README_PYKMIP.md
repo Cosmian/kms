@@ -110,7 +110,7 @@ After running all operations, you'll see a summary like:
 ======================================
 FINAL TEST RESULTS SUMMARY
 ======================================
-✅ SUCCESSFUL operations (8/12):
+✅ SUCCESSFUL operations (12/13):
   ✅ query
   ✅ create
   ✅ get
@@ -119,12 +119,11 @@ FINAL TEST RESULTS SUMMARY
   ✅ decrypt
   ✅ locate
   ✅ discover_versions
-
-❌ FAILED operations (4/12):
-  ❌ mac
-  ❌ activate  
-  ❌ revoke
-  ❌ create_keypair
+  ✅ mac
+  ✅ activate  
+  ✅ revoke
+  ✅ create_keypair
+  🔍 certify (not supported in PyKMIP - workaround under study)
 ```
 
 ### Operation Status Types
