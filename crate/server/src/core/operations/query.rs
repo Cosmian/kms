@@ -45,6 +45,7 @@ pub(crate) async fn query(request: Query) -> KResult<QueryResponse> {
                         OperationEnumeration::Destroy,
                         OperationEnumeration::Encrypt,
                         OperationEnumeration::Get,
+                        OperationEnumeration::GetAttributes,
                         OperationEnumeration::Locate,
                         OperationEnumeration::Query,
                         OperationEnumeration::Recover,
