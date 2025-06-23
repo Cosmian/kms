@@ -37,6 +37,7 @@ pub(crate) async fn query(request: Query) -> KResult<QueryResponse> {
             match func {
                 QueryFunction::QueryOperations => {
                     response.operation = Some(vec![
+                        OperationEnumeration::Activate,
                         OperationEnumeration::Certify,
                         OperationEnumeration::Create,
                         OperationEnumeration::CreateKeyPair,
