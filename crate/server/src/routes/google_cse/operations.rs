@@ -787,10 +787,6 @@ pub async fn privileged_private_key_decrypt(
         validate_cse_authentication_token(&request.authentication, cse_config, kms, true).await?;
 
     debug!("privileged_private_key_decrypt: check algorithm");
-    kms_ensure!(
-        request.algorithm == "RSA/ECB/PKCS1Padding",
-        "Only RSA/ECB/PKCS1Padding is supported"
-    );
 
     // Base 64 decode the encrypted DEK and create a wrapped KMIP object from the key bytes
     debug!("privileged_private_key_decrypt: decode encrypted_dek");
@@ -823,13 +819,30 @@ pub async fn privileged_private_key_decrypt(
         )
     );
 
-    // Perform RSA PKCS1 decryption.
+    // Perform RSA decryption.
     let mut ctx = PkeyCtx::new(&private_key)?;
     ctx.decrypt_init()?;
-    ctx.set_rsa_padding(Padding::PKCS1)?;
-    if let Some(label) = request.rsa_oaep_label {
-        ctx.set_rsa_oaep_label(label.as_bytes())?;
+    if request.algorithm == "RSA/ECB/PKCS1Padding" {
+        ctx.set_rsa_padding(Padding::PKCS1)?;
+    } else {
+        if let Some(label) = request.rsa_oaep_label {
+            ctx.set_rsa_oaep_label(label.as_bytes())?;
+        }
         ctx.set_rsa_padding(Padding::PKCS1_OAEP)?;
+        if request.algorithm == "RSA/ECB/OAEPwithSHA-1andMGF1Padding" {
+            ctx.set_rsa_oaep_md(Md::sha1())?;
+            ctx.set_rsa_mgf1_md(Md::sha1())?;
+        } else if request.algorithm == "RSA/ECB/OAEPwithSHA-256andMGF1Padding" {
+            ctx.set_rsa_oaep_md(Md::sha256())?;
+            ctx.set_rsa_mgf1_md(Md::sha256())?;
+        } else if request.algorithm == "RSA/ECB/OAEPwithSHA-512andMGF1Padding" {
+            ctx.set_rsa_oaep_md(Md::sha512())?;
+            ctx.set_rsa_mgf1_md(Md::sha512())?;
+        } else {
+            return Err(KmsError::InvalidRequest(
+                "Decryption algorithm not handled.".to_owned(),
+            ))
+        }
     }
     let allocation_size = ctx.decrypt(&encrypted_dek, None)?;
     debug!("privileged_private_key_decrypt: allocation_size: {allocation_size}");
