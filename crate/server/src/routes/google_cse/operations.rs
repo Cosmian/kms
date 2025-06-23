@@ -563,20 +563,18 @@ pub async fn private_key_decrypt(
             ctx.set_rsa_oaep_label(label.as_bytes())?;
         }
         ctx.set_rsa_padding(Padding::PKCS1_OAEP)?;
-        if request.algorithm == "RSA/ECB/OAEPwithSHA-1andMGF1Padding" {
-            ctx.set_rsa_oaep_md(Md::sha1())?;
-            ctx.set_rsa_mgf1_md(Md::sha1())?;
-        } else if request.algorithm == "RSA/ECB/OAEPwithSHA-256andMGF1Padding" {
-            ctx.set_rsa_oaep_md(Md::sha256())?;
-            ctx.set_rsa_mgf1_md(Md::sha256())?;
-        } else if request.algorithm == "RSA/ECB/OAEPwithSHA-512andMGF1Padding" {
-            ctx.set_rsa_oaep_md(Md::sha512())?;
-            ctx.set_rsa_mgf1_md(Md::sha512())?;
-        } else {
-            return Err(KmsError::InvalidRequest(
-                "Decryption algorithm not handled.".to_owned(),
-            ))
-        }
+        let md = match request.algorithm.as_str() {
+            "RSA/ECB/OAEPwithSHA-1andMGF1Padding" => Md::sha1(),
+            "RSA/ECB/OAEPwithSHA-256andMGF1Padding" => Md::sha256(),
+            "RSA/ECB/OAEPwithSHA-512andMGF1Padding" => Md::sha512(),
+            _ => {
+                return Err(KmsError::InvalidRequest(
+                    "Decryption algorithm not handled.".to_owned(),
+                ));
+            }
+        };
+        ctx.set_rsa_oaep_md(md)?;
+        ctx.set_rsa_mgf1_md(md)?;
     }
     let allocation_size = ctx.decrypt(&encrypted_dek, None)?;
     debug!("private_key_decrypt: allocation_size: {allocation_size}");
@@ -829,20 +827,18 @@ pub async fn privileged_private_key_decrypt(
             ctx.set_rsa_oaep_label(label.as_bytes())?;
         }
         ctx.set_rsa_padding(Padding::PKCS1_OAEP)?;
-        if request.algorithm == "RSA/ECB/OAEPwithSHA-1andMGF1Padding" {
-            ctx.set_rsa_oaep_md(Md::sha1())?;
-            ctx.set_rsa_mgf1_md(Md::sha1())?;
-        } else if request.algorithm == "RSA/ECB/OAEPwithSHA-256andMGF1Padding" {
-            ctx.set_rsa_oaep_md(Md::sha256())?;
-            ctx.set_rsa_mgf1_md(Md::sha256())?;
-        } else if request.algorithm == "RSA/ECB/OAEPwithSHA-512andMGF1Padding" {
-            ctx.set_rsa_oaep_md(Md::sha512())?;
-            ctx.set_rsa_mgf1_md(Md::sha512())?;
-        } else {
-            return Err(KmsError::InvalidRequest(
-                "Decryption algorithm not handled.".to_owned(),
-            ))
-        }
+        let md = match request.algorithm.as_str() {
+            "RSA/ECB/OAEPwithSHA-1andMGF1Padding" => Md::sha1(),
+            "RSA/ECB/OAEPwithSHA-256andMGF1Padding" => Md::sha256(),
+            "RSA/ECB/OAEPwithSHA-512andMGF1Padding" => Md::sha512(),
+            _ => {
+                return Err(KmsError::InvalidRequest(
+                    "Decryption algorithm not handled.".to_owned(),
+                ));
+            }
+        };
+        ctx.set_rsa_oaep_md(md)?;
+        ctx.set_rsa_mgf1_md(md)?;
     }
     let allocation_size = ctx.decrypt(&encrypted_dek, None)?;
     debug!("privileged_private_key_decrypt: allocation_size: {allocation_size}");
