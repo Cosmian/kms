@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+
+## [5.4.0] - 2025-06-24
+
+### 🐛 Bug Fixes
+
+- Google CSE - Added support for all algorithms in private_key_decrypt
+- Google CSE - Added support for all algorithms in private_key_sign
+
 ## [5.3.3] - 2025-06-12
 
 ### 🐛 Bug Fixes
