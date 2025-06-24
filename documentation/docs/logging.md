@@ -55,6 +55,16 @@ Instead of being sent to stdout on Linux, the logs can be sent to syslog by sett
 - the `--log-to-syslog` command line argument
 - the `KMS_LOG_TO_SYSLOG` environment variable to `true`.
 
+## Rolling log files
+
+It is also possible to enable logging to a daily rolling file by setting the directory hosting
+the log files using either the `rolling_log_dir` entry of the TOML configuration file, or the
+`--rolling-log-dir` command line argument.
+
+Files will be named `<name>.YYYY-MM-DD` where `<name>` defaults to `kms`. The name can be changed
+using the `rolling_log_name` entry of the TOML configuration file, or the `--rolling-log-name`
+command line argument.
+
 ## Using the OTLP telemetry
 
 The server can send traces to an [OpenTelemetry](https://opentelemetry.io/) collector that supports the OTLP protocol.

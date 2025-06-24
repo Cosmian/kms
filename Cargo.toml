@@ -68,8 +68,8 @@ cosmian_config_utils = "0.2"
 cosmian_crypto_core = { version = "10.1", default-features = false, features = [
     "ser",
 ] }
-cosmian_http_client = "0.2"
-cosmian_logger = "0.2"
+cosmian_http_client = "0.3"
+cosmian_logger = "0.3"
 der = { version = "0.7", default-features = false }
 hex = { version = "0.4", default-features = false }
 lazy_static = "1.5"
