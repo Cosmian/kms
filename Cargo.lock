@@ -1266,9 +1266,9 @@ dependencies = [
 
 [[package]]
 name = "cosmian_http_client"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a5325632d5fa3093c110bdcddb284b6df6e60b321ea7444d663e27a42459e2e"
+checksum = "74dae22ffa29288f8db2fb7c64a2d35149d4e901fc49f165c01720f707dc32d1"
 dependencies = [
  "actix-web",
  "derive_more 0.99.20",
@@ -1343,7 +1343,7 @@ dependencies = [
  "cosmian_kmip",
  "cosmian_kms_client",
  "cosmian_kms_crypto",
- "cosmian_logger 0.2.0",
+ "cosmian_logger 0.3.0",
  "csv",
  "der",
  "hex",
@@ -1433,7 +1433,7 @@ dependencies = [
  "cosmian_cover_crypt",
  "cosmian_crypto_core 10.1.0",
  "cosmian_kmip",
- "cosmian_logger 0.2.0",
+ "cosmian_logger 0.3.0",
  "hex",
  "num-bigint-dig",
  "openssl",
@@ -1482,7 +1482,7 @@ dependencies = [
  "cosmian_kms_access",
  "cosmian_kms_client_utils",
  "cosmian_kms_server_database",
- "cosmian_logger 0.2.0",
+ "cosmian_logger 0.3.0",
  "dotenvy",
  "futures",
  "hex",
@@ -1523,7 +1523,7 @@ dependencies = [
  "cosmian_kmip",
  "cosmian_kms_crypto",
  "cosmian_kms_interfaces",
- "cosmian_logger 0.2.0",
+ "cosmian_logger 0.3.0",
  "hex",
  "lru",
  "num-bigint-dig",
@@ -1555,9 +1555,9 @@ dependencies = [
 
 [[package]]
 name = "cosmian_logger"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eabbc045f06d6b223dd21a5b6368baf301d341501f9cd36074918fd73126d92c"
+checksum = "00527c806b20c89adc2a7230737709bc81aafdd6f0d09f6a0bfff27ed1200903"
 dependencies = [
  "opentelemetry",
  "opentelemetry-otlp",
@@ -1569,6 +1569,7 @@ dependencies = [
  "tokio",
  "tonic",
  "tracing",
+ "tracing-appender",
  "tracing-core",
  "tracing-opentelemetry",
  "tracing-subscriber",
@@ -1641,6 +1642,15 @@ checksum = "6b50826342786a51a89e2da3a28f1c32b06e387201bc2d19791f622c673706b1"
 dependencies = [
  "cast",
  "itertools 0.10.5",
+]
+
+[[package]]
+name = "crossbeam-channel"
+version = "0.5.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "82b8f8f868b36967f9606790d1903570de9ceaf870a7bf9fbbd3016d636a2cb2"
+dependencies = [
+ "crossbeam-utils",
 ]
 
 [[package]]
@@ -4070,7 +4080,7 @@ version = "5.3.3"
 dependencies = [
  "cosmian_kms_base_hsm",
  "cosmian_kms_interfaces",
- "cosmian_logger 0.2.0",
+ "cosmian_logger 0.3.0",
  "libloading",
  "pkcs11-sys",
  "tracing",
@@ -5304,7 +5314,7 @@ dependencies = [
  "actix-server",
  "cosmian_kms_client",
  "cosmian_kms_server",
- "cosmian_logger 0.2.0",
+ "cosmian_logger 0.3.0",
  "criterion",
  "serde_json",
  "tempfile",
@@ -5709,6 +5719,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "tracing-appender"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3566e8ce28cc0a3fe42519fc80e6b4c943cc4c8cef275620eb8dac2d3d4e06cf"
+dependencies = [
+ "crossbeam-channel",
+ "thiserror 1.0.69",
+ "time",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "tracing-attributes"
 version = "0.1.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5873,7 +5895,7 @@ version = "5.3.3"
 dependencies = [
  "cosmian_kms_base_hsm",
  "cosmian_kms_interfaces",
- "cosmian_logger 0.2.0",
+ "cosmian_logger 0.3.0",
  "libloading",
  "pkcs11-sys",
  "tracing",

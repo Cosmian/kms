@@ -69,6 +69,16 @@ async fn main() -> KResult<()> {
         #[cfg(not(target_os = "windows"))]
         log_to_syslog: clap_config.logging.log_to_syslog,
         rust_log: clap_config.logging.rust_log.clone(),
+        log_to_file: clap_config.logging.rolling_log_dir.clone().map(|dir| {
+            (
+                dir,
+                clap_config
+                    .logging
+                    .rolling_log_name
+                    .clone()
+                    .unwrap_or("kms".to_owned()),
+            )
+        }),
     });
 
     //TODO: For an unknown reason, this span never goes to OTLP
@@ -231,6 +241,8 @@ mod tests {
                 quiet: false,
                 #[cfg(not(target_os = "windows"))]
                 log_to_syslog: false,
+                rolling_log_dir: Some(PathBuf::from("[rolling log dir]")),
+                rolling_log_name: Some("kms_log".to_owned()),
                 enable_metering: false,
                 environment: Some("development".to_owned()),
             },
@@ -313,6 +325,8 @@ rust_log = "info,cosmian_kms=debug"
 otlp = "http://localhost:4317"
 quiet = false
 log_to_syslog = false
+rolling_log_dir = "[rolling log dir]"
+rolling_log_name = "kms_log"
 enable_metering = false
 environment = "development"
 "#;

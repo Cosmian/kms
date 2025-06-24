@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use clap::Args;
 use serde::{Deserialize, Serialize};
 
@@ -23,6 +25,22 @@ pub struct LoggingConfig {
     #[clap(long, env("KMS_LOG_TO_SYSLOG"), default_value = "false")]
     /// Log to syslog
     pub log_to_syslog: bool,
+
+    /// If set, daily rolling logs will be written to the specified directory
+    /// using the name specified by `rolling_log_name`: <rolling_log_name>.YYYY-MM-DD.
+    #[clap(long, env("KMS_ROLLING_LOG_DIR"), verbatim_doc_comment)]
+    pub rolling_log_dir: Option<PathBuf>,
+
+    /// If `rolling_log_dir` is set, this is the name of the rolling log file:
+    ///  <rolling_log_name>.YYYY-MM-DD.
+    /// Defaults to "kms" if not set.
+    #[clap(
+        long,
+        env("KMS_ROLLING_LOG_NAME"),
+        requires = "rolling_log_dir",
+        verbatim_doc_comment
+    )]
+    pub rolling_log_name: Option<String>,
 
     /// Enable metering in addition to tracing when telemetry is enabled
     #[clap(long, env("KMS_ENABLE_METERING"), default_value = "false")]
