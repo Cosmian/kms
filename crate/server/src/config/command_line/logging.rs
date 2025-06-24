@@ -28,13 +28,12 @@ pub struct LoggingConfig {
 
     /// If set, daily rolling logs will be written to the specified directory
     /// using the name specified by `rolling_log_name`: <rolling_log_name>.YYYY-MM-DD.
-    /// It is a rolling file appender that creates a new log file every day.
     #[clap(long, env("KMS_ROLLING_LOG_DIR"), verbatim_doc_comment)]
     pub rolling_log_dir: Option<PathBuf>,
 
     /// If `rolling_log_dir` is set, this is the name of the rolling log file:
     ///  <rolling_log_name>.YYYY-MM-DD.
-    /// Defaults to "kms" if not set.q
+    /// Defaults to "kms" if not set.
     #[clap(
         long,
         env("KMS_ROLLING_LOG_NAME"),
