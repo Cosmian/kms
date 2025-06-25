@@ -99,6 +99,7 @@ impl JwtConfig {
         let mut validations = vec![
             #[cfg(all(not(test), not(feature = "insecure")))]
             alcoholic_jwt::Validation::Issuer(self.jwt_issuer_uri.clone()),
+            alcoholic_jwt::Validation::SubjectPresent,
             #[cfg(all(not(test), not(feature = "insecure")))]
             alcoholic_jwt::Validation::NotExpired,
         ];

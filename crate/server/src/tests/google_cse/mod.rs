@@ -55,8 +55,9 @@ use crate::{
         GOOGLE_CSE_ID, PrivateKeyDecryptRequest, PrivateKeyDecryptResponse, PrivateKeySignRequest,
         PrivateKeySignResponse, PrivilegedPrivateKeyDecryptRequest,
         PrivilegedPrivateKeyDecryptResponse, PrivilegedUnwrapRequest, PrivilegedUnwrapResponse,
-        PrivilegedWrapRequest, PrivilegedWrapResponse, StatusResponse, UnwrapRequest,
-        UnwrapResponse, WrapRequest, WrapResponse, compute_resource_key_hash, create_jwt,
+        PrivilegedWrapRequest, PrivilegedWrapResponse,
+        StatusResponse, UnwrapRequest, UnwrapResponse, WrapRequest, WrapResponse,
+        compute_resource_key_hash, create_jwt,
     },
     tests::{
         google_cse::utils::generate_google_jwt,
@@ -679,6 +680,99 @@ async fn test_cse_privileged_wrap_unwrap_key() -> KResult<()> {
 
     let unwrap_request = PrivilegedUnwrapRequest {
         authentication: token.clone(),
+        resource_name: "resource_name_test".to_owned(),
+        wrapped_key,
+        reason: String::new(),
+    };
+
+    debug!("privileged unwrapping key request post");
+    let unwrap_response: PrivilegedUnwrapResponse =
+        test_utils::post_json_with_uri(&app, unwrap_request, "/google_cse/privilegedunwrap")
+            .await?;
+
+    assert_eq!(dek, unwrap_response.key);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_cse_rewrap_privileged_unwrap_key() -> KResult<()> {
+    unsafe {
+        std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWKS_URI", JWKS_URI);
+        std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWT_ISSUER", JWT_ISSUER_URI);
+    }
+
+    log_init(None);
+
+    let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned()), None).await;
+
+    // Import google CSE key
+    import_google_cse_symmetric_key_with_access(&app).await?;
+
+    let dek = "wHrlNOTI9mU6PBdqiq7EQA==";
+
+    let token: String = generate_google_jwt()
+        .await
+        .expect("Error on token generation");
+
+    let wrap_request = PrivilegedWrapRequest {
+        authentication: token.clone(),
+        key: dek.to_owned(),
+        perimeter_id: String::new(),
+        resource_name: "resource_name_test".to_owned(),
+        reason: String::new(),
+    };
+
+    debug!("privileged wrapping key request post");
+    let wrap_response: PrivilegedWrapResponse =
+        test_utils::post_json_with_uri(&app, wrap_request, "/google_cse/privilegedwrap").await?;
+    debug!("privileged wrapping key response post: {wrap_response:?}");
+
+    let wrapped_key = wrap_response.wrapped_key;
+
+    debug!("rewrap: retrieving RSA private key from KMS");
+    let get_request = Get {
+        unique_identifier: Some(UniqueIdentifier::TextString(format!("{GOOGLE_CSE_ID}_rsa"))),
+        key_format_type: Some(KeyFormatType::PKCS1),
+        key_wrap_type: Some(KeyWrapType::NotWrapped),
+        key_compression_type: None,
+        key_wrapping_specification: None,
+    };
+
+    let response: GetResponse = test_utils::post_2_1(&app, get_request).await?;
+
+    let private_key_bytes = match response.object_type {
+        ObjectType::PrivateKey => match &response.object.key_block()?.key_value {
+            Some(KeyValue::Structure {
+                key_material: KeyMaterial::ByteString(bytes),
+                ..
+            }) => bytes,
+            _ => {
+                return Err(KmsError::InvalidRequest(
+                    "Expected ByteString key material for RSA private key.".to_owned(),
+                ))
+            }
+        },
+        _ => {
+            return Err(KmsError::InvalidRequest(
+                "Invalid RSA Private key ID. Not an RSA Private key.".to_owned(),
+            ));
+        }
+    };
+
+    let inner_jwt = create_jwt(
+        private_key_bytes,
+        "http://127.0.0.1/google_cse",
+        "http://127.0.0.1/google_cse",
+        "resource_name_test",
+    )?;
+    debug!("Generated JWT for original KACLS: {inner_jwt:?}");
+
+            validate_cse_authentication_token(&inner_jwt, , kms, false).await?;
+
+
+    let unwrap_request = PrivilegedUnwrapRequest {
+        authentication: inner_jwt.clone(),
         resource_name: "resource_name_test".to_owned(),
         wrapped_key,
         reason: String::new(),
