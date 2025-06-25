@@ -72,7 +72,7 @@ pub fn list_jwt_configurations(
         .map(|url| JwtConfig {
             jwt_issuer_uri: url.clone(),
             jwks: jwks_manager.clone(),
-            jwt_audience: Some("kacls_migration".to_owned()),
+            jwt_audience: Some("kacls-migration".to_owned()),
         })
         .collect::<Vec<_>>()
 }
