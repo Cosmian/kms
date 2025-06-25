@@ -912,7 +912,7 @@ pub fn create_jwt(
     let now = Utc::now();
     let claims = Claims {
         iss: current_kacls_url.to_owned(),
-        aud: "kacls_migration".to_owned(),
+        aud: "kacls-migration".to_owned(),
         kacls_url: original_kacls_url.to_owned(),
         resource_name: resource_name.to_owned(),
         iat: usize::try_from(now.timestamp())?,
