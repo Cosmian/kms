@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.4.1] - 2025-06-25
+
+### 🐛 Bug Fixes
+
+- Fix error on Google CSE migration authentication
+
 ## [5.4.0] - 2025-06-24
 
 ### 🚀 Features
