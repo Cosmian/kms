@@ -150,7 +150,7 @@ journalctl -u cosmian_vm_agent
 
 ```console
 $ curl --insecure https://${COSMIAN_VM_IP_ADDR}/version
-"5.4.0"
+"5.4.1"
 ```
 
 !!! info "Why `--allow-insecure-tls` and `--insecure` flags?"
