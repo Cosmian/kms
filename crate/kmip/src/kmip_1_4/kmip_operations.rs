@@ -1316,9 +1316,22 @@ pub struct Import {
     pub key_wrap_type: Option<KeyWrapType>,
     /// All the object's Attributes.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub attributes: Option<Vec<Attribute>>,
+    pub attribute: Option<Vec<Attribute>>,
     /// The object being imported. The object and attributes MAY be wrapped.
     pub object: Object,
+}
+
+impl From<Import> for kmip_2_1::kmip_operations::Import {
+    fn from(import: Import) -> Self {
+        Self {
+            object_type: import.object.object_type().into(),
+            unique_identifier: import.unique_identifier.into(),
+            replace_existing: import.replace_existing,
+            key_wrap_type: import.key_wrap_type,
+            attributes: import.attribute.unwrap_or_default().into(),
+            object: import.object.into(),
+        }
+    }
 }
 
 /// Response to an Import request
@@ -1326,6 +1339,18 @@ pub struct Import {
 #[serde(rename_all = "PascalCase")]
 pub struct ImportResponse {
     pub unique_identifier: String,
+}
+
+impl TryFrom<kmip_2_1::kmip_operations::ImportResponse> for ImportResponse {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_operations::ImportResponse) -> Result<Self, Self::Error> {
+        trace!("Converting KMIP 2.1 ImportResponse to KMIP 1.4: {value:#?}");
+
+        Ok(Self {
+            unique_identifier: value.unique_identifier.to_string(),
+        })
+    }
 }
 
 /// The operation that processes a specific request
@@ -1808,9 +1833,7 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             Operation::DiscoverVersions(discover_versions) => {
                 Self::DiscoverVersions(discover_versions)
             }
-            Operation::DiscoverVersionsResponse(discover_versions_response) => {
-                Self::DiscoverVersionsResponse(discover_versions_response)
-            }
+            Operation::Import(import) => Self::Import(import.into()),
             op => {
                 return Err(KmipError::NotSupported(format!(
                     "KMIP 2.1 does not support Request Operation: {op:?} response"
@@ -1953,12 +1976,12 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             // Operation::RNGSeedResponse(rng_seed_response) => {
             //     Self::RNGSeedResponse(rng_seed_response.into())
             // }
-            kmip_2_1::kmip_operations::Operation::DiscoverVersions(discover_versions) => {
-                Self::DiscoverVersions(discover_versions)
-            }
             kmip_2_1::kmip_operations::Operation::DiscoverVersionsResponse(
                 discover_versions_response,
             ) => Self::DiscoverVersionsResponse(discover_versions_response),
+            kmip_2_1::kmip_operations::Operation::ImportResponse(import_response) => {
+                Self::ImportResponse(import_response.try_into()?)
+            }
             op => {
                 return Err(KmipError::NotSupported(format!(
                     "KMIP 2.1 does not support Response Operation: {op:?}"
