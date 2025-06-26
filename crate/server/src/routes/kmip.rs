@@ -558,7 +558,7 @@ fn perform_request_tweaks(response: &mut RequestMessage, major: i32, minor: i32)
     // KMIP 1.1 and 1.2 Response Tweaks
     if major == 1 && minor <= 2 {
         // Decrypt we request does not have the Authenticated Encryption Tag,
-        // so we must extract it from the data field when the encryption algorith is an authenticated encryption algorithm
+        // so we must extract it from the data field when the encryption algorithm is an authenticated encryption algorithm
         for batch_item in &mut response.batch_item {
             let RequestMessageBatchItemVersioned::V14(item) = batch_item else {
                 continue; // Skip if not V14
