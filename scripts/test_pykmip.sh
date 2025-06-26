@@ -59,7 +59,7 @@ check_prerequisites() {
         exit 1
     fi
 
-    # Check if configuration exists
+    # Check if the configuration exists
     if [[ ! -f "$PYKMIP_CONF" ]]; then
         print_error "PyKMIP configuration not found: $PYKMIP_CONF"
         exit 1
