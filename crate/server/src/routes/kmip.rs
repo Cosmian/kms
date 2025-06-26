@@ -16,6 +16,7 @@ use cosmian_kms_server_database::reexport::{
         },
         ttlv::{KmipEnumerationVariant, KmipFlavor, TTLV, TTLValue, from_ttlv, to_ttlv},
     },
+    cosmian_kms_crypto::crypto::symmetric::symmetric_ciphers::AES_128_GCM_MAC_LENGTH,
     cosmian_kms_interfaces::SessionParams,
 };
 use reqwest::header::CONTENT_TYPE;
@@ -589,11 +590,11 @@ fn perform_request_tweaks(response: &mut RequestMessage, major: i32, minor: i32)
                         .unwrap_or(&BlockCipherMode::GCM);
 
                     let len = match block_cipher_mode {
-                        BlockCipherMode::GCM | BlockCipherMode::GCMSIV => 16,
+                        BlockCipherMode::GCM | BlockCipherMode::GCMSIV => AES_128_GCM_MAC_LENGTH,
                         BlockCipherMode::CBC | BlockCipherMode::ECB | BlockCipherMode::XTS => 0,
                         x => {
                             warn!(
-                                "Unsupported Block Cipher Mode for AES : {x:?}. The Authenticated \
+                                "Unsupported Block Cipher Mode for AES: {x:?}. The Authenticated \
                                  Encryption Tag will NOT be extracted."
                             );
                             0
