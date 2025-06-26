@@ -13,6 +13,8 @@ mod get_2_1;
 mod get_attribute_1_4;
 mod get_attribute_2_1;
 mod query;
+mod register_1_4;
+mod register_2_1;
 mod socket_client;
 
 const TEST_HOST: &str = "127.0.0.1";
