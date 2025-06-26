@@ -1,13 +1,15 @@
 use std::{env, path::PathBuf};
 
 use cosmian_logger::log_init;
+use tracing::warn;
 
 use crate::tests::ttlv_tests::start_test_server;
 
 #[test]
 fn test_pykmip() {
-    log_init(Some("info,cosmian_kms=debug"));
-    let _server_handles = start_test_server();
+    log_init(Some("warn"));
+    // log_init(option_env!("RUST_LOG"));
+    let _server_handles = start_test_server(5696);
 
     let crate_dir =
         PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("Failed to get CARGO_MANIFEST_DIR"));
@@ -21,7 +23,7 @@ fn test_pykmip() {
         .output()
         .expect("Failed to execute PyKMIP test script");
 
-    println!("{}", String::from_utf8_lossy(&output.stdout));
+    warn!("{}", String::from_utf8_lossy(&output.stdout));
 
     assert!(
         output.status.success(),
