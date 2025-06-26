@@ -5,6 +5,7 @@ use tracing::warn;
 
 use crate::tests::ttlv_tests::start_test_server;
 
+#[cfg(not(target_os = "windows"))]
 #[test]
 fn test_pykmip() {
     log_init(Some("warn"));
@@ -14,10 +15,18 @@ fn test_pykmip() {
     let crate_dir =
         PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("Failed to get CARGO_MANIFEST_DIR"));
     let project_root = crate_dir.parent().unwrap().parent().unwrap();
-    let script_dir = project_root.join("scripts/test_pykmip.sh");
+    let script_file = project_root.join("scripts/test_pykmip.sh");
 
-    let output = std::process::Command::new("sh")
-        .arg(script_dir)
+    let mut command = {
+        #[cfg(target_os = "macos")]
+        let output = std::process::Command::new("zsh");
+        #[cfg(target_os = "linux")]
+        let output = std::process::Command::new("bash");
+        output
+    };
+    let output = command
+        .arg("-c")
+        .arg(format!("{} all", script_file.display()))
         .arg("all")
         .current_dir(project_root)
         .output()
