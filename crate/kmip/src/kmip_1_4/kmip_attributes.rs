@@ -803,7 +803,7 @@ impl TryFrom<kmip_2_1::kmip_attributes::Attribute> for Attribute {
 
 /// The value of a Custom Attribute (section 3.39).
 /// Any data type or structure.
-/// According to the specifications, If a structure, then the structure SHALL NOT include sub structures.
+/// According to the specifications, If a structure, then the structure SHALL NOT include substructures.
 /// In this implementation, we use a TTLV to represent the structure.
 ///
 /// For reasons on why we use an adjacent tagged enum, see the comment on the `VendorAttributeValue`
@@ -838,20 +838,18 @@ impl From<CustomAttributeValue> for kmip_2_1::kmip_types::VendorAttributeValue {
     }
 }
 
-impl From<kmip_2_1::kmip_types::VendorAttributeValue> for CustomAttributeValue {
-    fn from(value: kmip_2_1::kmip_types::VendorAttributeValue) -> Self {
+impl From<VendorAttributeValue> for CustomAttributeValue {
+    fn from(value: VendorAttributeValue) -> Self {
         match value {
-            kmip_2_1::kmip_types::VendorAttributeValue::TextString(v) => Self::TextString(v),
-            kmip_2_1::kmip_types::VendorAttributeValue::LongInteger(v) => Self::LongInteger(v),
-            kmip_2_1::kmip_types::VendorAttributeValue::BigInteger(v) => Self::BigInteger(v),
-            kmip_2_1::kmip_types::VendorAttributeValue::ByteString(v) => Self::ByteString(v),
-            kmip_2_1::kmip_types::VendorAttributeValue::Boolean(v) => Self::Boolean(v),
-            kmip_2_1::kmip_types::VendorAttributeValue::DateTime(v) => Self::DateTime(v),
-            kmip_2_1::kmip_types::VendorAttributeValue::Interval(v) => Self::Interval(v),
-            kmip_2_1::kmip_types::VendorAttributeValue::Integer(v) => Self::Integer(v),
-            kmip_2_1::kmip_types::VendorAttributeValue::DateTimeExtended(v) => {
-                Self::DateTimeExtended(v)
-            }
+            VendorAttributeValue::TextString(v) => Self::TextString(v),
+            VendorAttributeValue::LongInteger(v) => Self::LongInteger(v),
+            VendorAttributeValue::BigInteger(v) => Self::BigInteger(v),
+            VendorAttributeValue::ByteString(v) => Self::ByteString(v),
+            VendorAttributeValue::Boolean(v) => Self::Boolean(v),
+            VendorAttributeValue::DateTime(v) => Self::DateTime(v),
+            VendorAttributeValue::Interval(v) => Self::Interval(v),
+            VendorAttributeValue::Integer(v) => Self::Integer(v),
+            VendorAttributeValue::DateTimeExtended(v) => Self::DateTimeExtended(v),
         }
     }
 }
@@ -957,11 +955,7 @@ impl From<Vec<Attribute>> for kmip_2_1::kmip_attributes::Attributes {
                     attributes.fresh = Some(v);
                 }
                 Attribute::Link(v) => {
-                    todo!(
-                        "KMIP 2.1 does not support the KMIP 1 attribute Link: {v:?} - should be a \
-                         reference"
-                    )
-                    // attributes.link = Some(v.into());
+                    attributes.link = Some(vec![v.into()]);
                 }
                 Attribute::ApplicationSpecificInformation(v) => {
                     attributes.application_specific_information = Some(v);
