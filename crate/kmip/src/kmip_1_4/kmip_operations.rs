@@ -111,11 +111,23 @@ pub struct CreateKeyPairResponse {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Register {
+    // Determines the type of object being registered
+    pub object_type: ObjectType,
     /// The object being registered
     pub object: Object,
     /// Template attributes for the object
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub template_attribute: Option<TemplateAttribute>,
+    pub template_attribute: TemplateAttribute,
+}
+
+impl From<Register> for kmip_2_1::kmip_operations::Register {
+    fn from(register: Register) -> Self {
+        Self {
+            object_type: register.object_type.into(),
+            object: register.object.into(),
+            attributes: register.template_attribute.into(),
+            protection_storage_masks: None,
+        }
+    }
 }
 
 /// Response to a Register request
@@ -127,6 +139,19 @@ pub struct RegisterResponse {
     /// Template attributes applied to the object
     #[serde(skip_serializing_if = "Option::is_none")]
     pub template_attribute: Option<TemplateAttribute>,
+}
+
+impl TryFrom<kmip_2_1::kmip_operations::RegisterResponse> for RegisterResponse {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_operations::RegisterResponse) -> Result<Self, Self::Error> {
+        trace!("Converting KMIP 2.1 RegisterResponse to KMIP 1.4: {value:#?}");
+
+        Ok(Self {
+            unique_identifier: value.unique_identifier.to_string(),
+            template_attribute: None,
+        })
+    }
 }
 
 /// 4.4 Re-key
@@ -1699,220 +1724,87 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
     fn try_from(value: Operation) -> Result<Self, Self::Error> {
         Ok(match value {
             Operation::Create(create) => Self::Create(create.into()),
-            // Operation::CreateResponse(create_response) => {
-            //     Self::CreateResponse(create_response.into())
-            // }
             // Operation::CreateKeyPair(create_key_pair) => {
             //     Self::CreateKeyPair(create_key_pair.into())
             // }
-            // Operation::CreateKeyPairResponse(create_key_pair_response) => {
-            //     Self::CreateKeyPairResponse(
-            //         create_key_pair_response.into(),
-            //     )
-            // }
-            // Operation::Register(register) => {
-            //     Self::Register(register.into())
-            // }
-            // Operation::RegisterResponse(register_response) => {
-            //     Self::RegisterResponse(register_response.into())
-            // }
-            // Operation::ReKey(rekey) => Self::ReKey(rekey.into()),
-            // Operation::ReKeyResponse(rekey_response) => {
-            //     Self::ReKeyResponse(rekey_response.into())
-            // }
+            Operation::Register(register) => Self::Register(register.into()),
             // Operation::ReKeyKeyPair(rekey_key_pair) => {
             //     Self::ReKeyKeyPair(rekey_key_pair.into())
-            // }
-            // Operation::ReKeyKeyPairResponse(rekey_key_pair_response) => {
-            //     Self::ReKeyKeyPairResponse(
-            //         rekey_key_pair_response.into(),
-            //     )
             // }
             // Operation::DeriveKey(derive_key) => {
             //     Self::DeriveKey(derive_key.into())
             // }
-            // Operation::DeriveKeyResponse(derive_key_response) => {
-            //     Self::DeriveKeyResponse(derive_key_response.into())
-            // }
             // Operation::Certify(certify) => {
             //     Self::Certify(certify.into())
-            // }
-            // Operation::CertifyResponse(certify_response) => {
-            //     Self::CertifyResponse(certify_response.into())
             // }
             // Operation::ReCertify(recertify) => {
             //     Self::ReCertify(recertify.into())
             // }
-            // Operation::ReCertifyResponse(recertify_response) => {
-            //     Self::ReCertifyResponse(recertify_response.into())
-            // }
             // Operation::Locate(locate) => {
             //     Self::Locate(locate.into())
             // }
-            // Operation::LocateResponse(locate_response) => {
-            //     Self::LocateResponse(locate_response.into())
-            // }
             // Operation::Check(check) => Self::Check(check.into()),
-            // Operation::CheckResponse(check_response) => {
-            //     Self::CheckResponse(check_response.into())
-            // }
             Operation::Get(get) => Self::Get(get.into()),
-            // Operation::GetResponse(get_response) => {
-            //     Self::GetResponse(get_response.into())
-            // }
             Operation::GetAttributes(get_attributes) => Self::GetAttributes(get_attributes.into()),
-            // Operation::GetAttributesResponse(get_attributes_response) => {
-            //     Self::GetAttributesResponse(
-            //         get_attributes_response.into(),
-            //     )
-            // }
             // Operation::GetAttributeList(get_attribute_list) => {
             //     Self::GetAttributeList(get_attribute_list.into())
             // }
-            // Operation::GetAttributeListResponse(get_attribute_list_response) => {
-            //     Self::GetAttributeListResponse(
-            //         get_attribute_list_response.into(),
-            //     )
-            // }
             Operation::AddAttribute(add_attribute) => Self::AddAttribute(add_attribute.into()),
-            // Operation::AddAttributeResponse(add_attribute_response) => {
-            //     Self::AddAttributeResponse(
-            //         add_attribute_response.into(),
-            //     )
-            // }
             // Operation::ModifyAttribute(modify_attribute) => {
             //     Self::ModifyAttribute(modify_attribute.into())
-            // }
-            // Operation::ModifyAttributeResponse(modify_attribute_response) => {
-            //     Self::ModifyAttributeResponse(
-            //         modify_attribute_response.into(),
-            //     )
             // }
             // Operation::DeleteAttribute(delete_attribute) => {
             //     Self::DeleteAttribute(delete_attribute.into())
             // }
-            // Operation::DeleteAttributeResponse(delete_attribute_response) => {
-            //     Self::DeleteAttributeResponse(
-            //         delete_attribute_response.into(),
-            //     )
-            // }
             // Operation::ObtainLease(obtain_lease) => {
             //     Self::ObtainLease(obtain_lease.into())
-            // }
-            // Operation::ObtainLeaseResponse(obtain_lease_response) => {
-            //     Self::ObtainLeaseResponse(
-            //         obtain_lease_response.into(),
-            //     )
             // }
             // Operation::GetUsageAllocation(get_usage_allocation) => {
             //     Self::GetUsageAllocation(
             //         get_usage_allocation.into(),
             //     )
             // }
-            // Operation::GetUsageAllocationResponse(get_usage_allocation_response) => {
-            //     Self::GetUsageAllocationResponse(
-            //         get_usage_allocation_response.into(),
-            //     )
-            // }
             // Operation::Activate(activate) => {
             //     Self::Activate(activate.into())
-            // }
-            // Operation::ActivateResponse(activate_response) => {
-            //     Self::ActivateResponse(activate_response.into())
             // }
             // Operation::Revoke(revoke) => {
             //     Self::Revoke(revoke.into())
             // }
-            // Operation::RevokeResponse(revoke_response) => {
-            //     Self::RevokeResponse(revoke_response.into())
-            // }
             // Operation::Destroy(destroy) => {
             //     Self::Destroy(destroy.into())
-            // }
-            // Operation::DestroyResponse(destroy_response) => {
-            //     Self::DestroyResponse(destroy_response.into())
             // }
             // Operation::Archive(archive) => {
             //     Self::Archive(archive.into())
             // }
-            // Operation::ArchiveResponse(archive_response) => {
-            //     Self::ArchiveResponse(archive_response.into())
-            // }
             // Operation::Recover(recover) => {
             //     Self::Recover(recover.into())
-            // }
-            // Operation::RecoverResponse(recover_response) => {
-            //     Self::RecoverResponse(recover_response.into())
             // }
             // Operation::Validate(validate) => {
             //     Self::Validate(validate.into())
             // }
-            // Operation::ValidateResponse(validate_response) => {
-            //     Self::ValidateResponse(validate_response.into())
-            // }
             Operation::Query(query) => Self::Query(query.into()),
-            // Operation::QueryResponse(query_response) => Self::QueryResponse(query_response.into()),
             // Operation::DiscoverVersions(discover_versions) => {
             //     Self::DiscoverVersions(discover_versions.into())
-            // }
-            // Operation::DiscoverVersionsResponse(discover_versions_response) => {
-            //     Self::DiscoverVersionsResponse(
-            //         discover_versions_response.into(),
-            //     )
             // }
             // Operation::Cancel(cancel) => {
             //     Self::Cancel(cancel.into())
             // }
-            // Operation::CancelResponse(cancel_response) => {
-            //     Self::CancelResponse(cancel_response.into())
-            // }
             // Operation::Poll(poll) => Self::Poll(poll.into()),
-            // Operation::PollResponse(poll_response) => {
-            //     Self::PollResponse(poll_response.into())
-            // }
             Operation::Encrypt(encrypt) => Self::Encrypt(encrypt.into()),
-            // Operation::EncryptResponse(encrypt_response) => {
-            //     Self::EncryptResponse(encrypt_response.into())
-            // }
             Operation::Decrypt(decrypt) => Self::Decrypt(decrypt.into()),
-            // Operation::DecryptResponse(decrypt_response) => {
-            //     Self::DecryptResponse(decrypt_response.into())
-            // }
             // Operation::Sign(sign) => Self::Sign(sign.into()),
-            // Operation::SignResponse(sign_response) => {
-            //     Self::SignResponse(sign_response.into())
-            // }
             // Operation::SignatureVerify(signature_verify) => {
             //     Self::SignatureVerify(signature_verify.into())
             // }
-            // Operation::SignatureVerifyResponse(signature_verify_response) => {
-            //     Self::SignatureVerifyResponse(
-            //         signature_verify_response.into(),
-            //     )
-            // }
             Operation::MAC(mac) => Self::MAC(mac.into()),
-            // Operation::MACResponse(mac_response) => {
-            //     Self::MACResponse(mac_response.into())
-            // }
             // Operation::MACVerify(mac_verify) => {
             //     Self::MACVerify(mac_verify.into())
-            // }
-            // Operation::MACVerifyResponse(mac_verify_response) => {
-            //     Self::MACVerifyResponse(mac_verify_response.into())
             // }
             // Operation::RNGRetrieve(rng_retrieve) => {
             //     Self::RNGRetrieve(rng_retrieve.into())
             // }
-            // Operation::RNGRetrieveResponse(rng_retrieve_response) => {
-            //     Self::RNGRetrieveResponse(
-            //         rng_retrieve_response.into(),
-            //     )
-            // }
             // Operation::RNGSeed(rng_seed) => {
             //     Self::RNGSeed(rng_seed.into())
-            // }
-            // Operation::RNGSeedResponse(rng_seed_response) => {
-            //     Self::RNGSeedResponse(rng_seed_response.into())
             // }
             Operation::DiscoverVersions(discover_versions) => {
                 Self::DiscoverVersions(discover_versions)
@@ -1934,117 +1826,67 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
 
     fn try_from(value: kmip_2_1::kmip_operations::Operation) -> Result<Self, Self::Error> {
         Ok(match value {
-            // Operation::Create(create) => {
-            //     Self::Create(create.into())
-            // }
             kmip_2_1::kmip_operations::Operation::CreateResponse(create_response) => {
                 Self::CreateResponse(create_response.try_into()?)
             }
-            // Operation::CreateKeyPair(create_key_pair) => {
-            //     Self::CreateKeyPair(create_key_pair.into())
-            // }
             // Operation::CreateKeyPairResponse(create_key_pair_response) => {
             //     Self::CreateKeyPairResponse(
             //         create_key_pair_response.into(),
             //     )
             // }
-            // Operation::Register(register) => {
-            //     Self::Register(register.into())
-            // }
-            // Operation::RegisterResponse(register_response) => {
-            //     Self::RegisterResponse(register_response.into())
-            // }
-            // Operation::ReKey(rekey) => Self::ReKey(rekey.into()),
+            kmip_2_1::kmip_operations::Operation::RegisterResponse(register_response) => {
+                Self::RegisterResponse(register_response.try_into()?)
+            }
             // Operation::ReKeyResponse(rekey_response) => {
             //     Self::ReKeyResponse(rekey_response.into())
-            // }
-            // Operation::ReKeyKeyPair(rekey_key_pair) => {
-            //     Self::ReKeyKeyPair(rekey_key_pair.into())
             // }
             // Operation::ReKeyKeyPairResponse(rekey_key_pair_response) => {
             //     Self::ReKeyKeyPairResponse(
             //         rekey_key_pair_response.into(),
             //     )
             // }
-            // Operation::DeriveKey(derive_key) => {
-            //     Self::DeriveKey(derive_key.into())
-            // }
             // Operation::DeriveKeyResponse(derive_key_response) => {
             //     Self::DeriveKeyResponse(derive_key_response.into())
-            // }
-            // Operation::Certify(certify) => {
-            //     Self::Certify(certify.into())
             // }
             // Operation::CertifyResponse(certify_response) => {
             //     Self::CertifyResponse(certify_response.into())
             // }
-            // Operation::ReCertify(recertify) => {
-            //     Self::ReCertify(recertify.into())
-            // }
             // Operation::ReCertifyResponse(recertify_response) => {
             //     Self::ReCertifyResponse(recertify_response.into())
-            // }
-            // Operation::Locate(locate) => {
-            //     Self::Locate(locate.into())
             // }
             // Operation::LocateResponse(locate_response) => {
             //     Self::LocateResponse(locate_response.into())
             // }
-            // Operation::Check(check) => Self::Check(check.into()),
             // Operation::CheckResponse(check_response) => {
             //     Self::CheckResponse(check_response.into())
             // }
-            // Operation::Get(get) => Self::Get(get.into()),
             kmip_2_1::kmip_operations::Operation::GetResponse(get_response) => {
                 Self::GetResponse(get_response.try_into()?)
             }
-            // Operation::GetAttributes(get_attributes) => {
-            //     Self::GetAttributes(get_attributes.into())
-            // }
             kmip_2_1::kmip_operations::Operation::GetAttributesResponse(
                 get_attributes_response,
             ) => Self::GetAttributesResponse(get_attributes_response.try_into()?),
-            // Operation::GetAttributeList(get_attribute_list) => {
-            //     Self::GetAttributeList(get_attribute_list.into())
-            // }
             // Operation::GetAttributeListResponse(get_attribute_list_response) => {
             //     Self::GetAttributeListResponse(
             //         get_attribute_list_response.into(),
             //     )
             // }
-            // Operation::AddAttribute(add_attribute) => {
-            //     Self::AddAttribute(add_attribute.into())
-            // }
             kmip_2_1::kmip_operations::Operation::AddAttributeResponse(add_attribute_response) => {
                 Self::AddAttributeResponse(add_attribute_response.into())
             }
-            // Operation::ModifyAttribute(modify_attribute) => {
-            //     Self::ModifyAttribute(modify_attribute.into())
-            // }
             // Operation::ModifyAttributeResponse(modify_attribute_response) => {
             //     Self::ModifyAttributeResponse(
             //         modify_attribute_response.into(),
             //     )
-            // }
-            // Operation::DeleteAttribute(delete_attribute) => {
-            //     Self::DeleteAttribute(delete_attribute.into())
             // }
             // Operation::DeleteAttributeResponse(delete_attribute_response) => {
             //     Self::DeleteAttributeResponse(
             //         delete_attribute_response.into(),
             //     )
             // }
-            // Operation::ObtainLease(obtain_lease) => {
-            //     Self::ObtainLease(obtain_lease.into())
-            // }
             // Operation::ObtainLeaseResponse(obtain_lease_response) => {
             //     Self::ObtainLeaseResponse(
             //         obtain_lease_response.into(),
-            //     )
-            // }
-            // Operation::GetUsageAllocation(get_usage_allocation) => {
-            //     Self::GetUsageAllocation(
-            //         get_usage_allocation.into(),
             //     )
             // }
             // Operation::GetUsageAllocationResponse(get_usage_allocation_response) => {
@@ -2052,108 +1894,62 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             //         get_usage_allocation_response.into(),
             //     )
             // }
-            // Operation::Activate(activate) => {
-            //     Self::Activate(activate.into())
-            // }
             // Operation::ActivateResponse(activate_response) => {
             //     Self::ActivateResponse(activate_response.into())
-            // }
-            // Operation::Revoke(revoke) => {
-            //     Self::Revoke(revoke.into())
             // }
             // Operation::RevokeResponse(revoke_response) => {
             //     Self::RevokeResponse(revoke_response.into())
             // }
-            // Operation::Destroy(destroy) => {
-            //     Self::Destroy(destroy.into())
-            // }
             // Operation::DestroyResponse(destroy_response) => {
             //     Self::DestroyResponse(destroy_response.into())
-            // }
-            // Operation::Archive(archive) => {
-            //     Self::Archive(archive.into())
             // }
             // Operation::ArchiveResponse(archive_response) => {
             //     Self::ArchiveResponse(archive_response.into())
             // }
-            // Operation::Recover(recover) => {
-            //     Self::Recover(recover.into())
-            // }
             // Operation::RecoverResponse(recover_response) => {
             //     Self::RecoverResponse(recover_response.into())
-            // }
-            // Operation::Validate(validate) => {
-            //     Self::Validate(validate.into())
             // }
             // Operation::ValidateResponse(validate_response) => {
             //     Self::ValidateResponse(validate_response.into())
             // }
-            // kmip_2_1::kmip_operations::Operation::Query(query) => Self::Query(query.into()),
             kmip_2_1::kmip_operations::Operation::QueryResponse(query_response) => {
                 Self::QueryResponse(query_response.try_into().context("QueryResponse")?)
             }
-            // Operation::DiscoverVersions(discover_versions) => {
-            //     Self::DiscoverVersions(discover_versions.into())
-            // }
             // Operation::DiscoverVersionsResponse(discover_versions_response) => {
             //     Self::DiscoverVersionsResponse(
             //         discover_versions_response.into(),
             //     )
             // }
-            // Operation::Cancel(cancel) => {
-            //     Self::Cancel(cancel.into())
-            // }
             // Operation::CancelResponse(cancel_response) => {
             //     Self::CancelResponse(cancel_response.into())
             // }
-            // Operation::Poll(poll) => Self::Poll(poll.into()),
             // Operation::PollResponse(poll_response) => {
             //     Self::PollResponse(poll_response.into())
-            // }
-            // Operation::Encrypt(encrypt) => {
-            //     Self::Encrypt(encrypt.into())
             // }
             kmip_2_1::kmip_operations::Operation::EncryptResponse(encrypt_response) => {
                 Self::EncryptResponse(encrypt_response.try_into().context("EncryptResponse")?)
             }
-            // Operation::Decrypt(decrypt) => {
-            //     Self::Decrypt(decrypt.into())
-            // }
             kmip_2_1::kmip_operations::Operation::DecryptResponse(decrypt_response) => {
                 Self::DecryptResponse(decrypt_response.try_into().context("DecryptResponse")?)
             }
-            // Operation::Sign(sign) => Self::Sign(sign.into()),
             // Operation::SignResponse(sign_response) => {
             //     Self::SignResponse(sign_response.into())
-            // }
-            // Operation::SignatureVerify(signature_verify) => {
-            //     Self::SignatureVerify(signature_verify.into())
             // }
             // Operation::SignatureVerifyResponse(signature_verify_response) => {
             //     Self::SignatureVerifyResponse(
             //         signature_verify_response.into(),
             //     )
             // }
-            // Operation::MAC(mac) => Self::MAC(mac.into()),
             kmip_2_1::kmip_operations::Operation::MACResponse(mac_response) => {
                 Self::MACResponse(mac_response.try_into()?)
             }
-            // Operation::MACVerify(mac_verify) => {
-            //     Self::MACVerify(mac_verify.into())
-            // }
             // Operation::MACVerifyResponse(mac_verify_response) => {
             //     Self::MACVerifyResponse(mac_verify_response.into())
-            // }
-            // Operation::RNGRetrieve(rng_retrieve) => {
-            //     Self::RNGRetrieve(rng_retrieve.into())
             // }
             // Operation::RNGRetrieveResponse(rng_retrieve_response) => {
             //     Self::RNGRetrieveResponse(
             //         rng_retrieve_response.into(),
             //     )
-            // }
-            // Operation::RNGSeed(rng_seed) => {
-            //     Self::RNGSeed(rng_seed.into())
             // }
             // Operation::RNGSeedResponse(rng_seed_response) => {
             //     Self::RNGSeedResponse(rng_seed_response.into())
