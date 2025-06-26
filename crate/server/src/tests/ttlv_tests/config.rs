@@ -5,7 +5,7 @@ use openssl::pkcs12::{ParsedPkcs12_2, Pkcs12};
 
 use crate::{
     socket_server::{SocketServer, SocketServerParams, create_rustls_server_config},
-    tests::ttlv_tests::{TEST_HOST, TEST_PORT},
+    tests::ttlv_tests::TEST_HOST,
 };
 
 // Static config for tests
@@ -26,7 +26,7 @@ static TEST_CLIENT_CA_CERT_PEM: LazyLock<Vec<u8>> =
 fn load_test_config() -> SocketServerParams<'static> {
     SocketServerParams {
         host: TEST_HOST.to_owned(),
-        port: TEST_PORT,
+        port: 11117,
         p12: &TEST_P12,
         client_ca_cert_pem: &TEST_CLIENT_CA_CERT_PEM,
     }
