@@ -36,7 +36,8 @@ fn test_pykmip() {
 
     assert!(
         output.status.success(),
-        "PyKMIP tests failed: {}",
+        "PyKMIP tests failed: {}\n\n{}",
+        String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
 }
