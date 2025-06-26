@@ -1306,7 +1306,6 @@ pub struct ExportResponse {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Import {
-    pub object_type: ObjectType,
     pub unique_identifier: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub replace_existing: Option<bool>,
