@@ -8,13 +8,14 @@ use cosmian_kms_server_database::reexport::{
             kmip_attributes::Attributes,
             kmip_data_structures::{KeyBlock, KeyValue, KeyWrappingData},
             kmip_objects::{Object, ObjectType, PrivateKey, PublicKey, SymmetricKey},
-            kmip_operations::{Get, Import},
+            kmip_operations::{Get, Import, Register},
             kmip_types::{
                 CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier,
                 RecommendedCurve, UniqueIdentifier, WrappingMethod,
             },
             requests::{
-                create_ec_key_pair_request, get_ec_private_key_request, get_ec_public_key_request,
+                create_ec_key_pair_request, create_symmetric_key_kmip_object,
+                get_ec_private_key_request, get_ec_public_key_request,
                 symmetric_key_create_request,
             },
         },
@@ -383,6 +384,87 @@ async fn test_database_user_tenant() -> KResult<()> {
         )
         .await;
     pk_response.unwrap_err();
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_register_operation() -> KResult<()> {
+    cosmian_logger::log_init(None);
+
+    let clap_config = https_clap_config();
+
+    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let owner = "eyJhbGciOiJSUzI1Ni";
+
+    let sym_key = create_symmetric_key_kmip_object(
+        &[1, 2, 3, 4],
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::ChaCha20),
+            ..Default::default()
+        },
+    )?;
+
+    let attributes = Attributes {
+        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+        cryptographic_length: Some(256),
+        cryptographic_parameters: None,
+        cryptographic_usage_mask: Some(
+            CryptographicUsageMask::Encrypt
+                | CryptographicUsageMask::Decrypt
+                | CryptographicUsageMask::WrapKey
+                | CryptographicUsageMask::UnwrapKey
+                | CryptographicUsageMask::KeyAgreement,
+        ),
+        key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
+        object_type: Some(ObjectType::SymmetricKey),
+        sensitive: Some(false),
+        ..Attributes::default()
+    };
+
+    let request = Register {
+        object_type: ObjectType::SymmetricKey,
+        attributes: attributes.clone(),
+        object: sym_key,
+        protection_storage_masks: None,
+    };
+
+    trace!("request: {}", request);
+    let register_response = kms.register(request, owner, None, None).await?;
+    trace!("response: {:?}", register_response);
+
+    let uid = register_response.unique_identifier;
+    if let UniqueIdentifier::TextString(s) = &uid {
+        assert!(
+            !s.is_empty(),
+            "Unique Identifier (TextString) should not be empty"
+        );
+    } else {
+        panic!("Expected UID to be a TextString");
+    }
+
+    let get_request = Get::new(uid.clone(), false, None, None);
+    let get_response = kms.get(get_request, owner, None).await?;
+    let key_block: &KeyBlock = get_response.object.key_block()?;
+
+    assert_eq!(key_block.key_format_type, KeyFormatType::Raw);
+
+    let retrieved_attributes = get_response.object.attributes()?;
+    // The CryptographicAlgorithm (and other attributes) should be taken from the request's `attributes` field,
+    // not from any embedded metadata within the object itself.
+    assert_eq!(
+        retrieved_attributes.cryptographic_algorithm,
+        attributes.cryptographic_algorithm
+    );
+    assert_eq!(
+        retrieved_attributes.cryptographic_length,
+        attributes.cryptographic_length
+    );
+    assert_eq!(
+        retrieved_attributes.cryptographic_usage_mask,
+        attributes.cryptographic_usage_mask
+    );
+    assert_eq!(retrieved_attributes.object_type, attributes.object_type);
 
     Ok(())
 }
