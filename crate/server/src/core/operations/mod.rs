@@ -18,6 +18,7 @@ mod locate;
 mod mac;
 mod message;
 mod query;
+mod register;
 mod rekey;
 mod rekey_keypair;
 mod revoke;
@@ -46,6 +47,7 @@ pub(crate) use locate::locate;
 pub(crate) use mac::mac;
 pub(crate) use message::message;
 pub(crate) use query::query;
+pub(crate) use register::register;
 pub(crate) use rekey::rekey;
 pub(crate) use rekey_keypair::rekey_keypair;
 #[cfg(feature = "non-fips")]

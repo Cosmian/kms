@@ -297,6 +297,9 @@ impl<'de> Deserialize<'de> for RequestMessageBatchItem {
                                 OperationEnumeration::Revoke => {
                                     Operation::Revoke(map.next_value()?)
                                 }
+                                OperationEnumeration::Register => {
+                                    Operation::Register(map.next_value()?)
+                                }
                                 x => {
                                     return Err(de::Error::custom(format!(
                                         "Request Message Batch Item: unsupported operation: {x:?}"
@@ -646,6 +649,9 @@ impl<'de> Deserialize<'de> for ResponseMessageBatchItem {
                                 }
                                 OperationEnumeration::Revoke => {
                                     Operation::RevokeResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::Register => {
+                                    Operation::RegisterResponse(map.next_value()?)
                                 }
                                 x => {
                                     return Err(de::Error::custom(format!(
