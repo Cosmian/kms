@@ -41,8 +41,11 @@ use crate::{
     error::KmsError,
     kms_ensure,
     result::KResult,
-    routes::google_cse::jwt::{
-        validate_cse_authentication_token, validate_cse_authorization_token, validate_tokens,
+    routes::google_cse::{
+        build_google_cse_url,
+        jwt::{
+            validate_cse_authentication_token, validate_cse_authorization_token, validate_tokens,
+        },
     },
 };
 
@@ -686,8 +689,16 @@ pub async fn privileged_wrap(
 ) -> KResult<PrivilegedWrapResponse> {
     debug!("privileged_wrap: entering");
 
-    let user =
-        validate_cse_authentication_token(&request.authentication, cse_config, kms, true).await?;
+    let google_cse_kacls_url = build_google_cse_url(kms)?;
+
+    let user = validate_cse_authentication_token(
+        &request.authentication,
+        cse_config,
+        google_cse_kacls_url,
+        kms.params.default_username.clone(),
+        true,
+    )
+    .await?;
 
     debug!("privileged_wrap: wrap dek");
     let resource_name = request.resource_name.into_bytes();
@@ -730,7 +741,15 @@ pub async fn privileged_unwrap(
         debug!("Authentication token check: validation disabled");
         kms.params.default_username.clone()
     } else {
-        validate_cse_authentication_token(&request.authentication, cse_config, kms, false).await?
+        let google_cse_kacls_url = build_google_cse_url(kms)?;
+        validate_cse_authentication_token(
+            &request.authentication,
+            cse_config,
+            google_cse_kacls_url,
+            kms.params.default_username.clone(),
+            false,
+        )
+        .await?
     };
     let resource_name = request.resource_name.clone();
 
@@ -789,8 +808,16 @@ pub async fn privileged_private_key_decrypt(
     kms: &Arc<KMS>,
 ) -> KResult<PrivilegedPrivateKeyDecryptResponse> {
     debug!("privileged_private_key_decrypt: entering");
-    let user =
-        validate_cse_authentication_token(&request.authentication, cse_config, kms, true).await?;
+    let google_cse_kacls_url = build_google_cse_url(kms)?;
+
+    let user = validate_cse_authentication_token(
+        &request.authentication,
+        cse_config,
+        google_cse_kacls_url,
+        kms.params.default_username.clone(),
+        true,
+    )
+    .await?;
 
     debug!("privileged_private_key_decrypt: check algorithm");
 

@@ -198,10 +198,11 @@ pub struct GoogleCseConfig {
 /// Validate the authentication token and return the calling user
 /// See [doc](https://developers.google.com/workspace/cse/guides/encrypt-and-decrypt-data?hl=en)
 #[allow(clippy::ref_option)]
-pub(crate) async fn validate_cse_authentication_token(
+pub async fn validate_cse_authentication_token(
     authentication_token: &str,
     cse_config: &Option<GoogleCseConfig>,
-    kms: &Arc<KMS>,
+    google_cse_kacls_url: String,
+    kms_default_username: String,
     check_email: bool,
 ) -> KResult<String> {
     debug!("validate_cse_authentication_token: entering");
@@ -211,7 +212,7 @@ pub(crate) async fn validate_cse_authentication_token(
                 .to_owned(),
         )
     })?;
-    let google_cse_kacls_url = build_google_cse_url(kms)?;
+    // let google_cse_kacls_url = build_google_cse_url(kms)?;
 
     trace!("validate token: KACLS URL {google_cse_kacls_url}");
 
@@ -252,7 +253,7 @@ pub(crate) async fn validate_cse_authentication_token(
             })?
     } else {
         // For `privileged_unwrap` endpoint, google_email or email claim are not provided in authentication token
-        kms.params.default_username.clone()
+        kms_default_username
     };
 
     trace!("authentication token validated for {authentication_email}");
@@ -360,8 +361,16 @@ pub(crate) async fn validate_tokens(
     cse_config: &Option<GoogleCseConfig>,
     roles: Option<&[Role]>,
 ) -> KResult<TokenExtractedContent> {
-    let authentication_email =
-        validate_cse_authentication_token(authentication_token, cse_config, kms, true).await?;
+    let google_cse_kacls_url = build_google_cse_url(kms)?;
+
+    let authentication_email = validate_cse_authentication_token(
+        authentication_token,
+        cse_config,
+        google_cse_kacls_url,
+        kms.params.default_username.clone(),
+        true,
+    )
+    .await?;
 
     let authorization_token =
         validate_cse_authorization_token(authorization_token, kms, cse_config, roles).await?;
