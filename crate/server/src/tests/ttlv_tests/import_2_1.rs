@@ -58,7 +58,9 @@ fn test_import_2_1() {
                 request_payload: Operation::Import(Import {
                     object,
                     object_type: ObjectType::SymmetricKey,
-                    unique_identifier: UniqueIdentifier::TextString("imported_key_uid".to_owned()),
+                    unique_identifier: UniqueIdentifier::TextString(
+                        "imported_2_1_key_uid".to_owned(),
+                    ),
                     attributes: Attributes {
                         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
                         cryptographic_usage_mask: Some(
@@ -103,5 +105,8 @@ fn test_import_2_1() {
         panic!("Expected ImportResponse");
     };
 
-    assert!(!import_response.unique_identifier.to_string().is_empty());
+    assert_eq!(
+        import_response.unique_identifier.to_string(),
+        "imported_2_1_key_uid"
+    );
 }
