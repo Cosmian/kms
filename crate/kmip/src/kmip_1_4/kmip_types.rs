@@ -1586,6 +1586,7 @@ impl From<LinkedObjectIdentifier> for UniqueIdentifier {
 
 /// Link Structure represents the relationship between a Managed Object and another object.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[serde(rename_all = "PascalCase")]
 pub struct Link {
     pub link_type: LinkType,
     pub linked_object_identifier: LinkedObjectIdentifier,
