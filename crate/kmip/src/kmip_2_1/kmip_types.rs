@@ -702,6 +702,22 @@ pub enum VendorAttributeValue {
     // no support for structure which is complex and does not bring much
 }
 
+impl Display for VendorAttributeValue {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::TextString(s) => write!(f, "{s}"),
+            Self::Integer(i) => write!(f, "{i}"),
+            Self::LongInteger(i) => write!(f, "{i}"),
+            Self::BigInteger(i) => write!(f, "{i}"),
+            Self::ByteString(b) => write!(f, "{}", hex::encode(b)),
+            Self::Boolean(b) => write!(f, "{b}"),
+            Self::DateTime(dt) => write!(f, "{dt}"),
+            Self::Interval(i) => write!(f, "{i}"),
+            Self::DateTimeExtended(dt) => write!(f, "{dt}"),
+        }
+    }
+}
+
 /// The Certificate Attributes are the various items included in a certificate. The following list is based on RFC2253.
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Default)]
 #[serde(rename_all = "PascalCase")]
