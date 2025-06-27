@@ -62,7 +62,7 @@ pub(super) fn import_symmetric_key(client: &SocketClient) -> String {
                 ephemeral: None,
                 unique_batch_item_id: Some(b"12345".to_vec()),
                 request_payload: Operation::Import(Import {
-                    unique_identifier: UniqueIdentifier::from("imported_key_uid".to_owned()),
+                    unique_identifier: UniqueIdentifier::from("imported_1_4_key_uid".to_owned()),
                     replace_existing: Some(false),
                     key_wrap_type: None,
                     attribute: Some(vec![
@@ -107,6 +107,6 @@ pub(super) fn import_symmetric_key(client: &SocketClient) -> String {
         panic!("Expected Import");
     };
 
-    assert!(!import_response.unique_identifier.is_empty());
+    assert_eq!(import_response.unique_identifier, "imported_1_4_key_uid");
     import_response.unique_identifier.clone()
 }
