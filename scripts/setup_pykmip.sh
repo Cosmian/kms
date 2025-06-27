@@ -61,16 +61,34 @@ check_python() {
 # Setup Python virtual environment and install PyKMIP
 setup_venv_and_pykmip() {
     print_status "Setting up Python virtual environment..."
-    
-    # Create virtual environment if it doesn't exist
-    if [[ ! -d ".venv" ]]; then
-        print_status "Creating virtual environment at .venv..."
-        python3 -m venv .venv
-        print_status "Virtual environment created"
-    else
-        print_status "Virtual environment already exists at .venv"
+
+    if [[ -d ".venv" ]]; then
+      rm -rf .venv
+      print_status "Removed existing virtual environment at .venv"
     fi
-    
+
+    # Install pyenv
+    if [[ ! -d "$HOME/.pyenv" ]]; then
+      curl -fsSL https://pyenv.run | bash
+    fi
+    export PYENV_ROOT="$HOME/.pyenv"
+    [[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"
+    eval "$(pyenv init - bash)"
+    print_status "pyenv installed successfully"
+
+    # Install Python 3.11.9
+    print_status "Installing Python 3.11.9 using pyenv..."
+    if ! pyenv install 3.11.9; then
+        print_error "Failed to install Python 3.11.9 using pyenv"
+        exit 1
+    fi
+    pyenv local 3.11.9
+
+    # Create virtual environment if it doesn't exist
+    print_status "Creating virtual environment at .venv..."
+    python3 -m venv .venv
+    print_status "Virtual environment created"
+
     # Activate virtual environment
     print_status "Activating virtual environment..."
     source .venv/bin/activate

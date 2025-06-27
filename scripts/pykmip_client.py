@@ -7,6 +7,7 @@ and perform basic operations.
 
 Requirements:
     pip install PyKMIP
+    Python 3.11 or earlier (due to ssl.wrap_socket deprecation in 3.12+)
 
 Usage:
     python pykmip_client.py --configuration pykmip.conf --operation query
@@ -15,9 +16,46 @@ Usage:
 import argparse
 import sys
 import json
-from kmip.services.kmip_client import KMIPProxy
-from kmip.core import enums
 import traceback
+
+# Check Python version before importing PyKMIP
+if sys.version_info >= (3, 12):
+    print(json.dumps({
+        "operation": "Version Check",
+        "status": "error",
+        "error": f"Python {sys.version_info.major}.{sys.version_info.minor} is not supported. PyKMIP requires Python 3.11 or earlier due to ssl.wrap_socket deprecation.",
+        "solution": "Install Python 3.11 and recreate virtual environment: rm -rf .venv && python3.11 -m venv .venv && source .venv/bin/activate && pip install PyKMIP"
+    }), indent=2)
+    sys.exit(1)
+
+try:
+    from kmip.services.kmip_client import KMIPProxy
+    from kmip.core import enums
+except ImportError as e:
+    print(json.dumps({
+        "operation": "Import Check",
+        "status": "error",
+        "error": f"Failed to import PyKMIP: {str(e)}",
+        "solution": "Install PyKMIP: pip install PyKMIP"
+    }), indent=2)
+    sys.exit(1)
+except Exception as e:
+    # Catch SSL-related errors that might occur during import
+    if "wrap_socket" in str(e):
+        print(json.dumps({
+            "operation": "SSL Check",
+            "status": "error",
+            "error": f"SSL compatibility issue: {str(e)}",
+            "solution": "Use Python 3.11 or earlier. Current Python version has removed ssl.wrap_socket which PyKMIP requires."
+        }), indent=2)
+        sys.exit(1)
+    else:
+        print(json.dumps({
+            "operation": "Import Check",
+            "status": "error",
+            "error": f"Unexpected import error: {str(e)}"
+        }), indent=2)
+        sys.exit(1)
 
 
 def main():
@@ -84,7 +122,19 @@ def main():
         print(json.dumps(result, indent=2))
 
     except (ConnectionError, TimeoutError, ValueError, KeyError, AttributeError, TypeError, IOError) as e:
-        print(f"Error: {e}", file=sys.stderr)
+        error_msg = str(e)
+
+        # Check for SSL-related errors
+        if "wrap_socket" in error_msg:
+            print(json.dumps({
+                "operation": args.operation,
+                "status": "error",
+                "error": "SSL compatibility issue - ssl.wrap_socket not available",
+                "technical_details": error_msg,
+                "solution": "Use Python 3.11 or earlier. PyKMIP is not compatible with Python 3.12+ due to ssl.wrap_socket removal."
+            }), indent=2)
+        else:
+            print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 
     finally:
@@ -187,7 +237,7 @@ def perform_create_symmetric_key(proxy, verbose=False):
         usage_attr = attribute_factory.create_attribute(
             enums.AttributeType.CRYPTOGRAPHIC_USAGE_MASK,
             [enums.CryptographicUsageMask.ENCRYPT,
-                enums.CryptographicUsageMask.DECRYPT]
+             enums.CryptographicUsageMask.DECRYPT]
         )
 
         # Create template
@@ -868,7 +918,8 @@ def perform_discover_versions(proxy, verbose=False):
             )
 
             # Check if query succeeded
-            if hasattr(query_result, 'result_status') and query_result.result_status.value != enums.ResultStatus.SUCCESS:
+            if hasattr(query_result,
+                       'result_status') and query_result.result_status.value != enums.ResultStatus.SUCCESS:
                 return {
                     "operation": "DiscoverVersions",
                     "status": "error",
@@ -1124,7 +1175,8 @@ def perform_activate(proxy, verbose=False):
             activate_result = proxy.activate(uuid=uid)
 
             # Check if activate operation succeeded
-            if hasattr(activate_result, 'result_status') and activate_result.result_status.value != enums.ResultStatus.SUCCESS:
+            if hasattr(activate_result,
+                       'result_status') and activate_result.result_status.value != enums.ResultStatus.SUCCESS:
                 error_msg = f"Activate operation failed: {activate_result.result_reason}"
                 if hasattr(activate_result, 'result_message') and activate_result.result_message:
                     error_msg += f" - {activate_result.result_message}"
