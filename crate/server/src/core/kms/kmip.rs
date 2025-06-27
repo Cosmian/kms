@@ -574,7 +574,6 @@ impl KMS {
         let span = tracing::span!(tracing::Level::ERROR, "register");
         let _enter = span.enter();
 
-        // Box::pin :: see https://rust-lang.github.io/rust-clippy/master/index.html#large_futures
         Box::pin(operations::register(
             self,
             request,

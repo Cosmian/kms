@@ -62,7 +62,7 @@ pub(crate) async fn register(
         ))
     }
 
-    // process the request based on the object type,
+    // Process the request based on the object type,
     let (uid, operations) = match request.object.object_type() {
         ObjectType::SymmetricKey => {
             Box::pin(process_symmetric_key(
@@ -98,10 +98,7 @@ pub(crate) async fn register(
             )))
         }
     };
-
-    // execute the operations
     kms.database.atomic(owner, &operations, params).await?;
-    // return the uid
     debug!("Registered object with uid: {}", uid);
     Ok(RegisterResponse {
         unique_identifier: UniqueIdentifier::TextString(uid),
