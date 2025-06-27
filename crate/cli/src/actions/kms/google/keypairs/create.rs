@@ -128,6 +128,7 @@ impl CreateKeyPairsAction {
     #[expect(clippy::print_stdout)]
     pub async fn run(&self, kms_rest_client: KmsClient) -> Result<(), KmsCliError> {
         let gmail_client = GmailClient::new(kms_rest_client.config.clone(), &self.user_id);
+        let email = &self.user_id;
 
         let kacls_url = kms_rest_client.google_cse_status();
 
@@ -170,6 +171,8 @@ impl CreateKeyPairsAction {
                 created_key_pair.public_key_unique_identifier.to_string(),
             )
         };
+
+        println!("[{email}] - RSA Keypair ID used: private_key {private_key_id} - public_key {public_key_id}");
 
         // Export wrapped private key with google CSE key
         let (_, wrapped_private_key, _attributes) = export_object(
@@ -220,6 +223,8 @@ impl CreateKeyPairsAction {
             .await
             .map_err(|e| KmsCliError::ServerError(format!("failed creating certificate: {e:?}")))?
             .unique_identifier;
+
+        println!("[{email}] - Certificate ID created: {certificate_unique_identifier}");
 
         // From the created leaf certificate, export the associated PKCS7 containing the whole cert chain
         let (_, pkcs7_object, _pkcs7_object_export_attributes) = export_object(
