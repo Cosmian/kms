@@ -13,7 +13,10 @@ use crate::{core::KMS, error::KmsError, result::KResult};
 mod jwt;
 pub mod operations;
 
-pub use jwt::{GoogleCseConfig, jwt_authorization_config, list_jwks_uri, list_jwt_configurations};
+pub use jwt::{
+    GoogleCseConfig, jwt_authorization_config, list_jwks_uri, list_jwt_configurations,
+    validate_cse_authentication_token,
+};
 
 use self::operations::{
     DigestRequest, PrivilegedPrivateKeyDecryptRequest, PrivilegedUnwrapRequest,

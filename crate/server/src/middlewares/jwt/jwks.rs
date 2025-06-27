@@ -17,10 +17,10 @@ static REFRESH_INTERVAL: i64 = 60; // in secs
 
 #[derive(Debug)]
 pub struct JwksManager {
-    uris: Vec<String>,
-    jwks: RwLock<HashMap<String, JWKS>>,
-    last_update: RwLock<Option<DateTime<Utc>>>,
-    proxy_params: Option<ProxyParams>,
+    pub(crate) uris: Vec<String>,
+    pub(crate) jwks: RwLock<HashMap<String, JWKS>>,
+    pub(crate) last_update: RwLock<Option<DateTime<Utc>>>,
+    pub(crate) proxy_params: Option<ProxyParams>,
 }
 
 impl JwksManager {
