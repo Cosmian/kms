@@ -53,6 +53,29 @@ check_prerequisites() {
     print_status "Activating virtual environment..."
     source .venv/bin/activate
 
+    # Check Python version compatibility
+    python_version=$($PYTHON_CMD -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+    python_major=$($PYTHON_CMD -c "import sys; print(sys.version_info.major)")
+    python_minor=$($PYTHON_CMD -c "import sys; print(sys.version_info.minor)")
+
+    if [[ "$python_major" -eq 3 && "$python_minor" -ge 12 ]]; then
+        print_error "Python ${python_version} detected. PyKMIP requires Python 3.11 or earlier due to ssl.wrap_socket deprecation."
+        print_error "The ssl.wrap_socket method was removed in Python 3.12, but PyKMIP still uses it."
+        print_error ""
+        print_error "To fix this issue:"
+        print_error "1. Install Python 3.11: brew install python@3.11 (on macOS)"
+        print_error "2. Recreate virtual environment: rm -rf .venv && python3.11 -m venv .venv"
+        print_error "3. Run setup again: ./scripts/setup_pykmip.sh"
+        print_error ""
+        print_error "Alternative: Use pyenv to manage Python versions:"
+        print_error "  pyenv install 3.11.9"
+        print_error "  pyenv local 3.11.9"
+        print_error "  rm -rf .venv && python -m venv .venv"
+        exit 1
+    fi
+
+    print_success "Python ${python_version} is compatible with PyKMIP"
+
     # Check if PyKMIP script exists
     if [[ ! -f "$PYKMIP_SCRIPT" ]]; then
         print_error "PyKMIP script not found: $PYKMIP_SCRIPT"
