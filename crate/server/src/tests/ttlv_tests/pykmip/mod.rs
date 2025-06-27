@@ -9,7 +9,7 @@ use crate::tests::ttlv_tests::start_test_server;
 #[test]
 fn test_pykmip() {
     // log_init(option_env!("RUST_LOG"));
-    log_init(Some("warn"));
+    log_init(Some("info,cosmian_kms_server=debug"));
     let crate_dir =
         PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("Failed to get CARGO_MANIFEST_DIR"));
     let project_root = crate_dir.parent().unwrap().parent().unwrap();
