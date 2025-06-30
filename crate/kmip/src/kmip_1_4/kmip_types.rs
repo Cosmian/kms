@@ -7,6 +7,7 @@ use strum::Display;
 use crate::{
     KmipError, kmip_0,
     kmip_0::kmip_types::{DRBGAlgorithm, FIPS186Variation, HashingAlgorithm, RNGAlgorithm},
+    kmip_1_4::kmip_attributes::CustomAttributeValue,
     kmip_2_1::{self},
 };
 
@@ -1623,6 +1624,14 @@ impl TryFrom<kmip_2_1::kmip_types::LinkedObjectIdentifier> for LinkedObjectIdent
             }
         })
     }
+}
+
+/// KMIP 1.4 Custom Attribute
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "PascalCase")]
+pub struct CustomAttribute {
+    pub name: String,
+    pub value: CustomAttributeValue,
 }
 
 /// KMIP Tag values as defined in the KMIP 1.4 specification.

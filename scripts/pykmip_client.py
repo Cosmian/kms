@@ -84,65 +84,108 @@ def main():
         # Open connection
         proxy.open()
 
-        # Perform the requested operation
-        if args.operation == 'activate':
-            result = perform_activate(proxy, args.verbose)
-        # Certify operation is not implemented in PyKMIP,
-        # the solution in this script is a workaround that simulates certification
-        # nd uses operations not (yet) implemented in the KMS => Comment out
-        # elif args.operation == 'certify':
-        #     from pykmip_certify import perform_certify
-        #     result = perform_certify(proxy, args.verbose)
-        elif args.operation == 'create':
-            result = perform_create_symmetric_key(proxy, args.verbose)
-        elif args.operation == 'create_keypair':
-            result = perform_create_keypair(proxy, args.verbose)
-        elif args.operation == 'decrypt':
-            result = perform_decrypt(proxy, args.verbose)
-        elif args.operation == 'destroy':
-            result = perform_destroy(proxy, args.verbose)
-        elif args.operation == 'discover_versions':
-            result = perform_discover_versions(proxy, args.verbose)
-        elif args.operation == 'encrypt':
-            result = perform_encrypt(proxy, args.verbose)
-        elif args.operation == 'get':
-            result = perform_get(proxy, args.verbose)
-        elif args.operation == 'get_attributes':
-            result = perform_get_attributes(proxy, args.verbose)
-        elif args.operation == 'locate':
-            result = perform_locate(proxy, args.verbose)
-        elif args.operation == 'mac':
-            result = perform_mac(proxy, args.verbose)
-        elif args.operation == 'query':
-            result = perform_query(proxy, args.verbose)
-        elif args.operation == 'revoke':
-            result = perform_revoke(proxy, args.verbose)
-        else:
-            print(f"Unsupported operation: {args.operation}")
-            sys.exit(1)
+        # Perform the requested operation with proper exception handling
+        try:
+            if args.operation == 'activate':
+                result = perform_activate(proxy, args.verbose)
+            # Certify operation is not implemented in PyKMIP,
+            # the solution in this script is a workaround that simulates certification
+            # nd uses operations not (yet) implemented in the KMS => Comment out
+            # elif args.operation == 'certify':
+            #     from pykmip_certify import perform_certify
+            #     result = perform_certify(proxy, args.verbose)
+            elif args.operation == 'create':
+                result = perform_create_symmetric_key(proxy, args.verbose)
+            elif args.operation == 'create_keypair':
+                result = perform_create_keypair(proxy, args.verbose)
+            elif args.operation == 'decrypt':
+                result = perform_decrypt(proxy, args.verbose)
+            elif args.operation == 'destroy':
+                result = perform_destroy(proxy, args.verbose)
+            elif args.operation == 'discover_versions':
+                result = perform_discover_versions(proxy, args.verbose)
+            elif args.operation == 'encrypt':
+                result = perform_encrypt(proxy, args.verbose)
+            elif args.operation == 'get':
+                result = perform_get(proxy, args.verbose)
+            elif args.operation == 'get_attributes':
+                result = perform_get_attributes(proxy, args.verbose)
+            elif args.operation == 'locate':
+                result = perform_locate(proxy, args.verbose)
+            elif args.operation == 'mac':
+                result = perform_mac(proxy, args.verbose)
+            elif args.operation == 'query':
+                result = perform_query(proxy, args.verbose)
+            elif args.operation == 'revoke':
+                result = perform_revoke(proxy, args.verbose)
+            else:
+                result = {
+                    "operation": args.operation,
+                    "status": "error",
+                    "error": f"Unsupported operation: {args.operation}"
+                }
 
-        # Output result as JSON for easy parsing
-        print(json.dumps(result, indent=2))
+            # Output result as JSON for easy parsing
+            print(json.dumps(result, indent=2))
+
+        except Exception as operation_error:
+            # Catch any unhandled exceptions from operations
+            error_result = {
+                "operation": args.operation,
+                "status": "error",
+                "error": f"Unhandled exception in {args.operation} operation: {str(operation_error)}",
+                "exception_type": type(operation_error).__name__
+            }
+
+            if args.verbose:
+                error_result["full_traceback"] = traceback.format_exc()
+
+            print(json.dumps(error_result, indent=2))
+            sys.exit(1)
 
     except (ConnectionError, TimeoutError, ValueError, KeyError, AttributeError, TypeError, IOError) as e:
         error_msg = str(e)
 
         # Check for SSL-related errors
         if "wrap_socket" in error_msg:
-            print(json.dumps({
+            result = {
                 "operation": args.operation,
                 "status": "error",
                 "error": "SSL compatibility issue - ssl.wrap_socket not available",
                 "technical_details": error_msg,
                 "solution": "Use Python 3.11 or earlier. PyKMIP is not compatible with Python 3.12+ due to ssl.wrap_socket removal."
-            }), indent=2)
+            }
         else:
-            print(f"Error: {e}", file=sys.stderr)
+            result = {
+                "operation": args.operation,
+                "status": "error",
+                "error": f"Connection or configuration error: {error_msg}"
+            }
+
+        print(json.dumps(result, indent=2))
+        sys.exit(1)
+
+    except Exception as unexpected_error:
+        # Catch any completely unexpected errors
+        result = {
+            "operation": args.operation,
+            "status": "error",
+            "error": f"Unexpected error: {str(unexpected_error)}",
+            "exception_type": type(unexpected_error).__name__
+        }
+
+        if args.verbose:
+            result["full_traceback"] = traceback.format_exc()
+
+        print(json.dumps(result, indent=2))
         sys.exit(1)
 
     finally:
         if 'proxy' in locals():
-            proxy.close()
+            try:
+                proxy.close()
+            except Exception:
+                pass  # Ignore errors during cleanup
 
 
 def perform_query(proxy, verbose=False):
@@ -1396,16 +1439,23 @@ def perform_get(proxy, verbose=False):
                 "error": error_msg
             }
 
-        uid = create_result.uuid if hasattr(create_result, 'uuid') else str(create_result)
+        # Extract UID properly - handle both string and object cases
+        if hasattr(create_result, 'uuid'):
+            if hasattr(create_result.uuid, 'value'):
+                uid = create_result.uuid.value
+            else:
+                uid = str(create_result.uuid)
+        else:
+            uid = str(create_result)
 
         if verbose:
             print(f"Created symmetric key with UID: {uid}")
 
         try:
             if verbose:
-                print(f"Attempting to retrieve key with UID: {uid}")
+                print(f"Attempting to retrieve object with UID: {uid}")
 
-            # Get the key object
+            # Get the object using the Get operation
             get_result = proxy.get(uuid=uid)
 
             # Check if get operation succeeded
@@ -1414,91 +1464,94 @@ def perform_get(proxy, verbose=False):
                 if hasattr(get_result, 'result_message') and get_result.result_message:
                     error_msg += f" - {get_result.result_message}"
 
-                response = {
+                return {
                     "operation": "Get",
                     "status": "error",
                     "uid": uid,
                     "error": error_msg,
                     "note": "Key was created successfully but Get operation failed"
                 }
-            else:
-                if verbose:
-                    print("Key retrieved successfully")
 
-                # Extract information about the retrieved object
-                object_type = "unknown"
-                if hasattr(get_result, 'object_type'):
-                    object_type = str(get_result.object_type.value) if hasattr(get_result.object_type,
-                                                                               'value') else str(get_result.object_type)
+            if verbose:
+                print("Object retrieved successfully")
 
-                # Extract the key material (if available)
-                key_material = None
-                key_length = 0
-                if hasattr(get_result, 'object') and get_result.object:
-                    managed_object = get_result.object
+            # Extract object information from the result
+            object_type = "unknown"
+            object_size = 0
+            object_format = "unknown"
 
-                    # Try to extract key material for symmetric keys
-                    if hasattr(managed_object, 'key_block') and managed_object.key_block:
-                        key_block = managed_object.key_block
-                        if hasattr(key_block, 'key_value') and key_block.key_value:
-                            key_value = key_block.key_value
-                            if hasattr(key_value, 'key_material') and key_value.key_material:
-                                key_material = key_value.key_material.value if hasattr(key_value.key_material,
-                                                                                       'value') else key_value.key_material
-                                key_length = len(key_material) if key_material else 0
+            if hasattr(get_result, 'object_type'):
+                object_type = get_result.object_type.value if hasattr(get_result.object_type, 'value') else str(
+                    get_result.object_type)
 
-                # Extract unique identifier from result
-                retrieved_uid = uid  # default fallback
-                if hasattr(get_result, 'uuid'):
-                    retrieved_uid = str(get_result.uuid)
+            # Try to extract object details
+            if hasattr(get_result, 'object') and get_result.object:
+                managed_object = get_result.object
 
-                response = {
-                    "operation": "Get",
-                    "status": "success",
-                    "uid": uid,
-                    "retrieved_uid": retrieved_uid,
-                    "object_type": object_type,
-                    "key_material_length": key_length,
-                    "key_material_retrieved": key_material is not None,
-                    "message": "Key retrieved successfully"
-                }
+                # For symmetric keys, try to get key material size
+                if hasattr(managed_object, 'key_block') and managed_object.key_block:
+                    key_block = managed_object.key_block
+                    if hasattr(key_block, 'key_value') and key_block.key_value:
+                        key_value = key_block.key_value
+                        if hasattr(key_value, 'key_material') and key_value.key_material:
+                            key_material = key_value.key_material.value if hasattr(key_value.key_material,
+                                                                                   'value') else key_value.key_material
+                            if key_material:
+                                object_size = len(key_material)
 
-                # Include key material hex if available (for demonstration)
-                if key_material and len(key_material) > 0:
-                    try:
-                        if isinstance(key_material, bytes):
-                            response["key_material_hex"] = key_material.hex()[:64] + "..." if len(
-                                key_material) > 32 else key_material.hex()
-                        else:
-                            response["key_material_hex"] = "Non-bytes key material"
-                    except (ValueError, AttributeError, TypeError) as hex_error:
-                        response["key_material_hex"] = f"Error converting to hex: {str(hex_error)}"
+                    if hasattr(key_block, 'key_format_type'):
+                        object_format = key_block.key_format_type.value if hasattr(key_block.key_format_type,
+                                                                                   'value') else str(
+                            key_block.key_format_type)
 
-        except (ConnectionError, TimeoutError, ValueError, KeyError,
-                AttributeError, TypeError, IOError) as get_error:
+            # Extract returned UID
+            returned_uid = uid  # fallback
+            if hasattr(get_result, 'uuid'):
+                if hasattr(get_result.uuid, 'value'):
+                    returned_uid = get_result.uuid.value
+                else:
+                    returned_uid = str(get_result.uuid)
+
+            response = {
+                "operation": "Get",
+                "status": "success",
+                "uid": uid,
+                "returned_uid": returned_uid,
+                "object_type": object_type,
+                "object_format": object_format,
+                "key_size_bytes": object_size,
+                "message": "Object retrieved successfully"
+            }
+
+            return response
+
+        except Exception as get_error:
             error_msg = str(get_error)
             full_traceback = traceback.format_exc()
 
             if verbose:
                 print(f"Get error traceback:\n{full_traceback}")
 
-            response = {
+            return {
                 "operation": "Get",
                 "status": "error",
                 "uid": uid,
                 "error": error_msg,
+                "exception_type": type(get_error).__name__,
                 "note": "Key was created successfully but Get operation failed",
                 "full_traceback": full_traceback if verbose else None
             }
 
-        return response
+    except Exception as e:
+        error_msg = str(e)
+        full_traceback = traceback.format_exc()
 
-    except (ConnectionError, TimeoutError, ValueError, KeyError,
-            AttributeError, TypeError, IOError) as e:
         return {
             "operation": "Get",
             "status": "error",
-            "error": str(e)
+            "error": error_msg,
+            "exception_type": type(e).__name__,
+            "full_traceback": full_traceback if verbose else None
         }
 
 
