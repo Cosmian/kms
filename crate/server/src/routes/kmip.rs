@@ -331,7 +331,7 @@ pub(crate) async fn handle_ttlv_bytes(user: &str, ttlv_bytes: &[u8], kms: &Arc<K
             });
             // convert to bytes
             TTLV::to_bytes(&response_ttlv, KmipFlavor::Kmip2).unwrap_or_else(|e| {
-                error!(target: "kmip", "Failed to convert TTLV to bytes: {}", e);
+                error!(target: "kmip", "Failed to convert Response TTLV to bytes: {}: TTLV:\n{:#?}", e,response_ttlv);
                 TTLV_ERROR_RESPONSE.to_vec()
             })
         })
