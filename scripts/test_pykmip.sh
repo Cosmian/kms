@@ -159,11 +159,24 @@ run_operation() {
         failure_reason="KMIP response status is error"
     fi
     
-    # Check for Python errors/exceptions that aren't JSON formatted
-    if echo "$output" | grep -qi "traceback\|exception.*error"; then
-        if ! echo "$output" | grep -q '"status":'; then
+    # Check for Python errors/exceptions (improved detection)
+    if echo "$output" | grep -qi "traceback\|exception\|error:" && ! echo "$output" | grep -q '"status":'; then
+        failure_detected=true
+        failure_reason="Python exception detected"
+    fi
+
+    # Check for specific Python error patterns
+    if echo "$output" | grep -qi "attributeerror\|typeerror\|valueerror\|keyerror\|importerror\|modulenotfounderror"; then
+        failure_detected=true
+        failure_reason="Python error detected"
+    fi
+
+    # Check if output doesn't contain valid JSON (might indicate crash)
+    if ! echo "$output" | python -m json.tool >/dev/null 2>&1; then
+        # Only flag as error if it's not just verbose output mixed with JSON
+        if ! echo "$output" | tail -20 | python -m json.tool >/dev/null 2>&1; then
             failure_detected=true
-            failure_reason="Python exception detected"
+            failure_reason="invalid or missing JSON output"
         fi
     fi
     

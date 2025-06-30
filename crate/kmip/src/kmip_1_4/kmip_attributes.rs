@@ -242,9 +242,12 @@ impl Serialize for Attribute {
                 st.serialize_field("AttributeName", "Last Change Date")?;
                 st.serialize_field("AttributeValue", value)?;
             }
-            Self::CustomAttribute((name, value)) => {
-                st.serialize_field("AttributeName", name)?;
-                st.serialize_field("AttributeValue", value)?;
+            Self::CustomAttribute(ca) => {
+                st.serialize_field("AttributeName", "Custom Attribute")?;
+                st.serialize_field(
+                    "AttributeValue",
+                    &serde_json::to_string(ca).map_err(serde::ser::Error::custom)?,
+                )?;
             }
             Self::AlternativeName(value) => {
                 st.serialize_field("AttributeName", "Alternative Name")?;
@@ -546,13 +549,11 @@ impl<'de> Deserialize<'de> for Attribute {
                         let value: bool = map.next_value()?;
                         Ok(Attribute::NeverExtractable(value))
                     }
-                    name => {
-                        if name.starts_with("x-") || name.starts_with("y-") {
-                            let value: CustomAttributeValue = map.next_value()?;
-                            Ok(Attribute::CustomAttribute((name.to_owned(), value)))
-                        } else {
-                            Err(de::Error::custom(format!("invalid attribute name: {name}")))
-                        }
+                    "Custom Attribute" => {
+                        let value: String = map.next_value()?;
+                        serde_json::from_str(&value)
+                            .map_err(de::Error::custom)
+                            .map(|ca: CustomAttribute| Attribute::CustomAttribute(ca))
                     }
                 }
             }
@@ -587,22 +588,22 @@ impl From<Attribute> for kmip_2_1::kmip_attributes::Attribute {
             Attribute::CryptographicLength(v) => Self::CryptographicLength(v),
             Attribute::CryptographicParameters(v) => Self::CryptographicParameters(v.into()),
             Attribute::CryptographicUsageMask(v) => Self::CryptographicUsageMask(v),
-            Attribute::CustomAttribute((n, v)) => {
-                if n.starts_with("x-") || n.starts_with("y-") {
-                    let s = n.get(2..).unwrap_or("").to_owned();
+            Attribute::CustomAttribute(ca) => {
+                if ca.name.starts_with("x-") || ca.name.starts_with("y-") {
+                    let s = ca.name.get(2..).unwrap_or("").to_owned();
                     let s: Vec<&str> = s.split("::").collect();
                     if s.len() == 2 {
                         return Self::VendorAttribute(VendorAttribute {
                             vendor_identification: (*s.first().unwrap_or(&"KMIP1")).to_owned(),
-                            attribute_name: (*s.get(1).unwrap_or(&n.as_str())).to_owned(),
-                            attribute_value: v.into(),
+                            attribute_name: (*s.get(1).unwrap_or(&ca.name.as_str())).to_owned(),
+                            attribute_value: ca.value.into(),
                         });
                     }
                 }
                 Self::VendorAttribute(VendorAttribute {
                     vendor_identification: "KMIP1".to_owned(),
-                    attribute_name: n,
-                    attribute_value: v.into(),
+                    attribute_name: ca.name,
+                    attribute_value: ca.value.into(),
                 })
             }
             Attribute::DeactivationDate(v) => Self::DeactivationDate(v),
@@ -730,15 +731,15 @@ impl TryFrom<kmip_2_1::kmip_attributes::Attribute> for Attribute {
                             vendor_attribute.attribute_value.to_string(),
                         ))
                     } else {
-                        Ok(Self::CustomAttribute((
-                            vendor_attribute.attribute_name,
-                            vendor_attribute.attribute_value.into(),
-                        )))
+                        Ok(Self::CustomAttribute(CustomAttribute {
+                            name: vendor_attribute.attribute_name,
+                            value: vendor_attribute.attribute_value.into(),
+                        }))
                     }
                 } else {
                     let name = format!("y-{}::{}", vendor_id, vendor_attribute.attribute_name);
                     let value = vendor_attribute.attribute_value.into();
-                    Ok(Self::CustomAttribute((name, value)))
+                    Ok(Self::CustomAttribute(CustomAttribute { name, value }))
                 }
             }
             kmip_2_1::kmip_attributes::Attribute::AlternativeName(v) => {
@@ -785,9 +786,15 @@ impl TryFrom<kmip_2_1::kmip_attributes::Attribute> for Attribute {
             | kmip_2_1::kmip_attributes::Attribute::RotateLatest(_)
             | kmip_2_1::kmip_attributes::Attribute::RotateName(_)
             | kmip_2_1::kmip_attributes::Attribute::RotateOffset(_)
-            | kmip_2_1::kmip_attributes::Attribute::ShortUniqueIdentifier(_) => Ok(Self::Comment(
-                format!("Unsupported KMIP 2 attribute: {attribute:?}"),
-            )),
+            | kmip_2_1::kmip_attributes::Attribute::ShortUniqueIdentifier(_) => {
+                Ok(Self::CustomAttribute(CustomAttribute {
+                    name: "Unsupported KMIP 2 attribute".to_owned(),
+                    value: CustomAttributeValue::TextString(format!("{attribute:?}")),
+                }))
+                // Ok(Self::Comment(
+                //     format!("Unsupported KMIP 2 attribute: {attribute:?}"),
+                // ))
+            }
             kmip_2_1::kmip_attributes::Attribute::X509CertificateIdentifier(v) => {
                 Ok(Self::X509CertificateIdentifier(v))
             }
@@ -966,12 +973,12 @@ impl From<Vec<Attribute>> for kmip_2_1::kmip_attributes::Attributes {
                 Attribute::LastChangeDate(v) => {
                     attributes.last_change_date = Some(v);
                 }
-                Attribute::CustomAttribute((n, v)) => {
+                Attribute::CustomAttribute(CustomAttribute { name, value }) => {
                     let vas = attributes.vendor_attributes.get_or_insert(vec![]);
                     vas.push(VendorAttribute {
                         vendor_identification: "KMIP1".to_owned(),
-                        attribute_name: n,
-                        attribute_value: v.into(),
+                        attribute_name: name,
+                        attribute_value: value.into(),
                     });
                 }
                 Attribute::AlternativeName(v) => {
