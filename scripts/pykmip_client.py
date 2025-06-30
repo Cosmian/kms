@@ -65,7 +65,7 @@ def main():
                         help='Configuration file path')
     parser.add_argument('--operation', default='query',
                         choices=['activate', 'create', 'create_keypair', 'decrypt', 'destroy',
-                                 'discover_versions', 'encrypt', 'get', 'locate', 'mac', 'query', 'revoke'],
+                                 'discover_versions', 'encrypt', 'get_attributes', 'locate', 'mac', 'query', 'revoke'],
                         help='KMIP operation to perform')
     parser.add_argument('--verbose', '-v', action='store_true',
                         help='Enable verbose output')
@@ -104,7 +104,7 @@ def main():
             result = perform_discover_versions(proxy, args.verbose)
         elif args.operation == 'encrypt':
             result = perform_encrypt(proxy, args.verbose)
-        elif args.operation == 'get':
+        elif args.operation == 'get_attributes':
             result = perform_get_attributes(proxy, args.verbose)
         elif args.operation == 'locate':
             result = perform_locate(proxy, args.verbose)
