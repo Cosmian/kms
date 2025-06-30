@@ -10,7 +10,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_attributes::{Attribute, CustomAttributeValue},
         kmip_messages::RequestMessageBatchItem,
         kmip_operations::{AddAttribute, Operation},
-        kmip_types::OperationEnumeration,
+        kmip_types::{CustomAttribute, OperationEnumeration},
     },
     ttlv::KmipFlavor,
 };
@@ -52,10 +52,10 @@ pub(crate) fn add_attributes(client: &SocketClient, key_id: &str) {
                 unique_batch_item_id: Some(b"12345".to_vec()),
                 request_payload: Operation::AddAttribute(AddAttribute {
                     unique_identifier: key_id.to_owned(),
-                    attribute: Attribute::CustomAttribute((
-                        "x-Product_Version".to_owned(),
-                        CustomAttributeValue::TextString("7.0.3 build-19480866".to_owned()),
-                    )),
+                    attribute: Attribute::CustomAttribute(CustomAttribute {
+                        name: "x-Product_Version".to_owned(),
+                        value: CustomAttributeValue::TextString("7.0.3 build-19480866".to_owned()),
+                    }),
                 }),
                 message_extension: None,
             }),
@@ -65,10 +65,10 @@ pub(crate) fn add_attributes(client: &SocketClient, key_id: &str) {
                 unique_batch_item_id: Some(b"123456".to_vec()),
                 request_payload: Operation::AddAttribute(AddAttribute {
                     unique_identifier: key_id.to_owned(),
-                    attribute: Attribute::CustomAttribute((
-                        "x-Vendor".to_owned(),
-                        CustomAttributeValue::TextString("VMware, Inc.".to_owned()),
-                    )),
+                    attribute: Attribute::CustomAttribute(CustomAttribute {
+                        name: "x-Vendor".to_owned(),
+                        value: CustomAttributeValue::TextString("VMware, Inc.".to_owned()),
+                    }),
                 }),
                 message_extension: None,
             }),
@@ -78,10 +78,10 @@ pub(crate) fn add_attributes(client: &SocketClient, key_id: &str) {
                 unique_batch_item_id: Some(b"123456".to_vec()),
                 request_payload: Operation::AddAttribute(AddAttribute {
                     unique_identifier: key_id.to_owned(),
-                    attribute: Attribute::CustomAttribute((
-                        "x-Product".to_owned(),
-                        CustomAttributeValue::TextString("VMware vSphere".to_owned()),
-                    )),
+                    attribute: Attribute::CustomAttribute(CustomAttribute {
+                        name: "x-Product".to_owned(),
+                        value: CustomAttributeValue::TextString("VMware vSphere".to_owned()),
+                    }),
                 }),
                 message_extension: None,
             }),
