@@ -65,7 +65,8 @@ def main():
                         help='Configuration file path')
     parser.add_argument('--operation', default='query',
                         choices=['activate', 'create', 'create_keypair', 'decrypt', 'destroy',
-                                 'discover_versions', 'encrypt', 'get_attributes', 'locate', 'mac', 'query', 'revoke'],
+                                 'discover_versions', 'encrypt', 'get', 'get_attributes', 'locate', 'mac', 'query',
+                                 'revoke'],
                         help='KMIP operation to perform')
     parser.add_argument('--verbose', '-v', action='store_true',
                         help='Enable verbose output')
@@ -104,6 +105,8 @@ def main():
             result = perform_discover_versions(proxy, args.verbose)
         elif args.operation == 'encrypt':
             result = perform_encrypt(proxy, args.verbose)
+        elif args.operation == 'get':
+            result = perform_get(proxy, args.verbose)
         elif args.operation == 'get_attributes':
             result = perform_get_attributes(proxy, args.verbose)
         elif args.operation == 'locate':
@@ -1345,6 +1348,155 @@ def perform_mac(proxy, verbose=False):
             AttributeError, TypeError, IOError) as e:
         return {
             "operation": "MAC",
+            "status": "error",
+            "error": str(e)
+        }
+
+
+def perform_get(proxy, verbose=False):
+    """Create a symmetric key and then retrieve it using Get operation"""
+    if verbose:
+        print("Testing Get operation...")
+
+    try:
+        # First create a symmetric key to retrieve
+        from kmip.core import objects as cobjects
+        from kmip.core.factories.attributes import AttributeFactory
+
+        attribute_factory = AttributeFactory()
+        algorithm_attr = attribute_factory.create_attribute(
+            enums.AttributeType.CRYPTOGRAPHIC_ALGORITHM,
+            enums.CryptographicAlgorithm.AES
+        )
+        length_attr = attribute_factory.create_attribute(
+            enums.AttributeType.CRYPTOGRAPHIC_LENGTH,
+            256
+        )
+        usage_attr = attribute_factory.create_attribute(
+            enums.AttributeType.CRYPTOGRAPHIC_USAGE_MASK,
+            [enums.CryptographicUsageMask.ENCRYPT,
+             enums.CryptographicUsageMask.DECRYPT]
+        )
+
+        template = cobjects.TemplateAttribute(
+            attributes=[algorithm_attr, length_attr, usage_attr])
+
+        # Create the key
+        create_result = proxy.create(enums.ObjectType.SYMMETRIC_KEY, template)
+
+        # Check if create operation succeeded
+        if hasattr(create_result, 'result_status') and create_result.result_status.value != enums.ResultStatus.SUCCESS:
+            error_msg = f"Create operation failed: {create_result.result_reason}"
+            if hasattr(create_result, 'result_message') and create_result.result_message:
+                error_msg += f" - {create_result.result_message}"
+
+            return {
+                "operation": "Get",
+                "status": "error",
+                "error": error_msg
+            }
+
+        uid = create_result.uuid if hasattr(create_result, 'uuid') else str(create_result)
+
+        if verbose:
+            print(f"Created symmetric key with UID: {uid}")
+
+        try:
+            if verbose:
+                print(f"Attempting to retrieve key with UID: {uid}")
+
+            # Get the key object
+            get_result = proxy.get(uuid=uid)
+
+            # Check if get operation succeeded
+            if hasattr(get_result, 'result_status') and get_result.result_status.value != enums.ResultStatus.SUCCESS:
+                error_msg = f"Get operation failed: {get_result.result_reason}"
+                if hasattr(get_result, 'result_message') and get_result.result_message:
+                    error_msg += f" - {get_result.result_message}"
+
+                response = {
+                    "operation": "Get",
+                    "status": "error",
+                    "uid": uid,
+                    "error": error_msg,
+                    "note": "Key was created successfully but Get operation failed"
+                }
+            else:
+                if verbose:
+                    print("Key retrieved successfully")
+
+                # Extract information about the retrieved object
+                object_type = "unknown"
+                if hasattr(get_result, 'object_type'):
+                    object_type = str(get_result.object_type.value) if hasattr(get_result.object_type,
+                                                                               'value') else str(get_result.object_type)
+
+                # Extract the key material (if available)
+                key_material = None
+                key_length = 0
+                if hasattr(get_result, 'object') and get_result.object:
+                    managed_object = get_result.object
+
+                    # Try to extract key material for symmetric keys
+                    if hasattr(managed_object, 'key_block') and managed_object.key_block:
+                        key_block = managed_object.key_block
+                        if hasattr(key_block, 'key_value') and key_block.key_value:
+                            key_value = key_block.key_value
+                            if hasattr(key_value, 'key_material') and key_value.key_material:
+                                key_material = key_value.key_material.value if hasattr(key_value.key_material,
+                                                                                       'value') else key_value.key_material
+                                key_length = len(key_material) if key_material else 0
+
+                # Extract unique identifier from result
+                retrieved_uid = uid  # default fallback
+                if hasattr(get_result, 'uuid'):
+                    retrieved_uid = str(get_result.uuid)
+
+                response = {
+                    "operation": "Get",
+                    "status": "success",
+                    "uid": uid,
+                    "retrieved_uid": retrieved_uid,
+                    "object_type": object_type,
+                    "key_material_length": key_length,
+                    "key_material_retrieved": key_material is not None,
+                    "message": "Key retrieved successfully"
+                }
+
+                # Include key material hex if available (for demonstration)
+                if key_material and len(key_material) > 0:
+                    try:
+                        if isinstance(key_material, bytes):
+                            response["key_material_hex"] = key_material.hex()[:64] + "..." if len(
+                                key_material) > 32 else key_material.hex()
+                        else:
+                            response["key_material_hex"] = "Non-bytes key material"
+                    except (ValueError, AttributeError, TypeError) as hex_error:
+                        response["key_material_hex"] = f"Error converting to hex: {str(hex_error)}"
+
+        except (ConnectionError, TimeoutError, ValueError, KeyError,
+                AttributeError, TypeError, IOError) as get_error:
+            error_msg = str(get_error)
+            full_traceback = traceback.format_exc()
+
+            if verbose:
+                print(f"Get error traceback:\n{full_traceback}")
+
+            response = {
+                "operation": "Get",
+                "status": "error",
+                "uid": uid,
+                "error": error_msg,
+                "note": "Key was created successfully but Get operation failed",
+                "full_traceback": full_traceback if verbose else None
+            }
+
+        return response
+
+    except (ConnectionError, TimeoutError, ValueError, KeyError,
+            AttributeError, TypeError, IOError) as e:
+        return {
+            "operation": "Get",
             "status": "error",
             "error": str(e)
         }
