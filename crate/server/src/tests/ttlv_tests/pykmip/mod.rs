@@ -1,7 +1,7 @@
 use std::{env, path::PathBuf};
 
 use cosmian_logger::log_init;
-use tracing::warn;
+use tracing::{info, warn};
 
 use crate::tests::ttlv_tests::start_test_server;
 
@@ -10,11 +10,16 @@ use crate::tests::ttlv_tests::start_test_server;
 fn test_pykmip() {
     // log_init(option_env!("RUST_LOG"));
     log_init(Some("info,cosmian_kms_server=debug"));
+
+    // start the server
+    let _server_handles = start_test_server(5696);
+
     let crate_dir =
         PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("Failed to get CARGO_MANIFEST_DIR"));
     let project_root = crate_dir.parent().unwrap().parent().unwrap();
 
     // setup pykmip
+    info!("Setting up PyKMIP...");
     let setup_script_file = project_root.join("scripts/setup_pykmip.sh");
     let mut command = {
         #[cfg(target_os = "macos")]
@@ -37,6 +42,7 @@ fn test_pykmip() {
     );
 
     // Activate venv
+    info!("Activating PyKMIP virtual environment...");
     let activate_script_file = project_root.join("scripts/activate_venv.sh ");
     let mut command = {
         #[cfg(target_os = "macos")]
@@ -58,10 +64,8 @@ fn test_pykmip() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    // start the server
-    let _server_handles = start_test_server(5696);
-
     // RUn the tests
+    info!("Running PyKMIP tests...");
     let test_script_file = project_root.join("scripts/test_pykmip.sh");
 
     let mut command = {
