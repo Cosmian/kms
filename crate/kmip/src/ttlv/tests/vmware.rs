@@ -24,7 +24,7 @@ use crate::{
             AddAttribute, Create, CreateResponse, Get, GetAttributes, GetAttributesResponse,
             GetResponse, Operation, Query, QueryResponse,
         },
-        kmip_types::{CryptographicAlgorithm, KeyFormatType, ObjectType},
+        kmip_types::{CryptographicAlgorithm, CustomAttribute, KeyFormatType, ObjectType},
     },
     ttlv::{KmipFlavor, TTLV, from_ttlv},
 };
@@ -447,10 +447,10 @@ fn add_attribute() {
         batch_item.request_payload,
         Operation::AddAttribute(AddAttribute {
             unique_identifier: "1".to_owned(),
-            attribute: Attribute::CustomAttribute((
-                "x-Product_Version".to_owned(),
-                CustomAttributeValue::TextString("7.0.3 build-19480866".to_owned())
-            )),
+            attribute: Attribute::CustomAttribute(CustomAttribute {
+                name: "x-Product_Version".to_owned(),
+                value: CustomAttributeValue::TextString("7.0.3 build-19480866".to_owned())
+            }),
         })
     );
 
@@ -462,10 +462,10 @@ fn add_attribute() {
         batch_item.request_payload,
         Operation::AddAttribute(AddAttribute {
             unique_identifier: "1".to_owned(),
-            attribute: Attribute::CustomAttribute((
-                "x-Vendor".to_owned(),
-                CustomAttributeValue::TextString("VMware, Inc.".to_owned())
-            )),
+            attribute: Attribute::CustomAttribute(CustomAttribute {
+                name: "x-Vendor".to_owned(),
+                value: CustomAttributeValue::TextString("VMware, Inc.".to_owned())
+            }),
         })
     );
 
@@ -477,10 +477,10 @@ fn add_attribute() {
         batch_item.request_payload,
         Operation::AddAttribute(AddAttribute {
             unique_identifier: "1".to_owned(),
-            attribute: Attribute::CustomAttribute((
-                "x-Product".to_owned(),
-                CustomAttributeValue::TextString("VMware vSphere".to_owned())
-            )),
+            attribute: Attribute::CustomAttribute(CustomAttribute {
+                name: "x-Product".to_owned(),
+                value: CustomAttributeValue::TextString("VMware vSphere".to_owned())
+            }),
         })
     );
 }
