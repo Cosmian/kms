@@ -172,7 +172,10 @@ impl CreateKeyPairsAction {
             )
         };
 
-        println!("[{email}] - RSA Keypair ID used: private_key {private_key_id} - public_key {public_key_id}");
+        println!(
+            "[{email}] - RSA Keypair ID used: private_key {private_key_id} - public_key \
+             {public_key_id}"
+        );
 
         // Export wrapped private key with google CSE key
         let (_, wrapped_private_key, _attributes) = export_object(
