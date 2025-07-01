@@ -1474,35 +1474,137 @@ def perform_get(proxy, verbose=False):
 
             if verbose:
                 print("Object retrieved successfully")
+                print(f"Get result type: {type(get_result)}")
+                print(f"Get result attributes: {[attr for attr in dir(get_result) if not attr.startswith('_')]}")
 
             # Extract object information from the result
             object_type = "unknown"
             object_size = 0
             object_format = "unknown"
 
+            # Get object type properly
             if hasattr(get_result, 'object_type'):
-                object_type = get_result.object_type.value if hasattr(get_result.object_type, 'value') else str(
-                    get_result.object_type)
+                if hasattr(get_result.object_type, 'value'):
+                    object_type = get_result.object_type.value
+                else:
+                    object_type = str(get_result.object_type)
 
-            # Try to extract object details
+            # Try to extract object details from the managed object
+            # The object might be directly accessible or nested
+            managed_object = None
             if hasattr(get_result, 'object') and get_result.object:
                 managed_object = get_result.object
+            elif hasattr(get_result, 'managed_object') and get_result.managed_object:
+                managed_object = get_result.managed_object
+            elif hasattr(get_result, 'secret') and get_result.secret:
+                # PyKMIP often returns symmetric keys as 'secret' objects
+                managed_object = get_result.secret
+            # Sometimes the object is the get_result itself
+            elif hasattr(get_result, 'key_block'):
+                managed_object = get_result
 
-                # For symmetric keys, try to get key material size
+            if managed_object:
+                if verbose:
+                    print(f"Managed object type: {type(managed_object)}")
+                    print(
+                        f"Managed object attributes: {[attr for attr in dir(managed_object) if not attr.startswith('_')]}")
+
+                # For symmetric keys, extract key block information
+                key_block = None
                 if hasattr(managed_object, 'key_block') and managed_object.key_block:
                     key_block = managed_object.key_block
+                elif hasattr(managed_object, 'value') and hasattr(managed_object.value, 'key_block'):
+                    key_block = managed_object.value.key_block
+
+                if key_block:
+                    if verbose:
+                        print(f"Key block type: {type(key_block)}")
+                        print(f"Key block attributes: {[attr for attr in dir(key_block) if not attr.startswith('_')]}")
+
+                    # Extract key format type
+                    if hasattr(key_block, 'key_format_type') and key_block.key_format_type:
+                        if hasattr(key_block.key_format_type, 'value'):
+                            format_enum = key_block.key_format_type.value
+                            # Convert enum to string for JSON serialization
+                            if hasattr(format_enum, 'name'):
+                                object_format = format_enum.name
+                            elif hasattr(format_enum, 'value'):
+                                object_format = str(format_enum.value)
+                            else:
+                                object_format = str(format_enum)
+                            if verbose:
+                                print(f"Key format type from .value: {object_format}")
+                        else:
+                            object_format = str(key_block.key_format_type)
+                            if verbose:
+                                print(f"Key format type from str(): {object_format}")
+                    elif verbose:
+                        print("No key_format_type found in key_block")
+
+                    # Extract key material and size
                     if hasattr(key_block, 'key_value') and key_block.key_value:
                         key_value = key_block.key_value
-                        if hasattr(key_value, 'key_material') and key_value.key_material:
-                            key_material = key_value.key_material.value if hasattr(key_value.key_material,
-                                                                                   'value') else key_value.key_material
-                            if key_material:
-                                object_size = len(key_material)
 
-                    if hasattr(key_block, 'key_format_type'):
-                        object_format = key_block.key_format_type.value if hasattr(key_block.key_format_type,
-                                                                                   'value') else str(
-                            key_block.key_format_type)
+                        if verbose:
+                            print(f"Key value type: {type(key_value)}")
+                            print(
+                                f"Key value attributes: {[attr for attr in dir(key_value) if not attr.startswith('_')]}")
+
+                        # Try different possible attribute names for key material
+                        key_material = None
+                        if hasattr(key_value, 'key_material') and key_value.key_material:
+                            key_material_obj = key_value.key_material
+                            if verbose:
+                                print(f"Key material object type: {type(key_material_obj)}")
+                                print(
+                                    f"Key material object attributes: {[attr for attr in dir(key_material_obj) if not attr.startswith('_')]}")
+
+                            # Extract the actual bytes from the key material object
+                            if hasattr(key_material_obj, 'value'):
+                                key_material = key_material_obj.value
+                            elif hasattr(key_material_obj, 'data'):
+                                key_material = key_material_obj.data
+                            else:
+                                key_material = key_material_obj
+
+                        elif hasattr(key_value, 'material') and key_value.material:
+                            key_material_obj = key_value.material
+                            if hasattr(key_material_obj, 'value'):
+                                key_material = key_material_obj.value
+                            else:
+                                key_material = key_material_obj
+                        elif hasattr(key_value, 'value') and key_value.value:
+                            # Sometimes the key material is directly in value
+                            key_material = key_value.value
+
+                        # Calculate size if we found key material
+                        if key_material:
+                            if isinstance(key_material, (bytes, bytearray)):
+                                object_size = len(key_material)
+                            elif isinstance(key_material, str):
+                                # Handle hex-encoded strings
+                                try:
+                                    object_size = len(bytes.fromhex(key_material))
+                                except ValueError:
+                                    object_size = len(key_material.encode('utf-8'))
+                            else:
+                                # Try to get length of the object
+                                try:
+                                    object_size = len(key_material)
+                                except (TypeError, AttributeError):
+                                    object_size = 0
+
+                            if verbose:
+                                print(f"Key material type: {type(key_material)}")
+                                print(f"Key material size: {object_size} bytes")
+                        elif verbose:
+                            print("No key material found in key_value")
+                    elif verbose:
+                        print("No key_value found in key_block")
+                elif verbose:
+                    print("No key_block found in managed_object")
+            elif verbose:
+                print("No managed object found in get_result")
 
             # Extract returned UID
             returned_uid = uid  # fallback
