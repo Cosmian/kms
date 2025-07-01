@@ -555,6 +555,7 @@ impl<'de> Deserialize<'de> for Attribute {
                             .map_err(de::Error::custom)
                             .map(|ca: CustomAttribute| Attribute::CustomAttribute(ca))
                     }
+                    name => Err(de::Error::custom(format!("invalid attribute name: {name}"))),
                 }
             }
         }
