@@ -243,11 +243,16 @@ impl Serialize for Attribute {
                 st.serialize_field("AttributeValue", value)?;
             }
             Self::CustomAttribute(ca) => {
-                st.serialize_field("AttributeName", "Custom Attribute")?;
-                st.serialize_field(
-                    "AttributeValue",
-                    &serde_json::to_string(ca).map_err(serde::ser::Error::custom)?,
-                )?;
+                if ca.name.starts_with("x-") || ca.name.starts_with("y-") {
+                    st.serialize_field("AttributeName", &ca.name)?;
+                    st.serialize_field("AttributeValue", &ca.value)?;
+                } else {
+                    st.serialize_field("AttributeName", "Custom Attribute")?;
+                    st.serialize_field(
+                        "AttributeValue",
+                        &serde_json::to_string(ca).map_err(serde::ser::Error::custom)?,
+                    )?;
+                }
             }
             Self::AlternativeName(value) => {
                 st.serialize_field("AttributeName", "Alternative Name")?;
@@ -555,7 +560,15 @@ impl<'de> Deserialize<'de> for Attribute {
                             .map_err(de::Error::custom)
                             .map(|ca: CustomAttribute| Attribute::CustomAttribute(ca))
                     }
-                    name => Err(de::Error::custom(format!("invalid attribute name: {name}"))),
+                    name => {
+                        if name.starts_with("x-") || name.starts_with("y-") {
+                            return Ok(Attribute::CustomAttribute(CustomAttribute {
+                                name: name.to_owned(),
+                                value: CustomAttributeValue::TextString(map.next_value()?),
+                            }));
+                        }
+                        Err(de::Error::custom(format!("invalid attribute name: {name}")))
+                    }
                 }
             }
         }

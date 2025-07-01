@@ -426,7 +426,7 @@ const ADD_ATTRIBUTE: &str =
 #[test]
 fn add_attribute() {
     log_init(option_env!("RUST_LOG"));
-    // log_init(Some("trace"));
+    // log_init(Some("info,cosmian_kms_server=debug"));
     let request = hex::decode(ADD_ATTRIBUTE).unwrap();
 
     let (major, minor) = TTLV::find_version(&request).unwrap();
