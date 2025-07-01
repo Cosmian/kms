@@ -78,10 +78,11 @@ setup_venv_and_pykmip() {
 
     # Install Python 3.11.9
     print_status "Installing Python 3.11.9 using pyenv..."
-    rm -rf "$(pyenv root)/versions/3.11.9" 2>/dev/null || true
-    if ! pyenv install 3.11.9; then
-        print_error "Failed to install Python 3.11.9 using pyenv"
-        exit 1
+    if [[ ! -d "$(pyenv root)/versions/3.11.9" ]]; then
+      if ! pyenv install 3.11.9; then
+          print_error "Failed to install Python 3.11.9 using pyenv"
+          exit 1
+      fi
     fi
     pyenv local 3.11.9
 

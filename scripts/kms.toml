@@ -86,8 +86,8 @@ clients_ca_cert_file = "test_data/client_server/ca/ca.crt"
 [socket_server]
 # Start the socket server. See comments above on conditions for starting the server.
 socket_server_start = true
-# The socket server port - defaults to 5696
-socket_server_port = 5696
+# The socket server port - defaults to 5696 (force for PyKMIP tests to 15696)
+socket_server_port = 15696
 # The socket server hostname - defaults to "0.0.0.0" 
 socket_server_hostname = "0.0.0.0"
 
