@@ -25,7 +25,7 @@ if sys.version_info >= (3, 12):
         "status": "error",
         "error": f"Python {sys.version_info.major}.{sys.version_info.minor} is not supported. PyKMIP requires Python 3.11 or earlier due to ssl.wrap_socket deprecation.",
         "solution": "Install Python 3.11 and recreate virtual environment: rm -rf .venv && python3.11 -m venv .venv && source .venv/bin/activate && pip install PyKMIP"
-    }), indent=2)
+    }, indent=2))
     sys.exit(1)
 
 try:
@@ -37,7 +37,7 @@ except ImportError as e:
         "status": "error",
         "error": f"Failed to import PyKMIP: {str(e)}",
         "solution": "Install PyKMIP: pip install PyKMIP"
-    }), indent=2)
+    }, indent=2))
     sys.exit(1)
 except Exception as e:
     # Catch SSL-related errors that might occur during import
@@ -47,14 +47,14 @@ except Exception as e:
             "status": "error",
             "error": f"SSL compatibility issue: {str(e)}",
             "solution": "Use Python 3.11 or earlier. Current Python version has removed ssl.wrap_socket which PyKMIP requires."
-        }), indent=2)
+        }, indent=2))
         sys.exit(1)
     else:
         print(json.dumps({
             "operation": "Import Check",
             "status": "error",
             "error": f"Unexpected import error: {str(e)}"
-        }), indent=2)
+        }, indent=2))
         sys.exit(1)
 
 

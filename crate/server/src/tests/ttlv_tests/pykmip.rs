@@ -12,7 +12,7 @@ fn test_pykmip() {
     log_init(Some("info,cosmian_kms_server=debug"));
 
     // start the server
-    let _server_handles = start_test_server(5696);
+    let _server_handles = start_test_server(15696);
 
     let crate_dir =
         PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("Failed to get CARGO_MANIFEST_DIR"));
@@ -64,7 +64,7 @@ fn test_pykmip() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    // RUn the tests
+    // Run the tests
     info!("Running PyKMIP tests...");
     let test_script_file = project_root.join("scripts/test_pykmip.sh");
 
