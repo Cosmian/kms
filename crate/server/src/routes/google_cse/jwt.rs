@@ -197,12 +197,14 @@ pub struct GoogleCseConfig {
 
 /// Validate the authentication token and return the calling user
 /// See [doc](https://developers.google.com/workspace/cse/guides/encrypt-and-decrypt-data?hl=en)
+/// # Errors
+/// Returns an error if the authentication token is invalid, if the configuration is missing
 #[allow(clippy::ref_option)]
 pub async fn validate_cse_authentication_token(
     authentication_token: &str,
     cse_config: &Option<GoogleCseConfig>,
-    google_cse_kacls_url: String,
-    kms_default_username: String,
+    google_cse_kacls_url: &str,
+    kms_default_username: &str,
     check_email: bool,
 ) -> KResult<String> {
     debug!("validate_cse_authentication_token: entering");
@@ -212,7 +214,6 @@ pub async fn validate_cse_authentication_token(
                 .to_owned(),
         )
     })?;
-    // let google_cse_kacls_url = build_google_cse_url(kms)?;
 
     trace!("validate token: KACLS URL {google_cse_kacls_url}");
 
@@ -253,7 +254,7 @@ pub async fn validate_cse_authentication_token(
             })?
     } else {
         // For `privileged_unwrap` endpoint, google_email or email claim are not provided in authentication token
-        kms_default_username
+        kms_default_username.to_owned()
     };
 
     trace!("authentication token validated for {authentication_email}");
@@ -266,13 +267,11 @@ pub async fn validate_cse_authentication_token(
 #[allow(unused_variables, clippy::ref_option)]
 pub(crate) async fn validate_cse_authorization_token(
     authorization_token: &str,
-    kms: &Arc<KMS>,
+    google_cse_kacls_url: &str,
     cse_config: &Option<GoogleCseConfig>,
     roles: Option<&[Role]>,
 ) -> KResult<UserClaim> {
     debug!("validate_cse_authorization_token: entering");
-
-    let google_cse_kacls_url = build_google_cse_url(kms)?;
 
     trace!("validate_cse_authorization_token: KACLS URL {google_cse_kacls_url}");
 
@@ -361,19 +360,24 @@ pub(crate) async fn validate_tokens(
     cse_config: &Option<GoogleCseConfig>,
     roles: Option<&[Role]>,
 ) -> KResult<TokenExtractedContent> {
-    let google_cse_kacls_url = build_google_cse_url(kms)?;
+    let google_cse_kacls_url = build_google_cse_url(kms.params.kms_public_url.as_deref())?;
 
     let authentication_email = validate_cse_authentication_token(
         authentication_token,
         cse_config,
-        google_cse_kacls_url,
-        kms.params.default_username.clone(),
+        &google_cse_kacls_url,
+        &kms.params.default_username,
         true,
     )
     .await?;
 
-    let authorization_token =
-        validate_cse_authorization_token(authorization_token, kms, cse_config, roles).await?;
+    let authorization_token = validate_cse_authorization_token(
+        authorization_token,
+        &google_cse_kacls_url,
+        cse_config,
+        roles,
+    )
+    .await?;
     let authorization_email = authorization_token.email.ok_or_else(|| {
         KmsError::Unauthorized("Authorization token should contain an email".to_owned())
     })?;

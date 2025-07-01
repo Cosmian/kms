@@ -630,9 +630,11 @@ pub async fn digest(
 ) -> KResult<DigestResponse> {
     debug!("digest: entering");
 
+    let google_cse_kacls_url = build_google_cse_url(kms.params.kms_public_url.as_deref())?;
+
     let authorization_token = validate_cse_authorization_token(
         &request.authorization,
-        kms,
+        &google_cse_kacls_url,
         cse_config,
         Some(&[Role::Verifier]),
     )
@@ -689,13 +691,13 @@ pub async fn privileged_wrap(
 ) -> KResult<PrivilegedWrapResponse> {
     debug!("privileged_wrap: entering");
 
-    let google_cse_kacls_url = build_google_cse_url(kms)?;
+    let google_cse_kacls_url = build_google_cse_url(kms.params.kms_public_url.as_deref())?;
 
     let user = validate_cse_authentication_token(
         &request.authentication,
         cse_config,
-        google_cse_kacls_url,
-        kms.params.default_username.clone(),
+        &google_cse_kacls_url,
+        &kms.params.default_username,
         true,
     )
     .await?;
@@ -741,12 +743,12 @@ pub async fn privileged_unwrap(
         debug!("Authentication token check: validation disabled");
         kms.params.default_username.clone()
     } else {
-        let google_cse_kacls_url = build_google_cse_url(kms)?;
+        let google_cse_kacls_url = build_google_cse_url(kms.params.kms_public_url.as_deref())?;
         validate_cse_authentication_token(
             &request.authentication,
             cse_config,
-            google_cse_kacls_url,
-            kms.params.default_username.clone(),
+            &google_cse_kacls_url,
+            &kms.params.default_username,
             false,
         )
         .await?
@@ -808,13 +810,13 @@ pub async fn privileged_private_key_decrypt(
     kms: &Arc<KMS>,
 ) -> KResult<PrivilegedPrivateKeyDecryptResponse> {
     debug!("privileged_private_key_decrypt: entering");
-    let google_cse_kacls_url = build_google_cse_url(kms)?;
+    let google_cse_kacls_url = build_google_cse_url(kms.params.kms_public_url.as_deref())?;
 
     let user = validate_cse_authentication_token(
         &request.authentication,
         cse_config,
-        google_cse_kacls_url,
-        kms.params.default_username.clone(),
+        &google_cse_kacls_url,
+        &kms.params.default_username,
         true,
     )
     .await?;
@@ -991,9 +993,14 @@ pub async fn rewrap(
 
     // Authorization & identity
     let roles = [Role::Migrator];
-    let token =
-        validate_cse_authorization_token(&request.authorization, kms, cse_config, Some(&roles))
-            .await?;
+    let google_cse_kacls_url = build_google_cse_url(kms.params.kms_public_url.as_deref())?;
+    let token = validate_cse_authorization_token(
+        &request.authorization,
+        &google_cse_kacls_url,
+        cse_config,
+        Some(&roles),
+    )
+    .await?;
 
     let perimeter_id = token.perimeter_id.unwrap_or_default();
     let resource_name = token.resource_name.unwrap_or_default();

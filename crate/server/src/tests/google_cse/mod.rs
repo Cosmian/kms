@@ -858,8 +858,8 @@ async fn test_cse_custom_jwt() -> KResult<()> {
     let result = validate_cse_authentication_token(
         &jwt_token,
         &Some(cse_config),
-        "http://127.0.0.1/google_cse".to_owned(),
-        "admin".to_owned(),
+        "http://127.0.0.1/google_cse",
+        "admin",
         false,
     )
     .await;
