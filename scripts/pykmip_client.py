@@ -180,12 +180,12 @@ def main():
         print(json.dumps(result, indent=2))
         sys.exit(1)
 
-    finally:
-        if 'proxy' in locals():
-            try:
-                proxy.close()
-            except Exception:
-                pass  # Ignore errors during cleanup
+    # finally:
+    #     if 'proxy' in locals():
+    #         try:
+    #             proxy.close()
+    #         except Exception:
+    #             pass  # Ignore errors during cleanup
 
 
 def perform_query(proxy, verbose=False):
@@ -294,6 +294,7 @@ def perform_create_symmetric_key(proxy, verbose=False):
         result = proxy.create(enums.ObjectType.SYMMETRIC_KEY, template)
 
         # Check if create operation actually succeeded
+        uid = None
         if hasattr(result, 'result_status'):
             if result.result_status.value == enums.ResultStatus.SUCCESS:
                 # Extract UID from successful result

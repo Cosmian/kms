@@ -1,0 +1,445 @@
+<KMIP>
+
+<!--
+     Key Management Interoperability Protocol Profiles Version 1.4
+     OASIS Standard
+     22 November 2017
+     Copyright (c) OASIS Open 2017. All Rights Reserved.
+     Source: http://docs.oasis-open.org/kmip/profiles/v1.4/os/test-cases/kmip-v1.4/mandatory/
+     Latest version of the specification: http://docs.oasis-open.org/kmip/profiles/v1.4/kmip-profiles-v1.4.html
+     TC IPR Statement: https://www.oasis-open.org/committees/kmip/ipr.php
+-->
+<RequestMessage>
+  <RequestHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="1"/>
+      <ProtocolVersionMinor type="Integer" value="4"/>
+    </ProtocolVersion>
+    <BatchErrorContinuationOption type="Enumeration" value="Undo"/>
+    <BatchOrderOption type="Boolean" value="true"/>
+    <BatchCount type="Integer" value="4"/>
+  </RequestHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="Create"/>
+    <UniqueBatchItemID type="ByteString" value="01"/>
+    <RequestPayload>
+      <ObjectType type="Enumeration" value="SymmetricKey"/>
+      <TemplateAttribute>
+        <Attribute>
+          <AttributeName type="TextString" value="x-ID"/>
+          <AttributeValue type="TextString" value="AX-M-1-14-key1"/>
+        </Attribute>
+        <Attribute>
+          <AttributeName type="TextString" value="Cryptographic Algorithm"/>
+          <AttributeValue type="Enumeration" value="AES"/>
+        </Attribute>
+        <Attribute>
+          <AttributeName type="TextString" value="Cryptographic Length"/>
+          <AttributeValue type="Integer" value="256"/>
+        </Attribute>
+        <Attribute>
+          <AttributeName type="TextString" value="Cryptographic Usage Mask"/>
+          <AttributeValue type="Integer" value="Decrypt Encrypt"/>
+        </Attribute>
+        <Attribute>
+          <AttributeName type="TextString" value="Cryptographic Parameters"/>
+          <AttributeValue>
+            <BlockCipherMode type="Enumeration" value="XTS"/>
+          </AttributeValue>
+        </Attribute>
+        <Attribute>
+          <AttributeName type="TextString" value="Activation Date"/>
+          <AttributeValue type="DateTime" value="$NOW-3600"/>
+        </Attribute>
+      </TemplateAttribute>
+    </RequestPayload>
+  </BatchItem>
+  <BatchItem>
+    <Operation type="Enumeration" value="Get"/>
+    <UniqueBatchItemID type="ByteString" value="02"/>
+    <RequestPayload>
+    </RequestPayload>
+  </BatchItem>
+  <BatchItem>
+    <Operation type="Enumeration" value="Create"/>
+    <UniqueBatchItemID type="ByteString" value="03"/>
+    <RequestPayload>
+      <ObjectType type="Enumeration" value="SymmetricKey"/>
+      <TemplateAttribute>
+        <Attribute>
+          <AttributeName type="TextString" value="x-ID"/>
+          <AttributeValue type="TextString" value="AX-M-1-14-key2"/>
+        </Attribute>
+        <Attribute>
+          <AttributeName type="TextString" value="Cryptographic Algorithm"/>
+          <AttributeValue type="Enumeration" value="AES"/>
+        </Attribute>
+        <Attribute>
+          <AttributeName type="TextString" value="Cryptographic Length"/>
+          <AttributeValue type="Integer" value="256"/>
+        </Attribute>
+        <Attribute>
+          <AttributeName type="TextString" value="Cryptographic Usage Mask"/>
+          <AttributeValue type="Integer" value="Decrypt Encrypt"/>
+        </Attribute>
+        <Attribute>
+          <AttributeName type="TextString" value="Cryptographic Parameters"/>
+          <AttributeValue>
+            <BlockCipherMode type="Enumeration" value="XTS"/>
+          </AttributeValue>
+        </Attribute>
+        <Attribute>
+          <AttributeName type="TextString" value="Activation Date"/>
+          <AttributeValue type="DateTime" value="$NOW-3600"/>
+        </Attribute>
+      </TemplateAttribute>
+    </RequestPayload>
+  </BatchItem>
+  <BatchItem>
+    <Operation type="Enumeration" value="Get"/>
+    <UniqueBatchItemID type="ByteString" value="04"/>
+    <RequestPayload>
+    </RequestPayload>
+  </BatchItem>
+</RequestMessage>
+
+<ResponseMessage>
+  <ResponseHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="1"/>
+      <ProtocolVersionMinor type="Integer" value="4"/>
+    </ProtocolVersion>
+    <TimeStamp type="DateTime" value="$NOW"/>
+    <BatchCount type="Integer" value="4"/>
+  </ResponseHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="Create"/>
+    <UniqueBatchItemID type="ByteString" value="01"/>
+    <ResultStatus type="Enumeration" value="Success"/>
+    <ResponsePayload>
+      <ObjectType type="Enumeration" value="SymmetricKey"/>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+    </ResponsePayload>
+  </BatchItem>
+  <BatchItem>
+    <Operation type="Enumeration" value="Get"/>
+    <UniqueBatchItemID type="ByteString" value="02"/>
+    <ResultStatus type="Enumeration" value="Success"/>
+    <ResponsePayload>
+      <ObjectType type="Enumeration" value="SymmetricKey"/>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+      <SymmetricKey>
+        <KeyBlock>
+          <KeyFormatType type="Enumeration" value="Raw"/>
+          <KeyValue>
+            <KeyMaterial type="ByteString" value="$KEY_MATERIAL_0"/>
+          </KeyValue>
+          <CryptographicAlgorithm type="Enumeration" value="AES"/>
+          <CryptographicLength type="Integer" value="256"/>
+        </KeyBlock>
+      </SymmetricKey>
+    </ResponsePayload>
+  </BatchItem>
+  <BatchItem>
+    <Operation type="Enumeration" value="Create"/>
+    <UniqueBatchItemID type="ByteString" value="03"/>
+    <ResultStatus type="Enumeration" value="Success"/>
+    <ResponsePayload>
+      <ObjectType type="Enumeration" value="SymmetricKey"/>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_1"/>
+    </ResponsePayload>
+  </BatchItem>
+  <BatchItem>
+    <Operation type="Enumeration" value="Get"/>
+    <UniqueBatchItemID type="ByteString" value="04"/>
+    <ResultStatus type="Enumeration" value="Success"/>
+    <ResponsePayload>
+      <ObjectType type="Enumeration" value="SymmetricKey"/>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_1"/>
+      <SymmetricKey>
+        <KeyBlock>
+          <KeyFormatType type="Enumeration" value="Raw"/>
+          <KeyValue>
+            <KeyMaterial type="ByteString" value="$KEY_MATERIAL_1"/>
+          </KeyValue>
+          <CryptographicAlgorithm type="Enumeration" value="AES"/>
+          <CryptographicLength type="Integer" value="256"/>
+        </KeyBlock>
+      </SymmetricKey>
+    </ResponsePayload>
+  </BatchItem>
+</ResponseMessage>
+
+<RequestMessage>
+  <RequestHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="1"/>
+      <ProtocolVersionMinor type="Integer" value="4"/>
+    </ProtocolVersion>
+    <BatchErrorContinuationOption type="Enumeration" value="Undo"/>
+    <BatchOrderOption type="Boolean" value="true"/>
+    <BatchCount type="Integer" value="2"/>
+  </RequestHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="AddAttribute"/>
+    <UniqueBatchItemID type="ByteString" value="01"/>
+    <RequestPayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+      <Attribute>
+        <AttributeName type="TextString" value="Link"/>
+        <AttributeValue>
+          <LinkType type="Enumeration" value="NextLink"/>
+          <LinkedObjectIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_1"/>
+        </AttributeValue>
+      </Attribute>
+    </RequestPayload>
+  </BatchItem>
+  <BatchItem>
+    <Operation type="Enumeration" value="AddAttribute"/>
+    <UniqueBatchItemID type="ByteString" value="02"/>
+    <RequestPayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_1"/>
+      <Attribute>
+        <AttributeName type="TextString" value="Link"/>
+        <AttributeValue>
+          <LinkType type="Enumeration" value="PreviousLink"/>
+          <LinkedObjectIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+        </AttributeValue>
+      </Attribute>
+    </RequestPayload>
+  </BatchItem>
+</RequestMessage>
+
+<ResponseMessage>
+  <ResponseHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="1"/>
+      <ProtocolVersionMinor type="Integer" value="4"/>
+    </ProtocolVersion>
+    <TimeStamp type="DateTime" value="$NOW"/>
+    <BatchCount type="Integer" value="2"/>
+  </ResponseHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="AddAttribute"/>
+    <UniqueBatchItemID type="ByteString" value="01"/>
+    <ResultStatus type="Enumeration" value="Success"/>
+    <ResponsePayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+      <Attribute>
+        <AttributeName type="TextString" value="Link"/>
+        <AttributeValue>
+          <LinkType type="Enumeration" value="NextLink"/>
+          <LinkedObjectIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_1"/>
+        </AttributeValue>
+      </Attribute>
+    </ResponsePayload>
+  </BatchItem>
+  <BatchItem>
+    <Operation type="Enumeration" value="AddAttribute"/>
+    <UniqueBatchItemID type="ByteString" value="02"/>
+    <ResultStatus type="Enumeration" value="Success"/>
+    <ResponsePayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_1"/>
+      <Attribute>
+        <AttributeName type="TextString" value="Link"/>
+        <AttributeValue>
+          <LinkType type="Enumeration" value="PreviousLink"/>
+          <LinkedObjectIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+        </AttributeValue>
+      </Attribute>
+    </ResponsePayload>
+  </BatchItem>
+</ResponseMessage>
+
+<RequestMessage>
+  <RequestHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="1"/>
+      <ProtocolVersionMinor type="Integer" value="4"/>
+    </ProtocolVersion>
+    <BatchErrorContinuationOption type="Enumeration" value="Undo"/>
+    <BatchOrderOption type="Boolean" value="true"/>
+    <BatchCount type="Integer" value="2"/>
+  </RequestHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="GetAttributes"/>
+    <UniqueBatchItemID type="ByteString" value="01"/>
+    <RequestPayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+      <AttributeName type="TextString" value="State"/>
+      <AttributeName type="TextString" value="Link"/>
+    </RequestPayload>
+  </BatchItem>
+  <BatchItem>
+    <Operation type="Enumeration" value="GetAttributes"/>
+    <UniqueBatchItemID type="ByteString" value="02"/>
+    <RequestPayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_1"/>
+      <AttributeName type="TextString" value="State"/>
+      <AttributeName type="TextString" value="Link"/>
+    </RequestPayload>
+  </BatchItem>
+</RequestMessage>
+
+<ResponseMessage>
+  <ResponseHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="1"/>
+      <ProtocolVersionMinor type="Integer" value="4"/>
+    </ProtocolVersion>
+    <TimeStamp type="DateTime" value="$NOW"/>
+    <BatchCount type="Integer" value="2"/>
+  </ResponseHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="GetAttributes"/>
+    <UniqueBatchItemID type="ByteString" value="01"/>
+    <ResultStatus type="Enumeration" value="Success"/>
+    <ResponsePayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+      <Attribute>
+        <AttributeName type="TextString" value="State"/>
+        <AttributeValue type="Enumeration" value="Active"/>
+      </Attribute>
+      <Attribute>
+        <AttributeName type="TextString" value="Link"/>
+        <AttributeValue>
+          <LinkType type="Enumeration" value="NextLink"/>
+          <LinkedObjectIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_1"/>
+        </AttributeValue>
+      </Attribute>
+    </ResponsePayload>
+  </BatchItem>
+  <BatchItem>
+    <Operation type="Enumeration" value="GetAttributes"/>
+    <UniqueBatchItemID type="ByteString" value="02"/>
+    <ResultStatus type="Enumeration" value="Success"/>
+    <ResponsePayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_1"/>
+      <Attribute>
+        <AttributeName type="TextString" value="State"/>
+        <AttributeValue type="Enumeration" value="Active"/>
+      </Attribute>
+      <Attribute>
+        <AttributeName type="TextString" value="Link"/>
+        <AttributeValue>
+          <LinkType type="Enumeration" value="PreviousLink"/>
+          <LinkedObjectIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+        </AttributeValue>
+      </Attribute>
+    </ResponsePayload>
+  </BatchItem>
+</ResponseMessage>
+
+<RequestMessage>
+  <RequestHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="1"/>
+      <ProtocolVersionMinor type="Integer" value="4"/>
+    </ProtocolVersion>
+    <BatchErrorContinuationOption type="Enumeration" value="Undo"/>
+    <BatchOrderOption type="Boolean" value="true"/>
+    <BatchCount type="Integer" value="2"/>
+  </RequestHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="Revoke"/>
+    <UniqueBatchItemID type="ByteString" value="01"/>
+    <RequestPayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+      <RevocationReason>
+        <RevocationReasonCode type="Enumeration" value="Unspecified"/>
+      </RevocationReason>
+    </RequestPayload>
+  </BatchItem>
+  <BatchItem>
+    <Operation type="Enumeration" value="Revoke"/>
+    <UniqueBatchItemID type="ByteString" value="02"/>
+    <RequestPayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_1"/>
+      <RevocationReason>
+        <RevocationReasonCode type="Enumeration" value="Unspecified"/>
+      </RevocationReason>
+    </RequestPayload>
+  </BatchItem>
+</RequestMessage>
+
+<ResponseMessage>
+  <ResponseHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="1"/>
+      <ProtocolVersionMinor type="Integer" value="4"/>
+    </ProtocolVersion>
+    <TimeStamp type="DateTime" value="$NOW"/>
+    <BatchCount type="Integer" value="2"/>
+  </ResponseHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="Revoke"/>
+    <UniqueBatchItemID type="ByteString" value="01"/>
+    <ResultStatus type="Enumeration" value="Success"/>
+    <ResponsePayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+    </ResponsePayload>
+  </BatchItem>
+  <BatchItem>
+    <Operation type="Enumeration" value="Revoke"/>
+    <UniqueBatchItemID type="ByteString" value="02"/>
+    <ResultStatus type="Enumeration" value="Success"/>
+    <ResponsePayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_1"/>
+    </ResponsePayload>
+  </BatchItem>
+</ResponseMessage>
+
+<RequestMessage>
+  <RequestHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="1"/>
+      <ProtocolVersionMinor type="Integer" value="4"/>
+    </ProtocolVersion>
+    <BatchErrorContinuationOption type="Enumeration" value="Undo"/>
+    <BatchOrderOption type="Boolean" value="true"/>
+    <BatchCount type="Integer" value="2"/>
+  </RequestHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="Destroy"/>
+    <UniqueBatchItemID type="ByteString" value="01"/>
+    <RequestPayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+    </RequestPayload>
+  </BatchItem>
+  <BatchItem>
+    <Operation type="Enumeration" value="Destroy"/>
+    <UniqueBatchItemID type="ByteString" value="02"/>
+    <RequestPayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_1"/>
+    </RequestPayload>
+  </BatchItem>
+</RequestMessage>
+
+<ResponseMessage>
+  <ResponseHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="1"/>
+      <ProtocolVersionMinor type="Integer" value="4"/>
+    </ProtocolVersion>
+    <TimeStamp type="DateTime" value="$NOW"/>
+    <BatchCount type="Integer" value="2"/>
+  </ResponseHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="Destroy"/>
+    <UniqueBatchItemID type="ByteString" value="01"/>
+    <ResultStatus type="Enumeration" value="Success"/>
+    <ResponsePayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+    </ResponsePayload>
+  </BatchItem>
+  <BatchItem>
+    <Operation type="Enumeration" value="Destroy"/>
+    <UniqueBatchItemID type="ByteString" value="02"/>
+    <ResultStatus type="Enumeration" value="Success"/>
+    <ResponsePayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_1"/>
+    </ResponsePayload>
+  </BatchItem>
+</ResponseMessage>
+
+</KMIP>
