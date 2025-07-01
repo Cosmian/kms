@@ -14,6 +14,7 @@ mod get_attribute_1_4;
 mod get_attribute_2_1;
 mod import_1_4;
 mod import_2_1;
+mod normative_tests;
 mod pykmip;
 mod query;
 mod register_1_4;
