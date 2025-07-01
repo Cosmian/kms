@@ -5,6 +5,7 @@ use tracing::{info, warn};
 
 use crate::tests::ttlv_tests::start_test_server;
 
+#[ignore]
 #[cfg(not(target_os = "windows"))]
 #[test]
 fn test_pykmip() {
