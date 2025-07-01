@@ -62,13 +62,14 @@ impl Drop for TestServerCtx {
 /// Starts the test server if it is not already running.
 fn start_test_server(socket_port: u16) -> &'static TestServerCtx {
     static SERVER_HANDLES: OnceLock<TestServerCtx> = OnceLock::new();
+    let mut https_config = https_clap_config();
+    https_config.socket_server.socket_server_port = socket_port;
+    https_config.socket_server.socket_server_hostname = TEST_HOST.to_owned();
+    https_config.http.port = socket_port - 1;
+    https_config.http.hostname = TEST_HOST.to_owned();
 
     SERVER_HANDLES.get_or_init(|| {
-        let mut server_params = ServerParams::try_from(https_clap_config()).unwrap();
-        TEST_HOST.clone_into(&mut server_params.http_hostname);
-        server_params.http_port = socket_port - 1;
-        TEST_HOST.clone_into(&mut server_params.socket_server_hostname);
-        server_params.socket_server_port = socket_port;
+        let server_params = ServerParams::try_from(https_config).unwrap();
 
         let (tx, rx) = mpsc::channel::<ServerHandle>();
 

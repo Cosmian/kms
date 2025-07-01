@@ -243,11 +243,17 @@ impl Serialize for Attribute {
                 st.serialize_field("AttributeValue", value)?;
             }
             Self::CustomAttribute(ca) => {
+                // FIXME: VMware is sending custom attributes with names starting with "x-" or "y-". However returning them crashes PyKMIP
+                // if ca.name.starts_with("x-") || ca.name.starts_with("y-") {
+                //     st.serialize_field("AttributeName", &ca.name)?;
+                //     st.serialize_field("AttributeValue", &ca.value)?;
+                // } else {
                 st.serialize_field("AttributeName", "Custom Attribute")?;
                 st.serialize_field(
                     "AttributeValue",
                     &serde_json::to_string(ca).map_err(serde::ser::Error::custom)?,
                 )?;
+                // }
             }
             Self::AlternativeName(value) => {
                 st.serialize_field("AttributeName", "Alternative Name")?;
