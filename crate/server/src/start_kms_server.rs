@@ -680,7 +680,6 @@ pub async fn prepare_kms_server(
                 kms_server.clone(),
                 use_jwt_auth || use_cert_auth || use_api_token_auth,
             ))
-            .wrap(LogAllRequests)
             .wrap(Condition::new(
                 use_api_token_auth,
                 ApiTokenAuth::new(kms_server.clone()),
@@ -690,6 +689,7 @@ pub async fn prepare_kms_server(
                 JwtAuth::new(jwt_configurations.clone()),
             )) // Use JWT for authentication if necessary.
             .wrap(Condition::new(use_cert_auth, SslAuth)) // Use certificates for authentication if necessary.
+            .wrap(LogAllRequests)
             // Enable CORS for the application.
             // Since Actix is running the middlewares in reverse order, it's important that the
             // CORS middleware is the last one, so that the auth middlewares do not run on

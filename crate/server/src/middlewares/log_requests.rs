@@ -16,7 +16,6 @@ use futures::{
 };
 use tracing::info;
 
-/// Middleware to log every incoming request (even for 404 or failed auth)
 #[derive(Clone)]
 pub(crate) struct LogAllRequests;
 
@@ -64,6 +63,11 @@ where
             .connection_info()
             .realip_remote_addr()
             .map(std::borrow::ToOwned::to_owned);
+        let content_type = req
+            .headers()
+            .get(actix_web::http::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_owned);
 
         let service = self.service.clone();
 
@@ -73,18 +77,19 @@ where
             match res {
                 Ok(ok_res) => {
                     info!(
-                        "[{}] {} from {:?} => {}",
+                        "[{}] {:?} {} - content-type={:?} => {}",
                         method,
-                        path,
                         peer_addr,
+                        path,
+                        content_type,
                         ok_res.status()
                     );
                     Ok(ok_res.map_into_left_body())
                 }
                 Err(err) => {
                     info!(
-                        "[{}] {} from {:?} => internal error: {}",
-                        method, path, peer_addr, err
+                        "[{}] {:?} {} - content-type={:?} => internal error: {}",
+                        method, peer_addr, path, content_type, err
                     );
                     Err(err)
                 }
