@@ -40,15 +40,14 @@ use crate::{
     core::KMS,
     error::KmsError,
     middlewares::{
-        ApiTokenAuth, EnsureAuth, JwksManager, JwtAuth, JwtConfig, SslAuth,
+        ApiTokenAuth, EnsureAuth, JwksManager, JwtAuth, JwtConfig, LogAllRequests, SslAuth,
         extract_peer_certificate,
     },
     result::{KResult, KResultHelper},
     routes::{
         access, get_version,
         google_cse::{self, GoogleCseConfig},
-        kmip,
-        kmip::handle_ttlv_bytes,
+        kmip::{self, handle_ttlv_bytes},
         ms_dke,
         ui_auth::configure_auth_routes,
     },
@@ -681,6 +680,7 @@ pub async fn prepare_kms_server(
                 kms_server.clone(),
                 use_jwt_auth || use_cert_auth || use_api_token_auth,
             ))
+            .wrap(LogAllRequests)
             .wrap(Condition::new(
                 use_api_token_auth,
                 ApiTokenAuth::new(kms_server.clone()),

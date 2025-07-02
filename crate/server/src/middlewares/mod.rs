@@ -7,6 +7,9 @@ pub(crate) use api_token::ApiTokenAuth;
 mod ensure_auth;
 pub(crate) use ensure_auth::EnsureAuth;
 
+mod log_requests;
+pub(crate) use log_requests::LogAllRequests;
+
 mod jwt;
 pub(crate) use jwt::{JwksManager, JwtAuth, JwtConfig, JwtTokenHeaders, UserClaim};
 
