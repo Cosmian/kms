@@ -40,15 +40,14 @@ use crate::{
     core::KMS,
     error::KmsError,
     middlewares::{
-        ApiTokenAuth, EnsureAuth, JwksManager, JwtAuth, JwtConfig, SslAuth,
+        ApiTokenAuth, EnsureAuth, JwksManager, JwtAuth, JwtConfig, LogAllRequests, SslAuth,
         extract_peer_certificate,
     },
     result::{KResult, KResultHelper},
     routes::{
         access, get_version,
         google_cse::{self, GoogleCseConfig},
-        kmip,
-        kmip::handle_ttlv_bytes,
+        kmip::{self, handle_ttlv_bytes},
         ms_dke,
         ui_auth::configure_auth_routes,
     },
@@ -690,6 +689,7 @@ pub async fn prepare_kms_server(
                 JwtAuth::new(jwt_configurations.clone()),
             )) // Use JWT for authentication if necessary.
             .wrap(Condition::new(use_cert_auth, SslAuth)) // Use certificates for authentication if necessary.
+            .wrap(LogAllRequests)
             // Enable CORS for the application.
             // Since Actix is running the middlewares in reverse order, it's important that the
             // CORS middleware is the last one, so that the auth middlewares do not run on
