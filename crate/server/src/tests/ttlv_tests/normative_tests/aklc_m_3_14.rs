@@ -1,28 +1,20 @@
 use cosmian_kms_client_utils::reexport::cosmian_kmip::{
-    kmip_0::kmip_types::CryptographicUsageMask,
-    kmip_1_4::{
-        kmip_data_structures::TemplateAttribute,
-        kmip_types::{Name, NameType},
-    },
-};
-use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::{
         kmip_messages::{
             RequestMessage, RequestMessageBatchItemVersioned, RequestMessageHeader,
             ResponseMessage, ResponseMessageBatchItemVersioned,
         },
-        kmip_types::{ProtocolVersion, ResultStatusEnumeration},
+        kmip_types::{CryptographicUsageMask, ProtocolVersion, ResultStatusEnumeration},
     },
     kmip_1_4::{
-        kmip_attributes::Attribute,
+        kmip_attributes::{Attribute, CryptographicAlgorithm, Name, ObjectType, State},
+        kmip_data_structures::TemplateAttribute,
         kmip_messages::RequestMessageBatchItem,
-        kmip_operations::{
-            Activate, CreateKeyPair, Destroy, GetAttributes, ModifyAttribute, Operation, Revoke,
-        },
-        kmip_types::{CryptographicAlgorithm, OperationEnumeration},
+        kmip_operations::{CreateKeyPair, GetAttributes, Operation},
+        kmip_types::{NameType, OperationEnumeration},
     },
-    ttlv::KmipFlavor,
 };
+use cosmian_kms_server_database::reexport::cosmian_kmip::ttlv::KmipFlavor;
 use cosmian_logger::log_init;
 use log::info;
 
@@ -30,30 +22,27 @@ use crate::tests::ttlv_tests::{get_client, socket_client::SocketClient};
 
 /// This test implements the Asymmetric Key Lifecycle test case AKLC-M-3-14
 /// which tests the following operations:
-/// - CreateKeyPair
-/// - GetAttributes
+/// - `CreateKeyPair`
+/// - `GetAttributes`
 /// - Activate
-/// - ModifyAttribute (expected to fail)
+/// - `ModifyAttribute` (expected to fail)
 /// - Revoke
-/// - GetAttributes
+/// - `GetAttributes`
 /// - Destroy
 #[test]
 fn test_aklc_m_3_14() {
-    log_init(option_env!("RUST_LOG"));
-    // log_init(Some("debug"));
+    // log_init(option_env!("RUST_LOG"));
+    log_init(Some("info,cosmian_kms=debug"));
 
     info!("Running AKLC-M-3-14 test");
     let client = get_client();
 
     // Step 1: Create a key pair
     let (private_key_id, public_key_id) = create_key_pair(&client);
-    info!(
-        "Created key pair: private={}, public={}",
-        private_key_id, public_key_id
-    );
+    info!("Created key pair: private={private_key_id}, public={public_key_id}");
 
-    // // Step 2: Get attributes for the private key
-    // get_private_key_attributes(&client, &private_key_id);
+    // Step 2: Get attributes for the private key
+    get_private_key_attributes(&client, &private_key_id);
     //
     // // Step 3: Activate the private key
     // activate_key(&client, &private_key_id);
@@ -157,92 +146,155 @@ fn create_key_pair(client: &SocketClient) -> (String, String) {
     )
 }
 
-// ///Get attributes of the private key
-// fn get_private_key_attributes(client: &SocketClient, private_key_id: &str) {
-//     let request_message = RequestMessage {
-//         request_header: RequestMessageHeader {
-//             protocol_version: ProtocolVersion {
-//                 protocol_version_major: 1,
-//                 protocol_version_minor: 4,
-//             },
-//             batch_count: 1,
-//             ..Default::default()
-//         },
-//         batch_item: vec![RequestMessageBatchItemVersioned::V14(
-//             RequestMessageBatchItem {
-//                 operation: OperationEnumeration::GetAttributes,
-//                 ephemeral: None,
-//                 unique_batch_item_id: None,
-//                 request_payload: Operation::GetAttributes(GetAttributes {
-//                     unique_identifier: Some(private_key_id.to_owned()),
-//                     attribute_names: vec![
-//                         "State".to_owned(),
-//                         "Cryptographic Usage Mask".to_owned(),
-//                         "Unique Identifier".to_owned(),
-//                         "Object Type".to_owned(),
-//                         "Cryptographic Algorithm".to_owned(),
-//                         "Cryptographic Length".to_owned(),
-//                         "Digest".to_owned(),
-//                         "Initial Date".to_owned(),
-//                         "Last Change Date".to_owned(),
-//                         "Original Creation Date".to_owned(),
-//                         "Random Number Generator".to_owned(),
-//                     ],
-//                     ..Default::default()
-//                 }),
-//                 message_extension: None,
-//             },
-//         )],
-//     };
-//
-//     let response = client
-//         .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip1, &request_message)
-//         .expect("Failed to send GetAttributes request");
-//
-//     let Some(ResponseMessageBatchItemVersioned::V14(batch_item)) = response.batch_item.first()
-//     else {
-//         panic!("Expected V14 response message");
-//     };
-//
-//     assert_eq!(batch_item.result_status, ResultStatusEnumeration::Success);
-//
-//     let Some(Operation::GetAttributesResponse(get_attrs_response)) = &batch_item.response_payload
-//     else {
-//         panic!("Expected GetAttributesResponse");
-//     };
-//
-//     // Verify that we got the expected attributes
-//     assert!(
-//         get_attrs_response
-//             .attributes
-//             .iter()
-//             .any(|attr| matches ! (attr, Attribute::State(State(s)) if s == "PreActive"))
-//     );
-//
-//     assert! (get_attrs_response.attributes.iter().any( | attr |
-//     matches ! (attr, Attribute::CryptographicUsageMask(CryptographicUsageMask(mask)) if * mask == CryptographicUsageMask::SIGN)
-//     ));
-//
-//     assert ! (get_attrs_response.attributes.iter().any( | attr |
-//     matches ! (attr, Attribute::UniqueIdentifier(UniqueIdentifier(id)) if id == private_key_id)
-//     ));
-//
-//     assert !(get_attrs_response.attributes.iter().any( | attr |
-//     matches ! (attr, Attribute::ObjectType(ObjectType(obj_type)) if obj_type == "PrivateKey")
-//     ));
-//
-//     assert ! (get_attrs_response.attributes.iter().any( |attr |
-//     matches ! (attr, Attribute::CryptographicAlgorithm(CryptographicAlgorithm(algo)) if algo == "RSA")
-//     ));
-//
-//     assert ! (get_attrs_response.attributes.iter().any( | attr |
-//     matches ! (attr, Attribute::CryptographicLength(CryptographicLength(len)) if * len == 2048)
-//     ));
-//
-//     // Additional checks for other attributes could be added here
-//     info!("Successfully verified private key attributes");
-// }
-//
+/// Get attributes of the private key
+fn get_private_key_attributes(client: &SocketClient, private_key_id: &str) {
+    let request_message = RequestMessage {
+        request_header: RequestMessageHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 1,
+                protocol_version_minor: 4,
+            },
+            batch_count: 1,
+            ..Default::default()
+        },
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+            RequestMessageBatchItem {
+                operation: OperationEnumeration::GetAttributes,
+                ephemeral: None,
+                unique_batch_item_id: None,
+                request_payload: Operation::GetAttributes(GetAttributes {
+                    unique_identifier: private_key_id.to_owned(),
+                    attribute_name: Some(vec![
+                        "State".to_owned(),
+                        "Cryptographic Usage Mask".to_owned(),
+                        "Unique Identifier".to_owned(),
+                        "Object Type".to_owned(),
+                        "Cryptographic Algorithm".to_owned(),
+                        "Cryptographic Length".to_owned(),
+                        "Digest".to_owned(),
+                        "Initial Date".to_owned(),
+                        "Last Change Date".to_owned(),
+                        "Original Creation Date".to_owned(),
+                        "Random Number Generator".to_owned(),
+                    ]),
+                }),
+                message_extension: None,
+            },
+        )],
+    };
+
+    let response = client
+        .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip1, &request_message)
+        .expect("Failed to send GetAttributes request");
+
+    let Some(ResponseMessageBatchItemVersioned::V14(batch_item)) = response.batch_item.first()
+    else {
+        panic!("Expected V14 response message");
+    };
+
+    assert_eq!(batch_item.result_status, ResultStatusEnumeration::Success);
+
+    let Some(Operation::GetAttributesResponse(get_attrs_response)) = &batch_item.response_payload
+    else {
+        panic!("Expected GetAttributesResponse");
+    };
+
+    // Verify that we got the expected attributes with specific values from the KMIP XML
+    assert!(
+        get_attrs_response
+            .attribute
+            .as_ref()
+            .unwrap()
+            .iter()
+            .any(|attr| matches!(attr, Attribute::State(s) if *s == State::PreActive )),
+        "State should be PreActive"
+    );
+
+    assert!(get_attrs_response.attribute.as_ref()
+                .unwrap().iter().any(|attr|
+        matches!(attr, Attribute::CryptographicUsageMask(mask) if *mask == CryptographicUsageMask::Sign)
+    ), "CryptographicUsageMask should be Sign");
+
+    assert!(
+        get_attrs_response
+            .attribute
+            .as_ref()
+            .unwrap()
+            .iter()
+            .any(|attr| matches!(attr, Attribute::UniqueIdentifier(uid) if uid == private_key_id)),
+        "UniqueIdentifier should match the private key ID"
+    );
+
+    assert!(
+        get_attrs_response.attribute.as_ref().unwrap().iter().any(
+            |attr| matches!(attr, Attribute::ObjectType(obj_type) if *obj_type == ObjectType::PrivateKey)
+        ),
+        "ObjectType should be PrivateKey"
+    );
+
+    assert!(
+        get_attrs_response
+            .attribute
+            .as_ref()
+            .unwrap()
+            .iter()
+            .any(|attr| matches!(attr, Attribute::CryptographicAlgorithm(algo) if *algo == CryptographicAlgorithm::RSA)),
+        "CryptographicAlgorithm should be RSA"
+    );
+
+    assert!(
+        get_attrs_response
+            .attribute
+            .as_ref()
+            .unwrap()
+            .iter()
+            .any(|attr| matches!(attr, Attribute::CryptographicLength(length) if *length == 2048)),
+        "CryptographicLength should be 2048"
+    );
+
+    assert!(
+        get_attrs_response
+            .attribute
+            .as_ref()
+            .unwrap()
+            .iter()
+            .any(|attr| matches!(attr, Attribute::Digest(_))),
+        "Digest attribute should be present"
+    );
+
+    assert!(
+        get_attrs_response
+            .attribute
+            .as_ref()
+            .unwrap()
+            .iter()
+            .any(|attr| matches!(attr, Attribute::InitialDate(_))),
+        "InitialDate attribute should be present"
+    );
+
+    assert!(
+        get_attrs_response
+            .attribute
+            .as_ref()
+            .unwrap()
+            .iter()
+            .any(|attr| matches!(attr, Attribute::LastChangeDate(_))),
+        "LastChangeDate attribute should be present"
+    );
+
+    assert!(
+        get_attrs_response
+            .attribute
+            .as_ref()
+            .unwrap()
+            .iter()
+            .any(|attr| matches!(attr, Attribute::OriginalCreationDate(_))),
+        "OriginalCreationDate attribute should be present"
+    );
+
+    info!("Successfully verified private key attributes");
+}
+
 // /// Activate the private key
 // fn activate_key(client: &SocketClient, key_id: &str) {
 //     let request_message = RequestMessage {

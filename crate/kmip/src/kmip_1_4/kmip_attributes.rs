@@ -9,7 +9,7 @@ use serde::{
 use time::OffsetDateTime;
 use tracing::warn;
 
-use crate::{
+pub use crate::{
     KmipError,
     kmip_0::kmip_types::{
         AlternativeName, ApplicationSpecificInformation, CertificateType, CryptographicUsageMask,
