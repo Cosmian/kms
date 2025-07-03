@@ -22,7 +22,7 @@ use cosmian_kms_server_database::reexport::{
 use reqwest::header::CONTENT_TYPE;
 use serde_json::Value;
 use time::OffsetDateTime;
-use tracing::{debug, error, info, span, warn};
+use tracing::{debug, error, info, span, trace, warn};
 
 use crate::{
     core::{
@@ -354,19 +354,28 @@ async fn handle_ttlv_bytes_inner(
         )));
     };
 
+    // log the request bytes
+    trace!(
+        target: "kmip",
+        user=user,
+        "Request bytes: {}",
+        hex::encode(ttlv_bytes)
+    );
+
     // parse the TTLV bytes
     let ttlv = TTLV::from_bytes(ttlv_bytes, kmip_flavor).context("Failed to parse TTLV")?;
+    let tag = ttlv.tag.as_str();
     info!(
         target: "kmip",
         user=user,
-        tag=ttlv.tag.as_str(),
-        "POST /kmip {}.{} Binary. Request: {:?} {}", major, minor, ttlv.tag.as_str(), user
+        tag=tag,
+        "POST /kmip {}.{} Binary. Request: {:?} {}", major, minor, tag, user
     );
     debug!(
         target: "kmip",
         user=user,
-        tag=ttlv.tag.as_str(),
-        "Parsed TTLV: {ttlv:#?}"
+        tag=tag,
+        "Request TTLV: {ttlv:#?}"
     );
 
     // parse the Request Message
@@ -376,7 +385,12 @@ async fn handle_ttlv_bytes_inner(
     perform_request_tweaks(&mut request_message, major, minor);
 
     // log the request
-    debug!("Request Message: {request_message:#?}");
+    trace!(
+        target: "kmip",
+        user=user,
+        tag=tag,
+        "Request Message: {request_message:#?}"
+    );
 
     let mut response_message = Box::pin(message(kms, request_message, user, None)).await?;
 
@@ -395,6 +409,9 @@ async fn handle_ttlv_bytes_inner(
     // convert the TTLV to bytes
     let response_bytes = TTLV::to_bytes(&response_ttlv, kmip_flavor)
         .map_err(|e| KmsError::InvalidRequest(format!("Failed to convert TTLV to bytes: {e}")))?;
+
+    debug!("Response Message Bytes: {}", hex::encode(&response_bytes));
+
     Ok(response_bytes)
 }
 
