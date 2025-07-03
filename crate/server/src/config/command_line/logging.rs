@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use clap::Args;
 use serde::{Deserialize, Serialize};
 
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Default, Args, Deserialize, Serialize, Clone)]
 #[serde(default)]
 pub struct LoggingConfig {
@@ -55,4 +56,13 @@ pub struct LoggingConfig {
         verbatim_doc_comment
     )]
     pub environment: Option<String>,
+
+    /// Enable ANSI colors in the logs to stdout
+    #[clap(
+        long,
+        env("KMS_ANSI_COLORS"),
+        default_value = "false",
+        verbatim_doc_comment
+    )]
+    pub ansi_colors: bool,
 }

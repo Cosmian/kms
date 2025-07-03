@@ -28,7 +28,7 @@ ms_dke_service_url = "<ms dke service url>"
 # This setting defines the public URL where the KMS is accessible (e.g., behind a proxy).
 # It is used :
 # -  during the authentication flow initiated from the KMS UI. See the [ui_config] section below.
-# - for cse endpoints: it is required if google cse configuration is activated ;
+# - for cse endpoints: it is required if Google CSE configuration is activated ;
 # If this server is running on the domain `cse.my_domain.com` with this public URL,
 # The configured URL from Google admin should be something like <https://cse.my_domain.com/google_cse>
 kms_public_url = "kms-public-url"
@@ -159,10 +159,19 @@ otlp = "http://localhost:4317"
 quiet = false
 # If set to true, the KMS server will log to syslog instead of stdout.
 log_to_syslog = false
+# If set, daily rolling logs will be written to the specified directory
+# using the name specified by `rolling_log_name`: <rolling_log_name>.YYYY-MM-DD.
+rolling_log_dir = "path_to_logging_directory"
+# If `rolling_log_dir` is set, this is the name of the rolling log file:
+#  <rolling_log_name>.YYYY-MM-DD.
+# Defaults to "kms" if not set.
+rolling_log_name = "kms"
 # The Telemetry will also contain metering and tracing events if set to true.
 enable_metering = false
 # When using telemetry, this setting will show the KMS environment: "production", "development", "staging", "testing"...
 environment = "development"
+# Enable ANSI colors in the logs to stdout
+ansi_colors = false
 
 # Generic configuration to edit the path to static UI application files
 # To use the Web UI, ensure the `kms_public_url` is set to the correct public URL above.
@@ -179,7 +188,7 @@ ui_oidc_issuer_url = "<issuer-url>"
 ui_oidc_logout_url = "<logout-url>"
 
 [google_cse_config]
-# This setting turns on endpoints handling Google CSE feature
+# This setting turns on endpoints, handling Google CSE feature
 google_cse_enable = false
 
 # This setting disables the validation of the tokens used by the Google Workspace CSE feature of this server
