@@ -79,6 +79,7 @@ async fn main() -> KResult<()> {
                     .unwrap_or("kms".to_owned()),
             )
         }),
+        with_ansi_colors: clap_config.logging.ansi_colors,
     });
 
     //TODO: For an unknown reason, this span never goes to OTLP
@@ -245,6 +246,7 @@ mod tests {
                 rolling_log_name: Some("kms_log".to_owned()),
                 enable_metering: false,
                 environment: Some("development".to_owned()),
+                ansi_colors: false,
             },
             info: false,
             hsm_model: "".to_string(),
@@ -329,6 +331,7 @@ rolling_log_dir = "[rolling log dir]"
 rolling_log_name = "kms_log"
 enable_metering = false
 environment = "development"
+ansi_colors = false
 "#;
 
         assert_eq!(toml_string.trim(), toml::to_string(&config).unwrap().trim());
