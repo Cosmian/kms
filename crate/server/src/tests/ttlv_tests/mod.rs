@@ -12,11 +12,12 @@ mod get_1_4;
 mod get_2_1;
 mod get_attribute_1_4;
 mod get_attribute_2_1;
+mod normative_tests;
+mod pykmip;
 mod query;
 mod socket_client;
 
 const TEST_HOST: &str = "127.0.0.1";
-const TEST_PORT: u16 = 11112;
 
 use std::{
     sync::{Arc, OnceLock, mpsc},
@@ -56,15 +57,16 @@ impl Drop for TestServerCtx {
 }
 
 /// Starts the test server if it is not already running.
-fn start_test_server() -> &'static TestServerCtx {
+fn start_test_server(socket_port: u16) -> &'static TestServerCtx {
     static SERVER_HANDLES: OnceLock<TestServerCtx> = OnceLock::new();
+    let mut https_config = https_clap_config();
+    https_config.socket_server.socket_server_port = socket_port;
+    https_config.socket_server.socket_server_hostname = TEST_HOST.to_owned();
+    https_config.http.port = socket_port - 1;
+    https_config.http.hostname = TEST_HOST.to_owned();
 
     SERVER_HANDLES.get_or_init(|| {
-        let mut server_params = ServerParams::try_from(https_clap_config()).unwrap();
-        TEST_HOST.clone_into(&mut server_params.http_hostname);
-        server_params.http_port = TEST_PORT - 1;
-        TEST_HOST.clone_into(&mut server_params.socket_server_hostname);
-        server_params.socket_server_port = TEST_PORT;
+        let server_params = ServerParams::try_from(https_config).unwrap();
 
         let (tx, rx) = mpsc::channel::<ServerHandle>();
 
@@ -89,10 +91,10 @@ fn start_test_server() -> &'static TestServerCtx {
 }
 
 /// Creates a new socket client with the default configuration.
-fn new_socket_client() -> SocketClient {
+fn new_socket_client(socket_port: u16) -> SocketClient {
     SocketClient::new(SocketClientConfig {
         host: "localhost".to_owned(),
-        port: 11112,
+        port: socket_port,
         client_p12: include_bytes!(
             "../../../../../test_data/client_server/user/user.client.acme.com.p12"
         )
@@ -107,6 +109,6 @@ fn new_socket_client() -> SocketClient {
 /// Creates a new socket client connected to the test server.
 /// This will start the test server if it is not already running.
 fn get_client() -> SocketClient {
-    let _server_handles = start_test_server();
-    new_socket_client()
+    let _server_handles = start_test_server(11112);
+    new_socket_client(11112)
 }

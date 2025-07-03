@@ -7,6 +7,7 @@ use strum::Display;
 use crate::{
     KmipError, kmip_0,
     kmip_0::kmip_types::{DRBGAlgorithm, FIPS186Variation, HashingAlgorithm, RNGAlgorithm},
+    kmip_1_4::kmip_attributes::CustomAttributeValue,
     kmip_2_1::{self},
 };
 
@@ -1571,21 +1572,9 @@ impl From<kmip_2_1::kmip_types::UniqueIdentifier> for UniqueIdentifier {
     }
 }
 
-impl From<LinkedObjectIdentifier> for UniqueIdentifier {
-    #[allow(
-        clippy::cast_sign_loss,
-        clippy::cast_possible_truncation,
-        clippy::as_conversions
-    )]
-    fn from(value: LinkedObjectIdentifier) -> Self {
-        match value {
-            LinkedObjectIdentifier::TextString(s) => s,
-        }
-    }
-}
-
 /// Link Structure represents the relationship between a Managed Object and another object.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[serde(rename_all = "PascalCase")]
 pub struct Link {
     pub link_type: LinkType,
     pub linked_object_identifier: LinkedObjectIdentifier,
@@ -1612,16 +1601,11 @@ impl TryFrom<kmip_2_1::kmip_types::Link> for Link {
 }
 
 /// `LinkedObjectIdentifier` defines the format of the object reference in a link.
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Hash)]
-pub enum LinkedObjectIdentifier {
-    TextString(String),
-}
+pub type LinkedObjectIdentifier = String;
 
 impl From<LinkedObjectIdentifier> for kmip_2_1::kmip_types::LinkedObjectIdentifier {
     fn from(val: LinkedObjectIdentifier) -> Self {
-        match val {
-            LinkedObjectIdentifier::TextString(s) => Self::TextString(s),
-        }
+        Self::TextString(val)
     }
 }
 
@@ -1630,7 +1614,7 @@ impl TryFrom<kmip_2_1::kmip_types::LinkedObjectIdentifier> for LinkedObjectIdent
 
     fn try_from(value: kmip_2_1::kmip_types::LinkedObjectIdentifier) -> Result<Self, Self::Error> {
         Ok(match value {
-            kmip_2_1::kmip_types::LinkedObjectIdentifier::TextString(s) => Self::TextString(s),
+            kmip_2_1::kmip_types::LinkedObjectIdentifier::TextString(s) => s,
             kmip_2_1::kmip_types::LinkedObjectIdentifier::Enumeration(_)
             | kmip_2_1::kmip_types::LinkedObjectIdentifier::Index(_) => {
                 return Err(KmipError::InvalidKmip14Value(
@@ -1640,6 +1624,14 @@ impl TryFrom<kmip_2_1::kmip_types::LinkedObjectIdentifier> for LinkedObjectIdent
             }
         })
     }
+}
+
+/// KMIP 1.4 Custom Attribute
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "PascalCase")]
+pub struct CustomAttribute {
+    pub name: String,
+    pub value: CustomAttributeValue,
 }
 
 /// KMIP Tag values as defined in the KMIP 1.4 specification.
