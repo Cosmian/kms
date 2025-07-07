@@ -39,6 +39,7 @@ pub(crate) async fn register(
     }
 
     // To register an object, check that the user has `Create` access right
+    // The `Create` right implicitly grants permission for Create, Import, and Register operations.
     if let Some(users) = privileged_users.clone() {
         let has_permission = user_has_permission(
             owner,

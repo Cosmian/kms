@@ -61,7 +61,8 @@ pub(crate) async fn import(
         kms_bail!("Importing objects with unique identifiers starting with `[` is not supported");
     }
 
-    // To create an object, check that the user has `Create` access right
+    // To import an object, ensure the user has the `Create` access right.
+    // The `Create` right implicitly grants permission for Create, Import, and Register operations.
     if let Some(users) = privileged_users {
         let has_permission = user_has_permission(
             owner,

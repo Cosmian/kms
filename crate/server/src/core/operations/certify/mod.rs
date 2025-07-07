@@ -361,6 +361,7 @@ async fn get_subject(
     // If we do not have a public key, we need to create a key pair
 
     // For creation of an object, check that user has create access-right
+    // The `Create` right implicitly grants permission for Create, Import, and Register operations.
     if let Some(users) = privileged_users {
         let has_permission = user_has_permission(
             user,

@@ -48,7 +48,7 @@ pub(super) fn register_symmetric_key(client: &SocketClient) -> String {
         request_header: RequestMessageHeader {
             protocol_version: ProtocolVersion {
                 protocol_version_major: 1,
-                protocol_version_minor: 1,
+                protocol_version_minor: 4,
             },
             batch_count: 1,
 
@@ -85,7 +85,7 @@ pub(super) fn register_symmetric_key(client: &SocketClient) -> String {
         response.response_header.protocol_version,
         ProtocolVersion {
             protocol_version_major: 1,
-            protocol_version_minor: 1,
+            protocol_version_minor: 4,
         }
     );
     assert_eq!(response.batch_item.len(), 1);

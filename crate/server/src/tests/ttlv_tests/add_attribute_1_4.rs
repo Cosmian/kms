@@ -40,7 +40,7 @@ pub(crate) fn add_attributes(client: &SocketClient, key_id: &str) {
         request_header: RequestMessageHeader {
             protocol_version: ProtocolVersion {
                 protocol_version_major: 1,
-                protocol_version_minor: 1,
+                protocol_version_minor: 4,
             },
             batch_count: 3,
             ..Default::default()
@@ -96,7 +96,7 @@ pub(crate) fn add_attributes(client: &SocketClient, key_id: &str) {
         response.response_header.protocol_version,
         ProtocolVersion {
             protocol_version_major: 1,
-            protocol_version_minor: 1,
+            protocol_version_minor: 4,
         }
     );
     assert_eq!(response.batch_item.len(), 3);
