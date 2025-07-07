@@ -154,7 +154,7 @@ end-users S/MIME certificates. It will be created with the following details:
 ```text
 [ v3_ca ]
 basicConstraints=critical,CA:TRUE,pathlen:0
-keyUsage=keyCertSign,digitalSignature
+keyUsage=critical,keyCertSign,digitalSignature
 extendedKeyUsage=emailProtection
 subjectKeyIdentifier=hash
 authorityKeyIdentifier=keyid:always,issuer
