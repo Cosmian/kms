@@ -836,10 +836,10 @@ async fn test_cse_custom_jwt() -> KResult<()> {
 
     // Prepare JWKS Manager
     let mut jwks_map = HashMap::new();
-    jwks_map.insert("http://127.0.0.1/google_cse".to_owned(), jwks);
+    jwks_map.insert(kacls_url.to_owned(), jwks);
 
     let jwks_manager = JwksManager {
-        uris: vec!["http://127.0.0.1/google_cse".to_owned()],
+        uris: vec![kacls_url.to_owned()],
         jwks: RwLock::new(jwks_map),
         last_update: RwLock::new(None),
         proxy_params: None,
@@ -847,7 +847,7 @@ async fn test_cse_custom_jwt() -> KResult<()> {
 
     let cse_config = GoogleCseConfig {
         authentication: Arc::new(vec![JwtConfig {
-            jwt_issuer_uri: "http://127.0.0.1/google_cse".to_owned(),
+            jwt_issuer_uri: kacls_url.to_owned(),
             jwt_audience: Some("kacls-migration".to_owned()),
             jwks: Arc::new(jwks_manager),
         }]),
@@ -855,14 +855,9 @@ async fn test_cse_custom_jwt() -> KResult<()> {
     };
 
     // Validate custom JWT
-    let result = validate_cse_authentication_token(
-        &jwt_token,
-        &Some(cse_config),
-        "http://127.0.0.1/google_cse",
-        "admin",
-        false,
-    )
-    .await;
+    let result =
+        validate_cse_authentication_token(&jwt_token, &Some(cse_config), kacls_url, "admin", false)
+            .await;
 
     assert!(
         result.is_ok(),
