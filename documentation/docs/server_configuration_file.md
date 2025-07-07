@@ -7,7 +7,9 @@ By default, the configuration filepath is retrieved in the following order:
 
 1. If the environment variable `COSMIAN_KMS_CONF` is set and the path behind exists, the KMS server will use this
    configuration file,
-2. Otherwise, if a file is found at `/etc/cosmian/kms.toml`, the KMS server will use this file.
+2. Otherwise, on Linux and macOS, if a file is found at `/etc/cosmian/kms.toml`, the KMS server will use this file.
+   On Windows, it will look for a file at `C:\ProgramData\Cosmian\kms.toml`, Make sure that the file is readable
+   by the user running the KMS server,
 3. Finally, if none of the above is found, the KMS server will use the [command line arguments](./server_cli.md)
 
 The file should be a TOML file with the following structure:
