@@ -216,7 +216,7 @@ impl CreateKeyPairsAction {
         let wrapped_key_bytes = wrapped_private_key.key_block()?.wrapped_key_bytes()?;
 
         // Sign created public key with the issuer private key
-        let certificate_extensions_bytes = std::fs::read(&self.certificate_extensions)?;
+        let certificate_extensions_bytes = tokio::fs::read(&self.certificate_extensions).await?;
 
         let mut attributes = Attributes {
             object_type: Some(ObjectType::Certificate),

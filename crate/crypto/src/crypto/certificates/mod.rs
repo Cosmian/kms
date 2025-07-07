@@ -4,6 +4,6 @@ keyUsage=critical,nonRepudiation,digitalSignature,dataEncipherment,keyEncipherme
 extendedKeyUsage=emailProtection
 subjectKeyIdentifier=hash
 authorityKeyIdentifier=keyid:always,issuer
-crlDistributionPoints=URI:http://crl3.digicert.com/CloudflareIncECCCA-3.crl
+crlDistributionPoints=URI:https://crl3.digicert.com/CloudflareIncECCCA-3.crl
 subjectAltName=email:black@cosmian.com
 ";
