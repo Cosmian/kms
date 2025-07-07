@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use base64::{Engine, engine::general_purpose};
 use clap::Parser;
 use cosmian_kms_client::{
@@ -5,19 +7,16 @@ use cosmian_kms_client::{
     cosmian_kmip::kmip_0::kmip_types::BlockCipherMode,
     export_object,
     kmip_2_1::{
-        extra::{VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
         kmip_attributes::Attributes,
         kmip_objects::{Certificate, Object, ObjectType},
         kmip_operations::{Certify, GetAttributes},
         kmip_types::{
             CertificateAttributes, CryptographicAlgorithm, CryptographicParameters, KeyFormatType,
-            Link, LinkType, LinkedObjectIdentifier, UniqueIdentifier, VendorAttribute,
-            VendorAttributeValue,
+            Link, LinkType, LinkedObjectIdentifier, UniqueIdentifier,
         },
         requests::create_rsa_key_pair_request,
     },
 };
-use cosmian_kms_crypto::crypto::certificates::EXTENSION_CONFIG;
 use serde::{Deserialize, Serialize};
 use tracing::trace;
 
@@ -70,6 +69,27 @@ pub struct CreateKeyPairsAction {
         verbatim_doc_comment
     )]
     pub wrapping_key_id: Option<String>,
+
+    /// Path to a file containing X.509 extensions, defined under a `[v3_ca]` section.
+    /// These extensions will be applied to the generated leaf certificate and must
+    /// comply with Google's S/MIME certificate requirements. For example:
+    ///
+    /// ```text
+    /// [ v3_ca ]
+    /// keyUsage=critical,nonRepudiation,digitalSignature,dataEncipherment,keyEncipherment
+    /// extendedKeyUsage=emailProtection
+    /// subjectKeyIdentifier=hash
+    /// authorityKeyIdentifier=keyid:always,issuer
+    /// subjectAltName=email:john.doe@acme.com
+    /// crlDistributionPoints=URI:https://acme.com/crl.pem
+    /// ```
+    #[clap(
+        long = "leaf-certificate-extensions",
+        short = 'e',
+        required = true,
+        verbatim_doc_comment
+    )]
+    pub(crate) certificate_extensions: PathBuf,
 
     /// Dry run mode. If set, the action will not be executed.
     #[clap(long, default_value = "false")]
@@ -196,7 +216,9 @@ impl CreateKeyPairsAction {
         let wrapped_key_bytes = wrapped_private_key.key_block()?.wrapped_key_bytes()?;
 
         // Sign created public key with the issuer private key
-        let attributes = Attributes {
+        let certificate_extensions_bytes = std::fs::read(&self.certificate_extensions)?;
+
+        let mut attributes = Attributes {
             object_type: Some(ObjectType::Certificate),
             certificate_attributes: Some(CertificateAttributes::parse_subject_line(
                 &self.subject_name,
@@ -207,13 +229,10 @@ impl CreateKeyPairsAction {
                     self.issuer_private_key_id.clone(),
                 ),
             }]),
-            vendor_attributes: Some(vec![VendorAttribute {
-                vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
-                attribute_name: VENDOR_ATTR_X509_EXTENSION.to_owned(),
-                attribute_value: VendorAttributeValue::ByteString(EXTENSION_CONFIG.to_vec()),
-            }]),
             ..Attributes::default()
         };
+
+        attributes.set_x509_extension_file(certificate_extensions_bytes);
 
         let certify_request = Certify {
             unique_identifier: Some(UniqueIdentifier::TextString(public_key_id)),

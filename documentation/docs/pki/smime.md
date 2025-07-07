@@ -204,7 +204,7 @@ requirements):
 
 ```text
 [ v3_ca ]
-keyUsage=nonRepudiation,digitalSignature,dataEncipherment,keyEncipherment
+keyUsage=critical,nonRepudiation,digitalSignature,dataEncipherment,keyEncipherment
 extendedKeyUsage=emailProtection
 subjectAltName=email:john.doe@acme.com
 crlDistributionPoints=URI:https://acme.com/crl.pem
