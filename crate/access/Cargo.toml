@@ -16,5 +16,5 @@ doctest = false
 [features]
 
 [dependencies]
-cosmian_kmip = { path = "../kmip", version = "5.4.1", default-features = true }
+cosmian_kmip = { path = "../kmip", version = "5.5.0", default-features = true }
 serde = { workspace = true }
