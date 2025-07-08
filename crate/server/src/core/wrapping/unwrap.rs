@@ -4,10 +4,10 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::{CryptographicUsageMask, State},
         kmip_2_1::{
-            KmipOperation,
             kmip_data_structures::{KeyBlock, KeyValue},
             kmip_objects::{Object, ObjectType},
             kmip_types::LinkType,
+            KmipOperation,
         },
     },
     cosmian_kms_crypto::crypto::wrap::{decode_unwrapped_key, unwrap_key_block},
@@ -16,7 +16,7 @@ use cosmian_kms_server_database::reexport::{
 use tracing::debug;
 
 use crate::{
-    core::{KMS, uid_utils::has_prefix},
+    core::{uid_utils::has_prefix, KMS},
     error::KmsError,
     kms_bail,
     result::{KResult, KResultHelper},
@@ -52,7 +52,7 @@ pub(crate) async fn unwrap_object(
         KmsError::InvalidRequest("unwrap_object: key wrapping data is missing".to_owned())
     })?;
 
-    let unwrapping_key_uid = key_wrapping_data
+    let mut unwrapping_key_uid = key_wrapping_data
         .encryption_key_information
         .as_ref()
         .ok_or_else(|| {
@@ -68,7 +68,7 @@ pub(crate) async fn unwrap_object(
             "...unwrapping the key block with key uid: {unwrapping_key_uid} using an encryption \
              oracle, user: {user}"
         );
-        unwrap_using_encryption_oracle(
+        unwrapping_key_uid = unwrap_using_encryption_oracle(
             object_key_block,
             kms,
             user,
@@ -184,6 +184,8 @@ async fn unwrap_using_kms(
 }
 
 /// Unwrap a key with a wrapping key using an encryption oracle
+/// If the unwrapping key is a public key, it will be stripped of the "_pk" suffix
+/// and the stripped version will be replaced.
 async fn unwrap_using_encryption_oracle(
     object_key_block: &mut KeyBlock,
     kms: &KMS,
@@ -191,7 +193,7 @@ async fn unwrap_using_encryption_oracle(
     params: Option<Arc<dyn SessionParams>>,
     unwrapping_key_uid: &str,
     prefix: &str,
-) -> KResult<()> {
+) -> KResult<String> {
     //Determine the private key if a public key is passed
     let unwrapping_key_uid = unwrapping_key_uid
         .strip_suffix("_pk")
@@ -250,5 +252,5 @@ async fn unwrap_using_encryption_oracle(
     object_key_block.key_value = Some(key_value);
     object_key_block.key_wrapping_data = None;
 
-    Ok(())
+    Ok(unwrapping_key_uid)
 }

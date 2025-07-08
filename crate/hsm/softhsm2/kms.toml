@@ -28,7 +28,7 @@ info = false
 
 # The following fields are only needed if an HSM is used.
 # Check the HSMs documentation pages for more information.
-hsm_model = "utimaco"
+hsm_model = "softhsm2"
 hsm_admin = "admin" #for Create operation on HSM
 hsm_slot = [0]
 hsm_password = ["12345678"]

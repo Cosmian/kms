@@ -246,3 +246,14 @@ The users will appear as `SO_0000` and `USER_0000` in the CAT tool.
 you will keep getting `CKR_PIN_TOO_WEAK` (440) errors.
 
 The user PIN is what should be passed to the KMS.
+
+
+## Running the KMS server
+
+Use the provided `kms.toml` file to run the KMS server with the Utimaco PKCS#11 library.
+
+From the KMS root directory, run the following command:
+
+```bash
+COSMIAN_KMS_CONF=crate/hsm/utimaco/kms.toml cargo run --bin cosmian_kms --features non-fips
+```

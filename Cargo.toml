@@ -10,6 +10,7 @@ members = [
     "crate/access",
     "crate/crypto",
     "crate/hsm/proteccio",
+    "crate/hsm/softhsm2",
     "crate/hsm/utimaco",
     "crate/hsm/base_hsm",
     "crate/interfaces",

@@ -5,7 +5,6 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_types::Sta
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::reexport::cosmian_cover_crypt::api::Covercrypt;
 use cosmian_kms_server_database::{
-    CachedUnwrappedObject,
     reexport::{
         cosmian_kmip::kmip_2_1::{
             kmip_objects::Object,
@@ -16,6 +15,7 @@ use cosmian_kms_server_database::{
         cosmian_kms_crypto::crypto::symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH,
         cosmian_kms_interfaces::{EncryptionOracle, SessionParams},
     },
+    CachedUnwrappedObject,
 };
 use openssl::rand::rand_bytes;
 use tracing::{debug, trace};
@@ -24,7 +24,7 @@ use zeroize::Zeroizing;
 #[cfg(feature = "non-fips")]
 use crate::core::cover_crypt::create_user_decryption_key;
 use crate::{
-    core::{KMS, wrapping::unwrap_object},
+    core::{wrapping::unwrap_object, KMS},
     error::KmsError,
     result::{KResult, KResultHelper},
 };

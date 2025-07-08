@@ -1,7 +1,7 @@
-//! These tests  require a connection to a working HSM and are gated behind the `utimaco` feature.
+//! These tests  require a connection to a working HSM and are gated behind the `softhsm2` feature.
 //! To run a test, cd into the crate directory and run (replace `XXX` with the actual password):
 //! ```
-//! HSM_USER_PASSWORD=12345678 cargo test --target x86_64-unknown-linux-gnu --features utimaco -- tests::test_hsm_all
+//! HSM_USER_PASSWORD=12345678 cargo test --target x86_64-unknown-linux-gnu --features softhsm2 -- tests::test_hsm_all
 //! ```
 
 use std::{collections::HashMap, ptr, sync::Arc, thread};
@@ -17,12 +17,14 @@ use pkcs11_sys::{CKF_OS_LOCKING_OK, CKR_OK, CK_C_INITIALIZE_ARGS, CK_RV, CK_VOID
 use tracing::info;
 use uuid::Uuid;
 
-use crate::Utimaco;
+use crate::Softhsm2;
+
+const LIB_PATH: &str = "/usr/local/lib/softhsm/libsofthsm2.so";
 
 fn get_slot() -> HResult<Arc<SlotManager>> {
     let user_password = get_hsm_password()?;
     let passwords = HashMap::from([(0x00, Some(user_password.clone()))]);
-    let hsm = Utimaco::instantiate("/lib/libcs_pkcs11_R3.so", passwords)?;
+    let hsm = Softhsm2::instantiate(LIB_PATH, passwords)?;
     let manager = hsm.get_slot(0x00)?;
     Ok(manager)
 }
@@ -46,7 +48,7 @@ fn test_hsm_all() -> HResult<()> {
 
 #[test]
 fn test_hsm_low_level_test() -> HResult<()> {
-    let path = "/lib/libcs_pkcs11_R3.so";
+    let path = LIB_PATH;
     let library = unsafe { Library::new(path) }?;
     let init = unsafe { library.get::<fn(p_init_args: CK_VOID_PTR) -> CK_RV>(b"C_Initialize") }?;
 
@@ -66,8 +68,8 @@ fn test_hsm_low_level_test() -> HResult<()> {
 
 #[test]
 fn test_hsm_get_info() -> HResult<()> {
-    log_init(None);
-    let hsm = Utimaco::instantiate("/lib/libcs_pkcs11_R3.so", HashMap::new())?;
+    log_init(Some("debug"));
+    let hsm = Softhsm2::instantiate(LIB_PATH, HashMap::new())?;
     let info = hsm.get_info()?;
     info!("Connected to the HSM: {info}");
     Ok(())
@@ -75,7 +77,7 @@ fn test_hsm_get_info() -> HResult<()> {
 
 #[test]
 fn test_hsm_generate_aes_key() -> HResult<()> {
-    log_init(None);
+    log_init(Some("debug"));
     let key_id = Uuid::new_v4().to_string();
     let slot = get_slot()?;
     let session = slot.open_session(true)?;

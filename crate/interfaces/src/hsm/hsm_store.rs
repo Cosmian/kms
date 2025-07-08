@@ -1,13 +1,11 @@
-//! The HSM Store is a store that allows to create, retrieve, update and delete objects on an HSM.
+//! The HSM Store is a store that allows the creation, retrieval, update, and deletion of objects on an HSM.
 //! It is the link between the database and the HSM.
 
 #![allow(unused_variables)]
 use std::{collections::HashSet, path::PathBuf, sync::Arc};
 
-use KmipKeyMaterial::TransparentRSAPublicKey;
 use async_trait::async_trait;
 use cosmian_kmip::{
-    SafeBigInt,
     kmip_0::kmip_types::{CryptographicUsageMask, State},
     kmip_2_1::{
         kmip_attributes::Attributes,
@@ -15,13 +13,15 @@ use cosmian_kmip::{
         kmip_objects::{Object, ObjectType, PrivateKey, PublicKey, SymmetricKey},
         kmip_types::{CryptographicAlgorithm, KeyFormatType},
     },
+    SafeBigInt,
 };
 use num_bigint_dig::{BigInt, Sign};
 use tracing::debug;
+use KmipKeyMaterial::TransparentRSAPublicKey;
 
 use crate::{
-    AtomicOperation, HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject, InterfaceError,
-    InterfaceResult, KeyMaterial, ObjectWithMetadata, ObjectsStore, SessionParams,
+    AtomicOperation, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject, InterfaceError, InterfaceResult,
+    KeyMaterial, ObjectWithMetadata, ObjectsStore, SessionParams, HSM,
 };
 
 pub struct HsmStore {
@@ -110,7 +110,7 @@ impl ObjectsStore for HsmStore {
         uid: &str,
         _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<Option<ObjectWithMetadata>> {
-        // try converting the rest of the uid into a slot_id and key id
+        // try converting the rest of the UID into a slot_id and key id
         let (slot_id, key_id) = parse_uid(uid)?;
         Ok(
             if let Some(hsm_object) = self.hsm.export(slot_id, key_id.as_bytes()).await? {
@@ -213,7 +213,7 @@ impl ObjectsStore for HsmStore {
         _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<bool> {
         debug!(
-            "Is {owner} is the owner of {_uid}? {}",
+            "Is {owner}, the owner of {_uid}? {}",
             owner == self.hsm_admin
         );
         Ok(owner == self.hsm_admin)
@@ -224,7 +224,8 @@ impl ObjectsStore for HsmStore {
         tags: &HashSet<String>,
         params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashSet<String>> {
-        todo!()
+        // Not Tags on the HSM
+        Ok(HashSet::new())
     }
 
     async fn find(
@@ -235,7 +236,8 @@ impl ObjectsStore for HsmStore {
         user_must_be_owner: bool,
         params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
-        todo!()
+        // HSM Objects cannot be searched
+        Ok(vec![])
     }
 }
 
@@ -245,7 +247,7 @@ impl ObjectsStore for HsmStore {
 /// to create the private key, so we recover it here
 ///
 /// # Returns
-///  - the uid of the private key
+/// - the UID of the private key
 /// - the object of the private key
 /// - the attributes of the private key
 fn is_rsa_keypair_creation(

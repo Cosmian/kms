@@ -8,7 +8,7 @@
 //! - Cryptographic operations (encryption, decryption)
 //! - Key management (export, metadata retrieval)
 //!
-//! The implementation supports various cryptographic algorithms including:
+//! The implementation supports various cryptographic algorithms, including:
 //! - AES-GCM for symmetric encryption
 //! - RSA PKCS#1 v1.5 and OAEP for asymmetric encryption
 //!
@@ -42,7 +42,7 @@ use cosmian_kms_interfaces::{
     KeyType, RsaPrivateKeyMaterial, RsaPublicKeyMaterial,
 };
 use pkcs11_sys::*;
-use rand::{TryRngCore, rngs::OsRng};
+use rand::{rngs::OsRng, TryRngCore};
 use tracing::debug;
 use zeroize::Zeroizing;
 
@@ -935,7 +935,7 @@ impl Session {
         template: &mut [CK_ATTRIBUTE],
     ) -> HResult<Option<()>> {
         unsafe {
-            debug!("Retrieving Proteccio key attributes for key: {key_handle}");
+            debug!("Retrieving HSM key attributes for key handle: {key_handle}");
             // Get the length of the key value
             let rv = self.hsm.C_GetAttributeValue.ok_or_else(|| {
                 HError::Default("C_GetAttributeValue not available on library".to_string())
@@ -956,7 +956,7 @@ impl Session {
             }
             if rv != CKR_OK {
                 return Err(HError::Default(format!(
-                    "Failed to get the HSM attributes for key {key_handle}"
+                    "Failed to get the HSM attributes for key handle: {key_handle}"
                 )));
             }
             Ok(Some(()))

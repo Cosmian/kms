@@ -10,9 +10,9 @@ use lru::LruCache;
 #[cfg(test)]
 use tokio::sync::RwLockReadGuard;
 use tokio::sync::{
-    RwLock,
     mpsc::{self, Receiver, Sender},
     oneshot,
+    RwLock,
 };
 use tracing::{debug, trace, warn};
 
@@ -20,7 +20,7 @@ use crate::error::DbResult;
 
 /// This is the object kept in the Main LRU cache
 /// It contains the unwrapped object and the key signature
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct CachedUnwrappedObject {
     fingerprint: u64,
     unwrapped_object: Object,
@@ -248,14 +248,14 @@ mod tests {
         requests::create_symmetric_key_kmip_object,
     };
     use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
-        CsRng,
         reexport::rand_core::{RngCore, SeedableRng},
+        CsRng,
     };
     use cosmian_logger::log_init;
     use tempfile::TempDir;
     use uuid::Uuid;
 
-    use crate::{Database, core::main_db_params::MainDbParams, error::DbResult};
+    use crate::{core::main_db_params::MainDbParams, error::DbResult, Database};
 
     #[tokio::test]
     #[allow(clippy::unwrap_used, clippy::panic_in_result_fn)]

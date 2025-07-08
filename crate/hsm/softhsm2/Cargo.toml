@@ -1,0 +1,28 @@
+[package]
+name = "softhsm2_pkcs11_loader"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Utimaco HSM PKCS#11 loader"
+
+[lib]
+doctest = false
+
+[dependencies]
+cosmian_kms_base_hsm = { path = "../base_hsm", version = "5.4.1" }
+cosmian_kms_interfaces = { path = "../../interfaces", version = "5.4.1" }
+libloading = { workspace = true }
+pkcs11-sys = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
+
+[dev-dependencies]
+tracing = { workspace = true }
+cosmian_logger = { workspace = true }
+uuid = { workspace = true }
+
+[features]
+# Enable this feature to run softhsm2 tests (they require a softhsm2 HSM)
+softhsm2 = []
