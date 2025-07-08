@@ -31,7 +31,7 @@ ms_dke_service_url = "<ms dke service url>"
 # This setting defines the public URL where the KMS is accessible (e.g., behind a proxy).
 # It is used :
 # -  during the authentication flow initiated from the KMS UI. See the [ui_config] section below.
-# - for cse endpoints: it is required if Google CSE configuration is activated ;
+# - for cse endpoints: it is required if Google CSE configuration is activated;
 # If this server is running on the domain `cse.my_domain.com` with this public URL,
 # The configured URL from Google admin should be something like <https://cse.my_domain.com/google_cse>
 kms_public_url = "kms-public-url"
