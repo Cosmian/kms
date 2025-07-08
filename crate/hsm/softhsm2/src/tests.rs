@@ -7,7 +7,7 @@
 use std::{collections::HashMap, ptr, sync::Arc, thread};
 
 use cosmian_kms_base_hsm::{
-    test_helpers::get_hsm_password, AesKeySize, HError, HResult, HsmEncryptionAlgorithm, RsaKeySize,
+    test_helpers::get_hsm_password, AesKeySize, HError, HResult, HsmEncryptionAlgorithm, RsaKeySize, RsaOaepDigest,
     SlotManager,
 };
 use cosmian_kms_interfaces::{HsmObjectFilter, KeyMaterial, KeyType};
@@ -23,9 +23,9 @@ const LIB_PATH: &str = "/usr/local/lib/softhsm/libsofthsm2.so";
 
 fn get_slot() -> HResult<Arc<SlotManager>> {
     let user_password = get_hsm_password()?;
-    let passwords = HashMap::from([(0x00, Some(user_password.clone()))]);
+    let passwords = HashMap::from([(63715018, Some(user_password.clone()))]);
     let hsm = Softhsm2::instantiate(LIB_PATH, passwords)?;
-    let manager = hsm.get_slot(0x00)?;
+    let manager = hsm.get_slot(63715018)?;
     Ok(manager)
 }
 
@@ -68,7 +68,7 @@ fn test_hsm_low_level_test() -> HResult<()> {
 
 #[test]
 fn test_hsm_get_info() -> HResult<()> {
-    log_init(Some("debug"));
+    log_init(None);
     let hsm = Softhsm2::instantiate(LIB_PATH, HashMap::new())?;
     let info = hsm.get_info()?;
     info!("Connected to the HSM: {info}");
@@ -77,7 +77,7 @@ fn test_hsm_get_info() -> HResult<()> {
 
 #[test]
 fn test_hsm_generate_aes_key() -> HResult<()> {
-    log_init(Some("debug"));
+    log_init(None);
     let key_id = Uuid::new_v4().to_string();
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
@@ -119,7 +119,7 @@ fn test_hsm_generate_aes_key() -> HResult<()> {
 
 #[test]
 fn test_hsm_generate_rsa_keypair() -> HResult<()> {
-    log_init(None);
+    log_init(Some("debug"));
     let sk_id = Uuid::new_v4().to_string();
     let pk_id = sk_id.clone() + "_pk ";
     let slot = get_slot()?;
@@ -193,10 +193,15 @@ fn test_hsm_rsa_key_wrap() -> HResult<()> {
         RsaKeySize::Rsa2048,
         true,
     )?;
-    let encrypted_key = session.wrap_aes_key_with_rsa_oaep(pk, symmetric_key)?;
+    let encrypted_key =
+        session.wrap_aes_key_with_rsa_oaep(pk, symmetric_key, RsaOaepDigest::SHA1)?;
     assert_eq!(encrypted_key.len(), 2048 / 8);
-    let decrypted_key =
-        session.unwrap_aes_key_with_rsa_oaep(sk, &encrypted_key, "another_label")?;
+    let decrypted_key = session.unwrap_aes_key_with_rsa_oaep(
+        sk,
+        &encrypted_key,
+        "another_label",
+        RsaOaepDigest::SHA1,
+    )?;
     info!("Unwrapped symmetric key with handle: {}", decrypted_key);
     Ok(())
 }
@@ -237,9 +242,9 @@ fn test_hsm_rsa_oaep_encrypt() -> HResult<()> {
         RsaKeySize::Rsa2048,
         true,
     )?;
-    let enc = session.encrypt(pk, HsmEncryptionAlgorithm::RsaOaep, data)?;
+    let enc = session.encrypt(pk, HsmEncryptionAlgorithm::RsaOaepSha1, data)?;
     assert_eq!(enc.ciphertext.len(), 2048 / 8);
-    let plaintext = session.decrypt(sk, HsmEncryptionAlgorithm::RsaOaep, &enc.ciphertext)?;
+    let plaintext = session.decrypt(sk, HsmEncryptionAlgorithm::RsaOaepSha1, &enc.ciphertext)?;
     assert_eq!(plaintext.as_slice(), data);
     info!("Successfully encrypted/decrypted with RSA OAEP");
     Ok(())
@@ -296,11 +301,12 @@ fn test_hsm_multi_threaded_rsa_encrypt_decrypt_test() -> HResult<()> {
                 true,
             )?;
             info!("RSA handles sk: {sk}, pk: {pk}");
-            let encrypted_content = session.encrypt(pk, HsmEncryptionAlgorithm::RsaOaep, data)?;
+            let encrypted_content =
+                session.encrypt(pk, HsmEncryptionAlgorithm::RsaOaepSha1, data)?;
             assert_eq!(encrypted_content.ciphertext.len(), 2048 / 8);
             let plaintext = session.decrypt(
                 sk,
-                HsmEncryptionAlgorithm::RsaOaep,
+                HsmEncryptionAlgorithm::RsaOaepSha1,
                 &encrypted_content.ciphertext,
             )?;
             assert_eq!(plaintext.as_slice(), data);

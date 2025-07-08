@@ -1,21 +1,26 @@
 use std::ptr;
 
 use pkcs11_sys::{
-    CK_ATTRIBUTE, CK_BBOOL, CK_FALSE, CK_KEY_TYPE, CK_MECHANISM, CK_MECHANISM_PTR,
-    CK_OBJECT_HANDLE, CK_RSA_PKCS_OAEP_PARAMS, CK_TRUE, CK_ULONG, CK_VOID_PTR, CKA_CLASS,
-    CKA_DECRYPT, CKA_ENCRYPT, CKA_EXTRACTABLE, CKA_KEY_TYPE, CKA_LABEL, CKA_MODULUS_BITS,
-    CKA_PRIVATE, CKA_PUBLIC_EXPONENT, CKA_SENSITIVE, CKA_SIGN, CKA_TOKEN, CKA_UNWRAP, CKA_VERIFY,
-    CKA_WRAP, CKG_MGF1_SHA256, CKK_AES, CKK_RSA, CKM_RSA_PKCS_KEY_PAIR_GEN, CKM_RSA_PKCS_OAEP,
-    CKM_SHA256, CKO_SECRET_KEY, CKR_OK, CKZ_DATA_SPECIFIED,
+    CKA_CLASS, CKA_DECRYPT, CKA_ENCRYPT, CKA_EXTRACTABLE, CKA_KEY_TYPE, CKA_LABEL,
+    CKA_MODULUS_BITS, CKA_PRIVATE, CKA_PUBLIC_EXPONENT, CKA_SENSITIVE, CKA_SIGN, CKA_TOKEN,
+    CKA_UNWRAP, CKA_VERIFY, CKA_WRAP, CKG_MGF1_SHA1, CKG_MGF1_SHA256, CKK_AES,
+    CKK_RSA, CKM_RSA_PKCS_KEY_PAIR_GEN, CKM_RSA_PKCS_OAEP, CKM_SHA256, CKM_SHA_1, CKO_SECRET_KEY, CKR_OK,
+    CKZ_DATA_SPECIFIED, CK_ATTRIBUTE, CK_BBOOL, CK_FALSE, CK_KEY_TYPE, CK_MECHANISM,
+    CK_MECHANISM_PTR, CK_OBJECT_HANDLE, CK_RSA_PKCS_OAEP_PARAMS, CK_TRUE, CK_ULONG, CK_VOID_PTR,
 };
 
-use crate::{HError, HResult, session::Session};
+use crate::{session::Session, HError, HResult};
 
 pub enum RsaKeySize {
     Rsa1024,
     Rsa2048,
     Rsa3072,
     Rsa4096,
+}
+
+pub enum RsaOaepDigest {
+    SHA1,
+    SHA256,
 }
 
 impl Session {
@@ -39,7 +44,7 @@ impl Session {
         key_size: RsaKeySize,
         sensitive: bool,
     ) -> HResult<(CK_OBJECT_HANDLE, CK_OBJECT_HANDLE)> {
-        let key_size = match key_size {
+        let key_size: usize = match key_size {
             RsaKeySize::Rsa1024 => 1024,
             RsaKeySize::Rsa2048 => 2048,
             RsaKeySize::Rsa3072 => 3072,
@@ -163,9 +168,9 @@ impl Session {
             );
 
             if rv != CKR_OK {
-                return Err(HError::Default(
-                    "Failed generating RSA key pair".to_string(),
-                ));
+                return Err(HError::Default(format!(
+                    "Failed generating RSA key pair: {rv}"
+                )));
             }
 
             self.object_handles_cache()
@@ -181,15 +186,25 @@ impl Session {
         &self,
         wrapping_key_handle: CK_OBJECT_HANDLE,
         aes_key_handle: CK_OBJECT_HANDLE,
+        digest: RsaOaepDigest,
     ) -> HResult<Vec<u8>> {
         unsafe {
             // Initialize the RSA-OAEP mechanism
-            let mut oaep_params = CK_RSA_PKCS_OAEP_PARAMS {
-                hashAlg: CKM_SHA256,
-                mgf: CKG_MGF1_SHA256,
-                source: CKZ_DATA_SPECIFIED,
-                pSourceData: ptr::null_mut(),
-                ulSourceDataLen: 0,
+            let mut oaep_params = match digest {
+                RsaOaepDigest::SHA256 => CK_RSA_PKCS_OAEP_PARAMS {
+                    hashAlg: CKM_SHA256,
+                    mgf: CKG_MGF1_SHA256,
+                    source: CKZ_DATA_SPECIFIED,
+                    pSourceData: ptr::null_mut(),
+                    ulSourceDataLen: 0_usize as CK_ULONG,
+                },
+                RsaOaepDigest::SHA1 => CK_RSA_PKCS_OAEP_PARAMS {
+                    hashAlg: CKM_SHA_1,
+                    mgf: CKG_MGF1_SHA1,
+                    source: CKZ_DATA_SPECIFIED,
+                    pSourceData: ptr::null_mut(),
+                    ulSourceDataLen: 0_usize as CK_ULONG,
+                },
             };
 
             let mut mechanism = CK_MECHANISM {
@@ -213,9 +228,9 @@ impl Session {
             );
 
             if rv != CKR_OK {
-                return Err(HError::Default(
-                    "Failed to get wrapped key length".to_string(),
-                ));
+                return Err(HError::Default(format!(
+                    "Failed to get wrapped key length: {rv}"
+                )));
             }
 
             // Allocate buffer for the wrapped key
@@ -249,16 +264,26 @@ impl Session {
         unwrapping_key_handle: CK_OBJECT_HANDLE,
         wrapped_aes_key: &[u8],
         aes_key_label: &str,
+        digest: RsaOaepDigest,
     ) -> HResult<CK_OBJECT_HANDLE> {
         let mut wrapped_key = wrapped_aes_key.to_vec();
         unsafe {
             // Initialize the RSA-OAEP mechanism
-            let mut oaep_params = CK_RSA_PKCS_OAEP_PARAMS {
-                hashAlg: CKM_SHA256,
-                mgf: CKG_MGF1_SHA256,
-                source: CKZ_DATA_SPECIFIED,
-                pSourceData: ptr::null_mut(),
-                ulSourceDataLen: 0,
+            let mut oaep_params = match digest {
+                RsaOaepDigest::SHA256 => CK_RSA_PKCS_OAEP_PARAMS {
+                    hashAlg: CKM_SHA256,
+                    mgf: CKG_MGF1_SHA256,
+                    source: CKZ_DATA_SPECIFIED,
+                    pSourceData: ptr::null_mut(),
+                    ulSourceDataLen: 0_usize as CK_ULONG,
+                },
+                RsaOaepDigest::SHA1 => CK_RSA_PKCS_OAEP_PARAMS {
+                    hashAlg: CKM_SHA_1,
+                    mgf: CKG_MGF1_SHA1,
+                    source: CKZ_DATA_SPECIFIED,
+                    pSourceData: ptr::null_mut(),
+                    ulSourceDataLen: 0_usize as CK_ULONG,
+                },
             };
 
             let mut mechanism = CK_MECHANISM {

@@ -11,7 +11,7 @@ use cosmian_kmip::{
 };
 use zeroize::Zeroizing;
 
-use crate::{InterfaceError, KeyType, error::InterfaceResult};
+use crate::{error::InterfaceResult, InterfaceError, KeyType};
 
 #[derive(Debug)]
 pub struct KeyMetadata {
@@ -25,7 +25,8 @@ pub struct KeyMetadata {
 pub enum CryptoAlgorithm {
     AesGcm,
     RsaPkcsV15,
-    RsaOaep,
+    RsaOaepSha256,
+    RsaOaepSha1,
 }
 
 impl CryptoAlgorithm {
@@ -45,9 +46,17 @@ impl CryptoAlgorithm {
                     }),
                 cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm::RSA => value
                     .padding_method
-                    .map_or(Ok(Some(CryptoAlgorithm::RsaOaep)), |padding_method| {
+                    .map_or(Ok(Some(CryptoAlgorithm::RsaOaepSha256)), |padding_method| {
                         match padding_method {
-                            PaddingMethod::OAEP => Ok(Some(CryptoAlgorithm::RsaOaep)),
+                            PaddingMethod::OAEP => match value.hashing_algorithm {
+                                Some(
+                                    cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm::SHA256,
+                                ) => Ok(Some(CryptoAlgorithm::RsaOaepSha256)),
+                                Some(cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm::SHA1) => {
+                                    Ok(Some(CryptoAlgorithm::RsaOaepSha1))
+                                }
+                                _ => Ok(Some(CryptoAlgorithm::RsaOaepSha256)), //this is debatable
+                            },
                             PaddingMethod::PKCS1v15 => Ok(Some(CryptoAlgorithm::RsaPkcsV15)),
                             pm => Err(InterfaceError::Default(format!(
                                 "Padding method: {pm:?} not supported for RSA",

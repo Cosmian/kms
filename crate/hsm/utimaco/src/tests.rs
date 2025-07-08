@@ -7,7 +7,7 @@
 use std::{collections::HashMap, ptr, sync::Arc, thread};
 
 use cosmian_kms_base_hsm::{
-    test_helpers::get_hsm_password, AesKeySize, HError, HResult, HsmEncryptionAlgorithm, RsaKeySize,
+    test_helpers::get_hsm_password, AesKeySize, HError, HResult, HsmEncryptionAlgorithm, RsaKeySize, RsaOaepDigest,
     SlotManager,
 };
 use cosmian_kms_interfaces::{HsmObjectFilter, KeyMaterial, KeyType};
@@ -191,10 +191,15 @@ fn test_hsm_rsa_key_wrap() -> HResult<()> {
         RsaKeySize::Rsa2048,
         true,
     )?;
-    let encrypted_key = session.wrap_aes_key_with_rsa_oaep(pk, symmetric_key)?;
+    let encrypted_key =
+        session.wrap_aes_key_with_rsa_oaep(pk, symmetric_key, RsaOaepDigest::SHA256)?;
     assert_eq!(encrypted_key.len(), 2048 / 8);
-    let decrypted_key =
-        session.unwrap_aes_key_with_rsa_oaep(sk, &encrypted_key, "another_label")?;
+    let decrypted_key = session.unwrap_aes_key_with_rsa_oaep(
+        sk,
+        &encrypted_key,
+        "another_label",
+        RsaOaepDigest::SHA256,
+    )?;
     info!("Unwrapped symmetric key with handle: {}", decrypted_key);
     Ok(())
 }
@@ -235,9 +240,9 @@ fn test_hsm_rsa_oaep_encrypt() -> HResult<()> {
         RsaKeySize::Rsa2048,
         true,
     )?;
-    let enc = session.encrypt(pk, HsmEncryptionAlgorithm::RsaOaep, data)?;
+    let enc = session.encrypt(pk, HsmEncryptionAlgorithm::RsaOaepSha256, data)?;
     assert_eq!(enc.ciphertext.len(), 2048 / 8);
-    let plaintext = session.decrypt(sk, HsmEncryptionAlgorithm::RsaOaep, &enc.ciphertext)?;
+    let plaintext = session.decrypt(sk, HsmEncryptionAlgorithm::RsaOaepSha256, &enc.ciphertext)?;
     assert_eq!(plaintext.as_slice(), data);
     info!("Successfully encrypted/decrypted with RSA OAEP");
     Ok(())
@@ -294,11 +299,12 @@ fn test_hsm_multi_threaded_rsa_encrypt_decrypt_test() -> HResult<()> {
                 true,
             )?;
             info!("RSA handles sk: {sk}, pk: {pk}");
-            let encrypted_content = session.encrypt(pk, HsmEncryptionAlgorithm::RsaOaep, data)?;
+            let encrypted_content =
+                session.encrypt(pk, HsmEncryptionAlgorithm::RsaOaepSha256, data)?;
             assert_eq!(encrypted_content.ciphertext.len(), 2048 / 8);
             let plaintext = session.decrypt(
                 sk,
-                HsmEncryptionAlgorithm::RsaOaep,
+                HsmEncryptionAlgorithm::RsaOaepSha256,
                 &encrypted_content.ciphertext,
             )?;
             assert_eq!(plaintext.as_slice(), data);

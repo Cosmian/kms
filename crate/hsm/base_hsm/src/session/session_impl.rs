@@ -63,7 +63,8 @@ fn generate_random_nonce<const T: usize>() -> HResult<[u8; T]> {
 pub enum HsmEncryptionAlgorithm {
     AesGcm,
     RsaPkcsV15,
-    RsaOaep,
+    RsaOaepSha256,
+    RsaOaepSha1,
 }
 
 impl From<CryptoAlgorithm> for HsmEncryptionAlgorithm {
@@ -71,7 +72,8 @@ impl From<CryptoAlgorithm> for HsmEncryptionAlgorithm {
         match algorithm {
             CryptoAlgorithm::AesGcm => HsmEncryptionAlgorithm::AesGcm,
             CryptoAlgorithm::RsaPkcsV15 => HsmEncryptionAlgorithm::RsaPkcsV15,
-            CryptoAlgorithm::RsaOaep => HsmEncryptionAlgorithm::RsaOaep,
+            CryptoAlgorithm::RsaOaepSha256 => HsmEncryptionAlgorithm::RsaOaepSha256,
+            CryptoAlgorithm::RsaOaepSha1 => HsmEncryptionAlgorithm::RsaOaepSha1,
         }
     }
 }
@@ -428,7 +430,7 @@ impl Session {
                     ..Default::default()
                 }
             }
-            HsmEncryptionAlgorithm::RsaOaep => {
+            HsmEncryptionAlgorithm::RsaOaepSha256 => {
                 let mut params = CK_RSA_PKCS_OAEP_PARAMS {
                     hashAlg: CKM_SHA256,
                     mgf: CKG_MGF1_SHA256,
@@ -440,6 +442,28 @@ impl Session {
                     mechanism: CKM_RSA_PKCS_OAEP,
                     pParameter: &mut params as *mut _ as CK_VOID_PTR,
                     ulParameterLen: std::mem::size_of::<CK_RSA_PKCS_OAEP_PARAMS>() as CK_ULONG,
+                };
+                EncryptedContent {
+                    ciphertext: self.encrypt_with_mechanism(
+                        key_handle,
+                        &mut mechanism,
+                        plaintext,
+                    )?,
+                    ..Default::default()
+                }
+            }
+            HsmEncryptionAlgorithm::RsaOaepSha1 => {
+                let mut params = CK_RSA_PKCS_OAEP_PARAMS {
+                    hashAlg: CKM_SHA_1,
+                    mgf: CKG_MGF1_SHA1,
+                    source: CKZ_DATA_SPECIFIED,
+                    pSourceData: ptr::null_mut(),
+                    ulSourceDataLen: 0,
+                };
+                let mut mechanism = CK_MECHANISM {
+                    mechanism: CKM_RSA_PKCS_OAEP,
+                    pParameter: &mut params as *mut _ as CK_VOID_PTR,
+                    ulParameterLen: size_of::<CK_RSA_PKCS_OAEP_PARAMS>() as CK_ULONG,
                 };
                 EncryptedContent {
                     ciphertext: self.encrypt_with_mechanism(
@@ -493,10 +517,25 @@ impl Session {
                 };
                 self.decrypt_with_mechanism(key_handle, &mut mechanism, ciphertext)
             }
-            HsmEncryptionAlgorithm::RsaOaep => {
+            HsmEncryptionAlgorithm::RsaOaepSha256 => {
                 let mut params = CK_RSA_PKCS_OAEP_PARAMS {
                     hashAlg: CKM_SHA256,
                     mgf: CKG_MGF1_SHA256,
+                    source: CKZ_DATA_SPECIFIED,
+                    pSourceData: std::ptr::null_mut(),
+                    ulSourceDataLen: 0,
+                };
+                let mut mechanism = CK_MECHANISM {
+                    mechanism: CKM_RSA_PKCS_OAEP,
+                    pParameter: &mut params as *mut _ as CK_VOID_PTR,
+                    ulParameterLen: std::mem::size_of::<CK_RSA_PKCS_OAEP_PARAMS>() as CK_ULONG,
+                };
+                self.decrypt_with_mechanism(key_handle, &mut mechanism, ciphertext)
+            }
+            HsmEncryptionAlgorithm::RsaOaepSha1 => {
+                let mut params = CK_RSA_PKCS_OAEP_PARAMS {
+                    hashAlg: CKM_SHA_1,
+                    mgf: CKG_MGF1_SHA1,
                     source: CKZ_DATA_SPECIFIED,
                     pSourceData: std::ptr::null_mut(),
                     ulSourceDataLen: 0,

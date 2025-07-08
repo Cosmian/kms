@@ -30,7 +30,7 @@ info = false
 # Check the HSMs documentation pages for more information.
 hsm_model = "softhsm2"
 hsm_admin = "admin" #for Create operation on HSM
-hsm_slot = [0]
+hsm_slot = [63715018]
 hsm_password = ["12345678"]
 
 # Force all newly created and imported keys to be wrapped by the key specified in this field.

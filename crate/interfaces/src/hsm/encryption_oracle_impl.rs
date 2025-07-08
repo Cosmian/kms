@@ -51,7 +51,7 @@ impl EncryptionOracle for HsmEncryptionOracle {
                 }
                 Some(key_type) => match key_type {
                     KeyType::AesKey => CryptoAlgorithm::AesGcm,
-                    KeyType::RsaPublicKey => CryptoAlgorithm::RsaOaep,
+                    KeyType::RsaPublicKey => CryptoAlgorithm::RsaOaepSha256,
                     KeyType::RsaPrivateKey => {
                         // try fetching the corresponding public key
                         let pk_uid = format!("{uid}_pk");
@@ -69,7 +69,7 @@ impl EncryptionOracle for HsmEncryptionOracle {
                                      is available"
                                 ))
                             })?;
-                        CryptoAlgorithm::RsaOaep
+                        CryptoAlgorithm::RsaOaepSha256
                     }
                 },
             }
@@ -104,7 +104,7 @@ impl EncryptionOracle for HsmEncryptionOracle {
                 }
                 Some(key_type) => match key_type {
                     KeyType::AesKey => CryptoAlgorithm::AesGcm,
-                    KeyType::RsaPrivateKey => CryptoAlgorithm::RsaOaep,
+                    KeyType::RsaPrivateKey => CryptoAlgorithm::RsaOaepSha256,
                     KeyType::RsaPublicKey => {
                         return Err(InterfaceError::Default(
                             "An RSA public key cannot be used to decrypt".to_owned(),

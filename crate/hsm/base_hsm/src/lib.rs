@@ -8,7 +8,7 @@ mod error;
 
 pub use base_hsm::BaseHsm;
 pub use error::{HError, HResult};
-pub use session::{AesKeySize, HsmEncryptionAlgorithm, RsaKeySize, Session};
+pub use session::{AesKeySize, HsmEncryptionAlgorithm, RsaKeySize, RsaOaepDigest, Session};
 pub use slots::{ObjectHandlesCache, SlotManager};
 
 mod base_hsm;
