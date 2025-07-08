@@ -143,7 +143,7 @@ RSA and AES keys are supported.
 
 When creating an RSA key, the `key_identifier` will be that of the private key. The corresponding public key will be
 automatically created and stored in the HSM with the same `key_identifier` but with the `_pk` suffix, for example,
-the public key of the `hsm::1::mykey` private key will be created with a unique identifier `has::1::mykey_pk`.
+the public key of the `hsm::1::mykey` private key will be created with a unique identifier `hsm::1::mykey_pk`.
 
 Create an RSA 4096-bit key on the HSM slot 4, with the Cosmian CLI:
 
