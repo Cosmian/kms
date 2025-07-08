@@ -9,7 +9,7 @@ By default, the configuration filepath is retrieved in the following order:
    configuration file,
 2. Otherwise, on Linux and macOS, if a file is found at `/etc/cosmian/kms.toml`, the KMS server will use this file.
    On Windows, it will look for a file at `C:\ProgramData\Cosmian\kms.toml`, Make sure that the file is readable
-   by the user running the KMS server,
+   by the user running the KMS server.
 3. Finally, if none of the above is found, the KMS server will use the [command line arguments](./server_cli.md)
 
 The file should be a TOML file with the following structure:
@@ -17,11 +17,12 @@ The file should be a TOML file with the following structure:
 ```toml
 # The default username to use when no authentication method is provided.
 default_username = "admin"
+
 # When an authentication method is provided, perform the authentication
 # but always use the default username instead of the one provided by the authentication method
 force_default_username = false
 
-# This setting enables this server's Microsoft Double Key Encryption service feature.
+# This setting enables the Microsoft Double Key Encryption service feature on this server.
 # It should contain the external URL of this server as configured in Azure App Registrations
 # as the DKE Service (<https://learn.microsoft.com/en-us/purview/double-key-encryption-setup#register-your-key-store>)
 # The URL should be something like <https://cse.my_domain.com/ms_dke>
@@ -67,6 +68,7 @@ clear_database = false
 # it is unwrapped and stored in the unwrapped cache.
 # This option specifies the maximum age in minutes of the unwrapped objects in the cache
 # after its last use.
+
 # The default is 15 minutes.
 # About 2/3 of the objects will be evicted after this time; the other 1/3 will be evicted
 # after a maximum of 150% of the time.
@@ -130,6 +132,7 @@ proxy_exclusion_list = ["domain1", "domain2"]
 # For Auth0, this is the delegated authority domain configured on Auth0, for instance `https://<your-tenant>.<region>.auth0.com/`
 # For Google, this would be `https://accounts.google.com`
 jwt_issuer_uri = ["<jwt issuer uri>"]
+
 # The JWKS (Json Web Key Set) URI of the JWT token
 # To handle multiple identity managers, add different parameters under each argument
 #  (jwt-issuer-uri, jwks-uri and optionally jwt-audience), keeping them in the same order
@@ -138,6 +141,7 @@ jwt_issuer_uri = ["<jwt issuer uri>"]
 # For Google, this would be `https://www.googleapis.com/oauth2/v3/certs`
 # Defaults to `<jwt-issuer-uri>/.well-known/jwks.json` if not set
 jwks_uri = ["<jwks uri>"]
+
 # The audience of the JWT token
 # Optional: the server will validate the JWT `aud` claim against this value if set
 jwt_audience = ["<jwt audience>"]
@@ -146,6 +150,7 @@ jwt_audience = ["<jwt audience>"]
 # The root folder where the KMS will store its data
 # A relative path is taken relative to the user's HOME directory
 root_data_path = "./cosmian-kms"
+
 # The folder to store temporary data (non-persistent data readable
 # by no one but the current instance during the current execution)
 tmp_path = "/tmp"
@@ -154,13 +159,17 @@ tmp_path = "/tmp"
 [logging]
 # The log level of the KMS server. This is an alternative to the `RUST_LOG` environment variable.
 rust_log = "info,cosmian_kms=debug"
+
 # The Open Telemetry OTLP collector URL.
 otlp = "http://localhost:4317"
+
 # If set to true, the KMS server will not output logs to stdout. Telemetry will still be sent to the OTLP collector,
 # if configured.
 quiet = false
+
 # If set to true, the KMS server will log to syslog instead of stdout.
 log_to_syslog = false
+
 # If set, daily rolling logs will be written to the specified directory
 # using the name specified by `rolling_log_name`: <rolling_log_name>.YYYY-MM-DD.
 rolling_log_dir = "path_to_logging_directory"
@@ -168,10 +177,12 @@ rolling_log_dir = "path_to_logging_directory"
 #  <rolling_log_name>.YYYY-MM-DD.
 # Defaults to "kms" if not set.
 rolling_log_name = "kms"
+
 # The Telemetry will also contain metering and tracing events if set to true.
 enable_metering = false
 # When using telemetry, this setting will show the KMS environment: "production", "development", "staging", "testing"...
 environment = "development"
+
 # Enable ANSI colors in the logs to stdout
 ansi_colors = false
 
