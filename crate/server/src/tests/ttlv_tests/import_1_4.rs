@@ -8,29 +8,44 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     },
     kmip_1_4::{
         kmip_attributes::Attribute,
-        kmip_data_structures::TemplateAttribute,
+        kmip_data_structures::{KeyBlock, KeyValue},
         kmip_messages::RequestMessageBatchItem,
-        kmip_operations::{Create, Operation},
-        kmip_types::{CryptographicAlgorithm, ObjectType, OperationEnumeration},
+        kmip_objects::{Object, SymmetricKey},
+        kmip_operations::{Import, Operation},
+        kmip_types::{
+            CryptographicAlgorithm, KeyFormatType, OperationEnumeration, UniqueIdentifier,
+        },
     },
     ttlv::KmipFlavor,
 };
 use cosmian_logger::log_init;
+use zeroize::Zeroizing;
 
 use super::socket_client::SocketClient;
 use crate::tests::ttlv_tests::get_client;
 
 #[test]
-fn test_create_1_4() {
+fn test_import_1_4() {
     log_init(option_env!("RUST_LOG"));
 
     let client = get_client();
 
-    // Create a symmetric key
-    create_symmetric_key(&client);
+    // import a symmetric key
+    import_symmetric_key(&client);
 }
 
-pub(super) fn create_symmetric_key(client: &SocketClient) -> String {
+pub(super) fn import_symmetric_key(client: &SocketClient) -> String {
+    let object = Object::SymmetricKey(SymmetricKey {
+        key_block: KeyBlock {
+            key_format_type: KeyFormatType::Raw,
+            key_value: Some(KeyValue::ByteString(Zeroizing::new(vec![1, 2, 3, 4]))),
+            key_compression_type: None,
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            cryptographic_length: Some(256),
+            key_wrapping_data: None,
+        },
+    });
+
     let request_message = RequestMessage {
         request_header: RequestMessageHeader {
             protocol_version: ProtocolVersion {
@@ -43,20 +58,21 @@ pub(super) fn create_symmetric_key(client: &SocketClient) -> String {
         },
         batch_item: vec![RequestMessageBatchItemVersioned::V14(
             RequestMessageBatchItem {
-                operation: OperationEnumeration::Create,
+                operation: OperationEnumeration::Import,
                 ephemeral: None,
                 unique_batch_item_id: Some(b"12345".to_vec()),
-                request_payload: Operation::Create(Create {
-                    object_type: ObjectType::SymmetricKey,
-                    template_attribute: TemplateAttribute {
-                        attribute: Some(vec![
-                            Attribute::CryptographicAlgorithm(CryptographicAlgorithm::AES),
-                            Attribute::CryptographicUsageMask(
-                                CryptographicUsageMask::Encrypt | CryptographicUsageMask::Decrypt,
-                            ),
-                            Attribute::CryptographicLength(256),
-                        ]),
-                    },
+                request_payload: Operation::Import(Import {
+                    unique_identifier: UniqueIdentifier::from("imported_1_4_key_uid".to_owned()),
+                    replace_existing: Some(false),
+                    key_wrap_type: None,
+                    attribute: Some(vec![
+                        Attribute::CryptographicAlgorithm(CryptographicAlgorithm::AES),
+                        Attribute::CryptographicUsageMask(
+                            CryptographicUsageMask::Encrypt | CryptographicUsageMask::Decrypt,
+                        ),
+                        Attribute::CryptographicLength(256),
+                    ]),
+                    object,
                 }),
                 message_extension: None,
             },
@@ -87,12 +103,10 @@ pub(super) fn create_symmetric_key(client: &SocketClient) -> String {
     assert_eq!(batch_item.result_status, ResultStatusEnumeration::Success);
     assert_eq!(batch_item.unique_batch_item_id, Some(b"12345".to_vec()));
 
-    let Some(Operation::CreateResponse(create_response)) = &batch_item.response_payload else {
-        panic!("Expected CreateResponse");
+    let Some(Operation::ImportResponse(import_response)) = &batch_item.response_payload else {
+        panic!("Expected Import");
     };
 
-    assert!(create_response.object_type == ObjectType::SymmetricKey);
-    assert!(!create_response.unique_identifier.is_empty());
-    assert!(create_response.template_attribute.is_none());
-    create_response.unique_identifier.clone()
+    assert_eq!(import_response.unique_identifier, "imported_1_4_key_uid");
+    import_response.unique_identifier.clone()
 }

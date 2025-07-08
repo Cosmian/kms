@@ -55,11 +55,11 @@ fn register() {
     assert_eq!(register.object.object_type(), ObjectType::SecretData);
     assert_eq!(
         register.template_attribute,
-        Some(TemplateAttribute {
+        TemplateAttribute {
             attribute: Some(vec![Attribute::CryptographicUsageMask(
                 CryptographicUsageMask(0)
             )])
-        })
+        }
     );
 
     // // response

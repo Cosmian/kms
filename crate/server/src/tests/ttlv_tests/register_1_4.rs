@@ -8,29 +8,42 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     },
     kmip_1_4::{
         kmip_attributes::Attribute,
-        kmip_data_structures::TemplateAttribute,
+        kmip_data_structures::{KeyBlock, KeyValue, TemplateAttribute},
         kmip_messages::RequestMessageBatchItem,
-        kmip_operations::{Create, Operation},
-        kmip_types::{CryptographicAlgorithm, ObjectType, OperationEnumeration},
+        kmip_objects::{Object, SymmetricKey},
+        kmip_operations::{Operation, Register},
+        kmip_types::{CryptographicAlgorithm, KeyFormatType, ObjectType, OperationEnumeration},
     },
     ttlv::KmipFlavor,
 };
 use cosmian_logger::log_init;
+use zeroize::Zeroizing;
 
 use super::socket_client::SocketClient;
 use crate::tests::ttlv_tests::get_client;
 
 #[test]
-fn test_create_1_4() {
+fn test_register_1_4() {
     log_init(option_env!("RUST_LOG"));
 
     let client = get_client();
 
-    // Create a symmetric key
-    create_symmetric_key(&client);
+    // register a symmetric key
+    register_symmetric_key(&client);
 }
 
-pub(super) fn create_symmetric_key(client: &SocketClient) -> String {
+pub(super) fn register_symmetric_key(client: &SocketClient) -> String {
+    let object = Object::SymmetricKey(SymmetricKey {
+        key_block: KeyBlock {
+            key_format_type: KeyFormatType::Raw,
+            key_value: Some(KeyValue::ByteString(Zeroizing::new(vec![1, 2, 3, 4]))),
+            key_compression_type: None,
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            cryptographic_length: Some(256),
+            key_wrapping_data: None,
+        },
+    });
+
     let request_message = RequestMessage {
         request_header: RequestMessageHeader {
             protocol_version: ProtocolVersion {
@@ -43,10 +56,11 @@ pub(super) fn create_symmetric_key(client: &SocketClient) -> String {
         },
         batch_item: vec![RequestMessageBatchItemVersioned::V14(
             RequestMessageBatchItem {
-                operation: OperationEnumeration::Create,
+                operation: OperationEnumeration::Register,
                 ephemeral: None,
                 unique_batch_item_id: Some(b"12345".to_vec()),
-                request_payload: Operation::Create(Create {
+                request_payload: Operation::Register(Register {
+                    object,
                     object_type: ObjectType::SymmetricKey,
                     template_attribute: TemplateAttribute {
                         attribute: Some(vec![
@@ -87,12 +101,11 @@ pub(super) fn create_symmetric_key(client: &SocketClient) -> String {
     assert_eq!(batch_item.result_status, ResultStatusEnumeration::Success);
     assert_eq!(batch_item.unique_batch_item_id, Some(b"12345".to_vec()));
 
-    let Some(Operation::CreateResponse(create_response)) = &batch_item.response_payload else {
-        panic!("Expected CreateResponse");
+    let Some(Operation::RegisterResponse(register_response)) = &batch_item.response_payload else {
+        panic!("Expected Register");
     };
 
-    assert!(create_response.object_type == ObjectType::SymmetricKey);
-    assert!(!create_response.unique_identifier.is_empty());
-    assert!(create_response.template_attribute.is_none());
-    create_response.unique_identifier.clone()
+    assert!(!register_response.unique_identifier.is_empty());
+    assert!(register_response.template_attribute.is_none());
+    register_response.unique_identifier.clone()
 }

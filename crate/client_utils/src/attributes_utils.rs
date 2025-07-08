@@ -7,6 +7,7 @@ use cosmian_kmip::kmip_2_1::{
 };
 use serde_json::Value;
 use strum::{EnumIter, EnumString, IntoEnumIterator};
+use time::{OffsetDateTime, format_description::parse};
 
 use crate::{
     error::UtilsError,
@@ -481,8 +482,9 @@ pub fn build_selected_attribute(
 ) -> Result<Attribute, UtilsError> {
     let attribute = match attribute_name {
         "activation_date" => {
-            let activation_date = attribute_value
-                .parse::<i64>()
+            let format = parse("[year]-[month]-[day]T[hour]:[minute]:[second]Z")
+                .map_err(|e| UtilsError::Default(e.to_string()))?;
+            let activation_date = OffsetDateTime::parse(&attribute_value, &format)
                 .map_err(|e| UtilsError::Default(e.to_string()))?;
             Attribute::ActivationDate(activation_date)
         }

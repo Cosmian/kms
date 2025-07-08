@@ -64,6 +64,7 @@ fn test_template_attributes() {
 #[test]
 fn test_object_raw() {
     log_init(option_env!("RUST_LOG"));
+
     let object = Object::SymmetricKey(SymmetricKey {
         key_block: KeyBlock {
             key_format_type: KeyFormatType::Raw,

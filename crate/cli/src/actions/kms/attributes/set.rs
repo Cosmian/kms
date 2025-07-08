@@ -16,6 +16,7 @@ use cosmian_kms_client::{
 };
 use serde::Deserialize;
 use strum::EnumIter;
+use time::OffsetDateTime;
 use tracing::{info, trace};
 
 use crate::{
@@ -206,9 +207,18 @@ impl SetOrDeleteAttributes {
     pub(crate) fn get_attributes_from_args(&self) -> KmsCliResult<Vec<Attribute>> {
         let mut result = Vec::new();
 
-        if let Some(activation_date) = &self.activation_date {
-            let attribute = Attribute::ActivationDate(*activation_date);
-            result.push(attribute);
+        if let Some(timestamp) = self.activation_date {
+            match OffsetDateTime::from_unix_timestamp(timestamp) {
+                Ok(activation_date) => {
+                    let attribute = Attribute::ActivationDate(activation_date);
+                    result.push(attribute);
+                }
+                Err(e) => {
+                    return Err(crate::error::KmsCliError::Conversion(format!(
+                        "Could not convert {timestamp:?} to OffsetDateTime: {e:?}"
+                    )));
+                }
+            }
         }
 
         if let Some(cryptographic_algorithm) = &self.cryptographic_algorithm {
