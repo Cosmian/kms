@@ -198,7 +198,7 @@ google_cse_enable = false
 google_cse_disable_tokens_validation = false
 
 # This setting contains the list of KACLS server URLs that can access this server for Google CSE migration, through
-# the privilegedunwrap endpoint (used to fetch exposed jwks on server start)
+# the privilegedunwrap endpoint (used to fetch exposed JWKS on server start)
 google_cse_incoming_url_whitelist = ["[kacls_url_1]", "[kacls_url_2]"]
 
 # PEM PKCS8 RSA private key used to ensure consistency of certificate handling and privileged unwrap operations

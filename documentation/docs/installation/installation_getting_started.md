@@ -33,8 +33,8 @@ For high availability and scalability, refer to the [High Availability Guide](./
     docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms-fips:latest
     ```
 
-    To persist data between restarts, map the `/root/cosmian-kms/sqlite-data` path to a filesystem
-    directory or a Docker volume, e.g. with a volume named `cosmian-kms`:
+    To persist data between restarts, mount the `/root/cosmian-kms/sqlite-data` path to a filesystem
+    directory or a Docker volume: 
 
     ```sh
     docker run --rm -p 9998:9998 \
@@ -171,8 +171,11 @@ For high availability and scalability, refer to the [High Availability Guide](./
     cosmian_kms --version
     ```
 
-    - The server uses the configuration file located at `/etc/cosmian/kms.toml`.
-    - The KMS UI is available at `http://localhost:9998/ui`.
+    The server uses the configuration file located at `/etc/cosmian/kms.toml`.
+
+    NOTE: The MacOS version does NOT come with a web UI. It can be manually installed by copying the `dist` folder
+    of a packaged Linux distribution to a folder and updating the `ui_index_html_folder` property of the `kms.toml`  
+    to point to it.
 
 === "Windows"
 
@@ -193,5 +196,9 @@ For high availability and scalability, refer to the [High Availability Guide](./
     ```sh
     cosmian_kms --version
     ```
-    - The server uses the configuration file located at `C:\ProgramData\Cosmian\kms.toml`,
+    The server uses the configuration file located at `C:\ProgramData\Cosmian\kms.toml`,
     if it is available. See the [server configuration](../server_configuration_file.md) for more information.
+
+    NOTE: The Windows version does NOT come with a web UI. It can be manually installed by copying the `dist` folder
+    of a packaged Linux distribution to a folder and updating the `ui_index_html_folder` property of the `kms.toml`  
+    to point to it.
