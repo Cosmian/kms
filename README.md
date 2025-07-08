@@ -142,7 +142,7 @@ The most important crates are:
 - `pkcs11_*` to handle PKCS11 support
 - `test_kms_server`, a library that allows you to instantiate the KMS server programmatically.
 
-**Please refer to the README files in the inner directories for more information. **
+**Please refer to the README files in the inner directories for more information.**
 
 Find the [public documentation](https://docs.cosmian.com) of the KMS in the `documentation`
 directory.
