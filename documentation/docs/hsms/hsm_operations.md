@@ -1,23 +1,21 @@
-In addition to managing its own keys, Cosmian KMS can act as a proxy to an HSM to store and manage keys in the HSM.
+In addition to managing its keys, Cosmian KMS can act as a proxy to an HSM, storing and managing keys within the HSM.
 
 <!-- TOC -->
-
-* [HSM keys](#hsm-keys)
-* [Creating a KMS key wrapped by an HSM key](#creating-a-kms-key-wrapped-by-an-hsm-key)
+  * [HSM keys](#hsm-keys)
+  * [Creating a KMS key wrapped by an HSM key](#creating-a-kms-key-wrapped-by-an-hsm-key)
     * [Manually using the CLI](#manually-using-the-cli)
     * [Manually using the Web UI](#manually-using-the-web-ui)
     * [Automatically using the server configuration](#automatically-using-the-server-configuration)
-* [Using the wrapped KMS key](#using-the-wrapped-kms-key)
+  * [Using the wrapped KMS key](#using-the-wrapped-kms-key)
     * [Small data: encrypting server-side](#small-data-encrypting-server-side)
-        * [Large data: encrypting client side with key wrapping](#large-data-encrypting-client-side-with-key-wrapping)
-* [The Unwrapped Objects Cache](#the-unwrapped-objects-cache)
-* [HSM KMIP operations](#hsm-kmip-operations)
+      * [Large data: encrypting client side with key wrapping](#large-data-encrypting-client-side-with-key-wrapping)
+  * [The Unwrapped Objects Cache](#the-unwrapped-objects-cache)
+  * [HSM KMIP operations](#hsm-kmip-operations)
     * [Create](#create)
     * [Destroy](#destroy)
-    * [Get & Export](#get--export)
+    * [Get - Export](#get---export)
     * [Encrypt](#encrypt)
     * [Decrypt](#decrypt)
-
 <!-- TOC -->
 
 ## HSM keys
@@ -29,8 +27,8 @@ slot number in the form:
 hsm::<slot_number>::<key_identifier>
 ```
 
-For instance, the key `hsm::1::mykey` is stored in the HSM slot 1 with the identifier `mykey`. Technically, the
-identifier is stored in the `LABEL` field of the key object in the HSM.
+For instance, the key `hsm::1::mykey` is stored in the HSM slot 1 with the identifier `mykey`. Technically, the identifier
+is stored in the `LABEL` field of the key object in the HSM.
 
 Non-prefixed keys are considered KMS keys and are stored in the KMS database.
 
@@ -127,7 +125,7 @@ Further calls to the same object will use the unwrapped object from the cache un
 The time in minutes after an unused object is evicted from the cache is configurable
 using the `unwrapped_cache_max_age` setting. The default is 15 minutes.
 
-When HSM keys wrap objects, a long expiration time will reduce the number of calls made to HSM to unwrap the object.
+When HSM keys wrap objects, a long expiration time reduces the number of calls made to the HSM to unwrap the object.
 However, increasing the cache time will increase the memory the KMS server uses and expose the key in clear text
 in the memory for a longer time.
 
@@ -139,14 +137,15 @@ Some KMIP operations can be performed directly via the KMS server API on the HSM
 
 Create a new key in the HSM. The key unique must be provided on the request and must follow the
 `hsm::<slot_number>::<key_identifier>` format described above.
-Only the user identified by the `--hsm-admin` argument can create keys in the HSM.
+Only the user identified by the `hsm-admin` configuration flag can create keys in the HSM.
 
 RSA and AES keys are supported.
+
 When creating an RSA key, the `key_identifier` will be that of the private key. The corresponding public key will be
 automatically created and stored in the HSM with the same `key_identifier` but with the `_pk` suffix, for example,
 the public key of the `hsm::1::mykey` private key will be created with a unique identifier `has::1::mykey_pk`.
 
-Create an RSA 4096-bit key with the Cosmiian CLI:
+Create an RSA 4096-bit key on the HSM slot 4, with the Cosmian CLI:
 
 ```shell
 ❯ cosmian kms rsa keys create --size_in_bits 4096 --sensitive hsm::4::my_rsa_key
@@ -155,7 +154,7 @@ The RSA key pair has been created.
       Private key unique identifier: hsm::4::my_rsa_key
 ```
 
-Create an AES 256-bit key with the Cosmiian CLI:
+Create an AES 256-bit key on HSM slot 4, with the Cosmian CLI:
 
 ```shell
 ❯ cosmian kms sym keys create --algorithm aes --number-of-bits 256 --sensitive hsm::4::my_aes_key
@@ -170,10 +169,10 @@ Note: HSM keys do not support object tagging in this release.
 
 ### Destroy
 
-Contrary to the KMS keys, HSM keys must not be revoked before being destroyed. The `Destroy` operation will remove the
+Unlike KMS keys, HSM keys must not be revoked before being destroyed. The `Destroy` operation will remove the
 key from the HSM.
 
-Only the user identified by the `--hsm-admin` argument or a user who has been granted the `Destroy` operation (by the
+Only the user identified by the `hsm-admin` configuration flag or a user granted the `Destroy` operation (by the
 HSM admin) can destroy keys in the HSM.
 
 To destroy the key `hsm::4::my_rsa_key`, the following command can be used:
@@ -195,7 +194,7 @@ Successfully destroyed the object.
 ### Get - Export
 
 The `Get` and `Export` operations are used to retrieve the key material from the HSM.
-Only the user identified by the `--hsm-admin` argument or a user who has been granted the `Get` operation (by the HSM
+Only the user identified by the `hsm-admin` configuration flag or a user granted the `Get` operation (by the HSM
 admin) can retrieve keys from the HSM.
 
 Private or symmetric keys marked as `sensitive` cannot be retrieved from the HSM.
@@ -228,8 +227,8 @@ The key hsm::4::my_aes_key of type SymmetricKey was exported to "/tmp/symkey.raw
 
 ### Encrypt
 
-Symmetric keys and public keys can be used to encrypt data. Only the user identified by the `--hsm-admin` argument or a
-user granted the `Encrypt` operation (by the HSM admin) can encrypt data with keys stored in the HSM.
+Symmetric keys and public keys can be used to encrypt data. Only the user identified by the `hsm-admin` 
+configuration flag or a user granted the `Encrypt` operation (by the HSM admin) can encrypt data with keys stored in the HSM.
 
 For symmetric keys, only AES GCM is supported. CKM_RSA_PKCS_OAEP and the now-deprecated, but still widely
 used, CKM_RSA_PKCS (v1.5) are supported for RSA keys. The hashing algorithm is fixed to SHA256.
@@ -278,69 +277,4 @@ To decrypt a message using AES GCM with the symmetric key `hsm::4::my_aes_key`, 
 > cosmian kms sym decrypt --key-id hsm::4::my_aes_key --data-encryption-algorithm aes-gcm \
   --output-file /tmp/secret.recovered.txt /tmp/secret.enc
 The decrypted file is available at "/tmp/secret.recoverd.txt"
-```
-
-## Creating a KMS key wrapped by an HSM key
-
-To create a KMS key wrapped by an HSM key, the `--wrapping-key-id` argument must be used to specify the unique
-identifier of the HSM key.
-
-The user creating the key must be the HSM admin (see above) or have been granted the `Encrypt` operation on the HSM key.
-
-For instance, the following command creates a 256-bit AES key wrapped by the HSM RSA (public) key
-`hsm::4::my_rsa_key_pk`:
-
-```shell
-> cosmian kms sym keys create --algorithm aes --number-of-bits 256 --sensitive \
-  --wrapping-key-id hsm::4::my_rsa_key_pk my_sym_key
-The symmetric key was successfully generated.
-      Unique identifier: my_sym_key
-```
-
-The symmetric key is now stored in the database encrypted (wrapped) by the HSM key. The encryption happened in the HSM.
-
-The symmetric key can now be used to encrypt, and decrypt data, and the KMS will transparently unwrap the key using the
-HSM key.
-
-This unwrapping will happen once, and the unwrapped symmetric key will be cached in memory for later operations; no
-clear text symmetric key will be stored in the KMS database.
-
-### Small data: encrypting server side
-
-For example, to encrypt a message with the key `my_sym_key` server side, the following command can be used:
-
-```shell
-> cosmian kms sym encrypt --key-id my_sym_key /tmp/secret.txt
-The encrypted file is available at "/tmp/secret.enc"
-```
-
-To decrypt a message with the key `my_sym_key`, the following command can be used:
-
-```shell
-> cosmian kms sym decrypt --key-id my_sym_key --output-file /tmp/secret.recovered.txt /tmp/secret.enc
-The decrypted file is available at "/tmp/secret.recovered.txt"
-```
-
-#### Large data: encrypting client side with key wrapping
-
-To encrypt a large file with the key `my_sym_key` client side, the following command can be used:
-
-```shell
->cosmian kms sym encrypt --key-id my_sym_key_2 --data-encryption-algorithm aes-gcm \
---key-encryption-algorithm rfc5649 /tmp/large.bin
-The encrypted file is available at "/tmp/large.enc"
-```
-
-In this case an ephemeral symmetric key (the Data Encryption Key, DEK)
-is generated and used to encrypt the data. The DEK is then encrypted/wrapped with RFC4659 (a.k.a NIST AES Key Wrap)
-with the key `my_sym_key`, called the Key Encryption Key, KEK. The wrapping of the DEK by the KEK
-is stored at the beginning of the encrypted file.
-At rest, in the KMS database, `my_sym_key` is stored encrypted/wrapped with the HSM key `hsm::4::my_rsa_key_pk`.
-
-To decrypt a large file with the KEK `my_sym_key` client side, the following command can be used:
-
-```shell
-> cosmian kms sym decrypt --key-id my_sym_key_2 --data-encryption-algorithm aes-gcm \
-  --key-encryption-algorithm rfc5649 --output-file /tmp/large.recoverd.bin /tmp/large.enc
-The decrypted file is available at "/tmp/large.recoverd.bin"
 ```
