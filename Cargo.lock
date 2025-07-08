@@ -1162,9 +1162,9 @@ checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
 
 [[package]]
 name = "cosmian_config_utils"
-version = "0.2.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "56b96586a73d420cdd4cee41e2a9f69f33c28ae5576cb429db329ffee9398662"
+checksum = "91a2391ecbf5eb9a6df4aabfc7fca8508c64fae697db949b5c768cc5959a99ea"
 dependencies = [
  "base64 0.21.7",
  "serde",
@@ -1266,9 +1266,9 @@ dependencies = [
 
 [[package]]
 name = "cosmian_http_client"
-version = "0.3.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "74dae22ffa29288f8db2fb7c64a2d35149d4e901fc49f165c01720f707dc32d1"
+checksum = "0be6c5aff7d8d56057bb9f9940824cd578c5ecd50b0acd6aa39b6f3d6567f023"
 dependencies = [
  "actix-web",
  "derive_more 0.99.20",
@@ -1286,7 +1286,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kmip"
-version = "5.4.1"
+version = "5.5.0"
 dependencies = [
  "bitflags 2.9.0",
  "cosmian_logger 0.1.1",
@@ -1308,7 +1308,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_access"
-version = "5.4.1"
+version = "5.5.0"
 dependencies = [
  "cosmian_kmip",
  "serde",
@@ -1316,7 +1316,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_base_hsm"
-version = "5.4.1"
+version = "5.5.0"
 dependencies = [
  "async-trait",
  "cosmian_kms_interfaces",
@@ -1331,7 +1331,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_cli"
-version = "5.4.1"
+version = "5.5.0"
 dependencies = [
  "actix-rt",
  "actix-server",
@@ -1343,7 +1343,7 @@ dependencies = [
  "cosmian_kmip",
  "cosmian_kms_client",
  "cosmian_kms_crypto",
- "cosmian_logger 0.3.0",
+ "cosmian_logger 0.3.1",
  "csv",
  "der",
  "hex",
@@ -1362,6 +1362,7 @@ dependencies = [
  "tempfile",
  "test_kms_server",
  "thiserror 2.0.12",
+ "time",
  "tokio",
  "tracing",
  "url",
@@ -1373,7 +1374,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_client"
-version = "5.4.1"
+version = "5.5.0"
 dependencies = [
  "cosmian_crypto_core 10.1.0",
  "cosmian_http_client",
@@ -1390,7 +1391,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_client_utils"
-version = "5.4.1"
+version = "5.5.0"
 dependencies = [
  "base64 0.22.1",
  "clap",
@@ -1402,13 +1403,14 @@ dependencies = [
  "serde_json",
  "strum",
  "thiserror 2.0.12",
+ "time",
  "tracing",
  "zeroize",
 ]
 
 [[package]]
 name = "cosmian_kms_client_wasm"
-version = "5.4.1"
+version = "5.5.0"
 dependencies = [
  "base64 0.22.1",
  "cosmian_kms_client_utils",
@@ -1425,7 +1427,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_crypto"
-version = "5.4.1"
+version = "5.5.0"
 dependencies = [
  "aes-gcm-siv",
  "argon2",
@@ -1433,7 +1435,7 @@ dependencies = [
  "cosmian_cover_crypt",
  "cosmian_crypto_core 10.1.0",
  "cosmian_kmip",
- "cosmian_logger 0.3.0",
+ "cosmian_logger 0.3.1",
  "hex",
  "num-bigint-dig",
  "openssl",
@@ -1449,7 +1451,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_interfaces"
-version = "5.4.1"
+version = "5.5.0"
 dependencies = [
  "async-trait",
  "cosmian_kmip",
@@ -1463,7 +1465,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_server"
-version = "5.4.1"
+version = "5.5.0"
 dependencies = [
  "actix-cors",
  "actix-files",
@@ -1482,7 +1484,7 @@ dependencies = [
  "cosmian_kms_access",
  "cosmian_kms_client_utils",
  "cosmian_kms_server_database",
- "cosmian_logger 0.3.0",
+ "cosmian_logger 0.3.1",
  "dotenvy",
  "futures",
  "hex",
@@ -1516,14 +1518,14 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_server_database"
-version = "5.4.1"
+version = "5.5.0"
 dependencies = [
  "async-trait",
  "cloudproof_findex",
  "cosmian_kmip",
  "cosmian_kms_crypto",
  "cosmian_kms_interfaces",
- "cosmian_logger 0.3.0",
+ "cosmian_logger 0.3.1",
  "hex",
  "lru",
  "num-bigint-dig",
@@ -1555,9 +1557,9 @@ dependencies = [
 
 [[package]]
 name = "cosmian_logger"
-version = "0.3.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "00527c806b20c89adc2a7230737709bc81aafdd6f0d09f6a0bfff27ed1200903"
+checksum = "b2c887d6087c95c041dd1c23628844c610f0b177b13fb3f4a51f71532c75298a"
 dependencies = [
  "opentelemetry",
  "opentelemetry-otlp",
@@ -3080,7 +3082,7 @@ dependencies = [
 
 [[package]]
 name = "kmip-derive"
-version = "5.4.1"
+version = "5.5.0"
 dependencies = [
  "quote",
  "syn",
@@ -4076,11 +4078,11 @@ dependencies = [
 
 [[package]]
 name = "proteccio_pkcs11_loader"
-version = "5.4.1"
+version = "5.5.0"
 dependencies = [
  "cosmian_kms_base_hsm",
  "cosmian_kms_interfaces",
- "cosmian_logger 0.3.0",
+ "cosmian_logger 0.3.1",
  "libloading",
  "pkcs11-sys",
  "tracing",
@@ -5309,12 +5311,12 @@ checksum = "8f50febec83f5ee1df3015341d8bd429f2d1cc62bcba7ea2076759d315084683"
 
 [[package]]
 name = "test_kms_server"
-version = "5.4.1"
+version = "5.5.0"
 dependencies = [
  "actix-server",
  "cosmian_kms_client",
  "cosmian_kms_server",
- "cosmian_logger 0.3.0",
+ "cosmian_logger 0.3.1",
  "criterion",
  "serde_json",
  "tempfile",
@@ -5891,11 +5893,11 @@ checksum = "b6c140620e7ffbb22c2dee59cafe6084a59b5ffc27a8859a5f0d494b5d52b6be"
 
 [[package]]
 name = "utimaco_pkcs11_loader"
-version = "5.4.1"
+version = "5.5.0"
 dependencies = [
  "cosmian_kms_base_hsm",
  "cosmian_kms_interfaces",
- "cosmian_logger 0.3.0",
+ "cosmian_logger 0.3.1",
  "libloading",
  "pkcs11-sys",
  "tracing",

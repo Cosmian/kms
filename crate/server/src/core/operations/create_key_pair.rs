@@ -42,6 +42,7 @@ pub(crate) async fn create_key_pair(
     trace!("Create key pair: {}", serde_json::to_string(&request)?);
 
     // To create a key pair, check that the user has `Create` access right
+    // The `Create` right implicitly grants permission for Create, Import, and Register operations.
     if let Some(users) = privileged_users {
         let has_permission = user_has_permission(
             owner,

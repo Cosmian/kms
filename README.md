@@ -13,7 +13,7 @@ Online [documentation](https://docs.cosmian.com/key_management_system/)
 
 The Cosmian KMS presents some unique features, such as:
 
-- large scale encryption and decryption of
+- large-scale encryption and decryption of
   data [see this documentation](./documentation/docs/encrypting_and_decrypting_at_scale.md)
 - the ability to confidentially run in a public cloud, or any zero-trust environment, using
   Cosmian VM. See our cloud-ready confidential KMS on the
@@ -71,7 +71,7 @@ The KMS has extensive online [documentation](https://docs.cosmian.com/key_manage
 
 ## Quick start
 
-Pre-built binaries [are available](https://package.cosmian.com/kms/5.4.1/)
+Pre-built binaries [are available](https://package.cosmian.com/kms/5.5.0/)
 for Linux, MacOS, and Windows, as well as Docker images. To run the server binary, OpenSSL must be
 available in your path (see "building the KMS" below for details); other binaries do not have this
 requirement.
@@ -89,7 +89,7 @@ and
 launched from this GitHub project by running
 
 ```sh
-cargo run --bin cosmian -- --help
+cargo run --bin cosmian --features non-fips -- --help
 ```
 
 ### Example
@@ -97,7 +97,7 @@ cargo run --bin cosmian -- --help
 1. Create a 256-bit symmetric key
 
     ```sh
-    ➜ cargo run --bin cosmian -- sym keys create --number-of-bits 256 --algorithm aes --tag my-key-file
+    ➜ cargo run --bin cosmian --features non-fips -- sym keys create --number-of-bits 256 --algorithm aes --tag my-key-file
     ...
     The symmetric key was successfully generated.
       Unique identifier: 87e9e2a8-4538-4701-aa8c-e3af94e44a9e
@@ -109,7 +109,7 @@ cargo run --bin cosmian -- --help
 2. Encrypt the `image.png` file with AES GCM using the key
 
     ```sh
-    ➜ cargo run --bin cosmian -- sym encrypt --tag my-key-file --output-file image.enc image.png
+    ➜ cargo run --bin cosmian --features non-fips -- sym encrypt --tag my-key-file --output-file image.enc image.png
     ...
     The encrypted file is available at "image.enc"
     ```
@@ -117,7 +117,7 @@ cargo run --bin cosmian -- --help
 3. Decrypt the `image.enc` file using the key
 
     ```sh
-    ➜ cargo run --bin cosmian -- sym decrypt --tag my-key-file --output-file image2.png image.enc
+    ➜ cargo run --bin cosmian --features non-fips -- sym decrypt --tag my-key-file --output-file image2.png image.enc
     ...
     The decrypted file is available at "image2.png"
     ```
@@ -132,32 +132,34 @@ binaries:
 - A server (`cosmian_kms`) which is the KMS itself
 - A CLI (`cosmian`) to interact with this server
 
-And also some crates:
+The most important crates are:   
 
 - `access` to handle permissions
 - `client` to query the server
 - `interfaces` to handle the interfaces with storage and encryption oracles
-- `kmip` which is an implementation of the KMIP standard
+- `kmip`, which is an implementation of the KMIP standard
 - `server_database` to handle the database
 - `pkcs11_*` to handle PKCS11 support
-- `test_kms_server` which is a library to instantiate programmatically the KMS server.
+- `test_kms_server`, a library that allows you to instantiate the KMS server programmatically.
 
-**Please refer to the README of the inner directories to have more information.**
+**Please refer to the README files in the inner directories for more information.**
 
 Find the [public documentation](https://docs.cosmian.com) of the KMS in the `documentation`
 directory.
 
-## Building the KMS
+## Building and running the KMS
 
-First, pull the git submodule for CI requirements such as downloading OpenSSL binaries:
+The Cosmian KMS is built using the [Rust](https://www.rust-lang.org/) programming language.
+A Rust toolchain is required to build the KMS.
 
-```sh
-git submodule update --init --recursive
-````
+### Features
 
-Then, OpenSSL v3.2.0 is required to build the KMS.
+From version 5.4.0, the KMS runs in FIPS mode by default.
+The non-FIPS mode can be enabled by passing the `--features non-fips` flag to `cargo build` or `cargo run`.
 
-### Linux or MacOS (CPU Intel or MacOs ARM)
+OpenSSL v3.2.0 is required to build the KMS.
+
+### Linux or macOS (CPU Intel or macOS ARM)
 
 Retrieve OpenSSL v3.2.0 (already built) with the following commands:
 
@@ -186,7 +188,7 @@ vcpkg integrate install
 $env:OPENSSL_DIR = "$env:VCPKG_INSTALLATION_ROOT\packages\openssl_x64-windows-static" # openssl_arm64-windows-static for ARM64
 ```
 
-For a FIPS compliant build, use the following commands (to build fips.dll), also run:
+For a FIPS-compliant build, use the following commands (to build fips.dll), also run:
 
 ```powershell
 Copy-Item -Path "vcpkg_fips.json" -Destination "vcpkg.json"
@@ -265,7 +267,7 @@ log level and select the correct backend (which defaults to `sqlite`).
 
 ```sh
 RUST_LOG="info,cosmian_kms_server=debug" \
-cargo run --bin cosmian_kms -- \
+cargo run --bin cosmian_kms --features non-fips -- \
 --database-type redis-findex --database-url redis://localhost:6379 \
 --redis-master-password secret --redis-findex-label label
 ```

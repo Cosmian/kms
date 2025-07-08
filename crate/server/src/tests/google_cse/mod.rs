@@ -1,15 +1,16 @@
 #![allow(clippy::unwrap_used, clippy::print_stdout, clippy::panic_in_result_fn)]
 use std::{
+    collections::HashMap,
     fs::File,
     io::Read,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, RwLock},
 };
 
 use actix_http::{Request, body::MessageBody};
 use actix_service::Service;
 use actix_web::dev::ServiceResponse;
-use alcoholic_jwt::{JWKS, token_kid, validate};
+use alcoholic_jwt::JWKS;
 use base64::{Engine, engine::general_purpose};
 use cosmian_kms_access::access::{Access, SuccessResponse};
 use cosmian_kms_server_database::reexport::{
@@ -50,17 +51,22 @@ use crate::{
     config::ServerParams,
     core::KMS,
     error::KmsError,
+    middlewares::{JwksManager, JwtConfig},
     result::{KResult, KResultHelper},
-    routes::google_cse::operations::{
-        GOOGLE_CSE_ID, PrivateKeyDecryptRequest, PrivateKeyDecryptResponse, PrivateKeySignRequest,
-        PrivateKeySignResponse, PrivilegedPrivateKeyDecryptRequest,
-        PrivilegedPrivateKeyDecryptResponse, PrivilegedUnwrapRequest, PrivilegedUnwrapResponse,
-        PrivilegedWrapRequest, PrivilegedWrapResponse, StatusResponse, UnwrapRequest,
-        UnwrapResponse, WrapRequest, WrapResponse, compute_resource_key_hash, create_jwt,
+    routes::google_cse::{
+        GoogleCseConfig,
+        operations::{
+            GOOGLE_CSE_ID, PrivateKeyDecryptRequest, PrivateKeyDecryptResponse,
+            PrivateKeySignRequest, PrivateKeySignResponse, PrivilegedPrivateKeyDecryptRequest,
+            PrivilegedPrivateKeyDecryptResponse, PrivilegedUnwrapRequest, PrivilegedUnwrapResponse,
+            PrivilegedWrapRequest, PrivilegedWrapResponse, StatusResponse, UnwrapRequest,
+            UnwrapResponse, WrapRequest, WrapResponse, compute_resource_key_hash, create_jwt,
+        },
+        validate_cse_authentication_token,
     },
     tests::{
         google_cse::utils::generate_google_jwt,
-        test_utils::{self, https_clap_config},
+        test_utils::{self, https_clap_config, post_2_1},
     },
 };
 
@@ -788,7 +794,7 @@ async fn test_cse_custom_jwt() -> KResult<()> {
     let resource_name = "resource_name_test".to_owned();
     let kacls_url = "https://127.0.0.1:9998/google_cse";
 
-    // Generate custom JWT
+    // --- Retrieve RSA Private Key from KMS ---
     let get_request = Get {
         unique_identifier: Some(UniqueIdentifier::TextString(format!("{GOOGLE_CSE_ID}_rsa"))),
         key_format_type: Some(KeyFormatType::PKCS1),
@@ -797,7 +803,7 @@ async fn test_cse_custom_jwt() -> KResult<()> {
         key_wrapping_specification: None,
     };
 
-    let response: GetResponse = test_utils::post_2_1(&app, get_request).await?;
+    let response: GetResponse = post_2_1(&app, get_request).await?;
 
     let private_key_bytes = match response.object_type {
         ObjectType::PrivateKey => match &response.object.key_block()?.key_value {
@@ -808,57 +814,56 @@ async fn test_cse_custom_jwt() -> KResult<()> {
             _ => {
                 return Err(KmsError::InvalidRequest(
                     "Expected ByteString key material for RSA private key.".to_owned(),
-                ))
+                ));
             }
         },
         _ => {
             return Err(KmsError::InvalidRequest(
-                "Invalid RSA Private key ID. Not an RSA Private key.".to_owned(),
+                "Provided ID is not an RSA private key.".to_owned(),
             ));
         }
     };
 
-    // Create JWT
-    let token = create_jwt(private_key_bytes, kacls_url, kacls_url, &resource_name)
-        .expect("JWT creation failed");
+    // Generate custom JWT
+    let jwt_token = create_jwt(private_key_bytes, kacls_url, kacls_url, &resource_name)
+        .expect("Failed to create JWT");
+    assert!(!jwt_token.is_empty(), "JWT should not be empty");
 
-    assert!(!token.is_empty(), "Generated token should not be empty");
-
-    // Decode JWT and check content
+    // Retrieve JWKS inner exposed
     let jwks: JWKS = test_utils::get_json_with_uri(&app, "/google_cse/certs")
         .await
-        .expect("Failed to fetch JWKS");
+        .expect("Failed to fetch JWKS from server");
 
-    debug!("jwks {:?}", jwks);
+    // Prepare JWKS Manager
+    let mut jwks_map = HashMap::new();
+    jwks_map.insert(kacls_url.to_owned(), jwks);
 
-    let validations = vec![
-        #[cfg(not(test))]
-        alcoholic_jwt::Validation::Issuer("https://127.0.0.1/google_cse"),
-        #[cfg(not(feature = "insecure"))]
-        alcoholic_jwt::Validation::NotExpired,
-    ];
+    let jwks_manager = JwksManager {
+        uris: vec![kacls_url.to_owned()],
+        jwks: RwLock::new(jwks_map),
+        last_update: RwLock::new(None),
+        proxy_params: None,
+    };
 
-    let kid = token_kid(&token)
-        .expect("Failed to decode token headers")
-        .expect("No 'kid' claim present in token");
+    let cse_config = GoogleCseConfig {
+        authentication: Arc::new(vec![JwtConfig {
+            jwt_issuer_uri: kacls_url.to_owned(),
+            jwt_audience: Some("kacls-migration".to_owned()),
+            jwks: Arc::new(jwks_manager),
+        }]),
+        authorization: HashMap::new(),
+    };
+
+    // Validate custom JWT
+    let result =
+        validate_cse_authentication_token(&jwt_token, &Some(cse_config), kacls_url, "admin", false)
+            .await;
 
     assert!(
-        !kid.is_empty(),
-        "Token should contain a non-empty 'kid' claim"
+        result.is_ok(),
+        "Expected JWT validation to succeed, but got error: {:?}",
+        result.err()
     );
-
-    let jwk = jwks.find(&kid).expect("Specified key not found in set");
-
-    let claims = validate(&token, jwk, validations).expect("Token validation has failed!");
-
-    assert!(
-        claims.claims.as_object().is_some_and(|m| !m.is_empty()),
-        "Token claims should be a non-empty JSON object"
-    );
-
-    if let Some(issuer) = claims.claims.get("iss") {
-        assert_eq!(issuer, kacls_url, "Issuer claim should match expected URL");
-    }
 
     Ok(())
 }

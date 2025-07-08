@@ -203,6 +203,10 @@ async fn process_operation(
             Operation::MACResponse(kms.mac(kmip_request, user, params).await?)
         }
         Operation::Query(kmip_request) => Operation::QueryResponse(kms.query(kmip_request).await?),
+        Operation::Register(kmip_request) => Operation::RegisterResponse(
+            kms.register(kmip_request, user, params, privileged_users)
+                .await?,
+        ),
         Operation::ReKey(kmip_request) => {
             Operation::ReKeyResponse(kms.rekey(kmip_request, user, params).await?)
         }
@@ -236,6 +240,7 @@ async fn process_operation(
         | Operation::LocateResponse(_)
         | Operation::MACResponse(_)
         | Operation::QueryResponse(_)
+        | Operation::RegisterResponse(_)
         | Operation::ReKeyKeyPairResponse(_)
         | Operation::ReKeyResponse(_)
         | Operation::RevokeResponse(_)

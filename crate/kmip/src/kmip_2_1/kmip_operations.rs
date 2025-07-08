@@ -69,6 +69,8 @@ pub enum Operation {
     MACResponse(MACResponse),
     Query(Query),
     QueryResponse(QueryResponse),
+    Register(Register),
+    RegisterResponse(RegisterResponse),
     Revoke(Revoke),
     RevokeResponse(RevokeResponse),
     ReKey(ReKey),
@@ -101,6 +103,7 @@ impl Operation {
             | Self::Locate(_)
             | Self::MAC(_)
             | Self::Query(_)
+            | Self::Register(_)
             | Self::Revoke(_)
             | Self::ReKey(_)
             | Self::ReKeyKeyPair(_)
@@ -124,6 +127,7 @@ impl Operation {
             | Self::HashResponse(_)
             | Self::LocateResponse(_)
             | Self::MACResponse(_)
+            | Self::RegisterResponse(_)
             | Self::RevokeResponse(_)
             | Self::ReKeyResponse(_)
             | Self::ReKeyKeyPairResponse(_)
@@ -163,6 +167,7 @@ impl Operation {
             Self::Locate(_) | Self::LocateResponse(_) => OperationEnumeration::Locate,
             Self::MAC(_) | Self::MACResponse(_) => OperationEnumeration::MAC,
             Self::Query(_) | Self::QueryResponse(_) => OperationEnumeration::Query,
+            Self::Register(_) | Self::RegisterResponse(_) => OperationEnumeration::Register,
             Self::ReKey(_) | Self::ReKeyResponse(_) => OperationEnumeration::ReKey,
             Self::ReKeyKeyPair(_) | Self::ReKeyKeyPairResponse(_) => {
                 OperationEnumeration::ReKeyKeyPair
@@ -1610,6 +1615,81 @@ pub struct QueryResponse {
     /// Protection Storage Masks supported by the server.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub protection_storage_masks: Option<ProtectionStorageMasks>,
+}
+
+/// Register
+///
+/// This operation requests the server to register a Managed Object that was
+/// created by the client or obtained by the client through some other means,
+/// allowing the server to manage the object. The arguments in the request are
+/// similar to those in the Create operation, but contain the object itself for
+/// storage by the server.
+/// The request contains information about the type of object being registered
+/// and attributes to be assigned to the object (e.g., Cryptographic Algorithm,
+/// Cryptographic Length, etc.). This information SHALL be specified by the use
+/// of a Attributes object.
+/// If the Managed Object being registered is wrapped, the server SHALL create a
+/// Link attribute of Link Type Wrapping Key Link pointing to the Managed Object
+/// with which the Managed Object being registered is wrapped.
+/// The response contains the Unique Identifier assigned by the server to the
+/// registered object. The server SHALL copy the Unique Identifier returned by
+/// this operation into the ID Placeholder variable. The Initial Date attribute
+/// of the object SHALL be set to the current time.
+
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct Register {
+    /// Determines the type of object to be registered.
+    pub object_type: ObjectType,
+    /// Specifies desired attributes to be associated with the new object.
+    pub attributes: Attributes,
+    /// The object being registered. The object and attributes MAY be wrapped.
+    pub object: Object,
+    /// Specifies all permissible Protection Storage Mask selections for the new
+    /// object
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub protection_storage_masks: Option<ProtectionStorageMasks>,
+}
+
+impl Display for Register {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Register {{ object_type: {}, attributes: {:?}, object: {:?}, \
+             protection_storage_masks: {:?} }}",
+            self.object_type, self.attributes, self.object, self.protection_storage_masks
+        )
+    }
+}
+
+impl From<Register> for Import {
+    fn from(register: Register) -> Self {
+        Self {
+            unique_identifier: UniqueIdentifier::from(""),
+            object_type: register.object_type,
+            replace_existing: Some(false),
+            key_wrap_type: None,
+            attributes: register.attributes,
+            object: register.object,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
+pub struct RegisterResponse {
+    /// The Unique Identifier of the newly registered object.
+    pub unique_identifier: UniqueIdentifier,
+}
+
+impl Display for RegisterResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "RegisterResponse {{  unique_identifier: {} }}",
+            self.unique_identifier
+        )
+    }
 }
 
 /// Revoke

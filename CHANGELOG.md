@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.5.0] - 2025-07-08
+
+### 🚀 Features
+
+- Implement Register KMIP Operation
+- ANSI colors in stdout are now disabled by default but can be re-enabled using a configuration flag
+- Handle extension file to define x509 setup extensions for Google CSE keypairs create command
+
+### 🐛 Bug Fixes
+
+- Fix the default path for the `kms.toml` file on Windows
+- Full configuration `kms.toml` file for Linux packaged distributions
+- Handle KMIP Dates as OffsetDateTime instead of i64
+
+### ⚙️ Miscellaneous Tasks
+
+- Display items ID on google keypairs creation command
+
+### 📚 Documentation
+
+- Missing documentation on the rolling file appender in the server configuration file
+- Update README.md to reflect that the KMS now builds in FIPS mode by default
+
+### 🧪 Testing
+
+- Test custom JWT used from Google CSE migration endpoints
+- Test Import and Register KMIP operations
+
 ## [5.4.1] - 2025-06-25
 
 ### 🐛 Bug Fixes
