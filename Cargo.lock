@@ -4954,7 +4954,7 @@ version = "5.4.1"
 dependencies = [
  "cosmian_kms_base_hsm",
  "cosmian_kms_interfaces",
- "cosmian_logger 0.3.0",
+ "cosmian_logger 0.3.1",
  "libloading",
  "pkcs11-sys",
  "tracing",
