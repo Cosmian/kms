@@ -1162,9 +1162,9 @@ checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
 
 [[package]]
 name = "cosmian_config_utils"
-version = "0.2.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "56b96586a73d420cdd4cee41e2a9f69f33c28ae5576cb429db329ffee9398662"
+checksum = "91a2391ecbf5eb9a6df4aabfc7fca8508c64fae697db949b5c768cc5959a99ea"
 dependencies = [
  "base64 0.21.7",
  "serde",
@@ -1266,9 +1266,9 @@ dependencies = [
 
 [[package]]
 name = "cosmian_http_client"
-version = "0.3.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "74dae22ffa29288f8db2fb7c64a2d35149d4e901fc49f165c01720f707dc32d1"
+checksum = "0be6c5aff7d8d56057bb9f9940824cd578c5ecd50b0acd6aa39b6f3d6567f023"
 dependencies = [
  "actix-web",
  "derive_more 0.99.20",
@@ -1343,7 +1343,7 @@ dependencies = [
  "cosmian_kmip",
  "cosmian_kms_client",
  "cosmian_kms_crypto",
- "cosmian_logger 0.3.0",
+ "cosmian_logger 0.3.1",
  "csv",
  "der",
  "hex",
@@ -1435,7 +1435,7 @@ dependencies = [
  "cosmian_cover_crypt",
  "cosmian_crypto_core 10.1.0",
  "cosmian_kmip",
- "cosmian_logger 0.3.0",
+ "cosmian_logger 0.3.1",
  "hex",
  "num-bigint-dig",
  "openssl",
@@ -1484,7 +1484,7 @@ dependencies = [
  "cosmian_kms_access",
  "cosmian_kms_client_utils",
  "cosmian_kms_server_database",
- "cosmian_logger 0.3.0",
+ "cosmian_logger 0.3.1",
  "dotenvy",
  "futures",
  "hex",
@@ -1525,7 +1525,7 @@ dependencies = [
  "cosmian_kmip",
  "cosmian_kms_crypto",
  "cosmian_kms_interfaces",
- "cosmian_logger 0.3.0",
+ "cosmian_logger 0.3.1",
  "hex",
  "lru",
  "num-bigint-dig",
@@ -1557,9 +1557,9 @@ dependencies = [
 
 [[package]]
 name = "cosmian_logger"
-version = "0.3.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "00527c806b20c89adc2a7230737709bc81aafdd6f0d09f6a0bfff27ed1200903"
+checksum = "b2c887d6087c95c041dd1c23628844c610f0b177b13fb3f4a51f71532c75298a"
 dependencies = [
  "opentelemetry",
  "opentelemetry-otlp",
@@ -4082,7 +4082,7 @@ version = "5.4.1"
 dependencies = [
  "cosmian_kms_base_hsm",
  "cosmian_kms_interfaces",
- "cosmian_logger 0.3.0",
+ "cosmian_logger 0.3.1",
  "libloading",
  "pkcs11-sys",
  "tracing",
@@ -5316,7 +5316,7 @@ dependencies = [
  "actix-server",
  "cosmian_kms_client",
  "cosmian_kms_server",
- "cosmian_logger 0.3.0",
+ "cosmian_logger 0.3.1",
  "criterion",
  "serde_json",
  "tempfile",
@@ -5897,7 +5897,7 @@ version = "5.4.1"
 dependencies = [
  "cosmian_kms_base_hsm",
  "cosmian_kms_interfaces",
- "cosmian_logger 0.3.0",
+ "cosmian_logger 0.3.1",
  "libloading",
  "pkcs11-sys",
  "tracing",

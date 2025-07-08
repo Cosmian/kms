@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.5.0] - 2025-07-08
+
+### 🚀 Features
+
+- ANSI colors in stdout are now disabled by default but can be re-enabled using a configuration flag
+
+### 🐛 Bug Fixes
+
+- Missing documentation on the rolling file appender in the server configuration file
+- Update README.md to reflect that the KMS now builds in FIPS mode by default
+- Fix the default path for the `kms.toml` file on Windows
+- Full configuration `kms.toml` file for Linux packaged distributions
+
+
 ## [5.4.1] - 2025-06-25
 
 ### 🐛 Bug Fixes

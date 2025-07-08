@@ -16,7 +16,11 @@ use crate::{
     result::KResult,
 };
 
+#[cfg(not(target_os = "windows"))]
 const DEFAULT_COSMIAN_KMS_CONF: &str = "/etc/cosmian/kms.toml";
+#[cfg(target_os = "windows")]
+const DEFAULT_COSMIAN_KMS_CONF: &str = r"C:\ProgramData\Cosmian\kms.toml";
+
 const DEFAULT_USERNAME: &str = "admin";
 const HSM_ADMIN: &str = "admin";
 

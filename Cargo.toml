@@ -64,12 +64,12 @@ base64 = "0.22"
 bitflags = "2.9"
 chrono = "0.4"
 clap = { version = "4.5", default-features = false }
-cosmian_config_utils = "0.2"
+cosmian_config_utils = "0.3.1"
 cosmian_crypto_core = { version = "10.1", default-features = false, features = [
     "ser",
 ] }
-cosmian_http_client = "0.3"
-cosmian_logger = "0.3"
+cosmian_http_client = "0.3.1"
+cosmian_logger = "0.3.1"
 der = { version = "0.7", default-features = false }
 hex = { version = "0.4", default-features = false }
 lazy_static = "1.5"
