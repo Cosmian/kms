@@ -571,19 +571,12 @@ async fn unwrap_if_requested(
                 )
                 .await?;
             // If we have lost attributes on the unwrapped object, we need to restore them
-            match object.key_block_mut() {
-                Err(_) => {
-                    // never mind, not object attributes, nothing to do
-                }
-                Ok(key_block) => {
-                    if let Some(KeyValue::Structure { attributes, .. }) =
-                        key_block.key_value.as_mut()
-                    {
-                        if attributes.is_none() {
-                            // if the attributes are None, we need to set them to the existing
-                            // attributes
-                            *attributes = Some(object_with_metadata.attributes().clone());
-                        }
+            if let Ok(key_block) = object.key_block_mut() {
+                if let Some(KeyValue::Structure { attributes, .. }) = key_block.key_value.as_mut() {
+                    if attributes.is_none() {
+                        // if the attributes are None, we need to set them to the existing
+                        // attributes
+                        *attributes = Some(object_with_metadata.attributes().clone());
                     }
                 }
             }
