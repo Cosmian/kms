@@ -42,7 +42,7 @@ use cosmian_kms_interfaces::{
     KeyType, RsaPrivateKeyMaterial, RsaPublicKeyMaterial,
 };
 use pkcs11_sys::*;
-use rand::{rngs::OsRng, TryRngCore};
+use rand::{TryRngCore, rngs::OsRng};
 use tracing::debug;
 use zeroize::Zeroizing;
 

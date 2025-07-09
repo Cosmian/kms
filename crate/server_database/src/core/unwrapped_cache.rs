@@ -10,9 +10,9 @@ use lru::LruCache;
 #[cfg(test)]
 use tokio::sync::RwLockReadGuard;
 use tokio::sync::{
+    RwLock,
     mpsc::{self, Receiver, Sender},
     oneshot,
-    RwLock,
 };
 use tracing::{debug, trace, warn};
 
@@ -248,14 +248,14 @@ mod tests {
         requests::create_symmetric_key_kmip_object,
     };
     use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
-        reexport::rand_core::{RngCore, SeedableRng},
         CsRng,
+        reexport::rand_core::{RngCore, SeedableRng},
     };
     use cosmian_logger::log_init;
     use tempfile::TempDir;
     use uuid::Uuid;
 
-    use crate::{core::main_db_params::MainDbParams, error::DbResult, Database};
+    use crate::{Database, core::main_db_params::MainDbParams, error::DbResult};
 
     #[tokio::test]
     #[allow(clippy::unwrap_used, clippy::panic_in_result_fn)]

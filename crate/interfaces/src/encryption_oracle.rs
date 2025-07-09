@@ -11,7 +11,7 @@ use cosmian_kmip::{
 };
 use zeroize::Zeroizing;
 
-use crate::{error::InterfaceResult, InterfaceError, KeyType};
+use crate::{InterfaceError, KeyType, error::InterfaceResult};
 
 #[derive(Debug)]
 pub struct KeyMetadata {

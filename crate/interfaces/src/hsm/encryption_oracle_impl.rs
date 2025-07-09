@@ -10,8 +10,8 @@ use tracing::debug;
 use zeroize::Zeroizing;
 
 use crate::{
-    encryption_oracle::EncryptedContent, CryptoAlgorithm, EncryptionOracle, InterfaceError, InterfaceResult, KeyMetadata, KeyType,
-    HSM,
+    CryptoAlgorithm, EncryptionOracle, HSM, InterfaceError, InterfaceResult, KeyMetadata, KeyType,
+    encryption_oracle::EncryptedContent,
 };
 
 pub struct HsmEncryptionOracle {

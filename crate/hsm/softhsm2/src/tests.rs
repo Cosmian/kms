@@ -7,13 +7,13 @@
 use std::{collections::HashMap, ptr, sync::Arc, thread};
 
 use cosmian_kms_base_hsm::{
-    test_helpers::get_hsm_password, AesKeySize, HError, HResult, HsmEncryptionAlgorithm, RsaKeySize, RsaOaepDigest,
-    SlotManager,
+    AesKeySize, HError, HResult, HsmEncryptionAlgorithm, RsaKeySize, RsaOaepDigest, SlotManager,
+    test_helpers::get_hsm_password,
 };
 use cosmian_kms_interfaces::{HsmObjectFilter, KeyMaterial, KeyType};
 use cosmian_logger::log_init;
 use libloading::Library;
-use pkcs11_sys::{CKF_OS_LOCKING_OK, CKR_OK, CK_C_INITIALIZE_ARGS, CK_RV, CK_VOID_PTR};
+use pkcs11_sys::{CK_C_INITIALIZE_ARGS, CK_RV, CK_VOID_PTR, CKF_OS_LOCKING_OK, CKR_OK};
 use tracing::info;
 use uuid::Uuid;
 
