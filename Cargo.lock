@@ -1502,6 +1502,7 @@ dependencies = [
  "rustls 0.23.27",
  "serde",
  "serde_json",
+ "softhsm2_pkcs11_loader",
  "strum",
  "tempfile",
  "thiserror 2.0.12",
@@ -4945,6 +4946,19 @@ checksum = "4f5fd57c80058a56cf5c777ab8a126398ece8e442983605d280a44ce79d0edef"
 dependencies = [
  "libc",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "softhsm2_pkcs11_loader"
+version = "5.5.0"
+dependencies = [
+ "cosmian_kms_base_hsm",
+ "cosmian_kms_interfaces",
+ "cosmian_logger 0.3.1",
+ "libloading",
+ "pkcs11-sys",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]

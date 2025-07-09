@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.5.1] - 2025-07-09
+
+### 🐛 Bug Fixes
+
+- Fixed an issue with Locate failing when an HSM is present
+- Fixed missing attributes when the wrapped object is not in the cache (#462)
+- Added support for SoftHsmV2 (#457)
+
+
 ## [5.5.0] - 2025-07-08
 
 ### 🚀 Features

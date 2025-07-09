@@ -6,6 +6,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use tracing::debug;
 use zeroize::Zeroizing;
 
 use crate::{
@@ -37,24 +38,38 @@ impl EncryptionOracle for HsmEncryptionOracle {
                 "Additional authenticated data are not supported on HSMs for now".to_owned(),
             ));
         }
-        let (slot_id, key_id) = parse_uid(uid)?;
+        let (mut slot_id, mut key_id) = parse_uid(uid)?;
         let cryptographic_algorithm = if let Some(ca) = cryptographic_algorithm {
             ca
         } else {
             // Determine the default algorithm based on the key type
             match self.hsm.get_key_type(slot_id, &key_id).await? {
                 None => {
-                    return Err(InterfaceError::InvalidRequest(
-                        "The key {}type is not known".to_owned(),
-                    ))
+                    return Err(InterfaceError::InvalidRequest(format!(
+                        "The key type of key: {uid}, cannot be determined"
+                    )))
                 }
                 Some(key_type) => match key_type {
                     KeyType::AesKey => CryptoAlgorithm::AesGcm,
-                    KeyType::RsaPublicKey => CryptoAlgorithm::RsaOaep,
+                    KeyType::RsaPublicKey => CryptoAlgorithm::RsaOaepSha256,
                     KeyType::RsaPrivateKey => {
-                        return Err(InterfaceError::Default(
-                            "An RSA private key cannot be used to decrypt".to_owned(),
-                        ))
+                        // try fetching the corresponding public key
+                        let pk_uid = format!("{uid}_pk");
+                        debug!(
+                            "encrypt: an RSA private key {uid} was specified. Trying to use \
+                             public key {pk_uid} for encryption"
+                        );
+                        (slot_id, key_id) = parse_uid(&pk_uid)?;
+                        self.hsm
+                            .get_key_type(slot_id, &key_id)
+                            .await?
+                            .ok_or_else(|| {
+                                InterfaceError::InvalidRequest(format!(
+                                    "The key {uid} is a private key, but no public key {pk_uid} \
+                                     is available"
+                                ))
+                            })?;
+                        CryptoAlgorithm::RsaOaepSha256
                     }
                 },
             }
@@ -89,7 +104,7 @@ impl EncryptionOracle for HsmEncryptionOracle {
                 }
                 Some(key_type) => match key_type {
                     KeyType::AesKey => CryptoAlgorithm::AesGcm,
-                    KeyType::RsaPrivateKey => CryptoAlgorithm::RsaOaep,
+                    KeyType::RsaPrivateKey => CryptoAlgorithm::RsaOaepSha256,
                     KeyType::RsaPublicKey => {
                         return Err(InterfaceError::Default(
                             "An RSA public key cannot be used to decrypt".to_owned(),

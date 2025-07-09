@@ -1,21 +1,19 @@
 # Utimaco HSM
 
 <!-- TOC -->
-
-- [Utimaco HSM](#utimaco-hsm)
-    - [Installing the simulator](#installing-the-simulator)
-        - [ARM](#arm)
-        - [AMD64](#amd64)
-    - [Download and run the simulator](#download-and-run-the-simulator)
-    - [Configure the PKCS#11 connection on the KMS server](#configure-the-pkcs11-connection-on-the-kms-server)
-        - [PKCS#11 library](#pkcs11-library)
-        - [Configuration file](#configuration-file)
-        - [Test the PKCS#11 configuration](#test-the-pkcs11-configuration)
-    - [When a bridged network is not possible](#when-a-bridged-network-is-not-possible)
-    - [Initializing a slot and creating the users on the simulator](#initializing-a-slot-and-creating-the-users-on-the-simulator)
-        - [Using the p11tool2](#using-the-p11tool2)
-        - [Using the CAT tool](#using-the-cat-tool)
-
+* [Utimaco HSM](#utimaco-hsm)
+  * [Installing the simulator](#installing-the-simulator)
+    * [ARM](#arm)
+    * [AMD64](#amd64)
+  * [Download and run the simulator](#download-and-run-the-simulator)
+  * [Configure the PKCS#11 connection on the KMS server](#configure-the-pkcs11-connection-on-the-kms-server)
+    * [PKCS#11 library](#pkcs11-library)
+    * [Configuration file](#configuration-file)
+    * [Test the PKCS#11 configuration](#test-the-pkcs11-configuration)
+  * [When a bridged network is not possible](#when-a-bridged-network-is-not-possible)
+  * [Initializing a slot and creating the users on the simulator](#initializing-a-slot-and-creating-the-users-on-the-simulator)
+    * [Using the p11tool2](#using-the-p11tool2)
+    * [Using the CAT tool](#using-the-cat-tool)
 <!-- TOC -->
 
 ## Installing the simulator
@@ -27,7 +25,7 @@ The simulator is a 32-bit ELF application on Linux.
 When developing on 64-bit ARM system, such as a recent MacBook, the easiest way to run the simulator,
 is to install a Windows VM, while performing the development on an Ubuntu VM configured to use Rosetta.
 
-Make sure that the VM network is in bridge mode so that it gets an IP address from the same network as the host.
+Ensure that the VM network is configured in bridge mode, allowing it to obtain an IP address from the same network as the host.
 If bridging is not possible, start the VMs in NAT mode and
 check [this paragraph](#when-a-bridged-network-is-not-possible)
 
@@ -205,7 +203,8 @@ A token must be initialized in slot 0 before it can be used; the Security Office
 
 ### Using the p11tool2
 
-Due to a bug in the simulator, the Security Officer PIN must be set **then changed** before the User PIN can be set  **then changed**.
+Due to a bug in the simulator, the Security Officer PIN must be set **then changed** before the User PIN can be set  *
+*then changed**.
 
 ```bash
 # set the SO PIN to 11223344
@@ -234,16 +233,27 @@ To list objects on Slot 0, use:
 
 ### Using the CAT tool
 
-Use the CAT tool and make sure you can login as Admin using the
+Use the CAT tool and make sure you can log in as Admin using the
 ADMIN_SIM.key.
-The CAT tool is a java app and is available in the `Software` directory. It requires the Oracle 8 JDK to run properly.
+The CAT tool is a Java app and is available in the `Software/Administration` directory. It requires the Oracle 8 JDK to run properly.
 
-Then, copy to that directory the the `cs_pkcs11_R3.cfg` file and launch the java `p11cat` tool.
-Use this tool to initialize slot 0 amd assign a Security Officer PIN and an User PIN.
+Then, copy the `cs_pkcs11_R3.cfg` file to that directory and launch the Java `p11cat` tool.
+Use this tool to initialize slot 0 and assign a Security Officer PIN and a User PIN.
 
-The users will appear as `SO_0000` and `USER_0000` in the cat tool.
+The users will appear as `SO_0000` and `USER_0000` in the CAT tool.
 
 **Change their PIN** in the CAT tool to something else, or when using them through the PKCS#11 library,
 you will keep getting `CKR_PIN_TOO_WEAK` (440) errors.
 
 The user PIN is what should be passed to the KMS.
+
+
+## Running the KMS server
+
+Use the provided `kms.toml` file to run the KMS server with the Utimaco PKCS#11 library.
+
+From the KMS root directory, run the following command:
+
+```bash
+COSMIAN_KMS_CONF=crate/hsm/utimaco/kms.toml cargo run --bin cosmian_kms --features non-fips
+```
