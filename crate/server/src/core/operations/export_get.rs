@@ -562,15 +562,25 @@ async fn unwrap_if_requested(
 ) -> Result<(), KmsError> {
     if let Some(key_wrap_type) = key_wrap_type {
         if *key_wrap_type == KeyWrapType::NotWrapped {
-            object_with_metadata.set_object(
-                kms.get_unwrapped(
+            let mut object = kms
+                .get_unwrapped(
                     object_with_metadata.id(),
                     object_with_metadata.object(),
                     user,
                     params,
                 )
-                .await?,
-            );
+                .await?;
+            // If we have lost attributes on the unwrapped object, we need to restore them
+            if let Ok(key_block) = object.key_block_mut() {
+                if let Some(KeyValue::Structure { attributes, .. }) = key_block.key_value.as_mut() {
+                    if attributes.is_none() {
+                        // if the attributes are None, we need to set them to the existing
+                        // attributes
+                        *attributes = Some(object_with_metadata.attributes().clone());
+                    }
+                }
+            }
+            object_with_metadata.set_object(object);
         }
     }
     Ok(())

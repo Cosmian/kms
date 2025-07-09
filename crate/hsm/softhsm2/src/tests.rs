@@ -1,7 +1,7 @@
-//! These tests  require a connection to a working HSM and are gated behind the `utimaco` feature.
+//! These tests  require a connection to a working HSM and are gated behind the `softhsm2` feature.
 //! To run a test, cd into the crate directory and run (replace `XXX` with the actual password):
 //! ```
-//! HSM_USER_PASSWORD=12345678 cargo test --target x86_64-unknown-linux-gnu --features utimaco -- tests::test_hsm_all
+//! HSM_USER_PASSWORD=12345678 cargo test --target x86_64-unknown-linux-gnu --features softhsm2 -- tests::test_hsm_all
 //! ```
 
 use std::{collections::HashMap, ptr, sync::Arc, thread};
@@ -17,13 +17,15 @@ use pkcs11_sys::{CK_C_INITIALIZE_ARGS, CK_RV, CK_VOID_PTR, CKF_OS_LOCKING_OK, CK
 use tracing::info;
 use uuid::Uuid;
 
-use crate::Utimaco;
+use crate::Softhsm2;
+
+const LIB_PATH: &str = "/usr/local/lib/softhsm/libsofthsm2.so";
 
 fn get_slot() -> HResult<Arc<SlotManager>> {
     let user_password = get_hsm_password()?;
-    let passwords = HashMap::from([(0x00, Some(user_password.clone()))]);
-    let hsm = Utimaco::instantiate("/lib/libcs_pkcs11_R3.so", passwords)?;
-    let manager = hsm.get_slot(0x00)?;
+    let passwords = HashMap::from([(63715018, Some(user_password.clone()))]);
+    let hsm = Softhsm2::instantiate(LIB_PATH, passwords)?;
+    let manager = hsm.get_slot(63715018)?;
     Ok(manager)
 }
 
@@ -46,7 +48,7 @@ fn test_hsm_all() -> HResult<()> {
 
 #[test]
 fn test_hsm_low_level_test() -> HResult<()> {
-    let path = "/lib/libcs_pkcs11_R3.so";
+    let path = LIB_PATH;
     let library = unsafe { Library::new(path) }?;
     let init = unsafe { library.get::<fn(p_init_args: CK_VOID_PTR) -> CK_RV>(b"C_Initialize") }?;
 
@@ -67,7 +69,7 @@ fn test_hsm_low_level_test() -> HResult<()> {
 #[test]
 fn test_hsm_get_info() -> HResult<()> {
     log_init(None);
-    let hsm = Utimaco::instantiate("/lib/libcs_pkcs11_R3.so", HashMap::new())?;
+    let hsm = Softhsm2::instantiate(LIB_PATH, HashMap::new())?;
     let info = hsm.get_info()?;
     info!("Connected to the HSM: {info}");
     Ok(())
@@ -117,7 +119,7 @@ fn test_hsm_generate_aes_key() -> HResult<()> {
 
 #[test]
 fn test_hsm_generate_rsa_keypair() -> HResult<()> {
-    log_init(None);
+    log_init(Some("debug"));
     let sk_id = Uuid::new_v4().to_string();
     let pk_id = sk_id.clone() + "_pk ";
     let slot = get_slot()?;
@@ -192,13 +194,13 @@ fn test_hsm_rsa_key_wrap() -> HResult<()> {
         true,
     )?;
     let encrypted_key =
-        session.wrap_aes_key_with_rsa_oaep(pk, symmetric_key, RsaOaepDigest::SHA256)?;
+        session.wrap_aes_key_with_rsa_oaep(pk, symmetric_key, RsaOaepDigest::SHA1)?;
     assert_eq!(encrypted_key.len(), 2048 / 8);
     let decrypted_key = session.unwrap_aes_key_with_rsa_oaep(
         sk,
         &encrypted_key,
         "another_label",
-        RsaOaepDigest::SHA256,
+        RsaOaepDigest::SHA1,
     )?;
     info!("Unwrapped symmetric key with handle: {}", decrypted_key);
     Ok(())
@@ -240,9 +242,9 @@ fn test_hsm_rsa_oaep_encrypt() -> HResult<()> {
         RsaKeySize::Rsa2048,
         true,
     )?;
-    let enc = session.encrypt(pk, HsmEncryptionAlgorithm::RsaOaepSha256, data)?;
+    let enc = session.encrypt(pk, HsmEncryptionAlgorithm::RsaOaepSha1, data)?;
     assert_eq!(enc.ciphertext.len(), 2048 / 8);
-    let plaintext = session.decrypt(sk, HsmEncryptionAlgorithm::RsaOaepSha256, &enc.ciphertext)?;
+    let plaintext = session.decrypt(sk, HsmEncryptionAlgorithm::RsaOaepSha1, &enc.ciphertext)?;
     assert_eq!(plaintext.as_slice(), data);
     info!("Successfully encrypted/decrypted with RSA OAEP");
     Ok(())
@@ -300,11 +302,11 @@ fn test_hsm_multi_threaded_rsa_encrypt_decrypt_test() -> HResult<()> {
             )?;
             info!("RSA handles sk: {sk}, pk: {pk}");
             let encrypted_content =
-                session.encrypt(pk, HsmEncryptionAlgorithm::RsaOaepSha256, data)?;
+                session.encrypt(pk, HsmEncryptionAlgorithm::RsaOaepSha1, data)?;
             assert_eq!(encrypted_content.ciphertext.len(), 2048 / 8);
             let plaintext = session.decrypt(
                 sk,
-                HsmEncryptionAlgorithm::RsaOaepSha256,
+                HsmEncryptionAlgorithm::RsaOaepSha1,
                 &encrypted_content.ciphertext,
             )?;
             assert_eq!(plaintext.as_slice(), data);

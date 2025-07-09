@@ -12,6 +12,8 @@ use cosmian_kms_server_database::{
 };
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use proteccio_pkcs11_loader::Proteccio;
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use softhsm2_pkcs11_loader::Softhsm2;
 use tokio::sync::RwLock;
 use tracing::trace;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
@@ -134,7 +136,23 @@ impl KMS {
                         );
                         Some(utimaco)
                     }
-                    _ => kms_bail!("The only supported HSM models are proteccio and utimaco"),
+                    "softhsm2" => {
+                        let softhsm2: Arc<dyn HSM + Send + Sync> = Arc::new(
+                            Softhsm2::instantiate(
+                                "/usr/local/lib/softhsm/libsofthsm2.so",
+                                server_params.slot_passwords.clone(),
+                            )
+                            .map_err(|e| {
+                                KmsError::InvalidRequest(format!(
+                                    "Failed to instantiate the Softhsm2: {e}"
+                                ))
+                            })?,
+                        );
+                        Some(softhsm2)
+                    }
+                    _ => kms_bail!(
+                        "The only supported HSM models are proteccio, softhsm2 and utimaco"
+                    ),
                 }
             }
         };

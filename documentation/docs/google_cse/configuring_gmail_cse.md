@@ -43,7 +43,7 @@ You can create a key-pair (RSA private key and user certificate chain) and uploa
 ```sh
 cosmian kms google key-pairs create --cse-key-id CSE_KEY_ID \
     --subject-name "C=FR, ST=IdF, L=Paris, O=ORGANIZATION, OU=DEPARTMENT, CN=user@organization.com, emailAddress=user@organization.com" \
-    -i ISSUER_PRIVATE_KEY_ID user@your_organization.com
+    -i ISSUER_PRIVATE_KEY_ID --leaf-certificate-extensions user.ext user@your_organization.com
 ```
 
 If you already have an existing RSA key-pair for the user, you can specify it in the command.

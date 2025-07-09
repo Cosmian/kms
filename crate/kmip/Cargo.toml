@@ -20,7 +20,7 @@ non-fips = []
 [dependencies]
 bitflags = { workspace = true }
 hex = { workspace = true, features = ["std"] }
-kmip-derive = { path = "../kmip-derive", version = "5.5.0" }
+kmip-derive = { path = "../kmip-derive", version = "5.5.1" }
 leb128 = { workspace = true }
 num-bigint-dig = { workspace = true, features = [
     "std",

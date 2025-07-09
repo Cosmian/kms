@@ -10,6 +10,7 @@ members = [
     "crate/access",
     "crate/crypto",
     "crate/hsm/proteccio",
+    "crate/hsm/softhsm2",
     "crate/hsm/utimaco",
     "crate/hsm/base_hsm",
     "crate/interfaces",
@@ -25,7 +26,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "5.5.0"
+version = "5.5.1"
 edition = "2024"
 rust-version = "1.85.0"
 authors = [
