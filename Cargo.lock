@@ -4950,7 +4950,7 @@ dependencies = [
 
 [[package]]
 name = "softhsm2_pkcs11_loader"
-version = "5.4.1"
+version = "5.5.0"
 dependencies = [
  "cosmian_kms_base_hsm",
  "cosmian_kms_interfaces",
