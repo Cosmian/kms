@@ -9,6 +9,7 @@ use serde::{
 use time::OffsetDateTime;
 use tracing::warn;
 
+use crate::kmip_1_4::kmip_types::CustomAttribute;
 pub use crate::{
     KmipError,
     kmip_0::kmip_types::{
@@ -49,7 +50,7 @@ pub enum Attribute {
     CryptographicLength(i32),
     CryptographicParameters(CryptographicParameters),
     CryptographicUsageMask(CryptographicUsageMask),
-    CustomAttribute((String, CustomAttributeValue)),
+    CustomAttribute(CustomAttribute),
     DeactivationDate(OffsetDateTime),
     Description(String),
     DestroyDate(OffsetDateTime),

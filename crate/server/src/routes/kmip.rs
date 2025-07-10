@@ -364,7 +364,7 @@ async fn handle_ttlv_bytes_inner(
 
     // parse the TTLV bytes
     let ttlv = TTLV::from_bytes(ttlv_bytes, kmip_flavor).context("Failed to parse TTLV")?;
-    let tag = ttlv.tag.as_str();
+    let tag = ttlv.tag.clone();
     info!(
         target: "kmip",
         user=user,

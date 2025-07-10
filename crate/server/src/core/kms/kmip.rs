@@ -1,21 +1,22 @@
 use std::sync::Arc;
 
-use cosmian_kmip::{
-    cosmian_kms_interfaces::SessionParams,
-    kmip_0::{
-        kmip_messages::{RequestMessage, ResponseMessage},
-        kmip_operations::{DiscoverVersions, DiscoverVersionsResponse},
-        kmip_types::State,
-    },
-    kmip_2_1::kmip_operations::{
-        Activate, ActivateResponse, AddAttribute, AddAttributeResponse, Certify, CertifyResponse,
-        Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse, Decrypt, DecryptResponse,
-        DeleteAttribute, DeleteAttributeResponse, Destroy, DestroyResponse, Encrypt,
-        EncryptResponse, Export, ExportResponse, Get, GetAttributes, GetAttributesResponse,
-        GetResponse, Hash, HashResponse, Import, ImportResponse, Locate, LocateResponse, MAC,
-        MACResponse, Query, QueryResponse, ReKey, ReKeyKeyPair, ReKeyKeyPairResponse,
-        ReKeyResponse, Revoke, RevokeResponse, SetAttribute, SetAttributeResponse, Validate,
-        ValidateResponse,
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::{
+        kmip_0::{
+            kmip_messages::{RequestMessage, ResponseMessage},
+            kmip_operations::{DiscoverVersions, DiscoverVersionsResponse},
+            kmip_types::State,
+        },
+        kmip_2_1::kmip_operations::{
+            Activate, ActivateResponse, AddAttribute, AddAttributeResponse, Certify,
+            CertifyResponse, Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse, Decrypt,
+            DecryptResponse, DeleteAttribute, DeleteAttributeResponse, Destroy, DestroyResponse,
+            Encrypt, EncryptResponse, Export, ExportResponse, Get, GetAttributes,
+            GetAttributesResponse, GetResponse, Hash, HashResponse, Import, ImportResponse, Locate,
+            LocateResponse, MAC, MACResponse, Query, QueryResponse, ReKey, ReKeyKeyPair,
+            ReKeyKeyPairResponse, ReKeyResponse, Register, RegisterResponse, Revoke,
+            RevokeResponse, SetAttribute, SetAttributeResponse, Validate, ValidateResponse,
+        },
     },
     cosmian_kms_interfaces::SessionParams,
 };
