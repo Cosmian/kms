@@ -28,6 +28,7 @@ use crate::tests::ttlv_tests::get_client;
 #[test]
 fn test_import_1_4() {
     log_init(option_env!("RUST_LOG"));
+    // log_init(Some("debug"));
 
     let client = get_client();
 
