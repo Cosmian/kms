@@ -1896,9 +1896,7 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             // }
             Operation::AddAttribute(add_attribute) => Self::AddAttribute(add_attribute.into()),
             // Operation::AddAttributeResponse(add_attribute_response) => {
-            //     Self::AddAttributeResponse(
-            //         add_attribute_response.into(),
-            //     )
+            //     Self::AddAttributeResponse(add_attribute_response.into())
             // }
             // Operation::Archive(archive) => {
             //     Self::Archive(archive.into())
@@ -1930,9 +1928,7 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
                 Self::CreateKeyPair(create_key_pair.into())
             }
             // Operation::CreateKeyPairResponse(create_key_pair_response) => {
-            //     Self::CreateKeyPairResponse(
-            //         create_key_pair_response.into(),
-            //     )
+            //     Self::CreateKeyPairResponse(create_key_pair_response.into())
             // }
             Operation::Decrypt(decrypt) => Self::Decrypt(decrypt.into()),
             // Operation::DecryptResponse(decrypt_response) => {
@@ -1942,9 +1938,7 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             //     Self::DeleteAttribute(delete_attribute.into())
             // }
             // Operation::DeleteAttributeResponse(delete_attribute_response) => {
-            //     Self::DeleteAttributeResponse(
-            //         delete_attribute_response.into(),
-            //     )
+            //     Self::DeleteAttributeResponse(delete_attribute_response.into())
             // }
             // Operation::DeriveKey(derive_key) => {
             //     Self::DeriveKey(derive_key.into())
@@ -1952,16 +1946,16 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             // Operation::DeriveKeyResponse(derive_key_response) => {
             //     Self::DeriveKeyResponse(derive_key_response.into())
             // }
+            Operation::Destroy(destroy) => Self::Destroy(destroy.into()),
+            // Operation::DestroyResponse(destroy_response) => {
+            //     Self::DestroyResponse(destroy_response.into())
+            // }
             Operation::DiscoverVersions(discover_versions) => {
                 Self::DiscoverVersions(discover_versions)
             }
             Operation::DiscoverVersionsResponse(discover_versions_response) => {
                 Self::DiscoverVersionsResponse(discover_versions_response)
             }
-            Operation::Destroy(destroy) => Self::Destroy(destroy.into()),
-            // Operation::DestroyResponse(destroy_response) => {
-            //     Self::DestroyResponse(destroy_response.into())
-            // }
             Operation::Encrypt(encrypt) => Self::Encrypt(encrypt.into()),
             // Operation::EncryptResponse(encrypt_response) => {
             //     Self::EncryptResponse(encrypt_response.into())
@@ -1972,27 +1966,26 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             // }
             Operation::GetAttributes(get_attributes) => Self::GetAttributes(get_attributes.into()),
             // Operation::GetAttributesResponse(get_attributes_response) => {
-            //     Self::GetAttributesResponse(
-            //         get_attributes_response.into(),
-            //     )
+            //     Self::GetAttributesResponse(get_attributes_response.into())
             // }
             // Operation::GetAttributeList(get_attribute_list) => {
             //     Self::GetAttributeList(get_attribute_list.into())
             // }
             // Operation::GetAttributeListResponse(get_attribute_list_response) => {
-            //     Self::GetAttributeListResponse(
-            //         get_attribute_list_response.into(),
-            //     )
+            //     Self::GetAttributeListResponse(get_attribute_list_response.into())
             // }
             // Operation::GetUsageAllocation(get_usage_allocation) => {
-            //     Self::GetUsageAllocation(
-            //         get_usage_allocation.into(),
-            //     )
+            //     Self::GetUsageAllocation(get_usage_allocation.into())
             // }
             // Operation::GetUsageAllocationResponse(get_usage_allocation_response) => {
-            //     Self::GetUsageAllocationResponse(
-            //         get_usage_allocation_response.into(),
-            //     )
+            //     Self::GetUsageAllocationResponse(get_usage_allocation_response.into())
+            // }
+            Operation::Import(import) => Self::Import(import.into()),
+            // Operation::JoinSplitKey(join_split_key) => {
+            //     Self::JoinSplitKey(join_split_key.into())
+            // }
+            // Operation::JoinSplitKeyResponse(join_split_key_response) => {
+            //     Self::JoinSplitKeyResponse(join_split_key_response.into())
             // }
             Operation::Locate(locate) => Self::Locate(locate.into()),
             // Operation::LocateResponse(locate_response) => {
@@ -2012,24 +2005,22 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             //     Self::ModifyAttribute(modify_attribute.into())
             // }
             // Operation::ModifyAttributeResponse(modify_attribute_response) => {
-            //     Self::ModifyAttributeResponse(
-            //         modify_attribute_response.into(),
-            //     )
+            //     Self::ModifyAttributeResponse(modify_attribute_response.into())
             // }
             // Operation::ObtainLease(obtain_lease) => {
             //     Self::ObtainLease(obtain_lease.into())
             // }
             // Operation::ObtainLeaseResponse(obtain_lease_response) => {
-            //     Self::ObtainLeaseResponse(
-            //         obtain_lease_response.into(),
-            //     )
+            //     Self::ObtainLeaseResponse(obtain_lease_response.into())
             // }
             // Operation::Poll(poll) => Self::Poll(poll.into()),
             // Operation::PollResponse(poll_response) => {
             //     Self::PollResponse(poll_response.into())
             // }
             Operation::Query(query) => Self::Query(query.into()),
-            // Operation::QueryResponse(query_response) => Self::QueryResponse(query_response.into()),
+            // Operation::QueryResponse(query_response) => {
+            //     Self::QueryResponse(query_response.into())
+            // }
             // Operation::ReCertify(recertify) => {
             //     Self::ReCertify(recertify.into())
             // }
@@ -2042,9 +2033,7 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             // Operation::RecoverResponse(recover_response) => {
             //     Self::RecoverResponse(recover_response.into())
             // }
-            Operation::Register(register) => {
-                Self::Register(register.into())
-            }
+            Operation::Register(register) => Self::Register(register.into()),
             // Operation::RegisterResponse(register_response) => {
             //     Self::RegisterResponse(register_response.into())
             // }
@@ -2056,9 +2045,7 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             //     Self::ReKeyKeyPair(rekey_key_pair.into())
             // }
             // Operation::ReKeyKeyPairResponse(rekey_key_pair_response) => {
-            //     Self::ReKeyKeyPairResponse(
-            //         rekey_key_pair_response.into(),
-            //     )
+            //     Self::ReKeyKeyPairResponse(rekey_key_pair_response.into())
             // }
             Operation::Revoke(revoke) => Self::Revoke(revoke.into()),
             // Operation::RevokeResponse(revoke_response) => {
@@ -2068,9 +2055,7 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             //     Self::RNGRetrieve(rng_retrieve.into())
             // }
             // Operation::RNGRetrieveResponse(rng_retrieve_response) => {
-            //     Self::RNGRetrieveResponse(
-            //         rng_retrieve_response.into(),
-            //     )
+            //     Self::RNGRetrieveResponse(rng_retrieve_response.into())
             // }
             // Operation::RNGSeed(rng_seed) => {
             //     Self::RNGSeed(rng_seed.into())
@@ -2086,9 +2071,7 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             //     Self::SignatureVerify(signature_verify.into())
             // }
             // Operation::SignatureVerifyResponse(signature_verify_response) => {
-            //     Self::SignatureVerifyResponse(
-            //         signature_verify_response.into(),
-            //     )
+            //     Self::SignatureVerifyResponse(signature_verify_response.into())
             // }
             // Operation::Validate(validate) => {
             //     Self::Validate(validate.into())
@@ -2096,7 +2079,6 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             // Operation::ValidateResponse(validate_response) => {
             //     Self::ValidateResponse(validate_response.into())
             // }
-            Operation::Import(import) => Self::Import(import.into()),
             op => {
                 return Err(KmipError::NotSupported(format!(
                     "Conversion of KMIP 1.x operation to KMIP 2.1 is not supported for: {op:?}"
@@ -2148,12 +2130,6 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             // Operation::Create(create) => {
             //     Self::Create(create.into())
             // }
-            kmip_2_1::kmip_operations::Operation::CreateResponse(create_response) => {
-                Self::CreateResponse(create_response.try_into().context("CreateResponse")?)
-            }
-            // Operation::CreateKeyPair(create_key_pair) => {
-            //     Self::CreateKeyPair(create_key_pair.into())
-            // }
             kmip_2_1::kmip_operations::Operation::CreateKeyPairResponse(
                 create_key_pair_response,
             ) => Self::CreateKeyPairResponse(
@@ -2161,6 +2137,12 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
                     .try_into()
                     .context("CreateKeyPairResponse")?,
             ),
+            // Operation::CreateKeyPair(create_key_pair) => {
+            //     Self::CreateKeyPair(create_key_pair.into())
+            // }
+            kmip_2_1::kmip_operations::Operation::CreateResponse(create_response) => {
+                Self::CreateResponse(create_response.try_into().context("CreateResponse")?)
+            }
             // Operation::Decrypt(decrypt) => {
             //     Self::Decrypt(decrypt.into())
             // }
@@ -2197,9 +2179,6 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
                 Self::EncryptResponse(encrypt_response.try_into().context("EncryptResponse")?)
             }
             // Operation::Get(get) => Self::Get(get.into()),
-            kmip_2_1::kmip_operations::Operation::GetResponse(get_response) => {
-                Self::GetResponse(get_response.try_into()?)
-            }
             // Operation::GetAttributes(get_attributes) => {
             //     Self::GetAttributes(get_attributes.into())
             // }
@@ -2214,6 +2193,9 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             //         get_attribute_list_response.into(),
             //     )
             // }
+            kmip_2_1::kmip_operations::Operation::GetResponse(get_response) => {
+                Self::GetResponse(get_response.try_into()?)
+            }
             // Operation::GetUsageAllocation(get_usage_allocation) => {
             //     Self::GetUsageAllocation(
             //         get_usage_allocation.into(),
@@ -2222,6 +2204,17 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             // Operation::GetUsageAllocationResponse(get_usage_allocation_response) => {
             //     Self::GetUsageAllocationResponse(
             //         get_usage_allocation_response.into(),
+            //     )
+            // }
+            kmip_2_1::kmip_operations::Operation::ImportResponse(import_response) => {
+                Self::ImportResponse(import_response.try_into().context("ImportResponse")?)
+            }
+            // Operation::JoinSplitKey(join_split_key) => {
+            //     Self::JoinSplitKey(join_split_key.into())
+            // }
+            // Operation::JoinSplitKeyResponse(join_split_key_response) => {
+            //     Self::JoinSplitKeyResponse(
+            //         join_split_key_response.into(),
             //     )
             // }
             // Operation::Locate(locate) => {
@@ -2281,10 +2274,8 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             // }
             kmip_2_1::kmip_operations::Operation::RegisterResponse(register_response) => {
                 Self::RegisterResponse(register_response.try_into()?)
-            }            // Operation::ReKey(rekey) => Self::ReKey(rekey.into()),
-            // Operation::ReKeyResponse(rekey_response) => {
-            //     Self::ReKeyResponse(rekey_response.into())
-            // }
+            }
+            // Operation::ReKey(rekey) => Self::ReKey(rekey.into()),
             // Operation::ReKeyKeyPair(rekey_key_pair) => {
             //     Self::ReKeyKeyPair(rekey_key_pair.into())
             // }
@@ -2292,6 +2283,9 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             //     Self::ReKeyKeyPairResponse(
             //         rekey_key_pair_response.into(),
             //     )
+            // }
+            // Operation::ReKeyResponse(rekey_response) => {
+            //     Self::ReKeyResponse(rekey_response.into())
             // }
             // Operation::Revoke(revoke) => {
             //     Self::Revoke(revoke.into())
@@ -2314,9 +2308,6 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             //     Self::RNGSeedResponse(rng_seed_response.into())
             // }
             // Operation::Sign(sign) => Self::Sign(sign.into()),
-            // Operation::SignResponse(sign_response) => {
-            //     Self::SignResponse(sign_response.into())
-            // }
             // Operation::SignatureVerify(signature_verify) => {
             //     Self::SignatureVerify(signature_verify.into())
             // }
@@ -2324,6 +2315,9 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             //     Self::SignatureVerifyResponse(
             //         signature_verify_response.into(),
             //     )
+            // }
+            // Operation::SignResponse(sign_response) => {
+            //     Self::SignResponse(sign_response.into())
             // }
             // Operation::Validate(validate) => {
             //     Self::Validate(validate.into())
