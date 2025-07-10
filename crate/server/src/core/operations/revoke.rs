@@ -136,6 +136,7 @@ pub(crate) async fn recursively_revoke_key(
             && object_type != ObjectType::Certificate
             && object_type != ObjectType::SymmetricKey
             && object_type != ObjectType::PublicKey
+            && object_type != ObjectType::SecretData
         {
             continue
         }
@@ -154,7 +155,7 @@ pub(crate) async fn recursively_revoke_key(
         // perform the chain of revoke operations depending on the type of object
         let object_type = owm.object().object_type();
         match object_type {
-            ObjectType::SymmetricKey | ObjectType::Certificate => {
+            ObjectType::SymmetricKey | ObjectType::Certificate | ObjectType::SecretData => {
                 // revoke the key
                 revoke_key_core(
                     owm.id(),

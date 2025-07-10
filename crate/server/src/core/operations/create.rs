@@ -56,7 +56,7 @@ pub(crate) async fn create(
             kms.create_private_key_and_tags(&request, owner, params.clone(), privileged_users)
                 .await?
         }
-        ObjectType::SecretData => KMS::create_secret_data_and_tags()?,
+        ObjectType::SecretData => KMS::create_secret_data_and_tags(&request)?,
         _ => {
             kms_bail!(KmsError::NotSupported(format!(
                 "This server does not yet support creation of: {}",

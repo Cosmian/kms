@@ -42,7 +42,6 @@ pub(crate) async fn destroy_operation(
         .unique_identifier
         .as_ref()
         .ok_or(KmsError::UnsupportedPlaceholder)?;
-
     recursively_destroy_object(
         unique_identifier,
         request.remove,
@@ -122,6 +121,7 @@ pub(crate) async fn recursively_destroy_object(
             || (object_type != ObjectType::PrivateKey
                 && object_type != ObjectType::SymmetricKey
                 && object_type != ObjectType::Certificate
+                && object_type != ObjectType::SecretData
                 && object_type != ObjectType::PublicKey)
         {
             continue
@@ -131,7 +131,7 @@ pub(crate) async fn recursively_destroy_object(
         count += 1;
         let object_type = owm.object().object_type();
         match object_type {
-            ObjectType::SymmetricKey | ObjectType::Certificate => {
+            ObjectType::SymmetricKey | ObjectType::Certificate | ObjectType::SecretData => {
                 // destroy the key
                 let id = owm.id().to_owned();
                 let state = owm.state();
