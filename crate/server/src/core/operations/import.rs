@@ -31,7 +31,6 @@ use uuid::Uuid;
 use crate::{
     core::{
         KMS,
-        operations::import::cosmian_kmip::kmip_0::kmip_types::CryptographicUsageMask,
         retrieve_object_utils::user_has_permission,
         wrapping::{unwrap_object, wrap_and_cache},
     },
@@ -810,12 +809,6 @@ pub(crate) async fn process_secret_data(
     attributes.object_type = Some(ObjectType::SecretData);
     // set the unique identifier
     attributes.unique_identifier = Some(UniqueIdentifier::TextString(uid.clone()));
-
-    attributes.cryptographic_usage_mask = Some(
-        CryptographicUsageMask::DeriveKey
-            | CryptographicUsageMask::KeyAgreement
-            | CryptographicUsageMask::Authenticate,
-    );
 
     // set the tags in the attributes
     attributes.set_tags(tags.clone())?;
