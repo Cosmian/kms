@@ -92,6 +92,9 @@ pub(crate) async fn import(
         ObjectType::PrivateKey => {
             Box::pin(process_private_key(kms, request, owner, params.clone())).await?
         }
+        ObjectType::SecretData => {
+            Box::pin(process_secret_data(kms, request, owner, params.clone())).await?
+        }
         x => {
             return Err(KmsError::InvalidRequest(format!(
                 "Import is not yet supported for objects of type : {x}"
@@ -773,4 +776,84 @@ pub(crate) fn upsert_links_in_attributes(attributes: &mut Attributes, links_to_a
         "Added imported links to attributes: attributes={:?}",
         attributes
     );
+}
+
+pub(crate) async fn process_secret_data(
+    kms: &KMS,
+    request: Import,
+    owner: &str,
+    params: Option<Arc<dyn SessionParams>>,
+) -> Result<(String, Vec<AtomicOperation>), KmsError> {
+    // check if the object will be replaced if it already exists
+    let replace_existing = request.replace_existing.unwrap_or(false);
+
+    // Generate a new UID if none is provided.
+    let uid = match request.unique_identifier.to_string() {
+        uid if uid.is_empty() => Uuid::new_v4().to_string(),
+        uid => uid,
+    };
+
+    let mut object = request.object;
+    // Unwrap the Object if required.
+    if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
+        unwrap_object(&mut object, kms, owner, params.clone()).await?;
+    }
+
+    // Tag the object as a symmetric key
+    let mut tags = recover_tags(&request.attributes, &object);
+    tags.insert("_sd".to_owned());
+
+    //Request attributes will hold the final attributes of the object.
+    let mut attributes = request.attributes;
+    // force the object type to be SymmetricKey
+    attributes.object_type = Some(ObjectType::SecretData);
+    // set the unique identifier
+    attributes.unique_identifier = Some(UniqueIdentifier::TextString(uid.clone()));
+
+    // set the tags in the attributes
+    attributes.set_tags(tags.clone())?;
+    // merge the object attributes with the request attributes without overwriting
+    //This will recover existing links, for instance
+    if let Ok(object_attributes) = object.key_block()?.attributes() {
+        attributes.merge(object_attributes, false);
+    }
+
+    // force the usage mask to unrestricted if not in FIPS mode
+    #[cfg(feature = "non-fips")]
+    // In non-FIPS mode, if no CryptographicUsageMask has been specified,
+    // default to Unrestricted.
+    if attributes.cryptographic_usage_mask.is_none() {
+        attributes.set_cryptographic_usage_mask(Some(CryptographicUsageMask::Unrestricted));
+    }
+
+    // Replace updated attributes in the object structure.
+    if let Ok(key_block) = object.key_block_mut() {
+        if let Some(KeyValue::Structure {
+            attributes: attrs, ..
+        }) = key_block.key_value.as_mut()
+        {
+            *attrs = Some(attributes.clone());
+        }
+    }
+
+    // Wrap the object if requested by the user or on the server params
+    wrap_and_cache(
+        kms,
+        owner,
+        params,
+        &UniqueIdentifier::TextString(uid.clone()),
+        &mut object,
+    )
+    .await?;
+
+    Ok((
+        uid.clone(),
+        vec![single_operation(
+            tags,
+            replace_existing,
+            object,
+            attributes,
+            uid,
+        )],
+    ))
 }
