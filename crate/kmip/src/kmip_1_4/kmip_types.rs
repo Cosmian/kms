@@ -1488,9 +1488,32 @@ impl TryFrom<kmip_2_1::kmip_types::CryptographicDomainParameters>
 #[serde(rename_all = "PascalCase")]
 pub struct Digest {
     pub hashing_algorithm: HashingAlgorithm,
-    pub digest_value: Vec<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub digest_value: Option<Vec<u8>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub key_format_type: Option<KeyFormatType>,
+}
+
+impl From<Digest> for kmip_2_1::kmip_types::Digest {
+    fn from(val: Digest) -> Self {
+        Self {
+            hashing_algorithm: val.hashing_algorithm,
+            digest_value: val.digest_value,
+            key_format_type: val.key_format_type.map(Into::into),
+        }
+    }
+}
+
+impl TryFrom<kmip_2_1::kmip_types::Digest> for Digest {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_types::Digest) -> Result<Self, Self::Error> {
+        Ok(Self {
+            hashing_algorithm: value.hashing_algorithm,
+            digest_value: value.digest_value,
+            key_format_type: value.key_format_type.map(TryInto::try_into).transpose()?,
+        })
+    }
 }
 
 /// KMIP 1.4 Random Number Generator

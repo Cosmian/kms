@@ -950,6 +950,16 @@ impl KeyMaterial {
             KmipError::ConversionError(format!("Failed to serialize KeyMaterial to JSON: {e}"))
         })
     }
+
+    /// Converts the `KeyMaterial` to a TTLV object.
+    /// This is used to calculate the Digest
+    pub fn to_ttlv(&self, key_format_type: KeyFormatType) -> Result<TTLV, KmipError> {
+        to_ttlv(&KeyMaterialSerializer {
+            key_format_type,
+            key_material: self.clone(),
+        })
+        .map_err(Into::into)
+    }
 }
 
 impl Display for KeyMaterial {
@@ -988,9 +998,9 @@ impl Display for KeyMaterial {
 }
 
 /// Serializer used by `KeyValueSerializer`
-struct KeyMaterialSerializer {
-    key_format_type: KeyFormatType,
-    key_material: KeyMaterial,
+pub(crate) struct KeyMaterialSerializer {
+    pub(crate) key_format_type: KeyFormatType,
+    pub(crate) key_material: KeyMaterial,
 }
 
 impl Serialize for KeyMaterialSerializer {

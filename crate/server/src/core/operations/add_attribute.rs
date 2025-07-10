@@ -106,6 +106,13 @@ pub(crate) async fn add_attribute(
             }
             attributes.cryptographic_usage_mask = Some(usage_mask);
         }
+        Attribute::Digest(digest) => {
+            trace!("Add Attribute: Digest: {:?}", digest);
+            if attributes.digest.is_some() {
+                return Err(KmsError::InvalidRequest("Digest already exists".to_owned()));
+            }
+            attributes.digest = Some(digest);
+        }
         Attribute::Link(link) => {
             trace!("Add Attribute: Link: {:?}", link);
             // Link is special case, it can be updated

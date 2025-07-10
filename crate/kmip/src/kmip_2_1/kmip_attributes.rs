@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
-use super::kmip_types::VendorAttributeValue;
+use super::kmip_types::{Digest, VendorAttributeValue};
 use crate::{
     KmipError,
     kmip_0::kmip_types::{
@@ -187,6 +187,13 @@ pub struct Attributes {
     /// was destroyed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub destroy_date: Option<OffsetDateTime>,
+
+    /// The Digest attribute is a structure that contains the digest value of the key
+    /// or secret data (i.e., digest of the Key Material),
+    /// certificate (i.e., digest of the Certificate Value),
+    /// or opaque object (i.e., digest of the Opaque Data Value)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub digest: Option<Digest>,
 
     /// The Digital Signature Algorithm attribute specifies the digital signature algorithm
     /// that is used with the signing key.
@@ -688,6 +695,7 @@ impl Attributes {
         merge_option_field!(deactivation_date);
         merge_option_field!(description);
         merge_option_field!(destroy_date);
+        merge_option_field!(digest);
         merge_option_field!(digital_signature_algorithm);
         merge_option_field!(extractable);
         merge_option_field!(fresh);
@@ -895,6 +903,12 @@ pub enum Attribute {
     /// The Destroy Date attribute contains the date and time when the Managed Object
     /// was destroyed.
     DestroyDate(OffsetDateTime),
+
+    /// The Digest attribute is a structure that contains the digest value of the key
+    /// or secret data (i.e., digest of the Key Material),
+    /// certificate (i.e., digest of the Certificate Value),
+    /// or opaque object (i.e., digest of the Opaque Data Value)
+    Digest(Digest),
 
     /// The Digital Signature Algorithm attribute specifies the digital signature algorithm
     /// that is used with the signing key.
@@ -1154,6 +1168,9 @@ impl From<Attributes> for Vec<Attribute> {
         if let Some(destroy_date) = attributes.destroy_date {
             vec.push(Attribute::DestroyDate(destroy_date));
         }
+        if let Some(digest) = attributes.digest {
+            vec.push(Attribute::Digest(digest));
+        }
         if let Some(digital_signature_algorithm) = attributes.digital_signature_algorithm {
             vec.push(Attribute::DigitalSignatureAlgorithm(
                 digital_signature_algorithm,
@@ -1332,6 +1349,7 @@ impl From<Vec<Attribute>> for Attributes {
                 Attribute::DeactivationDate(value) => attrs.deactivation_date = Some(value),
                 Attribute::Description(value) => attrs.description = Some(value),
                 Attribute::DestroyDate(value) => attrs.destroy_date = Some(value),
+                Attribute::Digest(value) => attrs.digest = Some(value),
                 Attribute::DigitalSignatureAlgorithm(value) => {
                     attrs.digital_signature_algorithm = Some(value);
                 }

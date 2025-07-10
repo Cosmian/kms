@@ -2,10 +2,13 @@ use std::sync::Arc;
 
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip,
-    cosmian_kmip::kmip_2_1::{
-        kmip_objects::ObjectType,
-        kmip_operations::{Create, CreateResponse},
-        kmip_types::UniqueIdentifier,
+    cosmian_kmip::{
+        kmip_0::kmip_types::State::PreActive,
+        kmip_2_1::{
+            kmip_objects::ObjectType,
+            kmip_operations::{Create, CreateResponse},
+            kmip_types::UniqueIdentifier,
+        },
     },
     cosmian_kms_interfaces::SessionParams,
 };
@@ -65,13 +68,19 @@ pub(crate) async fn create(
         }
     };
 
-    // make sure we have a unique identifier
+    //Make sure we have a unique identifier.
     let unique_identifier = UniqueIdentifier::TextString(
         unique_identifier.unwrap_or_else(|| Uuid::new_v4().to_string()),
     );
 
-    // Copy the attributes before the key gets wrapped
-    let attributes = object.attributes()?.clone();
+    // Set the state to pre-active and copy the attributes before the key gets wrapped
+    let attributes = {
+        let attributes = object.attributes_mut()?;
+        // Update the state to PreActive
+        attributes.state = Some(PreActive);
+        // update the digest
+        attributes.clone()
+    };
 
     // Wrap the object if requested by the user or on the server params
     wrap_and_cache(kms, owner, params.clone(), &unique_identifier, &mut object).await?;

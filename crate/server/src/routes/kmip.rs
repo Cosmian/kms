@@ -355,7 +355,7 @@ async fn handle_ttlv_bytes_inner(
     };
 
     // log the request bytes
-    trace!(
+    debug!(
         target: "kmip",
         user=user,
         "Request bytes: {}",
@@ -398,19 +398,34 @@ async fn handle_ttlv_bytes_inner(
     perform_response_tweaks(&mut response_message, major, minor);
 
     // log the response
-    debug!("Response Message: {response_message:#?}");
+    trace!(
+        target: "kmip",
+        user=user,
+        tag=tag,
+        "Response Message: {response_message:#?}"
+    );
 
     // serialize the response to TTLV
     let response_ttlv = to_ttlv(&response_message)
         .map_err(|e| KmsError::InvalidRequest(format!("Failed to serialize response: {e}")))?;
 
-    debug!("Response Message TTLV: {response_ttlv:#?}");
+    debug!(
+        target: "kmip",
+        user=user,
+        tag=tag,
+        "Response Message TTLV: {response_ttlv:#?}"
+    );
 
     // convert the TTLV to bytes
     let response_bytes = TTLV::to_bytes(&response_ttlv, kmip_flavor)
         .map_err(|e| KmsError::InvalidRequest(format!("Failed to convert TTLV to bytes: {e}")))?;
 
-    debug!("Response Message Bytes: {}", hex::encode(&response_bytes));
+    debug!(
+        target: "kmip",
+        user=user,
+        tag=tag,
+        "Response Message Bytes: {}", hex::encode(&response_bytes)
+    );
 
     Ok(response_bytes)
 }

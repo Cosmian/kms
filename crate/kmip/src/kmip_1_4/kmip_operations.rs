@@ -5,7 +5,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
-use tracing::{debug, trace};
+use tracing::{debug, info, trace};
 use zeroize::Zeroizing;
 
 use super::kmip_objects::Certificate;
@@ -500,7 +500,7 @@ impl From<GetAttributes> for kmip_2_1::kmip_operations::GetAttributes {
                             )
                         } else {
                             kmip_2_1::kmip_types::AttributeReference::Standard(
-                                kmip_2_1::kmip_types::Tag::from_str(&v)
+                                kmip_2_1::kmip_types::Tag::from_str(&v.replace(' ', ""))
                                     .unwrap_or(kmip_2_1::kmip_types::Tag::Y), //some dummy tag that will never be found
                             )
                         }
