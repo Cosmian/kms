@@ -17,7 +17,8 @@ use crate::{
     core::{
         KMS,
         operations::import::{
-            process_certificate, process_private_key, process_public_key, process_symmetric_key,
+            process_certificate, process_private_key, process_public_key, process_secret_data,
+            process_symmetric_key,
         },
         retrieve_object_utils::user_has_permission,
     },
@@ -86,6 +87,15 @@ pub(crate) async fn register(
         }
         ObjectType::PrivateKey => {
             Box::pin(process_private_key(
+                kms,
+                request.into(),
+                owner,
+                params.clone(),
+            ))
+            .await?
+        }
+        ObjectType::SecretData => {
+            Box::pin(process_secret_data(
                 kms,
                 request.into(),
                 owner,

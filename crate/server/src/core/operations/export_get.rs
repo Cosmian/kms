@@ -192,6 +192,30 @@ pub(crate) async fn export_get(
                 }
             }
         }
+        ObjectType::SecretData => {
+            // according to the KMIP specs the KeyMaterial is not returned if the object is destroyed
+            if export
+                && (owm.state() == State::Destroyed || owm.state() == State::Destroyed_Compromised)
+            {
+                let key_block = owm.object_mut().key_block_mut()?;
+                key_block.key_value = Some(KeyValue::Structure {
+                    key_material: KeyMaterial::ByteString(Zeroizing::from(vec![])),
+                    attributes: None,
+                });
+                key_block.key_format_type = KeyFormatType::Opaque;
+            } else {
+                process_secret_data(
+                    &mut owm,
+                    &request.key_format_type,
+                    &request.key_wrap_type,
+                    &request.key_wrapping_specification,
+                    kms,
+                    user,
+                    params.clone(),
+                )
+                .await?;
+            }
+        }
         _ => {
             kms_bail!(
                 "export: unsupported object type: {:?}",
@@ -953,4 +977,102 @@ async fn post_process_pkcs7(
     }
 
     Ok(cert_owm)
+}
+
+#[allow(clippy::ref_option)]
+async fn process_secret_data(
+    object_with_metadata: &mut ObjectWithMetadata,
+    key_format_type: &Option<KeyFormatType>,
+    key_wrap_type: &Option<KeyWrapType>,
+    key_wrapping_specification: &Option<KeyWrappingSpecification>,
+    kms: &KMS,
+    user: &str,
+    params: Option<Arc<dyn SessionParams>>,
+) -> KResult<()> {
+    trace!(
+        "process_secret_data: object_with_metadata: {}",
+        object_with_metadata
+    );
+
+    // First check is any unwrapping needs to be done
+    unwrap_if_requested(
+        object_with_metadata,
+        key_wrap_type,
+        kms,
+        user,
+        params.clone(),
+    )
+    .await?;
+
+    let object = object_with_metadata.object_mut();
+    let key_block = object.key_block_mut()?;
+
+    // If the key is still wrapped the the export KeyFormatType must be the default (none)
+    if key_block.key_wrapping_data.is_some() {
+        if key_format_type.is_some() {
+            kms_bail!(
+                "export: unable to export a wrapped secret datawith a requested Key Format Type. \
+                 It must be the default"
+            )
+        }
+        // The key is wrapped and as expected the requested Key Format Type is the default (none)
+        // => The key is exported as such
+        return Ok(())
+    }
+
+    // we have an unwrapped key, convert it to the pivotal format first,
+    // which is getting the key bytes
+
+    let Some(&mut KeyValue::Structure {
+        ref mut key_material,
+        ref mut attributes,
+    }) = key_block.key_value.as_mut()
+    else {
+        return Err(KmsError::Default(
+            "process_secret_data: key value not found in key".to_owned(),
+        ));
+    };
+
+    let key_bytes = match key_material {
+        KeyMaterial::ByteString(key_bytes) => key_bytes.clone(),
+        _ => kms_bail!("export: unsupported key material"),
+    };
+
+    // Wrapping is only available for KeyFormatType being the default (i.e. None)
+    if let Some(key_wrapping_specification) = key_wrapping_specification {
+        if key_format_type.is_some() {
+            kms_bail!(
+                "export: unable to wrap a secret data with a specified Key Format Type. It must \
+                 be the default"
+            )
+        }
+        // generate a key block in the default format, which is Raw
+        key_block.key_value = Some(KeyValue::Structure {
+            key_material: KeyMaterial::ByteString(key_bytes),
+            attributes: attributes.clone(),
+        });
+        key_block.key_format_type = KeyFormatType::Raw;
+        key_block.attributes_mut()?.key_format_type = Some(KeyFormatType::Raw);
+        // wrap the key
+        wrap_object(object, key_wrapping_specification, kms, user, params).await?;
+        return Ok(())
+    }
+
+    // The key  is not wrapped => export to desired format
+    match key_format_type {
+        None | Some(KeyFormatType::Raw) => {
+            key_block.key_value = Some(KeyValue::Structure {
+                key_material: KeyMaterial::ByteString(key_bytes),
+                attributes: attributes.clone(),
+            });
+            key_block.key_format_type = KeyFormatType::Raw;
+            key_block.attributes_mut()?.key_format_type = Some(KeyFormatType::Raw);
+        }
+        _ => kms_bail!(
+            "export: unsupported requested Key Format Type for a secret data: {:?}",
+            key_format_type
+        ),
+    }
+
+    Ok(())
 }
