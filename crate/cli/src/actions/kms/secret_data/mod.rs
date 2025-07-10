@@ -14,7 +14,7 @@ pub mod create_secret;
 pub mod destroy_secret;
 pub mod revoke_secret;
 
-/// Create, destroy, import, and export symmetric keys
+/// Create, import, export and destroy secret data
 #[derive(Subcommand)]
 pub enum SecretDataCommands {
     Create(CreateKeyAction),

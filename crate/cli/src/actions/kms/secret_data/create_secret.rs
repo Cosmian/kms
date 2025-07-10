@@ -1,5 +1,7 @@
 use clap::Parser;
-use cosmian_kmip::kmip_2_1::requests::create_secret_data_kmip_object;
+use cosmian_kmip::kmip_2_1::{
+    kmip_attributes::Attributes, requests::create_secret_data_kmip_object,
+};
 use cosmian_kms_client::{
     KmsClient,
     kmip_2_1::{kmip_types::UniqueIdentifier, requests::import_object_request},
@@ -81,12 +83,15 @@ impl CreateKeyAction {
         let unique_identifier = if let Some(value) = &self.secret_value {
             let secret_bytes = Zeroizing::from(value.as_bytes().to_vec());
 
-            let object = create_secret_data_kmip_object(
+            let mut object = create_secret_data_kmip_object(
                 secret_bytes.as_slice(),
                 secret_data_type,
-                &self.wrapping_key_id,
+                &Attributes::default(),
             )?;
-
+            if let Some(wrapping_key_id) = &self.wrapping_key_id {
+                let attributes = object.attributes_mut()?;
+                attributes.set_wrapping_key_id(wrapping_key_id);
+            }
             let import_object_request = import_object_request(
                 self.secret_id.clone(),
                 object,

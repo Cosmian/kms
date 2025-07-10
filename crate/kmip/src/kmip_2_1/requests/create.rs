@@ -118,9 +118,8 @@ pub fn symmetric_key_create_request<T: IntoIterator<Item = impl AsRef<str>>>(
 pub fn create_secret_data_kmip_object(
     secret_bytes: &[u8],
     secret_data_type: SecretDataType,
-    wrapping_key_id: &Option<String>,
+    create_attributes: &Attributes,
 ) -> Result<Object, KmipError> {
-    let create_attributes = Attributes::default();
     let mut tags = create_attributes.get_tags();
     tags.insert("_sd".to_owned());
     // Generate a new UID if none is provided.
@@ -134,7 +133,7 @@ pub fn create_secret_data_kmip_object(
         uid => uid.to_owned(),
     };
     // this length is in bits
-    let mut attributes = create_attributes;
+    let mut attributes = create_attributes.clone();
     attributes.object_type = Some(ObjectType::SecretData);
     attributes.cryptographic_usage_mask = Some(
         CryptographicUsageMask::DeriveKey
@@ -145,10 +144,6 @@ pub fn create_secret_data_kmip_object(
     attributes.unique_identifier = Some(UniqueIdentifier::TextString(uid));
     // set the tags in the attributes
     attributes.set_tags(tags)?;
-
-    if let Some(wrapping_key_id) = &wrapping_key_id {
-        attributes.set_wrapping_key_id(wrapping_key_id);
-    }
 
     Ok(Object::SecretData(SecretData {
         secret_data_type,

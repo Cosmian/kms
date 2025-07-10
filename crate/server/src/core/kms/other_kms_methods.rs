@@ -248,8 +248,12 @@ impl KMS {
     /// The tags will contain the user tags and the following:
     ///  - "_kk"
     ///  - the KMIP cryptographic algorithm in lower case prepended with "_"
-    pub(crate) fn create_secret_data_and_tags() -> KResult<(Option<String>, Object, HashSet<String>)>
-    {
+    pub(crate) fn create_secret_data_and_tags(
+        request: &Create,
+    ) -> KResult<(Option<String>, Object, HashSet<String>)> {
+        let attributes = &request.attributes;
+        let mut tags = attributes.get_tags();
+        tags.insert("_sd".to_owned());
         let mut secret_data = Zeroizing::from(vec![0; 32]);
         rand_bytes(&mut secret_data)?;
         let object = Object::SecretData(SecretData {
@@ -259,7 +263,7 @@ impl KMS {
                 key_compression_type: None,
                 key_value: Some(KeyValue::Structure {
                     key_material: KeyMaterial::ByteString(secret_data),
-                    attributes: None,
+                    attributes: Some(attributes.clone()),
                 }),
                 cryptographic_algorithm: None,
                 cryptographic_length: None,
@@ -268,7 +272,7 @@ impl KMS {
         });
         let attributes = object.attributes()?;
         debug!("Created secret data with attributes: {:?}", attributes);
-        let tags = attributes.get_tags();
+        // let tags = attributes.get_tags();
         let uid = attributes
             .unique_identifier
             .as_ref()
