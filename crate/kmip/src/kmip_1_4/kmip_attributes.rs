@@ -617,8 +617,8 @@ impl From<Attribute> for kmip_2_1::kmip_attributes::Attribute {
             Attribute::DeactivationDate(v) => Self::DeactivationDate(v),
             Attribute::Description(v) => Self::Description(v),
             Attribute::DestroyDate(v) => Self::DestroyDate(v),
-            Attribute::Digest(_)
-            | Attribute::Pkcs12FriendlyName(_)
+            Attribute::Digest(v) => Self::Digest(v.into()),
+            Attribute::Pkcs12FriendlyName(_)
             | Attribute::X509CertificateIdentifier(_)
             | Attribute::X509CertificateIssuer(_)
             | Attribute::X509CertificateSubject(_)
@@ -705,6 +705,7 @@ impl TryFrom<kmip_2_1::kmip_attributes::Attribute> for Attribute {
             kmip_2_1::kmip_attributes::Attribute::CertificateLength(v) => {
                 Ok(Self::CertificateLength(v))
             }
+            kmip_2_1::kmip_attributes::Attribute::Digest(v) => Ok(Self::Digest(v.try_into()?)),
             kmip_2_1::kmip_attributes::Attribute::DigitalSignatureAlgorithm(v) => {
                 Ok(Self::DigitalSignatureAlgorithm(v.try_into()?))
             }

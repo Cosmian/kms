@@ -78,6 +78,10 @@ pub(crate) async fn set_attribute(
             trace!("Set Attribute: Cryptographic Usage Mask: {:?}", usage_mask);
             attributes.cryptographic_usage_mask = Some(usage_mask);
         }
+        Attribute::Digest(digest) => {
+            trace!("Set Attribute: Digest: {:?}", digest);
+            attributes.digest = Some(digest);
+        }
         Attribute::Link(link) => {
             trace!("Set Attribute: Link: {:?}", link);
             attributes.set_link(link.link_type, link.linked_object_identifier);

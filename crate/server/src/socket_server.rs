@@ -171,7 +171,7 @@ impl SocketServer {
         let (tx, rx) = mpsc::channel::<KResult<()>>();
 
         let thread_handle = tokio::spawn(async move {
-            // we swallow the error if any, it will be received by the mpsc receiver
+            //We swallow the error, if any; the mpsc receiver will receive it
             let _swallowed = Self::start_listening(
                 &kms_server,
                 &addr,

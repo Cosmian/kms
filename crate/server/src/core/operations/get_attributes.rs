@@ -9,24 +9,17 @@ use cosmian_kms_server_database::reexport::{
         kmip_objects::{Object, PrivateKey, PublicKey, SymmetricKey},
         kmip_operations::{GetAttributes, GetAttributesResponse},
         kmip_types::{
-            AttributeReference, KeyFormatType, LinkType, Tag, UniqueIdentifier, VendorAttribute,
+            AttributeReference, LinkType, Tag, UniqueIdentifier, VendorAttribute,
             VendorAttributeReference,
         },
     },
-    cosmian_kms_crypto::openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl},
     cosmian_kms_interfaces::SessionParams,
 };
 use strum::IntoEnumIterator;
-use tracing::{debug, trace};
+use tracing::{debug, info, trace};
 
 use crate::{
-    core::{
-        KMS,
-        operations::export_get::{
-            openssl_private_key_to_kmip_default_format, openssl_public_key_to_kmip_default_format,
-        },
-        retrieve_object_utils::retrieve_object_for_operation,
-    },
+    core::{KMS, retrieve_object_utils::retrieve_object_for_operation},
     error::KmsError,
     result::{KResult, KResultHelper},
 };
@@ -59,84 +52,22 @@ pub(crate) async fn get_attributes(
         "Get Attributes: Retrieved object for get attributes: {}",
         owm.object()
     );
-    let object_type = owm.object().object_type();
 
     let attributes = match owm.object() {
         Object::Certificate { .. } => {
-            // KMIP Attributes retrieved from dedicated column `Attributes`
+            // KMIP Attributes retrieved from the dedicated column `Attributes`
             owm.attributes().to_owned()
         }
-        Object::PrivateKey(PrivateKey { key_block }) => {
-            let mut attributes = if let Some(KeyValue::Structure { attributes, .. }) =
-                key_block.key_value.as_ref()
-            {
-                attributes.clone().unwrap_or_default()
-            } else {
-                Attributes::default()
-            };
-            attributes.object_type = Some(object_type);
-            // is it a Covercrypt key?
-            if key_block.key_format_type == KeyFormatType::CoverCryptSecretKey {
+        Object::PrivateKey(PrivateKey { key_block })
+        | Object::PublicKey(PublicKey { key_block })
+        | Object::SymmetricKey(SymmetricKey { key_block }) => {
+            if let Some(KeyValue::Structure { attributes, .. }) = key_block.key_value.as_ref() {
                 attributes
+                    .clone()
+                    .unwrap_or_else(|| owm.attributes().clone())
             } else {
-                // we want the default format which yields the most infos
-                let pkey = kmip_private_key_to_openssl(owm.object())?;
-                let default_kmip = openssl_private_key_to_kmip_default_format(
-                    &pkey,
-                    attributes.cryptographic_usage_mask,
-                )?;
-                let mut default_attributes = default_kmip.attributes().cloned().unwrap_or_default();
-                default_attributes.object_type = Some(object_type);
-                //re-add the vendor attributes
-                default_attributes
-                    .vendor_attributes
-                    .clone_from(&attributes.vendor_attributes);
-                // re-add the links
-                default_attributes.link.clone_from(&owm.attributes().link);
-                default_attributes
+                owm.attributes().clone()
             }
-        }
-        Object::PublicKey(PublicKey { key_block }) => {
-            let mut attributes = if let Some(KeyValue::Structure { attributes, .. }) =
-                key_block.key_value.as_ref()
-            {
-                attributes.clone().unwrap_or_default()
-            } else {
-                Attributes::default()
-            };
-            attributes.object_type = Some(object_type);
-            // is it a Covercrypt key?
-            if key_block.key_format_type == KeyFormatType::CoverCryptPublicKey {
-                attributes
-            } else {
-                // we want the default format which yields the most infos
-                let pkey = kmip_public_key_to_openssl(owm.object())?;
-                let default_kmip = openssl_public_key_to_kmip_default_format(
-                    &pkey,
-                    attributes.cryptographic_usage_mask,
-                )?;
-                let mut default_attributes = default_kmip.attributes().cloned().unwrap_or_default();
-                default_attributes.object_type = Some(object_type);
-                //re-add the vendor attributes
-                default_attributes
-                    .vendor_attributes
-                    .clone_from(&attributes.vendor_attributes);
-                // re-add the links
-                default_attributes.link.clone_from(&owm.attributes().link);
-                default_attributes
-            }
-        }
-        Object::SymmetricKey(SymmetricKey { key_block }) => {
-            let mut attributes = if let Some(KeyValue::Structure { attributes, .. }) =
-                key_block.key_value.as_ref()
-            {
-                attributes.clone().unwrap_or_default()
-            } else {
-                Attributes::default()
-            };
-            attributes.object_type = Some(object_type);
-            attributes.link.clone_from(&owm.attributes().link);
-            attributes
         }
         Object::CertificateRequest { .. }
         | Object::OpaqueObject { .. }
@@ -149,10 +80,10 @@ pub(crate) async fn get_attributes(
         }
     };
 
-    trace!("Get Attributes: Attributes: {:?}", attributes);
+    info!("Get Attributes: Attributes: {:?}", attributes);
 
     let mut req_attributes = request.attribute_reference.unwrap_or_default();
-    trace!("Get Attributes: Requested attributes: {req_attributes:?}");
+    info!("Get Attributes: Requested attributes: {req_attributes:?}");
 
     // request all attributes
     if req_attributes.is_empty() {
@@ -245,6 +176,9 @@ pub(crate) async fn get_attributes(
                 }
                 Tag::DestroyDate => {
                     res.destroy_date = attributes.destroy_date;
+                }
+                Tag::Digest => {
+                    res.digest.clone_from(&attributes.digest);
                 }
                 Tag::Extractable => {
                     res.extractable = attributes.extractable;

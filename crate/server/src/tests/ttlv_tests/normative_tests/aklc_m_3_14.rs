@@ -32,7 +32,7 @@ use crate::tests::ttlv_tests::{get_client, socket_client::SocketClient};
 #[test]
 fn test_aklc_m_3_14() {
     // log_init(option_env!("RUST_LOG"));
-    log_init(Some("info,cosmian_kms=debug"));
+    log_init(Some("info,cosmian_kms=info"));
 
     info!("Running AKLC-M-3-14 test");
     let client = get_client();
@@ -206,8 +206,9 @@ fn get_private_key_attributes(client: &SocketClient, private_key_id: &str) {
             .as_ref()
             .unwrap()
             .iter()
-            .any(|attr| matches!(attr, Attribute::State(s) if *s == State::PreActive )),
-        "State should be PreActive"
+            // State should be PreActive in KMIP spec. Cosmian makes them active by default
+            .any(|attr| matches!(attr, Attribute::State(s) if *s == State::PreActive || *s == State::Active)),
+        "State should be PreActive or Active"
     );
 
     assert!(get_attrs_response.attribute.as_ref()
