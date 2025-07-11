@@ -1588,9 +1588,6 @@ pub struct Name {
 pub enum NameType {
     UninterpretedTextString = 0x1,
     URI = 0x2,
-    DNS = 0x3,
-    EmailAddress = 0x4,
-    DistinguishedName = 0x5,
 }
 
 /// The `QueryFunction` is used to indicate what server information is being requested.

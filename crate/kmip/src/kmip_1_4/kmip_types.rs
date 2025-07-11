@@ -296,15 +296,6 @@ impl TryFrom<kmip_2_1::kmip_types::NameType> for NameType {
                 Ok(Self::UninterpretedTextString)
             }
             kmip_2_1::kmip_types::NameType::URI => Ok(Self::URI),
-            kmip_2_1::kmip_types::NameType::DNS
-            | kmip_2_1::kmip_types::NameType::EmailAddress
-            | kmip_2_1::kmip_types::NameType::DistinguishedName => {
-                Err(KmipError::InvalidKmip14Value(
-                    ResultReason::InvalidField,
-                    "Name: DNS, EmailAddress, and DistinguishedName are not supported in KMIP 1.4"
-                        .to_owned(),
-                ))
-            }
         }
     }
 }
