@@ -1,0 +1,130 @@
+<KMIP>
+
+<!--
+     Key Management Interoperability Protocol Profiles Version 1.4
+     OASIS Standard
+     22 November 2017
+     Copyright (c) OASIS Open 2017. All Rights Reserved.
+     Source: http://docs.oasis-open.org/kmip/profiles/v1.4/os/test-cases/kmip-v1.4/mandatory/
+     Latest version of the specification: http://docs.oasis-open.org/kmip/profiles/v1.4/kmip-profiles-v1.4.html
+     TC IPR Statement: https://www.oasis-open.org/committees/kmip/ipr.php
+-->
+<RequestMessage>
+  <RequestHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="1"/>
+      <ProtocolVersionMinor type="Integer" value="4"/>
+    </ProtocolVersion>
+    <BatchOrderOption type="Boolean" value="true"/>
+    <BatchCount type="Integer" value="2"/>
+  </RequestHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="Create"/>
+    <UniqueBatchItemID type="ByteString" value="01"/>
+    <RequestPayload>
+      <ObjectType type="Enumeration" value="SymmetricKey"/>
+      <TemplateAttribute>
+        <Attribute>
+          <AttributeName type="TextString" value="x-ID"/>
+          <AttributeValue type="TextString" value="TL-M-2-14"/>
+        </Attribute>
+        <Attribute>
+          <AttributeName type="TextString" value="Alternative Name"/>
+          <AttributeValue>
+            <AlternativeNameValue type="TextString" value="XXA012A1"/>
+            <AlternativeNameType type="Enumeration" value="UninterpretedTextString"/>
+          </AttributeValue>
+        </Attribute>
+        <Attribute>
+          <AttributeName type="TextString" value="Name"/>
+          <AttributeValue>
+            <NameValue type="TextString" value="AAAAAAA1A1AA12345678901234567"/>
+            <NameType type="Enumeration" value="UninterpretedTextString"/>
+          </AttributeValue>
+        </Attribute>
+        <Attribute>
+          <AttributeName type="TextString" value="Cryptographic Algorithm"/>
+          <AttributeValue type="Enumeration" value="AES"/>
+        </Attribute>
+        <Attribute>
+          <AttributeName type="TextString" value="Cryptographic Length"/>
+          <AttributeValue type="Integer" value="256"/>
+        </Attribute>
+        <Attribute>
+          <AttributeName type="TextString" value="Cryptographic Usage Mask"/>
+          <AttributeValue type="Integer" value="Decrypt Encrypt"/>
+        </Attribute>
+        <Attribute>
+          <AttributeName type="TextString" value="Application Specific Information"/>
+          <AttributeValue>
+            <ApplicationNamespace type="TextString" value="LIBRARY-LTO"/>
+            <ApplicationData type="TextString" value="123456789ABCDEF123456789123456789ABCDEF123456789ABCDEF1234000000"/>
+          </AttributeValue>
+        </Attribute>
+        <Attribute>
+          <AttributeName type="TextString" value="x-Barcode"/>
+          <AttributeValue type="TextString" value="XXA012A1"/>
+        </Attribute>
+        <Attribute>
+          <AttributeName type="TextString" value="x-VendorAttribute1"/>
+          <AttributeValue type="TextString" value="XXA012A1"/>
+        </Attribute>
+        <Attribute>
+          <AttributeName type="TextString" value="x-VendorAttribute2"/>
+          <AttributeValue type="Integer" value="0"/>
+        </Attribute>
+        <Attribute>
+          <AttributeName type="TextString" value="x-VendorAttribute3"/>
+          <AttributeValue type="DateTime" value="$NOW"/>
+        </Attribute>
+      </TemplateAttribute>
+    </RequestPayload>
+  </BatchItem>
+  <BatchItem>
+    <Operation type="Enumeration" value="Get"/>
+    <UniqueBatchItemID type="ByteString" value="02"/>
+    <RequestPayload>
+    </RequestPayload>
+  </BatchItem>
+</RequestMessage>
+
+<ResponseMessage>
+  <ResponseHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="1"/>
+      <ProtocolVersionMinor type="Integer" value="4"/>
+    </ProtocolVersion>
+    <TimeStamp type="DateTime" value="$NOW"/>
+    <BatchCount type="Integer" value="2"/>
+  </ResponseHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="Create"/>
+    <UniqueBatchItemID type="ByteString" value="01"/>
+    <ResultStatus type="Enumeration" value="Success"/>
+    <ResponsePayload>
+      <ObjectType type="Enumeration" value="SymmetricKey"/>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+    </ResponsePayload>
+  </BatchItem>
+  <BatchItem>
+    <Operation type="Enumeration" value="Get"/>
+    <UniqueBatchItemID type="ByteString" value="02"/>
+    <ResultStatus type="Enumeration" value="Success"/>
+    <ResponsePayload>
+      <ObjectType type="Enumeration" value="SymmetricKey"/>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+      <SymmetricKey>
+        <KeyBlock>
+          <KeyFormatType type="Enumeration" value="Raw"/>
+          <KeyValue>
+            <KeyMaterial type="ByteString" value="2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a"/>
+          </KeyValue>
+          <CryptographicAlgorithm type="Enumeration" value="AES"/>
+          <CryptographicLength type="Integer" value="256"/>
+        </KeyBlock>
+      </SymmetricKey>
+    </ResponsePayload>
+  </BatchItem>
+</ResponseMessage>
+
+</KMIP>

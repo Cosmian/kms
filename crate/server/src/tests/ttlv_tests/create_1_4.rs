@@ -16,7 +16,8 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     ttlv::KmipFlavor,
 };
 use cosmian_logger::log_init;
-
+use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_1_4::kmip_types::Name;
+use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_1_4::kmip_types::NameType;
 use super::socket_client::SocketClient;
 use crate::tests::ttlv_tests::get_client;
 
@@ -27,10 +28,10 @@ fn test_create_1_4() {
     let client = get_client();
 
     // Create a symmetric key
-    create_symmetric_key(&client);
+    create_symmetric_key(&client, "test1");
 }
 
-pub(super) fn create_symmetric_key(client: &SocketClient) -> String {
+pub(super) fn create_symmetric_key(client: &SocketClient, name: &str) -> String {
     let request_message = RequestMessage {
         request_header: RequestMessageHeader {
             protocol_version: ProtocolVersion {
@@ -55,6 +56,10 @@ pub(super) fn create_symmetric_key(client: &SocketClient) -> String {
                                 CryptographicUsageMask::Encrypt | CryptographicUsageMask::Decrypt,
                             ),
                             Attribute::CryptographicLength(256),
+                            Attribute::Name(Name{
+                                name_value: name.to_string(),
+                                name_type: NameType::UninterpretedTextString,
+                            })
                         ]),
                     },
                 }),
@@ -91,7 +96,7 @@ pub(super) fn create_symmetric_key(client: &SocketClient) -> String {
         panic!("Expected CreateResponse");
     };
 
-    assert!(create_response.object_type == ObjectType::SymmetricKey);
+    assert_eq!(create_response.object_type, ObjectType::SymmetricKey);
     assert!(!create_response.unique_identifier.is_empty());
     assert!(create_response.template_attribute.is_none());
     create_response.unique_identifier.clone()

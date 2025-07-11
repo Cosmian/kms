@@ -13,7 +13,8 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_objects::{Object, SymmetricKey},
         kmip_operations::{Import, Operation},
         kmip_types::{
-            CryptographicAlgorithm, KeyFormatType, OperationEnumeration, UniqueIdentifier,
+            CryptographicAlgorithm, KeyFormatType, ObjectType, OperationEnumeration,
+            UniqueIdentifier,
         },
     },
     ttlv::KmipFlavor,
@@ -27,6 +28,7 @@ use crate::tests::ttlv_tests::get_client;
 #[test]
 fn test_import_1_4() {
     log_init(option_env!("RUST_LOG"));
+    // log_init(Some("debug"));
 
     let client = get_client();
 
@@ -62,6 +64,7 @@ pub(super) fn import_symmetric_key(client: &SocketClient) -> String {
                 ephemeral: None,
                 unique_batch_item_id: Some(b"12345".to_vec()),
                 request_payload: Operation::Import(Import {
+                    object_type: ObjectType::SymmetricKey,
                     unique_identifier: UniqueIdentifier::from("imported_1_4_key_uid".to_owned()),
                     replace_existing: Some(false),
                     key_wrap_type: None,

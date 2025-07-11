@@ -6,7 +6,7 @@ and encryption clients.
 
 ## Connection Options
 
-- **Binary Protocol**: Available on port 4696
+- **Binary Protocol**: Available on port 5696
     - TLS secured
     - Client certificate required for authentication
 

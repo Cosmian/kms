@@ -999,6 +999,7 @@ pub enum RevocationReasonCode {
 /// why the object was revoked (e.g., "Laptop stolen", or "Machine
 /// decommissioned").
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "PascalCase")]
 pub struct RevocationReason {
     pub revocation_reason_code: RevocationReasonCode,
     #[serde(skip_serializing_if = "Option::is_none")]

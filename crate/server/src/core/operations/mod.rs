@@ -1,3 +1,4 @@
+mod activate;
 mod add_attribute;
 mod certify;
 mod create;
@@ -25,6 +26,7 @@ mod revoke;
 mod set_attribute;
 mod validate;
 
+pub(crate) use activate::activate;
 pub(crate) use add_attribute::add_attribute;
 pub(crate) use certify::certify;
 pub(crate) use create::create;

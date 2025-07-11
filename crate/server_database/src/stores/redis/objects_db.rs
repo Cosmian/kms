@@ -45,6 +45,13 @@ pub(crate) fn keywords_from_attributes(attributes: &Attributes) -> HashSet<Keywo
             }
         }
     }
+    if let Some(names) = &attributes.name {
+        for name in names {
+            if let Ok(bytes) = serde_json::to_vec(name) {
+                keywords.insert(Keyword::from(bytes.as_slice()));
+            }
+        }
+    }
     keywords
 }
 

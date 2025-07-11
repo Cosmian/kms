@@ -766,7 +766,7 @@ where
         user,
         user_must_be_owner,
     );
-    trace!("find_: {query:?}");
+    debug!("find_: {researched_attributes:#?}\n  {query:#?}");
     let query = sqlx::query(&query);
     let rows = query.fetch_all(executor).await?;
 

@@ -31,7 +31,7 @@ fn test_get_attribute_1_4() {
     let client = get_client();
 
     // Create a symmetric key
-    let key_id = create_symmetric_key(&client);
+    let key_id = create_symmetric_key(&client, "key_1");
     info!("Key ID: {key_id}");
 
     add_attributes(&client, &key_id);
