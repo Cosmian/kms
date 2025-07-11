@@ -3,8 +3,6 @@ name: CI in debug
 
 on:
   push:
-  workflow_dispatch:
-
 jobs:
   main:
     secrets: inherit
