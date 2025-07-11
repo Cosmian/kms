@@ -343,13 +343,13 @@ pub struct Locate {
     /// Specifies an attribute and its value(s) that are REQUIRED
     /// to match those in a candidate object (according to the matching rules defined above).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub attributes: Option<Vec<Attribute>>,
+    pub attribute: Option<Vec<Attribute>>,
 }
 
 impl From<Locate> for kmip_2_1::kmip_operations::Locate {
     fn from(locate: Locate) -> Self {
         let attributes: Attributes = locate
-            .attributes
+            .attribute
             .map(|v| {
                 v.into_iter()
                     .map(Into::into)
