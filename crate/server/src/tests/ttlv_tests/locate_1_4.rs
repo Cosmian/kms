@@ -61,7 +61,7 @@ pub(crate) fn locate_symmetric_keys(client: &SocketClient, keys: &[String]) {
                     maximum_items: Some(16),
                     storage_status_mask: None,
                     object_group_member: None,
-                    attributes: None,
+                    attribute: None,
                 }),
                 message_extension: None,
             },
