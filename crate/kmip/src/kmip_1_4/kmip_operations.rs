@@ -371,7 +371,8 @@ impl From<Locate> for kmip_2_1::kmip_operations::Locate {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct LocateResponse {
-    pub unique_identifier: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none", rename = "UniqueIdentifier")]
+    pub unique_identifier: Option<Vec<String>>,
 }
 
 impl TryFrom<kmip_2_1::kmip_operations::LocateResponse> for LocateResponse {
@@ -383,9 +384,7 @@ impl TryFrom<kmip_2_1::kmip_operations::LocateResponse> for LocateResponse {
         Ok(Self {
             unique_identifier: value
                 .unique_identifier
-                .into_iter()
                 .map(|ids| ids.iter().map(ToString::to_string).collect())
-                .collect(),
         })
     }
 }

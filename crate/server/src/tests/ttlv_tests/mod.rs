@@ -20,6 +20,8 @@ mod query;
 mod register_1_4;
 mod register_2_1;
 mod socket_client;
+mod locate_1_4;
+mod locate_2_1;
 
 const TEST_HOST: &str = "127.0.0.1";
 
@@ -31,6 +33,7 @@ use std::{
 
 use actix_web::dev::ServerHandle;
 use futures::executor::block_on;
+use futures::TryFutureExt;
 use socket_client::{SocketClient, SocketClientConfig};
 use tracing::{info, trace};
 
@@ -79,12 +82,15 @@ fn start_test_server(socket_port: u16) -> &'static TestServerCtx {
             tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
                 .build()?
-                .block_on(start_kms_server(Arc::new(server_params), Some(tx)))
+                .block_on(start_kms_server(Arc::new(server_params), Some(tx)).map_err(|e| {
+                    tracing::error!("Failed to start Test KMS server: {e}");
+                    e
+                }))
         });
         trace!("Waiting for test KMS server to start...");
         let server_handle = rx
             .recv_timeout(Duration::from_secs(25))
-            .expect("Can't get test KMS server handle after 25 seconds");
+            .expect("Can't get test KMS server handle");
         trace!("... server started");
 
         TestServerCtx {
