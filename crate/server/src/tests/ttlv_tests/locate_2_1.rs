@@ -1,3 +1,7 @@
+use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_1_4::{
+    kmip_attributes::{Attribute, Name, ObjectType},
+    kmip_types::NameType,
+};
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::{
         kmip_messages::{
@@ -10,39 +14,53 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_messages::RequestMessageBatchItem,
         kmip_operations::{Locate, Operation},
         kmip_types::{OperationEnumeration, UniqueIdentifier},
-        kmip_attributes::Attributes
     },
     ttlv::KmipFlavor,
 };
 use cosmian_logger::log_init;
 use log::info;
+
 use super::{create_1_4::create_symmetric_key, socket_client::SocketClient};
 use crate::tests::ttlv_tests::get_client;
 
 #[test]
 fn test_locate_2_1() {
-    log_init(option_env!("RUST_LOG"));
-    // log_init(Some("debug"));
+    // log_init(option_env!("RUST_LOG"));
+    log_init(Some("debug"));
 
     let client = get_client();
 
     // Create two symmetric keys
-    let key_id_1 = create_symmetric_key(&client);
+    let key_id_1 = create_symmetric_key(&client, "key_1");
     info!("Key ID: {key_id_1}");
-    let key_id_2 = create_symmetric_key(&client);
+    let key_id_2 = create_symmetric_key(&client, "key_2");
     info!("Key ID: {key_id_2}");
 
     // Get the symmetric key
-    locate_symmetric_keys(&client, &[key_id_1, key_id_2]);
+    locate_symmetric_keys(&client, None, &[&key_id_1, &key_id_2], &[]);
+    locate_symmetric_keys(&client, Some("key_1"), &[&key_id_1], &[&key_id_2]);
 }
 
-pub(crate) fn locate_symmetric_keys(client: &SocketClient, keys: &[String]) {
+pub(crate) fn locate_symmetric_keys(
+    client: &SocketClient,
+    name: Option<&str>,
+    expected_key_uids: &[&str],
+    unexpected_key_uids: &[&str],
+) {
     let protocol_major = 2;
     let kmip_flavor = if protocol_major == 2 {
         KmipFlavor::Kmip2
     } else {
         KmipFlavor::Kmip1
     };
+
+    let mut attributes = vec![Attribute::ObjectType(ObjectType::SymmetricKey)];
+    if let Some(name) = name {
+        attributes.push(Attribute::Name(Name {
+            name_value: name.to_owned(),
+            name_type: NameType::UninterpretedTextString,
+        }));
+    }
 
     let request_message = RequestMessage {
         request_header: RequestMessageHeader {
@@ -63,7 +81,7 @@ pub(crate) fn locate_symmetric_keys(client: &SocketClient, keys: &[String]) {
                     offset_items: None,
                     storage_status_mask: None,
                     object_group_member: None,
-                    attributes: Attributes::default(),
+                    attributes: attributes.into(),
                 }),
                 message_extension: None,
             },
@@ -97,7 +115,16 @@ pub(crate) fn locate_symmetric_keys(client: &SocketClient, keys: &[String]) {
     let Some(uids) = &response.unique_identifier else {
         panic!("Expected unique identifier in LocateResponse");
     };
-    for key in keys {
-        assert!(uids.contains(&UniqueIdentifier::TextString(key.to_owned())), "Key ID {key} not found in response");
+    for &key in expected_key_uids {
+        assert!(
+            uids.contains(&UniqueIdentifier::TextString(key.to_owned())),
+            "Key ID {key} not found in response"
+        );
+    }
+    for &key in unexpected_key_uids {
+        assert!(
+            !uids.contains(&UniqueIdentifier::TextString(key.to_owned())),
+            "Key ID {key} unexpectedly found in response"
+        );
     }
 }

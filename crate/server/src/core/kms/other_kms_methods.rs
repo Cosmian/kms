@@ -141,7 +141,7 @@ impl KMS {
                     rand_bytes(&mut symmetric_key)?;
                     let object = create_symmetric_key_kmip_object(&symmetric_key, attributes)?;
                     let attributes = object.attributes()?;
-                    debug!("Created symmetric key with attributes: {:?}", attributes);
+                    debug!("Created symmetric key with attributes: {:#?}", attributes);
                     let tags = attributes.get_tags();
                     let uid = attributes
                         .unique_identifier
