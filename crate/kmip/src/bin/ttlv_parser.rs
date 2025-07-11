@@ -52,16 +52,18 @@ fn main() {
                                 Err(r) => {
                                     println!("ERROR converting TTLV to RequestMessage: {r}");
                                     continue;
-                                },
-                                Ok(request) => println!("Request ==>\n\n{request:#?}\n\nSUCCESS")
+                                }
+                                Ok(request) => println!("Request ==>\n\n{request:#?}\n\nSUCCESS"),
                             };
                         } else if input.starts_with("42007b") || input.starts_with("42007B") {
                             match from_ttlv::<ResponseMessage>(ttlv) {
                                 Err(r) => {
                                     println!("ERROR converting TTLV to ResponseMessage: {r}");
                                     continue;
-                                },
-                                Ok(response) => println!("Response ==>\n\n{response:#?}\n\nSUCCESS")
+                                }
+                                Ok(response) => {
+                                    println!("Response ==>\n\n{response:#?}\n\nSUCCESS")
+                                }
                             };
                         } else {
                             println!("ERROR: unknown message type");
