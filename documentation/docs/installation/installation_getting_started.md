@@ -24,7 +24,7 @@ For high availability and scalability, refer to the [High Availability Guide](./
     ```
 
     - The KMS UI is available at `http://localhost:9998/ui`.
-    - The KMS REST API is available on `http://localhost:9998`, 
+    - The KMS REST API is available on `http://localhost:9998`,
     - The server stores its data inside the container in the `/root/cosmian-kms/sqlite-data` directory.
 
     A FIPS version is also available:
@@ -34,7 +34,7 @@ For high availability and scalability, refer to the [High Availability Guide](./
     ```
 
     To persist data between restarts, mount the `/root/cosmian-kms/sqlite-data` path to a filesystem
-    directory or a Docker volume: 
+    directory or a Docker volume:
 
     ```sh
     docker run --rm -p 9998:9998 \
@@ -76,7 +76,7 @@ For high availability and scalability, refer to the [High Availability Guide](./
     ```sh
     sudo systemctl start cosmian_kms
     ```
-    
+
     - The server uses the configuration file located at `/etc/cosmian/kms.toml`.
     - The KMS UI is available at `http://localhost:9998/ui`.
 
@@ -105,7 +105,7 @@ For high availability and scalability, refer to the [High Availability Guide](./
     ```sh
     sudo systemctl start cosmian_kms
     ```
-    
+
     - The server uses the configuration file located at `/etc/cosmian/kms.toml`.
     - The KMS UI is available at `http://localhost:9998/ui`.
 
@@ -174,7 +174,7 @@ For high availability and scalability, refer to the [High Availability Guide](./
     The server uses the configuration file located at `/etc/cosmian/kms.toml`.
 
     NOTE: The MacOS version does NOT come with a web UI. It can be manually installed by copying the `dist` folder
-    of a packaged Linux distribution to a folder and updating the `ui_index_html_folder` property of the `kms.toml`  
+    of a packaged Linux distribution to a folder and updating the `ui_index_html_folder` property of the `kms.toml`
     to point to it.
 
 === "Windows"
@@ -200,5 +200,5 @@ For high availability and scalability, refer to the [High Availability Guide](./
     if it is available. See the [server configuration](../server_configuration_file.md) for more information.
 
     NOTE: The Windows version does NOT come with a web UI. It can be manually installed by copying the `dist` folder
-    of a packaged Linux distribution to a folder and updating the `ui_index_html_folder` property of the `kms.toml`  
+    of a packaged Linux distribution to a folder and updating the `ui_index_html_folder` property of the `kms.toml`
     to point to it.
