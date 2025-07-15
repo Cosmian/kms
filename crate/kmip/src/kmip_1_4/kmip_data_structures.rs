@@ -414,6 +414,10 @@ impl TryFrom<kmip_2_1::kmip_data_structures::KeyValue> for KeyValue {
                         attrs
                             .into_iter()
                             .map(TryInto::try_into)
+                            .filter(|a| {
+                                // Le ut not send Custom Attributes which are way too problematic
+                                !matches!(a, Ok(Attribute::CustomAttribute(_)))
+                            })
                             .collect::<Result<Vec<Attribute>, KmipError>>()
                     })
                     .transpose()?;

@@ -13,8 +13,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 use cosmian_logger::log_init;
 use tracing::info;
 
-use super::socket_client::SocketClient;
-use crate::tests::ttlv_tests::get_client;
+use crate::tests::ttlv_tests::{get_client, socket_client::SocketClient};
 
 const REGISTER_KEY: &str = "42007801000001f842007701000000584200690100000020\
 42006a0200000004000000010000000042006b0200000004000000040000000042005002000000040000200000000000\
