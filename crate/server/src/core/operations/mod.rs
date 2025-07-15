@@ -6,6 +6,7 @@ mod create_key_pair;
 mod decrypt;
 mod delete_attribute;
 mod destroy;
+mod digest;
 mod discover_versions;
 mod dispatch;
 mod encrypt;
