@@ -31,6 +31,7 @@ use crate::{
     kms_bail,
     result::KResult,
 };
+use crate::core::operations::digest::digest;
 
 pub(crate) async fn create_key_pair(
     kms: &KMS,
@@ -84,9 +85,12 @@ pub(crate) async fn create_key_pair(
     let mut private_key = key_pair.private_key().to_owned();
     // Set the state to pre-active and copy the attributes before the key gets wrapped
     let private_key_attributes = {
+        let digest = digest(&private_key)?;
         let attributes = private_key.attributes_mut()?;
         // Update the state to PreActive
         attributes.state = Some(PreActive);
+        // update the digest
+        attributes.digest = digest;
         attributes.clone()
     };
     let private_key_tags = private_key_attributes.get_tags();
@@ -103,9 +107,12 @@ pub(crate) async fn create_key_pair(
     let mut public_key = key_pair.public_key().to_owned();
     // Set the state to pre-active and copy the attributes before the key gets wrapped
     let public_key_attributes = {
+        let digest = digest(&public_key)?;
         let attributes = public_key.attributes_mut()?;
         // Update the state to PreActive
         attributes.state = Some(PreActive);
+        // update the digest
+        attributes.digest = digest;
         attributes.clone()
     };
     let public_key_tags = public_key_attributes.get_tags();

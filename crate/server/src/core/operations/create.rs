@@ -16,7 +16,10 @@ use tracing::{info, trace};
 use uuid::Uuid;
 
 use crate::{
-    core::{KMS, retrieve_object_utils::user_has_permission, wrapping::wrap_and_cache},
+    core::{
+        KMS, operations::digest::digest, retrieve_object_utils::user_has_permission,
+        wrapping::wrap_and_cache,
+    },
     error::KmsError,
     kms_bail,
     result::KResult,
@@ -75,10 +78,12 @@ pub(crate) async fn create(
 
     // Set the state to pre-active and copy the attributes before the key gets wrapped
     let attributes = {
+        let digest = digest(&object)?;
         let attributes = object.attributes_mut()?;
         // Update the state to PreActive
         attributes.state = Some(PreActive);
         // update the digest
+        attributes.digest = digest;
         attributes.clone()
     };
 
