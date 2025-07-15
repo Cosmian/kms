@@ -190,17 +190,13 @@ fn get_symmetric_key(client: &SocketClient, uid: &str) {
     };
     get_request.unique_identifier = uid.to_owned();
     info!("Getting symmetric key with request: {request_message:#?}",);
-    let bytes = to_ttlv(&request_message)
+    let raw_request = to_ttlv(&request_message)
         .expect("Failed to encode request")
         .to_bytes(KmipFlavor::Kmip1)
         .expect("Failed to convert TTLV to bytes");
 
-    info!("ORIGINAL REQUEST: {GET}");
-    info!("UPDATED REQUEST: {:#?}", hex::encode(&bytes));
-
-    // Use the raw request to send the Get operation
     let response = client
-        .send_raw_request(&hex::decode(GET).expect("Failed to decode hex"))
+        .send_raw_request(&raw_request)
         .expect("Failed to send request");
     let ttlv_response =
         TTLV::from_bytes(&response, KmipFlavor::Kmip1).expect("Failed to parse TTLV response");
