@@ -70,9 +70,14 @@ fn register_symmetric_key(client: &SocketClient) -> String {
         from_ttlv(ttlv_request).expect("Failed to parse Register");
     info!("Registering symmetric key with request: {request_message:#?}",);
 
+    // Use the raw request to send the Register operation
     let response = client
-        .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip1, &request_message)
+        .send_raw_request(&hex::decode(REGISTER_KEY).expect("Failed to decode hex"))
         .expect("Failed to send request");
+    let ttlv_response =
+        TTLV::from_bytes(&response, KmipFlavor::Kmip1).expect("Failed to parse TTLV response");
+    let response: ResponseMessage =
+        from_ttlv(ttlv_response).expect("Failed to parse Register response");
 
     assert_eq!(
         response.response_header.protocol_version,
@@ -114,9 +119,14 @@ fn locate_symmetric_key(client: &SocketClient) -> Vec<String> {
 
     info!("Locating symmetric key with request: {request_message:#?}",);
 
+    // Use the raw request to send the Locate operation
     let response = client
-        .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip1, &request_message)
+        .send_raw_request(&hex::decode(LOCATE_KEY).expect("Failed to decode hex"))
         .expect("Failed to send request");
+    let ttlv_response =
+        TTLV::from_bytes(&response, KmipFlavor::Kmip1).expect("Failed to parse TTLV response");
+    let response: ResponseMessage =
+        from_ttlv(ttlv_response).expect("Failed to parse Locate response");
 
     assert_eq!(
         response.response_header.protocol_version,
@@ -166,13 +176,20 @@ fn get_symmetric_key(client: &SocketClient, uid: &str) -> Object {
     let Operation::Get(get_request) = &mut batch_item.request_payload else {
         panic!("Expected Get operation");
     };
-
     get_request.unique_identifier = uid.to_owned();
     info!("Getting symmetric key with request: {request_message:#?}",);
 
+    // Use the raw request to send the Get operation
+    let raw_request = GET_SYMMETRIC_KEY.replace(
+        "39646266326261362d333664362d343965642d396261652d393035613636666430303966", // the sample key-id
+        &hex::encode(uid.as_bytes()), // the newly created key-id
+    );
     let response = client
-        .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip1, &request_message)
+        .send_raw_request(&hex::decode(raw_request).expect("Failed to decode hex"))
         .expect("Failed to send request");
+    let ttlv_response =
+        TTLV::from_bytes(&response, KmipFlavor::Kmip1).expect("Failed to parse TTLV response");
+    let response: ResponseMessage = from_ttlv(ttlv_response).expect("Failed to parse Get response");
 
     assert_eq!(
         response.response_header.protocol_version,
