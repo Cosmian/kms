@@ -142,7 +142,7 @@ impl SocketClient {
             .context("Failed to serialize TTLV to bytes")?;
 
         // Send request
-        let response_data = self.send_request_(&request_data)?;
+        let response_data = self.send_raw_request(&request_data)?;
 
         // Deserialize response
         let ttlv_response = TTLV::from_bytes(&response_data, kmip_flavor)
@@ -158,7 +158,7 @@ impl SocketClient {
     }
 
     /// Send a KMIP request to the server and return the response
-    fn send_request_(&self, data: &[u8]) -> KResult<Vec<u8>> {
+    pub(super) fn send_raw_request(&self, data: &[u8]) -> KResult<Vec<u8>> {
         debug!("Sending request: {}", hex::encode(data));
 
         // Connect to server
