@@ -415,7 +415,9 @@ impl TryFrom<kmip_2_1::kmip_data_structures::KeyValue> for KeyValue {
                             .into_iter()
                             .map(TryInto::try_into)
                             .filter(|a| {
-                                // Le ut not send Custom Attributes which are way too problematic
+                                //FIXME Let's not send Custom Attributes that are way too problematic
+                                // libkmip does not support them, and everybody seems to be disagreeing on their formatting in 1.x
+                                // libkmip: https://libkmip.readthedocs.io/en/latest/index.html
                                 !matches!(a, Ok(Attribute::CustomAttribute(_)))
                             })
                             .collect::<Result<Vec<Attribute>, KmipError>>()

@@ -661,6 +661,14 @@ impl From<Attribute> for kmip_2_1::kmip_attributes::Attribute {
     }
 }
 
+//FIXME Although it looks like we convert the Vendor Attributes and unknown KMIP 2.1 attributes to Custom Attributes,
+// they are removed when converting the KeyValue form 2.1 to 1.4.
+// Explanation:
+// Let's not send Custom Attributes that are way too problematic
+// libkmip does not support them, and everybody seems to be disagreeing on their formatting in 1.x
+// libkmip: https://libkmip.readthedocs.io/en/latest/index.html
+
+// https://libkmip.readthedocs.io/en/latest/index.html
 impl TryFrom<kmip_2_1::kmip_attributes::Attribute> for Attribute {
     type Error = KmipError;
 
