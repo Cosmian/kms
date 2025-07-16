@@ -1,3 +1,6 @@
+//! Test of Percona's implementation of TDE for `PostgreSQL`:
+//! <https://github.com/percona/postgres/tree/TDE_REL_17_STABLE/contrib/pg_tde>
+
 use cosmian_kms_client_utils::reexport::cosmian_kmip::ttlv::{TTLV, from_ttlv};
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::{
