@@ -606,3 +606,46 @@ async fn test_destroy_cover_crypt() -> KmsCliResult<()> {
 
     Ok(())
 }
+
+#[tokio::test]
+async fn test_destroy_secret_data() -> KmsCliResult<()> {
+    let ctx = start_default_test_kms_server().await;
+
+    // Create secret data
+    let secret_id = crate::actions::kms::secret_data::create_secret::CreateKeyAction::default()
+        .run(ctx.get_owner_client())
+        .await?
+        .to_string();
+
+    // destroy should not work when not revoked
+    assert!(
+        DestroyKeyAction {
+            key_id: Some(secret_id.clone()),
+            remove: false,
+            tags: None,
+        }
+        .run(ctx.get_owner_client())
+        .await
+        .is_err()
+    );
+
+    // revoke then destroy
+    RevokeKeyAction {
+        key_id: Some(secret_id.clone()),
+        revocation_reason: "revocation test".to_string(),
+        tags: None,
+    }
+    .run(ctx.get_owner_client())
+    .await?;
+
+    DestroyKeyAction {
+        key_id: Some(secret_id.clone()),
+        remove: false,
+        tags: None,
+    }
+    .run(ctx.get_owner_client())
+    .await?;
+
+    // assert
+    assert_destroyed(ctx, &secret_id, false).await
+}

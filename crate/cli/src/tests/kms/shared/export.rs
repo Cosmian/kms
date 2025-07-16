@@ -1,6 +1,7 @@
 #[cfg(feature = "non-fips")]
 use std::path::{Path, PathBuf};
 
+use cosmian_kmip::kmip_2_1::kmip_objects::Object;
 use cosmian_kms_client::{
     kmip_0::kmip_types::BlockCipherMode,
     kmip_2_1::kmip_types::KeyFormatType,
@@ -693,6 +694,68 @@ pub(crate) async fn test_sensitive_covercrypt_key() -> KmsCliResult<()> {
         ExportKeyAction {
             key_id: Some(user_key_id),
             key_file: tmp_path.join("output.export"),
+            ..Default::default()
+        }
+        .run(ctx.get_owner_client())
+        .await
+        .is_err()
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+pub(crate) async fn test_export_secret_data() -> KmsCliResult<()> {
+    // create a temp dir
+    let tmp_dir = TempDir::new()?;
+    let tmp_path = tmp_dir.path();
+    // init the test server
+    let ctx = start_default_test_kms_server().await;
+
+    // generate a symmetric key
+    let secret_id = crate::actions::kms::secret_data::create_secret::CreateKeyAction::default()
+        .run(ctx.get_owner_client())
+        .await?;
+
+    // Export as default (JsonTTLV with Raw Key Format Type)
+    ExportKeyAction {
+        key_id: Some(secret_id.to_string()),
+        key_file: tmp_path.join("output.export"),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?;
+
+    // read the bytes from the exported file
+    let object = read_object_from_json_ttlv_file(&tmp_path.join("output.export"))?;
+    // Ensure we’re working with SecretData
+    let Object::SecretData(secret_data) = object else {
+        panic!("Expected SecretData object");
+    };
+    // Get the key block
+    let key_block = &secret_data.key_block;
+    assert_eq!(key_block.key_format_type, KeyFormatType::Raw);
+    let key_bytes = key_block.secret_data_bytes()?;
+    // Now you can use the bytes:
+    assert_eq!(key_bytes.len(), 32);
+    // Export the bytes only
+    ExportKeyAction {
+        key_id: Some(secret_id.to_string()),
+        key_file: tmp_path.join("output.export.bytes"),
+        key_format: ExportKeyFormat::Raw,
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?;
+    let bytes = read_bytes_from_file(&tmp_path.join("output.export.bytes"))?;
+    assert_eq!(key_bytes.as_slice(), bytes.as_slice());
+
+    // wrong export format
+    assert!(
+        ExportKeyAction {
+            key_id: Some(secret_id.to_string()),
+            key_file: tmp_path.join("output.export.bytes"),
+            key_format: ExportKeyFormat::Pkcs1Pem,
             ..Default::default()
         }
         .run(ctx.get_owner_client())

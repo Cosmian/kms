@@ -383,6 +383,31 @@ impl KeyBlock {
         }
     }
 
+    /// Return the key material of a secret data
+    pub fn secret_data_bytes(&self) -> Result<Zeroizing<Vec<u8>>, KmipError> {
+        let key_value = self.key_value.as_ref().ok_or_else(|| {
+            KmipError::InvalidKmip21Value(
+                ErrorReason::Invalid_Attribute_Value,
+                "key is missing its key value".to_owned(),
+            )
+        })?;
+
+        match key_value {
+            KeyValue::ByteString(_) => Err(KmipError::InvalidKmip21Value(
+                ErrorReason::Invalid_Object_Type,
+                "secret_data_bytes: key bytes cannot be recovered from wrapped keys".to_owned(),
+            )),
+            KeyValue::Structure { key_material, .. } => match key_material {
+                KeyMaterial::ByteString(v) => Ok(v.clone()),
+                _ => Err(KmipError::InvalidKmip21Value(
+                    ErrorReason::Invalid_Object_Type,
+                    "Key bytes can only be recovered from raw and transparent symmetric keys"
+                        .to_owned(),
+                )),
+            },
+        }
+    }
+
     /// Extract the Key bytes from the given `KeyBlock`
     /// and give an optional reference to `Attributes`
     /// Returns an error if there is no valid key material

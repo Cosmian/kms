@@ -338,3 +338,23 @@ async fn test_non_revocable_symmetric_key() -> KmsCliResult<()> {
 
     Ok(())
 }
+
+#[tokio::test]
+async fn test_revoke_secret_data() -> KmsCliResult<()> {
+    let ctx = start_default_test_kms_server().await;
+
+    let secret_id = crate::actions::kms::secret_data::create_secret::CreateKeyAction::default()
+        .run(ctx.get_owner_client())
+        .await?;
+
+    RevokeKeyAction {
+        key_id: Some(secret_id.to_string()),
+        revocation_reason: "revocation test".to_string(),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?;
+
+    assert_revoked(ctx, &secret_id).await?;
+    Ok(())
+}
