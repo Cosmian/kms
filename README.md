@@ -30,6 +30,7 @@ The Cosmian KMS presents some unique features, such as:
 - [FIPS 140-3](./documentation/docs/fips.md) mode gated behind the feature `fips`
 - a [binary and JSON KMIP 1.0-1.4 and 2.0-2.1](./documentation/docs/kmip/index.md) compliant interface
 - Oracle DB [TDE support](./documentation/docs/oracle/tde.md)
+- Percona Postgresql DB (./documentation/docs/percona.md)
 - VMWare [vCenter Trust Key Provider integration](./documentation/docs/vcenter.md)
 - User Defined Functions for [Big Data](./documentation/docs/python_udf/index.md) including [snowflake](./documentation/docs/snowflake/index.md)
 - a full-featured client [command line and graphical interface](https://docs.cosmian.com/cosmian_cli/)
