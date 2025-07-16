@@ -97,19 +97,25 @@ pub(crate) async fn test_generate_export_import() -> KmsCliResult<()> {
         let key_ids = Box::pin(action.run(ctx.get_owner_client())).await?;
         (key_ids.0, key_ids.1)
     };
-    export_import_test(&private_key_id, CryptographicAlgorithm::CoverCrypt).await?;
+    export_import_test(&private_key_id, Some(CryptographicAlgorithm::CoverCrypt)).await?;
 
     // Test import/export of an EC Key Pair
     let (private_key_id, _public_key_id) = CreateEcKeyPairAction::default()
         .run(ctx.get_owner_client())
         .await?;
-    export_import_test(&private_key_id, CryptographicAlgorithm::ECDH).await?;
+    export_import_test(&private_key_id, Some(CryptographicAlgorithm::ECDH)).await?;
 
     // generate a symmetric key
     let key_id = CreateKeyAction::default()
         .run(ctx.get_owner_client())
         .await?;
-    export_import_test(&key_id, CryptographicAlgorithm::AES).await?;
+    export_import_test(&key_id, Some(CryptographicAlgorithm::AES)).await?;
+
+    // generate a secret data
+    let secret_id = crate::actions::kms::secret_data::create_secret::CreateKeyAction::default()
+        .run(ctx.get_owner_client())
+        .await?;
+    export_import_test(&secret_id, None).await?;
 
     Ok(())
 }
@@ -117,7 +123,7 @@ pub(crate) async fn test_generate_export_import() -> KmsCliResult<()> {
 #[allow(dead_code)]
 pub(crate) async fn export_import_test(
     private_key_id: &UniqueIdentifier,
-    algorithm: CryptographicAlgorithm,
+    algorithm: Option<CryptographicAlgorithm>,
 ) -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server().await;
 
@@ -132,9 +138,10 @@ pub(crate) async fn export_import_test(
 
     let object = read_object_from_json_ttlv_file(&PathBuf::from("/tmp/output.export"))?;
     let key_bytes = match algorithm {
-        CryptographicAlgorithm::AES => object.key_block()?.symmetric_key_bytes()?,
-        CryptographicAlgorithm::ECDH => object.key_block()?.ec_raw_bytes()?,
-        CryptographicAlgorithm::CoverCrypt => object.key_block()?.covercrypt_key_bytes()?,
+        None => object.key_block()?.secret_data_bytes()?,
+        Some(CryptographicAlgorithm::AES) => object.key_block()?.symmetric_key_bytes()?,
+        Some(CryptographicAlgorithm::ECDH) => object.key_block()?.ec_raw_bytes()?,
+        Some(CryptographicAlgorithm::CoverCrypt) => object.key_block()?.covercrypt_key_bytes()?,
         x => {
             return Err(KmsCliError::Default(format!(
                 "unsupported algorithm for export: {x:?}"
@@ -160,9 +167,10 @@ pub(crate) async fn export_import_test(
     .await?;
     let object2 = read_object_from_json_ttlv_file(&PathBuf::from("/tmp/output2.export"))?;
     let object2_key_bytes = match algorithm {
-        CryptographicAlgorithm::AES => object2.key_block()?.symmetric_key_bytes()?,
-        CryptographicAlgorithm::ECDH => object2.key_block()?.ec_raw_bytes()?,
-        CryptographicAlgorithm::CoverCrypt => object2.key_block()?.covercrypt_key_bytes()?,
+        None => object.key_block()?.secret_data_bytes()?,
+        Some(CryptographicAlgorithm::AES) => object2.key_block()?.symmetric_key_bytes()?,
+        Some(CryptographicAlgorithm::ECDH) => object2.key_block()?.ec_raw_bytes()?,
+        Some(CryptographicAlgorithm::CoverCrypt) => object2.key_block()?.covercrypt_key_bytes()?,
         x => {
             return Err(KmsCliError::Default(format!(
                 "unsupported algorithm for export: {x:?}"
@@ -170,10 +178,7 @@ pub(crate) async fn export_import_test(
         }
     };
     assert_eq!(object2_key_bytes, key_bytes);
-    assert_eq!(
-        object2.key_block()?.cryptographic_algorithm,
-        Some(algorithm)
-    );
+    assert_eq!(object2.key_block()?.cryptographic_algorithm, algorithm);
     assert!(object2.key_block()?.key_wrapping_data.is_none());
 
     Ok(())

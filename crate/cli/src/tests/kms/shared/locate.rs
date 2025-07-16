@@ -458,3 +458,50 @@ pub(crate) async fn test_locate_grant() -> KmsCliResult<()> {
 
     Ok(())
 }
+
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+pub(crate) async fn test_locate_secret_data() -> KmsCliResult<()> {
+    // init the test server
+    let ctx = start_default_test_kms_server_with_cert_auth().await;
+
+    // generate a new secret
+    let secret_id = crate::actions::kms::secret_data::create_secret::CreateKeyAction {
+        tags: vec!["test_secret".to_string()],
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?;
+    // Locate with Tags
+    let ids = LocateObjectsAction {
+        tags: Some(vec!["test_secret".to_string()]),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?;
+    assert_eq!(ids.len(), 1);
+    assert!(ids.contains(&secret_id));
+
+    // locate using the key format type
+    let ids = LocateObjectsAction {
+        tags: Some(vec!["test_secret".to_string()]),
+        key_format_type: Some(KeyFormatType::Raw),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?;
+    assert_eq!(ids.len(), 1);
+    assert!(ids.contains(&secret_id));
+
+    // test using system Tags
+    let ids = LocateObjectsAction {
+        tags: Some(vec!["test_secret".to_string(), "_sd".to_string()]),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?;
+    assert_eq!(ids.len(), 1);
+    assert!(ids.contains(&secret_id));
+
+    Ok(())
+}

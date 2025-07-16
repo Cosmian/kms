@@ -9,6 +9,7 @@ use crate::{
     actions::kms::secret_data::create_secret::CreateKeyAction, error::result::KmsCliResult,
 };
 
+#[cfg(feature = "non-fips")]
 #[tokio::test]
 pub(crate) async fn test_create_secret_data() -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server().await;
