@@ -28,12 +28,23 @@ const SecretDataCreateForm: React.FC = () => {
     const [isLoading, setIsLoading] = useState(false);
     const { idToken, serverUrl } = useAuth();
     const responseRef = useRef<HTMLDivElement>(null);
+    const secretValue = Form.useWatch("secretValue", form);
 
     useEffect(() => {
         if (res && responseRef.current) {
             responseRef.current.scrollIntoView({ behavior: "smooth" });
         }
     }, [res]);
+
+    useEffect(() => {
+        const isInvalid = !secretValue || secretValue.length < 5;
+
+        if (isInvalid) {
+            form.setFieldsValue({ secretType: "Seed" });
+        }
+    }, [secretValue, form]);
+
+    const isSecretTypeDisabled = !secretValue || secretValue.length < 5;
 
     const onFinish = async (values: SecretDataCreateFormData) => {
         setIsLoading(true);
@@ -113,13 +124,13 @@ const SecretDataCreateForm: React.FC = () => {
                             label="Secret Data Type"
                             rules={[{ required: true, message: "Please select a secret type" }]}
                         >
-                            <Select>
+                            <Select disabled={isSecretTypeDisabled}>
                                 <Select.Option value="Seed">Seed</Select.Option>
                                 <Select.Option value="Password">Password</Select.Option>
                             </Select>
                         </Form.Item>
 
-                        <Form.Item name="secretId" label="Secret ID" help="Optional: a random UUID will be generated if not specified">
+                        <Form.Item name="secretId" label="Secret Data ID" help="Optional: a random UUID will be generated if not specified">
                             <Input placeholder="Enter secret ID" />
                         </Form.Item>
 
