@@ -18,15 +18,11 @@ use crate::tests::ttlv_tests::{get_client, socket_client::SocketClient};
 const DISCOVER_VERSIONS_1: &str = "42007801000000604200770100000038420069010000002042006a02000000040000000100000000\
 42006b0200000004000000010000000042000d02000000040000000100000000\
 42000f010000001842005c05000000040000001e000000004200790100000000";
-//
-// const DISCOVER_VERSIONS_2: &str = "420078010000007042007701000000384200690100000020\
-// 42006a0200000004000000010000000042006b0200000004000000010000000042000d02000000040000000100000000\
-// 42000f010000002842005c05000000040000001e000000004200930800000008514c4b43010000004200790100000000";
-//
-// const QUERY: &str = "42007801000000804200770100000038420069010000002042006a0200000004000000010000000042006b\
-// 0200000004000000010000000042000d0200000004000000010000000042000f010000003842005c050000\
-// 000400000018000000004200930800000008514c4b4301000000420079010000001042007405000000040000000300000000";
-//
+
+const QUERY: &str = "42007801000000804200770100000038420069010000002042006a0200000004000000010000000042006b\
+0200000004000000010000000042000d0200000004000000010000000042000f010000003842005c050000\
+000400000018000000004200930800000008514c4b4301000000420079010000001042007405000000040000000300000000";
+
 const CREATE: &str =
     "420078010000013042007701000000384200690100000020\
     42006a0200000004000000010000000042006b0200000004000000010000000042000d02000000040000000100000000\
@@ -60,12 +56,14 @@ const GET: &str = "42007801000000804200770100000038420069010000002042006a0200000
 
 #[test]
 fn test_vmware() {
-    // log_init(option_env!("RUST_LOG"));
-    log_init(Some("info"));
+    log_init(option_env!("RUST_LOG"));
+    // log_init(Some("info"));
 
     let client = get_client();
 
     discover_versions_1(&client);
+
+    query(&client);
 
     let uid = create_symmetric_key(&client);
 
@@ -129,6 +127,36 @@ fn discover_versions_1(client: &SocketClient) {
     assert_eq!(protocols.len(), 7); // 2.1, 2.0, 1.4, 1.3, 1.2, 1.1, 1.0
 
     info!("DiscoverVersions response: {discover_response:#?}");
+}
+
+fn query(client: &SocketClient) {
+    let ttlv_request = TTLV::from_bytes(
+        &hex::decode(QUERY).expect("Failed to decode hex"),
+        KmipFlavor::Kmip1,
+    )
+    .expect("Failed to parse TTLV");
+    let request_message: RequestMessage = from_ttlv(ttlv_request).expect("Failed to parse Query");
+
+    info!("Querying with request: {request_message:#?}",);
+
+    // Use the raw request to send the Query operation
+    let response = client
+        .send_raw_request(&hex::decode(QUERY).expect("Failed to decode hex"))
+        .expect("Failed to send request");
+    let ttlv_response =
+        TTLV::from_bytes(&response, KmipFlavor::Kmip1).expect("Failed to parse TTLV response");
+    let response: ResponseMessage =
+        from_ttlv(ttlv_response).expect("Failed to parse Query response");
+
+    info!("Query response: {response:#?}");
+
+    assert_eq!(
+        response.response_header.protocol_version,
+        ProtocolVersion {
+            protocol_version_major: 1,
+            protocol_version_minor: 1,
+        }
+    );
 }
 
 fn create_symmetric_key(client: &SocketClient) -> String {
