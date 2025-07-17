@@ -337,6 +337,8 @@ pub async fn start_test_server_with_options(
         authentication_options.do_not_send_api_token,
     )?;
 
+    info!(" -- Test KMS server configuration: {:#?}", server_params);
+
     info!(
         " -- Test KMS owner client configuration: {:#?}",
         owner_client_config

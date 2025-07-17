@@ -57,8 +57,9 @@ The KMS has extensive online [documentation](https://docs.cosmian.com/key_manage
     - [Quick start](#quick-start)
         - [Example](#example)
     - [Repository content](#repository-content)
-    - [Building the KMS](#building-the-kms)
-        - [Linux or MacOS (CPU Intel or MacOs ARM)](#linux-or-macos-cpu-intel-or-macos-arm)
+    - [Building and running the KMS](#building-and-running-the-kms)
+        - [Features](#features)
+        - [Linux or macOS (CPU Intel or macOS ARM)](#linux-or-macos-cpu-intel-or-macos-arm)
         - [Windows](#windows)
         - [Build the KMS](#build-the-kms)
         - [Build the Docker Ubuntu container](#build-the-docker-ubuntu-container)
@@ -132,7 +133,7 @@ binaries:
 - A server (`cosmian_kms`) which is the KMS itself
 - A CLI (`cosmian`) to interact with this server
 
-The most important crates are:   
+The most important crates are:
 
 - `access` to handle permissions
 - `client` to query the server

@@ -37,7 +37,7 @@ actix-rt = { workspace = true }
 actix-service = "2.0"
 actix-session = { version = "0.8", features = ["cookie-session"] }
 actix-tls = "3.4"
-actix-web = { workspace = true, features = ["macros", "openssl"] }
+actix-web = { workspace = true, features = ["macros", "rustls-0_23"] }
 alcoholic_jwt = "4091"
 async-recursion = "1.1"
 base64 = { workspace = true }
@@ -65,7 +65,7 @@ num-bigint-dig = { workspace = true, features = [
     "serde",
     "zeroize",
 ] }
-openidconnect = "4.0.0"
+openidconnect = "4.0"
 openssl = { workspace = true }
 proteccio_pkcs11_loader = { path = "../hsm/proteccio", version = "5.5.1" }
 # Important: align the rustls version with reqwest rustls dependency
@@ -88,7 +88,7 @@ rustls = { version = "0.23", features = [
 rsa = "0.9.8"
 serde = { workspace = true }
 serde_json = { workspace = true }
-softhsm2_pkcs11_loader = { path = "../hsm/softhsm2", version = "5.4.1" }
+softhsm2_pkcs11_loader = { path = "../hsm/softhsm2", version = "5.5.1" }
 strum = { workspace = true, features = ["std", "derive", "strum_macros"] }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["local-offset", "formatting"] }
