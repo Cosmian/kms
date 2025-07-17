@@ -365,8 +365,9 @@ const GET_ATTRIBUTES_RESPONSE: &str = "42007b0100000\
 
 #[test]
 fn get_attributes() {
-    // log_init(Some("debug"));
-    log_init(option_env!("RUST_LOG"));
+    log_init(Some("info"));
+    // log_init(option_env!("RUST_LOG"));\
+
     let request = hex::decode(GET_ATTRIBUTES).unwrap();
 
     let (major, minor) = TTLV::find_version(&request).unwrap();

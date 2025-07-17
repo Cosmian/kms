@@ -212,6 +212,10 @@ pub(crate) fn access_policy_serialization() -> KResult<()> {
 
 #[tokio::test]
 async fn test_abe_encrypt_decrypt() -> KResult<()> {
+    // Initialize the logger
+    log_init(option_env!("RUST_LOG"));
+    // log_init(Some("debug"));
+
     let clap_config = https_clap_config();
 
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
