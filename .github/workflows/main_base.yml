@@ -31,6 +31,8 @@ jobs:
       toolchain: ${{ inputs.toolchain }}
 
   pykmip:
+    env:
+      OPENSSL_DIR: /usr/local/openssl
     runs-on: ubuntu-24.04
     container:
       image: cosmian/rockylinux9
@@ -53,7 +55,7 @@ jobs:
 
       - name: Tests PyKMIP
         env:
-          OPENSSL_DIR: /usr/local/openssl
+          OPENSSL_DIR: ${{ env.OPENSSL_DIR }}
           COSMIAN_KMS_CONF: ./scripts/kms.toml
         run: |
           cargo build --bin cosmian_kms --features non-fips
