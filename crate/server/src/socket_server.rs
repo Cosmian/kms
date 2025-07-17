@@ -29,7 +29,7 @@ static INIT_CRYPTO: Once = Once::new();
 
 /// Initialize the crypto provider used by rustls.
 /// Use AWS LC crypto provider which is FIPS certified
-fn initialize_aws_lc_crypto_provider() {
+pub(crate) fn initialize_aws_lc_crypto_provider() {
     {
         INIT_CRYPTO.call_once(|| {
             let provider = rustls::crypto::aws_lc_rs::default_provider();

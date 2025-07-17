@@ -12,7 +12,7 @@ use std::{
 };
 
 use actix_service::{Service, Transform};
-use actix_tls::accept::openssl::TlsStream;
+use actix_tls::accept::rustls_0_23::TlsStream;
 use actix_web::{
     Error, HttpMessage,
     body::{BoxBody, EitherBody},
@@ -44,10 +44,15 @@ pub(crate) struct PeerCertificate {
 pub(crate) fn extract_peer_certificate(cnx: &dyn Any, extensions: &mut Extensions) {
     // Check if the connection is a TLS connection.
     if let Some(cnx) = cnx.downcast_ref::<TlsStream<TcpStream>>() {
-        // Get the peer certificate from the TLS connection.
-        if let Some(cert) = cnx.ssl().peer_certificate() {
-            // Add the peer certificate to the request context.
-            extensions.insert(PeerCertificate { cert });
+        // Get the peer certificates from the TLS connection.
+        let certs = cnx.get_ref().1.peer_certificates();
+        if let Some(certs) = certs {
+            if let Some(cert) = certs.first() {
+                // Parse the DER-encoded certificate into openssl::X509
+                if let Ok(x509) = X509::from_der(cert.as_ref()) {
+                    extensions.insert(PeerCertificate { cert: x509 });
+                }
+            }
         }
     }
 }

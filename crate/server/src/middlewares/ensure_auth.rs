@@ -134,7 +134,7 @@ where
             });
         }
 
-        //If any means of authentication is configured (Client certificates, JWT, or API token),
+        // If any means of authentication is configured (Client certificates, JWT, or API token),
         // fail with 401 Unauthorized
         if self.auth_is_configured {
             error!("Authentication method configured, but no authentication provided");

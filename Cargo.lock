@@ -206,8 +206,10 @@ dependencies = [
  "impl-more",
  "openssl",
  "pin-project-lite",
+ "rustls-pki-types",
  "tokio",
  "tokio-openssl",
+ "tokio-rustls 0.26.2",
  "tokio-util",
  "tracing",
 ]

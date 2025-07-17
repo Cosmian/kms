@@ -37,7 +37,7 @@ actix-rt = { workspace = true }
 actix-service = "2.0"
 actix-session = { version = "0.8", features = ["cookie-session"] }
 actix-tls = "3.4"
-actix-web = { workspace = true, features = ["macros", "openssl"] }
+actix-web = { workspace = true, features = ["macros", "openssl", "rustls-0_23"] }
 alcoholic_jwt = "4091"
 async-recursion = "1.1"
 base64 = { workspace = true }
