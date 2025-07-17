@@ -43,7 +43,8 @@ pub(crate) async fn retrieve_object_for_operation(
         let state = owm.state();
         if !(state == State::Active
             || state == State::PreActive
-            || operation_type == KmipOperation::Export)
+            || operation_type == KmipOperation::Export
+            || operation_type == KmipOperation::GetAttributes)
         {
             continue
         }

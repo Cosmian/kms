@@ -12,6 +12,7 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::SessionParams,
 };
+use time::OffsetDateTime;
 use tracing::{info, trace};
 use uuid::Uuid;
 
@@ -84,6 +85,13 @@ pub(crate) async fn create(
         attributes.state = Some(PreActive);
         // update the digest
         attributes.digest = digest;
+        // update the initial date
+        let now = OffsetDateTime::now_utc();
+        attributes.initial_date = Some(now);
+        // update original creation date
+        attributes.original_creation_date = Some(now);
+        // update the last change date
+        attributes.last_change_date = Some(now);
         attributes.clone()
     };
 

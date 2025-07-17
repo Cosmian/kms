@@ -10,6 +10,7 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams},
 };
+use time::OffsetDateTime;
 use tracing::{debug, trace};
 
 use crate::{
@@ -693,6 +694,9 @@ pub(crate) async fn add_attribute(
             attributes.x_509_certificate_identifier = Some(x509_certificate_identifier);
         }
     }
+
+    // update the last change date
+    attributes.last_change_date = Some(OffsetDateTime::now_utc());
 
     let tags = kms.database.retrieve_tags(owm.id(), params.clone()).await?;
 

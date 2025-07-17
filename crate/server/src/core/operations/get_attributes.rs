@@ -285,6 +285,9 @@ pub(crate) async fn get_attributes(
                 Tag::ObjectType => {
                     res.object_type = attributes.object_type;
                 }
+                Tag::OriginalCreationDate => {
+                    res.original_creation_date = attributes.original_creation_date;
+                }
                 Tag::ProcessStartDate => {
                     res.process_start_date = attributes.process_start_date;
                 }

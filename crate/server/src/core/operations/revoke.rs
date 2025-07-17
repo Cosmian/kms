@@ -13,7 +13,7 @@ use cosmian_kms_server_database::reexport::{
             kmip_types::{LinkType, UniqueIdentifier},
         },
     },
-    cosmian_kms_interfaces::SessionParams,
+    cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams},
 };
 use time::OffsetDateTime;
 use tracing::{debug, info, trace};
@@ -130,6 +130,7 @@ pub(crate) async fn recursively_revoke_key(
         };
 
         let object_type = owm.object().object_type();
+        let uid = owm.id().to_owned();
         if owm.state() != State::Active && owm.state() != State::PreActive {
             continue
         }
@@ -153,13 +154,13 @@ pub(crate) async fn recursively_revoke_key(
             }
         }
         count += 1;
-        // perform the chain of revoke operations depending on the type of object
+        //Perform the chain of revoke operations depending on the type of object
         let object_type = owm.object().object_type();
         match object_type {
             ObjectType::SymmetricKey | ObjectType::Certificate | ObjectType::SecretData => {
                 // revoke the key
                 revoke_key_core(
-                    owm.id(),
+                    owm,
                     revocation_reason.clone(),
                     compromise_occurrence_date,
                     kms,
@@ -174,7 +175,7 @@ pub(crate) async fn recursively_revoke_key(
                 #[cfg(feature = "non-fips")]
                 if owm.object().key_block()?.key_format_type == KeyFormatType::CoverCryptSecretKey {
                     revoke_user_decryption_keys(
-                        owm.id(),
+                        &uid,
                         revocation_reason.clone(),
                         compromise_occurrence_date,
                         kms,
@@ -207,7 +208,7 @@ pub(crate) async fn recursively_revoke_key(
                 }
                 // now revoke the private key
                 revoke_key_core(
-                    owm.id(),
+                    owm,
                     revocation_reason.clone(),
                     compromise_occurrence_date,
                     kms,
@@ -241,7 +242,7 @@ pub(crate) async fn recursively_revoke_key(
                 }
                 // revoke the public key
                 revoke_key_core(
-                    owm.id(),
+                    owm,
                     revocation_reason.clone(),
                     compromise_occurrence_date,
                     kms,
@@ -255,10 +256,10 @@ pub(crate) async fn recursively_revoke_key(
         }
 
         info!(
-            uid = owm.id(),
+            uid = uid,
             user = user,
             "Revoked object type: {}",
-            owm.object().object_type(),
+            object_type,
         );
     }
 
@@ -275,35 +276,54 @@ pub(crate) async fn recursively_revoke_key(
 /// Revoke a key, knowing the object and state
 #[allow(clippy::too_many_arguments)]
 async fn revoke_key_core(
-    unique_identifier: &str,
+    mut owm: ObjectWithMetadata,
     revocation_reason: RevocationReason,
     compromise_occurrence_date: Option<OffsetDateTime>,
     kms: &KMS,
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<()> {
-    let state = match revocation_reason.revocation_reason_code {
-        RevocationReasonCode::Unspecified
-        | RevocationReasonCode::AffiliationChanged
-        | RevocationReasonCode::Superseded
-        | RevocationReasonCode::CessationOfOperation
-        | RevocationReasonCode::PrivilegeWithdrawn => State::Deactivated,
-        RevocationReasonCode::KeyCompromise | RevocationReasonCode::CACompromise => {
-            if compromise_occurrence_date.is_none() {
-                kms_bail!(KmsError::InvalidRequest(
-                    "A compromise date must be supplied in case of compromised object".to_owned()
-                ))
-            }
-            State::Compromised
-        }
+    // Update the state of the object to Active and activation date
+    let now = OffsetDateTime::now_utc();
+    let state = match revocation_reason {
+        RevocationReason {
+            revocation_reason_code:
+                RevocationReasonCode::KeyCompromise | RevocationReasonCode::CACompromise,
+            ..
+        } => State::Compromised,
+        _ => State::Deactivated,
     };
+
+    if let Ok(object_attributes) = owm.object_mut().attributes_mut() {
+        object_attributes.state = Some(state);
+        // update the deactivation date
+        object_attributes.deactivation_date = Some(now);
+        // update the compromise occurrence date if provided
+        if let Some(date) = compromise_occurrence_date {
+            object_attributes.compromise_occurrence_date = Some(date);
+        }
+    }
+    // Update the state in the "external" attributes
+    owm.attributes_mut().state = Some(state);
+    // Update the deactivation date in the "external" attributes
+    owm.attributes_mut().deactivation_date = Some(now);
+    // Update the compromise occurrence date in the "external" attributes if provided
+    if let Some(date) = compromise_occurrence_date {
+        owm.attributes_mut().compromise_occurrence_date = Some(date);
+    }
+
     kms.database
-        .update_state(unique_identifier, state, params)
+        .update_object(
+            owm.id(),
+            owm.object(),
+            owm.attributes(),
+            None,
+            params.clone(),
+        )
         .await?;
 
-    debug!(
-        "Object with unique identifier: {} revoked",
-        unique_identifier
-    );
+    kms.database.update_state(owm.id(), state, params).await?;
+
+    debug!("Object with unique identifier: {} revoked", owm.id());
 
     Ok(())
 }

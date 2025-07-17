@@ -11,6 +11,7 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams},
 };
+use time::OffsetDateTime;
 use tracing::trace;
 
 use crate::{
@@ -42,12 +43,17 @@ pub(crate) async fn activate(
     .await?;
     trace!("Activate: Retrieved object for: {}", owm.object());
 
-    // Update the state of the object to Active
+    // Update the state of the object to Active and activation date
+    let activation_date = OffsetDateTime::now_utc();
     if let Ok(object_attributes) = owm.object_mut().attributes_mut() {
         object_attributes.state = Some(State::Active);
+        // update the activation date
+        object_attributes.activation_date = Some(activation_date);
     }
     // Update the state in the "external" attributes
     owm.attributes_mut().state = Some(State::Active);
+    // Update the activation date in the "external" attributes
+    owm.attributes_mut().activation_date = Some(activation_date);
 
     // Update the object in the database
     kms.database
