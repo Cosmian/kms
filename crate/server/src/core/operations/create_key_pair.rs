@@ -1,5 +1,5 @@
 use std::sync::Arc;
-
+use time::OffsetDateTime;
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::reexport::cosmian_cover_crypt::api::Covercrypt;
 #[cfg(feature = "non-fips")]
@@ -81,6 +81,7 @@ pub(crate) async fn create_key_pair(
     let key_pair = generate_key_pair(request, &sk_uid, &pk_uid)?;
 
     trace!("create_key_pair: sk_uid: {sk_uid}, pk_uid: {pk_uid}");
+    let now = OffsetDateTime::now_utc();
 
     let mut private_key = key_pair.private_key().to_owned();
     // Set the state to pre-active and copy the attributes before the key gets wrapped
@@ -91,6 +92,12 @@ pub(crate) async fn create_key_pair(
         attributes.state = Some(PreActive);
         // update the digest
         attributes.digest = digest;
+        // update the initial date
+        attributes.initial_date = Some(now);
+        // update original creation date
+        attributes.original_creation_date = Some(now);
+        // update the last change date
+        attributes.last_change_date = Some(now);
         attributes.clone()
     };
     let private_key_tags = private_key_attributes.get_tags();
@@ -113,6 +120,12 @@ pub(crate) async fn create_key_pair(
         attributes.state = Some(PreActive);
         // update the digest
         attributes.digest = digest;
+        // update the initial date
+        attributes.initial_date = Some(now);
+        // update original creation date
+        attributes.original_creation_date = Some(now);
+        // update the last change date
+        attributes.last_change_date = Some(now);
         attributes.clone()
     };
     let public_key_tags = public_key_attributes.get_tags();
