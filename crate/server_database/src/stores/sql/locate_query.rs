@@ -1,6 +1,9 @@
 use cosmian_kmip::{
     kmip_0::kmip_types::State,
-    kmip_2_1::{kmip_attributes::Attributes, kmip_types::LinkedObjectIdentifier::TextString},
+    kmip_2_1::{
+        kmip_attributes::Attributes,
+        kmip_types::{LinkedObjectIdentifier::TextString, NameType},
+    },
 };
 
 /// Handle different placeholders naming (bind parameter or
@@ -16,6 +19,9 @@ pub(crate) trait PlaceholderTrait {
     const JSON_NODE_LINK: &'static str = "'$.Link'";
     const JSON_TEXT_LINK_OBJ_ID: &'static str = "'$.LinkedObjectIdentifier'";
     const JSON_TEXT_LINK_TYPE: &'static str = "'$.LinkType'";
+    const JSON_NODE_NAME: &'static str = "'$.Name'";
+    const JSON_TEXT_NAME_VALUE: &'static str = "'$.NameValue'";
+    const JSON_TEXT_NAME_TYPE: &'static str = "'$.NameType'";
     const TYPE_INTEGER: &'static str = "INTEGER";
 
     /// Handle different placeholders (`?`, `$1`) in SQL queries
@@ -30,12 +36,25 @@ pub(crate) trait PlaceholderTrait {
     /// needs an additional `FROM` component, which is later used as `value`
     /// when looping using `json_each`
     #[must_use]
-    fn additional_rq_from() -> Option<String> {
+    fn links_additional_rq_from() -> Option<String> {
         Some(format!(
-            "{}({}(objects.attributes, {}))",
+            "{}({}(objects.attributes, {})) as links",
             Self::JSON_FN_EACH_ELEMENT,
             Self::JSON_FN_EXTRACT_PATH,
             Self::JSON_NODE_LINK
+        ))
+    }
+
+    /// In `PostgreSQL` and Sqlite, finding name attributes is different and
+    /// needs an additional `FROM` component, which is later used as `value`
+    /// when looping using `json_each`
+    #[must_use]
+    fn names_additional_rq_from() -> Option<String> {
+        Some(format!(
+            "{}({}(objects.attributes, {})) as names",
+            Self::JSON_FN_EACH_ELEMENT,
+            Self::JSON_FN_EXTRACT_PATH,
+            Self::JSON_NODE_NAME
         ))
     }
 
@@ -44,10 +63,20 @@ pub(crate) trait PlaceholderTrait {
     #[must_use]
     fn link_evaluation(node_name: &str, node_value: &str) -> String {
         format!(
-            "{}(value, {}) = '{}'",
+            "{}(links.value, {}) = '{}'",
             Self::JSON_FN_EXTRACT_TEXT,
             node_name,  // `P::JSON_TEXT_LINK_TYPE` or `P::JSON_TEXT_LINK_OBJ_ID`
             node_value  // `link.link_type` or `uid`
+        )
+    }
+
+    #[must_use]
+    fn name_evaluation(node_name: &str, node_value: &str) -> String {
+        format!(
+            "{}(names.value, {}) = '{}'",
+            Self::JSON_FN_EXTRACT_TEXT,
+            node_name,  // `P::JSON_TEXT_NAME_TYPE` or `P::JSON_TEXT_NAME_VALUE`
+            node_value  // `name.name_type` or `name.name_value`
         )
     }
 
@@ -80,13 +109,19 @@ impl PlaceholderTrait for MySqlPlaceholder {
     const JSON_FN_EACH_ELEMENT: &'static str = "json_search";
     const JSON_TEXT_LINK_OBJ_ID: &'static str = "'$[*].LinkedObjectIdentifier'";
     const JSON_TEXT_LINK_TYPE: &'static str = "'$[*].LinkType'";
+    const JSON_TEXT_NAME_TYPE: &'static str = "'$[*].NameType'";
+    const JSON_TEXT_NAME_VALUE: &'static str = "'$[*].NameValue'";
     const TYPE_INTEGER: &'static str = "SIGNED";
 
     fn binder(_param_number: usize) -> String {
         "?".to_owned()
     }
 
-    fn additional_rq_from() -> Option<String> {
+    fn links_additional_rq_from() -> Option<String> {
+        None
+    }
+
+    fn names_additional_rq_from() -> Option<String> {
         None
     }
 
@@ -108,6 +143,17 @@ impl PlaceholderTrait for MySqlPlaceholder {
             node_name,
         )
     }
+
+    fn name_evaluation(node_name: &str, node_value: &str) -> String {
+        format!(
+            "{}({}(objects.attributes, {}), 'one', '{}', NULL, {}) IS NOT NULL",
+            Self::JSON_FN_EACH_ELEMENT,
+            Self::JSON_FN_EXTRACT_PATH,
+            Self::JSON_NODE_NAME,
+            node_value,
+            node_name,
+        )
+    }
 }
 pub(crate) enum PgSqlPlaceholder {}
 impl PlaceholderTrait for PgSqlPlaceholder {
@@ -116,9 +162,13 @@ impl PlaceholderTrait for PgSqlPlaceholder {
     const JSON_FN_EXTRACT_PATH: &'static str = "json_extract_path";
     const JSON_FN_EXTRACT_TEXT: &'static str = "json_extract_path_text";
     const JSON_NODE_LINK: &'static str = "'Link'";
-    // const JSON_NODE_WRAPPING: &'static str = "'object', 'KeyBlock', 'KeyWrappingData'";
+    const JSON_NODE_NAME: &'static str = "'Name'";
     const JSON_TEXT_LINK_OBJ_ID: &'static str = "'LinkedObjectIdentifier'";
     const JSON_TEXT_LINK_TYPE: &'static str = "'LinkType'";
+    const JSON_TEXT_NAME_TYPE: &'static str = "'NameType'";
+    const JSON_TEXT_NAME_VALUE: &'static str = "'NameValue'";
+
+    // const JSON_NODE_WRAPPING: &'static str = "'object', 'KeyBlock', 'KeyWrappingData'";
 
     /// Format the JSON path to extract an attribute
     /// from the `objects.attributes` JSON field
@@ -144,12 +194,6 @@ pub(crate) fn query_from_attributes<P: PlaceholderTrait>(
     let mut query = "SELECT objects.id as id, objects.state as state, objects.attributes as attrs \
                      FROM objects"
         .to_owned();
-    // let mut query = format!(
-    //     "SELECT objects.id as id, objects.state as state, objects.attributes as attrs, \
-    //      {}(objects.object, {}) IS NOT NULL AS is_wrapped FROM objects",
-    //     P::JSON_FN_EXTRACT_PATH,
-    //     P::JSON_NODE_WRAPPING
-    // );
 
     if let Some(attributes) = attributes {
         // tags
@@ -186,7 +230,14 @@ ON objects.id = matched_tags.id"
         // Links
         if let Some(links) = &attributes.link {
             if !links.is_empty() {
-                if let Some(additional_rq_from) = P::additional_rq_from() {
+                if let Some(additional_rq_from) = P::links_additional_rq_from() {
+                    query = format!("{query}, {additional_rq_from}");
+                }
+            }
+        }
+        if let Some(names) = &attributes.name {
+            if !names.is_empty() {
+                if let Some(additional_rq_from) = P::names_additional_rq_from() {
                     query = format!("{query}, {additional_rq_from}");
                 }
             }
@@ -252,6 +303,28 @@ ON objects.id = matched_tags.id"
                         P::link_evaluation(P::JSON_TEXT_LINK_OBJ_ID, uid)
                     );
                 }
+            }
+        }
+
+        // Name
+        if let Some(names) = &attributes.name {
+            for name in names {
+                // NameType
+                query = format!(
+                    "{query} AND {}",
+                    P::name_evaluation(
+                        P::JSON_TEXT_NAME_TYPE,
+                        match &name.name_type {
+                            NameType::UninterpretedTextString => "UninterpretedTextString",
+                            NameType::URI => "URI",
+                        }
+                    )
+                );
+                // NameValue
+                query = format!(
+                    "{query} AND {}",
+                    P::name_evaluation(P::JSON_TEXT_NAME_VALUE, &name.name_value)
+                );
             }
         }
     }

@@ -884,7 +884,7 @@ pub(crate) fn test_message_enforce_enum() {
                 protocol_version_minor: 1,
             },
             batch_count: 1,
-            time_stamp: 1_697_201_574,
+            time_stamp: OffsetDateTime::from_unix_timestamp(1_697_201_574).unwrap(),
             ..Default::default()
         },
         batch_item: vec![ResponseMessageBatchItemVersioned::V21(
@@ -915,7 +915,7 @@ pub(crate) fn test_message_enforce_enum() {
                 protocol_version_minor: 1,
             },
             batch_count: 1,
-            time_stamp: 1_697_201_574,
+            time_stamp: OffsetDateTime::from_unix_timestamp(1_697_201_574).unwrap(),
             ..Default::default()
         },
         batch_item: vec![ResponseMessageBatchItemVersioned::V21(
@@ -944,7 +944,7 @@ pub(crate) fn test_message_enforce_enum() {
                 protocol_version_minor: 1,
             },
             batch_count: 1,
-            time_stamp: 1_697_201_574,
+            time_stamp: OffsetDateTime::from_unix_timestamp(1_697_201_574).unwrap(),
             ..Default::default()
         },
         batch_item: vec![ResponseMessageBatchItemVersioned::V21(
@@ -968,7 +968,7 @@ pub(crate) fn test_message_enforce_enum() {
             client_correlation_value: Some("client_123".to_owned()),
             server_correlation_value: Some("server_234".to_owned()),
             attestation_type: Some(vec![AttestationType::TPM_Quote]),
-            time_stamp: 1_697_201_574,
+            time_stamp: OffsetDateTime::from_unix_timestamp(1_697_201_574).unwrap(),
             nonce: Some(Nonce {
                 nonce_id: vec![5, 6, 7],
                 nonce_value: vec![8, 9, 0],
@@ -1411,6 +1411,7 @@ pub(crate) fn test_simple_message_request() {
 #[test]
 pub(crate) fn test_message_request() {
     log_init(option_env!("RUST_LOG"));
+    // log_init(Some("info,cosmian_kms_server=debug"));
 
     let req = RequestMessage {
         request_header: RequestMessageHeader {
@@ -1436,7 +1437,7 @@ pub(crate) fn test_message_request() {
             }]),
             batch_error_continuation_option: Some(BatchErrorContinuationOption::Undo),
             batch_order_option: Some(true),
-            time_stamp: Some(1_950_940_403),
+            time_stamp: Some(OffsetDateTime::from_unix_timestamp(1_950_940_403).unwrap()),
         },
         batch_item: vec![RequestMessageBatchItemVersioned::V21(
             RequestMessageBatchItem {
@@ -1456,6 +1457,7 @@ pub(crate) fn test_message_request() {
         )],
     };
     let ttlv = to_ttlv(&req).unwrap();
+    info!("TTLV: {:#?}", ttlv);
     let req_: RequestMessage = from_ttlv(ttlv).unwrap();
     let RequestMessageBatchItemVersioned::V21(batch_item) = &req_.batch_item[0] else {
         panic!("not a v2.1 batch item");
@@ -1482,7 +1484,7 @@ pub(crate) fn test_message_response() {
             client_correlation_value: Some("client_123".to_owned()),
             server_correlation_value: Some("server_234".to_owned()),
             attestation_type: Some(vec![AttestationType::TPM_Quote]),
-            time_stamp: 1_697_201_574,
+            time_stamp: OffsetDateTime::from_unix_timestamp(1_697_201_574).unwrap(),
             nonce: Some(Nonce {
                 nonce_id: vec![5, 6, 7],
                 nonce_value: vec![8, 9, 0],
@@ -1495,7 +1497,7 @@ pub(crate) fn test_message_response() {
                 unique_batch_item_id: Some(b"1234".to_vec()),
                 response_payload: Some(Operation::LocateResponse(LocateResponse {
                     located_items: Some(134),
-                    unique_identifiers: Some(vec![UniqueIdentifier::TextString(
+                    unique_identifier: Some(vec![UniqueIdentifier::TextString(
                         "some_id".to_owned(),
                     )]),
                 })),
@@ -1777,4 +1779,40 @@ fn test_set_attribute() {
         set_attribute, deserialized_set_attribute_json,
         "Deserialized Object from JSON does not match the original"
     );
+}
+
+#[test]
+fn test_set_attribute_with_link() {
+    // log_init(option_env!("RUST_LOG"));
+    log_init(Some("info"));
+
+    let response_message = ResponseMessage {
+        response_header: ResponseMessageHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 1,
+                protocol_version_minor: 0,
+            },
+            batch_count: 1,
+            ..Default::default()
+        },
+        batch_item: vec![ResponseMessageBatchItemVersioned::V21(
+            ResponseMessageBatchItem {
+                result_status: ResultStatusEnumeration::OperationFailed,
+                result_reason: Some(ErrorReason::Operation_Not_Supported),
+                result_message: Some("Unrecoverable error".to_owned()),
+                operation: None,
+                unique_batch_item_id: None,
+                asynchronous_correlation_value: None,
+                response_payload: None,
+                message_extension: None,
+            },
+        )],
+    };
+
+    let ttlv = to_ttlv(&response_message).unwrap();
+    info!("TTLV: {:#?}", ttlv);
+    let bytes = ttlv
+        .to_bytes(crate::ttlv::KmipFlavor::Kmip2)
+        .expect("Failed to convert TTLV to bytes");
+    info!("Serialized TTLV bytes: {:?}", bytes);
 }

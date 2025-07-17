@@ -2,7 +2,7 @@ use std::io::{Write, stdin, stdout};
 
 use cosmian_kmip::{
     kmip_0::kmip_messages::{RequestMessage, ResponseMessage},
-    ttlv::{TTLV, from_ttlv},
+    ttlv::{KmipFlavor, TTLV, from_ttlv},
 };
 
 /// A simple command-line parser for TTLV messages.
@@ -31,29 +31,49 @@ fn main() {
         }
 
         match hex::decode(input) {
-            Ok(bytes) => match TTLV::from_bytes(&bytes, cosmian_kmip::ttlv::KmipFlavor::Kmip1) {
-                Ok(ttlv) => {
-                    println!("{ttlv:#?}");
-                    if input.starts_with("420078") {
-                        let Ok(request) = from_ttlv::<RequestMessage>(ttlv) else {
-                            println!("Error converting TTLV to RequestMessage");
-                            continue;
-                        };
-                        println!("{request:#?}");
-                    } else if input.starts_with("42007b") || input.starts_with("42007B") {
-                        let Ok(response) = from_ttlv::<ResponseMessage>(ttlv) else {
-                            println!("Error converting TTLV to ResponseMessage");
-                            continue;
-                        };
-                        println!("{response:#?}");
-                    } else {
-                        println!("Unknown message type");
+            Ok(bytes) => {
+                let Ok((major, minor)) = TTLV::find_version(&bytes) else {
+                    println!("ERROR: Failed to find KMIP version");
+                    continue;
+                };
+                let kmip_flavor = if major == 1 {
+                    KmipFlavor::Kmip1
+                } else if major == 2 {
+                    KmipFlavor::Kmip2
+                } else {
+                    println!("ERROR: Unsupported KMIP version: {major}.{minor}",);
+                    continue;
+                };
+                match TTLV::from_bytes(&bytes, kmip_flavor) {
+                    Ok(ttlv) => {
+                        println!("\nTTLV ==> \n\n{ttlv:#?}\n");
+                        if input.starts_with("420078") {
+                            match from_ttlv::<RequestMessage>(ttlv) {
+                                Err(r) => {
+                                    println!("ERROR converting TTLV to RequestMessage: {r}");
+                                    continue;
+                                }
+                                Ok(request) => println!("Request ==>\n\n{request:#?}\n\nSUCCESS"),
+                            };
+                        } else if input.starts_with("42007b") || input.starts_with("42007B") {
+                            match from_ttlv::<ResponseMessage>(ttlv) {
+                                Err(r) => {
+                                    println!("ERROR converting TTLV to ResponseMessage: {r}");
+                                    continue;
+                                }
+                                Ok(response) => {
+                                    println!("Response ==>\n\n{response:#?}\n\nSUCCESS")
+                                }
+                            };
+                        } else {
+                            println!("ERROR: unknown message type");
+                        }
                     }
+                    Err(e) => println!("ERROR parsing TTLV: {e}"),
                 }
-                Err(e) => println!("Error parsing TTLV: {e}"),
-            },
+            }
             Err(e) => {
-                println!("Error parsing hex string: {e}");
+                println!("ERROR parsing hex string: {e}");
             }
         }
     }

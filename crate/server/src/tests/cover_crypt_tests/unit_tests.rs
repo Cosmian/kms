@@ -212,6 +212,10 @@ pub(crate) fn access_policy_serialization() -> KResult<()> {
 
 #[tokio::test]
 async fn test_abe_encrypt_decrypt() -> KResult<()> {
+    // Initialize the logger
+    log_init(option_env!("RUST_LOG"));
+    // log_init(Some("debug"));
+
     let clap_config = https_clap_config();
 
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
@@ -500,7 +504,7 @@ async fn test_abe_json_access() -> KResult<()> {
     // now we have 1 key
     assert_eq!(locate_response.located_items.unwrap(), 1);
     assert_eq!(
-        &locate_response.unique_identifiers.unwrap()[0],
+        &locate_response.unique_identifier.unwrap()[0],
         secret_mkg_fin_user_key_id
     );
 

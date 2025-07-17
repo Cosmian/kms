@@ -24,7 +24,7 @@ use crate::{
             AddAttribute, Create, CreateResponse, Get, GetAttributes, GetAttributesResponse,
             GetResponse, Operation, Query, QueryResponse,
         },
-        kmip_types::{CryptographicAlgorithm, KeyFormatType, ObjectType},
+        kmip_types::{CryptographicAlgorithm, CustomAttribute, KeyFormatType, ObjectType},
     },
     ttlv::{KmipFlavor, TTLV, from_ttlv},
 };
@@ -266,6 +266,7 @@ fn query() {
         Some("PyKMIP 0.11.0.dev1 Software Server".to_owned())
     );
 }
+
 const CREATE: &str =
     "420078010000013042007701000000384200690100000020\
     42006a0200000004000000010000000042006b0200000004000000010000000042000d02000000040000000100000000\
@@ -364,8 +365,9 @@ const GET_ATTRIBUTES_RESPONSE: &str = "42007b0100000\
 
 #[test]
 fn get_attributes() {
-    // log_init(Some("debug"));
+    // log_init(Some("info"));
     log_init(option_env!("RUST_LOG"));
+
     let request = hex::decode(GET_ATTRIBUTES).unwrap();
 
     let (major, minor) = TTLV::find_version(&request).unwrap();
@@ -420,12 +422,12 @@ fn get_attributes() {
 
 const ADD_ATTRIBUTE: &str =
     "42007801000001b04200770100000038420069010000002042006a0200000004000000010000000042006b0200000004000000010000000042000d0200000004000000030000000042000f010000008042005c05000000040000000d000000004200930800000008514c4b4301000000420079010000005842009407000000013100000000000000420008010000004042000a0700000011782d50726f647563745f56657273696f6e0000000000000042000b0700000014372e302e33206275696c642d31393438303836360000000042000f010000006842005c05000000040000000d000000004200930800000008514c4b4302000000420079010000004042009407000000013100000000000000420008010000002842000a0700000008782d56656e646f7242000b070000000c564d776172652c20496e632e0000000042000f010000007042005c05000000040000000d000000004200930800000008514c4b4303000000420079010000004842009407000000013100000000000000420008010000003042000a0700000009782d50726f647563740000000000000042000b070000000e564d7761726520765370686572650000";
-// The PyKMIP server does not support this operation, so the response is empty
+// The py_kmip server does not support this operation, so the response is empty
 
 #[test]
 fn add_attribute() {
     log_init(option_env!("RUST_LOG"));
-    // log_init(Some("trace"));
+    // log_init(Some("info,cosmian_kms_server=debug"));
     let request = hex::decode(ADD_ATTRIBUTE).unwrap();
 
     let (major, minor) = TTLV::find_version(&request).unwrap();
@@ -446,10 +448,10 @@ fn add_attribute() {
         batch_item.request_payload,
         Operation::AddAttribute(AddAttribute {
             unique_identifier: "1".to_owned(),
-            attribute: Attribute::CustomAttribute((
-                "x-Product_Version".to_owned(),
-                CustomAttributeValue::TextString("7.0.3 build-19480866".to_owned())
-            )),
+            attribute: Attribute::CustomAttribute(CustomAttribute {
+                name: "x-Product_Version".to_owned(),
+                value: CustomAttributeValue::TextString("7.0.3 build-19480866".to_owned())
+            }),
         })
     );
 
@@ -461,10 +463,10 @@ fn add_attribute() {
         batch_item.request_payload,
         Operation::AddAttribute(AddAttribute {
             unique_identifier: "1".to_owned(),
-            attribute: Attribute::CustomAttribute((
-                "x-Vendor".to_owned(),
-                CustomAttributeValue::TextString("VMware, Inc.".to_owned())
-            )),
+            attribute: Attribute::CustomAttribute(CustomAttribute {
+                name: "x-Vendor".to_owned(),
+                value: CustomAttributeValue::TextString("VMware, Inc.".to_owned())
+            }),
         })
     );
 
@@ -476,10 +478,10 @@ fn add_attribute() {
         batch_item.request_payload,
         Operation::AddAttribute(AddAttribute {
             unique_identifier: "1".to_owned(),
-            attribute: Attribute::CustomAttribute((
-                "x-Product".to_owned(),
-                CustomAttributeValue::TextString("VMware vSphere".to_owned())
-            )),
+            attribute: Attribute::CustomAttribute(CustomAttribute {
+                name: "x-Product".to_owned(),
+                value: CustomAttributeValue::TextString("VMware vSphere".to_owned())
+            }),
         })
     );
 }

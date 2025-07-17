@@ -10,7 +10,6 @@ All notable changes to this project will be documented in this file.
 - Fixed missing attributes when the wrapped object is not in the cache (#462)
 - Added support for SoftHsmV2 (#457)
 
-
 ## [5.5.0] - 2025-07-08
 
 ### 🚀 Features
@@ -67,6 +66,7 @@ All notable changes to this project will be documented in this file.
 
 - In UI, fix `IvCounterNonce` (#446)
 - *(Linux packages)* Save and restore conf during installation
+- Interoperability fixes with PyKMIP
 
 ### 📚 Documentation
 

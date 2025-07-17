@@ -11,17 +11,17 @@ use tracing::trace;
 
 use crate::{core::KMS, error::KmsError, result::KResult};
 
-//TODO This function should probably not be a free standing function KMS side,
-// and should be refactored as part of Database,
+//TODO This function should probably not be a free-standing function KMS side,
+// and should be refactored as part of the Database,
 
 /// Retrieve a single object for a given operation type
-/// or the Get operation if not found..
+/// or the Get operation if not found.
 ///
 /// When tags are provided, the function will return the first object
 /// that matches the tags and the operation type.
 ///
 /// This function assumes that if the user can `Get` the object,
-/// then it can also do any other operation with it.
+/// it can then also perform any other operation with it.
 pub(crate) async fn retrieve_object_for_operation(
     uid_or_tags: &str,
     operation_type: KmipOperation,
@@ -40,17 +40,26 @@ pub(crate) async fn retrieve_object_for_operation(
         .await?
         .values()
     {
-        if !(owm.state() == State::Active || operation_type == KmipOperation::Export) {
+        let state = owm.state();
+        if !(state == State::Active
+            || state == State::PreActive
+            || operation_type == KmipOperation::Export
+            || operation_type == KmipOperation::GetAttributes)
+        {
             continue
         }
 
         if user_has_permission(user, Some(owm), &operation_type, kms, params.clone()).await? {
             let mut owm = owm.to_owned();
-            // update the state on the object attributes
-            let state = owm.state();
-            owm.attributes_mut().state = Some(state);
+            //Update the state on the object attributes if they are not present.
+            if owm.attributes().state.is_none() {
+                owm.attributes_mut().state = Some(state);
+            }
             if let Ok(ref mut attributes) = owm.object_mut().attributes_mut() {
-                attributes.state = Some(state);
+                // Update the state on the object attributes if they are not present.
+                if attributes.state.is_none() {
+                    attributes.state = Some(state);
+                }
             }
             return Ok(owm)
         }
