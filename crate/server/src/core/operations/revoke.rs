@@ -46,7 +46,7 @@ pub(crate) async fn revoke_operation(
     let revocation_reason = request.revocation_reason.clone();
     let compromise_occurrence_date = request.compromise_occurrence_date;
 
-    // For demo purposes, make some keys non-revocable (like google cse and ms dke keys)
+    // For demo purposes, make some keys non-revocable (like Google CSE and MS DKE keys)
     if let Some(non_revocable_key_id) = &kms.params.non_revocable_key_id {
         if non_revocable_key_id.contains(&unique_identifier.to_string()) {
             trace!("Non revocable keys detected: won't be revoked {non_revocable_key_id:?}");

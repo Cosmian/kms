@@ -9,8 +9,8 @@ use crate::tests::ttlv_tests::start_test_server;
 #[cfg(not(target_os = "windows"))]
 #[test]
 fn test_pykmip() {
-    // log_init(option_env!("RUST_LOG"));
-    log_init(Some("info,cosmian_kms_server=debug"));
+    log_init(option_env!("RUST_LOG"));
+    // log_init(Some("info,kmip=debug"));
 
     // start the server
     let _server_handles = start_test_server(15696);

@@ -414,12 +414,10 @@ impl TryFrom<kmip_2_1::kmip_data_structures::KeyValue> for KeyValue {
                         attrs
                             .into_iter()
                             .map(TryInto::try_into)
-                            // .filter(|a| {
-                            //     //FIXME Let's not send Custom Attributes that are way too problematic
-                            //     // libkmip does not support them, and everybody seems to be disagreeing on their formatting in 1.x
-                            //     // libkmip: https://libkmip.readthedocs.io/en/latest/index.html
-                            //     !matches!(a, Ok(Attribute::CustomAttribute(_)))
-                            // })
+                            .filter(|a| {
+                                //FIXME PyKMIP does not support OriginalCreationDate attribute
+                                !matches!(a, Ok(Attribute::OriginalCreationDate(_)))
+                            })
                             .collect::<Result<Vec<Attribute>, KmipError>>()
                     })
                     .transpose()?;

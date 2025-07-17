@@ -30,8 +30,9 @@ The fastest way to test PyKMIP compatibility is to use the automated test runner
 # 1. Set up the environment (from project root)
 ./scripts/setup_pykmip.sh
 
-# 2. Start the KMS server (in another terminal)
-COSMIAN_KMS_CONF=./scripts/kms.toml cargo run --bin cosmian_kms
+# 2. Start the KMS server (in another terminal)\
+pkill -f cosmian_kms  # Stop any existing instance
+COSMIAN_KMS_CONF=./scripts/kms.toml cargo run --bin cosmian_kms --features non-fips
 
 # 3. Run all compatibility tests
 ./scripts/test_pykmip.sh all
