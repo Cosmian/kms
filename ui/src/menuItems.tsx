@@ -99,6 +99,12 @@ export const menuItems: MenuItem[] = [
         ],
     },
     {
+        key: "sd",
+        label: "Secret Data",
+        collapsedlabel: "SD",
+        children: [{ key: "secret-data/create", label: "Create" }],
+    },
+    {
         key: "certificates",
         label: "Certificates",
         icon: <SafetyCertificateOutlined />,
