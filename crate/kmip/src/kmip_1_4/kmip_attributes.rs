@@ -244,17 +244,15 @@ impl Serialize for Attribute {
                 st.serialize_field("AttributeValue", value)?;
             }
             Self::CustomAttribute(ca) => {
-                // FIXME: VMware is sending custom attributes with names starting with "x-" or "y-". However returning them crashes PyKMIP
-                // if ca.name.starts_with("x-") || ca.name.starts_with("y-") {
-                //     st.serialize_field("AttributeName", &ca.name)?;
-                //     st.serialize_field("AttributeValue", &ca.value)?;
-                // } else {
-                st.serialize_field("AttributeName", "Custom Attribute")?;
-                st.serialize_field(
-                    "AttributeValue",
-                    &serde_json::to_string(ca).map_err(serde::ser::Error::custom)?,
-                )?;
-                // }
+                if ca.name.starts_with("x-") || ca.name.starts_with("y-") {
+                    st.serialize_field("AttributeName", &ca.name)?;
+                    st.serialize_field("AttributeValue", &ca.value)?;
+                } else {
+                    return Err(serde::ser::Error::custom(format!(
+                        "Custom attribute names must start with 'x-' or 'y-', found '{}'",
+                        ca.name
+                    )));
+                }
             }
             Self::AlternativeName(value) => {
                 st.serialize_field("AttributeName", "Alternative Name")?;
@@ -556,6 +554,15 @@ impl<'de> Deserialize<'de> for Attribute {
                         let value: bool = map.next_value()?;
                         Ok(Attribute::NeverExtractable(value))
                     }
+                    name if name.starts_with("x-") || name.starts_with("y-") => {
+                        // Custom attributes with vendor prefix
+                        let value: CustomAttributeValue = map.next_value()?;
+                        Ok(Attribute::CustomAttribute(CustomAttribute {
+                            name: name.to_owned(),
+                            value,
+                        }))
+                    }
+                    //This should never happen, but just in case
                     "Custom Attribute" => {
                         let value: String = map.next_value()?;
                         serde_json::from_str(&value)
@@ -597,22 +604,54 @@ impl From<Attribute> for kmip_2_1::kmip_attributes::Attribute {
             Attribute::CryptographicParameters(v) => Self::CryptographicParameters(v.into()),
             Attribute::CryptographicUsageMask(v) => Self::CryptographicUsageMask(v),
             Attribute::CustomAttribute(ca) => {
-                if ca.name.starts_with("x-") || ca.name.starts_with("y-") {
-                    let s = ca.name.get(2..).unwrap_or("").to_owned();
-                    let s: Vec<&str> = s.split("::").collect();
-                    if s.len() == 2 {
-                        return Self::VendorAttribute(VendorAttribute {
-                            vendor_identification: (*s.first().unwrap_or(&"KMIP1")).to_owned(),
-                            attribute_name: (*s.get(1).unwrap_or(&ca.name.as_str())).to_owned(),
+                if ca.name.starts_with("x-") {
+                    Self::VendorAttribute(VendorAttribute {
+                        vendor_identification: "KMIP1".to_owned(),
+                        attribute_name: ca.name.clone(),
+                        attribute_value: ca.value.into(),
+                    })
+                } else if ca.name.starts_with("y-") {
+                    if &ca.name == "y-Unsupported-2_1-Attribute" {
+                        if let CustomAttributeValue::TextString(s) = &ca.value {
+                            // This is a 2.1 attribute serialized to a 1.x attribute we want to deserialize back
+                            let attribute: Self = serde_json::from_str(s).unwrap_or_else(|_| {
+                                warn!("Failed to deserialize KMIP 2.1 attribute: {}", s);
+                                Self::Comment(format!("Unknown KMIP 2.1 attribute: {s}"))
+                            });
+                            attribute
+                        } else {
+                            warn!(
+                                "Unexpected value type for y-Unsupported-2_1-Attribute: {:?}",
+                                ca.value
+                            );
+                            Self::Comment(format!("Unsupported KMIP 2.1 attribute: {:?}", ca.value))
+                        }
+                    } else if let Some((vendor_id, attribute_name)) = ca.name[2..].split_once("::")
+                    {
+                        Self::VendorAttribute(VendorAttribute {
+                            vendor_identification: vendor_id.to_owned(),
+                            attribute_name: attribute_name.to_owned(),
                             attribute_value: ca.value.into(),
-                        });
+                        })
+                    } else {
+                        Self::VendorAttribute(VendorAttribute {
+                            vendor_identification: "UNKNOWN".to_owned(),
+                            attribute_name: ca.name.clone(),
+                            attribute_value: ca.value.into(),
+                        })
                     }
+                } else {
+                    //This should never happen, but just in case
+                    warn!(
+                        "Custom attribute name does not start with 'x-' or 'y-': {}",
+                        ca.name
+                    );
+                    Self::VendorAttribute(VendorAttribute {
+                        vendor_identification: "INVALID".to_owned(),
+                        attribute_name: ca.name,
+                        attribute_value: ca.value.into(),
+                    })
                 }
-                Self::VendorAttribute(VendorAttribute {
-                    vendor_identification: "KMIP1".to_owned(),
-                    attribute_name: ca.name,
-                    attribute_value: ca.value.into(),
-                })
             }
             Attribute::DeactivationDate(v) => Self::DeactivationDate(v),
             Attribute::Description(v) => Self::Description(v),
@@ -660,13 +699,6 @@ impl From<Attribute> for kmip_2_1::kmip_attributes::Attribute {
         }
     }
 }
-
-//FIXME Although it looks like we convert the Vendor Attributes and unknown KMIP 2.1 attributes to Custom Attributes,
-// they are removed when converting the KeyValue form 2.1 to 1.4.
-// Explanation:
-// Let's not send Custom Attributes that are way too problematic
-// libkmip does not support them, and everybody seems to be disagreeing on their formatting in 1.x
-// libkmip: https://libkmip.readthedocs.io/en/latest/index.html
 
 // https://libkmip.readthedocs.io/en/latest/index.html
 impl TryFrom<kmip_2_1::kmip_attributes::Attribute> for Attribute {
@@ -805,12 +837,9 @@ impl TryFrom<kmip_2_1::kmip_attributes::Attribute> for Attribute {
             | kmip_2_1::kmip_attributes::Attribute::RotateOffset(_)
             | kmip_2_1::kmip_attributes::Attribute::ShortUniqueIdentifier(_) => {
                 Ok(Self::CustomAttribute(CustomAttribute {
-                    name: "Unsupported KMIP 2 attribute".to_owned(),
-                    value: CustomAttributeValue::TextString(format!("{attribute:?}")),
+                    name: "y-Unsupported-2_1-Attribute".to_owned(),
+                    value: CustomAttributeValue::TextString(serde_json::to_string(&attribute)?),
                 }))
-                // Ok(Self::Comment(
-                //     format!("Unsupported KMIP 2 attribute: {attribute:?}"),
-                // ))
             }
             kmip_2_1::kmip_attributes::Attribute::X509CertificateIdentifier(v) => {
                 Ok(Self::X509CertificateIdentifier(v))
@@ -833,7 +862,7 @@ impl TryFrom<kmip_2_1::kmip_attributes::Attribute> for Attribute {
 /// For reasons on why we use an adjacent tagged enum, see the comment on the `VendorAttributeValue`
 /// enum in the KMIP 2.1 folder.
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
-#[serde(tag = "_t", content = "_c")]
+#[serde(untagged)]
 pub enum CustomAttributeValue {
     TextString(String),
     Integer(i32),
