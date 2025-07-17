@@ -30,6 +30,42 @@ jobs:
     with:
       toolchain: ${{ inputs.toolchain }}
 
+  pykmip:
+    runs-on: ubuntu-24.04
+    container:
+      image: cosmian/rockylinux9
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ inputs.toolchain }}
+          components: rustfmt, clippy
+
+      - name: Local OpenSSL FIPS Install
+        run: |
+          bash .github/reusable_scripts/get_openssl_binaries.sh
+        env:
+          OS_NAME: ubuntu_20_04
+
+      - name: Tests PyKMIP
+        env:
+          OPENSSL_DIR: /usr/local/openssl
+          COSMIAN_KMS_CONF: ./scripts/kms.toml
+        run: |
+          cargo build --bin cosmian_kms --features non-fips
+          cargo run --bin cosmian_kms --features non-fips &
+
+          dnf install python3 -y
+          python3 -m pip install --upgrade pip
+          python3 -m venv .venv
+          source .venv/bin/activate
+          pip install PyKMIP
+          bash ./scripts/test_pykmip.sh all
+
   build: # Build on Ubuntu 22/24, Rocky 8/9, MacOS 13/15 and Windows 22
     uses: Cosmian/reusable_workflows/.github/workflows/build_all.yml@pykmip
     secrets: inherit
@@ -63,6 +99,7 @@ jobs:
       - cargo-audit
       - cargo-lint
       - build
+      - pykmip
     uses: Cosmian/reusable_workflows/.github/workflows/push-artifacts.yml@develop
     with:
       project-name: kms
