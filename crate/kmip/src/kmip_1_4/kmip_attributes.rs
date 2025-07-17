@@ -605,13 +605,7 @@ impl From<Attribute> for kmip_2_1::kmip_attributes::Attribute {
             Attribute::CryptographicUsageMask(v) => Self::CryptographicUsageMask(v),
             Attribute::CustomAttribute(ca) => {
                 if ca.name.starts_with("x-") {
-                    Self::VendorAttribute(VendorAttribute {
-                        vendor_identification: "KMIP1".to_owned(),
-                        attribute_name: ca.name.clone(),
-                        attribute_value: ca.value.into(),
-                    })
-                } else if ca.name.starts_with("y-") {
-                    if &ca.name == "y-Unsupported-2_1-Attribute" {
+                    if &ca.name == "x-Unsupported-2_1-Attribute" {
                         if let CustomAttributeValue::TextString(s) = &ca.value {
                             // This is a 2.1 attribute serialized to a 1.x attribute we want to deserialize back
                             let attribute: Self = serde_json::from_str(s).unwrap_or_else(|_| {
@@ -621,13 +615,12 @@ impl From<Attribute> for kmip_2_1::kmip_attributes::Attribute {
                             attribute
                         } else {
                             warn!(
-                                "Unexpected value type for y-Unsupported-2_1-Attribute: {:?}",
+                                "Unexpected value type for x-Unsupported-2_1-Attribute: {:?}",
                                 ca.value
                             );
                             Self::Comment(format!("Unsupported KMIP 2.1 attribute: {:?}", ca.value))
                         }
-                    } else if let Some((vendor_id, attribute_name)) = ca.name[2..].split_once("::")
-                    {
+                    } else if let Some((vendor_id, attribute_name)) = ca.name.split_once("::") {
                         Self::VendorAttribute(VendorAttribute {
                             vendor_identification: vendor_id.to_owned(),
                             attribute_name: attribute_name.to_owned(),
@@ -635,11 +628,18 @@ impl From<Attribute> for kmip_2_1::kmip_attributes::Attribute {
                         })
                     } else {
                         Self::VendorAttribute(VendorAttribute {
-                            vendor_identification: "UNKNOWN".to_owned(),
+                            vendor_identification: "KMIP1".to_owned(),
                             attribute_name: ca.name.clone(),
                             attribute_value: ca.value.into(),
                         })
                     }
+                } else if ca.name.starts_with("y-") {
+                    // y- not supported by PyKMIP
+                    Self::VendorAttribute(VendorAttribute {
+                        vendor_identification: "UNKNOWN".to_owned(),
+                        attribute_name: ca.name.clone(),
+                        attribute_value: ca.value.into(),
+                    })
                 } else {
                     //This should never happen, but just in case
                     warn!(
@@ -786,7 +786,7 @@ impl TryFrom<kmip_2_1::kmip_attributes::Attribute> for Attribute {
                         }))
                     }
                 } else {
-                    let name = format!("y-{}::{}", vendor_id, vendor_attribute.attribute_name);
+                    let name = format!("x-{}::{}", vendor_id, vendor_attribute.attribute_name);
                     let value = vendor_attribute.attribute_value.into();
                     Ok(Self::CustomAttribute(CustomAttribute { name, value }))
                 }
@@ -837,7 +837,7 @@ impl TryFrom<kmip_2_1::kmip_attributes::Attribute> for Attribute {
             | kmip_2_1::kmip_attributes::Attribute::RotateOffset(_)
             | kmip_2_1::kmip_attributes::Attribute::ShortUniqueIdentifier(_) => {
                 Ok(Self::CustomAttribute(CustomAttribute {
-                    name: "y-Unsupported-2_1-Attribute".to_owned(),
+                    name: "x-Unsupported-2_1-Attribute".to_owned(),
                     value: CustomAttributeValue::TextString(serde_json::to_string(&attribute)?),
                 }))
             }

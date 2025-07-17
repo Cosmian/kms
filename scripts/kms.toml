@@ -155,7 +155,7 @@ tmp_path = "/tmp"
 # Check the logging documentation pages for more information
 [logging]
 # The log level of the KMS server. This is an alternative to the `RUST_LOG` environment variable.
-rust_log = "info,cosmian_kms_server=debug,cosmian_kms=debug"
+rust_log = "info,kmip=debug"
 # The Open Telemetry OTLP collector URL.
 # otlp = "http://localhost:4317"
 # If set to true, the KMS server will not output logs to stdout. Telemetry will still be sent to the OTLP collector,
