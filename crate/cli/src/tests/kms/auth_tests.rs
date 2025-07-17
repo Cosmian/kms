@@ -52,7 +52,7 @@ const PORT: u16 = DEFAULT_KMS_SERVER_PORT + 100; // +5 since there are other KMS
 // in parallel (see test_server.rs)
 
 #[tokio::test]
-#[allow(clippy::large_stack_frames, unused_variables)]
+#[allow(clippy::large_stack_frames)]
 pub(crate) async fn test_kms_all_authentications() -> KmsCliResult<()> {
     // log_init(Some("error,cosmian_kms_server=info,cosmian_kms_cli=info"));
     log_init(option_env!("RUST_LOG"));

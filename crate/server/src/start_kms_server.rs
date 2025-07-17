@@ -755,13 +755,6 @@ pub(crate) fn create_rustls_server_config(server_config: &TlsParams) -> KResult<
             .context("http server: failed to create the http server client auth verifier")?;
 
         trace!("Web PKI Client Verifier created");
-        // let mut server_config = ServerConfig::builder()
-        //     .with_client_cert_verifier(client_auth)
-        //     .with_single_cert(certs, PrivateKeyDer::Pkcs8(server_private_key))
-        //     .context("socket server: failed building the socket server config")?;
-        // server_config.alpn_protocols = vec![b"http/1.1".to_vec()];
-        // Ok(server_config)
-
         Ok(ServerConfig::builder()
             .with_client_cert_verifier(client_auth)
             .with_single_cert(certs, PrivateKeyDer::Pkcs8(server_private_key))?)
