@@ -11,7 +11,7 @@ interface RevokeFormData {
     tags?: string[];
 }
 
-type ObjectType = "rsa" | "ec" | "symmetric" | "covercrypt" | "certificate";
+type ObjectType = "rsa" | "ec" | "symmetric" | "covercrypt" | "certificate" | "secret-data";
 
 interface RevokeFormProps {
     objectType: ObjectType;
@@ -79,6 +79,8 @@ const RevokeForm: React.FC<RevokeFormProps> = (props: RevokeFormProps) => {
         typeString = "a CoverCrypt";
     } else if (props.objectType === "symmetric") {
         typeString = "a symmetric";
+    } else if (props.objectType === "secret-data") {
+        typeString = "a secret data";
     } else {
         typeString = "a";
     }

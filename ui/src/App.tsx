@@ -142,6 +142,10 @@ const AppContent: React.FC<AppContentProps> = ({isDarkMode, setIsDarkMode}) => {
                         </Route>
                         <Route path="secret-data">
                             <Route path="create" element={<SecretDataCreateForm />} />
+                            <Route path="export" element={<KeyExportForm key_type={"secret-data"} />} />
+                            <Route path="import" element={<KeyImportForm key_type={"secret-data"} />} />
+                            <Route path="revoke" element={<RevokeForm objectType="secret-data" />} />
+                            <Route path="destroy" element={<DestroyForm objectType="secret-data" />} />
                         </Route>
                         <Route path="access-rights">
                             <Route path="grant" element={<AccessGrantForm/>}/>
