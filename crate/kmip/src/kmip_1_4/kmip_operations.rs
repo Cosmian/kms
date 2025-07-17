@@ -384,7 +384,7 @@ impl TryFrom<kmip_2_1::kmip_operations::LocateResponse> for LocateResponse {
         Ok(Self {
             unique_identifier: value
                 .unique_identifier
-                .map(|ids| ids.iter().map(ToString::to_string).collect())
+                .map(|ids| ids.iter().map(ToString::to_string).collect()),
         })
     }
 }
