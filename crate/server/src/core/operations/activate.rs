@@ -1,10 +1,13 @@
 use std::sync::Arc;
 
 use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::kmip_2_1::{
-        KmipOperation,
-        kmip_operations::{Activate, ActivateResponse},
-        kmip_types::UniqueIdentifier,
+    cosmian_kmip::{
+        kmip_0::kmip_types::State,
+        kmip_2_1::{
+            KmipOperation,
+            kmip_operations::{Activate, ActivateResponse},
+            kmip_types::UniqueIdentifier,
+        },
     },
     cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams},
 };
@@ -29,7 +32,7 @@ pub(crate) async fn activate(
         .as_str()
         .context("Activate: the unique identifier must be a string")?;
 
-    let owm: ObjectWithMetadata = retrieve_object_for_operation(
+    let mut owm: ObjectWithMetadata = retrieve_object_for_operation(
         uid_or_tags,
         KmipOperation::GetAttributes,
         kms,
@@ -38,6 +41,24 @@ pub(crate) async fn activate(
     )
     .await?;
     trace!("Activate: Retrieved object for: {}", owm.object());
+
+    // Update the state of the object to Active
+    if let Ok(object_attributes) = owm.object_mut().attributes_mut() {
+        object_attributes.state = Some(State::Active);
+    }
+    // Update the state in the "external" attributes
+    owm.attributes_mut().state = Some(State::Active);
+
+    // Update the object in the database
+    kms.database
+        .update_object(
+            owm.id(),
+            owm.object(),
+            owm.attributes(),
+            None,
+            params.clone(),
+        )
+        .await?;
 
     // All Objects are activated by default on the KMS, so simply answer OK
     Ok(ActivateResponse {
