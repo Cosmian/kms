@@ -11,7 +11,7 @@ interface DestroyFormData {
     remove: boolean;
 }
 
-type ObjectType = "rsa" | "ec" | "symmetric" | "covercrypt" | "certificate";
+type ObjectType = "rsa" | "ec" | "symmetric" | "covercrypt" | "certificate" | "secret-data";
 
 interface DestroyFormProps {
     objectType: ObjectType;
@@ -70,6 +70,8 @@ const DestroyForm: React.FC<DestroyFormProps> = (props: DestroyFormProps) => {
         typeString = "a Covercrypt";
     } else if (props.objectType === "symmetric") {
         typeString = "a symmetric";
+    } else if (props.objectType === "secret-data") {
+        typeString = "a secret data";
     } else {
         typeString = "a";
     }
