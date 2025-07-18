@@ -246,7 +246,7 @@ impl KMS {
 
     /// Create a new secret data and the corresponding system tags
     /// The tags will contain the user tags and the following:
-    ///  - "_kk"
+    ///  - "_sd"
     ///  - the KMIP cryptographic algorithm in lower case prepended with "_"
     pub(crate) fn create_secret_data_and_tags(
         request: &Create,

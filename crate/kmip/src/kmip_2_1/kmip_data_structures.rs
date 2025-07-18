@@ -388,7 +388,7 @@ impl KeyBlock {
         let key_value = self.key_value.as_ref().ok_or_else(|| {
             KmipError::InvalidKmip21Value(
                 ErrorReason::Invalid_Attribute_Value,
-                "key is missing its key value".to_owned(),
+                "secret data key is missing its key value".to_owned(),
             )
         })?;
 
@@ -401,8 +401,7 @@ impl KeyBlock {
                 KeyMaterial::ByteString(v) => Ok(v.clone()),
                 _ => Err(KmipError::InvalidKmip21Value(
                     ErrorReason::Invalid_Object_Type,
-                    "Key bytes can only be recovered from raw and transparent symmetric keys"
-                        .to_owned(),
+                    "Secret Data Key bytes can only be recovered from raw secret data".to_owned(),
                 )),
             },
         }

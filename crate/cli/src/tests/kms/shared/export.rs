@@ -712,7 +712,7 @@ pub(crate) async fn test_export_secret_data() -> KmsCliResult<()> {
     // init the test server
     let ctx = start_default_test_kms_server().await;
 
-    // generate a symmetric key
+    // generate a secret data
     let secret_id = crate::actions::kms::secret_data::create_secret::CreateKeyAction::default()
         .run(ctx.get_owner_client())
         .await?;
