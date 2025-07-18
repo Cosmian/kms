@@ -17,11 +17,6 @@ use crate::{
 
 /// Create a new secret data
 ///
-/// When the `--bytes-b64` option is specified, the key will be created from the provided bytes;
-/// otherwise, the key will be randomly generated with a length of `--number-of-bits`.
-///
-/// If no options are specified, a fresh 256-bit random seed will be created.
-///
 /// Tags can later be used to retrieve the key. Tags are optional.
 #[derive(Parser, Default)]
 #[clap(verbatim_doc_comment)]

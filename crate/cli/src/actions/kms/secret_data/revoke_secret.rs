@@ -9,9 +9,9 @@ use crate::{
     error::result::KmsCliResult,
 };
 
-/// Revoke a symmetric key.
+/// Revoke a secret data
 ///
-/// When a key is revoked, it can only be exported by the owner of the key,
+/// When a secret data key is revoked, it can only be exported by the owner of the key,
 /// using the --allow-revoked flag on the export function.
 #[derive(Parser, Default, Debug)]
 pub struct RevokeKeyAction {

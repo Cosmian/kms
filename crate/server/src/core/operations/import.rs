@@ -805,7 +805,7 @@ pub(crate) async fn process_secret_data(
 
     //Request attributes will hold the final attributes of the object.
     let mut attributes = request.attributes;
-    // force the object type to be SymmetricKey
+    // force the object type to be SecretData
     attributes.object_type = Some(ObjectType::SecretData);
     // set the unique identifier
     attributes.unique_identifier = Some(UniqueIdentifier::TextString(uid.clone()));
