@@ -26,11 +26,14 @@ use crate::{
 #[derive(Parser, Default)]
 #[clap(verbatim_doc_comment)]
 pub struct CreateKeyAction {
-    /// The secret data string encoded as utf-8
+    /// Optional secret data string, UTF-8 encoded.
+    /// If not provided, a random 32-byte seed will be generated.
     #[clap(long = "value", short = 'v', required = false)]
     pub secret_value: Option<String>,
 
-    /// The secret data type
+    /// The type of secret data.
+    /// Defaults to a randomly generated Seed.
+    /// To use a Password type, you must provide both this and a valid secret value.
     #[clap(
         long = "type",
         required = false,

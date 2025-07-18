@@ -37,14 +37,10 @@ const SecretDataCreateForm: React.FC = () => {
     }, [res]);
 
     useEffect(() => {
-        const isInvalid = !secretValue || secretValue.length < 5;
-
-        if (isInvalid) {
+        if (!secretValue) {
             form.setFieldsValue({ secretType: "Seed" });
         }
     }, [secretValue, form]);
-
-    const isSecretTypeDisabled = !secretValue || secretValue.length < 5;
 
     const onFinish = async (values: SecretDataCreateFormData) => {
         setIsLoading(true);
@@ -104,17 +100,7 @@ const SecretDataCreateForm: React.FC = () => {
                         <Form.Item
                             name="secretValue"
                             label="Secret Value"
-                            help="If provided, the secret data string must be at least 5 characters long and will be UTF-8 encoded"
-                            rules={[
-                                {
-                                    validator: (_, value) => {
-                                        if (!value || value.length >= 5) {
-                                            return Promise.resolve();
-                                        }
-                                        return Promise.reject(new Error("Secret value must be at least 5 characters long or empty"));
-                                    },
-                                },
-                            ]}
+                            help="Optional secret data string, UTF-8 encoded. If not provided, a random 32-byte seed will be generated."
                         >
                             <Input.TextArea placeholder="Enter secret value" rows={2} />
                         </Form.Item>
@@ -122,9 +108,10 @@ const SecretDataCreateForm: React.FC = () => {
                         <Form.Item
                             name="secretType"
                             label="Secret Data Type"
+                            help="Defaults to a randomly generated Seed. To use a Password type, you must provide both this and a valid secret value"
                             rules={[{ required: true, message: "Please select a secret type" }]}
                         >
-                            <Select disabled={isSecretTypeDisabled}>
+                            <Select disabled={!secretValue}>
                                 <Select.Option value="Seed">Seed</Select.Option>
                                 <Select.Option value="Password">Password</Select.Option>
                             </Select>
