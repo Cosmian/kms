@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use cosmian_logger::log_init;
 use tempfile::TempDir;
 use test_kms_server::start_default_test_kms_server;
 
@@ -23,6 +24,11 @@ use crate::{
 
 #[tokio::test]
 async fn test_view_access_structure() -> KmsCliResult<()> {
+    log_init(option_env!("RUST_LOG"));
+    // log_init(Some(
+    //     "info,cosmian_kms_server::core::operations=trace,cosmian_kmip=trace",
+    // ));
+
     let ctx = start_default_test_kms_server().await;
 
     // generate a new master key pair

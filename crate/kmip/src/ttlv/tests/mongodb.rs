@@ -34,7 +34,6 @@ const REGISTER: &str = "42007801000001504200770100000038420069010000002042006a02
 #[test]
 fn register() {
     log_init(option_env!("RUST_LOG"));
-    // log_init(option_env!("RUST_LOG"));
     let request = hex::decode(REGISTER).unwrap();
 
     let (major, minor) = TTLV::find_version(&request).unwrap();
