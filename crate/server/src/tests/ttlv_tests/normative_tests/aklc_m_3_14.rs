@@ -37,7 +37,7 @@ use crate::tests::ttlv_tests::{get_client, socket_client::SocketClient};
 #[test]
 fn test_aklc_m_3_14() {
     // log_init(option_env!("RUST_LOG"));
-    log_init(Some("info,cosmian_kms=info"));
+    log_init(Some("info,kmip=debug"));
 
     info!("Running AKLC-M-3-14 test");
     let client = get_client();
