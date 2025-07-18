@@ -777,6 +777,9 @@ pub(crate) async fn test_ownership_and_grant_wildcard_user() -> KmsCliResult<()>
 
 #[tokio::test]
 pub(crate) async fn test_access_right_obtained_using_wildcard() -> KmsCliResult<()> {
+    // log_init(option_env!("RUST_LOG"));
+    log_init(Some("info, kms=debug"));
+
     let ctx = start_default_test_kms_server_with_cert_auth().await;
     let key_id = gen_key(&ctx.get_owner_client()).await?;
 

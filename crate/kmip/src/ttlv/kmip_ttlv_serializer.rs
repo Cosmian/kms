@@ -258,7 +258,18 @@ impl ser::Serializer for &mut TtlvSerializer {
     // Serialize a byte array as a TTLV byte string
     #[instrument(level = "trace", skip(self))]
     fn serialize_bytes(self, v: &[u8]) -> Result<Self::Ok> {
-        self.current_mut()?.value = TTLValue::ByteString(v.to_owned());
+        if let Ok(current) = self.current_mut() {
+            current.value = TTLValue::ByteString(v.to_owned());
+        } else {
+            // direct serialization of a byte string
+            // create a new structure parent to which we will add the fields of the struct
+            let tag = "[BYTE_STRING]".to_owned();
+            self.stack.push(TTLV {
+                tag,
+                value: TTLValue::ByteString(v.to_owned()),
+            });
+        }
+        // self.current_mut()?.value = TTLValue::ByteString(v.to_owned());
         Ok(())
     }
 
