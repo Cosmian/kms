@@ -415,8 +415,18 @@ impl TryFrom<kmip_2_1::kmip_data_structures::KeyValue> for KeyValue {
                             .into_iter()
                             .map(TryInto::try_into)
                             .filter(|a| {
-                                //FIXME PyKMIP does not support OriginalCreationDate attribute
-                                !matches!(a, Ok(Attribute::OriginalCreationDate(_)))
+                                if let Ok(att) = a {
+                                    //FIXME PyKMIP does not support OriginalCreationDate attribute
+                                    if matches!(a, Ok(Attribute::OriginalCreationDate(_))) {
+                                        return false
+                                    }
+                                    if let Attribute::CustomAttribute(custom_attribute) = att {
+                                        //FIXME Filter out custom attributes that start with "y-" => not supported by PyKMIP
+                                        return !custom_attribute.name.starts_with("y-")
+                                    }
+                                    return true
+                                }
+                                false
                             })
                             .collect::<Result<Vec<Attribute>, KmipError>>()
                     })

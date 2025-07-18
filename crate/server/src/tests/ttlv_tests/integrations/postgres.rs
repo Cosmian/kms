@@ -45,7 +45,7 @@ const GET_SYMMETRIC_KEY: &str = "42007801000000b04200770100000058420069010000002
 #[test]
 fn test_postgres() {
     // log_init(option_env!("RUST_LOG"));
-    log_init(Some("info"));
+    log_init(Some("info, kmip=debug"));
 
     let client = get_client();
 
