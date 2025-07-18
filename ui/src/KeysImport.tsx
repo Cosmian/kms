@@ -24,7 +24,7 @@ interface ImportKeyFormData {
     wrappingKeyId?: string;
 }
 
-type KeyType = "rsa" | "ec" | "symmetric" | "covercrypt";
+type KeyType = "rsa" | "ec" | "symmetric" | "covercrypt" | "secret-data";
 
 interface KeyImportFormProps {
     key_type: KeyType;
@@ -125,6 +125,13 @@ const KeyImportForm: React.FC<KeyImportFormProps> = (props: KeyImportFormProps) 
         key_usages = [
             { label: "Encrypt", value: "encrypt" },
             { label: "Decrypt", value: "decrypt" },
+            { label: "Wrap", value: "wrap" },
+            { label: "Unwrap", value: "unwrap" },
+        ];
+    } else if (props.key_type === "secret-data") {
+        key_type_string = "a secret data";
+        key_formats = [{ label: "JSON TTLV (default)", value: "json-ttlv" }];
+        key_usages = [
             { label: "Wrap", value: "wrap" },
             { label: "Unwrap", value: "unwrap" },
         ];

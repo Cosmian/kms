@@ -3,11 +3,11 @@ use zeroize::Zeroizing;
 
 use crate::{
     KmipError,
-    kmip_0::kmip_types::CryptographicUsageMask,
+    kmip_0::kmip_types::{CryptographicUsageMask, SecretDataType},
     kmip_2_1::{
         kmip_attributes::Attributes,
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-        kmip_objects::{Object, ObjectType, SymmetricKey},
+        kmip_objects::{Object, ObjectType, SecretData, SymmetricKey},
         kmip_operations::Create,
         kmip_types::{CryptographicAlgorithm, KeyFormatType, UniqueIdentifier},
     },
@@ -109,6 +109,86 @@ pub fn symmetric_key_create_request<T: IntoIterator<Item = impl AsRef<str>>>(
     }
     Ok(Create {
         object_type: ObjectType::SymmetricKey,
+        attributes,
+        protection_storage_masks: None,
+    })
+}
+
+/// Create a secret data for the given type
+pub fn create_secret_data_kmip_object(
+    secret_bytes: &[u8],
+    secret_data_type: SecretDataType,
+    create_attributes: &Attributes,
+) -> Result<Object, KmipError> {
+    let mut tags = create_attributes.get_tags();
+    tags.insert("_sd".to_owned());
+    // Generate a new UID if none is provided.
+    let uid = match &create_attributes
+        .unique_identifier
+        .as_ref()
+        .map(ToString::to_string)
+        .unwrap_or_default()
+    {
+        uid if uid.is_empty() => Uuid::new_v4().to_string(),
+        uid => uid.to_owned(),
+    };
+    // this length is in bits
+    let mut attributes = create_attributes.clone();
+    attributes.object_type = Some(ObjectType::SecretData);
+    attributes.cryptographic_usage_mask = Some(
+        CryptographicUsageMask::DeriveKey
+            | CryptographicUsageMask::KeyAgreement
+            | CryptographicUsageMask::Authenticate,
+    );
+    attributes.key_format_type = Some(KeyFormatType::Raw);
+    attributes.unique_identifier = Some(UniqueIdentifier::TextString(uid));
+    // set the tags in the attributes
+    attributes.set_tags(tags)?;
+
+    Ok(Object::SecretData(SecretData {
+        secret_data_type,
+        key_block: KeyBlock {
+            key_format_type: KeyFormatType::Raw,
+            key_compression_type: None,
+            key_value: Some(KeyValue::Structure {
+                key_material: KeyMaterial::ByteString(Zeroizing::from(secret_bytes.to_vec())),
+                attributes: Some(attributes),
+            }),
+            key_wrapping_data: None,
+            cryptographic_algorithm: None,
+            cryptographic_length: None,
+        },
+    }))
+}
+
+/// Build a `Create` request for a secrete data - random Seed of 32 bytes generated server-side
+pub fn secret_data_create_request<T: IntoIterator<Item = impl AsRef<str>>>(
+    secret_id: Option<UniqueIdentifier>,
+    tags: T,
+    sensitive: bool,
+    wrap_key_id: Option<&String>,
+) -> Result<Create, KmipError> {
+    let mut attributes = Attributes {
+        cryptographic_algorithm: None,
+        cryptographic_length: None,
+        cryptographic_parameters: None,
+        cryptographic_usage_mask: Some(
+            CryptographicUsageMask::DeriveKey
+                | CryptographicUsageMask::KeyAgreement
+                | CryptographicUsageMask::Authenticate,
+        ),
+        key_format_type: Some(KeyFormatType::Raw),
+        object_type: Some(ObjectType::SecretData),
+        unique_identifier: secret_id,
+        sensitive: if sensitive { Some(true) } else { None },
+        ..Attributes::default()
+    };
+    attributes.set_tags(tags)?;
+    if let Some(wrap_key_id) = wrap_key_id {
+        attributes.set_wrapping_key_id(wrap_key_id);
+    }
+    Ok(Create {
+        object_type: ObjectType::SecretData,
         attributes,
         protection_storage_masks: None,
     })

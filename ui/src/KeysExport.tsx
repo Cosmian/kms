@@ -27,7 +27,7 @@ const WRAPPING_ALGORITHMS: { label: string; value: WrappingAlgorithm }[] = [
     { label: "RSA AES Key Wrap", value: "rsa-aes-key-wrap" },
 ];
 
-type KeyType = "rsa" | "ec" | "symmetric" | "covercrypt";
+type KeyType = "rsa" | "ec" | "symmetric" | "covercrypt" | "secret-data";
 
 const exportFileExtension = {
     "json-ttlv": "json",
@@ -138,6 +138,13 @@ const KeyExportForm: React.FC<KeyExportFormProps> = (props: KeyExportFormProps) 
         ];
     } else if (props.key_type === "symmetric") {
         key_type_string = "a symmetric";
+        key_formats = [
+            { label: "JSON TTLV (default)", value: "json-ttlv" },
+            { label: "Base64", value: "base64" },
+            { label: "Raw", value: "raw" },
+        ];
+    } else if (props.key_type === "secret-data") {
+        key_type_string = "a secret data";
         key_formats = [
             { label: "JSON TTLV (default)", value: "json-ttlv" },
             { label: "Base64", value: "base64" },
