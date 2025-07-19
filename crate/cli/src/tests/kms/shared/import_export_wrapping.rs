@@ -205,8 +205,10 @@ async fn test_import_export_wrap_private_key(
     unwrapping_key: &Object,
 ) -> KmsCliResult<()> {
     // create a temp dir
-    let tmp_dir = TempDir::new()?;
-    let tmp_path = tmp_dir.path();
+    // let tmp_dir = TempDir::new()?;
+    // let tmp_path = tmp_dir.path();
+
+    let tmp_path = PathBuf::from("/tmp");
 
     // Export the private key without wrapping
     let private_key_file = tmp_path.join("master_private.key");
@@ -255,7 +257,10 @@ async fn test_import_export_wrap_private_key(
                 .is_none()
         );
         unwrap_key_block(wrapped_private_key.key_block_mut()?, unwrapping_key)?;
-        assert!(wrapped_private_key.key_block()?.key_value == private_key.key_block()?.key_value);
+        assert_eq!(
+            wrapped_private_key.key_block()?.key_value,
+            private_key.key_block()?.key_value
+        );
     }
 
     // test the unwrapping on import

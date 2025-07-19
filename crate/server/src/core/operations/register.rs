@@ -68,7 +68,9 @@ pub(crate) async fn register(
 
     // Update the initial date and last changed date of the object
     // Update the state of the object to Active and activation date
-    let now = OffsetDateTime::now_utc();
+    let now = OffsetDateTime::now_utc()
+        .replace_millisecond(0)
+        .map_err(|e| KmsError::Default(e.to_string()))?;
     if let Ok(object_attributes) = request.object.attributes_mut() {
         object_attributes.state = Some(State::Active);
         // update the initial date

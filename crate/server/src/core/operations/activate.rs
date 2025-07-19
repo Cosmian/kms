@@ -16,6 +16,7 @@ use tracing::trace;
 
 use crate::{
     core::{KMS, retrieve_object_utils::retrieve_object_for_operation},
+    error::KmsError,
     result::{KResult, KResultHelper},
 };
 
@@ -44,7 +45,11 @@ pub(crate) async fn activate(
     trace!("Activate: Retrieved object for: {}", owm.object());
 
     // Update the state of the object to Active and activation date
-    let activation_date = OffsetDateTime::now_utc();
+    let activation_date = OffsetDateTime::now_utc()
+        .replace_millisecond(0)
+        .map_err(|e| KmsError::Default(e.to_string()))?;
+    // set milliseconds to zero
+
     if let Ok(object_attributes) = owm.object_mut().attributes_mut() {
         object_attributes.state = Some(State::Active);
         // update the activation date

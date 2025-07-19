@@ -86,7 +86,9 @@ pub(crate) async fn create(
         // update the digest
         attributes.digest = digest;
         // update the initial date
-        let now = OffsetDateTime::now_utc();
+        let now = OffsetDateTime::now_utc()
+            .replace_millisecond(0)
+            .map_err(|e| KmsError::Default(e.to_string()))?;
         attributes.initial_date = Some(now);
         // update original creation date
         attributes.original_creation_date = Some(now);

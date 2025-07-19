@@ -56,8 +56,8 @@ const GET: &str = "42007801000000804200770100000038420069010000002042006a0200000
 
 #[test]
 fn test_vmware() {
-    log_init(option_env!("RUST_LOG"));
-    // log_init(Some("info"));
+    // log_init(option_env!("RUST_LOG"));
+    log_init(Some("info,kmip=debug"));
 
     let client = get_client();
 

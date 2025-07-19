@@ -274,7 +274,6 @@ pub(crate) async fn recursively_revoke_key(
 }
 
 /// Revoke a key, knowing the object and state
-#[allow(clippy::too_many_arguments)]
 async fn revoke_key_core(
     mut owm: ObjectWithMetadata,
     revocation_reason: RevocationReason,
@@ -283,7 +282,9 @@ async fn revoke_key_core(
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<()> {
     // Update the state of the object to Active and activation date
-    let now = OffsetDateTime::now_utc();
+    let now = OffsetDateTime::now_utc()
+        .replace_millisecond(0)
+        .map_err(|e| KmsError::Default(e.to_string()))?;
     let state = match revocation_reason {
         RevocationReason {
             revocation_reason_code:

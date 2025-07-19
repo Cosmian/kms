@@ -696,7 +696,11 @@ pub(crate) async fn add_attribute(
     }
 
     // update the last change date
-    attributes.last_change_date = Some(OffsetDateTime::now_utc());
+    attributes.last_change_date = Some(
+        OffsetDateTime::now_utc()
+            .replace_millisecond(0)
+            .map_err(|e| KmsError::Default(e.to_string()))?,
+    );
 
     let tags = kms.database.retrieve_tags(owm.id(), params.clone()).await?;
 
