@@ -81,7 +81,9 @@ pub(crate) async fn create_key_pair(
     let key_pair = generate_key_pair(request, &sk_uid, &pk_uid)?;
 
     trace!("create_key_pair: sk_uid: {sk_uid}, pk_uid: {pk_uid}");
-    let now = OffsetDateTime::now_utc();
+    let now = OffsetDateTime::now_utc()
+        .replace_millisecond(0)
+        .map_err(|e| KmsError::Default(e.to_string()))?;
 
     let mut private_key = key_pair.private_key().to_owned();
     // Set the state to pre-active and copy the attributes before the key gets wrapped

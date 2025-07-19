@@ -10,7 +10,7 @@ use serde::{
 };
 use time::OffsetDateTime;
 // use strum::VariantNames;
-use tracing::{debug, instrument, trace};
+use tracing::{instrument, trace};
 use zeroize::Zeroizing;
 
 use super::{TTLV, TTLValue, error::TtlvError};
@@ -357,20 +357,20 @@ impl ser::Serializer for &mut TtlvSerializer {
         // BigUint should go and be replace by BigInt everywhere
         impl Detect for &BigUint {
             fn detect(&self) -> Detected {
-                debug!("serializing a Big Uint {:?}", self);
+                trace!("serializing a Big Uint {:?}", self);
                 Detected::BigUint(self.to_owned().clone())
             }
         }
         impl Detect for &BigInt {
             fn detect(&self) -> Detected {
-                debug!("serializing a Big Uint {:?}", self);
+                trace!("serializing a Big Uint {:?}", self);
                 Detected::BigInt(self.to_owned().clone())
             }
         }
 
         impl Detect for &OffsetDateTime {
             fn detect(&self) -> Detected {
-                debug!("serializing a Date Time {:?}", self);
+                trace!("serializing a Date Time {:?}", self);
                 Detected::DateTime(*self.to_owned())
             }
         }

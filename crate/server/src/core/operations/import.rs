@@ -754,23 +754,3 @@ async fn process_pkcs12(
     //return the private key
     Ok((private_key_id, operations))
 }
-
-pub(crate) fn upsert_links_in_attributes(attributes: &mut Attributes, links_to_add: &Attributes) {
-    trace!(
-        "Upserting imported links in attributes: existing attributes links={:?}, links_to_add={:?}",
-        attributes.link, links_to_add.link
-    );
-    if let Some(new_links) = links_to_add.link.as_ref() {
-        for new_link in new_links {
-            // one can only have one link of a given type
-            attributes.set_link(
-                new_link.link_type,
-                new_link.linked_object_identifier.clone(),
-            );
-        }
-    }
-    trace!(
-        "Added imported links to attributes: attributes={:?}",
-        attributes
-    );
-}

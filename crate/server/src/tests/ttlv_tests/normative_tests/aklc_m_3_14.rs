@@ -23,7 +23,10 @@ use cosmian_logger::log_init;
 use time::OffsetDateTime;
 use tracing::info;
 
-use crate::tests::ttlv_tests::{get_client, socket_client::SocketClient};
+use crate::{
+    error::KmsError,
+    tests::ttlv_tests::{get_client, socket_client::SocketClient},
+};
 
 /// This test implements the Asymmetric Key Lifecycle test case AKLC-M-3-14
 /// which tests the following operations:
@@ -437,7 +440,10 @@ fn get_activation_attributes(client: &SocketClient, key_id: &str) {
 /// Try to modify activation date (expected to fail)
 fn try_modify_activation_date(client: &SocketClient, key_id: &str) {
     // Get current time in UTC
-    let now = OffsetDateTime::now_utc();
+    let now = OffsetDateTime::now_utc()
+        .replace_millisecond(0)
+        .map_err(|e| KmsError::Default(e.to_string()))
+        .unwrap();
 
     let request_message = RequestMessage {
         request_header: RequestMessageHeader {
