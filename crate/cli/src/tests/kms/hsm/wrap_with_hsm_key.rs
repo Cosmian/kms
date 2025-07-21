@@ -121,7 +121,7 @@ pub(crate) async fn test_wrap_with_rsa_oaep(ctx: &TestsContext) -> KmsCliResult<
 #[cfg(feature = "non-fips")]
 pub(crate) async fn test_unwrap_on_export(ctx: &TestsContext) -> KmsCliResult<()> {
     use crate::actions::kms::{
-        rsa::keys::create_key_pair::CreateKeyPairAction, shared::ExportKeyAction,
+        rsa::keys::create_key_pair::CreateKeyPairAction, shared::ExportSecretDataOrKeyAction,
     };
 
     log_init(option_env!("RUST_LOG"));
@@ -151,7 +151,7 @@ pub(crate) async fn test_unwrap_on_export(ctx: &TestsContext) -> KmsCliResult<()
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     // TODO: Replace with equivalent export action when available
-    ExportKeyAction {
+    ExportSecretDataOrKeyAction {
         key_file: tmp_path.join("dek.pem"),
         key_id: Some(dek.to_string()),
         key_format: ExportKeyFormat::Raw,

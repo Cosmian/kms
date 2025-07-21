@@ -466,7 +466,7 @@ pub(crate) async fn test_locate_secret_data() -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server_with_cert_auth().await;
 
     // generate a new secret
-    let secret_id = crate::actions::kms::secret_data::create_secret::CreateKeyAction {
+    let secret_id = crate::actions::kms::secret_data::create_secret::CreateSecretDataAction {
         tags: vec!["test_secret".to_string()],
         ..Default::default()
     }

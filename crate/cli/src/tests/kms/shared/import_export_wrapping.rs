@@ -30,7 +30,7 @@ use crate::{
     actions::kms::{
         cover_crypt::keys::create_key_pair::CreateMasterKeyPairAction,
         elliptic_curves::keys::create_key_pair::CreateKeyPairAction as CreateEcKeyPairAction,
-        shared::{ExportKeyAction, ImportKeyAction},
+        shared::{ExportSecretDataOrKeyAction, ImportSecretDataOrKeyAction},
         symmetric::keys::create_key::CreateKeyAction,
     },
     error::result::KmsCliResult,
@@ -60,7 +60,7 @@ pub(crate) async fn test_import_export_wrap_rfc_5649() -> KmsCliResult<()> {
 
     // import the wrapping key
     trace!("importing wrapping key");
-    let wrap_key_uid = ImportKeyAction {
+    let wrap_key_uid = ImportSecretDataOrKeyAction {
         key_file: wrap_key_path.clone(),
         ..Default::default()
     }
@@ -134,7 +134,7 @@ pub(crate) async fn test_import_export_wrap_ecies() -> KmsCliResult<()> {
     // Write the private key to a file and import it
     let wrap_private_key_path = tmp_path.join("wrap.private.key");
     write_kmip_object_to_file(wrap_key_pair.private_key(), &wrap_private_key_path)?;
-    ImportKeyAction {
+    ImportSecretDataOrKeyAction {
         key_file: wrap_private_key_path.clone(),
         key_id: Some(wrap_private_key_uid.to_string()),
         replace_existing: true,
@@ -145,7 +145,7 @@ pub(crate) async fn test_import_export_wrap_ecies() -> KmsCliResult<()> {
     // Write the public key to a file and import it
     let wrap_public_key_path = tmp_path.join("wrap.public.key");
     write_kmip_object_to_file(wrap_key_pair.public_key(), &wrap_public_key_path)?;
-    let wrap_public_key_uid = ImportKeyAction {
+    let wrap_public_key_uid = ImportSecretDataOrKeyAction {
         key_file: wrap_public_key_path.clone(),
         replace_existing: true,
         ..Default::default()
@@ -210,7 +210,7 @@ async fn test_import_export_wrap_private_key(
 
     // Export the private key without wrapping
     let private_key_file = tmp_path.join("master_private.key");
-    ExportKeyAction {
+    ExportSecretDataOrKeyAction {
         key_id: Some(private_key_id.to_string()),
         key_file: private_key_file.clone(),
         ..Default::default()
@@ -221,7 +221,7 @@ async fn test_import_export_wrap_private_key(
 
     // Export the private key with wrapping
     let wrapped_private_key_file = tmp_path.join("wrapped_master_private.key");
-    ExportKeyAction {
+    ExportSecretDataOrKeyAction {
         key_id: Some(private_key_id.to_string()),
         key_file: wrapped_private_key_file.clone(),
         wrap_key_id: Some(wrapping_key_uid.to_string()),
@@ -261,7 +261,7 @@ async fn test_import_export_wrap_private_key(
     // test the unwrapping on import
     {
         // import the wrapped key, unwrapping it on import
-        let unwrapped_key_id = ImportKeyAction {
+        let unwrapped_key_id = ImportSecretDataOrKeyAction {
             key_file: wrapped_private_key_file.clone(),
             replace_existing: true,
             unwrap: true,
@@ -271,7 +271,7 @@ async fn test_import_export_wrap_private_key(
         .await?;
         // re-export it as registered and check it was correctly unwrapped
         let re_exported_key_file = tmp_path.join("re_exported_master_private.key");
-        ExportKeyAction {
+        ExportSecretDataOrKeyAction {
             key_id: Some(unwrapped_key_id.to_string()),
             key_file: re_exported_key_file.clone(),
             ..Default::default()
@@ -312,7 +312,7 @@ async fn test_import_export_wrap_private_key(
     // test the unwrapping on export
     {
         // import the wrapped key, un wrapping it on import
-        let wrapped_key_id = ImportKeyAction {
+        let wrapped_key_id = ImportSecretDataOrKeyAction {
             key_file: wrapped_private_key_file.clone(),
             replace_existing: true,
             unwrap: false,
@@ -323,7 +323,7 @@ async fn test_import_export_wrap_private_key(
         .await?;
         // re-export it as registered and check it was correctly unwrapped
         let exported_unwrapped_key_file = tmp_path.join("exported_unwrapped_master_private.key");
-        ExportKeyAction {
+        ExportSecretDataOrKeyAction {
             key_id: Some(wrapped_key_id.to_string()),
             key_file: exported_unwrapped_key_file.clone(),
             unwrap: true,

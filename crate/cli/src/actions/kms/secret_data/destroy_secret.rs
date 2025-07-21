@@ -20,7 +20,7 @@ use crate::{
 /// it can only be exported by the owner of the key,
 /// and without its key material
 #[derive(Parser, Debug)]
-pub struct DestroyKeyAction {
+pub struct DestroySecretDataAction {
     /// The secret unique identifier.
     /// If not specified, tags should be specified
     #[clap(long = KEY_ID, short = 's', group = "key-tags")]
@@ -39,7 +39,7 @@ pub struct DestroyKeyAction {
     pub(crate) remove: bool,
 }
 
-impl DestroyKeyAction {
+impl DestroySecretDataAction {
     pub(crate) async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<UniqueIdentifier> {
         let id = get_key_uid(self.secret_id.as_ref(), self.tags.as_ref(), KEY_ID)?;
         destroy(kms_rest_client, &id, self.remove).await

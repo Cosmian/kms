@@ -31,7 +31,7 @@ use crate::actions::kms::cover_crypt::keys::{
 use crate::{
     actions::kms::{
         elliptic_curves::keys::create_key_pair::CreateKeyPairAction as CreateEcKeyPairAction,
-        rsa::keys::create_key_pair::CreateKeyPairAction, shared::ExportKeyAction,
+        rsa::keys::create_key_pair::CreateKeyPairAction, shared::ExportSecretDataOrKeyAction,
         symmetric::keys::create_key::CreateKeyAction,
     },
     error::result::{KmsCliResult, KmsCliResultHelper},
@@ -51,7 +51,7 @@ pub(crate) async fn test_export_sym() -> KmsCliResult<()> {
         .await?;
 
     // Export as default (JsonTTLV with Raw Key Format Type)
-    ExportKeyAction {
+    ExportSecretDataOrKeyAction {
         key_id: Some(key_id.to_string()),
         key_file: tmp_path.join("output.export"),
         ..Default::default()
@@ -66,7 +66,7 @@ pub(crate) async fn test_export_sym() -> KmsCliResult<()> {
     let key_bytes = key_block.symmetric_key_bytes()?;
 
     // Export the bytes only
-    ExportKeyAction {
+    ExportSecretDataOrKeyAction {
         key_id: Some(key_id.to_string()),
         key_file: tmp_path.join("output.export.bytes"),
         key_format: ExportKeyFormat::Raw,
@@ -79,7 +79,7 @@ pub(crate) async fn test_export_sym() -> KmsCliResult<()> {
 
     // wrong export format
     assert!(
-        ExportKeyAction {
+        ExportSecretDataOrKeyAction {
             key_id: Some(key_id.to_string()),
             key_file: tmp_path.join("output.export.bytes"),
             key_format: ExportKeyFormat::Pkcs1Pem,
@@ -107,7 +107,7 @@ pub(crate) async fn test_export_sym_allow_revoked() -> KmsCliResult<()> {
         .await?;
 
     // Export
-    ExportKeyAction {
+    ExportSecretDataOrKeyAction {
         key_id: Some(key_id.to_string()),
         key_file: tmp_path.join("output.export"),
         allow_revoked: true,
@@ -140,7 +140,7 @@ pub(crate) async fn test_export_wrapped() -> KmsCliResult<()> {
         .await?;
 
     // Export wrapped key with a symmetric key as default (JsonTTLV with Raw Key Format Type)
-    ExportKeyAction {
+    ExportSecretDataOrKeyAction {
         key_id: Some(private_key_id.to_string()),
         key_file: tmp_path.join("output.export"),
         wrap_key_id: Some(sym_key_id.to_string()),
@@ -165,7 +165,7 @@ pub(crate) async fn test_export_wrapped() -> KmsCliResult<()> {
     assert_eq!(cryptographic_parameters, None);
 
     // Wrapping with symmetric key should be by default with rfc5649
-    ExportKeyAction {
+    ExportSecretDataOrKeyAction {
         key_id: Some(private_key_id.to_string()),
         key_file: tmp_path.join("output_2.export"),
         wrap_key_id: Some(sym_key_id.to_string()),
@@ -191,7 +191,7 @@ pub(crate) async fn test_export_wrapped() -> KmsCliResult<()> {
 
     assert_eq!(key_bytes, key_bytes_2);
 
-    ExportKeyAction {
+    ExportSecretDataOrKeyAction {
         key_id: Some(private_key_id.to_string()),
         key_file: tmp_path.join("output.export"),
         wrap_key_id: Some(sym_key_id.to_string()),
@@ -202,7 +202,7 @@ pub(crate) async fn test_export_wrapped() -> KmsCliResult<()> {
     .await?;
 
     // Export wrapped key with a symmetric key using AESGCM as default (JsonTTLV with Raw Key Format Type)
-    ExportKeyAction {
+    ExportSecretDataOrKeyAction {
         key_id: Some(private_key_id.to_string()),
         key_file: tmp_path.join("output.export"),
         wrap_key_id: Some(sym_key_id.to_string()),
@@ -228,7 +228,7 @@ pub(crate) async fn test_export_wrapped() -> KmsCliResult<()> {
 
     // Block-cipher-mode option raises an error when not using symmetric key for wrapping
     assert!(
-        ExportKeyAction {
+        ExportSecretDataOrKeyAction {
             key_id: Some(sym_key_id.to_string()),
             key_file: tmp_path.join("output.export"),
             wrap_key_id: Some(private_key_id.to_string()),
@@ -253,7 +253,7 @@ pub(crate) async fn test_export_covercrypt() -> KmsCliResult<()> {
         ctx: &TestsContext,
     ) -> KmsCliResult<()> {
         // Export the key
-        ExportKeyAction {
+        ExportSecretDataOrKeyAction {
             key_id: Some(key_id.to_owned()),
             key_file: tmp_path.join("output.export"),
             ..Default::default()
@@ -268,7 +268,7 @@ pub(crate) async fn test_export_covercrypt() -> KmsCliResult<()> {
         let key_bytes = key_block.covercrypt_key_bytes()?;
 
         // Export the key bytes only
-        ExportKeyAction {
+        ExportSecretDataOrKeyAction {
             key_id: Some(key_id.to_owned()),
             key_file: tmp_path.join("output.export.bytes"),
             key_format: ExportKeyFormat::Raw,
@@ -346,7 +346,7 @@ pub(crate) async fn test_export_error_cover_crypt() -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server().await;
 
     // key does not exist
-    ExportKeyAction {
+    ExportSecretDataOrKeyAction {
         key_id: Some("does_not_exist".to_owned()),
         key_file: tmp_path.join("output.export"),
         ..Default::default()
@@ -369,7 +369,7 @@ pub(crate) async fn test_export_error_cover_crypt() -> KmsCliResult<()> {
     };
 
     // Export to non existing dir
-    ExportKeyAction {
+    ExportSecretDataOrKeyAction {
         key_id: Some(master_private_key_id),
         key_file: PathBuf::from("/does_not_exist/output.export"),
         ..Default::default()
@@ -408,7 +408,7 @@ pub(crate) async fn test_export_x25519() -> KmsCliResult<()> {
     //
     // Private Key
     //
-    ExportKeyAction {
+    ExportSecretDataOrKeyAction {
         key_id: Some(private_key_id.to_string()),
         key_file: tmp_path.join("output.export"),
         ..Default::default()
@@ -445,7 +445,7 @@ pub(crate) async fn test_export_x25519() -> KmsCliResult<()> {
     let pkey_1 = PKey::private_key_from_raw_bytes(&d_vec, Id::X25519).unwrap();
 
     // Export the bytes only
-    ExportKeyAction {
+    ExportSecretDataOrKeyAction {
         key_id: Some(private_key_id.to_string()),
         key_file: tmp_path.join("output.export.bytes"),
         key_format: ExportKeyFormat::Pkcs8Der,
@@ -464,7 +464,7 @@ pub(crate) async fn test_export_x25519() -> KmsCliResult<()> {
     //
     // Public Key
     //
-    ExportKeyAction {
+    ExportSecretDataOrKeyAction {
         key_id: Some(public_key_id.to_string()),
         key_file: tmp_path.join("output.export"),
         ..Default::default()
@@ -497,7 +497,7 @@ pub(crate) async fn test_export_x25519() -> KmsCliResult<()> {
     let pkey_1 = PKey::public_key_from_raw_bytes(q_string, Id::X25519).unwrap();
 
     // Export the bytes only
-    ExportKeyAction {
+    ExportSecretDataOrKeyAction {
         key_id: Some(public_key_id.to_string()),
         key_file: tmp_path.join("output.export.bytes"),
         key_format: ExportKeyFormat::Pkcs8Der,
@@ -534,7 +534,7 @@ pub(crate) async fn test_sensitive_sym() -> KmsCliResult<()> {
 
     // the key should not be exportable
     assert!(
-        ExportKeyAction {
+        ExportSecretDataOrKeyAction {
             key_id: Some(key_id.to_string()),
             key_file: tmp_path.join("output.export"),
             ..Default::default()
@@ -565,7 +565,7 @@ pub(crate) async fn test_sensitive_ec_key() -> KmsCliResult<()> {
 
     // the private key should not be exportable
     assert!(
-        ExportKeyAction {
+        ExportSecretDataOrKeyAction {
             key_id: Some(private_key_id.to_string()),
             key_file: tmp_path.join("output.export"),
             ..Default::default()
@@ -577,7 +577,7 @@ pub(crate) async fn test_sensitive_ec_key() -> KmsCliResult<()> {
 
     // the public key should be exportable
     assert!(
-        ExportKeyAction {
+        ExportSecretDataOrKeyAction {
             key_id: Some(public_key_id.to_string()),
             key_file: tmp_path.join("output.export"),
             ..Default::default()
@@ -608,7 +608,7 @@ pub(crate) async fn test_sensitive_rsa_key() -> KmsCliResult<()> {
 
     // the private key should not be exportable
     assert!(
-        ExportKeyAction {
+        ExportSecretDataOrKeyAction {
             key_id: Some(private_key_id.to_string()),
             key_file: tmp_path.join("output.export"),
             ..Default::default()
@@ -620,7 +620,7 @@ pub(crate) async fn test_sensitive_rsa_key() -> KmsCliResult<()> {
 
     // the public key should be exportable
     assert!(
-        ExportKeyAction {
+        ExportSecretDataOrKeyAction {
             key_id: Some(public_key_id.to_string()),
             key_file: tmp_path.join("output.export"),
             ..Default::default()
@@ -656,7 +656,7 @@ pub(crate) async fn test_sensitive_covercrypt_key() -> KmsCliResult<()> {
 
     // master secret key should not be exportable
     assert!(
-        ExportKeyAction {
+        ExportSecretDataOrKeyAction {
             key_id: Some(master_private_key_id.to_string()),
             key_file: tmp_path.join("output.sk.export"),
             ..Default::default()
@@ -668,7 +668,7 @@ pub(crate) async fn test_sensitive_covercrypt_key() -> KmsCliResult<()> {
 
     // Master public key should be exportable
     assert!(
-        ExportKeyAction {
+        ExportSecretDataOrKeyAction {
             key_id: Some(master_public_key_id),
             key_file: tmp_path.join("output.sk.export"),
             ..Default::default()
@@ -691,7 +691,7 @@ pub(crate) async fn test_sensitive_covercrypt_key() -> KmsCliResult<()> {
     .to_string();
 
     assert!(
-        ExportKeyAction {
+        ExportSecretDataOrKeyAction {
             key_id: Some(user_key_id),
             key_file: tmp_path.join("output.export"),
             ..Default::default()
@@ -713,12 +713,13 @@ pub(crate) async fn test_export_secret_data() -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server().await;
 
     // generate a secret data
-    let secret_id = crate::actions::kms::secret_data::create_secret::CreateKeyAction::default()
-        .run(ctx.get_owner_client())
-        .await?;
+    let secret_id =
+        crate::actions::kms::secret_data::create_secret::CreateSecretDataAction::default()
+            .run(ctx.get_owner_client())
+            .await?;
 
     // Export as default (JsonTTLV with Raw Key Format Type)
-    ExportKeyAction {
+    ExportSecretDataOrKeyAction {
         key_id: Some(secret_id.to_string()),
         key_file: tmp_path.join("output.export"),
         ..Default::default()
@@ -739,7 +740,7 @@ pub(crate) async fn test_export_secret_data() -> KmsCliResult<()> {
     // Now you can use the bytes:
     assert_eq!(key_bytes.len(), 32);
     // Export the bytes only
-    ExportKeyAction {
+    ExportSecretDataOrKeyAction {
         key_id: Some(secret_id.to_string()),
         key_file: tmp_path.join("output.export.bytes"),
         key_format: ExportKeyFormat::Raw,
@@ -752,7 +753,7 @@ pub(crate) async fn test_export_secret_data() -> KmsCliResult<()> {
 
     // wrong export format
     assert!(
-        ExportKeyAction {
+        ExportSecretDataOrKeyAction {
             key_id: Some(secret_id.to_string()),
             key_file: tmp_path.join("output.export.bytes"),
             key_format: ExportKeyFormat::Pkcs1Pem,

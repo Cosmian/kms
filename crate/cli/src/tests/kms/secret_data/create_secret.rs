@@ -6,7 +6,7 @@ use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
 use test_kms_server::start_default_test_kms_server;
 
 use crate::{
-    actions::kms::secret_data::create_secret::CreateKeyAction, error::result::KmsCliResult,
+    actions::kms::secret_data::create_secret::CreateSecretDataAction, error::result::KmsCliResult,
 };
 
 #[cfg(feature = "non-fips")]
@@ -17,15 +17,15 @@ pub(crate) async fn test_create_secret_data() -> KmsCliResult<()> {
     let mut key = vec![0u8; 32];
 
     {
-        CreateKeyAction::default()
+        CreateSecretDataAction::default()
             .run(ctx.get_owner_client())
             .await?;
-        let _uid = CreateKeyAction::default()
+        let _uid = CreateSecretDataAction::default()
             .run(ctx.get_owner_client())
             .await?;
 
         rng.fill_bytes(&mut key);
-        let _uid = CreateKeyAction {
+        let _uid = CreateSecretDataAction {
             secret_value: Some("password".to_owned()),
             secret_type: SecretDataType::Password,
             ..Default::default()

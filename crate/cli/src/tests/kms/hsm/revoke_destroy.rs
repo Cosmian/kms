@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use crate::{
     actions::kms::{
-        shared::ExportKeyAction,
+        shared::ExportSecretDataOrKeyAction,
         symmetric::keys::{
             create_key::CreateKeyAction, destroy_key::DestroyKeyAction, revoke_key::RevokeKeyAction,
         },
@@ -53,7 +53,7 @@ pub(crate) async fn test_revoke_symmetric_key(ctx: &TestsContext) -> KmsCliResul
     .run(ctx.get_owner_client())
     .await?;
 
-    let res = ExportKeyAction {
+    let res = ExportSecretDataOrKeyAction {
         key_id: Some(key_id.to_string()),
         key_file: PathBuf::from("/tmp/key"),
         ..Default::default()

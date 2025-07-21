@@ -28,7 +28,7 @@ async fn test_certificate_import_encrypt(
             encrypt_certificate::EncryptCertificateAction,
             import_certificate::ImportCertificateAction,
         },
-        shared::ImportKeyAction,
+        shared::ImportSecretDataOrKeyAction,
     };
 
     let ctx = start_default_test_kms_server().await;
@@ -46,7 +46,7 @@ async fn test_certificate_import_encrypt(
     let tags = tags.iter().map(|&s| s.to_string()).collect::<Vec<String>>();
 
     debug!("\n\nImport Key");
-    let private_key_id = ImportKeyAction {
+    let private_key_id = ImportSecretDataOrKeyAction {
         key_file: format!("../../test_data/certificates/{key_path}").into(),
         key_format: ImportKeyFormat::Pem,
         tags: tags.clone(),
@@ -153,7 +153,7 @@ async fn import_encrypt_decrypt(
             encrypt_certificate::EncryptCertificateAction,
             import_certificate::ImportCertificateAction,
         },
-        shared::ImportKeyAction,
+        shared::ImportSecretDataOrKeyAction,
     };
 
     let ctx = start_default_test_kms_server().await;
@@ -170,7 +170,7 @@ async fn import_encrypt_decrypt(
     let tags = vec![filename.to_string()];
 
     debug!("\n\nImport Private key");
-    let private_key_id = ImportKeyAction {
+    let private_key_id = ImportSecretDataOrKeyAction {
         key_file: format!("../../test_data/certificates/openssl/{filename}-private-key.pem").into(),
         key_format: ImportKeyFormat::Pem,
         tags: tags.clone(),

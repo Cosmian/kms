@@ -13,7 +13,7 @@ use cosmian_kms_client::{
 
 use crate::{actions::kms::console, error::result::KmsCliResult};
 
-/// Import a private or public key in the KMS.
+/// Import a secret data or key in the KMS.
 ///
 /// When no unique id is specified, a unique id is generated.
 ///
@@ -31,7 +31,7 @@ use crate::{actions::kms::console, error::result::KmsCliResult};
 /// Tags can later be used to retrieve the key. Tags are optional.
 #[derive(Parser, Default, Debug)]
 #[clap(verbatim_doc_comment)]
-pub struct ImportKeyAction {
+pub struct ImportSecretDataOrKeyAction {
     /// The KMIP JSON TTLV key file.
     #[clap(required = true)]
     pub(crate) key_file: PathBuf,
@@ -94,7 +94,7 @@ pub struct ImportKeyAction {
     pub(crate) wrapping_key_id: Option<String>,
 }
 
-impl ImportKeyAction {
+impl ImportSecretDataOrKeyAction {
     /// Run the import key action.
     ///
     /// # Errors

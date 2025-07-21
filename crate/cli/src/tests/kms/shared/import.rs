@@ -15,7 +15,7 @@ use crate::actions::kms::{
     symmetric::keys::create_key::CreateKeyAction,
 };
 use crate::{
-    actions::kms::shared::{ExportKeyAction, ImportKeyAction},
+    actions::kms::shared::{ExportSecretDataOrKeyAction, ImportSecretDataOrKeyAction},
     error::{KmsCliError, result::KmsCliResult},
 };
 
@@ -43,7 +43,7 @@ pub(crate) async fn test_import_cover_crypt() -> KmsCliResult<()> {
     let tmp_path = tmp_dir.path();
     let public_key_path = format!("{}", tmp_path.join("public_key.json").display());
 
-    ExportKeyAction {
+    ExportSecretDataOrKeyAction {
         key_id: Some(master_public_key_id.clone()),
         key_file: PathBuf::from(&public_key_path),
         ..Default::default()
@@ -53,7 +53,7 @@ pub(crate) async fn test_import_cover_crypt() -> KmsCliResult<()> {
 
     // reimporting the same key with the same id should fail
     assert!(
-        ImportKeyAction {
+        ImportSecretDataOrKeyAction {
             key_file: PathBuf::from(&public_key_path.to_string()),
             key_id: Some(master_public_key_id.clone()),
             ..Default::default()
@@ -64,7 +64,7 @@ pub(crate) async fn test_import_cover_crypt() -> KmsCliResult<()> {
     );
 
     //...unless we force it with replace_existing
-    let master_public_key_id_: String = ImportKeyAction {
+    let master_public_key_id_: String = ImportSecretDataOrKeyAction {
         key_file: PathBuf::from(&public_key_path.to_string()),
         replace_existing: true,
         key_id: Some(master_public_key_id.clone()),
@@ -112,9 +112,10 @@ pub(crate) async fn test_generate_export_import() -> KmsCliResult<()> {
     export_import_test(&key_id, Some(CryptographicAlgorithm::AES)).await?;
 
     // generate a secret data
-    let secret_id = crate::actions::kms::secret_data::create_secret::CreateKeyAction::default()
-        .run(ctx.get_owner_client())
-        .await?;
+    let secret_id =
+        crate::actions::kms::secret_data::create_secret::CreateSecretDataAction::default()
+            .run(ctx.get_owner_client())
+            .await?;
     export_import_test(&secret_id, None).await?;
 
     Ok(())
@@ -128,7 +129,7 @@ pub(crate) async fn export_import_test(
     let ctx = start_default_test_kms_server().await;
 
     // Export
-    ExportKeyAction {
+    ExportSecretDataOrKeyAction {
         key_id: Some(private_key_id.to_string()),
         key_file: PathBuf::from("/tmp/output.export"),
         ..Default::default()
@@ -150,7 +151,7 @@ pub(crate) async fn export_import_test(
     };
 
     // import and re-export
-    let uid: String = ImportKeyAction {
+    let uid: String = ImportSecretDataOrKeyAction {
         key_file: PathBuf::from("/tmp/output.export"),
         ..Default::default()
     }
@@ -158,7 +159,7 @@ pub(crate) async fn export_import_test(
     .await?
     .to_string();
 
-    ExportKeyAction {
+    ExportSecretDataOrKeyAction {
         key_id: Some(uid),
         key_file: PathBuf::from("/tmp/output2.export"),
         ..Default::default()

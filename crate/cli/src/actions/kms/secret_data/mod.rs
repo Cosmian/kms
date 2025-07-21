@@ -2,11 +2,14 @@ use clap::Subcommand;
 use cosmian_kms_client::KmsClient;
 
 use self::{
-    create_secret::CreateKeyAction, destroy_secret::DestroyKeyAction,
-    revoke_secret::RevokeKeyAction,
+    create_secret::CreateSecretDataAction, destroy_secret::DestroySecretDataAction,
+    revoke_secret::RevokeSecretDataAction,
 };
 use crate::{
-    actions::kms::shared::{ExportKeyAction, ImportKeyAction, UnwrapKeyAction, WrapKeyAction},
+    actions::kms::shared::{
+        ExportSecretDataOrKeyAction, ImportSecretDataOrKeyAction, UnwrapSecretDataOrKeyAction,
+        WrapSecretDataOrKeyAction,
+    },
     error::result::KmsCliResult,
 };
 
@@ -17,13 +20,13 @@ pub mod revoke_secret;
 /// Create, import, export and destroy secret data
 #[derive(Subcommand)]
 pub enum SecretDataCommands {
-    Create(CreateKeyAction),
-    Export(ExportKeyAction),
-    Import(ImportKeyAction),
-    Wrap(WrapKeyAction),
-    Unwrap(UnwrapKeyAction),
-    Revoke(RevokeKeyAction),
-    Destroy(DestroyKeyAction),
+    Create(CreateSecretDataAction),
+    Export(ExportSecretDataOrKeyAction),
+    Import(ImportSecretDataOrKeyAction),
+    Wrap(WrapSecretDataOrKeyAction),
+    Unwrap(UnwrapSecretDataOrKeyAction),
+    Revoke(RevokeSecretDataAction),
+    Destroy(DestroySecretDataAction),
 }
 
 impl SecretDataCommands {

@@ -18,9 +18,9 @@ use crate::{
     error::result::{KmsCliResult, KmsCliResultHelper},
 };
 
-/// Locally unwrap a key in KMIP JSON TTLV format.
+/// Locally unwrap a secret data or key in KMIP JSON TTLV format.
 ///
-/// The key can be unwrapped using either:
+/// The secret data or key can be unwrapped using either:
 ///  - a password derived into a symmetric key using Argon2
 ///  - symmetric key bytes in base64
 ///  - a key in the KMS (which will be exported first)
@@ -31,7 +31,7 @@ use crate::{
 /// and ECIES will be used.
 #[derive(Parser, Default, Debug)]
 #[clap(verbatim_doc_comment)]
-pub struct UnwrapKeyAction {
+pub struct UnwrapSecretDataOrKeyAction {
     /// The KMIP JSON TTLV input key file to unwrap
     #[clap(required = true)]
     pub(crate) key_file_in: PathBuf,
@@ -68,7 +68,7 @@ pub struct UnwrapKeyAction {
     pub(crate) unwrap_key_file: Option<PathBuf>,
 }
 
-impl UnwrapKeyAction {
+impl UnwrapSecretDataOrKeyAction {
     /// Export a key from the KMS
     ///
     /// # Errors

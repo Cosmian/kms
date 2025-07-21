@@ -4,7 +4,7 @@ use test_kms_server::start_default_test_kms_server;
 
 use crate::{
     actions::kms::{
-        shared::ExportKeyAction,
+        shared::ExportSecretDataOrKeyAction,
         symmetric::keys::{create_key::CreateKeyAction, rekey::ReKeyAction},
     },
     error::result::KmsCliResult,
@@ -29,7 +29,7 @@ pub(crate) async fn test_rekey_symmetric_key() -> KmsCliResult<()> {
     .await?;
 
     // Export as default (JsonTTLV with Raw Key Format Type)
-    ExportKeyAction {
+    ExportSecretDataOrKeyAction {
         key_file: tmp_path.join("aes_sym"),
         key_id: Some(id.to_string()),
         ..Default::default()
@@ -47,7 +47,7 @@ pub(crate) async fn test_rekey_symmetric_key() -> KmsCliResult<()> {
     assert_eq!(id, id_2);
 
     // Export as default (JsonTTLV with Raw Key Format Type)
-    ExportKeyAction {
+    ExportSecretDataOrKeyAction {
         key_file: tmp_path.join("aes_sym_2"),
         key_id: Some(id.to_string()),
         ..Default::default()

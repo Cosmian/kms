@@ -20,7 +20,7 @@ use crate::{
 /// Tags can later be used to retrieve the key. Tags are optional.
 #[derive(Parser, Default)]
 #[clap(verbatim_doc_comment)]
-pub struct CreateKeyAction {
+pub struct CreateSecretDataAction {
     /// Optional secret data string, UTF-8 encoded.
     /// If not provided, a random 32-byte seed will be generated.
     #[clap(long = "value", short = 'v', required = false)]
@@ -37,7 +37,7 @@ pub struct CreateKeyAction {
     )]
     pub secret_type: SecretDataType,
 
-    /// The tag to associate with the key.
+    /// The tag to associate with the secret data.
     /// To specify multiple tags, use the option multiple times.
     #[clap(long = "tag", short = 't', value_name = "TAG")]
     pub tags: Vec<String>,
@@ -51,7 +51,7 @@ pub struct CreateKeyAction {
     #[clap(long = "sensitive", default_value = "false")]
     pub sensitive: bool,
 
-    /// The key encryption key (KEK) used to wrap this new key with.
+    /// The key encryption key (KEK) used to wrap this new secret data with.
     /// If the wrapping key is:
     /// - a symmetric key, AES-GCM will be used
     /// - a RSA key, RSA-OAEP will be used
@@ -65,7 +65,7 @@ pub struct CreateKeyAction {
     pub wrapping_key_id: Option<String>,
 }
 
-impl CreateKeyAction {
+impl CreateSecretDataAction {
     /// Create a new secret data
     ///
     /// # Errors
