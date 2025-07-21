@@ -49,7 +49,7 @@ pub struct UnwrapSecretDataOrKeyAction {
     )]
     pub(crate) unwrap_key_b64: Option<String>,
 
-    /// The id of a unwrapping key in the KMS that will be exported and used to unwrap the key.
+    /// The id of an unwrapping key in the KMS that will be exported and used to unwrap the key.
     #[clap(
         long = "unwrap-key-id",
         short = 'i',
@@ -58,7 +58,7 @@ pub struct UnwrapSecretDataOrKeyAction {
     )]
     pub(crate) unwrap_key_id: Option<String>,
 
-    /// A unwrapping key in a KMIP JSON TTLV file used to unwrap the key.
+    /// An unwrapping key in a KMIP JSON TTLV file used to unwrap the key.
     #[clap(
         long = "unwrap-key-file",
         short = 'f',

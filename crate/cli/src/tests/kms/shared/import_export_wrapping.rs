@@ -205,10 +205,8 @@ async fn test_import_export_wrap_private_key(
     unwrapping_key: &Object,
 ) -> KmsCliResult<()> {
     // create a temp dir
-    // let tmp_dir = TempDir::new()?;
-    // let tmp_path = tmp_dir.path();
-
-    let tmp_path = PathBuf::from("/tmp");
+    let tmp_dir = TempDir::new()?;
+    let tmp_path = tmp_dir.path();
 
     // Export the private key without wrapping
     let private_key_file = tmp_path.join("master_private.key");
