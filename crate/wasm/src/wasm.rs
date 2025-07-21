@@ -1,7 +1,3 @@
-#![allow(unused)]
-#![allow(dead_code)]
-#![allow(unused_imports)]
-
 use std::str::FromStr;
 
 use base64::{Engine as _, engine::general_purpose};
@@ -476,7 +472,7 @@ pub fn parse_export_ttlv_response(response: &str, key_format: &str) -> Result<Js
         }
         ExportKeyFormat::Base64 => {
             let kmip_object = response.object;
-            let string = base64::engine::general_purpose::STANDARD
+            let string = general_purpose::STANDARD
                 .encode(get_object_bytes(&kmip_object)?)
                 .to_lowercase();
             JsValue::from(string)

@@ -42,6 +42,7 @@ pub(crate) async fn destroy_operation(
         .unique_identifier
         .as_ref()
         .ok_or(KmsError::UnsupportedPlaceholder)?;
+
     recursively_destroy_object(
         unique_identifier,
         request.remove,

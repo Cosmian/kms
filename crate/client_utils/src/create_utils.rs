@@ -84,7 +84,7 @@ pub fn prepare_sym_key_elements(
 ) -> Result<(usize, Option<Vec<u8>>, CryptographicAlgorithm), UtilsError> {
     let mut key_bytes = None;
     let number_of_bits = if let Some(key_b64) = &wrap_key_b64 {
-        let bytes: Vec<u8> = general_purpose::STANDARD.decode(key_b64)?;
+        let bytes = general_purpose::STANDARD.decode(key_b64)?;
         let number_of_bits = bytes.len() * 8;
         key_bytes = Some(bytes);
         number_of_bits
