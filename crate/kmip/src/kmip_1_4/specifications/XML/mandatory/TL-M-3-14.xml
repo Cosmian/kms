@@ -283,7 +283,7 @@
         <AttributeValue>
           <HashingAlgorithm type="Enumeration" value="SHA_256"/>
           <DigestValue type="ByteString" value="0bd3d7ada745e4eb34cc9d26cc84d4852a15906b2f77f80d01fc31c28108c49b"/>
-	  <KeyFormatType type="Enumeration" value="Raw"/>
+          <KeyFormatType type="Enumeration" value="Raw"/>
         </AttributeValue>
       </Attribute>
       <Attribute>
