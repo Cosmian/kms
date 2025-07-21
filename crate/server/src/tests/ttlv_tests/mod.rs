@@ -18,6 +18,7 @@ mod integrations;
 mod locate_1_4;
 mod locate_2_1;
 mod normative_tests;
+#[cfg(not(target_os = "windows"))]
 mod pykmip;
 mod query;
 mod register_1_4;
