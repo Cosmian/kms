@@ -18,9 +18,12 @@ use tracing::{debug, trace};
 use crate::{
     core::{
         KMS,
-        operations::import::{
-            process_certificate, process_private_key, process_public_key, process_secret_data,
-            process_symmetric_key,
+        operations::{
+            digest::digest,
+            import::{
+                process_certificate, process_private_key, process_public_key, process_secret_data,
+                process_symmetric_key,
+            },
         },
         retrieve_object_utils::user_has_permission,
     },
@@ -77,6 +80,10 @@ pub(crate) async fn register(
         object_attributes.initial_date = Some(now);
         // update the last change date
         object_attributes.last_change_date = Some(now);
+        // add a digest if not present
+        if object_attributes.digest.is_none() {
+            object_attributes.digest = digest(&request.object)?;
+        }
     }
 
     // Process the request based on the object type,
