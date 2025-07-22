@@ -17,7 +17,7 @@ use crate::{
 
 /// Create a new secret data
 ///
-/// Tags can later be used to retrieve the key. Tags are optional.
+/// Tags can later be used to retrieve the secret data. Tags are optional.
 #[derive(Parser, Default)]
 #[clap(verbatim_doc_comment)]
 pub struct CreateSecretDataAction {

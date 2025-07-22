@@ -17,7 +17,7 @@ use crate::{
 /// are automatically removed.
 ///
 /// When a secret is destroyed but not removed in the KMS,
-/// it can only be exported by the owner of the key,
+/// it can only be exported by the owner,
 /// and without its key material
 #[derive(Parser, Debug)]
 pub struct DestroySecretDataAction {
