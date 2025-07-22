@@ -80,10 +80,6 @@ pub(crate) async fn register(
         object_attributes.initial_date = Some(now);
         // update the last change date
         object_attributes.last_change_date = Some(now);
-        // add a digest if not present
-        if object_attributes.digest.is_none() {
-            object_attributes.digest = digest(&request.object)?;
-        }
     }
 
     // Process the request based on the object type,
