@@ -18,12 +18,9 @@ use tracing::{debug, trace};
 use crate::{
     core::{
         KMS,
-        operations::{
-            digest::digest,
-            import::{
-                process_certificate, process_private_key, process_public_key, process_secret_data,
-                process_symmetric_key,
-            },
+        operations::import::{
+            process_certificate, process_private_key, process_public_key, process_secret_data,
+            process_symmetric_key,
         },
         retrieve_object_utils::user_has_permission,
     },

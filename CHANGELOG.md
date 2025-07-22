@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.5.2] - 2025-07-22
+
+### 🐛 Bug Fixes
+
+- Support for TLS 1.3 on the HTTPS port of the KMIP server (#458)
+- Fixed RevocationReasonCode in KMIP 1.x (#460)
+
+### 🚀 Features
+
+- Better support of PyKMIP client (#438)
+- Support for Percona PostgreSQL TDE (Transparent Data Encryption) (#464)
+- Support for Secret Data (#398)
+
 ## [5.5.1] - 2025-07-09
 
 ### 🐛 Bug Fixes
@@ -26,7 +39,7 @@ All notable changes to this project will be documented in this file.
 
 ### ⚙️ Miscellaneous Tasks
 
-- Display items ID on google keypairs creation command
+- Display items ID on Google keypairs creation command
 
 ### 📚 Documentation
 
