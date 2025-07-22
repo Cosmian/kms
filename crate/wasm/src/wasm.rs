@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use base64::Engine as _;
+use base64::{Engine as _, engine::general_purpose};
 use cosmian_kms_client_utils::{
     attributes_utils::{build_selected_attribute, parse_selected_attributes_flatten},
     certificate_utils::{Algorithm, build_certify_request},
@@ -21,7 +21,7 @@ use cosmian_kms_client_utils::{
     },
     locate_utils::build_locate_request,
     reexport::cosmian_kmip::{
-        kmip_0::kmip_types::{CertificateType, RevocationReason},
+        kmip_0::kmip_types::{CertificateType, RevocationReason, SecretDataType},
         kmip_2_1::{
             kmip_attributes::Attributes,
             kmip_data_structures::{KeyMaterial, KeyValue},
@@ -39,9 +39,10 @@ use cosmian_kms_client_utils::{
             },
             requests::{
                 build_revoke_key_request, create_ec_key_pair_request, create_rsa_key_pair_request,
-                create_symmetric_key_kmip_object, decrypt_request, encrypt_request,
-                get_ec_private_key_request, get_ec_public_key_request, get_rsa_private_key_request,
-                get_rsa_public_key_request, import_object_request, symmetric_key_create_request,
+                create_secret_data_kmip_object, create_symmetric_key_kmip_object, decrypt_request,
+                encrypt_request, get_ec_private_key_request, get_ec_public_key_request,
+                get_rsa_private_key_request, get_rsa_public_key_request, import_object_request,
+                secret_data_create_request, symmetric_key_create_request,
             },
         },
         ttlv::{TTLV, from_ttlv, to_ttlv},
@@ -219,6 +220,44 @@ pub fn create_sym_key_ttlv_request(
             wrap_key_id.as_ref(),
         )
         .map_err(|e| JsValue::from_str(&format!("Sym key request creation failed: {e}")))?;
+        let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
+        serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+    }
+}
+
+#[allow(clippy::needless_pass_by_value)]
+#[wasm_bindgen]
+pub fn create_secret_data_ttlv_request(
+    secret_type: &str,
+    secret_value: Option<String>,
+    secret_id: Option<String>,
+    tags: Vec<String>,
+    sensitive: bool,
+    wrap_key_id: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let secret_data_type = SecretDataType::from_str(secret_type)
+        .map_err(|e| JsValue::from_str(&format!("Invalid secret data type: {e}")))?;
+
+    if let Some(secret_value) = secret_value {
+        let mut object = create_secret_data_kmip_object(
+            secret_value.as_bytes(),
+            secret_data_type,
+            &Attributes::default(),
+        )
+        .map_err(|e| JsValue::from_str(&format!("Error creating secret data: {e}")))?;
+        if let Some(wrapping_key_id) = &wrap_key_id {
+            let attributes = object.attributes_mut().map_err(|e| {
+                JsValue::from_str(&format!("Error creating secret data attributes: {e}"))
+            })?;
+            attributes.set_wrapping_key_id(wrapping_key_id);
+        }
+        let request = import_object_request(secret_id, object, None, false, false, &tags);
+        let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
+        serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+    } else {
+        let secret_id = secret_id.map(UniqueIdentifier::TextString);
+        let request = secret_data_create_request(secret_id, &tags, sensitive, wrap_key_id.as_ref())
+            .map_err(|e| JsValue::from_str(&format!("Secret Data request creation failed: {e}")))?;
         let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
         serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
     }
@@ -433,7 +472,7 @@ pub fn parse_export_ttlv_response(response: &str, key_format: &str) -> Result<Js
         }
         ExportKeyFormat::Base64 => {
             let kmip_object = response.object;
-            let string = base64::engine::general_purpose::STANDARD
+            let string = general_purpose::STANDARD
                 .encode(get_object_bytes(&kmip_object)?)
                 .to_lowercase();
             JsValue::from(string)

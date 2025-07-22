@@ -16,7 +16,7 @@ use crate::{
                 create_key_pair::CreateMasterKeyPairAction, create_user_key::CreateUserKeyAction,
             },
         },
-        shared::ExportKeyAction,
+        shared::ExportSecretDataOrKeyAction,
     },
     error::result::KmsCliResult,
 };
@@ -42,7 +42,7 @@ async fn test_view_access_structure() -> KmsCliResult<()> {
     let tmp_path = tmp_dir.path();
     let public_key_path = tmp_path.join("public_key.json");
 
-    ExportKeyAction {
+    ExportSecretDataOrKeyAction {
         key_id: Some(master_public_key_id.to_string()),
         key_file: format!("{}", public_key_path.display()).into(),
         ..Default::default()

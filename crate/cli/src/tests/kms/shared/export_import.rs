@@ -8,7 +8,7 @@ use tracing::debug;
 
 use crate::{
     actions::kms::{
-        shared::{ExportKeyAction, ImportKeyAction},
+        shared::{ExportSecretDataOrKeyAction, ImportSecretDataOrKeyAction},
         symmetric::keys::create_key::CreateKeyAction,
     },
     error::result::KmsCliResult,
@@ -38,7 +38,7 @@ pub(crate) async fn test_wrap_on_export_unwrap_on_import() -> KmsCliResult<()> {
     // Export and import the key with different block cipher modes
     for wrapping_algorithm in [WrappingAlgorithm::AesGCM, WrappingAlgorithm::NistKeyWrap] {
         debug!("wrapping algorithm: {wrapping_algorithm}",);
-        ExportKeyAction {
+        ExportSecretDataOrKeyAction {
             key_id: Some(dek_id.clone()),
             key_file: dek_path.clone(),
             wrap_key_id: Some(kek_id.clone()),
@@ -48,7 +48,7 @@ pub(crate) async fn test_wrap_on_export_unwrap_on_import() -> KmsCliResult<()> {
         .run(ctx.get_user_client())
         .await?;
 
-        let imported_key_id = ImportKeyAction {
+        let imported_key_id = ImportSecretDataOrKeyAction {
             key_file: PathBuf::from(&dek_file),
             key_id: Some(dek_id.clone()),
             unwrap: true,

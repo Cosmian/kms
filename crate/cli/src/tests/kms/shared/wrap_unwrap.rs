@@ -18,7 +18,9 @@ use crate::{
     actions::kms::{
         cover_crypt::keys::create_key_pair::CreateMasterKeyPairAction,
         elliptic_curves::keys::create_key_pair::CreateKeyPairAction as CreateEcKeyPairAction,
-        shared::{ExportKeyAction, UnwrapKeyAction, WrapKeyAction},
+        shared::{
+            ExportSecretDataOrKeyAction, UnwrapSecretDataOrKeyAction, WrapSecretDataOrKeyAction,
+        },
         symmetric::keys::create_key::CreateKeyAction,
     },
     error::result::KmsCliResult,
@@ -66,7 +68,7 @@ pub(crate) async fn password_wrap_import_test(
 
     // Export
     let key_file = temp_dir.path().join("master_private.key");
-    ExportKeyAction {
+    ExportSecretDataOrKeyAction {
         key_id: Some(private_key_id.to_string()),
         key_file: key_file.clone(),
         ..Default::default()
@@ -85,7 +87,7 @@ pub(crate) async fn password_wrap_import_test(
 
     //wrap and unwrap using a password
     {
-        let b64_wrapping_key = WrapKeyAction {
+        let b64_wrapping_key = WrapSecretDataOrKeyAction {
             key_file_in: key_file.clone(),
             wrap_password: Some("password".to_string()),
             ..Default::default()
@@ -104,7 +106,7 @@ pub(crate) async fn password_wrap_import_test(
             Some(EncodingOption::TTLVEncoding)
         );
         assert_ne!(wrapped_object.key_block()?.wrapped_key_bytes()?, key_bytes);
-        UnwrapKeyAction {
+        UnwrapSecretDataOrKeyAction {
             key_file_in: key_file.clone(),
             unwrap_key_b64: Some(b64_wrapping_key),
             ..Default::default()
@@ -131,7 +133,7 @@ pub(crate) async fn password_wrap_import_test(
         let mut key = vec![0u8; 32];
         rng.fill_bytes(&mut key);
         let key_b64 = general_purpose::STANDARD.encode(&key);
-        WrapKeyAction {
+        WrapSecretDataOrKeyAction {
             key_file_in: key_file.clone(),
             wrap_key_b64: Some(key_b64.clone()),
             ..Default::default()
@@ -150,7 +152,7 @@ pub(crate) async fn password_wrap_import_test(
             Some(EncodingOption::TTLVEncoding)
         );
         assert_ne!(wrapped_object.key_block()?.wrapped_key_bytes()?, key_bytes);
-        UnwrapKeyAction {
+        UnwrapSecretDataOrKeyAction {
             key_file_in: key_file.clone(),
             unwrap_key_b64: Some(key_b64),
             ..Default::default()

@@ -7,11 +7,15 @@ use cosmian_kms_server_database::reexport::cosmian_kms_crypto::reexport::cosmian
 use cosmian_kms_server_database::{
     CachedUnwrappedObject,
     reexport::{
-        cosmian_kmip::kmip_2_1::{
-            kmip_objects::Object,
-            kmip_operations::Create,
-            kmip_types::{CryptographicAlgorithm, KeyFormatType},
-            requests::create_symmetric_key_kmip_object,
+        cosmian_kmip::{
+            kmip_0::kmip_types::SecretDataType,
+            kmip_2_1::{
+                kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+                kmip_objects::{Object, SecretData},
+                kmip_operations::Create,
+                kmip_types::{CryptographicAlgorithm, KeyFormatType},
+                requests::create_symmetric_key_kmip_object,
+            },
         },
         cosmian_kms_crypto::crypto::symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH,
         cosmian_kms_interfaces::{EncryptionOracle, SessionParams},
@@ -238,6 +242,43 @@ impl KMS {
                 "the creation of a private key for algorithm: {other:?} is not supported"
             ))),
         }
+    }
+
+    /// Create a new secret data and the corresponding system tags
+    /// The tags will contain the user tags and the following:
+    ///  - "_sd"
+    ///  - the KMIP cryptographic algorithm in lower case prepended with "_"
+    pub(crate) fn create_secret_data_and_tags(
+        request: &Create,
+    ) -> KResult<(Option<String>, Object, HashSet<String>)> {
+        let attributes = &request.attributes;
+        let mut tags = attributes.get_tags();
+        tags.insert("_sd".to_owned());
+        let mut secret_data = Zeroizing::from(vec![0; 32]);
+        rand_bytes(&mut secret_data)?;
+        let object = Object::SecretData(SecretData {
+            secret_data_type: SecretDataType::Seed,
+            key_block: KeyBlock {
+                key_format_type: KeyFormatType::Raw,
+                key_compression_type: None,
+                key_value: Some(KeyValue::Structure {
+                    key_material: KeyMaterial::ByteString(secret_data),
+                    attributes: Some(attributes.clone()),
+                }),
+                cryptographic_algorithm: None,
+                cryptographic_length: None,
+                key_wrapping_data: None,
+            },
+        });
+        let attributes = object.attributes()?;
+        debug!("Created secret data with attributes: {:?}", attributes);
+        // let tags = attributes.get_tags();
+        let uid = attributes
+            .unique_identifier
+            .as_ref()
+            .map(ToString::to_string);
+        //return the object and the tags
+        Ok((uid, object, tags))
     }
 
     /// Register an encryption oracle for a given key prefix.

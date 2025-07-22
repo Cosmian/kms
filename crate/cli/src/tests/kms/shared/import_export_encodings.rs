@@ -9,7 +9,7 @@ use cosmian_kms_client::{
 use test_kms_server::{TestsContext, start_default_test_kms_server};
 
 use crate::{
-    actions::kms::shared::{ExportKeyAction, ImportKeyAction},
+    actions::kms::shared::{ExportSecretDataOrKeyAction, ImportSecretDataOrKeyAction},
     error::result::KmsCliResult,
 };
 
@@ -64,7 +64,7 @@ async fn test_pems(
     export_format: ExportKeyFormat,
 ) -> KmsCliResult<()> {
     // import the key
-    let key_uid = ImportKeyAction {
+    let key_uid = ImportSecretDataOrKeyAction {
         key_file: PathBuf::from(&key_file_path.to_string()),
         key_format: ImportKeyFormat::Pem,
         replace_existing: true,
@@ -80,7 +80,7 @@ async fn test_pems(
 
     // export the key
     let export_key_file = tempfile::NamedTempFile::new()?;
-    ExportKeyAction {
+    ExportSecretDataOrKeyAction {
         key_id: Some(key_uid.clone()),
         key_file: export_key_file.path().to_path_buf(),
         key_format: export_format.clone(),
@@ -95,7 +95,7 @@ async fn test_pems(
 
     // Get the key
     let get_key_file = tempfile::NamedTempFile::new()?;
-    ExportKeyAction {
+    ExportSecretDataOrKeyAction {
         key_id: Some(key_uid),
         key_file: get_key_file.path().to_path_buf(),
         key_format: export_format,

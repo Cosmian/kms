@@ -9,7 +9,7 @@ use uuid::Uuid;
 use crate::{
     actions::kms::{
         elliptic_curves::keys::create_key_pair::CreateKeyPairAction,
-        shared::ExportKeyAction,
+        shared::ExportSecretDataOrKeyAction,
         symmetric::keys::{create_key::CreateKeyAction, revoke_key::RevokeKeyAction},
     },
     error::result::KmsCliResult,
@@ -24,7 +24,7 @@ pub(crate) async fn assert_revoked(
 
     // should not be able to Get....
     assert!(
-        ExportKeyAction {
+        ExportSecretDataOrKeyAction {
             key_file: tmp_path.join("output.export"),
             key_id: Some(key_id.to_string()),
             ..Default::default()
@@ -36,7 +36,7 @@ pub(crate) async fn assert_revoked(
 
     // but should be able to Export....
     assert!(
-        ExportKeyAction {
+        ExportSecretDataOrKeyAction {
             key_file: tmp_path.join("output.export"),
             key_id: Some(key_id.to_string()),
             allow_revoked: true,
@@ -259,7 +259,7 @@ async fn test_revoke_cover_crypt() -> KmsCliResult<()> {
         let tmp_path = tmp_dir.path();
 
         assert!(
-            ExportKeyAction {
+            ExportSecretDataOrKeyAction {
                 key_file: tmp_path.join("output.export"),
                 key_id: Some(master_secret_key_id.to_string()),
                 ..Default::default()
@@ -270,7 +270,7 @@ async fn test_revoke_cover_crypt() -> KmsCliResult<()> {
         );
 
         assert!(
-            ExportKeyAction {
+            ExportSecretDataOrKeyAction {
                 key_file: tmp_path.join("output.export"),
                 key_id: Some(master_public_key_id.to_string()),
                 ..Default::default()
@@ -281,7 +281,7 @@ async fn test_revoke_cover_crypt() -> KmsCliResult<()> {
         );
 
         assert!(
-            ExportKeyAction {
+            ExportSecretDataOrKeyAction {
                 key_file: tmp_path.join("output.export"),
                 key_id: Some(user_key_id_2.to_string()),
                 ..Default::default()
@@ -326,7 +326,7 @@ async fn test_non_revocable_symmetric_key() -> KmsCliResult<()> {
     let tmp_path = tmp_dir.path();
 
     assert!(
-        ExportKeyAction {
+        ExportSecretDataOrKeyAction {
             key_file: tmp_path.join("output.export"),
             key_id: Some(key_id.to_string()),
             ..Default::default()
@@ -336,5 +336,26 @@ async fn test_non_revocable_symmetric_key() -> KmsCliResult<()> {
         .is_ok()
     );
 
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_revoke_secret_data() -> KmsCliResult<()> {
+    let ctx = start_default_test_kms_server().await;
+
+    let secret_id =
+        crate::actions::kms::secret_data::create_secret::CreateSecretDataAction::default()
+            .run(ctx.get_owner_client())
+            .await?;
+
+    RevokeKeyAction {
+        key_id: Some(secret_id.to_string()),
+        revocation_reason: "revocation test".to_string(),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?;
+
+    assert_revoked(ctx, &secret_id).await?;
     Ok(())
 }

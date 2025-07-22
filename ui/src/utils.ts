@@ -158,3 +158,40 @@ export const getMimeType = (fileName: string): string => {
 
     return mimeTypes[extension] || "application/octet-stream";
 };
+
+export type ObjectType = "rsa" | "ec" | "symmetric" | "covercrypt" | "certificate" | "secret-data";
+
+export const getObjectLabel = (type: ObjectType): string => {
+    switch (type) {
+        case "rsa":
+        case "ec":
+        case "symmetric":
+        case "covercrypt":
+            return "key";
+        case "certificate":
+            return "certificate";
+        case "secret-data":
+            return "secret data";
+        default:
+            return "object";
+    }
+};
+
+export const getTypeString = (type: ObjectType): string => {
+    switch (type) {
+        case "rsa":
+            return "an RSA";
+        case "ec":
+            return "an EC";
+        case "covercrypt":
+            return "a CoverCrypt";
+        case "symmetric":
+            return "a symmetric";
+        case "certificate":
+            return "a";
+        case "secret-data":
+            return "a";
+        default:
+            return "a";
+    }
+};

@@ -30,7 +30,7 @@ use crate::{
             Algorithm, certify::CertifyAction, export_certificate::ExportCertificateAction,
             import_certificate::ImportCertificateAction,
         },
-        shared::ExportKeyAction,
+        shared::ExportSecretDataOrKeyAction,
     },
     error::{KmsCliError, result::KmsCliResult},
     tests::kms::certificates::certify::{create_self_signed_cert, import_root_and_intermediate},
@@ -76,7 +76,7 @@ async fn test_import_export_p12_25519() -> KmsCliResult<()> {
     let tmp_exported_cert_p12 = tmp_dir.path().join("exported_p12_cert.p12");
 
     // export the private key
-    ExportKeyAction {
+    ExportSecretDataOrKeyAction {
         key_file: tmp_exported_sk.clone(),
         key_id: imported_p12_sk.clone(),
         key_format: JsonTtlv,
@@ -252,7 +252,7 @@ async fn test_import_p12_rsa() {
 
     // export the private key
     let key_file = tmp_path.join("exported_p12_sk.json");
-    ExportKeyAction {
+    ExportSecretDataOrKeyAction {
         key_file: key_file.clone(),
         key_id: imported_p12_sk,
         key_format: JsonTtlv,

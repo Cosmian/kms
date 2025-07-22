@@ -608,6 +608,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 "/rsa{_:.*}",
                 "/ec{_:.*}",
                 "/cc{_:.*}",
+                "/secret-data{_:.*}",
                 "/certificates{_:.*}",
                 "/attributes{_:.*}",
                 "/access-rights{_:.*}",

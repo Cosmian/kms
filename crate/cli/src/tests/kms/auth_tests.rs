@@ -12,7 +12,7 @@ use tracing::{info, trace};
 
 use crate::{
     actions::kms::{
-        access::ListOwnedObjects, shared::ExportKeyAction,
+        access::ListOwnedObjects, shared::ExportSecretDataOrKeyAction,
         symmetric::keys::create_key::CreateKeyAction,
     },
     error::result::KmsCliResult,
@@ -29,7 +29,7 @@ async fn create_api_token(ctx: &TestsContext) -> KmsCliResult<(String, String)> 
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
-    ExportKeyAction {
+    ExportSecretDataOrKeyAction {
         key_file: tmp_path.join("api_token"),
         key_id: Some(api_token_id.to_string()),
         ..Default::default()

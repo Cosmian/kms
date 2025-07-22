@@ -6,7 +6,7 @@ use cosmian_kms_server_database::reexport::{
         extra::{VENDOR_ID_COSMIAN, tagging::VENDOR_ATTR_TAG},
         kmip_attributes::Attributes,
         kmip_data_structures::KeyValue,
-        kmip_objects::{Object, PrivateKey, PublicKey, SymmetricKey},
+        kmip_objects::{Object, PrivateKey, PublicKey, SecretData, SymmetricKey},
         kmip_operations::{GetAttributes, GetAttributesResponse},
         kmip_types::{
             AttributeReference, KeyFormatType, LinkType, Tag, UniqueIdentifier, VendorAttribute,
@@ -126,7 +126,11 @@ pub(crate) async fn get_attributes(
                 default_attributes
             }
         }
-        Object::SymmetricKey(SymmetricKey { key_block }) => {
+        Object::SymmetricKey(SymmetricKey { key_block })
+        | Object::SecretData(SecretData {
+            secret_data_type: _,
+            key_block,
+        }) => {
             let mut attributes = if let Some(KeyValue::Structure { attributes, .. }) =
                 key_block.key_value.as_ref()
             {
@@ -141,7 +145,6 @@ pub(crate) async fn get_attributes(
         Object::CertificateRequest { .. }
         | Object::OpaqueObject { .. }
         | Object::PGPKey { .. }
-        | Object::SecretData { .. }
         | Object::SplitKey { .. } => {
             return Err(KmsError::InvalidRequest(format!(
                 "get: unsupported object type for {uid_or_tags}",

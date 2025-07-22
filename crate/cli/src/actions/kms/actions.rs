@@ -8,8 +8,8 @@ use crate::{
         access::AccessAction, attributes::AttributesCommands, bench::BenchAction,
         certificates::CertificatesCommands, elliptic_curves::EllipticCurveCommands,
         google::GoogleCommands, hash::HashAction, login::LoginAction, mac::MacAction,
-        rsa::RsaCommands, shared::LocateObjectsAction, symmetric::SymmetricCommands,
-        version::ServerVersionAction,
+        rsa::RsaCommands, secret_data::SecretDataCommands, shared::LocateObjectsAction,
+        symmetric::SymmetricCommands, version::ServerVersionAction,
     },
     error::result::KmsCliResult,
 };
@@ -44,6 +44,8 @@ pub enum KmsActions {
     ServerVersion(ServerVersionAction),
     #[command(subcommand)]
     Sym(SymmetricCommands),
+    #[command(subcommand)]
+    SecretData(SecretDataCommands),
 }
 
 impl KmsActions {
@@ -80,6 +82,7 @@ impl KmsActions {
             Self::Rsa(action) => action.process(kms_rest_client).await?,
             Self::ServerVersion(action) => action.process(kms_rest_client).await?,
             Self::Sym(action) => action.process(kms_rest_client).await?,
+            Self::SecretData(action) => action.process(kms_rest_client).await?,
         }
 
         Ok(new_config)

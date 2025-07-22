@@ -13,6 +13,7 @@ pub(crate) mod labels;
 pub mod login;
 pub mod mac;
 pub mod rsa;
+pub mod secret_data;
 pub mod shared;
 pub mod symmetric;
 pub mod version;

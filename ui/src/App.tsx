@@ -34,6 +34,7 @@ import RevokeForm from "./ObjectsRevoke";
 import RsaDecryptForm from "./RsaDecrypt";
 import RsaEncryptForm from "./RsaEncrypt";
 import RsaKeyCreateForm from "./RsaKeysCreate";
+import SecretDataCreateForm from "./SecretDataCreate";
 import SymKeyCreateForm from "./SymKeysCreate";
 import SymmetricDecryptForm from "./SymmetricDecrypt";
 import SymmetricEncryptForm from "./SymmetricEncrypt";
@@ -138,6 +139,13 @@ const AppContent: React.FC<AppContentProps> = ({isDarkMode, setIsDarkMode}) => {
                             <Route path="keys/destroy" element={<DestroyForm objectType="covercrypt"/>}/>
                             <Route path="encrypt" element={<CCEncryptForm/>}/>
                             <Route path="decrypt" element={<CCDecryptForm/>}/>
+                        </Route>
+                        <Route path="secret-data">
+                            <Route path="create" element={<SecretDataCreateForm />} />
+                            <Route path="export" element={<KeyExportForm key_type={"secret-data"} />} />
+                            <Route path="import" element={<KeyImportForm key_type={"secret-data"} />} />
+                            <Route path="revoke" element={<RevokeForm objectType="secret-data" />} />
+                            <Route path="destroy" element={<DestroyForm objectType="secret-data" />} />
                         </Route>
                         <Route path="access-rights">
                             <Route path="grant" element={<AccessGrantForm/>}/>
