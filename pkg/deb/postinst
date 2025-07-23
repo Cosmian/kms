@@ -1,0 +1,15 @@
+#!/bin/sh -ex
+
+# Restore existing configuration
+KMS_CONFIG="/etc/cosmian/kms.toml.bak"
+if [ -f $KMS_CONFIG ]; then
+  cp $KMS_CONFIG /etc/cosmian/kms.toml
+fi
+
+systemctl unmask cosmian_kms.service
+systemctl enable cosmian_kms.service
+systemctl stop cosmian_kms.service
+
+systemctl daemon-reload
+
+#DEBHELPER#

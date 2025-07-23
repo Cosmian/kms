@@ -1,0 +1,16 @@
+[Unit]
+Description=Cosmian KMS
+Requires=multi-user.target
+After=multi-user.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/sbin/cosmian_kms
+Restart=on-failure
+RestartSec=3s
+Environment="COSMIAN_KMS_CONF=/etc/cosmian/kms.toml"
+StandardOutput=syslog+console
+
+[Install]
+WantedBy=multi-user.target

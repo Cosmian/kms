@@ -1,0 +1,63 @@
+pre_install_script = '''
+#!/bin/bash -ex
+
+# Backup existing configuration
+KMS_CONFIG="/etc/cosmian/kms.toml"
+if [ -f $KMS_CONFIG ]; then
+  timestamp=$(date '+%Y%m%d_%H%M%S')
+  # Double backup just in case
+  cp $KMS_CONFIG /etc/cosmian/"$timestamp"_kms.toml
+  cp $KMS_CONFIG /etc/cosmian/kms.toml.bak
+fi
+
+'''
+
+post_install_script = '''
+#!/bin/bash -ex
+
+# Restore existing configuration
+KMS_CONFIG="/etc/cosmian/kms.toml.bak"
+if [ -f $KMS_CONFIG ]; then
+  cp $KMS_CONFIG /etc/cosmian/kms.toml
+fi
+
+systemctl enable cosmian_kms.service
+systemctl stop cosmian_kms.service
+
+systemctl daemon-reload
+
+'''
+
+post_uninstall_script = '''
+#!/bin/bash
+
+set -x
+
+systemctl daemon-reload
+
+# Check if the service is active (running)
+if systemctl is-active --quiet cosmian_kms.service; then
+  echo "Service is running. Stopping the service..."
+  systemctl stop cosmian_kms.service
+
+  # Verify if the service was stopped
+  if systemctl is-active --quiet cosmian_kms.service; then
+    echo "Failed to stop the service."
+  else
+    echo "Service stopped successfully. Disabling it"
+    if systemctl list-unit-files | grep -q '^cosmian_kms.service'; then
+      echo "Service exists. Disabling the service..."
+      systemctl disable cosmian_kms.service
+    fi
+  fi
+else
+  echo "Service is not running. Disabling it"
+  if systemctl list-unit-files | grep -q '^cosmian_kms.service'; then
+    echo "Service exists. Disabling the service..."
+    systemctl disable cosmian_kms.service
+  fi
+fi
+
+systemctl daemon-reload
+
+'''
