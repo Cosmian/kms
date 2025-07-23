@@ -159,6 +159,11 @@ pub(crate) async fn delete_attribute(
                     attributes.destroy_date = None;
                 }
             }
+            Attribute::Digest(digest) => {
+                if Some(digest) == attributes.digest {
+                    attributes.digest = None;
+                }
+            }
             Attribute::DigitalSignatureAlgorithm(digital_signature_algorithm) => {
                 if Some(digital_signature_algorithm) == attributes.digital_signature_algorithm {
                     attributes.digital_signature_algorithm = None;

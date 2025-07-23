@@ -2,18 +2,25 @@ use std::sync::Arc;
 
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip,
-    cosmian_kmip::kmip_2_1::{
-        kmip_objects::ObjectType,
-        kmip_operations::{Create, CreateResponse},
-        kmip_types::UniqueIdentifier,
+    cosmian_kmip::{
+        kmip_0::kmip_types::State::PreActive,
+        kmip_2_1::{
+            kmip_objects::ObjectType,
+            kmip_operations::{Create, CreateResponse},
+            kmip_types::UniqueIdentifier,
+        },
     },
     cosmian_kms_interfaces::SessionParams,
 };
+use time::OffsetDateTime;
 use tracing::{info, trace};
 use uuid::Uuid;
 
 use crate::{
-    core::{KMS, retrieve_object_utils::user_has_permission, wrapping::wrap_and_cache},
+    core::{
+        KMS, operations::digest::digest, retrieve_object_utils::user_has_permission,
+        wrapping::wrap_and_cache,
+    },
     error::KmsError,
     kms_bail,
     result::KResult,
@@ -65,13 +72,30 @@ pub(crate) async fn create(
         }
     };
 
-    // make sure we have a unique identifier
+    //Make sure we have a unique identifier.
     let unique_identifier = UniqueIdentifier::TextString(
         unique_identifier.unwrap_or_else(|| Uuid::new_v4().to_string()),
     );
 
-    // Copy the attributes before the key gets wrapped
-    let attributes = object.attributes()?.clone();
+    // Set the state to pre-active and copy the attributes before the key gets wrapped
+    let attributes = {
+        let digest = digest(&object)?;
+        let attributes = object.attributes_mut()?;
+        // Update the state to PreActive
+        attributes.state = Some(PreActive);
+        // update the digest
+        attributes.digest = digest;
+        // update the initial date
+        let now = OffsetDateTime::now_utc()
+            .replace_millisecond(0)
+            .map_err(|e| KmsError::Default(e.to_string()))?;
+        attributes.initial_date = Some(now);
+        // update original creation date
+        attributes.original_creation_date = Some(now);
+        // update the last change date
+        attributes.last_change_date = Some(now);
+        attributes.clone()
+    };
 
     // Wrap the object if requested by the user or on the server params
     wrap_and_cache(kms, owner, params.clone(), &unique_identifier, &mut object).await?;

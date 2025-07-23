@@ -4,6 +4,7 @@ use cosmian_kms_client::{
     kmip_2_1::kmip_types::{LinkType, Tag},
     reexport::cosmian_kms_client_utils::import_utils::CertificateInputFormat,
 };
+use cosmian_logger::log_init;
 use test_kms_server::start_default_test_kms_server;
 use tracing::debug;
 
@@ -16,6 +17,9 @@ use crate::{
 
 #[tokio::test]
 async fn test_get_attributes_p12() -> KmsCliResult<()> {
+    log_init(option_env!("RUST_LOG"));
+    // log_init(Some("info, kms=debug"));
+
     // Create a test server
     let ctx = start_default_test_kms_server().await;
 
@@ -53,7 +57,7 @@ async fn test_get_attributes_p12() -> KmsCliResult<()> {
         pkcs12_attributes
             .get(&Tag::KeyFormatType.to_string())
             .unwrap(),
-        &serde_json::json!("PKCS1")
+        &serde_json::json!("PKCS8")
     );
     let intermediate_certificate_id: String = serde_json::from_value(
         pkcs12_attributes

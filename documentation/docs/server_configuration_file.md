@@ -87,7 +87,7 @@ tls_p12_password = "[tls p12 password]"
 # The server must run in TLS mode for this to be used.
 clients_ca_cert_file = "[authority cert file]"
 
-# The socket server listens to KMIP binary requests on the IANA-registered 4696 port.
+# The socket server listens to KMIP binary requests on the IANA-registered 5696 port.
 # The socket server will only start if the TLS configuration is provided **and** client certificate authentication
 # is enabled.
 [socket_server]

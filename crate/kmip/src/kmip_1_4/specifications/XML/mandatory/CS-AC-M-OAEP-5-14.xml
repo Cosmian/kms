@@ -1,0 +1,187 @@
+<KMIP>
+
+<!--
+     Key Management Interoperability Protocol Profiles Version 1.4
+     OASIS Standard
+     22 November 2017
+     Copyright (c) OASIS Open 2017. All Rights Reserved.
+     Source: http://docs.oasis-open.org/kmip/profiles/v1.4/os/test-cases/kmip-v1.4/mandatory/
+     Latest version of the specification: http://docs.oasis-open.org/kmip/profiles/v1.4/kmip-profiles-v1.4.html
+     TC IPR Statement: https://www.oasis-open.org/committees/kmip/ipr.php
+-->
+<RequestMessage>
+  <RequestHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="1"/>
+      <ProtocolVersionMinor type="Integer" value="4"/>
+    </ProtocolVersion>
+    <BatchCount type="Integer" value="1"/>
+  </RequestHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="Register"/>
+    <RequestPayload>
+      <ObjectType type="Enumeration" value="PublicKey"/>
+      <TemplateAttribute>
+        <Attribute>
+          <AttributeName type="TextString" value="Cryptographic Usage Mask"/>
+          <AttributeValue type="Integer" value="Encrypt"/>
+        </Attribute>
+        <Attribute>
+          <AttributeName type="TextString" value="Cryptographic Parameters"/>
+          <AttributeValue>
+            <PaddingMethod type="Enumeration" value="OAEP"/>
+            <HashingAlgorithm type="Enumeration" value="SHA_512"/>
+            <CryptographicAlgorithm type="Enumeration" value="RSA"/>
+            <MaskGenerator type="Enumeration" value="MGF1"/>
+            <MaskGeneratorHashingAlgorithm type="Enumeration" value="SHA_512"/>
+          </AttributeValue>
+        </Attribute>
+        <Attribute>
+          <AttributeName type="TextString" value="x-ID"/>
+          <AttributeValue type="TextString" value="CS-AC-OAEP-5-14-pubkey1"/>
+        </Attribute>
+        <Attribute>
+          <AttributeName type="TextString" value="Activation Date"/>
+          <AttributeValue type="DateTime" value="$NOW-3600"/>
+        </Attribute>
+      </TemplateAttribute>
+      <PublicKey>
+        <KeyBlock>
+          <KeyFormatType type="Enumeration" value="X_509"/>
+          <KeyValue>
+            <KeyMaterial type="ByteString" value="30820122300d06092a864886f70d01010105000382010f003082010a0282010100c4d3a110fcf80599f5794cde8c3ad6854c3caf557985302e0cd058c603d33fb0ded1aaae9efdc145b44705d6bd4c71a1aeb04a5923e51954f938ccde95733822062f34696ee7dce4dc9e5d991534dfd36b03db5f99b9afd4dfaf64b5c1b5a3a7548ffc209baf6675f5906a2b59e33e065b5c02c89b01bba0ea8a097a6886d6971b7573a6a7188977b2eb4aa63702306a727edc56d1f56135cb4326bee07600f52a131a64059a10b5f448f1942f435f121dc439d4d203129e892152b1213d87ee1298b2fd25a14a2a9fefb4076cde8aa01e205b77b195c75395104bbad491d868e1d266ce6051ccb8c15340546b1bff0158f9aa6acf0fba71e3e30e2f2d1906e50203010001"/>
+          </KeyValue>
+          <CryptographicAlgorithm type="Enumeration" value="RSA"/>
+          <CryptographicLength type="Integer" value="2048"/>
+        </KeyBlock>
+      </PublicKey>
+    </RequestPayload>
+  </BatchItem>
+</RequestMessage>
+
+<ResponseMessage>
+  <ResponseHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="1"/>
+      <ProtocolVersionMinor type="Integer" value="4"/>
+    </ProtocolVersion>
+    <TimeStamp type="DateTime" value="$NOW"/>
+    <BatchCount type="Integer" value="1"/>
+  </ResponseHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="Register"/>
+    <ResultStatus type="Enumeration" value="Success"/>
+    <ResponsePayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+    </ResponsePayload>
+  </BatchItem>
+</ResponseMessage>
+
+<RequestMessage>
+  <RequestHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="1"/>
+      <ProtocolVersionMinor type="Integer" value="4"/>
+    </ProtocolVersion>
+    <BatchCount type="Integer" value="1"/>
+  </RequestHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="Encrypt"/>
+    <RequestPayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+      <Data type="ByteString" value="6628194e12073db03ba94cda9ef9532397d50dba79b987004afefe34"/>
+    </RequestPayload>
+  </BatchItem>
+</RequestMessage>
+
+<ResponseMessage>
+  <ResponseHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="1"/>
+      <ProtocolVersionMinor type="Integer" value="4"/>
+    </ProtocolVersion>
+    <TimeStamp type="DateTime" value="$NOW"/>
+    <BatchCount type="Integer" value="1"/>
+  </ResponseHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="Encrypt"/>
+    <ResultStatus type="Enumeration" value="Success"/>
+    <ResponsePayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+      <Data type="ByteString" value="7b7dccee97b43d4b6e214efb90c22d6679b8c144891d47f0674f6cdc94b8c4a87c1fab9ddd6a1d77d4c9d0487a071e2a0323acf7f04554b43952cfd49d1c642877a78c04dc8922240eee6afc5eb94896b83c3fc4c7e21c59f8fe1bcf03aa75110c86655e25d55b75476153e39e3a80017fa61c640838b5b27d03d5830746926bddd6434acacd0fcc03615c5ba850b591c673bc8e882d51465795cc9eaff1f4a65e70f9c92777f0877c69c26c1e5cb8bf0ae87ab61ecef24d4349eb57a1c1a27004703038f2c56d9d4f408dedfb9e5263249be9edefd704c7aa9f6b3f6db0b61f3848dd894e70a3f448ea6583f5d74b82ec2850ae1d0e335c22087cc468e5af64"/>
+    </ResponsePayload>
+  </BatchItem>
+</ResponseMessage>
+
+<RequestMessage>
+  <RequestHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="1"/>
+      <ProtocolVersionMinor type="Integer" value="4"/>
+    </ProtocolVersion>
+    <BatchCount type="Integer" value="1"/>
+  </RequestHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="Revoke"/>
+    <RequestPayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+      <RevocationReason>
+        <RevocationReasonCode type="Enumeration" value="Unspecified"/>
+      </RevocationReason>
+    </RequestPayload>
+  </BatchItem>
+</RequestMessage>
+
+<ResponseMessage>
+  <ResponseHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="1"/>
+      <ProtocolVersionMinor type="Integer" value="4"/>
+    </ProtocolVersion>
+    <TimeStamp type="DateTime" value="$NOW"/>
+    <BatchCount type="Integer" value="1"/>
+  </ResponseHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="Revoke"/>
+    <ResultStatus type="Enumeration" value="Success"/>
+    <ResponsePayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+    </ResponsePayload>
+  </BatchItem>
+</ResponseMessage>
+
+<RequestMessage>
+  <RequestHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="1"/>
+      <ProtocolVersionMinor type="Integer" value="4"/>
+    </ProtocolVersion>
+    <BatchCount type="Integer" value="1"/>
+  </RequestHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="Destroy"/>
+    <RequestPayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+    </RequestPayload>
+  </BatchItem>
+</RequestMessage>
+
+<ResponseMessage>
+  <ResponseHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="1"/>
+      <ProtocolVersionMinor type="Integer" value="4"/>
+    </ProtocolVersion>
+    <TimeStamp type="DateTime" value="$NOW"/>
+    <BatchCount type="Integer" value="1"/>
+  </ResponseHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="Destroy"/>
+    <ResultStatus type="Enumeration" value="Success"/>
+    <ResponsePayload>
+      <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0"/>
+    </ResponsePayload>
+  </BatchItem>
+</ResponseMessage>
+
+</KMIP>

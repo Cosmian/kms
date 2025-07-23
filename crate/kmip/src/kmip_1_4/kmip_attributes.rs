@@ -9,7 +9,8 @@ use serde::{
 use time::OffsetDateTime;
 use tracing::warn;
 
-use crate::{
+use crate::kmip_1_4::kmip_types::CustomAttribute;
+pub use crate::{
     KmipError,
     kmip_0::kmip_types::{
         AlternativeName, ApplicationSpecificInformation, CertificateType, CryptographicUsageMask,
@@ -22,7 +23,10 @@ use crate::{
             DigitalSignatureAlgorithm, Link, Name, ObjectType, RandomNumberGenerator,
         },
     },
-    kmip_2_1::{self, kmip_types::VendorAttribute},
+    kmip_2_1::{
+        self,
+        kmip_types::{VendorAttribute, VendorAttributeValue},
+    },
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -46,7 +50,7 @@ pub enum Attribute {
     CryptographicLength(i32),
     CryptographicParameters(CryptographicParameters),
     CryptographicUsageMask(CryptographicUsageMask),
-    CustomAttribute((String, CustomAttributeValue)),
+    CustomAttribute(CustomAttribute),
     DeactivationDate(OffsetDateTime),
     Description(String),
     DestroyDate(OffsetDateTime),
@@ -239,9 +243,16 @@ impl Serialize for Attribute {
                 st.serialize_field("AttributeName", "Last Change Date")?;
                 st.serialize_field("AttributeValue", value)?;
             }
-            Self::CustomAttribute((name, value)) => {
-                st.serialize_field("AttributeName", name)?;
-                st.serialize_field("AttributeValue", value)?;
+            Self::CustomAttribute(ca) => {
+                if ca.name.starts_with("x-") || ca.name.starts_with("y-") {
+                    st.serialize_field("AttributeName", &ca.name)?;
+                    st.serialize_field("AttributeValue", &ca.value)?;
+                } else {
+                    return Err(serde::ser::Error::custom(format!(
+                        "Custom attribute names must start with 'x-' or 'y-', found '{}'",
+                        ca.name
+                    )));
+                }
             }
             Self::AlternativeName(value) => {
                 st.serialize_field("AttributeName", "Alternative Name")?;
@@ -543,14 +554,22 @@ impl<'de> Deserialize<'de> for Attribute {
                         let value: bool = map.next_value()?;
                         Ok(Attribute::NeverExtractable(value))
                     }
-                    name => {
-                        if name.starts_with("x-") || name.starts_with("y-") {
-                            let value: CustomAttributeValue = map.next_value()?;
-                            Ok(Attribute::CustomAttribute((name.to_owned(), value)))
-                        } else {
-                            Err(de::Error::custom(format!("invalid attribute name: {name}")))
-                        }
+                    name if name.starts_with("x-") || name.starts_with("y-") => {
+                        // Custom attributes with vendor prefix
+                        let value: CustomAttributeValue = map.next_value()?;
+                        Ok(Attribute::CustomAttribute(CustomAttribute {
+                            name: name.to_owned(),
+                            value,
+                        }))
                     }
+                    //This should never happen, but just in case
+                    "Custom Attribute" => {
+                        let value: String = map.next_value()?;
+                        serde_json::from_str(&value)
+                            .map_err(de::Error::custom)
+                            .map(|ca: CustomAttribute| Attribute::CustomAttribute(ca))
+                    }
+                    name => Err(de::Error::custom(format!("invalid attribute name: {name}"))),
                 }
             }
         }
@@ -567,84 +586,121 @@ impl From<Attribute> for kmip_2_1::kmip_attributes::Attribute {
     fn from(attribute: Attribute) -> Self {
         match attribute {
             Attribute::ActivationDate(v) => Self::ActivationDate(v),
+            Attribute::AlternativeName(v) => Self::AlternativeName(v),
+            Attribute::AlwaysSensitive(v) => Self::AlwaysSensitive(v),
+            Attribute::ApplicationSpecificInformation(v) => Self::ApplicationSpecificInformation(v),
+            Attribute::ArchiveDate(v) => Self::ArchiveDate(v),
+            Attribute::CertificateLength(v) => Self::CertificateLength(v),
+            Attribute::CertificateType(v) => Self::CertificateType(v),
+            Attribute::Comment(v) => Self::Comment(v),
+            Attribute::CompromiseDate(v) => Self::CompromiseDate(v),
+            Attribute::CompromiseOccurrenceDate(v) => Self::CompromiseOccurrenceDate(v),
+            Attribute::ContactInformation(v) => Self::ContactInformation(v),
+            Attribute::CryptographicAlgorithm(v) => Self::CryptographicAlgorithm(v.into()),
             Attribute::CryptographicDomainParameters(v) => {
                 Self::CryptographicDomainParameters(v.into())
             }
             Attribute::CryptographicLength(v) => Self::CryptographicLength(v),
             Attribute::CryptographicParameters(v) => Self::CryptographicParameters(v.into()),
             Attribute::CryptographicUsageMask(v) => Self::CryptographicUsageMask(v),
+            Attribute::CustomAttribute(ca) => {
+                if ca.name.starts_with("x-") {
+                    Self::VendorAttribute(VendorAttribute {
+                        vendor_identification: "KMIP1".to_owned(),
+                        attribute_name: ca.name.clone(),
+                        attribute_value: ca.value.into(),
+                    })
+                } else if ca.name.starts_with("y-") {
+                    // y- not supported by PyKMIP
+                    if &ca.name == "y-unsupported-2_1-attribute" {
+                        if let CustomAttributeValue::TextString(s) = &ca.value {
+                            // This is a 2.1 attribute serialized to a 1.x attribute we want to deserialize back
+                            let attribute: Self = serde_json::from_str(s).unwrap_or_else(|_| {
+                                warn!("Failed to deserialize KMIP 2.1 attribute: {}", s);
+                                Self::Comment(format!("Unknown KMIP 2.1 attribute: {s}"))
+                            });
+                            attribute
+                        } else {
+                            warn!(
+                                "Unexpected value type for y-unsupported-2_1-attribute: {:?}",
+                                ca.value
+                            );
+                            Self::Comment(format!("Unsupported KMIP 2.1 attribute: {:?}", ca.value))
+                        }
+                    } else if let Some((vendor_id, attribute_name)) = ca.name.split_once("::") {
+                        Self::VendorAttribute(VendorAttribute {
+                            vendor_identification: vendor_id.to_owned(),
+                            attribute_name: attribute_name.to_owned(),
+                            attribute_value: ca.value.into(),
+                        })
+                    } else {
+                        Self::VendorAttribute(VendorAttribute {
+                            vendor_identification: "UNKNOWN".to_owned(),
+                            attribute_name: ca.name.clone(),
+                            attribute_value: ca.value.into(),
+                        })
+                    }
+                } else {
+                    //This should never happen, but just in case
+                    warn!(
+                        "Custom attribute name does not start with 'x-' or 'y-': {}",
+                        ca.name
+                    );
+                    Self::VendorAttribute(VendorAttribute {
+                        vendor_identification: "INVALID".to_owned(),
+                        attribute_name: ca.name,
+                        attribute_value: ca.value.into(),
+                    })
+                }
+            }
             Attribute::DeactivationDate(v) => Self::DeactivationDate(v),
             Attribute::Description(v) => Self::Description(v),
-            Attribute::Name(v) => Self::Name(v.into()),
-            Attribute::ObjectType(v) => Self::ObjectType(v.into()),
-            Attribute::ProcessStartDate(v) => Self::ProcessStartDate(v),
-            Attribute::ProtectStopDate(v) => Self::ProtectStopDate(v),
-            Attribute::UniqueIdentifier(v) => {
-                Self::UniqueIdentifier(kmip_2_1::kmip_types::UniqueIdentifier::TextString(v))
-            }
-            Attribute::CryptographicAlgorithm(v) => Self::CryptographicAlgorithm(v.into()),
-            Attribute::CertificateType(v) => Self::CertificateType(v),
-            Attribute::CertificateLength(v) => Self::CertificateLength(v),
-            Attribute::DigitalSignatureAlgorithm(v) => Self::DigitalSignatureAlgorithm(v.into()),
-            Attribute::LeaseTime(v) => Self::LeaseTime(v),
-            Attribute::UsageLimits(v) => Self::UsageLimits(v),
-            Attribute::State(v) => Self::State(v),
-            Attribute::InitialDate(v) => Self::InitialDate(v),
             Attribute::DestroyDate(v) => Self::DestroyDate(v),
-            Attribute::CompromiseOccurrenceDate(v) => Self::CompromiseOccurrenceDate(v),
-            Attribute::CompromiseDate(v) => Self::CompromiseDate(v),
-            Attribute::RevocationReason(v) => Self::RevocationReason(v),
-            Attribute::ArchiveDate(v) => Self::ArchiveDate(v),
-            Attribute::ObjectGroup(v) => Self::ObjectGroup(v),
-            Attribute::Fresh(v) => Self::Fresh(v),
-            Attribute::Link(v) => Self::Link(v.into()),
-            Attribute::ApplicationSpecificInformation(v) => Self::ApplicationSpecificInformation(v),
-            Attribute::ContactInformation(v) => Self::ContactInformation(v),
-            Attribute::LastChangeDate(v) => Self::LastChangeDate(v),
-            Attribute::CustomAttribute((n, v)) => {
-                if n.starts_with("x-") || n.starts_with("y-") {
-                    let s = n.get(2..).unwrap_or("").to_owned();
-                    let s: Vec<&str> = s.split("::").collect();
-                    if s.len() == 2 {
-                        return Self::VendorAttribute(VendorAttribute {
-                            vendor_identification: (*s.first().unwrap_or(&"KMIP1")).to_owned(),
-                            attribute_name: (*s.get(1).unwrap_or(&n.as_str())).to_owned(),
-                            attribute_value: v.into(),
-                        });
-                    }
-                }
-                Self::VendorAttribute(VendorAttribute {
-                    vendor_identification: "KMIP1".to_owned(),
-                    attribute_name: n,
-                    attribute_value: v.into(),
-                })
-            }
-            Attribute::AlternativeName(v) => Self::AlternativeName(v),
-            Attribute::KeyValuePresent(v) => Self::KeyValuePresent(v),
-            Attribute::KeyValueLocation(v) => Self::KeyValueLocation(v),
-            Attribute::OriginalCreationDate(v) => Self::OriginalCreationDate(v),
-            Attribute::RandomNumberGenerator(v) => Self::RandomNumberGenerator(v.into()),
-            Attribute::Comment(v) => Self::Comment(v),
-            Attribute::Sensitive(v) => Self::Sensitive(v),
-            Attribute::AlwaysSensitive(v) => Self::AlwaysSensitive(v),
-            Attribute::Extractable(v) => Self::Extractable(v),
-            Attribute::NeverExtractable(v) => Self::NeverExtractable(v),
-            Attribute::X509CertificateIdentifier(_)
-            | Attribute::X509CertificateSubject(_)
+            Attribute::Digest(v) => Self::Digest(v.into()),
+            Attribute::Pkcs12FriendlyName(_)
+            | Attribute::X509CertificateIdentifier(_)
             | Attribute::X509CertificateIssuer(_)
+            | Attribute::X509CertificateSubject(_)
             | Attribute::CertificateIdentifier(_)
-            | Attribute::CertificateSubject(_)
             | Attribute::CertificateIssuer(_)
-            | Attribute::Digest(_)
-            | Attribute::OperationPolicyName(_)
-            | Attribute::Pkcs12FriendlyName(_) => {
+            | Attribute::CertificateSubject(_) => {
                 warn!("KMIP 2.1 does not support the KMIP 1 attribute {attribute:?}");
                 Self::Comment("Unsupported KMIP 1.4 attribute".to_owned())
             }
+            Attribute::DigitalSignatureAlgorithm(v) => Self::DigitalSignatureAlgorithm(v.into()),
+            Attribute::Extractable(v) => Self::Extractable(v),
+            Attribute::Fresh(v) => Self::Fresh(v),
+            Attribute::InitialDate(v) => Self::InitialDate(v),
+            Attribute::KeyValueLocation(v) => Self::KeyValueLocation(v),
+            Attribute::KeyValuePresent(v) => Self::KeyValuePresent(v),
+            Attribute::LastChangeDate(v) => Self::LastChangeDate(v),
+            Attribute::LeaseTime(v) => Self::LeaseTime(v),
+            Attribute::Link(v) => Self::Link(v.into()),
+            Attribute::Name(v) => Self::Name(v.into()),
+            Attribute::NeverExtractable(v) => Self::NeverExtractable(v),
+            Attribute::ObjectGroup(v) => Self::ObjectGroup(v),
+            Attribute::ObjectType(v) => Self::ObjectType(v.into()),
+            Attribute::OperationPolicyName(v) => Self::VendorAttribute(VendorAttribute {
+                vendor_identification: "KMIP1".to_owned(),
+                attribute_name: "__Operation Policy Name__".to_owned(),
+                attribute_value: VendorAttributeValue::TextString(v),
+            }),
+            Attribute::OriginalCreationDate(v) => Self::OriginalCreationDate(v),
+            Attribute::ProcessStartDate(v) => Self::ProcessStartDate(v),
+            Attribute::ProtectStopDate(v) => Self::ProtectStopDate(v),
+            Attribute::RandomNumberGenerator(v) => Self::RandomNumberGenerator(v.into()),
+            Attribute::RevocationReason(v) => Self::RevocationReason(v),
+            Attribute::Sensitive(v) => Self::Sensitive(v),
+            Attribute::State(v) => Self::State(v),
+            Attribute::UniqueIdentifier(v) => {
+                Self::UniqueIdentifier(kmip_2_1::kmip_types::UniqueIdentifier::TextString(v))
+            }
+            Attribute::UsageLimits(v) => Self::UsageLimits(v),
         }
     }
 }
 
+// https://libkmip.readthedocs.io/en/latest/index.html
 impl TryFrom<kmip_2_1::kmip_attributes::Attribute> for Attribute {
     type Error = KmipError;
 
@@ -689,6 +745,7 @@ impl TryFrom<kmip_2_1::kmip_attributes::Attribute> for Attribute {
             kmip_2_1::kmip_attributes::Attribute::CertificateLength(v) => {
                 Ok(Self::CertificateLength(v))
             }
+            kmip_2_1::kmip_attributes::Attribute::Digest(v) => Ok(Self::Digest(v.try_into()?)),
             kmip_2_1::kmip_attributes::Attribute::DigitalSignatureAlgorithm(v) => {
                 Ok(Self::DigitalSignatureAlgorithm(v.try_into()?))
             }
@@ -717,13 +774,22 @@ impl TryFrom<kmip_2_1::kmip_attributes::Attribute> for Attribute {
             kmip_2_1::kmip_attributes::Attribute::LastChangeDate(v) => Ok(Self::LastChangeDate(v)),
             kmip_2_1::kmip_attributes::Attribute::VendorAttribute(vendor_attribute) => {
                 let vendor_id = vendor_attribute.vendor_identification;
-                let name = if vendor_id.as_str() == "KMIP1" {
-                    vendor_attribute.attribute_name
+                if vendor_id.as_str() == "KMIP1" {
+                    if vendor_attribute.attribute_name.as_str() == "__Operation Policy Name__" {
+                        Ok(Self::OperationPolicyName(
+                            vendor_attribute.attribute_value.to_string(),
+                        ))
+                    } else {
+                        Ok(Self::CustomAttribute(CustomAttribute {
+                            name: vendor_attribute.attribute_name,
+                            value: vendor_attribute.attribute_value.into(),
+                        }))
+                    }
                 } else {
-                    format!("y-{}::{}", vendor_id, vendor_attribute.attribute_name)
-                };
-                let value = vendor_attribute.attribute_value.into();
-                Ok(Self::CustomAttribute((name, value)))
+                    let name = format!("y-{}::{}", vendor_id, vendor_attribute.attribute_name);
+                    let value = vendor_attribute.attribute_value.into();
+                    Ok(Self::CustomAttribute(CustomAttribute { name, value }))
+                }
             }
             kmip_2_1::kmip_attributes::Attribute::AlternativeName(v) => {
                 Ok(Self::AlternativeName(v))
@@ -769,9 +835,12 @@ impl TryFrom<kmip_2_1::kmip_attributes::Attribute> for Attribute {
             | kmip_2_1::kmip_attributes::Attribute::RotateLatest(_)
             | kmip_2_1::kmip_attributes::Attribute::RotateName(_)
             | kmip_2_1::kmip_attributes::Attribute::RotateOffset(_)
-            | kmip_2_1::kmip_attributes::Attribute::ShortUniqueIdentifier(_) => Ok(Self::Comment(
-                format!("Unsupported KMIP 2 attribute: {attribute:?}"),
-            )),
+            | kmip_2_1::kmip_attributes::Attribute::ShortUniqueIdentifier(_) => {
+                Ok(Self::CustomAttribute(CustomAttribute {
+                    name: "y-unsupported-2_1-attribute".to_owned(),
+                    value: CustomAttributeValue::TextString(serde_json::to_string(&attribute)?),
+                }))
+            }
             kmip_2_1::kmip_attributes::Attribute::X509CertificateIdentifier(v) => {
                 Ok(Self::X509CertificateIdentifier(v))
             }
@@ -787,13 +856,13 @@ impl TryFrom<kmip_2_1::kmip_attributes::Attribute> for Attribute {
 
 /// The value of a Custom Attribute (section 3.39).
 /// Any data type or structure.
-/// According to the specifications, If a structure, then the structure SHALL NOT include sub structures.
+/// According to the specifications, If a structure, then the structure SHALL NOT include substructures.
 /// In this implementation, we use a TTLV to represent the structure.
 ///
 /// For reasons on why we use an adjacent tagged enum, see the comment on the `VendorAttributeValue`
 /// enum in the KMIP 2.1 folder.
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
-#[serde(tag = "_t", content = "_c")]
+#[serde(untagged)]
 pub enum CustomAttributeValue {
     TextString(String),
     Integer(i32),
@@ -822,20 +891,18 @@ impl From<CustomAttributeValue> for kmip_2_1::kmip_types::VendorAttributeValue {
     }
 }
 
-impl From<kmip_2_1::kmip_types::VendorAttributeValue> for CustomAttributeValue {
-    fn from(value: kmip_2_1::kmip_types::VendorAttributeValue) -> Self {
+impl From<VendorAttributeValue> for CustomAttributeValue {
+    fn from(value: VendorAttributeValue) -> Self {
         match value {
-            kmip_2_1::kmip_types::VendorAttributeValue::TextString(v) => Self::TextString(v),
-            kmip_2_1::kmip_types::VendorAttributeValue::LongInteger(v) => Self::LongInteger(v),
-            kmip_2_1::kmip_types::VendorAttributeValue::BigInteger(v) => Self::BigInteger(v),
-            kmip_2_1::kmip_types::VendorAttributeValue::ByteString(v) => Self::ByteString(v),
-            kmip_2_1::kmip_types::VendorAttributeValue::Boolean(v) => Self::Boolean(v),
-            kmip_2_1::kmip_types::VendorAttributeValue::DateTime(v) => Self::DateTime(v),
-            kmip_2_1::kmip_types::VendorAttributeValue::Interval(v) => Self::Interval(v),
-            kmip_2_1::kmip_types::VendorAttributeValue::Integer(v) => Self::Integer(v),
-            kmip_2_1::kmip_types::VendorAttributeValue::DateTimeExtended(v) => {
-                Self::DateTimeExtended(v)
-            }
+            VendorAttributeValue::TextString(v) => Self::TextString(v),
+            VendorAttributeValue::LongInteger(v) => Self::LongInteger(v),
+            VendorAttributeValue::BigInteger(v) => Self::BigInteger(v),
+            VendorAttributeValue::ByteString(v) => Self::ByteString(v),
+            VendorAttributeValue::Boolean(v) => Self::Boolean(v),
+            VendorAttributeValue::DateTime(v) => Self::DateTime(v),
+            VendorAttributeValue::Interval(v) => Self::Interval(v),
+            VendorAttributeValue::Integer(v) => Self::Integer(v),
+            VendorAttributeValue::DateTimeExtended(v) => Self::DateTimeExtended(v),
         }
     }
 }
@@ -867,11 +934,7 @@ impl From<Vec<Attribute>> for kmip_2_1::kmip_attributes::Attributes {
                     attributes.description = Some(v);
                 }
                 Attribute::Name(v) => {
-                    todo!(
-                        "KMIP 2.1 does not support the KMIP 1 attribute Name: {v:?} - should be a \
-                         reference"
-                    )
-                    // attributes.name = Some(v.into());
+                    attributes.name = Some(vec![v.into()]);
                 }
                 Attribute::ObjectType(v) => {
                     attributes.object_type = Some(v.into());
@@ -945,11 +1008,7 @@ impl From<Vec<Attribute>> for kmip_2_1::kmip_attributes::Attributes {
                     attributes.fresh = Some(v);
                 }
                 Attribute::Link(v) => {
-                    todo!(
-                        "KMIP 2.1 does not support the KMIP 1 attribute Link: {v:?} - should be a \
-                         reference"
-                    )
-                    // attributes.link = Some(v.into());
+                    attributes.link = Some(vec![v.into()]);
                 }
                 Attribute::ApplicationSpecificInformation(v) => {
                     attributes.application_specific_information = Some(v);
@@ -960,12 +1019,12 @@ impl From<Vec<Attribute>> for kmip_2_1::kmip_attributes::Attributes {
                 Attribute::LastChangeDate(v) => {
                     attributes.last_change_date = Some(v);
                 }
-                Attribute::CustomAttribute((n, v)) => {
+                Attribute::CustomAttribute(CustomAttribute { name, value }) => {
                     let vas = attributes.vendor_attributes.get_or_insert(vec![]);
                     vas.push(VendorAttribute {
                         vendor_identification: "KMIP1".to_owned(),
-                        attribute_name: n,
-                        attribute_value: v.into(),
+                        attribute_name: name,
+                        attribute_value: value.into(),
                     });
                 }
                 Attribute::AlternativeName(v) => {

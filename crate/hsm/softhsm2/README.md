@@ -2,13 +2,13 @@
 
 <!-- TOC -->
 * [SoftHSM2](#softhsm2)
-  * [Installing SoftHSM2](#installing-softhsm2)
-  * [Running the KMS server](#running-the-kms-server)
+    * [Installing SoftHSM2](#installing-softhsm2)
+    * [Running the KMS server](#running-the-kms-server)
 <!-- TOC -->
 
 ## Installing SoftHSM2
 
-Follow the instructions at https://github.com/softhsm/SoftHSMv2.
+Follow the instructions at <https://github.com/softhsm/SoftHSMv2>.
 
 When running on a Linux system, you can install SoftHSM2 using the package manager. For example, on Ubuntu, you can run:
 
@@ -21,6 +21,7 @@ The resulting slot number may be completely different from 0, so you should chec
 ```bash
 softhsm2-util --show-slots
 ```
+
 and always use the DECIMAL slot number in the `kms.toml` file or when referencing HSM objects using the slot id.
 
 Set the SO and User PIN to 12345678 or update the `kms.toml` file accordingly.

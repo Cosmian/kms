@@ -19,7 +19,7 @@ use crate::{
         kmip_types::{AttestationType, Direction, KeyWrapType, RevocationReason},
     },
     kmip_1_4::kmip_attributes::Attribute,
-    kmip_2_1,
+    kmip_2_1::{self, kmip_attributes::Attributes},
 };
 
 /// 4.1 Create
@@ -89,6 +89,23 @@ pub struct CreateKeyPair {
     pub public_key_template_attribute: Option<TemplateAttribute>,
 }
 
+impl From<CreateKeyPair> for kmip_2_1::kmip_operations::CreateKeyPair {
+    fn from(create_key_pair: CreateKeyPair) -> Self {
+        Self {
+            common_attributes: create_key_pair.common_template_attribute.map(Into::into),
+            private_key_attributes: create_key_pair
+                .private_key_template_attribute
+                .map(Into::into),
+            public_key_attributes: create_key_pair
+                .public_key_template_attribute
+                .map(Into::into),
+            common_protection_storage_masks: None,
+            private_protection_storage_masks: None,
+            public_protection_storage_masks: None,
+        }
+    }
+}
+
 /// Response to a Create Key Pair request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
@@ -103,6 +120,23 @@ pub struct CreateKeyPairResponse {
     /// Public key template attributes
     #[serde(skip_serializing_if = "Option::is_none")]
     pub public_key_template_attribute: Option<TemplateAttribute>,
+}
+
+impl TryFrom<kmip_2_1::kmip_operations::CreateKeyPairResponse> for CreateKeyPairResponse {
+    type Error = KmipError;
+
+    fn try_from(
+        value: kmip_2_1::kmip_operations::CreateKeyPairResponse,
+    ) -> Result<Self, Self::Error> {
+        trace!("Converting KMIP 2.1 CreateKeyPairResponse to KMIP 1.4: {value:#?}");
+
+        Ok(Self {
+            private_key_unique_identifier: value.private_key_unique_identifier.to_string(),
+            public_key_unique_identifier: value.public_key_unique_identifier.to_string(),
+            private_key_template_attribute: None,
+            public_key_template_attribute: None,
+        })
+    }
 }
 
 /// 4.3 Register
@@ -309,14 +343,50 @@ pub struct Locate {
     /// Specifies an attribute and its value(s) that are REQUIRED
     /// to match those in a candidate object (according to the matching rules defined above).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub attributes: Option<Vec<Attribute>>,
+    pub attribute: Option<Vec<Attribute>>,
+}
+
+impl From<Locate> for kmip_2_1::kmip_operations::Locate {
+    fn from(locate: Locate) -> Self {
+        let attributes: Attributes = locate
+            .attribute
+            .map(|v| {
+                v.into_iter()
+                    .map(Into::into)
+                    .collect::<Vec<kmip_2_1::kmip_attributes::Attribute>>()
+                    .into()
+            })
+            .unwrap_or_default();
+        Self {
+            maximum_items: locate.maximum_items,
+            storage_status_mask: None,
+            object_group_member: None,
+            attributes,
+            offset_items: None,
+        }
+    }
 }
 
 /// Response to a Locate request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct LocateResponse {
-    pub unique_identifiers: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none", rename = "UniqueIdentifier")]
+    pub unique_identifier: Option<Vec<String>>,
+}
+
+impl TryFrom<kmip_2_1::kmip_operations::LocateResponse> for LocateResponse {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_operations::LocateResponse) -> Result<Self, Self::Error> {
+        trace!("Converting KMIP 2.1 LocateResponse to KMIP 1.4: {value:#?}");
+
+        Ok(Self {
+            unique_identifier: value
+                .unique_identifier
+                .map(|ids| ids.iter().map(ToString::to_string).collect()),
+        })
+    }
 }
 
 /// 4.10 Check
@@ -429,7 +499,7 @@ impl From<GetAttributes> for kmip_2_1::kmip_operations::GetAttributes {
                             )
                         } else {
                             kmip_2_1::kmip_types::AttributeReference::Standard(
-                                kmip_2_1::kmip_types::Tag::from_str(&v)
+                                kmip_2_1::kmip_types::Tag::from_str(&v.replace(' ', ""))
                                     .unwrap_or(kmip_2_1::kmip_types::Tag::Y), //some dummy tag that will never be found
                             )
                         }
@@ -605,6 +675,16 @@ pub struct Activate {
     pub unique_identifier: String,
 }
 
+impl From<Activate> for kmip_2_1::kmip_operations::Activate {
+    fn from(activate: Activate) -> Self {
+        Self {
+            unique_identifier: kmip_2_1::kmip_types::UniqueIdentifier::TextString(
+                activate.unique_identifier,
+            ),
+        }
+    }
+}
+
 /// Response to an Activate request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
@@ -612,14 +692,37 @@ pub struct ActivateResponse {
     pub unique_identifier: String,
 }
 
+impl TryFrom<kmip_2_1::kmip_operations::ActivateResponse> for ActivateResponse {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_operations::ActivateResponse) -> Result<Self, Self::Error> {
+        Ok(Self {
+            unique_identifier: value.unique_identifier.to_string(),
+        })
+    }
+}
+
 /// 4.20 Revoke
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Revoke {
-    pub unique_identifier: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<String>,
     pub revocation_reason: RevocationReason,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub compromise_occurrence_date: Option<OffsetDateTime>,
+}
+
+impl From<Revoke> for kmip_2_1::kmip_operations::Revoke {
+    fn from(revoke: Revoke) -> Self {
+        Self {
+            unique_identifier: revoke
+                .unique_identifier
+                .map(kmip_2_1::kmip_types::UniqueIdentifier::TextString),
+            revocation_reason: revoke.revocation_reason,
+            compromise_occurrence_date: revoke.compromise_occurrence_date,
+        }
+    }
 }
 
 /// Response to a Revoke request
@@ -629,6 +732,16 @@ pub struct RevokeResponse {
     pub unique_identifier: String,
 }
 
+impl TryFrom<kmip_2_1::kmip_operations::RevokeResponse> for RevokeResponse {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_operations::RevokeResponse) -> Result<Self, Self::Error> {
+        Ok(Self {
+            unique_identifier: value.unique_identifier.to_string(),
+        })
+    }
+}
+
 /// 4.21 Destroy
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
@@ -636,11 +749,34 @@ pub struct Destroy {
     pub unique_identifier: String,
 }
 
+impl From<Destroy> for kmip_2_1::kmip_operations::Destroy {
+    fn from(destroy: Destroy) -> Self {
+        Self {
+            unique_identifier: Some(kmip_2_1::kmip_types::UniqueIdentifier::TextString(
+                destroy.unique_identifier,
+            )),
+            remove: false,
+        }
+    }
+}
+
 /// Response to a Destroy request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct DestroyResponse {
     pub unique_identifier: String,
+}
+
+impl TryFrom<kmip_2_1::kmip_operations::DestroyResponse> for DestroyResponse {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_operations::DestroyResponse) -> Result<Self, Self::Error> {
+        trace!("Converting KMIP 2.1 DestroyResponse to KMIP 1.4: {value:#?}");
+
+        Ok(Self {
+            unique_identifier: value.unique_identifier.to_string(),
+        })
+    }
 }
 
 /// 4.22 Archive
@@ -733,7 +869,7 @@ pub struct QueryResponse {
 
     /// Detailed information about the server.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub server_information: Option<String>,
+    pub server_information: Option<ServerInformation>,
 
     /// List of extensions supported by the server.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -811,7 +947,8 @@ impl TryFrom<kmip_2_1::kmip_operations::QueryResponse> for QueryResponse {
             operation,
             object_type,
             vendor_identification: value.vendor_identification,
-            server_information: value.server_information.map(|s| s.to_string()),
+            // TODO: what is expected as server_information in KMIP 1 is not clear
+            server_information: None,
             extension_information,
             attestation_types: value.attestation_types,
             rng_parameters,
@@ -1306,6 +1443,7 @@ pub struct ExportResponse {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Import {
+    pub object_type: ObjectType,
     pub unique_identifier: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub replace_existing: Option<bool>,
@@ -1358,88 +1496,88 @@ impl TryFrom<kmip_2_1::kmip_operations::ImportResponse> for ImportResponse {
 #[serde(untagged)]
 #[allow(clippy::large_enum_variant)]
 pub enum Operation {
-    Create(Create),
-    CreateResponse(CreateResponse),
-    CreateKeyPair(CreateKeyPair),
-    CreateKeyPairResponse(CreateKeyPairResponse),
-    Register(Register),
-    RegisterResponse(RegisterResponse),
-    ReKey(ReKey),
-    ReKeyResponse(ReKeyResponse),
-    ReKeyKeyPair(ReKeyKeyPair),
-    ReKeyKeyPairResponse(ReKeyKeyPairResponse),
-    DeriveKey(DeriveKey),
-    DeriveKeyResponse(DeriveKeyResponse),
+    Activate(Activate),
+    ActivateResponse(ActivateResponse),
+    AddAttribute(AddAttribute),
+    AddAttributeResponse(AddAttributeResponse),
+    Archive(Archive),
+    ArchiveResponse(ArchiveResponse),
+    Cancel(Cancel),
+    CancelResponse(CancelResponse),
     Certify(Certify),
     CertifyResponse(CertifyResponse),
-    ReCertify(ReCertify),
-    ReCertifyResponse(ReCertifyResponse),
-    Locate(Locate),
-    LocateResponse(LocateResponse),
     Check(Check),
     CheckResponse(CheckResponse),
+    Create(Create),
+    CreateKeyPair(CreateKeyPair),
+    CreateKeyPairResponse(CreateKeyPairResponse),
+    CreateResponse(CreateResponse),
+    CreateSplitKey(CreateSplitKey),
+    CreateSplitKeyResponse(CreateSplitKeyResponse),
+    Decrypt(Decrypt),
+    DecryptResponse(DecryptResponse),
+    DeleteAttribute(DeleteAttribute),
+    DeleteAttributeResponse(DeleteAttributeResponse),
+    DeriveKey(DeriveKey),
+    DeriveKeyResponse(DeriveKeyResponse),
+    Destroy(Destroy),
+    DestroyResponse(DestroyResponse),
+    DiscoverVersions(DiscoverVersions),
+    DiscoverVersionsResponse(DiscoverVersionsResponse),
+    Encrypt(Encrypt),
+    EncryptResponse(EncryptResponse),
+    Export(Export),
+    ExportResponse(ExportResponse),
     Get(Get),
-    GetResponse(GetResponse),
     GetAttributes(GetAttributes),
     GetAttributesResponse(GetAttributesResponse),
     GetAttributeList(GetAttributeList),
     GetAttributeListResponse(GetAttributeListResponse),
-    AddAttribute(AddAttribute),
-    AddAttributeResponse(AddAttributeResponse),
-    ModifyAttribute(ModifyAttribute),
-    ModifyAttributeResponse(ModifyAttributeResponse),
-    DeleteAttribute(DeleteAttribute),
-    DeleteAttributeResponse(DeleteAttributeResponse),
-    ObtainLease(ObtainLease),
-    ObtainLeaseResponse(ObtainLeaseResponse),
+    GetResponse(GetResponse),
     GetUsageAllocation(GetUsageAllocation),
     GetUsageAllocationResponse(GetUsageAllocationResponse),
-    Activate(Activate),
-    ActivateResponse(ActivateResponse),
-    Revoke(Revoke),
-    RevokeResponse(RevokeResponse),
-    Destroy(Destroy),
-    DestroyResponse(DestroyResponse),
-    Archive(Archive),
-    ArchiveResponse(ArchiveResponse),
-    Recover(Recover),
-    RecoverResponse(RecoverResponse),
-    Validate(Validate),
-    ValidateResponse(ValidateResponse),
-    Query(Query),
-    QueryResponse(QueryResponse),
-    DiscoverVersions(DiscoverVersions),
-    DiscoverVersionsResponse(DiscoverVersionsResponse),
-    Cancel(Cancel),
-    CancelResponse(CancelResponse),
-    Poll(Poll),
-    PollResponse(PollResponse),
-    Encrypt(Encrypt),
-    EncryptResponse(EncryptResponse),
-    Decrypt(Decrypt),
-    DecryptResponse(DecryptResponse),
-    Sign(Sign),
-    SignResponse(SignResponse),
-    SignatureVerify(SignatureVerify),
-    SignatureVerifyResponse(SignatureVerifyResponse),
+    Hash(Hash),
+    HashResponse(HashResponse),
+    Import(Import),
+    ImportResponse(ImportResponse),
+    JoinSplitKey(JoinSplitKey),
+    JoinSplitKeyResponse(JoinSplitKeyResponse),
+    Locate(Locate),
+    LocateResponse(LocateResponse),
     MAC(MAC),
     MACResponse(MACResponse),
     MACVerify(MACVerify),
     MACVerifyResponse(MACVerifyResponse),
+    ModifyAttribute(ModifyAttribute),
+    ModifyAttributeResponse(ModifyAttributeResponse),
+    ObtainLease(ObtainLease),
+    ObtainLeaseResponse(ObtainLeaseResponse),
+    Poll(Poll),
+    PollResponse(PollResponse),
+    Query(Query),
+    QueryResponse(QueryResponse),
+    ReCertify(ReCertify),
+    ReCertifyResponse(ReCertifyResponse),
+    Recover(Recover),
+    RecoverResponse(RecoverResponse),
+    Register(Register),
+    RegisterResponse(RegisterResponse),
+    ReKey(ReKey),
+    ReKeyKeyPair(ReKeyKeyPair),
+    ReKeyKeyPairResponse(ReKeyKeyPairResponse),
+    ReKeyResponse(ReKeyResponse),
     RNGRetrieve(RNGRetrieve),
     RNGRetrieveResponse(RNGRetrieveResponse),
     RNGSeed(RNGSeed),
     RNGSeedResponse(RNGSeedResponse),
-    Hash(Hash),
-    HashResponse(HashResponse),
-    CreateSplitKey(CreateSplitKey),
-    CreateSplitKeyResponse(CreateSplitKeyResponse),
-    JoinSplitKey(JoinSplitKey),
-    JoinSplitKeyResponse(JoinSplitKeyResponse),
-    Export(Export),
-    ExportResponse(ExportResponse),
-    Import(Import),
-    ImportResponse(ImportResponse),
+    Revoke(Revoke),
+    RevokeResponse(RevokeResponse),
+    Sign(Sign),
+    SignResponse(SignResponse),
+    SignatureVerify(SignatureVerify),
+    SignatureVerifyResponse(SignatureVerifyResponse),
+    Validate(Validate),
+    ValidateResponse(ValidateResponse),
 }
 
 impl Operation {
@@ -1747,96 +1885,90 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
 
     fn try_from(value: Operation) -> Result<Self, Self::Error> {
         Ok(match value {
-            Operation::Create(create) => Self::Create(create.into()),
-            // Operation::CreateKeyPair(create_key_pair) => {
-            //     Self::CreateKeyPair(create_key_pair.into())
+            Operation::Activate(activate) => Self::Activate(activate.into()),
+            Operation::AddAttribute(add_attribute) => Self::AddAttribute(add_attribute.into()),
+            // Operation::Archive(archive) => {
+            //     Self::Archive(archive.into())
             // }
-            Operation::Register(register) => Self::Register(register.into()),
-            // Operation::ReKeyKeyPair(rekey_key_pair) => {
-            //     Self::ReKeyKeyPair(rekey_key_pair.into())
-            // }
-            // Operation::DeriveKey(derive_key) => {
-            //     Self::DeriveKey(derive_key.into())
+            // Operation::Cancel(cancel) => {
+            //     Self::Cancel(cancel.into())
             // }
             // Operation::Certify(certify) => {
             //     Self::Certify(certify.into())
             // }
-            // Operation::ReCertify(recertify) => {
-            //     Self::ReCertify(recertify.into())
-            // }
-            // Operation::Locate(locate) => {
-            //     Self::Locate(locate.into())
-            // }
             // Operation::Check(check) => Self::Check(check.into()),
+            Operation::Create(create) => Self::Create(create.into()),
+            Operation::CreateKeyPair(create_key_pair) => {
+                Self::CreateKeyPair(create_key_pair.into())
+            }
+            Operation::Decrypt(decrypt) => Self::Decrypt(decrypt.into()),
+            // Operation::DeleteAttribute(delete_attribute) => {
+            //     Self::DeleteAttribute(delete_attribute.into())
+            // }
+            // Operation::DeriveKey(derive_key) => {
+            //     Self::DeriveKey(derive_key.into())
+            // }
+            Operation::Destroy(destroy) => Self::Destroy(destroy.into()),
+            Operation::DiscoverVersions(discover_versions) => {
+                Self::DiscoverVersions(discover_versions)
+            }
+            Operation::DiscoverVersionsResponse(discover_versions_response) => {
+                Self::DiscoverVersionsResponse(discover_versions_response)
+            }
+            Operation::Encrypt(encrypt) => Self::Encrypt(encrypt.into()),
             Operation::Get(get) => Self::Get(get.into()),
             Operation::GetAttributes(get_attributes) => Self::GetAttributes(get_attributes.into()),
             // Operation::GetAttributeList(get_attribute_list) => {
             //     Self::GetAttributeList(get_attribute_list.into())
             // }
-            Operation::AddAttribute(add_attribute) => Self::AddAttribute(add_attribute.into()),
-            // Operation::ModifyAttribute(modify_attribute) => {
-            //     Self::ModifyAttribute(modify_attribute.into())
-            // }
-            // Operation::DeleteAttribute(delete_attribute) => {
-            //     Self::DeleteAttribute(delete_attribute.into())
-            // }
-            // Operation::ObtainLease(obtain_lease) => {
-            //     Self::ObtainLease(obtain_lease.into())
-            // }
             // Operation::GetUsageAllocation(get_usage_allocation) => {
-            //     Self::GetUsageAllocation(
-            //         get_usage_allocation.into(),
-            //     )
+            //     Self::GetUsageAllocation(get_usage_allocation.into())
             // }
-            // Operation::Activate(activate) => {
-            //     Self::Activate(activate.into())
+            Operation::Import(import) => Self::Import(import.into()),
+            // Operation::JoinSplitKey(join_split_key) => {
+            //     Self::JoinSplitKey(join_split_key.into())
             // }
-            // Operation::Revoke(revoke) => {
-            //     Self::Revoke(revoke.into())
-            // }
-            // Operation::Destroy(destroy) => {
-            //     Self::Destroy(destroy.into())
-            // }
-            // Operation::Archive(archive) => {
-            //     Self::Archive(archive.into())
-            // }
-            // Operation::Recover(recover) => {
-            //     Self::Recover(recover.into())
-            // }
-            // Operation::Validate(validate) => {
-            //     Self::Validate(validate.into())
-            // }
-            Operation::Query(query) => Self::Query(query.into()),
-            // Operation::DiscoverVersions(discover_versions) => {
-            //     Self::DiscoverVersions(discover_versions.into())
-            // }
-            // Operation::Cancel(cancel) => {
-            //     Self::Cancel(cancel.into())
-            // }
-            // Operation::Poll(poll) => Self::Poll(poll.into()),
-            Operation::Encrypt(encrypt) => Self::Encrypt(encrypt.into()),
-            Operation::Decrypt(decrypt) => Self::Decrypt(decrypt.into()),
-            // Operation::Sign(sign) => Self::Sign(sign.into()),
-            // Operation::SignatureVerify(signature_verify) => {
-            //     Self::SignatureVerify(signature_verify.into())
-            // }
+            Operation::Locate(locate) => Self::Locate(locate.into()),
             Operation::MAC(mac) => Self::MAC(mac.into()),
             // Operation::MACVerify(mac_verify) => {
             //     Self::MACVerify(mac_verify.into())
             // }
+            // Operation::ModifyAttribute(modify_attribute) => {
+            //     Self::ModifyAttribute(modify_attribute.into())
+            // }
+            // Operation::ObtainLease(obtain_lease) => {
+            //     Self::ObtainLease(obtain_lease.into())
+            // }
+            // Operation::Poll(poll) => Self::Poll(poll.into()),
+            Operation::Query(query) => Self::Query(query.into()),
+            // Operation::ReCertify(recertify) => {
+            //     Self::ReCertify(recertify.into())
+            // }
+            // Operation::Recover(recover) => {
+            //     Self::Recover(recover.into())
+            // }
+            Operation::Register(register) => Self::Register(register.into()),
+            // Operation::ReKey(rekey) => Self::ReKey(rekey.into()),
+            // Operation::ReKeyKeyPair(rekey_key_pair) => {
+            //     Self::ReKeyKeyPair(rekey_key_pair.into())
+            // }
+            Operation::Revoke(revoke) => Self::Revoke(revoke.into()),
             // Operation::RNGRetrieve(rng_retrieve) => {
             //     Self::RNGRetrieve(rng_retrieve.into())
             // }
             // Operation::RNGSeed(rng_seed) => {
             //     Self::RNGSeed(rng_seed.into())
             // }
-            Operation::DiscoverVersions(discover_versions) => {
-                Self::DiscoverVersions(discover_versions)
-            }
-            Operation::Import(import) => Self::Import(import.into()),
+            // Operation::Sign(sign) => Self::Sign(sign.into()),
+            // Operation::SignatureVerify(signature_verify) => {
+            //     Self::SignatureVerify(signature_verify.into())
+            // }
+            // Operation::Validate(validate) => {
+            //     Self::Validate(validate.into())
+            // }
             op => {
                 return Err(KmipError::NotSupported(format!(
-                    "KMIP 2.1 does not support Request Operation: {op:?} response"
+                    "Conversion of KMIP 1.x operation to KMIP 2.1 is not supported for: {op:?}"
                 )))
             }
         })
@@ -1848,42 +1980,56 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
 
     fn try_from(value: kmip_2_1::kmip_operations::Operation) -> Result<Self, Self::Error> {
         Ok(match value {
+            kmip_2_1::kmip_operations::Operation::ActivateResponse(activate_response) => {
+                Self::ActivateResponse(activate_response.try_into().context("ActivateResponse")?)
+            }
+            kmip_2_1::kmip_operations::Operation::AddAttributeResponse(add_attribute_response) => {
+                Self::AddAttributeResponse(add_attribute_response.into())
+            }
+            // Operation::ArchiveResponse(archive_response) => {
+            //     Self::ArchiveResponse(archive_response.into())
+            // }
+            // Operation::CancelResponse(cancel_response) => {
+            //     Self::CancelResponse(cancel_response.into())
+            // }
+            // Operation::CertifyResponse(certify_response) => {
+            //     Self::CertifyResponse(certify_response.into())
+            // }
+            // Operation::CheckResponse(check_response) => {
+            //     Self::CheckResponse(check_response.into())
+            // }
+            kmip_2_1::kmip_operations::Operation::CreateKeyPairResponse(
+                create_key_pair_response,
+            ) => Self::CreateKeyPairResponse(
+                create_key_pair_response
+                    .try_into()
+                    .context("CreateKeyPairResponse")?,
+            ),
             kmip_2_1::kmip_operations::Operation::CreateResponse(create_response) => {
-                Self::CreateResponse(create_response.try_into()?)
+                Self::CreateResponse(create_response.try_into().context("CreateResponse")?)
             }
-            // Operation::CreateKeyPairResponse(create_key_pair_response) => {
-            //     Self::CreateKeyPairResponse(
-            //         create_key_pair_response.into(),
-            //     )
-            // }
-            kmip_2_1::kmip_operations::Operation::RegisterResponse(register_response) => {
-                Self::RegisterResponse(register_response.try_into()?)
+            kmip_2_1::kmip_operations::Operation::DecryptResponse(decrypt_response) => {
+                Self::DecryptResponse(decrypt_response.try_into().context("DecryptResponse")?)
             }
-            // Operation::ReKeyResponse(rekey_response) => {
-            //     Self::ReKeyResponse(rekey_response.into())
-            // }
-            // Operation::ReKeyKeyPairResponse(rekey_key_pair_response) => {
-            //     Self::ReKeyKeyPairResponse(
-            //         rekey_key_pair_response.into(),
+            // Operation::DeleteAttributeResponse(delete_attribute_response) => {
+            //     Self::DeleteAttributeResponse(
+            //         delete_attribute_response.into(),
             //     )
             // }
             // Operation::DeriveKeyResponse(derive_key_response) => {
             //     Self::DeriveKeyResponse(derive_key_response.into())
             // }
-            // Operation::CertifyResponse(certify_response) => {
-            //     Self::CertifyResponse(certify_response.into())
-            // }
-            // Operation::ReCertifyResponse(recertify_response) => {
-            //     Self::ReCertifyResponse(recertify_response.into())
-            // }
-            // Operation::LocateResponse(locate_response) => {
-            //     Self::LocateResponse(locate_response.into())
-            // }
-            // Operation::CheckResponse(check_response) => {
-            //     Self::CheckResponse(check_response.into())
-            // }
-            kmip_2_1::kmip_operations::Operation::GetResponse(get_response) => {
-                Self::GetResponse(get_response.try_into()?)
+            kmip_2_1::kmip_operations::Operation::DestroyResponse(destroy_response) => {
+                Self::DestroyResponse(destroy_response.try_into().context("DestroyResponse")?)
+            }
+            kmip_2_1::kmip_operations::Operation::DiscoverVersions(discover_versions) => {
+                Self::DiscoverVersions(discover_versions)
+            }
+            kmip_2_1::kmip_operations::Operation::DiscoverVersionsResponse(
+                discover_versions_response,
+            ) => Self::DiscoverVersionsResponse(discover_versions_response),
+            kmip_2_1::kmip_operations::Operation::EncryptResponse(encrypt_response) => {
+                Self::EncryptResponse(encrypt_response.try_into().context("EncryptResponse")?)
             }
             kmip_2_1::kmip_operations::Operation::GetAttributesResponse(
                 get_attributes_response,
@@ -1893,17 +2039,35 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             //         get_attribute_list_response.into(),
             //     )
             // }
-            kmip_2_1::kmip_operations::Operation::AddAttributeResponse(add_attribute_response) => {
-                Self::AddAttributeResponse(add_attribute_response.into())
+            kmip_2_1::kmip_operations::Operation::GetResponse(get_response) => {
+                Self::GetResponse(get_response.try_into()?)
             }
+            // Operation::GetUsageAllocationResponse(get_usage_allocation_response) => {
+            //     Self::GetUsageAllocationResponse(
+            //         get_usage_allocation_response.into(),
+            //     )
+            // }
+            kmip_2_1::kmip_operations::Operation::ImportResponse(import_response) => {
+                Self::ImportResponse(import_response.try_into().context("ImportResponse")?)
+            }
+            // Operation::JoinSplitKeyResponse(join_split_key_response) => {
+            //     Self::JoinSplitKeyResponse(
+            //         join_split_key_response.into(),
+            //     )
+            // }
+            kmip_2_1::kmip_operations::Operation::LocateResponse(locate_response) => {
+                Self::LocateResponse(locate_response.try_into().context("LocateResponse")?)
+            }
+            // Operation::MAC(mac) => Self::MAC(mac.into()),
+            kmip_2_1::kmip_operations::Operation::MACResponse(mac_response) => {
+                Self::MACResponse(mac_response.try_into().context("MACResponse")?)
+            }
+            // Operation::MACVerifyResponse(mac_verify_response) => {
+            //     Self::MACVerifyResponse(mac_verify_response.into())
+            // }
             // Operation::ModifyAttributeResponse(modify_attribute_response) => {
             //     Self::ModifyAttributeResponse(
             //         modify_attribute_response.into(),
-            //     )
-            // }
-            // Operation::DeleteAttributeResponse(delete_attribute_response) => {
-            //     Self::DeleteAttributeResponse(
-            //         delete_attribute_response.into(),
             //     )
             // }
             // Operation::ObtainLeaseResponse(obtain_lease_response) => {
@@ -1911,63 +2075,32 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             //         obtain_lease_response.into(),
             //     )
             // }
-            // Operation::GetUsageAllocationResponse(get_usage_allocation_response) => {
-            //     Self::GetUsageAllocationResponse(
-            //         get_usage_allocation_response.into(),
-            //     )
-            // }
-            // Operation::ActivateResponse(activate_response) => {
-            //     Self::ActivateResponse(activate_response.into())
-            // }
-            // Operation::RevokeResponse(revoke_response) => {
-            //     Self::RevokeResponse(revoke_response.into())
-            // }
-            // Operation::DestroyResponse(destroy_response) => {
-            //     Self::DestroyResponse(destroy_response.into())
-            // }
-            // Operation::ArchiveResponse(archive_response) => {
-            //     Self::ArchiveResponse(archive_response.into())
-            // }
-            // Operation::RecoverResponse(recover_response) => {
-            //     Self::RecoverResponse(recover_response.into())
-            // }
-            // Operation::ValidateResponse(validate_response) => {
-            //     Self::ValidateResponse(validate_response.into())
+            // Operation::PollResponse(poll_response) => {
+            //     Self::PollResponse(poll_response.into())
             // }
             kmip_2_1::kmip_operations::Operation::QueryResponse(query_response) => {
                 Self::QueryResponse(query_response.try_into().context("QueryResponse")?)
             }
-            // Operation::DiscoverVersionsResponse(discover_versions_response) => {
-            //     Self::DiscoverVersionsResponse(
-            //         discover_versions_response.into(),
+            // Operation::ReCertifyResponse(recertify_response) => {
+            //     Self::ReCertifyResponse(recertify_response.into())
+            // }
+            // Operation::RecoverResponse(recover_response) => {
+            //     Self::RecoverResponse(recover_response.into())
+            // }
+            kmip_2_1::kmip_operations::Operation::RegisterResponse(register_response) => {
+                Self::RegisterResponse(register_response.try_into()?)
+            }
+            // Operation::ReKeyKeyPairResponse(rekey_key_pair_response) => {
+            //     Self::ReKeyKeyPairResponse(
+            //         rekey_key_pair_response.into(),
             //     )
             // }
-            // Operation::CancelResponse(cancel_response) => {
-            //     Self::CancelResponse(cancel_response.into())
+            // Operation::ReKeyResponse(rekey_response) => {
+            //     Self::ReKeyResponse(rekey_response.into())
             // }
-            // Operation::PollResponse(poll_response) => {
-            //     Self::PollResponse(poll_response.into())
-            // }
-            kmip_2_1::kmip_operations::Operation::EncryptResponse(encrypt_response) => {
-                Self::EncryptResponse(encrypt_response.try_into().context("EncryptResponse")?)
+            kmip_2_1::kmip_operations::Operation::RevokeResponse(revoke_response) => {
+                Self::RevokeResponse(revoke_response.try_into().context("RevokeResponse")?)
             }
-            kmip_2_1::kmip_operations::Operation::DecryptResponse(decrypt_response) => {
-                Self::DecryptResponse(decrypt_response.try_into().context("DecryptResponse")?)
-            }
-            // Operation::SignResponse(sign_response) => {
-            //     Self::SignResponse(sign_response.into())
-            // }
-            // Operation::SignatureVerifyResponse(signature_verify_response) => {
-            //     Self::SignatureVerifyResponse(
-            //         signature_verify_response.into(),
-            //     )
-            // }
-            kmip_2_1::kmip_operations::Operation::MACResponse(mac_response) => {
-                Self::MACResponse(mac_response.try_into()?)
-            }
-            // Operation::MACVerifyResponse(mac_verify_response) => {
-            //     Self::MACVerifyResponse(mac_verify_response.into())
-            // }
             // Operation::RNGRetrieveResponse(rng_retrieve_response) => {
             //     Self::RNGRetrieveResponse(
             //         rng_retrieve_response.into(),
@@ -1976,15 +2109,21 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             // Operation::RNGSeedResponse(rng_seed_response) => {
             //     Self::RNGSeedResponse(rng_seed_response.into())
             // }
-            kmip_2_1::kmip_operations::Operation::DiscoverVersionsResponse(
-                discover_versions_response,
-            ) => Self::DiscoverVersionsResponse(discover_versions_response),
-            kmip_2_1::kmip_operations::Operation::ImportResponse(import_response) => {
-                Self::ImportResponse(import_response.try_into()?)
-            }
+            // Operation::SignatureVerifyResponse(signature_verify_response) => {
+            //     Self::SignatureVerifyResponse(
+            //         signature_verify_response.into(),
+            //     )
+            // }
+            // Operation::SignResponse(sign_response) => {
+            //     Self::SignResponse(sign_response.into())
+            // }
+            // Operation::ValidateResponse(validate_response) => {
+            //     Self::ValidateResponse(validate_response.into())
+            // }
             op => {
                 return Err(KmipError::NotSupported(format!(
-                    "KMIP 2.1 does not support Response Operation: {op:?}"
+                    "Conversion from KMIP 2.1 to KMIP 1.x is not supported for Response \
+                     Operation: {op:?}"
                 )))
             }
         })
