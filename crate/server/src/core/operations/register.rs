@@ -3,6 +3,7 @@ use std::sync::Arc;
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         self,
+        kmip_0::kmip_types::State,
         kmip_2_1::{
             kmip_objects::ObjectType,
             kmip_operations::{Register, RegisterResponse},
@@ -11,13 +12,15 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::SessionParams,
 };
+use time::OffsetDateTime;
 use tracing::{debug, trace};
 
 use crate::{
     core::{
         KMS,
         operations::import::{
-            process_certificate, process_private_key, process_public_key, process_symmetric_key,
+            process_certificate, process_private_key, process_public_key, process_secret_data,
+            process_symmetric_key,
         },
         retrieve_object_utils::user_has_permission,
     },
@@ -28,7 +31,7 @@ use crate::{
 
 pub(crate) async fn register(
     kms: &KMS,
-    request: Register,
+    mut request: Register,
     owner: &str,
     params: Option<Arc<dyn SessionParams>>,
     privileged_users: Option<Vec<String>>,
@@ -63,6 +66,19 @@ pub(crate) async fn register(
         ))
     }
 
+    // Update the initial date and last changed date of the object
+    // Update the state of the object to Active and activation date
+    let now = OffsetDateTime::now_utc()
+        .replace_millisecond(0)
+        .map_err(|e| KmsError::Default(e.to_string()))?;
+    if let Ok(object_attributes) = request.object.attributes_mut() {
+        object_attributes.state = Some(State::Active);
+        // update the initial date
+        object_attributes.initial_date = Some(now);
+        // update the last change date
+        object_attributes.last_change_date = Some(now);
+    }
+
     // Process the request based on the object type,
     let (uid, operations) = match request.object.object_type() {
         ObjectType::SymmetricKey => {
@@ -86,6 +102,15 @@ pub(crate) async fn register(
         }
         ObjectType::PrivateKey => {
             Box::pin(process_private_key(
+                kms,
+                request.into(),
+                owner,
+                params.clone(),
+            ))
+            .await?
+        }
+        ObjectType::SecretData => {
+            Box::pin(process_secret_data(
                 kms,
                 request.into(),
                 owner,

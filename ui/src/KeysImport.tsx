@@ -24,7 +24,7 @@ interface ImportKeyFormData {
     wrappingKeyId?: string;
 }
 
-type KeyType = "rsa" | "ec" | "symmetric" | "covercrypt";
+type KeyType = "rsa" | "ec" | "symmetric" | "covercrypt" | "secret-data";
 
 interface KeyImportFormProps {
     key_type: KeyType;
@@ -34,7 +34,7 @@ type KeyImportResponse = {
     UniqueIdentifier: string;
 };
 
-const KeyImportForm: React.FC<KeyImportFormProps> = (props: KeyImportFormProps) => {
+const KeyImportForm: React.FC<KeyImportFormProps> = ({ key_type }) => {
     const [form] = Form.useForm<ImportKeyFormData>();
     const [res, setRes] = useState<undefined | string>(undefined);
     const [isLoading, setIsLoading] = useState(false);
@@ -70,18 +70,17 @@ const KeyImportForm: React.FC<KeyImportFormProps> = (props: KeyImportFormProps) 
                 setRes(`File has been imported - imported object id: ${result.UniqueIdentifier}`);
             }
         } catch (e) {
-            setRes(`Error importing key: ${e}`);
-            console.error("Error importing key:", e);
+            setRes(`Error importing: ${e}`);
+            console.error("Error importing:", e);
         } finally {
             setIsLoading(false);
         }
     };
 
-    let key_type_string = "";
     let key_formats = [];
     let key_usages = [];
-    if (props.key_type === "rsa") {
-        key_type_string = "an RSA";
+
+    if (key_type === "rsa") {
         key_formats = [
             { label: "JSON TTLV (default)", value: "json-ttlv" },
             { label: "PEM (auto-detect format)", value: "pem" },
@@ -98,8 +97,7 @@ const KeyImportForm: React.FC<KeyImportFormProps> = (props: KeyImportFormProps) 
             { label: "Wrap", value: "wrap" },
             { label: "Unwrap", value: "unwrap" },
         ];
-    } else if (props.key_type === "ec") {
-        key_type_string = "an EC";
+    } else if (key_type === "ec") {
         key_formats = [
             { label: "JSON TTLV (default)", value: "json-ttlv" },
             { label: "PEM (auto-detect format)", value: "pem" },
@@ -115,8 +113,7 @@ const KeyImportForm: React.FC<KeyImportFormProps> = (props: KeyImportFormProps) 
             { label: "Wrap", value: "wrap" },
             { label: "Unwrap", value: "unwrap" },
         ];
-    } else if (props.key_type === "symmetric") {
-        key_type_string = "a symmetric";
+    } else if (key_type === "symmetric") {
         key_formats = [
             { label: "JSON TTLV (default)", value: "json-ttlv" },
             { label: "AES", value: "aes" },
@@ -128,8 +125,13 @@ const KeyImportForm: React.FC<KeyImportFormProps> = (props: KeyImportFormProps) 
             { label: "Wrap", value: "wrap" },
             { label: "Unwrap", value: "unwrap" },
         ];
+    } else if (key_type === "secret-data") {
+        key_formats = [{ label: "JSON TTLV (default)", value: "json-ttlv" }];
+        key_usages = [
+            { label: "Wrap", value: "wrap" },
+            { label: "Unwrap", value: "unwrap" },
+        ];
     } else {
-        key_type_string = "a Covercrypt";
         key_formats = [{ label: "JSON TTLV (default)", value: "json-ttlv" }];
         key_usages = [
             { label: "Encrypt", value: "encrypt" },
@@ -137,13 +139,15 @@ const KeyImportForm: React.FC<KeyImportFormProps> = (props: KeyImportFormProps) 
         ];
     }
 
+    const isSecretData = key_type === "secret-data";
+
     return (
         <div className="p-6">
-            <h1 className="text-2xl font-bold mb-6">Import {key_type_string} key</h1>
+            <h1 className="text-2xl font-bold mb-6">Import {isSecretData ? "secret data" : `${key_type} key`}</h1>
 
             <div className="mb-8 space-y-2">
-                <p>Import {key_type_string} key in the KMS.</p>
-                <p>When no unique ID is specified, a random UUID will be generated.</p>
+                <p>Import {isSecretData ? "secret data" : `${key_type} key`} into the KMS.</p>
+                <p>When no ID is specified, a random UUID will be generated.</p>
             </div>
 
             <Form
@@ -161,29 +165,25 @@ const KeyImportForm: React.FC<KeyImportFormProps> = (props: KeyImportFormProps) 
                     <Card>
                         <Form.Item
                             name="keyFile"
-                            label="Key File"
-                            rules={[{ required: true, message: "Please upload a key file" }]}
-                            help="Upload the key file to import"
+                            label={isSecretData ? "Data File" : "Key File"}
+                            rules={[{ required: true, message: "Please upload a file" }]}
+                            help={isSecretData ? "Upload the secret data file to import" : "Upload the key file to import"}
                         >
                             <Upload
                                 beforeUpload={(file) => {
                                     const reader = new FileReader();
-
                                     reader.onload = (e) => {
                                         const content = e.target?.result;
-
                                         if (typeof content === "string") {
                                             try {
-                                                // Check if content is Base64 encoded (basic check: valid Base64 characters)
                                                 if (/^[A-Za-z0-9+/=]+$/.test(content.trim())) {
-                                                    const decoded = atob(content.trim()); // Decode Base64
+                                                    const decoded = atob(content.trim());
                                                     const bytes = new Uint8Array([...decoded].map((char) => char.charCodeAt(0)));
                                                     form.setFieldsValue({ keyFile: bytes });
                                                 } else {
                                                     throw new Error("Invalid Base64 format");
                                                 }
                                             } catch {
-                                                // If Base64 decoding fails, re-read the file as ArrayBuffer
                                                 const binaryReader = new FileReader();
                                                 binaryReader.onload = (event) => {
                                                     const rawContent = event.target?.result;
@@ -196,79 +196,71 @@ const KeyImportForm: React.FC<KeyImportFormProps> = (props: KeyImportFormProps) 
                                             }
                                         }
                                     };
-
-                                    reader.readAsText(file); // First attempt reading as text for Base64
-
+                                    reader.readAsText(file);
                                     return false;
                                 }}
                                 maxCount={1}
                             >
-                                <Button icon={<UploadOutlined />}>Upload Key File</Button>
+                                <Button icon={<UploadOutlined />}>Upload {isSecretData ? "Secret Data File" : "Key File"}</Button>
                             </Upload>
                         </Form.Item>
 
-                        <Form.Item name="keyId" label="Key ID" help="Optional: A random UUID will be generated if not specified">
-                            <Input placeholder="Enter key ID" />
+                        <Form.Item name="keyId" label="ID" help="Optional: A random UUID will be generated if not specified">
+                            <Input placeholder="Enter ID" />
                         </Form.Item>
 
-                        <Form.Item name="keyFormat" label="Key Format" help="Format of the key file to import" rules={[{ required: true }]}>
+                        <Form.Item name="keyFormat" label="Format" help="Format of the file to import" rules={[{ required: true }]}>
                             <Select options={key_formats} />
                         </Form.Item>
                     </Card>
+
+                    {!isSecretData && (
+                        <Card>
+                            <h3 className="text-m font-bold mb-4">Key Relationships</h3>
+
+                            <Form.Item name="publicKeyId" label="Public Key ID" help="Link to public key in KMS">
+                                <Input placeholder="Enter public key ID" />
+                            </Form.Item>
+
+                            <Form.Item name="privateKeyId" label="Private Key ID" help="Link to private key in KMS">
+                                <Input placeholder="Enter private key ID" />
+                            </Form.Item>
+
+                            <Form.Item name="certificateId" label="Certificate ID" help="Link to certificate in KMS">
+                                <Input placeholder="Enter certificate ID" />
+                            </Form.Item>
+                        </Card>
+                    )}
+
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Key Relationships</h3>
-
-                        <Form.Item
-                            name="publicKeyId"
-                            label="Public Key ID"
-                            help="For private keys: link to corresponding public key in KMS"
-                        >
-                            <Input placeholder="Enter public key ID" />
+                        <Form.Item name="keyUsage" label="Usage" help="Specify allowed operations">
+                            <Select mode="multiple" options={key_usages} placeholder="Select usage" />
                         </Form.Item>
 
-                        <Form.Item
-                            name="privateKeyId"
-                            label="Private Key ID"
-                            help="For public keys: link to corresponding private key in KMS"
-                        >
-                            <Input placeholder="Enter private key ID" />
-                        </Form.Item>
-
-                        <Form.Item name="certificateId" label="Certificate ID" help="Link to corresponding certificate in KMS">
-                            <Input placeholder="Enter certificate ID" />
-                        </Form.Item>
-                    </Card>
-                    <Card>
-                        <Form.Item name="keyUsage" label="Key Usage" help="Specify allowed operations for this key">
-                            <Select mode="multiple" options={key_usages} placeholder="Select key usage" />
-                        </Form.Item>
-
-                        <Form.Item name="tags" label="Tags" help="Optional: Add tags to help retrieve the key later">
+                        <Form.Item name="tags" label="Tags" help="Optional: Add tags to help retrieve later">
                             <Select mode="tags" placeholder="Enter tags" open={false} />
                         </Form.Item>
 
-                        <Form.Item name="wrappingKeyId" label="Wrapping Key ID" help="Optional: ID of the key to wrap this new key with">
+                        <Form.Item name="wrappingKeyId" label="Wrapping Key ID" help="Optional: ID of wrapping key">
                             <Input placeholder="Enter wrapping key ID" />
                         </Form.Item>
                     </Card>
+
                     <Card>
-                        <Form.Item
-                            name="unwrap"
-                            valuePropName="checked"
-                            help="For JSON TTLV keys: unwrap the key if wrapped before storing"
-                        >
-                            <Checkbox>Unwrap key before import</Checkbox>
+                        <Form.Item name="unwrap" valuePropName="checked" help="Unwrap if wrapped before storing">
+                            <Checkbox>Unwrap before import</Checkbox>
                         </Form.Item>
 
-                        <Form.Item name="replaceExisting" valuePropName="checked" help="Replace an existing key with the same ID">
-                            <Checkbox>Replace existing key</Checkbox>
+                        <Form.Item name="replaceExisting" valuePropName="checked" help="Replace an existing object with same ID">
+                            <Checkbox>Replace existing</Checkbox>
                         </Form.Item>
                     </Card>
+
                     <Card>
                         <Form.Item
                             name="authenticatedAdditionalData"
                             label="Authenticated Additional Data"
-                            help="Optional: For AES256GCM authenticated encryption unwrapping"
+                            help="Optional: For AES256GCM authenticated encryption"
                         >
                             <Input placeholder="Enter authenticated data" />
                         </Form.Item>
@@ -276,14 +268,15 @@ const KeyImportForm: React.FC<KeyImportFormProps> = (props: KeyImportFormProps) 
 
                     <Form.Item>
                         <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium">
-                            Import Key
+                            Import {isSecretData ? "Data" : "Key"}
                         </Button>
                     </Form.Item>
                 </Space>
             </Form>
+
             {res && (
                 <div ref={responseRef}>
-                    <Card title="Key import response">{res}</Card>
+                    <Card title="Import Response">{res}</Card>
                 </div>
             )}
         </div>

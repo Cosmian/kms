@@ -8,14 +8,14 @@ use cosmian_kms_server_database::reexport::{
             kmip_types::State,
         },
         kmip_2_1::kmip_operations::{
-            AddAttribute, AddAttributeResponse, Certify, CertifyResponse, Create, CreateKeyPair,
-            CreateKeyPairResponse, CreateResponse, Decrypt, DecryptResponse, DeleteAttribute,
-            DeleteAttributeResponse, Destroy, DestroyResponse, Encrypt, EncryptResponse, Export,
-            ExportResponse, Get, GetAttributes, GetAttributesResponse, GetResponse, Hash,
-            HashResponse, Import, ImportResponse, Locate, LocateResponse, MAC, MACResponse, Query,
-            QueryResponse, ReKey, ReKeyKeyPair, ReKeyKeyPairResponse, ReKeyResponse, Register,
-            RegisterResponse, Revoke, RevokeResponse, SetAttribute, SetAttributeResponse, Validate,
-            ValidateResponse,
+            Activate, ActivateResponse, AddAttribute, AddAttributeResponse, Certify,
+            CertifyResponse, Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse, Decrypt,
+            DecryptResponse, DeleteAttribute, DeleteAttributeResponse, Destroy, DestroyResponse,
+            Encrypt, EncryptResponse, Export, ExportResponse, Get, GetAttributes,
+            GetAttributesResponse, GetResponse, Hash, HashResponse, Import, ImportResponse, Locate,
+            LocateResponse, MAC, MACResponse, Query, QueryResponse, ReKey, ReKeyKeyPair,
+            ReKeyKeyPairResponse, ReKeyResponse, Register, RegisterResponse, Revoke,
+            RevokeResponse, SetAttribute, SetAttributeResponse, Validate, ValidateResponse,
         },
     },
     cosmian_kms_interfaces::SessionParams,
@@ -27,6 +27,18 @@ use crate::{
 };
 
 impl KMS {
+    pub(crate) async fn activate(
+        &self,
+        request: Activate,
+        user: &str,
+        params: Option<Arc<dyn SessionParams>>,
+    ) -> KResult<ActivateResponse> {
+        let span = tracing::span!(tracing::Level::ERROR, "activate");
+        let _enter = span.enter();
+
+        Box::pin(operations::activate(self, request, user, params)).await
+    }
+
     /// This operation requests the server to add a new attribute instance to be associated with a
     /// Managed Object and set its value. The request contains the Unique Identifier of the
     /// Managed Object to which the attribute pertains, along with the attribute name and value.

@@ -10,6 +10,7 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams},
 };
+use time::OffsetDateTime;
 use tracing::{debug, trace};
 
 use crate::{
@@ -105,6 +106,13 @@ pub(crate) async fn add_attribute(
                 ));
             }
             attributes.cryptographic_usage_mask = Some(usage_mask);
+        }
+        Attribute::Digest(digest) => {
+            trace!("Add Attribute: Digest: {:?}", digest);
+            if attributes.digest.is_some() {
+                return Err(KmsError::InvalidRequest("Digest already exists".to_owned()));
+            }
+            attributes.digest = Some(digest);
         }
         Attribute::Link(link) => {
             trace!("Add Attribute: Link: {:?}", link);
@@ -686,6 +694,13 @@ pub(crate) async fn add_attribute(
             attributes.x_509_certificate_identifier = Some(x509_certificate_identifier);
         }
     }
+
+    // update the last change date
+    attributes.last_change_date = Some(
+        OffsetDateTime::now_utc()
+            .replace_millisecond(0)
+            .map_err(|e| KmsError::Default(e.to_string()))?,
+    );
 
     let tags = kms.database.retrieve_tags(owm.id(), params.clone()).await?;
 

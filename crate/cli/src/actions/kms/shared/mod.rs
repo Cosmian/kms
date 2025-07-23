@@ -8,12 +8,12 @@ mod wrap_key;
 
 mod unwrap_key;
 
-pub use export_key::ExportKeyAction;
+pub use export_key::ExportSecretDataOrKeyAction;
 pub(crate) use get_key_uid::get_key_uid;
-pub use import_key::ImportKeyAction;
+pub use import_key::ImportSecretDataOrKeyAction;
 pub use locate::LocateObjectsAction;
-pub use unwrap_key::UnwrapKeyAction;
-pub use wrap_key::WrapKeyAction;
+pub use unwrap_key::UnwrapSecretDataOrKeyAction;
+pub use wrap_key::WrapSecretDataOrKeyAction;
 
 /// The size of a symmetric wrapping key in bytes derived from a password
 pub const SYMMETRIC_WRAPPING_KEY_SIZE: usize = 32;

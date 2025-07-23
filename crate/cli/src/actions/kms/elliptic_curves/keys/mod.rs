@@ -6,7 +6,10 @@ use self::{
     revoke_key::RevokeKeyAction,
 };
 use crate::{
-    actions::kms::shared::{ExportKeyAction, ImportKeyAction, UnwrapKeyAction, WrapKeyAction},
+    actions::kms::shared::{
+        ExportSecretDataOrKeyAction, ImportSecretDataOrKeyAction, UnwrapSecretDataOrKeyAction,
+        WrapSecretDataOrKeyAction,
+    },
     error::result::KmsCliResult,
 };
 
@@ -18,10 +21,10 @@ pub(crate) mod revoke_key;
 #[derive(Subcommand)]
 pub enum KeysCommands {
     Create(CreateKeyPairAction),
-    Export(ExportKeyAction),
-    Import(ImportKeyAction),
-    Wrap(WrapKeyAction),
-    Unwrap(UnwrapKeyAction),
+    Export(ExportSecretDataOrKeyAction),
+    Import(ImportSecretDataOrKeyAction),
+    Wrap(WrapSecretDataOrKeyAction),
+    Unwrap(UnwrapSecretDataOrKeyAction),
     Revoke(RevokeKeyAction),
     Destroy(DestroyKeyAction),
 }

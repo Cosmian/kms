@@ -29,7 +29,7 @@ static INIT_CRYPTO: Once = Once::new();
 
 /// Initialize the crypto provider used by rustls.
 /// Use AWS LC crypto provider which is FIPS certified
-fn initialize_aws_lc_crypto_provider() {
+pub(crate) fn initialize_aws_lc_crypto_provider() {
     {
         INIT_CRYPTO.call_once(|| {
             let provider = rustls::crypto::aws_lc_rs::default_provider();
@@ -42,7 +42,7 @@ fn initialize_aws_lc_crypto_provider() {
     }
 }
 
-/// Configuration for the `PyKMIP` socket server
+/// Configuration for the `py_kmip` socket server
 #[derive(Clone)]
 pub struct SocketServerParams<'a> {
     /// Server host
@@ -78,7 +78,7 @@ impl<'a> TryFrom<&'a ServerParams> for SocketServerParams<'a> {
     }
 }
 
-/// Server for handling `PyKMIP` requests over TLS socket
+/// Server for handling `py_kmip` requests over TLS socket
 pub struct SocketServer {
     host: String,
     port: u16,
@@ -86,7 +86,7 @@ pub struct SocketServer {
 }
 
 impl SocketServer {
-    /// Create a new `PyKMIP` socket server with the specified configuration
+    /// Create a new `py_kmip` socket server with the specified configuration
     ///
     /// # Errors
     /// - If the server certificates and key are invalid
@@ -171,7 +171,7 @@ impl SocketServer {
         let (tx, rx) = mpsc::channel::<KResult<()>>();
 
         let thread_handle = tokio::spawn(async move {
-            // we swallow the error if any, it will be received by the mpsc receiver
+            //We swallow the error, if any; the mpsc receiver will receive it
             let _swallowed = Self::start_listening(
                 &kms_server,
                 &addr,

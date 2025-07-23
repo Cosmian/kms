@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
-use super::kmip_types::VendorAttributeValue;
+use super::kmip_types::{Digest, VendorAttributeValue};
 use crate::{
     KmipError,
     kmip_0::kmip_types::{
@@ -187,6 +187,13 @@ pub struct Attributes {
     /// was destroyed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub destroy_date: Option<OffsetDateTime>,
+
+    /// The Digest attribute is a structure that contains the digest value of the key
+    /// or secret data (i.e., digest of the Key Material),
+    /// certificate (i.e., digest of the Certificate Value),
+    /// or opaque object (i.e., digest of the Opaque Data Value)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub digest: Option<Digest>,
 
     /// The Digital Signature Algorithm attribute specifies the digital signature algorithm
     /// that is used with the signing key.
@@ -688,6 +695,7 @@ impl Attributes {
         merge_option_field!(deactivation_date);
         merge_option_field!(description);
         merge_option_field!(destroy_date);
+        merge_option_field!(digest);
         merge_option_field!(digital_signature_algorithm);
         merge_option_field!(extractable);
         merge_option_field!(fresh);
@@ -895,6 +903,12 @@ pub enum Attribute {
     /// The Destroy Date attribute contains the date and time when the Managed Object
     /// was destroyed.
     DestroyDate(OffsetDateTime),
+
+    /// The Digest attribute is a structure that contains the digest value of the key
+    /// or secret data (i.e., digest of the Key Material),
+    /// certificate (i.e., digest of the Certificate Value),
+    /// or opaque object (i.e., digest of the Opaque Data Value)
+    Digest(Digest),
 
     /// The Digital Signature Algorithm attribute specifies the digital signature algorithm
     /// that is used with the signing key.
@@ -1154,6 +1168,9 @@ impl From<Attributes> for Vec<Attribute> {
         if let Some(destroy_date) = attributes.destroy_date {
             vec.push(Attribute::DestroyDate(destroy_date));
         }
+        if let Some(digest) = attributes.digest {
+            vec.push(Attribute::Digest(digest));
+        }
         if let Some(digital_signature_algorithm) = attributes.digital_signature_algorithm {
             vec.push(Attribute::DigitalSignatureAlgorithm(
                 digital_signature_algorithm,
@@ -1288,5 +1305,121 @@ impl From<Attributes> for Vec<Attribute> {
             vec.push(Attribute::X509CertificateSubject(x_509_certificate_subject));
         }
         vec
+    }
+}
+
+impl From<Vec<Attribute>> for Attributes {
+    fn from(attributes: Vec<Attribute>) -> Self {
+        let mut attrs = Self::default();
+        for attribute in attributes {
+            match attribute {
+                Attribute::ActivationDate(value) => attrs.activation_date = Some(value),
+                Attribute::AlternativeName(value) => attrs.alternative_name = Some(value),
+                Attribute::AlwaysSensitive(value) => attrs.always_sensitive = Some(value),
+                Attribute::ApplicationSpecificInformation(value) => {
+                    attrs.application_specific_information = Some(value);
+                }
+                Attribute::ArchiveDate(value) => attrs.archive_date = Some(value),
+                Attribute::AttributeIndex(value) => attrs.attribute_index = Some(value),
+                Attribute::CertificateAttributes(value) => {
+                    attrs.certificate_attributes = Some(value);
+                }
+                Attribute::CertificateType(value) => attrs.certificate_type = Some(value),
+                Attribute::CertificateLength(value) => attrs.certificate_length = Some(value),
+                Attribute::Comment(value) => attrs.comment = Some(value),
+                Attribute::CompromiseDate(value) => attrs.compromise_date = Some(value),
+                Attribute::CompromiseOccurrenceDate(value) => {
+                    attrs.compromise_occurrence_date = Some(value);
+                }
+                Attribute::ContactInformation(value) => attrs.contact_information = Some(value),
+                Attribute::Critical(value) => attrs.critical = Some(value),
+                Attribute::CryptographicAlgorithm(value) => {
+                    attrs.cryptographic_algorithm = Some(value);
+                }
+                Attribute::CryptographicDomainParameters(value) => {
+                    attrs.cryptographic_domain_parameters = Some(value);
+                }
+                Attribute::CryptographicLength(value) => attrs.cryptographic_length = Some(value),
+                Attribute::CryptographicParameters(value) => {
+                    attrs.cryptographic_parameters = Some(value);
+                }
+                Attribute::CryptographicUsageMask(value) => {
+                    attrs.cryptographic_usage_mask = Some(value);
+                }
+                Attribute::DeactivationDate(value) => attrs.deactivation_date = Some(value),
+                Attribute::Description(value) => attrs.description = Some(value),
+                Attribute::DestroyDate(value) => attrs.destroy_date = Some(value),
+                Attribute::Digest(value) => attrs.digest = Some(value),
+                Attribute::DigitalSignatureAlgorithm(value) => {
+                    attrs.digital_signature_algorithm = Some(value);
+                }
+                Attribute::Extractable(value) => attrs.extractable = Some(value),
+                Attribute::Fresh(value) => attrs.fresh = Some(value),
+                Attribute::InitialDate(value) => attrs.initial_date = Some(value),
+                Attribute::KeyFormatType(value) => attrs.key_format_type = Some(value),
+                Attribute::KeyValueLocation(value) => attrs.key_value_location = Some(value),
+                Attribute::KeyValuePresent(value) => attrs.key_value_present = Some(value),
+                Attribute::LastChangeDate(value) => attrs.last_change_date = Some(value),
+                Attribute::LeaseTime(value) => attrs.lease_time = Some(value),
+                Attribute::Link(value) => {
+                    attrs.link.get_or_insert_with(Vec::new).push(value);
+                }
+                Attribute::Name(value) => {
+                    attrs.name.get_or_insert_with(Vec::new).push(value);
+                }
+                Attribute::NistKeyType(value) => attrs.nist_key_type = Some(value),
+                Attribute::ObjectGroup(value) => attrs.object_group = Some(value),
+                Attribute::ObjectGroupMember(value) => attrs.object_group_member = Some(value),
+                Attribute::ObjectType(value) => attrs.object_type = Some(value),
+                Attribute::OpaqueDataType(value) => attrs.opaque_data_type = Some(value),
+                Attribute::OriginalCreationDate(value) => {
+                    attrs.original_creation_date = Some(value);
+                }
+                Attribute::Pkcs12FriendlyName(value) => attrs.pkcs_12_friendly_name = Some(value),
+                Attribute::ProcessStartDate(value) => attrs.process_start_date = Some(value),
+                Attribute::ProtectStopDate(value) => attrs.protect_stop_date = Some(value),
+                Attribute::ProtectionLevel(value) => attrs.protection_level = Some(value),
+                Attribute::ProtectionPeriod(value) => attrs.protection_period = Some(value),
+                Attribute::ProtectionStorageMasks(value) => {
+                    attrs.protection_storage_masks = Some(value);
+                }
+                Attribute::QuantumSafe(value) => attrs.quantum_safe = Some(value),
+                Attribute::RandomNumberGenerator(value) => {
+                    attrs.random_number_generator = Some(value);
+                }
+                Attribute::RevocationReason(value) => attrs.revocation_reason = Some(value),
+                Attribute::RotateDate(value) => attrs.rotate_date = Some(value),
+                Attribute::RotateGeneration(value) => attrs.rotate_generation = Some(value),
+                Attribute::RotateInterval(value) => attrs.rotate_interval = Some(value),
+                Attribute::RotateLatest(value) => attrs.rotate_latest = Some(value),
+                Attribute::RotateName(value) => attrs.rotate_name = Some(value),
+                Attribute::RotateOffset(value) => attrs.rotate_offset = Some(value),
+                Attribute::Sensitive(value) => attrs.sensitive = Some(value),
+                Attribute::ShortUniqueIdentifier(value) => {
+                    attrs.short_unique_identifier = Some(value);
+                }
+                Attribute::State(value) => attrs.state = Some(value),
+                Attribute::UniqueIdentifier(value) => attrs.unique_identifier = Some(value),
+                Attribute::UsageLimits(value) => attrs.usage_limits = Some(value),
+                Attribute::VendorAttribute(value) => {
+                    attrs
+                        .vendor_attributes
+                        .get_or_insert_with(Vec::new)
+                        .push(value);
+                }
+                Attribute::X509CertificateIdentifier(value) => {
+                    attrs.x_509_certificate_identifier = Some(value);
+                }
+                Attribute::X509CertificateIssuer(value) => {
+                    attrs.x_509_certificate_issuer = Some(value);
+                }
+                Attribute::X509CertificateSubject(value) => {
+                    attrs.x_509_certificate_subject = Some(value);
+                }
+                // NeverExtractable is not included in Attributes, so we ignore it
+                Attribute::NeverExtractable(_) => {}
+            }
+        }
+        attrs
     }
 }

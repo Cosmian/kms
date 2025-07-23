@@ -1,5 +1,5 @@
 use std::sync::Arc;
-
+use time::OffsetDateTime;
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::reexport::cosmian_cover_crypt::api::Covercrypt;
 #[cfg(feature = "non-fips")]
@@ -20,17 +20,18 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
     kmip_operations::{CreateKeyPair, CreateKeyPairResponse},
     kmip_types::{CryptographicAlgorithm, RecommendedCurve, UniqueIdentifier},
 };
+use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_types::State::PreActive;
 #[cfg(feature = "non-fips")]
 use tracing::warn;
 use tracing::{debug, info, trace};
 use uuid::Uuid;
-
 use crate::{
     core::{KMS, retrieve_object_utils::user_has_permission, wrapping::wrap_and_cache},
     error::KmsError,
     kms_bail,
     result::KResult,
 };
+use crate::core::operations::digest::digest;
 
 pub(crate) async fn create_key_pair(
     kms: &KMS,
@@ -80,9 +81,27 @@ pub(crate) async fn create_key_pair(
     let key_pair = generate_key_pair(request, &sk_uid, &pk_uid)?;
 
     trace!("create_key_pair: sk_uid: {sk_uid}, pk_uid: {pk_uid}");
+    let now = OffsetDateTime::now_utc()
+        .replace_millisecond(0)
+        .map_err(|e| KmsError::Default(e.to_string()))?;
 
     let mut private_key = key_pair.private_key().to_owned();
-    let private_key_attributes = private_key.attributes()?.clone();
+    // Set the state to pre-active and copy the attributes before the key gets wrapped
+    let private_key_attributes = {
+        let digest = digest(&private_key)?;
+        let attributes = private_key.attributes_mut()?;
+        // Update the state to PreActive
+        attributes.state = Some(PreActive);
+        // update the digest
+        attributes.digest = digest;
+        // update the initial date
+        attributes.initial_date = Some(now);
+        // update original creation date
+        attributes.original_creation_date = Some(now);
+        // update the last change date
+        attributes.last_change_date = Some(now);
+        attributes.clone()
+    };
     let private_key_tags = private_key_attributes.get_tags();
     let cryptographic_algorithm = private_key_attributes.cryptographic_algorithm;
     wrap_and_cache(
@@ -95,7 +114,22 @@ pub(crate) async fn create_key_pair(
     .await?;
 
     let mut public_key = key_pair.public_key().to_owned();
-    let public_key_attributes = public_key.attributes()?.clone();
+    // Set the state to pre-active and copy the attributes before the key gets wrapped
+    let public_key_attributes = {
+        let digest = digest(&public_key)?;
+        let attributes = public_key.attributes_mut()?;
+        // Update the state to PreActive
+        attributes.state = Some(PreActive);
+        // update the digest
+        attributes.digest = digest;
+        // update the initial date
+        attributes.initial_date = Some(now);
+        // update original creation date
+        attributes.original_creation_date = Some(now);
+        // update the last change date
+        attributes.last_change_date = Some(now);
+        attributes.clone()
+    };
     let public_key_tags = public_key_attributes.get_tags();
     wrap_and_cache(
         kms,

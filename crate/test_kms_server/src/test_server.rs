@@ -18,7 +18,6 @@ use cosmian_kms_server::{
     },
     start_kms_server::start_kms_server,
 };
-use cosmian_logger::log_init;
 use tempfile::TempDir;
 use tokio::sync::OnceCell;
 use tracing::{info, log::error, trace, warn};
@@ -317,8 +316,6 @@ pub async fn start_test_server_with_options(
     hsm_options: Option<HsmOptions>,
     privileged_users: Option<Vec<String>>,
 ) -> Result<TestsContext, KmsClientError> {
-    log_init(option_env!("RUST_LOG"));
-
     let server_params = generate_server_params(
         db_config.clone(),
         port,
@@ -336,6 +333,8 @@ pub async fn start_test_server_with_options(
         authentication_options.do_not_send_jwt_token,
         authentication_options.do_not_send_api_token,
     )?;
+
+    info!(" -- Test KMS server configuration: {:#?}", server_params);
 
     info!(
         " -- Test KMS owner client configuration: {:#?}",

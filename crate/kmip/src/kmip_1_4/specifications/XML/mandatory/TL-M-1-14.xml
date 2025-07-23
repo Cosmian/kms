@@ -1,0 +1,69 @@
+<KMIP>
+
+<!--
+     Key Management Interoperability Protocol Profiles Version 1.4
+     OASIS Standard
+     22 November 2017
+     Copyright (c) OASIS Open 2017. All Rights Reserved.
+     Source: http://docs.oasis-open.org/kmip/profiles/v1.4/os/test-cases/kmip-v1.4/mandatory/
+     Latest version of the specification: http://docs.oasis-open.org/kmip/profiles/v1.4/kmip-profiles-v1.4.html
+     TC IPR Statement: https://www.oasis-open.org/committees/kmip/ipr.php
+-->
+<RequestMessage>
+  <RequestHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="1"/>
+      <ProtocolVersionMinor type="Integer" value="4"/>
+    </ProtocolVersion>
+    <BatchCount type="Integer" value="1"/>
+  </RequestHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="Query"/>
+    <UniqueBatchItemID type="ByteString" value="01"/>
+    <RequestPayload>
+      <QueryFunction type="Enumeration" value="QueryOperations"/>
+      <QueryFunction type="Enumeration" value="QueryObjects"/>
+      <QueryFunction type="Enumeration" value="QueryServerInformation"/>
+      <QueryFunction type="Enumeration" value="QueryApplicationNamespaces"/>
+    </RequestPayload>
+  </BatchItem>
+</RequestMessage>
+
+<ResponseMessage>
+  <ResponseHeader>
+    <ProtocolVersion>
+      <ProtocolVersionMajor type="Integer" value="1"/>
+      <ProtocolVersionMinor type="Integer" value="4"/>
+    </ProtocolVersion>
+    <TimeStamp type="DateTime" value="$NOW"/>
+    <BatchCount type="Integer" value="1"/>
+  </ResponseHeader>
+  <BatchItem>
+    <Operation type="Enumeration" value="Query"/>
+    <UniqueBatchItemID type="ByteString" value="01"/>
+    <ResultStatus type="Enumeration" value="Success"/>
+    <ResponsePayload>
+      <Operation type="Enumeration" value="Query"/>
+      <Operation type="Enumeration" value="Locate"/>
+      <Operation type="Enumeration" value="Destroy"/>
+      <Operation type="Enumeration" value="Get"/>
+      <Operation type="Enumeration" value="Create"/>
+      <Operation type="Enumeration" value="Register"/>
+      <Operation type="Enumeration" value="GetAttributes"/>
+      <Operation type="Enumeration" value="GetAttributeList"/>
+      <Operation type="Enumeration" value="AddAttribute"/>
+      <Operation type="Enumeration" value="ModifyAttribute"/>
+      <Operation type="Enumeration" value="DeleteAttribute"/>
+      <Operation type="Enumeration" value="Activate"/>
+      <Operation type="Enumeration" value="Revoke"/>
+      <Operation type="Enumeration" value="Check"/>
+      <ObjectType type="Enumeration" value="SymmetricKey"/>
+      <ObjectType type="Enumeration" value="Template"/>
+      <VendorIdentification type="TextString" value="server-vendor.com"/>
+      <ServerInformation>
+      </ServerInformation>
+    </ResponsePayload>
+  </BatchItem>
+</ResponseMessage>
+
+</KMIP>

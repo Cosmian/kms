@@ -29,6 +29,7 @@ impl actix_web::error::ResponseError for KmsError {
             | Self::Redis(_)
             | Self::Findex(_)
             | Self::Certificate(_)
+            | Self::Tls(_)
             | Self::ServerError(_)
             | Self::Default(_) => StatusCode::INTERNAL_SERVER_ERROR,
 

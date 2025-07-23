@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.6.0] - 2025-07-23
+
+### 🐛 Bug Fixes
+
+- Support for TLS 1.3 on the HTTPS port of the KMIP server (#458)
+- Fixed RevocationReasonCode in KMIP 1.x (#460)
+
+### 🚀 Features
+
+- Better support of PyKMIP client (#438)
+- Support for Percona PostgreSQL TDE (Transparent Data Encryption) (#464)
+- Support for Secret Data (#398)
+
 ## [5.5.1] - 2025-07-09
 
 ### 🐛 Bug Fixes
@@ -9,7 +22,6 @@ All notable changes to this project will be documented in this file.
 - Fixed an issue with Locate failing when an HSM is present
 - Fixed missing attributes when the wrapped object is not in the cache (#462)
 - Added support for SoftHsmV2 (#457)
-
 
 ## [5.5.0] - 2025-07-08
 
@@ -27,7 +39,7 @@ All notable changes to this project will be documented in this file.
 
 ### ⚙️ Miscellaneous Tasks
 
-- Display items ID on google keypairs creation command
+- Display items ID on Google keypairs creation command
 
 ### 📚 Documentation
 
@@ -67,6 +79,7 @@ All notable changes to this project will be documented in this file.
 
 - In UI, fix `IvCounterNonce` (#446)
 - *(Linux packages)* Save and restore conf during installation
+- Interoperability fixes with PyKMIP
 
 ### 📚 Documentation
 

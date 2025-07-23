@@ -10,7 +10,7 @@ use serde::{
 };
 use time::OffsetDateTime;
 // use strum::VariantNames;
-use tracing::{debug, instrument, trace};
+use tracing::{instrument, trace};
 use zeroize::Zeroizing;
 
 use super::{TTLV, TTLValue, error::TtlvError};
@@ -258,7 +258,17 @@ impl ser::Serializer for &mut TtlvSerializer {
     // Serialize a byte array as a TTLV byte string
     #[instrument(level = "trace", skip(self))]
     fn serialize_bytes(self, v: &[u8]) -> Result<Self::Ok> {
-        self.current_mut()?.value = TTLValue::ByteString(v.to_owned());
+        if let Ok(current) = self.current_mut() {
+            current.value = TTLValue::ByteString(v.to_owned());
+        } else {
+            // direct serialization of a byte string
+            // create a new structure parent to which we will add the fields of the struct
+            let tag = "[BYTE_STRING]".to_owned();
+            self.stack.push(TTLV {
+                tag,
+                value: TTLValue::ByteString(v.to_owned()),
+            });
+        }
         Ok(())
     }
 
@@ -321,6 +331,7 @@ impl ser::Serializer for &mut TtlvSerializer {
             ByteString(Vec<u8>),
             BigUint(BigUint),
             BigInt(BigInt),
+            DateTime(OffsetDateTime),
         }
         trait Detect {
             fn detect(&self) -> Detected;
@@ -345,14 +356,21 @@ impl ser::Serializer for &mut TtlvSerializer {
         // BigUint should go and be replace by BigInt everywhere
         impl Detect for &BigUint {
             fn detect(&self) -> Detected {
-                debug!("serializing a Big Uint {:?}", self);
+                trace!("serializing a Big Uint {:?}", self);
                 Detected::BigUint(self.to_owned().clone())
             }
         }
         impl Detect for &BigInt {
             fn detect(&self) -> Detected {
-                debug!("serializing a Big Uint {:?}", self);
+                trace!("serializing a Big Uint {:?}", self);
                 Detected::BigInt(self.to_owned().clone())
+            }
+        }
+
+        impl Detect for &OffsetDateTime {
+            fn detect(&self) -> Detected {
+                trace!("serializing a Date Time {:?}", self);
+                Detected::DateTime(*self.to_owned())
             }
         }
 
@@ -379,6 +397,13 @@ impl ser::Serializer for &mut TtlvSerializer {
                     .peek_mut()
                     .ok_or_else(|| TtlvError::custom("no TTLV found".to_owned()))?
                     .value = TTLValue::BigInteger(big_int.into());
+                Ok(())
+            }
+            Detected::DateTime(date_time) => {
+                self.stack
+                    .peek_mut()
+                    .ok_or_else(|| TtlvError::custom("no TTLV found".to_owned()))?
+                    .value = TTLValue::DateTime(date_time);
                 Ok(())
             }
         }

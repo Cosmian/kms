@@ -29,7 +29,7 @@ use crate::{
             validate_certificate::ValidateCertificatesAction,
         },
         rsa::keys::create_key_pair::CreateKeyPairAction,
-        shared::ExportKeyAction,
+        shared::ExportSecretDataOrKeyAction,
     },
     error::result::KmsCliResult,
 };
@@ -272,7 +272,7 @@ async fn check_certificate_and_public_key_linked(
     let tmp_dir = TempDir::new().unwrap();
     let tmp_path = tmp_dir.path();
     let tmp_exported_pubkey = tmp_path.join("exported_pubkey.json");
-    ExportKeyAction {
+    ExportSecretDataOrKeyAction {
         key_file: tmp_exported_pubkey.clone(),
         key_id: Some(public_key_link.to_string()),
         ..Default::default()
@@ -304,7 +304,7 @@ async fn check_public_and_private_key_linked(
     let tmp_dir = TempDir::new().unwrap();
     let tmp_path = tmp_dir.path();
     let tmp_exported_privkey = tmp_path.join("exported_privkey.json");
-    ExportKeyAction {
+    ExportSecretDataOrKeyAction {
         key_file: tmp_exported_privkey.clone(),
         key_id: Some(private_key_link.to_string()),
         ..Default::default()

@@ -1,7 +1,7 @@
 [Chapter 8](https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html#_Toc57115738) of the KMIP 2.1
 specification defines the Messages functionality, which enables sending/receiving multiple requests/responses at
 once (also known as bulk mode).
-This is the standard way to communicate with the KMIP server using the Binary protocol on port 4696 or the JSON protocol
+This is the standard way to communicate with the KMIP server using the Binary protocol on port 5696 or the JSON protocol
 on port 9998 and endpoint `/kmip`.
 
 The `/kmip/2_1` endpoint is a Cosmian extension allowing the posting of Operations directly to the server without

@@ -24,9 +24,9 @@ use crate::{
     },
 };
 
-/// Export a key from the KMS
+/// Export a key or secret data from the KMS
 ///
-/// If not format is specified, the key is exported as a json-ttlv with a
+/// If not format is specified, the key or secret data is exported as a json-ttlv with a
 /// `KeyFormatType` that follows the section 4.26 of the KMIP specification.
 /// <https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html#_Toc57115585>
 ///
@@ -43,17 +43,17 @@ use crate::{
 /// an error is returned if multiple keys matching the tags are found.
 #[derive(Parser, Default, Debug)]
 #[clap(verbatim_doc_comment)]
-pub struct ExportKeyAction {
+pub struct ExportSecretDataOrKeyAction {
     /// The file to export the key to
     #[clap(required = true)]
     pub(crate) key_file: PathBuf,
 
-    /// The key unique identifier stored in the KMS.
+    /// The key or secret data unique identifier stored in the KMS.
     /// If not specified, tags should be specified
     #[clap(long = KEY_ID, short = 'k', group = "key-tags")]
     pub(crate) key_id: Option<String>,
 
-    /// Tag to use to retrieve the key when no key id is specified.
+    /// Tag to use to retrieve the key when no key or secret data id is specified.
     /// To specify multiple tags, use the option multiple times.
     #[clap(long = "tag", short = 't', value_name = "TAG", group = "key-tags")]
     pub(crate) tags: Option<Vec<String>>,
@@ -67,6 +67,7 @@ pub struct ExportKeyAction {
     ///       - symmetric keys
     ///       - Covercrypt keys
     ///       - wrapped keys
+    ///       - secret data
     #[clap(
         long = "key-format",
         short = 'f',
@@ -126,8 +127,8 @@ pub struct ExportKeyAction {
     pub(crate) authenticated_additional_data: Option<String>,
 }
 
-impl ExportKeyAction {
-    /// Export a key from the KMS
+impl ExportSecretDataOrKeyAction {
+    /// Export a key or secret data from the KMS
     ///
     /// # Errors
     ///

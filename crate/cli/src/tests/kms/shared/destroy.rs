@@ -13,7 +13,7 @@ use crate::actions::kms::cover_crypt::keys::{
 use crate::{
     actions::kms::{
         elliptic_curves::keys::create_key_pair::CreateKeyPairAction,
-        shared::ExportKeyAction,
+        shared::ExportSecretDataOrKeyAction,
         symmetric::keys::{
             create_key::CreateKeyAction, destroy_key::DestroyKeyAction, revoke_key::RevokeKeyAction,
         },
@@ -29,7 +29,7 @@ async fn assert_destroyed(ctx: &TestsContext, key_id: &str, remove: bool) -> Kms
 
     // should not be able to Get....
     assert!(
-        ExportKeyAction {
+        ExportSecretDataOrKeyAction {
             key_id: Some(key_id.to_string()),
             key_file: tmp_path.join("output.export"),
             ..Default::default()
@@ -41,7 +41,7 @@ async fn assert_destroyed(ctx: &TestsContext, key_id: &str, remove: bool) -> Kms
 
     // depending on whether the key is removed or not,
     // the key metadata should be exportable or not
-    let export_res = ExportKeyAction {
+    let export_res = ExportSecretDataOrKeyAction {
         key_id: Some(key_id.to_string()),
         key_file: tmp_path.join("output.export"),
         allow_revoked: true,
@@ -573,7 +573,7 @@ async fn test_destroy_cover_crypt() -> KmsCliResult<()> {
         let tmp_path = tmp_dir.path();
         // should able to Get the Master Keys and user key 2
         assert!(
-            ExportKeyAction {
+            ExportSecretDataOrKeyAction {
                 key_id: Some(master_private_key_id.clone()),
                 key_file: tmp_path.join("output.export"),
                 ..Default::default()
@@ -583,7 +583,7 @@ async fn test_destroy_cover_crypt() -> KmsCliResult<()> {
             .is_ok()
         );
         assert!(
-            ExportKeyAction {
+            ExportSecretDataOrKeyAction {
                 key_id: Some(master_public_key_id.clone()),
                 key_file: tmp_path.join("output.export"),
                 ..Default::default()
@@ -593,7 +593,7 @@ async fn test_destroy_cover_crypt() -> KmsCliResult<()> {
             .is_ok()
         );
         assert!(
-            ExportKeyAction {
+            ExportSecretDataOrKeyAction {
                 key_id: Some(user_key_id_2.clone()),
                 key_file: tmp_path.join("output.export"),
                 ..Default::default()
@@ -605,4 +605,48 @@ async fn test_destroy_cover_crypt() -> KmsCliResult<()> {
     }
 
     Ok(())
+}
+
+#[tokio::test]
+async fn test_destroy_secret_data() -> KmsCliResult<()> {
+    let ctx = start_default_test_kms_server().await;
+
+    // Create secret data
+    let secret_id =
+        crate::actions::kms::secret_data::create_secret::CreateSecretDataAction::default()
+            .run(ctx.get_owner_client())
+            .await?
+            .to_string();
+
+    // destroy should not work when not revoked
+    assert!(
+        DestroyKeyAction {
+            key_id: Some(secret_id.clone()),
+            remove: false,
+            tags: None,
+        }
+        .run(ctx.get_owner_client())
+        .await
+        .is_err()
+    );
+
+    // revoke then destroy
+    RevokeKeyAction {
+        key_id: Some(secret_id.clone()),
+        revocation_reason: "revocation test".to_string(),
+        tags: None,
+    }
+    .run(ctx.get_owner_client())
+    .await?;
+
+    DestroyKeyAction {
+        key_id: Some(secret_id.clone()),
+        remove: false,
+        tags: None,
+    }
+    .run(ctx.get_owner_client())
+    .await?;
+
+    // assert
+    assert_destroyed(ctx, &secret_id, false).await
 }

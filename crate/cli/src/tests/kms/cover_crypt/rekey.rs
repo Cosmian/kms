@@ -25,7 +25,7 @@ use crate::{
                 rekey::{PruneAction, ReKeyAction},
             },
         },
-        shared::{ExportKeyAction, ImportKeyAction},
+        shared::{ExportSecretDataOrKeyAction, ImportSecretDataOrKeyAction},
         symmetric::keys::create_key::CreateKeyAction,
     },
     error::result::KmsCliResult,
@@ -95,7 +95,7 @@ async fn test_rekey_error() -> KmsCliResult<()> {
 
     // export a wrapped key
     let exported_wrapped_key_file = tmp_path.join("exported_wrapped_master_private.key");
-    ExportKeyAction {
+    ExportSecretDataOrKeyAction {
         key_id: Some(master_secret_key_id.to_string()),
         key_file: exported_wrapped_key_file.clone(),
         wrap_key_id: Some(symmetric_key_id),
@@ -105,7 +105,7 @@ async fn test_rekey_error() -> KmsCliResult<()> {
     .await?;
 
     // import it wrapped
-    let wrapped_key_id = ImportKeyAction {
+    let wrapped_key_id = ImportSecretDataOrKeyAction {
         key_file: exported_wrapped_key_file.clone(),
         replace_existing: true,
         ..Default::default()
@@ -232,7 +232,7 @@ async fn test_enc_dec_rekey() -> KmsCliResult<()> {
 
     // export the user_decryption_key
     let exported_user_decryption_key_file = tmp_path.join("exported_user_decryption.key");
-    ExportKeyAction {
+    ExportSecretDataOrKeyAction {
         key_id: Some(user_decryption_key_id),
         key_file: exported_user_decryption_key_file.clone(),
         ..Default::default()
@@ -310,7 +310,7 @@ async fn test_rekey_prune() -> KmsCliResult<()> {
 
     // export the user_decryption_key
     let exported_user_decryption_key_file = tmp_path.join("exported_user_decryption.key");
-    ExportKeyAction {
+    ExportSecretDataOrKeyAction {
         key_id: Some(user_decryption_key_id.to_string()),
         key_file: exported_user_decryption_key_file.clone(),
         ..Default::default()
@@ -361,7 +361,7 @@ async fn test_rekey_prune() -> KmsCliResult<()> {
     .await?;
 
     // import the non rotated user_decryption_key
-    let old_user_decryption_key_id = ImportKeyAction {
+    let old_user_decryption_key_id = ImportSecretDataOrKeyAction {
         key_file: exported_user_decryption_key_file.clone(),
         replace_existing: false,
         key_usage: Some(vec![KeyUsage::Unrestricted]),

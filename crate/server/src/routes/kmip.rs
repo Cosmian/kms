@@ -9,19 +9,20 @@ use cosmian_kms_server_database::reexport::{
         self, KmipResultHelper,
         kmip_0::{
             kmip_messages::{
-                RequestMessage, ResponseMessage, ResponseMessageBatchItemVersioned,
-                ResponseMessageHeader,
+                RequestMessage, RequestMessageBatchItemVersioned, ResponseMessage,
+                ResponseMessageBatchItemVersioned, ResponseMessageHeader,
             },
-            kmip_types::ProtocolVersion,
+            kmip_types::{BlockCipherMode, ProtocolVersion},
         },
         ttlv::{KmipEnumerationVariant, KmipFlavor, TTLV, TTLValue, from_ttlv, to_ttlv},
     },
+    cosmian_kms_crypto::crypto::symmetric::symmetric_ciphers::AES_128_GCM_MAC_LENGTH,
     cosmian_kms_interfaces::SessionParams,
 };
 use reqwest::header::CONTENT_TYPE;
 use serde_json::Value;
 use time::OffsetDateTime;
-use tracing::{debug, error, info, span};
+use tracing::{debug, error, info, span, trace, warn};
 
 use crate::{
     core::{
@@ -34,13 +35,13 @@ use crate::{
 
 /// When an Error occurs and generating an Error Response message fails, this message is sent
 /// with "Unknown Error" as the error message
-const TTLV_ERROR_RESPONSE: [u8; 152] = [
-    66, 0, 123, 1, 0, 0, 0, 144, 66, 0, 122, 1, 0, 0, 0, 72, 66, 0, 105, 1, 0, 0, 0, 32, 66, 0,
+const TTLV_ERROR_RESPONSE: [u8; 160] = [
+    66, 0, 123, 1, 0, 0, 0, 152, 66, 0, 122, 1, 0, 0, 0, 72, 66, 0, 105, 1, 0, 0, 0, 32, 66, 0,
     106, 2, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0, 0, 0, 66, 0, 107, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0,
-    66, 0, 146, 3, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 66, 0, 13, 2, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0,
-    0, 0, 66, 0, 15, 1, 0, 0, 0, 56, 66, 0, 127, 5, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0, 0, 0, 66, 0, 126,
-    5, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 0, 66, 0, 125, 7, 0, 0, 0, 13, 85, 110, 107, 110, 111, 119,
-    110, 32, 69, 114, 114, 111, 114, 0, 0, 0,
+    66, 0, 146, 9, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 66, 0, 13, 2, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0,
+    0, 0, 66, 0, 15, 1, 0, 0, 0, 64, 66, 0, 127, 5, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0, 0, 0, 66, 0, 126,
+    5, 0, 0, 0, 4, 0, 0, 0, 5, 0, 0, 0, 0, 66, 0, 125, 7, 0, 0, 0, 19, 85, 110, 114, 101, 99, 111,
+    118, 101, 114, 97, 98, 108, 101, 32, 101, 114, 114, 111, 114, 0, 0, 0, 0, 0,
 ];
 
 /// Generate an "Invalid Message" KMIP error response message in TTLV format
@@ -322,6 +323,7 @@ pub(crate) async fn handle_ttlv_bytes(user: &str, ttlv_bytes: &[u8], kms: &Arc<K
         .await
         .unwrap_or_else(|e| {
             let response_message = invalid_response_message(major, minor, e.to_string());
+            warn!(target: "kmip", "Failed to process request:\n{response_message:#?}");
             // convert to TTLV
             let response_ttlv = to_ttlv(&response_message).unwrap_or_else(|e| {
                 error!(target: "kmip", "Failed to convert response message to TTLV: {}", e);
@@ -329,7 +331,7 @@ pub(crate) async fn handle_ttlv_bytes(user: &str, ttlv_bytes: &[u8], kms: &Arc<K
             });
             // convert to bytes
             TTLV::to_bytes(&response_ttlv, KmipFlavor::Kmip2).unwrap_or_else(|e| {
-                error!(target: "kmip", "Failed to convert TTLV to bytes: {}", e);
+                error!(target: "kmip", "Failed to convert Response TTLV to bytes: {}: TTLV:\n{:#?}", e,response_ttlv);
                 TTLV_ERROR_RESPONSE.to_vec()
             })
         })
@@ -352,35 +354,79 @@ async fn handle_ttlv_bytes_inner(
         )));
     };
 
+    // log the request bytes
+    debug!(
+        target: "kmip",
+        user=user,
+        "Request bytes: {}",
+        hex::encode(ttlv_bytes)
+    );
+
     // parse the TTLV bytes
     let ttlv = TTLV::from_bytes(ttlv_bytes, kmip_flavor).context("Failed to parse TTLV")?;
-
+    let tag = ttlv.tag.clone();
     info!(
         target: "kmip",
         user=user,
-        tag=ttlv.tag.as_str(),
-        "POST /kmip {}.{} Binary. Request: {:?} {}", major, minor, ttlv.tag.as_str(), user
+        tag=tag,
+        "POST /kmip {}.{} Binary. Request: {:?} {}", major, minor, tag, user
+    );
+    debug!(
+        target: "kmip",
+        user=user,
+        tag=tag,
+        "Request TTLV: {ttlv:#?}"
     );
 
     // parse the Request Message
-    let request_message = from_ttlv::<RequestMessage>(ttlv)
+    let mut request_message = from_ttlv::<RequestMessage>(ttlv)
         .map_err(|e| KmsError::InvalidRequest(format!("Failed to parse RequestMessage: {e}")))?;
 
-    // log the request
-    debug!("Request Message: {request_message:#?}");
+    perform_request_tweaks(&mut request_message, major, minor);
 
-    let response_message = Box::pin(message(kms, request_message, user, None)).await?;
+    // log the request
+    trace!(
+        target: "kmip",
+        user=user,
+        tag=tag,
+        "Request Message: {request_message:#?}"
+    );
+
+    let mut response_message = Box::pin(message(kms, request_message, user, None)).await?;
+
+    // Perform 1.1 and 1.2 Response Tweaks to ensure compatibility
+    perform_response_tweaks(&mut response_message, major, minor);
 
     // log the response
-    debug!("Response Message: {response_message:#?}");
+    trace!(
+        target: "kmip",
+        user=user,
+        tag=tag,
+        "Response Message: {response_message:#?}"
+    );
 
     // serialize the response to TTLV
     let response_ttlv = to_ttlv(&response_message)
         .map_err(|e| KmsError::InvalidRequest(format!("Failed to serialize response: {e}")))?;
 
+    debug!(
+        target: "kmip",
+        user=user,
+        tag=tag,
+        "Response Message TTLV: {response_ttlv:#?}"
+    );
+
     // convert the TTLV to bytes
     let response_bytes = TTLV::to_bytes(&response_ttlv, kmip_flavor)
         .map_err(|e| KmsError::InvalidRequest(format!("Failed to convert TTLV to bytes: {e}")))?;
+
+    debug!(
+        target: "kmip",
+        user=user,
+        tag=tag,
+        "Response Message Bytes: {}", hex::encode(&response_bytes)
+    );
+
     Ok(response_bytes)
 }
 
@@ -509,5 +555,99 @@ mod local_tests {
             .expect("Failed to parse response");
         // make sure we can parse the TTLV
         let _response: ResponseMessage = from_ttlv(ttlv).expect("Failed to parse response");
+    }
+}
+
+/// Perform response tweaks for KMIP 1.1 and 1.2 since we only support structures for KMIP 1.4 and 2.1
+fn perform_response_tweaks(response: &mut ResponseMessage, major: i32, minor: i32) {
+    // KMIP 1.1 and 1.2 Response Tweaks
+    if major == 1 && minor <= 2 {
+        // Encrypt Response does not have the Authenticated Encryption Tag,
+        // so we must concatenate the value with the Data field
+        for batch_item in &mut response.batch_item {
+            let ResponseMessageBatchItemVersioned::V14(item) = batch_item else {
+                continue; // Skip if not V14
+            };
+            // If the operation is Encrypt and the response payload is present,
+            // we need to concatenate the Authenticated Encryption Tag with the Data field
+            // Check if the operation is Encrypt
+            if let Some(cosmian_kmip::kmip_1_4::kmip_operations::Operation::EncryptResponse(
+                encrypt_response,
+            )) = item.response_payload.as_mut()
+            {
+                // Concatenate the Authenticated Encryption Tag with the Data field
+                if let Some(auth_tag) = encrypt_response.authenticated_encryption_tag.take() {
+                    if let Some(data) = encrypt_response.data.as_mut() {
+                        data.extend_from_slice(&auth_tag);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Perform response tweaks for KMIP 1.1 and 1.2 since we only support structures for KMIP 1.4 and 2.1
+fn perform_request_tweaks(response: &mut RequestMessage, major: i32, minor: i32) {
+    // KMIP 1.1 and 1.2 Response Tweaks
+    if major == 1 && minor <= 2 {
+        // Decrypt we request does not have the Authenticated Encryption Tag,
+        // so we must extract it from the data field when the encryption algorithm is an authenticated encryption algorithm
+        for batch_item in &mut response.batch_item {
+            let RequestMessageBatchItemVersioned::V14(item) = batch_item else {
+                continue; // Skip if not V14
+            };
+            // If the operation is Encrypt and the response payload is present,
+            // we need to extract the Authenticated Encryption Tag from the Data field
+            // when the encryption algorithm is an authenticated encryption algorithm
+            if let cosmian_kmip::kmip_1_4::kmip_operations::Operation::Decrypt(decrypt) =
+                &mut item.request_payload
+            {
+                // Check if the encryption algorithm is an authenticated encryption algorithm
+                let cryptographic_parameters =
+                    decrypt.cryptographic_parameters.clone().unwrap_or_else(|| {
+                        cosmian_kmip::kmip_1_4::kmip_data_structures::CryptographicParameters {
+                            cryptographic_algorithm: Some(
+                                cosmian_kmip::kmip_1_4::kmip_types::CryptographicAlgorithm::AES,
+                            ),
+                            block_cipher_mode: Some(BlockCipherMode::GCM),
+                            ..Default::default()
+                        }
+                    });
+                if cryptographic_parameters.cryptographic_algorithm.as_ref()
+                    == Some(&cosmian_kmip::kmip_1_4::kmip_types::CryptographicAlgorithm::AES)
+                {
+                    let block_cipher_mode = cryptographic_parameters
+                        .block_cipher_mode
+                        .as_ref()
+                        .unwrap_or(&BlockCipherMode::GCM);
+
+                    let len = match block_cipher_mode {
+                        BlockCipherMode::GCM | BlockCipherMode::GCMSIV => AES_128_GCM_MAC_LENGTH,
+                        BlockCipherMode::CBC | BlockCipherMode::ECB | BlockCipherMode::XTS => 0,
+                        x => {
+                            warn!(
+                                "Unsupported Block Cipher Mode for AES: {x:?}. The Authenticated \
+                                 Encryption Tag will NOT be extracted."
+                            );
+                            0
+                        }
+                    };
+                    if len > 0 {
+                        // Extract the Authenticated Encryption Tag from the Data field
+                        if let Some(data) = &mut decrypt.data {
+                            // Assuming the last `len` bytes are the Authenticated Encryption Tag
+                            if data.len() >= len {
+                                debug!(
+                                    "This is a {major}.{minor} Decrypt message. Extracting \
+                                     Authenticated Encryption Tag of length {len} from Data field"
+                                );
+                                let auth_tag = data.split_off(data.len() - len);
+                                decrypt.authenticated_encryption_tag = Some(auth_tag);
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }

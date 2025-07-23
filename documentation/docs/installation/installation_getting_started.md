@@ -24,7 +24,7 @@ For high availability and scalability, refer to the [High Availability Guide](./
     ```
 
     - The KMS UI is available at `http://localhost:9998/ui`.
-    - The KMS REST API is available on `http://localhost:9998`, 
+    - The KMS REST API is available on `http://localhost:9998`,
     - The server stores its data inside the container in the `/root/cosmian-kms/sqlite-data` directory.
 
     A FIPS version is also available:
@@ -34,7 +34,7 @@ For high availability and scalability, refer to the [High Availability Guide](./
     ```
 
     To persist data between restarts, mount the `/root/cosmian-kms/sqlite-data` path to a filesystem
-    directory or a Docker volume: 
+    directory or a Docker volume:
 
     ```sh
     docker run --rm -p 9998:9998 \
@@ -57,16 +57,16 @@ For high availability and scalability, refer to the [High Availability Guide](./
 
     ```sh
     sudo apt update && sudo apt install -y wget
-    wget https://package.cosmian.com/kms/5.5.1/ubuntu-22.04/cosmian-kms-server_5.5.1-1_amd64.deb
-    sudo apt install ./cosmian-kms-server_5.5.1-1_amd64.deb
+    wget https://package.cosmian.com/kms/5.6.0/ubuntu-22.04/cosmian-kms-server_5.6.0-1_amd64.deb
+    sudo apt install ./cosmian-kms-server_5.6.0-1_amd64.deb
     sudo cosmian_kms --version
     ```
 
     Or install the FIPS version:
 
     ```sh
-    wget https://package.cosmian.com/kms/5.5.1/ubuntu-22.04/cosmian-kms-server-fips_5.5.1-1_amd64.deb
-    sudo apt install ./cosmian-kms-server-fips_5.5.1-1_amd64.deb
+    wget https://package.cosmian.com/kms/5.6.0/ubuntu-22.04/cosmian-kms-server-fips_5.6.0-1_amd64.deb
+    sudo apt install ./cosmian-kms-server-fips_5.6.0-1_amd64.deb
     sudo cosmian_kms --version
     ```
 
@@ -76,7 +76,7 @@ For high availability and scalability, refer to the [High Availability Guide](./
     ```sh
     sudo systemctl start cosmian_kms
     ```
-    
+
     - The server uses the configuration file located at `/etc/cosmian/kms.toml`.
     - The KMS UI is available at `http://localhost:9998/ui`.
 
@@ -86,16 +86,16 @@ For high availability and scalability, refer to the [High Availability Guide](./
 
     ```sh
     sudo apt update && sudo apt install -y wget
-    wget https://package.cosmian.com/kms/5.5.1/ubuntu-24.04/cosmian-kms-server_5.5.1-1_amd64.deb
-    sudo apt install ./cosmian-kms-server_5.5.1-1_amd64.deb
+    wget https://package.cosmian.com/kms/5.6.0/ubuntu-24.04/cosmian-kms-server_5.6.0-1_amd64.deb
+    sudo apt install ./cosmian-kms-server_5.6.0-1_amd64.deb
     sudo cosmian_kms --version
     ```
 
     Or install the FIPS version:
 
     ```sh
-    wget https://package.cosmian.com/kms/5.5.1/ubuntu-24.04/cosmian-kms-server-fips_5.5.1-1_amd64.deb
-    sudo apt install ./cosmian-kms-server-fips_5.5.1-1_amd64.deb
+    wget https://package.cosmian.com/kms/5.6.0/ubuntu-24.04/cosmian-kms-server-fips_5.6.0-1_amd64.deb
+    sudo apt install ./cosmian-kms-server-fips_5.6.0-1_amd64.deb
     sudo cosmian_kms --version
     ```
 
@@ -105,7 +105,7 @@ For high availability and scalability, refer to the [High Availability Guide](./
     ```sh
     sudo systemctl start cosmian_kms
     ```
-    
+
     - The server uses the configuration file located at `/etc/cosmian/kms.toml`.
     - The KMS UI is available at `http://localhost:9998/ui`.
 
@@ -115,8 +115,8 @@ For high availability and scalability, refer to the [High Availability Guide](./
 
     ```sh
     sudo dnf update && sudo dnf install -y wget
-    wget https://package.cosmian.com/kms/5.5.1/rockylinux8/cosmian_kms_server-5.5.1-1.x86_64.rpm
-    sudo dnf install ./cosmian_kms_server-5.5.1-1.x86_64.rpm
+    wget https://package.cosmian.com/kms/5.6.0/rockylinux8/cosmian_kms_server-5.6.0-1.x86_64.rpm
+    sudo dnf install ./cosmian_kms_server-5.6.0-1.x86_64.rpm
     sudo cosmian_kms --version
     ```
 
@@ -135,8 +135,8 @@ For high availability and scalability, refer to the [High Availability Guide](./
 
     ```sh
     sudo dnf update && sudo dnf install -y wget
-    wget https://package.cosmian.com/kms/5.5.1/rockylinux9/cosmian_kms_server-5.5.1-1.x86_64.rpm
-    sudo dnf install ./cosmian_kms_server-5.5.1-1.x86_64.rpm
+    wget https://package.cosmian.com/kms/5.6.0/rockylinux9/cosmian_kms_server-5.6.0-1.x86_64.rpm
+    sudo dnf install ./cosmian_kms_server-5.6.0-1.x86_64.rpm
     sudo cosmian_kms --version
     ```
 
@@ -154,7 +154,7 @@ For high availability and scalability, refer to the [High Availability Guide](./
     On ARM MacOS, download the build archive and extract it:
 
     ```sh
-    wget https://package.cosmian.com/kms/5.5.1/macos_arm-release.zip
+    wget https://package.cosmian.com/kms/5.6.0/macos_arm-release.zip
     unzip macos_arm-release.zip
     cp ./macos_arm-release/Users/runner/work/kms/kms/target/aarch64-apple-darwin/release/cosmian_kms /usr/local/bin/
     chmod u+x /usr/local/bin/cosmian_kms
@@ -164,7 +164,7 @@ For high availability and scalability, refer to the [High Availability Guide](./
     On Intel MacOS, download the build archive and extract it:
 
     ```sh
-    wget https://package.cosmian.com/kms/5.5.1/macos_intel-release.zip
+    wget https://package.cosmian.com/kms/5.6.0/macos_intel-release.zip
     unzip macos_intel-release.zip
     cp ./macos_intel-release/Users/runner/work/kms/kms/target/x86_64-apple-darwin/release/cosmian_kms /usr/local/bin/
     chmod u+x /usr/local/bin/cosmian_kms
@@ -174,7 +174,7 @@ For high availability and scalability, refer to the [High Availability Guide](./
     The server uses the configuration file located at `/etc/cosmian/kms.toml`.
 
     NOTE: The MacOS version does NOT come with a web UI. It can be manually installed by copying the `dist` folder
-    of a packaged Linux distribution to a folder and updating the `ui_index_html_folder` property of the `kms.toml`  
+    of a packaged Linux distribution to a folder and updating the `ui_index_html_folder` property of the `kms.toml`
     to point to it.
 
 === "Windows"
@@ -182,7 +182,7 @@ For high availability and scalability, refer to the [High Availability Guide](./
     On Windows, download the build archive:
 
     ```sh
-     https://package.cosmian.com/kms/5.5.1/windows-release.zip
+     https://package.cosmian.com/kms/5.6.0/windows-release.zip
     ```
 
     Extract the cosmian_kms from:
@@ -200,5 +200,5 @@ For high availability and scalability, refer to the [High Availability Guide](./
     if it is available. See the [server configuration](../server_configuration_file.md) for more information.
 
     NOTE: The Windows version does NOT come with a web UI. It can be manually installed by copying the `dist` folder
-    of a packaged Linux distribution to a folder and updating the `ui_index_html_folder` property of the `kms.toml`  
+    of a packaged Linux distribution to a folder and updating the `ui_index_html_folder` property of the `kms.toml`
     to point to it.

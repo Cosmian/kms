@@ -106,7 +106,8 @@ pub(crate) async fn test_redis_with_findex() -> DbResult<()> {
 /// ```
 #[tokio::test]
 pub(crate) async fn test_sqlite() -> DbResult<()> {
-    log_init(option_env!("RUST_LOG"));
+    // log_init(option_env!("RUST_LOG"));
+    log_init(Some("info"));
     let dir = TempDir::new()?;
     let db_file = dir.path().join("test_sqlite.db");
     if db_file.exists() {

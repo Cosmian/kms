@@ -70,6 +70,13 @@ impl Display for SymmetricAlgorithm {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default, EnumString, ValueEnum)]
+pub enum SecretDataType {
+    Password,
+    #[default]
+    Seed,
+}
+
 pub fn prepare_sym_key_elements(
     number_of_bits: Option<usize>,
     wrap_key_b64: &Option<String>,

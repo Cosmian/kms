@@ -27,7 +27,7 @@ const WRAPPING_ALGORITHMS: { label: string; value: WrappingAlgorithm }[] = [
     { label: "RSA AES Key Wrap", value: "rsa-aes-key-wrap" },
 ];
 
-type KeyType = "rsa" | "ec" | "symmetric" | "covercrypt";
+type KeyType = "rsa" | "ec" | "symmetric" | "covercrypt" | "secret-data";
 
 const exportFileExtension = {
     "json-ttlv": "json",
@@ -45,7 +45,7 @@ interface KeyExportFormProps {
     key_type: KeyType;
 }
 
-const KeyExportForm: React.FC<KeyExportFormProps> = (props: KeyExportFormProps) => {
+const KeyExportForm: React.FC<KeyExportFormProps> = ({ key_type }) => {
     const [form] = Form.useForm<KeyExportFormData>();
     const [res, setRes] = useState<undefined | string>(undefined);
     const [isLoading, setIsLoading] = useState(false);
@@ -54,6 +54,8 @@ const KeyExportForm: React.FC<KeyExportFormProps> = (props: KeyExportFormProps) 
     const wrapKeyId = Form.useWatch("wrapKeyId", form);
     const selectedAlgorithm: WrappingAlgorithm | undefined = Form.useWatch("wrappingAlgorithm", form);
     const selectedFormat: ExportKeyFormat | undefined = Form.useWatch("keyFormat", form);
+
+    const isSecretData = key_type === "secret-data";
 
     useEffect(() => {
         if (res && responseRef.current) {
@@ -81,42 +83,35 @@ const KeyExportForm: React.FC<KeyExportFormProps> = (props: KeyExportFormProps) 
         setRes(undefined);
         const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
         try {
-            if (id == undefined) {
-                setRes("Missing key identifier.");
-                throw Error("Missing key identifier");
+            if (!id) {
+                setRes("Missing identifier.");
+                throw new Error("Missing object identifier");
             }
             const request = export_ttlv_request(id, values.unwrap, values.keyFormat, values.wrapKeyId, values.wrappingAlgorithm);
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const data = await parse_export_ttlv_response(result_str, values.keyFormat);
                 const filename = `${id}.${exportFileExtension[values.keyFormat]}`;
-                let mimeType;
-                switch (values.keyFormat) {
-                    case "json-ttlv":
-                        mimeType = "application/json";
-                        break;
-                    case "base64":
-                        mimeType = "text/plain";
-                        break;
-                    default:
-                        mimeType = "application/octet-stream";
-                }
+                const mimeType =
+                    values.keyFormat === "json-ttlv"
+                        ? "application/json"
+                        : values.keyFormat === "base64"
+                        ? "text/plain"
+                        : "application/octet-stream";
                 downloadFile(data, filename, mimeType);
                 setRes("File has been exported");
             }
         } catch (e) {
-            setRes(`Error exporting key: ${e}`);
-            console.error("Error exporting key:", e);
+            setRes(`Error exporting ${isSecretData ? "secret data" : "key"}: ${e}`);
+            console.error("Export error:", e);
         } finally {
             setIsLoading(false);
         }
     };
 
-    let key_type_string = "";
-    let key_formats = [];
-    if (props.key_type === "rsa") {
-        key_type_string = "an RSA";
-        key_formats = [
+    let keyFormats = [];
+    if (key_type === "rsa") {
+        keyFormats = [
             { label: "JSON TTLV (default)", value: "json-ttlv" },
             { label: "PKCS1 PEM", value: "pkcs1-pem" },
             { label: "PKCS1 DER", value: "pkcs1-der" },
@@ -125,9 +120,8 @@ const KeyExportForm: React.FC<KeyExportFormProps> = (props: KeyExportFormProps) 
             { label: "Base64", value: "base64" },
             { label: "Raw", value: "raw" },
         ];
-    } else if (props.key_type === "ec") {
-        key_type_string = "an EC";
-        key_formats = [
+    } else if (key_type === "ec") {
+        keyFormats = [
             { label: "JSON TTLV (default)", value: "json-ttlv" },
             { label: "SEC1 PEM", value: "sec1-pem" },
             { label: "SEC1 DER", value: "sec1-der" },
@@ -136,16 +130,14 @@ const KeyExportForm: React.FC<KeyExportFormProps> = (props: KeyExportFormProps) 
             { label: "Base64", value: "base64" },
             { label: "Raw", value: "raw" },
         ];
-    } else if (props.key_type === "symmetric") {
-        key_type_string = "a symmetric";
-        key_formats = [
+    } else if (key_type === "symmetric" || key_type === "secret-data") {
+        keyFormats = [
             { label: "JSON TTLV (default)", value: "json-ttlv" },
             { label: "Base64", value: "base64" },
             { label: "Raw", value: "raw" },
         ];
     } else {
-        key_type_string = "a Covercrypt";
-        key_formats = [
+        keyFormats = [
             { label: "JSON TTLV (default)", value: "json-ttlv" },
             { label: "Raw", value: "raw" },
         ];
@@ -153,13 +145,20 @@ const KeyExportForm: React.FC<KeyExportFormProps> = (props: KeyExportFormProps) 
 
     return (
         <div className="p-6">
-            <h1 className="text-2xl font-bold mb-6">Export {key_type_string} key</h1>
+            <h1 className="text-2xl font-bold mb-6">Export {isSecretData ? "Secret Data" : key_type.toUpperCase()}</h1>
 
             <div className="mb-8 space-y-2">
-                <p>Export {key_type_string} key from the KMS. The key can be identified using either its ID or associated tags.</p>
-                <p>When exporting a key pair using its ID, only the public key is exported.</p>
-                <p>The key can optionally be unwrapped and/or wrapped when exported.</p>
-                <p className="text-sm text-yellow-600">Note: Wrapping a key that is already wrapped is an error.</p>
+                <p>
+                    Export {isSecretData ? "secret data" : key_type.toUpperCase()} from the KMS. The{" "}
+                    {isSecretData ? "secret data" : "object"} can be identified using either its ID or associated tags.
+                </p>
+                {!isSecretData && (
+                    <>
+                        <p>When exporting a key pair using its ID, only the public key is exported.</p>
+                        <p>The key can optionally be unwrapped and/or wrapped when exported.</p>
+                        <p className="text-sm text-yellow-600">Note: Wrapping a key that is already wrapped is an error.</p>
+                    </>
+                )}
             </div>
 
             <Form
@@ -174,79 +173,68 @@ const KeyExportForm: React.FC<KeyExportFormProps> = (props: KeyExportFormProps) 
             >
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Key Identification (required)</h3>
-                        <Form.Item name="keyId" label="Key ID" help="The unique identifier of the key stored in the KMS">
-                            <Input placeholder="Enter key ID" />
+                        <h3 className="text-m font-bold mb-4">{isSecretData ? "Secret Data" : "Key"} Identification (required)</h3>
+                        <Form.Item name="keyId" label={isSecretData ? "Secret Data ID" : "Key ID"}>
+                            <Input placeholder={`Enter ${isSecretData ? "secret data" : "key"} ID`} />
                         </Form.Item>
 
-                        <Form.Item name="tags" label="Tags" help="Alternative to Key ID: specify tags to identify the key">
+                        <Form.Item name="tags" label="Tags">
                             <Select mode="tags" placeholder="Enter tags" open={false} />
                         </Form.Item>
                     </Card>
+
                     <Card>
-                        <Form.Item
-                            name="keyFormat"
-                            label="Key Format"
-                            help="Format for the exported key. JSON TTLV is recommended for later re-import."
-                            rules={[{ required: true }]}
-                        >
-                            <Select options={key_formats} />
+                        <Form.Item name="keyFormat" label="Export Format" rules={[{ required: true }]}>
+                            <Select options={keyFormats} />
                         </Form.Item>
                     </Card>
-                    <Card>
-                        <h3 className="text-m font-bold mb-4">Unwrapping Options</h3>
 
-                        <Form.Item name="unwrap" valuePropName="checked" help="Unwrap if it is wrapped before export">
-                            <Checkbox>Unwrap key before export</Checkbox>
-                        </Form.Item>
+                    {!isSecretData && (
+                        <Card>
+                            <h3 className="text-m font-bold mb-4">Unwrapping Options</h3>
+                            <Form.Item name="unwrap" valuePropName="checked">
+                                <Checkbox>Unwrap {isSecretData ? "secret data" : "key"} before export</Checkbox>
+                            </Form.Item>
 
-                        {selectedFormat !== "raw" && selectedFormat !== "base64" && (
-                            <>
-                                <Divider />
-                                <h3 className="text-m font-bold mb-4">Wrapping Options</h3>
-                                <Form.Item name="wrapKeyId" label="Wrap Key ID" help="ID of the key/certificate to use for wrapping">
-                                    <Input placeholder="Enter wrap key ID" />
-                                </Form.Item>
-
-                                <Form.Item
-                                    name="wrappingAlgorithm"
-                                    label="Wrapping Algorithm"
-                                    help="Algorithm to use when wrapping the key"
-                                >
-                                    <Select options={WRAPPING_ALGORITHMS} placeholder="Select wrapping algorithm" disabled={!wrapKeyId} />
-                                </Form.Item>
-
-                                {selectedAlgorithm === "aes-gcm" && (
-                                    <Form.Item
-                                        name="authenticatedAdditionalData"
-                                        label="Authenticated Additional Data"
-                                        help="Only available for AES GCM wrapping"
-                                    >
-                                        <Input placeholder="Enter authenticated data" disabled={!wrapKeyId} />
+                            {selectedFormat !== "raw" && selectedFormat !== "base64" && (
+                                <>
+                                    <Divider />
+                                    <h3 className="text-m font-bold mb-4">Wrapping Options</h3>
+                                    <Form.Item name="wrapKeyId" label="Wrap Key ID">
+                                        <Input placeholder="Enter wrap key ID" />
                                     </Form.Item>
-                                )}
-                            </>
-                        )}
-                    </Card>
+
+                                    <Form.Item name="wrappingAlgorithm" label="Wrapping Algorithm">
+                                        <Select options={WRAPPING_ALGORITHMS} placeholder="Select algorithm" disabled={!wrapKeyId} />
+                                    </Form.Item>
+
+                                    {selectedAlgorithm === "aes-gcm" && (
+                                        <Form.Item name="authenticatedAdditionalData" label="Authenticated Additional Data">
+                                            <Input placeholder="Enter authenticated data" disabled={!wrapKeyId} />
+                                        </Form.Item>
+                                    )}
+                                </>
+                            )}
+                        </Card>
+                    )}
+
                     <Card>
-                        <Form.Item
-                            name="allowRevoked"
-                            valuePropName="checked"
-                            help="Allow exporting revoked and destroyed keys (user must be the owner)"
-                        >
-                            <Checkbox>Allow revoked keys</Checkbox>
+                        <Form.Item name="allowRevoked" valuePropName="checked">
+                            <Checkbox>Allow revoked objects</Checkbox>
                         </Form.Item>
                     </Card>
+
                     <Form.Item>
                         <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium">
-                            Export Key
+                            Export {isSecretData ? "Secret Data" : "Key"}
                         </Button>
                     </Form.Item>
                 </Space>
             </Form>
+
             {res && (
                 <div ref={responseRef}>
-                    <Card title="Key export response">{res}</Card>
+                    <Card title={isSecretData ? "Secret Data Export Response" : "Key Export Response"}>{res}</Card>
                 </div>
             )}
         </div>

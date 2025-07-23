@@ -107,7 +107,7 @@ impl LocateObjectsAction {
         )?;
 
         let response = kms_rest_client.locate(request).await?;
-        if let Some(ids) = response.unique_identifiers {
+        if let Some(ids) = response.unique_identifier {
             if ids.is_empty() {
                 console::Stdout::new("No object found.").write()?;
             } else {

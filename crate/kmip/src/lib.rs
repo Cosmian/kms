@@ -51,7 +51,7 @@
     clippy::redundant_pub_crate,
     clippy::cognitive_complexity
 )]
-// required to detect generic type in Serializer
+// required to detect the generic type in Serializer
 #![feature(min_specialization)]
 
 pub use error::{KmipError, result::KmipResultHelper};

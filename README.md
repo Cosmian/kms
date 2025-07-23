@@ -30,6 +30,7 @@ The Cosmian KMS presents some unique features, such as:
 - [FIPS 140-3](./documentation/docs/fips.md) mode gated behind the feature `fips`
 - a [binary and JSON KMIP 1.0-1.4 and 2.0-2.1](./documentation/docs/kmip/index.md) compliant interface
 - Oracle DB [TDE support](./documentation/docs/oracle/tde.md)
+- Percona Postgresql DB (./documentation/docs/percona.md)
 - VMWare [vCenter Trust Key Provider integration](./documentation/docs/vcenter.md)
 - User Defined Functions for [Big Data](./documentation/docs/python_udf/index.md) including [snowflake](./documentation/docs/snowflake/index.md)
 - a full-featured client [command line and graphical interface](https://docs.cosmian.com/cosmian_cli/)
@@ -57,8 +58,9 @@ The KMS has extensive online [documentation](https://docs.cosmian.com/key_manage
     - [Quick start](#quick-start)
         - [Example](#example)
     - [Repository content](#repository-content)
-    - [Building the KMS](#building-the-kms)
-        - [Linux or MacOS (CPU Intel or MacOs ARM)](#linux-or-macos-cpu-intel-or-macos-arm)
+    - [Building and running the KMS](#building-and-running-the-kms)
+        - [Features](#features)
+        - [Linux or macOS (CPU Intel or macOS ARM)](#linux-or-macos-cpu-intel-or-macos-arm)
         - [Windows](#windows)
         - [Build the KMS](#build-the-kms)
         - [Build the Docker Ubuntu container](#build-the-docker-ubuntu-container)
@@ -71,7 +73,7 @@ The KMS has extensive online [documentation](https://docs.cosmian.com/key_manage
 
 ## Quick start
 
-Pre-built binaries [are available](https://package.cosmian.com/kms/5.5.1/)
+Pre-built binaries [are available](https://package.cosmian.com/kms/5.6.0/)
 for Linux, MacOS, and Windows, as well as Docker images. To run the server binary, OpenSSL must be
 available in your path (see "building the KMS" below for details); other binaries do not have this
 requirement.
@@ -132,7 +134,7 @@ binaries:
 - A server (`cosmian_kms`) which is the KMS itself
 - A CLI (`cosmian`) to interact with this server
 
-The most important crates are:   
+The most important crates are:
 
 - `access` to handle permissions
 - `client` to query the server

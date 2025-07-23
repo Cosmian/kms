@@ -20,7 +20,8 @@ pub use wire::{TTLVBytesDeserializer, TTLVBytesSerializer};
     clippy::as_conversions,
     clippy::unwrap_used,
     clippy::panic,
-    clippy::indexing_slicing
+    clippy::indexing_slicing,
+    clippy::expect_used
 )]
 #[cfg(test)]
 mod tests;

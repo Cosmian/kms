@@ -129,7 +129,7 @@ pub(crate) async fn message(
             client_correlation_value: None,
             server_correlation_value: None,
             attestation_type: None,
-            time_stamp: OffsetDateTime::now_utc().unix_timestamp(),
+            time_stamp: OffsetDateTime::now_utc(),
             nonce: None,
             server_hashed_password: None,
         },
@@ -150,6 +150,9 @@ async fn process_operation(
     trace!("Processing KMIP operation: {request_operation:?} with user: {user:?}");
     let privileged_users = kms.params.privileged_users.clone();
     Ok(match request_operation {
+        Operation::Activate(activate) => {
+            Operation::ActivateResponse(kms.activate(activate, user, params).await?)
+        }
         Operation::AddAttribute(add_attribute) => {
             Operation::AddAttributeResponse(kms.add_attribute(add_attribute, user, params).await?)
         }
@@ -223,7 +226,8 @@ async fn process_operation(
         Operation::Validate(kmip_request) => {
             Operation::ValidateResponse(kms.validate(kmip_request, user, params).await?)
         }
-        Operation::AddAttributeResponse(_)
+        Operation::ActivateResponse(_)
+        | Operation::AddAttributeResponse(_)
         | Operation::CertifyResponse(_)
         | Operation::CreateKeyPairResponse(_)
         | Operation::CreateResponse(_)

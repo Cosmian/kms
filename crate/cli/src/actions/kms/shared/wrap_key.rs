@@ -21,9 +21,9 @@ use crate::{
     error::result::{KmsCliResult, KmsCliResultHelper},
 };
 
-/// Locally wrap a key in KMIP JSON TTLV format.
+/// Locally wrap a secret data or key in KMIP JSON TTLV format.
 ///
-/// The key can be wrapped using either:
+/// The secret data or key can be wrapped using either:
 ///  - a password derived into a symmetric key using Argon2
 ///  - symmetric key bytes in base64
 ///  - a key in the KMS (which will be exported first)
@@ -34,7 +34,7 @@ use crate::{
 /// and ECIES will be used.
 #[derive(Parser, Default, Debug)]
 #[clap(verbatim_doc_comment)]
-pub struct WrapKeyAction {
+pub struct WrapSecretDataOrKeyAction {
     /// The KMIP JSON TTLV input key file to wrap
     #[clap(required = true)]
     pub(crate) key_file_in: PathBuf,
@@ -61,7 +61,7 @@ pub struct WrapKeyAction {
     pub(crate) wrap_key_file: Option<PathBuf>,
 }
 
-impl WrapKeyAction {
+impl WrapSecretDataOrKeyAction {
     /// Run the wrap key action.
     ///
     /// # Errors

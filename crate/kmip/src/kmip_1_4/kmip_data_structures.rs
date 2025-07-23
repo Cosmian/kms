@@ -414,6 +414,20 @@ impl TryFrom<kmip_2_1::kmip_data_structures::KeyValue> for KeyValue {
                         attrs
                             .into_iter()
                             .map(TryInto::try_into)
+                            .filter(|a| {
+                                if let Ok(att) = a {
+                                    //FIXME PyKMIP does not support OriginalCreationDate attribute
+                                    if matches!(a, Ok(Attribute::OriginalCreationDate(_))) {
+                                        return false
+                                    }
+                                    if let Attribute::CustomAttribute(custom_attribute) = att {
+                                        //FIXME Filter out custom attributes that start with "y-" => not supported by PyKMIP
+                                        return !custom_attribute.name.starts_with("y-")
+                                    }
+                                    return true
+                                }
+                                false
+                            })
                             .collect::<Result<Vec<Attribute>, KmipError>>()
                     })
                     .transpose()?;
@@ -1930,6 +1944,62 @@ impl TryFrom<kmip_2_1::kmip_data_structures::RNGParameters> for RNGParameters {
             recommended_curve: val.recommended_curve.map(TryInto::try_into).transpose()?,
             fips186_variation: val.fips186_variation,
             prediction_resistance: val.prediction_resistance,
+        })
+    }
+}
+
+// The Server Information  base object is a structure that contains a set of OPTIONAL fields
+/// that describe server information.
+/// Where a server supports returning information in a vendor-specific field for
+/// which there is an equivalent field within the structure,
+/// the server SHALL provide the standardized version of the field.
+#[derive(Serialize, Deserialize, Default, PartialEq, Eq, Debug, Clone)]
+#[serde(rename_all = "PascalCase")]
+pub struct ServerInformation {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub server_name: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub server_serial_number: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub server_version: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub server_load: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub product_name: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub build_level: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub build_date: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cluster_info: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alternative_failover_endpoints: Option<Vec<String>>,
+}
+
+impl TryFrom<kmip_2_1::kmip_data_structures::ServerInformation> for ServerInformation {
+    type Error = KmipError;
+
+    fn try_from(
+        value: kmip_2_1::kmip_data_structures::ServerInformation,
+    ) -> Result<Self, Self::Error> {
+        Ok(Self {
+            server_name: value.server_name,
+            server_serial_number: value.server_serial_number,
+            server_version: value.server_version,
+            server_load: value.server_load,
+            product_name: value.product_name,
+            build_level: value.build_level,
+            build_date: value.build_date,
+            cluster_info: value.cluster_info,
+            alternative_failover_endpoints: value.alternative_failover_endpoints,
         })
     }
 }
