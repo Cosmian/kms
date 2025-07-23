@@ -1,7 +1,8 @@
-import { Alert, Button, Card, Descriptions, Space, Tag } from "antd";
+import { Alert, Button, Card, Space, Tag } from "antd";
 import React, { useEffect, useState } from "react";
 import { useAuth } from "./AuthContext";
-import { getNoTTLVRequest } from "./utils";
+import { getNoTTLVRequest, sendKmipRequest } from "./utils";
+import { export_ttlv_request } from "./wasm/pkg/cosmian_kms_client_wasm";
 
 interface CseStatus {
     server_type: string;
@@ -14,24 +15,19 @@ interface CseStatus {
     };
 }
 
-interface CseConfig {
-    [key: string]: any;
-}
-
 const CseInfo: React.FC = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [cseStatus, setCseStatus] = useState<CseStatus | null>(null);
-    const [cseConfig, setCseConfig] = useState<CseConfig | null>(null);
-    const [keysExist, setKeysExist] = useState<boolean | null>(null);
+    const [symKeyExist, setSymKeyExist] = useState<boolean | null>(null);
+
     const [error, setError] = useState<string | undefined>(undefined);
-    const { serverUrl } = useAuth();
+    const { serverUrl, idToken } = useAuth();
 
     const fetchCseInfo = async () => {
         setIsLoading(true);
         setError(undefined);
         setCseStatus(null);
-        setCseConfig(null);
-        setKeysExist(null);
+        setSymKeyExist(null);
 
         try {
             // Fetch CSE Status
@@ -42,24 +38,15 @@ const CseInfo: React.FC = () => {
                 setError("Google CSE is not enabled/configured");
             }
 
-            // Fetch CSE Config
-            // try {
-            //     const configResponse = await getNoTTLVRequest("/cse_config", null, serverUrl);
-            //     setCseConfig(configResponse);
-            // } catch (configError) {
-            //     console.warn("CSE Config not available:", configError);
-            // }
-
-            // Check if keys exist
-            // try {
-            //     const keysResponse = await getNoTTLVRequest("/keys", null, serverUrl);
-            //     setKeysExist(
-            //         keysResponse && (Array.isArray(keysResponse) ? keysResponse.length > 0 : Object.keys(keysResponse).length > 0)
-            //     );
-            // } catch (keysError) {
-            //     console.warn("Keys check failed:", keysError);
-            //     setKeysExist(false);
-            // }
+            // Check if key exist
+            try {
+                const request = export_ttlv_request("google_cse", false, "raw");
+                await sendKmipRequest(request, idToken, serverUrl);
+                setSymKeyExist(true);
+            } catch (keysError) {
+                console.warn("Symmetric google_cse key check failed:", keysError);
+                setSymKeyExist(false);
+            }
         } catch (e) {
             setError(`Error fetching CSE information: ${e}`);
             console.error("Error fetching CSE information:", e);
@@ -71,16 +58,6 @@ const CseInfo: React.FC = () => {
     useEffect(() => {
         fetchCseInfo();
     }, []);
-
-    const renderConfigContent = (config: CseConfig) => {
-        const items = Object.entries(config).map(([key, value]) => ({
-            key,
-            label: key,
-            children: typeof value === "object" ? JSON.stringify(value, null, 2) : String(value),
-        }));
-
-        return <Descriptions column={1} items={items} bordered size="small" />;
-    };
 
     return (
         <div className="p-6">
@@ -149,37 +126,20 @@ const CseInfo: React.FC = () => {
                     </Card>
                 )}
 
-                {/* CSE Config Card */}
-                {cseConfig && (
-                    <Card title="CSE Configuration" className="border rounded">
-                        {renderConfigContent(cseConfig)}
-                    </Card>
-                )}
-
-                {/* Keys Status Card */}
+                {/* Key Status Card */}
                 {cseStatus && (
-                    <Card title="Keys Status" className="border rounded">
+                    <Card title="Key Status" className="border rounded">
                         <div className="flex items-center space-x-3">
-                            <span>
-                                <strong>Keys Available:</strong>
-                            </span>
-                            {keysExist === null ? (
-                                <Tag color="default">Checking...</Tag>
-                            ) : keysExist ? (
-                                <Tag color="success">✓ Keys Found</Tag>
-                            ) : (
-                                <Tag color="error">✗ No Keys Found</Tag>
-                            )}
+                            <div>
+                                {symKeyExist === null ? (
+                                    <Tag color="default">Checking...</Tag>
+                                ) : symKeyExist ? (
+                                    <Tag color="success">✓ Access to google_cse symmetric key found</Tag>
+                                ) : (
+                                    <Tag color="error">✗ No access to google_cse symmetric key found</Tag>
+                                )}
+                            </div>
                         </div>
-                        {keysExist === false && (
-                            <Alert
-                                message="No keys are currently available"
-                                description="You may need to create or import keys to use CSE functionality."
-                                type="warning"
-                                showIcon
-                                className="mt-3"
-                            />
-                        )}
                     </Card>
                 )}
             </Space>
