@@ -481,12 +481,11 @@ async fn process_public_key(
     .await?;
 
     //make a copy of the existing attributes
-    // let mut attributes = object_with_metadata.attributes().clone();
     let owm_attributes = object_with_metadata.attributes().clone();
     {
         let key_block = object_with_metadata.object().key_block()?;
 
-        // If the key is still wrapped then the exported `KeyFormatType` must be the default (`None`)
+        // If the key is still wrapped, then the exported `KeyFormatType` must be the default (`None`)
         if key_block.key_wrapping_data.is_some() {
             if key_format_type.is_some() {
                 kms_bail!(
@@ -494,8 +493,7 @@ async fn process_public_key(
                      must be the default"
                 )
             }
-            // The key is wrapped and the Key Format Type is the default (none)
-            // The key is exported as such
+            // If the key is wrapped and the Key Format Type is the default (none), the key is exported as such
             return Ok(());
         }
 
@@ -526,15 +524,12 @@ async fn process_public_key(
             owm_attributes
         }
     };
-    //
-    // let existing_attributes = key_block.attributes().ok().cloned().unwrap_or_default();
-    // upsert_links_in_attributes(&mut attributes, &existing_attributes);
 
     // parse the key to an openssl object
     let openssl_key = kmip_public_key_to_openssl(object_with_metadata.object())
         .context("export: unable to parse the private key to openssl")?;
 
-    // Wrapping is only available, for KeyFormatType being the default (i.e. None)
+    // Wrapping is only available when the KeyFormatType is the default (i.e., None)
     if let Some(key_wrapping_specification) = key_wrapping_specification {
         if key_format_type.is_some() {
             kms_bail!(

@@ -220,7 +220,7 @@ fn get_private_key_attributes(client: &SocketClient, private_key_id: &str) {
             .iter()
             // State should be PreActive in KMIP spec. Cosmian makes them active by default
             .any(|attr| matches!(attr, Attribute::State(s) if *s == State::PreActive || *s == State::Active)),
-        "State should be PreActive or Active"
+        "State should be PreActive or Active."
     );
 
     assert!(get_attrs_response.attribute.as_ref()
@@ -353,7 +353,7 @@ fn activate_key(client: &SocketClient, key_id: &str) {
 
     assert_eq!(batch_item.result_status, ResultStatusEnumeration::Success);
 
-    info!("Successfully activated private key");
+    info!("Successfully activated the key");
 }
 
 /// Get activation-related attributes
@@ -533,7 +533,7 @@ fn revoke_key(client: &SocketClient, key_id: &str) {
 
     assert_eq!(batch_item.result_status, ResultStatusEnumeration::Success);
 
-    info!("Successfully revoked private key");
+    info!("Successfully revoked the key");
 }
 
 /// Check if key state changed to compromised

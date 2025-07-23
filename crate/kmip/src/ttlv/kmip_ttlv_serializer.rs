@@ -269,7 +269,6 @@ impl ser::Serializer for &mut TtlvSerializer {
                 value: TTLValue::ByteString(v.to_owned()),
             });
         }
-        // self.current_mut()?.value = TTLValue::ByteString(v.to_owned());
         Ok(())
     }
 

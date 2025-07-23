@@ -28,7 +28,6 @@ pub(crate) fn digest(object: &Object) -> KResult<Option<Digest>> {
                 let bytes = match key_value {
                     KeyValue::ByteString(bytes) => bytes.to_vec(),
                     KeyValue::Structure { key_material, .. } => {
-                        // let mut km = key_material.clone();
                         trace!(
                             "digest key_material key format: {:?}",
                             key_block.key_format_type
