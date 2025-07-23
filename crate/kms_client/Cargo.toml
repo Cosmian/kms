@@ -19,7 +19,7 @@ non-fips = ["cosmian_kms_client_utils/non-fips"]
 [dependencies]
 cosmian_crypto_core = { workspace = true }
 cosmian_http_client = { workspace = true }
-cosmian_kms_client_utils = { path = "../client_utils", version = "5.5.1" }
+cosmian_kms_client_utils = { path = "../client_utils", version = "5.6.0" }
 der = { workspace = true }
 pem = { workspace = true }
 reqwest = { workspace = true, features = ["default", "json", "native-tls"] }
