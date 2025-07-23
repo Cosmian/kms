@@ -1,0 +1,19 @@
+---
+services:
+  no-authentication:
+    image: ghcr.io/cosmian/kms
+    ports:
+      -  9998:9998
+  tls-authentication:
+    image: ghcr.io/cosmian/kms
+    volumes:
+      - ../cli:/data
+    command:
+      --tls-p12-file /data/test_data/client_server/server/kmserver.acme.com.p12
+      --tls-p12-password password
+      --authority-cert-file /data/test_data/client_server/ca/ca.crt
+    ports:
+      -  9999:9999
+    environment:
+      - KMS_PORT=9999
+      - KMS_SOCKET_SERVER_START=true
