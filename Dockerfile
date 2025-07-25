@@ -3,7 +3,7 @@
 #
 FROM rust:1.86.0-bookworm AS builder
 
-LABEL version="5.6.0"
+LABEL version="5.6.1"
 LABEL name="Cosmian KMS docker container"
 
 ENV OPENSSL_DIR=/usr/local/openssl
