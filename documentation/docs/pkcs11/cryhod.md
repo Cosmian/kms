@@ -4,7 +4,7 @@ The Cosmian KMS can be used to unlock Prim'x CRYHOD partitions
 
 ## Configuring Prim'X CRYHOD
 
-If you get the following popup when trying to encrypt a disk
+If you get the following pop-up when trying to encrypt a disk
 
 ![Need additional Configuration](
 images/cryhod_need_additional_configuration.png)
@@ -19,22 +19,22 @@ Configure the `P131` policy:
 
 ![CRYHOD_P131](images/cryhod_p131.png)
 
-For testing you can set the value to th.
+For testing, you can set the value to th.
 
 Configure the `P821` policy:
 
 ![CRYHOD_P821](images/cryhod_p821.png)
 
-For testing you can keep the default values.
+For testing, you can keep the default values.
 
 Configuring the location of the PKCS#11 provider using the policy P296
 
 ![CRYHOD_p296](images/cryhod_p296.png)
 
-Enter the full path of the `cosmian_pkcs11.dll` as value name and leave the value empty.
+Enter the full path of the `cosmian_pkcs11.dll` as the value name and leave the value empty.
 
 Note: if you change the value, kill all CRYHOD processes or restart
-for the change to be taken into effect
+for the change to take into effect
 
 ## Encrypting a partition
 
@@ -59,10 +59,8 @@ Click `next`
 The configuration file is located in the User home `.cosmian` sub-directory,
 in the `cosmian.toml` file.
 
-See [Authenticating users to the KMS](../authentication.md#authenticating-using-tls-client-certificates) to learn
-how to configure the
-KMS to use Open ID connect or certificate authentication (please note that the KMS can
-also manage the machines certificates).
+See [Authenticating users to the KMS](../authentication.md#authenticating-using-tls-client-certificates) to learn how to configure the KMS to use Open ID Connect or certificate authentication.
+Please note that the KMS can also manage the machines' certificates.
 
 Here is an example configuration file for the PKCS#11 provider library accessing the KMS using a
 PKCS#12 file for authentication.
@@ -88,11 +86,11 @@ The log level can be adjusted using the `COSMIAN_PKCS11_LOGGING_LEVEL` environme
 setx COSMIAN_PKCS11_LOGGING_LEVEL "debug"
 ```
 
-## Creating a RSA private key and Certificate to use with CRYHOD
+## Creating an RSA private key and Certificate to use with CRYHOD
 
 Create an RSA key with 2048 bits and the `disk-encryption` tag.
 This tag is the default tag searched. The value can be changed by setting
-the `COSMIAN_PKCS11_DISK_ENCRYPTION_TAG` environment value.
+the `COSMIAN_PKCS11_DISK_ENCRYPTION_TAG` environment variable.
 
 ```powershell
 cosmian.exe rsa keys create -s 2048 -t disk-encryption
@@ -100,5 +98,5 @@ cosmian.exe rsa keys create -s 2048 -t disk-encryption
 
 ```shell
           Public key unique identifier: ec572e57-eab0-481c-9393-805a11c12ac0
-          Private key unique identifier: e70509f9-77ae-4310-bd15-8f6049372426
+          Private key unique identifier: ec572e57-eab0-481c-9393-805a11c12ac0_pk
 ```

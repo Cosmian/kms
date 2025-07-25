@@ -1,8 +1,7 @@
 # LUKS
 
 The Cosmian KMS can provision secrets to open
-[Linux LUKS](https://en.wikipedia.org/wiki/Linux_Unified_Key_Setup) encrypted partitions. The
-secret never leaves the KMS and can be used to unlock the partition at boot time.
+[Linux LUKS](https://en.wikipedia.org/wiki/Linux_Unified_Key_Setup) encrypted partitions. The secret never leaves the KMS and can be used to unlock the partition at boot time.
 
 ## Installing p11-kit and the Cosmian KMS PKCS#11 module
 
@@ -23,7 +22,7 @@ systemd 253 (253.5-1ubuntu6.1)
 default-hierarchy=unified
 ```
 
-Unfortunately, Ubuntu 22.04 does not provide p11-kit support, however the setup works fine for
+Unfortunately, Ubuntu 22.04 does not provide p11-kit support; however the setup works fine for
 Ubuntu 24.04.
 
 ### 1. Install the `p11-kit` package
@@ -102,11 +101,12 @@ cosmian_pkcs11: /usr/local/lib/libcosmian_pkcs11.so
 
 The PKCS#11 module uses the same configuration file as
 the [CLI](../../cosmian_cli/index.md).
-Since it may be run as a system user, the configuration file should be made available
-in `/etc/cosmian/cosmian.toml`.
 
-See [Authenticating users to the KMS](../authentication.md) to learn
-how to configure the KMS to use Open ID connect or certificate authentication.
+By default, the PKCS#11 module configuration file is stored in the user's home directory at `~/.cosmian/cosmian.toml`.
+Since mounting the partition may be run as a system user, place the configuration file in `/etc/cosmian/cosmian.toml` instead.
+An alternative location may be configured by setting the `COSMIAN_CLI_CONF` environment variable.
+
+See [Authenticating users to the KMS](../authentication.md) to learn how to configure the KMS to use Open ID Connect or certificate authentication.
 
 Here is an example configuration file for the PKCS#11 provider library accessing the KMS using a
 PKCS#12 file for authentication.
@@ -121,6 +121,14 @@ ssl_client_pkcs12_password = "machine123_pkcs12_password"
 To use Open ID connect, install the [Cosmian CLI](../../cosmian_cli/index.md) from
 [Cosmian packages](https://package.cosmian.com/kms/) and
 use the `cosmian kms login` command to authenticate to the KMS first.
+
+## Logging
+
+The PKCS#11 module logs to the `cosmian-pkcs11.log` file in the same `.cosmian` subdirectory of the configuration file.
+
+The `COSMIAN_PKCS11_LOGGING_LEVEL` environment variable controls logging of the PKCS#11 module.
+The logging level can be set to `trace`, `debug`, `info`, `warn`, or `error`, and defaults to `info`
+when not set.
 
 ## Creating an RSA key pair using openssl and importing it into the Cosmian KMS
 
@@ -161,11 +169,11 @@ below).
 
 ## Creating a LUKS partition
 
-First allocate some space then create a LUKS partition using `cryptsetup`.
+First, allocate some space, then create a LUKS partition using `cryptsetup`.
 
 ### 1. Allocating space for the LUKS partition
 
-LUKS partitions can be created either from disk partitions or from a file.
+LUKS partitions can be created from either disk partitions or files.
 
 #### From a file
 
@@ -222,11 +230,7 @@ during `cryptenroll` or when rotating the RSA keys.
 
 ## Enrolling the LUKS partition with the Cosmian KMS
 
-Logging of the PKCS#11 module is controlled by the `COSMIAN_PKCS11_LOGGING_LEVEL` environment variable.
-The logging level can be set to `trace`, `debug`, `info`, `warn`, or `error` and defaults to `info`
-when not set.
-
-The RSA key pair is searched opn the KMS using a tag controlled by
+The RSA key pair is searched on the KMS using a tag controlled by
 the `COSMIAN_PKCS11_DISK_ENCRYPTION_TAG` environment variable.
 When not set, the default tag searched is `disk-encryption`.
 
