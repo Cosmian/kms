@@ -10,3 +10,5 @@ installation, configuration, and usage.
 If you installed the CLI using a a Debian or RPM package, the Cosmian KMS PKCS#11 provider is available
 as a shared library in the `/usr/local/lib/libcosmian_pkcs11.so` directory.
 
+export COSMIAN_PKCS11_LOGGING_LEVEL=debug
+ssh -I /Users/bgrieder/projects/cli/target/debug/libcosmian_pkcs11.dylib demo-kms.cosmian.dev
