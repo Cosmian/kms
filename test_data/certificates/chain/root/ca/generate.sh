@@ -90,7 +90,7 @@ openssl req -batch -config openssl_int.cnf \
       -passin pass:leaf1123
 
 openssl ca -batch -config openssl_int.cnf \
-      -extensions server_cert -days 375 -notext -md sha256 \
+      -extensions server_cert -days 3650 -notext -md sha256 \
       -in intermediate/csr/leaf1.csr.pem \
       -out intermediate/certs/leaf1.cert.pem -passin pass:intermediate123
 
@@ -106,7 +106,7 @@ openssl req -batch -config openssl_int.cnf \
       -passin pass:leaf2123
 
 openssl ca -batch -config openssl_int.cnf \
-      -extensions server_cert -days 375 -notext -md sha256 \
+      -extensions server_cert -days 3650 -notext -md sha256 \
       -in intermediate/csr/leaf2.csr.pem \
       -out intermediate/certs/leaf2.cert.pem -passin pass:intermediate123
 
@@ -150,11 +150,11 @@ openssl x509 -outform der -in ../../leaf2.cert.pem -out ../../leaf2.cert.der
 
 scp intermediate/crl/intermediate.crl.pem cosmian@package.cosmian.com:/mnt/package/kms/crl_tests
 
-cp certs/ca.cert.pem ../../../../../../../cli/test_data/certificates/chain
-cp intermediate/certs/intermediate.cert.pem ../../../../../../../cli/test_data/certificates/chain
-cp intermediate/certs/leaf1.cert.pem ../../../../../../../cli/test_data/certificates/chain
-cp intermediate/certs/leaf2.cert.pem ../../../../../../../cli/test_data/certificates/chain
-cp ../../ca.cert.der ../../../../../../../cli/test_data/certificates/chain
-cp ../../intermediate.cert.der ../../../../../../../cli/test_data/certificates/chain
-cp ../../leaf1.cert.der ../../../../../../../cli/test_data/certificates/chain
-cp ../../leaf2.cert.der ../../../../../../../cli/test_data/certificates/chain
+cp certs/ca.cert.pem ../..
+cp intermediate/certs/intermediate.cert.pem ../..
+cp intermediate/certs/leaf1.cert.pem ../..
+cp intermediate/certs/leaf2.cert.pem ../..
+cp ../../ca.cert.der ../..
+cp ../../intermediate.cert.der ../..
+cp ../../leaf1.cert.der ../..
+cp ../../leaf2.cert.der ../..
