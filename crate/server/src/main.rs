@@ -88,6 +88,7 @@ async fn main() -> KResult<()> {
 
     // print openssl version
 
+    #[cfg(not(feature = "non-fips"))]
     info!(
         "OpenSSL FIPS mode version: {}, in {}, number: {:x}",
         openssl::version::version(),

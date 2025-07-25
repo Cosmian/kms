@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.6.1] - 2025-07-25
+
+### 🚀 Features
+
+- Display CSE information from UI (#478)
+
+### 🐛 Bug Fixes
+
+- Fix outdated UI pkg
+- Rocky package must be NON-FIPS (#482)
+
+### 📚 Documentation
+
+- Add MongoDB documentation (#483)
+- Improve User Interface documentation
+
 ## [5.6.0] - 2025-07-23
 
 ### 🐛 Bug Fixes

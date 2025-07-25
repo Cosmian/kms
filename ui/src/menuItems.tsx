@@ -153,4 +153,9 @@ export const menuItems: MenuItem[] = [
             { key: "access-rights/obtained", label: "Obtained" },
         ],
     },
+    {
+        key: "google-cse",
+        label: "Google CSE",
+        collapsedlabel: "CSE",
+    },
 ];
