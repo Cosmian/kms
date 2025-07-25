@@ -26,7 +26,7 @@ jobs:
       - uses: EmbarkStudios/cargo-deny-action@v1
 
   cargo-lint:
-    uses: Cosmian/reusable_workflows/.github/workflows/clippy.yml@develop
+    uses: Cosmian/reusable_workflows/.github/workflows/clippy.yml@kms_docker_tests
     with:
       toolchain: ${{ inputs.toolchain }}
 
@@ -69,7 +69,7 @@ jobs:
           bash ./scripts/test_pykmip.sh all
 
   build: # Build on Ubuntu 22/24, Rocky 8/9, MacOS 13/15 and Windows 22
-    uses: Cosmian/reusable_workflows/.github/workflows/build_all.yml@develop
+    uses: Cosmian/reusable_workflows/.github/workflows/build_all.yml@kms_docker_tests
     secrets: inherit
     with:
       toolchain: ${{ inputs.toolchain }}
@@ -77,7 +77,7 @@ jobs:
 
   non-fips-image:
     name: Non-FIPS image build and tests
-    uses: Cosmian/reusable_workflows/.github/workflows/build_docker_image.yml@develop
+    uses: Cosmian/reusable_workflows/.github/workflows/build_docker_image.yml@kms_docker_tests
     with:
       prefix: ''
       registry-image: ghcr.io/cosmian/kms
@@ -86,7 +86,7 @@ jobs:
 
   fips-image:
     name: FIPS image build and tests
-    uses: Cosmian/reusable_workflows/.github/workflows/build_docker_image.yml@develop
+    uses: Cosmian/reusable_workflows/.github/workflows/build_docker_image.yml@kms_docker_tests
     with:
       prefix: FIPS
       registry-image: ghcr.io/cosmian/kms-fips
