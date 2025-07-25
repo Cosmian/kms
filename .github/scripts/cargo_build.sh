@@ -24,7 +24,7 @@ if [ "$DEBUG_OR_RELEASE" = "release" ]; then
   rm -rf target/"$TARGET"/debian
   rm -rf target/"$TARGET"/generate-rpm
   if [ -f /etc/redhat-release ]; then
-    cd crate/server && cargo build --target "$TARGET" --features non-fips --release && cd -
+    cd crate/server && cargo build --features non-fips --release --target "$TARGET" && cd -
     cargo install --version 0.16.0 cargo-generate-rpm --force
     cd "$ROOT_FOLDER"
     cargo generate-rpm --target "$TARGET" -p crate/server --metadata-overwrite=pkg/rpm/scriptlets.toml
