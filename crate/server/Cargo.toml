@@ -227,4 +227,3 @@ assets = [
 ]
 auto-req = "no" # do not try to discover .so dependencies
 require-sh = true
-features = ["non-fips"]
