@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -ex
+set -exo pipefail
 
 # --- Declare the following variables for tests
 # export TARGET=x86_64-unknown-linux-gnu
