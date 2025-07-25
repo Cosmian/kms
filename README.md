@@ -29,6 +29,7 @@ The Cosmian KMS presents some unique features, such as:
   and [LUKS](./documentation/docs/pkcs11/luks.md) disk encryption support
 - [FIPS 140-3](./documentation/docs/fips.md) mode gated behind the feature `fips`
 - a [binary and JSON KMIP 1.0-1.4 and 2.0-2.1](./documentation/docs/kmip/index.md) compliant interface
+- MongoDB (./documentation/docs/mongodb.md)
 - Oracle DB [TDE support](./documentation/docs/oracle/tde.md)
 - Percona Postgresql DB (./documentation/docs/percona.md)
 - VMWare [vCenter Trust Key Provider integration](./documentation/docs/vcenter.md)
