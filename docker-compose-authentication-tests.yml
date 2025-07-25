@@ -7,11 +7,11 @@ services:
   tls-authentication:
     image: ghcr.io/cosmian/kms
     volumes:
-      - ../cli:/data
+      - ./test_data:/data
     command:
-      --tls-p12-file /data/test_data/client_server/server/kmserver.acme.com.p12
+      --tls-p12-file /data/client_server/server/kmserver.acme.com.p12
       --tls-p12-password password
-      --authority-cert-file /data/test_data/client_server/ca/ca.crt
+      --authority-cert-file /data/client_server/ca/ca.crt
     ports:
       -  9999:9999
     environment:
