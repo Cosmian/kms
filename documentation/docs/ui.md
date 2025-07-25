@@ -33,6 +33,13 @@ the TOML file:
 kms_public_url = "your_kms_public_url"
 ```
 
+**Note:** You may also need to include specific URLs from your Identity Provider (IdP) configuration, depending on your setup.
+
+- Allowed redirect/callback URI: `https://YOUR_KMS_URL/ui/callback`
+- Application Login URI: `https://YOUR_KMS_URL/ui/login`
+- Logout URI: `https://YOUR_KMS_URL/ui/login`
+
+
 #### 2. Using Command-Line Arguments
 
 Alternatively, provide OIDC settings as command-line arguments when starting the KMS server:

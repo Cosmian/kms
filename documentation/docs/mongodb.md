@@ -4,9 +4,9 @@ This guide walks through the manual setup process for enabling Client-Side Field
 
 ---
 
-## ✅ Prerequisites
+## Prerequisites
 
-### 🧱 Packages
+### Packages
 - **MongoDB Enterprise** ≥ `6.0`
 - **Python** ≥ `3.8`
 - **Python packages**:
@@ -24,13 +24,13 @@ This guide walks through the manual setup process for enabling Client-Side Field
   - Database: `encryption`
   - Collection: `__keyVault`
 - **Schema Target Collection (example)**:
-  - Database: `medical` 
-  - Collection: `patients` 
+  - Database: `medical`
+  - Collection: `patients`
 - **Alternative Key Name** (for the DEK): `yourSecretKeyAlias`
 
 ---
 
-## 🛠️ Step-by-Step Guide 
+## Step-by-Step Guide
 ⚠️ This tutorial was done in a DB test environment with an external cosmian kms.
 
 ### 1. Define environment variable
@@ -145,7 +145,7 @@ print("Encrypted document inserted.")
 
 ---
 
-## 📎 Notes
+## Notes
 
 - Replace `your-cosmian_kms-server:port` with your KMIP endpoint (e.g. `cosmian-kms.example.com:5696`).
 - Replace certificate paths if different.
@@ -160,13 +160,14 @@ print("Encrypted document inserted.")
 <br>
 
 
-# 🔐 Reading Encrypted Data with MongoDB CSFLE (Client-Side Field Level Encryption)
+# Reading Encrypted Data with MongoDB CSFLE (Client-Side Field Level Encryption)
 
+## Step-by-Step Guide
 This guide walks you through reading encrypted documents stored in MongoDB using automatic decryption with the CSFLE feature.
 
 ---
 
-## 1. Set the Shared Crypt Library Path
+### 1. Set the Shared Crypt Library Path
 
 Make sure the environment variable is set to the location of your shared crypt library:
 
@@ -176,7 +177,7 @@ export CRYPT_SHARED_LIB_PATH=/opt/mongo_crypt_shared/mongo_crypt_v1.so
 
 ---
 
-## 2. (Optional) Read Raw Encrypted Documents
+### 2. (Optional) Read Raw Encrypted Documents
 
 You can view the encrypted form of the documents using a regular (non-CSFLE-enabled) MongoDB client:
 
@@ -192,7 +193,7 @@ for doc in client.medical.patients.find():
 
 ---
 
-## 3. Define KMS Provider Configuration
+### 3. Define KMS Provider Configuration
 
 
 ```python
@@ -212,7 +213,7 @@ tls_options = {
 
 ---
 
-## 4. Configure AutoEncryptionOpts
+### 4. Configure AutoEncryptionOpts
 
 This will enable automatic decryption using the shared library:
 
@@ -232,7 +233,7 @@ auto_encryption_opts = AutoEncryptionOpts(
 
 ---
 
-## 5. Create a Secure Client with CSFLE Enabled
+### 5. Create a Secure Client with CSFLE Enabled
 
 ```python
 from pymongo import MongoClient
@@ -245,7 +246,7 @@ secure_client = MongoClient(
 
 ---
 
-## 6. Read Decrypted Documents
+### 6. Read Decrypted Documents
 
 ```python
 secure_db = secure_client["medical"]
@@ -258,13 +259,13 @@ for doc in secure_coll.find():
 
 ---
 
-## ✅ Result
+## Result
 
 Encrypted fields will be automatically decrypted in the returned documents, provided the proper key is stored in your key vault and accessible via the configured Cosmian KMS.
 
 ---
 
-## 📝 Notes
+## Notes
 
 - Make sure the key vault namespace (`encryption.__keyVault`) matches the namespace used during encryption.
 - This method works only with MongoDB Enterprise or MongoDB Atlas with CSFLE support.
