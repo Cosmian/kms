@@ -1,16 +1,16 @@
 In addition to managing its keys, Cosmian KMS can act as a proxy to an HSM, storing and managing keys within the HSM.
 
 <!-- TOC -->
-  * [HSM keys](#hsm-keys)
-  * [Creating a KMS key wrapped by an HSM key](#creating-a-kms-key-wrapped-by-an-hsm-key)
+* [HSM keys](#hsm-keys)
+* [Creating a KMS key wrapped by an HSM key](#creating-a-kms-key-wrapped-by-an-hsm-key)
     * [Manually using the CLI](#manually-using-the-cli)
     * [Manually using the Web UI](#manually-using-the-web-ui)
     * [Automatically using the server configuration](#automatically-using-the-server-configuration)
-  * [Using the wrapped KMS key](#using-the-wrapped-kms-key)
+* [Using the wrapped KMS key](#using-the-wrapped-kms-key)
     * [Small data: encrypting server-side](#small-data-encrypting-server-side)
-      * [Large data: encrypting client side with key wrapping](#large-data-encrypting-client-side-with-key-wrapping)
-  * [The Unwrapped Objects Cache](#the-unwrapped-objects-cache)
-  * [HSM KMIP operations](#hsm-kmip-operations)
+        * [Large data: encrypting client side with key wrapping](#large-data-encrypting-client-side-with-key-wrapping)
+* [The Unwrapped Objects Cache](#the-unwrapped-objects-cache)
+* [HSM KMIP operations](#hsm-kmip-operations)
     * [Create](#create)
     * [Destroy](#destroy)
     * [Get - Export](#get---export)
@@ -227,7 +227,7 @@ The key hsm::4::my_aes_key of type SymmetricKey was exported to "/tmp/symkey.raw
 
 ### Encrypt
 
-Symmetric keys and public keys can be used to encrypt data. Only the user identified by the `hsm-admin` 
+Symmetric keys and public keys can be used to encrypt data. Only the user identified by the `hsm-admin`
 configuration flag or a user granted the `Encrypt` operation (by the HSM admin) can encrypt data with keys stored in the HSM.
 
 For symmetric keys, only AES GCM is supported. CKM_RSA_PKCS_OAEP and the now-deprecated, but still widely

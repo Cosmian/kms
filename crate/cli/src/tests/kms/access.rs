@@ -554,6 +554,50 @@ pub(crate) async fn test_access_right_obtained() -> KmsCliResult<()> {
             .any(|x| x == key_id)
     );
 
+    // same test but grant get access to the wildcard user
+    let key_id = gen_key(&ctx.get_owner_client()).await?;
+
+    // the owner should not have access rights (it owns it)
+    let list = ListAccessRightsObtained.run(ctx.get_owner_client()).await?;
+    assert!(!list.iter().any(|x| x.object_id == key_id));
+
+    // grant get access to the wildcard user
+    GrantAccess {
+        object_uid: Some(key_id.to_string()),
+        user: "*".to_string(),
+        operations: vec![KmipOperation::Get],
+    }
+    .run(ctx.get_owner_client())
+    .await?;
+
+    // grant encrypt access to user
+    GrantAccess {
+        object_uid: Some(key_id.to_string()),
+        user: "user.client@acme.com".to_string(),
+        operations: vec![KmipOperation::Encrypt],
+    }
+    .run(ctx.get_owner_client())
+    .await?;
+
+    // the user should have the "get" and "encrypt" access granted
+    let list = ListAccessRightsObtained.run(ctx.get_user_client()).await?;
+    trace!("user list {list:?}");
+    assert!(list.iter().any(|x| x.object_id == key_id));
+    assert!(
+        list.iter()
+            .flat_map(|x| x.operations.clone())
+            .any(|x| x == KmipOperation::Get)
+    );
+    assert!(
+        list.iter()
+            .flat_map(|x| x.operations.clone())
+            .any(|x| x == KmipOperation::Encrypt)
+    );
+
+    // The owner should not have access rights (since they own the object)
+    let list = ListAccessRightsObtained.run(ctx.get_owner_client()).await?;
+    assert!(!list.iter().any(|x| x.object_id == key_id));
+
     Ok(())
 }
 
@@ -771,58 +815,6 @@ pub(crate) async fn test_ownership_and_grant_wildcard_user() -> KmsCliResult<()>
     }
     .run(ctx.get_user_client())
     .await?;
-
-    Ok(())
-}
-
-#[tokio::test]
-pub(crate) async fn test_access_right_obtained_using_wildcard() -> KmsCliResult<()> {
-    // log_init(option_env!("RUST_LOG"));
-    log_init(Some("info, kms=debug"));
-
-    let ctx = start_default_test_kms_server_with_cert_auth().await;
-    let key_id = gen_key(&ctx.get_owner_client()).await?;
-
-    // the owner should not have access rights (it owns it)
-    let list = ListAccessRightsObtained.run(ctx.get_owner_client()).await?;
-    assert!(!list.iter().any(|x| x.object_id == key_id));
-
-    // grant get access to the wildcard user
-    GrantAccess {
-        object_uid: Some(key_id.to_string()),
-        user: "*".to_string(),
-        operations: vec![KmipOperation::Get],
-    }
-    .run(ctx.get_owner_client())
-    .await?;
-
-    // grant encrypt access to user
-    GrantAccess {
-        object_uid: Some(key_id.to_string()),
-        user: "user.client@acme.com".to_string(),
-        operations: vec![KmipOperation::Encrypt],
-    }
-    .run(ctx.get_owner_client())
-    .await?;
-
-    // the user should have the "get" and "encrypt" access granted
-    let list = ListAccessRightsObtained.run(ctx.get_user_client()).await?;
-    trace!("user list {list:?}");
-    assert!(list.iter().any(|x| x.object_id == key_id));
-    assert!(
-        list.iter()
-            .flat_map(|x| x.operations.clone())
-            .any(|x| x == KmipOperation::Get)
-    );
-    assert!(
-        list.iter()
-            .flat_map(|x| x.operations.clone())
-            .any(|x| x == KmipOperation::Encrypt)
-    );
-
-    // The owner should not have access rights (since they own the object)
-    let list = ListAccessRightsObtained.run(ctx.get_owner_client()).await?;
-    assert!(!list.iter().any(|x| x.object_id == key_id));
 
     Ok(())
 }

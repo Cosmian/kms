@@ -729,7 +729,7 @@ pub(crate) async fn test_export_secret_data() -> KmsCliResult<()> {
 
     // read the bytes from the exported file
     let object = read_object_from_json_ttlv_file(&tmp_path.join("output.export"))?;
-    // Ensure we’re working with SecretData
+    // Ensure we're working with SecretData
     let Object::SecretData(secret_data) = object else {
         panic!("Expected SecretData object");
     };

@@ -39,7 +39,6 @@ kms_public_url = "your_kms_public_url"
 - Application Login URI: `https://YOUR_KMS_URL/ui/login`
 - Logout URI: `https://YOUR_KMS_URL/ui/login`
 
-
 #### 2. Using Command-Line Arguments
 
 Alternatively, provide OIDC settings as command-line arguments when starting the KMS server:

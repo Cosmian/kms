@@ -75,7 +75,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode }) =>
                         }
                     } catch (error) {
                         console.log(error);
-                        setLoginError(`An error occured: ${error}`);
+                        setLoginError(`An error occurred: ${error}`);
                     }
                 }
             }
