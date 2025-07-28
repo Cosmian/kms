@@ -7,7 +7,7 @@ services:
   tls-authentication:
     image: ${KMS_IMAGE_NAME}
     volumes:
-      - ./test_data:/data
+      - ./../../test_data:/data
     command:
       --tls-p12-file /data/client_server/server/kmserver.acme.com.p12
       --tls-p12-password password

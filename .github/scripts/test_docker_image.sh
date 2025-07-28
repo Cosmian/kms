@@ -7,17 +7,18 @@ KMS_URL_HTTP="http://0.0.0.0:9998"
 KMS_URL_HTTPS="https://0.0.0.0:9999"
 
 # Cert paths
-CA_CERT="test_data/client_server/ca/ca.crt"
-CLIENT_CERT="test_data/client_server/owner/owner.client.acme.com.crt"
-CLIENT_KEY="test_data/client_server/owner/owner.client.acme.com.key"
-CLIENT_PKCS12_PATH="./test_data/client_server/owner/owner.client.acme.com.p12"
+CA_CERT="/home/runner/work/kms/kms/test_data/client_server/ca/ca.crt"
+CLIENT_CERT="/home/runner/work/kms/kms/test_data/client_server/owner/owner.client.acme.com.crt"
+CLIENT_KEY="/home/runner/work/kms/kms/test_data/client_server/owner/owner.client.acme.com.key"
+CLIENT_PKCS12_PATH="/home/runner/work/kms/kms/test_data/client_server/owner/owner.client.acme.com.p12"
 
 set -ex
 
 #install cli
 sudo apt update && sudo apt install -y wget
-wget https://package.cosmian.com/cli/1.0.0/ubuntu-24.04/cosmian-cli_1.0.0-1_amd64.deb
-sudo apt install ./cosmian-cli_1.0.0-1_amd64.deb
+CLI_VERSION="1.1.0"
+wget "https://package.cosmian.com/cli/$CLI_VERSION/ubuntu-24.04/cosmian-cli_$CLI_VERSION-1_amd64.deb"
+sudo apt install ./"cosmian-cli_$CLI_VERSION-1_amd64.deb"
 cosmian --version
 
 # update cli conf
@@ -31,7 +32,7 @@ sudo echo '
 print_json = false
 
 [kms_config.http_config]
-server_url = '$KMS_URL_HTTP'
+server_url = "'$KMS_URL_HTTP'"
 ' > $CONFIG
 
 sudo echo '
@@ -39,14 +40,14 @@ sudo echo '
 print_json = false
 
 [kms_config.http_config]
-server_url = '$KMS_URL_HTTPS'
+server_url = "'$KMS_URL_HTTPS'"
 accept_invalid_certs = true
-ssl_client_pkcs12_path = '$CLIENT_PKCS12_PATH'
+ssl_client_pkcs12_path = "'$CLIENT_PKCS12_PATH'"
 ssl_client_pkcs12_password = "password"
 ' > $TLS_CONFIG
 
 # Run docker containers
-docker compose -f docker-compose-authentication-tests.yml up -d
+docker compose -f .github/scripts/docker-compose-authentication-tests.yml up -d
 
 # Function to test OpenSSL connections
 openssl_test() {
