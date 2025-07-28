@@ -57,7 +57,6 @@ reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 strum = { workspace = true }
-test_kms_server = { path = "../test_kms_server", version = "5.6.1" }
 time = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
@@ -77,4 +76,5 @@ openssl = { workspace = true }
 predicates = "3.1"
 regex = { version = "1.11", default-features = false }
 tempfile = "3.19"
+test_kms_server = { path = "../test_kms_server" }
 x509-parser = { workspace = true, features = ["verify"] }

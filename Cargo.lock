@@ -5330,7 +5330,6 @@ dependencies = [
  "actix-server",
  "cosmian_kms_client",
  "cosmian_kms_server",
- "cosmian_logger 0.3.1",
  "criterion",
  "serde_json",
  "tempfile",

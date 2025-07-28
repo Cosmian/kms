@@ -34,7 +34,6 @@ pub mod reexport {
     pub use cosmian_kmip;
     pub use cosmian_kms_client;
     pub use cosmian_kms_crypto;
-    pub use test_kms_server;
 }
 
 #[cfg(test)]
