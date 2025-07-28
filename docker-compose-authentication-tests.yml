@@ -1,11 +1,11 @@
 ---
 services:
   no-authentication:
-    image: ghcr.io/cosmian/kms
+    image: ${KMS_IMAGE_NAME}
     ports:
       -  9998:9998
   tls-authentication:
-    image: ghcr.io/cosmian/kms
+    image: ${KMS_IMAGE_NAME}
     volumes:
       - ./test_data:/data
     command:
