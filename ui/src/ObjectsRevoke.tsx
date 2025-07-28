@@ -19,11 +19,6 @@ type RevokeResponse = {
     UniqueIdentifier: string;
 };
 
-interface RevocationReason {
-    revocation_reason_code: string;
-    revocation_message: string;
-}
-
 const RevokeForm: React.FC<RevokeFormProps> = ({ objectType }) => {
     const [form] = Form.useForm<RevokeFormData>();
     const [res, setRes] = useState<undefined | string>(undefined);
@@ -49,11 +44,7 @@ const RevokeForm: React.FC<RevokeFormProps> = ({ objectType }) => {
         }
 
         try {
-            const revocationReason: RevocationReason = {
-                revocation_reason_code: "Unspecified",
-                revocation_message: values.revocationReasonMessage,
-            };
-            const request = revoke_ttlv_request(id, revocationReason);
+            const request = revoke_ttlv_request(id, values.revocationReasonMessage);
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const result: RevokeResponse = await parse_revoke_ttlv_response(result_str);
