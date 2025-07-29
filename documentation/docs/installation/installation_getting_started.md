@@ -57,16 +57,16 @@ For high availability and scalability, refer to the [High Availability Guide](./
 
     ```sh
     sudo apt update && sudo apt install -y wget
-    wget https://package.cosmian.com/kms/5.6.1/ubuntu-22.04/cosmian-kms-server_5.6.1-1_amd64.deb
-    sudo apt install ./cosmian-kms-server_5.6.1-1_amd64.deb
+    wget https://package.cosmian.com/kms/5.6.2/ubuntu-22.04/cosmian-kms-server_5.6.2-1_amd64.deb
+    sudo apt install ./cosmian-kms-server_5.6.2-1_amd64.deb
     sudo cosmian_kms --version
     ```
 
     Or install the FIPS version:
 
     ```sh
-    wget https://package.cosmian.com/kms/5.6.1/ubuntu-22.04/cosmian-kms-server-fips_5.6.1-1_amd64.deb
-    sudo apt install ./cosmian-kms-server-fips_5.6.1-1_amd64.deb
+    wget https://package.cosmian.com/kms/5.6.2/ubuntu-22.04/cosmian-kms-server-fips_5.6.2-1_amd64.deb
+    sudo apt install ./cosmian-kms-server-fips_5.6.2-1_amd64.deb
     sudo cosmian_kms --version
     ```
 
@@ -86,16 +86,16 @@ For high availability and scalability, refer to the [High Availability Guide](./
 
     ```sh
     sudo apt update && sudo apt install -y wget
-    wget https://package.cosmian.com/kms/5.6.1/ubuntu-24.04/cosmian-kms-server_5.6.1-1_amd64.deb
-    sudo apt install ./cosmian-kms-server_5.6.1-1_amd64.deb
+    wget https://package.cosmian.com/kms/5.6.2/ubuntu-24.04/cosmian-kms-server_5.6.2-1_amd64.deb
+    sudo apt install ./cosmian-kms-server_5.6.2-1_amd64.deb
     sudo cosmian_kms --version
     ```
 
     Or install the FIPS version:
 
     ```sh
-    wget https://package.cosmian.com/kms/5.6.1/ubuntu-24.04/cosmian-kms-server-fips_5.6.1-1_amd64.deb
-    sudo apt install ./cosmian-kms-server-fips_5.6.1-1_amd64.deb
+    wget https://package.cosmian.com/kms/5.6.2/ubuntu-24.04/cosmian-kms-server-fips_5.6.2-1_amd64.deb
+    sudo apt install ./cosmian-kms-server-fips_5.6.2-1_amd64.deb
     sudo cosmian_kms --version
     ```
 
@@ -115,8 +115,8 @@ For high availability and scalability, refer to the [High Availability Guide](./
 
     ```sh
     sudo dnf update && sudo dnf install -y wget
-    wget https://package.cosmian.com/kms/5.6.1/rockylinux8/cosmian_kms_server-5.6.1-1.x86_64.rpm
-    sudo dnf install ./cosmian_kms_server-5.6.1-1.x86_64.rpm
+    wget https://package.cosmian.com/kms/5.6.2/rockylinux8/cosmian_kms_server-5.6.2-1.x86_64.rpm
+    sudo dnf install ./cosmian_kms_server-5.6.2-1.x86_64.rpm
     sudo cosmian_kms --version
     ```
 
@@ -135,8 +135,8 @@ For high availability and scalability, refer to the [High Availability Guide](./
 
     ```sh
     sudo dnf update && sudo dnf install -y wget
-    wget https://package.cosmian.com/kms/5.6.1/rockylinux9/cosmian_kms_server-5.6.1-1.x86_64.rpm
-    sudo dnf install ./cosmian_kms_server-5.6.1-1.x86_64.rpm
+    wget https://package.cosmian.com/kms/5.6.2/rockylinux9/cosmian_kms_server-5.6.2-1.x86_64.rpm
+    sudo dnf install ./cosmian_kms_server-5.6.2-1.x86_64.rpm
     sudo cosmian_kms --version
     ```
 
@@ -154,7 +154,7 @@ For high availability and scalability, refer to the [High Availability Guide](./
     On ARM MacOS, download the build archive and extract it:
 
     ```sh
-    wget https://package.cosmian.com/kms/5.6.1/macos_arm-release.zip
+    wget https://package.cosmian.com/kms/5.6.2/macos_arm-release.zip
     unzip macos_arm-release.zip
     cp ./macos_arm-release/Users/runner/work/kms/kms/target/aarch64-apple-darwin/release/cosmian_kms /usr/local/bin/
     chmod u+x /usr/local/bin/cosmian_kms
@@ -164,7 +164,7 @@ For high availability and scalability, refer to the [High Availability Guide](./
     On Intel MacOS, download the build archive and extract it:
 
     ```sh
-    wget https://package.cosmian.com/kms/5.6.1/macos_intel-release.zip
+    wget https://package.cosmian.com/kms/5.6.2/macos_intel-release.zip
     unzip macos_intel-release.zip
     cp ./macos_intel-release/Users/runner/work/kms/kms/target/x86_64-apple-darwin/release/cosmian_kms /usr/local/bin/
     chmod u+x /usr/local/bin/cosmian_kms
@@ -182,7 +182,7 @@ For high availability and scalability, refer to the [High Availability Guide](./
     On Windows, download the build archive:
 
     ```sh
-     https://package.cosmian.com/kms/5.6.1/windows-release.zip
+     https://package.cosmian.com/kms/5.6.2/windows-release.zip
     ```
 
     Extract the cosmian_kms from:
