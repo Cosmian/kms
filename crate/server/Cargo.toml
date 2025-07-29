@@ -65,7 +65,7 @@ num-bigint-dig = { workspace = true, features = [
     "serde",
     "zeroize",
 ] }
-openidconnect = "4.0"
+openidconnect = { version = "4.0", features = ["reqwest", "native-tls"] }
 openssl = { workspace = true }
 proteccio_pkcs11_loader = { path = "../hsm/proteccio", version = "5.6.1" }
 # Important: align the rustls version with reqwest rustls dependency
