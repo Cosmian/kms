@@ -2,18 +2,18 @@
 
 <!-- TOC -->
 * [Utimaco HSM](#utimaco-hsm)
-  * [Installing the simulator](#installing-the-simulator)
-    * [ARM](#arm)
-    * [AMD64](#amd64)
-  * [Download and run the simulator](#download-and-run-the-simulator)
-  * [Configure the PKCS#11 connection on the KMS server](#configure-the-pkcs11-connection-on-the-kms-server)
-    * [PKCS#11 library](#pkcs11-library)
-    * [Configuration file](#configuration-file)
-    * [Test the PKCS#11 configuration](#test-the-pkcs11-configuration)
-  * [When a bridged network is not possible](#when-a-bridged-network-is-not-possible)
-  * [Initializing a slot and creating the users on the simulator](#initializing-a-slot-and-creating-the-users-on-the-simulator)
-    * [Using the p11tool2](#using-the-p11tool2)
-    * [Using the CAT tool](#using-the-cat-tool)
+    * [Installing the simulator](#installing-the-simulator)
+        * [ARM](#arm)
+        * [AMD64](#amd64)
+    * [Download and run the simulator](#download-and-run-the-simulator)
+    * [Configure the PKCS#11 connection on the KMS server](#configure-the-pkcs11-connection-on-the-kms-server)
+        * [PKCS#11 library](#pkcs11-library)
+        * [Configuration file](#configuration-file)
+        * [Test the PKCS#11 configuration](#test-the-pkcs11-configuration)
+    * [When a bridged network is not possible](#when-a-bridged-network-is-not-possible)
+    * [Initializing a slot and creating the users on the simulator](#initializing-a-slot-and-creating-the-users-on-the-simulator)
+        * [Using the p11tool2](#using-the-p11tool2)
+        * [Using the CAT tool](#using-the-cat-tool)
 <!-- TOC -->
 
 ## Installing the simulator
@@ -246,7 +246,6 @@ The users will appear as `SO_0000` and `USER_0000` in the CAT tool.
 you will keep getting `CKR_PIN_TOO_WEAK` (440) errors.
 
 The user PIN is what should be passed to the KMS.
-
 
 ## Running the KMS server
 

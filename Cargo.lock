@@ -1286,7 +1286,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kmip"
-version = "5.6.1"
+version = "5.6.2"
 dependencies = [
  "bitflags 2.9.0",
  "cosmian_logger 0.1.1",
@@ -1308,7 +1308,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_access"
-version = "5.6.1"
+version = "5.6.2"
 dependencies = [
  "cosmian_kmip",
  "serde",
@@ -1316,7 +1316,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_base_hsm"
-version = "5.6.1"
+version = "5.6.2"
 dependencies = [
  "async-trait",
  "cosmian_kms_interfaces",
@@ -1331,7 +1331,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_cli"
-version = "5.6.1"
+version = "5.6.2"
 dependencies = [
  "actix-rt",
  "actix-server",
@@ -1374,7 +1374,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_client"
-version = "5.6.1"
+version = "5.6.2"
 dependencies = [
  "cosmian_crypto_core 10.1.0",
  "cosmian_http_client",
@@ -1391,7 +1391,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_client_utils"
-version = "5.6.1"
+version = "5.6.2"
 dependencies = [
  "base64 0.22.1",
  "clap",
@@ -1410,7 +1410,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_client_wasm"
-version = "5.6.1"
+version = "5.6.2"
 dependencies = [
  "base64 0.22.1",
  "cosmian_kms_client_utils",
@@ -1427,7 +1427,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_crypto"
-version = "5.6.1"
+version = "5.6.2"
 dependencies = [
  "aes-gcm-siv",
  "argon2",
@@ -1451,7 +1451,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_interfaces"
-version = "5.6.1"
+version = "5.6.2"
 dependencies = [
  "async-trait",
  "cosmian_kmip",
@@ -1465,7 +1465,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_server"
-version = "5.6.1"
+version = "5.6.2"
 dependencies = [
  "actix-cors",
  "actix-files",
@@ -1519,7 +1519,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_server_database"
-version = "5.6.1"
+version = "5.6.2"
 dependencies = [
  "async-trait",
  "cloudproof_findex",
@@ -2743,6 +2743,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "hyper-tls"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "70206fc6890eaca9fde8a0bf71caa2ddfc9fe045ac9e5c70df101a7dbde866e0"
+dependencies = [
+ "bytes",
+ "http-body-util",
+ "hyper 1.6.0",
+ "hyper-util",
+ "native-tls",
+ "tokio",
+ "tokio-native-tls",
+ "tower-service",
+]
+
+[[package]]
 name = "hyper-util"
 version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3083,7 +3099,7 @@ dependencies = [
 
 [[package]]
 name = "kmip-derive"
-version = "5.6.1"
+version = "5.6.2"
 dependencies = [
  "quote",
  "syn",
@@ -4079,7 +4095,7 @@ dependencies = [
 
 [[package]]
 name = "proteccio_pkcs11_loader"
-version = "5.6.1"
+version = "5.6.2"
 dependencies = [
  "cosmian_kms_base_hsm",
  "cosmian_kms_interfaces",
@@ -4325,7 +4341,7 @@ dependencies = [
  "http-body 0.4.6",
  "hyper 0.14.32",
  "hyper-rustls 0.24.2",
- "hyper-tls",
+ "hyper-tls 0.5.0",
  "ipnet",
  "js-sys",
  "log",
@@ -4370,11 +4386,13 @@ dependencies = [
  "http-body-util",
  "hyper 1.6.0",
  "hyper-rustls 0.27.5",
+ "hyper-tls 0.6.0",
  "hyper-util",
  "ipnet",
  "js-sys",
  "log",
  "mime",
+ "native-tls",
  "once_cell",
  "percent-encoding",
  "pin-project-lite",
@@ -4387,6 +4405,7 @@ dependencies = [
  "serde_urlencoded",
  "sync_wrapper 1.0.2",
  "tokio",
+ "tokio-native-tls",
  "tokio-rustls 0.26.2",
  "tower 0.5.2",
  "tower-service",
@@ -4950,7 +4969,7 @@ dependencies = [
 
 [[package]]
 name = "softhsm2_pkcs11_loader"
-version = "5.6.1"
+version = "5.6.2"
 dependencies = [
  "cosmian_kms_base_hsm",
  "cosmian_kms_interfaces",
@@ -5325,12 +5344,11 @@ checksum = "8f50febec83f5ee1df3015341d8bd429f2d1cc62bcba7ea2076759d315084683"
 
 [[package]]
 name = "test_kms_server"
-version = "5.6.1"
+version = "5.6.2"
 dependencies = [
  "actix-server",
  "cosmian_kms_client",
  "cosmian_kms_server",
- "cosmian_logger 0.3.1",
  "criterion",
  "serde_json",
  "tempfile",
@@ -5896,7 +5914,7 @@ checksum = "b6c140620e7ffbb22c2dee59cafe6084a59b5ffc27a8859a5f0d494b5d52b6be"
 
 [[package]]
 name = "utimaco_pkcs11_loader"
-version = "5.6.1"
+version = "5.6.2"
 dependencies = [
  "cosmian_kms_base_hsm",
  "cosmian_kms_interfaces",

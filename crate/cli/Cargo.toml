@@ -40,9 +40,9 @@ clap = { workspace = true, features = [
   "cargo",
 ] }
 cosmian_config_utils = { workspace = true }
-cosmian_kmip = { path = "../kmip", version = "5.6.1" } # only to be reexported, not used directly
-cosmian_kms_client = { path = "../kms_client", version = "5.6.1" }
-cosmian_kms_crypto = { path = "../crypto", version = "5.6.1" }
+cosmian_kmip = { path = "../kmip", version = "5.6.2" } # only to be reexported, not used directly
+cosmian_kms_client = { path = "../kms_client", version = "5.6.2" }
+cosmian_kms_crypto = { path = "../crypto", version = "5.6.2" }
 cosmian_logger = { workspace = true }
 csv = "1.3.1"
 der = { workspace = true, features = ["pem"] }
@@ -57,7 +57,6 @@ reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 strum = { workspace = true }
-test_kms_server = { path = "../test_kms_server", version = "5.6.1" }
 time = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
@@ -77,4 +76,5 @@ openssl = { workspace = true }
 predicates = "3.1"
 regex = { version = "1.11", default-features = false }
 tempfile = "3.19"
+test_kms_server = { path = "../test_kms_server" }
 x509-parser = { workspace = true, features = ["verify"] }

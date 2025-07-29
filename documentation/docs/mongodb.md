@@ -7,30 +7,32 @@ This guide walks through the manual setup process for enabling Client-Side Field
 ## Prerequisites
 
 ### Packages
+
 - **MongoDB Enterprise** ≥ `6.0`
 - **Python** ≥ `3.8`
 - **Python packages**:
-  - `pymongo`
-  - `dnspython`
+    - `pymongo`
+    - `dnspython`
 - **MongoDB Crypt Shared Library**:
-  - Download from the MongoDB Enterprise downloads section (e.g., `mongo_crypt_v1.so`)
-  - Install to: `/opt/mongo_crypt_shared/mongo_crypt_v1.so`
+    - Download from the MongoDB Enterprise downloads section (e.g., `mongo_crypt_v1.so`)
+    - Install to: `/opt/mongo_crypt_shared/mongo_crypt_v1.so`
 - **Cosmian KMS**:
-  - Cosmian KMS endpoint: `your-cosmian_kms-server:port`
-  - TLS certs:
-    - Client cert: `/opt/kms-certs/client.pem`
-    - CA cert: `/opt/kms-certs/ca.pem`
+    - Cosmian KMS endpoint: `your-cosmian_kms-server:port`
+    - TLS certs:
+        - Client cert: `/opt/kms-certs/client.pem`
+        - CA cert: `/opt/kms-certs/ca.pem`
 - **Key Vault Namespace**:
-  - Database: `encryption`
-  - Collection: `__keyVault`
+    - Database: `encryption`
+    - Collection: `__keyVault`
 - **Schema Target Collection (example)**:
-  - Database: `medical`
-  - Collection: `patients`
+    - Database: `medical`
+    - Collection: `patients`
 - **Alternative Key Name** (for the DEK): `yourSecretKeyAlias`
 
 ---
 
 ## Step-by-Step Guide
+
 ⚠️ This tutorial was done in a DB test environment with an external cosmian kms.
 
 ### 1. Define environment variable
@@ -152,17 +154,16 @@ print("Encrypted document inserted.")
 - The `ssn` field will be transparently encrypted on insert, and decrypted on read.
 - This setup requires MongoDB Enterprise, as CSFLE is not supported in the Community Edition.
 
-
 ---
 <br>
 <br>
 <br>
 <br>
 
-
 # Reading Encrypted Data with MongoDB CSFLE (Client-Side Field Level Encryption)
 
 ## Step-by-Step Guide
+
 This guide walks you through reading encrypted documents stored in MongoDB using automatic decryption with the CSFLE feature.
 
 ---
@@ -194,7 +195,6 @@ for doc in client.medical.patients.find():
 ---
 
 ### 3. Define KMS Provider Configuration
-
 
 ```python
 kms_providers = {

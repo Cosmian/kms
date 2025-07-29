@@ -107,7 +107,7 @@ port = 9998
 # The KMS server hostname - defaults to 0.0.0.0
 hostname = "0.0.0.0"
 
-# If using a forward proxy for outbound JWKS requests, 
+# If using a forward proxy for outbound JWKS requests,
 # set the proxy parameters here.
 [proxy]
 # The URL of the proxy server, including the protocol and port.
@@ -116,7 +116,7 @@ hostname = "0.0.0.0"
 proxy_url = "https://proxy.example.com:8080"
 # The username to use for basic authentication with the proxy server.
 proxy_basic_auth_username = "[proxy username]"
-# The password to use for basic authentication with the proxy server.   
+# The password to use for basic authentication with the proxy server.
 proxy_basic_auth_password = "[proxy password]"
 # Use a custom proxy authentication header instead of the standard Basic authentication.
 proxy_custom_auth_header = "my_custom_auth_token"

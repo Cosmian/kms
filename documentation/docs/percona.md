@@ -4,29 +4,29 @@ This guide demonstrates how to configure PostgreSQL 17 with Percona's `pg_tde` e
 
 <!-- TOC -->
 * [Using pg_tde with Cosmian KMS and PostgreSQL 17 (Percona)](#using-pg_tde-with-cosmian-kms-and-postgresql-17-percona)
-  * [Prerequisites](#prerequisites)
-  * [Configuration Steps](#configuration-steps)
-    * [1. Configure PostgreSQL](#1-configure-postgresql)
-    * [2. Restart PostgreSQL](#2-restart-postgresql)
-    * [3. Configure the KMS Key Provider](#3-configure-the-kms-key-provider)
-    * [4. Set the Default Encryption Key](#4-set-the-default-encryption-key)
-    * [5. Enable the Extension](#5-enable-the-extension)
-    * [6. Ensure event triggers are set (usually created on extension install)](#6-ensure-event-triggers-are-set-usually-created-on-extension-install)
-    * [7. Create encrypted tables](#7-create-encrypted-tables)
-    * [8. Verify if a table is encrypted](#8-verify-if-a-table-is-encrypted)
-    * [9. Insert and query data transparently](#9-insert-and-query-data-transparently)
-    * [10. Check current encryption settings](#10-check-current-encryption-settings)
-  * [Troubleshooting & Notes](#troubleshooting--notes)
+    * [Prerequisites](#prerequisites)
+    * [Configuration Steps](#configuration-steps)
+        * [1. Configure PostgreSQL](#1-configure-postgresql)
+        * [2. Restart PostgreSQL](#2-restart-postgresql)
+        * [3. Configure the KMS Key Provider](#3-configure-the-kms-key-provider)
+        * [4. Set the Default Encryption Key](#4-set-the-default-encryption-key)
+        * [5. Enable the Extension](#5-enable-the-extension)
+        * [6. Ensure event triggers are set (usually created on extension install)](#6-ensure-event-triggers-are-set-usually-created-on-extension-install)
+        * [7. Create encrypted tables](#7-create-encrypted-tables)
+        * [8. Verify if a table is encrypted](#8-verify-if-a-table-is-encrypted)
+        * [9. Insert and query data transparently](#9-insert-and-query-data-transparently)
+        * [10. Check current encryption settings](#10-check-current-encryption-settings)
+    * [Troubleshooting & Notes](#troubleshooting--notes)
 <!-- TOC -->
 
 ## Prerequisites
 
 Before starting, ensure you have:
 
-- PostgreSQL 17 (Percona Server for PostgreSQL 17.5.2 or later)
-- `pg_tde` extension installed
-- Access to a running Cosmian KMS server
-- Appropriate SSL certificates for KMIP communication
+* PostgreSQL 17 (Percona Server for PostgreSQL 17.5.2 or later)
+* `pg_tde` extension installed
+* Access to a running Cosmian KMS server
+* Appropriate SSL certificates for KMIP communication
 
 ## Configuration Steps
 
@@ -148,14 +148,13 @@ SHOW pg_tde.inherit_global_providers;
 
 ## Troubleshooting & Notes
 
-- `shared_preload_libraries` must include at least `'pg_tde'`.
-- To change `pg_tde.wal_encrypt` or `pg_tde.enforce_encryption`, a server restart is mandatory.
+* `shared_preload_libraries` must include at least `'pg_tde'`.
+* To change `pg_tde.wal_encrypt` or `pg_tde.enforce_encryption`, a server restart is mandatory.
 
-- Ensure SSL certificates are properly secured with appropriate file permissions
-- Store certificate files in a secure location accessible only to the PostgreSQL service
-- Regularly rotate encryption keys as per your security policy
-- Monitor KMS connectivity and have appropriate failover procedures
-
+* Ensure SSL certificates are properly secured with appropriate file permissions
+* Store certificate files in a secure location accessible only to the PostgreSQL service
+* Regularly rotate encryption keys as per your security policy
+* Monitor KMS connectivity and have appropriate failover procedures
 
 Common issues and solutions:
 
