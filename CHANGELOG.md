@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.6.2] - 2025-07-29
+
+### 🐛 Bug Fixes
+
+- Remove useless and old UI files (#487)
+- Test_kms_server must remain dev-dependency (#486)
+- Enable native TLS support for OpenID Connect authentication (#489)
+
 ## [5.6.1] - 2025-07-25
 
 ### 🚀 Features
