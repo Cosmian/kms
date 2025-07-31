@@ -475,10 +475,10 @@ mod tests {
         );
         assert_eq!(
             authentication_token.aud,
-            Some(
+            Some(vec![
                 "764086051850-6qr4p6gpi6hn506pt8ejuq83di341hur.apps.googleusercontent.com"
                     .to_owned()
-            )
+            ])
         );
 
         // Test authorization
@@ -507,10 +507,10 @@ mod tests {
         // prev: Some("cse-authorization".to_owned())
         assert_eq!(
             authorization_token.aud,
-            Some(
+            Some(vec![
                 "764086051850-6qr4p6gpi6hn506pt8ejuq83di341hur.apps.googleusercontent.com"
                     .to_owned()
-            )
+            ])
         );
     }
 }
