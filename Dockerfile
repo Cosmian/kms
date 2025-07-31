@@ -33,6 +33,7 @@ RUN if [ "$FIPS" = "true" ]; then \
 #
 FROM debian:bookworm-20250428-slim AS kms-server
 
+# TODO(ecse): install update-ca-certificates?
 COPY --from=builder /root/kms/crate/server/ui                   /usr/local/cosmian/ui
 COPY --from=builder /root/kms/target/release/cosmian_kms        /usr/bin/cosmian_kms
 COPY --from=builder /usr/local/openssl                          /usr/local/openssl

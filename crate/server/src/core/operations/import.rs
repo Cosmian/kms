@@ -95,6 +95,7 @@ pub(crate) async fn import(
         ObjectType::SecretData => {
             Box::pin(process_secret_data(kms, request, owner, params.clone())).await?
         }
+        ObjectType::OpaqueObject => Box::pin(process_opaque_object(request)).await?,
         x => {
             return Err(KmsError::InvalidRequest(format!(
                 "Import is not yet supported for objects of type : {x}"
@@ -832,6 +833,44 @@ pub(crate) async fn process_secret_data(
             tags,
             replace_existing,
             object,
+            attributes,
+            uid,
+        )],
+    ))
+}
+
+pub(crate) async fn process_opaque_object(
+    request: Import,
+) -> Result<(String, Vec<AtomicOperation>), KmsError> {
+    // check if the object will be replaced if it already exists
+    let replace_existing = request.replace_existing.unwrap_or(false);
+
+    // Generate a new UID if none is provided.
+    let uid = match request.unique_identifier.to_string() {
+        uid if uid.is_empty() => Uuid::new_v4().to_string(),
+        uid => uid,
+    };
+
+    // Tag the object as a opaque object
+    let mut tags = recover_tags(&request.attributes, &request.object);
+    tags.insert("_oo".to_owned());
+
+    // Request attributes will hold the final attributes of the object.
+    let mut attributes = request.attributes;
+    // force the object type to be OpaqueObject
+    attributes.object_type = Some(ObjectType::OpaqueObject);
+    // set the unique identifier
+    attributes.unique_identifier = Some(UniqueIdentifier::TextString(uid.clone()));
+
+    // set the tags in the attributes
+    attributes.set_tags(tags.clone())?;
+
+    Ok((
+        uid.clone(),
+        vec![single_operation(
+            tags,
+            replace_existing,
+            request.object,
             attributes,
             uid,
         )],
