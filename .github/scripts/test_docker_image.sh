@@ -49,6 +49,9 @@ ssl_client_pkcs12_password = "password"
 # Run docker containers
 docker compose -f .github/scripts/docker-compose-authentication-tests.yml up -d
 
+# Wait for the containers to be ready
+sleep 10
+
 # Function to test OpenSSL connections
 openssl_test() {
   local host_port=$1
