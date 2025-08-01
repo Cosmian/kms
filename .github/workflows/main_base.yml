@@ -23,7 +23,7 @@ jobs:
         with:
           submodules: recursive
 
-      - uses: EmbarkStudios/cargo-deny-action@v1
+      - uses: EmbarkStudios/cargo-deny-action@v2
 
   cargo-lint:
     uses: Cosmian/reusable_workflows/.github/workflows/clippy.yml@develop
