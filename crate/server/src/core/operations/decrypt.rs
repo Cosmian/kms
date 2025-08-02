@@ -147,7 +147,7 @@ pub(crate) async fn decrypt(
         }
         debug!("Decrypt: user: {user} is authorized to decrypt using: {uid}");
         // user is authorized to decrypt with the key
-        if let Object::SymmetricKey { .. } = owm.object() {
+        if let Object::SymmetricKey { .. } | Object::OpaqueObject { .. } = owm.object() {
             selected_owm = Some(owm);
             break
         }

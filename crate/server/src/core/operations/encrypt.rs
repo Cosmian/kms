@@ -144,7 +144,10 @@ pub(crate) async fn encrypt(
             selected_owm = Some(owm);
             break
         }
-        if let Object::SymmetricKey { .. } | Object::PublicKey { .. } = owm.object() {
+        if let Object::SymmetricKey { .. }
+        | Object::PublicKey { .. }
+        | Object::OpaqueObject { .. } = owm.object()
+        {
             // If an HSM wraps the object, likely the wrapping will be done with NoEncoding
             // and the attributes of the object will be empty. Use the metadata attributes.
             let attributes = owm
@@ -180,10 +183,10 @@ pub(crate) async fn encrypt(
     // plaintext length for logging
     let plaintext_len = request.data.as_ref().map_or(0, |d| d.len());
 
-    //It may be a bulk encryption request; if not, fallback to single encryption
+    // It may be a bulk encryption request; if not, fallback to single encryption
     let res = match BulkData::deserialize(data) {
         Ok(bulk_data) => {
-            //It is a bulk encryption request
+            // It is a bulk encryption request
             encrypt_bulk(&owm, request, bulk_data)
         }
         Err(_) => {
