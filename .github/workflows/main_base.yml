@@ -117,6 +117,17 @@ jobs:
       destination: kms
       debug_or_release: ${{ inputs.debug_or_release }}
 
+  cargo-publish:
+    needs:
+      - cargo-audit
+      - cargo-lint
+      - build
+      - pykmip
+    uses: Cosmian/reusable_workflows/.github/workflows/cargo-publish-workspace.yml@develop
+    with:
+      toolchain: ${{ inputs.toolchain }}
+    secrets: inherit
+
   public_documentation:
     runs-on: ubuntu-latest
 

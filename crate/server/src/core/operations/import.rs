@@ -95,7 +95,7 @@ pub(crate) async fn import(
         ObjectType::SecretData => {
             Box::pin(process_secret_data(kms, request, owner, params.clone())).await?
         }
-        ObjectType::OpaqueObject => Box::pin(process_opaque_object(request)).await?,
+        ObjectType::OpaqueObject => process_opaque_object(request)?,
         x => {
             return Err(KmsError::InvalidRequest(format!(
                 "Import is not yet supported for objects of type : {x}"
@@ -839,7 +839,7 @@ pub(crate) async fn process_secret_data(
     ))
 }
 
-pub(crate) async fn process_opaque_object(
+pub(crate) fn process_opaque_object(
     request: Import,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     // check if the object will be replaced if it already exists

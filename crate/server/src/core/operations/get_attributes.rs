@@ -54,7 +54,7 @@ pub(crate) async fn get_attributes(
     );
 
     let attributes = match owm.object() {
-        Object::Certificate { .. } => {
+        Object::Certificate { .. } | Object::OpaqueObject { .. } => {
             // KMIP Attributes retrieved from the dedicated column `Attributes`
             owm.attributes().to_owned()
         }
@@ -74,10 +74,7 @@ pub(crate) async fn get_attributes(
                 owm.attributes().to_owned()
             }
         }
-        Object::CertificateRequest { .. }
-        | Object::OpaqueObject { .. }
-        | Object::PGPKey { .. }
-        | Object::SplitKey { .. } => {
+        Object::CertificateRequest { .. } | Object::PGPKey { .. } | Object::SplitKey { .. } => {
             return Err(KmsError::InvalidRequest(format!(
                 "get: unsupported object type for {uid_or_tags}",
             )))
