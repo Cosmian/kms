@@ -245,38 +245,42 @@ impl SymCipher {
                     BlockCipherMode::AEAD | BlockCipherMode::GCM => match key_size {
                         AES_128_GCM_KEY_LENGTH => Ok(Self::Aes128Gcm),
                         AES_256_GCM_KEY_LENGTH => Ok(Self::Aes256Gcm),
-                        _ => crypto_bail!(CryptoError::NotSupported(
-                            "AES key must be 16 or 32 bytes long for AES GCM".to_owned()
-                        )),
+                        _ => crypto_bail!(CryptoError::NotSupported(format!(
+                            "AES key must be 16 or 32 bytes long for AES GCM. Found {key_size} \
+                             bytes",
+                        ))),
                     },
                     BlockCipherMode::CBC => match key_size {
                         AES_128_CBC_KEY_LENGTH => Ok(Self::Aes128Cbc),
                         AES_256_CBC_KEY_LENGTH => Ok(Self::Aes256Cbc),
-                        _ => crypto_bail!(CryptoError::NotSupported(
-                            "AES key must be 16 or 32 bytes long for AES CBC".to_owned()
-                        )),
+                        _ => crypto_bail!(CryptoError::NotSupported(format!(
+                            "AES key must be 16 or 32 bytes long for AES CBC. Found {key_size} \
+                             bytes",
+                        ))),
                     },
                     BlockCipherMode::XTS => match key_size {
                         AES_128_XTS_KEY_LENGTH => Ok(Self::Aes128Xts),
                         AES_256_XTS_KEY_LENGTH => Ok(Self::Aes256Xts),
-                        _ => crypto_bail!(CryptoError::NotSupported(
-                            "AES key must be 32 or 64 bytes long for AES XTS".to_owned()
-                        )),
+                        _ => crypto_bail!(CryptoError::NotSupported(format!(
+                            "AES key must be 32 or 64 bytes long for AES XTS. Found {key_size} \
+                             bytes",
+                        ))),
                     },
                     #[cfg(feature = "non-fips")]
                     BlockCipherMode::GCMSIV => match key_size {
                         AES_128_GCM_SIV_KEY_LENGTH => Ok(Self::Aes128GcmSiv),
                         AES_256_GCM_SIV_KEY_LENGTH => Ok(Self::Aes256GcmSiv),
-                        _ => crypto_bail!(CryptoError::NotSupported(
-                            "AES key must be 16 or 32 bytes long for AES GCM SIV".to_owned()
-                        )),
+                        _ => crypto_bail!(CryptoError::NotSupported(format!(
+                            "AES key must be 16 or 32 bytes long for AES GCM SIV. Found \
+                             {key_size} bytes",
+                        ))),
                     },
                     BlockCipherMode::NISTKeyWrap => match key_size {
                         RFC5649_16_KEY_LENGTH => Ok(Self::Rfc5649_16),
                         RFC5649_32_KEY_LENGTH => Ok(Self::Rfc5649_32),
-                        _ => crypto_bail!(CryptoError::NotSupported(
-                            "RFC5649 key must be 16 or 32 bytes long".to_owned()
-                        )),
+                        _ => crypto_bail!(CryptoError::NotSupported(format!(
+                            "RFC5649 key must be 16 or 32 bytes long. Found {key_size} bytes",
+                        ))),
                     },
                     mode => {
                         crypto_bail!(CryptoError::NotSupported(format!(

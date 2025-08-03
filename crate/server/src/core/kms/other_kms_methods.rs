@@ -90,7 +90,7 @@ impl KMS {
         // cache miss, try to unwrap
         debug!("Unwrapped cache miss. Calling unwrap");
         let unwrapped_object = unwrap_local.await;
-        //pre-calculating the result avoids a clone on the `CachedUnwrappedObject`
+        // pre-calculating the result avoids a clone on the `CachedUnwrappedObject`
         let result = unwrapped_object
             .as_ref()
             .map(|u| u.unwrapped_object().to_owned())
@@ -100,7 +100,7 @@ impl KMS {
             .unwrapped_cache()
             .insert(uid.to_owned(), unwrapped_object.map_err(Into::into))
             .await;
-        //return the result
+        // return the result
         result
     }
 
