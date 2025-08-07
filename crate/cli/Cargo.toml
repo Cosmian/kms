@@ -67,14 +67,8 @@ x509-cert = { workspace = true, features = ["pem"] }
 zeroize = { workspace = true }
 
 [dev-dependencies]
-actix-rt = "2.10"
-actix-server = { workspace = true }
 assert_cmd = "2.0"
-const-oid = { version = "0.9", features = ["db"] }
-lazy_static = "1.5"
 openssl = { workspace = true }
-predicates = "3.1"
-regex = { version = "1.11", default-features = false }
 tempfile = "3.19"
 test_kms_server = { path = "../test_kms_server" }
 x509-parser = { workspace = true, features = ["verify"] }
