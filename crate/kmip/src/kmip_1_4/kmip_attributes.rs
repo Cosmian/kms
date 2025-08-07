@@ -312,13 +312,6 @@ impl<'de> Deserialize<'de> for Attribute {
     where
         D: serde::Deserializer<'de>,
     {
-        #[derive(Deserialize, Debug)]
-        #[serde(field_identifier)]
-        enum Field {
-            AttributeName,
-            AttributeValue,
-        }
-
         struct AttributeVisitor;
 
         impl<'de> Visitor<'de> for AttributeVisitor {
