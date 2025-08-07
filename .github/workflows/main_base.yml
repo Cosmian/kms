@@ -22,6 +22,7 @@ jobs:
 
   cargo-deny:
     uses: Cosmian/reusable_workflows/.github/workflows/cargo-audit.yml@develop
+    name: Security Audit
     with:
       toolchain: ${{ inputs.toolchain }}
 
