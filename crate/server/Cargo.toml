@@ -106,10 +106,8 @@ pem.workspace = true
 actix-http = "3.10"
 cosmian_kms_client_utils = { path = "../client_utils", version = "5.6.2" }
 cosmian_logger = { workspace = true }
-mockall = { version = "0.13" }
 native-tls = { workspace = true }
 pem = { workspace = true }
-tempfile = { workspace = true }
 
 [build-dependencies]
 actix-http = "3.10"

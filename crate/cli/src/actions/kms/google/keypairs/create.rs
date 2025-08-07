@@ -97,12 +97,6 @@ pub struct CreateKeyPairsAction {
 }
 
 #[derive(Serialize, Deserialize)]
-pub(crate) struct KeyFile {
-    kacls_url: String,
-    wrapped_private_key: String,
-}
-
-#[derive(Serialize, Deserialize)]
 #[expect(non_snake_case)]
 struct KeyPairInfo {
     pkcs7: String,
