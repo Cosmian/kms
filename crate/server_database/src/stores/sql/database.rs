@@ -32,6 +32,7 @@ where
     /// let binder = SqlDatabase::binder(1);
     /// assert_eq!(binder, "$1");
     /// ```
+    #[allow(dead_code)]
     fn binder(&self, param_number: usize) -> String {
         if std::any::type_name::<DB>() == "sqlx::mysql::MySql" {
             return "?".to_string();
