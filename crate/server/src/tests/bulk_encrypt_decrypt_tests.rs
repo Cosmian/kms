@@ -168,7 +168,11 @@ fn encrypt_request(
             ..CryptographicParameters::default()
         }),
         data: Some(Zeroizing::new(data)),
-        i_v_counter_nonce: Some(vec![0; 16]),
+        i_v_counter_nonce: if block_cipher_mode == BlockCipherMode::CBC {
+            Some(vec![0; 16])
+        } else {
+            None
+        },
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,
@@ -189,7 +193,11 @@ fn decrypt_request(
             ..CryptographicParameters::default()
         }),
         data: Some(data),
-        i_v_counter_nonce: Some(vec![0; 16]),
+        i_v_counter_nonce: if block_cipher_mode == BlockCipherMode::CBC {
+            Some(vec![0; 16])
+        } else {
+            None
+        },
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,

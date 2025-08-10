@@ -485,7 +485,7 @@ impl EncryptAction {
         };
         output_buffer.write_all(&nonce)?;
 
-        let ciphertext = encrypt(sym_cipher, dek, &nonce, &aad, plaintext)?;
+        let ciphertext = encrypt(sym_cipher, dek, &nonce, &aad, plaintext, None)?;
         // write the tag
         output_buffer.write_all(&ciphertext.0)?;
         output_buffer.write_all(&ciphertext.1)?;

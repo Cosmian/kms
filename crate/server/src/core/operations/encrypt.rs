@@ -146,6 +146,7 @@ pub(crate) async fn encrypt(
         }
         if let Object::SymmetricKey { .. }
         | Object::PublicKey { .. }
+        | Object::SecretData { .. }
         | Object::OpaqueObject { .. } = owm.object()
         {
             // If an HSM wraps the object, likely the wrapping will be done with NoEncoding
@@ -317,7 +318,19 @@ pub(crate) fn encrypt_bulk(
                     .i_v_counter_nonce
                     .clone()
                     .unwrap_or(random_nonce(cipher)?);
-                let (ciphertext, tag) = sym_encrypt(cipher, &key_bytes, &nonce, aad, &plaintext)?;
+                let padding_method = request
+                    .cryptographic_parameters
+                    .as_ref()
+                    .and_then(|cp| cp.padding_method)
+                    .unwrap_or(PaddingMethod::PKCS5);
+                let (ciphertext, tag) = sym_encrypt(
+                    cipher,
+                    &key_bytes,
+                    &nonce,
+                    aad,
+                    &plaintext,
+                    Some(padding_method),
+                )?;
                 // concatenate nonce || ciphertext || tag
                 let nct = [nonce.as_slice(), ciphertext.as_slice(), tag.as_slice()].concat();
                 ciphertexts.push(Zeroizing::new(nct));
@@ -378,8 +391,23 @@ fn encrypt_with_symmetric_key(
         .authenticated_encryption_additional_data
         .as_deref()
         .unwrap_or(EMPTY_SLICE);
-    trace!("encrypt_with_symmetric_key: plaintext: {plaintext:?}, nonce: {nonce:?}, aad: {aad:?}");
-    let (ciphertext, tag) = sym_encrypt(aead, &key_bytes, &nonce, aad, plaintext)?;
+    let padding_method = request
+        .cryptographic_parameters
+        .as_ref()
+        .and_then(|cp| cp.padding_method)
+        .unwrap_or(PaddingMethod::PKCS5);
+    trace!(
+        "encrypt_with_symmetric_key: plaintext: {plaintext:?}, nonce: {nonce:?}, aad: {aad:?}, \
+         padding_method: {padding_method:?}"
+    );
+    let (ciphertext, tag) = sym_encrypt(
+        aead,
+        &key_bytes,
+        &nonce,
+        aad,
+        plaintext,
+        Some(padding_method),
+    )?;
     trace!("encrypt_with_symmetric_key: ciphertext: {ciphertext:?}, tag: {tag:?},");
     Ok(EncryptResponse {
         unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
