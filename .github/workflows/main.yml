@@ -6,7 +6,8 @@ on:
     branches:
       - '**'
     tags-ignore:
-      - '**'
+    tags:
+      - '!**'
 
 jobs:
   main:
