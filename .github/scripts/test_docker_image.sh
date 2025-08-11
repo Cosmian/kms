@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # Config paths
+CLI_VERSION="1.1.0"
 CONFIG=~/.cosmian/cosmian.toml
 TLS_CONFIG=~/.cosmian/cosmian-tls.toml
 KMS_URL_HTTP="http://0.0.0.0:9998"
@@ -16,7 +17,6 @@ set -ex
 
 #install cli
 sudo apt update && sudo apt install -y wget
-CLI_VERSION="1.1.0"
 wget "https://package.cosmian.com/cli/$CLI_VERSION/ubuntu-24.04/cosmian-cli_$CLI_VERSION-1_amd64.deb"
 sudo apt install ./"cosmian-cli_$CLI_VERSION-1_amd64.deb"
 cosmian --version
@@ -27,15 +27,15 @@ sudo touch $CONFIG $TLS_CONFIG
 sudo chmod 666 $CONFIG $TLS_CONFIG
 sudo chown root:docker $CONFIG $TLS_CONFIG
 
-sudo echo '
+echo '
 [kms_config]
 print_json = false
 
 [kms_config.http_config]
 server_url = "'$KMS_URL_HTTP'"
-' > $CONFIG
+' | sudo tee $CONFIG
 
-sudo echo '
+echo '
 [kms_config]
 print_json = false
 
@@ -44,7 +44,7 @@ server_url = "'$KMS_URL_HTTPS'"
 accept_invalid_certs = true
 ssl_client_pkcs12_path = "'$CLIENT_PKCS12_PATH'"
 ssl_client_pkcs12_password = "password"
-' > $TLS_CONFIG
+' | sudo tee $TLS_CONFIG
 
 # Run docker containers
 docker compose -f .github/scripts/docker-compose-authentication-tests.yml up -d
@@ -57,7 +57,7 @@ openssl_test() {
   local host_port=$1
   local tls_version=$2
   echo "Testing $host_port with TLS $tls_version"
-  openssl s_client -showcerts -debug -$tls_version -connect $host_port \
+  openssl s_client -showcerts -debug -"$tls_version" -connect "$host_port" \
     -CAfile "$CA_CERT" \
     -cert "$CLIENT_CERT" \
     -key "$CLIENT_KEY"
