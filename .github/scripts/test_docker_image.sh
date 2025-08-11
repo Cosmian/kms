@@ -1,21 +1,21 @@
 #!/bin/bash
 
 # Config paths
-CLI_VERSION="1.1.0"
-CONFIG=~/.cosmian/cosmian.toml
+CLI_VERSION="1.2.0"
+CONFIG=~/.cosmian/cosmian-no-tls.toml
 TLS_CONFIG=~/.cosmian/cosmian-tls.toml
 KMS_URL_HTTP="http://0.0.0.0:9998"
 KMS_URL_HTTPS="https://0.0.0.0:9999"
 
 # Cert paths
-CA_CERT="/home/runner/work/kms/kms/test_data/client_server/ca/ca.crt"
-CLIENT_CERT="/home/runner/work/kms/kms/test_data/client_server/owner/owner.client.acme.com.crt"
-CLIENT_KEY="/home/runner/work/kms/kms/test_data/client_server/owner/owner.client.acme.com.key"
-CLIENT_PKCS12_PATH="/home/runner/work/kms/kms/test_data/client_server/owner/owner.client.acme.com.p12"
+CA_CERT="test_data/client_server/ca/ca.crt"
+CLIENT_CERT="test_data/client_server/owner/owner.client.acme.com.crt"
+CLIENT_KEY="test_data/client_server/owner/owner.client.acme.com.key"
+CLIENT_PKCS12_PATH="test_data/client_server/owner/owner.client.acme.com.p12"
 
 set -ex
 
-#install cli
+# install cli
 sudo apt update && sudo apt install -y wget
 wget "https://package.cosmian.com/cli/$CLI_VERSION/ubuntu-24.04/cosmian-cli_$CLI_VERSION-1_amd64.deb"
 sudo apt install ./"cosmian-cli_$CLI_VERSION-1_amd64.deb"
@@ -24,8 +24,6 @@ cosmian --version
 # update cli conf
 sudo mkdir ~/.cosmian
 sudo touch $CONFIG $TLS_CONFIG
-sudo chmod 666 $CONFIG $TLS_CONFIG
-sudo chown root:docker $CONFIG $TLS_CONFIG
 
 echo '
 [kms_config]
@@ -64,8 +62,8 @@ openssl_test() {
 }
 
 # Create symmetric keys
-cosmian -c "$CONFIG" --kms-url "$KMS_URL_HTTP" kms sym keys create
-cosmian -c "$TLS_CONFIG" --kms-url "$KMS_URL_HTTPS" --kms-accept-invalid-certs kms sym keys create
+cosmian -c "$CONFIG" kms sym keys create
+cosmian -c "$TLS_CONFIG" kms sym keys create
 
 # Test UI endpoints
 curl -I http://127.0.0.1:9998/ui/index.html
