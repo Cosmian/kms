@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -ex
+
 # Config paths
 CLI_VERSION="1.2.0"
 CONFIG=~/.cosmian/cosmian-no-tls.toml
@@ -22,8 +24,8 @@ sudo apt install ./"cosmian-cli_$CLI_VERSION-1_amd64.deb"
 cosmian --version
 
 # update cli conf
-sudo mkdir ~/.cosmian
-sudo touch $CONFIG $TLS_CONFIG
+mkdir ~/.cosmian
+touch $CONFIG $TLS_CONFIG
 
 echo '
 [kms_config]
@@ -31,7 +33,7 @@ print_json = false
 
 [kms_config.http_config]
 server_url = "'$KMS_URL_HTTP'"
-' | sudo tee $CONFIG
+' | tee $CONFIG
 
 echo '
 [kms_config]
@@ -42,7 +44,7 @@ server_url = "'$KMS_URL_HTTPS'"
 accept_invalid_certs = true
 ssl_client_pkcs12_path = "'$CLIENT_PKCS12_PATH'"
 ssl_client_pkcs12_password = "password"
-' | sudo tee $TLS_CONFIG
+' | tee $TLS_CONFIG
 
 # Run docker containers
 docker compose -f .github/scripts/docker-compose-authentication-tests.yml up -d
