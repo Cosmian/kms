@@ -144,11 +144,7 @@ pub(crate) async fn encrypt(
             selected_owm = Some(owm);
             break
         }
-        if let Object::SymmetricKey { .. }
-        | Object::PublicKey { .. }
-        | Object::SecretData { .. }
-        | Object::OpaqueObject { .. } = owm.object()
-        {
+        if let Object::SymmetricKey { .. } | Object::PublicKey { .. } = owm.object() {
             // If an HSM wraps the object, likely the wrapping will be done with NoEncoding
             // and the attributes of the object will be empty. Use the metadata attributes.
             let attributes = owm
@@ -172,7 +168,7 @@ pub(crate) async fn encrypt(
 
     // unwrap if wrapped
     match owm.object() {
-        Object::Certificate { .. } | Object::OpaqueObject { .. } => {}
+        Object::Certificate { .. } => {}
         _ => {
             owm.set_object(
                 kms.get_unwrapped(owm.id(), owm.object(), user, params.clone())
@@ -267,9 +263,7 @@ async fn encrypt_using_encryption_oracle(
 /// * the encrypt response
 fn encrypt_single(owm: &ObjectWithMetadata, request: &Encrypt) -> KResult<EncryptResponse> {
     match owm.object() {
-        Object::SymmetricKey { .. } | Object::OpaqueObject { .. } => {
-            encrypt_with_symmetric_key(request, owm)
-        }
+        Object::SymmetricKey { .. } => encrypt_with_symmetric_key(request, owm),
         Object::PublicKey { .. } => encrypt_with_public_key(request, owm),
         Object::Certificate(Certificate {
             certificate_value, ..
@@ -306,7 +300,7 @@ pub(crate) fn encrypt_bulk(
     let mut ciphertexts = Vec::with_capacity(bulk_data.len());
 
     match owm.object() {
-        Object::SymmetricKey { .. } | Object::OpaqueObject { .. } => {
+        Object::SymmetricKey { .. } => {
             let aad = request
                 .authenticated_encryption_additional_data
                 .as_deref()
@@ -435,63 +429,38 @@ fn get_key_and_cipher(
             "CryptographicUsageMask not authorized for Encrypt".to_owned(),
         ))
     }
-
-    match owm.object() {
-        Object::SymmetricKey { .. } => {
-            let key_block = owm.object().key_block()?;
-            trace!("get_key_and_cipher: key block: {key_block:#?}");
-            let key_bytes = key_block.symmetric_key_bytes()?;
-            let aead = match key_block.key_format_type {
-                KeyFormatType::TransparentSymmetricKey | KeyFormatType::Raw => {
-                    // recover the cryptographic algorithm from the request or the key block or default to AES
-                    let cryptographic_algorithm = request
-                        .cryptographic_parameters
-                        .as_ref()
-                        .and_then(|cp| cp.cryptographic_algorithm)
-                        .unwrap_or_else(|| {
-                            key_block
-                                .cryptographic_algorithm()
-                                .copied()
-                                .unwrap_or(CryptographicAlgorithm::AES)
-                        });
-                    let block_cipher_mode = request
-                        .cryptographic_parameters
-                        .as_ref()
-                        .and_then(|cp| cp.block_cipher_mode);
-                    SymCipher::from_algorithm_and_key_size(
-                        cryptographic_algorithm,
-                        block_cipher_mode,
-                        key_bytes.len(),
-                    )?
-                }
-                other => {
-                    return Err(KmsError::NotSupported(format!(
-                        "symmetric encryption with keys of format: {other}"
-                    )))
-                }
-            };
-            Ok((key_bytes, aead))
-        }
-        Object::OpaqueObject(opaque_object) => {
-            // Opaque objects are treated as symmetric keys with no specific algorithm
-            let key_bytes = Zeroizing::new(opaque_object.opaque_data_value.clone());
+    let key_block = owm.object().key_block()?;
+    let key_bytes = key_block.symmetric_key_bytes()?;
+    let aead = match key_block.key_format_type {
+        KeyFormatType::TransparentSymmetricKey | KeyFormatType::Raw => {
+            // recover the cryptographic algorithm from the request or the key block or default to AES
+            let cryptographic_algorithm = request
+                .cryptographic_parameters
+                .as_ref()
+                .and_then(|cp| cp.cryptographic_algorithm)
+                .unwrap_or_else(|| {
+                    key_block
+                        .cryptographic_algorithm()
+                        .copied()
+                        .unwrap_or(CryptographicAlgorithm::AES)
+                });
             let block_cipher_mode = request
                 .cryptographic_parameters
                 .as_ref()
                 .and_then(|cp| cp.block_cipher_mode);
-            let aead = SymCipher::from_algorithm_and_key_size(
-                CryptographicAlgorithm::AES,
+            SymCipher::from_algorithm_and_key_size(
+                cryptographic_algorithm,
                 block_cipher_mode,
                 key_bytes.len(),
-            )?;
-            Ok((key_bytes, aead))
+            )?
         }
         other => {
-            kms_bail!(KmsError::NotSupported(format!(
-                "Encrypt: encryption with keys of type: {other} is not supported",
+            return Err(KmsError::NotSupported(format!(
+                "symmetric encryption with keys of format: {other}"
             )))
         }
-    }
+    };
+    Ok((key_bytes, aead))
 }
 
 fn encrypt_with_public_key(

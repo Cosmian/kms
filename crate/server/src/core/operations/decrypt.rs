@@ -14,7 +14,7 @@ use cosmian_kms_server_database::reexport::{
         kmip_2_1::{
             KmipOperation,
             extra::BulkData,
-            kmip_objects::{Object, ObjectType},
+            kmip_objects::Object,
             kmip_operations::{Decrypt, DecryptResponse},
             kmip_types::{
                 CryptographicAlgorithm, CryptographicParameters, KeyFormatType, UniqueIdentifier,
@@ -147,10 +147,7 @@ pub(crate) async fn decrypt(
         }
         debug!("Decrypt: user: {user} is authorized to decrypt using: {uid}");
         // user is authorized to decrypt with the key
-        if let Object::SymmetricKey { .. }
-        | Object::OpaqueObject { .. }
-        | Object::SecretData { .. } = owm.object()
-        {
+        if let Object::SymmetricKey { .. } = owm.object() {
             selected_owm = Some(owm);
             break
         }
@@ -176,13 +173,12 @@ pub(crate) async fn decrypt(
     })?;
 
     // if the key is wrapped, we need to unwrap it
-    if owm.object().object_type() != ObjectType::OpaqueObject {
-        owm.set_object(
-            kms.get_unwrapped(owm.id(), owm.object(), user, params)
-                .await
-                .with_context(|| format!("Decrypt: the key: {}, cannot be unwrapped.", owm.id()))?,
-        );
-    }
+    owm.set_object(
+        kms.get_unwrapped(owm.id(), owm.object(), user, params)
+            .await
+            .with_context(|| format!("Decrypt: the key: {}, cannot be unwrapped.", owm.id()))?,
+    );
+
     let res = BulkData::deserialize(data).map_or_else(
         |_| decrypt_single(&owm, &request),
         |bulk_data| decrypt_bulk(&owm, &request, bulk_data),
@@ -372,38 +368,29 @@ fn decrypt_bulk(
 
 fn decrypt_single(owm: &ObjectWithMetadata, request: &Decrypt) -> KResult<DecryptResponse> {
     trace!("decrypt_single: entering");
-    let key_block = owm.object().key_block();
-    match key_block {
-        Ok(key_block) => {
-            trace!("decrypt_single: key block: {:?}", key_block);
-            match &key_block.key_format_type {
-                #[cfg(feature = "non-fips")]
-                KeyFormatType::CoverCryptSecretKey => decrypt_with_covercrypt(owm, request),
+    let key_block = owm.object().key_block()?;
+    match &key_block.key_format_type {
+        #[cfg(feature = "non-fips")]
+        KeyFormatType::CoverCryptSecretKey => decrypt_with_covercrypt(owm, request),
 
-                KeyFormatType::TransparentECPrivateKey
-                | KeyFormatType::TransparentRSAPrivateKey
-                | KeyFormatType::PKCS1
-                | KeyFormatType::PKCS8 => {
-                    trace!(
-                        "dispatch_decrypt: matching on public key format type: {:?}",
-                        key_block.key_format_type
-                    );
-                    decrypt_with_private_key(owm, request)
-                }
-
-                KeyFormatType::TransparentSymmetricKey | KeyFormatType::Raw => {
-                    decrypt_single_with_symmetric_key(owm, request)?
-                }
-
-                other => Err(KmsError::NotSupported(format!(
-                    "decryption with keys of format: {other}"
-                ))),
-            }
+        KeyFormatType::TransparentECPrivateKey
+        | KeyFormatType::TransparentRSAPrivateKey
+        | KeyFormatType::PKCS1
+        | KeyFormatType::PKCS8 => {
+            trace!(
+                "dispatch_decrypt: matching on public key format type: {:?}",
+                key_block.key_format_type
+            );
+            decrypt_with_private_key(owm, request)
         }
-        Err(e) => {
-            trace!("decrypt_single: no key block: {e}");
+
+        KeyFormatType::TransparentSymmetricKey | KeyFormatType::Raw => {
             decrypt_single_with_symmetric_key(owm, request)?
         }
+
+        other => Err(KmsError::NotSupported(format!(
+            "decryption with keys of format: {other}"
+        ))),
     }
 }
 
@@ -469,45 +456,29 @@ fn get_aead_and_key(
     owm: &ObjectWithMetadata,
     request: &Decrypt,
 ) -> Result<(Zeroizing<Vec<u8>>, SymCipher), KmsError> {
-    if let Object::OpaqueObject(opaque_object) = owm.object() {
-        let block_cipher_mode = request
-            .cryptographic_parameters
-            .as_ref()
-            .and_then(|cp| cp.block_cipher_mode);
-        let aead = SymCipher::from_algorithm_and_key_size(
-            CryptographicAlgorithm::AES,
-            block_cipher_mode,
-            opaque_object.opaque_data_value.len(),
-        )?;
-        Ok((
-            Zeroizing::new(opaque_object.opaque_data_value.clone()),
-            aead,
-        ))
-    } else {
-        let key_block = owm.object().key_block()?;
-        // recover the cryptographic algorithm from the request or the key block or default to AES
-        let cryptographic_algorithm = request
-            .cryptographic_parameters
-            .as_ref()
-            .and_then(|cp| cp.cryptographic_algorithm)
-            .unwrap_or_else(|| {
-                key_block
-                    .cryptographic_algorithm()
-                    .copied()
-                    .unwrap_or(CryptographicAlgorithm::AES)
-            });
-        let block_cipher_mode = request
-            .cryptographic_parameters
-            .as_ref()
-            .and_then(|cp| cp.block_cipher_mode);
-        let key_bytes = key_block.symmetric_key_bytes()?;
-        let aead = SymCipher::from_algorithm_and_key_size(
-            cryptographic_algorithm,
-            block_cipher_mode,
-            key_bytes.len(),
-        )?;
-        Ok((key_bytes, aead))
-    }
+    let key_block = owm.object().key_block()?;
+    // recover the cryptographic algorithm from the request or the key block or default to AES
+    let cryptographic_algorithm = request
+        .cryptographic_parameters
+        .as_ref()
+        .and_then(|cp| cp.cryptographic_algorithm)
+        .unwrap_or_else(|| {
+            key_block
+                .cryptographic_algorithm()
+                .copied()
+                .unwrap_or(CryptographicAlgorithm::AES)
+        });
+    let block_cipher_mode = request
+        .cryptographic_parameters
+        .as_ref()
+        .and_then(|cp| cp.block_cipher_mode);
+    let key_bytes = key_block.symmetric_key_bytes()?;
+    let aead = SymCipher::from_algorithm_and_key_size(
+        cryptographic_algorithm,
+        block_cipher_mode,
+        key_bytes.len(),
+    )?;
+    Ok((key_bytes, aead))
 }
 
 fn decrypt_with_private_key(
