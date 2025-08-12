@@ -698,7 +698,7 @@ pub async fn privileged_wrap(
         cse_config,
         &google_cse_kacls_url,
         &kms.params.default_username,
-        true,
+        false,
     )
     .await?;
 
@@ -749,7 +749,7 @@ pub async fn privileged_unwrap(
             cse_config,
             &google_cse_kacls_url,
             &kms.params.default_username,
-            false,
+            true,
         )
         .await?
     };
@@ -817,7 +817,7 @@ pub async fn privileged_private_key_decrypt(
         cse_config,
         &google_cse_kacls_url,
         &kms.params.default_username,
-        true,
+        false,
     )
     .await?;
 

@@ -4,21 +4,72 @@
 //! authentication. It defines the claims and headers structures, and provides utilities for
 //! processing and validating JWT tokens.
 
-use std::sync::Arc;
+use std::{fmt, sync::Arc};
 
 use alcoholic_jwt::token_kid;
-use serde::{Deserialize, Serialize};
+use serde::{
+    Deserialize, Deserializer, Serialize,
+    de::{self, SeqAccess, Visitor},
+};
 use tracing::{debug, trace};
 
 use super::JwksManager;
 use crate::{error::KmsError, kms_ensure, result::KResult};
+
+fn deserialize_aud<'de, D>(deserializer: D) -> Result<Option<Vec<String>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    struct AudVisitor;
+
+    impl<'de> Visitor<'de> for AudVisitor {
+        type Value = Option<Vec<String>>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("a string or an array of strings for 'aud'")
+        }
+
+        fn visit_none<E>(self) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            Ok(None)
+        }
+
+        fn visit_unit<E>(self) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            Ok(None)
+        }
+
+        fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            Ok(Some(vec![v.to_owned()]))
+        }
+
+        fn visit_seq<A>(self, seq: A) -> Result<Self::Value, A::Error>
+        where
+            A: SeqAccess<'de>,
+        {
+            let values: Vec<String> =
+                Deserialize::deserialize(de::value::SeqAccessDeserializer::new(seq))?;
+            Ok(Some(values))
+        }
+    }
+
+    deserializer.deserialize_any(AudVisitor)
+}
 
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct UserClaim {
     pub email: Option<String>,
     pub iss: Option<String>,
     pub sub: Option<String>,
-    pub aud: Option<String>,
+    #[serde(deserialize_with = "deserialize_aud")]
+    pub aud: Option<Vec<String>>,
     pub iat: Option<usize>,
     pub exp: Option<usize>,
     pub nbf: Option<usize>,
