@@ -1,14 +1,14 @@
 ---
 services:
   no-authentication:
-    image: ${KMS_IMAGE_NAME}
+    image: ${DOCKER_IMAGE_NAME}
     ports:
-      -  9998:9998
+      - 9998:9998
   tls-authentication:
-    image: ${KMS_IMAGE_NAME}
+    image: ${DOCKER_IMAGE_NAME}
     volumes:
       - ./../../test_data:/data
-    command:
+    command: >-
       --tls-p12-file /data/client_server/server/kmserver.acme.com.p12
       --tls-p12-password password
       --authority-cert-file /data/client_server/ca/ca.crt
