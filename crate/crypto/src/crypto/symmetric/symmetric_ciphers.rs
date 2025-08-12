@@ -359,14 +359,14 @@ pub fn encrypt(
             let padding = padding_method.unwrap_or(PaddingMethod::PKCS5);
             let ciphertext = match padding {
                 PaddingMethod::None => {
-                    if plaintext.len() % 16 != 0 {
+                    let cipher = sym_cipher.to_openssl_cipher()?;
+                    if plaintext.len() % cipher.block_size() != 0 {
                         return Err(CryptoError::InvalidSize(
                             "Plaintext must be a multiple of the block size when no padding is \
                              used"
                                 .to_owned(),
                         ));
                     }
-                    let cipher = sym_cipher.to_openssl_cipher()?;
                     let mut c =
                         Crypter::new(cipher, openssl::symm::Mode::Encrypt, key, Some(nonce))?;
                     c.pad(false);
@@ -450,14 +450,14 @@ pub fn decrypt(
                     ciphertext,
                 )?),
                 PaddingMethod::None => {
-                    if ciphertext.len() % 16 != 0 {
+                    let cipher = sym_cipher.to_openssl_cipher()?;
+                    if ciphertext.len() % cipher.block_size() != 0 {
                         return Err(CryptoError::InvalidSize(
                             "Ciphertext must be a multiple of the block size when no padding is \
                              used"
                                 .to_owned(),
                         ));
                     }
-                    let cipher = sym_cipher.to_openssl_cipher()?;
                     let mut c =
                         Crypter::new(cipher, openssl::symm::Mode::Decrypt, key, Some(nonce))?;
                     c.pad(false);
@@ -473,7 +473,7 @@ pub fn decrypt(
                 }
                 _ => {
                     return Err(CryptoError::NotSupported(format!(
-                        "Padding method {padding_method:?} is not currently supported"
+                        "Padding method {padding:?} is not currently supported"
                     )));
                 }
             }
