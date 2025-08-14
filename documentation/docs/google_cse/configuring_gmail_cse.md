@@ -48,6 +48,22 @@ cosmian kms google key-pairs create --cse-key-id CSE_KEY_ID \
 
 If you already have an existing RSA key-pair for the user, you can specify it in the command.
 
+### Using an existing leaf certificate
+
+Instead of generating a new leaf certificate, you can use an existing one by specifying either:
+
+- `--leaf-certificate-id CERT_ID`: Use a certificate already stored in KMS
+- `--leaf-certificate-file /path/to/cert.pem`: Use a local certificate file (requires importing to KMS first)
+
+When using an existing leaf certificate, the `--leaf-certificate-extensions` parameter is not required.
+
+Example with existing certificate:
+```sh
+cosmian kms google key-pairs create --cse-key-id CSE_KEY_ID \
+    --subject-name "C=FR, ST=IdF, L=Paris, O=ORGANIZATION, OU=DEPARTMENT, CN=user@organization.com, emailAddress=user@organization.com" \
+    -i ISSUER_PRIVATE_KEY_ID --leaf-certificate-id EXISTING_CERT_ID user@your_organization.com
+```
+
 Once created, the ID of the key-pair will be displayed.
 
 Note: It may take up to 24 hours for Google to propagate the Client-Side Encryption (CSE) activation for a user within the Gmail API, allowing you to upload the S/MIME elements.

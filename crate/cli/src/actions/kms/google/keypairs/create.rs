@@ -83,13 +83,35 @@ pub struct CreateKeyPairsAction {
     /// subjectAltName=email:john.doe@acme.com
     /// crlDistributionPoints=URI:https://acme.com/crl.pem
     /// ```
+    /// 
+    /// This parameter is ignored when using an existing leaf certificate.
     #[clap(
         long = "leaf-certificate-extensions",
         short = 'e',
-        required = true,
+        required_unless_present_any = ["leaf_certificate_id", "leaf_certificate_file"],
         verbatim_doc_comment
     )]
-    pub(crate) certificate_extensions: PathBuf,
+    pub(crate) certificate_extensions: Option<PathBuf>,
+
+    /// The ID of an existing leaf certificate in KMS to use instead of generating a new one.
+    /// This certificate must be compatible with the private key being used.
+    /// Cannot be used together with --leaf-certificate-file.
+    #[clap(
+        long = "leaf-certificate-id",
+        conflicts_with = "leaf_certificate_file",
+        verbatim_doc_comment
+    )]
+    pub(crate) leaf_certificate_id: Option<String>,
+
+    /// Path to a local leaf certificate file (PEM or DER format) to use instead of generating a new one.
+    /// This certificate must be compatible with the private key being used.
+    /// Cannot be used together with --leaf-certificate-id.
+    #[clap(
+        long = "leaf-certificate-file",
+        conflicts_with = "leaf_certificate_id",
+        verbatim_doc_comment
+    )]
+    pub(crate) leaf_certificate_file: Option<PathBuf>,
 
     /// Dry run mode. If set, the action will not be executed.
     #[clap(long, default_value = "false")]
@@ -209,38 +231,57 @@ impl CreateKeyPairsAction {
 
         let wrapped_key_bytes = wrapped_private_key.key_block()?.wrapped_key_bytes()?;
 
-        // Sign created public key with the issuer private key
-        let certificate_extensions_bytes = tokio::fs::read(&self.certificate_extensions).await?;
+        // Determine the certificate to use - either existing or newly created
+        let certificate_unique_identifier = if let Some(leaf_cert_id) = &self.leaf_certificate_id {
+            // Use existing leaf certificate by ID
+            println!("[{email}] - Using existing leaf certificate ID: {leaf_cert_id}");
+            UniqueIdentifier::TextString(leaf_cert_id.clone())
+        } else if let Some(_leaf_cert_file) = &self.leaf_certificate_file {
+            // Handle leaf certificate file (for now, ask user to import it first)
+            return Err(KmsCliError::InvalidRequest(
+                "Local certificate file support is not yet implemented. Please import the certificate to KMS first and use --leaf-certificate-id".to_owned()
+            ));
+        } else {
+            // Generate new certificate as before
+            let certificate_extensions_bytes = tokio::fs::read(
+                self.certificate_extensions
+                    .as_ref()
+                    .ok_or_else(|| KmsCliError::InvalidRequest(
+                        "Certificate extensions file is required when generating a new certificate".to_owned()
+                    ))?
+            ).await?;
 
-        let mut attributes = Attributes {
-            object_type: Some(ObjectType::Certificate),
-            certificate_attributes: Some(CertificateAttributes::parse_subject_line(
-                &self.subject_name,
-            )?),
-            link: Some(vec![Link {
-                link_type: LinkType::PrivateKeyLink,
-                linked_object_identifier: LinkedObjectIdentifier::TextString(
-                    self.issuer_private_key_id.clone(),
-                ),
-            }]),
-            ..Attributes::default()
+            let mut attributes = Attributes {
+                object_type: Some(ObjectType::Certificate),
+                certificate_attributes: Some(CertificateAttributes::parse_subject_line(
+                    &self.subject_name,
+                )?),
+                link: Some(vec![Link {
+                    link_type: LinkType::PrivateKeyLink,
+                    linked_object_identifier: LinkedObjectIdentifier::TextString(
+                        self.issuer_private_key_id.clone(),
+                    ),
+                }]),
+                ..Attributes::default()
+            };
+
+            attributes.set_x509_extension_file(certificate_extensions_bytes);
+
+            let certify_request = Certify {
+                unique_identifier: Some(UniqueIdentifier::TextString(public_key_id)),
+                attributes: Some(attributes),
+                ..Certify::default()
+            };
+
+            let certificate_unique_identifier = kms_rest_client
+                .certify(certify_request)
+                .await
+                .map_err(|e| KmsCliError::ServerError(format!("failed creating certificate: {e:?}")))?
+                .unique_identifier;
+
+            println!("[{email}] - Certificate ID created: {certificate_unique_identifier}");
+            certificate_unique_identifier
         };
-
-        attributes.set_x509_extension_file(certificate_extensions_bytes);
-
-        let certify_request = Certify {
-            unique_identifier: Some(UniqueIdentifier::TextString(public_key_id)),
-            attributes: Some(attributes),
-            ..Certify::default()
-        };
-
-        let certificate_unique_identifier = kms_rest_client
-            .certify(certify_request)
-            .await
-            .map_err(|e| KmsCliError::ServerError(format!("failed creating certificate: {e:?}")))?
-            .unique_identifier;
-
-        println!("[{email}] - Certificate ID created: {certificate_unique_identifier}");
 
         // From the created leaf certificate, export the associated PKCS7 containing the whole cert chain
         let (_, pkcs7_object, _pkcs7_object_export_attributes) = export_object(
