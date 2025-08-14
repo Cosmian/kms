@@ -335,3 +335,102 @@ impl CreateKeyPairsAction {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::CreateKeyPairsAction;
+    use clap::Parser;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_cli_parameter_parsing() {
+        // Test traditional usage with extensions file
+        let args = vec![
+            "test",
+            "user@example.com",
+            "--cse-key-id", "cse123",
+            "--issuer-private-key-id", "issuer456", 
+            "--subject-name", "CN=test,O=org",
+            "--leaf-certificate-extensions", "/path/to/ext.cnf"
+        ];
+        
+        let result = CreateKeyPairsAction::try_parse_from(args);
+        assert!(result.is_ok());
+        let action = result.unwrap();
+        assert!(action.certificate_extensions.is_some());
+        assert!(action.leaf_certificate_id.is_none());
+        assert!(action.leaf_certificate_file.is_none());
+    }
+
+    #[test]
+    fn test_existing_certificate_id() {
+        // Test using existing certificate ID
+        let args = vec![
+            "test",
+            "user@example.com",
+            "--cse-key-id", "cse123",
+            "--issuer-private-key-id", "issuer456",
+            "--subject-name", "CN=test,O=org", 
+            "--leaf-certificate-id", "existing-cert-123"
+        ];
+        
+        let result = CreateKeyPairsAction::try_parse_from(args);
+        assert!(result.is_ok());
+        let action = result.unwrap();
+        assert!(action.certificate_extensions.is_none());
+        assert_eq!(action.leaf_certificate_id, Some("existing-cert-123".to_string()));
+        assert!(action.leaf_certificate_file.is_none());
+    }
+
+    #[test]
+    fn test_certificate_file() {
+        // Test using certificate file
+        let args = vec![
+            "test",
+            "user@example.com",
+            "--cse-key-id", "cse123",
+            "--issuer-private-key-id", "issuer456",
+            "--subject-name", "CN=test,O=org",
+            "--leaf-certificate-file", "/path/to/cert.pem"
+        ];
+        
+        let result = CreateKeyPairsAction::try_parse_from(args);
+        assert!(result.is_ok());
+        let action = result.unwrap();
+        assert!(action.certificate_extensions.is_none());
+        assert!(action.leaf_certificate_id.is_none());
+        assert_eq!(action.leaf_certificate_file, Some(PathBuf::from("/path/to/cert.pem")));
+    }
+
+    #[test]
+    fn test_conflict_detection() {
+        // Test that using both certificate ID and file fails
+        let args = vec![
+            "test",
+            "user@example.com",
+            "--cse-key-id", "cse123",
+            "--issuer-private-key-id", "issuer456",
+            "--subject-name", "CN=test,O=org",
+            "--leaf-certificate-id", "existing-cert-123",
+            "--leaf-certificate-file", "/path/to/cert.pem"
+        ];
+        
+        let result = CreateKeyPairsAction::try_parse_from(args);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_missing_certificate_parameters() {
+        // Test that missing all certificate parameters fails
+        let args = vec![
+            "test",
+            "user@example.com",
+            "--cse-key-id", "cse123",
+            "--issuer-private-key-id", "issuer456",
+            "--subject-name", "CN=test,O=org"
+        ];
+        
+        let result = CreateKeyPairsAction::try_parse_from(args);
+        assert!(result.is_err());
+    }
+}
