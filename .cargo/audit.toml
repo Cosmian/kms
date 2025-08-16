@@ -4,5 +4,5 @@
 [advisories]
 # List of advisory IDs to ignore (extracted from deny.toml)
 ignore = [
-    # "RUSTSEC-2023-0071", # rsa
+    "RUSTSEC-2023-0071", # rsa
 ]
