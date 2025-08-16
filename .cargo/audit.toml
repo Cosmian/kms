@@ -1,0 +1,8 @@
+# Configuration for cargo-audit
+# This file defines security advisories to ignore, mirroring the exceptions in deny.toml
+
+[advisories]
+# List of advisory IDs to ignore (extracted from deny.toml)
+ignore = [
+    "RUSTSEC-2023-0071", # rsa
+]
