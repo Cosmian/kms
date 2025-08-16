@@ -81,7 +81,6 @@ reqwest = { workspace = true, features = [
   "native-tls",
   "socks",
 ] }
-rsa = "0.9.8"
 rustls = { version = "0.23", features = [
   "tls12",
   "std",
