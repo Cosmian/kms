@@ -234,7 +234,7 @@ impl CreateKeyPairsAction {
         // Determine the certificate to use - either existing or newly created
         let certificate_unique_identifier = if let Some(leaf_cert_id) = &self.leaf_certificate_id {
             // Use existing leaf certificate by ID
-            tracing::info!("[{email}] - Using existing leaf certificate ID: {leaf_cert_id}");
+            println!("[{email}] - Using existing leaf certificate ID: {leaf_cert_id}");
             UniqueIdentifier::TextString(leaf_cert_id.clone())
         } else if let Some(_leaf_cert_file) = &self.leaf_certificate_file {
             // Handle leaf certificate file (for now, ask user to import it first)
@@ -279,7 +279,7 @@ impl CreateKeyPairsAction {
                 .map_err(|e| KmsCliError::ServerError(format!("failed creating certificate: {e:?}")))?
                 .unique_identifier;
 
-            tracing::info!("[{email}] - Certificate ID created: {certificate_unique_identifier}");
+            println!("[{email}] - Certificate ID created: {certificate_unique_identifier}");
             certificate_unique_identifier
         };
 
