@@ -115,7 +115,7 @@ pub struct CreateKeyPairsAction {
     #[clap(
         long,
         conflicts_with = "id",
-        required_if_eq("leaf_certificate_pkcs12_file", "true"),
+        required_if_present("leaf_certificate_pkcs12_file"),
         verbatim_doc_comment
     )]
     pub(crate) leaf_certificate_pkcs12_password: Option<String>,
@@ -302,7 +302,7 @@ impl CreateKeyPairsAction {
                     pkcs12_password: Some(p12_password.clone()),
                     certificate_id: None,
                     replace_existing: true,
-                    // tags: vec!["google_cse_pkcs12_certificate_import".to_string()],
+                    tags: vec!["google_cse_pkcs12_certificate_import".to_string()],
                     ..Default::default()
                 };
 

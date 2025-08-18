@@ -589,7 +589,7 @@ async fn process_pkcs12(
     // build the leaf certificate
     let (leaf_certificate, leaf_certificate_attributes) = {
         // Recover the PKCS12 X509 certificate
-        let openssl_cert = pkcs12.cert.clone().ok_or_else(|| {
+        let openssl_cert = pkcs12.cert.ok_or_else(|| {
             KmsError::InvalidRequest("X509 certificate not found in PKCS12".to_owned())
         })?;
 
