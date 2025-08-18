@@ -106,7 +106,7 @@ pub fn kmip_public_key_to_openssl(public_key: &Object) -> Result<PKey<Public>, C
             let Some(KeyValue::Structure { key_material, .. }) = key_block.key_value.as_ref()
             else {
                 return Err(CryptoError::Default(
-                    "Key value not found in ransparent EC public key".to_owned(),
+                    "Key value not found in transparent EC public key".to_owned(),
                 ));
             };
             match key_material {
