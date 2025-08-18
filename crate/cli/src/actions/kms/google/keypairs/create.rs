@@ -115,7 +115,7 @@ pub struct CreateKeyPairsAction {
     #[clap(
         long,
         conflicts_with = "id",
-        required_if_present("leaf_certificate_pkcs12_file"),
+        required_if_eq("leaf_certificate_pkcs12_file", "true"),
         verbatim_doc_comment
     )]
     pub(crate) leaf_certificate_pkcs12_password: Option<String>,
