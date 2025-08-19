@@ -30,7 +30,7 @@ async fn create_google_key_pair() -> KmsCliResult<()> {
     let action = CreateKeyPairsAction {
         user_id: "john.doe@acme.com".to_string(),
         cse_key_id: cse_key_id.to_string(),
-        issuer_private_key_id,
+        issuer_private_key_id: None,
         subject_name: "CN=John Doe,OU=Org Unit,O=Org Name,L=City,ST=State,C=US".to_string(),
         rsa_private_key_id: None,
         sensitive: false,
@@ -45,6 +45,7 @@ async fn create_google_key_pair() -> KmsCliResult<()> {
 
     // Create key pair with certificate extensions (must succeed)
     let action = CreateKeyPairsAction {
+        issuer_private_key_id: Some(issuer_private_key_id.to_string()),
         leaf_certificate_extensions: Some(PathBuf::from(
             "../../test_data/certificates/openssl/ext_leaf.cnf",
         )),
@@ -54,6 +55,7 @@ async fn create_google_key_pair() -> KmsCliResult<()> {
 
     // Create key pair with certificate id (must succeed)
     let action = CreateKeyPairsAction {
+        issuer_private_key_id: None,
         leaf_certificate_extensions: None,
         leaf_certificate_id: Some(certificate_1.to_string()),
         ..action
@@ -64,6 +66,7 @@ async fn create_google_key_pair() -> KmsCliResult<()> {
     let action = CreateKeyPairsAction {
         user_id: "john.barry@acme.com".to_string(),
         leaf_certificate_id: None,
+        issuer_private_key_id: None,
         leaf_certificate_extensions: None,
         leaf_certificate_pkcs12_file: Some(PathBuf::from(
             "../../test_data/certificates/csr/leaf.p12",
