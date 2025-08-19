@@ -42,7 +42,6 @@ fn test_encrypt_decrypt_aes_gcm_128() {
     )
     .unwrap();
 
-    // `to_vec()` conversion because of Zeroizing<>.
     assert_eq!(decrypted_data.to_vec(), message);
 }
 
@@ -78,7 +77,6 @@ fn test_encrypt_decrypt_aes_gcm_256() {
     )
     .unwrap();
 
-    // `to_vec()` conversion because of Zeroizing<>.
     assert_eq!(decrypted_data.to_vec(), message);
 }
 
@@ -111,7 +109,6 @@ fn test_encrypt_decrypt_aes_xts_128() {
     )
     .unwrap();
 
-    // `to_vec()` conversion because of Zeroizing<>.
     assert_eq!(decrypted_data.to_vec(), message);
 }
 
@@ -144,7 +141,6 @@ fn test_encrypt_decrypt_aes_xts_256() {
     )
     .unwrap();
 
-    // `to_vec()` conversion because of Zeroizing<>.
     assert_eq!(decrypted_data.to_vec(), message);
 }
 
@@ -171,11 +167,10 @@ fn test_encrypt_decrypt_aes_cbc_256_pkcs5_padding() {
         &[],
         &ciphertext,
         &tag,
-        None,
+        Some(PaddingMethod::PKCS5),
     )
     .unwrap();
 
-    // `to_vec()` conversion because of Zeroizing<>.
     assert_eq!(decrypted_data.to_vec(), message);
 }
 
@@ -207,8 +202,25 @@ fn test_encrypt_decrypt_aes_cbc_256_no_padding() {
     )
     .unwrap();
 
-    // `to_vec()` conversion because of Zeroizing<>.
     assert_eq!(decrypted_data.to_vec(), message);
+}
+
+#[test]
+fn test_encrypt_decrypt_aes_cbc_256_pkcs5_invalid_padding() {
+    // Load FIPS provider module from OpenSSL.
+    #[cfg(not(feature = "non-fips"))]
+    Provider::load(None, "fips").unwrap();
+
+    let mut message = vec![0_u8; 32];
+    rand_bytes(&mut message).unwrap();
+
+    let cipher = SymCipher::Aes256Cbc;
+    let key = random_key(cipher).unwrap();
+    let padding_method = Some(PaddingMethod::ANSI_X923);
+
+    let tweak = random_nonce(cipher).unwrap();
+
+    encrypt(cipher, &key, &tweak, &[], &message, padding_method).unwrap_err();
 }
 
 #[cfg(feature = "non-fips")]
@@ -245,7 +257,6 @@ fn test_encrypt_decrypt_chacha20_poly1305() {
     )
     .unwrap();
 
-    // `to_vec()` conversion because of Zeroizing<>.
     assert_eq!(decrypted_data.to_vec(), message);
 }
 
@@ -281,7 +292,6 @@ fn test_encrypt_decrypt_aes_gcm_siv_128() {
     )
     .unwrap();
 
-    // `to_vec()` conversion because of Zeroizing<>.
     assert_eq!(decrypted_data.to_vec(), message);
 }
 
@@ -317,7 +327,6 @@ fn test_encrypt_decrypt_aes_gcm_siv_256() {
     )
     .unwrap();
 
-    // `to_vec()` conversion because of Zeroizing<>.
     assert_eq!(decrypted_data.to_vec(), message);
 }
 
