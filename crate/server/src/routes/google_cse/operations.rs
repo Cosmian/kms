@@ -1077,7 +1077,7 @@ pub async fn rewrap(
     let resource_key_hash = compute_resource_key_hash(
         &resource_name,
         &perimeter_id,
-        &unwrapped_key.as_bytes().to_vec().into(),
+        &general_purpose::STANDARD.decode(&unwrapped_key)?.into(),
     )?;
 
     debug!("rewrap: success");
