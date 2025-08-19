@@ -177,6 +177,8 @@ impl CreateKeyPairsAction {
     }
 
     #[expect(clippy::print_stdout)]
+    /// # Errors
+    /// Returns an error if the request fails or if the response is not successful.
     pub async fn run(&self, kms_rest_client: KmsClient) -> Result<UniqueIdentifier, KmsCliError> {
         let gmail_client = GmailClient::new(kms_rest_client.config.clone(), &self.user_id);
         let email = &self.user_id;

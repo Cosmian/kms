@@ -30,6 +30,8 @@ pub enum KeyPairsCommands {
 }
 
 impl KeyPairsCommands {
+    /// # Errors
+    /// Returns an error if the request fails or if the response is not successful.
     pub async fn process(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
         match self {
             Self::Get(action) => action.run(kms_rest_client.config).await,
