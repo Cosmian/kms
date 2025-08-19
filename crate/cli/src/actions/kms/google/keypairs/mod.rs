@@ -9,7 +9,7 @@ use obliterate::ObliterateKeyPairsAction;
 
 use crate::error::result::KmsCliResult;
 
-pub(crate) mod create;
+pub mod create;
 mod disable;
 mod enable;
 mod get;

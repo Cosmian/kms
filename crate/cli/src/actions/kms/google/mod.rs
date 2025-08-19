@@ -6,7 +6,7 @@ use crate::error::result::KmsCliResult;
 
 mod gmail_client;
 mod identities;
-pub(crate) mod keypairs;
+pub mod keypairs;
 
 pub use gmail_client::GoogleApiError;
 
