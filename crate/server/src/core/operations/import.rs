@@ -316,7 +316,7 @@ pub(crate) async fn process_public_key(
     // build the attributes from the request attributes
     let mut attributes = request.attributes;
     // merge the object attributes with the request attributes without overwriting
-    //This will recover existing links, for instance
+    // This will recover existing links, for instance
     if let Ok(object_attributes) = object.attributes() {
         attributes.merge(object_attributes, false);
     }
@@ -549,7 +549,7 @@ async fn process_pkcs12(
     // build the leaf certificate id
     let leaf_certificate_id = match unique_identifier.to_string() {
         uid if uid.is_empty() => Uuid::new_v4().to_string(),
-        uid => format!("{uid}_sk"),
+        uid => uid,
     };
     // Build the private key ID
     let private_key_id = format!("{leaf_certificate_id}_sk");
@@ -587,13 +587,13 @@ async fn process_pkcs12(
         private_key
     };
 
-    //build the leaf certificate
-    let (leaf_certificate, leaf_certificate_attributes) = {
-        // Recover the PKCS12 X509 certificate
-        let openssl_cert = pkcs12.cert.ok_or_else(|| {
-            KmsError::InvalidRequest("X509 certificate not found in PKCS12".to_owned())
-        })?;
+    // Extract the X509 certificate once to avoid multiple moves
+    let openssl_cert = pkcs12.cert.ok_or_else(|| {
+        KmsError::InvalidRequest("X509 certificate not found in PKCS12".to_owned())
+    })?;
 
+    // build the leaf certificate
+    let (leaf_certificate, leaf_certificate_attributes) = {
         // convert to KMIP
         let leaf_certificate = openssl_certificate_to_kmip(&openssl_cert)?;
 
@@ -601,6 +601,47 @@ async fn process_pkcs12(
             leaf_certificate,
             openssl_x509_to_certificate_attributes(&openssl_cert),
         )
+    };
+
+    // Build the public key ID
+    let public_key_id = format!("{leaf_certificate_id}_pk");
+
+    // build the public key from the X509 certificate
+    let public_key = {
+        // Get public key from X509 certificate
+        let openssl_public_key = openssl_cert.public_key()?;
+
+        // convert to KMIP
+        let mut public_key = openssl_public_key_to_kmip(
+            &openssl_public_key,
+            KeyFormatType::PKCS8,
+            request_attributes.cryptographic_usage_mask,
+        )?;
+
+        let mut attributes = request_attributes.clone();
+        // merge the object attributes with the request attributes; overwrite with the correct cryptographic parameters
+        if let Ok(object_attributes) = public_key.key_block()?.attributes() {
+            attributes.merge(object_attributes, true);
+        }
+        attributes.set_link(
+            LinkType::PrivateKeyLink,
+            LinkedObjectIdentifier::TextString(private_key_id.clone()),
+        );
+
+        // create the public key tags
+        let mut public_key_tags = user_tags.clone();
+        public_key_tags.insert("_pk".to_owned());
+        // set tags in the attributes
+        attributes.set_tags(public_key_tags.clone())?;
+        //set the updated attributes on the key
+        if let Some(KeyValue::Structure {
+            attributes: attrs, ..
+        }) = public_key.key_block_mut()?.key_value.as_mut()
+        {
+            *attrs = Some(attributes);
+        }
+
+        public_key
     };
 
     // build the chain if any (the chain is optional)
@@ -664,6 +705,16 @@ async fn process_pkcs12(
         private_key_id.clone(),
     ));
 
+    // Create an operation to set the public key
+    let public_key_attributes = public_key.attributes()?.clone();
+    operations.push(single_operation(
+        public_key_attributes.get_tags(),
+        replace_existing,
+        public_key,
+        public_key_attributes,
+        public_key_id.clone(),
+    ));
+
     let mut leaf_attributes = request_attributes.clone();
     // merge the object attributes with the request attributes; overwrite with the correct cryptographic parameters
     leaf_attributes.merge(
@@ -688,6 +739,11 @@ async fn process_pkcs12(
     leaf_attributes.set_link(
         LinkType::PrivateKeyLink,
         LinkedObjectIdentifier::TextString(private_key_id.clone()),
+    );
+    // Add public key link to certificate
+    leaf_attributes.set_link(
+        LinkType::PublicKeyLink,
+        LinkedObjectIdentifier::TextString(public_key_id.clone()),
     );
 
     // add parent link to certificate

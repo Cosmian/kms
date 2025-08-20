@@ -190,7 +190,7 @@ fn test_ossl_sign_verify() -> KResult<()> {
     Ok(())
 }
 
-/// Test resource key hash computing, from Google officiale documentation exampless
+/// Test resource key hash computing, from Google official documentation examples
 #[tokio::test]
 async fn test_cse_resource_key_hash() -> KResult<()> {
     let dek = "6a68079290123ed8f23c845cc8bda91cd961c0246b79446662919e336920cbef";

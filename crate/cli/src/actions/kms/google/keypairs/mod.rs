@@ -9,7 +9,7 @@ use obliterate::ObliterateKeyPairsAction;
 
 use crate::error::result::KmsCliResult;
 
-mod create;
+pub mod create;
 mod disable;
 mod enable;
 mod get;
@@ -30,6 +30,8 @@ pub enum KeyPairsCommands {
 }
 
 impl KeyPairsCommands {
+    /// # Errors
+    /// Returns an error if the request fails or if the response is not successful.
     pub async fn process(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
         match self {
             Self::Get(action) => action.run(kms_rest_client.config).await,
@@ -37,7 +39,10 @@ impl KeyPairsCommands {
             Self::Enable(action) => action.run(kms_rest_client.config).await,
             Self::Disable(action) => action.run(kms_rest_client.config).await,
             Self::Obliterate(action) => action.run(kms_rest_client.config).await,
-            Self::Create(action) => Box::pin(action.run(kms_rest_client)).await,
+            Self::Create(action) => {
+                Box::pin(action.run(kms_rest_client)).await?;
+                Ok(())
+            }
         }
     }
 }
