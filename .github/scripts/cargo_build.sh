@@ -13,7 +13,7 @@ set -exo pipefail
 
 ROOT_FOLDER=$(pwd)
 
-# Build the UI in release mode
+# Build the UI on Ubuntu distributions
 if [ -f /etc/lsb-release ]; then
   bash .github/scripts/build_ui.sh
 fi
@@ -28,7 +28,7 @@ if [ "$DEBUG_OR_RELEASE" = "release" ]; then
     cargo install --version 0.16.0 cargo-generate-rpm --force
     cd "$ROOT_FOLDER"
     cargo generate-rpm --target "$TARGET" -p crate/server --metadata-overwrite=pkg/rpm/scriptlets.toml
-  elif [ -f /etc/lsb-release ]; then
+  elif [ -f /etc/debian_version ]; then
     cargo install --version 2.4.0 cargo-deb --force
     if [ -n "$FEATURES" ]; then
       cargo deb --target "$TARGET" -p cosmian_kms_server
