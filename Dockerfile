@@ -3,8 +3,14 @@
 #
 FROM rust:1.86.0-bookworm AS builder
 
-LABEL version="5.6.2"
+LABEL version="5.7.0"
 LABEL name="Cosmian KMS docker container"
+LABEL org.opencontainers.image.description="Cosmian KMS docker container"
+LABEL org.opencontainers.image.title="Cosmian KMS"
+LABEL org.opencontainers.image.vendor="Cosmian"
+LABEL org.opencontainers.image.source="https://github.com/Cosmian/kms"
+LABEL org.opencontainers.image.documentation="https://docs.cosmian.com/key_management_system/"
+LABEL org.opencontainers.image.licenses="BUSL-1.1"
 
 ENV OPENSSL_DIR=/usr/local/openssl
 
@@ -32,6 +38,12 @@ RUN if [ "$FIPS" = "true" ]; then \
 # KMS server
 #
 FROM debian:bookworm-20250428-slim AS kms-server
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install --no-install-recommends -qq -y ca-certificates \
+    && update-ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /root/kms/crate/server/ui                   /usr/local/cosmian/ui
 COPY --from=builder /root/kms/target/release/cosmian_kms        /usr/bin/cosmian_kms

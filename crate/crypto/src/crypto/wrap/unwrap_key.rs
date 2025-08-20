@@ -272,7 +272,15 @@ fn aes_gcm_unwrap(
     let tag = ciphertext
         .get(len - TAG_LENGTH..)
         .ok_or_else(|| CryptoError::IndexingSlicing("unwrap: tag".to_owned()))?;
-    decrypt(aead, unwrap_secret, nonce, &[], wrapped_key_bytes, tag)
+    decrypt(
+        aead,
+        unwrap_secret,
+        nonce,
+        &[],
+        wrapped_key_bytes,
+        tag,
+        None,
+    )
 }
 
 /// Unwrap a key using a private key

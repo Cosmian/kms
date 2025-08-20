@@ -15,20 +15,33 @@ on:
         type: string
 
 jobs:
-  cargo-audit:
-    name: Security Audit
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - uses: EmbarkStudios/cargo-deny-action@v1
-
-  cargo-lint:
+  cargo-clippy:
     uses: Cosmian/reusable_workflows/.github/workflows/clippy.yml@develop
     with:
       toolchain: ${{ inputs.toolchain }}
+
+  cargo-deny:
+    uses: Cosmian/reusable_workflows/.github/workflows/cargo-audit.yml@develop
+    name: Security Audit
+    with:
+      toolchain: ${{ inputs.toolchain }}
+
+  cargo-machete:
+    uses: Cosmian/reusable_workflows/.github/workflows/cargo-machete.yml@develop
+    with:
+      toolchain: ${{ inputs.toolchain }}
+
+  cargo-semver:
+    uses: Cosmian/reusable_workflows/.github/workflows/cargo-semver.yml@develop
+    with:
+      toolchain: ${{ inputs.toolchain }}
+
+  cargo-publish:
+    uses: Cosmian/reusable_workflows/.github/workflows/cargo-publish-workspace.yml@develop
+    with:
+      toolchain: ${{ inputs.toolchain }}
+    secrets:
+      token: ${{ secrets.CRATES_IO }}
 
   pykmip:
     env:
@@ -98,8 +111,9 @@ jobs:
   ##############################################################################
   push-artifacts:
     needs:
-      - cargo-audit
-      - cargo-lint
+      - cargo-clippy
+      - cargo-deny
+      - cargo-machete
       - build
       - pykmip
     uses: Cosmian/reusable_workflows/.github/workflows/push-artifacts.yml@develop

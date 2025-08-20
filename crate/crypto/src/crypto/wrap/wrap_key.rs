@@ -237,10 +237,14 @@ pub(crate) fn wrap(
                         .as_ref()
                         .and_then(|params| params.block_cipher_mode)
                         .unwrap_or(BlockCipherMode::NISTKeyWrap);
+                    let padding_method = cryptographic_parameters
+                        .as_ref()
+                        .and_then(|params| params.padding_method)
+                        .unwrap_or(PaddingMethod::PKCS5);
                     debug!(
                         "symmetric wrapping using {cryptographic_algorithm} and \
-                         block_cipher_mode: {:?}",
-                        block_cipher_mode
+                         block_cipher_mode: {:?}, padding_method: {:?}",
+                        block_cipher_mode, padding_method
                     );
                     let key_bytes = key_block.symmetric_key_bytes()?;
                     if block_cipher_mode == BlockCipherMode::GCM {
@@ -254,8 +258,14 @@ pub(crate) fn wrap(
 
                         let nonce = random_nonce(aead)?;
 
-                        let (ct, authenticated_encryption_tag) =
-                            encrypt(aead, &key_bytes, &nonce, &[], key_to_wrap)?;
+                        let (ct, authenticated_encryption_tag) = encrypt(
+                            aead,
+                            &key_bytes,
+                            &nonce,
+                            &[],
+                            key_to_wrap,
+                            Some(padding_method),
+                        )?;
                         let mut ciphertext = Vec::with_capacity(
                             nonce.len() + ct.len() + authenticated_encryption_tag.len(),
                         );

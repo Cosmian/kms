@@ -1,7 +1,6 @@
 ## Usage
 ## COSMIAN_KMS_CONF=/Users/bgrieder/Desktop/kms.toml cargo run --bin cosmian_kms
 
-
 # The default username to use when no authentication method is provided.
 default_username = "admin"
 # When an authentication method is provided, perform the authentication
@@ -81,14 +80,14 @@ tls_p12_password = "password"
 clients_ca_cert_file = "test_data/client_server/ca/ca.crt"
 
 # The socket server listens to KMIP binary requests on the IANA-registered 5696 port.
-# The socket server will only start if the TLS configuration is provided **and** client certificate authentication 
+# The socket server will only start if the TLS configuration is provided **and** client certificate authentication
 # is enabled.
 [socket_server]
 # Start the socket server. See comments above on conditions for starting the server.
 socket_server_start = true
 # The socket server port - defaults to 5696 (force for PyKMIP tests to 15696)
 socket_server_port = 15696
-# The socket server hostname - defaults to "0.0.0.0" 
+# The socket server hostname - defaults to "0.0.0.0"
 socket_server_hostname = "0.0.0.0"
 
 # The HTTP server listens to KMIP requests on the /kmip and /kmip/2_1 endpoints.
@@ -105,7 +104,7 @@ hostname = "0.0.0.0"
 # proxy_url = "http://localhost:8888"
 # The username to use for basic authentication with the proxy server.
 # proxy_basic_auth_username = "[proxy username]"
-# The password to use for basic authentication with the proxy server.   
+# The password to use for basic authentication with the proxy server.
 # proxy_basic_auth_password = "[proxy password]"
 # Use a custom proxy authentication header instead of the standard Basic authentication.
 # proxy_custom_auth_header = "my_custom_auth_token"

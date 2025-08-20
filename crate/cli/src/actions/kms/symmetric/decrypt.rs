@@ -416,7 +416,7 @@ impl DecryptAction {
 
         let (ciphertext, tag) = ct.split_at(ct.len() - tag_size);
 
-        let cleartext = decrypt(sym_cipher, &dek, &nonce, &aad, ciphertext, tag)?;
+        let cleartext = decrypt(sym_cipher, &dek, &nonce, &aad, ciphertext, tag, None)?;
 
         Ok(cleartext.to_vec())
     }

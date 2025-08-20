@@ -94,7 +94,7 @@ pub(crate) fn ecies_encrypt(
     let iv = ecies_get_iv(Q.public_key(), R.public_key(), curve, aead.nonce_size(), md)?;
 
     // Encrypt data using the provided.
-    let (ciphertext, tag) = encrypt(aead, &key, &iv, &[], plaintext)?;
+    let (ciphertext, tag) = encrypt(aead, &key, &iv, &[], plaintext, None)?;
 
     let R_bytes = R
         .public_key()
@@ -154,7 +154,7 @@ pub(crate) fn ecies_decrypt(
     let key = ecies_get_key(&S, curve, aead.key_size(), md)?;
 
     // We could use ou own aead to offer more DEM options.
-    let plaintext = decrypt(aead, &key, &iv, &[], ct, tag)?;
+    let plaintext = decrypt(aead, &key, &iv, &[], ct, tag, None)?;
 
     Ok(plaintext)
 }

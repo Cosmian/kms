@@ -250,6 +250,7 @@ where
 ///     pub(crate) object: Object,
 /// }
 /// ```
+#[allow(dead_code)]
 fn db_object_to_object(db_object: &Value) -> DbResult<Object> {
     let object_type = db_object["object_type"].as_str().ok_or_else(|| {
         DbError::DatabaseError(format!(
@@ -318,6 +319,7 @@ fn db_object_to_object(db_object: &Value) -> DbResult<Object> {
 }
 
 /// Migrate the `KeyMaterial` which used `BigUint` to `KeyMaterial` which uses `BigInt`
+#[allow(dead_code)]
 fn migrate_key_material(content: &mut Value) -> Result<(), DbError> {
     let key_format_type =
         KeyFormatType::try_from(content["KeyBlock"]["KeyFormatType"].as_str().ok_or_else(

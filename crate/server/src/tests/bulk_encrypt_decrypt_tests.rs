@@ -14,6 +14,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     },
 };
 use uuid::Uuid;
+use zeroize::Zeroizing;
 
 use crate::{error::KmsError, result::KResult, tests::test_utils};
 
@@ -25,8 +26,11 @@ async fn bulk_encrypt_decrypt() -> KResult<()> {
     cosmian_logger::log_init(option_env!("RUST_LOG"));
     let app = test_utils::test_app(None, None).await;
 
-    let response: CreateResponse =
-        test_utils::post_2_1(&app, aes_256_gcm_key_request(Vec::<String>::new())?).await?;
+    let response: CreateResponse = test_utils::post_2_1(
+        &app,
+        aes_256_key_request(BlockCipherMode::GCM, Vec::<String>::new())?,
+    )
+    .await?;
     let key_id = response.unique_identifier;
 
     let mut messages = Vec::with_capacity(NUM_MESSAGES);
@@ -38,7 +42,11 @@ async fn bulk_encrypt_decrypt() -> KResult<()> {
     // Bulk encrypt the messages
     let response: EncryptResponse = test_utils::post_2_1(
         &app,
-        encrypt_request(key_id.clone(), &BulkData::from(messages.clone()))?,
+        encrypt_request(
+            key_id.clone(),
+            BlockCipherMode::GCM,
+            BulkData::from(messages.clone()).serialize()?.to_vec(),
+        ),
     )
     .await?;
     let ciphertexts = BulkData::deserialize(
@@ -49,8 +57,15 @@ async fn bulk_encrypt_decrypt() -> KResult<()> {
     )?;
 
     // Bulk decrypt the messages
-    let response: DecryptResponse =
-        test_utils::post_2_1(&app, decrypt_request(key_id.clone(), &ciphertexts)?).await?;
+    let response: DecryptResponse = test_utils::post_2_1(
+        &app,
+        decrypt_request(
+            key_id.clone(),
+            BlockCipherMode::GCM,
+            ciphertexts.serialize()?.to_vec(),
+        ),
+    )
+    .await?;
     let plaintexts = BulkData::deserialize(
         response
             .data
@@ -66,14 +81,58 @@ async fn bulk_encrypt_decrypt() -> KResult<()> {
     Ok(())
 }
 
-fn aes_256_gcm_key_request<T: IntoIterator<Item = impl AsRef<str>>>(
+#[tokio::test]
+#[allow(clippy::panic_in_result_fn)]
+async fn single_encrypt_decrypt_cbc_mode() -> KResult<()> {
+    cosmian_logger::log_init(option_env!("RUST_LOG"));
+    let app = test_utils::test_app(None, None).await;
+
+    let response: CreateResponse = test_utils::post_2_1(
+        &app,
+        aes_256_key_request(BlockCipherMode::CBC, Vec::<String>::new())?,
+    )
+    .await?;
+    let key_id = response.unique_identifier;
+
+    let messages = Uuid::new_v4().as_bytes().to_vec();
+
+    // Bulk encrypt the messages
+    let response: EncryptResponse = test_utils::post_2_1(
+        &app,
+        encrypt_request(key_id.clone(), BlockCipherMode::CBC, messages.clone()),
+    )
+    .await?;
+    let ciphertexts = response
+        .data
+        .as_ref()
+        .ok_or_else(|| KmsError::InvalidRequest("No data in EncryptResponse".to_owned()))?;
+
+    // Bulk decrypt the messages
+    let response: DecryptResponse = test_utils::post_2_1(
+        &app,
+        decrypt_request(key_id.clone(), BlockCipherMode::CBC, ciphertexts.clone()),
+    )
+    .await?;
+    let plaintexts = response
+        .data
+        .as_ref()
+        .ok_or_else(|| KmsError::InvalidRequest("No data in DecryptResponse".to_owned()))?;
+
+    // Check that the decrypted messages are the same as the original messages
+    assert_eq!(messages.clone(), plaintexts.to_vec());
+
+    Ok(())
+}
+
+fn aes_256_key_request<T: IntoIterator<Item = impl AsRef<str>>>(
+    block_cipher_mode: BlockCipherMode,
     tags: T,
 ) -> Result<Create, KmipError> {
     let mut attributes = Attributes {
         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
         cryptographic_length: Some(256),
         cryptographic_parameters: Some(CryptographicParameters {
-            block_cipher_mode: Some(BlockCipherMode::GCM),
+            block_cipher_mode: Some(block_cipher_mode),
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
             ..CryptographicParameters::default()
         }),
@@ -96,37 +155,53 @@ fn aes_256_gcm_key_request<T: IntoIterator<Item = impl AsRef<str>>>(
     })
 }
 
-fn encrypt_request(key_id: UniqueIdentifier, bulk_data: &BulkData) -> KResult<Encrypt> {
-    Ok(Encrypt {
+fn encrypt_request(
+    key_id: UniqueIdentifier,
+    block_cipher_mode: BlockCipherMode,
+    data: Vec<u8>,
+) -> Encrypt {
+    Encrypt {
         unique_identifier: Some(key_id),
         cryptographic_parameters: Some(CryptographicParameters {
-            block_cipher_mode: Some(BlockCipherMode::GCM),
+            block_cipher_mode: Some(block_cipher_mode),
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
             ..CryptographicParameters::default()
         }),
-        data: Some(bulk_data.serialize()?),
-        i_v_counter_nonce: None,
+        data: Some(Zeroizing::new(data)),
+        i_v_counter_nonce: if block_cipher_mode == BlockCipherMode::CBC {
+            Some(vec![0; 16])
+        } else {
+            None
+        },
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,
         authenticated_encryption_additional_data: None,
-    })
+    }
 }
 
-fn decrypt_request(key_id: UniqueIdentifier, bulk_data: &BulkData) -> KResult<Decrypt> {
-    Ok(Decrypt {
+fn decrypt_request(
+    key_id: UniqueIdentifier,
+    block_cipher_mode: BlockCipherMode,
+    data: Vec<u8>,
+) -> Decrypt {
+    Decrypt {
         unique_identifier: Some(key_id),
         cryptographic_parameters: Some(CryptographicParameters {
-            block_cipher_mode: Some(BlockCipherMode::GCM),
+            block_cipher_mode: Some(block_cipher_mode),
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
             ..CryptographicParameters::default()
         }),
-        data: Some(bulk_data.serialize()?.to_vec()),
-        i_v_counter_nonce: None,
+        data: Some(data),
+        i_v_counter_nonce: if block_cipher_mode == BlockCipherMode::CBC {
+            Some(vec![0; 16])
+        } else {
+            None
+        },
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,
         authenticated_encryption_additional_data: None,
         authenticated_encryption_tag: None,
-    })
+    }
 }

@@ -656,11 +656,9 @@ pub async fn digest(
     )
     .await?;
 
-    let base64_digest = compute_resource_key_hash(&resource_name, &perimeter_id, &dek_data)?;
+    let resource_key_hash = compute_resource_key_hash(&resource_name, &perimeter_id, &dek_data)?;
 
-    Ok(DigestResponse {
-        resource_key_hash: base64_digest,
-    })
+    Ok(DigestResponse { resource_key_hash })
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -698,7 +696,7 @@ pub async fn privileged_wrap(
         cse_config,
         &google_cse_kacls_url,
         &kms.params.default_username,
-        true,
+        false,
     )
     .await?;
 
@@ -749,7 +747,7 @@ pub async fn privileged_unwrap(
             cse_config,
             &google_cse_kacls_url,
             &kms.params.default_username,
-            false,
+            true,
         )
         .await?
     };
@@ -817,7 +815,7 @@ pub async fn privileged_private_key_decrypt(
         cse_config,
         &google_cse_kacls_url,
         &kms.params.default_username,
-        true,
+        false,
     )
     .await?;
 
@@ -1079,7 +1077,7 @@ pub async fn rewrap(
     let resource_key_hash = compute_resource_key_hash(
         &resource_name,
         &perimeter_id,
-        &unwrapped_key.as_bytes().to_vec().into(),
+        &general_purpose::STANDARD.decode(&unwrapped_key)?.into(),
     )?;
 
     debug!("rewrap: success");
@@ -1249,7 +1247,7 @@ pub fn compute_resource_key_hash(
     signer.update(data.as_bytes())?;
 
     // Finalize the HMAC and retrieve the resulting bytes
-    let hmac_result: Vec<u8> = signer.sign_to_vec()?;
+    let hmac_result = signer.sign_to_vec()?;
 
     // Encode the result as a base64 string
     Ok(general_purpose::STANDARD.encode(hmac_result))

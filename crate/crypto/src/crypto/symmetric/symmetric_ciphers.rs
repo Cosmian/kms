@@ -1,7 +1,8 @@
 use std::cmp::PartialEq;
 
 use cosmian_kmip::{
-    kmip_0::kmip_types::BlockCipherMode, kmip_2_1::kmip_types::CryptographicAlgorithm,
+    kmip_0::kmip_types::{BlockCipherMode, PaddingMethod},
+    kmip_2_1::kmip_types::CryptographicAlgorithm,
 };
 use openssl::{
     rand::rand_bytes,
@@ -245,38 +246,42 @@ impl SymCipher {
                     BlockCipherMode::AEAD | BlockCipherMode::GCM => match key_size {
                         AES_128_GCM_KEY_LENGTH => Ok(Self::Aes128Gcm),
                         AES_256_GCM_KEY_LENGTH => Ok(Self::Aes256Gcm),
-                        _ => crypto_bail!(CryptoError::NotSupported(
-                            "AES key must be 16 or 32 bytes long for AES GCM".to_owned()
-                        )),
+                        _ => crypto_bail!(CryptoError::NotSupported(format!(
+                            "AES key must be 16 or 32 bytes long for AES GCM. Found {key_size} \
+                             bytes",
+                        ))),
                     },
                     BlockCipherMode::CBC => match key_size {
                         AES_128_CBC_KEY_LENGTH => Ok(Self::Aes128Cbc),
                         AES_256_CBC_KEY_LENGTH => Ok(Self::Aes256Cbc),
-                        _ => crypto_bail!(CryptoError::NotSupported(
-                            "AES key must be 16 or 32 bytes long for AES CBC".to_owned()
-                        )),
+                        _ => crypto_bail!(CryptoError::NotSupported(format!(
+                            "AES key must be 16 or 32 bytes long for AES CBC. Found {key_size} \
+                             bytes",
+                        ))),
                     },
                     BlockCipherMode::XTS => match key_size {
                         AES_128_XTS_KEY_LENGTH => Ok(Self::Aes128Xts),
                         AES_256_XTS_KEY_LENGTH => Ok(Self::Aes256Xts),
-                        _ => crypto_bail!(CryptoError::NotSupported(
-                            "AES key must be 32 or 64 bytes long for AES XTS".to_owned()
-                        )),
+                        _ => crypto_bail!(CryptoError::NotSupported(format!(
+                            "AES key must be 32 or 64 bytes long for AES XTS. Found {key_size} \
+                             bytes",
+                        ))),
                     },
                     #[cfg(feature = "non-fips")]
                     BlockCipherMode::GCMSIV => match key_size {
                         AES_128_GCM_SIV_KEY_LENGTH => Ok(Self::Aes128GcmSiv),
                         AES_256_GCM_SIV_KEY_LENGTH => Ok(Self::Aes256GcmSiv),
-                        _ => crypto_bail!(CryptoError::NotSupported(
-                            "AES key must be 16 or 32 bytes long for AES GCM SIV".to_owned()
-                        )),
+                        _ => crypto_bail!(CryptoError::NotSupported(format!(
+                            "AES key must be 16 or 32 bytes long for AES GCM SIV. Found \
+                             {key_size} bytes",
+                        ))),
                     },
                     BlockCipherMode::NISTKeyWrap => match key_size {
                         RFC5649_16_KEY_LENGTH => Ok(Self::Rfc5649_16),
                         RFC5649_32_KEY_LENGTH => Ok(Self::Rfc5649_32),
-                        _ => crypto_bail!(CryptoError::NotSupported(
-                            "RFC5649 key must be 16 or 32 bytes long".to_owned()
-                        )),
+                        _ => crypto_bail!(CryptoError::NotSupported(format!(
+                            "RFC5649 key must be 16 or 32 bytes long. Found {key_size} bytes",
+                        ))),
                     },
                     mode => {
                         crypto_bail!(CryptoError::NotSupported(format!(
@@ -334,13 +339,11 @@ pub fn encrypt(
     nonce: &[u8],
     aad: &[u8],
     plaintext: &[u8],
+    padding_method: Option<PaddingMethod>,
 ) -> Result<(Vec<u8>, Vec<u8>), CryptoError> {
     match sym_cipher {
-        SymCipher::Aes128Xts
-        | SymCipher::Aes256Xts
-        | SymCipher::Aes128Cbc
-        | SymCipher::Aes256Cbc => {
-            // Neither XTS nor CBC mode requires a tag.
+        SymCipher::Aes128Xts | SymCipher::Aes256Xts => {
+            //  XTS mode does not require a tag.
             if plaintext.len() < 16
                 && matches!(sym_cipher, SymCipher::Aes128Xts | SymCipher::Aes256Xts)
             {
@@ -350,6 +353,42 @@ pub fn encrypt(
             }
             let ciphertext =
                 openssl_encrypt(sym_cipher.to_openssl_cipher()?, key, Some(nonce), plaintext)?;
+            Ok((ciphertext, vec![]))
+        }
+        SymCipher::Aes128Cbc | SymCipher::Aes256Cbc => {
+            let padding = padding_method.unwrap_or(PaddingMethod::PKCS5);
+            let ciphertext = match padding {
+                PaddingMethod::None => {
+                    let cipher = sym_cipher.to_openssl_cipher()?;
+                    if plaintext.len() % cipher.block_size() != 0 {
+                        return Err(CryptoError::InvalidSize(
+                            "Plaintext must be a multiple of the block size when no padding is \
+                             used"
+                                .to_owned(),
+                        ));
+                    }
+                    let mut c =
+                        Crypter::new(cipher, openssl::symm::Mode::Encrypt, key, Some(nonce))?;
+                    c.pad(false);
+                    let mut ciphertext = vec![0; plaintext.len() + cipher.block_size()];
+                    let count = c.update(plaintext, &mut ciphertext)?;
+                    let rest = c.finalize(ciphertext.get_mut(count..).ok_or_else(|| {
+                        CryptoError::IndexingSlicing(
+                            "sym_ciphers::encrypt: finalize: count..".to_owned(),
+                        )
+                    })?)?;
+                    ciphertext.truncate(count + rest);
+                    ciphertext
+                }
+                PaddingMethod::PKCS5 => {
+                    openssl_encrypt(sym_cipher.to_openssl_cipher()?, key, Some(nonce), plaintext)?
+                }
+                not_supported => {
+                    return Err(CryptoError::NotSupported(format!(
+                        "Padding method {not_supported:?} is not currently supported"
+                    )));
+                }
+            };
             Ok((ciphertext, vec![]))
         }
         #[cfg(feature = "non-fips")]
@@ -388,19 +427,56 @@ pub fn decrypt(
     aad: &[u8],
     ciphertext: &[u8],
     tag: &[u8],
+    padding_method: Option<PaddingMethod>,
 ) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
     Ok(match sym_cipher {
-        SymCipher::Aes128Xts
-        | SymCipher::Aes256Xts
-        | SymCipher::Aes128Cbc
-        | SymCipher::Aes256Cbc => {
-            // XTS or CBC mode does not require a tag.
+        SymCipher::Aes128Xts | SymCipher::Aes256Xts => {
+            // XTS mode does not require a tag.
             Zeroizing::from(openssl_decrypt(
                 sym_cipher.to_openssl_cipher()?,
                 key,
                 Some(nonce),
                 ciphertext,
             )?)
+        }
+        SymCipher::Aes128Cbc | SymCipher::Aes256Cbc => {
+            let padding = padding_method.unwrap_or(PaddingMethod::PKCS5);
+            // CBC mode does not require a tag.
+            match padding {
+                PaddingMethod::PKCS5 => Zeroizing::from(openssl_decrypt(
+                    sym_cipher.to_openssl_cipher()?,
+                    key,
+                    Some(nonce),
+                    ciphertext,
+                )?),
+                PaddingMethod::None => {
+                    let cipher = sym_cipher.to_openssl_cipher()?;
+                    if ciphertext.len() % cipher.block_size() != 0 {
+                        return Err(CryptoError::InvalidSize(
+                            "Ciphertext must be a multiple of the block size when no padding is \
+                             used"
+                                .to_owned(),
+                        ));
+                    }
+                    let mut c =
+                        Crypter::new(cipher, openssl::symm::Mode::Decrypt, key, Some(nonce))?;
+                    c.pad(false);
+                    let mut plaintext = vec![0; ciphertext.len() + cipher.block_size()];
+                    let count = c.update(ciphertext, &mut plaintext)?;
+                    let rest = c.finalize(plaintext.get_mut(count..).ok_or_else(|| {
+                        CryptoError::IndexingSlicing(
+                            "sym_ciphers::decrypt: finalize: count..".to_owned(),
+                        )
+                    })?)?;
+                    plaintext.truncate(count + rest);
+                    Zeroizing::new(plaintext)
+                }
+                _ => {
+                    return Err(CryptoError::NotSupported(format!(
+                        "Padding method {padding:?} is not currently supported"
+                    )));
+                }
+            }
         }
         #[cfg(feature = "non-fips")]
         SymCipher::Aes128GcmSiv | SymCipher::Aes256GcmSiv => {

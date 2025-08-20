@@ -1035,7 +1035,7 @@ async fn process_secret_data(
     if key_block.key_wrapping_data.is_some() {
         if key_format_type.is_some() {
             kms_bail!(
-                "export: unable to export a wrapped secret datawith a requested Key Format Type. \
+                "export: unable to export a wrapped secret data with a requested Key Format Type. \
                  It must be the default"
             )
         }

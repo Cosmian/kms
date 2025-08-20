@@ -330,7 +330,20 @@ fn decrypt_bulk(
                             "Decrypt bulk: indexing slicing failed for tag".to_owned(),
                         )
                     })?;
-                let plaintext = sym_decrypt(sym_cipher, &key_bytes, nonce, &[], ciphertext, tag)?;
+                let padding_method = request
+                    .cryptographic_parameters
+                    .as_ref()
+                    .and_then(|cp| cp.padding_method)
+                    .unwrap_or(PaddingMethod::PKCS5);
+                let plaintext = sym_decrypt(
+                    sym_cipher,
+                    &key_bytes,
+                    nonce,
+                    &[],
+                    ciphertext,
+                    tag,
+                    Some(padding_method),
+                )?;
                 plaintexts.push(plaintext);
             }
         }
@@ -413,11 +426,24 @@ fn decrypt_single_with_symmetric_key(
         .authenticated_encryption_tag
         .as_deref()
         .unwrap_or(EMPTY_SLICE);
+    let padding_method = request
+        .cryptographic_parameters
+        .as_ref()
+        .and_then(|cp| cp.padding_method)
+        .unwrap_or(PaddingMethod::PKCS5);
     trace!(
         "Decrypt single with symmetric key: ciphertext: {ciphertext:?}, nonce: {nonce:?}, aad: \
-         {aad:?}, tag: {tag:?}"
+         {aad:?}, tag: {tag:?}, padding_method: {padding_method:?}"
     );
-    let plaintext = sym_decrypt(aead, &key_bytes, nonce, aad, ciphertext, tag)?;
+    let plaintext = sym_decrypt(
+        aead,
+        &key_bytes,
+        nonce,
+        aad,
+        ciphertext,
+        tag,
+        Some(padding_method),
+    )?;
     trace!("Decrypt single with symmetric key: plaintext: {plaintext:?}");
     Ok(Ok(DecryptResponse {
         unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),

@@ -19,8 +19,8 @@ pkcs11-sys = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
-tracing = { workspace = true }
 cosmian_logger = { workspace = true }
+tracing = { workspace = true }
 uuid = { workspace = true }
 
 [features]
