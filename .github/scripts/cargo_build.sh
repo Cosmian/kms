@@ -63,7 +63,7 @@ fi
 
 rustup target add "$TARGET"
 
-if [ -f /etc/debian_version ]; then
+if [ -f /etc/lsb-release ]; then
   bash .github/reusable_scripts/test_utimaco.sh
   HSM_USER_PASSWORD="12345678" cargo test -p utimaco_pkcs11_loader --target "$TARGET" --features utimaco -- tests::test_hsm_all
 fi
