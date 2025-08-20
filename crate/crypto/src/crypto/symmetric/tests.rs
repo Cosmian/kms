@@ -155,15 +155,16 @@ fn test_encrypt_decrypt_aes_cbc_256_pkcs5_padding() {
 
     let cipher = SymCipher::Aes256Cbc;
     let key = random_key(cipher).unwrap();
+    let iv = random_nonce(cipher).unwrap();
 
-    let tweak = random_nonce(cipher).unwrap();
+    // By default, when using None padding, PKCS5 padding is used
+    let (ciphertext, tag) = encrypt(cipher, &key, &iv, &[], &message, None).unwrap();
 
-    let (ciphertext, tag) = encrypt(cipher, &key, &tweak, &[], &message, None).unwrap();
-
+    // Let us explicit PKCS5 padding method to decrypt
     let decrypted_data = decrypt(
         SymCipher::Aes256Cbc,
         &key,
-        &tweak,
+        &iv,
         &[],
         &ciphertext,
         &tag,
@@ -185,16 +186,15 @@ fn test_encrypt_decrypt_aes_cbc_256_no_padding() {
 
     let cipher = SymCipher::Aes256Cbc;
     let key = random_key(cipher).unwrap();
+    let iv = random_nonce(cipher).unwrap();
     let padding_method = Some(PaddingMethod::None);
 
-    let tweak = random_nonce(cipher).unwrap();
-
-    let (ciphertext, tag) = encrypt(cipher, &key, &tweak, &[], &message, padding_method).unwrap();
+    let (ciphertext, tag) = encrypt(cipher, &key, &iv, &[], &message, padding_method).unwrap();
 
     let decrypted_data = decrypt(
         SymCipher::Aes256Cbc,
         &key,
-        &tweak,
+        &iv,
         &[],
         &ciphertext,
         &tag,
@@ -216,11 +216,20 @@ fn test_encrypt_decrypt_aes_cbc_256_pkcs5_invalid_padding() {
 
     let cipher = SymCipher::Aes256Cbc;
     let key = random_key(cipher).unwrap();
-    let padding_method = Some(PaddingMethod::ANSI_X923);
+    let iv = random_nonce(cipher).unwrap();
 
-    let tweak = random_nonce(cipher).unwrap();
-
-    encrypt(cipher, &key, &tweak, &[], &message, padding_method).unwrap_err();
+    for method in [
+        PaddingMethod::OAEP,
+        PaddingMethod::SSL3,
+        PaddingMethod::Zeros,
+        PaddingMethod::ANSI_X923,
+        PaddingMethod::ISO10126,
+        PaddingMethod::PKCS1v15,
+        PaddingMethod::X931,
+        PaddingMethod::PSS,
+    ] {
+        encrypt(cipher, &key, &iv, &[], &message, Some(method)).unwrap_err();
+    }
 }
 
 #[cfg(feature = "non-fips")]
