@@ -13,8 +13,8 @@ set -exo pipefail
 
 ROOT_FOLDER=$(pwd)
 
-# Build the UI on Debian-based Linux distributions
-if [ -f /etc/debian_version ]; then
+# Build the UI on Ubuntu distributions
+if [ -f /etc/lsb-release ]; then
   bash .github/scripts/build_ui.sh
 fi
 
