@@ -22,10 +22,10 @@ harness = false
 
 [dependencies]
 actix-server = { workspace = true }
-cosmian_kms_client = { path = "../kms_client", version = "5.6.2" }
+cosmian_kms_client = { path = "../kms_client", version = "5.7.0" }
 cosmian_kms_server = { path = "../server", features = [
   "insecure",
-], version = "5.6.2" }
+], version = "5.7.0" }
 serde_json = { workspace = true }
 tempfile = "3.19"
 tokio = { workspace = true, features = ["rt-multi-thread"] }
