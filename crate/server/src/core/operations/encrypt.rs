@@ -180,10 +180,10 @@ pub(crate) async fn encrypt(
     // plaintext length for logging
     let plaintext_len = request.data.as_ref().map_or(0, |d| d.len());
 
-    //It may be a bulk encryption request; if not, fallback to single encryption
+    // It may be a bulk encryption request; if not, fallback to single encryption
     let res = match BulkData::deserialize(data) {
         Ok(bulk_data) => {
-            //It is a bulk encryption request
+            // It is a bulk encryption request
             encrypt_bulk(&owm, request, bulk_data)
         }
         Err(_) => {
@@ -312,7 +312,19 @@ pub(crate) fn encrypt_bulk(
                     .i_v_counter_nonce
                     .clone()
                     .unwrap_or(random_nonce(cipher)?);
-                let (ciphertext, tag) = sym_encrypt(cipher, &key_bytes, &nonce, aad, &plaintext)?;
+                let padding_method = request
+                    .cryptographic_parameters
+                    .as_ref()
+                    .and_then(|cp| cp.padding_method)
+                    .unwrap_or(PaddingMethod::PKCS5);
+                let (ciphertext, tag) = sym_encrypt(
+                    cipher,
+                    &key_bytes,
+                    &nonce,
+                    aad,
+                    &plaintext,
+                    Some(padding_method),
+                )?;
                 // concatenate nonce || ciphertext || tag
                 let nct = [nonce.as_slice(), ciphertext.as_slice(), tag.as_slice()].concat();
                 ciphertexts.push(Zeroizing::new(nct));
@@ -373,8 +385,23 @@ fn encrypt_with_symmetric_key(
         .authenticated_encryption_additional_data
         .as_deref()
         .unwrap_or(EMPTY_SLICE);
-    trace!("encrypt_with_symmetric_key: plaintext: {plaintext:?}, nonce: {nonce:?}, aad: {aad:?}");
-    let (ciphertext, tag) = sym_encrypt(aead, &key_bytes, &nonce, aad, plaintext)?;
+    let padding_method = request
+        .cryptographic_parameters
+        .as_ref()
+        .and_then(|cp| cp.padding_method)
+        .unwrap_or(PaddingMethod::PKCS5);
+    trace!(
+        "encrypt_with_symmetric_key: plaintext: {plaintext:?}, nonce: {nonce:?}, aad: {aad:?}, \
+         padding_method: {padding_method:?}"
+    );
+    let (ciphertext, tag) = sym_encrypt(
+        aead,
+        &key_bytes,
+        &nonce,
+        aad,
+        plaintext,
+        Some(padding_method),
+    )?;
     trace!("encrypt_with_symmetric_key: ciphertext: {ciphertext:?}, tag: {tag:?},");
     Ok(EncryptResponse {
         unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),

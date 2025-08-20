@@ -33,6 +33,12 @@ RUN if [ "$FIPS" = "true" ]; then \
 #
 FROM debian:bookworm-20250428-slim AS kms-server
 
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install --no-install-recommends -qq -y ca-certificates \
+    && update-ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY --from=builder /root/kms/crate/server/ui                   /usr/local/cosmian/ui
 COPY --from=builder /root/kms/target/release/cosmian_kms        /usr/bin/cosmian_kms
 COPY --from=builder /usr/local/openssl                          /usr/local/openssl

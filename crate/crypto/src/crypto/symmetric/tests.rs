@@ -1,5 +1,6 @@
 #![allow(clippy::unwrap_used)]
 
+use cosmian_kmip::kmip_0::kmip_types::PaddingMethod;
 use openssl::{provider::Provider, rand::rand_bytes};
 
 #[cfg(feature = "non-fips")]
@@ -25,14 +26,22 @@ fn test_encrypt_decrypt_aes_gcm_128() {
     let mut aad = vec![0_u8; 24];
     rand_bytes(&mut aad).unwrap();
 
-    let (ciphertext, tag) = encrypt(SymCipher::Aes128Gcm, &key, &nonce, &aad, &message).unwrap();
+    let (ciphertext, tag) =
+        encrypt(SymCipher::Aes128Gcm, &key, &nonce, &aad, &message, None).unwrap();
     assert_eq!(ciphertext.len(), message.len());
     assert_eq!(tag.len(), AES_128_GCM_MAC_LENGTH);
 
-    let decrypted_data =
-        decrypt(SymCipher::Aes128Gcm, &key, &nonce, &aad, &ciphertext, &tag).unwrap();
+    let decrypted_data = decrypt(
+        SymCipher::Aes128Gcm,
+        &key,
+        &nonce,
+        &aad,
+        &ciphertext,
+        &tag,
+        None,
+    )
+    .unwrap();
 
-    // `to_vec()` conversion because of Zeroizing<>.
     assert_eq!(decrypted_data.to_vec(), message);
 }
 
@@ -52,14 +61,22 @@ fn test_encrypt_decrypt_aes_gcm_256() {
     let mut aad = vec![0_u8; 24];
     rand_bytes(&mut aad).unwrap();
 
-    let (ciphertext, tag) = encrypt(SymCipher::Aes256Gcm, &key, &nonce, &aad, &message).unwrap();
+    let (ciphertext, tag) =
+        encrypt(SymCipher::Aes256Gcm, &key, &nonce, &aad, &message, None).unwrap();
     assert_eq!(ciphertext.len(), message.len());
     assert_eq!(tag.len(), AES_128_GCM_MAC_LENGTH);
 
-    let decrypted_data =
-        decrypt(SymCipher::Aes256Gcm, &key, &nonce, &aad, &ciphertext, &tag).unwrap();
+    let decrypted_data = decrypt(
+        SymCipher::Aes256Gcm,
+        &key,
+        &nonce,
+        &aad,
+        &ciphertext,
+        &tag,
+        None,
+    )
+    .unwrap();
 
-    // `to_vec()` conversion because of Zeroizing<>.
     assert_eq!(decrypted_data.to_vec(), message);
 }
 
@@ -76,14 +93,22 @@ fn test_encrypt_decrypt_aes_xts_128() {
 
     let tweak = random_nonce(SymCipher::Aes128Xts).unwrap();
 
-    let (ciphertext, tag) = encrypt(SymCipher::Aes128Xts, &key, &tweak, &[], &message).unwrap();
+    let (ciphertext, tag) =
+        encrypt(SymCipher::Aes128Xts, &key, &tweak, &[], &message, None).unwrap();
     assert_eq!(ciphertext.len(), message.len());
     assert_eq!(tag.len(), AES_128_XTS_MAC_LENGTH); // always 0
 
-    let decrypted_data =
-        decrypt(SymCipher::Aes128Xts, &key, &tweak, &[], &ciphertext, &tag).unwrap();
+    let decrypted_data = decrypt(
+        SymCipher::Aes128Xts,
+        &key,
+        &tweak,
+        &[],
+        &ciphertext,
+        &tag,
+        None,
+    )
+    .unwrap();
 
-    // `to_vec()` conversion because of Zeroizing<>.
     assert_eq!(decrypted_data.to_vec(), message);
 }
 
@@ -100,15 +125,111 @@ fn test_encrypt_decrypt_aes_xts_256() {
 
     let tweak = random_nonce(SymCipher::Aes256Xts).unwrap();
 
-    let (ciphertext, tag) = encrypt(SymCipher::Aes256Xts, &key, &tweak, &[], &message).unwrap();
+    let (ciphertext, tag) =
+        encrypt(SymCipher::Aes256Xts, &key, &tweak, &[], &message, None).unwrap();
     assert_eq!(ciphertext.len(), message.len());
     assert_eq!(tag.len(), AES_256_XTS_MAC_LENGTH); // always 0
 
-    let decrypted_data =
-        decrypt(SymCipher::Aes256Xts, &key, &tweak, &[], &ciphertext, &tag).unwrap();
+    let decrypted_data = decrypt(
+        SymCipher::Aes256Xts,
+        &key,
+        &tweak,
+        &[],
+        &ciphertext,
+        &tag,
+        None,
+    )
+    .unwrap();
 
-    // `to_vec()` conversion because of Zeroizing<>.
     assert_eq!(decrypted_data.to_vec(), message);
+}
+
+#[test]
+fn test_encrypt_decrypt_aes_cbc_256_pkcs5_padding() {
+    // Load FIPS provider module from OpenSSL.
+    #[cfg(not(feature = "non-fips"))]
+    Provider::load(None, "fips").unwrap();
+
+    let mut message = vec![0_u8; 42];
+    rand_bytes(&mut message).unwrap();
+
+    let cipher = SymCipher::Aes256Cbc;
+    let key = random_key(cipher).unwrap();
+    let iv = random_nonce(cipher).unwrap();
+
+    // By default, when using None padding, PKCS5 padding is used
+    let (ciphertext, tag) = encrypt(cipher, &key, &iv, &[], &message, None).unwrap();
+
+    // Let us explicit PKCS5 padding method to decrypt
+    let decrypted_data = decrypt(
+        SymCipher::Aes256Cbc,
+        &key,
+        &iv,
+        &[],
+        &ciphertext,
+        &tag,
+        Some(PaddingMethod::PKCS5),
+    )
+    .unwrap();
+
+    assert_eq!(decrypted_data.to_vec(), message);
+}
+
+#[test]
+fn test_encrypt_decrypt_aes_cbc_256_no_padding() {
+    // Load FIPS provider module from OpenSSL.
+    #[cfg(not(feature = "non-fips"))]
+    Provider::load(None, "fips").unwrap();
+
+    let mut message = vec![0_u8; 32];
+    rand_bytes(&mut message).unwrap();
+
+    let cipher = SymCipher::Aes256Cbc;
+    let key = random_key(cipher).unwrap();
+    let iv = random_nonce(cipher).unwrap();
+    let padding_method = Some(PaddingMethod::None);
+
+    let (ciphertext, tag) = encrypt(cipher, &key, &iv, &[], &message, padding_method).unwrap();
+
+    let decrypted_data = decrypt(
+        SymCipher::Aes256Cbc,
+        &key,
+        &iv,
+        &[],
+        &ciphertext,
+        &tag,
+        padding_method,
+    )
+    .unwrap();
+
+    assert_eq!(decrypted_data.to_vec(), message);
+}
+
+#[test]
+fn test_encrypt_decrypt_aes_cbc_256_pkcs5_invalid_padding() {
+    // Load FIPS provider module from OpenSSL.
+    #[cfg(not(feature = "non-fips"))]
+    Provider::load(None, "fips").unwrap();
+
+    let mut message = vec![0_u8; 32];
+    rand_bytes(&mut message).unwrap();
+
+    let cipher = SymCipher::Aes256Cbc;
+    let key = random_key(cipher).unwrap();
+    let iv = random_nonce(cipher).unwrap();
+
+    for method in [
+        PaddingMethod::OAEP,
+        PaddingMethod::SSL3,
+        PaddingMethod::Zeros,
+        PaddingMethod::ANSI_X923,
+        PaddingMethod::ISO10126,
+        PaddingMethod::PKCS1v15,
+        PaddingMethod::X931,
+        PaddingMethod::PSS,
+    ] {
+        encrypt(cipher, &key, &iv, &[], &message, Some(method)).unwrap_err();
+    }
 }
 
 #[cfg(feature = "non-fips")]
@@ -124,8 +245,15 @@ fn test_encrypt_decrypt_chacha20_poly1305() {
     let mut aad = vec![0_u8; 24];
     rand_bytes(&mut aad).unwrap();
 
-    let (ciphertext, tag) =
-        encrypt(SymCipher::Chacha20Poly1305, &key, &nonce, &aad, &message).unwrap();
+    let (ciphertext, tag) = encrypt(
+        SymCipher::Chacha20Poly1305,
+        &key,
+        &nonce,
+        &aad,
+        &message,
+        None,
+    )
+    .unwrap();
 
     let decrypted_data = decrypt(
         SymCipher::Chacha20Poly1305,
@@ -134,10 +262,10 @@ fn test_encrypt_decrypt_chacha20_poly1305() {
         &aad,
         &ciphertext,
         &tag,
+        None,
     )
     .unwrap();
 
-    // `to_vec()` conversion because of Zeroizing<>.
     assert_eq!(decrypted_data.to_vec(), message);
 }
 
@@ -157,7 +285,8 @@ fn test_encrypt_decrypt_aes_gcm_siv_128() {
     let mut aad = vec![0_u8; 24];
     rand_bytes(&mut aad).unwrap();
 
-    let (ciphertext, tag) = encrypt(SymCipher::Aes128GcmSiv, &key, &nonce, &aad, &message).unwrap();
+    let (ciphertext, tag) =
+        encrypt(SymCipher::Aes128GcmSiv, &key, &nonce, &aad, &message, None).unwrap();
     assert_eq!(ciphertext.len(), message.len());
     assert_eq!(tag.len(), AES_128_GCM_SIV_MAC_LENGTH);
 
@@ -168,10 +297,10 @@ fn test_encrypt_decrypt_aes_gcm_siv_128() {
         &aad,
         &ciphertext,
         &tag,
+        None,
     )
     .unwrap();
 
-    // `to_vec()` conversion because of Zeroizing<>.
     assert_eq!(decrypted_data.to_vec(), message);
 }
 
@@ -191,7 +320,8 @@ fn test_encrypt_decrypt_aes_gcm_siv_256() {
     let mut aad = vec![0_u8; 24];
     rand_bytes(&mut aad).unwrap();
 
-    let (ciphertext, tag) = encrypt(SymCipher::Aes256GcmSiv, &key, &nonce, &aad, &message).unwrap();
+    let (ciphertext, tag) =
+        encrypt(SymCipher::Aes256GcmSiv, &key, &nonce, &aad, &message, None).unwrap();
     assert_eq!(ciphertext.len(), message.len());
     assert_eq!(tag.len(), AES_128_GCM_SIV_MAC_LENGTH);
 
@@ -202,10 +332,10 @@ fn test_encrypt_decrypt_aes_gcm_siv_256() {
         &aad,
         &ciphertext,
         &tag,
+        None,
     )
     .unwrap();
 
-    // `to_vec()` conversion because of Zeroizing<>.
     assert_eq!(decrypted_data.to_vec(), message);
 }
 
