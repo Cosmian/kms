@@ -5,6 +5,12 @@ FROM rust:1.86.0-bookworm AS builder
 
 LABEL version="5.6.2"
 LABEL name="Cosmian KMS docker container"
+LABEL org.opencontainers.image.description="Cosmian KMS docker container"
+LABEL org.opencontainers.image.title="Cosmian KMS"
+LABEL org.opencontainers.image.vendor="Cosmian"
+LABEL org.opencontainers.image.source="https://github.com/Cosmian/kms"
+LABEL org.opencontainers.image.documentation="https://docs.cosmian.com/key_management_system/"
+LABEL org.opencontainers.image.licenses="BUSL-1.1"
 
 ENV OPENSSL_DIR=/usr/local/openssl
 
