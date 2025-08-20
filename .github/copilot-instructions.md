@@ -7,37 +7,37 @@ Always reference these instructions first and fallback to search or bash command
 ## Working Effectively
 
 - **Bootstrap and build the repository:**
-  - System requires Rust nightly toolchain (nightly-2025-03-31)
-  - OpenSSL 3.0.13+ is required (system OpenSSL 3.0.13 works, OpenSSL 3.2.0 preferred)
-  - Build server: `cd crate/server && cargo build --features non-fips` -- takes 2-3 minutes. NEVER CANCEL.
-  - Build server (release): `cd crate/server && cargo build --release --features non-fips` -- takes 8-12 minutes. NEVER CANCEL. Set timeout to 20+ minutes.
-  - The CLI binary `cosmian` is NOT in this repository - it's in a separate repository (https://github.com/Cosmian/cli)
+    - System requires Rust nightly toolchain (nightly-2025-03-31)
+    - OpenSSL 3.0.13+ is required (system OpenSSL 3.0.13 works, OpenSSL 3.2.0 preferred)
+    - Build server: `cd crate/server && cargo build --features non-fips` -- takes 2-3 minutes. NEVER CANCEL.
+    - Build server (release): `cd crate/server && cargo build --release --features non-fips` -- takes 8-12 minutes. NEVER CANCEL. Set timeout to 20+ minutes.
+    - The CLI binary `cosmian` is NOT in this repository - it's in a separate repository (<https://github.com/Cosmian/cli>)
 
 - **Test the code:**
-  - Basic crypto tests: `cd crate/crypto && cargo test --features non-fips` -- takes 35 seconds. Some tests may fail due to missing FIPS modules (expected).
-  - Full test suite has dependency issues with missing test certificates - use crypto crate tests for validation
-  - Set `KMS_TEST_DB=sqlite` environment variable for database tests
-  - Set `RUST_LOG="error,cosmian_kms_server=info,cosmian_kms_cli=info"` for logging control
+    - Basic crypto tests: `cd crate/crypto && cargo test --features non-fips` -- takes 35 seconds. Some tests may fail due to missing FIPS modules (expected).
+    - Full test suite has dependency issues with missing test certificates - use crypto crate tests for validation
+    - Set `KMS_TEST_DB=sqlite` environment variable for database tests
+    - Set `RUST_LOG="error,cosmian_kms_server=info,cosmian_kms_cli=info"` for logging control
 
 - **Run the KMS server:**
-  - ALWAYS build first using the bootstrap steps above
-  - Debug mode: `/home/runner/work/kms/kms/target/debug/cosmian_kms --database-type sqlite --sqlite-path /tmp/kms-data`
-  - Release mode: `/home/runner/work/kms/kms/target/release/cosmian_kms --database-type sqlite --sqlite-path /tmp/kms-data`
-  - Server listens on http://0.0.0.0:9998 by default
-  - Server supports multiple database backends: sqlite, postgresql, mysql, redis-findex
+    - ALWAYS build first using the bootstrap steps above
+    - Debug mode: `/home/runner/work/kms/kms/target/debug/cosmian_kms --database-type sqlite --sqlite-path /tmp/kms-data`
+    - Release mode: `/home/runner/work/kms/kms/target/release/cosmian_kms --database-type sqlite --sqlite-path /tmp/kms-data`
+    - Server listens on <http://0.0.0.0:9998> by default
+    - Server supports multiple database backends: sqlite, postgresql, mysql, redis-findex
 
 - **Docker usage:**
-  - Quick start: `docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest`
-  - Pre-built Docker images are available at ghcr.io/cosmian/kms:latest
-  - Docker build from source requires missing OpenSSL setup script - use pre-built images instead
-  - Docker images include web UI at http://localhost:9998/ui
+    - Quick start: `docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest`
+    - Pre-built Docker images are available at ghcr.io/cosmian/kms:latest
+    - Docker build from source requires missing OpenSSL setup script - use pre-built images instead
+    - Docker images include web UI at <http://localhost:9998/ui>
 
 ## Validation
 
 - **CRITICAL**: Always manually test server functionality after making changes by starting the server and verifying it responds to HTTP requests
 - Test server startup: Start server with `--database-type sqlite --sqlite-path /tmp/test-db`
 - Test API responses: `curl -s -X POST -H "Content-Type: application/json" -d '{}' http://localhost:9998/kmip/2_1` should return KMIP validation error (confirms server is working)
-- Test server version: `./target/release/cosmian_kms --version` should show version 5.6.2
+- Test server version: `./target/release/cosmian_kms --version` should show version 5.7.0
 - You can build and run the server, but the CLI must be obtained from the separate Cosmian CLI repository
 - Always run `cargo fmt --check` before committing (takes 3 seconds)
 - Clippy requires installation: `rustup component add --toolchain nightly-2025-03-31-x86_64-unknown-linux-gnu clippy`
@@ -47,9 +47,10 @@ Always reference these instructions first and fallback to search or bash command
 The following are outputs from frequently run commands. Reference them instead of viewing, searching, or running bash commands to save time.
 
 ### Repo root structure
-```
+
+```text
 .cargo/                  # Cargo configuration
-.github/                 # CI/CD workflows and scripts  
+.github/                 # CI/CD workflows and scripts
 crate/                   # Rust workspace crates
   server/                # KMS server binary crate
   cli/                   # CLI library crate (binary is separate repo)
@@ -70,11 +71,12 @@ rust-toolchain.toml     # Rust toolchain: nightly-2025-03-31
 ```
 
 ### Key build commands and timing
+
 ```bash
 # Initial dependency check (6 minutes with network issues, 2 minutes normally)
 cargo check
 
-# Server debug build (2-3 minutes) 
+# Server debug build (2-3 minutes)
 cd crate/server && cargo build --features non-fips
 
 # Server release build (8-12 minutes) - NEVER CANCEL
@@ -88,11 +90,12 @@ cargo fmt --check
 ```
 
 ### Server startup and validation
+
 ```bash
 # Start server (debug)
 ./target/debug/cosmian_kms --database-type sqlite --sqlite-path /tmp/kms-data
 
-# Start server (release) 
+# Start server (release)
 ./target/release/cosmian_kms --database-type sqlite --sqlite-path /tmp/kms-data
 
 # Test server is responding
@@ -101,10 +104,11 @@ curl -s -X POST -H "Content-Type: application/json" -d '{}' http://localhost:999
 
 # Check version
 ./target/release/cosmian_kms --version
-# Expected: "cosmian_kms_server 5.6.2"
+# Expected: "cosmian_kms_server 5.7.0"
 ```
 
-### Docker quick start  
+### Docker quick start
+
 ```bash
 # Pull and run pre-built image (includes UI)
 docker pull ghcr.io/cosmian/kms:latest
@@ -117,8 +121,8 @@ curl http://localhost:9998/ui
 
 ## Important notes
 
-- **TIMING**: Builds are much faster than expected in original documentation (8-12 min for release vs 45+ min mentioned elsewhere)  
-- **CLI**: The `cosmian` CLI binary is NOT built from this repository - it's in https://github.com/Cosmian/cli
+- **TIMING**: Builds are much faster than expected in original documentation (8-12 min for release vs 45+ min mentioned elsewhere)
+- **CLI**: The `cosmian` CLI binary is NOT built from this repository - it's in <https://github.com/Cosmian/cli>
 - **OpenSSL**: System OpenSSL 3.0.13 works fine, though 3.2.0 is preferred for FIPS compliance
 - **Docker**: Building from source fails due to missing `.github/reusable_scripts/get_openssl_binaries.sh` - use pre-built images
 - **FIPS vs non-FIPS**: Default is FIPS mode, use `--features non-fips` for broader algorithm support

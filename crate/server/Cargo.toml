@@ -51,8 +51,8 @@ clap = { workspace = true, features = [
   "derive",
   "cargo",
 ] }
-cosmian_kms_access = { path = "../access", version = "5.6.2" }
-cosmian_kms_server_database = { path = "../server_database", version = "5.6.2" }
+cosmian_kms_access = { path = "../access", version = "5.7.0" }
+cosmian_kms_server_database = { path = "../server_database", version = "5.7.0" }
 cosmian_logger = { workspace = true }
 dotenvy = "0.15"
 futures = "0.3"
@@ -68,7 +68,7 @@ num-bigint-dig = { workspace = true, features = [
 openidconnect = { version = "4.0", features = ["reqwest", "native-tls"] }
 openssl = { workspace = true }
 pem.workspace = true
-proteccio_pkcs11_loader = { path = "../hsm/proteccio", version = "5.6.2" }
+proteccio_pkcs11_loader = { path = "../hsm/proteccio", version = "5.7.0" }
 # Important: align the rustls version with reqwest rustls dependency
 # When using client certificate authentication, reqwest will use the
 # native-tls crate to create an Identity; this will be different backend
@@ -88,7 +88,7 @@ rustls = { version = "0.23", features = [
 ], default-features = false }
 serde = { workspace = true }
 serde_json = { workspace = true }
-softhsm2_pkcs11_loader = { path = "../hsm/softhsm2", version = "5.6.2" }
+softhsm2_pkcs11_loader = { path = "../hsm/softhsm2", version = "5.7.0" }
 strum = { workspace = true, features = ["std", "derive", "strum_macros"] }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["local-offset", "formatting"] }
@@ -96,14 +96,14 @@ tokio = { workspace = true, features = ["full"] }
 toml = "0.8"
 tracing = { workspace = true }
 url = { workspace = true }
-utimaco_pkcs11_loader = { path = "../hsm/utimaco", version = "5.6.2" }
+utimaco_pkcs11_loader = { path = "../hsm/utimaco", version = "5.7.0" }
 uuid = { workspace = true, features = ["v4"] }
 x509-parser = { workspace = true }
 zeroize = { workspace = true }
 
 [dev-dependencies]
 actix-http = "3.10"
-cosmian_kms_client_utils = { path = "../client_utils", version = "5.6.2" }
+cosmian_kms_client_utils = { path = "../client_utils", version = "5.7.0" }
 cosmian_logger = { workspace = true }
 native-tls = { workspace = true }
 pem = { workspace = true }
