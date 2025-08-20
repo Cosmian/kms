@@ -116,7 +116,7 @@ jobs:
       - cargo-machete
       - build
       - pykmip
-    uses: Cosmian/reusable_workflows/.github/workflows/push-artifacts.yml@develop
+    uses: Cosmian/reusable_workflows/.github/workflows/push-artifacts.yml@feat/add_support_of_debian_buster
     with:
       project-name: kms
       destination: kms

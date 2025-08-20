@@ -13,8 +13,8 @@ set -exo pipefail
 
 ROOT_FOLDER=$(pwd)
 
-# Build the UI in release mode
-if [ -f /etc/lsb-release ]; then
+# Build the UI on Debian-based Linux distributions
+if [ -f /etc/debian_version ]; then
   bash .github/scripts/build_ui.sh
 fi
 
@@ -28,7 +28,7 @@ if [ "$DEBUG_OR_RELEASE" = "release" ]; then
     cargo install --version 0.16.0 cargo-generate-rpm --force
     cd "$ROOT_FOLDER"
     cargo generate-rpm --target "$TARGET" -p crate/server --metadata-overwrite=pkg/rpm/scriptlets.toml
-  elif [ -f /etc/lsb-release ]; then
+  elif [ -f /etc/debian_version ]; then
     cargo install --version 2.4.0 cargo-deb --force
     if [ -n "$FEATURES" ]; then
       cargo deb --target "$TARGET" -p cosmian_kms_server
@@ -63,7 +63,7 @@ fi
 
 rustup target add "$TARGET"
 
-if [ -f /etc/lsb-release ]; then
+if [ -f /etc/debian_version ]; then
   bash .github/reusable_scripts/test_utimaco.sh
   HSM_USER_PASSWORD="12345678" cargo test -p utimaco_pkcs11_loader --target "$TARGET" --features utimaco -- tests::test_hsm_all
 fi
