@@ -1267,8 +1267,7 @@ dependencies = [
 [[package]]
 name = "cosmian_http_client"
 version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0be6c5aff7d8d56057bb9f9940824cd578c5ecd50b0acd6aa39b6f3d6567f023"
+source = "git+https://github.com/Cosmian/http_client_server.git?branch=feat%2Fsupport_proxy#066dfa063dfbf5f57fc5629253763a35d1699a40"
 dependencies = [
  "actix-web",
  "derive_more 0.99.20",
@@ -1279,6 +1278,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.12",
  "tokio",
+ "tracing",
  "url",
  "webpki-roots 0.22.6",
  "x509-cert",
