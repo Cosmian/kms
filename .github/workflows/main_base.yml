@@ -81,7 +81,7 @@ jobs:
           pip install PyKMIP
           bash ./scripts/test_pykmip.sh all
 
-  build: # Build on Ubuntu 22/24, Rocky 8/9, MacOS 13/15 and Windows 22
+  build: # Build on Ubuntu 22/24, Rocky 8/9, MacOS 13/15 and Windows Server 22
     uses: Cosmian/reusable_workflows/.github/workflows/build_all.yml@develop
     secrets: inherit
     with:
