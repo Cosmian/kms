@@ -1266,8 +1266,9 @@ dependencies = [
 
 [[package]]
 name = "cosmian_http_client"
-version = "0.3.1"
-source = "git+https://github.com/Cosmian/http_client_server.git?branch=feat%2Fsupport_proxy#066dfa063dfbf5f57fc5629253763a35d1699a40"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2113a48291d755038c78edac362864ad0f5c43738a51f05108069db19e10ec5c"
 dependencies = [
  "actix-web",
  "derive_more 0.99.20",
@@ -1286,7 +1287,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kmip"
-version = "5.7.0"
+version = "5.7.1"
 dependencies = [
  "bitflags 2.9.0",
  "cosmian_logger 0.1.1",
@@ -1308,7 +1309,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_access"
-version = "5.7.0"
+version = "5.7.1"
 dependencies = [
  "cosmian_kmip",
  "serde",
@@ -1316,7 +1317,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_base_hsm"
-version = "5.7.0"
+version = "5.7.1"
 dependencies = [
  "async-trait",
  "cosmian_kms_interfaces",
@@ -1331,7 +1332,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_cli"
-version = "5.7.0"
+version = "5.7.1"
 dependencies = [
  "assert_cmd",
  "base64 0.22.1",
@@ -1368,7 +1369,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_client"
-version = "5.7.0"
+version = "5.7.1"
 dependencies = [
  "cosmian_crypto_core 10.1.0",
  "cosmian_http_client",
@@ -1385,7 +1386,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_client_utils"
-version = "5.7.0"
+version = "5.7.1"
 dependencies = [
  "base64 0.22.1",
  "clap",
@@ -1404,7 +1405,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_client_wasm"
-version = "5.7.0"
+version = "5.7.1"
 dependencies = [
  "base64 0.22.1",
  "cosmian_kms_client_utils",
@@ -1421,7 +1422,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_crypto"
-version = "5.7.0"
+version = "5.7.1"
 dependencies = [
  "aes-gcm-siv",
  "argon2",
@@ -1445,7 +1446,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_interfaces"
-version = "5.7.0"
+version = "5.7.1"
 dependencies = [
  "async-trait",
  "cosmian_kmip",
@@ -1459,7 +1460,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_server"
-version = "5.7.0"
+version = "5.7.1"
 dependencies = [
  "actix-cors",
  "actix-files",
@@ -1510,7 +1511,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_server_database"
-version = "5.7.0"
+version = "5.7.1"
 dependencies = [
  "async-trait",
  "cloudproof_findex",
@@ -2626,7 +2627,7 @@ dependencies = [
  "httpdate",
  "itoa",
  "pin-project-lite",
- "socket2 0.4.10",
+ "socket2 0.5.9",
  "tokio",
  "tower-service",
  "tracing",
@@ -3060,7 +3061,7 @@ dependencies = [
 
 [[package]]
 name = "kmip-derive"
-version = "5.7.0"
+version = "5.7.1"
 dependencies = [
  "quote",
  "syn",
@@ -4021,7 +4022,7 @@ dependencies = [
 
 [[package]]
 name = "proteccio_pkcs11_loader"
-version = "5.7.0"
+version = "5.7.1"
 dependencies = [
  "cosmian_kms_base_hsm",
  "cosmian_kms_interfaces",
@@ -4895,7 +4896,7 @@ dependencies = [
 
 [[package]]
 name = "softhsm2_pkcs11_loader"
-version = "5.7.0"
+version = "5.7.1"
 dependencies = [
  "cosmian_kms_base_hsm",
  "cosmian_kms_interfaces",
@@ -5270,7 +5271,7 @@ checksum = "8f50febec83f5ee1df3015341d8bd429f2d1cc62bcba7ea2076759d315084683"
 
 [[package]]
 name = "test_kms_server"
-version = "5.7.0"
+version = "5.7.1"
 dependencies = [
  "actix-server",
  "cosmian_kms_client",
@@ -5840,7 +5841,7 @@ checksum = "b6c140620e7ffbb22c2dee59cafe6084a59b5ffc27a8859a5f0d494b5d52b6be"
 
 [[package]]
 name = "utimaco_pkcs11_loader"
-version = "5.7.0"
+version = "5.7.1"
 dependencies = [
  "cosmian_kms_base_hsm",
  "cosmian_kms_interfaces",

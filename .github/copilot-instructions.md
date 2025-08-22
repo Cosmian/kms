@@ -37,7 +37,7 @@ Always reference these instructions first and fallback to search or bash command
 - **CRITICAL**: Always manually test server functionality after making changes by starting the server and verifying it responds to HTTP requests
 - Test server startup: Start server with `--database-type sqlite --sqlite-path /tmp/test-db`
 - Test API responses: `curl -s -X POST -H "Content-Type: application/json" -d '{}' http://localhost:9998/kmip/2_1` should return KMIP validation error (confirms server is working)
-- Test server version: `./target/release/cosmian_kms --version` should show version 5.7.0
+- Test server version: `./target/release/cosmian_kms --version` should show version 5.7.1
 - You can build and run the server, but the CLI must be obtained from the separate Cosmian CLI repository
 - Always run `cargo fmt --check` before committing (takes 3 seconds)
 - Clippy requires installation: `rustup component add --toolchain nightly-2025-03-31-x86_64-unknown-linux-gnu clippy`
@@ -104,7 +104,7 @@ curl -s -X POST -H "Content-Type: application/json" -d '{}' http://localhost:999
 
 # Check version
 ./target/release/cosmian_kms --version
-# Expected: "cosmian_kms_server 5.7.0"
+# Expected: "cosmian_kms_server 5.7.1"
 ```
 
 ### Docker quick start
