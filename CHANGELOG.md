@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.7.1] - 2025-08-22
+
+### 🚀 Features
+
+- Add support HTTP forward proxy (for intermediate CLI crate) (#509)
+
+### 📚 Documentation
+
+- PKCS11: move PKCS#11 docs into cli repository (#510)
+
+### ⚙️ Miscellaneous Tasks
+
+- Google CSE: save openssl commands to verify resource hash computation
+
 ## [5.7.0] - 2025-08-20
 
 ### 🚀 Features
