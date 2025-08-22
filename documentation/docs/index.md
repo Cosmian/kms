@@ -36,9 +36,9 @@ The **Cosmian KMS** is a high-performance, [**open-source**](https://github.com/
     - [Google Workspace Client Side Encryption (CSE)](./google_cse/index.md)
     - [Microsoft 365 Double Key Encryption (DKE)](./ms_dke/index.md)
 - **Disk encryption**:
-    - [Veracrypt](./pkcs11/veracrypt.md)
-    - [LUKS](./pkcs11/luks.md)
-- Enterprise integrations with VMware, Oracle Database TDE, and more
+    - [Veracrypt](../cosmian_cli/pkcs11/veracrypt.md)
+    - [LUKS](../cosmian_cli/pkcs11/luks.md)
+- Enterprise integrations with VMware, [Oracle Database TDE](../cosmian_cli/pkcs11/oracle/tde.md), and more
 
 ## Three-in-one: KMS + Oracle + PKI
 
