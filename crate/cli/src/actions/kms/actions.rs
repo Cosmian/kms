@@ -59,7 +59,7 @@ impl KmsActions {
         match self {
             Self::AccessRights(action) => action.process(kms_rest_client).await?,
             Self::Attributes(action) => action.process(kms_rest_client).await?,
-            Self::Bench(action) => action.process(kms_rest_client).await?,
+            Self::Bench(action) => Box::pin(action.process(kms_rest_client)).await?,
             #[cfg(feature = "non-fips")]
             Self::Cc(action) => action.process(kms_rest_client).await?,
             Self::Certificates(action) => {

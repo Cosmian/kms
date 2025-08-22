@@ -44,8 +44,8 @@ impl Display for ProxyConfig {
             write!(f, "No Basic Auth Username, ")?;
         }
 
-        if let Some(password) = &self.proxy_basic_auth_password {
-            write!(f, "Basic Auth Password: {}, ", password.replace('.', "*"))?;
+        if let Some(_password) = &self.proxy_basic_auth_password {
+            write!(f, "Basic Auth Password: ***, ")?;
         } else {
             write!(f, "No Basic Auth Password, ")?;
         }
