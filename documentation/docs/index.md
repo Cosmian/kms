@@ -36,9 +36,9 @@ The **Cosmian KMS** is a high-performance, [**open-source**](https://github.com/
     - [Google Workspace Client Side Encryption (CSE)](./google_cse/index.md)
     - [Microsoft 365 Double Key Encryption (DKE)](./ms_dke/index.md)
 - **Disk encryption**:
-    - [Veracrypt](./pkcs11/veracrypt.md)
-    - [LUKS](./pkcs11/luks.md)
-- Enterprise integrations with VMware, Oracle Database TDE, and more
+    - [Veracrypt](../cosmian_cli/pkcs11/veracrypt.md)
+    - [LUKS](../cosmian_cli/pkcs11/luks.md)
+- Enterprise integrations with VMware, [Oracle Database TDE](../cosmian_cli/pkcs11/oracle/tde.md), and more
 
 ## Three-in-one: KMS + Oracle + PKI
 
@@ -61,11 +61,11 @@ complete [supported algorithms list](./algorithms.md).
 
 The **Cosmian KMS** is available as:
 
-- Package: [Debian](https://package.cosmian.com/kms/5.7.0/ubuntu-22.04/)
-  or [RPM](https://package.cosmian.com/kms/5.7.0/rockylinux9/)
+- Package: [Debian](https://package.cosmian.com/kms/5.7.1/ubuntu-22.04/)
+  or [RPM](https://package.cosmian.com/kms/5.7.1/rockylinux9/)
 - Docker: [Standard image](https://github.com/Cosmian/kms/pkgs/container/kms)
   and [FIPS image](https://github.com/Cosmian/kms/pkgs/container/kms)
-- [Pre-built binaries](https://package.cosmian.com/kms/5.7.0/) for Linux, Windows, and macOS
+- [Pre-built binaries](https://package.cosmian.com/kms/5.7.1/) for Linux, Windows, and macOS
 
 ## User Interface
 
@@ -82,8 +82,8 @@ operating systems.
 
 The **[Cosmian CLI](../cosmian_cli/index.md)** is packaged as:
 
-- [Debian](https://package.cosmian.com/kms/5.7.0/ubuntu-22.04/)
-  or [RPM](https://package.cosmian.com/kms/5.7.0/rockylinux9/) package
+- [Debian](https://package.cosmian.com/kms/5.7.1/ubuntu-22.04/)
+  or [RPM](https://package.cosmian.com/kms/5.7.1/rockylinux9/) package
 - [Pre-built binaries](https://package.cosmian.com/cli/) for Linux, Windows, and macOS
 
 **Note:** `ckms` has been replaced by [Cosmian CLI](../cosmian_cli/index.md) to manage other Cosmian products.

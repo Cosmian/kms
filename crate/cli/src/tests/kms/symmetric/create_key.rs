@@ -10,6 +10,7 @@ use crate::{
     actions::kms::symmetric::keys::create_key::CreateKeyAction, error::result::KmsCliResult,
 };
 
+#[allow(clippy::large_stack_frames)]
 #[tokio::test]
 pub(crate) async fn test_create_symmetric_key() -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server().await;
