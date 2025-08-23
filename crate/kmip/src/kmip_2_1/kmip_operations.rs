@@ -2104,8 +2104,8 @@ impl Display for Sign {
         write!(
             f,
             "Sign {{ unique_identifier: {:?}, cryptographic_parameters: {:?}, data: {:?}, \
-             digested_data: {:?}, correlation_value: {:?}, init_indicator: {:?}, \
-             final_indicator: {:?} }}",
+             digested_data: {:?}, correlation_value: {:?}, init_indicator: {:?}, final_indicator: \
+             {:?} }}",
             self.unique_identifier,
             self.cryptographic_parameters,
             self.data,
@@ -2139,11 +2139,9 @@ impl Display for SignResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "SignResponse {{ unique_identifier: {}, signature_data: {:?}, \
-             correlation_value: {:?} }}",
-            self.unique_identifier,
-            self.signature_data,
-            self.correlation_value,
+            "SignResponse {{ unique_identifier: {}, signature_data: {:?}, correlation_value: {:?} \
+             }}",
+            self.unique_identifier, self.signature_data, self.correlation_value,
         )
     }
 }

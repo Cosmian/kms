@@ -8,14 +8,11 @@ use cosmian_kms_server_database::reexport::{
             extra::BulkData,
             kmip_objects::Object,
             kmip_operations::{Sign, SignResponse},
-            kmip_types::{
-                CryptographicParameters, KeyFormatType, UniqueIdentifier,
-            },
+            kmip_types::{CryptographicParameters, KeyFormatType, UniqueIdentifier},
         },
     },
     cosmian_kms_crypto::{
-        crypto::rsa::default_cryptographic_parameters,
-        openssl::kmip_private_key_to_openssl,
+        crypto::rsa::default_cryptographic_parameters, openssl::kmip_private_key_to_openssl,
     },
     cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams},
 };
@@ -29,10 +26,7 @@ use tracing::{debug, info, trace};
 use zeroize::Zeroizing;
 
 use crate::{
-    core::{
-        KMS,
-        uid_utils::uids_from_unique_identifier,
-    },
+    core::{KMS, uid_utils::uids_from_unique_identifier},
     error::KmsError,
     kms_bail,
     result::{KResult, KResultHelper},
@@ -91,7 +85,7 @@ pub(crate) async fn sign(
             }
         }
         trace!("Sign: user: {user} is authorized to sign using: {uid}");
-        
+
         // Only private keys can be used for signing
         if let Object::PrivateKey { .. } = owm.object() {
             // Check that the private key is authorized for signing
@@ -201,10 +195,7 @@ pub(crate) fn sign_bulk(
     })
 }
 
-fn sign_with_private_key(
-    request: &Sign,
-    owm: &ObjectWithMetadata,
-) -> KResult<SignResponse> {
+fn sign_with_private_key(request: &Sign, owm: &ObjectWithMetadata) -> KResult<SignResponse> {
     // Make sure that the key used to sign can be used to sign.
     if !owm
         .object()
@@ -305,13 +296,13 @@ fn sign_with_rsa(
     signer.set_rsa_pss_saltlen(openssl::sign::RsaPssSaltlen::DIGEST_LENGTH)?;
     signer.update(data_to_sign)?;
     let signature = signer.sign_to_vec()?;
-    
+
     debug!(
         "sign_with_rsa: signed {} bytes, signature length: {}",
         data_to_sign.len(),
         signature.len()
     );
-    
+
     Ok(signature)
 }
 
@@ -341,12 +332,12 @@ fn sign_with_ecdsa(
     let mut signer = Signer::new(digest, private_key)?;
     signer.update(data_to_sign)?;
     let signature = signer.sign_to_vec()?;
-    
+
     debug!(
         "sign_with_ecdsa: signed {} bytes, signature length: {}",
         data_to_sign.len(),
         signature.len()
     );
-    
+
     Ok(signature)
 }

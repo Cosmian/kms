@@ -190,14 +190,23 @@ and AES-256-GCM and SHAKE256 for curves with security strength $s > 128$ bits:
 
 ## Signature
 
-Signature is only supported via the `Certify` operation, which is used to create a certificate
-either by signing a certificate request, or building it from an existing public key.
+Digital signature signing and verification are supported via both the `Certify` operation (for certificate signing) and the `Sign` operation (for direct data signing).
+
+The `Certify` operation is used to create a certificate either by signing a certificate request, or building it from an existing public key.
+
+The `Sign` operation is used to perform digital signature operations on provided data using a private key. This operation supports:
+- Signing raw data (the operation will hash the data using the specified or default hash algorithm)
+- Signing pre-hashed data (digested data) for cases where the client has already computed the hash
 
 | Algorithm | Signature Key Type                                    | FIPS mode                                               | Description                                                                                                               |
 |-----------|-------------------------------------------------------|---------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------|
+| RSASSA-PSS| RSA-2048, RSA-3072, RSA-4096                         | Yes                                                     | RSA signatures using PKCS#1 PSS padding with approved hash functions (SHA-256, SHA-384, SHA-512).                      |
 | ECDSA     | P-192, P-224, P-256, P-384, P384, P-521, X25519, X448 | **Restricted** to curves P-224, P-256, P-384 and P-521. | See [FIPS-186.5](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf) and NIST.SP.800-186 - Section 3.1.2 table 2. |
 | EdDSA     | Ed25519, Ed448                                        | Yes                                                     | See [FIPS-186.5](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf).                                             |
 
+### Digital Signature Operations
+
+- `RSASSA-PSS` performs digital signatures using RSA keys with PSS padding and NIST-approved hash functions.
 - `ECDSA` performs digital signatures on elliptic
   curves `P-192`, `P-224`, `P-256`, `P-384`, `P-512`, `X25519` and `X448`.
 - `EdDSA` performs digital signatures on Edwards curves `Ed25519` and `Ed448`.
