@@ -15,7 +15,7 @@ use cosmian_kms_server_database::reexport::{
             GetAttributesResponse, GetResponse, Hash, HashResponse, Import, ImportResponse, Locate,
             LocateResponse, MAC, MACResponse, Query, QueryResponse, ReKey, ReKeyKeyPair,
             ReKeyKeyPairResponse, ReKeyResponse, Register, RegisterResponse, Revoke,
-            RevokeResponse, SetAttribute, SetAttributeResponse, Validate, ValidateResponse,
+            RevokeResponse, SetAttribute, SetAttributeResponse, Sign, SignResponse, Validate, ValidateResponse,
         },
     },
     cosmian_kms_interfaces::SessionParams,
@@ -673,6 +673,20 @@ impl KMS {
         let _enter = span.enter();
 
         operations::set_attribute(self, request, user, params).await
+    }
+
+    /// This operation requests the server to perform a signature operation on the provided data
+    /// using a Managed Object specified by its Unique Identifier. The signature is returned to the client.
+    pub(crate) async fn sign(
+        &self,
+        request: Sign,
+        user: &str,
+        params: Option<Arc<dyn SessionParams>>,
+    ) -> KResult<SignResponse> {
+        let span = tracing::span!(tracing::Level::ERROR, "sign");
+        let _enter = span.enter();
+
+        Box::pin(operations::sign(self, request, user, params)).await
     }
 
     pub(crate) async fn validate(

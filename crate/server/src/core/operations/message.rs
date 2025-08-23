@@ -223,6 +223,9 @@ async fn process_operation(
         Operation::SetAttribute(kmip_request) => {
             Operation::SetAttributeResponse(kms.set_attribute(kmip_request, user, params).await?)
         }
+        Operation::Sign(kmip_request) => {
+            Operation::SignResponse(kms.sign(kmip_request, user, params).await?)
+        }
         Operation::Validate(kmip_request) => {
             Operation::ValidateResponse(kms.validate(kmip_request, user, params).await?)
         }
@@ -249,6 +252,7 @@ async fn process_operation(
         | Operation::ReKeyResponse(_)
         | Operation::RevokeResponse(_)
         | Operation::SetAttributeResponse(_)
+        | Operation::SignResponse(_)
         | Operation::ValidateResponse(_) => {
             return Err(KmsError::Kmip21Error(
                 ErrorReason::Operation_Not_Supported,

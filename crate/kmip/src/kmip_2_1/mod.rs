@@ -28,6 +28,7 @@ pub enum KmipOperation {
     Locate,
     Revoke,
     Rekey,
+    Sign,
     Validate,
 }
 
@@ -52,6 +53,7 @@ impl fmt::Display for KmipOperation {
             Self::Locate => "locate",
             Self::Revoke => "revoke",
             Self::Rekey => "rekey",
+            Self::Sign => "sign",
             Self::Validate => "validate",
         };
         write!(f, "{str}")
@@ -78,6 +80,8 @@ impl FromStr for KmipOperation {
             "locate" => Ok(Self::Locate),
             "rekey" => Ok(Self::Rekey),
             "revoke" => Ok(Self::Revoke),
+            "sign" => Ok(Self::Sign),
+            "validate" => Ok(Self::Validate),
             _ => Err("Could not parse an operation"),
         }
     }

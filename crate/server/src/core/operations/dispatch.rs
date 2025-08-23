@@ -5,7 +5,7 @@ use cosmian_kms_server_database::reexport::{
         kmip_2_1::kmip_operations::{
             Certify, Create, CreateKeyPair, Decrypt, DeleteAttribute, Destroy, Encrypt, Export,
             Get, GetAttributes, Hash, Import, Locate, MAC, Operation, Query, ReKey, ReKeyKeyPair,
-            Revoke, SetAttribute, Validate,
+            Revoke, SetAttribute, Sign, Validate,
         },
         ttlv::{TTLV, from_ttlv},
     },
@@ -141,6 +141,11 @@ pub(crate) async fn dispatch(
             debug!("SetAttribute: {req:?}");
             let resp = kms.set_attribute(req, user, database_params).await?;
             Operation::SetAttributeResponse(resp)
+        }
+        "Sign" => {
+            let req = from_ttlv::<Sign>(ttlv)?;
+            let resp = kms.sign(req, user, database_params).await?;
+            Operation::SignResponse(resp)
         }
         "Validate" => {
             let req = from_ttlv::<Validate>(ttlv)?;

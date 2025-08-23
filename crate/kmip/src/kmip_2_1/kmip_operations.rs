@@ -82,6 +82,8 @@ pub enum Operation {
     ReKeyKeyPairResponse(ReKeyKeyPairResponse),
     SetAttribute(SetAttribute),
     SetAttributeResponse(SetAttributeResponse),
+    Sign(Sign),
+    SignResponse(SignResponse),
     Validate(Validate),
     ValidateResponse(ValidateResponse),
 }
@@ -111,6 +113,7 @@ impl Operation {
             | Self::Revoke(_)
             | Self::ReKey(_)
             | Self::ReKeyKeyPair(_)
+            | Self::Sign(_)
             | Self::Validate(_)
             | Self::DiscoverVersions(_)
             | Self::SetAttribute(_) => Direction::Request,
@@ -136,6 +139,7 @@ impl Operation {
             | Self::RevokeResponse(_)
             | Self::ReKeyResponse(_)
             | Self::ReKeyKeyPairResponse(_)
+            | Self::SignResponse(_)
             | Self::QueryResponse(_)
             | Self::ValidateResponse(_)
             | Self::DiscoverVersionsResponse(_) => Direction::Response,
@@ -182,6 +186,7 @@ impl Operation {
             Self::SetAttribute(_) | Self::SetAttributeResponse(_) => {
                 OperationEnumeration::SetAttribute
             }
+            Self::Sign(_) | Self::SignResponse(_) => OperationEnumeration::Sign,
             Self::Validate(_) | Self::ValidateResponse(_) => OperationEnumeration::Validate,
         }
     }
@@ -2038,6 +2043,107 @@ impl Display for ValidateResponse {
             f,
             "ValidateResponse {{ validity_indicator: {:?} }}",
             self.validity_indicator
+        )
+    }
+}
+
+/// Sign
+///
+/// This operation requests the server to perform a signature operation on the provided data
+/// using a Managed Object specified by its Unique Identifier. The signature is returned to the client.
+#[derive(Serialize, Deserialize, Default, PartialEq, Eq, Clone, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct Sign {
+    /// The Unique Identifier of the Managed
+    /// Cryptographic Object that is the key to
+    /// use for the signature operation. If
+    /// omitted, then the ID Placeholder value
+    /// SHALL be used by the server as the
+    /// Unique Identifier
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<UniqueIdentifier>,
+
+    /// The Cryptographic Parameters corresponding to the
+    /// particular signature method requested.
+    /// If there are no Cryptographic
+    /// Parameters associated with the
+    /// Managed Cryptographic Object and
+    /// the algorithm requires parameters then
+    /// the operation SHALL return with a
+    /// Result Status of Operation Failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cryptographic_parameters: Option<CryptographicParameters>,
+
+    /// The data to be signed
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<Zeroizing<Vec<u8>>>,
+
+    /// The digest of the data to be signed.
+    /// Provided when the data has been pre-hashed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub digested_data: Option<Vec<u8>>,
+
+    /// Specifies the existing stream or by-
+    /// parts cryptographic operation (as
+    /// returned from a previous call to this
+    /// operation)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub correlation_value: Option<Vec<u8>>,
+
+    /// Initial operation as Boolean
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub init_indicator: Option<bool>,
+
+    /// Final operation as Boolean
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub final_indicator: Option<bool>,
+}
+
+impl Display for Sign {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Sign {{ unique_identifier: {:?}, cryptographic_parameters: {:?}, data: {:?}, \
+             digested_data: {:?}, correlation_value: {:?}, init_indicator: {:?}, \
+             final_indicator: {:?} }}",
+            self.unique_identifier,
+            self.cryptographic_parameters,
+            self.data,
+            self.digested_data,
+            self.correlation_value,
+            self.init_indicator,
+            self.final_indicator,
+        )
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone)]
+#[serde(rename_all = "PascalCase")]
+pub struct SignResponse {
+    /// The Unique Identifier of the Managed
+    /// Cryptographic Object that was the key
+    /// used for the signature operation.
+    pub unique_identifier: UniqueIdentifier,
+    /// The signature data (as a Byte String).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signature_data: Option<Vec<u8>>,
+    /// Specifies the stream or by-parts value
+    /// to be provided in subsequent calls to
+    /// this operation for performing
+    /// cryptographic operations.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub correlation_value: Option<Vec<u8>>,
+}
+
+impl Display for SignResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "SignResponse {{ unique_identifier: {}, signature_data: {:?}, \
+             correlation_value: {:?} }}",
+            self.unique_identifier,
+            self.signature_data,
+            self.correlation_value,
         )
     }
 }
