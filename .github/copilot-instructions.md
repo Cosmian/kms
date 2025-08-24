@@ -7,6 +7,7 @@ Always reference these instructions first and fallback to search or bash command
 ## Working Effectively
 
 - **Bootstrap and build the repository:**
+    - First, initialize git submodules: `git submodule update --recursive --init`
     - System requires Rust nightly toolchain (nightly-2025-03-31) with rustfmt and clippy components
     - OpenSSL 3.2.0 is REQUIRED (not 3.0.13+) for proper FIPS compliance and static linking
     - OpenSSL must be installed to `/usr/local/openssl` using `.github/reusable_scripts/get_openssl_binaries.sh`
@@ -100,6 +101,7 @@ rust-toolchain.toml     # Rust toolchain: nightly-2025-03-31
 
 ```bash
 # Full CI build process (includes UI, packaging, multi-database tests)
+git submodule update --recursive --init
 export OPENSSL_DIR=/usr/local/openssl
 export TARGET=x86_64-unknown-linux-gnu
 export DEBUG_OR_RELEASE=debug  # or release
