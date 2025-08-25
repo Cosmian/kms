@@ -38,7 +38,7 @@ pub(crate) async fn sign(
     user: &str,
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<SignResponse> {
-    trace!("Sign: {}", serde_json::to_string(&request)?);
+    trace!("sign: {}", serde_json::to_string(&request)?);
 
     // Get the data to sign - either data or digested_data must be provided
     let data_to_sign = if let Some(data) = request.data.as_ref() {
@@ -47,7 +47,7 @@ pub(crate) async fn sign(
         digested_data.as_slice()
     } else {
         return Err(KmsError::InvalidRequest(
-            "Sign: either data or digested_data must be provided".to_owned(),
+            "sign: either data or digested_data must be provided".to_owned(),
         ))
     };
 
@@ -58,8 +58,8 @@ pub(crate) async fn sign(
         .ok_or(KmsError::UnsupportedPlaceholder)?;
     let uids = uids_from_unique_identifier(unique_identifier, kms, params.clone())
         .await
-        .context("Sign")?;
-    trace!("Sign: candidate uids: {uids:?}");
+        .context("sign")?;
+    trace!("sign: candidate uids: {uids:?}");
 
     // Find a suitable private key for signing
     let mut selected_owm = None;
@@ -69,7 +69,7 @@ pub(crate) async fn sign(
             .retrieve_object(&uid, params.clone())
             .await?
             .ok_or_else(|| {
-                KmsError::InvalidRequest(format!("Sign: failed to retrieve key: {uid}"))
+                KmsError::InvalidRequest(format!("sign: failed to retrieve key: {uid}"))
             })?;
         if owm.state() != State::Active {
             continue
@@ -84,7 +84,7 @@ pub(crate) async fn sign(
                 continue
             }
         }
-        trace!("Sign: user: {user} is authorized to sign using: {uid}");
+        trace!("sign: user: {user} is authorized to sign using: {uid}");
 
         // Only private keys can be used for signing
         if let Object::PrivateKey { .. } = owm.object() {
@@ -104,7 +104,7 @@ pub(crate) async fn sign(
     let mut owm = selected_owm.ok_or_else(|| {
         KmsError::Kmip21Error(
             ErrorReason::Item_Not_Found,
-            format!("Sign: no valid private key for id: {unique_identifier}"),
+            format!("sign: no valid private key for id: {unique_identifier}"),
         )
     })?;
 
@@ -191,7 +191,7 @@ pub(crate) fn sign_bulk(
     Ok(SignResponse {
         unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
         signature_data: Some(bulk_signatures.serialize()?.to_vec()),
-        correlation_value: request.correlation_value.clone(),
+        correlation_value: request.correlation_value,
     })
 }
 
@@ -281,7 +281,6 @@ fn sign_with_rsa(
     let digest = match hashing_fn {
         HashingAlgorithm::SHA1 => MessageDigest::sha1(),
         HashingAlgorithm::SHA224 => MessageDigest::sha224(),
-        HashingAlgorithm::SHA256 => MessageDigest::sha256(),
         HashingAlgorithm::SHA384 => MessageDigest::sha384(),
         HashingAlgorithm::SHA512 => MessageDigest::sha512(),
         HashingAlgorithm::SHA3224 => MessageDigest::sha3_224(),
@@ -319,7 +318,6 @@ fn sign_with_ecdsa(
     let digest = match hashing_fn {
         HashingAlgorithm::SHA1 => MessageDigest::sha1(),
         HashingAlgorithm::SHA224 => MessageDigest::sha224(),
-        HashingAlgorithm::SHA256 => MessageDigest::sha256(),
         HashingAlgorithm::SHA384 => MessageDigest::sha384(),
         HashingAlgorithm::SHA512 => MessageDigest::sha512(),
         HashingAlgorithm::SHA3224 => MessageDigest::sha3_224(),
