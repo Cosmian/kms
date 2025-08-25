@@ -1121,7 +1121,7 @@ pub struct Decrypt {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_parameters: Option<CryptographicParameters>,
 
-    /// The data to be encrypted.
+    /// The data to be decrypted.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<Vec<u8>>,
 
@@ -1209,13 +1209,68 @@ impl TryFrom<kmip_2_1::kmip_operations::DecryptResponse> for DecryptResponse {
 }
 
 /// 4.31 Sign
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Default, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct Sign {
-    pub unique_identifier: String,
+    /// The Unique Identifier of the Managed
+    /// Cryptographic Object that is the key to
+    /// use for the signature operation. If
+    /// omitted, then the ID Placeholder value
+    /// SHALL be used by the server as the
+    /// Unique Identifier
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<UniqueIdentifier>,
+
+    /// The Cryptographic Parameters corresponding to the
+    /// particular signature method requested.
+    /// If there are no Cryptographic
+    /// Parameters associated with the
+    /// Managed Cryptographic Object and
+    /// the algorithm requires parameters then
+    /// the operation SHALL return with a
+    /// Result Status of Operation Failed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_parameters: Option<CryptographicParameters>,
-    pub data: Vec<u8>,
+
+    /// The data to be signed
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<Zeroizing<Vec<u8>>>,
+
+    /// The digest of the data to be signed.
+    /// Provided when the data has been pre-hashed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub digested_data: Option<Vec<u8>>,
+
+    /// Specifies the existing stream or by-
+    /// parts cryptographic operation (as
+    /// returned from a previous call to this
+    /// operation)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub correlation_value: Option<Vec<u8>>,
+
+    /// Initial operation as Boolean
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub init_indicator: Option<bool>,
+
+    /// Final operation as Boolean
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub final_indicator: Option<bool>,
+}
+
+impl From<Sign> for kmip_2_1::kmip_operations::Sign {
+    fn from(value: Sign) -> Self {
+        Self {
+            unique_identifier: value
+                .unique_identifier
+                .map(kmip_2_1::kmip_types::UniqueIdentifier::TextString),
+            cryptographic_parameters: value.cryptographic_parameters.map(Into::into),
+            data: value.data.map(|d| Zeroizing::new(d.to_vec())),
+            digested_data: value.digested_data,
+            correlation_value: value.correlation_value,
+            init_indicator: value.init_indicator,
+            final_indicator: value.final_indicator,
+        }
+    }
 }
 
 /// Response to a Sign request
@@ -1230,11 +1285,47 @@ pub struct SignResponse {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct SignatureVerify {
-    pub unique_identifier: String,
+    /// The Unique Identifier of the Managed Cryptographic Object that is the key to use for the signature verify operation
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<UniqueIdentifier>,
+    /// The Cryptographic Parameters corresponding to the particular signature verification method requested
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_parameters: Option<CryptographicParameters>,
-    pub data: Vec<u8>,
-    pub signature_data: Vec<u8>,
+    /// The data that was signed
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<Vec<u8>>,
+    /// The digested data to be verified
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub digested_data: Option<Vec<u8>>,
+    /// The signature to be verified
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signature_data: Option<Vec<u8>>,
+    /// Specifies the existing stream or by-parts cryptographic operation
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub correlation_value: Option<String>,
+    /// Initial operation indicator
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub init_indicator: Option<bool>,
+    /// Final operation indicator
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub final_indicator: Option<bool>,
+}
+
+impl From<SignatureVerify> for kmip_2_1::kmip_operations::SignatureVerify {
+    fn from(value: SignatureVerify) -> Self {
+        Self {
+            unique_identifier: value
+                .unique_identifier
+                .map(kmip_2_1::kmip_types::UniqueIdentifier::TextString),
+            cryptographic_parameters: value.cryptographic_parameters.map(Into::into),
+            data: value.data,
+            digested_data: value.digested_data,
+            signature_data: value.signature_data,
+            correlation_value: value.correlation_value,
+            init_indicator: value.init_indicator,
+            final_indicator: value.final_indicator,
+        }
+    }
 }
 
 /// Response to a Signature Verify request
@@ -1514,7 +1605,7 @@ pub enum Operation {
     CreateResponse(CreateResponse),
     CreateSplitKey(CreateSplitKey),
     CreateSplitKeyResponse(CreateSplitKeyResponse),
-    Decrypt(Decrypt),
+    Decrypt(Box<Decrypt>),
     DecryptResponse(DecryptResponse),
     DeleteAttribute(DeleteAttribute),
     DeleteAttributeResponse(DeleteAttributeResponse),
@@ -1524,7 +1615,7 @@ pub enum Operation {
     DestroyResponse(DestroyResponse),
     DiscoverVersions(DiscoverVersions),
     DiscoverVersionsResponse(DiscoverVersionsResponse),
-    Encrypt(Encrypt),
+    Encrypt(Box<Encrypt>),
     EncryptResponse(EncryptResponse),
     Export(Export),
     ExportResponse(ExportResponse),
@@ -1538,7 +1629,7 @@ pub enum Operation {
     GetUsageAllocationResponse(GetUsageAllocationResponse),
     Hash(Hash),
     HashResponse(HashResponse),
-    Import(Import),
+    Import(Box<Import>),
     ImportResponse(ImportResponse),
     JoinSplitKey(JoinSplitKey),
     JoinSplitKeyResponse(JoinSplitKeyResponse),
@@ -1553,9 +1644,9 @@ pub enum Operation {
     ObtainLease(ObtainLease),
     ObtainLeaseResponse(ObtainLeaseResponse),
     Poll(Poll),
-    PollResponse(PollResponse),
+    PollResponse(Box<PollResponse>),
     Query(Query),
-    QueryResponse(QueryResponse),
+    QueryResponse(Box<QueryResponse>),
     ReCertify(ReCertify),
     ReCertifyResponse(ReCertifyResponse),
     Recover(Recover),
@@ -1899,9 +1990,9 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             // Operation::Check(check) => Self::Check(check.into()),
             Operation::Create(create) => Self::Create(create.into()),
             Operation::CreateKeyPair(create_key_pair) => {
-                Self::CreateKeyPair(create_key_pair.into())
+                Self::CreateKeyPair(Box::new(create_key_pair.into()))
             }
-            Operation::Decrypt(decrypt) => Self::Decrypt(decrypt.into()),
+            Operation::Decrypt(decrypt) => Self::Decrypt(Box::new((*decrypt).into())),
             // Operation::DeleteAttribute(delete_attribute) => {
             //     Self::DeleteAttribute(delete_attribute.into())
             // }
@@ -1915,7 +2006,7 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             Operation::DiscoverVersionsResponse(discover_versions_response) => {
                 Self::DiscoverVersionsResponse(discover_versions_response)
             }
-            Operation::Encrypt(encrypt) => Self::Encrypt(encrypt.into()),
+            Operation::Encrypt(encrypt) => Self::Encrypt(Box::new((*encrypt).into())),
             Operation::Get(get) => Self::Get(get.into()),
             Operation::GetAttributes(get_attributes) => Self::GetAttributes(get_attributes.into()),
             // Operation::GetAttributeList(get_attribute_list) => {
@@ -1924,11 +2015,11 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             // Operation::GetUsageAllocation(get_usage_allocation) => {
             //     Self::GetUsageAllocation(get_usage_allocation.into())
             // }
-            Operation::Import(import) => Self::Import(import.into()),
+            Operation::Import(import) => Self::Import(Box::new((*import).into())),
             // Operation::JoinSplitKey(join_split_key) => {
             //     Self::JoinSplitKey(join_split_key.into())
             // }
-            Operation::Locate(locate) => Self::Locate(locate.into()),
+            Operation::Locate(locate) => Self::Locate(Box::new(locate.into())),
             Operation::MAC(mac) => Self::MAC(mac.into()),
             // Operation::MACVerify(mac_verify) => {
             //     Self::MACVerify(mac_verify.into())
@@ -1947,7 +2038,7 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             // Operation::Recover(recover) => {
             //     Self::Recover(recover.into())
             // }
-            Operation::Register(register) => Self::Register(register.into()),
+            Operation::Register(register) => Self::Register(Box::new(register.into())),
             // Operation::ReKey(rekey) => Self::ReKey(rekey.into()),
             // Operation::ReKeyKeyPair(rekey_key_pair) => {
             //     Self::ReKeyKeyPair(rekey_key_pair.into())
@@ -1959,10 +2050,10 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             // Operation::RNGSeed(rng_seed) => {
             //     Self::RNGSeed(rng_seed.into())
             // }
-            // Operation::Sign(sign) => Self::Sign(sign.into()),
-            // Operation::SignatureVerify(signature_verify) => {
-            //     Self::SignatureVerify(signature_verify.into())
-            // }
+            Operation::Sign(sign) => Self::Sign(sign.into()),
+            Operation::SignatureVerify(signature_verify) => {
+                Self::SignatureVerify(signature_verify.into())
+            }
             // Operation::Validate(validate) => {
             //     Self::Validate(validate.into())
             // }
@@ -2033,7 +2124,7 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             }
             kmip_2_1::kmip_operations::Operation::GetAttributesResponse(
                 get_attributes_response,
-            ) => Self::GetAttributesResponse(get_attributes_response.try_into()?),
+            ) => Self::GetAttributesResponse((*get_attributes_response).try_into()?),
             // Operation::GetAttributeListResponse(get_attribute_list_response) => {
             //     Self::GetAttributeListResponse(
             //         get_attribute_list_response.into(),
@@ -2079,7 +2170,9 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             //     Self::PollResponse(poll_response.into())
             // }
             kmip_2_1::kmip_operations::Operation::QueryResponse(query_response) => {
-                Self::QueryResponse(query_response.try_into().context("QueryResponse")?)
+                Self::QueryResponse(Box::new(
+                    (*query_response).try_into().context("QueryResponse")?,
+                ))
             }
             // Operation::ReCertifyResponse(recertify_response) => {
             //     Self::ReCertifyResponse(recertify_response.into())

@@ -34,20 +34,20 @@ async fn integration_tests_bulk() -> KResult<()> {
         },
         batch_item: vec![
             RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
-                Operation::CreateKeyPair(build_create_covercrypt_master_keypair_request(
+                Operation::CreateKeyPair(Box::new(build_create_covercrypt_master_keypair_request(
                     access_structure,
                     EMPTY_TAGS,
                     false,
                     None,
-                )?),
+                )?)),
             )),
             RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
-                Operation::CreateKeyPair(build_create_covercrypt_master_keypair_request(
+                Operation::CreateKeyPair(Box::new(build_create_covercrypt_master_keypair_request(
                     access_structure,
                     EMPTY_TAGS,
                     false,
                     None,
-                )?),
+                )?)),
             )),
         ],
     };

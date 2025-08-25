@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use cosmian_kms_client_utils::reexport::cosmian_kmip;
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::{
@@ -233,16 +232,16 @@ async fn test_curve_25519_multiple() -> KResult<()> {
         },
         batch_item: vec![
             RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
-                Operation::CreateKeyPair(create_ec_key_pair_request(
+                Operation::CreateKeyPair(Box::new(create_ec_key_pair_request(
                     None,
                     EMPTY_TAGS,
                     RecommendedCurve::CURVE25519,
                     false,
                     None,
-                )?),
+                )?)),
             )),
             RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(Operation::Locate(
-                cosmian_kmip::kmip_2_1::kmip_operations::Locate::default(),
+                Box::default(),
             ))),
         ],
     };
@@ -262,40 +261,40 @@ async fn test_curve_25519_multiple() -> KResult<()> {
         },
         batch_item: vec![
             RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
-                Operation::CreateKeyPair(create_ec_key_pair_request(
+                Operation::CreateKeyPair(Box::new(create_ec_key_pair_request(
                     None,
                     EMPTY_TAGS,
                     RecommendedCurve::CURVE25519,
                     false,
                     None,
-                )?),
+                )?)),
             )),
             RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
-                Operation::CreateKeyPair(create_ec_key_pair_request(
+                Operation::CreateKeyPair(Box::new(create_ec_key_pair_request(
                     None,
                     EMPTY_TAGS,
                     RecommendedCurve::CURVEED25519,
                     false,
                     None,
-                )?),
+                )?)),
             )),
             RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
-                Operation::CreateKeyPair(create_ec_key_pair_request(
+                Operation::CreateKeyPair(Box::new(create_ec_key_pair_request(
                     None,
                     EMPTY_TAGS,
                     RecommendedCurve::SECP256K1,
                     false,
                     None,
-                )?),
+                )?)),
             )),
             RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
-                Operation::CreateKeyPair(create_ec_key_pair_request(
+                Operation::CreateKeyPair(Box::new(create_ec_key_pair_request(
                     None,
                     EMPTY_TAGS,
                     RecommendedCurve::CURVEED25519,
                     false,
                     None,
-                )?),
+                )?)),
             )),
         ],
     };

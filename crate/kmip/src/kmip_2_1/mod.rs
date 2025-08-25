@@ -24,10 +24,14 @@ pub enum KmipOperation {
     Export,
     Get,
     GetAttributes,
+    Hash,
     Import,
     Locate,
+    MAC,
     Revoke,
     Rekey,
+    Sign,
+    SignatureVerify,
     Validate,
 }
 
@@ -48,10 +52,14 @@ impl fmt::Display for KmipOperation {
             Self::Export => "export",
             Self::Get => "get",
             Self::GetAttributes => "get_attributes",
+            Self::Hash => "hash",
             Self::Import => "import",
             Self::Locate => "locate",
+            Self::MAC => "mac",
             Self::Revoke => "revoke",
             Self::Rekey => "rekey",
+            Self::Sign => "sign",
+            Self::SignatureVerify => "signature_verify",
             Self::Validate => "validate",
         };
         write!(f, "{str}")
@@ -74,10 +82,15 @@ impl FromStr for KmipOperation {
             "get_attributes" => Ok(Self::GetAttributes),
             "export" => Ok(Self::Export),
             "get" => Ok(Self::Get),
+            "hash" => Ok(Self::Hash),
             "import" => Ok(Self::Import),
             "locate" => Ok(Self::Locate),
+            "mac" => Ok(Self::MAC),
             "rekey" => Ok(Self::Rekey),
             "revoke" => Ok(Self::Revoke),
+            "sign" => Ok(Self::Sign),
+            "signature_verify" => Ok(Self::SignatureVerify),
+            "validate" => Ok(Self::Validate),
             _ => Err("Could not parse an operation"),
         }
     }

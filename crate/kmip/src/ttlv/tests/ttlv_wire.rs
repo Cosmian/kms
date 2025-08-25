@@ -92,7 +92,7 @@ fn test_pykmip_response_message_1_4() {
         batch_item: vec![ResponseMessageBatchItemVersioned::V14(
             ResponseMessageBatchItem {
                 response_payload: Some(kmip_1_4::kmip_operations::Operation::QueryResponse(
-                    kmip_1_4::kmip_operations::QueryResponse {
+                    Box::new(kmip_1_4::kmip_operations::QueryResponse {
                         operation: Some(vec![
                             OperationEnumeration::Create,
                             OperationEnumeration::CreateKeyPair,
@@ -123,7 +123,7 @@ fn test_pykmip_response_message_1_4() {
                         validation_information: None,
                         capability_information: None,
                         client_registration_method: None,
-                    },
+                    }),
                 )),
                 message_extension: None,
                 operation: Some(OperationEnumeration::Query),

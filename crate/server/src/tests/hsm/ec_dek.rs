@@ -79,7 +79,7 @@ async fn create_ec_dek(dek_uid: &str, kek_uid: &str, owner: &str, kms: &Arc<KMS>
     let response = send_message(
         kms.clone(),
         owner,
-        vec![Operation::CreateKeyPair(create_request)],
+        vec![Operation::CreateKeyPair(Box::new(create_request))],
     )
     .await?;
     let Operation::CreateKeyPairResponse(create_response) = &response[0] else {
@@ -108,7 +108,12 @@ async fn ec_encrypt(dek_uid: &str, owner: &str, kms: &Arc<KMS>, data: &[u8]) -> 
             ..Default::default()
         }),
     )?;
-    let response = send_message(kms.clone(), owner, vec![Operation::Encrypt(request)]).await?;
+    let response = send_message(
+        kms.clone(),
+        owner,
+        vec![Operation::Encrypt(Box::new(request))],
+    )
+    .await?;
     let Operation::EncryptResponse(response) = response
         .first()
         .ok_or_else(|| KmsError::ServerError("no response".to_owned()))?
@@ -140,7 +145,12 @@ async fn ec_decrypt(
             ..Default::default()
         }),
     );
-    let response = send_message(kms.clone(), owner, vec![Operation::Decrypt(request)]).await?;
+    let response = send_message(
+        kms.clone(),
+        owner,
+        vec![Operation::Decrypt(Box::new(request))],
+    )
+    .await?;
     let Operation::DecryptResponse(response) = response
         .first()
         .ok_or_else(|| KmsError::ServerError("no response".to_owned()))?

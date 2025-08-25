@@ -18,6 +18,7 @@ doctest = false
 non-fips = []
 
 [dependencies]
+base64 = { workspace = true }
 bitflags = { workspace = true }
 hex = { workspace = true, features = ["std"] }
 kmip-derive = { path = "../kmip-derive", version = "5.7.1" }

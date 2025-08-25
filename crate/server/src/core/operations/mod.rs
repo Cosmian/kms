@@ -25,6 +25,8 @@ mod rekey;
 mod rekey_keypair;
 mod revoke;
 mod set_attribute;
+mod sign;
+mod signature_verify;
 mod validate;
 
 pub(crate) use activate::activate;
@@ -57,4 +59,6 @@ pub(crate) use rekey_keypair::rekey_keypair;
 pub(crate) use revoke::recursively_revoke_key;
 pub(crate) use revoke::revoke_operation;
 pub(crate) use set_attribute::set_attribute;
+pub(crate) use sign::sign;
+pub(crate) use signature_verify::signature_verify;
 pub(crate) use validate::validate_operation;
