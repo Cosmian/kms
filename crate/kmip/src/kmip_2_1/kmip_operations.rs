@@ -3,6 +3,7 @@ use std::{
     ops::Not,
 };
 
+use base64::{Engine, engine::general_purpose};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use zeroize::Zeroizing;
@@ -40,45 +41,45 @@ pub enum Operation {
     ActivateResponse(ActivateResponse),
     AddAttribute(AddAttribute),
     AddAttributeResponse(AddAttributeResponse),
-    Certify(Certify),
+    Certify(Box<Certify>),
     CertifyResponse(CertifyResponse),
     Create(Create),
     CreateResponse(CreateResponse),
-    CreateKeyPair(CreateKeyPair),
+    CreateKeyPair(Box<CreateKeyPair>),
     CreateKeyPairResponse(CreateKeyPairResponse),
     DiscoverVersions(DiscoverVersions),
     DiscoverVersionsResponse(DiscoverVersionsResponse),
-    Decrypt(Decrypt),
+    Decrypt(Box<Decrypt>),
     DecryptResponse(DecryptResponse),
     DeleteAttribute(DeleteAttribute),
     DeleteAttributeResponse(DeleteAttributeResponse),
     Destroy(Destroy),
     DestroyResponse(DestroyResponse),
-    Encrypt(Encrypt),
+    Encrypt(Box<Encrypt>),
     EncryptResponse(EncryptResponse),
     Export(Export),
-    ExportResponse(ExportResponse),
+    ExportResponse(Box<ExportResponse>),
     Get(Get),
     GetResponse(GetResponse),
     GetAttributes(GetAttributes),
-    GetAttributesResponse(GetAttributesResponse),
+    GetAttributesResponse(Box<GetAttributesResponse>),
     Hash(Hash),
     HashResponse(HashResponse),
-    Import(Import),
+    Import(Box<Import>),
     ImportResponse(ImportResponse),
-    Locate(Locate),
+    Locate(Box<Locate>),
     LocateResponse(LocateResponse),
     MAC(MAC),
     MACResponse(MACResponse),
     Query(Query),
-    QueryResponse(QueryResponse),
-    Register(Register),
+    QueryResponse(Box<QueryResponse>),
+    Register(Box<Register>),
     RegisterResponse(RegisterResponse),
     Revoke(Revoke),
     RevokeResponse(RevokeResponse),
     ReKey(ReKey),
     ReKeyResponse(ReKeyResponse),
-    ReKeyKeyPair(ReKeyKeyPair),
+    ReKeyKeyPair(Box<ReKeyKeyPair>),
     ReKeyKeyPairResponse(ReKeyKeyPairResponse),
     SetAttribute(SetAttribute),
     SetAttributeResponse(SetAttributeResponse),
@@ -86,6 +87,8 @@ pub enum Operation {
     SignResponse(SignResponse),
     Validate(Validate),
     ValidateResponse(ValidateResponse),
+    SignatureVerify(SignatureVerify),
+    SignatureVerifyResponse(SignatureVerifyResponse),
 }
 
 impl Operation {
@@ -116,7 +119,8 @@ impl Operation {
             | Self::Sign(_)
             | Self::Validate(_)
             | Self::DiscoverVersions(_)
-            | Self::SetAttribute(_) => Direction::Request,
+            | Self::SetAttribute(_)
+            | Self::SignatureVerify(_) => Direction::Request,
 
             Self::ActivateResponse(_)
             | Self::AddAttributeResponse(_)
@@ -142,7 +146,8 @@ impl Operation {
             | Self::SignResponse(_)
             | Self::QueryResponse(_)
             | Self::ValidateResponse(_)
-            | Self::DiscoverVersionsResponse(_) => Direction::Response,
+            | Self::DiscoverVersionsResponse(_)
+            | Self::SignatureVerifyResponse(_) => Direction::Response,
         }
     }
 
@@ -188,6 +193,9 @@ impl Operation {
             }
             Self::Sign(_) | Self::SignResponse(_) => OperationEnumeration::Sign,
             Self::Validate(_) | Self::ValidateResponse(_) => OperationEnumeration::Validate,
+            Self::SignatureVerify(_) | Self::SignatureVerifyResponse(_) => {
+                OperationEnumeration::SignatureVerify
+            }
         }
     }
 }
@@ -624,10 +632,7 @@ pub struct DeleteAttribute {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_attribute: Option<Attribute>,
     /// Specifies the reference for the attribute associated with the object to be deleted.
-    #[serde(
-        skip_serializing_if = "Option::is_none",
-        rename = "AttributeReferences"
-    )]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub attribute_references: Option<Vec<AttributeReference>>,
 }
 
@@ -1486,6 +1491,7 @@ impl Display for Locate {
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[serde(rename_all = "PascalCase")]
 pub struct LocateResponse {
     /// An Integer object that indicates the number of object identifiers that
     /// satisfy the identification criteria specified in the request. A server
@@ -1493,10 +1499,10 @@ pub struct LocateResponse {
     /// unwilling to determine the total count of matched items.
     // A server MAY elect to return the Located Items value even if Offset Items is not present in
     // the Request.
-    #[serde(skip_serializing_if = "Option::is_none", rename = "LocatedItems")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub located_items: Option<i32>,
     /// The Unique Identifier of the located objects.
-    #[serde(skip_serializing_if = "Option::is_none", rename = "UniqueIdentifier")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub unique_identifier: Option<Vec<UniqueIdentifier>>,
 }
 
@@ -1549,17 +1555,15 @@ impl Display for MAC {
 }
 
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[serde(rename_all = "PascalCase")]
 pub struct MACResponse {
     /// The Unique Identifier of the Managed Cryptographic Object that is the key used for the MAC operation.
-    #[serde(rename = "UniqueIdentifier")]
     pub unique_identifier: UniqueIdentifier,
     /// The hashed data (as a Byte String).
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "MACData")]
     pub mac_data: Option<Vec<u8>>,
     /// Specifies the stream or by-parts value to be provided in subsequent calls to this operation for performing cryptographic operations.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "CorrelationValue")]
     pub correlation_value: Option<Vec<u8>>,
 }
 
@@ -1842,7 +1846,6 @@ impl Display for ReKeyResponse {
 }
 
 /// `RekeyKeyPair`
-///
 /// This request is used to generate a replacement key pair for an existing
 /// public/private key pair. It is analogous to the Create Key Pair operation,
 /// except that attributes of the replacement key pair are copied from the
@@ -1994,6 +1997,7 @@ pub struct StatusResponse {
 /// This operation requests the server to validate a certificate chain and return
 /// information on its validity. Only a single certificate chain SHALL be
 /// included in each request.
+///
 /// The request MAY contain a list of certificate objects, and/or a list of
 /// Unique Identifiers that identify Managed Certificate objects.
 /// Together, the two lists compose a certificate chain to be validated.
@@ -2047,10 +2051,15 @@ impl Display for ValidateResponse {
     }
 }
 
-/// Sign
+/// This operation requests the server to perform a signature operation on the provided data using a Managed Cryptographic Object as the key for the signature operation.
 ///
-/// This operation requests the server to perform a signature operation on the provided data
-/// using a Managed Object specified by its Unique Identifier. The signature is returned to the client.
+/// The request contains information about the cryptographic parameters (digital signature algorithm or cryptographic algorithm and hash algorithm) and the data to be signed. The cryptographic parameters MAY be omitted from the request as they can be specified as associated attributes of the Managed Cryptographic Object.
+///
+/// If the Managed Cryptographic Object referenced has a Usage Limits attribute then the server SHALL obtain an allocation from the current Usage Limits value prior to performing the signing operation. If the allocation is unable to be obtained the operation SHALL return with a result status of Operation Failed and result reason of Permission Denied.
+///
+/// The response contains the Unique Identifier of the Managed Cryptographic Object used as the key and the result of the signature operation.
+///
+/// The success or failure of the operation is indicated by the Result Status (and if failure the Result Reason) in the response header.
 #[derive(Serialize, Deserialize, Default, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct Sign {
@@ -2142,6 +2151,89 @@ impl Display for SignResponse {
             "SignResponse {{ unique_identifier: {}, signature_data: {:?}, correlation_value: {:?} \
              }}",
             self.unique_identifier, self.signature_data, self.correlation_value,
+        )
+    }
+}
+
+/// Signature Verify operation request
+#[derive(Default, Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct SignatureVerify {
+    /// The Unique Identifier of the Managed Cryptographic Object that is the key to use for the signature verify operation
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<UniqueIdentifier>,
+    /// The Cryptographic Parameters corresponding to the particular signature verification method requested
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cryptographic_parameters: Option<CryptographicParameters>,
+    /// The data that was signed
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<Vec<u8>>,
+    /// The digested data to be verified
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub digested_data: Option<Vec<u8>>,
+    /// The signature to be verified
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signature_data: Option<Vec<u8>>,
+    /// Specifies the existing stream or by-parts cryptographic operation
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub correlation_value: Option<String>,
+    /// Initial operation indicator
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub init_indicator: Option<bool>,
+    /// Final operation indicator
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub final_indicator: Option<bool>,
+}
+
+impl Display for SignatureVerify {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "SignatureVerify {{ unique_identifier: {:?}, cryptographic_parameters: {:?}, data: \
+             {:?}, digested_data: {:?}, signature_data: {}, correlation_value: {:?}, \
+             init_indicator: {:?}, final_indicator: {:?} }}",
+            self.unique_identifier,
+            self.cryptographic_parameters,
+            self.data
+                .as_ref()
+                .map_or("None".to_owned(), |data| general_purpose::STANDARD
+                    .encode(data)),
+            self.digested_data,
+            self.signature_data
+                .as_ref()
+                .map_or("None".to_owned(), |data| general_purpose::STANDARD
+                    .encode(data)),
+            self.correlation_value,
+            self.init_indicator,
+            self.final_indicator,
+        )
+    }
+}
+
+/// Signature Verify operation response
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct SignatureVerifyResponse {
+    /// The Unique Identifier of the Managed Cryptographic Object that is the key used for the verification operation
+    pub unique_identifier: UniqueIdentifier,
+    /// An Enumeration object indicating whether the signature is valid, invalid, or unknown
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub validity_indicator: Option<ValidityIndicator>,
+    /// The OPTIONAL recovered data for those signature algorithms where data recovery from the signature is supported
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<Vec<u8>>,
+    /// Specifies the stream or by-parts value to be provided in subsequent calls to this operation
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub correlation_value: Option<String>,
+}
+
+impl Display for SignatureVerifyResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "SignatureVerifyResponse {{ unique_identifier: {}, validity_indicator: {:?}, data: \
+             {:?}, correlation_value: {:?} }}",
+            self.unique_identifier, self.validity_indicator, self.data, self.correlation_value,
         )
     }
 }

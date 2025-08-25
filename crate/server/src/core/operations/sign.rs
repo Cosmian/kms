@@ -1,14 +1,17 @@
 use std::sync::Arc;
 
+use base64::{Engine, engine::general_purpose};
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-        kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, HashingAlgorithm, State},
+        kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, State},
         kmip_2_1::{
             KmipOperation,
             extra::BulkData,
             kmip_objects::Object,
             kmip_operations::{Sign, SignResponse},
-            kmip_types::{CryptographicParameters, KeyFormatType, UniqueIdentifier},
+            kmip_types::{
+                CryptographicParameters, DigitalSignatureAlgorithm, KeyFormatType, UniqueIdentifier,
+            },
         },
     },
     cosmian_kms_crypto::{
@@ -38,7 +41,7 @@ pub(crate) async fn sign(
     user: &str,
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<SignResponse> {
-    trace!("sign: {}", serde_json::to_string(&request)?);
+    trace!("sign: {request}");
 
     // Get the data to sign - either data or digested_data must be provided
     let data_to_sign = if let Some(data) = request.data.as_ref() {
@@ -93,7 +96,7 @@ pub(crate) async fn sign(
                 .object()
                 .attributes()
                 .unwrap_or_else(|_| owm.attributes());
-            trace!("sign: attributes: {attributes:#?}");
+            trace!("sign: attributes: {attributes:?}");
             if !attributes.is_usage_authorized_for(CryptographicUsageMask::Sign)? {
                 continue
             }
@@ -132,9 +135,13 @@ pub(crate) async fn sign(
     info!(
         uid = owm.id(),
         user = user,
-        "Signed data of: {} bytes -> signature length: {}",
-        data_len,
-        res.signature_data.as_ref().map_or(0, Vec::len),
+        signature_data = res
+            .signature_data
+            .as_ref()
+            .map_or("None".to_owned(), |sig| general_purpose::STANDARD
+                .encode(sig)),
+        "sign: signed data of: {data_len} bytes -> signature length: {}",
+        res.signature_data.as_ref().map_or(0, |sig| { sig.len() })
     );
     Ok(res)
 }
@@ -222,7 +229,8 @@ fn sign_with_private_key(request: &Sign, owm: &ObjectWithMetadata) -> KResult<Si
                 digested_data.as_slice()
             } else {
                 return Err(KmsError::InvalidRequest(
-                    "Sign: either data or digested_data must be provided".to_owned(),
+                    "sign_with_private_key: either data or digested_data must be provided"
+                        .to_owned(),
                 ))
             };
 
@@ -273,26 +281,29 @@ fn sign_with_rsa(
     cryptographic_parameters: Option<&CryptographicParameters>,
     data_to_sign: &[u8],
 ) -> KResult<Vec<u8>> {
-    let (_algorithm, _padding, hashing_fn) =
+    let (_algorithm, _padding, _hashing_fn, digital_signature_algorithm) =
         default_cryptographic_parameters(cryptographic_parameters);
-    debug!("sign_with_rsa: signing with RSA PSS {hashing_fn:?}");
+    debug!("sign_with_rsa: signing with {digital_signature_algorithm}");
 
-    // For RSA signatures, we use RSASSA-PSS
-    let digest = match hashing_fn {
-        HashingAlgorithm::SHA1 => MessageDigest::sha1(),
-        HashingAlgorithm::SHA224 => MessageDigest::sha224(),
-        HashingAlgorithm::SHA384 => MessageDigest::sha384(),
-        HashingAlgorithm::SHA512 => MessageDigest::sha512(),
-        HashingAlgorithm::SHA3224 => MessageDigest::sha3_224(),
-        HashingAlgorithm::SHA3256 => MessageDigest::sha3_256(),
-        HashingAlgorithm::SHA3384 => MessageDigest::sha3_384(),
-        HashingAlgorithm::SHA3512 => MessageDigest::sha3_512(),
-        _ => MessageDigest::sha256(),
+    // Matches the hashing algorithm to use
+    let digest = match digital_signature_algorithm {
+        DigitalSignatureAlgorithm::RSASSAPSS
+        | DigitalSignatureAlgorithm::SHA256WithRSAEncryption => MessageDigest::sha256(),
+        DigitalSignatureAlgorithm::SHA384WithRSAEncryption => MessageDigest::sha384(),
+        DigitalSignatureAlgorithm::SHA512WithRSAEncryption => MessageDigest::sha512(),
+        DigitalSignatureAlgorithm::SHA3256WithRSAEncryption => MessageDigest::sha3_256(),
+        DigitalSignatureAlgorithm::SHA3384WithRSAEncryption => MessageDigest::sha3_384(),
+        DigitalSignatureAlgorithm::SHA3512WithRSAEncryption => MessageDigest::sha3_512(),
+        _ => kms_bail!(KmsError::NotSupported(format!(
+            "sign_with_rsa: not supported: {digital_signature_algorithm:?}"
+        ))),
     };
 
     let mut signer = Signer::new(digest, private_key)?;
-    signer.set_rsa_padding(Padding::PKCS1_PSS)?;
-    signer.set_rsa_pss_saltlen(openssl::sign::RsaPssSaltlen::DIGEST_LENGTH)?;
+    if DigitalSignatureAlgorithm::RSASSAPSS == digital_signature_algorithm {
+        signer.set_rsa_padding(Padding::PKCS1_PSS)?;
+        signer.set_rsa_pss_saltlen(openssl::sign::RsaPssSaltlen::DIGEST_LENGTH)?;
+    }
     signer.update(data_to_sign)?;
     let signature = signer.sign_to_vec()?;
 
@@ -310,21 +321,24 @@ fn sign_with_ecdsa(
     cryptographic_parameters: Option<&CryptographicParameters>,
     data_to_sign: &[u8],
 ) -> KResult<Vec<u8>> {
-    let (_algorithm, _padding, hashing_fn) =
-        default_cryptographic_parameters(cryptographic_parameters);
-    debug!("sign_with_ecdsa: signing with ECDSA {hashing_fn:?}");
+    let digital_signature_algorithm = cryptographic_parameters.map_or_else(
+        || DigitalSignatureAlgorithm::ECDSAWithSHA256,
+        |cp| {
+            cp.digital_signature_algorithm
+                .unwrap_or(DigitalSignatureAlgorithm::ECDSAWithSHA256)
+        },
+    );
+
+    debug!("sign_with_ecdsa: signing with ECDSA {digital_signature_algorithm}");
 
     // For ECDSA signatures, we use the appropriate hash function
-    let digest = match hashing_fn {
-        HashingAlgorithm::SHA1 => MessageDigest::sha1(),
-        HashingAlgorithm::SHA224 => MessageDigest::sha224(),
-        HashingAlgorithm::SHA384 => MessageDigest::sha384(),
-        HashingAlgorithm::SHA512 => MessageDigest::sha512(),
-        HashingAlgorithm::SHA3224 => MessageDigest::sha3_224(),
-        HashingAlgorithm::SHA3256 => MessageDigest::sha3_256(),
-        HashingAlgorithm::SHA3384 => MessageDigest::sha3_384(),
-        HashingAlgorithm::SHA3512 => MessageDigest::sha3_512(),
-        _ => MessageDigest::sha256(),
+    let digest = match digital_signature_algorithm {
+        DigitalSignatureAlgorithm::ECDSAWithSHA256 => MessageDigest::sha256(),
+        DigitalSignatureAlgorithm::ECDSAWithSHA384 => MessageDigest::sha384(),
+        DigitalSignatureAlgorithm::ECDSAWithSHA512 => MessageDigest::sha512(),
+        _ => kms_bail!(KmsError::NotSupported(format!(
+            "sign_with_ecdsa: not supported: {digital_signature_algorithm:?}"
+        ))),
     };
 
     let mut signer = Signer::new(digest, private_key)?;

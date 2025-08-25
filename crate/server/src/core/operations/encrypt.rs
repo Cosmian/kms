@@ -541,7 +541,7 @@ fn encrypt_with_rsa(
     cryptographic_parameters: Option<&CryptographicParameters>,
     plaintext: &[u8],
 ) -> KResult<Vec<u8>> {
-    let (algorithm, padding, hashing_fn) =
+    let (algorithm, padding, hashing_fn, _) =
         default_cryptographic_parameters(cryptographic_parameters);
     debug!("encrypt_with_rsa: encrypting with RSA {algorithm:?} {padding:?} {hashing_fn:?}");
 

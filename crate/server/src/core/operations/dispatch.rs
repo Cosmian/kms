@@ -5,7 +5,7 @@ use cosmian_kms_server_database::reexport::{
         kmip_2_1::kmip_operations::{
             Certify, Create, CreateKeyPair, Decrypt, DeleteAttribute, Destroy, Encrypt, Export,
             Get, GetAttributes, Hash, Import, Locate, MAC, Operation, Query, ReKey, ReKeyKeyPair,
-            Revoke, SetAttribute, Sign, Validate,
+            Revoke, SetAttribute, Sign, SignatureVerify, Validate,
         },
         ttlv::{TTLV, from_ttlv},
     },
@@ -70,7 +70,7 @@ pub(crate) async fn dispatch(
         "Export" => {
             let req = from_ttlv::<Export>(ttlv)?;
             let resp = kms.export(req, user, database_params).await?;
-            Operation::ExportResponse(resp)
+            Operation::ExportResponse(Box::new(resp))
         }
         "Get" => {
             let req = from_ttlv::<Get>(ttlv)?;
@@ -80,18 +80,12 @@ pub(crate) async fn dispatch(
         "GetAttributes" => {
             let req = from_ttlv::<GetAttributes>(ttlv)?;
             let resp = kms.get_attributes(req, user, database_params).await?;
-            Operation::GetAttributesResponse(resp)
+            Operation::GetAttributesResponse(Box::new(resp))
         }
-
         "Hash" => {
             let req = from_ttlv::<Hash>(ttlv)?;
             let resp = kms.hash(req, user, database_params).await?;
             Operation::HashResponse(resp)
-        }
-        "Mac" => {
-            let req = from_ttlv::<MAC>(ttlv)?;
-            let resp = kms.mac(req, user, database_params).await?;
-            Operation::MACResponse(resp)
         }
         "Import" => {
             let req = from_ttlv::<Import>(ttlv)?;
@@ -106,7 +100,7 @@ pub(crate) async fn dispatch(
             let resp = kms.locate(req, user, database_params).await?;
             Operation::LocateResponse(resp)
         }
-        "MAC" => {
+        "Mac" | "MAC" => {
             let req = from_ttlv::<MAC>(ttlv)?;
             let resp = kms.mac(req, user, database_params).await?;
             Operation::MACResponse(resp)
@@ -114,7 +108,7 @@ pub(crate) async fn dispatch(
         "Query" => {
             let req = from_ttlv::<Query>(ttlv)?;
             let resp = kms.query(req).await?;
-            Operation::QueryResponse(resp)
+            Operation::QueryResponse(Box::new(resp))
         }
         "ReKey" => {
             let req = from_ttlv::<ReKey>(ttlv)?;
@@ -146,6 +140,11 @@ pub(crate) async fn dispatch(
             let req = from_ttlv::<Sign>(ttlv)?;
             let resp = kms.sign(req, user, database_params).await?;
             Operation::SignResponse(resp)
+        }
+        "SignatureVerify" => {
+            let req = from_ttlv::<SignatureVerify>(ttlv)?;
+            let resp = kms.signature_verify(req, user, database_params).await?;
+            Operation::SignatureVerifyResponse(resp)
         }
         "Validate" => {
             let req = from_ttlv::<Validate>(ttlv)?;

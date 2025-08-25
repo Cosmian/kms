@@ -514,7 +514,7 @@ fn decrypt_with_rsa(
     cryptographic_parameters: Option<&CryptographicParameters>,
     ciphertext: &[u8],
 ) -> KResult<Zeroizing<Vec<u8>>> {
-    let (algorithm, padding, hashing_fn) =
+    let (algorithm, padding, hashing_fn, _) =
         default_cryptographic_parameters(cryptographic_parameters);
     trace!(
         "Decrypt with RSA: algorithm: {:?}, padding: {:?}, hashing_fn: {:?}",

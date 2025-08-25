@@ -1289,6 +1289,7 @@ dependencies = [
 name = "cosmian_kmip"
 version = "5.7.1"
 dependencies = [
+ "base64 0.22.1",
  "bitflags 2.9.0",
  "cosmian_logger 0.1.1",
  "hex",

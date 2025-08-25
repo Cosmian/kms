@@ -15,8 +15,8 @@ use cosmian_kms_server_database::reexport::{
             GetAttributesResponse, GetResponse, Hash, HashResponse, Import, ImportResponse, Locate,
             LocateResponse, MAC, MACResponse, Query, QueryResponse, ReKey, ReKeyKeyPair,
             ReKeyKeyPairResponse, ReKeyResponse, Register, RegisterResponse, Revoke,
-            RevokeResponse, SetAttribute, SetAttributeResponse, Sign, SignResponse, Validate,
-            ValidateResponse,
+            RevokeResponse, SetAttribute, SetAttributeResponse, Sign, SignResponse,
+            SignatureVerify, SignatureVerifyResponse, Validate, ValidateResponse,
         },
     },
     cosmian_kms_interfaces::SessionParams,
@@ -690,6 +690,34 @@ impl KMS {
         Box::pin(operations::sign(self, request, user, params)).await
     }
 
+    /// This operation requests the server to perform a signature verify operation on the provided data using a Managed Cryptographic Object as the key for the signature verification operation.
+    ///
+    /// The request contains information about the cryptographic parameters (digital signature algorithm or cryptographic algorithm and hash algorithm) and the signature to be verified and MAY contain the data that was passed to the signing operation (for those algorithms which need the original data to verify a signature).
+    ///
+    /// The cryptographic parameters MAY be omitted from the request as they can be specified as associated attributes of the Managed Cryptographic Object.
+    ///
+    /// The response contains the Unique Identifier of the Managed Cryptographic Object used as the key and the OPTIONAL data recovered from the signature (for those signature algorithms where data recovery from the signature is supported). The validity of the signature is indicated by the Validity Indicator field.
+    ///
+    /// The response message SHALL include the Validity Indicator for single-part Signature Verify operations and for the final part of a multi-part Signature Verify operation. Non-Final parts of multi-part Signature Verify operations SHALL NOT include the Validity Indicator.
+    ///
+    /// The success or failure of the operation is indicated by the Result Status (and if failure the Result Reason) in the response header.
+    pub(crate) async fn signature_verify(
+        &self,
+        request: SignatureVerify,
+        user: &str,
+        params: Option<Arc<dyn SessionParams>>,
+    ) -> KResult<SignatureVerifyResponse> {
+        let span = tracing::span!(tracing::Level::ERROR, "signature_verify");
+        let _enter = span.enter();
+
+        operations::signature_verify(self, request, user, params).await
+    }
+
+    /// This operation requests the server to validate a certificate chain and return information on its validity. Only a single certificate chain SHALL be included in each request.
+    ///
+    /// The request MAY contain a list of certificate objects, and/or a list of Unique Identifiers that identify Managed Certificate objects. Together, the two lists compose a certificate chain to be validated. The request MAY also contain a date for which all certificates in the certificate chain are REQUIRED to be valid.
+    ///
+    /// The method or policy by which validation is conducted is a decision of the server and is outside of the scope of this protocol. Likewise, the order in which the supplied certificate chain is validated and the specification of trust anchors used to terminate validation are also controlled by the server.
     pub(crate) async fn validate(
         &self,
         request: Validate,

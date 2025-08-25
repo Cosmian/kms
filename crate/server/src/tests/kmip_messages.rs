@@ -14,7 +14,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_2_1::{
         extra::tagging::EMPTY_TAGS,
         kmip_messages::RequestMessageBatchItem,
-        kmip_operations::{Decrypt, Encrypt, Locate, MAC, Operation},
+        kmip_operations::{Decrypt, Encrypt, MAC, Operation},
         kmip_types::{
             CryptographicAlgorithm, CryptographicParameters, OperationEnumeration,
             RecommendedCurve, UniqueIdentifier,
@@ -154,7 +154,7 @@ async fn test_encrypt_kmip_messages() -> KResult<()> {
     let items: Vec<RequestMessageBatchItemVersioned> = (0..items_number)
         .map(|_| {
             RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(Operation::Encrypt(
-                encrypt_request.clone(),
+                Box::new(encrypt_request.clone()),
             )))
         })
         .collect();
@@ -212,17 +212,17 @@ async fn test_kmip_messages() -> KResult<()> {
     // prepare and send the single message
     let batch_item = vec![
         RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
-            Operation::CreateKeyPair(ec_create_request),
+            Operation::CreateKeyPair(Box::new(ec_create_request)),
         )),
         RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(Operation::Locate(
-            Locate::default(),
+            Box::default(),
         ))),
         RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(Operation::Decrypt(
-            Decrypt {
+            Box::new(Decrypt {
                 unique_identifier: Some(UniqueIdentifier::TextString("id_12345".to_owned())),
                 data: Some(b"decrypted_data".to_vec()),
                 ..Default::default()
-            },
+            }),
         ))),
     ];
     let message_request = RequestMessage {
