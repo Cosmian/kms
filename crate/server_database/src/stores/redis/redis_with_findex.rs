@@ -25,22 +25,24 @@ use async_trait::async_trait;
 // #[derive(Clone, Debug, Hash, Default, PartialEq, Eq)]
 // pub struct Data(Vec<u8>);
 #[cfg(feature = "non-fips")]
-use cloudproof_findex::{
-    IndexedValue, Keyword, Location, implementations::redis::FindexRedis,
-    parameters::MASTER_KEY_LENGTH,
+use cloudproof_findex::{IndexedValue, Keyword, Location, implementations::redis::FindexRedis};
+use cosmian_findex::{
+    Findex, KEY_LENGTH as REDIS_WITH_FINDEX_MASTER_KEY_LENGTH, MemoryEncryptionLayer,
+    generic_decode, generic_encode,
 };
 use cosmian_kmip::{
     kmip_0::kmip_types::State,
     kmip_2_1::{KmipOperation, kmip_attributes::Attributes, kmip_objects::Object},
 };
 use cosmian_kms_crypto::{
-    crypto::{password_derivation::derive_key_from_password, secret::Secret},
-    reexport::cosmian_crypto_core::{FixedSizeCBytes, SymmetricKey, kdf256},
+    crypto::password_derivation::derive_key_from_password,
+    reexport::cosmian_crypto_core::{FixedSizeCBytes, Secret, SymmetricKey, kdf256},
 };
 use cosmian_kms_interfaces::{
     AtomicOperation, InterfaceResult, ObjectWithMetadata, ObjectsStore, PermissionsStore,
     SessionParams,
 };
+use cosmian_sse_memories::{ADDRESS_LENGTH, Address, RedisMemory};
 use redis::aio::ConnectionManager;
 use tracing::trace;
 use uuid::Uuid;
@@ -50,12 +52,11 @@ use super::{
     permissions::PermissionsDB,
 };
 use crate::{
-    db_error,
+    CUSTOM_WORD_LENGTH, db_error,
     error::{DbError, DbResult},
     stores::{migrate::DbState, redis::objects_db::RedisOperation},
 };
 
-pub(crate) const REDIS_WITH_FINDEX_MASTER_KEY_LENGTH: usize = 32;
 const REDIS_WITH_FINDEX_MASTER_KEY_DERIVATION_SALT: &[u8; 16] = b"rediswithfindex_";
 pub(crate) const REDIS_WITH_FINDEX_MASTER_FINDEX_KEY_DERIVATION_SALT: &[u8; 6] = b"findex";
 pub(crate) const REDIS_WITH_FINDEX_MASTER_DB_KEY_DERIVATION_SALT: &[u8; 2] = b"db";
@@ -88,12 +89,13 @@ pub(crate) struct RedisWithFindex {
     objects_db: Arc<ObjectsDB>,
     permissions_db: PermissionsDB,
     findex: Arc<FindexRedis>,
+    findex_master_key: Secret<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>,
 }
 
 impl RedisWithFindex {
     pub(crate) async fn instantiate(
         redis_url: &str,
-        master_key: Secret<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>,
+        findex_master_key: Secret<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>,
         clear_database: bool,
     ) -> DbResult<Self> {
         // derive a DB Key
@@ -101,17 +103,33 @@ impl RedisWithFindex {
         kdf256!(
             &mut *db_key,
             REDIS_WITH_FINDEX_MASTER_DB_KEY_DERIVATION_SALT,
-            &*master_key
+            &*findex_master_key
         );
 
         let client = redis::Client::open(redis_url)?;
         let mgr = ConnectionManager::new(client).await?;
+
         let objects_db = Arc::new(ObjectsDB::new(mgr.clone(), &db_key));
-        let findex =
-            Arc::new(FindexRedis::connect_with_manager(mgr.clone(), objects_db.clone()).await?);
+
+        let redis_memory =
+            RedisMemory::<Address<ADDRESS_LENGTH>, [u8; CUSTOM_WORD_LENGTH]>::new_with_url(
+                redis_url,
+            )
+            .await?;
+
+        let encrypted_redis_memory = MemoryEncryptionLayer::new(&findex_master_key, redis_memory);
+
+        let findex = Arc::new(Findex::new(
+            encrypted_redis_memory,
+            generic_encode,
+            generic_decode,
+        ));
+
         let permissions_db = PermissionsDB::new(findex.clone());
 
         if clear_database {
+            // TODO: this statement is a very dangerous and destructive operation, should we really keep it
+            // this simple ? In other terms I suggest a double confirmation prompt
             redis::cmd("FLUSHDB")
                 .query_async::<_, ()>(&mut mgr.clone())
                 .await?;
@@ -128,7 +146,7 @@ impl RedisWithFindex {
             objects_db,
             permissions_db,
             findex,
-            findex_key,
+            findex_master_key,
         };
 
         if count == 0 {
@@ -181,7 +199,11 @@ impl RedisWithFindex {
 
         // upsert the index
         self.findex
-            .upsert(&self.findex_key.to_bytes(), index_additions, HashMap::new())
+            .upsert(
+                &self.findex_master_key.to_bytes(),
+                index_additions,
+                HashMap::new(),
+            )
             .await?;
         Ok(db_object)
     }
@@ -239,7 +261,11 @@ impl RedisWithFindex {
         );
         // upsert the index
         self.findex
-            .upsert(&self.findex_key.to_bytes(), index_additions, HashMap::new())
+            .upsert(
+                &self.findex_master_key.to_bytes(),
+                index_additions,
+                HashMap::new(),
+            )
             .await?;
         Ok(db_object)
     }
@@ -449,7 +475,7 @@ impl ObjectsStore for RedisWithFindex {
         // find the locations that match at least one of the tags
         let res = self
             .findex
-            .search(&self.findex_key.to_bytes(), &self.label, keywords)
+            .search(&self.findex_master_key.to_bytes(), &self.label, keywords)
             .await
             .map_err(|e| db_error!(format!("Error while searching for tags: {e:?}")))?;
         // we want the intersection of all the locations
@@ -497,7 +523,7 @@ impl ObjectsStore for RedisWithFindex {
         // search the keywords in the index
         let res = self
             .findex
-            .search(&self.findex_key.to_bytes(), &self.label, keywords)
+            .search(&self.findex_master_key.to_bytes(), &self.label, keywords)
             .await
             .map_err(|e| db_error!(format!("Error while searching for attributes: {e:?}")))?;
         trace!("find: res: {:?}", res);
@@ -516,7 +542,7 @@ impl ObjectsStore for RedisWithFindex {
             HashMap::new()
         } else {
             self.permissions_db
-                .list_user_permissions(&self.findex_key, user)
+                .list_user_permissions(&self.findex_master_key, user)
                 .await?
         };
 
@@ -559,7 +585,7 @@ impl PermissionsStore for RedisWithFindex {
     ) -> InterfaceResult<HashMap<String, (String, State, HashSet<KmipOperation>)>> {
         let permissions = self
             .permissions_db
-            .list_user_permissions(&self.findex_key, user)
+            .list_user_permissions(&self.findex_master_key, user)
             .await?;
         let redis_db_objects = self
             .objects_db
@@ -590,7 +616,7 @@ impl PermissionsStore for RedisWithFindex {
     ) -> InterfaceResult<HashMap<String, HashSet<KmipOperation>>> {
         Ok(self
             .permissions_db
-            .list_object_permissions(&self.findex_key, uid)
+            .list_object_permissions(&self.findex_master_key, uid)
             .await?)
     }
 
@@ -605,7 +631,7 @@ impl PermissionsStore for RedisWithFindex {
     ) -> InterfaceResult<()> {
         for operation in &operation_types {
             self.permissions_db
-                .add(&self.findex_key, uid, user, *operation)
+                .add(&self.findex_master_key, uid, user, *operation)
                 .await?;
         }
         Ok(())
@@ -622,7 +648,7 @@ impl PermissionsStore for RedisWithFindex {
     ) -> InterfaceResult<()> {
         for operation in &operation_types {
             self.permissions_db
-                .remove(&self.findex_key, uid, user, *operation)
+                .remove(&self.findex_master_key, uid, user, *operation)
                 .await?;
         }
         Ok(())
@@ -637,7 +663,7 @@ impl PermissionsStore for RedisWithFindex {
     ) -> InterfaceResult<HashSet<KmipOperation>> {
         Ok(self
             .permissions_db
-            .get(&self.findex_key, uid, user, no_inherited_access)
+            .get(&self.findex_master_key, uid, user, no_inherited_access)
             .await
             .unwrap_or_default()
             .into_iter()

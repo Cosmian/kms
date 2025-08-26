@@ -12,6 +12,9 @@ use thiserror::Error;
 
 use crate::DbError::CryptographicError;
 
+//! TODO: implement from RedisMemoryError
+
+
 // Each error type must have a corresponding HTTP status code (see `kmip_endpoint.rs`)
 #[derive(Error, Debug, Clone)]
 pub enum DbError {
