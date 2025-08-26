@@ -5,9 +5,28 @@ use std::{
 };
 
 use async_trait::async_trait;
+// info : the labes is just a byte array here is the code :
+// /// The label is used to provide additional public information to the hash
+// /// algorithm when generating Entry Table UIDs.
+// #[must_use]
+// #[derive(Clone, Debug, PartialEq, Eq)]
+// pub struct Label(Vec<u8>);
+
+// /// A [`Keyword`] is a byte vector used to index other values.
+// #[must_use]
+// #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+// pub struct Keyword(Vec<u8>);
+
+// /// A [`Data`] is an arbitrary byte-string that is indexed under some keyword.
+// ///
+// /// In a typical use case, it would represent a database UID and would be indexed under the
+// /// keywords associated to the corresponding database value.
+// #[must_use]
+// #[derive(Clone, Debug, Hash, Default, PartialEq, Eq)]
+// pub struct Data(Vec<u8>);
 #[cfg(feature = "non-fips")]
 use cloudproof_findex::{
-    IndexedValue, Keyword, Label, Location, implementations::redis::FindexRedis,
+    IndexedValue, Keyword, Location, implementations::redis::FindexRedis,
     parameters::MASTER_KEY_LENGTH,
 };
 use cosmian_kmip::{
@@ -69,24 +88,14 @@ pub(crate) struct RedisWithFindex {
     objects_db: Arc<ObjectsDB>,
     permissions_db: PermissionsDB,
     findex: Arc<FindexRedis>,
-    findex_key: SymmetricKey<MASTER_KEY_LENGTH>,
-    label: Label,
 }
 
 impl RedisWithFindex {
     pub(crate) async fn instantiate(
         redis_url: &str,
         master_key: Secret<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>,
-        label: &[u8],
         clear_database: bool,
     ) -> DbResult<Self> {
-        // derive an Findex Key
-        let mut findex_key = SymmetricKey::<MASTER_KEY_LENGTH>::default();
-        kdf256!(
-            &mut *findex_key,
-            REDIS_WITH_FINDEX_MASTER_FINDEX_KEY_DERIVATION_SALT,
-            &*master_key
-        );
         // derive a DB Key
         let mut db_key = SymmetricKey::<DB_KEY_LENGTH>::default();
         kdf256!(
@@ -100,7 +109,7 @@ impl RedisWithFindex {
         let objects_db = Arc::new(ObjectsDB::new(mgr.clone(), &db_key));
         let findex =
             Arc::new(FindexRedis::connect_with_manager(mgr.clone(), objects_db.clone()).await?);
-        let permissions_db = PermissionsDB::new(findex.clone(), label);
+        let permissions_db = PermissionsDB::new(findex.clone());
 
         if clear_database {
             redis::cmd("FLUSHDB")
@@ -120,7 +129,6 @@ impl RedisWithFindex {
             permissions_db,
             findex,
             findex_key,
-            label: Label::from(label),
         };
 
         if count == 0 {
@@ -173,12 +181,7 @@ impl RedisWithFindex {
 
         // upsert the index
         self.findex
-            .upsert(
-                &self.findex_key.to_bytes(),
-                &self.label,
-                index_additions,
-                HashMap::new(),
-            )
+            .upsert(&self.findex_key.to_bytes(), index_additions, HashMap::new())
             .await?;
         Ok(db_object)
     }
@@ -236,12 +239,7 @@ impl RedisWithFindex {
         );
         // upsert the index
         self.findex
-            .upsert(
-                &self.findex_key.to_bytes(),
-                &self.label,
-                index_additions,
-                HashMap::new(),
-            )
+            .upsert(&self.findex_key.to_bytes(), index_additions, HashMap::new())
             .await?;
         Ok(db_object)
     }

@@ -89,5 +89,8 @@
       "name": "test"
     }
   ],
-  "sqltools.useNodeRuntime": true
+  "sqltools.useNodeRuntime": true,
+  "rust-analyzer.cargo.features": [
+    "non-fips"
+  ],
 }

@@ -5,8 +5,6 @@ use std::{
 };
 
 #[cfg(feature = "non-fips")]
-use cloudproof_findex::Label;
-#[cfg(feature = "non-fips")]
 use cosmian_kms_crypto::reexport::cosmian_crypto_core::SymmetricKey;
 use url::Url;
 
@@ -25,11 +23,7 @@ pub enum MainDbParams {
     /// - the master key used to encrypt the DB and the Index
     /// - a public arbitrary label that can be changed to rotate the Findex ciphertexts without changing the key
     #[cfg(feature = "non-fips")]
-    RedisFindex(
-        Url,
-        SymmetricKey<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>,
-        Label,
-    ),
+    RedisFindex(Url, SymmetricKey<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>),
 }
 
 impl MainDbParams {
@@ -41,7 +35,7 @@ impl MainDbParams {
             Self::Postgres(_) => "PostgreSQL",
             Self::Mysql(_) => "MySql/MariaDB",
             #[cfg(feature = "non-fips")]
-            Self::RedisFindex(_, _, _) => "Redis-Findex",
+            Self::RedisFindex(_, _) => "Redis-Findex",
         }
     }
 }
@@ -53,13 +47,8 @@ impl Display for MainDbParams {
             Self::Postgres(url) => write!(f, "postgres: {}", redact_url(url)),
             Self::Mysql(url) => write!(f, "mysql: {}", redact_url(url)),
             #[cfg(feature = "non-fips")]
-            Self::RedisFindex(url, _, label) => {
-                write!(
-                    f,
-                    "redis-findex: {}, master key: [****], Findex label: 0x{}",
-                    redact_url(url),
-                    hex::encode(label)
-                )
+            Self::RedisFindex(url, _) => {
+                write!(f, "redis-findex: {}, master key: [****]", redact_url(url),)
             }
         }
     }

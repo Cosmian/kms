@@ -117,15 +117,11 @@ impl TryFrom<&Triple> for Location {
 #[derive(Clone)]
 pub(crate) struct PermissionsDB {
     findex: Arc<FindexRedis>,
-    label: Vec<u8>,
 }
 
 impl PermissionsDB {
-    pub(crate) fn new(findex: Arc<FindexRedis>, label: &[u8]) -> Self {
-        Self {
-            findex,
-            label: label.to_vec(),
-        }
+    pub(crate) fn new(findex: Arc<FindexRedis>) -> Self {
+        Self { findex }
     }
 
     /// Search for a keyword
