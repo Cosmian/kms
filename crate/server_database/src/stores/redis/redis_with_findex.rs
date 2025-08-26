@@ -5,27 +5,8 @@ use std::{
 };
 
 use async_trait::async_trait;
-// info : the labes is just a byte array here is the code :
-// /// The label is used to provide additional public information to the hash
-// /// algorithm when generating Entry Table UIDs.
-// #[must_use]
-// #[derive(Clone, Debug, PartialEq, Eq)]
-// pub struct Label(Vec<u8>);
-
-// /// A [`Keyword`] is a byte vector used to index other values.
-// #[must_use]
-// #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-// pub struct Keyword(Vec<u8>);
-
-// /// A [`Data`] is an arbitrary byte-string that is indexed under some keyword.
-// ///
-// /// In a typical use case, it would represent a database UID and would be indexed under the
-// /// keywords associated to the corresponding database value.
-// #[must_use]
-// #[derive(Clone, Debug, Hash, Default, PartialEq, Eq)]
-// pub struct Data(Vec<u8>);
 #[cfg(feature = "non-fips")]
-use cloudproof_findex::{IndexedValue, Keyword, Location, implementations::redis::FindexRedis};
+use cloudproof_findex::{IndexedValue, Keyword};
 use cosmian_findex::{
     Findex, KEY_LENGTH as REDIS_WITH_FINDEX_MASTER_KEY_LENGTH, MemoryEncryptionLayer,
     generic_decode, generic_encode,
@@ -54,7 +35,10 @@ use super::{
 use crate::{
     CUSTOM_WORD_LENGTH, db_error,
     error::{DbError, DbResult},
-    stores::{migrate::DbState, redis::objects_db::RedisOperation},
+    stores::{
+        migrate::DbState,
+        redis::{objects_db::RedisOperation, value::Value},
+    },
 };
 
 const REDIS_WITH_FINDEX_MASTER_KEY_DERIVATION_SALT: &[u8; 16] = b"rediswithfindex_";
@@ -77,11 +61,21 @@ pub fn redis_master_key_from_password(
 }
 
 /// Find the intersection of all the sets
-fn intersect_all<I: IntoIterator<Item = HashSet<Location>>>(sets: I) -> HashSet<Location> {
+fn intersect_all<I: IntoIterator<Item = HashSet<Value>>>(sets: I) -> HashSet<Value> {
     let mut iter = sets.into_iter();
     let first = iter.next().unwrap_or_default();
     iter.fold(first, |acc, set| acc.intersection(&set).cloned().collect())
 }
+
+type FindexRedis = Findex<
+    CUSTOM_WORD_LENGTH,
+    Value,
+    String,
+    MemoryEncryptionLayer<
+        CUSTOM_WORD_LENGTH,
+        RedisMemory<Address<ADDRESS_LENGTH>, [u8; CUSTOM_WORD_LENGTH]>,
+    >,
+>;
 
 #[derive(Clone)]
 pub(crate) struct RedisWithFindex {
@@ -161,10 +155,10 @@ impl RedisWithFindex {
         Ok(redis_with_findex)
     }
 
-    /// Prepare an object for upsert
-    /// Note: Findex indexes are upserted even if the object is not upserted later on
+    /// Prepare an object to be inserted
+    /// Note: Findex indexes are inserted even if the object is not inserted later on
     #[allow(clippy::too_many_arguments)]
-    async fn prepare_object_for_upsert(
+    async fn prepare_object_for_insert(
         &self,
         uid: &str,
         owner: &str,
@@ -193,18 +187,13 @@ impl RedisWithFindex {
         );
         // extract the keywords
         index_additions.insert(
-            IndexedValue::Location(Location::from(uid.as_bytes())),
+            // IndexedValue::Location(Value::from(uid.as_bytes())), TODO: I have doubts
+            Value::from(uid.as_bytes()),
             db_object.keywords(),
         );
 
         // upsert the index
-        self.findex
-            .upsert(
-                &self.findex_master_key.to_bytes(),
-                index_additions,
-                HashMap::new(),
-            )
-            .await?;
+        self.findex.insert(index_additions, HashMap::new()).await?;
         Ok(db_object)
     }
 
@@ -219,7 +208,7 @@ impl RedisWithFindex {
         // If the uid is not provided, generate a new one
         let uid = uid.unwrap_or_else(|| Uuid::new_v4().to_string());
         let db_object = self
-            .prepare_object_for_upsert(
+            .prepare_object_for_insert(
                 &uid,
                 owner,
                 object,
@@ -253,20 +242,15 @@ impl RedisWithFindex {
         // updates to the index;
         // note: these are additions so some entries will be doubled but shat should not break the index
         // and will be removed during compaction
+        // TODO: is this comment still valid ? ig there is no compaction now
         let mut index_additions = HashMap::new();
         // extract the keywords
         index_additions.insert(
             IndexedValue::Location(Location::from(uid.as_bytes())),
             db_object.keywords(),
         );
-        // upsert the index
-        self.findex
-            .upsert(
-                &self.findex_master_key.to_bytes(),
-                index_additions,
-                HashMap::new(),
-            )
-            .await?;
+        // insert the index
+        self.findex.insert(index_additions, HashMap::new()).await?;
         Ok(db_object)
     }
 
@@ -675,31 +659,31 @@ impl PermissionsStore for RedisWithFindex {
 mod tests {
     use std::collections::HashSet;
 
-    use cloudproof_findex::Location;
+    use crate::stores::redis::value::Value;
 
     #[test]
     fn test_intersect() {
         let set1: HashSet<_> = vec![
-            Location::from(b"1".as_slice()),
-            Location::from(b"2".as_slice()),
-            Location::from(b"3".as_slice()),
-            Location::from(b"4".as_slice()),
+            Value::from(b"1".as_slice()),
+            Value::from(b"2".as_slice()),
+            Value::from(b"3".as_slice()),
+            Value::from(b"4".as_slice()),
         ]
         .into_iter()
         .collect();
         let set2: HashSet<_> = vec![
-            Location::from(b"2".as_slice()),
-            Location::from(b"3".as_slice()),
-            Location::from(b"4".as_slice()),
-            Location::from(b"5".as_slice()),
+            Value::from(b"2".as_slice()),
+            Value::from(b"3".as_slice()),
+            Value::from(b"4".as_slice()),
+            Value::from(b"5".as_slice()),
         ]
         .into_iter()
         .collect();
         let set3: HashSet<_> = vec![
-            Location::from(b"3".as_slice()),
-            Location::from(b"4".as_slice()),
-            Location::from(b"5".as_slice()),
-            Location::from(b"6".as_slice()),
+            Value::from(b"3".as_slice()),
+            Value::from(b"4".as_slice()),
+            Value::from(b"5".as_slice()),
+            Value::from(b"6".as_slice()),
         ]
         .into_iter()
         .collect();
@@ -707,7 +691,7 @@ mod tests {
         let sets = vec![set1, set2, set3];
         let res = super::intersect_all(sets);
         assert_eq!(res.len(), 2);
-        assert!(res.contains(&Location::from(b"3".as_slice())));
-        assert!(res.contains(&Location::from(b"4".as_slice())));
+        assert!(res.contains(&Value::from(b"3".as_slice())));
+        assert!(res.contains(&Value::from(b"4".as_slice())));
     }
 }

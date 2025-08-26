@@ -1,7 +1,7 @@
 use std::array::TryFromSliceError;
 
 #[cfg(feature = "non-fips")]
-use cloudproof_findex::implementations::redis::FindexRedisError;
+use cosmian_findex::Error as FindexRedisError;
 use cosmian_kmip::{
     KmipError, kmip_0::kmip_types::ErrorReason, kmip_1_4::kmip_types::ResultReason,
 };
@@ -11,9 +11,6 @@ use redis::ErrorKind;
 use thiserror::Error;
 
 use crate::DbError::CryptographicError;
-
-//! TODO: implement from RedisMemoryError
-
 
 // Each error type must have a corresponding HTTP status code (see `kmip_endpoint.rs`)
 #[derive(Error, Debug, Clone)]
@@ -194,8 +191,8 @@ impl From<CryptoError> for DbError {
 }
 
 #[cfg(feature = "non-fips")]
-impl From<FindexRedisError> for DbError {
-    fn from(e: FindexRedisError) -> Self {
+impl<A> From<FindexRedisError<A>> for DbError {
+    fn from(e: FindexRedisError<A>) -> Self {
         Self::Findex(e.to_string())
     }
 }
