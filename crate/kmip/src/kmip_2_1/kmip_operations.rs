@@ -437,7 +437,7 @@ impl Display for CreateKeyPair {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct CreateKeyPairResponse {
     /// The Unique Identifier of the newly created private key object.
@@ -2110,19 +2110,40 @@ pub struct Sign {
 
 impl Display for Sign {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
+        writeln!(f, "Sign {{")?;
+        writeln!(f, "  unique_identifier: {:?},", self.unique_identifier)?;
+        writeln!(
             f,
-            "Sign {{ unique_identifier: {:?}, cryptographic_parameters: {:?}, data: {:?}, \
-             digested_data: {:?}, correlation_value: {:?}, init_indicator: {:?}, final_indicator: \
-             {:?} }}",
-            self.unique_identifier,
-            self.cryptographic_parameters,
-            self.data,
-            self.digested_data,
-            self.correlation_value,
-            self.init_indicator,
-            self.final_indicator,
-        )
+            "  cryptographic_parameters: {:?},",
+            self.cryptographic_parameters
+        )?;
+        writeln!(
+            f,
+            "  data: {},",
+            self.data
+                .as_ref()
+                .map_or("None".to_owned(), |data| general_purpose::STANDARD
+                    .encode(data))
+        )?;
+        writeln!(
+            f,
+            "  digested_data: {},",
+            self.digested_data
+                .as_ref()
+                .map_or("None".to_owned(), |data| general_purpose::STANDARD
+                    .encode(data))
+        )?;
+        writeln!(
+            f,
+            "  correlation_value: {},",
+            self.correlation_value
+                .as_ref()
+                .map_or("None".to_owned(), |data| general_purpose::STANDARD
+                    .encode(data))
+        )?;
+        writeln!(f, "  init_indicator: {:?},", self.init_indicator)?;
+        write!(f, "  final_indicator: {:?}", self.final_indicator)?;
+        write!(f, "\n}}")
     }
 }
 
@@ -2146,12 +2167,25 @@ pub struct SignResponse {
 
 impl Display for SignResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "SignResponse {{")?;
+        writeln!(f, "  unique_identifier: {},", self.unique_identifier)?;
+        writeln!(
+            f,
+            "  signature_data: {},",
+            self.signature_data
+                .as_ref()
+                .map_or("None".to_owned(), |sig| general_purpose::STANDARD
+                    .encode(sig))
+        )?;
         write!(
             f,
-            "SignResponse {{ unique_identifier: {}, signature_data: {:?}, correlation_value: {:?} \
-             }}",
-            self.unique_identifier, self.signature_data, self.correlation_value,
-        )
+            "  correlation_value: {}",
+            self.correlation_value
+                .as_ref()
+                .map_or("None".to_owned(), |cor| general_purpose::STANDARD
+                    .encode(cor))
+        )?;
+        write!(f, "\n}}")
     }
 }
 

@@ -92,11 +92,7 @@ pub(crate) async fn mac(
         mac_data: (!request.init_indicator.unwrap_or(false)).then_some(digest.clone()),
         correlation_value: request.init_indicator.unwrap_or(false).then_some(digest),
     };
-    trace!(
-        "Mac response
-    : {}",
-        serde_json::to_string(&response)?
-    );
+    trace!("Mac response: {response}");
     Ok(response)
 }
 

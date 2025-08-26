@@ -1,12 +1,10 @@
 use std::sync::Arc;
 
-use base64::{Engine, engine::general_purpose};
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, State},
         kmip_2_1::{
             KmipOperation,
-            extra::BulkData,
             kmip_objects::Object,
             kmip_operations::{Sign, SignResponse},
             kmip_types::{
@@ -26,7 +24,6 @@ use openssl::{
     sign::Signer,
 };
 use tracing::{debug, info, trace};
-use zeroize::Zeroizing;
 
 use crate::{
     core::{KMS, uid_utils::uids_from_unique_identifier},
@@ -41,18 +38,7 @@ pub(crate) async fn sign(
     user: &str,
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<SignResponse> {
-    trace!("sign: {request}");
-
-    // Get the data to sign - either data or digested_data must be provided
-    let data_to_sign = if let Some(data) = request.data.as_ref() {
-        data.as_slice()
-    } else if let Some(digested_data) = request.digested_data.as_ref() {
-        digested_data.as_slice()
-    } else {
-        return Err(KmsError::InvalidRequest(
-            "sign: either data or digested_data must be provided".to_owned(),
-        ))
-    };
+    debug!("sign: {request}");
 
     // Get the uids from the unique identifier
     let unique_identifier = request
@@ -117,92 +103,20 @@ pub(crate) async fn sign(
             .await?,
     );
 
-    // data length for logging
-    let data_len = data_to_sign.len();
-
-    // It may be a bulk signing request; if not, fallback to single signing
-    let res = match BulkData::deserialize(data_to_sign) {
-        Ok(bulk_data) => {
-            // It is a bulk signing request
-            sign_bulk(&owm, request, bulk_data)
-        }
-        Err(_) => {
-            // fallback to single signing
-            sign_single(&owm, &request)
-        }
-    }?;
-
-    info!(
-        uid = owm.id(),
-        user = user,
-        signature_data = res
-            .signature_data
-            .as_ref()
-            .map_or("None".to_owned(), |sig| general_purpose::STANDARD
-                .encode(sig)),
-        "sign: signed data of: {data_len} bytes -> signature length: {}",
-        res.signature_data.as_ref().map_or(0, |sig| { sig.len() })
-    );
-    Ok(res)
-}
-
-fn sign_single(owm: &ObjectWithMetadata, request: &Sign) -> KResult<SignResponse> {
-    match owm.object() {
-        Object::PrivateKey { .. } => sign_with_private_key(request, owm),
+    // Only private keys can be used for signing
+    let res = match owm.object() {
+        Object::PrivateKey { .. } => sign_with_private_key(request, &owm),
         other => kms_bail!(KmsError::NotSupported(format!(
             "sign: signing with keys of type: {} is not supported",
             other.object_type()
         ))),
-    }
+    }?;
+
+    info!(uid = owm.id(), user = user, "sign response = {res}");
+    Ok(res)
 }
 
-/// Sign multiple data with the same key
-/// and return the corresponding signatures.
-///
-/// This is a hack where `request.data` is a serialized `BulkData` object.
-/// The `BulkData` object is deserialized and each data is signed.
-/// The signatures are concatenated and returned as a single `BulkData` object.
-/// # Arguments
-/// * `owm` - the object with metadata of the key
-/// * `request` - the sign request
-/// * `bulk_data` - the bulk data to sign
-/// # Returns
-/// * the sign response
-pub(crate) fn sign_bulk(
-    owm: &ObjectWithMetadata,
-    mut request: Sign,
-    bulk_data: BulkData,
-) -> KResult<SignResponse> {
-    debug!("sign_bulk: ==> signing {} data items", bulk_data.len());
-    let mut signatures = Vec::with_capacity(bulk_data.len());
-
-    match owm.object() {
-        Object::PrivateKey { .. } => {
-            for data in <BulkData as Into<Vec<Zeroizing<Vec<u8>>>>>::into(bulk_data) {
-                request.data = Some(data.clone());
-                let response = sign_with_private_key(&request, owm)?;
-                if let Some(signature) = response.signature_data {
-                    signatures.push(Zeroizing::new(signature));
-                }
-            }
-        }
-        other => {
-            kms_bail!(KmsError::NotSupported(format!(
-                "sign_bulk: signing with keys of type: {} is not supported",
-                other.object_type()
-            )))
-        }
-    }
-
-    let bulk_signatures = BulkData::from(signatures);
-    Ok(SignResponse {
-        unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
-        signature_data: Some(bulk_signatures.serialize()?.to_vec()),
-        correlation_value: request.correlation_value,
-    })
-}
-
-fn sign_with_private_key(request: &Sign, owm: &ObjectWithMetadata) -> KResult<SignResponse> {
+fn sign_with_private_key(request: Sign, owm: &ObjectWithMetadata) -> KResult<SignResponse> {
     // Make sure that the key used to sign can be used to sign.
     if !owm
         .object()
@@ -222,17 +136,14 @@ fn sign_with_private_key(request: &Sign, owm: &ObjectWithMetadata) -> KResult<Si
         | KeyFormatType::TransparentRSAPrivateKey
         | KeyFormatType::PKCS1
         | KeyFormatType::PKCS8 => {
-            // Get the data to sign - either data or digested_data must be provided
-            let data_to_sign = if let Some(data) = request.data.as_ref() {
-                data.as_slice()
-            } else if let Some(digested_data) = request.digested_data.as_ref() {
-                digested_data.as_slice()
-            } else {
-                return Err(KmsError::InvalidRequest(
-                    "sign_with_private_key: either data or digested_data must be provided"
-                        .to_owned(),
-                ))
-            };
+            let data = request.data.unwrap_or_default();
+            trace!("sign_with_private_key: data: {data:?}");
+
+            if request.init_indicator == Some(true) && request.final_indicator == Some(true) {
+                kms_bail!(
+                    "Invalid request: init_indicator and final_indicator cannot both be true"
+                );
+            }
 
             trace!(
                 "sign_with_private_key: matching on key format type: {:?}",
@@ -240,7 +151,32 @@ fn sign_with_private_key(request: &Sign, owm: &ObjectWithMetadata) -> KResult<Si
             );
             let private_key = kmip_private_key_to_openssl(owm.object())?;
             trace!("sign_with_private_key: OpenSSL Private Key instantiated before signing");
-            sign_with_pkey(request, owm.id(), data_to_sign, &private_key)
+
+            let signature = if let Some(correlation_value) = request.correlation_value.as_ref() {
+                // Streaming signature - append data to correlation value
+                sign_with_pkey(
+                    request.cryptographic_parameters.as_ref(),
+                    &data,
+                    Some(correlation_value),
+                    &private_key,
+                )?
+            } else {
+                // Single call signature
+                sign_with_pkey(
+                    request.cryptographic_parameters.as_ref(),
+                    &data,
+                    None,
+                    &private_key,
+                )?
+            };
+
+            let response = SignResponse {
+                unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
+                signature_data: (!request.init_indicator.unwrap_or(false))
+                    .then_some(signature.clone()),
+                correlation_value: request.init_indicator.unwrap_or(false).then_some(signature),
+            };
+            Ok(response)
         }
         other => Err(KmsError::NotSupported(format!(
             "signing with private keys of format: {other}"
@@ -249,37 +185,36 @@ fn sign_with_private_key(request: &Sign, owm: &ObjectWithMetadata) -> KResult<Si
 }
 
 fn sign_with_pkey(
-    request: &Sign,
-    key_id: &str,
+    cryptographic_parameters: Option<&CryptographicParameters>,
     data_to_sign: &[u8],
+    correlation_value: Option<&[u8]>,
     private_key: &PKey<Private>,
-) -> KResult<SignResponse> {
+) -> KResult<Vec<u8>> {
     let signature = match private_key.id() {
         Id::RSA => sign_with_rsa(
             private_key,
-            request.cryptographic_parameters.as_ref(),
+            cryptographic_parameters,
             data_to_sign,
+            correlation_value,
         )?,
         Id::EC => sign_with_ecdsa(
             private_key,
-            request.cryptographic_parameters.as_ref(),
+            cryptographic_parameters,
             data_to_sign,
+            correlation_value,
         )?,
         other => {
             kms_bail!("Sign: private key type not supported: {other:?}")
         }
     };
-    Ok(SignResponse {
-        unique_identifier: UniqueIdentifier::TextString(key_id.to_owned()),
-        signature_data: Some(signature),
-        correlation_value: request.correlation_value.clone(),
-    })
+    Ok(signature)
 }
 
 fn sign_with_rsa(
     private_key: &PKey<Private>,
     cryptographic_parameters: Option<&CryptographicParameters>,
     data_to_sign: &[u8],
+    correlation_value: Option<&[u8]>,
 ) -> KResult<Vec<u8>> {
     let (_algorithm, _padding, _hashing_fn, digital_signature_algorithm) =
         default_cryptographic_parameters(cryptographic_parameters);
@@ -304,12 +239,16 @@ fn sign_with_rsa(
         signer.set_rsa_padding(Padding::PKCS1_PSS)?;
         signer.set_rsa_pss_saltlen(openssl::sign::RsaPssSaltlen::DIGEST_LENGTH)?;
     }
+    if let Some(corr) = correlation_value {
+        signer.update(corr)?;
+    }
     signer.update(data_to_sign)?;
     let signature = signer.sign_to_vec()?;
 
     debug!(
-        "sign_with_rsa: signed {} bytes, signature length: {}",
+        "sign_with_rsa: signed: message ({} bytes): {:?}, signature length: {}",
         data_to_sign.len(),
+        String::from_utf8_lossy(data_to_sign),
         signature.len()
     );
 
@@ -320,6 +259,7 @@ fn sign_with_ecdsa(
     private_key: &PKey<Private>,
     cryptographic_parameters: Option<&CryptographicParameters>,
     data_to_sign: &[u8],
+    correlation_value: Option<&[u8]>,
 ) -> KResult<Vec<u8>> {
     let digital_signature_algorithm = cryptographic_parameters.map_or_else(
         || DigitalSignatureAlgorithm::ECDSAWithSHA256,
@@ -342,6 +282,9 @@ fn sign_with_ecdsa(
     };
 
     let mut signer = Signer::new(digest, private_key)?;
+    if let Some(corr) = correlation_value {
+        signer.update(corr)?;
+    }
     signer.update(data_to_sign)?;
     let signature = signer.sign_to_vec()?;
 
