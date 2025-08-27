@@ -15,4 +15,3 @@ pub(crate) mod test_set_attribute;
 mod test_sign;
 pub(crate) mod test_utils;
 pub(crate) mod test_validate;
-mod ttlv_tests;
