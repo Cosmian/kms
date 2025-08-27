@@ -53,7 +53,7 @@ fn test_register_2_1() {
                 operation: OperationEnumeration::Register,
                 ephemeral: None,
                 unique_batch_item_id: Some(b"12345".to_vec()),
-                request_payload: Operation::Register(Register {
+                request_payload: Operation::Register(Box::new(Register {
                     object,
                     object_type: ObjectType::SymmetricKey,
                     attributes: Attributes {
@@ -65,7 +65,7 @@ fn test_register_2_1() {
                         ..Default::default()
                     },
                     protection_storage_masks: None,
-                }),
+                })),
                 message_extension: None,
             },
         )],
