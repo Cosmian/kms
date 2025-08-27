@@ -16,7 +16,7 @@ use tokio::sync::{
 };
 use tracing::{debug, trace, warn};
 
-use crate::error::DbResult;
+use crate::DbError;
 
 /// This is the object kept in the Main LRU cache
 /// It contains the unwrapped object and the key signature
@@ -46,12 +46,14 @@ impl CachedUnwrappedObject {
     }
 }
 
+type CacheDbResult<R> = Result<R, Arc<DbError>>;
+
 /// The cache of unwrapped objects
 /// The key is the UID of the object
 /// The value is the unwrapped object
 /// The value is a `Err(KmsError)` if the object cannot be unwrapped
 pub struct UnwrappedCache {
-    cache: Arc<RwLock<LruCache<String, DbResult<CachedUnwrappedObject>>>>,
+    cache: Arc<RwLock<LruCache<String, CacheDbResult<CachedUnwrappedObject>>>>,
     access_timestamps: Arc<RwLock<HashMap<String, Instant>>>,
     access_sender: Option<Sender<String>>,
     gc_interval: Duration,
@@ -198,8 +200,9 @@ impl UnwrappedCache {
     }
 
     /// Peek into the cache
-    pub async fn peek(&self, uid: &str) -> Option<DbResult<CachedUnwrappedObject>> {
+    pub async fn peek(&self, uid: &str) -> Option<CacheDbResult<CachedUnwrappedObject>> {
         let res = self.cache.read().await.peek(uid).cloned();
+
         if res.is_some() {
             self.record_access(uid).await;
         }
@@ -207,7 +210,11 @@ impl UnwrappedCache {
     }
 
     /// Insert into the cache
-    pub async fn insert(&self, uid: String, unwrapped_object: DbResult<CachedUnwrappedObject>) {
+    pub async fn insert(
+        &self,
+        uid: String,
+        unwrapped_object: CacheDbResult<CachedUnwrappedObject>,
+    ) {
         self.cache.write().await.put(uid.clone(), unwrapped_object);
         self.access_timestamps
             .write()
@@ -218,7 +225,7 @@ impl UnwrappedCache {
     #[cfg(test)]
     pub async fn get_cache(
         &self,
-    ) -> RwLockReadGuard<'_, LruCache<String, DbResult<CachedUnwrappedObject>>> {
+    ) -> RwLockReadGuard<'_, LruCache<String, CacheDbResult<CachedUnwrappedObject>>> {
         self.cache.read().await
     }
 }

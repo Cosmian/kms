@@ -103,6 +103,9 @@ pub enum KmsError {
 
     #[error("TLS: {0}")]
     Tls(String),
+
+    #[error("Unwrapped Cache error: {0}")]
+    UnwrappedCacheError(String),
 }
 
 impl KmsError {

@@ -31,6 +31,7 @@ impl actix_web::error::ResponseError for KmsError {
             | Self::Certificate(_)
             | Self::Tls(_)
             | Self::ServerError(_)
+            | Self::UnwrappedCacheError(_)
             | Self::Default(_) => StatusCode::INTERNAL_SERVER_ERROR,
 
             Self::Kmip21Error(..)

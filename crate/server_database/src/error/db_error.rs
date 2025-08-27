@@ -7,13 +7,12 @@ use cosmian_kmip::{
 };
 use cosmian_kms_crypto::{CryptoError, reexport::cosmian_crypto_core::CryptoCoreError};
 use cosmian_kms_interfaces::InterfaceError;
-use redis::ErrorKind;
 use thiserror::Error;
 
 use crate::DbError::CryptographicError;
 
 // Each error type must have a corresponding HTTP status code (see `kmip_endpoint.rs`)
-#[derive(Error, Debug, Clone)]
+#[derive(Error, Debug)]
 pub enum DbError {
     // Error related to X509 Certificate
     #[error("Certificate error: {0}")]
@@ -70,7 +69,7 @@ pub enum DbError {
     Proteccio(String),
 
     #[error("Redis Error: {0}")]
-    Redis(String),
+    Redis(#[from] redis::RedisError),
 
     // When a user requests an endpoint which does not exist
     #[error("Route not supported: {0}")]
@@ -97,6 +96,10 @@ pub enum DbError {
 
     #[error("Invalid URL: {0}")]
     UrlError(String),
+
+    // SQL database errors (PostgreSQL, MySQL, SQLite)
+    #[error("Sql error: {0}")]
+    SqlError(#[from] sqlx::Error),
 }
 
 impl From<std::string::FromUtf8Error> for DbError {
@@ -108,12 +111,6 @@ impl From<std::string::FromUtf8Error> for DbError {
 impl From<std::num::TryFromIntError> for DbError {
     fn from(e: std::num::TryFromIntError) -> Self {
         Self::ConversionError(e.to_string())
-    }
-}
-
-impl From<sqlx::Error> for DbError {
-    fn from(e: sqlx::Error) -> Self {
-        Self::DatabaseError(e.to_string())
     }
 }
 
@@ -132,18 +129,6 @@ impl From<serde_json::Error> for DbError {
 impl From<TryFromSliceError> for DbError {
     fn from(e: TryFromSliceError) -> Self {
         Self::ConversionError(e.to_string())
-    }
-}
-
-impl From<redis::RedisError> for DbError {
-    fn from(err: redis::RedisError) -> Self {
-        Self::Redis(err.to_string())
-    }
-}
-
-impl From<DbError> for redis::RedisError {
-    fn from(val: DbError) -> Self {
-        Self::from((ErrorKind::ClientError, "KMS Error", val.to_string()))
     }
 }
 

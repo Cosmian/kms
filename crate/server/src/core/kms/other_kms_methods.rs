@@ -5,7 +5,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_types::Sta
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::reexport::cosmian_cover_crypt::api::Covercrypt;
 use cosmian_kms_server_database::{
-    CachedUnwrappedObject,
+    CachedUnwrappedObject, DbError,
     reexport::{
         cosmian_kmip::{
             kmip_0::kmip_types::SecretDataType,
@@ -72,7 +72,7 @@ impl KMS {
                 }
             }
             Some(Err(e)) => {
-                return Err(e.into());
+                return Err(KmsError::UnwrappedCacheError(e.to_string()));
             }
             None => {
                 // try unwrapping
@@ -98,7 +98,10 @@ impl KMS {
         // update cache is there is one
         self.database
             .unwrapped_cache()
-            .insert(uid.to_owned(), unwrapped_object.map_err(Into::into))
+            .insert(
+                uid.to_owned(),
+                unwrapped_object.map_err(|e| Arc::new(DbError::from(e))),
+            )
             .await;
         // return the result
         result
