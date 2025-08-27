@@ -41,103 +41,20 @@ This crate in the KMS repository serves the following purposes:
 ### Development Build
 
 ```sh
-cargo build --bin cosmian
+cargo build --package cosmian_kms_cli
 ```
 
 ### Release Build
 
 ```sh
-cargo build --bin cosmian --release
+cargo build --package cosmian_kms_cli --release
 ```
 
 ### With Features
 
 ```sh
 # Enable non-FIPS features for testing
-cargo build --bin cosmian --features non-fips
-```
-
-## Usage
-
-### Basic Commands
-
-```sh
-# Display help
-./target/debug/cosmian --help
-
-# Server version
-./target/debug/cosmian kms server-version
-
-# Generate a symmetric key
-./target/debug/cosmian kms sym keys create --algorithm aes --key-length 256
-```
-
-### Testing Environment
-
-```sh
-# Start required services
-docker compose up -d
-
-# Build the CLI
-cargo build --bin cosmian
-
-# Run integration tests
-cargo test -p cosmian_kms_cli
-```
-
-## Configuration
-
-The CLI can be configured using:
-
-- **Configuration File**: `~/.cosmian/cosmian.toml`
-- **Environment Variables**: Various `COSMIAN_*` variables
-- **Command Line Arguments**: Override settings per command
-
-### Example Configuration
-
-```toml
-[kms]
-server_url = "http://localhost:9998"
-access_token = "your-access-token"
-```
-
-## Testing
-
-### Unit Tests
-
-```sh
-cargo test -p cosmian_kms_cli --lib
-```
-
-### Integration Tests
-
-```sh
-# Start test environment
-docker compose up -d
-
-# Run all tests
-cargo test -p cosmian_kms_cli
-
-# Run specific test
-cargo test -p cosmian_kms_cli test_symmetric_key_creation
-```
-
-### Test Databases
-
-Set the `KMS_TEST_DB` environment variable:
-
-```sh
-# Test with SQLite
-KMS_TEST_DB=sqlite cargo test -p cosmian_kms_cli
-
-# Test with PostgreSQL
-KMS_TEST_DB=postgresql cargo test -p cosmian_kms_cli
-
-# Test with MySQL
-KMS_TEST_DB=mysql cargo test -p cosmian_kms_cli
-
-# Test with Redis + Findex
-KMS_TEST_DB=redis-findex cargo test -p cosmian_kms_cli
+cargo build --package cosmian_kms_cli --features non-fips
 ```
 
 ## Dependencies
@@ -155,20 +72,10 @@ KMS_TEST_DB=redis-findex cargo test -p cosmian_kms_cli
 - **tempfile**: Temporary file handling for tests
 - **assert_cmd**: Command-line testing utilities
 
-## Migration Guide
-
-If you're using this legacy CLI, consider migrating to the new CLI:
-
-1. **Install the new CLI**: `cargo install cosmian_cli`
-2. **Update scripts**: Replace `cosmian` with the new binary path
-3. **Configuration**: Migrate configuration files if needed
-4. **Test thoroughly**: Ensure all functionality works as expected
-
 ## Documentation
 
 - **Full Documentation**: [docs.cosmian.com](https://docs.cosmian.com/cosmian_cli/)
 - **API Reference**: [docs.rs](https://docs.rs/cosmian_kms_cli/)
-- **Examples**: See the `/examples` directory
 
 ## License
 
