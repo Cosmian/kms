@@ -1,6 +1,6 @@
 # Cosmian KMS
 
-Cosmian KMS is a high-performance, open-source FIPS 140-3 compliant Key Management System written in Rust. The repository contains a KMS server (`cosmian_kms`), Findex server (`cosmian_findex_server`), CLI binary (`cosmian`), and supporting libraries for cryptographic operations, database management, and various integrations.
+Cosmian KMS is a high-performance, open-source FIPS 140-3 compliant Key Management System written in Rust. The repository contains the KMS server (`cosmian_kms_server`) and supporting libraries for cryptographic operations, database management, and various integrations.
 
 Always reference these instructions first and fallback to search or bash commands only when you encounter unexpected information that does not match the info here.
 
@@ -106,12 +106,13 @@ export OPENSSL_DIR=/usr/local/openssl
 export TARGET=x86_64-unknown-linux-gnu
 export DEBUG_OR_RELEASE=debug  # or release
 export FEATURES=non-fips       # optional, for non-FIPS builds
-bash .github/scripts/cargo_build.sh
 
 # OpenSSL setup (required first)
 sudo mkdir -p /usr/local/openssl/ssl /usr/local/openssl/lib64/ossl-modules
 sudo chown -R $USER /usr/local/openssl
 bash .github/reusable_scripts/get_openssl_binaries.sh
+bash .github/scripts/cargo_build.sh
+
 
 # UI build (Ubuntu only)
 bash .github/scripts/build_ui.sh

@@ -15,5 +15,4 @@ pub(crate) mod test_set_attribute;
 mod test_sign;
 pub(crate) mod test_utils;
 pub(crate) mod test_validate;
-// Temporarily disabled due to missing test_data files
-// mod ttlv_tests;
+mod ttlv_tests;
