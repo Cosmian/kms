@@ -33,6 +33,54 @@ use crate::{
     kmip_2_1::kmip_data_structures::{ProfileInformation, RNGParameters},
 };
 
+/// Extension trait to add base64 display functionality to byte types
+trait Base64Display {
+    fn to_base64(&self) -> String;
+}
+
+impl Base64Display for Vec<u8> {
+    fn to_base64(&self) -> String {
+        general_purpose::STANDARD.encode(self)
+    }
+}
+
+impl Base64Display for Zeroizing<Vec<u8>> {
+    fn to_base64(&self) -> String {
+        general_purpose::STANDARD.encode(self)
+    }
+}
+
+impl Base64Display for Option<Vec<u8>> {
+    fn to_base64(&self) -> String {
+        self.as_ref().map_or("None".to_owned(), |bytes| {
+            general_purpose::STANDARD.encode(bytes)
+        })
+    }
+}
+
+impl Base64Display for Option<Zeroizing<Vec<u8>>> {
+    fn to_base64(&self) -> String {
+        self.as_ref().map_or("None".to_owned(), |bytes| {
+            general_purpose::STANDARD.encode(bytes)
+        })
+    }
+}
+
+impl Base64Display for Option<Vec<Vec<u8>>> {
+    fn to_base64(&self) -> String {
+        self.as_ref().map_or("None".to_owned(), |arrays| {
+            format!(
+                "[{}]",
+                arrays
+                    .iter()
+                    .map(|bytes| general_purpose::STANDARD.encode(bytes))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        })
+    }
+}
+
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 #[serde(untagged)]
 #[allow(clippy::large_enum_variant)]
@@ -297,10 +345,10 @@ impl Display for Certify {
         write!(
             f,
             "Certify {{ unique_identifier: {:?}, certificate_request_type: {:?}, \
-             certificate_request_value: {:?}, attributes: {:?}, protection_storage_masks: {:?} }}",
+             certificate_request_value: {}, attributes: {:?}, protection_storage_masks: {:?} }}",
             self.unique_identifier,
             self.certificate_request_type,
-            self.certificate_request_value,
+            self.certificate_request_value.to_base64(),
             self.attributes,
             self.protection_storage_masks
         )
@@ -528,19 +576,19 @@ impl Display for Decrypt {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "Decrypt {{ unique_identifier: {:?}, cryptographic_parameters: {:?}, data: {:?}, \
-             iv_counter_nonce: {:?}, correlation_value: {:?}, init_indicator: {:?}, \
-             final_indicator: {:?}, authenticated_encryption_additional_data: {:?}, \
-             authenticated_encryption_tag: {:?} }}",
+            "Decrypt {{ unique_identifier: {:?}, cryptographic_parameters: {:?}, data: {}, \
+             iv_counter_nonce: {}, correlation_value: {}, init_indicator: {:?}, final_indicator: \
+             {:?}, authenticated_encryption_additional_data: {}, authenticated_encryption_tag: {} \
+             }}",
             self.unique_identifier,
             self.cryptographic_parameters,
-            self.data,
-            self.i_v_counter_nonce,
-            self.correlation_value,
+            self.data.to_base64(),
+            self.i_v_counter_nonce.to_base64(),
+            self.correlation_value.to_base64(),
             self.init_indicator,
             self.final_indicator,
-            self.authenticated_encryption_additional_data,
-            self.authenticated_encryption_tag
+            self.authenticated_encryption_additional_data.to_base64(),
+            self.authenticated_encryption_tag.to_base64()
         )
     }
 }
@@ -616,8 +664,10 @@ impl Display for DecryptResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "DecryptResponse {{ unique_identifier: {}, data: {:?}, correlation_value: {:?} }}",
-            self.unique_identifier, self.data, self.correlation_value
+            "DecryptResponse {{ unique_identifier: {}, data: {}, correlation_value: {} }}",
+            self.unique_identifier,
+            self.data.to_base64(),
+            self.correlation_value.to_base64()
         )
     }
 }
@@ -800,17 +850,17 @@ impl Display for Encrypt {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "Encrypt {{ unique_identifier: {:?}, cryptographic_parameters: {:?}, data: {:?}, \
-             iv_counter_nonce: {:?}, correlation_value: {:?}, init_indicator: {:?}, \
-             final_indicator: {:?}, authenticated_encryption_additional_data: {:?} }}",
+            "Encrypt {{ unique_identifier: {:?}, cryptographic_parameters: {:?}, data: {}, \
+             iv_counter_nonce: {}, correlation_value: {}, init_indicator: {:?}, final_indicator: \
+             {:?}, authenticated_encryption_additional_data: {} }}",
             self.unique_identifier,
             self.cryptographic_parameters,
-            self.data,
-            self.i_v_counter_nonce,
-            self.correlation_value,
+            self.data.to_base64(),
+            self.i_v_counter_nonce.to_base64(),
+            self.correlation_value.to_base64(),
             self.init_indicator,
             self.final_indicator,
-            self.authenticated_encryption_additional_data,
+            self.authenticated_encryption_additional_data.to_base64(),
         )
     }
 }
@@ -853,13 +903,13 @@ impl Display for EncryptResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "EncryptResponse {{ unique_identifier: {}, data: {:?}, iv_counter_nonce: {:?}, \
-             correlation_value: {:?}, authenticated_encryption_tag: {:?} }}",
+            "EncryptResponse {{ unique_identifier: {}, data: {}, iv_counter_nonce: {}, \
+             correlation_value: {}, authenticated_encryption_tag: {} }}",
             self.unique_identifier,
-            self.data,
-            self.i_v_counter_nonce,
-            self.correlation_value,
-            self.authenticated_encryption_tag
+            self.data.to_base64(),
+            self.i_v_counter_nonce.to_base64(),
+            self.correlation_value.to_base64(),
+            self.authenticated_encryption_tag.to_base64()
         )
     }
 }
@@ -1262,11 +1312,11 @@ impl Display for Hash {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "Hash {{ cryptographic_parameters: {:?}, data: {:?}, correlation_value: {:?}, \
+            "Hash {{ cryptographic_parameters: {:?}, data: {}, correlation_value: {}, \
              init_indicator: {:?}, final_indicator: {:?} }}",
             self.cryptographic_parameters,
-            self.data,
-            self.correlation_value,
+            self.data.to_base64(),
+            self.correlation_value.to_base64(),
             self.init_indicator,
             self.final_indicator
         )
@@ -1288,8 +1338,9 @@ impl Display for HashResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "HashResponse {{ data: {:?}, correlation_value: {:?} }}",
-            self.data, self.correlation_value
+            "HashResponse {{ data: {}, correlation_value: {} }}",
+            self.data.to_base64(),
+            self.correlation_value.to_base64()
         )
     }
 }
@@ -1542,12 +1593,12 @@ impl Display for MAC {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "Mac {{ unique_identifier: {:?}, cryptographic_parameters: {:?}, data: {:?}, \
-             correlation_value: {:?}, init_indicator: {:?}, final_indicator: {:?} }}",
+            "Mac {{ unique_identifier: {:?}, cryptographic_parameters: {:?}, data: {}, \
+             correlation_value: {}, init_indicator: {:?}, final_indicator: {:?} }}",
             self.unique_identifier,
             self.cryptographic_parameters,
-            self.data,
-            self.correlation_value,
+            self.data.to_base64(),
+            self.correlation_value.to_base64(),
             self.init_indicator,
             self.final_indicator
         )
@@ -1571,8 +1622,9 @@ impl Display for MACResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "MacResponse {{ data: {:?}, correlation_value: {:?} }}",
-            self.mac_data, self.correlation_value
+            "MacResponse {{ data: {}, correlation_value: {} }}",
+            self.mac_data.to_base64(),
+            self.correlation_value.to_base64()
         )
     }
 }
@@ -2027,8 +2079,10 @@ impl Display for Validate {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "Validate {{ certificate: {:?}, unique_identifier: {:?}, validity_time: {:?} }}",
-            self.certificate, self.unique_identifier, self.validity_time
+            "Validate {{ certificate: {}, unique_identifier: {:?}, validity_time: {:?} }}",
+            self.certificate.to_base64(),
+            self.unique_identifier,
+            self.validity_time
         )
     }
 }
@@ -2110,40 +2164,19 @@ pub struct Sign {
 
 impl Display for Sign {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "Sign {{")?;
-        writeln!(f, "  unique_identifier: {:?},", self.unique_identifier)?;
-        writeln!(
+        write!(
             f,
-            "  cryptographic_parameters: {:?},",
-            self.cryptographic_parameters
-        )?;
-        writeln!(
-            f,
-            "  data: {},",
-            self.data
-                .as_ref()
-                .map_or("None".to_owned(), |data| general_purpose::STANDARD
-                    .encode(data))
-        )?;
-        writeln!(
-            f,
-            "  digested_data: {},",
-            self.digested_data
-                .as_ref()
-                .map_or("None".to_owned(), |data| general_purpose::STANDARD
-                    .encode(data))
-        )?;
-        writeln!(
-            f,
-            "  correlation_value: {},",
-            self.correlation_value
-                .as_ref()
-                .map_or("None".to_owned(), |data| general_purpose::STANDARD
-                    .encode(data))
-        )?;
-        writeln!(f, "  init_indicator: {:?},", self.init_indicator)?;
-        write!(f, "  final_indicator: {:?}", self.final_indicator)?;
-        write!(f, "\n}}")
+            "Sign {{ unique_identifier: {:?}, cryptographic_parameters: {:?}, data: {}, \
+             digested_data: {}, correlation_value: {}, init_indicator: {:?}, final_indicator: \
+             {:?} }}",
+            self.unique_identifier,
+            self.cryptographic_parameters,
+            self.data.to_base64(),
+            self.digested_data.to_base64(),
+            self.correlation_value.to_base64(),
+            self.init_indicator,
+            self.final_indicator
+        )
     }
 }
 
@@ -2167,25 +2200,13 @@ pub struct SignResponse {
 
 impl Display for SignResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "SignResponse {{")?;
-        writeln!(f, "  unique_identifier: {},", self.unique_identifier)?;
-        writeln!(
-            f,
-            "  signature_data: {},",
-            self.signature_data
-                .as_ref()
-                .map_or("None".to_owned(), |sig| general_purpose::STANDARD
-                    .encode(sig))
-        )?;
         write!(
             f,
-            "  correlation_value: {}",
-            self.correlation_value
-                .as_ref()
-                .map_or("None".to_owned(), |cor| general_purpose::STANDARD
-                    .encode(cor))
-        )?;
-        write!(f, "\n}}")
+            "SignResponse {{ unique_identifier: {}, signature_data: {}, correlation_value: {} }}",
+            self.unique_identifier,
+            self.signature_data.to_base64(),
+            self.correlation_value.to_base64()
+        )
     }
 }
 
@@ -2221,41 +2242,20 @@ pub struct SignatureVerify {
 
 impl Display for SignatureVerify {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "SignatureVerify {{")?;
-        writeln!(f, "  unique_identifier: {:?},", self.unique_identifier)?;
-        writeln!(
+        write!(
             f,
-            "  cryptographic_parameters: {:?},",
-            self.cryptographic_parameters
-        )?;
-        writeln!(
-            f,
-            "  data: {},",
-            self.data
-                .as_ref()
-                .map_or("None".to_owned(), |data| general_purpose::STANDARD
-                    .encode(data))
-        )?;
-        writeln!(
-            f,
-            "  digested_data: {},",
-            self.digested_data
-                .as_ref()
-                .map_or("None".to_owned(), |data| general_purpose::STANDARD
-                    .encode(data))
-        )?;
-        writeln!(
-            f,
-            "  signature_data: {},",
-            self.signature_data
-                .as_ref()
-                .map_or("None".to_owned(), |data| general_purpose::STANDARD
-                    .encode(data))
-        )?;
-        writeln!(f, "  correlation_value: {:?},", self.correlation_value)?;
-        writeln!(f, "  init_indicator: {:?},", self.init_indicator)?;
-        writeln!(f, "  final_indicator: {:?}", self.final_indicator)?;
-        write!(f, "}}")
+            "SignatureVerify {{ unique_identifier: {:?}, cryptographic_parameters: {:?}, data: \
+             {}, digested_data: {}, signature_data: {}, correlation_value: {}, init_indicator: \
+             {:?}, final_indicator: {:?} }}",
+            self.unique_identifier,
+            self.cryptographic_parameters,
+            self.data.to_base64(),
+            self.digested_data.to_base64(),
+            self.signature_data.to_base64(),
+            self.correlation_value.to_base64(),
+            self.init_indicator,
+            self.final_indicator
+        )
     }
 }
 
@@ -2281,8 +2281,11 @@ impl Display for SignatureVerifyResponse {
         write!(
             f,
             "SignatureVerifyResponse {{ unique_identifier: {}, validity_indicator: {:?}, data: \
-             {:?}, correlation_value: {:?} }}",
-            self.unique_identifier, self.validity_indicator, self.data, self.correlation_value,
+             {}, correlation_value: {} }}",
+            self.unique_identifier,
+            self.validity_indicator,
+            self.data.to_base64(),
+            self.correlation_value.to_base64(),
         )
     }
 }
