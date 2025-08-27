@@ -241,12 +241,6 @@ fn sign_with_ecdsa(request: Sign, private_key: &PKey<Private>) -> KResult<Vec<u8
 
     let mut signer = Signer::new(digest, private_key)?;
 
-    if DigitalSignatureAlgorithm::RSASSAPSS == digital_signature_algorithm {
-        // This should not happen for ECDSA keys
-        kms_bail!(KmsError::NotSupported(
-            "sign_with_ecdsa: RSASSAPSS is invalid for ECDSA keys".to_owned()
-        ))
-    }
     if let Some(corr) = request.correlation_value {
         signer.update(&corr)?;
     }
