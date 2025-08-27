@@ -67,7 +67,7 @@ fn intersect_all<I: IntoIterator<Item = HashSet<Value>>>(sets: I) -> HashSet<Val
     iter.fold(first, |acc, set| acc.intersection(&set).cloned().collect())
 }
 
-type FindexRedis = Findex<
+pub(crate) type FindexRedis = Findex<
     CUSTOM_WORD_LENGTH,
     Value,
     String,

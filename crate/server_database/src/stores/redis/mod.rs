@@ -1,7 +1,7 @@
 mod redis_with_findex;
 
-pub(crate) use redis_with_findex::RedisWithFindex;
 pub use redis_with_findex::redis_master_key_from_password;
+pub(crate) use redis_with_findex::{FindexRedis, RedisWithFindex};
 pub(crate) mod objects_db;
 pub(crate) mod permissions;
 pub mod value;
