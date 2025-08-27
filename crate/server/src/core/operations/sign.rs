@@ -7,9 +7,7 @@ use cosmian_kms_server_database::reexport::{
             KmipOperation,
             kmip_objects::Object,
             kmip_operations::{Sign, SignResponse},
-            kmip_types::{
-                CryptographicParameters, DigitalSignatureAlgorithm, KeyFormatType, UniqueIdentifier,
-            },
+            kmip_types::{DigitalSignatureAlgorithm, KeyFormatType, UniqueIdentifier},
         },
     },
     cosmian_kms_crypto::{
@@ -105,7 +103,7 @@ pub(crate) async fn sign(
 
     // Only private keys can be used for signing
     let res = match owm.object() {
-        Object::PrivateKey { .. } => sign_with_private_key(request, &owm),
+        Object::PrivateKey { .. } => sign_with_private_key(&request, &owm),
         other => kms_bail!(KmsError::NotSupported(format!(
             "sign: signing with keys of type: {} is not supported",
             other.object_type()
@@ -116,7 +114,7 @@ pub(crate) async fn sign(
     Ok(res)
 }
 
-fn sign_with_private_key(request: Sign, owm: &ObjectWithMetadata) -> KResult<SignResponse> {
+fn sign_with_private_key(request: &Sign, owm: &ObjectWithMetadata) -> KResult<SignResponse> {
     // Make sure that the key used to sign can be used to sign.
     if !owm
         .object()
@@ -136,9 +134,6 @@ fn sign_with_private_key(request: Sign, owm: &ObjectWithMetadata) -> KResult<Sig
         | KeyFormatType::TransparentRSAPrivateKey
         | KeyFormatType::PKCS1
         | KeyFormatType::PKCS8 => {
-            let data = request.data.unwrap_or_default();
-            trace!("sign_with_private_key: data: {data:?}");
-
             if request.init_indicator == Some(true) && request.final_indicator == Some(true) {
                 kms_bail!(
                     "Invalid request: init_indicator and final_indicator cannot both be true"
@@ -152,23 +147,7 @@ fn sign_with_private_key(request: Sign, owm: &ObjectWithMetadata) -> KResult<Sig
             let private_key = kmip_private_key_to_openssl(owm.object())?;
             trace!("sign_with_private_key: OpenSSL Private Key instantiated before signing");
 
-            let signature = if let Some(correlation_value) = request.correlation_value.as_ref() {
-                // Streaming signature - append data to correlation value
-                sign_with_pkey(
-                    request.cryptographic_parameters.as_ref(),
-                    &data,
-                    Some(correlation_value),
-                    &private_key,
-                )?
-            } else {
-                // Single call signature
-                sign_with_pkey(
-                    request.cryptographic_parameters.as_ref(),
-                    &data,
-                    None,
-                    &private_key,
-                )?
-            };
+            let signature = sign_with_pkey(request.clone(), &private_key)?;
 
             let response = SignResponse {
                 unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
@@ -184,25 +163,11 @@ fn sign_with_private_key(request: Sign, owm: &ObjectWithMetadata) -> KResult<Sig
     }
 }
 
-fn sign_with_pkey(
-    cryptographic_parameters: Option<&CryptographicParameters>,
-    data_to_sign: &[u8],
-    correlation_value: Option<&[u8]>,
-    private_key: &PKey<Private>,
-) -> KResult<Vec<u8>> {
+fn sign_with_pkey(request: Sign, private_key: &PKey<Private>) -> KResult<Vec<u8>> {
     let signature = match private_key.id() {
-        Id::RSA => sign_with_rsa(
-            private_key,
-            cryptographic_parameters,
-            data_to_sign,
-            correlation_value,
-        )?,
-        Id::EC => sign_with_ecdsa(
-            private_key,
-            cryptographic_parameters,
-            data_to_sign,
-            correlation_value,
-        )?,
+        Id::RSA => sign_with_rsa(request, private_key)?,
+        Id::EC => sign_with_ecdsa(request, private_key)?,
+        Id::ED25519 => sign_with_eddsa(request, private_key)?,
         other => {
             kms_bail!("Sign: private key type not supported: {other:?}")
         }
@@ -210,14 +175,9 @@ fn sign_with_pkey(
     Ok(signature)
 }
 
-fn sign_with_rsa(
-    private_key: &PKey<Private>,
-    cryptographic_parameters: Option<&CryptographicParameters>,
-    data_to_sign: &[u8],
-    correlation_value: Option<&[u8]>,
-) -> KResult<Vec<u8>> {
+fn sign_with_rsa(request: Sign, private_key: &PKey<Private>) -> KResult<Vec<u8>> {
     let (_algorithm, _padding, _hashing_fn, digital_signature_algorithm) =
-        default_cryptographic_parameters(cryptographic_parameters);
+        default_cryptographic_parameters(request.cryptographic_parameters.as_ref());
     debug!("sign_with_rsa: signing with {digital_signature_algorithm}");
 
     // Matches the hashing algorithm to use
@@ -235,33 +195,31 @@ fn sign_with_rsa(
     };
 
     let mut signer = Signer::new(digest, private_key)?;
+
     if DigitalSignatureAlgorithm::RSASSAPSS == digital_signature_algorithm {
         signer.set_rsa_padding(Padding::PKCS1_PSS)?;
         signer.set_rsa_pss_saltlen(openssl::sign::RsaPssSaltlen::DIGEST_LENGTH)?;
     }
-    if let Some(corr) = correlation_value {
-        signer.update(corr)?;
+    if let Some(corr) = request.correlation_value {
+        signer.update(&corr)?;
     }
-    signer.update(data_to_sign)?;
-    let signature = signer.sign_to_vec()?;
+    let signature = if let Some(digested_data) = &request.digested_data {
+        signer.sign_oneshot_to_vec(digested_data)
+    } else {
+        let data_to_sign = request.data.unwrap_or_default();
+        signer.sign_oneshot_to_vec(&data_to_sign)
+    }?;
 
     debug!(
-        "sign_with_rsa: signed: message ({} bytes): {:?}, signature length: {}",
-        data_to_sign.len(),
-        String::from_utf8_lossy(data_to_sign),
+        "sign_with_rsa: signed: message signature length: {}",
         signature.len()
     );
 
     Ok(signature)
 }
 
-fn sign_with_ecdsa(
-    private_key: &PKey<Private>,
-    cryptographic_parameters: Option<&CryptographicParameters>,
-    data_to_sign: &[u8],
-    correlation_value: Option<&[u8]>,
-) -> KResult<Vec<u8>> {
-    let digital_signature_algorithm = cryptographic_parameters.map_or_else(
+fn sign_with_ecdsa(request: Sign, private_key: &PKey<Private>) -> KResult<Vec<u8>> {
+    let digital_signature_algorithm = request.cryptographic_parameters.as_ref().map_or_else(
         || DigitalSignatureAlgorithm::ECDSAWithSHA256,
         |cp| {
             cp.digital_signature_algorithm
@@ -282,15 +240,47 @@ fn sign_with_ecdsa(
     };
 
     let mut signer = Signer::new(digest, private_key)?;
-    if let Some(corr) = correlation_value {
-        signer.update(corr)?;
+
+    if DigitalSignatureAlgorithm::RSASSAPSS == digital_signature_algorithm {
+        // This should not happen for ECDSA keys
+        kms_bail!(KmsError::NotSupported(
+            "sign_with_ecdsa: RSASSAPSS is invalid for ECDSA keys".to_owned()
+        ))
     }
-    signer.update(data_to_sign)?;
-    let signature = signer.sign_to_vec()?;
+    if let Some(corr) = request.correlation_value {
+        signer.update(&corr)?;
+    }
+    let signature = if let Some(digested_data) = &request.digested_data {
+        signer.sign_oneshot_to_vec(digested_data)
+    } else {
+        let data_to_sign = request.data.unwrap_or_default();
+        signer.sign_oneshot_to_vec(&data_to_sign)
+    }?;
 
     debug!(
-        "sign_with_ecdsa: signed {} bytes, signature length: {}",
-        data_to_sign.len(),
+        "sign_with_ecdsa: signed: message signature length: {}",
+        signature.len()
+    );
+
+    Ok(signature)
+}
+
+fn sign_with_eddsa(request: Sign, private_key: &PKey<Private>) -> KResult<Vec<u8>> {
+    debug!("sign_with_eddsa: signing with EDDSA");
+    let mut signer = Signer::new_without_digest(private_key)?;
+
+    if let Some(corr) = request.correlation_value {
+        signer.update(&corr)?;
+    }
+    let signature = if let Some(digested_data) = &request.digested_data {
+        signer.sign_oneshot_to_vec(digested_data)
+    } else {
+        let data_to_sign = request.data.unwrap_or_default();
+        signer.sign_oneshot_to_vec(&data_to_sign)
+    }?;
+
+    debug!(
+        "sign_with_eddsa: signed: message signature length: {}",
         signature.len()
     );
 

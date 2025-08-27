@@ -1302,7 +1302,7 @@ pub struct SignatureVerify {
     pub signature_data: Option<Vec<u8>>,
     /// Specifies the existing stream or by-parts cryptographic operation
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub correlation_value: Option<String>,
+    pub correlation_value: Option<Vec<u8>>,
     /// Initial operation indicator
     #[serde(skip_serializing_if = "Option::is_none")]
     pub init_indicator: Option<bool>,

@@ -18,19 +18,19 @@ The Cosmian KMS presents some unique features, such as:
 - the ability to confidentially run in a public cloud, or any zero-trust environment, using
   Cosmian VM. See our cloud-ready confidential KMS on the
   [Azure, GCP, and AWS marketplaces](https://cosmian.com/marketplaces/)
-  our [deployment guide](documentation/docs/installation/marketplace_guide.md)
+  our [deployment guide](./documentation/docs/installation/marketplace_guide.md)
 - support of state-of-the-art authentication mechanisms (see [authentication](./documentation/docs/authentication.md))
 - out-of-the-box support of
   [Google Workspace Client Side Encryption (CSE)](./documentation/docs/google_cse/index.md)
 - out-of-the-box support
   of [Microsoft Double Key Encryption (DKE)](./documentation/docs/ms_dke/index.md)
 - support for the [Proteccio and Utimaco HSMs](./documentation/docs/hsms/index.md) with KMS keys wrapped by the HSM
-- [Veracrypt](./documentation/docs/pkcs11/veracrypt.md)
-  and [LUKS](./documentation/docs/pkcs11/luks.md) disk encryption support
+- [Veracrypt](https://docs.cosmian.com/cosmian_cli/pkcs11/veracrypt/)
+  and [LUKS](https://docs.cosmian.com/cosmian_cli/pkcs11/luks/) disk encryption support
 - [FIPS 140-3](./documentation/docs/fips.md) mode gated behind the feature `fips`
 - a [binary and JSON KMIP 1.0-1.4 and 2.0-2.1](./documentation/docs/kmip/index.md) compliant interface
 - MongoDB (./documentation/docs/mongodb.md)
-- Oracle DB [TDE support](./documentation/docs/oracle/tde.md)
+- Oracle DB [TDE support](https://docs.cosmian.com/cosmian_cli/pkcs11/oracle/tde/)
 - Percona Postgresql DB (./documentation/docs/percona.md)
 - VMWare [vCenter Trust Key Provider integration](./documentation/docs/vcenter.md)
 - User Defined Functions for [Big Data](./documentation/docs/python_udf/index.md) including [snowflake](./documentation/docs/snowflake/index.md)
@@ -59,6 +59,15 @@ The KMS has extensive online [documentation](https://docs.cosmian.com/key_manage
     - [Quick start](#quick-start)
         - [Example](#example)
     - [Repository content](#repository-content)
+        - [Binaries](#binaries)
+        - [Core Crates](#core-crates)
+            - [Server Infrastructure](#server-infrastructure)
+            - [Client Libraries](#client-libraries)
+            - [Cryptographic Components](#cryptographic-components)
+            - [Hardware Security Module (HSM) Support](#hardware-security-module-hsm-support)
+            - [Database Interfaces](#database-interfaces)
+            - [Development and Testing](#development-and-testing)
+        - [Additional Directories](#additional-directories)
     - [Building and running the KMS](#building-and-running-the-kms)
         - [Features](#features)
         - [Linux or macOS (CPU Intel or macOS ARM)](#linux-or-macos-cpu-intel-or-macos-arm)
@@ -86,21 +95,22 @@ inside the container, run the following command:
 docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest
 ```
 
-Then, use the CLI to issue commands to the KMS.
-The CLI, called `cosmian`, can be either downloaded from [Cosmian packages](https://package.cosmian.com/kms/) or built
-and
-launched from this GitHub project by running
+Then, use the CLI to issue commands to the KMS. The CLI, called `cosmian`, can be either:
 
-```sh
-cargo run --bin cosmian --features non-fips -- --help
-```
+- installed with `cargo install cosmian_cli`
+- downloaded from [Cosmian packages](https://package.cosmian.com/cli/)
+- built and launched from the [GitHub project](https://github.com/Cosmian/cli) by running
+
+    ```sh
+    cargo build --bin cosmian
+    ```
 
 ### Example
 
 1. Create a 256-bit symmetric key
 
     ```sh
-    ➜ cargo run --bin cosmian --features non-fips -- sym keys create --number-of-bits 256 --algorithm aes --tag my-key-file
+    ➜ cosmian sym keys create --number-of-bits 256 --algorithm aes --tag my-key-file
     ...
     The symmetric key was successfully generated.
       Unique identifier: 87e9e2a8-4538-4701-aa8c-e3af94e44a9e
@@ -112,7 +122,7 @@ cargo run --bin cosmian --features non-fips -- --help
 2. Encrypt the `image.png` file with AES GCM using the key
 
     ```sh
-    ➜ cargo run --bin cosmian --features non-fips -- sym encrypt --tag my-key-file --output-file image.enc image.png
+    ➜ cosmian sym encrypt --tag my-key-file --output-file image.enc image.png
     ...
     The encrypted file is available at "image.enc"
     ```
@@ -120,7 +130,7 @@ cargo run --bin cosmian --features non-fips -- --help
 3. Decrypt the `image.enc` file using the key
 
     ```sh
-    ➜ cargo run --bin cosmian --features non-fips -- sym decrypt --tag my-key-file --output-file image2.png image.enc
+    ➜ cosmian sym decrypt --tag my-key-file --output-file image2.png image.enc
     ...
     The decrypted file is available at "image2.png"
     ```
@@ -129,23 +139,58 @@ See the [documentation](https://docs.cosmian.com/key_management_system/) for mor
 
 ## Repository content
 
-The server is written in [Rust](https://www.rust-lang.org/) and is broken down into several
-binaries:
+The **Cosmian KMS** is written in [Rust](https://www.rust-lang.org/) and organized as a Cargo workspace with multiple crates. The repository contains the following main components:
 
-- A server (`cosmian_kms`) which is the KMS itself
-- A CLI (`cosmian`) to interact with this server
+### Binaries
 
-The most important crates are:
+- **KMS Server** (`cosmian_kms`) - The main KMS server binary built from `crate/server`
 
-- `access` to handle permissions
-- `client` to query the server
-- `interfaces` to handle the interfaces with storage and encryption oracles
-- `kmip`, which is an implementation of the KMIP standard
-- `server_database` to handle the database
-- `pkcs11_*` to handle PKCS11 support
-- `test_kms_server`, a library that allows you to instantiate the KMS server programmatically.
+### Core Crates
 
-**Please refer to the README files in the inner directories for more information.**
+#### Server Infrastructure
+
+- **`server`** - Main KMS server implementation with REST API, KMIP protocol support, and web UI
+- **`server_database`** - Database abstraction layer supporting SQLite, PostgreSQL, MySQL, and Redis
+- **`access`** - Permission and access control management system
+
+#### Client Libraries
+
+- **`kms_client`** - High-level Rust client library for KMS server communication
+- **`client_utils`** - Shared utilities for client implementations
+- **`wasm`** - WebAssembly bindings for browser-based clients
+
+#### Cryptographic Components
+
+- **`crypto`** - Core cryptographic operations and algorithm implementations
+- **`kmip`** - Complete implementation of the KMIP (Key Management Interoperability Protocol) standard versions 1.0-2.1
+- **`kmip-derive`** - Procedural macros for KMIP protocol serialization/deserialization
+
+#### Hardware Security Module (HSM) Support
+
+- **`hsm/base_hsm`** - Base HSM abstraction layer
+- **`hsm/proteccio`** - Proteccio HSM integration
+- **`hsm/softhsm2`** - SoftHSM2 integration for testing and development
+- **`hsm/utimaco`** - Utimaco HSM integration
+
+#### Database Interfaces
+
+- **`interfaces`** - Database and storage backend abstractions
+
+#### Development and Testing
+
+- **`test_kms_server`** - Library for programmatic KMS server instantiation in tests
+- **`cli`** - Legacy CLI crate (now primarily used for testing)
+
+### Additional Directories
+
+- **`documentation/`** - Comprehensive project documentation built with MkDocs
+- **`examples/`** - Code examples and integration samples
+- **`scripts/`** - Build and deployment scripts
+- **`test_data/`** - Test fixtures and sample data
+- **`ui/`** - Frontend web interface source code
+- **`pkg/`** - Packaging configurations for Debian and RPM distributions
+
+**Note:** Each crate contains its own README with detailed information. Please refer to these files for specific implementation details and usage instructions.
 
 Find the [public documentation](https://docs.cosmian.com) of the KMS in the `documentation`
 directory.
@@ -205,13 +250,10 @@ Once OpenSSL is installed, you can build the KMS. To avoid the _additive feature
 the KMS server and the PKCS11 provider should be directly built using `cargo build --release` within their crate,
 not from the project root.
 
-Build the server and CLI binaries:
+Build the server:
 
 ```sh
 cd crate/server
-cargo build --release
-cd ../..
-cd crate/cli
 cargo build --release
 ```
 
@@ -220,16 +262,14 @@ cargo build --release
 You can build a Docker containing the KMS server as follows:
 
 ```sh
-docker build . --network=host -t kms
+docker buildx build . -t kms
 ```
 
 Or:
 
 ```sh
 # Example with FIPS support
-docker build . --network=host \
-               --build-arg FEATURES="--features=fips" \
-               -t kms
+docker buildx build --build-arg FIPS="true" -t kms .
 ```
 
 ## Running the unit and integration tests
@@ -298,7 +338,7 @@ All releases can be found in the public URL [package.cosmian.com](https://packag
 
 ## Benchmarks
 
-To run benchmarks, go to the `crate/test_server` directory and run:
+To run benchmarks, go to the `crate/test_kms_server` directory and run:
 
 ```sh
 cargo bench

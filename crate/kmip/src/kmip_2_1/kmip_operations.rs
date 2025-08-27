@@ -2210,7 +2210,7 @@ pub struct SignatureVerify {
     pub signature_data: Option<Vec<u8>>,
     /// Specifies the existing stream or by-parts cryptographic operation
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub correlation_value: Option<String>,
+    pub correlation_value: Option<Vec<u8>>,
     /// Initial operation indicator
     #[serde(skip_serializing_if = "Option::is_none")]
     pub init_indicator: Option<bool>,
@@ -2221,26 +2221,41 @@ pub struct SignatureVerify {
 
 impl Display for SignatureVerify {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
+        writeln!(f, "SignatureVerify {{")?;
+        writeln!(f, "  unique_identifier: {:?},", self.unique_identifier)?;
+        writeln!(
             f,
-            "SignatureVerify {{ unique_identifier: {:?}, cryptographic_parameters: {:?}, data: \
-             {:?}, digested_data: {:?}, signature_data: {}, correlation_value: {:?}, \
-             init_indicator: {:?}, final_indicator: {:?} }}",
-            self.unique_identifier,
-            self.cryptographic_parameters,
+            "  cryptographic_parameters: {:?},",
+            self.cryptographic_parameters
+        )?;
+        writeln!(
+            f,
+            "  data: {},",
             self.data
                 .as_ref()
                 .map_or("None".to_owned(), |data| general_purpose::STANDARD
-                    .encode(data)),
-            self.digested_data,
+                    .encode(data))
+        )?;
+        writeln!(
+            f,
+            "  digested_data: {},",
+            self.digested_data
+                .as_ref()
+                .map_or("None".to_owned(), |data| general_purpose::STANDARD
+                    .encode(data))
+        )?;
+        writeln!(
+            f,
+            "  signature_data: {},",
             self.signature_data
                 .as_ref()
                 .map_or("None".to_owned(), |data| general_purpose::STANDARD
-                    .encode(data)),
-            self.correlation_value,
-            self.init_indicator,
-            self.final_indicator,
-        )
+                    .encode(data))
+        )?;
+        writeln!(f, "  correlation_value: {:?},", self.correlation_value)?;
+        writeln!(f, "  init_indicator: {:?},", self.init_indicator)?;
+        writeln!(f, "  final_indicator: {:?}", self.final_indicator)?;
+        write!(f, "}}")
     }
 }
 
@@ -2258,7 +2273,7 @@ pub struct SignatureVerifyResponse {
     pub data: Option<Vec<u8>>,
     /// Specifies the stream or by-parts value to be provided in subsequent calls to this operation
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub correlation_value: Option<String>,
+    pub correlation_value: Option<Vec<u8>>,
 }
 
 impl Display for SignatureVerifyResponse {

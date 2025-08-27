@@ -1,44 +1,77 @@
 # Cosmian KMS Server
 
+The **KMS Server** is the main component of the Cosmian Key Management System, providing secure key management, cryptographic operations, and KMIP protocol support.
+
+## Overview
+
+The KMS server is a high-performance, FIPS 140-3 compliant server application that provides comprehensive key management services. It supports multiple database backends, HSM integration, and offers both REST API and KMIP protocol interfaces.
+
 ## Features
 
-The KMS server provides several features which can be enabled at compilation times. Enable/Disable these features will change the server configuration variables.
+### Core Functionality
 
-| Feature  | Description                                                                                                       | Staging | Prod 🔥 |
-| -------- | ----------------------------------------------------------------------------------------------------------------- | ------- | ------ |
-| insecure | Do not verify auth0 token expiration date                                                                         | ✅       |        |
-| timeout  | The binary will stop (and won't be able to start again) after a period of time, starting from date of compilation |         |        |
+- **Key Management**: Generate, store, and manage cryptographic keys
+- **Certificate Management**: Handle X.509 certificates and PKI operations
+- **Cryptographic Operations**: Encryption, decryption, signing, and verification
+- **KMIP Protocol**: Full KMIP 1.0-2.1 compliance
+- **REST API**: Modern HTTP API for easy integration
+- **Web UI**: Browser-based management interface
 
-**Caption**:
-✅ Enabled
-🔥 Default
+### Security Features
 
-### Development
+- **FIPS 140-3 Compliance**: Certified cryptographic modules
+- **Multi-Factor Authentication**: Support for various authentication methods
+- **Access Control**: Fine-grained permissions and role-based access
+- **Audit Logging**: Comprehensive logging of all operations
+- **HSM Integration**: Hardware Security Module support
 
-For development, you can use `--no-default-features`. It will tell the server:
+### Compilation Features
 
-- to not use authentication
-- to use HTTP connection
+The KMS server provides several features which can be enabled at compilation time:
 
-```console
-cargo build --no-default-features
+| Feature    | Description                                                                                                         | Development | Production |
+| ---------- | ------------------------------------------------------------------------------------------------------------------- | ----------- | ---------- |
+| `non-fips` | Enable non-FIPS cryptographic algorithms and features                                                              | ✅          |            |
+| `insecure` | Disable authentication and use HTTP (development only)                                                             | ✅          |            |
+| `timeout`  | Binary stops after 3 months from compilation date                                                                  |             |            |
+
+**Legend**: ✅ = Recommended for this environment
+
+### Development Mode
+
+For development, you can use `--features insecure` to disable authentication and HTTPS:
+
+```bash
+cargo build --features insecure
+cargo run --features insecure --
 ```
 
-### Timeout feature
+This configuration:
 
-The KMS server's binary can be configured to stop running 3 months after date of compilation.
+- Disables authentication requirements
+- Uses HTTP instead of HTTPS
+- Suitable for local development only
 
-This is done by using feature flag `timeout`:
+### Non-FIPS Mode
 
-```console
+Enable additional cryptographic algorithms:
+
+```bash
+cargo build --features non-fips
+cargo run --features non-fips
+```
+
+### Timeout Feature
+
+Create a time-limited binary (stops after 3 months):
+
+```bash
 cargo build --features timeout
 ```
 
-This feature can be combined with any other features.
-
 ## Configuration
 
-The server configuration can be passed through the server using:
+The server configuration can be provided through multiple methods (in order of precedence):
 
 - Environment variables
 - A dotenv `.env` file at the location where you start the binary
@@ -47,20 +80,13 @@ The server configuration can be passed through the server using:
 The list of parameters, which depends on the compiled features, can be obtained by doing:
 
 ```sh
-cosmian_kms -h
+cosmian_kms_server -h
 ```
 
 A server for development can be quickly run as follow (with sqlite):
 
 ```sh
-cargo run --no-default-features -- --tmp-path /tmp
-```
-
-or:
-
-```sh
-export KMS_SQLITE_PATH=/tmp
-cargo run --no-default-features
+cargo run
 ```
 
 ## Configure the authentication
@@ -76,33 +102,6 @@ KMS_JWT_ISSUER_URI="demo-kms.eu.auth0.com" cargo run
 This authentication enables the KMS to deal with several users with the same database.
 If there is no `KMS_JWT_ISSUER_URI` provided, the KMS disables the authentication. Only one user is allowed.
 If so, `admin` will be the user id.
-
-## Configure the SGDB
-
-The KMS relies on a database using various kinds of connector to store all the user secrets.
-
-By default, an sqlite database is used. This configuration is not suitable for production environment. Use one of the two followings instead.
-
-### Running with PostgreSQL
-
-```sh
-KMS_POSTGRES_URL=postgresql://kms:kms@127.0.0.1:5432/kms cargo run
-```
-
-### Running with MySQL/MariaDB
-
-```sh
-KMS_MYSQL_URL=mysql://root:kms@localhost/kms cargo run
-```
-
-## Tests
-
-`cargo make` setups PostgreSQL and MariaDB automatically to perform tests.
-
-```console
-cargo install cargo-make
-cargo make rust-tests
-```
 
 ## In-depth understanding
 
