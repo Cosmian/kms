@@ -1,6 +1,6 @@
 # Cosmian KMS
 
-Cosmian KMS is a high-performance, open-source Key Management System written in Rust. The repository contains the KMS server (`cosmian_kms_server`) and supporting libraries for cryptographic operations, database management, and various integrations.
+Cosmian KMS is a high-performance, open-source FIPS 140-3 compliant Key Management System written in Rust. The repository contains the KMS server (`cosmian_kms_server`) and supporting libraries for cryptographic operations, database management, and various integrations.
 
 Always reference these instructions first and fallback to search or bash commands only when you encounter unexpected information that does not match the info here.
 
