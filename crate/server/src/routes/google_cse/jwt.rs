@@ -205,7 +205,7 @@ pub async fn validate_cse_authentication_token(
     cse_config: &Option<GoogleCseConfig>,
     google_cse_kacls_url: &str,
     kms_default_username: &str,
-    is_priv_unwrap: bool,
+    is_priv_unwrap: Option<String>,
 ) -> KResult<String> {
     debug!("validate_cse_authentication_token: entering");
     let cse_config = cse_config.as_ref().ok_or_else(|| {
@@ -243,16 +243,23 @@ pub async fn validate_cse_authentication_token(
     // When the authentication token contains the optional `google_email` claim, it must be compared against the email claim in the authorization token using a case-insensitive approach.
     // Don't use the email claim within the authentication token for this comparison.
     // In scenarios where the authentication token lacks the optional google_email claim, the email claim within the authentication token should be compared with the email claim in the authorization token, using a case-insensitive method. (Google Documentation)
-    let authentication_email = if is_priv_unwrap {
-        // For `privileged_unwrap`, check that aud is `kacls-migration`
-        if let Some(migration_audience) = authentication_token.aud {
-            kms_ensure!(
-                migration_audience == vec!["kacls-migration"],
-                KmsError::Unauthorized(format!(
-                    "Audience should match: expected: kacls-migration, got: {:?}",
-                    migration_audience.join(", ")
-                ))
-            );
+    let authentication_email = if let Some(resource_name) = is_priv_unwrap {
+        //  For 'Drive CSE PriviledgedUnwrap' Operation, this should be 'kacls-migration'
+        // 'drive' should be in the resource name e.g. //googleapis.com/drive/files/1234567890
+        if resource_name.to_lowercase().contains("/drive/") {
+            if let Some(migration_audience) = authentication_token.aud {
+                kms_ensure!(
+                    migration_audience == vec!["kacls-migration"],
+                    KmsError::Unauthorized(format!(
+                        "Audience should match: expected: kacls-migration, got: {:?}",
+                        migration_audience.join(", ")
+                    ))
+                );
+            } else {
+                return Err(KmsError::Unauthorized(
+                    "Invalid token for Google Drive migration".to_owned(),
+                ));
+            }
         }
         // For `privileged_unwrap` endpoint, google_email or email claim are not provided in authentication token
         kms_default_username.to_owned()
@@ -320,7 +327,7 @@ pub(crate) async fn validate_cse_authorization_token(
         let role = authorization_token.role.as_ref().ok_or_else(|| {
             KmsError::Unauthorized("Authorization token should contain a role".to_owned())
         })?;
-        let roles_str: Vec<&str> = roles.iter().map(Role::as_role_str).collect();
+        let roles_str: Vec<&str> = roles.iter().map(Role::str).collect();
         kms_ensure!(
             roles_str.contains(&role.as_str()),
             KmsError::Unauthorized(format!(
@@ -377,7 +384,7 @@ pub(crate) async fn validate_tokens(
         cse_config,
         &google_cse_kacls_url,
         &kms.params.default_username,
-        false,
+        None,
     )
     .await?;
 
