@@ -20,7 +20,7 @@ use openssl::{
     rsa::Padding,
     sign::{RsaPssSaltlen, Verifier},
 };
-use tracing::debug;
+use tracing::{debug, trace};
 
 use crate::{
     core::{KMS, retrieve_object_utils::retrieve_object_for_operation},
@@ -214,6 +214,7 @@ fn verify_signature(
 
     let is_valid = match verification_key.id() {
         Id::RSA | Id::EC => {
+            trace!("verify_signature: using RSA or EC key for verification");
             // Data needs to be hashed during verification
             let mut verifier = Verifier::new(message_digest, verification_key)?;
             if DigitalSignatureAlgorithm::RSASSAPSS == signature_algorithm
@@ -225,6 +226,7 @@ fn verify_signature(
             verifier.verify_oneshot(signature, data)?
         }
         Id::ED25519 => {
+            trace!("verify_signature: using ED25519 key for verification");
             // ED25519 verifies the signature directly on the data
             let mut verifier = Verifier::new_without_digest(verification_key)?;
             verifier.verify_oneshot(signature, data)?

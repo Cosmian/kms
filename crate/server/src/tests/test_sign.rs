@@ -328,3 +328,41 @@ async fn test_sign_eddsa() -> KResult<()> {
     )
     .await
 }
+
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_sign_secp256k1() -> KResult<()> {
+    log_init(None);
+
+    let clap_config = https_clap_config();
+    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let owner = "test_user_secp256k1_sign";
+
+    // Create secp256k1 key pair
+    let request = create_ec_key_pair_request(
+        None,                        // private_key_id
+        EMPTY_TAGS,                  // tags
+        RecommendedCurve::SECP256K1, // curve
+        false,                       // sensitive
+        None,                        // wrapping_key_id
+    )?;
+    let response = kms.create_key_pair(request, owner, None, None).await?;
+
+    // Test single-call signature
+    test_single_signature(
+        kms.clone(),
+        owner,
+        &response.private_key_unique_identifier,
+        &response.public_key_unique_identifier,
+    )
+    .await?;
+
+    // Test streaming signature verification
+    test_streaming_signature_verification(
+        kms.clone(),
+        owner,
+        &response.private_key_unique_identifier,
+        &response.public_key_unique_identifier,
+    )
+    .await
+}
