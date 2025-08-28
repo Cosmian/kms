@@ -282,7 +282,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
                 Operation::CreateKeyPair(Box::new(create_ec_key_pair_request(
                     None,
                     EMPTY_TAGS,
-                    RecommendedCurve::SECP256K1,
+                    RecommendedCurve::SECT113R1,
                     false,
                     None,
                 )?)),
@@ -345,7 +345,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
     assert_eq!(
         batch_item.result_message,
         Some(
-            "Not Supported: Generation of Key Pair for curve: SECP256K1, is not supported"
+            "Not Supported: Generation of Key Pair for curve: SECT113R1, is not supported"
                 .to_owned()
         )
     );
