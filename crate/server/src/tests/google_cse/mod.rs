@@ -858,9 +858,14 @@ async fn test_cse_custom_jwt() -> KResult<()> {
     };
 
     // Validate custom JWT
-    let result =
-        validate_cse_authentication_token(&jwt_token, &Some(cse_config), kacls_url, "admin", true)
-            .await;
+    let result = validate_cse_authentication_token(
+        &jwt_token,
+        &Some(cse_config),
+        kacls_url,
+        "admin",
+        Some(resource_name),
+    )
+    .await;
 
     assert!(
         result.is_ok(),
