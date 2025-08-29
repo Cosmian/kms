@@ -268,20 +268,29 @@ pub fn create_x25519_key_pair(
     )
 }
 
-/// Generate a Secp256k1 Key Pair. Not FIPS 140-3 compliant.
+/// Generate a SEC 2 Key Pair. Not FIPS 140-3 compliant.
+/// SEC 2: Recommended Elliptic Curve Domain Parameters: <https://www.secg.org/sec2-v2.pdf>
 #[cfg(feature = "non-fips")]
-pub fn create_secp256k1_key_pair(
+pub fn create_secp_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
+    curve: RecommendedCurve,
     cryptographic_algorithm: &CryptographicAlgorithm,
     common_attributes: Attributes,
     private_key_attributes: Option<Attributes>,
     public_key_attributes: Option<Attributes>,
 ) -> Result<KeyPair, CryptoError> {
-    tracing::debug!("create_secp256k1_key_pair");
+    tracing::debug!("create_secp_key_pair");
 
-    // 1. Get the secp256k1 curve group
-    let group = EcGroup::from_curve_name(Nid::SECP256K1)?;
+    let curve_nid = match curve {
+        RecommendedCurve::SECP224K1 => Nid::SECP224K1,
+        RecommendedCurve::SECP256K1 => Nid::SECP256K1,
+
+        other => crypto_bail!("Curve {:?} not supported by secp_key key generation", other),
+    };
+
+    // 1. Get the secp_key curve group
+    let group = EcGroup::from_curve_name(curve_nid)?;
     // 2. Generate a new EC keypair
     let ec_key = EcKey::generate(&group)?;
     // 3. Extract the private and public key bytes

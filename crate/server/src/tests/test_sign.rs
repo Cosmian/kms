@@ -255,21 +255,21 @@ async fn test_sign_rsa() -> KResult<()> {
     .await
 }
 
-#[tokio::test]
-async fn test_sign_ecdsa() -> KResult<()> {
+/// Helper function to test signing for elliptic curves
+async fn test_sign_ec_curve(curve: RecommendedCurve, test_name: &str) -> KResult<()> {
     log_init(None);
 
     let clap_config = https_clap_config();
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = "test_user_ecdsa_sign";
+    let owner = &format!("test_user_{test_name}_sign");
 
-    // Create ECDSA key pair (P-256)
+    // Create EC key pair with specified curve
     let request = create_ec_key_pair_request(
-        None,                   // private_key_id
-        EMPTY_TAGS,             // tags
-        RecommendedCurve::P256, // curve
-        false,                  // sensitive
-        None,                   // wrapping_key_id
+        None,       // private_key_id
+        EMPTY_TAGS, // tags
+        curve,      // curve
+        false,      // sensitive
+        None,       // wrapping_key_id
     )?;
     let response = kms.create_key_pair(request, owner, None, None).await?;
 
@@ -293,76 +293,22 @@ async fn test_sign_ecdsa() -> KResult<()> {
 }
 
 #[tokio::test]
+async fn test_sign_ecdsa() -> KResult<()> {
+    test_sign_ec_curve(RecommendedCurve::P256, "ecdsa").await
+}
+
+#[tokio::test]
 async fn test_sign_eddsa() -> KResult<()> {
-    log_init(None);
-
-    let clap_config = https_clap_config();
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = "test_user_eddsa_sign";
-
-    // Create EdDSA key pair (Ed25519)
-    let request = create_ec_key_pair_request(
-        None,                           // private_key_id
-        EMPTY_TAGS,                     // tags
-        RecommendedCurve::CURVEED25519, // curve
-        false,                          // sensitive
-        None,                           // wrapping_key_id
-    )?;
-    let response = kms.create_key_pair(request, owner, None, None).await?;
-
-    // Test single-call signature
-    test_single_signature(
-        kms.clone(),
-        owner,
-        &response.private_key_unique_identifier,
-        &response.public_key_unique_identifier,
-    )
-    .await?;
-
-    // Test streaming signature verification
-    test_streaming_signature_verification(
-        kms.clone(),
-        owner,
-        &response.private_key_unique_identifier,
-        &response.public_key_unique_identifier,
-    )
-    .await
+    test_sign_ec_curve(RecommendedCurve::CURVEED25519, "eddsa").await
 }
 
 #[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_sign_secp256k1() -> KResult<()> {
-    log_init(None);
+    test_sign_ec_curve(RecommendedCurve::SECP256K1, "secp256k1").await
+}
 
-    let clap_config = https_clap_config();
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = "test_user_secp256k1_sign";
-
-    // Create secp256k1 key pair
-    let request = create_ec_key_pair_request(
-        None,                        // private_key_id
-        EMPTY_TAGS,                  // tags
-        RecommendedCurve::SECP256K1, // curve
-        false,                       // sensitive
-        None,                        // wrapping_key_id
-    )?;
-    let response = kms.create_key_pair(request, owner, None, None).await?;
-
-    // Test single-call signature
-    test_single_signature(
-        kms.clone(),
-        owner,
-        &response.private_key_unique_identifier,
-        &response.public_key_unique_identifier,
-    )
-    .await?;
-
-    // Test streaming signature verification
-    test_streaming_signature_verification(
-        kms.clone(),
-        owner,
-        &response.private_key_unique_identifier,
-        &response.public_key_unique_identifier,
-    )
-    .await
+#[tokio::test]
+async fn test_sign_secp224r1() -> KResult<()> {
+    test_sign_ec_curve(RecommendedCurve::P224, "secp224r1").await
 }

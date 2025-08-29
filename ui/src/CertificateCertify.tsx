@@ -30,6 +30,7 @@ const ALGORITHM_OPTIONS = [
     { label: "NIST P-256", value: "nist-p256" },
     { label: "NIST P-384", value: "nist-p384" },
     { label: "NIST P-521", value: "nist-p521" },
+    { label: "SECP224k1", value: "secp224k1" },
     { label: "SECP256k1", value: "secp256k1" },
     { label: "Ed25519", value: "ed25519" },
     { label: "Ed448", value: "ed448" },

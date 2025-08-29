@@ -27,6 +27,8 @@ pub enum Curve {
     Ed448,
     #[cfg(feature = "non-fips")]
     Secp256k1,
+    #[cfg(feature = "non-fips")]
+    Secp224k1,
 }
 
 impl From<Curve> for RecommendedCurve {
@@ -48,6 +50,8 @@ impl From<Curve> for RecommendedCurve {
             Curve::Ed448 => Self::CURVEED448,
             #[cfg(feature = "non-fips")]
             Curve::Secp256k1 => Self::SECP256K1,
+            #[cfg(feature = "non-fips")]
+            Curve::Secp224k1 => Self::SECP224K1,
         }
     }
 }

@@ -4,7 +4,7 @@ use time::OffsetDateTime;
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::reexport::cosmian_cover_crypt::api::Covercrypt;
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::elliptic_curves::operation::{
-    create_secp256k1_key_pair, create_x448_key_pair, create_x25519_key_pair
+    create_secp_key_pair, create_x448_key_pair, create_x25519_key_pair
 };
 use cosmian_kms_server_database::reexport::{cosmian_kmip, cosmian_kms_crypto::crypto::{
     elliptic_curves::operation::{
@@ -261,9 +261,10 @@ pub(crate) fn generate_key_pair(
                     request.public_key_attributes,
                 ),
                 #[cfg(feature = "non-fips")]
-                RecommendedCurve::SECP256K1 => create_secp256k1_key_pair(
+                RecommendedCurve::SECP224K1 | RecommendedCurve::SECP256K1 => create_secp_key_pair(
                     private_key_uid,
                     public_key_uid,
+                    curve,
                     &cryptographic_algorithm,
                     common_attributes,
                     request.private_key_attributes,
