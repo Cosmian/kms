@@ -74,8 +74,8 @@ use crate::{
 /// 2. Imports an existing migration key if provided via configuration
 ///
 /// The keypair is stored with the following identifiers:
-/// - Private key: "{GOOGLE_CSE_ID}_rsa"
-/// - Public key: "{GOOGLE_CSE_ID}_rsa_pk"
+/// - Private key: `{GOOGLE_CSE_ID}_rsa`
+/// - Public key: `{GOOGLE_CSE_ID}_rsa_pk`
 ///
 /// # Arguments
 ///
@@ -86,6 +86,10 @@ use crate::{
 ///
 /// Returns `Ok(())` if the keypair exists or was successfully created/imported.
 /// Returns `Err(KmsError)` if any operation fails.
+///
+/// # Errors
+///
+///  * `KmsError::ServerError` if the keypair cannot be created/imported
 ///
 /// # Note
 ///
