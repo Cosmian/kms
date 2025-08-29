@@ -342,6 +342,7 @@ async fn test_destroy_and_remove_ec_key() -> KmsCliResult<()> {
 
 #[cfg(feature = "non-fips")]
 #[tokio::test]
+#[allow(clippy::large_stack_frames)]
 async fn test_destroy_cover_crypt() -> KmsCliResult<()> {
     use std::path::PathBuf;
 

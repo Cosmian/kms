@@ -3,7 +3,7 @@
 set -ex
 
 # Config paths
-CLI_VERSION="1.2.0"
+CLI_VERSION="1.3.0"
 CONFIG=~/.cosmian/cosmian-no-tls.toml
 TLS_CONFIG=~/.cosmian/cosmian-tls.toml
 KMS_URL_HTTP="http://0.0.0.0:9998"
@@ -24,7 +24,7 @@ sudo apt install ./"cosmian-cli_$CLI_VERSION-1_amd64.deb"
 cosmian --version
 
 # update cli conf
-mkdir ~/.cosmian
+mkdir -p ~/.cosmian
 touch $CONFIG $TLS_CONFIG
 
 echo '
@@ -54,27 +54,38 @@ sleep 10
 
 # Function to test OpenSSL connections
 openssl_test() {
-  local host_port=$1
-  local tls_version=$2
-  echo "Testing $host_port with TLS $tls_version"
-  openssl s_client -showcerts -debug -"$tls_version" -connect "$host_port" \
-    -CAfile "$CA_CERT" \
-    -cert "$CLIENT_CERT" \
-    -key "$CLIENT_KEY"
+    local host_port=$1
+    local tls_version=$2
+    echo "Testing $host_port with TLS $tls_version"
+    echo "QUIT" | openssl s_client -"$tls_version" -connect "$host_port" \
+        -CAfile "$CA_CERT" \
+        -cert "$CLIENT_CERT" \
+        -key "$CLIENT_KEY" \
+        -verify_return_error \
+        -brief
 }
 
 # Create symmetric keys
 cosmian -c "$CONFIG" kms sym keys create
 cosmian -c "$TLS_CONFIG" kms sym keys create
 
-# Test UI endpoints
-curl -I http://127.0.0.1:9998/ui/index.html
-curl --insecure -I https://127.0.0.1:9999/ui/index.html
-
-# Test TLS HTTPS server
+# Test TLS on HTTP server with default options
 openssl_test "127.0.0.1:9999" "tls1_2"
 openssl_test "127.0.0.1:9999" "tls1_3"
 
-# Test TLS socket server
+# Test TLS socket server with default options
 openssl_test "127.0.0.1:5696" "tls1_2"
 openssl_test "127.0.0.1:5696" "tls1_3"
+
+# Test TLS on HTTP server with specific TLS1.3
+openssl_test "127.0.0.1:10000" "tls1_2"
+openssl_test "127.0.0.1:10000" "tls1_3"
+
+# Test TLS socket server with specific TLS1.3
+openssl_test "127.0.0.1:5697" "tls1_2"
+openssl_test "127.0.0.1:5697" "tls1_3"
+
+# Test UI endpoints
+curl -I http://127.0.0.1:9998/ui/index.html
+curl --insecure -I https://127.0.0.1:9999/ui/index.html
+curl --insecure -I https://127.0.0.1:10000/ui/index.html

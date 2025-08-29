@@ -38,11 +38,7 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kms_crypto::openssl::kmip_private_key_to_openssl,
 };
 use log::error;
-use rustls::{
-    RootCertStore, ServerConfig,
-    pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer, pem::PemObject},
-    server::WebPkiClientVerifier,
-};
+use openssl::ssl::SslAcceptorBuilder;
 use tokio::{runtime::Handle, task::JoinHandle, try_join};
 use tracing::{debug, info, trace};
 
@@ -62,8 +58,9 @@ use crate::{
         ms_dke,
         ui_auth::configure_auth_routes,
     },
-    socket_server::{SocketServer, SocketServerParams, initialize_aws_lc_crypto_provider},
+    socket_server::{SocketServer, SocketServerParams},
     start_kms_server::google_cse::operations::GOOGLE_CSE_ID,
+    tls_config::{TlsConfig, configure_client_cert_verification, create_base_openssl_acceptor},
 };
 
 /// Handles the creation or import of RSA keypair used for Google Client-Side Encryption (CSE).
@@ -474,7 +471,7 @@ fn spa_index_handler(req: &HttpRequest, ui_index_html_folder: &PathBuf) -> HttpR
 /// - `KmsError::ServerError` - If there is an error in the server configuration or preparation.
 pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev::Server> {
     let tls_config = if let Some(tls_params) = &kms_server.params.tls_params {
-        Some(create_rustls_server_config(tls_params)?)
+        Some(create_openssl_acceptor(tls_params)?)
     } else {
         None
     };
@@ -545,7 +542,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         .params
         .tls_params
         .as_ref()
-        .is_some_and(|tls_params| tls_params.client_ca_cert_pem.is_some());
+        .is_some_and(|tls_params| tls_params.clients_ca_cert_pem.is_some());
     // Determine if API Token Auth should be used for authentication.
     let use_jwt_auth = !jwt_configurations.is_empty();
     // Determine if API Token Auth should be used for authentication.
@@ -751,18 +748,18 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
     });
 
     Ok(match tls_config {
-        Some(cert_auth_builder) => {
+        Some(ssl_acceptor) => {
             if use_cert_auth {
-                trace!("Using Client Certificate Authentication with Rustls 0.23");
+                trace!("Using Client Certificate Authentication with OpenSSL");
                 // Start an HTTPS server with PKCS#12 with client cert auth
                 server
                     .on_connect(extract_peer_certificate)
-                    .bind_rustls_0_23(address, cert_auth_builder)?
+                    .bind_openssl(address, ssl_acceptor)?
                     .run()
             } else {
-                trace!("Not using Client Certificate Authentication with Rustls 0.23");
+                trace!("Not using Client Certificate Authentication with OpenSSL");
                 // Start an HTTPS server with PKCS#12 but not client cert auth
-                server.bind_rustls_0_23(address, cert_auth_builder)?.run()
+                server.bind_openssl(address, ssl_acceptor)?.run()
             }
         }
         _ => server.bind(address)?.run(),
@@ -770,66 +767,23 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
 }
 
 // Client Certificate Authentication
-// Build a rustls ServerConfig supporting client cert auth
-pub(crate) fn create_rustls_server_config(server_config: &TlsParams) -> KResult<ServerConfig> {
-    trace!("Creating Rustls ServerConfig with TLS parameters: {server_config:?}");
-    // We need an initialized crypto provider to use rustls
-    initialize_aws_lc_crypto_provider();
-    trace!("Creating Rustls ServerConfig: aws provider initialized");
+// Build an OpenSSL SslAcceptorBuilder supporting client cert auth
+pub(crate) fn create_openssl_acceptor(server_config: &TlsParams) -> KResult<SslAcceptorBuilder> {
+    trace!("Creating OpenSSL SslAcceptorBuilder with TLS parameters");
 
-    let mut certs: Vec<CertificateDer> = Vec::new();
-
-    let Some(server_cert) = &server_config.p12.cert else {
-        return Err(KmsError::Certificate(
-            "http server: no server certificate found in PKCS#12 file".to_owned(),
-        ));
+    // Use the common TLS configuration
+    let tls_config = TlsConfig {
+        cipher_suites: server_config.cipher_suites.as_deref(),
+        p12: &server_config.p12,
+        client_ca_cert_pem: server_config.clients_ca_cert_pem.as_deref(),
     };
-    let server_cert = server_cert
-        .to_der()
-        .context("http server: failed to encode server certificate in DER bytes")?;
-    certs.push(CertificateDer::from(server_cert));
-    if let Some(cas) = &server_config.p12.ca {
-        for ca in cas.iter().rev() {
-            let der_bytes = ca
-                .to_der()
-                .context("http server: failed to encode CA certificate in DER bytes")?;
-            certs.push(CertificateDer::from(der_bytes));
-        }
+
+    let mut builder = create_base_openssl_acceptor(&tls_config, "http server")?;
+
+    // Configure client certificate verification if specified
+    if let Some(ca_cert_pem) = &server_config.clients_ca_cert_pem {
+        configure_client_cert_verification(&mut builder, ca_cert_pem, "http server")?;
     }
 
-    let Some(server_private_key) = &server_config.p12.pkey else {
-        return Err(KmsError::Certificate(
-            "http server: no server private key found in PKCS#12 file".to_owned(),
-        ));
-    };
-    let server_private_key_pkcs8 = server_private_key
-        .private_key_to_pkcs8()
-        .context("http server: failed to generate the server private key as PKCS#8")?;
-    let server_private_key = PrivatePkcs8KeyDer::from(server_private_key_pkcs8);
-
-    if let Some(verify_cert) = &server_config.client_ca_cert_pem {
-        trace!("Using mutual authentication with Rustls 0.23");
-        // Create the clients' CA certificate store
-        let mut client_auth_roots = RootCertStore::empty();
-        let client_ca_cert = CertificateDer::from_pem_slice(verify_cert)
-            .context("http server: failed loading http server clients' CA certificate")?;
-        trace!("Adding client CA certificate to the store");
-        client_auth_roots
-            .add(client_ca_cert)
-            .context("http server: failed to add client CA certificate")?;
-        let client_auth = WebPkiClientVerifier::builder(client_auth_roots.into())
-            .allow_unauthenticated()
-            .build()
-            .context("http server: failed to create the http server client auth verifier")?;
-
-        trace!("Web PKI Client Verifier created");
-        Ok(ServerConfig::builder()
-            .with_client_cert_verifier(client_auth)
-            .with_single_cert(certs, PrivateKeyDer::Pkcs8(server_private_key))?)
-    } else {
-        trace!("Not using mutual authentication with Rustls 0.23");
-        Ok(ServerConfig::builder()
-            .with_no_client_auth()
-            .with_single_cert(certs, PrivateKeyDer::Pkcs8(server_private_key))?)
-    }
+    Ok(builder)
 }

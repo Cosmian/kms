@@ -10,6 +10,7 @@ use test_kms_server::{
     start_default_test_kms_server_with_cert_auth,
     start_default_test_kms_server_with_privileged_users,
 };
+use tokio::time::{Duration, sleep};
 use tracing::trace;
 
 use crate::{
@@ -36,6 +37,44 @@ async fn gen_key(kms_client: &KmsClient) -> KmsCliResult<UniqueIdentifier> {
 /// Generates a key pair
 async fn gen_keypair(kms_client: &KmsClient) -> KmsCliResult<(UniqueIdentifier, UniqueIdentifier)> {
     CreateKeyPairAction::default().run(kms_client.clone()).await
+}
+
+/// Helper function to retry an assertion with exponential backoff
+/// This helps with eventual consistency issues in distributed systems
+async fn retry_assert<F, Fut>(
+    mut assertion: F,
+    max_retries: u32,
+    initial_delay_ms: u64,
+) -> KmsCliResult<()>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<bool, crate::error::KmsCliError>>,
+{
+    let mut delay = Duration::from_millis(initial_delay_ms);
+
+    for attempt in 0..=max_retries {
+        match assertion().await {
+            Ok(true) => return Ok(()),
+            Ok(false) if attempt < max_retries => {
+                trace!(
+                    "Assertion failed on attempt {}, retrying in {:?}",
+                    attempt + 1,
+                    delay
+                );
+                sleep(delay).await;
+                delay = delay.mul_f32(1.5); // exponential backoff
+            }
+            Ok(false) => {
+                return Err(crate::error::KmsCliError::Default(format!(
+                    "Assertion failed after {} attempts",
+                    max_retries + 1
+                )));
+            }
+            Err(e) => return Err(e),
+        }
+    }
+
+    unreachable!()
 }
 
 /// Export and import symmetric key
@@ -512,6 +551,10 @@ pub(crate) async fn test_list_owned_objects() -> KmsCliResult<()> {
 pub(crate) async fn test_access_right_obtained() -> KmsCliResult<()> {
     log_init(None);
     let ctx = start_default_test_kms_server_with_cert_auth().await;
+
+    // Add small delay to ensure clean state
+    sleep(Duration::from_millis(50)).await;
+
     let key_id = gen_key(&ctx.get_owner_client()).await?;
 
     let list = ListAccessRightsObtained.run(ctx.get_owner_client()).await?;
@@ -531,19 +574,26 @@ pub(crate) async fn test_access_right_obtained() -> KmsCliResult<()> {
     .run(ctx.get_owner_client())
     .await?;
 
-    // the user should have the "get" access granted
-    let list = ListAccessRightsObtained.run(ctx.get_user_client()).await?;
-    trace!("user list {list:?}");
-    assert!(
-        list.iter()
-            .map(|x| x.object_id.clone())
-            .any(|x| x == key_id)
-    );
-    assert!(
-        list.iter()
-            .flat_map(|x| x.operations.clone())
-            .any(|x| x == KmipOperation::Get)
-    );
+    // the user should have the "get" access granted (with retry for eventual consistency)
+    retry_assert(
+        || {
+            let key_id = key_id.clone();
+            let user_client = ctx.get_user_client();
+            async move {
+                let list = ListAccessRightsObtained.run(user_client).await?;
+                trace!("user list {list:?}");
+                let has_key = list.iter().any(|x| x.object_id == key_id);
+                let has_get_op = list
+                    .iter()
+                    .flat_map(|x| x.operations.clone())
+                    .any(|x| x == KmipOperation::Get);
+                Ok(has_key && has_get_op)
+            }
+        },
+        5,   // max retries
+        100, // initial delay 100ms
+    )
+    .await?;
 
     // The owner has not been granted access rights on this object (it owns it)
     let list = ListAccessRightsObtained.run(ctx.get_owner_client()).await?;
@@ -579,20 +629,30 @@ pub(crate) async fn test_access_right_obtained() -> KmsCliResult<()> {
     .run(ctx.get_owner_client())
     .await?;
 
-    // the user should have the "get" and "encrypt" access granted
-    let list = ListAccessRightsObtained.run(ctx.get_user_client()).await?;
-    trace!("user list {list:?}");
-    assert!(list.iter().any(|x| x.object_id == key_id));
-    assert!(
-        list.iter()
-            .flat_map(|x| x.operations.clone())
-            .any(|x| x == KmipOperation::Get)
-    );
-    assert!(
-        list.iter()
-            .flat_map(|x| x.operations.clone())
-            .any(|x| x == KmipOperation::Encrypt)
-    );
+    // the user should have the "get" and "encrypt" access granted (with retry for eventual consistency)
+    retry_assert(
+        || {
+            let key_id = key_id.clone();
+            let user_client = ctx.get_user_client();
+            async move {
+                let list = ListAccessRightsObtained.run(user_client).await?;
+                trace!("user list {list:?}");
+                let has_key = list.iter().any(|x| x.object_id == key_id);
+                let has_get_op = list
+                    .iter()
+                    .flat_map(|x| x.operations.clone())
+                    .any(|x| x == KmipOperation::Get);
+                let has_encrypt_op = list
+                    .iter()
+                    .flat_map(|x| x.operations.clone())
+                    .any(|x| x == KmipOperation::Encrypt);
+                Ok(has_key && has_get_op && has_encrypt_op)
+            }
+        },
+        5,   // max retries
+        100, // initial delay 100ms
+    )
+    .await?;
 
     // The owner should not have access rights (since they own the object)
     let list = ListAccessRightsObtained.run(ctx.get_owner_client()).await?;

@@ -87,7 +87,6 @@ pem = "3.0"
 pkcs11-sys = "0.2"
 rand = "0.9"
 reqwest = { version = "0.11", default-features = false }
-rustls = "0.23"
 serde = "1.0"
 serde_json = "1.0"
 sha3 = { version = "0.10", default-features = false }

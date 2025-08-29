@@ -50,6 +50,7 @@ pub(crate) fn https_clap_config_opts(kms_public_url: Option<String>) -> ClapConf
             )),
             tls_p12_password: Some("password".to_owned()),
             clients_ca_cert_file: Some(PathBuf::from("../../test_data/client_server/ca/ca.crt")),
+            tls_cipher_suites: None,
         },
         db: MainDBConfig {
             database_type: Some("sqlite".to_owned()),

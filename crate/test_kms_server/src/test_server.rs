@@ -275,6 +275,7 @@ pub struct AuthenticationOptions {
     pub use_client_cert: bool,
     pub api_token_id: Option<String>,
     pub api_token: Option<String>,
+    pub tls_cipher_suites: Option<String>,
 
     // Client credential configuration (all false by default)
     pub do_not_send_client_certificate: bool, // True = don't send client certificate even when required
@@ -326,13 +327,7 @@ pub async fn start_test_server_with_options(
     )?;
 
     // Create a (object owner) conf
-    let owner_client_config = generate_owner_conf(
-        &server_params,
-        authentication_options.api_token.clone(),
-        authentication_options.do_not_send_client_certificate,
-        authentication_options.do_not_send_jwt_token,
-        authentication_options.do_not_send_api_token,
-    )?;
+    let owner_client_config = generate_owner_conf(&server_params, &authentication_options)?;
 
     info!(" -- Test KMS server configuration: {:#?}", server_params);
 
@@ -425,7 +420,11 @@ async fn wait_for_server_to_start(
     Ok(())
 }
 
-fn generate_tls_config(use_https: bool, use_client_cert: bool) -> TlsConfig {
+fn generate_tls_config(
+    use_https: bool,
+    use_client_cert: bool,
+    tls_cipher_suites: Option<String>,
+) -> TlsConfig {
     // This is the crate root dir
     let root_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
@@ -444,6 +443,7 @@ fn generate_tls_config(use_https: bool, use_client_cert: bool) -> TlsConfig {
                 Some(root_dir.join("../../test_data/client_server/ca/ca.crt"));
             assert!(tls_config.clients_ca_cert_file.as_ref().unwrap().exists());
         }
+        tls_config.tls_cipher_suites = tls_cipher_suites;
     }
     tls_config
 }
@@ -474,6 +474,7 @@ fn generate_server_params(
         tls: generate_tls_config(
             authentication_options.use_https,
             authentication_options.use_client_cert,
+            authentication_options.tls_cipher_suites.clone(),
         ),
         http: HttpConfig {
             port,
@@ -519,10 +520,7 @@ fn set_access_token(
 
 fn generate_owner_conf(
     server_params: &ServerParams,
-    api_token: Option<String>,
-    do_not_send_client_certificate: bool,
-    do_not_send_jwt_token: bool,
-    do_not_send_api_token: bool,
+    authentication_options: &AuthenticationOptions,
 ) -> Result<KmsClientConfig, KmsClientError> {
     // This creates a root dir
     let root_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -534,14 +532,15 @@ fn generate_owner_conf(
     let use_client_cert_auth = server_params
         .tls_params
         .as_ref()
-        .and_then(|tls| tls.client_ca_cert_pem.as_ref())
+        .and_then(|tls| tls.clients_ca_cert_pem.as_ref())
         .is_some()
-        && !do_not_send_client_certificate;
+        && !authentication_options.do_not_send_client_certificate;
 
-    let use_jwt_token =
-        server_params.identity_provider_configurations.is_some() && !do_not_send_jwt_token;
+    let use_jwt_token = server_params.identity_provider_configurations.is_some()
+        && !authentication_options.do_not_send_jwt_token;
 
-    let use_api_token = api_token.is_some() && !do_not_send_api_token;
+    let use_api_token =
+        authentication_options.api_token.is_some() && !authentication_options.do_not_send_api_token;
 
     let conf = KmsClientConfig {
         http_config: HttpClientConfig {
@@ -555,7 +554,7 @@ fn generate_owner_conf(
                 use_jwt_token,
                 use_api_token,
                 Some(AUTH0_TOKEN.to_owned()),
-                api_token,
+                authentication_options.api_token.clone(),
             ),
             ssl_client_pkcs12_path: if use_client_cert_auth {
                 let p =

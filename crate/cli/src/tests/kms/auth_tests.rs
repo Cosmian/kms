@@ -18,6 +18,12 @@ use crate::{
     error::result::KmsCliResult,
 };
 
+// let us not make other test cases fail
+const DEFAULT_KMS_SERVER_PORT: u16 = 9998;
+// +n since there are other KMS test servers running in parallel (see test_server.rs)
+const PORT: u16 = DEFAULT_KMS_SERVER_PORT + 100;
+const TLS_PORT: u16 = PORT + 10;
+
 async fn create_api_token(ctx: &TestsContext) -> KmsCliResult<(String, String)> {
     // Create and export an API token
     let api_token_id = CreateKeyAction::default()
@@ -45,11 +51,6 @@ async fn create_api_token(ctx: &TestsContext) -> KmsCliResult<(String, String)> 
     trace!("API token created: {api_token}");
     Ok((api_token_id.to_string(), api_token))
 }
-
-// let us not make other test cases fail
-const DEFAULT_KMS_SERVER_PORT: u16 = 9998;
-const PORT: u16 = DEFAULT_KMS_SERVER_PORT + 100; // +5 since there are other KMS test servers running
-// in parallel (see test_server.rs)
 
 #[tokio::test]
 #[allow(clippy::large_stack_frames)]
@@ -365,5 +366,71 @@ pub(crate) async fn test_kms_all_authentications() -> KmsCliResult<()> {
 
     // delete the temp db dir
     let _e = fs::remove_dir_all(PathBuf::from("./cosmian-kms")).await;
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_tls_options() -> KmsCliResult<()> {
+    let default_db_config = MainDBConfig {
+        database_type: Some("sqlite".to_owned()),
+        sqlite_path: PathBuf::from("./sqlite-data-auth-tests"),
+        clear_database: false,
+        ..MainDBConfig::default()
+    };
+
+    // tls auth - no cipher suite specified, using TLS default
+    info!("==> Testing server with JWT token auth over HTTPS");
+    let ctx = start_test_server_with_options(
+        default_db_config.clone(),
+        TLS_PORT,
+        AuthenticationOptions {
+            use_https: true,
+            tls_cipher_suites: None,
+            ..Default::default()
+        },
+        None,
+        None,
+        None,
+    )
+    .await?;
+    ListOwnedObjects.run(ctx.get_owner_client()).await?;
+    ctx.stop_server().await?;
+
+    // tls 1.2 auth - with TLS 1.2 cipher suite (RSA-compatible)
+    info!("==> Testing server with JWT token auth over HTTPS");
+    let ctx = start_test_server_with_options(
+        default_db_config.clone(),
+        TLS_PORT,
+        AuthenticationOptions {
+            use_https: true,
+            tls_cipher_suites: Some("ECDHE-RSA-AES256-GCM-SHA384".to_string()),
+            ..Default::default()
+        },
+        None,
+        None,
+        None,
+    )
+    .await?;
+    ListOwnedObjects.run(ctx.get_owner_client()).await?;
+    ctx.stop_server().await?;
+
+    // tls 1.3 auth
+    info!("==> Testing server with JWT token auth over HTTPS");
+    let ctx = start_test_server_with_options(
+        default_db_config.clone(),
+        TLS_PORT,
+        AuthenticationOptions {
+            use_https: true,
+            tls_cipher_suites: Some("TLS_AES_256_GCM_SHA384".to_string()),
+            ..Default::default()
+        },
+        None,
+        None,
+        None,
+    )
+    .await?;
+    ListOwnedObjects.run(ctx.get_owner_client()).await?;
+    ctx.stop_server().await?;
+
     Ok(())
 }
