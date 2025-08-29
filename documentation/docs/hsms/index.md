@@ -29,7 +29,7 @@ Typical use cases include:
   where concurrent requests from potentially a large number of users need to be processed quickly,
 - securing big data applications such as
   Hadoop/Spark, [Snowflake](https://snowflake.com), [Databricks](https://databricks.com), where a large number of
-  Encryption and decryption requests need to be processed on the fly for each request.
+  encryption and decryption requests need to be processed on the fly for each request.
 
 ### At Rest
 
