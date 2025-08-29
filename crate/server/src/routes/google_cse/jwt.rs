@@ -244,7 +244,7 @@ pub async fn validate_cse_authentication_token(
     // Don't use the email claim within the authentication token for this comparison.
     // In scenarios where the authentication token lacks the optional google_email claim, the email claim within the authentication token should be compared with the email claim in the authorization token, using a case-insensitive method. (Google Documentation)
     let authentication_email = if let Some(resource_name) = is_priv_unwrap {
-        //  For 'Drive CSE PriviledgedUnwrap' Operation, this should be 'kacls-migration'
+        //  For 'Drive CSE PrivilegedUnwrap' Operation, this should be 'kacls-migration'
         // 'drive' should be in the resource name e.g. //googleapis.com/drive/files/1234567890
         if resource_name.to_lowercase().contains("/drive/") {
             if let Some(migration_audience) = authentication_token.aud {
