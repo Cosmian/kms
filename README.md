@@ -234,6 +234,11 @@ docker build . --network=host \
 
 ## Running the unit and integration tests
 
+Pull the test data using:
+```sh
+git submodule update --init --recursive
+```
+
 By default, tests are run using `cargo test` and an SQLCipher backend (called `sqlite`).
 This can be influenced by setting the `KMS_TEST_DB` environment variable to
 
