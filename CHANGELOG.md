@@ -2,12 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
-
-## [5.7.2] - 2025-08-28
+## [5.7.2] - 2025-09-01
 
 ### 🐛 Bug Fixes
 
 - Further restrict access to CSE privileged unwrap endpoint
+
+### 📚 Documentation
+
+- Added KMS-HSM integration workflow graph
 
 ## [5.7.1] - 2025-08-22
 
