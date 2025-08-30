@@ -24,6 +24,8 @@ Cosmian KMS generates a dedicated RSA key pair at startup (if not already presen
 - The private key is stored under the ID: `google_cse_rsa`
 - The public key is stored under the ID: `google_cse_rsa_pk`
 
+Note: the JWT tokens MUST have their audience set to `kacls-migration`.
+
 ## Key Persistence Across Restarts & Multiple Instances
 
 To ensure consistent JWT signatures and seamless privileged unwrap operations across multiple instances or restarts, you can
