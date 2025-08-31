@@ -441,21 +441,26 @@ pub(crate) async fn test_list_access_rights() -> KmsCliResult<()> {
     .run(ctx.get_owner_client())
     .await?;
 
-    // the owner can list access rights granted
-    let owner_list = ListAccessesGranted {
-        object_uid: key_id.to_string(),
-    }
-    .run(ctx.get_owner_client())
+    retry_assert(
+        || async {
+            // the owner can list access rights granted
+            let owner_list = ListAccessesGranted {
+                object_uid: key_id.to_string(),
+            }
+            .run(ctx.get_owner_client())
+            .await?;
+
+            let has_user = owner_list
+                .iter()
+                .map(|x| x.user_id.clone())
+                .any(|x| x == *"user.client@acme.com");
+
+            Ok(has_user)
+        },
+        5,
+        100,
+    )
     .await?;
-
-    trace!("owner list {owner_list:?}");
-
-    assert!(
-        owner_list
-            .iter()
-            .map(|x| x.user_id.clone())
-            .any(|x| x == *"user.client@acme.com")
-    );
 
     // The user is not the owner and thus should not be able to list accesses on this object
     assert!(

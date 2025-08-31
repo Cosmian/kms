@@ -1,6 +1,6 @@
 use std::io;
 
-use cosmian_http_client::HttpClientError;
+use cosmian_http_client::{HttpClientError, reexport::reqwest};
 use cosmian_kms_client_utils::reexport::cosmian_kmip::KmipError;
 use thiserror::Error;
 

@@ -574,6 +574,7 @@ fn generate_owner_conf(
             } else {
                 None
             },
+            cipher_suites: authentication_options.tls_cipher_suites.clone(),
             ..HttpClientConfig::default()
         },
         gmail_api_conf,

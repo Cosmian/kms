@@ -45,17 +45,9 @@ pub(crate) fn create_base_openssl_acceptor(
     trace!("create_base_openssl_acceptor: creating OpenSSL SslAcceptorBuilder for {server_type}");
 
     // Start with a basic TLS configuration
-    let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls())?;
-
-    // Support TLS 1.2 and 1.3 ciphers
-    builder.set_min_proto_version(Some(SslVersion::TLS1_2))?;
-    builder.set_max_proto_version(Some(SslVersion::TLS1_3))?;
-
-    // Clear any existing options that might interfere with TLS 1.3
-    builder.clear_options(openssl::ssl::SslOptions::NO_TLSV1_3);
 
     // Configure cipher suites
-    configure_cipher_suites(&mut builder, config.cipher_suites)?;
+    let mut builder = configure_cipher_suites(config.cipher_suites)?;
 
     // Configure the server certificate and private key from PKCS#12
     configure_server_certificate(&mut builder, config.p12, server_type)?;
@@ -64,67 +56,41 @@ pub(crate) fn create_base_openssl_acceptor(
 }
 
 /// Configure cipher suites for the SSL acceptor
-fn configure_cipher_suites(
-    builder: &mut SslAcceptorBuilder,
-    cipher_suites: Option<&str>,
-) -> KResult<()> {
-    if let Some(cipher_string) = cipher_suites {
-        trace!(
-            "configure_cipher_suites: Setting custom cipher string: {}",
-            cipher_string
-        );
+fn configure_cipher_suites(cipher_suites: Option<&str>) -> KResult<SslAcceptorBuilder> {
+    let builder = if let Some(suites) = cipher_suites {
+        trace!("configure_cipher_suites: Setting custom cipher string: {suites}");
+
+        let mut builder = SslAcceptor::mozilla_modern_v5(SslMethod::tls())?;
 
         // Helper function to check if a cipher suite is TLS 1.3
         let is_tls13_cipher = |cipher: &str| -> bool { TLS13_CIPHER_SUITES.contains(&cipher) };
 
-        // Separate cipher suites by TLS version
-        let mut tls12_ciphers = Vec::new();
-        let mut tls13_ciphers = Vec::new();
+        // Parse and configure cipher suites
+        let (tls13_ciphers, tls12_ciphers): (Vec<&str>, Vec<&str>) = suites
+            .split(':')
+            .filter(|s| !s.trim().is_empty())
+            .partition(|&cipher| is_tls13_cipher(cipher));
 
-        for cipher in cipher_string.split(':') {
-            let cipher = cipher.trim();
-            if cipher.is_empty() {
-                continue;
-            }
-
-            if cipher.starts_with("TLS_") && is_tls13_cipher(cipher) {
-                // TLS 1.3 cipher suite identified by name
-                tls13_ciphers.push(cipher.to_owned());
-            } else {
-                // TLS 1.2 or earlier cipher suite (including OpenSSL format names)
-                tls12_ciphers.push(cipher.to_owned());
-            }
-        }
-
-        // Configure TLS 1.2 cipher suites if any are present
         if !tls12_ciphers.is_empty() {
-            let tls12_string = tls12_ciphers.join(":");
-            trace!(
-                "configure_cipher_suites: Setting TLS 1.2 cipher suites: {}",
-                tls12_string
-            );
-            builder.set_cipher_list(&tls12_string)?;
+            builder.set_min_proto_version(Some(SslVersion::TLS1_2))?;
+            builder.set_cipher_list(&tls12_ciphers.join(":"))?;
         }
 
-        // Configure TLS 1.3 cipher suites if any are present
         if !tls13_ciphers.is_empty() {
-            let tls13_string = tls13_ciphers.join(":");
-            trace!(
-                "configure_cipher_suites: Setting TLS 1.3 cipher suites: {}",
-                tls13_string
-            );
-            builder.set_ciphersuites(&tls13_string)?;
+            if tls12_ciphers.is_empty() {
+                builder.set_min_proto_version(Some(SslVersion::TLS1_3))?;
+            }
+            builder.set_ciphersuites(&tls13_ciphers.join(":"))?;
         }
+        builder
     } else {
-        // Use a broad cipher list for compatibility and enable TLS 1.3 cipher suites
-        let tls13_string = TLS13_CIPHER_SUITES.join(":");
-        trace!(
-            "configure_cipher_suites: Using default cipher suites (mozilla_intermediate) and \
-             adding TLS 1.3 cipher suites: {tls13_string}"
-        );
-        builder.set_ciphersuites(&tls13_string)?;
-    }
-    Ok(())
+        let mut builder = SslAcceptor::mozilla_intermediate_v5(SslMethod::tls())?;
+        trace!("configure_cipher_suites: Enable default cipher suites (mozilla_intermediate_v5)");
+        builder.set_min_proto_version(Some(SslVersion::TLS1_2))?;
+        builder.set_max_proto_version(Some(SslVersion::TLS1_3))?;
+        builder
+    };
+    Ok(builder)
 }
 
 /// Configure server certificate and private key from PKCS#12

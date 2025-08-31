@@ -54,15 +54,29 @@ sleep 10
 
 # Function to test OpenSSL connections
 openssl_test() {
-    local host_port=$1
-    local tls_version=$2
-    echo "Testing $host_port with TLS $tls_version"
-    echo "QUIT" | openssl s_client -"$tls_version" -connect "$host_port" \
-        -CAfile "$CA_CERT" \
-        -cert "$CLIENT_CERT" \
-        -key "$CLIENT_KEY" \
-        -verify_return_error \
-        -brief
+  local host_port=$1
+  local tls_version=$2
+  echo "Testing $host_port with TLS $tls_version"
+  echo "QUIT" | openssl s_client -"$tls_version" -connect "$host_port" \
+    -CAfile "$CA_CERT" \
+    -cert "$CLIENT_CERT" \
+    -key "$CLIENT_KEY" \
+    -verify_return_error \
+    -brief
+}
+
+# Function to test expected TLS failures
+test_tls_failure() {
+  local host_port=$1
+  local tls_version=$2
+  local description=$3
+
+  if openssl_test "$host_port" "$tls_version"; then
+    echo "ERROR: $description - TLS $tls_version test should have failed on $host_port"
+    exit 1
+  else
+    echo "EXPECTED: $description - TLS $tls_version correctly rejected on $host_port"
+  fi
 }
 
 # Create symmetric keys
@@ -78,11 +92,11 @@ openssl_test "127.0.0.1:5696" "tls1_2"
 openssl_test "127.0.0.1:5696" "tls1_3"
 
 # Test TLS on HTTP server with specific TLS1.3
-openssl_test "127.0.0.1:10000" "tls1_2"
+test_tls_failure "127.0.0.1:10000" "tls1_2" "TLS 1.2 correctly rejected on TLS 1.3-only port 10000"
 openssl_test "127.0.0.1:10000" "tls1_3"
 
 # Test TLS socket server with specific TLS1.3
-openssl_test "127.0.0.1:5697" "tls1_2"
+test_tls_failure "127.0.0.1:5697" "tls1_2" "TLS 1.2 correctly rejected on TLS 1.3-only port 5697"
 openssl_test "127.0.0.1:5697" "tls1_3"
 
 # Test UI endpoints

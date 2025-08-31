@@ -18,11 +18,11 @@ non-fips = ["cosmian_kms_client_utils/non-fips"]
 
 [dependencies]
 cosmian_crypto_core = { workspace = true }
-cosmian_http_client = "0.4"
+cosmian_http_client = { path = "/Users/manu/Cosmian/core/http_client_server/crate/http_client" }
+# cosmian_http_client = "0.4"
 cosmian_kms_client_utils = { path = "../client_utils", version = "5.7.1" }
 der = { workspace = true }
 pem = { workspace = true }
-reqwest = { workspace = true, features = ["default", "json", "native-tls"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
