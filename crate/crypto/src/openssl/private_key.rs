@@ -228,7 +228,8 @@ fn ec_private_key_from_scalar(
         RecommendedCurve::P521 => (Nid::SECP521R1, 66),
         #[cfg(feature = "non-fips")]
         RecommendedCurve::SECP256K1 => (Nid::SECP256K1, 32),
-
+        #[cfg(feature = "non-fips")]
+        RecommendedCurve::SECP224K1 => (Nid::SECP224K1, 28),
         x => crypto_bail!("Unsupported curve: {:?} in this KMIP implementation", x),
     };
     let big_num_context = BigNumContext::new()?;

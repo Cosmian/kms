@@ -308,7 +308,7 @@ pub fn create_secp_key_pair(
         &public_key_bytes,
         private_key_uid,
         public_key_uid,
-        RecommendedCurve::SECP256K1,
+        curve,
         *cryptographic_algorithm,
         common_attributes,
         private_key_attributes,
@@ -490,6 +490,8 @@ pub fn create_approved_ecc_key_pair(
         RecommendedCurve::P521 => Nid::SECP521R1,
         #[cfg(feature = "non-fips")]
         RecommendedCurve::SECP256K1 => Nid::SECP256K1,
+        #[cfg(feature = "non-fips")]
+        RecommendedCurve::SECP224K1 => Nid::SECP224K1,
         other => crypto_bail!("Curve Nid {:?} not supported by KMS", other),
     };
 

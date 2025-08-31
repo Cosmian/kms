@@ -135,6 +135,10 @@ pub fn kmip_public_key_to_openssl(public_key: &Object) -> Result<PKey<Public>, C
                     RecommendedCurve::SECP256K1 => {
                         ec_public_key_from_point_encoding(q_string, Nid::SECP256K1)?
                     }
+                    #[cfg(feature = "non-fips")]
+                    RecommendedCurve::SECP224K1 => {
+                        ec_public_key_from_point_encoding(q_string, Nid::SECP224K1)?
+                    }
 
                     RecommendedCurve::CURVE25519 => {
                         PKey::public_key_from_raw_bytes(q_string, Id::X25519)?
@@ -316,6 +320,8 @@ pub fn openssl_public_key_to_kmip(
                         Nid::SECP521R1 => RecommendedCurve::P521,
                         #[cfg(feature = "non-fips")]
                         Nid::SECP256K1 => RecommendedCurve::SECP256K1,
+                        #[cfg(feature = "non-fips")]
+                        Nid::SECP224K1 => RecommendedCurve::SECP224K1,
                         unsupported_curve => {
                             crypto_bail!(
                                 "Unsupported curve: {:?} for a Transparent EC Public Key",

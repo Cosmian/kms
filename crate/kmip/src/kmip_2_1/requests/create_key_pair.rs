@@ -111,7 +111,8 @@ fn build_mask_from_curve(
             | RecommendedCurve::P256
             | RecommendedCurve::P384
             | RecommendedCurve::P521
-            | RecommendedCurve::SECP256K1,
+            | RecommendedCurve::SECP256K1
+            | RecommendedCurve::SECP224K1,
         ) => FIPS_PRIVATE_ECC_MASK_SIGN_ECDH,
         (
             false,
@@ -119,7 +120,8 @@ fn build_mask_from_curve(
             | RecommendedCurve::P256
             | RecommendedCurve::P384
             | RecommendedCurve::P521
-            | RecommendedCurve::SECP256K1,
+            | RecommendedCurve::SECP256K1
+            | RecommendedCurve::SECP224K1,
         ) => FIPS_PUBLIC_ECC_MASK_SIGN_ECDH,
         (true, RecommendedCurve::CURVEED25519 | RecommendedCurve::CURVEED448) => {
             FIPS_PRIVATE_ECC_MASK_SIGN
