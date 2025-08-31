@@ -91,6 +91,21 @@ pub(crate) fn get_tmp_sqlite_path() -> PathBuf {
     project_dir.join(format!("{name}.sqlite"))
 }
 
+/// Creates a test application instance with KMIP and Google CSE capabilities.
+///
+/// # Arguments
+///
+/// * `kms_public_url` - Optional public URL for the KMS server
+/// * `privileged_users` - Optional list of users with elevated permissions
+///
+/// # Google CSE Support
+///
+/// The test app includes Google Client-Side Encryption (CSE) endpoints
+///
+/// The app automatically generates and manages RSA keypairs for JWT authentication:
+/// - Private key stored as `google_cse_rsa`
+/// - Public key stored as  `google_cse_rsa_pk` and exposed via `/google_cse/certs`
+///
 pub(crate) async fn test_app(
     kms_public_url: Option<String>,
     privileged_users: Option<Vec<String>>,

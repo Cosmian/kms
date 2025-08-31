@@ -1,3 +1,12 @@
+//! KMS server module responsible for starting and configuring the KMS server instance.
+//!
+//! This module provides functionality for:
+//! - Starting HTTP/HTTPS KMS server
+//! - Managing Google CSE RSA keypairs
+//! - Handling socket server connections
+//! - Configuring server authentication and TLS
+//! - Setting up routes and middleware
+
 use std::{
     path::PathBuf,
     sync::{Arc, mpsc},
@@ -28,12 +37,13 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_crypto::openssl::kmip_private_key_to_openssl,
 };
+use log::error;
 use rustls::{
     RootCertStore, ServerConfig,
     pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer, pem::PemObject},
     server::WebPkiClientVerifier,
 };
-use tokio::{runtime::Handle, task::JoinHandle};
+use tokio::{runtime::Handle, task::JoinHandle, try_join};
 use tracing::{debug, info, trace};
 
 use crate::{
@@ -56,29 +66,34 @@ use crate::{
     start_kms_server::google_cse::operations::GOOGLE_CSE_ID,
 };
 
-/// Handles the initialization or import of the Google CSE RSA keypair in the KMS.
+/// Handles the creation or import of RSA keypair used for Google Client-Side Encryption (CSE).
 ///
-/// This function performs the following logic:
-/// 1. Attempts to retrieve the RSA keypair for Google CSE from the KMS.
-/// 2. If the keypair exists and is valid, the function returns successfully.
-/// 3. If the keypair is not found and a migration PEM key is provided in the `ServerParams`,
-///    the key is imported along with its derived public key.
-/// 4. If no key exists and no migration key is available, a new RSA keypair is created and stored.
+/// This function ensures that the required RSA keypair exists in the KMS for Google CSE operations.
+/// It either:
+/// 1. Creates a new 4096-bit RSA keypair if no migration key is provided
+/// 2. Imports an existing migration key if provided via configuration
 ///
-/// This ensures that the KMS either reuses an existing RSA keypair, imports one for migration purposes,
-/// or generates a new one, depending on availability and configuration.
+/// The keypair is stored with the following identifiers:
+/// - Private key: `{GOOGLE_CSE_ID}_rsa`
+/// - Public key: `{GOOGLE_CSE_ID}_rsa_pk`
 ///
 /// # Arguments
 ///
-/// * `kms_server` - A reference-counted pointer to the KMS instance, used to interact with the key management backend.
-/// * `server_params` - A reference-counted pointer to the server configuration, which may contain a migration key.
+/// * `kms_server` - Reference to the KMS server instance
+/// * `server_params` - Server configuration parameters including Google CSE settings
+///
+/// # Returns
+///
+/// Returns `Ok(())` if the keypair exists or was successfully created/imported.
+/// Returns `Err(KmsError)` if any operation fails.
 ///
 /// # Errors
 ///
-/// Returns a `KmsError` if:
-/// * The RSA keypair fetch, import, or creation fails.
-/// * The migration PEM key is malformed or cannot be parsed.
-/// * Conversion between KMIP and OpenSSL formats fails.
+///  * `KmsError::ServerError` if the keypair cannot be created/imported
+///
+/// # Note
+///
+/// This function is idempotent - if the keypair already exists, it will not create a new one.
 pub async fn handle_google_cse_rsa_keypair(
     kms_server: &Arc<KMS>,
     server_params: &Arc<ServerParams>,
@@ -86,148 +101,199 @@ pub async fn handle_google_cse_rsa_keypair(
     let uid_sk = format!("{GOOGLE_CSE_ID}_rsa");
     let uid_pk = format!("{GOOGLE_CSE_ID}_rsa_pk");
 
-    let get_request = Get {
-        unique_identifier: Some(UniqueIdentifier::TextString(uid_sk.clone())),
-        key_format_type: Some(KeyFormatType::PKCS1),
-        key_wrap_type: Some(KeyWrapType::NotWrapped),
-        key_compression_type: None,
-        key_wrapping_specification: None,
-    };
+    let response =
+        if let Some(migration_key_pem) = &server_params.google_cse.google_cse_migration_key {
+            info!("Found Google CSE migration key, importing it.");
+            import_cse_migration_key(
+                kms_server,
+                server_params,
+                &uid_sk,
+                &uid_pk,
+                migration_key_pem,
+            )
+            .await
+        } else {
+            info!("No migration key found, creating new RSA keypair.");
+            let create_request = create_rsa_key_pair_request::<Vec<String>>(
+                Some(UniqueIdentifier::TextString(uid_sk.clone())),
+                Vec::new(),
+                4096,
+                false,
+                None,
+            )?;
+            kms_server
+                .create_key_pair(create_request, &server_params.default_username, None, None)
+                .await
+                .map(|cr| {
+                    (
+                        cr.private_key_unique_identifier,
+                        cr.public_key_unique_identifier,
+                    )
+                })
+        };
 
-    match kms_server
-        .get(get_request, &server_params.default_username, None)
-        .await
-    {
-        Ok(resp) => match resp.object_type {
-            ObjectType::PrivateKey => {
-                info!("RSA Keypair for Google CSE already exists.");
-                return Ok(());
-            }
-            _ => {
-                return Err(KmsError::CryptographicError(format!(
+    if let Err(e) = response {
+        // We got an error. If this is due to a duplicate key, this is fine; we already have it created
+        let get_request = Get {
+            unique_identifier: Some(UniqueIdentifier::TextString(uid_sk)),
+            key_format_type: Some(KeyFormatType::PKCS1),
+            key_wrap_type: Some(KeyWrapType::NotWrapped),
+            key_compression_type: None,
+            key_wrapping_specification: None,
+        };
+
+        return match kms_server
+            .get(get_request, &server_params.default_username, None)
+            .await
+        {
+            Ok(resp) => match resp.object_type {
+                ObjectType::PrivateKey => {
+                    info!("RSA Keypair for Google CSE already exists.");
+                    Ok(())
+                }
+                _ => Err(KmsError::CryptographicError(format!(
                     "Unexpected object type for Google CSE RSA keypair: {:?}",
                     resp.object_type
-                )));
+                ))),
+            },
+            Err(eg) => {
+                let msg = format!(
+                    "RSA Keypair for Google CSE not found from existing DB ({eg:#?}), and there \
+                     was an error trying to create it: {e:#?}"
+                );
+                error!("{}", &msg);
+                Err(KmsError::ServerError(msg))
             }
-        },
-        Err(_) => {
-            info!("RSA Keypair for Google CSE not found from existing DB.");
         }
     }
 
-    if let Some(migration_key_pem) = &server_params.google_cse.google_cse_migration_key {
-        info!("Found Google CSE migration key, importing it.");
+    info!("RSA Keypair for Google CSE created.");
 
-        let key_bytes = pem::parse(migration_key_pem)
-            .map_err(|e| {
-                KmsError::CryptographicError(format!(
-                    "Error parsing google_cse_migration PEM key: {e}"
-                ))
-            })?
-            .contents()
-            .to_vec();
+    Ok(())
+}
 
-        // Build PrivateKey object
-        let object_sk = Object::PrivateKey(PrivateKey {
-            key_block: KeyBlock {
-                key_format_type: KeyFormatType::PKCS8,
-                key_compression_type: None,
-                key_value: Some(KeyValue::Structure {
-                    key_material: KeyMaterial::ByteString(key_bytes.into()),
-                    attributes: Some(Attributes::default()),
-                }),
-                cryptographic_algorithm: None,
-                cryptographic_length: None,
-                key_wrapping_data: None,
-            },
-        });
+/// Imports an existing Google CSE migration key pair into the KMS.
+///
+/// This function handles the import of an existing RSA private key in PEM format
+/// and generates its corresponding public key. Both keys are then imported into
+/// the KMS with proper linkage between them.
+///
+/// # Arguments
+///
+/// * `kms_server` - A reference-counted pointer to the KMS instance that will store the keys
+/// * `server_params` - A reference-counted pointer to server configuration parameters
+/// * `uid_sk` - The unique identifier string to assign to the private key
+/// * `uid_pk` - The unique identifier string to assign to the public key
+/// * `migration_key_pem` - The PEM-encoded private key string to import
+///
+/// # Returns
+///
+/// Returns a tuple of `(UniqueIdentifier, UniqueIdentifier)` containing the unique
+/// identifiers for the imported private and public keys respectively.
+///
+/// # Errors
+///
+/// Returns a `KmsError` if:
+/// * The PEM key cannot be parsed
+/// * Key conversion between formats fails
+/// * Key import operations fail
+/// * Key linkage operations fail
+async fn import_cse_migration_key(
+    kms_server: &Arc<KMS>,
+    server_params: &Arc<ServerParams>,
+    uid_sk: &str,
+    uid_pk: &str,
+    migration_key_pem: &str,
+) -> Result<(UniqueIdentifier, UniqueIdentifier), KmsError> {
+    let key_bytes = pem::parse(migration_key_pem)
+        .map_err(|e| {
+            KmsError::CryptographicError(format!("Error parsing google_cse_migration PEM key: {e}"))
+        })?
+        .contents()
+        .to_vec();
 
-        let mut import_attributes_sk = object_sk.attributes().cloned().unwrap_or_default();
-        import_attributes_sk.set_link(
-            LinkType::PublicKeyLink,
-            LinkedObjectIdentifier::TextString(uid_pk.clone()),
-        );
+    // Build PrivateKey object
+    let object_sk = Object::PrivateKey(PrivateKey {
+        key_block: KeyBlock {
+            key_format_type: KeyFormatType::PKCS8,
+            key_compression_type: None,
+            key_value: Some(KeyValue::Structure {
+                key_material: KeyMaterial::ByteString(key_bytes.into()),
+                attributes: Some(Attributes::default()),
+            }),
+            cryptographic_algorithm: None,
+            cryptographic_length: None,
+            key_wrapping_data: None,
+        },
+    });
 
-        // Generate matching public key
-        let openssl_sk = kmip_private_key_to_openssl(&object_sk)?;
-        let openssl_pk_bytes = openssl_sk.public_key_to_der()?;
+    let mut import_attributes_sk = object_sk.attributes().cloned().unwrap_or_default();
+    import_attributes_sk.set_link(
+        LinkType::PublicKeyLink,
+        LinkedObjectIdentifier::TextString(uid_pk.to_owned()),
+    );
 
-        let object_pk = Object::PublicKey(PublicKey {
-            key_block: KeyBlock {
-                key_format_type: KeyFormatType::PKCS8,
-                key_compression_type: None,
-                key_value: Some(KeyValue::Structure {
-                    key_material: KeyMaterial::ByteString(openssl_pk_bytes.into()),
-                    attributes: Some(Attributes::default()),
-                }),
-                cryptographic_algorithm: None,
-                cryptographic_length: None,
-                key_wrapping_data: None,
-            },
-        });
+    // Generate matching public key
+    let openssl_sk = kmip_private_key_to_openssl(&object_sk)?;
+    let openssl_pk_bytes = openssl_sk.public_key_to_der()?;
 
-        let mut import_attributes_pk = object_pk.attributes().cloned().unwrap_or_default();
-        import_attributes_pk.set_link(
-            LinkType::PrivateKeyLink,
-            LinkedObjectIdentifier::TextString(uid_sk.clone()),
-        );
+    let object_pk = Object::PublicKey(PublicKey {
+        key_block: KeyBlock {
+            key_format_type: KeyFormatType::PKCS8,
+            key_compression_type: None,
+            key_value: Some(KeyValue::Structure {
+                key_material: KeyMaterial::ByteString(openssl_pk_bytes.into()),
+                attributes: Some(Attributes::default()),
+            }),
+            cryptographic_algorithm: None,
+            cryptographic_length: None,
+            key_wrapping_data: None,
+        },
+    });
 
-        // Import PrivateKey
+    let mut import_attributes_pk = object_pk.attributes().cloned().unwrap_or_default();
+    import_attributes_pk.set_link(
+        LinkType::PrivateKeyLink,
+        LinkedObjectIdentifier::TextString(uid_sk.to_owned()),
+    );
+
+    // Import PrivateKey
+    let import_sk_fut = {
         let import_request_sk = import_object_request::<Vec<String>>(
-            Some(uid_sk.clone()),
+            Some(uid_sk.to_owned()),
             object_sk,
             Some(import_attributes_sk),
             false,
             false,
             vec![],
         );
-        let imported_sk = kms_server
-            .import(
-                import_request_sk,
-                &server_params.default_username,
-                None,
-                None,
-            )
-            .await?;
-
+        kms_server.import(
+            import_request_sk,
+            &server_params.default_username,
+            None,
+            None,
+        )
+    };
+    let import_pk_fut = {
         // Import PublicKey
         let import_request_pk = import_object_request::<Vec<String>>(
-            Some(uid_pk.clone()),
+            Some(uid_pk.to_owned()),
             object_pk,
             Some(import_attributes_pk),
             false,
             false,
             vec![],
         );
-        let imported_pk = kms_server
-            .import(
-                import_request_pk,
-                &server_params.default_username,
-                None,
-                None,
-            )
-            .await?;
-
-        debug!("Imported RSA keypair with UID: {imported_sk:?} -- {imported_pk:?}");
-    } else {
-        info!("No migration key found, creating new RSA keypair.");
-
-        let create_request = create_rsa_key_pair_request::<Vec<String>>(
-            Some(UniqueIdentifier::TextString(uid_sk)),
-            Vec::new(),
-            4096,
-            false,
+        kms_server.import(
+            import_request_pk,
+            &server_params.default_username,
             None,
-        )?;
+            None,
+        )
+    };
 
-        let uid = kms_server
-            .create_key_pair(create_request, &server_params.default_username, None, None)
-            .await?;
-
-        debug!("Created new RSA keypair with UID: {uid:?}");
-    }
-
-    Ok(())
+    try_join!(import_sk_fut, import_pk_fut)
+        .map(|(resp_sk, resp_pk)| (resp_sk.unique_identifier, resp_pk.unique_identifier))
 }
 
 /// Starts the Key Management System (KMS) server based on the provided configuration.

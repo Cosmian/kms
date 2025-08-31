@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### 🐛 Bug Fixes
 
+- Fix potential race condition in Google CSE migration key pair creation
+  when multiple servers start simultaneously.
 - Further restrict access to CSE privileged unwrap endpoint
 
 ### 📚 Documentation
