@@ -1,8 +1,8 @@
-use cosmian_kms_client::reexport::cosmian_kms_client_utils::create_utils::SecretDataType;
-use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
+use cosmian_crypto_core::{
     CsRng,
     reexport::rand_core::{RngCore, SeedableRng},
 };
+use cosmian_kms_client::reexport::cosmian_kms_client_utils::create_utils::SecretDataType;
 use test_kms_server::start_default_test_kms_server;
 
 use crate::{

@@ -1,5 +1,9 @@
 use std::path::PathBuf;
 
+use cosmian_crypto_core::{
+    CsRng,
+    reexport::rand_core::{RngCore, SeedableRng},
+};
 use cosmian_kms_client::{
     cosmian_kmip::kmip_2_1::{
         kmip_objects::Object,
@@ -15,13 +19,7 @@ use cosmian_kms_client::{
 };
 #[cfg(feature = "non-fips")]
 use cosmian_kms_crypto::crypto::elliptic_curves::operation::create_x25519_key_pair;
-use cosmian_kms_crypto::{
-    crypto::wrap::unwrap_key_block,
-    reexport::cosmian_crypto_core::{
-        CsRng,
-        reexport::rand_core::{RngCore, SeedableRng},
-    },
-};
+use cosmian_kms_crypto::crypto::wrap::unwrap_key_block;
 use tempfile::TempDir;
 use test_kms_server::{TestsContext, start_default_test_kms_server};
 use tracing::{debug, trace};
