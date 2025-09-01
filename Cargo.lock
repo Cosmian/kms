@@ -1191,8 +1191,9 @@ dependencies = [
 
 [[package]]
 name = "cosmian_http_client"
-version = "0.4.0"
-source = "git+https://github.com/Cosmian/http_client_server.git?branch=feat%2Fallow_tls_ciphers#7a413ac001172915d1ff73b8177c0881aa53cbb3"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6ca4cc0f9c01bb9f77a95ed4b0db785378e3459c664c1391fd0151b51baf2fe5"
 dependencies = [
  "actix-web",
  "derive_more 0.99.20",
