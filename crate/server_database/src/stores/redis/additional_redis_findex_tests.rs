@@ -1,10 +1,6 @@
 use std::{collections::HashSet, sync::Arc};
 
 use async_trait::async_trait;
-use cloudproof_findex::{
-    Location,
-    implementations::redis::{FindexRedisError, RemovedLocationsFinder},
-};
 use cosmian_kmip::{
     KmipResultHelper,
     kmip_0::kmip_types::State,
@@ -23,20 +19,31 @@ use tracing::trace;
 use crate::{
     error::DbResult,
     stores::redis::{
-        FindexRedis,
+        findex::Value,
         objects_db::{ObjectsDB, RedisDbObject},
         permissions::PermissionsDB,
+        redis_with_findex::FindexRedis,
     },
     tests::get_redis_url,
 };
 
+// TODO: the original function was called `RemovedLocationsFinder` and existed within cloudproof
+// This is basically a stub but idk if we really need it
+#[async_trait]
+trait RemovedValuesFinder {
+    async fn find_removed_values(
+        &self,
+        _values: HashSet<Value>,
+    ) -> Result<HashSet<Value>, FindexRedisError>;
+}
+
 struct DummyDB;
 #[async_trait]
-impl RemovedLocationsFinder for DummyDB {
-    async fn find_removed_locations(
+impl RemovedValuesFinder for DummyDB {
+    async fn find_removed_values(
         &self,
-        _locations: HashSet<Location>,
-    ) -> Result<HashSet<Location>, FindexRedisError> {
+        _values: HashSet<Value>,
+    ) -> Result<HashSet<Value>, FindexRedisError> {
         Ok(HashSet::new())
     }
 }
@@ -117,7 +124,7 @@ pub(crate) async fn test_permissions_db() -> DbResult<()> {
     // create the findex
     let findex =
         Arc::new(FindexRedis::connect_with_manager(mgr.clone(), Arc::new(DummyDB {})).await?);
-    let permissions_db = PermissionsDB::new(findex, label);
+    let permissions_db = PermissionsDB::new(findex);
 
     // let us add the permission Encrypt on object O1 for user U1
     permissions_db

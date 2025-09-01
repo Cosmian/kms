@@ -5,10 +5,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use cosmian_findex::{
-    Findex, IndexADT, KEY_LENGTH as REDIS_WITH_FINDEX_MASTER_KEY_LENGTH, MemoryEncryptionLayer,
-    generic_decode, generic_encode,
-};
+use cosmian_findex::{Findex, IndexADT, MemoryEncryptionLayer, generic_decode, generic_encode};
 use cosmian_kmip::{
     kmip_0::kmip_types::State,
     kmip_2_1::{KmipOperation, kmip_attributes::Attributes, kmip_objects::Object},
@@ -31,13 +28,13 @@ use super::{
     permissions::PermissionsDB,
 };
 use crate::{
-    CUSTOM_WORD_LENGTH, db_error,
+    db_error,
     error::{DbError, DbResult},
     stores::{
         migrate::DbState,
         redis::{
+            findex::{CUSTOM_WORD_LENGTH, Keyword, REDIS_WITH_FINDEX_MASTER_KEY_LENGTH, Value},
             objects_db::RedisOperation,
-            types::{Keyword, Value},
         },
     },
 };
@@ -659,7 +656,7 @@ impl PermissionsStore for RedisWithFindex {
 mod tests {
     use std::collections::HashSet;
 
-    use crate::stores::redis::types::Value;
+    use crate::stores::redis::findex::Value;
 
     #[test]
     fn test_intersect() {

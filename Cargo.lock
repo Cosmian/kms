@@ -989,6 +989,12 @@ dependencies = [
  "async-trait",
  "cosmian_crypto_core 9.6.0",
  "cosmian_findex 5.0.3",
+ "redis 0.23.3",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

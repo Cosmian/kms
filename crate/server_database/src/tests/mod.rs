@@ -75,7 +75,7 @@ async fn get_redis_with_findex() -> DbResult<RedisWithFindex> {
     let redis_url = get_redis_url();
     let redis_url = option_env!("KMS_REDIS_URL").unwrap_or(&redis_url);
     let master_key = Secret::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::random(&mut rng);
-    let redis_findex = RedisWithFindex::instantiate(redis_url, master_key, b"label", true).await?;
+    let redis_findex = RedisWithFindex::instantiate(redis_url, master_key, true).await?;
     Ok(redis_findex)
 }
 

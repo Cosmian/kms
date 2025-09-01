@@ -5,7 +5,10 @@ use std::fmt::Display;
 // Yet, I am not sure we need all what's inside this macro below - and it's complicated to code with
 // I would rather simply get rid of it and implement exactly AND ONLY what we need.
 // Another question raises: the Vec<u8> is unbounded in size, do we want to limit it to a certain size ?
-use cosmian_crypto_core::reexport::tiny_keccak::{Hasher, Sha3};
+use cosmian_findex::KEY_LENGTH;
+
+pub const REDIS_WITH_FINDEX_MASTER_KEY_LENGTH: usize = KEY_LENGTH; // keep consistent name with kms code
+pub const CUSTOM_WORD_LENGTH: usize = 200; // Findex specialization
 
 /// Implements the functionalities of a byte-vector.
 ///
@@ -93,20 +96,21 @@ pub struct Keyword(Vec<u8>);
 
 impl_byte_vector!(Keyword);
 
-impl Keyword {
-    /// Number of bytes used to hash keywords.
-    pub const HASH_LENGTH: usize = 32;
+// TODO: check this
+// impl Keyword {
+//     /// Number of bytes used to hash keywords.
+//     pub const HASH_LENGTH: usize = 32;
 
-    /// Hash this keyword using SHA3-256.
-    #[must_use]
-    pub fn hash(&self) -> [u8; Self::HASH_LENGTH] {
-        let mut hasher = Sha3::v256();
-        hasher.update(self);
-        let mut bytes = [0; Self::HASH_LENGTH];
-        hasher.finalize(&mut bytes);
-        bytes
-    }
-}
+//     /// Hash this keyword using SHA3-256.
+//     #[must_use]
+//     pub fn hash(&self) -> [u8; Self::HASH_LENGTH] {
+//         let mut hasher = Sha3::v256();
+//         hasher.update(self);
+//         let mut bytes = [0; Self::HASH_LENGTH];
+//         hasher.finalize(&mut bytes);
+//         bytes
+//     }
+// }
 
 #[must_use]
 #[derive(Clone, Debug, Hash, Default, PartialEq, Eq)]
