@@ -440,7 +440,9 @@ fn generate_tls_config(
         tls_config.tls_p12_password = Some("password".to_owned());
         if use_client_cert {
             tls_config.clients_ca_cert_file =
-                Some(root_dir.join("../../test_data/client_server/ca/ca.crt"));
+                Some(root_dir.join(
+                    "../../test_data/client_server/ca/mozilla_IncludedRootsPEM_and_new_ca.txt",
+                ));
             assert!(tls_config.clients_ca_cert_file.as_ref().unwrap().exists());
         }
         tls_config.tls_cipher_suites = tls_cipher_suites;

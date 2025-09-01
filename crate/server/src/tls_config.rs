@@ -1,7 +1,7 @@
 use openssl::{
     pkcs12::ParsedPkcs12_2,
     ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod, SslVerifyMode, SslVersion},
-    x509::X509,
+    x509::{X509, store::X509StoreBuilder},
 };
 use tracing::trace;
 
@@ -135,10 +135,15 @@ pub(crate) fn configure_client_cert_verification(
         server_type
     );
 
-    // Load the CA certificate for client verification
-    let ca_cert = X509::from_pem(ca_cert_pem)?;
-    let mut store_builder = openssl::x509::store::X509StoreBuilder::new()?;
-    store_builder.add_cert(ca_cert)?;
+    // Load the CA certificates for client verification
+    let ca_certs = X509::stack_from_pem(ca_cert_pem)?;
+    let mut store_builder = X509StoreBuilder::new()?;
+
+    // Add all CA certificates to the store
+    for ca_cert in ca_certs {
+        store_builder.add_cert(ca_cert)?;
+    }
+
     let ca_store = store_builder.build();
 
     builder.set_verify_cert_store(ca_store)?;
