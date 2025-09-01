@@ -1181,7 +1181,7 @@ version = "15.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f12eb7e96555b6b8841966fa264e7a6dfe5e39ad0733317c088c52259e99993c"
 dependencies = [
- "cosmian_crypto_core 10.1.0",
+ "cosmian_crypto_core 10.2.0",
  "ml-kem",
  "serde",
  "serde_json",
@@ -1227,9 +1227,9 @@ dependencies = [
 
 [[package]]
 name = "cosmian_crypto_core"
-version = "10.1.0"
+version = "10.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aad6aef53776d68045907ec4c79a5135893b7d677ac92c683a4014b696c86ef9"
+checksum = "539989d6dbd88b6b15a2aaff8325f5621afacaada3b3180ce33d8904a7e8c508"
 dependencies = [
  "aead",
  "aes-gcm",
@@ -1339,7 +1339,7 @@ dependencies = [
  "base64 0.22.1",
  "clap",
  "cosmian_config_utils",
- "cosmian_crypto_core 10.1.0",
+ "cosmian_crypto_core 10.2.0",
  "cosmian_kmip",
  "cosmian_kms_client",
  "cosmian_kms_crypto",
@@ -1373,7 +1373,7 @@ dependencies = [
 name = "cosmian_kms_client"
 version = "5.7.1"
 dependencies = [
- "cosmian_crypto_core 10.1.0",
+ "cosmian_crypto_core 10.2.0",
  "cosmian_http_client",
  "cosmian_kms_client_utils",
  "der",
@@ -1430,7 +1430,7 @@ dependencies = [
  "argon2",
  "base64 0.22.1",
  "cosmian_cover_crypt",
- "cosmian_crypto_core 10.1.0",
+ "cosmian_crypto_core 10.2.0",
  "cosmian_kmip",
  "cosmian_logger 0.3.1",
  "hex",
@@ -1478,7 +1478,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "clap",
- "cosmian_crypto_core 10.1.0",
+ "cosmian_crypto_core 10.2.0",
  "cosmian_kms_access",
  "cosmian_kms_client_utils",
  "cosmian_kms_server_database",
@@ -1518,7 +1518,7 @@ version = "5.7.1"
 dependencies = [
  "async-trait",
  "cloudproof_findex",
- "cosmian_crypto_core 10.1.0",
+ "cosmian_crypto_core 10.2.0",
  "cosmian_kmip",
  "cosmian_kms_crypto",
  "cosmian_kms_interfaces",
