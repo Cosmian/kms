@@ -8,6 +8,9 @@ repository.workspace = true
 rust-version.workspace = true
 description = "Cosmian Key Management Service"
 
+[lints]
+workspace = true
+
 [[bin]]
 name = "cosmian_kms"
 path = "src/main.rs"

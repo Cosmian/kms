@@ -9,6 +9,7 @@ use crate::{
 };
 
 /// Build an Encryption Request to encrypt the provided `plaintext`.
+///
 /// The cryptographic scheme is determined by that of the key identified by `key_unique_identifier`
 /// For Covercrypt,
 ///     - the `encryption_policy` must be provided

@@ -130,7 +130,7 @@ pub(crate) async fn password_wrap_import_test(
     //wrap and unwrap using a base64 key
     {
         let mut rng = CsRng::from_entropy();
-        let mut key = vec![0u8; 32];
+        let mut key = vec![0_u8; 32];
         rng.fill_bytes(&mut key);
         let key_b64 = general_purpose::STANDARD.encode(&key);
         WrapSecretDataOrKeyAction {

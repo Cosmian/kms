@@ -1211,6 +1211,6 @@ impl Session {
 
 impl Drop for Session {
     fn drop(&mut self) {
-        let _ = self.close();
+        drop(self.close());
     }
 }

@@ -29,7 +29,7 @@ pub(crate) async fn test_wrap_on_export_unwrap_on_import() -> KmsCliResult<()> {
 
     // Generate a symmetric key to wrap
     let dek_path = tmp_path.join("dek.key");
-    let dek_file = dek_path.to_str().unwrap().to_string();
+    let dek_file = dek_path.to_str().unwrap().to_owned();
     let dek_id = CreateKeyAction::default()
         .run(ctx.get_owner_client())
         .await?

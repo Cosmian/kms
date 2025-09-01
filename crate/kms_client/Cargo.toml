@@ -8,6 +8,9 @@ repository.workspace = true
 rust-version.workspace = true
 description = "Cosmian KMS REST Client"
 
+[lints]
+workspace = true
+
 [lib]
 # doc test linking as a separate binary is extremely slow
 # and is not needed for internal lib

@@ -211,7 +211,7 @@ impl DecryptAction {
         decrypt_response.data.context("the plain text is empty")
     }
 
-    #[expect(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments, clippy::indexing_slicing)]
     async fn client_side_decrypt_with_file(
         &self,
         kms_rest_client: KmsClient,
@@ -243,8 +243,7 @@ impl DecryptAction {
             ))
         })?;
         // read the encapsulated data
-        #[expect(clippy::cast_possible_truncation)]
-        let mut encapsulation = vec![0; encaps_length as usize];
+        let mut encapsulation = vec![0; usize::try_from(encaps_length)?];
         input_file.read_exact(&mut encapsulation)?;
         // recover the DEK
         let dek = self
@@ -366,8 +365,7 @@ impl DecryptAction {
         })?;
 
         // read the encapsulated data
-        #[expect(clippy::cast_possible_truncation)]
-        let mut encapsulation = vec![0; encaps_length as usize];
+        let mut encapsulation = vec![0; usize::try_from(encaps_length)?];
         trace!(
             "client_side_decrypt_with_buffer: encapsulation length {}",
             encaps_length

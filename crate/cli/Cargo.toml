@@ -15,6 +15,9 @@ If any assistance is needed, please either visit the Cosmian technical documenta
 or contact the Cosmian support team on Discord https://discord.com/invite/7kPMNtHpnz
 """
 
+[lints]
+workspace = true
+
 [lib]
 # doc test linking as a separate binary is extremely slow
 # and is not needed for internal lib

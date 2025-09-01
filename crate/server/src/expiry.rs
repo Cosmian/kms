@@ -13,6 +13,7 @@ include!(concat!(env!("OUT_DIR"), "/demo_timeout.rs"));
 /// # Panics
 ///
 /// Will panic if automatically generated datetime cannot be stringified back
+#[allow(clippy::expect_used)]
 pub(crate) async fn demo_timeout() {
     loop {
         {

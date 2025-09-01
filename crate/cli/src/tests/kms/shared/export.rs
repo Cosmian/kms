@@ -78,17 +78,15 @@ pub(crate) async fn test_export_sym() -> KmsCliResult<()> {
     assert_eq!(&*key_bytes, bytes.as_slice());
 
     // wrong export format
-    assert!(
-        ExportSecretDataOrKeyAction {
-            key_id: Some(key_id.to_string()),
-            key_file: tmp_path.join("output.export.bytes"),
-            key_format: ExportKeyFormat::Pkcs1Pem,
-            ..Default::default()
-        }
-        .run(ctx.get_owner_client())
-        .await
-        .is_err()
-    );
+    ExportSecretDataOrKeyAction {
+        key_id: Some(key_id.to_string()),
+        key_file: tmp_path.join("output.export.bytes"),
+        key_format: ExportKeyFormat::Pkcs1Pem,
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await
+    .unwrap_err();
 
     Ok(())
 }
@@ -227,18 +225,16 @@ pub(crate) async fn test_export_wrapped() -> KmsCliResult<()> {
     assert_eq!(block_cipher_mode, BlockCipherMode::GCM);
 
     // Block-cipher-mode option raises an error when not using symmetric key for wrapping
-    assert!(
-        ExportSecretDataOrKeyAction {
-            key_id: Some(sym_key_id.to_string()),
-            key_file: tmp_path.join("output.export"),
-            wrap_key_id: Some(private_key_id.to_string()),
-            wrapping_algorithm: Some(WrappingAlgorithm::AesGCM),
-            ..Default::default()
-        }
-        .run(ctx.get_owner_client())
-        .await
-        .is_err()
-    );
+    ExportSecretDataOrKeyAction {
+        key_id: Some(sym_key_id.to_string()),
+        key_file: tmp_path.join("output.export"),
+        wrap_key_id: Some(private_key_id.to_string()),
+        wrapping_algorithm: Some(WrappingAlgorithm::AesGCM),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await
+    .unwrap_err();
 
     Ok(())
 }
@@ -533,16 +529,14 @@ pub(crate) async fn test_sensitive_sym() -> KmsCliResult<()> {
     .await?;
 
     // the key should not be exportable
-    assert!(
-        ExportSecretDataOrKeyAction {
-            key_id: Some(key_id.to_string()),
-            key_file: tmp_path.join("output.export"),
-            ..Default::default()
-        }
-        .run(ctx.get_owner_client())
-        .await
-        .is_err()
-    );
+    ExportSecretDataOrKeyAction {
+        key_id: Some(key_id.to_string()),
+        key_file: tmp_path.join("output.export"),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await
+    .unwrap_err();
 
     Ok(())
 }
@@ -564,28 +558,24 @@ pub(crate) async fn test_sensitive_ec_key() -> KmsCliResult<()> {
     .await?;
 
     // the private key should not be exportable
-    assert!(
-        ExportSecretDataOrKeyAction {
-            key_id: Some(private_key_id.to_string()),
-            key_file: tmp_path.join("output.export"),
-            ..Default::default()
-        }
-        .run(ctx.get_owner_client())
-        .await
-        .is_err()
-    );
+    ExportSecretDataOrKeyAction {
+        key_id: Some(private_key_id.to_string()),
+        key_file: tmp_path.join("output.export"),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await
+    .unwrap_err();
 
     // the public key should be exportable
-    assert!(
-        ExportSecretDataOrKeyAction {
-            key_id: Some(public_key_id.to_string()),
-            key_file: tmp_path.join("output.export"),
-            ..Default::default()
-        }
-        .run(ctx.get_owner_client())
-        .await
-        .is_ok()
-    );
+    ExportSecretDataOrKeyAction {
+        key_id: Some(public_key_id.to_string()),
+        key_file: tmp_path.join("output.export"),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await
+    .unwrap();
 
     Ok(())
 }
@@ -607,28 +597,24 @@ pub(crate) async fn test_sensitive_rsa_key() -> KmsCliResult<()> {
     .await?;
 
     // the private key should not be exportable
-    assert!(
-        ExportSecretDataOrKeyAction {
-            key_id: Some(private_key_id.to_string()),
-            key_file: tmp_path.join("output.export"),
-            ..Default::default()
-        }
-        .run(ctx.get_owner_client())
-        .await
-        .is_err()
-    );
+    ExportSecretDataOrKeyAction {
+        key_id: Some(private_key_id.to_string()),
+        key_file: tmp_path.join("output.export"),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await
+    .unwrap_err();
 
     // the public key should be exportable
-    assert!(
-        ExportSecretDataOrKeyAction {
-            key_id: Some(public_key_id.to_string()),
-            key_file: tmp_path.join("output.export"),
-            ..Default::default()
-        }
-        .run(ctx.get_owner_client())
-        .await
-        .is_ok()
-    );
+    ExportSecretDataOrKeyAction {
+        key_id: Some(public_key_id.to_string()),
+        key_file: tmp_path.join("output.export"),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await
+    .unwrap();
 
     Ok(())
 }
@@ -752,17 +738,15 @@ pub(crate) async fn test_export_secret_data() -> KmsCliResult<()> {
     assert_eq!(key_bytes.as_slice(), bytes.as_slice());
 
     // wrong export format
-    assert!(
-        ExportSecretDataOrKeyAction {
-            key_id: Some(secret_id.to_string()),
-            key_file: tmp_path.join("output.export.bytes"),
-            key_format: ExportKeyFormat::Pkcs1Pem,
-            ..Default::default()
-        }
-        .run(ctx.get_owner_client())
-        .await
-        .is_err()
-    );
+    ExportSecretDataOrKeyAction {
+        key_id: Some(secret_id.to_string()),
+        key_file: tmp_path.join("output.export.bytes"),
+        key_format: ExportKeyFormat::Pkcs1Pem,
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await
+    .unwrap_err();
 
     Ok(())
 }

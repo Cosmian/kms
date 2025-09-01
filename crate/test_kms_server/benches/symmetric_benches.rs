@@ -1,4 +1,13 @@
-#![allow(dead_code)]
+#![allow(
+    dead_code,
+    clippy::unwrap_used,
+    clippy::cast_possible_truncation,
+    let_underscore_drop,
+    clippy::cast_possible_wrap,
+    clippy::needless_pass_by_value,
+    clippy::unnecessary_wraps,
+    clippy::as_conversions
+)]
 use cosmian_kms_client::{
     KmsClient, KmsClientError,
     kmip_0::kmip_types::{BlockCipherMode, CryptographicUsageMask},
@@ -21,7 +30,7 @@ pub(crate) fn bench_create_symmetric_key(c: &mut Criterion) {
 
     let kms_rest_client = runtime.block_on(async {
         let ctx = start_default_test_kms_server().await;
-        ctx.get_owner_client().clone()
+        ctx.get_owner_client()
     });
 
     let mut group = c.benchmark_group("Symmetric key tests");
@@ -117,11 +126,11 @@ fn create_symmetric_key_request<T: IntoIterator<Item = impl AsRef<str>>>(
 //
 
 pub(crate) fn bench_encrypt_aes_128_gcm(c: &mut Criterion) {
-    bench_encrypt(c, "AES 128 GCM", 128, aes_cryptographic_parameters(), 1)
+    bench_encrypt(c, "AES 128 GCM", 128, aes_cryptographic_parameters(), 1);
 }
 
 pub(crate) fn bench_encrypt_aes_256_gcm(c: &mut Criterion) {
-    bench_encrypt(c, "AES 256 GCM", 256, aes_cryptographic_parameters(), 1)
+    bench_encrypt(c, "AES 256 GCM", 256, aes_cryptographic_parameters(), 1);
 }
 
 pub(crate) fn bench_encrypt_aes_256_gcm_100000(c: &mut Criterion) {
@@ -131,7 +140,7 @@ pub(crate) fn bench_encrypt_aes_256_gcm_100000(c: &mut Criterion) {
         256,
         aes_cryptographic_parameters(),
         100_000,
-    )
+    );
 }
 
 pub(crate) fn bench_encrypt_chacha20_128_poly1305(c: &mut Criterion) {
@@ -141,7 +150,7 @@ pub(crate) fn bench_encrypt_chacha20_128_poly1305(c: &mut Criterion) {
         128,
         chacha20_cryptographic_parameters(),
         1,
-    )
+    );
 }
 
 pub(crate) fn bench_encrypt_chacha20_256_poly1305(c: &mut Criterion) {
@@ -151,7 +160,7 @@ pub(crate) fn bench_encrypt_chacha20_256_poly1305(c: &mut Criterion) {
         256,
         chacha20_cryptographic_parameters(),
         1,
-    )
+    );
 }
 
 pub(crate) fn bench_encrypt(
@@ -172,7 +181,7 @@ pub(crate) fn bench_encrypt(
         )
         .await
         .unwrap();
-        (ctx.get_owner_client().clone(), key_id)
+        (ctx.get_owner_client(), key_id)
     });
 
     let plaintext = if num_plaintexts == 1 {
@@ -221,7 +230,7 @@ pub(crate) async fn encrypt(
     Ok((nonce, data, mac))
 }
 
-fn encrypt_request(
+const fn encrypt_request(
     key_id: UniqueIdentifier,
     cryptographic_parameters: CryptographicParameters,
     data: Zeroizing<Vec<u8>>,
@@ -242,15 +251,15 @@ fn encrypt_request(
 //
 //
 pub(crate) fn bench_decrypt_aes_128_gcm(c: &mut Criterion) {
-    bench_decrypt(c, "AES GCM", 128, aes_cryptographic_parameters(), 1)
+    bench_decrypt(c, "AES GCM", 128, aes_cryptographic_parameters(), 1);
 }
 
 pub(crate) fn bench_decrypt_aes_256_gcm(c: &mut Criterion) {
-    bench_decrypt(c, "AES GCM", 256, aes_cryptographic_parameters(), 1)
+    bench_decrypt(c, "AES GCM", 256, aes_cryptographic_parameters(), 1);
 }
 
 pub(crate) fn bench_decrypt_aes_256_gcm_100000(c: &mut Criterion) {
-    bench_decrypt(c, "AES GCM", 256, aes_cryptographic_parameters(), 100_000)
+    bench_decrypt(c, "AES GCM", 256, aes_cryptographic_parameters(), 100_000);
 }
 
 pub(crate) fn bench_decrypt_chacha20_128_poly1305(c: &mut Criterion) {
@@ -260,7 +269,7 @@ pub(crate) fn bench_decrypt_chacha20_128_poly1305(c: &mut Criterion) {
         128,
         chacha20_cryptographic_parameters(),
         1,
-    )
+    );
 }
 
 pub(crate) fn bench_decrypt_chacha20_256_poly1305(c: &mut Criterion) {
@@ -270,7 +279,7 @@ pub(crate) fn bench_decrypt_chacha20_256_poly1305(c: &mut Criterion) {
         256,
         chacha20_cryptographic_parameters(),
         1,
-    )
+    );
 }
 
 pub(crate) fn bench_decrypt(
@@ -306,11 +315,7 @@ pub(crate) fn bench_decrypt(
         )
         .await
         .unwrap();
-        (
-            ctx.get_owner_client().clone(),
-            key_id,
-            (nonce, ciphertext, mac),
-        )
+        (ctx.get_owner_client(), key_id, (nonce, ciphertext, mac))
     });
 
     let mut group = c.benchmark_group("Symmetric encryption");
@@ -353,7 +358,7 @@ pub(crate) async fn decrypt(
         .ok_or_else(|| KmsClientError::UnexpectedError("No data".to_owned()))
 }
 
-fn decrypt_request(
+const fn decrypt_request(
     key_id: UniqueIdentifier,
     cryptographic_parameters: CryptographicParameters,
     nonce: Option<Vec<u8>>,
@@ -378,7 +383,7 @@ pub(crate) fn bench_encrypt_aes_parametrized(c: &mut Criterion) {
         c,
         "AES GCM - plaintext of 64 bytes",
         aes_cryptographic_parameters(),
-    )
+    );
 }
 
 pub(crate) fn bench_encrypt_parametrized(
@@ -417,11 +422,7 @@ pub(crate) fn bench_encrypt_parametrized(
                 )
                 .await
                 .unwrap();
-                (
-                    ctx.get_owner_client().clone(),
-                    key_id,
-                    (nonce, ciphertext, mac),
-                )
+                (ctx.get_owner_client(), key_id, (nonce, ciphertext, mac))
             });
 
             let parameter_name = if num_plaintexts == 1 {

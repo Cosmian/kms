@@ -8,6 +8,9 @@ repository.workspace = true
 rust-version.workspace = true
 description = "Crate exposing APIs for plugins to the Cosmian KMS"
 
+[lints]
+workspace = true
+
 [lib]
 doctest = false
 

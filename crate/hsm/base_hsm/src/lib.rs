@@ -2,7 +2,6 @@
 
 #![allow(non_snake_case)]
 #![allow(clippy::missing_safety_doc)]
-extern crate core;
 
 mod error;
 

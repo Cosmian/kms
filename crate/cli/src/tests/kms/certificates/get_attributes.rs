@@ -31,9 +31,9 @@ async fn test_get_attributes_p12() -> KmsCliResult<()> {
             )),
             input_format: CertificateInputFormat::Pkcs12,
             pkcs12_password: Some("secret".to_owned()),
-            certificate_id: Some("get_attributes_test_p12_cert".to_string()),
+            certificate_id: Some("get_attributes_test_p12_cert".to_owned()),
             replace_existing: true,
-            tags: vec!["import_pkcs12".to_string()],
+            tags: vec!["import_pkcs12".to_owned()],
             ..Default::default()
         }
         .run(ctx.get_owner_client()),
@@ -54,16 +54,11 @@ async fn test_get_attributes_p12() -> KmsCliResult<()> {
     debug!("test_get_attributes_p12: pkcs12_attributes: {pkcs12_attributes:?}");
     assert!(!pkcs12_attributes.contains_key(&LinkType::PublicKeyLink.to_string()));
     assert_eq!(
-        pkcs12_attributes
-            .get(&Tag::KeyFormatType.to_string())
-            .unwrap(),
+        &pkcs12_attributes[&Tag::KeyFormatType.to_string()],
         &serde_json::json!("PKCS8")
     );
     let intermediate_certificate_id: String = serde_json::from_value(
-        pkcs12_attributes
-            .get(&LinkType::PKCS12CertificateLink.to_string())
-            .unwrap()
-            .clone(),
+        pkcs12_attributes[&LinkType::PKCS12CertificateLink.to_string()].clone(),
     )?;
 
     //get the attributes of the certificate and check that they are correct
@@ -80,15 +75,11 @@ async fn test_get_attributes_p12() -> KmsCliResult<()> {
     debug!("test_get_attributes_p12: intermediate_attributes: {intermediate_attributes:?}");
 
     assert_eq!(
-        intermediate_attributes
-            .get(&Tag::KeyFormatType.to_string())
-            .unwrap(),
+        &intermediate_attributes[&Tag::KeyFormatType.to_string()],
         &serde_json::json!("X509")
     );
     assert_eq!(
-        intermediate_attributes
-            .get(&LinkType::PrivateKeyLink.to_string())
-            .unwrap(),
+        &intermediate_attributes[&LinkType::PrivateKeyLink.to_string()],
         &serde_json::json!(imported_p12_sk_uid)
     );
     assert!(!intermediate_attributes.contains_key(&LinkType::CertificateLink.to_string()));

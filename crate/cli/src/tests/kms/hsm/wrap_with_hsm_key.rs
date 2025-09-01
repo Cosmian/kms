@@ -21,7 +21,7 @@ pub(crate) async fn test_wrap_with_aes_gcm(ctx: &TestsContext) -> KmsCliResult<(
     // log_init(Some("info,cosmian_kms_server=debug"));
 
     let wrapping_key_id = CreateKeyAction {
-        key_id: Some("hsm::0::".to_string() + &Uuid::new_v4().to_string()),
+        key_id: Some("hsm::0::".to_owned() + &Uuid::new_v4().to_string()),
         number_of_bits: Some(256),
         algorithm: SymmetricAlgorithm::Aes,
         sensitive: true,

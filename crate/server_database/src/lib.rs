@@ -34,46 +34,6 @@
 //! from the underlying database operations or from the functions defined in the submodules.
 //! The specific error types and conditions are documented in the respective functions.
 
-#![deny(
-    nonstandard_style,
-    refining_impl_trait,
-    future_incompatible,
-    keyword_idents,
-    let_underscore,
-    unreachable_pub,
-    unused,
-    unsafe_code,
-    clippy::all,
-    clippy::suspicious,
-    clippy::complexity,
-    clippy::perf,
-    clippy::style,
-    clippy::pedantic,
-    clippy::cargo,
-    clippy::nursery,
-
-    // restriction lints
-    clippy::unwrap_used,
-    clippy::get_unwrap,
-    clippy::unwrap_in_result,
-    clippy::assertions_on_result_states,
-    clippy::panic,
-    clippy::panic_in_result_fn,
-)]
-#![allow(
-    clippy::missing_errors_doc,
-    clippy::module_name_repetitions,
-    clippy::similar_names,
-    clippy::too_many_lines,
-    clippy::cargo_common_metadata,
-    clippy::multiple_crate_versions,
-    clippy::redundant_pub_crate,
-    clippy::future_not_send,
-    clippy::cognitive_complexity,
-    clippy::significant_drop_tightening,
-    clippy::iter_with_drain
-)]
-
 mod core;
 pub use core::{
     AdditionalObjectStoresParams, CachedUnwrappedObject, Database, MainDbParams, UnwrappedCache,

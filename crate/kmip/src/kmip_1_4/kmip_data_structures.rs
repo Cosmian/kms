@@ -1950,6 +1950,7 @@ impl TryFrom<kmip_2_1::kmip_data_structures::RNGParameters> for RNGParameters {
 
 // The Server Information  base object is a structure that contains a set of OPTIONAL fields
 /// that describe server information.
+///
 /// Where a server supports returning information in a vendor-specific field for
 /// which there is an equivalent field within the structure,
 /// the server SHALL provide the standardized version of the field.

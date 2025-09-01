@@ -8,6 +8,9 @@ repository.workspace = true
 rust-version.workspace = true
 description = "Base PKCS#11 HSM integration implementation"
 
+# [lints]
+# workspace = true
+
 [lib]
 doctest = false
 

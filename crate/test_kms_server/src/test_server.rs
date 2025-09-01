@@ -1,3 +1,10 @@
+#![allow(
+    clippy::missing_panics_doc,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::struct_excessive_bools,
+    clippy::struct_field_names
+)]
 use std::{
     env,
     path::PathBuf,
@@ -83,17 +90,16 @@ fn postgres_db_config() -> MainDBConfig {
 #[cfg(feature = "non-fips")]
 fn redis_findex_db_config() -> MainDBConfig {
     trace!("TESTS: using redis-findex");
-    let url = if let Ok(var_env) = env::var("REDIS_HOST") {
-        format!("redis://{var_env}:6379")
-    } else {
-        "redis://localhost:6379".to_owned()
-    };
+    let url = env::var("REDIS_HOST").map_or_else(
+        |_| "redis://localhost:6379".to_owned(),
+        |var_env| format!("redis://{var_env}:6379"),
+    );
     MainDBConfig {
         database_type: Some("redis-findex".to_owned()),
         clear_database: false,
         unwrapped_cache_max_age: 15,
         database_url: Some(url),
-        sqlite_path: Default::default(),
+        sqlite_path: PathBuf::default(),
         redis_master_password: Some("password".to_owned()),
         redis_findex_label: Some("label".to_owned()),
     }
@@ -250,11 +256,13 @@ pub struct TestsContext {
 }
 
 impl TestsContext {
+    #[must_use]
     pub fn get_owner_client(&self) -> KmsClient {
         KmsClient::new_with_config(self.owner_client_config.clone())
             .expect("Can't create a KMS owner client")
     }
 
+    #[must_use]
     pub fn get_user_client(&self) -> KmsClient {
         KmsClient::new_with_config(self.user_client_config.clone())
             .expect("Can't create a KMS user client")
@@ -324,7 +332,7 @@ pub async fn start_test_server_with_options(
         port,
         &authentication_options,
         non_revocable_key_id,
-        hsm_options,
+        &hsm_options,
         privileged_users,
     )?;
 
@@ -441,8 +449,8 @@ fn generate_tls_config(
         );
         assert!(
             tls_config.tls_p12_file.as_ref().unwrap().exists(),
-            "File not found: {:?}",
-            tls_config.tls_p12_file.unwrap()
+            "File not found: {}",
+            tls_config.tls_p12_file.unwrap().display()
         );
         tls_config.tls_p12_password = Some("password".to_owned());
         if use_known_ca_list {
@@ -461,7 +469,7 @@ fn generate_server_params(
     port: u16,
     authentication_options: &AuthenticationOptions,
     non_revocable_key_id: Option<Vec<String>>,
-    hsm_options: Option<HsmOptions>,
+    hsm_options: &Option<HsmOptions>,
     privileged_users: Option<Vec<String>>,
 ) -> Result<ServerParams, KmsClientError> {
     // Configure the server

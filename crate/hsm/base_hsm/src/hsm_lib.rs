@@ -161,6 +161,6 @@ impl HsmLib {
 
 impl Drop for HsmLib {
     fn drop(&mut self) {
-        let _ = self.finalize();
+        drop(self.finalize());
     }
 }

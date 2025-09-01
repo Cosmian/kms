@@ -328,8 +328,8 @@ pub(crate) async fn test_kms_all_authentications() -> KmsCliResult<()> {
         AuthenticationOptions {
             use_https: true,
             use_known_ca_list: true,
-            api_token_id: Some("my_bad_token_id".to_string()),
-            api_token: Some("my_bad_token".to_string()),
+            api_token_id: Some("my_bad_token_id".to_owned()),
+            api_token: Some("my_bad_token".to_owned()),
             ..Default::default()
         },
         None,
@@ -352,8 +352,8 @@ pub(crate) async fn test_kms_all_authentications() -> KmsCliResult<()> {
             use_jwt_token: true,
             use_https: true,
             use_known_ca_list: true,
-            api_token_id: Some("my_bad_token_id".to_string()),
-            api_token: Some("my_bad_token".to_string()),
+            api_token_id: Some("my_bad_token_id".to_owned()),
+            api_token: Some("my_bad_token".to_owned()),
             ..Default::default()
         },
         None,

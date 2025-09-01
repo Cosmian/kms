@@ -188,7 +188,7 @@ impl CreateKeyPairsAction {
         let (private_key_id, public_key_id) = if let Some(id) = &self.rsa_private_key_id {
             let attributes_response = kms_rest_client
                 .get_attributes(GetAttributes {
-                    unique_identifier: Some(UniqueIdentifier::TextString(id.to_string())),
+                    unique_identifier: Some(UniqueIdentifier::TextString(id.clone())),
                     attribute_reference: None,
                 })
                 .await?;
@@ -198,7 +198,7 @@ impl CreateKeyPairsAction {
                     .attributes
                     .get_link(LinkType::PublicKeyLink)
                 {
-                    (id.to_string(), linked_public_key_id.to_string())
+                    (id.clone(), linked_public_key_id.to_string())
                 } else {
                     return Err(KmsCliError::ServerError(
                         "Invalid private-key-id - no linked public key found".to_owned(),
@@ -316,7 +316,7 @@ impl CreateKeyPairsAction {
                     pkcs12_password: Some(p12_password.clone()),
                     certificate_id: None,
                     replace_existing: true,
-                    tags: vec!["google_cse_pkcs12_certificate_import".to_string()],
+                    tags: vec!["google_cse_pkcs12_certificate_import".to_owned()],
                     ..Default::default()
                 };
 
@@ -325,7 +325,7 @@ impl CreateKeyPairsAction {
                         .await?
                         .ok_or_else(|| {
                             KmsCliError::ServerError(
-                                "failed importing leaf certificate from PKCS12 file".to_string(),
+                                "failed importing leaf certificate from PKCS12 file".to_owned(),
                             )
                         })?;
 

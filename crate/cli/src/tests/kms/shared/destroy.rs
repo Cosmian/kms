@@ -28,21 +28,19 @@ async fn assert_destroyed(ctx: &TestsContext, key_id: &str, remove: bool) -> Kms
     let tmp_path = tmp_dir.path();
 
     // should not be able to Get....
-    assert!(
-        ExportSecretDataOrKeyAction {
-            key_id: Some(key_id.to_string()),
-            key_file: tmp_path.join("output.export"),
-            ..Default::default()
-        }
-        .run(ctx.get_owner_client())
-        .await
-        .is_err()
-    );
+    ExportSecretDataOrKeyAction {
+        key_id: Some(key_id.to_owned()),
+        key_file: tmp_path.join("output.export"),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await
+    .unwrap_err();
 
     // depending on whether the key is removed or not,
     // the key metadata should be exportable or not
     let export_res = ExportSecretDataOrKeyAction {
-        key_id: Some(key_id.to_string()),
+        key_id: Some(key_id.to_owned()),
         key_file: tmp_path.join("output.export"),
         allow_revoked: true,
         ..Default::default()
@@ -53,7 +51,7 @@ async fn assert_destroyed(ctx: &TestsContext, key_id: &str, remove: bool) -> Kms
     if remove {
         assert!(export_res.is_err());
     } else {
-        assert!(export_res.is_ok());
+        export_res.unwrap();
         let object = read_object_from_json_ttlv_file(&tmp_path.join("output.export"))?;
         let Some(KeyValue::Structure { key_material, .. }) = &object.key_block()?.key_value else {
             cli_bail!("Invalid key value");
@@ -80,21 +78,19 @@ async fn test_destroy_symmetric_key() -> KmsCliResult<()> {
         .to_string();
 
     // destroy should not work when not revoked
-    assert!(
-        DestroyKeyAction {
-            key_id: Some(key_id.clone()),
-            remove: false,
-            tags: None,
-        }
-        .run(ctx.get_owner_client())
-        .await
-        .is_err()
-    );
+    DestroyKeyAction {
+        key_id: Some(key_id.clone()),
+        remove: false,
+        tags: None,
+    }
+    .run(ctx.get_owner_client())
+    .await
+    .unwrap_err();
 
     // revoke then destroy
     RevokeKeyAction {
         key_id: Some(key_id.clone()),
-        revocation_reason: "revocation test".to_string(),
+        revocation_reason: "revocation test".to_owned(),
         tags: None,
     }
     .run(ctx.get_owner_client())
@@ -124,21 +120,19 @@ async fn test_destroy_and_remove_symmetric_key() -> KmsCliResult<()> {
         .to_string();
 
     // destroy should not work when not revoked
-    assert!(
-        DestroyKeyAction {
-            key_id: Some(key_id.clone()),
-            remove: true,
-            tags: None,
-        }
-        .run(ctx.get_owner_client())
-        .await
-        .is_err()
-    );
+    DestroyKeyAction {
+        key_id: Some(key_id.clone()),
+        remove: true,
+        tags: None,
+    }
+    .run(ctx.get_owner_client())
+    .await
+    .unwrap_err();
 
     // revoke then destroy
     RevokeKeyAction {
         key_id: Some(key_id.clone()),
-        revocation_reason: "revocation test".to_string(),
+        revocation_reason: "revocation test".to_owned(),
         tags: None,
     }
     .run(ctx.get_owner_client())
@@ -169,21 +163,19 @@ async fn test_destroy_ec_key() -> KmsCliResult<()> {
             .await?;
 
         // destroy should not work when not revoked
-        assert!(
-            DestroyKeyAction {
-                key_id: Some(private_key_id.to_string()),
-                remove: false,
-                tags: None,
-            }
-            .run(ctx.get_owner_client())
-            .await
-            .is_err()
-        );
+        DestroyKeyAction {
+            key_id: Some(private_key_id.to_string()),
+            remove: false,
+            tags: None,
+        }
+        .run(ctx.get_owner_client())
+        .await
+        .unwrap_err();
 
         // revoke then destroy
         RevokeKeyAction {
             key_id: Some(private_key_id.to_string()),
-            revocation_reason: "revocation test".to_string(),
+            revocation_reason: "revocation test".to_owned(),
             tags: None,
         }
         .run(ctx.get_owner_client())
@@ -209,23 +201,21 @@ async fn test_destroy_ec_key() -> KmsCliResult<()> {
             .await?;
 
         // destroy should not work when not revoked
-        assert!(
-            DestroyKeyAction {
-                key_id: Some(public_key_id.to_string()),
-                remove: false,
-                tags: None,
-            }
-            .run(ctx.get_owner_client())
-            .await
-            .is_err()
-        );
+        DestroyKeyAction {
+            key_id: Some(public_key_id.to_string()),
+            remove: false,
+            tags: None,
+        }
+        .run(ctx.get_owner_client())
+        .await
+        .unwrap_err();
 
         trace!("OK. revoking");
 
         // revoke then destroy
         RevokeKeyAction {
             key_id: Some(public_key_id.to_string()),
-            revocation_reason: "revocation test".to_string(),
+            revocation_reason: "revocation test".to_owned(),
             tags: None,
         }
         .run(ctx.get_owner_client())
@@ -260,21 +250,19 @@ async fn test_destroy_and_remove_ec_key() -> KmsCliResult<()> {
             .await?;
 
         // destroy should not work when not revoked
-        assert!(
-            DestroyKeyAction {
-                key_id: Some(private_key_id.to_string()),
-                remove: true,
-                tags: None,
-            }
-            .run(ctx.get_owner_client())
-            .await
-            .is_err()
-        );
+        DestroyKeyAction {
+            key_id: Some(private_key_id.to_string()),
+            remove: true,
+            tags: None,
+        }
+        .run(ctx.get_owner_client())
+        .await
+        .unwrap_err();
 
         // revoke then destroy
         RevokeKeyAction {
             key_id: Some(private_key_id.to_string()),
-            revocation_reason: "revocation test".to_string(),
+            revocation_reason: "revocation test".to_owned(),
             tags: None,
         }
         .run(ctx.get_owner_client())
@@ -300,23 +288,21 @@ async fn test_destroy_and_remove_ec_key() -> KmsCliResult<()> {
             .await?;
 
         // destroy should not work when not revoked
-        assert!(
-            DestroyKeyAction {
-                key_id: Some(public_key_id.to_string()),
-                remove: true,
-                tags: None,
-            }
-            .run(ctx.get_owner_client())
-            .await
-            .is_err()
-        );
+        DestroyKeyAction {
+            key_id: Some(public_key_id.to_string()),
+            remove: true,
+            tags: None,
+        }
+        .run(ctx.get_owner_client())
+        .await
+        .unwrap_err();
 
         trace!("OK. revoking");
 
         // revoke then destroy
         RevokeKeyAction {
             key_id: Some(public_key_id.to_string()),
-            revocation_reason: "revocation test".to_string(),
+            revocation_reason: "revocation test".to_owned(),
             tags: None,
         }
         .run(ctx.get_owner_client())
@@ -620,21 +606,19 @@ async fn test_destroy_secret_data() -> KmsCliResult<()> {
             .to_string();
 
     // destroy should not work when not revoked
-    assert!(
-        DestroyKeyAction {
-            key_id: Some(secret_id.clone()),
-            remove: false,
-            tags: None,
-        }
-        .run(ctx.get_owner_client())
-        .await
-        .is_err()
-    );
+    DestroyKeyAction {
+        key_id: Some(secret_id.clone()),
+        remove: false,
+        tags: None,
+    }
+    .run(ctx.get_owner_client())
+    .await
+    .unwrap_err();
 
     // revoke then destroy
     RevokeKeyAction {
         key_id: Some(secret_id.clone()),
-        revocation_reason: "revocation test".to_string(),
+        revocation_reason: "revocation test".to_owned(),
         tags: None,
     }
     .run(ctx.get_owner_client())

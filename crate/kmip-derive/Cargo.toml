@@ -8,6 +8,9 @@ repository.workspace = true
 rust-version.workspace = true
 description = "Cosmian KMIP Derive Macros"
 
+[lints]
+workspace = true
+
 [lib]
 proc-macro = true
 

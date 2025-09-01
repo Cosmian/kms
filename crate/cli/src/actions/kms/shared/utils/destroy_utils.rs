@@ -22,7 +22,7 @@ pub(crate) async fn destroy(
     remove: bool,
 ) -> KmsCliResult<UniqueIdentifier> {
     // Create the kmip query
-    let uid = UniqueIdentifier::TextString(uid.to_string());
+    let uid = UniqueIdentifier::TextString(uid.to_owned());
     let destroy_query = Destroy {
         unique_identifier: Some(uid.clone()),
         remove,

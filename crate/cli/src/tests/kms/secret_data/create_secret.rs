@@ -14,7 +14,7 @@ use crate::{
 pub(crate) async fn test_create_secret_data() -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server().await;
     let mut rng = CsRng::from_entropy();
-    let mut key = vec![0u8; 32];
+    let mut key = vec![0_u8; 32];
 
     {
         CreateSecretDataAction::default()

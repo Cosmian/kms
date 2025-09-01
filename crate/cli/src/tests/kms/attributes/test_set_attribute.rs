@@ -45,7 +45,7 @@ async fn get_and_check_attributes(
     requested_attributes: &SetOrDeleteAttributes,
 ) -> KmsCliResult<()> {
     let get_attributes = GetAttributesAction {
-        id: Some(uid.to_string()),
+        id: Some(uid.to_owned()),
         tags: None,
         attribute_tags: get_all_attribute_tags(),
         attribute_link_types: get_all_link_types(),
@@ -56,39 +56,25 @@ async fn get_and_check_attributes(
     trace!("get_and_check_attributes: {get_attributes:?}");
 
     if let Some(activation_date) = requested_attributes.activation_date {
-        let date: i64 = serde_json::from_value(
-            get_attributes
-                .get(&Tag::ActivationDate.to_string())
-                .unwrap()
-                .clone(),
-        )?;
+        let date: i64 =
+            serde_json::from_value(get_attributes[&Tag::ActivationDate.to_string()].clone())?;
 
         assert_eq!(date, activation_date);
     }
     if let Some(cryptographic_length) = requested_attributes.cryptographic_length {
-        let length: i32 = serde_json::from_value(
-            get_attributes
-                .get(&Tag::CryptographicLength.to_string())
-                .unwrap()
-                .clone(),
-        )?;
+        let length: i32 =
+            serde_json::from_value(get_attributes[&Tag::CryptographicLength.to_string()].clone())?;
         assert_eq!(length, cryptographic_length);
     }
     if let Some(cryptographic_algorithm) = requested_attributes.cryptographic_algorithm {
         let algo: CryptographicAlgorithm = serde_json::from_value(
-            get_attributes
-                .get(&Tag::CryptographicAlgorithm.to_string())
-                .unwrap()
-                .clone(),
+            get_attributes[&Tag::CryptographicAlgorithm.to_string()].clone(),
         )?;
         assert_eq!(algo, cryptographic_algorithm.into());
     }
     if let Some(key_usage) = &requested_attributes.key_usage {
         let get_key_usage: CryptographicUsageMask = serde_json::from_value(
-            get_attributes
-                .get(&Tag::CryptographicUsageMask.to_string())
-                .unwrap()
-                .clone(),
+            get_attributes[&Tag::CryptographicUsageMask.to_string()].clone(),
         )?;
         assert_eq!(
             get_key_usage,
@@ -96,58 +82,36 @@ async fn get_and_check_attributes(
         );
     }
     if let Some(public_key_id) = &requested_attributes.public_key_id {
-        let id: String = serde_json::from_value(
-            get_attributes
-                .get(&LinkType::PublicKeyLink.to_string())
-                .unwrap()
-                .clone(),
-        )?;
+        let id: String =
+            serde_json::from_value(get_attributes[&LinkType::PublicKeyLink.to_string()].clone())?;
         assert_eq!(&id, public_key_id);
     }
     if let Some(private_key_id) = &requested_attributes.private_key_id {
-        let id: String = serde_json::from_value(
-            get_attributes
-                .get(&LinkType::PrivateKeyLink.to_string())
-                .unwrap()
-                .clone(),
-        )?;
+        let id: String =
+            serde_json::from_value(get_attributes[&LinkType::PrivateKeyLink.to_string()].clone())?;
         assert_eq!(&id, private_key_id);
     }
     if let Some(certificate_id) = &requested_attributes.certificate_id {
-        let certificate_link_id: String = serde_json::from_value(
-            get_attributes
-                .get(&LinkType::CertificateLink.to_string())
-                .unwrap()
-                .clone(),
-        )?;
+        let certificate_link_id: String =
+            serde_json::from_value(get_attributes[&LinkType::CertificateLink.to_string()].clone())?;
         assert_eq!(certificate_id, &certificate_link_id);
     }
     if let Some(pkcs12_certificate_id) = &requested_attributes.pkcs12_certificate_id {
         let pkcs12_id: String = serde_json::from_value(
-            get_attributes
-                .get(&LinkType::PKCS12CertificateLink.to_string())
-                .unwrap()
-                .clone(),
+            get_attributes[&LinkType::PKCS12CertificateLink.to_string()].clone(),
         )?;
 
         assert_eq!(&pkcs12_id, pkcs12_certificate_id);
     }
     if let Some(pkcs12_password_certificate) = &requested_attributes.pkcs12_password_certificate {
         let pkcs12_password_link: String = serde_json::from_value(
-            get_attributes
-                .get(&LinkType::PKCS12PasswordLink.to_string())
-                .unwrap()
-                .clone(),
+            get_attributes[&LinkType::PKCS12PasswordLink.to_string()].clone(),
         )?;
         assert_eq!(&pkcs12_password_link, pkcs12_password_certificate);
     }
     if let Some(vendor_attributes) = &requested_attributes.vendor_attributes {
-        let vendor_attributes_: Vec<VendorAttribute> = serde_json::from_value(
-            get_attributes
-                .get(&Tag::VendorExtension.to_string())
-                .unwrap()
-                .clone(),
-        )?;
+        let vendor_attributes_: Vec<VendorAttribute> =
+            serde_json::from_value(get_attributes[&Tag::VendorExtension.to_string()].clone())?;
         let input_vendor_attributes = vec![VendorAttribute::try_from(vendor_attributes)?];
         assert_eq!(vendor_attributes_, input_vendor_attributes);
     }
@@ -162,7 +126,7 @@ async fn get_and_check_none_attributes(
     requested_attributes: &SetOrDeleteAttributes,
 ) -> KmsCliResult<()> {
     let get_attributes = GetAttributesAction {
-        id: Some(uid.to_string()),
+        id: Some(uid.to_owned()),
         tags: None,
         attribute_tags: get_all_attribute_tags(),
         attribute_link_types: get_all_link_types(),
@@ -215,17 +179,17 @@ async fn check_set_delete_attributes(uid: &str, ctx: &TestsContext) -> KmsCliRes
                 activation_date,
                 cryptographic_length,
                 key_usage: key_usage.clone(),
-                public_key_id: Some("public_key_id".to_string()),
-                private_key_id: Some("private_key_id".to_string()),
-                certificate_id: Some("certificate_id".to_string()),
-                pkcs12_certificate_id: Some("pkcs12_certificate_id".to_string()),
-                pkcs12_password_certificate: Some("toto".to_string()),
-                parent_id: Some("parent_id".to_string()),
-                child_id: Some("child_id".to_string()),
+                public_key_id: Some("public_key_id".to_owned()),
+                private_key_id: Some("private_key_id".to_owned()),
+                certificate_id: Some("certificate_id".to_owned()),
+                pkcs12_certificate_id: Some("pkcs12_certificate_id".to_owned()),
+                pkcs12_password_certificate: Some("toto".to_owned()),
+                parent_id: Some("parent_id".to_owned()),
+                child_id: Some("child_id".to_owned()),
                 vendor_attributes: Some(VendorAttributeCli {
-                    vendor_identification: Some(VENDOR_ID_COSMIAN.to_string()),
-                    attribute_name: Some("my_new_attribute".to_string()),
-                    attribute_value: Some("AABBCCDDEEFF".to_string()),
+                    vendor_identification: Some(VENDOR_ID_COSMIAN.to_owned()),
+                    attribute_name: Some("my_new_attribute".to_owned()),
+                    attribute_value: Some("AABBCCDDEEFF".to_owned()),
                 }),
                 ..SetOrDeleteAttributes::default()
             };
@@ -379,7 +343,7 @@ async fn test_set_attribute() -> KmsCliResult<()> {
     // Issue self signed certificate
     let uid = CertifyAction {
         generate_key_pair: true,
-        subject_name: Some("C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_string()),
+        subject_name: Some("C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_owned()),
         algorithm: Algorithm::NistP256,
         tags: vec!["certify_self_signed".to_owned()],
         ..CertifyAction::default()

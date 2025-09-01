@@ -12,7 +12,7 @@ pub(crate) async fn test_create_key_pair() -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server().await;
     CreateKeyPairAction {
         curve: Curve::NistP256,
-        tags: vec!["tag1".to_string(), "tag2".to_string()],
+        tags: vec!["tag1".to_owned(), "tag2".to_owned()],
         private_key_id: None,
         sensitive: false,
         wrapping_key_id: None,
