@@ -89,6 +89,7 @@ mod tests;
 pub mod reexport {
     #[cfg(feature = "non-fips")]
     pub use cloudproof_findex;
+    pub use cosmian_crypto_core;
     pub use cosmian_kmip;
     pub use cosmian_kms_crypto;
     pub use cosmian_kms_interfaces;

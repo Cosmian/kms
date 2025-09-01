@@ -2,10 +2,11 @@ use std::array::TryFromSliceError;
 
 #[cfg(feature = "non-fips")]
 use cloudproof_findex::implementations::redis::FindexRedisError;
+use cosmian_crypto_core::CryptoCoreError;
 use cosmian_kmip::{
     KmipError, kmip_0::kmip_types::ErrorReason, kmip_1_4::kmip_types::ResultReason,
 };
-use cosmian_kms_crypto::{CryptoError, reexport::cosmian_crypto_core::CryptoCoreError};
+use cosmian_kms_crypto::CryptoError;
 use cosmian_kms_interfaces::InterfaceError;
 use redis::ErrorKind;
 use thiserror::Error;

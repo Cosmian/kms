@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::State,
@@ -15,10 +16,7 @@ use cosmian_kms_server_database::reexport::{
             access_policy_from_attributes,
             cover_crypt::{master_keys::create_msk_object, user_key::UserDecryptionKeysHandler},
         },
-        reexport::{
-            cosmian_cover_crypt::{MasterSecretKey, api::Covercrypt},
-            cosmian_crypto_core::bytes_ser_de::Serializable,
-        },
+        reexport::cosmian_cover_crypt::{MasterSecretKey, api::Covercrypt},
     },
     cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams},
 };

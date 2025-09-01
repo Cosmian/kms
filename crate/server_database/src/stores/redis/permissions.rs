@@ -9,8 +9,8 @@ use cloudproof_findex::{
     implementations::redis::{FindexRedis, FindexRedisError, RemovedLocationsFinder},
     parameters::MASTER_KEY_LENGTH,
 };
+use cosmian_crypto_core::{FixedSizeCBytes, SymmetricKey};
 use cosmian_kmip::kmip_2_1::KmipOperation;
-use cosmian_kms_crypto::reexport::cosmian_crypto_core::{FixedSizeCBytes, SymmetricKey};
 
 use crate::{DbError, error::DbResult};
 
