@@ -6,7 +6,7 @@ mod database_permissions;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
 #[cfg(feature = "non-fips")]
-use cosmian_kms_crypto::{crypto::secret::Secret, reexport::cosmian_crypto_core::FixedSizeCBytes};
+use cosmian_crypto_core::Secret;
 use cosmian_kms_interfaces::{ObjectsStore, PermissionsStore};
 use tokio::sync::RwLock;
 
@@ -85,6 +85,8 @@ impl Database {
                 // There is no reason to keep a copy of the key in the shared config
                 // So we are going to create a "zeroizable" copy which will be passed to Redis with Findex
                 // and zeroize the one in the shared config
+
+                use cosmian_crypto_core::FixedSizeCBytes;
                 let new_master_key =
                     Secret::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::from_unprotected_bytes(
                         &mut master_key.to_bytes(),

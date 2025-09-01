@@ -1339,6 +1339,7 @@ dependencies = [
  "base64 0.22.1",
  "clap",
  "cosmian_config_utils",
+ "cosmian_crypto_core 10.1.0",
  "cosmian_kmip",
  "cosmian_kms_client",
  "cosmian_kms_crypto",
@@ -1477,6 +1478,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "clap",
+ "cosmian_crypto_core 10.1.0",
  "cosmian_kms_access",
  "cosmian_kms_client_utils",
  "cosmian_kms_server_database",
@@ -1516,6 +1518,7 @@ version = "5.7.1"
 dependencies = [
  "async-trait",
  "cloudproof_findex",
+ "cosmian_crypto_core 10.1.0",
  "cosmian_kmip",
  "cosmian_kms_crypto",
  "cosmian_kms_interfaces",

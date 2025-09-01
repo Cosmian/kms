@@ -1,6 +1,7 @@
 use std::{array::TryFromSliceError, sync::mpsc::SendError};
 
 use actix_web::{dev::ServerHandle, error::QueryPayloadError};
+use cosmian_crypto_core::CryptoCoreError;
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cloudproof_findex::implementations::redis::FindexRedisError;
 #[cfg(feature = "non-fips")]
@@ -12,7 +13,7 @@ use cosmian_kms_server_database::{
             KmipError, kmip_0::kmip_types::ErrorReason, kmip_1_4::kmip_types::ResultReason,
             ttlv::TtlvError,
         },
-        cosmian_kms_crypto::{CryptoError, reexport::cosmian_crypto_core::CryptoCoreError},
+        cosmian_kms_crypto::CryptoError,
         cosmian_kms_interfaces::InterfaceError,
     },
 };

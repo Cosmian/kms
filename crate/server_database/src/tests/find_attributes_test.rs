@@ -1,5 +1,9 @@
 use std::{collections::HashSet, sync::Arc};
 
+use cosmian_crypto_core::{
+    CsRng,
+    reexport::rand_core::{RngCore, SeedableRng},
+};
 use cosmian_kmip::{
     kmip_0::kmip_types::State,
     kmip_2_1::{
@@ -10,10 +14,6 @@ use cosmian_kmip::{
         },
         requests::create_symmetric_key_kmip_object,
     },
-};
-use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
-    CsRng,
-    reexport::rand_core::{RngCore, SeedableRng},
 };
 use cosmian_kms_interfaces::{ObjectsStore, SessionParams};
 use uuid::Uuid;
@@ -28,8 +28,6 @@ pub(crate) async fn find_attributes<DB: ObjectsStore>(
 
     let mut rng = CsRng::from_entropy();
     let owner = "eyJhbGciOiJSUzI1Ni";
-
-    //
 
     let mut symmetric_key_bytes = vec![0; 32];
     rng.fill_bytes(&mut symmetric_key_bytes);
