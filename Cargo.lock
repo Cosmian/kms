@@ -345,6 +345,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "agnostic-lite"
+version = "0.5.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c16ec3c7620c653121edb31aedca9d95a0777804a7f7e11c17dc35b199fd1b30"
+dependencies = [
+ "futures-util",
+ "pin-project",
+ "pin-project-lite",
+]
+
+[[package]]
 name = "ahash"
 version = "0.7.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -635,6 +646,15 @@ dependencies = [
  "sync_wrapper 1.0.2",
  "tower-layer",
  "tower-service",
+]
+
+[[package]]
+name = "backon"
+version = "1.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "592277618714fbcecda9a02ba7a8781f319d26532a88553bbacc77ba5d2b3a8d"
+dependencies = [
+ "fastrand",
 ]
 
 [[package]]
@@ -968,13 +988,7 @@ checksum = "a25dad7ff37557df4cb27a20d80727d75dfa2ddcbed14f02761e8bfb1f595741"
 dependencies = [
  "async-trait",
  "cosmian_crypto_core 9.6.0",
- "cosmian_findex",
- "redis",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
- "tokio",
- "tracing",
+ "cosmian_findex 5.0.3",
 ]
 
 [[package]]
@@ -1165,6 +1179,7 @@ dependencies = [
  "crypto_box",
  "curve25519-dalek",
  "ed25519-dalek",
+ "gensym",
  "getrandom 0.2.16",
  "leb128",
  "rand_chacha 0.3.1",
@@ -1188,6 +1203,18 @@ dependencies = [
  "rand 0.8.5",
  "tiny-keccak",
  "zeroize",
+]
+
+[[package]]
+name = "cosmian_findex"
+version = "8.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b0b68f0bc9f2fdcdd01cbe32e2061c0a7c670a39b66d4178f394fa108ffbcfe5"
+dependencies = [
+ "aes",
+ "cosmian_crypto_core 10.2.0",
+ "cosmian_sse_memories",
+ "xts-mode",
 ]
 
 [[package]]
@@ -1440,16 +1467,19 @@ version = "5.8.1"
 dependencies = [
  "async-trait",
  "cloudproof_findex",
+ "cosmian_crypto_core 10.2.0",
+ "cosmian_findex 8.0.0",
  "cosmian_kmip",
  "cosmian_kms_crypto",
  "cosmian_kms_interfaces",
  "cosmian_logger 0.3.1",
+ "cosmian_sse_memories",
  "hex",
  "lru",
  "num-bigint-dig",
  "num_cpus",
  "rawsql",
- "redis",
+ "redis 0.23.3",
  "serde",
  "serde_json",
  "sqlx",
@@ -1493,6 +1523,17 @@ dependencies = [
  "tracing-core",
  "tracing-opentelemetry",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "cosmian_sse_memories"
+version = "8.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f21de5515e966a676e8d85097960e9c69c134eafdb6044b381d7ffff60c6b8c1"
+dependencies = [
+ "agnostic-lite",
+ "cosmian_crypto_core 10.2.0",
+ "redis 0.32.5",
 ]
 
 [[package]]
@@ -2205,6 +2246,18 @@ dependencies = [
  "typenum",
  "version_check",
  "zeroize",
+]
+
+[[package]]
+name = "gensym"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "913dce4c5f06c2ea40fc178c06f777ac89fc6b1383e90c254fafb1abe4ba3c82"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+ "uuid",
 ]
 
 [[package]]
@@ -4089,6 +4142,30 @@ dependencies = [
  "socket2 0.4.10",
  "tokio",
  "tokio-retry",
+ "tokio-util",
+ "url",
+]
+
+[[package]]
+name = "redis"
+version = "0.32.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7cd3650deebc68526b304898b192fa4102a4ef0b9ada24da096559cb60e0eef8"
+dependencies = [
+ "arc-swap",
+ "backon",
+ "bytes",
+ "cfg-if",
+ "combine",
+ "futures-channel",
+ "futures-util",
+ "itoa",
+ "num-bigint",
+ "percent-encoding",
+ "pin-project-lite",
+ "ryu",
+ "socket2 0.6.0",
+ "tokio",
  "tokio-util",
  "url",
 ]
@@ -6422,6 +6499,16 @@ dependencies = [
  "rusticata-macros",
  "thiserror 2.0.16",
  "time",
+]
+
+[[package]]
+name = "xts-mode"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "09cbddb7545ca0b9ffa7bdc653e8743303e1712687a6918ced25f2cdbed42520"
+dependencies = [
+ "byteorder",
+ "cipher",
 ]
 
 [[package]]

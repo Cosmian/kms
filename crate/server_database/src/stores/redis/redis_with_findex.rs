@@ -5,10 +5,9 @@ use std::{
 };
 
 use async_trait::async_trait;
-#[cfg(feature = "non-fips")]
-use cloudproof_findex::{
-    IndexedValue, Keyword, Label, Location, implementations::redis::FindexRedis,
-    parameters::MASTER_KEY_LENGTH,
+use cosmian_findex::{
+    Findex, IndexADT, KEY_LENGTH as REDIS_WITH_FINDEX_MASTER_KEY_LENGTH, MemoryEncryptionLayer,
+    generic_decode, generic_encode,
 };
 use cosmian_kmip::{
     kmip_0::kmip_types::State,
@@ -22,6 +21,7 @@ use cosmian_kms_interfaces::{
     AtomicOperation, InterfaceResult, ObjectWithMetadata, ObjectsStore, PermissionsStore,
     SessionParams,
 };
+use cosmian_sse_memories::{ADDRESS_LENGTH, Address, RedisMemory};
 use redis::aio::ConnectionManager;
 use tracing::trace;
 use uuid::Uuid;
@@ -31,12 +31,17 @@ use super::{
     permissions::PermissionsDB,
 };
 use crate::{
-    db_error,
+    CUSTOM_WORD_LENGTH, db_error,
     error::{DbError, DbResult},
-    stores::{migrate::DbState, redis::objects_db::RedisOperation},
+    stores::{
+        migrate::DbState,
+        redis::{
+            objects_db::RedisOperation,
+            types::{Keyword, Value},
+        },
+    },
 };
 
-pub(crate) const REDIS_WITH_FINDEX_MASTER_KEY_LENGTH: usize = 32;
 const REDIS_WITH_FINDEX_MASTER_KEY_DERIVATION_SALT: &[u8; 16] = b"rediswithfindex_";
 pub(crate) const REDIS_WITH_FINDEX_MASTER_FINDEX_KEY_DERIVATION_SALT: &[u8; 6] = b"findex";
 pub(crate) const REDIS_WITH_FINDEX_MASTER_DB_KEY_DERIVATION_SALT: &[u8; 2] = b"db";
@@ -57,11 +62,21 @@ pub fn redis_master_key_from_password(
 }
 
 /// Find the intersection of all the sets
-fn intersect_all<I: IntoIterator<Item = HashSet<Location>>>(sets: I) -> HashSet<Location> {
+fn intersect_all<I: IntoIterator<Item = HashSet<Value>>>(sets: I) -> HashSet<Value> {
     let mut iter = sets.into_iter();
     let first = iter.next().unwrap_or_default();
     iter.fold(first, |acc, set| acc.intersection(&set).cloned().collect())
 }
+
+pub(crate) type FindexRedis = Findex<
+    CUSTOM_WORD_LENGTH,
+    Value,
+    String,
+    MemoryEncryptionLayer<
+        CUSTOM_WORD_LENGTH,
+        RedisMemory<Address<ADDRESS_LENGTH>, [u8; CUSTOM_WORD_LENGTH]>,
+    >,
+>;
 
 #[derive(Clone)]
 pub(crate) struct RedisWithFindex {
@@ -69,40 +84,47 @@ pub(crate) struct RedisWithFindex {
     objects_db: Arc<ObjectsDB>,
     permissions_db: PermissionsDB,
     findex: Arc<FindexRedis>,
-    findex_key: SymmetricKey<MASTER_KEY_LENGTH>,
-    label: Label,
+    findex_master_key: Secret<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>,
 }
 
 impl RedisWithFindex {
     pub(crate) async fn instantiate(
         redis_url: &str,
-        master_key: Secret<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>,
-        label: &[u8],
+        findex_master_key: Secret<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>,
         clear_database: bool,
     ) -> DbResult<Self> {
-        // derive an Findex Key
-        let mut findex_key = SymmetricKey::<MASTER_KEY_LENGTH>::default();
-        kdf256!(
-            &mut *findex_key,
-            REDIS_WITH_FINDEX_MASTER_FINDEX_KEY_DERIVATION_SALT,
-            &*master_key
-        );
         // derive a DB Key
         let mut db_key = SymmetricKey::<DB_KEY_LENGTH>::default();
         kdf256!(
             &mut *db_key,
             REDIS_WITH_FINDEX_MASTER_DB_KEY_DERIVATION_SALT,
-            &*master_key
+            &*findex_master_key
         );
 
         let client = redis::Client::open(redis_url)?;
         let mgr = ConnectionManager::new(client).await?;
+
         let objects_db = Arc::new(ObjectsDB::new(mgr.clone(), &db_key));
-        let findex =
-            Arc::new(FindexRedis::connect_with_manager(mgr.clone(), objects_db.clone()).await?);
-        let permissions_db = PermissionsDB::new(findex.clone(), label);
+
+        let redis_memory =
+            RedisMemory::<Address<ADDRESS_LENGTH>, [u8; CUSTOM_WORD_LENGTH]>::new_with_url(
+                redis_url,
+            )
+            .await?;
+
+        let encrypted_redis_memory = MemoryEncryptionLayer::new(&findex_master_key, redis_memory);
+
+        let findex = Arc::new(Findex::new(
+            encrypted_redis_memory,
+            generic_encode,
+            generic_decode,
+        ));
+
+        let permissions_db = PermissionsDB::new(findex.clone());
 
         if clear_database {
+            // TODO: this statement is a very dangerous and destructive operation, should we really keep it
+            // this simple ? In other terms I suggest a double confirmation prompt
             redis::cmd("FLUSHDB")
                 .query_async::<_, ()>(&mut mgr.clone())
                 .await?;
@@ -119,8 +141,7 @@ impl RedisWithFindex {
             objects_db,
             permissions_db,
             findex,
-            findex_key,
-            label: Label::from(label),
+            findex_master_key,
         };
 
         if count == 0 {
@@ -135,10 +156,10 @@ impl RedisWithFindex {
         Ok(redis_with_findex)
     }
 
-    /// Prepare an object for upsert
-    /// Note: Findex indexes are upserted even if the object is not upserted later on
+    /// Prepare an object to be inserted
+    /// Note: Findex indexes are inserted even if the object is not inserted later on
     #[allow(clippy::too_many_arguments)]
-    async fn prepare_object_for_upsert(
+    async fn prepare_object_for_insert(
         &self,
         uid: &str,
         owner: &str,
@@ -148,10 +169,7 @@ impl RedisWithFindex {
         state: State,
         params: Option<Arc<dyn SessionParams>>,
     ) -> Result<RedisDbObject, DbError> {
-        // additions to the index
-        let mut index_additions = HashMap::new();
-
-        //replace the existing tags (if any) with the new ones (if provided)
+        // replace the existing tags (if any) with the new ones (if provided)
         let tags = if let Some(tags) = tags {
             tags.clone()
         } else {
@@ -162,24 +180,21 @@ impl RedisWithFindex {
             object.clone(),
             owner.to_owned(),
             state,
-            Some(tags.clone()),
+            Some(tags),
             attributes.clone(),
         );
-        // extract the keywords
-        index_additions.insert(
-            IndexedValue::Location(Location::from(uid.as_bytes())),
-            db_object.keywords(),
-        );
 
-        // upsert the index
-        self.findex
-            .upsert(
-                &self.findex_key.to_bytes(),
-                &self.label,
-                index_additions,
-                HashMap::new(),
-            )
-            .await?;
+        // extract the keywords
+        let keywords = db_object.keywords();
+        let indexed_uid = Value::from(uid.as_bytes());
+
+        // For each keyword, insert the uid as a value associated with that keyword
+        for keyword in keywords {
+            self.findex
+                .insert(keyword, std::iter::once(indexed_uid.clone()))
+                .await?;
+        }
+
         Ok(db_object)
     }
 
@@ -194,7 +209,7 @@ impl RedisWithFindex {
         // If the uid is not provided, generate a new one
         let uid = uid.unwrap_or_else(|| Uuid::new_v4().to_string());
         let db_object = self
-            .prepare_object_for_upsert(
+            .prepare_object_for_insert(
                 &uid,
                 owner,
                 object,
@@ -227,25 +242,18 @@ impl RedisWithFindex {
 
         // updates to the index;
         // note: these are additions so some entries will be doubled but shat should not break the index
-        // and will be removed during compaction
-        let mut index_additions = HashMap::new();
-        // extract the keywords
-        index_additions.insert(
-            IndexedValue::Location(Location::from(uid.as_bytes())),
-            db_object.keywords(),
-        );
-        // upsert the index
-        self.findex
-            .upsert(
-                &self.findex_key.to_bytes(),
-                &self.label,
-                index_additions,
-                HashMap::new(),
-            )
-            .await?;
+        let keywords = db_object.keywords(); // extract keywords
+        let indexed_uid = Value::from(uid.as_bytes());
+
+        for keyword in keywords {
+            self.findex
+                .insert(keyword, std::iter::once(indexed_uid.clone()))
+                .await?;
+        }
         Ok(db_object)
     }
 
+    // For each keyword, insert the uid as a value associated with that keyword
     async fn prepare_object_for_state_update(
         &self,
         uid: &str,
@@ -451,7 +459,7 @@ impl ObjectsStore for RedisWithFindex {
         // find the locations that match at least one of the tags
         let res = self
             .findex
-            .search(&self.findex_key.to_bytes(), &self.label, keywords)
+            .search(keywords)
             .await
             .map_err(|e| db_error!(format!("Error while searching for tags: {e:?}")))?;
         // we want the intersection of all the locations
@@ -499,7 +507,7 @@ impl ObjectsStore for RedisWithFindex {
         // search the keywords in the index
         let res = self
             .findex
-            .search(&self.findex_key.to_bytes(), &self.label, keywords)
+            .search(keywords)
             .await
             .map_err(|e| db_error!(format!("Error while searching for attributes: {e:?}")))?;
         trace!("find: res: {:?}", res);
@@ -518,7 +526,7 @@ impl ObjectsStore for RedisWithFindex {
             HashMap::new()
         } else {
             self.permissions_db
-                .list_user_permissions(&self.findex_key, user)
+                .list_user_permissions(&self.findex_master_key, user)
                 .await?
         };
 
@@ -561,7 +569,7 @@ impl PermissionsStore for RedisWithFindex {
     ) -> InterfaceResult<HashMap<String, (String, State, HashSet<KmipOperation>)>> {
         let permissions = self
             .permissions_db
-            .list_user_permissions(&self.findex_key, user)
+            .list_user_permissions(&self.findex_master_key, user)
             .await?;
         let redis_db_objects = self
             .objects_db
@@ -592,7 +600,7 @@ impl PermissionsStore for RedisWithFindex {
     ) -> InterfaceResult<HashMap<String, HashSet<KmipOperation>>> {
         Ok(self
             .permissions_db
-            .list_object_permissions(&self.findex_key, uid)
+            .list_object_permissions(&self.findex_master_key, uid)
             .await?)
     }
 
@@ -607,7 +615,7 @@ impl PermissionsStore for RedisWithFindex {
     ) -> InterfaceResult<()> {
         for operation in &operation_types {
             self.permissions_db
-                .add(&self.findex_key, uid, user, *operation)
+                .add(&self.findex_master_key, uid, user, *operation)
                 .await?;
         }
         Ok(())
@@ -624,7 +632,7 @@ impl PermissionsStore for RedisWithFindex {
     ) -> InterfaceResult<()> {
         for operation in &operation_types {
             self.permissions_db
-                .remove(&self.findex_key, uid, user, *operation)
+                .remove(&self.findex_master_key, uid, user, *operation)
                 .await?;
         }
         Ok(())
@@ -639,7 +647,7 @@ impl PermissionsStore for RedisWithFindex {
     ) -> InterfaceResult<HashSet<KmipOperation>> {
         Ok(self
             .permissions_db
-            .get(&self.findex_key, uid, user, no_inherited_access)
+            .get(&self.findex_master_key, uid, user, no_inherited_access)
             .await
             .unwrap_or_default()
             .into_iter()
@@ -651,31 +659,31 @@ impl PermissionsStore for RedisWithFindex {
 mod tests {
     use std::collections::HashSet;
 
-    use cloudproof_findex::Location;
+    use crate::stores::redis::types::Value;
 
     #[test]
     fn test_intersect() {
         let set1: HashSet<_> = vec![
-            Location::from(b"1".as_slice()),
-            Location::from(b"2".as_slice()),
-            Location::from(b"3".as_slice()),
-            Location::from(b"4".as_slice()),
+            Value::from(b"1".as_slice()),
+            Value::from(b"2".as_slice()),
+            Value::from(b"3".as_slice()),
+            Value::from(b"4".as_slice()),
         ]
         .into_iter()
         .collect();
         let set2: HashSet<_> = vec![
-            Location::from(b"2".as_slice()),
-            Location::from(b"3".as_slice()),
-            Location::from(b"4".as_slice()),
-            Location::from(b"5".as_slice()),
+            Value::from(b"2".as_slice()),
+            Value::from(b"3".as_slice()),
+            Value::from(b"4".as_slice()),
+            Value::from(b"5".as_slice()),
         ]
         .into_iter()
         .collect();
         let set3: HashSet<_> = vec![
-            Location::from(b"3".as_slice()),
-            Location::from(b"4".as_slice()),
-            Location::from(b"5".as_slice()),
-            Location::from(b"6".as_slice()),
+            Value::from(b"3".as_slice()),
+            Value::from(b"4".as_slice()),
+            Value::from(b"5".as_slice()),
+            Value::from(b"6".as_slice()),
         ]
         .into_iter()
         .collect();
@@ -683,7 +691,7 @@ mod tests {
         let sets = vec![set1, set2, set3];
         let res = super::intersect_all(sets);
         assert_eq!(res.len(), 2);
-        assert!(res.contains(&Location::from(b"3".as_slice())));
-        assert!(res.contains(&Location::from(b"4".as_slice())));
+        assert!(res.contains(&Value::from(b"3".as_slice())));
+        assert!(res.contains(&Value::from(b"4".as_slice())));
     }
 }

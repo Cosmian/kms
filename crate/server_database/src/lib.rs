@@ -46,6 +46,8 @@ pub use stores::redis_master_key_from_password;
 #[cfg(test)]
 mod tests;
 
+pub const CUSTOM_WORD_LENGTH: usize = 200; // Findex specialization
+
 pub mod reexport {
     #[cfg(feature = "non-fips")]
     pub use cloudproof_findex;

@@ -12,6 +12,7 @@
     "Cosmian",
     "covercrypt",
     "Covercrypt",
+    "DBSIZE",
     "ECDH",
     "ecies",
     "ECIES",
@@ -21,6 +22,7 @@
     "gpsw",
     "Gpsw",
     "jwks",
+    "keccak",
     "keypair",
     "kmip",
     "KMIP",
@@ -92,5 +94,8 @@
       "name": "test"
     }
   ],
-  "sqltools.useNodeRuntime": true
+  "sqltools.useNodeRuntime": true,
+  "rust-analyzer.cargo.features": [
+    "non-fips"
+  ],
 }

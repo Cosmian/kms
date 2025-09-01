@@ -3,7 +3,7 @@ use std::{collections::HashSet, sync::Arc};
 use async_trait::async_trait;
 use cloudproof_findex::{
     Location,
-    implementations::redis::{FindexRedis, FindexRedisError, RemovedLocationsFinder},
+    implementations::redis::{FindexRedisError, RemovedLocationsFinder},
 };
 use cosmian_kmip::{
     KmipResultHelper,
@@ -23,6 +23,7 @@ use tracing::trace;
 use crate::{
     error::DbResult,
     stores::redis::{
+        FindexRedis,
         objects_db::{ObjectsDB, RedisDbObject},
         permissions::PermissionsDB,
     },
