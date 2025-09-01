@@ -1192,7 +1192,7 @@ dependencies = [
 [[package]]
 name = "cosmian_http_client"
 version = "0.4.0"
-source = "git+https://github.com/Cosmian/http_client_server.git?branch=feat%2Fallow_tls_ciphers#565f1a03507e78f0de38e71bdf45a4bda922d579"
+source = "git+https://github.com/Cosmian/http_client_server.git?branch=feat%2Fallow_tls_ciphers#7a413ac001172915d1ff73b8177c0881aa53cbb3"
 dependencies = [
  "actix-web",
  "derive_more 0.99.20",
