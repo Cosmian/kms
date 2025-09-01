@@ -66,7 +66,6 @@ pub fn pad_be_bytes(bytes: &mut Vec<u8>, size: usize) {
     }
 }
 
-// TODO(review comment): reexporting is not useful, version should be managed within the workspace
 pub mod reexport {
     #[cfg(feature = "non-fips")]
     pub use cosmian_cover_crypt;
