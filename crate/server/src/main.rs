@@ -17,42 +17,38 @@ use tracing::{debug, info, span};
 #[cfg(feature = "timeout")]
 mod expiry;
 
+/// Get the default `RUST_LOG` configuration if not set
+fn get_default_rust_log() -> String {
+    "info,cosmian=info,cosmian_kms_server=info,actix_web=info,sqlx::query=error,mysql=info"
+        .to_owned()
+}
+
+/// Get the appropriate `rust_log` value, preferring config over environment
+fn get_effective_rust_log(config_rust_log: Option<String>, info_only: bool) -> Option<String> {
+    if info_only {
+        Some("info".to_owned())
+    } else {
+        config_rust_log.or_else(|| {
+            // Only fall back to environment or default if not in config
+            std::env::var("RUST_LOG")
+                .ok()
+                .or_else(|| Some(get_default_rust_log()))
+        })
+    }
+}
+
 /// The main entry point of the program.
 ///
 /// This function sets up the necessary environment variables and logging options,
 /// then parses the command line arguments using [`ClapConfig::parse()`](https://docs.rs/clap/latest/clap/struct.ClapConfig.html#method.parse).
 #[tokio::main]
 async fn main() -> KResult<()> {
-    // Set up environment variables and logging options
-    if std::env::var("RUST_BACKTRACE").is_err() {
-        #[allow(unsafe_code)]
-        unsafe {
-            std::env::set_var("RUST_BACKTRACE", "full");
-        }
-    }
-    if std::env::var("RUST_LOG").is_err() {
-        #[allow(unsafe_code)]
-        unsafe {
-            std::env::set_var(
-                "RUST_LOG",
-                "info,cosmian=info,cosmian_kms_server=info,actix_web=info,sqlx::query=error,\
-                 mysql=info",
-            );
-        }
-    }
-
     // Load variable from a .env file
     dotenv().ok();
 
     let clap_config = ClapConfig::load_from_file()?;
 
     let info_only = clap_config.info;
-    if info_only {
-        #[allow(unsafe_code)]
-        unsafe {
-            std::env::set_var("RUST_LOG", "info");
-        }
-    }
 
     //Initialize the tracing system
     let _otel_guard = tracing_init(&TracingConfig {
@@ -70,7 +66,8 @@ async fn main() -> KResult<()> {
         no_log_to_stdout: clap_config.logging.quiet,
         #[cfg(not(target_os = "windows"))]
         log_to_syslog: clap_config.logging.log_to_syslog,
-        rust_log: clap_config.logging.rust_log.clone(),
+        // Use safe rust_log configuration without environment variable setting
+        rust_log: get_effective_rust_log(clap_config.logging.rust_log.clone(), info_only),
         log_to_file: clap_config.logging.rolling_log_dir.clone().map(|dir| {
             (
                 dir,
