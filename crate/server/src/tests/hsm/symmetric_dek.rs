@@ -114,7 +114,12 @@ async fn symmetric_encrypt(
             ..Default::default()
         }),
     )?;
-    let response = send_message(kms.clone(), owner, vec![Operation::Encrypt(request)]).await?;
+    let response = send_message(
+        kms.clone(),
+        owner,
+        vec![Operation::Encrypt(Box::new(request))],
+    )
+    .await?;
     let Operation::EncryptResponse(response) = response
         .first()
         .ok_or_else(|| KmsError::ServerError("no response".to_owned()))?
@@ -156,7 +161,12 @@ async fn symmetric_decrypt(
             ..Default::default()
         }),
     );
-    let response = send_message(kms.clone(), owner, vec![Operation::Decrypt(request)]).await?;
+    let response = send_message(
+        kms.clone(),
+        owner,
+        vec![Operation::Decrypt(Box::new(request))],
+    )
+    .await?;
     let Operation::DecryptResponse(response) = response
         .first()
         .ok_or_else(|| KmsError::ServerError("no response".to_owned()))?

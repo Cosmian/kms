@@ -268,6 +268,54 @@ pub fn create_x25519_key_pair(
     )
 }
 
+/// Generate a SEC 2 Key Pair. Not FIPS 140-3 compliant.
+/// SEC 2: Recommended Elliptic Curve Domain Parameters: <https://www.secg.org/sec2-v2.pdf>
+#[cfg(feature = "non-fips")]
+pub fn create_secp_key_pair(
+    private_key_uid: &str,
+    public_key_uid: &str,
+    curve: RecommendedCurve,
+    cryptographic_algorithm: &CryptographicAlgorithm,
+    common_attributes: Attributes,
+    private_key_attributes: Option<Attributes>,
+    public_key_attributes: Option<Attributes>,
+) -> Result<KeyPair, CryptoError> {
+    tracing::debug!("create_secp_key_pair");
+
+    let curve_nid = match curve {
+        RecommendedCurve::SECP224K1 => Nid::SECP224K1,
+        RecommendedCurve::SECP256K1 => Nid::SECP256K1,
+
+        other => crypto_bail!("Curve {:?} not supported by secp_key key generation", other),
+    };
+
+    // 1. Get the secp_key curve group
+    let group = EcGroup::from_curve_name(curve_nid)?;
+    // 2. Generate a new EC keypair
+    let ec_key = EcKey::generate(&group)?;
+    // 3. Extract the private and public key bytes
+    let private_key_bytes = Zeroizing::from(ec_key.private_key().to_vec());
+    let private_key_num_bits = u32::try_from(ec_key.private_key().num_bits())?;
+    let mut ctx = BigNumContext::new()?;
+    let public_key_bytes =
+        ec_key
+            .public_key()
+            .to_bytes(&group, PointConversionForm::COMPRESSED, &mut ctx)?;
+
+    create_ec_key_pair(
+        &private_key_bytes,
+        private_key_num_bits,
+        &public_key_bytes,
+        private_key_uid,
+        public_key_uid,
+        curve,
+        *cryptographic_algorithm,
+        common_attributes,
+        private_key_attributes,
+        public_key_attributes,
+    )
+}
+
 /// Generate an X448 Key Pair. Not FIPS 140-3 compliant.
 #[cfg(feature = "non-fips")]
 pub fn create_x448_key_pair(
@@ -440,6 +488,10 @@ pub fn create_approved_ecc_key_pair(
         RecommendedCurve::P256 => Nid::X9_62_PRIME256V1,
         RecommendedCurve::P384 => Nid::SECP384R1,
         RecommendedCurve::P521 => Nid::SECP521R1,
+        #[cfg(feature = "non-fips")]
+        RecommendedCurve::SECP256K1 => Nid::SECP256K1,
+        #[cfg(feature = "non-fips")]
+        RecommendedCurve::SECP224K1 => Nid::SECP224K1,
         other => crypto_bail!("Curve Nid {:?} not supported by KMS", other),
     };
 

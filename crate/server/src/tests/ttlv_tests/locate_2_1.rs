@@ -76,13 +76,13 @@ pub(crate) fn locate_symmetric_keys(
                 operation: OperationEnumeration::Locate,
                 ephemeral: None,
                 unique_batch_item_id: Some(b"12345".to_vec()),
-                request_payload: Operation::Locate(Locate {
+                request_payload: Operation::Locate(Box::new(Locate {
                     maximum_items: Some(16),
                     offset_items: None,
                     storage_status_mask: None,
                     object_group_member: None,
                     attributes: attributes.into(),
-                }),
+                })),
                 message_extension: None,
             },
         )],

@@ -25,7 +25,7 @@ retrieved and used.
 The supported key-wrapping algorithms are:
 
 | Algorithm            | Wrap Key Type                        | FIPS mode           | Description                                                                                                     |
-|----------------------|--------------------------------------|---------------------|-----------------------------------------------------------------------------------------------------------------|
+| -------------------- | ------------------------------------ | ------------------- | --------------------------------------------------------------------------------------------------------------- |
 | AES-KWP              | Symmetric key wrapping               | NIST SP 800-38F     | Symmetric key-wrapping with padding as defined in [RFC5649](https://tools.ietf.org/html/rfc5649).               |
 | CKM_RSA_PKCS         | RSA PKCS#1 v1.5                      | Not anymore         | RSA WITH PKCS#1 v1.5 padding - removed by NIST approved algorithms for key wrapping in FIPS 140-3               |
 | CKM_RSA_PKCS_OAEP    | RSA key wrapping                     | NIST 800-56B rev. 2 | RSA OAEP with NIST approved hashing functions for RSA key size 2048, 3072 or 4096 bits.                         |
@@ -47,7 +47,7 @@ Encryption can be performed using a key or a certificate. Decryption can be perf
 The supported encryption algorithms are:
 
 | Algorithm         | Encryption Key Type                                     | FIPS mode           | Description                                                                                                              |
-|-------------------|---------------------------------------------------------|---------------------|--------------------------------------------------------------------------------------------------------------------------|
+| ----------------- | ------------------------------------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | Covercrypt        | Covercrypt                                              | No                  | A fast post-quantum attribute based scheme: [Covercrypt](https://github.com/Cosmian/cover_crypt).                        |
 | AES GCM           | Symmetric authenticated encryption with additional data | NIST FIPS 197       | The NIST standardized symmetric encryption in [FIPS 197](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.197-upd1.pdf). |
 | AES XTS           | Symmetric, not authenticated                            | NIST SP 800-38E     | Used in disk encryption. Requires 2 keys (e.g. a double-sized key)                                                       |
@@ -190,14 +190,24 @@ and AES-256-GCM and SHAKE256 for curves with security strength $s > 128$ bits:
 
 ## Signature
 
-Signature is only supported via the `Certify` operation, which is used to create a certificate
-either by signing a certificate request, or building it from an existing public key.
+Digital signature signing and verification are supported via both the `Certify` operation (for certificate signing) and the `Sign` operation (for direct data signing).
 
-| Algorithm | Signature Key Type                                    | FIPS mode                                               | Description                                                                                                               |
-|-----------|-------------------------------------------------------|---------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------|
-| ECDSA     | P-192, P-224, P-256, P-384, P384, P-521, X25519, X448 | **Restricted** to curves P-224, P-256, P-384 and P-521. | See [FIPS-186.5](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf) and NIST.SP.800-186 - Section 3.1.2 table 2. |
-| EdDSA     | Ed25519, Ed448                                        | Yes                                                     | See [FIPS-186.5](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf).                                             |
+The `Certify` operation is used to create a certificate either by signing a certificate request, or building it from an existing public key.
 
+The `Sign` operation is used to perform digital signature operations on provided data using a private key. This operation supports:
+
+- Signing raw data (the operation will hash the data using the specified or default hash algorithm)
+- Signing pre-hashed data (digested data) for cases where the client has already computed the hash
+
+| Algorithm  | Signature Key Type                                    | FIPS mode                                               | Description                                                                                                               |
+| ---------- | ----------------------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| RSASSA-PSS | RSA-2048, RSA-3072, RSA-4096                          | Yes                                                     | RSA signatures using PKCS#1 PSS padding with approved hash functions (SHA-256, SHA-384, SHA-512).                         |
+| ECDSA      | P-192, P-224, P-256, P-384, P384, P-521, X25519, X448 | **Restricted** to curves P-224, P-256, P-384 and P-521. | See [FIPS-186.5](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf) and NIST.SP.800-186 - Section 3.1.2 table 2. |
+| EdDSA      | Ed25519, Ed448                                        | Yes                                                     | See [FIPS-186.5](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf).                                             |
+
+### Digital Signature Operations
+
+- `RSASSA-PSS` performs digital signatures using RSA keys with PSS padding and NIST-approved hash functions.
 - `ECDSA` performs digital signatures on elliptic
   curves `P-192`, `P-224`, `P-256`, `P-384`, `P-512`, `X25519` and `X448`.
 - `EdDSA` performs digital signatures on Edwards curves `Ed25519` and `Ed448`.

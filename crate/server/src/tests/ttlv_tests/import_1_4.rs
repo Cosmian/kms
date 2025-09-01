@@ -63,7 +63,7 @@ pub(super) fn import_symmetric_key(client: &SocketClient) -> String {
                 operation: OperationEnumeration::Import,
                 ephemeral: None,
                 unique_batch_item_id: Some(b"12345".to_vec()),
-                request_payload: Operation::Import(Import {
+                request_payload: Operation::Import(Box::new(Import {
                     object_type: ObjectType::SymmetricKey,
                     unique_identifier: UniqueIdentifier::from("imported_1_4_key_uid".to_owned()),
                     replace_existing: Some(false),
@@ -76,7 +76,7 @@ pub(super) fn import_symmetric_key(client: &SocketClient) -> String {
                         Attribute::CryptographicLength(256),
                     ]),
                     object,
-                }),
+                })),
                 message_extension: None,
             },
         )],

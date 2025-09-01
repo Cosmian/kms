@@ -356,7 +356,7 @@ pub(crate) async fn message_encrypt(
         batch_item: (0..num_plaintexts)
             .map(|_| {
                 RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
-                    Operation::Encrypt(encrypt_request.clone()),
+                    Operation::Encrypt(Box::new(encrypt_request.clone())),
                 ))
             })
             .collect(),
@@ -395,7 +395,7 @@ pub(crate) async fn message_decrypt(
         batch_item: (0..num_ciphertexts)
             .map(|_| {
                 RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
-                    Operation::Decrypt(decrypt_request.clone()),
+                    Operation::Decrypt(Box::new(decrypt_request.clone())),
                 ))
             })
             .collect(),
