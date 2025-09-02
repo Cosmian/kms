@@ -2,12 +2,12 @@
 name = "cosmian_kms_cli"
 version.workspace = true
 authors.workspace = true
-categories = ["security"]
 edition.workspace = true
-keywords = ["kms", "cosmian"]
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+keywords.workspace = true
+categories.workspace = true
 description = """
 Command Line Interface used to manage the KMS server
 

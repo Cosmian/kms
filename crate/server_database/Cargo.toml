@@ -6,6 +6,8 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+keywords.workspace = true
+categories.workspace = true
 description = "Crate containing the database for the Cosmian KMS server and the supported stores"
 
 # [lints]

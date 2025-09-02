@@ -47,7 +47,6 @@ cargo = { level = "deny", priority = 30 }
 nursery = { level = "deny", priority = 20 }
 
 # Common allows (to be selectively enabled by crates as needed)
-cargo_common_metadata = { level = "allow", priority = 31 }
 similar_names = { level = "allow", priority = 91 }
 too_many_lines = { level = "allow", priority = 91 }
 multiple_crate_versions = { level = "allow", priority = 31 }
