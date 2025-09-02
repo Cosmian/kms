@@ -1,4 +1,4 @@
-//! Implementation of the Hardware Security Module (HSM) trait for BaseHsm
+//! Implementation of the Hardware Security Module (HSM) trait for `BaseHsm`
 //!
 //! This implementation provides cryptographic operations using a Hardware Security Module,
 //! supporting various key management and cryptographic operations.

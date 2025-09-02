@@ -41,7 +41,16 @@ use cosmian_kms_interfaces::{
     CryptoAlgorithm, EncryptedContent, HsmObject, HsmObjectFilter, KeyMaterial, KeyMetadata,
     KeyType, RsaPrivateKeyMaterial, RsaPublicKeyMaterial,
 };
-use pkcs11_sys::*;
+use pkcs11_sys::{
+    CK_AES_GCM_PARAMS, CK_ATTRIBUTE, CK_BBOOL, CK_FALSE, CK_KEY_TYPE, CK_MECHANISM,
+    CK_OBJECT_CLASS, CK_OBJECT_HANDLE, CK_RSA_PKCS_OAEP_PARAMS, CK_SESSION_HANDLE, CK_TRUE,
+    CK_ULONG, CK_VOID_PTR, CKA_CLASS, CKA_COEFFICIENT, CKA_EXPONENT_1, CKA_EXPONENT_2, CKA_ID,
+    CKA_KEY_TYPE, CKA_LABEL, CKA_MODULUS, CKA_PRIME_1, CKA_PRIME_2, CKA_PRIVATE_EXPONENT,
+    CKA_PUBLIC_EXPONENT, CKA_SENSITIVE, CKA_VALUE, CKA_VALUE_LEN, CKG_MGF1_SHA1, CKG_MGF1_SHA256,
+    CKK_AES, CKK_RSA, CKK_VENDOR_DEFINED, CKM_AES_GCM, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP, CKM_SHA_1,
+    CKM_SHA256, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKO_SECRET_KEY, CKO_VENDOR_DEFINED,
+    CKR_ATTRIBUTE_SENSITIVE, CKR_OBJECT_HANDLE_INVALID, CKR_OK, CKZ_DATA_SPECIFIED,
+};
 use rand::{TryRngCore, rngs::OsRng};
 use tracing::debug;
 use zeroize::Zeroizing;
@@ -222,9 +231,9 @@ impl Session {
                 HError::Default("C_FindObjects not available on library".to_string())
             })?(
                 self.session_handle,
-                &mut object_handle,
+                &raw mut object_handle,
                 1,
-                &mut object_count,
+                &raw mut object_count,
             );
             if rv != CKR_OK {
                 return Err(HError::Default(format!("C_FindObjects failed: {rv}")));
@@ -250,7 +259,7 @@ impl Session {
     }
 
     pub fn delete_object_handle(&self, id: &[u8]) {
-        self.object_handles_cache.remove(id)
+        self.object_handles_cache.remove(id);
     }
 
     pub fn generate_random(&self, len: usize) -> HResult<Vec<u8>> {
@@ -284,42 +293,42 @@ impl Session {
                 template.extend([
                     CK_ATTRIBUTE {
                         type_: CKA_CLASS,
-                        pValue: &CKO_SECRET_KEY as *const _ as *mut _,
+                        pValue: std::ptr::from_ref(&CKO_SECRET_KEY) as *mut _,
                         ulValueLen: size_of::<CK_OBJECT_CLASS>() as CK_ULONG,
                     },
                     CK_ATTRIBUTE {
                         type_: CKA_KEY_TYPE,
-                        pValue: &CKK_AES as *const _ as *mut _,
+                        pValue: std::ptr::from_ref(&CKK_AES) as *mut _,
                         ulValueLen: size_of::<CK_KEY_TYPE>() as CK_ULONG,
                     },
                 ]);
             }
             HsmObjectFilter::RsaKey => template.extend([CK_ATTRIBUTE {
                 type_: CKA_KEY_TYPE,
-                pValue: &CKK_RSA as *const _ as *mut _,
+                pValue: std::ptr::from_ref(&CKK_RSA) as *mut _,
                 ulValueLen: size_of::<CK_KEY_TYPE>() as CK_ULONG,
             }]),
             HsmObjectFilter::RsaPrivateKey => template.extend([
                 CK_ATTRIBUTE {
                     type_: CKA_CLASS,
-                    pValue: &CKO_PRIVATE_KEY as *const _ as *mut _,
+                    pValue: std::ptr::from_ref(&CKO_PRIVATE_KEY) as *mut _,
                     ulValueLen: size_of::<CK_OBJECT_CLASS>() as CK_ULONG,
                 },
                 CK_ATTRIBUTE {
                     type_: CKA_KEY_TYPE,
-                    pValue: &CKK_RSA as *const _ as *mut _,
+                    pValue: std::ptr::from_ref(&CKK_RSA) as *mut _,
                     ulValueLen: size_of::<CK_KEY_TYPE>() as CK_ULONG,
                 },
             ]),
             HsmObjectFilter::RsaPublicKey => template.extend([
                 CK_ATTRIBUTE {
                     type_: CKA_CLASS,
-                    pValue: &CKO_PUBLIC_KEY as *const _ as *mut _,
+                    pValue: std::ptr::from_ref(&CKO_PUBLIC_KEY) as *mut _,
                     ulValueLen: size_of::<CK_OBJECT_CLASS>() as CK_ULONG,
                 },
                 CK_ATTRIBUTE {
                     type_: CKA_KEY_TYPE,
-                    pValue: &CKK_RSA as *const _ as *mut _,
+                    pValue: std::ptr::from_ref(&CKK_RSA) as *mut _,
                     ulValueLen: size_of::<CK_KEY_TYPE>() as CK_ULONG,
                 },
             ]),
@@ -346,9 +355,9 @@ impl Session {
                     HError::Default("C_FindObjects not available on library".to_string())
                 })?(
                     self.session_handle,
-                    &mut object_handle,
+                    &raw mut object_handle,
                     1,
-                    &mut object_count,
+                    &raw mut object_count,
                 );
                 if rv != CKR_OK {
                     return Err(HError::Default("Failed to find objects".to_string()));
@@ -404,7 +413,7 @@ impl Session {
                 };
                 let mut mechanism = CK_MECHANISM {
                     mechanism: CKM_AES_GCM,
-                    pParameter: &mut params as *mut _ as CK_VOID_PTR,
+                    pParameter: &raw mut params as CK_VOID_PTR,
                     ulParameterLen: size_of::<CK_AES_GCM_PARAMS>() as CK_ULONG,
                 };
                 let ciphertext =
@@ -440,7 +449,7 @@ impl Session {
                 };
                 let mut mechanism = CK_MECHANISM {
                     mechanism: CKM_RSA_PKCS_OAEP,
-                    pParameter: &mut params as *mut _ as CK_VOID_PTR,
+                    pParameter: &raw mut params as CK_VOID_PTR,
                     ulParameterLen: std::mem::size_of::<CK_RSA_PKCS_OAEP_PARAMS>() as CK_ULONG,
                 };
                 EncryptedContent {
@@ -462,7 +471,7 @@ impl Session {
                 };
                 let mut mechanism = CK_MECHANISM {
                     mechanism: CKM_RSA_PKCS_OAEP,
-                    pParameter: &mut params as *mut _ as CK_VOID_PTR,
+                    pParameter: &raw mut params as CK_VOID_PTR,
                     ulParameterLen: size_of::<CK_RSA_PKCS_OAEP_PARAMS>() as CK_ULONG,
                 };
                 EncryptedContent {
@@ -502,7 +511,7 @@ impl Session {
                 };
                 let mut mechanism = CK_MECHANISM {
                     mechanism: CKM_AES_GCM,
-                    pParameter: &mut params as *mut _ as CK_VOID_PTR,
+                    pParameter: &raw mut params as CK_VOID_PTR,
                     ulParameterLen: size_of::<CK_AES_GCM_PARAMS>() as CK_ULONG,
                 };
                 let plaintext =
@@ -527,7 +536,7 @@ impl Session {
                 };
                 let mut mechanism = CK_MECHANISM {
                     mechanism: CKM_RSA_PKCS_OAEP,
-                    pParameter: &mut params as *mut _ as CK_VOID_PTR,
+                    pParameter: &raw mut params as CK_VOID_PTR,
                     ulParameterLen: std::mem::size_of::<CK_RSA_PKCS_OAEP_PARAMS>() as CK_ULONG,
                 };
                 self.decrypt_with_mechanism(key_handle, &mut mechanism, ciphertext)
@@ -542,7 +551,7 @@ impl Session {
                 };
                 let mut mechanism = CK_MECHANISM {
                     mechanism: CKM_RSA_PKCS_OAEP,
-                    pParameter: &mut params as *mut _ as CK_VOID_PTR,
+                    pParameter: &raw mut params as CK_VOID_PTR,
                     ulParameterLen: std::mem::size_of::<CK_RSA_PKCS_OAEP_PARAMS>() as CK_ULONG,
                 };
                 self.decrypt_with_mechanism(key_handle, &mut mechanism, ciphertext)
@@ -580,7 +589,7 @@ impl Session {
                 data.as_mut_ptr(),
                 data.len() as CK_ULONG,
                 ptr::null_mut(),
-                &mut encrypted_data_len,
+                &raw mut encrypted_data_len,
             );
             if rv != CKR_OK {
                 return Err(HError::Default(format!(
@@ -596,7 +605,7 @@ impl Session {
                 data.as_mut_ptr(),
                 data.len() as CK_ULONG,
                 encrypted_data.as_mut_ptr(),
-                &mut encrypted_data_len,
+                &raw mut encrypted_data_len,
             );
             if rv != CKR_OK {
                 return Err(HError::Default("Failed to encrypt data".to_string()));
@@ -637,7 +646,7 @@ impl Session {
                 encrypted_data.as_mut_ptr(),
                 encrypted_data.len() as CK_ULONG,
                 ptr::null_mut(),
-                &mut decrypted_data_len,
+                &raw mut decrypted_data_len,
             );
             if rv != CKR_OK {
                 return Err(HError::Default(
@@ -651,7 +660,7 @@ impl Session {
                 encrypted_data.as_mut_ptr(),
                 encrypted_data.len() as CK_ULONG,
                 decrypted_data.as_mut_ptr(),
-                &mut decrypted_data_len,
+                &raw mut decrypted_data_len,
             );
             if rv != CKR_OK {
                 return Err(HError::Default("Failed to decrypt data".to_string()));
@@ -669,12 +678,12 @@ impl Session {
         let mut template = [
             CK_ATTRIBUTE {
                 type_: CKA_CLASS,
-                pValue: &mut class as *mut _ as CK_VOID_PTR,
+                pValue: &raw mut class as CK_VOID_PTR,
                 ulValueLen: size_of::<CK_OBJECT_CLASS>() as CK_ULONG,
             },
             CK_ATTRIBUTE {
                 type_: CKA_KEY_TYPE,
-                pValue: &mut key_type as *mut _ as CK_VOID_PTR,
+                pValue: &raw mut key_type as CK_VOID_PTR,
                 ulValueLen: size_of::<CK_ULONG>() as CK_ULONG,
             },
         ];
@@ -950,7 +959,7 @@ impl Session {
             },
             CK_ATTRIBUTE {
                 type_: CKA_VALUE_LEN,
-                pValue: &mut key_size as *mut _ as CK_VOID_PTR,
+                pValue: &raw mut key_size as CK_VOID_PTR,
                 ulValueLen: size_of::<CK_ULONG>() as CK_ULONG,
             },
         ];
@@ -981,7 +990,7 @@ impl Session {
             })?(
                 self.session_handle,
                 key_handle,
-                template.as_ptr() as *mut CK_ATTRIBUTE,
+                template.as_ptr().cast_mut(),
                 template.len() as CK_ULONG,
             );
             if rv == CKR_ATTRIBUTE_SENSITIVE {
@@ -1021,12 +1030,12 @@ impl Session {
                 template.extend([
                     CK_ATTRIBUTE {
                         type_: CKA_VALUE_LEN,
-                        pValue: &mut key_size as *mut _ as CK_VOID_PTR,
+                        pValue: &raw mut key_size as CK_VOID_PTR,
                         ulValueLen: size_of::<CK_ULONG>() as CK_ULONG,
                     },
                     CK_ATTRIBUTE {
                         type_: CKA_SENSITIVE,
-                        pValue: &mut sensitive as *mut _ as CK_VOID_PTR,
+                        pValue: &raw mut sensitive as CK_VOID_PTR,
                         ulValueLen: size_of::<CK_BBOOL>() as CK_ULONG,
                     },
                 ]);
@@ -1097,7 +1106,7 @@ impl Session {
                 if key_type == KeyType::RsaPrivateKey {
                     template.push(CK_ATTRIBUTE {
                         type_: CKA_SENSITIVE,
-                        pValue: &mut sensitive as *mut _ as CK_VOID_PTR,
+                        pValue: &raw mut sensitive as CK_VOID_PTR,
                         ulValueLen: size_of::<CK_BBOOL>() as CK_ULONG,
                     });
                 }
@@ -1138,12 +1147,12 @@ impl Session {
         let mut template = [
             CK_ATTRIBUTE {
                 type_: CKA_CLASS,
-                pValue: &mut class as *mut _ as CK_VOID_PTR,
+                pValue: &raw mut class as CK_VOID_PTR,
                 ulValueLen: size_of::<CK_OBJECT_CLASS>() as CK_ULONG,
             },
             CK_ATTRIBUTE {
                 type_: CKA_KEY_TYPE,
-                pValue: &mut key_type as *mut _ as CK_VOID_PTR,
+                pValue: &raw mut key_type as CK_VOID_PTR,
                 ulValueLen: size_of::<CK_ULONG>() as CK_ULONG,
             },
         ];

@@ -13,7 +13,7 @@ use tracing::warn;
 
 use crate::{HError, HResult, Session, hsm_lib::HsmLib};
 
-/// A cache structure that maps byte vectors to CK_OBJECT_HANDLE values using an LRU (Least Recently Used) strategy.
+/// A cache structure that maps byte vectors to `CK_OBJECT_HANDLE` values using an LRU (Least Recently Used) strategy.
 ///
 /// This struct wraps a mutex-protected LRU cache that associates object identifiers (as byte vectors)
 /// with their corresponding PKCS#11 object handles. The cache helps improve performance by reducing
@@ -30,6 +30,7 @@ impl Default for ObjectHandlesCache {
 }
 
 impl ObjectHandlesCache {
+    #[must_use]
     pub fn new() -> Self {
         #[allow(unsafe_code)]
         let max = unsafe { NonZeroUsize::new_unchecked(100) };
@@ -74,7 +75,7 @@ impl ObjectHandlesCache {
 /// * `object_handles_cache` - A thread-safe cache of object handles for this slot
 /// * `_login_session` - An optional authenticated session with the HSM slot
 ///
-/// The SlotManager is responsible for coordinating operations on a specific HSM slot,
+/// The `SlotManager` is responsible for coordinating operations on a specific HSM slot,
 /// including session management and object handle caching.
 pub struct SlotManager {
     hsm_lib: Arc<HsmLib>,
@@ -84,7 +85,7 @@ pub struct SlotManager {
 }
 
 impl SlotManager {
-    /// Create a new SlotManager instance for the specified slot.
+    /// Create a new `SlotManager` instance for the specified slot.
     /// If a login password is provided, the HSM will authenticate the slot.
     ///
     /// # Arguments
@@ -93,7 +94,7 @@ impl SlotManager {
     /// * `login_password` - An optional password to authenticate the slot.
     ///
     /// # Returns
-    /// * `PResult<SlotManager>` - A result containing the SlotManager instance.
+    /// * `PResult<SlotManager>` - A result containing the `SlotManager` instance.
     ///
     /// # Errors
     /// * An error is returned if the slot cannot be opened or authenticated.
@@ -102,7 +103,7 @@ impl SlotManager {
     ///
     /// # Safety
     /// This function calls unsafe FFI functions from the HSM library to open a session and authenticate the slot.
-    /// The function is safe to call, but care must be taken when using the resulting SlotManager instance.
+    /// The function is safe to call, but care must be taken when using the resulting `SlotManager` instance.
     pub fn instantiate(
         hsm_lib: Arc<HsmLib>,
         slot_id: usize,
@@ -178,7 +179,13 @@ impl SlotManager {
         unsafe {
             let rv = hsm_lib.C_OpenSession.ok_or_else(|| {
                 HError::Default("C_OpenSession not available on library".to_string())
-            })?(slot_id, flags, ptr::null_mut(), None, &mut session_handle);
+            })?(
+                slot_id,
+                flags,
+                ptr::null_mut(),
+                None,
+                &raw mut session_handle,
+            );
             if rv != CKR_OK {
                 return Err(HError::Default(format!(
                     "HSM: Failed opening a session: {rv}"

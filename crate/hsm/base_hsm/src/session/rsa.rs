@@ -56,22 +56,22 @@ impl Session {
             let mut pub_key_template = vec![
                 CK_ATTRIBUTE {
                     type_: CKA_KEY_TYPE,
-                    pValue: &CKK_RSA as *const _ as CK_VOID_PTR,
+                    pValue: std::ptr::from_ref(&CKK_RSA) as CK_VOID_PTR,
                     ulValueLen: size_of::<CK_KEY_TYPE>() as CK_ULONG,
                 },
                 CK_ATTRIBUTE {
                     type_: CKA_TOKEN,
-                    pValue: &CK_TRUE as *const _ as CK_VOID_PTR,
+                    pValue: std::ptr::from_ref(&CK_TRUE) as CK_VOID_PTR,
                     ulValueLen: size_of::<CK_BBOOL>() as CK_ULONG,
                 },
                 CK_ATTRIBUTE {
                     type_: CKA_ENCRYPT,
-                    pValue: &CK_TRUE as *const _ as CK_VOID_PTR,
+                    pValue: std::ptr::from_ref(&CK_TRUE) as CK_VOID_PTR,
                     ulValueLen: size_of::<CK_BBOOL>() as CK_ULONG,
                 },
                 CK_ATTRIBUTE {
                     type_: CKA_MODULUS_BITS,
-                    pValue: &key_size as *const _ as CK_VOID_PTR,
+                    pValue: &raw const key_size as CK_VOID_PTR,
                     ulValueLen: size_of::<CK_ULONG>() as CK_ULONG,
                 },
                 CK_ATTRIBUTE {
@@ -86,12 +86,12 @@ impl Session {
                 },
                 CK_ATTRIBUTE {
                     type_: CKA_WRAP,
-                    pValue: &CK_TRUE as *const _ as CK_VOID_PTR,
+                    pValue: std::ptr::from_ref(&CK_TRUE) as CK_VOID_PTR,
                     ulValueLen: size_of::<CK_BBOOL>() as CK_ULONG,
                 },
                 CK_ATTRIBUTE {
                     type_: CKA_VERIFY,
-                    pValue: &CK_TRUE as *const _ as CK_VOID_PTR,
+                    pValue: std::ptr::from_ref(&CK_TRUE) as CK_VOID_PTR,
                     ulValueLen: size_of::<CK_BBOOL>() as CK_ULONG,
                 },
             ];
@@ -99,22 +99,22 @@ impl Session {
             let mut priv_key_template = vec![
                 CK_ATTRIBUTE {
                     type_: CKA_KEY_TYPE,
-                    pValue: &CKK_RSA as *const _ as CK_VOID_PTR,
+                    pValue: std::ptr::from_ref(&CKK_RSA) as CK_VOID_PTR,
                     ulValueLen: size_of::<CK_KEY_TYPE>() as CK_ULONG,
                 },
                 CK_ATTRIBUTE {
                     type_: CKA_TOKEN,
-                    pValue: &CK_TRUE as *const _ as CK_VOID_PTR,
+                    pValue: std::ptr::from_ref(&CK_TRUE) as CK_VOID_PTR,
                     ulValueLen: size_of::<CK_BBOOL>() as CK_ULONG,
                 },
                 CK_ATTRIBUTE {
                     type_: CKA_PRIVATE,
-                    pValue: &CK_TRUE as *const _ as CK_VOID_PTR,
+                    pValue: std::ptr::from_ref(&CK_TRUE) as CK_VOID_PTR,
                     ulValueLen: size_of::<CK_BBOOL>() as CK_ULONG,
                 },
                 CK_ATTRIBUTE {
                     type_: CKA_DECRYPT,
-                    pValue: &CK_TRUE as *const _ as CK_VOID_PTR,
+                    pValue: std::ptr::from_ref(&CK_TRUE) as CK_VOID_PTR,
                     ulValueLen: size_of::<CK_BBOOL>() as CK_ULONG,
                 },
                 CK_ATTRIBUTE {
@@ -124,22 +124,22 @@ impl Session {
                 },
                 CK_ATTRIBUTE {
                     type_: CKA_UNWRAP,
-                    pValue: &CK_TRUE as *const _ as CK_VOID_PTR,
+                    pValue: std::ptr::from_ref(&CK_TRUE) as CK_VOID_PTR,
                     ulValueLen: size_of::<CK_BBOOL>() as CK_ULONG,
                 },
                 CK_ATTRIBUTE {
                     type_: CKA_SIGN,
-                    pValue: &CK_TRUE as *const _ as CK_VOID_PTR,
+                    pValue: std::ptr::from_ref(&CK_TRUE) as CK_VOID_PTR,
                     ulValueLen: size_of::<CK_BBOOL>() as CK_ULONG,
                 },
                 CK_ATTRIBUTE {
                     type_: CKA_SENSITIVE,
-                    pValue: &sensitive as *const _ as CK_VOID_PTR,
+                    pValue: &raw const sensitive as CK_VOID_PTR,
                     ulValueLen: size_of::<CK_BBOOL>() as CK_ULONG,
                 },
                 CK_ATTRIBUTE {
                     type_: CKA_EXTRACTABLE,
-                    pValue: &CK_TRUE as *const _ as CK_VOID_PTR,
+                    pValue: std::ptr::from_ref(&CK_TRUE) as CK_VOID_PTR,
                     ulValueLen: size_of::<CK_BBOOL>() as CK_ULONG,
                 },
             ];
@@ -152,7 +152,7 @@ impl Session {
 
             let mut pub_key_handle = CK_OBJECT_HANDLE::default();
             let mut priv_key_handle = CK_OBJECT_HANDLE::default();
-            let pMechanism: CK_MECHANISM_PTR = &mut mechanism;
+            let pMechanism: CK_MECHANISM_PTR = &raw mut mechanism;
 
             let rv = self.hsm().C_GenerateKeyPair.ok_or_else(|| {
                 HError::Default("C_GenerateKeyPair not available on library".to_string())
@@ -163,8 +163,8 @@ impl Session {
                 pub_key_template.len() as CK_ULONG,
                 priv_key_template.as_mut_ptr(),
                 priv_key_template.len() as CK_ULONG,
-                &mut pub_key_handle,
-                &mut priv_key_handle,
+                &raw mut pub_key_handle,
+                &raw mut priv_key_handle,
             );
 
             if rv != CKR_OK {
@@ -209,7 +209,7 @@ impl Session {
 
             let mut mechanism = CK_MECHANISM {
                 mechanism: CKM_RSA_PKCS_OAEP,
-                pParameter: &mut oaep_params as *mut _ as CK_VOID_PTR,
+                pParameter: &raw mut oaep_params as CK_VOID_PTR,
                 ulParameterLen: size_of::<CK_RSA_PKCS_OAEP_PARAMS>() as CK_ULONG,
             };
 
@@ -220,11 +220,11 @@ impl Session {
                 .C_WrapKey
                 .ok_or_else(|| HError::Default("C_WrapKey not available on library".to_string()))?(
                 self.session_handle(),
-                &mut mechanism,
+                &raw mut mechanism,
                 wrapping_key_handle,
                 aes_key_handle,
                 ptr::null_mut(),
-                &mut wrapped_key_len,
+                &raw mut wrapped_key_len,
             );
 
             if rv != CKR_OK {
@@ -242,11 +242,11 @@ impl Session {
                 .C_WrapKey
                 .ok_or_else(|| HError::Default("C_WrapKey not available on library".to_string()))?(
                 self.session_handle(),
-                &mut mechanism,
+                &raw mut mechanism,
                 wrapping_key_handle,
                 aes_key_handle,
                 wrapped_key.as_mut_ptr(),
-                &mut wrapped_key_len,
+                &raw mut wrapped_key_len,
             );
 
             if rv != CKR_OK {
@@ -288,7 +288,7 @@ impl Session {
 
             let mut mechanism = CK_MECHANISM {
                 mechanism: CKM_RSA_PKCS_OAEP,
-                pParameter: &mut oaep_params as *mut _ as CK_VOID_PTR,
+                pParameter: &raw mut oaep_params as CK_VOID_PTR,
                 ulParameterLen: size_of::<CK_RSA_PKCS_OAEP_PARAMS>() as CK_ULONG,
             };
 
@@ -296,17 +296,17 @@ impl Session {
             let mut aes_key_template = [
                 CK_ATTRIBUTE {
                     type_: CKA_CLASS,
-                    pValue: &CKO_SECRET_KEY as *const _ as CK_VOID_PTR,
+                    pValue: std::ptr::from_ref(&CKO_SECRET_KEY) as CK_VOID_PTR,
                     ulValueLen: size_of::<CK_ULONG>() as CK_ULONG,
                 },
                 CK_ATTRIBUTE {
                     type_: CKA_KEY_TYPE,
-                    pValue: &CKK_AES as *const _ as CK_VOID_PTR,
+                    pValue: std::ptr::from_ref(&CKK_AES) as CK_VOID_PTR,
                     ulValueLen: size_of::<CK_ULONG>() as CK_ULONG,
                 },
                 CK_ATTRIBUTE {
                     type_: CKA_TOKEN,
-                    pValue: &CK_TRUE as *const _ as CK_VOID_PTR,
+                    pValue: std::ptr::from_ref(&CK_TRUE) as CK_VOID_PTR,
                     ulValueLen: size_of::<CK_BBOOL>() as CK_ULONG,
                 },
                 CK_ATTRIBUTE {
@@ -316,27 +316,27 @@ impl Session {
                 },
                 CK_ATTRIBUTE {
                     type_: CKA_PRIVATE,
-                    pValue: &CK_TRUE as *const _ as CK_VOID_PTR,
+                    pValue: std::ptr::from_ref(&CK_TRUE) as CK_VOID_PTR,
                     ulValueLen: size_of::<CK_BBOOL>() as CK_ULONG,
                 },
                 CK_ATTRIBUTE {
                     type_: CKA_SENSITIVE,
-                    pValue: &CK_TRUE as *const _ as CK_VOID_PTR,
+                    pValue: std::ptr::from_ref(&CK_TRUE) as CK_VOID_PTR,
                     ulValueLen: size_of::<CK_BBOOL>() as CK_ULONG,
                 },
                 CK_ATTRIBUTE {
                     type_: CKA_EXTRACTABLE,
-                    pValue: &CK_TRUE as *const _ as CK_VOID_PTR,
+                    pValue: std::ptr::from_ref(&CK_TRUE) as CK_VOID_PTR,
                     ulValueLen: size_of::<CK_BBOOL>() as CK_ULONG,
                 },
                 CK_ATTRIBUTE {
                     type_: CKA_ENCRYPT,
-                    pValue: &CK_TRUE as *const _ as CK_VOID_PTR,
+                    pValue: std::ptr::from_ref(&CK_TRUE) as CK_VOID_PTR,
                     ulValueLen: size_of::<CK_BBOOL>() as CK_ULONG,
                 },
                 CK_ATTRIBUTE {
                     type_: CKA_DECRYPT,
-                    pValue: &CK_TRUE as *const _ as CK_VOID_PTR,
+                    pValue: std::ptr::from_ref(&CK_TRUE) as CK_VOID_PTR,
                     ulValueLen: size_of::<CK_BBOOL>() as CK_ULONG,
                 },
             ];
@@ -345,13 +345,13 @@ impl Session {
                 HError::Default("C_UnwrapKey not available on library".to_string())
             })?(
                 self.session_handle(),
-                &mut mechanism,
+                &raw mut mechanism,
                 unwrapping_key_handle,
                 wrapped_key.as_mut_ptr(),
                 wrapped_key.len() as CK_ULONG,
                 aes_key_template.as_mut_ptr(),
                 aes_key_template.len() as CK_ULONG,
-                &mut unwrapped_key_handle,
+                &raw mut unwrapped_key_handle,
             );
 
             if rv != CKR_OK {
