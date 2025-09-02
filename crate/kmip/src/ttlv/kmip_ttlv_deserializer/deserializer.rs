@@ -802,7 +802,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
             // being deserialized.
             // The deserializer will skip these fields and deserialize the rest of the structure
             trace!("... deserializing an adjacently tagged structure");
-            return visitor.visit_map(AdjacentlyTaggedStructure::new(&mut TtlvDeserializer {
+            return visitor.visit_map(AdjacentlyTaggedStructure::new(&TtlvDeserializer {
                 current: element.clone(),
                 child_index: 0,
                 map_state: MapAccessState::None,
