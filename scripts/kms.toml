@@ -70,14 +70,14 @@ unwrapped_cache_max_age = 15 # minutes
 [tls]
 # The KMS server's optional PKCS#12 Certificates and Key file.
 # If provided, this will start the server in HTTPS mode.
-tls_p12_file = "test_data/client_server/server/kmserver.acme.com.p12"
+tls_p12_file = "test_data/certificates/client_server/server/kmserver.acme.com.p12"
 # The password to open the PKCS#12 certificates and key file.
 tls_p12_password = "password"
 # The server's optional authority X509 certificate in PEM format
 # used to validate the client certificate presented for authentication.
 # If provided, clients must present a certificate signed by this authority for authentication.
 # The server must run in TLS mode for this to be used.
-clients_ca_cert_file = "test_data/client_server/ca/ca.crt"
+clients_ca_cert_file = "test_data/certificates/client_server/ca/ca.crt"
 
 # The socket server listens to KMIP binary requests on the IANA-registered 5696 port.
 # The socket server will only start if the TLS configuration is provided **and** client certificate authentication

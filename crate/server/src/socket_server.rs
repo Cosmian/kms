@@ -1,21 +1,18 @@
 use std::{
     io::{Read, Write},
     net::{TcpListener, TcpStream},
-    sync::{Arc, Once, RwLock, mpsc},
+    sync::{Arc, RwLock, mpsc},
     thread,
     time::Duration,
 };
 
 use log::warn;
-use openssl::pkcs12::ParsedPkcs12_2;
-use rustls::{
-    RootCertStore, ServerConfig, ServerConnection, Stream,
-    pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer, pem::PemObject},
-    server::WebPkiClientVerifier,
+use openssl::{
+    pkcs12::ParsedPkcs12_2,
+    ssl::{SslAcceptor, SslStream},
 };
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, trace};
-use x509_parser::nom::AsBytes;
 
 use crate::{
     config::ServerParams,
@@ -23,24 +20,8 @@ use crate::{
     error::KmsError,
     kms_bail,
     result::{KResult, KResultHelper},
+    tls_config::{TlsConfig, configure_client_cert_verification, create_base_openssl_acceptor},
 };
-
-static INIT_CRYPTO: Once = Once::new();
-
-/// Initialize the crypto provider used by rustls.
-/// Use AWS LC crypto provider which is FIPS certified
-pub(crate) fn initialize_aws_lc_crypto_provider() {
-    {
-        INIT_CRYPTO.call_once(|| {
-            let provider = rustls::crypto::aws_lc_rs::default_provider();
-            if let Err(_e) = provider.install_default() {
-                let err = "Failed to install the aws_lc crypto provider".to_owned();
-                error!("{err}");
-                // Downstream code will likely fail but graciously
-            }
-        });
-    }
-}
 
 /// Configuration for the `py_kmip` socket server
 #[derive(Clone)]
@@ -53,6 +34,8 @@ pub struct SocketServerParams<'a> {
     pub p12: &'a ParsedPkcs12_2,
     /// Client CA certificate (PEM format, X509)
     pub client_ca_cert_pem: &'a [u8],
+    /// Configured cipher suites to use for TLS connections (OpenSSL cipher string format)
+    pub cipher_suites: Option<&'a String>,
 }
 
 impl<'a> TryFrom<&'a ServerParams> for SocketServerParams<'a> {
@@ -64,7 +47,7 @@ impl<'a> TryFrom<&'a ServerParams> for SocketServerParams<'a> {
                 "The Socket server cannot be started: TLS parameters are not set".to_owned(),
             ));
         };
-        let Some(client_ca_cert_pem) = &tls_params.client_ca_cert_pem else {
+        let Some(client_ca_cert_pem) = &tls_params.clients_ca_cert_pem else {
             return Err(KmsError::NotSupported(
                 "The Socket server cannot be started: Client CA certificate is not set".to_owned(),
             ));
@@ -74,6 +57,7 @@ impl<'a> TryFrom<&'a ServerParams> for SocketServerParams<'a> {
             port: params.socket_server_port,
             p12: &tls_params.p12,
             client_ca_cert_pem,
+            cipher_suites: tls_params.cipher_suites.as_ref(),
         })
     }
 }
@@ -82,7 +66,7 @@ impl<'a> TryFrom<&'a ServerParams> for SocketServerParams<'a> {
 pub struct SocketServer {
     host: String,
     port: u16,
-    server_config: Arc<ServerConfig>,
+    server_config: Arc<SslAcceptor>,
 }
 
 impl SocketServer {
@@ -93,7 +77,7 @@ impl SocketServer {
     /// - If the client CA certificate is invalid
     /// - If the server fails to bind to the specified host and port
     pub fn instantiate(config: &SocketServerParams) -> KResult<Self> {
-        let server_config = Arc::new(create_rustls_server_config(config)?);
+        let server_config = Arc::new(create_openssl_acceptor(config)?);
         Ok(Self {
             host: config.host.clone(),
             port: config.port,
@@ -193,7 +177,7 @@ impl SocketServer {
     fn start_listening<F>(
         kms_server: &Arc<KMS>,
         addr: &str,
-        server_config: &Arc<ServerConfig>,
+        server_config: &Arc<SslAcceptor>,
         handler: &Arc<F>,
         command_receiver: mpsc::Receiver<KResult<()>>,
         start_notifier: Option<mpsc::Sender<KResult<()>>>,
@@ -287,7 +271,7 @@ impl SocketServer {
                     let kms_server = kms_server.clone();
                     thread::spawn(move || {
                         if let Err(e) =
-                            handle_client(&kms_server, server_config, &handler, &mut stream)
+                            handle_client(&kms_server, &server_config, &handler, &mut stream)
                         {
                             error!("Error handling socket client: {}", e);
                         }
@@ -304,7 +288,7 @@ impl SocketServer {
 
 fn handle_client(
     kms_server: &Arc<KMS>,
-    server_config: Arc<ServerConfig>,
+    server_config: &Arc<SslAcceptor>,
     handler: &Arc<impl Fn(&str, &[u8], Arc<KMS>) -> Vec<u8> + Send + Sync>,
     stream: &mut TcpStream,
 ) -> KResult<()> {
@@ -314,10 +298,9 @@ fn handle_client(
         .map_or("[N/A]".to_owned(), |sa| sa.to_string());
     debug!("socket server: client connected from {}", peer_addr);
 
-    let mut server_connection = ServerConnection::new(server_config)
-        .context("socket server: failed to create rustls server connection")?;
-
-    let mut tls_stream = Stream::new(&mut server_connection, stream);
+    let mut tls_stream = server_config
+        .accept(stream)
+        .context("socket server: failed to create OpenSSL TLS connection")?;
 
     loop {
         // Read 8 bytes of the TTLV header
@@ -372,25 +355,18 @@ fn handle_client(
 }
 
 /// Extract the common name from the client certificate which is used as the username
-fn client_username(tls_stream: &Stream<ServerConnection, TcpStream>) -> Result<String, KmsError> {
+fn client_username(tls_stream: &SslStream<&mut TcpStream>) -> Result<String, KmsError> {
     // The call to peer_certificate() must be made AFTER the first few bytes are read
-    let client_certificate = tls_stream
-        .conn
-        .peer_certificates()
-        .ok_or_else(|| {
-            // note: this should never happen since the Web PLI client verifier of the config
-            // should have already verified the client certificate
-            KmsError::Certificate(
-                "socket server: the client did not provide a peer certificate".to_owned(),
-            )
-        })?
-        .first()
-        .ok_or_else(|| {
-            KmsError::Certificate("socket server: failed to get client certificate".to_owned())
-        })?;
+    let client_certificate = tls_stream.ssl().peer_certificate().ok_or_else(|| {
+        // note: this should never happen since the certificate verifier of the config
+        // should have already verified the client certificate
+        KmsError::Certificate(
+            "socket server: the client did not provide a peer certificate".to_owned(),
+        )
+    })?;
 
-    let cert_der_bytes = client_certificate.as_bytes();
-    let x509 = openssl::x509::X509::from_der(cert_der_bytes)?;
+    // The certificate is already an X509 object with OpenSSL
+    let x509 = client_certificate;
     Ok(x509
         .subject_name()
         .entries_by_nid(openssl::nid::Nid::COMMONNAME)
@@ -409,60 +385,25 @@ fn client_username(tls_stream: &Stream<ServerConnection, TcpStream>) -> Result<S
 }
 
 // Client Certificate Authentication
-// Build a rustls ServerConfig supporting client cert auth
-pub(crate) fn create_rustls_server_config(
-    server_config: &SocketServerParams,
-) -> KResult<ServerConfig> {
-    // We need an initialized crypto provider to use rustls
-    initialize_aws_lc_crypto_provider();
+// Build an OpenSSL SslAcceptor supporting client cert auth
+pub(crate) fn create_openssl_acceptor(server_config: &SocketServerParams) -> KResult<SslAcceptor> {
+    trace!("Creating OpenSSL SslAcceptor for socket server");
 
-    let mut certs: Vec<CertificateDer> = Vec::new();
-
-    let Some(server_cert) = &server_config.p12.cert else {
-        return Err(KmsError::Certificate(
-            "socket server: no server certificate found in PKCS#12 file".to_owned(),
-        ));
+    // Use the common TLS configuration
+    let tls_config = TlsConfig {
+        cipher_suites: server_config.cipher_suites.map(std::string::String::as_str),
+        p12: server_config.p12,
+        client_ca_cert_pem: Some(server_config.client_ca_cert_pem),
     };
-    let server_cert = server_cert
-        .to_der()
-        .context("socket server: failed to encode server certificate in DER bytes")?;
-    certs.push(CertificateDer::from(server_cert));
-    if let Some(cas) = &server_config.p12.ca {
-        for ca in cas.iter().rev() {
-            let der_bytes = ca
-                .to_der()
-                .context("socket server: failed to encode CA certificate in DER bytes")?;
-            certs.push(CertificateDer::from(der_bytes));
-        }
-    }
 
-    let Some(server_private_key) = &server_config.p12.pkey else {
-        return Err(KmsError::Certificate(
-            "socket server: no server private key found in PKCS#12 file".to_owned(),
-        ));
-    };
-    let server_private_key_pkcs8 = server_private_key
-        .private_key_to_pkcs8()
-        .context("socket server: failed to generate the server private key as PKCS#8")?;
-    let server_private_key = PrivatePkcs8KeyDer::from(server_private_key_pkcs8);
+    let mut builder = create_base_openssl_acceptor(&tls_config, "socket server")?;
 
-    // Create the clients' CA certificate store
-    let mut client_auth_roots = RootCertStore::empty();
-    let client_ca_cert = CertificateDer::from_pem_slice(server_config.client_ca_cert_pem)
-        .context("socket server: failed loading socket server clients' CA certificate")?;
-    client_auth_roots
-        .add(client_ca_cert)
-        .context("socket server: failed to add client CA cert")?;
+    // Configure client certificate verification (required for socket server)
+    configure_client_cert_verification(
+        &mut builder,
+        server_config.client_ca_cert_pem,
+        "socket server",
+    )?;
 
-    // Enable the client certificate verifier
-    let client_auth = WebPkiClientVerifier::builder(client_auth_roots.into())
-        .build()
-        .context("socket server: failed to create the socket server client auth verifier")?;
-
-    let mut server_config = ServerConfig::builder()
-        .with_client_cert_verifier(client_auth)
-        .with_single_cert(certs, PrivateKeyDer::Pkcs8(server_private_key))
-        .context("socket server: failed building the socket server config")?;
-    server_config.alpn_protocols = vec![b"http/1.1".to_vec()];
-    Ok(server_config)
+    Ok(builder.build())
 }

@@ -6,6 +6,7 @@ use cosmian_kms_client::{
     reexport::cosmian_kms_client_utils::symmetric_utils::DataEncryptionAlgorithm,
 };
 use cosmian_logger::log_init;
+use serial_test::serial;
 use test_kms_server::{
     start_default_test_kms_server_with_cert_auth,
     start_default_test_kms_server_with_privileged_users,
@@ -58,6 +59,7 @@ async fn export_import_sym_key(key_id: &str, kms_client: &KmsClient) -> KmsCliRe
 }
 
 #[tokio::test]
+#[serial]
 pub(crate) async fn test_ownership_and_grant() -> KmsCliResult<()> {
     // the client conf will use the owner cert
     let ctx = start_default_test_kms_server_with_cert_auth().await;
@@ -265,6 +267,7 @@ pub(crate) async fn test_ownership_and_grant() -> KmsCliResult<()> {
 }
 
 #[tokio::test]
+#[serial]
 pub(crate) async fn test_grant_error() -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server_with_cert_auth().await;
     let key_id = gen_key(&ctx.get_owner_client()).await?;
@@ -297,6 +300,7 @@ pub(crate) async fn test_grant_error() -> KmsCliResult<()> {
 }
 
 #[tokio::test]
+#[serial]
 pub(crate) async fn test_revoke_access() -> KmsCliResult<()> {
     log_init(None);
     // the client conf will use the owner cert
@@ -389,6 +393,7 @@ pub(crate) async fn test_revoke_access() -> KmsCliResult<()> {
 }
 
 #[tokio::test]
+#[serial]
 pub(crate) async fn test_list_access_rights() -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server_with_cert_auth().await;
     let key_id = gen_key(&ctx.get_owner_client()).await?;
@@ -432,6 +437,7 @@ pub(crate) async fn test_list_access_rights() -> KmsCliResult<()> {
 }
 
 #[tokio::test]
+#[serial]
 pub(crate) async fn test_list_access_rights_error() -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server_with_cert_auth().await;
     assert!(
@@ -446,6 +452,7 @@ pub(crate) async fn test_list_access_rights_error() -> KmsCliResult<()> {
 }
 
 #[tokio::test]
+#[serial]
 pub(crate) async fn test_list_owned_objects() -> KmsCliResult<()> {
     log_init(None);
     let ctx = start_default_test_kms_server_with_cert_auth().await;
@@ -509,6 +516,7 @@ pub(crate) async fn test_list_owned_objects() -> KmsCliResult<()> {
 }
 
 #[tokio::test]
+#[serial]
 pub(crate) async fn test_access_right_obtained() -> KmsCliResult<()> {
     log_init(None);
     let ctx = start_default_test_kms_server_with_cert_auth().await;
@@ -602,6 +610,7 @@ pub(crate) async fn test_access_right_obtained() -> KmsCliResult<()> {
 }
 
 #[tokio::test]
+#[serial]
 pub(crate) async fn test_ownership_and_grant_wildcard_user() -> KmsCliResult<()> {
     // the client conf will use the owner cert
     let ctx = start_default_test_kms_server_with_cert_auth().await;
@@ -820,6 +829,7 @@ pub(crate) async fn test_ownership_and_grant_wildcard_user() -> KmsCliResult<()>
 }
 
 #[tokio::test]
+#[serial]
 pub(crate) async fn test_grant_multiple_operations() -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server_with_cert_auth().await;
     let key_id = gen_key(&ctx.get_owner_client()).await?;
@@ -880,6 +890,7 @@ pub(crate) async fn test_grant_multiple_operations() -> KmsCliResult<()> {
 }
 
 #[tokio::test]
+#[serial]
 pub(crate) async fn test_grant_with_without_object_uid() -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server_with_cert_auth().await;
 
@@ -909,6 +920,7 @@ pub(crate) async fn test_grant_with_without_object_uid() -> KmsCliResult<()> {
 }
 
 #[tokio::test]
+#[serial]
 #[allow(clippy::large_stack_frames)]
 pub(crate) async fn test_privileged_users() -> KmsCliResult<()> {
     log_init(option_env!("RUST_LOG"));

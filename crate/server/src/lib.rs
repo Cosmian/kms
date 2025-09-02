@@ -74,3 +74,4 @@ pub mod start_kms_server;
 )]
 #[cfg(test)]
 mod tests;
+pub mod tls_config;

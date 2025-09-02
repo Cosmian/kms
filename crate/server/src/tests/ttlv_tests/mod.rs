@@ -109,12 +109,14 @@ fn new_socket_client(socket_port: u16) -> SocketClient {
         host: "localhost".to_owned(),
         port: socket_port,
         client_p12: include_bytes!(
-            "../../../../../test_data/client_server/user/user.client.acme.com.p12"
+            "../../../../../test_data/certificates/client_server/user/user.client.acme.com.p12"
         )
         .to_vec(),
         client_p12_secret: "password".to_owned(),
-        server_ca_cert_pem: include_str!("../../../../../test_data/client_server/ca/ca.crt")
-            .to_owned(),
+        server_ca_cert_pem: include_str!(
+            "../../../../../test_data/certificates/client_server/ca/ca.crt"
+        )
+        .to_owned(),
     })
     .expect("Failed to create socket client")
 }

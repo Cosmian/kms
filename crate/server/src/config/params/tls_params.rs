@@ -16,7 +16,9 @@ pub struct TlsParams {
     pub p12: ParsedPkcs12_2,
     /// The certificate used to verify the client TLS certificates
     /// used for authentication in PEM format
-    pub client_ca_cert_pem: Option<Vec<u8>>,
+    pub clients_ca_cert_pem: Option<Vec<u8>>,
+    /// Configured cipher suites to use for TLS connections (OpenSSL cipher string format)
+    pub cipher_suites: Option<String>,
 }
 
 /// Represents the HTTP parameters for the server configuration.
@@ -61,9 +63,13 @@ impl TlsParams {
         } else {
             None
         };
+
+        let cipher_suites = config.tls_cipher_suites.clone();
+
         Ok(Some(Self {
             p12,
-            client_ca_cert_pem: authority_cert_file,
+            clients_ca_cert_pem: authority_cert_file,
+            cipher_suites,
         }))
     }
 }
@@ -81,7 +87,7 @@ fn open_p12(p12_file: &PathBuf, p12_password: &str) -> Result<ParsedPkcs12_2, Km
 
 impl fmt::Debug for TlsParams {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let ca_cert = if let Some(cert) = &self.client_ca_cert_pem {
+        let ca_cert = if let Some(cert) = &self.clients_ca_cert_pem {
             let pem = Pem::iter_from_buffer(cert)
                 .next()
                 .transpose()
@@ -92,6 +98,12 @@ impl fmt::Debug for TlsParams {
         } else {
             "[N/A]".to_owned()
         };
+
+        let cipher_suites = self.cipher_suites.as_ref().map_or_else(
+            || "Default OpenSSL cipher suites".to_owned(),
+            |cipher_string| format!("Custom cipher string: {cipher_string}"),
+        );
+
         f.debug_struct("TlsParams")
             .field(
                 "p12",
@@ -100,6 +112,7 @@ impl fmt::Debug for TlsParams {
                 }),
             )
             .field("authority_cert_file: ", &ca_cert)
+            .field("cipher_suites: ", &cipher_suites)
             .finish()
     }
 }

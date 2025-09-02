@@ -1,4 +1,7 @@
-use cosmian_http_client::HttpClient;
+use cosmian_http_client::{
+    HttpClient,
+    reexport::reqwest::{Response, StatusCode},
+};
 // re-export the kmip module as kmip
 use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::kmip_operations::{
     Certify, CertifyResponse, Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse,
@@ -17,7 +20,6 @@ use cosmian_kms_client_utils::reexport::{
         UserAccessResponse,
     },
 };
-use reqwest::{Response, StatusCode};
 use serde::Serialize;
 use tracing::{info, trace};
 

@@ -37,7 +37,7 @@ actix-rt = { workspace = true }
 actix-service = "2.0"
 actix-session = { version = "0.8", features = ["cookie-session"] }
 actix-tls = "3.4"
-actix-web = { workspace = true, features = ["macros", "rustls-0_23"] }
+actix-web = { workspace = true, features = ["macros", "openssl"] }
 alcoholic_jwt = "4091"
 async-recursion = "1.1"
 base64 = { workspace = true }
@@ -82,11 +82,6 @@ reqwest = { workspace = true, features = [
   "native-tls",
   "socks",
 ] }
-rustls = { version = "0.23", features = [
-  "tls12",
-  "std",
-  "aws_lc_rs",
-], default-features = false }
 serde = { workspace = true }
 serde_json = { workspace = true }
 softhsm2_pkcs11_loader = { path = "../hsm/softhsm2", version = "5.7.1" }

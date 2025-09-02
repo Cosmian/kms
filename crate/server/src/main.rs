@@ -186,6 +186,7 @@ mod tests {
                 tls_p12_file: Some(PathBuf::from("[tls p12 file]")),
                 tls_p12_password: Some("[tls p12 password]".to_owned()),
                 clients_ca_cert_file: Some(PathBuf::from("[authority cert file]")),
+                tls_cipher_suites: Some("TLS_AES_256_GCM_SHA384,TLS_AES_128_GCM_SHA256".to_owned()),
             },
             http: HttpConfig {
                 port: 443,
@@ -289,6 +290,7 @@ socket_server_hostname = "0.0.0.0"
 tls_p12_file = "[tls p12 file]"
 tls_p12_password = "[tls p12 password]"
 clients_ca_cert_file = "[authority cert file]"
+tls_cipher_suites = "TLS_AES_256_GCM_SHA384,TLS_AES_128_GCM_SHA256"
 
 [http]
 port = 443

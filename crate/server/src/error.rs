@@ -17,7 +17,6 @@ use cosmian_kms_server_database::{
         cosmian_kms_interfaces::InterfaceError,
     },
 };
-use rustls::server::VerifierBuilderError;
 use thiserror::Error;
 use x509_parser::prelude::{PEMError, X509Error};
 
@@ -291,24 +290,6 @@ impl From<InterfaceError> for KmsError {
 impl From<CryptoError> for KmsError {
     fn from(value: CryptoError) -> Self {
         Self::CryptographicError(value.to_string())
-    }
-}
-
-impl From<VerifierBuilderError> for KmsError {
-    fn from(value: VerifierBuilderError) -> Self {
-        Self::Tls(value.to_string())
-    }
-}
-
-impl From<rustls::Error> for KmsError {
-    fn from(value: rustls::Error) -> Self {
-        Self::Tls(value.to_string())
-    }
-}
-
-impl From<rustls::pki_types::pem::Error> for KmsError {
-    fn from(value: rustls::pki_types::pem::Error) -> Self {
-        Self::Tls(value.to_string())
     }
 }
 
