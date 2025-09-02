@@ -60,6 +60,6 @@ This project undergoes regular security assessments. The configuration files `.c
 
 ## Contact
 
-For general security questions or concerns, please contact us at [security@cosmian.com](mailto:security@cosmian.com).
+For general security questions or concerns, please contact us at [tech@cosmian.com](mailto:tech@cosmian.com).
 
 For immediate security issues, please use the private reporting methods described above.
