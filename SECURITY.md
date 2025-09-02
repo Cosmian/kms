@@ -1,15 +1,5 @@
 # Security Policy
 
-## Supported Versions
-
-We actively support security updates for the following versions of Cosmian KMS:
-
-| Version | Supported          |
-| ------- | ------------------ |
-| 5.7.x   | :white_check_mark: |
-| 5.6.x   | :white_check_mark: |
-| < 5.6   | :x:                |
-
 ## Reporting a Vulnerability
 
 We take the security of Cosmian KMS seriously. If you discover a security vulnerability, please report it responsibly by following these steps:
@@ -19,7 +9,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 Please **do not** report security vulnerabilities through public GitHub issues. Instead, please use one of the following methods:
 
 1. **GitHub Security Advisories** (Preferred): Use the [private vulnerability reporting feature](https://github.com/Cosmian/kms/security/advisories/new) on GitHub
-2. **Email**: Send details to [security@cosmian.com](mailto:security@cosmian.com)
+2. **Email**: Send details to [tech@cosmian.com](mailto:tech@cosmian.com)
 
 ### What to Include
 
@@ -42,8 +32,8 @@ When reporting a vulnerability, please include as much of the following informat
 
 The following table lists security advisories that are currently being tracked or have been assessed for this project:
 
-| ID | Description | Status | Reason |
-|---|---|---|---|
+| ID                | Description                                              | Status  | Reason                                                   |
+| ----------------- | -------------------------------------------------------- | ------- | -------------------------------------------------------- |
 | RUSTSEC-2023-0071 | RSA crate vulnerability affecting signature verification | Ignored | Under evaluation - specific use case may not be affected |
 
 ### Advisory Details
