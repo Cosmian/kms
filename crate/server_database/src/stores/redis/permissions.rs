@@ -5,47 +5,74 @@ use std::{
 
 use async_trait::async_trait;
 use cloudproof_findex::{
-    IndexedValue, Keyword, Location,
+    Location,
     implementations::redis::{FindexRedisError, RemovedLocationsFinder},
-    parameters::MASTER_KEY_LENGTH,
 };
 use cosmian_kmip::kmip_2_1::KmipOperation;
+use serde::{Deserialize, Serialize};
 use cosmian_kms_crypto::reexport::cosmian_crypto_core::{FixedSizeCBytes, SymmetricKey};
 
-use crate::{DbError, error::DbResult, stores::redis::redis_with_findex::FindexRedis};
+use crate::{
+    DbError,
+    error::DbResult,
+    stores::{
+        REDIS_WITH_FINDEX_MASTER_KEY_LENGTH,
+        redis::{
+            findex::{IndexedValue, Keyword},
+            redis_with_findex::FindexRedis,
+        },
+    },
+};
 
+#[derive(Clone, Eq, PartialEq, Debug, Hash, Serialize, Deserialize)]
+pub(crate) struct ObjectUid(String);
+
+impl From<&ObjectUid> for Keyword {
+    fn from(uid: &ObjectUid) -> Self {
+        Keyword::from(format!("p:o:{}", uid.0).as_bytes())
+    }
+}
+
+#[derive(Clone, Eq, PartialEq, Debug, Hash, Serialize, Deserialize)]
+pub(crate) struct UserId(String);
+
+impl From<&UserId> for Keyword {
+    fn from(uid: &UserId) -> Self {
+        Keyword::from(format!("p:u:{}", uid.0).as_bytes())
+    }
+}
+/// TODO: delete the docs below
+/// The new structure will be a dual index in order to be able to make efficient O(1)
+/// reverse lookups for the objects and the users
+/// Basically we will store :
+/// User Index: user_id → HashSet<Triple>
+/// Object Index: obj_uid → HashSet<Triple>
+///
+/// In order to be able to reverse lookup
 /// The struct we store for each permission.
 /// We store the permission itself as a Location.
 /// Keeping the object uid and user id is necessary to be able to query
 /// the database for all permissions for a given object or user because
 /// there is no convenient access to the callback for a search
-#[derive(Clone, Eq, PartialEq, Debug, Hash)]
+#[derive(Clone, Eq, PartialEq, Debug, Hash, Serialize, Deserialize)]
 pub(crate) struct Triple {
-    obj_uid: String,
-    user_id: String,
+    obj_uid: ObjectUid,
+    user_id: UserId,
     permission: KmipOperation,
 }
 
 impl Triple {
     pub(crate) fn new(obj_uid: &str, user_id: &str, permission: KmipOperation) -> Self {
         Self {
-            obj_uid: obj_uid.to_owned(),
-            user_id: user_id.to_owned(),
+            obj_uid: ObjectUid(obj_uid.to_owned()),
+            user_id: UserId(user_id.to_owned()),
             permission,
         }
     }
 
-    pub(crate) fn key(&self) -> String {
-        Self::build_key(&self.obj_uid, &self.user_id)
-    }
-
-    pub(crate) fn build_key(obj_uid: &str, user_id: &str) -> String {
-        format!("{obj_uid}::{user_id}")
-    }
-
     pub(crate) fn permissions_per_user(
         list: HashSet<Self>,
-    ) -> HashMap<String, HashSet<KmipOperation>> {
+    ) -> HashMap<UserId, HashSet<KmipOperation>> {
         let mut map = HashMap::new();
         for triple in list {
             let entry = map.entry(triple.user_id).or_insert_with(HashSet::new);
@@ -56,7 +83,7 @@ impl Triple {
 
     pub(crate) fn permissions_per_object(
         list: HashSet<Self>,
-    ) -> HashMap<String, HashSet<KmipOperation>> {
+    ) -> HashMap<ObjectUid, HashSet<KmipOperation>> {
         let mut map = HashMap::new();
         for triple in list {
             let entry = map.entry(triple.obj_uid).or_insert_with(HashSet::new);
@@ -66,54 +93,32 @@ impl Triple {
     }
 }
 
-impl TryFrom<&Location> for Triple {
+impl TryFrom<&IndexedValue> for Triple {
     type Error = DbError;
 
-    fn try_from(value: &Location) -> Result<Self, Self::Error> {
-        let value = String::from_utf8((value).to_vec())?;
-        let mut parts = value.split("::");
-        let uid = parts.next().ok_or_else(|| {
-            DbError::ConversionError(format!("invalid permissions triple: {parts:?}"))
-        })?;
-        let user_id = parts.next().ok_or_else(|| {
-            DbError::ConversionError(format!("invalid permissions triple: {parts:?}"))
-        })?;
-        let permission = parts.next().ok_or_else(|| {
-            DbError::ConversionError(format!("invalid permissions triple: {parts:?}"))
-        })?;
-        Ok(Self {
-            obj_uid: uid.to_owned(),
-            user_id: user_id.to_owned(),
-            permission: serde_json::from_str(permission)?,
-        })
+    fn try_from(value: &IndexedValue) -> Result<Self, Self::Error> {
+        serde_json::from_slice(value.as_ref()).map_err(|e| DbError::ConversionError(e.to_string()))
     }
 }
 
-impl TryFrom<&Triple> for Location {
+impl TryFrom<&Triple> for IndexedValue {
+    // TODO: this should be From as it cannot fail...?
     type Error = DbError;
 
     fn try_from(value: &Triple) -> Result<Self, Self::Error> {
-        Ok(Self::from(
-            format!(
-                "{}::{}::{}",
-                value.obj_uid,
-                value.user_id,
-                serde_json::to_string(&value.permission)?
-            )
-            .into_bytes(),
-        ))
+        Ok(Self::from(serde_json::to_vec(value)?))
     }
 }
 
-/// `PermissionsDB` is a database entirely built on top of Findex that stores the permissions
-/// We "abuse" Location to store data i.e. the actual permission
-///     `userid::obj_uid` --> Location(permission)
-///     userid --> `NextKeyword(userid::obj_uid`)
-///     `obj_uid` --> `NextKeyword(userid::obj_uid`)
+/// PermissionsDB is a database entirely built on top of Findex that stores the permissions
+/// using a dual index pattern for efficient lookups as there is no wildcard support.
+/// For each permission triple (user_id, obj_uid, permission), we store it twice under:
+/// - The user id: `u::{user_id}` → (user_id, obj_uid, permission)
+/// - The object uid: `o::{obj_uid}` → (user_id, obj_uid, permission)
 ///
-/// The problem is that the search function does not return the `userid::obj_uid` when
-/// searching for either a userid or a uid, so wee need to store a triplet
-/// rather than just the permission
+/// By explicitly maintaining both indexes, we avoid the need for wildcard searches
+/// which are not supported by Findex yet needed if we want to list all permissions
+/// for a given user OR object in a same `PermissionsDB`.
 #[derive(Clone)]
 pub(crate) struct PermissionsDB {
     findex: Arc<FindexRedis>,
@@ -125,52 +130,39 @@ impl PermissionsDB {
     }
 
     /// Search for a keyword
-    async fn search_one_keyword(
-        &self,
-        findex_key: &SymmetricKey<MASTER_KEY_LENGTH>,
-        keyword: &str,
-    ) -> DbResult<HashSet<Triple>> {
-        let keyword = Keyword::from(format!("p::{keyword}").as_bytes());
+    async fn search_one_keyword(&self, keyword: Keyword) -> DbResult<HashSet<Triple>> {
         self.findex
-            .search(HashSet::from([keyword.clone()]))
+            .search(&keyword)
             .await?
-            .into_iter()
-            .next()
-            .unwrap_or_else(|| (keyword, HashSet::new()))
-            .1
             .iter()
             .map(Triple::try_from)
             .collect::<DbResult<HashSet<Triple>>>()
     }
 
-    /// List all the permissions granted to the user
+    /// List all the permissions granted to an user
     /// per object uid
     pub(crate) async fn list_user_permissions(
         &self,
-        findex_key: &SymmetricKey<MASTER_KEY_LENGTH>,
-        user_id: &str,
-    ) -> DbResult<HashMap<String, HashSet<KmipOperation>>> {
-        Ok(Triple::permissions_per_object(
-            self.search_one_keyword(findex_key, user_id).await?,
-        ))
+        user_id: &UserId,
+    ) -> DbResult<HashMap<ObjectUid, HashSet<KmipOperation>>> {
+        let all_user_permissions = self.search_one_keyword(Keyword::from(user_id)).await?;
+        Ok(Triple::permissions_per_object(all_user_permissions))
     }
 
     /// List all the permissions granted on an object
     /// per user id
     pub(crate) async fn list_object_permissions(
         &self,
-        findex_key: &SymmetricKey<MASTER_KEY_LENGTH>,
-        obj_uid: &str,
-    ) -> DbResult<HashMap<String, HashSet<KmipOperation>>> {
-        Ok(Triple::permissions_per_user(
-            self.search_one_keyword(findex_key, obj_uid).await?,
-        ))
+        obj_uid: &ObjectUid,
+    ) -> DbResult<HashMap<UserId, HashSet<KmipOperation>>> {
+        let all_object_permissions = self.search_one_keyword(Keyword::from(obj_uid)).await?;
+        Ok(Triple::permissions_per_user(all_object_permissions))
     }
 
     /// List all the permissions granted to the user on an object
     pub(crate) async fn get(
         &self,
-        findex_key: &SymmetricKey<MASTER_KEY_LENGTH>,
+        findex_key: &SymmetricKey<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>,
         obj_uid: &str,
         user_id: &str,
         no_inherited_access: bool,
@@ -197,7 +189,7 @@ impl PermissionsDB {
     /// Add a permission to the user on an object
     pub(crate) async fn add(
         &self,
-        findex_key: &SymmetricKey<MASTER_KEY_LENGTH>,
+        findex_key: &SymmetricKey<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>,
         obj_uid: &str,
         user_id: &str,
         permission: KmipOperation,
@@ -238,12 +230,7 @@ impl PermissionsDB {
             ]),
         );
         self.findex
-            .upsert(
-                &findex_key.to_bytes(),
-                &self.label,
-                additions,
-                HashMap::new(),
-            )
+            .upsert(&findex_key.to_bytes(), additions, HashMap::new())
             .await?;
 
         Ok(())
@@ -252,7 +239,7 @@ impl PermissionsDB {
     /// Remove a permission to the user on an object
     pub(crate) async fn remove(
         &self,
-        findex_key: &SymmetricKey<MASTER_KEY_LENGTH>,
+        findex_key: &SymmetricKey<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>,
         obj_uid: &str,
         user_id: &str,
         permission: KmipOperation,

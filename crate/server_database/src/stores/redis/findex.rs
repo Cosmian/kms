@@ -112,12 +112,17 @@ impl_byte_vector!(Keyword);
 //     }
 // }
 
-#[must_use]
+// An [`IndexedValue`] is a byte vector that is indexed by a [`Keyword`]
+// with a [`Findex`] instance. Please note :
+// - Do not confuse with `cloudproof_findex::IndexedValue` which is deprecated.
+// - This type was renamed this way not to refer to the previous implementation, but rather to
+// avoid confusion with redis Values, serde_json values, etc.
+#[must_use] // TODO: do we need this ?
 #[derive(Clone, Debug, Hash, Default, PartialEq, Eq)]
-pub struct Value(Vec<u8>);
-impl_byte_vector!(Value);
+pub struct IndexedValue(Vec<u8>);
+impl_byte_vector!(IndexedValue);
 
-impl Display for Value {
+impl Display for IndexedValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Value: {}", self)
     }

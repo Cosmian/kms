@@ -33,7 +33,9 @@ use crate::{
     stores::{
         migrate::DbState,
         redis::{
-            findex::{CUSTOM_WORD_LENGTH, Keyword, REDIS_WITH_FINDEX_MASTER_KEY_LENGTH, Value},
+            findex::{
+                CUSTOM_WORD_LENGTH, IndexedValue, Keyword, REDIS_WITH_FINDEX_MASTER_KEY_LENGTH,
+            },
             objects_db::RedisOperation,
         },
     },
@@ -59,7 +61,7 @@ pub fn redis_master_key_from_password(
 }
 
 /// Find the intersection of all the sets
-fn intersect_all<I: IntoIterator<Item = HashSet<Value>>>(sets: I) -> HashSet<Value> {
+fn intersect_all<I: IntoIterator<Item = HashSet<IndexedValue>>>(sets: I) -> HashSet<IndexedValue> {
     let mut iter = sets.into_iter();
     let first = iter.next().unwrap_or_default();
     iter.fold(first, |acc, set| acc.intersection(&set).cloned().collect())
@@ -67,7 +69,7 @@ fn intersect_all<I: IntoIterator<Item = HashSet<Value>>>(sets: I) -> HashSet<Val
 
 pub(crate) type FindexRedis = Findex<
     CUSTOM_WORD_LENGTH,
-    Value,
+    IndexedValue,
     String,
     MemoryEncryptionLayer<
         CUSTOM_WORD_LENGTH,
@@ -183,7 +185,7 @@ impl RedisWithFindex {
 
         // extract the keywords
         let keywords = db_object.keywords();
-        let indexed_uid = Value::from(uid.as_bytes());
+        let indexed_uid = IndexedValue::from(uid.as_bytes());
 
         // For each keyword, insert the uid as a value associated with that keyword
         for keyword in keywords {
@@ -240,7 +242,7 @@ impl RedisWithFindex {
         // updates to the index;
         // note: these are additions so some entries will be doubled but shat should not break the index
         let keywords = db_object.keywords(); // extract keywords
-        let indexed_uid = Value::from(uid.as_bytes());
+        let indexed_uid = IndexedValue::from(uid.as_bytes());
 
         for keyword in keywords {
             self.findex
@@ -385,7 +387,7 @@ impl ObjectsStore for RedisWithFindex {
                 AtomicOperation::Upsert((uid, object, attributes, tags, state)) => {
                     //TODO: this operation contains a non atomic retrieve_tags. It will be hard to make this whole method atomic
                     let db_object = self
-                        .prepare_object_for_upsert(
+                        .prepare_object_for_insert(
                             uid,
                             user,
                             object,
@@ -656,31 +658,31 @@ impl PermissionsStore for RedisWithFindex {
 mod tests {
     use std::collections::HashSet;
 
-    use crate::stores::redis::findex::Value;
+    use crate::stores::redis::findex::IndexedValue;
 
     #[test]
     fn test_intersect() {
         let set1: HashSet<_> = vec![
-            Value::from(b"1".as_slice()),
-            Value::from(b"2".as_slice()),
-            Value::from(b"3".as_slice()),
-            Value::from(b"4".as_slice()),
+            IndexedValue::from(b"1".as_slice()),
+            IndexedValue::from(b"2".as_slice()),
+            IndexedValue::from(b"3".as_slice()),
+            IndexedValue::from(b"4".as_slice()),
         ]
         .into_iter()
         .collect();
         let set2: HashSet<_> = vec![
-            Value::from(b"2".as_slice()),
-            Value::from(b"3".as_slice()),
-            Value::from(b"4".as_slice()),
-            Value::from(b"5".as_slice()),
+            IndexedValue::from(b"2".as_slice()),
+            IndexedValue::from(b"3".as_slice()),
+            IndexedValue::from(b"4".as_slice()),
+            IndexedValue::from(b"5".as_slice()),
         ]
         .into_iter()
         .collect();
         let set3: HashSet<_> = vec![
-            Value::from(b"3".as_slice()),
-            Value::from(b"4".as_slice()),
-            Value::from(b"5".as_slice()),
-            Value::from(b"6".as_slice()),
+            IndexedValue::from(b"3".as_slice()),
+            IndexedValue::from(b"4".as_slice()),
+            IndexedValue::from(b"5".as_slice()),
+            IndexedValue::from(b"6".as_slice()),
         ]
         .into_iter()
         .collect();
@@ -688,7 +690,7 @@ mod tests {
         let sets = vec![set1, set2, set3];
         let res = super::intersect_all(sets);
         assert_eq!(res.len(), 2);
-        assert!(res.contains(&Value::from(b"3".as_slice())));
-        assert!(res.contains(&Value::from(b"4".as_slice())));
+        assert!(res.contains(&IndexedValue::from(b"3".as_slice())));
+        assert!(res.contains(&IndexedValue::from(b"4".as_slice())));
     }
 }
