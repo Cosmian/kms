@@ -10,8 +10,9 @@ use crate::{
 
 // Static config for tests
 static TEST_P12: LazyLock<ParsedPkcs12_2> = LazyLock::new(|| {
-    let server_p12_der =
-        include_bytes!("../../../../../test_data/client_server/server/kmserver.acme.com.p12");
+    let server_p12_der = include_bytes!(
+        "../../../../../test_data/certificates/client_server/server/kmserver.acme.com.p12"
+    );
     let server_p12_password = "password";
     let sealed_p12 =
         Pkcs12::from_der(server_p12_der).expect("TLS configuration. Failed opening P12");
@@ -20,8 +21,9 @@ static TEST_P12: LazyLock<ParsedPkcs12_2> = LazyLock::new(|| {
         .expect("TLS configuration. Failed to decrypt P12")
 });
 
-static TEST_CLIENT_CA_CERT_PEM: LazyLock<Vec<u8>> =
-    LazyLock::new(|| include_bytes!("../../../../../test_data/client_server/ca/ca.crt").to_vec());
+static TEST_CLIENT_CA_CERT_PEM: LazyLock<Vec<u8>> = LazyLock::new(|| {
+    include_bytes!("../../../../../test_data/certificates/client_server/ca/ca.crt").to_vec()
+});
 
 fn load_test_config() -> SocketServerParams<'static> {
     SocketServerParams {

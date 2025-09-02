@@ -120,7 +120,7 @@ pub async fn start_default_test_kms_server() -> &'static TestsContext {
             AuthenticationOptions {
                 use_jwt_token: false,
                 use_https: false,
-                use_client_cert: false,
+                use_known_ca_list: false,
                 api_token_id: None,
                 api_token: None,
                 ..Default::default()
@@ -144,7 +144,7 @@ pub async fn start_default_test_kms_server_with_cert_auth() -> &'static TestsCon
                 AuthenticationOptions {
                     use_jwt_token: false,
                     use_https: true,
-                    use_client_cert: true,
+                    use_known_ca_list: true,
                     api_token_id: None,
                     api_token: None,
                     ..Default::default()
@@ -170,7 +170,7 @@ pub async fn start_default_test_kms_server_with_non_revocable_key_ids(
                 AuthenticationOptions {
                     use_jwt_token: false,
                     use_https: true,
-                    use_client_cert: true,
+                    use_known_ca_list: true,
                     api_token_id: None,
                     api_token: None,
                     ..Default::default()
@@ -195,7 +195,7 @@ pub async fn start_default_test_kms_server_with_utimaco_hsm() -> &'static TestsC
                 AuthenticationOptions {
                     use_jwt_token: false,
                     use_https: false,
-                    use_client_cert: false,
+                    use_known_ca_list: false,
                     api_token_id: None,
                     api_token: None,
                     ..Default::default()
@@ -227,7 +227,7 @@ pub async fn start_default_test_kms_server_with_privileged_users(
                 AuthenticationOptions {
                     use_jwt_token: true,
                     use_https: false,
-                    use_client_cert: false,
+                    use_known_ca_list: false,
                     api_token_id: None,
                     api_token: None,
                     ..Default::default()
@@ -272,10 +272,12 @@ impl TestsContext {
 pub struct AuthenticationOptions {
     pub use_jwt_token: bool,
     pub use_https: bool,
-    pub use_client_cert: bool,
+    pub use_known_ca_list: bool,
+    pub pkcs12_client_cert: Option<String>,
     pub api_token_id: Option<String>,
     pub api_token: Option<String>,
-    pub tls_cipher_suites: Option<String>,
+    pub server_tls_cipher_suites: Option<String>,
+    pub client_tls_cipher_suites: Option<String>,
 
     // Client credential configuration (all false by default)
     pub do_not_send_client_certificate: bool, // True = don't send client certificate even when required
@@ -342,12 +344,15 @@ pub async fn start_test_server_with_options(
             .expect("Can't generate user conf");
     let server_port = server_params.http_port;
 
-    let (server_handle, thread_handle) = start_test_kms_server(server_params);
+    let (server_handle, thread_handle) = start_test_kms_server(server_params)?;
 
     // wait for the server to be up
     wait_for_server_to_start(&owner_client_config)
         .await
-        .expect("server timeout");
+        .map_err(|e| {
+            error!("Error waiting for server to start: {e:?}");
+            KmsClientError::UnexpectedError(e.to_string())
+        })?;
 
     Ok(TestsContext {
         server_port,
@@ -361,7 +366,7 @@ pub async fn start_test_server_with_options(
 /// Start a test KMS server with the given config in a separate thread
 fn start_test_kms_server(
     server_params: ServerParams,
-) -> (ServerHandle, JoinHandle<Result<(), KmsClientError>>) {
+) -> Result<(ServerHandle, JoinHandle<Result<(), KmsClientError>>), KmsClientError> {
     let (tx, rx) = mpsc::channel::<ServerHandle>();
 
     let thread_handle = thread::spawn(move || {
@@ -376,11 +381,11 @@ fn start_test_kms_server(
             })
     });
     trace!("Waiting for test KMS server to start...");
-    let server_handle = rx
-        .recv_timeout(Duration::from_secs(25))
-        .expect("Can't get test KMS server handle after 25 seconds");
+    let server_handle = rx.recv_timeout(Duration::from_secs(25)).map_err(|e| {
+        KmsClientError::UnexpectedError(format!("Error getting test KMS server handle: {e}"))
+    })?;
     trace!("... got handle ...");
-    (server_handle, thread_handle)
+    Ok((server_handle, thread_handle))
 }
 
 /// Wait for the server to start by reading the version
@@ -391,7 +396,7 @@ async fn wait_for_server_to_start(
     // We try to query it with a dummy request until we are sure it is started.
     let kms_client = KmsClient::new_with_config(kms_client_config.clone())?;
     let mut retry = true;
-    let mut timeout = 5;
+    let mut timeout = 2;
     let mut waiting = 1;
     while retry {
         info!("...checking if the server is up...");
@@ -422,7 +427,7 @@ async fn wait_for_server_to_start(
 
 fn generate_tls_config(
     use_https: bool,
-    use_client_cert: bool,
+    use_known_ca_list: bool,
     tls_cipher_suites: Option<String>,
 ) -> TlsConfig {
     // This is the crate root dir
@@ -430,19 +435,20 @@ fn generate_tls_config(
 
     let mut tls_config = TlsConfig::default();
     if use_https {
-        tls_config.tls_p12_file =
-            Some(root_dir.join("../../test_data/client_server/server/kmserver.acme.com.p12"));
+        tls_config.tls_p12_file = Some(
+            root_dir
+                .join("../../test_data/certificates/client_server/server/kmserver.acme.com.p12"),
+        );
         assert!(
             tls_config.tls_p12_file.as_ref().unwrap().exists(),
             "File not found: {:?}",
             tls_config.tls_p12_file.unwrap()
         );
         tls_config.tls_p12_password = Some("password".to_owned());
-        if use_client_cert {
-            tls_config.clients_ca_cert_file =
-                Some(root_dir.join(
-                    "../../test_data/client_server/ca/mozilla_IncludedRootsPEM_and_new_ca.txt",
-                ));
+        if use_known_ca_list {
+            tls_config.clients_ca_cert_file = Some(
+                root_dir.join("../../test_data/certificates/client_server/ca/stack_of_ca.pem"),
+            );
             assert!(tls_config.clients_ca_cert_file.as_ref().unwrap().exists());
         }
         tls_config.tls_cipher_suites = tls_cipher_suites;
@@ -468,15 +474,15 @@ fn generate_server_params(
         socket_server: SocketServerConfig {
             //Start the socket server automatically if both HTTPS and client cert authentication are used
             socket_server_start: authentication_options.use_https
-                && authentication_options.use_client_cert,
+                && authentication_options.use_known_ca_list,
             socket_server_port: port + 100,
             ..Default::default()
         },
         db: db_config,
         tls: generate_tls_config(
             authentication_options.use_https,
-            authentication_options.use_client_cert,
-            authentication_options.tls_cipher_suites.clone(),
+            authentication_options.use_known_ca_list,
+            authentication_options.server_tls_cipher_suites.clone(),
         ),
         http: HttpConfig {
             port,
@@ -559,15 +565,22 @@ fn generate_owner_conf(
                 authentication_options.api_token.clone(),
             ),
             ssl_client_pkcs12_path: if use_client_cert_auth {
-                let p =
-                    root_dir.join("../../test_data/client_server/owner/owner.client.acme.com.p12");
-                Some(
-                    p.to_str()
-                        .ok_or_else(|| {
-                            KmsClientError::Default("Can't convert path to string".to_owned())
-                        })?
-                        .to_owned(),
-                )
+                if let Some(pkcs12_client_cert) = authentication_options.pkcs12_client_cert.as_ref()
+                {
+                    Some(pkcs12_client_cert.clone())
+                } else {
+                    let p = root_dir.join(
+                        "../../test_data/certificates/client_server/owner/owner.client.acme.com.\
+                         p12",
+                    );
+                    Some(
+                        p.to_str()
+                            .ok_or_else(|| {
+                                KmsClientError::Default("Can't convert path to string".to_owned())
+                            })?
+                            .to_owned(),
+                    )
+                }
             } else {
                 None
             },
@@ -576,7 +589,7 @@ fn generate_owner_conf(
             } else {
                 None
             },
-            cipher_suites: authentication_options.tls_cipher_suites.clone(),
+            cipher_suites: authentication_options.client_tls_cipher_suites.clone(),
             ..HttpClientConfig::default()
         },
         gmail_api_conf,
@@ -596,7 +609,8 @@ fn generate_user_conf(
 
     let mut conf = owner_client_conf.clone();
     conf.http_config.ssl_client_pkcs12_path = {
-        let p = root_dir.join("../../test_data/client_server/user/user.client.acme.com.p12");
+        let p = root_dir
+            .join("../../test_data/certificates/client_server/user/user.client.acme.com.p12");
         Some(
             p.to_str()
                 .ok_or_else(|| KmsClientError::Default("Can't convert path to string".to_owned()))?
@@ -623,7 +637,7 @@ async fn test_start_server() -> Result<(), KmsClientError> {
         AuthenticationOptions {
             use_jwt_token: false,
             use_https: true,
-            use_client_cert: true,
+            use_known_ca_list: true,
             api_token_id: None,
             api_token: None,
             ..Default::default()

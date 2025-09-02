@@ -46,10 +46,12 @@ pub(crate) fn https_clap_config_opts(kms_public_url: Option<String>) -> ClapConf
         },
         tls: TlsConfig {
             tls_p12_file: Some(PathBuf::from(
-                "../../test_data/client_server/server/kmserver.acme.com.p12",
+                "../../test_data/certificates/client_server/server/kmserver.acme.com.p12",
             )),
             tls_p12_password: Some("password".to_owned()),
-            clients_ca_cert_file: Some(PathBuf::from("../../test_data/client_server/ca/ca.crt")),
+            clients_ca_cert_file: Some(PathBuf::from(
+                "../../test_data/certificates/client_server/ca/ca.crt",
+            )),
             tls_cipher_suites: None,
         },
         db: MainDBConfig {

@@ -47,28 +47,28 @@ check_directory() {
 # Verify virtual environment
 verify_venv() {
     print_info "Checking virtual environment..."
-    
+
     if [[ ! -d ".venv" ]]; then
         print_error "Virtual environment not found at .venv/"
         print_warning "Run: ./scripts/setup_pykmip.sh"
         exit 1
     fi
     print_status "Virtual environment exists at .venv/"
-    
+
     if [[ ! -f ".venv/bin/python" ]]; then
         print_error "Python executable not found in virtual environment"
         exit 1
     fi
     print_status "Python executable found in virtual environment"
-    
+
     # Activate and test
     source .venv/bin/activate
-    
+
     if ! python -c "import sys; print(f'Python {sys.version}')" &>/dev/null; then
         print_error "Cannot execute Python in virtual environment"
         exit 1
     fi
-    
+
     python_version=$(python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}')")
     print_status "Python version: $python_version"
 }
@@ -76,16 +76,16 @@ verify_venv() {
 # Verify PyKMIP installation
 verify_pykmip() {
     print_info "Checking PyKMIP installation..."
-    
+
     source .venv/bin/activate
-    
+
     if ! python -c "import kmip" &>/dev/null; then
         print_error "PyKMIP is not installed in virtual environment"
         print_warning "Run: ./scripts/setup_pykmip.sh"
         exit 1
     fi
     print_status "PyKMIP is installed"
-    
+
     pykmip_version=$(python -c "import kmip; print(getattr(kmip, '__version__', 'unknown'))" 2>/dev/null)
     print_status "PyKMIP version: $pykmip_version"
 }
@@ -93,25 +93,25 @@ verify_pykmip() {
 # Verify scripts
 verify_scripts() {
     print_info "Checking PyKMIP scripts..."
-    
+
     if [[ ! -f "scripts/pykmip_client.py" ]]; then
         print_error "PyKMIP client script not found"
         exit 1
     fi
     print_status "PyKMIP client script exists"
-    
+
     if [[ ! -x "scripts/test_pykmip.sh" ]]; then
         print_error "PyKMIP test script not found or not executable"
         exit 1
     fi
     print_status "PyKMIP test script is executable"
-    
+
     if [[ ! -x "scripts/setup_pykmip.sh" ]]; then
         print_error "PyKMIP setup script not found or not executable"
         exit 1
     fi
     print_status "PyKMIP setup script is executable"
-    
+
     # Test client script help
     source .venv/bin/activate
     if python scripts/pykmip_client.py --help &>/dev/null; then
@@ -125,14 +125,14 @@ verify_scripts() {
 # Verify certificates
 verify_certificates() {
     print_info "Checking test certificates..."
-    
+
     cert_files=(
-        "test_data/client_server/ca/ca.crt"
-        "test_data/client_server/owner/owner.client.acme.com.crt"
-        "test_data/client_server/owner/owner.client.acme.com.key"
-        "test_data/client_server/server/kmserver.acme.com.p12"
+        "test_data/certificates/client_server/ca/ca.crt"
+        "test_data/certificates/client_server/owner/owner.client.acme.com.crt"
+        "test_data/certificates/client_server/owner/owner.client.acme.com.key"
+        "test_data/certificates/client_server/server/kmserver.acme.com.p12"
     )
-    
+
     for cert_file in "${cert_files[@]}"; do
         if [[ ! -f "$cert_file" ]]; then
             print_error "Certificate file not found: $cert_file"
@@ -142,14 +142,12 @@ verify_certificates() {
     print_status "All required certificate files exist"
 }
 
-
-
 # Test PyKMIP client operations (without server)
 test_client_operations() {
     print_info "Testing PyKMIP client operations (offline)..."
-    
+
     source .venv/bin/activate
-    
+
     # Test help output
     if python scripts/pykmip_client.py --help | grep -q "PyKMIP Client"; then
         print_status "Client help output is correct"
@@ -157,7 +155,7 @@ test_client_operations() {
         print_error "Client help output is incorrect"
         exit 1
     fi
-    
+
     # Test available operations
     operations=(query create get destroy encrypt_decrypt create_keypair locate)
     for op in "${operations[@]}"; do
@@ -193,7 +191,7 @@ show_summary() {
 # Main verification function
 main() {
     print_header
-    
+
     check_directory
     verify_venv
     verify_pykmip

@@ -132,7 +132,7 @@ pub(crate) async fn test_kms_all_authentications() -> KmsCliResult<()> {
         PORT,
         AuthenticationOptions {
             use_https: true,
-            use_client_cert: true,
+            use_known_ca_list: true,
             ..Default::default()
         },
         None,
@@ -153,7 +153,7 @@ pub(crate) async fn test_kms_all_authentications() -> KmsCliResult<()> {
         AuthenticationOptions {
             use_jwt_token: true,
             use_https: true,
-            use_client_cert: true,
+            use_known_ca_list: true,
             api_token_id: None,
             api_token: None,
             do_not_send_client_certificate: true,
@@ -178,7 +178,7 @@ pub(crate) async fn test_kms_all_authentications() -> KmsCliResult<()> {
         AuthenticationOptions {
             use_jwt_token: false,
             use_https: true,
-            use_client_cert: true,
+            use_known_ca_list: true,
             api_token_id: Some(api_token_id.clone()),
             api_token: Some(api_token.clone()),
             do_not_send_client_certificate: true,
@@ -241,7 +241,7 @@ pub(crate) async fn test_kms_all_authentications() -> KmsCliResult<()> {
         PORT,
         AuthenticationOptions {
             use_https: true,
-            use_client_cert: true,
+            use_known_ca_list: true,
             do_not_send_client_certificate: true,
             ..Default::default()
         },
@@ -327,7 +327,7 @@ pub(crate) async fn test_kms_all_authentications() -> KmsCliResult<()> {
         PORT,
         AuthenticationOptions {
             use_https: true,
-            use_client_cert: true,
+            use_known_ca_list: true,
             api_token_id: Some("my_bad_token_id".to_string()),
             api_token: Some("my_bad_token".to_string()),
             ..Default::default()
@@ -351,7 +351,7 @@ pub(crate) async fn test_kms_all_authentications() -> KmsCliResult<()> {
         AuthenticationOptions {
             use_jwt_token: true,
             use_https: true,
-            use_client_cert: true,
+            use_known_ca_list: true,
             api_token_id: Some("my_bad_token_id".to_string()),
             api_token: Some("my_bad_token".to_string()),
             ..Default::default()
@@ -371,6 +371,8 @@ pub(crate) async fn test_kms_all_authentications() -> KmsCliResult<()> {
 
 #[tokio::test]
 async fn test_tls_options() -> KmsCliResult<()> {
+    log_init(None);
+
     let default_db_config = MainDBConfig {
         database_type: Some("sqlite".to_owned()),
         sqlite_path: PathBuf::from("./sqlite-data-auth-tests"),
@@ -378,59 +380,118 @@ async fn test_tls_options() -> KmsCliResult<()> {
         ..MainDBConfig::default()
     };
 
-    // tls auth - no cipher suite specified, using TLS default
-    info!("==> Testing server with JWT token auth over HTTPS");
-    let ctx = start_test_server_with_options(
-        default_db_config.clone(),
-        TLS_PORT,
-        AuthenticationOptions {
-            use_https: true,
-            tls_cipher_suites: None,
-            ..Default::default()
-        },
-        None,
-        None,
-        None,
-    )
-    .await?;
-    ListOwnedObjects.run(ctx.get_owner_client()).await?;
-    ctx.stop_server().await?;
+    // TLS configuration tests
+    let test_cases = vec![
+        (
+            "Testing server and client with no option for TLS",
+            AuthenticationOptions {
+                use_https: true,
+                ..Default::default()
+            },
+            TLS_PORT,
+            true, // should succeed
+        ),
+        (
+            "Testing server and client with same cipher suite - but rustls does not support this \
+             old cipher suite",
+            AuthenticationOptions {
+                use_https: true,
+                server_tls_cipher_suites: Some("ECDHE-RSA-AES256-GCM-SHA384".to_string()),
+                client_tls_cipher_suites: Some("ECDHE-RSA-AES256-GCM-SHA384".to_string()),
+                ..Default::default()
+            },
+            TLS_PORT,
+            false, // should fail
+        ),
+        (
+            "Testing server in TLS 1.3 but client in TLS 1.2",
+            AuthenticationOptions {
+                use_https: true,
+                server_tls_cipher_suites: Some("TLS_AES_256_GCM_SHA384".to_string()),
+                ..Default::default()
+            },
+            TLS_PORT,
+            false, // should fail
+        ),
+        (
+            "Testing server with invalid cipher suite",
+            AuthenticationOptions {
+                use_https: true,
+                server_tls_cipher_suites: Some("INVALID_CIPHER_SUITE".to_string()),
+                ..Default::default()
+            },
+            TLS_PORT,
+            false, // should fail
+        ),
+        (
+            "Testing server and client with TLS 1.3 - same cipher suite",
+            AuthenticationOptions {
+                use_https: true,
+                server_tls_cipher_suites: Some("TLS_AES_256_GCM_SHA384".to_string()),
+                client_tls_cipher_suites: Some("TLS_AES_256_GCM_SHA384".to_string()),
+                ..Default::default()
+            },
+            TLS_PORT + 1,
+            true, // should succeed
+        ),
+        (
+            "Testing server with tls 1.3 client - tls 1.2 server = FAIL",
+            AuthenticationOptions {
+                use_https: true,
+                client_tls_cipher_suites: Some("TLS_AES_256_GCM_SHA384".to_string()),
+                ..Default::default()
+            },
+            TLS_PORT,
+            false, // should fail
+        ),
+        (
+            "Testing with client that owns a certificate issued from a unknown CA",
+            AuthenticationOptions {
+                use_https: true,
+                pkcs12_client_cert: Some(
+                    "../../test_data/certificates/another_p12/server.p12".to_string(),
+                ),
+                ..Default::default()
+            },
+            TLS_PORT,
+            false, // should fail
+        ),
+        (
+            "Testing with client that owns another certificate issued from a different known CA",
+            AuthenticationOptions {
+                use_https: true,
+                pkcs12_client_cert: Some(
+                    "../../test_data/certificates/gmail_cse/intermediate.p12".to_string(),
+                ),
+                server_tls_cipher_suites: Some("TLS_AES_256_GCM_SHA384".to_string()),
+                client_tls_cipher_suites: Some("TLS_AES_256_GCM_SHA384".to_string()),
+                ..Default::default()
+            },
+            TLS_PORT + 1,
+            true, // should succeed
+        ),
+    ];
 
-    // tls 1.2 auth - with TLS 1.2 cipher suite (RSA-compatible)
-    info!("==> Testing server with JWT token auth over HTTPS");
-    let ctx = start_test_server_with_options(
-        default_db_config.clone(),
-        TLS_PORT,
-        AuthenticationOptions {
-            use_https: true,
-            tls_cipher_suites: Some("ECDHE-RSA-AES256-GCM-SHA384".to_string()),
-            ..Default::default()
-        },
-        None,
-        None,
-        None,
-    )
-    .await?;
-    ListOwnedObjects.run(ctx.get_owner_client()).await?;
-    ctx.stop_server().await?;
+    for (description, auth_options, port, should_succeed) in test_cases {
+        info!("==> {description}");
+        let result = start_test_server_with_options(
+            default_db_config.clone(),
+            port,
+            auth_options,
+            None,
+            None,
+            None,
+        )
+        .await;
 
-    // tls 1.3 auth
-    info!("==> Testing server with JWT token auth over HTTPS");
-    let ctx = start_test_server_with_options(
-        default_db_config.clone(),
-        TLS_PORT,
-        AuthenticationOptions {
-            use_https: true,
-            tls_cipher_suites: Some("TLS_AES_256_GCM_SHA384".to_string()),
-            ..Default::default()
-        },
-        None,
-        None,
-        None,
-    )
-    .await?;
-    ListOwnedObjects.run(ctx.get_owner_client()).await?;
-    ctx.stop_server().await?;
+        if should_succeed {
+            let ctx = result?;
+            ListOwnedObjects.run(ctx.get_owner_client()).await?;
+            ctx.stop_server().await?;
+        } else {
+            assert!(result.is_err());
+        }
+    }
 
     Ok(())
 }

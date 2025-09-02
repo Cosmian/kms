@@ -6,11 +6,11 @@ use cosmian_kms_client::{
     reexport::cosmian_kms_client_utils::symmetric_utils::DataEncryptionAlgorithm,
 };
 use cosmian_logger::log_init;
+use serial_test::serial;
 use test_kms_server::{
     start_default_test_kms_server_with_cert_auth,
     start_default_test_kms_server_with_privileged_users,
 };
-use tokio::time::{Duration, sleep};
 use tracing::trace;
 
 use crate::{
@@ -39,44 +39,6 @@ async fn gen_keypair(kms_client: &KmsClient) -> KmsCliResult<(UniqueIdentifier, 
     CreateKeyPairAction::default().run(kms_client.clone()).await
 }
 
-/// Helper function to retry an assertion with exponential backoff
-/// This helps with eventual consistency issues in distributed systems
-async fn retry_assert<F, Fut>(
-    mut assertion: F,
-    max_retries: u32,
-    initial_delay_ms: u64,
-) -> KmsCliResult<()>
-where
-    F: FnMut() -> Fut,
-    Fut: std::future::Future<Output = Result<bool, crate::error::KmsCliError>>,
-{
-    let mut delay = Duration::from_millis(initial_delay_ms);
-
-    for attempt in 0..=max_retries {
-        match assertion().await {
-            Ok(true) => return Ok(()),
-            Ok(false) if attempt < max_retries => {
-                trace!(
-                    "Assertion failed on attempt {}, retrying in {:?}",
-                    attempt + 1,
-                    delay
-                );
-                sleep(delay).await;
-                delay = delay.mul_f32(1.5); // exponential backoff
-            }
-            Ok(false) => {
-                return Err(crate::error::KmsCliError::Default(format!(
-                    "Assertion failed after {} attempts",
-                    max_retries + 1
-                )));
-            }
-            Err(e) => return Err(e),
-        }
-    }
-
-    unreachable!()
-}
-
 /// Export and import symmetric key
 async fn export_import_sym_key(key_id: &str, kms_client: &KmsClient) -> KmsCliResult<String> {
     ExportSecretDataOrKeyAction {
@@ -97,6 +59,7 @@ async fn export_import_sym_key(key_id: &str, kms_client: &KmsClient) -> KmsCliRe
 }
 
 #[tokio::test]
+#[serial]
 pub(crate) async fn test_ownership_and_grant() -> KmsCliResult<()> {
     // the client conf will use the owner cert
     let ctx = start_default_test_kms_server_with_cert_auth().await;
@@ -304,6 +267,7 @@ pub(crate) async fn test_ownership_and_grant() -> KmsCliResult<()> {
 }
 
 #[tokio::test]
+#[serial]
 pub(crate) async fn test_grant_error() -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server_with_cert_auth().await;
     let key_id = gen_key(&ctx.get_owner_client()).await?;
@@ -336,6 +300,7 @@ pub(crate) async fn test_grant_error() -> KmsCliResult<()> {
 }
 
 #[tokio::test]
+#[serial]
 pub(crate) async fn test_revoke_access() -> KmsCliResult<()> {
     log_init(None);
     // the client conf will use the owner cert
@@ -428,6 +393,7 @@ pub(crate) async fn test_revoke_access() -> KmsCliResult<()> {
 }
 
 #[tokio::test]
+#[serial]
 pub(crate) async fn test_list_access_rights() -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server_with_cert_auth().await;
     let key_id = gen_key(&ctx.get_owner_client()).await?;
@@ -441,26 +407,21 @@ pub(crate) async fn test_list_access_rights() -> KmsCliResult<()> {
     .run(ctx.get_owner_client())
     .await?;
 
-    retry_assert(
-        || async {
-            // the owner can list access rights granted
-            let owner_list = ListAccessesGranted {
-                object_uid: key_id.to_string(),
-            }
-            .run(ctx.get_owner_client())
-            .await?;
-
-            let has_user = owner_list
-                .iter()
-                .map(|x| x.user_id.clone())
-                .any(|x| x == *"user.client@acme.com");
-
-            Ok(has_user)
-        },
-        5,
-        100,
-    )
+    // the owner can list access rights granted
+    let owner_list = ListAccessesGranted {
+        object_uid: key_id.to_string(),
+    }
+    .run(ctx.get_owner_client())
     .await?;
+
+    trace!("owner list {owner_list:?}");
+
+    assert!(
+        owner_list
+            .iter()
+            .map(|x| x.user_id.clone())
+            .any(|x| x == *"user.client@acme.com")
+    );
 
     // The user is not the owner and thus should not be able to list accesses on this object
     assert!(
@@ -476,6 +437,7 @@ pub(crate) async fn test_list_access_rights() -> KmsCliResult<()> {
 }
 
 #[tokio::test]
+#[serial]
 pub(crate) async fn test_list_access_rights_error() -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server_with_cert_auth().await;
     assert!(
@@ -490,6 +452,7 @@ pub(crate) async fn test_list_access_rights_error() -> KmsCliResult<()> {
 }
 
 #[tokio::test]
+#[serial]
 pub(crate) async fn test_list_owned_objects() -> KmsCliResult<()> {
     log_init(None);
     let ctx = start_default_test_kms_server_with_cert_auth().await;
@@ -553,13 +516,10 @@ pub(crate) async fn test_list_owned_objects() -> KmsCliResult<()> {
 }
 
 #[tokio::test]
+#[serial]
 pub(crate) async fn test_access_right_obtained() -> KmsCliResult<()> {
     log_init(None);
     let ctx = start_default_test_kms_server_with_cert_auth().await;
-
-    // Add small delay to ensure clean state
-    sleep(Duration::from_millis(50)).await;
-
     let key_id = gen_key(&ctx.get_owner_client()).await?;
 
     let list = ListAccessRightsObtained.run(ctx.get_owner_client()).await?;
@@ -579,26 +539,19 @@ pub(crate) async fn test_access_right_obtained() -> KmsCliResult<()> {
     .run(ctx.get_owner_client())
     .await?;
 
-    // the user should have the "get" access granted (with retry for eventual consistency)
-    retry_assert(
-        || {
-            let key_id = key_id.clone();
-            let user_client = ctx.get_user_client();
-            async move {
-                let list = ListAccessRightsObtained.run(user_client).await?;
-                trace!("user list {list:?}");
-                let has_key = list.iter().any(|x| x.object_id == key_id);
-                let has_get_op = list
-                    .iter()
-                    .flat_map(|x| x.operations.clone())
-                    .any(|x| x == KmipOperation::Get);
-                Ok(has_key && has_get_op)
-            }
-        },
-        5,   // max retries
-        100, // initial delay 100ms
-    )
-    .await?;
+    // the user should have the "get" access granted
+    let list = ListAccessRightsObtained.run(ctx.get_user_client()).await?;
+    trace!("user list {list:?}");
+    assert!(
+        list.iter()
+            .map(|x| x.object_id.clone())
+            .any(|x| x == key_id)
+    );
+    assert!(
+        list.iter()
+            .flat_map(|x| x.operations.clone())
+            .any(|x| x == KmipOperation::Get)
+    );
 
     // The owner has not been granted access rights on this object (it owns it)
     let list = ListAccessRightsObtained.run(ctx.get_owner_client()).await?;
@@ -634,30 +587,20 @@ pub(crate) async fn test_access_right_obtained() -> KmsCliResult<()> {
     .run(ctx.get_owner_client())
     .await?;
 
-    // the user should have the "get" and "encrypt" access granted (with retry for eventual consistency)
-    retry_assert(
-        || {
-            let key_id = key_id.clone();
-            let user_client = ctx.get_user_client();
-            async move {
-                let list = ListAccessRightsObtained.run(user_client).await?;
-                trace!("user list {list:?}");
-                let has_key = list.iter().any(|x| x.object_id == key_id);
-                let has_get_op = list
-                    .iter()
-                    .flat_map(|x| x.operations.clone())
-                    .any(|x| x == KmipOperation::Get);
-                let has_encrypt_op = list
-                    .iter()
-                    .flat_map(|x| x.operations.clone())
-                    .any(|x| x == KmipOperation::Encrypt);
-                Ok(has_key && has_get_op && has_encrypt_op)
-            }
-        },
-        5,   // max retries
-        100, // initial delay 100ms
-    )
-    .await?;
+    // the user should have the "get" and "encrypt" access granted
+    let list = ListAccessRightsObtained.run(ctx.get_user_client()).await?;
+    trace!("user list {list:?}");
+    assert!(list.iter().any(|x| x.object_id == key_id));
+    assert!(
+        list.iter()
+            .flat_map(|x| x.operations.clone())
+            .any(|x| x == KmipOperation::Get)
+    );
+    assert!(
+        list.iter()
+            .flat_map(|x| x.operations.clone())
+            .any(|x| x == KmipOperation::Encrypt)
+    );
 
     // The owner should not have access rights (since they own the object)
     let list = ListAccessRightsObtained.run(ctx.get_owner_client()).await?;
@@ -667,6 +610,7 @@ pub(crate) async fn test_access_right_obtained() -> KmsCliResult<()> {
 }
 
 #[tokio::test]
+#[serial]
 pub(crate) async fn test_ownership_and_grant_wildcard_user() -> KmsCliResult<()> {
     // the client conf will use the owner cert
     let ctx = start_default_test_kms_server_with_cert_auth().await;
@@ -885,6 +829,7 @@ pub(crate) async fn test_ownership_and_grant_wildcard_user() -> KmsCliResult<()>
 }
 
 #[tokio::test]
+#[serial]
 pub(crate) async fn test_grant_multiple_operations() -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server_with_cert_auth().await;
     let key_id = gen_key(&ctx.get_owner_client()).await?;
@@ -945,6 +890,7 @@ pub(crate) async fn test_grant_multiple_operations() -> KmsCliResult<()> {
 }
 
 #[tokio::test]
+#[serial]
 pub(crate) async fn test_grant_with_without_object_uid() -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server_with_cert_auth().await;
 
@@ -974,6 +920,7 @@ pub(crate) async fn test_grant_with_without_object_uid() -> KmsCliResult<()> {
 }
 
 #[tokio::test]
+#[serial]
 #[allow(clippy::large_stack_frames)]
 pub(crate) async fn test_privileged_users() -> KmsCliResult<()> {
     log_init(option_env!("RUST_LOG"));

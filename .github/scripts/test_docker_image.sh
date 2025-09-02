@@ -10,10 +10,10 @@ KMS_URL_HTTP="http://0.0.0.0:9998"
 KMS_URL_HTTPS="https://0.0.0.0:9999"
 
 # Cert paths
-CA_CERT="test_data/client_server/ca/ca.crt"
-CLIENT_CERT="test_data/client_server/owner/owner.client.acme.com.crt"
-CLIENT_KEY="test_data/client_server/owner/owner.client.acme.com.key"
-CLIENT_PKCS12_PATH="test_data/client_server/owner/owner.client.acme.com.p12"
+CA_CERT="test_data/certificates/client_server/ca/ca.crt"
+CLIENT_CERT="test_data/certificates/client_server/owner/owner.client.acme.com.crt"
+CLIENT_KEY="test_data/certificates/client_server/owner/owner.client.acme.com.key"
+CLIENT_PKCS12_PATH="test_data/certificates/client_server/owner/owner.client.acme.com.p12"
 
 set -ex
 
@@ -54,29 +54,29 @@ sleep 10
 
 # Function to test OpenSSL connections
 openssl_test() {
-  local host_port=$1
-  local tls_version=$2
-  echo "Testing $host_port with TLS $tls_version"
-  echo "QUIT" | openssl s_client -"$tls_version" -connect "$host_port" \
-    -CAfile "$CA_CERT" \
-    -cert "$CLIENT_CERT" \
-    -key "$CLIENT_KEY" \
-    -verify_return_error \
-    -brief
+    local host_port=$1
+    local tls_version=$2
+    echo "Testing $host_port with TLS $tls_version"
+    echo "QUIT" | openssl s_client -"$tls_version" -connect "$host_port" \
+        -CAfile "$CA_CERT" \
+        -cert "$CLIENT_CERT" \
+        -key "$CLIENT_KEY" \
+        -verify_return_error \
+        -brief
 }
 
 # Function to test expected TLS failures
 test_tls_failure() {
-  local host_port=$1
-  local tls_version=$2
-  local description=$3
+    local host_port=$1
+    local tls_version=$2
+    local description=$3
 
-  if openssl_test "$host_port" "$tls_version"; then
-    echo "ERROR: $description - TLS $tls_version test should have failed on $host_port"
-    exit 1
-  else
-    echo "EXPECTED: $description - TLS $tls_version correctly rejected on $host_port"
-  fi
+    if openssl_test "$host_port" "$tls_version"; then
+        echo "ERROR: $description - TLS $tls_version test should have failed on $host_port"
+        exit 1
+    else
+        echo "EXPECTED: $description - TLS $tls_version correctly rejected on $host_port"
+    fi
 }
 
 # Create symmetric keys
