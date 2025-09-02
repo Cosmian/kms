@@ -11,7 +11,8 @@ pub trait SessionParams: Sync + Send {}
 impl dyn SessionParams + 'static {
     /// Downcast the `SessionParams` to a concrete type.
     #[inline]
+    #[allow(unsafe_code)]
     pub fn downcast_ref<T: SessionParams + 'static>(&self) -> &T {
-        unsafe { &*(self as *const dyn SessionParams as *const T) }
+        unsafe { &*std::ptr::from_ref::<dyn SessionParams>(self).cast::<T>() }
     }
 }

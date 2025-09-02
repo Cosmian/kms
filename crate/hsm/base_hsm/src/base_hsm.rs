@@ -27,7 +27,7 @@ impl BaseHsm {
     {
         let hsm_lib = Arc::new(HsmLib::instantiate(path)?);
         let mut slots = HashMap::with_capacity(passwords.len());
-        for (k, v) in passwords.iter() {
+        for (k, v) in &passwords {
             slots.insert(
                 *k,
                 SlotState {
@@ -78,7 +78,7 @@ impl BaseHsm {
             let rv =
                 self.hsm_lib.C_GetInfo.ok_or_else(|| {
                     HError::Default("C_GetInfo not available on library".to_string())
-                })?(&mut info);
+                })?(&raw mut info);
             if rv != CKR_OK {
                 return Err(HError::Default("Failed getting HSM info".to_string()));
             }

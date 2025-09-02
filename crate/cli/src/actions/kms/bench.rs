@@ -1,3 +1,4 @@
+#![allow(clippy::as_conversions, clippy::indexing_slicing, clippy::expect_used)]
 use std::{
     io,
     io::Write,

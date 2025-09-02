@@ -1,7 +1,14 @@
 use std::ptr;
 
 use libloading::Library;
-use pkcs11_sys::*;
+use pkcs11_sys::{
+    CK_C_CloseSession, CK_C_Decrypt, CK_C_DecryptFinal, CK_C_DecryptInit, CK_C_DecryptUpdate,
+    CK_C_DestroyObject, CK_C_Encrypt, CK_C_EncryptFinal, CK_C_EncryptInit, CK_C_EncryptUpdate,
+    CK_C_Finalize, CK_C_FindObjects, CK_C_FindObjectsFinal, CK_C_FindObjectsInit, CK_C_GenerateKey,
+    CK_C_GenerateKeyPair, CK_C_GenerateRandom, CK_C_GetAttributeValue, CK_C_GetInfo,
+    CK_C_INITIALIZE_ARGS, CK_C_Initialize, CK_C_Login, CK_C_Logout, CK_C_OpenSession,
+    CK_C_UnwrapKey, CK_C_WrapKey, CK_VOID_PTR, CKF_OS_LOCKING_OK, CKR_OK,
+};
 
 use crate::{HError, HResult};
 
@@ -138,7 +145,7 @@ impl HsmLib {
             // let rv = self.hsm.C_Initialize.deref()(&pInitArgs);
             let rv = hsm_lib.C_Initialize.ok_or_else(|| {
                 HError::Default("C_Initialize not available on library".to_string())
-            })?(&pInitArgs as *const CK_C_INITIALIZE_ARGS as CK_VOID_PTR);
+            })?(&raw const pInitArgs as CK_VOID_PTR);
             if rv != CKR_OK {
                 return Err(HError::Default("Failed initializing the HSM".to_string()));
             }
@@ -161,6 +168,6 @@ impl HsmLib {
 
 impl Drop for HsmLib {
     fn drop(&mut self) {
-        let _ = self.finalize();
+        drop(self.finalize());
     }
 }

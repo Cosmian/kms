@@ -65,7 +65,7 @@ async fn test_pems(
 ) -> KmsCliResult<()> {
     // import the key
     let key_uid = ImportSecretDataOrKeyAction {
-        key_file: PathBuf::from(&key_file_path.to_string()),
+        key_file: PathBuf::from(&key_file_path.to_owned()),
         key_format: ImportKeyFormat::Pem,
         replace_existing: true,
         key_usage: None,

@@ -58,7 +58,7 @@ async fn test_import_export_p12_25519() -> KmsCliResult<()> {
             pkcs12_password: Some("secret".to_owned()),
             certificate_id: Some(Uuid::new_v4().to_string()),
             replace_existing: true,
-            tags: vec!["import_pkcs12".to_string()],
+            tags: vec!["import_pkcs12".to_owned()],
             ..Default::default()
         }
         .run(ctx.get_owner_client()),
@@ -242,7 +242,7 @@ async fn test_import_p12_rsa() {
             pkcs12_password: Some("secret".to_owned()),
             certificate_id: Some(Uuid::new_v4().to_string()),
             replace_existing: true,
-            tags: vec!["import_pkcs12".to_string()],
+            tags: vec!["import_pkcs12".to_owned()],
             ..Default::default()
         }
         .run(ctx.get_owner_client()),
@@ -294,7 +294,7 @@ async fn test_export_pkcs7() -> Result<(), KmsCliError> {
     let certificate_id = CertifyAction {
         generate_key_pair: true,
         algorithm: Algorithm::RSA4096,
-        subject_name: Some("C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_string()),
+        subject_name: Some("C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_owned()),
         issuer_private_key_id: Some(issuer_private_key_id.clone()),
         tags: vec!["certify_a_csr_test".to_owned()],
         ..Default::default()
@@ -423,7 +423,7 @@ async fn test_export_root_and_intermediate_pkcs12() -> KmsCliResult<()> {
     let ca_id = CertifyAction {
         generate_key_pair: true,
         algorithm: Algorithm::NistP256,
-        subject_name: Some("C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test CA".to_string()),
+        subject_name: Some("C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test CA".to_owned()),
         ..Default::default()
     }
     .run(ctx.get_owner_client())
@@ -436,7 +436,7 @@ async fn test_export_root_and_intermediate_pkcs12() -> KmsCliResult<()> {
         generate_key_pair: true,
         algorithm: Algorithm::NistP256,
         subject_name: Some(
-            "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Intermediate".to_string(),
+            "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Intermediate".to_owned(),
         ),
         ..Default::default()
     }

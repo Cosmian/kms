@@ -1,3 +1,4 @@
+#![allow(clippy::print_stdout, clippy::unwrap_used)]
 use std::io::{Write, stdin, stdout};
 
 use cosmian_kmip::{
@@ -51,20 +52,18 @@ fn main() {
                             match from_ttlv::<RequestMessage>(ttlv) {
                                 Err(r) => {
                                     println!("ERROR converting TTLV to RequestMessage: {r}");
-                                    continue;
                                 }
                                 Ok(request) => println!("Request ==>\n\n{request:#?}\n\nSUCCESS"),
-                            };
+                            }
                         } else if input.starts_with("42007b") || input.starts_with("42007B") {
                             match from_ttlv::<ResponseMessage>(ttlv) {
                                 Err(r) => {
                                     println!("ERROR converting TTLV to ResponseMessage: {r}");
-                                    continue;
                                 }
                                 Ok(response) => {
-                                    println!("Response ==>\n\n{response:#?}\n\nSUCCESS")
+                                    println!("Response ==>\n\n{response:#?}\n\nSUCCESS");
                                 }
-                            };
+                            }
                         } else {
                             println!("ERROR: unknown message type");
                         }

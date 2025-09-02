@@ -1,4 +1,12 @@
-#![allow(dead_code)]
+#![allow(
+    dead_code,
+    clippy::unwrap_used,
+    clippy::cast_possible_truncation,
+    let_underscore_drop,
+    clippy::cast_possible_wrap,
+    clippy::needless_pass_by_value,
+    clippy::as_conversions
+)]
 
 use cosmian_kms_client::{
     KmsClient,
@@ -23,7 +31,7 @@ pub(crate) fn bench_rsa_create_keypair(c: &mut Criterion) {
 
     let kms_rest_client = runtime.block_on(async {
         let ctx = start_default_test_kms_server().await;
-        ctx.get_owner_client().clone()
+        ctx.get_owner_client()
     });
 
     let mut group = c.benchmark_group("RSA tests");
@@ -212,7 +220,7 @@ pub(crate) fn bench_rsa_encrypt(
     let (kms_rest_client, _sk, pk) = runtime.block_on(async {
         let ctx = start_default_test_kms_server().await;
         let (sk, pk) = create_rsa_keypair(&ctx.get_owner_client(), key_size).await;
-        (ctx.get_owner_client().clone(), sk, pk)
+        (ctx.get_owner_client(), sk, pk)
     });
 
     let mut group = c.benchmark_group("RSA tests");
@@ -247,7 +255,7 @@ pub(crate) fn bench_rsa_decrypt(
             cryptographic_parameters,
         )
         .await;
-        (ctx.get_owner_client().clone(), sk, pk, ciphertext)
+        (ctx.get_owner_client(), sk, pk, ciphertext)
     });
 
     let mut group = c.benchmark_group("RSA tests");
@@ -425,7 +433,7 @@ pub(crate) fn bench_encrypt_decrypt_parametrized(
                     &cryptographic_parameters,
                 )
                 .await;
-                (ctx.get_owner_client().clone(), sk, pk, ciphertext)
+                (ctx.get_owner_client(), sk, pk, ciphertext)
             });
 
             let parameter_name = if num_plaintexts == 1 {
@@ -489,7 +497,7 @@ pub(crate) fn bench_encrypt_rsa_pkcs15_parametrized(c: &mut Criterion) {
             hashing_algorithm: Some(HashingAlgorithm::SHA256),
             ..Default::default()
         },
-    )
+    );
 }
 
 pub(crate) fn bench_encrypt_rsa_oaep_parametrized(c: &mut Criterion) {
@@ -502,7 +510,7 @@ pub(crate) fn bench_encrypt_rsa_oaep_parametrized(c: &mut Criterion) {
             hashing_algorithm: Some(HashingAlgorithm::SHA256),
             ..Default::default()
         },
-    )
+    );
 }
 
 pub(crate) fn bench_encrypt_rsa_aes_key_wrap_parametrized(c: &mut Criterion) {
@@ -515,5 +523,5 @@ pub(crate) fn bench_encrypt_rsa_aes_key_wrap_parametrized(c: &mut Criterion) {
             hashing_algorithm: Some(HashingAlgorithm::SHA256),
             ..Default::default()
         },
-    )
+    );
 }

@@ -167,7 +167,7 @@ async fn import_encrypt_decrypt(
     fs::remove_file(&output_file).ok();
     assert!(!output_file.exists());
 
-    let tags = vec![filename.to_string()];
+    let tags = vec![filename.to_owned()];
 
     debug!("\n\nImport Private key");
     let private_key_id = ImportSecretDataOrKeyAction {

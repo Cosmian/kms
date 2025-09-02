@@ -20,7 +20,7 @@ pub(crate) async fn test_revoke_symmetric_key(ctx: &TestsContext) -> KmsCliResul
 
     // sym
     let key_id = CreateKeyAction {
-        key_id: Some("hsm::0::".to_string() + &Uuid::new_v4().to_string()),
+        key_id: Some("hsm::0::".to_owned() + &Uuid::new_v4().to_string()),
         ..Default::default()
     }
     .run(ctx.get_owner_client())
@@ -28,7 +28,7 @@ pub(crate) async fn test_revoke_symmetric_key(ctx: &TestsContext) -> KmsCliResul
 
     // revoke
     let r = RevokeKeyAction {
-        revocation_reason: "revocation test".to_string(),
+        revocation_reason: "revocation test".to_owned(),
         key_id: Some(key_id.to_string()),
         tags: None,
     }

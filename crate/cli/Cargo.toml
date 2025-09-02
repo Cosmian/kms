@@ -2,18 +2,21 @@
 name = "cosmian_kms_cli"
 version.workspace = true
 authors.workspace = true
-categories = ["security"]
 edition.workspace = true
-keywords = ["kms", "cosmian"]
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+keywords.workspace = true
+categories.workspace = true
 description = """
 Command Line Interface used to manage the KMS server
 
 If any assistance is needed, please either visit the Cosmian technical documentation at https://docs.cosmian.com
 or contact the Cosmian support team on Discord https://discord.com/invite/7kPMNtHpnz
 """
+
+[lints]
+workspace = true
 
 [lib]
 # doc test linking as a separate binary is extremely slow

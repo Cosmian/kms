@@ -31,7 +31,7 @@ pub(crate) async fn test_aes_gcm(ctx: &TestsContext) -> KmsCliResult<()> {
     log_init(None);
 
     let dek = CreateKeyAction {
-        key_id: Some("hsm::0::".to_string() + &Uuid::new_v4().to_string()),
+        key_id: Some("hsm::0::".to_owned() + &Uuid::new_v4().to_string()),
         number_of_bits: Some(256),
         algorithm: SymmetricAlgorithm::Aes,
         ..Default::default()

@@ -51,7 +51,7 @@ async fn test_certificate_import_different_format() -> KmsCliResult<()> {
             input_format: CertificateInputFormat::Chain,
             certificate_id: None,
             replace_existing: true,
-            tags: vec!["import_chain".to_string()],
+            tags: vec!["import_chain".to_owned()],
             ..Default::default()
         }
         .run(ctx.get_owner_client()),
@@ -66,7 +66,7 @@ async fn test_certificate_import_different_format() -> KmsCliResult<()> {
             pkcs12_password: Some("secret".to_owned()),
             certificate_id: None,
             replace_existing: true,
-            tags: vec!["import_pkcs12".to_string()],
+            tags: vec!["import_pkcs12".to_owned()],
             ..Default::default()
         }
         .run(ctx.get_owner_client()),

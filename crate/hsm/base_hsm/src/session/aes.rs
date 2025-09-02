@@ -38,9 +38,9 @@ impl Session {
                 pParameter: ptr::null_mut(),
                 ulParameterLen: 0,
             };
-            let is_sensitive = if !sensitive { CK_FALSE } else { CK_TRUE };
+            let is_sensitive = if sensitive { CK_TRUE } else { CK_FALSE };
             let mut template = aes_key_template!(id, size, is_sensitive);
-            let pMechanism: CK_MECHANISM_PTR = &mut mechanism;
+            let pMechanism: CK_MECHANISM_PTR = &raw mut mechanism;
             let pMutTemplate: CK_ATTRIBUTE_PTR = template.as_mut_ptr();
             let mut aes_key_handle = CK_OBJECT_HANDLE::default();
             #[cfg(target_os = "windows")]
@@ -52,7 +52,7 @@ impl Session {
                 pMechanism,
                 pMutTemplate,
                 len,
-                &mut aes_key_handle,
+                &raw mut aes_key_handle,
             );
             if rv != CKR_OK {
                 return Err(HError::Default(format!("Failed generating key: {rv}")));

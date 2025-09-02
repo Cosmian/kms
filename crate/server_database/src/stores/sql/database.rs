@@ -35,7 +35,7 @@ where
     #[allow(dead_code)]
     fn binder(&self, param_number: usize) -> String {
         if std::any::type_name::<DB>() == "sqlx::mysql::MySql" {
-            return "?".to_string();
+            return "?".to_owned();
         }
         format!("${param_number}")
     }

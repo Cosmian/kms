@@ -59,7 +59,7 @@ fn test_hsm_low_level_test() -> HResult<()> {
         flags: CKF_OS_LOCKING_OK,
         pReserved: ptr::null_mut(),
     };
-    let rv = init(&mut p_init_args as *const CK_C_INITIALIZE_ARGS as CK_VOID_PTR);
+    let rv = init(&raw mut p_init_args as CK_VOID_PTR);
     assert_eq!(rv, CKR_OK);
 
     Ok(())
@@ -325,7 +325,7 @@ fn test_hsm_list_objects() -> HResult<()> {
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
     let objects = session.list_objects(HsmObjectFilter::Any)?;
-    for object in objects.iter() {
+    for object in &objects {
         session.destroy_object(*object)?;
     }
     let objects = session.list_objects(HsmObjectFilter::Any)?;
@@ -450,7 +450,7 @@ fn test_hsm_destroy_all() -> HResult<()> {
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
     let objects = session.list_objects(HsmObjectFilter::Any)?;
-    for object in objects.iter() {
+    for object in &objects {
         session.destroy_object(*object)?;
     }
     let objects = session.list_objects(HsmObjectFilter::Any)?;

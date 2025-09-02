@@ -69,7 +69,7 @@ impl Stdout {
     #[must_use]
     pub fn new(stdout: &str) -> Self {
         Self {
-            str_out: stdout.to_string(),
+            str_out: stdout.to_owned(),
             ..Default::default()
         }
     }

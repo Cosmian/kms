@@ -56,7 +56,7 @@ impl ObjectWithMetadata {
     /// Return a mutable borrow to the Object
     /// Do not use this to set a new object or make sure you clear
     /// the cached unwrapped object
-    pub fn object_mut(&mut self) -> &mut Object {
+    pub const fn object_mut(&mut self) -> &mut Object {
         &mut self.object
     }
 
@@ -75,7 +75,7 @@ impl ObjectWithMetadata {
         &self.attributes
     }
 
-    pub fn attributes_mut(&mut self) -> &mut Attributes {
+    pub const fn attributes_mut(&mut self) -> &mut Attributes {
         &mut self.attributes
     }
 }

@@ -249,6 +249,7 @@ impl Operation {
 }
 
 /// This operation requests the server to activate a Managed Object.
+///
 /// The operation SHALL only be performed on an object in the Pre-Active state
 /// and has the effect of changing its state to Active, and setting its Activation Date to the current date and time
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]

@@ -17,43 +17,42 @@ use tracing::{debug, info, span};
 #[cfg(feature = "timeout")]
 mod expiry;
 
+/// Get the default `RUST_LOG` configuration if not set
+fn get_default_rust_log() -> String {
+    "info,cosmian=info,cosmian_kms_server=info,actix_web=info,sqlx::query=error,mysql=info"
+        .to_owned()
+}
+
+/// Get the appropriate `rust_log` value, preferring config over environment
+fn get_effective_rust_log(config_rust_log: Option<String>, info_only: bool) -> Option<String> {
+    if info_only {
+        Some("info".to_owned())
+    } else {
+        config_rust_log.or_else(|| {
+            // Only fall back to environment or default if not in config
+            std::env::var("RUST_LOG")
+                .ok()
+                .or_else(|| Some(get_default_rust_log()))
+        })
+    }
+}
+
 /// The main entry point of the program.
 ///
 /// This function sets up the necessary environment variables and logging options,
 /// then parses the command line arguments using [`ClapConfig::parse()`](https://docs.rs/clap/latest/clap/struct.ClapConfig.html#method.parse).
 #[tokio::main]
 async fn main() -> KResult<()> {
-    // Set up environment variables and logging options
-    if std::env::var("RUST_BACKTRACE").is_err() {
-        unsafe {
-            std::env::set_var("RUST_BACKTRACE", "full");
-        }
-    }
-    if std::env::var("RUST_LOG").is_err() {
-        unsafe {
-            std::env::set_var(
-                "RUST_LOG",
-                "info,cosmian=info,cosmian_kms_server=info,actix_web=info,sqlx::query=error,\
-                 mysql=info",
-            );
-        }
-    }
-
     // Load variable from a .env file
     dotenv().ok();
 
     let clap_config = ClapConfig::load_from_file()?;
 
     let info_only = clap_config.info;
-    if info_only {
-        unsafe {
-            std::env::set_var("RUST_LOG", "info");
-        }
-    }
 
     //Initialize the tracing system
     let _otel_guard = tracing_init(&TracingConfig {
-        service_name: "cosmian_kms".to_string(),
+        service_name: "cosmian_kms".to_owned(),
         otlp: clap_config
             .logging
             .otlp
@@ -63,12 +62,12 @@ async fn main() -> KResult<()> {
                 environment: clap_config.logging.environment.clone(),
                 otlp_url: url.to_owned(),
                 enable_metering: clap_config.logging.enable_metering,
-            })
-            .clone(),
+            }),
         no_log_to_stdout: clap_config.logging.quiet,
         #[cfg(not(target_os = "windows"))]
         log_to_syslog: clap_config.logging.log_to_syslog,
-        rust_log: clap_config.logging.rust_log.clone(),
+        // Use safe rust_log configuration without environment variable setting
+        rust_log: get_effective_rust_log(clap_config.logging.rust_log.clone(), info_only),
         log_to_file: clap_config.logging.rolling_log_dir.clone().map(|dir| {
             (
                 dir,
@@ -76,7 +75,7 @@ async fn main() -> KResult<()> {
                     .logging
                     .rolling_log_name
                     .clone()
-                    .unwrap_or("kms".to_owned()),
+                    .unwrap_or_else(|| "kms".to_owned()),
             )
         }),
         with_ansi_colors: clap_config.logging.ansi_colors,
@@ -115,13 +114,13 @@ async fn main() -> KResult<()> {
     // so that we can use the legacy algorithms.
     // particularly those used for old PKCS#12 formats
     #[cfg(feature = "non-fips")]
-    if openssl::version::number() >= 0x30000000 {
+    if openssl::version::number() >= 0x3000_0000 {
         Provider::try_load(None, "legacy", true)
             .context("export: unable to load the openssl legacy provider")?;
     } else {
         // In version < 3.0, we only load the default provider
         Provider::load(None, "default")?;
-    };
+    }
 
     // Instantiate a config object using the env variables and the args of the binary
     debug!("Command line config: {clap_config:#?}");
@@ -155,6 +154,7 @@ async fn main() -> KResult<()> {
 
 #[cfg(feature = "non-fips")]
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use std::path::PathBuf;
 
@@ -180,7 +180,7 @@ mod tests {
             socket_server: SocketServerConfig {
                 socket_server_start: false,
                 socket_server_port: 5696,
-                socket_server_hostname: "0.0.0.0".to_string(),
+                socket_server_hostname: "0.0.0.0".to_owned(),
             },
             tls: TlsConfig {
                 tls_p12_file: Some(PathBuf::from("[tls p12 file]")),
@@ -251,8 +251,8 @@ mod tests {
                 ansi_colors: false,
             },
             info: false,
-            hsm_model: "".to_string(),
-            hsm_admin: "".to_string(),
+            hsm_model: String::new(),
+            hsm_admin: String::new(),
             hsm_slot: vec![],
             hsm_password: vec![],
             key_encryption_key: Some("key wrapping key".to_owned()),
