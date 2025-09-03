@@ -439,7 +439,6 @@ impl<'de> Deserialize<'de> for CredentialValue {
                         Field::Ticket => {
                             if ticket.is_some() {
                                 return Err(de::Error::duplicate_field("ticket"));
-                                return Err(de::Error::duplicate_field("ticket"));
                             }
                             ticket = Some(map.next_value()?);
                         }
