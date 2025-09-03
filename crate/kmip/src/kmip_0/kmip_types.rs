@@ -278,7 +278,7 @@ impl Serialize for CredentialValue {
                 st.end()
             }
             Self::Ticket { ticket } => {
-                let mut st = serializer.serialize_struct("Ticket", 2)?;
+                let mut st = serializer.serialize_struct("Ticket", 1)?;
                 st.serialize_field("Ticket", ticket)?;
                 st.end()
             }
@@ -438,7 +438,8 @@ impl<'de> Deserialize<'de> for CredentialValue {
                         }
                         Field::Ticket => {
                             if ticket.is_some() {
-                                return Err(de::Error::duplicate_field("ticket_type"));
+                                return Err(de::Error::duplicate_field("ticket"));
+                                return Err(de::Error::duplicate_field("ticket"));
                             }
                             ticket = Some(map.next_value()?);
                         }
