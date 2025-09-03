@@ -1420,6 +1420,7 @@ dependencies = [
  "reqwest 0.11.27",
  "serde",
  "serde_json",
+ "smartcardhsm_pkcs11_loader",
  "softhsm2_pkcs11_loader",
  "strum",
  "thiserror 2.0.16",
@@ -4805,6 +4806,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "smartcardhsm_pkcs11_loader"
+version = "5.7.1"
+dependencies = [
+ "cosmian_kms_base_hsm",
+ "cosmian_kms_interfaces",
+ "cosmian_logger 0.3.1",
+ "libloading",
+ "pkcs11-sys",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]

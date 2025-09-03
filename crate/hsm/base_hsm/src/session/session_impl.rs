@@ -44,17 +44,17 @@ use cosmian_kms_interfaces::{
 use pkcs11_sys::{
     CK_AES_GCM_PARAMS, CK_ATTRIBUTE, CK_BBOOL, CK_FALSE, CK_KEY_TYPE, CK_MECHANISM,
     CK_OBJECT_CLASS, CK_OBJECT_HANDLE, CK_RSA_PKCS_OAEP_PARAMS, CK_SESSION_HANDLE, CK_TRUE,
-    CK_ULONG, CK_VOID_PTR, CKA_CLASS, CKA_COEFFICIENT, CKA_EXPONENT_1, CKA_EXPONENT_2, CKA_ID,
+    CK_ULONG, CK_VOID_PTR, CKA_CLASS, CKA_COEFFICIENT, CKA_EXPONENT_1, CKA_EXPONENT_2,
     CKA_KEY_TYPE, CKA_LABEL, CKA_MODULUS, CKA_PRIME_1, CKA_PRIME_2, CKA_PRIVATE_EXPONENT,
     CKA_PUBLIC_EXPONENT, CKA_SENSITIVE, CKA_VALUE, CKA_VALUE_LEN, CKG_MGF1_SHA1, CKG_MGF1_SHA256,
-    CKK_AES, CKK_RSA, CKK_VENDOR_DEFINED, CKM_AES_GCM, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP, CKM_SHA_1,
+    CKK_AES, CKK_RSA, CKK_VENDOR_DEFINED, CKM_AES_GCM, CKM_AES_CBC, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP, CKM_SHA_1,
     CKM_SHA256, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKO_SECRET_KEY, CKO_VENDOR_DEFINED,
     CKR_ATTRIBUTE_SENSITIVE, CKR_OBJECT_HANDLE_INVALID, CKR_OK, CKZ_DATA_SPECIFIED,
 };
 use rand::{TryRngCore, rngs::OsRng};
 use tracing::debug;
 use zeroize::Zeroizing;
-
+use cosmian_kms_interfaces::KeyType::{AesKey, RsaPrivateKey, RsaPublicKey};
 pub use crate::session::{aes::AesKeySize, rsa::RsaKeySize};
 use crate::{HError, HResult, ObjectHandlesCache};
 
@@ -70,6 +70,7 @@ fn generate_random_nonce<const T: usize>() -> HResult<[u8; T]> {
 
 /// Encryption algorithm supported by the HSM
 pub enum HsmEncryptionAlgorithm {
+    AesCbc,
     AesGcm,
     RsaPkcsV15,
     RsaOaepSha256,
@@ -200,19 +201,8 @@ impl Session {
         }
     }
 
-    pub fn get_object_handle(&self, object_id: &[u8]) -> HResult<CK_OBJECT_HANDLE> {
-        if let Some(handle) = self.object_handles_cache.get(object_id) {
-            return Ok(handle);
-        }
-
-        // Proteccio does not allow the ID for secret keys so we use the label
-        // and we do the same on base HSM
-        let mut template = [CK_ATTRIBUTE {
-            type_: CKA_LABEL,
-            pValue: object_id.as_ptr() as CK_VOID_PTR,
-            ulValueLen: object_id.len() as CK_ULONG,
-        }];
-
+    fn find_object_handles(&self, mut template: Vec<CK_ATTRIBUTE>) -> HResult<Vec<CK_OBJECT_HANDLE>> {
+        let mut object_handles: Vec<CK_OBJECT_HANDLE> = Vec::new();
         unsafe {
             let rv = self.hsm.C_FindObjectsInit.ok_or_else(|| {
                 HError::Default("C_FindObjectsInit not available on library".to_string())
@@ -222,40 +212,108 @@ impl Session {
                 template.len() as CK_ULONG,
             );
             if rv != CKR_OK {
-                return Err(HError::Default(format!("C_FindObjectsInit failed: {rv}")));
+                return Err(HError::Default(
+                    "Failed to initialize object search".to_string(),
+                ));
             }
 
             let mut object_handle: CK_OBJECT_HANDLE = 0;
             let mut object_count: CK_ULONG = 0;
-            let rv = self.hsm.C_FindObjects.ok_or_else(|| {
-                HError::Default("C_FindObjects not available on library".to_string())
-            })?(
-                self.session_handle,
-                &raw mut object_handle,
-                1,
-                &raw mut object_count,
-            );
-            if rv != CKR_OK {
-                return Err(HError::Default(format!("C_FindObjects failed: {rv}")));
+            loop {
+                let rv = self.hsm.C_FindObjects.ok_or_else(|| {
+                    HError::Default("C_FindObjects not available on library".to_string())
+                })?(
+                    self.session_handle,
+                    &raw mut object_handle,
+                    1,
+                    &raw mut object_count,
+                );
+                if rv != CKR_OK {
+                    return Err(HError::Default("Failed to find objects".to_string()));
+                }
+                if object_count == 0 {
+                    break;
+                }
+                object_handles.push(object_handle);
             }
 
             let rv = self.hsm.C_FindObjectsFinal.ok_or_else(|| {
                 HError::Default("C_FindObjectsFinal not available on library".to_string())
             })?(self.session_handle);
             if rv != CKR_OK {
-                return Err(HError::Default(format!("C_FindObjectsFinal failed: {rv}")));
+                return Err(HError::Default(
+                    "Failed to finalize object search".to_string(),
+                ));
             }
+        }
+        Ok(object_handles)
+    }
 
-            if object_count == 0 {
+    pub fn get_object_handle(&self, object_id: &[u8]) -> HResult<CK_OBJECT_HANDLE> {
+        let object_id_string = String::from_utf8(Vec::from(object_id))
+            .map_err(|e| HError::Default(format!("Failed to convert object_id to string: {e}")))?;
+        debug!("Retrieving Object handle for id: {object_id_string}");
+        if let Some(handle) = self.object_handles_cache.get(object_id) {
+            return Ok(handle);
+        }
+
+        // Proteccio does not allow the ID for secret keys so we use the label
+        // and we do the same on base HSM
+        let template = [CK_ATTRIBUTE {
+            type_: CKA_LABEL,
+            pValue: object_id.as_ptr() as CK_VOID_PTR,
+            ulValueLen: object_id.len() as CK_ULONG,
+        }];
+
+        let mut object_handles = self.find_object_handles(template.to_vec())?;
+        if object_handles.len() == 0 {
+            if object_id_string.trim().ends_with("_pk") { //Check if the HSM stores the object without the suffix
+                let trimmed = object_id_string.trim().strip_suffix("_pk");
+                let object_id_trimmed = match trimmed {
+                    Some(trimmed) => trimmed,
+                    None => object_id_string.trim(),
+                }.as_bytes();
+                let template_trimmed = [CK_ATTRIBUTE {
+                    type_: CKA_LABEL,
+                    pValue: object_id_trimmed.as_ptr() as CK_VOID_PTR,
+                    ulValueLen: object_id_trimmed.len() as CK_ULONG,
+                }];
+                object_handles = self.find_object_handles(template_trimmed.to_vec())?;
+                if object_handles.len() == 0 {
+                    return Err(HError::Default("Object not found".to_string()));
+                }
+            } else {
                 return Err(HError::Default("Object not found".to_string()));
             }
-
-            //update cache
-            self.object_handles_cache
-                .insert(object_id.to_vec(), object_handle);
-
-            Ok(object_handle)
         }
+
+        let mut object_handle = object_handles[0];
+        if object_handles.len() > 1 { //Multiple matches in case the HSM uses the same ID for SK and PK
+            debug!("Found {} possible handles", object_handles.len());
+            for handle in object_handles {
+                let object_type = match self.get_key_type(handle)? {
+                    None => continue,
+                    Some(object_type) => object_type,
+                };
+                if object_id_string.trim().ends_with("_pk") {
+                    if object_type == RsaPublicKey {
+                        object_handle = handle;
+                        break;
+                    }
+                } else {
+                    if object_type == AesKey || object_type == RsaPrivateKey {
+                        object_handle = handle;
+                        break;
+                    }
+                }
+            }
+        }
+
+        //update cache
+        self.object_handles_cache
+            .insert(object_id.to_vec(), object_handle);
+
+        Ok(object_handle)
     }
 
     pub fn delete_object_handle(&self, id: &[u8]) {
@@ -285,7 +343,6 @@ impl Session {
     /// such as AES keys, RSA keys, etc.
     /// If no filter is provided, all objects are listed.
     pub fn list_objects(&self, object_filter: HsmObjectFilter) -> HResult<Vec<CK_OBJECT_HANDLE>> {
-        let mut object_handles: Vec<CK_OBJECT_HANDLE> = Vec::new();
         let mut template: Vec<CK_ATTRIBUTE> = Vec::new();
         match object_filter {
             HsmObjectFilter::Any => {}
@@ -333,50 +390,7 @@ impl Session {
                 },
             ]),
         }
-
-        unsafe {
-            let rv = self.hsm.C_FindObjectsInit.ok_or_else(|| {
-                HError::Default("C_FindObjectsInit not available on library".to_string())
-            })?(
-                self.session_handle,
-                template.as_mut_ptr(),
-                template.len() as CK_ULONG,
-            );
-            if rv != CKR_OK {
-                return Err(HError::Default(
-                    "Failed to initialize object search".to_string(),
-                ));
-            }
-
-            let mut object_handle: CK_OBJECT_HANDLE = 0;
-            let mut object_count: CK_ULONG = 0;
-            loop {
-                let rv = self.hsm.C_FindObjects.ok_or_else(|| {
-                    HError::Default("C_FindObjects not available on library".to_string())
-                })?(
-                    self.session_handle,
-                    &raw mut object_handle,
-                    1,
-                    &raw mut object_count,
-                );
-                if rv != CKR_OK {
-                    return Err(HError::Default("Failed to find objects".to_string()));
-                }
-                if object_count == 0 {
-                    break;
-                }
-                object_handles.push(object_handle);
-            }
-
-            let rv = self.hsm.C_FindObjectsFinal.ok_or_else(|| {
-                HError::Default("C_FindObjectsFinal not available on library".to_string())
-            })?(self.session_handle);
-            if rv != CKR_OK {
-                return Err(HError::Default(
-                    "Failed to finalize object search".to_string(),
-                ));
-            }
-        }
+        let object_handles = self.find_object_handles(template)?;
         Ok(object_handles)
     }
 
@@ -391,6 +405,32 @@ impl Session {
             }
         }
         Ok(())
+    }
+
+    /// PKCS#7 padding
+    fn pkcs7_pad(&self, data: Vec<u8>, block_size: usize) -> Vec<u8> {
+        let pad_len = block_size - (data.len() % block_size);
+        let mut padded = data;
+        padded.extend(std::iter::repeat(pad_len as u8).take(pad_len));
+        padded
+    }
+
+    fn pkcs7_unpad(&self, data: Zeroizing<Vec<u8>>) -> HResult<Zeroizing<Vec<u8>>> {
+        if data.is_empty() {
+            return Err(HError::Default("Invalid PKCS#7 padding: empty buffer".to_string()));
+        }
+        let pad_len = *data.last().unwrap() as usize;
+        if pad_len == 0 || pad_len > data.len() || pad_len > 16 {
+            return Err(HError::Default("Invalid PKCS#7 padding".to_string()));
+        }
+        // verify all pad bytes
+        if !data[data.len() - pad_len..].iter().all(|&b| b as usize == pad_len) {
+            return Err(HError::Default("Invalid PKCS#7 padding bytes".to_string()));
+        }
+        let length = data.len();
+        let mut unpadded = data;
+        unpadded.truncate(length - pad_len);
+        Ok(unpadded)
     }
 
     /// Encrypt data using the specified key and algorithm
@@ -422,6 +462,24 @@ impl Session {
                     iv: Some(nonce.to_vec()),
                     ciphertext: ciphertext[..ciphertext.len() - 16].to_vec(),
                     tag: Some(ciphertext[ciphertext.len() - 16..].to_vec()),
+                }
+            }
+            HsmEncryptionAlgorithm::AesCbc => {
+                let mut iv = generate_random_nonce::<16>()?;
+
+                let mut mechanism = CK_MECHANISM {
+                    mechanism: CKM_AES_CBC,
+                    pParameter: iv.as_mut_ptr() as CK_VOID_PTR,
+                    ulParameterLen: iv.len() as CK_ULONG,
+                };
+
+                let padded_plaintext = self.pkcs7_pad(plaintext.to_vec(), 16);
+                let ciphertext = self.encrypt_with_mechanism(key_handle, &mut mechanism, &*padded_plaintext)?;
+
+                EncryptedContent {
+                    iv: Some(iv.to_vec()),
+                    ciphertext, // no separate tag for CBC
+                    tag: None,
                 }
             }
             HsmEncryptionAlgorithm::RsaPkcsV15 => {
@@ -516,6 +574,26 @@ impl Session {
                 };
                 let plaintext =
                     self.decrypt_with_mechanism(key_handle, &mut mechanism, &ciphertext[12..])?;
+                Ok(plaintext)
+            }
+            HsmEncryptionAlgorithm::AesCbc => {
+                if ciphertext.len() < 16 {
+                    return Err(HError::Default("Invalid AES CBC ciphertext".to_string()));
+                }
+                let mut iv: [u8; 16] = ciphertext[..16]
+                    .try_into()
+                    .map_err(|_| HError::Default("Invalid AES CBC IV".to_string()))?;
+
+                let mut mechanism = CK_MECHANISM {
+                    mechanism: CKM_AES_CBC,
+                    pParameter: iv.as_mut_ptr() as CK_VOID_PTR,
+                    ulParameterLen: iv.len() as CK_ULONG,
+                };
+
+                let paddedPlaintext =
+                    self.decrypt_with_mechanism(key_handle, &mut mechanism, &ciphertext[16..])?;
+
+                let plaintext = self.pkcs7_unpad(paddedPlaintext)?;
                 Ok(plaintext)
             }
             HsmEncryptionAlgorithm::RsaPkcsV15 => {
@@ -1178,6 +1256,7 @@ impl Session {
                 )));
             }
         };
+        debug!("Retrieved HSM key type for key handle {key_handle}: {key_type:?}");
         Ok(Some(key_type))
     }
 
@@ -1186,12 +1265,12 @@ impl Session {
     /// * `object_handle` - The object handle
     /// # Returns
     /// * `Result<Option<Vec<u8>>>` - The key object id if the object exists
-    pub(crate) fn get_object_id(
+    pub fn get_object_id(
         &self,
         object_handle: CK_OBJECT_HANDLE,
     ) -> HResult<Option<Vec<u8>>> {
         let mut template = [CK_ATTRIBUTE {
-            type_: CKA_ID,
+            type_: CKA_LABEL, //Must be CKA_LABEL to match get_object_handle
             pValue: ptr::null_mut(),
             ulValueLen: 0,
         }];
@@ -1204,7 +1283,7 @@ impl Session {
         let id_len = template[0].ulValueLen;
         let mut id: Vec<u8> = vec![0_u8; id_len as usize];
         let mut template = [CK_ATTRIBUTE {
-            type_: CKA_ID,
+            type_: CKA_LABEL,
             pValue: id.as_mut_ptr() as CK_VOID_PTR,
             ulValueLen: id_len,
         }];
@@ -1213,6 +1292,17 @@ impl Session {
             .is_none()
         {
             return Ok(None);
+        }
+        let key_type = match self.get_key_type(object_handle)? {
+            None => return Ok(Some(id)),
+            Some(key_type) => key_type,
+        };
+        let term = "_pk".as_bytes();
+        if id.ends_with(term) {
+            return Ok(Some(id))
+        }
+        if key_type == KeyType::RsaPublicKey {
+            id.append(&mut term.to_vec())
         }
         Ok(Some(id))
     }
