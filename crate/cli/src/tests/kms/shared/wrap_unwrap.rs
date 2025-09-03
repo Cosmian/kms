@@ -1,14 +1,14 @@
 use std::path::PathBuf;
 
 use base64::{Engine as _, engine::general_purpose};
-use cosmian_crypto_core::{
-    CsRng,
-    reexport::rand_core::{RngCore, SeedableRng},
-};
 use cosmian_kms_client::{
     cosmian_kmip::kmip_2_1::kmip_types::{EncodingOption, WrappingMethod},
     kmip_2_1::kmip_types::UniqueIdentifier,
     read_object_from_json_ttlv_file,
+};
+use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
+    CsRng,
+    reexport::rand_core::{RngCore, SeedableRng},
 };
 use cosmian_logger::log_init;
 use tempfile::TempDir;

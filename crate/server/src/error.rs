@@ -1,7 +1,6 @@
 use std::{array::TryFromSliceError, sync::mpsc::SendError};
 
 use actix_web::{dev::ServerHandle, error::QueryPayloadError};
-use cosmian_crypto_core::CryptoCoreError;
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cloudproof_findex::implementations::redis::FindexRedisError;
 #[cfg(feature = "non-fips")]
@@ -143,12 +142,6 @@ impl From<&X509Error> for KmsError {
 impl From<x509_parser::nom::Err<PEMError>> for KmsError {
     fn from(e: x509_parser::nom::Err<PEMError>) -> Self {
         Self::Certificate(e.to_string())
-    }
-}
-
-impl From<CryptoCoreError> for KmsError {
-    fn from(e: CryptoCoreError) -> Self {
-        Self::CryptographicError(e.to_string())
     }
 }
 
