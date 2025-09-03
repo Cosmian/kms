@@ -84,15 +84,18 @@ impl JwtAuthConfig {
                         .filter(|s| !s.trim().is_empty())
                         .map(|s| s.trim().to_owned());
 
-                    // Insert into HashMap to automatically handle duplicates (last one wins)
-                    configs.insert(
-                        jwt_issuer_uri.clone(),
-                        IdpConfig {
-                            jwt_issuer_uri,
-                            jwks_uri,
-                            jwt_audience,
-                        },
+                    // Insert into HashMap to automatically handle duplicates
+                    let config = IdpConfig {
+                        jwt_issuer_uri,
+                        jwks_uri,
+                        jwt_audience,
+                    };
+                    let key = (
+                        config.jwt_issuer_uri.clone(),
+                        config.jwks_uri.clone(),
+                        config.jwt_audience.clone(),
                     );
+                    configs.insert(key, config);
                 }
 
                 // Convert HashMap values back to Vec
