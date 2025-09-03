@@ -85,7 +85,8 @@ pub struct ExportSecretDataOrKeyAction {
     )]
     pub(crate) unwrap: bool,
 
-    /// The id of the key/certificate to use to wrap this key before export
+    /// The id of the key/certificate (a.k.a. Key Encryption Key - KEK)
+    /// to use to wrap this key before export
     #[clap(
         long = "wrap-key-id",
         short = 'w',
@@ -106,9 +107,10 @@ pub struct ExportSecretDataOrKeyAction {
     pub(crate) allow_revoked: bool,
 
     /// Wrapping algorithm to use when exporting the key
-    /// By default, the algorithm used is
-    /// - `NISTKeyWrap` for symmetric keys (a.k.a. RFC 5649)
-    /// - `RsaOaep` for RSA keys
+    /// The possible wrapping algorithms are
+    ///  - using a symmetric KEK: `nist-key-wrap` (default - a.k.a RFC 5649) and `aes-gcm`
+    ///  - using an RSA KEK: `rsa-oaep` (default - CKM-RSA-OAEP), `rsa-aes-key-wrap` (CKM-RSA-AES-KEY-WRP)
+    ///    and `rsa-pkcs-v15` (CKM-RSA v1.5)
     #[clap(
         long = "wrapping-algorithm",
         short = 'm',
