@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 - Fix potential race condition in Google CSE migration key pair creation
   when multiple servers start simultaneously.
 - Further restrict access to CSE privileged unwrap endpoint
+- Fix Credential parsing in KMIP Request Message
 
 ### 📚 Documentation
 
