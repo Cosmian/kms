@@ -56,7 +56,6 @@ clap = { workspace = true, features = [
   "derive",
   "cargo",
 ] }
-cosmian_crypto_core = { workspace = true }
 cosmian_kms_access = { path = "../access", version = "5.7.1" }
 cosmian_kms_server_database = { path = "../server_database", version = "5.7.1" }
 cosmian_logger = { workspace = true }

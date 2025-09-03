@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use cosmian_crypto_core::X25519_PUBLIC_KEY_LENGTH;
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::{CryptographicUsageMask, KeyWrapType},
@@ -21,8 +20,9 @@ use cosmian_kms_server_database::reexport::{
             },
         },
     },
-    cosmian_kms_crypto::crypto::{
-        CURVE_25519_Q_LENGTH_BITS, elliptic_curves::operation::to_ec_public_key,
+    cosmian_kms_crypto::{
+        crypto::{CURVE_25519_Q_LENGTH_BITS, elliptic_curves::operation::to_ec_public_key},
+        reexport::cosmian_crypto_core::X25519_PUBLIC_KEY_LENGTH,
     },
 };
 use tracing::trace;
