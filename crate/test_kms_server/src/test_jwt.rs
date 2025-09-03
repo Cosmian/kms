@@ -9,8 +9,6 @@ pub(crate) const AUTH0_TOKEN_USER: &str = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsI
 
 pub(crate) fn get_auth0_jwt_config() -> JwtAuthConfig {
     JwtAuthConfig {
-        jwt_issuer_uri: Some(vec![AUTH0_JWT_ISSUER_URI.to_owned()]),
-        jwks_uri: None,
-        jwt_audience: None,
+        jwt_auth_provider: Some(vec![format!("{}", AUTH0_JWT_ISSUER_URI)]),
     }
 }

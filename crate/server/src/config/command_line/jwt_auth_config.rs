@@ -1,7 +1,9 @@
+use std::collections::HashMap;
+
 use clap::Args;
 use serde::{Deserialize, Serialize};
 
-use crate::{config::IdpConfig, error::KmsError, kms_ensure};
+use crate::{config::IdpConfig, error::KmsError};
 
 // Support for JWT token inspired by the doc at : https://cloud.google.com/api-gateway/docs/authenticating-users-jwt
 // and following pages
@@ -9,42 +11,25 @@ use crate::{config::IdpConfig, error::KmsError, kms_ensure};
 #[derive(Debug, Default, Args, Deserialize, Serialize)]
 #[serde(default)]
 pub struct JwtAuthConfig {
-    /// The issuer URI of the JWT token
+    /// JWT authentication provider configuration
     ///
-    /// To handle multiple identity managers, add different parameters under each argument
-    /// (jwt-issuer-uri, jwks-uri, and optionally jwt-audience), keeping them in
-    /// the same order :
+    /// Each provider configuration should be in the format: "`JWT_ISSUER_URI,JWKS_URI,JWT_AUDIENCE`"
+    /// where:
+    /// - `JWT_ISSUER_URI`: The issuer URI of the JWT token (required)
+    /// - `JWKS_URI`: The JWKS (JSON Web Key Set) URI (optional, defaults to <JWT_ISSUER_URI>/.well-known/jwks.json)
+    /// - `JWT_AUDIENCE`: The audience of the JWT token (optional, can be empty)
     ///
-    /// --jwt-issuer-uri <`JWT_ISSUER_URI_1`> <`JWT_ISSUER_URI_2`>
-    /// --jwks-uri <`JWKS_URI_1`> <`JWKS_URI_2`>
-    /// --jwt-audience <`JWT_AUDIENCE_1`> <`JWT_AUDIENCE_2`>
+    /// Examples:
+    /// - "<https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs,my-audience>"
+    /// - "<https://auth0.example.com,,my-app>"  (JWKS URI will default)
+    /// - "<https://keycloak.example.com/auth/realms/myrealm>,," (no audience, JWKS URI will default)
     ///
-    /// For Auth0, this is the delegated authority domain configured on Auth0, for instance
-    /// `https://<your-tenant>.<region>.auth0.com/`
+    /// For Auth0, the issuer would be like: `https://<your-tenant>.<region>.auth0.com/`
+    /// For Google, this would be: `https://accounts.google.com`
     ///
-    /// For Google, this would be `https://accounts.google.com`
-    #[clap(long, env = "KMS_JWT_ISSUER_URI", num_args = 1..)]
-    pub jwt_issuer_uri: Option<Vec<String>>,
-
-    /// The JWKS (JSON Web Key Set) URI of the JWT token
-    ///
-    /// To handle multiple identity managers, add different parameters under each argument
-    /// (jwt-issuer-uri, jwks-uri, and optionally jwt-audience), keeping them in
-    /// the same order
-    ///
-    /// For Auth0, this would be `https://<your-tenant>.<region>.auth0.com/.well-known/jwks.json`
-    ///
-    /// For Google, this would be `https://www.googleapis.com/oauth2/v3/certs`
-    ///
-    /// Defaults to `<jwt-issuer-uri>/.well-known/jwks.json` if not set
-    #[clap(long, env = "KMS_JWKS_URI", num_args = 1..)]
-    pub jwks_uri: Option<Vec<String>>,
-
-    /// The audience of the JWT token
-    ///
-    /// Optional: the server will validate the JWT `aud` claim against this value if set - to set an identity provider configuration element to None, set its value to an empty string.
-    #[clap(long, env = "KMS_JWT_AUDIENCE", num_args = 1..)]
-    pub jwt_audience: Option<Vec<String>>,
+    /// This argument can be repeated to configure multiple identity providers.
+    #[clap(long, env = "KMS_JWT_AUTH_PROVIDER", action = clap::ArgAction::Append)]
+    pub jwt_auth_provider: Option<Vec<String>>,
 }
 
 impl JwtAuthConfig {
@@ -61,47 +46,57 @@ impl JwtAuthConfig {
         )
     }
 
-    /// Parse this configuration into one identity provider configuration per JWT issuer URI.
+    /// Parse this configuration into one identity provider configuration per JWT authentication provider.
     ///
-    /// Assert that when provided, JWKS URI and JWT audience are provided once per JWT issuer URI;
+    /// Each provider configuration string is parsed in the format: "`JWT_ISSUER_URI,JWKS_URI,JWT_AUDIENCE`"
+    /// where `JWKS_URI` and `JWT_AUDIENCE` are optional and can be empty.
+    ///
+    /// Duplicate configurations (same JWT issuer URI) are automatically deduplicated, with the last one taking precedence.
     pub(crate) fn extract_idp_configs(self) -> Result<Option<Vec<IdpConfig>>, KmsError> {
-        self.jwt_issuer_uri
-            .map(|issuer_uris| {
-                let option_vec_to_vec_option = |option_vec: Option<Vec<_>>| {
-                    option_vec.map_or_else(
-                        || vec![None; issuer_uris.len()],
-                        |vec| {
-                            vec.into_iter()
-                                .map(|s: String| (!s.is_empty()).then_some(s))
-                                .collect()
+        self.jwt_auth_provider
+            .map(|provider_configs| {
+                let mut configs = HashMap::new();
+
+                for provider_config in provider_configs {
+                    let parts: Vec<&str> = provider_config.split(',').collect();
+
+                    // Extract the issuer URI (first part, required)
+                    let jwt_issuer_uri = match parts.first() {
+                        Some(issuer) if !issuer.trim().is_empty() => issuer.trim().to_owned(),
+                        _ => {
+                            return Err(KmsError::InvalidRequest(
+                                "JWT provider configuration must contain at least a non-empty \
+                                 issuer URI"
+                                    .to_owned(),
+                            ));
+                        }
+                    };
+
+                    // Extract JWKS URI (second part, optional)
+                    let jwks_uri = parts
+                        .get(1)
+                        .filter(|s| !s.trim().is_empty())
+                        .map(|s| s.trim().to_owned());
+
+                    // Extract JWT audience (third part, optional)
+                    let jwt_audience = parts
+                        .get(2)
+                        .filter(|s| !s.trim().is_empty())
+                        .map(|s| s.trim().to_owned());
+
+                    // Insert into HashMap to automatically handle duplicates (last one wins)
+                    configs.insert(
+                        jwt_issuer_uri.clone(),
+                        IdpConfig {
+                            jwt_issuer_uri,
+                            jwks_uri,
+                            jwt_audience,
                         },
-                    )
-                };
+                    );
+                }
 
-                let jwks_uris = option_vec_to_vec_option(self.jwks_uri);
-                let audiences = option_vec_to_vec_option(self.jwt_audience);
-
-                kms_ensure!(
-                    jwks_uris.len() == issuer_uris.len(),
-                    "If jwks_uri is provided, it should match each provided jwt_issuer_uri."
-                );
-                kms_ensure!(
-                    audiences.len() == issuer_uris.len(),
-                    "If jwt_audience are provided, they should match each provided \
-                     jwt_issuer_uri. To set an identity provider configuration element to None, \
-                     set its value to an empty string."
-                );
-
-                Ok(issuer_uris
-                    .into_iter()
-                    .zip(jwks_uris)
-                    .zip(audiences)
-                    .map(|((jwt_issuer_uri, jwks_uri), jwt_audience)| IdpConfig {
-                        jwt_issuer_uri,
-                        jwks_uri,
-                        jwt_audience,
-                    })
-                    .collect())
+                // Convert HashMap values back to Vec
+                Ok(configs.into_values().collect())
             })
             .transpose()
     }

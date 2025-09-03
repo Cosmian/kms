@@ -229,7 +229,7 @@ impl fmt::Debug for ClapConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut x = f.debug_struct("");
         let x = x.field("db", &self.db);
-        let x = if self.auth.jwt_issuer_uri.is_some() {
+        let x = if self.auth.jwt_auth_provider.is_some() {
             x.field("auth", &self.auth)
         } else {
             x

@@ -202,14 +202,9 @@ mod tests {
                 proxy_exclusion_list: Some(vec!["domain1".to_owned(), "domain2".to_owned()]),
             },
             auth: JwtAuthConfig {
-                jwt_issuer_uri: Some(vec![
-                    "[jwt issuer uri 1]".to_owned(),
-                    "[jwt issuer uri 2]".to_owned(),
-                ]),
-                jwks_uri: Some(vec!["[jwks uri 1]".to_owned(), "[jwks uri 2]".to_owned()]),
-                jwt_audience: Some(vec![
-                    "[jwt audience 1]".to_owned(),
-                    "[jwt audience 2]".to_owned(),
+                jwt_auth_provider: Some(vec![
+                    "[jwt issuer uri 1],[jwks uri 1],[jwt audience 1]".to_owned(),
+                    "[jwt issuer uri 2],[jwks uri 2],[jwt audience 2]".to_owned(),
                 ]),
             },
             ui_config: UiConfig {

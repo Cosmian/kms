@@ -468,14 +468,19 @@ mod tests {
         let client_id = std::env::var("TEST_GOOGLE_OAUTH_CLIENT_ID").unwrap();
         // Test authentication
         let jwt_authentication_config = JwtAuthConfig {
-            jwt_issuer_uri: Some(vec![JWT_ISSUER_URI.to_owned()]),
-            jwks_uri: Some(vec![JWKS_URI.to_owned()]),
-            jwt_audience: Some(vec![client_id]),
+            jwt_auth_provider: Some(vec![format!(
+                "{},{},{}",
+                JWT_ISSUER_URI, JWKS_URI, client_id
+            )]),
         };
+        let idp_configs = jwt_authentication_config
+            .extract_idp_configs()
+            .unwrap()
+            .unwrap();
         let jwt_authentication_config = JwtConfig {
-            jwt_issuer_uri: jwt_authentication_config.jwt_issuer_uri.unwrap()[0].clone(),
+            jwt_issuer_uri: idp_configs[0].jwt_issuer_uri.clone(),
             jwks: jwks_manager.clone(),
-            jwt_audience: Some(jwt_authentication_config.jwt_audience.unwrap()[0].clone()),
+            jwt_audience: Some(idp_configs[0].jwt_audience.clone().unwrap_or_default()),
         };
 
         let authentication_token = jwt_authentication_config
