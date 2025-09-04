@@ -453,7 +453,7 @@ impl ObjectsStore for RedisWithFindex {
             .iter()
             .map(|tag| Keyword::from(tag.as_bytes()))
             .collect::<HashSet<Keyword>>();
-        // find the locations that match at least one of the tags
+        // find the indexed values that match at least one of the tags
         // TODO: upon release of `batch_findex`, use it instead of `search`
         let mut uids_per_keyword = HashMap::new();
         for keyword in tag_keywords {
@@ -464,7 +464,7 @@ impl ObjectsStore for RedisWithFindex {
                 .map_err(|e| db_error!(format!("Error while searching for tags: {e:?}")))?;
             uids_per_keyword.insert(keyword, search_result);
         }
-        // we want the intersection of all the locations
+        // we want the intersection of all the results
         let uids = intersect_all(uids_per_keyword.values().cloned());
         Ok(uids
             .into_iter()
@@ -516,8 +516,8 @@ impl ObjectsStore for RedisWithFindex {
                 .map_err(|e| db_error!(format!("Error while searching for tags: {e:?}")))?;
             uids_per_keyword.insert(keyword, search_result);
         }
-        // we want the intersection of all the locations
         let uids = intersect_all(uids_per_keyword.values().cloned());
+
         let uids = uids
             .into_iter()
             .map(|i| {
