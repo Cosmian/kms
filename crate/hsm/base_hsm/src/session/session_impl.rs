@@ -36,27 +36,19 @@
 //! ```
 
 use std::{ptr, sync::Arc};
-
+use std::sync::Mutex;
 use cosmian_kms_interfaces::{
     CryptoAlgorithm, EncryptedContent, HsmObject, HsmObjectFilter, KeyMaterial, KeyMetadata,
     KeyType, RsaPrivateKeyMaterial, RsaPublicKeyMaterial,
 };
-use pkcs11_sys::{
-    CK_AES_GCM_PARAMS, CK_ATTRIBUTE, CK_BBOOL, CK_FALSE, CK_KEY_TYPE, CK_MECHANISM,
-    CK_OBJECT_CLASS, CK_OBJECT_HANDLE, CK_RSA_PKCS_OAEP_PARAMS, CK_SESSION_HANDLE, CK_TRUE,
-    CK_ULONG, CK_VOID_PTR, CKA_CLASS, CKA_COEFFICIENT, CKA_EXPONENT_1, CKA_EXPONENT_2,
-    CKA_KEY_TYPE, CKA_LABEL, CKA_MODULUS, CKA_PRIME_1, CKA_PRIME_2, CKA_PRIVATE_EXPONENT,
-    CKA_PUBLIC_EXPONENT, CKA_SENSITIVE, CKA_VALUE, CKA_VALUE_LEN, CKG_MGF1_SHA1, CKG_MGF1_SHA256,
-    CKK_AES, CKK_RSA, CKK_VENDOR_DEFINED, CKM_AES_GCM, CKM_AES_CBC, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP, CKM_SHA_1,
-    CKM_SHA256, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKO_SECRET_KEY, CKO_VENDOR_DEFINED,
-    CKR_ATTRIBUTE_SENSITIVE, CKR_OBJECT_HANDLE_INVALID, CKR_OK, CKZ_DATA_SPECIFIED,
-};
+use pkcs11_sys::{CK_AES_GCM_PARAMS, CK_ATTRIBUTE, CK_BBOOL, CK_FALSE, CK_KEY_TYPE, CK_MECHANISM, CK_OBJECT_CLASS, CK_OBJECT_HANDLE, CK_RSA_PKCS_OAEP_PARAMS, CK_SESSION_HANDLE, CK_TRUE, CK_ULONG, CK_VOID_PTR, CKA_CLASS, CKA_COEFFICIENT, CKA_EXPONENT_1, CKA_EXPONENT_2, CKA_KEY_TYPE, CKA_LABEL, CKA_MODULUS, CKA_PRIME_1, CKA_PRIME_2, CKA_PRIVATE_EXPONENT, CKA_PUBLIC_EXPONENT, CKA_SENSITIVE, CKA_VALUE, CKA_VALUE_LEN, CKG_MGF1_SHA1, CKG_MGF1_SHA256, CKK_AES, CKK_RSA, CKK_VENDOR_DEFINED, CKM_AES_GCM, CKM_AES_CBC, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP, CKM_SHA_1, CKM_SHA256, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKO_SECRET_KEY, CKO_VENDOR_DEFINED, CKR_ATTRIBUTE_SENSITIVE, CKR_OBJECT_HANDLE_INVALID, CKR_OK, CKZ_DATA_SPECIFIED, CK_MECHANISM_TYPE, CK_RSA_PKCS_MGF_TYPE, CKM_SHA384, CKG_MGF1_SHA384, CKM_SHA512, CKG_MGF1_SHA512};
 use rand::{TryRngCore, rngs::OsRng};
 use tracing::debug;
 use zeroize::Zeroizing;
 use cosmian_kms_interfaces::KeyType::{AesKey, RsaPrivateKey, RsaPublicKey};
 pub use crate::session::{aes::AesKeySize, rsa::RsaKeySize};
 use crate::{HError, HResult, ObjectHandlesCache};
+use uuid::Uuid;
 
 /// Generate a random nonce of size T
 /// This function is used to generate a random nonce for the AES GCM encryption
@@ -80,6 +72,7 @@ pub enum HsmEncryptionAlgorithm {
 impl From<CryptoAlgorithm> for HsmEncryptionAlgorithm {
     fn from(algorithm: CryptoAlgorithm) -> Self {
         match algorithm {
+            CryptoAlgorithm::AesCbc => HsmEncryptionAlgorithm::AesCbc,
             CryptoAlgorithm::AesGcm => HsmEncryptionAlgorithm::AesGcm,
             CryptoAlgorithm::RsaPkcsV15 => HsmEncryptionAlgorithm::RsaPkcsV15,
             CryptoAlgorithm::RsaOaepSha256 => HsmEncryptionAlgorithm::RsaOaepSha256,
@@ -147,6 +140,7 @@ pub struct Session {
     hsm: Arc<crate::hsm_lib::HsmLib>,
     session_handle: CK_SESSION_HANDLE,
     object_handles_cache: Arc<ObjectHandlesCache>,
+    supported_oaep_hash_cache: Arc<Mutex<Option<Vec<CK_MECHANISM_TYPE>>>>,
     is_logged_in: bool,
 }
 
@@ -155,12 +149,15 @@ impl Session {
         hsm: Arc<crate::hsm_lib::HsmLib>,
         session_handle: CK_SESSION_HANDLE,
         object_handles_cache: Arc<ObjectHandlesCache>,
+        supported_oaep_hash_cache: Arc<Mutex<Option<Vec<CK_MECHANISM_TYPE>>>>,
         is_logged_in: bool,
     ) -> Self {
+        debug!("Creating new session: {session_handle}");
         Session {
             hsm,
             session_handle,
             object_handles_cache,
+            supported_oaep_hash_cache,
             is_logged_in,
         }
     }
@@ -199,6 +196,96 @@ impl Session {
             }
             Ok(())
         }
+    }
+
+    /// Retrieve the hash algorithms supported for RSA OAEP encryption by the HSM.
+    ///
+    /// This function determines which hashing algorithms can be used in combination with
+    /// the RSA OAEP mechanism since support for OAEP hash algorithms varies between HSM
+    /// implementations.
+    ///
+    /// The check works by generating a temporary RSA key pair, then attempting to initialize
+    /// the OAEP mechanism with different candidate hash algorithms. If `C_EncryptInit` succeeds,
+    /// the hash algorithm is considered supported.
+    ///
+    /// Results are cached for subsequent calls to avoid redundant key generation and mechanism checks.
+    ///
+    /// # Returns
+    /// * `HResult<Vec<CK_MECHANISM_TYPE>>` - A result containing a vector of supported hash
+    ///   mechanisms (e.g., `CKM_SHA256`) usable with RSA OAEP in this slot.
+    ///
+    /// # Errors
+    /// * Returns an error if RSA key pair generation fails.
+    /// * Returns an error if the HSM library does not provide the `C_EncryptInit` function.
+    /// * Returns an error if destroying the temporary test keys fails.
+    ///
+    /// # Safety
+    /// This function calls unsafe FFI functions from the HSM library. All temporary keys are
+    /// cleaned up after testing.
+    pub fn get_supported_oaep_hash(&self) -> HResult<Vec<CK_MECHANISM_TYPE>> {
+        let mut cache = self.supported_oaep_hash_cache.lock().unwrap();
+        if let Some(ref list) = *cache {
+            return Ok(list.clone());
+        }
+
+        // Create a temporary key for testing
+        let sk_id = Uuid::new_v4().to_string();
+        let pk_id = sk_id.clone() + "_pk";
+        let (sk_handle, pk_handle) = self.generate_rsa_key_pair(
+            sk_id.as_bytes(),
+            pk_id.as_bytes(),
+            RsaKeySize::Rsa1024,
+            false,
+        )?;
+
+        let candidates: &[(CK_MECHANISM_TYPE, CK_RSA_PKCS_MGF_TYPE)] = &[
+            (CKM_SHA_1,    CKG_MGF1_SHA1),
+            (CKM_SHA256,   CKG_MGF1_SHA256),
+            (CKM_SHA384,   CKG_MGF1_SHA384),
+            (CKM_SHA512,   CKG_MGF1_SHA512),
+        ];
+
+        let mut supported = Vec::new();
+
+        for (hash, mgf) in candidates {
+            let mut params = CK_RSA_PKCS_OAEP_PARAMS {
+                hashAlg: *hash,
+                mgf: *mgf,
+                source: CKZ_DATA_SPECIFIED,
+                pSourceData: ptr::null_mut(),
+                ulSourceDataLen: 0,
+            };
+
+            let mut mechanism = CK_MECHANISM {
+                mechanism: CKM_RSA_PKCS_OAEP,
+                pParameter: &raw mut params as CK_VOID_PTR,
+                ulParameterLen: size_of::<CK_RSA_PKCS_OAEP_PARAMS>() as CK_ULONG,
+            };
+
+            // We don't actually encrypt, just see if init succeeds
+            let rv = unsafe {
+                self.hsm.C_EncryptInit.ok_or_else(|| {
+                    let _ = self.destroy_object(sk_handle);
+                    let _ = self.destroy_object(pk_handle);
+                    HError::Default("C_EncryptInit not available on library".to_string())
+                })?(
+                    self.session_handle,
+                    &mut mechanism,
+                    pk_handle,
+                )
+            };
+
+            if rv == CKR_OK {
+                supported.push(*hash);
+            } else {
+                debug!("Failed to encrypt data with hash {hash}: {rv}");
+            }
+        }
+        self.destroy_object(sk_handle)?;
+        self.destroy_object(pk_handle)?;
+
+        *cache = Some(supported.clone());
+        Ok(supported)
     }
 
     fn find_object_handles(&self, mut template: Vec<CK_ATTRIBUTE>) -> HResult<Vec<CK_OBJECT_HANDLE>> {
