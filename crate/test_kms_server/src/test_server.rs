@@ -20,7 +20,7 @@ use cosmian_kms_client::{
 };
 use cosmian_kms_server::{
     config::{
-        ClapConfig, HttpConfig, JwtAuthConfig, MainDBConfig, ServerParams, SocketServerConfig,
+        ClapConfig, HttpConfig, IdpAuthConfig, MainDBConfig, ServerParams, SocketServerConfig,
         TlsConfig,
     },
     start_kms_server::start_kms_server,
@@ -474,10 +474,10 @@ fn generate_server_params(
 ) -> Result<ServerParams, KmsClientError> {
     // Configure the server
     let clap_config = ClapConfig {
-        auth: if authentication_options.use_jwt_token {
+        idp_auth: if authentication_options.use_jwt_token {
             get_auth0_jwt_config()
         } else {
-            JwtAuthConfig::default()
+            IdpAuthConfig::default()
         },
         socket_server: SocketServerConfig {
             //Start the socket server automatically if both HTTPS and client cert authentication are used

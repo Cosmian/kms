@@ -1,4 +1,4 @@
-use cosmian_kms_server::config::JwtAuthConfig;
+use cosmian_kms_server::config::IdpAuthConfig;
 
 // Test auth0 Config
 pub(crate) const AUTH0_JWT_ISSUER_URI: &str = "https://demo-kms.eu.auth0.com/";
@@ -7,8 +7,8 @@ pub(crate) const AUTH0_TOKEN: &str = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZC
 // This user token is used to test privileged user functionalities, it belongs to a non-privileged user.
 pub(crate) const AUTH0_TOKEN_USER: &str = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IjdTbW5SbV9NbmM0YVo0bVNQR19uVSJ9.eyJlbWFpbCI6InVzZXIuY2xpZW50QGFjbWUuY29tIiwiZW1haWxfdmVyaWZpZWQiOmZhbHNlLCJpc3MiOiJodHRwczovL2RlbW8ta21zLmV1LmF1dGgwLmNvbS8iLCJhdWQiOiJLd25vQm9tdjA0VnRDczJqajFJNjJnckZ3eDhMTkRPbCIsInN1YiI6ImF1dGgwfDY4N2U1MDM4YWFkNmJlNmZhOGEyYjI0OCIsImlhdCI6MTc1MzEwODU1NCwiZXhwIjozMTU1MzUzMTA4NTU0LCJzaWQiOiJmaFpMcWRXNkxIdmxhU0tyeG5kckZIbzNneFpTUDZGWiIsIm5vbmNlIjoiNTA4SjRub29hRU45WUptSFdUdl9xdyJ9.kA4BBNF2C8tTCtAIi84yMIOUiASkT0oAHICxXbPCnCb6C9Tuv1wG-oqhuNXg7_Btq-iO0gxd5iVDBE2JC8FpJipWSouT_NhNufopPL3n6PHIhXrdiZMRX676WcDY7h7chTNAX7KjQevc0ei-udecVvx96k8Dh362XHaVRVdSjcLJdl2IvWLyYBOlCU93dOSXKHRgs60TOi-JL0FevrkwQz-LCIFuWU7TEgzNRlL5gqzcRs5X25NBjIljzyIWg7yvdS_Yry2LR7blrO1IKkCwRuBgrhrX-w9aSX1qSy_hy6GCSuy_fpO8lP0FCynuENm2eIZKyZ6uRUbxILOqY5_q8w";
 
-pub(crate) fn get_auth0_jwt_config() -> JwtAuthConfig {
-    JwtAuthConfig {
+pub(crate) fn get_auth0_jwt_config() -> IdpAuthConfig {
+    IdpAuthConfig {
         jwt_auth_provider: Some(vec![format!("{}", AUTH0_JWT_ISSUER_URI)]),
     }
 }

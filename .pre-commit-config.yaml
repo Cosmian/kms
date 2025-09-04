@@ -112,7 +112,7 @@ repos:
         args: [--skip-string-normalization]
 
   - repo: https://github.com/Cosmian/git-hooks.git
-    rev: v1.0.38
+    rev: v1.0.40
     hooks:
       - id: cargo-format
       - id: dprint-toml-fix
@@ -123,6 +123,7 @@ repos:
         stages: [manual]
       - id: cargo-machete
       - id: cargo-build
+      - id: renew-server-cli-doc
       - id: docker-compose-up
       - id: cargo-test
         args: [--, --skip, test_wrap_auth, --skip, google_cse, --skip, hsm]

@@ -426,7 +426,7 @@ mod tests {
     use tracing::{debug, info, trace};
 
     use crate::{
-        config::JwtAuthConfig,
+        config::{IdpAuthConfig, JwtAuthConfig},
         middlewares::{JwksManager, JwtConfig},
         routes::google_cse::{
             self,
@@ -467,7 +467,7 @@ mod tests {
 
         let client_id = std::env::var("TEST_GOOGLE_OAUTH_CLIENT_ID").unwrap();
         // Test authentication
-        let jwt_authentication_config = JwtAuthConfig {
+        let jwt_authentication_config = IdpAuthConfig {
             jwt_auth_provider: Some(vec![format!(
                 "{},{},{}",
                 JWT_ISSUER_URI, JWKS_URI, client_id
