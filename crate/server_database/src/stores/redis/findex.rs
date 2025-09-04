@@ -128,6 +128,16 @@ impl Display for IndexedValue {
     }
 }
 
+// Iterating over the contained bytes is needed for findex operations
+impl IntoIterator for IndexedValue {
+    type IntoIter = std::iter::Once<IndexedValue>;
+    type Item = IndexedValue;
+
+    fn into_iter(self) -> Self::IntoIter {
+        std::iter::once(self)
+    }
+}
+
 // TODO: garbage below, deete later
 // define_byte_type!(Bytes);
 

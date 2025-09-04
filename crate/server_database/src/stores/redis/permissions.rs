@@ -3,11 +3,7 @@ use std::{
     sync::Arc,
 };
 
-use async_trait::async_trait;
-use cloudproof_findex::{
-    Location,
-    implementations::redis::{FindexRedisError, RemovedLocationsFinder},
-};
+use cosmian_findex::IndexADT;
 use cosmian_kmip::kmip_2_1::KmipOperation;
 use serde::{Deserialize, Serialize};
 use cosmian_kms_crypto::reexport::cosmian_crypto_core::{FixedSizeCBytes, SymmetricKey};
@@ -15,12 +11,9 @@ use cosmian_kms_crypto::reexport::cosmian_crypto_core::{FixedSizeCBytes, Symmetr
 use crate::{
     DbError,
     error::DbResult,
-    stores::{
-        REDIS_WITH_FINDEX_MASTER_KEY_LENGTH,
-        redis::{
-            findex::{IndexedValue, Keyword},
-            redis_with_findex::FindexRedis,
-        },
+    stores::redis::{
+        findex::{IndexedValue, Keyword},
+        redis_with_findex::FindexRedis,
     },
 };
 
@@ -33,12 +26,24 @@ impl From<&ObjectUid> for Keyword {
     }
 }
 
+impl From<&str> for ObjectUid {
+    fn from(s: &str) -> Self {
+        ObjectUid(s.to_string())
+    }
+}
+
 #[derive(Clone, Eq, PartialEq, Debug, Hash, Serialize, Deserialize)]
 pub(crate) struct UserId(String);
 
 impl From<&UserId> for Keyword {
     fn from(uid: &UserId) -> Self {
         Keyword::from(format!("p:u:{}", uid.0).as_bytes())
+    }
+}
+
+impl From<&str> for UserId {
+    fn from(s: &str) -> Self {
+        UserId(s.to_string())
     }
 }
 /// TODO: delete the docs below
@@ -62,10 +67,10 @@ pub(crate) struct Triple {
 }
 
 impl Triple {
-    pub(crate) fn new(obj_uid: &str, user_id: &str, permission: KmipOperation) -> Self {
+    pub(crate) fn new(obj_uid: ObjectUid, user_id: UserId, permission: KmipOperation) -> Self {
         Self {
-            obj_uid: ObjectUid(obj_uid.to_owned()),
-            user_id: UserId(user_id.to_owned()),
+            obj_uid,
+            user_id,
             permission,
         }
     }
@@ -119,6 +124,9 @@ impl TryFrom<&Triple> for IndexedValue {
 /// By explicitly maintaining both indexes, we avoid the need for wildcard searches
 /// which are not supported by Findex yet needed if we want to list all permissions
 /// for a given user OR object in a same `PermissionsDB`.
+/// The permission field takes (post serialization) 18 bytes at worst (`signature_verify` variant).
+/// While this isn't a lot, this store is sub-optimal and can be optimized if needed. Unless
+/// there are business requirements that require less storage consumption, there is no need to over-optimize prematurely.
 #[derive(Clone)]
 pub(crate) struct PermissionsDB {
     findex: Arc<FindexRedis>,
@@ -162,76 +170,44 @@ impl PermissionsDB {
     /// List all the permissions granted to the user on an object
     pub(crate) async fn get(
         &self,
-        findex_key: &SymmetricKey<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>,
-        obj_uid: &str,
-        user_id: &str,
+        obj_uid: &ObjectUid,
+        user_id: &UserId,
         no_inherited_access: bool,
     ) -> DbResult<HashSet<KmipOperation>> {
-        let mut user_perms = self
-            .search_one_keyword(findex_key, &Triple::build_key(obj_uid, user_id))
+        let user_perms = self
+            .search_one_keyword(Keyword::from(obj_uid))
             .await?
             .into_iter()
+            .filter(|triple| {
+                // Include permissions for the specific user and optionally include
+                // wildcard permissions (user="*") if inherited access is allowed
+                &triple.user_id == user_id
+                    || (!no_inherited_access && triple.user_id == UserId("*".to_string()))
+            })
             .map(|triple| triple.permission)
             .collect::<HashSet<KmipOperation>>();
-        if no_inherited_access {
-            return Ok(user_perms)
-        }
-        let wildcard_user_perms = self
-            .search_one_keyword(findex_key, &Triple::build_key(obj_uid, "*"))
-            .await?
-            .into_iter()
-            .map(|triple| triple.permission)
-            .collect::<HashSet<KmipOperation>>();
-        user_perms.extend(wildcard_user_perms);
         Ok(user_perms)
     }
 
     /// Add a permission to the user on an object
     pub(crate) async fn add(
         &self,
-        findex_key: &SymmetricKey<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>,
-        obj_uid: &str,
-        user_id: &str,
+        obj_uid: &ObjectUid,
+        user_id: &UserId,
         permission: KmipOperation,
     ) -> DbResult<()> {
-        // The strategy is the following:
-        // 1. We add the userid::obj_uid --> Location(Triple) to the index
-        // 2. if userid::obj_uid is not in the index, we add
-        //      the userid --> NextKeyword(userid::obj_uid)
-        //      and obj_obj_uid --> NextKeyword(userid::obj_uid)
-        // else we assume there are already there and we do nothing
+        let triple = Triple::new(obj_uid.clone(), user_id.clone(), permission);
+        let indexed_triple = IndexedValue::try_from(&triple)?;
 
-        let triple = Triple::new(obj_uid, user_id, permission);
-        let indexed_value = IndexedValue::from(Location::try_from(&triple)?);
-        let keyword = Keyword::from(format!("p::{}", triple.key()).as_bytes());
+        // Create both keywords for dual indexing:
+        let user_keyword = Keyword::from(user_id);
+        let obj_keyword = Keyword::from(obj_uid);
 
-        // addition of the keyword to the index
-        let mut additions = HashMap::new();
-        additions.insert(indexed_value, HashSet::from([keyword.clone()]));
-
-        //upsert the index
-        let new_keywords = self
-            .findex
-            .upsert(&findex_key.to_bytes(), additions, HashMap::new())
-            .await?;
-        let is_already_present = !new_keywords.contains(&keyword);
-        if is_already_present {
-            // we assume that the other two keywords are already present
-            return Ok(())
-        }
-
-        // we need to add the other two keywords
-        let mut additions = HashMap::new();
-        additions.insert(
-            IndexedValue::from(keyword),
-            HashSet::from([
-                Keyword::from(format!("p::{obj_uid}").as_bytes()),
-                Keyword::from(format!("p::{user_id}").as_bytes()),
-            ]),
-        );
+        // Finally, insert the indexed value under both keywords
         self.findex
-            .upsert(&findex_key.to_bytes(), additions, HashMap::new())
+            .insert(user_keyword, indexed_triple.clone())
             .await?;
+        self.findex.insert(obj_keyword, indexed_triple).await?;
 
         Ok(())
     }
@@ -239,67 +215,59 @@ impl PermissionsDB {
     /// Remove a permission to the user on an object
     pub(crate) async fn remove(
         &self,
-        findex_key: &SymmetricKey<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>,
-        obj_uid: &str,
-        user_id: &str,
+        obj_uid: &ObjectUid,
+        user_id: &UserId,
         permission: KmipOperation,
     ) -> DbResult<()> {
-        // A delete in Findex is done by adding  a new entry with the same key bu stale
+        let triple = Triple::new(obj_uid.clone(), user_id.clone(), permission);
+        let indexed_triple = IndexedValue::try_from(&triple)?;
 
-        let triple = Triple::new(obj_uid, user_id, permission);
-        let indexed_value = IndexedValue::from(Location::try_from(&triple)?);
-        let keyword = Keyword::from(format!("p::{}", triple.key()).as_bytes());
+        // Create both keywords for dual indexing:
+        let user_keyword = Keyword::from(user_id);
+        let obj_keyword = Keyword::from(obj_uid);
 
-        // deletions of the keyword in the index
-        let mut deletions = HashMap::new();
-        deletions.insert(indexed_value, HashSet::from([keyword.clone()]));
-
-        //upsert the deletions in the index
-        let new_keywords = self
-            .findex
-            .upsert(
-                &findex_key.to_bytes(),
-                &self.label,
-                HashMap::new(),
-                deletions,
-            )
+        // Finally, insert the indexed value under both keywords
+        self.findex
+            .delete(user_keyword, indexed_triple.clone())
             .await?;
-        let is_new = new_keywords.contains(&keyword);
+        self.findex.delete(obj_keyword, indexed_triple).await?;
 
+        // TODO: this comment will be kept until proven unnecessary
         // we need to handle a corner case where the first addition of the keyword
         // to the index is actually a deletion. An entry will be created anyway and
         // the keyword will show as present on the next addition. Since we are not
         // going to create the other two keywords on the next addition,
         // we need to do it now
-        if is_new {
-            // we need to add the other two keywords
-            let mut additions = HashMap::new();
-            additions.insert(
-                IndexedValue::from(keyword),
-                HashSet::from([
-                    Keyword::from(format!("p::{obj_uid}").as_bytes()),
-                    Keyword::from(format!("p::{user_id}").as_bytes()),
-                ]),
-            );
-            self.findex
-                .upsert(
-                    &findex_key.to_bytes(),
-                    &self.label,
-                    additions,
-                    HashMap::new(),
-                )
-                .await?;
-        }
+        // if is_new {
+        //     // we need to add the other two keywords
+        //     let mut additions = HashMap::new();
+        //     additions.insert(
+        //         IndexedValue::from(keyword),
+        //         HashSet::from([
+        //             Keyword::from(format!("p::{obj_uid}").as_bytes()),
+        //             Keyword::from(format!("p::{user_id}").as_bytes()),
+        //         ]),
+        //     );
+        //     self.findex
+        //         .upsert(
+        //             &findex_key.to_bytes(),
+        //             &self.label,
+        //             additions,
+        //             HashMap::new(),
+        //         )
+        //         .await?;
+        // }
         Ok(())
     }
 }
 
-#[async_trait]
-impl RemovedLocationsFinder for PermissionsDB {
-    async fn find_removed_locations(
-        &self,
-        _locations: HashSet<Location>,
-    ) -> Result<HashSet<Location>, FindexRedisError> {
-        Ok(HashSet::new())
-    }
-}
+// TODO: check if we need this at all
+// #[async_trait]
+// impl RemovedLocationsFinder for PermissionsDB {
+//     async fn find_removed_locations(
+//         &self,
+//         _locations: HashSet<Location>,
+//     ) -> Result<HashSet<Location>, FindexRedisError> {
+//         Ok(HashSet::new())
+//     }
+// }

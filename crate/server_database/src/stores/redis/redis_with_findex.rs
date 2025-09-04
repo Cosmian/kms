@@ -524,9 +524,7 @@ impl ObjectsStore for RedisWithFindex {
         let permissions = if user_must_be_owner {
             HashMap::new()
         } else {
-            self.permissions_db
-                .list_user_permissions(&self.findex_master_key, user)
-                .await?
+            self.permissions_db.list_user_permissions(user).await?
         };
 
         // fetch the corresponding objects
@@ -566,10 +564,7 @@ impl PermissionsStore for RedisWithFindex {
         user: &str,
         _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashMap<String, (String, State, HashSet<KmipOperation>)>> {
-        let permissions = self
-            .permissions_db
-            .list_user_permissions(&self.findex_master_key, user)
-            .await?;
+        let permissions = self.permissions_db.list_user_permissions(user).await?;
         let redis_db_objects = self
             .objects_db
             .objects_get(&permissions.keys().cloned().collect::<HashSet<String>>())
@@ -597,10 +592,7 @@ impl PermissionsStore for RedisWithFindex {
         uid: &str,
         _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashMap<String, HashSet<KmipOperation>>> {
-        Ok(self
-            .permissions_db
-            .list_object_permissions(&self.findex_master_key, uid)
-            .await?)
+        Ok(self.permissions_db.list_object_permissions(uid).await?)
     }
 
     /// Grant the access right to `user` to perform the `operation_type`
@@ -614,7 +606,7 @@ impl PermissionsStore for RedisWithFindex {
     ) -> InterfaceResult<()> {
         for operation in &operation_types {
             self.permissions_db
-                .add(&self.findex_master_key, uid, user, *operation)
+                .add(&uid.into(), &user.into(), *operation)
                 .await?;
         }
         Ok(())
@@ -630,9 +622,7 @@ impl PermissionsStore for RedisWithFindex {
         _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
         for operation in &operation_types {
-            self.permissions_db
-                .remove(&self.findex_master_key, uid, user, *operation)
-                .await?;
+            self.permissions_db.remove(uid, user, *operation).await?;
         }
         Ok(())
     }
@@ -646,7 +636,7 @@ impl PermissionsStore for RedisWithFindex {
     ) -> InterfaceResult<HashSet<KmipOperation>> {
         Ok(self
             .permissions_db
-            .get(&self.findex_master_key, uid, user, no_inherited_access)
+            .get(uid, user, no_inherited_access)
             .await
             .unwrap_or_default()
             .into_iter()
