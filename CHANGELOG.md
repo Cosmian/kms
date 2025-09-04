@@ -11,9 +11,11 @@ All notable changes to this project will be documented in this file.
 - Further restrict access to CSE privileged unwrap endpoint
 - Fix Credential parsing in KMIP Request Message
 
+
 ### 📚 Documentation
 
 - Added KMS-HSM integration workflow graph
+- Fix CLI key wrapping documentation on Export
 
 ## [5.7.1] - 2025-08-22
 
