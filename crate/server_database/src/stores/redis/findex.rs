@@ -7,7 +7,7 @@ use std::fmt::Display;
 // Another question raises: the Vec<u8> is unbounded in size, do we want to limit it to a certain size ?
 use cosmian_findex::KEY_LENGTH;
 
-pub const REDIS_WITH_FINDEX_MASTER_KEY_LENGTH: usize = KEY_LENGTH; // keep consistent name with kms code
+pub const FINDEX_KEY_LENGTH: usize = KEY_LENGTH; // keep consistent name with kms code
 pub const CUSTOM_WORD_LENGTH: usize = 200; // Findex specialization
 
 /// Implements the functionalities of a byte-vector.

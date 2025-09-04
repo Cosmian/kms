@@ -21,7 +21,7 @@ pub enum MainDbParams {
     /// - the `Redis` connection URL
     /// - the master key used to encrypt the DB and the Index
     #[cfg(feature = "non-fips")]
-    RedisFindex(Url, SymmetricKey<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>),
+    RedisFindex(Url, SymmetricKey<FINDEX_KEY_LENGTH>),
 }
 
 impl MainDbParams {

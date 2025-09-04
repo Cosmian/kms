@@ -34,9 +34,9 @@ cosmian_sse_memories = { version = "8.0", features = [
   "redis-mem",
 ], optional = true }
 cosmian_crypto_core = { workspace = true, features = ["sha3"], optional = true }
-cloudproof_findex = { version = "5.0", features = [
-  "findex-redis",
-] } # TODO: bye bye
+# cloudproof_findex = { version = "5.0", features = [
+#   "findex-redis",
+# ] } # TODO: bye bye
 hex = { workspace = true }
 lru = { workspace = true }
 num-bigint-dig = { workspace = true, features = [

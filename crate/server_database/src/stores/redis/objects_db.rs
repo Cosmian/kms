@@ -3,12 +3,6 @@ use std::{
     sync::Mutex,
 };
 
-use async_trait::async_trait;
-#[cfg(feature = "non-fips")]
-use cloudproof_findex::{
-    Keyword, Location,
-    implementations::redis::{FindexRedisError, RemovedLocationsFinder},
-};
 use cosmian_kmip::{
     KmipResultHelper,
     kmip_0::kmip_types::State,
@@ -24,9 +18,10 @@ use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
 use redis::{AsyncCommands, aio::ConnectionManager, pipe};
 use serde::{Deserialize, Serialize};
 
-use crate::{DbError, db_bail, error::DbResult};
+use crate::{DbError, db_bail, error::DbResult, stores::redis::findex::Keyword};
 
 /// Extract the keywords from the attributes
+// TODO: why is this putting them inside keywords, they shouldn't be indexedvalues lol ?
 pub(crate) fn keywords_from_attributes(attributes: &Attributes) -> HashSet<Keyword> {
     let mut keywords = HashSet::new();
     if let Some(algo) = attributes.cryptographic_algorithm {
@@ -295,17 +290,6 @@ impl ObjectsDB {
         }
         pipeline.query_async::<_, ()>(&mut self.mgr.clone()).await?;
         Ok(res)
-    }
-}
-
-#[async_trait]
-impl RemovedLocationsFinder for ObjectsDB {
-    async fn find_removed_locations(
-        &self,
-        _locations: HashSet<Location>,
-    ) -> Result<HashSet<Location>, FindexRedisError> {
-        // Objects and permissions are never removed from the DB
-        Ok(HashSet::new())
     }
 }
 

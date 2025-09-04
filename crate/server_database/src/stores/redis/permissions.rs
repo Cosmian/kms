@@ -18,7 +18,7 @@ use crate::{
 };
 
 #[derive(Clone, Eq, PartialEq, Debug, Hash, Serialize, Deserialize)]
-pub(crate) struct ObjectUid(String);
+pub(crate) struct ObjectUid(pub(crate) String);
 
 impl From<&ObjectUid> for Keyword {
     fn from(uid: &ObjectUid) -> Self {
@@ -32,8 +32,20 @@ impl From<&str> for ObjectUid {
     }
 }
 
+impl From<String> for ObjectUid {
+    fn from(s: String) -> Self {
+        ObjectUid(s)
+    }
+}
+
+impl From<ObjectUid> for String {
+    fn from(s: ObjectUid) -> Self {
+        s.0
+    }
+}
+
 #[derive(Clone, Eq, PartialEq, Debug, Hash, Serialize, Deserialize)]
-pub(crate) struct UserId(String);
+pub(crate) struct UserId(pub(crate) String);
 
 impl From<&UserId> for Keyword {
     fn from(uid: &UserId) -> Self {
@@ -46,6 +58,13 @@ impl From<&str> for UserId {
         UserId(s.to_string())
     }
 }
+
+impl From<UserId> for String {
+    fn from(s: UserId) -> Self {
+        s.0
+    }
+}
+
 /// TODO: delete the docs below
 /// The new structure will be a dual index in order to be able to make efficient O(1)
 /// reverse lookups for the objects and the users

@@ -33,9 +33,7 @@ use crate::{
     stores::{
         migrate::DbState,
         redis::{
-            findex::{
-                CUSTOM_WORD_LENGTH, IndexedValue, Keyword, REDIS_WITH_FINDEX_MASTER_KEY_LENGTH,
-            },
+            findex::{CUSTOM_WORD_LENGTH, FINDEX_KEY_LENGTH, IndexedValue, Keyword},
             objects_db::RedisOperation,
         },
     },
@@ -48,13 +46,13 @@ pub(crate) const REDIS_WITH_FINDEX_MASTER_DB_KEY_DERIVATION_SALT: &[u8; 2] = b"d
 /// Derive a Redis Master Key from a password
 pub fn redis_master_key_from_password(
     master_password: &str,
-) -> DbResult<SymmetricKey<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>> {
-    let output_key_material = derive_key_from_password::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>(
+) -> DbResult<SymmetricKey<FINDEX_KEY_LENGTH>> {
+    let output_key_material = derive_key_from_password::<FINDEX_KEY_LENGTH>(
         REDIS_WITH_FINDEX_MASTER_KEY_DERIVATION_SALT,
         master_password.as_bytes(),
     )?;
 
-    let master_secret_key: SymmetricKey<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH> =
+    let master_secret_key: SymmetricKey<FINDEX_KEY_LENGTH> =
         SymmetricKey::try_from_slice(&output_key_material)?;
 
     Ok(master_secret_key)
@@ -83,13 +81,13 @@ pub(crate) struct RedisWithFindex {
     objects_db: Arc<ObjectsDB>,
     permissions_db: PermissionsDB,
     findex: Arc<FindexRedis>,
-    findex_master_key: Secret<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>,
+    findex_master_key: Secret<FINDEX_KEY_LENGTH>,
 }
 
 impl RedisWithFindex {
     pub(crate) async fn instantiate(
         redis_url: &str,
-        findex_master_key: Secret<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>,
+        findex_master_key: Secret<FINDEX_KEY_LENGTH>,
         clear_database: bool,
     ) -> DbResult<Self> {
         // derive a DB Key
@@ -113,13 +111,13 @@ impl RedisWithFindex {
 
         let encrypted_redis_memory = MemoryEncryptionLayer::new(&findex_master_key, redis_memory);
 
-        let findex = Arc::new(Findex::new(
+        let findex_arc = Arc::new(Findex::new(
             encrypted_redis_memory,
             generic_encode,
             generic_decode,
         ));
 
-        let permissions_db = PermissionsDB::new(findex.clone());
+        let permissions_db = PermissionsDB::new(findex_arc.clone());
 
         if clear_database {
             // TODO: this statement is a very dangerous and destructive operation, should we really keep it
@@ -139,7 +137,7 @@ impl RedisWithFindex {
             mgr,
             objects_db,
             permissions_db,
-            findex,
+            findex: findex_arc,
             findex_master_key,
         };
 
@@ -451,22 +449,27 @@ impl ObjectsStore for RedisWithFindex {
         tags: &HashSet<String>,
         _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashSet<String>> {
-        let keywords = tags
+        let tag_keywords = tags
             .iter()
             .map(|tag| Keyword::from(tag.as_bytes()))
             .collect::<HashSet<Keyword>>();
         // find the locations that match at least one of the tags
-        let res = self
-            .findex
-            .search(keywords)
-            .await
-            .map_err(|e| db_error!(format!("Error while searching for tags: {e:?}")))?;
+        // TODO: upon release of `batch_findex`, use it instead of `search`
+        let mut uids_per_keyword = HashMap::new();
+        for keyword in tag_keywords {
+            let search_result = self
+                .findex
+                .search(&keyword)
+                .await
+                .map_err(|e| db_error!(format!("Error while searching for tags: {e:?}")))?;
+            uids_per_keyword.insert(keyword, search_result);
+        }
         // we want the intersection of all the locations
-        let locations = intersect_all(res.values().cloned());
-        Ok(locations
+        let uids = intersect_all(uids_per_keyword.values().cloned());
+        Ok(uids
             .into_iter()
-            .map(|location| {
-                String::from_utf8(location.to_vec())
+            .map(|i| {
+                String::from_utf8(i.into())
                     .map_err(|e| db_error!(format!("Invalid uid. Error: {e:?}")))
             })
             .collect::<DbResult<HashSet<String>>>()?)
@@ -504,18 +507,21 @@ impl ObjectsStore for RedisWithFindex {
             return Ok(vec![])
         }
         // search the keywords in the index
-        let res = self
-            .findex
-            .search(keywords)
-            .await
-            .map_err(|e| db_error!(format!("Error while searching for attributes: {e:?}")))?;
-        trace!("find: res: {:?}", res);
+        let mut uids_per_keyword = HashMap::new();
+        for keyword in keywords {
+            let search_result = self
+                .findex
+                .search(&keyword)
+                .await
+                .map_err(|e| db_error!(format!("Error while searching for tags: {e:?}")))?;
+            uids_per_keyword.insert(keyword, search_result);
+        }
         // we want the intersection of all the locations
-        let locations = intersect_all(res.values().cloned());
-        let uids = locations
+        let uids = intersect_all(uids_per_keyword.values().cloned());
+        let uids = uids
             .into_iter()
-            .map(|location| {
-                String::from_utf8(location.to_vec())
+            .map(|i| {
+                String::from_utf8(i.into())
                     .map_err(|e| db_error!(format!("Invalid uid. Error: {e:?}")))
             })
             .collect::<DbResult<HashSet<String>>>()?;
@@ -524,7 +530,12 @@ impl ObjectsStore for RedisWithFindex {
         let permissions = if user_must_be_owner {
             HashMap::new()
         } else {
-            self.permissions_db.list_user_permissions(user).await?
+            self.permissions_db
+                .list_user_permissions(&user.into())
+                .await?
+                .into_iter()
+                .map(|(k, v)| (k.0, v))
+                .collect()
         };
 
         // fetch the corresponding objects
@@ -564,17 +575,25 @@ impl PermissionsStore for RedisWithFindex {
         user: &str,
         _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashMap<String, (String, State, HashSet<KmipOperation>)>> {
-        let permissions = self.permissions_db.list_user_permissions(user).await?;
+        let permissions = self
+            .permissions_db
+            .list_user_permissions(&user.into())
+            .await?;
         let redis_db_objects = self
             .objects_db
-            .objects_get(&permissions.keys().cloned().collect::<HashSet<String>>())
+            .objects_get(
+                &permissions
+                    .iter()
+                    .map(|(k, _)| (*k).clone().into())
+                    .collect::<HashSet<String>>(),
+            )
             .await?;
         Ok(permissions
             .into_iter()
             .zip(redis_db_objects)
             .map(|((uid, permissions), (_, redis_db_object))| {
                 (
-                    uid,
+                    uid.into(),
                     (
                         redis_db_object.owner,
                         redis_db_object.state,
@@ -592,7 +611,13 @@ impl PermissionsStore for RedisWithFindex {
         uid: &str,
         _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashMap<String, HashSet<KmipOperation>>> {
-        Ok(self.permissions_db.list_object_permissions(uid).await?)
+        Ok(self
+            .permissions_db
+            .list_object_permissions(&uid.into())
+            .await?
+            .into_iter()
+            .map(|(k, v)| (k.0, v.into_iter().collect()))
+            .collect::<HashMap<_, _>>())
     }
 
     /// Grant the access right to `user` to perform the `operation_type`
@@ -622,7 +647,9 @@ impl PermissionsStore for RedisWithFindex {
         _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
         for operation in &operation_types {
-            self.permissions_db.remove(uid, user, *operation).await?;
+            self.permissions_db
+                .remove(&uid.into(), &user.into(), *operation)
+                .await?;
         }
         Ok(())
     }
@@ -636,7 +663,7 @@ impl PermissionsStore for RedisWithFindex {
     ) -> InterfaceResult<HashSet<KmipOperation>> {
         Ok(self
             .permissions_db
-            .get(uid, user, no_inherited_access)
+            .get(&uid.into(), &user.into(), no_inherited_access)
             .await
             .unwrap_or_default()
             .into_iter()
