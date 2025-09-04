@@ -10,7 +10,7 @@
 set -ex
 
 if [ -n "$FEATURES" ]; then
-  FEATURES="--features $FEATURES"
+  CARGO_FEATURES="--features $FEATURES"
 fi
 
 # Install nodejs from nodesource if npm is not installed
@@ -37,7 +37,7 @@ cargo install wasm-pack
 # Build WASM component
 cd crate/wasm
 # shellcheck disable=SC2086
-RUSTFLAGS="-Z wasm-c-abi=spec" wasm-pack build --target web --release $FEATURES
+RUSTFLAGS="-Z wasm-c-abi=spec" wasm-pack build --target web --release $CARGO_FEATURES
 
 # Copy WASM artifacts to UI directory
 WASM_DIR="../../ui/src/wasm/"
@@ -46,13 +46,15 @@ mkdir -p "$WASM_DIR"
 cp -R pkg "$WASM_DIR"
 
 # Build UI
-cd ../../ui # current path: ./cli/ui
+cd ../../ui # current path: ./ui
 rm -rf node_modules
 npm install
 npm run build
 
 # Deploy built UI to root
 cd .. # current path: ./
-rm -rf crate/server/ui/
-mkdir -p crate/server/ui/
-cp -R ui/dist crate/server/ui/
+
+DEST_DIR="crate/server/ui${CARGO_FEATURES:+_non_fips}"
+rm -rf "$DEST_DIR"
+mkdir -p "$DEST_DIR"
+cp -R ui/dist "$DEST_DIR"

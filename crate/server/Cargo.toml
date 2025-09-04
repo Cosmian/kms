@@ -126,12 +126,12 @@ priority = "optional"
 depends = ""
 assets = [
   [
-    "ui/dist/*",
+    "ui_non_fips/dist/*",
     "usr/local/cosmian/ui/dist/",
     "500",
   ],
   [
-    "ui/dist/assets/*",
+    "ui_non_fips/dist/assets/*",
     "usr/local/cosmian/ui/dist/assets/",
     "500",
   ],
