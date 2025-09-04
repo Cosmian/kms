@@ -22,7 +22,9 @@ pub struct KeyMetadata {
 }
 
 #[derive(Debug, Clone)]
+#[derive(PartialEq)]
 pub enum CryptoAlgorithm {
+    AesCbc,
     AesGcm,
     RsaPkcsV15,
     RsaOaepSha256,
@@ -39,6 +41,7 @@ impl CryptoAlgorithm {
                     .map_or(
                         Ok(Some(Self::AesGcm)),
                         |block_cipher_mode| match block_cipher_mode {
+                            BlockCipherMode::CBC => Ok(Some(Self::AesCbc)),
                             BlockCipherMode::GCM => Ok(Some(Self::AesGcm)),
                             bcm => Err(InterfaceError::Default(format!(
                                 "Block cipher mode: {bcm:?} not supported for AES",

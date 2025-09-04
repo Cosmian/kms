@@ -12,3 +12,16 @@ pub fn get_hsm_password() -> HResult<String> {
         .to_string();
     Ok(user_password)
 }
+
+pub fn get_hsm_slot_id() -> HResult<usize> {
+    let slot_id = option_env!("HSM_SLOT_ID")
+        .ok_or_else(|| {
+            HError::Default(
+                "The slot id for the HSM was not provided. Please set the HSM_SLOT_ID \
+                 environment variable"
+                    .to_string(),
+            )
+        })?
+        .to_string();
+    Ok(slot_id.parse().unwrap())
+}

@@ -42,6 +42,14 @@ use crate::{AesKeySize, BaseHsm, RsaKeySize};
 
 #[async_trait]
 impl HSM for BaseHsm {
+    async fn get_supported_algorithms(
+        &self,
+        slot_id: usize,
+    ) -> InterfaceResult<Vec<CryptoAlgorithm>> {
+        let supported = self.get_algorithms(slot_id)?;
+        Ok(supported)
+    }
+
     async fn create_key(
         &self,
         slot_id: usize,

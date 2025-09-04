@@ -6,8 +6,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use pkcs11_sys::{CK_INFO, CKR_OK};
-
+use pkcs11_sys::{CK_INFO, CKR_OK, CK_MECHANISM_TYPE, CKM_AES_CBC, CKM_AES_GCM, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP, CKM_SHA_1, CKM_SHA256};
+use cosmian_kms_interfaces::{CryptoAlgorithm};
 use crate::{HError, HResult, SlotManager, hsm_lib::HsmLib};
 
 struct SlotState {
@@ -84,6 +84,59 @@ impl BaseHsm {
             }
             Ok(info.into())
         }
+    }
+
+    /// Retrieve the list of supported cryptographic algorithms for a given HSM slot.
+    ///
+    /// This function queries the specified slot to determine which algorithms are available
+    /// for cryptographic operations. It maps the raw PKCS#11 mechanism identifiers into
+    /// the appropriate `CryptoAlgorithm` variants.
+    ///
+    /// The function checks both general mechanisms (such as AES CBC, AES GCM or RSA PKCS)
+    /// and mechanism-specific capabilities (such as supported hash functions for RSA OAEP).
+    ///
+    /// # Arguments
+    /// * `slot_id` - The identifier of the HSM slot to query.
+    ///
+    /// # Returns
+    /// * `HResult<Vec<CryptoAlgorithm>>` - A result containing a vector of supported
+    ///   `CryptoAlgorithm` variants.
+    ///
+    /// # Errors
+    /// * Returns an error if the specified slot can't be accessed.
+    /// * Returns an error if the list of supported mechanisms can't be retrieved.
+    /// * Returns an error if the supported OAEP hashing algorithms can't be determined.
+    ///
+    /// # Safety
+    /// This function calls unsafe FFI functions from the HSM library to query mechanism information.
+    pub fn get_algorithms(
+        &self,
+        slot_id: usize,
+    ) -> HResult<Vec<CryptoAlgorithm>> {
+        let slot = self.get_slot(slot_id)?;
+        let mechanisms:Vec<CK_MECHANISM_TYPE> = slot.get_supported_mechanisms()?;
+        let session = slot.open_session(true)?;
+        let supported_hashes = session.get_supported_oaep_hash()?;
+        let mut algorithms: Vec<CryptoAlgorithm> = Vec::new();
+
+        for &mechanism in mechanisms.iter() {
+            match mechanism {
+                CKM_AES_CBC => algorithms.push(CryptoAlgorithm::AesCbc),
+                CKM_AES_GCM => algorithms.push(CryptoAlgorithm::AesGcm),
+                CKM_RSA_PKCS => algorithms.push(CryptoAlgorithm::RsaPkcsV15),
+                CKM_RSA_PKCS_OAEP => {
+                    if supported_hashes.contains(&CKM_SHA_1) {
+                        algorithms.push(CryptoAlgorithm::RsaOaepSha1);
+                    }
+                    if supported_hashes.contains(&CKM_SHA256) {
+                        algorithms.push(CryptoAlgorithm::RsaOaepSha256);
+                    }
+                },
+                _ => {}
+            };
+        }
+
+        Ok(algorithms)
     }
 }
 

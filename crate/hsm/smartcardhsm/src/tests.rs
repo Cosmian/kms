@@ -1,19 +1,19 @@
 //! These tests  require a connection to a working HSM and are gated behind the `softhsm2` feature.
-//! To run a test, cd into the crate directory and run (replace `XXX` with the actual password):
+//! To run a test, cd into the crate directory and run (replace `XXX` with the actual password for the selected slot):
 //! ```
-//! HSM_USER_PASSWORD=648219 cargo test --target x86_64-unknown-linux-gnu --features smartcardhsm -- tests::test_hsm_all
+//! HSM_USER_PASSWORD=648219 HSM_SLOT_ID=1 cargo test --target x86_64-unknown-linux-gnu --features smartcardhsm -- tests::test_hsm_all
 //! ```
 
 use std::{collections::HashMap, ptr, sync::Arc, thread};
 
 use cosmian_kms_base_hsm::{
     AesKeySize, HError, HResult, HsmEncryptionAlgorithm, RsaKeySize, RsaOaepDigest, SlotManager,
-    test_helpers::get_hsm_password,
+    test_helpers::get_hsm_password, test_helpers::get_hsm_slot_id,
 };
 use cosmian_kms_interfaces::{HsmObjectFilter, KeyMaterial, KeyType};
 use cosmian_logger::log_init;
 use libloading::Library;
-use pkcs11_sys::{CK_C_INITIALIZE_ARGS, CK_RV, CK_VOID_PTR, CKF_OS_LOCKING_OK, CKR_OK};
+use pkcs11_sys::{CK_C_INITIALIZE_ARGS, CK_RV, CK_VOID_PTR, CKF_OS_LOCKING_OK, CKR_OK, CKM_RSA_PKCS_OAEP};
 use tracing::info;
 use uuid::Uuid;
 
@@ -23,15 +23,18 @@ const LIB_PATH: &str = "/usr/local/lib/libsc-hsm-pkcs11.so";
 
 fn get_slot() -> HResult<Arc<SlotManager>> {
     let user_password = get_hsm_password()?;
-    let passwords = HashMap::from([(1, Some(user_password.clone()))]);
+    let slot = get_hsm_slot_id()?;
+    let passwords = HashMap::from([(slot, Some(user_password.clone()))]);
     let hsm = Smartcardhsm::instantiate(LIB_PATH, passwords)?;
-    let manager = hsm.get_slot(1)?;
+    let manager = hsm.get_slot(slot)?;
     Ok(manager)
 }
 
 #[test]
 fn test_hsm_all() -> HResult<()> {
     test_hsm_get_info()?;
+    test_hsm_get_mechanisms()?;
+    test_hsm_get_supported_algorithms()?;
     test_hsm_destroy_all()?;
     test_hsm_generate_aes_key()?;
     test_hsm_generate_rsa_keypair()?;
@@ -72,6 +75,37 @@ fn test_hsm_get_info() -> HResult<()> {
     let hsm = Smartcardhsm::instantiate(LIB_PATH, HashMap::new())?;
     let info = hsm.get_info()?;
     info!("Connected to the HSM: {info}");
+    Ok(())
+}
+
+#[test]
+fn test_hsm_get_mechanisms() -> HResult<()> {
+    log_init(None);
+    let slot = get_slot()?;
+    let mut mechanisms = slot.get_supported_mechanisms()?;
+    mechanisms.sort();
+    info!("Supported mechanisms: {:?}", mechanisms);
+    let mechanism_info = slot.get_mechanism_info(CKM_RSA_PKCS_OAEP);
+    info!("{:?}", mechanism_info);
+    let session = slot.open_session(true)?;
+    let supported_hash = session.get_supported_oaep_hash();
+    info!("{:?}", supported_hash);
+    session.close()?;
+    let session_2 = slot.open_session(true)?;
+    let supported_hash_2 = session_2.get_supported_oaep_hash();
+    info!("{:?}", supported_hash_2);
+    Ok(())
+}
+
+#[test]
+fn test_hsm_get_supported_algorithms() -> HResult<()> {
+    let user_password = get_hsm_password()?;
+    let slot = get_hsm_slot_id()?;
+    let passwords = HashMap::from([(slot, Some(user_password.clone()))]);
+    let hsm = Smartcardhsm::instantiate(LIB_PATH, passwords)?;
+    let supported_algorithms = hsm.get_algorithms(slot)?;
+    info!("{:?}", supported_algorithms);
+
     Ok(())
 }
 
