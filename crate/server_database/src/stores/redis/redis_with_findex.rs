@@ -65,6 +65,7 @@ fn intersect_all<I: IntoIterator<Item = HashSet<IndexedValue>>>(sets: I) -> Hash
     iter.fold(first, |acc, set| acc.intersection(&set).cloned().collect())
 }
 
+/// Findex implementation using Redis as the backing memory storage.
 pub(crate) type FindexRedis = Findex<
     CUSTOM_WORD_LENGTH,
     IndexedValue,
@@ -74,6 +75,23 @@ pub(crate) type FindexRedis = Findex<
         RedisMemory<Address<ADDRESS_LENGTH>, [u8; CUSTOM_WORD_LENGTH]>,
     >,
 >;
+
+pub(crate) async fn init_findex_redis(
+    redis_url: &str,
+    findex_master_key: &Secret<FINDEX_KEY_LENGTH>,
+) -> Result<FindexRedis, DbError> {
+    let redis_memory =
+        RedisMemory::<Address<ADDRESS_LENGTH>, [u8; CUSTOM_WORD_LENGTH]>::new_with_url(redis_url)
+            .await?; // up to this point the memory is on cleartext
+
+    let encrypted_redis_memory = MemoryEncryptionLayer::new(findex_master_key, redis_memory);
+
+    Ok(Findex::new(
+        encrypted_redis_memory,
+        generic_encode,
+        generic_decode,
+    ))
+}
 
 #[derive(Clone)]
 pub(crate) struct RedisWithFindex {
@@ -103,19 +121,7 @@ impl RedisWithFindex {
 
         let objects_db = Arc::new(ObjectsDB::new(mgr.clone(), &db_key));
 
-        let redis_memory =
-            RedisMemory::<Address<ADDRESS_LENGTH>, [u8; CUSTOM_WORD_LENGTH]>::new_with_url(
-                redis_url,
-            )
-            .await?;
-
-        let encrypted_redis_memory = MemoryEncryptionLayer::new(&findex_master_key, redis_memory);
-
-        let findex_arc = Arc::new(Findex::new(
-            encrypted_redis_memory,
-            generic_encode,
-            generic_decode,
-        ));
+        let findex_arc = Arc::new(init_findex_redis(redis_url, &findex_master_key).await?);
 
         let permissions_db = PermissionsDB::new(findex_arc.clone());
 
