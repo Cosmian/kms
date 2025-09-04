@@ -19,7 +19,7 @@ use uuid::Uuid;
 
 use crate::Softhsm2;
 
-const LIB_PATH: &str = "/usr/lib/libsofthsm2.so";
+const LIB_PATH: &str = "/usr/local/lib/softhsm/libsofthsm2.so";
 
 fn get_slot() -> HResult<Arc<SlotManager>> {
     let user_password = get_hsm_password()?;
