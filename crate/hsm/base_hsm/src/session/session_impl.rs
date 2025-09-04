@@ -89,6 +89,7 @@ impl From<CryptoAlgorithm> for HsmEncryptionAlgorithm {
 /// * `hsm` - Arc reference to the HSM library interface
 /// * `session_handle` - PKCS#11 session handle
 /// * `object_handles_cache` - Cache for object handles
+/// * `supported_oaep_hash_cache` - Cache for supported OAEP hashing algorithms
 /// * `is_logged_in` - Login state of the session
 ///
 /// # Methods
@@ -108,6 +109,7 @@ impl From<CryptoAlgorithm> for HsmEncryptionAlgorithm {
 /// * `encrypt()` - Encrypts data using specified algorithm
 /// * `decrypt()` - Decrypts data using specified algorithm
 /// * `generate_random()` - Generates random data
+/// * `get_supported_oaep_hash` - List the supported OAEP hashing algorithms
 ///
 /// ## Key Management
 /// * `export_key()` - Exports a key from the HSM (if allowed)
@@ -122,6 +124,9 @@ impl From<CryptoAlgorithm> for HsmEncryptionAlgorithm {
 /// * `export_rsa_public_key()` - Exports RSA public key
 /// * `export_aes_key()` - Exports AES key
 /// * `call_get_attributes()` - Helper for retrieving object attributes
+/// * `pkcs7_pad()` - Apply PKCS#7 padding to the input data
+/// * `pkcs7_unpad()` - Remove PKCS#7 padding from the input data.
+/// * `find_object_handles` - Rretrieve object handles that match the provided attribute template
 ///
 /// # Safety
 /// Many methods in this implementation contain unsafe blocks as they interact with
@@ -288,6 +293,27 @@ impl Session {
         Ok(supported)
     }
 
+    /// Search for and retrieve object handles that match the provided attribute template.
+    ///
+    /// This function queries the HSM to find all objects in the current slot / session
+    /// that match the provided attribute template (for example, objects with a specific
+    /// label, class, or key type).
+    ///
+    /// # Arguments
+    /// * `template` - A vector of `CK_ATTRIBUTE` structures defining the search criteria.
+    ///   Each attribute specifies a property (such as `CKA_LABEL` or `CKA_CLASS`) and the
+    ///   expected value. Providing an empty vector will result in all available objects
+    ///   being returned
+    ///
+    /// # Returns
+    /// * `HResult<Vec<CK_OBJECT_HANDLE>>` - A result containing a vector of object handles
+    ///   that match the specified template. The vector will be empty if no objects match.
+    ///
+    /// # Errors
+    /// * Returns an error if the HSM fails to initialize, execute, or finalize the object search.
+    ///
+    /// # Safety
+    /// This function calls unsafe FFI functions from the HSM library.
     fn find_object_handles(&self, mut template: Vec<CK_ATTRIBUTE>) -> HResult<Vec<CK_OBJECT_HANDLE>> {
         let mut object_handles: Vec<CK_OBJECT_HANDLE> = Vec::new();
         unsafe {
@@ -494,7 +520,17 @@ impl Session {
         Ok(())
     }
 
-    /// PKCS#7 padding
+    /// Apply PKCS#7 padding to the input data.
+    ///
+    /// PKCS#7 padding ensures that the input length is a multiple of the block size,
+    /// which is required for many block cipher encryption algorithms (such as AES in CBC mode).
+    ///
+    /// # Arguments
+    /// * `data` - The input data to be padded.
+    /// * `block_size` - The block size in bytes (commonly 16 for AES).
+    ///
+    /// # Returns
+    /// * `Vec<u8>` - A new buffer containing the original data with PKCS#7 padding appended.
     fn pkcs7_pad(&self, data: Vec<u8>, block_size: usize) -> Vec<u8> {
         let pad_len = block_size - (data.len() % block_size);
         let mut padded = data;
@@ -502,12 +538,33 @@ impl Session {
         padded
     }
 
-    fn pkcs7_unpad(&self, data: Zeroizing<Vec<u8>>) -> HResult<Zeroizing<Vec<u8>>> {
+    /// Remove PKCS#7 padding from the input data.
+    ///
+    /// This function verifies and removes PKCS#7 padding from data that was previously
+    /// padded for block cipher encryption.
+    ///
+    /// # Arguments
+    /// * `data` - The input buffer wrapped in PKCS#7 padding.
+    /// * `block_size` - The block size in bytes (commonly 16 for AES).
+    ///
+    /// # Returns
+    /// * `HResult<Zeroizing<Vec<u8>>>` - A result containing the unpadded data on success,
+    ///   or an error if the padding is invalid.
+    ///
+    /// # Errors
+    /// * Returns an error if the input buffer is empty.
+    /// * Returns an error if the buffer length is not a multiple of the block size.
+    /// * Returns an error if the padding length is invalid or exceeds the block size.
+    /// * Returns an error if the padding bytes do not all match the expected value.
+    fn pkcs7_unpad(&self, data: Zeroizing<Vec<u8>>, block_size: usize) -> HResult<Zeroizing<Vec<u8>>> {
         if data.is_empty() {
             return Err(HError::Default("Invalid PKCS#7 padding: empty buffer".to_string()));
         }
+        if (data.len() % block_size) != 0 {
+            return Err(HError::Default("Data doesn't align to blocks".to_string()));
+        }
         let pad_len = *data.last().unwrap() as usize;
-        if pad_len == 0 || pad_len > data.len() || pad_len > 16 {
+        if pad_len == 0 || pad_len > data.len() || pad_len > block_size {
             return Err(HError::Default("Invalid PKCS#7 padding".to_string()));
         }
         // verify all pad bytes
@@ -680,7 +737,7 @@ impl Session {
                 let paddedPlaintext =
                     self.decrypt_with_mechanism(key_handle, &mut mechanism, &ciphertext[16..])?;
 
-                let plaintext = self.pkcs7_unpad(paddedPlaintext)?;
+                let plaintext = self.pkcs7_unpad(paddedPlaintext, 16)?;
                 Ok(plaintext)
             }
             HsmEncryptionAlgorithm::RsaPkcsV15 => {
