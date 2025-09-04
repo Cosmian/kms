@@ -102,11 +102,45 @@ pub enum HashingAlgorithm {
     SHA3512 = 0x0000_0011,
 }
 
+/// The ticket structure used to specify a Ticket
+/// KMIP 2.1 Only. Used in Authentication
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
+pub struct Ticket {
+    pub ticket_type: TicketType,
+    pub ticket_value: Vec<u8>,
+}
+
+/// A Credential is a structure used to convey information used to authenticate a client
+/// or server to the other party in a KMIP message. It contains a credential type and
+/// credential value fields.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
+pub struct Credential {
+    pub credential_type: CredentialType,
+    pub credential_value: CredentialValue,
+}
+
+/// Credential Type Enumeration
+/// Only `UsernameAndPassword`, `Device`, and `Attestation` are supported in KMIP 1.x
+/// (this library does not enforce this)
+#[kmip_enum]
+pub enum CredentialType {
+    UsernameAndPassword = 0x1,
+    Device = 0x2,
+    Attestation = 0x3,
+    OneTimePassword = 0x4,
+    HashedPassword = 0x5,
+    Ticket = 0x6,
+}
+
 /// A Credential is a structure used for client identification purposes
 /// and is not managed by the key management system
 /// (e.g., user id/password pairs, Kerberos tokens, etc.).
+/// Only `UsernameAndPassword`, `Device`, and `Attestation` are supported in KMIP 1.x
+/// (this library does not enforce this)
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum Credential {
+pub enum CredentialValue {
     UsernameAndPassword {
         username: String,
         password: Option<String>,
@@ -137,12 +171,11 @@ pub enum Credential {
         hashed_password: Vec<u8>,
     },
     Ticket {
-        ticket_type: TicketType,
-        ticket_value: Vec<u8>,
+        ticket: Ticket,
     },
 }
 
-impl Credential {
+impl CredentialValue {
     #[allow(dead_code)]
     const fn value(&self) -> u32 {
         match *self {
@@ -156,7 +189,7 @@ impl Credential {
     }
 }
 
-impl Serialize for Credential {
+impl Serialize for CredentialValue {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -244,20 +277,16 @@ impl Serialize for Credential {
                 st.serialize_field("HashedPassword", hashed_password)?;
                 st.end()
             }
-            Self::Ticket {
-                ticket_type,
-                ticket_value,
-            } => {
-                let mut st = serializer.serialize_struct("Ticket", 2)?;
-                st.serialize_field("TicketType", ticket_type)?;
-                st.serialize_field("TicketValue", ticket_value)?;
+            Self::Ticket { ticket } => {
+                let mut st = serializer.serialize_struct("Ticket", 1)?;
+                st.serialize_field("Ticket", ticket)?;
                 st.end()
             }
         }
     }
 }
 
-impl<'de> Deserialize<'de> for Credential {
+impl<'de> Deserialize<'de> for CredentialValue {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -280,14 +309,13 @@ impl<'de> Deserialize<'de> for Credential {
             Timestamp,
             HashingAlgorithm,
             HashedPassword,
-            TicketType,
-            TicketValue,
+            Ticket,
         }
 
         struct CredentialVisitor;
 
         impl<'de> Visitor<'de> for CredentialVisitor {
-            type Value = Credential;
+            type Value = CredentialValue;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
                 formatter.write_str("struct Credential")
@@ -312,8 +340,7 @@ impl<'de> Deserialize<'de> for Credential {
                 let mut timestamp: Option<u64> = None;
                 let mut hashing_algorithm: Option<HashingAlgorithm> = None;
                 let mut hashed_password: Option<Vec<u8>> = None;
-                let mut ticket_type: Option<TicketType> = None;
-                let mut ticket_value: Option<Vec<u8>> = None;
+                let mut ticket: Option<Ticket> = None;
 
                 while let Some(key) = map.next_key()? {
                     match key {
@@ -409,54 +436,44 @@ impl<'de> Deserialize<'de> for Credential {
                             }
                             hashed_password = Some(map.next_value()?);
                         }
-                        Field::TicketType => {
-                            if ticket_type.is_some() {
-                                return Err(de::Error::duplicate_field("ticket_type"));
+                        Field::Ticket => {
+                            if ticket.is_some() {
+                                return Err(de::Error::duplicate_field("ticket"));
                             }
-                            ticket_type = Some(map.next_value()?);
-                        }
-                        Field::TicketValue => {
-                            if ticket_value.is_some() {
-                                return Err(de::Error::duplicate_field("ticket_value"));
-                            }
-                            ticket_value = Some(map.next_value()?);
+                            ticket = Some(map.next_value()?);
                         }
                     }
                 }
 
                 if let (Some(nonce), Some(attestation_type)) = (nonce, attestation_type) {
-                    return Ok(Credential::Attestation {
+                    return Ok(CredentialValue::Attestation {
                         nonce,
                         attestation_type,
                         attestation_measurement,
                         attestation_assertion,
                     });
-                } else if let (Some(ticket_type), Some(ticket_value)) = (ticket_type, ticket_value)
-                {
-                    return Ok(Credential::Ticket {
-                        ticket_type,
-                        ticket_value,
-                    })
+                } else if let Some(ticket) = ticket {
+                    return Ok(CredentialValue::Ticket { ticket })
                 } else if let Some(username) = username {
                     if let (Some(timestamp), Some(hashed_password)) = (timestamp, hashed_password) {
-                        return Ok(Credential::HashedPassword {
+                        return Ok(CredentialValue::HashedPassword {
                             username,
                             timestamp,
                             hashing_algorithm,
                             hashed_password,
                         });
                     } else if let Some(one_time_password) = one_time_password {
-                        return Ok(Credential::OneTimePassword {
+                        return Ok(CredentialValue::OneTimePassword {
                             username,
                             password,
                             one_time_password,
                         })
                     }
 
-                    return Ok(Credential::UsernameAndPassword { username, password });
+                    return Ok(CredentialValue::UsernameAndPassword { username, password });
                 }
 
-                Ok(Credential::Device {
+                Ok(CredentialValue::Device {
                     device_serial_number,
                     password,
                     device_identifier,
@@ -483,8 +500,7 @@ impl<'de> Deserialize<'de> for Credential {
             "timestamp",
             "hashing_algorithm",
             "hashed_password",
-            "ticket_type",
-            "ticket_value",
+            "ticket",
         ];
         deserializer.deserialize_struct("Credential", FIELDS, CredentialVisitor)
     }

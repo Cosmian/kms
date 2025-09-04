@@ -11,14 +11,6 @@ use crate::{
     kmip_2_1::{self},
 };
 
-/// KMIP 1.4 Credential Type Enumeration
-#[kmip_enum]
-pub enum CredentialType {
-    UsernameAndPassword = 0x1,
-    Device = 0x2,
-    Attestation = 0x3,
-}
-
 /// KMIP 1.4 Key Compression Type Enumeration
 #[kmip_enum]
 pub enum KeyCompressionType {
