@@ -4810,7 +4810,7 @@ dependencies = [
 
 [[package]]
 name = "smartcardhsm_pkcs11_loader"
-version = "5.7.1"
+version = "5.8.1"
 dependencies = [
  "cosmian_kms_base_hsm",
  "cosmian_kms_interfaces",
