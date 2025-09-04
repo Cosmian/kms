@@ -1,5 +1,6 @@
 use clap::Args;
 use serde::{Deserialize, Serialize};
+use tracing::warn;
 
 use crate::{config::IdpConfig, error::KmsError, kms_ensure};
 
@@ -67,8 +68,9 @@ impl JwtAuthConfig {
     /// Parse this configuration into one identity provider configuration per JWT authentication provider.
     ///
     /// This method maintains backward compatibility by handling the legacy three separate field format.
-    /// For new configurations, use `IdpConfig` with th`jwt_auth_provider`er field instead.
+    /// For new configurations, use `IdpConfig` with the `jwt_auth_provider` field instead.
     pub(crate) fn extract_idp_configs(self) -> Result<Option<Vec<IdpConfig>>, KmsError> {
+        warn!("[THIS IS DEPRECATED - USE THE IDP AUTH CONFIG SECTION INSTEAD]");
         self.jwt_issuer_uri
             .map(|issuer_uris| {
                 let option_vec_to_vec_option = |option_vec: Option<Vec<_>>| {
