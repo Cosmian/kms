@@ -159,8 +159,9 @@ mod tests {
     use std::path::PathBuf;
 
     use cosmian_kms_server::config::{
-        ClapConfig, GoogleCseConfig, HttpConfig, JwtAuthConfig, LoggingConfig, MainDBConfig,
-        OidcConfig, ProxyConfig, SocketServerConfig, TlsConfig, UiConfig, WorkspaceConfig,
+        ClapConfig, GoogleCseConfig, HttpConfig, IdpAuthConfig, JwtAuthConfig, LoggingConfig,
+        MainDBConfig, OidcConfig, ProxyConfig, SocketServerConfig, TlsConfig, UiConfig,
+        WorkspaceConfig,
     };
 
     #[test]
@@ -202,14 +203,14 @@ mod tests {
                 proxy_exclusion_list: Some(vec!["domain1".to_owned(), "domain2".to_owned()]),
             },
             auth: JwtAuthConfig {
-                jwt_issuer_uri: Some(vec![
-                    "[jwt issuer uri 1]".to_owned(),
-                    "[jwt issuer uri 2]".to_owned(),
-                ]),
-                jwks_uri: Some(vec!["[jwks uri 1]".to_owned(), "[jwks uri 2]".to_owned()]),
-                jwt_audience: Some(vec![
-                    "[jwt audience 1]".to_owned(),
-                    "[jwt audience 2]".to_owned(),
+                jwt_issuer_uri: Some(vec!["[jwt issuer uri]".to_owned()]),
+                jwks_uri: Some(vec!["[jwks uri]".to_owned()]),
+                jwt_audience: Some(vec!["[jwt audience]".to_owned()]),
+            },
+            idp_auth: IdpAuthConfig {
+                jwt_auth_provider: Some(vec![
+                    "jwt issuer uri 1,jwks uri 1,jwt audience 1".to_owned(),
+                    "jwt issuer uri 2,jwks uri 2,jwt audience 2".to_owned(),
                 ]),
             },
             ui_config: UiConfig {
@@ -303,9 +304,12 @@ proxy_basic_auth_password = "[proxy password]"
 proxy_exclusion_list = ["domain1", "domain2"]
 
 [auth]
-jwt_issuer_uri = ["[jwt issuer uri 1]", "[jwt issuer uri 2]"]
-jwks_uri = ["[jwks uri 1]", "[jwks uri 2]"]
-jwt_audience = ["[jwt audience 1]", "[jwt audience 2]"]
+jwt_issuer_uri = ["[jwt issuer uri]"]
+jwks_uri = ["[jwks uri]"]
+jwt_audience = ["[jwt audience]"]
+
+[idp_auth]
+jwt_auth_provider = ["jwt issuer uri 1,jwks uri 1,jwt audience 1", "jwt issuer uri 2,jwks uri 2,jwt audience 2"]
 
 [ui_config]
 ui_index_html_folder = "[ui index html folder]"

@@ -1,5 +1,6 @@
 use clap::Args;
 use serde::{Deserialize, Serialize};
+use tracing::warn;
 
 use crate::{config::IdpConfig, error::KmsError, kms_ensure};
 
@@ -9,6 +10,7 @@ use crate::{config::IdpConfig, error::KmsError, kms_ensure};
 #[derive(Debug, Default, Args, Deserialize, Serialize)]
 #[serde(default)]
 pub struct JwtAuthConfig {
+    /// DEPRECATED: use the Idp config section instead.
     /// The issuer URI of the JWT token
     ///
     /// To handle multiple identity managers, add different parameters under each argument
@@ -26,6 +28,7 @@ pub struct JwtAuthConfig {
     #[clap(long, env = "KMS_JWT_ISSUER_URI", num_args = 1..)]
     pub jwt_issuer_uri: Option<Vec<String>>,
 
+    /// DEPRECATED: use the Idp config section instead.
     /// The JWKS (JSON Web Key Set) URI of the JWT token
     ///
     /// To handle multiple identity managers, add different parameters under each argument
@@ -40,6 +43,7 @@ pub struct JwtAuthConfig {
     #[clap(long, env = "KMS_JWKS_URI", num_args = 1..)]
     pub jwks_uri: Option<Vec<String>>,
 
+    /// DEPRECATED: use the Idp config section instead.
     /// The audience of the JWT token
     ///
     /// Optional: the server will validate the JWT `aud` claim against this value if set - to set an identity provider configuration element to None, set its value to an empty string.
@@ -61,10 +65,12 @@ impl JwtAuthConfig {
         )
     }
 
-    /// Parse this configuration into one identity provider configuration per JWT issuer URI.
+    /// Parse this configuration into one identity provider configuration per JWT authentication provider.
     ///
-    /// Assert that when provided, JWKS URI and JWT audience are provided once per JWT issuer URI;
+    /// This method maintains backward compatibility by handling the legacy three separate field format.
+    /// For new configurations, use `IdpConfig` with the `jwt_auth_provider` field instead.
     pub(crate) fn extract_idp_configs(self) -> Result<Option<Vec<IdpConfig>>, KmsError> {
+        warn!("[THIS IS DEPRECATED - USE THE IDP AUTH CONFIG SECTION INSTEAD]");
         self.jwt_issuer_uri
             .map(|issuer_uris| {
                 let option_vec_to_vec_option = |option_vec: Option<Vec<_>>| {

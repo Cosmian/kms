@@ -7,7 +7,7 @@ use clap::Parser;
 use serde::{Deserialize, Serialize};
 
 use super::{
-    GoogleCseConfig, HttpConfig, JwtAuthConfig, MainDBConfig, WorkspaceConfig,
+    GoogleCseConfig, HttpConfig, IdpAuthConfig, JwtAuthConfig, MainDBConfig, WorkspaceConfig,
     logging::LoggingConfig, ui_config::UiConfig,
 };
 use crate::{
@@ -34,6 +34,7 @@ impl Default for ClapConfig {
             proxy: ProxyConfig::default(),
             kms_public_url: None,
             auth: JwtAuthConfig::default(),
+            idp_auth: IdpAuthConfig::default(),
             ui_config: UiConfig::default(),
             google_cse_config: GoogleCseConfig::default(),
             workspace: WorkspaceConfig::default(),
@@ -72,8 +73,17 @@ pub struct ClapConfig {
     #[clap(flatten)]
     pub proxy: ProxyConfig,
 
+    /// DEPRECATED: use the idp-auth instead.
+    /// JWT authentication configuration
+    ///
+    /// This field is deprecated. Use `idp_auth` with the `--jwt-auth-provider` option instead.
+    /// The new format allows specifying multiple providers in a single comma-separated format:
+    /// `--jwt-auth-provider "ISSUER_URI,JWKS_URI,AUDIENCE"`
     #[clap(flatten)]
     pub auth: JwtAuthConfig,
+
+    #[clap(flatten)]
+    pub idp_auth: IdpAuthConfig,
 
     #[clap(flatten)]
     pub ui_config: UiConfig,
@@ -231,6 +241,11 @@ impl fmt::Debug for ClapConfig {
         let x = x.field("db", &self.db);
         let x = if self.auth.jwt_issuer_uri.is_some() {
             x.field("auth", &self.auth)
+        } else {
+            x
+        };
+        let x = if self.idp_auth.jwt_auth_provider.is_some() {
+            x.field("idp_auth", &self.idp_auth)
         } else {
             x
         };

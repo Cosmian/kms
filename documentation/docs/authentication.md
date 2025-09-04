@@ -72,10 +72,20 @@ The server supports JWT tokens compatible with [OpenID Connect](https://openid.n
 
 ```sh
 docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest \
-    --jwt-issuer-uri=https://accounts.google.com \
-    --jwks-uri=https://www.googleapis.com/oauth2/v3/certs \
-    --jwt-audience=cosmian_kms
+    --jwt-auth-provider="https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs,cosmian_kms"
 ```
+
+The JWT authentication provider configuration uses the format: `"JWT_ISSUER_URI,JWKS_URI,JWT_AUDIENCE"` where:
+
+- **JWT_ISSUER_URI**: The issuer URI of the JWT token (required)
+- **JWKS_URI**: The JWKS (JSON Web Key Set) URI (optional, defaults to `<JWT_ISSUER_URI>/.well-known/jwks.json`)
+- **JWT_AUDIENCE**: The audience of the JWT token (optional, can be empty)
+
+Examples:
+
+- `"https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs,my-audience"`
+- `"https://auth0.example.com,,my-app"` (JWKS URI will default)
+- `"https://keycloak.example.com/auth/realms/myrealm,,"` (no audience, JWKS URI will default)
 
 JWT tokens must be passed in the HTTP Authorization header:
 
@@ -102,15 +112,11 @@ For detailed information about implementing PKCE authentication with the KMS, se
 
 #### Multiple Identity Providers
 
-To support multiple identity providers, repeat the parameters in matching order:
+To support multiple identity providers, repeat the JWT authentication provider parameter:
 
 ```sh
---jwt-issuer-uri=https://accounts.google.com \
---jwks-uri=https://www.googleapis.com/oauth2/v3/certs \
---jwt-audience=cosmian_kms \
---jwt-issuer-uri=https://login.microsoftonline.com/<TENANT_ID>/v2.0 \
---jwks-uri=https://login.microsoftonline.com/<TENANT_ID>/discovery/v2.0/keys \
---jwt-audience=<CLIENT_ID>
+--jwt-auth-provider="https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs,cosmian_kms" \
+--jwt-auth-provider="https://login.microsoftonline.com/<TENANT_ID>/v2.0,https://login.microsoftonline.com/<TENANT_ID>/discovery/v2.0/keys,<CLIENT_ID>"
 ```
 
 ### API Token Authentication
@@ -175,8 +181,7 @@ docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest \
     --https-p12-file kms.server.p12 \
     --https-p12-password password \
     --authority-cert-file client_ca.cert.pem \
-    --jwt-issuer-uri=https://accounts.google.com \
-    --jwks-uri=https://www.googleapis.com/oauth2/v3/certs
+    --jwt-auth-provider="https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs,"
 ```
 
 In this configuration:
@@ -188,8 +193,7 @@ In this configuration:
 
 ```sh
 docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest \
-    --jwt-issuer-uri=https://accounts.google.com \
-    --jwks-uri=https://www.googleapis.com/oauth2/v3/certs \
+    --jwt-auth-provider="https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs," \
     --api-token-id <SYMMETRIC_KEY_ID>
 ```
 
@@ -203,31 +207,25 @@ In this configuration:
 ### Google ID Tokens
 
 ```sh
---jwt-issuer-uri=https://accounts.google.com
---jwks-uri=https://www.googleapis.com/oauth2/v3/certs
+--jwt-auth-provider="https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs,"
 ```
 
 ### Auth0
 
 ```sh
---jwt-issuer-uri=https://<your-tenant>.<region>.auth0.com/
---jwks-uri=https://<your-tenant>.<region>.auth0.com/.well-known/jwks.json
+--jwt-auth-provider="https://<your-tenant>.<region>.auth0.com/,,"
 ```
 
-Note: the trailing `/` is required in the issuer URI
+Note: the trailing `/` is required in the issuer URI. The JWKS URI will default to the well-known endpoint.
 
 ### Microsoft Entra ID (Azure AD)
 
 ```sh
---jwt-issuer-uri=https://login.microsoftonline.com/<TENANT_ID>/v2.0
---jwks-uri=https://login.microsoftonline.com/<TENANT_ID>/discovery/v2.0/keys
---jwt-audience=<CLIENT_ID>
+--jwt-auth-provider="https://login.microsoftonline.com/<TENANT_ID>/v2.0,https://login.microsoftonline.com/<TENANT_ID>/discovery/v2.0/keys,<CLIENT_ID>"
 ```
 
 ### Okta
 
 ```sh
---jwt-issuer-uri=https://<OKTA_TENANT_NAME>.com
---jwks-uri=https://<OKTA_TENANT_NAME>.com/oauth2/v1/keys
---jwt-audience=<OKTA_CLIENT_ID>
+--jwt-auth-provider="https://<OKTA_TENANT_NAME>.com,https://<OKTA_TENANT_NAME>.com/oauth2/v1/keys,<OKTA_CLIENT_ID>"
 ```
