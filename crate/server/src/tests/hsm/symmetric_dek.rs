@@ -22,13 +22,17 @@ use crate::{
 };
 
 pub(super) async fn test_wrapped_symmetric_dek() -> KResult<()> {
-    let kek_uid = format!("hsm::0::{}", Uuid::new_v4());
+    let kek_uuid = Uuid::new_v4();
     let owner = Uuid::new_v4().to_string();
 
     let sqlite_path = get_tmp_sqlite_path();
 
-    let mut clap_config = hsm_clap_config(&owner, Some(kek_uid.clone()));
+    let mut clap_config = hsm_clap_config(&owner, Some(kek_uuid.clone()))?;
     clap_config.db.sqlite_path = sqlite_path.clone();
+    let kek_uid = match clap_config.key_encryption_key.clone() {
+        Some(k) => k,
+        None => return Err(KmsError::Default("Missing KEK".to_string()))
+    };
 
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
 
@@ -49,8 +53,12 @@ pub(super) async fn test_wrapped_symmetric_dek() -> KResult<()> {
     // stop the kms
     drop(kms);
     // re-instantiate the kms
-    let mut clap_config = hsm_clap_config(&owner, Some(kek_uid.clone()));
+    let mut clap_config = hsm_clap_config(&owner, Some(kek_uuid.clone()))?;
     clap_config.db.sqlite_path = sqlite_path.clone();
+    let kek_uid = match clap_config.key_encryption_key.clone() {
+        Some(k) => k,
+        None => return Err(KmsError::Default("Missing KEK".to_string()))
+    };
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
 
     // Encrypt with the DEK - unwrapping the DEK reloaded from the DB
