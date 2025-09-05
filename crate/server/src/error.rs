@@ -262,18 +262,6 @@ impl From<tracing::dispatcher::SetGlobalDefaultError> for KmsError {
     }
 }
 
-// impl From<DbError> for KmsError {
-//     fn from(value: DbError) -> Self {
-//         Self::Default(value.to_string())
-//     }
-// }
-
-// impl From<KmsError> for DbError {
-//     fn from(value: KmsError) -> Self {
-//         Self::Default(value.to_string())
-//     }
-// }
-
 impl From<InterfaceError> for KmsError {
     fn from(value: InterfaceError) -> Self {
         Self::Default(value.to_string())
