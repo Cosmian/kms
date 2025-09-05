@@ -70,7 +70,9 @@ impl JwtAuthConfig {
     /// This method maintains backward compatibility by handling the legacy three separate field format.
     /// For new configurations, use `IdpConfig` with the `jwt_auth_provider` field instead.
     pub(crate) fn extract_idp_configs(self) -> Result<Option<Vec<IdpConfig>>, KmsError> {
-        warn!("[THIS IS DEPRECATED - USE THE IDP AUTH CONFIG SECTION INSTEAD]");
+        if self.jwt_issuer_uri.is_some() {
+            warn!("[THIS IS DEPRECATED - USE THE IDP AUTH CONFIG SECTION INSTEAD]");
+        }
         self.jwt_issuer_uri
             .map(|issuer_uris| {
                 let option_vec_to_vec_option = |option_vec: Option<Vec<_>>| {
