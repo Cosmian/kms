@@ -100,6 +100,10 @@ pub enum DbError {
     // SQL database errors (PostgreSQL, MySQL, SQLite)
     #[error("Sql error: {0}")]
     SqlError(#[from] sqlx::Error),
+
+    // When a the UnwrappedCache (LRU cache) returns an error
+    #[error("Unwrapped cache error: {0}")]
+    UnwrappedCache(String),
 }
 
 impl From<std::string::FromUtf8Error> for DbError {

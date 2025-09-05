@@ -17,10 +17,10 @@ use cosmian_kms_server_database::{
     },
 };
 use thiserror::Error;
-use x509_parser::prelude::{PEMError, X509Error};
+use x509_parser::{error::X509Error, prelude::PEMError};
 
 // Each error type must have a corresponding HTTP status code (see `kmip_endpoint.rs`)
-#[derive(Error, Debug, Clone)]
+#[derive(Error, Debug)]
 pub enum KmsError {
     // Error related to X509 Certificate
     #[error("Certificate error: {0}")]
@@ -40,7 +40,7 @@ pub enum KmsError {
 
     // Any errors related to a bad behavior of the DB but not related to the user input
     #[error("Database Error: {0}")]
-    Database(String),
+    Database(#[from] DbError),
 
     #[error("{0}")]
     Default(String),
@@ -103,9 +103,6 @@ pub enum KmsError {
 
     #[error("TLS: {0}")]
     Tls(String),
-
-    #[error("Unwrapped Cache error: {0}")]
-    UnwrappedCacheError(String),
 }
 
 impl KmsError {
@@ -265,17 +262,17 @@ impl From<tracing::dispatcher::SetGlobalDefaultError> for KmsError {
     }
 }
 
-impl From<DbError> for KmsError {
-    fn from(value: DbError) -> Self {
-        Self::Default(value.to_string())
-    }
-}
+// impl From<DbError> for KmsError {
+//     fn from(value: DbError) -> Self {
+//         Self::Default(value.to_string())
+//     }
+// }
 
-impl From<KmsError> for DbError {
-    fn from(value: KmsError) -> Self {
-        Self::Default(value.to_string())
-    }
-}
+// impl From<KmsError> for DbError {
+//     fn from(value: KmsError) -> Self {
+//         Self::Default(value.to_string())
+//     }
+// }
 
 impl From<InterfaceError> for KmsError {
     fn from(value: InterfaceError) -> Self {

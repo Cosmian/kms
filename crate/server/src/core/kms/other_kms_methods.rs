@@ -72,7 +72,10 @@ impl KMS {
                 }
             }
             Some(Err(e)) => {
-                return Err(KmsError::UnwrappedCacheError(e.to_string()));
+                return Err(KmsError::Database(DbError::UnwrappedCache(format!(
+                    "Error retrieving cached object for {}: {}",
+                    uid, e
+                ))));
             }
             None => {
                 // try unwrapping
@@ -84,7 +87,7 @@ impl KMS {
             let fingerprint = object.fingerprint()?;
             let mut unwrapped_object = object.clone();
             unwrap_object(&mut unwrapped_object, self, user, params).await?;
-            Ok(CachedUnwrappedObject::new(fingerprint, unwrapped_object))
+            Ok::<_, KmsError>(CachedUnwrappedObject::new(fingerprint, unwrapped_object))
         };
 
         // cache miss, try to unwrap
@@ -94,13 +97,16 @@ impl KMS {
         let result = unwrapped_object
             .as_ref()
             .map(|u| u.unwrapped_object().to_owned())
-            .map_err(KmsError::clone);
-        // update cache is there is one
+            .map_err(|e| {
+                // an error reference is returned, but we need an owned one
+                KmsError::Database(DbError::UnwrappedCache(format!("Unwrapping error: {}", e)))
+            });
+        // update cache if there is one
         self.database
             .unwrapped_cache()
             .insert(
                 uid.to_owned(),
-                unwrapped_object.map_err(|e| Arc::new(DbError::from(e))),
+                unwrapped_object.map_err(|e| DbError::UnwrappedCache(e.to_string())),
             )
             .await;
         // return the result

@@ -16,7 +16,7 @@ use tokio::sync::{
 };
 use tracing::{debug, trace, warn};
 
-use crate::DbError;
+use crate::{DbError, error::DbResult};
 
 /// This is the object kept in the Main LRU cache
 /// It contains the unwrapped object and the key signature
@@ -46,14 +46,12 @@ impl CachedUnwrappedObject {
     }
 }
 
-type CacheDbResult<R> = Result<R, Arc<DbError>>;
-
 /// The cache of unwrapped objects
 /// The key is the UID of the object
 /// The value is the unwrapped object
 /// The value is a `Err(KmsError)` if the object cannot be unwrapped
 pub struct UnwrappedCache {
-    cache: Arc<RwLock<LruCache<String, CacheDbResult<CachedUnwrappedObject>>>>,
+    cache: Arc<RwLock<LruCache<String, DbResult<CachedUnwrappedObject>>>>,
     access_timestamps: Arc<RwLock<HashMap<String, Instant>>>,
     access_sender: Option<Sender<String>>,
     gc_interval: Duration,
@@ -200,21 +198,25 @@ impl UnwrappedCache {
     }
 
     /// Peek into the cache
-    pub async fn peek(&self, uid: &str) -> Option<CacheDbResult<CachedUnwrappedObject>> {
-        let res = self.cache.read().await.peek(uid).cloned();
+    pub async fn peek(&self, uid: &str) -> Option<DbResult<CachedUnwrappedObject>> {
+        let cache_read = self.cache.read();
 
-        if res.is_some() {
-            self.record_access(uid).await;
+        // Errors (almost) never derive Clone, so we have to do an explicit match to only clone the Ok variant and record the access to it
+        match cache_read.await.peek(uid) {
+            Some(Ok(cached_obj)) => {
+                self.record_access(uid).await;
+                Some(Ok(cached_obj.clone()))
+            }
+            Some(Err(_)) => Some(Err(DbError::UnwrappedCache(format!(
+                "Error retrieving cached object for {}",
+                uid
+            )))),
+            None => None,
         }
-        res
     }
 
     /// Insert into the cache
-    pub async fn insert(
-        &self,
-        uid: String,
-        unwrapped_object: CacheDbResult<CachedUnwrappedObject>,
-    ) {
+    pub async fn insert(&self, uid: String, unwrapped_object: DbResult<CachedUnwrappedObject>) {
         self.cache.write().await.put(uid.clone(), unwrapped_object);
         self.access_timestamps
             .write()
@@ -225,7 +227,7 @@ impl UnwrappedCache {
     #[cfg(test)]
     pub async fn get_cache(
         &self,
-    ) -> RwLockReadGuard<'_, LruCache<String, CacheDbResult<CachedUnwrappedObject>>> {
+    ) -> RwLockReadGuard<'_, LruCache<String, DbResult<CachedUnwrappedObject>>> {
         self.cache.read().await
     }
 }
