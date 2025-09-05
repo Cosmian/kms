@@ -48,6 +48,8 @@ ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" .github/copil
 
 bash .github/scripts/build_ui.sh
 FEATURES="non-fips" bash .github/scripts/build_ui.sh
+git add crate/server/ui
+git add crate/server/ui_non_fips
 
 cargo build
 git cliff -u -p CHANGELOG.md -t "$NEW_VERSION"
