@@ -6,18 +6,38 @@ The `cosmian` command line interface (CLI) simplifies the setup of S/MIME keys a
 
 After completing the setup, update your [Cosmian CLI](../../cosmian_cli/configuration.md#example-with-smime-gmail-service-account-configuration-for-kms-server) with the necessary information for the service account you created for the Gmail API.
 
-## Import certificates chain to Cosmian KMS
+## Choosing the Certificate Authority
 
-According to [Google's requirements](https://support.google.com/a/answer/7300887#zippy=%2Croot-ca%2Cintermediate-ca-certificates-other-than-from-issuing-intermediate-ca%2Cintermediate-ca-certificate-that-issues-the-end-entity%2Cend-entity-certificate)
-and [configuration guidelines](https://support.google.com/a/answer/13297070?hl=en#guidelines),
-upload the certificate chain to Cosmian KMS. This certificate chain will be used to generate user certificates.
+First you need an intermediate CA (Certificate Authority) that is trusted by Google and compliant with Gmail X509 expectations
+(read the [expected X509 extensions](https://support.google.com/a/answer/7300887#zippy=%2Croot-ca%2Cintermediate-ca-certificates-other-than-from-issuing-intermediate-ca%2Cintermediate-ca-certificate-that-issues-the-end-entity%2Cend-entity-certificate)).
 
-More details about S/MIME workflow can be found [here](../pki/smime.md).
+This CA will issue your users certificates:
 
-```sh
-cosmian kms certificates import -f pkcs12 issuer_ca_certificate.p12 -p \
-    PASSWORD issuer_ca_certificate
-```
+1. either your intermediate CA is one of the Google recommended CA, follow this [page](https://support.google.com/a/answer/7448393) to make sure it is (note that Actalis can provide CA certificates for free).
+    In that case:
+
+    - at first, you need to import the issuer intermediate CA certificate into Cosmian KMS since Google already trusts the root CA.
+
+        ```sh
+        cosmian kms certificates import -f pkcs12 issuer_ca_certificate.p12 -p \
+            PASSWORD issuer_ca_certificate
+        ```
+
+    - then, you need to import your users S/MIME certificates one by one using [Cosmian CLI](configuring_gmail_cse.md#create-user-key-pair).
+
+2. either your intermediate CA is an internal or custom CA:
+    - that you already have (remember that this custom CA must have the expected Google X509 extensions).
+  You will have to upload the full CA chain in `admin.google.com->Apps/Google Workspace/Settings` for Gmail/User Settings/S/MIME (and wait for provisioning to be fully done, few hours expected).
+
+    !!! warning "Google Root CA"
+        The Google Root CA is actually the following chain (root CA + intermediate CA + any leaf public certificates).
+        Allow a few hours for Google to complete the provisioning.
+
+        Build your Google Root CA following those steps: [Exporting and viewing](../pki/smime.md#exporting-and-viewing) and do not forget to export the [Google expected root CA](../pki/smime.md#exporting-for-google-cse-smime)
+
+    - that you do not have, in that case follow [those instructions to generate your own CA chain](../pki/smime.md#creating-an-smime-certificate-authority-with-a-root-and-intermediate-ca) and upload the Google Root CA in admin.google.com.
+
+### Managing administrator access rights
 
 If multiple administrators will be generating key-pairs for users, ensure that each administrator has the appropriate access rights to the imported certificate chain elements:
 
@@ -25,7 +45,7 @@ If multiple administrators will be generating key-pairs for users, ensure that e
 - the issuer private key ID
 - the issuer public key ID
 
-In order to get the issuer private ID and issuer public key ID, run the following command:
+In order to get the issuer private key ID and issuer public key ID, run the following command:
 
 ```sh
 cosmian kms attributes get -i issuer_ca_certificate
