@@ -3,7 +3,7 @@
 #
 FROM rust:1.86.0-bookworm AS builder
 
-LABEL version="5.7.1"
+LABEL version="5.8.0"
 LABEL name="Cosmian KMS docker container"
 LABEL org.opencontainers.image.description="Cosmian KMS docker container"
 LABEL org.opencontainers.image.title="Cosmian KMS"
@@ -34,6 +34,13 @@ RUN if [ "$FIPS" = "true" ]; then \
     cargo build -p cosmian_kms_server --release --no-default-features --features="non-fips"; \
     fi
 
+# Create UI directory structure based on FIPS mode
+RUN if [ "$FIPS" = "true" ]; then \
+    cp -r crate/server/ui /tmp/ui_to_copy; \
+    else \
+    cp -r crate/server/ui_non_fips /tmp/ui_to_copy; \
+    fi
+
 #
 # KMS server
 #
@@ -45,7 +52,9 @@ RUN apt-get update && apt-get install --no-install-recommends -qq -y ca-certific
     && update-ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /root/kms/crate/server/ui                   /usr/local/cosmian/ui
+RUN mkdir -p /usr/local/cosmian
+
+COPY --from=builder /tmp/ui_to_copy                             /usr/local/cosmian/ui
 COPY --from=builder /root/kms/target/release/cosmian_kms        /usr/bin/cosmian_kms
 COPY --from=builder /usr/local/openssl                          /usr/local/openssl
 

@@ -58,9 +58,10 @@ impl EncryptAction {
                     .with_context(|| "Cannot read bytes from files to LEB-serialize them")?,
             )
         } else {
+            let first_file = self.input_files.first().context("No input file provided")?;
             (
                 CryptographicAlgorithm::CoverCrypt,
-                read_bytes_from_file(&self.input_files[0])
+                read_bytes_from_file(first_file)
                     .with_context(|| "Cannot read bytes from files to LEB-serialize them")?,
             )
         };
@@ -71,7 +72,7 @@ impl EncryptAction {
         // Create the kmip query
         let encrypt_request = encrypt_request(
             &id,
-            Some(self.encryption_policy.to_string()),
+            Some(self.encryption_policy.clone()),
             data,
             None,
             self.authentication_data
@@ -94,12 +95,12 @@ impl EncryptAction {
         data = encrypt_response
             .data
             .context("The encrypted data are empty")?;
-
         // Write the encrypted data
         if cryptographic_algorithm == CryptographicAlgorithm::CoverCryptBulk {
             write_bulk_encrypted_data(&data, &self.input_files, self.output_file.as_ref())?;
         } else {
-            write_single_encrypted_data(&data, &self.input_files[0], self.output_file.as_ref())?;
+            let first_file = self.input_files.first().context("No input file provided")?;
+            write_single_encrypted_data(&data, first_file, self.output_file.as_ref())?;
         }
         Ok(())
     }

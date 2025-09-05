@@ -142,7 +142,7 @@ FINAL TEST RESULTS SUMMARY
   ✅ locate
   ✅ discover_versions
   ✅ mac
-  ✅ activate  
+  ✅ activate
   ✅ revoke
   ✅ create_keypair
   🔍 certify (not supported in PyKMIP - workaround under study)
@@ -160,39 +160,45 @@ FINAL TEST RESULTS SUMMARY
 ### Common Issues
 
 1. **Script execution fails**: Ensure you're running from the project root, not from `scripts/`
+
    ```bash
    # Wrong - don't do this
    cd scripts && ./test_pykmip.sh
-   
+
    # Correct - run from project root
    ./scripts/test_pykmip.sh all
    ```
 
 2. **PyKMIP import errors**: Run `setup_pykmip.sh` to install dependencies
+
    ```
-   Error: No module named 'kmip'  
+   Error: No module named 'kmip'
    Solution: ./scripts/setup_pykmip.sh
    ```
 
 3. **Connection refused**: Verify the KMS server is running with KMIP socket server enabled
+
    ```
    Error: Connection refused on port 5696
    Solution: Check server is running and socket_server_start = true in config
    ```
 
 4. **Virtual environment not found**: The test runner requires a .venv directory
+
    ```
    Error: Virtual environment not found
    Solution: Run ./scripts/setup_pykmip.sh to create .venv
    ```
 
 5. **TLS/Certificate errors**: Verify certificate paths and validity
+
    ```
    Error: [SSL: CERTIFICATE_VERIFY_FAILED]
-   Solution: Check certificate files in test_data/client_server/
+   Solution: Check certificate files in test_data/certificates/client_server/
    ```
 
 6. **Operation timeouts**: Some operations may timeout due to server processing time
+
    ```
    Error: Operation timed out after 30 seconds
    Solution: Check server logs, increase timeout, or use -v for verbose output
@@ -234,7 +240,7 @@ The PyKMIP test suite consists of the following files:
 scripts/
 ├── README_PYKMIP.md              # This documentation
 ├── setup_pykmip.sh               # Environment setup script
-├── verify_pykmip.sh              # Configuration verification script  
+├── verify_pykmip.sh              # Configuration verification script
 ├── test_pykmip.sh                # Main compatibility test runner
 ├── pykmip_client.py              # PyKMIP client implementation (12 operations)
 ├── pykmip_certify.py             # Separate certify operation module
@@ -268,9 +274,9 @@ port=5696
 
 ```ini
 [tls]
-client_cert_file=test_data/client_server/owner/owner.client.acme.com.crt
-client_key_file=test_data/client_server/owner/owner.client.acme.com.key
-ca_cert_file=test_data/client_server/ca/ca.crt
+client_cert_file=test_data/certificates/client_server/owner/owner.client.acme.com.crt
+client_key_file=test_data/certificates/client_server/owner/owner.client.acme.com.key
+ca_cert_file=test_data/certificates/client_server/ca/ca.crt
 ```
 
 ### Protocol Settings
@@ -299,9 +305,9 @@ socket_server_hostname = "0.0.0.0"
 
 [tls]
 # Server certificate and key
-tls_p12_file = "test_data/client_server/server/kmserver.acme.com.p12"
+tls_p12_file = "test_data/certificates/client_server/server/kmserver.acme.com.p12"
 tls_p12_password = "password"
-clients_ca_cert_file = "test_data/client_server/ca/ca.crt"
+clients_ca_cert_file = "test_data/certificates/client_server/ca/ca.crt"
 ```
 
 ## Contributing
@@ -309,12 +315,14 @@ clients_ca_cert_file = "test_data/client_server/ca/ca.crt"
 When adding new PyKMIP compatibility tests:
 
 1. **Add new operations** to the `operations` array in `test_pykmip.sh`:
+
    ```bash
-   operations=("activate" "create" "create_keypair" "decrypt" "destroy" 
+   operations=("activate" "create" "create_keypair" "decrypt" "destroy"
                "discover_versions" "encrypt" "get" "locate" "mac" "query" "revoke")
    ```
 
 2. **Implement operation functions** in `pykmip_client.py`:
+
    ```python
    def perform_new_operation(proxy, verbose=False):
        """Implement new KMIP operation"""
@@ -325,6 +333,7 @@ When adding new PyKMIP compatibility tests:
    ```
 
 3. **Add to argument parser** choices in `pykmip_client.py`:
+
    ```python
    parser.add_argument('--operation', default='query',
                        choices=['activate', 'create', ..., 'new_operation'],
@@ -359,7 +368,7 @@ The test runner (`test_pykmip.sh`) automatically handles environment setup and p
 # Run all operations with summary report
 ./scripts/test_pykmip.sh all
 
-# Run specific operation with verbose output  
+# Run specific operation with verbose output
 ./scripts/test_pykmip.sh query -v
 
 # Check prerequisites and connectivity
@@ -397,7 +406,7 @@ python scripts/pykmip_client.py \
 #### 3. Create RSA Key Pair
 
 ```bash
-source .venv/bin/activate  
+source .venv/bin/activate
 python scripts/pykmip_client.py \
     --configuration scripts/pykmip.conf \
     --operation create_keypair

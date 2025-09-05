@@ -32,6 +32,7 @@ pub enum AtomicOperation {
 }
 
 impl AtomicOperation {
+    #[must_use]
     pub fn get_object_uid(&self) -> &str {
         match self {
             Self::Create((uid, _, _, _))

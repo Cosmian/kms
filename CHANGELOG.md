@@ -2,6 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.8.0] - 2025-09-05
+
+### 🚀 Features
+
+- Add KMIP operations `Sign` and `VerifySignature` for digital signature support (#511)
+- Add TLS cipher suites selection (#524)
+
+### 🐛 Bug Fixes
+
+- *(google_cse)* Further restrict access to CSE privileged unwrap endpoint (#517)
+- Fix potential race condition in Google CSE migration key pair creation when multiple servers start simultaneously (#519)
+- Simplify clap JWT Auth configuration (#531)
+- Add non-fips UI build (#532)
+- Fix Credential parsing in KMIP Request Message (#529)
+- Use crypto core for db crypto (#526)
+- Cloudproof reexports (#528)
+
+### 📚 Documentation
+
+- *(percona)* Add correction to percona doc (#521)
+- *(hsm)* Added KMS-HSM integration workflow graph (#523)
+- Fixes CLI Key Wrapping documentation on export (#530)
+- Clarify Gmail CSE CA authority usage (#533)
+
+### ⚙️ Miscellaneous Tasks
+
+- Uniformize clippy lints on all crates (#525)
+- Create SECURITY.md with vulnerability tracking and reporting guidelines (#527)
+
 ## [5.7.1] - 2025-08-22
 
 ### 🚀 Features

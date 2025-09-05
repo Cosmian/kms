@@ -66,7 +66,7 @@ pub enum Role {
 
 impl Role {
     #[must_use]
-    pub const fn as_role_str(role: &Self) -> &str {
+    pub const fn str(role: &Self) -> &str {
         match role {
             Self::Reader => "reader",
             Self::Signer => "signer",
@@ -696,7 +696,7 @@ pub async fn privileged_wrap(
         cse_config,
         &google_cse_kacls_url,
         &kms.params.default_username,
-        false,
+        None,
     )
     .await?;
 
@@ -730,7 +730,7 @@ pub struct PrivilegedUnwrapResponse {
 /// for more details, see [Encrypt & decrypt data](https://developers.google.com/workspace/cse/guides/encrypt-and-decrypt-data)
 ///
 /// # Errors
-/// Will return `KmsError` if if authentication with tokens is incorrect, or if decryption fails
+/// Will return `KmsError` if if authentication with tokens is incorrect or if decryption fails
 pub async fn privileged_unwrap(
     request: PrivilegedUnwrapRequest,
     cse_config: &Arc<Option<GoogleCseConfig>>,
@@ -747,7 +747,7 @@ pub async fn privileged_unwrap(
             cse_config,
             &google_cse_kacls_url,
             &kms.params.default_username,
-            true,
+            Some(request.resource_name.clone()),
         )
         .await?
     };
@@ -815,7 +815,7 @@ pub async fn privileged_private_key_decrypt(
         cse_config,
         &google_cse_kacls_url,
         &kms.params.default_username,
-        false,
+        None,
     )
     .await?;
 

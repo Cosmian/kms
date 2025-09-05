@@ -41,7 +41,7 @@ async fn import_revoked_certificate_encrypt(curve_name: &str) -> KmsCliResult<()
             ))),
             input_format: CertificateInputFormat::Pem,
             replace_existing: true,
-            tags: vec![curve_name.to_string()],
+            tags: vec![curve_name.to_owned()],
             ..Default::default()
         }
         .run(ctx.get_owner_client()),
@@ -57,7 +57,7 @@ async fn import_revoked_certificate_encrypt(curve_name: &str) -> KmsCliResult<()
             input_format: CertificateInputFormat::Pem,
             issuer_certificate_id: Some(root_certificate_id.unwrap()),
             replace_existing: true,
-            tags: vec![curve_name.to_string()],
+            tags: vec![curve_name.to_owned()],
             ..Default::default()
         }
         .run(ctx.get_owner_client()),
@@ -151,7 +151,7 @@ async fn test_validate_cli() -> KmsCliResult<()> {
         "Validate chain with leaf1: result supposed to be invalid, as leaf1 was revoked. \
          test1_res: {test1_res:?}"
     );
-    assert!(test1_res.is_err());
+    test1_res.unwrap_err();
 
     let test2_res = ValidateCertificatesAction {
         certificate_id: vec![
@@ -178,7 +178,7 @@ async fn test_validate_cli() -> KmsCliResult<()> {
         "validate chain with leaf2: result supposed to be invalid, as date is posthumous to \
          leaf2's expiration date. test3_res: {test3_res:?}"
     );
-    assert!(test3_res.is_err());
+    test3_res.unwrap_err();
 
     let test4_res = ValidateCertificatesAction {
         certificate_id: vec![root_certificate_id],

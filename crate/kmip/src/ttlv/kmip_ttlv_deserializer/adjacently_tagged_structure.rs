@@ -90,7 +90,7 @@ pub(super) struct AdjacentlyTaggedStructure {
 
 impl AdjacentlyTaggedStructure {
     #[instrument(level = "trace", skip(de))]
-    pub(super) fn new(de: &mut TtlvDeserializer) -> Self {
+    pub(super) fn new(de: &TtlvDeserializer) -> Self {
         let (tag, content) = match &de.current.value {
             TTLValue::Structure(ttlvs) => (
                 TTLV {
@@ -345,7 +345,7 @@ impl<'de> MapAccess<'de> for AdjacentlyTaggedStructure {
         }
         self.state = State::Done;
 
-        return seed.deserialize(&mut TtlvDeserializer {
+        seed.deserialize(&mut TtlvDeserializer {
             map_state: MapAccessState::Value,
             child_index: 0,
             current: self.content.clone(),

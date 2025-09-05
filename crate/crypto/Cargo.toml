@@ -6,7 +6,12 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+keywords.workspace = true
+categories.workspace = true
 description = "Cosmian KMS Crypto - cryptographic operations and algorithms"
+
+[lints]
+workspace = true
 
 [lib]
 # doc test linking as a separate binary is extremely slow
@@ -30,8 +35,8 @@ aes-gcm-siv = { version = "0.11.1", optional = true }
 argon2 = { version = "0.5", optional = true }
 base64 = { workspace = true }
 cosmian_cover_crypt = { version = "15.0", optional = true }
-cosmian_crypto_core = { workspace = true, features = ["aes", "sha3"] }
-cosmian_kmip = { path = "../kmip", version = "5.7.1" }
+cosmian_crypto_core = { workspace = true }
+cosmian_kmip = { path = "../kmip", version = "5.8.0" }
 hex = { workspace = true }
 num-bigint-dig = { workspace = true, features = [
   "std",

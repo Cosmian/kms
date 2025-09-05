@@ -23,29 +23,25 @@ pub(crate) async fn assert_revoked(
     let tmp_path = tmp_dir.path();
 
     // should not be able to Get....
-    assert!(
-        ExportSecretDataOrKeyAction {
-            key_file: tmp_path.join("output.export"),
-            key_id: Some(key_id.to_string()),
-            ..Default::default()
-        }
-        .run(ctx.get_owner_client())
-        .await
-        .is_err()
-    );
+    ExportSecretDataOrKeyAction {
+        key_file: tmp_path.join("output.export"),
+        key_id: Some(key_id.to_string()),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await
+    .unwrap_err();
 
     // but should be able to Export....
-    assert!(
-        ExportSecretDataOrKeyAction {
-            key_file: tmp_path.join("output.export"),
-            key_id: Some(key_id.to_string()),
-            allow_revoked: true,
-            ..Default::default()
-        }
-        .run(ctx.get_owner_client())
-        .await
-        .is_ok()
-    );
+    ExportSecretDataOrKeyAction {
+        key_file: tmp_path.join("output.export"),
+        key_id: Some(key_id.to_string()),
+        allow_revoked: true,
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await
+    .unwrap();
 
     Ok(())
 }
@@ -60,7 +56,7 @@ async fn test_revoke_symmetric_key() -> KmsCliResult<()> {
 
     RevokeKeyAction {
         key_id: Some(key_id.to_string()),
-        revocation_reason: "revocation test".to_string(),
+        revocation_reason: "revocation test".to_owned(),
         ..Default::default()
     }
     .run(ctx.get_owner_client())
@@ -82,7 +78,7 @@ async fn test_revoke_ec_key() -> KmsCliResult<()> {
 
         RevokeKeyAction {
             key_id: Some(private_key_id.to_string()),
-            revocation_reason: "revocation test".to_string(),
+            revocation_reason: "revocation test".to_owned(),
             ..Default::default()
         }
         .run(ctx.get_owner_client())
@@ -100,7 +96,7 @@ async fn test_revoke_ec_key() -> KmsCliResult<()> {
 
         RevokeKeyAction {
             key_id: Some(public_key_id.to_string()),
-            revocation_reason: "revocation test".to_string(),
+            revocation_reason: "revocation test".to_owned(),
             ..Default::default()
         }
         .run(ctx.get_owner_client())
@@ -316,7 +312,7 @@ async fn test_non_revocable_symmetric_key() -> KmsCliResult<()> {
 
     RevokeKeyAction {
         key_id: Some(key_id.to_string()),
-        revocation_reason: "revocation test".to_string(),
+        revocation_reason: "revocation test".to_owned(),
         ..Default::default()
     }
     .run(ctx.get_owner_client())
@@ -325,16 +321,14 @@ async fn test_non_revocable_symmetric_key() -> KmsCliResult<()> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
 
-    assert!(
-        ExportSecretDataOrKeyAction {
-            key_file: tmp_path.join("output.export"),
-            key_id: Some(key_id.to_string()),
-            ..Default::default()
-        }
-        .run(ctx.get_owner_client())
-        .await
-        .is_ok()
-    );
+    ExportSecretDataOrKeyAction {
+        key_file: tmp_path.join("output.export"),
+        key_id: Some(key_id.to_string()),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await
+    .unwrap();
 
     Ok(())
 }
@@ -350,7 +344,7 @@ async fn test_revoke_secret_data() -> KmsCliResult<()> {
 
     RevokeKeyAction {
         key_id: Some(secret_id.to_string()),
-        revocation_reason: "revocation test".to_string(),
+        revocation_reason: "revocation test".to_owned(),
         ..Default::default()
     }
     .run(ctx.get_owner_client())

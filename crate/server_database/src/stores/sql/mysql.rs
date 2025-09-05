@@ -112,7 +112,7 @@ impl SqlDatabase<MySql> for MySqlPool {
     }
 
     fn binder(&self, _param_number: usize) -> String {
-        "?".to_string()
+        "?".to_owned()
     }
 }
 

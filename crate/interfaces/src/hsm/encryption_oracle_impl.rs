@@ -20,7 +20,7 @@ pub struct HsmEncryptionOracle {
 
 impl HsmEncryptionOracle {
     pub fn new(hsm: Arc<dyn HSM + Send + Sync>) -> Self {
-        HsmEncryptionOracle { hsm }
+        Self { hsm }
     }
 }
 
@@ -118,13 +118,13 @@ impl EncryptionOracle for HsmEncryptionOracle {
             .await
     }
 
-    async fn get_key_type(&self, key_id: &str) -> InterfaceResult<Option<KeyType>> {
-        let (slot_id, key_id) = parse_uid(key_id)?;
+    async fn get_key_type(&self, uid: &str) -> InterfaceResult<Option<KeyType>> {
+        let (slot_id, key_id) = parse_uid(uid)?;
         self.hsm.get_key_type(slot_id, &key_id).await
     }
 
-    async fn get_key_metadata(&self, key_id: &str) -> InterfaceResult<Option<KeyMetadata>> {
-        let (slot_id, key_id) = parse_uid(key_id)?;
+    async fn get_key_metadata(&self, uid: &str) -> InterfaceResult<Option<KeyMetadata>> {
+        let (slot_id, key_id) = parse_uid(uid)?;
         self.hsm.get_key_metadata(slot_id, &key_id).await
     }
 }

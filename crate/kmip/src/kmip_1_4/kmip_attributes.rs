@@ -848,6 +848,7 @@ impl TryFrom<kmip_2_1::kmip_attributes::Attribute> for Attribute {
 }
 
 /// The value of a Custom Attribute (section 3.39).
+///
 /// Any data type or structure.
 /// According to the specifications, If a structure, then the structure SHALL NOT include substructures.
 /// In this implementation, we use a TTLV to represent the structure.

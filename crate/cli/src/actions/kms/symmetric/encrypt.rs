@@ -274,7 +274,7 @@ impl EncryptAction {
 
         // write the encapsulation to the output file, starting with the length of the encapsulation
         // as an unsigned LEB128 integer
-        leb128::write::unsigned(output_file, encapsulation.len() as u64)?;
+        leb128::write::unsigned(output_file, u64::try_from(encapsulation.len())?)?;
         output_file.write_all(&encapsulation)?;
 
         // Determine the DEM parameters

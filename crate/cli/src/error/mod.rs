@@ -36,8 +36,6 @@ pub enum KmsCliError {
     CovercryptError(#[from] cosmian_cover_crypt::Error),
     #[error(transparent)]
     CryptoError(#[from] cosmian_kms_crypto::CryptoError),
-    #[error(transparent)]
-    CsvError(#[from] csv::Error),
     #[error("{0}")]
     Default(String),
     #[error(transparent)]
@@ -151,6 +149,7 @@ macro_rules! cli_bail {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
 
     use crate::error::result::KmsCliResult;

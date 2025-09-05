@@ -159,7 +159,7 @@ impl UnwrappedCache {
     // Record a timestamp for a cache access
     async fn record_access(&self, uid: &str) {
         if let Some(sender) = &self.access_sender {
-            if let Err(e) = sender.send(uid.to_string()).await {
+            if let Err(e) = sender.send(uid.to_owned()).await {
                 warn!("Failed to send cache access timestamp: {}", e);
             }
         }
@@ -330,7 +330,7 @@ mod tests {
         );
 
         // Insert an item
-        let uid = "test_item".to_string();
+        let uid = "test_item".to_owned();
         let object = super::CachedUnwrappedObject::new(
             123,
             create_symmetric_key_kmip_object(
@@ -365,7 +365,7 @@ mod tests {
             let cache = super::UnwrappedCache::new(Duration::from_millis(100));
 
             // Insert an item
-            let uid = "test_item".to_string();
+            let uid = "test_item".to_owned();
             let object = super::CachedUnwrappedObject::new(
                 123,
                 create_symmetric_key_kmip_object(

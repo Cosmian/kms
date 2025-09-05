@@ -68,7 +68,7 @@ pub(crate) fn decrypt(
                 operation: OperationEnumeration::Decrypt,
                 ephemeral: None,
                 unique_batch_item_id: Some(b"12345".to_vec()),
-                request_payload: Operation::Decrypt(Decrypt {
+                request_payload: Operation::Decrypt(Box::new(Decrypt {
                     unique_identifier: Some(UniqueIdentifier::TextString(key_id.to_owned())),
                     cryptographic_parameters: Some(CryptographicParameters {
                         block_cipher_mode: Some(BlockCipherMode::GCM),
@@ -82,7 +82,7 @@ pub(crate) fn decrypt(
                     final_indicator: None,
                     authenticated_encryption_additional_data: aad.map(Vec::from),
                     authenticated_encryption_tag: Some(tag.to_vec()),
-                }),
+                })),
                 message_extension: None,
             },
         )],

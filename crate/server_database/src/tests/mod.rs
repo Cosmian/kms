@@ -2,8 +2,6 @@
 
 use std::path::Path;
 
-#[cfg(feature = "non-fips")]
-use cosmian_kms_crypto::crypto::secret::Secret;
 use cosmian_logger::log_init;
 use tempfile::TempDir;
 
@@ -69,9 +67,14 @@ async fn get_mysql() -> DbResult<MySqlPool> {
 // docker run --name redis -p 6379:6379 -d redis redis-server --save 60 1 --loglevel verbose
 #[cfg(feature = "non-fips")]
 async fn get_redis_with_findex() -> DbResult<RedisWithFindex> {
+    use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
+        CsRng, Secret, reexport::rand_core::SeedableRng,
+    };
+    let mut rng = CsRng::from_entropy();
+
     let redis_url = get_redis_url();
     let redis_url = option_env!("KMS_REDIS_URL").unwrap_or(&redis_url);
-    let master_key = Secret::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::new_random()?;
+    let master_key = Secret::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::random(&mut rng);
     let redis_findex = RedisWithFindex::instantiate(redis_url, master_key, b"label", true).await?;
     Ok(redis_findex)
 }

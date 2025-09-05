@@ -28,10 +28,10 @@ async fn create_google_key_pair() -> KmsCliResult<()> {
 
     // Create key pair without certificate extensions (must fail)
     let action = CreateKeyPairsAction {
-        user_id: "john.doe@acme.com".to_string(),
+        user_id: "john.doe@acme.com".to_owned(),
         cse_key_id: cse_key_id.to_string(),
         issuer_private_key_id: None,
-        subject_name: "CN=John Doe,OU=Org Unit,O=Org Name,L=City,ST=State,C=US".to_string(),
+        subject_name: "CN=John Doe,OU=Org Unit,O=Org Name,L=City,ST=State,C=US".to_owned(),
         rsa_private_key_id: None,
         sensitive: false,
         wrapping_key_id: None,
@@ -41,7 +41,7 @@ async fn create_google_key_pair() -> KmsCliResult<()> {
         leaf_certificate_pkcs12_password: None,
         dry_run: true,
     };
-    assert!(action.run(ctx.get_owner_client()).await.is_err());
+    action.run(ctx.get_owner_client()).await.unwrap_err();
 
     // Create key pair with certificate extensions (must succeed)
     let action = CreateKeyPairsAction {
@@ -64,7 +64,7 @@ async fn create_google_key_pair() -> KmsCliResult<()> {
 
     // Create key pair using a certificate file (must succeed)
     let action = CreateKeyPairsAction {
-        user_id: "john.barry@acme.com".to_string(),
+        user_id: "john.barry@acme.com".to_owned(),
         leaf_certificate_id: None,
         issuer_private_key_id: None,
         leaf_certificate_extensions: None,

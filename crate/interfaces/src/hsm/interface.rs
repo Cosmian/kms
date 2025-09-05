@@ -66,17 +66,20 @@ pub struct HsmObject {
 }
 
 impl HsmObject {
-    pub fn new(key_material: KeyMaterial, label: String) -> Self {
-        HsmObject {
+    #[must_use]
+    pub const fn new(key_material: KeyMaterial, label: String) -> Self {
+        Self {
             key_material,
             id: label,
         }
     }
 
-    pub fn key_material(&self) -> &KeyMaterial {
+    #[must_use]
+    pub const fn key_material(&self) -> &KeyMaterial {
         &self.key_material
     }
 
+    #[must_use]
     pub fn id(&self) -> &str {
         &self.id
     }

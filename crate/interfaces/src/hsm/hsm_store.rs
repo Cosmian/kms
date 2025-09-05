@@ -66,7 +66,7 @@ impl ObjectsStore for HsmStore {
         let uid = uid.as_ref().ok_or_else(|| {
             InterfaceError::InvalidRequest(
                 "An HSM create request must have a uid in the form of 'hsm::<slot_id>::<key_id>'"
-                    .to_string(),
+                    .to_owned(),
             )
         })?;
         let (slot_id, key_id) = parse_uid(uid)?;

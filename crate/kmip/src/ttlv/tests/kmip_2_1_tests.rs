@@ -15,8 +15,8 @@ use crate::{
         },
         kmip_types::{
             AsynchronousIndicator, AttestationType, BatchErrorContinuationOption, Credential,
-            CryptographicUsageMask, ErrorReason, MessageExtension, Nonce, ProtocolVersion,
-            ResultStatusEnumeration,
+            CredentialType, CredentialValue, CryptographicUsageMask, ErrorReason, MessageExtension,
+            Nonce, ProtocolVersion, ResultStatusEnumeration,
         },
     },
     kmip_2_1::{
@@ -816,7 +816,7 @@ pub(crate) fn test_message_enforce_enum() {
                 ephemeral: None,
                 unique_batch_item_id: None,
                 // mismatch operation regarding the enum
-                request_payload: Operation::Locate(Locate::default()),
+                request_payload: Operation::Locate(Box::default()),
                 message_extension: None,
             },
         )],
@@ -838,7 +838,7 @@ pub(crate) fn test_message_enforce_enum() {
             ..Default::default()
         },
         batch_item: vec![RequestMessageBatchItemVersioned::V21(
-            RequestMessageBatchItem::new(Operation::Locate(Locate::default())),
+            RequestMessageBatchItem::new(Operation::Locate(Box::default())),
         )],
     };
     assert_eq!(
@@ -892,7 +892,7 @@ pub(crate) fn test_message_enforce_enum() {
                 operation: Some(OperationEnumeration::Decrypt),
                 unique_batch_item_id: None,
                 // mismatch operation regarding the enum
-                response_payload: Some(Operation::Locate(Locate::default())),
+                response_payload: Some(Operation::Locate(Box::default())),
                 message_extension: None,
                 result_status: ResultStatusEnumeration::OperationPending,
                 result_reason: None,
@@ -923,7 +923,7 @@ pub(crate) fn test_message_enforce_enum() {
                 operation: Some(OperationEnumeration::Decrypt),
                 unique_batch_item_id: None,
                 // mismatch operation regarding the enum
-                response_payload: Some(Operation::Locate(Locate::default())),
+                response_payload: Some(Operation::Locate(Box::default())),
                 message_extension: None,
                 result_status: ResultStatusEnumeration::OperationPending,
                 result_reason: None,
@@ -981,7 +981,7 @@ pub(crate) fn test_message_enforce_enum() {
                 unique_batch_item_id: Some(b"1234".to_vec()),
                 // in a message response, we can't have `Operation::Locate`,
                 // we could only have an `Operation::LocateResponse`
-                response_payload: Some(Operation::Locate(Locate::default())),
+                response_payload: Some(Operation::Locate(Box::default())),
                 message_extension: Some(MessageExtension {
                     vendor_identification: "CosmianVendor".to_owned(),
                     criticality_indicator: false,
@@ -1330,7 +1330,7 @@ fn test_query_response() {
     let response_batch_item = ResponseMessageBatchItem {
         operation: Some(OperationEnumeration::Query),
         unique_batch_item_id: None,
-        response_payload: Some(Operation::QueryResponse(QueryResponse {
+        response_payload: Some(Operation::QueryResponse(Box::new(QueryResponse {
             operation: Some(vec![
                 OperationEnumeration::Activate,
                 OperationEnumeration::Create,
@@ -1348,7 +1348,7 @@ fn test_query_response() {
             protection_storage_masks: None,
             rng_parameters: None,
             profiles_information: None,
-        })),
+        }))),
         result_status: ResultStatusEnumeration::Success,
         result_reason: None,
         result_message: None,
@@ -1426,14 +1426,17 @@ pub(crate) fn test_message_request() {
             asynchronous_indicator: Some(AsynchronousIndicator::Optional),
             attestation_capable_indicator: Some(true),
             attestation_type: Some(vec![AttestationType::TPM_Quote]),
-            authentication: Some(vec![Credential::Attestation {
-                nonce: Nonce {
-                    nonce_id: vec![9, 8, 7],
-                    nonce_value: vec![10, 11, 12],
+            authentication: Some(vec![Credential {
+                credential_type: CredentialType::Attestation,
+                credential_value: CredentialValue::Attestation {
+                    nonce: Nonce {
+                        nonce_id: vec![9, 8, 7],
+                        nonce_value: vec![10, 11, 12],
+                    },
+                    attestation_type: AttestationType::TCG_Integrity_Report,
+                    attestation_measurement: Some(vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
+                    attestation_assertion: Some(vec![11, 12, 13, 14, 15, 16, 17, 18, 19, 20]),
                 },
-                attestation_type: AttestationType::TCG_Integrity_Report,
-                attestation_measurement: Some(vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
-                attestation_assertion: Some(vec![11, 12, 13, 14, 15, 16, 17, 18, 19, 20]),
             }]),
             batch_error_continuation_option: Some(BatchErrorContinuationOption::Undo),
             batch_order_option: Some(true),
@@ -1444,10 +1447,10 @@ pub(crate) fn test_message_request() {
                 operation: OperationEnumeration::Encrypt,
                 ephemeral: None,
                 unique_batch_item_id: None,
-                request_payload: Operation::Encrypt(Encrypt {
+                request_payload: Operation::Encrypt(Box::new(Encrypt {
                     data: Some(Zeroizing::from(b"to be enc".to_vec())),
                     ..Default::default()
-                }),
+                })),
                 message_extension: Some(vec![MessageExtension {
                     vendor_identification: "CosmianVendor".to_owned(),
                     criticality_indicator: false,

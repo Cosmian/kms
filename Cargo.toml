@@ -25,8 +25,65 @@ members = [
 # note: resolver defaults to 2 in 2021 edition crate, but defaults to 1 in virtual workspace
 resolver = "2"
 
+[workspace.lints.rust]
+nonstandard_style = "deny"
+refining_impl_trait = "deny"
+future_incompatible = "deny"
+keyword_idents = "deny"
+let_underscore = "deny"
+unreachable_pub = "deny"
+unused = "deny"
+unsafe_code = "deny"
+
+[workspace.lints.clippy]
+# Main clippy categories
+pedantic = { level = "deny", priority = 90 }
+all = { level = "deny", priority = 80 }
+suspicious = { level = "deny", priority = 70 }
+complexity = { level = "deny", priority = 60 }
+perf = { level = "deny", priority = 50 }
+style = { level = "deny", priority = 40 }
+cargo = { level = "deny", priority = 30 }
+nursery = { level = "deny", priority = 20 }
+
+# Common allows (to be selectively enabled by crates as needed)
+similar_names = { level = "allow", priority = 91 }
+too_many_lines = { level = "allow", priority = 91 }
+ref_option = { level = "allow", priority = 91 }
+missing_errors_doc = { level = "allow", priority = 91 }
+multiple_crate_versions = { level = "allow", priority = 31 }
+redundant_pub_crate = { level = "allow", priority = 21 }
+future_not_send = { level = "allow", priority = 21 }
+cognitive_complexity = { level = "allow", priority = 21 }
+significant_drop_tightening = { level = "allow", priority = 21 }
+iter_with_drain = { level = "allow", priority = 21 }
+too_long_first_doc_paragraph = { level = "allow", priority = 21 }
+
+# Restriction lints (from server and other crates)
+module_name_repetitions = "allow"
+unwrap_used = "deny"
+get_unwrap = "deny"
+expect_used = "deny"
+indexing_slicing = "deny"
+missing_asserts_for_indexing = "deny"
+unwrap_in_result = "deny"
+assertions_on_result_states = "deny"
+panic = "deny"
+panic_in_result_fn = "deny"
+renamed_function_params = "deny"
+verbose_file_reads = "deny"
+str_to_string = "deny"
+implicit_clone = "deny"
+unreachable = "deny"
+as_conversions = "deny"
+print_stdout = "deny"
+empty_structs_with_brackets = "deny"
+unseparated_literal_suffix = "deny"
+map_err_ignore = "deny"
+redundant_clone = "deny"
+
 [workspace.package]
-version = "5.7.1"
+version = "5.8.0"
 edition = "2024"
 rust-version = "1.85.0"
 authors = [
@@ -66,7 +123,7 @@ bitflags = "2.9"
 chrono = "0.4"
 clap = { version = "4.5", default-features = false }
 cosmian_config_utils = "0.3.1"
-cosmian_crypto_core = { version = "10.1", default-features = false, features = [
+cosmian_crypto_core = { version = "10.2", default-features = false, features = [
   "ser",
 ] }
 cosmian_logger = "0.3.1"
@@ -87,7 +144,6 @@ pem = "3.0"
 pkcs11-sys = "0.2"
 rand = "0.9"
 reqwest = { version = "0.11", default-features = false }
-rustls = "0.23"
 serde = "1.0"
 serde_json = "1.0"
 sha3 = { version = "0.10", default-features = false }

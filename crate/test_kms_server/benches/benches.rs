@@ -1,3 +1,12 @@
+#![allow(
+    dead_code,
+    clippy::unwrap_used,
+    clippy::cast_possible_truncation,
+    let_underscore_drop,
+    clippy::cast_possible_wrap,
+    clippy::needless_pass_by_value
+)]
+
 use std::time::Duration;
 
 use criterion::{Criterion, criterion_group, criterion_main};

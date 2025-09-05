@@ -181,7 +181,7 @@ impl Default for CertifyAction {
         Self {
             certificate_id: None,
             certificate_signing_request: None,
-            certificate_signing_request_format: "pem".to_string(),
+            certificate_signing_request_format: "pem".to_owned(),
             public_key_id_to_certify: None,
             certificate_id_to_re_certify: None,
             generate_key_pair: false,

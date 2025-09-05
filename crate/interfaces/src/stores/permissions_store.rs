@@ -14,7 +14,7 @@ pub trait PermissionsStore {
     /// List all the KMIP operations granted to the `user`
     /// on all the objects in the database
     /// (i.e. the objects for which `user` is not the owner)
-    /// The result is a list of tuples (uid, owner, state, operations, is_wrapped)
+    /// The result is a list of tuples (uid, owner, state, operations, `is_wrapped`)
     /// where `operations` is a list of operations that `user` can perform on the object
     async fn list_user_operations_granted(
         &self,

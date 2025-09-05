@@ -6,7 +6,7 @@
 //! `HsmEncryptionOracle`.
 use async_trait::async_trait;
 use cosmian_kmip::{
-    kmip_0::kmip_types::{BlockCipherMode, PaddingMethod},
+    kmip_0::kmip_types::{BlockCipherMode, HashingAlgorithm, PaddingMethod},
     kmip_2_1::kmip_types::CryptographicParameters,
 };
 use zeroize::Zeroizing;
@@ -36,28 +36,24 @@ impl CryptoAlgorithm {
             .map_or(Ok(None), |algorithm| match algorithm {
                 cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm::AES => value
                     .block_cipher_mode
-                    .map_or(Ok(Some(CryptoAlgorithm::AesGcm)), |block_cipher_mode| {
-                        match block_cipher_mode {
-                            BlockCipherMode::GCM => Ok(Some(CryptoAlgorithm::AesGcm)),
+                    .map_or(
+                        Ok(Some(Self::AesGcm)),
+                        |block_cipher_mode| match block_cipher_mode {
+                            BlockCipherMode::GCM => Ok(Some(Self::AesGcm)),
                             bcm => Err(InterfaceError::Default(format!(
                                 "Block cipher mode: {bcm:?} not supported for AES",
                             ))),
-                        }
-                    }),
+                        },
+                    ),
                 cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm::RSA => value
                     .padding_method
-                    .map_or(Ok(Some(CryptoAlgorithm::RsaOaepSha256)), |padding_method| {
+                    .map_or(Ok(Some(Self::RsaOaepSha256)), |padding_method| {
                         match padding_method {
                             PaddingMethod::OAEP => match value.hashing_algorithm {
-                                Some(
-                                    cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm::SHA256,
-                                ) => Ok(Some(CryptoAlgorithm::RsaOaepSha256)),
-                                Some(cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm::SHA1) => {
-                                    Ok(Some(CryptoAlgorithm::RsaOaepSha1))
-                                }
-                                _ => Ok(Some(CryptoAlgorithm::RsaOaepSha256)), //this is debatable
+                                Some(HashingAlgorithm::SHA1) => Ok(Some(Self::RsaOaepSha1)),
+                                _ => Ok(Some(Self::RsaOaepSha256)), //this is debatable
                             },
-                            PaddingMethod::PKCS1v15 => Ok(Some(CryptoAlgorithm::RsaPkcsV15)),
+                            PaddingMethod::PKCS1v15 => Ok(Some(Self::RsaPkcsV15)),
                             pm => Err(InterfaceError::Default(format!(
                                 "Padding method: {pm:?} not supported for RSA",
                             ))),

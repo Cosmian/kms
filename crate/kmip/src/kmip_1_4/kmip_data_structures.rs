@@ -19,41 +19,6 @@ use crate::{
     kmip_2_1,
 };
 
-/// 2.1.2 Credential Object Structure
-/// A Credential is a structure used to convey information used to authenticate a client
-/// or server to the other party in a KMIP message. It contains credential type and
-/// credential value fields.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-#[serde(rename_all = "PascalCase")]
-pub struct Credential {
-    pub credential_type: CredentialType,
-    pub credential_value: CredentialValue,
-}
-
-/// Credential Value variants
-/// The Credential Value type contains specific authentication credential values based
-/// on the credential type.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-pub enum CredentialValue {
-    UsernameAndPassword {
-        username: String,
-        password: String,
-    },
-    Device {
-        device_serial_number: Option<String>,
-        password: Option<String>,
-        device_identifier: Option<String>,
-        network_identifier: Option<String>,
-        machine_identifier: Option<String>,
-        media_identifier: Option<String>,
-    },
-    Attestation {
-        nonce: Vec<u8>,
-        attestation_measurement: Option<Vec<u8>>,
-        attestation_assertion: Option<Vec<u8>>,
-    },
-}
-
 /// 2.1.3 Key Block Object Structure
 /// A Key Block object is a structure used to encapsulate all of the information that is
 /// closely associated with a cryptographic key. It contains information about the format
@@ -1950,6 +1915,7 @@ impl TryFrom<kmip_2_1::kmip_data_structures::RNGParameters> for RNGParameters {
 
 // The Server Information  base object is a structure that contains a set of OPTIONAL fields
 /// that describe server information.
+///
 /// Where a server supports returning information in a vendor-specific field for
 /// which there is an equivalent field within the structure,
 /// the server SHALL provide the standardized version of the field.

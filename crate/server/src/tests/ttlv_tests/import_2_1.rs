@@ -55,7 +55,7 @@ fn test_import_2_1() {
                 operation: OperationEnumeration::Import,
                 ephemeral: None,
                 unique_batch_item_id: Some(b"12345".to_vec()),
-                request_payload: Operation::Import(Import {
+                request_payload: Operation::Import(Box::new(Import {
                     object,
                     object_type: ObjectType::SymmetricKey,
                     unique_identifier: UniqueIdentifier::TextString(
@@ -71,7 +71,7 @@ fn test_import_2_1() {
                     },
                     replace_existing: Some(false),
                     key_wrap_type: None,
-                }),
+                })),
                 message_extension: None,
             },
         )],

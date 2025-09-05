@@ -6,7 +6,12 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+keywords.workspace = true
+categories.workspace = true
 description = "Cosmian KMS Access - handling users permissions"
+
+[lints]
+workspace = true
 
 [lib]
 # doc test linking as a separate binary is extremely slow
@@ -16,5 +21,5 @@ doctest = false
 [features]
 
 [dependencies]
-cosmian_kmip = { path = "../kmip", version = "5.7.1", default-features = true }
+cosmian_kmip = { path = "../kmip", version = "5.8.0", default-features = true }
 serde = { workspace = true }

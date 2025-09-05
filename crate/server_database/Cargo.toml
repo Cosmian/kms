@@ -1,12 +1,17 @@
 [package]
 name = "cosmian_kms_server_database"
-version = "5.7.1"
+version = "5.8.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+keywords.workspace = true
+categories.workspace = true
 description = "Crate containing the database for the Cosmian KMS server and the supported stores"
+
+# [lints]
+# workspace = true
 
 [lib]
 doctest = false
@@ -20,10 +25,10 @@ non-fips = [
 
 [dependencies]
 async-trait = { workspace = true }
+cosmian_kms_crypto = { path = "../crypto", version = "5.8.0" }
+cosmian_kmip = { path = "../kmip", version = "5.8.0" }
+cosmian_kms_interfaces = { path = "../interfaces", version = "5.8.0" }
 cloudproof_findex = { version = "5.0", optional = true }
-cosmian_kmip = { path = "../kmip", version = "5.7.1" }
-cosmian_kms_crypto = { path = "../crypto", version = "5.7.1" }
-cosmian_kms_interfaces = { path = "../interfaces", version = "5.7.1" }
 hex = { workspace = true }
 lru = { workspace = true }
 num-bigint-dig = { workspace = true, features = [
@@ -43,7 +48,7 @@ redis = { version = "0.23", features = [
 ] }
 serde = { workspace = true }
 serde_json = { workspace = true, features = ["preserve_order"] }
-sqlx = { version = "0.8.5", default-features = false, features = [
+sqlx = { version = "0.8", default-features = false, features = [
   "json",
   "runtime-tokio-native-tls",
   "mysql",
@@ -55,7 +60,7 @@ tokio = { workspace = true, features = ["full"] }
 tracing = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true }
-version-compare = "0.2.0"
+version-compare = "0.2"
 zeroize = { workspace = true }
 
 [dev-dependencies]

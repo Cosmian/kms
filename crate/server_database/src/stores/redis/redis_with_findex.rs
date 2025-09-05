@@ -15,8 +15,8 @@ use cosmian_kmip::{
     kmip_2_1::{KmipOperation, kmip_attributes::Attributes, kmip_objects::Object},
 };
 use cosmian_kms_crypto::{
-    crypto::{password_derivation::derive_key_from_password, secret::Secret},
-    reexport::cosmian_crypto_core::{FixedSizeCBytes, SymmetricKey, kdf256},
+    crypto::password_derivation::derive_key_from_password,
+    reexport::cosmian_crypto_core::{FixedSizeCBytes, Secret, SymmetricKey, kdf256},
 };
 use cosmian_kms_interfaces::{
     AtomicOperation, InterfaceResult, ObjectWithMetadata, ObjectsStore, PermissionsStore,

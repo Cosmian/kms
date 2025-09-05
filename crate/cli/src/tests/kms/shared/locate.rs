@@ -184,7 +184,7 @@ pub(crate) async fn test_locate_elliptic_curve() -> KmsCliResult<()> {
     // generate a new key pair
     let (private_key_id, public_key_id) = CreateEcKeyPairAction {
         curve: Curve::NistP256,
-        tags: vec!["test_ec".to_string()],
+        tags: vec!["test_ec".to_owned()],
         sensitive: false,
         ..Default::default()
     }
@@ -193,7 +193,7 @@ pub(crate) async fn test_locate_elliptic_curve() -> KmsCliResult<()> {
 
     // Locate with Tags
     let ids = LocateObjectsAction {
-        tags: Some(vec!["test_ec".to_string()]),
+        tags: Some(vec!["test_ec".to_owned()]),
         ..Default::default()
     }
     .run(ctx.get_owner_client())
@@ -205,7 +205,7 @@ pub(crate) async fn test_locate_elliptic_curve() -> KmsCliResult<()> {
     // Locate with cryptographic algorithm
     // this should be case insensitive
     let ids = LocateObjectsAction {
-        tags: Some(vec!["test_ec".to_string()]),
+        tags: Some(vec!["test_ec".to_owned()]),
         cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
         ..Default::default()
     }
@@ -217,7 +217,7 @@ pub(crate) async fn test_locate_elliptic_curve() -> KmsCliResult<()> {
 
     // locate using the key format type
     let ids = LocateObjectsAction {
-        tags: Some(vec!["test_ec".to_string()]),
+        tags: Some(vec!["test_ec".to_owned()]),
         key_format_type: Some(KeyFormatType::TransparentECPrivateKey),
         ..Default::default()
     }
@@ -226,7 +226,7 @@ pub(crate) async fn test_locate_elliptic_curve() -> KmsCliResult<()> {
     assert_eq!(ids.len(), 1);
     assert!(ids.contains(&private_key_id));
     let ids = LocateObjectsAction {
-        tags: Some(vec!["test_ec".to_string()]),
+        tags: Some(vec!["test_ec".to_owned()]),
         key_format_type: Some(KeyFormatType::TransparentECPublicKey),
         ..Default::default()
     }
@@ -237,7 +237,7 @@ pub(crate) async fn test_locate_elliptic_curve() -> KmsCliResult<()> {
 
     //locate using tags and cryptographic algorithm and key format type
     let ids = LocateObjectsAction {
-        tags: Some(vec!["test_ec".to_string()]),
+        tags: Some(vec!["test_ec".to_owned()]),
         cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
         key_format_type: Some(KeyFormatType::TransparentECPrivateKey),
         ..Default::default()
@@ -249,7 +249,7 @@ pub(crate) async fn test_locate_elliptic_curve() -> KmsCliResult<()> {
 
     // test using system Tags
     let ids = LocateObjectsAction {
-        tags: Some(vec!["test_ec".to_string(), "_sk".to_string()]),
+        tags: Some(vec!["test_ec".to_owned(), "_sk".to_owned()]),
         ..Default::default()
     }
     .run(ctx.get_owner_client())
@@ -257,7 +257,7 @@ pub(crate) async fn test_locate_elliptic_curve() -> KmsCliResult<()> {
     assert_eq!(ids.len(), 1);
     assert!(ids.contains(&private_key_id));
     let ids = LocateObjectsAction {
-        tags: Some(vec!["test_ec".to_string(), "_pk".to_string()]),
+        tags: Some(vec!["test_ec".to_owned(), "_pk".to_owned()]),
         ..Default::default()
     }
     .run(ctx.get_owner_client())
@@ -275,14 +275,14 @@ pub(crate) async fn test_locate_symmetric_key() -> KmsCliResult<()> {
 
     // generate a new key
     let key_id = CreateKeyAction {
-        tags: vec!["test_sym".to_string()],
+        tags: vec!["test_sym".to_owned()],
         ..Default::default()
     }
     .run(ctx.get_owner_client())
     .await?;
     // Locate with Tags
     let ids = LocateObjectsAction {
-        tags: Some(vec!["test_sym".to_string()]),
+        tags: Some(vec!["test_sym".to_owned()]),
         ..Default::default()
     }
     .run(ctx.get_owner_client())
@@ -293,7 +293,7 @@ pub(crate) async fn test_locate_symmetric_key() -> KmsCliResult<()> {
     // Locate with cryptographic algorithm
     // this should be case insensitive
     let ids = LocateObjectsAction {
-        tags: Some(vec!["test_sym".to_string()]),
+        tags: Some(vec!["test_sym".to_owned()]),
         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
         ..Default::default()
     }
@@ -304,7 +304,7 @@ pub(crate) async fn test_locate_symmetric_key() -> KmsCliResult<()> {
 
     // locate using the key format type
     let ids = LocateObjectsAction {
-        tags: Some(vec!["test_sym".to_string()]),
+        tags: Some(vec!["test_sym".to_owned()]),
         key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
         ..Default::default()
     }
@@ -315,7 +315,7 @@ pub(crate) async fn test_locate_symmetric_key() -> KmsCliResult<()> {
 
     //locate using tags and cryptographic algorithm and key format type
     let ids = LocateObjectsAction {
-        tags: Some(vec!["test_sym".to_string()]),
+        tags: Some(vec!["test_sym".to_owned()]),
         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
         key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
         ..Default::default()
@@ -327,7 +327,7 @@ pub(crate) async fn test_locate_symmetric_key() -> KmsCliResult<()> {
 
     // test using system Tags
     let ids = LocateObjectsAction {
-        tags: Some(vec!["test_sym".to_string(), "_kk".to_string()]),
+        tags: Some(vec!["test_sym".to_owned(), "_kk".to_owned()]),
         ..Default::default()
     }
     .run(ctx.get_owner_client())

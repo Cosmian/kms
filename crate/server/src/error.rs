@@ -12,11 +12,10 @@ use cosmian_kms_server_database::{
             KmipError, kmip_0::kmip_types::ErrorReason, kmip_1_4::kmip_types::ResultReason,
             ttlv::TtlvError,
         },
-        cosmian_kms_crypto::{CryptoError, reexport::cosmian_crypto_core::CryptoCoreError},
+        cosmian_kms_crypto::CryptoError,
         cosmian_kms_interfaces::InterfaceError,
     },
 };
-use rustls::server::VerifierBuilderError;
 use thiserror::Error;
 use x509_parser::prelude::{PEMError, X509Error};
 
@@ -143,12 +142,6 @@ impl From<&X509Error> for KmsError {
 impl From<x509_parser::nom::Err<PEMError>> for KmsError {
     fn from(e: x509_parser::nom::Err<PEMError>) -> Self {
         Self::Certificate(e.to_string())
-    }
-}
-
-impl From<CryptoCoreError> for KmsError {
-    fn from(e: CryptoCoreError) -> Self {
-        Self::CryptographicError(e.to_string())
     }
 }
 
@@ -290,24 +283,6 @@ impl From<InterfaceError> for KmsError {
 impl From<CryptoError> for KmsError {
     fn from(value: CryptoError) -> Self {
         Self::CryptographicError(value.to_string())
-    }
-}
-
-impl From<VerifierBuilderError> for KmsError {
-    fn from(value: VerifierBuilderError) -> Self {
-        Self::Tls(value.to_string())
-    }
-}
-
-impl From<rustls::Error> for KmsError {
-    fn from(value: rustls::Error) -> Self {
-        Self::Tls(value.to_string())
-    }
-}
-
-impl From<rustls::pki_types::pem::Error> for KmsError {
-    fn from(value: rustls::pki_types::pem::Error) -> Self {
-        Self::Tls(value.to_string())
     }
 }
 

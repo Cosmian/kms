@@ -2,6 +2,7 @@ use std::{collections::HashMap, fmt::Display, str::FromStr};
 
 use clap::ValueEnum;
 use cosmian_kmip::kmip_2_1::{
+    extra::{VENDOR_ID_COSMIAN, tagging::VENDOR_ATTR_TAG},
     kmip_attributes::{Attribute, Attributes},
     kmip_types::{CryptographicAlgorithm, Link, LinkType, LinkedObjectIdentifier, Tag},
 };
@@ -306,10 +307,23 @@ pub fn parse_selected_attributes(
             }
             Tag::VendorExtension => {
                 if let Some(vendor_attributes) = attributes.vendor_attributes.as_ref() {
-                    results.insert(
-                        tag.to_string(),
-                        serde_json::to_value(vendor_attributes).unwrap_or_default(),
-                    );
+                    // Filter out tag-related vendor attributes to avoid duplication
+                    // since tags are already displayed separately under the Tag field
+                    let filtered_vendor_attributes: Vec<_> = vendor_attributes
+                        .iter()
+                        .filter(|va| {
+                            !(va.vendor_identification == VENDOR_ID_COSMIAN
+                                && va.attribute_name == VENDOR_ATTR_TAG)
+                        })
+                        .collect();
+
+                    // Only include VendorExtension if there are non-tag vendor attributes
+                    if !filtered_vendor_attributes.is_empty() {
+                        results.insert(
+                            tag.to_string(),
+                            serde_json::to_value(filtered_vendor_attributes).unwrap_or_default(),
+                        );
+                    }
                 }
             }
             _x => {}
@@ -548,4 +562,111 @@ pub fn build_selected_attribute(
         }
     };
     Ok(attribute)
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
+mod tests {
+    use super::*;
+    use crate::reexport::cosmian_kmip::kmip_2_1::{
+        extra::{VENDOR_ID_COSMIAN, tagging::VENDOR_ATTR_TAG},
+        kmip_attributes::Attributes,
+        kmip_types::{CryptographicAlgorithm, VendorAttribute, VendorAttributeValue},
+    };
+
+    #[test]
+    fn test_vendor_extension_tag_filtering() {
+        // Create test attributes with vendor extensions including tags
+        let mut attributes = Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Default::default()
+        };
+
+        // Add vendor attributes including tag data and other data
+        let tag_vendor_attr = VendorAttribute {
+            vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
+            attribute_name: VENDOR_ATTR_TAG.to_owned(),
+            attribute_value: VendorAttributeValue::TextString(
+                "[\"_cert\",\"test_cert\"]".to_owned(),
+            ),
+        };
+
+        let other_vendor_attr = VendorAttribute {
+            vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
+            attribute_name: "some_other_attr".to_owned(),
+            attribute_value: VendorAttributeValue::TextString("some_value".to_owned()),
+        };
+
+        attributes.vendor_attributes = Some(vec![tag_vendor_attr, other_vendor_attr]);
+
+        // Test the parsing with no specific tags requested (should return all)
+        let result = parse_selected_attributes(&attributes, &[], &[]).unwrap();
+
+        // Check that VendorExtension exists but doesn't contain tag data
+        if let Some(vendor_extension) = result.get("VendorExtension") {
+            // Parse as array of vendor attributes and check for tag filtering
+            if let Ok(vendor_attrs) =
+                serde_json::from_value::<Vec<VendorAttribute>>(vendor_extension.clone())
+            {
+                let has_tag_attr = vendor_attrs.iter().any(|va| {
+                    va.vendor_identification == VENDOR_ID_COSMIAN
+                        && va.attribute_name == VENDOR_ATTR_TAG
+                });
+
+                assert!(
+                    !has_tag_attr,
+                    "Tag vendor attribute should be filtered out from VendorExtension"
+                );
+                assert_eq!(
+                    vendor_attrs.len(),
+                    1,
+                    "Should have exactly one non-tag vendor attribute"
+                );
+                assert_eq!(vendor_attrs[0].attribute_name, "some_other_attr");
+            } else {
+                panic!("Failed to parse vendor extension as array of VendorAttribute");
+            }
+        } else {
+            panic!("VendorExtension should be present when there are non-tag vendor attributes");
+        }
+
+        // Check that CryptographicAlgorithm is present
+        assert!(
+            result.contains_key("CryptographicAlgorithm"),
+            "CryptographicAlgorithm should be present"
+        );
+
+        // Check that Tag is present (should show parsed tags)
+        assert!(result.contains_key("Tag"), "Tag field should be present");
+    }
+
+    #[test]
+    fn test_vendor_extension_only_tags_filtered_out() {
+        // Create test attributes with vendor extensions containing only tag data
+        let mut attributes = Attributes::default();
+
+        // Add vendor attributes with only tag data
+        let tag_vendor_attr = VendorAttribute {
+            vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
+            attribute_name: VENDOR_ATTR_TAG.to_owned(),
+            attribute_value: VendorAttributeValue::TextString("[\"_cert\"]".to_owned()),
+        };
+
+        attributes.vendor_attributes = Some(vec![tag_vendor_attr]);
+
+        // Test the parsing
+        let result = parse_selected_attributes(&attributes, &[], &[]).unwrap();
+
+        // Check that VendorExtension is not present when only tag data exists
+        assert!(
+            !result.contains_key("VendorExtension"),
+            "VendorExtension should not be present when it would only contain tag data"
+        );
+
+        // Check that Tag is still present
+        assert!(
+            result.contains_key("Tag"),
+            "Tag field should still be present"
+        );
+    }
 }

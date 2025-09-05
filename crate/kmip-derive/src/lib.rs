@@ -3,12 +3,13 @@ use quote::quote;
 use syn::{DeriveInput, parse_macro_input};
 
 /// Serialize a KMIP enum variant with both the variant name and value.
+///
 /// The name and the value are part of the KMIP specification. The name is used
 /// when serializing to TTLV JSON, and the value is used when serializing to TTLV bytes.
 ///
 /// # Usage
 /// ```Rust
-/// #[derive(Deserialize, KmipEnumSerialize, Copy, Clone, strum::IntoStaticStr])
+/// #[derive(Deserialize, KmipEnumSerialize, Copy, Clone, strum::IntoStaticStr)]
 /// #[repr(u32)]
 /// pub enum ObjectType {
 ///   Certificate = 0x00000001,
@@ -64,8 +65,8 @@ pub fn kmip_serialize_derive(input: TokenStream) -> TokenStream {
 
 /// Deserialize a KMIP enum variant from either the variant value or name.
 /// The macro supports deserializing from:
-/// 1. The numeric value (using strum::FromRepr)
-/// 2. The string name (using std::str::FromStr)
+/// 1. The numeric value (using `strum::FromRepr`)
+/// 2. The string name (using `std::str::FromStr`)
 ///
 /// # Usage
 /// ```Rust

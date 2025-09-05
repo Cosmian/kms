@@ -27,6 +27,7 @@ repos:
     hooks:
       - id: markdown-link-check
         args: [-q, --config, .markdown-link-check.json]
+        exclude: .github/copilot-instructions.md
 
   - repo: https://github.com/jumanjihouse/pre-commit-hook-yamlfmt
     rev: 0.2.3
@@ -112,7 +113,7 @@ repos:
         args: [--skip-string-normalization]
 
   - repo: https://github.com/Cosmian/git-hooks.git
-    rev: v1.0.37
+    rev: v1.0.40
     hooks:
       - id: cargo-format
       - id: dprint-toml-fix
@@ -123,6 +124,7 @@ repos:
         stages: [manual]
       - id: cargo-machete
       - id: cargo-build
+      - id: renew-server-cli-doc
       - id: docker-compose-up
       - id: cargo-test
         args: [--, --skip, test_wrap_auth, --skip, google_cse, --skip, hsm]

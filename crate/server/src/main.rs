@@ -17,43 +17,42 @@ use tracing::{debug, info, span};
 #[cfg(feature = "timeout")]
 mod expiry;
 
+/// Get the default `RUST_LOG` configuration if not set
+fn get_default_rust_log() -> String {
+    "info,cosmian=info,cosmian_kms_server=info,actix_web=info,sqlx::query=error,mysql=info"
+        .to_owned()
+}
+
+/// Get the appropriate `rust_log` value, preferring config over environment
+fn get_effective_rust_log(config_rust_log: Option<String>, info_only: bool) -> Option<String> {
+    if info_only {
+        Some("info".to_owned())
+    } else {
+        config_rust_log.or_else(|| {
+            // Only fall back to environment or default if not in config
+            std::env::var("RUST_LOG")
+                .ok()
+                .or_else(|| Some(get_default_rust_log()))
+        })
+    }
+}
+
 /// The main entry point of the program.
 ///
 /// This function sets up the necessary environment variables and logging options,
 /// then parses the command line arguments using [`ClapConfig::parse()`](https://docs.rs/clap/latest/clap/struct.ClapConfig.html#method.parse).
 #[tokio::main]
 async fn main() -> KResult<()> {
-    // Set up environment variables and logging options
-    if std::env::var("RUST_BACKTRACE").is_err() {
-        unsafe {
-            std::env::set_var("RUST_BACKTRACE", "full");
-        }
-    }
-    if std::env::var("RUST_LOG").is_err() {
-        unsafe {
-            std::env::set_var(
-                "RUST_LOG",
-                "info,cosmian=info,cosmian_kms_server=info,actix_web=info,sqlx::query=error,\
-                 mysql=info",
-            );
-        }
-    }
-
     // Load variable from a .env file
     dotenv().ok();
 
     let clap_config = ClapConfig::load_from_file()?;
 
     let info_only = clap_config.info;
-    if info_only {
-        unsafe {
-            std::env::set_var("RUST_LOG", "info");
-        }
-    }
 
     //Initialize the tracing system
     let _otel_guard = tracing_init(&TracingConfig {
-        service_name: "cosmian_kms".to_string(),
+        service_name: "cosmian_kms".to_owned(),
         otlp: clap_config
             .logging
             .otlp
@@ -63,12 +62,12 @@ async fn main() -> KResult<()> {
                 environment: clap_config.logging.environment.clone(),
                 otlp_url: url.to_owned(),
                 enable_metering: clap_config.logging.enable_metering,
-            })
-            .clone(),
+            }),
         no_log_to_stdout: clap_config.logging.quiet,
         #[cfg(not(target_os = "windows"))]
         log_to_syslog: clap_config.logging.log_to_syslog,
-        rust_log: clap_config.logging.rust_log.clone(),
+        // Use safe rust_log configuration without environment variable setting
+        rust_log: get_effective_rust_log(clap_config.logging.rust_log.clone(), info_only),
         log_to_file: clap_config.logging.rolling_log_dir.clone().map(|dir| {
             (
                 dir,
@@ -76,7 +75,7 @@ async fn main() -> KResult<()> {
                     .logging
                     .rolling_log_name
                     .clone()
-                    .unwrap_or("kms".to_owned()),
+                    .unwrap_or_else(|| "kms".to_owned()),
             )
         }),
         with_ansi_colors: clap_config.logging.ansi_colors,
@@ -115,13 +114,13 @@ async fn main() -> KResult<()> {
     // so that we can use the legacy algorithms.
     // particularly those used for old PKCS#12 formats
     #[cfg(feature = "non-fips")]
-    if openssl::version::number() >= 0x30000000 {
+    if openssl::version::number() >= 0x3000_0000 {
         Provider::try_load(None, "legacy", true)
             .context("export: unable to load the openssl legacy provider")?;
     } else {
         // In version < 3.0, we only load the default provider
         Provider::load(None, "default")?;
-    };
+    }
 
     // Instantiate a config object using the env variables and the args of the binary
     debug!("Command line config: {clap_config:#?}");
@@ -155,12 +154,14 @@ async fn main() -> KResult<()> {
 
 #[cfg(feature = "non-fips")]
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use std::path::PathBuf;
 
     use cosmian_kms_server::config::{
-        ClapConfig, GoogleCseConfig, HttpConfig, JwtAuthConfig, LoggingConfig, MainDBConfig,
-        OidcConfig, ProxyConfig, SocketServerConfig, TlsConfig, UiConfig, WorkspaceConfig,
+        ClapConfig, GoogleCseConfig, HttpConfig, IdpAuthConfig, JwtAuthConfig, LoggingConfig,
+        MainDBConfig, OidcConfig, ProxyConfig, SocketServerConfig, TlsConfig, UiConfig,
+        WorkspaceConfig,
     };
 
     #[test]
@@ -180,12 +181,13 @@ mod tests {
             socket_server: SocketServerConfig {
                 socket_server_start: false,
                 socket_server_port: 5696,
-                socket_server_hostname: "0.0.0.0".to_string(),
+                socket_server_hostname: "0.0.0.0".to_owned(),
             },
             tls: TlsConfig {
                 tls_p12_file: Some(PathBuf::from("[tls p12 file]")),
                 tls_p12_password: Some("[tls p12 password]".to_owned()),
                 clients_ca_cert_file: Some(PathBuf::from("[authority cert file]")),
+                tls_cipher_suites: Some("TLS_AES_256_GCM_SHA384,TLS_AES_128_GCM_SHA256".to_owned()),
             },
             http: HttpConfig {
                 port: 443,
@@ -201,14 +203,14 @@ mod tests {
                 proxy_exclusion_list: Some(vec!["domain1".to_owned(), "domain2".to_owned()]),
             },
             auth: JwtAuthConfig {
-                jwt_issuer_uri: Some(vec![
-                    "[jwt issuer uri 1]".to_owned(),
-                    "[jwt issuer uri 2]".to_owned(),
-                ]),
-                jwks_uri: Some(vec!["[jwks uri 1]".to_owned(), "[jwks uri 2]".to_owned()]),
-                jwt_audience: Some(vec![
-                    "[jwt audience 1]".to_owned(),
-                    "[jwt audience 2]".to_owned(),
+                jwt_issuer_uri: Some(vec!["[jwt issuer uri]".to_owned()]),
+                jwks_uri: Some(vec!["[jwks uri]".to_owned()]),
+                jwt_audience: Some(vec!["[jwt audience]".to_owned()]),
+            },
+            idp_auth: IdpAuthConfig {
+                jwt_auth_provider: Some(vec![
+                    "jwt issuer uri 1,jwks uri 1,jwt audience 1".to_owned(),
+                    "jwt issuer uri 2,jwks uri 2,jwt audience 2".to_owned(),
                 ]),
             },
             ui_config: UiConfig {
@@ -250,8 +252,8 @@ mod tests {
                 ansi_colors: false,
             },
             info: false,
-            hsm_model: "".to_string(),
-            hsm_admin: "".to_string(),
+            hsm_model: String::new(),
+            hsm_admin: String::new(),
             hsm_slot: vec![],
             hsm_password: vec![],
             key_encryption_key: Some("key wrapping key".to_owned()),
@@ -289,6 +291,7 @@ socket_server_hostname = "0.0.0.0"
 tls_p12_file = "[tls p12 file]"
 tls_p12_password = "[tls p12 password]"
 clients_ca_cert_file = "[authority cert file]"
+tls_cipher_suites = "TLS_AES_256_GCM_SHA384,TLS_AES_128_GCM_SHA256"
 
 [http]
 port = 443
@@ -301,9 +304,12 @@ proxy_basic_auth_password = "[proxy password]"
 proxy_exclusion_list = ["domain1", "domain2"]
 
 [auth]
-jwt_issuer_uri = ["[jwt issuer uri 1]", "[jwt issuer uri 2]"]
-jwks_uri = ["[jwks uri 1]", "[jwks uri 2]"]
-jwt_audience = ["[jwt audience 1]", "[jwt audience 2]"]
+jwt_issuer_uri = ["[jwt issuer uri]"]
+jwks_uri = ["[jwks uri]"]
+jwt_audience = ["[jwt audience]"]
+
+[idp_auth]
+jwt_auth_provider = ["jwt issuer uri 1,jwks uri 1,jwt audience 1", "jwt issuer uri 2,jwks uri 2,jwt audience 2"]
 
 [ui_config]
 ui_index_html_folder = "[ui index html folder]"

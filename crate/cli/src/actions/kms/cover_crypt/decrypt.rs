@@ -53,9 +53,13 @@ impl DecryptAction {
                 })?,
             )
         } else {
+            let first_file = self
+                .input_files
+                .first()
+                .context("No input files provided")?;
             (
                 CryptographicAlgorithm::CoverCrypt,
-                read_bytes_from_file(&self.input_files[0]).with_context(|| {
+                read_bytes_from_file(first_file).with_context(|| {
                     "Cannot read bytes from encrypted files to LEB-serialize them"
                 })?,
             )
@@ -93,11 +97,11 @@ impl DecryptAction {
         if cryptographic_algorithm == CryptographicAlgorithm::CoverCryptBulk {
             write_bulk_decrypted_data(&cleartext, &self.input_files, self.output_file.as_ref())?;
         } else {
-            write_single_decrypted_data(
-                &cleartext,
-                &self.input_files[0],
-                self.output_file.as_ref(),
-            )?;
+            let first_file = self
+                .input_files
+                .first()
+                .context("No input files provided")?;
+            write_single_decrypted_data(&cleartext, first_file, self.output_file.as_ref())?;
         }
         Ok(())
     }

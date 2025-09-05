@@ -295,7 +295,7 @@ async fn test_rsa_encrypt_decrypt_using_tags() -> KmsCliResult<()> {
     assert!(!output_file.exists());
 
     let (private_key_id, public_key_id) = CreateKeyPairAction {
-        tags: vec!["tag_rsa".to_string()],
+        tags: vec!["tag_rsa".to_owned()],
         ..Default::default()
     }
     .run(ctx.get_owner_client())

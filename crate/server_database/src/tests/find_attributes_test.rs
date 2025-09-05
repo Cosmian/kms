@@ -29,8 +29,6 @@ pub(crate) async fn find_attributes<DB: ObjectsStore>(
     let mut rng = CsRng::from_entropy();
     let owner = "eyJhbGciOiJSUzI1Ni";
 
-    //
-
     let mut symmetric_key_bytes = vec![0; 32];
     rng.fill_bytes(&mut symmetric_key_bytes);
 

@@ -1,32 +1,3 @@
-#![deny(
-    nonstandard_style,
-    refining_impl_trait,
-    future_incompatible,
-    keyword_idents,
-    let_underscore,
-    unreachable_pub,
-    unused,
-    clippy::all,
-    clippy::suspicious,
-    clippy::complexity,
-    clippy::perf,
-    clippy::style,
-    clippy::pedantic,
-    clippy::cargo,
-    clippy::nursery,
-
-    // restriction lints
-    clippy::map_err_ignore,
-    clippy::print_stdout,
-    clippy::redundant_clone
-)]
-#![allow(
-    clippy::module_name_repetitions,
-    clippy::too_many_lines,
-    clippy::cargo_common_metadata,
-    clippy::multiple_crate_versions,
-    clippy::redundant_pub_crate
-)]
 pub mod actions;
 pub mod error;
 
@@ -37,4 +8,13 @@ pub mod reexport {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::panic_in_result_fn,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::string_to_string,
+    clippy::str_to_string,
+    clippy::assertions_on_result_states
+)]
 mod tests;

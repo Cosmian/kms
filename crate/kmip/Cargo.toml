@@ -6,7 +6,12 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+keywords.workspace = true
+categories.workspace = true
 description = "Cosmian KMIP library"
+
+[lints]
+workspace = true
 
 [lib]
 # doc test linking as a separate binary is extremely slow
@@ -18,9 +23,10 @@ doctest = false
 non-fips = []
 
 [dependencies]
+base64 = { workspace = true }
 bitflags = { workspace = true }
 hex = { workspace = true, features = ["std"] }
-kmip-derive = { path = "../kmip-derive", version = "5.7.1" }
+kmip-derive = { path = "../kmip-derive", version = "5.8.0" }
 leb128 = { workspace = true }
 num-bigint-dig = { workspace = true, features = [
   "std",

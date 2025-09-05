@@ -60,7 +60,7 @@ pub(crate) async fn import_root_and_intermediate(
             input_format: CertificateInputFormat::Pem,
             certificate_id: Some(Uuid::new_v4().to_string()),
             replace_existing: true,
-            tags: vec!["root_ca".to_string()],
+            tags: vec!["root_ca".to_owned()],
             ..Default::default()
         }
         .run(ctx.get_owner_client()),
@@ -78,7 +78,7 @@ pub(crate) async fn import_root_and_intermediate(
             pkcs12_password: Some("secret".to_owned()),
             certificate_id: Some(Uuid::new_v4().to_string()),
             replace_existing: true,
-            tags: vec!["intermediate_ca".to_string()],
+            tags: vec!["intermediate_ca".to_owned()],
             ..Default::default()
         }
         .run(ctx.get_owner_client()),
@@ -105,7 +105,7 @@ async fn fetch_certificate(
     debug!("exporting certificate: new_cert: {:?}", exported_cert_file);
     ExportCertificateAction {
         certificate_file: exported_cert_file.clone(),
-        certificate_id: Some(certificate_id.to_string()),
+        certificate_id: Some(certificate_id.to_owned()),
         output_format: CertificateExportFormat::JsonTtlv,
         allow_revoked: true,
         ..Default::default()
@@ -726,7 +726,7 @@ async fn test_certify_twice() -> KmsCliResult<()> {
     let certificate_id = CertifyAction {
         generate_key_pair: true,
         algorithm: Algorithm::NistP256,
-        subject_name: Some("C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_string()),
+        subject_name: Some("C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_owned()),
         ..Default::default()
     }
     .run(ctx.get_owner_client())
@@ -742,7 +742,7 @@ async fn test_certify_twice() -> KmsCliResult<()> {
         certificate_id: Some(certificate_id.clone()),
         generate_key_pair: true,
         algorithm: Algorithm::NistP256,
-        subject_name: Some("C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_string()),
+        subject_name: Some("C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_owned()),
         ..Default::default()
     }
     .run(ctx.get_owner_client())
