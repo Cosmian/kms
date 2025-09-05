@@ -9,6 +9,7 @@ rust-version.workspace = true
 keywords.workspace = true
 categories.workspace = true
 description = "Cosmian Key Management Service"
+exclude = ["ui/", "ui_non_fips/", "cosmian-kms/", ".vscode/"]
 
 [lints]
 workspace = true
