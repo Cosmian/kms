@@ -73,8 +73,7 @@ impl KMS {
             }
             Some(Err(e)) => {
                 return Err(KmsError::Database(DbError::UnwrappedCache(format!(
-                    "Error retrieving cached object for {}: {}",
-                    uid, e
+                    "Error retrieving cached object for {uid}: {e}",
                 ))));
             }
             None => {
@@ -99,7 +98,7 @@ impl KMS {
             .map(|u| u.unwrapped_object().to_owned())
             .map_err(|e| {
                 // an error reference is returned, but we need an owned one
-                KmsError::Database(DbError::UnwrappedCache(format!("Unwrapping error: {}", e)))
+                KmsError::Database(DbError::UnwrappedCache(format!("Unwrapping error: {e}")))
             });
         // update cache if there is one
         self.database

@@ -196,12 +196,13 @@ impl SocketServer {
                 listener
             }
             Err(e) => {
+                let error_msg = e.to_string(); // keep the message before moving the error
                 if let Some(notifier) = start_notifier {
                     notifier
-                        .send(Err(e.clone()))
+                        .send(Err(e))
                         .context("Failed to notify the error on socket server start")?;
                 }
-                kms_bail!("Failed to bind to {addr}: {}", e);
+                kms_bail!("Failed to bind to {addr}: {}", error_msg);
             }
         };
 
