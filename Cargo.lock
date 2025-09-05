@@ -4818,6 +4818,7 @@ dependencies = [
  "cosmian_logger 0.3.1",
  "libloading",
  "pkcs11-sys",
+ "rand 0.9.2",
  "tracing",
  "uuid",
 ]
@@ -4861,6 +4862,7 @@ dependencies = [
  "cosmian_logger 0.3.1",
  "libloading",
  "pkcs11-sys",
+ "rand 0.9.2",
  "tracing",
  "uuid",
 ]

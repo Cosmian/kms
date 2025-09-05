@@ -36,6 +36,7 @@
 //! ```
 
 use std::{ptr, sync::Arc};
+use std::cmp::min;
 use std::sync::Mutex;
 use cosmian_kms_interfaces::{
     CryptoAlgorithm, EncryptedContent, HsmObject, HsmObjectFilter, KeyMaterial, KeyMetadata,
@@ -43,7 +44,7 @@ use cosmian_kms_interfaces::{
 };
 use pkcs11_sys::{CK_AES_GCM_PARAMS, CK_ATTRIBUTE, CK_BBOOL, CK_FALSE, CK_KEY_TYPE, CK_MECHANISM, CK_OBJECT_CLASS, CK_OBJECT_HANDLE, CK_RSA_PKCS_OAEP_PARAMS, CK_SESSION_HANDLE, CK_TRUE, CK_ULONG, CK_VOID_PTR, CKA_CLASS, CKA_COEFFICIENT, CKA_EXPONENT_1, CKA_EXPONENT_2, CKA_KEY_TYPE, CKA_LABEL, CKA_MODULUS, CKA_PRIME_1, CKA_PRIME_2, CKA_PRIVATE_EXPONENT, CKA_PUBLIC_EXPONENT, CKA_SENSITIVE, CKA_VALUE, CKA_VALUE_LEN, CKG_MGF1_SHA1, CKG_MGF1_SHA256, CKK_AES, CKK_RSA, CKK_VENDOR_DEFINED, CKM_AES_GCM, CKM_AES_CBC, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP, CKM_SHA_1, CKM_SHA256, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKO_SECRET_KEY, CKO_VENDOR_DEFINED, CKR_ATTRIBUTE_SENSITIVE, CKR_OBJECT_HANDLE_INVALID, CKR_OK, CKZ_DATA_SPECIFIED, CK_MECHANISM_TYPE, CK_RSA_PKCS_MGF_TYPE, CKM_SHA384, CKG_MGF1_SHA384, CKM_SHA512, CKG_MGF1_SHA512};
 use rand::{TryRngCore, rngs::OsRng};
-use tracing::debug;
+use tracing::{debug, trace};
 use zeroize::Zeroizing;
 use cosmian_kms_interfaces::KeyType::{AesKey, RsaPrivateKey, RsaPublicKey};
 pub use crate::session::{aes::AesKeySize, rsa::RsaKeySize};
@@ -51,7 +52,7 @@ use crate::{HError, HResult, ObjectHandlesCache};
 use uuid::Uuid;
 
 /// Generate a random nonce of size T
-/// This function is used to generate a random nonce for the AES GCM encryption
+/// This function is used to generate a random nonce for the AES GCM or a random IV for AES CBC encryption
 fn generate_random_nonce<const T: usize>() -> HResult<[u8; T]> {
     let mut bytes = [0u8; T];
     OsRng
@@ -61,6 +62,7 @@ fn generate_random_nonce<const T: usize>() -> HResult<[u8; T]> {
 }
 
 /// Encryption algorithm supported by the HSM
+#[derive(Debug)]
 pub enum HsmEncryptionAlgorithm {
     AesCbc,
     AesGcm,
@@ -108,6 +110,8 @@ impl From<CryptoAlgorithm> for HsmEncryptionAlgorithm {
 /// ## Cryptographic Operations
 /// * `encrypt()` - Encrypts data using specified algorithm
 /// * `decrypt()` - Decrypts data using specified algorithm
+/// * `encrypt_aes_cbc_multi_round` - Encrypt data using AES-CBC in multiple rounds
+/// * `decrypt_aes_cbc_multi_round` - Decrypt data using AES-CBC in multiple rounds
 /// * `generate_random()` - Generates random data
 /// * `get_supported_oaep_hash` - List the supported OAEP hashing algorithms
 ///
@@ -126,7 +130,7 @@ impl From<CryptoAlgorithm> for HsmEncryptionAlgorithm {
 /// * `call_get_attributes()` - Helper for retrieving object attributes
 /// * `pkcs7_pad()` - Apply PKCS#7 padding to the input data
 /// * `pkcs7_unpad()` - Remove PKCS#7 padding from the input data.
-/// * `find_object_handles` - Rretrieve object handles that match the provided attribute template
+/// * `find_object_handles` - retrieve object handles that match the provided attribute template
 ///
 /// # Safety
 /// Many methods in this implementation contain unsafe blocks as they interact with
@@ -610,7 +614,9 @@ impl Session {
             }
             HsmEncryptionAlgorithm::AesCbc => {
                 let mut iv = generate_random_nonce::<16>()?;
-
+                if plaintext.len() > 1024 {
+                    return self.encrypt_aes_cbc_multi_round(key_handle, iv, plaintext, 1024);
+                }
                 let mut mechanism = CK_MECHANISM {
                     mechanism: CKM_AES_CBC,
                     pParameter: iv.as_mut_ptr() as CK_VOID_PTR,
@@ -727,7 +733,9 @@ impl Session {
                 let mut iv: [u8; 16] = ciphertext[..16]
                     .try_into()
                     .map_err(|_| HError::Default("Invalid AES CBC IV".to_string()))?;
-
+                if ciphertext.len() > 1040 {
+                    return self.decrypt_aes_cbc_multi_round(key_handle, &iv, &ciphertext[16..], 1024);
+                }
                 let mut mechanism = CK_MECHANISM {
                     mechanism: CKM_AES_CBC,
                     pParameter: iv.as_mut_ptr() as CK_VOID_PTR,
@@ -781,6 +789,153 @@ impl Session {
         }
     }
 
+    /// Encrypt data using AES-CBC in multiple rounds with PKCS#7 padding.
+    ///
+    /// This function performs AES-CBC encryption of the given plaintext, splitting
+    /// the operation into multiple rounds if the input exceeds `max_round_length`.
+    /// This is useful for large data sets where encrypting in one call would exceed
+    /// the module's limits.
+    ///
+    /// Multiple rounds can be performed without compromising security because
+    /// each block of ciphertext becomes the initialization vector (IV) for the
+    /// next block. This function preserves that property by carrying forward the
+    /// final ciphertext block of one round as the IV for the next round. As a result,
+    /// the ciphertext produced by multi-round encryption is bit-for-bit identical
+    /// to what would be produced by a single-shot AES-CBC encryption with the same
+    /// key, IV, and plaintext without compromising secrets in any way.
+    ///
+    /// # Arguments
+    /// * `key_handle` - The handle of the AES key object to encrypt with.
+    /// * `iv` - A 16-byte initialization vector.
+    /// * `plaintext` - The data to be encrypted.
+    /// * `max_round_length` - The maximum number of bytes to process per round (must be a multiple of 16).
+    ///
+    /// # Returns
+    /// * `HResult<EncryptedContent>` - A result containing the encrypted data and IV.
+    ///
+    /// # Errors
+    /// * Returns an error if `max_round_length` is less than 16 or not a multiple of 16.
+    /// * Returns an error if the HSM encryption operation fails during any round.
+    ///
+    /// # Safety
+    /// This function calls unsafe FFI functions to perform encryption via the HSM library.
+    pub fn encrypt_aes_cbc_multi_round(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+        iv: [u8; 16],
+        plaintext: &[u8],
+        max_round_length: usize,
+    ) -> HResult<EncryptedContent> {
+        if max_round_length < 16 {
+            return Err(HError::Default("Too small maximum round length".to_string()));
+        }
+        if max_round_length%16 != 0 {
+            return Err(HError::Default("Round length must be multiple of block size (16)".to_string()));
+        }
+        let padded_plaintext = self.pkcs7_pad(plaintext.to_vec(), 16);
+        let mut round_iv = iv.clone();
+        let total_length = padded_plaintext.len();
+        let mut processed_length = 0;
+        let mut ciphertext:Vec<u8> = Vec::with_capacity(total_length);
+
+        loop {
+            let round_length = min(total_length - processed_length, max_round_length);
+            if round_length == 0 {break};
+            trace!("Doing round with {round_length} bytes. {processed_length} of {total_length} done");
+            let mut mechanism = CK_MECHANISM {
+                mechanism: CKM_AES_CBC,
+                pParameter: round_iv.as_mut_ptr() as CK_VOID_PTR,
+                ulParameterLen: iv.len() as CK_ULONG,
+            };
+            let round_ciphertext = self.encrypt_with_mechanism(
+                key_handle, &mut mechanism, &padded_plaintext.as_slice()[processed_length..processed_length + round_length])?;
+            for i in 0..iv.len() {
+                round_iv[i]=round_ciphertext[round_ciphertext.len()-iv.len()+i];
+            }
+            ciphertext.append(&mut round_ciphertext.clone());
+            processed_length += round_length;
+        }
+        Ok(EncryptedContent {
+            iv: Some(iv.to_vec()),
+            ciphertext, // no separate tag for CBC
+            tag: None,
+        })
+    }
+
+    /// Decrypt data using AES-CBC in multiple rounds before removing PKCS#7 padding.
+    ///
+    /// This function performs AES-CBC decryption of the given ciphertext, splitting
+    /// the operation into multiple rounds if the input exceeds `max_round_length`.
+    /// This is useful for large ciphertexts where decrypting in one call would exceed
+    /// the module's limits.
+    ///
+    /// For more details see [Session::encrypt_aes_cbc_multi_round].
+    ///
+    /// # Arguments
+    /// * `key_handle` - The handle to the AES key object stored in the HSM.
+    /// * `iv` - A 16-byte initialization vector.
+    /// * `ciphertext` - The data to decrypt (must be a multiple of the AES block size, 16 bytes).
+    /// * `max_round_length` - The maximum number of bytes to process per round (must be a multiple of 16).
+    ///
+    /// # Returns
+    /// * `HResult<Zeroizing<Vec<u8>>>` - A result containing the decrypted plaintext.
+    ///
+    /// # Errors
+    /// * Returns an error if `max_round_length` is less than 16 or not a multiple of 16.
+    /// * Returns an error if the ciphertext length is not a multiple of 16.
+    /// * Returns an error if the IV length is not exactly 16 bytes.
+    /// * Returns an error if PKCS#7 unpadding fails.
+    /// * Returns an error if the HSM decryption operation fails during any round.
+    ///
+    /// # Safety
+    /// This function calls unsafe FFI functions to perform decryption via the HSM library.
+    pub fn decrypt_aes_cbc_multi_round(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+        iv: &[u8],
+        ciphertext: &[u8],
+        max_round_length: usize,
+    ) -> HResult<Zeroizing<Vec<u8>>> {
+        if max_round_length < 16 {
+            return Err(HError::Default("Too small maximum round length".to_string()));
+        }
+        if max_round_length%16 != 0 {
+            return Err(HError::Default("Round length must be multiple of block size (16)".to_string()));
+        }
+        if ciphertext.len() % 16 != 0 {
+            return Err(HError::Default("AES CBC ciphertext must be multiple of block size (16)".to_string()));
+        }
+        if iv.len() != 16 {
+            return Err(HError::Default("Wrong IV length. Must be block size (16)".to_string()));
+        }
+
+        let mut round_iv: [u8; 16] = iv[..16].try_into()
+            .map_err(|_| HError::Default("Invalid IV".to_string()))?;
+        let total_length = ciphertext.len();
+        let mut processed_length = 0;
+        let mut plaintext:Zeroizing<Vec<u8>> = Zeroizing::new(Vec::with_capacity(total_length));
+
+        loop {
+            let round_length = min(total_length - processed_length, max_round_length);
+            if round_length == 0 {break};
+            trace!("Doing round with {round_length} bytes. {processed_length} of {total_length} done");
+            let mut mechanism = CK_MECHANISM {
+                mechanism: CKM_AES_CBC,
+                pParameter: round_iv.as_mut_ptr() as CK_VOID_PTR,
+                ulParameterLen: iv.len() as CK_ULONG,
+            };
+            let round_plaintext = self.decrypt_with_mechanism(
+                key_handle, &mut mechanism, &ciphertext[processed_length..processed_length + round_length])?;
+
+            plaintext.append(&mut round_plaintext.clone());
+            processed_length += round_length;
+            for i in 0..iv.len() {
+                round_iv[i]=ciphertext[processed_length-iv.len()+i];
+            }
+        }
+        Ok(self.pkcs7_unpad(plaintext, 16)?)
+    }
+
     fn encrypt_with_mechanism(
         &self,
         key_handle: CK_OBJECT_HANDLE,
@@ -830,7 +985,7 @@ impl Session {
                 &raw mut encrypted_data_len,
             );
             if rv != CKR_OK {
-                return Err(HError::Default("Failed to encrypt data".to_string()));
+                return Err(HError::Default(format!("Failed to encrypt data: {rv}")));
             }
 
             encrypted_data.truncate(encrypted_data_len as usize);
@@ -885,7 +1040,7 @@ impl Session {
                 &raw mut decrypted_data_len,
             );
             if rv != CKR_OK {
-                return Err(HError::Default("Failed to decrypt data".to_string()));
+                return Err(HError::Default(format!("Failed to decrypt data: {rv}")));
             }
 
             decrypted_data.truncate(decrypted_data_len as usize);

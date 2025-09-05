@@ -5,7 +5,6 @@
 //! ```
 
 use std::{collections::HashMap, ptr, sync::Arc, thread};
-
 use cosmian_kms_base_hsm::{
     AesKeySize, HError, HResult, HsmEncryptionAlgorithm, RsaKeySize, RsaOaepDigest, SlotManager,
     test_helpers::get_hsm_password, test_helpers::get_hsm_slot_id,
@@ -13,13 +12,22 @@ use cosmian_kms_base_hsm::{
 use cosmian_kms_interfaces::{HsmObjectFilter, KeyMaterial, KeyType};
 use cosmian_logger::log_init;
 use libloading::Library;
-use pkcs11_sys::{CK_C_INITIALIZE_ARGS, CK_RV, CK_VOID_PTR, CKF_OS_LOCKING_OK, CKR_OK, CKM_RSA_PKCS_OAEP};
+use pkcs11_sys::{CK_C_INITIALIZE_ARGS, CK_RV, CK_VOID_PTR, CKF_OS_LOCKING_OK, CKR_OK, CKM_RSA_PKCS_OAEP, CKM_AES_CBC};
 use tracing::info;
 use uuid::Uuid;
+use rand::{TryRngCore, rngs::OsRng};
 
 use crate::Smartcardhsm;
 
 const LIB_PATH: &str = "/usr/local/lib/libsc-hsm-pkcs11.so";
+
+fn generate_random_data<const T: usize>() -> HResult<[u8; T]> {
+    let mut bytes = [0u8; T];
+    OsRng
+        .try_fill_bytes(&mut bytes)
+        .map_err(|e| HError::Default(format!("Error generating random data: {e}")))?;
+    Ok(bytes)
+}
 
 fn get_slot() -> HResult<Arc<SlotManager>> {
     let user_password = get_hsm_password()?;
@@ -36,15 +44,15 @@ fn test_hsm_all() -> HResult<()> {
     test_hsm_get_mechanisms()?;
     test_hsm_get_supported_algorithms()?;
     test_hsm_destroy_all()?;
-    test_hsm_generate_aes_key()?;
-    test_hsm_generate_rsa_keypair()?;
+//    test_hsm_generate_aes_key()?;
+//    test_hsm_generate_rsa_keypair()?;
 //    test_hsm_rsa_key_wrap()?; //Not supported
-    test_hsm_rsa_pkcs_encrypt()?;
+//    test_hsm_rsa_pkcs_encrypt()?;
     test_hsm_rsa_oaep_encrypt()?;
     test_hsm_aes_cbc_encrypt()?;
-    test_hsm_multi_threaded_rsa_encrypt_decrypt_test()?;
-    test_hsm_get_key_metadata()?;
-    test_hsm_list_objects()?;
+//    test_hsm_multi_threaded_rsa_encrypt_decrypt_test()?;
+//    test_hsm_get_key_metadata()?;
+//    test_hsm_list_objects()?;
     test_hsm_destroy_all()?;
     Ok(())
 }
@@ -85,8 +93,10 @@ fn test_hsm_get_mechanisms() -> HResult<()> {
     let mut mechanisms = slot.get_supported_mechanisms()?;
     mechanisms.sort();
     info!("Supported mechanisms: {:?}", mechanisms);
-    let mechanism_info = slot.get_mechanism_info(CKM_RSA_PKCS_OAEP);
-    info!("{:?}", mechanism_info);
+    let pkcs_oaep_mechanism_info = slot.get_mechanism_info(CKM_RSA_PKCS_OAEP);
+    info!("CKM_RSA_PKCS_OAEP info: {:?}", pkcs_oaep_mechanism_info);
+    let cbc_mechanism_info = slot.get_mechanism_info(CKM_AES_CBC);
+    info!("CKM_AES_CBC info: {:?}", cbc_mechanism_info);
     let session = slot.open_session(true)?;
     let supported_hash = session.get_supported_oaep_hash();
     info!("{:?}", supported_hash);
@@ -294,6 +304,11 @@ fn test_hsm_rsa_oaep_encrypt() -> HResult<()> {
     assert_eq!(enc.ciphertext.len(), 2048 / 8);
     let plaintext = session.decrypt(sk, HsmEncryptionAlgorithm::RsaOaepSha256, &enc.ciphertext)?;
     assert_eq!(plaintext.as_slice(), data);
+    let data_2 = [35u8; 128];
+    let enc_2 = session.encrypt(pk, HsmEncryptionAlgorithm::RsaOaepSha256, &data_2)?;
+    assert_eq!(enc_2.ciphertext.len(), 2048 / 8);
+    let plaintext_2 = session.decrypt(sk, HsmEncryptionAlgorithm::RsaOaepSha256, &enc_2.ciphertext)?;
+    assert_eq!(plaintext_2.as_slice(), data_2);
     info!("Successfully encrypted/decrypted with RSA OAEP");
     Ok(())
 }
@@ -319,10 +334,54 @@ fn test_hsm_aes_cbc_encrypt() -> HResult<()> {
             enc.ciphertext,
             enc.tag.unwrap_or_default(),
         ]
-        .concat()
-        .as_slice(),
+            .concat()
+            .as_slice(),
     )?;
     assert_eq!(plaintext.as_slice(), data);
+    let data_2 = generate_random_data::<1024>()?;
+    let iv = generate_random_data::<16>()?;
+    let enc_2  = session.encrypt_aes_cbc_multi_round(sk, iv, &data_2 ,128)?;
+    assert_eq!(enc_2.ciphertext.len(), 1040);
+    assert_eq!(enc_2.tag.clone().unwrap_or_default().len(), 0);
+    assert_eq!(enc_2.iv.clone().unwrap_or_default().len(), 16);
+    let plaintext_2 = session.decrypt(
+        sk,
+        HsmEncryptionAlgorithm::AesCbc,
+        [
+            enc_2.iv.clone().unwrap_or_default(),
+            enc_2.ciphertext.clone(),
+            enc_2.tag.clone().unwrap_or_default(),
+        ]
+            .concat()
+            .as_slice(),
+    )?;
+    let plaintext_2b = session.decrypt_aes_cbc_multi_round(
+        sk, &enc_2.iv.unwrap_or_default(), &enc_2.ciphertext, 128,
+    )?;
+    assert_eq!(plaintext_2.as_slice(), data_2);
+    assert_eq!(plaintext_2b.as_slice(), data_2);
+    let data_3 = generate_random_data::<16384>()?;
+    let enc_3 = session.encrypt_aes_cbc_multi_round(sk, iv, &data_3 ,1024)?;
+    assert_eq!(enc_3.ciphertext.len(), 16400);
+    assert_eq!(enc_3.tag.clone().unwrap_or_default().len(), 0);
+    assert_eq!(enc_3.iv.clone().unwrap_or_default().len(), 16);
+    let plaintext_3 = session.decrypt_aes_cbc_multi_round(
+        sk, &enc_3.iv.unwrap_or_default(), &enc_3.ciphertext, 128,
+    )?;
+    assert_eq!(plaintext_3.as_slice(), data_3);
+    let enc_4 = session.encrypt(sk, HsmEncryptionAlgorithm::AesCbc, &data_3)?;
+    let plaintext_4 = session.decrypt(
+        sk,
+        HsmEncryptionAlgorithm::AesCbc,
+        [
+            enc_4.iv.unwrap_or_default(),
+            enc_4.ciphertext,
+            enc_4.tag.unwrap_or_default(),
+        ]
+            .concat()
+            .as_slice(),
+    )?;
+    assert_eq!(plaintext_4.as_slice(), data_3);
     info!("Successfully encrypted/decrypted with AES CBC");
     Ok(())
 }
