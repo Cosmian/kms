@@ -9,6 +9,7 @@ rust-version.workspace = true
 keywords.workspace = true
 categories.workspace = true
 description = "Cosmian Key Management Service"
+exclude = ["ui/", "ui_non_fips/", "cosmian-kms/", ".vscode/"]
 
 [lints]
 workspace = true
@@ -56,8 +57,8 @@ clap = { workspace = true, features = [
   "derive",
   "cargo",
 ] }
-cosmian_kms_access = { path = "../access", version = "5.8.0" }
-cosmian_kms_server_database = { path = "../server_database", version = "5.8.0" }
+cosmian_kms_access = { path = "../access", version = "5.8.1" }
+cosmian_kms_server_database = { path = "../server_database", version = "5.8.1" }
 cosmian_logger = { workspace = true }
 dotenvy = "0.15"
 futures = "0.3"
@@ -73,7 +74,7 @@ num-bigint-dig = { workspace = true, features = [
 openidconnect = { version = "4.0", features = ["reqwest", "native-tls"] }
 openssl = { workspace = true }
 pem.workspace = true
-proteccio_pkcs11_loader = { path = "../hsm/proteccio", version = "5.8.0" }
+proteccio_pkcs11_loader = { path = "../hsm/proteccio", version = "5.8.1" }
 # Important: align the rustls version with reqwest rustls dependency
 # When using client certificate authentication, reqwest will use the
 # native-tls crate to create an Identity; this will be different backend
@@ -88,7 +89,7 @@ reqwest = { workspace = true, features = [
 ] }
 serde = { workspace = true }
 serde_json = { workspace = true }
-softhsm2_pkcs11_loader = { path = "../hsm/softhsm2", version = "5.8.0" }
+softhsm2_pkcs11_loader = { path = "../hsm/softhsm2", version = "5.8.1" }
 strum = { workspace = true, features = ["std", "derive", "strum_macros"] }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["local-offset", "formatting"] }
@@ -96,14 +97,14 @@ tokio = { workspace = true, features = ["full"] }
 toml = "0.8"
 tracing = { workspace = true }
 url = { workspace = true }
-utimaco_pkcs11_loader = { path = "../hsm/utimaco", version = "5.8.0" }
+utimaco_pkcs11_loader = { path = "../hsm/utimaco", version = "5.8.1" }
 uuid = { workspace = true, features = ["v4"] }
 x509-parser = { workspace = true }
 zeroize = { workspace = true }
 
 [dev-dependencies]
 actix-http = "3.10"
-cosmian_kms_client_utils = { path = "../client_utils", version = "5.8.0" }
+cosmian_kms_client_utils = { path = "../client_utils", version = "5.8.1" }
 cosmian_logger = { workspace = true }
 native-tls = { workspace = true }
 pem = { workspace = true }

@@ -17,8 +17,8 @@ description = "Utimaco HSM PKCS#11 loader"
 doctest = false
 
 [dependencies]
-cosmian_kms_base_hsm = { path = "../base_hsm", version = "5.8.0" }
-cosmian_kms_interfaces = { path = "../../interfaces", version = "5.8.0" }
+cosmian_kms_base_hsm = { path = "../base_hsm", version = "5.8.1" }
+cosmian_kms_interfaces = { path = "../../interfaces", version = "5.8.1" }
 libloading = { workspace = true }
 pkcs11-sys = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }

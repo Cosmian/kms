@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.8.1] - 2025-09-05
+
+### 🐛 Bug Fixes
+
+- Server crate publish (#534)
+
 ## [5.8.0] - 2025-09-05
 
 ### 🚀 Features
