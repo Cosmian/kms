@@ -27,6 +27,7 @@ repos:
     hooks:
       - id: markdown-link-check
         args: [-q, --config, .markdown-link-check.json]
+        exclude: .github/copilot-instructions.md
 
   - repo: https://github.com/jumanjihouse/pre-commit-hook-yamlfmt
     rev: 0.2.3

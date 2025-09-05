@@ -10,9 +10,12 @@ NEW_VERSION="$2"
 if command -v gsed >/dev/null 2>&1; then
   SED_BINARY="gsed"
   SED_IN_PLACE=(-i)
-else
+elif [[ "$OSTYPE" == "darwin"* ]]; then
   SED_BINARY="sed"
   SED_IN_PLACE=(-i "")
+else
+  SED_BINARY="sed"
+  SED_IN_PLACE=(-i)
 fi
 
 ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" Cargo.toml
@@ -42,6 +45,9 @@ ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" documentation
 ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" README.md
 ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" version
 ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" .github/copilot-instructions.md
+
+bash .github/scripts/build_ui.sh
+FEATURES="non-fips" bash .github/scripts/build_ui.sh
 
 cargo build
 git cliff -u -p CHANGELOG.md -t "$NEW_VERSION"

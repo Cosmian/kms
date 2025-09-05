@@ -83,7 +83,7 @@ The KMS has extensive online [documentation](https://docs.cosmian.com/key_manage
 
 ## Quick start
 
-Pre-built binaries [are available](https://package.cosmian.com/kms/5.7.1/)
+Pre-built binaries [are available](https://package.cosmian.com/kms/5.8.0/)
 for Linux, MacOS, and Windows, as well as Docker images. To run the server binary, OpenSSL must be
 available in your path (see "building the KMS" below for details); other binaries do not have this
 requirement.
@@ -275,6 +275,7 @@ docker buildx build --build-arg FIPS="true" -t kms .
 ## Running the unit and integration tests
 
 Pull the test data using:
+
 ```sh
 git submodule update --init --recursive
 ```

@@ -46,13 +46,13 @@ Always reference these instructions first and fallback to search or bash command
     - ALWAYS build first using the build script above
     - Debug mode: `./target/x86_64-unknown-linux-gnu/debug/cosmian_kms --database-type sqlite --sqlite-path /tmp/kms-data`
     - Release mode: `./target/x86_64-unknown-linux-gnu/release/cosmian_kms --database-type sqlite --sqlite-path /tmp/kms-data`
-    - Server listens on http://0.0.0.0:9998 by default
+    - Server listens on <http://0.0.0.0:9998> by default
     - Supported databases: sqlite, postgresql, mysql, redis-findex (redis-findex not available in FIPS mode)
 
 - **Docker usage:**
     - Development with services: `docker compose up -d` (starts postgresql, mysql, redis)
     - Production: `docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest`
-    - Pre-built images include UI at http://localhost:9998/ui
+    - Pre-built images include UI at <http://localhost:9998/ui>
     - Local Docker builds use the same OpenSSL setup as CI
 
 ## Validation
@@ -60,7 +60,7 @@ Always reference these instructions first and fallback to search or bash command
 - **CRITICAL**: Always manually test server functionality after making changes by starting the server and verifying it responds to HTTP requests
 - Test server startup: Start server with `--database-type sqlite --sqlite-path /tmp/test-db`
 - Test API responses: `curl -s -X POST -H "Content-Type: application/json" -d '{}' http://localhost:9998/kmip/2_1` should return KMIP validation error (confirms server is working)
-- Test server version: `./target/x86_64-unknown-linux-gnu/release/cosmian_kms --version` should show version 5.7.1
+- Test server version: `./target/x86_64-unknown-linux-gnu/release/cosmian_kms --version` should show version 5.8.0
 - OpenSSL validation: `./target/x86_64-unknown-linux-gnu/release/cosmian_kms --info` should show OpenSSL 3.2.0
 - Static linking check: `ldd ./target/x86_64-unknown-linux-gnu/release/cosmian_kms | grep ssl` should return empty (no dynamic OpenSSL)
 - Always run `cargo fmt --check` before committing (takes 3 seconds)
@@ -154,7 +154,7 @@ curl -s -X POST -H "Content-Type: application/json" -d '{}' http://localhost:999
 
 # Check version and OpenSSL
 ./target/x86_64-unknown-linux-gnu/release/cosmian_kms --version
-# Expected: "cosmian_kms_server 5.7.1"
+# Expected: "cosmian_kms_server 5.8.0"
 
 ./target/x86_64-unknown-linux-gnu/release/cosmian_kms --info
 # Expected: Output containing "OpenSSL 3.2.0"
