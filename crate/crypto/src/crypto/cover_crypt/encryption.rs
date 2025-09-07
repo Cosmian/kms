@@ -141,7 +141,7 @@ impl EncryptionSystem for CoverCryptEncryption {
     fn encrypt(&self, request: &Encrypt) -> Result<EncryptResponse, CryptoError> {
         let ad = request.authenticated_encryption_additional_data.as_deref();
 
-        trace!("encryption_policy: {ad:?}",);
+        trace!("authenticated_encryption_additional_data: {ad:?}",);
 
         let encrypted_data =
             request
