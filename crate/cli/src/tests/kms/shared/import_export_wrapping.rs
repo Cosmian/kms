@@ -22,9 +22,9 @@ use cosmian_kms_crypto::{
         reexport::rand_core::{RngCore, SeedableRng},
     },
 };
+use cosmian_logger::{debug, trace};
 use tempfile::TempDir;
 use test_kms_server::{TestsContext, start_default_test_kms_server};
-use tracing::{debug, trace};
 
 use crate::{
     actions::kms::{

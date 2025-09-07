@@ -1,12 +1,12 @@
 use std::fmt::{self, Display};
 
+use cosmian_logger::trace;
 use num_bigint_dig::BigInt;
 use serde::{
     Deserialize, Serialize,
     de::{MapAccess, Visitor},
 };
 use strum::VariantNames;
-use tracing::trace;
 
 #[allow(clippy::wildcard_imports)]
 use super::{kmip_data_structures::KeyBlock, kmip_types::*};

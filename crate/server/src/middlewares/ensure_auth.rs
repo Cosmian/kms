@@ -18,11 +18,11 @@ use actix_web::{
     body::{BoxBody, EitherBody},
     dev::{ServiceRequest, ServiceResponse},
 };
+use cosmian_logger::{debug, error};
 use futures::{
     Future,
     future::{Ready, ok},
 };
-use tracing::{debug, error};
 
 use crate::{core::KMS, middlewares::AuthenticatedUser};
 

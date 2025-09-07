@@ -41,6 +41,7 @@ use cosmian_kms_interfaces::{
     CryptoAlgorithm, EncryptedContent, HsmObject, HsmObjectFilter, KeyMaterial, KeyMetadata,
     KeyType, RsaPrivateKeyMaterial, RsaPublicKeyMaterial,
 };
+use cosmian_logger::debug;
 use pkcs11_sys::{
     CK_AES_GCM_PARAMS, CK_ATTRIBUTE, CK_BBOOL, CK_FALSE, CK_KEY_TYPE, CK_MECHANISM,
     CK_OBJECT_CLASS, CK_OBJECT_HANDLE, CK_RSA_PKCS_OAEP_PARAMS, CK_SESSION_HANDLE, CK_TRUE,
@@ -52,7 +53,6 @@ use pkcs11_sys::{
     CKR_ATTRIBUTE_SENSITIVE, CKR_OBJECT_HANDLE_INVALID, CKR_OK, CKZ_DATA_SPECIFIED,
 };
 use rand::{TryRngCore, rngs::OsRng};
-use tracing::debug;
 use zeroize::Zeroizing;
 
 pub use crate::session::{aes::AesKeySize, rsa::RsaKeySize};

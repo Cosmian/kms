@@ -7,8 +7,8 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::SessionParams,
 };
+use cosmian_logger::trace;
 use openssl::hash::{Hasher, MessageDigest};
-use tracing::trace;
 
 use crate::{core::KMS, error::KmsError, kms_bail, result::KResult};
 

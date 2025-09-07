@@ -12,7 +12,7 @@ use cosmian_kmip::{
         },
     },
 };
-use tracing::trace;
+use cosmian_logger::trace;
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
@@ -83,7 +83,7 @@ impl<'a> UserDecryptionKeysHandler<'a> {
         // Generate a fresh user decryption key
         //
         let access_policy = AccessPolicy::parse(access_policy_str)?;
-        trace!("create_user_decryption_key_object: Access Policy: {access_policy:?}");
+        trace!("Access Policy: {access_policy:?}");
         let uk = self
             .cover_crypt
             .generate_user_secret_key(self.msk, &access_policy)

@@ -19,12 +19,12 @@ use actix_web::{
     dev::{Extensions, ServiceRequest, ServiceResponse},
     rt::net::TcpStream,
 };
+use cosmian_logger::{debug, trace};
 use futures::{
     Future,
     future::{Ready, ok},
 };
 use openssl::{nid::Nid, x509::X509};
-use tracing::{debug, trace};
 
 use crate::{error::KmsError, kms_bail, middlewares::AuthenticatedUser, result::KResult};
 

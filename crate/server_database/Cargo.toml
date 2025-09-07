@@ -2,12 +2,12 @@
 name = "cosmian_kms_server_database"
 version = "5.8.1"
 authors.workspace = true
+categories.workspace = true
 edition.workspace = true
+keywords.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-keywords.workspace = true
-categories.workspace = true
 description = "Crate containing the database for the Cosmian KMS server and the supported stores"
 
 # [lints]
@@ -25,10 +25,11 @@ non-fips = [
 
 [dependencies]
 async-trait = { workspace = true }
-cosmian_kms_crypto = { path = "../crypto", version = "5.8.1" }
-cosmian_kmip = { path = "../kmip", version = "5.8.1" }
-cosmian_kms_interfaces = { path = "../interfaces", version = "5.8.1" }
 cloudproof_findex = { version = "5.0", optional = true }
+cosmian_kmip = { path = "../kmip", version = "5.8.1" }
+cosmian_kms_crypto = { path = "../crypto", version = "5.8.1" }
+cosmian_kms_interfaces = { path = "../interfaces", version = "5.8.1" }
+cosmian_logger = { workspace = true }
 hex = { workspace = true }
 lru = { workspace = true }
 num-bigint-dig = { workspace = true, features = [

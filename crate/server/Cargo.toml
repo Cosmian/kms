@@ -2,14 +2,14 @@
 name = "cosmian_kms_server"
 version.workspace = true
 authors.workspace = true
+categories.workspace = true
 edition.workspace = true
+exclude = ["ui/", "ui_non_fips/", "cosmian-kms/", ".vscode/"]
+keywords.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-keywords.workspace = true
-categories.workspace = true
 description = "Cosmian Key Management Service"
-exclude = ["ui/", "ui_non_fips/", "cosmian-kms/", ".vscode/"]
 
 [lints]
 workspace = true
@@ -64,7 +64,6 @@ dotenvy = "0.15"
 futures = "0.3"
 hex = { workspace = true, features = ["serde"] }
 jsonwebtoken = "9.3"
-log = { workspace = true }
 num-bigint-dig = { workspace = true, features = [
   "std",
   "rand",

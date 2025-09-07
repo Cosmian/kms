@@ -2,12 +2,12 @@
 name = "test_kms_server"
 version.workspace = true
 authors.workspace = true
+categories.workspace = true
 edition.workspace = true
+keywords.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-keywords.workspace = true
-categories.workspace = true
 description = "Run a test KMS server for testing purposes"
 
 [lints]
@@ -31,10 +31,11 @@ cosmian_kms_client = { path = "../kms_client", version = "5.8.1" }
 cosmian_kms_server = { path = "../server", features = [
   "insecure",
 ], version = "5.8.1" }
+cosmian_logger = { workspace = true }
 serde_json = { workspace = true }
 tempfile = "3.19"
 tokio = { workspace = true, features = ["rt-multi-thread"] }
-tracing = { workspace = true }
+# tracing = { workspace = true }
 
 [dev-dependencies]
 criterion = { version = "0.5", features = [

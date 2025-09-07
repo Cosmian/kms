@@ -6,9 +6,9 @@ use cosmian_kms_client::{
     },
     reexport::cosmian_kms_client_utils::import_utils::{KeyUsage, build_usage_mask_from_key_usage},
 };
+use cosmian_logger::trace;
 use strum::IntoEnumIterator;
 use test_kms_server::{TestsContext, start_default_test_kms_server};
-use tracing::trace;
 
 use crate::{
     actions::kms::{
@@ -53,7 +53,7 @@ async fn get_and_check_attributes(
     }
     .process(ctx.get_owner_client())
     .await?;
-    trace!("get_and_check_attributes: {get_attributes:?}");
+    trace!("{get_attributes:?}");
 
     if let Some(activation_date) = requested_attributes.activation_date {
         let date: i64 =
@@ -134,7 +134,7 @@ async fn get_and_check_none_attributes(
     }
     .process(ctx.get_owner_client())
     .await?;
-    trace!("get_and_check_attributes: {get_attributes:?}");
+    trace!("{get_attributes:?}");
 
     if let Some(_activation_date) = requested_attributes.activation_date {
         assert!(!get_attributes.contains_key(&Tag::ActivationDate.to_string()));

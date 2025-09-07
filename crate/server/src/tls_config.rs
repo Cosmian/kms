@@ -1,9 +1,9 @@
+use cosmian_logger::trace;
 use openssl::{
     pkcs12::ParsedPkcs12_2,
     ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod, SslVerifyMode, SslVersion},
     x509::{X509, store::X509StoreBuilder},
 };
-use tracing::trace;
 
 use crate::{error::KmsError, result::KResult};
 

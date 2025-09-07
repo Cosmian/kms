@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use cosmian_kms_interfaces::{InterfaceError, InterfaceResult};
+use cosmian_logger::debug;
 use rawsql::Loader;
 use sqlx::{Executor, IntoArguments, Transaction};
-use tracing::debug;
 
 use crate::{
     DbError,

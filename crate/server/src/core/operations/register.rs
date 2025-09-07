@@ -12,8 +12,8 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::SessionParams,
 };
+use cosmian_logger::{debug, trace};
 use time::OffsetDateTime;
-use tracing::{debug, trace};
 
 use crate::{
     core::{

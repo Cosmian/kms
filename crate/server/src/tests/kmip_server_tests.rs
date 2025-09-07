@@ -25,7 +25,7 @@ use cosmian_kms_server_database::reexport::{
         reexport::cosmian_crypto_core::X25519_PUBLIC_KEY_LENGTH,
     },
 };
-use tracing::trace;
+use cosmian_logger::trace;
 use uuid::Uuid;
 use zeroize::Zeroizing;
 

@@ -7,11 +7,11 @@
 use std::{fmt, sync::Arc};
 
 use alcoholic_jwt::token_kid;
+use cosmian_logger::{debug, trace};
 use serde::{
     Deserialize, Deserializer, Serialize,
     de::{self, SeqAccess, Visitor},
 };
-use tracing::{debug, trace};
 
 use super::JwksManager;
 use crate::{error::KmsError, kms_ensure, result::KResult};

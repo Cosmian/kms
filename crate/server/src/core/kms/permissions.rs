@@ -11,7 +11,7 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kmip::kmip_2_1::{KmipOperation, kmip_types::UniqueIdentifier},
     cosmian_kms_interfaces::SessionParams,
 };
-use tracing::debug;
+use cosmian_logger::debug;
 
 use crate::{
     core::KMS,

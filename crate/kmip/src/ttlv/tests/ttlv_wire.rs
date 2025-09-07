@@ -1,6 +1,5 @@
-use cosmian_logger::log_init;
+use cosmian_logger::{info, log_init};
 use time::OffsetDateTime;
-use tracing::info;
 
 use crate::{
     kmip_0::{

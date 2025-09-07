@@ -1,7 +1,6 @@
 use std::{env, path::PathBuf};
 
-use cosmian_logger::log_init;
-use tracing::{info, warn};
+use cosmian_logger::{info, log_init, warn};
 
 use crate::tests::ttlv_tests::start_test_server;
 

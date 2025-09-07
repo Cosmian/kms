@@ -15,8 +15,8 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams},
 };
+use cosmian_logger::{debug, info, trace};
 use time::OffsetDateTime;
-use tracing::{debug, info, trace};
 
 #[cfg(feature = "non-fips")]
 use crate::core::cover_crypt::revoke_user_decryption_keys;

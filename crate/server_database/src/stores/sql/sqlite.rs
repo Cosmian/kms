@@ -14,13 +14,13 @@ use cosmian_kms_interfaces::{
     AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
     PermissionsStore, SessionParams,
 };
+use cosmian_logger::{debug, trace};
 use rawsql::Loader;
 use serde_json::Value;
 use sqlx::{
     ConnectOptions, Executor, Pool, Row, Sqlite, Transaction,
     sqlite::{SqliteConnectOptions, SqlitePoolOptions, SqliteRow},
 };
-use tracing::{debug, trace};
 use uuid::Uuid;
 
 use crate::{

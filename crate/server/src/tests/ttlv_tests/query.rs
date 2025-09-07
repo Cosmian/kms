@@ -9,8 +9,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_1_4, kmip_2_1,
     ttlv::KmipFlavor,
 };
-use cosmian_logger::log_init;
-use tracing::info;
+use cosmian_logger::{info, log_init};
 
 use crate::tests::ttlv_tests::get_client;
 

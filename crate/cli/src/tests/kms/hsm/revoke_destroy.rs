@@ -1,8 +1,7 @@
 use std::path::PathBuf;
 
-use cosmian_logger::log_init;
+use cosmian_logger::{debug, log_init};
 use test_kms_server::TestsContext;
-use tracing::debug;
 use uuid::Uuid;
 
 use crate::{

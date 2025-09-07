@@ -4,10 +4,9 @@ use cosmian_kms_client::{
     read_bytes_from_file,
     reexport::cosmian_kms_client_utils::rsa_utils::{HashFn, RsaEncryptionAlgorithm},
 };
-use cosmian_logger::log_init;
+use cosmian_logger::{log_init, trace};
 use tempfile::TempDir;
 use test_kms_server::start_default_test_kms_server;
-use tracing::trace;
 
 use crate::{
     actions::kms::rsa::{
@@ -25,7 +24,7 @@ async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs() -> KmsCliResult<()> {
     //      cosmian_kms_utils=trace,cosmian_kmip=info",
     // );
 
-    use tracing::trace;
+    use cosmian_logger::trace;
 
     use crate::actions::kms::rsa::{
         decrypt::DecryptAction, encrypt::EncryptAction, keys::create_key_pair::CreateKeyPairAction,

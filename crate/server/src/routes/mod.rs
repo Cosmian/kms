@@ -6,7 +6,7 @@ use actix_web::{
     web::{Data, Json},
 };
 use clap::crate_version;
-use tracing::{error, info, warn};
+use cosmian_logger::{error, info, warn};
 
 use crate::{core::KMS, error::KmsError, result::KResult};
 

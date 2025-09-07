@@ -6,6 +6,7 @@ use std::{
 };
 
 use cosmian_kmip::kmip_2_1::kmip_objects::Object;
+use cosmian_logger::{debug, trace, warn};
 use lru::LruCache;
 #[cfg(test)]
 use tokio::sync::RwLockReadGuard;
@@ -14,7 +15,6 @@ use tokio::sync::{
     mpsc::{self, Receiver, Sender},
     oneshot,
 };
-use tracing::{debug, trace, warn};
 
 use crate::error::DbResult;
 

@@ -22,8 +22,8 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
 };
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_types::State::PreActive;
 #[cfg(feature = "non-fips")]
-use tracing::warn;
-use tracing::{debug, info, trace};
+use cosmian_logger::warn;
+use cosmian_logger::{debug, info, trace};
 use uuid::Uuid;
 use crate::{
     core::{KMS, retrieve_object_utils::user_has_permission, wrapping::wrap_and_cache},
@@ -80,7 +80,7 @@ pub(crate) async fn create_key_pair(
     let pk_uid = sk_uid.clone() + "_pk";
     let key_pair = generate_key_pair(request, &sk_uid, &pk_uid)?;
 
-    trace!("create_key_pair: sk_uid: {sk_uid}, pk_uid: {pk_uid}");
+    trace!("sk_uid: {sk_uid}, pk_uid: {pk_uid}");
     let now = OffsetDateTime::now_utc()
         .replace_millisecond(0)
         .map_err(|e| KmsError::Default(e.to_string()))?;
@@ -219,7 +219,7 @@ pub(crate) fn generate_key_pair(
                 "the cryptographic algorithm must be specified for key pair creation".to_owned()
             ))
         };
-    trace!("generate_key_pair: cryptographic_algorithm: {cryptographic_algorithm}");
+    trace!("cryptographic_algorithm: {cryptographic_algorithm}");
 
     // Generate the key pair based on the cryptographic algorithm.
     let key_pair = match cryptographic_algorithm {
@@ -231,7 +231,7 @@ pub(crate) fn generate_key_pair(
                 .cryptographic_domain_parameters
                 .unwrap_or_default();
             let curve = domain_parameters.recommended_curve.unwrap_or_default();
-            trace!("generate_key_pair: curve: {curve}");
+            trace!("curve: {curve}");
             match curve {
                 #[cfg(feature = "non-fips")]
                 // Generate a P-192 Key Pair. Not FIPS-140-3 compliant. **This curve is for

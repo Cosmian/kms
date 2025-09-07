@@ -1,4 +1,4 @@
-use tracing::{debug, error};
+use cosmian_logger::{debug, error};
 
 use crate::{
     DbError,
@@ -21,7 +21,7 @@ impl RedisWithFindex {
                                 previous upgrading failed. Bailing out. Please wait for the \
                                 migration to complete or restore a previous version of the \
                                 database.";
-            error!(error_string,);
+            error!("{error_string}");
             return Err(DbError::DatabaseError("error_string".to_owned()));
         }
         let current_db_version = self

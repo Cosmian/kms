@@ -34,9 +34,9 @@ use std::{
 };
 
 use actix_web::dev::ServerHandle;
+use cosmian_logger::{info, trace};
 use futures::{TryFutureExt, executor::block_on};
 use socket_client::{SocketClient, SocketClientConfig};
-use tracing::{info, trace};
 
 use crate::{
     config::ServerParams, error::KmsError, start_kms_server::start_kms_server,

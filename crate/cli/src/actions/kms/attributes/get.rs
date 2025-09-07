@@ -10,8 +10,8 @@ use cosmian_kms_client::{
     reexport::cosmian_kms_client_utils::attributes_utils::{CLinkType, parse_selected_attributes},
     write_bytes_to_file,
 };
+use cosmian_logger::{debug, trace};
 use serde_json::Value;
-use tracing::{debug, trace};
 
 use crate::{
     actions::kms::{console, labels::ATTRIBUTE_ID, shared::get_key_uid},
@@ -83,7 +83,7 @@ impl GetAttributesAction {
         &self,
         kms_rest_client: KmsClient,
     ) -> KmsCliResult<HashMap<String, Value>> {
-        trace!("GetAttributesAction: {:?}", self);
+        trace!("{self:?}");
         let id = get_key_uid(self.id.as_ref(), self.tags.as_ref(), ATTRIBUTE_ID)?;
 
         let mut references: Vec<AttributeReference> = Vec::with_capacity(self.attribute_tags.len());

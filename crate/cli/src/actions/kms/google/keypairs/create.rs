@@ -18,8 +18,8 @@ use cosmian_kms_client::{
     },
     reexport::cosmian_kms_client_utils::import_utils::CertificateInputFormat,
 };
+use cosmian_logger::{debug, info, trace};
 use serde::{Deserialize, Serialize};
-use tracing::{debug, info, trace};
 
 use super::KEY_PAIRS_ENDPOINT;
 use crate::{
