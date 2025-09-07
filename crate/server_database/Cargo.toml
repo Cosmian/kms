@@ -65,6 +65,5 @@ version-compare = "0.2"
 zeroize = { workspace = true }
 
 [dev-dependencies]
-cosmian_logger = { workspace = true }
 tempfile = { workspace = true }
 tracing = { workspace = true }

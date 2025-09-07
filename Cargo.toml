@@ -127,8 +127,6 @@ cosmian_crypto_core = { version = "10.2", default-features = false, features = [
   "ser",
 ] }
 cosmian_logger = { git = "https://github.com/Cosmian/http_client_server", branch = "feat/add_tracing_macros" }
-# cosmian_logger = { path = "../http_client_server/crate/logger" }
-# cosmian_logger = "0.3.1"
 der = { version = "0.7", default-features = false }
 hex = { version = "0.4", default-features = false }
 lazy_static = "1.5"

@@ -59,7 +59,7 @@ clap = { workspace = true, features = [
 ] }
 cosmian_kms_access = { path = "../access", version = "5.8.1" }
 cosmian_kms_server_database = { path = "../server_database", version = "5.8.1" }
-cosmian_logger = { workspace = true }
+cosmian_logger = { workspace = true, features = ["full"] }
 dotenvy = "0.15"
 futures = "0.3"
 hex = { workspace = true, features = ["serde"] }
@@ -104,7 +104,6 @@ zeroize = { workspace = true }
 [dev-dependencies]
 actix-http = "3.10"
 cosmian_kms_client_utils = { path = "../client_utils", version = "5.8.1" }
-cosmian_logger = { workspace = true }
 native-tls = { workspace = true }
 pem = { workspace = true }
 
