@@ -1396,7 +1396,7 @@ dependencies = [
 [[package]]
 name = "cosmian_logger"
 version = "0.5.1"
-source = "git+https://github.com/Cosmian/http_client_server?branch=feat%2Fadd_tracing_macros#6876cbe66da0c55598368d6835c021c9b67dc2cd"
+source = "git+https://github.com/Cosmian/http_client_server?branch=feat%2Fadd_tracing_macros#bba0fc475d6f1d60518296bfa897bacba6781494"
 dependencies = [
  "opentelemetry",
  "opentelemetry-otlp",
@@ -2555,7 +2555,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.6.0",
+ "socket2 0.5.10",
  "tokio",
  "tower-service",
  "tracing",
@@ -3845,7 +3845,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash",
  "rustls 0.23.31",
- "socket2 0.6.0",
+ "socket2 0.5.10",
  "thiserror 2.0.16",
  "tokio",
  "tracing",
@@ -3882,7 +3882,7 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.6.0",
+ "socket2 0.5.10",
  "tracing",
  "windows-sys 0.60.2",
 ]

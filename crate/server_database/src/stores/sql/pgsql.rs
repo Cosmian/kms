@@ -355,7 +355,7 @@ pub(crate) async fn create_(
 ) -> DbResult<String> {
     let object_json =
         serde_json::to_string_pretty(object).context("failed serializing the object to JSON")?;
-    info!("uid: {:?}, object_json: {object_json:#?}", uid, object_json);
+    info!("uid: {:?}, object_json: {object_json:#?}", uid);
 
     let attributes_json =
         serde_json::to_value(attributes).context("failed serializing the attributes to JSON")?;
