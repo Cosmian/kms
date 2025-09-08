@@ -77,7 +77,7 @@ if [ -f /etc/lsb-release ]; then
   HSM_SLOT_ID=$(sudo softhsm2-util --show-slots | grep -o "Slot [0-9]*" | head -n1 | awk '{print $2}')
 
   cd crate/hsm/softhsm2
-  sudo HSM_USER_PASSWORD="$HSM_USER_PASSWORD" HSM_SLOT_ID="$HSM_SLOT_ID" cargo test --features softhsm2 -- tests::test_hsm_all
+  sudo -E env "PATH=$PATH" HSM_USER_PASSWORD="$HSM_USER_PASSWORD" HSM_SLOT_ID="$HSM_SLOT_ID" cargo test --features softhsm2 -- tests::test_hsm_all
   cd ../../..
 fi
 
