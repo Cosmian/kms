@@ -37,6 +37,7 @@
 
 use std::{ptr, sync::Arc};
 use std::cmp::min;
+use std::ops::Add;
 use std::sync::Mutex;
 use cosmian_kms_interfaces::{
     CryptoAlgorithm, EncryptedContent, HsmObject, HsmObjectFilter, KeyMaterial, KeyMetadata,
@@ -50,6 +51,12 @@ use cosmian_kms_interfaces::KeyType::{AesKey, RsaPrivateKey, RsaPublicKey};
 pub use crate::session::{aes::AesKeySize, rsa::RsaKeySize};
 use crate::{HError, HResult, ObjectHandlesCache};
 use uuid::Uuid;
+
+/// AES block size in bytes
+const AES_BLOCK_SIZE: usize = 16;
+const AES_CBC_IV_LENGTH: usize = 16;
+const AES_GCM_IV_LENGTH: usize = 12;
+const AES_GCM_AUTH_TAG_LENGTH: usize = 16;
 
 /// Generate a random nonce of size T
 /// This function is used to generate a random nonce for the AES GCM or a random IV for AES CBC encryption
@@ -591,11 +598,11 @@ impl Session {
                 let mut nonce = generate_random_nonce::<12>()?;
                 let mut params = CK_AES_GCM_PARAMS {
                     pIv: &mut nonce as *mut u8,
-                    ulIvLen: 12,
-                    ulIvBits: 96,
+                    ulIvLen: AES_GCM_IV_LENGTH as CK_ULONG,
+                    ulIvBits: (AES_GCM_IV_LENGTH * 8) as CK_ULONG,
                     pAAD: ptr::null_mut(),
                     ulAADLen: 0,
-                    ulTagBits: 128,
+                    ulTagBits: (AES_GCM_AUTH_TAG_LENGTH * 8) as CK_ULONG,
                 };
                 let mut mechanism = CK_MECHANISM {
                     mechanism: CKM_AES_GCM,
@@ -606,12 +613,12 @@ impl Session {
                     self.encrypt_with_mechanism(key_handle, &mut mechanism, plaintext)?;
                 EncryptedContent {
                     iv: Some(nonce.to_vec()),
-                    ciphertext: ciphertext[..ciphertext.len() - 16].to_vec(),
-                    tag: Some(ciphertext[ciphertext.len() - 16..].to_vec()),
+                    ciphertext: ciphertext[..ciphertext.len() - AES_GCM_AUTH_TAG_LENGTH].to_vec(),
+                    tag: Some(ciphertext[ciphertext.len() - AES_GCM_AUTH_TAG_LENGTH..].to_vec()),
                 }
             }
             HsmEncryptionAlgorithm::AesCbc => {
-                let mut iv = generate_random_nonce::<16>()?;
+                let mut iv = generate_random_nonce::<AES_CBC_IV_LENGTH>()?;
                 if plaintext.len() > 1024 {
                     return self.encrypt_aes_cbc_multi_round(key_handle, iv, plaintext, 1024);
                 }
@@ -621,7 +628,7 @@ impl Session {
                     ulParameterLen: iv.len() as CK_ULONG,
                 };
 
-                let padded_plaintext = self.pkcs7_pad(plaintext.to_vec(), 16);
+                let padded_plaintext = self.pkcs7_pad(plaintext.to_vec(), AES_BLOCK_SIZE);
                 let ciphertext = self.encrypt_with_mechanism(key_handle, &mut mechanism, &padded_plaintext)?;
 
                 EncryptedContent {
@@ -701,19 +708,19 @@ impl Session {
     ) -> HResult<Zeroizing<Vec<u8>>> {
         match algorithm {
             HsmEncryptionAlgorithm::AesGcm => {
-                if ciphertext.len() < 12 {
+                if ciphertext.len() < AES_GCM_IV_LENGTH {
                     return Err(HError::Default("Invalid AES GCM ciphertext".to_string()));
                 }
-                let mut nonce: [u8; 12] = ciphertext[..12]
+                let mut nonce: [u8; AES_GCM_IV_LENGTH] = ciphertext[..AES_GCM_IV_LENGTH]
                     .try_into()
                     .map_err(|_| HError::Default("Invalid AES GCM nonce".to_string()))?;
                 let mut params = CK_AES_GCM_PARAMS {
                     pIv: &mut nonce as *mut u8,
-                    ulIvLen: 12,
-                    ulIvBits: 96,
+                    ulIvLen: AES_GCM_IV_LENGTH as CK_ULONG,
+                    ulIvBits: (AES_GCM_IV_LENGTH * 8) as CK_ULONG,
                     pAAD: ptr::null_mut(),
                     ulAADLen: 0,
-                    ulTagBits: 128,
+                    ulTagBits: (AES_GCM_AUTH_TAG_LENGTH * 8) as CK_ULONG,
                 };
                 let mut mechanism = CK_MECHANISM {
                     mechanism: CKM_AES_GCM,
@@ -721,18 +728,18 @@ impl Session {
                     ulParameterLen: size_of::<CK_AES_GCM_PARAMS>() as CK_ULONG,
                 };
                 let plaintext =
-                    self.decrypt_with_mechanism(key_handle, &mut mechanism, &ciphertext[12..])?;
+                    self.decrypt_with_mechanism(key_handle, &mut mechanism, &ciphertext[AES_GCM_IV_LENGTH..])?;
                 Ok(plaintext)
             }
             HsmEncryptionAlgorithm::AesCbc => {
-                if ciphertext.len() < 16 {
+                if ciphertext.len() < AES_CBC_IV_LENGTH {
                     return Err(HError::Default("Invalid AES CBC ciphertext".to_string()));
                 }
-                let mut iv: [u8; 16] = ciphertext[..16]
+                let mut iv: [u8; AES_CBC_IV_LENGTH] = ciphertext[..AES_CBC_IV_LENGTH]
                     .try_into()
                     .map_err(|_| HError::Default("Invalid AES CBC IV".to_string()))?;
                 if ciphertext.len() > 1040 {
-                    return self.decrypt_aes_cbc_multi_round(key_handle, &iv, &ciphertext[16..], 1024);
+                    return self.decrypt_aes_cbc_multi_round(key_handle, &iv, &ciphertext[AES_CBC_IV_LENGTH..], 1024);
                 }
                 let mut mechanism = CK_MECHANISM {
                     mechanism: CKM_AES_CBC,
@@ -741,9 +748,9 @@ impl Session {
                 };
 
                 let paddedPlaintext =
-                    self.decrypt_with_mechanism(key_handle, &mut mechanism, &ciphertext[16..])?;
+                    self.decrypt_with_mechanism(key_handle, &mut mechanism, &ciphertext[AES_CBC_IV_LENGTH..])?;
 
-                let plaintext = self.pkcs7_unpad(paddedPlaintext, 16)?;
+                let plaintext = self.pkcs7_unpad(paddedPlaintext, AES_BLOCK_SIZE)?;
                 Ok(plaintext)
             }
             HsmEncryptionAlgorithm::RsaPkcsV15 => {
@@ -820,17 +827,17 @@ impl Session {
     pub fn encrypt_aes_cbc_multi_round(
         &self,
         key_handle: CK_OBJECT_HANDLE,
-        iv: [u8; 16],
+        iv: [u8; AES_CBC_IV_LENGTH],
         plaintext: &[u8],
         max_round_length: usize,
     ) -> HResult<EncryptedContent> {
-        if max_round_length < 16 {
+        if max_round_length < AES_BLOCK_SIZE {
             return Err(HError::Default("Too small maximum round length".to_string()));
         }
-        if max_round_length%16 != 0 {
+        if max_round_length % AES_BLOCK_SIZE != 0 {
             return Err(HError::Default("Round length must be multiple of block size (16)".to_string()));
         }
-        let padded_plaintext = self.pkcs7_pad(plaintext.to_vec(), 16);
+        let padded_plaintext = self.pkcs7_pad(plaintext.to_vec(), AES_BLOCK_SIZE);
         let mut round_iv = iv;
         let total_length = padded_plaintext.len();
         let mut processed_length = 0;
@@ -894,20 +901,20 @@ impl Session {
         ciphertext: &[u8],
         max_round_length: usize,
     ) -> HResult<Zeroizing<Vec<u8>>> {
-        if max_round_length < 16 {
+        if max_round_length < AES_BLOCK_SIZE {
             return Err(HError::Default("Too small maximum round length".to_string()));
         }
-        if max_round_length%16 != 0 {
-            return Err(HError::Default("Round length must be multiple of block size (16)".to_string()));
+        if max_round_length % AES_BLOCK_SIZE != 0 {
+            return Err(HError::Default(format!("Round length must be multiple of block size ({AES_BLOCK_SIZE}))")));
         }
-        if ciphertext.len() % 16 != 0 {
-            return Err(HError::Default("AES CBC ciphertext must be multiple of block size (16)".to_string()));
+        if ciphertext.len() % AES_BLOCK_SIZE != 0 {
+            return Err(HError::Default(format!("AES CBC ciphertext must be multiple of block size ({AES_BLOCK_SIZE})")));
         }
-        if iv.len() != 16 {
-            return Err(HError::Default("Wrong IV length. Must be block size (16)".to_string()));
+        if iv.len() != AES_CBC_IV_LENGTH {
+            return Err(HError::Default(format!("Wrong IV length. Must be {AES_CBC_IV_LENGTH} bytes long")));
         }
 
-        let mut round_iv: [u8; 16] = iv[..16].try_into()
+        let mut round_iv: [u8; AES_CBC_IV_LENGTH] = iv[..AES_CBC_IV_LENGTH].try_into()
             .map_err(|_| HError::Default("Invalid IV".to_string()))?;
         let total_length = ciphertext.len();
         let mut processed_length = 0;
@@ -931,7 +938,7 @@ impl Session {
                 round_iv[i]=ciphertext[processed_length-iv.len()+i];
             }
         }
-        self.pkcs7_unpad(plaintext, 16)
+        self.pkcs7_unpad(plaintext, AES_BLOCK_SIZE)
     }
 
     fn encrypt_with_mechanism(
@@ -1284,8 +1291,11 @@ impl Session {
         {
             return Ok(None);
         }
-        let label = String::from_utf8(label_bytes)
+        let mut label = String::from_utf8(label_bytes)
             .map_err(|e| HError::Default(format!("Failed to convert label to string: {e}")))?;
+        if !label.trim().ends_with("_pk") {
+            label = label.trim().to_owned().add("_pk");
+        }
         Ok(Some(HsmObject::new(
             KeyMaterial::RsaPublicKey(RsaPublicKeyMaterial {
                 modulus,

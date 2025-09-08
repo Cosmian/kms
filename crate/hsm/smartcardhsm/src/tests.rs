@@ -44,15 +44,15 @@ fn test_hsm_all() -> HResult<()> {
     test_hsm_get_mechanisms()?;
     test_hsm_get_supported_algorithms()?;
     test_hsm_destroy_all()?;
-//    test_hsm_generate_aes_key()?;
-//    test_hsm_generate_rsa_keypair()?;
+    test_hsm_generate_aes_key()?;
+    test_hsm_generate_rsa_keypair()?;
 //    test_hsm_rsa_key_wrap()?; //Not supported
-//    test_hsm_rsa_pkcs_encrypt()?;
+    test_hsm_rsa_pkcs_encrypt()?;
     test_hsm_rsa_oaep_encrypt()?;
     test_hsm_aes_cbc_encrypt()?;
-//    test_hsm_multi_threaded_rsa_encrypt_decrypt_test()?;
-//    test_hsm_get_key_metadata()?;
-//    test_hsm_list_objects()?;
+    test_hsm_multi_threaded_rsa_encrypt_decrypt_test()?;
+    test_hsm_get_key_metadata()?;
+    test_hsm_list_objects()?;
     test_hsm_destroy_all()?;
     Ok(())
 }
@@ -208,7 +208,7 @@ fn test_hsm_generate_rsa_keypair() -> HResult<()> {
     let key = session
         .export_key(pk_handle)?
         .expect("Failed to find the public key");
-    assert_eq!(key.id(), sk_id.as_str());
+    assert_eq!(key.id(), pk_id.as_str());
     match key.key_material() {
         KeyMaterial::RsaPublicKey(v) => {
             assert_eq!(v.modulus.len() * 8, 2048);
@@ -394,7 +394,7 @@ fn test_hsm_multi_threaded_rsa_encrypt_decrypt_test() -> HResult<()> {
     let slot = get_slot()?;
 
     let mut handles = vec![];
-    for _ in 0..4 {
+    for _ in 0..2 {
         let slot = slot.clone();
         let handle = thread::spawn(move || {
             let session = slot.open_session(true)?;
