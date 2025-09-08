@@ -188,7 +188,7 @@ impl SlotManager {
             );
             if rv != CKR_OK {
                 return Err(HError::Default(format!(
-                    "HSM: Failed opening a session: {rv}"
+                    "HSM: Failed opening a session on slot: {slot_id}: return code: {rv}"
                 )));
             }
             if let Some(password) = login_password.as_ref() {

@@ -8,7 +8,7 @@ use std::{collections::HashMap, ptr, sync::Arc, thread};
 
 use cosmian_kms_base_hsm::{
     AesKeySize, HError, HResult, HsmEncryptionAlgorithm, RsaKeySize, RsaOaepDigest, SlotManager,
-    test_helpers::get_hsm_password,
+    test_helpers::{get_hsm_password, get_slot_id},
 };
 use cosmian_kms_interfaces::{HsmObjectFilter, KeyMaterial, KeyType};
 use cosmian_logger::log_init;
@@ -19,13 +19,14 @@ use uuid::Uuid;
 
 use crate::Softhsm2;
 
-const LIB_PATH: &str = "/usr/local/lib/softhsm/libsofthsm2.so";
+const LIB_PATH: &str = "/usr/lib/softhsm/libsofthsm2.so";
 
 fn get_slot() -> HResult<Arc<SlotManager>> {
+    let slot = get_slot_id()?; // slot id for the token initialized in the GitHub script
     let user_password = get_hsm_password()?;
-    let passwords = HashMap::from([(63715018, Some(user_password.clone()))]);
+    let passwords = HashMap::from([(slot, Some(user_password.clone()))]);
     let hsm = Softhsm2::instantiate(LIB_PATH, passwords)?;
-    let manager = hsm.get_slot(63715018)?;
+    let manager = hsm.get_slot(slot)?;
     Ok(manager)
 }
 

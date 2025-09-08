@@ -147,7 +147,10 @@ impl HsmLib {
                 HError::Default("C_Initialize not available on library".to_string())
             })?(&raw const pInitArgs as CK_VOID_PTR);
             if rv != CKR_OK {
-                return Err(HError::Default("Failed initializing the HSM".to_string()));
+                return Err(HError::Default(format!(
+                    "Failed initializing the HSM: return code: {}",
+                    rv
+                )));
             }
             Ok(())
         }
@@ -159,7 +162,10 @@ impl HsmLib {
                 HError::Default("C_Finalize not available on library".to_string())
             })?(ptr::null_mut());
             if rv != CKR_OK {
-                return Err(HError::Default("Failed to finalize the HSM".to_string()));
+                return Err(HError::Default(format!(
+                    "Failed to finalize the HSM: return code: {}",
+                    rv
+                )));
             }
             Ok(())
         }

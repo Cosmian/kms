@@ -64,8 +64,20 @@ fi
 rustup target add "$TARGET"
 
 if [ -f /etc/lsb-release ]; then
+  # Install Utimaco simulator and run tests
   bash .github/reusable_scripts/test_utimaco.sh
   HSM_USER_PASSWORD="12345678" cargo test -p utimaco_pkcs11_loader --target "$TARGET" --features utimaco -- tests::test_hsm_all
+
+  # Install SoftHSM2 and run tests
+  sudo apt-get install -y libsofthsm2
+
+  export HSM_USER_PASSWORD="12345678"
+  sudo softhsm2-util --init-token --slot 0 --label "my_token_1" --so-pin "$HSM_USER_PASSWORD" --pin "$HSM_USER_PASSWORD"
+  HSM_SLOT_ID=$(softhsm2-util --show-slots | grep -o "Slot [0-9]*" | head -n1 | awk '{print $2}')
+  export HSM_SLOT_ID
+
+  cd crate/hsms/softhsm2
+  cargo test --features softhsm2 -- tests::test_hsm_all
 fi
 
 if [ -z "$OPENSSL_DIR" ]; then
