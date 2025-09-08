@@ -9,7 +9,6 @@ use cosmian_kms_crypto::{CryptoError, reexport::cosmian_crypto_core::CryptoCoreE
 use cosmian_kms_interfaces::InterfaceError;
 #[cfg(feature = "non-fips")]
 use cosmian_sse_memories::{ADDRESS_LENGTH, Address, RedisMemoryError};
-use redis::ErrorKind;
 use thiserror::Error;
 
 use crate::DbError::CryptographicError;
