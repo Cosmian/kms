@@ -2,7 +2,6 @@ use std::array::TryFromSliceError;
 
 #[cfg(feature = "non-fips")]
 use cosmian_findex::Error as FindexError;
-use cosmian_crypto_core::CryptoCoreError;
 use cosmian_kmip::{
     KmipError, kmip_0::kmip_types::ErrorReason, kmip_1_4::kmip_types::ResultReason,
 };
@@ -41,9 +40,6 @@ pub enum DbError {
     // Default error
     #[error("{0}")]
     Default(String),
-
-    // #[error("Findex Error: {0}")]
-    // Findex(String),
 
     // When a user requests something, which is nonsense
     #[error("Inconsistent operation: {0}")]
@@ -109,10 +105,12 @@ pub enum DbError {
     #[error("Unwrapped cache error: {0}")]
     UnwrappedCache(String),
 
+    // When the Findex's algorithm returns a non-memory related error
     #[cfg(feature = "non-fips")]
     #[error("Findex internal error: {0}")]
-    RedisFindex(#[from] FindexError<Address<ADDRESS_LENGTH>>),
+    Findex(#[from] FindexError<Address<ADDRESS_LENGTH>>),
 
+    // Error related to the Redis-Memory (used underneath Findex)
     #[cfg(feature = "non-fips")]
     #[error("Redis-Memory error: {0}")]
     RedisMemory(#[from] RedisMemoryError),

@@ -9,7 +9,7 @@ use cosmian_kmip::{
     },
 };
 use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
-    CsRng, RandomFixedSizeCBytes, SymmetricKey,
+    CsRng, RandomFixedSizeCBytes, Secret, SymmetricKey,
     reexport::rand_core::{RngCore, SeedableRng},
 };
 use redis::aio::ConnectionManager;

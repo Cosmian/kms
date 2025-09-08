@@ -3,9 +3,7 @@ use std::{fmt::Display, path::PathBuf};
 use clap::Args;
 use cosmian_kms_server_database::MainDbParams;
 #[cfg(feature = "non-fips")]
-use cosmian_kms_server_database::{
-    redis_master_key_from_password, reexport::cloudproof_findex::Label,
-};
+use cosmian_kms_server_database::redis_master_key_from_password;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
@@ -214,16 +212,7 @@ impl MainDBConfig {
                     // Generate the symmetric key from the master password
                     let master_key = redis_master_key_from_password(&redis_master_password)
                         .context("db:init")?;
-                    let redis_findex_label = ensure_value(
-                        self.redis_findex_label.as_deref(),
-                        "redis-findex-label",
-                        "KMS_REDIS_FINDEX_LABEL",
-                    )?;
-                    MainDbParams::RedisFindex(
-                        url,
-                        master_key,
-                        Label::from(redis_findex_label.into_bytes()),
-                    )
+                    MainDbParams::RedisFindex(url, master_key)
                 }
                 unknown => kms_bail!("Unknown database type: {unknown}"),
             });

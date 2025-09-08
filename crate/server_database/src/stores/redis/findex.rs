@@ -122,12 +122,6 @@ impl_byte_vector!(Keyword);
 pub struct IndexedValue(Vec<u8>);
 impl_byte_vector!(IndexedValue);
 
-impl Display for IndexedValue {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Value: {}", self)
-    }
-}
-
 // Iterating over the contained bytes is needed for findex operations
 impl IntoIterator for IndexedValue {
     type IntoIter = std::iter::Once<IndexedValue>;
