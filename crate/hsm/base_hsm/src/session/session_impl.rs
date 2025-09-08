@@ -383,7 +383,7 @@ impl Session {
         }];
 
         let mut object_handles = self.find_object_handles(template.to_vec())?;
-        if object_handles.len() == 0 {
+        if object_handles.is_empty() {
             if object_id_string.trim().ends_with("_pk") { //Check if the HSM stores the object without the suffix
                 let trimmed = object_id_string.trim().strip_suffix("_pk");
                 let object_id_trimmed = match trimmed {
@@ -396,7 +396,7 @@ impl Session {
                     ulValueLen: object_id_trimmed.len() as CK_ULONG,
                 }];
                 object_handles = self.find_object_handles(template_trimmed.to_vec())?;
-                if object_handles.len() == 0 {
+                if object_handles.is_empty() {
                     return Err(HError::Default("Object not found".to_string()));
                 }
             } else {
@@ -417,11 +417,9 @@ impl Session {
                         object_handle = handle;
                         break;
                     }
-                } else {
-                    if object_type == AesKey || object_type == RsaPrivateKey {
-                        object_handle = handle;
-                        break;
-                    }
+                } else if object_type == AesKey || object_type == RsaPrivateKey {
+                    object_handle = handle;
+                    break;
                 }
             }
         }
@@ -538,7 +536,7 @@ impl Session {
     fn pkcs7_pad(&self, data: Vec<u8>, block_size: usize) -> Vec<u8> {
         let pad_len = block_size - (data.len() % block_size);
         let mut padded = data;
-        padded.extend(std::iter::repeat(pad_len as u8).take(pad_len));
+        padded.extend(std::iter::repeat_n(pad_len as u8, pad_len));
         padded
     }
 
@@ -624,7 +622,7 @@ impl Session {
                 };
 
                 let padded_plaintext = self.pkcs7_pad(plaintext.to_vec(), 16);
-                let ciphertext = self.encrypt_with_mechanism(key_handle, &mut mechanism, &*padded_plaintext)?;
+                let ciphertext = self.encrypt_with_mechanism(key_handle, &mut mechanism, &padded_plaintext)?;
 
                 EncryptedContent {
                     iv: Some(iv.to_vec()),
@@ -833,7 +831,7 @@ impl Session {
             return Err(HError::Default("Round length must be multiple of block size (16)".to_string()));
         }
         let padded_plaintext = self.pkcs7_pad(plaintext.to_vec(), 16);
-        let mut round_iv = iv.clone();
+        let mut round_iv = iv;
         let total_length = padded_plaintext.len();
         let mut processed_length = 0;
         let mut ciphertext:Vec<u8> = Vec::with_capacity(total_length);
@@ -852,7 +850,7 @@ impl Session {
             for i in 0..iv.len() {
                 round_iv[i]=round_ciphertext[round_ciphertext.len()-iv.len()+i];
             }
-            ciphertext.append(&mut round_ciphertext.clone());
+            ciphertext.extend(round_ciphertext);
             processed_length += round_length;
         }
         Ok(EncryptedContent {
@@ -927,13 +925,13 @@ impl Session {
             let round_plaintext = self.decrypt_with_mechanism(
                 key_handle, &mut mechanism, &ciphertext[processed_length..processed_length + round_length])?;
 
-            plaintext.append(&mut round_plaintext.clone());
+            plaintext.extend_from_slice(&round_plaintext);
             processed_length += round_length;
             for i in 0..iv.len() {
                 round_iv[i]=ciphertext[processed_length-iv.len()+i];
             }
         }
-        Ok(self.pkcs7_unpad(plaintext, 16)?)
+        self.pkcs7_unpad(plaintext, 16)
     }
 
     fn encrypt_with_mechanism(

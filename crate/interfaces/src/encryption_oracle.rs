@@ -22,7 +22,7 @@ pub struct KeyMetadata {
 }
 
 #[derive(Debug, Clone)]
-#[derive(PartialEq)]
+#[derive(PartialEq, Eq)]
 pub enum CryptoAlgorithm {
     AesCbc,
     AesGcm,

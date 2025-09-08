@@ -36,5 +36,12 @@ pub fn get_hsm_slot_id() -> HResult<usize> {
             )
         })?
         .to_string();
-    Ok(slot_id.parse().unwrap())
+    slot_id.parse().map_err(|_| {
+        HError::Default(
+            format!(
+                "The HSM slot id '{slot_id}' could not be parsed. Please make sure the\
+                 HSM_SLOT_ID environment variable is set to a valid slot id."
+            )
+        )
+    })
 }

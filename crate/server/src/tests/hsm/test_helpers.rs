@@ -8,10 +8,10 @@ pub(crate) fn get_hsm_password() -> KResult<String> {
             KmsError::Default(
                 "The user password for the HSM is not set. Please set the HSM_USER_PASSWORD \
                  environment variable"
-                    .to_string(),
+                    .to_owned(),
             )
         })?
-        .to_string();
+        .to_owned();
     Ok(user_password)
 }
 
@@ -21,20 +21,24 @@ pub(crate) fn get_hsm_slot_id() -> KResult<usize> {
             KmsError::Default(
                 "The slot id for the HSM was not provided. Please set the HSM_SLOT_ID \
                  environment variable"
-                    .to_string(),
+                    .to_owned(),
             )
         })?
-        .to_string();
-    Ok(slot_id.parse().unwrap())
+        .to_owned();
+    slot_id.parse().map_err(|_e| {
+        KmsError::Default(
+            format!(
+                "The HSM slot id '{slot_id}' could not be parsed. Please make sure the\
+                 HSM_SLOT_ID environment variable is set to a valid slot id."
+            )
+        )
+    })
 }
 
 pub(crate) fn get_hsm_model() -> Option<String> {
     let model = option_env!("HSM_MODEL");
-    match model {
-        Some(model) => Some(model.to_string()),
-        None => {
-            info!("No HSM model provide via environment variable 'HSM_MODEL'. Defaulting to utimaco");
-            None
-        },
-    }
+    model.map_or_else(|| {
+        info!("No HSM model provided via environment variable 'HSM_MODEL'. Defaulting to utimaco");
+        None
+    }, |model| Some(model.to_owned()))
 }

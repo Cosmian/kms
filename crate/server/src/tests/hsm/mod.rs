@@ -55,7 +55,7 @@ async fn test_all() {
 fn hsm_clap_config(owner: &str, kek: Option<Uuid>) -> KResult<ClapConfig> {
     let mut clap_config = https_clap_config();
     let model:Option<String> = get_hsm_model();
-    let unwrapped_model = model.unwrap_or_else(|| "utimaco".to_string());
+    let unwrapped_model = model.unwrap_or_else(|| "utimaco".to_owned());
 
     if unwrapped_model == "utimaco" {
         clap_config.hsm_model = "utimaco".to_owned();
@@ -67,7 +67,7 @@ fn hsm_clap_config(owner: &str, kek: Option<Uuid>) -> KResult<ClapConfig> {
         let slot = get_hsm_slot_id()?;
         clap_config.hsm_admin = owner.to_owned();
         clap_config.hsm_slot = vec![slot];
-        clap_config.hsm_password = vec![user_password.to_owned()];
+        clap_config.hsm_password = vec![user_password];
         if unwrapped_model == "softhsm2" {
             clap_config.hsm_model = "softhsm2".to_owned();
         } else if unwrapped_model == "smartcardhsm" {
@@ -75,7 +75,7 @@ fn hsm_clap_config(owner: &str, kek: Option<Uuid>) -> KResult<ClapConfig> {
         } else if unwrapped_model == "proteccio" {
             clap_config.hsm_model = "proteccio".to_owned();
         } else {
-            return Err(KmsError::Default("The provided HSM model is unknown".to_string()));
+            return Err(KmsError::Default("The provided HSM model is unknown".to_owned()));
         }
     }
 

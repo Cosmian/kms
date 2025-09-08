@@ -203,7 +203,7 @@ fn test_hsm_generate_rsa_keypair() -> HResult<()> {
             }
         }
     }
-// export the public key
+    // export the public key
     assert_eq!(pk_handle, session.get_object_handle(pk_id.as_bytes())?);
     let key = session
         .export_key(pk_handle)?

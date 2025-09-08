@@ -153,13 +153,13 @@ fn parse_uid(uid: &str) -> InterfaceResult<(usize, Vec<u8>)> {
 /// Preference order:
 /// 1. `AesGcm`
 /// 2. `AesCbc`
-fn parse_default_aes_algorithm(supported_algorithms: &Vec<CryptoAlgorithm>) -> InterfaceResult<CryptoAlgorithm> {
+fn parse_default_aes_algorithm(supported_algorithms: &[CryptoAlgorithm]) -> InterfaceResult<CryptoAlgorithm> {
     if supported_algorithms.contains(&CryptoAlgorithm::AesGcm) {
         return Ok(CryptoAlgorithm::AesGcm);
     } else if supported_algorithms.contains(&CryptoAlgorithm::AesCbc) {
         return Ok(CryptoAlgorithm::AesCbc);
     }
-    Err(InterfaceError::InvalidRequest("AES not supported".to_string()))
+    Err(InterfaceError::InvalidRequest("AES not supported".to_owned()))
 }
 
 /// Selects a default RSA algorithm from the provided list of supported algorithms.
@@ -168,7 +168,7 @@ fn parse_default_aes_algorithm(supported_algorithms: &Vec<CryptoAlgorithm>) -> I
 /// 1. `RsaOaepSha256`
 /// 2. `RsaOaepSha1`
 /// 3. `RsaPkcsV15`
-fn parse_default_rsa_algorithm(supported_algorithms: &Vec<CryptoAlgorithm>) -> InterfaceResult<CryptoAlgorithm> {
+fn parse_default_rsa_algorithm(supported_algorithms: &[CryptoAlgorithm]) -> InterfaceResult<CryptoAlgorithm> {
     if supported_algorithms.contains(&CryptoAlgorithm::RsaOaepSha256) {
         return Ok(CryptoAlgorithm::RsaOaepSha256);
     } else if supported_algorithms.contains(&CryptoAlgorithm::RsaOaepSha1) {
@@ -176,5 +176,5 @@ fn parse_default_rsa_algorithm(supported_algorithms: &Vec<CryptoAlgorithm>) -> I
     } else if supported_algorithms.contains(&CryptoAlgorithm::RsaPkcsV15) {
         return Ok(CryptoAlgorithm::RsaPkcsV15);
     }
-    Err(InterfaceError::InvalidRequest("RSA not supported".to_string()))
+    Err(InterfaceError::InvalidRequest("RSA not supported".to_owned()))
 }
