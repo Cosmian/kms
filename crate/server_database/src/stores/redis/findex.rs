@@ -1,5 +1,4 @@
 //! This is the replacement for the deprecated `Location` struct from `cloudproof_findex`.
-use std::fmt::Display;
 
 // TODO(Manu reunions): I took the original `Location` implementation and created this `Value` to replace it as the Location concept is obsolete.
 // Yet, I am not sure we need all what's inside this macro below - and it's complicated to code with

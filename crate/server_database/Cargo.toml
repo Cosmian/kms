@@ -10,9 +10,6 @@ keywords.workspace = true
 categories.workspace = true
 description = "Crate containing the database for the Cosmian KMS server and the supported stores"
 
-# [lints]
-# workspace = true
-
 [lib]
 doctest = false
 
@@ -22,7 +19,6 @@ non-fips = [
   "cosmian_kmip/non-fips",
   "cosmian_findex",
   "cosmian_sse_memories/redis-mem",
-  "cloudproof_findex/findex-redis",
 ]
 
 [dependencies]
@@ -35,9 +31,6 @@ cosmian_sse_memories = { version = "8.0", features = [
   "redis-mem",
 ], optional = true }
 cosmian_crypto_core = { workspace = true, features = ["sha3"], optional = true }
-cloudproof_findex = { version = "5.0", optional = true, features = [
-  "findex-redis",
-] } # TODO: bye bye
 hex = { workspace = true }
 lru = { workspace = true }
 num-bigint-dig = { workspace = true, features = [
@@ -54,7 +47,7 @@ redis = { version = "0.23", features = [
   "script",
   "connection-manager",
   "tokio-comp",
-] } # TODO: cosmian_sse_memories reexports Redis, should we use that reerxport and delete this ?
+] } # TODO: cosmian_sse_memories reexports Redis, should we use that reexport and delete this ?
 serde = { workspace = true }
 serde_json = { workspace = true, features = ["preserve_order"] }
 sqlx = { version = "0.8", default-features = false, features = [

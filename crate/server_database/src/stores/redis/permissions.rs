@@ -6,7 +6,6 @@ use std::{
 use cosmian_findex::IndexADT;
 use cosmian_kmip::kmip_2_1::KmipOperation;
 use serde::{Deserialize, Serialize};
-use cosmian_kms_crypto::reexport::cosmian_crypto_core::{FixedSizeCBytes, SymmetricKey};
 
 use crate::{
     DbError,
