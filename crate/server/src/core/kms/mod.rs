@@ -139,7 +139,7 @@ impl KMS {
                     "softhsm2" => {
                         let softhsm2: Arc<dyn HSM + Send + Sync> = Arc::new(
                             Softhsm2::instantiate(
-                                "/usr/local/lib/softhsm/libsofthsm2.so",
+                                "/usr/lib/softhsm/libsofthsm2.so",
                                 server_params.slot_passwords.clone(),
                             )
                             .map_err(|e| {
