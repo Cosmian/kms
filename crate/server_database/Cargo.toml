@@ -58,7 +58,6 @@ sqlx = { version = "0.8", default-features = false, features = [
 ] }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
-tracing = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true }
 version-compare = "0.2"
@@ -66,4 +65,3 @@ zeroize = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
-tracing = { workspace = true }

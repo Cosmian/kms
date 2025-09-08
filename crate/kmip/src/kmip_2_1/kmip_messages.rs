@@ -1,5 +1,6 @@
 use std::fmt::{self, Display, Formatter};
 
+use cosmian_logger::trace;
 /// The messages in the protocol consist of a message header,
 /// one or more batch items (which contain OPTIONAL message payloads),
 /// and OPTIONAL message extensions. The message headers contain fields whose
@@ -310,11 +311,11 @@ impl<'de> Deserialize<'de> for RequestMessageBatchItem {
                     }
                 }
                 let operation = operation.ok_or_else(|| de::Error::missing_field("Operation"))?;
-                tracing::trace!("MessageBatchItem operation: {operation:?}");
+                trace!("MessageBatchItem operation: {operation:?}");
 
                 let request_payload =
                     request_payload.ok_or_else(|| de::Error::missing_field("request_payload"))?;
-                tracing::trace!("MessageBatchItem request payload: {request_payload:?}");
+                trace!("MessageBatchItem request payload: {request_payload:?}");
 
                 if operation != request_payload.operation_enum() {
                     return Err(de::Error::custom(format!(
@@ -664,11 +665,9 @@ impl<'de> Deserialize<'de> for ResponseMessageBatchItem {
                     }
                 }
 
-                tracing::trace!("MessageResponseBatchItem operation: {operation:?}");
+                trace!("MessageResponseBatchItem operation: {operation:?}");
                 if let Some(response_payload) = &response_payload {
-                    tracing::trace!(
-                        "MessageResponseBatchItem response payload: {response_payload:?}"
-                    );
+                    trace!("MessageResponseBatchItem response payload: {response_payload:?}");
                 }
 
                 let result_status =

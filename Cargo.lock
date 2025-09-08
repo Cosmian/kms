@@ -1217,7 +1217,6 @@ dependencies = [
  "thiserror 2.0.16",
  "time",
  "tokio",
- "tracing",
  "url",
  "uuid",
  "x509-cert",
@@ -1238,7 +1237,6 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.16",
- "tracing",
  "url",
 ]
 
@@ -1251,13 +1249,13 @@ dependencies = [
  "cosmian_config_utils",
  "cosmian_kmip",
  "cosmian_kms_access",
+ "cosmian_logger",
  "pem",
  "serde",
  "serde_json",
  "strum",
  "thiserror 2.0.16",
  "time",
- "tracing",
  "zeroize",
 ]
 
@@ -1386,7 +1384,6 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.16",
  "tokio",
- "tracing",
  "url",
  "uuid",
  "version-compare",

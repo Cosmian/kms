@@ -62,7 +62,6 @@ strum = { workspace = true }
 thiserror = { workspace = true }
 time = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
-tracing = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true }
 x509-cert = { workspace = true, features = ["pem"] }

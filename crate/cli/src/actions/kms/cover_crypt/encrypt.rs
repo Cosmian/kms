@@ -8,6 +8,7 @@ use cosmian_kms_client::{
     read_bytes_from_file, read_bytes_from_files_to_bulk, write_bulk_encrypted_data,
     write_single_encrypted_data,
 };
+use cosmian_logger::debug;
 
 use crate::{
     actions::kms::{labels::KEY_ID, shared::get_key_uid},
@@ -84,7 +85,7 @@ impl EncryptAction {
             }),
         )?;
 
-        tracing::debug!("{encrypt_request}");
+        debug!("{encrypt_request}");
 
         // Query the KMS with your kmip data and get the key pair ids
         let encrypt_response = kms_rest_client
