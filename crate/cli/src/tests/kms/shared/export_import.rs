@@ -1,15 +1,20 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-use cosmian_kms_client::reexport::cosmian_kms_client_utils::export_utils::WrappingAlgorithm;
-use cosmian_logger::{debug, log_init};
+use cosmian_kms_client::reexport::cosmian_kms_client_utils::{
+    export_utils::{ExportKeyFormat, WrappingAlgorithm},
+    import_utils::{ImportKeyFormat, KeyUsage},
+};
+use cosmian_logger::log_init;
 use tempfile::TempDir;
-use test_kms_server::start_default_test_kms_server;
+use test_kms_server::{TestsContext, start_default_test_kms_server};
+use tracing::{debug, info};
 
 use crate::{
     actions::kms::{
         shared::{ExportSecretDataOrKeyAction, ImportSecretDataOrKeyAction},
         symmetric::keys::create_key::CreateKeyAction,
     },
+    cli_bail,
     error::result::KmsCliResult,
 };
 
@@ -62,4 +67,219 @@ pub(crate) async fn test_wrap_on_export_unwrap_on_import() -> KmsCliResult<()> {
     }
 
     Ok(())
+}
+
+const RSA_PRIVATE_KEY: &str = r#"-----BEGIN PRIVATE KEY-----
+MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQCzdXCsuC+YqBvc
+gGTe9oF4L3Ni0pj2pk6yTfGqt1Az/08IvueZsetFnrIew9ZSaACobSlwIs2moc3s
+ukkYTQpDxNEeRg1lPQArDlhz+twBbLx0q31RWwT0kW8R/+UW5GO4uehUhduAgi6s
+isxSpqXkv3/00v9rIAtdpfhAdEs8Rz8EAza236EDHC6SiXVbTKn2vLAe/0JX4egP
+5/LUo7okTHOyQHhw6cc8B1HnGen5fcMwpEO4I1gQZSDRio2718njTIegUs1yV87W
+lxhudkP8SfMKEHWJUy1wlYbkIsKdE/B822XeVKz22MGokJjdyiZsuhYhzgaouzK3
+yE2erWwVAgMBAAECggEAHztuaWThxbXmKW1AAOzSUgYiFP4VaIG/mvkFOOKP5wjF
+Kr68xGsqSNLKaZ/IJk3a5XUgG9e2xkwNMGioTX4k7e/sPBJRhP/Fjni/7KlpTics
+MjrhQ74tQdooxC9uoZoMf+r88+7a6YXelSFP14eQwhuQ650oHi70w27d4mvK5zms
+sqd2aM1ousSfTGikSQxyszdsFkJgVKBoSdh/YIp83bcL1bKz8iairaNCFaBSQe+Q
+3JI2evfPCZ0bijG+CzA80/86pFMJKOT9sksp0KdCf2Azu+Q8wFv3dZwgayk2KBVQ
+TyPaI3YJ12rV9OI2OngNg2PM+pTyyZQjnquAOeaJQQKBgQD2/HO54v4OZtwSSr3d
+J43DH5re1ZBFPik2pAQRPBdillwAq+4MbNimupjtFYevoGhDxzMB4TFa+qvDSYlB
+RAOktBsYjsdVBRLB4Kfqfwd00dxg+4opGJOVupNTijf4fKhWyM3vF4gIy104Y9TK
+J88BAN4AyTLpjl2EPrZdJBVrVQKBgQC6AhdyF9TP5ccCCUEPjcWyaUMQDinInmpe
+PxnId9Iyry0n5ArR2e+nhCpRvj4iqbWw4I+eRkmbgfvA8Z5Sq4YmLYlY27IZKr7Z
+29E5cT8TsqzAD5dkidNaju+TjIQdPSIuIcgdTIKq53+z2kS5VW8XRWp4fM4wlxC9
+6eRRJqN9wQKBgDbFEtCk4pvE+YZg5quVKt2bM5e4mi6Qs0j3pCNCRRlKqIpJlhdR
+R9XpSSJCBP3QP27QTKJdErnPHqnGs9YyQ/CRM/UFLHTRFDDEJdhdZQTlyM4E2cV1
+Or0YS7VZ0EGdOyNLkkcz26m/lyN7F+PgYgoh7BkWhOC//kLmOUB8UPelAoGAU9C7
+ddrNNzzn1sAKxBJzIfiSknp/U3omnf87A/0SB2quI0p7oaHdfpNsalcaMo5cY65c
+qMotQthoc8GsQL4vfaaJPDQK5ZJAW3TUq1ifPqYFd6nO4yvDxAuiYs8vfOleLIFm
+ZeVi/9W+0nEpBIY9v7O0zUQXuQdpMNpi2jpZ80ECgYADEWWxeNCtz9049INp92Fs
+63eTetFy6wG41v/ngrxDvgb13zDDX0dFM5kVNev3j98QKiQ+x/46j7fFyhgl1Dup
+qeDmXs6dH40L2I0TLPF0Ax2V7DgXwgeCPnlwLrf96xpV+2UXt1zvqzU8BdK8qT4b
+yLT7mm6+hAwMp3y0u6oBTA==
+-----END PRIVATE KEY-----"#;
+
+const RSA_PUBLIC_KEY: &str = r#"-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAs3VwrLgvmKgb3IBk3vaB
+eC9zYtKY9qZOsk3xqrdQM/9PCL7nmbHrRZ6yHsPWUmgAqG0pcCLNpqHN7LpJGE0K
+Q8TRHkYNZT0AKw5Yc/rcAWy8dKt9UVsE9JFvEf/lFuRjuLnoVIXbgIIurIrMUqal
+5L9/9NL/ayALXaX4QHRLPEc/BAM2tt+hAxwukol1W0yp9rywHv9CV+HoD+fy1KO6
+JExzskB4cOnHPAdR5xnp+X3DMKRDuCNYEGUg0YqNu9fJ40yHoFLNclfO1pcYbnZD
+/EnzChB1iVMtcJWG5CLCnRPwfNtl3lSs9tjBqJCY3combLoWIc4GqLsyt8hNnq1s
+FQIDAQAB
+-----END PUBLIC KEY-----"#;
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[tokio::test]
+async fn test_openssl_cli_compat() -> KmsCliResult<()> {
+    // log_init(option_env!("RUST_LOG"));
+    log_init(Some("info"));
+    let ctx = start_default_test_kms_server().await;
+    let tmp_dir = TempDir::new()?;
+    let tmp_path = tmp_dir.path();
+
+    // let priv_key = PKey::private_key_from_pem(RSA_PRIVATE_KEY.as_bytes()).unwrap();
+    // let pub_key = PKey::public_key_from_pem(RSA_PUBLIC_KEY.as_bytes()).unwrap();
+    let dek = "afbeb0f07dfbf5419200f2ccb50bb24aafbeb0f07dfbf5419200f2ccb50bb24a";
+    let aes_kek = "5840df6e29b02af1ab493b705bf16ea1ae8338f4dcc176a85840df6e29b02af1";
+
+    // write RSA private key to file
+    let priv_key_file = tmp_path.join("rsa_private_key.pem");
+    std::fs::write(&priv_key_file, RSA_PRIVATE_KEY)?;
+    // write RSA public key to file
+    let pub_key_file = tmp_path.join("rsa_public_key.pem");
+    std::fs::write(&pub_key_file, RSA_PUBLIC_KEY)?;
+    // write aes_kek to file
+    let aes_kek_file = tmp_path.join("aes_kek.bin");
+    std::fs::write(&aes_kek_file, hex::decode(aes_kek)?)?;
+    // write dek to file
+    let dek_file = tmp_path.join("dek.bin");
+    std::fs::write(&dek_file, hex::decode(dek)?)?;
+
+    let priv_key_id = ImportSecretDataOrKeyAction {
+        key_file: PathBuf::from(&priv_key_file),
+        key_format: ImportKeyFormat::Pem,
+        key_usage: Some(vec![KeyUsage::UnwrapKey, KeyUsage::Decrypt]),
+        ..Default::default()
+    }
+    .run(ctx.get_user_client())
+    .await?
+    .to_string();
+    info!("priv_key_id: {priv_key_id}");
+
+    let pub_key_id = ImportSecretDataOrKeyAction {
+        key_file: PathBuf::from(&pub_key_file),
+        key_format: ImportKeyFormat::Pem,
+        key_usage: Some(vec![KeyUsage::WrapKey, KeyUsage::Encrypt]),
+        ..Default::default()
+    }
+    .run(ctx.get_user_client())
+    .await?
+    .to_string();
+    info!("pub_key_id: {pub_key_id}");
+
+    let dek_id = ImportSecretDataOrKeyAction {
+        key_file: PathBuf::from(&dek_file),
+        key_format: ImportKeyFormat::Aes,
+        key_usage: Some(vec![KeyUsage::Decrypt, KeyUsage::Encrypt]),
+        ..Default::default()
+    }
+    .run(ctx.get_user_client())
+    .await?
+    .to_string();
+    info!("dek_id: {dek_id}");
+
+    // SHA256
+    let rec_dek =
+        test_openssl_cli_compat_inner(&ctx, &tmp_path, &dek_id, &pub_key_id, &priv_key_file, false)
+            .await?;
+    assert_eq!(rec_dek, hex::decode(dek)?);
+
+    // SHA1
+    let rec_dek =
+        test_openssl_cli_compat_inner(&ctx, &tmp_path, &dek_id, &pub_key_id, &priv_key_file, true)
+            .await?;
+    assert_eq!(rec_dek, hex::decode(dek)?);
+
+    Ok(())
+}
+
+async fn test_openssl_cli_compat_inner(
+    ctx: &TestsContext,
+    tmp_path: &Path,
+    dek_id: &str,
+    pub_key_id: &str,
+    priv_key_file: &PathBuf,
+    use_sha1: bool,
+) -> KmsCliResult<Vec<u8>> {
+    let wrapped_key_file = tmp_path.join("wrapped_key.bin");
+    ExportSecretDataOrKeyAction {
+        key_id: Some(dek_id.to_owned()),
+        key_file: wrapped_key_file.clone(),
+        wrap_key_id: Some(pub_key_id.to_owned()),
+        wrapping_algorithm: Some(if use_sha1 {
+            WrappingAlgorithm::RsaAesKeyWrapSha1
+        } else {
+            WrappingAlgorithm::RsaAesKeyWrap
+        }),
+        key_format: ExportKeyFormat::Raw,
+        ..Default::default()
+    }
+    .run(ctx.get_user_client())
+    .await?;
+    // read wrapped key from file
+    let wrapped_key = std::fs::read(&wrapped_key_file)?;
+
+    // the last 40 bytes are the AES_KEY_WRAP_PAD (RFC 5649)
+    assert_eq!(wrapped_key.len(), 2048 / 8 + 40);
+
+    // write wrapped key to file
+    let oaep_encapsulation = &wrapped_key[..wrapped_key.len() - 40];
+    let rsa_oaep_encapsulation_file = tmp_path.join("rsa_oaep_encapsulation.bin");
+    std::fs::write(&rsa_oaep_encapsulation_file, &oaep_encapsulation)?;
+
+    let rfc5649_encapsulation = &wrapped_key[wrapped_key.len() - 40..];
+    let rfc5649_encapsulation_file = tmp_path.join("rfc5649_encapsulation.bin");
+    std::fs::write(&rfc5649_encapsulation_file, &rfc5649_encapsulation)?;
+
+    // Execute OpenSSL command to decrypt rhe RSA OAEP encapsulation
+    let aes_kek_file = tmp_path.join("aes_kek.bin");
+    let output = tokio::process::Command::new("openssl")
+        .arg("pkeyutl")
+        .arg("-decrypt")
+        .arg("-inkey")
+        .arg(&priv_key_file)
+        .arg("-in")
+        .arg(&rsa_oaep_encapsulation_file)
+        .arg("-out")
+        .arg(&aes_kek_file)
+        .arg("-pkeyopt")
+        .arg("rsa_padding_mode:oaep")
+        .arg("-pkeyopt")
+        .arg(if use_sha1 {
+            "rsa_oaep_md:sha1"
+        } else {
+            "rsa_oaep_md:sha256"
+        })
+        .arg("-pkeyopt")
+        .arg(if use_sha1 {
+            "rsa_mgf1_md:sha1"
+        } else {
+            "rsa_mgf1_md:sha256"
+        })
+        .output()
+        .await?;
+
+    if !output.status.success() {
+        cli_bail!("openssl pkeyutl failed: {output:?}");
+    }
+    // recover the AES_KEK from the decrypted key
+    let aes_kek = std::fs::read(&aes_kek_file)?;
+    assert_eq!(aes_kek.len(), 32);
+
+    // Execute OpenSSL command to decrypt the RFC 5649 encapsulation
+    let rec_dek_file = tmp_path.join("rec_dek.bin");
+    let output = tokio::process::Command::new("openssl")
+        .arg("enc")
+        .arg("-d")
+        .arg("-id-aes256-wrap-pad")
+        .arg("-iv")
+        .arg("A65959A6")
+        .arg("-K")
+        .arg(hex::encode(&aes_kek))
+        .arg("-in")
+        .arg(&rfc5649_encapsulation_file)
+        .arg("-out")
+        .arg(&rec_dek_file)
+        .output()
+        .await?;
+
+    if !output.status.success() {
+        cli_bail!("openssl pkeyutl failed: {output:?}");
+    }
+
+    // read recovered dek from file
+    let rec_dek = std::fs::read(&rec_dek_file)?;
+    assert_eq!(rec_dek.len(), 32);
+
+    Ok(rec_dek)
 }

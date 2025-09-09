@@ -108,9 +108,15 @@ pub struct ExportSecretDataOrKeyAction {
 
     /// Wrapping algorithm to use when exporting the key
     /// The possible wrapping algorithms are
-    ///  - using a symmetric KEK: `nist-key-wrap` (default - a.k.a RFC 5649) and `aes-gcm`
-    ///  - using an RSA KEK: `rsa-oaep` (default - CKM-RSA-OAEP), `rsa-aes-key-wrap` (CKM-RSA-AES-KEY-WRP)
-    ///    and `rsa-pkcs-v15` (CKM-RSA v1.5)
+    ///  - using a symmetric KEK:
+    ///     - `nist-key-wrap` (default - a.k.a RFC 5649, CKM_AES_KEY_WRAP_PAD)
+    ///     - `aes-gcm`
+    ///  - using an RSA KEK:
+    ///     - `rsa-oaep` (default - CKM-RSA-OAEP)
+    ///     - `rsa-aes-key-wrap` (CKM-RSA-AES-KEY-WRP)
+    ///     - `rsa-pkcs-v15` (CKM-RSA v1.5)
+    /// The RSA algorithms use SHA256 by default. To use SHA1,
+    /// use the version with -sha1 suffix (e.g. `rsa-aes-key-wrap-sha1`).
     #[clap(
         long = "wrapping-algorithm",
         short = 'm',

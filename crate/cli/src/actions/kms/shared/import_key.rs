@@ -83,7 +83,7 @@ pub struct ImportSecretDataOrKeyAction {
     /// The key encryption key (KEK) used to wrap this imported key with.
     /// If the wrapping key is:
     /// - a symmetric key, AES-GCM will be used
-    /// - a RSA key, RSA-OAEP will be used
+    /// - a RSA key, RSA-OAEP with SHA256 will be used
     /// - a EC key, ECIES will be used (salsa20poly1305 for X25519)
     #[clap(
         long = "wrapping-key-id",
