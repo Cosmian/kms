@@ -1,5 +1,9 @@
-use std::path::{Path, PathBuf};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
+use base64::Engine;
 use cosmian_kms_client::reexport::cosmian_kms_client_utils::{
     export_utils::{ExportKeyFormat, WrappingAlgorithm},
     import_utils::{ImportKeyFormat, KeyUsage},
@@ -302,6 +306,7 @@ async fn test_openssl_cli_compat_inner(
     Ok(rec_dek)
 }
 
+#[allow(dead_code)]
 const GOOGLE_RSA_PUBLIC_KEY: &str = r"-----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApg4Oo7ygEBmAlzhUZFm2
 75K999TqNjvgiAi/pSzAJS6XO3sa346zZYjZpj4l4OP5T2xlmPXoF/igbCO9jAeW
@@ -310,6 +315,18 @@ mp+tY0qmlmhnRHwoQkZDU1c08SLA4p6IV3NssgwKaN8KwM53KDxw6kDo0INfS+Ym
 MNZ8oHg8FJ5Q3ExR54fD1/WFngOSexpzNtGvZGMaoCnISMumEo8nfENtMXxnLquu
 BvYAOQEQs7vl0ES/DD0dNzVonZTo9/c8yr0SlcWg8Uy7XkD5FQSE5A87pOZUDEcD
 FQIDAQAB
+-----END PUBLIC KEY-----";
+
+const GOOGLE_RSA_3072_PUBLIC_KEY: &str = r"-----BEGIN PUBLIC KEY-----
+MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEA4IC9RHuBZN0JiDhmTahs
+CReA/T9sClL1Y4W52let67FLli50pdltx6LktI722DhKQTkNIwLZvnih27cOp+Vq
+Ryp3yVWDWcr5f/MgRwDbcUXfNDobyWd5f2N/8XMYQV3GVTpP3Lyx4QcdzOG0FTwM
+RuiukTMowISGVGvRTGQofqqJFiFuzxRdjfkhJcW7LyWhjNRn//YDf09ziOfwvEAQ
+QmUQNdmoiziJXXBvUQ6mE/V4Dd1c/8FzCKxZVMSPzfUcB1L3xs4Uw1rAOdunC7tb
+KKAtHuhzL1Vn8liT2Mb2xP7319+WeP0C3mF0dKv8xXKxi96N11fXpPizMypf35aW
+gMEuwal4Cn+nkQnM6OAHz2oPsKmgZ7TF0HUmtabiC29q7mjXlHAx97OxfsDd1bnb
+FrCApNcbq921jx1pOqsgeA1xJF5s/9nNEh60xsTL1gckKtPOlM6wYQJFWGWOp9Uw
+Po4I434ukwwHfwHuXTOrWxXEtFJkiGcjqxDeaDyVuR2ZAgMBAAE=
 -----END PUBLIC KEY-----";
 
 #[tokio::test]
@@ -322,16 +339,16 @@ async fn test_google_csek() -> KmsCliResult<()> {
     let tmp_path = tmp_dir.path();
 
     // let priv_key = PKey::private_key_from_pem(RSA_PRIVATE_KEY.as_bytes()).unwrap();
-    let pub_key = PKey::public_key_from_pem(GOOGLE_RSA_PUBLIC_KEY.as_bytes()).unwrap();
+    let pub_key = PKey::public_key_from_pem(GOOGLE_RSA_3072_PUBLIC_KEY.as_bytes()).unwrap();
     info!("pub_key: {}", pub_key.rsa().unwrap().size());
     let dek = "afbeb0f07dfbf5419200f2ccb50bb24aafbeb0f07dfbf5419200f2ccb50bb24a";
 
     // write RSA public key to file
     let pub_key_file = tmp_path.join("rsa_public_key.pem");
-    std::fs::write(&pub_key_file, GOOGLE_RSA_PUBLIC_KEY)?;
+    fs::write(&pub_key_file, GOOGLE_RSA_3072_PUBLIC_KEY)?;
     // write dek to file
     let dek_file = tmp_path.join("dek.bin");
-    std::fs::write(&dek_file, hex::decode(dek)?)?;
+    fs::write(&dek_file, hex::decode(dek)?)?;
 
     let pub_key_id = ImportSecretDataOrKeyAction {
         key_file: PathBuf::from(&pub_key_file),
@@ -354,6 +371,28 @@ async fn test_google_csek() -> KmsCliResult<()> {
     .await?
     .to_string();
     info!("dek_id: {dek_id}");
+
+    let wrapped_key_file = tmp_path.join("wrapped_key.bin");
+    ExportSecretDataOrKeyAction {
+        key_id: Some(dek_id.clone()),
+        key_file: wrapped_key_file.clone(),
+        wrap_key_id: Some(pub_key_id.clone()),
+        wrapping_algorithm: Some(WrappingAlgorithm::RsaAesKeyWrapSha1),
+        key_format: ExportKeyFormat::Raw,
+        ..Default::default()
+    }
+    .run(ctx.get_user_client())
+    .await?;
+    // read wrapped key from file
+    let wrapped_key = fs::read(&wrapped_key_file)?;
+    fs::write("/tmp/wrapped_key.bin", &wrapped_key)?;
+
+    // encode in BASE 64
+    let wrapped_key_base64 = base64::engine::general_purpose::STANDARD.encode(&wrapped_key);
+    let dek_base64 = base64::engine::general_purpose::STANDARD.encode(hex::decode(dek)?);
+
+    info!("dek_base64: {}", dek_base64);
+    info!("wrapped_key_base64: {}", wrapped_key_base64);
 
     Ok(())
 }

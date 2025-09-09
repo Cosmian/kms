@@ -60,10 +60,18 @@ plugins:
 nav:
   - Why use the Cosmian KMS: index.md
   - Quick start: quick_start.md
-  - Use cases and integrations:
+  - Use cases:
       - Encrypting and decrypting at scale: encrypting_and_decrypting_at_scale.md
       - Client-side and application-level encryption: client_side_and_application_level_encryption.md
-      - S/MIME Email encryption: pki/smime.md
+  - HSM support:
+      - Introduction: hsms/index.md
+      - HSM keys & operations: hsms/hsm_operations.md
+      - Trustway Proteccio: hsms/proteccio.md
+      - Utimaco General Purpose: hsms/utimaco.md
+  - Integrations:
+      - API Endpoints: api.md
+      - Google GCP:
+          - CMEK (Customer Managed Encryption Keys): google_gcp/cmek.md
       - Google Workspace Client-Side Encryption (CSE):
           - Getting started: google_cse/index.md
           - Configuring the .well-known file: google_cse/configuring-the-well-known-file-and-server.md
@@ -71,18 +79,13 @@ nav:
           - Migrating existing Drive CSE elements: google_cse/migrating_drive.md
           - Migrating existing email to Gmail CSE: google_cse/migrating_gmail.md
       - Microsoft Double Key Encryption (DKE): ms_dke/index.md
-      - HSM support:
-          - Introduction: hsms/index.md
-          - HSM keys & operations: hsms/hsm_operations.md
-          - Trustway Proteccio: hsms/proteccio.md
-          - Utimaco General Purpose: hsms/utimaco.md
       - MongoDB: mongodb.md
       - Postgresql Percona Database: percona.md
       - PyKMIP: pykmip.md
-      - VMware vCenter: vcenter.md
-      - User Defined Function for PySpark, Databricks,... in Python: python_udf/index.md
+      - S/MIME Email encryption: pki/smime.md
       - Snowflake Native App: snowflake/index.md
-      - API Endpoints: api.md
+      - User Defined Function for PySpark, Databricks,... in Python: python_udf/index.md
+      - VMware vCenter: vcenter.md
   - Installation:
       - Getting started: installation/installation_getting_started.md
       - Deploying in a Cosmian Confidential VM: installation/marketplace_guide.md
