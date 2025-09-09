@@ -5,9 +5,10 @@ use cosmian_kms_client::reexport::cosmian_kms_client_utils::{
     import_utils::{ImportKeyFormat, KeyUsage},
 };
 use cosmian_logger::log_init;
+use openssl::pkey::PKey;
 use tempfile::TempDir;
 use test_kms_server::{TestsContext, start_default_test_kms_server};
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 use crate::{
     actions::kms::{
@@ -15,7 +16,7 @@ use crate::{
         symmetric::keys::create_key::CreateKeyAction,
     },
     cli_bail,
-    error::result::KmsCliResult,
+    error::result::{KmsCliResult, KmsCliResultHelper},
 };
 
 #[tokio::test]
@@ -114,14 +115,33 @@ async fn test_openssl_cli_compat() -> KmsCliResult<()> {
     log_init(option_env!("RUST_LOG"));
     // log_init(Some("info"));
 
+    if let Ok(output) = tokio::process::Command::new("openssl")
+        .arg("version")
+        .output()
+        .await
+    {
+        if !output.status.success() {
+            warn!("test_openssl_cli_compat: openssl CLI call failed, skipping test: {output:#?}");
+            return Ok(());
+        }
+        let res = String::from_utf8(output.stdout)
+            .context("test_openssl_cli_compat: openssl CLI output is not valid UTF-8)")?;
+        if !res.to_lowercase().contains("openssl 3") {
+            warn!(
+                "test_openssl_cli_compat: openssl version is not OpenSSL 3: {res}, skipping test"
+            );
+            return Ok(());
+        }
+    } else {
+        warn!("test_openssl_cli_compat: openssl CLI not found, skipping test");
+        return Ok(());
+    }
+
     let ctx = start_default_test_kms_server().await;
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
 
-    // let priv_key = PKey::private_key_from_pem(RSA_PRIVATE_KEY.as_bytes()).unwrap();
-    // let pub_key = PKey::public_key_from_pem(RSA_PUBLIC_KEY.as_bytes()).unwrap();
     let dek = "afbeb0f07dfbf5419200f2ccb50bb24aafbeb0f07dfbf5419200f2ccb50bb24a";
-    let aes_kek = "5840df6e29b02af1ab493b705bf16ea1ae8338f4dcc176a85840df6e29b02af1";
 
     // write RSA private key to file
     let priv_key_file = tmp_path.join("rsa_private_key.pem");
@@ -129,9 +149,6 @@ async fn test_openssl_cli_compat() -> KmsCliResult<()> {
     // write RSA public key to file
     let pub_key_file = tmp_path.join("rsa_public_key.pem");
     std::fs::write(&pub_key_file, RSA_PUBLIC_KEY)?;
-    // write aes_kek to file
-    let aes_kek_file = tmp_path.join("aes_kek.bin");
-    std::fs::write(&aes_kek_file, hex::decode(aes_kek)?)?;
     // write dek to file
     let dek_file = tmp_path.join("dek.bin");
     std::fs::write(&dek_file, hex::decode(dek)?)?;
@@ -222,13 +239,9 @@ async fn test_openssl_cli_compat_inner(
     let rfc5649_encapsulation_file = tmp_path.join("rfc5649_encapsulation.bin");
     std::fs::write(&rfc5649_encapsulation_file, rfc5649_encapsulation)?;
 
-    let openssl_bin = option_env!("OPENSSL_DIR")
-        .map(|d| PathBuf::from(d).join("bin").join("openssl"))
-        .unwrap_or_else(|| PathBuf::from("openssl"));
-
     // Execute OpenSSL command to decrypt rhe RSA OAEP encapsulation
     let aes_kek_file = tmp_path.join("aes_kek.bin");
-    let output = tokio::process::Command::new(&openssl_bin)
+    let output = tokio::process::Command::new("openssl")
         .arg("pkeyutl")
         .arg("-decrypt")
         .arg("-inkey")
@@ -263,7 +276,7 @@ async fn test_openssl_cli_compat_inner(
 
     // Execute OpenSSL command to decrypt the RFC 5649 encapsulation
     let rec_dek_file = tmp_path.join("rec_dek.bin");
-    let output = tokio::process::Command::new(&openssl_bin)
+    let output = tokio::process::Command::new("openssl")
         .arg("enc")
         .arg("-d")
         .arg("-id-aes256-wrap-pad")
@@ -289,15 +302,58 @@ async fn test_openssl_cli_compat_inner(
     Ok(rec_dek)
 }
 
-// const GOOGLE_RSA_PUBLIC_KEY: &str = r#"-----BEGIN PUBLIC KEY-----
-// MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApg4Oo7ygEBmAlzhUZFm2
-// 75K999TqNjvgiAi/pSzAJS6XO3sa346zZYjZpj4l4OP5T2xlmPXoF/igbCO9jAeW
-// +Y8N1VZ6LRvPQ+ndP22ZyL/kiJFc1jUVrBm9ItzTGSO44Z4A77uDga1eAWkIg/9i
-// mp+tY0qmlmhnRHwoQkZDU1c08SLA4p6IV3NssgwKaN8KwM53KDxw6kDo0INfS+Ym
-// MNZ8oHg8FJ5Q3ExR54fD1/WFngOSexpzNtGvZGMaoCnISMumEo8nfENtMXxnLquu
-// BvYAOQEQs7vl0ES/DD0dNzVonZTo9/c8yr0SlcWg8Uy7XkD5FQSE5A87pOZUDEcD
-// FQIDAQAB
-// -----END PUBLIC KEY----"#;
+const GOOGLE_RSA_PUBLIC_KEY: &str = r"-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApg4Oo7ygEBmAlzhUZFm2
+75K999TqNjvgiAi/pSzAJS6XO3sa346zZYjZpj4l4OP5T2xlmPXoF/igbCO9jAeW
++Y8N1VZ6LRvPQ+ndP22ZyL/kiJFc1jUVrBm9ItzTGSO44Z4A77uDga1eAWkIg/9i
+mp+tY0qmlmhnRHwoQkZDU1c08SLA4p6IV3NssgwKaN8KwM53KDxw6kDo0INfS+Ym
+MNZ8oHg8FJ5Q3ExR54fD1/WFngOSexpzNtGvZGMaoCnISMumEo8nfENtMXxnLquu
+BvYAOQEQs7vl0ES/DD0dNzVonZTo9/c8yr0SlcWg8Uy7XkD5FQSE5A87pOZUDEcD
+FQIDAQAB
+-----END PUBLIC KEY-----";
 
-// #[tokio::test]
-// async fn test_google_csek() -> KmsCliResult<()> {}
+#[tokio::test]
+async fn test_google_csek() -> KmsCliResult<()> {
+    // log_init(option_env!("RUST_LOG"));
+    log_init(Some("info"));
+
+    let ctx = start_default_test_kms_server().await;
+    let tmp_dir = TempDir::new()?;
+    let tmp_path = tmp_dir.path();
+
+    // let priv_key = PKey::private_key_from_pem(RSA_PRIVATE_KEY.as_bytes()).unwrap();
+    let pub_key = PKey::public_key_from_pem(GOOGLE_RSA_PUBLIC_KEY.as_bytes()).unwrap();
+    info!("pub_key: {}", pub_key.rsa().unwrap().size());
+    let dek = "afbeb0f07dfbf5419200f2ccb50bb24aafbeb0f07dfbf5419200f2ccb50bb24a";
+
+    // write RSA public key to file
+    let pub_key_file = tmp_path.join("rsa_public_key.pem");
+    std::fs::write(&pub_key_file, GOOGLE_RSA_PUBLIC_KEY)?;
+    // write dek to file
+    let dek_file = tmp_path.join("dek.bin");
+    std::fs::write(&dek_file, hex::decode(dek)?)?;
+
+    let pub_key_id = ImportSecretDataOrKeyAction {
+        key_file: PathBuf::from(&pub_key_file),
+        key_format: ImportKeyFormat::Pem,
+        key_usage: Some(vec![KeyUsage::WrapKey, KeyUsage::Encrypt]),
+        ..Default::default()
+    }
+    .run(ctx.get_user_client())
+    .await?
+    .to_string();
+    info!("pub_key_id: {pub_key_id}");
+
+    let dek_id = ImportSecretDataOrKeyAction {
+        key_file: PathBuf::from(&dek_file),
+        key_format: ImportKeyFormat::Aes,
+        key_usage: Some(vec![KeyUsage::Decrypt, KeyUsage::Encrypt]),
+        ..Default::default()
+    }
+    .run(ctx.get_user_client())
+    .await?
+    .to_string();
+    info!("dek_id: {dek_id}");
+
+    Ok(())
+}
