@@ -9,6 +9,7 @@ use pkcs11_sys::{CK_FLAGS, CK_OBJECT_HANDLE, CK_SESSION_HANDLE, CK_SLOT_ID, CK_U
 use tracing::warn;
 
 use crate::{HError, HResult, Session, hsm_lib::HsmLib};
+use crate::hsm_capabilities::HsmCapabilities;
 
 /// A cache structure that maps byte vectors to `CK_OBJECT_HANDLE` values using an LRU (Least Recently Used) strategy.
 ///
@@ -81,6 +82,7 @@ pub struct SlotManager {
     object_handles_cache: Arc<ObjectHandlesCache>,
     supported_oaep_hash_cache: Arc<Mutex<Option<Vec<CK_MECHANISM_TYPE>>>>,
     _login_session: Option<Session>,
+    hsm_capabilities: HsmCapabilities,
 }
 
 impl SlotManager {
@@ -107,6 +109,7 @@ impl SlotManager {
         hsm_lib: Arc<HsmLib>,
         slot_id: usize,
         login_password: Option<String>,
+        hsm_capabilities: HsmCapabilities,
     ) -> HResult<Self> {
         let object_handles_cache = Arc::new(ObjectHandlesCache::new());
         let supported_oaep_hash_cache = Arc::new(Mutex::new(None));
@@ -118,6 +121,7 @@ impl SlotManager {
                 object_handles_cache.clone(),
                 supported_oaep_hash_cache.clone(),
                 Some(password),
+                hsm_capabilities.clone(),
             )?;
             Ok(SlotManager {
                 hsm_lib,
@@ -125,6 +129,7 @@ impl SlotManager {
                 object_handles_cache,
                 supported_oaep_hash_cache,
                 _login_session: Some(login_session),
+                hsm_capabilities,
             })
         } else {
             Ok(SlotManager {
@@ -133,6 +138,7 @@ impl SlotManager {
                 object_handles_cache,
                 supported_oaep_hash_cache,
                 _login_session: None,
+                hsm_capabilities,
             })
         }
     }
@@ -258,6 +264,7 @@ impl SlotManager {
             self.object_handles_cache.clone(),
             self.supported_oaep_hash_cache.clone(),
             None,
+            self.hsm_capabilities.clone(),
         )
     }
 
@@ -268,6 +275,7 @@ impl SlotManager {
         object_handles_cache: Arc<ObjectHandlesCache>,
         supported_oaep_hash_cache: Arc<Mutex<Option<Vec<CK_MECHANISM_TYPE>>>>,
         login_password: Option<String>,
+        hsm_capabilities: HsmCapabilities,
     ) -> HResult<Session> {
         let slot_id: CK_SLOT_ID = slot_id as CK_SLOT_ID;
         let flags: CK_FLAGS = if read_write {
@@ -314,6 +322,7 @@ impl SlotManager {
                 object_handles_cache,
                 supported_oaep_hash_cache,
                 login_password.is_some(),
+                hsm_capabilities,
             ))
         }
     }

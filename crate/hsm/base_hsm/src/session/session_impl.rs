@@ -51,6 +51,7 @@ use cosmian_kms_interfaces::KeyType::{AesKey, RsaPrivateKey, RsaPublicKey};
 pub use crate::session::{aes::AesKeySize, rsa::RsaKeySize};
 use crate::{HError, HResult, ObjectHandlesCache};
 use uuid::Uuid;
+use crate::hsm_capabilities::HsmCapabilities;
 
 /// AES block size in bytes
 const AES_BLOCK_SIZE: usize = 16;
@@ -158,6 +159,7 @@ pub struct Session {
     object_handles_cache: Arc<ObjectHandlesCache>,
     supported_oaep_hash_cache: Arc<Mutex<Option<Vec<CK_MECHANISM_TYPE>>>>,
     is_logged_in: bool,
+    hsm_capabilities: HsmCapabilities,
 }
 
 impl Session {
@@ -167,6 +169,7 @@ impl Session {
         object_handles_cache: Arc<ObjectHandlesCache>,
         supported_oaep_hash_cache: Arc<Mutex<Option<Vec<CK_MECHANISM_TYPE>>>>,
         is_logged_in: bool,
+        hsm_capabilities: HsmCapabilities,
     ) -> Self {
         debug!("Creating new session: {session_handle}");
         Session {
@@ -175,6 +178,7 @@ impl Session {
             object_handles_cache,
             supported_oaep_hash_cache,
             is_logged_in,
+            hsm_capabilities,
         }
     }
 
@@ -619,8 +623,11 @@ impl Session {
             }
             HsmEncryptionAlgorithm::AesCbc => {
                 let mut iv = generate_random_nonce::<AES_CBC_IV_LENGTH>()?;
-                if plaintext.len() > 1024 {
-                    return self.encrypt_aes_cbc_multi_round(key_handle, iv, plaintext, 1024);
+                if let Some(max_cbc_data_size) = self.hsm_capabilities.max_cbc_data_size {
+                    if plaintext.len() > max_cbc_data_size {
+                        debug!("Performing multi round AES CBC encryption");
+                        return self.encrypt_aes_cbc_multi_round(key_handle, iv, plaintext, max_cbc_data_size);
+                    }
                 }
                 let mut mechanism = CK_MECHANISM {
                     mechanism: CKM_AES_CBC,
@@ -738,8 +745,16 @@ impl Session {
                 let mut iv: [u8; AES_CBC_IV_LENGTH] = ciphertext[..AES_CBC_IV_LENGTH]
                     .try_into()
                     .map_err(|_| HError::Default("Invalid AES CBC IV".to_string()))?;
-                if ciphertext.len() > 1040 {
-                    return self.decrypt_aes_cbc_multi_round(key_handle, &iv, &ciphertext[AES_CBC_IV_LENGTH..], 1024);
+                if let Some(max_cbc_data_size) = self.hsm_capabilities.max_cbc_data_size {
+                    if ciphertext.len() > (max_cbc_data_size + AES_CBC_IV_LENGTH) {
+                        debug!("Performing multi round AES CBC decryption");
+                        return self.decrypt_aes_cbc_multi_round(
+                            key_handle,
+                            &iv,
+                            &ciphertext[AES_CBC_IV_LENGTH..],
+                            max_cbc_data_size,
+                        );
+                    }
                 }
                 let mut mechanism = CK_MECHANISM {
                     mechanism: CKM_AES_CBC,

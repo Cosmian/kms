@@ -5,25 +5,32 @@ use std::{
     fmt::{Display, Formatter},
     sync::{Arc, Mutex},
 };
-
+use std::marker::PhantomData;
 use pkcs11_sys::{CK_INFO, CKR_OK, CK_MECHANISM_TYPE, CKM_AES_CBC, CKM_AES_GCM, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP, CKM_SHA_1, CKM_SHA256};
 use cosmian_kms_interfaces::{CryptoAlgorithm};
 use crate::{HError, HResult, SlotManager, hsm_lib::HsmLib};
+use crate::hsm_capabilities::{HsmCapabilities, HsmProvider};
+
+pub struct DefaultCapabilityProvider;
+impl HsmProvider for DefaultCapabilityProvider {
+    fn capabilities() -> HsmCapabilities {
+        HsmCapabilities::default()
+    }
+}
 
 struct SlotState {
     password: Option<String>,
     slot: Option<Arc<SlotManager>>,
 }
 
-pub struct BaseHsm {
+pub struct BaseHsm<P: HsmProvider = DefaultCapabilityProvider> {
     hsm_lib: Arc<HsmLib>,
     slots: Mutex<HashMap<usize, SlotState>>,
+    _provider: PhantomData<P>,
 }
 
-impl BaseHsm {
-    pub fn instantiate<P>(path: P, passwords: HashMap<usize, Option<String>>) -> HResult<Self>
-    where
-        P: AsRef<std::ffi::OsStr>,
+impl <P: HsmProvider> BaseHsm<P> {
+    pub fn instantiate<Pth: AsRef<std::ffi::OsStr>>(path: Pth, passwords: HashMap<usize, Option<String>>) -> HResult<Self>
     {
         let hsm_lib = Arc::new(HsmLib::instantiate(path)?);
         let mut slots = HashMap::with_capacity(passwords.len());
@@ -39,6 +46,7 @@ impl BaseHsm {
         Ok(BaseHsm {
             hsm_lib,
             slots: Mutex::new(slots),
+            _provider: PhantomData,
         })
     }
 
@@ -57,6 +65,7 @@ impl BaseHsm {
                     self.hsm_lib.clone(),
                     slot_id,
                     slot_state.password.clone(),
+                    P::capabilities()
                 )?);
                 slot_state.slot = Some(manager.clone());
                 Ok(manager)

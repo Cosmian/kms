@@ -39,9 +39,10 @@ use cosmian_kms_interfaces::{
 use zeroize::Zeroizing;
 
 use crate::{AesKeySize, BaseHsm, RsaKeySize};
+use crate::hsm_capabilities::HsmProvider;
 
 #[async_trait]
-impl HSM for BaseHsm {
+impl<P: HsmProvider> HSM for BaseHsm<P> {
     async fn get_supported_algorithms(
         &self,
         slot_id: usize,
