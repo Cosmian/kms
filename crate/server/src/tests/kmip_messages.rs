@@ -23,8 +23,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     },
     ttlv::to_ttlv,
 };
-use cosmian_logger::log_init;
-use tracing::debug;
+use cosmian_logger::{debug, log_init};
 
 use crate::{
     config::ServerParams, core::KMS, result::KResult, tests::test_utils::https_clap_config,

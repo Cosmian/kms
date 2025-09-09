@@ -1,8 +1,7 @@
 #![allow(unused)]
 use std::option;
 
-use cosmian_logger::log_init;
-use tracing::info;
+use cosmian_logger::{info, log_init};
 use zeroize::Zeroizing;
 
 use crate::{

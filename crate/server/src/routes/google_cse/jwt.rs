@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use alcoholic_jwt::token_kid;
-use tracing::{debug, trace};
+use cosmian_logger::{debug, trace};
 
 use super::operations::Role;
 use crate::{
@@ -207,7 +207,7 @@ pub async fn validate_cse_authentication_token(
     kms_default_username: &str,
     is_priv_unwrap: Option<String>,
 ) -> KResult<String> {
-    debug!("validate_cse_authentication_token: entering");
+    debug!("entering");
     let cse_config = cse_config.as_ref().ok_or_else(|| {
         KmsError::ServerError(
             "JWT authentication and authorization configurations for Google CSE are not set"
@@ -288,7 +288,7 @@ pub(crate) async fn validate_cse_authorization_token(
     cse_config: &Option<GoogleCseConfig>,
     roles: Option<&[Role]>,
 ) -> KResult<UserClaim> {
-    debug!("validate_cse_authorization_token: entering");
+    debug!("entering");
 
     trace!("validate_cse_authorization_token: KACLS URL {google_cse_kacls_url}");
 
@@ -422,8 +422,7 @@ pub(crate) async fn validate_tokens(
 mod tests {
     use std::sync::Arc;
 
-    use cosmian_logger::log_init;
-    use tracing::{debug, info, trace};
+    use cosmian_logger::{debug, info, log_init, trace};
 
     use crate::{
         config::{IdpAuthConfig, JwtAuthConfig},
@@ -454,7 +453,7 @@ mod tests {
         }}
         "#
         );
-        debug!("wrap_request: {wrap_request:?}");
+        debug!("{wrap_request:?}");
         let wrap_request: WrapRequest = serde_json::from_str(&wrap_request).unwrap();
 
         let uris = {

@@ -147,12 +147,6 @@ impl From<DbError> for redis::RedisError {
     }
 }
 
-impl From<tracing::dispatcher::SetGlobalDefaultError> for DbError {
-    fn from(e: tracing::dispatcher::SetGlobalDefaultError) -> Self {
-        Self::ServerError(e.to_string())
-    }
-}
-
 impl From<InterfaceError> for DbError {
     fn from(value: InterfaceError) -> Self {
         match value {

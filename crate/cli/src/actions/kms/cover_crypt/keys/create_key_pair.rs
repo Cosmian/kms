@@ -5,7 +5,7 @@ use cosmian_kms_client::{
     KmsClient, kmip_2_1::kmip_types::UniqueIdentifier,
     reexport::cosmian_kms_client_utils::cover_crypt_utils::build_create_covercrypt_master_keypair_request,
 };
-use tracing::debug;
+use cosmian_logger::debug;
 
 use crate::{
     actions::kms::console,
@@ -81,7 +81,7 @@ impl CreateMasterKeyPairAction {
     ) -> KmsCliResult<(UniqueIdentifier, UniqueIdentifier)> {
         let access_structure = std::fs::read_to_string(&self.specification)?;
 
-        debug!("client: access_structure: {access_structure:?}");
+        debug!("access_structure: {access_structure:?}");
 
         let res = kms_rest_client
             .create_key_pair(build_create_covercrypt_master_keypair_request(

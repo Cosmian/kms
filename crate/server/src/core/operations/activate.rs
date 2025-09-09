@@ -11,8 +11,8 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams},
 };
+use cosmian_logger::trace;
 use time::OffsetDateTime;
-use tracing::trace;
 
 use crate::{
     core::{KMS, retrieve_object_utils::retrieve_object_for_operation},
@@ -26,7 +26,7 @@ pub(crate) async fn activate(
     user: &str,
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<ActivateResponse> {
-    trace!("Activate: {}", serde_json::to_string(&request)?);
+    trace!("{}", serde_json::to_string(&request)?);
 
     // there must be an identifier
     let uid_or_tags = request
@@ -42,7 +42,7 @@ pub(crate) async fn activate(
         params.clone(),
     )
     .await?;
-    trace!("Activate: Retrieved object for: {}", owm.object());
+    trace!("Retrieved object for: {}", owm.object());
 
     // Update the state of the object to Active and activation date
     let activation_date = OffsetDateTime::now_utc()

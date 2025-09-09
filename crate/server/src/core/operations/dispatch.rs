@@ -11,7 +11,7 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::SessionParams,
 };
-use tracing::debug;
+use cosmian_logger::debug;
 
 use crate::{core::KMS, error::KmsError, kms_bail, result::KResult};
 

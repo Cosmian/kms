@@ -16,8 +16,8 @@ use cosmian_kmip::{
         kmip_types::{CryptographicAlgorithm, KeyFormatType},
     },
 };
+use cosmian_logger::debug;
 use num_bigint_dig::{BigInt, Sign};
-use tracing::debug;
 
 use crate::{
     AtomicOperation, HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject, InterfaceError,

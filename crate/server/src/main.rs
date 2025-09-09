@@ -7,12 +7,12 @@ use cosmian_kms_server::{
 };
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kmip::KmipResultHelper;
-use cosmian_logger::{TelemetryConfig, TracingConfig, tracing_init};
+#[cfg(feature = "timeout")]
+use cosmian_logger::warn;
+use cosmian_logger::{TelemetryConfig, TracingConfig, debug, info, tracing_init};
 use dotenvy::dotenv;
 use openssl::provider::Provider;
-#[cfg(feature = "timeout")]
-use tracing::warn;
-use tracing::{debug, info, span};
+use tracing::span;
 
 #[cfg(feature = "timeout")]
 mod expiry;

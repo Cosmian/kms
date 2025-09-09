@@ -14,6 +14,8 @@ use cosmian_kmip::{
     },
 };
 #[cfg(feature = "non-fips")]
+use cosmian_logger::info;
+#[cfg(feature = "non-fips")]
 use cosmian_logger::log_init;
 #[cfg(feature = "non-fips")]
 use openssl::{
@@ -21,8 +23,6 @@ use openssl::{
     nid::Nid,
 };
 use openssl::{pkey::PKey, rand::rand_bytes, rsa::Rsa};
-#[cfg(feature = "non-fips")]
-use tracing::info;
 
 #[cfg(feature = "non-fips")]
 use crate::{crypto::elliptic_curves::operation::create_x25519_key_pair, error::CryptoError};

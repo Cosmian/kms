@@ -24,7 +24,7 @@ use cosmian_kms_crypto::crypto::{
     symmetric::symmetric_ciphers::{Mode, SymCipher, decrypt},
     wrap::unwrap_key_block,
 };
-use tracing::trace;
+use cosmian_logger::trace;
 use zeroize::Zeroizing;
 
 use crate::{
@@ -258,7 +258,7 @@ impl DecryptAction {
         // determine the DEM parameters
         let dem_cryptographic_parameters: CryptographicParameters =
             data_encryption_algorithm.into();
-        trace!("client_side_decrypt_with_file: dek length {}", dek.len());
+        trace!("dek length {}", dek.len());
         let cipher = SymCipher::from_algorithm_and_key_size(
             dem_cryptographic_parameters
                 .cryptographic_algorithm
@@ -324,8 +324,7 @@ impl DecryptAction {
         aad: Option<Vec<u8>>,
     ) -> KmsCliResult<Vec<u8>> {
         trace!(
-            "client_side_decrypt_with_buffer: encryption algorithm {:?}, key id {:?}, ciphertext \
-             (len={}): {:?}",
+            "encryption algorithm {:?}, key id {:?}, ciphertext (len={}): {:?}",
             data_encryption_algorithm,
             key_encapsulation_key_id,
             ciphertext.len(),
@@ -366,10 +365,7 @@ impl DecryptAction {
 
         // read the encapsulated data
         let mut encapsulation = vec![0; usize::try_from(encaps_length)?];
-        trace!(
-            "client_side_decrypt_with_buffer: encapsulation length {}",
-            encaps_length
-        );
+        trace!("encapsulation length {}", encaps_length);
         ct.read_exact(&mut encapsulation)?;
 
         // Create the KMIP object corresponding to the DEK
@@ -395,7 +391,7 @@ impl DecryptAction {
         let dem_cryptographic_parameters: CryptographicParameters =
             data_encryption_algorithm.into();
 
-        trace!("client_side_decrypt_with_buffer: dek length {}", dek.len());
+        trace!("dek length {}", dek.len());
         let sym_cipher = SymCipher::from_algorithm_and_key_size(
             dem_cryptographic_parameters
                 .cryptographic_algorithm

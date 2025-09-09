@@ -11,7 +11,7 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kms_crypto::crypto::access_policy_from_attributes,
     cosmian_kms_interfaces::SessionParams,
 };
-use tracing::trace;
+use cosmian_logger::trace;
 
 use crate::{core::KMS, result::KResult};
 
@@ -22,7 +22,7 @@ pub(crate) async fn locate(
     user: &str,
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<LocateResponse> {
-    trace!("Locate request: {}", request);
+    trace!("{}", request);
     // Find all the objects that match the attributes
     let uids_attrs = kms
         .database

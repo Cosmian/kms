@@ -17,8 +17,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         requests::symmetric_key_create_request,
     },
 };
-use cosmian_logger::log_init;
-use tracing::info;
+use cosmian_logger::{info, log_init};
 const EMPTY_TAGS: [&str; 0] = [];
 
 use crate::{

@@ -1,7 +1,7 @@
 use std::{collections::HashMap, fmt, path::PathBuf, time::Duration};
 
 use cosmian_kms_server_database::MainDbParams;
-use tracing::{debug, warn};
+use cosmian_logger::{debug, warn};
 
 use super::TlsParams;
 use crate::{
@@ -122,7 +122,7 @@ impl ServerParams {
     ///
     /// Returns an error if the conversion from `ClapConfig` to `ServerParams` fails.
     pub fn try_from(conf: ClapConfig) -> KResult<Self> {
-        debug!("try_from: clap_config: {conf:#?}");
+        debug!("{conf:#?}");
 
         let ui_index_html_folder: PathBuf = if conf.ui_config.ui_index_html_folder.is_empty() {
             DEFAULT_COSMIAN_UI_DIST_PATH.to_owned()
@@ -130,9 +130,9 @@ impl ServerParams {
             conf.ui_config.ui_index_html_folder
         }
         .into();
-        debug!("try_from: ui_index_html_folder: {ui_index_html_folder:#?}");
+        debug!("{ui_index_html_folder:#?}");
         if ui_index_html_folder.join("index.html").exists() {
-            debug!("try_from: ui_index_html_folder: {ui_index_html_folder:#?}");
+            debug!("{ui_index_html_folder:#?}");
         } else {
             warn!(
                 "The UI index HTML folder does not contain an index.html file: \
@@ -208,7 +208,7 @@ impl ServerParams {
             proxy_params: ProxyParams::try_from(&conf.proxy)
                 .context("failed to create ProxyParams")?,
         };
-        debug!("try_from: server_params: {res:#?}");
+        debug!("{res:#?}");
 
         Ok(res)
     }

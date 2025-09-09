@@ -11,7 +11,7 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::SessionParams,
 };
-use tracing::{debug, trace};
+use cosmian_logger::{debug, trace};
 
 use crate::{
     core::{KMS, operations::import::process_symmetric_key},

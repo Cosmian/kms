@@ -18,8 +18,8 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::SessionParams,
 };
+use cosmian_logger::{info, trace};
 use time::OffsetDateTime;
-use tracing::{info, trace};
 
 use crate::{core::KMS, error::KmsError, result::KResult};
 

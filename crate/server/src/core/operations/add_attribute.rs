@@ -10,8 +10,8 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams},
 };
+use cosmian_logger::{debug, trace};
 use time::OffsetDateTime;
-use tracing::{debug, trace};
 
 use crate::{
     core::{KMS, retrieve_object_utils::retrieve_object_for_operation},
@@ -25,7 +25,7 @@ pub(crate) async fn add_attribute(
     user: &str,
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<AddAttributeResponse> {
-    trace!("Add attribute: {}", serde_json::to_string(&request)?);
+    trace!("{}", serde_json::to_string(&request)?);
 
     // there must be an identifier
     let uid_or_tags = request
@@ -41,14 +41,14 @@ pub(crate) async fn add_attribute(
         params.clone(),
     )
     .await?;
-    trace!("Add Attribute: Retrieved object for: {}", owm.object());
+    trace!("Retrieved object for: {}", owm.object());
 
     let mut attributes = owm.attributes_mut().clone();
 
     // Check if the attribute is allowed to be set
     match request.new_attribute {
         Attribute::ActivationDate(activation_date) => {
-            trace!("Add Attribute: Activation Date: {:?}", activation_date);
+            trace!("Activation Date: {:?}", activation_date);
             if attributes.activation_date.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Activation Date already exists".to_owned(),
@@ -57,10 +57,7 @@ pub(crate) async fn add_attribute(
             attributes.activation_date = Some(activation_date);
         }
         Attribute::CryptographicAlgorithm(cryptographic_algorithm) => {
-            trace!(
-                "Add Attribute: Cryptographic Algorithm: {:?}",
-                cryptographic_algorithm
-            );
+            trace!("Cryptographic Algorithm: {:?}", cryptographic_algorithm);
             if attributes.cryptographic_algorithm.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Cryptographic Algorithm already exists".to_owned(),
@@ -69,7 +66,7 @@ pub(crate) async fn add_attribute(
             attributes.cryptographic_algorithm = Some(cryptographic_algorithm);
         }
         Attribute::CryptographicLength(length) => {
-            trace!("Add Attribute: Cryptographic Length: {:?}", length);
+            trace!("Cryptographic Length: {:?}", length);
             if attributes.cryptographic_length.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Cryptographic Length already exists".to_owned(),
@@ -78,7 +75,7 @@ pub(crate) async fn add_attribute(
             attributes.cryptographic_length = Some(length);
         }
         Attribute::CryptographicParameters(parameters) => {
-            trace!("Add Attribute: Cryptographic Parameters: {:?}", parameters);
+            trace!("Cryptographic Parameters: {:?}", parameters);
             if attributes.cryptographic_parameters.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Cryptographic Parameters already exists".to_owned(),
@@ -87,10 +84,7 @@ pub(crate) async fn add_attribute(
             attributes.cryptographic_parameters = Some(parameters);
         }
         Attribute::CryptographicDomainParameters(domain_parameters) => {
-            trace!(
-                "Add Attribute: Cryptographic Domain Parameters: {:?}",
-                domain_parameters
-            );
+            trace!("Cryptographic Domain Parameters: {:?}", domain_parameters);
             if attributes.cryptographic_domain_parameters.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Cryptographic Domain Parameters already exists".to_owned(),
@@ -99,7 +93,7 @@ pub(crate) async fn add_attribute(
             attributes.cryptographic_domain_parameters = Some(domain_parameters);
         }
         Attribute::CryptographicUsageMask(usage_mask) => {
-            trace!("Add Attribute: Cryptographic Usage Mask: {:?}", usage_mask);
+            trace!("Cryptographic Usage Mask: {:?}", usage_mask);
             if attributes.cryptographic_usage_mask.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Cryptographic Usage Mask already exists".to_owned(),
@@ -108,14 +102,14 @@ pub(crate) async fn add_attribute(
             attributes.cryptographic_usage_mask = Some(usage_mask);
         }
         Attribute::Digest(digest) => {
-            trace!("Add Attribute: Digest: {:?}", digest);
+            trace!("Digest: {:?}", digest);
             if attributes.digest.is_some() {
                 return Err(KmsError::InvalidRequest("Digest already exists".to_owned()));
             }
             attributes.digest = Some(digest);
         }
         Attribute::Link(link) => {
-            trace!("Add Attribute: Link: {:?}", link);
+            trace!("Link: {:?}", link);
             // Link is special case, it can be updated
             if attributes.get_link(link.link_type).is_some() {
                 return Err(KmsError::InvalidRequest("Link already exists".to_owned()));
@@ -123,7 +117,7 @@ pub(crate) async fn add_attribute(
             attributes.set_link(link.link_type, link.linked_object_identifier);
         }
         Attribute::VendorAttribute(vendor_attribute) => {
-            trace!("Add Attribute: Vendor Attributes: {:?}", vendor_attribute);
+            trace!("Vendor Attributes: {:?}", vendor_attribute);
             // Vendor attributes can be updated
             if attributes
                 .get_vendor_attribute_value(
@@ -143,7 +137,7 @@ pub(crate) async fn add_attribute(
             );
         }
         Attribute::DeactivationDate(deactivation_date) => {
-            trace!("Add Attribute: Deactivation Date: {:?}", deactivation_date);
+            trace!("Deactivation Date: {:?}", deactivation_date);
             if attributes.deactivation_date.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Deactivation Date already exists".to_owned(),
@@ -152,7 +146,7 @@ pub(crate) async fn add_attribute(
             attributes.deactivation_date = Some(deactivation_date);
         }
         Attribute::ObjectGroup(object_group) => {
-            trace!("Add Attribute: Object Group: {:?}", object_group);
+            trace!("Object Group: {:?}", object_group);
             if attributes.object_group.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Object Group already exists".to_owned(),
@@ -161,10 +155,7 @@ pub(crate) async fn add_attribute(
             attributes.object_group = Some(object_group);
         }
         Attribute::ContactInformation(contact_information) => {
-            trace!(
-                "Add Attribute: Contact Information: {:?}",
-                contact_information
-            );
+            trace!("Contact Information: {:?}", contact_information);
             if attributes.contact_information.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Contact Information already exists".to_owned(),
@@ -173,7 +164,7 @@ pub(crate) async fn add_attribute(
             attributes.contact_information = Some(contact_information);
         }
         Attribute::ObjectType(object_type) => {
-            trace!("Add Attribute: Object Type: {:?}", object_type);
+            trace!("Object Type: {:?}", object_type);
             if attributes.object_type.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Object Type already exists".to_owned(),
@@ -182,7 +173,7 @@ pub(crate) async fn add_attribute(
             attributes.object_type = Some(object_type);
         }
         Attribute::Name(name) => {
-            trace!("Add Attribute: Name: {:?}", name);
+            trace!("Name: {:?}", name);
             // Name is special case, can have multiple names
             let names = attributes.name.get_or_insert(vec![]);
             // check if the name already exists
@@ -191,7 +182,7 @@ pub(crate) async fn add_attribute(
             }
         }
         Attribute::UniqueIdentifier(unique_identifier) => {
-            trace!("Add Attribute: Unique Identifier: {:?}", unique_identifier);
+            trace!("Unique Identifier: {:?}", unique_identifier);
             if attributes.unique_identifier.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Unique Identifier already exists".to_owned(),
@@ -200,10 +191,7 @@ pub(crate) async fn add_attribute(
             attributes.unique_identifier = Some(unique_identifier);
         }
         Attribute::X509CertificateSubject(x509_certificate_subject) => {
-            trace!(
-                "Add Attribute: X509 Certificate Subject: {:?}",
-                x509_certificate_subject
-            );
+            trace!("X509 Certificate Subject: {:?}", x509_certificate_subject);
             if attributes.x_509_certificate_subject.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "X509 Certificate Subject already exists".to_owned(),
@@ -212,10 +200,7 @@ pub(crate) async fn add_attribute(
             attributes.x_509_certificate_subject = Some(x509_certificate_subject);
         }
         Attribute::X509CertificateIssuer(x509_certificate_issuer) => {
-            trace!(
-                "Add Attribute: X509 Certificate Issuer: {:?}",
-                x509_certificate_issuer
-            );
+            trace!("X509 Certificate Issuer: {:?}", x509_certificate_issuer);
             if attributes.x_509_certificate_issuer.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "X509 Certificate Issuer already exists".to_owned(),
@@ -224,7 +209,7 @@ pub(crate) async fn add_attribute(
             attributes.x_509_certificate_issuer = Some(x509_certificate_issuer);
         }
         Attribute::AlternativeName(alternative_name) => {
-            trace!("Add Attribute: Alternative Name: {:?}", alternative_name);
+            trace!("Alternative Name: {:?}", alternative_name);
             if attributes.alternative_name.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Alternative Name already exists".to_owned(),
@@ -233,7 +218,7 @@ pub(crate) async fn add_attribute(
             attributes.alternative_name = Some(alternative_name);
         }
         Attribute::AlwaysSensitive(always_sensitive) => {
-            trace!("Add Attribute: Always Sensitive: {:?}", always_sensitive);
+            trace!("Always Sensitive: {:?}", always_sensitive);
             if attributes.always_sensitive.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Always Sensitive already exists".to_owned(),
@@ -243,7 +228,7 @@ pub(crate) async fn add_attribute(
         }
         Attribute::ApplicationSpecificInformation(application_specific_information) => {
             trace!(
-                "Add Attribute: Application Specific Information: {:?}",
+                "Application Specific Information: {:?}",
                 application_specific_information
             );
             if attributes.application_specific_information.is_some() {
@@ -254,7 +239,7 @@ pub(crate) async fn add_attribute(
             attributes.application_specific_information = Some(application_specific_information);
         }
         Attribute::ArchiveDate(archive_date) => {
-            trace!("Add Attribute: Archive Date: {:?}", archive_date);
+            trace!("Archive Date: {:?}", archive_date);
             if attributes.archive_date.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Archive Date already exists".to_owned(),
@@ -263,7 +248,7 @@ pub(crate) async fn add_attribute(
             attributes.archive_date = Some(archive_date);
         }
         Attribute::AttributeIndex(attribute_index) => {
-            trace!("Add Attribute: Attribute Index: {:?}", attribute_index);
+            trace!("Attribute Index: {:?}", attribute_index);
             if attributes.attribute_index.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Attribute Index already exists".to_owned(),
@@ -272,10 +257,7 @@ pub(crate) async fn add_attribute(
             attributes.attribute_index = Some(attribute_index);
         }
         Attribute::CertificateAttributes(certificate_attributes) => {
-            trace!(
-                "Add Attribute: Certificate Attributes: {:?}",
-                certificate_attributes
-            );
+            trace!("Certificate Attributes: {:?}", certificate_attributes);
             if attributes.certificate_attributes.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Certificate Attributes already exists".to_owned(),
@@ -284,7 +266,7 @@ pub(crate) async fn add_attribute(
             attributes.certificate_attributes = Some(certificate_attributes);
         }
         Attribute::CertificateType(certificate_type) => {
-            trace!("Add Attribute: Certificate Type: {:?}", certificate_type);
+            trace!("Certificate Type: {:?}", certificate_type);
             if attributes.certificate_type.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Certificate Type already exists".to_owned(),
@@ -293,10 +275,7 @@ pub(crate) async fn add_attribute(
             attributes.certificate_type = Some(certificate_type);
         }
         Attribute::CertificateLength(certificate_length) => {
-            trace!(
-                "Add Attribute: Certificate Length: {:?}",
-                certificate_length
-            );
+            trace!("Certificate Length: {:?}", certificate_length);
             if attributes.certificate_length.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Certificate Length already exists".to_owned(),
@@ -305,7 +284,7 @@ pub(crate) async fn add_attribute(
             attributes.certificate_length = Some(certificate_length);
         }
         Attribute::Comment(comment) => {
-            trace!("Add Attribute: Comment: {:?}", comment);
+            trace!("Comment: {:?}", comment);
             if attributes.comment.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Comment already exists".to_owned(),
@@ -314,7 +293,7 @@ pub(crate) async fn add_attribute(
             attributes.comment = Some(comment);
         }
         Attribute::CompromiseDate(compromise_date) => {
-            trace!("Add Attribute: Compromise Date: {:?}", compromise_date);
+            trace!("Compromise Date: {:?}", compromise_date);
             if attributes.compromise_date.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Compromise Date already exists".to_owned(),
@@ -335,7 +314,7 @@ pub(crate) async fn add_attribute(
             attributes.compromise_occurrence_date = Some(compromise_occurrence_date);
         }
         Attribute::Critical(critical) => {
-            trace!("Add Attribute: Critical: {:?}", critical);
+            trace!("Critical: {:?}", critical);
             if attributes.critical.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Critical already exists".to_owned(),
@@ -344,7 +323,7 @@ pub(crate) async fn add_attribute(
             attributes.critical = Some(critical);
         }
         Attribute::Description(description) => {
-            trace!("Add Attribute: Description: {:?}", description);
+            trace!("Description: {:?}", description);
             if attributes.description.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Description already exists".to_owned(),
@@ -353,7 +332,7 @@ pub(crate) async fn add_attribute(
             attributes.description = Some(description);
         }
         Attribute::DestroyDate(destroy_date) => {
-            trace!("Add Attribute: Destroy Date: {:?}", destroy_date);
+            trace!("Destroy Date: {:?}", destroy_date);
             if attributes.destroy_date.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Destroy Date already exists".to_owned(),
@@ -363,7 +342,7 @@ pub(crate) async fn add_attribute(
         }
         Attribute::DigitalSignatureAlgorithm(digital_signature_algorithm) => {
             trace!(
-                "Add Attribute: Digital Signature Algorithm: {:?}",
+                "Digital Signature Algorithm: {:?}",
                 digital_signature_algorithm
             );
             if attributes.digital_signature_algorithm.is_some() {
@@ -374,7 +353,7 @@ pub(crate) async fn add_attribute(
             attributes.digital_signature_algorithm = Some(digital_signature_algorithm);
         }
         Attribute::Extractable(extractable) => {
-            trace!("Add Attribute: Extractable: {:?}", extractable);
+            trace!("Extractable: {:?}", extractable);
             if attributes.extractable.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Extractable already exists".to_owned(),
@@ -383,14 +362,14 @@ pub(crate) async fn add_attribute(
             attributes.extractable = Some(extractable);
         }
         Attribute::Fresh(fresh) => {
-            trace!("Add Attribute: Fresh: {:?}", fresh);
+            trace!("Fresh: {:?}", fresh);
             if attributes.fresh.is_some() {
                 return Err(KmsError::InvalidRequest("Fresh already exists".to_owned()));
             }
             attributes.fresh = Some(fresh);
         }
         Attribute::InitialDate(initial_date) => {
-            trace!("Add Attribute: Initial Date: {:?}", initial_date);
+            trace!("Initial Date: {:?}", initial_date);
             if attributes.initial_date.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Initial Date already exists".to_owned(),
@@ -399,7 +378,7 @@ pub(crate) async fn add_attribute(
             attributes.initial_date = Some(initial_date);
         }
         Attribute::KeyFormatType(key_format_type) => {
-            trace!("Add Attribute: Key Format Type: {:?}", key_format_type);
+            trace!("Key Format Type: {:?}", key_format_type);
             if attributes.key_format_type.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Key Format Type already exists".to_owned(),
@@ -408,10 +387,7 @@ pub(crate) async fn add_attribute(
             attributes.key_format_type = Some(key_format_type);
         }
         Attribute::KeyValueLocation(key_value_location_type) => {
-            trace!(
-                "Add Attribute: Key Value Location: {:?}",
-                key_value_location_type
-            );
+            trace!("Key Value Location: {:?}", key_value_location_type);
             if attributes.key_value_location.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Key Value Location already exists".to_owned(),
@@ -420,7 +396,7 @@ pub(crate) async fn add_attribute(
             attributes.key_value_location = Some(key_value_location_type);
         }
         Attribute::KeyValuePresent(key_value_present) => {
-            trace!("Add Attribute: Key Value Present: {:?}", key_value_present);
+            trace!("Key Value Present: {:?}", key_value_present);
             if attributes.key_value_present.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Key Value Present already exists".to_owned(),
@@ -429,7 +405,7 @@ pub(crate) async fn add_attribute(
             attributes.key_value_present = Some(key_value_present);
         }
         Attribute::LastChangeDate(last_change_date) => {
-            trace!("Add Attribute: Last Change Date: {:?}", last_change_date);
+            trace!("Last Change Date: {:?}", last_change_date);
             if attributes.last_change_date.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Last Change Date already exists".to_owned(),
@@ -438,7 +414,7 @@ pub(crate) async fn add_attribute(
             attributes.last_change_date = Some(last_change_date);
         }
         Attribute::LeaseTime(lease_time) => {
-            trace!("Add Attribute: Lease Time: {:?}", lease_time);
+            trace!("Lease Time: {:?}", lease_time);
             if attributes.lease_time.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Lease Time already exists".to_owned(),
@@ -447,7 +423,7 @@ pub(crate) async fn add_attribute(
             attributes.lease_time = Some(lease_time);
         }
         Attribute::NeverExtractable(never_extractable) => {
-            trace!("Add Attribute: Never Extractable: {:?}", never_extractable);
+            trace!("Never Extractable: {:?}", never_extractable);
             if attributes.never_extractable.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Never Extractable already exists".to_owned(),
@@ -456,7 +432,7 @@ pub(crate) async fn add_attribute(
             attributes.never_extractable = Some(never_extractable);
         }
         Attribute::NistKeyType(nist_key_type) => {
-            trace!("Add Attribute: NIST Key Type: {:?}", nist_key_type);
+            trace!("NIST Key Type: {:?}", nist_key_type);
             if attributes.nist_key_type.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "NIST Key Type already exists".to_owned(),
@@ -465,10 +441,7 @@ pub(crate) async fn add_attribute(
             attributes.nist_key_type = Some(nist_key_type);
         }
         Attribute::ObjectGroupMember(object_group_member) => {
-            trace!(
-                "Add Attribute: Object Group Member: {:?}",
-                object_group_member
-            );
+            trace!("Object Group Member: {:?}", object_group_member);
             if attributes.object_group_member.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Object Group Member already exists".to_owned(),
@@ -486,10 +459,7 @@ pub(crate) async fn add_attribute(
             attributes.opaque_data_type = Some(opaque_data_type);
         }
         Attribute::OriginalCreationDate(original_creation_date) => {
-            trace!(
-                "Add Attribute: Original Creation Date: {:?}",
-                original_creation_date
-            );
+            trace!("Original Creation Date: {:?}", original_creation_date);
             if attributes.original_creation_date.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Original Creation Date already exists".to_owned(),
@@ -498,10 +468,7 @@ pub(crate) async fn add_attribute(
             attributes.original_creation_date = Some(original_creation_date);
         }
         Attribute::Pkcs12FriendlyName(pkcs12_friendly_name) => {
-            trace!(
-                "Add Attribute: PKCS12 Friendly Name: {:?}",
-                pkcs12_friendly_name
-            );
+            trace!("PKCS12 Friendly Name: {:?}", pkcs12_friendly_name);
             if attributes.pkcs_12_friendly_name.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "PKCS12 Friendly Name already exists".to_owned(),
@@ -510,10 +477,7 @@ pub(crate) async fn add_attribute(
             attributes.pkcs_12_friendly_name = Some(pkcs12_friendly_name);
         }
         Attribute::ProcessStartDate(process_start_date) => {
-            trace!(
-                "Add Attribute: Process Start Date: {:?}",
-                process_start_date
-            );
+            trace!("Process Start Date: {:?}", process_start_date);
             if attributes.process_start_date.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Process Start Date already exists".to_owned(),
@@ -522,7 +486,7 @@ pub(crate) async fn add_attribute(
             attributes.process_start_date = Some(process_start_date);
         }
         Attribute::ProtectStopDate(protect_stop_date) => {
-            trace!("Add Attribute: Protect Stop Date: {:?}", protect_stop_date);
+            trace!("Protect Stop Date: {:?}", protect_stop_date);
             if attributes.protect_stop_date.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Protect Stop Date already exists".to_owned(),
@@ -531,7 +495,7 @@ pub(crate) async fn add_attribute(
             attributes.protect_stop_date = Some(protect_stop_date);
         }
         Attribute::ProtectionLevel(protection_level) => {
-            trace!("Add Attribute: Protection Level: {:?}", protection_level);
+            trace!("Protection Level: {:?}", protection_level);
             if attributes.protection_level.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Protection Level already exists".to_owned(),
@@ -540,7 +504,7 @@ pub(crate) async fn add_attribute(
             attributes.protection_level = Some(protection_level);
         }
         Attribute::ProtectionPeriod(protection_period) => {
-            trace!("Add Attribute: Protection Period: {:?}", protection_period);
+            trace!("Protection Period: {:?}", protection_period);
             if attributes.protection_period.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Protection Period already exists".to_owned(),
@@ -549,10 +513,7 @@ pub(crate) async fn add_attribute(
             attributes.protection_period = Some(protection_period);
         }
         Attribute::ProtectionStorageMasks(protection_storage_masks) => {
-            trace!(
-                "Add Attribute: Protection Storage Masks: {:?}",
-                protection_storage_masks
-            );
+            trace!("Protection Storage Masks: {:?}", protection_storage_masks);
             if attributes.protection_storage_masks.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Protection Storage Masks already exists".to_owned(),
@@ -561,7 +522,7 @@ pub(crate) async fn add_attribute(
             attributes.protection_storage_masks = Some(protection_storage_masks);
         }
         Attribute::QuantumSafe(quantum_safe) => {
-            trace!("Add Attribute: Quantum Safe: {:?}", quantum_safe);
+            trace!("Quantum Safe: {:?}", quantum_safe);
             if attributes.quantum_safe.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Quantum Safe already exists".to_owned(),
@@ -570,10 +531,7 @@ pub(crate) async fn add_attribute(
             attributes.quantum_safe = Some(quantum_safe);
         }
         Attribute::RandomNumberGenerator(random_number_generator) => {
-            trace!(
-                "Add Attribute: Random Number Generator: {:?}",
-                random_number_generator
-            );
+            trace!("Random Number Generator: {:?}", random_number_generator);
             if attributes.random_number_generator.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Random Number Generator already exists".to_owned(),
@@ -582,7 +540,7 @@ pub(crate) async fn add_attribute(
             attributes.random_number_generator = Some(random_number_generator);
         }
         Attribute::RevocationReason(revocation_reason) => {
-            trace!("Add Attribute: Revocation Reason: {:?}", revocation_reason);
+            trace!("Revocation Reason: {:?}", revocation_reason);
             if attributes.revocation_reason.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Revocation Reason already exists".to_owned(),
@@ -591,7 +549,7 @@ pub(crate) async fn add_attribute(
             attributes.revocation_reason = Some(revocation_reason);
         }
         Attribute::RotateDate(rotate_date) => {
-            trace!("Add Attribute: Rotate Date: {:?}", rotate_date);
+            trace!("Rotate Date: {:?}", rotate_date);
             if attributes.rotate_date.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Rotate Date already exists".to_owned(),
@@ -600,7 +558,7 @@ pub(crate) async fn add_attribute(
             attributes.rotate_date = Some(rotate_date);
         }
         Attribute::RotateGeneration(rotate_generation) => {
-            trace!("Add Attribute: Rotate Generation: {:?}", rotate_generation);
+            trace!("Rotate Generation: {:?}", rotate_generation);
             if attributes.rotate_generation.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Rotate Generation already exists".to_owned(),
@@ -609,7 +567,7 @@ pub(crate) async fn add_attribute(
             attributes.rotate_generation = Some(rotate_generation);
         }
         Attribute::RotateInterval(rotate_interval) => {
-            trace!("Add Attribute: Rotate Interval: {:?}", rotate_interval);
+            trace!("Rotate Interval: {:?}", rotate_interval);
             if attributes.rotate_interval.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Rotate Interval already exists".to_owned(),
@@ -618,7 +576,7 @@ pub(crate) async fn add_attribute(
             attributes.rotate_interval = Some(rotate_interval);
         }
         Attribute::RotateLatest(rotate_latest) => {
-            trace!("Add Attribute: Rotate Latest: {:?}", rotate_latest);
+            trace!("Rotate Latest: {:?}", rotate_latest);
             if attributes.rotate_latest.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Rotate Latest already exists".to_owned(),
@@ -627,7 +585,7 @@ pub(crate) async fn add_attribute(
             attributes.rotate_latest = Some(rotate_latest);
         }
         Attribute::RotateName(rotate_name) => {
-            trace!("Add Attribute: Rotate Name: {:?}", rotate_name);
+            trace!("Rotate Name: {:?}", rotate_name);
             if attributes.rotate_name.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Rotate Name already exists".to_owned(),
@@ -636,7 +594,7 @@ pub(crate) async fn add_attribute(
             attributes.rotate_name = Some(rotate_name);
         }
         Attribute::RotateOffset(rotate_offset) => {
-            trace!("Add Attribute: Rotate Offset: {:?}", rotate_offset);
+            trace!("Rotate Offset: {:?}", rotate_offset);
             if attributes.rotate_offset.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Rotate Offset already exists".to_owned(),
@@ -645,7 +603,7 @@ pub(crate) async fn add_attribute(
             attributes.rotate_offset = Some(rotate_offset);
         }
         Attribute::Sensitive(sensitive) => {
-            trace!("Add Attribute: Sensitive: {:?}", sensitive);
+            trace!("Sensitive: {:?}", sensitive);
             if attributes.sensitive.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Sensitive already exists".to_owned(),
@@ -654,10 +612,7 @@ pub(crate) async fn add_attribute(
             attributes.sensitive = if sensitive { Some(true) } else { None };
         }
         Attribute::ShortUniqueIdentifier(short_unique_identifier) => {
-            trace!(
-                "Add Attribute: Short Unique Identifier: {:?}",
-                short_unique_identifier
-            );
+            trace!("Short Unique Identifier: {:?}", short_unique_identifier);
             if attributes.short_unique_identifier.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Short Unique Identifier already exists".to_owned(),
@@ -667,13 +622,13 @@ pub(crate) async fn add_attribute(
         }
         Attribute::State(_state) => {
             return Err(KmsError::InvalidRequest(
-                "Add Attribute: State cannot be modified. Use Revoke and Destroy to change the \
-                 object state"
+                "Attribute: State cannot be modified. Use Revoke and Destroy to change the object \
+                 state"
                     .to_owned(),
             ));
         }
         Attribute::UsageLimits(usage_limits) => {
-            trace!("Add Attribute: Usage Limits: {:?}", usage_limits);
+            trace!("Usage Limits: {:?}", usage_limits);
             if attributes.usage_limits.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Usage Limits already exists".to_owned(),
@@ -683,7 +638,7 @@ pub(crate) async fn add_attribute(
         }
         Attribute::X509CertificateIdentifier(x509_certificate_identifier) => {
             trace!(
-                "Add Attribute: X509 Certificate Identifier: {:?}",
+                "X509 Certificate Identifier: {:?}",
                 x509_certificate_identifier
             );
             if attributes.x_509_certificate_identifier.is_some() {
@@ -717,7 +672,7 @@ pub(crate) async fn add_attribute(
         }
         _ => {
             trace!(
-                "Add Attribute: Object type {:?} does not have attributes (nor key block)",
+                "Attribute: Object type {:?} does not have attributes (nor key block)",
                 owm.object().object_type()
             );
         }

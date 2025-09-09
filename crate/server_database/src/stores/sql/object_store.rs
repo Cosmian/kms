@@ -13,7 +13,7 @@ use cosmian_kms_interfaces::{
     SessionParams,
 };
 use sqlx::{Executor, IntoArguments, Row, Transaction};
-use tracing::trace;
+use cosmian_logger::trace;
 use uuid::Uuid;
 
 use crate::{

@@ -18,9 +18,9 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         },
     },
 };
+use cosmian_logger::{info, trace};
 use num_bigint_dig::BigInt;
 use serde::{Deserialize, Serialize};
-use tracing::{info, log::trace};
 use url::Url;
 
 use crate::{core::KMS, kms_bail, kms_error, result::KResult};

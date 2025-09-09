@@ -3,11 +3,10 @@ use cosmian_kms_client::reexport::cosmian_kms_client_utils::export_utils::Export
 use cosmian_kms_client::reexport::cosmian_kms_client_utils::{
     create_utils::SymmetricAlgorithm, symmetric_utils::DataEncryptionAlgorithm,
 };
-use cosmian_logger::log_init;
+use cosmian_logger::{info, log_init};
 #[cfg(feature = "non-fips")]
 use tempfile::TempDir;
 use test_kms_server::TestsContext;
-use tracing::info;
 use uuid::Uuid;
 
 use crate::{

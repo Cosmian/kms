@@ -2,12 +2,12 @@
 name = "proteccio_pkcs11_loader"
 version.workspace = true
 authors.workspace = true
+categories.workspace = true
 edition.workspace = true
+keywords.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-keywords.workspace = true
-categories.workspace = true
 description = "Proteccio HSM PKCS#11 loader"
 
 # [lints]
@@ -25,7 +25,6 @@ uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
 cosmian_logger = { workspace = true }
-tracing = { workspace = true }
 uuid = { workspace = true }
 
 [features]

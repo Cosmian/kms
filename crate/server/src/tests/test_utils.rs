@@ -15,9 +15,9 @@ use actix_web::{
     web::{self, Data},
 };
 use cosmian_kms_server_database::reexport::cosmian_kmip::ttlv::{TTLV, from_ttlv, to_ttlv};
+use cosmian_logger::info;
 use serde::{Serialize, de::DeserializeOwned};
 use time::{OffsetDateTime, format_description::well_known::Iso8601};
-use tracing::info;
 
 use super::google_cse::utils::google_cse_auth;
 use crate::{

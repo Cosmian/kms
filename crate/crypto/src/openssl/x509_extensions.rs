@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use cosmian_logger::warn;
 use ini::Ini;
 use openssl::{
     nid::Nid,
@@ -11,7 +12,6 @@ use openssl::{
         },
     },
 };
-use tracing::warn;
 
 use crate::{crypto_bail, error::CryptoError};
 
@@ -296,12 +296,11 @@ fn colon_split<'a>(value: &'a str, property_name: &str) -> Result<&'a str, Crypt
 #[allow(clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
-    use cosmian_logger::log_init;
+    use cosmian_logger::{info, log_init};
     use openssl::{
         conf::{Conf, ConfMethod},
         x509::X509,
     };
-    use tracing::info;
     use x509_parser::{
         der_parser::oid,
         extensions::{ParsedExtension, X509ExtensionParser},

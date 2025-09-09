@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use tracing::debug;
+use cosmian_logger::debug;
 use zeroize::Zeroizing;
 
 use crate::{

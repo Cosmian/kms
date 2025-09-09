@@ -3,9 +3,9 @@ use std::{
     str::FromStr,
 };
 
+use cosmian_logger::{debug, trace};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
-use tracing::{debug, trace};
 use zeroize::Zeroizing;
 
 use super::kmip_objects::Certificate;

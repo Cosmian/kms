@@ -12,7 +12,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::{ErrorReason, State},
     kmip_2_1::kmip_objects::ObjectType,
 };
-use tracing::{debug, error, trace};
+use cosmian_logger::{debug, error, trace};
 
 use crate::{core::KMS, error::KmsError, result::KResult};
 

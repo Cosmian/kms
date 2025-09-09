@@ -1,7 +1,7 @@
 use std::{fmt, path::PathBuf};
 
+use cosmian_logger::debug;
 use openssl::pkcs12::{ParsedPkcs12_2, Pkcs12};
-use tracing::debug;
 use x509_parser::pem::Pem;
 
 use crate::{

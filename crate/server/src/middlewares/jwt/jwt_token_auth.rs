@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use actix_identity::Identity;
 use actix_web::{FromRequest, dev::ServiceRequest, http::header};
-use tracing::{debug, trace};
+use cosmian_logger::{debug, trace};
 
 use super::UserClaim;
 use crate::{

@@ -34,7 +34,7 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_crypto::crypto::certificates::EXTENSION_CONFIG,
 };
-use cosmian_logger::log_init;
+use cosmian_logger::{debug, log_init, trace};
 use hex::{FromHex, ToHex};
 use openssl::{
     hash::MessageDigest,
@@ -44,7 +44,6 @@ use openssl::{
     sign::{Signer, Verifier},
     x509::X509,
 };
-use tracing::{debug, trace};
 use zeroize::Zeroizing;
 
 use crate::{

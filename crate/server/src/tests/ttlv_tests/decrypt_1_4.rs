@@ -14,8 +14,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     },
     ttlv::KmipFlavor,
 };
-use cosmian_logger::log_init;
-use log::info;
+use cosmian_logger::{info, log_init};
 
 use super::{create_1_4::create_symmetric_key, socket_client::SocketClient};
 use crate::tests::ttlv_tests::{encrypt_1_4::encrypt, get_client};

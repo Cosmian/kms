@@ -1,8 +1,7 @@
-use cosmian_logger::log_init;
+use cosmian_logger::{debug, info, log_init, trace};
 use num_bigint_dig::BigInt;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use time::OffsetDateTime;
-use tracing::{debug, info, trace};
 use zeroize::Zeroizing;
 
 use crate::{
