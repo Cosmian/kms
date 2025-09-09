@@ -12,7 +12,7 @@ a manually wrapped key.
 
 ## Prepare the symmetric key and wrapping key in Google Cloud KMS
 
-Using the Google Console, first create a key in and existing Cloud KMS key ring.
+Using the Google Console, first create a key in an existing Cloud KMS key ring.
 
 ![Create a key in an existing Cloud KMS key ring](./cmek_create_key.png)
 
@@ -49,7 +49,7 @@ The symmetric key was successfully generated.
 ## Import the wrapping key in Cosmian KMS
 
 ```shell
-cosmian kms rsa keys import  --key-format pem  --key-usage encrypt  --key-usage wrap-key ImportWith4096RsaAesKeyWrapSha256.pem CMEK_Wrappinng_Key
+cosmian kms rsa keys import  --key-format pem  --key-usage encrypt  --key-usage wrap-key ImportWith4096RsaAesKeyWrapSha256.pem CMEK_Wrapping_Key
 
 The PublicKey in file ImportWith4096RsaAesKeyWrapSha256.pem was imported with id: CMEK_Wrapping_Key
           Unique identifier: CMEK_Wrapping_Key
@@ -58,8 +58,8 @@ The PublicKey in file ImportWith4096RsaAesKeyWrapSha256.pem was imported with id
 ## Export the symmetric key wrapped by the wrapping key from Cosmian KMS
 
 ```shell
-cosmian kms sym keys export --key-id CMEK_Sym_Key --wrap-key-id  CMEK_Wrapping_Key --key-format raw \
- --wrapping-algorithm rsa-aes-key-wrap  wrapped_key.bin
+cosmian kms sym keys export --key-id CMEK_Sym_Key --wrap-key-id  CMEK_Wrapping_Key \
+ --key-format raw --wrapping-algorithm rsa-aes-key-wrap wrapped_key.bin
 
 The key CMEK_Sym_Key of type SymmetricKey was exported to "wrapped_key.bin"
           Unique identifier: CMEK_Sym_Key
@@ -77,6 +77,6 @@ Note 2: the wrapped key should be 552 bytes (4416 bits) long:
 
 ![Import the wrapped key in Google Cloud KMS](./cmek_import_wrapped_key.png)
 
-The key should now be avilable in the Google Cloud KMS.
+The key should now be available in the Google Cloud KMS.
 
 ![The key should now be avilable in the Google Cloud KMS](./cmek_key_available.png)

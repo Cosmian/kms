@@ -72,13 +72,14 @@ nav:
       - API Endpoints: api.md
       - Google GCP:
           - CMEK (Customer Managed Encryption Keys): google_gcp/cmek.md
+          - CSEK (Customer Supplied Encryption Keys): google_gcp/csek.md
       - Google Workspace Client-Side Encryption (CSE):
           - Getting started: google_cse/index.md
           - Configuring the .well-known file: google_cse/configuring-the-well-known-file-and-server.md
           - Generating Gmail keys: google_cse/configuring_gmail_cse.md
           - Migrating existing Drive CSE elements: google_cse/migrating_drive.md
           - Migrating existing email to Gmail CSE: google_cse/migrating_gmail.md
-      - Microsoft Double Key Encryption (DKE): ms_dke/index.md
+      - Microsoft 365 Double Key Encryption (DKE): ms_dke/index.md
       - MongoDB: mongodb.md
       - Postgresql Percona Database: percona.md
       - PyKMIP: pykmip.md
