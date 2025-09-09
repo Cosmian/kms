@@ -1374,14 +1374,12 @@ name = "cosmian_kms_server_database"
 version = "5.8.1"
 dependencies = [
  "async-trait",
- "cosmian_crypto_core",
  "cosmian_findex",
  "cosmian_kmip",
  "cosmian_kms_crypto",
  "cosmian_kms_interfaces",
  "cosmian_logger 0.3.1",
  "cosmian_sse_memories",
- "hex",
  "lru",
  "num-bigint-dig",
  "num_cpus",

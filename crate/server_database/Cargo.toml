@@ -30,8 +30,6 @@ cosmian_findex = { version = "8.0", optional = true }
 cosmian_sse_memories = { version = "8.0", features = [
   "redis-mem",
 ], optional = true }
-cosmian_crypto_core = { workspace = true, features = ["sha3"], optional = true }
-hex = { workspace = true }
 lru = { workspace = true }
 num-bigint-dig = { workspace = true, features = [
   "std",

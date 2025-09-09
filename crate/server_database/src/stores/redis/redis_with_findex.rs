@@ -588,8 +588,8 @@ impl PermissionsStore for RedisWithFindex {
             .objects_db
             .objects_get(
                 &permissions
-                    .iter()
-                    .map(|(k, _)| (*k).clone().into())
+                    .keys()
+                    .map(|k| (*k).clone().into())
                     .collect::<HashSet<String>>(),
             )
             .await?;
