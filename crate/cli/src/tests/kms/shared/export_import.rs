@@ -69,7 +69,7 @@ pub(crate) async fn test_wrap_on_export_unwrap_on_import() -> KmsCliResult<()> {
     Ok(())
 }
 
-const RSA_PRIVATE_KEY: &str = r#"-----BEGIN PRIVATE KEY-----
+const RSA_PRIVATE_KEY: &str = r"-----BEGIN PRIVATE KEY-----
 MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQCzdXCsuC+YqBvc
 gGTe9oF4L3Ni0pj2pk6yTfGqt1Az/08IvueZsetFnrIew9ZSaACobSlwIs2moc3s
 ukkYTQpDxNEeRg1lPQArDlhz+twBbLx0q31RWwT0kW8R/+UW5GO4uehUhduAgi6s
@@ -96,9 +96,9 @@ ZeVi/9W+0nEpBIY9v7O0zUQXuQdpMNpi2jpZ80ECgYADEWWxeNCtz9049INp92Fs
 63eTetFy6wG41v/ngrxDvgb13zDDX0dFM5kVNev3j98QKiQ+x/46j7fFyhgl1Dup
 qeDmXs6dH40L2I0TLPF0Ax2V7DgXwgeCPnlwLrf96xpV+2UXt1zvqzU8BdK8qT4b
 yLT7mm6+hAwMp3y0u6oBTA==
------END PRIVATE KEY-----"#;
+-----END PRIVATE KEY-----";
 
-const RSA_PUBLIC_KEY: &str = r#"-----BEGIN PUBLIC KEY-----
+const RSA_PUBLIC_KEY: &str = r"-----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAs3VwrLgvmKgb3IBk3vaB
 eC9zYtKY9qZOsk3xqrdQM/9PCL7nmbHrRZ6yHsPWUmgAqG0pcCLNpqHN7LpJGE0K
 Q8TRHkYNZT0AKw5Yc/rcAWy8dKt9UVsE9JFvEf/lFuRjuLnoVIXbgIIurIrMUqal
@@ -106,13 +106,14 @@ Q8TRHkYNZT0AKw5Yc/rcAWy8dKt9UVsE9JFvEf/lFuRjuLnoVIXbgIIurIrMUqal
 JExzskB4cOnHPAdR5xnp+X3DMKRDuCNYEGUg0YqNu9fJ40yHoFLNclfO1pcYbnZD
 /EnzChB1iVMtcJWG5CLCnRPwfNtl3lSs9tjBqJCY3combLoWIc4GqLsyt8hNnq1s
 FQIDAQAB
------END PUBLIC KEY-----"#;
+-----END PUBLIC KEY-----";
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 #[tokio::test]
 async fn test_openssl_cli_compat() -> KmsCliResult<()> {
-    // log_init(option_env!("RUST_LOG"));
-    log_init(Some("info"));
+    log_init(option_env!("RUST_LOG"));
+    // log_init(Some("info"));
+
     let ctx = start_default_test_kms_server().await;
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
@@ -170,13 +171,13 @@ async fn test_openssl_cli_compat() -> KmsCliResult<()> {
 
     // SHA256
     let rec_dek =
-        test_openssl_cli_compat_inner(&ctx, &tmp_path, &dek_id, &pub_key_id, &priv_key_file, false)
+        test_openssl_cli_compat_inner(ctx, tmp_path, &dek_id, &pub_key_id, &priv_key_file, false)
             .await?;
     assert_eq!(rec_dek, hex::decode(dek)?);
 
     // SHA1
     let rec_dek =
-        test_openssl_cli_compat_inner(&ctx, &tmp_path, &dek_id, &pub_key_id, &priv_key_file, true)
+        test_openssl_cli_compat_inner(ctx, tmp_path, &dek_id, &pub_key_id, &priv_key_file, true)
             .await?;
     assert_eq!(rec_dek, hex::decode(dek)?);
 
@@ -215,19 +216,23 @@ async fn test_openssl_cli_compat_inner(
     // write wrapped key to file
     let oaep_encapsulation = &wrapped_key[..wrapped_key.len() - 40];
     let rsa_oaep_encapsulation_file = tmp_path.join("rsa_oaep_encapsulation.bin");
-    std::fs::write(&rsa_oaep_encapsulation_file, &oaep_encapsulation)?;
+    std::fs::write(&rsa_oaep_encapsulation_file, oaep_encapsulation)?;
 
     let rfc5649_encapsulation = &wrapped_key[wrapped_key.len() - 40..];
     let rfc5649_encapsulation_file = tmp_path.join("rfc5649_encapsulation.bin");
-    std::fs::write(&rfc5649_encapsulation_file, &rfc5649_encapsulation)?;
+    std::fs::write(&rfc5649_encapsulation_file, rfc5649_encapsulation)?;
+
+    let openssl_bin = option_env!("OPENSSL_DIR")
+        .map(|d| PathBuf::from(d).join("bin").join("openssl"))
+        .unwrap_or_else(|| PathBuf::from("openssl"));
 
     // Execute OpenSSL command to decrypt rhe RSA OAEP encapsulation
     let aes_kek_file = tmp_path.join("aes_kek.bin");
-    let output = tokio::process::Command::new("openssl")
+    let output = tokio::process::Command::new(&openssl_bin)
         .arg("pkeyutl")
         .arg("-decrypt")
         .arg("-inkey")
-        .arg(&priv_key_file)
+        .arg(priv_key_file)
         .arg("-in")
         .arg(&rsa_oaep_encapsulation_file)
         .arg("-out")
@@ -250,7 +255,7 @@ async fn test_openssl_cli_compat_inner(
         .await?;
 
     if !output.status.success() {
-        cli_bail!("openssl pkeyutl failed: {output:?}");
+        cli_bail!("test_openssl_cli_compat: RSA OAEP openssl pkeyutl failed: {output:?}");
     }
     // recover the AES_KEK from the decrypted key
     let aes_kek = std::fs::read(&aes_kek_file)?;
@@ -258,7 +263,7 @@ async fn test_openssl_cli_compat_inner(
 
     // Execute OpenSSL command to decrypt the RFC 5649 encapsulation
     let rec_dek_file = tmp_path.join("rec_dek.bin");
-    let output = tokio::process::Command::new("openssl")
+    let output = tokio::process::Command::new(&openssl_bin)
         .arg("enc")
         .arg("-d")
         .arg("-id-aes256-wrap-pad")
@@ -274,7 +279,7 @@ async fn test_openssl_cli_compat_inner(
         .await?;
 
     if !output.status.success() {
-        cli_bail!("openssl pkeyutl failed: {output:?}");
+        cli_bail!("test_openssl_cli_compat: RFC5649 pkeyutl failed: {output:?}");
     }
 
     // read recovered dek from file
@@ -283,3 +288,16 @@ async fn test_openssl_cli_compat_inner(
 
     Ok(rec_dek)
 }
+
+// const GOOGLE_RSA_PUBLIC_KEY: &str = r#"-----BEGIN PUBLIC KEY-----
+// MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApg4Oo7ygEBmAlzhUZFm2
+// 75K999TqNjvgiAi/pSzAJS6XO3sa346zZYjZpj4l4OP5T2xlmPXoF/igbCO9jAeW
+// +Y8N1VZ6LRvPQ+ndP22ZyL/kiJFc1jUVrBm9ItzTGSO44Z4A77uDga1eAWkIg/9i
+// mp+tY0qmlmhnRHwoQkZDU1c08SLA4p6IV3NssgwKaN8KwM53KDxw6kDo0INfS+Ym
+// MNZ8oHg8FJ5Q3ExR54fD1/WFngOSexpzNtGvZGMaoCnISMumEo8nfENtMXxnLquu
+// BvYAOQEQs7vl0ES/DD0dNzVonZTo9/c8yr0SlcWg8Uy7XkD5FQSE5A87pOZUDEcD
+// FQIDAQAB
+// -----END PUBLIC KEY----"#;
+
+// #[tokio::test]
+// async fn test_google_csek() -> KmsCliResult<()> {}

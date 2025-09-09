@@ -517,7 +517,7 @@ mod tests {
 
         let aes_kw_kek = aes_kw::KwpAes256::new_from_slice(&hex::decode(kek).unwrap()).unwrap();
         let input_key = hex::decode(dek).unwrap();
-        let mut buf = [0u8; 128];
+        let mut buf = [0_u8; 128];
         let aes_kw_wrapped_key = hex::encode(aes_kw_kek.wrap_key(&input_key, &mut buf).unwrap());
 
         let rfc5649_wrapped_key = hex::encode(
