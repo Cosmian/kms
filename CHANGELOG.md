@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.9.0] - 2025-09-05
+
+### 🚀 Features
+
+- CLI: added support for sha1 in RSA key wrapping
+
 ## [5.8.1] - 2025-09-05
 
 ### 🐛 Bug Fixes
