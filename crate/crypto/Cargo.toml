@@ -50,11 +50,14 @@ rust-ini = "0.21"
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+tracing = { workspace = true }
 uuid = { workspace = true }
 x509-parser = { workspace = true }
 zeroize = { workspace = true, features = ["zeroize_derive", "serde"] }
 
 [dev-dependencies]
+aes-kw = "0.3.0-rc.1"
+cosmian_logger = { workspace = true }
 
 [package.metadata.cargo-machete]
 ignored = ["rust-ini"]

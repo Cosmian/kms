@@ -295,6 +295,7 @@ fn unwrap_64(ciphertext: &[u8], kek: &[u8]) -> Result<(u64, Zeroizing<Vec<u8>>),
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 #[cfg(test)]
 mod tests {
+    use aes_kw::KeyInit;
     use zeroize::Zeroizing;
 
     use crate::crypto::symmetric::rfc5649::{rfc5649_unwrap, rfc5649_wrap};
@@ -472,5 +473,60 @@ mod tests {
             rfc5649_wrap(&dek_32, &kek_32).unwrap().len(),
             dek_32.len() + 8
         );
+    }
+
+    #[test]
+    fn test_openssl_compat() {
+        let kek = "5840df6e29b02af1ab493b705bf16ea1ae8338f4dcc176a85840df6e29b02af1";
+        let dek = "afbeb0f07dfbf5419200f2ccb50bb24aafbeb0f07dfbf5419200f2ccb50bb24a";
+
+        // Generating the opensl wrapped key with AES_KEY_WRAP_PAD (RFC 5649)
+
+        // write kek to file
+        // std::fs::write("/tmp/kek.bin", hex::decode(kek).unwrap()).unwrap();
+        // write dek to file
+        // std::fs::write("/tmp/dek.bin", hex::decode(dek).unwrap()).unwrap();
+
+        //  openssl enc \
+        //   -id-aes256-wrap-pad \
+        //   -iv A65959A6 \
+        //   -K $( hexdump -v -e '/1 "%02x"' < /tmp/kek.bin )\
+        //   -in /tmp/dek.bin > /tmp/wrapped_key.bin
+        //
+        //  hexdump -v -e '/1 "%02x"' < /tmp/wrapped_key.bin
+
+        let openssl_wrapped_key =
+            "340068e5236ceb5aaca068695fe28266a2dd7b75bdfc46a53f3e4f8c8052f41bd905f3571d04e0f7";
+
+        let rfc5649_wrapped_key = hex::encode(
+            rfc5649_wrap(
+                hex::decode(dek).unwrap().as_slice(),
+                hex::decode(kek).unwrap().as_slice(),
+            )
+            .unwrap(),
+        );
+        assert_eq!(openssl_wrapped_key, rfc5649_wrapped_key);
+    }
+
+    #[test]
+    fn test_aes_kw_compat() {
+        // Test the compatibility with AES_KEY_WRAP_PAD (RFC 5649) implemented by the aes_kw crate.
+
+        let kek = "5840df6e29b02af1ab493b705bf16ea1ae8338f4dcc176a85840df6e29b02af1";
+        let dek = "afbeb0f07dfbf5419200f2ccb50bb24aafbeb0f07dfbf5419200f2ccb50bb24a";
+
+        let aes_kw_kek = aes_kw::KwpAes256::new_from_slice(&hex::decode(kek).unwrap()).unwrap();
+        let input_key = hex::decode(dek).unwrap();
+        let mut buf = [0u8; 128];
+        let aes_kw_wrapped_key = hex::encode(aes_kw_kek.wrap_key(&input_key, &mut buf).unwrap());
+
+        let rfc5649_wrapped_key = hex::encode(
+            rfc5649_wrap(
+                hex::decode(dek).unwrap().as_slice(),
+                hex::decode(kek).unwrap().as_slice(),
+            )
+            .unwrap(),
+        );
+        assert_eq!(aes_kw_wrapped_key, rfc5649_wrapped_key);
     }
 }
