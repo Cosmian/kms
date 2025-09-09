@@ -138,6 +138,7 @@ impl TryFrom<&Triple> for IndexedValue {
 /// For each permission triple (user_id, obj_uid, permission), we store it twice under:
 /// - The user id: `u::{user_id}` → (user_id, obj_uid, permission)
 /// - The object uid: `o::{obj_uid}` → (user_id, obj_uid, permission)
+/// TODO: calculate size
 ///
 /// By explicitly maintaining both indexes, we avoid the need for wildcard searches
 /// which are not supported by Findex yet needed if we want to list all permissions
@@ -250,42 +251,6 @@ impl PermissionsDB {
             .await?;
         self.findex.delete(obj_keyword, indexed_triple).await?;
 
-        // TODO: this comment will be kept until proven unnecessary
-        // we need to handle a corner case where the first addition of the keyword
-        // to the index is actually a deletion. An entry will be created anyway and
-        // the keyword will show as present on the next addition. Since we are not
-        // going to create the other two keywords on the next addition,
-        // we need to do it now
-        // if is_new {
-        //     // we need to add the other two keywords
-        //     let mut additions = HashMap::new();
-        //     additions.insert(
-        //         IndexedValue::from(keyword),
-        //         HashSet::from([
-        //             Keyword::from(format!("p::{obj_uid}").as_bytes()),
-        //             Keyword::from(format!("p::{user_id}").as_bytes()),
-        //         ]),
-        //     );
-        //     self.findex
-        //         .upsert(
-        //             &findex_key.to_bytes(),
-        //             &self.label,
-        //             additions,
-        //             HashMap::new(),
-        //         )
-        //         .await?;
-        // }
         Ok(())
     }
 }
-
-// TODO: check if we need this at all
-// #[async_trait]
-// impl RemovedLocationsFinder for PermissionsDB {
-//     async fn find_removed_locations(
-//         &self,
-//         _locations: HashSet<Location>,
-//     ) -> Result<HashSet<Location>, FindexRedisError> {
-//         Ok(HashSet::new())
-//     }
-// }

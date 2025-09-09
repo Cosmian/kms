@@ -4,8 +4,7 @@ pub(crate) mod objects_db;
 pub(crate) mod permissions;
 mod redis_with_findex;
 
-#[cfg(test)]
-pub(crate) use findex::FINDEX_KEY_LENGTH;
+pub use findex::FINDEX_KEY_LENGTH;
 pub(crate) use redis_with_findex::RedisWithFindex;
 #[cfg(test)]
 pub(crate) use redis_with_findex::init_findex_redis;

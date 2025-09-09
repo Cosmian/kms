@@ -6,12 +6,14 @@ mod sql;
 use std::sync::LazyLock;
 
 use rawsql::Loader;
+#[cfg(any(test, feature = "non-fips"))]
+pub(crate) use redis::FINDEX_KEY_LENGTH;
 #[cfg(feature = "non-fips")]
 pub(crate) use redis::RedisWithFindex;
+#[cfg(all(test, feature = "non-fips"))]
+pub(crate) use redis::additional_redis_findex_tests;
 #[cfg(feature = "non-fips")]
 pub use redis::redis_master_key_from_password;
-#[cfg(all(test, feature = "non-fips"))]
-pub(crate) use redis::{FINDEX_KEY_LENGTH, additional_redis_findex_tests};
 pub(crate) use sql::{MySqlPool, PgPool, SqlitePool};
 
 const PGSQL_FILE_QUERIES: &str = include_str!("sql/query.sql");

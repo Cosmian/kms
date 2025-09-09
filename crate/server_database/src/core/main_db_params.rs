@@ -5,10 +5,11 @@ use std::{
 };
 
 #[cfg(feature = "non-fips")]
-use cosmian_findex::KEY_LENGTH as FINDEX_KEY_LENGTH;
-#[cfg(feature = "non-fips")]
 use cosmian_kms_crypto::reexport::cosmian_crypto_core::SymmetricKey;
 use url::Url;
+
+#[cfg(feature = "non-fips")]
+use crate::stores::FINDEX_KEY_LENGTH;
 
 pub enum MainDbParams {
     /// contains the directory of the `SQLite` DB file (not the DB file itself)

@@ -40,7 +40,6 @@ use crate::{
 };
 
 const REDIS_WITH_FINDEX_MASTER_KEY_DERIVATION_SALT: &[u8; 16] = b"rediswithfindex_";
-// pub(crate) const REDIS_WITH_FINDEX_MASTER_FINDEX_KEY_DERIVATION_SALT: &[u8; 6] = b"findex";
 pub(crate) const REDIS_WITH_FINDEX_MASTER_DB_KEY_DERIVATION_SALT: &[u8; 2] = b"db";
 
 /// Derive a Redis Master Key from a password
@@ -126,8 +125,6 @@ impl RedisWithFindex {
         let permissions_db = PermissionsDB::new(findex_arc.clone());
 
         if clear_database {
-            // TODO: this statement is a very dangerous and destructive operation, should we really keep it
-            // this simple ? In other terms I suggest a double confirmation prompt
             redis::cmd("FLUSHDB")
                 .query_async::<_, ()>(&mut mgr.clone())
                 .await?;

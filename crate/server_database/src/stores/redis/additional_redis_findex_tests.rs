@@ -150,7 +150,7 @@ pub(crate) async fn test_permissions_db() -> DbResult<()> {
         HashSet::from([KmipOperation::Encrypt, KmipOperation::Decrypt])
     );
 
-    //find the permission for the object O1
+    // find the permission for the object O1
     let permissions = permissions_db.list_object_permissions(&object1).await?;
     assert_eq!(permissions.len(), 1);
     assert!(permissions.contains_key(&user1));
@@ -222,7 +222,7 @@ pub(crate) async fn test_permissions_db() -> DbResult<()> {
         HashSet::from([KmipOperation::Encrypt])
     );
 
-    //find the permission for the object O2
+    // find the permission for the object O2
     let permissions = permissions_db.list_object_permissions(&object2).await?;
     assert_eq!(permissions.len(), 1);
     assert!(permissions.contains_key(&user2));
@@ -251,7 +251,7 @@ pub(crate) async fn test_permissions_db() -> DbResult<()> {
         HashSet::from([KmipOperation::Encrypt])
     );
 
-    //find the permission for the object O1
+    // find the permission for the object O1
     let permissions = permissions_db.list_object_permissions(&object1).await?;
     assert_eq!(permissions.len(), 2);
     assert!(permissions.contains_key(&user1));
@@ -271,7 +271,7 @@ pub(crate) async fn test_permissions_db() -> DbResult<()> {
     let permissions = permissions_db.list_user_permissions(&user1).await?;
     assert_eq!(permissions.len(), 0);
 
-    //find the permission for the object O1
+    // find the permission for the object O1
     let permissions = permissions_db.list_object_permissions(&object1).await?;
     assert_eq!(permissions.len(), 1);
     assert!(permissions.contains_key(&user2));
@@ -294,7 +294,7 @@ pub(crate) async fn test_permissions_db() -> DbResult<()> {
         HashSet::from([KmipOperation::Encrypt])
     );
 
-    //find the permission for the object O1
+    // find the permission for the object O1
     let permissions = permissions_db.list_object_permissions(&object1).await?;
     assert_eq!(permissions.len(), 0);
 
@@ -332,7 +332,7 @@ pub(crate) async fn test_corner_case() -> DbResult<()> {
     let permissions = permissions_db.list_object_permissions(&object1).await?;
     assert_eq!(permissions.len(), 0);
 
-    //add the permission Encrypt on object O1 for user U1
+    // add the permission Encrypt on object O1 for user U1
     permissions_db
         .add(&object1, &user1, KmipOperation::Encrypt)
         .await?;

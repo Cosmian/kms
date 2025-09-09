@@ -85,10 +85,11 @@ impl Database {
                 // There is no reason to keep a copy of the key in the shared config
                 // So we are going to create a "zeroizable" copy which will be passed to Redis with Findex
                 // and zeroize the one in the shared config
-                use cosmian_findex::KEY_LENGTH;
                 use cosmian_kms_crypto::reexport::cosmian_crypto_core::FixedSizeCBytes;
+
+                use crate::stores::FINDEX_KEY_LENGTH;
                 let new_master_key =
-                    Secret::<KEY_LENGTH>::from_unprotected_bytes(&mut master_key.to_bytes());
+                    Secret::<FINDEX_KEY_LENGTH>::from_unprotected_bytes(&mut master_key.to_bytes());
                 // `master_key` implements ZeroizeOnDrop so there is no need
                 // to manually zeroize.
                 let db = Arc::new(
