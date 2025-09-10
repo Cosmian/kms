@@ -5,13 +5,12 @@ use cosmian_kms_client::{
     kmip_2_1::{KmipOperation, kmip_types::UniqueIdentifier},
     reexport::cosmian_kms_client_utils::symmetric_utils::DataEncryptionAlgorithm,
 };
-use cosmian_logger::log_init;
+use cosmian_logger::{log_init, trace};
 use serial_test::serial;
 use test_kms_server::{
     start_default_test_kms_server_with_cert_auth,
     start_default_test_kms_server_with_privileged_users,
 };
-use tracing::trace;
 
 use crate::{
     actions::kms::{

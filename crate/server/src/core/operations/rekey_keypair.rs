@@ -18,7 +18,7 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::SessionParams,
 };
-use tracing::trace;
+use cosmian_logger::trace;
 
 #[cfg(feature = "non-fips")]
 use crate::core::cover_crypt::rekey_keypair_cover_crypt;

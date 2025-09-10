@@ -37,10 +37,9 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_crypto::openssl::kmip_private_key_to_openssl,
 };
-use log::error;
+use cosmian_logger::{debug, error, info, trace};
 use openssl::ssl::SslAcceptorBuilder;
 use tokio::{runtime::Handle, task::JoinHandle, try_join};
-use tracing::{debug, info, trace};
 
 use crate::{
     config::{JwtAuthConfig, ServerParams, TlsParams},
@@ -447,7 +446,7 @@ fn spa_index_handler(req: &HttpRequest, ui_index_html_folder: &PathBuf) -> HttpR
     match actix_files::NamedFile::open(index_html_path) {
         Ok(file) => file.into_response(req),
         Err(e) => {
-            log::error!("Failed to open index.html: {e:?}");
+            error!("Failed to open index.html: {e:?}");
             HttpResponse::InternalServerError().finish()
         }
     }

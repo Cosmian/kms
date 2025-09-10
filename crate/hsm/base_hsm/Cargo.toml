@@ -2,12 +2,12 @@
 name = "cosmian_kms_base_hsm"
 version.workspace = true
 authors.workspace = true
+categories.workspace = true
 edition.workspace = true
+keywords.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-keywords.workspace = true
-categories.workspace = true
 description = "Base PKCS#11 HSM integration implementation"
 
 # [lints]
@@ -19,11 +19,11 @@ doctest = false
 [dependencies]
 async-trait = { workspace = true }
 cosmian_kms_interfaces = { path = "../../interfaces", version = "5.8.1" }
+cosmian_logger = { workspace = true }
 libloading = { workspace = true }
 lru = { workspace = true }
 pkcs11-sys = { workspace = true }
 rand = { workspace = true }
 thiserror = { workspace = true }
-tracing = { workspace = true }
 zeroize = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }

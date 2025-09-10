@@ -5,6 +5,7 @@ use std::{
     hash::{DefaultHasher, Hash, Hasher},
 };
 
+use cosmian_logger::trace;
 use kmip_derive::{KmipEnumDeserialize, KmipEnumSerialize, kmip_enum};
 use num_bigint_dig::BigInt;
 use serde::{
@@ -12,7 +13,6 @@ use serde::{
     de::{MapAccess, Visitor},
 };
 use strum::{Display, VariantNames};
-use tracing::trace;
 
 use super::{
     kmip_attributes::Attributes,

@@ -18,6 +18,7 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams},
 };
+use cosmian_logger::{debug, info, trace};
 #[cfg(feature = "non-fips")]
 use openssl::{hash::MessageDigest, nid::Nid};
 use openssl::{
@@ -26,7 +27,6 @@ use openssl::{
     stack::Stack,
     x509::X509,
 };
-use tracing::{debug, info, trace};
 use zeroize::Zeroizing;
 
 use crate::{

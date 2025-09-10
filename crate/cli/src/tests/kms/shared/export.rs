@@ -387,7 +387,7 @@ pub(crate) async fn test_export_x25519() -> KmsCliResult<()> {
         kmip_2_1::kmip_data_structures::KeyValue,
         reexport::cosmian_kms_client_utils::create_utils::Curve,
     };
-    use tracing::trace;
+    use cosmian_logger::trace;
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     // init the test server

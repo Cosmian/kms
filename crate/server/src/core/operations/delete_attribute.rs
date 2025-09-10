@@ -9,7 +9,7 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::SessionParams,
 };
-use tracing::trace;
+use cosmian_logger::trace;
 
 use crate::{
     core::{KMS, retrieve_object_utils::retrieve_object_for_operation},
@@ -23,7 +23,7 @@ pub(crate) async fn delete_attribute(
     user: &str,
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<DeleteAttributeResponse> {
-    trace!("Delete attribute: {}", serde_json::to_string(&request)?);
+    trace!("{}", serde_json::to_string(&request)?);
 
     // there must be an identifier
     let uid_or_tags = request
@@ -41,7 +41,7 @@ pub(crate) async fn delete_attribute(
         params.clone(),
     )
     .await?;
-    trace!("Delete Attribute: Retrieved object for: {}", owm.object());
+    trace!("Retrieved object for: {}", owm.object());
 
     let mut attributes = owm.attributes().to_owned();
 

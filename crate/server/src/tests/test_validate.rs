@@ -11,7 +11,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_types::{UniqueIdentifier, ValidityIndicator},
     },
 };
-use tracing::debug;
+use cosmian_logger::debug;
 
 use crate::{
     config::ServerParams, core::KMS, error::KmsError, tests::test_utils::https_clap_config,

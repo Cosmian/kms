@@ -33,8 +33,8 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::{CryptoAlgorithm, ObjectWithMetadata, SessionParams},
 };
+use cosmian_logger::{debug, info, trace};
 use openssl::pkey::{Id, PKey, Private};
-use tracing::{debug, info, trace};
 use zeroize::Zeroizing;
 
 use crate::{
@@ -55,7 +55,7 @@ pub(crate) async fn decrypt(
     user: &str,
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<DecryptResponse> {
-    trace!("decrypt: {}", serde_json::to_string(&request)?);
+    trace!("{}", serde_json::to_string(&request)?);
     let data = request.data.as_ref().ok_or_else(|| {
         KmsError::InvalidRequest("Decrypt: data to decrypt must be provided".to_owned())
     })?;
@@ -68,7 +68,7 @@ pub(crate) async fn decrypt(
     let uids = uids_from_unique_identifier(unique_identifier, kms, params.clone())
         .await
         .context("Decrypt")?;
-    debug!("Decrypt: candidate uids: {uids:?}");
+    debug!("candidate uids: {uids:?}");
 
     // Determine which UID to select. The decision process is as follows: loop through the uids
     // 1. If the UID has a prefix, try using that
@@ -97,11 +97,11 @@ pub(crate) async fn decrypt(
                     .iter()
                     .any(|p| [KmipOperation::Decrypt, KmipOperation::Get].contains(p))
                 {
-                    debug!("Decrypt: user: {user} is not authorized to decrypt using: {uid}");
+                    debug!("{user} is not authorized to decrypt using: {uid}");
                     continue
                 }
             }
-            debug!("Decrypt: user: {user} is authorized to decrypt using: {uid}");
+            debug!("{user} is authorized to decrypt using: {uid}");
             return decrypt_using_encryption_oracle(kms, &request, &uid, prefix).await;
         }
 
@@ -111,14 +111,14 @@ pub(crate) async fn decrypt(
             .retrieve_object(&uid, params.clone())
             .await?
             .ok_or_else(|| {
-                debug!("Decrypt: failed to retrieve the key: {uid}");
+                debug!("failed to retrieve the key: {uid}");
                 KmsError::Kmip21Error(
                     ErrorReason::Item_Not_Found,
                     format!("Decrypt: failed to retrieve the key: {uid}"),
                 )
             })?;
         if owm.state() != State::Active {
-            debug!("Decrypt: key: {uid} is not active");
+            debug!("{uid} is not active");
             continue
         }
         // If an HSM wraps the object, likely the wrapping will be done with NoEncoding
@@ -128,7 +128,7 @@ pub(crate) async fn decrypt(
             .attributes()
             .unwrap_or_else(|_| owm.attributes());
         if !attributes.is_usage_authorized_for(CryptographicUsageMask::Decrypt)? {
-            debug!("Decrypt: key: {uid} is not authorized for decryption");
+            debug!("{uid} is not authorized for decryption");
             continue
         }
         //check user permissions - owner can always decrypt
@@ -141,11 +141,11 @@ pub(crate) async fn decrypt(
                 .iter()
                 .any(|p| [KmipOperation::Decrypt, KmipOperation::Get].contains(p))
             {
-                debug!("Decrypt: user: {user} is not authorized to decrypt using: {uid}");
+                debug!("{user} is not authorized to decrypt using: {uid}");
                 continue
             }
         }
-        debug!("Decrypt: user: {user} is authorized to decrypt using: {uid}");
+        debug!("{user} is authorized to decrypt using: {uid}");
         // user is authorized to decrypt with the key
         if let Object::SymmetricKey { .. } = owm.object() {
             selected_owm = Some(owm);
@@ -367,7 +367,7 @@ fn decrypt_bulk(
 }
 
 fn decrypt_single(owm: &ObjectWithMetadata, request: &Decrypt) -> KResult<DecryptResponse> {
-    trace!("decrypt_single: entering");
+    trace!("entering");
     let key_block = owm.object().key_block()?;
     match &key_block.key_format_type {
         #[cfg(feature = "non-fips")]
@@ -378,7 +378,7 @@ fn decrypt_single(owm: &ObjectWithMetadata, request: &Decrypt) -> KResult<Decryp
         | KeyFormatType::PKCS1
         | KeyFormatType::PKCS8 => {
             trace!(
-                "dispatch_decrypt: matching on public key format type: {:?}",
+                "matching on public key format type: {:?}",
                 key_block.key_format_type
             );
             decrypt_with_private_key(owm, request)
@@ -399,7 +399,7 @@ fn decrypt_with_covercrypt(
     owm: &ObjectWithMetadata,
     request: &Decrypt,
 ) -> Result<DecryptResponse, KmsError> {
-    trace!("Decrypt with Covercrypt key {}", owm.id());
+    trace!("key id {}", owm.id());
     CovercryptDecryption::instantiate(Covercrypt::default(), owm.id(), owm.object())?
         .decrypt(request)
         .map_err(Into::into)
@@ -432,8 +432,8 @@ fn decrypt_single_with_symmetric_key(
         .and_then(|cp| cp.padding_method)
         .unwrap_or(PaddingMethod::PKCS5);
     trace!(
-        "Decrypt single with symmetric key: ciphertext: {ciphertext:?}, nonce: {nonce:?}, aad: \
-         {aad:?}, tag: {tag:?}, padding_method: {padding_method:?}"
+        "ciphertext: {ciphertext:?}, nonce: {nonce:?}, aad: {aad:?}, tag: {tag:?}, \
+         padding_method: {padding_method:?}"
     );
     let plaintext = sym_decrypt(
         aead,
@@ -444,7 +444,7 @@ fn decrypt_single_with_symmetric_key(
         tag,
         Some(padding_method),
     )?;
-    trace!("Decrypt single with symmetric key: plaintext: {plaintext:?}");
+    trace!("plaintext: {plaintext:?}");
     Ok(Ok(DecryptResponse {
         unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
         data: Some(plaintext),
@@ -517,7 +517,7 @@ fn decrypt_with_rsa(
     let (algorithm, padding, hashing_fn, _) =
         default_cryptographic_parameters(cryptographic_parameters);
     trace!(
-        "Decrypt with RSA: algorithm: {:?}, padding: {:?}, hashing_fn: {:?}",
+        "algorithm: {:?}, padding: {:?}, hashing_fn: {:?}",
         algorithm, padding, hashing_fn
     );
 

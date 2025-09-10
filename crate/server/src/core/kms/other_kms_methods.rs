@@ -21,8 +21,8 @@ use cosmian_kms_server_database::{
         cosmian_kms_interfaces::{EncryptionOracle, SessionParams},
     },
 };
+use cosmian_logger::{debug, trace};
 use openssl::rand::rand_bytes;
-use tracing::{debug, trace};
 use zeroize::Zeroizing;
 
 #[cfg(feature = "non-fips")]

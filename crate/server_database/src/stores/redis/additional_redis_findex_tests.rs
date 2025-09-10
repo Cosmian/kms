@@ -17,8 +17,8 @@ use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
     CsRng, RandomFixedSizeCBytes, SymmetricKey,
     reexport::rand_core::{RngCore, SeedableRng},
 };
+use cosmian_logger::trace;
 use redis::aio::ConnectionManager;
-use tracing::trace;
 
 use crate::{
     error::DbResult,

@@ -1,4 +1,4 @@
-use tracing::trace;
+use cosmian_logger::trace;
 
 use crate::{cli_bail, error::result::KmsCliResult};
 
@@ -14,6 +14,6 @@ pub(crate) fn get_key_uid(
     } else {
         cli_bail!("Either --{argument_name} or one or more --tag must be specified")
     };
-    trace!("Key UID: {id}");
+    trace!("{id}");
     Ok(id)
 }

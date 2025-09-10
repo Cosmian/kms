@@ -8,7 +8,7 @@ use cosmian_kmip::kmip_2_1::{
     kmip_operations::{Decrypt, DecryptResponse},
     kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
 };
-use tracing::{debug, trace};
+use cosmian_logger::{debug, trace};
 use zeroize::Zeroizing;
 
 use super::user_key::unwrap_user_decryption_key_object;
@@ -31,7 +31,7 @@ impl CovercryptDecryption {
         user_decryption_key_uid: &str,
         user_decryption_key: &Object,
     ) -> Result<Self, CryptoError> {
-        trace!("CovercryptDecryption::instantiate entering");
+        trace!("instantiate entering");
 
         let (user_decryption_key_bytes, _attributes) =
             unwrap_user_decryption_key_object(user_decryption_key)?;
@@ -54,17 +54,13 @@ impl CovercryptDecryption {
         ad: Option<&[u8]>,
         usk: &UserSecretKey,
     ) -> CryptoResult<Zeroizing<Vec<u8>>> {
-        trace!("CovercryptDecryption: decrypt: ad: {ad:?}");
+        trace!("decrypt: ad: {ad:?}");
 
         let mut de = Deserializer::new(encrypted_bytes);
 
-        trace!(
-            "CovercryptDecryption: encrypted_bytes len: {}",
-            encrypted_bytes.len()
-        );
+        trace!("encrypted_bytes len: {}", encrypted_bytes.len());
 
         let enc = XEnc::read(&mut de)?;
-
         trace!("encrypted_header parsed");
 
         let seed = self.cover_crypt.decaps(usk, &enc)?.ok_or_else(|| {

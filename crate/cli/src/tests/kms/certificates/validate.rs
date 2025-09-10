@@ -4,9 +4,9 @@ use cosmian_kms_client::{
     kmip_2_1::kmip_types::ValidityIndicator,
     reexport::cosmian_kms_client_utils::import_utils::CertificateInputFormat,
 };
+use cosmian_logger::{debug, info};
 use tempfile::TempDir;
 use test_kms_server::start_default_test_kms_server;
-use tracing::{debug, info};
 
 use crate::{
     actions::kms::certificates::{

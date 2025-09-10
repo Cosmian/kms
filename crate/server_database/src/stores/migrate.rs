@@ -1,6 +1,6 @@
 use async_trait::async_trait;
+use cosmian_logger::{debug, error};
 use serde::{Deserialize, Serialize};
-use tracing::{debug, error};
 use version_compare::{Cmp, compare};
 
 use crate::{DbError, error::DbResult};
@@ -38,7 +38,7 @@ pub(crate) trait Migrate<DB> {
                                 previous upgrading failed. Bailing out. Please wait for the \
                                 migration to complete or restore a previous version of the \
                                 database.";
-            error!(error_string,);
+            error!("{error_string}");
             return Err(DbError::DatabaseError("error_string".to_owned()));
         }
         let current_db_version = self

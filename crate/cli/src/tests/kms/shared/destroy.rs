@@ -2,9 +2,9 @@ use cosmian_kms_client::{
     kmip_2_1::kmip_data_structures::{KeyMaterial, KeyValue},
     read_object_from_json_ttlv_file,
 };
+use cosmian_logger::trace;
 use tempfile::TempDir;
 use test_kms_server::{TestsContext, start_default_test_kms_server};
-use tracing::trace;
 
 #[cfg(feature = "non-fips")]
 use crate::actions::kms::cover_crypt::keys::{

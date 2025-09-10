@@ -13,7 +13,7 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kms_crypto::crypto::wrap::{decode_unwrapped_key, unwrap_key_block},
     cosmian_kms_interfaces::SessionParams,
 };
-use tracing::debug;
+use cosmian_logger::debug;
 
 use crate::{
     core::{KMS, uid_utils::has_prefix},
@@ -40,7 +40,7 @@ pub(crate) async fn unwrap_object(
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<()> {
     if !object.is_wrapped() {
-        debug!("unwrap_object: object is not wrapped, no need to unwrap");
+        debug!("object is not wrapped, no need to unwrap");
         return Ok(());
     }
     let object_key_block = object.key_block_mut().map_err(|e| {

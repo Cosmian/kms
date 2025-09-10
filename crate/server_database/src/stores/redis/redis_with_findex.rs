@@ -22,8 +22,8 @@ use cosmian_kms_interfaces::{
     AtomicOperation, InterfaceResult, ObjectWithMetadata, ObjectsStore, PermissionsStore,
     SessionParams,
 };
+use cosmian_logger::trace;
 use redis::aio::ConnectionManager;
-use tracing::trace;
 use uuid::Uuid;
 
 use super::{

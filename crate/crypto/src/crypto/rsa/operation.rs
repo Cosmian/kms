@@ -15,9 +15,9 @@ use cosmian_kmip::{
         },
     },
 };
+use cosmian_logger::{debug, trace};
 use num_bigint_dig::{BigInt, Sign};
 use openssl::{pkey::Private, rsa::Rsa};
-use tracing::{debug, trace};
 use zeroize::Zeroizing;
 
 #[cfg(not(feature = "non-fips"))]
@@ -82,7 +82,7 @@ pub fn to_rsa_public_key(
         i32::try_from(pkey_bits_number).context("Invalid key size")?;
 
     trace!(
-        "to_rsa_public_key: bytes len: {}, bits: {}",
+        "bytes len: {}, bits: {}",
         cryptographic_length_in_bits, pkey_bits_number
     );
 
@@ -124,7 +124,7 @@ pub fn to_rsa_public_key(
             key_wrapping_data: None,
         },
     });
-    trace!("to_rsa_public_key: output object: {output}");
+    trace!("output object: {output}");
     Ok(output)
 }
 
@@ -140,7 +140,7 @@ pub fn to_rsa_private_key(
         i32::try_from(pkey_bits_number).context("Invalid private key size")?;
 
     trace!(
-        "to_rsa_private_key: bytes len: {}, bits: {}",
+        "bytes len: {}, bits: {}",
         cryptographic_length_in_bits, pkey_bits_number
     );
 

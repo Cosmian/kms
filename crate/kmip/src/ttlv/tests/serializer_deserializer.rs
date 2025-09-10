@@ -1,9 +1,8 @@
-use cosmian_logger::log_init;
+use cosmian_logger::{info, log_init};
 use kmip_derive::{KmipEnumSerialize, kmip_enum};
 use num_bigint_dig::{BigInt, BigUint};
 use serde::{Deserialize, Serialize};
 use time::{OffsetDateTime, UtcOffset};
-use tracing::info;
 
 use crate::ttlv::{KmipEnumerationVariant, TTLValue, from_ttlv, to_ttlv, ttlv_struct::TTLV};
 

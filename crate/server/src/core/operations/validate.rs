@@ -13,6 +13,7 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::SessionParams,
 };
+use cosmian_logger::{debug, trace, warn};
 use openssl::{
     asn1::Asn1Time,
     stack::Stack,
@@ -21,7 +22,6 @@ use openssl::{
         store::X509StoreBuilder,
     },
 };
-use tracing::{debug, trace, warn};
 
 use crate::{
     core::{KMS, retrieve_object_utils::retrieve_object_for_operation},
@@ -628,7 +628,7 @@ async fn certificates_by_uid(
     user: &str,
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<Vec<Vec<u8>>> {
-    debug!("certificates_by_uid: entering: {unique_identifiers:?}");
+    debug!("entering: {unique_identifiers:?}");
     let mut results = Vec::new();
     for unique_identifier in unique_identifiers {
         let unique_identifier = unique_identifier.as_str().ok_or_else(|| {

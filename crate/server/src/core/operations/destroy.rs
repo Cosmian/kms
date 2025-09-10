@@ -15,7 +15,7 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::SessionParams,
 };
-use tracing::{debug, info, trace};
+use cosmian_logger::{debug, info, trace};
 use zeroize::Zeroizing;
 
 #[cfg(feature = "non-fips")]
@@ -289,7 +289,7 @@ async fn update_as_destroyed(
     };
 
     // the KMIP specs mandates that e KeyMaterial be destroyed
-    trace!("destroy: object: {object}");
+    trace!("object: {object}");
     let attributes = if let Object::Certificate { .. } = object {
         trace!("Certificate destroying");
         Attributes::default()

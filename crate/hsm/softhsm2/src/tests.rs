@@ -1,7 +1,7 @@
 //! These tests  require a connection to a working HSM and are gated behind the `softhsm2` feature.
 //! To run a test, cd into the crate directory and run (replace `XXX` with the actual password):
 //! ```
-//! HSM_USER_PASSWORD=12345678  HSM_SLOT_ID=123456 cargo test --target x86_64-unknown-linux-gnu --features softhsm2 -- tests::test_hsm_all
+//! HSM_USER_PASSWORD=12345678 cargo test --target x86_64-unknown-linux-gnu --features softhsm2 -- tests::test_hsm_all
 //! ```
 
 use std::{collections::HashMap, ptr, sync::Arc, thread};
@@ -11,14 +11,13 @@ use cosmian_kms_base_hsm::{
     test_helpers::{get_hsm_password, get_hsm_slot_id},
 };
 use cosmian_kms_interfaces::{HsmObjectFilter, KeyMaterial, KeyType};
-use cosmian_logger::log_init;
+use cosmian_logger::{info, log_init};
 use libloading::Library;
 use pkcs11_sys::{
     CK_C_INITIALIZE_ARGS, CK_RV, CK_VOID_PTR, CKF_OS_LOCKING_OK, CKM_AES_CBC, CKM_RSA_PKCS_OAEP,
     CKR_OK,
 };
 use rand::{TryRngCore, rngs::OsRng};
-use tracing::info;
 use uuid::Uuid;
 
 use crate::Softhsm2;

@@ -1,12 +1,13 @@
 use core::fmt;
 
+use cosmian_logger::trace;
 use serde::{
     Deserialize,
     de::{self, MapAccess, SeqAccess, Visitor},
 };
 use serde_json::Value;
 use time::{OffsetDateTime, format_description::well_known::Iso8601};
-use tracing::{instrument, trace};
+use tracing::instrument;
 
 use super::{TTLV, kmip_big_int::KmipBigInt};
 use crate::ttlv::{KmipEnumerationVariant, TTLValue};

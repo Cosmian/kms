@@ -10,6 +10,7 @@ use cosmian_kms_server_database::{
         EncryptionOracle, HSM, HsmEncryptionOracle, HsmStore, ObjectsStore,
     },
 };
+use cosmian_logger::trace;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use proteccio_pkcs11_loader::Proteccio;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
@@ -17,7 +18,6 @@ use smartcardhsm_pkcs11_loader::Smartcardhsm;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use softhsm2_pkcs11_loader::Softhsm2;
 use tokio::sync::RwLock;
-use tracing::trace;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use utimaco_pkcs11_loader::Utimaco;
 
@@ -53,7 +53,7 @@ impl KMS {
     /// A new KMS instance.
     #[allow(clippy::as_conversions)]
     pub(crate) async fn instantiate(server_params: Arc<ServerParams>) -> KResult<Self> {
-        trace!("KMS::instantiate, params: {server_params:?}");
+        trace!("params: {server_params:?}");
 
         // Instantiate the HSM if any; the code has support for multiple concurrent HSMs
         let hsm = Self::instantiate_hsm(&server_params)?;

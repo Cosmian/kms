@@ -18,8 +18,8 @@ use cosmian_kms_client::{
         build_usage_mask_from_key_usage,
     },
 };
+use cosmian_logger::{debug, trace};
 use der::{Decode, DecodePem, Encode};
-use tracing::{debug, trace};
 use x509_cert::Certificate;
 use zeroize::Zeroizing;
 
@@ -110,7 +110,7 @@ pub struct ImportCertificateAction {
 
 impl ImportCertificateAction {
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<Option<String>> {
-        trace!("CLI: entering import certificate: {:?}", self);
+        trace!("{self:?}");
 
         //generate the leaf certificate attributes if links are specified
         let mut leaf_certificate_attributes = None;
@@ -136,13 +136,10 @@ impl ImportCertificateAction {
             );
         }
 
-        trace!(
-            "CLI: leaf_certificate_attributes: {:?}",
-            leaf_certificate_attributes
-        );
+        trace!("{:?}", leaf_certificate_attributes);
         let (stdout_message, returned_unique_identifier) = match self.input_format {
             CertificateInputFormat::JsonTtlv => {
-                trace!("CLI: import certificate as TTLV JSON file");
+                trace!("import certificate as TTLV JSON file");
                 // read the certificate file
                 let object = read_object_from_json_ttlv_file(self.get_certificate_file()?)?;
                 let certificate_id = Box::pin(self.import_chain(
@@ -158,7 +155,7 @@ impl ImportCertificateAction {
                 )
             }
             CertificateInputFormat::Pem => {
-                trace!("CLI: import certificate as PEM file");
+                trace!("import certificate as PEM file");
                 let pem_value = read_bytes_from_file(&self.get_certificate_file()?)?;
                 // convert the PEM to X509 to make sure it is correct
                 let certificate = Certificate::from_pem(&pem_value).map_err(|e| {
@@ -183,7 +180,7 @@ impl ImportCertificateAction {
                 )
             }
             CertificateInputFormat::Der => {
-                debug!("CLI: import certificate as a DER file");
+                debug!("import certificate as a DER file");
                 let der_value = read_bytes_from_file(&self.get_certificate_file()?)?;
                 // convert DER to X509 to make sure it is correct
                 let certificate = Certificate::from_der(&der_value).map_err(|e| {
@@ -208,7 +205,7 @@ impl ImportCertificateAction {
                 )
             }
             CertificateInputFormat::Pkcs12 => {
-                debug!("CLI: import certificate as PKCS12 file");
+                debug!("import certificate as PKCS12 file");
                 let private_key_id = self.import_pkcs12(kms_rest_client).await?;
                 (
                     "The certificate(s), public key, and private key were successfully imported! \
@@ -218,7 +215,7 @@ impl ImportCertificateAction {
                 )
             }
             CertificateInputFormat::Chain => {
-                debug!("CLI: import certificate chain as PEM file");
+                debug!("import certificate chain as PEM file");
                 let pem_stack = read_bytes_from_file(&self.get_certificate_file()?)?;
                 let objects = build_chain_from_stack(&pem_stack)?;
                 // import the full chain

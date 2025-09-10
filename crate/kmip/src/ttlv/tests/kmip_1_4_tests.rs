@@ -1,6 +1,5 @@
-use cosmian_logger::log_init;
+use cosmian_logger::{info, log_init};
 use num_bigint_dig::BigInt;
-use tracing::info;
 use zeroize::Zeroizing;
 
 use crate::{

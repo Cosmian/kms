@@ -25,9 +25,9 @@ use cosmian_kms_server::{
     },
     start_kms_server::start_kms_server,
 };
+use cosmian_logger::{error, info, trace, warn};
 use tempfile::TempDir;
 use tokio::sync::OnceCell;
-use tracing::{info, log::error, trace, warn};
 
 use crate::test_jwt::{AUTH0_TOKEN, AUTH0_TOKEN_USER, get_auth0_jwt_config};
 

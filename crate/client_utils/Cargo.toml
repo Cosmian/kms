@@ -2,12 +2,12 @@
 name = "cosmian_kms_client_utils"
 version.workspace = true
 authors.workspace = true
+categories.workspace = true
 edition.workspace = true
+keywords.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-keywords.workspace = true
-categories.workspace = true
 description = "Cosmian KMS Client Utilities - used in WASM and KMS Client"
 
 [lints]
@@ -28,11 +28,11 @@ clap = { workspace = true, features = ["std", "derive"] }
 cosmian_config_utils = { workspace = true }
 cosmian_kmip = { path = "../kmip", version = "5.8.1" }
 cosmian_kms_access = { path = "../access", version = "5.8.1" }
+cosmian_logger = { workspace = true }
 pem = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 strum = { workspace = true, features = ["std", "derive", "strum_macros"] }
 thiserror = { workspace = true }
 time = { workspace = true }
-tracing = { workspace = true }
 zeroize = { workspace = true }

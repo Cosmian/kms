@@ -9,6 +9,7 @@ use cosmian_kmip::{
         },
     },
 };
+use cosmian_logger::trace;
 use num_bigint_dig::{BigInt, Sign};
 use openssl::{
     bn::{BigNum, BigNumContext},
@@ -17,7 +18,6 @@ use openssl::{
     pkey::{Id, PKey, Public},
     rsa::Rsa,
 };
-use tracing::trace;
 use zeroize::Zeroizing;
 
 use crate::{
@@ -56,7 +56,7 @@ use crate::{
 /// * `PKey<Public>` - The openssl Public key
 ///
 pub fn kmip_public_key_to_openssl(public_key: &Object) -> Result<PKey<Public>, CryptoError> {
-    trace!("kmip_public_key_to_openssl: {}", public_key);
+    trace!("{}", public_key);
     let key_block = match public_key {
         Object::PublicKey(PublicKey { key_block }) => key_block,
         x => crypto_bail!("Invalid Object: {}. KMIP Public Key expected", x),

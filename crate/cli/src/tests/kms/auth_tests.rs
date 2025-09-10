@@ -2,13 +2,12 @@ use std::path::PathBuf;
 
 use base64::Engine;
 use cosmian_kms_client::read_object_from_json_ttlv_file;
-use cosmian_logger::log_init;
+use cosmian_logger::{info, log_init, trace};
 use tempfile::TempDir;
 use test_kms_server::{
     AuthenticationOptions, MainDBConfig, TestsContext, start_test_server_with_options,
 };
 use tokio::fs;
-use tracing::{info, trace};
 
 use crate::{
     actions::kms::{

@@ -12,7 +12,7 @@ use cosmian_kmip::{
         kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
     },
 };
-use tracing::{debug, trace};
+use cosmian_logger::{debug, trace};
 
 use crate::{crypto::EncryptionSystem, error::CryptoError};
 
@@ -79,7 +79,7 @@ impl CoverCryptEncryption {
         let key = SymmetricKey::derive(&seed, b"Covercrypt AEAD key")?;
         let enc = enc.serialize()?;
 
-        trace!("CoverCryptEncryption: encrypt: encryption_policy: {ap:?}",);
+        trace!("encryption_policy: {ap:?}",);
 
         let nb_chunks = {
             let len = de.read_leb128_u64()?;
@@ -92,7 +92,7 @@ impl CoverCryptEncryption {
         };
 
         // Encrypt each chunk and serialize it along with a copy of the
-        // Covecrypt encapsulation.
+        // Covercrypt encapsulation.
         for _ in 0..nb_chunks {
             let ptx = de.read_vec_as_ref()?;
             let ctx = self.aead_encrypt(&key, ptx, ad)?;
@@ -113,7 +113,7 @@ impl CoverCryptEncryption {
         let (seed, enc) = self.cover_crypt.encaps(mpk, ap)?;
         let key = SymmetricKey::derive(&seed, b"Covercrypt AEAD key")?;
         let enc = enc.serialize()?;
-        trace!("CoverCryptEncryption: encrypt: encryption_policy: {ap:?}",);
+        trace!("encryption_policy: {ap:?}",);
         let ctx = self.aead_encrypt(&key, ptx, ad)?;
         Ok([&**enc, &ctx].concat())
     }
@@ -141,7 +141,7 @@ impl EncryptionSystem for CoverCryptEncryption {
     fn encrypt(&self, request: &Encrypt) -> Result<EncryptResponse, CryptoError> {
         let ad = request.authenticated_encryption_additional_data.as_deref();
 
-        trace!("CoverCryptEncryption: encrypt: authenticated_encryption_additional_data: {ad:?}",);
+        trace!("authenticated_encryption_additional_data: {ad:?}",);
 
         let encrypted_data =
             request

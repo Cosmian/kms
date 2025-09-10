@@ -8,7 +8,7 @@ use cosmian_kms_client::{
         kmip_types::{AttributeReference, Tag},
     },
 };
-use tracing::trace;
+use cosmian_logger::trace;
 
 use super::set::SetOrDeleteAttributes;
 use crate::{
@@ -45,7 +45,7 @@ impl DeleteAttributesAction {
                 attribute_references,
             })
             .await?;
-        trace!("delete_attribute response for {unique_identifier}: {current_attribute:?}",);
+        trace!("response for {unique_identifier}: {current_attribute:?}",);
         let mut stdout = console::Stdout::new("Attribute deleted successfully");
         stdout.set_tags(self.requested_attributes.tags.as_ref());
         stdout.set_unique_identifier(&id);
@@ -66,7 +66,7 @@ impl DeleteAttributesAction {
     /// - Either `--id` or one or more `--tag` must be specified.
     ///
     pub async fn process(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
-        trace!("DeleteAttributeAction: {:?}", self);
+        trace!("{self:?}");
         let id = get_key_uid(
             self.requested_attributes.id.as_ref(),
             self.requested_attributes.tags.as_ref(),

@@ -22,7 +22,7 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::SessionParams,
 };
-use tracing::trace;
+use cosmian_logger::trace;
 
 use super::KMS;
 use crate::{core::cover_crypt::locate_usk, error::KmsError, kms_bail, result::KResult};

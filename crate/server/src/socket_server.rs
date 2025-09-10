@@ -6,13 +6,12 @@ use std::{
     time::Duration,
 };
 
-use log::warn;
+use cosmian_logger::{debug, error, info, trace, warn};
 use openssl::{
     pkcs12::ParsedPkcs12_2,
     ssl::{SslAcceptor, SslStream},
 };
 use tokio::task::JoinHandle;
-use tracing::{debug, error, info, trace};
 
 use crate::{
     config::ServerParams,

@@ -14,13 +14,13 @@ use cosmian_kms_interfaces::{
     AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
     PermissionsStore, SessionParams,
 };
+use cosmian_logger::{debug, trace};
 use rawsql::Loader;
 use serde_json::Value;
 use sqlx::{
     ConnectOptions, Executor, MySql, Pool, Row, Transaction,
     mysql::{MySqlConnectOptions, MySqlPoolOptions, MySqlRow},
 };
-use tracing::{debug, trace};
 use uuid::Uuid;
 
 use crate::{

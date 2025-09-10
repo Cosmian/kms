@@ -9,11 +9,11 @@ use cosmian_kmip::{
         kmip_types::{CryptographicAlgorithm, EncodingOption, KeyFormatType, WrappingMethod},
     },
 };
+use cosmian_logger::{debug, trace};
 use openssl::{
     pkey::{Id, PKey, Public},
     x509::X509,
 };
-use tracing::{debug, trace};
 use zeroize::Zeroizing;
 
 use super::WRAPPING_SECRET_LENGTH;
@@ -133,7 +133,7 @@ pub fn key_data_to_wrap(
     object_key_block: &&mut KeyBlock,
     key_wrapping_specification: &KeyWrappingSpecification,
 ) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
-    trace!("key_data_to_wrap: key_wrapping_specification: {key_wrapping_specification:?}");
+    trace!("key_wrapping_specification: {key_wrapping_specification:?}");
     if object_key_block.key_wrapping_data.is_some() {
         crypto_bail!("unable to wrap the key: it is already wrapped")
     }
@@ -180,7 +180,7 @@ pub(crate) fn wrap(
     key_wrapping_data: &KeyWrappingData,
     key_to_wrap: &[u8],
 ) -> Result<Vec<u8>, CryptoError> {
-    trace!("wrap: with object type: {:?}", wrapping_key.object_type());
+    trace!("with object type: {:?}", wrapping_key.object_type());
     match wrapping_key {
         Object::Certificate(Certificate {
             certificate_value, ..
@@ -200,7 +200,7 @@ pub(crate) fn wrap(
         | Object::PrivateKey(PrivateKey { key_block })
         | Object::PublicKey(PublicKey { key_block })
         | Object::SymmetricKey(SymmetricKey { key_block }) => {
-            trace!("wrap: key_block: {}", key_block);
+            trace!("key_block: {}", key_block);
             // wrap the wrapping key if necessary
             if key_block.key_wrapping_data.is_some() {
                 crypto_bail!(
@@ -248,7 +248,7 @@ pub(crate) fn wrap(
                     );
                     let key_bytes = key_block.symmetric_key_bytes()?;
                     if block_cipher_mode == BlockCipherMode::GCM {
-                        debug!("wrap: using GCM");
+                        debug!("using GCM");
                         // wrap using aes GCM
                         let aead = SymCipher::from_algorithm_and_key_size(
                             cryptographic_algorithm,
@@ -274,14 +274,14 @@ pub(crate) fn wrap(
                         ciphertext.extend_from_slice(&authenticated_encryption_tag);
 
                         trace!(
-                            "wrap: nonce: {}, tag: {}",
+                            "nonce: {}, tag: {}",
                             general_purpose::STANDARD.encode(&nonce),
                             general_purpose::STANDARD.encode(&authenticated_encryption_tag),
                         );
 
                         Ok(ciphertext)
                     } else {
-                        trace!("wrap: using RFC-5649");
+                        trace!("using RFC-5649");
                         let ciphertext = rfc5649_wrap(key_to_wrap, &key_bytes)?;
                         Ok(ciphertext)
                     }
