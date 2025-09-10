@@ -393,6 +393,34 @@ impl Session {
         Ok(object_handles)
     }
 
+    /// Retrieve the object handle for a given object ID from the HSM.
+    ///
+    /// This function attempts to locate the handle of an object (such as a key) in the HSM
+    /// by searching for objects whose `CKA_LABEL` attribute matches the provided object ID.
+    /// attribute when searching. To optimize performance, previously found handles are cached
+    /// and reused if available.
+    ///
+    /// Special handling is included for key pairs who might be saved with the same label for both:
+    /// * If the provided ID ends with `_pk`, the function first tries to find an exact match.
+    ///   If none is found, it retries with the suffix removed (and an optional trailing space removed).
+    /// * If multiple objects are returned for the same label (e.g., both public and private keys
+    ///   sharing a label), the function inspects the key type of each candidate and selects
+    ///   the one that matches the requested identifier (`_pk` → public key, otherwise private/secret key).
+    ///
+    /// # Arguments
+    /// * `object_id` - A byte slice representing the identifier (label) of the object to find.
+    ///
+    /// # Returns
+    /// * `HResult<CK_OBJECT_HANDLE>` - A result containing the handle of the object if found.
+    ///
+    /// # Errors
+    /// * Returns an error if no object with the given identifier can be found in the HSM.
+    /// * Returns an error if multiple objects match but none correspond to the expected key type.
+    /// * Returns an error if underlying PKCS#11 calls fail while retrieving handles or key types.
+    ///
+    /// # Safety
+    /// This function calls unsafe PKCS#11 FFI functions indirectly (via `find_object_handles`
+    /// and `get_key_type`).
     pub fn get_object_handle(&self, object_id: &[u8]) -> HResult<CK_OBJECT_HANDLE> {
         if let Some(handle) = self.object_handles_cache.get(object_id) {
             return Ok(handle);
@@ -406,10 +434,11 @@ impl Session {
             ulValueLen: object_id.len() as CK_ULONG,
         }];
 
+        // Get all handles for objects that have the appropriate label
         let mut object_handles = self.find_object_handles(template.to_vec())?;
         if object_handles.is_empty() {
             if object_id.ends_with(b"_pk") {
-                //Check if the HSM stores the object without the suffix
+                // Check if the HSM stores the object without the suffix
                 let mut object_id_trimmed = object_id.strip_suffix(b"_pk").unwrap_or(object_id);
                 object_id_trimmed = object_id_trimmed
                     .strip_suffix(b" ")
@@ -430,7 +459,7 @@ impl Session {
 
         let mut object_handle = object_handles[0];
         if object_handles.len() > 1 {
-            //Multiple matches in case the HSM uses the same ID for SK and PK
+            // Multiple matches in case the HSM uses the same ID for SK and PK
             debug!("Found {} possible handles", object_handles.len());
             for handle in object_handles {
                 let object_type = match self.get_key_type(handle)? {
@@ -438,6 +467,7 @@ impl Session {
                     Some(object_type) => object_type,
                 };
                 if object_id.ends_with(b"_pk") {
+                    // We are looking for a public key. Check if the results contain one.
                     if object_type == RsaPublicKey {
                         object_handle = handle;
                         break;
@@ -1674,16 +1704,10 @@ impl Session {
         {
             return Ok(None);
         }
-        let key_type = match self.get_key_type(object_handle)? {
-            None => return Ok(Some(id)),
-            Some(key_type) => key_type,
-        };
-        let term = "_pk".as_bytes();
-        if id.ends_with(term) {
-            return Ok(Some(id))
-        }
-        if key_type == KeyType::RsaPublicKey {
-            id.append(&mut term.to_vec())
+        if let Some(KeyType::RsaPublicKey) = self.get_key_type(object_handle)? {
+            if !id.ends_with(b"_pk") {
+                id.extend_from_slice(b"_pk");
+            }
         }
         Ok(Some(id))
     }
