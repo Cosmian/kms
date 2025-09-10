@@ -1,4 +1,4 @@
-use log::info;
+use cosmian_logger::info;
 
 use crate::{error::KmsError, result::KResult};
 

@@ -4710,7 +4710,7 @@ version = "5.8.1"
 dependencies = [
  "cosmian_kms_base_hsm",
  "cosmian_kms_interfaces",
- "cosmian_logger 0.3.1",
+ "cosmian_logger",
  "libloading",
  "pkcs11-sys",
  "rand 0.9.2",

@@ -11,14 +11,13 @@ use cosmian_kms_base_hsm::{
     test_helpers::{get_hsm_password, get_hsm_slot_id},
 };
 use cosmian_kms_interfaces::{HsmObjectFilter, KeyMaterial, KeyType};
-use cosmian_logger::log_init;
+use cosmian_logger::{info, log_init};
 use libloading::Library;
 use pkcs11_sys::{
     CK_C_INITIALIZE_ARGS, CK_RV, CK_VOID_PTR, CKF_OS_LOCKING_OK, CKM_AES_CBC, CKM_RSA_PKCS_OAEP,
     CKR_OK,
 };
 use rand::{TryRngCore, rngs::OsRng};
-use tracing::info;
 use uuid::Uuid;
 
 use crate::Smartcardhsm;

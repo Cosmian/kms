@@ -48,7 +48,7 @@ use cosmian_kms_interfaces::{
     KeyType::{AesKey, RsaPrivateKey, RsaPublicKey},
     RsaPrivateKeyMaterial, RsaPublicKeyMaterial,
 };
-use cosmian_logger::debug;
+use cosmian_logger::{debug, trace};
 use pkcs11_sys::{
     CK_AES_GCM_PARAMS, CK_ATTRIBUTE, CK_BBOOL, CK_FALSE, CK_KEY_TYPE, CK_MECHANISM,
     CK_MECHANISM_TYPE, CK_OBJECT_CLASS, CK_OBJECT_HANDLE, CK_RSA_PKCS_MGF_TYPE,
