@@ -51,8 +51,10 @@ impl EncryptionOracle for HsmEncryptionOracle {
                     )))
                 }
                 Some(key_type) => match key_type {
-                    KeyType::AesKey => parse_default_aes_algorithm(&supported_algorithms)?,
-                    KeyType::RsaPublicKey => parse_default_rsa_algorithm(&supported_algorithms)?,
+                    KeyType::AesKey => CryptoAlgorithm::get_aes_algorithm(&supported_algorithms)?,
+                    KeyType::RsaPublicKey => {
+                        CryptoAlgorithm::get_rsa_algorithm(&supported_algorithms)?
+                    }
                     KeyType::RsaPrivateKey => {
                         // try fetching the corresponding public key
                         let pk_uid = format!("{uid}_pk");
@@ -70,7 +72,7 @@ impl EncryptionOracle for HsmEncryptionOracle {
                                      is available"
                                 ))
                             })?;
-                        parse_default_rsa_algorithm(&supported_algorithms)?
+                        CryptoAlgorithm::get_rsa_algorithm(&supported_algorithms)?
                     }
                 },
             }
@@ -105,8 +107,10 @@ impl EncryptionOracle for HsmEncryptionOracle {
                     ))
                 }
                 Some(key_type) => match key_type {
-                    KeyType::AesKey => parse_default_aes_algorithm(&supported_algorithms)?,
-                    KeyType::RsaPrivateKey => parse_default_rsa_algorithm(&supported_algorithms)?,
+                    KeyType::AesKey => CryptoAlgorithm::get_aes_algorithm(&supported_algorithms)?,
+                    KeyType::RsaPrivateKey => {
+                        CryptoAlgorithm::get_rsa_algorithm(&supported_algorithms)?
+                    }
                     KeyType::RsaPublicKey => {
                         return Err(InterfaceError::Default(
                             "An RSA public key cannot be used to decrypt".to_owned(),
@@ -146,43 +150,4 @@ fn parse_uid(uid: &str) -> InterfaceResult<(usize, Vec<u8>)> {
         InterfaceError::InvalidRequest(format!("The slot_id must be a valid unsigned integer: {e}"))
     })?;
     Ok((slot_id, key_id.as_bytes().to_vec()))
-}
-
-/// Selects a default AES algorithm from the provided list of supported algorithms.
-///
-/// Preference order:
-/// 1. `AesGcm`
-/// 2. `AesCbc`
-fn parse_default_aes_algorithm(
-    supported_algorithms: &[CryptoAlgorithm],
-) -> InterfaceResult<CryptoAlgorithm> {
-    if supported_algorithms.contains(&CryptoAlgorithm::AesGcm) {
-        return Ok(CryptoAlgorithm::AesGcm);
-    } else if supported_algorithms.contains(&CryptoAlgorithm::AesCbc) {
-        return Ok(CryptoAlgorithm::AesCbc);
-    }
-    Err(InterfaceError::InvalidRequest(
-        "AES not supported".to_owned(),
-    ))
-}
-
-/// Selects a default RSA algorithm from the provided list of supported algorithms.
-///
-/// Preference order:
-/// 1. `RsaOaepSha256`
-/// 2. `RsaOaepSha1`
-/// 3. `RsaPkcsV15`
-fn parse_default_rsa_algorithm(
-    supported_algorithms: &[CryptoAlgorithm],
-) -> InterfaceResult<CryptoAlgorithm> {
-    if supported_algorithms.contains(&CryptoAlgorithm::RsaOaepSha256) {
-        return Ok(CryptoAlgorithm::RsaOaepSha256);
-    } else if supported_algorithms.contains(&CryptoAlgorithm::RsaOaepSha1) {
-        return Ok(CryptoAlgorithm::RsaOaepSha1);
-    } else if supported_algorithms.contains(&CryptoAlgorithm::RsaPkcsV15) {
-        return Ok(CryptoAlgorithm::RsaPkcsV15);
-    }
-    Err(InterfaceError::InvalidRequest(
-        "RSA not supported".to_owned(),
-    ))
 }

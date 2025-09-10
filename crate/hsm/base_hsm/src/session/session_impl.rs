@@ -269,7 +269,7 @@ impl Session {
         let (sk_handle, pk_handle) = self.generate_rsa_key_pair(
             sk_id.as_bytes(),
             pk_id.as_bytes(),
-            RsaKeySize::Rsa1024,
+            RsaKeySize::Rsa1024, //As the specific key size doesn't matter, use the smallest (fastest) algorithm supported.
             false,
         )?;
 
@@ -354,9 +354,9 @@ impl Session {
                 template.len() as CK_ULONG,
             );
             if rv != CKR_OK {
-                return Err(HError::Default(
-                    "Failed to initialize object search".to_string(),
-                ));
+                return Err(HError::Default(format!(
+                    "Failed to initialize object search: C_FindObjectsInit failed: {rv}"
+                )));
             }
 
             let mut object_handle: CK_OBJECT_HANDLE = 0;
@@ -371,7 +371,9 @@ impl Session {
                     &raw mut object_count,
                 );
                 if rv != CKR_OK {
-                    return Err(HError::Default("Failed to find objects".to_string()));
+                    return Err(HError::Default(format!(
+                        "Failed to find objects: C_FindObjects failed: {rv}"
+                    )));
                 }
                 if object_count == 0 {
                     break;
@@ -392,9 +394,6 @@ impl Session {
     }
 
     pub fn get_object_handle(&self, object_id: &[u8]) -> HResult<CK_OBJECT_HANDLE> {
-        let object_id_string = String::from_utf8(Vec::from(object_id))
-            .map_err(|e| HError::Default(format!("Failed to convert object_id to string: {e}")))?;
-        debug!("Retrieving Object handle for id: {object_id_string}");
         if let Some(handle) = self.object_handles_cache.get(object_id) {
             return Ok(handle);
         }
@@ -409,14 +408,12 @@ impl Session {
 
         let mut object_handles = self.find_object_handles(template.to_vec())?;
         if object_handles.is_empty() {
-            if object_id_string.trim().ends_with("_pk") {
+            if object_id.ends_with(b"_pk") {
                 //Check if the HSM stores the object without the suffix
-                let trimmed = object_id_string.trim().strip_suffix("_pk");
-                let object_id_trimmed = match trimmed {
-                    Some(trimmed) => trimmed,
-                    None => object_id_string.trim(),
-                }
-                .as_bytes();
+                let mut object_id_trimmed = object_id.strip_suffix(b"_pk").unwrap_or(object_id);
+                object_id_trimmed = object_id_trimmed
+                    .strip_suffix(b" ")
+                    .unwrap_or(object_id_trimmed);
                 let template_trimmed = [CK_ATTRIBUTE {
                     type_: CKA_LABEL,
                     pValue: object_id_trimmed.as_ptr() as CK_VOID_PTR,
@@ -440,7 +437,7 @@ impl Session {
                     None => continue,
                     Some(object_type) => object_type,
                 };
-                if object_id_string.trim().ends_with("_pk") {
+                if object_id.ends_with(b"_pk") {
                     if object_type == RsaPublicKey {
                         object_handle = handle;
                         break;

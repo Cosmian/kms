@@ -46,8 +46,7 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         &self,
         slot_id: usize,
     ) -> InterfaceResult<Vec<CryptoAlgorithm>> {
-        let supported = self.get_algorithms(slot_id)?;
-        Ok(supported)
+        Ok(self.get_algorithms(slot_id)?)
     }
 
     async fn create_key(

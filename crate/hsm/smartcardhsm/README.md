@@ -1,18 +1,18 @@
-# Smartcard HSM
+# SmartCard HSM
 
 <!-- TOC -->
-* [Smartcard HSM](#smartcard-hsm)
-  * [Installing Smartcard HSM](#installing-smartcard-hsm)
+* [SmartCard HSM](#smartcard-hsm)
+  * [Installing SmartCard HSM](#installing-smartcard-hsm)
   * [Running the KMS server](#running-the-kms-server)
 <!-- TOC -->
 
-## Installing Smartcard HSM
+## Installing SmartCard HSM
 
 Follow the instructions at <https://github.com/CardContact/sc-hsm-embedded>.
 
 ## Running the KMS server
 
-Use the provided `kms.toml` file to run the KMS server with the sc-hsm PKCS#11 library.
+Use the provided `kms.toml` file to run the KMS server with the SmartCard PKCS#11 library.
 
 From the KMS root directory, run the following command:
 

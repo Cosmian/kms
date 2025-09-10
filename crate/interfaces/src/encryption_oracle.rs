@@ -66,6 +66,41 @@ impl CryptoAlgorithm {
                 ))),
             })
     }
+
+    /// Selects a default AES algorithm from the provided list of supported algorithms.
+    ///
+    /// Preference order:
+    /// 1. `AesGcm`
+    /// 2. `AesCbc`
+    pub fn get_aes_algorithm(supported_algorithms: &[Self]) -> InterfaceResult<Self> {
+        if supported_algorithms.contains(&Self::AesGcm) {
+            return Ok(Self::AesGcm);
+        } else if supported_algorithms.contains(&Self::AesCbc) {
+            return Ok(Self::AesCbc);
+        }
+        Err(InterfaceError::InvalidRequest(
+            "AES not supported".to_owned(),
+        ))
+    }
+
+    /// Selects a default RSA algorithm from the provided list of supported algorithms.
+    ///
+    /// Preference order:
+    /// 1. `RsaOaepSha256`
+    /// 2. `RsaOaepSha1`
+    /// 3. `RsaPkcsV15`
+    pub fn get_rsa_algorithm(supported_algorithms: &[Self]) -> InterfaceResult<Self> {
+        if supported_algorithms.contains(&Self::RsaOaepSha256) {
+            return Ok(Self::RsaOaepSha256);
+        } else if supported_algorithms.contains(&Self::RsaOaepSha1) {
+            return Ok(Self::RsaOaepSha1);
+        } else if supported_algorithms.contains(&Self::RsaPkcsV15) {
+            return Ok(Self::RsaPkcsV15);
+        }
+        Err(InterfaceError::InvalidRequest(
+            "RSA not supported".to_owned(),
+        ))
+    }
 }
 
 #[derive(Debug, Default)]
