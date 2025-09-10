@@ -8,19 +8,22 @@ use std::{collections::HashMap, ptr, sync::Arc, thread};
 
 use cosmian_kms_base_hsm::{
     AesKeySize, HError, HResult, HsmEncryptionAlgorithm, RsaKeySize, RsaOaepDigest, SlotManager,
-    test_helpers::get_hsm_password, test_helpers::get_hsm_slot_id,
+    test_helpers::{get_hsm_password, get_hsm_slot_id},
 };
 use cosmian_kms_interfaces::{HsmObjectFilter, KeyMaterial, KeyType};
 use cosmian_logger::log_init;
 use libloading::Library;
-use pkcs11_sys::{CK_C_INITIALIZE_ARGS, CK_RV, CK_VOID_PTR, CKF_OS_LOCKING_OK, CKR_OK, CKM_RSA_PKCS_OAEP, CKM_AES_CBC};
+use pkcs11_sys::{
+    CK_C_INITIALIZE_ARGS, CK_RV, CK_VOID_PTR, CKF_OS_LOCKING_OK, CKM_AES_CBC, CKM_RSA_PKCS_OAEP,
+    CKR_OK,
+};
+use rand::{TryRngCore, rngs::OsRng};
 use tracing::info;
 use uuid::Uuid;
-use rand::{TryRngCore, rngs::OsRng};
 
 use crate::Softhsm2;
 
-const LIB_PATH: &str = "/usr/local/lib/softhsm/libsofthsm2.so";
+const LIB_PATH: &str = "/usr/lib/softhsm/libsofthsm2.so";
 
 fn generate_random_data<const T: usize>() -> HResult<[u8; T]> {
     let mut bytes = [0u8; T];
@@ -295,7 +298,8 @@ fn test_hsm_rsa_oaep_encrypt() -> HResult<()> {
     let data_2 = generate_random_data::<128>()?;
     let enc_2 = session.encrypt(pk, HsmEncryptionAlgorithm::RsaOaepSha1, &data_2)?;
     assert_eq!(enc_2.ciphertext.len(), 2048 / 8);
-    let plaintext_2 = session.decrypt(sk, HsmEncryptionAlgorithm::RsaOaepSha1, &enc_2.ciphertext)?;
+    let plaintext_2 =
+        session.decrypt(sk, HsmEncryptionAlgorithm::RsaOaepSha1, &enc_2.ciphertext)?;
     assert_eq!(plaintext_2.as_slice(), data_2);
     info!("Successfully encrypted/decrypted with RSA OAEP");
     Ok(())
@@ -330,7 +334,6 @@ fn test_hsm_aes_gcm_encrypt() -> HResult<()> {
     Ok(())
 }
 
-
 #[test]
 fn test_hsm_aes_cbc_encrypt() -> HResult<()> {
     log_init(None);
@@ -352,13 +355,13 @@ fn test_hsm_aes_cbc_encrypt() -> HResult<()> {
             enc.ciphertext,
             enc.tag.unwrap_or_default(),
         ]
-            .concat()
-            .as_slice(),
+        .concat()
+        .as_slice(),
     )?;
     assert_eq!(plaintext.as_slice(), data);
     let data_2 = generate_random_data::<1024>()?;
     let iv = generate_random_data::<16>()?;
-    let enc_2  = session.encrypt_aes_cbc_multi_round(sk, iv, &data_2 ,128)?;
+    let enc_2 = session.encrypt_aes_cbc_multi_round(sk, iv, &data_2, 128)?;
     assert_eq!(enc_2.ciphertext.len(), 1040);
     assert_eq!(enc_2.tag.clone().unwrap_or_default().len(), 0);
     assert_eq!(enc_2.iv.clone().unwrap_or_default().len(), 16);
@@ -370,21 +373,27 @@ fn test_hsm_aes_cbc_encrypt() -> HResult<()> {
             enc_2.ciphertext.clone(),
             enc_2.tag.clone().unwrap_or_default(),
         ]
-            .concat()
-            .as_slice(),
+        .concat()
+        .as_slice(),
     )?;
     let plaintext_2b = session.decrypt_aes_cbc_multi_round(
-        sk, &enc_2.iv.unwrap_or_default(), &enc_2.ciphertext, 128,
+        sk,
+        &enc_2.iv.unwrap_or_default(),
+        &enc_2.ciphertext,
+        128,
     )?;
     assert_eq!(plaintext_2.as_slice(), data_2);
     assert_eq!(plaintext_2b.as_slice(), data_2);
     let data_3 = generate_random_data::<16384>()?;
-    let enc_3 = session.encrypt_aes_cbc_multi_round(sk, iv, &data_3 ,1024)?;
+    let enc_3 = session.encrypt_aes_cbc_multi_round(sk, iv, &data_3, 1024)?;
     assert_eq!(enc_3.ciphertext.len(), 16400);
     assert_eq!(enc_3.tag.clone().unwrap_or_default().len(), 0);
     assert_eq!(enc_3.iv.clone().unwrap_or_default().len(), 16);
     let plaintext_3 = session.decrypt_aes_cbc_multi_round(
-        sk, &enc_3.iv.unwrap_or_default(), &enc_3.ciphertext, 128,
+        sk,
+        &enc_3.iv.unwrap_or_default(),
+        &enc_3.ciphertext,
+        128,
     )?;
     assert_eq!(plaintext_3.as_slice(), data_3);
     let enc_4 = session.encrypt(sk, HsmEncryptionAlgorithm::AesCbc, &data_3)?;
@@ -396,8 +405,8 @@ fn test_hsm_aes_cbc_encrypt() -> HResult<()> {
             enc_4.ciphertext,
             enc_4.tag.unwrap_or_default(),
         ]
-            .concat()
-            .as_slice(),
+        .concat()
+        .as_slice(),
     )?;
     assert_eq!(plaintext_4.as_slice(), data_3);
     info!("Successfully encrypted/decrypted with AES CBC");

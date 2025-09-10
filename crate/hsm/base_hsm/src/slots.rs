@@ -5,11 +5,14 @@ use std::{
 };
 
 use lru::LruCache;
-use pkcs11_sys::{CK_FLAGS, CK_OBJECT_HANDLE, CK_SESSION_HANDLE, CK_SLOT_ID, CK_ULONG, CK_UTF8CHAR_PTR, CKF_RW_SESSION, CKF_SERIAL_SESSION, CKR_OK, CKR_USER_ALREADY_LOGGED_IN, CKU_USER, CK_MECHANISM_TYPE, CK_MECHANISM_INFO};
+use pkcs11_sys::{
+    CK_FLAGS, CK_MECHANISM_INFO, CK_MECHANISM_TYPE, CK_OBJECT_HANDLE, CK_SESSION_HANDLE,
+    CK_SLOT_ID, CK_ULONG, CK_UTF8CHAR_PTR, CKF_RW_SESSION, CKF_SERIAL_SESSION, CKR_OK,
+    CKR_USER_ALREADY_LOGGED_IN, CKU_USER,
+};
 use tracing::warn;
 
-use crate::{HError, HResult, Session, hsm_lib::HsmLib};
-use crate::hsm_capabilities::HsmCapabilities;
+use crate::{HError, HResult, Session, hsm_capabilities::HsmCapabilities, hsm_lib::HsmLib};
 
 /// A cache structure that maps byte vectors to `CK_OBJECT_HANDLE` values using an LRU (Least Recently Used) strategy.
 ///
@@ -168,11 +171,7 @@ impl SlotManager {
             // Get count of supported mechanisms
             let rv = self.hsm_lib.C_GetMechanismList.ok_or_else(|| {
                 HError::Default("C_GetMechanismList not available on library".to_string())
-            })?(
-                slot_id,
-                ptr::null_mut(),
-                &mut count,
-            );
+            })?(slot_id, ptr::null_mut(), &mut count);
             if rv != CKR_OK {
                 return Err(HError::Default(
                     "Failed to get mechanism count from HSM".to_string(),
@@ -183,11 +182,7 @@ impl SlotManager {
             let mut mechanisms: Vec<CK_MECHANISM_TYPE> = vec![0; count as usize];
             let rv = self.hsm_lib.C_GetMechanismList.ok_or_else(|| {
                 HError::Default("C_GetMechanismList not available on library".to_string())
-            })?(
-                slot_id,
-                mechanisms.as_mut_ptr(),
-                &mut count,
-            );
+            })?(slot_id, mechanisms.as_mut_ptr(), &mut count);
             if rv != CKR_OK {
                 return Err(HError::Default(
                     "Failed to get mechanism list from HSM".to_string(),
@@ -224,11 +219,7 @@ impl SlotManager {
             let mut info: CK_MECHANISM_INFO = std::mem::zeroed();
             let rv = self.hsm_lib.C_GetMechanismInfo.ok_or_else(|| {
                 HError::Default("C_GetMechanismInfo not available on library".to_string())
-            })?(
-                slot_id,
-                mech,
-                &mut info,
-            );
+            })?(slot_id, mech, &mut info);
             if rv != CKR_OK {
                 return Err(HError::Default(format!(
                     "Failed to get mechanism info for {}",

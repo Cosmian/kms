@@ -38,8 +38,7 @@ use cosmian_kms_interfaces::{
 };
 use zeroize::Zeroizing;
 
-use crate::{AesKeySize, BaseHsm, RsaKeySize};
-use crate::hsm_capabilities::HsmProvider;
+use crate::{AesKeySize, BaseHsm, RsaKeySize, hsm_capabilities::HsmProvider};
 
 #[async_trait]
 impl<P: HsmProvider> HSM for BaseHsm<P> {

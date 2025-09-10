@@ -35,23 +35,38 @@
 //! let random_bytes = session.generate_random(32)?;
 //! ```
 
-use std::{ptr, sync::Arc};
-use std::cmp::min;
-use std::ops::Add;
-use std::sync::Mutex;
+use std::{
+    cmp::min,
+    ops::Add,
+    ptr,
+    sync::{Arc, Mutex},
+};
+
 use cosmian_kms_interfaces::{
     CryptoAlgorithm, EncryptedContent, HsmObject, HsmObjectFilter, KeyMaterial, KeyMetadata,
-    KeyType, RsaPrivateKeyMaterial, RsaPublicKeyMaterial,
+    KeyType,
+    KeyType::{AesKey, RsaPrivateKey, RsaPublicKey},
+    RsaPrivateKeyMaterial, RsaPublicKeyMaterial,
 };
-use pkcs11_sys::{CK_AES_GCM_PARAMS, CK_ATTRIBUTE, CK_BBOOL, CK_FALSE, CK_KEY_TYPE, CK_MECHANISM, CK_OBJECT_CLASS, CK_OBJECT_HANDLE, CK_RSA_PKCS_OAEP_PARAMS, CK_SESSION_HANDLE, CK_TRUE, CK_ULONG, CK_VOID_PTR, CKA_CLASS, CKA_COEFFICIENT, CKA_EXPONENT_1, CKA_EXPONENT_2, CKA_KEY_TYPE, CKA_LABEL, CKA_MODULUS, CKA_PRIME_1, CKA_PRIME_2, CKA_PRIVATE_EXPONENT, CKA_PUBLIC_EXPONENT, CKA_SENSITIVE, CKA_VALUE, CKA_VALUE_LEN, CKG_MGF1_SHA1, CKG_MGF1_SHA256, CKK_AES, CKK_RSA, CKK_VENDOR_DEFINED, CKM_AES_GCM, CKM_AES_CBC, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP, CKM_SHA_1, CKM_SHA256, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKO_SECRET_KEY, CKO_VENDOR_DEFINED, CKR_ATTRIBUTE_SENSITIVE, CKR_OBJECT_HANDLE_INVALID, CKR_OK, CKZ_DATA_SPECIFIED, CK_MECHANISM_TYPE, CK_RSA_PKCS_MGF_TYPE, CKM_SHA384, CKG_MGF1_SHA384, CKM_SHA512, CKG_MGF1_SHA512};
+use pkcs11_sys::{
+    CK_AES_GCM_PARAMS, CK_ATTRIBUTE, CK_BBOOL, CK_FALSE, CK_KEY_TYPE, CK_MECHANISM,
+    CK_MECHANISM_TYPE, CK_OBJECT_CLASS, CK_OBJECT_HANDLE, CK_RSA_PKCS_MGF_TYPE,
+    CK_RSA_PKCS_OAEP_PARAMS, CK_SESSION_HANDLE, CK_TRUE, CK_ULONG, CK_VOID_PTR, CKA_CLASS,
+    CKA_COEFFICIENT, CKA_EXPONENT_1, CKA_EXPONENT_2, CKA_KEY_TYPE, CKA_LABEL, CKA_MODULUS,
+    CKA_PRIME_1, CKA_PRIME_2, CKA_PRIVATE_EXPONENT, CKA_PUBLIC_EXPONENT, CKA_SENSITIVE, CKA_VALUE,
+    CKA_VALUE_LEN, CKG_MGF1_SHA1, CKG_MGF1_SHA256, CKG_MGF1_SHA384, CKG_MGF1_SHA512, CKK_AES,
+    CKK_RSA, CKK_VENDOR_DEFINED, CKM_AES_CBC, CKM_AES_GCM, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP,
+    CKM_SHA_1, CKM_SHA256, CKM_SHA384, CKM_SHA512, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKO_SECRET_KEY,
+    CKO_VENDOR_DEFINED, CKR_ATTRIBUTE_SENSITIVE, CKR_OBJECT_HANDLE_INVALID, CKR_OK,
+    CKZ_DATA_SPECIFIED,
+};
 use rand::{TryRngCore, rngs::OsRng};
 use tracing::{debug, trace};
-use zeroize::Zeroizing;
-use cosmian_kms_interfaces::KeyType::{AesKey, RsaPrivateKey, RsaPublicKey};
-pub use crate::session::{aes::AesKeySize, rsa::RsaKeySize};
-use crate::{HError, HResult, ObjectHandlesCache};
 use uuid::Uuid;
-use crate::hsm_capabilities::HsmCapabilities;
+use zeroize::Zeroizing;
+
+pub use crate::session::{aes::AesKeySize, rsa::RsaKeySize};
+use crate::{HError, HResult, ObjectHandlesCache, hsm_capabilities::HsmCapabilities};
 
 /// AES block size in bytes
 const AES_BLOCK_SIZE: usize = 16;
@@ -259,10 +274,10 @@ impl Session {
         )?;
 
         let candidates: &[(CK_MECHANISM_TYPE, CK_RSA_PKCS_MGF_TYPE)] = &[
-            (CKM_SHA_1,    CKG_MGF1_SHA1),
-            (CKM_SHA256,   CKG_MGF1_SHA256),
-            (CKM_SHA384,   CKG_MGF1_SHA384),
-            (CKM_SHA512,   CKG_MGF1_SHA512),
+            (CKM_SHA_1, CKG_MGF1_SHA1),
+            (CKM_SHA256, CKG_MGF1_SHA256),
+            (CKM_SHA384, CKG_MGF1_SHA384),
+            (CKM_SHA512, CKG_MGF1_SHA512),
         ];
 
         let mut supported = Vec::new();
@@ -288,11 +303,7 @@ impl Session {
                     let _ = self.destroy_object(sk_handle);
                     let _ = self.destroy_object(pk_handle);
                     HError::Default("C_EncryptInit not available on library".to_string())
-                })?(
-                    self.session_handle,
-                    &mut mechanism,
-                    pk_handle,
-                )
+                })?(self.session_handle, &mut mechanism, pk_handle)
             };
 
             if rv == CKR_OK {
@@ -329,7 +340,10 @@ impl Session {
     ///
     /// # Safety
     /// This function calls unsafe FFI functions from the HSM library.
-    fn find_object_handles(&self, mut template: Vec<CK_ATTRIBUTE>) -> HResult<Vec<CK_OBJECT_HANDLE>> {
+    fn find_object_handles(
+        &self,
+        mut template: Vec<CK_ATTRIBUTE>,
+    ) -> HResult<Vec<CK_OBJECT_HANDLE>> {
         let mut object_handles: Vec<CK_OBJECT_HANDLE> = Vec::new();
         unsafe {
             let rv = self.hsm.C_FindObjectsInit.ok_or_else(|| {
@@ -395,12 +409,14 @@ impl Session {
 
         let mut object_handles = self.find_object_handles(template.to_vec())?;
         if object_handles.is_empty() {
-            if object_id_string.trim().ends_with("_pk") { //Check if the HSM stores the object without the suffix
+            if object_id_string.trim().ends_with("_pk") {
+                //Check if the HSM stores the object without the suffix
                 let trimmed = object_id_string.trim().strip_suffix("_pk");
                 let object_id_trimmed = match trimmed {
                     Some(trimmed) => trimmed,
                     None => object_id_string.trim(),
-                }.as_bytes();
+                }
+                .as_bytes();
                 let template_trimmed = [CK_ATTRIBUTE {
                     type_: CKA_LABEL,
                     pValue: object_id_trimmed.as_ptr() as CK_VOID_PTR,
@@ -416,7 +432,8 @@ impl Session {
         }
 
         let mut object_handle = object_handles[0];
-        if object_handles.len() > 1 { //Multiple matches in case the HSM uses the same ID for SK and PK
+        if object_handles.len() > 1 {
+            //Multiple matches in case the HSM uses the same ID for SK and PK
             debug!("Found {} possible handles", object_handles.len());
             for handle in object_handles {
                 let object_type = match self.get_key_type(handle)? {
@@ -569,9 +586,15 @@ impl Session {
     /// * Returns an error if the buffer length is not a multiple of the block size.
     /// * Returns an error if the padding length is invalid or exceeds the block size.
     /// * Returns an error if the padding bytes do not all match the expected value.
-    fn pkcs7_unpad(&self, data: Zeroizing<Vec<u8>>, block_size: usize) -> HResult<Zeroizing<Vec<u8>>> {
+    fn pkcs7_unpad(
+        &self,
+        data: Zeroizing<Vec<u8>>,
+        block_size: usize,
+    ) -> HResult<Zeroizing<Vec<u8>>> {
         if data.is_empty() {
-            return Err(HError::Default("Invalid PKCS#7 padding: empty buffer".to_string()));
+            return Err(HError::Default(
+                "Invalid PKCS#7 padding: empty buffer".to_string(),
+            ));
         }
         if (data.len() % block_size) != 0 {
             return Err(HError::Default("Data doesn't align to blocks".to_string()));
@@ -581,7 +604,10 @@ impl Session {
             return Err(HError::Default("Invalid PKCS#7 padding".to_string()));
         }
         // verify all pad bytes
-        if !data[data.len() - pad_len..].iter().all(|&b| b as usize == pad_len) {
+        if !data[data.len() - pad_len..]
+            .iter()
+            .all(|&b| b as usize == pad_len)
+        {
             return Err(HError::Default("Invalid PKCS#7 padding bytes".to_string()));
         }
         let length = data.len();
@@ -626,7 +652,12 @@ impl Session {
                 if let Some(max_cbc_data_size) = self.hsm_capabilities.max_cbc_data_size {
                     if plaintext.len() > max_cbc_data_size {
                         debug!("Performing multi round AES CBC encryption");
-                        return self.encrypt_aes_cbc_multi_round(key_handle, iv, plaintext, max_cbc_data_size);
+                        return self.encrypt_aes_cbc_multi_round(
+                            key_handle,
+                            iv,
+                            plaintext,
+                            max_cbc_data_size,
+                        );
                     }
                 }
                 let mut mechanism = CK_MECHANISM {
@@ -636,7 +667,8 @@ impl Session {
                 };
 
                 let padded_plaintext = self.pkcs7_pad(plaintext.to_vec(), AES_BLOCK_SIZE);
-                let ciphertext = self.encrypt_with_mechanism(key_handle, &mut mechanism, &padded_plaintext)?;
+                let ciphertext =
+                    self.encrypt_with_mechanism(key_handle, &mut mechanism, &padded_plaintext)?;
 
                 EncryptedContent {
                     iv: Some(iv.to_vec()),
@@ -734,8 +766,11 @@ impl Session {
                     pParameter: &raw mut params as CK_VOID_PTR,
                     ulParameterLen: size_of::<CK_AES_GCM_PARAMS>() as CK_ULONG,
                 };
-                let plaintext =
-                    self.decrypt_with_mechanism(key_handle, &mut mechanism, &ciphertext[AES_GCM_IV_LENGTH..])?;
+                let plaintext = self.decrypt_with_mechanism(
+                    key_handle,
+                    &mut mechanism,
+                    &ciphertext[AES_GCM_IV_LENGTH..],
+                )?;
                 Ok(plaintext)
             }
             HsmEncryptionAlgorithm::AesCbc => {
@@ -762,8 +797,11 @@ impl Session {
                     ulParameterLen: iv.len() as CK_ULONG,
                 };
 
-                let paddedPlaintext =
-                    self.decrypt_with_mechanism(key_handle, &mut mechanism, &ciphertext[AES_CBC_IV_LENGTH..])?;
+                let paddedPlaintext = self.decrypt_with_mechanism(
+                    key_handle,
+                    &mut mechanism,
+                    &ciphertext[AES_CBC_IV_LENGTH..],
+                )?;
 
                 let plaintext = self.pkcs7_unpad(paddedPlaintext, AES_BLOCK_SIZE)?;
                 Ok(plaintext)
@@ -847,30 +885,41 @@ impl Session {
         max_round_length: usize,
     ) -> HResult<EncryptedContent> {
         if max_round_length < AES_BLOCK_SIZE {
-            return Err(HError::Default("Too small maximum round length".to_string()));
+            return Err(HError::Default(
+                "Too small maximum round length".to_string(),
+            ));
         }
         if max_round_length % AES_BLOCK_SIZE != 0 {
-            return Err(HError::Default("Round length must be multiple of block size (16)".to_string()));
+            return Err(HError::Default(
+                "Round length must be multiple of block size (16)".to_string(),
+            ));
         }
         let padded_plaintext = self.pkcs7_pad(plaintext.to_vec(), AES_BLOCK_SIZE);
         let mut round_iv = iv;
         let total_length = padded_plaintext.len();
         let mut processed_length = 0;
-        let mut ciphertext:Vec<u8> = Vec::with_capacity(total_length);
+        let mut ciphertext: Vec<u8> = Vec::with_capacity(total_length);
 
         loop {
             let round_length = min(total_length - processed_length, max_round_length);
-            if round_length == 0 {break};
-            trace!("Doing round with {round_length} bytes. {processed_length} of {total_length} done");
+            if round_length == 0 {
+                break
+            };
+            trace!(
+                "Doing round with {round_length} bytes. {processed_length} of {total_length} done"
+            );
             let mut mechanism = CK_MECHANISM {
                 mechanism: CKM_AES_CBC,
                 pParameter: round_iv.as_mut_ptr() as CK_VOID_PTR,
                 ulParameterLen: iv.len() as CK_ULONG,
             };
             let round_ciphertext = self.encrypt_with_mechanism(
-                key_handle, &mut mechanism, &padded_plaintext.as_slice()[processed_length..processed_length + round_length])?;
+                key_handle,
+                &mut mechanism,
+                &padded_plaintext.as_slice()[processed_length..processed_length + round_length],
+            )?;
             for i in 0..iv.len() {
-                round_iv[i]=round_ciphertext[round_ciphertext.len()-iv.len()+i];
+                round_iv[i] = round_ciphertext[round_ciphertext.len() - iv.len() + i];
             }
             ciphertext.extend(round_ciphertext);
             processed_length += round_length;
@@ -917,40 +966,56 @@ impl Session {
         max_round_length: usize,
     ) -> HResult<Zeroizing<Vec<u8>>> {
         if max_round_length < AES_BLOCK_SIZE {
-            return Err(HError::Default("Too small maximum round length".to_string()));
+            return Err(HError::Default(
+                "Too small maximum round length".to_string(),
+            ));
         }
         if max_round_length % AES_BLOCK_SIZE != 0 {
-            return Err(HError::Default(format!("Round length must be multiple of block size ({AES_BLOCK_SIZE}))")));
+            return Err(HError::Default(format!(
+                "Round length must be multiple of block size ({AES_BLOCK_SIZE}))"
+            )));
         }
         if ciphertext.len() % AES_BLOCK_SIZE != 0 {
-            return Err(HError::Default(format!("AES CBC ciphertext must be multiple of block size ({AES_BLOCK_SIZE})")));
+            return Err(HError::Default(format!(
+                "AES CBC ciphertext must be multiple of block size ({AES_BLOCK_SIZE})"
+            )));
         }
         if iv.len() != AES_CBC_IV_LENGTH {
-            return Err(HError::Default(format!("Wrong IV length. Must be {AES_CBC_IV_LENGTH} bytes long")));
+            return Err(HError::Default(format!(
+                "Wrong IV length. Must be {AES_CBC_IV_LENGTH} bytes long"
+            )));
         }
 
-        let mut round_iv: [u8; AES_CBC_IV_LENGTH] = iv[..AES_CBC_IV_LENGTH].try_into()
+        let mut round_iv: [u8; AES_CBC_IV_LENGTH] = iv[..AES_CBC_IV_LENGTH]
+            .try_into()
             .map_err(|_| HError::Default("Invalid IV".to_string()))?;
         let total_length = ciphertext.len();
         let mut processed_length = 0;
-        let mut plaintext:Zeroizing<Vec<u8>> = Zeroizing::new(Vec::with_capacity(total_length));
+        let mut plaintext: Zeroizing<Vec<u8>> = Zeroizing::new(Vec::with_capacity(total_length));
 
         loop {
             let round_length = min(total_length - processed_length, max_round_length);
-            if round_length == 0 {break};
-            trace!("Doing round with {round_length} bytes. {processed_length} of {total_length} done");
+            if round_length == 0 {
+                break
+            };
+            trace!(
+                "Doing round with {round_length} bytes. {processed_length} of {total_length} done"
+            );
             let mut mechanism = CK_MECHANISM {
                 mechanism: CKM_AES_CBC,
                 pParameter: round_iv.as_mut_ptr() as CK_VOID_PTR,
                 ulParameterLen: iv.len() as CK_ULONG,
             };
             let round_plaintext = self.decrypt_with_mechanism(
-                key_handle, &mut mechanism, &ciphertext[processed_length..processed_length + round_length])?;
+                key_handle,
+                &mut mechanism,
+                &ciphertext[processed_length..processed_length + round_length],
+            )?;
 
             plaintext.extend_from_slice(&round_plaintext);
             processed_length += round_length;
             for i in 0..iv.len() {
-                round_iv[i]=ciphertext[processed_length-iv.len()+i];
+                round_iv[i] = ciphertext[processed_length - iv.len() + i];
             }
         }
         self.pkcs7_unpad(plaintext, AES_BLOCK_SIZE)
@@ -1587,10 +1652,7 @@ impl Session {
     /// * `object_handle` - The object handle
     /// # Returns
     /// * `Result<Option<Vec<u8>>>` - The key object id if the object exists
-    pub fn get_object_id(
-        &self,
-        object_handle: CK_OBJECT_HANDLE,
-    ) -> HResult<Option<Vec<u8>>> {
+    pub fn get_object_id(&self, object_handle: CK_OBJECT_HANDLE) -> HResult<Option<Vec<u8>>> {
         let mut template = [CK_ATTRIBUTE {
             type_: CKA_LABEL, //Must be CKA_LABEL to match get_object_handle
             pValue: ptr::null_mut(),

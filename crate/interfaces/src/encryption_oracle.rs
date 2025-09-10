@@ -21,8 +21,7 @@ pub struct KeyMetadata {
     pub id: String,
 }
 
-#[derive(Debug, Clone)]
-#[derive(PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CryptoAlgorithm {
     AesCbc,
     AesGcm,

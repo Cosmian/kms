@@ -5,9 +5,10 @@ use pkcs11_sys::{
     CK_C_CloseSession, CK_C_Decrypt, CK_C_DecryptFinal, CK_C_DecryptInit, CK_C_DecryptUpdate,
     CK_C_DestroyObject, CK_C_Encrypt, CK_C_EncryptFinal, CK_C_EncryptInit, CK_C_EncryptUpdate,
     CK_C_Finalize, CK_C_FindObjects, CK_C_FindObjectsFinal, CK_C_FindObjectsInit, CK_C_GenerateKey,
-    CK_C_GenerateKeyPair, CK_C_GenerateRandom, CK_C_GetAttributeValue, CK_C_GetInfo, CK_C_GetMechanismList,
-    CK_C_GetMechanismInfo, CK_C_INITIALIZE_ARGS, CK_C_Initialize, CK_C_Login, CK_C_Logout, CK_C_OpenSession,
-    CK_C_UnwrapKey, CK_C_WrapKey, CK_VOID_PTR, CKF_OS_LOCKING_OK, CKR_OK,
+    CK_C_GenerateKeyPair, CK_C_GenerateRandom, CK_C_GetAttributeValue, CK_C_GetInfo,
+    CK_C_GetMechanismInfo, CK_C_GetMechanismList, CK_C_INITIALIZE_ARGS, CK_C_Initialize,
+    CK_C_Login, CK_C_Logout, CK_C_OpenSession, CK_C_UnwrapKey, CK_C_WrapKey, CK_VOID_PTR,
+    CKF_OS_LOCKING_OK, CKR_OK,
 };
 
 use crate::{HError, HResult};

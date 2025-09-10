@@ -30,7 +30,7 @@ pub(super) async fn test_wrapped_ec_dek() -> KResult<()> {
     clap_config.db.sqlite_path = sqlite_path.clone();
     let kek_uid = match clap_config.key_encryption_key.clone() {
         Some(k) => k,
-        None => return Err(KmsError::Default("Missing KEK".to_string()))
+        None => return Err(KmsError::Default("Missing KEK".to_string())),
     };
 
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
@@ -56,7 +56,7 @@ pub(super) async fn test_wrapped_ec_dek() -> KResult<()> {
     clap_config.db.sqlite_path = sqlite_path.clone();
     let kek_uid = match clap_config.key_encryption_key.clone() {
         Some(k) => k,
-        None => return Err(KmsError::Default("Missing KEK".to_string()))
+        None => return Err(KmsError::Default("Missing KEK".to_string())),
     };
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
 

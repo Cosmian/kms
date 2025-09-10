@@ -24,10 +24,15 @@ use uuid::Uuid;
 const EMPTY_TAGS: [&str; 0] = [];
 
 use crate::{
-    config::ClapConfig, core::KMS, error::KmsError, result::KResult,
-    tests::test_utils::https_clap_config,
+    config::ClapConfig,
+    core::KMS,
+    error::KmsError,
+    result::KResult,
+    tests::{
+        hsm::test_helpers::{get_hsm_model, get_hsm_password, get_hsm_slot_id},
+        test_utils::https_clap_config,
+    },
 };
-use crate::tests::hsm::test_helpers::{get_hsm_model, get_hsm_password, get_hsm_slot_id};
 
 #[cfg(feature = "non-fips")]
 mod ec_dek;
@@ -54,7 +59,7 @@ async fn test_all() {
 
 fn hsm_clap_config(owner: &str, kek: Option<Uuid>) -> KResult<ClapConfig> {
     let mut clap_config = https_clap_config();
-    let model:Option<String> = get_hsm_model();
+    let model: Option<String> = get_hsm_model();
     let unwrapped_model = model.unwrap_or_else(|| "utimaco".to_owned());
 
     if unwrapped_model == "utimaco" {
@@ -75,10 +80,11 @@ fn hsm_clap_config(owner: &str, kek: Option<Uuid>) -> KResult<ClapConfig> {
         } else if unwrapped_model == "proteccio" {
             clap_config.hsm_model = "proteccio".to_owned();
         } else {
-            return Err(KmsError::Default("The provided HSM model is unknown".to_owned()));
+            return Err(KmsError::Default(
+                "The provided HSM model is unknown".to_owned(),
+            ));
         }
     }
-
 
     if let Some(kek) = kek {
         clap_config.key_encryption_key = Some(format!("hsm::{}::{}", clap_config.hsm_slot[0], kek));

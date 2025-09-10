@@ -3,13 +3,21 @@ use std::{
     ffi::CStr,
     fmt,
     fmt::{Display, Formatter},
+    marker::PhantomData,
     sync::{Arc, Mutex},
 };
-use std::marker::PhantomData;
-use pkcs11_sys::{CK_INFO, CKR_OK, CK_MECHANISM_TYPE, CKM_AES_CBC, CKM_AES_GCM, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP, CKM_SHA_1, CKM_SHA256};
-use cosmian_kms_interfaces::{CryptoAlgorithm};
-use crate::{HError, HResult, SlotManager, hsm_lib::HsmLib};
-use crate::hsm_capabilities::{HsmCapabilities, HsmProvider};
+
+use cosmian_kms_interfaces::CryptoAlgorithm;
+use pkcs11_sys::{
+    CK_INFO, CK_MECHANISM_TYPE, CKM_AES_CBC, CKM_AES_GCM, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP,
+    CKM_SHA_1, CKM_SHA256, CKR_OK,
+};
+
+use crate::{
+    HError, HResult, SlotManager,
+    hsm_capabilities::{HsmCapabilities, HsmProvider},
+    hsm_lib::HsmLib,
+};
 
 pub struct DefaultCapabilityProvider;
 impl HsmProvider for DefaultCapabilityProvider {
@@ -29,9 +37,11 @@ pub struct BaseHsm<P: HsmProvider = DefaultCapabilityProvider> {
     _provider: PhantomData<P>,
 }
 
-impl <P: HsmProvider> BaseHsm<P> {
-    pub fn instantiate<Pth: AsRef<std::ffi::OsStr>>(path: Pth, passwords: HashMap<usize, Option<String>>) -> HResult<Self>
-    {
+impl<P: HsmProvider> BaseHsm<P> {
+    pub fn instantiate<Pth: AsRef<std::ffi::OsStr>>(
+        path: Pth,
+        passwords: HashMap<usize, Option<String>>,
+    ) -> HResult<Self> {
         let hsm_lib = Arc::new(HsmLib::instantiate(path)?);
         let mut slots = HashMap::with_capacity(passwords.len());
         for (k, v) in &passwords {
@@ -65,7 +75,7 @@ impl <P: HsmProvider> BaseHsm<P> {
                     self.hsm_lib.clone(),
                     slot_id,
                     slot_state.password.clone(),
-                    P::capabilities()
+                    P::capabilities(),
                 )?);
                 slot_state.slot = Some(manager.clone());
                 Ok(manager)
@@ -118,12 +128,9 @@ impl <P: HsmProvider> BaseHsm<P> {
     ///
     /// # Safety
     /// This function calls unsafe FFI functions from the HSM library to query mechanism information.
-    pub fn get_algorithms(
-        &self,
-        slot_id: usize,
-    ) -> HResult<Vec<CryptoAlgorithm>> {
+    pub fn get_algorithms(&self, slot_id: usize) -> HResult<Vec<CryptoAlgorithm>> {
         let slot = self.get_slot(slot_id)?;
-        let mechanisms:Vec<CK_MECHANISM_TYPE> = slot.get_supported_mechanisms()?;
+        let mechanisms: Vec<CK_MECHANISM_TYPE> = slot.get_supported_mechanisms()?;
         let session = slot.open_session(true)?;
         let supported_hashes = session.get_supported_oaep_hash()?;
         let mut algorithms: Vec<CryptoAlgorithm> = Vec::new();
@@ -140,7 +147,7 @@ impl <P: HsmProvider> BaseHsm<P> {
                     if supported_hashes.contains(&CKM_SHA256) {
                         algorithms.push(CryptoAlgorithm::RsaOaepSha256);
                     }
-                },
+                }
                 _ => {}
             };
         }

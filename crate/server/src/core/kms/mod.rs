@@ -13,9 +13,9 @@ use cosmian_kms_server_database::{
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use proteccio_pkcs11_loader::Proteccio;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use softhsm2_pkcs11_loader::Softhsm2;
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use smartcardhsm_pkcs11_loader::Smartcardhsm;
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use softhsm2_pkcs11_loader::Softhsm2;
 use tokio::sync::RwLock;
 use tracing::trace;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
@@ -158,11 +158,11 @@ impl KMS {
                                 "/usr/local/lib/libsc-hsm-pkcs11.so",
                                 server_params.slot_passwords.clone(),
                             )
-                                .map_err(|e| {
-                                    KmsError::InvalidRequest(format!(
-                                        "Failed to instantiate the Smartcardhsm: {e}"
-                                    ))
-                                })?,
+                            .map_err(|e| {
+                                KmsError::InvalidRequest(format!(
+                                    "Failed to instantiate the Smartcardhsm: {e}"
+                                ))
+                            })?,
                         );
                         Some(smartcardhsm)
                     }
