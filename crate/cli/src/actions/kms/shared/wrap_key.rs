@@ -12,7 +12,7 @@ use cosmian_kms_client::{
     read_object_from_json_ttlv_file, write_kmip_object_to_file,
 };
 use cosmian_kms_crypto::crypto::{
-    password_derivation::derive_key_from_password, wrap::wrap_key_block,
+    password_derivation::derive_key_from_password, wrap::wrap_object_with_key,
 };
 
 use crate::{
@@ -132,7 +132,7 @@ impl WrapSecretDataOrKeyAction {
             cli_bail!("one of the wrapping options must be specified");
         };
 
-        wrap_key_block(
+        wrap_object_with_key(
             object.key_block_mut()?,
             &wrapping_key,
             &KeyWrappingSpecification::default(),

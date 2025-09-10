@@ -63,7 +63,7 @@ Note 2: the wrapped key should be 2048 bits (256 bytes) long.
 ## Convert the wrapped CSEK Symmetric Key to base64
 
 ```shell
-base64 -i wrapped_key.bin 
+cat wrapped_key.bin | base64 
 
 BtE+r06qy4isyfMR29n5uGSPj1qbOQTA42nxVJ...Hw==
 ```

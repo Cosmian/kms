@@ -49,7 +49,7 @@ The symmetric key was successfully generated.
 ## Import the wrapping key in Cosmian KMS
 
 ```shell
-cosmian kms rsa keys import  --key-format pem  --key-usage encrypt  --key-usage wrap-key ImportWith4096RsaAesKeyWrapSha256.pem CMEK_Wrapping_Key
+cosmian kms rsa keys import --key-format pem --key-usage encrypt --key-usage wrap-key ImportWith4096RsaAesKeyWrapSha256.pem CMEK_Wrapping_Key
 
 The PublicKey in file ImportWith4096RsaAesKeyWrapSha256.pem was imported with id: CMEK_Wrapping_Key
           Unique identifier: CMEK_Wrapping_Key

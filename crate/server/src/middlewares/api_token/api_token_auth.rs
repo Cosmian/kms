@@ -57,7 +57,7 @@ async fn get_api_token(kms: &Arc<KMS>, api_token_id: &str) -> KResult<String> {
 
     // Get the API token bytes and encode as base64
     Ok(base64::engine::general_purpose::STANDARD
-        .encode(owm.object().key_block()?.symmetric_key_bytes()?)
+        .encode(owm.object().key_block()?.key_bytes()?)
         .to_lowercase())
 }
 

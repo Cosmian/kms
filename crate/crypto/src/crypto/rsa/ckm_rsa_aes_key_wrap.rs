@@ -116,8 +116,15 @@ pub fn ckm_rsa_aes_key_unwrap(
 #[allow(clippy::panic_in_result_fn, clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
+    use std::{fs, path::Path};
+
+    use base64::Engine;
     use cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm;
+    use cosmian_logger::log_init;
     use openssl::pkey::PKey;
+    use serde_json::json;
+    use tempfile::TempDir;
+    use tracing::warn;
     use zeroize::Zeroizing;
 
     use crate::{
@@ -126,9 +133,10 @@ mod tests {
                 ckm_rsa_aes_key_wrap::{ckm_rsa_aes_key_unwrap, ckm_rsa_aes_key_wrap},
                 ckm_rsa_pkcs_oaep::{ckm_rsa_pkcs_oaep_key_unwrap, ckm_rsa_pkcs_oaep_key_wrap},
             },
-            symmetric::rfc5649::rfc5649_wrap,
+            symmetric::rfc5649::{rfc5649_unwrap, rfc5649_wrap},
         },
-        error::CryptoError,
+        crypto_bail,
+        error::{CryptoError, result::CryptoResult},
     };
 
     const RSA_PRIVATE_KEY: &str = r"-----BEGIN PRIVATE KEY-----
@@ -290,5 +298,280 @@ FQIDAQAB
             .unwrap(),
         );
         assert_eq!(rec_dek, dek);
+    }
+
+    async fn assert_openssl3_cli() -> bool {
+        if let Ok(output) = tokio::process::Command::new("openssl")
+            .arg("version")
+            .output()
+            .await
+        {
+            if !output.status.success() {
+                warn!(
+                    "test_openssl_cli_compat: openssl CLI call failed, skipping test: {output:#?}"
+                );
+                return false;
+            }
+            let Ok(res) = String::from_utf8(output.stdout) else {
+                warn!("test_openssl_cli_compat: openssl CLI output is not valid UTF-8");
+                return false;
+            };
+            if res.to_lowercase().contains("openssl 3") {
+                true
+            } else {
+                warn!(
+                    "test_openssl_cli_compat: openssl version is not OpenSSL 3: {res}, skipping \
+                     test"
+                );
+                false
+            }
+        } else {
+            warn!("test_openssl_cli_compat: openssl CLI not found, skipping test");
+            false
+        }
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[tokio::test]
+    async fn test_wrap_against_openssl_cli() -> CryptoResult<()> {
+        log_init(Some("info"));
+        if !assert_openssl3_cli().await {
+            return Ok(());
+        }
+
+        let tmp_dir = TempDir::new()?;
+        let tmp_path = tmp_dir.path();
+
+        // PKCS#8 RSA key
+        let priv_key = PKey::private_key_from_pem(RSA_PRIVATE_KEY.as_bytes())?;
+        let secret_bytes = priv_key.rsa().unwrap().private_key_to_der()?;
+        test_wrap_against_openssl_cli_inner(tmp_path, &secret_bytes).await?;
+
+        // AES KEY
+        let dek = "deadbeef7dfbf5419200f2ccb50bb24aafbeb0f07dfbf5419200f2ccb50bb24a";
+        test_wrap_against_openssl_cli_inner(tmp_path, &hex::decode(dek).unwrap()).await
+    }
+    async fn test_wrap_against_openssl_cli_inner(
+        tmp_path: &Path,
+        secret_bytes: &[u8],
+    ) -> CryptoResult<()> {
+        let secrets_file = tmp_path.join("secrets.bin");
+        fs::write(&secrets_file, secret_bytes)?;
+
+        let ephemeral = "afbeb0f07dfbf5419200f2ccb50bb24aafbeb0f07dfbf5419200f2ccb50bb24a";
+        let ephemeral_file = tmp_path.join("ephemeral.bin");
+        fs::write(&ephemeral_file, hex::decode(ephemeral).unwrap())?;
+
+        let priv_key_file = tmp_path.join("rsa_private_key.pem");
+        fs::write(&priv_key_file, RSA_PRIVATE_KEY)?;
+
+        let oaep_encapsulation_file = tmp_path.join("oaep_encapsulation.bin");
+
+        let pub_key = PKey::public_key_from_pem(RSA_PUBLIC_KEY.as_bytes())?;
+        let oaep_encapsulation = ckm_rsa_pkcs_oaep_key_wrap(
+            &pub_key,
+            HashingAlgorithm::SHA1,
+            &hex::decode(ephemeral).unwrap(),
+        )?;
+        fs::write(&oaep_encapsulation_file, oaep_encapsulation)?;
+
+        // decrypt the ephemeral using OpenSSL CLI
+        let rec_ephemeral_file = tmp_path.join("rec_ephemeral.bin");
+        let output = tokio::process::Command::new("openssl")
+            .arg("pkeyutl")
+            .arg("-decrypt")
+            .arg("-inkey")
+            .arg(priv_key_file)
+            .arg("-in")
+            .arg(&oaep_encapsulation_file)
+            .arg("-out")
+            .arg(&rec_ephemeral_file)
+            .arg("-pkeyopt")
+            .arg("rsa_padding_mode:oaep")
+            .arg("-pkeyopt")
+            .arg("rsa_oaep_md:sha1")
+            .arg("-pkeyopt")
+            .arg("rsa_mgf1_md:sha1")
+            .output()
+            .await?;
+
+        if !output.status.success() {
+            crypto_bail!(
+                "test_wrap_against_openssl_cli_inner: RSA OAEP openssl pkeyutl failed: {output:?}"
+            );
+        }
+        let rec_ephemeral = fs::read(&rec_ephemeral_file)?;
+        assert_eq!(rec_ephemeral, hex::decode(ephemeral).unwrap());
+
+        // RFC 5649 of DEK using the ephemeral key
+        let rfc5649_encapsulation = rfc5649_wrap(secret_bytes, &hex::decode(ephemeral).unwrap())?;
+
+        let rfc5649_encapsulation_file = tmp_path.join("rfc5649_encapsulation.bin");
+        fs::write(&rfc5649_encapsulation_file, rfc5649_encapsulation)?;
+        //Check
+        let rec_secret_file = tmp_path.join("rec_secret.bin");
+        let output = tokio::process::Command::new("openssl")
+            .arg("enc")
+            .arg("-d")
+            .arg("-id-aes256-wrap-pad")
+            .arg("-iv")
+            .arg("A65959A6")
+            .arg("-K")
+            .arg(ephemeral)
+            .arg("-in")
+            .arg(&rfc5649_encapsulation_file)
+            .arg("-out")
+            .arg(&rec_secret_file)
+            .output()
+            .await?;
+
+        if !output.status.success() {
+            crypto_bail!("test_wrap_against_openssl_cli_inner: RFC5649 pkeyutl failed: {output:?}");
+        }
+        let rec_secret_bytes = fs::read(&rec_secret_file)?;
+        assert_eq!(rec_secret_bytes.as_slice(), secret_bytes);
+
+        Ok(())
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[tokio::test]
+    async fn test_unwrap_against_openssl_cli() -> CryptoResult<()> {
+        log_init(Some("info"));
+        if !assert_openssl3_cli().await {
+            return Ok(());
+        }
+
+        let tmp_dir = TempDir::new()?;
+        let tmp_path = tmp_dir.path();
+
+        // PKCS#8 RSA key
+        let priv_key = PKey::private_key_from_pem(RSA_PRIVATE_KEY.as_bytes())?;
+        let secret_bytes = priv_key.rsa().unwrap().private_key_to_der()?;
+        test_unwrap_against_openssl_cli_inner(tmp_path, &secret_bytes).await?;
+
+        // AES KEY
+        let dek = "deadbeef7dfbf5419200f2ccb50bb24aafbeb0f07dfbf5419200f2ccb50bb24a";
+        test_unwrap_against_openssl_cli_inner(tmp_path, &hex::decode(dek).unwrap()).await
+    }
+    async fn test_unwrap_against_openssl_cli_inner(
+        tmp_path: &Path,
+        secret_bytes: &[u8],
+    ) -> CryptoResult<()> {
+        let secrets_file = tmp_path.join("secrets.bin");
+        fs::write(&secrets_file, secret_bytes)?;
+
+        let ephemeral = "afbeb0f07dfbf5419200f2ccb50bb24aafbeb0f07dfbf5419200f2ccb50bb24a";
+        let ephemeral_file = tmp_path.join("ephemeral.bin");
+        fs::write(&ephemeral_file, hex::decode(ephemeral).unwrap())?;
+
+        let pub_key_file = tmp_path.join("rsa_public_key.pem");
+        fs::write(&pub_key_file, RSA_PUBLIC_KEY)?;
+
+        let oaep_encapsulation_file = tmp_path.join("oaep_encapsulation.bin");
+
+        // wrap the ephemeral using KEK_FOR_BYOK
+        let output = tokio::process::Command::new("openssl")
+            .arg("pkeyutl")
+            .arg("-encrypt")
+            .arg("-inkey")
+            .arg(pub_key_file)
+            .arg("-pubin")
+            .arg("-in")
+            .arg(&ephemeral_file)
+            .arg("-out")
+            .arg(&oaep_encapsulation_file)
+            .arg("-pkeyopt")
+            .arg("rsa_padding_mode:oaep")
+            .arg("-pkeyopt")
+            .arg("rsa_oaep_md:sha1")
+            .arg("-pkeyopt")
+            .arg("rsa_mgf1_md:sha1")
+            .output()
+            .await?;
+        if !output.status.success() {
+            crypto_bail!("test_for_byok: RSA OAEP pkeyutl failed: {output:?}");
+        }
+        let oaep_encapsulation = fs::read(&oaep_encapsulation_file)?;
+
+        //chack that we can decrypt the ephemeral using KEK_FOR_BYOK and our implementation
+        let priv_key = PKey::private_key_from_pem(RSA_PRIVATE_KEY.as_bytes())?;
+        let rec_ephemeral =
+            ckm_rsa_pkcs_oaep_key_unwrap(&priv_key, HashingAlgorithm::SHA1, &oaep_encapsulation)?;
+        assert_eq!(
+            rec_ephemeral.as_slice(),
+            hex::decode(ephemeral).unwrap().as_slice()
+        );
+
+        // RFC 5649 of DEK using the ephemeral key
+        let rfc5649_encapsulation_file = tmp_path.join("rfc5649_encapsulation.bin");
+        let output = tokio::process::Command::new("openssl")
+            .arg("enc")
+            .arg("-id-aes256-wrap-pad")
+            .arg("-iv")
+            .arg("A65959A6")
+            .arg("-K")
+            .arg(ephemeral)
+            .arg("-in")
+            .arg(&secrets_file)
+            .arg("-out")
+            .arg(&rfc5649_encapsulation_file)
+            .output()
+            .await?;
+
+        if !output.status.success() {
+            crypto_bail!("test_for_byok: RFC5649 pkeyutl failed: {output:?}");
+        }
+        let rfc5649_encapsulation = fs::read(&rfc5649_encapsulation_file)?;
+        //Check against our implementation of NistKeyWrap
+        let rec_secret_bytes =
+            rfc5649_unwrap(&rfc5649_encapsulation, &hex::decode(ephemeral).unwrap())?;
+        assert_eq!(rec_secret_bytes.as_slice(), secret_bytes);
+
+        // Build the complete ciphertext
+        let wrapped_key = [oaep_encapsulation, rfc5649_encapsulation].concat();
+
+        // Check that we can unwrap the key using our implementation
+        let rec_secret_bytes =
+            ckm_rsa_aes_key_unwrap(&priv_key, HashingAlgorithm::SHA1, &wrapped_key)?;
+        assert_eq!(rec_secret_bytes.as_slice(), secret_bytes);
+
+        Ok(())
+    }
+
+    const KEK_FOR_BYOK: &str = r"-----BEGIN PUBLIC KEY-----
+MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAk0HniT34p3O8bD3pyy7p7YASh2Tk7oYag4fbFKVxMX23KX8n68Jx7LWBKgbv6JF6ndZMmUsiBRWoaRC1SUxmtMTZ551CnqeAN47e9FXL1QakHlje4+wK9/tCfllZ2jYNLhvRy1NjTi1ounhkOQC1gdNasvNIRsfzgNVJ8nwgK+1ZJSqkNaoBbQHlJhvUXD3ba0fVH66gat+ns1KPk0HR1WlepZ4cMBmwFlZtPStAqM0dNnflcUzpTeeLLqbuBSzcT0Qb1Q0a/qakmy5SM47nR6RzTZ8A+bOLXP9G+fiK2UPSaAxGMTh8+LfrJqZTEW/lG5GraIbqsJwEQd9ibTlPIDMz8DPUcASUNqU9wQWcVqcjesZXJTb+xurcUPxDvWH/TnIQa0CKt3xcBXw2GZYkn8ROhk/woPJi9IC+rg1TnA4LruNB2OD2Ltg+wt90JYHW6DIxWjVe8/dbEZFof9iE/dYcZqNcipy79C6kJw9Cq2Eq4nP9KX0lk0tAo1B+EI+adQNJv/Hho1fStabk1zSGGsjR2p0izi76AEeNwIn3NkQMewQlKZWHfKz9T2MT8kjsAqvGwDW7g/p7uBhVn2s05kIW8En2JBpitLpqqRTiErS6UsyL1EYwc35BjfMySCt89YZU/wOi/2O1kaHvfi4NjCxclQXM1Y74WjVr1LFgG2MCAwEAAQ==
+-----END PUBLIC KEY-----";
+
+    const KV_KEY_IDENTIFIER: &str =
+        "https://hsmbackedkeyvault.vault.azure.net/keys/KEKForBYOK/5e617a4d39c74f47b0b7d345f6a49d1b";
+
+    #[test]
+    fn test_for_azure_byok() -> CryptoResult<()> {
+        let priv_key = PKey::private_key_from_pem(RSA_PRIVATE_KEY.as_bytes())?;
+        let priv_key_der_bytes = priv_key.rsa()?.private_key_to_der()?;
+
+        let pub_key = PKey::public_key_from_pem(KEK_FOR_BYOK.as_bytes())?;
+        let wrapped_key =
+            ckm_rsa_aes_key_wrap(&pub_key, HashingAlgorithm::SHA1, &priv_key_der_bytes)?;
+
+        fs::write("/tmp/wrapped_key.bin", &wrapped_key)?;
+
+        // Generate .byok file
+        let byok_value = json!({
+            "schema_version": "1.0.0",
+            "header":
+            {
+                "kid": KV_KEY_IDENTIFIER,
+                "alg": "dir",
+                "enc": "CKM_RSA_AES_KEY_WRAP"
+            },
+            "ciphertext": base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(wrapped_key),
+            "generator": "Cosmian_KMS;v5"
+        });
+        // write byok file
+        fs::write("/tmp/byok.byok", byok_value.to_string())?;
+
+        Ok(())
     }
 }

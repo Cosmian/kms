@@ -2,7 +2,7 @@ use base64::{Engine, engine::general_purpose};
 use cosmian_kmip::{
     kmip_0::kmip_types::{BlockCipherMode, CryptographicUsageMask, PaddingMethod},
     kmip_2_1::{
-        kmip_data_structures::{KeyBlock, KeyValue, KeyWrappingData, KeyWrappingSpecification},
+        kmip_data_structures::{KeyValue, KeyWrappingData, KeyWrappingSpecification},
         kmip_objects::{
             Certificate, Object, PGPKey, PrivateKey, PublicKey, SecretData, SplitKey, SymmetricKey,
         },
@@ -38,7 +38,7 @@ use crate::{
     },
     crypto_bail, crypto_error,
     error::{CryptoError, result::CryptoResult},
-    openssl::kmip_public_key_to_openssl,
+    openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl},
 };
 
 /// Wrap a key using a password
@@ -82,23 +82,23 @@ fn check_block_cipher_mode_in_encryption_key_information(
     Ok(())
 }
 
-/// Wrap a key block with a wrapping key
+/// Wrap an object (a key) with a wrapping key
 /// The wrapping key is fetched from the database
 /// The key is wrapped using the wrapping key
 ///
 /// # Arguments
-/// * `object_key_block` - the key block of the object to wrap
+/// * `object` - the  object to wrap
 /// * `wrapping_key` - the wrapping key
 /// * `key_wrapping_specification` - the key wrapping specification
 /// # Returns
 /// * `KResult<()>` - the result of the operation
-pub fn wrap_key_block(
-    object_key_block: &mut KeyBlock,
+pub fn wrap_object_with_key(
+    object: &mut Object,
     wrapping_key: &Object,
     key_wrapping_specification: &KeyWrappingSpecification,
 ) -> Result<(), CryptoError> {
     // extract data to wrap
-    let data_to_wrap = key_data_to_wrap(&object_key_block, key_wrapping_specification)?;
+    let data_to_wrap = key_data_to_wrap(object, key_wrapping_specification)?;
 
     // check
     check_block_cipher_mode_in_encryption_key_information(
@@ -114,6 +114,7 @@ pub fn wrap_key_block(
     )?;
 
     // update the key block with the wrapped key
+    let object_key_block = object.key_block_mut()?;
     object_key_block.key_value = Some(KeyValue::ByteString(Zeroizing::new(wrapped_key)));
     object_key_block.key_wrapping_data = Some(key_wrapping_specification.get_key_wrapping_data());
 
@@ -130,11 +131,12 @@ pub fn wrap_key_block(
 /// # Returns
 /// * `KResult<Zeroizing<Vec<u8>>>` - the key data to wrap
 pub fn key_data_to_wrap(
-    object_key_block: &&mut KeyBlock,
+    object: &Object,
+    // object_key_block: &&mut KeyBlock,
     key_wrapping_specification: &KeyWrappingSpecification,
 ) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
-    trace!("key_wrapping_specification: {key_wrapping_specification:?}");
-    if object_key_block.key_wrapping_data.is_some() {
+    trace!("key_data_to_wrap: key_wrapping_specification: {key_wrapping_specification:?}");
+    if object.key_block()?.key_wrapping_data.is_some() {
         crypto_bail!("unable to wrap the key: it is already wrapped")
     }
     // check that the wrapping method is supported
@@ -149,6 +151,7 @@ pub fn key_data_to_wrap(
     // wrap the key based on the encoding
     Ok(match key_wrapping_specification.get_encoding() {
         EncodingOption::TTLVEncoding => {
+            let object_key_block = object.key_block()?;
             let Some(key_value) = object_key_block.key_value.as_ref() else {
                 crypto_bail!("Unable to wrap the key: key value is not set")
             };
@@ -167,10 +170,23 @@ pub fn key_data_to_wrap(
         }
         // According to the KMIP specs, only keys in Raw format can be wrapped
         // with no encoding.
-        // The call to key_bytes() here, will all get Transparent Symmetric Keys.
-        EncodingOption::NoEncoding => object_key_block
-            .symmetric_key_bytes()
-            .context("key_data_to_wrap")?,
+        // The call to key_bytes() here, will get all Transparent Symmetric Keys.
+        EncodingOption::NoEncoding => match object {
+            Object::SymmetricKey(SymmetricKey { key_block, .. }) => key_block
+                .key_bytes()
+                .context("cannot recover symmetric key bytes ")?,
+            Object::PrivateKey(..) => {
+                let pkey = kmip_private_key_to_openssl(object)?;
+                Zeroizing::new(pkey.private_key_to_pkcs8()?)
+            }
+            Object::PublicKey(..) => {
+                let pkey = kmip_public_key_to_openssl(object)?;
+                Zeroizing::new(pkey.public_key_to_der()?)
+            }
+            o => {
+                crypto_bail!("Unable to wrap the object: its type is not supported: {o:?}")
+            }
+        },
     })
 }
 
@@ -180,7 +196,7 @@ pub(crate) fn wrap(
     key_wrapping_data: &KeyWrappingData,
     key_to_wrap: &[u8],
 ) -> Result<Vec<u8>, CryptoError> {
-    trace!("with object type: {:?}", wrapping_key.object_type());
+    trace!("wrap: with object type: {:?}", wrapping_key.object_type());
     match wrapping_key {
         Object::Certificate(Certificate {
             certificate_value, ..
@@ -200,7 +216,7 @@ pub(crate) fn wrap(
         | Object::PrivateKey(PrivateKey { key_block })
         | Object::PublicKey(PublicKey { key_block })
         | Object::SymmetricKey(SymmetricKey { key_block }) => {
-            trace!("key_block: {}", key_block);
+            trace!("wrap: key_block: {}", key_block);
             // wrap the wrapping key if necessary
             if key_block.key_wrapping_data.is_some() {
                 crypto_bail!(
@@ -246,9 +262,9 @@ pub(crate) fn wrap(
                          block_cipher_mode: {:?}, padding_method: {:?}",
                         block_cipher_mode, padding_method
                     );
-                    let key_bytes = key_block.symmetric_key_bytes()?;
+                    let key_bytes = key_block.key_bytes()?;
                     if block_cipher_mode == BlockCipherMode::GCM {
-                        debug!("using GCM");
+                        debug!("wrap: using GCM");
                         // wrap using aes GCM
                         let aead = SymCipher::from_algorithm_and_key_size(
                             cryptographic_algorithm,
@@ -274,14 +290,14 @@ pub(crate) fn wrap(
                         ciphertext.extend_from_slice(&authenticated_encryption_tag);
 
                         trace!(
-                            "nonce: {}, tag: {}",
+                            "wrap: nonce: {}, tag: {}",
                             general_purpose::STANDARD.encode(&nonce),
                             general_purpose::STANDARD.encode(&authenticated_encryption_tag),
                         );
 
                         Ok(ciphertext)
                     } else {
-                        trace!("using RFC-5649");
+                        trace!("wrap: using RFC-5649");
                         let ciphertext = rfc5649_wrap(key_to_wrap, &key_bytes)?;
                         Ok(ciphertext)
                     }
@@ -334,13 +350,21 @@ fn wrap_with_rsa(
     key_to_wrap: &[u8],
 ) -> Result<Vec<u8>, CryptoError> {
     let (algorithm, padding, hashing_fn) = rsa_parameters(key_wrapping_data);
-    debug!("wrapping with RSA {algorithm} {padding:?} {hashing_fn:?} ");
     match algorithm {
         CryptographicAlgorithm::RSA => match padding {
-            PaddingMethod::None => ckm_rsa_aes_key_wrap(public_key, hashing_fn, key_to_wrap),
-            PaddingMethod::OAEP => ckm_rsa_pkcs_oaep_key_wrap(public_key, hashing_fn, key_to_wrap),
+            PaddingMethod::None => {
+                debug!("wrapping with CKM_RSA_AES_KEY_WRAP and hashing function: {hashing_fn}");
+                ckm_rsa_aes_key_wrap(public_key, hashing_fn, key_to_wrap)
+            }
+            PaddingMethod::OAEP => {
+                debug!("wrapping with CKM_RSA_OAEP and hashing function: {hashing_fn}");
+                ckm_rsa_pkcs_oaep_key_wrap(public_key, hashing_fn, key_to_wrap)
+            }
             #[cfg(feature = "non-fips")]
-            PaddingMethod::PKCS1v15 => ckm_rsa_pkcs_key_wrap(public_key, key_to_wrap),
+            PaddingMethod::PKCS1v15 => {
+                debug!("wrapping with CKM_RSA (v1.5)");
+                ckm_rsa_pkcs_key_wrap(public_key, key_to_wrap)
+            }
             _ => crypto_bail!(
                 "Unable to wrap key with RSA: padding method not supported: {padding:?}"
             ),

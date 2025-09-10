@@ -10,6 +10,7 @@ use cosmian_kms_client::reexport::cosmian_kms_client_utils::{
 };
 use cosmian_logger::log_init;
 use openssl::pkey::PKey;
+use serde_json::json;
 use tempfile::TempDir;
 use test_kms_server::{TestsContext, start_default_test_kms_server};
 use tracing::{debug, info, warn};
@@ -149,13 +150,13 @@ async fn test_openssl_cli_compat() -> KmsCliResult<()> {
 
     // write RSA private key to file
     let priv_key_file = tmp_path.join("rsa_private_key.pem");
-    std::fs::write(&priv_key_file, RSA_PRIVATE_KEY)?;
+    fs::write(&priv_key_file, RSA_PRIVATE_KEY)?;
     // write RSA public key to file
     let pub_key_file = tmp_path.join("rsa_public_key.pem");
-    std::fs::write(&pub_key_file, RSA_PUBLIC_KEY)?;
+    fs::write(&pub_key_file, RSA_PUBLIC_KEY)?;
     // write dek to file
     let dek_file = tmp_path.join("dek.bin");
-    std::fs::write(&dek_file, hex::decode(dek)?)?;
+    fs::write(&dek_file, hex::decode(dek)?)?;
 
     let priv_key_id = ImportSecretDataOrKeyAction {
         key_file: PathBuf::from(&priv_key_file),
@@ -229,7 +230,7 @@ async fn test_openssl_cli_compat_inner(
     .run(ctx.get_user_client())
     .await?;
     // read wrapped key from file
-    let wrapped_key = std::fs::read(&wrapped_key_file)?;
+    let wrapped_key = fs::read(&wrapped_key_file)?;
 
     // the last 40 bytes are the AES_KEY_WRAP_PAD (RFC 5649)
     assert_eq!(wrapped_key.len(), 2048 / 8 + 40);
@@ -237,11 +238,11 @@ async fn test_openssl_cli_compat_inner(
     // write wrapped key to file
     let oaep_encapsulation = &wrapped_key[..wrapped_key.len() - 40];
     let rsa_oaep_encapsulation_file = tmp_path.join("rsa_oaep_encapsulation.bin");
-    std::fs::write(&rsa_oaep_encapsulation_file, oaep_encapsulation)?;
+    fs::write(&rsa_oaep_encapsulation_file, oaep_encapsulation)?;
 
     let rfc5649_encapsulation = &wrapped_key[wrapped_key.len() - 40..];
     let rfc5649_encapsulation_file = tmp_path.join("rfc5649_encapsulation.bin");
-    std::fs::write(&rfc5649_encapsulation_file, rfc5649_encapsulation)?;
+    fs::write(&rfc5649_encapsulation_file, rfc5649_encapsulation)?;
 
     // Execute OpenSSL command to decrypt rhe RSA OAEP encapsulation
     let aes_kek_file = tmp_path.join("aes_kek.bin");
@@ -275,7 +276,7 @@ async fn test_openssl_cli_compat_inner(
         cli_bail!("test_openssl_cli_compat: RSA OAEP openssl pkeyutl failed: {output:?}");
     }
     // recover the AES_KEK from the decrypted key
-    let aes_kek = std::fs::read(&aes_kek_file)?;
+    let aes_kek = fs::read(&aes_kek_file)?;
     assert_eq!(aes_kek.len(), 32);
 
     // Execute OpenSSL command to decrypt the RFC 5649 encapsulation

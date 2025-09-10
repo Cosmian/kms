@@ -140,7 +140,7 @@ pub(crate) async fn export_import_test(
     let object = read_object_from_json_ttlv_file(&PathBuf::from("/tmp/output.export"))?;
     let key_bytes = match algorithm {
         None => object.key_block()?.secret_data_bytes()?,
-        Some(CryptographicAlgorithm::AES) => object.key_block()?.symmetric_key_bytes()?,
+        Some(CryptographicAlgorithm::AES) => object.key_block()?.key_bytes()?,
         Some(CryptographicAlgorithm::ECDH) => object.key_block()?.ec_raw_bytes()?,
         Some(CryptographicAlgorithm::CoverCrypt) => object.key_block()?.covercrypt_key_bytes()?,
         x => {
@@ -169,7 +169,7 @@ pub(crate) async fn export_import_test(
     let object2 = read_object_from_json_ttlv_file(&PathBuf::from("/tmp/output2.export"))?;
     let object2_key_bytes = match algorithm {
         None => object.key_block()?.secret_data_bytes()?,
-        Some(CryptographicAlgorithm::AES) => object2.key_block()?.symmetric_key_bytes()?,
+        Some(CryptographicAlgorithm::AES) => object2.key_block()?.key_bytes()?,
         Some(CryptographicAlgorithm::ECDH) => object2.key_block()?.ec_raw_bytes()?,
         Some(CryptographicAlgorithm::CoverCrypt) => object2.key_block()?.covercrypt_key_bytes()?,
         x => {

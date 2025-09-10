@@ -385,7 +385,7 @@ impl DecryptAction {
 
         // recover the DEK
         unwrap_key_block(dek_object.key_block_mut()?, &unwrapping_key)?;
-        let dek = dek_object.key_block()?.symmetric_key_bytes()?;
+        let dek = dek_object.key_block()?.key_bytes()?;
 
         // determine the DEM parameters
         let dem_cryptographic_parameters: CryptographicParameters =
