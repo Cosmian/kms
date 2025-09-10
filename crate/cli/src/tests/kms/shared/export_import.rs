@@ -10,7 +10,6 @@ use cosmian_kms_client::reexport::cosmian_kms_client_utils::{
 };
 use cosmian_logger::log_init;
 use openssl::pkey::PKey;
-use serde_json::json;
 use tempfile::TempDir;
 use test_kms_server::{TestsContext, start_default_test_kms_server};
 use tracing::{debug, info, warn};

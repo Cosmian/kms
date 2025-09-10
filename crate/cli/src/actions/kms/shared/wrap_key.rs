@@ -133,7 +133,7 @@ impl WrapSecretDataOrKeyAction {
         };
 
         wrap_object_with_key(
-            object.key_block_mut()?,
+            &mut object,
             &wrapping_key,
             &KeyWrappingSpecification::default(),
         )?;

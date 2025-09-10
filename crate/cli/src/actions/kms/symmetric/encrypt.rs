@@ -411,7 +411,7 @@ impl EncryptAction {
 
         // Wrap the DEK with the KEK
         wrap_object_with_key(
-            dek_object.key_block_mut()?,
+            &mut dek_object,
             &wrapping_key,
             &KeyWrappingSpecification {
                 encoding_option: Some(EncodingOption::NoEncoding),
