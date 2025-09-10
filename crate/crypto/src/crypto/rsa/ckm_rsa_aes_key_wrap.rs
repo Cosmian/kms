@@ -548,8 +548,9 @@ MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAk0HniT34p3O8bD3pyy7p7YASh2Tk7oYag4fb
 
     #[test]
     fn test_for_azure_byok() -> CryptoResult<()> {
+        log_init(Some("debug"));
         let priv_key = PKey::private_key_from_pem(RSA_PRIVATE_KEY.as_bytes())?;
-        let priv_key_der_bytes = priv_key.rsa()?.private_key_to_der()?;
+        let priv_key_der_bytes = priv_key.private_key_to_pkcs8()?;
 
         let pub_key = PKey::public_key_from_pem(KEK_FOR_BYOK.as_bytes())?;
         let wrapped_key =
