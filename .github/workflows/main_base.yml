@@ -74,7 +74,6 @@ jobs:
           cargo build --bin cosmian_kms --features non-fips
           cargo run --bin cosmian_kms --features non-fips &
 
-          dnf install python3 -y
           python3 -m pip install --upgrade pip
           python3 -m venv .venv
           source .venv/bin/activate
