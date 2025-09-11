@@ -66,7 +66,10 @@ impl<P: HsmProvider> BaseHsm<P> {
     /// If a slot has already been opened, returns the opened slot.
     /// To close a slot before re-opening it with another password, call `close_slot()` first
     pub fn get_slot(&self, slot_id: usize) -> HResult<Arc<SlotManager>> {
-        let mut slots = self.slots.lock().expect("failed to lock slots");
+        let mut slots = self
+            .slots
+            .lock()
+            .map_err(|_| HError::Default("Failed to acquire lock on slots".to_string()))?;
         // check if we are supposed to use that slot
         if let Some(slot_state) = slots.get_mut(&slot_id) {
             if let Some(s) = &slot_state.slot {
@@ -88,7 +91,10 @@ impl<P: HsmProvider> BaseHsm<P> {
     }
 
     pub fn close_slot(&self, slot_id: usize) -> HResult<()> {
-        let mut slots = self.slots.lock().expect("failed to lock slots");
+        let mut slots = self
+            .slots
+            .lock()
+            .map_err(|_| HError::Default("Failed to acquire lock on slots".to_string()))?;
         slots.remove(&slot_id);
         Ok(())
     }

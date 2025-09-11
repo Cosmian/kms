@@ -58,7 +58,7 @@ impl Session {
                 return Err(HError::Default(format!("Failed generating key: {rv}")));
             }
             self.object_handles_cache()
-                .insert(id.to_vec(), aes_key_handle);
+                .insert(id.to_vec(), aes_key_handle)?;
             Ok(aes_key_handle)
         }
     }

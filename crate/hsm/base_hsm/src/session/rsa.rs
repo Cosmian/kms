@@ -174,9 +174,9 @@ impl Session {
             }
 
             self.object_handles_cache()
-                .insert(sk_id.to_vec(), priv_key_handle);
+                .insert(sk_id.to_vec(), priv_key_handle)?;
             self.object_handles_cache()
-                .insert(pk_id.to_vec(), pub_key_handle);
+                .insert(pk_id.to_vec(), pub_key_handle)?;
 
             Ok((priv_key_handle, pub_key_handle))
         }

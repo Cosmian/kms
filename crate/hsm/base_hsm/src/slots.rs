@@ -39,36 +39,48 @@ impl ObjectHandlesCache {
     }
 
     /// Get the object handle for the specified key.
-    pub fn get(&self, key: &[u8]) -> Option<CK_OBJECT_HANDLE> {
-        self.0
+    pub fn get(&self, key: &[u8]) -> HResult<Option<CK_OBJECT_HANDLE>> {
+        Ok(self
+            .0
             .lock()
-            .expect("HSM: failed to lock the handles cache")
+            .map_err(|_| {
+                HError::Default("Failed to acquire lock on object handle cache".to_string())
+            })?
             .get(key)
-            .copied()
+            .copied())
     }
 
     /// Insert a new object handle into the cache.
-    pub fn insert(&self, key: Vec<u8>, value: CK_OBJECT_HANDLE) {
+    pub fn insert(&self, key: Vec<u8>, value: CK_OBJECT_HANDLE) -> HResult<()> {
         self.0
             .lock()
-            .expect("HSM: failed to lock the handles cache")
+            .map_err(|_| {
+                HError::Default("Failed to acquire lock on object handle cache".to_string())
+            })?
             .put(key, value);
+        Ok(())
     }
 
     /// Remove an object handle from the cache.
-    pub fn remove(&self, key: &[u8]) {
+    pub fn remove(&self, key: &[u8]) -> HResult<()> {
         self.0
             .lock()
-            .expect("HSM: failed to lock the handles cache")
+            .map_err(|_| {
+                HError::Default("Failed to acquire lock on object handle cache".to_string())
+            })?
             .pop(key);
+        Ok(())
     }
 
     /// Remove all object handles from the cache.
-    pub fn clear(&self) {
+    pub fn clear(&self) -> HResult<()> {
         self.0
             .lock()
-            .expect("HSM: failed to lock the handles cache")
+            .map_err(|_| {
+                HError::Default("Failed to acquire lock on object handle cache".to_string())
+            })?
             .clear();
+        Ok(())
     }
 }
 

@@ -17,5 +17,5 @@ impl HsmProvider for SmartcardHsmCapabilityProvider {
     }
 }
 
-/// The smartcardhsm is fully supported by the BaseHsm implementation
+/// The smartcardhsm is fully supported by the `BaseHsm` implementation
 pub type Smartcardhsm = cosmian_kms_base_hsm::BaseHsm<SmartcardHsmCapabilityProvider>;

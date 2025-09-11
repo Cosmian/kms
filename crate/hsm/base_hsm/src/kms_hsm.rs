@@ -140,7 +140,7 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         let session = slot.open_session(true)?;
         let handle = session.get_object_handle(object_id)?;
         session.destroy_object(handle)?;
-        session.delete_object_handle(object_id);
+        session.delete_object_handle(object_id)?;
         Ok(())
     }
 

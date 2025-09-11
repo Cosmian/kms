@@ -540,12 +540,12 @@ fn test_hsm_list_objects() -> HResult<()> {
     log_init(None);
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
-    session.clear_object_handles();
+    session.clear_object_handles()?;
     let objects = session.list_objects(HsmObjectFilter::Any)?;
     for object in &objects {
         session.destroy_object(*object)?;
     }
-    session.clear_object_handles();
+    session.clear_object_handles()?;
     let objects = session.list_objects(HsmObjectFilter::Any)?;
     assert_eq!(objects.len(), 0);
     let sk_id = Uuid::new_v4().to_string();
@@ -556,7 +556,7 @@ fn test_hsm_list_objects() -> HResult<()> {
         RsaKeySize::Rsa2048,
         false,
     )?;
-    session.clear_object_handles();
+    session.clear_object_handles()?;
     let objects = session.list_objects(HsmObjectFilter::Any)?;
     assert_eq!(objects.len(), 2);
     let objects = session.list_objects(HsmObjectFilter::RsaKey)?;
@@ -576,7 +576,7 @@ fn test_hsm_list_objects() -> HResult<()> {
         RsaKeySize::Rsa3072,
         false,
     )?;
-    session.clear_object_handles();
+    session.clear_object_handles()?;
     let objects = session.list_objects(HsmObjectFilter::Any)?;
     assert_eq!(objects.len(), 4);
     let objects = session.list_objects(HsmObjectFilter::RsaKey)?;
@@ -590,7 +590,7 @@ fn test_hsm_list_objects() -> HResult<()> {
     // add an AES key
     let key_id = Uuid::new_v4().to_string();
     let _key = session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, false)?;
-    session.clear_object_handles();
+    session.clear_object_handles()?;
     let objects = session.list_objects(HsmObjectFilter::Any)?;
     assert_eq!(objects.len(), 5);
     let objects = session.list_objects(HsmObjectFilter::AesKey)?;

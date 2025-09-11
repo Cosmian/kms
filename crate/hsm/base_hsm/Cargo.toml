@@ -10,8 +10,12 @@ repository.workspace = true
 rust-version.workspace = true
 description = "Base PKCS#11 HSM integration implementation"
 
-# [lints]
-# workspace = true
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+panic_in_result_fn = "deny"
+indexing_slicing = "deny"
 
 [lib]
 doctest = false

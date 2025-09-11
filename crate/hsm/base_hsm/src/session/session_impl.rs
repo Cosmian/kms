@@ -259,7 +259,10 @@ impl Session {
     /// This function calls unsafe FFI functions from the HSM library. All temporary keys are
     /// cleaned up after testing.
     pub fn get_supported_oaep_hash(&self) -> HResult<Vec<CK_MECHANISM_TYPE>> {
-        let mut cache = self.supported_oaep_hash_cache.lock().unwrap();
+        let mut cache = self
+            .supported_oaep_hash_cache
+            .lock()
+            .map_err(|_| HError::Default("Failed to acquire OAEP hash cache lock".to_owned()))?;
         if let Some(ref list) = *cache {
             return Ok(list.clone());
         }
@@ -386,7 +389,11 @@ impl Session {
                         "More objects returned than requested".to_owned(),
                     ));
                 }
-                object_handles.extend_from_slice(&handles_buf[..object_count as usize]);
+                object_handles.extend_from_slice(
+                    handles_buf.get(..object_count as usize).ok_or_else(|| {
+                        HError::Default("Invalid object count returned from HSM".to_owned())
+                    })?,
+                );
             }
 
             let rv = self.hsm.C_FindObjectsFinal.ok_or_else(|| {
@@ -430,7 +437,7 @@ impl Session {
     /// This function calls unsafe PKCS#11 FFI functions indirectly (via `find_object_handles`
     /// and `get_key_type`).
     pub fn get_object_handle(&self, object_id: &[u8]) -> HResult<CK_OBJECT_HANDLE> {
-        if let Some(handle) = self.object_handles_cache.get(object_id) {
+        if let Some(handle) = self.object_handles_cache.get(object_id)? {
             return Ok(handle);
         }
 
@@ -465,7 +472,9 @@ impl Session {
             }
         }
 
-        let mut object_handle = object_handles[0];
+        let mut object_handle = *object_handles
+            .first()
+            .ok_or_else(|| HError::Default("Object handles empty".to_owned()))?;
         if object_handles.len() > 1 {
             // Multiple matches in case the HSM uses the same ID for SK and PK
             debug!("Found {} possible handles", object_handles.len());
@@ -489,7 +498,7 @@ impl Session {
 
         //update cache
         self.object_handles_cache
-            .insert(object_id.to_vec(), object_handle);
+            .insert(object_id.to_vec(), object_handle)?;
 
         Ok(object_handle)
     }
@@ -498,12 +507,14 @@ impl Session {
     ///
     /// This function removes all entries from the object handle cache associated with
     /// this session's SlotManager. Clearing the cache may be useful especially for testing.
-    pub fn clear_object_handles(&self) {
-        self.object_handles_cache.clear();
+    pub fn clear_object_handles(&self) -> HResult<()> {
+        self.object_handles_cache.clear()?;
+        Ok(())
     }
 
-    pub fn delete_object_handle(&self, id: &[u8]) {
-        self.object_handles_cache.remove(id);
+    pub fn delete_object_handle(&self, id: &[u8]) -> HResult<()> {
+        self.object_handles_cache.remove(id)?;
+        Ok(())
     }
 
     pub fn generate_random(&self, len: usize) -> HResult<Vec<u8>> {
@@ -636,22 +647,26 @@ impl Session {
     ) -> HResult<Zeroizing<Vec<u8>>> {
         if data.is_empty() {
             return Err(HError::Default(
-                "Invalid PKCS#7 padding: empty buffer".to_string(),
+                "Invalid PKCS#7 padding: empty buffer".to_owned(),
             ));
         }
         if (data.len() % block_size) != 0 {
-            return Err(HError::Default("Data doesn't align to blocks".to_string()));
+            return Err(HError::Default("Data doesn't align to blocks".to_owned()));
         }
-        let pad_len = *data.last().unwrap() as usize;
+        let pad_len = data.last().map(|&b| b as usize).ok_or_else(|| {
+            HError::Default("Invalid PKCS#7 padding: invalid last byte".to_owned())
+        })?;
         if pad_len == 0 || pad_len > data.len() || pad_len > block_size {
-            return Err(HError::Default("Invalid PKCS#7 padding".to_string()));
+            return Err(HError::Default("Invalid PKCS#7 padding".to_owned()));
         }
         // verify all pad bytes
-        if !data[data.len() - pad_len..]
+        if !data
+            .get(data.len() - pad_len..)
+            .ok_or_else(|| HError::Default("Failed to get padding bytes".to_owned()))?
             .iter()
             .all(|&b| b as usize == pad_len)
         {
-            return Err(HError::Default("Invalid PKCS#7 padding bytes".to_string()));
+            return Err(HError::Default("Invalid PKCS#7 padding bytes".to_owned()));
         }
         let length = data.len();
         let mut unpadded = data;
@@ -686,8 +701,16 @@ impl Session {
                     self.encrypt_with_mechanism(key_handle, &mut mechanism, plaintext)?;
                 EncryptedContent {
                     iv: Some(nonce.to_vec()),
-                    ciphertext: ciphertext[..ciphertext.len() - AES_GCM_AUTH_TAG_LENGTH].to_vec(),
-                    tag: Some(ciphertext[ciphertext.len() - AES_GCM_AUTH_TAG_LENGTH..].to_vec()),
+                    ciphertext: ciphertext
+                        .get(..ciphertext.len() - AES_GCM_AUTH_TAG_LENGTH)
+                        .ok_or_else(|| HError::Default("Failed to extract ciphertext".to_owned()))?
+                        .to_vec(),
+                    tag: Some(
+                        ciphertext
+                            .get(ciphertext.len() - AES_GCM_AUTH_TAG_LENGTH..)
+                            .ok_or_else(|| HError::Default("Failed to extract tag".to_owned()))?
+                            .to_vec(),
+                    ),
                 }
             }
             HsmEncryptionAlgorithm::AesCbc => {
@@ -791,11 +814,13 @@ impl Session {
         match algorithm {
             HsmEncryptionAlgorithm::AesGcm => {
                 if ciphertext.len() < AES_GCM_IV_LENGTH {
-                    return Err(HError::Default("Invalid AES GCM ciphertext".to_string()));
+                    return Err(HError::Default("Invalid AES GCM ciphertext".to_owned()));
                 }
-                let mut nonce: [u8; AES_GCM_IV_LENGTH] = ciphertext[..AES_GCM_IV_LENGTH]
+                let mut nonce: [u8; AES_GCM_IV_LENGTH] = ciphertext
+                    .get(..AES_GCM_IV_LENGTH)
+                    .ok_or_else(|| HError::Default("Failed to extract nonce".to_owned()))?
                     .try_into()
-                    .map_err(|_| HError::Default("Invalid AES GCM nonce".to_string()))?;
+                    .map_err(|_| HError::Default("Invalid AES GCM nonce".to_owned()))?;
                 let mut params = CK_AES_GCM_PARAMS {
                     pIv: &mut nonce as *mut u8,
                     ulIvLen: AES_GCM_IV_LENGTH as CK_ULONG,
@@ -812,24 +837,30 @@ impl Session {
                 let plaintext = self.decrypt_with_mechanism(
                     key_handle,
                     &mut mechanism,
-                    &ciphertext[AES_GCM_IV_LENGTH..],
+                    ciphertext.get(AES_GCM_IV_LENGTH..).ok_or_else(|| {
+                        HError::Default("Failed to extract ciphertext".to_owned())
+                    })?,
                 )?;
                 Ok(plaintext)
             }
             HsmEncryptionAlgorithm::AesCbc => {
                 if ciphertext.len() < AES_CBC_IV_LENGTH {
-                    return Err(HError::Default("Invalid AES CBC ciphertext".to_string()));
+                    return Err(HError::Default("Invalid AES CBC ciphertext".to_owned()));
                 }
-                let mut iv: [u8; AES_CBC_IV_LENGTH] = ciphertext[..AES_CBC_IV_LENGTH]
+                let mut iv: [u8; AES_CBC_IV_LENGTH] = ciphertext
+                    .get(..AES_CBC_IV_LENGTH)
+                    .ok_or_else(|| HError::Default("Failed to extract iv".to_owned()))?
                     .try_into()
-                    .map_err(|_| HError::Default("Invalid AES CBC IV".to_string()))?;
+                    .map_err(|_| HError::Default("Invalid AES CBC IV".to_owned()))?;
                 if let Some(max_cbc_data_size) = self.hsm_capabilities.max_cbc_data_size {
                     if ciphertext.len() > (max_cbc_data_size + AES_CBC_IV_LENGTH) {
                         debug!("Performing multi round AES CBC decryption");
                         return self.decrypt_aes_cbc_multi_round(
                             key_handle,
                             &iv,
-                            &ciphertext[AES_CBC_IV_LENGTH..],
+                            ciphertext.get(AES_CBC_IV_LENGTH..).ok_or_else(|| {
+                                HError::Default("Failed to extract ciphertext".to_owned())
+                            })?,
                             max_cbc_data_size,
                         );
                     }
@@ -843,7 +874,9 @@ impl Session {
                 let paddedPlaintext = self.decrypt_with_mechanism(
                     key_handle,
                     &mut mechanism,
-                    &ciphertext[AES_CBC_IV_LENGTH..],
+                    ciphertext.get(AES_CBC_IV_LENGTH..).ok_or_else(|| {
+                        HError::Default("Failed to extract ciphertext".to_owned())
+                    })?,
                 )?;
 
                 let plaintext = self.pkcs7_unpad(paddedPlaintext, AES_BLOCK_SIZE)?;
@@ -959,10 +992,15 @@ impl Session {
             let round_ciphertext = self.encrypt_with_mechanism(
                 key_handle,
                 &mut mechanism,
-                &padded_plaintext.as_slice()[processed_length..processed_length + round_length],
+                padded_plaintext
+                    .as_slice()
+                    .get(processed_length..processed_length + round_length)
+                    .ok_or_else(|| HError::Default("Failed to round data".to_owned()))?,
             )?;
-            for i in 0..iv.len() {
-                round_iv[i] = round_ciphertext[round_ciphertext.len() - iv.len() + i];
+            for (i, iv_byte) in round_iv.iter_mut().enumerate().take(iv.len()) {
+                *iv_byte = *round_ciphertext
+                    .get(round_ciphertext.len() - iv.len() + i)
+                    .ok_or_else(|| HError::Default("Failed to get iv byte".to_owned()))?;
             }
             ciphertext.extend(round_ciphertext);
             processed_length += round_length;
@@ -1029,7 +1067,9 @@ impl Session {
             )));
         }
 
-        let mut round_iv: [u8; AES_CBC_IV_LENGTH] = iv[..AES_CBC_IV_LENGTH]
+        let mut round_iv: [u8; AES_CBC_IV_LENGTH] = iv
+            .get(..AES_CBC_IV_LENGTH)
+            .ok_or_else(|| HError::Default("Failed to get iv".to_owned()))?
             .try_into()
             .map_err(|_| HError::Default("Invalid IV".to_string()))?;
         let total_length = ciphertext.len();
@@ -1052,13 +1092,19 @@ impl Session {
             let round_plaintext = self.decrypt_with_mechanism(
                 key_handle,
                 &mut mechanism,
-                &ciphertext[processed_length..processed_length + round_length],
+                ciphertext
+                    .get(processed_length..processed_length + round_length)
+                    .ok_or_else(|| {
+                        HError::Default("Failed to extract round ciphertext".to_owned())
+                    })?,
             )?;
 
             plaintext.extend_from_slice(&round_plaintext);
             processed_length += round_length;
-            for i in 0..iv.len() {
-                round_iv[i] = ciphertext[processed_length - iv.len() + i];
+            for (i, iv_byte) in round_iv.iter_mut().enumerate().take(iv.len()) {
+                *iv_byte = *ciphertext
+                    .get(processed_length - iv.len() + i)
+                    .ok_or_else(|| HError::Default("Failed to get iv byte".to_owned()))?;
             }
         }
         self.pkcs7_unpad(plaintext, AES_BLOCK_SIZE)
@@ -1553,7 +1599,10 @@ impl Session {
                 {
                     return Ok(None);
                 }
-                let label_len = template[0].ulValueLen;
+                let label_len = template
+                    .first()
+                    .ok_or_else(|| HError::Default("Failed to get label length".to_owned()))?
+                    .ulValueLen;
                 let label = if label_len == 0 {
                     String::new()
                 } else {
@@ -1594,9 +1643,15 @@ impl Session {
                 {
                     return Ok(None);
                 }
-                let label_len = template[0].ulValueLen;
+                let label_len = template
+                    .first()
+                    .ok_or_else(|| HError::Default("Failed to get template length".to_owned()))?
+                    .ulValueLen;
                 let mut label_bytes: Vec<u8> = vec![0_u8; label_len as usize];
-                let modulus_len = template[1].ulValueLen;
+                let modulus_len = template
+                    .get(1)
+                    .ok_or_else(|| HError::Default("Failed to get modulus length".to_owned()))?
+                    .ulValueLen;
                 let mut modulus: Vec<u8> = vec![0_u8; modulus_len as usize];
                 let mut sensitive: CK_BBOOL = CK_FALSE;
                 let mut template = vec![CK_ATTRIBUTE {
