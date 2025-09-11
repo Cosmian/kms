@@ -5,8 +5,8 @@ use cosmian_kms_client::KmsClient;
 
 use crate::{actions::kms::azure::byok::import_kek::ImportKekAction, error::result::KmsCliResult};
 
-/// Azure BYOK commands.
-/// Specifications Doc: https://learn.microsoft.com/en-us/azure/key-vault/keys/byok-specification
+/// Azure BYOK support.
+/// See: https://learn.microsoft.com/en-us/azure/key-vault/keys/byok-specification
 #[derive(Subcommand)]
 pub enum ByokCommands {
     Import(ImportKekAction),

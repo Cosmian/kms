@@ -8,6 +8,8 @@ use cosmian_kms_client::{
 
 use crate::{actions::kms::shared::ImportSecretDataOrKeyAction, error::result::KmsCliResult};
 
+/// Import in the KMS an RSA Key Encryption Key (KEK) generated on Azure Key Vault.
+/// See: https://learn.microsoft.com/en-us/azure/key-vault/keys/byok-specification#generate-kek
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
 pub struct ImportKekAction {
@@ -21,7 +23,7 @@ pub struct ImportKekAction {
     #[clap(required = true, verbatim_doc_comment)]
     pub(crate) kid: String,
 
-    /// The unique id of the key in this KMS; a random uuid
+    /// The unique ID of the key in this KMS; a random UUID
     /// is generated if not specified.
     #[clap(required = false)]
     pub(crate) key_id: Option<String>,

@@ -5,7 +5,7 @@ use cosmian_kms_client::KmsClient;
 
 use crate::{actions::kms::azure::byok::ByokCommands, error::result::KmsCliResult};
 
-/// Manage Azure specific elements.
+/// Support for Azure specific interactions.
 #[derive(Parser)]
 pub enum AzureCommands {
     #[command(subcommand)]
