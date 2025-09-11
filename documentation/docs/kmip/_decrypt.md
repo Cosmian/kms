@@ -60,7 +60,7 @@ The JSON TTLV request the same information as in the [`Encrypt` Response](./_enc
               "value": "40D59A0735811135749A507FDEB3"
             },
             {
-              "tag": "IvCounterNonce",
+              "tag": "IVCounterNonce",
               "type": "ByteString",
               "value": "DBDD622A64F7D65E75894B1B"
             },
