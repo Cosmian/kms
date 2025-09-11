@@ -126,6 +126,7 @@ impl From<CryptoAlgorithm> for HsmEncryptionAlgorithm {
 ///
 /// ## Object Management
 /// * `get_object_handle()` - Retrieves handle for an object by its ID
+/// * `clear_object_handles()` - Removes all object handles from the cache
 /// * `delete_object_handle()` - Removes an object handle from cache
 /// * `list_objects()` - Lists objects matching specified filter
 /// * `destroy_object()` - Deletes an object from the HSM
@@ -359,15 +360,16 @@ impl Session {
                 )));
             }
 
-            let mut object_handle: CK_OBJECT_HANDLE = 0;
+            let max_object_count = self.hsm_capabilities.find_max_object_count as usize;
+            let mut handles_buf = vec![0 as CK_OBJECT_HANDLE; max_object_count];
             let mut object_count: CK_ULONG = 0;
             loop {
                 let rv = self.hsm.C_FindObjects.ok_or_else(|| {
                     HError::Default("C_FindObjects not available on library".to_string())
                 })?(
                     self.session_handle,
-                    &raw mut object_handle,
-                    1,
+                    handles_buf.as_mut_ptr(),
+                    self.hsm_capabilities.find_max_object_count, //ulMaxObjectCount
                     &raw mut object_count,
                 );
                 if rv != CKR_OK {
@@ -378,7 +380,13 @@ impl Session {
                 if object_count == 0 {
                     break;
                 }
-                object_handles.push(object_handle);
+                trace!("Found {object_count} objects");
+                if object_count > max_object_count as CK_ULONG {
+                    return Err(HError::Default(
+                        "More objects returned than requested".to_owned(),
+                    ));
+                }
+                object_handles.extend_from_slice(&handles_buf[..object_count as usize]);
             }
 
             let rv = self.hsm.C_FindObjectsFinal.ok_or_else(|| {
@@ -484,6 +492,14 @@ impl Session {
             .insert(object_id.to_vec(), object_handle);
 
         Ok(object_handle)
+    }
+
+    /// Clear all cached object handles for this HSM slot.
+    ///
+    /// This function removes all entries from the object handle cache associated with
+    /// this session's SlotManager. Clearing the cache may be useful especially for testing.
+    pub fn clear_object_handles(&self) {
+        self.object_handles_cache.clear();
     }
 
     pub fn delete_object_handle(&self, id: &[u8]) {

@@ -12,6 +12,7 @@ impl HsmProvider for SmartcardHsmCapabilityProvider {
     fn capabilities() -> HsmCapabilities {
         HsmCapabilities {
             max_cbc_data_size: Some(1024),
+            find_max_object_count: 16, // Don't overwhelm the smartcard
         }
     }
 }

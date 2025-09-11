@@ -62,6 +62,14 @@ impl ObjectHandlesCache {
             .expect("HSM: failed to lock the handles cache")
             .pop(key);
     }
+
+    /// Remove all object handles from the cache.
+    pub fn clear(&self) {
+        self.0
+            .lock()
+            .expect("HSM: failed to lock the handles cache")
+            .clear();
+    }
 }
 
 /// A manager for a specific PKCS#11 slot in a Hardware Security Module (HSM).

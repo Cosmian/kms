@@ -8,6 +8,7 @@ use std::{
 };
 
 use cosmian_kms_interfaces::CryptoAlgorithm;
+use cosmian_logger::debug;
 use pkcs11_sys::{
     CK_INFO, CK_MECHANISM_TYPE, CKM_AES_CBC, CKM_AES_GCM, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP,
     CKM_SHA_1, CKM_SHA256, CKR_OK,
@@ -42,6 +43,7 @@ impl<P: HsmProvider> BaseHsm<P> {
         path: Pth,
         passwords: HashMap<usize, Option<String>>,
     ) -> HResult<Self> {
+        debug!("Using PKCS#11 library with {:?}", P::capabilities());
         let hsm_lib = Arc::new(HsmLib::instantiate(path)?);
         let mut slots = HashMap::with_capacity(passwords.len());
         for (k, v) in &passwords {
