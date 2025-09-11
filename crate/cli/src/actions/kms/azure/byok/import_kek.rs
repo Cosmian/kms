@@ -8,7 +8,7 @@ use cosmian_kms_client::{
 
 use crate::{actions::kms::shared::ImportSecretDataOrKeyAction, error::result::KmsCliResult};
 
-/// Import in the KMS an RSA Key Encryption Key (KEK) generated on Azure Key Vault.
+/// Import into the KMS an RSA Key Encryption Key (KEK) generated on Azure Key Vault.
 /// See: https://learn.microsoft.com/en-us/azure/key-vault/keys/byok-specification#generate-kek
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
