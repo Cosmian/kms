@@ -10,7 +10,7 @@ use std::{
 use cosmian_kms_interfaces::CryptoAlgorithm;
 use cosmian_logger::debug;
 use pkcs11_sys::{
-    CK_INFO, CK_MECHANISM_TYPE, CKM_AES_CBC, CKM_AES_GCM, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP,
+    CK_INFO, CKM_AES_CBC, CKM_AES_GCM, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP,
     CKM_SHA_1, CKM_SHA256, CKR_OK,
 };
 
@@ -138,10 +138,10 @@ impl<P: HsmProvider> BaseHsm<P> {
     /// This function calls unsafe FFI functions from the HSM library to query mechanism information.
     pub fn get_algorithms(&self, slot_id: usize) -> HResult<Vec<CryptoAlgorithm>> {
         let slot = self.get_slot(slot_id)?;
-        let mechanisms: Vec<CK_MECHANISM_TYPE> = slot.get_supported_mechanisms()?;
+        let mechanisms = slot.get_supported_mechanisms()?;
         let session = slot.open_session(true)?;
         let supported_hashes = session.get_supported_oaep_hash()?;
-        let mut algorithms: Vec<CryptoAlgorithm> = Vec::new();
+        let mut algorithms = Vec::new();
 
         for &mechanism in mechanisms.iter() {
             match mechanism {

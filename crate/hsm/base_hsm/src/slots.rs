@@ -199,7 +199,7 @@ impl SlotManager {
             }
 
             // Get mechanism list
-            let mut mechanisms: Vec<CK_MECHANISM_TYPE> = vec![0; count as usize];
+            let mut mechanisms = vec![0; count as usize];
             let rv = self.hsm_lib.C_GetMechanismList.ok_or_else(|| {
                 HError::Default("C_GetMechanismList not available on library".to_string())
             })?(slot_id, mechanisms.as_mut_ptr(), &mut count);
