@@ -53,6 +53,7 @@ fn test_hsm_all() -> HResult<()> {
     test_hsm_rsa_pkcs_encrypt()?;
     test_hsm_rsa_oaep_encrypt()?;
     test_hsm_aes_cbc_encrypt()?;
+    test_hsm_aes_cbc_multi_round_encrypt()?;
     test_hsm_multi_threaded_rsa_encrypt_decrypt_test()?;
     test_hsm_get_key_metadata()?;
     test_hsm_list_objects()?;
@@ -344,61 +345,134 @@ fn test_hsm_aes_cbc_encrypt() -> HResult<()> {
             enc.ciphertext,
             enc.tag.unwrap_or_default(),
         ]
-        .concat()
-        .as_slice(),
+            .concat()
+            .as_slice(),
     )?;
     assert_eq!(plaintext.as_slice(), data);
-    let data_2 = generate_random_data::<1024>()?;
-    let iv = generate_random_data::<16>()?;
-    let enc_2 = session.encrypt_aes_cbc_multi_round(sk, iv, &data_2, 128)?;
-    assert_eq!(enc_2.ciphertext.len(), 1040);
-    assert_eq!(enc_2.tag.clone().unwrap_or_default().len(), 0);
-    assert_eq!(enc_2.iv.clone().unwrap_or_default().len(), 16);
-    let plaintext_2 = session.decrypt(
-        sk,
-        HsmEncryptionAlgorithm::AesCbc,
-        [
-            enc_2.iv.clone().unwrap_or_default(),
-            enc_2.ciphertext.clone(),
-            enc_2.tag.clone().unwrap_or_default(),
-        ]
-        .concat()
-        .as_slice(),
-    )?;
-    let plaintext_2b = session.decrypt_aes_cbc_multi_round(
-        sk,
-        &enc_2.iv.unwrap_or_default(),
-        &enc_2.ciphertext,
-        128,
-    )?;
-    assert_eq!(plaintext_2.as_slice(), data_2);
-    assert_eq!(plaintext_2b.as_slice(), data_2);
-    let data_3 = generate_random_data::<16384>()?;
-    let enc_3 = session.encrypt_aes_cbc_multi_round(sk, iv, &data_3, 1024)?;
-    assert_eq!(enc_3.ciphertext.len(), 16400);
-    assert_eq!(enc_3.tag.clone().unwrap_or_default().len(), 0);
-    assert_eq!(enc_3.iv.clone().unwrap_or_default().len(), 16);
-    let plaintext_3 = session.decrypt_aes_cbc_multi_round(
-        sk,
-        &enc_3.iv.unwrap_or_default(),
-        &enc_3.ciphertext,
-        128,
-    )?;
-    assert_eq!(plaintext_3.as_slice(), data_3);
-    let enc_4 = session.encrypt(sk, HsmEncryptionAlgorithm::AesCbc, &data_3)?;
-    let plaintext_4 = session.decrypt(
-        sk,
-        HsmEncryptionAlgorithm::AesCbc,
-        [
-            enc_4.iv.unwrap_or_default(),
-            enc_4.ciphertext,
-            enc_4.tag.unwrap_or_default(),
-        ]
-        .concat()
-        .as_slice(),
-    )?;
-    assert_eq!(plaintext_4.as_slice(), data_3);
     info!("Successfully encrypted/decrypted with AES CBC");
+    Ok(())
+}
+
+#[test]
+fn test_hsm_aes_cbc_multi_round_encrypt() -> HResult<()> {
+    log_init(None);
+    let slot = get_slot()?;
+    let session = slot.open_session(true)?;
+    let key_id = Uuid::new_v4().to_string();
+    let sk = session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, true)?;
+    info!("AES key handle: {sk}");
+    let data_1k = generate_random_data::<1024>()?;
+    let data_8k = generate_random_data::<8192>()?;
+
+    let enc_1k_single = session.encrypt(sk, HsmEncryptionAlgorithm::AesCbc, &data_1k)?;
+
+    assert_eq!(enc_1k_single.ciphertext.len(), 1040);
+    assert_eq!(enc_1k_single.tag.clone().unwrap_or_default().len(), 0);
+    assert_eq!(enc_1k_single.iv.clone().unwrap_or_default().len(), 16);
+
+    let mut iv: [u8; 16] = enc_1k_single.iv.clone().unwrap_or_default().try_into()
+        .map_err(|_| HError::Default("IV must be exactly 16 bytes long".to_string()))?;
+    let enc_1k_multi = session.encrypt_aes_cbc_multi_round(sk, iv, &data_1k, 16)?;
+    assert_eq!(enc_1k_multi.ciphertext, enc_1k_single.ciphertext);
+    assert_eq!(enc_1k_multi.tag, enc_1k_single.tag);
+    assert_eq!(enc_1k_multi.iv, enc_1k_single.iv);
+
+
+    let plaintext_1k_single_single = session.decrypt(
+        sk,
+        HsmEncryptionAlgorithm::AesCbc,
+        [
+            enc_1k_single.iv.clone().unwrap_or_default(),
+            enc_1k_single.ciphertext.clone(),
+            enc_1k_single.tag.clone().unwrap_or_default(),
+        ]
+            .concat()
+            .as_slice(),
+    )?;
+    let plaintext_1k_single_multi = session.decrypt_aes_cbc_multi_round(
+        sk,
+        &enc_1k_single.iv.clone().unwrap_or_default(),
+        &enc_1k_single.ciphertext.clone(),
+        16,
+    )?;
+    let plaintext_1k_multi_single = session.decrypt(
+        sk,
+        HsmEncryptionAlgorithm::AesCbc,
+        [
+            enc_1k_multi.iv.clone().unwrap_or_default(),
+            enc_1k_multi.ciphertext.clone(),
+            enc_1k_multi.tag.unwrap_or_default(),
+        ]
+            .concat()
+            .as_slice(),
+    )?;
+    let plaintext_1k_multi_multi = session.decrypt_aes_cbc_multi_round(
+        sk,
+        &enc_1k_multi.iv.unwrap_or_default(),
+        &enc_1k_multi.ciphertext,
+        16,
+    )?;
+
+    assert_eq!(plaintext_1k_single_single.as_slice(), data_1k);
+    assert_eq!(plaintext_1k_single_multi.as_slice(), data_1k);
+    assert_eq!(plaintext_1k_multi_single.as_slice(), data_1k);
+    assert_eq!(plaintext_1k_multi_multi.as_slice(), data_1k);
+
+    let enc_8k_single = session.encrypt(sk, HsmEncryptionAlgorithm::AesCbc, &data_8k)?;
+
+    assert_eq!(enc_8k_single.ciphertext.len(), 8208);
+    assert_eq!(enc_8k_single.tag.clone().unwrap_or_default().len(), 0);
+    assert_eq!(enc_8k_single.iv.clone().unwrap_or_default().len(), 16);
+
+    iv = enc_8k_single.iv.clone().unwrap_or_default().try_into()
+        .map_err(|_| HError::Default("IV must be exactly 16 bytes long".to_string()))?;
+    let enc_8k_multi = session.encrypt_aes_cbc_multi_round(sk, iv, &data_8k, 128)?;
+    assert_eq!(enc_8k_multi.ciphertext, enc_8k_single.ciphertext);
+    assert_eq!(enc_8k_multi.tag, enc_8k_single.tag);
+    assert_eq!(enc_8k_multi.iv, enc_8k_single.iv);
+
+
+    let plaintext_8k_single_single = session.decrypt(
+        sk,
+        HsmEncryptionAlgorithm::AesCbc,
+        [
+            enc_8k_single.iv.clone().unwrap_or_default(),
+            enc_8k_single.ciphertext.clone(),
+            enc_8k_single.tag.clone().unwrap_or_default(),
+        ]
+            .concat()
+            .as_slice(),
+    )?;
+    let plaintext_8k_single_multi = session.decrypt_aes_cbc_multi_round(
+        sk,
+        &enc_8k_single.iv.clone().unwrap_or_default(),
+        &enc_8k_single.ciphertext.clone(),
+        128,
+    )?;
+    let plaintext_8k_multi_single = session.decrypt(
+        sk,
+        HsmEncryptionAlgorithm::AesCbc,
+        [
+            enc_8k_multi.iv.clone().unwrap_or_default(),
+            enc_8k_multi.ciphertext.clone(),
+            enc_8k_multi.tag.unwrap_or_default(),
+        ]
+            .concat()
+            .as_slice(),
+    )?;
+    let plaintext_8k_multi_multi = session.decrypt_aes_cbc_multi_round(
+        sk,
+        &enc_8k_multi.iv.unwrap_or_default(),
+        &enc_8k_multi.ciphertext,
+        128,
+    )?;
+
+    assert_eq!(plaintext_8k_single_single.as_slice(), data_8k);
+    assert_eq!(plaintext_8k_single_multi.as_slice(), data_8k);
+    assert_eq!(plaintext_8k_multi_single.as_slice(), data_8k);
+    assert_eq!(plaintext_8k_multi_multi.as_slice(), data_8k);
+
+    info!("Successfully multi round encrypted/decrypted with AES CBC");
     Ok(())
 }
 
