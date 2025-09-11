@@ -345,8 +345,8 @@ fn test_hsm_aes_cbc_encrypt() -> HResult<()> {
             enc.ciphertext,
             enc.tag.unwrap_or_default(),
         ]
-            .concat()
-            .as_slice(),
+        .concat()
+        .as_slice(),
     )?;
     assert_eq!(plaintext.as_slice(), data);
     info!("Successfully encrypted/decrypted with AES CBC");
@@ -370,13 +370,16 @@ fn test_hsm_aes_cbc_multi_round_encrypt() -> HResult<()> {
     assert_eq!(enc_1k_single.tag.clone().unwrap_or_default().len(), 0);
     assert_eq!(enc_1k_single.iv.clone().unwrap_or_default().len(), 16);
 
-    let mut iv: [u8; 16] = enc_1k_single.iv.clone().unwrap_or_default().try_into()
+    let mut iv: [u8; 16] = enc_1k_single
+        .iv
+        .clone()
+        .unwrap_or_default()
+        .try_into()
         .map_err(|_| HError::Default("IV must be exactly 16 bytes long".to_string()))?;
     let enc_1k_multi = session.encrypt_aes_cbc_multi_round(sk, iv, &data_1k, 16)?;
     assert_eq!(enc_1k_multi.ciphertext, enc_1k_single.ciphertext);
     assert_eq!(enc_1k_multi.tag, enc_1k_single.tag);
     assert_eq!(enc_1k_multi.iv, enc_1k_single.iv);
-
 
     let plaintext_1k_single_single = session.decrypt(
         sk,
@@ -386,8 +389,8 @@ fn test_hsm_aes_cbc_multi_round_encrypt() -> HResult<()> {
             enc_1k_single.ciphertext.clone(),
             enc_1k_single.tag.clone().unwrap_or_default(),
         ]
-            .concat()
-            .as_slice(),
+        .concat()
+        .as_slice(),
     )?;
     let plaintext_1k_single_multi = session.decrypt_aes_cbc_multi_round(
         sk,
@@ -403,8 +406,8 @@ fn test_hsm_aes_cbc_multi_round_encrypt() -> HResult<()> {
             enc_1k_multi.ciphertext.clone(),
             enc_1k_multi.tag.unwrap_or_default(),
         ]
-            .concat()
-            .as_slice(),
+        .concat()
+        .as_slice(),
     )?;
     let plaintext_1k_multi_multi = session.decrypt_aes_cbc_multi_round(
         sk,
@@ -424,13 +427,16 @@ fn test_hsm_aes_cbc_multi_round_encrypt() -> HResult<()> {
     assert_eq!(enc_8k_single.tag.clone().unwrap_or_default().len(), 0);
     assert_eq!(enc_8k_single.iv.clone().unwrap_or_default().len(), 16);
 
-    iv = enc_8k_single.iv.clone().unwrap_or_default().try_into()
+    iv = enc_8k_single
+        .iv
+        .clone()
+        .unwrap_or_default()
+        .try_into()
         .map_err(|_| HError::Default("IV must be exactly 16 bytes long".to_string()))?;
     let enc_8k_multi = session.encrypt_aes_cbc_multi_round(sk, iv, &data_8k, 128)?;
     assert_eq!(enc_8k_multi.ciphertext, enc_8k_single.ciphertext);
     assert_eq!(enc_8k_multi.tag, enc_8k_single.tag);
     assert_eq!(enc_8k_multi.iv, enc_8k_single.iv);
-
 
     let plaintext_8k_single_single = session.decrypt(
         sk,
@@ -440,8 +446,8 @@ fn test_hsm_aes_cbc_multi_round_encrypt() -> HResult<()> {
             enc_8k_single.ciphertext.clone(),
             enc_8k_single.tag.clone().unwrap_or_default(),
         ]
-            .concat()
-            .as_slice(),
+        .concat()
+        .as_slice(),
     )?;
     let plaintext_8k_single_multi = session.decrypt_aes_cbc_multi_round(
         sk,
@@ -457,8 +463,8 @@ fn test_hsm_aes_cbc_multi_round_encrypt() -> HResult<()> {
             enc_8k_multi.ciphertext.clone(),
             enc_8k_multi.tag.unwrap_or_default(),
         ]
-            .concat()
-            .as_slice(),
+        .concat()
+        .as_slice(),
     )?;
     let plaintext_8k_multi_multi = session.decrypt_aes_cbc_multi_round(
         sk,
