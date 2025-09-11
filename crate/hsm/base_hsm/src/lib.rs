@@ -82,3 +82,12 @@ macro_rules! aes_key_template {
         ]
     };
 }
+
+#[macro_export]
+macro_rules! check_rv {
+    ($rv:expr, $msg:expr) => {
+        if $rv != CKR_OK {
+            return Err(HError::Default(format!("{}: {}", $msg, $rv)));
+        }
+    };
+}

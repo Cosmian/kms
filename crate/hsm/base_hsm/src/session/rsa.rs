@@ -9,7 +9,7 @@ use pkcs11_sys::{
     CKM_RSA_PKCS_OAEP, CKM_SHA_1, CKM_SHA256, CKO_SECRET_KEY, CKR_OK, CKZ_DATA_SPECIFIED,
 };
 
-use crate::{HError, HResult, session::Session};
+use crate::{HError, HResult, check_rv, session::Session};
 
 pub enum RsaKeySize {
     Rsa1024,
@@ -167,11 +167,7 @@ impl Session {
                 &raw mut priv_key_handle,
             );
 
-            if rv != CKR_OK {
-                return Err(HError::Default(format!(
-                    "Failed generating RSA key pair: {rv}"
-                )));
-            }
+            check_rv!(rv, "Failed generating RSA key pair");
 
             self.object_handles_cache()
                 .insert(sk_id.to_vec(), priv_key_handle)?;
@@ -227,11 +223,7 @@ impl Session {
                 &raw mut wrapped_key_len,
             );
 
-            if rv != CKR_OK {
-                return Err(HError::Default(format!(
-                    "Failed to get wrapped key length: {rv}"
-                )));
-            }
+            check_rv!(rv, "Failed to get wrapped key length");
 
             // Allocate buffer for the wrapped key
             let mut wrapped_key = vec![0u8; wrapped_key_len as usize];
@@ -249,9 +241,7 @@ impl Session {
                 &raw mut wrapped_key_len,
             );
 
-            if rv != CKR_OK {
-                return Err(HError::Default("Failed to wrap key".to_string()));
-            }
+            check_rv!(rv, "Failed to wrap key");
 
             // Truncate the buffer to the actual size of the wrapped key
             wrapped_key.truncate(wrapped_key_len as usize);
@@ -354,9 +344,7 @@ impl Session {
                 &raw mut unwrapped_key_handle,
             );
 
-            if rv != CKR_OK {
-                return Err(HError::Default("Failed to unwrap key".to_string()));
-            }
+            check_rv!(rv, "Failed to unwrap key");
 
             Ok(unwrapped_key_handle)
         }

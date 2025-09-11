@@ -66,7 +66,7 @@ use uuid::Uuid;
 use zeroize::Zeroizing;
 
 pub use crate::session::{aes::AesKeySize, rsa::RsaKeySize};
-use crate::{HError, HResult, ObjectHandlesCache, hsm_capabilities::HsmCapabilities};
+use crate::{HError, HResult, ObjectHandlesCache, check_rv, hsm_capabilities::HsmCapabilities};
 
 /// AES block size in bytes
 const AES_BLOCK_SIZE: usize = 16;
@@ -220,16 +220,12 @@ impl Session {
                 let rv = self.hsm.C_Logout.ok_or_else(|| {
                     HError::Default("C_Logout not available on library".to_string())
                 })?(self.session_handle);
-                if rv != CKR_OK {
-                    return Err(HError::Default("Failed logging out".to_string()));
-                }
+                check_rv!(rv, "Failed logging out");
             }
             let rv = self.hsm.C_CloseSession.ok_or_else(|| {
                 HError::Default("C_CloseSession not available on library".to_string())
             })?(self.session_handle);
-            if rv != CKR_OK {
-                return Err(HError::Default("Failed closing a session".to_string()));
-            }
+            check_rv!(rv, "Failed closing a session");
             Ok(())
         }
     }
@@ -357,11 +353,10 @@ impl Session {
                 template.as_mut_ptr(),
                 template.len() as CK_ULONG,
             );
-            if rv != CKR_OK {
-                return Err(HError::Default(format!(
-                    "Failed to initialize object search: C_FindObjectsInit failed: {rv}"
-                )));
-            }
+            check_rv!(
+                rv,
+                "Failed to initialize object search: C_FindObjectsInit failed: {rv}"
+            );
 
             let max_object_count = self.hsm_capabilities.find_max_object_count as usize;
             let mut handles_buf = vec![0 as CK_OBJECT_HANDLE; max_object_count];
@@ -375,11 +370,7 @@ impl Session {
                     self.hsm_capabilities.find_max_object_count, //ulMaxObjectCount
                     &raw mut object_count,
                 );
-                if rv != CKR_OK {
-                    return Err(HError::Default(format!(
-                        "Failed to find objects: C_FindObjects failed: {rv}"
-                    )));
-                }
+                check_rv!(rv, "Failed to find objects");
                 if object_count == 0 {
                     break;
                 }
@@ -399,11 +390,7 @@ impl Session {
             let rv = self.hsm.C_FindObjectsFinal.ok_or_else(|| {
                 HError::Default("C_FindObjectsFinal not available on library".to_string())
             })?(self.session_handle);
-            if rv != CKR_OK {
-                return Err(HError::Default(
-                    "Failed to finalize object search".to_string(),
-                ));
-            }
+            check_rv!(rv, "Failed to finalize object search");
         }
         Ok(object_handles)
     }
@@ -528,9 +515,7 @@ impl Session {
             let rv = self.hsm.C_GenerateRandom.ok_or_else(|| {
                 HError::Default("C_GenerateRandom not available on library".to_string())
             })?(self.session_handle, values_ptr, len);
-            if rv != CKR_OK {
-                return Err(HError::Default("Failed generating random data".to_string()));
-            }
+            check_rv!(rv, "Failed generating random data");
             Ok(values)
         }
     }
@@ -597,9 +582,7 @@ impl Session {
             let rv = self.hsm.C_DestroyObject.ok_or_else(|| {
                 HError::Default("C_DestroyObject not available on library".to_string())
             })?(self.session_handle, object_handle);
-            if rv != CKR_OK {
-                return Err(HError::Default("Failed to destroy object".to_string()));
-            }
+            check_rv!(rv, "Failed to destroy object");
         }
         Ok(())
     }
@@ -1123,11 +1106,7 @@ impl Session {
             })?;
 
             let rv = ck_fn(self.session_handle, mechanism, key_handle);
-            if rv != CKR_OK {
-                return Err(HError::Default(
-                    "Failed to initialize encryption".to_string(),
-                ));
-            }
+            check_rv!(rv, "Failed to initialize encryption");
 
             let ck_fn = self
                 .hsm
@@ -1142,13 +1121,14 @@ impl Session {
                 ptr::null_mut(),
                 &raw mut encrypted_data_len,
             );
-            if rv != CKR_OK {
-                return Err(HError::Default(format!(
+            check_rv!(
+                rv,
+                format!(
                     "Failed to allocate encrypted data length. Data to encrypt is likely too big: \
-                     {} bytes. Error code: {rv}",
+                     {} bytes. Error code",
                     data.len()
-                )));
-            }
+                )
+            );
 
             let mut encrypted_data = vec![0u8; encrypted_data_len as usize];
             let rv = ck_fn(
@@ -1158,9 +1138,7 @@ impl Session {
                 encrypted_data.as_mut_ptr(),
                 &raw mut encrypted_data_len,
             );
-            if rv != CKR_OK {
-                return Err(HError::Default(format!("Failed to encrypt data: {rv}")));
-            }
+            check_rv!(rv, "Failed to encrypt data");
 
             encrypted_data.truncate(encrypted_data_len as usize);
             Ok(encrypted_data)
@@ -1180,11 +1158,7 @@ impl Session {
             })?;
 
             let rv = ck_fn(self.session_handle, mechanism, key_handle);
-            if rv != CKR_OK {
-                return Err(HError::Default(
-                    "Failed to initialize decryption".to_string(),
-                ));
-            }
+            check_rv!(rv, "Failed to initialize decryption");
 
             let ck_fn = self
                 .hsm
@@ -1199,11 +1173,7 @@ impl Session {
                 ptr::null_mut(),
                 &raw mut decrypted_data_len,
             );
-            if rv != CKR_OK {
-                return Err(HError::Default(
-                    "Failed to get decrypted data length".to_string(),
-                ));
-            }
+            check_rv!(rv, "Failed to get decrypted data length");
 
             let mut decrypted_data = vec![0u8; decrypted_data_len as usize];
             let rv = ck_fn(
@@ -1213,9 +1183,7 @@ impl Session {
                 decrypted_data.as_mut_ptr(),
                 &raw mut decrypted_data_len,
             );
-            if rv != CKR_OK {
-                return Err(HError::Default(format!("Failed to decrypt data: {rv}")));
-            }
+            check_rv!(rv, "Failed to decrypt data");
 
             decrypted_data.truncate(decrypted_data_len as usize);
             Ok(Zeroizing::new(decrypted_data))
@@ -1556,11 +1524,10 @@ impl Session {
                 // The key was not found
                 return Ok(None);
             }
-            if rv != CKR_OK {
-                return Err(HError::Default(format!(
-                    "Failed to get the HSM attributes for key handle: {key_handle}"
-                )));
-            }
+            check_rv!(
+                rv,
+                format!("Failed to get the HSM attributes for key handle: {key_handle}")
+            );
             Ok(Some(()))
         }
     }

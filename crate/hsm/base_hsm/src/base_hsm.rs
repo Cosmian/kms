@@ -10,12 +10,12 @@ use std::{
 use cosmian_kms_interfaces::CryptoAlgorithm;
 use cosmian_logger::debug;
 use pkcs11_sys::{
-    CK_INFO, CKM_AES_CBC, CKM_AES_GCM, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP,
-    CKM_SHA_1, CKM_SHA256, CKR_OK,
+    CK_INFO, CKM_AES_CBC, CKM_AES_GCM, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP, CKM_SHA_1, CKM_SHA256,
+    CKR_OK,
 };
 
 use crate::{
-    HError, HResult, SlotManager,
+    HError, HResult, SlotManager, check_rv,
     hsm_capabilities::{HsmCapabilities, HsmProvider},
     hsm_lib::HsmLib,
 };
@@ -106,9 +106,7 @@ impl<P: HsmProvider> BaseHsm<P> {
                 self.hsm_lib.C_GetInfo.ok_or_else(|| {
                     HError::Default("C_GetInfo not available on library".to_string())
                 })?(&raw mut info);
-            if rv != CKR_OK {
-                return Err(HError::Default("Failed getting HSM info".to_string()));
-            }
+            check_rv!(rv, "Failed getting HSM info");
             Ok(info.into())
         }
     }

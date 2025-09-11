@@ -12,7 +12,9 @@ use pkcs11_sys::{
     CKR_USER_ALREADY_LOGGED_IN, CKU_USER,
 };
 
-use crate::{HError, HResult, Session, hsm_capabilities::HsmCapabilities, hsm_lib::HsmLib};
+use crate::{
+    HError, HResult, Session, check_rv, hsm_capabilities::HsmCapabilities, hsm_lib::HsmLib,
+};
 
 /// A cache structure that maps byte vectors to `CK_OBJECT_HANDLE` values using an LRU (Least Recently Used) strategy.
 ///
@@ -192,22 +194,14 @@ impl SlotManager {
             let rv = self.hsm_lib.C_GetMechanismList.ok_or_else(|| {
                 HError::Default("C_GetMechanismList not available on library".to_string())
             })?(slot_id, ptr::null_mut(), &mut count);
-            if rv != CKR_OK {
-                return Err(HError::Default(
-                    "Failed to get mechanism count from HSM".to_string(),
-                ));
-            }
+            check_rv!(rv, "Failed to get mechanism count from HSM");
 
             // Get mechanism list
             let mut mechanisms = vec![0; count as usize];
             let rv = self.hsm_lib.C_GetMechanismList.ok_or_else(|| {
                 HError::Default("C_GetMechanismList not available on library".to_string())
             })?(slot_id, mechanisms.as_mut_ptr(), &mut count);
-            if rv != CKR_OK {
-                return Err(HError::Default(
-                    "Failed to get mechanism list from HSM".to_string(),
-                ));
-            }
+            check_rv!(rv, "Failed to get mechanism list from HSM".to_string());
 
             mechanisms.truncate(count as usize);
             Ok(mechanisms)
@@ -240,12 +234,7 @@ impl SlotManager {
             let rv = self.hsm_lib.C_GetMechanismInfo.ok_or_else(|| {
                 HError::Default("C_GetMechanismInfo not available on library".to_string())
             })?(slot_id, mech, &mut info);
-            if rv != CKR_OK {
-                return Err(HError::Default(format!(
-                    "Failed to get mechanism info for {}",
-                    mech
-                )));
-            }
+            check_rv!(rv, format!("Failed to get mechanism info for {}", mech));
             Ok(info)
         }
     }
@@ -306,11 +295,10 @@ impl SlotManager {
                 None,
                 &raw mut session_handle,
             );
-            if rv != CKR_OK {
-                return Err(HError::Default(format!(
-                    "HSM: Failed opening a session on slot: {slot_id}: return code: {rv}"
-                )));
-            }
+            check_rv!(
+                rv,
+                format!("HSM: Failed opening a session on slot: {slot_id}: return code")
+            );
             if let Some(password) = login_password.as_ref() {
                 let mut pwd_bytes = password.as_bytes().to_vec();
                 let rv = hsm_lib.C_Login.ok_or_else(|| {
@@ -323,8 +311,8 @@ impl SlotManager {
                 );
                 if rv == CKR_USER_ALREADY_LOGGED_IN {
                     warn!("user already logged in, ignoring logging");
-                } else if rv != CKR_OK {
-                    return Err(HError::Default("Failed logging in".to_string()));
+                } else {
+                    check_rv!(rv, "Failed logging in");
                 }
             }
             Ok(Session::new(

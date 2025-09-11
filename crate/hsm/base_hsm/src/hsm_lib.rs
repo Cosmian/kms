@@ -11,7 +11,7 @@ use pkcs11_sys::{
     CKF_OS_LOCKING_OK, CKR_OK,
 };
 
-use crate::{HError, HResult};
+use crate::{HError, HResult, check_rv};
 
 /// A struct representing a Hardware Security Module (HSM) library interface using PKCS#11.
 ///
@@ -151,12 +151,7 @@ impl HsmLib {
             let rv = hsm_lib.C_Initialize.ok_or_else(|| {
                 HError::Default("C_Initialize not available on library".to_string())
             })?(&raw const pInitArgs as CK_VOID_PTR);
-            if rv != CKR_OK {
-                return Err(HError::Default(format!(
-                    "Failed initializing the HSM: return code: {}",
-                    rv
-                )));
-            }
+            check_rv!(rv, "Failed initializing the HSM");
             Ok(())
         }
     }
@@ -166,12 +161,7 @@ impl HsmLib {
             let rv = self.C_Finalize.ok_or_else(|| {
                 HError::Default("C_Finalize not available on library".to_string())
             })?(ptr::null_mut());
-            if rv != CKR_OK {
-                return Err(HError::Default(format!(
-                    "Failed to finalize the HSM: return code: {}",
-                    rv
-                )));
-            }
+            check_rv!(rv, "Failed to finalize the HSM: return code: {}");
             Ok(())
         }
     }

@@ -7,7 +7,7 @@ use pkcs11_sys::{
     CKK_AES, CKM_AES_KEY_GEN, CKO_SECRET_KEY, CKR_OK,
 };
 
-use crate::{HError, HResult, aes_key_template, session::Session};
+use crate::{HError, HResult, aes_key_template, check_rv, session::Session};
 
 pub enum AesKeySize {
     Aes128,
@@ -54,9 +54,7 @@ impl Session {
                 len,
                 &raw mut aes_key_handle,
             );
-            if rv != CKR_OK {
-                return Err(HError::Default(format!("Failed generating key: {rv}")));
-            }
+            check_rv!(rv, "Failed generating key");
             self.object_handles_cache()
                 .insert(id.to_vec(), aes_key_handle)?;
             Ok(aes_key_handle)
