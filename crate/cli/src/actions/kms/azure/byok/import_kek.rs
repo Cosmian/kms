@@ -30,8 +30,8 @@ pub struct ImportKekAction {
 impl ImportKekAction {
     pub async fn run(&self, kms_client: KmsClient) -> KmsCliResult<()> {
         let import_action = ImportSecretDataOrKeyAction {
-            key_file: self.kek_file,
-            key_id: self.key_id,
+            key_file: self.kek_file.clone(),
+            key_id: self.key_id.clone(),
             key_format: ImportKeyFormat::Pem,
             public_key_id: None,
             private_key_id: None,
@@ -43,6 +43,6 @@ impl ImportKekAction {
             wrapping_key_id: None,
         };
 
-        import_action.run(kms_client).await.await.map(|_| ())
+        import_action.run(kms_client).await.map(|_| ())
     }
 }
