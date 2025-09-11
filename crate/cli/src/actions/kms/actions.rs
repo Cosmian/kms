@@ -5,11 +5,11 @@ use cosmian_kms_client::{KmsClient, KmsClientConfig};
 use super::cover_crypt::CovercryptCommands;
 use crate::{
     actions::kms::{
-        access::AccessAction, attributes::AttributesCommands, bench::BenchAction,
-        certificates::CertificatesCommands, elliptic_curves::EllipticCurveCommands,
-        google::GoogleCommands, hash::HashAction, login::LoginAction, mac::MacAction,
-        rsa::RsaCommands, secret_data::SecretDataCommands, shared::LocateObjectsAction,
-        symmetric::SymmetricCommands, version::ServerVersionAction,
+        access::AccessAction, attributes::AttributesCommands, azure::AzureCommands,
+        bench::BenchAction, certificates::CertificatesCommands,
+        elliptic_curves::EllipticCurveCommands, google::GoogleCommands, hash::HashAction,
+        login::LoginAction, mac::MacAction, rsa::RsaCommands, secret_data::SecretDataCommands,
+        shared::LocateObjectsAction, symmetric::SymmetricCommands, version::ServerVersionAction,
     },
     error::result::KmsCliResult,
 };
@@ -20,6 +20,8 @@ pub enum KmsActions {
     AccessRights(AccessAction),
     #[command(subcommand)]
     Attributes(AttributesCommands),
+    #[command(subcommand)]
+    Azure(AzureCommands),
     #[clap(hide = true)]
     Bench(BenchAction),
     #[cfg(feature = "non-fips")]
@@ -59,6 +61,7 @@ impl KmsActions {
         match self {
             Self::AccessRights(action) => action.process(kms_rest_client).await?,
             Self::Attributes(action) => action.process(kms_rest_client).await?,
+            Self::Azure(action) => action.process(kms_rest_client).await?,
             Self::Bench(action) => Box::pin(action.process(kms_rest_client)).await?,
             #[cfg(feature = "non-fips")]
             Self::Cc(action) => action.process(kms_rest_client).await?,
