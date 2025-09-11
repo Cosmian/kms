@@ -56,12 +56,13 @@ async fn test_all() {
     }
 }
 
-fn hsm_clap_config(owner: &str, kek: Option<Uuid>) -> KResult<ClapConfig> {
+fn hsm_clap_config(owner: &str, kek_id: Option<Uuid>) -> KResult<ClapConfig> {
     let mut clap_config = https_clap_config();
     let model: Option<String> = get_hsm_model();
-    let unwrapped_model = model.unwrap_or_else(|| "utimaco".to_owned());
+    let unwrapped_model = model.unwrap_or_else(|| "default".to_owned());
 
-    if unwrapped_model == "utimaco" {
+    if unwrapped_model == "default" {
+        // For backwards compatible with existing tests.
         clap_config.hsm_model = "utimaco".to_owned();
         clap_config.hsm_admin = owner.to_owned();
         clap_config.hsm_slot = vec![0];
@@ -72,7 +73,9 @@ fn hsm_clap_config(owner: &str, kek: Option<Uuid>) -> KResult<ClapConfig> {
         clap_config.hsm_admin = owner.to_owned();
         clap_config.hsm_slot = vec![slot];
         clap_config.hsm_password = vec![user_password];
-        if unwrapped_model == "softhsm2" {
+        if unwrapped_model == "utimaco" {
+            clap_config.hsm_model = "utimaco".to_owned();
+        } else if unwrapped_model == "softhsm2" {
             clap_config.hsm_model = "softhsm2".to_owned();
         } else if unwrapped_model == "smartcardhsm" {
             clap_config.hsm_model = "smartcardhsm".to_owned();
@@ -84,9 +87,11 @@ fn hsm_clap_config(owner: &str, kek: Option<Uuid>) -> KResult<ClapConfig> {
             ));
         }
     }
+    info!("Configured HSM tests for {unwrapped_model}");
 
-    if let Some(kek) = kek {
-        clap_config.key_encryption_key = Some(format!("hsm::{}::{}", clap_config.hsm_slot[0], kek));
+    if let Some(kek_id) = kek_id {
+        clap_config.key_encryption_key =
+            Some(format!("hsm::{}::{}", clap_config.hsm_slot[0], kek_id));
     }
 
     Ok(clap_config)
