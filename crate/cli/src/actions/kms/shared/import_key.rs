@@ -13,12 +13,12 @@ use cosmian_kms_client::{
 
 use crate::{actions::kms::console, error::result::KmsCliResult};
 
-/// Import a secret data or key in the KMS.
+/// Import a secret data or a key in the KMS.
 ///
-/// When no unique id is specified, a unique id is generated.
+/// When no unique ID is specified, a unique ID is generated.
 ///
 /// By default, the format is expected to be JSON TTLV but
-/// other formats can be specified with the option `-f`.
+/// other formats can be specified with the `-f` option.
 ///   * json-ttlv (the default)
 ///   * pem (PKCS#1, PKCS#8, SEC1): the function will attempt to detect the type of key and key format
 ///   * sec1: an elliptic curve private key in SEC1 DER format (NIST curves only - SECG SEC1-v2 #C.4)
@@ -32,11 +32,11 @@ use crate::{actions::kms::console, error::result::KmsCliResult};
 #[derive(Parser, Default, Debug)]
 #[clap(verbatim_doc_comment)]
 pub struct ImportSecretDataOrKeyAction {
-    /// The KMIP JSON TTLV key file.
+    /// The file holding the key or secret data to import.
     #[clap(required = true)]
     pub(crate) key_file: PathBuf,
 
-    /// The unique id of the key; a random uuid
+    /// The unique ID of the key; a random UUID
     /// is generated if not specified.
     #[clap(required = false)]
     pub(crate) key_id: Option<String>,
@@ -45,15 +45,15 @@ pub struct ImportSecretDataOrKeyAction {
     #[clap(long, short = 'f', default_value = "json-ttlv")]
     pub(crate) key_format: ImportKeyFormat,
 
-    /// For a private key: the corresponding KMS public key id if any.
+    /// For a private key: the corresponding KMS public key ID, if any.
     #[clap(long, short = 'p')]
     pub(crate) public_key_id: Option<String>,
 
-    /// For a public key: the corresponding KMS private key id if any.
+    /// For a public key: the corresponding KMS private key ID, if any.
     #[clap(long, short = 'k')]
     pub(crate) private_key_id: Option<String>,
 
-    /// For a public or private key: the corresponding certificate id if any.
+    /// For a public or private key: the corresponding certificate ID, if any.
     #[clap(long, short = 'c')]
     pub(crate) certificate_id: Option<String>,
 
@@ -62,7 +62,7 @@ pub struct ImportSecretDataOrKeyAction {
     #[clap(long, short = 'u', required = false, default_value = "false")]
     pub(crate) unwrap: bool,
 
-    /// Replace an existing key under the same id.
+    /// Replace an existing key under the same ID.
     #[clap(
         required = false,
         long = "replace",
@@ -76,15 +76,15 @@ pub struct ImportSecretDataOrKeyAction {
     #[clap(long = "tag", short = 't', value_name = "TAG")]
     pub(crate) tags: Vec<String>,
 
-    /// For what operations should the key be used.
+    /// The cryptographic operations the key is allowed to perform.
     #[clap(long)]
     pub(crate) key_usage: Option<Vec<KeyUsage>>,
 
     /// The key encryption key (KEK) used to wrap this imported key with.
     /// If the wrapping key is:
-    /// - a symmetric key, AES-GCM will be used
-    /// - a RSA key, RSA-OAEP with SHA256 will be used
-    /// - a EC key, ECIES will be used (salsa20poly1305 for X25519)
+    /// - A symmetric key, AES-GCM will be used,
+    /// - An RSA key, RSA-OAEP with SHA256 will be used,
+    /// - An EC key, ECIES will be used (salsa20poly1305 for X25519),
     #[clap(
         long = "wrapping-key-id",
         short = 'w',
@@ -95,7 +95,7 @@ pub struct ImportSecretDataOrKeyAction {
 }
 
 impl ImportSecretDataOrKeyAction {
-    /// Run the import key action.
+    /// Run the import key/secret data action.
     ///
     /// # Errors
     ///
