@@ -546,15 +546,22 @@ MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAk0HniT34p3O8bD3pyy7p7YASh2Tk7oYag4fb
     const KV_KEY_IDENTIFIER: &str =
         "https://hsmbackedkeyvault.vault.azure.net/keys/KEKForBYOK/5e617a4d39c74f47b0b7d345f6a49d1b";
 
+    #[allow(dead_code)]
+    const EC_PRIVATE_KEY: &str = r"-----BEGIN PRIVATE KEY-----
+MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg22cFLXwIE4yi+G2/
+xQWVI5BTNNbJn4HpvZ5BOmddMvmhRANCAATkiSFiMaIvIFBB1FiBzij+2PQyQNj6
+vKJMiWk/TowEqm5zcvCeTsPlceZdxidTBNB/EPCSxIHpycyzT3pQ4ehI
+-----END PRIVATE KEY-----";
+
     #[test]
     fn test_for_azure_byok() -> CryptoResult<()> {
         log_init(Some("debug"));
         let priv_key = PKey::private_key_from_pem(RSA_PRIVATE_KEY.as_bytes())?;
-        let priv_key_der_bytes = priv_key.private_key_to_pkcs8()?;
+        // let priv_key = PKey::private_key_from_pem(EC_PRIVATE_KEY.as_bytes())?;
+        let secret_bytes = priv_key.private_key_to_pkcs8()?;
 
         let pub_key = PKey::public_key_from_pem(KEK_FOR_BYOK.as_bytes())?;
-        let wrapped_key =
-            ckm_rsa_aes_key_wrap(&pub_key, HashingAlgorithm::SHA1, &priv_key_der_bytes)?;
+        let wrapped_key = ckm_rsa_aes_key_wrap(&pub_key, HashingAlgorithm::SHA1, &secret_bytes)?;
 
         fs::write("/tmp/wrapped_key.bin", &wrapped_key)?;
 

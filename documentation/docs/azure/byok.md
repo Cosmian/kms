@@ -1,40 +1,90 @@
 To Bring Your Own Key (BYOK) in Azure Key Vault, 
 follow this [Azure documentation](https://learn.microsoft.com/en-us/azure/key-vault/keys/byok-specification)
 
-The vault must be `premium`, backed by an HSM and the use perform the operations
+The vault must be `premium`, backed by an HSM, and the user performing the operations
 must have the role of `Crypto Officer`.
 
-## Create a Key Encryption Key using the console
+## Create 2 test keys in the Comian KMS
+
+These keys will be exported wrapped by the Azure (KEK) key,
+and imported into Azure Key Vault.
+
+#### Create an RSA Key
+
+The key will be a 4096 bit key.
+
+````shell
+cosmian kms rsa keys create --size_in_bits 4096 TestRSAKey
+
+	  Public key unique identifier: TestRSAKey_pk
+	  Private key unique identifier: TestRSAKey
+````
+
+#### Create an Elliptic Curve Key
+
+The key will be created on the `NIST P-256` curve.
+
+```shell
+cosmian kms ec keys create --curve nist-p256 TestECKey
+
+	  Public key unique identifier: TestECKey_pk
+	  Private key unique identifier: TestECKey
+```
+
+
+## Create an Azure Key Encryption Key (KEK)
+
+This key will be used to wrap the KMS RSA and EC private keys on export.
+
+**Using the console**:
 
 Create a 4096 bit RSA key.
 Make sure to select `Generate Key Encryption Key for importing HSM-protected Keys`.
 
 ![Create a Key Encryption Key using the console](byok_create_kek.png)
 
+**Using the `az` CLI**:
+
+The only supported operation must be `import`.
+
+```shell
+az keyvault key create --kty RSA-HSM --size 4096 --name KEK-BYOK --ops import --vault-name MyPremiumKeyVault
+```
+
+In the `az`output, the key identifier (kid) will be something like:
+"https://mypremiumkeyvault.vault.azure.net/keys/KEK-BYOK/664f5aa2797a4075b8e36ca4500636d8"
+
+Please take note of the `kid` for next steps.
+
+
 ## Export the Key Encryption (Public) Key
 
-Once the key encryption key is created, edit it.
-Download the public key.
+The KEK public key must be exported then imported in the KMS.
 
-The key identifier will be required later.
+**Using the console**:
+
+Edit the KEK by double clicking on it.
+
+Please take note of the key identifier (kid) which will be required later.
+
+Download the public key.
 
 ![Export the Key Encryption (Public) Key](byok_download_kek_public_key.png)
 
-## Create a symmetric key in Cosmian KMS
-
-This is the symmetric key that will be wrapped by the KEK and imported in the Azure Key Vault.
+**Using the `az` CLI**:
 
 ```shell
-cosmian kms sym keys create  --number-of-bits 256 BYOK_Sym_Key
-
-The symmetric key was successfully generated.
-          Unique identifier: BYOK_Sym_Key
+az keyvault key download --name KEKforBYOK --vault-name MyPremiumKeyVault --file KEK-BYOK.publickey.pem
 ```
+
+
+
+
 
 ## Import the wrapping key in Cosmian KMS
 
 ```shell
-cosmian kms rsa keys import --key-format pem --key-usage encrypt --key-usage wrap-key KEKforBYOK-pubkey.pem BYOK_KEK
+cosmian kms rsa keys import --key-format pem --key-usage encrypt --key-usage wrap-key KEK-BYOK-publickey.pem BYOK_KEK
 
 The PublicKey in file KEKforBYOK-pubkey.pem was imported with id: BYOK_KEK
           Unique identifier: BYOK_KEK
@@ -82,3 +132,31 @@ ezzWzwWV6OUuMb...smeL1
   "generator": "Cosmian KMS v5"
 }
 ```
+
+## Upload the transfer blob in Azure Key Vault
+
+Wrapped private RSA keys can be imported using either the console or the `az`  LI.
+Elliptic curve keys can only be imported using the `az` CLI.
+
+#### For an RSA Private Key
+
+**Using the console**:
+
+![Upload the transfer blob in Azure Key Vault](byok_import_jwe.png)
+
+**Using the `az` CLI**:
+
+```shell
+az keyvault key import --vault-name MyPremiumKeyVault --name RsaDek --byok-file RsaDek.byok \
+--ops sign verify
+```
+
+
+#### For an EC Private Key
+The key type and curve must be specified on import
+
+```shell
+az keyvault key import --vault-name MyPremiumKeyVault --name EcDek --byok-file EcDek.byok \
+--kty EC --curve P-256  --ops sign verify
+```
+
