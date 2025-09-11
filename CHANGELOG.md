@@ -6,7 +6,16 @@ All notable changes to this project will be documented in this file.
 
 ### 🚀 Features
 
-- CLI: added support for sha1 in RSA key wrapping
+- CLI: added support for SHA1 in RSA key wrapping
+- CLI: add Azure functionality to facilitate BYOK
+
+### 🐛 Bug Fixes
+
+- When wrapped with `No Encoding`, RSA private key bytes 
+  and EC private key bytes are now the PKCS#8 DER bytes
+- CLI: fixed broken `attributes get`
+    
+ 
 
 ## [5.8.1] - 2025-09-05
 
