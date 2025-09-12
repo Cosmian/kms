@@ -51,111 +51,111 @@ cosmian kms sym keys export -t "MySymmetricKey" /tmp/sym_key.json  --allow-revok
 === "Request"
 
     ```json
+    {
+      "tag": "Export",
+      "type": "Structure",
+      "value": [
         {
-          "tag": "Export",
-          "type": "Structure",
-          "value": [
-            {
-              "tag": "UniqueIdentifier",
-              "type": "TextString",
-              "value": "[\"MySymmetricKey\"]"
-            },
-            {
-              "tag": "KeyWrapType",
-              "type": "Enumeration",
-              "value": "AsRegistered"
-            }
-          ]
+          "tag": "UniqueIdentifier",
+          "type": "TextString",
+          "value": "[\"MySymmetricKey\"]"
+        },
+        {
+          "tag": "KeyWrapType",
+          "type": "Enumeration",
+          "value": "AsRegistered"
         }
+      ]
+    }
 
     ```
 
 === "Response"
 
     ```json
+    {
+      "tag": "ExportResponse",
+      "type": "Structure",
+      "value": [
         {
-          "tag": "ExportResponse",
+          "tag": "ObjectType",
+          "type": "Enumeration",
+          "value": "SymmetricKey"
+        },
+        {
+          "tag": "UniqueIdentifier",
+          "type": "TextString",
+          "value": "027cced1-ff2b-4bd3-a200-db1041583bdc"
+        },
+        {
+          "tag": "Object",
           "type": "Structure",
           "value": [
             {
-              "tag": "ObjectType",
-              "type": "Enumeration",
-              "value": "SymmetricKey"
-            },
-            {
-              "tag": "UniqueIdentifier",
-              "type": "TextString",
-              "value": "027cced1-ff2b-4bd3-a200-db1041583bdc"
-            },
-            {
-              "tag": "Object",
+              "tag": "KeyBlock",
               "type": "Structure",
               "value": [
                 {
-                  "tag": "KeyBlock",
+                  "tag": "KeyFormatType",
+                  "type": "Enumeration",
+                  "value": "Raw"
+                },
+                {
+                  "tag": "KeyValue",
                   "type": "Structure",
                   "value": [
                     {
-                      "tag": "KeyFormatType",
-                      "type": "Enumeration",
-                      "value": "Raw"
+                      "tag": "KeyMaterial",
+                      "type": "ByteString",
+                      "value": "0B3E539510BABD291BB9FEC2A390C833B05465F33374575CE4AAFFABD5E93020"
                     },
                     {
-                      "tag": "KeyValue",
+                      "tag": "Attributes",
                       "type": "Structure",
                       "value": [
                         {
-                          "tag": "KeyMaterial",
-                          "type": "ByteString",
-                          "value": "0B3E539510BABD291BB9FEC2A390C833B05465F33374575CE4AAFFABD5E93020"
+                          "tag": "CryptographicAlgorithm",
+                          "type": "Enumeration",
+                          "value": "AES"
                         },
                         {
-                          "tag": "Attributes",
-                          "type": "Structure",
-                          "value": [
-                            {
-                              "tag": "CryptographicAlgorithm",
-                              "type": "Enumeration",
-                              "value": "AES"
-                            },
-                            {
-                              "tag": "CryptographicLength",
-                              "type": "Integer",
-                              "value": 256
-                            },
-                            {
-                              "tag": "CryptographicUsageMask",
-                              "type": "Integer",
-                              "value": 2108
-                            },
-                            {
-                              "tag": "KeyFormatType",
-                              "type": "Enumeration",
-                              "value": "TransparentSymmetricKey"
-                            },
-                            {
-                              "tag": "ObjectType",
-                              "type": "Enumeration",
-                              "value": "SymmetricKey"
-                            }
-                          ]
+                          "tag": "CryptographicLength",
+                          "type": "Integer",
+                          "value": 256
+                        },
+                        {
+                          "tag": "CryptographicUsageMask",
+                          "type": "Integer",
+                          "value": 2108
+                        },
+                        {
+                          "tag": "KeyFormatType",
+                          "type": "Enumeration",
+                          "value": "TransparentSymmetricKey"
+                        },
+                        {
+                          "tag": "ObjectType",
+                          "type": "Enumeration",
+                          "value": "SymmetricKey"
                         }
                       ]
-                    },
-                    {
-                      "tag": "CryptographicAlgorithm",
-                      "type": "Enumeration",
-                      "value": "AES"
-                    },
-                    {
-                      "tag": "CryptographicLength",
-                      "type": "Integer",
-                      "value": 256
                     }
                   ]
+                },
+                {
+                  "tag": "CryptographicAlgorithm",
+                  "type": "Enumeration",
+                  "value": "AES"
+                },
+                {
+                  "tag": "CryptographicLength",
+                  "type": "Integer",
+                  "value": 256
                 }
               ]
             }
           ]
         }
+      ]
+    }
     ```

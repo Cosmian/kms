@@ -46,70 +46,70 @@ Please note that the response contains:
 === "Request"
 
     ```json
+    {
+      "tag": "Encrypt",
+      "type": "Structure",
+      "value": [
         {
-          "tag": "Encrypt",
+          "tag": "UniqueIdentifier",
+          "type": "TextString",
+          "value": "[\"MySymmetricKey\"]"
+        },
+        {
+          "tag": "CryptographicParameters",
           "type": "Structure",
           "value": [
             {
-              "tag": "UniqueIdentifier",
-              "type": "TextString",
-              "value": "[\"MySymmetricKey\"]"
+              "tag": "BlockCipherMode",
+              "type": "Enumeration",
+              "value": "GCM"
             },
             {
-              "tag": "CryptographicParameters",
-              "type": "Structure",
-              "value": [
-                {
-                  "tag": "BlockCipherMode",
-                  "type": "Enumeration",
-                  "value": "GCM"
-                },
-                {
-                  "tag": "CryptographicAlgorithm",
-                  "type": "Enumeration",
-                  "value": "AES"
-                }
-              ]
-            },
-            {
-              "tag": "Data",
-              "type": "ByteString",
-              "value": "48656C6C6F2C20776F726C64210A"
+              "tag": "CryptographicAlgorithm",
+              "type": "Enumeration",
+              "value": "AES"
             }
           ]
+        },
+        {
+          "tag": "Data",
+          "type": "ByteString",
+          "value": "48656C6C6F2C20776F726C64210A"
         }
+      ]
+    }
 
     ```
 
 === "Response"
 
     ```json
-          {
-            "tag": "EncryptResponse",
-            "type": "Structure",
-            "value": [
-              {
-                "tag": "UniqueIdentifier",
-                "type": "TextString",
-                "value": "027cced1-ff2b-4bd3-a200-db1041583bdc"
-              },
-              {
-                "tag": "Data",
-                "type": "ByteString",
-                "value": "40D59A0735811135749A507FDEB3"
-              },
-              {
-                "tag": "IVCounterNonce",
-                "type": "ByteString",
-                "value": "DBDD622A64F7D65E75894B1B"
-              },
-              {
-                "tag": "AuthenticatedEncryptionTag",
-                "type": "ByteString",
-                "value": "50FCE680540BD3E96EFA9218A2F1009D"
-              }
-            ]
-          }
+    {
+      "tag": "EncryptResponse",
+      "type": "Structure",
+      "value": [
+        {
+          "tag": "UniqueIdentifier",
+          "type": "TextString",
+          "value": "027cced1-ff2b-4bd3-a200-db1041583bdc"
+        },
+        {
+          "tag": "Data",
+          "type": "ByteString",
+          "value": "40D59A0735811135749A507FDEB3"
+        },
+        {
+          "tag": "IVCounterNonce",
+          "type": "ByteString",
+          "value": "DBDD622A64F7D65E75894B1B"
+        },
+        {
+          "tag": "AuthenticatedEncryptionTag",
+          "type": "ByteString",
+          "value": "50FCE680540BD3E96EFA9218A2F1009D"
+        }
+      ]
+    }
     ```
 
 #### Example - Covercrypt
@@ -135,62 +135,62 @@ In the request, please note that the `Data` parameter contains:
 === "Request"
 
     ```json
+    {
+      "tag": "Encrypt",
+      "type": "Structure",
+      "value": [
         {
-          "tag": "Encrypt",
+          "tag": "UniqueIdentifier",
+          "type": "TextString",
+          "value": "0fd1f684-156c-4ca6-adc2-0a6f4b620463"
+        },
+        {
+          "tag": "CryptographicParameters",
           "type": "Structure",
           "value": [
             {
-              "tag": "UniqueIdentifier",
-              "type": "TextString",
-              "value": "0fd1f684-156c-4ca6-adc2-0a6f4b620463"
-            },
-            {
-              "tag": "CryptographicParameters",
-              "type": "Structure",
-              "value": [
-                {
-                  "tag": "CryptographicAlgorithm",
-                  "type": "Enumeration",
-                  "value": "CoverCrypt"
-                }
-              ]
-            },
-            {
-              "tag": "Data",
-              "type": "ByteString",
-              "value": "2F5365637572697479204C6576656C3A3A436F6E666964656E7469616C202626204465706172746D656E743A3A46494E0048656C6C6F2C20776F726C64210A"
+              "tag": "CryptographicAlgorithm",
+              "type": "Enumeration",
+              "value": "CoverCrypt"
             }
           ]
+        },
+        {
+          "tag": "Data",
+          "type": "ByteString",
+          "value": "2F5365637572697479204C6576656C3A3A436F6E666964656E7469616C202626204465706172746D656E743A3A46494E0048656C6C6F2C20776F726C64210A"
         }
+      ]
+    }
     ```
 
 === "Response"
 
     ```json
+    {
+      "tag": "EncryptResponse",
+      "type": "Structure",
+      "value": [
         {
-          "tag": "EncryptResponse",
-          "type": "Structure",
-          "value": [
-            {
-              "tag": "UniqueIdentifier",
-              "type": "TextString",
-              "value": "0fd1f684-156c-4ca6-adc2-0a6f4b620463"
-            },
-            {
-              "tag": "Data",
-              "type": "ByteString",
-              "value": "AEA6CF824612448B8445CAF46F9D987161706DAD6E43DFD1A57DD0F39869DC39A68096657A3EDC03CBC619D563744D2CC9819B6A9AB9A3893FD27F452F49A244A8CAA42279C4705D4D3A9E04D2B7887F0100D947F27D27BBD1D06F5A65087F73B8AAB617568761273282D4C14770FFCBA47200D02DDB4C48E1028DC5C50DE860A10A26E35AC405EFE6405486B56E9968594471075687D7BF6935BD003D"
-            },
-            {
-              "tag": "IVCounterNonce",
-              "type": "ByteString",
-              "value": "1A2B3C4D5E6F708192A3B4C5D6E7F801"
-            },
-            {
-              "tag": "AuthenticatedEncryptionTag",
-              "type": "ByteString",
-              "value": "0DCB3857D841616BF7262193BC19CBC5"
-            }
-          ]
+          "tag": "UniqueIdentifier",
+          "type": "TextString",
+          "value": "0fd1f684-156c-4ca6-adc2-0a6f4b620463"
+        },
+        {
+          "tag": "Data",
+          "type": "ByteString",
+          "value": "AEA6CF824612448B8445CAF46F9D987161706DAD6E43DFD1A57DD0F39869DC39A68096657A3EDC03CBC619D563744D2CC9819B6A9AB9A3893FD27F452F49A244A8CAA42279C4705D4D3A9E04D2B7887F0100D947F27D27BBD1D06F5A65087F73B8AAB617568761273282D4C14770FFCBA47200D02DDB4C48E1028DC5C50DE860A10A26E35AC405EFE6405486B56E9968594471075687D7BF6935BD003D"
+        },
+        {
+          "tag": "IVCounterNonce",
+          "type": "ByteString",
+          "value": "1A2B3C4D5E6F708192A3B4C5D6E7F801"
+        },
+        {
+          "tag": "AuthenticatedEncryptionTag",
+          "type": "ByteString",
+          "value": "0DCB3857D841616BF7262193BC19CBC5"
         }
+      ]
+    }
     ```

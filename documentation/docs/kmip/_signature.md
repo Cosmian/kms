@@ -24,61 +24,64 @@ Sign data using an RSA private key with SHA-256.
 === "Sign Request"
 
     ```json
+    {
+      "tag": "Sign",
+      "type": "Structure",
+      "value": [
         {
-          "tag": "Sign",
+          "tag": "UniqueIdentifier",
+          "type": "TextString",
+          "value": "9382bfec-bd6c-46ed-8f00-90b467f77a15"
+        },
+        {
+          "tag": "CryptographicParameters",
+          "type": "Structure",
           "value": [
             {
-              "tag": "UniqueIdentifier",
-              "type": "TextString",
-              "value": "9382bfec-bd6c-46ed-8f00-90b467f77a15"
-            },
-            {
-              "tag": "CryptographicParameters",
-              "value": [
-                {
-                  "tag": "DigitalSignatureAlgorithm",
-                  "type": "Enumeration",
-                  "value": "SHA256WithRSAEncryption"
-                }
-              ]
-            },
-            {
-              "tag": "Data",
-              "type": "ByteString",
-              "value": "48656C6C6F2C207369676E61747572652074657374"
-            },
-            {
-              "tag": "InitIndicator",
-              "type": "Boolean",
-              "value": true
-            },
-            {
-              "tag": "FinalIndicator",
-              "type": "Boolean",
-              "value": true
+              "tag": "DigitalSignatureAlgorithm",
+              "type": "Enumeration",
+              "value": "SHA256WithRSAEncryption"
             }
           ]
+        },
+        {
+          "tag": "Data",
+          "type": "ByteString",
+          "value": "48656C6C6F2C207369676E61747572652074657374"
+        },
+        {
+          "tag": "InitIndicator",
+          "type": "Boolean",
+          "value": true
+        },
+        {
+          "tag": "FinalIndicator",
+          "type": "Boolean",
+          "value": true
         }
+      ]
+    }
     ```
 
 === "Sign Response"
 
     ```json
+    {
+      "tag": "SignResponse",
+      "type": "Structure",
+      "value": [
         {
-          "tag": "SignResponse",
-          "value": [
-            {
-              "tag": "UniqueIdentifier",
-              "type": "TextString",
-              "value": "9382bfec-bd6c-46ed-8f00-90b467f77a15"
-            },
-            {
-              "tag": "SignatureData",
-              "type": "ByteString",
-              "value": "3A4B5C6D7E8F901234567890ABCDEF1234567890ABCDEF1234567890ABCDEF12"
-            }
-          ]
+          "tag": "UniqueIdentifier",
+          "type": "TextString",
+          "value": "9382bfec-bd6c-46ed-8f00-90b467f77a15"
+        },
+        {
+          "tag": "SignatureData",
+          "type": "ByteString",
+          "value": "3A4B5C6D7E8F901234567890ABCDEF1234567890ABCDEF1234567890ABCDEF12"
         }
+      ]
+    }
     ```
 
 #### Example - Signature Verification
@@ -88,69 +91,70 @@ Verify a signature using the corresponding public key.
 === "SignatureVerify Request"
 
     ```json
+    {
+      "tag": "SignatureVerify",
+      "type": "Structure",
+      "value": [
         {
-          "tag": "SignatureVerify",
+          "tag": "UniqueIdentifier",
+          "type": "TextString",
+          "value": "9382bfec-bd6c-46ed-8f00-90b467f77a15_pk"
+        },
+        {
+          "tag": "CryptographicParameters",
+          "type": "Structure",
           "value": [
             {
-              "tag": "UniqueIdentifier",
-              "type": "TextString",
-              "value": "9382bfec-bd6c-46ed-8f00-90b467f77a15_pk"
-            },
-            {
-              "tag": "CryptographicParameters",
-              "value": [
-                {
-                  "tag": "DigitalSignatureAlgorithm",
-                  "type": "Enumeration",
-                  "value": "SHA256WithRSAEncryption"
-                }
-              ]
-            },
-            {
-              "tag": "Data",
-              "type": "ByteString",
-              "value": "48656C6C6F2C207369676E61747572652074657374"
-            },
-            {
-              "tag": "SignatureData",
-              "type": "ByteString",
-              "value": "3A4B5C6D7E8F901234567890ABCDEF1234567890ABCDEF1234567890ABCDEF12"
-            },
-            {
-              "tag": "InitIndicator",
-              "type": "Boolean",
-              "value": true
-            },
-            {
-              "tag": "FinalIndicator",
-              "type": "Boolean",
-              "value": true
+              "tag": "DigitalSignatureAlgorithm",
+              "type": "Enumeration",
+              "value": "SHA256WithRSAEncryption"
             }
           ]
+        },
+        {
+          "tag": "Data",
+          "type": "ByteString",
+          "value": "48656C6C6F2C207369676E61747572652074657374"
+        },
+        {
+          "tag": "SignatureData",
+          "type": "ByteString",
+          "value": "3A4B5C6D7E8F901234567890ABCDEF1234567890ABCDEF1234567890ABCDEF12"
+        },
+        {
+          "tag": "InitIndicator",
+          "type": "Boolean",
+          "value": true
+        },
+        {
+          "tag": "FinalIndicator",
+          "type": "Boolean",
+          "value": true
         }
+      ]
+    }
     ```
 
 === "SignatureVerify Response"
 
     ```json
+    {
+      "tag": "SignatureVerifyResponse",
+      "type": "Structure",
+      "value": [
         {
-          "tag": "SignatureVerifyResponse",
-          "value": [
-            {
-              "tag": "UniqueIdentifier",
-              "type": "TextString",
-              "value": "9382bfec-bd6c-46ed-8f00-90b467f77a15_pk"
-            },
-            {
-              "tag": "ValidityIndicator",
-              "type": "Enumeration",
-              "value": "Valid"
-            }
-          ]
+          "tag": "UniqueIdentifier",
+          "type": "TextString",
+          "value": "9382bfec-bd6c-46ed-8f00-90b467f77a15_pk"
+        },
+        {
+          "tag": "ValidityIndicator",
+          "type": "Enumeration",
+          "value": "Valid"
         }
-    ```
-
-#### Usage via HTTP API
+      ]
+    }
+    ```#### Usage via HTTP API
 
 To use Sign and SignatureVerify operations, send HTTP POST requests to the `/kmip/2_1` endpoint:
 
