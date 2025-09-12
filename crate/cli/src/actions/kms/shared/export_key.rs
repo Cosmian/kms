@@ -74,7 +74,7 @@ pub struct ExportSecretDataOrKeyAction {
         default_value = "json-ttlv",
         verbatim_doc_comment
     )]
-    pub(crate) key_format: ExportKeyFormat,
+    pub(crate) export_format: ExportKeyFormat,
 
     /// Unwrap the key if it is wrapped before export
     #[clap(
@@ -150,31 +150,26 @@ impl ExportSecretDataOrKeyAction {
         let id = get_key_uid(self.key_id.as_ref(), self.tags.as_ref(), KEY_ID)?;
 
         let (key_format_type, encode_to_pem, encode_to_ttlv, wrapping_cryptographic_parameters) =
-            prepare_key_export_elements(&self.key_format, &self.wrapping_algorithm)?;
+            prepare_key_export_elements(&self.export_format, &self.wrapping_algorithm)?;
 
         // export the object
-        let (id, object, _) = export_object(
-            &kms_rest_client,
-            &id,
-            ExportObjectParams {
-                unwrap: self.unwrap,
-                wrapping_key_id: self.wrap_key_id.as_deref(),
-                allow_revoked: self.allow_revoked,
-                key_format_type,
-                encode_to_ttlv,
-                wrapping_cryptographic_parameters,
-                authenticated_encryption_additional_data: self
-                    .authenticated_additional_data
-                    .clone(),
-            },
-        )
-        .await?;
+        let export_params = ExportObjectParams {
+            unwrap: self.unwrap,
+            wrapping_key_id: self.wrap_key_id.as_deref(),
+            allow_revoked: self.allow_revoked,
+            key_format_type: key_format_type.clone(),
+            encode_to_ttlv,
+            wrapping_cryptographic_parameters,
+            authenticated_encryption_additional_data: self.authenticated_additional_data.clone(),
+        };
+
+        let (id, object, _) = export_object(&kms_rest_client, &id, export_params).await?;
 
         // write the object to a file
-        if self.key_format == ExportKeyFormat::JsonTtlv {
+        if self.export_format == ExportKeyFormat::JsonTtlv {
             // save it to a file
             write_kmip_object_to_file(&object, &self.key_file)?;
-        } else if self.key_format == ExportKeyFormat::Base64 {
+        } else if self.export_format == ExportKeyFormat::Base64 {
             // export the key bytes in base64
             let base64_key = base64::engine::general_purpose::STANDARD
                 .encode(get_object_bytes(&object)?)
@@ -189,7 +184,7 @@ impl ExportSecretDataOrKeyAction {
                         bytes.as_slice(),
                         key_format_type.context(
                             "Server Error: the Key Format Type should be known at this stage",
-                        )?,
+                        )?.clone(),
                         object.object_type(),
                     )?
                     .to_vec();

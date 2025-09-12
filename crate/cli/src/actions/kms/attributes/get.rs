@@ -38,6 +38,7 @@ pub struct GetAttributesAction {
     /// The KMIP attribute to retrieve.
     /// To specify multiple attributes, use the option multiple times.
     /// If not specified, all possible attributes are returned.
+    /// To retrieve the tags, use `Tag` as an attribute value.
     #[clap(
         long = "attribute",
         short = 'a',

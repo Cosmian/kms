@@ -83,7 +83,7 @@ async fn test_pems(
     ExportSecretDataOrKeyAction {
         key_id: Some(key_uid.clone()),
         key_file: export_key_file.path().to_path_buf(),
-        key_format: export_format.clone(),
+        export_format: export_format.clone(),
         allow_revoked: true,
         ..Default::default()
     }
@@ -98,7 +98,7 @@ async fn test_pems(
     ExportSecretDataOrKeyAction {
         key_id: Some(key_uid),
         key_file: get_key_file.path().to_path_buf(),
-        key_format: export_format,
+        export_format: export_format,
         ..Default::default()
     }
     .run(ctx.get_owner_client())

@@ -223,7 +223,7 @@ async fn test_openssl_cli_compat_inner(
         } else {
             WrappingAlgorithm::RsaAesKeyWrap
         }),
-        key_format: ExportKeyFormat::Raw,
+        export_format: ExportKeyFormat::Raw,
         ..Default::default()
     }
     .run(ctx.get_user_client())
@@ -378,7 +378,7 @@ async fn test_google_csek() -> KmsCliResult<()> {
         key_file: wrapped_key_file.clone(),
         wrap_key_id: Some(pub_key_id.clone()),
         wrapping_algorithm: Some(WrappingAlgorithm::RsaAesKeyWrapSha1),
-        key_format: ExportKeyFormat::Raw,
+        export_format: ExportKeyFormat::Raw,
         ..Default::default()
     }
     .run(ctx.get_user_client())
