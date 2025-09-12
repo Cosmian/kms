@@ -257,6 +257,13 @@ impl KeyBlock {
         }
     }
 
+    /// Return the raw bytes of a symmetric key
+    /// Deprecated: use `key_bytes()`
+    #[deprecated]
+    pub fn symmetric_key_bytes(&self) -> Result<Zeroizing<Vec<u8>>, KmipError> {
+        self.key_bytes()
+    }
+
     /// Return the key material of a symmetric key, raw or transparent.
     /// The PKCS#1 of an RSA Key, etc.
     pub fn key_bytes(&self) -> Result<Zeroizing<Vec<u8>>, KmipError> {
