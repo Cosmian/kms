@@ -13,11 +13,10 @@ use cosmian_kms_client::{ExportObjectParams, KmsClient, export_object};
 use serde_json::json;
 
 use crate::{
-    actions::kms::attributes::get_attributes,
+    actions::kms::{attributes::get_attributes, console},
     cli_bail,
     error::result::{KmsCliResult, KmsCliResultHelper},
 };
-use crate::actions::kms::console;
 
 /// Wrap a KMS key with an Azure Key Encryption Key (KEK),
 /// previously imported using the `cosmian kms azure byok import` command.
@@ -117,7 +116,8 @@ impl ExportByokAction {
 
         let stdout = console::Stdout::new(&format!(
             "The byok file was written to {} for key {}.",
-            byok_file.display(), self.wrapped_key_id
+            byok_file.display(),
+            self.wrapped_key_id
         ));
         stdout.write()?;
 
