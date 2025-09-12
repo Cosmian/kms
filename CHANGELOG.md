@@ -2,12 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
-## [5.9.0] - 2025-09-05
+## [5.9.0] - 2025-09-12
 
 ### 🚀 Features
 
 - CLI: added support for SHA1 in RSA key wrapping
 - CLI: add Azure functionality to facilitate BYOK
+- CLI: `attributes get` added support to retrieve Object tags only. 
+
+### 📚 Documentation
+
+- Added Google CSEK and Google CMEK documentation.
+- Added Azure BYOK documentation.
+- Re-organized documentation.
 
 ### 🐛 Bug Fixes
 

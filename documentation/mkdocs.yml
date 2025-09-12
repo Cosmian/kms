@@ -70,6 +70,8 @@ nav:
       - Utimaco General Purpose: hsms/utimaco.md
   - Integrations:
       - API Endpoints: api.md
+      - Azure:
+          - BYOK (Bring Your Own Key): azure/byok.md
       - Google GCP:
           - CMEK (Customer Managed Encryption Keys): google_gcp/cmek.md
           - CSEK (Customer Supplied Encryption Keys): google_gcp/csek.md
