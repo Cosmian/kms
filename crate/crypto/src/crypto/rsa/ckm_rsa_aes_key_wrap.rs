@@ -563,10 +563,8 @@ vKJMiWk/TowEqm5zcvCeTsPlceZdxidTBNB/EPCSxIHpycyzT3pQ4ehI
         let pub_key = PKey::public_key_from_pem(KEK_FOR_BYOK.as_bytes())?;
         let wrapped_key = ckm_rsa_aes_key_wrap(&pub_key, HashingAlgorithm::SHA1, &secret_bytes)?;
 
-        fs::write("/tmp/wrapped_key.bin", &wrapped_key)?;
-
         // Generate .byok file
-        let byok_value = json!({
+        let _byok_value = json!({
             "schema_version": "1.0.0",
             "header":
             {
@@ -577,8 +575,6 @@ vKJMiWk/TowEqm5zcvCeTsPlceZdxidTBNB/EPCSxIHpycyzT3pQ4ehI
             "ciphertext": base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(wrapped_key),
             "generator": "Cosmian_KMS;v5"
         });
-        // write byok file
-        fs::write("/tmp/byok.byok", byok_value.to_string())?;
 
         Ok(())
     }

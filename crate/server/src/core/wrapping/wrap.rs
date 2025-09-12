@@ -197,7 +197,6 @@ pub(crate) async fn wrap_object(
         .await?;
     }
     debug!("Key wrapped successfully by key {}", wrapping_key_uid);
-    trace!("The Object is now: {:#?}", object);
     Ok(())
 }
 

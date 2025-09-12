@@ -385,7 +385,6 @@ async fn test_google_csek() -> KmsCliResult<()> {
     .await?;
     // read wrapped key from file
     let wrapped_key = fs::read(&wrapped_key_file)?;
-    fs::write("/tmp/wrapped_key.bin", &wrapped_key)?;
 
     // encode in BASE 64
     let wrapped_key_base64 = base64::engine::general_purpose::STANDARD.encode(&wrapped_key);
