@@ -21,7 +21,7 @@ use cosmian_kms_client::{
 use cosmian_kms_server::{
     config::{
         ClapConfig, HttpConfig, IdpAuthConfig, MainDBConfig, ServerParams, SocketServerConfig,
-        TlsConfig,
+        TlsConfig, WorkspaceConfig,
     },
     start_kms_server::start_kms_server,
 };
@@ -472,6 +472,10 @@ fn generate_server_params(
     hsm_options: &Option<HsmOptions>,
     privileged_users: Option<Vec<String>>,
 ) -> Result<ServerParams, KmsClientError> {
+    // Create a unique workspace path for each test to avoid race conditions
+    // Use the port number to make it unique per test
+    let workspace_dir = std::env::temp_dir().join(format!("kms_test_workspace_{port}"));
+
     // Configure the server
     let clap_config = ClapConfig {
         idp_auth: if authentication_options.use_jwt_token {
@@ -485,6 +489,10 @@ fn generate_server_params(
                 && authentication_options.use_known_ca_list,
             socket_server_port: port + 100,
             ..Default::default()
+        },
+        workspace: WorkspaceConfig {
+            root_data_path: workspace_dir.clone(),
+            tmp_path: workspace_dir.join("tmp"),
         },
         db: db_config,
         tls: generate_tls_config(
