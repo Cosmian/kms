@@ -109,7 +109,8 @@ impl ExportByokAction {
         // write byok file
         // Determine the name of the byok file
         let byok_file = self
-            .byok_file.clone()
+            .byok_file
+            .clone()
             .unwrap_or_else(|| PathBuf::from(format!("{}.byok", self.wrapped_key_id)));
         fs::write(&byok_file, byok_value.to_string())?;
 

@@ -88,12 +88,12 @@ impl GetAttributesAction {
         let id = get_key_uid(self.id.as_ref(), self.tags.as_ref(), ATTRIBUTE_ID)?;
 
         let (unique_identifier, results) = get_attributes(
-                &kms_rest_client,
-                &id,
-                &self.attribute_tags,
-                &self.attribute_link_types,
-            )
-            .await?;
+            &kms_rest_client,
+            &id,
+            &self.attribute_tags,
+            &self.attribute_link_types,
+        )
+        .await?;
 
         if let Some(output_file) = &self.output_file {
             let json = serde_json::to_string_pretty(&results)?;

@@ -182,9 +182,11 @@ impl ExportSecretDataOrKeyAction {
                 if encode_to_pem {
                     bytes = der_to_pem(
                         bytes.as_slice(),
-                        key_format_type.context(
-                            "Server Error: the Key Format Type should be known at this stage",
-                        )?.clone(),
+                        key_format_type
+                            .context(
+                                "Server Error: the Key Format Type should be known at this stage",
+                            )?
+                            .clone(),
                         object.object_type(),
                     )?
                     .to_vec();

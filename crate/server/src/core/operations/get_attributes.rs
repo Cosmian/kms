@@ -115,7 +115,7 @@ pub(crate) async fn get_attributes(
                 attribute_name,
             }) => {
                 if vendor_identification == VENDOR_ID_COSMIAN && attribute_name == VENDOR_ATTR_TAG {
-                    if ! tags_already_set {
+                    if !tags_already_set {
                         let tags = kms.database.retrieve_tags(owm.id(), params.clone()).await?;
                         res.set_tags(tags)?;
                         tags_already_set = true;
@@ -259,7 +259,7 @@ pub(crate) async fn get_attributes(
                     }
                 }
                 Tag::Tag => {
-                    if ! tags_already_set {
+                    if !tags_already_set {
                         let tags = kms.database.retrieve_tags(owm.id(), params.clone()).await?;
                         res.set_tags(tags)?;
                         tags_already_set = true;
