@@ -74,7 +74,7 @@ cosmian kms sym keys export -t "MySymmetricKey" /tmp/sym_key.json  --allow-revok
 
     ```json
         {
-          "tag": "GetResponse",
+          "tag": "ExportResponse",
           "type": "Structure",
           "value": [
             {

@@ -69,30 +69,22 @@ cosmian kms sym keys create --tag MySymmetricKey
                   "value": "SymmetricKey"
                 },
                 {
-                  "tag": "VendorAttributes",
-                  "type": "Structure",
+                  "tag": "Attribute",
                   "value": [
                     {
-                      "tag": "VendorAttributes",
-                      "type": "Structure",
-                      "value": [
-                        {
-                          "tag": "VendorIdentification",
-                          "type": "TextString",
-                          "value": "cosmian"
-                        },
-                        {
-                          "tag": "AttributeName",
-                          "type": "TextString",
-                          "value": "tag"
-                        },
-                        {
-                          "tag": "AttributeValue",
-                          "type": "ByteString",
-                          // ["MySymmetricKey"] in hex
-                          "value": "5B224D7953796D6D65747269634B6579225D"
-                        }
-                      ]
+                      "tag": "VendorIdentification",
+                      "type": "TextString",
+                      "value": "cosmian"
+                    },
+                    {
+                      "tag": "AttributeName",
+                      "type": "TextString",
+                      "value": "tag"
+                    },
+                    {
+                      "tag": "AttributeValue",
+                      "type": "TextString",
+                      "value": "[\"MySymmetricKey\"]"
                     }
                   ]
                 }

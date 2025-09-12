@@ -98,30 +98,22 @@ serialized to hex.
               "type": "Structure",
               "value": [
                 {
-                  "tag": "VendorAttributes",
-                  "type": "Structure",
+                  "tag": "Attribute",
                   "value": [
                     {
-                      "tag": "VendorAttributes",
-                      "type": "Structure",
-                      "value": [
-                        {
-                          "tag": "VendorIdentification",
-                          "type": "TextString",
-                          "value": "cosmian"
-                        },
-                        {
-                          "tag": "AttributeName",
-                          "type": "TextString",
-                          "value": "tag"
-                        },
-                        {
-                          "tag": "AttributeValue",
-                          "type": "ByteString",
-                          // hex encoding of ["_kk"]
-                          "value": "5B225F6B6B225D"
-                        }
-                      ]
+                      "tag": "VendorIdentification",
+                      "type": "TextString",
+                      "value": "cosmian"
+                    },
+                    {
+                      "tag": "AttributeName",
+                      "type": "TextString",
+                      "value": "tag"
+                    },
+                    {
+                      "tag": "AttributeValue",
+                      "type": "TextString",
+                      "value": "[\"_kk\"]"
                     }
                   ]
                 }
@@ -146,49 +138,43 @@ serialized to hex.
             },
             {
               "tag": "UniqueIdentifier",
-              "type": "Structure",
-              "value": [
-                {
-                  "tag": "UniqueIdentifier",
-                  "type": "TextString",
-                  "value": "027cced1-ff2b-4bd3-a200-db1041583bdc"
-                },
-                {
-                  "tag": "UniqueIdentifier",
-                  "type": "TextString",
-                  "value": "1a35b3be-1a1a-4798-a3aa-d9fc67298461"
-                },
-                {
-                  "tag": "UniqueIdentifier",
-                  "type": "TextString",
-                  "value": "5dc81bb2-648f-485f-b804-c6ea45467056"
-                },
-                {
-                  "tag": "UniqueIdentifier",
-                  "type": "TextString",
-                  "value": "6ce69a21-5b4b-470a-84e7-0e1385947527"
-                },
-                {
-                  "tag": "UniqueIdentifier",
-                  "type": "TextString",
-                  "value": "ad9ba3be-93c7-4fac-a271-ef186fd645ce"
-                },
-                {
-                  "tag": "UniqueIdentifier",
-                  "type": "TextString",
-                  "value": "bac520f6-461f-40e5-b8f2-7927d8ae310b"
-                },
-                {
-                  "tag": "UniqueIdentifier",
-                  "type": "TextString",
-                  "value": "da5844b6-4d29-46b8-a657-9dfd449f8560"
-                },
-                {
-                  "tag": "UniqueIdentifier",
-                  "type": "TextString",
-                  "value": "ebddca55-6027-4c86-ac1f-6b38dcfd6ead"
-                }
-              ]
+              "type": "TextString",
+              "value": "027cced1-ff2b-4bd3-a200-db1041583bdc"
+            },
+            {
+              "tag": "UniqueIdentifier",
+              "type": "TextString",
+              "value": "1a35b3be-1a1a-4798-a3aa-d9fc67298461"
+            },
+            {
+              "tag": "UniqueIdentifier",
+              "type": "TextString",
+              "value": "5dc81bb2-648f-485f-b804-c6ea45467056"
+            },
+            {
+              "tag": "UniqueIdentifier",
+              "type": "TextString",
+              "value": "6ce69a21-5b4b-470a-84e7-0e1385947527"
+            },
+            {
+              "tag": "UniqueIdentifier",
+              "type": "TextString",
+              "value": "ad9ba3be-93c7-4fac-a271-ef186fd645ce"
+            },
+            {
+              "tag": "UniqueIdentifier",
+              "type": "TextString",
+              "value": "bac520f6-461f-40e5-b8f2-7927d8ae310b"
+            },
+            {
+              "tag": "UniqueIdentifier",
+              "type": "TextString",
+              "value": "da5844b6-4d29-46b8-a657-9dfd449f8560"
+            },
+            {
+              "tag": "UniqueIdentifier",
+              "type": "TextString",
+              "value": "ebddca55-6027-4c86-ac1f-6b38dcfd6ead"
             }
           ]
         }

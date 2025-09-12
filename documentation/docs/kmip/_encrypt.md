@@ -32,7 +32,7 @@ to see how to create the symmetric key).
 Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
 
 ```shell
-cosmian kms sym encrypt -k 027cced1-ff2b-4bd3-a200-db1041583bd /tmp/hello_world.txt
+cosmian kms sym encrypt -t "MySymmetricKey" /tmp/hello_world.txt
 ```
 
 *Note*: the file `/tmp/hello_world.txt` contains the text `Hello, world!`.
@@ -53,12 +53,27 @@ Please note that the response contains:
             {
               "tag": "UniqueIdentifier",
               "type": "TextString",
-              "value": "027cced1-ff2b-4bd3-a200-db1041583bdc"
+              "value": "[\"MySymmetricKey\"]"
+            },
+            {
+              "tag": "CryptographicParameters",
+              "type": "Structure",
+              "value": [
+                {
+                  "tag": "BlockCipherMode",
+                  "type": "Enumeration",
+                  "value": "GCM"
+                },
+                {
+                  "tag": "CryptographicAlgorithm",
+                  "type": "Enumeration",
+                  "value": "AES"
+                }
+              ]
             },
             {
               "tag": "Data",
               "type": "ByteString",
-              // Hello, world! as UTF-8 bytes
               "value": "48656C6C6F2C20776F726C64210A"
             }
           ]
@@ -165,6 +180,16 @@ In the request, please note that the `Data` parameter contains:
               "tag": "Data",
               "type": "ByteString",
               "value": "AEA6CF824612448B8445CAF46F9D987161706DAD6E43DFD1A57DD0F39869DC39A68096657A3EDC03CBC619D563744D2CC9819B6A9AB9A3893FD27F452F49A244A8CAA42279C4705D4D3A9E04D2B7887F0100D947F27D27BBD1D06F5A65087F73B8AAB617568761273282D4C14770FFCBA47200D02DDB4C48E1028DC5C50DE860A10A26E35AC405EFE6405486B56E9968594471075687D7BF6935BD003D"
+            },
+            {
+              "tag": "IVCounterNonce",
+              "type": "ByteString",
+              "value": "1A2B3C4D5E6F708192A3B4C5D6E7F801"
+            },
+            {
+              "tag": "AuthenticatedEncryptionTag",
+              "type": "ByteString",
+              "value": "0DCB3857D841616BF7262193BC19CBC5"
             }
           ]
         }

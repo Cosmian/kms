@@ -30,7 +30,7 @@ identified. It is possible to use multiple tags to identify a key; for instance 
 Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
 
 ```shell
-cosmian kms sym decrypt /tmp/encrypted.bin -t MySymmetricKey
+cosmian kms sym decrypt /tmp/encrypted.bin -t "MySymmetricKey"
 ```
 
 where `/tmp/encrypted.bin` contains the a concatenation of the the nonce, the encrypted and the authentication tag
@@ -108,7 +108,7 @@ automatically get a *system* tag `_uk`. See [tagging](./tagging.md) for more inf
 Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
 
 ```shell
-cosmian kms cc decrypt /tmp/encrypted.bin  -t MyUserKey
+cosmian kms cc decrypt /tmp/encrypted.bin  -t "MyUserKey"
 ```
 
 === "Request"
