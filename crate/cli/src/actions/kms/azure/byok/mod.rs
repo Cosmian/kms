@@ -10,7 +10,7 @@ use crate::{
 };
 
 /// Azure BYOK support.
-/// See: https://learn.microsoft.com/en-us/azure/key-vault/keys/byok-specification
+/// See: <https://learn.microsoft.com/en-us/azure/key-vault/keys/byok-specification>
 #[derive(Subcommand)]
 pub enum ByokCommands {
     Import(ImportKekAction),

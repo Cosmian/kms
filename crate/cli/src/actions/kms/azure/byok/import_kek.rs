@@ -9,7 +9,7 @@ use cosmian_kms_client::{
 use crate::{actions::kms::shared::ImportSecretDataOrKeyAction, error::result::KmsCliResult};
 
 /// Import into the KMS an RSA Key Encryption Key (KEK) generated on Azure Key Vault.
-/// See: https://learn.microsoft.com/en-us/azure/key-vault/keys/byok-specification#generate-kek
+/// See: <https://learn.microsoft.com/en-us/azure/key-vault/keys/byok-specification#generate-kek>
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
 pub struct ImportKekAction {
@@ -19,7 +19,7 @@ pub struct ImportKekAction {
     pub(crate) kek_file: PathBuf,
 
     /// The Azure Key ID (kid). It should be something like:
-    /// https://mypremiumkeyvault.vault.azure.net/keys/KEK-BYOK/664f5aa2797a4075b8e36ca4500636d8
+    /// <https://mypremiumkeyvault.vault.azure.net/keys/KEK-BYOK/664f5aa2797a4075b8e36ca4500636d8>
     #[clap(required = true, verbatim_doc_comment)]
     pub(crate) kid: String,
 
@@ -40,7 +40,7 @@ impl ImportKekAction {
             certificate_id: None,
             unwrap: false,
             replace_existing: true,
-            tags: vec!["azure".to_string(), format!("kid:{}", self.kid)],
+            tags: vec!["azure".to_owned(), format!("kid:{}", self.kid)],
             key_usage: Some(vec![KeyUsage::WrapKey, KeyUsage::Encrypt]),
             wrapping_key_id: None,
         };

@@ -17,11 +17,12 @@ use crate::{
     cli_bail,
     error::result::{KmsCliResult, KmsCliResultHelper},
 };
+use crate::actions::kms::console;
 
 /// Wrap a KMS key with an Azure Key Encryption Key (KEK),
 /// previously imported using the `cosmian kms azure byok import` command.
 /// Generate the `.byok` file that can be used to import the KMS key into Azure Key Vault.
-/// See: https://learn.microsoft.com/en-us/azure/key-vault/keys/byok-specification
+/// See: <https://learn.microsoft.com/en-us/azure/key-vault/keys/byok-specification>
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
 pub struct ExportByokAction {
@@ -34,7 +35,7 @@ pub struct ExportByokAction {
     pub(crate) kek_id: String,
 
     /// The file path to export the `.byok` file to.
-    /// If not specified, the file will be called <wrapped_key_id>.byok
+    /// If not specified, the file will be called `<wrapped_key_id>.byok`
     #[clap(required = false)]
     pub(crate) byok_file: Option<PathBuf>,
 }
@@ -55,7 +56,7 @@ impl ExportByokAction {
                 .clone(),
         )?;
 
-        if !tags.contains(&"azure".to_string()) {
+        if !tags.contains(&"azure".to_owned()) {
             cli_bail!(
                 "The KEK is not an Azure Key Encryption Key: missing `azure` tag. Import it using \
                  the `cosmian kms azure byok import` command."
@@ -114,10 +115,12 @@ impl ExportByokAction {
             .unwrap_or_else(|| PathBuf::from(format!("{}.byok", self.wrapped_key_id)));
         fs::write(&byok_file, byok_value.to_string())?;
 
-        println!(
-            "The byok file was written to {:?} for key {}.",
-            byok_file, self.wrapped_key_id
-        );
+        let stdout = console::Stdout::new(&format!(
+            "The byok file was written to {} for key {}.",
+            byok_file.display(), self.wrapped_key_id
+        ));
+        stdout.write()?;
+
         Ok(())
     }
 }

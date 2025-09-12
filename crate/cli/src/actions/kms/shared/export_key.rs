@@ -157,7 +157,7 @@ impl ExportSecretDataOrKeyAction {
             unwrap: self.unwrap,
             wrapping_key_id: self.wrap_key_id.as_deref(),
             allow_revoked: self.allow_revoked,
-            key_format_type: key_format_type.clone(),
+            key_format_type,
             encode_to_ttlv,
             wrapping_cryptographic_parameters,
             authenticated_encryption_additional_data: self.authenticated_additional_data.clone(),
@@ -182,11 +182,9 @@ impl ExportSecretDataOrKeyAction {
                 if encode_to_pem {
                     bytes = der_to_pem(
                         bytes.as_slice(),
-                        key_format_type
-                            .context(
-                                "Server Error: the Key Format Type should be known at this stage",
-                            )?
-                            .clone(),
+                        key_format_type.context(
+                            "Server Error: the Key Format Type should be known at this stage",
+                        )?,
                         object.object_type(),
                     )?
                     .to_vec();
