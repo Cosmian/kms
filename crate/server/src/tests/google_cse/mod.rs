@@ -346,7 +346,7 @@ pub(crate) fn build_private_key_from_der_bytes(
 
 #[tokio::test]
 async fn test_create_pair_encrypt_decrypt() -> KResult<()> {
-    log_init(None);
+    log_init(Some("debug"));
 
     let clap_config = https_clap_config();
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
@@ -560,10 +560,10 @@ async fn test_cse_private_key_decrypt(
         wrapped_private_key: wrapped_private_key.to_owned(),
     };
 
-    debug!("private key decrypt request post");
+    debug!("===> private key decrypt request post");
     let response: PrivateKeyDecryptResponse =
         test_utils::post_json_with_uri(&app, request, "/google_cse/privatekeydecrypt").await?;
-    debug!("private key decrypt response post: {response:?}");
+    debug!("===> private key decrypt response post: {response:?}");
 
     Ok(response.data_encryption_key)
 }

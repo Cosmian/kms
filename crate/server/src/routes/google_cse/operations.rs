@@ -1,4 +1,5 @@
 use std::{
+    fs,
     hash::{DefaultHasher, Hash, Hasher},
     sync::Arc,
 };
@@ -9,14 +10,17 @@ use base64::{
 };
 use chrono::{Duration, Utc};
 use clap::crate_version;
-use cosmian_kms_server_database::reexport::cosmian_kmip::{
-    kmip_0::kmip_types::{BlockCipherMode, KeyWrapType},
-    kmip_2_1::{
-        kmip_data_structures::{KeyMaterial, KeyValue},
-        kmip_objects::ObjectType,
-        kmip_operations::{Decrypt, Encrypt, Get},
-        kmip_types::{CryptographicParameters, KeyFormatType, UniqueIdentifier},
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::{
+        kmip_0::kmip_types::{BlockCipherMode, KeyWrapType},
+        kmip_2_1::{
+            kmip_data_structures::{KeyMaterial, KeyValue},
+            kmip_objects::ObjectType,
+            kmip_operations::{Decrypt, Encrypt, Get},
+            kmip_types::{CryptographicParameters, KeyFormatType, UniqueIdentifier},
+        },
     },
+    cosmian_kms_crypto::CryptoResultHelper,
 };
 use cosmian_logger::{debug, trace};
 use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
@@ -233,10 +237,10 @@ async fn get_user_and_resource_name(
     kms: &Arc<KMS>,
 ) -> KResult<(String, Option<Vec<u8>>)> {
     if kms.params.google_cse.google_cse_disable_tokens_validation {
-        debug!("no token validation");
+        debug!("get_user_and_resource_name: no token validation");
         Ok((kms.params.default_username.clone(), None))
     } else {
-        debug!("validate_tokens");
+        debug!("get_user_and_resource_name: validate_tokens");
         let token_extracted_content = validate_tokens(
             authentication_token,
             authorization_token,
@@ -271,7 +275,7 @@ pub async fn wrap(
     cse_config: &Arc<Option<GoogleCseConfig>>,
     kms: &Arc<KMS>,
 ) -> KResult<WrapResponse> {
-    debug!("entering");
+    debug!("wrap: entering");
 
     // the possible roles to wrap a key
     let roles = &[Role::Writer, Role::Upgrader];
@@ -286,10 +290,10 @@ pub async fn wrap(
     )
     .await?;
 
-    debug!("wrap dek");
+    debug!("wrap: wrap dek");
     let wrapped_dek = cse_key_encrypt(request.key, user, resource_name, kms).await?;
 
-    debug!("exiting with success");
+    debug!("wrap: exiting with success");
     Ok(WrapResponse {
         wrapped_key: wrapped_dek,
     })
@@ -328,7 +332,7 @@ pub async fn unwrap(
     cse_config: &Arc<Option<GoogleCseConfig>>,
     kms: &Arc<KMS>,
 ) -> KResult<UnwrapResponse> {
-    debug!("entering");
+    debug!("unwrap: entering");
 
     // the possible roles to unwrap a key
     let roles = &[Role::Writer, Role::Reader];
@@ -343,7 +347,7 @@ pub async fn unwrap(
     )
     .await?;
 
-    debug!("unwrap key");
+    debug!("unwrap: unwrap key");
     let data = cse_wrapped_key_decrypt(
         request.wrapped_key,
         UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned()),
@@ -352,7 +356,7 @@ pub async fn unwrap(
         kms,
     )
     .await?;
-    debug!("exiting with success");
+    debug!("unwrap: exiting with success");
     Ok(UnwrapResponse {
         key: general_purpose::STANDARD.encode(data),
     })
@@ -410,7 +414,7 @@ pub async fn private_key_sign(
     cse_config: &Arc<Option<GoogleCseConfig>>,
     kms: &Arc<KMS>,
 ) -> KResult<PrivateKeySignResponse> {
-    debug!("entering");
+    debug!("private_key_sign: entering");
     let roles: &[Role; 1] = &[Role::Signer];
 
     // get the user and resource name
@@ -423,7 +427,7 @@ pub async fn private_key_sign(
     )
     .await?;
 
-    debug!("decrypt private key");
+    debug!("private_key_sign: decrypt private key");
     // Unwrap private key which has been previously wrapped using AES
     let private_key_der = cse_wrapped_key_decrypt(
         request.wrapped_private_key,
@@ -435,10 +439,10 @@ pub async fn private_key_sign(
     .await?;
 
     // Sign with the unwrapped RSA private key
-    debug!("from_rsa");
+    debug!("private_key_sign: from_rsa");
     let private_key = PKey::from_rsa(Rsa::<Private>::private_key_from_der(&private_key_der)?)?;
 
-    debug!("build signer");
+    debug!("private_key_sign: build signer");
     let mut ctx = PkeyCtx::new(&private_key)?;
     ctx.sign_init()?;
     let (padding, md) = match request.algorithm.as_str() {
@@ -461,14 +465,14 @@ pub async fn private_key_sign(
 
     let mut signature = vec![0_u8; allocation_size];
     let signature_size = ctx.sign(&digest, Some(&mut *signature))?;
-    debug!("signature {signature_size}");
+    debug!("private_key_sign: signature {signature_size}");
     kms_ensure!(
         allocation_size == signature_size,
         "private_key_sign: allocation_size MUST be equal to signature_size"
     );
 
     debug!(
-        "exiting with success: {}",
+        "private_key_sign: exiting with success: {}",
         general_purpose::STANDARD.encode(signature.clone())
     );
     Ok(PrivateKeySignResponse {
@@ -524,7 +528,7 @@ pub async fn private_key_decrypt(
     cse_config: &Arc<Option<GoogleCseConfig>>,
     kms: &Arc<KMS>,
 ) -> KResult<PrivateKeyDecryptResponse> {
-    debug!("entering");
+    debug!("private_key_decrypt: entering");
     let roles: &[Role; 1] = &[Role::Decrypter];
 
     // get the user and resource name
@@ -544,7 +548,7 @@ pub async fn private_key_decrypt(
     );
     let encrypted_dek = general_purpose::STANDARD.decode(&request.encrypted_data_encryption_key)?;
 
-    debug!("[OK] base64 of encrypted_dek has been removed");
+    debug!("private_key_decrypt: [OK] base64 of encrypted_dek has been removed");
     // Unwrap private key which has been previously wrapped using AES
     let private_key_der = cse_wrapped_key_decrypt(
         request.wrapped_private_key,
@@ -556,13 +560,22 @@ pub async fn private_key_decrypt(
     .await?;
 
     debug!(
-        "private_key_decrypt: [OK] private_key_der {}",
-        general_purpose::STANDARD.encode(private_key_der.clone()),
+        "private_key_decrypt: [OK] recovered private_key DER bytes (len: {}). Perform RSA \
+         decryption",
+        private_key_der.len()
     );
 
     // Decrypt with the unwrapped RSA private key
-    debug!("from_rsa");
-    let private_key = PKey::from_rsa(Rsa::<Private>::private_key_from_der(&private_key_der)?)?;
+    // Assume the bytes are PKCS#1 DER encoded; if not, assume the bytes are PKCS#1 DER Encoded.
+    // From openssl documentation, `private_key_from_der` should be able to auto-detect formats.
+    let private_key = match PKey::private_key_from_der(&private_key_der) {
+        Ok(private_key) => private_key,
+        Err(_) => PKey::from_rsa(
+            Rsa::<Private>::private_key_from_der(&private_key_der)
+                .context("failed converting PKCS#1 DER bytes to RSA private key")?,
+        )
+        .context("failed to create PKey from RSA private key")?,
+    };
 
     // Perform RSA decryption.
     let mut ctx = PkeyCtx::new(&private_key)?;
@@ -588,11 +601,11 @@ pub async fn private_key_decrypt(
         ctx.set_rsa_mgf1_md(md)?;
     }
     let allocation_size = ctx.decrypt(&encrypted_dek, None)?;
-    debug!("allocation_size: {allocation_size}");
+    debug!("private_key_decrypt: allocation_size: {allocation_size}");
     let mut dek = vec![0_u8; allocation_size];
     let decrypt_size = ctx.decrypt(&encrypted_dek, Some(&mut *dek))?;
 
-    debug!("exiting with success: decrypt_size: {decrypt_size}");
+    debug!("private_key_decrypt: exiting with success: decrypt_size: {decrypt_size}");
     let response = PrivateKeyDecryptResponse {
         data_encryption_key: general_purpose::STANDARD.encode(
             dek.get(0..decrypt_size).ok_or_else(|| {
@@ -628,7 +641,7 @@ pub async fn digest(
     cse_config: &Arc<Option<GoogleCseConfig>>,
     kms: &Arc<KMS>,
 ) -> KResult<DigestResponse> {
-    debug!("entering");
+    debug!("digest: entering");
 
     let google_cse_kacls_url = build_google_cse_url(kms.params.kms_public_url.as_deref())?;
 
@@ -646,7 +659,7 @@ pub async fn digest(
         KmsError::Unauthorized("Authorization token should contain an email".to_owned())
     })?;
 
-    debug!("encode base64 wrapped_dek");
+    debug!("digest: encode base64 wrapped_dek");
     let dek_data = cse_wrapped_key_decrypt(
         request.wrapped_key,
         UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned()),
@@ -687,7 +700,7 @@ pub async fn privileged_wrap(
     cse_config: &Arc<Option<GoogleCseConfig>>,
     kms: &Arc<KMS>,
 ) -> KResult<PrivilegedWrapResponse> {
-    debug!("entering");
+    debug!("privileged_wrap: entering");
 
     let google_cse_kacls_url = build_google_cse_url(kms.params.kms_public_url.as_deref())?;
 
@@ -700,11 +713,11 @@ pub async fn privileged_wrap(
     )
     .await?;
 
-    debug!("wrap dek");
+    debug!("privileged_wrap: wrap dek");
     let resource_name = request.resource_name.into_bytes();
     let wrapped_dek = cse_key_encrypt(request.key, user, Some(resource_name), kms).await?;
 
-    debug!("exiting with success");
+    debug!("privileged_wrap: exiting with success");
     Ok(PrivilegedWrapResponse {
         wrapped_key: wrapped_dek,
     })
@@ -736,7 +749,7 @@ pub async fn privileged_unwrap(
     cse_config: &Arc<Option<GoogleCseConfig>>,
     kms: &Arc<KMS>,
 ) -> KResult<PrivilegedUnwrapResponse> {
-    debug!("entering");
+    debug!("privileged_unwrap: entering");
     let user = if kms.params.google_cse.google_cse_disable_tokens_validation {
         debug!("Authentication token check: validation disabled");
         kms.params.default_username.clone()
@@ -753,7 +766,7 @@ pub async fn privileged_unwrap(
     };
     let resource_name = request.resource_name.clone();
 
-    debug!("unwrap key");
+    debug!("privileged_unwrap: unwrap key");
     let data: Zeroizing<Vec<u8>> = cse_wrapped_key_decrypt(
         request.wrapped_key,
         UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned()),
@@ -763,7 +776,7 @@ pub async fn privileged_unwrap(
     )
     .await?;
 
-    debug!("exiting with success");
+    debug!("privileged_unwrap: exiting with success");
     Ok(PrivilegedUnwrapResponse {
         key: general_purpose::STANDARD.encode(data),
     })
@@ -807,7 +820,7 @@ pub async fn privileged_private_key_decrypt(
     cse_config: &Arc<Option<GoogleCseConfig>>,
     kms: &Arc<KMS>,
 ) -> KResult<PrivilegedPrivateKeyDecryptResponse> {
-    debug!("entering");
+    debug!("privileged_private_key_decrypt: entering");
     let google_cse_kacls_url = build_google_cse_url(kms.params.kms_public_url.as_deref())?;
 
     let user = validate_cse_authentication_token(
@@ -819,10 +832,10 @@ pub async fn privileged_private_key_decrypt(
     )
     .await?;
 
-    debug!("check algorithm");
+    debug!("privileged_private_key_decrypt: check algorithm");
 
     // Base 64 decode the encrypted DEK and create a wrapped KMIP object from the key bytes
-    debug!("decode encrypted_dek");
+    debug!("privileged_private_key_decrypt: decode encrypted_dek");
     let encrypted_dek = general_purpose::STANDARD.decode(&request.encrypted_data_encryption_key)?;
 
     // Unwrap private key which has been previously wrapped using AES
@@ -836,7 +849,7 @@ pub async fn privileged_private_key_decrypt(
     .await?;
 
     // Decrypt with the unwrapped RSA private key
-    debug!("from_rsa");
+    debug!("privileged_private_key_decrypt: from_rsa");
     let private_key = PKey::from_rsa(Rsa::<Private>::private_key_from_der(&private_key_der)?)?;
 
     // Get the associated public key to compare digest spki
@@ -876,11 +889,11 @@ pub async fn privileged_private_key_decrypt(
         ctx.set_rsa_mgf1_md(md)?;
     }
     let allocation_size = ctx.decrypt(&encrypted_dek, None)?;
-    debug!("allocation_size: {allocation_size}");
+    debug!("privileged_private_key_decrypt: allocation_size: {allocation_size}");
     let mut dek = vec![0_u8; allocation_size];
     let decrypt_size = ctx.decrypt(&encrypted_dek, Some(&mut *dek))?;
 
-    debug!("exiting with success: decrypt_size: {decrypt_size}");
+    debug!("privileged_private_key_decrypt: exiting with success: decrypt_size: {decrypt_size}");
     let response = PrivilegedPrivateKeyDecryptResponse {
         data_encryption_key: general_purpose::STANDARD.encode(
             dek.get(0..decrypt_size).ok_or_else(|| {
@@ -987,7 +1000,7 @@ pub async fn rewrap(
     cse_config: &Arc<Option<GoogleCseConfig>>,
     kms: &Arc<KMS>,
 ) -> KResult<RewrapResponse> {
-    debug!("entering");
+    debug!("rewrap: entering");
 
     // Authorization & identity
     let roles = [Role::Migrator];
@@ -1007,7 +1020,7 @@ pub async fn rewrap(
     })?;
 
     // Fetch RSA private key from current KMS
-    debug!("retrieving RSA private key from KMS");
+    debug!("rewrap: retrieving RSA private key from KMS");
     let get_request = Get {
         unique_identifier: Some(UniqueIdentifier::TextString(format!("{GOOGLE_CSE_ID}_rsa"))),
         key_format_type: Some(KeyFormatType::PKCS1),
@@ -1067,20 +1080,20 @@ pub async fn rewrap(
         .key;
 
     // Wrap with current KMS (KACLS2)
-    debug!("re-wrapping key with current KMS");
+    debug!("rewrap: re-wrapping key with current KMS");
     let resource_name_bytes = resource_name.clone().into_bytes();
     let re_wrapped_key =
         cse_key_encrypt(unwrapped_key.clone(), user, Some(resource_name_bytes), kms).await?;
 
     // Compute resource key hash
-    debug!("computing resource_key_hash");
+    debug!("rewrap: computing resource_key_hash");
     let resource_key_hash = compute_resource_key_hash(
         &resource_name,
         &perimeter_id,
         &general_purpose::STANDARD.decode(&unwrapped_key)?.into(),
     )?;
 
-    debug!("success");
+    debug!("rewrap: success");
     Ok(RewrapResponse {
         resource_key_hash,
         wrapped_key: re_wrapped_key,
@@ -1109,7 +1122,7 @@ async fn cse_wrapped_key_decrypt(
     resource_name: Option<Vec<u8>>,
     kms: &Arc<KMS>,
 ) -> KResult<Zeroizing<Vec<u8>>> {
-    debug!("wrapped_key: {wrapped_key}");
+    debug!("cse_wrapped_key_decrypt: wrapped_key: {wrapped_key}");
     let wrapped_key_bytes = general_purpose::STANDARD.decode(&wrapped_key)?;
     let len = wrapped_key_bytes.len();
     if len < TAG_LENGTH + NONCE_LENGTH {
