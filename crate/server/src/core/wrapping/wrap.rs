@@ -19,7 +19,7 @@ use cosmian_kms_server_database::{
         cosmian_kms_interfaces::SessionParams,
     },
 };
-use cosmian_logger::{debug, trace, warn};
+use cosmian_logger::{debug, warn};
 
 use crate::{
     core::{KMS, uid_utils::has_prefix},

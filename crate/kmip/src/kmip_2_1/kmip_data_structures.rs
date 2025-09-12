@@ -4,14 +4,14 @@ use std::{
     fmt::{Display, Formatter},
 };
 
-use cosmian_logger::trace;
+use cosmian_logger::{trace, warn};
 use num_bigint_dig::BigInt;
 use serde::{
     Deserialize, Serialize,
     de::{self, DeserializeSeed, MapAccess, Visitor},
     ser::SerializeStruct,
 };
-use tracing::{instrument, trace, warn};
+use tracing::instrument;
 use zeroize::Zeroizing;
 
 use super::{
