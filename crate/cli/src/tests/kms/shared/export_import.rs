@@ -8,11 +8,10 @@ use cosmian_kms_client::reexport::cosmian_kms_client_utils::{
     export_utils::{ExportKeyFormat, WrappingAlgorithm},
     import_utils::{ImportKeyFormat, KeyUsage},
 };
-use cosmian_logger::log_init;
+use cosmian_logger::{debug, info, log_init, warn};
 use openssl::pkey::PKey;
 use tempfile::TempDir;
 use test_kms_server::{TestsContext, start_default_test_kms_server};
-use tracing::{debug, info, warn};
 
 use crate::{
     actions::kms::{
