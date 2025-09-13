@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use base64::Engine;
 use cosmian_kms_client::read_object_from_json_ttlv_file;
-use cosmian_logger::{info, log_init, trace};
+use cosmian_logger::{debug, info, log_init, trace};
 use tempfile::TempDir;
 use test_kms_server::{
     AuthenticationOptions, MainDBConfig, TestsContext, start_test_server_with_options,
@@ -518,6 +518,7 @@ async fn test_tls_options() -> KmsCliResult<()> {
             ListOwnedObjects.run(ctx.get_owner_client()).await?;
             ctx.stop_server().await?;
         } else {
+            debug!("{}", description.to_string());
             assert!(result.is_err());
         }
     }
