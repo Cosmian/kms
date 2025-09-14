@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use base64::Engine;
 use cosmian_kms_client::read_object_from_json_ttlv_file;
-use cosmian_logger::{debug, info, log_init, trace};
+use cosmian_logger::{error, info, log_init, trace};
 use tempfile::TempDir;
 use test_kms_server::{
     AuthenticationOptions, MainDBConfig, TestsContext, start_test_server_with_options,
@@ -407,6 +407,21 @@ async fn test_tls_options() -> KmsCliResult<()> {
                 server_tls_cipher_suites: Some("TLS_AES_256_GCM_SHA384".to_string()),
                 ..Default::default()
             },
+            #[cfg(target_os = "macos")]
+            false, // Default client cipher suite on macOS is TLS 1.2
+            #[cfg(not(target_os = "macos"))]
+            true, // On Linux/Windows, default client cipher suite is TLS 1.3
+        ),
+        (
+            "Testing server in TLS 1.3 but client in TLS 1.2 - manually set for client",
+            AuthenticationOptions {
+                use_https: true,
+                server_tls_cipher_suites: Some("TLS_AES_256_GCM_SHA384".to_string()),
+                client_tls_cipher_suites: Some(
+                    "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384".to_string(),
+                ),
+                ..Default::default()
+            },
             false, // should fail
         ),
         (
@@ -518,7 +533,9 @@ async fn test_tls_options() -> KmsCliResult<()> {
             ListOwnedObjects.run(ctx.get_owner_client()).await?;
             ctx.stop_server().await?;
         } else {
-            debug!("{}", description.to_string());
+            if result.is_ok() {
+                error!("It should fail for test: {}", description.to_string());
+            }
             assert!(result.is_err());
         }
     }
