@@ -8,12 +8,18 @@ This operation can be applied to all [supported objects](./objects.md). One or m
 
 ### Example - Delete links on Certificate
 
+First, for the demo purpose create a certificate:
+
+```bash
+  cosmian kms certificates certify --generate-key-pair --subject-name C=yo --algorithm rsa2048 -c my_certificate
+```
+
 Delete the links on a certificate object.
 
 Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
 
 ```bash
-  cosmian kms attributes delete -i 03948573-9348-aaaa-aaaa-93857383 --public-key-id xxxxxxxx-yyyy-yyyy-yyyy-zzzzzzzzzzzz --private-key-id xxxxxxxx-yyyy-yyyy-yyyy-zzzzzzzzzzzz --certificate-id xxxxxxxx-yyyy-yyyy-yyyy-zzzzzzzzzzzz
+  cosmian kms attributes delete -i my_certificate --public-key-id xxxxxxxx-yyyy-yyyy-yyyy-zzzzzzzzzzzz --private-key-id xxxxxxxx-yyyy-yyyy-yyyy-zzzzzzzzzzzz --certificate-id xxxxxxxx-yyyy-yyyy-yyyy-zzzzzzzzzzzz
 ```
 
 The request deletes the KMIP links of the public key and the private key of the underlying certificate.
@@ -23,7 +29,7 @@ Output is:
 
 ```json
 Attribute deleted successfully
-          Unique identifier: 6209aa2a-900f-4a1c-b2ca-9b4af1bbd1d1
+          Unique identifier: my_certificate
 [
   {
     "LinkType": "PublicKeyLink",
@@ -31,7 +37,7 @@ Attribute deleted successfully
   }
 ]
 Attribute deleted successfully
-          Unique identifier: 6209aa2a-900f-4a1c-b2ca-9b4af1bbd1d1
+          Unique identifier: my_certificate
 [
   {
     "LinkType": "PrivateKeyLink",
@@ -39,7 +45,7 @@ Attribute deleted successfully
   }
 ]
 Attribute deleted successfully
-          Unique identifier: 6209aa2a-900f-4a1c-b2ca-9b4af1bbd1d1
+          Unique identifier: my_certificate
 [
   {
     "LinkType": "CertificateLink",
@@ -58,7 +64,7 @@ Attribute deleted successfully
         {
           "tag": "UniqueIdentifier",
           "type": "TextString",
-          "value": "10a875bd-9cc5-45a3-99ef-b2cdedd848bf"
+          "value": "my_certificate"
         },
         {
           "tag": "CurrentAttribute",
@@ -96,7 +102,7 @@ Attribute deleted successfully
         {
           "tag": "UniqueIdentifier",
           "type": "TextString",
-          "value": "10a875bd-9cc5-45a3-99ef-b2cdedd848bf"
+          "value": "my_certificate"
         },
         {
           "tag": "CurrentAttribute",
@@ -134,7 +140,7 @@ Attribute deleted successfully
         {
           "tag": "UniqueIdentifier",
           "type": "TextString",
-          "value": "10a875bd-9cc5-45a3-99ef-b2cdedd848bf"
+          "value": "my_certificate"
         },
         {
           "tag": "CurrentAttribute",
@@ -172,7 +178,7 @@ Attribute deleted successfully
         {
           "tag": "UniqueIdentifier",
           "type": "TextString",
-          "value": "6209aa2a-900f-4a1c-b2ca-9b4af1bbd1d1"
+          "value": "my_certificate"
         }
       ]
     }

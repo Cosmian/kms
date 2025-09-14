@@ -80,7 +80,7 @@ pub(crate) async fn sign(
                 .object()
                 .attributes()
                 .unwrap_or_else(|_| owm.attributes());
-            trace!("sign: attributes: {attributes:?}");
+            trace!("sign: attributes: {attributes}");
             if !attributes.is_usage_authorized_for(CryptographicUsageMask::Sign)? {
                 continue
             }

@@ -154,46 +154,48 @@ Verify a signature using the corresponding public key.
         }
       ]
     }
-    ```#### Usage via HTTP API
+    ```
+
+#### Usage via HTTP API
 
 To use Sign and SignatureVerify operations, send HTTP POST requests to the `/kmip/2_1` endpoint:
 
-```bash
-# Sign operation example
-curl -X POST -H "Content-Type: application/json" \
-  -d '{
-    "tag": "RequestMessage",
-    "value": [
-      {
-        "tag": "RequestHeader",
-        "value": [
-          {
-            "tag": "ProtocolVersion",
+    ```bash
+        # Sign operation example
+        curl -X POST -H "Content-Type: application/json" \
+          -d '{
+            "tag": "RequestMessage",
             "value": [
-              {"tag": "ProtocolVersionMajor", "type": "Integer", "value": 2},
-              {"tag": "ProtocolVersionMinor", "type": "Integer", "value": 1}
+              {
+                "tag": "RequestHeader",
+                "value": [
+                  {
+                    "tag": "ProtocolVersion",
+                    "value": [
+                      {"tag": "ProtocolVersionMajor", "type": "Integer", "value": 2},
+                      {"tag": "ProtocolVersionMinor", "type": "Integer", "value": 1}
+                    ]
+                  },
+                  {"tag": "BatchCount", "type": "Integer", "value": 1}
+                ]
+              },
+              {
+                "tag": "BatchItem",
+                "value": [
+                  {"tag": "Operation", "type": "Enumeration", "value": "Sign"},
+                  {
+                    "tag": "RequestPayload",
+                    "value": [
+                      {"tag": "UniqueIdentifier", "type": "TextString", "value": "your-key-id"},
+                      {"tag": "Data", "type": "ByteString", "value": "48656C6C6F"}
+                    ]
+                  }
+                ]
+              }
             ]
-          },
-          {"tag": "BatchCount", "type": "Integer", "value": 1}
-        ]
-      },
-      {
-        "tag": "BatchItem",
-        "value": [
-          {"tag": "Operation", "type": "Enumeration", "value": "Sign"},
-          {
-            "tag": "RequestPayload",
-            "value": [
-              {"tag": "UniqueIdentifier", "type": "TextString", "value": "your-key-id"},
-              {"tag": "Data", "type": "ByteString", "value": "48656C6C6F"}
-            ]
-          }
-        ]
-      }
-    ]
-  }' \
-  http://localhost:9998/kmip/2_1
-```
+          }' \
+          http://localhost:9998/kmip/2_1
+    ```
 
 #### Streaming Support
 

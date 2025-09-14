@@ -51,7 +51,7 @@ pub(crate) async fn message(
             })
             .collect::<Vec<OperationEnumeration>>(),
     );
-    trace!("Entering message KMIP operation: {request:?}");
+    trace!("Entering message KMIP operation: {request}");
 
     let mut response_items = Vec::new();
     for versioned_batch_item in request.batch_item {
@@ -73,7 +73,10 @@ pub(crate) async fn message(
         ))
         .await;
 
-        trace!("Message: operation result => {response_operation:#?}");
+        match response_operation {
+            Ok(ref op) => trace!("Operation processed successfully: {op}"),
+            Err(ref e) => trace!("Operation processing failed: {e}"),
+        }
 
         let (result_status, result_reason, result_message, response_payload) =
             match response_operation {
@@ -136,7 +139,7 @@ pub(crate) async fn message(
         batch_item: response_items,
     };
 
-    trace!("Response message: {response_message:#?}");
+    trace!("Response message: {response_message}");
 
     Ok(response_message)
 }
@@ -147,7 +150,7 @@ async fn process_operation(
     params: Option<Arc<dyn SessionParams>>,
     request_operation: Operation,
 ) -> Result<Operation, KmsError> {
-    trace!("Processing KMIP operation: {request_operation:?} with user: {user:?}");
+    trace!("Processing KMIP operation: {request_operation} with user: {user:?}");
     let privileged_users = kms.params.privileged_users.clone();
     Ok(match request_operation {
         Operation::Activate(activate) => {
@@ -262,7 +265,7 @@ async fn process_operation(
         | Operation::ValidateResponse(_) => {
             return Err(KmsError::Kmip21Error(
                 ErrorReason::Operation_Not_Supported,
-                format!("Operation: {request_operation:?} not supported"),
+                format!("Operation: {request_operation} not supported"),
             ));
         }
     })

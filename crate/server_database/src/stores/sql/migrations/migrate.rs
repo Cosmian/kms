@@ -152,7 +152,7 @@ where
                     }
                 };
                 attributes.set_object_type(object.object_type());
-                trace!("attributes={:?}", attributes);
+                trace!("attributes={}", attributes);
                 let attributes_json = serde_json::to_value(&attributes).context(
                     "migrate_from_4_12_0_to_4_13_0: failed serializing the attributes to JSON",
                 )?;

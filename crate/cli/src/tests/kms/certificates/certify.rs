@@ -579,7 +579,7 @@ async fn test_certify_issue_with_subject_name() -> KmsCliResult<()> {
 
     let (_, attributes, _) =
         check_certificate_chain(ctx, &issuer_private_key_id, &certificate_id).await;
-    info!("{attributes:?}");
+    info!("{attributes}");
 
     // check links to public key
     let (public_key_id, public_key_attributes) =

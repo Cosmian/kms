@@ -69,7 +69,7 @@ fn register_symmetric_key(client: &SocketClient) -> String {
     .expect("Failed to parse TTLV");
     let request_message: RequestMessage =
         from_ttlv(ttlv_request).expect("Failed to parse Register");
-    info!("Registering symmetric key with request: {request_message:#?}",);
+    info!("Registering symmetric key with request: {request_message}",);
 
     // Use the raw request to send the Register operation
     let response = client
@@ -118,7 +118,7 @@ fn locate_symmetric_key(client: &SocketClient) -> Vec<String> {
     .expect("Failed to parse TTLV");
     let request_message: RequestMessage = from_ttlv(ttlv_request).expect("Failed to parse Locate");
 
-    info!("Locating symmetric key with request: {request_message:#?}",);
+    info!("Locating symmetric key with request: {request_message}",);
 
     // Use the raw request to send the Locate operation
     let response = client
@@ -178,7 +178,7 @@ fn get_symmetric_key(client: &SocketClient, uid: &str) -> Object {
         panic!("Expected Get operation");
     };
     get_request.unique_identifier = uid.to_owned();
-    info!("Getting symmetric key with request: {request_message:#?}",);
+    info!("Getting symmetric key with request: {request_message}",);
 
     // Use the raw request to send the Get operation
     let raw_request = GET_SYMMETRIC_KEY.replace(

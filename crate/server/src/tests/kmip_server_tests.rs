@@ -369,7 +369,7 @@ async fn test_database_user_tenant() -> KResult<()> {
             None,
         )
         .await;
-    sk_response.unwrap_err();
+    assert!(sk_response.is_err());
 
     let pk_response = kms
         .get(
@@ -383,7 +383,7 @@ async fn test_database_user_tenant() -> KResult<()> {
             None,
         )
         .await;
-    pk_response.unwrap_err();
+    assert!(pk_response.is_err());
 
     Ok(())
 }

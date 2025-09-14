@@ -36,7 +36,6 @@ cosmian kms sym keys re-key -k 64c60363-6660-4fd4-9f30-c965a0f72fc3
         }
       ]
     }
-
     ```
 
 === "Response"

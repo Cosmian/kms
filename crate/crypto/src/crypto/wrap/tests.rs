@@ -235,7 +235,7 @@ fn test_encrypt_decrypt_rfc_5649() -> CryptoResult<()> {
     };
     unwrap_key_block(data_encryption_key.key_block_mut()?, &key_encryption_key)?;
 
-    assert_eq!(data_encryption_key.key_block()?, &original_key_block);
+    assert!(data_encryption_key.key_block()? == &original_key_block);
     Ok(())
 }
 
@@ -287,7 +287,7 @@ fn test_encrypt_decrypt_rfc_ecies_x25519() -> CryptoResult<()> {
         wrap_key_pair.private_key(),
     )?;
 
-    assert_eq!(data_encryption_key.key_block()?, &original_key_block);
+    assert!(data_encryption_key.key_block()? == &original_key_block);
     Ok(())
 }
 
@@ -354,7 +354,7 @@ fn test_encrypt_decrypt_rsa() -> CryptoResult<()> {
     };
     unwrap_key_block(data_encryption_key.key_block_mut()?, &wrap_key_pair_priv)?;
 
-    assert_eq!(data_encryption_key.key_block()?, &original_key_block);
+    assert!(data_encryption_key.key_block()? == &original_key_block);
     Ok(())
 }
 
@@ -402,7 +402,7 @@ fn test_encrypt_decrypt_ec_p192() -> CryptoResult<()> {
     };
     unwrap_key_block(data_encryption_key.key_block_mut()?, &wrap_key_pair_priv)?;
 
-    assert_eq!(data_encryption_key.key_block()?, &original_key_block);
+    assert!(data_encryption_key.key_block()? == &original_key_block);
     Ok(())
 }
 
@@ -450,6 +450,6 @@ fn test_encrypt_decrypt_ec_p384() -> CryptoResult<()> {
     };
     unwrap_key_block(data_encryption_key.key_block_mut()?, &wrap_key_pair_priv)?;
 
-    assert_eq!(data_encryption_key.key_block()?, &original_key_block);
+    assert!(data_encryption_key.key_block()? == &original_key_block);
     Ok(())
 }

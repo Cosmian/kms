@@ -84,7 +84,7 @@ impl Display for ObjectWithMetadata {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "ObjectWithMetadata {{ id: {}, object: {}, owner: {}, state: {}, attributes: {:?} }}",
+            "ObjectWithMetadata {{ id: {}, object: {}, owner: {}, state: {}, attributes: {} }}",
             self.id, self.object, self.owner, self.state, self.attributes
         )
     }

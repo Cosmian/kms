@@ -136,7 +136,9 @@ impl ImportCertificateAction {
             );
         }
 
-        trace!("{:?}", leaf_certificate_attributes);
+        if let Some(ref attributes) = leaf_certificate_attributes {
+            trace!("Leaf certificate attributes: {}", attributes);
+        }
         let (stdout_message, returned_unique_identifier) = match self.input_format {
             CertificateInputFormat::JsonTtlv => {
                 trace!("import certificate as TTLV JSON file");

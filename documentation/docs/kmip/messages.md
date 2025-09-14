@@ -18,7 +18,9 @@ along with any relevant result data or error messages.
 
 ### Request and response example
 
-A single `RequestMessage`, with one `CreateKeyPair` operation and one `Locate` operation.
+Below are canonical KMIP 2.1 message examples, following the mandatory XML schema AKLC-M-1-21.xml. Each request and response is shown in JSON TTLV format.
+
+#### 1. CreateKeyPair
 
 === "Message Request"
 
@@ -26,101 +28,47 @@ A single `RequestMessage`, with one `CreateKeyPair` operation and one `Locate` o
     {
         "tag": "RequestMessage",
         "type": "Structure",
-        "value": [ {
-            "tag": "Header",
-            "type": "Structure",
-            "value": [ {
-                "tag": "ProtocolVersion",
+        "value": [
+            {
+                "tag": "RequestHeader",
                 "type": "Structure",
-                "value": [ {
-                        "tag": "ProtocolVersionMajor",
-                        "type": "Integer",
-                        "value": 2,
-                    }, {
-                        "tag": "ProtocolVersionMinor",
-                        "type": "Integer",
-                        "value": 1,
-                    },
+                "value": [
+                    { "tag": "ProtocolVersion", "type": "Structure", "value": [
+                        { "tag": "ProtocolVersionMajor", "type": "Integer", "value": 2 },
+                        { "tag": "ProtocolVersionMinor", "type": "Integer", "value": 1 }
+                    ] },
+                    { "tag": "ClientCorrelationValue", "type": "TextString", "value": "AKLC-M-1-21 step=0" },
+                    { "tag": "BatchCount", "type": "Integer", "value": 1 }
                 ]
-            }, {
-                "tag": "MaximumResponseSize",
-                "type": "Integer",
-                "value": 9999,
-            }, {
-                "tag": "BatchCount",
-                "type": "Integer",
-                "value": 2,
-            } ]
-        }, {
-            "tag": "BatchItem",
-            "type": "Structure",
-            "value": [ {
-                "tag": "Items",
-                "type": "Structure",
-                "value": [ {
-                    "tag": "Operation",
-                    "type": "Enumeration",
-                    "value": "CreateKeyPair",
-                }, {
-                    "tag": "RequestPayload",
-                    "type": "Structure",
-                    "value": [ {
-                        "tag": "CommonAttributes",
-                        "type": "Structure",
-                        "value": [ {
-                            "tag": "CryptographicAlgorithm",
-                            "type": "Enumeration",
-                            "value": "ECDH",
-                        }, {
-                            "tag": "CryptographicLength",
-                            "type": "Integer",
-                            "value": 256,
-                        }, {
-                            "tag": "CryptographicDomainParameters",
-                            "type": "Structure",
-                            "value": [ {
-                                    "tag": "QLength",
-                                    "type": "Integer",
-                                    "value": 256,
-                                }, {
-                                    "tag": "RecommendedCurve",
-                                    "type": "Enumeration",
-                                    "value": "CURVE25519",
-                                },
-                            ],
-                        }, {
-                            "tag": "CryptographicUsageMask",
-                            "type": "Integer",
-                            "value": 2108,
-                        }, {
-                            "tag": "KeyFormatType",
-                            "type": "Enumeration",
-                            "value": "ECPrivateKey",
-                        }, {
-                            "tag": "ObjectType",
-                            "type": "Enumeration",
-                            "value": "PrivateKey",
-                        } ],
-                    } ],
-                } ],
-            }, {
+            },
+            {
                 "tag": "BatchItem",
                 "type": "Structure",
-                "value": [ {
-                    "tag": "Operation",
-                    "type": "Enumeration",
-                    "value": "Locate"
-                }, {
-                    "tag": "RequestPayload",
-                    "type": "Structure",
-                    "value": [ {
-                        "tag": "Attributes",
-                        "type": "Structure",
-                        "value": [],
-                    } ],
-                },
-            } ],
-        } ],
+                "value": [
+                    { "tag": "Operation", "type": "Enumeration", "value": "CreateKeyPair" },
+                    { "tag": "RequestPayload", "type": "Structure", "value": [
+                        { "tag": "CommonAttributes", "type": "Structure", "value": [
+                            { "tag": "CryptographicAlgorithm", "type": "Enumeration", "value": "RSA" },
+                            { "tag": "CryptographicLength", "type": "Integer", "value": 2048 }
+                        ] },
+                        { "tag": "PrivateKeyAttributes", "type": "Structure", "value": [
+                            { "tag": "Name", "type": "Structure", "value": [
+                                { "tag": "NameValue", "type": "TextString", "value": "AKLC-M-1-21-private" },
+                                { "tag": "NameType", "type": "Enumeration", "value": "UninterpretedTextString" }
+                            ] },
+                            { "tag": "CryptographicUsageMask", "type": "Integer", "value": "Sign" }
+                        ] },
+                        { "tag": "PublicKeyAttributes", "type": "Structure", "value": [
+                            { "tag": "Name", "type": "Structure", "value": [
+                                { "tag": "NameValue", "type": "TextString", "value": "AKLC-M-1-21-public" },
+                                { "tag": "NameType", "type": "Enumeration", "value": "UninterpretedTextString" }
+                            ] },
+                            { "tag": "CryptographicUsageMask", "type": "Integer", "value": "Verify" }
+                        ] }
+                    ] }
+                ]
+            }
+        ]
     }
     ```
 
@@ -130,86 +78,204 @@ A single `RequestMessage`, with one `CreateKeyPair` operation and one `Locate` o
     {
         "tag": "ResponseMessage",
         "type": "Structure",
-        "value": [ {
-            "tag": "Header",
-            "type": "Structure",
-            "value": [ {
-                "tag": "ProtocolVersion",
+        "value": [
+            {
+                "tag": "ResponseHeader",
                 "type": "Structure",
-                "value": [ {
-                    "tag": "ProtocolVersionMajor",
-                    "type": "Integer",
-                    "value": 2,
-                }, {
-                    "tag": "ProtocolVersionMinor",
-                    "type": "Integer",
-                    "value": 1,
-                } ]
-            }, {
-                "tag": "Timestamp",
-                "type": "LongInteger",
-                "value": 1698748303,
-            }, {
-                "tag": "BatchCount",
-                "type": "Integer",
-                "value": 2,
-            } ]
-        }, {
-            "tag": "BatchItem",
-            "type": "Structure",
-            "value": [ {
-                "tag": "Items",
+                "value": [
+                    { "tag": "ProtocolVersion", "type": "Structure", "value": [
+                        { "tag": "ProtocolVersionMajor", "type": "Integer", "value": 2 },
+                        { "tag": "ProtocolVersionMinor", "type": "Integer", "value": 1 }
+                    ] },
+                    { "tag": "TimeStamp", "type": "DateTime", "value": "$NOW" },
+                    { "tag": "BatchCount", "type": "Integer", "value": 1 }
+                ]
+            },
+            {
+                "tag": "BatchItem",
                 "type": "Structure",
-                "value": [ {
-                    "tag": "Operation",
-                    "type": "Enumeration",
-                    "value": "CreateKeyPair",
-                }, {
-                    "tag": "ResultStatus",
-                    "type": "Enumeration",
-                    "value": "Success",
-                }, {
-                    "tag": "ResponsePayload",
-                    "type": "Structure",
-                    "value": [ {
-                        "tag": "PrivateKeyUniqueIdentifier",
-                        "type": "TextString",
-                        "value": "7c293777-794f-41fa-95f2-4f0a3bc730b8",
-                    }, {
-                        "tag": "PublicKeyUniqueIdentifier",
-                        "type": "TextString",
-                        "value": "042c8439-16f8-406f-b425-c18a69fb56a7",
-                    } ],
-                } ],
-            }, {
-                "tag": "BtachItem",
+                "value": [
+                    { "tag": "Operation", "type": "Enumeration", "value": "CreateKeyPair" },
+                    { "tag": "ResultStatus", "type": "Enumeration", "value": "Success" },
+                    { "tag": "ResponsePayload", "type": "Structure", "value": [
+                        { "tag": "PrivateKeyUniqueIdentifier", "type": "TextString", "value": "$UNIQUE_IDENTIFIER_0" },
+                        { "tag": "PublicKeyUniqueIdentifier", "type": "TextString", "value": "$UNIQUE_IDENTIFIER_1" }
+                    ] }
+                ]
+            }
+        ]
+    }
+    ```
+
+#### 2. GetAttributes (Private Key)
+
+=== "Message Request"
+
+    ```json
+    {
+        "tag": "RequestMessage",
+        "type": "Structure",
+        "value": [
+            {
+                "tag": "RequestHeader",
                 "type": "Structure",
-                "value": [ {
-                    "tag": "Operation",
-                    "type": "Enumeration",
-                    "value": "Locate"
-                }, {
-                    "tag": "ResponsePayload",
-                    "type": "Structure",
-                    "value": [ {
-                        "tag": "LocatedItems",
-                        "type": "Integer",
-                        "value": 2,
-                    }, {
-                        "tag": "UniqueIdentifier",
-                        "type": "Structure",
-                        "value": [ {
-                            "tag": "PrivateKeyUniqueIdentifier",
-                            "type": "TextString",
-                            "value": "7c293777-794f-41fa-95f2-4f0a3bc730b8",
-                        }, {
-                            "tag": "PublicKeyUniqueIdentifier",
-                            "type": "TextString",
-                            "value": "042c8439-16f8-406f-b425-c18a69fb56a7",
-                        } ],
-                    } ],
-                } ],
-            } ],
-        } ],
+                "value": [
+                    { "tag": "ProtocolVersion", "type": "Structure", "value": [
+                        { "tag": "ProtocolVersionMajor", "type": "Integer", "value": 2 },
+                        { "tag": "ProtocolVersionMinor", "type": "Integer", "value": 1 }
+                    ] },
+                    { "tag": "ClientCorrelationValue", "type": "TextString", "value": "AKLC-M-1-21 step=1" },
+                    { "tag": "BatchCount", "type": "Integer", "value": 1 }
+                ]
+            },
+            {
+                "tag": "BatchItem",
+                "type": "Structure",
+                "value": [
+                    { "tag": "Operation", "type": "Enumeration", "value": "GetAttributes" },
+                    { "tag": "RequestPayload", "type": "Structure", "value": [
+                        { "tag": "UniqueIdentifier", "type": "TextString", "value": "$UNIQUE_IDENTIFIER_0" },
+                        { "tag": "AttributeReference", "type": "Enumeration", "value": "State" },
+                        { "tag": "AttributeReference", "type": "Enumeration", "value": "CryptographicUsageMask" },
+                        { "tag": "AttributeReference", "type": "Enumeration", "value": "UniqueIdentifier" },
+                        { "tag": "AttributeReference", "type": "Enumeration", "value": "ObjectType" },
+                        { "tag": "AttributeReference", "type": "Enumeration", "value": "CryptographicAlgorithm" },
+                        { "tag": "AttributeReference", "type": "Enumeration", "value": "CryptographicLength" },
+                        { "tag": "AttributeReference", "type": "Enumeration", "value": "Digest" },
+                        { "tag": "AttributeReference", "type": "Enumeration", "value": "InitialDate" },
+                        { "tag": "AttributeReference", "type": "Enumeration", "value": "LastChangeDate" },
+                        { "tag": "AttributeReference", "type": "Enumeration", "value": "ActivationDate" },
+                        { "tag": "AttributeReference", "type": "Enumeration", "value": "OriginalCreationDate" },
+                        { "tag": "AttributeReference", "type": "Enumeration", "value": "RandomNumberGenerator" },
+                        { "tag": "AttributeReference", "type": "Enumeration", "value": "KeyFormatType" }
+                    ] }
+                ]
+            }
+        ]
+    }
+    ```
+
+=== "Message Response"
+
+    ```json
+    {
+        "tag": "ResponseMessage",
+        "type": "Structure",
+        "value": [
+            {
+                "tag": "ResponseHeader",
+                "type": "Structure",
+                "value": [
+                    { "tag": "ProtocolVersion", "type": "Structure", "value": [
+                        { "tag": "ProtocolVersionMajor", "type": "Integer", "value": 2 },
+                        { "tag": "ProtocolVersionMinor", "type": "Integer", "value": 1 }
+                    ] },
+                    { "tag": "TimeStamp", "type": "DateTime", "value": "$NOW" },
+                    { "tag": "BatchCount", "type": "Integer", "value": 1 }
+                ]
+            },
+            {
+                "tag": "BatchItem",
+                "type": "Structure",
+                "value": [
+                    { "tag": "Operation", "type": "Enumeration", "value": "GetAttributes" },
+                    { "tag": "ResultStatus", "type": "Enumeration", "value": "Success" },
+                    { "tag": "ResponsePayload", "type": "Structure", "value": [
+                        { "tag": "UniqueIdentifier", "type": "TextString", "value": "$UNIQUE_IDENTIFIER_0" },
+                        { "tag": "Attributes", "type": "Structure", "value": [
+                            { "tag": "State", "type": "Enumeration", "value": "PreActive" },
+                            { "tag": "CryptographicUsageMask", "type": "Integer", "value": "Sign" },
+                            { "tag": "UniqueIdentifier", "type": "TextString", "value": "$UNIQUE_IDENTIFIER_0" },
+                            { "tag": "ObjectType", "type": "Enumeration", "value": "PrivateKey" },
+                            { "tag": "CryptographicAlgorithm", "type": "Enumeration", "value": "RSA" },
+                            { "tag": "CryptographicLength", "type": "Integer", "value": 2048 },
+                            { "tag": "Digest", "type": "Structure", "value": [
+                                { "tag": "HashingAlgorithm", "type": "Enumeration", "value": "SHA_256" },
+                                { "tag": "DigestValue", "type": "ByteString", "value": "8eb422ae2b006a05d3c8a542a28536735241b6dc1c37926bc8007bd6220d9230" },
+                                { "tag": "KeyFormatType", "type": "Enumeration", "value": "PKCS_1" }
+                            ] },
+                            { "tag": "InitialDate", "type": "DateTime", "value": "$NOW" },
+                            { "tag": "LastChangeDate", "type": "DateTime", "value": "$NOW" },
+                            { "tag": "OriginalCreationDate", "type": "DateTime", "value": "$NOW" },
+                            { "tag": "RandomNumberGenerator", "type": "Structure", "value": [
+                                { "tag": "RNGAlgorithm", "type": "Enumeration", "value": "ANSIX9_31" },
+                                { "tag": "CryptographicAlgorithm", "type": "Enumeration", "value": "AES" },
+                                { "tag": "CryptographicLength", "type": "Integer", "value": 256 }
+                            ] },
+                            { "tag": "KeyFormatType", "type": "Enumeration", "value": "PKCS_1" }
+                        ] }
+                    ] }
+                ]
+            }
+        ]
+    }
+    ```
+
+#### 3. Destroy (Private Key)
+
+=== "Message Request"
+
+    ```json
+    {
+        "tag": "RequestMessage",
+        "type": "Structure",
+        "value": [
+            {
+                "tag": "RequestHeader",
+                "type": "Structure",
+                "value": [
+                    { "tag": "ProtocolVersion", "type": "Structure", "value": [
+                        { "tag": "ProtocolVersionMajor", "type": "Integer", "value": 2 },
+                        { "tag": "ProtocolVersionMinor", "type": "Integer", "value": 1 }
+                    ] },
+                    { "tag": "ClientCorrelationValue", "type": "TextString", "value": "AKLC-M-1-21 step=3" },
+                    { "tag": "BatchCount", "type": "Integer", "value": 1 }
+                ]
+            },
+            {
+                "tag": "BatchItem",
+                "type": "Structure",
+                "value": [
+                    { "tag": "Operation", "type": "Enumeration", "value": "Destroy" },
+                    { "tag": "RequestPayload", "type": "Structure", "value": [
+                        { "tag": "UniqueIdentifier", "type": "TextString", "value": "$UNIQUE_IDENTIFIER_0" }
+                    ] }
+                ]
+            }
+        ]
+    }
+    ```
+
+=== "Message Response"
+
+    ```json
+    {
+        "tag": "ResponseMessage",
+        "type": "Structure",
+        "value": [
+            {
+                "tag": "ResponseHeader",
+                "type": "Structure",
+                "value": [
+                    { "tag": "ProtocolVersion", "type": "Structure", "value": [
+                        { "tag": "ProtocolVersionMajor", "type": "Integer", "value": 2 },
+                        { "tag": "ProtocolVersionMinor", "type": "Integer", "value": 1 }
+                    ] },
+                    { "tag": "TimeStamp", "type": "DateTime", "value": "$NOW" },
+                    { "tag": "BatchCount", "type": "Integer", "value": 1 }
+                ]
+            },
+            {
+                "tag": "BatchItem",
+                "type": "Structure",
+                "value": [
+                    { "tag": "Operation", "type": "Enumeration", "value": "Destroy" },
+                    { "tag": "ResultStatus", "type": "Enumeration", "value": "Success" },
+                    { "tag": "ResponsePayload", "type": "Structure", "value": [
+                        { "tag": "UniqueIdentifier", "type": "TextString", "value": "$UNIQUE_IDENTIFIER_0" }
+                    ] }
+                ]
+            }
+        ]
     }
     ```

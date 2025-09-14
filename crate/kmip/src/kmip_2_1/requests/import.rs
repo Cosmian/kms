@@ -45,7 +45,7 @@ pub fn import_object_request<T: IntoIterator<Item = impl AsRef<str>>>(
         (key_wrap_type, attributes)
     };
 
-    trace!("key_wrap_type: {key_wrap_type:?}, attributes: {attributes:?}");
+    trace!("key_wrap_type: {key_wrap_type:?}, attributes: {attributes}");
 
     attributes.set_tags(tags).unwrap_or_default();
 

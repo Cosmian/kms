@@ -23,7 +23,7 @@ use crate::result::{KResult, KResultHelper};
 /// Configuration for the `py_kmip` socket client
 #[derive(Clone)]
 pub(super) struct SocketClientConfig {
-    /// Server hostmeet
+    /// Server hostname
     pub host: String,
     /// Server port
     pub port: u16,
@@ -127,12 +127,15 @@ impl SocketClient {
     /// * If the server returns an error response
     /// * If the response is invalid
     #[allow(clippy::cognitive_complexity)]
-    pub(super) fn send_request<REQ: Serialize + fmt::Debug, RESP: DeserializeOwned + fmt::Debug>(
+    pub(super) fn send_request<
+        REQ: Serialize + fmt::Display,
+        RESP: DeserializeOwned + fmt::Display,
+    >(
         &self,
         kmip_flavor: KmipFlavor,
         request: &REQ,
     ) -> KResult<RESP> {
-        debug!("REQ:\n{:#?}", request);
+        debug!("REQ:\n{}", request);
         // Serialize to TTLV
         let ttlv_request = to_ttlv(request).context("Failed to serialize request to TTLV")?;
         debug!("TTLV REQ:\n{:#?}", ttlv_request);
@@ -152,7 +155,7 @@ impl SocketClient {
 
         // Deserialize response
         let response = from_ttlv(ttlv_response)?;
-        debug!("RESP:\n{:#?}", response);
+        debug!("RESP:\n{}", response);
 
         Ok(response)
     }

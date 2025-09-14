@@ -84,7 +84,7 @@ fn discover_versions_1(client: &SocketClient) {
     let request_message: RequestMessage =
         from_ttlv(ttlv_request).expect("Failed to parse DiscoverVersions");
 
-    info!("Discovering KMIP versions with request: {request_message:#?}",);
+    info!("Discovering KMIP versions with request: {request_message}",);
 
     // Use the raw request to send the DiscoverVersions operation
     let response = client
@@ -136,7 +136,7 @@ fn query(client: &SocketClient) {
     .expect("Failed to parse TTLV");
     let request_message: RequestMessage = from_ttlv(ttlv_request).expect("Failed to parse Query");
 
-    info!("Querying with request: {request_message:#?}",);
+    info!("Querying with request: {request_message}",);
 
     // Use the raw request to send the Query operation
     let response = client
@@ -147,7 +147,7 @@ fn query(client: &SocketClient) {
     let response: ResponseMessage =
         from_ttlv(ttlv_response).expect("Failed to parse Query response");
 
-    info!("Query response: {response:#?}");
+    info!("Query response: {response}");
 
     assert_eq!(
         response.response_header.protocol_version,
@@ -166,7 +166,7 @@ fn create_symmetric_key(client: &SocketClient) -> String {
     .expect("Failed to parse TTLV");
     let request_message: RequestMessage = from_ttlv(ttlv_request).expect("Failed to parse Create");
 
-    info!("Creating symmetric key with request: {request_message:#?}",);
+    info!("Creating symmetric key with request: {request_message}",);
 
     // Use the raw request to send the Create operation
     let response = client
@@ -177,7 +177,7 @@ fn create_symmetric_key(client: &SocketClient) -> String {
     let response: ResponseMessage =
         from_ttlv(ttlv_response).expect("Failed to parse Create response");
 
-    info!("Create response: {response:#?}");
+    info!("Create response: {response}");
 
     assert_eq!(
         response.response_header.protocol_version,
@@ -223,7 +223,7 @@ fn get_attributes(client: &SocketClient, uid: &str) {
         panic!("Expected GetAttributes operation");
     };
     get_attributes_request.unique_identifier = uid.to_owned();
-    info!("Getting attributes with request: {request_message:#?}",);
+    info!("Getting attributes with request: {request_message}",);
     let raw_request = to_ttlv(&request_message)
         .expect("Failed to encode request")
         .to_bytes(KmipFlavor::Kmip1)
@@ -237,7 +237,7 @@ fn get_attributes(client: &SocketClient, uid: &str) {
     let response: ResponseMessage =
         from_ttlv(ttlv_response).expect("Failed to parse GetAttributes response");
 
-    info!("GetAttributes response: {response:#?}");
+    info!("GetAttributes response: {response}");
 
     assert_eq!(
         response.response_header.protocol_version,
@@ -286,7 +286,7 @@ fn add_attributes(client: &SocketClient, uid: &str) {
             panic!("Expected V14 batch item");
         }
     }
-    info!("Adding attributes with request: {request_message:#?}",);
+    info!("Adding attributes with request: {request_message}",);
     let raw_request = to_ttlv(&request_message)
         .expect("Failed to encode request")
         .to_bytes(KmipFlavor::Kmip1)
@@ -300,7 +300,7 @@ fn add_attributes(client: &SocketClient, uid: &str) {
     let response: ResponseMessage =
         from_ttlv(ttlv_response).expect("Failed to parse AddAttribute response");
 
-    info!("AddAttribute response: {response:#?}");
+    info!("AddAttribute response: {response}");
 
     assert_eq!(
         response.response_header.protocol_version,
@@ -344,7 +344,7 @@ fn get_symmetric_key(client: &SocketClient, uid: &str) {
         panic!("Expected Get operation");
     };
     get_request.unique_identifier = uid.to_owned();
-    info!("Getting symmetric key with request: {request_message:#?}",);
+    info!("Getting symmetric key with request: {request_message}",);
     let raw_request = to_ttlv(&request_message)
         .expect("Failed to encode request")
         .to_bytes(KmipFlavor::Kmip1)
@@ -360,7 +360,7 @@ fn get_symmetric_key(client: &SocketClient, uid: &str) {
 
     let response: ResponseMessage = from_ttlv(ttlv_response).expect("Failed to parse Get response");
 
-    info!("Get response: {response:#?}");
+    info!("Get response: {response}");
 
     assert_eq!(
         response.response_header.protocol_version,

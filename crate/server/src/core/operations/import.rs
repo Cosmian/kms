@@ -756,7 +756,7 @@ async fn process_pkcs12(
     }
 
     debug!(
-        "Importing leaf certificate with attributes: {:?}",
+        "Importing leaf certificate with attributes: {}",
         leaf_attributes
     );
 

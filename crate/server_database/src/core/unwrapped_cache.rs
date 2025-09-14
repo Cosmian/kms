@@ -20,7 +20,7 @@ use crate::error::DbResult;
 
 /// This is the object kept in the Main LRU cache
 /// It contains the unwrapped object and the key signature
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct CachedUnwrappedObject {
     fingerprint: u64,
     unwrapped_object: Object,

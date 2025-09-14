@@ -82,7 +82,7 @@ impl ResponseMessage {
                             })
                             .cloned(),
                         unexpected_operation => Err(KmipError::Default(format!(
-                            "Unexpected operation in Message Response: {unexpected_operation:?}"
+                            "Unexpected operation in Message Response: {unexpected_operation}"
                         ))),
                     })
             })
@@ -93,7 +93,7 @@ impl ResponseMessage {
 /// Batch item for a message request
 ///
 /// `request_payload` depends on the request
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq)]
 pub struct RequestMessageBatchItem {
     /// Type of the KMIP operation
     pub operation: OperationEnumeration,
@@ -120,7 +120,7 @@ impl Display for RequestMessageBatchItem {
         write!(
             f,
             "MessageBatchItem {{ operation: {:?}, ephemeral: {:?}, unique_batch_item_id: {:?}, \
-             request_payload: {:?}, message_extension: {:?} }}",
+             request_payload: {}, message_extension: {:?} }}",
             self.operation,
             self.ephemeral,
             self.unique_batch_item_id,
@@ -315,7 +315,7 @@ impl<'de> Deserialize<'de> for RequestMessageBatchItem {
 
                 let request_payload =
                     request_payload.ok_or_else(|| de::Error::missing_field("request_payload"))?;
-                trace!("MessageBatchItem request payload: {request_payload:?}");
+                trace!("MessageBatchItem request payload: {request_payload}");
 
                 if operation != request_payload.operation_enum() {
                     return Err(de::Error::custom(format!(
@@ -350,7 +350,7 @@ impl<'de> Deserialize<'de> for RequestMessageBatchItem {
     }
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq)]
 pub struct ResponseMessageBatchItem {
     /// Required if present in request Batch Item
     pub operation: Option<OperationEnumeration>,
@@ -392,6 +392,28 @@ pub struct ResponseMessageBatchItem {
     pub response_payload: Option<Operation>,
 
     pub message_extension: Option<MessageExtension>,
+}
+
+impl Display for ResponseMessageBatchItem {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "MessageResponseBatchItem {{ operation: {:?}, unique_batch_item_id: {:?}, \
+             result_status: {:?}, result_reason: {:?}, result_message: {:?}, \
+             asynchronous_correlation_value: {:?}, response_payload: {}, message_extension: {:?} \
+             }}",
+            self.operation,
+            self.unique_batch_item_id,
+            self.result_status,
+            self.result_reason,
+            self.result_message,
+            self.asynchronous_correlation_value,
+            self.response_payload
+                .as_ref()
+                .map_or_else(|| "None".to_owned(), |payload| format!("{payload}")),
+            self.message_extension
+        )
+    }
 }
 
 impl ResponseMessageBatchItem {
@@ -667,7 +689,7 @@ impl<'de> Deserialize<'de> for ResponseMessageBatchItem {
 
                 trace!("MessageResponseBatchItem operation: {operation:?}");
                 if let Some(response_payload) = &response_payload {
-                    trace!("MessageResponseBatchItem response payload: {response_payload:?}");
+                    trace!("MessageResponseBatchItem response payload: {response_payload}");
                 }
 
                 let result_status =

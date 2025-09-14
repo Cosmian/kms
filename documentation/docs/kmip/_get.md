@@ -39,7 +39,7 @@ For the list of supported key formats, please check the [formats page](./formats
 Exporting a symmetric key `027cced1-ff2b-4bd3-a200-db1041583bdc` (go to [Create](./_create.md) to see how to create the
 symmetric key).
 
-Instead of using the UID of the key, we can use the unique tag of the key `MySymmetricKey`. The key must be uniquely
+Instead of using the UID of the key, we can use the unique tag of the key `my_symmetric_key`. The key must be uniquely
 identified. It is possible to use multiple tags to identify a key; for instance symmetric keys automatically get a
 *system* tag `_kk`. See [tagging](./tagging.md) for more information on tags.
 
@@ -49,7 +49,8 @@ The response is in `Raw`format, the default format for symmetric keys specified 
 Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
 
 ```bash
-  cosmian kms sym keys export -t "MySymmetricKey" /tmp/sym_key.json
+  cosmian kms sym keys create my_symmetric_key
+  cosmian kms sym keys export -t my_symmetric_key /tmp/sym_key.json
 ```
 
 === "Request"
@@ -62,7 +63,7 @@ Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
         {
           "tag": "UniqueIdentifier",
           "type": "TextString",
-          "value": "[\"MySymmetricKey\"]"
+          "value": "[my_symmetric_key]"
         },
         {
           "tag": "KeyWrapType",
