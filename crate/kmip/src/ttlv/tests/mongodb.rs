@@ -1,8 +1,7 @@
 #![allow(unused)]
 use std::option;
 
-use cosmian_logger::log_init;
-use tracing::info;
+use cosmian_logger::{info, log_init};
 use zeroize::Zeroizing;
 
 use crate::{
@@ -43,7 +42,7 @@ fn register() {
     let ttlv = TTLV::from_bytes(&request, KmipFlavor::Kmip1).unwrap();
     info!("TTLV: {ttlv:#?}");
     let request_message: RequestMessage = from_ttlv(ttlv).unwrap();
-    info!("REQUEST MESSAGE: {request_message:#?}");
+    info!("REQUEST MESSAGE: {request_message}");
     let RequestMessageBatchItemVersioned::V14(request_message) = &request_message.batch_item[0]
     else {
         panic!("Expected V14 request message");

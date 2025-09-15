@@ -15,13 +15,13 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams},
 };
+use cosmian_logger::{debug, info, trace};
 use openssl::{
     hash::MessageDigest,
     pkey::{Id, PKey, Private},
     rsa::Padding,
     sign::Signer,
 };
-use tracing::{debug, info, trace};
 
 use crate::{
     core::{KMS, uid_utils::uids_from_unique_identifier},
@@ -36,7 +36,7 @@ pub(crate) async fn sign(
     user: &str,
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<SignResponse> {
-    debug!("sign: {request}");
+    debug!("{request}");
 
     // Get the uids from the unique identifier
     let unique_identifier = request
@@ -80,7 +80,7 @@ pub(crate) async fn sign(
                 .object()
                 .attributes()
                 .unwrap_or_else(|_| owm.attributes());
-            trace!("sign: attributes: {attributes:?}");
+            trace!("sign: attributes: {attributes}");
             if !attributes.is_usage_authorized_for(CryptographicUsageMask::Sign)? {
                 continue
             }
@@ -145,7 +145,7 @@ fn sign_with_private_key(request: &Sign, owm: &ObjectWithMetadata) -> KResult<Si
                 key_block.key_format_type
             );
             let private_key = kmip_private_key_to_openssl(owm.object())?;
-            trace!("sign_with_private_key: OpenSSL Private Key instantiated before signing");
+            trace!("OpenSSL Private Key instantiated before signing");
 
             let signature = sign_with_pkey(request.clone(), &private_key)?;
 
@@ -178,7 +178,7 @@ fn sign_with_pkey(request: Sign, private_key: &PKey<Private>) -> KResult<Vec<u8>
 fn sign_with_rsa(request: Sign, private_key: &PKey<Private>) -> KResult<Vec<u8>> {
     let (_algorithm, _padding, _hashing_fn, digital_signature_algorithm) =
         default_cryptographic_parameters(request.cryptographic_parameters.as_ref());
-    debug!("sign_with_rsa: signing with {digital_signature_algorithm}");
+    debug!("signing with {digital_signature_algorithm}");
 
     // Matches the hashing algorithm to use
     let digest = match digital_signature_algorithm {
@@ -227,7 +227,7 @@ fn sign_with_ecdsa(request: Sign, private_key: &PKey<Private>) -> KResult<Vec<u8
         },
     );
 
-    debug!("sign_with_ecdsa: signing with ECDSA {digital_signature_algorithm}");
+    debug!("signing with ECDSA {digital_signature_algorithm}");
 
     // For ECDSA signatures, we use the appropriate hash function
     let digest = match digital_signature_algorithm {
@@ -260,7 +260,7 @@ fn sign_with_ecdsa(request: Sign, private_key: &PKey<Private>) -> KResult<Vec<u8
 }
 
 fn sign_with_eddsa(request: Sign, private_key: &PKey<Private>) -> KResult<Vec<u8>> {
-    debug!("sign_with_eddsa: signing with EDDSA");
+    debug!("signing with EDDSA");
     let mut signer = Signer::new_without_digest(private_key)?;
 
     if let Some(corr) = request.correlation_value {

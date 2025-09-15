@@ -24,8 +24,8 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::{AtomicOperation, SessionParams},
 };
+use cosmian_logger::{debug, trace};
 use openssl::x509::X509;
-use tracing::{debug, trace};
 use uuid::Uuid;
 
 use crate::{
@@ -756,7 +756,7 @@ async fn process_pkcs12(
     }
 
     debug!(
-        "Importing leaf certificate with attributes: {:?}",
+        "Importing leaf certificate with attributes: {}",
         leaf_attributes
     );
 

@@ -30,7 +30,7 @@ Computing MAC with SHA3-512 using a MAC key.
 Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
 
 ```bash
-cosmian kms mac --mac-key-id "027cced1-ff2b-4bd3-a200-db1041583bdc" --algorithm sha3-512 --data "0011223344556677889900"
+cosmian kms mac --mac-key-id 027cced1-ff2b-4bd3-a200-db1041583bdc --algorithm sha3-512 --data 0011223344556677889900
 ```
 
 === "Request"
@@ -94,11 +94,11 @@ Corresponding [Cosmian CLI](../../cosmian_cli/index.md) commands:
 
 ```bash
 # First part with init indicator
-cosmian kms mac --mac-key-id "027cced1-ff2b-4bd3-a200-db1041583bdc" --algorithm sha3-512 --data "0011223344556677889900" -i
+cosmian kms mac --mac-key-id 027cced1-ff2b-4bd3-a200-db1041583bdc --algorithm sha3-512 --data 0011223344556677889900 -i
 # Middle part using correlation value
-cosmian kms mac --mac-key-id "027cced1-ff2b-4bd3-a200-db1041583bdc" --algorithm sha3-512 --correlation-value "F91DDB96D12CF8FAB0AA72224836D3F5F659A6634E3508A7C31DBC3727D2030254C57AD90AA5FB7F27FB3AAFABEAEB1204E4AF62BA2DE44E33E761B2C39DBACA" --data "0011223344556677889900"
+cosmian kms mac --mac-key-id 027cced1-ff2b-4bd3-a200-db1041583bdc --algorithm sha3-512 --correlation-value F91DDB96D12CF8FAB0AA72224836D3F5F659A6634E3508A7C31DBC3727D2030254C57AD90AA5FB7F27FB3AAFABEAEB1204E4AF62BA2DE44E33E761B2C39DBACA --data 0011223344556677889900
 # Final part with final indicator
-cosmian kms mac --mac-key-id "027cced1-ff2b-4bd3-a200-db1041583bdc" --algorithm sha3-512 --correlation-value "51A2F7FCA8DECFC106031BE935F28F6EEE7E3850BCDB9D9B41B0F623146D7F51E399FC8F76A8B14EB71463DB0F6D421EF431E33F8CE1897FF988237C890C808F" -f --data "0011223344556677889900"
+cosmian kms mac --mac-key-id 027cced1-ff2b-4bd3-a200-db1041583bdc --algorithm sha3-512 --correlation-value 51A2F7FCA8DECFC106031BE935F28F6EEE7E3850BCDB9D9B41B0F623146D7F51E399FC8F76A8B14EB71463DB0F6D421EF431E33F8CE1897FF988237C890C808F -f --data 0011223344556677889900
 ```
 
 === "Request 1 (Init)"

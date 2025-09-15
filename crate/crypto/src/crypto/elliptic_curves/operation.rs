@@ -17,13 +17,13 @@ use cosmian_kmip::{
         },
     },
 };
+use cosmian_logger::trace;
 use openssl::{
     bn::BigNumContext,
     ec::{EcGroup, EcKey, PointConversionForm},
     nid::Nid,
     pkey::PKey,
 };
-use tracing::trace;
 use zeroize::Zeroizing;
 
 use crate::{
@@ -126,7 +126,7 @@ pub fn to_ec_public_key(
 ) -> CryptoResult<Object> {
     let cryptographic_length = Some(i32::try_from(bytes.len())? * 8);
     trace!(
-        "to_ec_public_key: bytes len: {:?}, bits: {}",
+        "bytes len: {:?}, bits: {}",
         cryptographic_length, pkey_bits_number
     );
 
@@ -192,7 +192,7 @@ pub fn to_ec_private_key(
     let cryptographic_length = Some(i32::try_from(bytes.len())? * 8);
 
     trace!(
-        "to_ec_private_key: bytes len: {:?}, bits: {}",
+        "bytes len: {:?}, bits: {}",
         cryptographic_length, pkey_bits_number
     );
 
@@ -280,8 +280,6 @@ pub fn create_secp_key_pair(
     private_key_attributes: Option<Attributes>,
     public_key_attributes: Option<Attributes>,
 ) -> Result<KeyPair, CryptoError> {
-    tracing::debug!("create_secp_key_pair");
-
     let curve_nid = match curve {
         RecommendedCurve::SECP224K1 => Nid::SECP224K1,
         RecommendedCurve::SECP256K1 => Nid::SECP256K1,
@@ -410,7 +408,6 @@ pub fn create_ed448_key_pair(
     private_key_attributes: Option<Attributes>,
     public_key_attributes: Option<Attributes>,
 ) -> Result<KeyPair, CryptoError> {
-    trace!("create_ed448_key_pair");
     #[cfg(not(feature = "non-fips"))]
     {
         // Cryptographic Usage Masks
@@ -532,7 +529,6 @@ fn create_ec_key_pair(
     private_key_attributes: Option<Attributes>,
     public_key_attributes: Option<Attributes>,
 ) -> Result<KeyPair, CryptoError> {
-    trace!("create_ecc_key_pair");
     // Cryptographic Usage Masks
     let private_key_mask = private_key_attributes
         .as_ref()
@@ -568,7 +564,7 @@ fn create_ec_key_pair(
     private_key_attributes.set_tags(sk_tags)?;
     // and set them on the object
     *private_key.key_block_mut()?.attributes_mut()? = private_key_attributes;
-    trace!("create_approved_ecc_key_pair: private key converted OK");
+    trace!("private key converted OK");
 
     // Generate  KMIP public Key
     let mut public_key_attributes = public_key_attributes.unwrap_or_default();
@@ -592,7 +588,7 @@ fn create_ec_key_pair(
     public_key_attributes.set_tags(pk_tags)?;
     // and set them on the object
     *public_key.key_block_mut()?.attributes_mut()? = public_key_attributes;
-    trace!("create_approved_ecc_key_pair: public key converted OK");
+    trace!("public key converted OK");
 
     Ok(KeyPair::new(private_key, public_key))
 }

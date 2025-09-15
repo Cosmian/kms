@@ -3,9 +3,9 @@ use std::{
     str::FromStr,
 };
 
+use cosmian_logger::{debug, trace};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
-use tracing::{debug, trace};
 use zeroize::Zeroizing;
 
 use super::kmip_objects::Certificate;
@@ -459,7 +459,7 @@ impl TryFrom<kmip_2_1::kmip_operations::GetResponse> for GetResponse {
     type Error = KmipError;
 
     fn try_from(value: kmip_2_1::kmip_operations::GetResponse) -> Result<Self, Self::Error> {
-        trace!("Converting KMIP 2.1 GetResponse to KMIP 1.4: {value:#?}");
+        trace!("Converting KMIP 2.1 GetResponse to KMIP 1.4: {value}");
 
         let object = Object::try_from(value.object)?;
 
@@ -526,7 +526,7 @@ impl TryFrom<kmip_2_1::kmip_operations::GetAttributesResponse> for GetAttributes
     fn try_from(
         value: kmip_2_1::kmip_operations::GetAttributesResponse,
     ) -> Result<Self, Self::Error> {
-        trace!("Converting KMIP 2.1 GetAttributesResponse to KMIP 1.4: {value:#?}");
+        trace!("Converting KMIP 2.1 GetAttributesResponse to KMIP 1.4: {value}");
 
         let attributes_2_1: Vec<kmip_2_1::kmip_attributes::Attribute> = value.attributes.into();
         let attributes_1_4: Vec<Attribute> = attributes_2_1
@@ -905,7 +905,7 @@ impl TryFrom<kmip_2_1::kmip_operations::QueryResponse> for QueryResponse {
     type Error = KmipError;
 
     fn try_from(value: kmip_2_1::kmip_operations::QueryResponse) -> Result<Self, Self::Error> {
-        debug!("Converting KMIP 2.1 QueryResponse to KMIP 1.4: {value:#?}");
+        debug!("Converting KMIP 2.1 QueryResponse to KMIP 1.4: {value}");
 
         let operation = value.operation.map(|v| {
             v.into_iter()
@@ -2216,7 +2216,7 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             op => {
                 return Err(KmipError::NotSupported(format!(
                     "Conversion from KMIP 2.1 to KMIP 1.x is not supported for Response \
-                     Operation: {op:?}"
+                     Operation: {op}"
                 )))
             }
         })

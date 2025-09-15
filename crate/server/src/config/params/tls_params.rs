@@ -1,7 +1,7 @@
 use std::{fmt, path::PathBuf};
 
+use cosmian_logger::debug;
 use openssl::pkcs12::{ParsedPkcs12_2, Pkcs12};
-use tracing::debug;
 use x509_parser::pem::Pem;
 
 use crate::{
@@ -38,7 +38,7 @@ impl TlsParams {
     ///
     /// This function can return an error if there is an issue reading the PKCS#12 file or parsing it.
     pub fn try_from(config: &TlsConfig, deprecated_config: &HttpConfig) -> KResult<Option<Self>> {
-        debug!("try_from: tls_config: {config:#?}, deprecated_config: {deprecated_config:#?}");
+        debug!("tls_config: {config:#?}, deprecated_config: {deprecated_config:#?}");
         let p12 = if let (Some(p12_file), Some(p12_password)) =
             (&config.tls_p12_file, &config.tls_p12_password)
         {
@@ -51,7 +51,15 @@ impl TlsParams {
         } else {
             return Ok(None);
         };
-        let authority_cert_file = if let Some(authority_cert_file) = config
+        debug!(
+            "Client Authority cert file: {:?}",
+            config.clients_ca_cert_file
+        );
+        debug!(
+            "[DEPRECATED] Client Authority cert file: {:?}",
+            deprecated_config.authority_cert_file
+        );
+        let clients_ca_cert_pem = if let Some(authority_cert_file) = config
             .clients_ca_cert_file
             .as_ref()
             .or(deprecated_config.authority_cert_file.as_ref())
@@ -63,12 +71,11 @@ impl TlsParams {
         } else {
             None
         };
-
         let cipher_suites = config.tls_cipher_suites.clone();
 
         Ok(Some(Self {
             p12,
-            clients_ca_cert_pem: authority_cert_file,
+            clients_ca_cert_pem,
             cipher_suites,
         }))
     }

@@ -98,7 +98,7 @@ pub(crate) async fn tags<DB: ObjectsStore + PermissionsStore>(
     assert_eq!(owm.id(), uid);
     assert_eq!(owm.owner(), owner);
     if verify_attributes {
-        assert_eq!(owm.attributes(), &expected_attributes);
+        assert!(owm.attributes() == &expected_attributes);
     }
     assert_eq!(owm.state(), State::Active);
 
@@ -118,7 +118,7 @@ pub(crate) async fn tags<DB: ObjectsStore + PermissionsStore>(
     assert_eq!(owm.id(), uid);
     assert_eq!(owm.owner(), owner);
     if verify_attributes {
-        assert_eq!(owm.attributes(), &expected_attributes);
+        assert!(owm.attributes() == &expected_attributes);
     }
     assert_eq!(owm.state(), State::Active);
     let tags = db.retrieve_tags(owm.id(), db_params.clone()).await?;
@@ -140,7 +140,7 @@ pub(crate) async fn tags<DB: ObjectsStore + PermissionsStore>(
     assert_eq!(owm.id(), uid);
     assert_eq!(owm.owner(), owner);
     if verify_attributes {
-        assert_eq!(owm.attributes(), &expected_attributes);
+        assert!(owm.attributes() == &expected_attributes);
     }
     assert_eq!(owm.state(), State::Active);
     let tags = db.retrieve_tags(owm.id(), db_params.clone()).await?;

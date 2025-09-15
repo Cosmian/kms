@@ -32,37 +32,37 @@ Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
 === "Request"
 
     ```json
+    {
+      "tag": "Revoke",
+      "type": "Structure",
+      "value": [
         {
-          "tag": "Revoke",
-          "type": "Structure",
-          "value": [
-            {
-              "tag": "UniqueIdentifier",
-              "type": "TextString",
-              "value": "f54f14a3-5639-4054-8c23-54af891669db"
-            },
-            {
-              "tag": "RevocationReason",
-              "type": "TextString",
-              "value": "key was compromised"
-            }
-          ]
+          "tag": "UniqueIdentifier",
+          "type": "TextString",
+          "value": "f54f14a3-5639-4054-8c23-54af891669db"
+        },
+        {
+          "tag": "RevocationReason",
+          "type": "TextString",
+          "value": "key was compromised"
         }
+      ]
+    }
 
     ```
 
 === "Response"
 
     ```json
+    {
+      "tag": "RevokeResponse",
+      "type": "Structure",
+      "value": [
         {
-          "tag": "RevokeResponse",
-          "type": "Structure",
-          "value": [
-            {
-              "tag": "UniqueIdentifier",
-              "type": "TextString",
-              "value": "f54f14a3-5639-4054-8c23-54af891669db"
-            }
-          ]
+          "tag": "UniqueIdentifier",
+          "type": "TextString",
+          "value": "f54f14a3-5639-4054-8c23-54af891669db"
         }
+      ]
+    }
     ```

@@ -1,5 +1,6 @@
 use std::fmt::Debug;
 
+use cosmian_logger::trace;
 use num_bigint_dig::{BigInt, BigUint};
 use serde::{
     Serialize,
@@ -9,8 +10,7 @@ use serde::{
     },
 };
 use time::OffsetDateTime;
-// use strum::VariantNames;
-use tracing::{instrument, trace};
+use tracing::instrument;
 use zeroize::Zeroizing;
 
 use super::{TTLV, TTLValue, error::TtlvError};

@@ -21,8 +21,8 @@ use cosmian_kms_server_database::{
         cosmian_kms_interfaces::{EncryptionOracle, SessionParams},
     },
 };
+use cosmian_logger::{debug, trace};
 use openssl::rand::rand_bytes;
-use tracing::{debug, trace};
 use zeroize::Zeroizing;
 
 #[cfg(feature = "non-fips")]
@@ -141,7 +141,7 @@ impl KMS {
                     rand_bytes(&mut symmetric_key)?;
                     let object = create_symmetric_key_kmip_object(&symmetric_key, attributes)?;
                     let attributes = object.attributes()?;
-                    debug!("Created symmetric key with attributes: {:#?}", attributes);
+                    debug!("Created symmetric key with attributes: {}", attributes);
                     let tags = attributes.get_tags();
                     let uid = attributes
                         .unique_identifier
@@ -271,7 +271,7 @@ impl KMS {
             },
         });
         let attributes = object.attributes()?;
-        debug!("Created secret data with attributes: {:?}", attributes);
+        debug!("Created secret data with attributes: {}", attributes);
         // let tags = attributes.get_tags();
         let uid = attributes
             .unique_identifier

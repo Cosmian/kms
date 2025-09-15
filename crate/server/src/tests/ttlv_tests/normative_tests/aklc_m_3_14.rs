@@ -19,9 +19,8 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     },
     ttlv::KmipFlavor,
 };
-use cosmian_logger::log_init;
+use cosmian_logger::{info, log_init};
 use time::OffsetDateTime;
-use tracing::info;
 
 use crate::{
     error::KmsError,

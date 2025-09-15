@@ -10,12 +10,14 @@ use cosmian_kms_server_database::{
         EncryptionOracle, HSM, HsmEncryptionOracle, HsmStore, ObjectsStore,
     },
 };
+use cosmian_logger::trace;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use proteccio_pkcs11_loader::Proteccio;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use smartcardhsm_pkcs11_loader::Smartcardhsm;
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use softhsm2_pkcs11_loader::Softhsm2;
 use tokio::sync::RwLock;
-use tracing::trace;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use utimaco_pkcs11_loader::Utimaco;
 
@@ -51,7 +53,7 @@ impl KMS {
     /// A new KMS instance.
     #[allow(clippy::as_conversions)]
     pub(crate) async fn instantiate(server_params: Arc<ServerParams>) -> KResult<Self> {
-        trace!("KMS::instantiate, params: {server_params:?}");
+        trace!("params: {server_params:?}");
 
         // Instantiate the HSM if any; the code has support for multiple concurrent HSMs
         let hsm = Self::instantiate_hsm(&server_params)?;
@@ -139,7 +141,7 @@ impl KMS {
                     "softhsm2" => {
                         let softhsm2: Arc<dyn HSM + Send + Sync> = Arc::new(
                             Softhsm2::instantiate(
-                                "/usr/local/lib/softhsm/libsofthsm2.so",
+                                "/usr/lib/softhsm/libsofthsm2.so",
                                 server_params.slot_passwords.clone(),
                             )
                             .map_err(|e| {
@@ -149,6 +151,20 @@ impl KMS {
                             })?,
                         );
                         Some(softhsm2)
+                    }
+                    "smartcardhsm" => {
+                        let smartcardhsm: Arc<dyn HSM + Send + Sync> = Arc::new(
+                            Smartcardhsm::instantiate(
+                                "/usr/local/lib/libsc-hsm-pkcs11.so",
+                                server_params.slot_passwords.clone(),
+                            )
+                            .map_err(|e| {
+                                KmsError::InvalidRequest(format!(
+                                    "Failed to instantiate the Smartcardhsm: {e}"
+                                ))
+                            })?,
+                        );
+                        Some(smartcardhsm)
                     }
                     _ => kms_bail!(
                         "The only supported HSM models are proteccio, softhsm2 and utimaco"

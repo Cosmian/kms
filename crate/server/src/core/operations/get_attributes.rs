@@ -15,8 +15,8 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::SessionParams,
 };
+use cosmian_logger::{debug, trace};
 use strum::IntoEnumIterator;
-use tracing::{debug, trace};
 
 use crate::{
     core::{KMS, retrieve_object_utils::retrieve_object_for_operation},
@@ -84,7 +84,7 @@ pub(crate) async fn get_attributes(
         }
     };
 
-    trace!("Get Attributes: Attributes: {:?}", attributes);
+    trace!("Get Attributes: Attributes: {}", attributes);
 
     let mut req_attributes = request.attribute_reference.unwrap_or_default();
     trace!("Get Attributes: Requested attributes: {req_attributes:?}");
@@ -106,6 +106,7 @@ pub(crate) async fn get_attributes(
     }
 
     // request selected attributes
+    let mut tags_already_set = false;
     let mut res = Attributes::default();
     for requested in req_attributes {
         match requested {
@@ -114,8 +115,11 @@ pub(crate) async fn get_attributes(
                 attribute_name,
             }) => {
                 if vendor_identification == VENDOR_ID_COSMIAN && attribute_name == VENDOR_ATTR_TAG {
-                    let tags = kms.database.retrieve_tags(owm.id(), params.clone()).await?;
-                    res.set_tags(tags)?;
+                    if !tags_already_set {
+                        let tags = kms.database.retrieve_tags(owm.id(), params.clone()).await?;
+                        res.set_tags(tags)?;
+                        tags_already_set = true;
+                    }
                 } else if let Some(value) =
                     attributes.get_vendor_attribute_value(&vendor_identification, &attribute_name)
                 {
@@ -254,6 +258,13 @@ pub(crate) async fn get_attributes(
                         res.vendor_attributes = Some(vendor_attributes);
                     }
                 }
+                Tag::Tag => {
+                    if !tags_already_set {
+                        let tags = kms.database.retrieve_tags(owm.id(), params.clone()).await?;
+                        res.set_tags(tags)?;
+                        tags_already_set = true;
+                    }
+                }
                 x => {
                     // we ignore Tags which do not match to attributes
                     trace!("Ignoring tag {x:?} which does not match to an attribute");
@@ -267,7 +278,7 @@ pub(crate) async fn get_attributes(
         owm.id(),
         res.get_tags()
     );
-    trace!("Get Attributes: Response: {res:?}");
+    trace!("Get Attributes: Response: {}", res);
     Ok(GetAttributesResponse {
         unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
         attributes: res,

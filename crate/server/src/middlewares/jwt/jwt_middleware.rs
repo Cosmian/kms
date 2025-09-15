@@ -16,11 +16,11 @@ use actix_web::{
     body::{BoxBody, EitherBody},
     dev::{ServiceRequest, ServiceResponse},
 };
+use cosmian_logger::debug;
 use futures::{
     Future,
     future::{Ready, ok},
 };
-use tracing::debug;
 
 use crate::middlewares::{
     AuthenticatedUser,

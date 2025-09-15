@@ -72,7 +72,7 @@ pub(crate) async fn find_attributes<DB: ObjectsStore>(
         .await?
         .ok_or_else(|| db_error!("Object not found"))?;
     assert_eq!(State::Active, obj.state());
-    assert_eq!(&symmetric_key, obj.object());
+    assert!(&symmetric_key == obj.object());
     assert_eq!(
         obj.object().attributes()?.link.as_ref().unwrap()[0].linked_object_identifier,
         LinkedObjectIdentifier::TextString("foo".to_owned())

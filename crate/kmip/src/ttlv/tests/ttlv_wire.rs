@@ -1,6 +1,5 @@
-use cosmian_logger::log_init;
+use cosmian_logger::{info, log_init};
 use time::OffsetDateTime;
-use tracing::info;
 
 use crate::{
     kmip_0::{
@@ -70,7 +69,7 @@ fn test_serialization_deserialization() {
     // Deserialize the TTLV back to a RequestMessage
     let request_message_: RequestMessage = from_ttlv(ttlv_).unwrap();
     // Assert that the original and deserialized messages are equal
-    assert_eq!(request_message_, request_message);
+    assert!(request_message_ == request_message);
 }
 
 #[test]
@@ -135,5 +134,5 @@ fn test_pykmip_response_message_1_4() {
             },
         )],
     };
-    assert_eq!(response_message, response_message_);
+    assert!(response_message == response_message_);
 }

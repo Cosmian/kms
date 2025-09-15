@@ -6,6 +6,7 @@ use std::{
 
 use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializer};
 use cosmian_kms_client_utils::export_utils::tag_from_object;
+use cosmian_logger::info;
 use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{
@@ -123,7 +124,7 @@ pub fn write_single_decrypted_data(
     write_bytes_to_file(plaintext, &output_file)
         .with_context(|| "failed to write the decrypted file")?;
 
-    tracing::info!("The decrypted file is available at {output_file:?}");
+    info!("The decrypted file is available at {output_file:?}");
     Ok(())
 }
 
@@ -147,7 +148,7 @@ pub fn write_single_encrypted_data(
     write_bytes_to_file(encrypted_data, &output_file)
         .with_context(|| "failed to write the encrypted file")?;
 
-    tracing::info!("The encrypted file is available at {output_file:?}");
+    info!("The encrypted file is available at {output_file:?}");
     Ok(())
 }
 
@@ -227,7 +228,7 @@ pub fn write_bulk_decrypted_data(
 
         write_bytes_to_file(chunk_data, &output_file)?;
 
-        tracing::info!("The decrypted file is available at {output_file:?}");
+        info!("The decrypted file is available at {output_file:?}");
         Ok(())
     })
 }
@@ -287,7 +288,7 @@ pub fn write_bulk_encrypted_data(
 
         write_bytes_to_file(chunk_data, &output_file)?;
 
-        tracing::info!("The encrypted file is available at {output_file:?}");
+        info!("The encrypted file is available at {output_file:?}");
         Ok(())
     })
 }

@@ -17,6 +17,7 @@ mod session;
 mod kms_hsm;
 mod slots;
 
+pub mod hsm_capabilities;
 pub mod test_helpers;
 
 // AES key template
@@ -79,5 +80,14 @@ macro_rules! aes_key_template {
                 ulValueLen: std::mem::size_of::<CK_BBOOL>() as CK_ULONG,
             },
         ]
+    };
+}
+
+#[macro_export]
+macro_rules! check_rv {
+    ($rv:expr, $msg:expr) => {
+        if $rv != CKR_OK {
+            return Err(HError::Default(format!("{}. Return code: {}", $msg, $rv)));
+        }
     };
 }

@@ -2,12 +2,12 @@
 name = "cosmian_kmip"
 version.workspace = true
 authors.workspace = true
+categories.workspace = true
 edition.workspace = true
+keywords.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-keywords.workspace = true
-categories.workspace = true
 description = "Cosmian KMIP library"
 
 [lints]
@@ -25,8 +25,9 @@ non-fips = []
 [dependencies]
 base64 = { workspace = true }
 bitflags = { workspace = true }
+cosmian_logger = { workspace = true }
 hex = { workspace = true, features = ["std"] }
-kmip-derive = { path = "../kmip-derive", version = "5.8.1" }
+kmip-derive = { path = "../kmip-derive", version = "5.9.0" }
 leb128 = { workspace = true }
 num-bigint-dig = { workspace = true, features = [
   "std",
@@ -52,7 +53,6 @@ zeroize = { workspace = true, features = ["zeroize_derive", "std", "serde"] }
 ignored = ["rust-ini", "sha3"]
 
 [dev-dependencies]
-cosmian_logger = "0.1.1"
 hex = { workspace = true, features = ["std"] }
 num-traits = { workspace = true }
 rand = { workspace = true }

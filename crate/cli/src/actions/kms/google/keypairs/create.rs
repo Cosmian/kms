@@ -18,8 +18,8 @@ use cosmian_kms_client::{
     },
     reexport::cosmian_kms_client_utils::import_utils::CertificateInputFormat,
 };
+use cosmian_logger::{debug, info, trace};
 use serde::{Deserialize, Serialize};
-use tracing::{debug, info, trace};
 
 use super::KEY_PAIRS_ENDPOINT;
 use crate::{
@@ -285,7 +285,7 @@ impl CreateKeyPairsAction {
                 attributes.set_x509_extension_file(certificate_extensions_bytes);
 
                 debug!(
-                    "Creating new leaf certificate with attributes: {:?}",
+                    "Creating new leaf certificate with attributes: {}",
                     attributes
                 );
                 let certify_request = Certify {

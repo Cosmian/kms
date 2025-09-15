@@ -2,12 +2,12 @@
 name = "cosmian_kms_interfaces"
 version.workspace = true
 authors.workspace = true
+categories.workspace = true
 edition.workspace = true
+keywords.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-keywords.workspace = true
-categories.workspace = true
 description = "Crate exposing APIs for plugins to the Cosmian KMS"
 
 [lints]
@@ -18,7 +18,8 @@ doctest = false
 
 [dependencies]
 async-trait = { workspace = true }
-cosmian_kmip = { path = "../kmip", version = "5.8.1" }
+cosmian_kmip = { path = "../kmip", version = "5.9.0" }
+cosmian_logger = { workspace = true }
 num-bigint-dig = { workspace = true, features = [
   "std",
   "rand",
@@ -28,5 +29,4 @@ num-bigint-dig = { workspace = true, features = [
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
-tracing = { workspace = true }
 zeroize = { workspace = true, default-features = true }

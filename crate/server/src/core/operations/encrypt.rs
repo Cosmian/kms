@@ -37,11 +37,11 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::{CryptoAlgorithm, ObjectWithMetadata, SessionParams},
 };
+use cosmian_logger::{debug, info, trace};
 use openssl::{
     pkey::{Id, PKey, Public},
     x509::X509,
 };
-use tracing::{debug, info, trace};
 use zeroize::Zeroizing;
 
 use crate::{
@@ -62,7 +62,7 @@ pub(crate) async fn encrypt(
     user: &str,
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<EncryptResponse> {
-    trace!("Encrypt: {}", serde_json::to_string(&request)?);
+    trace!("{}", serde_json::to_string(&request)?);
 
     //We do not (yet) support continuation cases
     let data = request.data.as_ref().ok_or_else(|| {
@@ -77,7 +77,7 @@ pub(crate) async fn encrypt(
     let uids = uids_from_unique_identifier(unique_identifier, kms, params.clone())
         .await
         .context("Encrypt")?;
-    trace!("Encrypt: candidate uids: {uids:?}");
+    trace!("candidate uids: {uids:?}");
 
     // Determine which UID to select. The decision process is as follows: loop through the uids
     // 1. If the UID has a prefix, try using that
@@ -109,10 +109,7 @@ pub(crate) async fn encrypt(
                     continue
                 }
             }
-            debug!(
-                "Encrypt: user: {user} is authorized to encrypt using: {uid} from decryption \
-                 oracle"
-            );
+            debug!("user: {user} is authorized to encrypt using: {uid} from decryption oracle");
             return encrypt_using_encryption_oracle(kms, &request, data, &uid, prefix).await;
         }
         let owm = kms
@@ -138,7 +135,7 @@ pub(crate) async fn encrypt(
                 continue
             }
         }
-        trace!("Encrypt: user: {user} is authorized to encrypt using: {uid}");
+        trace!("user: {user} is authorized to encrypt using: {uid}");
         //TODO check why usage masks are not checked for certificates
         if let Object::Certificate { .. } = owm.object() {
             selected_owm = Some(owm);
@@ -151,7 +148,7 @@ pub(crate) async fn encrypt(
                 .object()
                 .attributes()
                 .unwrap_or_else(|_| owm.attributes());
-            trace!("encrypt: attributes: {attributes:#?}");
+            trace!("attributes: {attributes}");
             if !attributes.is_usage_authorized_for(CryptographicUsageMask::Encrypt)? {
                 continue
             }
@@ -240,7 +237,7 @@ async fn encrypt_using_encryption_oracle(
         )
         .await?;
     debug!(
-        "Encrypted using oracle: algorithm: {ca:?}, ciphertext length: {}",
+        "algorithm: {ca:?}, ciphertext length: {}",
         encrypted_content.ciphertext.len()
     );
 
@@ -293,10 +290,7 @@ pub(crate) fn encrypt_bulk(
     mut request: Encrypt,
     bulk_data: BulkData,
 ) -> KResult<EncryptResponse> {
-    debug!(
-        "encrypt_bulk: ==> encrypting {} clear texts",
-        bulk_data.len()
-    );
+    debug!("==> encrypting {} clear texts", bulk_data.len());
     let mut ciphertexts = Vec::with_capacity(bulk_data.len());
 
     match owm.object() {
@@ -352,10 +346,7 @@ pub(crate) fn encrypt_bulk(
         ))),
     }
 
-    debug!(
-        "encrypt_bulk: <== encrypted {} ciphertexts",
-        ciphertexts.len()
-    );
+    debug!("<== encrypted {} ciphertexts", ciphertexts.len());
     Ok(EncryptResponse {
         unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
         data: Some(BulkData::new(ciphertexts).serialize()?.to_vec()),
@@ -369,10 +360,7 @@ fn encrypt_with_symmetric_key(
     request: &Encrypt,
     owm: &ObjectWithMetadata,
 ) -> KResult<EncryptResponse> {
-    trace!(
-        "encrypt_with_symmetric_key: entering. owm: {:#?}",
-        owm.attributes()
-    );
+    trace!("entering. owm: {}", owm.attributes());
     let (key_bytes, aead) = get_key_and_cipher(request, owm)?;
     let plaintext = request.data.as_ref().ok_or_else(|| {
         KmsError::InvalidRequest("Encrypt: data to encrypt must be provided".to_owned())
@@ -391,8 +379,8 @@ fn encrypt_with_symmetric_key(
         .and_then(|cp| cp.padding_method)
         .unwrap_or(PaddingMethod::PKCS5);
     trace!(
-        "encrypt_with_symmetric_key: plaintext: {plaintext:?}, nonce: {nonce:?}, aad: {aad:?}, \
-         padding_method: {padding_method:?}"
+        "plaintext: {plaintext:?}, nonce: {nonce:?}, aad: {aad:?}, padding_method: \
+         {padding_method:?}"
     );
     let (ciphertext, tag) = sym_encrypt(
         aead,
@@ -402,7 +390,7 @@ fn encrypt_with_symmetric_key(
         plaintext,
         Some(padding_method),
     )?;
-    trace!("encrypt_with_symmetric_key: ciphertext: {ciphertext:?}, tag: {tag:?},");
+    trace!("ciphertext: {ciphertext:?}, tag: {tag:?},");
     Ok(EncryptResponse {
         unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
         data: Some(ciphertext),
@@ -416,7 +404,7 @@ fn get_key_and_cipher(
     request: &Encrypt,
     owm: &ObjectWithMetadata,
 ) -> KResult<(Zeroizing<Vec<u8>>, SymCipher)> {
-    trace!("get_key_and_cipher: entering");
+    trace!("entering");
     // Make sure that the key used to encrypt can be used to encrypt.
     if !owm
         .object()
@@ -430,7 +418,7 @@ fn get_key_and_cipher(
         ))
     }
     let key_block = owm.object().key_block()?;
-    let key_bytes = key_block.symmetric_key_bytes()?;
+    let key_bytes = key_block.key_bytes()?;
     let aead = match key_block.key_format_type {
         KeyFormatType::TransparentSymmetricKey | KeyFormatType::Raw => {
             // recover the cryptographic algorithm from the request or the key block or default to AES
@@ -496,11 +484,11 @@ fn encrypt_with_public_key(
                 KmsError::InvalidRequest("Encrypt: data to encrypt must be provided".to_owned())
             })?;
             trace!(
-                "get_encryption_system: matching on key format type: {:?}",
+                "matching on key format type: {:?}",
                 key_block.key_format_type
             );
             let public_key = kmip_public_key_to_openssl(owm.object())?;
-            trace!("get_encryption_system: OpenSSL Public Key instantiated before encryption");
+            trace!("OpenSSL Public Key instantiated before encryption");
             encrypt_with_pkey(request, owm.id(), plaintext, &public_key)
         }
         other => Err(KmsError::NotSupported(format!(
@@ -543,7 +531,7 @@ fn encrypt_with_rsa(
 ) -> KResult<Vec<u8>> {
     let (algorithm, padding, hashing_fn, _) =
         default_cryptographic_parameters(cryptographic_parameters);
-    debug!("encrypt_with_rsa: encrypting with RSA {algorithm:?} {padding:?} {hashing_fn:?}");
+    debug!("encrypting with RSA {algorithm:?} {padding:?} {hashing_fn:?}");
 
     let ciphertext = match algorithm {
         CryptographicAlgorithm::RSA => match padding {

@@ -2,8 +2,8 @@ use cosmian_crypto_core::{
     CsRng, Ecies, EciesSalsaSealBox, Ed25519PrivateKey, Ed25519PublicKey, X25519PrivateKey,
     X25519PublicKey, reexport::rand_core::SeedableRng,
 };
+use cosmian_logger::trace;
 use openssl::pkey::{Id, PKey, Private, Public};
-use tracing::trace;
 use zeroize::Zeroizing;
 
 use crate::{
@@ -24,7 +24,7 @@ pub(crate) fn sealbox_encrypt(
 ) -> Result<Vec<u8>, CryptoError> {
     let ciphertext = match public_key.id() {
         Id::ED25519 => {
-            trace!("encrypt: Ed25519");
+            trace!("Ed25519");
             let mut rng = CsRng::from_entropy();
             // The raw public key happens to be the (compressed) value of the Montgomery point
             let raw_bytes = public_key.raw_public_key()?;
@@ -35,7 +35,7 @@ pub(crate) fn sealbox_encrypt(
             EciesSalsaSealBox::encrypt(&mut rng, &public_key, plaintext, None)?
         }
         Id::X25519 => {
-            trace!("encrypt: X25519");
+            trace!("X25519");
             let mut rng = CsRng::from_entropy();
             // The raw public key happens to be the (compressed) value of the Montgomery point
             let raw_bytes = public_key.raw_public_key()?;

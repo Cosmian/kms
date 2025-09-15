@@ -11,8 +11,8 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::SessionParams,
 };
+use cosmian_logger::{debug, trace};
 use openssl::{md::Md, md_ctx::MdCtx, pkey::PKey};
-use tracing::{debug, trace};
 
 use crate::{
     core::{KMS, retrieve_object_utils::retrieve_object_for_operation},
@@ -79,11 +79,7 @@ pub(crate) async fn mac(
         compute_hmac(&correlation_value, &data, algorithm)?
     } else {
         let owm = retrieve_object_for_operation(uid, KmipOperation::Get, kms, user, params).await?;
-        let key_bytes = owm
-            .object()
-            .key_block()?
-            .symmetric_key_bytes()
-            .context("mac")?;
+        let key_bytes = owm.object().key_block()?.key_bytes().context("mac")?;
         compute_hmac(key_bytes.as_slice(), &data, algorithm)?
     };
 

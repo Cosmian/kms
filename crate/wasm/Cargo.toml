@@ -2,12 +2,12 @@
 name = "cosmian_kms_client_wasm"
 version.workspace = true
 authors.workspace = true
+categories.workspace = true
 edition.workspace = true
+keywords.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-keywords.workspace = true
-categories.workspace = true
 description = "Cosmian KMS Client Utilities for WASM"
 
 [lints]
@@ -25,7 +25,7 @@ default = ["getrandom/js"]
 
 [dependencies]
 base64.workspace = true
-cosmian_kms_client_utils = { path = "../client_utils", version = "5.8.1" }
+cosmian_kms_client_utils = { path = "../client_utils", version = "5.9.0" }
 getrandom = { version = "0.2", features = ["js"], optional = true }
 js-sys = "0.3.77"
 pem = { workspace = true }

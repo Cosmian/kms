@@ -22,7 +22,7 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams},
 };
-use tracing::{debug, trace};
+use cosmian_logger::{debug, trace};
 
 use super::KMS;
 use crate::{error::KmsError, kms_bail, result::KResult};
@@ -127,10 +127,7 @@ fn create_user_decryption_key_(
 
     let msk_bytes = msk.serialize()?;
 
-    trace!(
-        "create_user_decryption_key_: updated_master_secret_key_bytes len: {}",
-        msk_bytes.len()
-    );
+    trace!("updated_master_secret_key_bytes len: {}", msk_bytes.len());
 
     let msk_attributes = owm.object().attributes()?;
     let mpk_link = msk_attributes

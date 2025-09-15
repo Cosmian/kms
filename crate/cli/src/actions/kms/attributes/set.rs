@@ -14,10 +14,10 @@ use cosmian_kms_client::{
     },
     reexport::cosmian_kms_client_utils::import_utils::{KeyUsage, build_usage_mask_from_key_usage},
 };
+use cosmian_logger::{info, trace};
 use serde::Deserialize;
 use strum::EnumIter;
 use time::OffsetDateTime;
-use tracing::{info, trace};
 
 use crate::{
     actions::kms::{console, labels::ATTRIBUTE_ID, shared::get_key_uid},
@@ -357,7 +357,7 @@ impl SetAttributesAction {
     /// - Either `--id` or one or more `--tag` must be specified.
     ///
     pub async fn process(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
-        trace!("SetAttributeAction: {:?}", self);
+        trace!("{self:?}");
         let id = get_key_uid(
             self.requested_attributes.id.as_ref(),
             self.requested_attributes.tags.as_ref(),

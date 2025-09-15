@@ -17,8 +17,8 @@ use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
     CsRng, RandomFixedSizeCBytes, SymmetricKey,
     reexport::rand_core::{RngCore, SeedableRng},
 };
+use cosmian_logger::trace;
 use redis::aio::ConnectionManager;
-use tracing::trace;
 
 use crate::{
     error::DbResult,
@@ -89,8 +89,8 @@ pub(crate) async fn test_objects_db() -> DbResult<()> {
     .await?;
     let redis_db_object = o_db.object_get(uid).await?.context("object not found")?;
     assert_eq!(
-        object.key_block()?.symmetric_key_bytes()?,
-        redis_db_object.object.key_block()?.symmetric_key_bytes()?
+        object.key_block()?.key_bytes()?,
+        redis_db_object.object.key_block()?.key_bytes()?
     );
     assert_eq!(redis_db_object.owner, "owner");
     assert_eq!(redis_db_object.state, State::Active);

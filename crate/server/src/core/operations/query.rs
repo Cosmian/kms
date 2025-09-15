@@ -4,7 +4,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
     kmip_operations::{Query, QueryResponse},
     kmip_types::{OperationEnumeration, QueryFunction},
 };
-use tracing::trace;
+use cosmian_logger::trace;
 
 use crate::result::KResult;
 

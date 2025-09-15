@@ -3,28 +3,48 @@ use std::{
     ffi::CStr,
     fmt,
     fmt::{Display, Formatter},
+    marker::PhantomData,
     sync::{Arc, Mutex},
 };
 
-use pkcs11_sys::{CK_INFO, CKR_OK};
+use cosmian_kms_interfaces::CryptoAlgorithm;
+use cosmian_logger::debug;
+use pkcs11_sys::{
+    CK_INFO, CKM_AES_CBC, CKM_AES_GCM, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP, CKM_SHA_1, CKM_SHA256,
+    CKR_OK,
+};
 
-use crate::{HError, HResult, SlotManager, hsm_lib::HsmLib};
+use crate::{
+    HError, HResult, SlotManager, check_rv,
+    error::HResultHelper,
+    hsm_capabilities::{HsmCapabilities, HsmProvider},
+    hsm_lib::HsmLib,
+};
+
+pub struct DefaultCapabilityProvider;
+impl HsmProvider for DefaultCapabilityProvider {
+    fn capabilities() -> HsmCapabilities {
+        HsmCapabilities::default()
+    }
+}
 
 struct SlotState {
     password: Option<String>,
     slot: Option<Arc<SlotManager>>,
 }
 
-pub struct BaseHsm {
+pub struct BaseHsm<P: HsmProvider = DefaultCapabilityProvider> {
     hsm_lib: Arc<HsmLib>,
     slots: Mutex<HashMap<usize, SlotState>>,
+    _provider: PhantomData<P>,
 }
 
-impl BaseHsm {
-    pub fn instantiate<P>(path: P, passwords: HashMap<usize, Option<String>>) -> HResult<Self>
-    where
-        P: AsRef<std::ffi::OsStr>,
-    {
+impl<P: HsmProvider> BaseHsm<P> {
+    pub fn instantiate<Pth: AsRef<std::ffi::OsStr>>(
+        path: Pth,
+        passwords: HashMap<usize, Option<String>>,
+    ) -> HResult<Self> {
+        debug!("Using PKCS#11 library with {:?}", P::capabilities());
         let hsm_lib = Arc::new(HsmLib::instantiate(path)?);
         let mut slots = HashMap::with_capacity(passwords.len());
         for (k, v) in &passwords {
@@ -39,6 +59,7 @@ impl BaseHsm {
         Ok(BaseHsm {
             hsm_lib,
             slots: Mutex::new(slots),
+            _provider: PhantomData,
         })
     }
 
@@ -46,7 +67,10 @@ impl BaseHsm {
     /// If a slot has already been opened, returns the opened slot.
     /// To close a slot before re-opening it with another password, call `close_slot()` first
     pub fn get_slot(&self, slot_id: usize) -> HResult<Arc<SlotManager>> {
-        let mut slots = self.slots.lock().expect("failed to lock slots");
+        let mut slots = self
+            .slots
+            .lock()
+            .context("Failed to acquire lock on slots")?;
         // check if we are supposed to use that slot
         if let Some(slot_state) = slots.get_mut(&slot_id) {
             if let Some(s) = &slot_state.slot {
@@ -57,6 +81,7 @@ impl BaseHsm {
                     self.hsm_lib.clone(),
                     slot_id,
                     slot_state.password.clone(),
+                    P::capabilities(),
                 )?);
                 slot_state.slot = Some(manager.clone());
                 Ok(manager)
@@ -67,7 +92,10 @@ impl BaseHsm {
     }
 
     pub fn close_slot(&self, slot_id: usize) -> HResult<()> {
-        let mut slots = self.slots.lock().expect("failed to lock slots");
+        let mut slots = self
+            .slots
+            .lock()
+            .context("Failed to acquire lock on slots")?;
         slots.remove(&slot_id);
         Ok(())
     }
@@ -79,11 +107,59 @@ impl BaseHsm {
                 self.hsm_lib.C_GetInfo.ok_or_else(|| {
                     HError::Default("C_GetInfo not available on library".to_string())
                 })?(&raw mut info);
-            if rv != CKR_OK {
-                return Err(HError::Default("Failed getting HSM info".to_string()));
-            }
+            check_rv!(rv, "Failed getting HSM info");
             Ok(info.into())
         }
+    }
+
+    /// Retrieve the list of supported cryptographic algorithms for a given HSM slot.
+    ///
+    /// This function queries the specified slot to determine which algorithms are available
+    /// for cryptographic operations. It maps the raw PKCS#11 mechanism identifiers into
+    /// the appropriate `CryptoAlgorithm` variants.
+    ///
+    /// The function checks both general mechanisms (such as AES CBC, AES GCM or RSA PKCS)
+    /// and mechanism-specific capabilities (such as supported hash functions for RSA OAEP).
+    ///
+    /// # Arguments
+    /// * `slot_id` - The identifier of the HSM slot to query.
+    ///
+    /// # Returns
+    /// * `HResult<Vec<CryptoAlgorithm>>` - A result containing a vector of supported
+    ///   `CryptoAlgorithm` variants.
+    ///
+    /// # Errors
+    /// * Returns an error if the specified slot can't be accessed.
+    /// * Returns an error if the list of supported mechanisms can't be retrieved.
+    /// * Returns an error if the supported OAEP hashing algorithms can't be determined.
+    ///
+    /// # Safety
+    /// This function calls unsafe FFI functions from the HSM library to query mechanism information.
+    pub fn get_algorithms(&self, slot_id: usize) -> HResult<Vec<CryptoAlgorithm>> {
+        let slot = self.get_slot(slot_id)?;
+        let mechanisms = slot.get_supported_mechanisms()?;
+        let session = slot.open_session(true)?;
+        let supported_hashes = session.get_supported_oaep_hash()?;
+        let mut algorithms = Vec::new();
+
+        for &mechanism in mechanisms.iter() {
+            match mechanism {
+                CKM_AES_CBC => algorithms.push(CryptoAlgorithm::AesCbc),
+                CKM_AES_GCM => algorithms.push(CryptoAlgorithm::AesGcm),
+                CKM_RSA_PKCS => algorithms.push(CryptoAlgorithm::RsaPkcsV15),
+                CKM_RSA_PKCS_OAEP => {
+                    if supported_hashes.contains(&CKM_SHA_1) {
+                        algorithms.push(CryptoAlgorithm::RsaOaepSha1);
+                    }
+                    if supported_hashes.contains(&CKM_SHA256) {
+                        algorithms.push(CryptoAlgorithm::RsaOaepSha256);
+                    }
+                }
+                _ => {}
+            };
+        }
+
+        Ok(algorithms)
     }
 }
 

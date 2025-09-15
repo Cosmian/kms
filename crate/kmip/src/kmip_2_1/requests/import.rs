@@ -1,4 +1,4 @@
-use tracing::trace;
+use cosmian_logger::trace;
 
 use crate::{
     kmip_0::kmip_types::KeyWrapType,
@@ -21,7 +21,7 @@ pub fn import_object_request<T: IntoIterator<Item = impl AsRef<str>>>(
     tags: T,
 ) -> Import {
     let unique_identifier = UniqueIdentifier::TextString(unique_identifier.unwrap_or_default());
-    trace!("import_object_request: unique_identifier: {unique_identifier}");
+    trace!("unique_identifier: {unique_identifier}");
     let object_type = object.object_type();
 
     let (key_wrap_type, mut attributes) = if object_type == ObjectType::Certificate {
@@ -45,7 +45,7 @@ pub fn import_object_request<T: IntoIterator<Item = impl AsRef<str>>>(
         (key_wrap_type, attributes)
     };
 
-    trace!("import_object_request: key_wrap_type: {key_wrap_type:?}, attributes: {attributes:?}");
+    trace!("key_wrap_type: {key_wrap_type:?}, attributes: {attributes}");
 
     attributes.set_tags(tags).unwrap_or_default();
 

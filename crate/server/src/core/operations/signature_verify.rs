@@ -14,13 +14,13 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::SessionParams,
 };
+use cosmian_logger::{debug, trace};
 use openssl::{
     hash::MessageDigest,
     pkey::{Id, PKey, Public},
     rsa::Padding,
     sign::{RsaPssSaltlen, Verifier},
 };
-use tracing::{debug, trace};
 
 use crate::{
     core::{KMS, retrieve_object_utils::retrieve_object_for_operation},
@@ -59,7 +59,7 @@ pub(crate) async fn signature_verify(
     user: &str,
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<SignatureVerifyResponse> {
-    debug!("signature_verify: {request}");
+    debug!("{request}");
 
     // Validate streaming indicators
     if request.init_indicator == Some(true) && request.final_indicator == Some(true) {
@@ -77,7 +77,7 @@ pub(crate) async fn signature_verify(
         .context("signature_verify: unique_identifier must be a string")?
         .to_owned();
 
-    debug!("signature_verify: Retrieving verification key with UID: {unique_identifier}");
+    debug!("Retrieving verification key with UID: {unique_identifier}");
 
     // Retrieve the managed object for verification
     let uid_owm = retrieve_object_for_operation(

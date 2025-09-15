@@ -12,7 +12,7 @@ use cosmian_kmip::{
         },
     },
 };
-use tracing::debug;
+use cosmian_logger::debug;
 use zeroize::Zeroizing;
 
 use crate::{
@@ -74,7 +74,7 @@ pub fn create_msk_object(
     sensitive: bool,
 ) -> Result<Object, CryptoError> {
     debug!(
-        "create_msk_object: key len: {}, attributes: {attributes:?}",
+        "create_msk_object: key len: {}, attributes: {attributes}",
         msk_bytes.len()
     );
 

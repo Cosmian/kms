@@ -6,6 +6,7 @@ use clap::Subcommand;
 use cosmian_kms_client::KmsClient;
 pub use delete::DeleteAttributesAction;
 pub use get::GetAttributesAction;
+pub(crate) use get::get_attributes;
 pub use set::{SetAttributesAction, SetOrDeleteAttributes, VendorAttributeCli};
 
 use crate::error::result::KmsCliResult;

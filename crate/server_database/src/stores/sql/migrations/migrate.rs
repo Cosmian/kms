@@ -8,9 +8,9 @@ use cosmian_kmip::kmip_2_1::{
     kmip_types::KeyFormatType,
 };
 use cosmian_kms_interfaces::ObjectsStore;
+use cosmian_logger::{debug, error, info, trace};
 use serde_json::Value;
 use sqlx::{Executor, IntoArguments, Row};
-use tracing::{debug, error, info, trace};
 
 use crate::{
     DbError,
@@ -117,7 +117,7 @@ where
             .into_iter()
             .map(|row| row.get::<String, _>(0))
             .collect::<Vec<String>>();
-        trace!("migrate_from_4_12_0_to_4_13_0: uids={}", uids.len());
+        trace!("uids={}", uids.len());
 
         let select_query = format!(
             "SELECT object FROM objects WHERE id = {binder}",
@@ -125,7 +125,7 @@ where
         );
         let update_query = self.get_query("update-object-with-object")?;
         for uid in &uids {
-            trace!("migrate_from_4_12_0_to_4_13_0: migrating object with id={uid}");
+            trace!("migrating object with id={uid}");
             let op_fut = async {
                 let row = sqlx::query(select_query.as_str())
                     .bind(uid)
@@ -152,7 +152,7 @@ where
                     }
                 };
                 attributes.set_object_type(object.object_type());
-                trace!("migrate_from_4_12_0_to_4_13_0: attributes={:?}", attributes);
+                trace!("attributes={}", attributes);
                 let attributes_json = serde_json::to_value(&attributes).context(
                     "migrate_from_4_12_0_to_4_13_0: failed serializing the attributes to JSON",
                 )?;
@@ -199,15 +199,15 @@ where
                     .fetch_one(self.get_pool())
                     .await?;
                 // Migrate DBObject --> Object
-                let dbobject_json = row.get::<Value, _>(0);
-                if let Ok(_e) = serde_json::from_value::<Object>(dbobject_json.clone()) {
+                let db_object_json = row.get::<Value, _>(0);
+                if let Ok(_e) = serde_json::from_value::<Object>(db_object_json.clone()) {
                     // already migrated
                     return Ok::<_, DbError>(());
                 }
-                let dbobject_value: Value = serde_json::from_value(dbobject_json)
+                let db_object_value: Value = serde_json::from_value(db_object_json)
                     .context("failed deserializing the object")?;
 
-                let object = db_object_to_object(&dbobject_value)?;
+                let object = db_object_to_object(&db_object_value)?;
 
                 let object_json = serde_json::to_value(&object)
                     .context("migration to 4.22.1+ failed: failed to serialize the object")?;

@@ -1,5 +1,6 @@
 use std::fmt::{self, Formatter};
 
+use cosmian_logger::warn;
 use num_bigint_dig::BigInt;
 use serde::{
     Deserialize, Serialize,
@@ -7,7 +8,6 @@ use serde::{
     ser::SerializeStruct,
 };
 use time::OffsetDateTime;
-use tracing::warn;
 
 use crate::kmip_1_4::kmip_types::CustomAttribute;
 pub use crate::{

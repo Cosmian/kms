@@ -5,6 +5,7 @@ use std::{
     hash::{DefaultHasher, Hash, Hasher},
 };
 
+use cosmian_logger::trace;
 use kmip_derive::{KmipEnumDeserialize, KmipEnumSerialize, kmip_enum};
 use num_bigint_dig::BigInt;
 use serde::{
@@ -12,7 +13,6 @@ use serde::{
     de::{MapAccess, Visitor},
 };
 use strum::{Display, VariantNames};
-use tracing::trace;
 
 use super::{
     kmip_attributes::Attributes,
@@ -69,7 +69,7 @@ pub struct OpaqueObject {
 /// blob. PGP-aware KMIP clients SHOULD take on the responsibility
 /// of decomposing the Key Block into other Managed Cryptographic
 /// Objects (Public Keys, Private Keys, etc.).
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Eq, PartialEq)]
 pub struct PGPKey {
     #[serde(rename = "PGPKeyVersion")]
     pub pgp_key_version: u32,
@@ -78,7 +78,7 @@ pub struct PGPKey {
 }
 
 /// A Managed Cryptographic Object that is the private portion of an asymmetric key pair.
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
 pub struct PrivateKey {
     pub key_block: KeyBlock,
@@ -86,7 +86,7 @@ pub struct PrivateKey {
 
 /// A Managed Cryptographic Object that is the public portion of an asymmetric key pair.
 /// This is only a public key, not a certificate.
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
 pub struct PublicKey {
     pub key_block: KeyBlock,
@@ -96,7 +96,7 @@ pub struct PublicKey {
 /// a key or certificate (e.g., a password).
 /// The Key Block of the Secret Data object contains a Key Value of the Secret Data Type.
 /// The Key Value MAY be wrapped.
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
 pub struct SecretData {
     pub secret_data_type: SecretDataType,
@@ -115,7 +115,7 @@ pub struct SecretData {
 /// indicates which key part is contained in the cryptographic
 /// object, and SHALL be at least 1 and SHALL be less than or equal to Split
 /// Key Parts.
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
 pub struct SplitKey {
     pub split_key_parts: i32,
@@ -129,7 +129,7 @@ pub struct SplitKey {
 }
 
 /// A Managed Cryptographic Object that is a symmetric key.
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
 pub struct SymmetricKey {
     pub key_block: KeyBlock,
@@ -145,7 +145,7 @@ pub struct SymmetricKey {
 
 /// Object Types
 /// Section 2 of KMIP Reference 2.1
-#[derive(Clone, Eq, Serialize, PartialEq, Debug, VariantNames)]
+#[derive(Clone, Eq, Serialize, PartialEq, VariantNames)]
 #[serde(rename_all = "PascalCase")]
 pub enum Object {
     /// A Managed Cryptographic Object that is a digital certificate.

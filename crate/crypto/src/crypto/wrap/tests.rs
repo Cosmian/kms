@@ -14,6 +14,8 @@ use cosmian_kmip::{
     },
 };
 #[cfg(feature = "non-fips")]
+use cosmian_logger::info;
+#[cfg(feature = "non-fips")]
 use cosmian_logger::log_init;
 #[cfg(feature = "non-fips")]
 use openssl::{
@@ -21,13 +23,11 @@ use openssl::{
     nid::Nid,
 };
 use openssl::{pkey::PKey, rand::rand_bytes, rsa::Rsa};
-#[cfg(feature = "non-fips")]
-use tracing::info;
 
 #[cfg(feature = "non-fips")]
 use crate::{crypto::elliptic_curves::operation::create_x25519_key_pair, error::CryptoError};
 use crate::{
-    crypto::wrap::{unwrap_key_block, wrap_key_block},
+    crypto::wrap::{unwrap_key_block, wrap_object_with_key},
     crypto_bail,
     error::result::CryptoResult,
     openssl::{openssl_private_key_to_kmip, openssl_public_key_to_kmip},
@@ -125,15 +125,15 @@ fn wrap_test(
     key_to_wrap: &mut Object,
 ) -> Result<(), CryptoError> {
     let key_to_wrap_bytes = match key_to_wrap {
-        Object::SymmetricKey(_) => key_to_wrap.key_block()?.symmetric_key_bytes()?,
+        Object::SymmetricKey(_) => key_to_wrap.key_block()?.key_bytes()?,
         _ => key_to_wrap.key_block()?.ec_raw_bytes()?,
     };
 
     // no encoding
     {
         // wrap
-        wrap_key_block(
-            key_to_wrap.key_block_mut()?,
+        wrap_object_with_key(
+            key_to_wrap,
             wrapping_key,
             &KeyWrappingSpecification {
                 encoding_option: None,
@@ -152,7 +152,7 @@ fn wrap_test(
         unwrap_key_block(key_to_wrap.key_block_mut()?, unwrapping_key)?;
         assert_eq!(
             match key_to_wrap {
-                Object::SymmetricKey(_) => key_to_wrap.key_block()?.symmetric_key_bytes()?,
+                Object::SymmetricKey(_) => key_to_wrap.key_block()?.key_bytes()?,
                 _ => key_to_wrap.key_block()?.ec_raw_bytes()?,
             },
             key_to_wrap_bytes
@@ -163,8 +163,8 @@ fn wrap_test(
     // TTLV encoding
     {
         // wrap
-        wrap_key_block(
-            key_to_wrap.key_block_mut()?,
+        wrap_object_with_key(
+            key_to_wrap,
             wrapping_key,
             &KeyWrappingSpecification {
                 encoding_option: Some(EncodingOption::TTLVEncoding),
@@ -186,7 +186,7 @@ fn wrap_test(
         unwrap_key_block(key_to_wrap.key_block_mut()?, unwrapping_key)?;
         assert_eq!(
             match key_to_wrap {
-                Object::SymmetricKey(_) => key_to_wrap.key_block()?.symmetric_key_bytes()?,
+                Object::SymmetricKey(_) => key_to_wrap.key_block()?.key_bytes()?,
                 _ => key_to_wrap.key_block()?.ec_raw_bytes()?,
             },
             key_to_wrap_bytes
@@ -224,8 +224,8 @@ fn test_encrypt_decrypt_rfc_5649() -> CryptoResult<()> {
     )?;
     let original_key_block = data_encryption_key.key_block()?.clone();
 
-    wrap_key_block(
-        data_encryption_key.key_block_mut()?,
+    wrap_object_with_key(
+        &mut data_encryption_key,
         &key_encryption_key,
         &KeyWrappingSpecification::default(),
     )?;
@@ -235,7 +235,7 @@ fn test_encrypt_decrypt_rfc_5649() -> CryptoResult<()> {
     };
     unwrap_key_block(data_encryption_key.key_block_mut()?, &key_encryption_key)?;
 
-    assert_eq!(data_encryption_key.key_block()?, &original_key_block);
+    assert!(data_encryption_key.key_block()? == &original_key_block);
     Ok(())
 }
 
@@ -273,8 +273,8 @@ fn test_encrypt_decrypt_rfc_ecies_x25519() -> CryptoResult<()> {
     )?;
     let original_key_block = data_encryption_key.key_block()?.clone();
 
-    wrap_key_block(
-        data_encryption_key.key_block_mut()?,
+    wrap_object_with_key(
+        &mut data_encryption_key,
         wrap_key_pair.public_key(),
         &KeyWrappingSpecification::default(),
     )?;
@@ -287,7 +287,7 @@ fn test_encrypt_decrypt_rfc_ecies_x25519() -> CryptoResult<()> {
         wrap_key_pair.private_key(),
     )?;
 
-    assert_eq!(data_encryption_key.key_block()?, &original_key_block);
+    assert!(data_encryption_key.key_block()? == &original_key_block);
     Ok(())
 }
 
@@ -343,8 +343,8 @@ fn test_encrypt_decrypt_rsa() -> CryptoResult<()> {
     )?;
     let original_key_block = data_encryption_key.key_block()?.clone();
 
-    wrap_key_block(
-        data_encryption_key.key_block_mut()?,
+    wrap_object_with_key(
+        &mut data_encryption_key,
         &wrap_key_pair_pub,
         &KeyWrappingSpecification::default(),
     )?;
@@ -354,7 +354,7 @@ fn test_encrypt_decrypt_rsa() -> CryptoResult<()> {
     };
     unwrap_key_block(data_encryption_key.key_block_mut()?, &wrap_key_pair_priv)?;
 
-    assert_eq!(data_encryption_key.key_block()?, &original_key_block);
+    assert!(data_encryption_key.key_block()? == &original_key_block);
     Ok(())
 }
 
@@ -391,8 +391,8 @@ fn test_encrypt_decrypt_ec_p192() -> CryptoResult<()> {
     )?;
     let original_key_block = data_encryption_key.key_block()?.clone();
 
-    wrap_key_block(
-        data_encryption_key.key_block_mut()?,
+    wrap_object_with_key(
+        &mut data_encryption_key,
         &wrap_key_pair_pub,
         &KeyWrappingSpecification::default(),
     )?;
@@ -402,7 +402,7 @@ fn test_encrypt_decrypt_ec_p192() -> CryptoResult<()> {
     };
     unwrap_key_block(data_encryption_key.key_block_mut()?, &wrap_key_pair_priv)?;
 
-    assert_eq!(data_encryption_key.key_block()?, &original_key_block);
+    assert!(data_encryption_key.key_block()? == &original_key_block);
     Ok(())
 }
 
@@ -439,8 +439,8 @@ fn test_encrypt_decrypt_ec_p384() -> CryptoResult<()> {
     )?;
     let original_key_block = data_encryption_key.key_block()?.clone();
 
-    wrap_key_block(
-        data_encryption_key.key_block_mut()?,
+    wrap_object_with_key(
+        &mut data_encryption_key,
         &wrap_key_pair_pub,
         &KeyWrappingSpecification::default(),
     )?;
@@ -450,6 +450,6 @@ fn test_encrypt_decrypt_ec_p384() -> CryptoResult<()> {
     };
     unwrap_key_block(data_encryption_key.key_block_mut()?, &wrap_key_pair_priv)?;
 
-    assert_eq!(data_encryption_key.key_block()?, &original_key_block);
+    assert!(data_encryption_key.key_block()? == &original_key_block);
     Ok(())
 }

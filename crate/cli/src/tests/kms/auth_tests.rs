@@ -2,13 +2,12 @@ use std::path::PathBuf;
 
 use base64::Engine;
 use cosmian_kms_client::read_object_from_json_ttlv_file;
-use cosmian_logger::log_init;
+use cosmian_logger::{error, info, log_init, trace};
 use tempfile::TempDir;
 use test_kms_server::{
     AuthenticationOptions, MainDBConfig, TestsContext, start_test_server_with_options,
 };
 use tokio::fs;
-use tracing::{info, trace};
 
 use crate::{
     actions::kms::{
@@ -46,7 +45,7 @@ async fn create_api_token(ctx: &TestsContext) -> KmsCliResult<(String, String)> 
     let api_token = base64::engine::general_purpose::STANDARD.encode(
         read_object_from_json_ttlv_file(&tmp_path.join("api_token"))?
             .key_block()?
-            .symmetric_key_bytes()?,
+            .key_bytes()?,
     );
     trace!("API token created: {api_token}");
     Ok((api_token_id.to_string(), api_token))
@@ -228,10 +227,7 @@ pub(crate) async fn test_kms_all_authentications() -> KmsCliResult<()> {
         None,
     )
     .await?;
-    ListOwnedObjects
-        .run(ctx.get_owner_client())
-        .await
-        .unwrap_err();
+    assert!(ListOwnedObjects.run(ctx.get_owner_client()).await.is_err());
     ctx.stop_server().await?;
 
     // SCENARIO 5: Client Certificate authentication enabled, no certificate provided (failure case)
@@ -250,10 +246,7 @@ pub(crate) async fn test_kms_all_authentications() -> KmsCliResult<()> {
         None,
     )
     .await?;
-    ListOwnedObjects
-        .run(ctx.get_owner_client())
-        .await
-        .unwrap_err();
+    assert!(ListOwnedObjects.run(ctx.get_owner_client()).await.is_err());
     ctx.stop_server().await?;
 
     // SCENARIO 6: API token authentication enabled, no token provided (failure case)
@@ -273,10 +266,7 @@ pub(crate) async fn test_kms_all_authentications() -> KmsCliResult<()> {
         None,
     )
     .await?;
-    ListOwnedObjects
-        .run(ctx.get_owner_client())
-        .await
-        .unwrap_err();
+    assert!(ListOwnedObjects.run(ctx.get_owner_client()).await.is_err());
     ctx.stop_server().await?;
 
     // SCENARIO 7: JWT authentication enabled, but no JWT token presented (failure case)
@@ -294,10 +284,7 @@ pub(crate) async fn test_kms_all_authentications() -> KmsCliResult<()> {
         None,
     )
     .await?;
-    ListOwnedObjects
-        .run(ctx.get_owner_client())
-        .await
-        .unwrap_err();
+    assert!(ListOwnedObjects.run(ctx.get_owner_client()).await.is_err());
     ctx.stop_server().await?;
 
     // Bad API token auth but JWT auth used at first
@@ -388,7 +375,6 @@ async fn test_tls_options() -> KmsCliResult<()> {
                 use_https: true,
                 ..Default::default()
             },
-            TLS_PORT,
             true, // should succeed
         ),
         (
@@ -400,7 +386,6 @@ async fn test_tls_options() -> KmsCliResult<()> {
                 client_tls_cipher_suites: Some("ECDHE-RSA-AES256-GCM-SHA384".to_string()),
                 ..Default::default()
             },
-            TLS_PORT,
             false, // should fail
         ),
         (
@@ -410,7 +395,21 @@ async fn test_tls_options() -> KmsCliResult<()> {
                 server_tls_cipher_suites: Some("TLS_AES_256_GCM_SHA384".to_string()),
                 ..Default::default()
             },
-            TLS_PORT,
+            #[cfg(target_os = "macos")]
+            false, // Default client cipher suite on macOS is TLS 1.2
+            #[cfg(not(target_os = "macos"))]
+            true, // On Linux/Windows, default client cipher suite is TLS 1.3
+        ),
+        (
+            "Testing server in TLS 1.3 but client in TLS 1.2 - manually set for client",
+            AuthenticationOptions {
+                use_https: true,
+                server_tls_cipher_suites: Some("TLS_AES_256_GCM_SHA384".to_string()),
+                client_tls_cipher_suites: Some(
+                    "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384".to_string(),
+                ),
+                ..Default::default()
+            },
             false, // should fail
         ),
         (
@@ -420,7 +419,6 @@ async fn test_tls_options() -> KmsCliResult<()> {
                 server_tls_cipher_suites: Some("INVALID_CIPHER_SUITE".to_string()),
                 ..Default::default()
             },
-            TLS_PORT,
             false, // should fail
         ),
         (
@@ -431,29 +429,63 @@ async fn test_tls_options() -> KmsCliResult<()> {
                 client_tls_cipher_suites: Some("TLS_AES_256_GCM_SHA384".to_string()),
                 ..Default::default()
             },
-            TLS_PORT + 1,
             true, // should succeed
         ),
         (
-            "Testing server with tls 1.3 client - tls 1.2 server = FAIL",
+            "Testing server with tls 1.3 client - tls 1.2/1.3 server",
             AuthenticationOptions {
                 use_https: true,
                 client_tls_cipher_suites: Some("TLS_AES_256_GCM_SHA384".to_string()),
                 ..Default::default()
             },
-            TLS_PORT,
+            true, // should succeed
+        ),
+        (
+            "Testing with client that owns a valid certificate issued from a known CA",
+            AuthenticationOptions {
+                use_https: true,
+                use_known_ca_list: true,
+                ..Default::default()
+            },
+            true, // should succeed
+        ),
+        (
+            "Testing with client that owns an expired certificate issued from a known CA",
+            AuthenticationOptions {
+                use_https: true,
+                use_known_ca_list: true,
+                pkcs12_client_cert: Some(
+                    "../../test_data/certificates/another_p12/expired.p12".to_string(),
+                ),
+                pkcs12_client_cert_password: Some("secret".to_string()),
+                ..Default::default()
+            },
             false, // should fail
         ),
         (
-            "Testing with client that owns a certificate issued from a unknown CA",
+            "Testing with client that owns a valid certificate issued from a known CA",
             AuthenticationOptions {
                 use_https: true,
+                use_known_ca_list: true,
                 pkcs12_client_cert: Some(
                     "../../test_data/certificates/another_p12/server.p12".to_string(),
                 ),
+                pkcs12_client_cert_password: Some("secret".to_string()),
                 ..Default::default()
             },
-            TLS_PORT,
+            true, // should succeed
+        ),
+        (
+            "Testing with client that owns a valid certificate issued from a unknown CA",
+            AuthenticationOptions {
+                use_https: true,
+                use_known_ca_list: true,
+                pkcs12_client_cert: Some(
+                    "../../test_data/./certificates/gmail_cse/intermediate.p12".to_string(),
+                ),
+                pkcs12_client_cert_password: Some("secret".to_string()),
+                ..Default::default()
+            },
             false, // should fail
         ),
         (
@@ -467,12 +499,12 @@ async fn test_tls_options() -> KmsCliResult<()> {
                 client_tls_cipher_suites: Some("TLS_AES_256_GCM_SHA384".to_string()),
                 ..Default::default()
             },
-            TLS_PORT + 1,
             true, // should succeed
         ),
     ];
 
-    for (description, auth_options, port, should_succeed) in test_cases {
+    for (index, (description, auth_options, should_succeed)) in test_cases.into_iter().enumerate() {
+        let port = TLS_PORT + u16::try_from(index)?;
         info!("==> {description}");
         let result = start_test_server_with_options(
             default_db_config.clone(),
@@ -489,6 +521,9 @@ async fn test_tls_options() -> KmsCliResult<()> {
             ListOwnedObjects.run(ctx.get_owner_client()).await?;
             ctx.stop_server().await?;
         } else {
+            if result.is_ok() {
+                error!("It should fail for test: {}", description.to_string());
+            }
             assert!(result.is_err());
         }
     }

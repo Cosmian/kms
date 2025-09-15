@@ -1,12 +1,13 @@
 #![allow(dead_code)]
 use std::sync::RwLock;
 
+use cosmian_logger::trace;
 use serde::{
     Deserialize,
     de::{self, Visitor},
 };
 use strum::VariantNames;
-use tracing::{instrument, trace};
+use tracing::instrument;
 
 use super::{Result, array_deserializer::ArrayDeserializer, structure_walker::StructureWalker};
 use crate::{
@@ -43,7 +44,7 @@ where
 // This is handled in MapAccess::next_key_seed and MapAccess::next_value_seed
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum MapAccessState {
-    // Not in a Map Axxess
+    // Not in a Map Access
     None,
     Key,
     Value,

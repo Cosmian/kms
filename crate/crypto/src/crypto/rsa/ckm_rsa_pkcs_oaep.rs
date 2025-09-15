@@ -91,6 +91,9 @@ fn init_ckm_rsa_pkcs_oaep_encryption_context(
         )
     }
 
+    // The openssl hash function
+    let hash_fn: &MdRef = hashing_algorithm_to_openssl_ref(hash_fn)?;
+
     // The ciphertext has the same length as the modulus.
     let encapsulation_bytes_len = usize::try_from(rsa_pub_key.size())?;
     let ciphertext = Vec::with_capacity(encapsulation_bytes_len);
@@ -99,7 +102,8 @@ fn init_ckm_rsa_pkcs_oaep_encryption_context(
     let mut ctx = PkeyCtx::new(pub_key)?;
     ctx.encrypt_init()?;
     ctx.set_rsa_padding(openssl::rsa::Padding::PKCS1_OAEP)?;
-    ctx.set_rsa_oaep_md(hashing_algorithm_to_openssl_ref(hash_fn)?)?;
+    ctx.set_rsa_oaep_md(hash_fn)?;
+    ctx.set_rsa_mgf1_md(hash_fn)?;
     Ok((ctx, ciphertext))
 }
 
@@ -176,6 +180,7 @@ fn init_ckm_rsa_pkcs_oaep_decryption_context(
     ctx.decrypt_init()?;
     ctx.set_rsa_padding(openssl::rsa::Padding::PKCS1_OAEP)?;
     ctx.set_rsa_oaep_md(hash_fn)?;
+    ctx.set_rsa_mgf1_md(hash_fn)?;
     Ok((ctx, plaintext))
 }
 

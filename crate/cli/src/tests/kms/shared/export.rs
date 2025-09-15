@@ -63,13 +63,13 @@ pub(crate) async fn test_export_sym() -> KmsCliResult<()> {
     let object = read_object_from_json_ttlv_file(&tmp_path.join("output.export"))?;
     let key_block = object.key_block()?;
     assert_eq!(key_block.key_format_type, KeyFormatType::Raw);
-    let key_bytes = key_block.symmetric_key_bytes()?;
+    let key_bytes = key_block.key_bytes()?;
 
     // Export the bytes only
     ExportSecretDataOrKeyAction {
         key_id: Some(key_id.to_string()),
         key_file: tmp_path.join("output.export.bytes"),
-        key_format: ExportKeyFormat::Raw,
+        export_format: ExportKeyFormat::Raw,
         ..Default::default()
     }
     .run(ctx.get_owner_client())
@@ -81,7 +81,7 @@ pub(crate) async fn test_export_sym() -> KmsCliResult<()> {
     ExportSecretDataOrKeyAction {
         key_id: Some(key_id.to_string()),
         key_file: tmp_path.join("output.export.bytes"),
-        key_format: ExportKeyFormat::Pkcs1Pem,
+        export_format: ExportKeyFormat::Pkcs1Pem,
         ..Default::default()
     }
     .run(ctx.get_owner_client())
@@ -267,7 +267,7 @@ pub(crate) async fn test_export_covercrypt() -> KmsCliResult<()> {
         ExportSecretDataOrKeyAction {
             key_id: Some(key_id.to_owned()),
             key_file: tmp_path.join("output.export.bytes"),
-            key_format: ExportKeyFormat::Raw,
+            export_format: ExportKeyFormat::Raw,
             ..Default::default()
         }
         .run(ctx.get_owner_client())
@@ -387,7 +387,7 @@ pub(crate) async fn test_export_x25519() -> KmsCliResult<()> {
         kmip_2_1::kmip_data_structures::KeyValue,
         reexport::cosmian_kms_client_utils::create_utils::Curve,
     };
-    use tracing::trace;
+    use cosmian_logger::trace;
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     // init the test server
@@ -444,7 +444,7 @@ pub(crate) async fn test_export_x25519() -> KmsCliResult<()> {
     ExportSecretDataOrKeyAction {
         key_id: Some(private_key_id.to_string()),
         key_file: tmp_path.join("output.export.bytes"),
-        key_format: ExportKeyFormat::Pkcs8Der,
+        export_format: ExportKeyFormat::Pkcs8Der,
         ..Default::default()
     }
     .run(ctx.get_owner_client())
@@ -496,7 +496,7 @@ pub(crate) async fn test_export_x25519() -> KmsCliResult<()> {
     ExportSecretDataOrKeyAction {
         key_id: Some(public_key_id.to_string()),
         key_file: tmp_path.join("output.export.bytes"),
-        key_format: ExportKeyFormat::Pkcs8Der,
+        export_format: ExportKeyFormat::Pkcs8Der,
         ..Default::default()
     }
     .run(ctx.get_owner_client())
@@ -729,7 +729,7 @@ pub(crate) async fn test_export_secret_data() -> KmsCliResult<()> {
     ExportSecretDataOrKeyAction {
         key_id: Some(secret_id.to_string()),
         key_file: tmp_path.join("output.export.bytes"),
-        key_format: ExportKeyFormat::Raw,
+        export_format: ExportKeyFormat::Raw,
         ..Default::default()
     }
     .run(ctx.get_owner_client())
@@ -741,7 +741,7 @@ pub(crate) async fn test_export_secret_data() -> KmsCliResult<()> {
     ExportSecretDataOrKeyAction {
         key_id: Some(secret_id.to_string()),
         key_file: tmp_path.join("output.export.bytes"),
-        key_format: ExportKeyFormat::Pkcs1Pem,
+        export_format: ExportKeyFormat::Pkcs1Pem,
         ..Default::default()
     }
     .run(ctx.get_owner_client())

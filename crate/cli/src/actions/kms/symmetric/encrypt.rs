@@ -20,9 +20,9 @@ use cosmian_kms_client::{
 };
 use cosmian_kms_crypto::crypto::{
     symmetric::symmetric_ciphers::{Mode, SymCipher, encrypt, random_key, random_nonce},
-    wrap::wrap_key_block,
+    wrap::wrap_object_with_key,
 };
-use tracing::trace;
+use cosmian_logger::trace;
 use zeroize::Zeroizing;
 
 use crate::{
@@ -376,9 +376,7 @@ impl EncryptAction {
         kek_id: &str,
         data_encryption_algorithm: DataEncryptionAlgorithm,
     ) -> KmsCliResult<(Zeroizing<Vec<u8>>, Vec<u8>)> {
-        trace!(
-            "client_side_kem_encapsulation: data_encryption_algorithm: {data_encryption_algorithm}"
-        );
+        trace!("data_encryption_algorithm: {data_encryption_algorithm}");
         // Generate the ephemeral key (DEK)
         let dek: Zeroizing<Vec<u8>> = match data_encryption_algorithm {
             DataEncryptionAlgorithm::AesCbc => random_key(SymCipher::Aes256Cbc)?,
@@ -389,10 +387,7 @@ impl EncryptAction {
             DataEncryptionAlgorithm::AesGcmSiv => random_key(SymCipher::Aes256Gcm)?,
             DataEncryptionAlgorithm::AesXts => random_key(SymCipher::Aes256Xts)?,
         };
-        trace!(
-            "client_side_kem_encapsulation: dek (len={}): {dek:?}",
-            dek.len()
-        );
+        trace!("dek (len={}): {dek:?}", dek.len());
 
         // First export the KEK locally
         let wrapping_key = export_object(
@@ -415,8 +410,8 @@ impl EncryptAction {
         )?;
 
         // Wrap the DEK with the KEK
-        wrap_key_block(
-            dek_object.key_block_mut()?,
+        wrap_object_with_key(
+            &mut dek_object,
             &wrapping_key,
             &KeyWrappingSpecification {
                 encoding_option: Some(EncodingOption::NoEncoding),

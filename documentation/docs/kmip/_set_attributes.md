@@ -12,8 +12,14 @@ Set an attribute of a symmetric key by its unique identifier `027cced1-ff2b-4bd3
 
 Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
 
+First, create a symmetric key:
+
 ```bash
-  cosmian kms attributes set -i 6209aa2a-900f-4a1c-b2ca-9b4af1bbd1d1 --activation-date 1726211157791
+  cosmian kms sym keys create my_symmetric_key
+```
+
+```bash
+  cosmian kms attributes set -i my_symmetric_key --activation-date 1726211157791
 ```
 
 The request sets the activation date of a symmetric key.
@@ -29,55 +35,55 @@ Attribute set successfully
 === "Request"
 
     ```json
+    {
+      "tag": "SetAttribute",
+      "type": "Structure",
+      "value": [
         {
-          "tag": "SetAttribute",
+          "tag": "UniqueIdentifier",
+          "type": "TextString",
+          "value": "my_symmetric_key"
+        },
+        {
+          "tag": "NewAttribute",
           "type": "Structure",
           "value": [
             {
-              "tag": "UniqueIdentifier",
-              "type": "TextString",
-              "value": "10a875bd-9cc5-45a3-99ef-b2cdedd848bf"
-            },
-            {
-              "tag": "NewAttribute",
+              "tag": "Link",
               "type": "Structure",
               "value": [
                 {
-                  "tag": "Link",
-                  "type": "Structure",
-                  "value": [
-                    {
-                      "tag": "LinkType",
-                      "type": "Enumeration",
-                      "value": "CertificateLink"
-                    },
-                    {
-                      "tag": "LinkedObjectIdentifier",
-                      "type": "TextString",
-                      "value": "certificate_id"
-                    }
-                  ]
+                  "tag": "LinkType",
+                  "type": "Enumeration",
+                  "value": "CertificateLink"
+                },
+                {
+                  "tag": "LinkedObjectIdentifier",
+                  "type": "TextString",
+                  "value": "certificate_id"
                 }
               ]
             }
           ]
         }
+      ]
+    }
     ```
 
 === "Response"
 
     ```json
+    {
+      "tag": "SetAttributeResponse",
+      "type": "Structure",
+      "value": [
         {
-          "tag": "SetAttributeResponse",
-          "type": "Structure",
-          "value": [
-            {
-              "tag": "UniqueIdentifier",
-              "type": "TextString",
-              "value": "6209aa2a-900f-4a1c-b2ca-9b4af1bbd1d1"
-            }
-          ]
+          "tag": "UniqueIdentifier",
+          "type": "TextString",
+          "value": "my_symmetric_key"
         }
+      ]
+    }
     ```
 
 ### Example - Set links on Certificate
@@ -117,91 +123,91 @@ Attribute set successfully
 === "First Request"
 
     ```json
+    {
+      "tag": "SetAttribute",
+      "type": "Structure",
+      "value": [
         {
-          "tag": "SetAttribute",
+          "tag": "UniqueIdentifier",
+          "type": "TextString",
+          "value": "my_symmetric_key"
+        },
+        {
+          "tag": "NewAttribute",
           "type": "Structure",
           "value": [
             {
-              "tag": "UniqueIdentifier",
-              "type": "TextString",
-              "value": "10a875bd-9cc5-45a3-99ef-b2cdedd848bf"
-            },
-            {
-              "tag": "NewAttribute",
+              "tag": "Link",
               "type": "Structure",
               "value": [
                 {
-                  "tag": "Link",
-                  "type": "Structure",
-                  "value": [
-                    {
-                      "tag": "LinkType",
-                      "type": "Enumeration",
-                      "value": "PublicKeyLink"
-                    },
-                    {
-                      "tag": "LinkedObjectIdentifier",
-                      "type": "TextString",
-                      "value": "xxxxxxxx-yyyy-yyyy-yyyy-zzzzzzzzzzzz"
-                    }
-                  ]
+                  "tag": "LinkType",
+                  "type": "Enumeration",
+                  "value": "PublicKeyLink"
+                },
+                {
+                  "tag": "LinkedObjectIdentifier",
+                  "type": "TextString",
+                  "value": "xxxxxxxx-yyyy-yyyy-yyyy-zzzzzzzzzzzz"
                 }
               ]
             }
           ]
         }
+      ]
+    }
     ```
 
 === "Second Request"
 
     ```json
+    {
+      "tag": "SetAttribute",
+      "type": "Structure",
+      "value": [
         {
-          "tag": "SetAttribute",
+          "tag": "UniqueIdentifier",
+          "type": "TextString",
+          "value": "my_symmetric_key"
+        },
+        {
+          "tag": "NewAttribute",
           "type": "Structure",
           "value": [
             {
-              "tag": "UniqueIdentifier",
-              "type": "TextString",
-              "value": "10a875bd-9cc5-45a3-99ef-b2cdedd848bf"
-            },
-            {
-              "tag": "NewAttribute",
+              "tag": "Link",
               "type": "Structure",
               "value": [
                 {
-                  "tag": "Link",
-                  "type": "Structure",
-                  "value": [
-                    {
-                      "tag": "LinkType",
-                      "type": "Enumeration",
-                      "value": "PrivateKeyLink"
-                    },
-                    {
-                      "tag": "LinkedObjectIdentifier",
-                      "type": "TextString",
-                      "value": "xxxxxxxx-yyyy-yyyy-yyyy-zzzzzzzzzzzz"
-                    }
-                  ]
+                  "tag": "LinkType",
+                  "type": "Enumeration",
+                  "value": "PrivateKeyLink"
+                },
+                {
+                  "tag": "LinkedObjectIdentifier",
+                  "type": "TextString",
+                  "value": "xxxxxxxx-yyyy-yyyy-yyyy-zzzzzzzzzzzz"
                 }
               ]
             }
           ]
         }
+      ]
+    }
     ```
 
 === "Response"
 
     ```json
+    {
+      "tag": "SetAttributeResponse",
+      "type": "Structure",
+      "value": [
         {
-          "tag": "SetAttributeResponse",
-          "type": "Structure",
-          "value": [
-            {
-              "tag": "UniqueIdentifier",
-              "type": "TextString",
-              "value": "6209aa2a-900f-4a1c-b2ca-9b4af1bbd1d1"
-            }
-          ]
+          "tag": "UniqueIdentifier",
+          "type": "TextString",
+          "value": "my_symmetric_key"
         }
+      ]
+    }
     ```

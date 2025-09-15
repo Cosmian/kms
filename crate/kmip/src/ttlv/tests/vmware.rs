@@ -1,8 +1,7 @@
 #![allow(unused)]
 use std::option;
 
-use cosmian_logger::log_init;
-use tracing::info;
+use cosmian_logger::{info, log_init};
 use zeroize::Zeroizing;
 
 use crate::{
@@ -328,7 +327,7 @@ fn create() {
     info!("response ttlv: {:#?}", ttlv);
 
     let response_message: ResponseMessage = from_ttlv(ttlv).unwrap();
-    info!("response_message: {:#?}", response_message);
+    info!("response_message: {}", response_message);
 
     let ResponseMessageBatchItemVersioned::V14(batch_item) = &response_message.batch_item[0] else {
         panic!("Expected V14 response message");
@@ -399,7 +398,7 @@ fn get_attributes() {
     let ttlv = TTLV::from_bytes(&response, KmipFlavor::Kmip1).unwrap();
     info!("response ttlv: {:#?}", ttlv);
     let response_message: ResponseMessage = from_ttlv(ttlv).unwrap();
-    info!("response_message: {:#?}", response_message);
+    info!("response_message: {}", response_message);
     let ResponseMessageBatchItemVersioned::V14(batch_item) = &response_message.batch_item[0] else {
         panic!("Expected V14 response message");
     };
@@ -537,7 +536,7 @@ fn get() {
     let ttlv = TTLV::from_bytes(&response, KmipFlavor::Kmip1).unwrap();
     info!("response ttlv: {:#?}", ttlv);
     let response_message: ResponseMessage = from_ttlv(ttlv).unwrap();
-    info!("response_message: {:#?}", response_message);
+    info!("response_message: {}", response_message);
     let ResponseMessageBatchItemVersioned::V14(batch_item) = &response_message.batch_item[0] else {
         panic!("Expected V14 response message");
     };

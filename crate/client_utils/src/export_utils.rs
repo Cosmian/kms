@@ -39,8 +39,11 @@ pub enum ExportKeyFormat {
 pub enum WrappingAlgorithm {
     NistKeyWrap,
     AesGCM,
+    RsaPkcsV15Sha1,
     RsaPkcsV15,
+    RsaOaepSha1,
     RsaOaep,
+    RsaAesKeyWrapSha1,
     RsaAesKeyWrap,
 }
 
@@ -50,8 +53,11 @@ impl WrappingAlgorithm {
             Self::NistKeyWrap => "nist-key-wrap",
             Self::AesGCM => "aes-gcm",
             Self::RsaPkcsV15 => "rsa-pkcs-v15",
+            Self::RsaPkcsV15Sha1 => "rsa-pkcs-v15-sha1",
             Self::RsaOaep => "rsa-oaep",
+            Self::RsaOaepSha1 => "rsa-oaep-sha1",
             Self::RsaAesKeyWrap => "rsa-aes-key-wrap",
+            Self::RsaAesKeyWrapSha1 => "rsa-aes-key-wrap-sha1",
         }
     }
 }
@@ -188,16 +194,34 @@ pub fn prepare_key_export_elements(
                     hashing_algorithm: Some(HashingAlgorithm::SHA256),
                     ..CryptographicParameters::default()
                 },
+                WrappingAlgorithm::RsaPkcsV15Sha1 => CryptographicParameters {
+                    cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+                    padding_method: Some(PaddingMethod::PKCS1v15),
+                    hashing_algorithm: Some(HashingAlgorithm::SHA1),
+                    ..CryptographicParameters::default()
+                },
                 WrappingAlgorithm::RsaOaep => CryptographicParameters {
                     cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                     padding_method: Some(PaddingMethod::OAEP),
                     hashing_algorithm: Some(HashingAlgorithm::SHA256),
                     ..CryptographicParameters::default()
                 },
+                WrappingAlgorithm::RsaOaepSha1 => CryptographicParameters {
+                    cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+                    padding_method: Some(PaddingMethod::OAEP),
+                    hashing_algorithm: Some(HashingAlgorithm::SHA1),
+                    ..CryptographicParameters::default()
+                },
                 WrappingAlgorithm::RsaAesKeyWrap => CryptographicParameters {
                     cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                     padding_method: Some(PaddingMethod::None),
                     hashing_algorithm: Some(HashingAlgorithm::SHA256),
+                    ..CryptographicParameters::default()
+                },
+                WrappingAlgorithm::RsaAesKeyWrapSha1 => CryptographicParameters {
+                    cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+                    padding_method: Some(PaddingMethod::None),
+                    hashing_algorithm: Some(HashingAlgorithm::SHA1),
                     ..CryptographicParameters::default()
                 },
             });

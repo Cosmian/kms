@@ -19,10 +19,11 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kms_crypto::crypto::symmetric::symmetric_ciphers::AES_128_GCM_MAC_LENGTH,
     cosmian_kms_interfaces::SessionParams,
 };
+use cosmian_logger::{debug, error, info, trace, warn};
 use reqwest::header::CONTENT_TYPE;
 use serde_json::Value;
 use time::OffsetDateTime;
-use tracing::{debug, error, info, span, trace, warn};
+use tracing::span;
 
 use crate::{
     core::{
@@ -323,7 +324,7 @@ pub(crate) async fn handle_ttlv_bytes(user: &str, ttlv_bytes: &[u8], kms: &Arc<K
         .await
         .unwrap_or_else(|e| {
             let response_message = invalid_response_message(major, minor, e.to_string());
-            warn!(target: "kmip", "Failed to process request:\n{response_message:#?}");
+            warn!(target: "kmip", "Failed to process request:\n{response_message}");
             // convert to TTLV
             let response_ttlv = to_ttlv(&response_message).unwrap_or_else(|e| {
                 error!(target: "kmip", "Failed to convert response message to TTLV: {}", e);
@@ -389,7 +390,7 @@ async fn handle_ttlv_bytes_inner(
         target: "kmip",
         user=user,
         tag=tag,
-        "Request Message: {request_message:#?}"
+        "Request Message: {request_message}"
     );
 
     let mut response_message = Box::pin(message(kms, request_message, user, None)).await?;
@@ -402,7 +403,7 @@ async fn handle_ttlv_bytes_inner(
         target: "kmip",
         user=user,
         tag=tag,
-        "Response Message: {response_message:#?}"
+        "Response Message: {response_message}"
     );
 
     // serialize the response to TTLV
@@ -502,8 +503,7 @@ fn get_kmip_version(ttlv: &TTLV) -> KResult<(i32, i32)> {
 mod tests {
     use cosmian_kms_client_utils::reexport::cosmian_kmip;
     use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_messages::ResponseMessageBatchItemVersioned;
-    use cosmian_logger::log_init;
-    use log::info;
+    use cosmian_logger::{info, log_init};
 
     #[test]
     fn error_response_message() {

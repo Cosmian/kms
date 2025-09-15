@@ -4,9 +4,8 @@ use cosmian_kms_client::{
     kmip_2_1::kmip_types::{LinkType, Tag},
     reexport::cosmian_kms_client_utils::import_utils::CertificateInputFormat,
 };
-use cosmian_logger::log_init;
+use cosmian_logger::{debug, log_init};
 use test_kms_server::start_default_test_kms_server;
-use tracing::debug;
 
 use crate::{
     actions::kms::{
@@ -51,7 +50,7 @@ async fn test_get_attributes_p12() -> KmsCliResult<()> {
     .process(ctx.get_owner_client())
     .await?;
 
-    debug!("test_get_attributes_p12: pkcs12_attributes: {pkcs12_attributes:?}");
+    debug!("pkcs12_attributes: {pkcs12_attributes:?}");
     assert!(!pkcs12_attributes.contains_key(&LinkType::PublicKeyLink.to_string()));
     assert_eq!(
         &pkcs12_attributes[&Tag::KeyFormatType.to_string()],
@@ -72,7 +71,7 @@ async fn test_get_attributes_p12() -> KmsCliResult<()> {
     .process(ctx.get_owner_client())
     .await?;
 
-    debug!("test_get_attributes_p12: intermediate_attributes: {intermediate_attributes:?}");
+    debug!("intermediate_attributes: {intermediate_attributes:?}");
 
     assert_eq!(
         &intermediate_attributes[&Tag::KeyFormatType.to_string()],

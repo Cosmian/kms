@@ -3,11 +3,10 @@ use cosmian_kms_client::reexport::cosmian_kms_client_utils::export_utils::Export
 use cosmian_kms_client::reexport::cosmian_kms_client_utils::{
     create_utils::SymmetricAlgorithm, symmetric_utils::DataEncryptionAlgorithm,
 };
-use cosmian_logger::log_init;
+use cosmian_logger::{info, log_init};
 #[cfg(feature = "non-fips")]
 use tempfile::TempDir;
 use test_kms_server::TestsContext;
-use tracing::info;
 use uuid::Uuid;
 
 use crate::{
@@ -154,7 +153,7 @@ pub(crate) async fn test_unwrap_on_export(ctx: &TestsContext) -> KmsCliResult<()
     ExportSecretDataOrKeyAction {
         key_file: tmp_path.join("dek.pem"),
         key_id: Some(dek.to_string()),
-        key_format: ExportKeyFormat::Raw,
+        export_format: ExportKeyFormat::Raw,
         unwrap: true,
         ..Default::default()
     }

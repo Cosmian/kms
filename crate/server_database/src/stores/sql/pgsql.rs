@@ -14,13 +14,13 @@ use cosmian_kms_interfaces::{
     AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
     PermissionsStore, SessionParams,
 };
+use cosmian_logger::{debug, info, trace};
 use rawsql::Loader;
 use serde_json::Value;
 use sqlx::{
     ConnectOptions, Executor, Pool, Postgres, Row, Transaction,
     postgres::{PgConnectOptions, PgPoolOptions, PgRow},
 };
-use tracing::{debug, info, trace};
 use uuid::Uuid;
 
 use crate::{
@@ -355,7 +355,7 @@ pub(crate) async fn create_(
 ) -> DbResult<String> {
     let object_json =
         serde_json::to_string_pretty(object).context("failed serializing the object to JSON")?;
-    info!(uid = uid, "object_json: {object_json:#?}");
+    info!("uid: {:?}, object_json: {object_json:#?}", uid);
 
     let attributes_json =
         serde_json::to_value(attributes).context("failed serializing the attributes to JSON")?;

@@ -22,9 +22,9 @@ use cosmian_kms_crypto::{
         reexport::rand_core::{RngCore, SeedableRng},
     },
 };
+use cosmian_logger::{debug, trace};
 use tempfile::TempDir;
 use test_kms_server::{TestsContext, start_default_test_kms_server};
-use tracing::{debug, trace};
 
 use crate::{
     actions::kms::{
@@ -255,10 +255,7 @@ async fn test_import_export_wrap_private_key(
                 .is_none()
         );
         unwrap_key_block(wrapped_private_key.key_block_mut()?, unwrapping_key)?;
-        assert_eq!(
-            wrapped_private_key.key_block()?.key_value,
-            private_key.key_block()?.key_value
-        );
+        assert!(wrapped_private_key.key_block()?.key_value == private_key.key_block()?.key_value);
     }
 
     // test the unwrapping on import
@@ -344,9 +341,8 @@ async fn test_import_export_wrap_private_key(
             .unique_identifier
             .clone();
 
-        assert_eq!(
-            exported_unwrapped_key.key_block()?.key_value,
-            private_key.key_block()?.key_value
+        assert!(
+            exported_unwrapped_key.key_block()?.key_value == private_key.key_block()?.key_value
         );
         assert!(exported_unwrapped_key.key_wrapping_data().is_none());
     }

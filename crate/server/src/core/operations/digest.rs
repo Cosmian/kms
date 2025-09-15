@@ -10,7 +10,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     },
     ttlv::KmipFlavor,
 };
-use tracing::trace;
+use cosmian_logger::trace;
 
 use crate::result::KResult;
 
@@ -24,14 +24,11 @@ pub(crate) fn digest(object: &Object) -> KResult<Option<Digest>> {
         | Object::SymmetricKey(SymmetricKey { key_block })
         | Object::SplitKey(SplitKey { key_block, .. }) => {
             if let Some(key_value) = key_block.key_value.as_ref() {
-                trace!("digest key_value: {:?}", key_value);
+                trace!("{}", key_value);
                 let bytes = match key_value {
                     KeyValue::ByteString(bytes) => bytes.to_vec(),
                     KeyValue::Structure { key_material, .. } => {
-                        trace!(
-                            "digest key_material key format: {:?}",
-                            key_block.key_format_type
-                        );
+                        trace!("key_material key format: {:?}", key_block.key_format_type);
                         match key_material {
                             // KMIP 2.1 KeyValue::Structure with ByteString
                             KeyMaterial::ByteString(bytes) => bytes.to_vec(),
@@ -42,7 +39,6 @@ pub(crate) fn digest(object: &Object) -> KResult<Option<Digest>> {
                         }
                     }
                 };
-                trace!("digest: {:?}", bytes);
                 // digest  with openSSL SHA256
                 let digest = openssl::sha::sha256(&bytes);
                 Ok(Some(Digest {

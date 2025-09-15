@@ -1,8 +1,7 @@
-use cosmian_logger::log_init;
+use cosmian_logger::{debug, info, log_init, trace};
 use num_bigint_dig::BigInt;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use time::OffsetDateTime;
-use tracing::{debug, info, trace};
 use zeroize::Zeroizing;
 
 use crate::{
@@ -180,7 +179,7 @@ fn test_ser_aes_key() {
 
     // Deserializer
     let rec: Object = from_ttlv(ttlv.clone()).unwrap();
-    assert_eq!(aes_key, rec);
+    assert!(aes_key == rec);
 
     assert_eq!(aes_key_ttlv(key_bytes), ttlv);
 }
@@ -282,11 +281,11 @@ fn test_aes_key_block() {
     //
     let json = serde_json::to_value(aes_key_block(key_bytes)).unwrap();
     let kb: KeyBlock = serde_json::from_value(json).unwrap();
-    assert_eq!(aes_key_block(key_bytes), kb);
+    assert!(aes_key_block(key_bytes) == kb);
     //
     let ttlv = aes_key_block_ttlv(key_bytes);
     let rec: KeyBlock = from_ttlv(ttlv).unwrap();
-    assert_eq!(aes_key_block(key_bytes), rec);
+    assert!(aes_key_block(key_bytes) == rec);
 }
 
 #[test]
@@ -309,12 +308,12 @@ fn test_des_aes_key() {
 
     // Deserializer
     let rec: Object = from_ttlv(ttlv).unwrap();
-    assert_eq!(aes_key(key_bytes), rec);
+    assert!(aes_key(key_bytes) == rec);
 }
 
 #[test]
 fn test_object_inside_struct() {
-    #[derive(Serialize, Deserialize, PartialEq, Debug)]
+    #[derive(Serialize, Deserialize, PartialEq)]
     #[serde(rename_all = "PascalCase")]
     struct Wrapper {
         object: Object,
@@ -336,7 +335,7 @@ fn test_object_inside_struct() {
     assert_eq!(ttlv, ttlv_from_json);
     // Deserializer
     let rec: Wrapper = from_ttlv(ttlv).unwrap();
-    assert_eq!(wrapper, rec);
+    assert!(wrapper == rec);
 }
 
 #[test]
@@ -447,7 +446,7 @@ fn test_import_symmetric_key() {
     info!("{}", json);
     //JSON deserialize
     let import_from_json = serde_json::from_str::<Import>(&json).unwrap();
-    assert_eq!(import, import_from_json);
+    assert!(import == import_from_json);
 
     // Serializer
     let ttlv = to_ttlv(&import).unwrap();
@@ -460,7 +459,7 @@ fn test_import_symmetric_key() {
     assert_eq!(ttlv, ttlv_from_json);
     // Deserializer
     let rec: Import = from_ttlv(ttlv).unwrap();
-    assert_eq!(import, rec);
+    assert!(import == rec);
 }
 
 #[test]
@@ -497,14 +496,14 @@ fn test_object_public_key() {
     assert_eq!(ttlv, ttlv_from_json);
     // Deserializer
     let rec: Object = from_ttlv(ttlv).unwrap();
-    assert_eq!(key, rec);
+    assert!(key == rec);
 
     // JSON
     let json = serde_json::to_string_pretty(&key).unwrap();
     info!("{}", json);
     // Deserialize
     let key_from_json = serde_json::from_str::<Object>(&json).unwrap();
-    assert_eq!(key, key_from_json);
+    assert!(key == key_from_json);
 }
 
 #[test]
@@ -551,12 +550,12 @@ fn test_import_public_key() {
     assert_eq!(ttlv, ttlv_from_json);
     // Deserializer
     let rec: Import = from_ttlv(ttlv).unwrap();
-    assert_eq!(import, rec);
+    assert!(import == rec);
 }
 
 #[test]
 fn test_attributes() {
-    #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+    #[derive(Serialize, Deserialize, Clone, PartialEq)]
     struct Wrapper {
         attrs: Attributes,
     }
@@ -573,12 +572,12 @@ fn test_attributes() {
     let ttlv_: TTLV = serde_json::from_value(json).unwrap();
     assert_eq!(ttlv, ttlv_);
     let rec: Wrapper = from_ttlv(ttlv_).unwrap();
-    assert_eq!(wrapper, rec);
+    assert!(wrapper == rec);
 }
 
 #[test]
 fn test_some_attributes() {
-    #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+    #[derive(Serialize, Deserialize, Clone, PartialEq)]
     #[serde(untagged)]
     #[allow(clippy::large_enum_variant)]
     enum Wrapper {
@@ -604,7 +603,7 @@ fn test_some_attributes() {
     let ttlv_: TTLV = serde_json::from_value(json).unwrap();
     assert_eq!(ttlv, ttlv_);
     let rec: Wrapper = from_ttlv(ttlv_).unwrap();
-    assert_eq!(value, rec);
+    assert!(value == rec);
 }
 
 #[test]
@@ -666,7 +665,7 @@ fn test_aes_key_full() {
     let aes_key = aes_key(key_bytes);
     let ttlv = to_ttlv(&aes_key).unwrap();
     let aes_key_: Object = from_ttlv(ttlv).unwrap();
-    assert_eq!(aes_key, aes_key_);
+    assert!(aes_key == aes_key_);
 }
 
 #[test]
@@ -697,7 +696,7 @@ fn test_attributes_with_links() {
     assert_eq!(ttlv, ttlv_from_json);
     // Deserializer
     let rec: Attributes = from_ttlv(ttlv).unwrap();
-    assert_eq!(attributes, rec);
+    assert!(attributes == rec);
 }
 
 #[test]
@@ -1293,7 +1292,7 @@ fn normative_request_message_test() {
             },
         )],
     };
-    assert_eq!(request_message, norm_req);
+    assert!(request_message == norm_req);
 
     // Serializer
     let ttlv__ = to_ttlv(&request_message).unwrap();
@@ -1319,7 +1318,7 @@ fn test_locate_with_empty_attributes() {
 
     // Deserializer
     let locate_: Locate = from_ttlv(ttlv).unwrap();
-    assert_eq!(locate, locate_);
+    assert!(locate == locate_);
 }
 
 //TODO: implement the Query operation in 2.1 first
@@ -1360,9 +1359,9 @@ fn test_query_response() {
     trace!("batch item: {:#?}", ttlv);
 
     let response_batch_item_: ResponseMessageBatchItem = from_ttlv(ttlv).unwrap();
-    trace!("query_response_deserialized: {:#?}", response_batch_item_);
+    trace!("query_response_deserialized: {}", response_batch_item_);
 
-    assert_eq!(response_batch_item, response_batch_item_);
+    assert!(response_batch_item == response_batch_item_);
 }
 
 #[test]
@@ -1393,7 +1392,7 @@ pub(crate) fn test_simple_message_request() {
     let ttlv = to_ttlv(&req).unwrap();
     info!("TTLV: {:#?}", ttlv);
     let req_: RequestMessage = from_ttlv(ttlv).unwrap();
-    info!("{:#?}", req_);
+    info!("{}", req_);
     let RequestMessageBatchItemVersioned::V21(batch_item) = &req_.batch_item[0] else {
         panic!("not a v2.1 batch item");
     };
@@ -1405,7 +1404,7 @@ pub(crate) fn test_simple_message_request() {
         query.query_function,
         Some(vec![QueryFunction::QueryOperations])
     );
-    assert_eq!(req, req_);
+    assert!(req == req_);
 }
 
 #[test]
@@ -1470,7 +1469,7 @@ pub(crate) fn test_message_request() {
         panic!("not an encrypt operation's request payload: {batch_item}");
     };
     assert_eq!(encrypt.data, Some(Zeroizing::from(b"to be enc".to_vec())));
-    assert_eq!(req, req_);
+    assert!(req == req_);
 }
 
 #[test]
@@ -1565,7 +1564,7 @@ pub(crate) fn test_message_response() {
         decrypt.unique_identifier,
         UniqueIdentifier::TextString("id_12345".to_owned())
     );
-    assert_eq!(res, res_);
+    assert!(res == res_);
 }
 
 #[test]
@@ -1591,9 +1590,9 @@ fn test_object_raw() {
     // Deserialize the TTLV back to Object
     let deserialized_object: Object = from_ttlv(ttlv).expect("Failed to deserialize TTLV");
 
-    info!("Deserialized Object: {:#?}", deserialized_object);
-    assert_eq!(
-        object, deserialized_object,
+    info!("Deserialized Object: {}", deserialized_object);
+    assert!(
+        object == deserialized_object,
         "Deserialized Object does not match the original"
     );
 
@@ -1602,8 +1601,8 @@ fn test_object_raw() {
     info!("JSON: {}", json);
     let deserialized_object_json: Object =
         serde_json::from_str(&json).expect("Failed to deserialize from JSON");
-    assert_eq!(
-        object, deserialized_object_json,
+    assert!(
+        object == deserialized_object_json,
         "Deserialized Object from JSON does not match the original"
     );
 }
@@ -1633,9 +1632,9 @@ fn test_object_structured_sym() {
     // Deserialize the TTLV back to Object
     let deserialized_object: Object = from_ttlv(ttlv).expect("Failed to deserialize TTLV");
 
-    info!("Deserialized Object: {:#?}", deserialized_object);
-    assert_eq!(
-        object, deserialized_object,
+    info!("Deserialized Object: {}", deserialized_object);
+    assert!(
+        object == deserialized_object,
         "Deserialized Object does not match the original"
     );
 
@@ -1644,8 +1643,8 @@ fn test_object_structured_sym() {
     info!("JSON: {}", json);
     let deserialized_object_json: Object =
         serde_json::from_str(&json).expect("Failed to deserialize from JSON");
-    assert_eq!(
-        object, deserialized_object_json,
+    assert!(
+        object == deserialized_object_json,
         "Deserialized Object from JSON does not match the original"
     );
 }
@@ -1683,9 +1682,9 @@ fn test_object_structured_rsa() {
     // Deserialize the TTLV back to Object
     let deserialized_object: Object = from_ttlv(ttlv).expect("Failed to deserialize TTLV");
 
-    info!("Deserialized Object: {:#?}", deserialized_object);
-    assert_eq!(
-        object, deserialized_object,
+    info!("Deserialized Object: {}", deserialized_object);
+    assert!(
+        object == deserialized_object,
         "Deserialized Object does not match the original"
     );
 
@@ -1694,8 +1693,8 @@ fn test_object_structured_rsa() {
     info!("JSON: {}", json);
     let deserialized_object_json: Object =
         serde_json::from_str(&json).expect("Failed to deserialize from JSON");
-    assert_eq!(
-        object, deserialized_object_json,
+    assert!(
+        object == deserialized_object_json,
         "Deserialized Object from JSON does not match the original"
     );
 }
@@ -1715,10 +1714,12 @@ fn test_key_value_ttlv() {
             ..Default::default()
         }),
     };
-    assert_eq!(
-        kv,
-        KeyValue::from_ttlv_bytes(&kv.to_ttlv_bytes(key_format_type).unwrap(), key_format_type)
-            .unwrap()
+    assert!(
+        kv == KeyValue::from_ttlv_bytes(
+            &kv.to_ttlv_bytes(key_format_type).unwrap(),
+            key_format_type
+        )
+        .unwrap()
     );
     let key_format_type = KeyFormatType::TransparentRSAPublicKey;
 
@@ -1742,10 +1743,12 @@ fn test_key_value_ttlv() {
             ..Default::default()
         }),
     };
-    assert_eq!(
-        kv,
-        KeyValue::from_ttlv_bytes(&kv.to_ttlv_bytes(key_format_type).unwrap(), key_format_type)
-            .unwrap()
+    assert!(
+        kv == KeyValue::from_ttlv_bytes(
+            &kv.to_ttlv_bytes(key_format_type).unwrap(),
+            key_format_type
+        )
+        .unwrap()
     );
 }
 

@@ -1,6 +1,6 @@
 use clap::Args;
+use cosmian_logger::warn;
 use serde::{Deserialize, Serialize};
-use tracing::warn;
 
 use crate::{config::IdpConfig, error::KmsError, kms_ensure};
 

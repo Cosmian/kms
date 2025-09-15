@@ -34,6 +34,7 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::{AtomicOperation, ObjectWithMetadata, SessionParams},
 };
+use cosmian_logger::{debug, info, trace};
 use openssl::{
     asn1::{Asn1Integer, Asn1Time},
     hash::MessageDigest,
@@ -41,7 +42,6 @@ use openssl::{
     sha::Sha1,
     x509::{X509, X509Req},
 };
-use tracing::{debug, info, trace};
 
 use crate::{
     core::{
@@ -76,7 +76,7 @@ pub(crate) async fn certify(
     params: Option<Arc<dyn SessionParams>>,
     privileged_users: Option<Vec<String>>,
 ) -> KResult<CertifyResponse> {
-    trace!("Certify: {}", serde_json::to_string(&request)?);
+    trace!("{}", serde_json::to_string(&request)?);
     if request.protection_storage_masks.is_some() {
         kms_bail!(KmsError::UnsupportedPlaceholder)
     }

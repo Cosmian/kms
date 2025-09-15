@@ -30,7 +30,7 @@ identified. It is possible to use multiple tags to identify a key; for instance 
 Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
 
 ```shell
-cosmian kms sym decrypt /tmp/encrypted.bin -t MySymmetricKey
+cosmian kms sym decrypt /tmp/encrypted.bin -t "MySymmetricKey"
 ```
 
 where `/tmp/encrypted.bin` contains the a concatenation of the the nonce, the encrypted and the authentication tag
@@ -45,55 +45,54 @@ The JSON TTLV request the same information as in the [`Encrypt` Response](./_enc
 === "Request"
 
     ```json
+    {
+      "tag": "Decrypt",
+      "type": "Structure",
+      "value": [
         {
-          "tag": "Decrypt",
-          "type": "Structure",
-          "value": [
-            {
-              "tag": "UniqueIdentifier",
-              "type": "TextString",
-              "value": "[\"MySymmetricKey\"]"
-            },
-            {
-              "tag": "Data",
-              "type": "ByteString",
-              "value": "40D59A0735811135749A507FDEB3"
-            },
-            {
-              "tag": "IvCounterNonce",
-              "type": "ByteString",
-              "value": "DBDD622A64F7D65E75894B1B"
-            },
-            {
-              "tag": "AuthenticatedEncryptionTag",
-              "type": "ByteString",
-              "value": "50FCE680540BD3E96EFA9218A2F1009D"
-            }
-          ]
+          "tag": "UniqueIdentifier",
+          "type": "TextString",
+          "value": "[\"MySymmetricKey\"]"
+        },
+        {
+          "tag": "Data",
+          "type": "ByteString",
+          "value": "40D59A0735811135749A507FDEB3"
+        },
+        {
+          "tag": "IVCounterNonce",
+          "type": "ByteString",
+          "value": "DBDD622A64F7D65E75894B1B"
+        },
+        {
+          "tag": "AuthenticatedEncryptionTag",
+          "type": "ByteString",
+          "value": "50FCE680540BD3E96EFA9218A2F1009D"
         }
+      ]
+    }
 
     ```
 
 === "Response"
 
     ```json
+    {
+      "tag": "DecryptResponse",
+      "type": "Structure",
+      "value": [
         {
-          "tag": "DecryptResponse",
-          "type": "Structure",
-          "value": [
-            {
-              "tag": "UniqueIdentifier",
-              "type": "TextString",
-              "value": "027cced1-ff2b-4bd3-a200-db1041583bdc"
-            },
-            {
-              "tag": "Data",
-              "type": "ByteString",
-              // Hello, world! as UTF-8 bytes in hex
-              "value": "48656C6C6F2C20776F726C64210A"
-            }
-          ]
+          "tag": "UniqueIdentifier",
+          "type": "TextString",
+          "value": "027cced1-ff2b-4bd3-a200-db1041583bdc"
+        },
+        {
+          "tag": "Data",
+          "type": "ByteString",
+          "value": "48656C6C6F2C20776F726C64210A"
         }
+      ]
+    }
     ```
 
 #### Example - Covercrypt
@@ -108,59 +107,58 @@ automatically get a *system* tag `_uk`. See [tagging](./tagging.md) for more inf
 Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
 
 ```shell
-cosmian kms cc decrypt /tmp/encrypted.bin  -t MyUserKey
+cosmian kms cc decrypt /tmp/encrypted.bin  -t "MyUserKey"
 ```
 
 === "Request"
 
     ```json
+    {
+      "tag": "Decrypt",
+      "type": "Structure",
+      "value": [
         {
-          "tag": "Decrypt",
+          "tag": "UniqueIdentifier",
+          "type": "TextString",
+          "value": "[\"MyUserKey\"]"
+        },
+        {
+          "tag": "CryptographicParameters",
           "type": "Structure",
           "value": [
             {
-              "tag": "UniqueIdentifier",
-              "type": "TextString",
-              "value": "[\"MyUserKey\"]"
-            },
-            {
-              "tag": "CryptographicParameters",
-              "type": "Structure",
-              "value": [
-                {
-                  "tag": "CryptographicAlgorithm",
-                  "type": "Enumeration",
-                  "value": "CoverCrypt"
-                }
-              ]
-            },
-            {
-              "tag": "Data",
-              "type": "ByteString",
-              "value": "AEA6CF824612448B8445CAF46F9D987161706DAD6E43DFD1A57DD0F39869DC39A68096657A3EDC03CBC619D563744D2CC9819B6A9AB9A3893FD27F452F49A244A8CAA42279C4705D4D3A9E04D2B7887F0100D947F27D27BBD1D06F5A65087F73B8AAB617568761273282D4C14770FFCBA47200D02DDB4C48E1028DC5C50DE860A10A26E35AC405EFE6405486B56E9968594471075687D7BF6935BD003D"
+              "tag": "CryptographicAlgorithm",
+              "type": "Enumeration",
+              "value": "CoverCrypt"
             }
           ]
+        },
+        {
+          "tag": "Data",
+          "type": "ByteString",
+          "value": "AEA6CF824612448B8445CAF46F9D987161706DAD6E43DFD1A57DD0F39869DC39A68096657A3EDC03CBC619D563744D2CC9819B6A9AB9A3893FD27F452F49A244A8CAA42279C4705D4D3A9E04D2B7887F0100D947F27D27BBD1D06F5A65087F73B8AAB617568761273282D4C14770FFCBA47200D02DDB4C48E1028DC5C50DE860A10A26E35AC405EFE6405486B56E9968594471075687D7BF6935BD003D"
         }
+      ]
+    }
     ```
 
 === "Response"
 
     ```json
+    {
+      "tag": "DecryptResponse",
+      "type": "Structure",
+      "value": [
         {
-          "tag": "DecryptResponse",
-          "type": "Structure",
-          "value": [
-            {
-              "tag": "UniqueIdentifier",
-              "type": "TextString",
-              "value": "df871e79-0923-47cd-9078-bbec83287c85"
-            },
-            {
-              "tag": "Data",
-              "type": "ByteString",
-              // Hello, world! as UTF-8 bytes in hex
-              "value": "0048656C6C6F2C20776F726C64210A"
-            }
-          ]
+          "tag": "UniqueIdentifier",
+          "type": "TextString",
+          "value": "df871e79-0923-47cd-9078-bbec83287c85"
+        },
+        {
+          "tag": "Data",
+          "type": "ByteString",
+          "value": "0048656C6C6F2C20776F726C64210A"
         }
+      ]
+    }
     ```

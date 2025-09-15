@@ -21,8 +21,9 @@ pub struct KeyMetadata {
     pub id: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CryptoAlgorithm {
+    AesCbc,
     AesGcm,
     RsaPkcsV15,
     RsaOaepSha256,
@@ -39,6 +40,7 @@ impl CryptoAlgorithm {
                     .map_or(
                         Ok(Some(Self::AesGcm)),
                         |block_cipher_mode| match block_cipher_mode {
+                            BlockCipherMode::CBC => Ok(Some(Self::AesCbc)),
                             BlockCipherMode::GCM => Ok(Some(Self::AesGcm)),
                             bcm => Err(InterfaceError::Default(format!(
                                 "Block cipher mode: {bcm:?} not supported for AES",
@@ -63,6 +65,41 @@ impl CryptoAlgorithm {
                     "Cryptographic algorithm: {x:?} not supported",
                 ))),
             })
+    }
+
+    /// Selects a default AES algorithm from the provided list of supported algorithms.
+    ///
+    /// Preference order:
+    /// 1. `AesGcm`
+    /// 2. `AesCbc`
+    pub fn get_aes_algorithm(supported_algorithms: &[Self]) -> InterfaceResult<Self> {
+        if supported_algorithms.contains(&Self::AesGcm) {
+            return Ok(Self::AesGcm);
+        } else if supported_algorithms.contains(&Self::AesCbc) {
+            return Ok(Self::AesCbc);
+        }
+        Err(InterfaceError::InvalidRequest(
+            "AES not supported".to_owned(),
+        ))
+    }
+
+    /// Selects a default RSA algorithm from the provided list of supported algorithms.
+    ///
+    /// Preference order:
+    /// 1. `RsaOaepSha256`
+    /// 2. `RsaOaepSha1`
+    /// 3. `RsaPkcsV15`
+    pub fn get_rsa_algorithm(supported_algorithms: &[Self]) -> InterfaceResult<Self> {
+        if supported_algorithms.contains(&Self::RsaOaepSha256) {
+            return Ok(Self::RsaOaepSha256);
+        } else if supported_algorithms.contains(&Self::RsaOaepSha1) {
+            return Ok(Self::RsaOaepSha1);
+        } else if supported_algorithms.contains(&Self::RsaPkcsV15) {
+            return Ok(Self::RsaPkcsV15);
+        }
+        Err(InterfaceError::InvalidRequest(
+            "RSA not supported".to_owned(),
+        ))
     }
 }
 

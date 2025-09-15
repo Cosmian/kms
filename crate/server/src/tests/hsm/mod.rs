@@ -17,19 +17,27 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         requests::symmetric_key_create_request,
     },
 };
-use cosmian_logger::log_init;
-use tracing::info;
+use cosmian_logger::{info, log_init};
+use uuid::Uuid;
+
 const EMPTY_TAGS: [&str; 0] = [];
 
 use crate::{
-    config::ClapConfig, core::KMS, error::KmsError, result::KResult,
-    tests::test_utils::https_clap_config,
+    config::ClapConfig,
+    core::KMS,
+    error::KmsError,
+    result::KResult,
+    tests::{
+        hsm::test_helpers::{get_hsm_model, get_hsm_password, get_hsm_slot_id},
+        test_utils::https_clap_config,
+    },
 };
 
 #[cfg(feature = "non-fips")]
 mod ec_dek;
 mod rsa_dek;
 mod symmetric_dek;
+mod test_helpers;
 
 /// The HSM simulator does not like tests in parallel,
 /// so we run them sequentially from here
@@ -48,18 +56,45 @@ async fn test_all() {
     }
 }
 
-fn hsm_clap_config(owner: &str, kek: Option<String>) -> ClapConfig {
+fn hsm_clap_config(owner: &str, kek_id: Option<Uuid>) -> KResult<ClapConfig> {
     let mut clap_config = https_clap_config();
-    clap_config.hsm_model = "utimaco".to_owned();
-    clap_config.hsm_admin = owner.to_owned();
-    clap_config.hsm_slot = vec![0];
-    clap_config.hsm_password = vec!["12345678".to_owned()];
+    let model: Option<String> = get_hsm_model();
+    let unwrapped_model = model.unwrap_or_else(|| "default".to_owned());
 
-    if let Some(kek) = kek {
-        clap_config.key_encryption_key = Some(kek);
+    if unwrapped_model == "default" {
+        // For backwards compatible with existing tests.
+        clap_config.hsm_model = "utimaco".to_owned();
+        clap_config.hsm_admin = owner.to_owned();
+        clap_config.hsm_slot = vec![0];
+        clap_config.hsm_password = vec!["12345678".to_owned()];
+    } else {
+        let user_password = get_hsm_password()?;
+        let slot = get_hsm_slot_id()?;
+        clap_config.hsm_admin = owner.to_owned();
+        clap_config.hsm_slot = vec![slot];
+        clap_config.hsm_password = vec![user_password];
+        if unwrapped_model == "utimaco" {
+            clap_config.hsm_model = "utimaco".to_owned();
+        } else if unwrapped_model == "softhsm2" {
+            clap_config.hsm_model = "softhsm2".to_owned();
+        } else if unwrapped_model == "smartcardhsm" {
+            clap_config.hsm_model = "smartcardhsm".to_owned();
+        } else if unwrapped_model == "proteccio" {
+            clap_config.hsm_model = "proteccio".to_owned();
+        } else {
+            return Err(KmsError::Default(
+                "The provided HSM model is unknown".to_owned(),
+            ));
+        }
+    }
+    info!("Configured HSM tests for {unwrapped_model}");
+
+    if let Some(kek_id) = kek_id {
+        clap_config.key_encryption_key =
+            Some(format!("hsm::{}::{}", clap_config.hsm_slot[0], kek_id));
     }
 
-    clap_config
+    Ok(clap_config)
 }
 
 async fn create_kek(kek_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<()> {

@@ -14,8 +14,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
     },
     requests::{decrypt_request, encrypt_request},
 };
-use cosmian_logger::log_init;
-use tracing::debug;
+use cosmian_logger::{debug, log_init};
 use uuid::Uuid;
 
 use crate::{

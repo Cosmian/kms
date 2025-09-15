@@ -4,6 +4,7 @@ use cosmian_kmip::{
     kmip_0::kmip_types::{BlockCipherMode, PaddingMethod},
     kmip_2_1::kmip_types::CryptographicAlgorithm,
 };
+use cosmian_logger::trace;
 use openssl::{
     rand::rand_bytes,
     symm::{
@@ -12,7 +13,6 @@ use openssl::{
         encrypt_aead as openssl_encrypt_aead,
     },
 };
-use tracing::trace;
 use zeroize::Zeroizing;
 
 #[cfg(feature = "non-fips")]
@@ -236,8 +236,8 @@ impl SymCipher {
         key_size: usize,
     ) -> Result<Self, CryptoError> {
         trace!(
-            "from_algorithm_and_key_size: algorithm: {algorithm:?}, block_cipher_mode: \
-             {block_cipher_mode:?}, key_size: {key_size}"
+            "algorithm: {algorithm:?}, block_cipher_mode: {block_cipher_mode:?}, key_size: \
+             {key_size}"
         );
         match algorithm {
             CryptographicAlgorithm::AES => {

@@ -14,7 +14,7 @@ use cosmian_kms_client::{
     },
     write_bytes_to_file, write_json_object_to_file, write_kmip_object_to_file,
 };
-use tracing::log::trace;
+use cosmian_logger::trace;
 
 use crate::{
     actions::kms::{console, labels::CERTIFICATE_ID, shared::get_key_uid},
@@ -87,7 +87,7 @@ pub struct ExportCertificateAction {
 impl ExportCertificateAction {
     /// Export a certificate from the KMS
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<UniqueIdentifier> {
-        trace!("Export certificate: {self:?}");
+        trace!("{self:?}");
 
         let id = get_key_uid(
             self.certificate_id.as_ref(),

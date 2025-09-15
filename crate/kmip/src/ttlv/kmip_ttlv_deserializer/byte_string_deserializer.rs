@@ -1,5 +1,6 @@
+use cosmian_logger::trace;
 use serde::de::{self, DeserializeSeed, SeqAccess};
-use tracing::{instrument, trace};
+use tracing::instrument;
 
 use super::Result;
 use crate::ttlv::TtlvError;

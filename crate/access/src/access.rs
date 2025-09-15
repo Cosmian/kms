@@ -41,7 +41,7 @@ pub struct UserAccessResponse {
     /// A `BTreeSet` is used to keep results sorted
     pub operations: BTreeSet<KmipOperation>,
 }
-#[derive(Deserialize, Serialize, Clone, PartialEq, Eq, Debug)] // Debug is required by ok_json()
+#[derive(Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct ObjectOwnedResponse {
     pub object_id: UniqueIdentifier,
     pub state: State,

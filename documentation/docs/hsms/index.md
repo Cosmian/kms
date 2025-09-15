@@ -1,7 +1,7 @@
 # HSM Support
 
 The Cosmian KMS can be configured to use HSMs to store and manage keys and create KMS keys
-wrapped by the HSM keys. 
+wrapped by the HSM keys.
 This provides the best of both worlds: the security of an HSM at rest and the scalability of a KMS at runtime.
 
 Cosmian KMS natively integrates with
@@ -10,6 +10,7 @@ the [Utimaco general purpose](https://utimaco.com/solutions/applications/general
 and any HSM that has a standard PKCS#11 interface such as [SoftHSMv2](https://github.com/softhsm/SoftHSMv2).
 
 ## Integration Workflow
+
 ![integration workflow](../drawings/hsm_kms.drawio.svg)
 
 ## Main use case and benefits

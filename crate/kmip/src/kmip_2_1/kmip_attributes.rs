@@ -1,3 +1,5 @@
+use std::fmt::{self, Display, Formatter};
+
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
@@ -45,7 +47,7 @@ use crate::{
 /// the server MAY retain all, some or none of the object attributes,
 /// depending on the object type and server policy.
 // TODO: there are 56 attributes in the specs. Only a handful are implemented here
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Default)]
+#[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Default)]
 #[serde(rename_all = "PascalCase")]
 pub struct Attributes {
     /// The Activation Date attribute contains the date and time when the
@@ -654,9 +656,7 @@ impl Attributes {
         };
         self.add_vendor_attribute(va);
     }
-}
 
-impl Attributes {
     /// Merge the attributes from `other` into `self`.
     /// If an attribute is present in both `self` and `other`, and *overwrite* is set,
     /// the value from `other` is used else the value from `self` is used.
@@ -783,6 +783,206 @@ impl Attributes {
                 }
             }
         }
+    }
+}
+
+impl Display for Attributes {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        writeln!(f, "Attributes {{")?;
+        if let Some(value) = &self.activation_date {
+            writeln!(f, "  Activation Date: {value}")?;
+        }
+        if let Some(value) = &self.alternative_name {
+            writeln!(f, "  Alternative Name: {value:#?}")?;
+        }
+        if let Some(value) = &self.always_sensitive {
+            writeln!(f, "  Always Sensitive: {value}")?;
+        }
+        if let Some(value) = &self.application_specific_information {
+            writeln!(f, "  Application Specific Information: {value:#?}")?;
+        }
+        if let Some(value) = &self.archive_date {
+            writeln!(f, "  Archive Date: {value}")?;
+        }
+        if let Some(value) = &self.attribute_index {
+            writeln!(f, "  Attribute Index: {value}")?;
+        }
+        if let Some(value) = &self.certificate_attributes {
+            writeln!(f, "  Certificate Attributes: {value:#?}")?;
+        }
+        if let Some(value) = &self.certificate_type {
+            writeln!(f, "  Certificate Type: {value}")?;
+        }
+        if let Some(value) = &self.certificate_length {
+            writeln!(f, "  Certificate Length: {value}")?;
+        }
+        if let Some(value) = &self.comment {
+            writeln!(f, "  Comment: {value}")?;
+        }
+        if let Some(value) = &self.compromise_date {
+            writeln!(f, "  Compromise Date: {value}")?;
+        }
+        if let Some(value) = &self.compromise_occurrence_date {
+            writeln!(f, "  Compromise Occurrence Date: {value}")?;
+        }
+        if let Some(value) = &self.contact_information {
+            writeln!(f, "  Contact Information: {value}")?;
+        }
+        if let Some(value) = &self.critical {
+            writeln!(f, "  Critical: {value}")?;
+        }
+        if let Some(value) = &self.cryptographic_algorithm {
+            writeln!(f, "  Cryptographic Algorithm: {value}")?;
+        }
+        if let Some(value) = &self.cryptographic_domain_parameters {
+            writeln!(f, "  Cryptographic Domain Parameters: {value:#?}")?;
+        }
+        if let Some(value) = &self.cryptographic_length {
+            writeln!(f, "  Cryptographic Length: {value}")?;
+        }
+        if let Some(value) = &self.cryptographic_parameters {
+            writeln!(f, "  Cryptographic Parameters: {value:#?}")?;
+        }
+        if let Some(value) = &self.cryptographic_usage_mask {
+            writeln!(f, "  Cryptographic Usage Mask: {value:#?}")?;
+        }
+        if let Some(value) = &self.deactivation_date {
+            writeln!(f, "  Deactivation Date: {value}")?;
+        }
+        if let Some(value) = &self.description {
+            writeln!(f, "  Description: {value}")?;
+        }
+        if let Some(value) = &self.destroy_date {
+            writeln!(f, "  Destroy Date: {value}")?;
+        }
+        if let Some(value) = &self.digest {
+            writeln!(f, "  Digest: {value:#?}")?;
+        }
+        if let Some(value) = &self.digital_signature_algorithm {
+            writeln!(f, "  Digital Signature Algorithm: {value}")?;
+        }
+        if let Some(value) = &self.extractable {
+            writeln!(f, "  Extractable: {value}")?;
+        }
+        if let Some(value) = &self.fresh {
+            writeln!(f, "  Fresh: {value}")?;
+        }
+        if let Some(value) = &self.initial_date {
+            writeln!(f, "  Initial Date: {value}")?;
+        }
+        if let Some(value) = &self.key_format_type {
+            writeln!(f, "  Key Format Type: {value}")?;
+        }
+        if let Some(value) = &self.key_value_location {
+            writeln!(f, "  Key Value Location: {value}")?;
+        }
+        if let Some(value) = &self.key_value_present {
+            writeln!(f, "  Key Value Present: {value}")?;
+        }
+        if let Some(value) = &self.last_change_date {
+            writeln!(f, "  Last Change Date: {value}")?;
+        }
+        if let Some(value) = &self.lease_time {
+            writeln!(f, "  Lease Time: {value}")?;
+        }
+        if let Some(value) = &self.nist_key_type {
+            writeln!(f, "  NIST Key Type: {value}")?;
+        }
+        if let Some(value) = &self.object_group {
+            writeln!(f, "  Object Group: {value}")?;
+        }
+        if let Some(value) = &self.object_group_member {
+            writeln!(f, "  Object Group Member: {value}")?;
+        }
+        if let Some(value) = &self.object_type {
+            writeln!(f, "  Object Type: {value}")?;
+        }
+        if let Some(value) = &self.opaque_data_type {
+            writeln!(f, "  Opaque Data Type: {value}")?;
+        }
+        if let Some(value) = &self.original_creation_date {
+            writeln!(f, "  Original Creation Date: {value}")?;
+        }
+        if let Some(value) = &self.pkcs_12_friendly_name {
+            writeln!(f, "  PKCS#12 Friendly Name: {value}")?;
+        }
+        if let Some(value) = &self.process_start_date {
+            writeln!(f, "  Process Start Date: {value}")?;
+        }
+        if let Some(value) = &self.protect_stop_date {
+            writeln!(f, "  Protect Stop Date: {value}")?;
+        }
+        if let Some(value) = &self.protection_level {
+            writeln!(f, "  Protection Level: {value}")?;
+        }
+        if let Some(value) = &self.protection_period {
+            writeln!(f, "  Protection Period: {value}")?;
+        }
+        if let Some(value) = &self.protection_storage_masks {
+            writeln!(f, "  Protection Storage Masks: {value:#?}")?;
+        }
+        if let Some(value) = &self.quantum_safe {
+            writeln!(f, "  Quantum Safe: {value}")?;
+        }
+        if let Some(value) = &self.random_number_generator {
+            writeln!(f, "  Random Number Generator: {value:#?}")?;
+        }
+        if let Some(value) = &self.revocation_reason {
+            writeln!(f, "  Revocation Reason: {value:#?}")?;
+        }
+        if let Some(value) = &self.rotate_date {
+            writeln!(f, "  Rotate Date: {value}")?;
+        }
+        if let Some(value) = &self.rotate_generation {
+            writeln!(f, "  Rotate Generation: {value}")?;
+        }
+        if let Some(value) = &self.rotate_interval {
+            writeln!(f, "  Rotate Interval: {value}")?;
+        }
+        if let Some(value) = &self.rotate_latest {
+            writeln!(f, "  Rotate Latest: {value}")?;
+        }
+        if let Some(value) = &self.rotate_name {
+            writeln!(f, "  Rotate Name: {value}")?;
+        }
+        if let Some(value) = &self.rotate_offset {
+            writeln!(f, "  Rotate Offset: {value}")?;
+        }
+        if let Some(value) = &self.sensitive {
+            writeln!(f, "  Sensitive: {value}")?;
+        }
+        if let Some(value) = &self.short_unique_identifier {
+            writeln!(f, "  Short Unique Identifier: {value}")?;
+        }
+        if let Some(value) = &self.state {
+            writeln!(f, "  State: {value}")?;
+        }
+        if let Some(value) = &self.unique_identifier {
+            writeln!(f, "  Unique Identifier: {value}")?;
+        }
+        if let Some(value) = &self.usage_limits {
+            writeln!(f, "  Usage Limits: {value:#?}")?;
+        }
+        if let Some(value) = &self.x_509_certificate_identifier {
+            writeln!(f, "  X.509 Certificate Identifier: {value:#?}")?;
+        }
+        if let Some(value) = &self.x_509_certificate_issuer {
+            writeln!(f, "  X.509 Certificate Issuer: {value}")?;
+        }
+        if let Some(value) = &self.x_509_certificate_subject {
+            writeln!(f, "  X.509 Certificate Subject: {value}")?;
+        }
+        if let Some(links) = &self.link {
+            for link in links {
+                writeln!(f, "  Link: {link:#?}")?;
+            }
+        }
+        if let Some(vendor_attributes) = &self.vendor_attributes {
+            for va in vendor_attributes {
+                writeln!(f, "  Vendor Attribute: {va}")?;
+            }
+        }
+        writeln!(f, "}}")
     }
 }
 

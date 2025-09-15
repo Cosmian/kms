@@ -25,7 +25,7 @@ use cosmian_kms_server_database::reexport::{
         reexport::cosmian_crypto_core::X25519_PUBLIC_KEY_LENGTH,
     },
 };
-use tracing::trace;
+use cosmian_logger::trace;
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
@@ -369,7 +369,7 @@ async fn test_database_user_tenant() -> KResult<()> {
             None,
         )
         .await;
-    sk_response.unwrap_err();
+    assert!(sk_response.is_err());
 
     let pk_response = kms
         .get(
@@ -383,7 +383,7 @@ async fn test_database_user_tenant() -> KResult<()> {
             None,
         )
         .await;
-    pk_response.unwrap_err();
+    assert!(pk_response.is_err());
 
     Ok(())
 }

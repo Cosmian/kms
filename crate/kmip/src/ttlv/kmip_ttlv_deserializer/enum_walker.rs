@@ -1,7 +1,8 @@
 use std::sync::RwLock;
 
+use cosmian_logger::trace;
 use serde::de::{DeserializeSeed, EnumAccess, VariantAccess, Visitor};
-use tracing::{instrument, trace};
+use tracing::instrument;
 
 use super::{Result, TtlvDeserializer};
 use crate::{

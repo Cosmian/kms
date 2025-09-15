@@ -6,6 +6,7 @@ use std::{
 };
 
 use cosmian_kmip::kmip_2_1::kmip_objects::Object;
+use cosmian_logger::{debug, trace, warn};
 use lru::LruCache;
 #[cfg(test)]
 use tokio::sync::RwLockReadGuard;
@@ -14,13 +15,12 @@ use tokio::sync::{
     mpsc::{self, Receiver, Sender},
     oneshot,
 };
-use tracing::{debug, trace, warn};
 
 use crate::error::DbResult;
 
 /// This is the object kept in the Main LRU cache
 /// It contains the unwrapped object and the key signature
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct CachedUnwrappedObject {
     fingerprint: u64,
     unwrapped_object: Object,

@@ -10,7 +10,7 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams},
 };
-use tracing::{debug, trace};
+use cosmian_logger::{debug, trace};
 
 use crate::{
     core::{KMS, retrieve_object_utils::retrieve_object_for_operation},
@@ -391,7 +391,7 @@ pub(crate) async fn set_attribute(
         | ObjectType::SymmetricKey => {
             let object_attributes = owm.object_mut().attributes_mut()?;
             *object_attributes = attributes.clone();
-            debug!("Set Object Attribute: {:?}", object_attributes);
+            debug!("Set Object Attribute: {}", object_attributes);
         }
         _ => {
             trace!(
@@ -401,7 +401,7 @@ pub(crate) async fn set_attribute(
         }
     }
 
-    debug!("Set Attribute: {:?}", attributes);
+    debug!("Set Attribute: {}", attributes);
     kms.database
         .update_object(owm.id(), owm.object(), &attributes, Some(&tags), params)
         .await?;

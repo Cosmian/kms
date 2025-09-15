@@ -11,10 +11,10 @@ use cosmian_kms_client::{
 };
 use cosmian_logger::log_init;
 #[cfg(feature = "non-fips")]
+use cosmian_logger::trace;
+#[cfg(feature = "non-fips")]
 use tempfile::TempDir;
 use test_kms_server::TestsContext;
-#[cfg(feature = "non-fips")]
-use tracing::trace;
 use uuid::Uuid;
 
 #[cfg(feature = "non-fips")]

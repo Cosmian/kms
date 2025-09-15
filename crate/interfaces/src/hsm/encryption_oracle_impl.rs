@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use tracing::debug;
+use cosmian_logger::debug;
 use zeroize::Zeroizing;
 
 use crate::{
@@ -39,10 +39,11 @@ impl EncryptionOracle for HsmEncryptionOracle {
             ));
         }
         let (mut slot_id, mut key_id) = parse_uid(uid)?;
+        let supported_algorithms = self.hsm.get_supported_algorithms(slot_id).await?;
         let cryptographic_algorithm = if let Some(ca) = cryptographic_algorithm {
             ca
         } else {
-            // Determine the default algorithm based on the key type
+            debug!("Using default algorithm to encrypt");
             match self.hsm.get_key_type(slot_id, &key_id).await? {
                 None => {
                     return Err(InterfaceError::InvalidRequest(format!(
@@ -50,8 +51,10 @@ impl EncryptionOracle for HsmEncryptionOracle {
                     )))
                 }
                 Some(key_type) => match key_type {
-                    KeyType::AesKey => CryptoAlgorithm::AesGcm,
-                    KeyType::RsaPublicKey => CryptoAlgorithm::RsaOaepSha256,
+                    KeyType::AesKey => CryptoAlgorithm::get_aes_algorithm(&supported_algorithms)?,
+                    KeyType::RsaPublicKey => {
+                        CryptoAlgorithm::get_rsa_algorithm(&supported_algorithms)?
+                    }
                     KeyType::RsaPrivateKey => {
                         // try fetching the corresponding public key
                         let pk_uid = format!("{uid}_pk");
@@ -69,7 +72,7 @@ impl EncryptionOracle for HsmEncryptionOracle {
                                      is available"
                                 ))
                             })?;
-                        CryptoAlgorithm::RsaOaepSha256
+                        CryptoAlgorithm::get_rsa_algorithm(&supported_algorithms)?
                     }
                 },
             }
@@ -92,10 +95,11 @@ impl EncryptionOracle for HsmEncryptionOracle {
             ));
         }
         let (slot_id, key_id) = parse_uid(uid)?;
+        let supported_algorithms = self.hsm.get_supported_algorithms(slot_id).await?;
         let cryptographic_algorithm = if let Some(ca) = cryptographic_algorithm {
             ca
         } else {
-            // Determine the default algorithm based on the key type
+            debug!("Using default algorithm to decrypt");
             match self.hsm.get_key_type(slot_id, &key_id).await? {
                 None => {
                     return Err(InterfaceError::InvalidRequest(
@@ -103,8 +107,10 @@ impl EncryptionOracle for HsmEncryptionOracle {
                     ))
                 }
                 Some(key_type) => match key_type {
-                    KeyType::AesKey => CryptoAlgorithm::AesGcm,
-                    KeyType::RsaPrivateKey => CryptoAlgorithm::RsaOaepSha256,
+                    KeyType::AesKey => CryptoAlgorithm::get_aes_algorithm(&supported_algorithms)?,
+                    KeyType::RsaPrivateKey => {
+                        CryptoAlgorithm::get_rsa_algorithm(&supported_algorithms)?
+                    }
                     KeyType::RsaPublicKey => {
                         return Err(InterfaceError::Default(
                             "An RSA public key cannot be used to decrypt".to_owned(),

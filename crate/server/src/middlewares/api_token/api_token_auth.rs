@@ -12,7 +12,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::{ErrorReason, State},
     kmip_2_1::kmip_objects::ObjectType,
 };
-use tracing::{debug, error, trace};
+use cosmian_logger::{debug, error, trace};
 
 use crate::{core::KMS, error::KmsError, result::KResult};
 
@@ -57,7 +57,7 @@ async fn get_api_token(kms: &Arc<KMS>, api_token_id: &str) -> KResult<String> {
 
     // Get the API token bytes and encode as base64
     Ok(base64::engine::general_purpose::STANDARD
-        .encode(owm.object().key_block()?.symmetric_key_bytes()?)
+        .encode(owm.object().key_block()?.key_bytes()?)
         .to_lowercase())
 }
 

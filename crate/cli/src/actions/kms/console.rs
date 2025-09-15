@@ -40,7 +40,7 @@ impl TryFrom<&str> for OutputFormat {
     }
 }
 
-#[derive(Serialize, Debug, Default)]
+#[derive(Serialize, Default)]
 pub struct Stdout {
     str_out: String,
     #[serde(skip_serializing_if = "Option::is_none")]

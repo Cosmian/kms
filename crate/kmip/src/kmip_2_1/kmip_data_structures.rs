@@ -4,13 +4,14 @@ use std::{
     fmt::{Display, Formatter},
 };
 
+use cosmian_logger::{trace, warn};
 use num_bigint_dig::BigInt;
 use serde::{
     Deserialize, Serialize,
     de::{self, DeserializeSeed, MapAccess, Visitor},
     ser::SerializeStruct,
 };
-use tracing::{instrument, trace};
+use tracing::instrument;
 use zeroize::Zeroizing;
 
 use super::{
@@ -53,7 +54,7 @@ pub struct DerivationParameters {
 /// A Key Block object is a structure used to encapsulate all of the information
 /// that is closely associated with a cryptographic key.
 /// Section 3 of KMIP Reference 2.1
-#[derive(Clone, Eq, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct KeyBlock {
     pub key_format_type: KeyFormatType,
 
@@ -79,17 +80,32 @@ pub struct KeyBlock {
 
 impl Display for KeyBlock {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "KeyBlock {{ key_format_type: {}, key_compression_type: {:?}, key_value: {:?}, \
-             cryptographic_algorithm: {:?}, cryptographic_length: {:?}, key_wrapping_data: {:?} }}",
-            self.key_format_type,
-            self.key_compression_type,
-            self.key_value,
-            self.cryptographic_algorithm,
-            self.cryptographic_length,
-            self.key_wrapping_data
-        )
+        if let Some(key_value) = &self.key_value {
+            write!(
+                f,
+                "KeyBlock {{ key_format_type: {}, key_compression_type: {:?}, key_value: {}, \
+                 cryptographic_algorithm: {:?}, cryptographic_length: {:?}, key_wrapping_data: \
+                 {:?} }}",
+                self.key_format_type,
+                self.key_compression_type,
+                key_value,
+                self.cryptographic_algorithm,
+                self.cryptographic_length,
+                self.key_wrapping_data
+            )
+        } else {
+            write!(
+                f,
+                "KeyBlock {{ key_format_type: {}, key_compression_type: {:?}, key_value: None, \
+                 cryptographic_algorithm: {:?}, cryptographic_length: {:?}, key_wrapping_data: \
+                 {:?} }}",
+                self.key_format_type,
+                self.key_compression_type,
+                self.cryptographic_algorithm,
+                self.cryptographic_length,
+                self.key_wrapping_data
+            )
+        }
     }
 }
 
@@ -256,8 +272,16 @@ impl KeyBlock {
         }
     }
 
-    /// Return the key material of a symmetric key, raw or transparent.
+    /// Return the raw bytes of a symmetric key
+    /// Deprecated: use `key_bytes()`
+    #[deprecated]
     pub fn symmetric_key_bytes(&self) -> Result<Zeroizing<Vec<u8>>, KmipError> {
+        self.key_bytes()
+    }
+
+    /// Return the key material of a symmetric key, raw or transparent.
+    /// The PKCS#1 of an RSA Key, etc.
+    pub fn key_bytes(&self) -> Result<Zeroizing<Vec<u8>>, KmipError> {
         let key_value = self.key_value.as_ref().ok_or_else(|| {
             KmipError::InvalidKmip21Value(
                 ErrorReason::Invalid_Attribute_Value,
@@ -268,15 +292,14 @@ impl KeyBlock {
         match key_value {
             KeyValue::ByteString(_) => Err(KmipError::InvalidKmip21Value(
                 ErrorReason::Invalid_Object_Type,
-                "symmetric_key_bytes: key bytes cannot be recovered from wrapped keys".to_owned(),
+                "Key bytes cannot be recovered from wrapped keys".to_owned(),
             )),
             KeyValue::Structure { key_material, .. } => match key_material {
                 KeyMaterial::ByteString(v) => Ok(v.clone()),
                 KeyMaterial::TransparentSymmetricKey { key } => Ok(key.clone()),
                 _ => Err(KmipError::InvalidKmip21Value(
                     ErrorReason::Invalid_Object_Type,
-                    "Key bytes can only be recovered from raw and transparent symmetric keys"
-                        .to_owned(),
+                    "Key bytes can only be recovered from RSA and symmetric keys".to_owned(),
                 )),
             },
         }
@@ -413,7 +436,7 @@ impl KeyBlock {
     pub fn key_bytes_and_attributes(
         &self,
     ) -> Result<(Zeroizing<Vec<u8>>, Option<&Attributes>), KmipError> {
-        let key = self.symmetric_key_bytes().map_err(|e| {
+        let key = self.key_bytes().map_err(|e| {
             KmipError::InvalidKmip21Value(ErrorReason::Invalid_Data_Type, e.to_string())
         })?;
         let attributes = self.attributes().ok();
@@ -553,7 +576,7 @@ impl KeyBlock {
 /// structure, or the wrapped un-encoded value of the Byte String Key Material
 /// field.
 #[allow(clippy::large_enum_variant)]
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub enum KeyValue {
     /// The key value is a byte string when key wrapped
     ByteString(Zeroizing<Vec<u8>>),
@@ -562,6 +585,34 @@ pub enum KeyValue {
         key_material: KeyMaterial,
         attributes: Option<Attributes>,
     },
+}
+
+impl Display for KeyValue {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ByteString(v) => write!(f, "KeyValue::ByteString(len={})", v.len()),
+            Self::Structure {
+                key_material,
+                attributes,
+            } => {
+                if let Some(attributes) = attributes {
+                    if attributes != &Attributes::default() {
+                        return write!(
+                            f,
+                            "KeyValue::Structure {{ key_material: {key_material}, attributes: \
+                             {attributes} }}"
+                        )
+                    }
+                    Ok(())
+                } else {
+                    write!(
+                        f,
+                        "KeyValue::Structure {{ key_material: {key_material}, attributes: None }}"
+                    )
+                }
+            }
+        }
+    }
 }
 
 /// Structure used to serialize `KeyValue`
@@ -1615,7 +1666,7 @@ pub struct ExtensionInformation {
 /// if the client omits them on factory methods for objects. The structure list the Attributes
 /// and their values by Object Type enumeration, as well as the Object Group(s)
 /// for which such defaults pertain (if not pertinent to ALL Object Group values)
-#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone)]
 #[serde(rename_all = "PascalCase")]
 pub struct ObjectDefaults {
     /// Specifies the object type that these defaults apply to.
@@ -1634,17 +1685,38 @@ pub struct ObjectDefaults {
 
 impl Display for ObjectDefaults {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        if let Some(attributes) = &self.attributes {
+            if let Some(object_groups) = &self.object_groups {
+                return write!(
+                    f,
+                    "ObjectDefaults {{ object_type: {:?}, attributes: {}, object_groups: {:?} }}",
+                    self.object_type, attributes, object_groups
+                )
+            }
+            return write!(
+                f,
+                "ObjectDefaults {{ object_type: {:?}, attributes: {} }}",
+                self.object_type, attributes
+            )
+        }
+        if let Some(object_groups) = &self.object_groups {
+            return write!(
+                f,
+                "ObjectDefaults {{ object_type: {:?}, object_groups: {:?} }}",
+                self.object_type, object_groups
+            )
+        }
         write!(
             f,
-            "ObjectDefaults {{ object_type: {:?}, attributes: {:?}, object_groups: {:?} }}",
-            self.object_type, self.attributes, self.object_groups
+            "ObjectDefaults {{ object_type: {:?} }}",
+            self.object_type
         )
     }
 }
 
 /// The Defaults Information structure is used by the server to maintain client-defined
 /// defaults and is returned to the client as the result of a Query operation.
-#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone)]
 #[serde(rename_all = "PascalCase")]
 pub struct DefaultsInformation {
     /// The set of object defaults defined by the client or server.
@@ -1654,11 +1726,14 @@ pub struct DefaultsInformation {
 
 impl Display for DefaultsInformation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "DefaultsInformation {{ object_defaults: {:?} }}",
-            self.object_defaults
-        )
+        if let Some(object_defaults) = &self.object_defaults {
+            for (i, object_default) in object_defaults.iter().enumerate() {
+                write!(f, "Object Default {i}: {object_default}")?;
+            }
+        } else {
+            write!(f, "DefaultsInformation: No Object Defaults")?;
+        }
+        Ok(())
     }
 }
 

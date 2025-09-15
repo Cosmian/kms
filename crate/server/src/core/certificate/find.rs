@@ -7,7 +7,7 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams},
 };
-use tracing::trace;
+use cosmian_logger::trace;
 
 use crate::{
     core::{KMS, retrieve_object_utils::retrieve_object_for_operation},
