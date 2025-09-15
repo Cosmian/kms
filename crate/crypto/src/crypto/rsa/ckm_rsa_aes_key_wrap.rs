@@ -120,11 +120,10 @@ mod tests {
 
     use base64::Engine;
     use cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm;
-    use cosmian_logger::log_init;
+    use cosmian_logger::{log_init, warn};
     use openssl::pkey::PKey;
     use serde_json::json;
     use tempfile::TempDir;
-    use tracing::warn;
     use zeroize::Zeroizing;
 
     use crate::{
