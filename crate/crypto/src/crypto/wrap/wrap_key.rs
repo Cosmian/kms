@@ -183,7 +183,7 @@ pub fn key_data_to_wrap(
                 Zeroizing::new(pkey.public_key_to_der()?)
             }
             o => {
-                crypto_bail!("Unable to wrap the object: its type is not supported: {o:?}")
+                crypto_bail!("Unable to wrap the object: its type is not supported: {o}")
             }
         },
     })

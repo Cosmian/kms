@@ -140,7 +140,7 @@ pub(crate) async fn get_attributes(
         })
         .await?;
 
-    debug!("GetAttributes response for {unique_identifier}: {attributes:?}",);
+    debug!("GetAttributes response for {unique_identifier}: {attributes}",);
 
     let results = parse_selected_attributes(&attributes, attribute_tags, attribute_link_types)?;
     Ok((unique_identifier, results))
