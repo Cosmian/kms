@@ -35,91 +35,88 @@ array with value
 === "Request"
 
     ```json
+    {
+      "tag": "GetAttributes",
+      "type": "Structure",
+      "value": [
         {
-          "tag": "GetAttributes",
+          "tag": "UniqueIdentifier",
+          "type": "TextString",
+          "value": "027cced1-ff2b-4bd3-a200-db1041583bdc"
+        },
+        {
+          "tag": "AttributeReference",
           "type": "Structure",
-          "value": [
-            {
-              "tag": "UniqueIdentifier",
-              "type": "TextString",
-              "value": "027cced1-ff2b-4bd3-a200-db1041583bdc"
-            },
-            {
-              "tag": "AttributeReference",
-              "type": "Structure",
-              "value": []
-            }
-          ]
+          "value": []
         }
+      ]
+    }
 
     ```
 
 === "Response"
 
     ```json
+    {
+      "tag": "GetAttributesResponse",
+      "type": "Structure",
+      "value": [
         {
-          "tag": "GetAttributesResponse",
+          "tag": "UniqueIdentifier",
+          "type": "TextString",
+          "value": "027cced1-ff2b-4bd3-a200-db1041583bdc"
+        },
+        {
+          "tag": "Attributes",
           "type": "Structure",
           "value": [
             {
-              "tag": "UniqueIdentifier",
-              "type": "TextString",
-              "value": "027cced1-ff2b-4bd3-a200-db1041583bdc"
+              "tag": "CryptographicAlgorithm",
+              "type": "Enumeration",
+              "value": "AES"
             },
             {
-              "tag": "Attributes",
+              "tag": "CryptographicLength",
+              "type": "Integer",
+              "value": 256
+            },
+            {
+              "tag": "CryptographicUsageMask",
+              "type": "Integer",
+              "value": 2108
+            },
+            {
+              "tag": "KeyFormatType",
+              "type": "Enumeration",
+              "value": "TransparentSymmetricKey"
+            },
+            {
+              "tag": "ObjectType",
+              "type": "Enumeration",
+              "value": "SplitKey"
+            },
+            {
+              "tag": "VendorAttributes",
               "type": "Structure",
               "value": [
-                {
-                  "tag": "CryptographicAlgorithm",
-                  "type": "Enumeration",
-                  "value": "AES"
-                },
-                {
-                  "tag": "CryptographicLength",
-                  "type": "Integer",
-                  "value": 256
-                },
-                {
-                  "tag": "CryptographicUsageMask",
-                  "type": "Integer",
-                  "value": 2108
-                },
-                {
-                  "tag": "KeyFormatType",
-                  "type": "Enumeration",
-                  "value": "TransparentSymmetricKey"
-                },
-                {
-                  "tag": "ObjectType",
-                  "type": "Enumeration",
-                  "value": "SplitKey"
-                },
                 {
                   "tag": "VendorAttributes",
                   "type": "Structure",
                   "value": [
                     {
-                      "tag": "VendorAttributes",
-                      "type": "Structure",
-                      "value": [
-                        {
-                          "tag": "VendorIdentification",
-                          "type": "TextString",
-                          "value": "cosmian"
-                        },
-                        {
-                          "tag": "AttributeName",
-                          "type": "TextString",
-                          "value": "tag"
-                        },
-                        {
-                          "tag": "AttributeValue",
-                          "type": "ByteString",
-                          // This is the hex value of a JSON array of system and user tags: ["MySymmetricKey","_kk"]
-                          "value": "5B224D7953796D6D65747269634B6579222C225F6B6B225D"
-                        }
-                      ]
+                      "tag": "VendorIdentification",
+                      "type": "TextString",
+                      "value": "cosmian"
+                    },
+                    {
+                      "tag": "AttributeName",
+                      "type": "TextString",
+                      "value": "tag"
+                    },
+                    {
+                      "tag": "AttributeValue",
+                      "type": "ByteString",
+                      "value": "5B224D7953796D6D65747269634B6579222C225F6B6B225D"
                     }
                   ]
                 }
@@ -127,6 +124,8 @@ array with value
             }
           ]
         }
+      ]
+    }
     ```
 
 ### Example - A NIST P-256 private key
@@ -150,103 +149,99 @@ In the response, please note:
 === "Request"
 
     ```json
+    {
+      "tag": "GetAttributes",
+      "type": "Structure",
+      "value": [
         {
-          "tag": "GetAttributes",
+          "tag": "UniqueIdentifier",
+          "type": "TextString",
+          "value": "927adccb-f59a-4cc9-a9e3-1eeb958c601f"
+        },
+        {
+          "tag": "AttributeReference",
           "type": "Structure",
-          "value": [
-            {
-              "tag": "UniqueIdentifier",
-              "type": "TextString",
-              "value": "927adccb-f59a-4cc9-a9e3-1eeb958c601f"
-            },
-            {
-              "tag": "AttributeReference",
-              "type": "Structure",
-              "value": []
-            }
-          ]
+          "value": []
         }
+      ]
+    }
 
     ```
 
 === "Response"
 
     ```json
+    {
+      "tag": "GetAttributesResponse",
+      "type": "Structure",
+      "value": [
         {
-          "tag": "GetAttributesResponse",
+          "tag": "UniqueIdentifier",
+          "type": "TextString",
+          "value": "927adccb-f59a-4cc9-a9e3-1eeb958c601f"
+        },
+        {
+          "tag": "Attributes",
           "type": "Structure",
           "value": [
             {
-              "tag": "UniqueIdentifier",
-              "type": "TextString",
-              "value": "927adccb-f59a-4cc9-a9e3-1eeb958c601f"
+              "tag": "CryptographicAlgorithm",
+              "type": "Enumeration",
+              "value": "ECDH"
             },
             {
-              "tag": "Attributes",
+              "tag": "CryptographicLength",
+              "type": "Integer",
+              "value": 256
+            },
+            {
+              "tag": "CryptographicDomainParameters",
               "type": "Structure",
               "value": [
                 {
-                  "tag": "CryptographicAlgorithm",
-                  "type": "Enumeration",
-                  "value": "ECDH"
-                },
-                {
-                  "tag": "CryptographicLength",
+                  "tag": "QLength",
                   "type": "Integer",
                   "value": 256
                 },
                 {
-                  "tag": "CryptographicDomainParameters",
-                  "type": "Structure",
-                  "value": [
-                    {
-                      "tag": "QLength",
-                      "type": "Integer",
-                      "value": 256
-                    },
-                    {
-                      "tag": "RecommendedCurve",
-                      "type": "Enumeration",
-                      // the curve
-                      "value": "P256"
-                    }
-                  ]
-                },
-                {
-                  "tag": "KeyFormatType",
+                  "tag": "RecommendedCurve",
                   "type": "Enumeration",
-                  "value": "TransparentECPrivateKey"
-                },
-                {
-                  "tag": "ObjectType",
-                  "type": "Enumeration",
-                  "value": "PrivateKey"
-                },
+                  "value": "P256"
+                }
+              ]
+            },
+            {
+              "tag": "KeyFormatType",
+              "type": "Enumeration",
+              "value": "TransparentECPrivateKey"
+            },
+            {
+              "tag": "ObjectType",
+              "type": "Enumeration",
+              "value": "PrivateKey"
+            },
+            {
+              "tag": "VendorAttributes",
+              "type": "Structure",
+              "value": [
                 {
                   "tag": "VendorAttributes",
                   "type": "Structure",
                   "value": [
                     {
-                      "tag": "VendorAttributes",
-                      "type": "Structure",
-                      "value": [
-                        {
-                          "tag": "VendorIdentification",
-                          "type": "TextString",
-                          "value": "cosmian"
-                        },
-                        {
-                          "tag": "AttributeName",
-                          "type": "TextString",
-                          "value": "tag"
-                        },
-                        {
-                          "tag": "AttributeValue",
-                          "type": "ByteString",
-                          // hex encoded value of a JSON array of system tag: ["_sk"]
-                          "value": "5B225F736B225D"
-                        }
-                      ]
+                      "tag": "VendorIdentification",
+                      "type": "TextString",
+                      "value": "cosmian"
+                    },
+                    {
+                      "tag": "AttributeName",
+                      "type": "TextString",
+                      "value": "tag"
+                    },
+                    {
+                      "tag": "AttributeValue",
+                      "type": "ByteString",
+                      "value": "5B225F736B225D"
                     }
                   ]
                 }
@@ -254,6 +249,8 @@ In the response, please note:
             }
           ]
         }
+      ]
+    }
     ```
 
 ### Example - A certificate imported as part of a PKCS#12 container
@@ -280,116 +277,111 @@ Please note in the response:
 === "Request"
 
     ```json
+    {
+      "tag": "GetAttributes",
+      "type": "Structure",
+      "value": [
         {
-          "tag": "GetAttributes",
+          "tag": "UniqueIdentifier",
+          "type": "TextString",
+          "value": "d2f4e937-dda9-4a86-bbe8-c866646a612f"
+        },
+        {
+          "tag": "AttributeReference",
           "type": "Structure",
-          "value": [
-            {
-              "tag": "UniqueIdentifier",
-              "type": "TextString",
-              "value": "d2f4e937-dda9-4a86-bbe8-c866646a612f"
-            },
-            {
-              "tag": "AttributeReference",
-              "type": "Structure",
-              "value": []
-            }
-          ]
+          "value": []
         }
+      ]
+    }
 
     ```
 
 === "Response"
 
     ```json
+    {
+      "tag": "GetAttributesResponse",
+      "type": "Structure",
+      "value": [
         {
-          "tag": "GetAttributesResponse",
+          "tag": "UniqueIdentifier",
+          "type": "TextString",
+          "value": "d2f4e937-dda9-4a86-bbe8-c866646a612f"
+        },
+        {
+          "tag": "Attributes",
           "type": "Structure",
           "value": [
             {
-              "tag": "UniqueIdentifier",
-              "type": "TextString",
-              "value": "d2f4e937-dda9-4a86-bbe8-c866646a612f"
+              "tag": "KeyFormatType",
+              "type": "Enumeration",
+              "value": "X509"
             },
             {
-              "tag": "Attributes",
+              "tag": "Link",
               "type": "Structure",
               "value": [
                 {
-                  "tag": "KeyFormatType",
-                  "type": "Enumeration",
-                  "value": "X509"
+                  "tag": "Link",
+                  "type": "Structure",
+                  "value": [
+                    {
+                      "tag": "LinkType",
+                      "type": "Enumeration",
+                      "value": "PrivateKeyLink"
+                    },
+                    {
+                      "tag": "LinkedObjectIdentifier",
+                      "type": "TextString",
+                      "value": "bf614d45-5a3e-49b9-95c0-5586d3c0d17b"
+                    }
+                  ]
                 },
                 {
                   "tag": "Link",
                   "type": "Structure",
                   "value": [
                     {
-                      "tag": "Link",
-                      "type": "Structure",
-                      "value": [
-                        {
-                          "tag": "LinkType",
-                          "type": "Enumeration",
-                          "value": "PrivateKeyLink"
-                        },
-                        {
-                          "tag": "LinkedObjectIdentifier",
-                          "type": "TextString",
-                          // the private key
-                          "value": "bf614d45-5a3e-49b9-95c0-5586d3c0d17b"
-                        }
-                      ]
+                      "tag": "LinkType",
+                      "type": "Enumeration",
+                      "value": "CertificateLink"
                     },
                     {
-                      "tag": "Link",
-                      "type": "Structure",
-                      "value": [
-                        {
-                          "tag": "LinkType",
-                          "type": "Enumeration",
-                          "value": "CertificateLink"
-                        },
-                        {
-                          "tag": "LinkedObjectIdentifier",
-                          "type": "TextString",
-                          // the intermediate certificate, which is the issuer of the certificate
-                          "value": "0c9028bc-c518-40d3-8362-12a1edfddab0"
-                        }
-                      ]
+                      "tag": "LinkedObjectIdentifier",
+                      "type": "TextString",
+                      "value": "0c9028bc-c518-40d3-8362-12a1edfddab0"
                     }
                   ]
-                },
-                {
-                  "tag": "ObjectType",
-                  "type": "Enumeration",
-                  "value": "Certificate"
-                },
+                }
+              ]
+            },
+            {
+              "tag": "ObjectType",
+              "type": "Enumeration",
+              "value": "Certificate"
+            },
+            {
+              "tag": "VendorAttributes",
+              "type": "Structure",
+              "value": [
                 {
                   "tag": "VendorAttributes",
                   "type": "Structure",
                   "value": [
                     {
-                      "tag": "VendorAttributes",
-                      "type": "Structure",
-                      "value": [
-                        {
-                          "tag": "VendorIdentification",
-                          "type": "TextString",
-                          "value": "cosmian"
-                        },
-                        {
-                          "tag": "AttributeName",
-                          "type": "TextString",
-                          "value": "tag"
-                        },
-                        {
-                          "tag": "AttributeValue",
-                          "type": "ByteString",
-                        // This is the hex encoded value of a JSON array of system and user tags
-                          "value": "5B225F63657274222C225F636572745F636E3D4D7920736572766572222C225F636572745F73706B693D36353565303430393938383461663363636133653362313164393038626238666432373237306263222C224D79504B43533132222C225F636572745F6973737565723D30633930323862632D633531382D343064332D383336322D313261316564666464616230222C225F636572745F736B3D62663631346434352D356133652D343962392D393563302D353538366433633064313762225D"
-                        }
-                      ]
+                      "tag": "VendorIdentification",
+                      "type": "TextString",
+                      "value": "cosmian"
+                    },
+                    {
+                      "tag": "AttributeName",
+                      "type": "TextString",
+                      "value": "tag"
+                    },
+                    {
+                      "tag": "AttributeValue",
+                      "type": "ByteString",
+                      "value": "5B225F63657274222C225F636572745F636E3D4D7920736572766572222C225F636572745F73706B693D36353565303430393938383461663363636133653362313164393038626238666432373237306263222C224D79504B43533132222C225F636572745F6973737565723D30633930323862632D633531382D343064332D383336322D313261316564666464616230222C225F636572745F736B3D62663631346434352D356133652D343962392D393563302D353538366433633064313762225D"
                     }
                   ]
                 }
@@ -397,4 +389,6 @@ Please note in the response:
             }
           ]
         }
+      ]
+    }
     ```

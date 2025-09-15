@@ -27,7 +27,7 @@ Destroying key `f54f14a3-5639-4054-8c23-54af891669db`:
 Corresponding `cosmian` command:
 
 ```shell
-  cosmian kms sym keys destroy -k f54f14a3-5639-4054-8c23-54af891669d --remove
+  cosmian kms sym keys destroy -k f54f14a3-5639-4054-8c23-54af891669db --remove
 ```
 
 === "Request"
@@ -40,7 +40,7 @@ Corresponding `cosmian` command:
         {
           "tag": "UniqueIdentifier",
           "type": "TextString",
-          "value": "f54f14a3-5639-4054-8c23-54af891669d"
+          "value": "f54f14a3-5639-4054-8c23-54af891669db"
         },
         {
           "tag": "Remove",

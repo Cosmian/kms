@@ -1,4 +1,4 @@
-use std::fmt::{self, Formatter};
+use std::fmt::{self, Display, Formatter, Write};
 
 use serde::de::DeserializeSeed;
 /// The messages in the protocol consist of a message header,
@@ -36,12 +36,21 @@ enum KmipVersion {
     V21,
 }
 
-#[derive(PartialEq, Eq, Debug, Serialize)]
+#[derive(PartialEq, Eq, Serialize)]
 #[serde(untagged)]
 #[allow(clippy::large_enum_variant)]
 pub enum RequestMessageBatchItemVersioned {
     V14(crate::kmip_1_4::kmip_messages::RequestMessageBatchItem),
     V21(crate::kmip_2_1::kmip_messages::RequestMessageBatchItem),
+}
+
+impl Display for RequestMessageBatchItemVersioned {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::V14(item) => write!(f, "{item}"),
+            Self::V21(item) => write!(f, "{item}"),
+        }
+    }
 }
 
 impl RequestMessageBatchItemVersioned {}
@@ -68,12 +77,26 @@ impl<'de> DeserializeSeed<'de> for &mut RequestMessageBatchItemVersionedDeserial
     }
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq)]
 pub struct RequestMessage {
     /// Header of the request
     pub request_header: RequestMessageHeader,
     /// Batch items of the request
     pub batch_item: Vec<RequestMessageBatchItemVersioned>,
+}
+
+impl Display for RequestMessage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut batch_items = String::new();
+        for batch_item in &self.batch_item {
+            write!(batch_items, "{batch_item}, ")?;
+        }
+        write!(
+            f,
+            "RequestMessage {{ request_header: {}, batch_item: [{}] }}",
+            self.request_header, batch_items
+        )
+    }
 }
 
 impl Serialize for RequestMessage {
@@ -268,12 +291,46 @@ impl Default for RequestMessageHeader {
     }
 }
 
-#[derive(PartialEq, Eq, Debug, Serialize)]
+impl Display for RequestMessageHeader {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "RequestMessageHeader {{ protocol_version: {}, maximum_response_size: {:?}, \
+             client_correlation_value: {:?}, server_correlation_value: {:?}, \
+             asynchronous_indicator: {:?}, attestation_capable_indicator: {:?}, attestation_type: \
+             {:?}, authentication: {:?}, batch_error_continuation_option: {:?}, \
+             batch_order_option: {:?}, time_stamp: {:?}, batch_count: {} }}",
+            self.protocol_version,
+            self.maximum_response_size,
+            self.client_correlation_value,
+            self.server_correlation_value,
+            self.asynchronous_indicator,
+            self.attestation_capable_indicator,
+            self.attestation_type,
+            self.authentication,
+            self.batch_error_continuation_option,
+            self.batch_order_option,
+            self.time_stamp,
+            self.batch_count
+        )
+    }
+}
+
+#[derive(PartialEq, Eq, Serialize)]
 #[serde(untagged)]
 #[allow(clippy::large_enum_variant)]
 pub enum ResponseMessageBatchItemVersioned {
     V14(crate::kmip_1_4::kmip_messages::ResponseMessageBatchItem),
     V21(crate::kmip_2_1::kmip_messages::ResponseMessageBatchItem),
+}
+
+impl Display for ResponseMessageBatchItemVersioned {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::V14(item) => write!(f, "{item}"),
+            Self::V21(item) => write!(f, "{item}"),
+        }
+    }
 }
 
 struct ResponseMessageBatchItemVersionedDeserializer {
@@ -302,12 +359,26 @@ impl<'de> DeserializeSeed<'de> for &mut ResponseMessageBatchItemVersionedDeseria
     }
 }
 
-#[derive(Eq, PartialEq, Debug)]
+#[derive(Eq, PartialEq)]
 pub struct ResponseMessage {
     /// Header of the response
     pub response_header: ResponseMessageHeader,
     /// Batch items of the response
     pub batch_item: Vec<ResponseMessageBatchItemVersioned>,
+}
+
+impl Display for ResponseMessage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut batch_items = String::new();
+        for batch_item in &self.batch_item {
+            write!(batch_items, "{batch_item}, ")?;
+        }
+        write!(
+            f,
+            "ResponseMessage {{ response_header: {}, batch_item: [{}] }}",
+            self.response_header, batch_items
+        )
+    }
 }
 
 impl Serialize for ResponseMessage {
@@ -458,5 +529,24 @@ impl Default for ResponseMessageHeader {
             server_correlation_value: None,
             batch_count: 0,
         }
+    }
+}
+
+impl Display for ResponseMessageHeader {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "ResponseMessageHeader {{ protocol_version: {}, time_stamp: {}, nonce: {:?}, \
+             server_hashed_password: {:?}, attestation_type: {:?}, client_correlation_value: \
+             {:?}, server_correlation_value: {:?}, batch_count: {} }}",
+            self.protocol_version,
+            self.time_stamp,
+            self.nonce,
+            self.server_hashed_password.as_ref().map(hex::encode),
+            self.attestation_type,
+            self.client_correlation_value,
+            self.server_correlation_value,
+            self.batch_count
+        )
     }
 }

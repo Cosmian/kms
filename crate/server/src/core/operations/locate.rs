@@ -28,12 +28,14 @@ pub(crate) async fn locate(
         .database
         .find(Some(&request.attributes), state, user, false, params)
         .await?;
-    trace!("Found {} objects: {:?}", uids_attrs.len(), uids_attrs);
+    for (uid, _, attributes) in &uids_attrs {
+        trace!("Found uid: {}, attributes: {}", uid, attributes);
+    }
     // Filter the uids that match the access access structure
     let mut uids = Vec::new();
     if access_policy_from_attributes(&request.attributes).is_err() {
         for (uid, _, attributes) in uids_attrs {
-            trace!("UID: {:?}, Attributes: {:?}", uid, attributes);
+            trace!("UID: {:?}, Attributes: {}", uid, attributes);
             // If there is no access access structure, do not match and add, otherwise compare the access policies
             uids.push(UniqueIdentifier::TextString(uid));
         }

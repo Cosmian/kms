@@ -62,7 +62,7 @@ pub(crate) async fn owner<DB: ObjectsStore + PermissionsStore>(
         .await?
         .ok_or_else(|| db_error!("Object not found"))?;
     assert_eq!(State::Active, obj.state());
-    assert_eq!(&symmetric_key, obj.object());
+    assert!(&symmetric_key == obj.object());
     assert_eq!(owner, obj.owner());
 
     // Grant `Get` operation to `userid 1`

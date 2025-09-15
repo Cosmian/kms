@@ -668,7 +668,7 @@ pub(crate) async fn add_attribute(
         | ObjectType::SymmetricKey => {
             let object_attributes = owm.object_mut().attributes_mut()?;
             *object_attributes = attributes.clone();
-            debug!("Set Object Attribute: {:?}", object_attributes);
+            debug!("Set Object Attribute: {}", object_attributes);
         }
         _ => {
             trace!(
@@ -678,7 +678,7 @@ pub(crate) async fn add_attribute(
         }
     }
 
-    debug!("Add Attribute: {:?}", attributes);
+    debug!("Add Attribute: {}", attributes);
     kms.database
         .update_object(owm.id(), owm.object(), &attributes, Some(&tags), params)
         .await?;

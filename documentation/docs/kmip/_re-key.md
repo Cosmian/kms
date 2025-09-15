@@ -25,32 +25,31 @@ cosmian kms sym keys re-key -k 64c60363-6660-4fd4-9f30-c965a0f72fc3
 === "Request"
 
     ```json
+    {
+      "tag": "ReKey",
+      "type": "Structure",
+      "value": [
         {
-          "tag": "ReKey",
-          "type": "Structure",
-          "value": [
-            {
-              "tag": "UniqueIdentifier",
-              "type": "TextString",
-              "value": "64c60363-6660-4fd4-9f30-c965a0f72fc3"
-            }
-          ]
+          "tag": "UniqueIdentifier",
+          "type": "TextString",
+          "value": "64c60363-6660-4fd4-9f30-c965a0f72fc3"
         }
-
+      ]
+    }
     ```
 
 === "Response"
 
     ```json
-      {
-        "tag": "ReKeyResponse",
-        "type": "Structure",
-        "value": [
-          {
-            "tag": "UniqueIdentifier",
-            "type": "TextString",
-            "value": "64c60363-6660-4fd4-9f30-c965a0f72fc3"
-          }
-        ]
-      }
+    {
+      "tag": "ReKeyResponse",
+      "type": "Structure",
+      "value": [
+        {
+          "tag": "UniqueIdentifier",
+          "type": "TextString",
+          "value": "64c60363-6660-4fd4-9f30-c965a0f72fc3"
+        }
+      ]
+    }
     ```

@@ -84,7 +84,7 @@ pub(crate) async fn get_attributes(
         }
     };
 
-    trace!("Get Attributes: Attributes: {:?}", attributes);
+    trace!("Get Attributes: Attributes: {}", attributes);
 
     let mut req_attributes = request.attribute_reference.unwrap_or_default();
     trace!("Get Attributes: Requested attributes: {req_attributes:?}");
@@ -278,7 +278,7 @@ pub(crate) async fn get_attributes(
         owm.id(),
         res.get_tags()
     );
-    trace!("Get Attributes: Response: {res:?}");
+    trace!("Get Attributes: Response: {}", res);
     Ok(GetAttributesResponse {
         unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
         attributes: res,

@@ -74,12 +74,6 @@ openidconnect = { version = "4.0", features = ["reqwest", "native-tls"] }
 openssl = { workspace = true }
 pem.workspace = true
 proteccio_pkcs11_loader = { path = "../hsm/proteccio", version = "5.8.1" }
-# Important: align the rustls version with reqwest rustls dependency
-# When using client certificate authentication, reqwest will use the
-# native-tls crate to create an Identity; this will be different backend
-# implementations depending on the operating system. On linux, it will
-# use openssl
-# The default features is to guarantee that the native-tls crate will be used
 reqwest = { workspace = true, features = [
   "default",
   "json",

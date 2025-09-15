@@ -74,7 +74,7 @@ pub fn create_msk_object(
     sensitive: bool,
 ) -> Result<Object, CryptoError> {
     debug!(
-        "create_msk_object: key len: {}, attributes: {attributes:?}",
+        "create_msk_object: key len: {}, attributes: {attributes}",
         msk_bytes.len()
     );
 

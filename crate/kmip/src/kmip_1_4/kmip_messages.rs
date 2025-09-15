@@ -354,6 +354,28 @@ pub struct ResponseMessageBatchItem {
     pub message_extension: Option<MessageExtension>,
 }
 
+impl Display for ResponseMessageBatchItem {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "MessageResponseBatchItem {{ operation: {:?}, unique_batch_item_id: {:?}, \
+             result_status: {:?}, result_reason: {:?}, result_message: {:?}, \
+             asynchronous_correlation_value: {:?}, response_payload: {}, message_extension: {:?} \
+             }}",
+            self.operation,
+            self.unique_batch_item_id,
+            self.result_status,
+            self.result_reason,
+            self.result_message,
+            self.asynchronous_correlation_value,
+            self.response_payload
+                .as_ref()
+                .map_or_else(|| "None".to_owned(), std::string::ToString::to_string),
+            self.message_extension
+        )
+    }
+}
+
 impl ResponseMessageBatchItem {
     #[must_use]
     pub const fn new(result_status: ResultStatusEnumeration) -> Self {

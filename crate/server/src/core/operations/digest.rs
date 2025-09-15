@@ -24,7 +24,7 @@ pub(crate) fn digest(object: &Object) -> KResult<Option<Digest>> {
         | Object::SymmetricKey(SymmetricKey { key_block })
         | Object::SplitKey(SplitKey { key_block, .. }) => {
             if let Some(key_value) = key_block.key_value.as_ref() {
-                trace!("{:?}", key_value);
+                trace!("{}", key_value);
                 let bytes = match key_value {
                     KeyValue::ByteString(bytes) => bytes.to_vec(),
                     KeyValue::Structure { key_material, .. } => {
@@ -39,7 +39,6 @@ pub(crate) fn digest(object: &Object) -> KResult<Option<Digest>> {
                         }
                     }
                 };
-                trace!("{:?}", bytes);
                 // digest  with openSSL SHA256
                 let digest = openssl::sha::sha256(&bytes);
                 Ok(Some(Digest {

@@ -503,7 +503,7 @@ pub(crate) async fn upsert_(
     executor: &mut Transaction<'_, Sqlite>,
 ) -> DbResult<()> {
     trace!(
-        "Upserting in DB: {uid}\n   object: {object}\n   attributes: {attributes:?}\n    tags: \
+        "Upserting in DB: {uid}\n   object: {object}\n   attributes: {attributes}\n    tags: \
          {tags:?}\n    state: {state:?}\n    owner: {owner}"
     );
     let object_json =
@@ -766,7 +766,11 @@ where
         user,
         user_must_be_owner,
     );
-    trace!("find_: {researched_attributes:#?}\n  {query:#?}");
+    if let Some(attrs) = researched_attributes {
+        trace!("find_ called with attributes: {}\n  {query:#?}", attrs);
+    } else {
+        trace!("find_ called without attributes\n  {query:#?}");
+    }
     let query = sqlx::query(&query);
     let rows = query.fetch_all(executor).await?;
 

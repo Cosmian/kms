@@ -227,10 +227,7 @@ pub(crate) async fn test_kms_all_authentications() -> KmsCliResult<()> {
         None,
     )
     .await?;
-    ListOwnedObjects
-        .run(ctx.get_owner_client())
-        .await
-        .unwrap_err();
+    assert!(ListOwnedObjects.run(ctx.get_owner_client()).await.is_err());
     ctx.stop_server().await?;
 
     // SCENARIO 5: Client Certificate authentication enabled, no certificate provided (failure case)
@@ -249,10 +246,7 @@ pub(crate) async fn test_kms_all_authentications() -> KmsCliResult<()> {
         None,
     )
     .await?;
-    ListOwnedObjects
-        .run(ctx.get_owner_client())
-        .await
-        .unwrap_err();
+    assert!(ListOwnedObjects.run(ctx.get_owner_client()).await.is_err());
     ctx.stop_server().await?;
 
     // SCENARIO 6: API token authentication enabled, no token provided (failure case)
@@ -272,10 +266,7 @@ pub(crate) async fn test_kms_all_authentications() -> KmsCliResult<()> {
         None,
     )
     .await?;
-    ListOwnedObjects
-        .run(ctx.get_owner_client())
-        .await
-        .unwrap_err();
+    assert!(ListOwnedObjects.run(ctx.get_owner_client()).await.is_err());
     ctx.stop_server().await?;
 
     // SCENARIO 7: JWT authentication enabled, but no JWT token presented (failure case)
@@ -293,10 +284,7 @@ pub(crate) async fn test_kms_all_authentications() -> KmsCliResult<()> {
         None,
     )
     .await?;
-    ListOwnedObjects
-        .run(ctx.get_owner_client())
-        .await
-        .unwrap_err();
+    assert!(ListOwnedObjects.run(ctx.get_owner_client()).await.is_err());
     ctx.stop_server().await?;
 
     // Bad API token auth but JWT auth used at first

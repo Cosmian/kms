@@ -14,7 +14,7 @@ Multiple operations can be sent in a single call using the [`Messages` API](./me
     Building JSON TTLV messages is a complex task and the easiest way to get started is to use
     the [Cosmian CLI](../../cosmian_cli/index.md) in `JSON mode` mode to print the corresponding request and response messages.
 
-    The `JSON mode` is activated by passing the `--print-json` flag to the `cosmian` command.
+    The `JSON mode` is activated by passing the `--kms-print-json` flag to the `cosmian` command.
     See the [JSON mode example](#json-mode-example) below.
 
 To send multiple requests in a single call, se the [`Messages` API](./messages.md) .
@@ -28,7 +28,7 @@ Please refer to the various [operations pages](./operations.md) for sample JSON 
 This creates a (default AES 256) symmetric key which will be tagged with the string `myKey`.
 
 ```bash
-cosmian kms --print-json sym keys create --tag myKey
+cosmian --kms-print-json kms sym keys create --tag myKey
 ```
 
 The CLI will then show the JSON TTLV requests and response:

@@ -285,7 +285,7 @@ impl CreateKeyPairsAction {
                 attributes.set_x509_extension_file(certificate_extensions_bytes);
 
                 debug!(
-                    "Creating new leaf certificate with attributes: {:?}",
+                    "Creating new leaf certificate with attributes: {}",
                     attributes
                 );
                 let certify_request = Certify {

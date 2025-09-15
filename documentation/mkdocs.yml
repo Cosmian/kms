@@ -139,3 +139,4 @@ nav:
       - Re-Key: kmip/_re-key.md
       - Re-Key Key Pair: kmip/_re-key_key_pair.md
       - Revoke: kmip/_revoke.md
+      - Sign: kmip/_signature.md

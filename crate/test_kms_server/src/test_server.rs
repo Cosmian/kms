@@ -25,7 +25,7 @@ use cosmian_kms_server::{
     },
     start_kms_server::start_kms_server,
 };
-use cosmian_logger::{error, info, trace, warn};
+use cosmian_logger::{debug, error, info, trace, warn};
 use tempfile::TempDir;
 use tokio::sync::OnceCell;
 
@@ -49,8 +49,8 @@ fn sqlite_db_config() -> MainDBConfig {
     trace!("TESTS: using sqlite");
     let tmp_dir = TempDir::new().unwrap();
     let file_path = tmp_dir.path().join("test_sqlite.db");
-    // let file_path = PathBuf::from("test_sqlite.db");
     if file_path.exists() {
+        debug!("Removing existing sqlite db at: {}", file_path.display());
         std::fs::remove_file(&file_path).unwrap();
     }
     MainDBConfig {
