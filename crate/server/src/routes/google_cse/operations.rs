@@ -9,14 +9,17 @@ use base64::{
 };
 use chrono::{Duration, Utc};
 use clap::crate_version;
-use cosmian_kms_server_database::reexport::cosmian_kmip::{
-    kmip_0::kmip_types::{BlockCipherMode, KeyWrapType},
-    kmip_2_1::{
-        kmip_data_structures::{KeyMaterial, KeyValue},
-        kmip_objects::ObjectType,
-        kmip_operations::{Decrypt, Encrypt, Get},
-        kmip_types::{CryptographicParameters, KeyFormatType, UniqueIdentifier},
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::{
+        kmip_0::kmip_types::{BlockCipherMode, KeyWrapType},
+        kmip_2_1::{
+            kmip_data_structures::{KeyMaterial, KeyValue},
+            kmip_objects::ObjectType,
+            kmip_operations::{Decrypt, Encrypt, Get},
+            kmip_types::{CryptographicParameters, KeyFormatType, UniqueIdentifier},
+        },
     },
+    cosmian_kms_crypto::CryptoResultHelper,
 };
 use cosmian_logger::{debug, trace};
 use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
@@ -464,7 +467,7 @@ pub async fn private_key_sign(
     debug!("signature {signature_size}");
     kms_ensure!(
         allocation_size == signature_size,
-        "private_key_sign: allocation_size MUST be equal to signature_size"
+        "allocation_size MUST be equal to signature_size"
     );
 
     debug!(
@@ -539,7 +542,7 @@ pub async fn private_key_decrypt(
 
     // Base 64 decode the encrypted DEK and create a wrapped KMIP object from the key bytes
     debug!(
-        "private_key_decrypt: request.encrypted_data_encryption_key: {}",
+        "request.encrypted_data_encryption_key: {}",
         request.encrypted_data_encryption_key
     );
     let encrypted_dek = general_purpose::STANDARD.decode(&request.encrypted_data_encryption_key)?;
@@ -556,13 +559,21 @@ pub async fn private_key_decrypt(
     .await?;
 
     debug!(
-        "private_key_decrypt: [OK] private_key_der {}",
-        general_purpose::STANDARD.encode(private_key_der.clone()),
+        "[OK] recovered private_key DER bytes (len: {}). Perform RSA decryption",
+        private_key_der.len()
     );
 
     // Decrypt with the unwrapped RSA private key
-    debug!("from_rsa");
-    let private_key = PKey::from_rsa(Rsa::<Private>::private_key_from_der(&private_key_der)?)?;
+    // Assume the bytes are PKCS#1 DER encoded; if not, assume the bytes are PKCS#1 DER Encoded.
+    // From openssl documentation, `private_key_from_der` should be able to auto-detect formats.
+    let private_key = match PKey::private_key_from_der(&private_key_der) {
+        Ok(private_key) => private_key,
+        Err(_) => PKey::from_rsa(
+            Rsa::<Private>::private_key_from_der(&private_key_der)
+                .context("failed converting PKCS#1 DER bytes to RSA private key")?,
+        )
+        .context("failed to create PKey from RSA private key")?,
+    };
 
     // Perform RSA decryption.
     let mut ctx = PkeyCtx::new(&private_key)?;
@@ -1130,7 +1141,7 @@ async fn cse_wrapped_key_decrypt(
     })?;
 
     trace!(
-        "cse_wrapped_key_decrypt: iv_counter_nonce: {}, ciphertext: {}, authenticated_tag: {}",
+        "iv_counter_nonce: {}, ciphertext: {}, authenticated_tag: {}",
         general_purpose::STANDARD.encode(iv_counter_nonce),
         general_purpose::STANDARD.encode(ciphertext),
         general_purpose::STANDARD.encode(authenticated_tag)

@@ -8,18 +8,18 @@ use cosmian_kms_server_database::{
             kmip_2_1::{
                 KmipOperation,
                 kmip_attributes::Attributes,
-                kmip_data_structures::{KeyBlock, KeyValue, KeyWrappingSpecification},
+                kmip_data_structures::{KeyValue, KeyWrappingSpecification},
                 kmip_objects::{Object, ObjectType},
                 kmip_types::{
                     EncodingOption, EncryptionKeyInformation, LinkType, UniqueIdentifier,
                 },
             },
         },
-        cosmian_kms_crypto::crypto::wrap::{key_data_to_wrap, wrap_key_block},
+        cosmian_kms_crypto::crypto::wrap::{key_data_to_wrap, wrap_object_with_key},
         cosmian_kms_interfaces::SessionParams,
     },
 };
-use cosmian_logger::{debug, trace, warn};
+use cosmian_logger::{debug, warn};
 
 use crate::{
     core::{KMS, uid_utils::has_prefix},
@@ -100,7 +100,7 @@ pub(crate) async fn wrap_and_cache(
         .map_err(|e| {
             KmsError::InvalidRequest(format!("wrap_object: no key block to wrap in object: {e}",))
         })?
-        .symmetric_key_bytes()
+        .key_bytes()
         .is_ok()
     {
         EncodingOption::NoEncoding
@@ -158,11 +158,6 @@ pub(crate) async fn wrap_object(
     user: &str,
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<()> {
-    // get the key block
-    let object_key_block = object.key_block_mut().map_err(|e| {
-        KmsError::InvalidRequest(format!("wrap_object: not key block to wrap in object: {e}",))
-    })?;
-
     // recover the wrapping key uid
     let wrapping_key_uid = match &key_wrapping_specification.encryption_key_information {
         Some(eki) => eki
@@ -177,7 +172,7 @@ pub(crate) async fn wrap_object(
              oracle, user: {user}"
         );
         wrap_using_encryption_oracle(
-            object_key_block,
+            object,
             key_wrapping_specification,
             kms,
             user,
@@ -192,7 +187,7 @@ pub(crate) async fn wrap_object(
              {user}"
         );
         wrap_using_kms(
-            object_key_block,
+            object,
             key_wrapping_specification,
             kms,
             user,
@@ -202,13 +197,12 @@ pub(crate) async fn wrap_object(
         .await?;
     }
     debug!("Key wrapped successfully by key {}", wrapping_key_uid);
-    trace!("The key block is now: {:#?}", object_key_block);
     Ok(())
 }
 
 /// Wrap a key with a wrapping key using a KMS
 async fn wrap_using_kms(
-    object_key_block: &mut KeyBlock,
+    object: &mut Object,
     key_wrapping_specification: &KeyWrappingSpecification,
     kms: &KMS,
     user: &str,
@@ -290,20 +284,16 @@ async fn wrap_using_kms(
         "The user: {user}, is authorized to wrap with the key {wrapping_key_uid}. Encoding: {:?}, \
          format: {}",
         key_wrapping_specification.get_encoding(),
-        object_key_block.key_format_type
+        object.key_block()?.key_format_type
     );
 
-    wrap_key_block(
-        object_key_block,
-        wrapping_key.object(),
-        key_wrapping_specification,
-    )?;
+    wrap_object_with_key(object, wrapping_key.object(), key_wrapping_specification)?;
     Ok(())
 }
 
 /// Wrap a key with a wrapping key using an encryption oracle
 async fn wrap_using_encryption_oracle(
-    object_key_block: &mut KeyBlock,
+    object: &mut Object,
     key_wrapping_specification: &KeyWrappingSpecification,
     kms: &KMS,
     user: &str,
@@ -333,7 +323,7 @@ async fn wrap_using_encryption_oracle(
     }
 
     // Determine the key data to wrap based on the key format type and encoding
-    let data_to_wrap = key_data_to_wrap(&object_key_block, key_wrapping_specification)?;
+    let data_to_wrap = key_data_to_wrap(object, key_wrapping_specification)?;
 
     // encrypt the key using the encryption oracle
     let lock = kms.encryption_oracles.read().await;
@@ -354,6 +344,7 @@ async fn wrap_using_encryption_oracle(
     .concat();
 
     // update the key block with the wrapped key
+    let object_key_block = object.key_block_mut()?;
     object_key_block.key_value = Some(KeyValue::ByteString(wrapped_key.into()));
     object_key_block.key_wrapping_data = Some(key_wrapping_specification.get_key_wrapping_data());
 

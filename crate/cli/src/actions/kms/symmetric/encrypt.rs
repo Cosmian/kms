@@ -20,7 +20,7 @@ use cosmian_kms_client::{
 };
 use cosmian_kms_crypto::crypto::{
     symmetric::symmetric_ciphers::{Mode, SymCipher, encrypt, random_key, random_nonce},
-    wrap::wrap_key_block,
+    wrap::wrap_object_with_key,
 };
 use cosmian_logger::trace;
 use zeroize::Zeroizing;
@@ -410,8 +410,8 @@ impl EncryptAction {
         )?;
 
         // Wrap the DEK with the KEK
-        wrap_key_block(
-            dek_object.key_block_mut()?,
+        wrap_object_with_key(
+            &mut dek_object,
             &wrapping_key,
             &KeyWrappingSpecification {
                 encoding_option: Some(EncodingOption::NoEncoding),

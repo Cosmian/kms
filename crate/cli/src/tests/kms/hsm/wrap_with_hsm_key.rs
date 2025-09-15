@@ -153,7 +153,7 @@ pub(crate) async fn test_unwrap_on_export(ctx: &TestsContext) -> KmsCliResult<()
     ExportSecretDataOrKeyAction {
         key_file: tmp_path.join("dek.pem"),
         key_id: Some(dek.to_string()),
-        key_format: ExportKeyFormat::Raw,
+        export_format: ExportKeyFormat::Raw,
         unwrap: true,
         ..Default::default()
     }

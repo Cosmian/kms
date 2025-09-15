@@ -35,9 +35,10 @@ pub struct GetAttributesAction {
     #[clap(long = "tag", short = 't', value_name = "TAG", group = "id-tags")]
     pub(crate) tags: Option<Vec<String>>,
 
-    /// The attributes or `KMIP-tags` to retrieve.
+    /// The KMIP attribute to retrieve.
     /// To specify multiple attributes, use the option multiple times.
     /// If not specified, all possible attributes are returned.
+    /// To retrieve the tags, use `Tag` as an attribute value.
     #[clap(
         long = "attribute",
         short = 'a',
@@ -86,29 +87,13 @@ impl GetAttributesAction {
         trace!("{self:?}");
         let id = get_key_uid(self.id.as_ref(), self.tags.as_ref(), ATTRIBUTE_ID)?;
 
-        let mut references: Vec<AttributeReference> = Vec::with_capacity(self.attribute_tags.len());
-        for tag in &self.attribute_tags {
-            references.push(AttributeReference::Standard(*tag));
-        }
-
-        // perform the Get Attributes request
-        let GetAttributesResponse {
-            unique_identifier,
-            attributes,
-        } = kms_rest_client
-            .get_attributes(GetAttributes {
-                unique_identifier: Some(UniqueIdentifier::TextString(id)),
-                attribute_reference: Some(references),
-            })
-            .await?;
-
-        debug!("GetAttributes response for {unique_identifier}: {attributes:?}",);
-
-        let results = parse_selected_attributes(
-            &attributes,
+        let (unique_identifier, results) = get_attributes(
+            &kms_rest_client,
+            &id,
             &self.attribute_tags,
             &self.attribute_link_types,
-        )?;
+        )
+        .await?;
 
         if let Some(output_file) = &self.output_file {
             let json = serde_json::to_string_pretty(&results)?;
@@ -127,4 +112,36 @@ impl GetAttributesAction {
         }
         Ok(results)
     }
+}
+
+pub(crate) async fn get_attributes(
+    kms_rest_client: &KmsClient,
+    id_or_tags: &str,
+    attribute_tags: &[Tag],
+    attribute_link_types: &[CLinkType],
+) -> KmsCliResult<(UniqueIdentifier, HashMap<String, Value>)> {
+    let mut references: Vec<AttributeReference> = Vec::with_capacity(attribute_tags.len());
+    for tag in attribute_tags {
+        references.push(AttributeReference::Standard(*tag));
+    }
+
+    // perform the Get Attributes request
+    let GetAttributesResponse {
+        unique_identifier,
+        attributes,
+    } = kms_rest_client
+        .get_attributes(GetAttributes {
+            unique_identifier: Some(UniqueIdentifier::TextString(id_or_tags.to_owned())),
+            attribute_reference: if references.is_empty() {
+                None
+            } else {
+                Some(references)
+            },
+        })
+        .await?;
+
+    debug!("GetAttributes response for {unique_identifier}: {attributes:?}",);
+
+    let results = parse_selected_attributes(&attributes, attribute_tags, attribute_link_types)?;
+    Ok((unique_identifier, results))
 }

@@ -4,7 +4,7 @@ use std::{
     fmt::{Display, Formatter},
 };
 
-use cosmian_logger::trace;
+use cosmian_logger::{trace, warn};
 use num_bigint_dig::BigInt;
 use serde::{
     Deserialize, Serialize,
@@ -257,8 +257,16 @@ impl KeyBlock {
         }
     }
 
-    /// Return the key material of a symmetric key, raw or transparent.
+    /// Return the raw bytes of a symmetric key
+    /// Deprecated: use `key_bytes()`
+    #[deprecated]
     pub fn symmetric_key_bytes(&self) -> Result<Zeroizing<Vec<u8>>, KmipError> {
+        self.key_bytes()
+    }
+
+    /// Return the key material of a symmetric key, raw or transparent.
+    /// The PKCS#1 of an RSA Key, etc.
+    pub fn key_bytes(&self) -> Result<Zeroizing<Vec<u8>>, KmipError> {
         let key_value = self.key_value.as_ref().ok_or_else(|| {
             KmipError::InvalidKmip21Value(
                 ErrorReason::Invalid_Attribute_Value,
@@ -269,15 +277,14 @@ impl KeyBlock {
         match key_value {
             KeyValue::ByteString(_) => Err(KmipError::InvalidKmip21Value(
                 ErrorReason::Invalid_Object_Type,
-                "symmetric_key_bytes: key bytes cannot be recovered from wrapped keys".to_owned(),
+                "Key bytes cannot be recovered from wrapped keys".to_owned(),
             )),
             KeyValue::Structure { key_material, .. } => match key_material {
                 KeyMaterial::ByteString(v) => Ok(v.clone()),
                 KeyMaterial::TransparentSymmetricKey { key } => Ok(key.clone()),
                 _ => Err(KmipError::InvalidKmip21Value(
                     ErrorReason::Invalid_Object_Type,
-                    "Key bytes can only be recovered from raw and transparent symmetric keys"
-                        .to_owned(),
+                    "Key bytes can only be recovered from RSA and symmetric keys".to_owned(),
                 )),
             },
         }
@@ -414,7 +421,7 @@ impl KeyBlock {
     pub fn key_bytes_and_attributes(
         &self,
     ) -> Result<(Zeroizing<Vec<u8>>, Option<&Attributes>), KmipError> {
-        let key = self.symmetric_key_bytes().map_err(|e| {
+        let key = self.key_bytes().map_err(|e| {
             KmipError::InvalidKmip21Value(ErrorReason::Invalid_Data_Type, e.to_string())
         })?;
         let attributes = self.attributes().ok();

@@ -21,13 +21,13 @@ doctest = false
 [features]
 # Enable FIPS module feature build. KMS builds in FIPS mode when this is enabled.
 non-fips = [
-  "cosmian_kmip/non-fips",
-  "cosmian_crypto_core/ecies",
-  "cosmian_crypto_core/blake",
-  "cosmian_crypto_core/chacha",
-  "cosmian_cover_crypt",
-  "aes-gcm-siv",
-  "argon2",
+    "cosmian_kmip/non-fips",
+    "cosmian_crypto_core/ecies",
+    "cosmian_crypto_core/blake",
+    "cosmian_crypto_core/chacha",
+    "cosmian_cover_crypt",
+    "aes-gcm-siv",
+    "argon2",
 ]
 
 [dependencies]
@@ -40,10 +40,10 @@ cosmian_kmip = { path = "../kmip", version = "5.8.1" }
 cosmian_logger = { workspace = true }
 hex = { workspace = true }
 num-bigint-dig = { workspace = true, features = [
-  "std",
-  "rand",
-  "serde",
-  "zeroize",
+    "std",
+    "rand",
+    "serde",
+    "zeroize",
 ] }
 openssl = { workspace = true }
 rust-ini = "0.21"
@@ -55,6 +55,10 @@ x509-parser = { workspace = true }
 zeroize = { workspace = true, features = ["zeroize_derive", "serde"] }
 
 [dev-dependencies]
+aes-kw = "0.3.0-rc.1"
+cosmian_logger = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
 
 [package.metadata.cargo-machete]
 ignored = ["rust-ini"]

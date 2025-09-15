@@ -79,7 +79,7 @@ async fn test_import_export_p12_25519() -> KmsCliResult<()> {
     ExportSecretDataOrKeyAction {
         key_file: tmp_exported_sk.clone(),
         key_id: imported_p12_sk.clone(),
-        key_format: JsonTtlv,
+        export_format: JsonTtlv,
         ..Default::default()
     }
     .run(ctx.get_owner_client())
@@ -255,7 +255,7 @@ async fn test_import_p12_rsa() {
     ExportSecretDataOrKeyAction {
         key_file: key_file.clone(),
         key_id: imported_p12_sk,
-        key_format: JsonTtlv,
+        export_format: JsonTtlv,
         ..Default::default()
     }
     .run(ctx.get_owner_client())

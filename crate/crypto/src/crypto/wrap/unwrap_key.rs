@@ -232,7 +232,7 @@ fn unwrap_with_symmetric_key(
 
     // Extract the wrapping key bytes from the unwrapping key block
     let unwrap_secret = unwrapping_key_block
-        .symmetric_key_bytes()
+        .key_bytes()
         .context("unwrapping key bytes:")?;
 
     // If not AES GCM, unwrap using RFC 5649 (a.k.a NIST Key Wrap)

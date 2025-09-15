@@ -59,8 +59,8 @@ pub(crate) async fn test_rekey_symmetric_key() -> KmsCliResult<()> {
     let old_object = read_object_from_json_ttlv_file(&tmp_path.join("aes_sym"))?;
     let new_object = read_object_from_json_ttlv_file(&tmp_path.join("aes_sym_2"))?;
     assert_ne!(
-        old_object.key_block()?.symmetric_key_bytes()?,
-        new_object.key_block()?.symmetric_key_bytes()?
+        old_object.key_block()?.key_bytes()?,
+        new_object.key_block()?.key_bytes()?
     );
 
     // Compare the attributes
