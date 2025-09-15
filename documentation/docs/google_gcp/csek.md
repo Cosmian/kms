@@ -1,14 +1,13 @@
-To
-use [Customer Supplied Encryption Keys](https://cloud.google.com/docs/security/encryption/customer-supplied-encryption-keys),
+To use [Customer Supplied Encryption Keys](https://cloud.google.com/docs/security/encryption/customer-supplied-encryption-keys),
 follow the general instructions on
 using [RSA wrapping keys](https://cloud.google.com/compute/docs/disks/customer-supplied-encryption?hl=en#rsa-encryption).
 
 <!-- TOC -->
-  * [Generate a symmetric key in Cosmian KMS](#generate-a-symmetric-key-in-cosmian-kms)
-  * [Download the Google CSEK Certificate and extract the RSA wrapping key](#download-the-google-csek-certificate-and-extract-the-rsa-wrapping-key)
-  * [Import the certificates in Cosmian KMS](#import-the-certificates-in-cosmian-kms)
-  * [Export the wrapped CSEK Symmetric Key](#export-the-wrapped-csek-symmetric-key)
-  * [Convert the wrapped CSEK Symmetric Key to base64](#convert-the-wrapped-csek-symmetric-key-to-base64)
+- [Generate a symmetric key in Cosmian KMS](#generate-a-symmetric-key-in-cosmian-kms)
+- [Download the Google CSEK Certificate and extract the RSA wrapping key](#download-the-google-csek-certificate-and-extract-the-rsa-wrapping-key)
+- [Import the certificates in Cosmian KMS](#import-the-certificates-in-cosmian-kms)
+- [Export the wrapped CSEK Symmetric Key](#export-the-wrapped-csek-symmetric-key)
+- [Convert the wrapped CSEK Symmetric Key to base64](#convert-the-wrapped-csek-symmetric-key-to-base64)
 <!-- TOC -->
 
 ## Generate a symmetric key in Cosmian KMS
@@ -27,7 +26,7 @@ The symmetric key was successfully generated.
 Download the certificate
 
 ```shell
-curl  https://cloud-certs.storage.googleapis.com/google-cloud-csek-ingress.pem > google-cloud-csek-ingress.pem
+curl  https://cloud-certs.storage.googleapis.com/google-cloud-csek-ingress.pem > test_data/cse/google-cloud-csek-ingress.pem
 ```
 
 ## Import the certificates in Cosmian KMS
@@ -35,7 +34,7 @@ curl  https://cloud-certs.storage.googleapis.com/google-cloud-csek-ingress.pem >
 Name it `google_csek` on import.
 
 ```shell
-cosmian -- kms certificates import --format pem google-cloud-csek-ingress.pem google_csek
+cosmian -- kms certificates import --format pem test_data/cse/google-cloud-csek-ingress.pem google_csek
 
 The certificate in the PEM file was successfully imported!
           Unique identifier: google_csek
@@ -51,7 +50,7 @@ wrapping.
 ```shell
  cosmian kms rsa keys export --key-id CSEK_Sym_Key --wrap-key-id google_csek \
  --wrapping-algorithm rsa-oaep-sha1 --key-format raw wrapped_key.bin
- 
+
 The key CSEK_Sym_Key of type SymmetricKey was exported to "wrapped_key.bin"
           Unique identifier: CSEK_Sym_Key
 ```
@@ -62,7 +61,7 @@ Note 2: The wrapped key should be 2048 bits (256 bytes) long.
 ## Convert the wrapped CSEK Symmetric Key to base64
 
 ```shell
-cat wrapped_key.bin | base64 
+cat wrapped_key.bin | base64
 
 BtE+r06qy4isyfMR29n5uGSPj1qbOQTA42nxVJ...Hw==
 ```

@@ -8,7 +8,7 @@ All notable changes to this project will be documented in this file.
 
 - CLI: added support for SHA1 in RSA key wrapping
 - CLI: add Azure functionality to facilitate BYOK
-- CLI: `attributes get` added support to retrieve Object tags only. 
+- CLI: `attributes get` added support to retrieve Object tags only.
 
 ### 📚 Documentation
 
@@ -18,11 +18,10 @@ All notable changes to this project will be documented in this file.
 
 ### 🐛 Bug Fixes
 
-- When wrapped with `No Encoding`, the RSA private key bytes 
+- When wrapped with `No Encoding`, the RSA private key bytes
   and EC private key bytes are now the PKCS#8 DER bytes
 - CLI: fixed broken `attributes get`
-    
- 
+
 ## [5.8.1] - 2025-09-05
 
 ### 🐛 Bug Fixes

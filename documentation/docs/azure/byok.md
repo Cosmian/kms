@@ -8,18 +8,18 @@ The vault must be a `premium` Azure Key Vault, and the user performing the opera
 must have the role of `Crypto Officer`.
 
 <!-- TOC -->
-  * [Create two test keys in the Cosmian KMS](#create-two-test-keys-in-the-cosmian-kms)
-      * [Create an RSA Key](#create-an-rsa-key)
-      * [Create an Elliptic Curve Key](#create-an-elliptic-curve-key)
-  * [Create an Azure Key Encryption Key (KEK)](#create-an-azure-key-encryption-key-kek)
-  * [Export the Key Encryption (Public) Key](#export-the-key-encryption-public-key)
-  * [Import the key encryption key in Cosmian KMS](#import-the-key-encryption-key-in-cosmian-kms)
-  * [Export the wrapped keys from the Cosmian KMS](#export-the-wrapped-keys-from-the-cosmian-kms)
-      * [Export the RSA key](#export-the-rsa-key)
-      * [Export the EC key](#export-the-ec-key)
-  * [Upload the byok transfer blob in Azure Key Vault](#upload-the-byok-transfer-blob-in-azure-key-vault)
-      * [For an RSA Private Key](#for-an-rsa-private-key)
-      * [For an EC Private Key](#for-an-ec-private-key)
+- [Create two test keys in the Cosmian KMS](#create-two-test-keys-in-the-cosmian-kms)
+    - [Create an RSA Key](#create-an-rsa-key)
+    - [Create an Elliptic Curve Key](#create-an-elliptic-curve-key)
+- [Create an Azure Key Encryption Key (KEK)](#create-an-azure-key-encryption-key-kek)
+- [Export the Key Encryption (Public) Key](#export-the-key-encryption-public-key)
+- [Import the key encryption key in Cosmian KMS](#import-the-key-encryption-key-in-cosmian-kms)
+- [Export the wrapped keys from the Cosmian KMS](#export-the-wrapped-keys-from-the-cosmian-kms)
+    - [Export the RSA key](#export-the-rsa-key)
+    - [Export the EC key](#export-the-ec-key)
+- [Upload the byok transfer blob in Azure Key Vault](#upload-the-byok-transfer-blob-in-azure-key-vault)
+    - [For an RSA Private Key](#for-an-rsa-private-key)
+    - [For an EC Private Key](#for-an-ec-private-key)
 <!-- TOC -->
 
 ## Create two test keys in the Cosmian KMS
@@ -27,26 +27,26 @@ must have the role of `Crypto Officer`.
 These keys will later be exported wrapped by the Azure (KEK) key,
 and imported into Azure Key Vault.
 
-#### Create an RSA Key
+### Create an RSA Key
 
 The key will be a 4096-bit key.
 
 ````shell
 cosmian kms rsa keys create --size_in_bits 4096 TestRSAKey
 
-	  Public key unique identifier: TestRSAKey_pk
-	  Private key unique identifier: TestRSAKey
+   Public key unique identifier: TestRSAKey_pk
+   Private key unique identifier: TestRSAKey
 ````
 
-#### Create an Elliptic Curve Key
+### Create an Elliptic Curve Key
 
 The key will be created on the `NIST P-256` curve.
 
 ```shell
 cosmian kms ec keys create --curve nist-p256 TestECKey
 
-	  Public key unique identifier: TestECKey_pk
-	  Private key unique identifier: TestECKey
+   Public key unique identifier: TestECKey_pk
+   Private key unique identifier: TestECKey
 ```
 
 ## Create an Azure Key Encryption Key (KEK)
@@ -70,7 +70,7 @@ az keyvault key create --kty RSA-HSM --size 4096 --name KEK-BYOK --ops import --
 ```
 
 In the `az`output, the key identifier (kid) will be something like:
-"https://mypremiumkeyvault.vault.azure.net/keys/KEK-BYOK/664f5aa2797a4075b8e36ca4500636d8"
+"<https://mypremiumkeyvault.vault.azure.net/keys/KEK-BYOK/664f5aa2797a4075b8e36ca4500636d8>"
 
 Please take note of the `kid` for next steps.
 
@@ -120,7 +120,7 @@ These identify the key as an Azure Key Encryption Key (KEK) in the Cosmian KMS.
 The Cosmian CLI `azure byok export` command will generate a `.byok` file
 containing the wrapped private key, which can be directly imported into Azure Key Vault.
 
-#### Export the RSA key
+### Export the RSA key
 
 ```shell
 cosmian kms azure byok export TestRSAKey BYOK_KEK
@@ -128,7 +128,7 @@ cosmian kms azure byok export TestRSAKey BYOK_KEK
 The byok file was written to "TestRSAKey.byok" for key TestRSAKey
 ```
 
-#### Export the EC key
+### Export the EC key
 
 ```shell
 cosmian kms azure byok export TestECKey BYOK_KEK
@@ -141,7 +141,7 @@ The byok file was written to "TestECKey.byok" for key TestECKey
 Wrapped private RSA keys can be imported using either the console or the `az`  LI.
 Elliptic curve keys can only be imported using the `az` CLI.
 
-#### For an RSA Private Key
+### For an RSA Private Key
 
 **Using the Azure console**:
 
@@ -154,7 +154,7 @@ az keyvault key import --vault-name MyPremiumKeyVault --name TestRSAKey --byok-f
 --ops sign verify
 ```
 
-#### For an EC Private Key
+### For an EC Private Key
 
 The key type and curve must be specified on import for elliptic curve keys.
 
@@ -162,4 +162,3 @@ The key type and curve must be specified on import for elliptic curve keys.
 az keyvault key import --vault-name MyPremiumKeyVault --name TestECKey --byok-file TestECKey.byok \
 --kty EC --curve P-256  --ops sign verify
 ```
-

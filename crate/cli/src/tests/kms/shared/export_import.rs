@@ -242,7 +242,7 @@ async fn test_openssl_cli_compat_inner(
     let rfc5649_encapsulation_file = tmp_path.join("rfc5649_encapsulation.bin");
     fs::write(&rfc5649_encapsulation_file, rfc5649_encapsulation)?;
 
-    // Execute OpenSSL command to decrypt rhe RSA OAEP encapsulation
+    // Execute OpenSSL command to decrypt the RSA OAEP encapsulation
     let aes_kek_file = tmp_path.join("aes_kek.bin");
     let output = tokio::process::Command::new("openssl")
         .arg("pkeyutl")
