@@ -16,6 +16,7 @@ use pkcs11_sys::{
 
 use crate::{
     HError, HResult, SlotManager, check_rv,
+    error::HResultHelper,
     hsm_capabilities::{HsmCapabilities, HsmProvider},
     hsm_lib::HsmLib,
 };
@@ -69,7 +70,7 @@ impl<P: HsmProvider> BaseHsm<P> {
         let mut slots = self
             .slots
             .lock()
-            .map_err(|_| HError::Default("Failed to acquire lock on slots".to_string()))?;
+            .context("Failed to acquire lock on slots")?;
         // check if we are supposed to use that slot
         if let Some(slot_state) = slots.get_mut(&slot_id) {
             if let Some(s) = &slot_state.slot {
@@ -94,7 +95,7 @@ impl<P: HsmProvider> BaseHsm<P> {
         let mut slots = self
             .slots
             .lock()
-            .map_err(|_| HError::Default("Failed to acquire lock on slots".to_string()))?;
+            .context("Failed to acquire lock on slots")?;
         slots.remove(&slot_id);
         Ok(())
     }

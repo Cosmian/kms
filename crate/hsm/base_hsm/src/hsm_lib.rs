@@ -161,7 +161,7 @@ impl HsmLib {
             let rv = self.C_Finalize.ok_or_else(|| {
                 HError::Default("C_Finalize not available on library".to_string())
             })?(ptr::null_mut());
-            check_rv!(rv, "Failed to finalize the HSM: return code: {}");
+            check_rv!(rv, "Failed to finalize the HSM");
             Ok(())
         }
     }
