@@ -34,3 +34,22 @@ impl From<HError> for InterfaceError {
         InterfaceError::Default(e.to_string())
     }
 }
+
+pub(crate) trait HResultHelper<T> {
+    fn context(self, context: &str) -> HResult<T>;
+}
+
+impl<T, E> HResultHelper<T> for Result<T, E>
+where
+    E: std::error::Error,
+{
+    fn context(self, context: &str) -> HResult<T> {
+        self.map_err(|e| HError::Default(format!("{context}: {e}")))
+    }
+}
+
+impl<T> HResultHelper<T> for Option<T> {
+    fn context(self, context: &str) -> HResult<T> {
+        self.ok_or_else(|| HError::Default(context.to_owned()))
+    }
+}

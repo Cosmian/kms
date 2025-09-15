@@ -89,6 +89,7 @@ reqwest = { workspace = true, features = [
 serde = { workspace = true }
 serde_json = { workspace = true }
 softhsm2_pkcs11_loader = { path = "../hsm/softhsm2", version = "5.8.1" }
+smartcardhsm_pkcs11_loader = { path = "../hsm/smartcardhsm", version = "5.8.1" }
 strum = { workspace = true, features = ["std", "derive", "strum_macros"] }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["local-offset", "formatting"] }

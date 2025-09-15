@@ -7,11 +7,14 @@ use std::{
 use cosmian_logger::warn;
 use lru::LruCache;
 use pkcs11_sys::{
-    CK_FLAGS, CK_OBJECT_HANDLE, CK_SESSION_HANDLE, CK_SLOT_ID, CK_ULONG, CK_UTF8CHAR_PTR,
-    CKF_RW_SESSION, CKF_SERIAL_SESSION, CKR_OK, CKR_USER_ALREADY_LOGGED_IN, CKU_USER,
+    CK_FLAGS, CK_MECHANISM_INFO, CK_MECHANISM_TYPE, CK_OBJECT_HANDLE, CK_SESSION_HANDLE,
+    CK_SLOT_ID, CK_ULONG, CK_UTF8CHAR_PTR, CKF_RW_SESSION, CKF_SERIAL_SESSION, CKR_OK,
+    CKR_USER_ALREADY_LOGGED_IN, CKU_USER,
 };
 
-use crate::{HError, HResult, Session, hsm_lib::HsmLib};
+use crate::{
+    HError, HResult, Session, check_rv, hsm_capabilities::HsmCapabilities, hsm_lib::HsmLib,
+};
 
 /// A cache structure that maps byte vectors to `CK_OBJECT_HANDLE` values using an LRU (Least Recently Used) strategy.
 ///
@@ -38,28 +41,48 @@ impl ObjectHandlesCache {
     }
 
     /// Get the object handle for the specified key.
-    pub fn get(&self, key: &[u8]) -> Option<CK_OBJECT_HANDLE> {
-        self.0
+    pub fn get(&self, key: &[u8]) -> HResult<Option<CK_OBJECT_HANDLE>> {
+        Ok(self
+            .0
             .lock()
-            .expect("HSM: failed to lock the handles cache")
+            .map_err(|_| {
+                HError::Default("Failed to acquire lock on object handle cache".to_string())
+            })?
             .get(key)
-            .copied()
+            .copied())
     }
 
     /// Insert a new object handle into the cache.
-    pub fn insert(&self, key: Vec<u8>, value: CK_OBJECT_HANDLE) {
+    pub fn insert(&self, key: Vec<u8>, value: CK_OBJECT_HANDLE) -> HResult<()> {
         self.0
             .lock()
-            .expect("HSM: failed to lock the handles cache")
+            .map_err(|_| {
+                HError::Default("Failed to acquire lock on object handle cache".to_string())
+            })?
             .put(key, value);
+        Ok(())
     }
 
     /// Remove an object handle from the cache.
-    pub fn remove(&self, key: &[u8]) {
+    pub fn remove(&self, key: &[u8]) -> HResult<()> {
         self.0
             .lock()
-            .expect("HSM: failed to lock the handles cache")
+            .map_err(|_| {
+                HError::Default("Failed to acquire lock on object handle cache".to_string())
+            })?
             .pop(key);
+        Ok(())
+    }
+
+    /// Remove all object handles from the cache.
+    pub fn clear(&self) -> HResult<()> {
+        self.0
+            .lock()
+            .map_err(|_| {
+                HError::Default("Failed to acquire lock on object handle cache".to_string())
+            })?
+            .clear();
+        Ok(())
     }
 }
 
@@ -73,6 +96,7 @@ impl ObjectHandlesCache {
 /// * `hsm_lib` - A thread-safe reference to the HSM library interface
 /// * `slot_id` - The unique identifier for this HSM slot
 /// * `object_handles_cache` - A thread-safe cache of object handles for this slot
+/// * `supported_oaep_hash_cache` - A thread-safe cache of supported hashing algorithms for rsa oaep
 /// * `_login_session` - An optional authenticated session with the HSM slot
 ///
 /// The `SlotManager` is responsible for coordinating operations on a specific HSM slot,
@@ -81,7 +105,9 @@ pub struct SlotManager {
     hsm_lib: Arc<HsmLib>,
     slot_id: usize,
     object_handles_cache: Arc<ObjectHandlesCache>,
+    supported_oaep_hash_cache: Arc<Mutex<Option<Vec<CK_MECHANISM_TYPE>>>>,
     _login_session: Option<Session>,
+    hsm_capabilities: HsmCapabilities,
 }
 
 impl SlotManager {
@@ -108,29 +134,108 @@ impl SlotManager {
         hsm_lib: Arc<HsmLib>,
         slot_id: usize,
         login_password: Option<String>,
+        hsm_capabilities: HsmCapabilities,
     ) -> HResult<Self> {
         let object_handles_cache = Arc::new(ObjectHandlesCache::new());
+        let supported_oaep_hash_cache = Arc::new(Mutex::new(None));
         if let Some(password) = login_password {
             let login_session = Self::open_session_(
                 &hsm_lib,
                 slot_id,
                 false,
                 object_handles_cache.clone(),
+                supported_oaep_hash_cache.clone(),
                 Some(password),
+                hsm_capabilities.clone(),
             )?;
             Ok(SlotManager {
                 hsm_lib,
                 slot_id,
                 object_handles_cache,
+                supported_oaep_hash_cache,
                 _login_session: Some(login_session),
+                hsm_capabilities,
             })
         } else {
             Ok(SlotManager {
                 hsm_lib,
                 slot_id,
                 object_handles_cache,
+                supported_oaep_hash_cache,
                 _login_session: None,
+                hsm_capabilities,
             })
+        }
+    }
+
+    /// Retrieve the list of supported cryptographic mechanisms for this HSM slot.
+    ///
+    /// This function queries the HSM to determine which mechanisms (such as AES, RSA, or EC algorithms)
+    /// are available for cryptographic operations within the specified slot.
+    ///
+    /// # Returns
+    /// * `HResult<Vec<CK_MECHANISM_TYPE>>` - A result containing a vector of mechanism identifiers
+    ///   supported by the HSM slot.
+    ///
+    /// # Errors
+    /// * Returns an error if the HSM library does not provide the `C_GetMechanismList` function.
+    /// * Returns an error if the HSM call to retrieve the mechanism count fails.
+    /// * Returns an error if the HSM call to retrieve the mechanism list fails.
+    ///
+    /// # Safety
+    /// This function calls unsafe FFI functions from the HSM library to query the mechanism list.
+    /// The function ensures that memory is correctly allocated and truncated to the number of
+    /// mechanisms actually returned by the HSM.
+    pub fn get_supported_mechanisms(&self) -> HResult<Vec<CK_MECHANISM_TYPE>> {
+        unsafe {
+            let mut count: CK_ULONG = 0;
+            let slot_id: CK_SLOT_ID = self.slot_id as CK_SLOT_ID;
+            // Get count of supported mechanisms
+            let rv = self.hsm_lib.C_GetMechanismList.ok_or_else(|| {
+                HError::Default("C_GetMechanismList not available on library".to_string())
+            })?(slot_id, ptr::null_mut(), &mut count);
+            check_rv!(rv, "Failed to get mechanism count from HSM");
+
+            // Get mechanism list
+            let mut mechanisms = vec![0; count as usize];
+            let rv = self.hsm_lib.C_GetMechanismList.ok_or_else(|| {
+                HError::Default("C_GetMechanismList not available on library".to_string())
+            })?(slot_id, mechanisms.as_mut_ptr(), &mut count);
+            check_rv!(rv, "Failed to get mechanism list from HSM".to_string());
+
+            mechanisms.truncate(count as usize);
+            Ok(mechanisms)
+        }
+    }
+
+    /// Retrieve detailed information about a specific cryptographic mechanism supported by this HSM slot.
+    ///
+    /// This function queries the HSM for information about the given mechanisms capabilities, such as
+    /// minimum and maximum key sizes, and the supported flags (e.g., whether encryption, decryption,
+    /// signing, or verification operations are available).
+    ///
+    /// # Arguments
+    /// * `mech` - The identifier of the mechanism to query.
+    ///
+    /// # Returns
+    /// * `HResult<CK_MECHANISM_INFO>` - A result containing a `CK_MECHANISM_INFO` structure
+    ///   with details about the mechanism's capabilities and constraints.
+    ///
+    /// # Errors
+    /// * Returns an error if the HSM library does not provide the `C_GetMechanismInfo` function.
+    /// * Returns an error if the HSM call to retrieve the mechanism information fails.
+    ///
+    /// # Safety
+    /// This function calls unsafe FFI functions from the HSM library to query mechanism information.
+    pub fn get_mechanism_info(&self, mech: CK_MECHANISM_TYPE) -> HResult<CK_MECHANISM_INFO> {
+        unsafe {
+            let slot_id: CK_SLOT_ID = self.slot_id as CK_SLOT_ID;
+            let mut info: CK_MECHANISM_INFO = std::mem::zeroed();
+            let rv = self.hsm_lib.C_GetMechanismInfo.ok_or_else(|| {
+                HError::Default("C_GetMechanismInfo not available on library".to_string())
+            })?(slot_id, mech, &mut info);
+            check_rv!(rv, format!("Failed to get mechanism info for {}", mech));
+            Ok(info)
         }
     }
 
@@ -157,7 +262,9 @@ impl SlotManager {
             self.slot_id,
             read_write,
             self.object_handles_cache.clone(),
+            self.supported_oaep_hash_cache.clone(),
             None,
+            self.hsm_capabilities.clone(),
         )
     }
 
@@ -166,7 +273,9 @@ impl SlotManager {
         slot_id: usize,
         read_write: bool,
         object_handles_cache: Arc<ObjectHandlesCache>,
+        supported_oaep_hash_cache: Arc<Mutex<Option<Vec<CK_MECHANISM_TYPE>>>>,
         login_password: Option<String>,
+        hsm_capabilities: HsmCapabilities,
     ) -> HResult<Session> {
         let slot_id: CK_SLOT_ID = slot_id as CK_SLOT_ID;
         let flags: CK_FLAGS = if read_write {
@@ -186,11 +295,10 @@ impl SlotManager {
                 None,
                 &raw mut session_handle,
             );
-            if rv != CKR_OK {
-                return Err(HError::Default(format!(
-                    "HSM: Failed opening a session on slot: {slot_id}: return code: {rv}"
-                )));
-            }
+            check_rv!(
+                rv,
+                format!("HSM: Failed opening a session on slot: {slot_id}: return code")
+            );
             if let Some(password) = login_password.as_ref() {
                 let mut pwd_bytes = password.as_bytes().to_vec();
                 let rv = hsm_lib.C_Login.ok_or_else(|| {
@@ -203,15 +311,17 @@ impl SlotManager {
                 );
                 if rv == CKR_USER_ALREADY_LOGGED_IN {
                     warn!("user already logged in, ignoring logging");
-                } else if rv != CKR_OK {
-                    return Err(HError::Default("Failed logging in".to_string()));
+                } else {
+                    check_rv!(rv, "Failed logging in");
                 }
             }
             Ok(Session::new(
                 hsm_lib.clone(),
                 session_handle,
                 object_handles_cache,
+                supported_oaep_hash_cache,
                 login_password.is_some(),
+                hsm_capabilities,
             ))
         }
     }

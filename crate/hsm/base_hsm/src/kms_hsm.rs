@@ -38,10 +38,17 @@ use cosmian_kms_interfaces::{
 };
 use zeroize::Zeroizing;
 
-use crate::{AesKeySize, BaseHsm, RsaKeySize};
+use crate::{AesKeySize, BaseHsm, RsaKeySize, hsm_capabilities::HsmProvider};
 
 #[async_trait]
-impl HSM for BaseHsm {
+impl<P: HsmProvider> HSM for BaseHsm<P> {
+    async fn get_supported_algorithms(
+        &self,
+        slot_id: usize,
+    ) -> InterfaceResult<Vec<CryptoAlgorithm>> {
+        Ok(self.get_algorithms(slot_id)?)
+    }
+
     async fn create_key(
         &self,
         slot_id: usize,
@@ -133,7 +140,7 @@ impl HSM for BaseHsm {
         let session = slot.open_session(true)?;
         let handle = session.get_object_handle(object_id)?;
         session.destroy_object(handle)?;
-        session.delete_object_handle(object_id);
+        session.delete_object_handle(object_id)?;
         Ok(())
     }
 

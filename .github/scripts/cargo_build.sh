@@ -69,12 +69,17 @@ if [ -f /etc/lsb-release ]; then
   # Install Utimaco simulator and run tests
   bash .github/reusable_scripts/test_utimaco.sh
   cargo test -p utimaco_pkcs11_loader --target "$TARGET" --features utimaco -- tests::test_hsm_all
+  # shellcheck disable=SC2086
+  HSM_MODEL=utimaco HSM_USER_PASSWORD="$HSM_USER_PASSWORD" HSM_SLOT_ID=0 cargo test --target "$TARGET" $FEATURES -- tests::hsm::test_all
 
   # Install SoftHSM2 and run tests
   sudo apt-get install -y libsofthsm2
 
   sudo softhsm2-util --init-token --slot 0 --label "my_token_1" --so-pin "$HSM_USER_PASSWORD" --pin "$HSM_USER_PASSWORD"
   HSM_SLOT_ID=$(sudo softhsm2-util --show-slots | grep -o "Slot [0-9]*" | head -n1 | awk '{print $2}')
+
+  # shellcheck disable=SC2086
+  sudo -E env "PATH=$PATH" HSM_MODEL=softhsm2 HSM_USER_PASSWORD="$HSM_USER_PASSWORD" HSM_SLOT_ID="$HSM_SLOT_ID" cargo test $FEATURES -- tests::hsm::test_all
 
   cd crate/hsm/softhsm2
   sudo -E env "PATH=$PATH" HSM_USER_PASSWORD="$HSM_USER_PASSWORD" HSM_SLOT_ID="$HSM_SLOT_ID" cargo test --features softhsm2 -- tests::test_hsm_all

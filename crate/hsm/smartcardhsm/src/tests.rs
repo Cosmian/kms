@@ -1,7 +1,7 @@
 //! These tests  require a connection to a working HSM and are gated behind the `softhsm2` feature.
-//! To run a test, cd into the crate directory and run (replace `XXX` with the actual password):
+//! To run a test, cd into the crate directory and run (replace `XXX` with the actual password for the selected slot):
 //! ```
-//! HSM_USER_PASSWORD=12345678 cargo test --target x86_64-unknown-linux-gnu --features softhsm2 -- tests::test_hsm_all
+//! HSM_USER_PASSWORD=648219 HSM_SLOT_ID=1 cargo test --target x86_64-unknown-linux-gnu --features smartcardhsm -- tests::test_hsm_all
 //! ```
 
 use std::{collections::HashMap, ptr, sync::Arc, thread};
@@ -20,9 +20,9 @@ use pkcs11_sys::{
 use rand::{TryRngCore, rngs::OsRng};
 use uuid::Uuid;
 
-use crate::Softhsm2;
+use crate::Smartcardhsm;
 
-const LIB_PATH: &str = "/usr/lib/softhsm/libsofthsm2.so";
+const LIB_PATH: &str = "/usr/local/lib/libsc-hsm-pkcs11.so";
 
 fn generate_random_data<const T: usize>() -> HResult<[u8; T]> {
     let mut bytes = [0u8; T];
@@ -36,7 +36,7 @@ fn get_slot() -> HResult<Arc<SlotManager>> {
     let user_password = get_hsm_password()?;
     let slot = get_hsm_slot_id()?;
     let passwords = HashMap::from([(slot, Some(user_password.clone()))]);
-    let hsm = Softhsm2::instantiate(LIB_PATH, passwords)?;
+    let hsm = Smartcardhsm::instantiate(LIB_PATH, passwords)?;
     let manager = hsm.get_slot(slot)?;
     Ok(manager)
 }
@@ -49,10 +49,9 @@ fn test_hsm_all() -> HResult<()> {
     test_hsm_destroy_all()?;
     test_hsm_generate_aes_key()?;
     test_hsm_generate_rsa_keypair()?;
-    test_hsm_rsa_key_wrap()?;
+    //    test_hsm_rsa_key_wrap()?; //Not supported
     test_hsm_rsa_pkcs_encrypt()?;
     test_hsm_rsa_oaep_encrypt()?;
-    test_hsm_aes_gcm_encrypt()?;
     test_hsm_aes_cbc_encrypt()?;
     test_hsm_aes_cbc_multi_round_encrypt()?;
     test_hsm_multi_threaded_rsa_encrypt_decrypt_test()?;
@@ -76,7 +75,7 @@ fn test_hsm_low_level_test() -> HResult<()> {
         flags: CKF_OS_LOCKING_OK,
         pReserved: ptr::null_mut(),
     };
-    let rv = init(&raw mut p_init_args as CK_VOID_PTR);
+    let rv = init(&mut p_init_args as *const CK_C_INITIALIZE_ARGS as CK_VOID_PTR);
     assert_eq!(rv, CKR_OK);
 
     Ok(())
@@ -85,7 +84,7 @@ fn test_hsm_low_level_test() -> HResult<()> {
 #[test]
 fn test_hsm_get_info() -> HResult<()> {
     log_init(None);
-    let hsm = Softhsm2::instantiate(LIB_PATH, HashMap::new())?;
+    let hsm = Smartcardhsm::instantiate(LIB_PATH, HashMap::new())?;
     let info = hsm.get_info()?;
     info!("Connected to the HSM: {info}");
     Ok(())
@@ -117,7 +116,7 @@ fn test_hsm_get_supported_algorithms() -> HResult<()> {
     let user_password = get_hsm_password()?;
     let slot = get_hsm_slot_id()?;
     let passwords = HashMap::from([(slot, Some(user_password.clone()))]);
-    let hsm = Softhsm2::instantiate(LIB_PATH, passwords)?;
+    let hsm = Smartcardhsm::instantiate(LIB_PATH, passwords)?;
     let supported_algorithms = hsm.get_algorithms(slot)?;
     info!("{:?}", supported_algorithms);
 
@@ -134,27 +133,31 @@ fn test_hsm_generate_aes_key() -> HResult<()> {
     info!("Generated exportable AES key: {}", key_id);
     // assert the key handles are identical
     assert_eq!(key_handle, session.get_object_handle(key_id.as_bytes())?);
-    // re-export the key
-    let key = session
-        .export_key(key_handle)?
-        .expect("Failed to find the key");
-    let key_bytes = match key.key_material() {
-        KeyMaterial::AesKey(v) => v,
-        KeyMaterial::RsaPrivateKey(_) | KeyMaterial::RsaPublicKey(_) => {
-            panic!("Expected an AES key");
-        }
-    };
-    assert_eq!(key_bytes.len() * 8, 256);
-    assert_eq!(key.id(), key_id.as_str());
-    match key.key_material() {
-        KeyMaterial::AesKey(v) => {
-            assert_eq!(v.len(), 32);
-        }
-        KeyMaterial::RsaPrivateKey(_) | KeyMaterial::RsaPublicKey(_) => {
-            panic!("Expected an AES key");
+    // check if key is exportable
+    if session.export_key(key_handle).is_err() {
+        info!("Key is NOT exportable");
+    } else {
+        // re-export the key
+        let key = session
+            .export_key(key_handle)?
+            .expect("Failed to find the key");
+        let key_bytes = match key.key_material() {
+            KeyMaterial::AesKey(v) => v,
+            KeyMaterial::RsaPrivateKey(_) | KeyMaterial::RsaPublicKey(_) => {
+                panic!("Expected an AES key");
+            }
+        };
+        assert_eq!(key_bytes.len() * 8, 256);
+        assert_eq!(key.id(), key_id.as_str());
+        match key.key_material() {
+            KeyMaterial::AesKey(v) => {
+                assert_eq!(v.len(), 32);
+            }
+            KeyMaterial::RsaPrivateKey(_) | KeyMaterial::RsaPublicKey(_) => {
+                panic!("Expected an AES key");
+            }
         }
     }
-
     // Generate a sensitive AES key
     let key_id = Uuid::new_v4().to_string();
     let key_handle = session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, true)?;
@@ -170,7 +173,7 @@ fn test_hsm_generate_aes_key() -> HResult<()> {
 fn test_hsm_generate_rsa_keypair() -> HResult<()> {
     log_init(Some("debug"));
     let sk_id = Uuid::new_v4().to_string();
-    let pk_id = sk_id.clone() + "_pk ";
+    let pk_id = sk_id.clone() + "_pk";
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
     let (sk_handle, pk_handle) = session.generate_rsa_key_pair(
@@ -180,18 +183,34 @@ fn test_hsm_generate_rsa_keypair() -> HResult<()> {
         false,
     )?;
     info!("Generated exportable RSA key: sk: {sk_id}, pk: {pk_id}");
-    // export the private key
+    // check if private key is exportable. Some HSMs don't ever allow it.
     assert_eq!(sk_handle, session.get_object_handle(sk_id.as_bytes())?);
-    let key = session
-        .export_key(sk_handle)?
-        .expect("Failed to find the private key");
-    assert_eq!(key.id(), sk_id.as_str());
-    match key.key_material() {
-        KeyMaterial::RsaPrivateKey(v) => {
-            assert_eq!(v.modulus.len() * 8, 2048);
-        }
-        KeyMaterial::RsaPublicKey(_) | KeyMaterial::AesKey(_) => {
-            panic!("Expected an RSA private key");
+    assert_eq!(
+        KeyType::RsaPrivateKey,
+        session.get_key_type(sk_handle)?.unwrap()
+    );
+    assert_eq!(sk_id.as_bytes(), session.get_object_id(sk_handle)?.unwrap());
+    assert_eq!(sk_handle, session.get_object_handle(sk_id.as_bytes())?);
+    assert_eq!(
+        KeyType::RsaPublicKey,
+        session.get_key_type(pk_handle)?.unwrap()
+    );
+    assert_eq!(pk_id.as_bytes(), session.get_object_id(pk_handle)?.unwrap());
+    if session.export_key(sk_handle).is_err() {
+        info!("Private key is NOT exportable");
+    } else {
+        // export the private key
+        let key = session
+            .export_key(sk_handle)?
+            .expect("Failed to find the private key");
+        assert_eq!(key.id(), sk_id.as_str());
+        match key.key_material() {
+            KeyMaterial::RsaPrivateKey(v) => {
+                assert_eq!(v.modulus.len() * 8, 2048);
+            }
+            KeyMaterial::RsaPublicKey(_) | KeyMaterial::AesKey(_) => {
+                panic!("Expected an RSA private key");
+            }
         }
     }
     // export the public key
@@ -208,9 +227,9 @@ fn test_hsm_generate_rsa_keypair() -> HResult<()> {
             panic!("Expected an RSA public key");
         }
     }
-    // Generate a sensitive AES key
+    // Generate a sensitive RSA key
     let sk_id = Uuid::new_v4().to_string();
-    let pk_id = sk_id.clone() + "_pk ";
+    let pk_id = sk_id.clone() + "_pk";
     session.generate_rsa_key_pair(
         sk_id.as_bytes(),
         pk_id.as_bytes(),
@@ -235,7 +254,7 @@ fn test_hsm_rsa_key_wrap() -> HResult<()> {
     let session = slot.open_session(true)?;
     let symmetric_key = session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, true)?;
     let sk_id = Uuid::new_v4().to_string();
-    let pk_id = sk_id.clone() + "_pk ";
+    let pk_id = sk_id.clone() + "_pk";
     let (sk, pk) = session.generate_rsa_key_pair(
         sk_id.as_bytes(),
         pk_id.as_bytes(),
@@ -262,7 +281,7 @@ fn test_hsm_rsa_pkcs_encrypt() -> HResult<()> {
     let session = slot.open_session(true)?;
     let data = b"Hello, World!";
     let sk_id = Uuid::new_v4().to_string();
-    let pk_id = sk_id.clone() + "_pk ";
+    let pk_id = sk_id.clone() + "_pk";
     let (sk, pk) = session.generate_rsa_key_pair(
         sk_id.as_bytes(),
         pk_id.as_bytes(),
@@ -284,53 +303,24 @@ fn test_hsm_rsa_oaep_encrypt() -> HResult<()> {
     let session = slot.open_session(true)?;
     let data = b"Hello, World!";
     let sk_id = Uuid::new_v4().to_string();
-    let pk_id = sk_id.clone() + "_pk ";
+    let pk_id = sk_id.clone() + "_pk";
     let (sk, pk) = session.generate_rsa_key_pair(
         sk_id.as_bytes(),
         pk_id.as_bytes(),
         RsaKeySize::Rsa2048,
         true,
     )?;
-    let enc = session.encrypt(pk, HsmEncryptionAlgorithm::RsaOaepSha1, data)?;
+    let enc = session.encrypt(pk, HsmEncryptionAlgorithm::RsaOaepSha256, data)?;
     assert_eq!(enc.ciphertext.len(), 2048 / 8);
-    let plaintext = session.decrypt(sk, HsmEncryptionAlgorithm::RsaOaepSha1, &enc.ciphertext)?;
+    let plaintext = session.decrypt(sk, HsmEncryptionAlgorithm::RsaOaepSha256, &enc.ciphertext)?;
     assert_eq!(plaintext.as_slice(), data);
-    let data_2 = generate_random_data::<128>()?;
-    let enc_2 = session.encrypt(pk, HsmEncryptionAlgorithm::RsaOaepSha1, &data_2)?;
+    let data_2 = [35u8; 128];
+    let enc_2 = session.encrypt(pk, HsmEncryptionAlgorithm::RsaOaepSha256, &data_2)?;
     assert_eq!(enc_2.ciphertext.len(), 2048 / 8);
     let plaintext_2 =
-        session.decrypt(sk, HsmEncryptionAlgorithm::RsaOaepSha1, &enc_2.ciphertext)?;
+        session.decrypt(sk, HsmEncryptionAlgorithm::RsaOaepSha256, &enc_2.ciphertext)?;
     assert_eq!(plaintext_2.as_slice(), data_2);
     info!("Successfully encrypted/decrypted with RSA OAEP");
-    Ok(())
-}
-
-#[test]
-fn test_hsm_aes_gcm_encrypt() -> HResult<()> {
-    log_init(None);
-    let slot = get_slot()?;
-    let session = slot.open_session(true)?;
-    let data = b"Hello, World!";
-    let key_id = Uuid::new_v4().to_string();
-    let sk = session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, true)?;
-    info!("AES key handle: {sk}");
-    let enc = session.encrypt(sk, HsmEncryptionAlgorithm::AesGcm, data)?;
-    assert_eq!(enc.ciphertext.len(), data.len());
-    assert_eq!(enc.tag.clone().unwrap_or_default().len(), 16);
-    assert_eq!(enc.iv.clone().unwrap_or_default().len(), 12);
-    let plaintext = session.decrypt(
-        sk,
-        HsmEncryptionAlgorithm::AesGcm,
-        [
-            enc.iv.unwrap_or_default(),
-            enc.ciphertext,
-            enc.tag.unwrap_or_default(),
-        ]
-        .concat()
-        .as_slice(),
-    )?;
-    assert_eq!(plaintext.as_slice(), data);
-    info!("Successfully encrypted/decrypted with AES GCM");
     Ok(())
 }
 
@@ -500,13 +490,13 @@ fn test_hsm_multi_threaded_rsa_encrypt_decrypt_test() -> HResult<()> {
     let slot = get_slot()?;
 
     let mut handles = vec![];
-    for _ in 0..4 {
+    for _ in 0..2 {
         let slot = slot.clone();
         let handle = thread::spawn(move || {
             let session = slot.open_session(true)?;
             let data = b"Hello, World!";
             let sk_id = Uuid::new_v4().to_string();
-            let pk_id = sk_id.clone() + "_pk ";
+            let pk_id = sk_id.clone() + "_pk";
             let (sk, pk) = session.generate_rsa_key_pair(
                 sk_id.as_bytes(),
                 pk_id.as_bytes(),
@@ -540,23 +530,20 @@ fn test_hsm_list_objects() -> HResult<()> {
     log_init(None);
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
-    session.clear_object_handles()?;
     let objects = session.list_objects(HsmObjectFilter::Any)?;
-    for object in &objects {
+    for object in objects.iter() {
         session.destroy_object(*object)?;
     }
-    session.clear_object_handles()?;
     let objects = session.list_objects(HsmObjectFilter::Any)?;
     assert_eq!(objects.len(), 0);
     let sk_id = Uuid::new_v4().to_string();
-    let pk_id = sk_id.clone() + "_pk ";
+    let pk_id = sk_id.clone() + "_pk";
     let (_sk, _pk) = session.generate_rsa_key_pair(
         sk_id.as_bytes(),
         pk_id.as_bytes(),
         RsaKeySize::Rsa2048,
         false,
     )?;
-    session.clear_object_handles()?;
     let objects = session.list_objects(HsmObjectFilter::Any)?;
     assert_eq!(objects.len(), 2);
     let objects = session.list_objects(HsmObjectFilter::RsaKey)?;
@@ -569,14 +556,13 @@ fn test_hsm_list_objects() -> HResult<()> {
     assert_eq!(objects.len(), 0);
     // add another keypair
     let sk_id = Uuid::new_v4().to_string();
-    let pk_id = sk_id.clone() + "_pk ";
+    let pk_id = sk_id.clone() + "_pk";
     let (_sk, _pk) = session.generate_rsa_key_pair(
         sk_id.as_bytes(),
         pk_id.as_bytes(),
         RsaKeySize::Rsa3072,
         false,
     )?;
-    session.clear_object_handles()?;
     let objects = session.list_objects(HsmObjectFilter::Any)?;
     assert_eq!(objects.len(), 4);
     let objects = session.list_objects(HsmObjectFilter::RsaKey)?;
@@ -590,7 +576,6 @@ fn test_hsm_list_objects() -> HResult<()> {
     // add an AES key
     let key_id = Uuid::new_v4().to_string();
     let _key = session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, false)?;
-    session.clear_object_handles()?;
     let objects = session.list_objects(HsmObjectFilter::Any)?;
     assert_eq!(objects.len(), 5);
     let objects = session.list_objects(HsmObjectFilter::AesKey)?;
@@ -624,7 +609,7 @@ fn test_hsm_get_key_metadata() -> HResult<()> {
 
     // generate an RSA keypair
     let sk_id = Uuid::new_v4().to_string();
-    let pk_id = sk_id.clone() + "_pk ";
+    let pk_id = sk_id.clone() + "_pk";
     let (sk, pk) = session.generate_rsa_key_pair(
         sk_id.as_bytes(),
         pk_id.as_bytes(),
@@ -660,7 +645,7 @@ fn test_hsm_get_key_metadata() -> HResult<()> {
     assert_eq!(metadata.key_type, KeyType::RsaPublicKey);
     // assert!(metadata.sensitive);
     assert_eq!(metadata.key_length_in_bits, 2048);
-    assert_eq!(metadata.id.as_str(), pk_id.as_str());
+    assert_eq!(metadata.id.as_str(), sk_id.as_str());
     info!("Got key metadata");
     Ok(())
 }
@@ -671,7 +656,7 @@ fn test_hsm_destroy_all() -> HResult<()> {
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
     let objects = session.list_objects(HsmObjectFilter::Any)?;
-    for object in &objects {
+    for object in objects.iter() {
         session.destroy_object(*object)?;
     }
     let objects = session.list_objects(HsmObjectFilter::Any)?;

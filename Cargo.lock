@@ -1222,6 +1222,7 @@ dependencies = [
  "pkcs11-sys",
  "rand 0.9.2",
  "thiserror 2.0.16",
+ "uuid",
  "zeroize",
 ]
 
@@ -1388,6 +1389,7 @@ dependencies = [
  "reqwest 0.11.27",
  "serde",
  "serde_json",
+ "smartcardhsm_pkcs11_loader",
  "softhsm2_pkcs11_loader",
  "strum",
  "thiserror 2.0.16",
@@ -4770,6 +4772,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "smartcardhsm_pkcs11_loader"
+version = "5.8.1"
+dependencies = [
+ "cosmian_kms_base_hsm",
+ "cosmian_kms_interfaces",
+ "cosmian_logger",
+ "libloading",
+ "pkcs11-sys",
+ "rand 0.9.2",
+ "uuid",
+]
+
+[[package]]
 name = "socket2"
 version = "0.4.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4808,6 +4823,7 @@ dependencies = [
  "cosmian_logger",
  "libloading",
  "pkcs11-sys",
+ "rand 0.9.2",
  "uuid",
 ]
 
