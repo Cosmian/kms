@@ -132,7 +132,6 @@ pub fn wrap_object_with_key(
 /// * `KResult<Zeroizing<Vec<u8>>>` - the key data to wrap
 pub fn key_data_to_wrap(
     object: &Object,
-    // object_key_block: &&mut KeyBlock,
     key_wrapping_specification: &KeyWrappingSpecification,
 ) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
     trace!("key_wrapping_specification: {key_wrapping_specification:?}");
