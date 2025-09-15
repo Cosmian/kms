@@ -2,25 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
-## [5.9.0] - 2025-09-12
+## [5.9.0] - 2025-09-15
 
 ### 🚀 Features
 
-- CLI: added support for SHA1 in RSA key wrapping
-- CLI: add Azure functionality to facilitate BYOK
-- CLI: `attributes get` added support to retrieve Object tags only.
-
-### 📚 Documentation
-
-- Added Google CSEK and Google CMEK documentation.
-- Added Azure BYOK documentation.
-- Re-organized documentation.
+- Add Smart card HSM support and bug fixes (#538)
+- CLI features:
+    - added support for SHA1 in RSA key wrapping (#541)
+    - add Azure functionality to facilitate BYOK (#541)
+    - `attributes get` added support to retrieve Object tags only (#541)
+- *tracing*: print function names while using tracing macros. Use cosmian_logger instead of tracing crate (#536)
 
 ### 🐛 Bug Fixes
 
-- When wrapped with `No Encoding`, the RSA private key bytes
-  and EC private key bytes are now the PKCS#8 DER bytes
-- CLI: fixed broken `attributes get`
+- When wrapped with `No Encoding`, the RSA private key bytes and EC private key bytes are now the PKCS#8 DER bytes (#541)
+- CLI: fixed broken `attributes get` (#541)
+
+### 📚 Documentation
+
+- Added Google CSEK and Google CMEK documentation (#541)
+- Added Azure BYOK documentation (#541)
+- Re-organized documentation (#541)
+- Fixing typo in Encrypt/Decrypt requests examples (#545)
+
+### 🧪 Testing
+
+- Enable softhsm2 tests (#539)
+- Fix python installation on pykmip-tests GH workflow
+- Fix race condition on test_privileged_users
+- Add auth test with expired cert (#547)
 
 ## [5.8.1] - 2025-09-05
 

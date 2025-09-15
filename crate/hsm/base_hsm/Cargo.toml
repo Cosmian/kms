@@ -22,7 +22,7 @@ doctest = false
 
 [dependencies]
 async-trait = { workspace = true }
-cosmian_kms_interfaces = { path = "../../interfaces", version = "5.8.1" }
+cosmian_kms_interfaces = { path = "../../interfaces", version = "5.9.0" }
 cosmian_logger = { workspace = true }
 libloading = { workspace = true }
 lru = { workspace = true }
