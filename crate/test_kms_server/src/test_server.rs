@@ -282,6 +282,7 @@ pub struct AuthenticationOptions {
     pub use_https: bool,
     pub use_known_ca_list: bool,
     pub pkcs12_client_cert: Option<String>,
+    pub pkcs12_client_cert_password: Option<String>,
     pub api_token_id: Option<String>,
     pub api_token: Option<String>,
     pub server_tls_cipher_suites: Option<String>,
@@ -327,6 +328,7 @@ pub async fn start_test_server_with_options(
     hsm_options: Option<HsmOptions>,
     privileged_users: Option<Vec<String>>,
 ) -> Result<TestsContext, KmsClientError> {
+    // Generate server params
     let server_params = generate_server_params(
         db_config.clone(),
         port,
@@ -340,7 +342,6 @@ pub async fn start_test_server_with_options(
     let owner_client_config = generate_owner_conf(&server_params, &authentication_options)?;
 
     info!(" -- Test KMS server configuration: {:#?}", server_params);
-
     info!(
         " -- Test KMS owner client configuration: {:#?}",
         owner_client_config
@@ -433,7 +434,7 @@ async fn wait_for_server_to_start(
     Ok(())
 }
 
-fn generate_tls_config(
+fn generate_server_tls_config(
     use_https: bool,
     use_known_ca_list: bool,
     tls_cipher_suites: Option<String>,
@@ -495,7 +496,7 @@ fn generate_server_params(
             tmp_path: workspace_dir.join("tmp"),
         },
         db: db_config,
-        tls: generate_tls_config(
+        tls: generate_server_tls_config(
             authentication_options.use_https,
             authentication_options.use_known_ca_list,
             authentication_options.server_tls_cipher_suites.clone(),
@@ -601,7 +602,13 @@ fn generate_owner_conf(
                 None
             },
             ssl_client_pkcs12_password: if use_client_cert_auth {
-                Some("password".to_owned())
+                authentication_options
+                    .pkcs12_client_cert_password
+                    .as_ref()
+                    .map_or_else(
+                        || Some("password".to_owned()),
+                        |pkcs12_client_cert_password| Some(pkcs12_client_cert_password.clone()),
+                    )
             } else {
                 None
             },
