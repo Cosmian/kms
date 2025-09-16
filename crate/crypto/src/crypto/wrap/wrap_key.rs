@@ -174,6 +174,9 @@ pub fn key_data_to_wrap(
             Object::SymmetricKey(SymmetricKey { key_block, .. }) => key_block
                 .key_bytes()
                 .context("cannot recover symmetric key bytes ")?,
+            Object::SecretData(SecretData { key_block, .. }) => key_block
+                .key_bytes()
+                .context("cannot recover secret data bytes ")?,
             Object::PrivateKey(..) => {
                 let pkey = kmip_private_key_to_openssl(object)?;
                 Zeroizing::new(pkey.private_key_to_pkcs8()?)
