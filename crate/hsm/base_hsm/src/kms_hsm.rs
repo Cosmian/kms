@@ -42,6 +42,10 @@ use crate::{AesKeySize, BaseHsm, RsaKeySize, hsm_capabilities::HsmProvider};
 
 #[async_trait]
 impl<P: HsmProvider> HSM for BaseHsm<P> {
+    async fn get_available_slot_list(&self) -> InterfaceResult<Vec<usize>> {
+        Ok(self.get_available_slot_list()?)
+    }
+
     async fn get_supported_algorithms(
         &self,
         slot_id: usize,

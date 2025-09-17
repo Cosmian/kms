@@ -112,6 +112,36 @@ impl<P: HsmProvider> BaseHsm<P> {
         }
     }
 
+    /// Retrieve the list of slot identifiers for the HSM.
+    ///
+    /// This function returns the IDs of all slots that the HSM has been
+    /// initialized with, typically from configuration.
+    ///
+    /// # Returns
+    /// * `HResult<Vec<usize>>` - A result containing a vector of slot identifiers
+    ///   available.
+    ///
+    /// # Errors
+    /// * Returns an error if the internal slot list cannot be accessed
+    ///   due to a locking failure.
+    ///
+    /// # Notes
+    /// This function acquires a lock on the internal slot list to ensure
+    /// thread-safe access.
+    ///
+    /// This function does not return any passwords.
+    pub fn get_available_slot_list(&self) -> HResult<Vec<usize>> {
+        let slots = self
+            .slots
+            .lock()
+            .context("Failed to acquire lock on slots")?;
+        let mut slot_list = Vec::with_capacity(slots.len());
+        for (k, _v) in slots.iter() {
+            slot_list.push(*k);
+        }
+        Ok(slot_list)
+    }
+
     /// Retrieve the list of supported cryptographic algorithms for a given HSM slot.
     ///
     /// This function queries the specified slot to determine which algorithms are available

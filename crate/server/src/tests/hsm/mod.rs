@@ -1,5 +1,7 @@
-use std::sync::Arc;
+use std::{ops::Add, sync::Arc};
 
+use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::requests::create_rsa_key_pair_request;
+use cosmian_kms_interfaces::as_hsm_uid;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::{
         kmip_messages::{
@@ -17,7 +19,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         requests::symmetric_key_create_request,
     },
 };
-use cosmian_logger::{info, log_init};
+use cosmian_logger::{debug, info, log_init};
 use uuid::Uuid;
 
 const EMPTY_TAGS: [&str; 0] = [];
@@ -36,6 +38,7 @@ use crate::{
 #[cfg(feature = "non-fips")]
 mod ec_dek;
 mod rsa_dek;
+mod search;
 mod symmetric_dek;
 mod test_helpers;
 
@@ -44,6 +47,8 @@ mod test_helpers;
 #[tokio::test]
 async fn test_all() {
     log_init(option_env!("RUST_LOG"));
+    info!("HSM: find");
+    search::test_object_search().await.unwrap();
 
     info!("HSM: wrapped_symmetric_dek");
     symmetric_dek::test_wrapped_symmetric_dek().await.unwrap();
@@ -90,17 +95,21 @@ fn hsm_clap_config(owner: &str, kek_id: Option<Uuid>) -> KResult<ClapConfig> {
     info!("Configured HSM tests for {unwrapped_model}");
 
     if let Some(kek_id) = kek_id {
-        clap_config.key_encryption_key =
-            Some(format!("hsm::{}::{}", clap_config.hsm_slot[0], kek_id));
+        clap_config.key_encryption_key = Some(as_hsm_uid!(clap_config.hsm_slot[0], kek_id));
     }
 
     Ok(clap_config)
 }
 
 async fn create_kek(kek_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<()> {
+    create_sym_key(kek_uid, owner, kms).await?;
+    Ok(())
+}
+
+async fn create_sym_key(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<()> {
     // create the key encryption key
     let create_request = symmetric_key_create_request(
-        Some(UniqueIdentifier::TextString(kek_uid.to_owned())),
+        Some(UniqueIdentifier::TextString(key_uid.to_owned())),
         256,
         CryptographicAlgorithm::AES,
         EMPTY_TAGS,
@@ -114,9 +123,51 @@ async fn create_kek(kek_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<()> {
     };
     assert_eq!(
         create_response.unique_identifier,
-        UniqueIdentifier::TextString(kek_uid.to_owned())
+        UniqueIdentifier::TextString(key_uid.to_owned())
     );
     Ok(())
+}
+
+async fn create_key_pair(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<()> {
+    // create the key encryption key
+    let create_request = create_rsa_key_pair_request(
+        Some(UniqueIdentifier::TextString(key_uid.to_owned())),
+        EMPTY_TAGS,
+        2048,
+        false,
+        None,
+    )?;
+    let response = send_message(
+        kms.clone(),
+        owner,
+        vec![Operation::CreateKeyPair(Box::from(create_request))],
+    )
+    .await?;
+    let Operation::CreateKeyPairResponse(create_response) = &response[0] else {
+        return Err(KmsError::ServerError("invalid response".to_owned()))
+    };
+    assert_eq!(
+        create_response.private_key_unique_identifier,
+        UniqueIdentifier::TextString(key_uid.to_owned())
+    );
+    assert_eq!(
+        create_response.public_key_unique_identifier,
+        UniqueIdentifier::TextString(key_uid.to_owned().add("_pk"))
+    );
+    Ok(())
+}
+
+async fn locate_keys(owner: &str, kms: &Arc<KMS>) -> KResult<Vec<UniqueIdentifier>> {
+    // create the key encryption key
+    let response =
+        send_message(kms.clone(), owner, vec![Operation::Locate(Box::default())]).await?;
+    let Operation::LocateResponse(locate_response) = &response[0] else {
+        return Err(KmsError::ServerError("invalid response".to_owned()))
+    };
+    Ok(locate_response
+        .unique_identifier
+        .clone()
+        .unwrap_or_default())
 }
 
 async fn delete_key(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<()> {
@@ -137,6 +188,19 @@ async fn delete_key(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<()> {
         destroy_response.unique_identifier,
         UniqueIdentifier::TextString(key_uid.to_owned())
     );
+    Ok(())
+}
+
+async fn delete_all_keys(owner: &str, kms: &Arc<KMS>) -> KResult<()> {
+    let found_keys = locate_keys(owner, kms).await?;
+    debug!("Found {} keys. Removing...", found_keys.len());
+    for found_key in found_keys {
+        let key_string = match found_key.as_str() {
+            None => continue,
+            Some(key_string) => key_string,
+        };
+        delete_key(key_string, owner, kms).await?;
+    }
     Ok(())
 }
 

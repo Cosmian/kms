@@ -16,12 +16,13 @@ use cosmian_kmip::{
         kmip_types::{CryptographicAlgorithm, KeyFormatType},
     },
 };
-use cosmian_logger::debug;
+use cosmian_logger::{debug, error, trace};
 use num_bigint_dig::{BigInt, Sign};
 
 use crate::{
-    AtomicOperation, HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject, InterfaceError,
-    InterfaceResult, KeyMaterial, ObjectWithMetadata, ObjectsStore, SessionParams,
+    AtomicOperation, HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject, HsmObjectFilter,
+    InterfaceError, InterfaceResult, KeyMaterial, ObjectWithMetadata, ObjectsStore, SessionParams,
+    as_hsm_uid,
 };
 
 pub struct HsmStore {
@@ -236,8 +237,30 @@ impl ObjectsStore for HsmStore {
         user_must_be_owner: bool,
         params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
-        // HSM Objects cannot be searched
-        Ok(vec![])
+        let slot_ids = self.hsm.get_available_slot_list().await?;
+        let mut uids = Vec::new();
+        for slot_id in slot_ids {
+            let found = self
+                .hsm
+                .find(slot_id, HsmObjectFilter::Any)
+                .await
+                .unwrap_or(vec![]);
+            for object_id in found {
+                debug!("Getting metadata for: {:02X?}", object_id);
+                let object_string = match str::from_utf8(&object_id) {
+                    Ok(object_string) => object_string,
+                    Err(err) => {
+                        error!("Failed to decode object_id {}", err);
+                        continue
+                    }
+                };
+                let uid = as_hsm_uid!(slot_id, object_string);
+                trace!("Found: {uid}");
+                uids.push((uid, State::Active, Attributes::default()));
+            }
+        }
+
+        Ok(uids)
     }
 }
 

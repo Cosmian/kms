@@ -90,6 +90,16 @@ impl HsmObject {
 /// The HSM is assumed to be a PKCS#11 compliant device.
 #[async_trait]
 pub trait HSM: Send + Sync {
+    /// Get the list of available slot identifiers for the HSM.
+    ///
+    /// This function retrieves the identifiers of all slots that the HSM
+    /// has been initialized with.
+    ///
+    /// # Returns
+    /// * `InterfaceResult<Vec<usize>>` - A result containing a vector of slot
+    ///   identifiers available.
+    async fn get_available_slot_list(&self) -> InterfaceResult<Vec<usize>>;
+
     /// Get the supported cryptographic algorithms for a given HSM slot.
     ///
     /// This function queries the HSM to retrieve the list of algorithms

@@ -37,6 +37,9 @@ fn get_slot() -> HResult<Arc<SlotManager>> {
     let slot = get_hsm_slot_id()?;
     let passwords = HashMap::from([(slot, Some(user_password.clone()))]);
     let hsm = Softhsm2::instantiate(LIB_PATH, passwords)?;
+    let slots = hsm.get_available_slot_list()?;
+    assert_eq!(slots.len(), 1);
+    assert_eq!(slots.first(), Some(&slot));
     let manager = hsm.get_slot(slot)?;
     Ok(manager)
 }
@@ -88,6 +91,8 @@ fn test_hsm_get_info() -> HResult<()> {
     let hsm = Softhsm2::instantiate(LIB_PATH, HashMap::new())?;
     let info = hsm.get_info()?;
     info!("Connected to the HSM: {info}");
+    let slots = hsm.get_available_slot_list()?;
+    assert_eq!(slots.len(), 0);
     Ok(())
 }
 
