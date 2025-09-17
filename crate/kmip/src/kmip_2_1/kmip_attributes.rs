@@ -47,7 +47,7 @@ use crate::{
 /// the server MAY retain all, some or none of the object attributes,
 /// depending on the object type and server policy.
 // TODO: there are 56 attributes in the specs. Only a handful are implemented here
-#[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Default)]
+#[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Default, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct Attributes {
     /// The Activation Date attribute contains the date and time when the

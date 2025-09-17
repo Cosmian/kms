@@ -1,6 +1,8 @@
 use std::{ops::Add, sync::Arc};
 
-use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::requests::create_rsa_key_pair_request;
+use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::{
+    kmip_attributes::Attributes, requests::create_rsa_key_pair_request,
+};
 use cosmian_kms_interfaces::as_hsm_uid;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::{
@@ -14,7 +16,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     },
     kmip_2_1::{
         kmip_messages::RequestMessageBatchItem,
-        kmip_operations::{Destroy, Operation, Revoke},
+        kmip_operations::{Destroy, Locate, Operation, Revoke},
         kmip_types::{CryptographicAlgorithm, UniqueIdentifier},
         requests::symmetric_key_create_request,
     },
@@ -157,10 +159,25 @@ async fn create_key_pair(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<
     Ok(())
 }
 
-async fn locate_keys(owner: &str, kms: &Arc<KMS>) -> KResult<Vec<UniqueIdentifier>> {
+async fn locate_keys(
+    owner: &str,
+    kms: &Arc<KMS>,
+    attributes: Option<Attributes>,
+) -> KResult<Vec<UniqueIdentifier>> {
+    let locate_request = Locate {
+        maximum_items: None,
+        offset_items: None,
+        storage_status_mask: None,
+        object_group_member: None,
+        attributes: attributes.unwrap_or_default(),
+    };
     // create the key encryption key
-    let response =
-        send_message(kms.clone(), owner, vec![Operation::Locate(Box::default())]).await?;
+    let response = send_message(
+        kms.clone(),
+        owner,
+        vec![Operation::Locate(Box::new(locate_request))],
+    )
+    .await?;
     let Operation::LocateResponse(locate_response) = &response[0] else {
         return Err(KmsError::ServerError("invalid response".to_owned()))
     };
@@ -192,7 +209,7 @@ async fn delete_key(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<()> {
 }
 
 async fn delete_all_keys(owner: &str, kms: &Arc<KMS>) -> KResult<()> {
-    let found_keys = locate_keys(owner, kms).await?;
+    let found_keys = locate_keys(owner, kms, None).await?;
     debug!("Found {} keys. Removing...", found_keys.len());
     for found_key in found_keys {
         let key_string = match found_key.as_str() {

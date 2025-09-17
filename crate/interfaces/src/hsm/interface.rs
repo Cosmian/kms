@@ -20,6 +20,7 @@ pub enum HsmKeypairAlgorithm {
 }
 
 /// Supported object filters on find
+#[derive(Clone, PartialEq, Eq)]
 pub enum HsmObjectFilter {
     Any,
     AesKey,

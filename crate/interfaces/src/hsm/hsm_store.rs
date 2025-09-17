@@ -239,14 +239,55 @@ impl ObjectsStore for HsmStore {
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
         let slot_ids = self.hsm.get_available_slot_list().await?;
         let mut uids = Vec::new();
+        if user_must_be_owner && user != self.hsm_admin {
+            return Ok(uids);
+        }
+
+        let search_attributes =
+            researched_attributes.map_or_else(Attributes::default, |search_attributes| {
+                debug!("Search attributes: {:?}", search_attributes);
+                search_attributes.clone()
+            });
+
+        if !check_basic_compatibility(&search_attributes, state) {
+            return Ok(uids);
+        }
+        let Some(object_filter) = derive_hsm_object_filter(&search_attributes) else {
+            return Ok(uids);
+        };
+        let key_size_filter = extract_key_size_filter(&search_attributes);
+        let key_id_filter = match search_attributes.unique_identifier {
+            Some(unique_identifier) => {
+                let Some(str) = unique_identifier.as_str() else {
+                    return Ok(uids);
+                };
+                Some(str.to_owned())
+            }
+            None => None,
+        };
+
         for slot_id in slot_ids {
             let found = self
                 .hsm
-                .find(slot_id, HsmObjectFilter::Any)
+                .find(slot_id, object_filter.clone())
                 .await
                 .unwrap_or(vec![]);
             for object_id in found {
                 debug!("Getting metadata for: {:02X?}", object_id);
+                let object_meta = self
+                    .hsm
+                    .get_key_metadata(slot_id, &object_id)
+                    .await
+                    .unwrap_or_default();
+                if let Some(expected_key_size) = key_size_filter {
+                    if let Some(meta) = object_meta {
+                        if meta.key_length_in_bits != expected_key_size {
+                            continue;
+                        }
+                    } else {
+                        continue;
+                    }
+                }
                 let object_string = match str::from_utf8(&object_id) {
                     Ok(object_string) => object_string,
                     Err(err) => {
@@ -256,12 +297,118 @@ impl ObjectsStore for HsmStore {
                 };
                 let uid = as_hsm_uid!(slot_id, object_string);
                 trace!("Found: {uid}");
+                if let Some(ref wanted_id) = key_id_filter {
+                    if !uid.eq(wanted_id) {
+                        continue
+                    }
+                }
                 uids.push((uid, State::Active, Attributes::default()));
             }
         }
 
         Ok(uids)
     }
+}
+
+fn check_basic_compatibility(researched_attributes: &Attributes, state: Option<State>) -> bool {
+    // HSM keys are always active.
+    if let Some(s) = state {
+        if s != State::Active {
+            return false;
+        }
+    }
+    if researched_attributes.link.is_some() {
+        return false;
+    }
+    if !researched_attributes.get_tags().is_empty() {
+        return false;
+    }
+    if researched_attributes.object_group.is_some() {
+        return false;
+    }
+    if researched_attributes.object_group_member.is_some() {
+        return false;
+    }
+    if researched_attributes.comment.is_some() {
+        return false;
+    }
+    if researched_attributes.contact_information.is_some() {
+        return false;
+    }
+    if let Some(critical) = researched_attributes.critical {
+        if critical {
+            return false;
+        }
+    }
+    if researched_attributes.description.is_some() {
+        return false;
+    }
+    if researched_attributes.digest.is_some() {
+        return false;
+    }
+    if researched_attributes.short_unique_identifier.is_some() {
+        return false;
+    }
+    if researched_attributes.cryptographic_usage_mask.is_some() {
+        return false;
+    }
+    if researched_attributes.x_509_certificate_identifier.is_some() {
+        return false;
+    }
+    if researched_attributes.x_509_certificate_issuer.is_some() {
+        return false;
+    }
+    if researched_attributes.x_509_certificate_subject.is_some() {
+        return false;
+    }
+    true
+}
+
+/// Derives the HSM object filter from attributes.
+/// Returns `None` if incompatible combination.
+fn derive_hsm_object_filter(researched_attributes: &Attributes) -> Option<HsmObjectFilter> {
+    let mut object_filter = HsmObjectFilter::Any;
+
+    if let Some(cryptographic_algorithm) = researched_attributes.cryptographic_algorithm {
+        object_filter = match cryptographic_algorithm {
+            CryptographicAlgorithm::AES => HsmObjectFilter::AesKey,
+            CryptographicAlgorithm::RSA => HsmObjectFilter::RsaKey,
+            _ => return None,
+        };
+    }
+
+    if let Some(object_type) = researched_attributes.object_type {
+        object_filter = match object_type {
+            ObjectType::SymmetricKey => {
+                if object_filter == HsmObjectFilter::RsaKey {
+                    return None;
+                }
+                HsmObjectFilter::AesKey
+            }
+            ObjectType::PublicKey => {
+                if object_filter == HsmObjectFilter::AesKey {
+                    return None;
+                }
+                HsmObjectFilter::RsaPublicKey
+            }
+            ObjectType::PrivateKey => {
+                if object_filter == HsmObjectFilter::AesKey {
+                    return None;
+                }
+                HsmObjectFilter::RsaPrivateKey
+            }
+            _ => return None,
+        };
+    }
+
+    Some(object_filter)
+}
+
+/// Extracts key size filter (if any).
+fn extract_key_size_filter(researched_attributes: &Attributes) -> Option<usize> {
+    researched_attributes
+        .cryptographic_length
+        .map(|cryptographic_length| usize::try_from(cryptographic_length).unwrap_or(0))
 }
 
 /// The creation of RSA key pairs is done via 2 atomic operations,

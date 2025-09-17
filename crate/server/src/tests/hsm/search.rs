@@ -1,6 +1,9 @@
 use std::{ops::Add, sync::Arc};
 
-use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier::TextString;
+use cosmian_kms_client_utils::reexport::cosmian_kmip::{
+    kmip_1_4::kmip_attributes::{Attribute, CryptographicAlgorithm, ObjectType},
+    kmip_2_1::kmip_types::UniqueIdentifier::TextString,
+};
 use cosmian_kms_interfaces::as_hsm_uid;
 use uuid::Uuid;
 
@@ -32,26 +35,133 @@ pub(super) async fn test_object_search() -> KResult<()> {
 
     delete_all_keys(&owner, &kms).await?;
     create_sym_key(&aes_uid, &owner, &kms).await?;
-    let mut found = locate_keys(&owner, &kms).await?;
+    let mut found = locate_keys(&owner, &kms, None).await?;
     assert_eq!(found.len(), 1);
     assert!(found.contains(&TextString(aes_uid.clone())));
+    found = locate_keys(
+        &owner,
+        &kms,
+        Some(vec![Attribute::UniqueIdentifier(aes_uid.clone())].into()),
+    )
+    .await?;
+    assert_eq!(found.len(), 1);
+    found = locate_keys(
+        &owner,
+        &kms,
+        Some(vec![Attribute::UniqueIdentifier(rsa_uid.clone())].into()),
+    )
+    .await?;
+    assert_eq!(found.len(), 0);
 
     create_key_pair(&rsa_uid, &owner, &kms).await?;
-    found = locate_keys(&owner, &kms).await?;
+    found = locate_keys(&owner, &kms, None).await?;
     assert_eq!(found.len(), 3);
     assert!(found.contains(&TextString(rsa_uid.clone())));
     assert!(found.contains(&TextString(rsa_uid.clone().add("_pk"))));
 
+    found = locate_keys(
+        &owner,
+        &kms,
+        Some(vec![Attribute::UniqueIdentifier(rsa_uid.clone())].into()),
+    )
+    .await?;
+    assert_eq!(found.len(), 1);
+    found = locate_keys(
+        &owner,
+        &kms,
+        Some(vec![Attribute::ObjectType(ObjectType::SymmetricKey)].into()),
+    )
+    .await?;
+    assert_eq!(found.len(), 1);
+    found = locate_keys(
+        &owner,
+        &kms,
+        Some(vec![Attribute::ObjectType(ObjectType::PublicKey)].into()),
+    )
+    .await?;
+    assert_eq!(found.len(), 1);
+    found = locate_keys(
+        &owner,
+        &kms,
+        Some(vec![Attribute::ObjectType(ObjectType::PrivateKey)].into()),
+    )
+    .await?;
+    assert_eq!(found.len(), 1);
+    found = locate_keys(
+        &owner,
+        &kms,
+        Some(
+            vec![Attribute::CryptographicAlgorithm(
+                CryptographicAlgorithm::AES,
+            )]
+            .into(),
+        ),
+    )
+    .await?;
+    assert_eq!(found.len(), 1);
+    found = locate_keys(
+        &owner,
+        &kms,
+        Some(
+            vec![Attribute::CryptographicAlgorithm(
+                CryptographicAlgorithm::RSA,
+            )]
+            .into(),
+        ),
+    )
+    .await?;
+    assert_eq!(found.len(), 2);
+    found = locate_keys(
+        &owner,
+        &kms,
+        Some(
+            vec![Attribute::CryptographicAlgorithm(
+                CryptographicAlgorithm::DES,
+            )]
+            .into(),
+        ),
+    )
+    .await?;
+    assert_eq!(found.len(), 0);
+    found = locate_keys(
+        &owner,
+        &kms,
+        Some(vec![Attribute::ObjectType(ObjectType::Certificate)].into()),
+    )
+    .await?;
+    assert_eq!(found.len(), 0);
+    found = locate_keys(
+        &owner,
+        &kms,
+        Some(vec![Attribute::CryptographicLength(256)].into()),
+    )
+    .await?;
+    assert_eq!(found.len(), 1);
+    found = locate_keys(
+        &owner,
+        &kms,
+        Some(vec![Attribute::CryptographicLength(2048)].into()),
+    )
+    .await?;
+    assert_eq!(found.len(), 2);
+    found = locate_keys(
+        &owner,
+        &kms,
+        Some(vec![Attribute::CryptographicLength(128)].into()),
+    )
+    .await?;
+    assert_eq!(found.len(), 0);
+
     delete_key(&rsa_uid, &owner, &kms).await?;
-    found = locate_keys(&owner, &kms).await?;
+    found = locate_keys(&owner, &kms, None).await?;
     assert_eq!(found.len(), 2);
 
     delete_key(&rsa_uid.clone().add("_pk"), &owner, &kms).await?;
-    found = locate_keys(&owner, &kms).await?;
+    found = locate_keys(&owner, &kms, None).await?;
     assert_eq!(found.len(), 1);
 
     delete_key(&aes_uid, &owner, &kms).await?;
-    found = locate_keys(&owner, &kms).await?;
+    found = locate_keys(&owner, &kms, None).await?;
     assert_eq!(found.len(), 0);
 
     Ok(())
