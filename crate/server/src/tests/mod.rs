@@ -11,6 +11,7 @@ mod kmip_messages;
 #[cfg(feature = "non-fips")]
 mod kmip_server_tests;
 mod ms_dke;
+mod secret_data_tests;
 pub(crate) mod test_set_attribute;
 mod test_sign;
 pub(crate) mod test_utils;

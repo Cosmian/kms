@@ -161,7 +161,7 @@ pub fn create_secret_data_kmip_object(
     }))
 }
 
-/// Build a `Create` request for a secrete data - random Seed of 32 bytes generated server-side
+/// Build a `Create` request for a secret data - random Seed of 32 bytes generated server-side
 pub fn secret_data_create_request<T: IntoIterator<Item = impl AsRef<str>>>(
     secret_id: Option<UniqueIdentifier>,
     tags: T,

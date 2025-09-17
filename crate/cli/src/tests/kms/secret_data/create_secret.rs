@@ -10,7 +10,6 @@ use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
     CsRng,
     reexport::rand_core::{RngCore, SeedableRng},
 };
-#[cfg(feature = "non-fips")]
 use cosmian_logger::info;
 use tempfile::TempDir;
 use test_kms_server::start_default_test_kms_server;
@@ -23,7 +22,6 @@ use crate::{
     error::result::KmsCliResult,
 };
 
-#[cfg(feature = "non-fips")]
 #[tokio::test]
 pub(crate) async fn test_create_secret_data() -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server().await;
@@ -52,7 +50,6 @@ pub(crate) async fn test_create_secret_data() -> KmsCliResult<()> {
 
 /// Test for issue #549: Support for Wrapping SecretData Objects
 /// This test verifies that SecretData objects can be exported with wrapping
-#[cfg(feature = "non-fips")]
 #[tokio::test]
 pub(crate) async fn test_secret_data_export_with_wrapping() -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server().await;
@@ -126,7 +123,6 @@ pub(crate) async fn test_secret_data_export_with_wrapping() -> KmsCliResult<()> 
 }
 
 /// Test SecretData export with different wrapping algorithms
-#[cfg(feature = "non-fips")]
 #[tokio::test]
 pub(crate) async fn test_secret_data_export_with_different_wrapping_algorithms() -> KmsCliResult<()>
 {
@@ -174,7 +170,6 @@ pub(crate) async fn test_secret_data_export_with_different_wrapping_algorithms()
 }
 
 /// Test creating SecretData with wrapping key during creation
-#[cfg(feature = "non-fips")]
 #[tokio::test]
 pub(crate) async fn test_create_secret_data_with_wrapping_key() -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server().await;
@@ -215,7 +210,6 @@ pub(crate) async fn test_create_secret_data_with_wrapping_key() -> KmsCliResult<
 }
 
 /// Test that reproduces the exact scenario from issue #549
-#[cfg(feature = "non-fips")]
 #[tokio::test]
 pub(crate) async fn test_issue_549_exact_scenario() -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server().await;
@@ -275,7 +269,6 @@ pub(crate) async fn test_issue_549_exact_scenario() -> KmsCliResult<()> {
 }
 
 /// Test edge cases for SecretData wrapping
-#[cfg(feature = "non-fips")]
 #[tokio::test]
 pub(crate) async fn test_secret_data_wrapping_edge_cases() -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server().await;
@@ -346,7 +339,6 @@ pub(crate) async fn test_secret_data_wrapping_edge_cases() -> KmsCliResult<()> {
 }
 
 /// Test SecretData export with unwrapping
-#[cfg(feature = "non-fips")]
 #[tokio::test]
 pub(crate) async fn test_secret_data_export_with_unwrapping() -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server().await;
@@ -409,7 +401,6 @@ pub(crate) async fn test_secret_data_export_with_unwrapping() -> KmsCliResult<()
 }
 
 /// Test for base64 export format with SecretData
-#[cfg(feature = "non-fips")]
 #[tokio::test]
 pub(crate) async fn test_secret_data_base64_export() -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server().await;
