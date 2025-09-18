@@ -89,7 +89,7 @@ jobs:
 
   non-fips-image:
     name: Non-FIPS image build and tests
-    if: github.repository == 'Cosmian/kms'
+    if: github.repository == 'Cosmian/kms' && !startsWith(github.ref_name, 'dependabot/')
     uses: Cosmian/reusable_workflows/.github/workflows/build_docker_image.yml@develop
     with:
       prefix: ''
@@ -99,7 +99,7 @@ jobs:
 
   fips-image:
     name: FIPS image build and tests
-    if: github.repository == 'Cosmian/kms'
+    if: github.repository == 'Cosmian/kms' && !startsWith(github.ref_name, 'dependabot/')
     uses: Cosmian/reusable_workflows/.github/workflows/build_docker_image.yml@develop
     with:
       prefix: FIPS
@@ -111,6 +111,7 @@ jobs:
   ### Push binaries on package.cosmian.com and make Release
   ##############################################################################
   push-artifacts:
+    if: github.repository == 'Cosmian/kms' && !startsWith(github.ref_name, 'dependabot/')
     needs:
       - cargo-clippy
       - cargo-deny
