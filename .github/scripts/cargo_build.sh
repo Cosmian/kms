@@ -61,15 +61,15 @@ if [ -z "$SKIP_SERVICES_TESTS" ]; then
   unset SKIP_SERVICES_TESTS
 fi
 
-# Add --skip google_cse for forks
+# Add --skip google_cse for forks and dependabot branches
 # Indeed, Google CSE tests require credentials that are not available for forks.
-if [ "$GITHUB_REPOSITORY" != "Cosmian/kms" ]; then
+if [ "$GITHUB_REPOSITORY" != "Cosmian/kms" ] || [[ "$GITHUB_REF_NAME" == dependabot/* ]]; then
   if [ -z "$SKIP_SERVICES_TESTS" ]; then
     SKIP_SERVICES_TESTS="--skip google_cse"
   else
     SKIP_SERVICES_TESTS="$SKIP_SERVICES_TESTS --skip google_cse"
   fi
-  echo "Info: Running on fork, adding --skip google_cse to SKIP_SERVICES_TESTS"
+  echo "Info: Running on fork or dependabot branch, adding --skip google_cse to SKIP_SERVICES_TESTS"
 fi
 
 rustup target add "$TARGET"
