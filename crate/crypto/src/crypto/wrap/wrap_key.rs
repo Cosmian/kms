@@ -237,7 +237,10 @@ pub(crate) fn wrap(
             }
 
             let ciphertext = match key_block.key_format_type {
-                KeyFormatType::TransparentSymmetricKey => {
+                // The default format for a symmetric key is Raw
+                //  according to sec. 4.26 Key Format Type of the KMIP 2.1 specs:
+                //  see https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html#_Toc57115585
+                KeyFormatType::TransparentSymmetricKey | KeyFormatType::Raw => {
                     let cryptographic_parameters = key_wrapping_data
                         .encryption_key_information
                         .clone()
