@@ -13,14 +13,18 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kms_interfaces::SessionParams,
 };
 use cosmian_logger::debug;
-use openssl::{hash::MessageDigest, pkcs5::pbkdf2_hmac};
+use openssl::{
+    hash::MessageDigest,
+    md::{Md, MdRef},
+    pkcs5::pbkdf2_hmac,
+    pkey::Id,
+    pkey_ctx::PkeyCtx,
+};
 use uuid::Uuid;
 
 use crate::{core::KMS, error::KmsError, kms_bail, result::KResult};
 
 // Default constants for key derivation
-const DEFAULT_SALT: &[u8] = b"default salt";
-const DEFAULT_INFO: &[u8] = b"default info";
 const DEFAULT_PBKDF2_ITERATIONS: u32 = 600_000; // OWASP recommendation for PBKDF2 with SHA-256
 
 pub(crate) async fn derive_key(
@@ -134,13 +138,15 @@ pub(crate) async fn derive_key(
                 .derivation_parameters
                 .salt
                 .as_deref()
-                .unwrap_or(DEFAULT_SALT);
+                .ok_or_else(|| {
+                    KmsError::InvalidRequest("Salt is required for PBKDF2".to_owned())
+                })?;
             let iterations = request
                 .derivation_parameters
                 .iteration_count
                 .unwrap_or_else(|| i32::try_from(DEFAULT_PBKDF2_ITERATIONS).unwrap_or(600_000)); // Fallback if somehow DEFAULT doesn't fit in i32
             let iterations_u32 = u32::try_from(iterations).map_err(|_e| {
-                KmsError::InvalidRequest("Iteration count must be positive".to_owned())
+                KmsError::InvalidRequest("Invalid iteration count value".to_owned())
             })?;
 
             derive_pbkdf2(
@@ -152,16 +158,12 @@ pub(crate) async fn derive_key(
             )?
         }
         DerivationMethod::HKDF => {
-            let salt = request
-                .derivation_parameters
-                .salt
-                .as_deref()
-                .unwrap_or(DEFAULT_SALT);
+            let salt = request.derivation_parameters.salt.as_deref().unwrap_or(&[]); // Empty salt is acceptable for HKDF
             let info = request
                 .derivation_parameters
                 .derivation_data
                 .as_deref()
-                .map_or(DEFAULT_INFO, |v| v);
+                .map_or(&[][..], std::vec::Vec::as_slice); // Empty info is acceptable for HKDF
 
             derive_hkdf(
                 &base_key_bytes,
@@ -169,7 +171,7 @@ pub(crate) async fn derive_key(
                 info,
                 cryptographic_length,
                 hashing_algorithm,
-            )
+            )?
         }
         _ => kms_bail!(KmsError::InvalidRequest(format!(
             "DeriveKey: unsupported derivation method: {:?}",
@@ -311,6 +313,20 @@ pub(crate) async fn derive_key(
     })
 }
 
+/// Map `HashingAlgorithm` to OpenSSL `MdRef` for HKDF
+fn get_md(algorithm: HashingAlgorithm) -> KResult<&'static MdRef> {
+    match algorithm {
+        HashingAlgorithm::SHA1 => Ok(Md::sha1()),
+        HashingAlgorithm::SHA224 => Ok(Md::sha224()),
+        HashingAlgorithm::SHA256 => Ok(Md::sha256()),
+        HashingAlgorithm::SHA384 => Ok(Md::sha384()),
+        HashingAlgorithm::SHA512 => Ok(Md::sha512()),
+        _ => Err(KmsError::InvalidRequest(format!(
+            "Unsupported hashing algorithm: {algorithm:?}"
+        ))),
+    }
+}
+
 /// Map `HashingAlgorithm` to OpenSSL `MessageDigest` for PBKDF2
 fn get_message_digest(algorithm: HashingAlgorithm) -> KResult<MessageDigest> {
     match algorithm {
@@ -319,23 +335,9 @@ fn get_message_digest(algorithm: HashingAlgorithm) -> KResult<MessageDigest> {
         HashingAlgorithm::SHA256 => Ok(MessageDigest::sha256()),
         HashingAlgorithm::SHA384 => Ok(MessageDigest::sha384()),
         HashingAlgorithm::SHA512 => Ok(MessageDigest::sha512()),
-        _ => {
-            kms_bail!(KmsError::InvalidRequest(format!(
-                "Unsupported hashing algorithm: {algorithm:?}"
-            )))
-        }
-    }
-}
-
-/// Map `HashingAlgorithm` to the appropriate OpenSSL hash function
-fn hash_with_algorithm(data: &[u8], algorithm: HashingAlgorithm) -> Vec<u8> {
-    match algorithm {
-        HashingAlgorithm::SHA1 => openssl::sha::sha1(data).to_vec(),
-        HashingAlgorithm::SHA224 => openssl::sha::sha224(data).to_vec(),
-        HashingAlgorithm::SHA384 => openssl::sha::sha384(data).to_vec(),
-        HashingAlgorithm::SHA512 => openssl::sha::sha512(data).to_vec(),
-        // For unsupported algorithms, default to SHA256
-        _ => openssl::sha::sha256(data).to_vec(),
+        _ => Err(KmsError::InvalidRequest(format!(
+            "Unsupported hashing algorithm: {algorithm:?}"
+        ))),
     }
 }
 
@@ -363,22 +365,51 @@ fn derive_pbkdf2(
     Ok(output)
 }
 
-/// HKDF key derivation
+/// HKDF key derivation using OpenSSL's native HKDF implementation
 fn derive_hkdf(
     key: &[u8],
     salt: &[u8],
     info: &[u8],
     length: usize,
     hashing_algorithm: HashingAlgorithm,
-) -> Vec<u8> {
-    // Simple HKDF implementation using OpenSSL
-    let hash = hash_with_algorithm(&[key, salt, info].concat(), hashing_algorithm);
+) -> KResult<Vec<u8>> {
+    // Get the message digest for the hashing algorithm
+    let md = get_md(hashing_algorithm)?;
 
-    let mut output = hash;
-    output.truncate(length);
-    if output.len() < length {
-        output.resize(length, 0);
+    // Create HKDF context
+    let mut ctx = PkeyCtx::new_id(Id::HKDF)
+        .map_err(|e| KmsError::CryptographicError(format!("Failed to create HKDF context: {e}")))?;
+
+    // Initialize the context for key derivation
+    ctx.derive_init().map_err(|e| {
+        KmsError::CryptographicError(format!("Failed to initialize HKDF derivation: {e}"))
+    })?;
+
+    // Set the hash function
+    ctx.set_hkdf_md(md).map_err(|e| {
+        KmsError::CryptographicError(format!("Failed to set HKDF hash function: {e}"))
+    })?;
+
+    // Set the input key material (IKM)
+    ctx.set_hkdf_key(key)
+        .map_err(|e| KmsError::CryptographicError(format!("Failed to set HKDF key: {e}")))?;
+
+    // Set salt if provided, otherwise OpenSSL will use a zero salt
+    if !salt.is_empty() {
+        ctx.set_hkdf_salt(salt)
+            .map_err(|e| KmsError::CryptographicError(format!("Failed to set HKDF salt: {e}")))?;
     }
 
-    output
+    // Set info if provided
+    if !info.is_empty() {
+        ctx.add_hkdf_info(info)
+            .map_err(|e| KmsError::CryptographicError(format!("Failed to set HKDF info: {e}")))?;
+    }
+
+    // Derive the key material
+    let mut output = vec![0_u8; length];
+    ctx.derive(Some(&mut output))
+        .map_err(|e| KmsError::CryptographicError(format!("HKDF derivation failed: {e}")))?;
+
+    Ok(output)
 }

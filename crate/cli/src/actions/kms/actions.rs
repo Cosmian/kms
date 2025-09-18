@@ -44,11 +44,11 @@ pub enum KmsActions {
     Mac(MacAction),
     #[command(subcommand)]
     Rsa(RsaCommands),
+    #[command(subcommand)]
+    SecretData(SecretDataCommands),
     ServerVersion(ServerVersionAction),
     #[command(subcommand)]
     Sym(SymmetricCommands),
-    #[command(subcommand)]
-    SecretData(SecretDataCommands),
 }
 
 impl KmsActions {

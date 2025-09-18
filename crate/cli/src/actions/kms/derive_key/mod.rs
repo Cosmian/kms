@@ -93,7 +93,19 @@ impl DeriveKeyAction {
                 ..Default::default()
             }),
             initialization_vector,
-            derivation_data: Some(Zeroizing::new(b"CLI key derivation".to_vec())), // Mandatory for KMIP
+            derivation_data: if self.derivation_method.to_uppercase() == "HKDF" {
+                // For HKDF, use a unique context based on the key ID and timestamp
+                use std::time::{SystemTime, UNIX_EPOCH};
+                let timestamp = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs();
+                let context = format!("CLI-HKDF-{}-{}", self.key_id, timestamp);
+                Some(Zeroizing::new(context.into_bytes()))
+            } else {
+                // For PBKDF2, derivation_data is optional, so we can omit it
+                None
+            },
             salt: Some(salt),
             iteration_count: Some(self.iteration_count),
         };
