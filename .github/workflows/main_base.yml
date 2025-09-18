@@ -20,7 +20,8 @@ on:
 
 jobs:
   cla-assistant:
-    if: github.event.pull_request.head.repo.full_name != github.repository
+    if: (github.event.pull_request.head.repo.full_name != github.repository) && ((github.event.comment.body == 'recheck' || github.event.comment.body ==
+      'I have read the CLA Document and I hereby sign the CLA') || github.event_name == 'pull_request_target')
     uses: ./.github/workflows/cla.yml
     secrets: inherit
 
