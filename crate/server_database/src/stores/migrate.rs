@@ -5,7 +5,7 @@ use version_compare::{Cmp, compare};
 
 use crate::{DbError, error::DbResult};
 
-pub(crate) const KMS_VERSION_BEFORE_MIGRATION_SUPPORT: &str = "4.12.0";
+pub(super) const KMS_VERSION_BEFORE_MIGRATION_SUPPORT: &str = "4.12.0";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -19,7 +19,7 @@ pub(crate) enum DbState {
 // Note: <DB> must be present because it makes the database type a formal parameter of the trait itself.
 // This solves the "unconstrained type parameter" error when trying to implement is with an sqlx generic Database
 #[async_trait(?Send)]
-pub(crate) trait Migrate<DB> {
+pub(super) trait Migrate<DB> {
     /// Migrate the database to the latest version
     async fn migrate(&self) -> DbResult<()> {
         fn lower(version: &str, target: &str) -> DbResult<bool> {
@@ -80,7 +80,7 @@ pub(crate) trait Migrate<DB> {
     /// Before the version 4.13.0, the KMIP attributes were stored in the object table (via the objects themselves).
     /// The new column attributes allow storing the KMIP attributes in a dedicated column
     /// even for KMIP objects that do not have KMIP attributes (such as Certificates).
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     async fn migrate_from_4_12_0_to_4_13_0(&self) -> DbResult<()>;
 
     /// Objects stored in the `objects` table have now migrated from
@@ -108,6 +108,6 @@ pub(crate) trait Migrate<DB> {
     ///    }
     /// }
     ///
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     async fn migrate_to_4_22_2(&self) -> DbResult<()>;
 }

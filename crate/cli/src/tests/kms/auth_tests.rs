@@ -52,8 +52,8 @@ async fn create_api_token(ctx: &TestsContext) -> KmsCliResult<(String, String)> 
 }
 
 #[tokio::test]
-#[allow(clippy::large_stack_frames)]
-pub(crate) async fn test_kms_all_authentications() -> KmsCliResult<()> {
+#[expect(clippy::large_stack_frames)]
+pub(super) async fn test_kms_all_authentications() -> KmsCliResult<()> {
     // log_init(Some("error,cosmian_kms_server=info,cosmian_kms_cli=info"));
     log_init(option_env!("RUST_LOG"));
 

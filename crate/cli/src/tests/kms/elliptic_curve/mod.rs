@@ -1,3 +1,3 @@
-pub(crate) mod create_key_pair;
+pub(super) mod create_key_pair;
 #[cfg(feature = "non-fips")]
-pub(crate) mod encrypt_decrypt;
+pub(super) mod encrypt_decrypt;

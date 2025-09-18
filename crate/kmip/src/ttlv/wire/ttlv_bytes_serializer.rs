@@ -16,7 +16,7 @@ fn write_tag<W: Write, TAG: KmipTag>(writer: &mut W, tag_str: &str) -> Result<()
 /// Write a type as a 1-byte integer
 fn write_type<W: Write>(writer: &mut W, item_type: TtlvType) -> Result<(), TtlvError> {
     // Clippy doesn't like the as conversion, but it's safe here
-    #[allow(clippy::as_conversions)]
+    #[expect(clippy::as_conversions)]
     writer.write_all(&[item_type as u8])?;
     Ok(())
 }
@@ -142,9 +142,9 @@ where
     }
 }
 
-#[allow(clippy::unwrap_used)]
-#[allow(clippy::as_conversions)]
-#[allow(clippy::indexing_slicing)]
+#[expect(clippy::unwrap_used)]
+#[expect(clippy::as_conversions)]
+#[expect(clippy::indexing_slicing)]
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;
@@ -638,7 +638,7 @@ mod tests {
         assert_eq!(&buffer[4..8], &(8_u32 + 8 + 8 + 16).to_be_bytes());
 
         // Check LinkType inner structure
-        #[allow(clippy::items_after_statements)]
+        #[expect(clippy::items_after_statements)]
         const OFFSET_1: usize = 8;
         assert_eq!(
             &buffer[OFFSET_1..3 + OFFSET_1],
@@ -657,7 +657,7 @@ mod tests {
         assert_eq!(&buffer[12 + OFFSET_1..16 + OFFSET_1], &[0; 4]);
 
         // Check LinkedObjectIdentifier inner structure
-        #[allow(clippy::items_after_statements)]
+        #[expect(clippy::items_after_statements)]
         const OFFSET_2: usize = 8 + 16;
         assert_eq!(
             &buffer[OFFSET_2..3 + OFFSET_2],

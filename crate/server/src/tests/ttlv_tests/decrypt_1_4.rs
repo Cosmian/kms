@@ -37,7 +37,7 @@ fn test_decrypt_1_4() {
     assert_eq!(data, b"Hello, world!");
 }
 
-pub(crate) fn decrypt(
+pub(super) fn decrypt(
     client: &SocketClient,
     key_id: &str,
     nonce: &[u8],

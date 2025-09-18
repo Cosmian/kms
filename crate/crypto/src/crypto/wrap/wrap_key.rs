@@ -193,7 +193,7 @@ pub fn key_data_to_wrap(
 }
 
 /// Encrypt bytes using the wrapping key
-pub(crate) fn wrap(
+pub(super) fn wrap(
     wrapping_key: &Object,
     key_wrapping_data: &KeyWrappingData,
     key_to_wrap: &[u8],

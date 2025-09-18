@@ -158,7 +158,7 @@ fn wrap_test(
             key_to_wrap_bytes
         );
         assert_eq!(key_to_wrap.key_block()?.key_wrapping_data, None);
-    }
+    };
 
     // TTLV encoding
     {
@@ -192,7 +192,7 @@ fn wrap_test(
             key_to_wrap_bytes
         );
         assert_eq!(key_to_wrap.key_block()?.key_wrapping_data, None);
-    }
+    };
 
     Ok(())
 }

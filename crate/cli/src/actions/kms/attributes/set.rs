@@ -25,7 +25,6 @@ use crate::{
     error::result::KmsCliResult,
 };
 
-#[allow(clippy::upper_case_acronyms)]
 #[derive(ValueEnum, Clone, Copy, Debug, EnumIter)]
 pub enum CCryptographicAlgorithm {
     AES,

@@ -114,7 +114,7 @@ pub(crate) async fn import(
 /// If the user specified tags, we will use these and remove them from the request.
 /// else we will use the tags with the object attributes
 /// If no tags are found, an empty set is returned
-pub(crate) fn recover_tags(request_attributes: &Attributes, object: &Object) -> HashSet<String> {
+pub(super) fn recover_tags(request_attributes: &Attributes, object: &Object) -> HashSet<String> {
     // extract the tags from the request attributes
     let mut tags = request_attributes.get_tags();
     if !tags.is_empty() {
@@ -135,7 +135,7 @@ pub(crate) fn recover_tags(request_attributes: &Attributes, object: &Object) -> 
     HashSet::new()
 }
 
-pub(crate) async fn process_symmetric_key(
+pub(super) async fn process_symmetric_key(
     kms: &KMS,
     request: Import,
     owner: &str,
@@ -219,7 +219,7 @@ pub(crate) async fn process_symmetric_key(
     ))
 }
 
-pub(crate) fn process_certificate(
+pub(super) fn process_certificate(
     request: Import,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     // check if the object will be replaced if it already exists.
@@ -286,7 +286,7 @@ pub(crate) fn process_certificate(
     ))
 }
 
-pub(crate) async fn process_public_key(
+pub(super) async fn process_public_key(
     kms: &KMS,
     request: Import,
     owner: &str,
@@ -383,7 +383,7 @@ pub(crate) async fn process_public_key(
     ))
 }
 
-pub(crate) async fn process_private_key(
+pub(super) async fn process_private_key(
     kms: &KMS,
     request: Import,
     owner: &str,
@@ -512,7 +512,6 @@ fn single_operation(
     }
 }
 
-#[allow(clippy::ref_option)]
 async fn process_pkcs12(
     kms: &KMS,
     owner: &str,
@@ -815,7 +814,7 @@ async fn process_pkcs12(
     Ok((private_key_id, operations))
 }
 
-pub(crate) async fn process_secret_data(
+pub(super) async fn process_secret_data(
     kms: &KMS,
     request: Import,
     owner: &str,
@@ -895,7 +894,7 @@ pub(crate) async fn process_secret_data(
     ))
 }
 
-pub(crate) fn process_opaque_object(
+pub(super) fn process_opaque_object(
     request: Import,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     // check if the object will be replaced if it already exists

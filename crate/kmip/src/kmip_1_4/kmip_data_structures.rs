@@ -8,9 +8,13 @@ use serde::{
 use tracing::instrument;
 use zeroize::Zeroizing;
 
-use super::kmip_attributes::Attribute;
-#[allow(clippy::wildcard_imports)]
-use super::kmip_types::*;
+use super::{
+    kmip_attributes::Attribute,
+    kmip_types::{
+        CryptographicAlgorithm, DigitalSignatureAlgorithm, EncodingOption, KeyCompressionType,
+        KeyFormatType, ProfileName, RecommendedCurve, WrappingMethod,
+    },
+};
 use crate::{
     KmipError, SafeBigInt,
     kmip_0::kmip_types::{
@@ -736,7 +740,7 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
                 }
             }
 
-            #[allow(clippy::many_single_char_names)]
+            #[expect(clippy::many_single_char_names)]
             fn visit_map<V>(self, mut map: V) -> Result<Self::Value, V::Error>
             where
                 V: MapAccess<'de>,
@@ -1657,7 +1661,7 @@ impl TryFrom<kmip_2_1::kmip_data_structures::ExtensionInformation> for Extension
     fn try_from(
         val: kmip_2_1::kmip_data_structures::ExtensionInformation,
     ) -> Result<Self, Self::Error> {
-        #[allow(clippy::as_conversions)]
+        #[expect(clippy::as_conversions)]
         Ok(Self {
             extension_name: val.extension_name,
             extension_tag: val.extension_tag,

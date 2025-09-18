@@ -28,6 +28,8 @@ use crate::{
     result::{KResult, KResultHelper},
     tests::test_utils,
 };
+
+#[expect(clippy::panic_in_result_fn)]
 #[tokio::test]
 async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     // cosmian_logger::log_init(Some("debug"));

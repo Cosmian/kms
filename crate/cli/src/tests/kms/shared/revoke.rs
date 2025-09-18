@@ -86,7 +86,7 @@ async fn test_revoke_ec_key() -> KmsCliResult<()> {
 
         assert_revoked(ctx, &private_key_id).await?;
         assert_revoked(ctx, &public_key_id).await?;
-    }
+    };
 
     // Revoke via public key
     {
@@ -104,7 +104,7 @@ async fn test_revoke_ec_key() -> KmsCliResult<()> {
 
         assert_revoked(ctx, &private_key_id).await?;
         assert_revoked(ctx, &public_key_id).await?;
-    }
+    };
 
     Ok(())
 }
@@ -163,7 +163,7 @@ async fn test_revoke_cover_crypt() -> KmsCliResult<()> {
         assert_revoked(ctx, &master_public_key_id).await?;
         assert_revoked(ctx, &user_key_id_1).await?;
         assert_revoked(ctx, &user_key_id_2).await?;
-    }
+    };
 
     // Check revocation of all keys when the public key is revoked
     {
@@ -208,7 +208,7 @@ async fn test_revoke_cover_crypt() -> KmsCliResult<()> {
         assert_revoked(ctx, &master_public_key_id).await?;
         assert_revoked(ctx, &user_key_id_1).await?;
         assert_revoked(ctx, &user_key_id_2).await?;
-    }
+    };
 
     // Check that revoking a user key does not revoke anything else
     {
@@ -254,39 +254,33 @@ async fn test_revoke_cover_crypt() -> KmsCliResult<()> {
         let tmp_dir = TempDir::new()?;
         let tmp_path = tmp_dir.path();
 
-        assert!(
-            ExportSecretDataOrKeyAction {
-                key_file: tmp_path.join("output.export"),
-                key_id: Some(master_secret_key_id.to_string()),
-                ..Default::default()
-            }
-            .run(ctx.get_owner_client())
-            .await
-            .is_ok()
-        );
+        ExportSecretDataOrKeyAction {
+            key_file: tmp_path.join("output.export"),
+            key_id: Some(master_secret_key_id.to_string()),
+            ..Default::default()
+        }
+        .run(ctx.get_owner_client())
+        .await
+        .unwrap();
 
-        assert!(
-            ExportSecretDataOrKeyAction {
-                key_file: tmp_path.join("output.export"),
-                key_id: Some(master_public_key_id.to_string()),
-                ..Default::default()
-            }
-            .run(ctx.get_owner_client())
-            .await
-            .is_ok()
-        );
+        ExportSecretDataOrKeyAction {
+            key_file: tmp_path.join("output.export"),
+            key_id: Some(master_public_key_id.to_string()),
+            ..Default::default()
+        }
+        .run(ctx.get_owner_client())
+        .await
+        .unwrap();
 
-        assert!(
-            ExportSecretDataOrKeyAction {
-                key_file: tmp_path.join("output.export"),
-                key_id: Some(user_key_id_2.to_string()),
-                ..Default::default()
-            }
-            .run(ctx.get_owner_client())
-            .await
-            .is_ok()
-        );
-    }
+        ExportSecretDataOrKeyAction {
+            key_file: tmp_path.join("output.export"),
+            key_id: Some(user_key_id_2.to_string()),
+            ..Default::default()
+        }
+        .run(ctx.get_owner_client())
+        .await
+        .unwrap();
+    };
 
     Ok(())
 }

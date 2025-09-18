@@ -250,8 +250,76 @@ where
 ///     pub(crate) object: Object,
 /// }
 /// ```
+fn db_object_to_object(db_object: &Value) -> Result<Object, DbError> {
+    let object_type = db_object["object_type"].as_str().ok_or_else(|| {
+        DbError::DatabaseError(format!(
+            "migration to 4.22.1+ failed: object_type not found in object: {db_object:?}",
+        ))
+    })?;
+    let mut content = db_object["object"].clone();
+    // make sure we can actually deserialize and re-serialize the objects
+    Ok(match object_type {
+        "PrivateKey" => {
+            migrate_key_material(&mut content)?;
+            let obj = serde_json::from_value::<PrivateKey>(content).map_err(|e| {
+                DbError::DatabaseError(format!(
+                    "migration to 4.22.1+ failed: failed to deserialize PrivateKey: {e}"
+                ))
+            })?;
+            Object::PrivateKey(obj)
+        }
+        "PublicKey" => {
+            let obj = serde_json::from_value::<PublicKey>(content).map_err(|e| {
+                DbError::DatabaseError(format!(
+                    "migration to 4.22.1+ failed: failed to deserialize PublicKey: {e}"
+                ))
+            })?;
+            Object::PublicKey(obj)
+        }
+        "Certificate" => {
+            let obj = serde_json::from_value::<Certificate>(content).map_err(|e| {
+                DbError::DatabaseError(format!(
+                    "migration to 4.22.1+ failed: failed to deserialize Certificate: {e}"
+                ))
+            })?;
+            Object::Certificate(obj)
+        }
+        "SymmetricKey" => {
+            let obj = serde_json::from_value::<SymmetricKey>(content).map_err(|e| {
+                DbError::DatabaseError(format!(
+                    "migration to 4.22.1+ failed: failed to deserialize SymmetricKey: {e}"
+                ))
+            })?;
+            Object::SymmetricKey(obj)
+        }
+        "SecretData" => {
+            let obj = serde_json::from_value::<SecretData>(content).map_err(|e| {
+                DbError::DatabaseError(format!(
+                    "migration to 4.22.1+ failed: failed to deserialize SecretData: {e}"
+                ))
+            })?;
+            Object::SecretData(obj)
+        }
+        "OpaqueObject" => {
+            let obj = serde_json::from_value::<OpaqueObject>(content).map_err(|e| {
+                DbError::DatabaseError(format!(
+                    "migration to 4.22.1+ failed: failed to deserialize OpaqueObject: {e}"
+                ))
+            })?;
+            Object::OpaqueObject(obj)
+        }
+        x => {
+            return Err(DbError::DatabaseError(format!(
+                "migration to 4.22.1+ failed: unknown object type: {x}"
+            )));
+        }
+    })
+}
+
+/*
+// This function appears to be orphaned migration code - commenting out to fix compilation
 #[allow(dead_code)]
-fn db_object_to_object(db_object: &Value) -> DbResult<Object> {
+fn down(&self) -> BoxFuture<'_, Result<(), sea_orm::DbErr>> {
     let object_type = db_object["object_type"].as_str().ok_or_else(|| {
         DbError::DatabaseError(format!(
             "migration to 4.22.1+ failed: object_type not found in object: {db_object:?}",
@@ -317,24 +385,37 @@ fn db_object_to_object(db_object: &Value) -> DbResult<Object> {
         }
     })
 }
+*/
 
 /// Migrate the `KeyMaterial` which used `BigUint` to `KeyMaterial` which uses `BigInt`
-#[allow(dead_code)]
 fn migrate_key_material(content: &mut Value) -> Result<(), DbError> {
-    let key_format_type =
-        KeyFormatType::try_from(content["KeyBlock"]["KeyFormatType"].as_str().ok_or_else(
-            || {
-                DbError::DatabaseError(format!(
-                    "migration to 4.22.1+ failed: KeyFormatType not found in object: {content:?}",
-                ))
-            },
-        )?)
-        .map_err(|e| {
+    let key_format_type = content
+        .get("KeyBlock")
+        .and_then(|kb| kb.get("KeyFormatType"))
+        .and_then(|kft| kft.as_str())
+        .ok_or_else(|| {
             DbError::DatabaseError(format!(
-                "migration to 4.22.1+ failed: Unknown KeyFormatType not found in object: {e}"
+                "migration to 4.22.1+ failed: KeyFormatType not found in object: {content:?}",
+            ))
+        })
+        .and_then(|kft_str| {
+            KeyFormatType::try_from(kft_str).map_err(|e| {
+                DbError::DatabaseError(format!(
+                    "migration to 4.22.1+ failed: Unknown KeyFormatType: {e}"
+                ))
+            })
+        })?;
+
+    let key_material_value = content
+        .get("KeyBlock")
+        .and_then(|kb| kb.get("KeyValue"))
+        .and_then(|kv| kv.get("KeyMaterial"))
+        .ok_or_else(|| {
+            DbError::DatabaseError(format!(
+                "migration to 4.22.1+ failed: KeyMaterial not found in object: {content:?}",
             ))
         })?;
-    let key_material_value = &content["KeyBlock"]["KeyValue"]["KeyMaterial"];
+
     let key_material_4_21: KeyMaterial421 = serde_json::from_value(key_material_value.clone())
         .map_err(|e| {
             DbError::DatabaseError(format!(
@@ -342,11 +423,18 @@ fn migrate_key_material(content: &mut Value) -> Result<(), DbError> {
             ))
         })?;
     let key_material: KeyMaterial = key_material_4_21.into();
-    content["KeyBlock"]["KeyValue"]["KeyMaterial"] =
-        key_material.to_json_value(key_format_type).map_err(|e| {
-            DbError::DatabaseError(format!(
-                "migration to 4.22.1+ failed: failed to replace KeyMaterial: {e}"
-            ))
-        })?;
+
+    // Safely update the nested value
+    if let Some(key_block) = content.get_mut("KeyBlock") {
+        if let Some(key_value) = key_block.get_mut("KeyValue") {
+            if let Some(key_material_field) = key_value.get_mut("KeyMaterial") {
+                *key_material_field = key_material.to_json_value(key_format_type).map_err(|e| {
+                    DbError::DatabaseError(format!(
+                        "migration to 4.22.1+ failed: failed to serialize KeyMaterial: {e}"
+                    ))
+                })?;
+            }
+        }
+    }
     Ok(())
 }

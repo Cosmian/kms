@@ -1,11 +1,14 @@
+#[cfg(feature = "non-fips")]
 use std::path::PathBuf;
 
+#[cfg(feature = "non-fips")]
 use cosmian_kms_client::{
     cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm,
     kmip_2_1::kmip_types::UniqueIdentifier, read_object_from_json_ttlv_file,
 };
 #[cfg(feature = "non-fips")]
 use cosmian_logger::log_init;
+#[cfg(feature = "non-fips")]
 use test_kms_server::start_default_test_kms_server;
 
 #[cfg(feature = "non-fips")]
@@ -14,6 +17,7 @@ use crate::actions::kms::{
     elliptic_curves::keys::create_key_pair::CreateKeyPairAction as CreateEcKeyPairAction,
     symmetric::keys::create_key::CreateKeyAction,
 };
+#[cfg(feature = "non-fips")]
 use crate::{
     actions::kms::shared::{ExportSecretDataOrKeyAction, ImportSecretDataOrKeyAction},
     error::{KmsCliError, result::KmsCliResult},
@@ -52,16 +56,14 @@ pub(crate) async fn test_import_cover_crypt() -> KmsCliResult<()> {
     .await?;
 
     // reimporting the same key with the same id should fail
-    assert!(
-        ImportSecretDataOrKeyAction {
-            key_file: PathBuf::from(&public_key_path.clone()),
-            key_id: Some(master_public_key_id.clone()),
-            ..Default::default()
-        }
-        .run(ctx.get_owner_client())
-        .await
-        .is_err()
-    );
+    ImportSecretDataOrKeyAction {
+        key_file: PathBuf::from(&public_key_path.clone()),
+        key_id: Some(master_public_key_id.clone()),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await
+    .unwrap_err();
 
     //...unless we force it with replace_existing
     let master_public_key_id_: String = ImportSecretDataOrKeyAction {
@@ -121,7 +123,7 @@ pub(crate) async fn test_generate_export_import() -> KmsCliResult<()> {
     Ok(())
 }
 
-#[allow(dead_code)]
+#[cfg(feature = "non-fips")]
 pub(crate) async fn export_import_test(
     private_key_id: &UniqueIdentifier,
     algorithm: Option<CryptographicAlgorithm>,

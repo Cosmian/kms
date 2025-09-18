@@ -88,7 +88,7 @@ impl Base64Display for Option<Vec<Vec<u8>>> {
 
 #[derive(Serialize, Deserialize, PartialEq, Eq)]
 #[serde(untagged)]
-#[allow(clippy::large_enum_variant)]
+#[expect(clippy::large_enum_variant)]
 pub enum Operation {
     Activate(Activate),
     ActivateResponse(ActivateResponse),

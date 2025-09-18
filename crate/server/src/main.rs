@@ -149,8 +149,8 @@ async fn run() -> KResult<()> {
     {
         warn!("This is a demo version, the server will stop in 3 months");
         let demo = actix_rt::spawn(expiry::demo_timeout());
-        futures::future::select(Box::pin(start_kms_server(server_params, None)), demo).await;
-    }
+        futures::future::select(Box::pin(start_kms_server(server_params, None)), demo).await
+    };
 
     // Start the KMS
     #[cfg(not(feature = "timeout"))]
@@ -161,7 +161,7 @@ async fn run() -> KResult<()> {
 
 #[cfg(feature = "non-fips")]
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[expect(clippy::unwrap_used)]
 mod tests {
     use std::path::PathBuf;
 

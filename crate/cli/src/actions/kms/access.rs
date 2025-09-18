@@ -93,11 +93,11 @@ impl GrantAccess {
             .any(|op| *op != KmipOperation::Create);
 
         let uid = if requires_object_uid {
-            Some(UniqueIdentifier::TextString(
-                self.object_uid
-                    .clone()
-                    .context("Object UID is required for operations other than `create`")?,
-            ))
+            let object_uid = self
+                .object_uid
+                .clone()
+                .context("Object UID is required for operations other than `create`")?;
+            Some(UniqueIdentifier::TextString(object_uid))
         } else {
             None
         };
@@ -168,11 +168,11 @@ impl RevokeAccess {
             .any(|op| *op != KmipOperation::Create);
 
         let uid = if requires_object_uid {
-            Some(UniqueIdentifier::TextString(
-                self.object_uid
-                    .clone()
-                    .context("Object UID is required for operations other than `create`")?,
-            ))
+            let object_uid = self
+                .object_uid
+                .clone()
+                .context("Object UID is required for operations other than `create`")?;
+            Some(UniqueIdentifier::TextString(object_uid))
         } else {
             None
         };

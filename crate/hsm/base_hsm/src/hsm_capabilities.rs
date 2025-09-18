@@ -13,7 +13,7 @@ pub struct HsmCapabilities {
 
 impl Default for HsmCapabilities {
     fn default() -> Self {
-        HsmCapabilities {
+        Self {
             max_cbc_data_size: None,
             find_max_object_count: 1,
         }

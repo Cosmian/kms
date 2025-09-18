@@ -151,11 +151,11 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
     async fn find(
         &self,
         slot_id: usize,
-        object_type: HsmObjectFilter,
+        object_filter: HsmObjectFilter,
     ) -> InterfaceResult<Vec<Vec<u8>>> {
         let slot = self.get_slot(slot_id)?;
         let session = slot.open_session(true)?;
-        let handles = session.list_objects(object_type)?;
+        let handles = session.list_objects(object_filter)?;
         let mut object_ids = Vec::with_capacity(handles.len());
         for handle in handles {
             if let Some(object_id) = session.get_object_id(handle)? {
@@ -175,7 +175,7 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         let slot = self.get_slot(slot_id)?;
         let session = slot.open_session(true)?;
         let handle = session.get_object_handle(key_id)?;
-        let encrypted_content = session.encrypt(handle, algorithm.clone().into(), data)?;
+        let encrypted_content = session.encrypt(handle, algorithm.into(), data)?;
         Ok(encrypted_content)
     }
 

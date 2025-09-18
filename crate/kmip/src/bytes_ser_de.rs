@@ -43,7 +43,7 @@ pub trait Serializable: Sized {
         let mut de = Deserializer::new(bytes);
         match de.read::<Self>() {
             Ok(result) if !de.finalize().is_empty() => {
-                Err(KmipError::DeserializationSize(bytes.len(), result.length()))?
+                Err(KmipError::DeserializationSize(bytes.len(), result.length()).into())
             }
             success_or_failure => success_or_failure,
         }
@@ -269,7 +269,7 @@ pub fn test_serialization<T: PartialEq + Debug + Serializable>(v: &T) -> Result<
 }
 
 #[cfg(test)]
-#[allow(clippy::panic_in_result_fn)]
+#[expect(clippy::panic_in_result_fn)]
 mod tests {
     use rand::RngCore;
 
@@ -321,7 +321,9 @@ mod tests {
     fn test_ser_de() -> Result<(), KmipError> {
         let a1 = b"azerty".to_vec();
         let a2 = b"".to_vec();
-        let a3 = "nbvcxwmlkjhgfdsqpoiuytreza)àç_è-('é&".as_bytes().to_vec();
+        let a3 = "nbvcxwmlkjhgfdsqpoiuytreza)\u{e0}\u{e7}_\u{e8}-('\u{e9}&"
+            .as_bytes()
+            .to_vec();
 
         let mut ser = Serializer::new();
         assert_eq!(7, ser.write_vec(&a1)?);
@@ -344,7 +346,6 @@ mod tests {
         {
             let empty_error = DummyLeb128Serializable::deserialize(&[]);
 
-            dbg!(&empty_error);
             match empty_error {
                 Err(KmipError::Deserialization(e)) => {
                     assert_eq!("empty bytes", e);
@@ -362,23 +363,21 @@ mod tests {
             bytes.pop();
             let too_small_error = DummyLeb128Serializable::deserialize(&bytes);
 
-            dbg!(&too_small_error);
             assert!(matches!(
                 too_small_error,
                 Err(KmipError::DeserializationSize(514, 513))
             ));
-        }
+        };
         {
             let mut bytes = dummy.serialize()?;
             bytes.push(42);
             let too_big_error = DummyLeb128Serializable::deserialize(&bytes);
 
-            dbg!(&too_big_error);
             assert!(matches!(
                 too_big_error,
                 Err(KmipError::DeserializationSize(515, 514))
             ));
-        }
+        };
 
         Ok(())
     }

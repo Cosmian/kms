@@ -16,7 +16,6 @@ use crate::{
 /// This structure is the context used by the server
 /// while it is running. There is a singleton instance
 /// shared between all threads.
-#[allow(clippy::struct_excessive_bools)]
 #[derive(Default)]
 pub struct ServerParams {
     /// The JWT Config if Auth is enabled

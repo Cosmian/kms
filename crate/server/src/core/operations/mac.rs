@@ -93,7 +93,7 @@ pub(crate) async fn mac(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::panic_in_result_fn)]
+#[expect(clippy::unwrap_used, clippy::panic_in_result_fn)]
 mod tests {
     use std::sync::Arc;
 

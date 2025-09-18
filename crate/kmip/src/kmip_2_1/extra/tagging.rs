@@ -62,13 +62,11 @@ impl Attributes {
     /// Remove the tags from the attributes and return them
     #[must_use]
     pub fn remove_tags(&mut self) -> Option<HashSet<String>> {
-        self.remove_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_TAG)
-            .and_then(|value| {
-                if let VendorAttributeValue::TextString(value) = value {
-                    serde_json::from_str::<HashSet<String>>(&value).ok()
-                } else {
-                    None
-                }
-            })
+        let value = self.remove_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_TAG)?;
+        if let VendorAttributeValue::TextString(value) = value {
+            serde_json::from_str::<HashSet<String>>(&value).ok()
+        } else {
+            None
+        }
     }
 }

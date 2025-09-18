@@ -18,7 +18,7 @@ use uuid::Uuid;
 
 use crate::{db_error, error::DbResult};
 
-pub(crate) async fn tags<DB: ObjectsStore + PermissionsStore>(
+pub(super) async fn tags<DB: ObjectsStore + PermissionsStore>(
     db: &DB,
     db_params: Option<Arc<dyn SessionParams>>,
     verify_attributes: bool,

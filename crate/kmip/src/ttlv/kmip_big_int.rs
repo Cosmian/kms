@@ -152,7 +152,7 @@ impl KmipBigInt {
         for digit in digits {
             let mut acc = *digit;
             for _ in 0..4 {
-                #[allow(clippy::as_conversions)]
+                #[expect(clippy::as_conversions)]
                 bytes.push((acc & 0xFF) as u8);
                 acc >>= 8;
             }
@@ -200,8 +200,7 @@ impl<'de> Deserialize<'de> for KmipBigInt {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
-#[allow(clippy::panic)]
+#[expect(clippy::unwrap_used)]
 mod tests {
     use num_bigint_dig::BigInt;
     use num_traits::pow::Pow;

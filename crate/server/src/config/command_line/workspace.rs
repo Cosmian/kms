@@ -112,7 +112,7 @@ impl WorkspaceConfig {
     /// # Errors
     ///
     /// Returns if an error occurs while calling `std::fs::canonicalize`
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     pub(crate) fn finalize_file_path(&self, path: &PathBuf) -> KResult<PathBuf> {
         let path = if path.is_relative() {
             self.root_data_path.join(path)

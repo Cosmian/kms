@@ -40,7 +40,7 @@ fn test_locate_2_1() {
     locate_symmetric_keys(&client, Some("key_1"), &[&key_id_1], &[&key_id_2]);
 }
 
-pub(crate) fn locate_symmetric_keys(
+pub(super) fn locate_symmetric_keys(
     client: &SocketClient,
     name: Option<&str>,
     expected_key_uids: &[&str],

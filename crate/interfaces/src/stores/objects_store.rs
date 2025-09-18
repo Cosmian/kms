@@ -91,7 +91,6 @@ pub trait ObjectsStore {
     ) -> InterfaceResult<()>;
 
     /// Delete an object from the database.
-    #[allow(dead_code)]
     async fn delete(
         &self,
         uid: &str,

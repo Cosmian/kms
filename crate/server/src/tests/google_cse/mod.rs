@@ -256,7 +256,7 @@ async fn test_cse_private_key_sign() -> KResult<()> {
     unsafe {
         std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWKS_URI", JWKS_URI);
         std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWT_ISSUER", JWT_ISSUER_URI);
-    }
+    };
     log_init(None);
 
     let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned()), None).await;
@@ -545,7 +545,7 @@ async fn test_cse_private_key_decrypt(
     unsafe {
         std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWKS_URI", JWKS_URI);
         std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWT_ISSUER", JWT_ISSUER_URI);
-    }
+    };
 
     let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned()), None).await;
     // Import google CSE key
@@ -579,7 +579,7 @@ async fn test_encrypt_and_private_key_decrypt() -> KResult<()> {
     unsafe {
         std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWKS_URI", JWKS_URI);
         std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWT_ISSUER", JWT_ISSUER_URI);
-    }
+    };
 
     let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned()), None).await;
     // Import google CSE key
@@ -609,7 +609,7 @@ async fn test_cse_wrap_unwrap_key() -> KResult<()> {
     unsafe {
         std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWKS_URI", JWKS_URI);
         std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWT_ISSUER", JWT_ISSUER_URI);
-    }
+    };
 
     log_init(None);
 
@@ -660,7 +660,7 @@ async fn test_cse_privileged_wrap_unwrap_key() -> KResult<()> {
     unsafe {
         std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWKS_URI", JWKS_URI);
         std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWT_ISSUER", JWT_ISSUER_URI);
-    }
+    };
 
     log_init(None);
 
@@ -712,7 +712,7 @@ async fn test_cse_privileged_private_key_decrypt() -> KResult<()> {
     unsafe {
         std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWKS_URI", JWKS_URI);
         std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWT_ISSUER", JWT_ISSUER_URI);
-    }
+    };
 
     log_init(None);
 
@@ -792,7 +792,7 @@ async fn test_cse_custom_jwt() -> KResult<()> {
     unsafe {
         std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWKS_URI", JWKS_URI);
         std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWT_ISSUER", JWT_ISSUER_URI);
-    }
+    };
 
     log_init(None);
 

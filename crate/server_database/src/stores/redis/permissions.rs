@@ -20,7 +20,7 @@ use crate::{DbError, error::DbResult};
 /// the database for all permissions for a given object or user because
 /// there is no convenient access to the callback for a search
 #[derive(Clone, Eq, PartialEq, Debug, Hash)]
-pub(crate) struct Triple {
+pub struct Triple {
     obj_uid: String,
     user_id: String,
     permission: KmipOperation,

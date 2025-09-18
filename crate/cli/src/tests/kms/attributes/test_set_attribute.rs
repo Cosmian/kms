@@ -38,7 +38,6 @@ fn get_all_link_types() -> Vec<CLinkType> {
     links
 }
 
-#[allow(clippy::cognitive_complexity)]
 async fn get_and_check_attributes(
     ctx: &TestsContext,
     uid: &str,
@@ -119,7 +118,6 @@ async fn get_and_check_attributes(
     Ok(())
 }
 
-#[allow(clippy::cognitive_complexity)]
 async fn get_and_check_none_attributes(
     ctx: &TestsContext,
     uid: &str,

@@ -85,7 +85,7 @@ pub fn create_msk_object(
         link_type: LinkType::PublicKeyLink,
         linked_object_identifier: LinkedObjectIdentifier::TextString(mpk_uid.to_owned()),
     }]);
-    attributes.sensitive = if sensitive { Some(true) } else { None };
+    attributes.sensitive = sensitive.then_some(true);
 
     // Add the "_sk" system tag to the attributes
     let mut tags = attributes.get_tags();

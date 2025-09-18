@@ -22,7 +22,7 @@ use crate::{
 /// # Errors
 /// * If the key is not the correct size.
 /// * If there is an error encrypting the data.
-pub(crate) fn encrypt(
+pub(super) fn encrypt(
     key: &[u8],
     nonce: &[u8],
     aad: &[u8],
@@ -63,7 +63,7 @@ pub(crate) fn encrypt(
 /// # Errors
 /// * If the key is not the correct size.
 /// * If there is an error decrypting the data.
-pub(crate) fn decrypt(
+pub(super) fn decrypt(
     key: &[u8],
     nonce: &[u8],
     aad: &[u8],

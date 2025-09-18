@@ -215,7 +215,7 @@ pub trait HSM: Send + Sync {
         &self,
         slot_id: usize,
         sk_id: &[u8],
-        pk_is: &[u8],
+        pk_id: &[u8],
         algorithm: HsmKeypairAlgorithm,
         key_length_in_bits: usize,
         sensitive: bool,

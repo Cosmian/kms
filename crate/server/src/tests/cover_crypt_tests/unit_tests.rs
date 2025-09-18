@@ -28,6 +28,7 @@ use crate::{
     tests::test_utils::https_clap_config,
 };
 
+#[expect(clippy::panic_in_result_fn)]
 #[tokio::test]
 async fn test_cover_crypt_keys() -> KResult<()> {
     let clap_config = https_clap_config();
@@ -205,12 +206,13 @@ async fn test_cover_crypt_keys() -> KResult<()> {
 }
 
 #[test]
-pub(crate) fn access_policy_serialization() -> KResult<()> {
+pub(super) fn access_policy_serialization() -> KResult<()> {
     let access_policy = "(Department::MKG || Department::FIN) && Security Level::Confidential";
     let _json = serde_json::to_string(&access_policy)?;
     Ok(())
 }
 
+#[expect(clippy::panic_in_result_fn)]
 #[tokio::test]
 async fn test_abe_encrypt_decrypt() -> KResult<()> {
     // Initialize the logger
@@ -431,6 +433,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     Ok(())
 }
 
+#[expect(clippy::panic_in_result_fn)]
 #[tokio::test]
 async fn test_abe_json_access() -> KResult<()> {
     let clap_config = https_clap_config();
@@ -512,6 +515,7 @@ async fn test_abe_json_access() -> KResult<()> {
     Ok(())
 }
 
+#[expect(clippy::panic_in_result_fn)]
 #[tokio::test]
 async fn test_import_decrypt() -> KResult<()> {
     log_init(option_env!("RUST_LOG"));

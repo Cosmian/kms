@@ -70,7 +70,7 @@ pub fn create_rsa_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
         key_format_type: Some(KeyFormatType::TransparentRSAPrivateKey),
         object_type: Some(ObjectType::PrivateKey),
         unique_identifier: private_key_id,
-        sensitive: if sensitive { Some(true) } else { None },
+        sensitive: sensitive.then_some(true),
         ..Attributes::default()
     };
 
@@ -145,7 +145,7 @@ fn build_mask_from_curve(
 /// - NIST.SP.800-186 - Section 3.1.2 table 2.
 /// - NIST.FIPS.186-5
 #[cfg(feature = "non-fips")]
-#[allow(clippy::unnecessary_wraps)]
+#[expect(clippy::unnecessary_wraps)]
 const fn build_mask_from_curve(
     _curve: RecommendedCurve,
     _is_private_mask: bool,
@@ -209,7 +209,7 @@ pub fn create_ec_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
         key_format_type: Some(KeyFormatType::ECPrivateKey),
         object_type: Some(ObjectType::PrivateKey),
         unique_identifier: private_key_id,
-        sensitive: if sensitive { Some(true) } else { None },
+        sensitive: sensitive.then_some(true),
         ..Attributes::default()
     };
 

@@ -882,7 +882,7 @@ pub(crate) async fn test_grant_with_without_object_uid() -> KmsCliResult<()> {
 
 #[tokio::test]
 #[serial]
-#[allow(clippy::large_stack_frames)]
+#[expect(clippy::large_stack_frames)]
 pub(crate) async fn test_privileged_users() -> KmsCliResult<()> {
     log_init(option_env!("RUST_LOG"));
     // log_init(Some("info,cosmian_kms=debug"));

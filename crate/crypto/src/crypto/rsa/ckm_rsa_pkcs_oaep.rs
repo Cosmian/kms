@@ -184,7 +184,7 @@ fn init_ckm_rsa_pkcs_oaep_decryption_context(
     Ok((ctx, plaintext))
 }
 
-#[allow(clippy::panic_in_result_fn, clippy::unwrap_used)]
+#[expect(clippy::panic_in_result_fn)]
 #[cfg(test)]
 mod tests {
     use cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm;

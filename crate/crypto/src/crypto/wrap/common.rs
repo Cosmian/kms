@@ -3,7 +3,7 @@ use cosmian_kmip::{
     kmip_2_1::{kmip_data_structures::KeyWrappingData, kmip_types::CryptographicAlgorithm},
 };
 
-pub(crate) fn rsa_parameters(
+pub(super) fn rsa_parameters(
     key_wrapping_data: &KeyWrappingData,
 ) -> (CryptographicAlgorithm, PaddingMethod, HashingAlgorithm) {
     key_wrapping_data

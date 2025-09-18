@@ -32,7 +32,6 @@ where
     /// let binder = SqlDatabase::binder(1);
     /// assert_eq!(binder, "$1");
     /// ```
-    #[allow(dead_code)]
     fn binder(&self, param_number: usize) -> String {
         if std::any::type_name::<DB>() == "sqlx::mysql::MySql" {
             return "?".to_owned();
@@ -49,7 +48,7 @@ where
 }
 
 /// Get the SQL query by name using the loader
-pub(crate) fn get_query<'a>(loader: &'a Loader, name: &'a str) -> DbResult<&'a str> {
+pub(super) fn get_query<'a>(loader: &'a Loader, name: &'a str) -> DbResult<&'a str> {
     loader
         .get(name)
         .map(String::as_str)

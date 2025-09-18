@@ -1430,11 +1430,7 @@ impl UniqueIdentifier {
 }
 
 impl From<LinkedObjectIdentifier> for UniqueIdentifier {
-    #[allow(
-        clippy::cast_sign_loss,
-        clippy::cast_possible_truncation,
-        clippy::as_conversions
-    )]
+    #[expect(clippy::cast_possible_truncation, clippy::as_conversions)]
     fn from(value: LinkedObjectIdentifier) -> Self {
         match value {
             LinkedObjectIdentifier::TextString(s) => Self::TextString(s),

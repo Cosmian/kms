@@ -8,14 +8,14 @@ use serde::{Deserialize, Serialize};
 use super::GoogleApiError;
 
 #[derive(Serialize, Deserialize, Debug)]
-pub(crate) struct GoogleAuthResponse {
+pub(super) struct GoogleAuthResponse {
     pub access_token: String,
     pub expires_in: u32,
     pub token_type: String,
 }
 
 #[derive(Serialize, Deserialize)]
-pub(crate) struct GoogleAuthRequest {
+pub(super) struct GoogleAuthRequest {
     grant_type: String,
     assertion: String,
 }
@@ -30,8 +30,8 @@ impl GoogleAuthRequest {
     }
 }
 
-pub(crate) const GMAIL_SCOPE: &str = "https://www.googleapis.com/auth/gmail.settings.basic";
-pub(crate) const GOOGLE_AUD_VALUE: &str = "https://oauth2.googleapis.com/token";
+pub(super) const GMAIL_SCOPE: &str = "https://www.googleapis.com/auth/gmail.settings.basic";
+pub(super) const GOOGLE_AUD_VALUE: &str = "https://oauth2.googleapis.com/token";
 // Token expiration time in hours
 const TOKEN_EXPIRATION_TIME: u64 = 1;
 
@@ -43,7 +43,7 @@ struct JwtAuth {
     sub: String,
 }
 
-pub(crate) fn create_jwt(
+pub(super) fn create_jwt(
     service_account: &GmailApiConf,
     user_email: &str,
 ) -> Result<String, GoogleApiError> {
@@ -60,7 +60,7 @@ pub(crate) fn create_jwt(
     Ok(key_pair.sign(claims)?)
 }
 
-pub(crate) async fn retrieve_token(
+pub(super) async fn retrieve_token(
     service_account: &GmailApiConf,
     user_email: &str,
 ) -> Result<String, GoogleApiError> {

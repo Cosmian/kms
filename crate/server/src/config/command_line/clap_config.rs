@@ -181,7 +181,7 @@ impl ClapConfig {
     /// or if the configuration file cannot be read,
     /// or if the configuration file cannot be parsed,
     /// or if the configuration file is not a valid TOML file.
-    #[allow(clippy::print_stdout)] // Logging is not being initialized yet, just use standard prints
+    #[expect(clippy::print_stdout)] // Logging is not being initialized yet, just use standard prints
     pub fn load_from_file() -> KResult<Self> {
         let conf = std::env::var("COSMIAN_KMS_CONF").map_or_else(
             |_| PathBuf::from(DEFAULT_COSMIAN_KMS_CONF),
@@ -329,7 +329,7 @@ mod tests {
     use super::ClapConfig;
 
     #[test]
-    #[allow(clippy::print_stdout, clippy::unwrap_used)]
+    #[expect(clippy::print_stdout, clippy::unwrap_used)]
     fn test_server_configuration_file() {
         let conf = ClapConfig::default();
         let conf_str = toml::to_string_pretty(&conf).unwrap();

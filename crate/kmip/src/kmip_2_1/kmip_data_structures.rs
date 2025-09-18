@@ -560,9 +560,8 @@ impl KeyBlock {
             let KeyValue::Structure { attributes, .. } = key_value else {
                 return None
             };
-            attributes
-                .as_ref()
-                .and_then(|a| a.cryptographic_algorithm.as_ref())
+            let a = attributes.as_ref()?;
+            a.cryptographic_algorithm.as_ref()
         })
     }
 }
@@ -580,7 +579,7 @@ impl KeyBlock {
 /// • The Key Value Byte String is either the wrapped TTLV-encoded Key Value
 /// structure, or the wrapped un-encoded value of the Byte String Key Material
 /// field.
-#[allow(clippy::large_enum_variant)]
+#[expect(clippy::large_enum_variant)]
 #[derive(Clone, Eq, PartialEq)]
 pub enum KeyValue {
     /// The key value is a byte string when key wrapped
@@ -1276,7 +1275,7 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
                 }
             }
 
-            #[allow(clippy::many_single_char_names)]
+            #[expect(clippy::many_single_char_names)]
             #[instrument(level = "trace", skip(self, map))]
             fn visit_map<V>(self, mut map: V) -> Result<Self::Value, V::Error>
             where

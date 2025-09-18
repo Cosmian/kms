@@ -461,11 +461,7 @@ impl ser::Serializer for &mut TtlvSerializer {
         // Used for Interval
         impl Detect for u32 {
             fn detect_specific_value(&self, name: &'static str) -> Option<TTLValue> {
-                if name == "Interval" {
-                    Some(TTLValue::Interval(*self))
-                } else {
-                    None
-                }
+                (name == "Interval").then(|| TTLValue::Interval(*self))
             }
         }
         if let Some(value) = value.detect_specific_value(name) {

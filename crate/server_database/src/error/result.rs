@@ -11,7 +11,7 @@ pub(crate) trait DbResultHelper<T> {
     /// Returns a `DbResult` with the specified context if the original result is an error.
     fn context(self, context: &str) -> DbResult<T>;
 
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     /// Sets the context for the error using a closure.
     ///
     /// # Errors

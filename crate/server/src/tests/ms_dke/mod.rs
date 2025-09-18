@@ -16,7 +16,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 
 use crate::{kms_error, result::KResult, routes::ms_dke::EncryptedData, tests::test_utils};
 
-const RSA_PRIVATE_KEY: &str = r"
+const RSA_PRIVATE_KEY: &str = "
 -----BEGIN PRIVATE KEY-----
 MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCNzNM2hQNhfdUO
 7hTM9F/a4ZNfCBnIpTP6VRvHNLcA7T8Zt+2+ozC7zKneXGXAfs70zLfa00wAlcm0

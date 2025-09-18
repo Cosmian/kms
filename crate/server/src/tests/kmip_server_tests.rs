@@ -39,6 +39,7 @@ use crate::{
     tests::test_utils::https_clap_config,
 };
 
+#[expect(clippy::panic_in_result_fn)]
 #[tokio::test]
 async fn test_curve_25519_key_pair() -> KResult<()> {
     let clap_config = https_clap_config();
@@ -257,6 +258,7 @@ async fn test_import_wrapped_symmetric_key() -> KResult<()> {
     Ok(())
 }
 
+#[expect(clippy::panic_in_result_fn)]
 #[tokio::test]
 async fn test_create_transparent_symmetric_key() -> KResult<()> {
     cosmian_logger::log_init(None);
@@ -315,6 +317,7 @@ async fn test_create_transparent_symmetric_key() -> KResult<()> {
     Ok(())
 }
 
+#[expect(clippy::panic_in_result_fn)]
 #[tokio::test]
 async fn test_database_user_tenant() -> KResult<()> {
     cosmian_logger::log_init(None);
@@ -390,6 +393,7 @@ async fn test_database_user_tenant() -> KResult<()> {
     Ok(())
 }
 
+#[expect(clippy::panic_in_result_fn)]
 #[tokio::test]
 async fn test_register_operation() -> KResult<()> {
     cosmian_logger::log_init(None);

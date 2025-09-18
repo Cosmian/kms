@@ -386,7 +386,7 @@ fn aes_gcm_streaming_test() {
     );
     assert_eq!(
         decrypted_data,
-        [&message1[..], &message2[..], &message3[..]].concat()
+        [(&*message1), (&*message2), (&*message3)].concat()
     );
 }
 
@@ -434,7 +434,7 @@ fn chacha_streaming_test() {
     );
     assert_eq!(
         decrypted_data,
-        [&message1[..], &message2[..], &message3[..]].concat()
+        [(&*message1), (&*message2), (&*message3)].concat()
     );
 }
 
@@ -482,6 +482,6 @@ fn aes_xts_streaming_test() {
     );
     assert_eq!(
         decrypted_data,
-        [&message1[..], &message2[..], &message3[..]].concat()
+        [(&*message1), (&*message2), (&*message3)].concat()
     );
 }

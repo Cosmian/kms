@@ -18,7 +18,7 @@ use uuid::Uuid;
 
 use crate::{db_error, error::DbResult};
 
-pub(crate) async fn json_access<DB: ObjectsStore + PermissionsStore>(
+pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(
     db: &DB,
     db_params: Option<Arc<dyn SessionParams>>,
 ) -> DbResult<()> {

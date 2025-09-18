@@ -100,7 +100,6 @@ async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs() -> KmsCliResult<()> {
 }
 
 #[tokio::test]
-#[allow(unused)]
 async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs_oaep() -> KmsCliResult<()> {
     log_init(None);
     // to enable this, add cosmian_logger = { workspace = true } to dev-dependencies in Cargo.toml

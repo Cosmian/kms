@@ -4,6 +4,23 @@
 //! HSM_USER_PASSWORD=648219 HSM_SLOT_ID=1 cargo test --target x86_64-unknown-linux-gnu --features smartcardhsm -- tests::test_hsm_all
 //! ```
 
+// Allow test-specific lint patterns for C library integration
+#![allow(unsafe_code)]
+#![allow(clippy::panic_in_result_fn)]
+#![allow(clippy::panic)]
+#![allow(clippy::expect_used)]
+#![allow(clippy::unwrap_used)]
+#![allow(clippy::assertions_on_result_states)]
+#![allow(clippy::as_conversions)]
+#![allow(clippy::map_err_ignore)]
+#![allow(clippy::redundant_clone)]
+#![allow(clippy::str_to_string)]
+#![allow(clippy::unseparated_literal_suffix)]
+#![allow(clippy::borrow_as_ptr)]
+#![allow(clippy::ref_as_ptr)]
+#![allow(clippy::stable_sort_primitive)]
+#![allow(clippy::explicit_iter_loop)]
+
 use std::{collections::HashMap, ptr, sync::Arc, thread};
 
 use cosmian_kms_base_hsm::{

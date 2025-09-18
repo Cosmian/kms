@@ -39,7 +39,7 @@ fn test_get_attribute_1_4() {
     get_attributes(&client, &key_id);
 }
 
-pub(crate) fn get_attributes(client: &SocketClient, key_id: &str) {
+pub(super) fn get_attributes(client: &SocketClient, key_id: &str) {
     let protocol_major = 2;
     let kmip_flavor = if protocol_major == 2 {
         KmipFlavor::Kmip2

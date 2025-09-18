@@ -176,7 +176,7 @@ pub enum CredentialValue {
 }
 
 impl CredentialValue {
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     const fn value(&self) -> u32 {
         match *self {
             Self::UsernameAndPassword { .. } => 0x0000_0001,

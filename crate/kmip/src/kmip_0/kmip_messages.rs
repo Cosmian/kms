@@ -38,7 +38,7 @@ enum KmipVersion {
 
 #[derive(PartialEq, Eq, Serialize)]
 #[serde(untagged)]
-#[allow(clippy::large_enum_variant)]
+#[expect(clippy::large_enum_variant)]
 pub enum RequestMessageBatchItemVersioned {
     V14(crate::kmip_1_4::kmip_messages::RequestMessageBatchItem),
     V21(crate::kmip_2_1::kmip_messages::RequestMessageBatchItem),
@@ -318,7 +318,7 @@ impl Display for RequestMessageHeader {
 
 #[derive(PartialEq, Eq, Serialize)]
 #[serde(untagged)]
-#[allow(clippy::large_enum_variant)]
+#[expect(clippy::large_enum_variant)]
 pub enum ResponseMessageBatchItemVersioned {
     V14(crate::kmip_1_4::kmip_messages::ResponseMessageBatchItem),
     V21(crate::kmip_2_1::kmip_messages::ResponseMessageBatchItem),

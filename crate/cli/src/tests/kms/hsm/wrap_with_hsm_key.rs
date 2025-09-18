@@ -15,7 +15,7 @@ use crate::{
     tests::kms::symmetric::encrypt_decrypt::run_encrypt_decrypt_test,
 };
 
-pub(crate) async fn test_wrap_with_aes_gcm(ctx: &TestsContext) -> KmsCliResult<()> {
+pub(super) async fn test_wrap_with_aes_gcm(ctx: &TestsContext) -> KmsCliResult<()> {
     log_init(option_env!("RUST_LOG"));
     // log_init(Some("info,cosmian_kms_server=debug"));
 
@@ -65,7 +65,7 @@ pub(crate) async fn test_wrap_with_aes_gcm(ctx: &TestsContext) -> KmsCliResult<(
 }
 
 #[cfg(feature = "non-fips")]
-pub(crate) async fn test_wrap_with_rsa_oaep(ctx: &TestsContext) -> KmsCliResult<()> {
+pub(super) async fn test_wrap_with_rsa_oaep(ctx: &TestsContext) -> KmsCliResult<()> {
     use crate::{
         actions::kms::rsa::keys::create_key_pair::CreateKeyPairAction,
         tests::kms::symmetric::encrypt_decrypt::run_encrypt_decrypt_test,
@@ -118,7 +118,7 @@ pub(crate) async fn test_wrap_with_rsa_oaep(ctx: &TestsContext) -> KmsCliResult<
 }
 
 #[cfg(feature = "non-fips")]
-pub(crate) async fn test_unwrap_on_export(ctx: &TestsContext) -> KmsCliResult<()> {
+pub(super) async fn test_unwrap_on_export(ctx: &TestsContext) -> KmsCliResult<()> {
     use crate::actions::kms::{
         rsa::keys::create_key_pair::CreateKeyPairAction, shared::ExportSecretDataOrKeyAction,
     };

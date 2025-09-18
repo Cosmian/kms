@@ -70,7 +70,7 @@ impl DataToEncrypt {
     }
 }
 
-#[allow(clippy::unwrap_used)]
+#[expect(clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
     use super::DataToEncrypt;
@@ -81,37 +81,37 @@ mod tests {
         {
             let data_to_encrypt = DataToEncrypt {
                 encryption_policy: Some("a && b".to_owned()),
-                plaintext: String::from("this is a plain text à è ").into_bytes(),
+                plaintext: String::from("this is a plain text \u{e0} \u{e8} ").into_bytes(),
             };
             let bytes = data_to_encrypt.to_bytes().unwrap();
             let data_to_encrypt_full_deserialized = DataToEncrypt::try_from_bytes(&bytes).unwrap();
             assert_eq!(data_to_encrypt, data_to_encrypt_full_deserialized);
-        }
+        };
         // empty header metadata
         {
             let data_to_encrypt = DataToEncrypt {
                 encryption_policy: Some("a && b".to_owned()),
-                plaintext: String::from("this is a plain text à è ").into_bytes(),
+                plaintext: String::from("this is a plain text \u{e0} \u{e8} ").into_bytes(),
             };
             let bytes = data_to_encrypt.to_bytes().unwrap();
             let data_to_encrypt_full_deserialized = DataToEncrypt::try_from_bytes(&bytes).unwrap();
             assert_eq!(data_to_encrypt, data_to_encrypt_full_deserialized);
-        }
+        };
         // empty policy
         {
             let data_to_encrypt = DataToEncrypt {
                 encryption_policy: None,
-                plaintext: String::from("this is a plain text à è ").into_bytes(),
+                plaintext: String::from("this is a plain text \u{e0} \u{e8} ").into_bytes(),
             };
             let bytes = data_to_encrypt.to_bytes().unwrap();
             let data_to_encrypt_full_deserialized = DataToEncrypt::try_from_bytes(&bytes).unwrap();
             assert_eq!(data_to_encrypt, data_to_encrypt_full_deserialized);
-        }
+        };
         // plaintext only
         {
             let data_to_encrypt = DataToEncrypt {
                 encryption_policy: None,
-                plaintext: String::from("this is a plain text à è ").into_bytes(),
+                plaintext: String::from("this is a plain text \u{e0} \u{e8} ").into_bytes(),
             };
             let bytes = data_to_encrypt.to_bytes().unwrap();
             let data_to_encrypt_full_deserialized = DataToEncrypt::try_from_bytes(&bytes).unwrap();

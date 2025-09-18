@@ -2,7 +2,7 @@ use cosmian_logger::info;
 
 use crate::{error::KmsError, result::KResult};
 
-pub(crate) fn get_hsm_password() -> KResult<String> {
+pub(super) fn get_hsm_password() -> KResult<String> {
     let user_password = option_env!("HSM_USER_PASSWORD")
         .ok_or_else(|| {
             KmsError::Default(
@@ -15,7 +15,7 @@ pub(crate) fn get_hsm_password() -> KResult<String> {
     Ok(user_password)
 }
 
-pub(crate) fn get_hsm_slot_id() -> KResult<usize> {
+pub(super) fn get_hsm_slot_id() -> KResult<usize> {
     let slot_id = option_env!("HSM_SLOT_ID")
         .ok_or_else(|| {
             KmsError::Default(
@@ -33,7 +33,7 @@ pub(crate) fn get_hsm_slot_id() -> KResult<usize> {
     })
 }
 
-pub(crate) fn get_hsm_model() -> Option<String> {
+pub(super) fn get_hsm_model() -> Option<String> {
     let model = option_env!("HSM_MODEL");
     model.map_or_else(
         || {

@@ -46,45 +46,42 @@ impl ResponseMessage {
                         "Unsupported response message version".to_owned(),
                     ));
                 };
-                payload
-                    .response_payload
-                    .as_ref()
-                    .ok_or_else(|| {
-                        KmipError::Default("Missing operation in Message Response".to_owned())
-                    })
-                    .and_then(|response_payload| match response_payload {
-                        Operation::DecryptResponse(response) => response
-                            .data
-                            .as_ref()
-                            .map(|data| data.to_vec())
-                            .ok_or_else(|| {
-                                KmipError::Default("Missing data in Decrypt Response".to_owned())
-                            }),
-                        Operation::EncryptResponse(response) => response
-                            .data
-                            .as_ref()
-                            .ok_or_else(|| {
-                                KmipError::Default("Missing data in Encrypt Response".to_owned())
-                            })
-                            .cloned(),
-                        Operation::HashResponse(response) => response
-                            .data
-                            .as_ref()
-                            .ok_or_else(|| {
-                                KmipError::Default("Missing data in Hash Response".to_owned())
-                            })
-                            .cloned(),
-                        Operation::MACResponse(response) => response
-                            .mac_data
-                            .as_ref()
-                            .ok_or_else(|| {
-                                KmipError::Default("Missing data in Mac Response".to_owned())
-                            })
-                            .cloned(),
-                        unexpected_operation => Err(KmipError::Default(format!(
-                            "Unexpected operation in Message Response: {unexpected_operation}"
-                        ))),
-                    })
+                let response_payload = payload.response_payload.as_ref().ok_or_else(|| {
+                    KmipError::Default("Missing operation in Message Response".to_owned())
+                })?;
+                match response_payload {
+                    Operation::DecryptResponse(response) => response
+                        .data
+                        .as_ref()
+                        .map(|data| data.to_vec())
+                        .ok_or_else(|| {
+                            KmipError::Default("Missing data in Decrypt Response".to_owned())
+                        }),
+                    Operation::EncryptResponse(response) => response
+                        .data
+                        .as_ref()
+                        .ok_or_else(|| {
+                            KmipError::Default("Missing data in Encrypt Response".to_owned())
+                        })
+                        .cloned(),
+                    Operation::HashResponse(response) => response
+                        .data
+                        .as_ref()
+                        .ok_or_else(|| {
+                            KmipError::Default("Missing data in Hash Response".to_owned())
+                        })
+                        .cloned(),
+                    Operation::MACResponse(response) => response
+                        .mac_data
+                        .as_ref()
+                        .ok_or_else(|| {
+                            KmipError::Default("Missing data in Mac Response".to_owned())
+                        })
+                        .cloned(),
+                    unexpected_operation => Err(KmipError::Default(format!(
+                        "Unexpected operation in Message Response: {unexpected_operation}"
+                    ))),
+                }
             })
             .collect()
     }

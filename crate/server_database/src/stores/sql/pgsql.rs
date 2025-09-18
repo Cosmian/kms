@@ -318,20 +318,20 @@ impl PermissionsStore for PgPool {
         &self,
         uid: &str,
         user: &str,
-        operation_types: HashSet<KmipOperation>,
+        operations: HashSet<KmipOperation>,
         _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
-        Ok(insert_access_(uid, user, operation_types, &self.pool).await?)
+        Ok(insert_access_(uid, user, operations, &self.pool).await?)
     }
 
     async fn remove_operations(
         &self,
         uid: &str,
         user: &str,
-        operation_types: HashSet<KmipOperation>,
+        operations: HashSet<KmipOperation>,
         _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
-        Ok(remove_access_(uid, user, operation_types, &self.pool).await?)
+        Ok(remove_access_(uid, user, operations, &self.pool).await?)
     }
 
     async fn list_user_operations_on_object(
@@ -345,7 +345,7 @@ impl PermissionsStore for PgPool {
     }
 }
 
-pub(crate) async fn create_(
+pub(super) async fn create_(
     uid: Option<String>,
     owner: &str,
     object: &Object,
@@ -385,7 +385,7 @@ pub(crate) async fn create_(
     Ok(uid)
 }
 
-pub(crate) async fn retrieve_<'e, E>(uid: &str, executor: E) -> DbResult<Option<ObjectWithMetadata>>
+pub(super) async fn retrieve_<'e, E>(uid: &str, executor: E) -> DbResult<Option<ObjectWithMetadata>>
 where
     E: Executor<'e, Database = Postgres> + Copy,
 {
@@ -413,7 +413,7 @@ where
     Ok(tags)
 }
 
-pub(crate) async fn update_object_(
+pub(super) async fn update_object_(
     uid: &str,
     object: &Object,
     attributes: &Attributes,
@@ -454,7 +454,7 @@ pub(crate) async fn update_object_(
     Ok(())
 }
 
-pub(crate) async fn update_state_(
+pub(super) async fn update_state_(
     uid: &str,
     state: State,
     executor: &mut Transaction<'_, Postgres>,
@@ -468,7 +468,7 @@ pub(crate) async fn update_state_(
     Ok(())
 }
 
-pub(crate) async fn delete_(uid: &str, executor: &mut Transaction<'_, Postgres>) -> DbResult<()> {
+pub(super) async fn delete_(uid: &str, executor: &mut Transaction<'_, Postgres>) -> DbResult<()> {
     // delete the object
     sqlx::query(get_pgsql_query!("delete-object"))
         .bind(uid)
@@ -485,7 +485,7 @@ pub(crate) async fn delete_(uid: &str, executor: &mut Transaction<'_, Postgres>)
     Ok(())
 }
 
-pub(crate) async fn upsert_(
+pub(super) async fn upsert_(
     uid: &str,
     owner: &str,
     object: &Object,
@@ -530,7 +530,7 @@ pub(crate) async fn upsert_(
     Ok(())
 }
 
-pub(crate) async fn list_uids_from_tags_<'e, E>(
+pub(super) async fn list_uids_from_tags_<'e, E>(
     tags: &HashSet<String>,
     executor: E,
 ) -> DbResult<HashSet<String>>
@@ -560,7 +560,7 @@ where
     Ok(uids)
 }
 
-pub(crate) async fn list_accesses_<'e, E>(
+pub(super) async fn list_accesses_<'e, E>(
     uid: &str,
     executor: E,
 ) -> DbResult<HashMap<String, HashSet<KmipOperation>>>
@@ -586,7 +586,7 @@ where
     Ok(ids)
 }
 
-pub(crate) async fn list_user_granted_access_rights_<'e, E>(
+pub(super) async fn list_user_granted_access_rights_<'e, E>(
     user: &str,
     executor: E,
 ) -> DbResult<HashMap<String, (String, State, HashSet<KmipOperation>)>>
@@ -619,7 +619,7 @@ where
     Ok(ids)
 }
 
-pub(crate) async fn list_user_access_rights_on_object_<'e, E>(
+pub(super) async fn list_user_access_rights_on_object_<'e, E>(
     uid: &str,
     userid: &str,
     no_inherited_access: bool,
@@ -654,7 +654,7 @@ where
     })
 }
 
-pub(crate) async fn insert_access_<'e, E>(
+pub(super) async fn insert_access_<'e, E>(
     uid: &str,
     userid: &str,
     operation_types: HashSet<KmipOperation>,
@@ -686,7 +686,7 @@ where
     Ok(())
 }
 
-pub(crate) async fn remove_access_<'e, E>(
+pub(super) async fn remove_access_<'e, E>(
     uid: &str,
     userid: &str,
     operation_types: HashSet<KmipOperation>,
@@ -727,7 +727,7 @@ where
     Ok(())
 }
 
-pub(crate) async fn is_object_owned_by_<'e, E>(
+pub(super) async fn is_object_owned_by_<'e, E>(
     uid: &str,
     owner: &str,
     executor: E,
@@ -743,7 +743,7 @@ where
     Ok(row.is_some())
 }
 
-pub(crate) async fn find_<'e, E>(
+pub(super) async fn find_<'e, E>(
     researched_attributes: Option<&Attributes>,
     state: Option<State>,
     user: &str,
@@ -788,7 +788,7 @@ fn to_qualified_uids(rows: &[PgRow]) -> DbResult<Vec<(String, State, Attributes)
     Ok(uids)
 }
 
-pub(crate) async fn atomic_(
+pub(super) async fn atomic_(
     owner: &str,
     operations: &[AtomicOperation],
     tx: &mut Transaction<'_, Postgres>,

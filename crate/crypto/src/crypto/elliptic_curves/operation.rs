@@ -224,7 +224,7 @@ pub fn to_ec_private_key(
                             public_key_uid.to_owned(),
                         ),
                     }]),
-                    sensitive: if sensitive { Some(true) } else { None },
+                    sensitive: sensitive.then_some(true),
                     ..Attributes::default()
                 }),
             }),
@@ -512,7 +512,7 @@ pub fn create_approved_ecc_key_pair(
     )
 }
 
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments)]
 fn create_ec_key_pair(
     private_key_bytes: &Zeroizing<Vec<u8>>,
     private_key_num_bits: u32,
@@ -589,7 +589,7 @@ fn create_ec_key_pair(
     Ok(KeyPair::new(private_key, public_key))
 }
 
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+#[expect(clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
 
@@ -675,6 +675,7 @@ mod tests {
         );
     }
 
+    #[expect(clippy::expect_used, clippy::panic)]
     #[test]
     #[cfg(feature = "non-fips")]
     fn test_x25519_conversions() {
@@ -815,6 +816,7 @@ mod tests {
         keypair_generation(RecommendedCurve::P521);
     }
 
+    #[expect(clippy::expect_used, clippy::panic)]
     #[test]
     #[cfg(feature = "non-fips")]
     fn test_x448_conversions() {

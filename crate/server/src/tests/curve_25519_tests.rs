@@ -43,6 +43,7 @@ use crate::{
     tests::test_utils::https_clap_config,
 };
 
+#[expect(clippy::panic_in_result_fn)]
 #[tokio::test]
 async fn test_curve_25519() -> KResult<()> {
     let clap_config = https_clap_config();
@@ -215,6 +216,7 @@ async fn test_curve_25519() -> KResult<()> {
     Ok(())
 }
 
+#[expect(clippy::panic_in_result_fn)]
 #[tokio::test]
 async fn test_curve_25519_multiple() -> KResult<()> {
     let clap_config = https_clap_config();

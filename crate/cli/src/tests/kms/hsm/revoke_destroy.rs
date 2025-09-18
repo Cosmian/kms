@@ -14,7 +14,7 @@ use crate::{
     error::result::KmsCliResult,
 };
 
-pub(crate) async fn test_revoke_symmetric_key(ctx: &TestsContext) -> KmsCliResult<()> {
+pub(super) async fn test_revoke_symmetric_key(ctx: &TestsContext) -> KmsCliResult<()> {
     log_init(None);
 
     // sym

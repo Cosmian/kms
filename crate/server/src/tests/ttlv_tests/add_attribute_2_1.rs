@@ -35,7 +35,7 @@ fn test_add_attribute_1_4() {
     add_attributes(&client, &key_id);
 }
 
-pub(crate) fn add_attributes(client: &SocketClient, key_id: &str) {
+pub(super) fn add_attributes(client: &SocketClient, key_id: &str) {
     let request_message = RequestMessage {
         request_header: RequestMessageHeader {
             protocol_version: ProtocolVersion {

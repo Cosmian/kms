@@ -30,7 +30,6 @@ static APPLICATIONS: &[&str; 6] = &[
     "gmail-sta",
 ];
 
-#[allow(clippy::or_fun_call)]
 fn get_jwks_uri(application: &str) -> String {
     if application == "migration" {
         "https://www.googleapis.com/service_accounts/v1/jwk/apps-security-cse-kaclscommunication@system.gserviceaccount.com".to_owned()
@@ -78,7 +77,6 @@ pub fn list_jwt_configurations(
 }
 
 /// Fetch the JWT authorization configuration for Google CSE 'drive' or 'meet'
-#[allow(clippy::or_fun_call)]
 fn jwt_authorization_config_application(
     application: &str,
     jwks_manager: Arc<JwksManager>,
@@ -122,7 +120,7 @@ pub fn jwt_authorization_config(
 }
 
 /// Decode a json web token (JWT) used for Google CSE
-pub(crate) fn decode_jwt_authorization_token(
+pub(super) fn decode_jwt_authorization_token(
     jwt_config: &Arc<JwtConfig>,
     token: &str,
 ) -> KResult<(UserClaim, JwtTokenHeaders)> {
@@ -199,7 +197,6 @@ pub struct GoogleCseConfig {
 /// See [doc](https://developers.google.com/workspace/cse/guides/encrypt-and-decrypt-data?hl=en)
 /// # Errors
 /// Returns an error if the authentication token is invalid, if the configuration is missing
-#[allow(clippy::ref_option)]
 pub async fn validate_cse_authentication_token(
     authentication_token: &str,
     cse_config: &Option<GoogleCseConfig>,
@@ -281,12 +278,12 @@ pub async fn validate_cse_authentication_token(
 
 /// Validate the authorization token and return the calling user
 /// See [doc](https://developers.google.com/workspace/cse/guides/encrypt-and-decrypt-data?hl=en)
-#[allow(unused_variables, clippy::ref_option)]
-pub(crate) async fn validate_cse_authorization_token(
+#[expect(clippy::ref_option)]
+pub(super) async fn validate_cse_authorization_token(
     authorization_token: &str,
     google_cse_kacls_url: &str,
     cse_config: &Option<GoogleCseConfig>,
-    roles: Option<&[Role]>,
+    _roles: Option<&[Role]>,
 ) -> KResult<UserClaim> {
     debug!("entering");
 
@@ -323,7 +320,7 @@ pub(crate) async fn validate_cse_authorization_token(
     trace!("authorization token headers: {jwt_headers:?}");
 
     #[cfg(all(not(test), not(feature = "insecure")))]
-    if let Some(roles) = roles {
+    if let Some(roles) = _roles {
         let role = authorization_token.role.as_ref().ok_or_else(|| {
             KmsError::Unauthorized("Authorization token should contain a role".to_owned())
         })?;
@@ -362,15 +359,15 @@ pub(crate) async fn validate_cse_authorization_token(
     Ok(authorization_token)
 }
 
-pub(crate) struct TokenExtractedContent {
+pub(super) struct TokenExtractedContent {
     pub user: String,
     pub resource_name: Option<Vec<u8>>,
 }
 
 /// Validate the authentication and the authorization tokens and return the calling user
 /// See [doc](https://developers.google.com/workspace/cse/guides/encrypt-and-decrypt-data?hl=en)
-#[allow(clippy::ref_option)]
-pub(crate) async fn validate_tokens(
+#[expect(clippy::ref_option)]
+pub(super) async fn validate_tokens(
     authentication_token: &str,
     authorization_token: &str,
     kms: &Arc<KMS>,
@@ -418,7 +415,7 @@ pub(crate) async fn validate_tokens(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, unsafe_code, clippy::indexing_slicing)]
+#[expect(clippy::unwrap_used, unsafe_code, clippy::indexing_slicing)]
 mod tests {
     use std::sync::Arc;
 
@@ -509,7 +506,7 @@ mod tests {
             std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWKS_URI", JWKS_URI);
             std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWT_ISSUER", JWT_ISSUER_URI);
             // the token has been issued by Google Accounts (post request)
-        }
+        };
         let jwt_authorization_config = jwt_authorization_config(&jwks_manager);
         trace!("{jwt_authorization_config:#?}");
 

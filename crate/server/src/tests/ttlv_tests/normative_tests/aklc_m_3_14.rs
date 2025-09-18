@@ -435,7 +435,7 @@ fn get_activation_attributes(client: &SocketClient, key_id: &str) {
 }
 
 //FIXME: Not Yet Supported
-#[allow(dead_code)]
+#[expect(dead_code)]
 /// Try to modify activation date (expected to fail)
 fn try_modify_activation_date(client: &SocketClient, key_id: &str) {
     // Get current time in UTC

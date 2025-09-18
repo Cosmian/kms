@@ -1,3 +1,5 @@
+#![allow(clippy::indexing_slicing)] // Test file uses safe indexing patterns
+
 use std::{collections::HashSet, sync::Arc};
 
 use async_trait::async_trait;

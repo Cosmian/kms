@@ -31,7 +31,7 @@ fn build_iv(wrapped_key_size: usize) -> CryptoResult<u64> {
 
 /// Check if the `iv` value obtained after decryption is appropriate according
 /// to the RFC 5649.
-#[allow(clippy::as_conversions, clippy::cast_possible_truncation)]
+#[expect(clippy::as_conversions, clippy::cast_possible_truncation)]
 fn check_iv(iv: u64, data: &[u8]) -> CryptoResult<bool> {
     let data_size: usize = data.len();
     if u32::try_from(iv >> 32)? != DEFAULT_RFC5649_CONST {
@@ -96,7 +96,7 @@ pub fn rfc5649_wrap(plain: &[u8], kek: &[u8]) -> Result<Vec<u8>, CryptoError> {
 ///
 /// The function name matches the one used in the RFC and has no link to the
 /// unwrap function in Rust.
-#[allow(clippy::as_conversions, clippy::cast_possible_truncation)]
+#[expect(clippy::as_conversions, clippy::cast_possible_truncation)]
 pub fn rfc5649_unwrap(ciphertext: &[u8], kek: &[u8]) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
     let n = ciphertext.len();
 
@@ -292,7 +292,7 @@ fn unwrap_64(ciphertext: &[u8], kek: &[u8]) -> Result<(u64, Zeroizing<Vec<u8>>),
     Ok((icr, unwrapped_key))
 }
 
-#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[expect(clippy::unwrap_used, clippy::expect_used)]
 #[cfg(test)]
 mod tests {
     use aes_kw::KeyInit;
@@ -301,7 +301,7 @@ mod tests {
     use crate::crypto::symmetric::rfc5649::{rfc5649_unwrap, rfc5649_wrap};
 
     #[test]
-    pub(crate) fn test_wrap1() {
+    pub(super) fn test_wrap1() {
         const TEST_SIZE_LIMIT: usize = 100;
         #[cfg(not(feature = "non-fips"))]
         // Load FIPS provider module from OpenSSL.
@@ -336,7 +336,7 @@ mod tests {
     }
 
     #[test]
-    pub(crate) fn test_wrap_large_length() {
+    pub(super) fn test_wrap_large_length() {
         #[cfg(not(feature = "non-fips"))]
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
@@ -361,7 +361,7 @@ mod tests {
     }
 
     #[test]
-    pub(crate) fn test_wrap_small_length() {
+    pub(super) fn test_wrap_small_length() {
         #[cfg(not(feature = "non-fips"))]
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
@@ -384,7 +384,7 @@ mod tests {
     }
 
     #[test]
-    pub(crate) fn test_wrap_bad_key_size() {
+    pub(super) fn test_wrap_bad_key_size() {
         #[cfg(not(feature = "non-fips"))]
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
@@ -415,7 +415,7 @@ mod tests {
     }
 
     #[test]
-    pub(crate) fn test_wrap_bad_input_size() {
+    pub(super) fn test_wrap_bad_input_size() {
         #[cfg(not(feature = "non-fips"))]
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
@@ -429,7 +429,7 @@ mod tests {
     }
 
     #[test]
-    pub(crate) fn test_wrap_bad_input_content() {
+    pub(super) fn test_wrap_bad_input_content() {
         #[cfg(not(feature = "non-fips"))]
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
