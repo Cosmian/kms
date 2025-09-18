@@ -3,9 +3,9 @@ use std::sync::Arc;
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_2_1::kmip_operations::{
-            Certify, Create, CreateKeyPair, Decrypt, DeleteAttribute, Destroy, Encrypt, Export,
-            Get, GetAttributes, Hash, Import, Locate, MAC, Operation, Query, ReKey, ReKeyKeyPair,
-            Revoke, SetAttribute, Sign, SignatureVerify, Validate,
+            Certify, Create, CreateKeyPair, Decrypt, DeleteAttribute, DeriveKey, Destroy, Encrypt,
+            Export, Get, GetAttributes, Hash, Import, Locate, MAC, Operation, Query, ReKey,
+            ReKeyKeyPair, Revoke, SetAttribute, Sign, SignatureVerify, Validate,
         },
         ttlv::{TTLV, from_ttlv},
     },
@@ -56,6 +56,11 @@ pub(crate) async fn dispatch(
             let req = from_ttlv::<DeleteAttribute>(ttlv)?;
             let resp = kms.delete_attribute(req, user, database_params).await?;
             Operation::DeleteAttributeResponse(resp)
+        }
+        "DeriveKey" => {
+            let req = from_ttlv::<DeriveKey>(ttlv)?;
+            let resp = Box::pin(kms.derive_key(req, user, database_params)).await?;
+            Operation::DeriveKeyResponse(resp)
         }
         "Destroy" => {
             let req = from_ttlv::<Destroy>(ttlv)?;

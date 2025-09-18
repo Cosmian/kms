@@ -177,6 +177,9 @@ async fn process_operation(
         Operation::DeleteAttribute(kmip_request) => Operation::DeleteAttributeResponse(
             kms.delete_attribute(kmip_request, user, params).await?,
         ),
+        Operation::DeriveKey(kmip_request) => Operation::DeriveKeyResponse(
+            Box::pin(kms.derive_key(kmip_request, user, params)).await?,
+        ),
         Operation::Destroy(kmip_request) => {
             Operation::DestroyResponse(kms.destroy(kmip_request, user, params).await?)
         }
@@ -244,6 +247,7 @@ async fn process_operation(
         | Operation::CreateResponse(_)
         | Operation::DecryptResponse(_)
         | Operation::DeleteAttributeResponse(_)
+        | Operation::DeriveKeyResponse(_)
         | Operation::DestroyResponse(_)
         | Operation::DiscoverVersionsResponse(_)
         | Operation::EncryptResponse(_)

@@ -3,6 +3,7 @@ mod bulk_encrypt_decrypt_tests;
 mod cover_crypt_tests;
 #[cfg(feature = "non-fips")]
 mod curve_25519_tests;
+mod derive_key_tests;
 pub(crate) mod google_cse;
 mod hsm;
 mod kmip_endpoints;

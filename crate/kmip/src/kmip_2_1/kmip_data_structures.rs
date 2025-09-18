@@ -38,17 +38,22 @@ use crate::{
 #[derive(Clone, Eq, Serialize, Deserialize, PartialEq, Debug)]
 pub struct DerivationParameters {
     /// Depends on the PRF.
-    cryptographic_parameters: Option<CryptographicParameters>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cryptographic_parameters: Option<CryptographicParameters>,
     /// Depends on the PRF and mode of operation: an empty IV is assumed if not
     /// provided.
-    initialization_vector: Option<Vec<u8>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub initialization_vector: Option<Vec<u8>>,
     /// Mandatory unless the Unique Identifier of a Secret Data object is
     /// provided. May be repeated.
-    derivation_data: Option<Zeroizing<Vec<u8>>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub derivation_data: Option<Zeroizing<Vec<u8>>>,
     /// Mandatory if Derivation method is PBKDF2.
-    salt: Option<Vec<u8>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub salt: Option<Vec<u8>>,
     /// Mandatory if derivation method is PBKDF2.
-    iteration_count: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub iteration_count: Option<i32>,
 }
 
 /// A Key Block object is a structure used to encapsulate all of the information
@@ -70,7 +75,7 @@ pub struct KeyBlock {
     pub cryptographic_algorithm: Option<CryptographicAlgorithm>,
 
     /// MAY be omitted only if this information is available from the Key Value.
-    /// Does not apply to Secret Data (or Opaque.
+    /// Does not apply to Secret Data or Opaque.
     /// If present, the Cryptographic Algorithm SHALL also be present.
     pub cryptographic_length: Option<i32>,
 
