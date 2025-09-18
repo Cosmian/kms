@@ -2,6 +2,10 @@
 name: CI checks
 
 on:
+  issue_comment:
+    types: [created]
+  pull_request_target:
+    types: [opened, closed, synchronize]
   workflow_call:
     inputs:
       toolchain:
@@ -15,6 +19,11 @@ on:
         type: string
 
 jobs:
+  cla-assistant:
+    if: github.event.pull_request.head.repo.full_name != github.repository
+    uses: ./.github/workflows/cla.yml
+    secrets: inherit
+
   cargo-clippy:
     uses: Cosmian/reusable_workflows/.github/workflows/clippy.yml@develop
     with:
