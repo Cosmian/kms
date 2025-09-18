@@ -61,6 +61,17 @@ if [ -z "$SKIP_SERVICES_TESTS" ]; then
   unset SKIP_SERVICES_TESTS
 fi
 
+# Add --skip google_cse for forks
+# Indeed, Google CSE tests require credentials that are not available for forks.
+if [ "$GITHUB_REPOSITORY" != "Cosmian/kms" ]; then
+  if [ -z "$SKIP_SERVICES_TESTS" ]; then
+    SKIP_SERVICES_TESTS="--skip google_cse"
+  else
+    SKIP_SERVICES_TESTS="$SKIP_SERVICES_TESTS --skip google_cse"
+  fi
+  echo "Info: Running on fork, adding --skip google_cse to SKIP_SERVICES_TESTS"
+fi
+
 rustup target add "$TARGET"
 
 if [ -f /etc/lsb-release ]; then
