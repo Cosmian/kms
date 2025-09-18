@@ -89,6 +89,7 @@ jobs:
 
   non-fips-image:
     name: Non-FIPS image build and tests
+    if: github.repository == 'Cosmian/kms'
     uses: Cosmian/reusable_workflows/.github/workflows/build_docker_image.yml@develop
     with:
       prefix: ''
@@ -98,6 +99,7 @@ jobs:
 
   fips-image:
     name: FIPS image build and tests
+    if: github.repository == 'Cosmian/kms'
     uses: Cosmian/reusable_workflows/.github/workflows/build_docker_image.yml@develop
     with:
       prefix: FIPS
