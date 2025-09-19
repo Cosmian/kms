@@ -1,9 +1,12 @@
 use clap::Parser;
+use cosmian_kmip::kmip_2_1::{
+    kmip_attributes::Attributes, requests::create_secret_data_kmip_object,
+};
 use cosmian_kms_client::{
     KmsClient,
     kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
-        kmip_attributes::Attributes,
+        kmip_attributes::Attributes as KmipAttributes,
         kmip_data_structures::DerivationParameters,
         kmip_objects::ObjectType,
         kmip_operations::{DeriveKey, DeriveKeyResponse},
@@ -11,6 +14,7 @@ use cosmian_kms_client::{
             CryptographicAlgorithm, CryptographicParameters, DerivationMethod, KeyFormatType,
             UniqueIdentifier,
         },
+        requests::import_object_request,
     },
 };
 use zeroize::Zeroizing;
@@ -25,8 +29,15 @@ use crate::{
 #[clap(verbatim_doc_comment)]
 pub struct DeriveKeyAction {
     /// The unique identifier of the base key to derive from
-    #[clap(long, short = 'k')]
-    pub key_id: String,
+    /// Mutually exclusive with --password
+    #[clap(long, short = 'k', conflicts_with = "password")]
+    pub key_id: Option<String>,
+
+    /// UTF-8 password to use as base material for key derivation
+    /// Will create a `SecretData` of type Password internally
+    /// Mutually exclusive with --key-id
+    #[clap(long, short = 'p', conflicts_with = "key_id")]
+    pub password: Option<String>,
 
     /// The derivation method to use (PBKDF2 or HKDF)
     #[clap(long, short = 'm', default_value = "PBKDF2")]
@@ -61,6 +72,44 @@ pub struct DeriveKeyAction {
 
 impl DeriveKeyAction {
     pub async fn run(&self, kms_rest_client: &KmsClient) -> KmsCliResult<()> {
+        // Validate that either key_id or password is provided
+        if self.key_id.is_none() && self.password.is_none() {
+            return Err(KmsCliError::Default(
+                "Either --key-id or --password must be provided".to_owned(),
+            ));
+        }
+
+        // Determine the base key identifier
+        let base_key_id = if let Some(key_id) = &self.key_id {
+            // Use existing key
+            key_id.clone()
+        } else if let Some(password) = &self.password {
+            // Create SecretData from password
+            let password_bytes = Zeroizing::from(password.as_bytes().to_vec());
+
+            let secret_data_object = create_secret_data_kmip_object(
+                password_bytes.as_slice(),
+                cosmian_kmip::kmip_0::kmip_types::SecretDataType::Password,
+                &Attributes::default(),
+            )?;
+
+            let import_request = import_object_request(
+                None, // Let the server generate the ID
+                secret_data_object,
+                None,
+                false,
+                false,
+                Vec::<String>::new(), // No tags for temporary password object
+            );
+
+            let import_response = kms_rest_client.import(import_request).await?;
+            import_response.unique_identifier.to_string()
+        } else {
+            return Err(KmsCliError::Default(
+                "Either key_id or password must be provided".to_owned(),
+            ));
+        };
+
         // Parse derivation method
         let derivation_method = match self.derivation_method.to_uppercase().as_str() {
             "PBKDF2" => DerivationMethod::PBKDF2,
@@ -94,13 +143,14 @@ impl DeriveKeyAction {
             }),
             initialization_vector,
             derivation_data: if self.derivation_method.to_uppercase() == "HKDF" {
-                // For HKDF, use a unique context based on the key ID and timestamp
+                // For HKDF, use a unique context based on the key ID, timestamp, and random value
                 use std::time::{SystemTime, UNIX_EPOCH};
                 let timestamp = SystemTime::now()
                     .duration_since(UNIX_EPOCH)
                     .unwrap_or_default()
-                    .as_secs();
-                let context = format!("CLI-HKDF-{}-{}", self.key_id, timestamp);
+                    .as_nanos(); // Use nanoseconds for higher precision
+                let random_id = uuid::Uuid::new_v4();
+                let context = format!("CLI-HKDF-{base_key_id}-{timestamp}-{random_id}");
                 Some(Zeroizing::new(context.into_bytes()))
             } else {
                 // For PBKDF2, derivation_data is optional, so we can omit it
@@ -111,7 +161,7 @@ impl DeriveKeyAction {
         };
 
         // Create attributes for the derived key
-        let mut attributes = Attributes {
+        let mut attributes = KmipAttributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
             cryptographic_length: Some(self.cryptographic_length),
             cryptographic_usage_mask: Some(
@@ -131,7 +181,7 @@ impl DeriveKeyAction {
         // Create the DeriveKey request
         let derive_request = DeriveKey {
             object_type: ObjectType::SymmetricKey,
-            object_unique_identifier: UniqueIdentifier::TextString(self.key_id.clone()),
+            object_unique_identifier: UniqueIdentifier::TextString(base_key_id),
             derivation_method,
             derivation_parameters,
             attributes,

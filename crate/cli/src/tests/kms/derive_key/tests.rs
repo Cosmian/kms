@@ -67,7 +67,8 @@ pub(crate) async fn test_derive_key_pbkdf2_default() -> KmsCliResult<()> {
 
     // Test PBKDF2 derivation with default parameters
     let derive_action = DeriveKeyAction {
-        key_id: base_key_id.to_string(),
+        key_id: Some(base_key_id.to_string()),
+        password: None,
         derivation_method: "PBKDF2".to_owned(),
         salt: "0123456789abcdef".to_owned(), // 8 bytes in hex
         iteration_count: 4096,
@@ -105,7 +106,8 @@ pub(crate) async fn test_derive_key_pbkdf2_different_hash_algorithms() -> KmsCli
 
     for (i, hash_algo) in hash_algorithms.iter().enumerate() {
         let derive_action = DeriveKeyAction {
-            key_id: base_key_id.to_string(),
+            key_id: Some(base_key_id.to_string()),
+            password: None,
             derivation_method: "PBKDF2".to_owned(),
             salt: "0123456789abcdef".to_owned(),
             iteration_count: 1000,
@@ -136,7 +138,8 @@ pub(crate) async fn test_derive_key_hkdf() -> KmsCliResult<()> {
 
     // Test HKDF derivation
     let derive_action = DeriveKeyAction {
-        key_id: base_key_id.to_string(),
+        key_id: Some(base_key_id.to_string()),
+        password: None,
         derivation_method: "HKDF".to_owned(),
         salt: "fedcba9876543210".to_owned(), // 8 bytes in hex
         iteration_count: 1, // HKDF doesn't use iteration count, but we provide a default
@@ -169,7 +172,8 @@ pub(crate) async fn test_derive_key_with_different_lengths() -> KmsCliResult<()>
 
     for length in lengths {
         let derive_action = DeriveKeyAction {
-            key_id: base_key_id.to_string(),
+            key_id: Some(base_key_id.to_string()),
+            password: None,
             derivation_method: "PBKDF2".to_owned(),
             salt: "0123456789abcdef".to_owned(),
             iteration_count: 2048,
@@ -200,7 +204,8 @@ pub(crate) async fn test_derive_key_error_invalid_hex_salt() -> KmsCliResult<()>
 
     // Test with invalid hex salt (should fail before sending to server)
     let derive_action = DeriveKeyAction {
-        key_id: base_key_id.to_string(),
+        key_id: Some(base_key_id.to_string()),
+        password: None,
         derivation_method: "PBKDF2".to_owned(),
         salt: "invalid_hex_salt".to_owned(), // Invalid hex
         iteration_count: 4096,
@@ -232,7 +237,8 @@ pub(crate) async fn test_derive_key_error_invalid_hex_iv() -> KmsCliResult<()> {
 
     // Test with invalid hex initialization vector (should fail before sending to server)
     let derive_action = DeriveKeyAction {
-        key_id: base_key_id.to_string(),
+        key_id: Some(base_key_id.to_string()),
+        password: None,
         derivation_method: "HKDF".to_owned(),
         salt: "0123456789abcdef".to_owned(),
         iteration_count: 1,
@@ -264,7 +270,8 @@ pub(crate) async fn test_derive_key_error_unsupported_method() -> KmsCliResult<(
 
     // Test with unsupported derivation method
     let derive_action = DeriveKeyAction {
-        key_id: base_key_id.to_string(),
+        key_id: Some(base_key_id.to_string()),
+        password: None,
         derivation_method: "UNSUPPORTED".to_owned(),
         salt: "0123456789abcdef".to_owned(),
         iteration_count: 4096,

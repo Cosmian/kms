@@ -4,6 +4,7 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::{CryptographicUsageMask, HashingAlgorithm, SecretDataType},
         kmip_2_1::{
+            KmipOperation,
             kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
             kmip_objects::{Object, ObjectType, SecretData, SymmetricKey},
             kmip_operations::{DeriveKey, DeriveKeyResponse},
@@ -22,7 +23,12 @@ use openssl::{
 };
 use uuid::Uuid;
 
-use crate::{core::KMS, error::KmsError, kms_bail, result::KResult};
+use crate::{
+    core::{KMS, retrieve_object_utils::user_has_permission},
+    error::KmsError,
+    kms_bail,
+    result::KResult,
+};
 
 // Default constants for key derivation
 const DEFAULT_PBKDF2_ITERATIONS: u32 = 600_000; // OWASP recommendation for PBKDF2 with SHA-256
@@ -88,6 +94,22 @@ pub(crate) async fn derive_key(
             "DeriveKey: failed to retrieve base object {base_key_id}"
         )))
     };
+
+    // Check that the user has permission to derive from the base key
+    let has_permission = user_has_permission(
+        user,
+        Some(&base_key_owm),
+        &KmipOperation::DeriveKey,
+        kms,
+        params.clone(),
+    )
+    .await?;
+
+    if !has_permission {
+        kms_bail!(KmsError::Unauthorized(format!(
+            "User {user} does not have DeriveKey permission on object {base_key_id}"
+        )));
+    }
 
     let base_key_object = base_key_owm.object();
     let base_key_attributes = base_key_owm.attributes();
