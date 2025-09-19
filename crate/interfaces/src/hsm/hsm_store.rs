@@ -16,7 +16,7 @@ use cosmian_kmip::{
         kmip_types::{CryptographicAlgorithm, KeyFormatType},
     },
 };
-use cosmian_logger::{debug, error, trace};
+use cosmian_logger::{debug, error, trace, warn};
 use num_bigint_dig::{BigInt, Sign};
 
 use crate::{
@@ -240,19 +240,29 @@ impl ObjectsStore for HsmStore {
         let slot_ids = self.hsm.get_available_slot_list().await?;
         let mut uids = Vec::new();
         if user_must_be_owner && user != self.hsm_admin {
+            warn!(
+                "User '{}' is not the HSM admin '{}' but 'user_must_be_owner'",
+                user, self.hsm_admin
+            );
             return Ok(uids);
         }
-
-        let mut search_attributes = researched_attributes
-            .map_or_else(Attributes::default, |search_attributes| {
-                search_attributes.clone()
-            });
-
-        if check_basic_compatibility(&search_attributes, state).is_err() {
-            return Ok(uids);
+        let mut search_attributes = researched_attributes.cloned().unwrap_or_else(|| {
+            debug!("No researched_attributes provided. Defaulting to empty filter attributes");
+            Attributes::default()
+        });
+        match check_basic_compatibility(&search_attributes, state) {
+            Ok(()) => {}
+            Err(e) => {
+                debug!("{e}");
+                return Ok(uids);
+            }
         }
-        let Ok(object_filter) = HsmObjectFilter::try_from(&search_attributes) else {
-            return Ok(uids)
+        let object_filter = match HsmObjectFilter::try_from(&search_attributes) {
+            Ok(object_filter) => object_filter,
+            Err(e) => {
+                warn!("{e}");
+                return Ok(uids);
+            }
         };
         let key_size_filter = search_attributes.get_cryptographic_length();
         let key_id_filter = match search_attributes.unique_identifier {
@@ -272,7 +282,7 @@ impl ObjectsStore for HsmStore {
                 .await
                 .unwrap_or(vec![]);
             for object_id in found {
-                debug!("Getting metadata for: {:02X?}", object_id);
+                trace!("Getting metadata for: {:02X?}", object_id);
                 let object_meta = self
                     .hsm
                     .get_key_metadata(slot_id, &object_id)
