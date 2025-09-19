@@ -15,6 +15,12 @@ on:
         type: string
 
 jobs:
+  cla-assistant:
+    if: (github.event.pull_request.head.repo.full_name != github.repository) && ((github.event.comment.body == 'recheck' || github.event.comment.body ==
+      'I have read the CLA Document and I hereby sign the CLA') || github.event_name == 'pull_request_target')
+    uses: ./.github/workflows/cla.yml
+    secrets: inherit
+
   cargo-clippy:
     uses: Cosmian/reusable_workflows/.github/workflows/clippy.yml@develop
     with:
@@ -51,7 +57,7 @@ jobs:
       image: cosmian/rockylinux9
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: recursive
 
@@ -129,7 +135,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: recursive
 
