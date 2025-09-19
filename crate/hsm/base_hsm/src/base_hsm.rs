@@ -118,8 +118,7 @@ impl<P: HsmProvider> BaseHsm<P> {
     /// initialized with, typically from configuration.
     ///
     /// # Returns
-    /// * `HResult<Vec<usize>>` - A result containing a vector of slot identifiers
-    ///   available.
+    /// * A result containing the available slot identifiers
     ///
     /// # Errors
     /// * Returns an error if the internal slot list cannot be accessed

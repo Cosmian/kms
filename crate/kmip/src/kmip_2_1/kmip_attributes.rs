@@ -47,7 +47,7 @@ use crate::{
 /// the server MAY retain all, some or none of the object attributes,
 /// depending on the object type and server policy.
 // TODO: there are 56 attributes in the specs. Only a handful are implemented here
-#[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Default, Debug)]
+#[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Default)]
 #[serde(rename_all = "PascalCase")]
 pub struct Attributes {
     /// The Activation Date attribute contains the date and time when the
@@ -655,6 +655,15 @@ impl Attributes {
             attribute_value: VendorAttributeValue::ByteString(value.to_vec()),
         };
         self.add_vendor_attribute(va);
+    }
+
+    /// Get the cryptographic length as `usize`.
+    ///
+    /// Returns `None` if cryptographic length is not set.
+    /// Returns `Some(0)` should the cryptographic length be negative.
+    pub fn get_cryptographic_length(&mut self) -> Option<usize> {
+        self.cryptographic_length
+            .map(|cryptographic_length| usize::try_from(cryptographic_length).unwrap_or(0))
     }
 
     /// Merge the attributes from `other` into `self`.

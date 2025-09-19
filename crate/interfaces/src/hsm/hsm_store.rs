@@ -243,19 +243,18 @@ impl ObjectsStore for HsmStore {
             return Ok(uids);
         }
 
-        let search_attributes =
-            researched_attributes.map_or_else(Attributes::default, |search_attributes| {
-                debug!("Search attributes: {:?}", search_attributes);
+        let mut search_attributes = researched_attributes
+            .map_or_else(Attributes::default, |search_attributes| {
                 search_attributes.clone()
             });
 
-        if !check_basic_compatibility(&search_attributes, state) {
+        if check_basic_compatibility(&search_attributes, state).is_err() {
             return Ok(uids);
         }
-        let Some(object_filter) = derive_hsm_object_filter(&search_attributes) else {
-            return Ok(uids);
+        let Ok(object_filter) = HsmObjectFilter::try_from(&search_attributes) else {
+            return Ok(uids)
         };
-        let key_size_filter = extract_key_size_filter(&search_attributes);
+        let key_size_filter = search_attributes.get_cryptographic_length();
         let key_id_filter = match search_attributes.unique_identifier {
             Some(unique_identifier) => {
                 let Some(str) = unique_identifier.as_str() else {
@@ -310,105 +309,106 @@ impl ObjectsStore for HsmStore {
     }
 }
 
-fn check_basic_compatibility(researched_attributes: &Attributes, state: Option<State>) -> bool {
+fn check_basic_compatibility(
+    researched_attributes: &Attributes,
+    state: Option<State>,
+) -> InterfaceResult<()> {
     // HSM keys are always active.
     if let Some(s) = state {
         if s != State::Active {
-            return false;
+            return Err(InterfaceError::Default(format!(
+                "Unsupported state for HSMs: expected Active, got {s:?}"
+            )));
         }
     }
+
     if researched_attributes.link.is_some() {
-        return false;
+        return Err(InterfaceError::Default(
+            "Unsupported attribute for HSMs: link".to_owned(),
+        ));
     }
+
     if !researched_attributes.get_tags().is_empty() {
-        return false;
+        return Err(InterfaceError::Default(
+            "Unsupported attribute for HSMs: tags".to_owned(),
+        ));
     }
+
     if researched_attributes.object_group.is_some() {
-        return false;
+        return Err(InterfaceError::Default(
+            "Unsupported attribute for HSMs: object_group".to_owned(),
+        ));
     }
+
     if researched_attributes.object_group_member.is_some() {
-        return false;
+        return Err(InterfaceError::Default(
+            "Unsupported attribute for HSMs: object_group_member".to_owned(),
+        ));
     }
+
     if researched_attributes.comment.is_some() {
-        return false;
+        return Err(InterfaceError::Default(
+            "Unsupported attribute for HSMs: comment".to_owned(),
+        ));
     }
+
     if researched_attributes.contact_information.is_some() {
-        return false;
+        return Err(InterfaceError::Default(
+            "Unsupported attribute for HSMs: contact_information".to_owned(),
+        ));
     }
+
     if let Some(critical) = researched_attributes.critical {
         if critical {
-            return false;
+            return Err(InterfaceError::Default(
+                "Unsupported attribute for HSMs: critical = true".to_owned(),
+            ));
         }
     }
+
     if researched_attributes.description.is_some() {
-        return false;
+        return Err(InterfaceError::Default(
+            "Unsupported attribute for HSMs: description".to_owned(),
+        ));
     }
+
     if researched_attributes.digest.is_some() {
-        return false;
+        return Err(InterfaceError::Default(
+            "Unsupported attribute for HSMs: digest".to_owned(),
+        ));
     }
+
     if researched_attributes.short_unique_identifier.is_some() {
-        return false;
+        return Err(InterfaceError::Default(
+            "Unsupported attribute for HSMs: short_unique_identifier".to_owned(),
+        ));
     }
+
     if researched_attributes.cryptographic_usage_mask.is_some() {
-        return false;
+        return Err(InterfaceError::Default(
+            "Unsupported attribute for HSMs: cryptographic_usage_mask".to_owned(),
+        ));
     }
+
     if researched_attributes.x_509_certificate_identifier.is_some() {
-        return false;
+        return Err(InterfaceError::Default(
+            "Unsupported attribute for HSMs: x_509_certificate_identifier".to_owned(),
+        ));
     }
+
     if researched_attributes.x_509_certificate_issuer.is_some() {
-        return false;
+        return Err(InterfaceError::Default(
+            "Unsupported attribute for HSMs: x_509_certificate_issuer".to_owned(),
+        ));
     }
+
     if researched_attributes.x_509_certificate_subject.is_some() {
-        return false;
-    }
-    true
-}
-
-/// Derives the HSM object filter from attributes.
-/// Returns `None` if incompatible combination.
-fn derive_hsm_object_filter(researched_attributes: &Attributes) -> Option<HsmObjectFilter> {
-    let mut object_filter = HsmObjectFilter::Any;
-
-    if let Some(cryptographic_algorithm) = researched_attributes.cryptographic_algorithm {
-        object_filter = match cryptographic_algorithm {
-            CryptographicAlgorithm::AES => HsmObjectFilter::AesKey,
-            CryptographicAlgorithm::RSA => HsmObjectFilter::RsaKey,
-            _ => return None,
-        };
+        return Err(InterfaceError::Default(
+            "Unsupported attribute for HSMs: x_509_certificate_subject".to_owned(),
+        ));
     }
 
-    if let Some(object_type) = researched_attributes.object_type {
-        object_filter = match object_type {
-            ObjectType::SymmetricKey => {
-                if object_filter == HsmObjectFilter::RsaKey {
-                    return None;
-                }
-                HsmObjectFilter::AesKey
-            }
-            ObjectType::PublicKey => {
-                if object_filter == HsmObjectFilter::AesKey {
-                    return None;
-                }
-                HsmObjectFilter::RsaPublicKey
-            }
-            ObjectType::PrivateKey => {
-                if object_filter == HsmObjectFilter::AesKey {
-                    return None;
-                }
-                HsmObjectFilter::RsaPrivateKey
-            }
-            _ => return None,
-        };
-    }
-
-    Some(object_filter)
-}
-
-/// Extracts key size filter (if any).
-fn extract_key_size_filter(researched_attributes: &Attributes) -> Option<usize> {
-    researched_attributes
-        .cryptographic_length
-        .map(|cryptographic_length| usize::try_from(cryptographic_length).unwrap_or(0))
+    Ok(())
 }
 
 /// The creation of RSA key pairs is done via 2 atomic operations,
