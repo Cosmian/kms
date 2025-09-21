@@ -14,6 +14,8 @@ pub(super) trait PlaceholderTrait {
     const JSON_FN_EACH_ELEMENT: &'static str = "json_each";
     const JSON_FN_EXTRACT_PATH: &'static str = "json_extract";
     const JSON_FN_EXTRACT_TEXT: &'static str = "json_extract";
+    #[allow(dead_code)]
+    const JSON_ARRAY_LENGTH: &'static str = "json_array_length";
     const JSON_NODE_LINK: &'static str = "'$.Link'";
     const JSON_TEXT_LINK_OBJ_ID: &'static str = "'$.LinkedObjectIdentifier'";
     const JSON_TEXT_LINK_TYPE: &'static str = "'$.LinkType'";
@@ -21,7 +23,6 @@ pub(super) trait PlaceholderTrait {
     const JSON_TEXT_NAME_VALUE: &'static str = "'$.NameValue'";
     const JSON_TEXT_NAME_TYPE: &'static str = "'$.NameType'";
     const TYPE_INTEGER: &'static str = "INTEGER";
-    const JSON_ARRAY_LENGTH: &'static str;
 
     /// Handle different placeholders (`?`, `$1`) in SQL queries
     /// to bind value into a query
@@ -176,9 +177,7 @@ impl PlaceholderTrait for PgSqlPlaceholder {
     }
 }
 pub(super) enum SqlitePlaceholder {}
-impl PlaceholderTrait for SqlitePlaceholder {
-    const JSON_ARRAY_LENGTH: &'static str = "json_array_length";
-}
+impl PlaceholderTrait for SqlitePlaceholder {}
 
 /// Builds a SQL query depending on `attributes` and `state` constraints,
 /// to search for items in database.

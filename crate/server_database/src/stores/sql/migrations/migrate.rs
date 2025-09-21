@@ -240,16 +240,7 @@ where
     }
 }
 
-/// This object was used to serialize the objects in the database
-/// before 4.22.1+
-/// ```Rust
-/// #[derive(Clone)]
-/// #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
-/// pub(crate) struct DBObject {
-///     pub(crate) object_type: ObjectType,
-///     pub(crate) object: Object,
-/// }
-/// ```
+#[expect(dead_code)]
 fn db_object_to_object(db_object: &Value) -> Result<Object, DbError> {
     let object_type = db_object["object_type"].as_str().ok_or_else(|| {
         DbError::DatabaseError(format!(
@@ -315,78 +306,6 @@ fn db_object_to_object(db_object: &Value) -> Result<Object, DbError> {
         }
     })
 }
-
-/*
-// This function appears to be orphaned migration code - commenting out to fix compilation
-#[allow(dead_code)]
-fn down(&self) -> BoxFuture<'_, Result<(), sea_orm::DbErr>> {
-    let object_type = db_object["object_type"].as_str().ok_or_else(|| {
-        DbError::DatabaseError(format!(
-            "migration to 4.22.1+ failed: object_type not found in object: {db_object:?}",
-        ))
-    })?;
-    let mut content = db_object["object"].clone();
-    // make sure we can actually deserialize and re-serialize the objects
-    Ok(match object_type {
-        "PrivateKey" => {
-            migrate_key_material(&mut content)?;
-            let obj = serde_json::from_value::<PrivateKey>(content).map_err(|e| {
-                DbError::DatabaseError(format!(
-                    "migration to 4.22.1+ failed: failed to deserialize PrivateKey: {e}"
-                ))
-            })?;
-            Object::PrivateKey(obj)
-        }
-        "PublicKey" => {
-            migrate_key_material(&mut content)?;
-            let obj = serde_json::from_value::<PublicKey>(content).map_err(|e| {
-                DbError::DatabaseError(format!(
-                    "migration to 4.22.1+ failed: failed to deserialize PublicKey: {e}"
-                ))
-            })?;
-            Object::PublicKey(obj)
-        }
-        "Certificate" => {
-            let obj = serde_json::from_value::<Certificate>(content).map_err(|e| {
-                DbError::DatabaseError(format!(
-                    "migration to 4.22.1+ failed: failed to deserialize Certificate: {e}"
-                ))
-            })?;
-            Object::Certificate(obj)
-        }
-        "SymmetricKey" => {
-            let obj = serde_json::from_value::<SymmetricKey>(content).map_err(|e| {
-                DbError::DatabaseError(format!(
-                    "migration to 4.22.1+ failed: failed to deserialize SymmetricKey: {e}"
-                ))
-            })?;
-            Object::SymmetricKey(obj)
-        }
-        "SecretData" => {
-            let obj = serde_json::from_value::<SecretData>(content).map_err(|e| {
-                DbError::DatabaseError(format!(
-                    "migration to 4.22.1+ failed: failed to deserialize SecretData: {e}"
-                ))
-            })?;
-            Object::SecretData(obj)
-        }
-        "OpaqueObject" => {
-            let obj = serde_json::from_value::<OpaqueObject>(content).map_err(|e| {
-                DbError::DatabaseError(format!(
-                    "migration to 4.22.1+ failed: failed to deserialize OpaqueObject: {e}"
-                ))
-            })?;
-            Object::OpaqueObject(obj)
-        }
-        x => {
-            return Err(DbError::DatabaseError(format!(
-                "migration to 4.22.1+ failed: unknown object type: {x}"
-            )));
-        }
-    })
-}
-*/
-
 /// Migrate the `KeyMaterial` which used `BigUint` to `KeyMaterial` which uses `BigInt`
 fn migrate_key_material(content: &mut Value) -> Result<(), DbError> {
     let key_format_type = content

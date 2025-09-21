@@ -72,8 +72,8 @@ pub(crate) async fn test_create_symmetric_key() -> KmsCliResult<()> {
             ..Default::default()
         }
         .run(ctx.get_owner_client())
-        .await?
-    };
+        .await?;
+    }
 
     // Sha3
     {
@@ -129,8 +129,8 @@ pub(crate) async fn test_create_symmetric_key() -> KmsCliResult<()> {
             ..Default::default()
         }
         .run(ctx.get_owner_client())
-        .await?
-    };
+        .await?;
+    }
     Ok(())
 }
 

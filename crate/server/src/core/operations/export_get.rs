@@ -140,8 +140,16 @@ pub(crate) async fn export_get(
                 #[cfg(not(feature = "non-fips"))]
                 let is_pkcs12 = *key_format_type == KeyFormatType::PKCS12;
                 #[cfg(feature = "non-fips")]
-                let is_pkcs12 = *key_format_type == KeyFormatType::PKCS12
-                    || *key_format_type == KeyFormatType::Pkcs12Legacy;
+                let is_pkcs12 = *key_format_type == KeyFormatType::PKCS12 || {
+                    #[cfg(feature = "non-fips")]
+                    {
+                        *key_format_type == KeyFormatType::Pkcs12Legacy
+                    }
+                    #[cfg(not(feature = "non-fips"))]
+                    {
+                        false
+                    }
+                };
                 if is_pkcs12 {
                     // retrieve the private key
                     owm = retrieve_private_key_for_certificate(
@@ -182,7 +190,16 @@ pub(crate) async fn export_get(
                 let is_wrong_format = *key_format_type != KeyFormatType::X509
                     && *key_format_type != KeyFormatType::PKCS7
                     && *key_format_type != KeyFormatType::PKCS12
-                    && *key_format_type != KeyFormatType::Pkcs12Legacy;
+                    && {
+                        #[cfg(feature = "non-fips")]
+                        {
+                            *key_format_type != KeyFormatType::Pkcs12Legacy
+                        }
+                        #[cfg(not(feature = "non-fips"))]
+                        {
+                            true
+                        }
+                    };
                 if is_wrong_format {
                     kms_bail!(
                         "export: unsupported Key Format Type for a certificate: {:?}",
@@ -257,8 +274,16 @@ async fn post_process_private_key(
     );
     // determine if the user wants a PKCS#12
     #[cfg(feature = "non-fips")]
-    let is_pkcs12 = request.key_format_type == Some(KeyFormatType::PKCS12)
-        || request.key_format_type == Some(KeyFormatType::Pkcs12Legacy);
+    let is_pkcs12 = request.key_format_type == Some(KeyFormatType::PKCS12) || {
+        #[cfg(feature = "non-fips")]
+        {
+            request.key_format_type == Some(KeyFormatType::Pkcs12Legacy)
+        }
+        #[cfg(not(feature = "non-fips"))]
+        {
+            false
+        }
+    };
 
     #[cfg(not(feature = "non-fips"))]
     let is_pkcs12 = request.key_format_type == Some(KeyFormatType::PKCS12);
@@ -414,6 +439,7 @@ async fn post_process_active_private_key(
             KeyFormatType::TransparentRSAPrivateKey,
             KeyFormatType::ECPrivateKey,
             KeyFormatType::PKCS12,
+            #[cfg(feature = "non-fips")]
             KeyFormatType::Pkcs12Legacy,
         ];
 
@@ -889,6 +915,7 @@ async fn build_pkcs12_for_private_key(
     #[cfg(feature = "non-fips")]
     {
         // support for OLD PKCS#12 formats
+        #[cfg(feature = "non-fips")]
         if request.key_format_type == Some(KeyFormatType::Pkcs12Legacy) {
             pkcs12_builder
                 .cert_algorithm(Nid::PBE_WITHSHA1AND40BITRC2_CBC)

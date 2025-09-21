@@ -305,7 +305,6 @@ async fn test_openssl_cli_compat_inner(
     Ok(rec_dek)
 }
 
-#[expect(dead_code)]
 const GOOGLE_RSA_PUBLIC_KEY: &str = "-----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApg4Oo7ygEBmAlzhUZFm2
 75K999TqNjvgiAi/pSzAJS6XO3sa346zZYjZpj4l4OP5T2xlmPXoF/igbCO9jAeW

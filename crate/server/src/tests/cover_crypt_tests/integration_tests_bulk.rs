@@ -17,7 +17,6 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 
 use crate::{result::KResult, tests::test_utils};
 
-#[expect(clippy::panic_in_result_fn)]
 #[tokio::test]
 async fn integration_tests_bulk() -> KResult<()> {
     // cosmian_logger::log_init("trace,hyper=info,reqwest=info");

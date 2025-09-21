@@ -133,42 +133,16 @@ pub async fn batch_export_objects(
     params: ExportObjectParams<'_>,
 ) -> Result<Vec<(UniqueIdentifier, Object, Attributes)>, KmsClientError> {
     if params.allow_revoked {
-        batch_export(
-            kms_rest_client,
-            object_ids_or_tags,
-            params.unwrap,
-            params.wrapping_key_id,
-            params.key_format_type,
-            params.encode_to_ttlv,
-            params.wrapping_cryptographic_parameters,
-            params.authenticated_encryption_additional_data,
-        )
-        .await
+        batch_export(kms_rest_client, object_ids_or_tags, &params).await
     } else {
-        batch_get(
-            kms_rest_client,
-            object_ids_or_tags,
-            params.unwrap,
-            params.wrapping_key_id,
-            params.key_format_type,
-            params.encode_to_ttlv,
-            params.wrapping_cryptographic_parameters,
-            params.authenticated_encryption_additional_data,
-        )
-        .await
+        batch_get(kms_rest_client, object_ids_or_tags, &params).await
     }
 }
 
-#[expect(clippy::too_many_arguments)]
 async fn batch_get(
     kms_rest_client: &KmsClient,
     object_ids_or_tags: Vec<String>,
-    unwrap: bool,
-    wrapping_key_id: Option<&str>,
-    key_format_type: Option<KeyFormatType>,
-    encode_to_ttlv: bool,
-    wrapping_cryptographic_parameters: Option<CryptographicParameters>,
-    authenticated_encryption_additional_data: Option<String>,
+    params: &ExportObjectParams<'_>,
 ) -> KmsClientResult<Vec<(UniqueIdentifier, Object, Attributes)>> {
     let operations = object_ids_or_tags
         .into_iter()
@@ -177,12 +151,12 @@ async fn batch_get(
             vec![
                 Operation::Get(get_request(
                     &id,
-                    unwrap,
-                    wrapping_key_id,
-                    key_format_type,
-                    encode_to_ttlv,
-                    wrapping_cryptographic_parameters.clone(),
-                    authenticated_encryption_additional_data.clone(),
+                    params.unwrap,
+                    params.wrapping_key_id,
+                    params.key_format_type,
+                    params.encode_to_ttlv,
+                    params.wrapping_cryptographic_parameters.clone(),
+                    params.authenticated_encryption_additional_data.clone(),
                 )),
                 Operation::GetAttributes(GetAttributes {
                     unique_identifier: Some(UniqueIdentifier::TextString(id.clone())),
@@ -222,16 +196,10 @@ async fn batch_get(
     Ok(results)
 }
 
-#[expect(clippy::too_many_arguments)]
 async fn batch_export(
     kms_rest_client: &KmsClient,
     object_ids_or_tags: Vec<String>,
-    unwrap: bool,
-    wrapping_key_id: Option<&str>,
-    key_format_type: Option<KeyFormatType>,
-    encode_to_ttlv: bool,
-    wrapping_cryptographic_parameters: Option<CryptographicParameters>,
-    authenticated_encryption_additional_data: Option<String>,
+    params: &ExportObjectParams<'_>,
 ) -> KmsClientResult<Vec<(UniqueIdentifier, Object, Attributes)>> {
     let operations = object_ids_or_tags
         .into_iter()
@@ -240,12 +208,12 @@ async fn batch_export(
             vec![
                 Operation::Export(export_request(
                     &id,
-                    unwrap,
-                    wrapping_key_id,
-                    key_format_type,
-                    encode_to_ttlv,
-                    wrapping_cryptographic_parameters.clone(),
-                    authenticated_encryption_additional_data.clone(),
+                    params.unwrap,
+                    params.wrapping_key_id,
+                    params.key_format_type,
+                    params.encode_to_ttlv,
+                    params.wrapping_cryptographic_parameters.clone(),
+                    params.authenticated_encryption_additional_data.clone(),
                 )),
                 Operation::GetAttributes(GetAttributes {
                     unique_identifier: Some(UniqueIdentifier::TextString(id.clone())),

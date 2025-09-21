@@ -100,7 +100,7 @@ pub(crate) async fn test_import_export_wrap_rfc_5649() -> KmsCliResult<()> {
 pub(crate) async fn test_import_export_wrap_ecies() -> KmsCliResult<()> {
     use cosmian_kms_client::kmip_0::kmip_types::CryptographicUsageMask;
 
-    cosmian_logger::log_init(None);
+    test_kms_server::init_test_logging();
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();

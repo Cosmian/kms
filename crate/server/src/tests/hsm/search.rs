@@ -29,8 +29,8 @@ pub(super) async fn test_object_search() -> KResult<()> {
 
     let mut clap_config = hsm_clap_config(&owner, None)?;
     clap_config.db.sqlite_path = sqlite_path.clone();
-    let rsa_uid = as_hsm_uid!(clap_config.hsm_slot[0], rsa_uuid);
-    let aes_uid = as_hsm_uid!(clap_config.hsm_slot[0], aes_uuid);
+    let rsa_uid = as_hsm_uid!(clap_config.hsm.hsm_slot[0], rsa_uuid);
+    let aes_uid = as_hsm_uid!(clap_config.hsm.hsm_slot[0], aes_uuid);
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
 
     delete_all_keys(&owner, &kms).await?;

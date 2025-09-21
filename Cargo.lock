@@ -5197,7 +5197,6 @@ dependencies = [
  "cosmian_logger",
  "criterion",
  "serde_json",
- "tempfile",
  "tokio",
  "zeroize",
 ]

@@ -466,9 +466,8 @@ impl Session {
             // Multiple matches in case the HSM uses the same ID for SK and PK
             debug!("Found {} possible handles", object_handles.len());
             for handle in object_handles {
-                let object_type = match self.get_key_type(handle)? {
-                    None => continue,
-                    Some(object_type) => object_type,
+                let Some(object_type) = self.get_key_type(handle)? else {
+                    continue
                 };
                 if object_id.ends_with(b"_pk") {
                     // We are looking for a public key. Check if the results contain one.
@@ -525,6 +524,7 @@ impl Session {
     /// The filter can be used to narrow down the search to specific types of objects
     /// such as AES keys, RSA keys, etc.
     /// If no filter is provided, all objects are listed.
+    #[allow(clippy::needless_pass_by_value)]
     pub fn list_objects(&self, object_filter: HsmObjectFilter) -> HResult<Vec<CK_OBJECT_HANDLE>> {
         let mut template: Vec<CK_ATTRIBUTE> = Vec::new();
         match object_filter {
@@ -1582,9 +1582,8 @@ impl Session {
 
     /// Get the metadata for a key
     pub fn get_key_metadata(&self, key_handle: CK_OBJECT_HANDLE) -> HResult<Option<KeyMetadata>> {
-        let key_type = match self.get_key_type(key_handle)? {
-            None => return Ok(None),
-            Some(key_type) => key_type,
+        let Some(key_type) = self.get_key_type(key_handle)? else {
+            return Ok(None)
         };
         let mut template = [CK_ATTRIBUTE {
             type_: CKA_LABEL,

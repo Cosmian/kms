@@ -1,5 +1,10 @@
 mod common;
-#[expect(clippy::unwrap_used, clippy::panic_in_result_fn)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::panic_in_result_fn,
+    clippy::unwrap_in_result,
+    clippy::expect_used
+)]
 #[cfg(test)]
 mod tests;
 mod unwrap_key;

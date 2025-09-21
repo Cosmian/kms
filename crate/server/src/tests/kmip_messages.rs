@@ -31,7 +31,6 @@ use crate::{
     config::ServerParams, core::KMS, result::KResult, tests::test_utils::https_clap_config,
 };
 
-#[expect(clippy::panic_in_result_fn)]
 #[tokio::test]
 async fn test_kmip_mac_messages() -> KResult<()> {
     // Disable most logging
@@ -113,7 +112,6 @@ async fn test_kmip_mac_messages() -> KResult<()> {
     Ok(())
 }
 
-#[expect(clippy::panic_in_result_fn)]
 #[tokio::test]
 async fn test_encrypt_kmip_messages() -> KResult<()> {
     // Disable most logging
@@ -197,7 +195,6 @@ async fn test_encrypt_kmip_messages() -> KResult<()> {
     Ok(())
 }
 
-#[expect(clippy::panic_in_result_fn)]
 #[tokio::test]
 async fn test_kmip_messages() -> KResult<()> {
     log_init(option_env!("RUST_LOG"));

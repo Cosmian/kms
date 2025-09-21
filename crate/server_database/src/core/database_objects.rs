@@ -37,6 +37,7 @@ use crate::{
 /// - `atomic`: Performs an atomic set of operations on the database.
 /// - `get_unwrapped`: Unwraps the object (if needed) and returns the unwrapped object.
 impl Database {
+    #[allow(dead_code)]
     /// Register an Objects store for Objects `uid` starting with `<prefix>::`.
     ///
     /// This function registers an `ObjectsStore` for objects whose unique identifiers
@@ -63,6 +64,7 @@ impl Database {
         map.insert(prefix.to_owned(), objects_store);
     }
 
+    #[allow(dead_code)]
     /// Unregister the default objects store or a store for the given prefix
     pub async fn unregister_object_store(&self, prefix: Option<&str>) {
         let mut map = self.objects.write().await;
@@ -377,9 +379,8 @@ impl Database {
         if operations.is_empty() {
             return Ok(vec![]);
         }
-        let first_op = operations
-            .first()
-            .ok_or_else(|| DbError::InvalidRequest("Operations list is empty".to_owned()))?;
+        #[expect(clippy::indexing_slicing)]
+        let first_op = &operations[0];
         let first_uid = first_op.get_object_uid();
         let db = self.get_object_store(first_uid).await?;
         let ids = db.atomic(user, operations, params).await?;

@@ -13,7 +13,7 @@ include!(concat!(env!("OUT_DIR"), "/demo_timeout.rs"));
 /// # Panics
 ///
 /// Will panic if automatically generated datetime cannot be stringified back
-#[expect(clippy::expect_used)]
+#[allow(clippy::expect_used)]
 pub(crate) async fn demo_timeout() {
     loop {
         {
@@ -26,10 +26,7 @@ pub(crate) async fn demo_timeout() {
 
             if now > end {
                 warn!("Shutting down...");
-                warn!(
-                    "Demo version expired ! If you \u{2764}\u{fe0f}  this software please buy a \
-                     license \u{1f980}"
-                );
+                warn!("Demo version expired ! If you ❤️  this software please buy a license 🦀");
                 warn!("Reach us at https://cosmian.com/contact-us");
                 break
             }

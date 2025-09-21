@@ -14,7 +14,7 @@ use cosmian_kms_interfaces::{
     AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
     PermissionsStore, SessionParams,
 };
-use cosmian_logger::{debug, info, trace};
+use cosmian_logger::{debug, trace};
 use rawsql::Loader;
 use serde_json::Value;
 use sqlx::{
@@ -55,7 +55,6 @@ macro_rules! get_pgsql_query {
 /// into an `ObjectWithMetadata`
 fn pg_row_to_owm(row: &PgRow) -> Result<ObjectWithMetadata, DbError> {
     let id = row.get::<String, _>(0);
-    info!("VALUE: {}", row.get::<String, _>(1));
     let object: Object = serde_json::from_str(&row.get::<String, _>(1))
         .context("failed deserializing the object")?;
     let attributes: Attributes = serde_json::from_value(row.get::<Value, _>(2))
@@ -355,7 +354,7 @@ pub(super) async fn create_(
 ) -> DbResult<String> {
     let object_json =
         serde_json::to_string_pretty(object).context("failed serializing the object to JSON")?;
-    info!("uid: {:?}, object_json: {object_json:#?}", uid);
+    debug!("uid: {:?}, object_json: {object_json:#?}", uid);
 
     let attributes_json =
         serde_json::to_value(attributes).context("failed serializing the attributes to JSON")?;

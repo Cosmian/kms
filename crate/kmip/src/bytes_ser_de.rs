@@ -43,7 +43,7 @@ pub trait Serializable: Sized {
         let mut de = Deserializer::new(bytes);
         match de.read::<Self>() {
             Ok(result) if !de.finalize().is_empty() => {
-                Err(KmipError::DeserializationSize(bytes.len(), result.length()).into())
+                Err(KmipError::DeserializationSize(bytes.len(), result.length()))?
             }
             success_or_failure => success_or_failure,
         }
@@ -134,7 +134,7 @@ impl<'a> Deserializer<'a> {
     }
 }
 
-// Implement `ZeroizeOnDrop` not to leak serialized sercrets.
+// Implement `ZeroizeOnDrop` not to leak serialized secrets.
 pub struct Serializer(Zeroizing<Vec<u8>>);
 
 impl Serializer {
@@ -321,9 +321,7 @@ mod tests {
     fn test_ser_de() -> Result<(), KmipError> {
         let a1 = b"azerty".to_vec();
         let a2 = b"".to_vec();
-        let a3 = "nbvcxwmlkjhgfdsqpoiuytreza)\u{e0}\u{e7}_\u{e8}-('\u{e9}&"
-            .as_bytes()
-            .to_vec();
+        let a3 = "nbvcxwmlkjhgfdsqpoiuytreza)àç_è-('é&".as_bytes().to_vec();
 
         let mut ser = Serializer::new();
         assert_eq!(7, ser.write_vec(&a1)?);

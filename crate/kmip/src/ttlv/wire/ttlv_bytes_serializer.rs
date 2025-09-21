@@ -15,9 +15,7 @@ fn write_tag<W: Write, TAG: KmipTag>(writer: &mut W, tag_str: &str) -> Result<()
 
 /// Write a type as a 1-byte integer
 fn write_type<W: Write>(writer: &mut W, item_type: TtlvType) -> Result<(), TtlvError> {
-    // Clippy doesn't like the as conversion, but it's safe here
-    #[expect(clippy::as_conversions)]
-    writer.write_all(&[item_type as u8])?;
+    writer.write_all(&[item_type.to_byte()])?;
     Ok(())
 }
 

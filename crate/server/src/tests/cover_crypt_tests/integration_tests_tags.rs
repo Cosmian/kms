@@ -25,7 +25,6 @@ use crate::{
     tests::test_utils,
 };
 
-#[expect(clippy::panic_in_result_fn)]
 #[tokio::test]
 async fn test_re_key_with_tags() -> KResult<()> {
     let app = test_utils::test_app(None, None).await;
@@ -79,7 +78,6 @@ async fn test_re_key_with_tags() -> KResult<()> {
     Ok(())
 }
 
-#[expect(clippy::panic_in_result_fn)]
 #[tokio::test]
 async fn integration_tests_with_tags() -> KResult<()> {
     cosmian_logger::log_init(None);

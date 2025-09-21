@@ -152,8 +152,8 @@ impl KmipBigInt {
         for digit in digits {
             let mut acc = *digit;
             for _ in 0..4 {
-                #[expect(clippy::as_conversions)]
-                bytes.push((acc & 0xFF) as u8);
+                let [b0, ..] = acc.to_le_bytes();
+                bytes.push(b0);
                 acc >>= 8;
             }
         }

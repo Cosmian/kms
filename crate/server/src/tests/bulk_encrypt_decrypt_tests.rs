@@ -23,7 +23,6 @@ use crate::{error::KmsError, result::KResult, tests::test_utils};
 const NUM_MESSAGES: usize = 1000;
 
 #[tokio::test]
-#[expect(clippy::panic_in_result_fn)]
 async fn bulk_encrypt_decrypt() -> KResult<()> {
     cosmian_logger::log_init(option_env!("RUST_LOG"));
     let app = test_utils::test_app(None, None).await;
@@ -84,7 +83,6 @@ async fn bulk_encrypt_decrypt() -> KResult<()> {
 }
 
 #[tokio::test]
-#[expect(clippy::panic_in_result_fn)]
 async fn single_encrypt_decrypt_cbc_mode() -> KResult<()> {
     cosmian_logger::log_init(option_env!("RUST_LOG"));
     let app = test_utils::test_app(None, None).await;

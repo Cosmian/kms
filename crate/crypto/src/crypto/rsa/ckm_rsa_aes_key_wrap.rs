@@ -113,7 +113,12 @@ pub fn ckm_rsa_aes_key_unwrap(
     Ok(plaintext)
 }
 
-#[expect(clippy::panic_in_result_fn, clippy::unwrap_used)]
+#[allow(
+    clippy::panic_in_result_fn,
+    clippy::unwrap_used,
+    clippy::unwrap_in_result,
+    clippy::expect_used
+)]
 #[cfg(test)]
 mod tests {
     use std::{fs, path::Path};

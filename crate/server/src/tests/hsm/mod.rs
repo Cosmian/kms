@@ -70,24 +70,24 @@ fn hsm_clap_config(owner: &str, kek_id: Option<Uuid>) -> KResult<ClapConfig> {
 
     if unwrapped_model == "default" {
         // For backwards compatible with existing tests.
-        clap_config.hsm_model = "utimaco".to_owned();
-        clap_config.hsm_admin = owner.to_owned();
-        clap_config.hsm_slot = vec![0];
-        clap_config.hsm_password = vec!["12345678".to_owned()];
+        clap_config.hsm.hsm_model = "utimaco".to_owned();
+        clap_config.hsm.hsm_admin = owner.to_owned();
+        clap_config.hsm.hsm_slot = vec![0];
+        clap_config.hsm.hsm_password = vec!["12345678".to_owned()];
     } else {
         let user_password = get_hsm_password()?;
         let slot = get_hsm_slot_id()?;
-        clap_config.hsm_admin = owner.to_owned();
-        clap_config.hsm_slot = vec![slot];
-        clap_config.hsm_password = vec![user_password];
+        clap_config.hsm.hsm_admin = owner.to_owned();
+        clap_config.hsm.hsm_slot = vec![slot];
+        clap_config.hsm.hsm_password = vec![user_password];
         if unwrapped_model == "utimaco" {
-            clap_config.hsm_model = "utimaco".to_owned();
+            clap_config.hsm.hsm_model = "utimaco".to_owned();
         } else if unwrapped_model == "softhsm2" {
-            clap_config.hsm_model = "softhsm2".to_owned();
+            clap_config.hsm.hsm_model = "softhsm2".to_owned();
         } else if unwrapped_model == "smartcardhsm" {
-            clap_config.hsm_model = "smartcardhsm".to_owned();
+            clap_config.hsm.hsm_model = "smartcardhsm".to_owned();
         } else if unwrapped_model == "proteccio" {
-            clap_config.hsm_model = "proteccio".to_owned();
+            clap_config.hsm.hsm_model = "proteccio".to_owned();
         } else {
             return Err(KmsError::Default(
                 "The provided HSM model is unknown".to_owned(),
@@ -97,7 +97,7 @@ fn hsm_clap_config(owner: &str, kek_id: Option<Uuid>) -> KResult<ClapConfig> {
     info!("Configured HSM tests for {unwrapped_model}");
 
     if let Some(kek_id) = kek_id {
-        clap_config.key_encryption_key = Some(as_hsm_uid!(clap_config.hsm_slot[0], kek_id));
+        clap_config.key_encryption_key = Some(as_hsm_uid!(clap_config.hsm.hsm_slot[0], kek_id));
     }
 
     Ok(clap_config)

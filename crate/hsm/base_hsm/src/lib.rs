@@ -107,8 +107,8 @@ macro_rules! hsm_call {
         {
             let hsm_lib_ref = &$hsm_lib;
             let function_name = stringify!($fn_name);
-            #[allow(unsafe_code)]
-            #[allow(clippy::macro_metavars_in_unsafe)]
+            #[expect(unsafe_code)]
+            #[expect(clippy::macro_metavars_in_unsafe)]
             let rv = match hsm_lib_ref.$fn_name {
                 Some(func) => unsafe { func($($args),*) },
                 None => return Err($crate::HError::Default(format!("{} not available on library", function_name))),

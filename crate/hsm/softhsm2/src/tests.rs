@@ -3,19 +3,6 @@
 //! ```
 //! HSM_USER_PASSWORD=12345678 cargo test --target x86_64-unknown-linux-gnu --features softhsm2 -- tests::test_hsm_all
 //! ```
-
-// Allow test-specific lint patterns for C library integration
-#![allow(unsafe_code)]
-#![allow(clippy::panic_in_result_fn)]
-#![allow(clippy::panic)]
-#![allow(clippy::expect_used)]
-#![allow(clippy::unwrap_used)]
-#![allow(clippy::assertions_on_result_states)]
-#![allow(clippy::as_conversions)]
-#![allow(clippy::map_err_ignore)]
-#![allow(clippy::redundant_clone)]
-#![allow(clippy::explicit_iter_loop)]
-
 use std::{collections::HashMap, ptr, sync::Arc, thread};
 
 use cosmian_kms_base_hsm::{
@@ -546,7 +533,9 @@ fn test_hsm_multi_threaded_rsa_encrypt_decrypt_test() -> HResult<()> {
     }
 
     for handle in handles {
-        handle.join().expect("Thread panicked")?;
+        handle
+            .join()
+            .map_err(|e| HError::Default(format!("Thread panicked: {e:?}")))??;
     }
     info!("Successfully encrypted/decrypted with RSA OAEP in multiple threads");
     Ok(())

@@ -70,11 +70,11 @@ impl UnwrappedCache {
     ///
     /// # Arguments
     /// * `max_age` - The maximum age of an object in the cache before it is considered stale.
-    #[expect(clippy::missing_panics_doc)]
+    #[allow(clippy::missing_panics_doc)]
     #[must_use]
     pub fn new(max_age: Duration) -> Self {
         // SAFETY: 100 is a non-zero constant
-        #[expect(clippy::expect_used)]
+        #[allow(clippy::expect_used)]
         let max_size = NonZeroUsize::new(100).expect("100 is not zero. This will never trigger");
 
         let (tx, rx) = mpsc::channel(100_000);
@@ -238,8 +238,13 @@ impl Drop for UnwrappedCache {
 }
 
 #[cfg(test)]
-#[expect(clippy::panic_in_result_fn)]
 mod tests {
+    #![allow(
+        clippy::panic_in_result_fn,
+        clippy::unwrap_in_result,
+        clippy::assertions_on_result_states,
+        clippy::assertions_on_constants
+    )]
     use std::{
         collections::{HashMap, HashSet},
         time::Duration,
@@ -260,7 +265,6 @@ mod tests {
     use crate::{Database, core::main_db_params::MainDbParams, error::DbResult};
 
     #[tokio::test]
-    #[expect(clippy::unwrap_used, clippy::panic_in_result_fn)]
     async fn test_lru_cache() -> DbResult<()> {
         // log_init(Some("debug"));
         log_init(option_env!("RUST_LOG"));
@@ -310,8 +314,10 @@ mod tests {
 
         // fetch the key
         let owm = database.retrieve_object(&uid, None).await?;
-        assert!(owm.is_some());
-        assert_eq!(owm.unwrap().id(), &uid);
+        match owm {
+            Some(obj) => assert_eq!(obj.id(), &uid),
+            None => assert!(false, "expected object to be present"),
+        }
         {
             let cache = database.unwrapped_cache.get_cache();
             // the unwrapped version should not be in the cache
