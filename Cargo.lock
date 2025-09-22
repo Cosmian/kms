@@ -1374,6 +1374,7 @@ dependencies = [
  "clap",
  "cosmian_kms_access",
  "cosmian_kms_client_utils",
+ "cosmian_kms_interfaces",
  "cosmian_kms_server_database",
  "cosmian_logger",
  "dotenvy",

@@ -657,6 +657,15 @@ impl Attributes {
         self.add_vendor_attribute(va);
     }
 
+    /// Get the cryptographic length as `usize`.
+    ///
+    /// Returns `None` if cryptographic length is not set.
+    /// Returns `Some(0)` should the cryptographic length be negative.
+    pub fn get_cryptographic_length(&mut self) -> Option<usize> {
+        self.cryptographic_length
+            .map(|cryptographic_length| usize::try_from(cryptographic_length).unwrap_or(0))
+    }
+
     /// Merge the attributes from `other` into `self`.
     /// If an attribute is present in both `self` and `other`, and *overwrite* is set,
     /// the value from `other` is used else the value from `self` is used.

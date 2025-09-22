@@ -16,12 +16,13 @@ use cosmian_kmip::{
         kmip_types::{CryptographicAlgorithm, KeyFormatType},
     },
 };
-use cosmian_logger::debug;
+use cosmian_logger::{debug, error, trace, warn};
 use num_bigint_dig::{BigInt, Sign};
 
 use crate::{
-    AtomicOperation, HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject, InterfaceError,
-    InterfaceResult, KeyMaterial, ObjectWithMetadata, ObjectsStore, SessionParams,
+    AtomicOperation, HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject, HsmObjectFilter,
+    InterfaceError, InterfaceResult, KeyMaterial, ObjectWithMetadata, ObjectsStore, SessionParams,
+    as_hsm_uid,
 };
 
 pub struct HsmStore {
@@ -236,9 +237,188 @@ impl ObjectsStore for HsmStore {
         user_must_be_owner: bool,
         params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
-        // HSM Objects cannot be searched
-        Ok(vec![])
+        let slot_ids = self.hsm.get_available_slot_list().await?;
+        let mut uids = Vec::new();
+        if user_must_be_owner && user != self.hsm_admin {
+            warn!(
+                "User '{}' is not the HSM admin '{}' but 'user_must_be_owner'",
+                user, self.hsm_admin
+            );
+            return Ok(uids);
+        }
+        let mut search_attributes = researched_attributes.cloned().unwrap_or_else(|| {
+            debug!("No researched_attributes provided. Defaulting to empty filter attributes");
+            Attributes::default()
+        });
+        match check_basic_compatibility(&search_attributes, state) {
+            Ok(()) => {}
+            Err(e) => {
+                debug!("{e}");
+                return Ok(uids);
+            }
+        }
+        let object_filter = match HsmObjectFilter::try_from(&search_attributes) {
+            Ok(object_filter) => object_filter,
+            Err(e) => {
+                warn!("{e}");
+                return Ok(uids);
+            }
+        };
+        let key_size_filter = search_attributes.get_cryptographic_length();
+        let key_id_filter = match search_attributes.unique_identifier {
+            Some(unique_identifier) => {
+                let Some(str) = unique_identifier.as_str() else {
+                    return Ok(uids);
+                };
+                Some(str.to_owned())
+            }
+            None => None,
+        };
+
+        for slot_id in slot_ids {
+            let found = self
+                .hsm
+                .find(slot_id, object_filter.clone())
+                .await
+                .unwrap_or(vec![]);
+            for object_id in found {
+                trace!("Getting metadata for: {:02X?}", object_id);
+                let object_meta = self
+                    .hsm
+                    .get_key_metadata(slot_id, &object_id)
+                    .await
+                    .unwrap_or_default();
+                if let Some(expected_key_size) = key_size_filter {
+                    if let Some(meta) = object_meta {
+                        if meta.key_length_in_bits != expected_key_size {
+                            continue;
+                        }
+                    } else {
+                        continue;
+                    }
+                }
+                let object_string = match str::from_utf8(&object_id) {
+                    Ok(object_string) => object_string,
+                    Err(err) => {
+                        error!("Failed to decode object_id {}", err);
+                        continue
+                    }
+                };
+                let uid = as_hsm_uid!(slot_id, object_string);
+                trace!("Found: {uid}");
+                if let Some(ref wanted_id) = key_id_filter {
+                    if !uid.eq(wanted_id) {
+                        continue
+                    }
+                }
+                uids.push((uid, State::Active, Attributes::default()));
+            }
+        }
+
+        Ok(uids)
     }
+}
+
+fn check_basic_compatibility(
+    researched_attributes: &Attributes,
+    state: Option<State>,
+) -> InterfaceResult<()> {
+    // HSM keys are always active.
+    if let Some(s) = state {
+        if s != State::Active {
+            return Err(InterfaceError::Default(format!(
+                "Unsupported state for HSMs: expected Active, got {s:?}"
+            )));
+        }
+    }
+
+    if researched_attributes.link.is_some() {
+        return Err(InterfaceError::Default(
+            "Unsupported attribute for HSMs: link".to_owned(),
+        ));
+    }
+
+    if !researched_attributes.get_tags().is_empty() {
+        return Err(InterfaceError::Default(
+            "Unsupported attribute for HSMs: tags".to_owned(),
+        ));
+    }
+
+    if researched_attributes.object_group.is_some() {
+        return Err(InterfaceError::Default(
+            "Unsupported attribute for HSMs: object_group".to_owned(),
+        ));
+    }
+
+    if researched_attributes.object_group_member.is_some() {
+        return Err(InterfaceError::Default(
+            "Unsupported attribute for HSMs: object_group_member".to_owned(),
+        ));
+    }
+
+    if researched_attributes.comment.is_some() {
+        return Err(InterfaceError::Default(
+            "Unsupported attribute for HSMs: comment".to_owned(),
+        ));
+    }
+
+    if researched_attributes.contact_information.is_some() {
+        return Err(InterfaceError::Default(
+            "Unsupported attribute for HSMs: contact_information".to_owned(),
+        ));
+    }
+
+    if let Some(critical) = researched_attributes.critical {
+        if critical {
+            return Err(InterfaceError::Default(
+                "Unsupported attribute for HSMs: critical = true".to_owned(),
+            ));
+        }
+    }
+
+    if researched_attributes.description.is_some() {
+        return Err(InterfaceError::Default(
+            "Unsupported attribute for HSMs: description".to_owned(),
+        ));
+    }
+
+    if researched_attributes.digest.is_some() {
+        return Err(InterfaceError::Default(
+            "Unsupported attribute for HSMs: digest".to_owned(),
+        ));
+    }
+
+    if researched_attributes.short_unique_identifier.is_some() {
+        return Err(InterfaceError::Default(
+            "Unsupported attribute for HSMs: short_unique_identifier".to_owned(),
+        ));
+    }
+
+    if researched_attributes.cryptographic_usage_mask.is_some() {
+        return Err(InterfaceError::Default(
+            "Unsupported attribute for HSMs: cryptographic_usage_mask".to_owned(),
+        ));
+    }
+
+    if researched_attributes.x_509_certificate_identifier.is_some() {
+        return Err(InterfaceError::Default(
+            "Unsupported attribute for HSMs: x_509_certificate_identifier".to_owned(),
+        ));
+    }
+
+    if researched_attributes.x_509_certificate_issuer.is_some() {
+        return Err(InterfaceError::Default(
+            "Unsupported attribute for HSMs: x_509_certificate_issuer".to_owned(),
+        ));
+    }
+
+    if researched_attributes.x_509_certificate_subject.is_some() {
+        return Err(InterfaceError::Default(
+            "Unsupported attribute for HSMs: x_509_certificate_subject".to_owned(),
+        ));
+    }
+
+    Ok(())
 }
 
 /// The creation of RSA key pairs is done via 2 atomic operations,
