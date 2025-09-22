@@ -364,14 +364,12 @@ pub fn prepare_key_import_elements(
     }
 
     if let Some(issuer_certificate_id) = &certificate_id {
-        //let attributes = import_attributes.get_or_insert(Attributes::default());
         import_attributes.set_link(
             LinkType::CertificateLink,
             LinkedObjectIdentifier::TextString(issuer_certificate_id.clone()),
         );
     }
     if let Some(private_key_id) = &private_key_id {
-        //let attributes = import_attributes.get_or_insert(Attributes::default());
         import_attributes.set_link(
             LinkType::PrivateKeyLink,
             LinkedObjectIdentifier::TextString(private_key_id.clone()),
@@ -410,21 +408,21 @@ pub fn prepare_certificate_attributes(
 ) -> Option<Attributes> {
     let mut certificate_attributes = None;
     if let Some(issuer_certificate_id) = &issuer_certificate_id {
-        let attributes = certificate_attributes.get_or_insert(Attributes::default());
+        let attributes = certificate_attributes.get_or_insert_with(Attributes::default);
         attributes.set_link(
             LinkType::CertificateLink,
             LinkedObjectIdentifier::TextString(issuer_certificate_id.clone()),
         );
     }
     if let Some(private_key_id) = &private_key_id {
-        let attributes = certificate_attributes.get_or_insert(Attributes::default());
+        let attributes = certificate_attributes.get_or_insert_with(Attributes::default);
         attributes.set_link(
             LinkType::PrivateKeyLink,
             LinkedObjectIdentifier::TextString(private_key_id.clone()),
         );
     }
     if let Some(public_key_id) = &public_key_id {
-        let attributes = certificate_attributes.get_or_insert(Attributes::default());
+        let attributes = certificate_attributes.get_or_insert_with(Attributes::default);
         attributes.set_link(
             LinkType::PublicKeyLink,
             LinkedObjectIdentifier::TextString(public_key_id.clone()),

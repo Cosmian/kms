@@ -45,7 +45,7 @@ async fn create_google_key_pair() -> KmsCliResult<()> {
 
     // Create key pair with certificate extensions (must succeed)
     let action = CreateKeyPairsAction {
-        issuer_private_key_id: Some(issuer_private_key_id.to_string()),
+        issuer_private_key_id: Some(issuer_private_key_id.clone()),
         leaf_certificate_extensions: Some(PathBuf::from(
             "../../test_data/certificates/openssl/ext_leaf.cnf",
         )),

@@ -553,7 +553,7 @@ async fn test_destroy_cover_crypt() -> KmsCliResult<()> {
         .await?;
 
         // assert
-        assert_destroyed(ctx, &user_key_id_1.to_string(), false).await?;
+        assert_destroyed(ctx, &user_key_id_1.clone(), false).await?;
 
         // create a temp dir
         let tmp_dir = TempDir::new()?;

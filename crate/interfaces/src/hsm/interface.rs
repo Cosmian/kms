@@ -37,10 +37,10 @@ impl TryFrom<&Attributes> for HsmObjectFilter {
     type Error = InterfaceError;
 
     fn try_from(researched_attributes: &Attributes) -> InterfaceResult<Self> {
-        let mut object_filter = Self::Any;
-
-        if let Some(cryptographic_algorithm) = researched_attributes.cryptographic_algorithm {
-            object_filter = match cryptographic_algorithm {
+        let mut object_filter = if let Some(cryptographic_algorithm) =
+            researched_attributes.cryptographic_algorithm
+        {
+            match cryptographic_algorithm {
                 CryptographicAlgorithm::AES => Self::AesKey,
                 CryptographicAlgorithm::RSA => Self::RsaKey,
                 _ => {
@@ -48,8 +48,10 @@ impl TryFrom<&Attributes> for HsmObjectFilter {
                         "Unsupported cryptographic algorithm for HSMs: {cryptographic_algorithm}"
                     )))
                 }
-            };
-        }
+            }
+        } else {
+            Self::Any
+        };
 
         if let Some(object_type) = researched_attributes.object_type {
             object_filter = match object_type {

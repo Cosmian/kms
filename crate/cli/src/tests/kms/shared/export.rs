@@ -643,7 +643,7 @@ pub(crate) async fn test_sensitive_covercrypt_key() -> KmsCliResult<()> {
     // master secret key should not be exportable
     assert!(
         ExportSecretDataOrKeyAction {
-            key_id: Some(master_private_key_id.to_string()),
+            key_id: Some(master_private_key_id.clone()),
             key_file: tmp_path.join("output.sk.export"),
             ..Default::default()
         }

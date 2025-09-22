@@ -614,6 +614,18 @@ impl Serialize for KeyMaterialSerializer {
                 KeyMaterial::TransparentECDSAPrivateKey {
                     recommended_curve,
                     d,
+                }
+                | KeyMaterial::TransparentECDHPrivateKey {
+                    recommended_curve,
+                    d,
+                }
+                | KeyMaterial::TransparentECMQVPrivateKey {
+                    recommended_curve,
+                    d,
+                }
+                | KeyMaterial::TransparentECPrivateKey {
+                    recommended_curve,
+                    d,
                 } => {
                     let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
                     st.serialize_field("RecommendedCurve", recommended_curve)?;
@@ -623,58 +635,16 @@ impl Serialize for KeyMaterialSerializer {
                 KeyMaterial::TransparentECDSAPublicKey {
                     recommended_curve,
                     q_string,
-                } => {
-                    let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
-                    st.serialize_field("RecommendedCurve", recommended_curve)?;
-                    st.serialize_field("QString", q_string)?;
-                    st.end()
                 }
-                KeyMaterial::TransparentECDHPrivateKey {
-                    recommended_curve,
-                    d,
-                } => {
-                    let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
-                    st.serialize_field("RecommendedCurve", recommended_curve)?;
-                    st.serialize_field("D", &***d)?;
-                    st.end()
-                }
-                KeyMaterial::TransparentECDHPublicKey {
+                | KeyMaterial::TransparentECDHPublicKey {
                     recommended_curve,
                     q_string,
-                } => {
-                    let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
-                    st.serialize_field("RecommendedCurve", recommended_curve)?;
-                    st.serialize_field("QString", q_string)?;
-                    st.end()
                 }
-                KeyMaterial::TransparentECMQVPrivateKey {
-                    recommended_curve,
-                    d,
-                } => {
-                    let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
-                    st.serialize_field("RecommendedCurve", recommended_curve)?;
-                    st.serialize_field("D", &***d)?;
-                    st.end()
-                }
-                KeyMaterial::TransparentECMQVPublicKey {
+                | KeyMaterial::TransparentECMQVPublicKey {
                     recommended_curve,
                     q_string,
-                } => {
-                    let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
-                    st.serialize_field("RecommendedCurve", recommended_curve)?;
-                    st.serialize_field("QString", q_string)?;
-                    st.end()
                 }
-                KeyMaterial::TransparentECPrivateKey {
-                    recommended_curve,
-                    d,
-                } => {
-                    let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
-                    st.serialize_field("RecommendedCurve", recommended_curve)?;
-                    st.serialize_field("D", &***d)?;
-                    st.end()
-                }
-                KeyMaterial::TransparentECPublicKey {
+                | KeyMaterial::TransparentECPublicKey {
                     recommended_curve,
                     q_string,
                 } => {

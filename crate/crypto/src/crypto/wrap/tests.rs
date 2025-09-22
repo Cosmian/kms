@@ -25,11 +25,11 @@ use openssl::{
 use openssl::{pkey::PKey, rand::rand_bytes, rsa::Rsa};
 
 #[cfg(feature = "non-fips")]
-use crate::{crypto::elliptic_curves::operation::create_x25519_key_pair, error::CryptoError};
+use crate::crypto::elliptic_curves::operation::create_x25519_key_pair;
 use crate::{
     crypto::wrap::{unwrap_key_block, wrap_object_with_key},
     crypto_bail,
-    error::result::CryptoResult,
+    error::{CryptoError, result::CryptoResult},
     openssl::{openssl_private_key_to_kmip, openssl_public_key_to_kmip},
 };
 
@@ -201,7 +201,8 @@ fn wrap_test(
 fn test_encrypt_decrypt_rfc_5649() -> CryptoResult<()> {
     #[cfg(not(feature = "non-fips"))]
     // Load FIPS provider module from OpenSSL.
-    openssl::provider::Provider::load(None, "fips").unwrap();
+    openssl::provider::Provider::load(None, "fips")
+        .map_err(|e| CryptoError::Default(format!("Failed to load FIPS provider: {e}")))?;
 
     let mut random_bytes = vec![0; 32];
     rand_bytes(&mut random_bytes)?;
@@ -259,8 +260,7 @@ fn test_encrypt_decrypt_rfc_ecies_x25519() -> CryptoResult<()> {
         Attributes::default(),
         Some(private_key_attributes),
         Some(public_key_attributes),
-    )
-    .unwrap();
+    )?;
 
     let mut random_bytes = vec![0; 32];
     rand_bytes(&mut random_bytes)?;
@@ -295,41 +295,34 @@ fn test_encrypt_decrypt_rfc_ecies_x25519() -> CryptoResult<()> {
 fn test_encrypt_decrypt_rsa() -> CryptoResult<()> {
     // Load FIPS provider module from OpenSSL.
     #[cfg(not(feature = "non-fips"))]
-    openssl::provider::Provider::load(None, "fips").unwrap();
+    openssl::provider::Provider::load(None, "fips")
+        .map_err(|e| CryptoError::Default(format!("Failed to load FIPS provider: {e}")))?;
 
-    let rsa_privkey = Rsa::generate(4096).unwrap();
-    let rsa_pubkey = Rsa::from_public_components(
-        rsa_privkey.n().to_owned().unwrap(),
-        rsa_privkey.e().to_owned().unwrap(),
-    )
-    .unwrap();
+    let rsa_privkey = Rsa::generate(4096)?;
+    let rsa_pubkey =
+        Rsa::from_public_components(rsa_privkey.n().to_owned()?, rsa_privkey.e().to_owned()?)?;
     #[cfg(not(feature = "non-fips"))]
     let crypto_usage_mask = Some(FIPS_PUBLIC_RSA_MASK);
     #[cfg(feature = "non-fips")]
     let crypto_usage_mask = Some(CryptographicUsageMask::Unrestricted);
 
     let mut wrap_key_pair_pub = openssl_public_key_to_kmip(
-        &PKey::from_rsa(rsa_pubkey).unwrap(),
+        &PKey::from_rsa(rsa_pubkey)?,
         KeyFormatType::TransparentRSAPublicKey,
         crypto_usage_mask,
-    )
-    .unwrap();
+    )?;
 
     let mut wrap_key_pair_priv = openssl_private_key_to_kmip(
-        &PKey::from_rsa(rsa_privkey).unwrap(),
+        &PKey::from_rsa(rsa_privkey)?,
         KeyFormatType::TransparentRSAPrivateKey,
         crypto_usage_mask,
-    )
-    .unwrap();
+    )?;
 
-    wrap_key_pair_pub
-        .attributes_mut()
-        .unwrap()
-        .cryptographic_usage_mask = Some(CryptographicUsageMask::WrapKey);
+    wrap_key_pair_pub.attributes_mut()?.cryptographic_usage_mask =
+        Some(CryptographicUsageMask::WrapKey);
 
     wrap_key_pair_priv
-        .attributes_mut()
-        .unwrap()
+        .attributes_mut()?
         .cryptographic_usage_mask = Some(CryptographicUsageMask::UnwrapKey);
 
     let mut random_bytes = vec![0; 32];
@@ -361,24 +354,22 @@ fn test_encrypt_decrypt_rsa() -> CryptoResult<()> {
 #[test]
 #[cfg(feature = "non-fips")]
 fn test_encrypt_decrypt_ec_p192() -> CryptoResult<()> {
-    let curve = EcGroup::from_curve_name(Nid::X9_62_PRIME192V1).unwrap();
+    let curve = EcGroup::from_curve_name(Nid::X9_62_PRIME192V1)?;
 
-    let ec_privkey = EcKey::generate(&curve).unwrap();
-    let ec_pubkey = EcKey::from_public_key(&curve, ec_privkey.public_key()).unwrap();
+    let ec_privkey = EcKey::generate(&curve)?;
+    let ec_pubkey = EcKey::from_public_key(&curve, ec_privkey.public_key())?;
 
     let wrap_key_pair_pub = openssl_public_key_to_kmip(
-        &PKey::from_ec_key(ec_pubkey).unwrap(),
+        &PKey::from_ec_key(ec_pubkey)?,
         KeyFormatType::TransparentECPublicKey,
         Some(CryptographicUsageMask::Unrestricted),
-    )
-    .unwrap();
+    )?;
 
     let wrap_key_pair_priv = openssl_private_key_to_kmip(
-        &PKey::from_ec_key(ec_privkey).unwrap(),
+        &PKey::from_ec_key(ec_privkey)?,
         KeyFormatType::TransparentECPrivateKey,
         Some(CryptographicUsageMask::Unrestricted),
-    )
-    .unwrap();
+    )?;
 
     let mut random_bytes = vec![0; 32];
     rand_bytes(&mut random_bytes)?;
@@ -409,24 +400,22 @@ fn test_encrypt_decrypt_ec_p192() -> CryptoResult<()> {
 #[test]
 #[cfg(feature = "non-fips")]
 fn test_encrypt_decrypt_ec_p384() -> CryptoResult<()> {
-    let curve = EcGroup::from_curve_name(Nid::SECP384R1).unwrap();
+    let curve = EcGroup::from_curve_name(Nid::SECP384R1)?;
 
-    let ec_privkey = EcKey::generate(&curve).unwrap();
-    let ec_pubkey = EcKey::from_public_key(&curve, ec_privkey.public_key()).unwrap();
+    let ec_privkey = EcKey::generate(&curve)?;
+    let ec_pubkey = EcKey::from_public_key(&curve, ec_privkey.public_key())?;
 
     let wrap_key_pair_pub = openssl_public_key_to_kmip(
-        &PKey::from_ec_key(ec_pubkey).unwrap(),
+        &PKey::from_ec_key(ec_pubkey)?,
         KeyFormatType::TransparentECPublicKey,
         Some(CryptographicUsageMask::Unrestricted),
-    )
-    .unwrap();
+    )?;
 
     let wrap_key_pair_priv = openssl_private_key_to_kmip(
-        &PKey::from_ec_key(ec_privkey).unwrap(),
+        &PKey::from_ec_key(ec_privkey)?,
         KeyFormatType::TransparentECPrivateKey,
         Some(CryptographicUsageMask::Unrestricted),
-    )
-    .unwrap();
+    )?;
 
     let mut random_bytes = vec![0; 32];
     rand_bytes(&mut random_bytes)?;

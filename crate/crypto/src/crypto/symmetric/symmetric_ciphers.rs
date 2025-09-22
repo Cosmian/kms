@@ -360,7 +360,7 @@ pub fn encrypt(
             let ciphertext = match padding {
                 PaddingMethod::None => {
                     let cipher = sym_cipher.to_openssl_cipher()?;
-                    if plaintext.len() % cipher.block_size() != 0 {
+                    if !plaintext.len().is_multiple_of(cipher.block_size()) {
                         return Err(CryptoError::InvalidSize(
                             "Plaintext must be a multiple of the block size when no padding is \
                              used"
@@ -451,7 +451,7 @@ pub fn decrypt(
                 )?),
                 PaddingMethod::None => {
                     let cipher = sym_cipher.to_openssl_cipher()?;
-                    if ciphertext.len() % cipher.block_size() != 0 {
+                    if !ciphertext.len().is_multiple_of(cipher.block_size()) {
                         return Err(CryptoError::InvalidSize(
                             "Ciphertext must be a multiple of the block size when no padding is \
                              used"

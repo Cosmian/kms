@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_in_result)]
+
 use std::sync::Arc;
 
 use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::kmip_types::{

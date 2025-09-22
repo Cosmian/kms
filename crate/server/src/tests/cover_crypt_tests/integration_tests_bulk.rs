@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_in_result)]
+
 use cosmian_kms_client_utils::cover_crypt_utils::build_create_covercrypt_master_keypair_request;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::{

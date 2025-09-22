@@ -517,6 +517,7 @@ pub struct Nonce {
     pub nonce_value: Vec<u8>,
 }
 
+#[derive(Default)]
 #[kmip_enum]
 pub enum ErrorReason {
     Item_Not_Found = 0x0000_0001,
@@ -589,13 +590,8 @@ pub enum ErrorReason {
     Unknown_Object_Group = 0x0000_004A,
     Constraint_Violation = 0x0000_004B,
     Duplicate_Process_Request = 0x0000_004C,
+    #[default]
     General_Failure = 0x0000_0100,
-}
-
-impl Default for ErrorReason {
-    fn default() -> Self {
-        Self::General_Failure
-    }
 }
 
 /// The Message Extension is an OPTIONAL structure that MAY be appended to any Batch Item.

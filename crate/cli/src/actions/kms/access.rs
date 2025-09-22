@@ -119,7 +119,7 @@ impl GrantAccess {
             self.operations,
             self.user,
             uid.as_ref()
-                .map_or("N/A".to_owned(), std::string::ToString::to_string)
+                .map_or_else(|| "N/A".to_owned(), std::string::ToString::to_string)
         );
         console::Stdout::new(&stdout).write()?;
 
@@ -193,7 +193,7 @@ impl RevokeAccess {
             self.operations,
             self.user,
             uid.as_ref()
-                .map_or("N/A".to_owned(), std::string::ToString::to_string)
+                .map_or_else(|| "N/A".to_owned(), std::string::ToString::to_string)
         );
         console::Stdout::new(&stdout).write()?;
 

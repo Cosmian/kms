@@ -308,7 +308,7 @@ async fn test_export_pkcs7() -> Result<(), KmsCliError> {
     // Export the pkcs7
     ExportCertificateAction {
         certificate_file: tmp_exported_pkcs7.clone(),
-        certificate_id: Some(certificate_id.to_string()),
+        certificate_id: Some(certificate_id.clone()),
         output_format: CertificateExportFormat::Pkcs7,
         allow_revoked: false,
         ..Default::default()
@@ -329,7 +329,7 @@ async fn test_export_pkcs7() -> Result<(), KmsCliError> {
     // Export intermediate cert
     ExportCertificateAction {
         certificate_file: tmp_exported_int.clone(),
-        certificate_id: Some(issuer_private_key_id.to_string()),
+        certificate_id: Some(issuer_private_key_id.clone()),
         output_format: CertificateExportFormat::Pkcs12,
         pkcs12_password: Some("secret".to_owned()),
         allow_revoked: false,
@@ -347,7 +347,7 @@ async fn test_export_pkcs7() -> Result<(), KmsCliError> {
     // Export root cert
     ExportCertificateAction {
         certificate_file: tmp_exported_root.clone(),
-        certificate_id: Some(root_ca_id.to_string()),
+        certificate_id: Some(root_ca_id.clone()),
         output_format: CertificateExportFormat::Pem,
         allow_revoked: false,
         ..Default::default()
@@ -389,7 +389,7 @@ async fn test_self_signed_export_loop() -> KmsCliResult<()> {
     let tmp_exported_cert = tmp_dir.path().join("cert.p12");
     ExportCertificateAction {
         certificate_file: tmp_exported_cert.clone(),
-        certificate_id: Some(certificate_id.to_string()),
+        certificate_id: Some(certificate_id.clone()),
         output_format: CertificateExportFormat::Pkcs12,
         pkcs12_password: Some(String::from("secret")),
         allow_revoked: false,
@@ -449,7 +449,7 @@ async fn test_export_root_and_intermediate_pkcs12() -> KmsCliResult<()> {
     let tmp_exported_cert = tmp_dir.path().join("cert.p12");
     ExportCertificateAction {
         certificate_file: tmp_exported_cert.clone(),
-        certificate_id: Some(intermediate_id.to_string()),
+        certificate_id: Some(intermediate_id.clone()),
         output_format: CertificateExportFormat::Pkcs12,
         pkcs12_password: Some(String::from("secret")),
         allow_revoked: false,
@@ -496,7 +496,7 @@ async fn test_export_import_legacy_p12() -> KmsCliResult<()> {
     let tmp_exported_cert = tmp_dir.path().join("cert_legacy.p12");
     ExportCertificateAction {
         certificate_file: tmp_exported_cert.clone(),
-        certificate_id: Some(cert_id.to_string()),
+        certificate_id: Some(cert_id.clone()),
         output_format: CertificateExportFormat::Pkcs12Legacy,
         pkcs12_password: Some(String::from("secret")),
         allow_revoked: false,

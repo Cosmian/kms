@@ -202,7 +202,8 @@ mod tests {
     fn test_ckm_rsa_pkcs_oaep() -> Result<(), CryptoError> {
         // Load FIPS provider module from OpenSSL.
         #[cfg(not(feature = "non-fips"))]
-        openssl::provider::Provider::load(None, "fips").unwrap();
+        openssl::provider::Provider::load(None, "fips")
+            .map_err(|e| CryptoError::Default(format!("Failed to load FIPS provider: {e}")))?;
 
         let priv_key = PKey::from_rsa(openssl::rsa::Rsa::generate(2048)?)?;
         let pub_key = PKey::public_key_from_pem(&priv_key.public_key_to_pem()?)?;

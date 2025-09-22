@@ -51,7 +51,7 @@ async fn test_encrypt_decrypt_using_object_ids() -> KmsCliResult<()> {
 
     // create a user decryption key
     let user_ok_key_id = CreateUserKeyAction {
-        master_secret_key_id: master_secret_key_id.to_string(),
+        master_secret_key_id: master_secret_key_id.clone(),
         access_policy: "(Department::MKG || Department::FIN) && Security Level::Top Secret"
             .to_string(),
         tags: vec![],
@@ -80,7 +80,7 @@ async fn test_encrypt_decrypt_using_object_ids() -> KmsCliResult<()> {
 
     // this user key should not be able to decrypt the file
     let user_ko_key_id = CreateUserKeyAction {
-        master_secret_key_id: master_secret_key_id.to_string(),
+        master_secret_key_id: master_secret_key_id.clone(),
         access_policy: "Department::FIN && Security Level::Top Secret".to_string(),
         tags: vec![],
         sensitive: false,
@@ -165,7 +165,7 @@ async fn test_encrypt_decrypt_bulk_using_object_ids() -> KmsCliResult<()> {
 
     // create a user decryption key
     let user_ok_key_id = CreateUserKeyAction {
-        master_secret_key_id: master_secret_key_id.to_string(),
+        master_secret_key_id: master_secret_key_id.clone(),
         access_policy: "(Department::MKG || Department::FIN) && Security Level::Top Secret"
             .to_string(),
         tags: vec![],
@@ -209,7 +209,7 @@ async fn test_encrypt_decrypt_bulk_using_object_ids() -> KmsCliResult<()> {
 
     // this user key should not be able to decrypt the file
     let user_ko_key_id = CreateUserKeyAction {
-        master_secret_key_id: master_secret_key_id.to_string(),
+        master_secret_key_id: master_secret_key_id.clone(),
         access_policy: "Department::FIN && Security Level::Top Secret".to_string(),
         tags: vec![],
         sensitive: false,
@@ -293,7 +293,7 @@ async fn test_encrypt_decrypt_using_tags() -> KmsCliResult<()> {
 
     // create a user decryption key
     let user_ok_key_id = CreateUserKeyAction {
-        master_secret_key_id: master_secret_key_id.to_string(),
+        master_secret_key_id: master_secret_key_id.clone(),
         access_policy: "(Department::MKG || Department::FIN) && Security Level::Top Secret"
             .to_string(),
         tags: vec!["tag".to_string()],
@@ -343,7 +343,7 @@ async fn test_encrypt_decrypt_using_tags() -> KmsCliResult<()> {
 
     // this user key should not be able to decrypt the file
     let _user_ko_key_id = CreateUserKeyAction {
-        master_secret_key_id: master_secret_key_id.to_string(),
+        master_secret_key_id: master_secret_key_id.clone(),
         access_policy: "Department::FIN && Security Level::Top Secret".to_string(),
         tags: vec!["tag_ko".to_string()],
         sensitive: false,
@@ -442,7 +442,7 @@ async fn test_encrypt_decrypt_bulk_using_tags() -> KmsCliResult<()> {
 
     // create a user decryption key
     let user_ok_key_id = CreateUserKeyAction {
-        master_secret_key_id: master_secret_key_id.to_string(),
+        master_secret_key_id: master_secret_key_id.clone(),
         access_policy: "(Department::MKG || Department::FIN) && Security Level::Top Secret"
             .to_string(),
         tags: vec!["tag_bulk".to_string()],
