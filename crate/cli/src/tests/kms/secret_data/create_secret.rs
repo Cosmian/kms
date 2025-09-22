@@ -48,8 +48,8 @@ pub(crate) async fn test_create_secret_data() -> KmsCliResult<()> {
     Ok(())
 }
 
-/// Test for issue #549: Support for Wrapping SecretData Objects
-/// This test verifies that SecretData objects can be exported with wrapping
+/// Test for issue #549: Support for Wrapping `SecretData` Objects
+/// This test verifies that `SecretData` objects can be exported with wrapping
 #[tokio::test]
 pub(crate) async fn test_secret_data_export_with_wrapping() -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server().await;
@@ -122,7 +122,7 @@ pub(crate) async fn test_secret_data_export_with_wrapping() -> KmsCliResult<()> 
     Ok(())
 }
 
-/// Test SecretData export with different wrapping algorithms
+/// Test `SecretData` export with different wrapping algorithms
 #[tokio::test]
 pub(crate) async fn test_secret_data_export_with_different_wrapping_algorithms() -> KmsCliResult<()>
 {
@@ -169,7 +169,7 @@ pub(crate) async fn test_secret_data_export_with_different_wrapping_algorithms()
     Ok(())
 }
 
-/// Test creating SecretData with wrapping key during creation
+/// Test creating `SecretData` with wrapping key during creation
 #[tokio::test]
 pub(crate) async fn test_create_secret_data_with_wrapping_key() -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server().await;
@@ -268,7 +268,7 @@ pub(crate) async fn test_issue_549_exact_scenario() -> KmsCliResult<()> {
     Ok(())
 }
 
-/// Test edge cases for SecretData wrapping
+/// Test edge cases for `SecretData` wrapping
 #[tokio::test]
 pub(crate) async fn test_secret_data_wrapping_edge_cases() -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server().await;
@@ -338,7 +338,7 @@ pub(crate) async fn test_secret_data_wrapping_edge_cases() -> KmsCliResult<()> {
     Ok(())
 }
 
-/// Test SecretData export with unwrapping
+/// Test `SecretData` export with unwrapping
 #[tokio::test]
 pub(crate) async fn test_secret_data_export_with_unwrapping() -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server().await;
@@ -400,7 +400,7 @@ pub(crate) async fn test_secret_data_export_with_unwrapping() -> KmsCliResult<()
     Ok(())
 }
 
-/// Test for base64 export format with SecretData
+/// Test for base64 export format with `SecretData`
 #[tokio::test]
 pub(crate) async fn test_secret_data_base64_export() -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server().await;
