@@ -1,12 +1,17 @@
 use std::sync::Arc;
 
+use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::kmip_types::{
+    CryptographicAlgorithm, EncodingOption, EncryptionKeyInformation,
+};
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::{RevocationReason, RevocationReasonCode},
     kmip_2_1::{
+        extra::tagging::EMPTY_TAGS,
+        kmip_data_structures::KeyWrappingSpecification,
         kmip_objects::Object,
         kmip_operations::{Destroy, Export, Get, Revoke},
-        kmip_types::UniqueIdentifier,
-        requests::secret_data_create_request,
+        kmip_types::{UniqueIdentifier, WrappingMethod},
+        requests::{secret_data_create_request, symmetric_key_create_request},
     },
 };
 use uuid::Uuid;
@@ -105,24 +110,60 @@ async fn test_secret_data_with_wrapping() -> KResult<()> {
     let owner = "test_secret_data_wrapping@example.com";
 
     // Create a SecretData object with wrapping enabled
-    let secret_id = format!("test-secret-wrapped-{}", Uuid::new_v4());
+    let secret_id = UniqueIdentifier::TextString(format!("test-secret-wrapped-{}", Uuid::new_v4()));
     let create_request = secret_data_create_request(
-        Some(UniqueIdentifier::TextString(secret_id.clone())),
+        Some(secret_id.clone()),
         vec!["wrapping-test".to_owned()],
-        true, // Enable wrapping - creates sensitive SecretData that cannot be exported
+        false,
         None,
     )?;
 
     let create_response = kms.create(create_request, owner, None, None).await?;
     assert!(create_response.unique_identifier.as_str().is_some());
 
-    // Note: Wrapped SecretData objects are marked as sensitive and cannot be retrieved
-    // with Get or Export operations. This is correct KMIP behavior for sensitive objects.
-    // The fact that Create succeeded confirms that wrapping works correctly.
+    // create the wrapping key
+    let create_wrapping_key_request = symmetric_key_create_request(
+        None,
+        256,
+        CryptographicAlgorithm::AES,
+        EMPTY_TAGS,
+        false,
+        None,
+    )?;
+    let create_wrapping_key_response = kms
+        .create(create_wrapping_key_request, owner, None, None)
+        .await?;
+    assert!(
+        create_wrapping_key_response
+            .unique_identifier
+            .as_str()
+            .is_some()
+    );
+    let wrapping_key_id = create_wrapping_key_response.unique_identifier;
 
-    // We can only revoke and destroy the object
+    // Test Export operation with wrapping enabled
+    let export_request = Export::new(
+        secret_id.clone(),
+        false,
+        Some(KeyWrappingSpecification {
+            wrapping_method: WrappingMethod::Encrypt,
+            encryption_key_information: Some(EncryptionKeyInformation {
+                unique_identifier: wrapping_key_id.clone(),
+                cryptographic_parameters: None,
+            }),
+            attribute_name: None,
+            encoding_option: Some(EncodingOption::NoEncoding),
+            ..KeyWrappingSpecification::default()
+        }),
+        None,
+    );
+
+    let export_response = kms.export(export_request, owner, None).await?;
+    assert_ne!(export_response.unique_identifier, wrapping_key_id);
+    assert!(matches!(export_response.object, Object::SecretData(_)));
+
     let revoke_request = Revoke {
-        unique_identifier: Some(create_response.unique_identifier.clone()),
+        unique_identifier: Some(secret_id.clone()),
         revocation_reason: RevocationReason {
             revocation_reason_code: RevocationReasonCode::Unspecified,
             revocation_message: None,
@@ -133,7 +174,7 @@ async fn test_secret_data_with_wrapping() -> KResult<()> {
     kms.revoke(revoke_request, owner, None).await?;
 
     let destroy_request = Destroy {
-        unique_identifier: Some(create_response.unique_identifier.clone()),
+        unique_identifier: Some(secret_id.clone()),
         remove: true,
     };
 
