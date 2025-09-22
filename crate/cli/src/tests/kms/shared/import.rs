@@ -54,7 +54,7 @@ pub(crate) async fn test_import_cover_crypt() -> KmsCliResult<()> {
     // reimporting the same key with the same id should fail
     assert!(
         ImportSecretDataOrKeyAction {
-            key_file: PathBuf::from(&public_key_path.to_string()),
+            key_file: PathBuf::from(&public_key_path.clone()),
             key_id: Some(master_public_key_id.clone()),
             ..Default::default()
         }
@@ -65,7 +65,7 @@ pub(crate) async fn test_import_cover_crypt() -> KmsCliResult<()> {
 
     //...unless we force it with replace_existing
     let master_public_key_id_: String = ImportSecretDataOrKeyAction {
-        key_file: PathBuf::from(&public_key_path.to_string()),
+        key_file: PathBuf::from(&public_key_path.clone()),
         replace_existing: true,
         key_id: Some(master_public_key_id.clone()),
         ..Default::default()

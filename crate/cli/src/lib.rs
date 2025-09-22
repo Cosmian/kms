@@ -13,8 +13,9 @@ pub mod reexport {
     clippy::panic_in_result_fn,
     clippy::indexing_slicing,
     clippy::panic,
-    clippy::string_to_string,
+    clippy::implicit_clone,
     clippy::str_to_string,
-    clippy::assertions_on_result_states
+    clippy::assertions_on_result_states,
+    clippy::unwrap_in_result
 )]
 mod tests;

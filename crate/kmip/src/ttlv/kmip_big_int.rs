@@ -73,7 +73,9 @@ impl KmipBigInt {
     pub fn to_signed_bytes_be(&self) -> Vec<u8> {
         let mut bytes = self.0.to_signed_bytes_be();
         let len = bytes.len();
-        if len % 8 != 0 {
+        if len.is_multiple_of(8) {
+            bytes
+        } else {
             let padding = 8 - len % 8;
             let mut padded_bytes = match self.0.sign() {
                 Sign::Minus => vec![255_u8; padding],
@@ -81,8 +83,6 @@ impl KmipBigInt {
             };
             padded_bytes.append(&mut bytes);
             padded_bytes
-        } else {
-            bytes
         }
     }
 

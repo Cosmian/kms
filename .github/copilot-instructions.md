@@ -7,8 +7,9 @@ Always reference these instructions first and fallback to search or bash command
 ## Working Effectively
 
 - **Bootstrap and build the repository:**
+
     - First, initialize git submodules: `git submodule update --recursive --init`
-    - System requires Rust nightly toolchain (nightly-2025-03-31) with rustfmt and clippy components
+    - System requires Rust nightly toolchain (nightly-2025-09-15) with rustfmt and clippy components
     - OpenSSL 3.2.0 is REQUIRED (not 3.0.13+) for proper FIPS compliance and static linking
     - OpenSSL must be installed to `/usr/local/openssl` using `.github/reusable_scripts/get_openssl_binaries.sh`
     - Build process follows CI workflow: `bash .github/scripts/cargo_build.sh`
@@ -17,6 +18,7 @@ Always reference these instructions first and fallback to search or bash command
     - The CLI binary `cosmian` IS built in this repository and included in build artifacts
 
 - **UI and Packaging:**
+
     - UI is built on Ubuntu distributions using `bash .github/scripts/build_ui.sh`
     - UI files are located in `crate/server/ui` directory
     - Release builds create Debian packages via `cargo deb --target $TARGET -p cosmian_kms_server`
@@ -24,6 +26,7 @@ Always reference these instructions first and fallback to search or bash command
     - Packages support both FIPS and non-FIPS variants
 
 - **Testing and validation:**
+
     - Multi-database testing: sqlite, postgresql, mysql, redis-findex
     - Database environment variables: `KMS_POSTGRES_URL=postgresql://kms:kms@127.0.0.1:5432/kms`, `KMS_MYSQL_URL=mysql://kms:kms@localhost:3306/kms`, `KMS_SQLITE_PATH=data/shared`
     - MySQL tests are currently disabled (skipped in CI)
@@ -35,6 +38,7 @@ Always reference these instructions first and fallback to search or bash command
     - Test execution: `cargo test --workspace --lib --target $TARGET $RELEASE $FEATURES -- --nocapture $SKIP_SERVICES_TESTS`
 
 - **Build artifacts and binaries:**
+
     - Primary binaries: `cosmian`, `cosmian_kms`, `cosmian_findex_server`
     - Binary locations: `target/$TARGET/$DEBUG_OR_RELEASE/` (e.g., `target/x86_64-unknown-linux-gnu/debug/`)
     - Release builds include benchmarks: `cargo bench --target $TARGET $FEATURES --no-run`
@@ -43,6 +47,7 @@ Always reference these instructions first and fallback to search or bash command
     - Binary tests: `cargo test --workspace --bins --target $TARGET $RELEASE $FEATURES`
 
 - **Run the KMS server:**
+
     - ALWAYS build first using the build script above
     - Debug mode: `./target/x86_64-unknown-linux-gnu/debug/cosmian_kms --database-type sqlite --sqlite-path /tmp/kms-data`
     - Release mode: `./target/x86_64-unknown-linux-gnu/release/cosmian_kms --database-type sqlite --sqlite-path /tmp/kms-data`
@@ -64,7 +69,7 @@ Always reference these instructions first and fallback to search or bash command
 - OpenSSL validation: `./target/x86_64-unknown-linux-gnu/release/cosmian_kms --info` should show OpenSSL 3.2.0
 - Static linking check: `ldd ./target/x86_64-unknown-linux-gnu/release/cosmian_kms | grep ssl` should return empty (no dynamic OpenSSL)
 - Always run `cargo fmt --check` before committing (takes 3 seconds)
-- Clippy requires installation: `rustup component add --toolchain nightly-2025-03-31-x86_64-unknown-linux-gnu clippy`
+- Clippy requires installation: `rustup component add --toolchain nightly-2025-09-15-x86_64-unknown-linux-gnu clippy`
 
 ## Common tasks
 
@@ -94,7 +99,7 @@ docker-compose.yml       # Development services (postgres, mysql, redis)
 Dockerfile              # Container build
 README.md               # Project documentation
 Cargo.toml              # Workspace configuration
-rust-toolchain.toml     # Rust toolchain: nightly-2025-03-31
+rust-toolchain.toml     # Rust toolchain: nightly-2025-09-15
 ```
 
 ### Key build commands and timing

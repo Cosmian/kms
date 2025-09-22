@@ -212,9 +212,8 @@ async fn delete_all_keys(owner: &str, kms: &Arc<KMS>) -> KResult<()> {
     let found_keys = locate_keys(owner, kms, None).await?;
     debug!("Found {} keys. Removing...", found_keys.len());
     for found_key in found_keys {
-        let key_string = match found_key.as_str() {
-            None => continue,
-            Some(key_string) => key_string,
+        let Some(key_string) = found_key.as_str() else {
+            continue
         };
         delete_key(key_string, owner, kms).await?;
     }

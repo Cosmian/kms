@@ -100,7 +100,7 @@ pub fn rfc5649_wrap(plain: &[u8], kek: &[u8]) -> Result<Vec<u8>, CryptoError> {
 pub fn rfc5649_unwrap(ciphertext: &[u8], kek: &[u8]) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
     let n = ciphertext.len();
 
-    if n % AES_WRAP_PAD_BLOCK_SIZE != 0 || n < AES_BLOCK_SIZE {
+    if !n.is_multiple_of(AES_WRAP_PAD_BLOCK_SIZE) || n < AES_BLOCK_SIZE {
         return Err(CryptoError::InvalidSize(
             "The ciphertext size should be >= 16 and a multiple of 16.".to_owned(),
         ))
@@ -168,7 +168,7 @@ pub fn rfc5649_unwrap(ciphertext: &[u8], kek: &[u8]) -> Result<Zeroizing<Vec<u8>
 fn wrap_64(plain: &[u8], kek: &[u8], iv: Option<u64>) -> Result<Vec<u8>, CryptoError> {
     let n = plain.len();
 
-    if n % AES_WRAP_PAD_BLOCK_SIZE != 0 {
+    if !n.is_multiple_of(AES_WRAP_PAD_BLOCK_SIZE) {
         return Err(CryptoError::InvalidSize(
             "The plaintext size should be a multiple of 8".to_owned(),
         ))
@@ -226,7 +226,7 @@ fn wrap_64(plain: &[u8], kek: &[u8], iv: Option<u64>) -> Result<Vec<u8>, CryptoE
 fn unwrap_64(ciphertext: &[u8], kek: &[u8]) -> Result<(u64, Zeroizing<Vec<u8>>), CryptoError> {
     let n = ciphertext.len();
 
-    if n % AES_WRAP_PAD_BLOCK_SIZE != 0 || n < AES_BLOCK_SIZE {
+    if !n.is_multiple_of(AES_WRAP_PAD_BLOCK_SIZE) || n < AES_BLOCK_SIZE {
         return Err(CryptoError::InvalidSize(
             "The ciphertext size should be >= 16 and a multiple of 8".to_owned(),
         ))

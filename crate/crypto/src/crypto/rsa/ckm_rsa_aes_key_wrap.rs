@@ -181,7 +181,8 @@ FQIDAQAB
     fn test_rsa_kem_wrap_unwrap() -> Result<(), CryptoError> {
         #[cfg(not(feature = "non-fips"))]
         // Load FIPS provider module from OpenSSL.
-        openssl::provider::Provider::load(None, "fips").unwrap();
+        openssl::provider::Provider::load(None, "fips")
+            .map_err(|e| CryptoError::Default(format!("Failed to load FIPS provider: {e}")))?;
 
         let priv_key = PKey::from_rsa(openssl::rsa::Rsa::generate(2048)?)?;
         let pub_key = PKey::public_key_from_pem(&priv_key.public_key_to_pem()?)?;
@@ -332,6 +333,7 @@ FQIDAQAB
 
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     #[tokio::test]
+    #[allow(clippy::unwrap_in_result)]
     async fn test_wrap_against_openssl_cli() -> CryptoResult<()> {
         log_init(Some("info"));
         if !assert_openssl3_cli().await {
@@ -343,12 +345,18 @@ FQIDAQAB
 
         // PKCS#8 RSA key
         let priv_key = PKey::private_key_from_pem(RSA_PRIVATE_KEY.as_bytes())?;
-        let secret_bytes = priv_key.rsa().unwrap().private_key_to_der()?;
+        let secret_bytes = priv_key
+            .rsa()
+            .map_err(|e| CryptoError::Default(format!("Failed to get RSA: {e}")))?
+            .private_key_to_der()?;
         test_wrap_against_openssl_cli_inner(tmp_path, &secret_bytes).await?;
 
         // AES KEY
         let dek = "deadbeef7dfbf5419200f2ccb50bb24aafbeb0f07dfbf5419200f2ccb50bb24a";
-        test_wrap_against_openssl_cli_inner(tmp_path, &hex::decode(dek).unwrap()).await
+        let dek_bytes = hex::decode(dek)
+            .map_err(|e| CryptoError::Default(format!("Failed to decode hex: {e}")))?;
+        test_wrap_against_openssl_cli_inner(tmp_path, &dek_bytes).await?;
+        Ok(())
     }
     async fn test_wrap_against_openssl_cli_inner(
         tmp_path: &Path,
@@ -359,7 +367,11 @@ FQIDAQAB
 
         let ephemeral = "afbeb0f07dfbf5419200f2ccb50bb24aafbeb0f07dfbf5419200f2ccb50bb24a";
         let ephemeral_file = tmp_path.join("ephemeral.bin");
-        fs::write(&ephemeral_file, hex::decode(ephemeral).unwrap())?;
+        fs::write(
+            &ephemeral_file,
+            hex::decode(ephemeral)
+                .map_err(|e| CryptoError::Default(format!("Failed to decode hex: {e}")))?,
+        )?;
 
         let priv_key_file = tmp_path.join("rsa_private_key.pem");
         fs::write(&priv_key_file, RSA_PRIVATE_KEY)?;
@@ -370,7 +382,8 @@ FQIDAQAB
         let oaep_encapsulation = ckm_rsa_pkcs_oaep_key_wrap(
             &pub_key,
             HashingAlgorithm::SHA1,
-            &hex::decode(ephemeral).unwrap(),
+            &hex::decode(ephemeral)
+                .map_err(|e| CryptoError::Default(format!("Failed to decode hex: {e}")))?,
         )?;
         fs::write(&oaep_encapsulation_file, oaep_encapsulation)?;
 
@@ -400,10 +413,18 @@ FQIDAQAB
             );
         }
         let rec_ephemeral = fs::read(&rec_ephemeral_file)?;
-        assert_eq!(rec_ephemeral, hex::decode(ephemeral).unwrap());
+        assert_eq!(
+            rec_ephemeral,
+            hex::decode(ephemeral)
+                .map_err(|e| CryptoError::Default(format!("Failed to decode hex: {e}")))?
+        );
 
         // RFC 5649 of DEK using the ephemeral key
-        let rfc5649_encapsulation = rfc5649_wrap(secret_bytes, &hex::decode(ephemeral).unwrap())?;
+        let rfc5649_encapsulation = rfc5649_wrap(
+            secret_bytes,
+            &hex::decode(ephemeral)
+                .map_err(|e| CryptoError::Default(format!("Failed to decode hex: {e}")))?,
+        )?;
 
         let rfc5649_encapsulation_file = tmp_path.join("rfc5649_encapsulation.bin");
         fs::write(&rfc5649_encapsulation_file, rfc5649_encapsulation)?;
@@ -435,6 +456,7 @@ FQIDAQAB
 
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     #[tokio::test]
+    #[allow(clippy::unwrap_in_result)]
     async fn test_unwrap_against_openssl_cli() -> CryptoResult<()> {
         log_init(Some("info"));
         if !assert_openssl3_cli().await {
@@ -446,12 +468,18 @@ FQIDAQAB
 
         // PKCS#8 RSA key
         let priv_key = PKey::private_key_from_pem(RSA_PRIVATE_KEY.as_bytes())?;
-        let secret_bytes = priv_key.rsa().unwrap().private_key_to_der()?;
+        let secret_bytes = priv_key
+            .rsa()
+            .map_err(|e| CryptoError::Default(format!("Failed to get RSA: {e}")))?
+            .private_key_to_der()?;
         test_unwrap_against_openssl_cli_inner(tmp_path, &secret_bytes).await?;
 
         // AES KEY
         let dek = "deadbeef7dfbf5419200f2ccb50bb24aafbeb0f07dfbf5419200f2ccb50bb24a";
-        test_unwrap_against_openssl_cli_inner(tmp_path, &hex::decode(dek).unwrap()).await
+        let dek_bytes = hex::decode(dek)
+            .map_err(|e| CryptoError::Default(format!("Failed to decode hex: {e}")))?;
+        test_unwrap_against_openssl_cli_inner(tmp_path, &dek_bytes).await?;
+        Ok(())
     }
     async fn test_unwrap_against_openssl_cli_inner(
         tmp_path: &Path,
@@ -462,7 +490,11 @@ FQIDAQAB
 
         let ephemeral = "afbeb0f07dfbf5419200f2ccb50bb24aafbeb0f07dfbf5419200f2ccb50bb24a";
         let ephemeral_file = tmp_path.join("ephemeral.bin");
-        fs::write(&ephemeral_file, hex::decode(ephemeral).unwrap())?;
+        fs::write(
+            &ephemeral_file,
+            hex::decode(ephemeral)
+                .map_err(|e| CryptoError::Default(format!("Failed to decode hex: {e}")))?,
+        )?;
 
         let pub_key_file = tmp_path.join("rsa_public_key.pem");
         fs::write(&pub_key_file, RSA_PUBLIC_KEY)?;
@@ -499,7 +531,9 @@ FQIDAQAB
             ckm_rsa_pkcs_oaep_key_unwrap(&priv_key, HashingAlgorithm::SHA1, &oaep_encapsulation)?;
         assert_eq!(
             rec_ephemeral.as_slice(),
-            hex::decode(ephemeral).unwrap().as_slice()
+            hex::decode(ephemeral)
+                .map_err(|e| CryptoError::Default(format!("Failed to decode hex: {e}")))?
+                .as_slice()
         );
 
         // RFC 5649 of DEK using the ephemeral key
@@ -523,8 +557,11 @@ FQIDAQAB
         }
         let rfc5649_encapsulation = fs::read(&rfc5649_encapsulation_file)?;
         //Check against our implementation of NistKeyWrap
-        let rec_secret_bytes =
-            rfc5649_unwrap(&rfc5649_encapsulation, &hex::decode(ephemeral).unwrap())?;
+        let rec_secret_bytes = rfc5649_unwrap(
+            &rfc5649_encapsulation,
+            &hex::decode(ephemeral)
+                .map_err(|e| CryptoError::Default(format!("Failed to decode hex: {e}")))?,
+        )?;
         assert_eq!(rec_secret_bytes.as_slice(), secret_bytes);
 
         // Build the complete ciphertext

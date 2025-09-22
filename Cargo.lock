@@ -1348,7 +1348,6 @@ dependencies = [
  "cosmian_kmip",
  "cosmian_logger",
  "num-bigint-dig",
- "serde",
  "serde_json",
  "thiserror 2.0.16",
  "zeroize",

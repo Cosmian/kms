@@ -5,17 +5,8 @@ use cosmian_kmip::{
     kmip_0::kmip_types::State,
     kmip_2_1::{kmip_attributes::Attributes, kmip_objects::Object},
 };
-use serde::{Deserialize, Serialize};
 
 use crate::{InterfaceResult, ObjectWithMetadata, stores::SessionParams};
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-/// The state of the database
-pub(super) enum DbState {
-    Ready,
-    Upgrading,
-}
 
 /// An atomic operation on the objects database
 pub enum AtomicOperation {

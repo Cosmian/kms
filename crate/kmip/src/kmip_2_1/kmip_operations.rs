@@ -52,32 +52,37 @@ impl Base64Display for Zeroizing<Vec<u8>> {
 
 impl Base64Display for Option<Vec<u8>> {
     fn to_base64(&self) -> String {
-        self.as_ref().map_or("None".to_owned(), |bytes| {
-            general_purpose::STANDARD.encode(bytes)
-        })
+        self.as_ref().map_or_else(
+            || "None".to_owned(),
+            |bytes| general_purpose::STANDARD.encode(bytes),
+        )
     }
 }
 
 impl Base64Display for Option<Zeroizing<Vec<u8>>> {
     fn to_base64(&self) -> String {
-        self.as_ref().map_or("None".to_owned(), |bytes| {
-            general_purpose::STANDARD.encode(bytes)
-        })
+        self.as_ref().map_or_else(
+            || "None".to_owned(),
+            |bytes| general_purpose::STANDARD.encode(bytes),
+        )
     }
 }
 
 impl Base64Display for Option<Vec<Vec<u8>>> {
     fn to_base64(&self) -> String {
-        self.as_ref().map_or("None".to_owned(), |arrays| {
-            format!(
-                "[{}]",
-                arrays
-                    .iter()
-                    .map(|bytes| general_purpose::STANDARD.encode(bytes))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            )
-        })
+        self.as_ref().map_or_else(
+            || "None".to_owned(),
+            |arrays| {
+                format!(
+                    "[{}]",
+                    arrays
+                        .iter()
+                        .map(|bytes| general_purpose::STANDARD.encode(bytes))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            },
+        )
     }
 }
 
@@ -557,15 +562,15 @@ impl Display for CreateKeyPair {
         let common_attrs = self
             .common_attributes
             .as_ref()
-            .map_or("None".to_owned(), |attrs| format!("{attrs}"));
+            .map_or_else(|| "None".to_owned(), |attrs| format!("{attrs}"));
         let private_attrs = self
             .private_key_attributes
             .as_ref()
-            .map_or("None".to_owned(), |attrs| format!("{attrs}"));
+            .map_or_else(|| "None".to_owned(), |attrs| format!("{attrs}"));
         let public_attrs = self
             .public_key_attributes
             .as_ref()
-            .map_or("None".to_owned(), |attrs| format!("{attrs}"));
+            .map_or_else(|| "None".to_owned(), |attrs| format!("{attrs}"));
 
         write!(
             f,
@@ -2000,7 +2005,7 @@ impl Display for ReKey {
         let attributes = self
             .attributes
             .as_ref()
-            .map_or("None".to_owned(), |attrs| format!("{attrs}"));
+            .map_or_else(|| "None".to_owned(), |attrs| format!("{attrs}"));
         write!(
             f,
             "ReKey {{ unique_identifier: {:?}, offset: {:?}, attributes: {}, \
@@ -2099,15 +2104,15 @@ impl Display for ReKeyKeyPair {
         let common_attrs = self
             .common_attributes
             .as_ref()
-            .map_or("None".to_owned(), |attrs| format!("{attrs}"));
+            .map_or_else(|| "None".to_owned(), |attrs| format!("{attrs}"));
         let private_attrs = self
             .private_key_attributes
             .as_ref()
-            .map_or("None".to_owned(), |attrs| format!("{attrs}"));
+            .map_or_else(|| "None".to_owned(), |attrs| format!("{attrs}"));
         let public_attrs = self
             .public_key_attributes
             .as_ref()
-            .map_or("None".to_owned(), |attrs| format!("{attrs}"));
+            .map_or_else(|| "None".to_owned(), |attrs| format!("{attrs}"));
 
         write!(
             f,

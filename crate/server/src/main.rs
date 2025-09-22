@@ -42,7 +42,14 @@ fn get_effective_rust_log(config_rust_log: Option<String>, info_only: bool) -> O
 /// This function sets up the necessary environment variables and logging options,
 /// then parses the command line arguments using [`ClapConfig::parse()`](https://docs.rs/clap/latest/clap/struct.ClapConfig.html#method.parse).
 #[tokio::main]
-async fn main() -> KResult<()> {
+async fn main() {
+    if let Err(e) = run().await {
+        eprintln!("Error: {e}");
+        std::process::exit(1);
+    }
+}
+
+async fn run() -> KResult<()> {
     // Load variable from a .env file
     dotenv().ok();
 
@@ -116,7 +123,7 @@ async fn main() -> KResult<()> {
     #[cfg(feature = "non-fips")]
     if openssl::version::number() >= 0x3000_0000 {
         Provider::try_load(None, "legacy", true)
-            .context("export: unable to load the openssl legacy provider")?;
+            .context("unable to load the openssl legacy provider")?;
     } else {
         // In version < 3.0, we only load the default provider
         Provider::load(None, "default")?;

@@ -87,7 +87,7 @@ fn check_ecc_mask_algorithm_compliance(
         crypto_bail!("EC: forbidden CryptographicAlgorithm value in FIPS mode.")
     }
     match algorithm {
-        CryptographicAlgorithm::ECDH => {
+        CryptographicAlgorithm::ECDH | CryptographicAlgorithm::EC => {
             check_ecc_mask_against_flags(private_key_mask, FIPS_PRIVATE_ECC_MASK_SIGN_ECDH)?;
             check_ecc_mask_against_flags(public_key_mask, FIPS_PUBLIC_ECC_MASK_SIGN_ECDH)?;
         }
@@ -96,10 +96,6 @@ fn check_ecc_mask_algorithm_compliance(
         | CryptographicAlgorithm::Ed448 => {
             check_ecc_mask_against_flags(private_key_mask, FIPS_PRIVATE_ECC_MASK_SIGN)?;
             check_ecc_mask_against_flags(public_key_mask, FIPS_PUBLIC_ECC_MASK_SIGN)?;
-        }
-        CryptographicAlgorithm::EC => {
-            check_ecc_mask_against_flags(private_key_mask, FIPS_PRIVATE_ECC_MASK_SIGN_ECDH)?;
-            check_ecc_mask_against_flags(public_key_mask, FIPS_PUBLIC_ECC_MASK_SIGN_ECDH)?;
         }
         // If `allowed` parameter is set correctly, should never fall in this case.
         _ => crypto_bail!("Invalid CryptographicAlgorithm value."),

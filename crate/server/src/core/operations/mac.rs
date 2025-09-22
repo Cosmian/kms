@@ -163,6 +163,7 @@ mod tests {
         Ok(())
     }
 
+    #[allow(clippy::unwrap_in_result)]
     #[tokio::test]
     async fn test_server_mac_operation() -> KResult<()> {
         let kms = Arc::new(

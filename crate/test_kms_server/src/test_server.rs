@@ -652,6 +652,7 @@ fn generate_user_conf(
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_in_result)]
 #[tokio::test]
 async fn test_start_server() -> Result<(), KmsClientError> {
     let context = start_test_server_with_options(

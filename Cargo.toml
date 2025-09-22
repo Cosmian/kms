@@ -86,7 +86,7 @@ redundant_clone = "deny"
 [workspace.package]
 version = "5.9.0"
 edition = "2024"
-rust-version = "1.85.0"
+rust-version = "1.87.0"
 authors = [
   "Bruno Grieder <bruno.grieder@cosmian.com>",
   "Emmanuel Coste <emmanuel.coste@cosmian.com>",

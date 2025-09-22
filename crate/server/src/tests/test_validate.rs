@@ -1,4 +1,4 @@
-#![allow(clippy::unwrap_used)]
+#![allow(clippy::unwrap_used, clippy::unwrap_in_result)]
 
 use std::{fs, path, sync::Arc};
 

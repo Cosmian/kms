@@ -294,7 +294,7 @@ fn handle_client(
     // Accept TLS connection
     let peer_addr = stream
         .peer_addr()
-        .map_or("[N/A]".to_owned(), |sa| sa.to_string());
+        .map_or_else(|_| "[N/A]".to_owned(), |sa| sa.to_string());
     debug!("socket server: client connected from {}", peer_addr);
 
     let mut tls_stream = server_config

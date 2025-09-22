@@ -633,7 +633,7 @@ impl Session {
                 "Invalid PKCS#7 padding: empty buffer".to_owned(),
             ));
         }
-        if (data.len() % block_size) != 0 {
+        if !data.len().is_multiple_of(block_size) {
             return Err(HError::Default("Data doesn't align to blocks".to_owned()));
         }
         let pad_len = data.last().map(|&b| b as usize).ok_or_else(|| {
@@ -948,7 +948,7 @@ impl Session {
                 "Too small maximum round length".to_string(),
             ));
         }
-        if max_round_length % AES_BLOCK_SIZE != 0 {
+        if !max_round_length.is_multiple_of(AES_BLOCK_SIZE) {
             return Err(HError::Default(
                 "Round length must be multiple of block size (16)".to_string(),
             ));
@@ -1034,12 +1034,12 @@ impl Session {
                 "Too small maximum round length".to_string(),
             ));
         }
-        if max_round_length % AES_BLOCK_SIZE != 0 {
+        if !max_round_length.is_multiple_of(AES_BLOCK_SIZE) {
             return Err(HError::Default(format!(
                 "Round length must be multiple of block size ({AES_BLOCK_SIZE}))"
             )));
         }
-        if ciphertext.len() % AES_BLOCK_SIZE != 0 {
+        if !ciphertext.len().is_multiple_of(AES_BLOCK_SIZE) {
             return Err(HError::Default(format!(
                 "AES CBC ciphertext must be multiple of block size ({AES_BLOCK_SIZE})"
             )));

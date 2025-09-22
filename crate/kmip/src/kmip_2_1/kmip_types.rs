@@ -1193,18 +1193,15 @@ pub enum Tag {
 }
 
 /// Indicates the method used to wrap the Key Value.
+#[derive(Default)]
 #[kmip_enum]
 pub enum WrappingMethod {
+    #[default]
     Encrypt = 0x0000_0001,
     MACSign = 0x0000_0002,
     EncryptThenMACSign = 0x0000_0003,
     MACSignThenEncrypt = 0x0000_0004,
     TR31 = 0x0000_0005,
-}
-impl Default for WrappingMethod {
-    fn default() -> Self {
-        Self::Encrypt
-    }
 }
 
 #[kmip_enum]

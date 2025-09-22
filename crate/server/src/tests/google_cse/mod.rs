@@ -1,4 +1,9 @@
-#![allow(clippy::unwrap_used, clippy::print_stdout, clippy::panic_in_result_fn)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::print_stdout,
+    clippy::panic_in_result_fn,
+    clippy::unwrap_in_result
+)]
 use std::{
     collections::HashMap,
     fs::File,
@@ -191,8 +196,8 @@ fn test_ossl_sign_verify() -> KResult<()> {
 
 /// Test resource key hash computing, from Google official documentation examples
 /// Run OpenSSL in command line to verify the results:
-/// echo -n "ResourceKeyDigest://googleapis.com/testcase/hJB0PzRI7nl79LC18qaV8WMDCBALBSs9BREcq79MfVw:" | openssl sha256 -mac HMAC -macopt hexkey:6a68079290123ed8f23c845cc8bda91cd961c0246b79446662919e336920cbef -binary | xxd -p -c 256
-/// echo -n "ResourceKeyDigest://googleapis.com/testcase/od8yfZiS5ZF2RN27X4ClalsV6LobL2FwKRk4qOJxWdE:perimeter1" | openssl sha256 -mac HMAC -macopt hexkey:05b62b91cb66f19e27789fb69eb680fac113a70a120178d6cfa6b1b4cb11bb95 -binary | xxd -p -c 256
+/// echo -n "<ResourceKeyDigest://googleapis.com/testcase/hJB0PzRI7nl79LC18qaV8WMDCBALBSs9BREcq79MfVw>:" | openssl sha256 -mac HMAC -macopt hexkey:6a68079290123ed8f23c845cc8bda91cd961c0246b79446662919e336920cbef -binary | xxd -p -c 256
+/// echo -n "<ResourceKeyDigest://googleapis.com/testcase/od8yfZiS5ZF2RN27X4ClalsV6LobL2FwKRk4qOJxWdE:perimeter1>" | openssl sha256 -mac HMAC -macopt hexkey:05b62b91cb66f19e27789fb69eb680fac113a70a120178d6cfa6b1b4cb11bb95 -binary | xxd -p -c 256
 #[tokio::test]
 async fn test_cse_resource_key_hash() -> KResult<()> {
     let dek = "6a68079290123ed8f23c845cc8bda91cd961c0246b79446662919e336920cbef";
