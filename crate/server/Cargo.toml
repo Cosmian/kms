@@ -72,7 +72,7 @@ num-bigint-dig = { workspace = true, features = [
 ] }
 openidconnect = { version = "4.0", features = ["reqwest", "native-tls"] }
 openssl = { workspace = true }
-pem.workspace = true
+pem = { workspace = true }
 proteccio_pkcs11_loader = { path = "../hsm/proteccio", version = "5.9.0" }
 reqwest = { workspace = true, features = [
   "default",

@@ -48,7 +48,7 @@ pub struct CreateSecretDataAction {
     pub secret_id: Option<String>,
 
     /// Sensitive: if set, the secret will not be exportable
-    #[clap(long = "sensitive", default_value = "false")]
+    #[clap(long, default_value = "false")]
     pub sensitive: bool,
 
     /// The key encryption key (KEK) used to wrap this new secret data with.
@@ -56,12 +56,7 @@ pub struct CreateSecretDataAction {
     /// - a symmetric key, AES-GCM will be used
     /// - a RSA key, RSA-OAEP will be used
     /// - a EC key, ECIES will be used (salsa20poly1305 for X25519)
-    #[clap(
-        long = "wrapping-key-id",
-        short = 'w',
-        required = false,
-        verbatim_doc_comment
-    )]
+    #[clap(long, short = 'w', required = false, verbatim_doc_comment)]
     pub wrapping_key_id: Option<String>,
 }
 

@@ -865,7 +865,7 @@ impl Display for Attributes {
             writeln!(f, "  Destroy Date: {value}")?;
         }
         if let Some(value) = &self.digest {
-            writeln!(f, "  Digest: {value:#?}")?;
+            writeln!(f, "  Digest: {value}")?;
         }
         if let Some(value) = &self.digital_signature_algorithm {
             writeln!(f, "  Digital Signature Algorithm: {value}")?;

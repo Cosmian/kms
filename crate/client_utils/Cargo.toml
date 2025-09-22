@@ -23,7 +23,7 @@ doctest = false
 non-fips = ["cosmian_kmip/non-fips"]
 
 [dependencies]
-base64.workspace = true
+base64 = { workspace = true }
 clap = { workspace = true, features = ["std", "derive"] }
 cosmian_config_utils = { workspace = true }
 cosmian_kmip = { path = "../kmip", version = "5.9.0" }

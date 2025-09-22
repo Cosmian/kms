@@ -120,7 +120,10 @@ pub(crate) fn unwrap(
     }
 
     let plaintext = match unwrapping_key_block.key_format_type {
-        KeyFormatType::TransparentSymmetricKey => {
+        // The default format for a symmetric key is Raw
+        //  according to sec. 4.26 Key Format Type of the KMIP 2.1 specs:
+        //  see https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html#_Toc57115585
+        KeyFormatType::TransparentSymmetricKey | KeyFormatType::Raw => {
             unwrap_with_symmetric_key(key_wrapping_data, wrapped_key, unwrapping_key_block)
         }
         KeyFormatType::TransparentECPrivateKey | KeyFormatType::TransparentRSAPrivateKey => {
