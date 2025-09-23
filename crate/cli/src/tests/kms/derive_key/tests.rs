@@ -19,7 +19,6 @@ use crate::{
 /// Helper function to create a base key with `DeriveKey` usage mask
 async fn create_base_key_for_derivation(
     client: &KmsClient,
-    _key_id: &str,
     tags: Vec<String>,
 ) -> KmsCliResult<String> {
     let mut attributes = Attributes {
@@ -59,7 +58,6 @@ pub(crate) async fn test_derive_key_pbkdf2_default() -> KmsCliResult<()> {
     // Create base key with DeriveKey usage mask
     let base_key_id = create_base_key_for_derivation(
         &ctx.get_owner_client(),
-        "test-base-key-pbkdf2",
         vec!["test-derive-base".to_owned()],
     )
     .await?;
@@ -92,7 +90,6 @@ pub(crate) async fn test_derive_key_pbkdf2_different_hash_algorithms() -> KmsCli
     // Create base key with DeriveKey usage mask
     let base_key_id = create_base_key_for_derivation(
         &ctx.get_owner_client(),
-        "test-base-key-hash-algorithms",
         vec!["test-derive-base".to_owned()],
     )
     .await?;
@@ -131,7 +128,6 @@ pub(crate) async fn test_derive_key_hkdf() -> KmsCliResult<()> {
     // Create base key with DeriveKey usage mask
     let base_key_id = create_base_key_for_derivation(
         &ctx.get_owner_client(),
-        "test-base-key-hkdf",
         vec!["test-derive-base".to_owned()],
     )
     .await?;
@@ -162,7 +158,6 @@ pub(crate) async fn test_derive_key_with_different_lengths() -> KmsCliResult<()>
     // Create base key with DeriveKey usage mask
     let base_key_id = create_base_key_for_derivation(
         &ctx.get_owner_client(),
-        "test-base-key-lengths",
         vec!["test-derive-base".to_owned()],
     )
     .await?;
@@ -197,7 +192,6 @@ pub(crate) async fn test_derive_key_error_invalid_hex_salt() -> KmsCliResult<()>
     // Create base key with DeriveKey usage mask
     let base_key_id = create_base_key_for_derivation(
         &ctx.get_owner_client(),
-        "test-base-key-error",
         vec!["test-derive-base".to_owned()],
     )
     .await?;
@@ -230,7 +224,6 @@ pub(crate) async fn test_derive_key_error_invalid_hex_iv() -> KmsCliResult<()> {
     // Create base key with DeriveKey usage mask
     let base_key_id = create_base_key_for_derivation(
         &ctx.get_owner_client(),
-        "test-base-key-error-iv",
         vec!["test-derive-base".to_owned()],
     )
     .await?;
@@ -263,7 +256,6 @@ pub(crate) async fn test_derive_key_error_unsupported_method() -> KmsCliResult<(
     // Create base key with DeriveKey usage mask
     let base_key_id = create_base_key_for_derivation(
         &ctx.get_owner_client(),
-        "test-base-key-unsupported",
         vec!["test-derive-base".to_owned()],
     )
     .await?;
