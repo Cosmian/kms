@@ -240,7 +240,7 @@ impl ObjectsDB {
                 continue
             }
             let dbo: RedisDbObject = self.decrypt_object(uid, &ciphertext)?;
-            results.insert(uid.to_string(), dbo);
+            results.insert(uid.clone(), dbo);
         }
         Ok(results)
     }

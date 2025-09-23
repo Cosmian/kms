@@ -193,14 +193,14 @@ impl SlotManager {
             // Get count of supported mechanisms
             let rv = self.hsm_lib.C_GetMechanismList.ok_or_else(|| {
                 HError::Default("C_GetMechanismList not available on library".to_string())
-            })?(slot_id, ptr::null_mut(), &mut count);
+            })?(slot_id, ptr::null_mut(), &raw mut count);
             check_rv!(rv, "Failed to get mechanism count from HSM");
 
             // Get mechanism list
             let mut mechanisms = vec![0; count as usize];
             let rv = self.hsm_lib.C_GetMechanismList.ok_or_else(|| {
                 HError::Default("C_GetMechanismList not available on library".to_string())
-            })?(slot_id, mechanisms.as_mut_ptr(), &mut count);
+            })?(slot_id, mechanisms.as_mut_ptr(), &raw mut count);
             check_rv!(rv, "Failed to get mechanism list from HSM".to_string());
 
             mechanisms.truncate(count as usize);
@@ -233,7 +233,7 @@ impl SlotManager {
             let mut info: CK_MECHANISM_INFO = std::mem::zeroed();
             let rv = self.hsm_lib.C_GetMechanismInfo.ok_or_else(|| {
                 HError::Default("C_GetMechanismInfo not available on library".to_string())
-            })?(slot_id, mech, &mut info);
+            })?(slot_id, mech, &raw mut info);
             check_rv!(rv, format!("Failed to get mechanism info for {}", mech));
             Ok(info)
         }

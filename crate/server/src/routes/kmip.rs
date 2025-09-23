@@ -165,7 +165,7 @@ pub(crate) async fn kmip_2_1_json(
     let user = kms.get_user(&req_http);
     info!(target: "kmip", user=user, tag=ttlv.tag.as_str(), "POST /kmip/2_1. Request: {:?} {}", ttlv.tag.as_str(), user);
 
-    let ttlv = handle_ttlv_2_1(&kms, ttlv, &user, None).await?;
+    let ttlv = Box::pin(handle_ttlv_2_1(&kms, ttlv, &user, None)).await?;
 
     Ok(Json(ttlv))
 }
@@ -203,7 +203,7 @@ async fn handle_ttlv_2_1(
             error_response_ttlv(2, 1, e.to_string().as_str())
         }))
     } else {
-        let operation = dispatch(kms, ttlv, user, database_params).await?;
+        let operation = Box::pin(dispatch(kms, ttlv, user, database_params)).await?;
         Ok(to_ttlv(&operation)?)
     }
 }
@@ -226,7 +226,7 @@ pub(crate) async fn kmip(
         .map_err(|e| KmsError::InvalidRequest(format!("Cannot parse content type: {e}")))?;
     match content_type {
         "application/octet-stream" => Ok(Box::pin(kmip_binary(req_http, body, kms)).await),
-        "application/json" => Ok(kmip_json(req_http, body, kms).await),
+        "application/json" => Ok(Box::pin(kmip_json(req_http, body, kms)).await),
         _ => Err(KmsError::InvalidRequest(format!(
             "Unsupported content type: {content_type}"
         ))),
@@ -242,7 +242,7 @@ pub(crate) async fn kmip_json(
     let span = span!(tracing::Level::TRACE, "json");
     let _guard = span.enter();
 
-    let json = kmip_json_inner(req_http, body, kms)
+    let json = Box::pin(kmip_json_inner(req_http, body, kms))
         .await
         .unwrap_or_else(|e| {
             error!(target: "kmip", "Failed to process request: {}", e);
@@ -277,7 +277,7 @@ async fn kmip_json_inner(req_http: HttpRequest, body: Bytes, kms: Data<Arc<KMS>>
     );
 
     if major == 2 && minor == 1 {
-        let ttlv = handle_ttlv_2_1(&kms, ttlv, &user, None).await?;
+        let ttlv = Box::pin(handle_ttlv_2_1(&kms, ttlv, &user, None)).await?;
         Ok(ttlv)
     } else if major == 1 && minor == 4 {
         Err(KmsError::InvalidRequest(

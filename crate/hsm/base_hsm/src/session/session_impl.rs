@@ -303,7 +303,7 @@ impl Session {
                     let _ = self.destroy_object(sk_handle);
                     let _ = self.destroy_object(pk_handle);
                     HError::Default("C_EncryptInit not available on library".to_string())
-                })?(self.session_handle, &mut mechanism, pk_handle)
+                })?(self.session_handle, &raw mut mechanism, pk_handle)
             };
 
             if rv == CKR_OK {
@@ -493,7 +493,7 @@ impl Session {
     /// Clear all cached object handles for this HSM slot.
     ///
     /// This function removes all entries from the object handle cache associated with
-    /// this session's SlotManager. Clearing the cache may be useful especially for testing.
+    /// this session's `SlotManager`. Clearing the cache may be useful especially for testing.
     pub fn clear_object_handles(&self) -> HResult<()> {
         self.object_handles_cache.clear()?;
         Ok(())
@@ -668,7 +668,7 @@ impl Session {
             HsmEncryptionAlgorithm::AesGcm => {
                 let mut nonce = generate_random_nonce::<12>()?;
                 let mut params = CK_AES_GCM_PARAMS {
-                    pIv: &mut nonce as *mut u8,
+                    pIv: nonce.as_mut_ptr(),
                     ulIvLen: AES_GCM_IV_LENGTH as CK_ULONG,
                     ulIvBits: (AES_GCM_IV_LENGTH * 8) as CK_ULONG,
                     pAAD: ptr::null_mut(),
@@ -805,7 +805,7 @@ impl Session {
                     .try_into()
                     .map_err(|_| HError::Default("Invalid AES GCM nonce".to_owned()))?;
                 let mut params = CK_AES_GCM_PARAMS {
-                    pIv: &mut nonce as *mut u8,
+                    pIv: nonce.as_mut_ptr(),
                     ulIvLen: AES_GCM_IV_LENGTH as CK_ULONG,
                     ulIvBits: (AES_GCM_IV_LENGTH * 8) as CK_ULONG,
                     pAAD: ptr::null_mut(),
@@ -963,7 +963,7 @@ impl Session {
             let round_length = min(total_length - processed_length, max_round_length);
             if round_length == 0 {
                 break
-            };
+            }
             trace!(
                 "Doing round with {round_length} bytes. {processed_length} of {total_length} done"
             );
@@ -1002,7 +1002,7 @@ impl Session {
     /// This is useful for large ciphertexts where decrypting in one call would exceed
     /// the module's limits.
     ///
-    /// For more details see [Session::encrypt_aes_cbc_multi_round].
+    /// For more details see [`Session::encrypt_aes_cbc_multi_round`].
     ///
     /// # Arguments
     /// * `key_handle` - The handle to the AES key object stored in the HSM.
@@ -1063,7 +1063,7 @@ impl Session {
             let round_length = min(total_length - processed_length, max_round_length);
             if round_length == 0 {
                 break
-            };
+            }
             trace!(
                 "Doing round with {round_length} bytes. {processed_length} of {total_length} done"
             );

@@ -10,13 +10,13 @@ use cosmian_kms_server_database::reexport::{
         kmip_2_1::kmip_operations::{
             Activate, ActivateResponse, AddAttribute, AddAttributeResponse, Certify,
             CertifyResponse, Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse, Decrypt,
-            DecryptResponse, DeleteAttribute, DeleteAttributeResponse, Destroy, DestroyResponse,
-            Encrypt, EncryptResponse, Export, ExportResponse, Get, GetAttributes,
-            GetAttributesResponse, GetResponse, Hash, HashResponse, Import, ImportResponse, Locate,
-            LocateResponse, MAC, MACResponse, Query, QueryResponse, ReKey, ReKeyKeyPair,
-            ReKeyKeyPairResponse, ReKeyResponse, Register, RegisterResponse, Revoke,
-            RevokeResponse, SetAttribute, SetAttributeResponse, Sign, SignResponse,
-            SignatureVerify, SignatureVerifyResponse, Validate, ValidateResponse,
+            DecryptResponse, DeleteAttribute, DeleteAttributeResponse, DeriveKey,
+            DeriveKeyResponse, Destroy, DestroyResponse, Encrypt, EncryptResponse, Export,
+            ExportResponse, Get, GetAttributes, GetAttributesResponse, GetResponse, Hash,
+            HashResponse, Import, ImportResponse, Locate, LocateResponse, MAC, MACResponse, Query,
+            QueryResponse, ReKey, ReKeyKeyPair, ReKeyKeyPairResponse, ReKeyResponse, Register,
+            RegisterResponse, Revoke, RevokeResponse, SetAttribute, SetAttributeResponse, Sign,
+            SignResponse, SignatureVerify, SignatureVerifyResponse, Validate, ValidateResponse,
         },
     },
     cosmian_kms_interfaces::SessionParams,
@@ -232,6 +232,25 @@ impl KMS {
         let _enter = span.enter();
 
         operations::delete_attribute(self, request, user, params).await
+    }
+
+    /// This request is used to derive a Symmetric Key or Secret Data object from keys or Secret Data objects that are already known to the key management system. The request SHALL only apply to Managed Objects that have the Derive Key bit set in the Cryptographic Usage Mask attribute of the specified Managed Object (i.e., are able to be used for key derivation). If the operation is issued for an object that does not have this bit set, then the server SHALL return an error. For all derivation methods, the client SHALL specify the desired length of the derived key or Secret Data object using the Cryptographic Length attribute. If a key is created, then the client SHALL specify both its Cryptographic Length and Cryptographic Algorithm. If the specified length exceeds the output of the derivation method, then the server SHALL return an error. Clients MAY derive multiple keys and IVs by requesting the creation of a Secret Data object and specifying a Cryptographic Length that is the total length of the derived object. If the specified length exceeds the output of the derivation method, then the server SHALL return an error.
+    ///
+    /// The fields in the Derive Key request specify the Unique Identifiers of the keys or Secret Data objects to be used for derivation (e.g., some derivation methods MAY use multiple keys or Secret Data objects to derive the result), the method to be used to perform the derivation, and any parameters needed by the specified method.
+    ///
+    /// The server SHALL perform the derivation function, and then register the derived object as a new Managed Object, returning the new Unique Identifier for the new object in the response. The server SHALL copy the Unique Identifier returned by this operation into the ID Placeholder variable.
+    ///
+    /// For the keys or Secret Data objects from which the key or Secret Data object is derived, the server SHALL create a Link attribute of Link Type Derived Key pointing to the Symmetric Key or Secret Data object derived as a result of this operation. For the Symmetric Key or Secret Data object derived as a result of this operation, the server SHALL create a Link attribute of Link Type Derivation Base Object pointing to the keys or Secret Data objects from which the key or Secret Data object is derived.
+    pub(crate) async fn derive_key(
+        &self,
+        request: DeriveKey,
+        user: &str,
+        params: Option<Arc<dyn SessionParams>>,
+    ) -> KResult<DeriveKeyResponse> {
+        let span = tracing::span!(tracing::Level::ERROR, "derive_key");
+        let _enter = span.enter();
+
+        Box::pin(operations::derive_key(self, request, user, params)).await
     }
 
     /// This operation is used to indicate to the server that the key material

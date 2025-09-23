@@ -106,6 +106,8 @@ pub enum Operation {
     DecryptResponse(DecryptResponse),
     DeleteAttribute(DeleteAttribute),
     DeleteAttributeResponse(DeleteAttributeResponse),
+    DeriveKey(DeriveKey),
+    DeriveKeyResponse(DeriveKeyResponse),
     Destroy(Destroy),
     DestroyResponse(DestroyResponse),
     Encrypt(Box<Encrypt>),
@@ -171,6 +173,8 @@ impl Display for Operation {
             Self::DeleteAttributeResponse(op) => {
                 write!(f, "Operation::DeleteAttributeResponse({op})")
             }
+            Self::DeriveKey(op) => write!(f, "Operation::DeriveKey({op})"),
+            Self::DeriveKeyResponse(op) => write!(f, "Operation::DeriveKeyResponse({op})"),
             Self::Destroy(op) => write!(f, "Operation::Destroy({op})"),
             Self::DestroyResponse(op) => write!(f, "Operation::DestroyResponse({op})"),
             Self::Encrypt(op) => write!(f, "Operation::Encrypt({op})"),
@@ -226,6 +230,7 @@ impl Operation {
             | Self::CreateKeyPair(_)
             | Self::Decrypt(_)
             | Self::DeleteAttribute(_)
+            | Self::DeriveKey(_)
             | Self::Destroy(_)
             | Self::Encrypt(_)
             | Self::Export(_)
@@ -253,6 +258,7 @@ impl Operation {
             | Self::CreateKeyPairResponse(_)
             | Self::DecryptResponse(_)
             | Self::DeleteAttributeResponse(_)
+            | Self::DeriveKeyResponse(_)
             | Self::DestroyResponse(_)
             | Self::EncryptResponse(_)
             | Self::ExportResponse(_)
@@ -291,6 +297,7 @@ impl Operation {
             Self::DeleteAttribute(_) | Self::DeleteAttributeResponse(_) => {
                 OperationEnumeration::DeleteAttribute
             }
+            Self::DeriveKey(_) | Self::DeriveKeyResponse(_) => OperationEnumeration::DeriveKey,
             Self::Destroy(_) | Self::DestroyResponse(_) => OperationEnumeration::Destroy,
             Self::DiscoverVersions(_) | Self::DiscoverVersionsResponse(_) => {
                 OperationEnumeration::DiscoverVersions
@@ -861,15 +868,13 @@ impl Display for DestroyResponse {
 
 /// `DeriveKey`
 ///
-/// This request is used to derive a Symmetric Key or Secret Data object from
-/// keys or Secret Data objects that are already known to the key management
-/// system. The request SHALL only apply to Managed Objects that have the Derive
-/// Key bit set in the Cryptographic Usage Mask attribute of the specified
-/// Managed Object (i.e., are able to be used for key derivation). If the
-/// operation is issued for an object that does not have this bit set, then the
-/// server SHALL return an error. For all derivation methods, the client SHALL
-/// specify the desired length of the derived key or Secret Data object using
-/// the Cryptographic Length attribute.
+/// This request is used to derive a Symmetric Key or Secret Data object from keys or Secret Data objects that are already known to the key management system. The request SHALL only apply to Managed Objects that have the Derive Key bit set in the Cryptographic Usage Mask attribute of the specified Managed Object (i.e., are able to be used for key derivation). If the operation is issued for an object that does not have this bit set, then the server SHALL return an error. For all derivation methods, the client SHALL specify the desired length of the derived key or Secret Data object using the Cryptographic Length attribute. If a key is created, then the client SHALL specify both its Cryptographic Length and Cryptographic Algorithm. If the specified length exceeds the output of the derivation method, then the server SHALL return an error. Clients MAY derive multiple keys and IVs by requesting the creation of a Secret Data object and specifying a Cryptographic Length that is the total length of the derived object. If the specified length exceeds the output of the derivation method, then the server SHALL return an error.
+///
+/// The fields in the Derive Key request specify the Unique Identifiers of the keys or Secret Data objects to be used for derivation (e.g., some derivation methods MAY use multiple keys or Secret Data objects to derive the result), the method to be used to perform the derivation, and any parameters needed by the specified method.
+///
+/// The server SHALL perform the derivation function, and then register the derived object as a new Managed Object, returning the new Unique Identifier for the new object in the response. The server SHALL copy the Unique Identifier returned by this operation into the ID Placeholder variable.
+///
+/// For the keys or Secret Data objects from which the key or Secret Data object is derived, the server SHALL create a Link attribute of Link Type Derived Key pointing to the Symmetric Key or Secret Data object derived as a result of this operation. For the Symmetric Key or Secret Data object derived as a result of this operation, the server SHALL create a Link attribute of Link Type Derivation Base Object pointing to the keys or Secret Data objects from which the key or Secret Data object is derived.
 #[derive(Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct DeriveKey {
@@ -889,6 +894,42 @@ pub struct DeriveKey {
     /// length and algorithm SHALL always be specified for the creation of a
     /// symmetric key.
     pub attributes: Attributes,
+}
+
+impl Display for DeriveKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "DeriveKey {{ object_type: {}, object_unique_identifier: {}, derivation_method: {:?}, \
+             derivation_parameters: {:?}, attributes: {} }}",
+            self.object_type,
+            self.object_unique_identifier,
+            self.derivation_method,
+            self.derivation_parameters,
+            self.attributes
+        )
+    }
+}
+
+/// `DeriveKeyResponse`
+///
+/// Response to a `DeriveKey` request. Contains the unique identifier
+/// of the newly derived key or secret data object.
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct DeriveKeyResponse {
+    /// The Unique Identifier of the newly derived object.
+    pub unique_identifier: UniqueIdentifier,
+}
+
+impl Display for DeriveKeyResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "DeriveKeyResponse {{ unique_identifier: {} }}",
+            self.unique_identifier
+        )
+    }
 }
 
 #[derive(Serialize, Deserialize, Default, PartialEq, Eq, Clone, Debug)]

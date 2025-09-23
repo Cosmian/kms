@@ -5,10 +5,10 @@ use cosmian_http_client::{
 // re-export the kmip module as kmip
 use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::kmip_operations::{
     Certify, CertifyResponse, Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse,
-    Decrypt, DecryptResponse, Destroy, DestroyResponse, Encrypt, EncryptResponse, Export,
-    ExportResponse, Get, GetAttributes, GetAttributesResponse, GetResponse, Import, ImportResponse,
-    Locate, LocateResponse, ReKeyKeyPair, ReKeyKeyPairResponse, Revoke, RevokeResponse,
-    StatusResponse, Validate, ValidateResponse,
+    Decrypt, DecryptResponse, DeriveKey, DeriveKeyResponse, Destroy, DestroyResponse, Encrypt,
+    EncryptResponse, Export, ExportResponse, Get, GetAttributes, GetAttributesResponse,
+    GetResponse, Import, ImportResponse, Locate, LocateResponse, ReKeyKeyPair,
+    ReKeyKeyPairResponse, Revoke, RevokeResponse, StatusResponse, Validate, ValidateResponse,
 };
 use cosmian_kms_client_utils::reexport::{
     cosmian_kmip::kmip_2_1::kmip_operations::{
@@ -160,6 +160,18 @@ impl KmsClient {
     /// Status (and if failure the Result Reason) in the response header.
     pub async fn decrypt(&self, request: Decrypt) -> Result<DecryptResponse, KmsClientError> {
         self.post_ttlv_2_1::<Decrypt, DecryptResponse>(&request)
+            .await
+    }
+
+    /// This operation is used to derive a new key from an existing key using a specified derivation method
+    /// such as PBKDF2 or HKDF. The server SHALL perform the derivation function, and then register
+    /// the derived object as a new Managed Object, returning the new Unique Identifier for the new object
+    /// in the response.
+    pub async fn derive_key(
+        &self,
+        request: DeriveKey,
+    ) -> Result<DeriveKeyResponse, KmsClientError> {
+        self.post_ttlv_2_1::<DeriveKey, DeriveKeyResponse>(&request)
             .await
     }
 

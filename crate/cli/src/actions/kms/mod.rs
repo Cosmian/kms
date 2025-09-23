@@ -7,6 +7,7 @@ pub mod certificates;
 pub mod console;
 #[cfg(feature = "non-fips")]
 pub mod cover_crypt;
+pub mod derive_key;
 pub mod elliptic_curves;
 pub mod google;
 pub mod hash;

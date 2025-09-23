@@ -6,7 +6,7 @@ use super::cover_crypt::CovercryptCommands;
 use crate::{
     actions::kms::{
         access::AccessAction, attributes::AttributesCommands, azure::AzureCommands,
-        bench::BenchAction, certificates::CertificatesCommands,
+        bench::BenchAction, certificates::CertificatesCommands, derive_key::DeriveKeyAction,
         elliptic_curves::EllipticCurveCommands, google::GoogleCommands, hash::HashAction,
         login::LoginAction, mac::MacAction, rsa::RsaCommands, secret_data::SecretDataCommands,
         shared::LocateObjectsAction, symmetric::SymmetricCommands, version::ServerVersionAction,
@@ -29,6 +29,7 @@ pub enum KmsActions {
     Cc(CovercryptCommands),
     #[command(subcommand)]
     Certificates(CertificatesCommands),
+    DeriveKey(DeriveKeyAction),
     #[command(subcommand)]
     Ec(EllipticCurveCommands),
     #[command(subcommand)]
@@ -43,11 +44,11 @@ pub enum KmsActions {
     Mac(MacAction),
     #[command(subcommand)]
     Rsa(RsaCommands),
+    #[command(subcommand)]
+    SecretData(SecretDataCommands),
     ServerVersion(ServerVersionAction),
     #[command(subcommand)]
     Sym(SymmetricCommands),
-    #[command(subcommand)]
-    SecretData(SecretDataCommands),
 }
 
 impl KmsActions {
@@ -67,6 +68,9 @@ impl KmsActions {
             Self::Cc(action) => action.process(kms_rest_client).await?,
             Self::Certificates(action) => {
                 Box::pin(action.process(kms_rest_client)).await?;
+            }
+            Self::DeriveKey(action) => {
+                action.run(&kms_rest_client).await?;
             }
             Self::Ec(action) => action.process(kms_rest_client).await?,
             Self::Google(action) => action.process(kms_rest_client).await?,
