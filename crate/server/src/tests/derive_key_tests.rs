@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_in_result)]
 use std::sync::Arc;
 
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
@@ -260,7 +261,7 @@ async fn test_derive_key_hkdf() -> KResult<()> {
     Ok(())
 }
 
-/// Test deriving from SecretData object
+/// Test deriving from `SecretData` object
 #[tokio::test]
 async fn test_derive_key_from_secret_data() -> KResult<()> {
     let clap_config = https_clap_config();
@@ -305,7 +306,7 @@ async fn test_derive_key_from_secret_data() -> KResult<()> {
     Ok(())
 }
 
-/// Test error cases for DeriveKey operation
+/// Test error cases for `DeriveKey` operation
 #[tokio::test]
 async fn test_derive_key_error_cases() -> KResult<()> {
     let clap_config = https_clap_config();

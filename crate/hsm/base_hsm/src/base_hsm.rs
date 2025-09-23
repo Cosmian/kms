@@ -171,7 +171,7 @@ impl<P: HsmProvider> BaseHsm<P> {
         let supported_hashes = session.get_supported_oaep_hash()?;
         let mut algorithms = Vec::new();
 
-        for &mechanism in mechanisms.iter() {
+        for &mechanism in &mechanisms {
             match mechanism {
                 CKM_AES_CBC => algorithms.push(CryptoAlgorithm::AesCbc),
                 CKM_AES_GCM => algorithms.push(CryptoAlgorithm::AesGcm),
@@ -185,7 +185,7 @@ impl<P: HsmProvider> BaseHsm<P> {
                     }
                 }
                 _ => {}
-            };
+            }
         }
 
         Ok(algorithms)

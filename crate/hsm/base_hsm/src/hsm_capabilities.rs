@@ -6,7 +6,7 @@ pub struct HsmCapabilities {
     /// If `None`, there is no enforced limit.
     pub max_cbc_data_size: Option<usize>,
 
-    /// Maximum number of objects that can be returned by a single FindObjects operation
+    /// Maximum number of objects that can be returned by a single `FindObjects` operation
     /// (also known as `ulMaxObjectCount` in PKCS#11).
     pub find_max_object_count: CK_ULONG,
 }
