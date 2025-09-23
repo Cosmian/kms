@@ -7,6 +7,7 @@ use cosmian_kms_client::{
         kmip_operations::Create,
         kmip_types::{CryptographicAlgorithm, KeyFormatType},
     },
+    reexport::cosmian_kms_client_utils::create_utils::SymmetricAlgorithm,
 };
 use cosmian_logger::log_init;
 use test_kms_server::start_default_test_kms_server;
@@ -72,6 +73,7 @@ pub(crate) async fn test_derive_key_pbkdf2_default() -> KmsCliResult<()> {
         iteration_count: 4096,
         initialization_vector: None,
         digest_algorithm: CHashingAlgorithm::SHA256,
+        algorithm: SymmetricAlgorithm::Aes,
         cryptographic_length: 256,
         derived_key_id: Some("test-derived-key-pbkdf2-default".to_owned()),
     };
@@ -110,6 +112,7 @@ pub(crate) async fn test_derive_key_pbkdf2_different_hash_algorithms() -> KmsCli
             iteration_count: 1000,
             initialization_vector: None,
             digest_algorithm: hash_algo.clone(),
+            algorithm: SymmetricAlgorithm::Aes,
             cryptographic_length: 256,
             derived_key_id: Some(format!("test-derived-key-{hash_algo:?}-{i}")),
         };
@@ -141,6 +144,7 @@ pub(crate) async fn test_derive_key_hkdf() -> KmsCliResult<()> {
         iteration_count: 1, // HKDF doesn't use iteration count, but we provide a default
         initialization_vector: Some("1122334455667788".to_owned()), // 8 bytes in hex for HKDF
         digest_algorithm: CHashingAlgorithm::SHA256,
+        algorithm: SymmetricAlgorithm::Aes,
         cryptographic_length: 512,
         derived_key_id: Some("test-derived-key-hkdf".to_owned()),
     };
@@ -174,6 +178,7 @@ pub(crate) async fn test_derive_key_with_different_lengths() -> KmsCliResult<()>
             iteration_count: 2048,
             initialization_vector: None,
             digest_algorithm: CHashingAlgorithm::SHA256,
+            algorithm: SymmetricAlgorithm::Aes,
             cryptographic_length: length,
             derived_key_id: Some(format!("test-derived-key-{length}-bits")),
         };
@@ -205,6 +210,7 @@ pub(crate) async fn test_derive_key_error_invalid_hex_salt() -> KmsCliResult<()>
         iteration_count: 4096,
         initialization_vector: None,
         digest_algorithm: CHashingAlgorithm::SHA256,
+        algorithm: SymmetricAlgorithm::Aes,
         cryptographic_length: 256,
         derived_key_id: Some("test-derived-key-error".to_owned()),
     };
@@ -237,6 +243,7 @@ pub(crate) async fn test_derive_key_error_invalid_hex_iv() -> KmsCliResult<()> {
         iteration_count: 1,
         initialization_vector: Some("invalid_hex_iv".to_owned()), // Invalid hex
         digest_algorithm: CHashingAlgorithm::SHA256,
+        algorithm: SymmetricAlgorithm::Sha3,
         cryptographic_length: 256,
         derived_key_id: Some("test-derived-key-error-iv".to_owned()),
     };
@@ -269,6 +276,7 @@ pub(crate) async fn test_derive_key_error_unsupported_method() -> KmsCliResult<(
         iteration_count: 4096,
         initialization_vector: None,
         digest_algorithm: CHashingAlgorithm::SHA256,
+        algorithm: SymmetricAlgorithm::Aes,
         cryptographic_length: 256,
         derived_key_id: Some("test-derived-key-unsupported".to_owned()),
     };

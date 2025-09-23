@@ -9,12 +9,12 @@ use cosmian_kms_client::{
         kmip_attributes::Attributes as KmipAttributes,
         kmip_data_structures::DerivationParameters,
         kmip_objects::ObjectType,
-        kmip_operations::{DeriveKey, DeriveKeyResponse},
-        kmip_types::{
-            CryptographicAlgorithm, CryptographicParameters, DerivationMethod, KeyFormatType,
-            UniqueIdentifier,
-        },
+        kmip_operations::DeriveKey,
+        kmip_types::{CryptographicParameters, DerivationMethod, KeyFormatType, UniqueIdentifier},
         requests::import_object_request,
+    },
+    reexport::cosmian_kms_client_utils::create_utils::{
+        SymmetricAlgorithm, prepare_sym_key_elements,
     },
 };
 use zeroize::Zeroizing;
@@ -61,9 +61,18 @@ pub struct DeriveKeyAction {
     #[clap(long, short = 'd', default_value = "SHA256")]
     pub digest_algorithm: CHashingAlgorithm,
 
+    /// The algorithm
+    #[clap(
+        long = "algorithm",
+        short = 'a',
+        required = false,
+        default_value = "aes"
+    )]
+    pub algorithm: SymmetricAlgorithm,
+
     /// Length of the derived key in bits
     #[clap(long = "length", short = 'l', default_value = "256")]
-    pub cryptographic_length: i32,
+    pub cryptographic_length: usize,
 
     /// Optional unique identifier for the derived key
     #[clap(long)]
@@ -160,10 +169,14 @@ impl DeriveKeyAction {
             iteration_count: Some(self.iteration_count),
         };
 
+        let (cryptographic_length, _, algorithm) =
+            prepare_sym_key_elements(Some(self.cryptographic_length), &None, self.algorithm)
+                .map_err(|e| KmsCliError::Default(format!("Invalid cryptographic length: {e}")))?;
+
         // Create attributes for the derived key
         let mut attributes = KmipAttributes {
-            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-            cryptographic_length: Some(self.cryptographic_length),
+            cryptographic_algorithm: Some(algorithm),
+            cryptographic_length: Some(i32::try_from(cryptographic_length)?),
             cryptographic_usage_mask: Some(
                 CryptographicUsageMask::Encrypt | CryptographicUsageMask::Decrypt,
             ),
@@ -188,7 +201,7 @@ impl DeriveKeyAction {
         };
 
         // Call the KMS to derive the key
-        let response: DeriveKeyResponse = kms_rest_client.derive_key(derive_request).await?;
+        let response = kms_rest_client.derive_key(derive_request).await?;
 
         // Display the result
         console::Stdout::new(&format!(
