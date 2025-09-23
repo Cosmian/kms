@@ -32,7 +32,7 @@ use crate::{error::KmsError, kms_bail, result::KResult};
 /// The attributes of the `Create` request must contain the `Access Policy`.
 pub(crate) async fn create_user_decryption_key(
     kmip_server: &KMS,
-    cover_crypt: Covercrypt,
+    cover_crypt: Arc<Covercrypt>,
     create_request: &Create,
     owner: &str,
     params: Option<Arc<dyn SessionParams>>,

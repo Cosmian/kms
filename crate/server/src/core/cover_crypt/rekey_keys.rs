@@ -39,7 +39,7 @@ use crate::{core::cover_crypt::locate_usk, error::KmsError, kms_bail, result::KR
 #[expect(clippy::too_many_arguments)]
 pub(crate) async fn rekey_keypair_cover_crypt(
     kmip_server: &KMS,
-    cover_crypt: Covercrypt,
+    cover_crypt: Arc<Covercrypt>,
     msk_uid: String,
     owner: &str,
     action: RekeyEditAction,

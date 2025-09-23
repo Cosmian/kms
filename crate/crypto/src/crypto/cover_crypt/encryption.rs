@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use cosmian_cover_crypt::{AccessPolicy, MasterPublicKey, api::Covercrypt, traits::KemAc};
 use cosmian_crypto_core::{
     Aes256Gcm, Dem, Instantiable, Nonce, RandomFixedSizeCBytes, SymmetricKey,
@@ -19,14 +21,14 @@ use crate::{crypto::EncryptionSystem, error::CryptoError};
 /// Encrypt a single block of data using a KEM-DEM cryptosystem
 /// Cannot be used as a stream cipher
 pub struct CoverCryptEncryption {
-    cover_crypt: Covercrypt,
+    cover_crypt: Arc<Covercrypt>,
     public_key_uid: String,
     public_key_bytes: Zeroizing<Vec<u8>>,
 }
 
 impl CoverCryptEncryption {
     pub fn instantiate(
-        cover_crypt: Covercrypt,
+        cover_crypt: Arc<Covercrypt>,
         public_key_uid: &str,
         public_key: &Object,
     ) -> Result<Self, CryptoError> {

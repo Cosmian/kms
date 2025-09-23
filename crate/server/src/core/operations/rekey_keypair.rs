@@ -3,10 +3,7 @@ use std::sync::Arc;
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm;
 #[cfg(feature = "non-fips")]
-use cosmian_kms_server_database::reexport::cosmian_kms_crypto::{
-    crypto::cover_crypt::attributes::rekey_edit_action_from_attributes,
-    reexport::cosmian_cover_crypt::api::Covercrypt,
-};
+use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::cover_crypt::attributes::rekey_edit_action_from_attributes;
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::{ErrorReason, State},
@@ -82,7 +79,7 @@ pub(crate) async fn rekey_keypair(
             let action = rekey_edit_action_from_attributes(_attributes)?;
             return Box::pin(rekey_keypair_cover_crypt(
                 kms,
-                Covercrypt::default(),
+                kms.covercrypt.clone(),
                 owm.id().to_owned(),
                 _user,
                 action,

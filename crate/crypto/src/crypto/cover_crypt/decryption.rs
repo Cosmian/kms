@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use cosmian_cover_crypt::{Error, UserSecretKey, XEnc, api::Covercrypt, traits::KemAc};
 use cosmian_crypto_core::{
     Aes256Gcm, Dem, FixedSizeCBytes, Instantiable, Nonce, SymmetricKey,
@@ -20,14 +22,14 @@ use crate::{
 /// Decrypt a single block of data encrypted using an hybrid encryption mode
 /// Cannot be used as a stream decipher
 pub struct CovercryptDecryption {
-    cover_crypt: Covercrypt,
+    cover_crypt: Arc<Covercrypt>,
     usk_uid: String,
     usk_bytes: Zeroizing<Vec<u8>>,
 }
 
 impl CovercryptDecryption {
     pub fn instantiate(
-        cover_crypt: Covercrypt,
+        cover_crypt: Arc<Covercrypt>,
         user_decryption_key_uid: &str,
         user_decryption_key: &Object,
     ) -> Result<Self, CryptoError> {

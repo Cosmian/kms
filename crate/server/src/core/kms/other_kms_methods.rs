@@ -2,8 +2,6 @@ use std::{collections::HashSet, sync::Arc};
 
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_types::State;
-#[cfg(feature = "non-fips")]
-use cosmian_kms_server_database::reexport::cosmian_kms_crypto::reexport::cosmian_cover_crypt::api::Covercrypt;
 use cosmian_kms_server_database::{
     CachedUnwrappedObject,
     reexport::{
@@ -219,7 +217,7 @@ impl KMS {
             CryptographicAlgorithm::CoverCrypt => {
                 let mut object = create_user_decryption_key(
                     self,
-                    Covercrypt::default(),
+                    self.covercrypt.clone(),
                     create_request,
                     owner,
                     params,

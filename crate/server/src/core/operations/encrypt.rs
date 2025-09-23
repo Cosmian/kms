@@ -3,14 +3,11 @@ use std::sync::Arc;
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::EncryptionSystem;
 #[cfg(feature = "non-fips")]
+use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::cover_crypt::encryption::CoverCryptEncryption;
+#[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::elliptic_curves::ecies::ecies_encrypt;
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::rsa::ckm_rsa_pkcs::ckm_rsa_pkcs_encrypt;
-#[cfg(feature = "non-fips")]
-use cosmian_kms_server_database::reexport::cosmian_kms_crypto::{
-    crypto::cover_crypt::encryption::CoverCryptEncryption,
-    reexport::cosmian_cover_crypt::api::Covercrypt,
-};
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         KmipError,
@@ -181,11 +178,22 @@ pub(crate) async fn encrypt(
     let res = match BulkData::deserialize(data) {
         Ok(bulk_data) => {
             // It is a bulk encryption request
-            encrypt_bulk(&owm, request, bulk_data)
+            encrypt_bulk(
+                #[cfg(feature = "non-fips")]
+                kms,
+                &owm,
+                request,
+                bulk_data,
+            )
         }
         Err(_) => {
             // fallback to single encryption
-            encrypt_single(&owm, &request)
+            encrypt_single(
+                #[cfg(feature = "non-fips")]
+                kms,
+                &owm,
+                &request,
+            )
         }
     }?;
 
@@ -258,10 +266,19 @@ async fn encrypt_using_encryption_oracle(
 ///  * `request` - the encryption request
 /// # Returns
 /// * the encrypt response
-fn encrypt_single(owm: &ObjectWithMetadata, request: &Encrypt) -> KResult<EncryptResponse> {
+fn encrypt_single(
+    #[cfg(feature = "non-fips")] kms: &KMS,
+    owm: &ObjectWithMetadata,
+    request: &Encrypt,
+) -> KResult<EncryptResponse> {
     match owm.object() {
         Object::SymmetricKey { .. } => encrypt_with_symmetric_key(request, owm),
-        Object::PublicKey { .. } => encrypt_with_public_key(request, owm),
+        Object::PublicKey { .. } => encrypt_with_public_key(
+            #[cfg(feature = "non-fips")]
+            kms,
+            request,
+            owm,
+        ),
         Object::Certificate(Certificate {
             certificate_value, ..
         }) => encrypt_with_certificate(request, owm.id(), certificate_value),
@@ -286,6 +303,7 @@ fn encrypt_single(owm: &ObjectWithMetadata, request: &Encrypt) -> KResult<Encryp
 /// * the encrypt response
 // TODO: Covercrypt already has a bulk encryption method; maybe this should be merged here
 pub(super) fn encrypt_bulk(
+    #[cfg(feature = "non-fips")] kms: &KMS,
     owm: &ObjectWithMetadata,
     mut request: Encrypt,
     bulk_data: BulkData,
@@ -327,7 +345,12 @@ pub(super) fn encrypt_bulk(
         Object::PublicKey { .. } => {
             for plaintext in <BulkData as Into<Vec<Zeroizing<Vec<u8>>>>>::into(bulk_data) {
                 request.data = Some(plaintext.clone());
-                let response = encrypt_with_public_key(&request, owm)?;
+                let response = encrypt_with_public_key(
+                    #[cfg(feature = "non-fips")]
+                    kms,
+                    &request,
+                    owm,
+                )?;
                 ciphertexts.push(Zeroizing::new(response.data.unwrap_or_default()));
             }
         }
@@ -452,6 +475,7 @@ fn get_key_and_cipher(
 }
 
 fn encrypt_with_public_key(
+    #[cfg(feature = "non-fips")] kms: &KMS,
     request: &Encrypt,
     owm: &ObjectWithMetadata,
 ) -> KResult<EncryptResponse> {
@@ -472,7 +496,7 @@ fn encrypt_with_public_key(
     match &key_block.key_format_type {
         #[cfg(feature = "non-fips")]
         KeyFormatType::CoverCryptPublicKey => {
-            CoverCryptEncryption::instantiate(Covercrypt::default(), owm.id(), owm.object())?
+            CoverCryptEncryption::instantiate(kms.covercrypt.clone(), owm.id(), owm.object())?
                 .encrypt(request)
                 .map_err(Into::into)
         }

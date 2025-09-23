@@ -4,6 +4,8 @@ mod permissions;
 
 use std::{collections::HashMap, sync::Arc};
 
+#[cfg(feature = "non-fips")]
+use cosmian_kms_server_database::reexport::cosmian_kms_crypto::reexport::cosmian_cover_crypt::api::Covercrypt;
 use cosmian_kms_server_database::{
     Database,
     reexport::cosmian_kms_interfaces::{
@@ -43,6 +45,10 @@ pub struct KMS {
     /// A typical use case is delegating encryption/decryption to an HSM.
     /// This is a map of key prefixes to encryption oracles.
     pub(crate) encryption_oracles: RwLock<HashMap<String, Box<dyn EncryptionOracle + Sync + Send>>>,
+
+    /// Shared Covercrypt instance (non-FIPS only) to avoid re-instantiation on every call
+    #[cfg(feature = "non-fips")]
+    pub(crate) covercrypt: Arc<Covercrypt>,
 }
 
 impl KMS {
@@ -91,6 +97,8 @@ impl KMS {
             params: server_params,
             database,
             encryption_oracles: RwLock::new(encryption_oracles),
+            #[cfg(feature = "non-fips")]
+            covercrypt: Arc::new(Covercrypt::default()),
         })
     }
 

@@ -1,8 +1,6 @@
 use std::sync::Arc;
 use time::OffsetDateTime;
 #[cfg(feature = "non-fips")]
-use cosmian_kms_server_database::reexport::cosmian_kms_crypto::reexport::cosmian_cover_crypt::api::Covercrypt;
-#[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::elliptic_curves::operation::{
     create_secp_key_pair, create_x448_key_pair, create_x25519_key_pair
 };
@@ -78,7 +76,13 @@ pub(crate) async fn create_key_pair(
             std::string::ToString::to_string,
         );
     let pk_uid = sk_uid.clone() + "_pk";
-    let key_pair = generate_key_pair(request, &sk_uid, &pk_uid)?;
+    let key_pair = generate_key_pair(
+        #[cfg(feature = "non-fips")]
+        kms,
+        request,
+        &sk_uid,
+        &pk_uid,
+    )?;
 
     trace!("sk_uid: {sk_uid}, pk_uid: {pk_uid}");
     let now = OffsetDateTime::now_utc()
@@ -190,6 +194,7 @@ pub(crate) async fn create_key_pair(
 ///
 /// Only Covercrypt master keys can be created using this function
 pub(super) fn generate_key_pair(
+    #[cfg(feature = "non-fips")] kms: &KMS,
     request: CreateKeyPair,
     private_key_uid: &str,
     public_key_uid: &str,
@@ -402,7 +407,7 @@ pub(super) fn generate_key_pair(
                 .unwrap_or_default();
 
             create_master_keypair(
-                &Covercrypt::default(),
+                &kms.covercrypt,
                 private_key_uid.to_owned(),
                 public_key_uid,
                 common_attributes,

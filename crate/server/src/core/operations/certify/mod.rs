@@ -415,6 +415,8 @@ async fn get_subject(
     };
     info!("Creating key pair for certification - private key: {sk_uid}, public key: {pk_uid}");
     let key_pair = generate_key_pair(
+        #[cfg(feature = "non-fips")]
+        kms,
         create_key_pair_request,
         &sk_uid.to_string(),
         &pk_uid.to_string(),
