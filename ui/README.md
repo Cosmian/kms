@@ -8,16 +8,15 @@ This is a React-based frontend for the **Cosmian KMS**. It is designed to be bui
 
 This application uses WebAssembly (WASM) to handle secure request generation and parsing.
 
-#### Install wasm-pack
+### Install wasm-pack
 
 Install the 0.13.1 version of `wasm-pack` globally to ensure compatibility with the WASM crate:
 
 ```bash
-```sh
 cargo install --version 0.13.1 wasm-pack --force
 ```
 
-#### Build the WASM Package
+### Build the WASM Package
 
 To build the WASM package from the corresponding Rust crate:
 
@@ -26,7 +25,7 @@ cd crate/wasm
 RUSTUP_TOOLCHAIN="nightly-2025-01-01" wasm-pack build --target web --release --features non-fips
 ```
 
-#### Copy the WASM Package
+### Copy the WASM Package
 
 Then copy the generated `pkg` directory into the React app's source tree:
 
