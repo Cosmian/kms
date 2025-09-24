@@ -1,0 +1,235 @@
+:PROPERTIES:
+:ID:       b95a8aef-27f0-404c-9a23-ab81c35aca39
+:END:
+#+title: Reproducible Containers
+#+options: toc:nil author:nil date:nil
+#+latex_class_options: [9pt,a4paper]
+
+* Building a reproducible container
+
+*Goals*: the KMS tool-chain depends on OpenSSL which build is /expensive/ in the
+CI. We therefore which to generate  a reproducible build environment for the KMS
+in order  to guarantee  the correctness  of the final  binary without  having to
+compile everything from source in the CI.
+
+** OpenSSL build
+
+We would like to be able to  build OpenSSL via Guix. However, Guix only packages
+OpenSSL v3.0 which is  not FIPS.  We therefore need to write  a build recipe for
+packaging the v3.1.2 which is FIPS. At the  end of this section, we will be able
+to build OpenSSL using ~guix build -f guix.scm~, where ~guix.scm~ is the name of
+the file in which we store the recipe.
+
+Most of the work is done by inheriting the configuration:
+#+name: openssl-inherit
+#+begin_src scheme
+  (inherit openssl-3.0)
+#+end_src
+from which we can modify the version:
+#+name: openssl-version
+#+begin_src scheme
+  (version "3.1.2")
+#+end_src
+the  sources (here  we retrieve  them from  the GitHub  artifacts tagged  by the
+correct version number, and check the  SHA256 checksum of the downloaded archive
+which value is one of the GitHub artifacts; it should be possible to retrieve it
+from the file-system instead):
+#+name: openssl-source
+#+begin_src scheme
+  (source (origin
+           (method url-fetch)
+           (uri (list
+                 (string-append
+                  "https://github.com/openssl/openssl/releases/download/openssl-"
+                  version
+                  "/openssl-"
+                  version
+                  ".tar.gz")))
+           (sha256
+            (base16-string->bytevector
+             ;; Value found on the OpenSSL website.
+             "a0ce69b8b97ea6a35b96875235aa453b966ba3cba8af2de23657d8b6767d6539"))))
+#+end_src
+and finally, the  configuration flags. This part is trickier:  we have to revert
+the configuration  disallowing the OpenSSL  package from referencing  Perl after
+the build [[https://codeberg.org/guix/guix/src/commit/ba6369c85b9c63749d36a56e4afd28cd0fc5fb3b/gnu/packages/tls.scm#L481][added in the OpenSSL-1.1 definition]],  which then requires the use of a
+[[https://codeberg.org/guix/guix/src/branch/master/gnu/packages/patches/openssl-3.0-c-rehash-in.patch][patch]]  of the  OpenSSL source  file  [[https://github.com/openssl/openssl/blob/master/tools/c_rehash.in][~c_rehash.in~]]. Since  such a  patch is  not
+FIPS-approved, we cannot use it.  Additionally, we need to pass the ~enable-fip~
+option to build the FIPS provider.
+#+name: openssl-arguments
+#+begin_src scheme
+  (arguments
+   (substitute-keyword-arguments
+    (package-arguments openssl-3.0)
+    ((#:disallowed-references refs  #~'()) '())
+    ((#:configure-flags       flags #~'()) #~(append #$flags
+                                                     '("enable-fips")))))
+#+end_src
+All in all, the recipe is:
+#+name: openssl-3.1.2
+#+begin_src scheme :noweb yes
+  (define openssl-3.1.2
+    (package
+     <<openssl-inherit>>
+     <<openssl-version>>
+     <<openssl-source>>
+     <<openssl-arguments>>))
+#+end_src
+
+** Development environment
+*** Listing the dependencies
+
+Now that we  are able to build OpenSSL,  we need to build the KMS  itself. To do
+that, we need an environment containing all its dependencies:
+- OpenSSL;
+- SQLite v3;
+- Clang (used to build ~libsqlite-sys~);
+- the Rust tool-chain.
+Since Guix does  not package the nightly Rust tool-chain  (and deriving a recipe
+for that is out of my reach for  now), we instead rely on ~rustup~ to install it
+inside the  container. In order to  install ~rustup~, we follow  the instruction
+from the official website:
+#+name: rustup-install
+#+begin_src shell
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+ #+end_src
+which requires the following additional packages:
+- ~bash~;
+- ~coreutils~;
+- ~curl~;
+- ~grep~
+- ~gcc-toolchain~;
+- ~git~;
+- ~pkg-config~;
+- ~zlib~;
+- ~nss-certs~.
+
+*** Creating a development environment
+
+A virtual environment loaded with all development dependencies can be created
+with:
+#+name: guix-container
+#+begin_src shell
+  guix shell --container --network --emulate-fhs \
+       -f guix.scm \
+       sqlite \
+       clang \
+       bash \
+       coreutils \
+       curl \
+       grep \
+       gcc-toolchain \
+       git \
+       pkg-config \
+       zlib \
+       nss-certs
+#+end_src
+
+** Making it all reproducible
+
+In order  to do  that, we need  to specify which  Guix commit  is to be  used to
+generate environment described in the previous section. This is performed with:
+#+begin_src shell
+  guix time-machine -C channels.scm
+#+end_src
+where ~channels.scm~ contains the commit reference and can be generated with:
+#+begin_src shell
+  guix describe -f channels > channels.scm
+#+end_src
+which generates a new ~channels.scm~ file containing the commit reference of the
+current Guix installation.
+
+** TODO COMMENT Reproducible docker
+
+#+begin_src shell
+  guix pack -f docker -m guix.scm \
+       openssl-3.1.2 \
+       sqlite \
+       clang \
+       bash \
+       coreutils \
+       curl \
+       grep \
+       gcc-toolchain \
+       git \
+       pkg-config \
+       zlib \
+       nss-certs
+#+end_src
+
+* Complete files
+** Configuration script
+
+#+begin_src shell :tangle setup.sh :noweb yes
+  <<rustup-install>>
+
+  # For some reason, the script stops here.
+  # Is it because rustup installation calls exit?
+  . $HOME/.cargo/env
+
+  export LD_LIBRARY_PATH=/lib
+#+end_src
+
+** Configuration file
+
+#+begin_src scheme :tangle guix.scm :noweb yes
+  (define-module (kms)
+    #:use-module ((guix licenses) #:prefix license:)
+    #:use-module (guix deprecation)
+    #:use-module (guix packages)
+    #:use-module (guix download)
+    #:use-module (guix git-download)
+    #:use-module (guix utils)
+    #:use-module (guix base16)
+    #:use-module (guix gexp)
+    #:use-module (guix build-system gnu)
+    #:use-module (guix build-system go)
+    #:use-module (guix build-system perl)
+    #:use-module (guix build-system pyproject)
+    #:use-module (guix build-system python)
+    #:use-module (guix build-system cmake)
+    #:use-module (guix build-system trivial)
+    #:use-module (guix build-system meson)
+    #:use-module ((guix search-paths) #:select ($SSL_CERT_DIR $SSL_CERT_FILE))
+    #:use-module (gnu packages compression)
+    #:use-module (gnu packages)
+    #:use-module (gnu packages autotools)
+    #:use-module (gnu packages bash)
+    #:use-module (gnu packages build-tools)
+    #:use-module (gnu packages check)
+    #:use-module (gnu packages curl)
+    #:use-module (gnu packages dns)
+    #:use-module (gnu packages gawk)
+    #:use-module (gnu packages gettext)
+    #:use-module (gnu packages guile)
+    #:use-module (gnu packages libbsd)
+    #:use-module (gnu packages libffi)
+    #:use-module (gnu packages libidn)
+    #:use-module (gnu packages libunistring)
+    #:use-module (gnu packages linux)
+    #:use-module (gnu packages ncurses)
+    #:use-module (gnu packages nettle)
+    #:use-module (gnu packages networking)
+    #:use-module (gnu packages nss)
+    #:use-module (gnu packages perl)
+    #:use-module (gnu packages pkg-config)
+    #:use-module (gnu packages python)
+    #:use-module (gnu packages python-build)
+    #:use-module (gnu packages python-crypto)
+    #:use-module (gnu packages python-web)
+    #:use-module (gnu packages python-xyz)
+    #:use-module (gnu packages sphinx)
+    #:use-module (gnu packages texinfo)
+    #:use-module (gnu packages time)
+    #:use-module (gnu packages version-control)
+    #:use-module (gnu packages base)
+    #:use-module (gnu packages tls)
+    #:use-module (srfi srfi-1)
+    #:use-module (srfi srfi-34)
+    #:use-module (srfi srfi-35))
+
+
+  <<openssl-3.1.2>>
+
+  openssl-3.1.2
+#+end_src
