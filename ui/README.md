@@ -22,7 +22,7 @@ To build the WASM package from the corresponding Rust crate:
 
 ```bash
 cd crate/wasm
-RUSTUP_TOOLCHAIN="nightly-2025-01-01" wasm-pack build --target web --release --features non-fips
+wasm-pack build --target web --release --features non-fips
 ```
 
 ### Copy the WASM Package
