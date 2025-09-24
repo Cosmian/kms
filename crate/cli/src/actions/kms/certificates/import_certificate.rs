@@ -383,7 +383,7 @@ fn build_chain_from_stack(pem_chain: &[u8]) -> KmsCliResult<Vec<Object>> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[expect(clippy::unwrap_used)]
 mod tests {
     use crate::actions::kms::certificates::import_certificate::build_chain_from_stack;
 

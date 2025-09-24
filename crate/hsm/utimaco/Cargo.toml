@@ -10,8 +10,8 @@ repository.workspace = true
 rust-version.workspace = true
 description = "Utimaco HSM PKCS#11 loader"
 
-# [lints]
-# workspace = true
+[lints]
+workspace = true
 
 [lib]
 doctest = false

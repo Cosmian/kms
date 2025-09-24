@@ -219,7 +219,6 @@ impl ObjectsDB {
         Ok(Some(dbo))
     }
 
-    #[allow(dead_code)]
     pub(crate) async fn object_delete(&self, uid: &str) -> DbResult<()> {
         self.mgr.clone().del::<_, ()>(Self::object_key(uid)).await?;
         Ok(())

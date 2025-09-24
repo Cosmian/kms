@@ -36,7 +36,7 @@ pub fn build_create_covercrypt_master_keypair_request<T: IntoIterator<Item = imp
         key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
         vendor_attributes: Some(vec![vendor_attributes]),
         cryptographic_usage_mask: Some(CryptographicUsageMask::Unrestricted),
-        sensitive: if sensitive { Some(true) } else { None },
+        sensitive: sensitive.then_some(true),
         ..Attributes::default()
     };
     attributes.set_tags(tags)?;
@@ -74,7 +74,7 @@ pub fn build_create_covercrypt_usk_request<T: IntoIterator<Item = impl AsRef<str
             ),
         }]),
         cryptographic_usage_mask: Some(CryptographicUsageMask::Unrestricted),
-        sensitive: if sensitive { Some(true) } else { None },
+        sensitive: sensitive.then_some(true),
         ..Attributes::default()
     };
     attributes.set_tags(tags)?;

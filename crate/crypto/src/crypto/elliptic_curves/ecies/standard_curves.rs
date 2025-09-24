@@ -16,7 +16,7 @@ use crate::{
 
 /// Derive an initialization vector from recipient public key `Q` and
 /// ephemeral public key `R` using the supplied hashing algorithm.
-#[allow(non_snake_case)]
+#[expect(non_snake_case)]
 fn ecies_get_iv(
     Q: &EcPointRef,
     R: &EcPointRef,
@@ -39,7 +39,7 @@ fn ecies_get_iv(
 }
 
 /// Derive S into the symmetric secret key using SHAKE128.
-#[allow(non_snake_case)]
+#[expect(non_snake_case)]
 fn ecies_get_key(
     S: &EcPointRef,
     curve: &EcGroupRef,
@@ -71,8 +71,8 @@ fn ecies_get_key(
 ///
 /// Notice we don't send the IV since it is derived by hashing the public key as
 /// well as the ephemeral public key.
-#[allow(non_snake_case)]
-pub(crate) fn ecies_encrypt(
+#[expect(non_snake_case)]
+pub(super) fn ecies_encrypt(
     pubkey: &PKey<Public>,
     plaintext: &[u8],
 ) -> Result<Vec<u8>, CryptoError> {
@@ -112,8 +112,8 @@ pub(crate) fn ecies_encrypt(
 ///
 /// The IV for decryption is computed by taking the hash of the recipient public
 /// key and the ephemeral public key.
-#[allow(non_snake_case)]
-pub(crate) fn ecies_decrypt(
+#[expect(non_snake_case)]
+pub(super) fn ecies_decrypt(
     private_key: &PKey<Private>,
     ciphertext: &[u8],
 ) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
@@ -170,7 +170,7 @@ fn aead_and_digest(curve: &EcGroupRef) -> Result<(SymCipher, MessageDigest), Cry
     Ok((aead, md))
 }
 
-#[allow(clippy::unwrap_used)]
+#[expect(clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
 

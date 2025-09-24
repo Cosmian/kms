@@ -31,7 +31,6 @@ use crate::{
     start_kms_server::handle_google_cse_rsa_keypair,
 };
 
-#[allow(dead_code)]
 pub(crate) fn https_clap_config() -> ClapConfig {
     https_clap_config_opts(None)
 }

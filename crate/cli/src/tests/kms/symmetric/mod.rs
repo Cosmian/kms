@@ -1,3 +1,3 @@
-pub(crate) mod create_key;
-pub(crate) mod encrypt_decrypt;
-pub(crate) mod rekey;
+pub(super) mod create_key;
+pub(super) mod encrypt_decrypt;
+pub(super) mod rekey;

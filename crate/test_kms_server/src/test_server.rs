@@ -1,13 +1,6 @@
-#![allow(
-    clippy::missing_panics_doc,
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::struct_excessive_bools,
-    clippy::struct_field_names
-)]
 use std::{
     env,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{Arc, mpsc},
     thread::{self, JoinHandle},
     time::Duration,
@@ -20,13 +13,12 @@ use cosmian_kms_client::{
 };
 use cosmian_kms_server::{
     config::{
-        ClapConfig, HttpConfig, IdpAuthConfig, MainDBConfig, ServerParams, SocketServerConfig,
-        TlsConfig, WorkspaceConfig,
+        ClapConfig, HsmConfig, HttpConfig, IdpAuthConfig, MainDBConfig, ServerParams,
+        SocketServerConfig, TlsConfig, WorkspaceConfig,
     },
     start_kms_server::start_kms_server,
 };
 use cosmian_logger::{debug, error, info, trace, warn};
-use tempfile::TempDir;
 use tokio::sync::OnceCell;
 
 use crate::test_jwt::{AUTH0_TOKEN, AUTH0_TOKEN_USER, get_auth0_jwt_config};
@@ -45,13 +37,89 @@ pub(crate) static ONCE_SERVER_WITH_PRIVILEGED_USERS: OnceCell<TestsContext> = On
 
 const DEFAULT_KMS_SERVER_PORT: u16 = 9998;
 
+// Small utilities to reduce repetition
+#[inline]
+fn root_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TlsMode {
+    PlainHttp,
+    HttpsNoClientCa,
+    HttpsWithClientCa,
+}
+
+impl TlsMode {
+    const fn use_https(self) -> bool {
+        !matches!(self, Self::PlainHttp)
+    }
+
+    const fn use_known_ca_list(self) -> bool {
+        matches!(self, Self::HttpsWithClientCa)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum JwtAuth {
+    Disabled,
+    Enabled,
+}
+
+impl JwtAuth {
+    const fn is_enabled(self) -> bool {
+        matches!(self, Self::Enabled)
+    }
+}
+
+fn path_to_string(p: &Path) -> Result<String, KmsClientError> {
+    p.to_str()
+        .map(str::to_owned)
+        .ok_or_else(|| KmsClientError::Default("Can't convert path to string".to_owned()))
+}
+
+async fn start_server_once(
+    cell: &'static OnceCell<TestsContext>,
+    port: u16,
+    authentication_options: AuthenticationOptions,
+    non_revocable_key_id: Option<Vec<String>>, // first call wins
+    privileged_users: Option<Vec<String>>,     // first call wins
+) -> Result<&'static TestsContext, KmsClientError> {
+    cell.get_or_try_init(|| async move {
+        start_test_server_with_options(
+            get_db_config(),
+            port,
+            authentication_options,
+            non_revocable_key_id,
+            privileged_users,
+        )
+        .await
+    })
+    .await
+}
+
 fn sqlite_db_config() -> MainDBConfig {
     trace!("TESTS: using sqlite");
-    let tmp_dir = TempDir::new().unwrap();
-    let file_path = tmp_dir.path().join("test_sqlite.db");
+    let base = std::env::temp_dir().join("kms_sqlite");
+    if let Err(e) = std::fs::create_dir_all(&base) {
+        warn!(
+            "Could not create sqlite base temp dir ({}): {e}",
+            base.display()
+        );
+    }
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_else(|_| std::time::Duration::from_secs(0))
+        .as_nanos();
+    let file_path = base.join(format!("test_sqlite-{ts}.db"));
     if file_path.exists() {
         debug!("Removing existing sqlite db at: {}", file_path.display());
-        std::fs::remove_file(&file_path).unwrap();
+        if let Err(e) = std::fs::remove_file(&file_path) {
+            warn!(
+                "Could not remove existing sqlite db at {}: {e}",
+                file_path.display()
+            );
+        }
     }
     MainDBConfig {
         database_type: Some("sqlite".to_owned()),
@@ -119,105 +187,105 @@ fn get_db_config() -> MainDBConfig {
 /// No TLS, no certificate authentication
 pub async fn start_default_test_kms_server() -> &'static TestsContext {
     trace!("Starting default test server");
-    ONCE.get_or_try_init(|| {
-        start_test_server_with_options(
-            get_db_config(),
-            DEFAULT_KMS_SERVER_PORT,
-            AuthenticationOptions {
-                use_jwt_token: false,
-                use_https: false,
-                use_known_ca_list: false,
-                api_token_id: None,
-                api_token: None,
-                ..Default::default()
-            },
-            None,
-            None,
-            None,
-        )
-    })
+    start_server_once(
+        &ONCE,
+        DEFAULT_KMS_SERVER_PORT,
+        AuthenticationOptions::new(),
+        None,
+        None,
+    )
     .await
-    .unwrap()
+    .unwrap_or_else(|e| {
+        error!("failed to start default test server: {e}");
+        std::process::abort();
+    })
 }
 /// TLS + certificate authentication
 pub async fn start_default_test_kms_server_with_cert_auth() -> &'static TestsContext {
     trace!("Starting test server with cert auth");
     ONCE_SERVER_WITH_AUTH
-        .get_or_try_init(|| {
-            start_test_server_with_options(
-                get_db_config(),
-                DEFAULT_KMS_SERVER_PORT + 1,
-                AuthenticationOptions {
-                    use_jwt_token: false,
-                    use_https: true,
-                    use_known_ca_list: true,
-                    api_token_id: None,
-                    api_token: None,
-                    ..Default::default()
-                },
-                None,
-                None,
-                None,
-            )
+        .get_or_try_init(|| async move {
+            let port = DEFAULT_KMS_SERVER_PORT + 1;
+            let db_config = get_db_config();
+
+            let server_params = build_server_params_full(BuildServerParamsOptions {
+                db_config,
+                port,
+                tls: TlsMode::HttpsWithClientCa,
+                jwt: JwtAuth::Disabled,
+                server_tls_cipher_suites: None,
+                api_token_id: None,
+                privileged_users: None,
+                non_revocable_key_id: None,
+                hsm: None,
+            })
+            .map_err(|e| {
+                KmsClientError::Default(format!(
+                    "failed initializing the server config (cert auth): {e}"
+                ))
+            })?;
+
+            start_from_server_params(server_params).await
         })
         .await
-        .unwrap()
+        .unwrap_or_else(|e| {
+            error!("failed to start test server with cert auth: {e}");
+            std::process::abort();
+        })
 }
+
 /// revocable key IDs
 pub async fn start_default_test_kms_server_with_non_revocable_key_ids(
     non_revocable_key_id: Option<Vec<String>>,
 ) -> &'static TestsContext {
     trace!("Starting test server with non-revocable key ids");
-    ONCE_SERVER_WITH_NON_REVOCABLE_KEY
-        .get_or_try_init(|| {
-            start_test_server_with_options(
-                get_db_config(),
-                DEFAULT_KMS_SERVER_PORT + 2,
-                AuthenticationOptions {
-                    use_jwt_token: false,
-                    use_https: true,
-                    use_known_ca_list: true,
-                    api_token_id: None,
-                    api_token: None,
-                    ..Default::default()
-                },
-                non_revocable_key_id,
-                None,
-                None,
-            )
-        })
-        .await
-        .unwrap()
+    start_server_once(
+        &ONCE_SERVER_WITH_NON_REVOCABLE_KEY,
+        DEFAULT_KMS_SERVER_PORT + 2,
+        AuthenticationOptions::new(),
+        non_revocable_key_id,
+        None,
+    )
+    .await
+    .unwrap_or_else(|e| {
+        error!("failed to start test server with non-revocable key ids: {e}");
+        std::process::abort();
+    })
 }
 
 /// revocable key IDs
 pub async fn start_default_test_kms_server_with_utimaco_hsm() -> &'static TestsContext {
     trace!("Starting test server with non-revocable key ids");
+    // Build ServerParams with HSM fields directly and start from them
     ONCE_SERVER_WITH_HSM
-        .get_or_try_init(|| {
-            start_test_server_with_options(
-                get_db_config(),
-                DEFAULT_KMS_SERVER_PORT + 3,
-                AuthenticationOptions {
-                    use_jwt_token: false,
-                    use_https: false,
-                    use_known_ca_list: false,
-                    api_token_id: None,
-                    api_token: None,
-                    ..Default::default()
-                },
-                None,
-                Some(HsmOptions {
+        .get_or_try_init(|| async move {
+            let port = DEFAULT_KMS_SERVER_PORT + 3;
+            let db_config = get_db_config();
+
+            let server_params = build_server_params_full(BuildServerParamsOptions {
+                db_config,
+                port,
+                tls: TlsMode::PlainHttp,
+                jwt: JwtAuth::Disabled,
+                hsm: Some(HsmConfig {
                     hsm_model: "utimaco".to_owned(),
                     hsm_admin: "admin".to_owned(),
                     hsm_slot: vec![0],
                     hsm_password: vec!["12345678".to_owned()],
                 }),
-                None,
-            )
+                ..Default::default()
+            })
+            .map_err(|e| {
+                KmsClientError::Default(format!("failed initializing the server config (HSM): {e}"))
+            })?;
+
+            start_from_server_params(server_params).await
         })
         .await
-        .unwrap()
+        .unwrap_or_else(|e| {
+            error!("failed to start test server with utimaco hsm: {e}");
+            std::process::abort();
+        })
 }
 
 /// Privileged users
@@ -226,25 +294,32 @@ pub async fn start_default_test_kms_server_with_privileged_users(
 ) -> &'static TestsContext {
     trace!("Starting test server with privileged users");
     ONCE_SERVER_WITH_PRIVILEGED_USERS
-        .get_or_try_init(|| {
-            start_test_server_with_options(
-                get_db_config(),
-                DEFAULT_KMS_SERVER_PORT + 4,
-                AuthenticationOptions {
-                    use_jwt_token: true,
-                    use_https: false,
-                    use_known_ca_list: false,
-                    api_token_id: None,
-                    api_token: None,
-                    ..Default::default()
-                },
-                None,
-                None,
-                Some(privileged_users),
-            )
+        .get_or_try_init(|| async move {
+            let port = DEFAULT_KMS_SERVER_PORT + 4;
+            let db_config = get_db_config();
+
+            // Use Auth0 config for IdP-enabled server
+            let server_params = build_server_params_full(BuildServerParamsOptions {
+                db_config,
+                port,
+                tls: TlsMode::HttpsWithClientCa,
+                jwt: JwtAuth::Enabled,
+                privileged_users: Some(privileged_users),
+                ..Default::default()
+            })
+            .map_err(|e| {
+                KmsClientError::Default(format!(
+                    "failed initializing the server config (privileged users): {e}"
+                ))
+            })?;
+
+            start_from_server_params(server_params).await
         })
         .await
-        .unwrap()
+        .unwrap_or_else(|e| {
+            error!("failed to start test server with privileged users: {e}");
+            std::process::abort();
+        })
 }
 
 pub struct TestsContext {
@@ -258,14 +333,18 @@ pub struct TestsContext {
 impl TestsContext {
     #[must_use]
     pub fn get_owner_client(&self) -> KmsClient {
-        KmsClient::new_with_config(self.owner_client_config.clone())
-            .expect("Can't create a KMS owner client")
+        KmsClient::new_with_config(self.owner_client_config.clone()).unwrap_or_else(|e| {
+            error!("Can't create a KMS owner client: {e}");
+            std::process::abort();
+        })
     }
 
     #[must_use]
     pub fn get_user_client(&self) -> KmsClient {
-        KmsClient::new_with_config(self.user_client_config.clone())
-            .expect("Can't create a KMS user client")
+        KmsClient::new_with_config(self.user_client_config.clone()).unwrap_or_else(|e| {
+            error!("Can't create a KMS user client: {e}");
+            std::process::abort();
+        })
     }
 
     pub async fn stop_server(self) -> Result<(), KmsClientError> {
@@ -276,47 +355,109 @@ impl TestsContext {
     }
 }
 
-#[derive(Default)]
-pub struct AuthenticationOptions {
-    pub use_jwt_token: bool,
-    pub use_https: bool,
-    pub use_known_ca_list: bool,
-    pub pkcs12_client_cert: Option<String>,
-    pub pkcs12_client_cert_password: Option<String>,
-    pub api_token_id: Option<String>,
-    pub api_token: Option<String>,
-    pub server_tls_cipher_suites: Option<String>,
-    pub client_tls_cipher_suites: Option<String>,
-
-    // Client credential configuration (all false by default)
-    pub do_not_send_client_certificate: bool, // True = don't send client certificate even when required
-    pub do_not_send_api_token: bool,          // True = do not send an API token
-    pub do_not_send_jwt_token: bool,          // True = do not send a JWT token
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ClientCertPolicy {
+    /// Send a client certificate when the server requires it (default cert if none is provided)
+    Send,
+    /// Do not send any client certificate
+    Suppress,
 }
 
-pub struct HsmOptions {
-    /// The HSM model.
-    /// Trustway Proteccio and Utimaco General purpose HSMs are supported.
-    pub hsm_model: String,
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ApiTokenPolicy {
+    /// Send API token if provided by the client configuration (default)
+    SendIfProvided,
+    /// Do not send API token even if provided
+    Suppress,
+}
 
-    /// The username of the HSM admin.
-    /// The HSM admin can create objects on the HSM, destroy them, and potentially export them.
-    pub hsm_admin: String,
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum JwtPolicy {
+    /// Auto-inject a default `JWT` when the server has an `IdP` and no token was provided (default)
+    AutoDefault,
+    /// Never send a `JWT`
+    Suppress,
+}
 
-    /// HSM slot number. The slots used must be listed.
-    /// Repeat this option to specify multiple slots
-    /// while specifying a password for each slot (or an empty string for no password)
-    /// e.g.
-    /// ```sh
-    ///   --hsm_slot 1 --hsm_password password1 \
-    ///   --hsm_slot 2 --hsm_password password2
-    ///```
-    pub hsm_slot: Vec<usize>,
+pub struct ClientAuthOptions {
+    pub http: HttpClientConfig,
+    pub client_cert: ClientCertPolicy,
+    pub api_token: ApiTokenPolicy,
+    pub jwt: JwtPolicy,
+}
 
-    /// Password for the user logging in to the HSM Slot specified with `--hsm_slot`
-    /// Provide an empty string for no password
-    /// see `--hsm_slot` for more information
-    pub hsm_password: Vec<String>,
+impl Default for ClientAuthOptions {
+    fn default() -> Self {
+        Self {
+            http: HttpClientConfig::default(),
+            client_cert: ClientCertPolicy::Send,
+            api_token: ApiTokenPolicy::SendIfProvided,
+            jwt: JwtPolicy::AutoDefault,
+        }
+    }
+}
+
+#[derive(Default)]
+pub struct AuthenticationOptions {
+    pub client: ClientAuthOptions,
+    pub server_params: Option<ServerParams>,
+}
+
+impl AuthenticationOptions {
+    #[inline]
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            client: ClientAuthOptions::default(),
+            server_params: None,
+        }
+    }
+}
+
+/// Options container to avoid `too_many_arguments` on the builder
+#[derive(Clone)]
+pub struct BuildServerParamsOptions {
+    pub db_config: MainDBConfig,
+    pub port: u16,
+    pub tls: TlsMode,
+    pub jwt: JwtAuth,
+    pub server_tls_cipher_suites: Option<String>,
+    pub api_token_id: Option<String>,
+    pub privileged_users: Option<Vec<String>>,
+    pub non_revocable_key_id: Option<Vec<String>>,
+    pub hsm: Option<HsmConfig>,
+}
+
+impl std::fmt::Debug for BuildServerParamsOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BuildServerParamsOptions")
+            .field("db_config", &"<redacted>")
+            .field("port", &self.port)
+            .field("tls", &self.tls)
+            .field("jwt", &self.jwt)
+            .field("server_tls_cipher_suites", &self.server_tls_cipher_suites)
+            .field("api_token_id", &self.api_token_id)
+            .field("privileged_users", &self.privileged_users)
+            .field("non_revocable_key_id", &self.non_revocable_key_id)
+            .field("hsm", &self.hsm.as_ref().map(|_| "<provided>"))
+            .finish()
+    }
+}
+
+impl Default for BuildServerParamsOptions {
+    fn default() -> Self {
+        Self {
+            db_config: MainDBConfig::default(),
+            port: 0,
+            tls: TlsMode::PlainHttp,
+            jwt: JwtAuth::Disabled,
+            server_tls_cipher_suites: None,
+            api_token_id: None,
+            privileged_users: None,
+            non_revocable_key_id: None,
+            hsm: None,
+        }
+    }
 }
 
 /// Start a KMS server in a thread with the given options
@@ -325,21 +466,25 @@ pub async fn start_test_server_with_options(
     port: u16,
     authentication_options: AuthenticationOptions,
     non_revocable_key_id: Option<Vec<String>>,
-    hsm_options: Option<HsmOptions>,
     privileged_users: Option<Vec<String>>,
 ) -> Result<TestsContext, KmsClientError> {
+    // Destructure options to avoid borrow/move conflicts
+    let AuthenticationOptions {
+        client,
+        server_params: server_params_opt,
+    } = authentication_options;
+    let client_opts = &client;
     // Generate server params
     let server_params = generate_server_params(
-        db_config.clone(),
+        db_config,
         port,
-        &authentication_options,
+        server_params_opt,
         non_revocable_key_id,
-        &hsm_options,
         privileged_users,
     )?;
 
     // Create a (object owner) conf
-    let owner_client_config = generate_owner_conf(&server_params, &authentication_options)?;
+    let owner_client_config = generate_owner_conf(&server_params, client_opts)?;
 
     info!(" -- Test KMS server configuration: {:#?}", server_params);
     info!(
@@ -348,9 +493,8 @@ pub async fn start_test_server_with_options(
     );
 
     // generate a user conf
-    let user_client_config =
-        generate_user_conf(&owner_client_config, authentication_options.use_jwt_token)
-            .expect("Can't generate user conf");
+    let use_jwt_token = server_params.identity_provider_configurations.is_some();
+    let user_client_config = generate_user_conf(&owner_client_config, use_jwt_token, client_opts)?;
     let server_port = server_params.http_port;
 
     let (server_handle, thread_handle) = start_test_kms_server(server_params)?;
@@ -434,96 +578,150 @@ async fn wait_for_server_to_start(
     Ok(())
 }
 
-fn generate_server_tls_config(
-    use_https: bool,
-    use_known_ca_list: bool,
-    tls_cipher_suites: Option<String>,
-) -> TlsConfig {
-    // This is the crate root dir
-    let root_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-
-    let mut tls_config = TlsConfig::default();
-    if use_https {
-        tls_config.tls_p12_file = Some(
-            root_dir
-                .join("../../test_data/certificates/client_server/server/kmserver.acme.com.p12"),
-        );
-        assert!(
-            tls_config.tls_p12_file.as_ref().unwrap().exists(),
-            "File not found: {}",
-            tls_config.tls_p12_file.unwrap().display()
-        );
-        tls_config.tls_p12_password = Some("password".to_owned());
-        if use_known_ca_list {
-            tls_config.clients_ca_cert_file = Some(
-                root_dir.join("../../test_data/certificates/client_server/ca/stack_of_ca.pem"),
-            );
-            assert!(tls_config.clients_ca_cert_file.as_ref().unwrap().exists());
-        }
-        tls_config.tls_cipher_suites = tls_cipher_suites;
+fn server_tls_config(mode: TlsMode, server_tls_cipher_suites: Option<String>) -> TlsConfig {
+    if !mode.use_https() {
+        return TlsConfig::default();
     }
-    tls_config
+    let clients_ca = mode
+        .use_known_ca_list()
+        .then(|| root_dir().join("../../test_data/certificates/client_server/ca/stack_of_ca.pem"));
+    TlsConfig {
+        tls_p12_file: Some(
+            root_dir()
+                .join("../../test_data/certificates/client_server/server/kmserver.acme.com.p12"),
+        ),
+        tls_p12_password: Some("password".to_owned()),
+        clients_ca_cert_file: clients_ca,
+        tls_cipher_suites: server_tls_cipher_suites,
+    }
 }
 
-fn generate_server_params(
-    db_config: MainDBConfig,
-    port: u16,
-    authentication_options: &AuthenticationOptions,
-    non_revocable_key_id: Option<Vec<String>>,
-    hsm_options: &Option<HsmOptions>,
-    privileged_users: Option<Vec<String>>,
+pub fn build_server_params_full(
+    opts: BuildServerParamsOptions,
 ) -> Result<ServerParams, KmsClientError> {
     // Create a unique workspace path for each test to avoid race conditions
-    // Use the port number to make it unique per test
-    let workspace_dir = std::env::temp_dir().join(format!("kms_test_workspace_{port}"));
+    let workspace_dir = std::env::temp_dir().join(format!("kms_test_workspace_{}", opts.port));
 
-    // Configure the server
-    let clap_config = ClapConfig {
-        idp_auth: if authentication_options.use_jwt_token {
-            get_auth0_jwt_config()
-        } else {
-            IdpAuthConfig::default()
-        },
+    let idp_auth = if opts.jwt.is_enabled() {
+        // Issuer must match the JWTs embedded in test_kms_server::test_jwt
+        get_auth0_jwt_config()
+    } else {
+        IdpAuthConfig::default()
+    };
+
+    let clap = ClapConfig {
+        idp_auth,
         socket_server: SocketServerConfig {
-            //Start the socket server automatically if both HTTPS and client cert authentication are used
-            socket_server_start: authentication_options.use_https
-                && authentication_options.use_known_ca_list,
-            socket_server_port: port + 100,
+            // Start socket server when HTTPS and client cert auth are used
+            socket_server_start: opts.tls.use_https() && opts.tls.use_known_ca_list(),
+            socket_server_port: opts.port + 100,
             ..Default::default()
         },
         workspace: WorkspaceConfig {
             root_data_path: workspace_dir.clone(),
             tmp_path: workspace_dir.join("tmp"),
         },
-        db: db_config,
-        tls: generate_server_tls_config(
-            authentication_options.use_https,
-            authentication_options.use_known_ca_list,
-            authentication_options.server_tls_cipher_suites.clone(),
-        ),
+        db: opts.db_config,
+        tls: server_tls_config(opts.tls, opts.server_tls_cipher_suites),
         http: HttpConfig {
-            port,
-            api_token_id: authentication_options.api_token_id.clone(),
+            port: opts.port,
+            api_token_id: opts.api_token_id,
             ..HttpConfig::default()
         },
-        non_revocable_key_id,
-        hsm_admin: hsm_options
-            .as_ref()
-            .map_or_else(String::new, |h| h.hsm_admin.clone()),
-        hsm_model: hsm_options
-            .as_ref()
-            .map_or_else(String::new, |h| h.hsm_model.clone()),
-        hsm_slot: hsm_options
-            .as_ref()
-            .map_or_else(Vec::new, |h| h.hsm_slot.clone()),
-        hsm_password: hsm_options
-            .as_ref()
-            .map_or_else(Vec::new, |h| h.hsm_password.clone()),
-        privileged_users,
+        non_revocable_key_id: opts.non_revocable_key_id,
+        privileged_users: opts.privileged_users,
+        // HSM configuration (defaults to empty when not provided)
+        hsm: opts.hsm.unwrap_or_default(),
         ..ClapConfig::default()
     };
-    ServerParams::try_from(clap_config)
-        .map_err(|e| KmsClientError::Default(format!("failed initializing the server config: {e}")))
+
+    ServerParams::try_from(clap).map_err(|e| {
+        KmsClientError::Default(format!(
+            "Failed to build ServerParams for test harness: {e}"
+        ))
+    })
+}
+
+// Convenience builder used by CLI tests and simple scenarios
+pub fn build_server_params(
+    db_config: MainDBConfig,
+    port: u16,
+    tls: TlsMode,
+    jwt: JwtAuth,
+    server_tls_cipher_suites: Option<String>,
+    api_token_id: Option<String>,
+) -> Result<ServerParams, KmsClientError> {
+    build_server_params_full(BuildServerParamsOptions {
+        db_config,
+        port,
+        tls,
+        jwt,
+        server_tls_cipher_suites,
+        api_token_id,
+        ..Default::default()
+    })
+}
+
+fn generate_server_params(
+    db_config: MainDBConfig,
+    port: u16,
+    server_params_opt: Option<ServerParams>,
+    non_revocable_key_id: Option<Vec<String>>,
+    privileged_users: Option<Vec<String>>,
+) -> Result<ServerParams, KmsClientError> {
+    if let Some(sp) = server_params_opt {
+        return Ok(sp);
+    }
+    build_server_params_full(BuildServerParamsOptions {
+        db_config,
+        port,
+        tls: TlsMode::PlainHttp,
+        jwt: JwtAuth::Disabled,
+        privileged_users,
+        non_revocable_key_id,
+        ..Default::default()
+    })
+}
+
+/// Common finalization once the server parameters are fully constructed
+async fn start_from_server_params(
+    server_params: ServerParams,
+) -> Result<TestsContext, KmsClientError> {
+    // Create a (object owner) conf
+    let owner_client_config = generate_owner_conf(&server_params, &ClientAuthOptions::default())?;
+
+    info!(" -- Test KMS server configuration: {:#?}", server_params);
+    info!(
+        " -- Test KMS owner client configuration: {:#?}",
+        owner_client_config
+    );
+
+    // generate a user conf
+    let use_jwt_token = server_params.identity_provider_configurations.is_some();
+    let user_client_config = generate_user_conf(
+        &owner_client_config,
+        use_jwt_token,
+        &ClientAuthOptions::default(),
+    )?;
+    let server_port = server_params.http_port;
+
+    let (server_handle, thread_handle) = start_test_kms_server(server_params)?;
+
+    // wait for the server to be up
+    wait_for_server_to_start(&owner_client_config)
+        .await
+        .map_err(|e| {
+            error!("Error waiting for server to start: {e:?}");
+            KmsClientError::UnexpectedError(e.to_string())
+        })?;
+
+    Ok(TestsContext {
+        server_port,
+        owner_client_config,
+        user_client_config,
+        server_handle,
+        thread_handle,
+    })
 }
 
 fn set_access_token(
@@ -545,10 +743,10 @@ fn set_access_token(
 
 fn generate_owner_conf(
     server_params: &ServerParams,
-    authentication_options: &AuthenticationOptions,
+    client_opts: &ClientAuthOptions,
 ) -> Result<KmsClientConfig, KmsClientError> {
     // This creates a root dir
-    let root_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let root_path = root_dir();
 
     let gmail_api_conf: Option<GmailApiConf> = env::var("TEST_GMAIL_API_CONF")
         .ok()
@@ -558,63 +756,61 @@ fn generate_owner_conf(
         .tls_params
         .as_ref()
         .and_then(|tls| tls.clients_ca_cert_pem.as_ref())
-        .is_some()
-        && !authentication_options.do_not_send_client_certificate;
+        .is_some();
 
-    let use_jwt_token = server_params.identity_provider_configurations.is_some()
-        && !authentication_options.do_not_send_jwt_token;
+    let use_jwt_token = match client_opts.jwt {
+        JwtPolicy::Suppress => false,
+        JwtPolicy::AutoDefault => {
+            server_params.identity_provider_configurations.is_some()
+                && client_opts.http.access_token.is_none()
+        }
+    };
 
-    let use_api_token =
-        authentication_options.api_token.is_some() && !authentication_options.do_not_send_api_token;
+    let use_api_token = client_opts.http.access_token.is_some()
+        && client_opts.api_token == ApiTokenPolicy::SendIfProvided;
+
+    let mut http_conf = client_opts.http.clone();
+    http_conf.server_url = if server_params.tls_params.is_some() {
+        format!("https://localhost:{}", server_params.http_port)
+    } else {
+        format!("http://localhost:{}", server_params.http_port)
+    };
+    http_conf.accept_invalid_certs = true;
+    http_conf.access_token = set_access_token(
+        use_jwt_token,
+        use_api_token,
+        Some(AUTH0_TOKEN.to_owned()),
+        if use_api_token {
+            client_opts.http.access_token.clone()
+        } else {
+            None
+        },
+    );
+    if use_client_cert_auth {
+        // If the server requires client certs: either don't send them (if requested),
+        // or auto-provide a default cert when none is configured explicitly.
+        if client_opts.client_cert == ClientCertPolicy::Suppress {
+            http_conf.ssl_client_pkcs12_path = None;
+            http_conf.ssl_client_pkcs12_password = None;
+        } else {
+            if http_conf.ssl_client_pkcs12_path.is_none() {
+                let p = root_path.join(
+                    "../../test_data/certificates/client_server/owner/owner.client.acme.com.p12",
+                );
+                http_conf.ssl_client_pkcs12_path = Some(path_to_string(&p)?);
+            }
+            if http_conf.ssl_client_pkcs12_password.is_none() {
+                http_conf.ssl_client_pkcs12_password = Some("password".to_owned());
+            }
+        }
+    } else {
+        // If server doesn't require client cert, don't send one
+        http_conf.ssl_client_pkcs12_path = None;
+        http_conf.ssl_client_pkcs12_password = None;
+    }
 
     let conf = KmsClientConfig {
-        http_config: HttpClientConfig {
-            server_url: if server_params.tls_params.is_some() {
-                format!("https://localhost:{}", server_params.http_port)
-            } else {
-                format!("http://localhost:{}", server_params.http_port)
-            },
-            accept_invalid_certs: true,
-            access_token: set_access_token(
-                use_jwt_token,
-                use_api_token,
-                Some(AUTH0_TOKEN.to_owned()),
-                authentication_options.api_token.clone(),
-            ),
-            ssl_client_pkcs12_path: if use_client_cert_auth {
-                if let Some(pkcs12_client_cert) = authentication_options.pkcs12_client_cert.as_ref()
-                {
-                    Some(pkcs12_client_cert.clone())
-                } else {
-                    let p = root_dir.join(
-                        "../../test_data/certificates/client_server/owner/owner.client.acme.com.\
-                         p12",
-                    );
-                    Some(
-                        p.to_str()
-                            .ok_or_else(|| {
-                                KmsClientError::Default("Can't convert path to string".to_owned())
-                            })?
-                            .to_owned(),
-                    )
-                }
-            } else {
-                None
-            },
-            ssl_client_pkcs12_password: if use_client_cert_auth {
-                authentication_options
-                    .pkcs12_client_cert_password
-                    .as_ref()
-                    .map_or_else(
-                        || Some("password".to_owned()),
-                        |pkcs12_client_cert_password| Some(pkcs12_client_cert_password.clone()),
-                    )
-            } else {
-                None
-            },
-            cipher_suites: authentication_options.client_tls_cipher_suites.clone(),
-            ..HttpClientConfig::default()
-        },
+        http_config: http_conf,
         gmail_api_conf,
         print_json: None,
     };
@@ -626,24 +822,27 @@ fn generate_owner_conf(
 fn generate_user_conf(
     owner_client_conf: &KmsClientConfig,
     use_jwt_token: bool,
+    client_opts: &ClientAuthOptions,
 ) -> Result<KmsClientConfig, KmsClientError> {
     // This creates root dir
-    let root_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let root_dir = root_dir();
 
     let mut conf = owner_client_conf.clone();
-    conf.http_config.ssl_client_pkcs12_path = {
-        let p = root_dir
-            .join("../../test_data/certificates/client_server/user/user.client.acme.com.p12");
-        Some(
-            p.to_str()
-                .ok_or_else(|| KmsClientError::Default("Can't convert path to string".to_owned()))?
-                .to_owned(),
-        )
-    };
-    conf.http_config.ssl_client_pkcs12_password = Some("password".to_owned());
+    if client_opts.client_cert == ClientCertPolicy::Suppress {
+        conf.http_config.ssl_client_pkcs12_path = None;
+        conf.http_config.ssl_client_pkcs12_password = None;
+    } else {
+        conf.http_config.ssl_client_pkcs12_path = {
+            let p = root_dir
+                .join("../../test_data/certificates/client_server/user/user.client.acme.com.p12");
+            Some(path_to_string(&p)?)
+        };
+        conf.http_config.ssl_client_pkcs12_password = Some("password".to_owned());
+    }
     conf.http_config.access_token = set_access_token(
-        use_jwt_token,
-        false,
+        matches!(client_opts.jwt, JwtPolicy::AutoDefault) && use_jwt_token,
+        client_opts.api_token == ApiTokenPolicy::SendIfProvided
+            && conf.http_config.access_token.is_some(),
         Some(AUTH0_TOKEN_USER.to_owned()),
         None,
     );
@@ -658,15 +857,7 @@ async fn test_start_server() -> Result<(), KmsClientError> {
     let context = start_test_server_with_options(
         sqlite_db_config(),
         DEFAULT_KMS_SERVER_PORT + 20,
-        AuthenticationOptions {
-            use_jwt_token: false,
-            use_https: true,
-            use_known_ca_list: true,
-            api_token_id: None,
-            api_token: None,
-            ..Default::default()
-        },
-        None,
+        AuthenticationOptions::new(),
         None,
         None,
     )

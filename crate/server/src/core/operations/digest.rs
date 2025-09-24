@@ -15,7 +15,7 @@ use cosmian_logger::trace;
 use crate::result::KResult;
 
 /// Returns the digest of the object as explained in KMIP 2.1 Digest attribute.
-pub(crate) fn digest(object: &Object) -> KResult<Option<Digest>> {
+pub(super) fn digest(object: &Object) -> KResult<Option<Digest>> {
     match object {
         Object::PublicKey(PublicKey { key_block })
         | Object::PrivateKey(PrivateKey { key_block })

@@ -103,7 +103,7 @@ pub fn symmetric_key_create_request<T: IntoIterator<Item = impl AsRef<str>>>(
         key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
         object_type: Some(ObjectType::SymmetricKey),
         unique_identifier: key_id,
-        sensitive: if sensitive { Some(true) } else { None },
+        sensitive: sensitive.then_some(true),
         ..Attributes::default()
     };
     attributes.set_tags(tags)?;
@@ -183,7 +183,7 @@ pub fn secret_data_create_request<T: IntoIterator<Item = impl AsRef<str>>>(
         key_format_type: Some(KeyFormatType::Raw),
         object_type: Some(ObjectType::SecretData),
         unique_identifier: secret_id,
-        sensitive: if sensitive { Some(true) } else { None },
+        sensitive: sensitive.then_some(true),
         ..Attributes::default()
     };
     attributes.set_tags(tags)?;

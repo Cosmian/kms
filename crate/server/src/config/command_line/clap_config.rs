@@ -7,8 +7,8 @@ use clap::Parser;
 use serde::{Deserialize, Serialize};
 
 use super::{
-    GoogleCseConfig, HttpConfig, IdpAuthConfig, JwtAuthConfig, MainDBConfig, WorkspaceConfig,
-    logging::LoggingConfig, ui_config::UiConfig,
+    GoogleCseConfig, HsmConfig, HttpConfig, IdpAuthConfig, JwtAuthConfig, MainDBConfig,
+    WorkspaceConfig, logging::LoggingConfig, ui_config::UiConfig,
 };
 use crate::{
     config::{ProxyConfig, SocketServerConfig, TlsConfig},
@@ -22,7 +22,6 @@ const DEFAULT_COSMIAN_KMS_CONF: &str = "/etc/cosmian/kms.toml";
 const DEFAULT_COSMIAN_KMS_CONF: &str = r"C:\ProgramData\Cosmian\kms.toml";
 
 const DEFAULT_USERNAME: &str = "admin";
-const HSM_ADMIN: &str = "admin";
 
 impl Default for ClapConfig {
     fn default() -> Self {
@@ -43,10 +42,7 @@ impl Default for ClapConfig {
             ms_dke_service_url: None,
             logging: LoggingConfig::default(),
             info: false,
-            hsm_admin: HSM_ADMIN.to_owned(),
-            hsm_model: "proteccio".to_owned(),
-            hsm_slot: vec![],
-            hsm_password: vec![],
+            hsm: HsmConfig::default(),
             key_encryption_key: None,
             non_revocable_key_id: None,
             privileged_users: None,
@@ -58,6 +54,43 @@ impl Default for ClapConfig {
 #[clap(version, about, long_about = None)]
 #[serde(default)]
 pub struct ClapConfig {
+    /// The default username to use when no authentication method is provided
+    #[clap(long, env = "KMS_DEFAULT_USERNAME", default_value = DEFAULT_USERNAME)]
+    pub default_username: String,
+
+    /// When an authentication method is provided, perform the authentication
+    /// but always use the default username instead of the one provided by the authentication method
+    #[clap(long, env = "KMS_FORCE_DEFAULT_USERNAME", verbatim_doc_comment)]
+    pub force_default_username: bool,
+
+    /// This setting enables the Microsoft Double Key Encryption service feature of this server.
+    ///
+    /// It should contain the external URL of this server as configured in Azure App Registrations
+    /// as the DKE Service (<https://learn.microsoft.com/en-us/purview/double-key-encryption-setup#register-your-key-store>)
+    ///
+    /// The URL should be something like <https://cse.my_domain.com/ms_dke>
+    #[clap(verbatim_doc_comment, long, env = "KMS_MS_DKE_SERVICE_URL")]
+    pub ms_dke_service_url: Option<String>,
+
+    /// Print the server configuration information and exit
+    #[clap(long, default_value = "false")]
+    pub info: bool,
+
+    #[clap(flatten)]
+    #[serde(flatten)]
+    pub hsm: HsmConfig,
+
+    /// Force all keys imported or created in the KMS, which are not protected by a key encryption key,
+    /// to be wrapped by the specified key encryption key (KEK)
+    pub key_encryption_key: Option<String>,
+
+    /// The exposed URL of the KMS - this is required if Google CSE configuration is activated.
+    /// If this server is running on the domain `cse.my_domain.com` with this public URL,
+    /// The configured URL from Google admin  should be something like <https://cse.my_domain.com/google_cse>
+    /// The URL is also used during the authentication flow initiated from the KMS UI.
+    #[clap(verbatim_doc_comment, long, env = "KMS_PUBLIC_URL")]
+    pub kms_public_url: Option<String>,
+
     #[clap(flatten)]
     pub db: MainDBConfig,
 
@@ -94,77 +127,12 @@ pub struct ClapConfig {
     #[clap(flatten)]
     pub workspace: WorkspaceConfig,
 
-    /// The default username to use when no authentication method is provided
-    #[clap(long, env = "KMS_DEFAULT_USERNAME", default_value = DEFAULT_USERNAME)]
-    pub default_username: String,
-
-    /// When an authentication method is provided, perform the authentication
-    /// but always use the default username instead of the one provided by the authentication method
-    #[clap(long, env = "KMS_FORCE_DEFAULT_USERNAME", verbatim_doc_comment)]
-    pub force_default_username: bool,
-
-    /// This setting enables the Microsoft Double Key Encryption service feature of this server.
-    ///
-    /// It should contain the external URL of this server as configured in Azure App Registrations
-    /// as the DKE Service (<https://learn.microsoft.com/en-us/purview/double-key-encryption-setup#register-your-key-store>)
-    ///
-    /// The URL should be something like <https://cse.my_domain.com/ms_dke>
-    #[clap(verbatim_doc_comment, long, env = "KMS_MS_DKE_SERVICE_URL")]
-    pub ms_dke_service_url: Option<String>,
-
     #[clap(flatten)]
     pub logging: LoggingConfig,
-
-    /// Print the server configuration information and exit
-    #[clap(long, default_value = "false")]
-    pub info: bool,
-
-    /// The HSM model.
-    /// Trustway Proteccio and Utimaco General purpose HSMs are supported.
-    #[clap(
-        verbatim_doc_comment,
-        long,
-        value_parser(["proteccio", "utimaco"]),
-        default_value = "proteccio"
-    )]
-    pub hsm_model: String,
-
-    /// The username of the HSM admin.
-    /// The HSM admin can create objects on the HSM, destroy them, and potentially export them.
-    #[clap(long, env = "KMS_HSM_ADMIN", default_value = HSM_ADMIN)]
-    pub hsm_admin: String,
-
-    /// HSM slot number. The slots used must be listed.
-    /// Repeat this option to specify multiple slots
-    /// while specifying a password for each slot (or an empty string for no password)
-    /// e.g.
-    /// ```sh
-    ///   --hsm_slot 1 --hsm_password password1 \
-    ///   --hsm_slot 2 --hsm_password password2
-    ///```
-    #[clap(verbatim_doc_comment, long)]
-    pub hsm_slot: Vec<usize>,
-
-    /// Password for the user logging in to the HSM Slot specified with `--hsm_slot`
-    /// Provide an empty string for no password
-    /// see `--hsm_slot` for more information
-    #[clap(verbatim_doc_comment, long, requires = "hsm_slot")]
-    pub hsm_password: Vec<String>,
-
-    /// Force all keys imported or created in the KMS, which are not protected by a key encryption key,
-    /// to be wrapped by the specified key encryption key (KEK)
-    pub key_encryption_key: Option<String>,
 
     /// The non-revocable key ID used for demo purposes
     #[clap(long, hide = true)]
     pub non_revocable_key_id: Option<Vec<String>>,
-
-    /// The exposed URL of the KMS - this is required if Google CSE configuration is activated.
-    /// If this server is running on the domain `cse.my_domain.com` with this public URL,
-    /// The configured URL from Google admin  should be something like <https://cse.my_domain.com/google_cse>
-    /// The URL is also used during the authentication flow initiated from the KMS UI.
-    #[clap(verbatim_doc_comment, long, env = "KMS_PUBLIC_URL")]
-    pub kms_public_url: Option<String>,
 
     /// List of users who have the right to create and import Objects
     /// and grant access rights for Create Kmip Operation.
@@ -181,7 +149,7 @@ impl ClapConfig {
     /// or if the configuration file cannot be read,
     /// or if the configuration file cannot be parsed,
     /// or if the configuration file is not a valid TOML file.
-    #[allow(clippy::print_stdout)] // Logging is not being initialized yet, just use standard prints
+    #[expect(clippy::print_stdout)] // Logging is not being initialized yet, just use standard prints
     pub fn load_from_file() -> KResult<Self> {
         let conf = std::env::var("COSMIAN_KMS_CONF").map_or_else(
             |_| PathBuf::from(DEFAULT_COSMIAN_KMS_CONF),
@@ -298,19 +266,20 @@ impl fmt::Debug for ClapConfig {
         );
         let x = x.field("telemetry", &self.logging);
         let x = x.field("info", &self.info);
-        let x = x.field("HSM admin username", &self.hsm_admin);
+        let x = x.field("HSM admin username", &self.hsm.hsm_admin);
         let x = x.field(
             "hsm_model",
-            if self.hsm_slot.is_empty() {
+            if self.hsm.hsm_slot.is_empty() {
                 &"NO HSM"
             } else {
-                &self.hsm_model
+                &self.hsm.hsm_model
             },
         );
-        let x = x.field("hsm_slots", &self.hsm_slot);
+        let x = x.field("hsm_slots", &self.hsm.hsm_slot);
         let x = x.field(
             "hsm_passwords",
             &self
+                .hsm
                 .hsm_password
                 .iter()
                 .map(|_| "********")
@@ -329,7 +298,7 @@ mod tests {
     use super::ClapConfig;
 
     #[test]
-    #[allow(clippy::print_stdout, clippy::unwrap_used)]
+    #[expect(clippy::print_stdout, clippy::unwrap_used)]
     fn test_server_configuration_file() {
         let conf = ClapConfig::default();
         let conf_str = toml::to_string_pretty(&conf).unwrap();

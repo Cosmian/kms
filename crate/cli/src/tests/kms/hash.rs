@@ -7,7 +7,7 @@ use crate::{
 };
 
 #[tokio::test]
-pub(crate) async fn test_hash() -> KmsCliResult<()> {
+pub(super) async fn test_hash() -> KmsCliResult<()> {
     log_init(None);
     let ctx = start_default_test_kms_server().await;
 

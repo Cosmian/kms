@@ -490,7 +490,7 @@ pub fn openssl_public_key_to_kmip(
     Ok(Object::PublicKey(PublicKey { key_block }))
 }
 
-#[allow(clippy::unwrap_used, clippy::panic, clippy::as_conversions)]
+#[expect(clippy::unwrap_used, clippy::panic)]
 #[cfg(test)]
 mod tests {
     #[cfg(feature = "non-fips")]

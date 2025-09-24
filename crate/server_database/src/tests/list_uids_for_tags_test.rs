@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 use crate::error::DbResult;
 
-pub(crate) async fn list_uids_for_tags_test<DB: ObjectsStore + PermissionsStore>(
+pub(super) async fn list_uids_for_tags_test<DB: ObjectsStore + PermissionsStore>(
     db: &DB,
     db_params: Option<Arc<dyn SessionParams>>,
 ) -> DbResult<()> {

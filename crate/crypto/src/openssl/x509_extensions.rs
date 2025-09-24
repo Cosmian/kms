@@ -135,7 +135,7 @@ pub fn parse_v3_ca(
                 extensions.push(san.build(x509_context)?);
             }
             "privateKeyUsagePeriod" => {
-                #[allow(deprecated)]
+                #[expect(deprecated)]
                 extensions.push(X509Extension::new_nid(
                     None,
                     Some(x509_context),
@@ -144,7 +144,7 @@ pub fn parse_v3_ca(
                 )?);
             }
             "issuerAltName" => {
-                #[allow(deprecated)]
+                #[expect(deprecated)]
                 extensions.push(X509Extension::new_nid(
                     None,
                     Some(x509_context),
@@ -178,7 +178,7 @@ pub fn parse_v3_ca(
                 extensions.push(bc.build()?);
             }
             "nameConstraints" => {
-                #[allow(deprecated)]
+                #[expect(deprecated)]
                 extensions.push(X509Extension::new_nid(
                     None,
                     Some(x509_context),
@@ -187,7 +187,7 @@ pub fn parse_v3_ca(
                 )?);
             }
             "crlDistributionPoints" => {
-                #[allow(deprecated)]
+                #[expect(deprecated)]
                 extensions.push(X509Extension::new_nid(
                     None,
                     Some(x509_context),
@@ -196,7 +196,7 @@ pub fn parse_v3_ca(
                 )?);
             }
             "certificatePolicies" => {
-                #[allow(deprecated)]
+                #[expect(deprecated)]
                 extensions.push(X509Extension::new_nid(
                     None,
                     Some(x509_context),
@@ -293,7 +293,7 @@ fn colon_split<'a>(value: &'a str, property_name: &str) -> Result<&'a str, Crypt
     Ok(val)
 }
 
-#[allow(clippy::unwrap_used)]
+#[expect(clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
     use cosmian_logger::{info, log_init};

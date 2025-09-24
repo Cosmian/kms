@@ -6,10 +6,10 @@ pub fn get_hsm_password() -> HResult<String> {
             HError::Default(
                 "The user password for the HSM is not set. Please set the HSM_USER_PASSWORD \
                  environment variable"
-                    .to_string(),
+                    .to_owned(),
             )
         })?
-        .to_string();
+        .to_owned();
     Ok(user_password)
 }
 
@@ -19,14 +19,14 @@ pub fn get_hsm_slot_id() -> HResult<usize> {
             HError::Default(
                 "The slot id for the HSM was not provided. Please set the HSM_SLOT_ID environment \
                  variable"
-                    .to_string(),
+                    .to_owned(),
             )
         })?
-        .to_string();
-    slot_id.parse().map_err(|_| {
+        .to_owned();
+    slot_id.parse().map_err(|e| {
         HError::Default(format!(
-            "The HSM slot id '{slot_id}' could not be parsed. Please make sure theHSM_SLOT_ID \
-             environment variable is set to a valid slot id."
+            "The HSM slot id '{slot_id}' could not be parsed. Please make sure the HSM_SLOT_ID \
+             environment variable is set to a valid slot id: {e}"
         ))
     })
 }

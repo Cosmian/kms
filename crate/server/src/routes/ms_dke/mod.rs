@@ -198,7 +198,6 @@ pub struct DecryptedData {
 pub struct EncryptedData {
     /// The algorithm used to encrypt the data.
     /// Currently only RSA-OAEP-256 (or RS256 ?) is supported
-    #[allow(dead_code)]
     pub alg: Algorithm,
     /// The base 64 value of the encrypted bytes
     pub value: String,
@@ -252,7 +251,7 @@ async fn internal_decrypt(
     })
 }
 
-#[allow(clippy::indexing_slicing)]
+#[expect(clippy::indexing_slicing)]
 fn big_int_to_u32(bu: &BigInt) -> u32 {
     let (_, bytes) = bu.to_bytes_be();
     let len = bytes.len();

@@ -24,6 +24,7 @@ use crate::{
     result::{KResult, KResultHelper},
     tests::test_utils,
 };
+
 #[tokio::test]
 async fn test_re_key_with_tags() -> KResult<()> {
     let app = test_utils::test_app(None, None).await;

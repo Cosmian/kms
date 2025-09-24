@@ -1,7 +1,6 @@
 //! The HSM Store is a store that allows the creation, retrieval, update, and deletion of objects on an HSM.
 //! It is the link between the database and the HSM.
 
-#![allow(unused_variables)]
 use std::{collections::HashSet, path::PathBuf, sync::Arc};
 
 use KmipKeyMaterial::TransparentRSAPublicKey;
@@ -126,8 +125,8 @@ impl ObjectsStore for HsmStore {
 
     async fn retrieve_tags(
         &self,
-        uid: &str,
-        params: Option<Arc<dyn SessionParams>>,
+        _uid: &str,
+        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashSet<String>> {
         // Not supported for HSMs
         Ok(HashSet::new())
@@ -135,11 +134,11 @@ impl ObjectsStore for HsmStore {
 
     async fn update_object(
         &self,
-        uid: &str,
-        object: &Object,
-        attributes: &Attributes,
-        tags: Option<&HashSet<String>>,
-        params: Option<Arc<dyn SessionParams>>,
+        _uid: &str,
+        _object: &Object,
+        _attributes: &Attributes,
+        _tags: Option<&HashSet<String>>,
+        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
         // not supported for HSMs
         Err(InterfaceError::InvalidRequest(
@@ -149,9 +148,9 @@ impl ObjectsStore for HsmStore {
 
     async fn update_state(
         &self,
-        uid: &str,
-        state: State,
-        params: Option<Arc<dyn SessionParams>>,
+        _uid: &str,
+        _state: State,
+        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
         // not supported for HSMs
         Err(InterfaceError::InvalidRequest(
@@ -162,7 +161,7 @@ impl ObjectsStore for HsmStore {
     async fn delete(
         &self,
         uid: &str,
-        params: Option<Arc<dyn SessionParams>>,
+        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
         let (slot_id, key_id) = parse_uid(uid)?;
         self.hsm.delete(slot_id, key_id.as_bytes()).await?;
@@ -175,7 +174,7 @@ impl ObjectsStore for HsmStore {
         operations: &[AtomicOperation],
         _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<Vec<String>> {
-        if let Some((uid, object, attributes, _tags)) = is_rsa_keypair_creation(operations) {
+        if let Some((uid, _object, attributes, _tags)) = is_rsa_keypair_creation(operations) {
             debug!("Creating RSA keypair with uid: {uid}");
             if user != self.hsm_admin {
                 return Err(InterfaceError::InvalidRequest(
@@ -222,8 +221,8 @@ impl ObjectsStore for HsmStore {
 
     async fn list_uids_for_tags(
         &self,
-        tags: &HashSet<String>,
-        params: Option<Arc<dyn SessionParams>>,
+        _tags: &HashSet<String>,
+        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashSet<String>> {
         // Not Tags on the HSM
         Ok(HashSet::new())
@@ -235,7 +234,7 @@ impl ObjectsStore for HsmStore {
         state: Option<State>,
         user: &str,
         user_must_be_owner: bool,
-        params: Option<Arc<dyn SessionParams>>,
+        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
         let slot_ids = self.hsm.get_available_slot_list().await?;
         let mut uids = Vec::new();

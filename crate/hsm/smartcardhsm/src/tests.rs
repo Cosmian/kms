@@ -519,7 +519,9 @@ fn test_hsm_multi_threaded_rsa_encrypt_decrypt_test() -> HResult<()> {
     }
 
     for handle in handles {
-        handle.join().expect("Thread panicked")?;
+        handle
+            .join()
+            .map_err(|_| HError::Default("Thread panicked".to_string()))??;
     }
     info!("Successfully encrypted/decrypted with RSA OAEP in multiple threads");
     Ok(())

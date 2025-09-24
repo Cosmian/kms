@@ -27,7 +27,7 @@ use crate::{
     tests::kms::symmetric::encrypt_decrypt::run_encrypt_decrypt_test,
 };
 
-pub(crate) async fn test_aes_gcm(ctx: &TestsContext) -> KmsCliResult<()> {
+pub(super) async fn test_aes_gcm(ctx: &TestsContext) -> KmsCliResult<()> {
     log_init(None);
 
     let dek = CreateKeyAction {
@@ -52,7 +52,7 @@ pub(crate) async fn test_aes_gcm(ctx: &TestsContext) -> KmsCliResult<()> {
 }
 
 #[cfg(feature = "non-fips")]
-pub(crate) async fn test_rsa_pkcs_oaep(ctx: &TestsContext) -> KmsCliResult<()> {
+pub(super) async fn test_rsa_pkcs_oaep(ctx: &TestsContext) -> KmsCliResult<()> {
     log_init(None);
 
     // create a temp dir
@@ -141,7 +141,7 @@ pub(crate) async fn test_rsa_pkcs_oaep(ctx: &TestsContext) -> KmsCliResult<()> {
 }
 
 #[cfg(feature = "non-fips")]
-pub(crate) async fn test_rsa_pkcs_v15(ctx: &TestsContext) -> KmsCliResult<()> {
+pub(super) async fn test_rsa_pkcs_v15(ctx: &TestsContext) -> KmsCliResult<()> {
     log_init(None);
 
     // create a temp dir

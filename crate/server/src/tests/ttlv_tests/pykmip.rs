@@ -4,7 +4,7 @@ use cosmian_logger::{info, log_init, warn};
 
 use crate::tests::ttlv_tests::start_test_server;
 
-#[ignore = "Requires Python KMIP setup"]
+#[ignore = "Integration test requires local pyKMIP server"]
 #[test]
 fn test_pykmip() {
     log_init(option_env!("RUST_LOG"));

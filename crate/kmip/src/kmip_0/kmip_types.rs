@@ -176,7 +176,7 @@ pub enum CredentialValue {
 }
 
 impl CredentialValue {
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     const fn value(&self) -> u32 {
         match *self {
             Self::UsernameAndPassword { .. } => 0x0000_0001,
@@ -517,8 +517,8 @@ pub struct Nonce {
     pub nonce_value: Vec<u8>,
 }
 
-#[derive(Default)]
 #[kmip_enum]
+#[derive(Default)]
 pub enum ErrorReason {
     Item_Not_Found = 0x0000_0001,
     Response_Too_Large = 0x0000_0002,
@@ -837,7 +837,6 @@ pub enum MaskGenerator {
 pub struct CryptographicUsageMask(pub(crate) u32);
 
 bitflags::bitflags! {
-#[allow(clippy::indexing_slicing)]
     impl CryptographicUsageMask: u32 {
         /// Allow for signing. Applies to Sign operation. Valid for PGP Key, Private Key
         const Sign=0x0000_0001;

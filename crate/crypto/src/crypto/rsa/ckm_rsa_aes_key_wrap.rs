@@ -113,7 +113,12 @@ pub fn ckm_rsa_aes_key_unwrap(
     Ok(plaintext)
 }
 
-#[allow(clippy::panic_in_result_fn, clippy::unwrap_used)]
+#[allow(
+    clippy::panic_in_result_fn,
+    clippy::unwrap_used,
+    clippy::unwrap_in_result,
+    clippy::expect_used
+)]
 #[cfg(test)]
 mod tests {
     use std::{fs, path::Path};
@@ -138,7 +143,7 @@ mod tests {
         error::{CryptoError, result::CryptoResult},
     };
 
-    const RSA_PRIVATE_KEY: &str = r"-----BEGIN PRIVATE KEY-----
+    const RSA_PRIVATE_KEY: &str = "-----BEGIN PRIVATE KEY-----
 MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQCzdXCsuC+YqBvc
 gGTe9oF4L3Ni0pj2pk6yTfGqt1Az/08IvueZsetFnrIew9ZSaACobSlwIs2moc3s
 ukkYTQpDxNEeRg1lPQArDlhz+twBbLx0q31RWwT0kW8R/+UW5GO4uehUhduAgi6s
@@ -167,7 +172,7 @@ qeDmXs6dH40L2I0TLPF0Ax2V7DgXwgeCPnlwLrf96xpV+2UXt1zvqzU8BdK8qT4b
 yLT7mm6+hAwMp3y0u6oBTA==
 -----END PRIVATE KEY-----";
 
-    const RSA_PUBLIC_KEY: &str = r"-----BEGIN PUBLIC KEY-----
+    const RSA_PUBLIC_KEY: &str = "-----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAs3VwrLgvmKgb3IBk3vaB
 eC9zYtKY9qZOsk3xqrdQM/9PCL7nmbHrRZ6yHsPWUmgAqG0pcCLNpqHN7LpJGE0K
 Q8TRHkYNZT0AKw5Yc/rcAWy8dKt9UVsE9JFvEf/lFuRjuLnoVIXbgIIurIrMUqal
@@ -575,15 +580,15 @@ FQIDAQAB
         Ok(())
     }
 
-    const KEK_FOR_BYOK: &str = r"-----BEGIN PUBLIC KEY-----
+    const KEK_FOR_BYOK: &str = "-----BEGIN PUBLIC KEY-----
 MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAk0HniT34p3O8bD3pyy7p7YASh2Tk7oYag4fbFKVxMX23KX8n68Jx7LWBKgbv6JF6ndZMmUsiBRWoaRC1SUxmtMTZ551CnqeAN47e9FXL1QakHlje4+wK9/tCfllZ2jYNLhvRy1NjTi1ounhkOQC1gdNasvNIRsfzgNVJ8nwgK+1ZJSqkNaoBbQHlJhvUXD3ba0fVH66gat+ns1KPk0HR1WlepZ4cMBmwFlZtPStAqM0dNnflcUzpTeeLLqbuBSzcT0Qb1Q0a/qakmy5SM47nR6RzTZ8A+bOLXP9G+fiK2UPSaAxGMTh8+LfrJqZTEW/lG5GraIbqsJwEQd9ibTlPIDMz8DPUcASUNqU9wQWcVqcjesZXJTb+xurcUPxDvWH/TnIQa0CKt3xcBXw2GZYkn8ROhk/woPJi9IC+rg1TnA4LruNB2OD2Ltg+wt90JYHW6DIxWjVe8/dbEZFof9iE/dYcZqNcipy79C6kJw9Cq2Eq4nP9KX0lk0tAo1B+EI+adQNJv/Hho1fStabk1zSGGsjR2p0izi76AEeNwIn3NkQMewQlKZWHfKz9T2MT8kjsAqvGwDW7g/p7uBhVn2s05kIW8En2JBpitLpqqRTiErS6UsyL1EYwc35BjfMySCt89YZU/wOi/2O1kaHvfi4NjCxclQXM1Y74WjVr1LFgG2MCAwEAAQ==
 -----END PUBLIC KEY-----";
 
     const KV_KEY_IDENTIFIER: &str =
         "https://hsmbackedkeyvault.vault.azure.net/keys/KEKForBYOK/5e617a4d39c74f47b0b7d345f6a49d1b";
 
-    #[allow(dead_code)]
-    const EC_PRIVATE_KEY: &str = r"-----BEGIN PRIVATE KEY-----
+    #[expect(dead_code)]
+    const EC_PRIVATE_KEY: &str = "-----BEGIN PRIVATE KEY-----
 MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg22cFLXwIE4yi+G2/
 xQWVI5BTNNbJn4HpvZ5BOmddMvmhRANCAATkiSFiMaIvIFBB1FiBzij+2PQyQNj6
 vKJMiWk/TowEqm5zcvCeTsPlceZdxidTBNB/EPCSxIHpycyzT3pQ4ehI

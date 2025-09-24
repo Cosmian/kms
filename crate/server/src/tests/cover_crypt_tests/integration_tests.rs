@@ -28,6 +28,7 @@ use crate::{
     result::{KResult, KResultHelper},
     tests::test_utils,
 };
+
 #[tokio::test]
 async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     // cosmian_logger::log_init(Some("debug"));

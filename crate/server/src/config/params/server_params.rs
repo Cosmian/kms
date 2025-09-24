@@ -16,7 +16,6 @@ use crate::{
 /// This structure is the context used by the server
 /// while it is running. There is a singleton instance
 /// shared between all threads.
-#[allow(clippy::struct_excessive_bools)]
 #[derive(Default)]
 pub struct ServerParams {
     /// The JWT Config if Auth is enabled
@@ -144,9 +143,10 @@ impl ServerParams {
             TlsParams::try_from(&conf.tls, &conf.http).context("failed to create TLS params")?;
 
         let slot_passwords: HashMap<usize, Option<String>> = conf
+            .hsm
             .hsm_slot
             .iter()
-            .zip(&conf.hsm_password)
+            .zip(&conf.hsm.hsm_password)
             .map(|(s, p)| {
                 let password = if p.is_empty() { None } else { Some(p.clone()) };
                 (*s, password)
@@ -195,11 +195,11 @@ impl ServerParams {
             api_token_id: conf.http.api_token_id,
             google_cse: conf.google_cse_config,
             ms_dke_service_url: conf.ms_dke_service_url,
-            hsm_admin: conf.hsm_admin,
+            hsm_admin: conf.hsm.hsm_admin,
             hsm_model: if slot_passwords.is_empty() {
                 None
             } else {
-                Some(conf.hsm_model)
+                Some(conf.hsm.hsm_model)
             },
             slot_passwords,
             key_wrapping_key: conf.key_encryption_key,

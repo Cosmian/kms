@@ -94,7 +94,7 @@ pub fn unwrap_key_block(
 ///
 /// # Returns
 /// * `KResult<KeyValue>` - the unwrapped key
-pub(crate) fn unwrap(
+pub(super) fn unwrap(
     unwrapping_key: &Object,
     key_wrapping_data: &KeyWrappingData,
     wrapped_key: &[u8],

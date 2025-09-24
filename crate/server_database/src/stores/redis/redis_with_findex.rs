@@ -38,8 +38,8 @@ use crate::{
 
 pub(crate) const REDIS_WITH_FINDEX_MASTER_KEY_LENGTH: usize = 32;
 const REDIS_WITH_FINDEX_MASTER_KEY_DERIVATION_SALT: &[u8; 16] = b"rediswithfindex_";
-pub(crate) const REDIS_WITH_FINDEX_MASTER_FINDEX_KEY_DERIVATION_SALT: &[u8; 6] = b"findex";
-pub(crate) const REDIS_WITH_FINDEX_MASTER_DB_KEY_DERIVATION_SALT: &[u8; 2] = b"db";
+pub(super) const REDIS_WITH_FINDEX_MASTER_FINDEX_KEY_DERIVATION_SALT: &[u8; 6] = b"findex";
+pub(super) const REDIS_WITH_FINDEX_MASTER_DB_KEY_DERIVATION_SALT: &[u8; 2] = b"db";
 
 /// Derive a Redis Master Key from a password
 pub fn redis_master_key_from_password(
@@ -137,7 +137,7 @@ impl RedisWithFindex {
 
     /// Prepare an object for upsert
     /// Note: Findex indexes are upserted even if the object is not upserted later on
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     async fn prepare_object_for_upsert(
         &self,
         uid: &str,
@@ -602,10 +602,10 @@ impl PermissionsStore for RedisWithFindex {
         &self,
         uid: &str,
         user: &str,
-        operation_types: HashSet<KmipOperation>,
+        operations: HashSet<KmipOperation>,
         _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
-        for operation in &operation_types {
+        for operation in &operations {
             self.permissions_db
                 .add(&self.findex_key, uid, user, *operation)
                 .await?;
@@ -619,10 +619,10 @@ impl PermissionsStore for RedisWithFindex {
         &self,
         uid: &str,
         user: &str,
-        operation_types: HashSet<KmipOperation>,
+        operations: HashSet<KmipOperation>,
         _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
-        for operation in &operation_types {
+        for operation in &operations {
             self.permissions_db
                 .remove(&self.findex_key, uid, user, *operation)
                 .await?;

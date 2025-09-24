@@ -9,12 +9,12 @@ use crate::{
 };
 
 #[derive(Deserialize)]
-pub(crate) struct RequestError {
+pub(super) struct RequestError {
     pub error: ErrorContent,
 }
 
 #[derive(Deserialize)]
-pub(crate) struct ErrorContent {
+pub(super) struct ErrorContent {
     pub message: String,
 }
 

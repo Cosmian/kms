@@ -51,7 +51,6 @@ impl KMS {
     /// * `server_params` - The server parameters built from the configuration file or command line arguments.
     /// # Returns
     /// A new KMS instance.
-    #[allow(clippy::as_conversions)]
     pub(crate) async fn instantiate(server_params: Arc<ServerParams>) -> KResult<Self> {
         trace!("params: {server_params:?}");
 

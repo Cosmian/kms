@@ -379,6 +379,7 @@ impl Database {
         if operations.is_empty() {
             return Ok(vec![]);
         }
+        #[expect(clippy::indexing_slicing)]
         let first_op = &operations[0];
         let first_uid = first_op.get_object_uid();
         let db = self.get_object_store(first_uid).await?;

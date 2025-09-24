@@ -21,18 +21,16 @@ impl Attributes {
     /// # Returns
     /// * The wrapping key id if it was set before
     pub fn set_wrapping_key_id(&mut self, wrapping_key_id: &str) -> Option<String> {
-        self.set_vendor_attribute(
+        let val = self.set_vendor_attribute(
             VENDOR_ID_COSMIAN,
             WRAPPING_KEY_ID,
             VendorAttributeValue::TextString(wrapping_key_id.to_owned()),
-        )
-        .and_then(|val| {
-            if let VendorAttributeValue::TextString(val) = val {
-                Some(val)
-            } else {
-                None
-            }
-        })
+        )?;
+        if let VendorAttributeValue::TextString(val) = val {
+            Some(val)
+        } else {
+            None
+        }
     }
 
     /// Extract the wrapping key id
@@ -41,13 +39,11 @@ impl Attributes {
     /// *  The wrapping key id if it was set before
     /// * `None` if it was not set
     pub fn remove_wrapping_key_id(&mut self) -> Option<String> {
-        self.remove_vendor_attribute(VENDOR_ID_COSMIAN, WRAPPING_KEY_ID)
-            .and_then(|val| {
-                if let VendorAttributeValue::TextString(val) = val {
-                    Some(val)
-                } else {
-                    None
-                }
-            })
+        let val = self.remove_vendor_attribute(VENDOR_ID_COSMIAN, WRAPPING_KEY_ID)?;
+        if let VendorAttributeValue::TextString(val) = val {
+            Some(val)
+        } else {
+            None
+        }
     }
 }

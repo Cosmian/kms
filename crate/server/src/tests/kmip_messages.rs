@@ -32,7 +32,6 @@ use crate::{
 };
 
 #[tokio::test]
-#[allow(clippy::as_conversions)]
 async fn test_kmip_mac_messages() -> KResult<()> {
     // Disable most logging
     log_init(Some("warn"));
@@ -114,7 +113,6 @@ async fn test_kmip_mac_messages() -> KResult<()> {
 }
 
 #[tokio::test]
-#[allow(clippy::as_conversions)]
 async fn test_encrypt_kmip_messages() -> KResult<()> {
     // Disable most logging
     log_init(Some("warn"));

@@ -16,7 +16,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 
 use crate::{kms_error, result::KResult, routes::ms_dke::EncryptedData, tests::test_utils};
 
-const RSA_PRIVATE_KEY: &str = r"
+const RSA_PRIVATE_KEY: &str = "
 -----BEGIN PRIVATE KEY-----
 MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCNzNM2hQNhfdUO
 7hTM9F/a4ZNfCBnIpTP6VRvHNLcA7T8Zt+2+ozC7zKneXGXAfs70zLfa00wAlcm0
@@ -52,7 +52,7 @@ const ENCRYPTED_DATA: &str = r#"{
     "value":"SowuwT1RuQalev5OCYFhpGaziwOqiTgzQcRfcITsukcBOsX61SejEF91cnx8vQv/gjmovXW4qEV7PpNBKj2GMszHWmFkt877raP02yxch6w0sPEBMaNdfbLIScpsjaPAOmu/i3MAY3dPaAl4duGE3FJCb1O8G98QamB5eQXpJaKcoUGUCeE4hy4qi5k15rQWMU6EmTZ8qL37ugDGo1gRuSsYZmCriPH+sUdiOIXEBJ/UrRIeR+ENPgjBVRSw46sbfdCIee37iROdBRxffHe2p+Ntx1TGMSLhkOc+DU0p+0+cDEicmVXorUfNZCQc7Rof2pIjpUI4Qi3wBCexTnZXgw=="
 }"#;
 
-#[ignore = "Integration test requiring specific setup"]
+#[ignore = "Requires external MS DKE service and credentials"]
 #[tokio::test]
 async fn decrypt_data_test() -> KResult<()> {
     cosmian_logger::log_init(None);

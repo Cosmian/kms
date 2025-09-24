@@ -1,5 +1,5 @@
-pub(crate) mod access_structure;
+pub(super) mod access_structure;
 mod encrypt_decrypt;
-pub(crate) mod master_key_pair;
+pub(super) mod master_key_pair;
 mod rekey;
-pub(crate) mod user_decryption_keys;
+pub(super) mod user_decryption_keys;

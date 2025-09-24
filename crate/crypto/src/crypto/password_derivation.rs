@@ -68,7 +68,7 @@ pub fn derive_key_from_password<const LENGTH: usize>(
 }
 
 #[test]
-#[allow(clippy::unwrap_used)]
+#[expect(clippy::unwrap_used)]
 fn test_password_derivation() {
     // Load FIPS provider module from OpenSSL.
     #[cfg(not(feature = "non-fips"))]

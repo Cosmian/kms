@@ -205,7 +205,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
 }
 
 #[test]
-pub(crate) fn access_policy_serialization() -> KResult<()> {
+pub(super) fn access_policy_serialization() -> KResult<()> {
     let access_policy = "(Department::MKG || Department::FIN) && Security Level::Confidential";
     let _json = serde_json::to_string(&access_policy)?;
     Ok(())

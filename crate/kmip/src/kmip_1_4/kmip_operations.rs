@@ -8,9 +8,19 @@ use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use zeroize::Zeroizing;
 
-use super::kmip_objects::Certificate;
-#[allow(clippy::wildcard_imports)]
-use super::{kmip_data_structures::*, kmip_objects::Object, kmip_types::*};
+use super::{
+    kmip_data_structures::{
+        CapabilityInformation, CryptographicParameters, DerivationParameters, ExtensionInformation,
+        KeyWrappingData, KeyWrappingSpecification, ProfileInformation, RNGParameters,
+        ServerInformation, TemplateAttribute,
+    },
+    kmip_objects::{Certificate, Object},
+    kmip_types::{
+        CancellationResult, CertificateRequestType, ClientRegistrationMethod, DerivationMethod,
+        KeyCompressionType, KeyFormatType, ObjectGroupMember, ObjectType, OperationEnumeration,
+        QueryFunction, SplitKeyMethod, StorageStatusMask, UniqueIdentifier, ValidityIndicator,
+    },
+};
 use crate::{
     KmipError, KmipResultHelper,
     kmip_0::{
@@ -1585,7 +1595,6 @@ impl TryFrom<kmip_2_1::kmip_operations::ImportResponse> for ImportResponse {
 /// The operation that processes a specific request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(untagged)]
-#[allow(clippy::large_enum_variant)]
 pub enum Operation {
     Activate(Activate),
     ActivateResponse(ActivateResponse),

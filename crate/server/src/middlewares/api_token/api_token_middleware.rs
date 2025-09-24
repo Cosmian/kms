@@ -100,7 +100,6 @@ where
     S::Future: 'static,
 {
     type Error = Error;
-    #[allow(clippy::type_complexity)]
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>>>>;
     type Response = ServiceResponse<EitherBody<B, BoxBody>>;
 

@@ -105,7 +105,7 @@ impl Display for KeyMaterial421 {
     }
 }
 
-#[allow(clippy::upper_case_acronyms)]
+#[expect(clippy::upper_case_acronyms)]
 #[derive(Serialize, Deserialize, Clone, Copy)]
 enum KeyTypeSer {
     DH,
@@ -152,7 +152,7 @@ impl<'de> Deserialize<'de> for KeyMaterial421 {
                 formatter.write_str("struct KeyMaterialVisitor")
             }
 
-            #[allow(clippy::many_single_char_names)]
+            #[expect(clippy::many_single_char_names)]
             fn visit_map<V>(self, mut map: V) -> Result<Self::Value, V::Error>
             where
                 V: MapAccess<'de>,

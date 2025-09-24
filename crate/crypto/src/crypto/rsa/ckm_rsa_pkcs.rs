@@ -126,7 +126,7 @@ fn init_ckm_rsa_pkcs_decryption_context(
     Ok((ctx, plaintext))
 }
 
-#[allow(clippy::panic_in_result_fn)]
+#[expect(clippy::panic_in_result_fn)]
 #[cfg(test)]
 mod tests {
     use openssl::pkey::PKey;

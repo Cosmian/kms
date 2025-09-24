@@ -285,7 +285,7 @@ fn encrypt_single(owm: &ObjectWithMetadata, request: &Encrypt) -> KResult<Encryp
 /// # Returns
 /// * the encrypt response
 // TODO: Covercrypt already has a bulk encryption method; maybe this should be merged here
-pub(crate) fn encrypt_bulk(
+pub(super) fn encrypt_bulk(
     owm: &ObjectWithMetadata,
     mut request: Encrypt,
     bulk_data: BulkData,

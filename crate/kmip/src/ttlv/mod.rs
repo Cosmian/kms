@@ -14,7 +14,7 @@ pub use kmip_ttlv_serializer::{TtlvSerializer, to_ttlv};
 pub use ttlv_struct::{KmipEnumerationVariant, KmipFlavor, TTLV, TTLValue, TtlvType};
 pub use wire::{TTLVBytesDeserializer, TTLVBytesSerializer};
 
-#[allow(
+#[expect(
     clippy::cast_possible_truncation,
     clippy::cast_possible_wrap,
     clippy::as_conversions,

@@ -125,7 +125,7 @@ pub(crate) async fn password_wrap_import_test(
             },
             key_bytes
         );
-    }
+    };
 
     //wrap and unwrap using a base64 key
     {
@@ -171,7 +171,7 @@ pub(crate) async fn password_wrap_import_test(
             },
             key_bytes
         );
-    }
+    };
 
     // other wrap unwrap scenarios are covered by tests in utils/wrap_unwrap
 

@@ -696,7 +696,7 @@ impl KmsClient {
         Err(KmsClientError::RequestFailed(p))
     }
 
-    #[allow(clippy::print_stdout)]
+    #[expect(clippy::print_stdout)]
     pub async fn post_message(
         &self,
         request_message: &RequestMessage,

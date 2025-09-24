@@ -336,7 +336,6 @@ pub enum KeyCompressionType {
 pub struct ProtectionStorageMasks(u32);
 
 bitflags::bitflags! {
-#[allow(clippy::indexing_slicing)]
     impl ProtectionStorageMasks: u32 {
         const Software=0x0000_0001;
         const Hardware=0x0000_0002;
@@ -429,7 +428,6 @@ pub enum ObjectGroupMember {
 pub struct StorageStatusMask(u32);
 
 bitflags::bitflags! {
-#[allow(clippy::indexing_slicing)]
     impl StorageStatusMask: u32 {
         const OnlineStorage=0x0000_0001;
         const ArchivalStorage=0x0000_0002;
@@ -1193,8 +1191,8 @@ pub enum Tag {
 }
 
 /// Indicates the method used to wrap the Key Value.
-#[derive(Default)]
 #[kmip_enum]
+#[derive(Default)]
 pub enum WrappingMethod {
     #[default]
     Encrypt = 0x0000_0001,
@@ -1430,15 +1428,11 @@ impl UniqueIdentifier {
 }
 
 impl From<LinkedObjectIdentifier> for UniqueIdentifier {
-    #[allow(
-        clippy::cast_sign_loss,
-        clippy::cast_possible_truncation,
-        clippy::as_conversions
-    )]
     fn from(value: LinkedObjectIdentifier) -> Self {
         match value {
             LinkedObjectIdentifier::TextString(s) => Self::TextString(s),
             LinkedObjectIdentifier::Enumeration(e) => Self::Enumeration(e),
+            #[expect(clippy::cast_possible_truncation, clippy::as_conversions)]
             LinkedObjectIdentifier::Index(i) => Self::Integer(i as i32),
         }
     }

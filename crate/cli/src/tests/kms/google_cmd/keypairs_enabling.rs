@@ -55,7 +55,10 @@ fn list_keypairs(cli_conf_path: &str, user_id: &str) -> Result<ListKeyPairsRespo
         .collect();
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(COSMIAN_CLI_CONF_ENV, cli_conf_path);
-    cmd.arg(KMS_SUBCOMMAND).arg("google").arg("keypairs").args(args);
+    cmd.arg(KMS_SUBCOMMAND)
+        .arg("google")
+        .arg("keypairs")
+        .args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
         let output = std::str::from_utf8(&output.stdout)?;
@@ -79,7 +82,10 @@ fn get_keypairs(
         .collect();
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(COSMIAN_CLI_CONF_ENV, cli_conf_path);
-    cmd.arg(KMS_SUBCOMMAND).arg("google").arg("keypairs").args(args);
+    cmd.arg(KMS_SUBCOMMAND)
+        .arg("google")
+        .arg("keypairs")
+        .args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
         let output = std::str::from_utf8(&output.stdout)?;
@@ -103,7 +109,10 @@ fn disable_keypairs(
         .collect();
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(COSMIAN_CLI_CONF_ENV, cli_conf_path);
-    cmd.arg(KMS_SUBCOMMAND).arg("google").arg("keypairs").args(args);
+    cmd.arg(KMS_SUBCOMMAND)
+        .arg("google")
+        .arg("keypairs")
+        .args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
         return Ok(())
@@ -125,7 +134,10 @@ fn enable_keypairs(
         .collect();
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(COSMIAN_CLI_CONF_ENV, cli_conf_path);
-    cmd.arg(KMS_SUBCOMMAND).arg("google").arg("keypairs").args(args);
+    cmd.arg(KMS_SUBCOMMAND)
+        .arg("google")
+        .arg("keypairs")
+        .args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
         return Ok(())
@@ -136,7 +148,7 @@ fn enable_keypairs(
 }
 
 #[tokio::test]
-#[ignore] // This test is ignored because it requires a Gmail test user (not blue nor red users)
+#[ignore = "Requires a Gmail test user (not blue/red); not available in CI"]
 pub(crate) async fn test_google_keypairs() -> Result<(), CosmianError> {
     // Create a test server
     let ctx = start_default_test_kms_server().await;

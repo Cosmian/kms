@@ -95,7 +95,7 @@ pub(crate) struct UserClaim {
 }
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
+#[expect(dead_code)]
 pub(crate) struct JwtTokenHeaders {
     typ: Option<String>,
     cty: Option<String>,

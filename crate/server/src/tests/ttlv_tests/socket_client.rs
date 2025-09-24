@@ -126,7 +126,6 @@ impl SocketClient {
     /// * If sending or receiving data fails
     /// * If the server returns an error response
     /// * If the response is invalid
-    #[allow(clippy::cognitive_complexity)]
     pub(super) fn send_request<
         REQ: Serialize + fmt::Display,
         RESP: DeserializeOwned + fmt::Display,

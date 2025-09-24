@@ -7,11 +7,10 @@ use pkcs11_sys::{
     CK_C_Finalize, CK_C_FindObjects, CK_C_FindObjectsFinal, CK_C_FindObjectsInit, CK_C_GenerateKey,
     CK_C_GenerateKeyPair, CK_C_GenerateRandom, CK_C_GetAttributeValue, CK_C_GetInfo,
     CK_C_GetMechanismInfo, CK_C_GetMechanismList, CK_C_INITIALIZE_ARGS, CK_C_Initialize,
-    CK_C_Login, CK_C_Logout, CK_C_OpenSession, CK_C_UnwrapKey, CK_C_WrapKey, CK_VOID_PTR,
-    CKF_OS_LOCKING_OK, CKR_OK,
+    CK_C_Login, CK_C_Logout, CK_C_OpenSession, CK_C_UnwrapKey, CK_C_WrapKey, CKF_OS_LOCKING_OK,
 };
 
-use crate::{HError, HResult, check_rv};
+use crate::{HResult, hsm_call};
 
 /// A struct representing a Hardware Security Module (HSM) library interface using PKCS#11.
 ///
@@ -52,7 +51,8 @@ use crate::{HError, HResult, check_rv};
 /// Operations return `PResult<T>`, which is a custom result type for handling
 /// HSM-specific errors. Failed operations typically return `PError` variants
 /// with descriptive error messages.
-#[allow(dead_code)]
+#[expect(dead_code)]
+#[expect(non_snake_case)]
 pub struct HsmLib {
     _library: Library,
     pub(crate) C_Initialize: CK_C_Initialize,
@@ -99,9 +99,10 @@ impl HsmLib {
     where
         P: AsRef<std::ffi::OsStr>,
     {
+        #[expect(unsafe_code)]
         unsafe {
             let library = Library::new(path)?;
-            let hsm_lib = HsmLib {
+            let hsm_lib = Self {
                 C_Initialize: Some(*library.get(b"C_Initialize")?),
                 C_Finalize: Some(*library.get(b"C_Finalize")?),
                 C_OpenSession: Some(*library.get(b"C_OpenSession")?),
@@ -137,8 +138,8 @@ impl HsmLib {
         }
     }
 
-    fn initialize(hsm_lib: &HsmLib) -> HResult<()> {
-        let pInitArgs = CK_C_INITIALIZE_ARGS {
+    fn initialize(hsm_lib: &Self) -> HResult<()> {
+        let p_init_args = CK_C_INITIALIZE_ARGS {
             CreateMutex: None,
             DestroyMutex: None,
             LockMutex: None,
@@ -146,24 +147,25 @@ impl HsmLib {
             flags: CKF_OS_LOCKING_OK,
             pReserved: ptr::null_mut(),
         };
-        unsafe {
-            // let rv = self.hsm.C_Initialize.deref()(&pInitArgs);
-            let rv = hsm_lib.C_Initialize.ok_or_else(|| {
-                HError::Default("C_Initialize not available on library".to_string())
-            })?(&raw const pInitArgs as CK_VOID_PTR);
-            check_rv!(rv, "Failed initializing the HSM");
-            Ok(())
-        }
+        hsm_call!(
+            hsm_lib,
+            "Failed initializing the HSM",
+            C_Initialize,
+            (&raw const p_init_args)
+                .cast::<std::ffi::c_void>()
+                .cast_mut()
+        );
+        Ok(())
     }
 
     fn finalize(&self) -> HResult<()> {
-        unsafe {
-            let rv = self.C_Finalize.ok_or_else(|| {
-                HError::Default("C_Finalize not available on library".to_string())
-            })?(ptr::null_mut());
-            check_rv!(rv, "Failed to finalize the HSM");
-            Ok(())
-        }
+        hsm_call!(
+            self,
+            "Failed to finalize the HSM",
+            C_Finalize,
+            ptr::null_mut()
+        );
+        Ok(())
     }
 }
 

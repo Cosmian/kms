@@ -18,7 +18,7 @@ use openssl::{
 use crate::{kms_error, result::KResult};
 
 /// This holds `KeyPair` information when one is created for the subject
-pub(crate) struct KeyPairData {
+pub(super) struct KeyPairData {
     pub(crate) private_key_id: UniqueIdentifier,
     pub(crate) private_key_object: Object,
     pub(crate) private_key_tags: HashSet<String>,
@@ -44,8 +44,8 @@ impl Display for KeyPairData {
 }
 
 /// The party that gets signed by the issuer and gets the certificate
-#[allow(clippy::large_enum_variant)]
-pub(crate) enum Subject {
+#[expect(clippy::large_enum_variant)]
+pub(super) enum Subject {
     X509Req(
         /// Unique identifier of the certificate to create
         UniqueIdentifier,

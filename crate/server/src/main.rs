@@ -149,8 +149,8 @@ async fn run() -> KResult<()> {
     {
         warn!("This is a demo version, the server will stop in 3 months");
         let demo = actix_rt::spawn(expiry::demo_timeout());
-        futures::future::select(Box::pin(start_kms_server(server_params, None)), demo).await;
-    }
+        futures::future::select(Box::pin(start_kms_server(server_params, None)), demo).await
+    };
 
     // Start the KMS
     #[cfg(not(feature = "timeout"))]
@@ -161,7 +161,7 @@ async fn run() -> KResult<()> {
 
 #[cfg(feature = "non-fips")]
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::unwrap_in_result)]
 mod tests {
     use std::path::PathBuf;
 
@@ -259,10 +259,12 @@ mod tests {
                 ansi_colors: false,
             },
             info: false,
-            hsm_model: String::new(),
-            hsm_admin: String::new(),
-            hsm_slot: vec![],
-            hsm_password: vec![],
+            hsm: cosmian_kms_server::config::HsmConfig {
+                hsm_model: String::new(),
+                hsm_admin: String::new(),
+                hsm_slot: vec![],
+                hsm_password: vec![],
+            },
             key_encryption_key: Some("key wrapping key".to_owned()),
             non_revocable_key_id: None,
             privileged_users: None,

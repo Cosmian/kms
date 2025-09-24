@@ -19,11 +19,17 @@ const MYSQL_FILE_QUERIES: &str = include_str!("sql/query_mysql.sql");
 const SQLITE_FILE_QUERIES: &str = include_str!("sql/query.sql");
 
 static PGSQL_QUERIES: LazyLock<Loader> = LazyLock::new(|| {
+    // SAFETY: SQL files are included at compile time and should be valid
+    #[expect(clippy::expect_used)]
     Loader::get_queries_from(PGSQL_FILE_QUERIES).expect("Can't parse the SQL file")
 });
 static MYSQL_QUERIES: LazyLock<Loader> = LazyLock::new(|| {
+    // SAFETY: SQL files are included at compile time and should be valid
+    #[expect(clippy::expect_used)]
     Loader::get_queries_from(MYSQL_FILE_QUERIES).expect("Can't parse the SQL file")
 });
 static SQLITE_QUERIES: LazyLock<Loader> = LazyLock::new(|| {
+    // SAFETY: SQL files are included at compile time and should be valid
+    #[expect(clippy::expect_used)]
     Loader::get_queries_from(SQLITE_FILE_QUERIES).expect("Can't parse the SQL file")
 });

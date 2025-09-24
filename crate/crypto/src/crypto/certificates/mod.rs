@@ -1,4 +1,4 @@
-pub const EXTENSION_CONFIG: &[u8] = br"
+pub const EXTENSION_CONFIG: &[u8] = b"
 [ v3_ca ]
 keyUsage=critical,nonRepudiation,digitalSignature,dataEncipherment,keyEncipherment
 extendedKeyUsage=emailProtection

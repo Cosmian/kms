@@ -193,7 +193,7 @@ pub fn to_rsa_private_key(
                             public_key_uid.to_owned(),
                         ),
                     }]),
-                    sensitive: if sensitive { Some(true) } else { None },
+                    sensitive: sensitive.then_some(true),
                     ..Attributes::default()
                 }),
             }),

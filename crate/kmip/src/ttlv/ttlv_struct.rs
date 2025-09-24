@@ -175,6 +175,25 @@ pub enum TtlvType {
     DateTimeExtended = 0x0B,
 }
 
+impl TtlvType {
+    #[must_use]
+    pub const fn to_byte(self) -> u8 {
+        match self {
+            Self::Structure => 0x01,
+            Self::Integer => 0x02,
+            Self::LongInteger => 0x03,
+            Self::BigInteger => 0x04,
+            Self::Enumeration => 0x05,
+            Self::Boolean => 0x06,
+            Self::TextString => 0x07,
+            Self::ByteString => 0x08,
+            Self::DateTime => 0x09,
+            Self::Interval => 0x0A,
+            Self::DateTimeExtended => 0x0B,
+        }
+    }
+}
+
 impl TryFrom<u8> for TtlvType {
     type Error = TtlvError;
 

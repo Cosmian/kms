@@ -3,7 +3,6 @@
 //! ```
 //! HSM_USER_PASSWORD=12345678 cargo test --target x86_64-unknown-linux-gnu --features softhsm2 -- tests::test_hsm_all
 //! ```
-
 use std::{collections::HashMap, ptr, sync::Arc, thread};
 
 use cosmian_kms_base_hsm::{
@@ -25,7 +24,7 @@ use crate::Softhsm2;
 const LIB_PATH: &str = "/usr/lib/softhsm/libsofthsm2.so";
 
 fn generate_random_data<const T: usize>() -> HResult<[u8; T]> {
-    let mut bytes = [0u8; T];
+    let mut bytes = [0_u8; T];
     OsRng
         .try_fill_bytes(&mut bytes)
         .map_err(|e| HError::Default(format!("Error generating random data: {e}")))?;
@@ -35,7 +34,7 @@ fn generate_random_data<const T: usize>() -> HResult<[u8; T]> {
 fn get_slot() -> HResult<Arc<SlotManager>> {
     let user_password = get_hsm_password()?;
     let slot = get_hsm_slot_id()?;
-    let passwords = HashMap::from([(slot, Some(user_password.clone()))]);
+    let passwords = HashMap::from([(slot, Some(user_password))]);
     let hsm = Softhsm2::instantiate(LIB_PATH, passwords)?;
     let slots = hsm.get_available_slot_list()?;
     assert_eq!(slots.len(), 1);
@@ -101,7 +100,7 @@ fn test_hsm_get_mechanisms() -> HResult<()> {
     log_init(None);
     let slot = get_slot()?;
     let mut mechanisms = slot.get_supported_mechanisms()?;
-    mechanisms.sort();
+    mechanisms.sort_unstable();
     info!("Supported mechanisms: {:?}", mechanisms);
     let pkcs_oaep_mechanism_info = slot.get_mechanism_info(CKM_RSA_PKCS_OAEP);
     info!("CKM_RSA_PKCS_OAEP info: {:?}", pkcs_oaep_mechanism_info);
@@ -121,7 +120,7 @@ fn test_hsm_get_mechanisms() -> HResult<()> {
 fn test_hsm_get_supported_algorithms() -> HResult<()> {
     let user_password = get_hsm_password()?;
     let slot = get_hsm_slot_id()?;
-    let passwords = HashMap::from([(slot, Some(user_password.clone()))]);
+    let passwords = HashMap::from([(slot, Some(user_password))]);
     let hsm = Softhsm2::instantiate(LIB_PATH, passwords)?;
     let supported_algorithms = hsm.get_algorithms(slot)?;
     info!("{:?}", supported_algorithms);
@@ -167,7 +166,7 @@ fn test_hsm_generate_aes_key() -> HResult<()> {
     // assert the key handles are identical
     assert_eq!(key_handle, session.get_object_handle(key_id.as_bytes())?);
     // it should not be exportable
-    assert!(session.export_key(key_handle).is_err());
+    session.export_key(key_handle).unwrap_err();
     Ok(())
 }
 
@@ -225,7 +224,7 @@ fn test_hsm_generate_rsa_keypair() -> HResult<()> {
     info!("Generated sensitive RSA key: sk: {sk_id}, pk: {pk_id}");
     // the private key should not be exportable
     let sk_handle = session.get_object_handle(sk_id.as_bytes())?;
-    assert!(session.export_key(sk_handle).is_err());
+    session.export_key(sk_handle).unwrap_err();
     // the public key should be exportable
     let pk_handle = session.get_object_handle(pk_id.as_bytes())?;
     let _key = session.export_key(pk_handle)?;
@@ -390,7 +389,7 @@ fn test_hsm_aes_cbc_multi_round_encrypt() -> HResult<()> {
         .clone()
         .unwrap_or_default()
         .try_into()
-        .map_err(|_| HError::Default("IV must be exactly 16 bytes long".to_string()))?;
+        .map_err(|_| HError::Default("IV must be exactly 16 bytes long".to_owned()))?;
     let enc_1k_multi = session.encrypt_aes_cbc_multi_round(sk, iv, &data_1k, 16)?;
     assert_eq!(enc_1k_multi.ciphertext, enc_1k_single.ciphertext);
     assert_eq!(enc_1k_multi.tag, enc_1k_single.tag);
@@ -410,7 +409,7 @@ fn test_hsm_aes_cbc_multi_round_encrypt() -> HResult<()> {
     let plaintext_1k_single_multi = session.decrypt_aes_cbc_multi_round(
         sk,
         &enc_1k_single.iv.clone().unwrap_or_default(),
-        &enc_1k_single.ciphertext.clone(),
+        &enc_1k_single.ciphertext,
         16,
     )?;
     let plaintext_1k_multi_single = session.decrypt(
@@ -447,7 +446,7 @@ fn test_hsm_aes_cbc_multi_round_encrypt() -> HResult<()> {
         .clone()
         .unwrap_or_default()
         .try_into()
-        .map_err(|_| HError::Default("IV must be exactly 16 bytes long".to_string()))?;
+        .map_err(|_| HError::Default("IV must be exactly 16 bytes long".to_owned()))?;
     let enc_8k_multi = session.encrypt_aes_cbc_multi_round(sk, iv, &data_8k, 128)?;
     assert_eq!(enc_8k_multi.ciphertext, enc_8k_single.ciphertext);
     assert_eq!(enc_8k_multi.tag, enc_8k_single.tag);
@@ -467,7 +466,7 @@ fn test_hsm_aes_cbc_multi_round_encrypt() -> HResult<()> {
     let plaintext_8k_single_multi = session.decrypt_aes_cbc_multi_round(
         sk,
         &enc_8k_single.iv.clone().unwrap_or_default(),
-        &enc_8k_single.ciphertext.clone(),
+        &enc_8k_single.ciphertext,
         128,
     )?;
     let plaintext_8k_multi_single = session.decrypt(
@@ -534,7 +533,9 @@ fn test_hsm_multi_threaded_rsa_encrypt_decrypt_test() -> HResult<()> {
     }
 
     for handle in handles {
-        handle.join().expect("Thread panicked")?;
+        handle
+            .join()
+            .map_err(|e| HError::Default(format!("Thread panicked: {e:?}")))??;
     }
     info!("Successfully encrypted/decrypted with RSA OAEP in multiple threads");
     Ok(())
@@ -616,12 +617,12 @@ fn test_hsm_get_key_metadata() -> HResult<()> {
     // get the key basics
     let key_type = session
         .get_key_type(key_handle)?
-        .ok_or_else(|| HError::Default("Key not found".to_string()))?;
+        .ok_or_else(|| HError::Default("Key not found".to_owned()))?;
     assert_eq!(key_type, KeyType::AesKey);
     // get the metadata
     let metadata = session
         .get_key_metadata(key_handle)?
-        .ok_or_else(|| HError::Default("Key not found".to_string()))?;
+        .ok_or_else(|| HError::Default("Key not found".to_owned()))?;
     assert_eq!(metadata.key_type, KeyType::AesKey);
     assert!(metadata.sensitive);
     assert_eq!(metadata.key_length_in_bits, 256);
@@ -640,13 +641,13 @@ fn test_hsm_get_key_metadata() -> HResult<()> {
     // get the private key basics
     let key_type = session
         .get_key_type(sk)?
-        .ok_or_else(|| HError::Default("Key not found".to_string()))?;
+        .ok_or_else(|| HError::Default("Key not found".to_owned()))?;
     assert_eq!(key_type, KeyType::RsaPrivateKey);
 
     // get the private key metadata
     let metadata = session
         .get_key_metadata(sk)?
-        .ok_or_else(|| HError::Default("Key not found".to_string()))?;
+        .ok_or_else(|| HError::Default("Key not found".to_owned()))?;
     assert_eq!(metadata.key_type, KeyType::RsaPrivateKey);
     assert_eq!(metadata.key_length_in_bits, 2048);
     assert_eq!(metadata.id.as_str(), sk_id.as_str());
@@ -655,13 +656,13 @@ fn test_hsm_get_key_metadata() -> HResult<()> {
     // get the public key basics
     let key_type = session
         .get_key_type(pk)?
-        .ok_or_else(|| HError::Default("Key not found".to_string()))?;
+        .ok_or_else(|| HError::Default("Key not found".to_owned()))?;
     assert_eq!(key_type, KeyType::RsaPublicKey);
 
     // get the public key metadata
     let metadata = session
         .get_key_metadata(pk)?
-        .ok_or_else(|| HError::Default("Key not found".to_string()))?;
+        .ok_or_else(|| HError::Default("Key not found".to_owned()))?;
     assert_eq!(metadata.key_type, KeyType::RsaPublicKey);
     // assert!(metadata.sensitive);
     assert_eq!(metadata.key_length_in_bits, 2048);

@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 use std::sync::RwLock;
 
 use cosmian_logger::trace;

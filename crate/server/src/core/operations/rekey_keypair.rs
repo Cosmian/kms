@@ -29,7 +29,6 @@ use crate::{
     result::{KResult, KResultHelper},
 };
 
-#[allow(clippy::used_underscore_binding)]
 pub(crate) async fn rekey_keypair(
     kms: &KMS,
     request: ReKeyKeyPair,
@@ -77,6 +76,7 @@ pub(crate) async fn rekey_keypair(
             }
         }
 
+        #[expect(clippy::used_underscore_binding)]
         #[cfg(feature = "non-fips")]
         if Some(CryptographicAlgorithm::CoverCrypt) == _attributes.cryptographic_algorithm {
             let action = rekey_edit_action_from_attributes(_attributes)?;

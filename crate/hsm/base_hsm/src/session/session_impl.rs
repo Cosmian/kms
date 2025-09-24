@@ -52,12 +52,12 @@ use cosmian_logger::{debug, trace};
 use pkcs11_sys::{
     CK_AES_GCM_PARAMS, CK_ATTRIBUTE, CK_BBOOL, CK_FALSE, CK_KEY_TYPE, CK_MECHANISM,
     CK_MECHANISM_TYPE, CK_OBJECT_CLASS, CK_OBJECT_HANDLE, CK_RSA_PKCS_MGF_TYPE,
-    CK_RSA_PKCS_OAEP_PARAMS, CK_SESSION_HANDLE, CK_TRUE, CK_ULONG, CK_VOID_PTR, CKA_CLASS,
-    CKA_COEFFICIENT, CKA_EXPONENT_1, CKA_EXPONENT_2, CKA_KEY_TYPE, CKA_LABEL, CKA_MODULUS,
-    CKA_PRIME_1, CKA_PRIME_2, CKA_PRIVATE_EXPONENT, CKA_PUBLIC_EXPONENT, CKA_SENSITIVE, CKA_VALUE,
-    CKA_VALUE_LEN, CKG_MGF1_SHA1, CKG_MGF1_SHA256, CKG_MGF1_SHA384, CKG_MGF1_SHA512, CKK_AES,
-    CKK_RSA, CKK_VENDOR_DEFINED, CKM_AES_CBC, CKM_AES_GCM, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP,
-    CKM_SHA_1, CKM_SHA256, CKM_SHA384, CKM_SHA512, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKO_SECRET_KEY,
+    CK_RSA_PKCS_OAEP_PARAMS, CK_SESSION_HANDLE, CK_TRUE, CK_ULONG, CKA_CLASS, CKA_COEFFICIENT,
+    CKA_EXPONENT_1, CKA_EXPONENT_2, CKA_KEY_TYPE, CKA_LABEL, CKA_MODULUS, CKA_PRIME_1, CKA_PRIME_2,
+    CKA_PRIVATE_EXPONENT, CKA_PUBLIC_EXPONENT, CKA_SENSITIVE, CKA_VALUE, CKA_VALUE_LEN,
+    CKG_MGF1_SHA1, CKG_MGF1_SHA256, CKG_MGF1_SHA384, CKG_MGF1_SHA512, CKK_AES, CKK_RSA,
+    CKK_VENDOR_DEFINED, CKM_AES_CBC, CKM_AES_GCM, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP, CKM_SHA_1,
+    CKM_SHA256, CKM_SHA384, CKM_SHA512, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKO_SECRET_KEY,
     CKO_VENDOR_DEFINED, CKR_ATTRIBUTE_SENSITIVE, CKR_OBJECT_HANDLE_INVALID, CKR_OK,
     CKZ_DATA_SPECIFIED,
 };
@@ -66,7 +66,7 @@ use uuid::Uuid;
 use zeroize::Zeroizing;
 
 pub use crate::session::{aes::AesKeySize, rsa::RsaKeySize};
-use crate::{HError, HResult, ObjectHandlesCache, check_rv, hsm_capabilities::HsmCapabilities};
+use crate::{HError, HResult, ObjectHandlesCache, hsm_call, hsm_capabilities::HsmCapabilities};
 
 /// AES block size in bytes
 const AES_BLOCK_SIZE: usize = 16;
@@ -77,7 +77,7 @@ const AES_GCM_AUTH_TAG_LENGTH: usize = 16;
 /// Generate a random nonce of size T
 /// This function is used to generate a random nonce for the AES GCM or a random IV for AES CBC encryption
 fn generate_random_nonce<const T: usize>() -> HResult<[u8; T]> {
-    let mut bytes = [0u8; T];
+    let mut bytes = [0_u8; T];
     OsRng
         .try_fill_bytes(&mut bytes)
         .map_err(|e| HError::Default(format!("Error generating random nonce: {e}")))?;
@@ -85,7 +85,7 @@ fn generate_random_nonce<const T: usize>() -> HResult<[u8; T]> {
 }
 
 /// Encryption algorithm supported by the HSM
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum HsmEncryptionAlgorithm {
     AesCbc,
     AesGcm,
@@ -97,16 +97,17 @@ pub enum HsmEncryptionAlgorithm {
 impl From<CryptoAlgorithm> for HsmEncryptionAlgorithm {
     fn from(algorithm: CryptoAlgorithm) -> Self {
         match algorithm {
-            CryptoAlgorithm::AesCbc => HsmEncryptionAlgorithm::AesCbc,
-            CryptoAlgorithm::AesGcm => HsmEncryptionAlgorithm::AesGcm,
-            CryptoAlgorithm::RsaPkcsV15 => HsmEncryptionAlgorithm::RsaPkcsV15,
-            CryptoAlgorithm::RsaOaepSha256 => HsmEncryptionAlgorithm::RsaOaepSha256,
-            CryptoAlgorithm::RsaOaepSha1 => HsmEncryptionAlgorithm::RsaOaepSha1,
+            CryptoAlgorithm::AesCbc => Self::AesCbc,
+            CryptoAlgorithm::AesGcm => Self::AesGcm,
+            CryptoAlgorithm::RsaPkcsV15 => Self::RsaPkcsV15,
+            CryptoAlgorithm::RsaOaepSha256 => Self::RsaOaepSha256,
+            CryptoAlgorithm::RsaOaepSha1 => Self::RsaOaepSha1,
         }
     }
 }
 
 /// A session with an HSM (Hardware Security Module) that implements PKCS#11 interface.
+///
 /// This structure represents an active connection to the HSM and provides methods to
 /// perform cryptographic operations and key management.
 ///
@@ -171,7 +172,7 @@ impl From<CryptoAlgorithm> for HsmEncryptionAlgorithm {
 /// * Unsupported operations
 pub struct Session {
     hsm: Arc<crate::hsm_lib::HsmLib>,
-    session_handle: CK_SESSION_HANDLE,
+    handle: CK_SESSION_HANDLE,
     object_handles_cache: Arc<ObjectHandlesCache>,
     supported_oaep_hash_cache: Arc<Mutex<Option<Vec<CK_MECHANISM_TYPE>>>>,
     is_logged_in: bool,
@@ -188,9 +189,9 @@ impl Session {
         hsm_capabilities: HsmCapabilities,
     ) -> Self {
         debug!("Creating new session: {session_handle}");
-        Session {
+        Self {
             hsm,
-            session_handle,
+            handle: session_handle,
             object_handles_cache,
             supported_oaep_hash_cache,
             is_logged_in,
@@ -204,8 +205,8 @@ impl Session {
     }
 
     /// Get the PKCS#11 session handle
-    pub(crate) fn session_handle(&self) -> CK_SESSION_HANDLE {
-        self.session_handle
+    pub(crate) const fn session_handle(&self) -> CK_SESSION_HANDLE {
+        self.handle
     }
 
     /// Get the object handles cache
@@ -215,19 +216,16 @@ impl Session {
 
     /// Close the session and log out if necessary
     pub fn close(&self) -> HResult<()> {
-        unsafe {
-            if self.is_logged_in {
-                let rv = self.hsm.C_Logout.ok_or_else(|| {
-                    HError::Default("C_Logout not available on library".to_string())
-                })?(self.session_handle);
-                check_rv!(rv, "Failed logging out");
-            }
-            let rv = self.hsm.C_CloseSession.ok_or_else(|| {
-                HError::Default("C_CloseSession not available on library".to_string())
-            })?(self.session_handle);
-            check_rv!(rv, "Failed closing a session");
-            Ok(())
+        if self.is_logged_in {
+            hsm_call!(self.hsm, "Failed logging out", C_Logout, self.handle);
         }
+        hsm_call!(
+            self.hsm,
+            "Failed closing a session",
+            C_CloseSession,
+            self.handle
+        );
+        Ok(())
     }
 
     /// Retrieve the hash algorithms supported for RSA OAEP encryption by the HSM.
@@ -258,7 +256,7 @@ impl Session {
         let mut cache = self
             .supported_oaep_hash_cache
             .lock()
-            .map_err(|_| HError::Default("Failed to acquire OAEP hash cache lock".to_owned()))?;
+            .map_err(|e| HError::Default(format!("Failed to acquire OAEP hash cache lock: {e}")))?;
         if let Some(ref list) = *cache {
             return Ok(list.clone());
         }
@@ -293,17 +291,18 @@ impl Session {
 
             let mut mechanism = CK_MECHANISM {
                 mechanism: CKM_RSA_PKCS_OAEP,
-                pParameter: &raw mut params as CK_VOID_PTR,
-                ulParameterLen: size_of::<CK_RSA_PKCS_OAEP_PARAMS>() as CK_ULONG,
+                pParameter: (&raw mut params).cast::<std::ffi::c_void>(),
+                ulParameterLen: CK_ULONG::try_from(size_of::<CK_RSA_PKCS_OAEP_PARAMS>())?,
             };
 
             // We don't actually encrypt, just see if init succeeds
+            #[expect(unsafe_code)]
             let rv = unsafe {
                 self.hsm.C_EncryptInit.ok_or_else(|| {
-                    let _ = self.destroy_object(sk_handle);
-                    let _ = self.destroy_object(pk_handle);
-                    HError::Default("C_EncryptInit not available on library".to_string())
-                })?(self.session_handle, &raw mut mechanism, pk_handle)
+                    drop(self.destroy_object(sk_handle));
+                    drop(self.destroy_object(pk_handle));
+                    HError::Default("C_EncryptInit not available on library".to_owned())
+                })?(self.handle, &raw mut mechanism, pk_handle)
             };
 
             if rv == CKR_OK {
@@ -345,53 +344,51 @@ impl Session {
         mut template: Vec<CK_ATTRIBUTE>,
     ) -> HResult<Vec<CK_OBJECT_HANDLE>> {
         let mut object_handles: Vec<CK_OBJECT_HANDLE> = Vec::new();
-        unsafe {
-            let rv = self.hsm.C_FindObjectsInit.ok_or_else(|| {
-                HError::Default("C_FindObjectsInit not available on library".to_string())
-            })?(
-                self.session_handle,
-                template.as_mut_ptr(),
-                template.len() as CK_ULONG,
-            );
-            check_rv!(
-                rv,
-                "Failed to initialize object search: C_FindObjectsInit failed: {rv}"
-            );
+        hsm_call!(
+            self.hsm,
+            "Failed to initialize object search: C_FindObjectsInit failed",
+            C_FindObjectsInit,
+            self.handle,
+            template.as_mut_ptr(),
+            CK_ULONG::try_from(template.len())?
+        );
 
-            let max_object_count = self.hsm_capabilities.find_max_object_count as usize;
-            let mut handles_buf = vec![0 as CK_OBJECT_HANDLE; max_object_count];
-            let mut object_count: CK_ULONG = 0;
-            loop {
-                let rv = self.hsm.C_FindObjects.ok_or_else(|| {
-                    HError::Default("C_FindObjects not available on library".to_string())
-                })?(
-                    self.session_handle,
-                    handles_buf.as_mut_ptr(),
-                    self.hsm_capabilities.find_max_object_count, //ulMaxObjectCount
-                    &raw mut object_count,
-                );
-                check_rv!(rv, "Failed to find objects");
-                if object_count == 0 {
-                    break;
-                }
-                trace!("Found {object_count} objects");
-                if object_count > max_object_count as CK_ULONG {
-                    return Err(HError::Default(
-                        "More objects returned than requested".to_owned(),
-                    ));
-                }
-                object_handles.extend_from_slice(
-                    handles_buf.get(..object_count as usize).ok_or_else(|| {
+        let max_object_count = usize::try_from(self.hsm_capabilities.find_max_object_count)?;
+        let mut handles_buf = vec![CK_OBJECT_HANDLE::default(); max_object_count];
+        let mut object_count: CK_ULONG = 0;
+        loop {
+            hsm_call!(
+                self.hsm,
+                "Failed to find objects",
+                C_FindObjects,
+                self.handle,
+                handles_buf.as_mut_ptr(),
+                self.hsm_capabilities.find_max_object_count, //ulMaxObjectCount
+                &raw mut object_count
+            );
+            if object_count == 0 {
+                break;
+            }
+            trace!("Found {object_count} objects");
+            if object_count > CK_ULONG::try_from(max_object_count)? {
+                return Err(HError::Default(
+                    "More objects returned than requested".to_owned(),
+                ));
+            }
+            object_handles.extend_from_slice(
+                handles_buf
+                    .get(..usize::try_from(object_count)?)
+                    .ok_or_else(|| {
                         HError::Default("Invalid object count returned from HSM".to_owned())
                     })?,
-                );
-            }
-
-            let rv = self.hsm.C_FindObjectsFinal.ok_or_else(|| {
-                HError::Default("C_FindObjectsFinal not available on library".to_string())
-            })?(self.session_handle);
-            check_rv!(rv, "Failed to finalize object search");
+            );
         }
+        hsm_call!(
+            self.hsm,
+            "Failed to finalize object search",
+            C_FindObjectsFinal,
+            self.handle
+        );
         Ok(object_handles)
     }
 
@@ -432,8 +429,8 @@ impl Session {
         // and we do the same on base HSM
         let template = [CK_ATTRIBUTE {
             type_: CKA_LABEL,
-            pValue: object_id.as_ptr() as CK_VOID_PTR,
-            ulValueLen: object_id.len() as CK_ULONG,
+            pValue: object_id.as_ptr().cast::<std::ffi::c_void>().cast_mut(),
+            ulValueLen: CK_ULONG::try_from(object_id.len())?,
         }];
 
         // Get all handles for objects that have the appropriate label
@@ -447,15 +444,18 @@ impl Session {
                     .unwrap_or(object_id_trimmed);
                 let template_trimmed = [CK_ATTRIBUTE {
                     type_: CKA_LABEL,
-                    pValue: object_id_trimmed.as_ptr() as CK_VOID_PTR,
-                    ulValueLen: object_id_trimmed.len() as CK_ULONG,
+                    pValue: object_id_trimmed
+                        .as_ptr()
+                        .cast::<std::ffi::c_void>()
+                        .cast_mut(),
+                    ulValueLen: CK_ULONG::try_from(object_id_trimmed.len())?,
                 }];
                 object_handles = self.find_object_handles(template_trimmed.to_vec())?;
                 if object_handles.is_empty() {
-                    return Err(HError::Default("Object not found".to_string()));
+                    return Err(HError::Default("Object not found".to_owned()));
                 }
             } else {
-                return Err(HError::Default("Object not found".to_string()));
+                return Err(HError::Default("Object not found".to_owned()));
             }
         }
 
@@ -466,9 +466,8 @@ impl Session {
             // Multiple matches in case the HSM uses the same ID for SK and PK
             debug!("Found {} possible handles", object_handles.len());
             for handle in object_handles {
-                let object_type = match self.get_key_type(handle)? {
-                    None => continue,
-                    Some(object_type) => object_type,
+                let Some(object_type) = self.get_key_type(handle)? else {
+                    continue
                 };
                 if object_id.ends_with(b"_pk") {
                     // We are looking for a public key. Check if the results contain one.
@@ -505,25 +504,27 @@ impl Session {
     }
 
     pub fn generate_random(&self, len: usize) -> HResult<Vec<u8>> {
-        unsafe {
-            let mut values = vec![0u8; len];
-            let values_ptr: *mut u8 = values.as_mut_ptr();
-            #[cfg(target_os = "windows")]
-            let len = u32::try_from(len)?;
-            #[cfg(not(target_os = "windows"))]
-            let len = u64::try_from(len)?;
-            let rv = self.hsm.C_GenerateRandom.ok_or_else(|| {
-                HError::Default("C_GenerateRandom not available on library".to_string())
-            })?(self.session_handle, values_ptr, len);
-            check_rv!(rv, "Failed generating random data");
-            Ok(values)
-        }
+        let mut values = vec![0_u8; len];
+        #[cfg(target_os = "windows")]
+        let len = u32::try_from(len)?;
+        #[cfg(not(target_os = "windows"))]
+        let len = u64::try_from(len)?;
+        hsm_call!(
+            self.hsm,
+            "Failed generating random data",
+            C_GenerateRandom,
+            self.handle,
+            values.as_mut_ptr(),
+            len
+        );
+        Ok(values)
     }
 
     /// List objects in the HSM that match the specified filter
     /// The filter can be used to narrow down the search to specific types of objects
     /// such as AES keys, RSA keys, etc.
     /// If no filter is provided, all objects are listed.
+    #[allow(clippy::needless_pass_by_value)]
     pub fn list_objects(&self, object_filter: HsmObjectFilter) -> HResult<Vec<CK_OBJECT_HANDLE>> {
         let mut template: Vec<CK_ATTRIBUTE> = Vec::new();
         match object_filter {
@@ -532,43 +533,57 @@ impl Session {
                 template.extend([
                     CK_ATTRIBUTE {
                         type_: CKA_CLASS,
-                        pValue: std::ptr::from_ref(&CKO_SECRET_KEY) as *mut _,
-                        ulValueLen: size_of::<CK_OBJECT_CLASS>() as CK_ULONG,
+                        pValue: std::ptr::from_ref(&CKO_SECRET_KEY)
+                            .cast::<std::ffi::c_void>()
+                            .cast_mut(),
+                        ulValueLen: CK_ULONG::try_from(size_of::<CK_OBJECT_CLASS>())?,
                     },
                     CK_ATTRIBUTE {
                         type_: CKA_KEY_TYPE,
-                        pValue: std::ptr::from_ref(&CKK_AES) as *mut _,
-                        ulValueLen: size_of::<CK_KEY_TYPE>() as CK_ULONG,
+                        pValue: std::ptr::from_ref(&CKK_AES)
+                            .cast::<std::ffi::c_void>()
+                            .cast_mut(),
+                        ulValueLen: CK_ULONG::try_from(size_of::<CK_KEY_TYPE>())?,
                     },
                 ]);
             }
             HsmObjectFilter::RsaKey => template.extend([CK_ATTRIBUTE {
                 type_: CKA_KEY_TYPE,
-                pValue: std::ptr::from_ref(&CKK_RSA) as *mut _,
-                ulValueLen: size_of::<CK_KEY_TYPE>() as CK_ULONG,
+                pValue: std::ptr::from_ref(&CKK_RSA)
+                    .cast::<std::ffi::c_void>()
+                    .cast_mut(),
+                ulValueLen: CK_ULONG::try_from(size_of::<CK_KEY_TYPE>())?,
             }]),
             HsmObjectFilter::RsaPrivateKey => template.extend([
                 CK_ATTRIBUTE {
                     type_: CKA_CLASS,
-                    pValue: std::ptr::from_ref(&CKO_PRIVATE_KEY) as *mut _,
-                    ulValueLen: size_of::<CK_OBJECT_CLASS>() as CK_ULONG,
+                    pValue: std::ptr::from_ref(&CKO_PRIVATE_KEY)
+                        .cast::<std::ffi::c_void>()
+                        .cast_mut(),
+                    ulValueLen: CK_ULONG::try_from(size_of::<CK_OBJECT_CLASS>())?,
                 },
                 CK_ATTRIBUTE {
                     type_: CKA_KEY_TYPE,
-                    pValue: std::ptr::from_ref(&CKK_RSA) as *mut _,
-                    ulValueLen: size_of::<CK_KEY_TYPE>() as CK_ULONG,
+                    pValue: std::ptr::from_ref(&CKK_RSA)
+                        .cast::<std::ffi::c_void>()
+                        .cast_mut(),
+                    ulValueLen: CK_ULONG::try_from(size_of::<CK_KEY_TYPE>())?,
                 },
             ]),
             HsmObjectFilter::RsaPublicKey => template.extend([
                 CK_ATTRIBUTE {
                     type_: CKA_CLASS,
-                    pValue: std::ptr::from_ref(&CKO_PUBLIC_KEY) as *mut _,
-                    ulValueLen: size_of::<CK_OBJECT_CLASS>() as CK_ULONG,
+                    pValue: std::ptr::from_ref(&CKO_PUBLIC_KEY)
+                        .cast::<std::ffi::c_void>()
+                        .cast_mut(),
+                    ulValueLen: CK_ULONG::try_from(size_of::<CK_OBJECT_CLASS>())?,
                 },
                 CK_ATTRIBUTE {
                     type_: CKA_KEY_TYPE,
-                    pValue: std::ptr::from_ref(&CKK_RSA) as *mut _,
-                    ulValueLen: size_of::<CK_KEY_TYPE>() as CK_ULONG,
+                    pValue: std::ptr::from_ref(&CKK_RSA)
+                        .cast::<std::ffi::c_void>()
+                        .cast_mut(),
+                    ulValueLen: CK_ULONG::try_from(size_of::<CK_KEY_TYPE>())?,
                 },
             ]),
         }
@@ -578,12 +593,13 @@ impl Session {
 
     /// Destroy an object in the HSM
     pub fn destroy_object(&self, object_handle: CK_OBJECT_HANDLE) -> HResult<()> {
-        unsafe {
-            let rv = self.hsm.C_DestroyObject.ok_or_else(|| {
-                HError::Default("C_DestroyObject not available on library".to_string())
-            })?(self.session_handle, object_handle);
-            check_rv!(rv, "Failed to destroy object");
-        }
+        hsm_call!(
+            self.hsm,
+            "Failed to destroy object",
+            C_DestroyObject,
+            self.handle,
+            object_handle
+        );
         Ok(())
     }
 
@@ -591,18 +607,48 @@ impl Session {
     ///
     /// PKCS#7 padding ensures that the input length is a multiple of the block size,
     /// which is required for many block cipher encryption algorithms (such as AES in CBC mode).
+    /// The padding consists of N bytes, each with value N, where N is the number of padding
+    /// bytes required to reach the next block boundary.
     ///
     /// # Arguments
-    /// * `data` - The input data to be padded.
+    /// * `data` - The input data to be padded (modified in place).
     /// * `block_size` - The block size in bytes (commonly 16 for AES).
     ///
-    /// # Returns
-    /// * `Vec<u8>` - A new buffer containing the original data with PKCS#7 padding appended.
-    fn pkcs7_pad(&self, data: Vec<u8>, block_size: usize) -> Vec<u8> {
-        let pad_len = block_size - (data.len() % block_size);
-        let mut padded = data;
-        padded.extend(std::iter::repeat_n(pad_len as u8, pad_len));
-        padded
+    /// # Errors
+    /// * Returns an error if the block size is 0 or greater than 255.
+    /// * Returns an error if the resulting data would exceed reasonable size limits.
+    ///
+    /// # Examples
+    /// For a block size of 16:
+    /// - Input of 15 bytes gets 1 padding byte with value 0x01
+    /// - Input of 16 bytes gets 16 padding bytes each with value 0x10
+    /// - Input of 17 bytes gets 15 padding bytes each with value 0x0F
+    fn pkcs7_pad(data: &mut Vec<u8>, block_size: usize) -> HResult<()> {
+        if block_size == 0 || block_size > 255 {
+            return Err(HError::Default(format!(
+                "Invalid block size: {block_size}. Must be between 1 and 255"
+            )));
+        }
+
+        let current_len = data.len();
+        let pad_len = block_size - (current_len % block_size);
+
+        // Ensure we don't overflow when adding padding
+        if current_len.saturating_add(pad_len) < current_len {
+            return Err(HError::Default(
+                "Data too large: adding padding would cause overflow".to_owned(),
+            ));
+        }
+
+        let pad_byte = u8::try_from(pad_len).map_err(|e| {
+            HError::Default(format!("Padding length {pad_len} cannot fit in u8: {e}"))
+        })?;
+
+        // Reserve capacity to avoid multiple allocations
+        data.reserve(pad_len);
+        data.resize(current_len + pad_len, pad_byte);
+
+        Ok(())
     }
 
     /// Remove PKCS#7 padding from the input data.
@@ -623,11 +669,7 @@ impl Session {
     /// * Returns an error if the buffer length is not a multiple of the block size.
     /// * Returns an error if the padding length is invalid or exceeds the block size.
     /// * Returns an error if the padding bytes do not all match the expected value.
-    fn pkcs7_unpad(
-        &self,
-        data: Zeroizing<Vec<u8>>,
-        block_size: usize,
-    ) -> HResult<Zeroizing<Vec<u8>>> {
+    fn pkcs7_unpad(data: Zeroizing<Vec<u8>>, block_size: usize) -> HResult<Zeroizing<Vec<u8>>> {
         if data.is_empty() {
             return Err(HError::Default(
                 "Invalid PKCS#7 padding: empty buffer".to_owned(),
@@ -636,7 +678,7 @@ impl Session {
         if !data.len().is_multiple_of(block_size) {
             return Err(HError::Default("Data doesn't align to blocks".to_owned()));
         }
-        let pad_len = data.last().map(|&b| b as usize).ok_or_else(|| {
+        let pad_len = data.last().map(|&b| usize::from(b)).ok_or_else(|| {
             HError::Default("Invalid PKCS#7 padding: invalid last byte".to_owned())
         })?;
         if pad_len == 0 || pad_len > data.len() || pad_len > block_size {
@@ -647,7 +689,7 @@ impl Session {
             .get(data.len() - pad_len..)
             .ok_or_else(|| HError::Default("Failed to get padding bytes".to_owned()))?
             .iter()
-            .all(|&b| b as usize == pad_len)
+            .all(|&b| usize::from(b) == pad_len)
         {
             return Err(HError::Default("Invalid PKCS#7 padding bytes".to_owned()));
         }
@@ -664,21 +706,21 @@ impl Session {
         algorithm: HsmEncryptionAlgorithm,
         plaintext: &[u8],
     ) -> HResult<EncryptedContent> {
-        Ok(match algorithm {
+        Ok(match &algorithm {
             HsmEncryptionAlgorithm::AesGcm => {
                 let mut nonce = generate_random_nonce::<12>()?;
                 let mut params = CK_AES_GCM_PARAMS {
                     pIv: nonce.as_mut_ptr(),
-                    ulIvLen: AES_GCM_IV_LENGTH as CK_ULONG,
-                    ulIvBits: (AES_GCM_IV_LENGTH * 8) as CK_ULONG,
+                    ulIvLen: CK_ULONG::try_from(AES_GCM_IV_LENGTH)?,
+                    ulIvBits: CK_ULONG::try_from(AES_GCM_IV_LENGTH * 8)?,
                     pAAD: ptr::null_mut(),
                     ulAADLen: 0,
-                    ulTagBits: (AES_GCM_AUTH_TAG_LENGTH * 8) as CK_ULONG,
+                    ulTagBits: CK_ULONG::try_from(AES_GCM_AUTH_TAG_LENGTH * 8)?,
                 };
                 let mut mechanism = CK_MECHANISM {
                     mechanism: CKM_AES_GCM,
-                    pParameter: &raw mut params as CK_VOID_PTR,
-                    ulParameterLen: size_of::<CK_AES_GCM_PARAMS>() as CK_ULONG,
+                    pParameter: (&raw mut params).cast::<std::ffi::c_void>(),
+                    ulParameterLen: CK_ULONG::try_from(size_of::<CK_AES_GCM_PARAMS>())?,
                 };
                 let ciphertext =
                     self.encrypt_with_mechanism(key_handle, &mut mechanism, plaintext)?;
@@ -711,11 +753,12 @@ impl Session {
                 }
                 let mut mechanism = CK_MECHANISM {
                     mechanism: CKM_AES_CBC,
-                    pParameter: iv.as_mut_ptr() as CK_VOID_PTR,
-                    ulParameterLen: iv.len() as CK_ULONG,
+                    pParameter: iv.as_mut_ptr().cast::<std::ffi::c_void>(),
+                    ulParameterLen: CK_ULONG::try_from(iv.len())?,
                 };
 
-                let padded_plaintext = self.pkcs7_pad(plaintext.to_vec(), AES_BLOCK_SIZE);
+                let mut padded_plaintext = plaintext.to_vec();
+                Self::pkcs7_pad(&mut padded_plaintext, AES_BLOCK_SIZE)?;
                 let ciphertext =
                     self.encrypt_with_mechanism(key_handle, &mut mechanism, &padded_plaintext)?;
 
@@ -750,8 +793,10 @@ impl Session {
                 };
                 let mut mechanism = CK_MECHANISM {
                     mechanism: CKM_RSA_PKCS_OAEP,
-                    pParameter: &raw mut params as CK_VOID_PTR,
-                    ulParameterLen: std::mem::size_of::<CK_RSA_PKCS_OAEP_PARAMS>() as CK_ULONG,
+                    pParameter: (&raw mut params).cast::<std::ffi::c_void>(),
+                    ulParameterLen: CK_ULONG::try_from(
+                        std::mem::size_of::<CK_RSA_PKCS_OAEP_PARAMS>(),
+                    )?,
                 };
                 EncryptedContent {
                     ciphertext: self.encrypt_with_mechanism(
@@ -772,8 +817,8 @@ impl Session {
                 };
                 let mut mechanism = CK_MECHANISM {
                     mechanism: CKM_RSA_PKCS_OAEP,
-                    pParameter: &raw mut params as CK_VOID_PTR,
-                    ulParameterLen: size_of::<CK_RSA_PKCS_OAEP_PARAMS>() as CK_ULONG,
+                    pParameter: (&raw mut params).cast::<std::ffi::c_void>(),
+                    ulParameterLen: CK_ULONG::try_from(size_of::<CK_RSA_PKCS_OAEP_PARAMS>())?,
                 };
                 EncryptedContent {
                     ciphertext: self.encrypt_with_mechanism(
@@ -794,7 +839,7 @@ impl Session {
         algorithm: HsmEncryptionAlgorithm,
         ciphertext: &[u8],
     ) -> HResult<Zeroizing<Vec<u8>>> {
-        match algorithm {
+        match &algorithm {
             HsmEncryptionAlgorithm::AesGcm => {
                 if ciphertext.len() < AES_GCM_IV_LENGTH {
                     return Err(HError::Default("Invalid AES GCM ciphertext".to_owned()));
@@ -803,19 +848,19 @@ impl Session {
                     .get(..AES_GCM_IV_LENGTH)
                     .ok_or_else(|| HError::Default("Failed to extract nonce".to_owned()))?
                     .try_into()
-                    .map_err(|_| HError::Default("Invalid AES GCM nonce".to_owned()))?;
+                    .map_err(|e| HError::Default(format!("Invalid AES GCM nonce: {e}")))?;
                 let mut params = CK_AES_GCM_PARAMS {
                     pIv: nonce.as_mut_ptr(),
-                    ulIvLen: AES_GCM_IV_LENGTH as CK_ULONG,
-                    ulIvBits: (AES_GCM_IV_LENGTH * 8) as CK_ULONG,
+                    ulIvLen: CK_ULONG::try_from(AES_GCM_IV_LENGTH)?,
+                    ulIvBits: CK_ULONG::try_from(AES_GCM_IV_LENGTH * 8)?,
                     pAAD: ptr::null_mut(),
                     ulAADLen: 0,
-                    ulTagBits: (AES_GCM_AUTH_TAG_LENGTH * 8) as CK_ULONG,
+                    ulTagBits: CK_ULONG::try_from(AES_GCM_AUTH_TAG_LENGTH * 8)?,
                 };
                 let mut mechanism = CK_MECHANISM {
                     mechanism: CKM_AES_GCM,
-                    pParameter: &raw mut params as CK_VOID_PTR,
-                    ulParameterLen: size_of::<CK_AES_GCM_PARAMS>() as CK_ULONG,
+                    pParameter: (&raw mut params).cast::<std::ffi::c_void>(),
+                    ulParameterLen: CK_ULONG::try_from(size_of::<CK_AES_GCM_PARAMS>())?,
                 };
                 let plaintext = self.decrypt_with_mechanism(
                     key_handle,
@@ -834,7 +879,7 @@ impl Session {
                     .get(..AES_CBC_IV_LENGTH)
                     .ok_or_else(|| HError::Default("Failed to extract iv".to_owned()))?
                     .try_into()
-                    .map_err(|_| HError::Default("Invalid AES CBC IV".to_owned()))?;
+                    .map_err(|e| HError::Default(format!("Invalid AES CBC IV: {e}")))?;
                 if let Some(max_cbc_data_size) = self.hsm_capabilities.max_cbc_data_size {
                     if ciphertext.len() > (max_cbc_data_size + AES_CBC_IV_LENGTH) {
                         debug!("Performing multi round AES CBC decryption");
@@ -850,11 +895,11 @@ impl Session {
                 }
                 let mut mechanism = CK_MECHANISM {
                     mechanism: CKM_AES_CBC,
-                    pParameter: iv.as_mut_ptr() as CK_VOID_PTR,
-                    ulParameterLen: iv.len() as CK_ULONG,
+                    pParameter: iv.as_mut_ptr().cast::<std::ffi::c_void>(),
+                    ulParameterLen: CK_ULONG::try_from(iv.len())?,
                 };
 
-                let paddedPlaintext = self.decrypt_with_mechanism(
+                let padded_plaintext = self.decrypt_with_mechanism(
                     key_handle,
                     &mut mechanism,
                     ciphertext.get(AES_CBC_IV_LENGTH..).ok_or_else(|| {
@@ -862,7 +907,7 @@ impl Session {
                     })?,
                 )?;
 
-                let plaintext = self.pkcs7_unpad(paddedPlaintext, AES_BLOCK_SIZE)?;
+                let plaintext = Self::pkcs7_unpad(padded_plaintext, AES_BLOCK_SIZE)?;
                 Ok(plaintext)
             }
             HsmEncryptionAlgorithm::RsaPkcsV15 => {
@@ -883,8 +928,10 @@ impl Session {
                 };
                 let mut mechanism = CK_MECHANISM {
                     mechanism: CKM_RSA_PKCS_OAEP,
-                    pParameter: &raw mut params as CK_VOID_PTR,
-                    ulParameterLen: std::mem::size_of::<CK_RSA_PKCS_OAEP_PARAMS>() as CK_ULONG,
+                    pParameter: (&raw mut params).cast::<std::ffi::c_void>(),
+                    ulParameterLen: CK_ULONG::try_from(
+                        std::mem::size_of::<CK_RSA_PKCS_OAEP_PARAMS>(),
+                    )?,
                 };
                 self.decrypt_with_mechanism(key_handle, &mut mechanism, ciphertext)
             }
@@ -898,8 +945,10 @@ impl Session {
                 };
                 let mut mechanism = CK_MECHANISM {
                     mechanism: CKM_RSA_PKCS_OAEP,
-                    pParameter: &raw mut params as CK_VOID_PTR,
-                    ulParameterLen: std::mem::size_of::<CK_RSA_PKCS_OAEP_PARAMS>() as CK_ULONG,
+                    pParameter: (&raw mut params).cast::<std::ffi::c_void>(),
+                    ulParameterLen: CK_ULONG::try_from(
+                        std::mem::size_of::<CK_RSA_PKCS_OAEP_PARAMS>(),
+                    )?,
                 };
                 self.decrypt_with_mechanism(key_handle, &mut mechanism, ciphertext)
             }
@@ -944,16 +993,15 @@ impl Session {
         max_round_length: usize,
     ) -> HResult<EncryptedContent> {
         if max_round_length < AES_BLOCK_SIZE {
-            return Err(HError::Default(
-                "Too small maximum round length".to_string(),
-            ));
+            return Err(HError::Default("Too small maximum round length".to_owned()));
         }
         if !max_round_length.is_multiple_of(AES_BLOCK_SIZE) {
             return Err(HError::Default(
-                "Round length must be multiple of block size (16)".to_string(),
+                "Round length must be multiple of block size (16)".to_owned(),
             ));
         }
-        let padded_plaintext = self.pkcs7_pad(plaintext.to_vec(), AES_BLOCK_SIZE);
+        let mut padded_plaintext = plaintext.to_vec();
+        Self::pkcs7_pad(&mut padded_plaintext, AES_BLOCK_SIZE)?;
         let mut round_iv = iv;
         let total_length = padded_plaintext.len();
         let mut processed_length = 0;
@@ -969,8 +1017,8 @@ impl Session {
             );
             let mut mechanism = CK_MECHANISM {
                 mechanism: CKM_AES_CBC,
-                pParameter: round_iv.as_mut_ptr() as CK_VOID_PTR,
-                ulParameterLen: iv.len() as CK_ULONG,
+                pParameter: round_iv.as_mut_ptr().cast::<std::ffi::c_void>(),
+                ulParameterLen: CK_ULONG::try_from(iv.len())?,
             };
             let round_ciphertext = self.encrypt_with_mechanism(
                 key_handle,
@@ -1030,9 +1078,7 @@ impl Session {
         max_round_length: usize,
     ) -> HResult<Zeroizing<Vec<u8>>> {
         if max_round_length < AES_BLOCK_SIZE {
-            return Err(HError::Default(
-                "Too small maximum round length".to_string(),
-            ));
+            return Err(HError::Default("Too small maximum round length".to_owned()));
         }
         if !max_round_length.is_multiple_of(AES_BLOCK_SIZE) {
             return Err(HError::Default(format!(
@@ -1054,7 +1100,7 @@ impl Session {
             .get(..AES_CBC_IV_LENGTH)
             .ok_or_else(|| HError::Default("Failed to get iv".to_owned()))?
             .try_into()
-            .map_err(|_| HError::Default("Invalid IV".to_string()))?;
+            .map_err(|e| HError::Default(format!("Invalid IV: {e}")))?;
         let total_length = ciphertext.len();
         let mut processed_length = 0;
         let mut plaintext: Zeroizing<Vec<u8>> = Zeroizing::new(Vec::with_capacity(total_length));
@@ -1069,8 +1115,8 @@ impl Session {
             );
             let mut mechanism = CK_MECHANISM {
                 mechanism: CKM_AES_CBC,
-                pParameter: round_iv.as_mut_ptr() as CK_VOID_PTR,
-                ulParameterLen: iv.len() as CK_ULONG,
+                pParameter: round_iv.as_mut_ptr().cast::<std::ffi::c_void>(),
+                ulParameterLen: CK_ULONG::try_from(iv.len())?,
             };
             let round_plaintext = self.decrypt_with_mechanism(
                 key_handle,
@@ -1090,7 +1136,7 @@ impl Session {
                     .ok_or_else(|| HError::Default("Failed to get iv byte".to_owned()))?;
             }
         }
-        self.pkcs7_unpad(plaintext, AES_BLOCK_SIZE)
+        Self::pkcs7_unpad(plaintext, AES_BLOCK_SIZE)
     }
 
     fn encrypt_with_mechanism(
@@ -1100,49 +1146,45 @@ impl Session {
         data: &[u8],
     ) -> HResult<Vec<u8>> {
         let mut data = data.to_vec();
-        unsafe {
-            let ck_fn = self.hsm.C_EncryptInit.ok_or_else(|| {
-                HError::Default("C_EncryptInit not available on library".to_string())
-            })?;
+        hsm_call!(
+            self.hsm,
+            "Failed to initialize encryption",
+            C_EncryptInit,
+            self.handle,
+            mechanism,
+            key_handle
+        );
 
-            let rv = ck_fn(self.session_handle, mechanism, key_handle);
-            check_rv!(rv, "Failed to initialize encryption");
+        let mut encrypted_data_len: CK_ULONG = 0;
+        hsm_call!(
+            self.hsm,
+            format!(
+                "Failed to allocate encrypted data length. Data to encrypt is likely too big: {} \
+                 bytes. Error code",
+                data.len()
+            ),
+            C_Encrypt,
+            self.handle,
+            data.as_mut_ptr(),
+            CK_ULONG::try_from(data.len())?,
+            ptr::null_mut(),
+            &raw mut encrypted_data_len
+        );
 
-            let ck_fn = self
-                .hsm
-                .C_Encrypt
-                .ok_or_else(|| HError::Default("C_Encrypt not available on library".to_string()))?;
+        let mut encrypted_data = vec![0_u8; usize::try_from(encrypted_data_len)?];
+        hsm_call!(
+            self.hsm,
+            "Failed to encrypt data",
+            C_Encrypt,
+            self.handle,
+            data.as_mut_ptr(),
+            CK_ULONG::try_from(data.len())?,
+            encrypted_data.as_mut_ptr(),
+            &raw mut encrypted_data_len
+        );
 
-            let mut encrypted_data_len: CK_ULONG = 0;
-            let rv = ck_fn(
-                self.session_handle,
-                data.as_mut_ptr(),
-                data.len() as CK_ULONG,
-                ptr::null_mut(),
-                &raw mut encrypted_data_len,
-            );
-            check_rv!(
-                rv,
-                format!(
-                    "Failed to allocate encrypted data length. Data to encrypt is likely too big: \
-                     {} bytes. Error code",
-                    data.len()
-                )
-            );
-
-            let mut encrypted_data = vec![0u8; encrypted_data_len as usize];
-            let rv = ck_fn(
-                self.session_handle,
-                data.as_mut_ptr(),
-                data.len() as CK_ULONG,
-                encrypted_data.as_mut_ptr(),
-                &raw mut encrypted_data_len,
-            );
-            check_rv!(rv, "Failed to encrypt data");
-
-            encrypted_data.truncate(encrypted_data_len as usize);
-            Ok(encrypted_data)
-        }
+        encrypted_data.truncate(usize::try_from(encrypted_data_len)?);
+        Ok(encrypted_data)
     }
 
     fn decrypt_with_mechanism(
@@ -1152,42 +1194,41 @@ impl Session {
         encrypted_data: &[u8],
     ) -> HResult<Zeroizing<Vec<u8>>> {
         let mut encrypted_data = encrypted_data.to_vec();
-        unsafe {
-            let ck_fn = self.hsm.C_DecryptInit.ok_or_else(|| {
-                HError::Default("C_DecryptInit not available on library".to_string())
-            })?;
+        hsm_call!(
+            self.hsm,
+            "Failed to initialize decryption",
+            C_DecryptInit,
+            self.handle,
+            mechanism,
+            key_handle
+        );
 
-            let rv = ck_fn(self.session_handle, mechanism, key_handle);
-            check_rv!(rv, "Failed to initialize decryption");
+        let mut decrypted_data_len: CK_ULONG = 0;
+        hsm_call!(
+            self.hsm,
+            "Failed to get decrypted data length",
+            C_Decrypt,
+            self.handle,
+            encrypted_data.as_mut_ptr(),
+            CK_ULONG::try_from(encrypted_data.len())?,
+            ptr::null_mut(),
+            &raw mut decrypted_data_len
+        );
 
-            let ck_fn = self
-                .hsm
-                .C_Decrypt
-                .ok_or_else(|| HError::Default("C_Decrypt not available on library".to_string()))?;
+        let mut decrypted_data = vec![0_u8; usize::try_from(decrypted_data_len)?];
+        hsm_call!(
+            self.hsm,
+            "Failed to decrypt data",
+            C_Decrypt,
+            self.handle,
+            encrypted_data.as_mut_ptr(),
+            CK_ULONG::try_from(encrypted_data.len())?,
+            decrypted_data.as_mut_ptr(),
+            &raw mut decrypted_data_len
+        );
 
-            let mut decrypted_data_len: CK_ULONG = 0;
-            let rv = ck_fn(
-                self.session_handle,
-                encrypted_data.as_mut_ptr(),
-                encrypted_data.len() as CK_ULONG,
-                ptr::null_mut(),
-                &raw mut decrypted_data_len,
-            );
-            check_rv!(rv, "Failed to get decrypted data length");
-
-            let mut decrypted_data = vec![0u8; decrypted_data_len as usize];
-            let rv = ck_fn(
-                self.session_handle,
-                encrypted_data.as_mut_ptr(),
-                encrypted_data.len() as CK_ULONG,
-                decrypted_data.as_mut_ptr(),
-                &raw mut decrypted_data_len,
-            );
-            check_rv!(rv, "Failed to decrypt data");
-
-            decrypted_data.truncate(decrypted_data_len as usize);
-            Ok(Zeroizing::new(decrypted_data))
-        }
+        decrypted_data.truncate(usize::try_from(decrypted_data_len)?);
+        Ok(Zeroizing::new(decrypted_data))
     }
 
     /// Export a key from the HSM
@@ -1197,13 +1238,13 @@ impl Session {
         let mut template = [
             CK_ATTRIBUTE {
                 type_: CKA_CLASS,
-                pValue: &raw mut class as CK_VOID_PTR,
-                ulValueLen: size_of::<CK_OBJECT_CLASS>() as CK_ULONG,
+                pValue: (&raw mut class).cast::<std::ffi::c_void>(),
+                ulValueLen: CK_ULONG::try_from(size_of::<CK_OBJECT_CLASS>())?,
             },
             CK_ATTRIBUTE {
                 type_: CKA_KEY_TYPE,
-                pValue: &raw mut key_type as CK_VOID_PTR,
-                ulValueLen: size_of::<CK_ULONG>() as CK_ULONG,
+                pValue: (&raw mut key_type).cast::<std::ffi::c_void>(),
+                ulValueLen: CK_ULONG::try_from(size_of::<CK_ULONG>())?,
             },
         ];
 
@@ -1295,59 +1336,59 @@ impl Session {
         let coefficient_len = template[6].ulValueLen;
         let modulus_len = template[7].ulValueLen;
         let label_len = template[8].ulValueLen;
-        let mut public_exponent: Vec<u8> = vec![0_u8; public_exponent_len as usize];
-        let mut private_exponent: Vec<u8> = vec![0_u8; private_exponent_len as usize];
-        let mut prime_1: Vec<u8> = vec![0_u8; prime_1_len as usize];
-        let mut prime_2: Vec<u8> = vec![0_u8; prime_2_len as usize];
-        let mut exponent_1: Vec<u8> = vec![0_u8; exponent_1_len as usize];
-        let mut exponent_2: Vec<u8> = vec![0_u8; exponent_2_len as usize];
-        let mut coefficient: Vec<u8> = vec![0_u8; coefficient_len as usize];
-        let mut label_bytes: Vec<u8> = vec![0_u8; label_len as usize];
-        let mut modulus: Vec<u8> = vec![0_u8; modulus_len as usize];
+        let mut public_exponent: Vec<u8> = vec![0_u8; usize::try_from(public_exponent_len)?];
+        let mut private_exponent: Vec<u8> = vec![0_u8; usize::try_from(private_exponent_len)?];
+        let mut prime_1: Vec<u8> = vec![0_u8; usize::try_from(prime_1_len)?];
+        let mut prime_2: Vec<u8> = vec![0_u8; usize::try_from(prime_2_len)?];
+        let mut exponent_1: Vec<u8> = vec![0_u8; usize::try_from(exponent_1_len)?];
+        let mut exponent_2: Vec<u8> = vec![0_u8; usize::try_from(exponent_2_len)?];
+        let mut coefficient: Vec<u8> = vec![0_u8; usize::try_from(coefficient_len)?];
+        let mut label_bytes: Vec<u8> = vec![0_u8; usize::try_from(label_len)?];
+        let mut modulus: Vec<u8> = vec![0_u8; usize::try_from(modulus_len)?];
         let mut template = [
             CK_ATTRIBUTE {
                 type_: CKA_PUBLIC_EXPONENT,
-                pValue: public_exponent.as_mut_ptr() as CK_VOID_PTR,
+                pValue: public_exponent.as_mut_ptr().cast::<std::ffi::c_void>(),
                 ulValueLen: public_exponent_len,
             },
             CK_ATTRIBUTE {
                 type_: CKA_PRIVATE_EXPONENT,
-                pValue: private_exponent.as_mut_ptr() as CK_VOID_PTR,
+                pValue: private_exponent.as_mut_ptr().cast::<std::ffi::c_void>(),
                 ulValueLen: private_exponent_len,
             },
             CK_ATTRIBUTE {
                 type_: CKA_PRIME_1,
-                pValue: prime_1.as_mut_ptr() as CK_VOID_PTR,
+                pValue: prime_1.as_mut_ptr().cast::<std::ffi::c_void>(),
                 ulValueLen: prime_1_len,
             },
             CK_ATTRIBUTE {
                 type_: CKA_PRIME_2,
-                pValue: prime_2.as_mut_ptr() as CK_VOID_PTR,
+                pValue: prime_2.as_mut_ptr().cast::<std::ffi::c_void>(),
                 ulValueLen: prime_2_len,
             },
             CK_ATTRIBUTE {
                 type_: CKA_EXPONENT_1,
-                pValue: exponent_1.as_mut_ptr() as CK_VOID_PTR,
+                pValue: exponent_1.as_mut_ptr().cast::<std::ffi::c_void>(),
                 ulValueLen: exponent_1_len,
             },
             CK_ATTRIBUTE {
                 type_: CKA_EXPONENT_2,
-                pValue: exponent_2.as_mut_ptr() as CK_VOID_PTR,
+                pValue: exponent_2.as_mut_ptr().cast::<std::ffi::c_void>(),
                 ulValueLen: exponent_2_len,
             },
             CK_ATTRIBUTE {
                 type_: CKA_COEFFICIENT,
-                pValue: coefficient.as_mut_ptr() as CK_VOID_PTR,
+                pValue: coefficient.as_mut_ptr().cast::<std::ffi::c_void>(),
                 ulValueLen: coefficient_len,
             },
             CK_ATTRIBUTE {
                 type_: CKA_LABEL,
-                pValue: label_bytes.as_mut_ptr() as CK_VOID_PTR,
+                pValue: label_bytes.as_mut_ptr().cast::<std::ffi::c_void>(),
                 ulValueLen: label_len,
             },
             CK_ATTRIBUTE {
                 type_: CKA_MODULUS,
-                pValue: modulus.as_mut_ptr() as CK_VOID_PTR,
+                pValue: modulus.as_mut_ptr().cast::<std::ffi::c_void>(),
                 ulValueLen: modulus_len,
             },
         ];
@@ -1402,23 +1443,23 @@ impl Session {
         let public_exponent_len = template[0].ulValueLen;
         let modulus_len = template[1].ulValueLen;
         let label_len = template[2].ulValueLen;
-        let mut public_exponent: Vec<u8> = vec![0_u8; public_exponent_len as usize];
-        let mut label_bytes: Vec<u8> = vec![0_u8; label_len as usize];
-        let mut modulus: Vec<u8> = vec![0_u8; modulus_len as usize];
+        let mut public_exponent: Vec<u8> = vec![0_u8; usize::try_from(public_exponent_len)?];
+        let mut label_bytes: Vec<u8> = vec![0_u8; usize::try_from(label_len)?];
+        let mut modulus: Vec<u8> = vec![0_u8; usize::try_from(modulus_len)?];
         let mut template = [
             CK_ATTRIBUTE {
                 type_: CKA_PUBLIC_EXPONENT,
-                pValue: public_exponent.as_mut_ptr() as CK_VOID_PTR,
+                pValue: public_exponent.as_mut_ptr().cast::<std::ffi::c_void>(),
                 ulValueLen: public_exponent_len,
             },
             CK_ATTRIBUTE {
                 type_: CKA_LABEL,
-                pValue: label_bytes.as_mut_ptr() as CK_VOID_PTR,
+                pValue: label_bytes.as_mut_ptr().cast::<std::ffi::c_void>(),
                 ulValueLen: label_len,
             },
             CK_ATTRIBUTE {
                 type_: CKA_MODULUS,
-                pValue: modulus.as_mut_ptr() as CK_VOID_PTR,
+                pValue: modulus.as_mut_ptr().cast::<std::ffi::c_void>(),
                 ulValueLen: modulus_len,
             },
         ];
@@ -1465,24 +1506,24 @@ impl Session {
         // Export the value
         let value_len = template[0].ulValueLen;
         let label_len = template[1].ulValueLen;
-        let mut key_value: Vec<u8> = vec![0_u8; value_len as usize];
-        let mut label_bytes: Vec<u8> = vec![0_u8; label_len as usize];
+        let mut key_value: Vec<u8> = vec![0_u8; usize::try_from(value_len)?];
+        let mut label_bytes: Vec<u8> = vec![0_u8; usize::try_from(label_len)?];
         let mut key_size: CK_ULONG = 0;
         let mut template = [
             CK_ATTRIBUTE {
                 type_: CKA_VALUE,
-                pValue: key_value.as_mut_ptr() as CK_VOID_PTR,
+                pValue: key_value.as_mut_ptr().cast::<std::ffi::c_void>(),
                 ulValueLen: value_len,
             },
             CK_ATTRIBUTE {
                 type_: CKA_LABEL,
-                pValue: label_bytes.as_mut_ptr() as CK_VOID_PTR,
+                pValue: label_bytes.as_mut_ptr().cast::<std::ffi::c_void>(),
                 ulValueLen: label_len,
             },
             CK_ATTRIBUTE {
                 type_: CKA_VALUE_LEN,
-                pValue: &raw mut key_size as CK_VOID_PTR,
-                ulValueLen: size_of::<CK_ULONG>() as CK_ULONG,
+                pValue: (&raw mut key_size).cast::<std::ffi::c_void>(),
+                ulValueLen: CK_ULONG::try_from(size_of::<CK_ULONG>())?,
             },
         ];
         if self
@@ -1504,39 +1545,45 @@ impl Session {
         key_handle: CK_OBJECT_HANDLE,
         template: &mut [CK_ATTRIBUTE],
     ) -> HResult<Option<()>> {
-        unsafe {
-            debug!("Retrieving HSM key attributes for key handle: {key_handle}");
-            // Get the length of the key value
-            let rv = self.hsm.C_GetAttributeValue.ok_or_else(|| {
-                HError::Default("C_GetAttributeValue not available on library".to_string())
-            })?(
-                self.session_handle,
-                key_handle,
-                template.as_ptr().cast_mut(),
-                template.len() as CK_ULONG,
-            );
-            if rv == CKR_ATTRIBUTE_SENSITIVE {
+        debug!("Retrieving HSM key attributes for key handle: {key_handle}");
+        // Get the length of the key value
+        #[expect(unsafe_code)]
+        let rv = match self.hsm.C_GetAttributeValue {
+            Some(func) => unsafe {
+                func(
+                    self.handle,
+                    key_handle,
+                    template.as_ptr().cast_mut(),
+                    CK_ULONG::try_from(template.len())?,
+                )
+            },
+            None => {
                 return Err(HError::Default(
-                    "This key is sensitive and cannot be exported from the HSM.".to_string(),
-                ));
+                    "C_GetAttributeValue not available on library".to_owned(),
+                ))
             }
-            if rv == CKR_OBJECT_HANDLE_INVALID {
-                // The key was not found
-                return Ok(None);
-            }
-            check_rv!(
-                rv,
-                format!("Failed to get the HSM attributes for key handle: {key_handle}")
-            );
-            Ok(Some(()))
+        };
+        if rv == CKR_ATTRIBUTE_SENSITIVE {
+            return Err(HError::Default(
+                "This key is sensitive and cannot be exported from the HSM.".to_owned(),
+            ));
         }
+        if rv == CKR_OBJECT_HANDLE_INVALID {
+            // The key was not found
+            return Ok(None);
+        }
+        if rv != CKR_OK {
+            return Err(HError::Default(format!(
+                "Failed to get the HSM attributes for key handle: {key_handle}. Return code: {rv}"
+            )));
+        }
+        Ok(Some(()))
     }
 
     /// Get the metadata for a key
     pub fn get_key_metadata(&self, key_handle: CK_OBJECT_HANDLE) -> HResult<Option<KeyMetadata>> {
-        let key_type = match self.get_key_type(key_handle)? {
-            None => return Ok(None),
-            Some(key_type) => key_type,
+        let Some(key_type) = self.get_key_type(key_handle)? else {
+            return Ok(None)
         };
         let mut template = [CK_ATTRIBUTE {
             type_: CKA_LABEL,
@@ -1551,13 +1598,13 @@ impl Session {
                 template.extend([
                     CK_ATTRIBUTE {
                         type_: CKA_VALUE_LEN,
-                        pValue: &raw mut key_size as CK_VOID_PTR,
-                        ulValueLen: size_of::<CK_ULONG>() as CK_ULONG,
+                        pValue: (&raw mut key_size).cast::<std::ffi::c_void>(),
+                        ulValueLen: CK_ULONG::try_from(size_of::<CK_ULONG>())?,
                     },
                     CK_ATTRIBUTE {
                         type_: CKA_SENSITIVE,
-                        pValue: &raw mut sensitive as CK_VOID_PTR,
-                        ulValueLen: size_of::<CK_BBOOL>() as CK_ULONG,
+                        pValue: (&raw mut sensitive).cast::<std::ffi::c_void>(),
+                        ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
                     },
                 ]);
                 if self
@@ -1573,10 +1620,10 @@ impl Session {
                 let label = if label_len == 0 {
                     String::new()
                 } else {
-                    let mut label_bytes: Vec<u8> = vec![0_u8; label_len as usize];
+                    let mut label_bytes: Vec<u8> = vec![0_u8; usize::try_from(label_len)?];
                     let mut template = [CK_ATTRIBUTE {
                         type_: CKA_LABEL,
-                        pValue: label_bytes.as_mut_ptr() as CK_VOID_PTR,
+                        pValue: label_bytes.as_mut_ptr().cast::<std::ffi::c_void>(),
                         ulValueLen: label_len,
                     }];
                     if self
@@ -1614,30 +1661,30 @@ impl Session {
                     .first()
                     .ok_or_else(|| HError::Default("Failed to get template length".to_owned()))?
                     .ulValueLen;
-                let mut label_bytes: Vec<u8> = vec![0_u8; label_len as usize];
+                let mut label_bytes: Vec<u8> = vec![0_u8; usize::try_from(label_len)?];
                 let modulus_len = template
                     .get(1)
                     .ok_or_else(|| HError::Default("Failed to get modulus length".to_owned()))?
                     .ulValueLen;
-                let mut modulus: Vec<u8> = vec![0_u8; modulus_len as usize];
+                let mut modulus: Vec<u8> = vec![0_u8; usize::try_from(modulus_len)?];
                 let mut sensitive: CK_BBOOL = CK_FALSE;
                 let mut template = vec![CK_ATTRIBUTE {
                     type_: CKA_MODULUS,
-                    pValue: modulus.as_mut_ptr() as CK_VOID_PTR,
+                    pValue: modulus.as_mut_ptr().cast::<std::ffi::c_void>(),
                     ulValueLen: modulus_len,
                 }];
                 if label_len > 0 {
                     template.push(CK_ATTRIBUTE {
                         type_: CKA_LABEL,
-                        pValue: label_bytes.as_mut_ptr() as CK_VOID_PTR,
+                        pValue: label_bytes.as_mut_ptr().cast::<std::ffi::c_void>(),
                         ulValueLen: label_len,
                     });
                 }
                 if key_type == KeyType::RsaPrivateKey {
                     template.push(CK_ATTRIBUTE {
                         type_: CKA_SENSITIVE,
-                        pValue: &raw mut sensitive as CK_VOID_PTR,
-                        ulValueLen: size_of::<CK_BBOOL>() as CK_ULONG,
+                        pValue: (&raw mut sensitive).cast::<std::ffi::c_void>(),
+                        ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
                     });
                 }
                 if self
@@ -1677,13 +1724,13 @@ impl Session {
         let mut template = [
             CK_ATTRIBUTE {
                 type_: CKA_CLASS,
-                pValue: &raw mut class as CK_VOID_PTR,
-                ulValueLen: size_of::<CK_OBJECT_CLASS>() as CK_ULONG,
+                pValue: (&raw mut class).cast::<std::ffi::c_void>(),
+                ulValueLen: CK_ULONG::try_from(size_of::<CK_OBJECT_CLASS>())?,
             },
             CK_ATTRIBUTE {
                 type_: CKA_KEY_TYPE,
-                pValue: &raw mut key_type as CK_VOID_PTR,
-                ulValueLen: size_of::<CK_ULONG>() as CK_ULONG,
+                pValue: (&raw mut key_type).cast::<std::ffi::c_void>(),
+                ulValueLen: CK_ULONG::try_from(size_of::<CK_ULONG>())?,
             },
         ];
 
@@ -1730,10 +1777,10 @@ impl Session {
             return Ok(None);
         }
         let id_len = template[0].ulValueLen;
-        let mut id: Vec<u8> = vec![0_u8; id_len as usize];
+        let mut id: Vec<u8> = vec![0_u8; usize::try_from(id_len)?];
         let mut template = [CK_ATTRIBUTE {
             type_: CKA_LABEL,
-            pValue: id.as_mut_ptr() as CK_VOID_PTR,
+            pValue: id.as_mut_ptr().cast::<std::ffi::c_void>(),
             ulValueLen: id_len,
         }];
         if self
@@ -1742,10 +1789,9 @@ impl Session {
         {
             return Ok(None);
         }
-        if let Some(KeyType::RsaPublicKey) = self.get_key_type(object_handle)? {
-            if !id.ends_with(b"_pk") {
-                id.extend_from_slice(b"_pk");
-            }
+        if self.get_key_type(object_handle)? == Some(KeyType::RsaPublicKey) && !id.ends_with(b"_pk")
+        {
+            id.extend_from_slice(b"_pk");
         }
         Ok(Some(id))
     }

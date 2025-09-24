@@ -10,13 +10,15 @@ pub mod result;
 pub mod routes;
 pub mod socket_server;
 pub mod start_kms_server;
-#[allow(
+#[expect(
     clippy::panic,
-    clippy::panic_in_result_fn,
     clippy::unwrap_used,
     clippy::expect_used,
+    clippy::panic_in_result_fn,
+    clippy::cognitive_complexity,
     unsafe_code,
-    clippy::indexing_slicing
+    clippy::indexing_slicing,
+    dead_code
 )]
 #[cfg(test)]
 mod tests;

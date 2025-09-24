@@ -25,13 +25,13 @@ pub enum HError {
 
 impl From<InterfaceError> for HError {
     fn from(e: InterfaceError) -> Self {
-        HError::Hsm(e.to_string())
+        Self::Hsm(e.to_string())
     }
 }
 
 impl From<HError> for InterfaceError {
     fn from(e: HError) -> Self {
-        InterfaceError::Default(e.to_string())
+        Self::Default(e.to_string())
     }
 }
 

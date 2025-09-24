@@ -130,7 +130,6 @@ async fn test_rekey_error() -> KmsCliResult<()> {
 }
 
 #[test]
-#[allow(clippy::similar_names)]
 fn test_cc() -> KmsCliResult<()> {
     let access_structure = access_structure_from_json_file(&PathBuf::from(
         "../../test_data/access_structure_specifications.json",
