@@ -165,5 +165,5 @@ cargo test --workspace --bins --target $TARGET $RELEASE $FEATURES
 
 if [ "$DEBUG_OR_RELEASE" = "release" ]; then
   # shellcheck disable=SC2086
-  cargo bench --target $TARGET $FEATURES $RELEASE --no-run
+  cargo bench --target $TARGET $FEATURES --no-run
 fi
