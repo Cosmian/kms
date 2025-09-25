@@ -83,6 +83,8 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode }) =>
         };
         setIsAuthLoading(true);
         fetchUser();
+        // Intentionally run once on mount - dependencies stable
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     if (isAuthLoading) {

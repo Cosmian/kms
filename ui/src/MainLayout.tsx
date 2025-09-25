@@ -37,7 +37,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
         }
 
         fetchServerVersion();
-    }, []);
+    }, [idToken, authMethod, serverUrl]);
 
     const handleLogout = async () => {
         await logout();
