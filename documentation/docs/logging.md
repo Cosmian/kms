@@ -93,9 +93,19 @@ The traces will also contain metering events if the `enable_metering` feature is
 
 To test the OpenTelemetry collector, start a Jaeger server with the following command:
 
-```bash
-docker run  -p16686:16686 -p4317:4317 -e COLLECTOR_OTLP_ENABLED=true jaegertracing/all-in-one:latest
-```
+=== "Docker"
+
+  ```bash
+  docker run  -p16686:16686 -p4317:4317 -e COLLECTOR_OTLP_ENABLED=true jaegertracing/all-in-one:latest
+  ```
+
+=== "kms.toml"
+
+  ```toml
+  [logging]
+  otlp = "http://localhost:4317"
+  quiet = true
+  ```
 
 Then start the KMS locally with the following command:
 

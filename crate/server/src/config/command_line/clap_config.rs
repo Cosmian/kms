@@ -26,6 +26,7 @@ const DEFAULT_USERNAME: &str = "admin";
 impl Default for ClapConfig {
     fn default() -> Self {
         Self {
+            config_path: None,
             db: MainDBConfig::default(),
             socket_server: SocketServerConfig::default(),
             tls: TlsConfig::default(),
@@ -54,6 +55,13 @@ impl Default for ClapConfig {
 #[clap(version, about, long_about = None)]
 #[serde(default)]
 pub struct ClapConfig {
+    /// Explicit configuration file path provided via -c / --config.
+    /// When set, this file takes precedence over the `COSMIAN_KMS_CONF` environment variable
+    /// and the default system path. All other command line arguments (except `--help` / `--version`)
+    /// and environment variables are ignored once the configuration file is loaded.
+    #[clap(short = 'c', long = "config", value_name = "CONFIG_FILE")]
+    pub config_path: Option<PathBuf>,
+
     /// The default username to use when no authentication method is provided
     #[clap(long, env = "KMS_DEFAULT_USERNAME", default_value = DEFAULT_USERNAME)]
     pub default_username: String,
@@ -149,63 +157,309 @@ impl ClapConfig {
     /// or if the configuration file cannot be read,
     /// or if the configuration file cannot be parsed,
     /// or if the configuration file is not a valid TOML file.
-    #[expect(clippy::print_stdout)] // Logging is not being initialized yet, just use standard prints
-    pub fn load_from_file() -> KResult<Self> {
-        let conf = std::env::var("COSMIAN_KMS_CONF").map_or_else(
-            |_| PathBuf::from(DEFAULT_COSMIAN_KMS_CONF),
-            |conf_path| {
-                let conf_path = PathBuf::from(conf_path);
-                if conf_path.exists() {
-                    conf_path
-                } else {
-                    println!(
-                        "WARNING: Configuration file {} not found. Fallback to the default path: \
-                         {DEFAULT_COSMIAN_KMS_CONF}",
-                        conf_path.display()
-                    );
-                    // fallback to the default path
-                    PathBuf::from(DEFAULT_COSMIAN_KMS_CONF)
-                }
-            },
-        );
+    pub fn load_configuration() -> KResult<Self> {
+        Self::load_from_args(std::env::args())
+    }
 
-        let clap_config = if conf.exists() {
-            drop(Self::parse()); // Do that do catch --help or --version even if we use a conf file
+    /// Load configuration using a custom iterator of arguments (testable entry point).
+    #[allow(clippy::print_stdout)] // Logging is not being initialized yet, just use standard prints
+    pub fn load_from_args<I, T>(args: I) -> KResult<Self>
+    where
+        I: IntoIterator<Item = T>,
+        T: Into<std::ffi::OsString> + Clone,
+    {
+        // Collect args so we can re-use for parse + messages
+        let args_vec: Vec<T> = args.into_iter().collect();
+        // Parse preliminarily to capture the optional config path (this also handles --help / --version)
+        let preliminary = Self::parse_from(args_vec);
 
-            println!(
-                "Configuration file {} found. Command line arguments and env variables are \
-                 ignored.",
-                conf.display()
-            );
+        // Determine configuration file path precedence:
+        // 1. Command line -c/--config
+        // 2. COSMIAN_KMS_CONF environment variable (if exists and path exists)
+        // 3. Default system path (if exists)
+        // 4. Fall back to command line arguments & env vars (no file)
 
-            let conf_content = std::fs::read_to_string(&conf).map_err(|e| {
+        let explicit = preliminary.config_path.clone();
+        let env_path = std::env::var("COSMIAN_KMS_CONF").ok().map(PathBuf::from);
+        let default_path = PathBuf::from(DEFAULT_COSMIAN_KMS_CONF);
+
+        // Helper to load a TOML file into ClapConfig
+        let load_file = |p: &PathBuf| -> KResult<Self> {
+            let conf_content = std::fs::read_to_string(p).map_err(|e| {
                 KmsError::ServerError(format!(
                     "Cannot read KMS server config at: {} - {e:?}",
-                    conf.display()
+                    p.display()
                 ))
             })?;
             toml::from_str(&conf_content).map_err(|e| {
                 KmsError::ServerError(format!(
                     "Cannot parse kms server config at: {} - {e:?}",
-                    conf.display()
+                    p.display()
                 ))
-            })?
-        } else {
-            println!(
-                "WARNING: Configuration file {} not found. Using command line arguments and env \
-                 variables.",
-                conf.display()
-            );
-            Self::parse()
+            })
         };
 
-        Ok(clap_config)
+        if let Some(path) = explicit {
+            if path.exists() {
+                println!(
+                    "Configuration file {} found (via -c/--config). Command line arguments and \
+                     env variables are ignored.",
+                    path.display()
+                );
+                return load_file(&path);
+            }
+            return Err(KmsError::ServerError(format!(
+                "Configuration file specified with -c/--config not found: {}",
+                path.display()
+            )));
+        }
+
+        if let Some(env_path) = env_path {
+            if env_path.exists() {
+                println!(
+                    "Configuration file {} found (via COSMIAN_KMS_CONF). Command line arguments \
+                     and env variables are ignored.",
+                    env_path.display()
+                );
+                return load_file(&env_path);
+            }
+            println!(
+                "WARNING: Configuration file {} (COSMIAN_KMS_CONF) not found. Falling back.",
+                env_path.display()
+            );
+        }
+
+        if default_path.exists() {
+            println!(
+                "Configuration file {} found (default path). Command line arguments and \
+                 environment variables are ignored.",
+                default_path.display()
+            );
+            return load_file(&default_path);
+        }
+
+        println!(
+            "No configuration file found (-c/--config, COSMIAN_KMS_CONF, default path). Using \
+             command line arguments and environment variables."
+        );
+        Ok(preliminary)
+    }
+}
+
+#[cfg(test)]
+#[allow(unsafe_code, clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    //! Configuration precedence tests
+    //!
+    //! These tests validate the configuration loading precedence:
+    //! 1. Command line -c/--config (highest precedence)
+    //! 2. `COSMIAN_KMS_CONF` environment variable
+    //! 3. Default system path
+    //! 4. Command line arguments and environment variables (lowest precedence)
+    //!
+    //! NOTE: Run these tests serially to avoid environment variable conflicts:
+    //! `cargo test --lib config::command_line::clap_config::tests -- --test-threads=1`
+
+    use std::{
+        fs,
+        path::{Path, PathBuf},
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    use super::ClapConfig;
+
+    fn write_temp(contents: &str) -> PathBuf {
+        let mut p = std::env::temp_dir();
+        let ts = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let fname = format!("kms_test_conf_{ts}.toml");
+        p.push(fname);
+        fs::write(&p, contents).expect("write temp toml");
+        p
+    }
+
+    fn cleanup_temp(path: &PathBuf) {
+        drop(std::fs::remove_file(path));
+    }
+
+    fn clear_env() {
+        unsafe {
+            std::env::remove_var("COSMIAN_KMS_CONF");
+        }
+    }
+
+    fn set_var(key: &str, value: &Path) {
+        unsafe {
+            std::env::set_var(key, value.display().to_string());
+        }
+    }
+
+    fn default_path_exists() -> bool {
+        std::path::Path::new(super::DEFAULT_COSMIAN_KMS_CONF).exists()
+    }
+
+    #[test]
+    fn precedence_cli_config_over_env_and_default() {
+        clear_env();
+        let cli_file = write_temp("[http]\nport=12345\n");
+        let env_file = write_temp("[http]\nport=54321\n");
+        set_var("COSMIAN_KMS_CONF", &env_file);
+        // Command line args like --port are completely ignored when -c config file is used
+        let args = vec!["kms", "-c", cli_file.to_str().unwrap(), "--port", "9999"];
+        let cfg = ClapConfig::load_from_args(args).expect("load from args");
+        assert_eq!(
+            cfg.http.port, 12345,
+            "-c config file takes precedence and ignores all other args"
+        );
+        clear_env();
+        cleanup_temp(&cli_file);
+        cleanup_temp(&env_file);
+    }
+
+    #[test]
+    fn precedence_env_config_over_default() {
+        clear_env();
+        let env_file = write_temp("[http]\nport=23456\n");
+        set_var("COSMIAN_KMS_CONF", &env_file);
+        // Command line args are completely ignored when env config file exists
+        let args = vec!["kms", "--port", "1111"];
+        let cfg = ClapConfig::load_from_args(args).expect("load from args");
+        assert_eq!(
+            cfg.http.port, 23456,
+            "env config file ignores all command line args"
+        );
+        clear_env();
+        cleanup_temp(&env_file);
+    }
+
+    #[test]
+    fn precedence_default_config_over_args() {
+        clear_env();
+        if default_path_exists() {
+            eprintln!(
+                "Skipping precedence_default_config_over_args: default config already exists"
+            );
+        } else {
+            // Create a temporary default config file for this test
+            let default_content = "[http]\nport=34567\n";
+            let default_path = PathBuf::from(super::DEFAULT_COSMIAN_KMS_CONF);
+            if let Some(parent) = default_path.parent() {
+                drop(std::fs::create_dir_all(parent));
+            }
+            if std::fs::write(&default_path, default_content).is_ok() {
+                let args = vec!["kms", "--port", "2222"];
+                let cfg = ClapConfig::load_from_args(args).expect("load from args");
+                assert_eq!(
+                    cfg.http.port, 34567,
+                    "default config file ignores command line args"
+                );
+                drop(std::fs::remove_file(&default_path)); // cleanup
+            } else {
+                eprintln!(
+                    "Skipping precedence_default_config_over_args: cannot write to default path"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn env_config_nonexistent_falls_back_to_args() {
+        clear_env();
+        set_var(
+            "COSMIAN_KMS_CONF",
+            &PathBuf::from("/nonexistent/config.toml"),
+        );
+        if default_path_exists() {
+            eprintln!("Skipping env_config_nonexistent_falls_back_to_args: default config exists");
+            clear_env();
+            return;
+        }
+        let args = vec!["kms", "--port", "5555"];
+        let cfg = ClapConfig::load_from_args(args).expect("load from args");
+        assert_eq!(
+            cfg.http.port, 5555,
+            "nonexistent env config should fall back to args"
+        );
+        clear_env();
+    }
+
+    #[test]
+    fn uses_args_when_no_files() {
+        clear_env();
+        if default_path_exists() {
+            // Avoid false negative if a real default file is present on dev box
+            eprintln!("Skipping uses_args_when_no_files: default config path exists");
+            return;
+        }
+        let args = vec!["kms", "--port", "7777"]; // should be honored
+        let cfg = ClapConfig::load_from_args(args).expect("load from args");
+        assert_eq!(cfg.http.port, 7777);
+    }
+
+    #[test]
+    fn error_when_cli_file_missing() {
+        clear_env();
+        let args = vec!["kms", "-c", "/non/existent/xxxx__nope.toml"];
+        let res = ClapConfig::load_from_args(args);
+        assert!(res.is_err(), "should error for missing -c file");
+        let err_msg = res.unwrap_err().to_string();
+        assert!(err_msg.contains("Configuration file specified with -c/--config not found"));
+    }
+
+    #[test]
+    fn error_when_cli_file_invalid_toml() {
+        clear_env();
+        let invalid_file = write_temp("invalid toml content [[[");
+        let args = vec!["kms", "-c", invalid_file.to_str().unwrap()];
+        let res = ClapConfig::load_from_args(args);
+        assert!(res.is_err(), "should error for invalid toml file");
+        let err_msg = res.unwrap_err().to_string();
+        assert!(err_msg.contains("Cannot parse kms server config"));
+        cleanup_temp(&invalid_file);
+    }
+
+    #[test]
+    fn complete_precedence_chain() {
+        // Test the complete precedence: -c > COSMIAN_KMS_CONF > default > args
+        clear_env();
+
+        let cli_file = write_temp("[http]\nport=11111\n");
+        let env_file = write_temp("[http]\nport=22222\n");
+
+        // 1. CLI config wins over everything
+        set_var("COSMIAN_KMS_CONF", &env_file);
+        let args = vec!["kms", "-c", cli_file.to_str().unwrap(), "--port", "9999"];
+        let cfg = ClapConfig::load_from_args(args).expect("load from args");
+        assert_eq!(cfg.http.port, 11111, "CLI config should win");
+
+        // 2. Env config wins when no CLI config
+        let args = vec!["kms", "--port", "8888"];
+        let cfg = ClapConfig::load_from_args(args).expect("load from args");
+        assert_eq!(
+            cfg.http.port, 22222,
+            "Env config should win when no CLI config"
+        );
+
+        clear_env();
+
+        // 3. Args win when no config files (assuming no default exists)
+        if !default_path_exists() {
+            let args = vec!["kms", "--port", "7777"];
+            let cfg = ClapConfig::load_from_args(args).expect("load from args");
+            assert_eq!(cfg.http.port, 7777, "Args should win when no config files");
+        }
+
+        cleanup_temp(&cli_file);
+        cleanup_temp(&env_file);
     }
 }
 
 impl fmt::Debug for ClapConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut x = f.debug_struct("");
+        let x = x.field("config_path", &self.config_path);
         let x = x.field("db", &self.db);
         let x = if self.auth.jwt_issuer_uri.is_some() {
             x.field("auth", &self.auth)
@@ -294,7 +548,7 @@ impl fmt::Debug for ClapConfig {
 }
 
 #[cfg(test)]
-mod tests {
+mod tests_print_only {
     use super::ClapConfig;
 
     #[test]

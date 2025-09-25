@@ -47,12 +47,23 @@ A successful authentication at any step will grant access and subsequent authent
 
 To enable certificate-based authentication, the server must be started with TLS and a certificate authority (CA) for client verification:
 
-```sh
-docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest \
-    --https-p12-file kms.server.p12 \
-    --https-p12-password password \
-    --authority-cert-file client_ca.cert.pem
-```
+=== "Docker"
+
+    ```sh
+    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest \
+        --https-p12-file kms.server.p12 \
+        --https-p12-password password \
+        --authority-cert-file client_ca.cert.pem
+    ```
+
+=== "kms.toml"
+
+    ```toml
+    [tls]
+    tls_p12_file = "kms.server.p12"
+    tls_p12_password = "password"
+    clients_ca_cert_file = "client_ca.cert.pem"
+    ```
 
 The server extracts the username from the certificate's Subject Common Name (CN) field. Specifically, the Common Name of the client certificate subject is used directly as the username for authentication purposes. If the certificate is valid but does not contain a Common Name, authentication will fail.
 
@@ -70,10 +81,20 @@ Clients must present a valid certificate signed by the specified authority.
 
 The server supports JWT tokens compatible with [OpenID Connect](https://openid.net/connect/). Configure JWT authentication with:
 
-```sh
-docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest \
-    --jwt-auth-provider="https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs,cosmian_kms"
-```
+=== "Docker"
+
+    ```sh
+    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest \
+        --jwt-auth-provider="https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs,cosmian_kms"
+    ```
+
+=== "kms.toml"
+
+    ```toml
+    [idp_auth]
+    # issuer,jwks,audience (jwks & audience optional)
+    jwt_auth_provider = ["https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs,cosmian_kms"]
+    ```
 
 The JWT authentication provider configuration uses the format: `"JWT_ISSUER_URI,JWKS_URI,JWT_AUDIENCE"` where:
 
@@ -125,22 +146,31 @@ API Token authentication uses a symmetric key stored in the KMS as the authentic
 
 1. Generate a symmetric key and note its ID:
 
-   ```sh
-   cosmian kms sym keys create
-   ```
+    ```sh
+    cosmian kms sym keys create
+    ```
 
 2. Export the key in base64 format:
 
-   ```sh
-   cosmian kms sym keys export -k <SYMMETRIC_KEY_ID> -f base64 api_token.base64
-   ```
+    ```sh
+    cosmian kms sym keys export -k <SYMMETRIC_KEY_ID> -f base64 api_token.base64
+    ```
 
 3. Start the server with the API token ID:
 
-   ```sh
-   docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest \
-       --api-token-id <SYMMETRIC_KEY_ID>
-   ```
+=== "Docker"
+
+    ```sh
+    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest \
+        --api-token-id <SYMMETRIC_KEY_ID>
+    ```
+
+=== "kms.toml"
+
+    ```toml
+    [http]
+    api_token_id = "<SYMMETRIC_KEY_ID>"
+    ```
 
 4. Configure the client to use the API token:
 
@@ -176,13 +206,28 @@ When `force-default-username` is enabled with multiple authentication methods, t
 
 ### Example 1: Client Certificate and JWT Authentication
 
-```sh
-docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest \
-    --https-p12-file kms.server.p12 \
-    --https-p12-password password \
-    --authority-cert-file client_ca.cert.pem \
-    --jwt-auth-provider="https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs,"
-```
+=== "Docker"
+
+    ```sh
+    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest \
+        --https-p12-file kms.server.p12 \
+        --https-p12-password password \
+        --authority-cert-file client_ca.cert.pem \
+        --jwt-auth-provider="https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs,"
+    ```
+
+=== "kms.toml"
+
+    ```toml
+    [tls]
+    tls_p12_file = "kms.server.p12"
+    tls_p12_password = "password"
+    clients_ca_cert_file = "client_ca.cert.pem"
+
+    [idp_auth]
+    # Empty audience example: leave trailing comma after jwks URL
+    jwt_auth_provider = ["https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs,"]
+    ```
 
 In this configuration:
 
@@ -191,13 +236,23 @@ In this configuration:
 
 ### Example 2: JWT and API Token Authentication
 
-```sh
-docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest \
-    --jwt-auth-provider="https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs," \
-    --api-token-id <SYMMETRIC_KEY_ID>
-```
+=== "Docker"
 
-In this configuration:
+    ```sh
+    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest \
+        --jwt-auth-provider="https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs," \
+        --api-token-id <SYMMETRIC_KEY_ID>
+    ```
+
+=== "kms.toml"
+
+    ```toml
+    [idp_auth]
+    jwt_auth_provider = ["https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs,"]
+
+    [http]
+    api_token_id = "<SYMMETRIC_KEY_ID>"
+    ```
 
 - Clients can authenticate using either a valid JWT token or the API token
 - JWT authentication is attempted first, followed by API token verification

@@ -6,16 +6,16 @@ configuration.
 
 <!-- TOC -->
 
-* [Selecting the database](#selecting-the-database)
-    * [Redis with Findex](#redis-with-findex)
-* [Configuring the database](#configuring-the-database)
-    * [SQLite](#sqlite)
-        * [PostgreSQL](#postgresql)
-        * [MySQL or MariaDB](#mysql-or-mariadb)
-        * [Redis with Findex](#redis-with-findex-1)
-* [Clearing the database](#clearing-the-database)
-* [Database migration](#database-migration)
-* [The Unwrapped Objects Cache](#the-unwrapped-objects-cache)
+- [Selecting the database](#selecting-the-database)
+    - [Redis with Findex](#redis-with-findex)
+- [Configuring the database](#configuring-the-database)
+    - [SQLite](#sqlite)
+        - [PostgreSQL](#postgresql)
+        - [MySQL or MariaDB](#mysql-or-mariadb)
+        - [Redis with Findex](#redis-with-findex-1)
+- [Clearing the database](#clearing-the-database)
+- [Database migration](#database-migration)
+- [The Unwrapped Objects Cache](#the-unwrapped-objects-cache)
 
 <!-- TOC -->
 
@@ -36,10 +36,10 @@ with Findex offers post-quantum resistance on encrypted data and encrypted index
 
 **Redis-with-Findex** is most useful when:
 
-* KMS servers are run inside a confidential VM or an enclave. In this case, the secret used to encrypt the Redis data
+- KMS servers are run inside a confidential VM or an enclave. In this case, the secret used to encrypt the Redis data
   and indexes, is protected by the VM or enclave and cannot be recovered at runtime by inspecting the KMS servers'
   memory.
-* KMS servers are run by a trusted party but the Redis backend is managed by an untrusted third party.
+- KMS servers are run by a trusted party but the Redis backend is managed by an untrusted third party.
 
 Redis-with-Findex is the database selected
 to [run the Cosmian KMS in the cloud or any other zero-trust environment](installation/marketplace_guide.md).
@@ -48,8 +48,8 @@ to [run the Cosmian KMS in the cloud or any other zero-trust environment](instal
 
 The database parameters may be configured either:
 
-* the [TOML configuration file](./server_configuration_file.md)
-* or the [arguments passed to the server](./server_cli.md) on the command line.
+- the [TOML configuration file](./server_configuration_file.md)
+- or the [arguments passed to the server](./server_cli.md) on the command line.
 
 ### SQLite
 
@@ -91,17 +91,20 @@ This is the default configuration. To use SQLite, no additional configuration is
 Before running the server, a dedicated database with a dedicated user should be created on the PostgreSQL instance.
 These sample instructions create a database called `kms` owned by a user `kms_user` with password `kms_password`:
 
-    1. Connect to psql under user `postgres`
+1. Connect to psql under user `postgres`
+
     ```sh
     sudo -u postgres psql  # or `psql -U postgres`
     ```
 
-    2. Create user `kms_user` with password `kms_password`
+2. Create user `kms_user` with password `kms_password`
+
     ```psql
     create user kms_user with encrypted password 'kms_password';
     ```
 
-    3. Create database `kms` under owner `kms_user`
+3. Create database `kms` under owner `kms_user`
+
     ```psql
     create database kms owner=kms_user;
     ```
@@ -125,28 +128,41 @@ These sample instructions create a database called `kms` owned by a user `kms_us
 
 !!!info "Using a certificate to authenticate to MySQL or MariaDB"
 
-    Use a certificate to authenticate to MySQL or MariaDB with the `mysql-user-cert-file` option to
-    specify the certificate file name.
+        Use a certificate to authenticate to MySQL or MariaDB with the `mysql-user-cert-file` option to
+        specify the certificate file name.
 
-    **Docker Example**: say the certificate is called `cert.p12`
-    and is in a directory called `/certificate` on the host disk.
+        **Example context**: say the certificate is called `cert.p12`
+        and is in a directory called `/certificate` on the host disk.
+
+=== "Docker"
 
     ```sh
     docker run --rm -p 9998:9998 \
-      --name kms ghcr.io/cosmian/kms:latest \
-      -v /certificate/cert.p12:/root/cosmian-kms/cert.p12 \
-      --database-type=mysql \
-      --database-url=mysql://mysql_server:3306/kms \
-      --mysql-user-cert-file=cert.p12
+        --name kms ghcr.io/cosmian/kms:latest \
+        -v /certificate/cert.p12:/root/cosmian-kms/cert.p12 \
+        --database-type=mysql \
+        --database-url=mysql://mysql_server:3306/kms \
+        --mysql-user-cert-file=cert.p12
+    ```
+
+=== "kms.toml"
+
+    ```toml
+    [db]
+    database_type = "mysql"
+    database_url = "mysql://mysql_server:3306/kms"
+    # Note: if client certificate authentication is required for MySQL,
+    # configure it via command-line option `--mysql-user-cert-file` for now.
+    # A dedicated TOML key may not be available in this version.
     ```
 
 #### Redis with Findex
 
 For Redis with Findex, the `--redis-master-password` and `--redis-findex-label` options must also be specified:
 
-* The `redis-master-password` is the password from which keys will be derived (using Argon 2) to encrypt the Redis data
+- The `redis-master-password` is the password from which keys will be derived (using Argon 2) to encrypt the Redis data
   and indexes.
-* The `redis-findex-label` is a public, arbitrary label that can be changed to rotate the Findex ciphertexts without
+- The `redis-findex-label` is a public, arbitrary label that can be changed to rotate the Findex ciphertexts without
   changing the password/key.
 
 === "kms.toml"
@@ -168,7 +184,7 @@ For Redis with Findex, the `--redis-master-password` and `--redis-findex-label` 
     --redis-findex-label=label
     ```
 
-* Redis (with-Findex), use:
+- Redis (with-Findex), use:
 
 ## Clearing the database
 
@@ -198,18 +214,18 @@ written in the CHANGELOG.md. In that case, a generic database upgrade mechanism 
 At first, the table `context` is responsible for storing the software run's version and the database's state.
 The state can be one of the following:
 
-* `ready`: the database is ready to be used
-* `upgrading`: the database is being upgraded
+- `ready`: the database is ready to be used
+- `upgrading`: the database is being upgraded
 
 On startup, the server checks if the software version is greater than the last version run:
 
-* if no, it simply starts;
-* If yes:
+- if no, it simply starts;
+- If yes:
 
-    * it looks for all upgrades to apply in order from the last version run to this version;
-    * if there is any to run, it sets an upgrading flag on the db state field in the context table;
-    * it runs all the upgrades in order.
-    * it sets the flag from upgrading to ready;
+    - it looks for all upgrades to apply in order from the last version run to this version;
+    - if there is any to run, it sets an upgrading flag on the db state field in the context table;
+    - it runs all the upgrades in order.
+    - it sets the flag from upgrading to ready;
 
 On every call to the database, a check is performed on the db state field to check if the database is upgrading. If yes,
 calls fail.

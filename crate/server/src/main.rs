@@ -53,7 +53,7 @@ async fn run() -> KResult<()> {
     // Load variable from a .env file
     dotenv().ok();
 
-    let clap_config = ClapConfig::load_from_file()?;
+    let clap_config = ClapConfig::load_configuration()?;
 
     let info_only = clap_config.info;
 
@@ -130,7 +130,7 @@ async fn run() -> KResult<()> {
     }
 
     // Instantiate a config object using the env variables and the args of the binary
-    debug!("Command line config: {clap_config:#?}");
+    debug!("Command line / file config: {clap_config:#?}");
 
     // Parse the Server Config from the command line arguments
     let server_params = Arc::new(ServerParams::try_from(clap_config)?);
@@ -174,6 +174,7 @@ mod tests {
     #[test]
     fn test_toml() {
         let config = ClapConfig {
+            config_path: None,
             db: MainDBConfig {
                 database_type: Some("[redis-findex, postgresql,...]".to_owned()),
                 database_url: Some("[redis urls]".to_owned()),
