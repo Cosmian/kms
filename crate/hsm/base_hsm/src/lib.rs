@@ -1,4 +1,4 @@
-//! Copyright 2024 Cosmian Tech SAS
+//! Copyright 2025 Cosmian Tech SAS
 
 mod error;
 
@@ -21,83 +21,84 @@ pub mod test_helpers;
 // If sensitive is true, the key is not exportable
 // Proteccio does not allow setting the ID attribute for secret keys so we use the LABEL
 // so we do the same with other HSMs
-
 #[macro_export]
 macro_rules! aes_key_template {
-    ($id:expr, $size:expr, $sensitive:expr) => {{
-        use pkcs11_sys::*;
-        let size = $size;
+    ($id:expr, $size:expr, $sensitive:expr) => {
         [
-            CK_ATTRIBUTE {
-                type_: CKA_CLASS,
-                pValue: std::ptr::from_ref::<CK_ULONG>(&CKO_SECRET_KEY)
+            pkcs11_sys::CK_ATTRIBUTE {
+                type_: pkcs11_sys::CKA_CLASS,
+                pValue: std::ptr::from_ref::<CK_ULONG>(&pkcs11_sys::CKO_SECRET_KEY)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
                 ulValueLen: CK_ULONG::try_from(std::mem::size_of::<CK_ULONG>())?,
             },
-            CK_ATTRIBUTE {
-                type_: CKA_KEY_TYPE,
-                pValue: std::ptr::from_ref::<CK_ULONG>(&CKK_AES)
+            pkcs11_sys::CK_ATTRIBUTE {
+                type_: pkcs11_sys::CKA_KEY_TYPE,
+                pValue: std::ptr::from_ref::<CK_ULONG>(&pkcs11_sys::CKK_AES)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
                 ulValueLen: CK_ULONG::try_from(std::mem::size_of::<CK_ULONG>())?,
             },
-            CK_ATTRIBUTE {
-                type_: CKA_VALUE_LEN,
-                pValue: std::ptr::from_ref(&size)
+            pkcs11_sys::CK_ATTRIBUTE {
+                type_: pkcs11_sys::CKA_VALUE_LEN,
+                pValue: std::ptr::from_ref(&$size)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
                 ulValueLen: CK_ULONG::try_from(std::mem::size_of::<CK_ULONG>())?,
             },
-            CK_ATTRIBUTE {
-                type_: CKA_TOKEN,
+            pkcs11_sys::CK_ATTRIBUTE {
+                type_: pkcs11_sys::CKA_TOKEN,
                 pValue: std::ptr::from_ref::<u8>(&CK_TRUE)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
-                ulValueLen: CK_ULONG::try_from(std::mem::size_of::<CK_BBOOL>())?,
+                ulValueLen: CK_ULONG::try_from(std::mem::size_of::<pkcs11_sys::CK_BBOOL>())?,
             },
-            CK_ATTRIBUTE {
-                type_: CKA_ENCRYPT,
+            pkcs11_sys::CK_ATTRIBUTE {
+                type_: pkcs11_sys::CKA_ENCRYPT,
                 pValue: std::ptr::from_ref::<u8>(&CK_TRUE)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
-                ulValueLen: CK_ULONG::try_from(std::mem::size_of::<CK_BBOOL>())?,
+                ulValueLen: CK_ULONG::try_from(std::mem::size_of::<pkcs11_sys::CK_BBOOL>())?,
             },
-            CK_ATTRIBUTE {
-                type_: CKA_DECRYPT,
+            pkcs11_sys::CK_ATTRIBUTE {
+                type_: pkcs11_sys::CKA_DECRYPT,
                 pValue: std::ptr::from_ref::<u8>(&CK_TRUE)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
-                ulValueLen: CK_ULONG::try_from(std::mem::size_of::<CK_BBOOL>())?,
+                ulValueLen: CK_ULONG::try_from(std::mem::size_of::<pkcs11_sys::CK_BBOOL>())?,
             },
-            CK_ATTRIBUTE {
-                type_: CKA_LABEL,
+            pkcs11_sys::CK_ATTRIBUTE {
+                type_: pkcs11_sys::CKA_LABEL,
                 pValue: $id.as_ptr().cast::<std::ffi::c_void>().cast_mut(),
-                ulValueLen: CK_ULONG::try_from($id.len())?,
+                ulValueLen: pkcs11_sys::CK_ULONG::try_from($id.len())?,
             },
-            CK_ATTRIBUTE {
-                type_: CKA_PRIVATE,
+            pkcs11_sys::CK_ATTRIBUTE {
+                type_: pkcs11_sys::CKA_PRIVATE,
                 pValue: std::ptr::from_ref::<u8>(&CK_TRUE)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
-                ulValueLen: CK_ULONG::try_from(std::mem::size_of::<CK_BBOOL>())?,
+                ulValueLen: CK_ULONG::try_from(std::mem::size_of::<pkcs11_sys::CK_BBOOL>())?,
             },
-            CK_ATTRIBUTE {
-                type_: CKA_SENSITIVE,
+            pkcs11_sys::CK_ATTRIBUTE {
+                type_: pkcs11_sys::CKA_SENSITIVE,
                 pValue: std::ptr::from_ref::<u8>(&$sensitive)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
-                ulValueLen: CK_ULONG::try_from(std::mem::size_of::<CK_BBOOL>())?,
+                ulValueLen: pkcs11_sys::CK_ULONG::try_from(std::mem::size_of::<
+                    pkcs11_sys::CK_BBOOL,
+                >())?,
             },
-            CK_ATTRIBUTE {
-                type_: CKA_EXTRACTABLE,
-                pValue: std::ptr::from_ref::<u8>(&CK_TRUE)
+            pkcs11_sys::CK_ATTRIBUTE {
+                type_: pkcs11_sys::CKA_EXTRACTABLE,
+                pValue: std::ptr::from_ref::<u8>(&pkcs11_sys::CK_TRUE)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
-                ulValueLen: CK_ULONG::try_from(std::mem::size_of::<CK_BBOOL>())?,
+                ulValueLen: pkcs11_sys::CK_ULONG::try_from(std::mem::size_of::<
+                    pkcs11_sys::CK_BBOOL,
+                >())?,
             },
         ]
-    }};
+    };
 }
 
 /// Macro to simplify HSM function calls with automatic return value checking

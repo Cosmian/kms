@@ -79,9 +79,9 @@ if [ -f /etc/lsb-release ]; then
 
   # Install Utimaco simulator and run tests
   bash .github/reusable_scripts/test_utimaco.sh
-  cargo test -p utimaco_pkcs11_loader --target "$TARGET" --features utimaco -- tests::test_hsm_all
+  cargo test -p utimaco_pkcs11_loader --target "$TARGET" $RELEASE --features utimaco -- tests::test_hsm_all
   # shellcheck disable=SC2086
-  HSM_MODEL=utimaco HSM_USER_PASSWORD="$HSM_USER_PASSWORD" HSM_SLOT_ID=0 cargo test --target "$TARGET" $FEATURES -- tests::hsm::test_all
+  HSM_MODEL=utimaco HSM_USER_PASSWORD="$HSM_USER_PASSWORD" HSM_SLOT_ID=0 cargo test --target "$TARGET" $FEATURES $RELEASE -- tests::hsm::test_all
 
   # Install SoftHSM2 and run tests
   sudo apt-get install -y libsofthsm2
@@ -90,10 +90,10 @@ if [ -f /etc/lsb-release ]; then
   HSM_SLOT_ID=$(sudo softhsm2-util --show-slots | grep -o "Slot [0-9]*" | head -n1 | awk '{print $2}')
 
   # shellcheck disable=SC2086
-  sudo -E env "PATH=$PATH" HSM_MODEL=softhsm2 HSM_USER_PASSWORD="$HSM_USER_PASSWORD" HSM_SLOT_ID="$HSM_SLOT_ID" cargo test $FEATURES -- tests::hsm::test_all
+  sudo -E env "PATH=$PATH" HSM_MODEL=softhsm2 HSM_USER_PASSWORD="$HSM_USER_PASSWORD" HSM_SLOT_ID="$HSM_SLOT_ID" cargo test $FEATURES $RELEASE -- tests::hsm::test_all
 
   cd crate/hsm/softhsm2
-  sudo -E env "PATH=$PATH" HSM_USER_PASSWORD="$HSM_USER_PASSWORD" HSM_SLOT_ID="$HSM_SLOT_ID" cargo test --features softhsm2 -- tests::test_hsm_all
+  sudo -E env "PATH=$PATH" HSM_USER_PASSWORD="$HSM_USER_PASSWORD" HSM_SLOT_ID="$HSM_SLOT_ID" cargo test --features softhsm2 $RELEASE -- tests::test_hsm_all
   cd ../../..
 fi
 
@@ -165,5 +165,5 @@ cargo test --workspace --bins --target $TARGET $RELEASE $FEATURES
 
 if [ "$DEBUG_OR_RELEASE" = "release" ]; then
   # shellcheck disable=SC2086
-  cargo bench --target $TARGET $FEATURES --no-run
+  cargo bench --target $TARGET $FEATURES $RELEASE --no-run
 fi
