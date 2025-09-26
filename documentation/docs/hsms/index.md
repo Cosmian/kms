@@ -7,6 +7,7 @@ This provides the best of both worlds: the security of an HSM at rest and the sc
 Cosmian KMS natively integrates with
 the [Proteccio](https://eviden.com/solutions/digital-security/data-encryption/trustway-proteccio-nethsm/),
 the [Utimaco general purpose](https://utimaco.com/solutions/applications/general-purpose-hardware-security-modules),
+the [Smartcard HSM](https://www.smartcard-hsm.com/features.html),
 and any HSM that has a standard PKCS#11 interface such as [SoftHSMv2](https://github.com/softhsm/SoftHSMv2).
 
 ## Integration Workflow

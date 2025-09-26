@@ -68,6 +68,8 @@ nav:
       - HSM keys & operations: hsms/hsm_operations.md
       - Trustway Proteccio: hsms/proteccio.md
       - Utimaco General Purpose: hsms/utimaco.md
+      - Smartcard HSM: hsms/sc_hsm.md
+      - SoftHSMv2: hsms/softhsm2.md
   - Integrations:
       - API Endpoints: api.md
       - Azure:
