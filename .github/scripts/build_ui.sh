@@ -37,7 +37,7 @@ cargo install wasm-pack
 # Build WASM component
 cd crate/wasm
 # shellcheck disable=SC2086
-RUSTFLAGS="-Z wasm-c-abi=spec" wasm-pack build --target web --release $CARGO_FEATURES
+wasm-pack build --target web --release $CARGO_FEATURES
 
 # Copy WASM artifacts to UI directory
 WASM_DIR="../../ui/src/wasm/"

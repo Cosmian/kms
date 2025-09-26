@@ -45,6 +45,7 @@ time = { workspace = true, features = [
   "serde",
   "macros",
 ] }
+num-traits = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 zeroize = { workspace = true, features = ["zeroize_derive", "std", "serde"] }

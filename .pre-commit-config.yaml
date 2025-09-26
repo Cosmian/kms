@@ -122,7 +122,7 @@ repos:
   - repo: https://github.com/Cosmian/git-hooks.git
     rev: v1.0.41
     hooks:
-      - id: cargo-format
+      - id: nightly-cargo-format
       - id: dprint-toml-fix
         stages: [manual]
       - id: cargo-upgrade
@@ -144,7 +144,7 @@ repos:
       - id: clippy-autofix-all-targets
       - id: clippy-all-targets-all-features
       - id: clippy-all-targets
-      - id: cargo-format # in last du to clippy fixes
+      - id: nightly-cargo-format # in last du to clippy fixes
       - id: docker-compose-down
 
   - repo: https://github.com/EmbarkStudios/cargo-deny

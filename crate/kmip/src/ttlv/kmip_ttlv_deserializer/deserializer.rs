@@ -20,6 +20,7 @@ use crate::{
             offset_date_time_deserializer::OffsetDateTimeDeserializer, peek_structure_child,
             untagged_enum_walker::UntaggedEnumWalker,
         },
+        tags::BYTE_LIKE_TAGS,
     },
 };
 
@@ -269,48 +270,24 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         V: Visitor<'de>,
     {
         trace!("deserialize_i16 state:  {:?}", self.current);
-        if let TTLValue::Integer(i) = &self.fetch_element()?.value {
-            let value: i16 = (*i)
-                .try_into()
-                .map_err(|e| TtlvError::from(format!("Integer conversion error{e}")))?;
-            visitor.visit_i16(value)
-        } else {
-            Err(TtlvError::from("Expected Integer value in TTLV"))
-        }
-    }
-
-    #[instrument(level = "trace", skip(self, visitor))]
-    fn deserialize_i32<V>(self, visitor: V) -> Result<V::Value>
-    where
-        V: Visitor<'de>,
-    {
-        trace!(
-            "deserialize_i32: child index: {},  current:  {:?}",
-            self.child_index, self.current
-        );
-        if let TTLValue::Integer(i) = &self.fetch_element()?.value {
-            visitor.visit_i32(*i)
-        } else {
-            Err(TtlvError::from("Expected Integer value in TTLV"))
-        }
-    }
-
-    #[instrument(level = "trace", skip(self, visitor))]
-    fn deserialize_i64<V>(self, visitor: V) -> Result<V::Value>
-    where
-        V: Visitor<'de>,
-    {
-        trace!(
-            "deserialize_i64:  {}: {:?}",
-            self.child_index,
-            peek_structure_child(&self.current, self.child_index)
-        );
         match &self.fetch_element()?.value {
-            TTLValue::DateTime(dt) => visitor.visit_i64(dt.unix_timestamp()),
-            TTLValue::LongInteger(i) => visitor.visit_i64(*i),
-            _ => Err(TtlvError::from(
-                "Expected DateTime or LongInteger value in TTLV",
-            )),
+            TTLValue::Integer(i) => {
+                let value: i16 = (*i)
+                    .try_into()
+                    .map_err(|e| TtlvError::from(format!("Integer conversion error{e}")))?;
+                visitor.visit_i16(value)
+            }
+            TTLValue::BigInteger(bi) => {
+                // Fallback: treat sign as i16 when deserializing part of BigInteger
+                visitor.visit_i16(i16::from(bi.sign()))
+            }
+            TTLValue::LongInteger(i) => {
+                let value: i16 = (*i)
+                    .try_into()
+                    .map_err(|e| TtlvError::from(format!("Integer conversion error{e}")))?;
+                visitor.visit_i16(value)
+            }
+            _ => Err(TtlvError::from("Expected Integer value in TTLV for i16")),
         }
     }
 
@@ -319,11 +296,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
     where
         V: Visitor<'de>,
     {
-        trace!(
-            "deserialize_u8: state: {}: {:?}",
-            self.child_index,
-            peek_structure_child(&self.current, self.child_index)
-        );
+        trace!("deserialize_u8: state:  {:?}", self.current);
         match &self.fetch_element()?.value {
             TTLValue::Integer(i) => {
                 if *i < 0 {
@@ -334,9 +307,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
                     .map_err(|e| TtlvError::from(format!("Integer conversion error{e}")))?;
                 visitor.visit_u8(value)
             }
-            _ => Err(TtlvError::from(
-                "Expected ByteString or Integer value in TTLV",
-            )),
+            _ => Err(TtlvError::from("Expected Integer value in TTLV for u8")),
         }
     }
 
@@ -345,21 +316,18 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
     where
         V: Visitor<'de>,
     {
-        trace!(
-            "deserialize_u16: {}: {:?}",
-            self.child_index,
-            peek_structure_child(&self.current, self.child_index)
-        );
-        if let TTLValue::Integer(i) = &self.fetch_element()?.value {
-            if *i < 0 {
-                return Err(TtlvError::from("Cannot convert negative integer to u16"));
+        trace!("deserialize_u16: state:  {:?}", self.current);
+        match &self.fetch_element()?.value {
+            TTLValue::Integer(i) => {
+                if *i < 0 {
+                    return Err(TtlvError::from("Cannot convert negative integer to u16"));
+                }
+                let value: u16 = (*i)
+                    .try_into()
+                    .map_err(|e| TtlvError::from(format!("Integer conversion error{e}")))?;
+                visitor.visit_u16(value)
             }
-            let value: u16 = (*i)
-                .try_into()
-                .map_err(|e| TtlvError::from(format!("Integer conversion error{e}")))?;
-            visitor.visit_u16(value)
-        } else {
-            Err(TtlvError::from("Expected Integer value in TTLV"))
+            _ => Err(TtlvError::from("Expected Integer value in TTLV for u16")),
         }
     }
 
@@ -375,8 +343,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         );
         match &self.fetch_element()?.value {
             TTLValue::BigInteger(bi) => {
-                // if the TTLV value is a BigInt, the deserializer is attempting to deserialize the value
-                // by converting the BigInt to u32
+                // Deserialize digits of a BigInteger as a sequence of u32 values
                 bi.to_u32_digits()?
                     .1
                     .get(self.child_index)
@@ -401,6 +368,32 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
                 "Expected BigInteger, Interval, Integer (for masks) value in TTLV for an u32, got \
                  : {v:?}"
             ))),
+        }
+    }
+
+    #[instrument(level = "trace", skip(self, visitor))]
+    fn deserialize_i32<V>(self, visitor: V) -> Result<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        trace!("deserialize_i32: state:  {:?}", self.current);
+        match &self.fetch_element()?.value {
+            TTLValue::Integer(i) => visitor.visit_i32(*i),
+            _ => Err(TtlvError::from("Expected Integer value in TTLV for i32")),
+        }
+    }
+
+    #[instrument(level = "trace", skip(self, visitor))]
+    fn deserialize_i64<V>(self, visitor: V) -> Result<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        trace!("deserialize_i64: state:  {:?}", self.current);
+        match &self.fetch_element()?.value {
+            TTLValue::LongInteger(i) => visitor.visit_i64(*i),
+            _ => Err(TtlvError::from(
+                "Expected LongInteger value in TTLV for i64",
+            )),
         }
     }
 
@@ -595,55 +588,73 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
             self.child_index,
             peek_structure_child(&self.current, self.child_index)
         );
-        // There are 3 reasons why this method may be called:
-        // 1. The deserializer is deserializing a sequence of TTLVs to reconstruct a flattened array
-        // 2. The deserializer is deserializing the u32 array of a `BigUint`
-        // 3. The deserializer is deserializing the bytes of a ByteString
-        //
-        // If the TTLV pointed at child_index is a BigInteger ==> deserialize a BigInt
-        // If the TTLV pointed at child_index is a ByteString ==> deserialize a ByteString
-        //
-        // This strategy prevents deserializing flattened arrays with BigInts or ByteStrings,
-        // but it is hard to do better than this, although we could inspect the next element to see if it
-        // has the same tag.
+        let element = self.fetch_element()?.clone();
+        if let TTLValue::BigInteger(bi) = &element.value {
+            trace!("   ... assuming deserialization of BigInteger: {:?}", bi);
+            let seq_access = KmipBigIntDeserializer::instantiate(bi)?;
+            return visitor.visit_seq(seq_access);
+        }
+        if let TTLValue::ByteString(bs) = &element.value {
+            trace!("   ... assuming deserialization of ByteString: {:?}", bs);
+            let deserializer = ByteStringDeserializer::new(&element.tag, bs);
+            return visitor.visit_seq(deserializer);
+        }
 
-        let element = self.fetch_element()?;
-        match &element.value {
-            TTLValue::BigInteger(bi) => {
-                // if the TTLV value is a BigInt, assuming the deserializer is attempting to deserialize the value
-                // by converting the BigInt to u32
-                trace!("   ... assuming deserialization of BigInteger: {:?}", bi);
-                let seq_access = KmipBigIntDeserializer::instantiate(bi)?;
+        // Conservative structure-as-ByteString fallback for a whitelist of byte-vector tags
+        if let TTLValue::Structure(children) = &element.value {
+            fn collect_bytes(node: &TTLV, out: &mut Vec<u8>) -> bool {
+                match &node.value {
+                    TTLValue::ByteString(bs) => {
+                        out.extend_from_slice(bs);
+                        true
+                    }
+                    TTLValue::Integer(v) => u8::try_from(*v).is_ok_and(|b| {
+                        out.push(b);
+                        true
+                    }),
+                    TTLValue::Structure(inner) => {
+                        for ch in inner {
+                            if !collect_bytes(ch, out) {
+                                return false;
+                            }
+                        }
+                        true
+                    }
+                    _ => false,
+                }
+            }
+            if BYTE_LIKE_TAGS.contains(&element.tag.as_str()) {
+                let mut buf: Vec<u8> = Vec::new();
+                let all_byte_like = children.iter().all(|ch| collect_bytes(ch, &mut buf));
+                if all_byte_like {
+                    trace!(
+                        "   ... structure recognized as byte-like; concatenated len={} for tag {}",
+                        buf.len(),
+                        element.tag
+                    );
+                    let deserializer = ByteStringDeserializer::new(&element.tag, &buf);
+                    return visitor.visit_seq(deserializer);
+                }
+            }
+        }
+
+        // Default: array deserialization using the parent structure context
+        match self.current.value.clone() {
+            TTLValue::Structure(children) => {
+                let tag = &children
+                    .get(self.child_index)
+                    .ok_or_else(|| {
+                        TtlvError::from(format!(
+                            "Index out of bounds when accessing child array: {}",
+                            self.child_index
+                        ))
+                    })?
+                    .tag;
+                trace!("   ... deserializing transparent seq with tag: {tag}");
+                let seq_access = ArrayDeserializer::new(self, tag, &children);
                 visitor.visit_seq(seq_access)
             }
-            TTLValue::ByteString(bs) => {
-                // if the TTLV value is a Structure, ByteString or Array, the deserializer is attempting to deserialize the children
-                // by iterating over the children which hold the values of the sequence/array.
-                // Reset the child index to 0 to start from the beginning
-                trace!("   ... assuming deserialization of ByteString: {:?}", bs);
-                let deserializer = ByteStringDeserializer::new(&element.tag, bs);
-                visitor.visit_seq(deserializer)
-            }
-            _ => match self.current.value.clone() {
-                TTLValue::Structure(children) => {
-                    // Tag of the array to deserialize
-                    let tag = &children
-                        .get(self.child_index)
-                        .ok_or_else(|| {
-                            TtlvError::from(format!(
-                                "Index out of bounds when accessing child array: {}",
-                                self.child_index
-                            ))
-                        })?
-                        .tag;
-                    trace!("   ... deserializing transparent seq with tag: {tag}");
-                    // Deserialize an array using the ArrayDeserializer
-                    let seq_access = ArrayDeserializer::new(self, tag, &children);
-                    visitor.visit_seq(seq_access)
-                }
-
-                x => Err(TtlvError::from(format!("unexpected {x:?} value in TTLV"))),
-            },
+            x => Err(TtlvError::from(format!("unexpected {x:?} value in TTLV"))),
         }
     }
 

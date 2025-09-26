@@ -40,6 +40,8 @@ where
     }
 
     pub fn write_ttlv<TAG: KmipTag>(&mut self, ttlv: &TTLV) -> Result<(), TtlvError> {
+        #[cfg(test)]
+        cosmian_logger::debug!("[serialize] writing tag: {}", ttlv.tag);
         // Write Tag (3 bytes)
         write_tag::<W, TAG>(&mut self.writer, &ttlv.tag)?;
 

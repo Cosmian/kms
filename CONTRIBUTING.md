@@ -114,8 +114,8 @@ Finally, in your code, try to avoid logic-heavy templates (when possible, calcul
 If you have never worked with Rust before, you will have to complete the following steps:
 
 1. Install Rust using [rustup](https://rustup.rs/)
-2. Install the required nightly toolchain: `rustup toolchain install nightly-2025-09-15`
-3. Install required components: `rustup component add rustfmt clippy --toolchain nightly-2025-09-15`
+2. Install the required stable toolchain: `rustup toolchain install 1.90.0`
+3. Install required components: `rustup component add rustfmt clippy --toolchain 1.90.0`
 4. Set up OpenSSL 3.2.0 (required for FIPS compliance) by running: `bash .github/reusable_scripts/get_openssl_binaries.sh`
 
 For detailed development setup, please refer to the [README](README.md) and the build instructions in
