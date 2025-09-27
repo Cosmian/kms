@@ -587,14 +587,16 @@ impl fmt::Debug for ClapConfig {
 }
 
 #[cfg(test)]
-mod tests_print_only {
+mod tests {
+    use cosmian_logger::debug;
+
     use super::ClapConfig;
 
     #[test]
-    #[expect(clippy::print_stdout, clippy::unwrap_used)]
+    #[expect(clippy::unwrap_used)]
     fn test_server_configuration_file() {
         let conf = ClapConfig::default();
         let conf_str = toml::to_string_pretty(&conf).unwrap();
-        println!("Pretty TOML print {conf_str}");
+        debug!("Pretty TOML print {conf_str}");
     }
 }

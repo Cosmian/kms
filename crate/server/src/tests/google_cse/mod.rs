@@ -2,8 +2,12 @@
     clippy::unwrap_used,
     clippy::print_stdout,
     clippy::panic_in_result_fn,
-    clippy::unwrap_in_result
+    clippy::unwrap_in_result,
+    clippy::ignore_without_reason
 )]
+
+// Base imports used by all tests
+// Imports for Google CSE tests
 use std::{
     collections::HashMap,
     fs::File,
@@ -199,7 +203,7 @@ fn test_ossl_sign_verify() -> KResult<()> {
 /// echo -n "<ResourceKeyDigest://googleapis.com/testcase/hJB0PzRI7nl79LC18qaV8WMDCBALBSs9BREcq79MfVw>:" | openssl sha256 -mac HMAC -macopt hexkey:6a68079290123ed8f23c845cc8bda91cd961c0246b79446662919e336920cbef -binary | xxd -p -c 256
 /// echo -n "<ResourceKeyDigest://googleapis.com/testcase/od8yfZiS5ZF2RN27X4ClalsV6LobL2FwKRk4qOJxWdE:perimeter1>" | openssl sha256 -mac HMAC -macopt hexkey:05b62b91cb66f19e27789fb69eb680fac113a70a120178d6cfa6b1b4cb11bb95 -binary | xxd -p -c 256
 #[tokio::test]
-async fn test_cse_resource_key_hash() -> KResult<()> {
+async fn test_google_cse_resource_key_hash() -> KResult<()> {
     let dek = "6a68079290123ed8f23c845cc8bda91cd961c0246b79446662919e336920cbef";
     let dek_data = Vec::from_hex(dek).unwrap();
 
@@ -236,7 +240,7 @@ async fn test_cse_resource_key_hash() -> KResult<()> {
 }
 
 #[tokio::test]
-async fn test_cse_status() -> KResult<()> {
+async fn test_google_cse_status() -> KResult<()> {
     log_init(option_env!("RUST_LOG"));
 
     let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned()), None).await;
@@ -252,7 +256,8 @@ async fn test_cse_status() -> KResult<()> {
 }
 
 #[tokio::test]
-async fn test_cse_private_key_sign() -> KResult<()> {
+#[ignore = "Requires Google OAuth credentials and access to Google CSE endpoints"]
+async fn test_google_cse_private_key_sign() -> KResult<()> {
     unsafe {
         std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWKS_URI", JWKS_URI);
         std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWT_ISSUER", JWT_ISSUER_URI);
@@ -350,7 +355,8 @@ pub(crate) fn build_private_key_from_der_bytes(
 }
 
 #[tokio::test]
-async fn test_create_pair_encrypt_decrypt() -> KResult<()> {
+#[ignore = "Requires Google OAuth credentials and access to Google CSE endpoints"]
+async fn test_google_cse_create_pair_encrypt_decrypt() -> KResult<()> {
     log_init(Some("debug"));
 
     let clap_config = https_clap_config();
@@ -574,7 +580,8 @@ async fn test_cse_private_key_decrypt(
 }
 
 #[tokio::test]
-async fn test_encrypt_and_private_key_decrypt() -> KResult<()> {
+#[ignore = "Requires Google OAuth credentials and access to Google CSE endpoints"]
+async fn test_google_cse_encrypt_and_private_key_decrypt() -> KResult<()> {
     log_init(None);
     unsafe {
         std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWKS_URI", JWKS_URI);
@@ -605,7 +612,8 @@ async fn test_encrypt_and_private_key_decrypt() -> KResult<()> {
 }
 
 #[tokio::test]
-async fn test_cse_wrap_unwrap_key() -> KResult<()> {
+#[ignore = "Requires Google OAuth credentials and access to Google CSE endpoints"]
+async fn test_google_cse_wrap_unwrap_key() -> KResult<()> {
     unsafe {
         std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWKS_URI", JWKS_URI);
         std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWT_ISSUER", JWT_ISSUER_URI);
@@ -656,7 +664,8 @@ async fn test_cse_wrap_unwrap_key() -> KResult<()> {
 }
 
 #[tokio::test]
-async fn test_cse_privileged_wrap_unwrap_key() -> KResult<()> {
+#[ignore = "Requires Google OAuth credentials and access to Google CSE endpoints"]
+async fn test_google_cse_privileged_wrap_unwrap_key() -> KResult<()> {
     unsafe {
         std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWKS_URI", JWKS_URI);
         std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWT_ISSUER", JWT_ISSUER_URI);
@@ -708,7 +717,8 @@ async fn test_cse_privileged_wrap_unwrap_key() -> KResult<()> {
 }
 
 #[tokio::test]
-async fn test_cse_privileged_private_key_decrypt() -> KResult<()> {
+#[ignore = "Requires Google OAuth credentials and access to Google CSE endpoints"]
+async fn test_google_cse_privileged_private_key_decrypt() -> KResult<()> {
     unsafe {
         std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWKS_URI", JWKS_URI);
         std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWT_ISSUER", JWT_ISSUER_URI);
@@ -788,7 +798,8 @@ async fn test_cse_privileged_private_key_decrypt() -> KResult<()> {
 }
 
 #[tokio::test]
-async fn test_cse_custom_jwt() -> KResult<()> {
+#[ignore = "Requires Google OAuth credentials and access to Google CSE endpoints"]
+async fn test_google_cse_custom_jwt() -> KResult<()> {
     unsafe {
         std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWKS_URI", JWKS_URI);
         std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWT_ISSUER", JWT_ISSUER_URI);

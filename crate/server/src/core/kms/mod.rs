@@ -12,14 +12,14 @@ use cosmian_kms_server_database::{
 };
 use cosmian_logger::trace;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use proteccio_pkcs11_loader::Proteccio;
+use proteccio_pkcs11_loader::{PROTECCIO_PKCS11_LIB, Proteccio};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use smartcardhsm_pkcs11_loader::Smartcardhsm;
+use smartcardhsm_pkcs11_loader::{SMARTCARDHSM_PKCS11_LIB, Smartcardhsm};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use softhsm2_pkcs11_loader::Softhsm2;
+use softhsm2_pkcs11_loader::{SOFTHSM2_PKCS11_LIB, Softhsm2};
 use tokio::sync::RwLock;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use utimaco_pkcs11_loader::Utimaco;
+use utimaco_pkcs11_loader::{UTIMACO_PKCS11_LIB, Utimaco};
 
 use crate::{config::ServerParams, error::KmsError, kms_bail, result::KResult};
 
@@ -112,7 +112,7 @@ impl KMS {
                     "proteccio" => {
                         let proteccio: Arc<dyn HSM + Send + Sync> = Arc::new(
                             Proteccio::instantiate(
-                                "/lib/libnethsm.so",
+                                PROTECCIO_PKCS11_LIB,
                                 server_params.slot_passwords.clone(),
                             )
                             .map_err(|e| {
@@ -126,7 +126,7 @@ impl KMS {
                     "utimaco" => {
                         let utimaco: Arc<dyn HSM + Send + Sync> = Arc::new(
                             Utimaco::instantiate(
-                                "/lib/libcs_pkcs11_R3.so",
+                                UTIMACO_PKCS11_LIB,
                                 server_params.slot_passwords.clone(),
                             )
                             .map_err(|e| {
@@ -140,7 +140,7 @@ impl KMS {
                     "softhsm2" => {
                         let softhsm2: Arc<dyn HSM + Send + Sync> = Arc::new(
                             Softhsm2::instantiate(
-                                "/usr/lib/softhsm/libsofthsm2.so",
+                                SOFTHSM2_PKCS11_LIB,
                                 server_params.slot_passwords.clone(),
                             )
                             .map_err(|e| {
@@ -154,7 +154,7 @@ impl KMS {
                     "smartcardhsm" => {
                         let smartcardhsm: Arc<dyn HSM + Send + Sync> = Arc::new(
                             Smartcardhsm::instantiate(
-                                "/usr/local/lib/libsc-hsm-pkcs11.so",
+                                SMARTCARDHSM_PKCS11_LIB,
                                 server_params.slot_passwords.clone(),
                             )
                             .map_err(|e| {

@@ -21,6 +21,7 @@ mod encrypt_decrypt;
 mod revoke_destroy;
 mod wrap_with_hsm_key;
 
+#[ignore = "Requires an Utimaco HSM setup"]
 #[tokio::test]
 async fn test_all_hsm_cli() -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server_with_utimaco_hsm().await;

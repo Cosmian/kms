@@ -1,7 +1,7 @@
 //! These tests  require a connection to a working HSM and are gated behind the `softhsm2` feature.
 //! To run a test, cd into the crate directory and run (replace `XXX` with the actual password):
 //! ```
-//! HSM_USER_PASSWORD=12345678 cargo test --target x86_64-unknown-linux-gnu --features softhsm2 -- tests::test_hsm_all
+//! HSM_USER_PASSWORD=12345678 cargo test --target x86_64-unknown-linux-gnu --features softhsm2 -- tests::test_hsm_softhsm2_all
 //! ```
 use std::{collections::HashMap, ptr, sync::Arc, thread};
 
@@ -19,9 +19,9 @@ use pkcs11_sys::{
 use rand::{TryRngCore, rngs::OsRng};
 use uuid::Uuid;
 
-use crate::Softhsm2;
+use crate::{SOFTHSM2_PKCS11_LIB, Softhsm2};
 
-const LIB_PATH: &str = "/usr/lib/softhsm/libsofthsm2.so";
+const LIB_PATH: &str = SOFTHSM2_PKCS11_LIB;
 
 fn generate_random_data<const T: usize>() -> HResult<[u8; T]> {
     let mut bytes = [0_u8; T];
@@ -44,28 +44,30 @@ fn get_slot() -> HResult<Arc<SlotManager>> {
 }
 
 #[test]
-fn test_hsm_all() -> HResult<()> {
-    test_hsm_get_info()?;
-    test_hsm_get_mechanisms()?;
-    test_hsm_get_supported_algorithms()?;
-    test_hsm_destroy_all()?;
-    test_hsm_generate_aes_key()?;
-    test_hsm_generate_rsa_keypair()?;
-    test_hsm_rsa_key_wrap()?;
-    test_hsm_rsa_pkcs_encrypt()?;
-    test_hsm_rsa_oaep_encrypt()?;
-    test_hsm_aes_gcm_encrypt()?;
-    test_hsm_aes_cbc_encrypt()?;
-    test_hsm_aes_cbc_multi_round_encrypt()?;
-    test_hsm_multi_threaded_rsa_encrypt_decrypt_test()?;
-    test_hsm_get_key_metadata()?;
-    test_hsm_list_objects()?;
-    test_hsm_destroy_all()?;
+#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
+fn test_hsm_softhsm2_all() -> HResult<()> {
+    test_hsm_softhsm2_get_info()?;
+    test_hsm_softhsm2_get_mechanisms()?;
+    test_hsm_softhsm2_get_supported_algorithms()?;
+    test_hsm_softhsm2_destroy_all()?;
+    test_hsm_softhsm2_generate_aes_key()?;
+    test_hsm_softhsm2_generate_rsa_keypair()?;
+    test_hsm_softhsm2_rsa_key_wrap()?;
+    test_hsm_softhsm2_rsa_pkcs_encrypt()?;
+    test_hsm_softhsm2_rsa_oaep_encrypt()?;
+    test_hsm_softhsm2_aes_gcm_encrypt()?;
+    test_hsm_softhsm2_aes_cbc_encrypt()?;
+    test_hsm_softhsm2_aes_cbc_multi_round_encrypt()?;
+    test_hsm_softhsm2_multi_threaded_rsa_encrypt_decrypt_test()?;
+    test_hsm_softhsm2_get_key_metadata()?;
+    test_hsm_softhsm2_list_objects()?;
+    test_hsm_softhsm2_destroy_all()?;
     Ok(())
 }
 
 #[test]
-fn test_hsm_low_level_test() -> HResult<()> {
+#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
+fn test_hsm_softhsm2_low_level_test() -> HResult<()> {
     let path = LIB_PATH;
     let library = unsafe { Library::new(path) }?;
     let init = unsafe { library.get::<fn(p_init_args: CK_VOID_PTR) -> CK_RV>(b"C_Initialize") }?;
@@ -85,7 +87,8 @@ fn test_hsm_low_level_test() -> HResult<()> {
 }
 
 #[test]
-fn test_hsm_get_info() -> HResult<()> {
+#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
+fn test_hsm_softhsm2_get_info() -> HResult<()> {
     log_init(None);
     let hsm = Softhsm2::instantiate(LIB_PATH, HashMap::new())?;
     let info = hsm.get_info()?;
@@ -96,7 +99,8 @@ fn test_hsm_get_info() -> HResult<()> {
 }
 
 #[test]
-fn test_hsm_get_mechanisms() -> HResult<()> {
+#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
+fn test_hsm_softhsm2_get_mechanisms() -> HResult<()> {
     log_init(None);
     let slot = get_slot()?;
     let mut mechanisms = slot.get_supported_mechanisms()?;
@@ -117,7 +121,8 @@ fn test_hsm_get_mechanisms() -> HResult<()> {
 }
 
 #[test]
-fn test_hsm_get_supported_algorithms() -> HResult<()> {
+#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
+fn test_hsm_softhsm2_get_supported_algorithms() -> HResult<()> {
     let user_password = get_hsm_password()?;
     let slot = get_hsm_slot_id()?;
     let passwords = HashMap::from([(slot, Some(user_password))]);
@@ -129,7 +134,8 @@ fn test_hsm_get_supported_algorithms() -> HResult<()> {
 }
 
 #[test]
-fn test_hsm_generate_aes_key() -> HResult<()> {
+#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
+fn test_hsm_softhsm2_generate_aes_key() -> HResult<()> {
     log_init(None);
     let key_id = Uuid::new_v4().to_string();
     let slot = get_slot()?;
@@ -171,7 +177,8 @@ fn test_hsm_generate_aes_key() -> HResult<()> {
 }
 
 #[test]
-fn test_hsm_generate_rsa_keypair() -> HResult<()> {
+#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
+fn test_hsm_softhsm2_generate_rsa_keypair() -> HResult<()> {
     log_init(Some("debug"));
     let sk_id = Uuid::new_v4().to_string();
     let pk_id = sk_id.clone() + "_pk ";
@@ -232,7 +239,8 @@ fn test_hsm_generate_rsa_keypair() -> HResult<()> {
 }
 
 #[test]
-fn test_hsm_rsa_key_wrap() -> HResult<()> {
+#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
+fn test_hsm_softhsm2_rsa_key_wrap() -> HResult<()> {
     log_init(None);
     let key_id = Uuid::new_v4().to_string();
     let slot = get_slot()?;
@@ -260,7 +268,8 @@ fn test_hsm_rsa_key_wrap() -> HResult<()> {
 }
 
 #[test]
-fn test_hsm_rsa_pkcs_encrypt() -> HResult<()> {
+#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
+fn test_hsm_softhsm2_rsa_pkcs_encrypt() -> HResult<()> {
     log_init(None);
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
@@ -282,7 +291,8 @@ fn test_hsm_rsa_pkcs_encrypt() -> HResult<()> {
 }
 
 #[test]
-fn test_hsm_rsa_oaep_encrypt() -> HResult<()> {
+#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
+fn test_hsm_softhsm2_rsa_oaep_encrypt() -> HResult<()> {
     log_init(None);
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
@@ -310,7 +320,8 @@ fn test_hsm_rsa_oaep_encrypt() -> HResult<()> {
 }
 
 #[test]
-fn test_hsm_aes_gcm_encrypt() -> HResult<()> {
+#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
+fn test_hsm_softhsm2_aes_gcm_encrypt() -> HResult<()> {
     log_init(None);
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
@@ -339,7 +350,8 @@ fn test_hsm_aes_gcm_encrypt() -> HResult<()> {
 }
 
 #[test]
-fn test_hsm_aes_cbc_encrypt() -> HResult<()> {
+#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
+fn test_hsm_softhsm2_aes_cbc_encrypt() -> HResult<()> {
     log_init(None);
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
@@ -368,7 +380,8 @@ fn test_hsm_aes_cbc_encrypt() -> HResult<()> {
 }
 
 #[test]
-fn test_hsm_aes_cbc_multi_round_encrypt() -> HResult<()> {
+#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
+fn test_hsm_softhsm2_aes_cbc_multi_round_encrypt() -> HResult<()> {
     log_init(None);
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
@@ -497,7 +510,8 @@ fn test_hsm_aes_cbc_multi_round_encrypt() -> HResult<()> {
 }
 
 #[test]
-fn test_hsm_multi_threaded_rsa_encrypt_decrypt_test() -> HResult<()> {
+#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
+fn test_hsm_softhsm2_multi_threaded_rsa_encrypt_decrypt_test() -> HResult<()> {
     log_init(None);
 
     // Initialize the HSM once and share it across threads
@@ -542,7 +556,8 @@ fn test_hsm_multi_threaded_rsa_encrypt_decrypt_test() -> HResult<()> {
 }
 
 #[test]
-fn test_hsm_list_objects() -> HResult<()> {
+#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
+fn test_hsm_softhsm2_list_objects() -> HResult<()> {
     log_init(None);
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
@@ -606,7 +621,8 @@ fn test_hsm_list_objects() -> HResult<()> {
 }
 
 #[test]
-fn test_hsm_get_key_metadata() -> HResult<()> {
+#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
+fn test_hsm_softhsm2_get_key_metadata() -> HResult<()> {
     log_init(None);
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
@@ -672,7 +688,8 @@ fn test_hsm_get_key_metadata() -> HResult<()> {
 }
 
 #[test]
-fn test_hsm_destroy_all() -> HResult<()> {
+#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
+fn test_hsm_softhsm2_destroy_all() -> HResult<()> {
     log_init(None);
     let slot = get_slot()?;
     let session = slot.open_session(true)?;

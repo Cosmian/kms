@@ -434,6 +434,7 @@ mod tests {
         tests::google_cse::utils::generate_google_jwt,
     };
 
+    #[ignore = "Requires Google CSE credentials; not available in CI"]
     #[tokio::test]
     async fn test_wrap_auth() {
         log_init(option_env!("RUST_LOG"));

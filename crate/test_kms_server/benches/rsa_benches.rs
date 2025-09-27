@@ -160,8 +160,8 @@ pub(crate) fn bench_rsa_key_wrp_encrypt_2048(c: &mut Criterion) {
         c,
         2048,
         &CryptographicParameters {
-            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-            padding_method: Some(PaddingMethod::OAEP),
+            cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+            padding_method: Some(PaddingMethod::PKCS1v15),
             hashing_algorithm: Some(HashingAlgorithm::SHA256),
             ..Default::default()
         },
@@ -173,8 +173,8 @@ pub(crate) fn bench_rsa_key_wrp_encrypt_4096(c: &mut Criterion) {
         c,
         4096,
         &CryptographicParameters {
-            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-            padding_method: Some(PaddingMethod::OAEP),
+            cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+            padding_method: Some(PaddingMethod::PKCS1v15),
             hashing_algorithm: Some(HashingAlgorithm::SHA256),
             ..Default::default()
         },
@@ -187,8 +187,8 @@ pub(crate) fn bench_rsa_key_wrp_decrypt_2048(c: &mut Criterion) {
         c,
         2048,
         &CryptographicParameters {
-            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-            padding_method: Some(PaddingMethod::OAEP),
+            cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+            padding_method: Some(PaddingMethod::PKCS1v15),
             hashing_algorithm: Some(HashingAlgorithm::SHA256),
             ..Default::default()
         },
@@ -200,8 +200,8 @@ pub(crate) fn bench_rsa_key_wrp_decrypt_4096(c: &mut Criterion) {
         c,
         4096,
         &CryptographicParameters {
-            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-            padding_method: Some(PaddingMethod::OAEP),
+            cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+            padding_method: Some(PaddingMethod::PKCS1v15),
             hashing_algorithm: Some(HashingAlgorithm::SHA256),
             ..Default::default()
         },
@@ -518,8 +518,8 @@ pub(crate) fn bench_encrypt_rsa_aes_key_wrap_parametrized(c: &mut Criterion) {
         c,
         "RSA AES KEY WRAP - plaintext of 32 bytes",
         CryptographicParameters {
-            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-            padding_method: Some(PaddingMethod::OAEP),
+            cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+            padding_method: Some(PaddingMethod::None),
             hashing_algorithm: Some(HashingAlgorithm::SHA256),
             ..Default::default()
         },

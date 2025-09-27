@@ -2,6 +2,9 @@
 
 use cosmian_kms_base_hsm::hsm_capabilities::{HsmCapabilities, HsmProvider};
 
+/// Path to the `SmartcardHSM` `PKCS#11` shared library
+pub const SMARTCARDHSM_PKCS11_LIB: &str = "/usr/local/lib/libsc-hsm-pkcs11.so";
+
 #[cfg(test)]
 #[allow(clippy::expect_used)]
 // Allow test-specific lint patterns for C library integration

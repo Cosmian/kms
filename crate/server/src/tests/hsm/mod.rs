@@ -47,7 +47,8 @@ mod test_helpers;
 /// The HSM simulator does not like tests in parallel,
 /// so we run them sequentially from here
 #[tokio::test]
-async fn test_all() {
+#[ignore = "Requires a working HSM setup"]
+async fn test_hsm_all() {
     log_init(option_env!("RUST_LOG"));
     info!("HSM: find");
     search::test_object_search().await.unwrap();

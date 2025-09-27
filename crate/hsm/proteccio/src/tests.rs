@@ -2,7 +2,7 @@
 //! To run a test, cd into the crate directory and run (replace `XXX` with the actual password).
 //! The tests should be run in release mode as the behavior of the PKCS#11 library is different in debug mode.
 //! ```
-//! HSM_USER_PASSWORD=XXX cargo test --release --target x86_64-unknown-linux-gnu --features proteccio -- tests::test_hsm_all
+//! HSM_USER_PASSWORD=XXX cargo test --release --target x86_64-unknown-linux-gnu --features proteccio -- tests::test_hsm_proteccio_all
 //! ```
 
 // Allow test-specific lint patterns for C library integration
@@ -29,36 +29,38 @@ use libloading::Library;
 use pkcs11_sys::{CK_C_INITIALIZE_ARGS, CK_RV, CK_VOID_PTR, CKF_OS_LOCKING_OK, CKR_OK};
 use uuid::Uuid;
 
-use crate::Proteccio;
+use crate::{PROTECCIO_PKCS11_LIB, Proteccio};
 
 fn get_slot() -> HResult<Arc<SlotManager>> {
     let user_password = get_hsm_password()?;
     let passwords = HashMap::from([(0x04, Some(user_password.clone()))]);
-    let hsm = Proteccio::instantiate("/lib/libnethsm.so", passwords)?;
+    let hsm = Proteccio::instantiate(PROTECCIO_PKCS11_LIB, passwords)?;
     let manager = hsm.get_slot(0x04)?;
     Ok(manager)
 }
 
 #[test]
-fn test_hsm_all() -> HResult<()> {
-    test_hsm_get_info()?;
-    test_hsm_destroy_all()?;
-    test_hsm_generate_aes_key()?;
-    test_hsm_generate_rsa_keypair()?;
-    test_hsm_rsa_key_wrap()?;
-    test_hsm_rsa_pkcs_encrypt()?;
-    test_hsm_rsa_oaep_encrypt()?;
-    test_hsm_aes_gcm_encrypt()?;
-    test_hsm_multi_threaded_rsa_encrypt_decrypt_test()?;
-    test_hsm_get_key_metadata()?;
-    test_hsm_list_objects()?;
-    test_hsm_destroy_all()?;
+#[ignore = "Requires Linux, Proteccio PKCS#11 library, and HSM environment"]
+fn test_hsm_proteccio_all() -> HResult<()> {
+    test_hsm_proteccio_get_info()?;
+    test_hsm_proteccio_destroy_all()?;
+    test_hsm_proteccio_generate_aes_key()?;
+    test_hsm_proteccio_generate_rsa_keypair()?;
+    test_hsm_proteccio_rsa_key_wrap()?;
+    test_hsm_proteccio_rsa_pkcs_encrypt()?;
+    test_hsm_proteccio_rsa_oaep_encrypt()?;
+    test_hsm_proteccio_aes_gcm_encrypt()?;
+    test_hsm_proteccio_multi_threaded_rsa_encrypt_decrypt_test()?;
+    test_hsm_proteccio_get_key_metadata()?;
+    test_hsm_proteccio_list_objects()?;
+    test_hsm_proteccio_destroy_all()?;
     Ok(())
 }
 
 #[test]
-fn test_hsm_low_level_test() -> HResult<()> {
-    let path = "/lib/libnethsm.so";
+#[ignore = "Requires Linux, Proteccio PKCS#11 library, and HSM environment"]
+fn test_hsm_proteccio_low_level_test() -> HResult<()> {
+    let path = PROTECCIO_PKCS11_LIB;
     let library = unsafe { Library::new(path) }?;
     let init = unsafe { library.get::<fn(p_init_args: CK_VOID_PTR) -> CK_RV>(b"C_Initialize") }?;
 
@@ -77,16 +79,18 @@ fn test_hsm_low_level_test() -> HResult<()> {
 }
 
 #[test]
-fn test_hsm_get_info() -> HResult<()> {
+#[ignore = "Requires Linux, Proteccio PKCS#11 library, and HSM environment"]
+fn test_hsm_proteccio_get_info() -> HResult<()> {
     log_init(None);
-    let hsm = Proteccio::instantiate("/lib/libnethsm.so", HashMap::new())?;
+    let hsm = Proteccio::instantiate(PROTECCIO_PKCS11_LIB, HashMap::new())?;
     let info = hsm.get_info()?;
     info!("Connected to the HSM: {info}");
     Ok(())
 }
 
 #[test]
-fn test_hsm_generate_aes_key() -> HResult<()> {
+#[ignore = "Requires Linux, Proteccio PKCS#11 library, and HSM environment"]
+fn test_hsm_proteccio_generate_aes_key() -> HResult<()> {
     log_init(None);
     let key_id = Uuid::new_v4().to_string();
     let slot = get_slot()?;
@@ -128,7 +132,8 @@ fn test_hsm_generate_aes_key() -> HResult<()> {
 }
 
 #[test]
-fn test_hsm_generate_rsa_keypair() -> HResult<()> {
+#[ignore = "Requires Linux, Proteccio PKCS#11 library, and HSM environment"]
+fn test_hsm_proteccio_generate_rsa_keypair() -> HResult<()> {
     log_init(None);
     let sk_id = Uuid::new_v4().to_string();
     let pk_id = sk_id.clone() + "_pk ";
@@ -189,7 +194,8 @@ fn test_hsm_generate_rsa_keypair() -> HResult<()> {
 }
 
 #[test]
-fn test_hsm_rsa_key_wrap() -> HResult<()> {
+#[ignore = "Requires Linux, Proteccio PKCS#11 library, and HSM environment"]
+fn test_hsm_proteccio_rsa_key_wrap() -> HResult<()> {
     log_init(None);
     let key_id = Uuid::new_v4().to_string();
     let slot = get_slot()?;
@@ -217,7 +223,8 @@ fn test_hsm_rsa_key_wrap() -> HResult<()> {
 }
 
 #[test]
-fn test_hsm_rsa_pkcs_encrypt() -> HResult<()> {
+#[ignore = "Requires Linux, Proteccio PKCS#11 library, and HSM environment"]
+fn test_hsm_proteccio_rsa_pkcs_encrypt() -> HResult<()> {
     log_init(None);
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
@@ -239,7 +246,8 @@ fn test_hsm_rsa_pkcs_encrypt() -> HResult<()> {
 }
 
 #[test]
-fn test_hsm_rsa_oaep_encrypt() -> HResult<()> {
+#[ignore = "Requires Linux, Proteccio PKCS#11 library, and HSM environment"]
+fn test_hsm_proteccio_rsa_oaep_encrypt() -> HResult<()> {
     log_init(None);
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
@@ -261,7 +269,8 @@ fn test_hsm_rsa_oaep_encrypt() -> HResult<()> {
 }
 
 #[test]
-fn test_hsm_aes_gcm_encrypt() -> HResult<()> {
+#[ignore = "Requires Linux, Proteccio PKCS#11 library, and HSM environment"]
+fn test_hsm_proteccio_aes_gcm_encrypt() -> HResult<()> {
     log_init(None);
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
@@ -289,7 +298,8 @@ fn test_hsm_aes_gcm_encrypt() -> HResult<()> {
 }
 
 #[test]
-fn test_hsm_multi_threaded_rsa_encrypt_decrypt_test() -> HResult<()> {
+#[ignore = "Requires Linux, Proteccio PKCS#11 library, and HSM environment"]
+fn test_hsm_proteccio_multi_threaded_rsa_encrypt_decrypt_test() -> HResult<()> {
     log_init(None);
 
     // Initialize the HSM once and share it across threads
@@ -333,7 +343,8 @@ fn test_hsm_multi_threaded_rsa_encrypt_decrypt_test() -> HResult<()> {
 }
 
 #[test]
-fn test_hsm_list_objects() -> HResult<()> {
+#[ignore = "Requires Linux, Proteccio PKCS#11 library, and HSM environment"]
+fn test_hsm_proteccio_list_objects() -> HResult<()> {
     log_init(None);
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
@@ -392,7 +403,8 @@ fn test_hsm_list_objects() -> HResult<()> {
 }
 
 #[test]
-fn test_hsm_get_key_metadata() -> HResult<()> {
+#[ignore = "Requires Linux, Proteccio PKCS#11 library, and HSM environment"]
+fn test_hsm_proteccio_get_key_metadata() -> HResult<()> {
     log_init(None);
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
@@ -458,7 +470,8 @@ fn test_hsm_get_key_metadata() -> HResult<()> {
 }
 
 #[test]
-fn test_hsm_destroy_all() -> HResult<()> {
+#[ignore = "Requires Linux, Proteccio PKCS#11 library, and HSM environment"]
+fn test_hsm_proteccio_destroy_all() -> HResult<()> {
     log_init(None);
     let slot = get_slot()?;
     let session = slot.open_session(true)?;

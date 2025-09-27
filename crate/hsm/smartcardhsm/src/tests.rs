@@ -1,7 +1,7 @@
 //! These tests  require a connection to a working HSM and are gated behind the `softhsm2` feature.
 //! To run a test, cd into the crate directory and run (replace `XXX` with the actual password for the selected slot):
 //! ```
-//! HSM_USER_PASSWORD=648219 HSM_SLOT_ID=1 cargo test --target x86_64-unknown-linux-gnu --features smartcardhsm -- tests::test_hsm_all
+//! HSM_USER_PASSWORD=648219 HSM_SLOT_ID=1 cargo test --target x86_64-unknown-linux-gnu --features smartcardhsm -- tests::test_hsm_smartcardhsm_all
 //! ```
 
 use std::{collections::HashMap, ptr, sync::Arc, thread};
@@ -20,9 +20,9 @@ use pkcs11_sys::{
 use rand::{TryRngCore, rngs::OsRng};
 use uuid::Uuid;
 
-use crate::Smartcardhsm;
+use crate::{SMARTCARDHSM_PKCS11_LIB, Smartcardhsm};
 
-const LIB_PATH: &str = "/usr/local/lib/libsc-hsm-pkcs11.so";
+const LIB_PATH: &str = SMARTCARDHSM_PKCS11_LIB;
 
 fn generate_random_data<const T: usize>() -> HResult<[u8; T]> {
     let mut bytes = [0u8; T];
@@ -42,27 +42,29 @@ fn get_slot() -> HResult<Arc<SlotManager>> {
 }
 
 #[test]
-fn test_hsm_all() -> HResult<()> {
-    test_hsm_get_info()?;
-    test_hsm_get_mechanisms()?;
-    test_hsm_get_supported_algorithms()?;
-    test_hsm_destroy_all()?;
-    test_hsm_generate_aes_key()?;
-    test_hsm_generate_rsa_keypair()?;
-    //    test_hsm_rsa_key_wrap()?; //Not supported
-    test_hsm_rsa_pkcs_encrypt()?;
-    test_hsm_rsa_oaep_encrypt()?;
-    test_hsm_aes_cbc_encrypt()?;
-    test_hsm_aes_cbc_multi_round_encrypt()?;
-    test_hsm_multi_threaded_rsa_encrypt_decrypt_test()?;
-    test_hsm_get_key_metadata()?;
-    test_hsm_list_objects()?;
-    test_hsm_destroy_all()?;
+#[ignore = "Requires Linux, SmartcardHSM PKCS#11 library, and HSM environment"]
+fn test_hsm_smartcardhsm_all() -> HResult<()> {
+    test_hsm_smartcardhsm_get_info()?;
+    test_hsm_smartcardhsm_get_mechanisms()?;
+    test_hsm_smartcardhsm_get_supported_algorithms()?;
+    test_hsm_smartcardhsm_destroy_all()?;
+    test_hsm_smartcardhsm_generate_aes_key()?;
+    test_hsm_smartcardhsm_generate_rsa_keypair()?;
+    //    test_hsm_smartcardhsm_rsa_key_wrap()?; //Not supported
+    test_hsm_smartcardhsm_rsa_pkcs_encrypt()?;
+    test_hsm_smartcardhsm_rsa_oaep_encrypt()?;
+    test_hsm_smartcardhsm_aes_cbc_encrypt()?;
+    test_hsm_smartcardhsm_aes_cbc_multi_round_encrypt()?;
+    test_hsm_smartcardhsm_multi_threaded_rsa_encrypt_decrypt_test()?;
+    test_hsm_smartcardhsm_get_key_metadata()?;
+    test_hsm_smartcardhsm_list_objects()?;
+    test_hsm_smartcardhsm_destroy_all()?;
     Ok(())
 }
 
 #[test]
-fn test_hsm_low_level_test() -> HResult<()> {
+#[ignore = "Requires Linux, SmartcardHSM PKCS#11 library, and HSM environment"]
+fn test_hsm_smartcardhsm_low_level_test() -> HResult<()> {
     let path = LIB_PATH;
     let library = unsafe { Library::new(path) }?;
     let init = unsafe { library.get::<fn(p_init_args: CK_VOID_PTR) -> CK_RV>(b"C_Initialize") }?;
@@ -82,7 +84,8 @@ fn test_hsm_low_level_test() -> HResult<()> {
 }
 
 #[test]
-fn test_hsm_get_info() -> HResult<()> {
+#[ignore = "Requires Linux, SmartcardHSM PKCS#11 library, and HSM environment"]
+fn test_hsm_smartcardhsm_get_info() -> HResult<()> {
     log_init(None);
     let hsm = Smartcardhsm::instantiate(LIB_PATH, HashMap::new())?;
     let info = hsm.get_info()?;
@@ -91,7 +94,8 @@ fn test_hsm_get_info() -> HResult<()> {
 }
 
 #[test]
-fn test_hsm_get_mechanisms() -> HResult<()> {
+#[ignore = "Requires Linux, SmartcardHSM PKCS#11 library, and HSM environment"]
+fn test_hsm_smartcardhsm_get_mechanisms() -> HResult<()> {
     log_init(None);
     let slot = get_slot()?;
     let mut mechanisms = slot.get_supported_mechanisms()?;
@@ -112,7 +116,8 @@ fn test_hsm_get_mechanisms() -> HResult<()> {
 }
 
 #[test]
-fn test_hsm_get_supported_algorithms() -> HResult<()> {
+#[ignore = "Requires Linux, SmartcardHSM PKCS#11 library, and HSM environment"]
+fn test_hsm_smartcardhsm_get_supported_algorithms() -> HResult<()> {
     let user_password = get_hsm_password()?;
     let slot = get_hsm_slot_id()?;
     let passwords = HashMap::from([(slot, Some(user_password.clone()))]);
@@ -124,7 +129,8 @@ fn test_hsm_get_supported_algorithms() -> HResult<()> {
 }
 
 #[test]
-fn test_hsm_generate_aes_key() -> HResult<()> {
+#[ignore = "Requires Linux, SmartcardHSM PKCS#11 library, and HSM environment"]
+fn test_hsm_smartcardhsm_generate_aes_key() -> HResult<()> {
     log_init(None);
     let key_id = Uuid::new_v4().to_string();
     let slot = get_slot()?;
@@ -170,7 +176,8 @@ fn test_hsm_generate_aes_key() -> HResult<()> {
 }
 
 #[test]
-fn test_hsm_generate_rsa_keypair() -> HResult<()> {
+#[ignore = "Requires Linux, SmartcardHSM PKCS#11 library, and HSM environment"]
+fn test_hsm_smartcardhsm_generate_rsa_keypair() -> HResult<()> {
     log_init(Some("debug"));
     let sk_id = Uuid::new_v4().to_string();
     let pk_id = sk_id.clone() + "_pk";
@@ -247,7 +254,8 @@ fn test_hsm_generate_rsa_keypair() -> HResult<()> {
 }
 
 #[test]
-fn test_hsm_rsa_key_wrap() -> HResult<()> {
+#[ignore = "Requires Linux, SmartcardHSM PKCS#11 library, and HSM environment"]
+fn test_hsm_smartcardhsm_rsa_key_wrap() -> HResult<()> {
     log_init(None);
     let key_id = Uuid::new_v4().to_string();
     let slot = get_slot()?;
@@ -275,7 +283,8 @@ fn test_hsm_rsa_key_wrap() -> HResult<()> {
 }
 
 #[test]
-fn test_hsm_rsa_pkcs_encrypt() -> HResult<()> {
+#[ignore = "Requires Linux, SmartcardHSM PKCS#11 library, and HSM environment"]
+fn test_hsm_smartcardhsm_rsa_pkcs_encrypt() -> HResult<()> {
     log_init(None);
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
@@ -297,7 +306,8 @@ fn test_hsm_rsa_pkcs_encrypt() -> HResult<()> {
 }
 
 #[test]
-fn test_hsm_rsa_oaep_encrypt() -> HResult<()> {
+#[ignore = "Requires Linux, SmartcardHSM PKCS#11 library, and HSM environment"]
+fn test_hsm_smartcardhsm_rsa_oaep_encrypt() -> HResult<()> {
     log_init(None);
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
@@ -325,7 +335,8 @@ fn test_hsm_rsa_oaep_encrypt() -> HResult<()> {
 }
 
 #[test]
-fn test_hsm_aes_cbc_encrypt() -> HResult<()> {
+#[ignore = "Requires Linux, SmartcardHSM PKCS#11 library, and HSM environment"]
+fn test_hsm_smartcardhsm_aes_cbc_encrypt() -> HResult<()> {
     log_init(None);
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
@@ -354,7 +365,8 @@ fn test_hsm_aes_cbc_encrypt() -> HResult<()> {
 }
 
 #[test]
-fn test_hsm_aes_cbc_multi_round_encrypt() -> HResult<()> {
+#[ignore = "Requires Linux, SmartcardHSM PKCS#11 library, and HSM environment"]
+fn test_hsm_smartcardhsm_aes_cbc_multi_round_encrypt() -> HResult<()> {
     log_init(None);
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
@@ -483,7 +495,8 @@ fn test_hsm_aes_cbc_multi_round_encrypt() -> HResult<()> {
 }
 
 #[test]
-fn test_hsm_multi_threaded_rsa_encrypt_decrypt_test() -> HResult<()> {
+#[ignore = "Requires Linux, SmartcardHSM PKCS#11 library, and HSM environment"]
+fn test_hsm_smartcardhsm_multi_threaded_rsa_encrypt_decrypt_test() -> HResult<()> {
     log_init(None);
 
     // Initialize the HSM once and share it across threads
@@ -528,7 +541,8 @@ fn test_hsm_multi_threaded_rsa_encrypt_decrypt_test() -> HResult<()> {
 }
 
 #[test]
-fn test_hsm_list_objects() -> HResult<()> {
+#[ignore = "Requires Linux, SmartcardHSM PKCS#11 library, and HSM environment"]
+fn test_hsm_smartcardhsm_list_objects() -> HResult<()> {
     log_init(None);
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
@@ -587,7 +601,8 @@ fn test_hsm_list_objects() -> HResult<()> {
 }
 
 #[test]
-fn test_hsm_get_key_metadata() -> HResult<()> {
+#[ignore = "Requires Linux, SmartcardHSM PKCS#11 library, and HSM environment"]
+fn test_hsm_smartcardhsm_get_key_metadata() -> HResult<()> {
     log_init(None);
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
@@ -653,7 +668,8 @@ fn test_hsm_get_key_metadata() -> HResult<()> {
 }
 
 #[test]
-fn test_hsm_destroy_all() -> HResult<()> {
+#[ignore = "Requires Linux, SmartcardHSM PKCS#11 library, and HSM environment"]
+fn test_hsm_smartcardhsm_destroy_all() -> HResult<()> {
     log_init(None);
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
