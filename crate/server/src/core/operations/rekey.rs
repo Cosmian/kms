@@ -50,11 +50,11 @@ pub(crate) async fn rekey(
     {
         // only active objects
         if owm.state() != State::Active {
-            continue
+            continue;
         }
         // only symmetric keys
         if owm.object().object_type() != ObjectType::SymmetricKey {
-            continue
+            continue;
         }
 
         // create a new symmetric key KMIP object (in memory)
@@ -92,7 +92,7 @@ pub(crate) async fn rekey(
 
         return Ok(ReKeyResponse {
             unique_identifier: UniqueIdentifier::TextString(uid),
-        })
+        });
     }
 
     Err(KmsError::InvalidRequest(format!(

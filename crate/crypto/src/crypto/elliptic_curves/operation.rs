@@ -703,7 +703,6 @@ mod tests {
         )
         .expect("failed to create x25519 key pair in test_x25519_conversions");
 
-        //
         // public key
         //
         let Some(KeyValue::Structure { key_material, .. }) =
@@ -724,7 +723,6 @@ mod tests {
         let raw_bytes = p_key.raw_public_key().unwrap();
         assert_eq!(&raw_bytes, original_public_key_bytes);
 
-        //
         // private key
         //
         let Some(KeyValue::Structure { key_material, .. }) =
@@ -844,7 +842,6 @@ mod tests {
         )
         .expect("failed to create x25519 key pair in test_x448_conversions");
 
-        //
         // public key
         //
         let Some(KeyValue::Structure { key_material, .. }) = wrap_key_pair
@@ -869,7 +866,6 @@ mod tests {
         let raw_bytes = p_key.raw_public_key().unwrap();
         assert_eq!(&raw_bytes, original_public_key_bytes);
 
-        //
         // private key
         //
         let Some(KeyValue::Structure { key_material, .. }) = wrap_key_pair

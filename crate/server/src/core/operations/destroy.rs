@@ -90,18 +90,18 @@ pub(crate) async fn recursively_destroy_object(
                     .list_user_operations_on_object(&uid, user, false, params.clone())
                     .await?;
                 if !ops.iter().any(|p| KmipOperation::Destroy == *p) {
-                    continue
+                    continue;
                 }
             }
             kms.database.delete(&uid, params.clone()).await?;
             count += 1;
             info!(uid = uid, user = user, "Destroyed object");
-            continue
+            continue;
         }
 
-        //Default database: retrieve the object
+        // Default database: retrieve the object
         let Some(mut owm) = kms.database.retrieve_object(&uid, params.clone()).await? else {
-            continue
+            continue;
         };
 
         // Check if the object is owned by the user
@@ -112,7 +112,7 @@ pub(crate) async fn recursively_destroy_object(
                 .list_user_operations_on_object(owm.id(), user, false, params.clone())
                 .await?;
             if !permissions.contains(&KmipOperation::Destroy) {
-                continue
+                continue;
             }
         }
 
@@ -125,7 +125,7 @@ pub(crate) async fn recursively_destroy_object(
                 && object_type != ObjectType::SecretData
                 && object_type != ObjectType::PublicKey)
         {
-            continue
+            continue;
         }
 
         // perform the chain of destroy operations depending on the type of object
@@ -139,7 +139,7 @@ pub(crate) async fn recursively_destroy_object(
                 destroy_core(&id, remove, owm.object_mut(), state, kms, params.clone()).await?;
             }
             ObjectType::PrivateKey => {
-                //add this key to the ids to skip
+                // add this key to the ids to skip
                 ids_to_skip.insert(owm.id().to_owned());
                 // for Covercrypt, if that is a master secret key, destroy the user decryption keys
                 #[cfg(feature = "non-fips")]
@@ -181,7 +181,7 @@ pub(crate) async fn recursively_destroy_object(
                 destroy_core(&id, remove, owm.object_mut(), state, kms, params.clone()).await?;
             }
             ObjectType::PublicKey => {
-                //add this key to the ids to skip
+                // add this key to the ids to skip
                 ids_to_skip.insert(owm.id().to_owned());
                 // destroy any linked private key
                 if let Some(private_key_id) = owm
@@ -225,7 +225,7 @@ pub(crate) async fn recursively_destroy_object(
         return Err(KmsError::Kmip21Error(
             ErrorReason::Item_Not_Found,
             unique_identifier.to_string(),
-        ))
+        ));
     }
 
     Ok(())
@@ -259,7 +259,7 @@ async fn remove_from_database(
         return Err(KmsError::InvalidRequest(format!(
             "Object with unique identifier: {unique_identifier} is active. It must be revoked \
              first"
-        )))
+        )));
     }
     kms.database.delete(unique_identifier, params).await?;
     Ok(())
@@ -280,7 +280,7 @@ async fn update_as_destroyed(
             return Err(KmsError::InvalidRequest(format!(
                 "Object with unique identifier: {unique_identifier} is active. It must be revoked \
                  first"
-            )))
+            )));
         }
         State::Deactivated | State::PreActive => State::Destroyed,
         State::Compromised => State::Destroyed_Compromised,

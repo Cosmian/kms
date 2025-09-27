@@ -46,7 +46,7 @@ impl TryFrom<&Attributes> for HsmObjectFilter {
                 _ => {
                     return Err(InterfaceError::Default(format!(
                         "Unsupported cryptographic algorithm for HSMs: {cryptographic_algorithm}"
-                    )))
+                    )));
                 }
             }
         } else {
@@ -82,7 +82,7 @@ impl TryFrom<&Attributes> for HsmObjectFilter {
                 _ => {
                     return Err(InterfaceError::Default(format!(
                         "Unsupported object type for HSMs: {object_type}"
-                    )))
+                    )));
                 }
             };
         }

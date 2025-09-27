@@ -78,7 +78,7 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
                     x => {
                         return Err(InterfaceError::Default(format!(
                             "Invalid key length: {x} bits, for and HSM AES key"
-                        )))
+                        )));
                     }
                 };
                 let _ = session.generate_aes_key(id, key_size, sensitive)?;
@@ -119,7 +119,7 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
                 return Err(InterfaceError::Default(format!(
                     "Invalid key length: {x} bits, for and HSM RSA key (valid values are 1024, \
                      2048, 3072, 4096)"
-                )))
+                )));
             }
         };
 

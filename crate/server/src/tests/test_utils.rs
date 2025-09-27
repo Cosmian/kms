@@ -107,7 +107,6 @@ pub(crate) fn get_tmp_sqlite_path() -> PathBuf {
 /// The app automatically generates and manages RSA keypairs for JWT authentication:
 /// - Private key stored as `google_cse_rsa`
 /// - Public key stored as  `google_cse_rsa_pk` and exposed via `/google_cse/certs`
-///
 pub(crate) async fn test_app(
     kms_public_url: Option<String>,
     privileged_users: Option<Vec<String>>,

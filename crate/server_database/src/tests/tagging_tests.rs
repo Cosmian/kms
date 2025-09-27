@@ -55,7 +55,7 @@ pub(super) async fn tags<DB: ObjectsStore + PermissionsStore>(
         .await?;
     assert_eq!(&uid, &uid_);
 
-    //recover the object from DB and check that the vendor attributes contain the tags
+    // recover the object from DB and check that the vendor attributes contain the tags
     let owm = db
         .retrieve(&uid, db_params.clone())
         .await?

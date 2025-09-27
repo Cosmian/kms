@@ -252,7 +252,7 @@ impl KMS {
                 "Authenticated using forced default user: {}",
                 default_username
             );
-            return default_username
+            return default_username;
         }
         let user = req_http
             .extensions()

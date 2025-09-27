@@ -139,7 +139,7 @@ fn ssl_auth(req: &ServiceRequest) -> KResult<AuthenticatedUser> {
         trace!("Ssl Authentication: no peer certificate found");
         return Err(KmsError::InvalidRequest(
             "SSL Authentication: no peer certificate found".to_owned(),
-        ))
+        ));
     };
 
     // Extract the common name from the peer certificate.

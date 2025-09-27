@@ -110,12 +110,12 @@ async fn unwrap_using_kms(
             "The wrapping key {unwrapping_key_uid} does not exist or is not accessible."
         ))
     })?;
-    //In the case the key is a PublicKey or Certificate, we need to fetch the corresponding private key
+    // In the case the key is a PublicKey or Certificate, we need to fetch the corresponding private key
     let object_type = unwrapping_key.object().object_type();
     let unwrapping_key = match object_type {
         ObjectType::PrivateKey | ObjectType::SymmetricKey => unwrapping_key,
         ObjectType::PublicKey | ObjectType::Certificate => {
-            //seek if we have a link to a private key
+            // seek if we have a link to a private key
             let attributes = match object_type {
                 ObjectType::PublicKey | ObjectType::Certificate => unwrapping_key.attributes(),
                 _ => kms_bail!("unwrap_key: unsupported object type: {object_type}"),
@@ -194,12 +194,12 @@ async fn unwrap_using_encryption_oracle(
     unwrapping_key_uid: &str,
     prefix: &str,
 ) -> KResult<String> {
-    //Determine the private key if a public key is passed
+    // Determine the private key if a public key is passed
     let unwrapping_key_uid = unwrapping_key_uid
         .strip_suffix("_pk")
         .map_or_else(|| unwrapping_key_uid.to_owned(), ToString::to_string);
 
-    //check permissions
+    // check permissions
     if !kms
         .database
         .is_object_owned_by(&unwrapping_key_uid, user, params.clone())
@@ -230,7 +230,7 @@ async fn unwrap_using_encryption_oracle(
         kms_bail!("unable to unwrap key: key value is not a byte string")
     };
 
-    //decrypt the wrapped key
+    // decrypt the wrapped key
     let lock = kms.encryption_oracles.read().await;
     let encryption_oracle = lock.get(prefix).ok_or_else(|| {
         KmsError::InvalidRequest(format!(

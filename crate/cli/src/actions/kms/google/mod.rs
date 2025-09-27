@@ -29,7 +29,6 @@ impl GoogleCommands {
     /// # Errors
     ///
     /// Returns a `KmsCliResult` indicating the success or failure of the command.
-    ///
     pub async fn process(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
         match self {
             Self::KeyPairs(command) => command.process(kms_rest_client).await?,

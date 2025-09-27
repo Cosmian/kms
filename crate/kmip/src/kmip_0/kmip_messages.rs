@@ -173,7 +173,7 @@ impl<'de> Deserialize<'de> for RequestMessage {
                                 x => {
                                     return Err(de::Error::custom(format!(
                                         "unsupported protocol version: {x}"
-                                    )))
+                                    )));
                                 }
                             };
                             // deserialize using the RequestMessageBatchItemVersionedDeserializer
@@ -451,7 +451,7 @@ impl<'de> Deserialize<'de> for ResponseMessage {
                                 x => {
                                     return Err(de::Error::custom(format!(
                                         "unsupported protocol version: {x}"
-                                    )))
+                                    )));
                                 }
                             };
                             // deserialize using the RequestMessageBatchItemVersionedDeserializer

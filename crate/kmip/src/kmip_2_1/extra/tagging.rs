@@ -51,9 +51,9 @@ impl Attributes {
             if tag.starts_with('_') {
                 return Err(KmipError::InvalidTag(
                     "user tags cannot start with _".to_owned(),
-                ))
+                ));
             } else if tag.is_empty() {
-                return Err(KmipError::InvalidTag("tags cannot be empty".to_owned()))
+                return Err(KmipError::InvalidTag("tags cannot be empty".to_owned()));
             }
         }
         Ok(())

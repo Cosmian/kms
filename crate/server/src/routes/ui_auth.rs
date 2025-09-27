@@ -20,7 +20,7 @@ pub(crate) async fn login(
     let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
 
     let Ok(http_client) = openidconnect::reqwest::ClientBuilder::new().build() else {
-        return HttpResponse::InternalServerError().body("Failed to build HTTP client")
+        return HttpResponse::InternalServerError().body("Failed to build HTTP client");
     };
 
     let issuer_url = match &oidc_config.ui_oidc_issuer_url {
@@ -28,14 +28,14 @@ pub(crate) async fn login(
             Ok(valid_url) => valid_url,
             Err(err) => {
                 return HttpResponse::InternalServerError()
-                    .body(format!("Invalid issuer URL: {err}"))
+                    .body(format!("Invalid issuer URL: {err}"));
             }
         },
         None => return HttpResponse::InternalServerError().body("Issuer URL is missing"),
     };
 
     let Ok(redirect_url) = RedirectUrl::new(format!("{}/ui/callback", kms_url.as_str())) else {
-        return HttpResponse::InternalServerError().body("Invalid Redirect URL")
+        return HttpResponse::InternalServerError().body("Invalid Redirect URL");
     };
 
     let client_id = match &oidc_config.ui_oidc_client_id {
@@ -98,7 +98,7 @@ pub(crate) async fn callback(
     kms_url: web::Data<String>,
 ) -> HttpResponse {
     let Ok(query) = web::Query::<HashMap<String, String>>::from_query(req.query_string()) else {
-        return HttpResponse::BadRequest().body("Invalid query parameters")
+        return HttpResponse::BadRequest().body("Invalid query parameters");
     };
 
     // Retrieve stored values
@@ -107,7 +107,7 @@ pub(crate) async fn callback(
         Ok(None) => return HttpResponse::BadRequest().body("Missing PKCE verifier"),
         Err(e) => {
             return HttpResponse::InternalServerError()
-                .body(format!("Failed to retrieve PKCE verifier: {e}"))
+                .body(format!("Failed to retrieve PKCE verifier: {e}"));
         }
     };
 
@@ -116,7 +116,7 @@ pub(crate) async fn callback(
         Ok(None) => return HttpResponse::BadRequest().body("Missing CSRF token"),
         Err(e) => {
             return HttpResponse::InternalServerError()
-                .body(format!("Failed to retrieve CSRF token: {e}"))
+                .body(format!("Failed to retrieve CSRF token: {e}"));
         }
     };
 
@@ -125,13 +125,13 @@ pub(crate) async fn callback(
         Ok(None) => return HttpResponse::BadRequest().body("Missing nonce"),
         Err(e) => {
             return HttpResponse::InternalServerError()
-                .body(format!("Failed to retrieve nonce: {e}"))
+                .body(format!("Failed to retrieve nonce: {e}"));
         }
     };
 
     // Validate CSRF token
     let Some(received_csrf_token) = query.get("state") else {
-        return HttpResponse::BadRequest().body("Missing state parameter")
+        return HttpResponse::BadRequest().body("Missing state parameter");
     };
     if Some(received_csrf_token) != stored_csrf_token.as_ref() {
         return HttpResponse::BadRequest().body("CSRF token mismatch");
@@ -144,7 +144,7 @@ pub(crate) async fn callback(
     };
 
     let Ok(http_client) = openidconnect::reqwest::ClientBuilder::new().build() else {
-        return HttpResponse::InternalServerError().body("Failed to build HTTP client")
+        return HttpResponse::InternalServerError().body("Failed to build HTTP client");
     };
 
     // Exchange code for tokens
@@ -152,14 +152,15 @@ pub(crate) async fn callback(
         Some(url) => match IssuerUrl::new(url.clone()) {
             Ok(valid_url) => valid_url,
             Err(e) => {
-                return HttpResponse::InternalServerError().body(format!("Invalid issuer URL: {e}"))
+                return HttpResponse::InternalServerError()
+                    .body(format!("Invalid issuer URL: {e}"));
             }
         },
         None => return HttpResponse::InternalServerError().body("Issuer URL is missing"),
     };
 
     let Ok(redirect_url) = RedirectUrl::new(format!("{}/ui/callback", kms_url.as_str())) else {
-        return HttpResponse::InternalServerError().body("Invalid Redirect URL")
+        return HttpResponse::InternalServerError().body("Invalid Redirect URL");
     };
 
     let client_id = match &oidc_config.ui_oidc_client_id {
@@ -278,7 +279,8 @@ pub(crate) async fn logout(
         Some(url) => match Url::parse(url) {
             Ok(parsed_url) => parsed_url,
             Err(e) => {
-                return HttpResponse::InternalServerError().body(format!("Invalid logout URL: {e}"))
+                return HttpResponse::InternalServerError()
+                    .body(format!("Invalid logout URL: {e}"));
             }
         },
         None => return HttpResponse::InternalServerError().body("Logout URL is missing"),
@@ -290,7 +292,7 @@ pub(crate) async fn logout(
     };
 
     let Ok(redirect_url) = RedirectUrl::new(format!("{}/ui/login", kms_url.as_str())) else {
-        return HttpResponse::InternalServerError().body("Invalid Redirect URL")
+        return HttpResponse::InternalServerError().body("Invalid Redirect URL");
     };
 
     logout_url

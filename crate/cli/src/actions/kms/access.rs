@@ -85,7 +85,6 @@ impl GrantAccess {
     /// # Errors
     ///
     /// Returns an error if the query execution on the KMS server fails.
-    ///
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
         let requires_object_uid = self
             .operations
@@ -160,7 +159,6 @@ impl RevokeAccess {
     /// # Errors
     ///
     /// Returns an error if the query execution on the KMS server fails.
-    ///
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
         let requires_object_uid = self
             .operations
@@ -222,7 +220,6 @@ impl ListAccessesGranted {
     /// # Errors
     ///
     /// Returns an error if the query execution on the KMS server fails.
-    ///
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<Vec<UserAccessResponse>> {
         let accesses = kms_rest_client
             .list_access(&self.object_uid)
@@ -258,7 +255,6 @@ impl ListOwnedObjects {
     /// # Errors
     ///
     /// Returns an error if the query execution on the KMS server fails.
-    ///
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<Vec<ObjectOwnedResponse>> {
         let objects = kms_rest_client
             .list_owned_objects()
@@ -294,7 +290,6 @@ impl ListAccessRightsObtained {
     /// # Errors
     ///
     /// Returns an error if the query execution on the KMS server fails.
-    ///
     pub async fn run(
         &self,
         kms_rest_client: KmsClient,

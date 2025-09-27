@@ -48,7 +48,6 @@ use crate::{
 /// * `params` - The parameters to use
 /// * `unique_identifier` - The unique identifier of the object
 /// * `object` - The object to wrap
-///
 pub(crate) async fn wrap_and_cache(
     kms: &KMS,
     owner: &str,
@@ -252,7 +251,7 @@ async fn wrap_using_kms(
         )));
     }
     // Check usage mask for non Certificate objects
-    //TODO: certs attributes should be checked instead
+    // TODO: certs attributes should be checked instead
     if wrapping_key.object().object_type() != ObjectType::Certificate {
         let attributes = wrapping_key
             .object()
@@ -301,7 +300,7 @@ async fn wrap_using_encryption_oracle(
     wrapping_key_uid: &str,
     prefix: &str,
 ) -> KResult<()> {
-    //check permissions
+    // check permissions
     if !kms
         .database
         .is_object_owned_by(wrapping_key_uid, user, params.clone())

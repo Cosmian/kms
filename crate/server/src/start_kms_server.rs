@@ -160,7 +160,7 @@ pub async fn handle_google_cse_rsa_keypair(
                 error!("{}", &msg);
                 Err(KmsError::ServerError(msg))
             }
-        }
+        };
     }
 
     info!("RSA Keypair for Google CSE created.");
@@ -384,7 +384,6 @@ pub async fn start_kms_server(
 ///
 /// # Returns
 /// * a `JoinHandle<()>` that represents the socket server thread.
-///
 fn start_socket_server(
     kms_server: Arc<KMS>,
     command_receiver: mpsc::Receiver<KResult<()>>,

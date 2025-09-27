@@ -48,7 +48,7 @@ impl EncryptionOracle for HsmEncryptionOracle {
                 None => {
                     return Err(InterfaceError::InvalidRequest(format!(
                         "The key type of key: {uid}, cannot be determined"
-                    )))
+                    )));
                 }
                 Some(key_type) => match key_type {
                     KeyType::AesKey => CryptoAlgorithm::get_aes_algorithm(&supported_algorithms)?,
@@ -104,7 +104,7 @@ impl EncryptionOracle for HsmEncryptionOracle {
                 None => {
                     return Err(InterfaceError::InvalidRequest(
                         "The key {}type is not known".to_owned(),
-                    ))
+                    ));
                 }
                 Some(key_type) => match key_type {
                     KeyType::AesKey => CryptoAlgorithm::get_aes_algorithm(&supported_algorithms)?,
@@ -114,7 +114,7 @@ impl EncryptionOracle for HsmEncryptionOracle {
                     KeyType::RsaPublicKey => {
                         return Err(InterfaceError::Default(
                             "An RSA public key cannot be used to decrypt".to_owned(),
-                        ))
+                        ));
                     }
                 },
             }

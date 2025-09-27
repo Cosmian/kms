@@ -88,7 +88,7 @@ impl TtlvDeserializer {
         if *self.at_root.read().context("Failed to lock at_root")? {
             return Ok(&self.current);
         }
-        //unwrap the structure if within a structure and get the child
+        // unwrap the structure if within a structure and get the child
         match &self.current.value {
             TTLValue::Structure(children) => {
                 // get the child at the child index
@@ -786,7 +786,6 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
     /// * `visitor` - The visitor
     /// # Returns
     /// The result of the visitor
-    ///
     // Notice the `fields` parameter - a "struct" in the Serde data model means
     // that the `Deserialize` implementation is required to know what the fields
     // are before even looking at the input data. Any key-value pairing in which
@@ -941,7 +940,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
 
         match &element.value {
             TTLValue::Enumeration(e) => {
-                //if the current item is an enumeration,
+                // if the current item is an enumeration,
                 // and the child index is 0 => deserialize the tag
                 // else deserialize the variant
                 if e.name.is_empty() {

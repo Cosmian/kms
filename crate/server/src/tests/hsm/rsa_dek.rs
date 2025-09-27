@@ -30,7 +30,7 @@ pub(super) async fn test_wrapped_rsa_dek() -> KResult<()> {
     let mut clap_config = hsm_clap_config(&owner, Some(kek_uuid))?;
     clap_config.db.sqlite_path = sqlite_path.clone();
     let Some(kek_uid) = clap_config.key_encryption_key.clone() else {
-        return Err(KmsError::Default("Missing KEK".to_owned()))
+        return Err(KmsError::Default("Missing KEK".to_owned()));
     };
 
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
@@ -55,7 +55,7 @@ pub(super) async fn test_wrapped_rsa_dek() -> KResult<()> {
     let mut clap_config = hsm_clap_config(&owner, Some(kek_uuid))?;
     clap_config.db.sqlite_path = sqlite_path.clone();
     let Some(kek_uid) = clap_config.key_encryption_key.clone() else {
-        return Err(KmsError::Default("Missing KEK".to_owned()))
+        return Err(KmsError::Default("Missing KEK".to_owned()));
     };
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
 
@@ -90,7 +90,7 @@ async fn create_rsa_dek(dek_uid: &str, kek_uid: &str, owner: &str, kms: &Arc<KMS
     )
     .await?;
     let Operation::CreateKeyPairResponse(create_response) = &response[0] else {
-        return Err(KmsError::ServerError("invalid response".to_owned()))
+        return Err(KmsError::ServerError("invalid response".to_owned()));
     };
     assert_eq!(
         create_response.private_key_unique_identifier,
@@ -126,7 +126,7 @@ async fn rsa_encrypt(dek_uid: &str, owner: &str, kms: &Arc<KMS>, data: &[u8]) ->
         .first()
         .ok_or_else(|| KmsError::ServerError("no response".to_owned()))?
     else {
-        return Err(KmsError::ServerError("invalid response".to_owned()))
+        return Err(KmsError::ServerError("invalid response".to_owned()));
     };
     let response = response.to_owned();
     assert_eq!(
@@ -164,7 +164,7 @@ async fn rsa_decrypt(
         .first()
         .ok_or_else(|| KmsError::ServerError("no response".to_owned()))?
     else {
-        return Err(KmsError::ServerError("invalid response".to_owned()))
+        return Err(KmsError::ServerError("invalid response".to_owned()));
     };
     let response = response.to_owned();
     assert_eq!(

@@ -32,7 +32,6 @@ impl SymmetricCommands {
     /// # Arguments
     ///
     /// * `kms_rest_client` - The KMS client used for communication with the KMS service.
-    ///
     pub async fn process(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
         match self {
             Self::Keys(command) => command.process(kms_rest_client).await?,

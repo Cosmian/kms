@@ -48,7 +48,7 @@ pub(super) async fn test_wrap_with_aes_gcm(ctx: &TestsContext) -> KmsCliResult<(
         Some(KeyEncryptionAlgorithm::AesGcm),
         12 + 32 + 16 /* encapsulation size */
             + 1 /* encapsulation len leb128 */
-            + 12 /* nonce */  + 16, /* ag */
+            + 12 /* nonce */  + 16, // ag
     )
     .await?;
     // Hit the unwrap cache this time
@@ -59,7 +59,7 @@ pub(super) async fn test_wrap_with_aes_gcm(ctx: &TestsContext) -> KmsCliResult<(
         Some(KeyEncryptionAlgorithm::AesGcm),
         12 + 32 + 16 /* encapsulation size */
             + 1 /* encapsulation len leb128 */
-            + 12 /* nonce */  + 16, /* ag */
+            + 12 /* nonce */  + 16, // ag
     )
     .await
 }
@@ -101,7 +101,7 @@ pub(super) async fn test_wrap_with_rsa_oaep(ctx: &TestsContext) -> KmsCliResult<
         Some(KeyEncryptionAlgorithm::AesGcm),
         12 + 32 + 16 /* encapsulation size */
             + 1 /* encapsulation len leb128 */
-            + 12 /* nonce */  + 16, /* ag */
+            + 12 /* nonce */  + 16, // ag
     )
     .await?;
     // Hit the unwrap cache this time
@@ -112,7 +112,7 @@ pub(super) async fn test_wrap_with_rsa_oaep(ctx: &TestsContext) -> KmsCliResult<
         Some(KeyEncryptionAlgorithm::AesGcm),
         12 + 32 + 16 /* encapsulation size */
             + 1 /* encapsulation len leb128 */
-            + 12 /* nonce */  + 16, /* ag */
+            + 12 /* nonce */  + 16, // ag
     )
     .await
 }

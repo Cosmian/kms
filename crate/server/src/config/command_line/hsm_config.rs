@@ -28,7 +28,7 @@ pub struct HsmConfig {
     /// ```sh
     ///   --hsm_slot 1 --hsm_password password1 \
     ///   --hsm_slot 2 --hsm_password password2
-    ///```
+    /// ```
     #[clap(verbatim_doc_comment, long)]
     pub hsm_slot: Vec<usize>,
 

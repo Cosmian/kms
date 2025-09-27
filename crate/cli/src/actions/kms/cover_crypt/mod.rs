@@ -35,7 +35,6 @@ impl CovercryptCommands {
     /// # Errors
     ///
     /// This function can return an error if any of the underlying actions encounter an error.
-    ///
     pub async fn process(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
         match self {
             Self::AccessStructure(command) => command.process(kms_rest_client).await?,

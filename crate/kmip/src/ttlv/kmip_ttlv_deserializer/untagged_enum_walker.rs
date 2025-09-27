@@ -67,7 +67,7 @@ impl<'a, 'de: 'a> MapAccess<'de> for UntaggedEnumWalker<'a> {
     #[inline]
     fn size_hint(&self) -> Option<usize> {
         let TTLValue::Structure(child_array) = &self.de.current.value else {
-            return Some(0_usize)
+            return Some(0_usize);
         };
         Some(child_array.len())
     }

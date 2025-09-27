@@ -70,7 +70,7 @@ pub async fn export_object(
     params: ExportObjectParams<'_>,
 ) -> Result<(UniqueIdentifier, Object, Option<Attributes>), KmsClientError> {
     let (id, object, _, attributes) = if params.allow_revoked {
-        //use the KMIP export function to get revoked objects
+        // use the KMIP export function to get revoked objects
         let export_response = kms_rest_client
             .export(export_request(
                 object_id_or_tags,
@@ -160,7 +160,7 @@ async fn batch_get(
                 )),
                 Operation::GetAttributes(GetAttributes {
                     unique_identifier: Some(UniqueIdentifier::TextString(id.clone())),
-                    attribute_reference: None, //all attributes
+                    attribute_reference: None, // all attributes
                 }),
             ]
         })
@@ -189,7 +189,7 @@ async fn batch_get(
                 return Err(KmsClientError::Default(format!(
                     "Unexpected response from KMS, returning a sequence of non matching \
                      operations: {errors}",
-                )))
+                )));
             }
         }
     }
@@ -217,7 +217,7 @@ async fn batch_export(
                 )),
                 Operation::GetAttributes(GetAttributes {
                     unique_identifier: Some(UniqueIdentifier::TextString(id.clone())),
-                    attribute_reference: Some(vec![AttributeReference::tags_reference()]), //tags
+                    attribute_reference: Some(vec![AttributeReference::tags_reference()]), // tags
                 }),
             ]
         })
@@ -248,7 +248,7 @@ async fn batch_export(
                 return Err(KmsClientError::Default(format!(
                     "Unexpected response from KMS, returning a sequence of non matching \
                      operations: {errors}",
-                )))
+                )));
             }
         }
     }

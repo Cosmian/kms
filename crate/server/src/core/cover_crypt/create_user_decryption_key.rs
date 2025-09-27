@@ -60,7 +60,7 @@ pub(crate) async fn create_user_decryption_key(
         }
 
         if owm.object().object_type() != ObjectType::PrivateKey {
-            continue
+            continue;
         }
 
         // The master key should have attributes

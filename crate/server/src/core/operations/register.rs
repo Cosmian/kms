@@ -121,7 +121,7 @@ pub(crate) async fn register(
         x => {
             return Err(KmsError::InvalidRequest(format!(
                 "Register is not yet supported for objects of type : {x}"
-            )))
+            )));
         }
     };
     kms.database.atomic(owner, &operations, params).await?;

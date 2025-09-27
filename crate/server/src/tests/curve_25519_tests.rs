@@ -84,7 +84,7 @@ async fn test_curve_25519() -> KResult<()> {
         _ => {
             return Err(KmsError::ServerError(
                 "Expected a KMIP Private Key".to_owned(),
-            ))
+            ));
         }
     };
     assert_eq!(
@@ -138,7 +138,7 @@ async fn test_curve_25519() -> KResult<()> {
         _ => {
             return Err(KmsError::ServerError(
                 "Expected a KMIP Public Key".to_owned(),
-            ))
+            ));
         }
     };
     assert_eq!(

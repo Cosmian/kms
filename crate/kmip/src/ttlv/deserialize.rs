@@ -68,19 +68,19 @@ impl<'de> Deserialize<'de> for TTLV {
                     match key {
                         Field::Tag => {
                             if tag.is_some() {
-                                return Err(de::Error::duplicate_field("tag"))
+                                return Err(de::Error::duplicate_field("tag"));
                             }
                             tag = Some(map.next_value()?);
                         }
                         Field::Type => {
                             if typ.is_some() {
-                                return Err(de::Error::duplicate_field("type"))
+                                return Err(de::Error::duplicate_field("type"));
                             }
                             typ = Some(map.next_value()?);
                         }
                         Field::Value => {
                             if value.is_some() {
-                                return Err(de::Error::duplicate_field("value"))
+                                return Err(de::Error::duplicate_field("value"));
                             }
                             let typ = typ.clone().unwrap_or_else(|| "Structure".to_owned());
                             value = Some(match typ.as_str() {
@@ -109,7 +109,7 @@ impl<'de> Deserialize<'de> for TTLV {
                                     {
                                         return Err(de::Error::custom(format!(
                                             "Invalid value for Mask: {hex}"
-                                        )))
+                                        )));
                                     }
                                     let bytes = hex::decode(hex.get(2..).ok_or_else(|| {
                                         de::Error::custom(format!(
@@ -174,7 +174,7 @@ impl<'de> Deserialize<'de> for TTLV {
                                         return Err(de::Error::custom(format!(
                                             "Invalid value for DateTimeExtended hex String: {hex} \
                                              (should start with 0x)"
-                                        )))
+                                        )));
                                     }
                                     let bytes = hex::decode(hex.get(2..).ok_or_else(|| {
                                         de::Error::custom(format!(
@@ -224,7 +224,7 @@ where
         if s.get(0..2) != Some("0x") {
             return Err(de::Error::custom(format!(
                 "Invalid value for integer hex String: {s} (should start with 0x)"
-            )))
+            )));
         }
         Some(s.get(2..).map(ToOwned::to_owned).ok_or_else(|| {
             de::Error::custom(format!(
@@ -241,7 +241,7 @@ where
         } else if hex.len() != 16 {
             return Err(de::Error::custom(format!(
                 "Invalid value for hex String: {hex}",
-            )))
+            )));
         }
         let bytes = hex::decode(hex.clone()).map_err(|e| {
             de::Error::custom(format!(
@@ -253,7 +253,7 @@ where
                 "Invalid value for i64 hex String: {hex}. Error: {e}",
             ))
         })?);
-        return Ok(v)
+        return Ok(v);
     }
     v.as_i64()
         .ok_or_else(|| de::Error::custom(format!("visit_map: not a valid i64 integer: {v}")))

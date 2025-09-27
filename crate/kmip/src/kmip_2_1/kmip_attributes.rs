@@ -486,7 +486,6 @@ impl Attributes {
     ///
     /// # Returns
     ///     * `Option<VendorAttributeValue>` - The old value of the attribute if it existed.
-    ///
     pub fn set_vendor_attribute(
         &mut self,
         vendor_identification: &str,

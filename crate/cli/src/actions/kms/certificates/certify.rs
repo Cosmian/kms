@@ -48,19 +48,19 @@ use crate::{
 /// Examples:
 ///
 /// 1. Generate a self-signed certificate with 10 years validity using curve (NIST) P-256
-///```sh
-///cosmian kms certificates certify --certificate-id acme_root_ca \
-///--generate-key-pair --algorithm nist-p256  \
-///--subject-name "CN=ACME Root CA,OU=IT,O=ACME,L=New York,ST=New York,C=US" \
-///--days 3650
-///```
+/// ```sh
+/// cosmian kms certificates certify --certificate-id acme_root_ca \
+/// --generate-key-pair --algorithm nist-p256  \
+/// --subject-name "CN=ACME Root CA,OU=IT,O=ACME,L=New York,ST=New York,C=US" \
+/// --days 3650
+/// ```
 ///
 /// 2. Generate an intermediate CA certificate signed by the root CA and using
 ///    some x509 extensions. The root CA certificate and private key are already in the KMS.
 ///    The Root CA (issuer) private key id is 1bba3cfa-4ecb-47ad-a9cf-7a2c236e25a8
 ///    and the x509 extensions are in the file intermediate.ext containing a `v3_ca` paragraph:
 ///
-///```text
+/// ```text
 ///  [ v3_ca ]
 ///  basicConstraints=CA:TRUE,pathlen:0
 ///  keyUsage=keyCertSign,digitalSignature

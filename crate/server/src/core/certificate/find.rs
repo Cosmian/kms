@@ -52,7 +52,7 @@ pub(crate) async fn retrieve_issuer_private_key_and_certificate(
             params,
         )
         .await?;
-        return Ok((private_key, certificate))
+        return Ok((private_key, certificate));
     }
 
     if let Some(private_key_id) = &private_key_id {
@@ -72,7 +72,7 @@ pub(crate) async fn retrieve_issuer_private_key_and_certificate(
             params,
         )
         .await?;
-        return Ok((private_key, certificate))
+        return Ok((private_key, certificate));
     }
 
     if let Some(certificate_id) = &certificate_id {
@@ -93,7 +93,7 @@ pub(crate) async fn retrieve_issuer_private_key_and_certificate(
             params,
         )
         .await?;
-        return Ok((private_key, certificate))
+        return Ok((private_key, certificate));
     }
 
     kms_bail!(KmsError::InvalidRequest(

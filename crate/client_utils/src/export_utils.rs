@@ -103,7 +103,7 @@ pub fn der_to_pem(
                     return Err(UtilsError::Default(format!(
                         "Object type {x:?} not supported for PKCS1. Must be a private key or \
                          public key"
-                    )))
+                    )));
                 }
             };
             pem::Pem::new(tag, bytes)
@@ -115,7 +115,7 @@ pub fn der_to_pem(
                 x => {
                     return Err(UtilsError::Default(format!(
                         "Object type {x:?} not supported for PKCS#8. Must be a private key PKCS#8)"
-                    )))
+                    )));
                 }
             };
             pem::Pem::new(tag, bytes)
@@ -126,7 +126,7 @@ pub fn der_to_pem(
                 x => {
                     return Err(UtilsError::Default(format!(
                         "Object type {x:?} not supported for SEC1. Must be a private key."
-                    )))
+                    )));
                 }
             };
             pem::Pem::new(tag, bytes)
@@ -134,7 +134,7 @@ pub fn der_to_pem(
         _ => {
             return Err(UtilsError::Default(format!(
                 "Key format type {key_format_type:?} not supported for PEM conversion"
-            )))
+            )));
         }
     };
     Ok(Zeroizing::new(

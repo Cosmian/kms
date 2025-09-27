@@ -59,16 +59,16 @@ pub(crate) async fn sign(
                 KmsError::InvalidRequest(format!("sign: failed to retrieve key: {uid}"))
             })?;
         if owm.state() != State::Active {
-            continue
+            continue;
         }
-        //check user permissions - owner can always sign
+        // check user permissions - owner can always sign
         if owm.owner() != user {
             let ops = kms
                 .database
                 .list_user_operations_on_object(&uid, user, false, params.clone())
                 .await?;
             if !ops.iter().any(|p| *p == KmipOperation::Sign) {
-                continue
+                continue;
             }
         }
         trace!("sign: user: {user} is authorized to sign using: {uid}");
@@ -82,10 +82,10 @@ pub(crate) async fn sign(
                 .unwrap_or_else(|_| owm.attributes());
             trace!("sign: attributes: {attributes}");
             if !attributes.is_usage_authorized_for(CryptographicUsageMask::Sign)? {
-                continue
+                continue;
             }
             selected_owm = Some(owm);
-            break
+            break;
         }
     }
     let mut owm = selected_owm.ok_or_else(|| {
@@ -125,7 +125,7 @@ fn sign_with_private_key(request: &Sign, owm: &ObjectWithMetadata) -> KResult<Si
         return Err(KmsError::Kmip21Error(
             ErrorReason::Incompatible_Cryptographic_Usage_Mask,
             "CryptographicUsageMask not authorized for Sign".to_owned(),
-        ))
+        ));
     }
 
     let key_block = owm.object().key_block()?;

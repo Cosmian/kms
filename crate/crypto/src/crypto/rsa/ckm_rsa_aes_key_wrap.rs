@@ -433,7 +433,7 @@ FQIDAQAB
 
         let rfc5649_encapsulation_file = tmp_path.join("rfc5649_encapsulation.bin");
         fs::write(&rfc5649_encapsulation_file, rfc5649_encapsulation)?;
-        //Check
+        // Check
         let rec_secret_file = tmp_path.join("rec_secret.bin");
         let output = tokio::process::Command::new("openssl")
             .arg("enc")
@@ -530,7 +530,7 @@ FQIDAQAB
         }
         let oaep_encapsulation = fs::read(&oaep_encapsulation_file)?;
 
-        //chack that we can decrypt the ephemeral using KEK_FOR_BYOK and our implementation
+        // chack that we can decrypt the ephemeral using KEK_FOR_BYOK and our implementation
         let priv_key = PKey::private_key_from_pem(RSA_PRIVATE_KEY.as_bytes())?;
         let rec_ephemeral =
             ckm_rsa_pkcs_oaep_key_unwrap(&priv_key, HashingAlgorithm::SHA1, &oaep_encapsulation)?;
@@ -561,7 +561,7 @@ FQIDAQAB
             crypto_bail!("test_for_byok: RFC5649 pkeyutl failed: {output:?}");
         }
         let rfc5649_encapsulation = fs::read(&rfc5649_encapsulation_file)?;
-        //Check against our implementation of NistKeyWrap
+        // Check against our implementation of NistKeyWrap
         let rec_secret_bytes = rfc5649_unwrap(
             &rfc5649_encapsulation,
             &hex::decode(ephemeral)
@@ -584,8 +584,7 @@ FQIDAQAB
 MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAk0HniT34p3O8bD3pyy7p7YASh2Tk7oYag4fbFKVxMX23KX8n68Jx7LWBKgbv6JF6ndZMmUsiBRWoaRC1SUxmtMTZ551CnqeAN47e9FXL1QakHlje4+wK9/tCfllZ2jYNLhvRy1NjTi1ounhkOQC1gdNasvNIRsfzgNVJ8nwgK+1ZJSqkNaoBbQHlJhvUXD3ba0fVH66gat+ns1KPk0HR1WlepZ4cMBmwFlZtPStAqM0dNnflcUzpTeeLLqbuBSzcT0Qb1Q0a/qakmy5SM47nR6RzTZ8A+bOLXP9G+fiK2UPSaAxGMTh8+LfrJqZTEW/lG5GraIbqsJwEQd9ibTlPIDMz8DPUcASUNqU9wQWcVqcjesZXJTb+xurcUPxDvWH/TnIQa0CKt3xcBXw2GZYkn8ROhk/woPJi9IC+rg1TnA4LruNB2OD2Ltg+wt90JYHW6DIxWjVe8/dbEZFof9iE/dYcZqNcipy79C6kJw9Cq2Eq4nP9KX0lk0tAo1B+EI+adQNJv/Hho1fStabk1zSGGsjR2p0izi76AEeNwIn3NkQMewQlKZWHfKz9T2MT8kjsAqvGwDW7g/p7uBhVn2s05kIW8En2JBpitLpqqRTiErS6UsyL1EYwc35BjfMySCt89YZU/wOi/2O1kaHvfi4NjCxclQXM1Y74WjVr1LFgG2MCAwEAAQ==
 -----END PUBLIC KEY-----";
 
-    const KV_KEY_IDENTIFIER: &str =
-        "https://hsmbackedkeyvault.vault.azure.net/keys/KEKForBYOK/5e617a4d39c74f47b0b7d345f6a49d1b";
+    const KV_KEY_IDENTIFIER: &str = "https://hsmbackedkeyvault.vault.azure.net/keys/KEKForBYOK/5e617a4d39c74f47b0b7d345f6a49d1b";
 
     #[expect(dead_code)]
     const EC_PRIVATE_KEY: &str = "-----BEGIN PRIVATE KEY-----

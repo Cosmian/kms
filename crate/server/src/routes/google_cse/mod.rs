@@ -74,7 +74,6 @@ impl From<CseErrorReply> for HttpResponse {
 /// # Errors
 ///
 /// Returns a `KmsError::ServerError` if the `kms_public_url` is not configured (`None`).
-///
 pub fn build_google_cse_url(base_url: Option<&str>) -> KResult<String> {
     let base_url = base_url
         .ok_or_else(|| {

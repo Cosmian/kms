@@ -46,7 +46,7 @@ pub(super) async fn test_aes_gcm(ctx: &TestsContext) -> KmsCliResult<()> {
         Some(KeyEncryptionAlgorithm::AesGcm),
         12 + 32 + 16 /* encapsulation size */
             + 1 /* encapsulation len leb128 */
-            + 12 /* nonce */  + 16, /* tag */
+            + 12 /* nonce */  + 16, // tag
     )
     .await
 }
@@ -118,7 +118,7 @@ pub(super) async fn test_rsa_pkcs_oaep(ctx: &TestsContext) -> KmsCliResult<()> {
         .is_err()
     );
 
-    //TODO: The Proteccio HSM only offers SH256 as hash function; maybe this test should be revisited
+    // TODO: The Proteccio HSM only offers SH256 as hash function; maybe this test should be revisited
     // // ... or another hash function
     // assert!(
     //     decrypt(

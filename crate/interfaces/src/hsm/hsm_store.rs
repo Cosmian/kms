@@ -300,14 +300,14 @@ impl ObjectsStore for HsmStore {
                     Ok(object_string) => object_string,
                     Err(err) => {
                         error!("Failed to decode object_id {}", err);
-                        continue
+                        continue;
                     }
                 };
                 let uid = as_hsm_uid!(slot_id, object_string);
                 trace!("Found: {uid}");
                 if let Some(ref wanted_id) = key_id_filter {
                     if !uid.eq(wanted_id) {
-                        continue
+                        continue;
                     }
                 }
                 uids.push((uid, State::Active, Attributes::default()));

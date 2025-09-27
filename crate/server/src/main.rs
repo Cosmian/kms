@@ -57,7 +57,7 @@ async fn run() -> KResult<()> {
 
     let info_only = clap_config.info;
 
-    //Initialize the tracing system
+    // Initialize the tracing system
     let _otel_guard = tracing_init(&TracingConfig {
         service_name: "cosmian_kms".to_owned(),
         otlp: clap_config
@@ -88,7 +88,7 @@ async fn run() -> KResult<()> {
         with_ansi_colors: clap_config.logging.ansi_colors,
     });
 
-    //TODO: For an unknown reason, this span never goes to OTLP
+    // TODO: For an unknown reason, this span never goes to OTLP
     let span = span!(tracing::Level::TRACE, "kms");
     let _guard = span.enter();
 

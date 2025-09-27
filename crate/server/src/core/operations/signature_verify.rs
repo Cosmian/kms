@@ -109,12 +109,12 @@ pub(crate) async fn signature_verify(
         (Some(_), Some(_)) => {
             return Err(KmsError::InvalidRequest(
                 "Cannot provide both data and digested_data".to_owned(),
-            ))
+            ));
         }
         (None, None) => {
             return Err(KmsError::InvalidRequest(
                 "Must provide either data or digested_data".to_owned(),
-            ))
+            ));
         }
     };
 
@@ -283,7 +283,7 @@ fn handle_streaming_verification(
         (Some(_), Some(_)) => {
             return Err(KmsError::InvalidRequest(
                 "Cannot provide both data and digested_data".to_owned(),
-            ))
+            ));
         }
         (None, None) if request.final_indicator == Some(true) => {
             // Final call may have no data if all data was processed in previous calls
@@ -292,7 +292,7 @@ fn handle_streaming_verification(
         (None, None) => {
             return Err(KmsError::InvalidRequest(
                 "Must provide either data or digested_data".to_owned(),
-            ))
+            ));
         }
     };
 

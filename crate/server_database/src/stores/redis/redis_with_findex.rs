@@ -151,7 +151,7 @@ impl RedisWithFindex {
         // additions to the index
         let mut index_additions = HashMap::new();
 
-        //replace the existing tags (if any) with the new ones (if provided)
+        // replace the existing tags (if any) with the new ones (if provided)
         let tags = if let Some(tags) = tags {
             tags.clone()
         } else {
@@ -378,7 +378,7 @@ impl ObjectsStore for RedisWithFindex {
         for operation in operations {
             match operation {
                 AtomicOperation::Upsert((uid, object, attributes, tags, state)) => {
-                    //TODO: this operation contains a non atomic retrieve_tags. It will be hard to make this whole method atomic
+                    // TODO: this operation contains a non atomic retrieve_tags. It will be hard to make this whole method atomic
                     let db_object = self
                         .prepare_object_for_upsert(
                             uid,
@@ -408,14 +408,14 @@ impl ObjectsStore for RedisWithFindex {
                     redis_operations.push(RedisOperation::Delete(uid.clone()));
                 }
                 AtomicOperation::UpdateObject((uid, object, attributes, tags)) => {
-                    //TODO: this operation contains a non atomic retrieve_object. It will be hard to make this whole method atomic
+                    // TODO: this operation contains a non atomic retrieve_object. It will be hard to make this whole method atomic
                     let db_object = self
                         .prepare_object_for_update(uid, object, attributes, tags.as_ref())
                         .await?;
                     redis_operations.push(RedisOperation::Upsert(uid.clone(), db_object));
                 }
                 AtomicOperation::UpdateState((uid, state)) => {
-                    //TODO: this operation contains a non atomic retrieve_object. It will be hard to make this whole method atomic
+                    // TODO: this operation contains a non atomic retrieve_object. It will be hard to make this whole method atomic
                     let db_object = self.prepare_object_for_state_update(uid, *state).await?;
                     redis_operations.push(RedisOperation::Upsert(uid.clone(), db_object));
                 }
@@ -494,7 +494,7 @@ impl ObjectsStore for RedisWithFindex {
         }
         // if there are now keywords, we return an empty list
         if keywords.is_empty() {
-            return Ok(vec![])
+            return Ok(vec![]);
         }
         // search the keywords in the index
         let res = self
