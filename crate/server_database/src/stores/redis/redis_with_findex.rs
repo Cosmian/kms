@@ -21,6 +21,7 @@ use cosmian_kms_interfaces::{
 use cosmian_logger::trace;
 use cosmian_sse_memories::{ADDRESS_LENGTH, Address, RedisMemory};
 use redis::aio::ConnectionManager;
+use tracing::{debug, trace, warn};
 use uuid::Uuid;
 
 use super::{
@@ -144,15 +145,29 @@ impl RedisWithFindex {
         };
 
         if count == 0 {
+            debug!("Empty Redis database detected. Initializing a new database instance.");
             redis_with_findex
                 .set_current_db_version(env!("CARGO_PKG_VERSION"))
                 .await?;
             redis_with_findex.set_db_state(DbState::Ready).await?;
         } else {
+            warn!("Non-empty Redis database detected. Starting migration routine.");
             redis_with_findex.migrate().await?;
         }
 
         Ok(redis_with_findex)
+    }
+
+    #[deprecated(
+        note = "label is deprecated; call instantiate(redis_url, master_key, clear_database)"
+    )]
+    pub(crate) async fn instantiate_with_label(
+        redis_url: &str,
+        master_key: Secret<32>,
+        _label: &[u8],
+        clear_database: bool,
+    ) -> DbResult<Self> {
+        Self::instantiate(redis_url, master_key, clear_database).await
     }
 
     /// Prepare an object to be inserted

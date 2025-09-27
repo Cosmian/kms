@@ -28,6 +28,7 @@ use crate::{
     error::{DbResult, DbResultHelper},
     stores::{
         SQLITE_QUERIES,
+        migrate::HasDatabase,
         sql::{
             database::SqlDatabase,
             locate_query::{SqlitePlaceholder, query_from_attributes},
@@ -75,6 +76,10 @@ fn sqlite_row_to_owm(row: &SqliteRow) -> Result<ObjectWithMetadata, DbError> {
 #[derive(Clone)]
 pub(crate) struct SqlitePool {
     pool: Pool<Sqlite>,
+}
+
+impl HasDatabase for SqlitePool {
+    type Database = Sqlite;
 }
 
 impl SqlitePool {
