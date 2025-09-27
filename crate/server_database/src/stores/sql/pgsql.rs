@@ -28,6 +28,7 @@ use crate::{
     error::{DbError, DbResult, DbResultHelper},
     stores::{
         PGSQL_QUERIES,
+        migrate::HasDatabase,
         sql::{
             database::SqlDatabase,
             locate_query::{PgSqlPlaceholder, query_from_attributes},
@@ -71,6 +72,10 @@ fn pg_row_to_owm(row: &PgRow) -> Result<ObjectWithMetadata, DbError> {
 #[derive(Clone)]
 pub(crate) struct PgPool {
     pool: Pool<Postgres>,
+}
+
+impl HasDatabase for PgPool {
+    type Database = Postgres;
 }
 
 impl PgPool {

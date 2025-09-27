@@ -10,9 +10,6 @@ repository.workspace = true
 rust-version.workspace = true
 description = "Crate containing the database for the Cosmian KMS server and the supported stores"
 
-[lints]
-workspace = true
-
 [lib]
 doctest = false
 
@@ -22,6 +19,7 @@ non-fips = [
   "cosmian_kmip/non-fips",
   "cosmian_findex",
   "cosmian_sse_memories/redis-mem",
+  "cloudproof_findex/findex-redis",
 ]
 
 [dependencies]
@@ -66,6 +64,17 @@ url = { workspace = true }
 uuid = { workspace = true }
 version-compare = "0.2"
 zeroize = { workspace = true }
+
+# Deprecates dependencies : should be removed once support for versions anterior to 5.9.0 is dropped
+cloudproof_findex = { version = "5.0", optional = true }
+cosmian_kms_crypto = { path = "../crypto", version = "5.8.1" }
+redis_for_migrations = { package = "redis", version = "0.23", features = [
+  "aio",
+  "ahash",
+  "script",
+  "connection-manager",
+  "tokio-comp",
+] }
 
 [dev-dependencies]
 tempfile = { workspace = true }

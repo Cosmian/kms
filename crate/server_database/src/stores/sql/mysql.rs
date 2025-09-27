@@ -32,6 +32,7 @@ use crate::{
     error::{DbError, DbResult, DbResultHelper},
     stores::{
         MYSQL_QUERIES,
+        migrate::HasDatabase,
         sql::{
             database::SqlDatabase,
             locate_query::{MySqlPlaceholder, query_from_attributes},
@@ -85,6 +86,10 @@ fn my_sql_row_to_owm(row: &MySqlRow) -> Result<ObjectWithMetadata, DbError> {
 #[derive(Clone)]
 pub(crate) struct MySqlPool {
     pool: Pool<MySql>,
+}
+
+impl HasDatabase for MySqlPool {
+    type Database = MySql;
 }
 
 impl MySqlPool {

@@ -1,11 +1,13 @@
 use async_trait::async_trait;
 use cosmian_logger::{debug, error};
 use serde::{Deserialize, Serialize};
+use tracing::{debug, error, info, warn};
 use version_compare::{Cmp, compare};
 
 use crate::{DbError, error::DbResult};
 
-pub(super) const KMS_VERSION_BEFORE_MIGRATION_SUPPORT: &str = "4.12.0";
+pub(crate) const KMS_VERSION_BEFORE_MIGRATION_SUPPORT: &str = "4.12.0";
+pub(crate) const LOWEST_DB_VERSION_WITH_REDIS_SUPPORT: &str = "4.5.0";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -15,23 +17,61 @@ pub(crate) enum DbState {
     Upgrading,
 }
 
-/// The `Migrate` trait defines the methods required to migrate the database to the latest version.
+fn lower(version: &str, target: &str) -> DbResult<bool> {
+    let cmp = compare(version, target).map_err(|()| {
+        DbError::DatabaseError(format!(
+            "Error comparing versions. The current DB version: {version}, cannot be parsed."
+        ))
+    })?;
+    Ok(matches!(cmp, Cmp::Lt))
+}
+
+/// A marker trait to associate a database type with a store.
+/// This trait's sole purpose is solving the compiler error [E0207] (`DB` is not constrained by the impl trait)
+/// when trying to implement the Migrate trait for sqlx's generic Databases.
+/// Avoid implementing this trait for anything that doesn't produce that error.
+pub trait HasDatabase {
+    type Database: sqlx::Database;
+}
+
+/// Base trait for database migration functionality
+#[async_trait(?Send)]
+pub(crate) trait Migrate {
+    /// Return the state of the database ("ready" or "upgrading").
+    async fn get_db_state(&self) -> DbResult<Option<DbState>>;
+
+    /// Set the state of the database ("ready" or "upgrading").
+    async fn set_db_state(&self, state: DbState) -> DbResult<()>;
+
+    /// Return the current version of the database.
+    /// Used by the migration process to determine if the database needs to be upgraded.
+    async fn get_current_db_version(&self) -> DbResult<Option<String>>;
+
+    /// Set the current version of the database.
+    /// Used by the migration process to update the database version after a successful migration.
+    async fn set_current_db_version(&self, version: &str) -> DbResult<()>;
+
+    /// Check if the database is in a ready state
+    async fn check_db_state(&self) -> DbResult<()> {
+        let db_state = self.get_db_state().await?.unwrap_or(DbState::Ready);
+        if db_state != DbState::Ready {
+            let error_string = "Database is not in a ready state; it is either upgrading or a \
+                                previous update failed. Bailing out. Please wait for the \
+                                migration to complete or restore a previous version of the \
+                                database.";
+            error!(error_string);
+            return Err(DbError::DatabaseError(error_string.to_owned()));
+        }
+        Ok(())
+    }
+}
+///The `SqlMigrate` trait defines the methods required to migrate the database to the latest version.
 // Note: <DB> must be present because it makes the database type a formal parameter of the trait itself.
 // This solves the "unconstrained type parameter" error when trying to implement is with an sqlx generic Database
 #[async_trait(?Send)]
-pub(super) trait Migrate<DB> {
+pub(crate) trait SqlMigrate<DB>: Migrate {
     /// Migrate the database to the latest version
     async fn migrate(&self) -> DbResult<()> {
-        fn lower(version: &str, target: &str) -> DbResult<bool> {
-            let cmp = compare(version, target).map_err(|()| {
-                DbError::DatabaseError(format!(
-                    "Error comparing versions. The current DB version: {version}, cannot be \
-                     parsed."
-                ))
-            })?;
-            Ok(matches!(cmp, Cmp::Lt))
-        }
-
         let db_state = self.get_db_state().await?.unwrap_or(DbState::Ready);
         if db_state != DbState::Ready {
             let error_string = "Database is not in a ready state; it is either upgrading or a \
@@ -62,20 +102,6 @@ pub(super) trait Migrate<DB> {
 
         Ok(())
     }
-
-    /// Return the state of the database ("ready" or "upgrading").
-    async fn get_db_state(&self) -> DbResult<Option<DbState>>;
-
-    /// Set the state of the database ("ready" or "upgrading").
-    async fn set_db_state(&self, state: DbState) -> DbResult<()>;
-
-    /// Return the current version of the database.
-    /// Used by the migration process to determine if the database needs to be upgraded.
-    async fn get_current_db_version(&self) -> DbResult<Option<String>>;
-
-    /// Set the current version of the database.
-    /// Used by the migration process to update the database version after a successful migration.
-    async fn set_current_db_version(&self, version: &str) -> DbResult<()>;
 
     /// Before the version 4.13.0, the KMIP attributes were stored in the object table (via the objects themselves).
     /// The new column attributes allow storing the KMIP attributes in a dedicated column
@@ -109,4 +135,87 @@ pub(super) trait Migrate<DB> {
     /// }
     #[expect(dead_code)]
     async fn migrate_to_4_22_2(&self) -> DbResult<()>;
+}
+
+// We cannot implement SqlMigrate for RedisWithFindex or else we would face the following issue:
+// https://github.com/rust-lang/rust/issues/48869 because of the blanket implementation of
+// Migrate for SqlDatabase. Separating the migration traits is the simplest solution to this problem.
+pub(crate) trait RedisMigrate: Migrate {
+    /// Migrate the database to the latest version
+    async fn migrate(&self) -> DbResult<()> {
+        let db_state = self.get_db_state().await?.unwrap_or(DbState::Ready);
+        if db_state != DbState::Ready {
+            let error_string = "Database is not in a ready state; it is either upgrading or a \
+                                previous update failed. Bailing out. Please wait for the  \
+                                migration to complete or restore a previous version of the \
+                                database.";
+            error!(error_string,);
+            return Err(DbError::DatabaseError(error_string.to_owned()));
+        }
+
+        // In the other stores, if the db version was not set, the version was assumed to be "4.12.0"
+        // This is inconsistent with RedisWithFindex's design, as a missing db version might be
+        // a sign of a corrupted store and in this case early aborting is the safest option.
+        let current_db_version = match self.get_current_db_version().await? {
+            Some(version) => version,
+            None => {
+                let msg = "Database version not set, the Redis store might be corrupted. \
+                           Aborting. Please backup and/or export any existing keys - if any - \
+                           (using standard formats such as PKCS#8 or Raw) then re-run the KMS \
+                           with the `clear_database` flag set to true. Clearing the database is a \
+                           destructive operation. Please ensure backing up any important data \
+                           before proceeding."
+                    .to_owned();
+                error!("{}", msg);
+                return Err(DbError::DatabaseError(msg));
+            }
+        };
+
+        let kms_version = env!("CARGO_PKG_VERSION");
+
+        if kms_version == current_db_version {
+            debug!("  ==> database is up to date.");
+            return Ok(());
+        }
+
+        debug!(
+            "Database version before migration: {current_db_version}, Current KMS version: \
+             {kms_version}"
+        );
+
+        if lower(&current_db_version, LOWEST_DB_VERSION_WITH_REDIS_SUPPORT)? {
+            // This case is normally unreachable and means that the db version was manually tampered-with
+            let msg = format!(
+                "Databases before version {LOWEST_DB_VERSION_WITH_REDIS_SUPPORT} do not support \
+                 Findex with Redis's database. Aborting. Please export all keys - if any - (using \
+                 standard formats such as PKCS#8 or Raw) and reimport them using the latest KMS \
+                 version."
+            );
+            error!("{}", msg);
+            return Err(DbError::DatabaseError(msg));
+        }
+
+        debug!("Starting migration process...");
+
+        if lower(&current_db_version, "5.8.1")? {
+            // From 4.5.0 to 5.8.1 : cloudproof_findex_v5
+            // Starting 5.9 : cosmian_findex_v8
+            self.migrate_to_5_9_0().await?;
+        }
+
+        // INFO: add future migrations here if breaking changes are made to the RedisWithFindex store
+
+        // If we reach this point, we know that kms_version is at least 5.9.0
+        // simply increment the current version to the current KMS version
+        if kms_version != current_db_version {
+            self.set_current_db_version(kms_version).await?;
+            debug!("Redis database version was bumped to the current KMS version: {kms_version}");
+        }
+
+        debug!("  ==> database is up to date.");
+
+        Ok(())
+    }
+
+    async fn migrate_to_5_9_0(&self) -> DbResult<()>;
 }
