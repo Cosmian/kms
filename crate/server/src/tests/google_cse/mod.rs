@@ -2,8 +2,7 @@
     clippy::unwrap_used,
     clippy::print_stdout,
     clippy::panic_in_result_fn,
-    clippy::unwrap_in_result,
-    clippy::ignore_without_reason
+    clippy::unwrap_in_result
 )]
 
 // Base imports used by all tests

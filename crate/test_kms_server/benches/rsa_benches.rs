@@ -47,6 +47,7 @@ pub(crate) fn bench_rsa_create_keypair(c: &mut Criterion) {
     });
 }
 
+#[cfg(feature = "non-fips")]
 pub(crate) fn bench_rsa_pkcs_v15_encrypt_2048(c: &mut Criterion) {
     bench_rsa_encrypt(
         c,
@@ -60,6 +61,7 @@ pub(crate) fn bench_rsa_pkcs_v15_encrypt_2048(c: &mut Criterion) {
         "RSA PKCSv1.5",
     );
 }
+#[cfg(feature = "non-fips")]
 pub(crate) fn bench_rsa_pkcs_v15_encrypt_4096(c: &mut Criterion) {
     bench_rsa_encrypt(
         c,
@@ -74,6 +76,7 @@ pub(crate) fn bench_rsa_pkcs_v15_encrypt_4096(c: &mut Criterion) {
     );
 }
 
+#[cfg(feature = "non-fips")]
 pub(crate) fn bench_rsa_pkcs_v15_decrypt_2048(c: &mut Criterion) {
     bench_rsa_decrypt(
         c,
@@ -87,6 +90,7 @@ pub(crate) fn bench_rsa_pkcs_v15_decrypt_2048(c: &mut Criterion) {
         "RSA PKCSv1.5",
     );
 }
+#[cfg(feature = "non-fips")]
 pub(crate) fn bench_rsa_pkcs_v15_decrypt_4096(c: &mut Criterion) {
     bench_rsa_decrypt(
         c,
@@ -161,7 +165,6 @@ pub(crate) fn bench_rsa_key_wrp_encrypt_2048(c: &mut Criterion) {
         2048,
         &CryptographicParameters {
             cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
-            padding_method: Some(PaddingMethod::OAEP),
             hashing_algorithm: Some(HashingAlgorithm::SHA256),
             ..Default::default()
         },
@@ -174,7 +177,6 @@ pub(crate) fn bench_rsa_key_wrp_encrypt_4096(c: &mut Criterion) {
         4096,
         &CryptographicParameters {
             cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
-            padding_method: Some(PaddingMethod::OAEP),
             hashing_algorithm: Some(HashingAlgorithm::SHA256),
             ..Default::default()
         },
@@ -188,7 +190,6 @@ pub(crate) fn bench_rsa_key_wrp_decrypt_2048(c: &mut Criterion) {
         2048,
         &CryptographicParameters {
             cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
-            padding_method: Some(PaddingMethod::OAEP),
             hashing_algorithm: Some(HashingAlgorithm::SHA256),
             ..Default::default()
         },
@@ -201,7 +202,6 @@ pub(crate) fn bench_rsa_key_wrp_decrypt_4096(c: &mut Criterion) {
         4096,
         &CryptographicParameters {
             cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
-            padding_method: Some(PaddingMethod::OAEP),
             hashing_algorithm: Some(HashingAlgorithm::SHA256),
             ..Default::default()
         },
@@ -487,6 +487,7 @@ pub(crate) fn bench_encrypt_decrypt_parametrized(
     group.finish();
 }
 
+#[cfg(feature = "non-fips")]
 pub(crate) fn bench_encrypt_rsa_pkcs15_parametrized(c: &mut Criterion) {
     bench_encrypt_decrypt_parametrized(
         c,
@@ -519,7 +520,6 @@ pub(crate) fn bench_encrypt_rsa_aes_key_wrap_parametrized(c: &mut Criterion) {
         "RSA AES KEY WRAP - plaintext of 32 bytes",
         CryptographicParameters {
             cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
-            padding_method: Some(PaddingMethod::OAEP),
             hashing_algorithm: Some(HashingAlgorithm::SHA256),
             ..Default::default()
         },

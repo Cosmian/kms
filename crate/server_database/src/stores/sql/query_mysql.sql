@@ -176,7 +176,3 @@ FROM tags
 WHERE tag IN (@TAGS)
 GROUP BY id
 HAVING COUNT(DISTINCT tag) = ?;
-
--- name: ensure-object-column-large
-ALTER TABLE objects
-  MODIFY object LONGTEXT NOT NULL;

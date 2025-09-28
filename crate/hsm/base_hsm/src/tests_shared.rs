@@ -1,17 +1,6 @@
 //! Shared HSM test suite used by vendor crates to avoid duplication.
 //! Each vendor crate provides a small config and delegates to these helpers.
-#![allow(unsafe_code)]
 #![allow(clippy::panic_in_result_fn)]
-#![allow(clippy::panic)]
-#![allow(clippy::expect_used)]
-#![allow(clippy::unwrap_used)]
-#![allow(clippy::assertions_on_result_states)]
-#![allow(clippy::as_conversions)]
-#![allow(clippy::map_err_ignore)]
-#![allow(clippy::redundant_clone)]
-#![allow(clippy::unseparated_literal_suffix)]
-#![allow(clippy::manual_let_else)]
-#![allow(let_underscore_drop)]
 #![allow(clippy::missing_panics_doc)]
 
 use std::{collections::HashMap, ptr, sync::Arc, thread};
@@ -49,12 +38,13 @@ fn generate_random_data<const T: usize>() -> HResult<[u8; T]> {
     Ok(bytes)
 }
 
+#[allow(unsafe_code)]
 pub fn low_level_init_test(cfg: &HsmTestConfig) -> HResult<()> {
     let path = cfg.lib_path;
     let library = unsafe { Library::new(path) }?;
     let init = unsafe { library.get::<fn(p_init_args: CK_VOID_PTR) -> CK_RV>(b"C_Initialize") }?;
 
-    let mut p_init_args = CK_C_INITIALIZE_ARGS {
+    let p_init_args = CK_C_INITIALIZE_ARGS {
         CreateMutex: None,
         DestroyMutex: None,
         LockMutex: None,
@@ -62,7 +52,12 @@ pub fn low_level_init_test(cfg: &HsmTestConfig) -> HResult<()> {
         flags: CKF_OS_LOCKING_OK,
         pReserved: ptr::null_mut(),
     };
-    let rv = init(&raw mut p_init_args as CK_VOID_PTR);
+    let rv = init(
+        std::ptr::from_ref(&p_init_args)
+            .cast::<std::ffi::c_void>()
+            .cast_mut(),
+    );
+
     assert_eq!(rv, CKR_OK);
 
     Ok(())
@@ -140,6 +135,7 @@ pub fn destroy_all(slot: &Arc<SlotManager>) -> HResult<()> {
     Ok(())
 }
 
+#[allow(clippy::panic, clippy::unwrap_used)]
 pub fn generate_aes_key(slot: &Arc<SlotManager>) -> HResult<()> {
     log_init(None);
     let key_id = Uuid::new_v4().to_string();
@@ -150,9 +146,8 @@ pub fn generate_aes_key(slot: &Arc<SlotManager>) -> HResult<()> {
     assert_eq!(key_handle, session.get_object_handle(key_id.as_bytes())?);
     // try export if allowed
     if let Ok(Some(key)) = session.export_key(key_handle) {
-        let key_bytes = match key.key_material() {
-            KeyMaterial::AesKey(v) => v,
-            _ => panic!("Expected an AES key"),
+        let KeyMaterial::AesKey(key_bytes) = key.key_material() else {
+            panic!("Expected an AES key")
         };
         assert_eq!(key_bytes.len() * 8, 256);
         assert_eq!(key.id(), key_id.as_str());
@@ -168,10 +163,11 @@ pub fn generate_aes_key(slot: &Arc<SlotManager>) -> HResult<()> {
     // assert the key handles are identical
     assert_eq!(key_handle, session.get_object_handle(key_id.as_bytes())?);
     // it should not be exportable
-    assert!(session.export_key(key_handle).is_err());
+    session.export_key(key_handle).unwrap_err();
     Ok(())
 }
 
+#[allow(clippy::panic, clippy::expect_used, clippy::unwrap_used)]
 pub fn generate_rsa_keypair(slot: &Arc<SlotManager>) -> HResult<()> {
     log_init(None);
     let sk_id = Uuid::new_v4().to_string();
@@ -208,9 +204,9 @@ pub fn generate_rsa_keypair(slot: &Arc<SlotManager>) -> HResult<()> {
     )?;
     info!("Generated sensitive RSA key: sk: {sk_id}, pk: {pk_id}");
     let sk_handle = session.get_object_handle(sk_id.as_bytes())?;
-    assert!(session.export_key(sk_handle).is_err());
+    session.export_key(sk_handle).unwrap_err();
     let pk_handle = session.get_object_handle(pk_id.as_bytes())?;
-    let _ = session.export_key(pk_handle)?;
+    let _unused = session.export_key(pk_handle)?;
     Ok(())
 }
 
@@ -378,7 +374,7 @@ pub fn aes_cbc_multi_round(slot: &Arc<SlotManager>) -> HResult<()> {
         .clone()
         .unwrap_or_default()
         .try_into()
-        .map_err(|_| HError::Default("IV must be exactly 16 bytes long".to_owned()))?;
+        .map_err(|e| HError::Default(format!("IV must be exactly 16 bytes long: {e:?}")))?;
     let enc_1k_multi = session.encrypt_aes_cbc_multi_round(sk, iv, &data_1k, 16)?;
     assert_eq!(enc_1k_multi.ciphertext, enc_1k_single.ciphertext);
     assert_eq!(enc_1k_multi.tag, enc_1k_single.tag);
@@ -435,7 +431,7 @@ pub fn aes_cbc_multi_round(slot: &Arc<SlotManager>) -> HResult<()> {
         .clone()
         .unwrap_or_default()
         .try_into()
-        .map_err(|_| HError::Default("IV must be exactly 16 bytes long".to_owned()))?;
+        .map_err(|e| HError::Default(format!("IV must be exactly 16 bytes long: {e:?}")))?;
     let enc_8k_multi = session.encrypt_aes_cbc_multi_round(sk, iv, &data_8k, 128)?;
     assert_eq!(enc_8k_multi.ciphertext, enc_8k_single.ciphertext);
     assert_eq!(enc_8k_multi.tag, enc_8k_single.tag);

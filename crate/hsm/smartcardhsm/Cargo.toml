@@ -8,7 +8,7 @@ repository.workspace = true
 rust-version.workspace = true
 keywords.workspace = true
 categories.workspace = true
-description = "Smartcard HSM PKCS#11 loader"
+description = "Smart card HSM PKCS#11 loader"
 
 [lints]
 workspace = true
