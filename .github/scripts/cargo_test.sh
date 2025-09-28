@@ -33,14 +33,14 @@ echo "SQLite is running on filesystem"
 # shellcheck disable=SC2086
 KMS_TEST_DB="sqlite" cargo test --workspace --lib --target $TARGET $RELEASE $FEATURES -- --nocapture
 # shellcheck disable=SC2086
-KMS_TEST_DB="sqlite" cargo test --workspace --lib --target $TARGET $RELEASE $FEATURES -- --nocapture test_db_sqlite --ignored
+KMS_TEST_DB="sqlite" cargo test -p cosmian_kms_server_database --lib --target $TARGET $RELEASE $FEATURES -- --nocapture test_db_sqlite --ignored
 
 if nc -z "$REDIS_HOST" "$REDIS_PORT"; then
   echo "Redis is running at $REDIS_HOST:$REDIS_PORT"
   # shellcheck disable=SC2086
   KMS_TEST_DB="redis-findex" cargo test --workspace --lib --target $TARGET $RELEASE $FEATURES -- --nocapture
   # shellcheck disable=SC2086
-  KMS_TEST_DB="redis-findex" cargo test --workspace --lib --target $TARGET $RELEASE $FEATURES -- --nocapture test_db_redis_with_findex --ignored
+  KMS_TEST_DB="redis-findex" cargo test -p cosmian_kms_server_database --lib --target $TARGET $RELEASE $FEATURES -- --nocapture test_db_redis_with_findex --ignored
 else
   echo "Redis is not running at $REDIS_HOST:$REDIS_PORT"
 fi
@@ -50,7 +50,7 @@ if nc -z "$MYSQL_HOST" "$MYSQL_PORT"; then
   # shellcheck disable=SC2086
   KMS_TEST_DB="mysql" cargo test --workspace --lib --target $TARGET $RELEASE $FEATURES -- --nocapture
   # shellcheck disable=SC2086
-  KMS_TEST_DB="mysql" cargo test --workspace --lib --target $TARGET $RELEASE $FEATURES -- --nocapture test_db_mysql --ignored
+  KMS_TEST_DB="mysql" cargo test -p cosmian_kms_server_database --lib --target $TARGET $RELEASE $FEATURES -- --nocapture test_db_mysql --ignored
 else
   echo "MySQL is not running at $MYSQL_HOST:$MYSQL_PORT"
 fi
@@ -69,7 +69,7 @@ fi
 if [ -n "$TEST_GOOGLE_OAUTH_CLIENT_ID" ] && [ -n "$TEST_GOOGLE_OAUTH_CLIENT_SECRET" ] && [ -n "$TEST_GOOGLE_OAUTH_REFRESH_TOKEN" ] && [ -n "$GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY" ]; then
   echo "Running Google CSE tests..."
   # shellcheck disable=SC2086
-  cargo test --workspace --target $TARGET $RELEASE $FEATURES -- --nocapture test_google_cse --ignored
+  cargo test -p cosmian_kms_server_database --target $TARGET $RELEASE $FEATURES -- --nocapture test_google_cse --ignored
 fi
 
 if [ -f /etc/lsb-release ]; then
