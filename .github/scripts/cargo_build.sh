@@ -2,16 +2,10 @@
 
 set -exo pipefail
 
-# --- Declare the following variables for tests
-# export TARGET=x86_64-unknown-linux-gnu
-# export TARGET=x86_64-apple-darwin
-# export TARGET=aarch64-apple-darwin
-# export DEBUG_OR_RELEASE=debug
-# export OPENSSL_DIR=/usr/local/openssl
 # export FEATURES="non-fips"
 
 if [ -z "$TARGET" ]; then
-  echo "Error: TARGET is not set."
+  echo "Error: TARGET is not set. Examples of TARGET are x86_64-unknown-linux-gnu, x86_64-apple-darwin, aarch64-apple-darwin."
   exit 1
 fi
 
@@ -28,15 +22,15 @@ if [ -z "$FEATURES" ]; then
   unset FEATURES
 fi
 
-rustup target add "$TARGET"
-
 if [ -z "$OPENSSL_DIR" ]; then
-  echo "Error: OPENSSL_DIR is not set."
+  echo "Error: OPENSSL_DIR is not set. Example OPENSSL_DIR=/usr/local/openssl"
   exit 1
 fi
 
+rustup target add "$TARGET"
+
 # shellcheck disable=SC2086
-cargo build --target $TARGET $RELEASE $FEATURES
+cargo build -p cosmian_kms_server --target $TARGET $RELEASE $FEATURES
 
 COSMIAN_KMS_EXE="target/$TARGET/$DEBUG_OR_RELEASE/cosmian_kms"
 
@@ -49,7 +43,17 @@ if [ -z "$correct_openssl_version_found" ]; then
 fi
 
 if [ "$(uname)" = "Linux" ]; then
-  ldd "$COSMIAN_KMS_EXE" | grep ssl && exit 1
+  LDD_OUTPUT=$(ldd "$COSMIAN_KMS_EXE")
+  echo "$LDD_OUTPUT"
+  if echo "$LDD_OUTPUT" | grep -qi ssl; then
+    echo "Error: Dynamic OpenSSL linkage detected on Linux (ldd | grep ssl)."
+    exit 1
+  fi
 else
-  otool -L "$COSMIAN_KMS_EXE" | grep openssl && exit 1
+  OTOOL_OUTPUT=$(otool -L "$COSMIAN_KMS_EXE")
+  echo "$OTOOL_OUTPUT"
+  if echo "$OTOOL_OUTPUT" | grep -qi ssl; then
+    echo "Error: Dynamic OpenSSL linkage detected on macOS (otool -L | grep openssl)."
+    exit 1
+  fi
 fi

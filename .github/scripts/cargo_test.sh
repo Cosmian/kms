@@ -2,16 +2,10 @@
 
 set -exo pipefail
 
-# --- Declare the following variables for tests
-# export TARGET=x86_64-unknown-linux-gnu
-# export TARGET=x86_64-apple-darwin
-# export TARGET=aarch64-apple-darwin
-# export DEBUG_OR_RELEASE=debug
-# export OPENSSL_DIR=/usr/local/openssl
 # export FEATURES="non-fips"
 
 if [ -z "$TARGET" ]; then
-  echo "Error: TARGET is not set."
+  echo "Error: TARGET is not set. Examples of TARGET are x86_64-unknown-linux-gnu, x86_64-apple-darwin, aarch64-apple-darwin."
   exit 1
 fi
 
@@ -29,47 +23,47 @@ if [ -z "$FEATURES" ]; then
 fi
 
 if [ -z "$OPENSSL_DIR" ]; then
-  echo "Error: OPENSSL_DIR is not set."
+  echo "Error: OPENSSL_DIR is not set. Example OPENSSL_DIR=/usr/local/openssl"
   exit 1
 fi
 
 export RUST_LOG="cosmian_kms_cli=error,cosmian_kms_server=error,cosmian_kmip=error,test_kms_server=error"
 
+echo "SQLite is running on filesystem"
 # shellcheck disable=SC2086
-cargo build --target $TARGET $RELEASE $FEATURES
+KMS_TEST_DB="sqlite" cargo test --workspace --lib --target $TARGET $RELEASE $FEATURES -- --nocapture
+# shellcheck disable=SC2086
+KMS_TEST_DB="sqlite" cargo test --workspace --lib --target $TARGET $RELEASE $FEATURES -- --nocapture test_db_sqlite --ignored
 
-declare -a DATABASES=('redis-findex' 'sqlite' 'postgresql' 'mysql')
-for KMS_TEST_DB in "${DATABASES[@]}"; do
-  echo "Database KMS: $KMS_TEST_DB"
-
-  # Skip redis-findex in FIPS mode since it is not supported in FIPS mode
-  if [ "$KMS_TEST_DB" = "redis-findex" ] && [ -z "$FEATURES" ]; then
-    echo "Skipping redis-findex in FIPS mode."
-    continue
-  fi
-
-  # for now, discard tests on mysql
-  if [ "$KMS_TEST_DB" = "mysql" ]; then
-    continue
-  fi
-
-  # no docker containers on macOS Github runner
-  if [ "$(uname)" = "Darwin" ] && [ "$KMS_TEST_DB" != "sqlite" ]; then
-    continue
-  fi
-
-  # only tests all databases on release mode - keep sqlite for debug
-  if [ "$DEBUG_OR_RELEASE" = "debug" ] && [ "$KMS_TEST_DB" != "sqlite" ]; then
-    continue
-  fi
-
-  export KMS_TEST_DB="$KMS_TEST_DB"
-
+if nc -z "$REDIS_HOST" "$REDIS_PORT"; then
+  echo "Redis is running at $REDIS_HOST:$REDIS_PORT"
   # shellcheck disable=SC2086
-  cargo test --workspace --lib --target $TARGET $RELEASE $FEATURES -- --nocapture
+  KMS_TEST_DB="redis-findex" cargo test --workspace --lib --target $TARGET $RELEASE $FEATURES -- --nocapture
   # shellcheck disable=SC2086
-  cargo test --workspace --lib --target $TARGET $RELEASE $FEATURES -- --nocapture test_db --ignored
-done
+  KMS_TEST_DB="redis-findex" cargo test --workspace --lib --target $TARGET $RELEASE $FEATURES -- --nocapture test_db_redis_with_findex --ignored
+else
+  echo "Redis is not running at $REDIS_HOST:$REDIS_PORT"
+fi
+
+if nc -z "$MYSQL_HOST" "$MYSQL_PORT"; then
+  echo "MySQL is running at $MYSQL_HOST:$MYSQL_PORT"
+  # shellcheck disable=SC2086
+  KMS_TEST_DB="mysql" cargo test --workspace --lib --target $TARGET $RELEASE $FEATURES -- --nocapture
+  # shellcheck disable=SC2086
+  KMS_TEST_DB="mysql" cargo test --workspace --lib --target $TARGET $RELEASE $FEATURES -- --nocapture test_db_mysql --ignored
+else
+  echo "MySQL is not running at $MYSQL_HOST:$MYSQL_PORT"
+fi
+
+if nc -z "$POSTGRES_HOST" "$POSTGRES_PORT"; then
+  echo "PostgreSQL is running at $POSTGRES_HOST:$POSTGRES_PORT"
+  # shellcheck disable=SC2086
+  KMS_TEST_DB="postgresql" cargo test --workspace --lib --target $TARGET $RELEASE $FEATURES -- --nocapture
+  # shellcheck disable=SC2086
+  KMS_TEST_DB="postgresql" cargo test --workspace --lib --target $TARGET $RELEASE $FEATURES -- --nocapture test_db_postgresql --ignored
+else
+  echo "PostgreSQL is not running at $POSTGRES_HOST:$POSTGRES_PORT"
+fi
 
 # Google CSE tests
 if [ -n "$TEST_GOOGLE_OAUTH_CLIENT_ID" ] && [ -n "$TEST_GOOGLE_OAUTH_CLIENT_SECRET" ] && [ -n "$TEST_GOOGLE_OAUTH_REFRESH_TOKEN" ] && [ -n "$GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY" ]; then
