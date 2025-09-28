@@ -597,6 +597,6 @@ mod tests {
     fn test_server_configuration_file() {
         let conf = ClapConfig::default();
         let conf_str = toml::to_string_pretty(&conf).unwrap();
-        debug!("Pretty TOML print {conf_str}");
+        debug!("Configuration TOML: {conf_str}");
     }
 }

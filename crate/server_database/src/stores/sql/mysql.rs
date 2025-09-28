@@ -112,7 +112,12 @@ impl MySqlPool {
                     .await
                     {
                         Ok(_) => (),
-                        Err(_e) => (),
+                        Err(e) => {
+                            debug!(
+                                "Could not set innodb_lock_wait_timeout to {}s: {e}",
+                                DEFAULT_LOCK_WAIT_TIMEOUT_SECS
+                            );
+                        }
                     }
                     Ok(())
                 })
