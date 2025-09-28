@@ -29,6 +29,12 @@ fi
 
 export RUST_LOG="cosmian_kms_cli=error,cosmian_kms_server=error,cosmian_kmip=error,test_kms_server=error"
 
+# shellcheck disable=SC2086
+cargo test --workspace --bins --target $TARGET $RELEASE $FEATURES
+
+# shellcheck disable=SC2086
+cargo bench --target $TARGET $FEATURES --no-run
+
 echo "SQLite is running on filesystem"
 # shellcheck disable=SC2086
 KMS_TEST_DB="sqlite" cargo test --workspace --lib --target $TARGET $RELEASE $FEATURES -- --nocapture
@@ -108,12 +114,4 @@ if [ -f /etc/lsb-release ]; then
     sudo -E env "PATH=$PATH" HSM_MODEL="$HSM_MODEL" HSM_USER_PASSWORD="$HSM_USER_PASSWORD" HSM_SLOT_ID="$HSM_SLOT_ID" \
       cargo test --target "$TARGET" $FEATURES $RELEASE -- tests::hsm::test_hsm_all --ignored
   done
-fi
-
-# shellcheck disable=SC2086
-cargo test --workspace --bins --target $TARGET $RELEASE $FEATURES
-
-if [ "$DEBUG_OR_RELEASE" = "release" ]; then
-  # shellcheck disable=SC2086
-  cargo bench --target $TARGET $FEATURES --no-run
 fi
