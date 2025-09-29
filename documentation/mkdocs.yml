@@ -97,6 +97,7 @@ nav:
       - High-availability: installation/high_availability_mode.md
   - Configuration:
       - Configuration file: server_configuration_file.md
+      - Configuration examples: configurations.md
       - Command line arguments: server_cli.md
       - Databases: database.md
       - Authenticating users to the server: authentication.md

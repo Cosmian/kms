@@ -58,15 +58,9 @@ The KMS client library now supports PKCE authentication with optional client sec
     _important_: on Entra ID, configure the redirect URL (<http://localhost:17899/authorization>) to be for Native/Desktop (not Single Page Application)
 
     ```toml
-    [auth]
-    # The issuer URI of the JWT token
-    jwt_issuer_uri = [
-        "https://login.microsoftonline.com/612da4de-35c0-42de-f3c6-174b69062c96/v2.0",
-    ]
-    # The JWKS (Json Web Key Set) URI of the JWT token
-    jwks_uri = [
-        "https://login.microsoftonline.com/612da4de-35c0-42de-f3c6-174b69062c96/discovery/v2.0/keys",
-    ]
+    [idp_auth]
+    # issuer,jwks,audience (audience omitted)
+    jwt_auth_provider = ["https://login.microsoftonline.com/612da4de-35c0-42de-f3c6-174b69062c96/v2.0,https://login.microsoftonline.com/612da4de-35c0-42de-f3c6-174b69062c96/discovery/v2.0/keys,"]
     ```
 
 #### Example: Auth0
@@ -92,15 +86,8 @@ The KMS client library now supports PKCE authentication with optional client sec
     _important_: on Entra ID, configure the redirect URL to be for Native/Desktop (not Single Page Application)
 
     ```toml
-    [auth]
-    # The issuer URI of the JWT token
-    jwt_issuer_uri = [
-        "https://acme.eu.auth0.com/",
-    ]
-    # The JWKS (Json Web Key Set) URI of the JWT token
-    jwks_uri = [
-        "https://acme.eu.auth0.com/.well-known/jwks.json",
-    ]
+    [idp_auth]
+    jwt_auth_provider = ["https://acme.eu.auth0.com/,https://acme.eu.auth0.com/.well-known/jwks.json,"]
     ```
 
     The client code handles:
