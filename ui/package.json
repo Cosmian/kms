@@ -7,6 +7,7 @@
         "dev": "vite",
         "build": "tsc -b && vite build",
         "lint": "eslint .",
+        "fix": "eslint . --fix",
         "preview": "vite preview"
     },
     "dependencies": {
@@ -32,5 +33,15 @@
         "typescript": "~5.8.3",
         "typescript-eslint": "^8.31.1",
         "vite": "^6.3.6"
+    },
+    "overrides": {
+        "esbuild": "^0.25.10",
+        "@babel/runtime": "^7.26.10"
+    },
+    "pnpm": {
+        "overrides": {
+            "esbuild": "^0.25.10",
+            "@babel/runtime": "^7.26.10"
+        }
     }
 }

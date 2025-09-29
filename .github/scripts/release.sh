@@ -47,10 +47,7 @@ ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" README.md
 ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" version
 ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" .github/copilot-instructions.md
 
-bash .github/scripts/build_ui.sh
-FEATURES="non-fips" bash .github/scripts/build_ui.sh
-git add crate/server/ui
-git add crate/server/ui_non_fips
+bash .github/scripts/build_ui_all.sh
 
 cargo build
 git cliff -u -p CHANGELOG.md -t "$NEW_VERSION"

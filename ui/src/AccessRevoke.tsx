@@ -1,5 +1,5 @@
 import { Button, Card, Checkbox, Form, Input, Select, Space } from "antd";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthContext";
 import { getNoTTLVRequest, postNoTTLVRequest } from "./utils";
 
@@ -28,7 +28,7 @@ const AccessRevokeForm: React.FC = () => {
     const responseRef = useRef<HTMLDivElement>(null);
     const [isPrivilegedUser, setIsPrivilegedUser] = useState<boolean | undefined>(undefined);
 
-    const fetchPrivilegedAccess = async () => {
+    const fetchPrivilegedAccess = useCallback(async () => {
         setIsPrivilegedUser(undefined);
         try {
             const response = await getNoTTLVRequest("/access/privileged", idToken, serverUrl);
@@ -36,11 +36,11 @@ const AccessRevokeForm: React.FC = () => {
         } catch (e) {
             console.error("Error fetching privileged access:", e);
         }
-    };
+    }, [idToken, serverUrl]);
 
     useEffect(() => {
         fetchPrivilegedAccess();
-    }, []);
+    }, [fetchPrivilegedAccess]);
 
     useEffect(() => {
         if (res && responseRef.current) {

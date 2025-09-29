@@ -1,5 +1,5 @@
 import { Button, Card, Space, Table, Tag } from "antd";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthContext";
 import { getNoTTLVRequest } from "./utils";
 
@@ -58,7 +58,7 @@ const AccessObtainedList: React.FC = () => {
         },
     ];
 
-    const fetchAccessRights = async () => {
+    const fetchAccessRights = useCallback(async () => {
         setIsLoading(true);
         setRes(undefined);
         setAccessRights([]);
@@ -75,9 +75,9 @@ const AccessObtainedList: React.FC = () => {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [idToken, serverUrl]);
 
-    const fetchCreatePermission = async () => {
+    const fetchCreatePermission = useCallback(async () => {
         setHasCreatePermission(undefined);
         try {
             const response = await getNoTTLVRequest("/access/create", idToken, serverUrl);
@@ -85,12 +85,12 @@ const AccessObtainedList: React.FC = () => {
         } catch (e) {
             console.error("Error fetching create permission:", e);
         }
-    };
+    }, [idToken, serverUrl]);
 
     useEffect(() => {
         fetchAccessRights();
         fetchCreatePermission();
-    }, []);
+    }, [fetchAccessRights, fetchCreatePermission]);
 
     return (
         <div className="p-6">

@@ -50,6 +50,8 @@ cd ../../ui # current path: ./ui
 rm -rf node_modules
 npm install
 npm run build
+npm run lint
+npm audit
 
 # Deploy built UI to root
 cd .. # current path: ./
