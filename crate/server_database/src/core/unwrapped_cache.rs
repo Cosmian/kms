@@ -16,7 +16,7 @@ use tokio::sync::{
     oneshot,
 };
 
-use crate::error::DbResult;
+use crate::{DbError, error::DbResult};
 
 /// This is the object kept in the Main LRU cache
 /// It contains the unwrapped object and the key signature
@@ -201,11 +201,19 @@ impl UnwrappedCache {
 
     /// Peek into the cache
     pub async fn peek(&self, uid: &str) -> Option<DbResult<CachedUnwrappedObject>> {
-        let res = self.cache.read().await.peek(uid).cloned();
-        if res.is_some() {
-            self.record_access(uid).await;
+        let cache_read = self.cache.read();
+
+        // Errors (almost) never derive Clone, so we have to do an explicit match to only clone the Ok variant and record the access to it
+        match cache_read.await.peek(uid) {
+            Some(Ok(cached_obj)) => {
+                self.record_access(uid).await;
+                Some(Ok(cached_obj.clone()))
+            }
+            Some(Err(_)) => Some(Err(DbError::UnwrappedCache(format!(
+                "Error retrieving cached object for {uid}"
+            )))),
+            None => None,
         }
-        res
     }
 
     /// Insert into the cache
