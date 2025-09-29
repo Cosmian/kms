@@ -10,7 +10,6 @@ use serde::{
 };
 use tracing::instrument;
 
-// use tracing::instrument; // not used currently
 use super::{collapse_adjacently_tagged_structure, normalize_ttlv};
 use crate::ttlv::{
     TtlvError,
@@ -67,12 +66,16 @@ impl TtlvSerializer {
         }
     }
 
+    /// Get the current TTLV element
+    /// which is the last element on the stack
     fn current_mut(&mut self) -> Result<&mut TTLV> {
         self.stack
             .peek_mut()
             .ok_or_else(|| TtlvError::custom("no TTLV found".to_owned()))
     }
 
+    /// Get the current TTLV element
+    /// which is the last element on the stack
     fn current_mut_structure(&mut self) -> Result<&mut Vec<TTLV>> {
         match &mut self.current_mut()?.value {
             TTLValue::Structure(v) => Ok(v),
@@ -82,6 +85,7 @@ impl TtlvSerializer {
         }
     }
 
+    /// Get the current tag
     fn current_tag(&self) -> String {
         self.stack
             .peek()
@@ -95,6 +99,19 @@ impl Default for TtlvSerializer {
     }
 }
 
+/// The public API of the TTLV Serde serializer
+/// Serialize an Object to TTLV
+///
+/// The way this works is as follows: say we are starting with a Source object
+/// 1. The Serialize implementation of the Source object will map the object to Serde Data Model
+/// 2. The TTLV Serializer will then serialize the Serde Data Model to TTLV
+///
+/// KMIP objects use the default Serde serialization.
+///
+///  However, `Object` is an untagged enum; it is the serialized object,
+/// the root tag is replaced with the object type.
+/// This is only applied when serializing a root `Object`, not an embedded one in a
+/// KMIP Operation such as `Import`
 #[instrument(skip(value), level = "trace")]
 pub fn to_ttlv<T>(value: &T) -> Result<TTLV>
 where
@@ -223,6 +240,43 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
         Ok(())
     }
 
+    /// Copied from `https://github.com/NLnetLabs/kmip-ttlv/blob/main/src/ser.rs`
+    /// Serializing `None` values, e.g. `Option::TypeName::None`, is not
+    /// supported.
+    ///
+    /// TTLV doesn't support the notion of a serialized value that indicates the
+    /// absence of a value.
+    ///
+    /// ### Using Serde to "skip" a missing value
+    ///
+    /// The correct way to omit None values is to not attempt to serialize them
+    /// at all, e.g. using the `#[serde(skip_serializing_if =
+    /// "Option::is_none")]` Serde derive field attribute. Note that at the time
+    /// of writing it seems that Serde derive only handles this attribute
+    /// correctly when used on Rust brace struct field members (which we do
+    /// not support), or on tuple struct fields (i.e. there must be more than
+    /// one field). Also, note that not serializing a None struct field
+    /// value will still result in the struct itself being serialized as
+    /// a TTLV "Structure" unless you also mark the struct as "transparent"
+    /// (using the rename attribute like so: `[#serde(rename =
+    /// "Transparent:0xAABBCC"))]`. Using the attribute on `newtype` structs still
+    /// causes Serde derive to invoke `serialize_none()` which will result
+    /// in an unsupported error.
+    ///
+    /// ### Rationale
+    ///
+    /// As we have already serialized the item tag to the output by the time we
+    /// process the `Option` value, serializing nothing here would still
+    /// result in something having been serialized. We could in theory remove
+    /// the already serialized bytes from the stream but is not necessarily
+    /// safe, e.g. if the already serialized bytes were a TTLV Structure "
+    /// header" (i.e. 0xAABBCC 0x00000001 0x00000000) removing the header might
+    /// be incorrect if there are other structure items that will be
+    /// serialized to the stream after this "none". Removing the Structure
+    /// "header" bytes would also break the current logic which at the end
+    /// of a structure goes back to the start and replaces the zero length
+    /// value in the TTLV Structure "header" with the actual length as the bytes
+    /// to replace would no longer exist.
     #[instrument(level = "trace", skip(self))]
     fn serialize_none(self) -> Result<Self::Ok> {
         Err(TtlvError::custom(
@@ -313,6 +367,11 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
         Ok(())
     }
 
+    /// Serialize a sequence of items.
+    /// To do this, we are going to create a special `Array` TTLV to which we add TTLV elements, in the
+    /// method `serialize_element`, that will be called for each item in the sequence.
+    /// Finally, the method `end` will be called to close the sequence and make the `Array` TTLV the current
+    /// element of the serializer.
     #[instrument(level = "trace", skip(self))]
     fn serialize_seq(self, len: Option<usize>) -> Result<Self::SerializeSeq> {
         if let Some(receiver) = self.stack.peek_mut() {
