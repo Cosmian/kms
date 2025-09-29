@@ -1,8 +1,9 @@
 mod redis_4_5_0_to_5_8_1;
 
-use std::collections::HashSet;
+use std::{collections::HashSet, str};
 
 use async_trait::async_trait;
+use cosmian_kms_crypto::reexport::cosmian_crypto_core::Secret;
 use cosmian_logger::warn;
 use uuid::Uuid;
 
@@ -94,8 +95,9 @@ impl RedisMigrate for RedisWithFindex {
             .collect();
 
         // now, we need a "mimic" of the old RedisWithFindex to read the permissions "as they were"
+        // TODO: I need to restore the label
         let legacy_findex_redis_store =
-            LegacyRedisWithFindex::instantiate(redis_url, master_key, "label", clear_database);
+            LegacyRedisWithFindex::instantiate(redis_url, master_key, "label", false);
 
         for obj_uid in all_object_uids {
             let per_user = self

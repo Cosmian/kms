@@ -5,6 +5,7 @@ use std::{
 };
 
 use async_trait::async_trait;
+use cloudproof_findex::Label;
 use cosmian_findex::{Findex, IndexADT, MemoryEncryptionLayer, generic_decode, generic_encode};
 use cosmian_kmip::{
     kmip_0::kmip_types::State,
@@ -18,10 +19,9 @@ use cosmian_kms_interfaces::{
     AtomicOperation, InterfaceResult, ObjectWithMetadata, ObjectsStore, PermissionsStore,
     SessionParams,
 };
-use cosmian_logger::trace;
+use cosmian_logger::{debug, trace, warn};
 use cosmian_sse_memories::{ADDRESS_LENGTH, Address, RedisMemory};
 use redis::aio::ConnectionManager;
-use tracing::{debug, trace, warn};
 use uuid::Uuid;
 
 use super::{
@@ -32,7 +32,7 @@ use crate::{
     db_error,
     error::{DbError, DbResult},
     stores::{
-        migrate::DbState,
+        migrate::{DbState, Migrate, MigrateTo590Parameters, MigrationParams, RedisMigrate},
         redis::{
             findex::{CUSTOM_WORD_LENGTH, FINDEX_KEY_LENGTH, IndexedValue, Keyword},
             objects_db::RedisOperation,
@@ -107,7 +107,17 @@ impl RedisWithFindex {
         redis_url: &str,
         findex_master_key: Secret<FINDEX_KEY_LENGTH>,
         clear_database: bool,
+        label: Option<&[u8]>,
     ) -> DbResult<Self> {
+        const REDIS_WITH_FINDEX_MASTER_FINDEX_KEY_DERIVATION_SALT: &[u8; 6] = b"findex";
+
+        // derive an Findex Key
+        let mut findex_key = SymmetricKey::<FINDEX_KEY_LENGTH>::default();
+        kdf256!(
+            &mut *findex_key,
+            REDIS_WITH_FINDEX_MASTER_FINDEX_KEY_DERIVATION_SALT,
+            &*findex_master_key
+        );
         // derive a DB Key
         let mut db_key = SymmetricKey::<DB_KEY_LENGTH>::default();
         kdf256!(
@@ -152,22 +162,31 @@ impl RedisWithFindex {
             redis_with_findex.set_db_state(DbState::Ready).await?;
         } else {
             warn!("Non-empty Redis database detected. Starting migration routine.");
-            redis_with_findex.migrate().await?;
+            let label = match label {
+                Some(label) => label,
+                None => {
+                    warn!(
+                        "Label parameter not provided. Ignore this warning if this was \
+                         intentional. Otherwise, abort the migration and provide the correct \
+                         label."
+                    );
+                    b""
+                }
+            };
+            redis_with_findex
+                .migrate({
+                    MigrationParams {
+                        migrate_to_5_9_0_parameters: Some(MigrateTo590Parameters {
+                            redis_url: redis_url.to_string(),
+                            findex_key: &findex_key,
+                            label: Label::from(label),
+                        }),
+                    }
+                })
+                .await?;
         }
 
         Ok(redis_with_findex)
-    }
-
-    #[deprecated(
-        note = "label is deprecated; call instantiate(redis_url, master_key, clear_database)"
-    )]
-    pub(crate) async fn instantiate_with_label(
-        redis_url: &str,
-        master_key: Secret<32>,
-        _label: &[u8],
-        clear_database: bool,
-    ) -> DbResult<Self> {
-        Self::instantiate(redis_url, master_key, clear_database).await
     }
 
     /// Prepare an object to be inserted
