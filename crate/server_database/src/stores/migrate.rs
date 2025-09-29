@@ -1,7 +1,8 @@
 use async_trait::async_trait;
+use cloudproof_findex::Label;
+use cosmian_kms_crypto::reexport::cosmian_crypto_core::{Secret, SymmetricKey};
 use cosmian_logger::{debug, error};
 use serde::{Deserialize, Serialize};
-use tracing::{debug, error, info, warn};
 use version_compare::{Cmp, compare};
 
 use crate::{DbError, error::DbResult};
@@ -59,7 +60,7 @@ pub(crate) trait Migrate {
                                 previous update failed. Bailing out. Please wait for the \
                                 migration to complete or restore a previous version of the \
                                 database.";
-            error!(error_string);
+            error!("{}", error_string);
             return Err(DbError::DatabaseError(error_string.to_owned()));
         }
         Ok(())
@@ -137,19 +138,34 @@ pub(crate) trait SqlMigrate<DB>: Migrate {
     async fn migrate_to_4_22_2(&self) -> DbResult<()>;
 }
 
+/// Parameters specific to migrating from cloudproof_findex_v5 to cosmian_findex_v8
+#[derive(Debug, Clone)]
+pub(crate) struct MigrateTo590Parameters<'a> {
+    pub redis_url: String,
+    pub findex_key: &'a SymmetricKey<32>, // lifetime specified to avoid cloning the key
+    pub label: Label,
+}
+/// Container for all migration parameters
+/// New parameters can be added here as new migrations are introduced
+#[derive(Debug, Default)]
+pub(crate) struct MigrationParams<'a> {
+    /// Parameters for 5.9.0 migration (cloudproof_findex_v5 to cosmian_findex_v8)
+    pub(crate) migrate_to_5_9_0_parameters: Option<MigrateTo590Parameters<'a>>,
+}
+
 // We cannot implement SqlMigrate for RedisWithFindex or else we would face the following issue:
 // https://github.com/rust-lang/rust/issues/48869 because of the blanket implementation of
 // Migrate for SqlDatabase. Separating the migration traits is the simplest solution to this problem.
 pub(crate) trait RedisMigrate: Migrate {
     /// Migrate the database to the latest version
-    async fn migrate(&self) -> DbResult<()> {
+    async fn migrate<'a>(&self, parameters: MigrationParams<'a>) -> DbResult<()> {
         let db_state = self.get_db_state().await?.unwrap_or(DbState::Ready);
         if db_state != DbState::Ready {
             let error_string = "Database is not in a ready state; it is either upgrading or a \
                                 previous update failed. Bailing out. Please wait for the  \
                                 migration to complete or restore a previous version of the \
                                 database.";
-            error!(error_string,);
+            error!("{}", error_string,);
             return Err(DbError::DatabaseError(error_string.to_owned()));
         }
 
@@ -200,7 +216,16 @@ pub(crate) trait RedisMigrate: Migrate {
         if lower(&current_db_version, "5.8.1")? {
             // From 4.5.0 to 5.8.1 : cloudproof_findex_v5
             // Starting 5.9 : cosmian_findex_v8
-            self.migrate_to_5_9_0().await?;
+            debug!("  ==> migrating to version 5.8.1...");
+            if parameters.migrate_to_5_9_0_parameters.is_none() {
+                let msg = "Missing parameters for migration to version 5.9.0. Aborting. Please \
+                           provide the Redis URL, the master key and the label used by the \
+                           previous DB instance.";
+                error!("{}", msg);
+                return Err(DbError::DatabaseError(msg.to_owned()));
+            }
+            self.migrate_to_5_9_0(parameters.migrate_to_5_9_0_parameters.unwrap())
+                .await?;
         }
 
         // INFO: add future migrations here if breaking changes are made to the RedisWithFindex store
@@ -217,5 +242,5 @@ pub(crate) trait RedisMigrate: Migrate {
         Ok(())
     }
 
-    async fn migrate_to_5_9_0(&self) -> DbResult<()>;
+    async fn migrate_to_5_9_0(&self, parameters: MigrateTo590Parameters) -> DbResult<()>;
 }
