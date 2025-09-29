@@ -3890,11 +3890,6 @@ name = "proteccio_pkcs11_loader"
 version = "5.9.0"
 dependencies = [
  "cosmian_kms_base_hsm",
- "cosmian_kms_interfaces",
- "cosmian_logger",
- "libloading",
- "pkcs11-sys",
- "uuid",
 ]
 
 [[package]]
@@ -4776,12 +4771,8 @@ name = "smartcardhsm_pkcs11_loader"
 version = "5.9.0"
 dependencies = [
  "cosmian_kms_base_hsm",
- "cosmian_kms_interfaces",
- "cosmian_logger",
  "libloading",
  "pkcs11-sys",
- "rand 0.9.2",
- "uuid",
 ]
 
 [[package]]
@@ -4819,12 +4810,8 @@ name = "softhsm2_pkcs11_loader"
 version = "5.9.0"
 dependencies = [
  "cosmian_kms_base_hsm",
- "cosmian_kms_interfaces",
- "cosmian_logger",
  "libloading",
  "pkcs11-sys",
- "rand 0.9.2",
- "uuid",
 ]
 
 [[package]]
@@ -5778,11 +5765,6 @@ name = "utimaco_pkcs11_loader"
 version = "5.9.0"
 dependencies = [
  "cosmian_kms_base_hsm",
- "cosmian_kms_interfaces",
- "cosmian_logger",
- "libloading",
- "pkcs11-sys",
- "uuid",
 ]
 
 [[package]]

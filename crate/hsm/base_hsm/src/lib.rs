@@ -16,6 +16,7 @@ mod slots;
 
 pub mod hsm_capabilities;
 pub mod test_helpers;
+pub mod tests_shared;
 
 // AES key template
 // If sensitive is true, the key is not exportable

@@ -18,14 +18,8 @@ doctest = false
 
 [dependencies]
 cosmian_kms_base_hsm = { path = "../base_hsm", version = "5.9.0" }
-cosmian_kms_interfaces = { path = "../../interfaces", version = "5.9.0" }
-libloading = { workspace = true }
-pkcs11-sys = { workspace = true }
-uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
-cosmian_logger = { workspace = true }
-uuid = { workspace = true }
 
 [features]
 # Enable this feature to run utimaco tests (they require a utimaco HSM)

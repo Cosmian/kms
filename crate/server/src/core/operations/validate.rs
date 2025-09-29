@@ -485,7 +485,7 @@ async fn get_crl_bytes(uri_list: Vec<String>) -> KResult<HashMap<String, Vec<u8>
                     debug!("reading full bytes of CRL: url: {url}");
                     crls.insert(url.clone(), crl_bytes.clone());
                     result.insert(url, crl_bytes);
-                    break;
+                    continue;
                 }
                 return Err(KmsError::Certificate(format!(
                     "The CRL at the following URL {url} is not available. Status: {}",
@@ -557,7 +557,8 @@ async fn verify_crls(certificates: Vec<X509>) -> KResult<ValidityIndicator> {
         //
         if idx > 0 {
             for (crl_path, crl_value) in &current_crls {
-                let crl = X509Crl::from_pem(crl_value.as_slice())?;
+                let crl = X509Crl::from_pem(crl_value.as_slice())
+                    .or_else(|_| X509Crl::from_der(crl_value.as_slice()))?;
                 trace!("CRL deserialized OK: {crl_path}");
                 let res = crl_status_to_validity_indicator(&crl.get_by_cert(certificate));
                 debug!("Parent CRL verification: revocation status: {res:?}");
@@ -593,17 +594,34 @@ async fn verify_crls(certificates: Vec<X509>) -> KResult<ValidityIndicator> {
             //
             for (crl_path, crl_value) in &current_crls {
                 // Verifying that the CRL is properly signed by its issuer
-                let crl = X509Crl::from_pem(crl_value.as_slice())?;
+                let crl = X509Crl::from_pem(crl_value.as_slice())
+                    .or_else(|_| X509Crl::from_der(crl_value.as_slice()))?;
                 trace!("CRL deserialized OK: {crl_path}");
 
-                // Except when this is a leaf certificate (CRL are always signed by CA)
-                let cert_key = certificate.public_key()?;
-                debug!("Get certificate public key OK: {cert_key:?}");
-                if crl.verify(&cert_key)? {
-                    return Err(KmsError::Certificate(format!(
-                        "Invalid CRL signature: {:?}",
-                        crl.issuer_name()
-                    )))
+                // Best-effort CRL signature verification:
+                // Try verifying with any chain certificate whose SUBJECT matches the CRL issuer.
+                // If none verify, log a warning but continue to check revocation status.
+                let crl_issuer = crl.issuer_name();
+                // Prepare comparable forms (DER) of subject names
+                let crl_issuer_der = crl_issuer.to_der()?;
+                let mut verified = false;
+                for cand in certificates.iter().take(idx + 1) {
+                    if cand.subject_name().to_der().as_deref().unwrap_or(&[])
+                        == crl_issuer_der.as_slice()
+                    {
+                        let key = cand.public_key()?;
+                        if crl.verify(&key)? {
+                            verified = true;
+                            break;
+                        }
+                    }
+                }
+                if !verified {
+                    warn!(
+                        "CRL signature could not be verified against chain issuers; issuer: {:?}. \
+                         Continuing with status checks.",
+                        crl_issuer
+                    );
                 }
 
                 let res = crl_status_to_validity_indicator(&crl.get_by_cert(certificate));

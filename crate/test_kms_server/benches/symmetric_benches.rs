@@ -47,6 +47,8 @@ pub(crate) fn bench_create_symmetric_key(c: &mut Criterion) {
         });
     });
 
+    // ChaCha20 key creation benches are only available in non-FIPS builds
+    #[cfg(feature = "non-fips")]
     group.bench_function("ChaCha20 128bit key creation", |b| {
         b.to_async(&runtime).iter(|| async {
             let _ =
@@ -54,6 +56,7 @@ pub(crate) fn bench_create_symmetric_key(c: &mut Criterion) {
                     .await;
         });
     });
+    #[cfg(feature = "non-fips")]
     group.bench_function("ChaCha20 256bit key creation", |b| {
         b.to_async(&runtime).iter(|| async {
             let _ =
@@ -143,6 +146,7 @@ pub(crate) fn bench_encrypt_aes_256_gcm_100000(c: &mut Criterion) {
     );
 }
 
+#[cfg(feature = "non-fips")]
 pub(crate) fn bench_encrypt_chacha20_128_poly1305(c: &mut Criterion) {
     bench_encrypt(
         c,
@@ -153,6 +157,7 @@ pub(crate) fn bench_encrypt_chacha20_128_poly1305(c: &mut Criterion) {
     );
 }
 
+#[cfg(feature = "non-fips")]
 pub(crate) fn bench_encrypt_chacha20_256_poly1305(c: &mut Criterion) {
     bench_encrypt(
         c,
@@ -262,6 +267,7 @@ pub(crate) fn bench_decrypt_aes_256_gcm_100000(c: &mut Criterion) {
     bench_decrypt(c, "AES GCM", 256, aes_cryptographic_parameters(), 100_000);
 }
 
+#[cfg(feature = "non-fips")]
 pub(crate) fn bench_decrypt_chacha20_128_poly1305(c: &mut Criterion) {
     bench_decrypt(
         c,
@@ -272,6 +278,7 @@ pub(crate) fn bench_decrypt_chacha20_128_poly1305(c: &mut Criterion) {
     );
 }
 
+#[cfg(feature = "non-fips")]
 pub(crate) fn bench_decrypt_chacha20_256_poly1305(c: &mut Criterion) {
     bench_decrypt(
         c,

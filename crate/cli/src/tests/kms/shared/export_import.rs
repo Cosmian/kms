@@ -328,7 +328,8 @@ Po4I434ukwwHfwHuXTOrWxXEtFJkiGcjqxDeaDyVuR2ZAgMBAAE=
 -----END PUBLIC KEY-----";
 
 #[tokio::test]
-async fn test_google_csek() -> KmsCliResult<()> {
+#[ignore = "Requires Google OAuth credentials and Google CSE setup"]
+async fn test_google_cse_export_import() -> KmsCliResult<()> {
     // log_init(option_env!("RUST_LOG"));
     log_init(Some("info"));
 

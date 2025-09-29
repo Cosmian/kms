@@ -8,7 +8,7 @@ repository.workspace = true
 rust-version.workspace = true
 keywords.workspace = true
 categories.workspace = true
-description = "Smartcard HSM PKCS#11 loader"
+description = "Smart card HSM PKCS#11 loader"
 
 [lints]
 workspace = true
@@ -18,16 +18,11 @@ doctest = false
 
 [dependencies]
 cosmian_kms_base_hsm = { path = "../base_hsm", version = "5.9.0" }
-cosmian_kms_interfaces = { path = "../../interfaces", version = "5.9.0" }
-libloading = { workspace = true }
-pkcs11-sys = { workspace = true }
-uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
-cosmian_logger = { workspace = true }
-uuid = { workspace = true }
-rand = { workspace = true }
+libloading = { workspace = true }
+pkcs11-sys = { workspace = true }
 
 [features]
-# Enable this feature to run smartcardhsm tests (they require a Smartcard HSM)
+# Enable this feature to run smartcardhsm tests (they require a Smart card HSM)
 smartcardhsm = []

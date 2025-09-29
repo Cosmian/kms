@@ -246,6 +246,97 @@ impl ClapConfig {
     }
 }
 
+impl fmt::Debug for ClapConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut x = f.debug_struct("");
+        let x = x.field("config_path", &self.config_path);
+        let x = x.field("db", &self.db);
+        let x = if self.auth.jwt_issuer_uri.is_some() {
+            x.field("auth", &self.auth)
+        } else {
+            x
+        };
+        let x = if self.idp_auth.jwt_auth_provider.is_some() {
+            x.field("idp_auth", &self.idp_auth)
+        } else {
+            x
+        };
+        let x = x.field("proxy", &self.proxy);
+        let x = x.field("socket server", &self.socket_server);
+        let x = x.field("TLS", &self.tls);
+        let x = if self.socket_server.socket_server_start {
+            x.field("socket server", &self.socket_server)
+        } else {
+            x
+        };
+        let x = x.field("ui_index_html_folder", &self.ui_config.ui_index_html_folder);
+        let x = if self.ui_config.ui_oidc_auth.ui_oidc_client_id.is_some() {
+            x.field("ui_oidc_auth", &self.ui_config.ui_oidc_auth)
+        } else {
+            x
+        };
+        let x = x.field("KMS http", &self.http);
+        let x = x.field("KMS public URL", &self.kms_public_url);
+
+        let x = x.field("workspace", &self.workspace);
+        let x = x.field("default username", &self.default_username);
+        let x = x.field("force default username", &self.force_default_username);
+        let x = if self.google_cse_config.google_cse_enable {
+            x.field(
+                "google_cse_enable",
+                &self.google_cse_config.google_cse_enable,
+            )
+            .field(
+                "google_cse_disable_tokens_validation",
+                &self.google_cse_config.google_cse_disable_tokens_validation,
+            )
+            .field(
+                "google_cse_incoming_url_whitelist",
+                &self.google_cse_config.google_cse_incoming_url_whitelist,
+            )
+            .field(
+                "google_cse_migration_key",
+                &self.google_cse_config.google_cse_migration_key,
+            )
+        } else {
+            x.field(
+                "google_cse_enable",
+                &self.google_cse_config.google_cse_enable,
+            )
+        };
+        let x = x.field(
+            "Microsoft Double Key Encryption URL",
+            &self.ms_dke_service_url,
+        );
+        let x = x.field("telemetry", &self.logging);
+        let x = x.field("info", &self.info);
+        let x = x.field("HSM admin username", &self.hsm.hsm_admin);
+        let x = x.field(
+            "hsm_model",
+            if self.hsm.hsm_slot.is_empty() {
+                &"NO HSM"
+            } else {
+                &self.hsm.hsm_model
+            },
+        );
+        let x = x.field("hsm_slots", &self.hsm.hsm_slot);
+        let x = x.field(
+            "hsm_passwords",
+            &self
+                .hsm
+                .hsm_password
+                .iter()
+                .map(|_| "********")
+                .collect::<Vec<&str>>(),
+        );
+        let x = x.field("key wrapping key", &self.key_encryption_key);
+        let x = x.field("non_revocable_key_id", &self.non_revocable_key_id);
+        let x = x.field("privileged_users", &self.privileged_users);
+
+        x.finish()
+    }
+}
+
 #[cfg(test)]
 #[allow(unsafe_code, clippy::unwrap_used, clippy::expect_used)]
 mod tests {
@@ -267,6 +358,8 @@ mod tests {
         sync::Mutex,
         time::{SystemTime, UNIX_EPOCH},
     };
+
+    use cosmian_logger::debug;
 
     use super::ClapConfig;
 
@@ -493,108 +586,12 @@ mod tests {
             }
         });
     }
-}
-
-impl fmt::Debug for ClapConfig {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut x = f.debug_struct("");
-        let x = x.field("config_path", &self.config_path);
-        let x = x.field("db", &self.db);
-        let x = if self.auth.jwt_issuer_uri.is_some() {
-            x.field("auth", &self.auth)
-        } else {
-            x
-        };
-        let x = if self.idp_auth.jwt_auth_provider.is_some() {
-            x.field("idp_auth", &self.idp_auth)
-        } else {
-            x
-        };
-        let x = x.field("proxy", &self.proxy);
-        let x = x.field("socket server", &self.socket_server);
-        let x = x.field("TLS", &self.tls);
-        let x = if self.socket_server.socket_server_start {
-            x.field("socket server", &self.socket_server)
-        } else {
-            x
-        };
-        let x = x.field("ui_index_html_folder", &self.ui_config.ui_index_html_folder);
-        let x = if self.ui_config.ui_oidc_auth.ui_oidc_client_id.is_some() {
-            x.field("ui_oidc_auth", &self.ui_config.ui_oidc_auth)
-        } else {
-            x
-        };
-        let x = x.field("KMS http", &self.http);
-        let x = x.field("KMS public URL", &self.kms_public_url);
-
-        let x = x.field("workspace", &self.workspace);
-        let x = x.field("default username", &self.default_username);
-        let x = x.field("force default username", &self.force_default_username);
-        let x = if self.google_cse_config.google_cse_enable {
-            x.field(
-                "google_cse_enable",
-                &self.google_cse_config.google_cse_enable,
-            )
-            .field(
-                "google_cse_disable_tokens_validation",
-                &self.google_cse_config.google_cse_disable_tokens_validation,
-            )
-            .field(
-                "google_cse_incoming_url_whitelist",
-                &self.google_cse_config.google_cse_incoming_url_whitelist,
-            )
-            .field(
-                "google_cse_migration_key",
-                &self.google_cse_config.google_cse_migration_key,
-            )
-        } else {
-            x.field(
-                "google_cse_enable",
-                &self.google_cse_config.google_cse_enable,
-            )
-        };
-        let x = x.field(
-            "Microsoft Double Key Encryption URL",
-            &self.ms_dke_service_url,
-        );
-        let x = x.field("telemetry", &self.logging);
-        let x = x.field("info", &self.info);
-        let x = x.field("HSM admin username", &self.hsm.hsm_admin);
-        let x = x.field(
-            "hsm_model",
-            if self.hsm.hsm_slot.is_empty() {
-                &"NO HSM"
-            } else {
-                &self.hsm.hsm_model
-            },
-        );
-        let x = x.field("hsm_slots", &self.hsm.hsm_slot);
-        let x = x.field(
-            "hsm_passwords",
-            &self
-                .hsm
-                .hsm_password
-                .iter()
-                .map(|_| "********")
-                .collect::<Vec<&str>>(),
-        );
-        let x = x.field("key wrapping key", &self.key_encryption_key);
-        let x = x.field("non_revocable_key_id", &self.non_revocable_key_id);
-        let x = x.field("privileged_users", &self.privileged_users);
-
-        x.finish()
-    }
-}
-
-#[cfg(test)]
-mod tests_print_only {
-    use super::ClapConfig;
 
     #[test]
-    #[expect(clippy::print_stdout, clippy::unwrap_used)]
+    #[expect(clippy::unwrap_used)]
     fn test_server_configuration_file() {
         let conf = ClapConfig::default();
         let conf_str = toml::to_string_pretty(&conf).unwrap();
-        println!("Pretty TOML print {conf_str}");
+        debug!("Configuration TOML: {conf_str}");
     }
 }

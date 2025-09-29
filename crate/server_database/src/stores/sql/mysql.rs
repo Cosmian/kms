@@ -23,6 +23,10 @@ use sqlx::{
 };
 use uuid::Uuid;
 
+// Default MySQL lock wait timeout (seconds) applied to every new session.
+// MySQL default is ~50s; 10s is more appropriate for tests and reduces long stalls.
+const DEFAULT_LOCK_WAIT_TIMEOUT_SECS: u32 = 10;
+
 use crate::{
     db_bail, db_error,
     error::{DbError, DbResult, DbResultHelper},
@@ -88,8 +92,36 @@ impl MySqlPool {
             // disable logging of each query
             .disable_statement_logging();
 
+        // Default: reduce deadlocks by using READ COMMITTED isolation level per session
+        // This is applied for every new connection.
+        // Also set a reasonable lock wait timeout (seconds) to fail faster under contention
+
         let pool = MySqlPoolOptions::new()
             .max_connections(5)
+            .after_connect(move |conn, _meta| {
+                Box::pin(async move {
+                    // Always set READ COMMITTED for this session
+                    sqlx::query("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED")
+                        .execute(&mut *conn)
+                        .await?;
+                    // Best effort: may require privileges depending on server config
+                    match sqlx::query(&format!(
+                        "SET SESSION innodb_lock_wait_timeout = {DEFAULT_LOCK_WAIT_TIMEOUT_SECS}"
+                    ))
+                    .execute(&mut *conn)
+                    .await
+                    {
+                        Ok(_) => (),
+                        Err(e) => {
+                            debug!(
+                                "Could not set innodb_lock_wait_timeout to {}s: {e}",
+                                DEFAULT_LOCK_WAIT_TIMEOUT_SECS
+                            );
+                        }
+                    }
+                    Ok(())
+                })
+            })
             .connect_with(options)
             .await?;
 

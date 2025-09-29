@@ -2,6 +2,9 @@
 
 use cosmian_kms_base_hsm::hsm_capabilities::{HsmCapabilities, HsmProvider};
 
+/// Path to the `SoftHSM2` `PKCS#11` shared library
+pub const SOFTHSM2_PKCS11_LIB: &str = "/usr/lib/softhsm/libsofthsm2.so";
+
 #[cfg(test)]
 // Allow test-specific lint patterns for C library integration
 #[allow(unsafe_code)]

@@ -1,9 +1,9 @@
 # SmartCard HSM
 
 <!-- TOC -->
-* [SmartCard HSM](#smartcard-hsm)
-  * [Installing SmartCard HSM](#installing-smartcard-hsm)
-  * [Running the KMS server](#running-the-kms-server)
+- [SmartCard HSM](#smartcard-hsm)
+    - [Installing SmartCard HSM](#installing-smartcard-hsm)
+    - [Running the KMS server](#running-the-kms-server)
 <!-- TOC -->
 
 ## Installing SmartCard HSM
