@@ -59,7 +59,7 @@ pub struct ClapConfig {
     /// When set, this file takes precedence over the `COSMIAN_KMS_CONF` environment variable
     /// and the default system path. All other command line arguments (except `--help` / `--version`)
     /// and environment variables are ignored once the configuration file is loaded.
-    #[clap(short = 'c', long = "config", value_name = "CONFIG_FILE")]
+    #[clap(short = 'c', long = "config", value_name = "COSMIAN_KMS_CONF")]
     pub config_path: Option<PathBuf>,
 
     /// The default username to use when no authentication method is provided
