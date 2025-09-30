@@ -453,7 +453,7 @@ async fn get_crl_bytes(uri_list: Vec<String>) -> KResult<HashMap<String, Vec<u8>
                 None => {
                     return Err(KmsError::Certificate(
                         "The uri provided is invalid".to_owned(),
-                    ))
+                    ));
                 }
             }
         };
@@ -508,7 +508,7 @@ async fn get_crl_bytes(uri_list: Vec<String>) -> KResult<HashMap<String, Vec<u8>
             _ => {
                 return Err(KmsError::Certificate(
                     "Error that should not manifest".to_owned(),
-                ))
+                ));
             }
         }
     }
@@ -552,7 +552,6 @@ async fn verify_crls(certificates: Vec<X509>) -> KResult<ValidityIndicator> {
             certificate.subject_name()
         );
 
-        //
         // Test if certificate is in parent CRLs
         //
         if idx > 0 {
@@ -589,7 +588,6 @@ async fn verify_crls(certificates: Vec<X509>) -> KResult<ValidityIndicator> {
 
             current_crls = get_crl_bytes(uri_list).await?;
 
-            //
             // Test if certificate is in current CRLs
             //
             for (crl_path, crl_value) in &current_crls {

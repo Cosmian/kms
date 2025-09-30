@@ -122,7 +122,7 @@ async fn create_sym_key(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<(
     let response =
         send_message(kms.clone(), owner, vec![Operation::Create(create_request)]).await?;
     let Operation::CreateResponse(create_response) = &response[0] else {
-        return Err(KmsError::ServerError("invalid response".to_owned()))
+        return Err(KmsError::ServerError("invalid response".to_owned()));
     };
     assert_eq!(
         create_response.unique_identifier,
@@ -147,7 +147,7 @@ async fn create_key_pair(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<
     )
     .await?;
     let Operation::CreateKeyPairResponse(create_response) = &response[0] else {
-        return Err(KmsError::ServerError("invalid response".to_owned()))
+        return Err(KmsError::ServerError("invalid response".to_owned()));
     };
     assert_eq!(
         create_response.private_key_unique_identifier,
@@ -180,7 +180,7 @@ async fn locate_keys(
     )
     .await?;
     let Operation::LocateResponse(locate_response) = &response[0] else {
-        return Err(KmsError::ServerError("invalid response".to_owned()))
+        return Err(KmsError::ServerError("invalid response".to_owned()));
     };
     Ok(locate_response
         .unique_identifier
@@ -200,7 +200,7 @@ async fn delete_key(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<()> {
     )
     .await?;
     let Operation::DestroyResponse(destroy_response) = &response[0] else {
-        return Err(KmsError::ServerError("invalid response".to_owned()))
+        return Err(KmsError::ServerError("invalid response".to_owned()));
     };
     assert_eq!(
         destroy_response.unique_identifier,
@@ -214,7 +214,7 @@ async fn delete_all_keys(owner: &str, kms: &Arc<KMS>) -> KResult<()> {
     debug!("Found {} keys. Removing...", found_keys.len());
     for found_key in found_keys {
         let Some(key_string) = found_key.as_str() else {
-            continue
+            continue;
         };
         delete_key(key_string, owner, kms).await?;
     }
@@ -233,7 +233,7 @@ async fn revoke_key(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<()> {
     let response =
         send_message(kms.clone(), owner, vec![Operation::Revoke(revoke_request)]).await?;
     let Operation::RevokeResponse(revoke_response) = &response[0] else {
-        return Err(KmsError::ServerError("invalid response".to_owned()))
+        return Err(KmsError::ServerError("invalid response".to_owned()));
     };
     assert_eq!(
         revoke_response.unique_identifier,
@@ -272,7 +272,7 @@ async fn send_message(
         .into_iter()
         .map(|bi| {
             let ResponseMessageBatchItemVersioned::V21(bi) = bi else {
-                return Err(KmsError::ServerError("invalid response".to_owned()))
+                return Err(KmsError::ServerError("invalid response".to_owned()));
             };
             if bi.result_status != ResultStatusEnumeration::Success {
                 return Err(KmsError::ServerError(format!(

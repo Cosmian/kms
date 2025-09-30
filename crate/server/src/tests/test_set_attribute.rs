@@ -114,7 +114,6 @@ pub(crate) async fn test_set_attribute_server() -> KResult<()> {
         )
         .await?;
 
-    //
     // Start tests
     //
     let timestamp = 42;

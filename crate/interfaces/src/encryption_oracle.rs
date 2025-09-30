@@ -53,7 +53,7 @@ impl CryptoAlgorithm {
                         match padding_method {
                             PaddingMethod::OAEP => match value.hashing_algorithm {
                                 Some(HashingAlgorithm::SHA1) => Ok(Some(Self::RsaOaepSha1)),
-                                _ => Ok(Some(Self::RsaOaepSha256)), //this is debatable
+                                _ => Ok(Some(Self::RsaOaepSha256)), // this is debatable
                             },
                             PaddingMethod::PKCS1v15 => Ok(Some(Self::RsaPkcsV15)),
                             pm => Err(InterfaceError::Default(format!(

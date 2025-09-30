@@ -98,14 +98,14 @@ pub(crate) async fn decrypt(
                     .any(|p| [KmipOperation::Decrypt, KmipOperation::Get].contains(p))
                 {
                     debug!("{user} is not authorized to decrypt using: {uid}");
-                    continue
+                    continue;
                 }
             }
             debug!("{user} is authorized to decrypt using: {uid}");
             return decrypt_using_encryption_oracle(kms, &request, &uid, prefix).await;
         }
 
-        //Default database
+        // Default database
         let owm = kms
             .database
             .retrieve_object(&uid, params.clone())
@@ -119,7 +119,7 @@ pub(crate) async fn decrypt(
             })?;
         if owm.state() != State::Active {
             debug!("{uid} is not active");
-            continue
+            continue;
         }
         // If an HSM wraps the object, likely the wrapping will be done with NoEncoding
         // and the attributes of the object will be empty. Use the metadata attributes.
@@ -129,9 +129,9 @@ pub(crate) async fn decrypt(
             .unwrap_or_else(|_| owm.attributes());
         if !attributes.is_usage_authorized_for(CryptographicUsageMask::Decrypt)? {
             debug!("{uid} is not authorized for decryption");
-            continue
+            continue;
         }
-        //check user permissions - owner can always decrypt
+        // check user permissions - owner can always decrypt
         if owm.owner() != user {
             let ops = kms
                 .database
@@ -142,27 +142,27 @@ pub(crate) async fn decrypt(
                 .any(|p| [KmipOperation::Decrypt, KmipOperation::Get].contains(p))
             {
                 debug!("{user} is not authorized to decrypt using: {uid}");
-                continue
+                continue;
             }
         }
         debug!("{user} is authorized to decrypt using: {uid}");
         // user is authorized to decrypt with the key
         if let Object::SymmetricKey { .. } = owm.object() {
             selected_owm = Some(owm);
-            break
+            break;
         }
         if let Object::PrivateKey { .. } = owm.object() {
-            //Is it a Covercrypt secret key?
+            // Is it a Covercrypt secret key?
             #[cfg(feature = "non-fips")]
             if attributes.key_format_type == Some(KeyFormatType::CoverCryptSecretKey) {
                 // does it have an access access structure that allows decryption?
                 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::access_policy_from_attributes;
                 if access_policy_from_attributes(attributes).is_err() {
-                    continue
+                    continue;
                 }
             }
             selected_owm = Some(owm);
-            break
+            break;
         }
     }
     let mut owm = selected_owm.ok_or_else(|| {
@@ -305,7 +305,7 @@ fn decrypt_bulk(
                 if nonce_ciphertext_tag.len() < sym_cipher.nonce_size() + sym_cipher.tag_size() {
                     return Err(KmsError::InvalidRequest(
                         "Decrypt bulk: invalid nonce/ciphertext/tag length".to_owned(),
-                    ))
+                    ));
                 }
                 let nonce = &nonce_ciphertext_tag
                     .get(0..sym_cipher.nonce_size())
@@ -351,7 +351,7 @@ fn decrypt_bulk(
         other => {
             return Err(KmsError::NotSupported(format!(
                 "decryption with keys of format: {other}"
-            )))
+            )));
         }
     }
 

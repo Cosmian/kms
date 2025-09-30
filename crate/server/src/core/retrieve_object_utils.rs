@@ -11,7 +11,7 @@ use cosmian_logger::trace;
 
 use crate::{core::KMS, error::KmsError, result::KResult};
 
-//TODO This function should probably not be a free-standing function KMS side,
+// TODO This function should probably not be a free-standing function KMS side,
 // and should be refactored as part of the Database,
 
 /// Retrieve a single object for a given operation type
@@ -46,12 +46,12 @@ pub(crate) async fn retrieve_object_for_operation(
             || operation_type == KmipOperation::Export
             || operation_type == KmipOperation::GetAttributes)
         {
-            continue
+            continue;
         }
 
         if user_has_permission(user, Some(owm), &operation_type, kms, params.clone()).await? {
             let mut owm = owm.to_owned();
-            //Update the state on the object attributes if they are not present.
+            // Update the state on the object attributes if they are not present.
             if owm.attributes().state.is_none() {
                 owm.attributes_mut().state = Some(state);
             }
@@ -61,7 +61,7 @@ pub(crate) async fn retrieve_object_for_operation(
                     attributes.state = Some(state);
                 }
             }
-            return Ok(owm)
+            return Ok(owm);
         }
     }
 

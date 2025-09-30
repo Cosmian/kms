@@ -107,7 +107,7 @@ pub(super) fn unwrap(
     {
         return Err(CryptoError::Kmip(
             "CryptographicUsageMask not authorized for UnwrapKey".to_owned(),
-        ))
+        ));
     }
 
     let unwrapping_key_block = unwrapping_key

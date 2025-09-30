@@ -105,7 +105,6 @@ impl CovercryptDecryption {
     /// DEC response
     /// | `nb_chunks` (LEB128) | `chunk_size` (LEB128) | `chunk_data` (plaintext)
     ///                           <------------- `nb_chunks` times ------------->
-    ///
     fn bulk_decrypt(
         &self,
         encrypted_bytes: &[u8],

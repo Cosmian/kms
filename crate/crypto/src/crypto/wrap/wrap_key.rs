@@ -106,7 +106,7 @@ pub fn wrap_object_with_key(
         key_wrapping_specification,
     )?;
 
-    //wrap
+    // wrap
     let wrapped_key = wrap(
         wrapping_key,
         &key_wrapping_specification.get_key_wrapping_data(),
@@ -233,7 +233,7 @@ pub(super) fn wrap(
             {
                 return Err(CryptoError::Kmip(
                     "CryptographicUsageMask not authorized for WrapKey".to_owned(),
-                ))
+                ));
             }
 
             let ciphertext = match key_block.key_format_type {

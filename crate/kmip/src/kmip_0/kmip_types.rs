@@ -453,7 +453,7 @@ impl<'de> Deserialize<'de> for CredentialValue {
                         attestation_assertion,
                     });
                 } else if let Some(ticket) = ticket {
-                    return Ok(CredentialValue::Ticket { ticket })
+                    return Ok(CredentialValue::Ticket { ticket });
                 } else if let Some(username) = username {
                     if let (Some(timestamp), Some(hashed_password)) = (timestamp, hashed_password) {
                         return Ok(CredentialValue::HashedPassword {
@@ -467,7 +467,7 @@ impl<'de> Deserialize<'de> for CredentialValue {
                             username,
                             password,
                             one_time_password,
-                        })
+                        });
                     }
 
                     return Ok(CredentialValue::UsernameAndPassword { username, password });
@@ -998,7 +998,7 @@ pub enum RevocationReasonCode {
     Superseded = 0x0000_0005,
     CessationOfOperation = 0x0000_0006,
     PrivilegeWithdrawn = 0x0000_0007,
-    //Extensions 8XXXXXXX
+    // Extensions 8XXXXXXX
 }
 
 /// The Revocation Reason attribute is a structure used to indicate why the

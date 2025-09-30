@@ -80,7 +80,7 @@ pub(crate) async fn get_attributes(
         | Object::SplitKey { .. } => {
             return Err(KmsError::InvalidRequest(format!(
                 "get: unsupported object type for {uid_or_tags}",
-            )))
+            )));
         }
     };
 

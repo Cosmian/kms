@@ -191,7 +191,7 @@ impl<'de> Deserialize<'de> for RequestMessageBatchItem {
                             // we must have parsed the `operation` field before
                             // TODO: handle the case where the keys are not in right order
                             let Some(operation) = &operation else {
-                                return Err(de::Error::missing_field("operation"))
+                                return Err(de::Error::missing_field("operation"));
                             };
                             // recover by hand the proper type of `request_payload`
                             // the default derived deserializer does not have enough
@@ -250,7 +250,7 @@ impl<'de> Deserialize<'de> for RequestMessageBatchItem {
                                 x => {
                                     return Err(de::Error::custom(format!(
                                         "unsupported KMIP 1 operation: {x:?}"
-                                    )))
+                                    )));
                                 }
                             });
                         }
@@ -419,7 +419,7 @@ impl Serialize for ResponseMessageBatchItem {
                 return Err(ser::Error::custom(
                     "missing `ResultReason` with failed status (`ResultStatus` is set to \
                      `OperationFailed`)",
-                ))
+                ));
             }
             ResultStatusEnumeration::OperationFailed | ResultStatusEnumeration::OperationUndone
                 if self.result_message.is_none() =>
@@ -427,7 +427,7 @@ impl Serialize for ResponseMessageBatchItem {
                 return Err(ser::Error::custom(
                     "missing `ResultMessage` with unsuccessful status (`ResultStatus` is set to \
                      either `OperationFailed` or `OperationUndone`)",
-                ))
+                ));
             }
             ResultStatusEnumeration::OperationPending
                 if self.asynchronous_correlation_value.is_none() =>
@@ -435,7 +435,7 @@ impl Serialize for ResponseMessageBatchItem {
                 return Err(ser::Error::custom(
                     "missing `AsynchronousCorrelationValue` with pending status (`ResultStatus` \
                      is set to `OperationPending`)",
-                ))
+                ));
             }
             _ => (),
         }
@@ -577,7 +577,7 @@ impl<'de> Deserialize<'de> for ResponseMessageBatchItem {
                             // we must have parsed the `operation` field before
                             // TODO: handle the case where the keys are not in right order
                             let Some(operation) = &operation else {
-                                return Err(de::Error::missing_field("operation"))
+                                return Err(de::Error::missing_field("operation"));
                             };
                             // recover by hand the proper type of `response_payload`
                             // the default derived deserializer does not have enough
@@ -669,7 +669,7 @@ impl<'de> Deserialize<'de> for ResponseMessageBatchItem {
                                 OperationEnumeration::Notify => {
                                     return Err(de::Error::custom(
                                         "Notify operation is not supported in response",
-                                    ))
+                                    ));
                                 }
                                 OperationEnumeration::ObtainLease => {
                                     Operation::ObtainLeaseResponse(map.next_value()?)
@@ -680,7 +680,7 @@ impl<'de> Deserialize<'de> for ResponseMessageBatchItem {
                                 OperationEnumeration::Put => {
                                     return Err(de::Error::custom(
                                         "Put operation is not supported in response",
-                                    ))
+                                    ));
                                 }
                                 OperationEnumeration::Query => {
                                     Operation::QueryResponse(map.next_value()?)
@@ -734,20 +734,20 @@ impl<'de> Deserialize<'de> for ResponseMessageBatchItem {
                 match result_status {
                     ResultStatusEnumeration::OperationFailed if result_reason.is_none() => {
                         // missing `ResultReason` with failed status
-                        return Err(de::Error::missing_field("result_reason"))
+                        return Err(de::Error::missing_field("result_reason"));
                     }
                     ResultStatusEnumeration::OperationFailed
                     | ResultStatusEnumeration::OperationUndone
                         if result_message.is_none() =>
                     {
                         // missing `ResultMessage` with unsuccessful status
-                        return Err(de::Error::missing_field("result_message"))
+                        return Err(de::Error::missing_field("result_message"));
                     }
                     ResultStatusEnumeration::OperationPending
                         if asynchronous_correlation_value.is_none() =>
                     {
                         // missing `ResultMessage` with unsuccessful status
-                        return Err(de::Error::missing_field("asynchronous_correlation_value"))
+                        return Err(de::Error::missing_field("asynchronous_correlation_value"));
                     }
                     _ => (),
                 }

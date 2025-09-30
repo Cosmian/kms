@@ -1,6 +1,3 @@
-// required to detect generic type in Serializer
-#![feature(min_specialization)]
-
 pub use error::{CryptoError, result::CryptoResultHelper};
 
 pub mod crypto;

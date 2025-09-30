@@ -441,10 +441,10 @@ fn test_import_symmetric_key() {
         object: key,
     };
 
-    //JSON serialize
+    // JSON serialize
     let json = serde_json::to_string_pretty(&import).unwrap();
     info!("{}", json);
-    //JSON deserialize
+    // JSON deserialize
     let import_from_json = serde_json::from_str::<Import>(&json).unwrap();
     assert!(import == import_from_json);
 
@@ -729,7 +729,7 @@ pub(super) fn test_create() {
     );
 }
 
-//Verify that issue https://github.com/Cosmian/kms/issues/92
+// Verify that issue https://github.com/Cosmian/kms/issues/92
 // is actually fixed
 #[test]
 fn test_issue_deserialize_object_with_empty_attributes() {
@@ -785,7 +785,7 @@ fn get_key_block() -> KeyBlock {
                     .unwrap(),
                 ),
             },
-            //TODO:: Empty attributes used to cause a deserialization issue for `Object`; `None` works
+            // TODO:: Empty attributes used to cause a deserialization issue for `Object`; `None` works
             attributes: Some(Attributes::default()),
         }),
         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -1321,7 +1321,7 @@ fn test_locate_with_empty_attributes() {
     assert!(locate == locate_);
 }
 
-//TODO: implement the Query operation in 2.1 first
+// TODO: implement the Query operation in 2.1 first
 #[test]
 fn test_query_response() {
     log_init(option_env!("RUST_LOG"));

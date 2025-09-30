@@ -223,7 +223,7 @@ pub fn create_derivation_object_request(object_type: ObjectType) -> Result<Creat
         _ => {
             return Err(KmipError::NotSupported(format!(
                 "Object type {object_type:?} is not supported for base derivation objects"
-            )))
+            )));
         }
     };
 

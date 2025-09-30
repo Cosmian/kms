@@ -129,7 +129,6 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         .data
         .expect("There should be encrypted data");
 
-    //
     // Create a user decryption key
     let access_policy = "(Department::MKG || Department::FIN) && Security Level::Confidential";
     let request = build_create_covercrypt_usk_request(
@@ -145,7 +144,6 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         .as_str()
         .context("There should be a user decryption key unique identifier as a string")?;
 
-    //
     // Create another user decryption key
     let access_policy = "Department::MKG && Security Level::Confidential";
     let request = build_create_covercrypt_usk_request(
@@ -212,7 +210,6 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     )
     .await?;
 
-    //
     // Rekey all key pairs with matching access policy
     let ap_to_edit = "Department::MKG".to_owned();
     let request = build_rekey_keypair_request(
@@ -285,7 +282,6 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
 
     assert_eq!(data, &*decrypted_data);
 
-    //
     // Prune old keys associated with the access policy
     let request = build_rekey_keypair_request(
         private_key_unique_identifier,
@@ -338,7 +334,6 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     let encrypt_response: KResult<EncryptResponse> = test_utils::post_2_1(&app, &request).await;
     encrypt_response?;
 
-    //
     // Rename Attributes
     let request = build_rekey_keypair_request(
         private_key_unique_identifier,
@@ -369,7 +364,6 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     let encrypt_response: KResult<EncryptResponse> = test_utils::post_2_1(&app, &request).await;
     encrypt_response?;
 
-    //
     // Disable ABE Attribute
     let request = build_rekey_keypair_request(
         private_key_unique_identifier,
@@ -398,7 +392,6 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     let encrypt_response: KResult<EncryptResponse> = test_utils::post_2_1(&app, &request).await;
     encrypt_response.unwrap_err();
 
-    //
     // Delete attribute
     let request = build_rekey_keypair_request(
         private_key_unique_identifier,
@@ -428,7 +421,6 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     let encrypt_response: KResult<EncryptResponse> = test_utils::post_2_1(&app, &request).await;
     encrypt_response.unwrap_err();
 
-    //
     // Destroy user decryption key
     let request = Destroy {
         unique_identifier: Some(UniqueIdentifier::TextString(

@@ -320,8 +320,8 @@ async fn test_encrypt_decrypt_using_tags() -> KmsCliResult<()> {
     let recovered_content = read_bytes_from_file(&recovered_file)?;
     assert_eq!(original_content, recovered_content);
 
-    //TODO Left here but this has become undefined behavior in the new version:
-    //TODO if the first key found is the correct one, decryption will work, else it will fail
+    // TODO Left here but this has become undefined behavior in the new version:
+    // TODO if the first key found is the correct one, decryption will work, else it will fail
 
     // // decrypt fails because two keys with same tag exist
     // let _user_ko_key_id = create_user_decryption_key(
@@ -484,8 +484,8 @@ async fn test_encrypt_decrypt_bulk_using_tags() -> KmsCliResult<()> {
     let recovered_content = read_bytes_from_file(&recovered_file3)?;
     assert_eq!(original_content, recovered_content);
 
-    //TODO Left here but this has become undefined behavior in the new version:
-    //TODO if the first key found is the correct one, decryption will work, else it will fail
+    // TODO Left here but this has become undefined behavior in the new version:
+    // TODO if the first key found is the correct one, decryption will work, else it will fail
 
     // // decrypt fails because two keys with same tag exist
     // let _user_ko_key_id = create_user_decryption_key(

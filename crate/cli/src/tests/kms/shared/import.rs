@@ -148,7 +148,7 @@ pub(crate) async fn export_import_test(
         x => {
             return Err(KmsCliError::Default(format!(
                 "unsupported algorithm for export: {x:?}"
-            )))
+            )));
         }
     };
 
@@ -177,7 +177,7 @@ pub(crate) async fn export_import_test(
         x => {
             return Err(KmsCliError::Default(format!(
                 "unsupported algorithm for export: {x:?}"
-            )))
+            )));
         }
     };
     assert_eq!(object2_key_bytes, key_bytes);

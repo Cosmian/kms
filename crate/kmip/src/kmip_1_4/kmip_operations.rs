@@ -1161,7 +1161,7 @@ pub struct Decrypt {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub authenticated_encryption_additional_data: Option<Vec<u8>>,
 
-    ///Specifies the tag that will be needed to authenticate the decrypted data.
+    /// Specifies the tag that will be needed to authenticate the decrypted data.
     /// If supplied in multipart decryption, this data MUST be supplied on the initial
     /// Decrypt request
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -2069,7 +2069,7 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             op => {
                 return Err(KmipError::NotSupported(format!(
                     "Conversion of KMIP 1.x operation to KMIP 2.1 is not supported for: {op:?}"
-                )))
+                )));
             }
         })
     }
@@ -2226,7 +2226,7 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
                 return Err(KmipError::NotSupported(format!(
                     "Conversion from KMIP 2.1 to KMIP 1.x is not supported for Response \
                      Operation: {op}"
-                )))
+                )));
             }
         })
     }

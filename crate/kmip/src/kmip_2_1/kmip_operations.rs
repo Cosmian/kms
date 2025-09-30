@@ -1501,7 +1501,6 @@ impl Display for HashResponse {
 /// assigned by the server. The server SHALL copy the Unique Identifier returned
 /// by this operation into the ID Placeholder variable.
 /// `https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html#_Toc57115657`
-///
 #[derive(Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Import {

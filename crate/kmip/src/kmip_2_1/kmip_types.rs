@@ -81,7 +81,6 @@ pub enum SplitKeyMethod {
 ///  - PKCS#10 DER for certificate requests (RFC 2986)
 ///  - `TransparentSymmetricKey` for symmetric keys
 ///  - Raw for opaque objects and Secret Data
-///
 #[kmip_enum]
 pub enum KeyFormatType {
     Raw = 0x01,
@@ -541,7 +540,7 @@ pub enum LinkType {
     PKCS12PasswordLink = 0x0000_010D,
     /// For wrapped objects: the object that was used to wrap this object.
     WrappingKeyLink = 0x0000_010E,
-    //Extensions 8XXXXXXX
+    // Extensions 8XXXXXXX
 }
 
 /// The following values may be specified in an operation request for a Unique
@@ -567,7 +566,7 @@ pub enum UniqueIdentifierEnumeration {
     RekeyKeyPair = 0x0000_000F,
     RekeyKeyPairPrivateKey = 0x0000_0010,
     RekeyKeyPairPublicKey = 0x0000_0011,
-    //Extensions 8XXXXXXX
+    // Extensions 8XXXXXXX
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
@@ -815,7 +814,7 @@ impl CertificateAttributes {
                 _ => {
                     return Err(KmipError::Default(format!(
                         "Invalid subject line identifier: {key}"
-                    )))
+                    )));
                 }
             }
         }

@@ -1,6 +1,3 @@
-// required to detect the generic type in Serializer
-#![feature(min_specialization)]
-
 pub use error::{KmipError, result::KmipResultHelper};
 
 mod bytes_ser_de;

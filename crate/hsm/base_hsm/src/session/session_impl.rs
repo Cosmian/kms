@@ -363,7 +363,7 @@ impl Session {
                 C_FindObjects,
                 self.handle,
                 handles_buf.as_mut_ptr(),
-                self.hsm_capabilities.find_max_object_count, //ulMaxObjectCount
+                self.hsm_capabilities.find_max_object_count, // ulMaxObjectCount
                 &raw mut object_count
             );
             if object_count == 0 {
@@ -467,7 +467,7 @@ impl Session {
             debug!("Found {} possible handles", object_handles.len());
             for handle in object_handles {
                 let Some(object_type) = self.get_key_type(handle)? else {
-                    continue
+                    continue;
                 };
                 if object_id.ends_with(b"_pk") {
                     // We are looking for a public key. Check if the results contain one.
@@ -482,7 +482,7 @@ impl Session {
             }
         }
 
-        //update cache
+        // update cache
         self.object_handles_cache
             .insert(object_id.to_vec(), object_handle)?;
 
@@ -1010,7 +1010,7 @@ impl Session {
         loop {
             let round_length = min(total_length - processed_length, max_round_length);
             if round_length == 0 {
-                break
+                break;
             }
             trace!(
                 "Doing round with {round_length} bytes. {processed_length} of {total_length} done"
@@ -1108,7 +1108,7 @@ impl Session {
         loop {
             let round_length = min(total_length - processed_length, max_round_length);
             if round_length == 0 {
-                break
+                break;
             }
             trace!(
                 "Doing round with {round_length} bytes. {processed_length} of {total_length} done"
@@ -1560,7 +1560,7 @@ impl Session {
             None => {
                 return Err(HError::Default(
                     "C_GetAttributeValue not available on library".to_owned(),
-                ))
+                ));
             }
         };
         if rv == CKR_ATTRIBUTE_SENSITIVE {
@@ -1583,7 +1583,7 @@ impl Session {
     /// Get the metadata for a key
     pub fn get_key_metadata(&self, key_handle: CK_OBJECT_HANDLE) -> HResult<Option<KeyMetadata>> {
         let Some(key_type) = self.get_key_type(key_handle)? else {
-            return Ok(None)
+            return Ok(None);
         };
         let mut template = [CK_ATTRIBUTE {
             type_: CKA_LABEL,
@@ -1766,7 +1766,7 @@ impl Session {
     /// * `Result<Option<Vec<u8>>>` - The key object id if the object exists
     pub fn get_object_id(&self, object_handle: CK_OBJECT_HANDLE) -> HResult<Option<Vec<u8>>> {
         let mut template = [CK_ATTRIBUTE {
-            type_: CKA_LABEL, //Must be CKA_LABEL to match get_object_handle
+            type_: CKA_LABEL, // Must be CKA_LABEL to match get_object_handle
             pValue: ptr::null_mut(),
             ulValueLen: 0,
         }];

@@ -40,6 +40,8 @@ where
     }
 
     pub fn write_ttlv<TAG: KmipTag>(&mut self, ttlv: &TTLV) -> Result<(), TtlvError> {
+        #[cfg(test)]
+        cosmian_logger::debug!("[serialize] writing tag: {}", ttlv.tag);
         // Write Tag (3 bytes)
         write_tag::<W, TAG>(&mut self.writer, &ttlv.tag)?;
 
@@ -279,7 +281,7 @@ mod tests {
 
         assert_eq!(
             buffer.len(),
-            3 /* tag */ + 1 /* type */ + 4 /* length */ + 4 /* i32 value */ + 4 /* padding */
+            3 /* tag */ + 1 /* type */ + 4 /* length */ + 4 /* i32 value */ + 4 // padding
         );
         // Check the first 3 bytes (tag) - BatchCount
         assert_eq!(
@@ -310,7 +312,7 @@ mod tests {
 
         assert_eq!(
             buffer.len(),
-            3 /* tag */ + 1 /* type */ + 4 /* length */ + 8 /* i64 value */
+            3 /* tag */ + 1 /* type */ + 4 /* length */ + 8 // i64 value
         );
         // Check the first 3 bytes (tag) - IterationCount
         assert_eq!(
@@ -346,7 +348,7 @@ mod tests {
 
         assert_eq!(
             buffer.len(),
-            3 /* tag */ + 1 /* type */ + 4 /* length */ + bi_len /* BigInt value */
+            3 /* tag */ + 1 /* type */ + 4 /* length */ + bi_len // BigInt value
         );
         // Check the first 3 bytes (tag) - D
         assert_eq!(
@@ -384,7 +386,7 @@ mod tests {
 
         assert_eq!(
             buffer.len(),
-            3 /* tag */ + 1 /* type */ + 4 /* length */ + 4 /* variant */ + 4 /* padding */
+            3 /* tag */ + 1 /* type */ + 4 /* length */ + 4 /* variant */ + 4 // padding
         );
         // Check the first 3 bytes (tag) - CryptographicAlgorithm
         assert_eq!(
@@ -418,7 +420,7 @@ mod tests {
 
         assert_eq!(
             buffer.len(),
-            3 /* tag */ + 1 /* type */ + 4 /* length */ + 8 /* boolean */
+            3 /* tag */ + 1 /* type */ + 4 /* length */ + 8 // boolean
         );
         // Check the first 3 bytes (tag) - Sensitive
         assert_eq!(
@@ -452,7 +454,7 @@ mod tests {
 
         assert_eq!(
             buffer.len(),
-            3 /* tag */ + 1 /* type */ + 4 /* length */ + 10 /* string */ + 6 /* padding */
+            3 /* tag */ + 1 /* type */ + 4 /* length */ + 10 /* string */ + 6 // padding
         );
         // Check the first 3 bytes (tag) - Name
         assert_eq!(
@@ -486,7 +488,7 @@ mod tests {
 
         assert_eq!(
             buffer.len(),
-            3 /* tag */ + 1 /* type */ + 4 /* length */ + msg_len /* string */ + 3 /* padding */
+            3 /* tag */ + 1 /* type */ + 4 /* length */ + msg_len /* string */ + 3 // padding
         );
         // Check the first 3 bytes (tag) - KeyValue
         assert_eq!(
@@ -518,7 +520,7 @@ mod tests {
 
         assert_eq!(
             buffer.len(),
-            3 /* tag */ + 1 /* type */ + 4 /* length */ + 8 /* datetime */
+            3 /* tag */ + 1 /* type */ + 4 /* length */ + 8 // datetime
         );
         // Check the first 3 bytes (tag) - DeactivationDate
         assert_eq!(
@@ -547,7 +549,7 @@ mod tests {
 
         assert_eq!(
             buffer.len(),
-            3 /* tag */ + 1 /* type */ + 4 /* length */ + 4 /* interval */ + 4 /* padding */
+            3 /* tag */ + 1 /* type */ + 4 /* length */ + 4 /* interval */ + 4 // padding
         );
         // Check the first 3 bytes (tag) - ValidityIndicator
         assert_eq!(
@@ -582,7 +584,7 @@ mod tests {
 
         assert_eq!(
             buffer.len(),
-            3 /* tag */ + 1 /* type */ + 4 /* length */ + 8 /* datetime extended */
+            3 /* tag */ + 1 /* type */ + 4 /* length */ + 8 // datetime extended
         );
         // Check the first 3 bytes (tag) - ActivationDate
         assert_eq!(
@@ -888,7 +890,7 @@ mod tests {
             name: "TestEnum".to_owned(),
         };
         let ttlv_enum = TTLV {
-            tag: kmip_1_4::kmip_types::Tag::ApplicationSpecificInformation.to_string(), // "420004", Custom tag from example
+            tag: kmip_1_4::kmip_types::Tag::ApplicationSpecificInformation.to_string(), /* "420004", Custom tag from example */
             value: TTLValue::Enumeration(enum_variant),
         };
         let ttlv_int = TTLV {

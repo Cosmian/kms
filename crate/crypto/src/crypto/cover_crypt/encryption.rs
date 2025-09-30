@@ -64,7 +64,6 @@ impl CoverCryptEncryption {
     /// DEC response
     /// | `nb_chunks` (LEB128) | `chunk_size` (LEB128) | `chunk_data` (plaintext)
     ///                           <------------- `nb_chunks` times ------------->
-    ///
     fn bulk_encrypt(
         &self,
         mpk: &MasterPublicKey,

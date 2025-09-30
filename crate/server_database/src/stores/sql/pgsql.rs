@@ -629,7 +629,7 @@ where
 {
     let mut user_perms = perms(uid, userid, executor).await?;
     if no_inherited_access || userid == "*" {
-        return Ok(user_perms)
+        return Ok(user_perms);
     }
     user_perms.extend(perms(uid, "*", executor).await?);
     Ok(user_perms)
@@ -666,7 +666,7 @@ where
     let mut perms = list_user_access_rights_on_object_(uid, userid, false, executor).await?;
     if operation_types.is_subset(&perms) {
         // permissions are already setup
-        return Ok(())
+        return Ok(());
     }
     perms.extend(operation_types.iter());
 
@@ -708,7 +708,7 @@ where
             .bind(userid)
             .execute(executor)
             .await?;
-        return Ok(())
+        return Ok(());
     }
 
     // Serialize permissions

@@ -239,7 +239,6 @@ use crate::error::UtilsError;
 /// | NEW CERTIFICATE REQUEST | PKCS#10 |
 /// | CERTIFICATE REQUEST | PKCS#10 |
 /// | PKCS12 | PKCS#12 |
-///
 pub fn objects_from_pem(bytes: &[u8]) -> Result<Vec<Object>, UtilsError> {
     let mut objects = Vec::<Object>::new();
     let pem_s = pem::parse_many(bytes)?;
@@ -274,7 +273,7 @@ pub fn objects_from_pem(bytes: &[u8]) -> Result<Vec<Object>, UtilsError> {
                     "PEM files with EC PUBLIC KEY are not supported: SEC1 should be reserved for \
                      EC private keys only"
                         .to_owned(),
-                ))
+                ));
             }
             "CERTIFICATE" => objects.push(Object::Certificate(Certificate {
                 certificate_type: CertificateType::X509,
@@ -283,22 +282,22 @@ pub fn objects_from_pem(bytes: &[u8]) -> Result<Vec<Object>, UtilsError> {
             "X509 CRL" => {
                 return Err(UtilsError::NotSupported(
                     "X509 CRL not supported on this server".to_owned(),
-                ))
+                ));
             }
             "NEW CERTIFICATE REQUEST" => {
                 return Err(UtilsError::NotSupported(
                     "NEW CERTIFICATE REQUEST not supported on this server".to_owned(),
-                ))
+                ));
             }
             "CERTIFICATE REQUEST" => {
                 return Err(UtilsError::NotSupported(
                     "CERTIFICATE REQUEST not supported on this server".to_owned(),
-                ))
+                ));
             }
             x => {
                 return Err(UtilsError::NotSupported(format!(
                     "PEM tag {x} not supported"
-                )))
+                )));
             }
         }
     }

@@ -9,7 +9,6 @@ use cosmian_logger::trace;
 /// The request payload contains an optional list of protocol versions
 /// that is supported by the client. The protocol versions SHALL be ranked
 /// in order of preference (highest preference first).
-//
 // The response payload contains a list of protocol versions that is supported by the server.
 // The protocol versions are ranked in order of preference (highest preference first).
 // If the client provides the server with a list of supported protocol versions

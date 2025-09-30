@@ -48,7 +48,7 @@ fn test_postgres() {
 
     let client = get_client();
 
-    //Register a symmetric key
+    // Register a symmetric key
     let uid = register_symmetric_key(&client);
 
     // Locate the symmetric key

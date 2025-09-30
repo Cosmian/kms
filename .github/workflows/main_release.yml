@@ -16,6 +16,6 @@ jobs:
     secrets: inherit
     uses: ./.github/workflows/main_base.yml
     with:
-      toolchain: nightly-2025-09-15
+      toolchain: 1.90.0
       debug_or_release: release
       platforms: linux/amd64,linux/arm64

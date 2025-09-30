@@ -6,13 +6,9 @@ style_edition = "2024"
 # Default value: Preserve
 imports_granularity = "Crate"
 
-# Format the metavariable matching patterns in macros.
+# Format the meta-variable matching patterns in macros.
 # Default value: false
 format_macro_matchers = true
-
-# Format string literals where necessary
-# Default value: false
-format_strings = true
 
 # Break comments to fit on the line
 # Default value: false
@@ -22,7 +18,7 @@ format_strings = true
 # Convert /* */ comments to // comments where possible
 # Default value: false
 # Possible values: true, false
-# normalize_comments = true
+normalize_comments = true
 
 # Reorder impl items. type and const are put first, then macros and methods.
 # Default value: false
@@ -43,8 +39,3 @@ unstable_features = true
 # Use field initialize shorthand if possible.
 # Default value: false
 use_field_init_shorthand = true
-
-# The following rust files listing have been made in october 2021.
-# This listing allows us first to ignore all rust files formmatting.
-# Then we can remove progressively from this list the files we want to format
-ignore = []

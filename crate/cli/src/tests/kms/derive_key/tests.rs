@@ -9,7 +9,7 @@ use cosmian_kms_client::{
     },
     reexport::cosmian_kms_client_utils::create_utils::SymmetricAlgorithm,
 };
-use cosmian_logger::log_init;
+use cosmian_logger::{debug, log_init};
 use test_kms_server::start_default_test_kms_server;
 
 use crate::{
@@ -62,7 +62,7 @@ pub(crate) async fn test_derive_key_pbkdf2_default() -> KmsCliResult<()> {
         vec!["test-derive-base".to_owned()],
     )
     .await?;
-    eprintln!("Created base key: {base_key_id}");
+    debug!("Created base key: {base_key_id}");
 
     // Test PBKDF2 derivation with default parameters
     let derive_action = DeriveKeyAction {

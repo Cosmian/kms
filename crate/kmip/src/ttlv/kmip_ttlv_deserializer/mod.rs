@@ -3,11 +3,12 @@ mod array_deserializer;
 mod byte_string_deserializer;
 mod deserializer;
 mod enum_walker;
+mod kmip_big_int_deserializer;
 mod offset_date_time_deserializer;
 mod structure_walker;
 mod untagged_enum_walker;
+
 pub use deserializer::{TtlvDeserializer, from_ttlv};
-mod kmip_big_int_deserializer;
 
 use super::{TTLV, TTLValue, TtlvError};
 

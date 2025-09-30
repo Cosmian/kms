@@ -47,8 +47,8 @@ impl Serialize for TTLV {
                 &("0x".to_owned() + &hex::encode_upper(v.to_be_bytes())),
             ),
             TTLValue::BigInteger(v) => {
-                //TODO Note that Big Integers must be sign extended to
-                //TODO  contain a multiple of 8 bytes, and as per LongInteger, JS numbers only
+                // TODO Note that Big Integers must be sign extended to
+                // TODO  contain a multiple of 8 bytes, and as per LongInteger, JS numbers only
                 // support a limited range of values.
                 serialize_struct_(
                     serializer,

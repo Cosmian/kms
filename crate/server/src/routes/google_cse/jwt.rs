@@ -338,7 +338,7 @@ pub(super) async fn validate_cse_authorization_token(
     if authorization_token.resource_name.is_none() {
         return Err(KmsError::Unauthorized(
             "Authorization token should contain an resource_name".to_owned(),
-        ))
+        ));
     }
     #[cfg(all(not(test), not(feature = "insecure")))]
     if let Some(kacls_url) = authorization_token.kacls_url.clone() {
@@ -353,7 +353,7 @@ pub(super) async fn validate_cse_authorization_token(
     if authorization_token.email.is_none() {
         return Err(KmsError::Unauthorized(
             "Authorization token should contain an email".to_owned(),
-        ))
+        ));
     }
 
     Ok(authorization_token)

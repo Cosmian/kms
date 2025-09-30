@@ -155,7 +155,7 @@ impl KMS {
                         .unique_identifier
                         .as_ref()
                         .map(ToString::to_string);
-                    //return the object and the tags
+                    // return the object and the tags
                     Ok((uid, object, tags))
                 }
                 Some(other) => Err(KmsError::InvalidRequest(format!(
@@ -284,7 +284,7 @@ impl KMS {
             .unique_identifier
             .as_ref()
             .map(ToString::to_string);
-        //return the object and the tags
+        // return the object and the tags
         Ok((uid, object, tags))
     }
 

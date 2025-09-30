@@ -153,7 +153,7 @@ impl ObjectsDB {
 
     fn decrypt_object(&self, uid: &str, ciphertext: &[u8]) -> DbResult<RedisDbObject> {
         if ciphertext.len() <= Aes256Gcm::NONCE_LENGTH {
-            return Err(DbError::CryptographicError("invalid ciphertext".to_owned()))
+            return Err(DbError::CryptographicError("invalid ciphertext".to_owned()));
         }
         let nonce_bytes = &ciphertext.get(..Aes256Gcm::NONCE_LENGTH).ok_or_else(|| {
             DbError::ServerError("decrypt_object: indexing slicing failed for nonce".to_owned())
@@ -213,7 +213,7 @@ impl ObjectsDB {
     pub(crate) async fn object_get(&self, uid: &str) -> DbResult<Option<RedisDbObject>> {
         let ciphertext: Vec<u8> = self.mgr.clone().get(Self::object_key(uid)).await?;
         if ciphertext.is_empty() {
-            return Ok(None)
+            return Ok(None);
         }
         let dbo: RedisDbObject = self.decrypt_object(uid, &ciphertext)?;
         Ok(Some(dbo))
@@ -236,7 +236,7 @@ impl ObjectsDB {
         let mut results = HashMap::new();
         for (uid, ciphertext) in uids.iter().zip(bytes) {
             if ciphertext.is_empty() {
-                continue
+                continue;
             }
             let dbo: RedisDbObject = self.decrypt_object(uid, &ciphertext)?;
             results.insert(uid.clone(), dbo);

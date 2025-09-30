@@ -125,8 +125,6 @@ fn create_symmetric_key_request<T: IntoIterator<Item = impl AsRef<str>>>(
 }
 
 //
-//
-//
 
 pub(crate) fn bench_encrypt_aes_128_gcm(c: &mut Criterion) {
     bench_encrypt(c, "AES 128 GCM", 128, aes_cryptographic_parameters(), 1);
@@ -252,8 +250,6 @@ const fn encrypt_request(
     })
 }
 
-//
-//
 //
 pub(crate) fn bench_decrypt_aes_128_gcm(c: &mut Criterion) {
     bench_decrypt(c, "AES GCM", 128, aes_cryptographic_parameters(), 1);

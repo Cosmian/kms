@@ -34,7 +34,7 @@ impl<'a, 'de: 'a> MapAccess<'de> for StructureWalker<'a> {
         let TTLValue::Structure(children) = &self.de.current.value else {
             return Err(TtlvError::from(
                 "Deserializing a map: expected Structure value in TTLV",
-            ))
+            ));
         };
         // Check that the index is not out of bounds, i.e. we have not reached the end of the struct
         // If we have, return None

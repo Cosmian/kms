@@ -145,7 +145,6 @@ impl ExportSecretDataOrKeyAction {
     ///
     /// - Either `--key-id` or one or more `--tag` is not specified.
     /// - There is a server error while exporting the object.
-    ///
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<UniqueIdentifier> {
         let id = get_key_uid(self.key_id.as_ref(), self.tags.as_ref(), KEY_ID)?;
 

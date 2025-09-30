@@ -401,7 +401,6 @@ pub(crate) async fn test_export_x25519() -> KmsCliResult<()> {
     .run(ctx.get_owner_client())
     .await?;
 
-    //
     // Private Key
     //
     ExportSecretDataOrKeyAction {
@@ -457,7 +456,6 @@ pub(crate) async fn test_export_x25519() -> KmsCliResult<()> {
         pkey_2.private_key_to_pkcs8().unwrap()
     );
 
-    //
     // Public Key
     //
     ExportSecretDataOrKeyAction {

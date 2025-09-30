@@ -178,7 +178,7 @@ pub fn kmip_objects_from_cc_master_keypair(
     else {
         return Err(CryptoError::Kmip(
             "wrong key value type for Covercrypt MSK".to_owned(),
-        ))
+        ));
     };
 
     match key_material {
@@ -199,7 +199,7 @@ pub fn kmip_objects_from_cc_master_keypair(
     else {
         return Err(CryptoError::Kmip(
             "wrong key value type for Covercrypt MPK".to_owned(),
-        ))
+        ));
     };
 
     match key_material {

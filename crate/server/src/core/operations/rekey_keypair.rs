@@ -62,17 +62,17 @@ pub(crate) async fn rekey_keypair(
     for owm in owm_s {
         // only active objects
         if owm.state() != State::Active {
-            continue
+            continue;
         }
 
         if owm.object().object_type() != ObjectType::PrivateKey {
-            continue
+            continue;
         }
 
         // if a Covercrypt key, it must be a master secret key
         if let Ok(attributes) = owm.object().attributes() {
             if attributes.key_format_type != Some(KeyFormatType::CoverCryptSecretKey) {
-                continue
+                continue;
             }
         }
 
@@ -91,7 +91,7 @@ pub(crate) async fn rekey_keypair(
                 _privileged_users,
             ))
             .await
-            .context("Rekey keypair: Covercrypt rekey failed")
+            .context("Rekey keypair: Covercrypt rekey failed");
         } else if let Some(other) = _attributes.cryptographic_algorithm {
             kms_bail!(KmsError::NotSupported(format!(
                 "The rekey of a key pair for algorithm: {other:?} is not yet supported"

@@ -81,7 +81,6 @@ impl UnwrapSecretDataOrKeyAction {
     /// - The unwrapping key fails to unwrap the key.
     /// - The output file fails to be written.
     /// - The console output fails to be written.
-    ///
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
         // read the key file
         let mut object = read_object_from_json_ttlv_file(&self.key_file_in)?;

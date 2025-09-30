@@ -15,7 +15,7 @@ pub(crate) enum DbState {
     Upgrading,
 }
 
-///The `Migrate` trait defines the methods required to migrate the database to the latest version.
+/// The `Migrate` trait defines the methods required to migrate the database to the latest version.
 // Note: <DB> must be present because it makes the database type a formal parameter of the trait itself.
 // This solves the "unconstrained type parameter" error when trying to implement is with an sqlx generic Database
 #[async_trait(?Send)]
@@ -107,7 +107,6 @@ pub(super) trait Migrate<DB> {
     ///         }
     ///    }
     /// }
-    ///
     #[expect(dead_code)]
     async fn migrate_to_4_22_2(&self) -> DbResult<()>;
 }

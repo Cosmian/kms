@@ -54,7 +54,6 @@ use crate::{
 /// # Returns
 ///
 /// * `PKey<Public>` - The openssl Public key
-///
 pub fn kmip_public_key_to_openssl(public_key: &Object) -> Result<PKey<Public>, CryptoError> {
     trace!("{}", public_key);
     let key_block = match public_key {

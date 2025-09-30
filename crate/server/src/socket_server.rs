@@ -138,7 +138,6 @@ impl SocketServer {
     /// # Errors
     /// - If the server fails to bind to the specified host and port
     /// - If an error occurs while handling a client connection
-    ///
     pub fn start_threaded<F>(
         &self,
         kms_server: Arc<KMS>,
@@ -154,7 +153,7 @@ impl SocketServer {
         let (tx, rx) = mpsc::channel::<KResult<()>>();
 
         let thread_handle = tokio::spawn(async move {
-            //We swallow the error, if any; the mpsc receiver will receive it
+            // We swallow the error, if any; the mpsc receiver will receive it
             let _swallowed = Self::start_listening(
                 &kms_server,
                 &addr,

@@ -87,7 +87,7 @@ pub(crate) async fn test_locate_cover_crypt() -> KmsCliResult<()> {
     assert_eq!(ids.len(), 1);
     assert!(ids.contains(&master_public_key_id));
 
-    //locate using tags and cryptographic algorithm and key format type
+    // locate using tags and cryptographic algorithm and key format type
     let ids = LocateObjectsAction {
         tags: Some(vec!["test_cc".to_string()]),
         cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
@@ -123,7 +123,7 @@ pub(crate) async fn test_locate_cover_crypt() -> KmsCliResult<()> {
     assert!(ids.contains(&master_public_key_id));
     assert!(ids.contains(&user_key_id));
 
-    //locate using tags and cryptographic algorithm and key format type
+    // locate using tags and cryptographic algorithm and key format type
     let ids = LocateObjectsAction {
         tags: Some(vec!["test_cc".to_string()]),
         cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
@@ -235,7 +235,7 @@ pub(crate) async fn test_locate_elliptic_curve() -> KmsCliResult<()> {
     assert_eq!(ids.len(), 1);
     assert!(ids.contains(&public_key_id));
 
-    //locate using tags and cryptographic algorithm and key format type
+    // locate using tags and cryptographic algorithm and key format type
     let ids = LocateObjectsAction {
         tags: Some(vec!["test_ec".to_owned()]),
         cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
@@ -313,7 +313,7 @@ pub(crate) async fn test_locate_symmetric_key() -> KmsCliResult<()> {
     assert_eq!(ids.len(), 1);
     assert!(ids.contains(&key_id));
 
-    //locate using tags and cryptographic algorithm and key format type
+    // locate using tags and cryptographic algorithm and key format type
     let ids = LocateObjectsAction {
         tags: Some(vec!["test_sym".to_owned()]),
         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -438,7 +438,7 @@ pub(crate) async fn test_locate_grant() -> KmsCliResult<()> {
     assert_eq!(ids.len(), 1);
     assert!(ids.contains(&user_key_id));
 
-    //revoke the access
+    // revoke the access
     RevokeAccess {
         user: "user.client@acme.com".to_owned(),
         object_uid: Some(user_key_id.to_string()),

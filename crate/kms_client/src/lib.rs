@@ -1,6 +1,3 @@
-//required to detect generic type in Serializer
-#![feature(min_specialization)]
-
 pub use config::{GmailApiConf, KmsClientConfig};
 pub use cosmian_kms_client_utils::reexport::cosmian_kmip::{
     self, kmip_0, kmip_1_4, kmip_2_1, pad_be_bytes,

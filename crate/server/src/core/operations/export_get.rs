@@ -317,7 +317,7 @@ async fn post_process_private_key(
         )
         .await?;
     }
-    //in the case of a PKCS#12, the private key must be packaged with the certificate
+    // in the case of a PKCS#12, the private key must be packaged with the certificate
     if is_pkcs12 {
         build_pkcs12_for_private_key(kms, operation_type, user, params, request, owm).await?;
     }
@@ -422,10 +422,10 @@ async fn post_process_active_private_key(
         wrap_object(&mut object, key_wrapping_specification, kms, user, params).await?;
         // reassign the wrapped key
         object_with_metadata.set_object(object);
-        return Ok(())
+        return Ok(());
     }
 
-    //No wrapping requested: export the private key to the requested format
+    // No wrapping requested: export the private key to the requested format
     if let Some(key_format_type) = key_format_type {
         debug!(
             "export: exporting private key with format: {:?}",
@@ -506,7 +506,7 @@ async fn process_public_key(
     )
     .await?;
 
-    //make a copy of the existing attributes
+    // make a copy of the existing attributes
     let owm_attributes = object_with_metadata.attributes().clone();
     {
         let key_block = object_with_metadata.object().key_block()?;
@@ -585,7 +585,7 @@ async fn process_public_key(
         return Ok(());
     }
 
-    //No wrapping requested: export the private key to the requested format
+    // No wrapping requested: export the private key to the requested format
     if let Some(key_format_type) = key_format_type {
         match key_format_type {
             KeyFormatType::PKCS1
@@ -1068,7 +1068,7 @@ async fn process_secret_data(
         }
         // The key is wrapped and as expected the requested Key Format Type is the default (none)
         // => The key is exported as such
-        return Ok(())
+        return Ok(());
     }
 
     // we have an unwrapped key, convert it to the pivotal format first,
@@ -1106,7 +1106,7 @@ async fn process_secret_data(
         key_block.attributes_mut()?.key_format_type = Some(KeyFormatType::Raw);
         // wrap the key
         wrap_object(object, key_wrapping_specification, kms, user, params).await?;
-        return Ok(())
+        return Ok(());
     }
 
     // The key  is not wrapped => export to desired format

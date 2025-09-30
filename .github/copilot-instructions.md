@@ -9,11 +9,11 @@ Always reference these instructions first and fallback to search or bash command
 - **Bootstrap and build the repository:**
 
     - First, initialize git submodules: `git submodule update --recursive --init`
-    - System requires Rust nightly toolchain (nightly-2025-09-15) with rustfmt and clippy components
+    - System requires Rust stable toolchain (1.90.0) with rustfmt and clippy components
     - OpenSSL 3.2.0 is REQUIRED (not 3.0.13+) for proper FIPS compliance and static linking
     - OpenSSL must be installed to `/usr/local/openssl` using `.github/reusable_scripts/get_openssl_binaries.sh`
     - Build process follows CI workflow: `bash .github/scripts/cargo_build.sh`
-    - Environment variables required: `OPENSSL_DIR=/usr/local/openssl`, `TARGET=x86_64-unknown-linux-gnu`, `DEBUG_OR_RELEASE=debug|release`
+    - Environment variables required: `OPENSSL_DIR=/usr/local/openssl`, `DEBUG_OR_RELEASE=debug|release`
     - For non-FIPS builds: `FEATURES=non-fips`
     - The CLI binary `cosmian` IS built in this repository and included in build artifacts
 
@@ -21,8 +21,8 @@ Always reference these instructions first and fallback to search or bash command
 
     - UI is built on Ubuntu distributions using `bash .github/scripts/build_ui.sh`
     - UI files are located in `crate/server/ui` directory
-    - Release builds create Debian packages via `cargo deb --target $TARGET -p cosmian_kms_server`
-    - RPM packages created via `cargo generate-rpm --target $TARGET -p crate/server`
+    - Release builds create Debian packages via `cargo deb -p cosmian_kms_server`
+    - RPM packages created via `cargo generate-rpm -p crate/server`
     - Packages support both FIPS and non-FIPS variants
 
 - **Testing and validation:**
@@ -33,24 +33,24 @@ Always reference these instructions first and fallback to search or bash command
     - Redis-findex tests skipped in FIPS mode (not supported)
     - Debug builds only test sqlite; release builds test all enabled databases
     - macOS runners only support sqlite tests (no docker containers)
-    - HSM testing on Ubuntu with Utimaco: `HSM_USER_PASSWORD="12345678" cargo test -p utimaco_pkcs11_loader --target $TARGET --features utimaco`
+    - HSM testing on Ubuntu with Utimaco: `HSM_USER_PASSWORD="12345678" cargo test -p utimaco_pkcs11_loader --features utimaco`
     - Logging control: `RUST_LOG="cosmian_kms_cli=error,cosmian_kms_server=error,cosmian_kmip=error,test_kms_server=error"`
-    - Test execution: `cargo test --workspace --lib --target $TARGET $RELEASE $FEATURES -- --nocapture $SKIP_SERVICES_TESTS`
+    - Test execution: `cargo test --workspace --lib $RELEASE $FEATURES -- --nocapture $SKIP_SERVICES_TESTS`
 
 - **Build artifacts and binaries:**
 
     - Primary binaries: `cosmian`, `cosmian_kms`, `cosmian_findex_server`
-    - Binary locations: `target/$TARGET/$DEBUG_OR_RELEASE/` (e.g., `target/x86_64-unknown-linux-gnu/debug/`)
-    - Release builds include benchmarks: `cargo bench --target $TARGET $FEATURES --no-run`
+    - Binary locations: `target/$DEBUG_OR_RELEASE/` (e.g., `target/debug/`)
+    - Release builds include benchmarks: `cargo bench $FEATURES --no-run`
     - Static linking verified (no dynamic OpenSSL dependencies): `ldd cosmian_kms | grep ssl` should fail
     - Version verification: `cosmian_kms --info` must show OpenSSL 3.2.0
-    - Binary tests: `cargo test --workspace --bins --target $TARGET $RELEASE $FEATURES`
+    - Binary tests: `cargo test --workspace --bins $RELEASE $FEATURES`
 
 - **Run the KMS server:**
 
     - ALWAYS build first using the build script above
-    - Debug mode: `./target/x86_64-unknown-linux-gnu/debug/cosmian_kms --database-type sqlite --sqlite-path /tmp/kms-data`
-    - Release mode: `./target/x86_64-unknown-linux-gnu/release/cosmian_kms --database-type sqlite --sqlite-path /tmp/kms-data`
+    - Debug mode: `./target/debug/cosmian_kms --database-type sqlite --sqlite-path /tmp/kms-data`
+    - Release mode: `./target/release/cosmian_kms --database-type sqlite --sqlite-path /tmp/kms-data`
     - Server listens on <http://0.0.0.0:9998> by default
     - Supported databases: sqlite, postgresql, mysql, redis-findex (redis-findex not available in FIPS mode)
 
@@ -65,11 +65,11 @@ Always reference these instructions first and fallback to search or bash command
 - **CRITICAL**: Always manually test server functionality after making changes by starting the server and verifying it responds to HTTP requests
 - Test server startup: Start server with `--database-type sqlite --sqlite-path /tmp/test-db`
 - Test API responses: `curl -s -X POST -H "Content-Type: application/json" -d '{}' http://localhost:9998/kmip/2_1` should return KMIP validation error (confirms server is working)
-- Test server version: `./target/x86_64-unknown-linux-gnu/release/cosmian_kms --version` should show version 5.9.0
-- OpenSSL validation: `./target/x86_64-unknown-linux-gnu/release/cosmian_kms --info` should show OpenSSL 3.2.0
-- Static linking check: `ldd ./target/x86_64-unknown-linux-gnu/release/cosmian_kms | grep ssl` should return empty (no dynamic OpenSSL)
+- Test server version: `./target/release/cosmian_kms --version` should show version 5.9.0
+- OpenSSL validation: `./target/release/cosmian_kms --info` should show OpenSSL 3.2.0
+- Static linking check: `ldd ./target/release/cosmian_kms | grep ssl` should return empty (no dynamic OpenSSL)
 - Always run `cargo fmt --check` before committing (takes 3 seconds)
-- Clippy requires installation: `rustup component add --toolchain nightly-2025-09-15-x86_64-unknown-linux-gnu clippy`
+- Clippy requires installation: `rustup component add clippy`
 
 ## Common tasks
 
@@ -99,7 +99,7 @@ docker-compose.yml       # Development services (postgres, mysql, redis)
 Dockerfile              # Container build
 README.md               # Project documentation
 Cargo.toml              # Workspace configuration
-rust-toolchain.toml     # Rust toolchain: nightly-2025-09-15
+rust-toolchain.toml     # Rust toolchain: 1.90.0
 ```
 
 ### Key build commands and timing
@@ -108,7 +108,6 @@ rust-toolchain.toml     # Rust toolchain: nightly-2025-09-15
 # Full CI build process (includes UI, packaging, multi-database tests)
 git submodule update --recursive --init
 export OPENSSL_DIR=/usr/local/openssl
-export TARGET=x86_64-unknown-linux-gnu
 export DEBUG_OR_RELEASE=debug  # or release
 export FEATURES=non-fips       # optional, for non-FIPS builds
 
@@ -123,22 +122,21 @@ bash .github/scripts/cargo_build.sh
 bash .github/scripts/build_ui.sh
 
 # Individual builds (after OpenSSL setup)
-rustup target add x86_64-unknown-linux-gnu
-cargo build --target x86_64-unknown-linux-gnu --features non-fips
-cargo build --target x86_64-unknown-linux-gnu --release --features non-fips
+cargo build --features non-fips
+cargo build --release --features non-fips
 
 # Multi-database testing
 export KMS_TEST_DB=sqlite  # or postgresql, mysql, redis-findex
-cargo test --workspace --lib --target x86_64-unknown-linux-gnu --features non-fips
+cargo test --workspace --lib --features non-fips
 
 # HSM testing (Ubuntu only)
 bash .github/reusable_scripts/test_utimaco.sh
-HSM_USER_PASSWORD="12345678" cargo test -p utimaco_pkcs11_loader --target x86_64-unknown-linux-gnu --features utimaco
+HSM_USER_PASSWORD="12345678" cargo test -p utimaco_pkcs11_loader --features utimaco
 
 # Packaging (release builds only)
 cargo install cargo-deb cargo-generate-rpm
-cargo deb --target x86_64-unknown-linux-gnu -p cosmian_kms_server
-cargo generate-rpm --target x86_64-unknown-linux-gnu -p crate/server
+cargo deb -p cosmian_kms_server
+cargo generate-rpm -p crate/server
 
 # Format check (3 seconds)
 cargo fmt --check
@@ -148,24 +146,24 @@ cargo fmt --check
 
 ```bash
 # Start server (debug)
-./target/x86_64-unknown-linux-gnu/debug/cosmian_kms --database-type sqlite --sqlite-path /tmp/kms-data
+./target/debug/cosmian_kms --database-type sqlite --sqlite-path /tmp/kms-data
 
 # Start server (release)
-./target/x86_64-unknown-linux-gnu/release/cosmian_kms --database-type sqlite --sqlite-path /tmp/kms-data
+./target/release/cosmian_kms --database-type sqlite --sqlite-path /tmp/kms-data
 
 # Test server is responding
 curl -s -X POST -H "Content-Type: application/json" -d '{}' http://localhost:9998/kmip/2_1
 # Expected response: "Invalid Request: missing field `tag` at line 1 column 2"
 
 # Check version and OpenSSL
-./target/x86_64-unknown-linux-gnu/release/cosmian_kms --version
+./target/release/cosmian_kms --version
 # Expected: "cosmian_kms_server 5.9.0"
 
-./target/x86_64-unknown-linux-gnu/release/cosmian_kms --info
+./target/release/cosmian_kms --info
 # Expected: Output containing "OpenSSL 3.2.0"
 
 # Verify static linking (should return empty)
-ldd ./target/x86_64-unknown-linux-gnu/release/cosmian_kms | grep ssl
+ldd ./target/release/cosmian_kms | grep ssl
 ```
 
 ### Docker quick start
@@ -188,8 +186,7 @@ curl http://localhost:9998/ui
 - **OpenSSL Version**: OpenSSL 3.2.0 is mandatory, not 3.0.13+. The build verifies this specific version.
 - **Static Linking**: All binaries must be statically linked with OpenSSL. CI verifies no dynamic OpenSSL dependencies.
 - **Build Artifacts**: Three primary binaries are built: `cosmian`, `cosmian_kms`, `cosmian_findex_server`
-- **Target Architecture**: CI uses `x86_64-unknown-linux-gnu` target explicitly, not default target
-- **Database Testing**: Only sqlite works in debug mode and on macOS. Full database testing requires release builds on Linux.
+- **Database Testing**: Only sqlite works in debug mode and on macOS. Full database testing requires release builds.
 - **FIPS vs non-FIPS**: Redis-findex database support is not available in FIPS mode
 - **UI Building**: UI is only built on Ubuntu distributions and requires separate build script
 - **Packaging**: Debian and RPM packages are created as part of release builds with proper FIPS/non-FIPS variants

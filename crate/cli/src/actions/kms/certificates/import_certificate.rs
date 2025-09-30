@@ -112,7 +112,7 @@ impl ImportCertificateAction {
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<Option<String>> {
         trace!("{self:?}");
 
-        //generate the leaf certificate attributes if links are specified
+        // generate the leaf certificate attributes if links are specified
         let mut leaf_certificate_attributes = None;
         if let Some(issuer_certificate_id) = &self.issuer_certificate_id {
             let attributes = leaf_certificate_attributes.get_or_insert_with(Attributes::default);

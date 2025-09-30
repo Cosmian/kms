@@ -187,19 +187,19 @@ impl<'de> Deserialize<'de> for KeyBlock {
                     match field {
                         Field::KeyFormatType => {
                             if key_format_type.is_some() {
-                                return Err(de::Error::duplicate_field("KeyFormatType"))
+                                return Err(de::Error::duplicate_field("KeyFormatType"));
                             }
                             key_format_type = Some(map.next_value()?);
                         }
                         Field::KeyCompressionType => {
                             if key_compression_type.is_some() {
-                                return Err(de::Error::duplicate_field("KeyCompressionType"))
+                                return Err(de::Error::duplicate_field("KeyCompressionType"));
                             }
                             key_compression_type = Some(map.next_value()?);
                         }
                         Field::KeyValue => {
                             if key_value.is_some() {
-                                return Err(de::Error::duplicate_field("KeyValue"))
+                                return Err(de::Error::duplicate_field("KeyValue"));
                             }
                             key_value = Some(map.next_value_seed(KeyValueDeserializer {
                                 key_format_type: key_format_type.ok_or_else(|| {
@@ -211,19 +211,19 @@ impl<'de> Deserialize<'de> for KeyBlock {
                         }
                         Field::CryptographicAlgorithm => {
                             if cryptographic_algorithm.is_some() {
-                                return Err(de::Error::duplicate_field("CryptographicAlgorithm"))
+                                return Err(de::Error::duplicate_field("CryptographicAlgorithm"));
                             }
                             cryptographic_algorithm = Some(map.next_value()?);
                         }
                         Field::CryptographicLength => {
                             if cryptographic_length.is_some() {
-                                return Err(de::Error::duplicate_field("CryptographicLength"))
+                                return Err(de::Error::duplicate_field("CryptographicLength"));
                             }
                             cryptographic_length = Some(map.next_value()?);
                         }
                         Field::KeyWrappingData => {
                             if key_wrapping_data.is_some() {
-                                return Err(de::Error::duplicate_field("KeyWrappingData"))
+                                return Err(de::Error::duplicate_field("KeyWrappingData"));
                             }
                             key_wrapping_data = Some(map.next_value()?);
                         }
@@ -326,7 +326,7 @@ impl KeyBlock {
             )),
             KeyValue::Structure { key_material, .. } => {
                 if let KeyMaterial::ByteString(v) = key_material {
-                    return Ok(v.clone())
+                    return Ok(v.clone());
                 }
                 Err(KmipError::InvalidKmip21Value(
                     ErrorReason::Invalid_Object_Type,
@@ -352,7 +352,7 @@ impl KeyBlock {
             )),
             KeyValue::Structure { key_material, .. } => {
                 if let KeyMaterial::ByteString(v) = key_material {
-                    return Ok(v.clone())
+                    return Ok(v.clone());
                 }
                 Err(KmipError::InvalidKmip21Value(
                     ErrorReason::Invalid_Object_Type,
@@ -376,7 +376,7 @@ impl KeyBlock {
             return Err(KmipError::InvalidKmip21Value(
                 ErrorReason::Invalid_Object_Type,
                 "ec_raw_bytes: the key is wrapped".to_owned(),
-            ))
+            ));
         };
         match key_material {
             KeyMaterial::TransparentECPrivateKey { d, .. } => {
@@ -454,7 +454,7 @@ impl KeyBlock {
             return Err(KmipError::InvalidKmip21Value(
                 ErrorReason::Invalid_Attribute_Value,
                 "The Object Key Value is wrapped. Attributes cannot be recovered".to_owned(),
-            ))
+            ));
         };
         attributes.as_ref().ok_or_else(|| {
             KmipError::InvalidKmip21Value(
@@ -470,7 +470,7 @@ impl KeyBlock {
             return Err(KmipError::InvalidKmip21Value(
                 ErrorReason::Invalid_Attribute_Value,
                 "The Object Key Value is wrapped. Attributes cannot be recovered".to_owned(),
-            ))
+            ));
         };
         attributes.as_mut().ok_or_else(|| {
             KmipError::InvalidKmip21Value(
@@ -486,7 +486,7 @@ impl KeyBlock {
             return Err(KmipError::InvalidKmip21Value(
                 ErrorReason::Invalid_Attribute_Value,
                 "The Object Key Value is wrapped. The Key Material cannot be recovered".to_owned(),
-            ))
+            ));
         };
         Ok(key_material)
     }
@@ -497,7 +497,7 @@ impl KeyBlock {
             return Err(KmipError::InvalidKmip21Value(
                 ErrorReason::Invalid_Attribute_Value,
                 "The Object Key Value is wrapped. The Key Material cannot be recovered".to_owned(),
-            ))
+            ));
         };
         Ok(key_material)
     }
@@ -523,12 +523,12 @@ impl KeyBlock {
 
         // Retrieve the links attribute from the object attributes, if it exists
         let Some(links) = &attributes.link else {
-            return Ok(None)
+            return Ok(None);
         };
 
         // If there are no links, return None
         if links.is_empty() {
-            return Ok(None)
+            return Ok(None);
         }
 
         // Find the link of the requested type in the list of links, if it exists
@@ -555,10 +555,10 @@ impl KeyBlock {
     pub fn cryptographic_algorithm(&self) -> Option<&CryptographicAlgorithm> {
         self.cryptographic_algorithm.as_ref().or_else(|| {
             let Some(key_value) = &self.key_value else {
-                return None
+                return None;
             };
             let KeyValue::Structure { attributes, .. } = key_value else {
-                return None
+                return None;
             };
             let a = attributes.as_ref()?;
             a.cryptographic_algorithm.as_ref()
@@ -605,7 +605,7 @@ impl Display for KeyValue {
                             f,
                             "KeyValue::Structure {{ key_material: {key_material}, attributes: \
                              {attributes} }}"
-                        )
+                        );
                     }
                     Ok(())
                 } else {
@@ -710,7 +710,7 @@ impl<'de> DeserializeSeed<'de> for KeyValueDeserializer {
                     match field {
                         Field::KeyMaterial => {
                             if key_material.is_some() {
-                                return Err(de::Error::duplicate_field("KeyMaterial"))
+                                return Err(de::Error::duplicate_field("KeyMaterial"));
                             }
                             key_material = Some(map.next_value_seed(KeyMaterialDeserializer {
                                 key_format_type: self.key_format_type,
@@ -718,7 +718,7 @@ impl<'de> DeserializeSeed<'de> for KeyValueDeserializer {
                         }
                         Field::Attributes => {
                             if attributes.is_some() {
-                                return Err(de::Error::duplicate_field("Attributes"))
+                                return Err(de::Error::duplicate_field("Attributes"));
                             }
                             attributes = Some(map.next_value()?);
                         }
@@ -748,7 +748,7 @@ impl KeyValue {
             return Err(KmipError::InvalidKmip21Value(
                 ErrorReason::Invalid_Attribute_Value,
                 "key Value is wrapped".to_owned(),
-            ))
+            ));
         };
         match &key_material {
             KeyMaterial::TransparentSymmetricKey { key } => Ok(key),
@@ -1306,103 +1306,103 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
                     match field {
                         Field::ByteString => {
                             if bytestring.is_some() {
-                                return Err(de::Error::duplicate_field("ByteString"))
+                                return Err(de::Error::duplicate_field("ByteString"));
                             }
                             bytestring = Some(map.next_value()?);
                         }
                         Field::D => {
                             if d.is_some() {
-                                return Err(de::Error::duplicate_field("D"))
+                                return Err(de::Error::duplicate_field("D"));
                             }
                             d = Some(Box::new(map.next_value()?));
                         }
                         Field::P => {
                             if p.is_some() {
-                                return Err(de::Error::duplicate_field("P"))
+                                return Err(de::Error::duplicate_field("P"));
                             }
                             p = Some(Box::new(map.next_value()?));
                         }
                         Field::Q => {
                             if q.is_some() {
-                                return Err(de::Error::duplicate_field("Q"))
+                                return Err(de::Error::duplicate_field("Q"));
                             }
                             q = Some(Box::new(map.next_value()?));
                         }
                         Field::G => {
                             if g.is_some() {
-                                return Err(de::Error::duplicate_field("G"))
+                                return Err(de::Error::duplicate_field("G"));
                             }
                             g = Some(Box::new(map.next_value()?));
                         }
                         Field::J => {
                             if j.is_some() {
-                                return Err(de::Error::duplicate_field("J"))
+                                return Err(de::Error::duplicate_field("J"));
                             }
                             j = Some(Box::new(map.next_value()?));
                         }
                         Field::X => {
                             if x.is_some() {
-                                return Err(de::Error::duplicate_field("X"))
+                                return Err(de::Error::duplicate_field("X"));
                             }
                             x = Some(Box::new(map.next_value()?));
                         }
                         Field::Y => {
                             if y.is_some() {
-                                return Err(de::Error::duplicate_field("Y"))
+                                return Err(de::Error::duplicate_field("Y"));
                             }
                             y = Some(Box::new(map.next_value()?));
                         }
                         Field::Key => {
                             if key.is_some() {
-                                return Err(de::Error::duplicate_field("Key"))
+                                return Err(de::Error::duplicate_field("Key"));
                             }
                             key = Some(map.next_value()?);
                         }
                         Field::Modulus => {
                             if modulus.is_some() {
-                                return Err(de::Error::duplicate_field("Modulus"))
+                                return Err(de::Error::duplicate_field("Modulus"));
                             }
                             modulus = Some(Box::new(map.next_value()?));
                         }
                         Field::PrivateExponent => {
                             if private_exponent.is_some() {
-                                return Err(de::Error::duplicate_field("PrivateExponent"))
+                                return Err(de::Error::duplicate_field("PrivateExponent"));
                             }
                             private_exponent = Some(Box::new(map.next_value()?));
                         }
                         Field::PublicExponent => {
                             if public_exponent.is_some() {
-                                return Err(de::Error::duplicate_field("PublicExponent"))
+                                return Err(de::Error::duplicate_field("PublicExponent"));
                             }
                             public_exponent = Some(Box::new(map.next_value()?));
                         }
                         Field::PrimeExponentP => {
                             if prime_exponent_p.is_some() {
-                                return Err(de::Error::duplicate_field("PrimeExponentP"))
+                                return Err(de::Error::duplicate_field("PrimeExponentP"));
                             }
                             prime_exponent_p = Some(Box::new(map.next_value()?));
                         }
                         Field::PrimeExponentQ => {
                             if prime_exponent_q.is_some() {
-                                return Err(de::Error::duplicate_field("PrimeExponentQ"))
+                                return Err(de::Error::duplicate_field("PrimeExponentQ"));
                             }
                             prime_exponent_q = Some(Box::new(map.next_value()?));
                         }
                         Field::CRTCoefficient => {
                             if crt_coefficient.is_some() {
-                                return Err(de::Error::duplicate_field("CrtCoefficient"))
+                                return Err(de::Error::duplicate_field("CrtCoefficient"));
                             }
                             crt_coefficient = Some(Box::new(map.next_value()?));
                         }
                         Field::RecommendedCurve => {
                             if recommended_curve.is_some() {
-                                return Err(de::Error::duplicate_field("RecommendedCurve"))
+                                return Err(de::Error::duplicate_field("RecommendedCurve"));
                             }
                             recommended_curve = Some(map.next_value()?);
                         }
                         Field::QString => {
                             if q_string.is_some() {
-                                return Err(de::Error::duplicate_field("QString"))
+                                return Err(de::Error::duplicate_field("QString"));
                             }
                             q_string = Some(map.next_value()?);
                         }
@@ -1490,7 +1490,7 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
                         f => {
                             return Err(de::Error::custom(format!(
                                 "unsupported key format type: {f:?}, for the key material"
-                            )))
+                            )));
                         }
                     })
                 }
@@ -1695,20 +1695,20 @@ impl Display for ObjectDefaults {
                     f,
                     "ObjectDefaults {{ object_type: {:?}, attributes: {}, object_groups: {:?} }}",
                     self.object_type, attributes, object_groups
-                )
+                );
             }
             return write!(
                 f,
                 "ObjectDefaults {{ object_type: {:?}, attributes: {} }}",
                 self.object_type, attributes
-            )
+            );
         }
         if let Some(object_groups) = &self.object_groups {
             return write!(
                 f,
                 "ObjectDefaults {{ object_type: {:?}, object_groups: {:?} }}",
                 self.object_type, object_groups
-            )
+            );
         }
         write!(
             f,

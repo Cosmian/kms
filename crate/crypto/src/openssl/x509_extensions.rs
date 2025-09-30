@@ -272,7 +272,7 @@ pub fn parse_v3_ca(
             _ => {
                 return Err(CryptoError::Default(format!(
                     "`{key}` is not a valid X.509 extension key property"
-                )))
+                )));
             }
         }
     }

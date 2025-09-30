@@ -72,7 +72,7 @@ pub(crate) async fn create(
         }
     };
 
-    //Make sure we have a unique identifier.
+    // Make sure we have a unique identifier.
     let unique_identifier = UniqueIdentifier::TextString(
         unique_identifier.unwrap_or_else(|| Uuid::new_v4().to_string()),
     );
