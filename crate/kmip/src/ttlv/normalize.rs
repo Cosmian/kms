@@ -1062,3 +1062,387 @@ pub(crate) fn normalize_ttlv(ttlv: &mut TTLV) {
         _ => {}
     }
 }
+
+#[allow(clippy::unwrap_used, clippy::panic, clippy::indexing_slicing)]
+#[cfg(test)]
+mod tests {
+    use time::{Date, Duration, Month, Time, UtcOffset};
+
+    use super::*;
+    use crate::ttlv::kmip_big_int;
+
+    fn tv(tag: &str, value: TTLValue) -> TTLV {
+        TTLV {
+            tag: tag.to_owned(),
+            value,
+        }
+    }
+
+    #[test]
+    fn retag_c_only_children() {
+        // Step 0: Retag _c-only children to parent tag (non AttributeValue)
+        let mut root = tv(
+            "Foo",
+            TTLValue::Structure(vec![
+                tv("_c", TTLValue::Integer(1)),
+                tv("_c", TTLValue::Integer(2)),
+            ]),
+        );
+        normalize_ttlv(&mut root);
+        let TTLValue::Structure(ref items) = root.value else {
+            panic!("not structure")
+        };
+        assert!(items.iter().all(|c| c.tag == "Foo"));
+        assert!(
+            items
+                .iter()
+                .all(|c| matches!(c.value, TTLValue::Integer(_)))
+        );
+    }
+
+    #[test]
+    fn collapse_t_c_single_child() {
+        // Step 1: _t/_c collapse with single _c -> replace with that value
+        let mut root = tv(
+            "VendorAttributeValue",
+            TTLValue::Structure(vec![
+                tv(
+                    "_t",
+                    TTLValue::Enumeration(crate::ttlv::KmipEnumerationVariant {
+                        value: 0x2,
+                        name: "ByteString".into(),
+                    }),
+                ),
+                tv("_c", TTLValue::ByteString(vec![1, 2, 3])),
+            ]),
+        );
+        normalize_ttlv(&mut root);
+        assert_eq!(root.tag, "VendorAttributeValue");
+        assert!(matches!(root.value, TTLValue::ByteString(_)));
+    }
+
+    #[test]
+    fn collapse_t_c_multiple_children() {
+        // Step 1: multiple _c -> Structure of content under parent
+        let mut root = tv(
+            "Something",
+            TTLValue::Structure(vec![
+                tv(
+                    "_t",
+                    TTLValue::Enumeration(crate::ttlv::KmipEnumerationVariant {
+                        value: 0x8,
+                        name: "ByteString".into(),
+                    }),
+                ),
+                tv("_c", TTLValue::ByteString(vec![1])),
+                tv("_c", TTLValue::ByteString(vec![2])),
+            ]),
+        );
+        normalize_ttlv(&mut root);
+        // Because the type tag is ByteString, the two children are concatenated into a single ByteString
+        assert_eq!(root.value, TTLValue::ByteString(vec![1, 2]));
+    }
+
+    #[test]
+    fn interval_single_integer_child() {
+        // Step 2: Interval with one Integer child -> Interval value
+        let mut root = tv(
+            "Interval",
+            TTLValue::Structure(vec![tv("Interval", TTLValue::Integer(42))]),
+        );
+        normalize_ttlv(&mut root);
+        assert!(matches!(root.value, TTLValue::Interval(42)));
+    }
+
+    #[test]
+    fn attribute_value_single_child_unwrap() {
+        // Step 2b: AttributeValue unwrap single child
+        let mut root = tv(
+            "AttributeValue",
+            TTLValue::Structure(vec![tv("TextString", TTLValue::TextString("abc".into()))]),
+        );
+        normalize_ttlv(&mut root);
+        assert_eq!(root.value, TTLValue::TextString("abc".into()));
+    }
+
+    #[test]
+    fn attribute_value_pick_type_tag() {
+        // Step 2b: AttributeValue choose a type-tagged child from list
+        let mut root = tv(
+            "AttributeValue",
+            TTLValue::Structure(vec![
+                tv("Other", TTLValue::TextString("x".into())),
+                tv("Integer", TTLValue::Integer(7)),
+            ]),
+        );
+        normalize_ttlv(&mut root);
+        assert_eq!(root.value, TTLValue::Integer(7));
+    }
+
+    #[test]
+    fn byte_like_aggressive_unwrap_and_bytes() {
+        // Step 2c + step 8: unwrap nested Structure under ByteString, then collapse to ByteString from ints
+        let mut root = tv(
+            "ByteString",
+            TTLValue::Structure(vec![tv(
+                "ByteString",
+                TTLValue::Structure(vec![
+                    tv("ByteString", TTLValue::Integer(65)),
+                    tv("ByteString", TTLValue::Integer(66)),
+                ]),
+            )]),
+        );
+        normalize_ttlv(&mut root);
+        assert_eq!(root.value, TTLValue::ByteString(vec![65, 66]));
+    }
+
+    #[test]
+    fn byte_like_collapse_from_int_run() {
+        // Step 3: collapse int run into ByteString when tags match and are byte-like
+        let mut root = tv(
+            "ByteString",
+            TTLValue::Structure(vec![
+                tv("ByteString", TTLValue::Integer(65)),
+                tv("ByteString", TTLValue::Integer(66)),
+                tv("ByteString", TTLValue::Integer(67)),
+            ]),
+        );
+        normalize_ttlv(&mut root);
+        assert_eq!(root.value, TTLValue::ByteString(vec![65, 66, 67]));
+    }
+
+    #[test]
+    fn attributevalue_collapse_int_run_to_bytes() {
+        // Step 3: AttributeValue special-case collapse of _c integers to ByteString
+        let mut root = tv(
+            "AttributeValue",
+            TTLValue::Structure(vec![
+                tv("_c", TTLValue::Integer(1)),
+                tv("_c", TTLValue::Integer(2)),
+            ]),
+        );
+        normalize_ttlv(&mut root);
+        assert_eq!(root.value, TTLValue::ByteString(vec![1, 2]));
+    }
+
+    #[test]
+    fn named_fields_datetime_synthesis() {
+        // Step 4: Synthesize DateTime from named fields
+        let day_of_year = 61; // March 1st in a leap year
+        let mut root = tv(
+            "DateTime",
+            TTLValue::Structure(vec![
+                tv("Year", TTLValue::Integer(2024)),
+                tv("DayOfYear", TTLValue::Integer(day_of_year)),
+                tv("Hour", TTLValue::Integer(12)),
+                tv("Minute", TTLValue::Integer(34)),
+                tv("Second", TTLValue::Integer(56)),
+                tv("OffsetSign", TTLValue::Integer(1)),
+                tv("OffsetHour", TTLValue::Integer(1)),
+                tv("OffsetMinute", TTLValue::Integer(30)),
+            ]),
+        );
+        normalize_ttlv(&mut root);
+        let expected = {
+            let jan1 = Date::from_calendar_date(2024, Month::January, 1).unwrap();
+            let d = jan1
+                .checked_add(Duration::days(i64::from(day_of_year - 1)))
+                .unwrap();
+            let ofs = UtcOffset::from_hms(1, 30, 0).unwrap();
+            let tm = Time::from_hms(12, 34, 56).unwrap();
+            TTLValue::DateTime(d.with_time(tm).assume_offset(ofs))
+        };
+        assert_eq!(root.value, expected);
+    }
+
+    #[test]
+    fn sliding_window_datetime_synthesis() {
+        // Step 4b: sliding window of 9 integers under matching tags
+        let mut root = tv(
+            "DT",
+            TTLValue::Structure(vec![
+                tv("DT", TTLValue::Integer(2023)),        // year
+                tv("DT", TTLValue::Integer(200)),         // day_of_year
+                tv("DT", TTLValue::Integer(10)),          // hour
+                tv("DT", TTLValue::Integer(11)),          // minute
+                tv("DT", TTLValue::Integer(12)),          // second
+                tv("DT", TTLValue::Integer(123_000_000)), // fractional ns
+                tv("DT", TTLValue::Integer(0)),           // off_h
+                tv("DT", TTLValue::Integer(0)),           // off_m
+                tv("DT", TTLValue::Integer(0)),           // off_s
+            ]),
+        );
+        normalize_ttlv(&mut root);
+        match root.value {
+            TTLValue::DateTime(_) => {}
+            _ => panic!("expected DateTime"),
+        }
+    }
+
+    #[test]
+    fn datetimeextended_under_datetime_from_int() {
+        let mut root = tv(
+            "DateTime",
+            TTLValue::Structure(vec![tv("DateTime", TTLValue::Integer(123))]),
+        );
+        normalize_ttlv(&mut root);
+        assert_eq!(root.value, TTLValue::DateTimeExtended(123));
+    }
+
+    #[test]
+    fn datetimeextended_under_datetime_from_long() {
+        let mut root = tv(
+            "DateTime",
+            TTLValue::Structure(vec![tv("DateTime", TTLValue::LongInteger(456))]),
+        );
+        normalize_ttlv(&mut root);
+        assert_eq!(root.value, TTLValue::DateTimeExtended(456));
+    }
+
+    #[test]
+    fn integer_leaf_interval_and_datetimeextended() {
+        // Tail conversions for direct leaves
+        let mut interval = tv("Interval", TTLValue::Integer(9));
+        normalize_ttlv(&mut interval);
+        assert_eq!(interval.value, TTLValue::Interval(9));
+
+        let mut dt = tv("DateTime", TTLValue::Integer(7));
+        normalize_ttlv(&mut dt);
+        assert_eq!(dt.value, TTLValue::DateTimeExtended(7));
+    }
+
+    #[test]
+    fn long_leaf_datetimeextended() {
+        let mut dtx = tv("DateTimeExtended", TTLValue::LongInteger(9));
+        normalize_ttlv(&mut dtx);
+        assert_eq!(dtx.value, TTLValue::DateTimeExtended(9));
+    }
+
+    #[test]
+    fn bigint_digits_run_under_biginteger() {
+        // BigInteger with digits as children -> BigInteger
+        let mut root = tv(
+            "BigInteger",
+            TTLValue::Structure(vec![
+                tv("BigInteger", TTLValue::Integer(1)),
+                tv("BigInteger", TTLValue::Integer(2)),
+            ]),
+        );
+        normalize_ttlv(&mut root);
+        let kbi = kmip_big_int::KmipBigInt::from_u32_digits(1, &[1, 2]).unwrap();
+        assert_eq!(root.value, TTLValue::BigInteger(kbi));
+    }
+
+    #[test]
+    fn bigint_sign_and_inner_digits_structure() {
+        // BigInteger with Sign and inner Structure digits
+        let mut root = tv(
+            "BigInteger",
+            TTLValue::Structure(vec![
+                tv("Sign", TTLValue::Integer(-1)),
+                tv(
+                    "BigInteger",
+                    TTLValue::Structure(vec![
+                        tv("BigInteger", TTLValue::Integer(3)),
+                        tv("BigInteger", TTLValue::Integer(4)),
+                    ]),
+                ),
+            ]),
+        );
+        normalize_ttlv(&mut root);
+        let kbi = kmip_big_int::KmipBigInt::from_u32_digits(-1, &[3, 4]).unwrap();
+        assert_eq!(root.value, TTLValue::BigInteger(kbi));
+    }
+
+    #[test]
+    fn bigint_field_tag_digits_run() {
+        // Known BigInt field tags collapse
+        let mut root = tv(
+            "Modulus",
+            TTLValue::Structure(vec![
+                tv("Modulus", TTLValue::Integer(10)),
+                tv("Modulus", TTLValue::Integer(11)),
+            ]),
+        );
+        normalize_ttlv(&mut root);
+        let kbi = kmip_big_int::KmipBigInt::from_u32_digits(1, &[10, 11]).unwrap();
+        assert_eq!(root.value, TTLValue::BigInteger(kbi));
+    }
+
+    #[test]
+    fn bigint_posneg_shortcuts() {
+        // BigIntNeg digits run with negative sign
+        let mut root = tv(
+            "BigIntNeg",
+            TTLValue::Structure(vec![
+                tv("BigIntNeg", TTLValue::Integer(5)),
+                tv("BigIntNeg", TTLValue::Integer(6)),
+            ]),
+        );
+        normalize_ttlv(&mut root);
+        let kbi = kmip_big_int::KmipBigInt::from_u32_digits(-1, &[5, 6]).unwrap();
+        assert_eq!(root.value, TTLValue::BigInteger(kbi));
+    }
+
+    #[test]
+    fn generic_numeric_digits_run_collapse() {
+        // Non-byte-range or presence of LongInteger triggers generic digits collapse
+        let mut root = tv(
+            "SomeBig",
+            TTLValue::Structure(vec![
+                tv("SomeBig", TTLValue::LongInteger(70000)),
+                tv("SomeBig", TTLValue::Integer(2)),
+            ]),
+        );
+        normalize_ttlv(&mut root);
+        let kbi = kmip_big_int::KmipBigInt::from_u32_digits(1, &[70000, 2]).unwrap();
+        assert_eq!(root.value, TTLValue::BigInteger(kbi));
+    }
+
+    #[test]
+    fn sibling_level_sign_magnitude_merge() {
+        // Sibling-level merge: multiple entries of same BigInt field tag collapse into one
+        let mut root = tv(
+            "Parent",
+            TTLValue::Structure(vec![
+                tv("Modulus", TTLValue::Integer(-1)),
+                tv(
+                    "Modulus",
+                    TTLValue::Structure(vec![
+                        tv("Modulus", TTLValue::Integer(1)),
+                        tv("Modulus", TTLValue::Integer(2)),
+                    ]),
+                ),
+                tv("Other", TTLValue::Integer(0)),
+            ]),
+        );
+        normalize_ttlv(&mut root);
+        let TTLValue::Structure(ref items) = root.value else {
+            panic!("not structure")
+        };
+        let modulus: Vec<&TTLV> = items.iter().filter(|c| c.tag == "Modulus").collect();
+        assert_eq!(modulus.len(), 1);
+        let kbi = kmip_big_int::KmipBigInt::from_u32_digits(-1, &[1, 2]).unwrap();
+        assert_eq!(modulus[0].value, TTLValue::BigInteger(kbi));
+    }
+
+    #[test]
+    fn byte_like_concatenation_multiple_children() {
+        // Step 8: concatenate multiple byte-like children into a single ByteString
+        let mut root = tv(
+            "Data",
+            TTLValue::Structure(vec![
+                tv("Data", TTLValue::ByteString(vec![1, 2])),
+                tv(
+                    "Data",
+                    TTLValue::Structure(vec![
+                        tv("Data", TTLValue::Integer(3)),
+                        tv("Data", TTLValue::Integer(4)),
+                    ]),
+                ),
+            ]),
+        );
+        normalize_ttlv(&mut root);
+        assert_eq!(root.value, TTLValue::ByteString(vec![1, 2, 3, 4]));
+    }
+}
