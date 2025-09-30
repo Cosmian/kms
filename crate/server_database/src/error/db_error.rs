@@ -1,13 +1,15 @@
 use std::array::TryFromSliceError;
 
 #[cfg(feature = "non-fips")]
-use cloudproof_findex::implementations::redis::FindexRedisError;
+use cosmian_findex::Error as FindexError;
 use cosmian_kmip::{
     KmipError, kmip_0::kmip_types::ErrorReason, kmip_1_4::kmip_types::ResultReason,
 };
 use cosmian_kms_crypto::{CryptoError, reexport::cosmian_crypto_core::CryptoCoreError};
 use cosmian_kms_interfaces::InterfaceError;
 use cosmian_logger::reexport::tracing;
+#[cfg(feature = "non-fips")]
+use cosmian_sse_memories::{ADDRESS_LENGTH, Address, RedisMemoryError};
 use thiserror::Error;
 
 use crate::DbError::CryptographicError;
@@ -38,9 +40,6 @@ pub enum DbError {
     // Default error
     #[error("{0}")]
     Default(String),
-
-    #[error("Findex Error: {0}")]
-    Findex(String),
 
     // When a user requests something, which is nonsense
     #[error("Inconsistent operation: {0}")]
@@ -105,6 +104,19 @@ pub enum DbError {
     // When a the UnwrappedCache (LRU cache) returns an error
     #[error("Unwrapped cache error: {0}")]
     UnwrappedCache(String),
+
+    // When the Findex's algorithm returns a non-memory related error
+    #[cfg(feature = "non-fips")]
+    #[error("Findex internal error: {0}")]
+    Findex(#[from] FindexError<Address<ADDRESS_LENGTH>>),
+
+    // Error related to the Redis-Memory (used underneath Findex)
+    #[cfg(feature = "non-fips")]
+    #[error("Redis-Memory error: {0}")]
+    RedisMemory(#[from] RedisMemoryError),
+
+    #[error("Crypto-core error: {0}")]
+    CryptoCoreError(#[from] CryptoCoreError),
 }
 
 impl From<std::string::FromUtf8Error> for DbError {
@@ -152,12 +164,6 @@ impl From<InterfaceError> for DbError {
     }
 }
 
-impl From<CryptoCoreError> for DbError {
-    fn from(e: CryptoCoreError) -> Self {
-        CryptographicError(e.to_string())
-    }
-}
-
 impl From<CryptoError> for DbError {
     fn from(e: CryptoError) -> Self {
         match e {
@@ -177,13 +183,6 @@ impl From<CryptoError> for DbError {
             CryptoError::Covercrypt(e) => CryptographicError(e.to_string()),
             CryptoError::TryFromSliceError(e) => CryptographicError(e.to_string()),
         }
-    }
-}
-
-#[cfg(feature = "non-fips")]
-impl From<FindexRedisError> for DbError {
-    fn from(e: FindexRedisError) -> Self {
-        Self::Findex(e.to_string())
     }
 }
 

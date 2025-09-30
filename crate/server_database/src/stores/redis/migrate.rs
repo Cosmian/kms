@@ -58,7 +58,7 @@ impl RedisWithFindex {
         redis::cmd("SET")
             .arg("db_state")
             .arg(state_json)
-            .query_async::<_, ()>(&mut self.mgr.clone())
+            .query_async::<()>(&mut self.mgr.clone())
             .await
             .map_err(|e| DbError::DatabaseError(format!("Failed to set DB state: {e}")))?;
 
@@ -79,7 +79,7 @@ impl RedisWithFindex {
         redis::cmd("SET")
             .arg("db_version")
             .arg(version)
-            .query_async::<_, ()>(&mut self.mgr.clone())
+            .query_async::<()>(&mut self.mgr.clone())
             .await
             .map_err(|e| DbError::DatabaseError(format!("Failed to set DB version: {e}")))?;
 

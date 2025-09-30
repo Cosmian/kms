@@ -1,6 +1,7 @@
 use std::{fmt, str::FromStr};
 
 use serde::{Deserialize, Serialize};
+use strum::FromRepr;
 
 pub mod extra;
 pub mod kmip_attributes;
@@ -13,27 +14,30 @@ pub mod requests;
 
 /// Operation types that can get or create objects
 /// These operations use `retrieve` or `get` methods.
-#[derive(Eq, PartialEq, Serialize, Deserialize, Copy, Clone, Hash, PartialOrd, Ord)]
+#[derive(Eq, PartialEq, Serialize, Deserialize, Copy, Clone, Hash, PartialOrd, Ord, FromRepr)]
 #[serde(rename_all = "lowercase")]
+#[repr(u8)]
 pub enum KmipOperation {
-    Create,
-    Certify,
-    Decrypt,
-    DeriveKey,
-    Destroy,
-    Encrypt,
-    Export,
-    Get,
-    GetAttributes,
-    Hash,
-    Import,
-    Locate,
-    MAC,
-    Revoke,
-    Rekey,
-    Sign,
-    SignatureVerify,
-    Validate,
+    Create = 0,
+    Certify = 1,
+    Decrypt = 2,
+    DeriveKey = 3,
+    Destroy = 4,
+    Encrypt = 5,
+    Export = 6,
+    Get = 7,
+    GetAttributes = 8,
+    Hash = 9,
+    Import = 10,
+    Locate = 11,
+    MAC = 12,
+    Revoke = 13,
+    Rekey = 14,
+    Sign = 15,
+    SignatureVerify = 16,
+    Validate = 17,
+    // This enum gets serialized, so new variants must be added at the end
+    // If it's imperative to change their order, consider a migration for Redis's DB
 }
 
 impl fmt::Debug for KmipOperation {
