@@ -36,6 +36,7 @@ use cosmian_kms_interfaces::{
     CryptoAlgorithm, EncryptedContent, HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject,
     HsmObjectFilter, InterfaceError, InterfaceResult, KeyMetadata, KeyType,
 };
+use cosmian_logger::debug;
 use zeroize::Zeroizing;
 
 use crate::{AesKeySize, BaseHsm, RsaKeySize, hsm_capabilities::HsmProvider};
@@ -158,8 +159,10 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         let handles = session.list_objects(object_filter)?;
         let mut object_ids = Vec::with_capacity(handles.len());
         for handle in handles {
-            if let Some(object_id) = session.get_object_id(handle)? {
+            if let Ok(Some(object_id)) = session.get_object_id(handle) {
                 object_ids.push(object_id);
+            } else {
+                debug!("Invalid object, skipping");
             }
         }
         Ok(object_ids)

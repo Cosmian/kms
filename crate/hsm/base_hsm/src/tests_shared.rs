@@ -5,19 +5,23 @@
 
 use std::{collections::HashMap, ptr, sync::Arc, thread};
 
-use cosmian_kms_interfaces::{HsmObjectFilter, KeyMaterial, KeyType};
+use cosmian_kms_interfaces::{HSM, HsmObjectFilter, KeyMaterial, KeyType};
 use cosmian_logger::{info, log_init};
+use futures::executor::block_on;
 use libloading::Library;
 use pkcs11_sys::{
-    CK_C_INITIALIZE_ARGS, CK_RV, CK_VOID_PTR, CKF_OS_LOCKING_OK, CKM_AES_CBC, CKM_RSA_PKCS_OAEP,
-    CKR_OK,
+    CK_ATTRIBUTE, CK_BBOOL, CK_C_INITIALIZE_ARGS, CK_FALSE, CK_KEY_TYPE, CK_MECHANISM,
+    CK_MECHANISM_PTR, CK_OBJECT_HANDLE, CK_RV, CK_TRUE, CK_ULONG, CK_VOID_PTR, CKA_DECRYPT,
+    CKA_ECDSA_PARAMS, CKA_ENCRYPT, CKA_EXTRACTABLE, CKA_KEY_TYPE, CKA_LABEL, CKA_PRIVATE,
+    CKA_SENSITIVE, CKA_SIGN, CKA_TOKEN, CKA_UNWRAP, CKA_VERIFY, CKA_WRAP, CKF_OS_LOCKING_OK,
+    CKK_EC, CKM_AES_CBC, CKM_EC_KEY_PAIR_GEN, CKM_RSA_PKCS_OAEP, CKR_OK,
 };
 use rand::{TryRngCore, rngs::OsRng};
 use uuid::Uuid;
 
 use crate::{
     AesKeySize, BaseHsm, HError, HResult, HsmEncryptionAlgorithm, RsaKeySize, RsaOaepDigest,
-    SlotManager,
+    Session, SlotManager, hsm_call,
 };
 
 /// Per-HSM configuration for shared tests
@@ -63,13 +67,21 @@ pub fn low_level_init_test(cfg: &HsmTestConfig) -> HResult<()> {
     Ok(())
 }
 
-/// Instantiate the HSM and return a slot manager for the configured slot id.
-pub fn instantiate_and_get_slot<P>(cfg: &HsmTestConfig) -> HResult<Arc<SlotManager>>
+pub fn instantiate<P>(cfg: &HsmTestConfig) -> HResult<BaseHsm<P>>
 where
     P: crate::hsm_capabilities::HsmProvider,
     BaseHsm<P>: Sized,
 {
-    let hsm = BaseHsm::<P>::instantiate(cfg.lib_path, cfg.slot_ids_and_passwords.clone())?;
+    info!("instantiating hsm");
+    BaseHsm::<P>::instantiate(cfg.lib_path, cfg.slot_ids_and_passwords.clone())
+}
+
+pub fn get_slot<P>(hsm: &BaseHsm<P>, cfg: &HsmTestConfig) -> HResult<Arc<SlotManager>>
+where
+    P: crate::hsm_capabilities::HsmProvider,
+    BaseHsm<P>: Sized,
+{
+    info!("getting available slot list");
     let slots = hsm.get_available_slot_list()?;
     if !slots.contains(&cfg.slot_id_for_tests) {
         return Err(HError::Default(format!(
@@ -77,7 +89,18 @@ where
             cfg.slot_id_for_tests, slots
         )));
     }
+    info!("Getting slot");
     hsm.get_slot(cfg.slot_id_for_tests)
+}
+
+/// Instantiate the HSM and return a slot manager for the configured slot id.
+pub fn instantiate_and_get_slot<P>(cfg: &HsmTestConfig) -> HResult<Arc<SlotManager>>
+where
+    P: crate::hsm_capabilities::HsmProvider,
+    BaseHsm<P>: Sized,
+{
+    let hsm: BaseHsm<P> = instantiate(cfg)?;
+    get_slot(&hsm, cfg)
 }
 
 pub fn get_info<P>(cfg: &HsmTestConfig) -> HResult<()>
@@ -94,6 +117,7 @@ where
 
 pub fn get_mechanisms_and_hashes(slot: &Arc<SlotManager>) -> HResult<()> {
     log_init(None);
+    info!("Getting mechanisms");
     let mut mechanisms = slot.get_supported_mechanisms()?;
     mechanisms.sort_unstable();
     info!("Supported mechanisms: {:?}", mechanisms);
@@ -648,4 +672,201 @@ pub fn get_key_metadata(slot: &Arc<SlotManager>) -> HResult<()> {
     assert_eq!(metadata.id.as_str(), pk_id.as_str());
     info!("Got key metadata");
     Ok(())
+}
+
+#[allow(clippy::panic, clippy::unwrap_used)]
+pub fn search_incompatible_key<P>(hsm: &BaseHsm<P>, cfg: &HsmTestConfig) -> HResult<()>
+where
+    P: crate::hsm_capabilities::HsmProvider,
+    BaseHsm<P>: Sized,
+{
+    log_init(None);
+    let valid_key_id_0 = Uuid::new_v4().to_string();
+    let valid_key_id_1 = Uuid::new_v4().to_string();
+    let valid_key_id_2 = Uuid::new_v4().to_string();
+    let valid_key_id_3 = Uuid::new_v4().to_string();
+    let slot = get_slot(hsm, cfg)?;
+    let session = slot.open_session(true)?;
+
+    let object_list_start = session.list_objects(HsmObjectFilter::Any)?;
+    let object_find_start =
+        block_on(hsm.find(cfg.slot_id_for_tests, HsmObjectFilter::Any)).unwrap_or(vec![]);
+
+    let valid_key_handle_0 =
+        session.generate_aes_key(valid_key_id_0.as_bytes(), AesKeySize::Aes128, false)?;
+    let valid_key_handle_1 =
+        session.generate_aes_key(valid_key_id_1.as_bytes(), AesKeySize::Aes128, false)?;
+    let Ok((sk, pk)) = generate_incompatible_key_pair(&session) else {
+        info!("Failed to generate incompatible key. Skipping invalid object search test");
+        return Ok(());
+    };
+    let valid_key_handle_2 =
+        session.generate_aes_key(valid_key_id_2.as_bytes(), AesKeySize::Aes128, false)?;
+    let valid_key_handle_3 =
+        session.generate_aes_key(valid_key_id_3.as_bytes(), AesKeySize::Aes128, false)?;
+
+    let object_list_test = session.list_objects(HsmObjectFilter::Any)?;
+    let object_find_test =
+        block_on(hsm.find(cfg.slot_id_for_tests, HsmObjectFilter::Any)).unwrap_or(vec![]);
+    assert_eq!(object_list_start.len() + 6, object_list_test.len());
+    assert_eq!(object_find_start.len() + 4, object_find_test.len());
+
+    session.destroy_object(valid_key_handle_0)?;
+    session.destroy_object(valid_key_handle_1)?;
+    session.destroy_object(sk)?;
+    session.destroy_object(pk)?;
+    session.destroy_object(valid_key_handle_2)?;
+    session.destroy_object(valid_key_handle_3)?;
+
+    let object_list_end = session.list_objects(HsmObjectFilter::Any)?;
+    let object_find_end =
+        block_on(hsm.find(cfg.slot_id_for_tests, HsmObjectFilter::Any)).unwrap_or(vec![]);
+    assert_eq!(object_list_start.len(), object_list_end.len());
+    assert_eq!(object_find_start.len(), object_find_end.len());
+    info!("Tested invalid object search");
+    Ok(())
+}
+
+fn generate_incompatible_key_pair(
+    session: &Session,
+) -> HResult<(CK_OBJECT_HANDLE, CK_OBJECT_HANDLE)> {
+    let ec_params: [u8; 11] = [
+        0x06, 0x09, 0x2b, 0x24, 0x03, 0x03, 0x02, 0x08, 0x01, 0x01, 0x03,
+    ]; // brainpoolP192r1
+    let sk_id = Uuid::new_v4().to_string();
+    let pk_id = sk_id.clone() + "_pk";
+    let mut pub_key_handle = CK_OBJECT_HANDLE::default();
+    let mut priv_key_handle = CK_OBJECT_HANDLE::default();
+    let mut pub_key_template = vec![
+        CK_ATTRIBUTE {
+            type_: CKA_KEY_TYPE,
+            pValue: std::ptr::from_ref(&CKK_EC)
+                .cast::<std::ffi::c_void>()
+                .cast_mut(),
+            ulValueLen: CK_ULONG::try_from(size_of::<CK_KEY_TYPE>())?,
+        },
+        CK_ATTRIBUTE {
+            type_: CKA_TOKEN,
+            pValue: std::ptr::from_ref(&CK_TRUE)
+                .cast::<std::ffi::c_void>()
+                .cast_mut(),
+            ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
+        },
+        CK_ATTRIBUTE {
+            type_: CKA_ENCRYPT,
+            pValue: std::ptr::from_ref(&CK_TRUE)
+                .cast::<std::ffi::c_void>()
+                .cast_mut(),
+            ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
+        },
+        CK_ATTRIBUTE {
+            type_: CKA_ECDSA_PARAMS,
+            pValue: ec_params.as_ptr().cast::<std::ffi::c_void>().cast_mut(),
+            ulValueLen: CK_ULONG::try_from(ec_params.len())?,
+        },
+        CK_ATTRIBUTE {
+            type_: CKA_LABEL,
+            pValue: pk_id.as_ptr().cast::<std::ffi::c_void>().cast_mut(),
+            ulValueLen: CK_ULONG::try_from(pk_id.len())?,
+        },
+        CK_ATTRIBUTE {
+            type_: CKA_WRAP,
+            pValue: std::ptr::from_ref(&CK_TRUE)
+                .cast::<std::ffi::c_void>()
+                .cast_mut(),
+            ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
+        },
+        CK_ATTRIBUTE {
+            type_: CKA_VERIFY,
+            pValue: std::ptr::from_ref(&CK_TRUE)
+                .cast::<std::ffi::c_void>()
+                .cast_mut(),
+            ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
+        },
+    ];
+
+    let mut priv_key_template = vec![
+        CK_ATTRIBUTE {
+            type_: CKA_KEY_TYPE,
+            pValue: std::ptr::from_ref(&CKK_EC)
+                .cast::<std::ffi::c_void>()
+                .cast_mut(),
+            ulValueLen: CK_ULONG::try_from(size_of::<CK_KEY_TYPE>())?,
+        },
+        CK_ATTRIBUTE {
+            type_: CKA_TOKEN,
+            pValue: std::ptr::from_ref(&CK_TRUE)
+                .cast::<std::ffi::c_void>()
+                .cast_mut(),
+            ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
+        },
+        CK_ATTRIBUTE {
+            type_: CKA_PRIVATE,
+            pValue: std::ptr::from_ref(&CK_TRUE)
+                .cast::<std::ffi::c_void>()
+                .cast_mut(),
+            ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
+        },
+        CK_ATTRIBUTE {
+            type_: CKA_DECRYPT,
+            pValue: std::ptr::from_ref(&CK_TRUE)
+                .cast::<std::ffi::c_void>()
+                .cast_mut(),
+            ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
+        },
+        CK_ATTRIBUTE {
+            type_: CKA_LABEL,
+            pValue: sk_id.as_ptr().cast::<std::ffi::c_void>().cast_mut(),
+            ulValueLen: CK_ULONG::try_from(sk_id.len())?,
+        },
+        CK_ATTRIBUTE {
+            type_: CKA_UNWRAP,
+            pValue: std::ptr::from_ref(&CK_TRUE)
+                .cast::<std::ffi::c_void>()
+                .cast_mut(),
+            ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
+        },
+        CK_ATTRIBUTE {
+            type_: CKA_SIGN,
+            pValue: std::ptr::from_ref(&CK_TRUE)
+                .cast::<std::ffi::c_void>()
+                .cast_mut(),
+            ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
+        },
+        CK_ATTRIBUTE {
+            type_: CKA_SENSITIVE,
+            pValue: std::ptr::from_ref(&CK_FALSE)
+                .cast::<std::ffi::c_void>()
+                .cast_mut(),
+            ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
+        },
+        CK_ATTRIBUTE {
+            type_: CKA_EXTRACTABLE,
+            pValue: std::ptr::from_ref(&CK_TRUE)
+                .cast::<std::ffi::c_void>()
+                .cast_mut(),
+            ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
+        },
+    ];
+    let mut mechanism = CK_MECHANISM {
+        mechanism: CKM_EC_KEY_PAIR_GEN,
+        pParameter: ptr::null_mut(),
+        ulParameterLen: 0,
+    };
+    let p_mechanism: CK_MECHANISM_PTR = &raw mut mechanism;
+    hsm_call!(
+        session.hsm(),
+        "Failed generating EC key pair",
+        C_GenerateKeyPair,
+        session.session_handle(),
+        p_mechanism,
+        pub_key_template.as_mut_ptr(),
+        CK_ULONG::try_from(pub_key_template.len())?,
+        priv_key_template.as_mut_ptr(),
+        CK_ULONG::try_from(priv_key_template.len())?,
+        &raw mut pub_key_handle,
+        &raw mut priv_key_handle
+    );
+
+    Ok((priv_key_handle, pub_key_handle))
 }
