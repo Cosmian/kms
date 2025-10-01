@@ -227,8 +227,25 @@ impl SocketServer {
                     *stop_requested = true;
                     // Trigger a connection to ourselves to break the `accept` loop
                     if let Ok(local_address) = listener_clone.local_addr() {
+                        // On Windows, connecting to an unspecified address (0.0.0.0 or ::) fails (os error 10049).
+                        // Prefer loopback when the listener is bound to an unspecified address.
+                        let connect_addr = match local_address.ip() {
+                            std::net::IpAddr::V4(ipv4) if ipv4.is_unspecified() => {
+                                std::net::SocketAddr::new(
+                                    std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+                                    local_address.port(),
+                                )
+                            }
+                            std::net::IpAddr::V6(ipv6) if ipv6.is_unspecified() => {
+                                std::net::SocketAddr::new(
+                                    std::net::IpAddr::V6(std::net::Ipv6Addr::LOCALHOST),
+                                    local_address.port(),
+                                )
+                            }
+                            _ => local_address,
+                        };
                         if let Ok(_c) =
-                            TcpStream::connect_timeout(&local_address, Duration::from_secs(5))
+                            TcpStream::connect_timeout(&connect_addr, Duration::from_secs(5))
                                 .map_err(|e| {
                                     error!("Socket server failed to connect to itself: {}", e);
                                 })
