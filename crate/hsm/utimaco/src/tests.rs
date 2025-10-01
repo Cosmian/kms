@@ -43,6 +43,7 @@ fn test_hsm_utimaco_all() -> HResult<()> {
     test_hsm_utimaco_multi_threaded_rsa_encrypt_decrypt_test()?;
     test_hsm_utimaco_get_key_metadata()?;
     test_hsm_utimaco_list_objects()?;
+    test_hsm_utimaco_search_incompatible_key()?;
     test_hsm_utimaco_destroy_all()?;
     Ok(())
 }
@@ -129,6 +130,14 @@ fn test_hsm_utimaco_list_objects() -> HResult<()> {
 fn test_hsm_utimaco_get_key_metadata() -> HResult<()> {
     let slot = shared::instantiate_and_get_slot::<UtimacoCapabilityProvider>(&cfg()?)?;
     shared::get_key_metadata(&slot)
+}
+
+#[test]
+#[ignore = "Requires Linux, Utimaco PKCS#11 library, and HSM environment"]
+fn test_hsm_utimaco_search_incompatible_key() -> HResult<()> {
+    let config = &cfg()?;
+    let hsm = shared::instantiate::<UtimacoCapabilityProvider>(config)?;
+    shared::search_incompatible_key(&hsm, &cfg()?)
 }
 
 #[test]

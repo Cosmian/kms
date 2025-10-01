@@ -20,6 +20,7 @@ doctest = false
 async-trait = { workspace = true }
 cosmian_kms_interfaces = { path = "../../interfaces", version = "5.9.0" }
 cosmian_logger = { workspace = true }
+futures = { workspace = true }
 libloading = { workspace = true }
 lru = { workspace = true }
 pkcs11-sys = { workspace = true }

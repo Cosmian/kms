@@ -1695,13 +1695,16 @@ impl Session {
                 }
                 let key_length_in_bits = modulus.len() * 8;
 
-                let label = if label_len == 0 {
+                let mut label = if label_len == 0 {
                     String::new()
                 } else {
                     String::from_utf8(label_bytes).map_err(|e| {
                         HError::Default(format!("Failed to convert label to string: {e}"))
                     })?
                 };
+                if key_type == KeyType::RsaPublicKey && !label.trim().ends_with("_pk") {
+                    label = label.trim().to_owned().add("_pk");
+                }
                 let sensitive = sensitive == CK_TRUE;
                 Ok(Some(KeyMetadata {
                     key_type,
