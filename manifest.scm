@@ -3,15 +3,17 @@
 ;; that accepts a '--manifest' (or '-m') option.
 
 (specifications->manifest
-  (list "openssl"
-        "sqlite"
-        "clang"
-        "bash"
-        "coreutils"
-        "curl"
-        "grep"
-        "gcc-toolchain"
-        "git"
-        "pkg-config"
-        "zlib"
-        "nss-certs"))
+  (list
+    ; "openssl"
+    ; "sqlite"
+    "bash"
+    "coreutils"
+    "curl"
+    "grep"
+    "gcc-toolchain"
+    ; "git"
+    "pkg-config"
+    "zlib"
+    "nss-certs"
+    ; "findutils"
+    ))

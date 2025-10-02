@@ -51,29 +51,44 @@
   #:use-module (gnu packages tls)
   #:use-module (srfi srfi-1)
   #:use-module (srfi srfi-34)
-  #:use-module (srfi srfi-35))
-
+  #:use-module (srfi srfi-35)
+  #:use-module (guix profiles))
 
 (define-public openssl-3.1.2
   (package
-   (inherit openssl-3.0)
-   (version "3.1.2")
-   (source (origin
-            (method url-fetch)
-            (uri (list
-                  (string-append
-                   "https://github.com/openssl/openssl/releases/download/openssl-"
-                   version
-                   "/openssl-"
-                   version
-                   ".tar.gz")))
-            (sha256
-             (base16-string->bytevector
-              ;; Value found on the OpenSSL website.
-              "a0ce69b8b97ea6a35b96875235aa453b966ba3cba8af2de23657d8b6767d6539"))))
-   (arguments
-    (substitute-keyword-arguments
-     (package-arguments openssl-3.0)
-     ((#:disallowed-references refs  #~'()) '())
-     ((#:configure-flags       flags #~'()) #~(append #$flags
-                                                      '("enable-fips")))))))
+    (inherit openssl-3.0)
+    (version "3.1.2")
+    (source (origin
+        (method url-fetch)
+        (uri (list
+            (string-append
+              "https://github.com/openssl/openssl/releases/download/openssl-"
+              version
+              "/openssl-"
+              version
+              ".tar.gz")))
+        (sha256
+          (base16-string->bytevector
+            ;; Value found on the OpenSSL website.
+            "a0ce69b8b97ea6a35b96875235aa453b966ba3cba8af2de23657d8b6767d6539"))))
+    (arguments
+      (substitute-keyword-arguments
+        (package-arguments openssl-3.0)
+        ((#:disallowed-references refs #~ '()) '())
+        ((#:configure-flags flags #~ '()) #~ (append #$flags
+            '("enable-fips" "no-shared" "no-dynamic-engine")))))))
+
+
+;; Make this file evaluate to the package when used with 'guix build -f'
+; openssl-3.1.2
+
+(manifest
+  (list
+    (manifest-entry
+      (name "openssl")
+      (version (package-version openssl-3.1.2))
+      (item openssl-3.1.2))
+    (manifest-entry
+      (name "openssl")
+      (version (package-version openssl-3.1.2))
+      (output "static") (item openssl-3.1.2))))
