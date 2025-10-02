@@ -119,6 +119,12 @@ pub enum DbError {
     CryptoCoreError(#[from] CryptoCoreError),
 }
 
+impl From<uuid::Error> for DbError {
+    fn from(e: uuid::Error) -> Self {
+        Self::ConversionError(format!("UUID conversion error: {}", e))
+    }
+}
+
 impl From<std::string::FromUtf8Error> for DbError {
     fn from(e: std::string::FromUtf8Error) -> Self {
         Self::ConversionError(e.to_string())
@@ -127,6 +133,12 @@ impl From<std::string::FromUtf8Error> for DbError {
 
 impl From<std::num::TryFromIntError> for DbError {
     fn from(e: std::num::TryFromIntError) -> Self {
+        Self::ConversionError(e.to_string())
+    }
+}
+
+impl From<TryFromSliceError> for DbError {
+    fn from(e: TryFromSliceError) -> Self {
         Self::ConversionError(e.to_string())
     }
 }
@@ -140,12 +152,6 @@ impl From<std::io::Error> for DbError {
 impl From<serde_json::Error> for DbError {
     fn from(e: serde_json::Error) -> Self {
         Self::InvalidRequest(e.to_string())
-    }
-}
-
-impl From<TryFromSliceError> for DbError {
-    fn from(e: TryFromSliceError) -> Self {
-        Self::ConversionError(e.to_string())
     }
 }
 
