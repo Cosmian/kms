@@ -25,9 +25,9 @@ pub enum DbError {
     #[error("REST client connection error: {0}")]
     ClientConnectionError(String),
 
-    // When a conversion from/to bytes
+    // Most conversion errors (UUID, UTF-8, ...). Refer to ['ConversionError'].
     #[error("Conversion Error: {0}")]
-    ConversionError(String),
+    ConversionError(#[from] ConversionDbError),
 
     // A failure originating from one of the cryptographic algorithms
     #[error("Cryptographic error: {0}")]
@@ -119,27 +119,54 @@ pub enum DbError {
     CryptoCoreError(#[from] CryptoCoreError),
 }
 
+#[derive(Error, Debug)]
+pub enum ConversionDbError {
+    #[error("UUID conversion error: {0}")]
+    Uuid(#[from] uuid::Error),
+
+    #[error("UTF-8 conversion error: {0}")]
+    FromUtf8(#[from] std::string::FromUtf8Error),
+
+    #[error("TryFromIntError conversion error: {0}")]
+    TryFromInt(#[from] std::num::TryFromIntError),
+
+    #[error("TryFromSliceError conversion error: {0}")]
+    TryFromSlice(#[from] TryFromSliceError),
+
+    #[error("JSON serialization error: {0}")]
+    SerdeJson(#[from] serde_json::Error),
+
+    #[error("Conversion error: {0}")]
+    Other(String),
+}
+
 impl From<uuid::Error> for DbError {
     fn from(e: uuid::Error) -> Self {
-        Self::ConversionError(format!("UUID conversion error: {}", e))
+        Self::ConversionError(ConversionDbError::Uuid(e))
     }
 }
 
 impl From<std::string::FromUtf8Error> for DbError {
     fn from(e: std::string::FromUtf8Error) -> Self {
-        Self::ConversionError(e.to_string())
+        Self::ConversionError(ConversionDbError::FromUtf8(e))
     }
 }
 
 impl From<std::num::TryFromIntError> for DbError {
     fn from(e: std::num::TryFromIntError) -> Self {
-        Self::ConversionError(e.to_string())
+        Self::ConversionError(ConversionDbError::TryFromInt(e))
     }
 }
 
 impl From<TryFromSliceError> for DbError {
     fn from(e: TryFromSliceError) -> Self {
-        Self::ConversionError(e.to_string())
+        Self::ConversionError(ConversionDbError::TryFromSlice(e))
+    }
+}
+
+impl From<String> for ConversionDbError {
+    fn from(e: String) -> Self {
+        Self::Other(e)
     }
 }
 
@@ -207,8 +234,10 @@ impl From<KmipError> for DbError {
             | KmipError::ConversionError(s)
             | KmipError::IndexingSlicing(s)
             | KmipError::ObjectNotFound(s) => Self::NotSupported(s),
-            KmipError::TryFromSliceError(s) => Self::ConversionError(s.to_string()),
-            KmipError::SerdeJsonError(s) => Self::ConversionError(s.to_string()),
+            KmipError::TryFromSliceError(e) => {
+                Self::ConversionError(ConversionDbError::TryFromSlice(e))
+            }
+            KmipError::SerdeJsonError(e) => Self::ConversionError(ConversionDbError::SerdeJson(e)),
             KmipError::Deserialization(e) | KmipError::Serialization(e) => {
                 Self::Kmip21Error(ErrorReason::Codec_Error, e)
             }

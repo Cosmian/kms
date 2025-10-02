@@ -119,7 +119,9 @@ impl Serializable for PermTriple {
         let user_id = UserId(Uuid::from_bytes(de.read_array()?).into());
         let perm_byte = de.read_array::<1>()?;
         let permission = KmipOperation::from_repr(perm_byte[0]).ok_or_else(|| {
-            DbError::ConversionError(format!("Invalid KmipOperation value: {}", perm_byte[0]))
+            DbError::ConversionError(
+                format!("Invalid KmipOperation value: {}", perm_byte[0]).into(),
+            )
         })?;
         Ok(PermTriple {
             obj_uid,

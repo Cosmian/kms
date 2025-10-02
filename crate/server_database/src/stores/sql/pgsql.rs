@@ -60,8 +60,9 @@ fn pg_row_to_owm(row: &PgRow) -> Result<ObjectWithMetadata, DbError> {
     let attributes: Attributes = serde_json::from_value(row.get::<Value, _>(2))
         .context("failed deserializing the Attributes")?;
     let owner = row.get::<String, _>(3);
-    let state = State::try_from(row.get::<String, _>(4).as_str())
-        .map_err(|e| DbError::ConversionError(format!("failed converting the state: {e}")))?;
+    let state = State::try_from(row.get::<String, _>(4).as_str()).map_err(|e| {
+        DbError::ConversionError(format!("failed converting the state: {e}").into())
+    })?;
     Ok(ObjectWithMetadata::new(
         id, object, owner, state, attributes,
     ))
@@ -605,7 +606,7 @@ where
             (
                 row.get::<String, _>(1),
                 State::try_from(row.get::<String, _>(2).as_str()).map_err(|e| {
-                    DbError::ConversionError(format!("failed converting the state: {e}"))
+                    DbError::ConversionError(format!("failed converting the state: {e}").into())
                 })?,
                 serde_json::from_value(
                     row.try_get::<Value, _>(3)
@@ -779,7 +780,7 @@ fn to_qualified_uids(rows: &[PgRow]) -> DbResult<Vec<(String, State, Attributes)
         uids.push((
             row.get::<String, _>(0),
             State::try_from(row.get::<String, _>(1).as_str()).map_err(|e| {
-                DbError::ConversionError(format!("failed converting the state: {e}"))
+                DbError::ConversionError(format!("failed converting the state: {e}").into())
             })?,
             attrs,
         ));

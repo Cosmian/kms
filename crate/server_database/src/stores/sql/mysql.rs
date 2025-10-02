@@ -644,7 +644,7 @@ where
             (
                 row.get::<String, _>(1),
                 State::try_from(row.get::<String, _>(2).as_str()).map_err(|e| {
-                    DbError::ConversionError(format!("failed converting the state: {e}"))
+                    DbError::ConversionError(format!("failed converting the state: {e}").into())
                 })?,
                 serde_json::from_value(
                     row.try_get::<Value, _>(3)
@@ -812,7 +812,7 @@ fn to_qualified_uids(rows: &[MySqlRow]) -> DbResult<Vec<(String, State, Attribut
         uids.push((
             row.get::<String, _>(0),
             State::try_from(row.get::<String, _>(1).as_str()).map_err(|e| {
-                DbError::ConversionError(format!("failed converting the state: {e}"))
+                DbError::ConversionError(format!("failed converting the state: {e}").into())
             })?,
             attrs,
         ));
