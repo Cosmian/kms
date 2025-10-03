@@ -78,10 +78,6 @@
         ((#:configure-flags flags #~ '()) #~ (append #$flags
             '("enable-fips" "no-shared" "no-dynamic-engine")))))))
 
-
-;; Make this file evaluate to the package when used with 'guix build -f'
-; openssl-3.1.2
-
 (manifest
   (list
     (manifest-entry
