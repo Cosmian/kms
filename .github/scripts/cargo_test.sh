@@ -75,7 +75,7 @@ fi
 if [ -n "$TEST_GOOGLE_OAUTH_CLIENT_ID" ] && [ -n "$TEST_GOOGLE_OAUTH_CLIENT_SECRET" ] && [ -n "$TEST_GOOGLE_OAUTH_REFRESH_TOKEN" ] && [ -n "$GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY" ]; then
   echo "Running Google CSE tests..."
   # shellcheck disable=SC2086
-  cargo test -p cosmian_kms_server_database --target $TARGET $RELEASE $FEATURES -- --nocapture test_google_cse --ignored
+  cargo test --workspace --lib --target $TARGET $RELEASE $FEATURES -- --nocapture test_google_cse --ignored
 fi
 
 if [ -f /etc/lsb-release ]; then
