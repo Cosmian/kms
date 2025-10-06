@@ -40,6 +40,13 @@ pub enum KmipOperation {
     // If it's imperative to change their order, consider a migration for Redis's DB
 }
 
+impl From<KmipOperation> for u8 {
+    #[allow(clippy::as_conversions)] // the discriminants are defined as u8
+    fn from(op: KmipOperation) -> Self {
+        op as Self
+    }
+}
+
 impl fmt::Debug for KmipOperation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{self}")

@@ -6,7 +6,6 @@ use std::{
 use cosmian_findex::IndexADT;
 use cosmian_kmip::kmip_2_1::KmipOperation;
 use cosmian_kms_crypto::reexport::cosmian_crypto_core::bytes_ser_de::Serializable;
-use uuid::Uuid;
 
 use crate::{
     DbError,
@@ -43,7 +42,7 @@ pub(crate) struct UserId(pub(crate) String);
 impl From<&UserId> for Keyword {
     fn from(uid: &UserId) -> Self {
         // Prefix with "u:" to avoid collisions with objects ids
-        Keyword::from(format!("u:{}", uid.0).as_bytes())
+        Self::from([b"u".as_slice(), uid.0.as_bytes()].concat())
     }
 }
 
@@ -61,7 +60,11 @@ pub(crate) struct PermTriple {
 }
 
 impl PermTriple {
-    pub(crate) fn new(obj_uid: ObjectUid, user_id: UserId, permission: KmipOperation) -> Self {
+    pub(crate) const fn new(
+        obj_uid: ObjectUid,
+        user_id: UserId,
+        permission: KmipOperation,
+    ) -> Self {
         Self {
             obj_uid,
             user_id,
@@ -96,8 +99,9 @@ impl Serializable for PermTriple {
     type Error = DbError;
 
     fn length(&self) -> usize {
-        // obj_uid (16 bytes) + user_id (16 bytes) + permission (1 byte)
-        16 + 16 + 1
+        let obj_uid_len = 1 + self.obj_uid.0.len();
+        let user_id_len = 1 + self.user_id.0.len();
+        obj_uid_len + user_id_len + 1
     }
 
     fn write(
@@ -105,25 +109,24 @@ impl Serializable for PermTriple {
         ser: &mut cosmian_kms_crypto::reexport::cosmian_crypto_core::bytes_ser_de::Serializer, // full dependency path spec if needed to avoid collisions
     ) -> Result<usize, Self::Error> {
         let mut written = 0;
-        // Writing the UUIDs as their raw 16 bytes representation to save space
-        written += ser.write_array(Uuid::parse_str(&self.obj_uid.0)?.as_bytes())?;
-        written += ser.write_array(Uuid::parse_str(&self.user_id.0)?.as_bytes())?;
-        written += ser.write_array(&[self.permission as u8])?;
+        written += ser.write(&self.obj_uid.0)?;
+        written += ser.write(&self.user_id.0)?;
+        written += ser.write_array(&[u8::from(self.permission)])?;
         Ok(written)
     }
 
     fn read(
         de: &mut cosmian_kms_crypto::reexport::cosmian_crypto_core::bytes_ser_de::Deserializer,
     ) -> Result<Self, Self::Error> {
-        let obj_uid = ObjectUid(Uuid::from_bytes(de.read_array()?).into());
-        let user_id = UserId(Uuid::from_bytes(de.read_array()?).into());
+        let obj_uid = ObjectUid(String::from_utf8(de.read_vec()?)?);
+        let user_id = UserId(String::from_utf8(de.read_vec()?)?);
         let perm_byte = de.read_array::<1>()?;
         let permission = KmipOperation::from_repr(perm_byte[0]).ok_or_else(|| {
             DbError::ConversionError(
                 format!("Invalid KmipOperation value: {}", perm_byte[0]).into(),
             )
         })?;
-        Ok(PermTriple {
+        Ok(Self {
             obj_uid,
             user_id,
             permission,
@@ -145,7 +148,7 @@ impl TryFrom<&PermTriple> for IndexedValue {
     type Error = DbError;
 
     fn try_from(value: &PermTriple) -> Result<Self, Self::Error> {
-        Ok(IndexedValue::from(
+        Ok(Self::from(
             cosmian_kms_crypto::reexport::cosmian_crypto_core::bytes_ser_de::Serializable::serialize(value)?.to_vec(),
         ))
     }
@@ -154,9 +157,9 @@ impl TryFrom<&PermTriple> for IndexedValue {
 /// [`PermissionsDB`] is a database entirely built on top of Findex that stores the permissions
 /// using a dual index pattern for efficient lookups as there is no wildcard support.
 ///
-/// For each permission triple (user_id, obj_uid, permission), we store it twice under:
-/// - The user id: `u:{user_id}` → (user_id, obj_uid, permission)
-/// - The object uid: `o:{obj_uid}` → (user_id, obj_uid, permission)
+/// For each permission triple (`user_id`, `obj_uid`, `permission`), we store it twice under:
+/// - The user id: `u:{user_id}` → (`user_id`, `obj_uid`, `permission`)
+/// - The object uid: `o:{obj_uid}` → (`user_id`, `obj_uid`, `permission`)
 ///
 /// A triple size (before serialization) is 56 bytes. Duplicating the index induces doubling the storage,
 /// which makes it take at worst 112 bytes per permission triple to store.
@@ -170,7 +173,7 @@ pub(crate) struct PermissionsDB {
 }
 
 impl PermissionsDB {
-    pub(crate) fn new(findex: Arc<FindexRedis>) -> Self {
+    pub(crate) const fn new(findex: Arc<FindexRedis>) -> Self {
         Self { findex }
     }
 
@@ -218,7 +221,7 @@ impl PermissionsDB {
             .filter(|triple| {
                 // Optionally include wildcard permissions (user="*") if inherited access is allowed
                 &triple.user_id == user_id
-                    || (!no_inherited_access && triple.user_id == UserId("*".to_string()))
+                    || (!no_inherited_access && triple.user_id == UserId("*".to_owned()))
             })
             .map(|triple| triple.permission)
             .collect::<HashSet<KmipOperation>>();
@@ -281,6 +284,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::as_conversions)] // this a test, it's okay
     fn test_perm_triple_serialization_randomized() {
         use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
             CsRng, reexport::rand_core::RngCore,

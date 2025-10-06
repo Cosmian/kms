@@ -5,7 +5,7 @@ pub(crate) mod permissions;
 mod redis_with_findex;
 
 #[cfg(any(test, feature = "non-fips"))]
-pub use findex::FINDEX_KEY_LENGTH;
+pub(crate) use findex::FINDEX_KEY_LENGTH;
 pub(crate) use redis_with_findex::RedisWithFindex;
 #[cfg(test)]
 pub(crate) use redis_with_findex::init_findex_redis;

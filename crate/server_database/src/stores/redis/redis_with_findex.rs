@@ -473,9 +473,8 @@ impl ObjectsStore for RedisWithFindex {
         Ok(uids
             .into_iter()
             .map(|uid| {
-                Ok(Uuid::from_slice(uid.as_ref())
-                    .map_err(|_| DbError::DatabaseError("Invalid UID in index".to_string()))?
-                    .to_string())
+                String::from_utf8(uid.to_vec())
+                    .map_err(|e| db_error!(format!("Invalid uid. Error: {e:?}")))
             })
             .collect::<DbResult<HashSet<String>>>()?)
     }
@@ -534,9 +533,8 @@ impl ObjectsStore for RedisWithFindex {
         let uids = uids
             .into_iter()
             .map(|uid| {
-                Ok(Uuid::from_slice(uid.as_ref())
-                    .map_err(|_| DbError::DatabaseError("Invalid UID in index".to_string()))?
-                    .to_string())
+                String::from_utf8(uid.to_vec())
+                    .map_err(|e| db_error!(format!("Invalid uid. Error: {e:?}")))
             })
             .collect::<DbResult<HashSet<String>>>()?;
         trace!("find: uids before permissions: {:?}", uids);
@@ -545,7 +543,7 @@ impl ObjectsStore for RedisWithFindex {
             HashMap::new()
         } else {
             self.permissions_db
-                .list_user_permissions(&UserId(user.to_string()))
+                .list_user_permissions(&UserId(user.to_owned()))
                 .await?
                 .into_iter()
                 .map(|(k, v)| (k.0, v))
@@ -591,7 +589,7 @@ impl PermissionsStore for RedisWithFindex {
     ) -> InterfaceResult<HashMap<String, (String, State, HashSet<KmipOperation>)>> {
         let permissions = self
             .permissions_db
-            .list_user_permissions(&UserId(user.to_string()))
+            .list_user_permissions(&UserId(user.to_owned()))
             .await?;
         let redis_db_objects = self
             .objects_db
@@ -627,7 +625,7 @@ impl PermissionsStore for RedisWithFindex {
     ) -> InterfaceResult<HashMap<String, HashSet<KmipOperation>>> {
         Ok(self
             .permissions_db
-            .list_object_permissions(&ObjectUid(uid.to_string()))
+            .list_object_permissions(&ObjectUid(uid.to_owned()))
             .await?
             .into_iter()
             .map(|(k, v)| (k.0, v.into_iter().collect()))
@@ -646,8 +644,8 @@ impl PermissionsStore for RedisWithFindex {
         for operation in &operations {
             self.permissions_db
                 .add(
-                    &ObjectUid(uid.to_string()),
-                    &UserId(user.to_string()),
+                    &ObjectUid(uid.to_owned()),
+                    &UserId(user.to_owned()),
                     *operation,
                 )
                 .await?;
@@ -667,8 +665,8 @@ impl PermissionsStore for RedisWithFindex {
         for operation in &operations {
             self.permissions_db
                 .remove(
-                    &ObjectUid(uid.to_string()),
-                    &UserId(user.to_string()),
+                    &ObjectUid(uid.to_owned()),
+                    &UserId(user.to_owned()),
                     *operation,
                 )
                 .await?;
@@ -686,8 +684,8 @@ impl PermissionsStore for RedisWithFindex {
         Ok(self
             .permissions_db
             .get(
-                &ObjectUid(uid.to_string()),
-                &UserId(user.to_string()),
+                &ObjectUid(uid.to_owned()),
+                &UserId(user.to_owned()),
                 no_inherited_access,
             )
             .await

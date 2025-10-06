@@ -4,8 +4,8 @@ use std::ops::Deref;
 
 use cosmian_findex::KEY_LENGTH;
 use tiny_keccak::{Hasher, Sha3};
-pub const FINDEX_KEY_LENGTH: usize = KEY_LENGTH; // Keep consistent name with KMS code.
-pub const CUSTOM_WORD_LENGTH: usize = 200; // Findex's KMS specialization. Can be tuned.
+pub(crate) const FINDEX_KEY_LENGTH: usize = KEY_LENGTH; // Keep consistent name with KMS code.
+pub(crate) const CUSTOM_WORD_LENGTH: usize = 200; // Findex's KMS specialization. Can be tuned.
 
 /// Implements the needed functionalities out of a byte-vector.
 ///
