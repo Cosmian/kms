@@ -267,6 +267,7 @@ mod tests {
                 hsm_password: vec![],
             },
             key_encryption_key: Some("key wrapping key".to_owned()),
+            default_unwrap_type: None,
             non_revocable_key_id: None,
             privileged_users: None,
         };

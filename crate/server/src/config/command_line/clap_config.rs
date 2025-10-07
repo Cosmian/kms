@@ -45,6 +45,7 @@ impl Default for ClapConfig {
             info: false,
             hsm: HsmConfig::default(),
             key_encryption_key: None,
+            default_unwrap_type: None,
             non_revocable_key_id: None,
             privileged_users: None,
         }
@@ -91,6 +92,20 @@ pub struct ClapConfig {
     /// Force all keys imported or created in the KMS, which are not protected by a key encryption key,
     /// to be wrapped by the specified key encryption key (KEK)
     pub key_encryption_key: Option<String>,
+
+    /// Specifies which KMIP object types should be automatically unwrapped when retrieved.
+    /// Repeat this option to specify multiple object types
+    ///
+    /// e.g.
+    /// ```sh
+    ///   --default_unwrap_type SecretData \
+    ///   --default_unwrap_type SymmetricKey
+    /// ```
+    #[clap(verbatim_doc_comment,
+        long,
+        value_parser(["PrivateKey", "PublicKey", "SymmetricKey", "SecretData"])
+    )]
+    pub default_unwrap_type: Option<Vec<String>>,
 
     /// The exposed URL of the KMS - this is required if Google CSE configuration is activated.
     /// If this server is running on the domain `cse.my_domain.com` with this public URL,
@@ -330,6 +345,7 @@ impl fmt::Debug for ClapConfig {
                 .collect::<Vec<&str>>(),
         );
         let x = x.field("key wrapping key", &self.key_encryption_key);
+        let x = x.field("default unwrap type", &self.default_unwrap_type);
         let x = x.field("non_revocable_key_id", &self.non_revocable_key_id);
         let x = x.field("privileged_users", &self.privileged_users);
 

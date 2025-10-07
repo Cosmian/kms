@@ -345,6 +345,7 @@ async fn post_process_active_private_key(
         kms,
         user,
         params.clone(),
+        ObjectType::PrivateKey,
     )
     .await?;
 
@@ -503,6 +504,7 @@ async fn process_public_key(
         kms,
         user,
         params.clone(),
+        ObjectType::PublicKey,
     )
     .await?;
 
@@ -633,9 +635,22 @@ async fn unwrap_if_requested(
     kms: &KMS,
     user: &str,
     params: Option<Arc<dyn SessionParams>>,
+    object_type: ObjectType,
 ) -> Result<(), KmsError> {
+    let mut key_wrap_type = *key_wrap_type;
+    if key_wrap_type.is_none() {
+        if let Some(defaults) = &kms.params.default_unwrap_types {
+            if defaults
+                .iter()
+                .any(|d| d.eq_ignore_ascii_case(&object_type.to_string()))
+            {
+                key_wrap_type = Some(KeyWrapType::NotWrapped);
+            }
+        }
+    }
+    debug!("Key wrap type: {:?}", key_wrap_type);
     if let Some(key_wrap_type) = key_wrap_type {
-        if *key_wrap_type == KeyWrapType::NotWrapped {
+        if key_wrap_type == KeyWrapType::NotWrapped {
             let mut object = kms
                 .get_unwrapped(
                     object_with_metadata.id(),
@@ -758,6 +773,7 @@ async fn process_symmetric_key(
         kms,
         user,
         params.clone(),
+        ObjectType::SymmetricKey,
     )
     .await?;
 
@@ -1052,13 +1068,14 @@ async fn process_secret_data(
         kms,
         user,
         params.clone(),
+        ObjectType::SecretData,
     )
     .await?;
 
     let object = object_with_metadata.object_mut();
     let key_block = object.key_block_mut()?;
 
-    // If the key is still wrapped the the export KeyFormatType must be the default (none)
+    // If the key is still wrapped the export KeyFormatType must be the default (none)
     if key_block.key_wrapping_data.is_some() {
         if key_format_type.is_some() {
             kms_bail!(

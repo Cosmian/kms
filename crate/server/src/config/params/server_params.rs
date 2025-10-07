@@ -97,6 +97,14 @@ pub struct ServerParams {
     /// The Key Wrapping Key, if any
     pub key_wrapping_key: Option<String>,
 
+    /// Specifies which KMIP object types should be automatically unwrapped when retrieved
+    ///
+    /// Each entry must be the string name of a KMIP `ObjectType`, for example:
+    /// `["SecretData", "SymmetricKey"]`.
+    ///
+    /// If `None`, no automatic unwrapping will be performed.
+    pub default_unwrap_types: Option<Vec<String>>,
+
     /// The non-revocable key ID used for demo purposes
     pub non_revocable_key_id: Option<Vec<String>>,
 
@@ -203,6 +211,7 @@ impl ServerParams {
             },
             slot_passwords,
             key_wrapping_key: conf.key_encryption_key,
+            default_unwrap_types: conf.default_unwrap_type,
             non_revocable_key_id: conf.non_revocable_key_id,
             privileged_users: conf.privileged_users,
             proxy_params: ProxyParams::try_from(&conf.proxy)
@@ -229,7 +238,9 @@ impl fmt::Debug for ServerParams {
             .field("main_db_params", &self.main_db_params)
             .field("clear_db_on_start", &self.clear_db_on_start)
             .field("unwrapped_cache_max_age", &self.unwrapped_cache_max_age)
-            .field("non_revocable_key_id", &self.non_revocable_key_id);
+            .field("non_revocable_key_id", &self.non_revocable_key_id)
+            .field("key_wrapping_key", &self.key_wrapping_key)
+            .field("default_unwrap_types", &self.default_unwrap_types);
 
         if self.start_socket_server {
             debug_struct
