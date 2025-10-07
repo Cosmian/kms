@@ -7,7 +7,7 @@ const HSM_ADMIN_DEFAULT: &str = "admin";
 #[serde(default)]
 pub struct HsmConfig {
     /// The HSM model.
-    /// Trustway Proteccio and Utimaco General purpose HSMs are supported.
+    /// `Trustway Proteccio`, `Utimaco General Purpose HSM`, `Smartcard HSM`, and `SoftHSM2` are supported.
     #[clap(
         verbatim_doc_comment,
         long,
@@ -26,8 +26,8 @@ pub struct HsmConfig {
     /// while specifying a password for each slot (or an empty string for no password)
     /// e.g.
     /// ```sh
-    ///   --hsm_slot 1 --hsm_password password1 \
-    ///   --hsm_slot 2 --hsm_password password2
+    ///   --hsm-slot 1 --hsm-password password1 \
+    ///   --hsm-slot 2 --hsm-password password2
     /// ```
     #[clap(verbatim_doc_comment, long)]
     pub hsm_slot: Vec<usize>,

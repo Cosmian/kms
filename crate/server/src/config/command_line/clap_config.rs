@@ -95,11 +95,10 @@ pub struct ClapConfig {
 
     /// Specifies which KMIP object types should be automatically unwrapped when retrieved.
     /// Repeat this option to specify multiple object types
-    ///
     /// e.g.
     /// ```sh
-    ///   --default_unwrap_type SecretData \
-    ///   --default_unwrap_type SymmetricKey
+    ///   --default-unwrap-type SecretData \
+    ///   --default-unwrap-type SymmetricKey
     /// ```
     #[clap(verbatim_doc_comment,
         long,

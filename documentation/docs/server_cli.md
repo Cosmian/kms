@@ -162,7 +162,7 @@ Options:
           Print the server configuration information and exit
       --hsm-model <HSM_MODEL>
           The HSM model.
-          Trustway Proteccio and Utimaco General purpose HSMs are supported. [default: proteccio] [possible values: proteccio, utimaco]
+          Trustway Proteccio, Utimaco General purpose HSM, Smartcard HSM, and SoftHSM2 are supported. [default: proteccio] [possible values: proteccio, utimaco, softhsm2, smartcardhsm]--hsm-admin <HSM_ADMIN>
       --hsm-admin <HSM_ADMIN>
           The username of the HSM admin. The HSM admin can create objects on the HSM, destroy them, and potentially export them [env: KMS_HSM_ADMIN=] [default: admin]
       --hsm-slot <HSM_SLOT>
@@ -170,14 +170,19 @@ Options:
           Repeat this option to specify multiple slots
           while specifying a password for each slot (or an empty string for no password)
           e.g.
-          ```sh
-            --hsm_slot 1 --hsm_password password1 \
-            --hsm_slot 2 --hsm_password password2
-          ```
+            --hsm-slot 1 --hsm-password password1 \
+            --hsm-slot 2 --hsm-password password2
       --hsm-password <HSM_PASSWORD>
           Password for the user logging in to the HSM Slot specified with `--hsm_slot`
           Provide an empty string for no password
           see `--hsm_slot` for more information
+      --default-unwrap-type <DEFAULT_UNWRAP_TYPE>
+          Specifies which KMIP object types should be automatically unwrapped when retrieved.
+          Repeat this option to specify multiple object types
+          e.g.
+            --default-unwrap-type SecretData \
+            --default-unwrap-type SymmetricKey
+          [possible values: PrivateKey, PublicKey, SymmetricKey, SecretData]
       --kms-public-url <KMS_PUBLIC_URL>
           The exposed URL of the KMS - this is required if Google CSE configuration is activated.
           If this server is running on the domain `cse.my_domain.com` with this public URL,
