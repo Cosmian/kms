@@ -1,5 +1,9 @@
 use std::{ops::Add, sync::Arc};
 
+use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::kmip_objects::{
+    Object, ObjectType,
+};
+use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::kmip_operations::{Export, Import};
 use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::{
     kmip_attributes::Attributes, requests::create_rsa_key_pair_request,
 };
@@ -41,6 +45,7 @@ use crate::{
 mod ec_dek;
 mod rsa_dek;
 mod search;
+mod secret_data_dek;
 mod symmetric_dek;
 mod test_helpers;
 
@@ -55,6 +60,10 @@ async fn test_hsm_all() {
 
     info!("HSM: wrapped_symmetric_dek");
     symmetric_dek::test_wrapped_symmetric_dek().await.unwrap();
+    info!("HSM: wrapped_secret_data");
+    Box::pin(secret_data_dek::test_wrapped_secret_data())
+        .await
+        .unwrap();
     info!("HSM: wrapped_rsa_dek");
     rsa_dek::test_wrapped_rsa_dek().await.unwrap();
     #[cfg(feature = "non-fips")]
@@ -186,6 +195,42 @@ async fn locate_keys(
         .unique_identifier
         .clone()
         .unwrap_or_default())
+}
+
+async fn import_object(
+    kms: &Arc<KMS>,
+    owner: &str,
+    object_id: &str,
+    object: &Object,
+    object_type: ObjectType,
+) -> KResult<UniqueIdentifier> {
+    let import_request = Import {
+        unique_identifier: UniqueIdentifier::TextString(object_id.to_owned()),
+        object_type,
+        attributes: Attributes {
+            object_type: Some(object_type),
+            ..Default::default()
+        },
+        replace_existing: None,
+        key_wrap_type: None,
+        object: object.clone(),
+    };
+
+    let create_response = kms.import(import_request, owner, None, None).await?;
+    Ok(create_response.unique_identifier)
+}
+
+async fn export_object(kms: &Arc<KMS>, owner: &str, object_id: &str) -> KResult<Object> {
+    let export_request = Export {
+        unique_identifier: Some(UniqueIdentifier::TextString(object_id.to_owned())),
+        key_format_type: None,
+        key_compression_type: None,
+        key_wrap_type: None,
+        key_wrapping_specification: None,
+    };
+
+    let export_response = kms.export(export_request, owner, None).await?;
+    Ok(export_response.object)
 }
 
 async fn delete_key(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<()> {
