@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_imports, unused_variables, clippy::all)] // TODO: del this later
+
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
@@ -96,11 +98,11 @@ where
     ))
 }
 
-#[allow(dead_code)] // used just above
+#[allow(dead_code)] // this isn't dead.
 impl RedisWithFindex {
     pub(crate) async fn instantiate(
         redis_url: &str,
-        master_key: Secret<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>,
+        master_key: &Secret<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>,
         label: &[u8],
         _clear_database: bool,
     ) -> LegacyDbResult<Self> {
@@ -109,14 +111,14 @@ impl RedisWithFindex {
         kdf256!(
             &mut *findex_key,
             REDIS_WITH_FINDEX_MASTER_FINDEX_KEY_DERIVATION_SALT,
-            &*master_key
+            &**master_key
         );
         // derive a DB Key
         let mut db_key = SymmetricKey::<DB_KEY_LENGTH>::default();
         kdf256!(
             &mut *db_key,
             REDIS_WITH_FINDEX_MASTER_DB_KEY_DERIVATION_SALT,
-            &*master_key
+            &**master_key
         );
 
         let client = redis_for_migrations::Client::open(redis_url)?;

@@ -13,7 +13,7 @@ use cosmian_kmip::kmip_2_1::KmipOperation;
 use cosmian_kms_crypto::reexport::cosmian_crypto_core::{FixedSizeCBytes, SymmetricKey};
 
 use crate::stores::redis::migrations::redis_4_5_0_to_5_8_1::error::{
-    LegacyDatabaseError, LegacyDbResult,
+    LegacyDbError, LegacyDbResult,
 };
 
 /// The struct we store for each permission.
@@ -69,19 +69,19 @@ impl Triple {
 }
 
 impl TryFrom<&Location> for Triple {
-    type Error = LegacyDatabaseError;
+    type Error = LegacyDbError;
 
     fn try_from(value: &Location) -> Result<Self, Self::Error> {
         let value = String::from_utf8((value).to_vec())?;
         let mut parts = value.split("::");
         let uid = parts.next().ok_or_else(|| {
-            LegacyDatabaseError::ConversionError(format!("invalid permissions triple: {parts:?}"))
+            LegacyDbError::ConversionError(format!("invalid permissions triple: {parts:?}"))
         })?;
         let user_id = parts.next().ok_or_else(|| {
-            LegacyDatabaseError::ConversionError(format!("invalid permissions triple: {parts:?}"))
+            LegacyDbError::ConversionError(format!("invalid permissions triple: {parts:?}"))
         })?;
         let permission = parts.next().ok_or_else(|| {
-            LegacyDatabaseError::ConversionError(format!("invalid permissions triple: {parts:?}"))
+            LegacyDbError::ConversionError(format!("invalid permissions triple: {parts:?}"))
         })?;
         Ok(Self {
             obj_uid: uid.to_owned(),
@@ -92,7 +92,7 @@ impl TryFrom<&Location> for Triple {
 }
 
 impl TryFrom<&Triple> for Location {
-    type Error = LegacyDatabaseError;
+    type Error = LegacyDbError;
 
     fn try_from(value: &Triple) -> Result<Self, Self::Error> {
         Ok(Self::from(

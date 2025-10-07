@@ -19,11 +19,11 @@ use self::{
     tagging_tests::tags,
 };
 #[cfg(feature = "non-fips")]
+use crate::stores::RedisWithFindex;
+#[cfg(feature = "non-fips")]
 use crate::stores::additional_redis_findex_tests::{
     test_corner_case, test_objects_db, test_permissions_db,
 };
-#[cfg(feature = "non-fips")]
-use crate::stores::{FINDEX_KEY_LENGTH, RedisWithFindex};
 use crate::{
     error::DbResult,
     stores::{MySqlPool, PgPool, SqlitePool},
@@ -75,12 +75,15 @@ async fn get_redis_with_findex() -> DbResult<RedisWithFindex> {
     use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
         CsRng, Secret, reexport::rand_core::SeedableRng,
     };
+
+    use crate::stores::REDIS_WITH_FINDEX_MASTER_KEY_LENGTH;
     let mut rng = CsRng::from_entropy();
 
     let redis_url = get_redis_url();
     let redis_url = option_env!("KMS_REDIS_URL").unwrap_or(&redis_url);
-    let master_key = Secret::<FINDEX_KEY_LENGTH>::random(&mut rng);
-    let redis_findex = RedisWithFindex::instantiate(redis_url, master_key, true).await?;
+    let master_key = Secret::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::random(&mut rng);
+    let redis_findex =
+        RedisWithFindex::instantiate(redis_url, master_key, true, Some(b"label")).await?;
     Ok(redis_findex)
 }
 

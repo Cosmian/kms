@@ -1,9 +1,9 @@
-mod redis_4_5_0_to_5_8_1;
+pub(crate) mod redis_4_5_0_to_5_8_1; // This is *ONLY* marked as pub(crate) to allow auto-converting to/from LegacyDbError in DbError.
 
 use std::{collections::HashSet, str};
 
 use async_trait::async_trait;
-use cosmian_kms_crypto::reexport::cosmian_crypto_core::Secret;
+use cosmian_kms_interfaces::PermissionsStore;
 use cosmian_logger::warn;
 use uuid::Uuid;
 
@@ -12,7 +12,7 @@ use crate::{
     error::DbResult,
     stores::{
         RedisWithFindex,
-        migrate::{DbState, Migrate, RedisMigrate},
+        migrate::{DbState, Migrate, MigrateTo590Parameters, RedisMigrate},
         redis::migrations::redis_4_5_0_to_5_8_1::RedisWithFindex as LegacyRedisWithFindex,
     },
 };
@@ -67,10 +67,10 @@ impl Migrate for RedisWithFindex {
 }
 
 impl RedisMigrate for RedisWithFindex {
-    async fn migrate_to_5_9_0(&self) -> DbResult<()> {
+    async fn migrate_to_5_9_0(&self, parameters: MigrateTo590Parameters<'_>) -> DbResult<()> {
         // we fetch all object uids from the keys in redis
         fn is_valid_uuid(s: &str) -> bool {
-            Uuid::parse_str(s).is_ok()
+            Uuid::try_parse(s).is_ok()
         }
         let mut conn = self.mgr.clone();
 
@@ -80,34 +80,41 @@ impl RedisMigrate for RedisWithFindex {
             .await
             .map_err(|e| DbError::DatabaseError(format!("Failed upon get_object_uids: {e}")))?;
 
-        let all_object_uids: HashSet<&str> = all_obj_keys
+        let all_object_uids = all_obj_keys
             .into_iter()
             .filter_map(|key| {
                 key.strip_prefix("do::").and_then(|uid_str| {
                     if is_valid_uuid(uid_str) {
-                        Some(uid_str)
+                        Some(uid_str.to_owned())
                     } else {
                         warn!("Invalid UUID found in key: {}", uid_str);
                         None
                     }
                 })
             })
-            .collect();
+            .collect::<HashSet<String>>();
 
-        // now, we need a "mimic" of the old RedisWithFindex to read the permissions "as they were"
-        // TODO: I need to restore the label
-        let legacy_findex_redis_store =
-            LegacyRedisWithFindex::instantiate(redis_url, master_key, "label", false);
+        // now, we need the old RedisWithFindex to read the permissions "as they were"
+        let legacy_findex_redis_store = LegacyRedisWithFindex::instantiate(
+            &parameters.redis_url,
+            parameters.findex_key, // TODO: this clone is pretty much debatable
+            &parameters.label,
+            false,
+        )
+        .await?;
 
+        // Strategy: for each object, we list the users that have permissions on it to get the full permissions Triplet
+        // then, we store them back using the new version.
         for obj_uid in all_object_uids {
-            let per_user = self
-                .permissions_db
-                .list_object_permissions(&findex_key, obj_uid)
+            let per_user = legacy_findex_redis_store
+                .list_object_operations_granted(&obj_uid, None)
                 .await?;
-            for (user_id, ops) in per_user {
-                // ops: HashSet<KmipOperation>
+            for (user_id, operations) in per_user {
+                let _ = self.grant_operations(&obj_uid, &user_id, operations, None);
             }
         }
+
+        // Now, same things for tags
 
         Ok(())
     }

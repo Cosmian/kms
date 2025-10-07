@@ -3,10 +3,10 @@ use cloudproof_findex::implementations::redis::FindexRedisError;
 use cosmian_kms_interfaces::InterfaceError;
 use thiserror::Error;
 
-pub(crate) type LegacyDbResult<R> = Result<R, LegacyDatabaseError>;
+pub(crate) type LegacyDbResult<R> = Result<R, LegacyDbError>;
 
 #[derive(Error, Debug)]
-pub enum LegacyDatabaseError {
+pub enum LegacyDbError {
     #[error("Redis (legacy) v2.3.0 error: {0}")]
     Redis(#[from] redis_for_migrations::RedisError),
 
@@ -28,7 +28,7 @@ pub enum LegacyDatabaseError {
     Other(String),
 }
 
-impl From<std::string::FromUtf8Error> for LegacyDatabaseError {
+impl From<std::string::FromUtf8Error> for LegacyDbError {
     fn from(e: std::string::FromUtf8Error) -> Self {
         Self::ConversionError(e.to_string())
     }
