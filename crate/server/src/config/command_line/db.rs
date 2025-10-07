@@ -107,6 +107,7 @@ pub struct MainDBConfig {
 }
 
 impl Default for MainDBConfig {
+    #[allow(deprecated)] // Label will still be accepted until all data is migrated
     fn default() -> Self {
         Self {
             sqlite_path: PathBuf::from(DEFAULT_SQLITE_PATH),
@@ -123,6 +124,7 @@ impl Default for MainDBConfig {
 }
 
 impl Display for MainDBConfig {
+    #[allow(deprecated)] // Label will still be accepted until all data is migrated
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(database_type) = &self.database_type {
             match database_type.as_str() {
@@ -151,16 +153,13 @@ impl Display for MainDBConfig {
                         .database_url
                         .as_ref()
                         .map_or("[INVALID URL]", |url| url.as_str()),
-                    match self.redis_findex_label.as_ref() {
-                        Some(label) if !label.is_empty() => write!(
-                            f,
+                    self.redis_findex_label
+                        .as_ref()
+                        .map_or_else(String::new, |label| format!(
                             ", label: 0x{} (the label parameter is deprecated and will be removed \
                              in future versions, use it only to migrate existing data)",
-                            db_url,
-                            hex::encode(label.as_bytes()),
-                        ),
-                        _ => "",
-                    }
+                            hex::encode(label.as_bytes())
+                        ))
                 ),
                 unknown => write!(f, "Unknown database type: {unknown}"),
             }?;
@@ -189,6 +188,7 @@ impl MainDBConfig {
     /// # Errors
     /// - If both Postgres and MariaDB/MySQL URLs are set
     /// - If `SQLCipher` is set along with a Postgres or MariaDB/MySQL URL
+    #[allow(deprecated)] // Label will still be accepted until all data is migrated
     pub(crate) fn init(&self, workspace: &WorkspaceConfig) -> KResult<MainDbParams> {
         if let Some(database_type) = &self.database_type {
             return Ok(match database_type.as_str() {
@@ -221,11 +221,15 @@ impl MainDBConfig {
                     // Generate the symmetric key from the master password
                     let master_key = redis_master_key_from_password(&redis_master_password)
                         .context("db:init")?;
-                    let old_label: Option<Label> = self.redis_findex_label.as_deref().map_or_else(
-                        || std::env::var("KMS_REDIS_FINDEX_LABEL").map_err(|_| None),
-                        |value| Ok(value.to_owned()),
+                    let old_label = self.redis_findex_label.as_deref().map_or_else(
+                        || {
+                            std::env::var("KMS_REDIS_FINDEX_LABEL")
+                                .ok()
+                                .map(|s| Label::from(s.as_bytes()))
+                        },
+                        |value| Some(Label::from(value.as_bytes())),
                     );
-                    MainDbParams::RedisFindex(url, master_key, Label::from(old_label.into_bytes()))
+                    MainDbParams::RedisFindex(url, master_key, old_label)
                 }
                 unknown => kms_bail!("Unknown database type: {unknown}"),
             });

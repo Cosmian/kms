@@ -25,6 +25,7 @@ use redis::aio::ConnectionManager;
 use uuid::Uuid;
 
 use super::{
+    FINDEX_KEY_LENGTH,
     objects_db::{DB_KEY_LENGTH, ObjectsDB, RedisDbObject, keywords_from_attributes},
     permissions::PermissionsDB,
 };
@@ -32,9 +33,10 @@ use crate::{
     db_error,
     error::{DbError, DbResult},
     stores::{
+        REDIS_WITH_FINDEX_MASTER_KEY_LENGTH,
         migrate::{DbState, Migrate, MigrateTo590Parameters, MigrationParams, RedisMigrate},
         redis::{
-            findex::{CUSTOM_WORD_LENGTH, FINDEX_KEY_LENGTH, IndexedValue, Keyword},
+            findex::{CUSTOM_WORD_LENGTH, IndexedValue, Keyword},
             objects_db::RedisOperation,
             permissions::{ObjectUid, UserId},
         },
@@ -42,18 +44,19 @@ use crate::{
 };
 
 const REDIS_WITH_FINDEX_MASTER_KEY_DERIVATION_SALT: &[u8; 16] = b"rediswithfindex_";
-pub(crate) const REDIS_WITH_FINDEX_MASTER_DB_KEY_DERIVATION_SALT: &[u8; 2] = b"db";
+const REDIS_WITH_FINDEX_MASTER_DB_KEY_DERIVATION_SALT: &[u8; 2] = b"db";
+const REDIS_WITH_FINDEX_MASTER_FINDEX_KEY_DERIVATION_SALT: &[u8; 6] = b"findex";
 
 /// Derive a Redis Master Key from a password
 pub fn redis_master_key_from_password(
     master_password: &str,
-) -> DbResult<SymmetricKey<FINDEX_KEY_LENGTH>> {
-    let output_key_material = derive_key_from_password::<FINDEX_KEY_LENGTH>(
+) -> DbResult<SymmetricKey<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>> {
+    let output_key_material = derive_key_from_password::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>(
         REDIS_WITH_FINDEX_MASTER_KEY_DERIVATION_SALT,
         master_password.as_bytes(),
     )?;
 
-    let master_secret_key: SymmetricKey<FINDEX_KEY_LENGTH> =
+    let master_secret_key: SymmetricKey<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH> =
         SymmetricKey::try_from_slice(&output_key_material)?;
 
     Ok(master_secret_key)
@@ -85,7 +88,7 @@ pub(crate) async fn init_findex_redis(
         RedisMemory::<Address<ADDRESS_LENGTH>, [u8; CUSTOM_WORD_LENGTH]>::new_with_url(redis_url)
             .await?;
 
-    let encrypted_redis_memory = MemoryEncryptionLayer::new(findex_master_key, redis_memory);
+    let encrypted_redis_memory = MemoryEncryptionLayer::new(findex_key, redis_memory);
 
     Ok(Findex::new(
         encrypted_redis_memory,
@@ -105,25 +108,23 @@ pub(crate) struct RedisWithFindex {
 impl RedisWithFindex {
     pub(crate) async fn instantiate(
         redis_url: &str,
-        findex_master_key: Secret<FINDEX_KEY_LENGTH>,
+        master_key: Secret<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>,
         clear_database: bool,
         label: Option<&[u8]>,
     ) -> DbResult<Self> {
-        const REDIS_WITH_FINDEX_MASTER_FINDEX_KEY_DERIVATION_SALT: &[u8; 6] = b"findex";
-
         // derive an Findex Key
         let mut findex_key = SymmetricKey::<FINDEX_KEY_LENGTH>::default();
         kdf256!(
             &mut *findex_key,
             REDIS_WITH_FINDEX_MASTER_FINDEX_KEY_DERIVATION_SALT,
-            &*findex_master_key
+            &*master_key
         );
         // derive a DB Key
         let mut db_key = SymmetricKey::<DB_KEY_LENGTH>::default();
         kdf256!(
             &mut *db_key,
             REDIS_WITH_FINDEX_MASTER_DB_KEY_DERIVATION_SALT,
-            &*findex_master_key
+            &*master_key
         );
 
         let client = redis::Client::open(redis_url)?;
@@ -178,7 +179,7 @@ impl RedisWithFindex {
                     MigrationParams {
                         migrate_to_5_9_0_parameters: Some(MigrateTo590Parameters {
                             redis_url: redis_url.to_string(),
-                            findex_key: &findex_key,
+                            findex_key: &master_key,
                             label: Label::from(label),
                         }),
                     }

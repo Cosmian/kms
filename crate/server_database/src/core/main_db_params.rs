@@ -9,7 +9,7 @@ use cosmian_kms_crypto::reexport::cosmian_crypto_core::SymmetricKey;
 use url::Url;
 
 #[cfg(feature = "non-fips")]
-use crate::stores::FINDEX_KEY_LENGTH;
+use crate::stores::REDIS_WITH_FINDEX_MASTER_KEY_LENGTH;
 
 pub enum MainDbParams {
     /// contains the directory of the `SQLite` DB file (not the DB file itself)
@@ -22,7 +22,11 @@ pub enum MainDbParams {
     /// - the `Redis` connection URL
     /// - the master key used to encrypt the DB and the Index
     #[cfg(feature = "non-fips")]
-    RedisFindex(Url, SymmetricKey<FINDEX_KEY_LENGTH>, Option<Label>),
+    RedisFindex(
+        Url,
+        SymmetricKey<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>,
+        Option<Label>,
+    ),
 }
 
 impl MainDbParams {
@@ -34,7 +38,7 @@ impl MainDbParams {
             Self::Postgres(_) => "PostgreSQL",
             Self::Mysql(_) => "MySql/MariaDB",
             #[cfg(feature = "non-fips")]
-            Self::RedisFindex(_, _) => "Redis-Findex",
+            Self::RedisFindex(_, _, _) => "Redis-Findex",
         }
     }
 }
@@ -46,7 +50,7 @@ impl Display for MainDbParams {
             Self::Postgres(url) => write!(f, "postgres: {}", redact_url(url)),
             Self::Mysql(url) => write!(f, "mysql: {}", redact_url(url)),
             #[cfg(feature = "non-fips")]
-            Self::RedisFindex(url, _) => {
+            Self::RedisFindex(url, _, _) => {
                 write!(f, "redis-findex: {}, master key: [****]", redact_url(url),)
             }
         }

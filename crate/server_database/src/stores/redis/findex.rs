@@ -7,6 +7,9 @@ use cosmian_findex::KEY_LENGTH;
 pub(crate) const FINDEX_KEY_LENGTH: usize = KEY_LENGTH; // Keep consistent name with KMS code.
 pub(crate) const CUSTOM_WORD_LENGTH: usize = 200; // Findex's KMS specialization. Can be tuned.
 
+// IMPORTANT: below is the length of the master key used to derive the findex and db keys. IT'S NOT THE FINDEX KEY LENGTH.
+pub(crate) const REDIS_WITH_FINDEX_MASTER_KEY_LENGTH: usize = 32;
+
 /// Implements the needed functionalities out of a byte-vector.
 ///
 /// # Parameters

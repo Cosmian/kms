@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use cloudproof_findex::Label;
-use cosmian_kms_crypto::reexport::cosmian_crypto_core::{Secret, SymmetricKey};
+use cosmian_kms_crypto::reexport::cosmian_crypto_core::Secret;
 use cosmian_logger::{debug, error};
 use serde::{Deserialize, Serialize};
 use version_compare::{Cmp, compare};
@@ -53,6 +53,7 @@ pub(crate) trait Migrate {
     async fn set_current_db_version(&self, version: &str) -> DbResult<()>;
 
     /// Check if the database is in a ready state
+    #[allow(dead_code)] // TODO
     async fn check_db_state(&self) -> DbResult<()> {
         let db_state = self.get_db_state().await?.unwrap_or(DbState::Ready);
         if db_state != DbState::Ready {
@@ -142,7 +143,7 @@ pub(crate) trait SqlMigrate<DB>: Migrate {
 #[derive(Debug, Clone)]
 pub(crate) struct MigrateTo590Parameters<'a> {
     pub redis_url: String,
-    pub findex_key: &'a SymmetricKey<32>, // lifetime specified to avoid cloning the key
+    pub findex_key: &'a Secret<32>, // lifetime specified to avoid cloning the key
     pub label: Label,
 }
 /// Container for all migration parameters
