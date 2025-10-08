@@ -155,6 +155,7 @@ fn postgres_db_config() -> MainDBConfig {
     }
 }
 
+#[allow(deprecated)] // needed to migrate
 #[cfg(feature = "non-fips")]
 fn redis_findex_db_config() -> MainDBConfig {
     trace!("TESTS: using redis-findex");

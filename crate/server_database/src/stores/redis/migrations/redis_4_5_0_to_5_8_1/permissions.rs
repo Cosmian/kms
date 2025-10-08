@@ -192,7 +192,7 @@ impl PermissionsDB {
             .map(|triple| triple.permission)
             .collect::<HashSet<KmipOperation>>();
         if no_inherited_access {
-            return Ok(user_perms)
+            return Ok(user_perms);
         }
         let wildcard_user_perms = self
             .search_one_keyword(findex_key, &Triple::build_key(obj_uid, "*"))
@@ -240,7 +240,7 @@ impl PermissionsDB {
         let is_already_present = !new_keywords.contains(&keyword);
         if is_already_present {
             // we assume that the other two keywords are already present
-            return Ok(())
+            return Ok(());
         }
 
         // we need to add the other two keywords

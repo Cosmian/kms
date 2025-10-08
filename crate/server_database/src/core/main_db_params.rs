@@ -5,6 +5,8 @@ use std::{
 };
 
 #[cfg(feature = "non-fips")]
+use cloudproof_findex::Label;
+#[cfg(feature = "non-fips")]
 use cosmian_kms_crypto::reexport::cosmian_crypto_core::SymmetricKey;
 use url::Url;
 

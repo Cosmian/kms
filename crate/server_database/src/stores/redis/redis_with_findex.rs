@@ -81,7 +81,7 @@ pub(crate) type FindexRedis = Findex<
 >;
 
 pub(crate) async fn init_findex_redis(
-    findex_master_key: &Secret<FINDEX_KEY_LENGTH>,
+    findex_key: &Secret<FINDEX_KEY_LENGTH>,
     redis_url: &str,
 ) -> Result<FindexRedis, DbError> {
     let redis_memory =
@@ -132,7 +132,7 @@ impl RedisWithFindex {
 
         let objects_db = Arc::new(ObjectsDB::new(mgr.clone(), &db_key));
 
-        let findex_arc = Arc::new(init_findex_redis(&findex_master_key, redis_url).await?);
+        let findex_arc = Arc::new(init_findex_redis(&master_key, redis_url).await?);
 
         let permissions_db = PermissionsDB::new(findex_arc.clone());
 
@@ -163,22 +163,21 @@ impl RedisWithFindex {
             redis_with_findex.set_db_state(DbState::Ready).await?;
         } else {
             warn!("Non-empty Redis database detected. Starting migration routine.");
-            let label = match label {
-                Some(label) => label,
-                None => {
-                    warn!(
-                        "Label parameter not provided. Ignore this warning if this was \
-                         intentional. Otherwise, abort the migration and provide the correct \
-                         label."
-                    );
-                    b""
-                }
+            let label = if let Some(label) = label {
+                label
+            } else {
+                warn!(
+                    "Label parameter not provided. Ignore this warning if this was \
+                      intentional. Otherwise, abort the migration and provide the correct \
+                      label."
+                );
+                b""
             };
             redis_with_findex
                 .migrate({
                     MigrationParams {
                         migrate_to_5_9_0_parameters: Some(MigrateTo590Parameters {
-                            redis_url: redis_url.to_string(),
+                            redis_url: redis_url.to_owned(),
                             findex_key: &master_key,
                             label: Label::from(label),
                         }),

@@ -1,6 +1,4 @@
 use async_trait::async_trait;
-use cloudproof_findex::Label;
-use cosmian_kms_crypto::reexport::cosmian_crypto_core::Secret;
 use cosmian_logger::{debug, error};
 use serde::{Deserialize, Serialize};
 use version_compare::{Cmp, compare};
@@ -8,7 +6,6 @@ use version_compare::{Cmp, compare};
 use crate::{DbError, error::DbResult};
 
 pub(crate) const KMS_VERSION_BEFORE_MIGRATION_SUPPORT: &str = "4.12.0";
-pub(crate) const LOWEST_DB_VERSION_WITH_REDIS_SUPPORT: &str = "4.5.0";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -31,7 +28,7 @@ fn lower(version: &str, target: &str) -> DbResult<bool> {
 /// This trait's sole purpose is solving the compiler error [E0207] (`DB` is not constrained by the impl trait)
 /// when trying to implement the Migrate trait for sqlx's generic Databases.
 /// Avoid implementing this trait for anything that doesn't produce that error.
-pub trait HasDatabase {
+pub(super) trait HasDatabase {
     type Database: sqlx::Database;
 }
 
@@ -58,9 +55,9 @@ pub(crate) trait Migrate {
         let db_state = self.get_db_state().await?.unwrap_or(DbState::Ready);
         if db_state != DbState::Ready {
             let error_string = "Database is not in a ready state; it is either upgrading or a \
-                                previous update failed. Bailing out. Please wait for the \
-                                migration to complete or restore a previous version of the \
-                                database.";
+            previous update failed. Bailing out. Please wait for the \
+            migration to complete or restore a previous version of the \
+            database.";
             error!("{}", error_string);
             return Err(DbError::DatabaseError(error_string.to_owned()));
         }
@@ -77,8 +74,8 @@ pub(crate) trait SqlMigrate<DB>: Migrate {
         let db_state = self.get_db_state().await?.unwrap_or(DbState::Ready);
         if db_state != DbState::Ready {
             let error_string = "Database is not in a ready state; it is either upgrading or a \
-                                previous upgrading failed. Bailing out. Please wait for the \
-                                migration to complete or restore a previous version of the \
+            previous upgrading failed. Bailing out. Please wait for the \
+            migration to complete or restore a previous version of the \
                                 database.";
             error!("{error_string}");
             return Err(DbError::DatabaseError("error_string".to_owned()));
@@ -93,8 +90,8 @@ pub(crate) trait SqlMigrate<DB>: Migrate {
         if lower(&current_db_version, "5.0.0")? {
             let msg = format!(
                 "Database version {current_db_version} cannot be upgraded to version \
-                 5.0.0.\nPlease export all keys using standard formats such as PKCS#8 or Raw and \
-                 reimport them in this KMS version."
+                5.0.0.\nPlease export all keys using standard formats such as PKCS#8 or Raw and \
+                reimport them in this KMS version."
             );
             error!("{}", msg);
             return Err(DbError::DatabaseError(msg));
@@ -139,109 +136,120 @@ pub(crate) trait SqlMigrate<DB>: Migrate {
     async fn migrate_to_4_22_2(&self) -> DbResult<()>;
 }
 
-/// Parameters specific to migrating from cloudproof_findex_v5 to cosmian_findex_v8
-#[derive(Debug, Clone)]
-pub(crate) struct MigrateTo590Parameters<'a> {
-    pub redis_url: String,
-    pub findex_key: &'a Secret<32>, // lifetime specified to avoid cloning the key
-    pub label: Label,
-}
-/// Container for all migration parameters
-/// New parameters can be added here as new migrations are introduced
-#[derive(Debug, Default)]
-pub(crate) struct MigrationParams<'a> {
-    /// Parameters for 5.9.0 migration (cloudproof_findex_v5 to cosmian_findex_v8)
-    pub(crate) migrate_to_5_9_0_parameters: Option<MigrateTo590Parameters<'a>>,
-}
+#[cfg(feature = "non-fips")]
+mod redis_migrate {
+    use super::{DbError, DbResult, DbState, Migrate, debug, error, lower};
+    use cloudproof_findex::Label;
+    use cosmian_kms_crypto::reexport::cosmian_crypto_core::Secret;
+    pub(crate) const LOWEST_DB_VERSION_WITH_REDIS_SUPPORT: &str = "4.5.0";
 
-// We cannot implement SqlMigrate for RedisWithFindex or else we would face the following issue:
-// https://github.com/rust-lang/rust/issues/48869 because of the blanket implementation of
-// Migrate for SqlDatabase. Separating the migration traits is the simplest solution to this problem.
-pub(crate) trait RedisMigrate: Migrate {
-    /// Migrate the database to the latest version
-    async fn migrate<'a>(&self, parameters: MigrationParams<'a>) -> DbResult<()> {
-        let db_state = self.get_db_state().await?.unwrap_or(DbState::Ready);
-        if db_state != DbState::Ready {
-            let error_string = "Database is not in a ready state; it is either upgrading or a \
+    /// Parameters specific to migrating from `cloudproof_findex_v5` to `cosmian_findex_v8`
+    #[derive(Debug, Clone)]
+    pub(crate) struct MigrateTo590Parameters<'a> {
+        pub redis_url: String,
+        pub findex_key: &'a Secret<32>, // lifetime specified to avoid cloning the key
+        pub label: Label,
+    }
+    /// Container for all migration parameters
+    /// New parameters can be added here as new migrations are introduced
+    #[derive(Debug, Default)]
+    pub(crate) struct MigrationParams<'a> {
+        /// Parameters for 5.9.0 migration (`cloudproof_findex_v5` to `cosmian_findex_v8`)
+        pub(crate) migrate_to_5_9_0_parameters: Option<MigrateTo590Parameters<'a>>,
+    }
+
+    // We cannot implement SqlMigrate for RedisWithFindex or else we would face the following issue:
+    // https://github.com/rust-lang/rust/issues/48869 because of the blanket implementation of
+    // Migrate for SqlDatabase. Separating the migration traits is the simplest solution to this problem.
+    pub(crate) trait RedisMigrate: Migrate {
+        /// Migrate the database to the latest version
+        #[allow(clippy::unwrap_used)] // TODO
+        async fn migrate(&self, parameters: MigrationParams<'_>) -> DbResult<()> {
+            let db_state = self.get_db_state().await?.unwrap_or(DbState::Ready);
+            if db_state != DbState::Ready {
+                let error_string = "Database is not in a ready state; it is either upgrading or a \
                                 previous update failed. Bailing out. Please wait for the  \
                                 migration to complete or restore a previous version of the \
                                 database.";
-            error!("{}", error_string,);
-            return Err(DbError::DatabaseError(error_string.to_owned()));
-        }
+                error!("{}", error_string,);
+                return Err(DbError::DatabaseError(error_string.to_owned()));
+            }
 
-        // In the other stores, if the db version was not set, the version was assumed to be "4.12.0"
-        // This is inconsistent with RedisWithFindex's design, as a missing db version might be
-        // a sign of a corrupted store and in this case early aborting is the safest option.
-        let current_db_version = match self.get_current_db_version().await? {
-            Some(version) => version,
-            None => {
+            // In the other stores, if the db version was not set, the version was assumed to be "4.12.0"
+            // This is inconsistent with RedisWithFindex's design, as a missing db version might be
+            // a sign of a corrupted store and in this case early aborting is the safest option.
+            let Some(current_db_version) = self.get_current_db_version().await? else {
                 let msg = "Database version not set, the Redis store might be corrupted. \
-                           Aborting. Please backup and/or export any existing keys - if any - \
-                           (using standard formats such as PKCS#8 or Raw) then re-run the KMS \
-                           with the `clear_database` flag set to true. Clearing the database is a \
-                           destructive operation. Please ensure backing up any important data \
-                           before proceeding."
+                         Aborting. Please backup and/or export any existing keys - if any - \
+                         (using standard formats such as PKCS#8 or Raw) then re-run the KMS \
+                         with the `clear_database` flag set to true. Clearing the database is a \
+                         destructive operation. Please ensure backing up any important data \
+                         before proceeding."
                     .to_owned();
                 error!("{}", msg);
                 return Err(DbError::DatabaseError(msg));
+            };
+
+            let kms_version = env!("CARGO_PKG_VERSION");
+
+            if kms_version == current_db_version {
+                debug!("  ==> database is up to date.");
+                return Ok(());
             }
-        };
 
-        let kms_version = env!("CARGO_PKG_VERSION");
-
-        if kms_version == current_db_version {
-            debug!("  ==> database is up to date.");
-            return Ok(());
-        }
-
-        debug!(
-            "Database version before migration: {current_db_version}, Current KMS version: \
+            debug!(
+                "Database version before migration: {current_db_version}, Current KMS version: \
              {kms_version}"
-        );
+            );
 
-        if lower(&current_db_version, LOWEST_DB_VERSION_WITH_REDIS_SUPPORT)? {
-            // This case is normally unreachable and means that the db version was manually tampered-with
-            let msg = format!(
-                "Databases before version {LOWEST_DB_VERSION_WITH_REDIS_SUPPORT} do not support \
+            if lower(&current_db_version, LOWEST_DB_VERSION_WITH_REDIS_SUPPORT)? {
+                // This case is normally unreachable and means that the db version was manually tampered-with
+                let msg = format!(
+                    "Databases before version {LOWEST_DB_VERSION_WITH_REDIS_SUPPORT} do not support \
                  Findex with Redis's database. Aborting. Please export all keys - if any - (using \
                  standard formats such as PKCS#8 or Raw) and reimport them using the latest KMS \
                  version."
-            );
-            error!("{}", msg);
-            return Err(DbError::DatabaseError(msg));
-        }
+                );
+                error!("{}", msg);
+                return Err(DbError::DatabaseError(msg));
+            }
 
-        debug!("Starting migration process...");
+            debug!("Starting migration process...");
 
-        if lower(&current_db_version, "5.8.1")? {
-            // From 4.5.0 to 5.8.1 : cloudproof_findex_v5
-            // Starting 5.9 : cosmian_findex_v8
-            debug!("  ==> migrating to version 5.8.1...");
-            if parameters.migrate_to_5_9_0_parameters.is_none() {
-                let msg = "Missing parameters for migration to version 5.9.0. Aborting. Please \
+            if lower(&current_db_version, "5.8.1")? {
+                // From 4.5.0 to 5.8.1 : `cloudproof_findex_v5`
+                // Starting 5.9 : cosmian_findex_v8
+                debug!("  ==> migrating to version 5.8.1...");
+                if parameters.migrate_to_5_9_0_parameters.is_none() {
+                    let msg = "Missing parameters for migration to version 5.9.0. Aborting. Please \
                            provide the Redis URL, the master key and the label used by the \
                            previous DB instance.";
-                error!("{}", msg);
-                return Err(DbError::DatabaseError(msg.to_owned()));
+                    error!("{}", msg);
+                    return Err(DbError::DatabaseError(msg.to_owned()));
+                }
+                self.migrate_to_5_9_0(parameters.migrate_to_5_9_0_parameters.unwrap()) // TODO: unwrap
+                    .await?;
             }
-            self.migrate_to_5_9_0(parameters.migrate_to_5_9_0_parameters.unwrap())
-                .await?;
+
+            // INFO: add future migrations here if breaking changes are made to the RedisWithFindex store
+
+            // If we reach this point, we know that kms_version is at least 5.9.0
+            // simply increment the current version to the current KMS version
+            if kms_version != current_db_version {
+                self.set_current_db_version(kms_version).await?;
+                debug!(
+                    "Redis database version was bumped to the current KMS version: {kms_version}"
+                );
+            }
+
+            debug!("  ==> database is up to date.");
+
+            Ok(())
         }
 
-        // INFO: add future migrations here if breaking changes are made to the RedisWithFindex store
-
-        // If we reach this point, we know that kms_version is at least 5.9.0
-        // simply increment the current version to the current KMS version
-        if kms_version != current_db_version {
-            self.set_current_db_version(kms_version).await?;
-            debug!("Redis database version was bumped to the current KMS version: {kms_version}");
-        }
-
-        debug!("  ==> database is up to date.");
-
-        Ok(())
+        async fn migrate_to_5_9_0(&self, parameters: MigrateTo590Parameters) -> DbResult<()>;
     }
-
-    async fn migrate_to_5_9_0(&self, parameters: MigrateTo590Parameters) -> DbResult<()>;
 }
+
+#[cfg(feature = "non-fips")]
+pub(crate) use redis_migrate::*;
