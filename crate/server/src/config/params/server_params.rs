@@ -239,7 +239,6 @@ impl fmt::Debug for ServerParams {
             .field("clear_db_on_start", &self.clear_db_on_start)
             .field("unwrapped_cache_max_age", &self.unwrapped_cache_max_age)
             .field("non_revocable_key_id", &self.non_revocable_key_id)
-            .field("key_wrapping_key", &self.key_wrapping_key)
             .field("default_unwrap_types", &self.default_unwrap_types);
 
         if self.start_socket_server {

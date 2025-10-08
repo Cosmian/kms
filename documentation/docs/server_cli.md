@@ -162,7 +162,7 @@ Options:
           Print the server configuration information and exit
       --hsm-model <HSM_MODEL>
           The HSM model.
-          Trustway Proteccio, Utimaco General purpose HSM, Smartcard HSM, and SoftHSM2 are supported. [default: proteccio] [possible values: proteccio, utimaco, softhsm2, smartcardhsm]--hsm-admin <HSM_ADMIN>
+          Trustway Proteccio, Utimaco General purpose HSM, Smartcard HSM, and SoftHSM2 are supported. [default: proteccio] [possible values: proteccio, utimaco, softhsm2, smartcardhsm]
       --hsm-admin <HSM_ADMIN>
           The username of the HSM admin. The HSM admin can create objects on the HSM, destroy them, and potentially export them [env: KMS_HSM_ADMIN=] [default: admin]
       --hsm-slot <HSM_SLOT>
