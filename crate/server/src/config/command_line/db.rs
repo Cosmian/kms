@@ -210,6 +210,8 @@ impl MainDBConfig {
                 }
                 #[cfg(feature = "non-fips")]
                 "redis-findex" => {
+                    use cosmian_kms_server_database::reexport::cloudproof_findex::Label;
+
                     let url = ensure_url(self.database_url.as_deref(), "KMS_REDIS_URL")
                         .context("db:init")?;
                     // Check if a Redis master password was provided
@@ -223,6 +225,8 @@ impl MainDBConfig {
                         .context("db:init")?;
                     let old_label = self.redis_findex_label.as_deref().map_or_else(
                         || {
+                            use cosmian_kms_server_database::reexport::cloudproof_findex::Label;
+
                             std::env::var("KMS_REDIS_FINDEX_LABEL")
                                 .ok()
                                 .map(|s| Label::from(s.as_bytes()))

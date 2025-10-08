@@ -12,7 +12,9 @@ use cosmian_logger::reexport::tracing;
 use cosmian_sse_memories::{ADDRESS_LENGTH, Address, RedisMemoryError};
 use thiserror::Error;
 
-use crate::{DbError::CryptographicError, stores::LegacyDbError};
+use crate::DbError::CryptographicError;
+#[cfg(feature = "non-fips")]
+use crate::stores::LegacyDbError;
 
 // Each error type must have a corresponding HTTP status code (see `kmip_endpoint.rs`)
 #[derive(Error, Debug)]

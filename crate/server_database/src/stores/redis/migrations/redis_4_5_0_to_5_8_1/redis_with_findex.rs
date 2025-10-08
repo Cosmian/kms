@@ -45,7 +45,7 @@ pub(crate) const REDIS_WITH_FINDEX_MASTER_FINDEX_KEY_DERIVATION_SALT: &[u8; 6] =
 pub(crate) const REDIS_WITH_FINDEX_MASTER_DB_KEY_DERIVATION_SALT: &[u8; 2] = b"db";
 
 /// Derive a Redis Master Key from a password
-pub fn redis_master_key_from_password(
+pub(super) fn redis_master_key_from_password(
     master_password: &str,
 ) -> DbResult<SymmetricKey<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>> {
     let output_key_material = derive_key_from_password::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>(
@@ -192,10 +192,10 @@ impl PermissionsStore for RedisWithFindex {
         &self,
         uid: &str,
         user: &str,
-        operation_types: HashSet<KmipOperation>,
+        operations: HashSet<KmipOperation>,
         _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
-        for operation in &operation_types {
+        for operation in &operations {
             self.permissions_db
                 .add(&self.findex_key, uid, user, *operation)
                 .await
@@ -210,10 +210,10 @@ impl PermissionsStore for RedisWithFindex {
         &self,
         uid: &str,
         user: &str,
-        operation_types: HashSet<KmipOperation>,
+        operations: HashSet<KmipOperation>,
         _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
-        for operation in &operation_types {
+        for operation in &operations {
             self.permissions_db
                 .remove(&self.findex_key, uid, user, *operation)
                 .await

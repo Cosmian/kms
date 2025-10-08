@@ -47,6 +47,7 @@ pub use stores::redis_master_key_from_password;
 mod tests;
 
 pub mod reexport {
+    #[cfg(feature = "non-fips")]
     pub use cloudproof_findex;
     pub use cosmian_kmip;
     pub use cosmian_kms_crypto;
