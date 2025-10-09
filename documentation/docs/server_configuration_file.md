@@ -60,6 +60,10 @@ hsm_password = ["<password_of_1st_slot1>", "<password_of_2bd_slot2>", ...]
 # Note: This setting is ignored when a key is imported in JSON TTLV format and is already wrapped.
 key_encryption_key = "kek ID"
 
+# Specifies which KMIP object types should be automatically unwrapped when retrieved.
+# Valid values: ["PrivateKey", "PublicKey", "SymmetricKey", "SecretData"]
+default_unwrap_type = []
+
 # All users can create and import objects in the KMS by default.
 # Only these users can create and import objects when this setting contains a user ID list.
 privileged_users = ["<user_id_1>", "<user_id_2>"]
