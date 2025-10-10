@@ -42,6 +42,7 @@ pub(crate) async fn test_objects_db() -> DbResult<()> {
 
     let db_key = SymmetricKey::new(&mut rng);
     let o_db = ObjectsDB::new(mgr.clone(), &db_key);
+
     // clean up
     redis::cmd("FLUSHDB")
         .query_async::<()>(&mut mgr.clone())

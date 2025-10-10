@@ -272,7 +272,7 @@ impl PermissionsDB {
         user_id: &str,
         permission: KmipOperation,
     ) -> LegacyDbResult<()> {
-        // A delete in Findex is done by adding  a new entry with the same key bu stale
+        // A delete in Findex is done by adding  a new entry with the same key.
 
         let triple = Triple::new(obj_uid, user_id, permission);
         let indexed_value = IndexedValue::from(Location::try_from(&triple)?);
@@ -282,7 +282,7 @@ impl PermissionsDB {
         let mut deletions = HashMap::new();
         deletions.insert(indexed_value, HashSet::from([keyword.clone()]));
 
-        //upsert the deletions in the index
+        // upsert the deletions in the index
         let new_keywords = self
             .findex
             .upsert(

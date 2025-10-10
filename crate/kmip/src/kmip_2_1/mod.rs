@@ -1,7 +1,7 @@
 use std::{fmt, str::FromStr};
 
 use serde::{Deserialize, Serialize};
-use strum::FromRepr;
+use strum::{EnumCount, FromRepr};
 
 pub mod extra;
 pub mod kmip_attributes;
@@ -14,7 +14,19 @@ pub mod requests;
 
 /// Operation types that can get or create objects
 /// These operations use `retrieve` or `get` methods.
-#[derive(Eq, PartialEq, Serialize, Deserialize, Copy, Clone, Hash, PartialOrd, Ord, FromRepr)]
+#[derive(
+    Eq,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    Copy,
+    Clone,
+    Hash,
+    PartialOrd,
+    Ord,
+    FromRepr,
+    EnumCount, // TODO: del enum count
+)]
 #[serde(rename_all = "lowercase")]
 #[repr(u8)]
 pub enum KmipOperation {

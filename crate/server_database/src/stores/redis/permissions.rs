@@ -10,10 +10,7 @@ use cosmian_kms_crypto::reexport::cosmian_crypto_core::bytes_ser_de::Serializabl
 use crate::{
     DbError,
     error::DbResult,
-    stores::redis::{
-        findex::{IndexedValue, Keyword},
-        redis_with_findex::FindexRedis,
-    },
+    stores::redis::findex::{FindexRedis, IndexedValue, Keyword},
 };
 
 /// An identifier for objects in the permission system.
@@ -280,6 +277,7 @@ mod tests {
     use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
         bytes_ser_de::test_serialization, reexport::rand_core::SeedableRng,
     };
+    use strum::EnumCount;
 
     use super::*;
 
@@ -294,8 +292,9 @@ mod tests {
         let mut rng = CsRng::from_entropy();
 
         // All KmipOperation variants (17 at the time of writing)
-        let all_operations: Vec<KmipOperation> =
-            (0..=17).filter_map(KmipOperation::from_repr).collect();
+        let all_operations: Vec<KmipOperation> = (0..=KmipOperation::COUNT)
+            .filter_map(|arg0: usize| KmipOperation::from_repr(arg0.try_into().unwrap()))
+            .collect();
 
         for _ in 0..10 {
             let obj_uid = ObjectUid(Uuid::new_v4().to_string());

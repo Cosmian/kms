@@ -36,7 +36,7 @@ use crate::{
         REDIS_WITH_FINDEX_MASTER_KEY_LENGTH,
         migrate::{DbState, Migrate, MigrateTo590Parameters, MigrationParams, RedisMigrate},
         redis::{
-            findex::{CUSTOM_WORD_LENGTH, IndexedValue, Keyword},
+            findex::{CUSTOM_WORD_LENGTH, FindexRedis, IndexedValue, Keyword},
             objects_db::RedisOperation,
             permissions::{ObjectUid, UserId},
         },
@@ -69,21 +69,10 @@ fn intersect_all_refs<'a>(sets: &'a Vec<HashSet<&'a IndexedValue>>) -> HashSet<&
         .unwrap_or_else(HashSet::new)
 }
 
-/// Findex implementation using Redis in the memory layer.
-pub(crate) type FindexRedis = Findex<
-    CUSTOM_WORD_LENGTH,
-    IndexedValue,
-    String,
-    MemoryEncryptionLayer<
-        CUSTOM_WORD_LENGTH,
-        RedisMemory<Address<ADDRESS_LENGTH>, [u8; CUSTOM_WORD_LENGTH]>,
-    >,
->;
-
 pub(crate) async fn init_findex_redis(
     findex_key: &Secret<FINDEX_KEY_LENGTH>,
     redis_url: &str,
-) -> Result<FindexRedis, DbError> {
+) -> DbResult<FindexRedis> {
     let redis_memory =
         RedisMemory::<Address<ADDRESS_LENGTH>, [u8; CUSTOM_WORD_LENGTH]>::new_with_url(redis_url)
             .await?;
@@ -201,7 +190,7 @@ impl RedisWithFindex {
         tags: Option<&HashSet<String>>,
         state: State,
         params: Option<Arc<dyn SessionParams>>,
-    ) -> Result<RedisDbObject, DbError> {
+    ) -> DbResult<RedisDbObject> {
         // replace the existing tags (if any) with the new ones (if provided)
         let tags = if let Some(tags) = tags {
             tags.clone()
@@ -236,7 +225,7 @@ impl RedisWithFindex {
         object: &Object,
         attributes: &Attributes,
         tags: &HashSet<String>,
-    ) -> Result<(String, RedisDbObject), DbError> {
+    ) -> DbResult<(String, RedisDbObject)> {
         // If the uid is not provided, generate a new one
         let uid = uid.unwrap_or_else(|| Uuid::new_v4().to_string());
         let db_object = self
@@ -259,7 +248,7 @@ impl RedisWithFindex {
         object: &Object,
         attributes: &Attributes,
         tags: Option<&HashSet<String>>,
-    ) -> Result<RedisDbObject, DbError> {
+    ) -> DbResult<RedisDbObject> {
         let mut db_object = self
             .objects_db
             .object_get(uid)
@@ -286,7 +275,7 @@ impl RedisWithFindex {
         &self,
         uid: &str,
         state: State,
-    ) -> Result<RedisDbObject, DbError> {
+    ) -> DbResult<RedisDbObject> {
         let mut db_object = self
             .objects_db
             .object_get(uid)

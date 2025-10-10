@@ -76,10 +76,10 @@ pub(crate) struct RedisWithFindex {
     label: Label,
 }
 
-struct DummyDB; // c.f. redis/additional_redis_findex_tests.rs on legacy kms
+struct RemovedLocationDbStub;
 
 #[async_trait]
-impl RemovedLocationsFinder for DummyDB {
+impl RemovedLocationsFinder for RemovedLocationDbStub {
     async fn find_removed_locations(
         &self,
         _locations: HashSet<Location>,
@@ -123,8 +123,10 @@ impl RedisWithFindex {
 
         let client = redis_for_migrations::Client::open(redis_url)?;
         let mgr = ConnectionManager::new(client).await?;
-        let findex =
-            Arc::new(FindexRedis::connect_with_manager(mgr.clone(), Arc::new(DummyDB {})).await?);
+        let findex = Arc::new(
+            FindexRedis::connect_with_manager(mgr.clone(), Arc::new(RemovedLocationDbStub {}))
+                .await?,
+        );
         let permissions_db = PermissionsDB::new(findex.clone(), label);
 
         let redis_with_findex = Self {
@@ -137,6 +139,14 @@ impl RedisWithFindex {
 
         Ok(redis_with_findex)
     }
+
+    // pub(crate) async fn compact(&self) -> DbResult<()> {
+    //     self.findex
+    //         .compact(&self.findex_key, &self.findex_key, &[0_u8], 9999)
+    //         .await
+    //         .map_err(|e| DbError::DatabaseError(format!("Failed to compact: {}", e)))?;
+    //     Ok(())
+    // }
 }
 
 #[async_trait(?Send)]
