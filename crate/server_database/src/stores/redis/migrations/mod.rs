@@ -220,7 +220,7 @@ impl RedisMigrate for RedisWithFindex {
         // O(1) swap - all clients using DB 0 will now use DB 1
         // Notice!: in theory can set the db_state to Ready starting from here, as the cleanup (see below) will be performed in an ASYNC manner on DB 1 without blocking the main thread
         // unless a bottleneck is detected, keep this code as is
-        let _ = redis::cmd("SWAPDB")
+        let _: () = redis::cmd("SWAPDB")
             .arg(0)
             .arg(1)
             .exec(&mut redis::Client::open(db_0_url)?.get_connection()?)?;

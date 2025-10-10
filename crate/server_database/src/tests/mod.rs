@@ -88,6 +88,7 @@ async fn get_redis_with_findex() -> DbResult<RedisWithFindex> {
 }
 
 #[ignore = "Requires a running Redis instance"]
+#[allow(clippy::large_stack_frames)] // this is a test anyway
 #[cfg(feature = "non-fips")]
 #[tokio::test]
 pub(crate) async fn test_db_redis_with_findex() -> DbResult<()> {
