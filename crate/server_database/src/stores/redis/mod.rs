@@ -4,7 +4,6 @@ pub(crate) mod permissions;
 mod redis_with_findex;
 
 pub(crate) use redis_with_findex::RedisWithFindex;
-#[cfg(test)]
 pub(crate) use redis_with_findex::init_findex_redis;
 pub use redis_with_findex::redis_master_key_from_password;
 #[cfg(test)]

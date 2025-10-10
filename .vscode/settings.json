@@ -44,6 +44,7 @@
     "Sqlite",
     "sqlx",
     "structopt",
+    "SWAPDB",
     "TFHE",
     "thiserror",
     "tokio",
