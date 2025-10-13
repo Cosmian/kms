@@ -229,6 +229,7 @@ mod redis_migrate {
                 }
                 self.migrate_to_5_9_0(parameters.migrate_to_5_9_0_parameters.unwrap()) // TODO: unwrap
                     .await?;
+                self.set_current_db_version("5.9.0").await?;
             }
 
             // INFO: add future migrations here if breaking changes are made to the RedisWithFindex store

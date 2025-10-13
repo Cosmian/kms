@@ -1474,6 +1474,7 @@ dependencies = [
  "sqlx",
  "strum",
  "tempfile",
+ "test_kms_server",
  "thiserror 2.0.16",
  "tiny-keccak",
  "tokio",

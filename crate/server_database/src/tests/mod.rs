@@ -24,6 +24,8 @@ use crate::stores::RedisWithFindex;
 use crate::stores::additional_redis_findex_tests::{
     test_corner_case, test_objects_db, test_permissions_db,
 };
+#[cfg(feature = "non-fips")]
+mod redis_migration_tests;
 use crate::{
     error::DbResult,
     stores::{MySqlPool, PgPool, SqlitePool},
@@ -88,10 +90,12 @@ async fn get_redis_with_findex() -> DbResult<RedisWithFindex> {
 }
 
 #[ignore = "Requires a running Redis instance"]
-#[allow(clippy::large_stack_frames)] // this is a test anyway
+#[allow(clippy::large_stack_frames)] // This a test, we can skip this as long as test machines can handle such a stack
 #[cfg(feature = "non-fips")]
 #[tokio::test]
 pub(crate) async fn test_db_redis_with_findex() -> DbResult<()> {
+    use crate::tests::redis_migration_tests::migrations;
+
     log_init(option_env!("RUST_LOG"));
     test_objects_db().await?;
     test_permissions_db().await?;
@@ -106,6 +110,7 @@ pub(crate) async fn test_db_redis_with_findex() -> DbResult<()> {
     upsert(&get_redis_with_findex().await?, None).await?;
     crud(&get_redis_with_findex().await?, None).await?;
     list_uids_for_tags_test(&get_redis_with_findex().await?, None).await?;
+    migrations(&get_redis_with_findex().await?, None).await?;
     Ok(())
 }
 
@@ -136,6 +141,7 @@ pub(crate) async fn test_db_sqlite() -> DbResult<()> {
     upsert(&get_sqlite(&db_file).await?, None).await?;
     crud(&get_sqlite(&db_file).await?, None).await?;
     list_uids_for_tags_test(&get_sqlite(&db_file).await?, None).await?;
+
     Ok(())
 }
 

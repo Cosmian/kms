@@ -6,7 +6,7 @@
     clippy::all
 )] // TODO: del this later
 
-pub(crate) mod redis_4_5_0_to_5_8_1; // This is *ONLY* marked as pub(crate) to allow auto-converting to/from LegacyDbError in DbError.
+pub(crate) mod redis_4_5_0_to_5_9_0; // This is *ONLY* marked as pub(crate) to allow auto-converting to/from LegacyDbError in DbError.
 
 use async_trait::async_trait;
 use cosmian_findex::IndexADT;
@@ -31,7 +31,7 @@ use crate::{
         redis::{
             findex::{FindexRedis, IndexedValue, Keyword},
             init_findex_redis,
-            migrations::redis_4_5_0_to_5_8_1::RedisWithFindex as LegacyRedisWithFindex,
+            migrations::redis_4_5_0_to_5_9_0::RedisWithFindex as LegacyRedisWithFindex,
             objects_db::keywords_from_attributes,
             permissions::{ObjectUid, PermissionsDB, UserId},
         },
