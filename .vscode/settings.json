@@ -7,11 +7,10 @@
     "ciphertext",
     "ciphertexts",
     "cleartext",
-    "cloudproof",
-    "cosmian",
     "Cosmian",
     "covercrypt",
     "Covercrypt",
+    "DBSIZE",
     "ECDH",
     "ecies",
     "ECIES",
@@ -21,6 +20,7 @@
     "gpsw",
     "Gpsw",
     "jwks",
+    "keccak",
     "keypair",
     "kmip",
     "KMIP",
@@ -44,6 +44,7 @@
     "Sqlite",
     "sqlx",
     "structopt",
+    "SWAPDB",
     "TFHE",
     "thiserror",
     "tokio",
@@ -92,5 +93,8 @@
       "name": "test"
     }
   ],
-  "sqltools.useNodeRuntime": true
+  "sqltools.useNodeRuntime": true,
+  "rust-analyzer.cargo.features": [
+    "non-fips"
+  ],
 }

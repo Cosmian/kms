@@ -8,7 +8,7 @@ use crate::{
     DbError,
     error::{DbResult, DbResultHelper},
     stores::{
-        migrate::{DbState, Migrate},
+        migrate::{DbState, HasDatabase, SqlMigrate},
         sql::database::{SqlDatabase, get_query},
     },
 };
@@ -38,6 +38,7 @@ where
 #[async_trait(?Send)]
 impl<T, DB> SqlMainStore<DB> for T
 where
+    T: SqlDatabase<DB> + SqlMigrate<DB> + HasDatabase<Database = DB>,
     DB: sqlx::Database,
     for<'z> &'z mut DB::Connection: Executor<'z, Database = DB>,
     for<'z> DB::Arguments<'z>: IntoArguments<'z, DB>,
@@ -47,7 +48,6 @@ where
     for<'w, 'z> sqlx::types::Json<&'w serde_json::Value>: sqlx::Encode<'z, DB>,
     sqlx::types::Json<serde_json::Value>: sqlx::Type<DB>,
     usize: sqlx::ColumnIndex<<DB as sqlx::Database>::Row>,
-    T: SqlDatabase<DB> + Migrate<DB>,
 {
     /// Start the store, creating the tables if they don't exist
     /// and performing the migration if necessary

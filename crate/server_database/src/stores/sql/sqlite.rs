@@ -28,6 +28,7 @@ use crate::{
     error::{DbResult, DbResultHelper},
     stores::{
         SQLITE_QUERIES,
+        migrate::HasDatabase,
         sql::{
             database::SqlDatabase,
             locate_query::{SqlitePlaceholder, query_from_attributes},
@@ -64,8 +65,9 @@ fn sqlite_row_to_owm(row: &SqliteRow) -> Result<ObjectWithMetadata, DbError> {
     let raw_attributes = row.get::<Value, _>(2);
     let attributes = serde_json::from_value(raw_attributes)?;
     let owner = row.get::<String, _>(3);
-    let state = State::try_from(row.get::<String, _>(4).as_str())
-        .map_err(|e| DbError::ConversionError(format!("failed converting the state: {e}")))?;
+    let state = State::try_from(row.get::<String, _>(4).as_str()).map_err(|e| {
+        DbError::ConversionError(format!("failed converting the state: {e}").into())
+    })?;
     Ok(ObjectWithMetadata::new(
         id, object, owner, state, attributes,
     ))
@@ -74,6 +76,10 @@ fn sqlite_row_to_owm(row: &SqliteRow) -> Result<ObjectWithMetadata, DbError> {
 #[derive(Clone)]
 pub(crate) struct SqlitePool {
     pool: Pool<Sqlite>,
+}
+
+impl HasDatabase for SqlitePool {
+    type Database = Sqlite;
 }
 
 impl SqlitePool {
@@ -619,7 +625,7 @@ where
             (
                 row.get::<String, _>(1),
                 State::try_from(row.get::<String, _>(2).as_str()).map_err(|e| {
-                    DbError::ConversionError(format!("failed converting the state: {e}"))
+                    DbError::ConversionError(format!("failed converting the state: {e}").into())
                 })?,
                 serde_json::from_slice(&row.get::<Vec<u8>, _>(3))?,
             ),
@@ -794,7 +800,7 @@ fn to_qualified_uids(rows: &[SqliteRow]) -> DbResult<Vec<(String, State, Attribu
         uids.push((
             row.get::<String, _>(0),
             State::try_from(row.get::<String, _>(1).as_str()).map_err(|e| {
-                DbError::ConversionError(format!("failed converting the state: {e}"))
+                DbError::ConversionError(format!("failed converting the state: {e}").into())
             })?,
             attrs,
         ));
