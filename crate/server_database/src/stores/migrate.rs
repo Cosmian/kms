@@ -165,30 +165,42 @@ mod redis_migrate {
         /// Migrate the database to the latest version
         #[allow(clippy::unwrap_used)] // TODO
         async fn migrate(&self, parameters: MigrationParams<'_>) -> DbResult<()> {
-            let db_state = self.get_db_state().await?.unwrap_or(DbState::Ready);
-            if db_state != DbState::Ready {
+            let db_state = self.get_db_state().await?;
+            let current_db_version = self.get_current_db_version().await?;
+
+            // If one of them is not set, the database might be corrupted been meddled with
+            if (db_state.is_none() && current_db_version.is_some())
+                || (db_state.is_some() && current_db_version.is_none())
+            {
+                let msg = "Database version not set, the Redis store might be corrupted. \
+                    Aborting. Please backup and/or export any existing keys - if any - \
+                    (using standard formats such as PKCS#8 or Raw) then re-run the KMS \
+                    with the `clear_database` flag set to true. Clearing the database is a \
+                    destructive operation. Please ensure backing up any important data \
+                    before proceeding."
+                    .to_owned();
+                error!("{}", msg);
+                return Err(DbError::DatabaseError(msg));
+            }
+
+            // In the absence of both, we assume the DB was constructed using a 4.5.0+ version of the KMS, up until 4.24.0
+            if db_state.is_none() && current_db_version.is_none() {
+                debug!(
+                    "Database state and version not set, assuming a fresh database created with a version between 4.5.0 and 4.24.0."
+                );
+            }
+
+            let current_db_version = current_db_version.unwrap_or_else(|| "4.5.0".to_owned());
+
+            // there are only two states so not using negation is fine here
+            if db_state == Some(DbState::Upgrading) {
                 let error_string = "Database is not in a ready state; it is either upgrading or a \
-                                previous update failed. Bailing out. Please wait for the  \
-                                migration to complete or restore a previous version of the \
+                previous update failed. Bailing out. Please wait for the  \
+                migration to complete or restore a previous version of the \
                                 database.";
                 error!("{}", error_string,);
                 return Err(DbError::DatabaseError(error_string.to_owned()));
             }
-
-            // In the other stores, if the db version was not set, the version was assumed to be "4.12.0"
-            // This is inconsistent with RedisWithFindex's design, as a missing db version might be
-            // a sign of a corrupted store and in this case early aborting is the safest option.
-            let Some(current_db_version) = self.get_current_db_version().await? else {
-                let msg = "Database version not set, the Redis store might be corrupted. \
-                         Aborting. Please backup and/or export any existing keys - if any - \
-                         (using standard formats such as PKCS#8 or Raw) then re-run the KMS \
-                         with the `clear_database` flag set to true. Clearing the database is a \
-                         destructive operation. Please ensure backing up any important data \
-                         before proceeding."
-                    .to_owned();
-                error!("{}", msg);
-                return Err(DbError::DatabaseError(msg));
-            };
 
             let kms_version = env!("CARGO_PKG_VERSION");
 
@@ -196,6 +208,9 @@ mod redis_migrate {
                 debug!("  ==> database is up to date.");
                 return Ok(());
             }
+
+            // Officially start the migration process
+            self.set_db_state(DbState::Upgrading).await?;
 
             debug!(
                 "Database version before migration: {current_db_version}, Current KMS version: \

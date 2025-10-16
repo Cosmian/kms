@@ -4,7 +4,6 @@
     clippy::indexing_slicing,
     clippy::unwrap_in_result
 )]
-
 use std::path::Path;
 
 use cosmian_logger::log_init;
@@ -110,6 +109,17 @@ pub(crate) async fn test_db_redis_with_findex() -> DbResult<()> {
     upsert(&get_redis_with_findex().await?, None).await?;
     crud(&get_redis_with_findex().await?, None).await?;
     list_uids_for_tags_test(&get_redis_with_findex().await?, None).await?;
+    // TODO: uncomment this
+    migrations(&get_redis_with_findex().await?, None).await?;
+    Ok(())
+}
+
+#[cfg(feature = "non-fips")] // TODO: delete this test once we are sure the migration code is correct
+#[tokio::test]
+pub(crate) async fn test_migration_redis() -> DbResult<()> {
+    use crate::tests::redis_migration_tests::migrations;
+
+    log_init(option_env!("RUST_LOG"));
     migrations(&get_redis_with_findex().await?, None).await?;
     Ok(())
 }

@@ -49,7 +49,7 @@ impl Migrate for RedisWithFindex {
 
         match state_str {
             Some(state) => Ok(Some(serde_json::from_str(&state)?)),
-            None => Ok(Some(DbState::Ready)),
+            None => Ok(None),
         }
     }
 

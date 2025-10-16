@@ -1456,6 +1456,7 @@ name = "cosmian_kms_server_database"
 version = "5.9.0"
 dependencies = [
  "async-trait",
+ "byteorder",
  "cloudproof_findex",
  "cosmian_findex 8.0.0",
  "cosmian_kmip",

@@ -82,3 +82,4 @@ strum = { workspace = true }
 [dev-dependencies]
 tempfile = { workspace = true }
 test_kms_server = { path = "../test_kms_server" }
+byteorder = "1.5"
