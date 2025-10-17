@@ -225,7 +225,7 @@ For high availability and scalability, refer to the [High Availability Guide](./
     ```sh
     cosmian_kms --version
     ```
-    The server uses the configuration file located at `C:\ProgramData\Cosmian\kms.toml`.
+    The server uses the configuration file located at `%LOCALAPPDATA%\\Cosmian KMS Server\kms.toml`.
     if it is available. See the [server configuration](../server_configuration_file.md) for more information.
 
     NOTE: The Windows version does NOT come with a web UI. It can be manually installed by copying the `dist` folder

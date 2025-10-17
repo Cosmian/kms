@@ -3,20 +3,29 @@ use serde::{Deserialize, Serialize};
 
 #[cfg(not(target_os = "windows"))]
 pub const DEFAULT_COSMIAN_UI_DIST_PATH: &str = "/usr/local/cosmian/ui/dist/";
+
+// On Windows, we need to resolve %LOCALAPPDATA% at runtime
 #[cfg(target_os = "windows")]
-pub const DEFAULT_COSMIAN_UI_DIST_PATH: &str = "C:\\ProgramData\\cosmian";
+pub fn get_default_ui_dist_path() -> String {
+    if let Ok(localappdata) = std::env::var("LOCALAPPDATA") {
+        format!("{}\\Cosmian KMS Server\\ui", localappdata)
+    } else {
+        // Fallback if LOCALAPPDATA is not set (shouldn't happen on Windows)
+        String::from("C:\\ProgramData\\cosmian\\ui")
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn get_default_ui_dist_path() -> String {
+    DEFAULT_COSMIAN_UI_DIST_PATH.to_string()
+}
 
 #[derive(Debug, Args, Deserialize, Serialize, Clone)]
 #[serde(default)]
 pub struct UiConfig {
     /// The UI distribution folder
-    #[arg(
-        short,
-        env = "COSMIAN_UI_DIST_PATH",
-        long,
-        default_value = DEFAULT_COSMIAN_UI_DIST_PATH
-    )]
-    pub ui_index_html_folder: String,
+    #[arg(short, env = "COSMIAN_UI_DIST_PATH", long)]
+    pub ui_index_html_folder: Option<String>,
 
     #[clap(flatten)]
     pub ui_oidc_auth: OidcConfig,
@@ -25,9 +34,18 @@ pub struct UiConfig {
 impl Default for UiConfig {
     fn default() -> Self {
         Self {
-            ui_index_html_folder: DEFAULT_COSMIAN_UI_DIST_PATH.to_owned(),
+            ui_index_html_folder: None,
             ui_oidc_auth: OidcConfig::default(),
         }
+    }
+}
+
+impl UiConfig {
+    /// Get the UI distribution folder path, resolving the default if not set
+    pub fn get_ui_index_html_folder(&self) -> String {
+        self.ui_index_html_folder
+            .clone()
+            .unwrap_or_else(get_default_ui_dist_path)
     }
 }
 
