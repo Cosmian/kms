@@ -10,12 +10,11 @@ Always reference these instructions first and fallback to search or bash command
 
     - First, initialize git submodules: `git submodule update --recursive --init`
     - System requires Rust stable toolchain (1.90.0) with rustfmt and clippy components
-    - OpenSSL 3.2.0 is REQUIRED (not 3.0.13+) for proper FIPS compliance and static linking
-    - OpenSSL must be installed to `/usr/local/openssl` using `.github/reusable_scripts/get_openssl_binaries.sh`
-    - Build process follows CI workflow: `bash .github/scripts/cargo_build.sh`
-    - Environment variables required: `OPENSSL_DIR=/usr/local/openssl`, `DEBUG_OR_RELEASE=debug|release`
-    - For non-FIPS builds: `FEATURES=non-fips`
-    - The CLI binary `cosmian` IS built in this repository and included in build artifacts
+    - OpenSSL 3.1.2 is REQUIRED (not 3.0.13+) for proper FIPS compliance and static linking
+        - Build process follows CI workflow: `bash .github/scripts/cargo_build.sh` (this script fetches and configures OpenSSL automatically when needed)
+        - Environment variables: `DEBUG_OR_RELEASE=debug|release` (optional), `FEATURES=non-fips` (optional)
+        - For non-FIPS builds: `FEATURES=non-fips`
+        - The CLI binary `cosmian` IS built in this repository and included in build artifacts
 
 - **UI and Packaging:**
 
@@ -43,8 +42,8 @@ Always reference these instructions first and fallback to search or bash command
     - Binary locations: `target/$DEBUG_OR_RELEASE/` (e.g., `target/debug/`)
     - Release builds include benchmarks: `cargo bench $FEATURES --no-run`
     - Static linking verified (no dynamic OpenSSL dependencies): `ldd cosmian_kms | grep ssl` should fail
-    - Version verification: `cosmian_kms --info` must show OpenSSL 3.2.0
-    - Binary tests: `cargo test --workspace --bins $RELEASE $FEATURES`
+    - Version verification: `cosmian_kms --info` must show OpenSSL 3.1.2
+        - Binary tests: `cargo test --workspace --bins $RELEASE $FEATURES`
 
 - **Run the KMS server:**
 
@@ -66,7 +65,7 @@ Always reference these instructions first and fallback to search or bash command
 - Test server startup: Start server with `--database-type sqlite --sqlite-path /tmp/test-db`
 - Test API responses: `curl -s -X POST -H "Content-Type: application/json" -d '{}' http://localhost:9998/kmip/2_1` should return KMIP validation error (confirms server is working)
 - Test server version: `./target/release/cosmian_kms --version` should show version 5.11.0
-- OpenSSL validation: `./target/release/cosmian_kms --info` should show OpenSSL 3.2.0
+- OpenSSL validation: `./target/release/cosmian_kms --info` should show OpenSSL 3.1.2
 - Static linking check: `ldd ./target/release/cosmian_kms | grep ssl` should return empty (no dynamic OpenSSL)
 - Always run `cargo fmt --check` before committing (takes 3 seconds)
 - Clippy requires installation: `rustup component add clippy`
@@ -107,14 +106,10 @@ rust-toolchain.toml     # Rust toolchain: 1.90.0
 ```bash
 # Full CI build process (includes UI, packaging, multi-database tests)
 git submodule update --recursive --init
-export OPENSSL_DIR=/usr/local/openssl
 export DEBUG_OR_RELEASE=debug  # or release
 export FEATURES=non-fips       # optional, for non-FIPS builds
 
-# OpenSSL setup (required first)
-sudo mkdir -p /usr/local/openssl/ssl /usr/local/openssl/lib64/ossl-modules
-sudo chown -R $USER /usr/local/openssl
-bash .github/reusable_scripts/get_openssl_binaries.sh
+# Build inside the Nix shell (provides OpenSSL 3.1.2 and pinned glibc toolchain)
 bash .github/scripts/cargo_build.sh
 
 
@@ -160,7 +155,7 @@ curl -s -X POST -H "Content-Type: application/json" -d '{}' http://localhost:999
 # Expected: "cosmian_kms_server 5.11.0"
 
 ./target/release/cosmian_kms --info
-# Expected: Output containing "OpenSSL 3.2.0"
+# Expected: Output containing "OpenSSL 3.1.2"
 
 # Verify static linking (should return empty)
 ldd ./target/release/cosmian_kms | grep ssl
@@ -183,7 +178,7 @@ curl http://localhost:9998/ui
 
 ## Important notes
 
-- **OpenSSL Version**: OpenSSL 3.2.0 is mandatory, not 3.0.13+. The build verifies this specific version.
+- **OpenSSL Version**: OpenSSL 3.1.2 is mandatory, not 3.0.13+. The build verifies this specific version.
 - **Static Linking**: All binaries must be statically linked with OpenSSL. CI verifies no dynamic OpenSSL dependencies.
 - **Build Artifacts**: Three primary binaries are built: `cosmian`, `cosmian_kms`, `cosmian_findex_server`
 - **Database Testing**: Only sqlite works in debug mode and on macOS. Full database testing requires release builds.

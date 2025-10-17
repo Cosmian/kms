@@ -8,7 +8,12 @@
 #   $out/lib/ossl-modules/fips.{so|dylib}
 #   $out/ssl/fipsmodule.cnf
 
-stdenv.mkDerivation rec {
+let
+  glibcVersion = stdenv.cc.libc.version or (lib.getVersion stdenv.cc.libc);
+  _ = lib.assertMsg (lib.versionAtMost glibcVersion "2.28")
+    ("cosmian_kms OpenSSL derivation requires glibc <= 2.28; detected glibc "
+      + glibcVersion + ". Use an older Nixpkgs or compatible environment.");
+in stdenv.mkDerivation rec {
   pname = "openssl";
   version = "3.1.2";
 
@@ -57,10 +62,20 @@ stdenv.mkDerivation rec {
     # Explicitly install the FIPS provider module and its config
     make install_fips || true
 
-    # Generate fipsmodule.cnf using the built openssl and installed fips module
-    fips_mod="$out/lib/ossl-modules/fips.${soExt}"
+    # OpenSSL on some Linux targets installs modules under lib64/ossl-modules.
+    # Do NOT create symlinks here; Nix fixupPhase will move lib64/* to lib/*.
+    # Just detect the actual module path for fipsinstall.
+    if [ -f "$out/lib/ossl-modules/fips.${soExt}" ]; then
+      moddir="$out/lib/ossl-modules"
+    elif [ -f "$out/lib64/ossl-modules/fips.${soExt}" ]; then
+      moddir="$out/lib64/ossl-modules"
+    else
+      moddir="$out/lib/ossl-modules" # default for error message below
+    fi
+    fips_mod="$moddir/fips.${soExt}"
     if [ ! -f "$fips_mod" ]; then
       echo "FIPS provider module missing at $fips_mod" >&2
+      echo "Searched in: $out/lib/ossl-modules and $out/lib64/ossl-modules" >&2
       exit 1
     fi
 
@@ -70,8 +85,16 @@ stdenv.mkDerivation rec {
 
     # Sanity checks
     test -x "$out/bin/openssl"
-    test -f "$out/lib/libcrypto.a"
-    test -f "$out/lib/libssl.a"
+
+    # Validate presence of static libs in either lib or lib64
+    if [ ! -f "$out/lib/libcrypto.a" ] && [ ! -f "$out/lib64/libcrypto.a" ]; then
+      echo "Error: Missing libcrypto.a in $out/lib or $out/lib64" >&2
+      exit 1
+    fi
+    if [ ! -f "$out/lib/libssl.a" ] && [ ! -f "$out/lib64/libssl.a" ]; then
+      echo "Error: Missing libssl.a in $out/lib or $out/lib64" >&2
+      exit 1
+    fi
     test -f "$out/ssl/fipsmodule.cnf"
 
     runHook postInstall
@@ -93,5 +116,8 @@ stdenv.mkDerivation rec {
     license = licenses.openssl;
     platforms = platforms.unix;
     maintainers = [];
+    longDescription = ''
+      Built against glibc <= 2.28 as enforced by the calling shell expression.
+    '';
   };
 }

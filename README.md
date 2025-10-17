@@ -217,18 +217,17 @@ A Rust toolchain is required to build the KMS.
 From version 5.4.0, the KMS runs in FIPS mode by default.
 The non-FIPS mode can be enabled by passing the `--features non-fips` flag to `cargo build` or `cargo run`.
 
-OpenSSL v3.2.0 is required to build the KMS.
+OpenSSL v3.1.2 is required to build the KMS.
 
 ### Linux or macOS (CPU Intel or macOS ARM)
 
-Retrieve OpenSSL v3.2.0 (already built) with the following commands:
+Recommended: build inside the Nix shell, which provides OpenSSL v3.1.2 and the pinned glibc toolchain automatically:
 
 ```sh
-export OPENSSL_DIR=/usr/local/openssl
-sudo mkdir -p ${OPENSSL_DIR}
-sudo chown -R $USER ${OPENSSL_DIR}
-bash .github/reusable_scripts/get_openssl_binaries.sh
+bash .github/scripts/cargo_build.sh
 ```
+
+This wrapper will download and configure OpenSSL v3.1.2 automatically when needed.
 
 ### Windows
 
@@ -237,9 +236,9 @@ bash .github/reusable_scripts/get_openssl_binaries.sh
 3. Install `vcpkg` following
    [these instructions](https://github.com/Microsoft/vcpkg#quick-start-windows)
 
-4. Then install OpenSSL 3.2.0:
+4. Then install OpenSSL 3.1.2:
 
-The files `vcpkg.json` and `vcpkg_fips.json` are provided in the repository to install OpenSSL v3.2.0:
+The files `vcpkg.json` and `vcpkg_fips.json` are provided in the repository to install OpenSSL v3.1.2:
 
 ```powershell
 vcpkg install --triplet x64-windows-static # arm64-windows-static for ARM64
