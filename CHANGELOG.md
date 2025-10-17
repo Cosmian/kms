@@ -2,6 +2,40 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.12.0] - 2025-11-10
+
+### 🚀 Features
+
+- *(redis)*: Created a new data storage schema for Redis, using a double-index instead of the "next Keyword". (#542)
+- *(redis)*: Developed a migration algorithm to update data under KMSes prior to 5.12.x. (#542)
+- *(redis)*: Introduction of strong typing for UserId and ObjectUid to reduce string manipulation errors, and created new types inspired from legacy cloudproof components. (#542)
+- Used new crypto core serializations for storage (when applicable) (#542)
+
+### 📚 Documentation
+
+- Rework all the databases migration and represent more easy to read schemas (#542)
+- Document migration flows
+
+### 🧪 Testing
+
+- *(redis)*: Add two integration tests that migrate from version 5.1.0 and 5.2.0 to (#542)
+
+### ⚙️ Miscellaneous Tasks
+
+- Refactored migration traits between the SQL databases and the Redis one (while possible)
+- Deleted a lot of dead code
+- Marked the Label parameter as deprecated.
+- Updated the `aes_gcm_siv_not_openssl` functions to avoid using deprecated dependencies.
+
+### ⚠️ WARNING
+
+**Redis users:** Starting version 5.12.0,  the KMS will start operating with a new version of Findex (the SSE used with the Redis DB), and a  data migration is necessary :
+
+**🚨 IMPORTANT: Back up your Redis database before upgrading to version 5.12.0.** 🚨
+
+- If you're upgrading from a version prior to 5.0.0 : Please export your keys using standard formats (PKCS#8, PEM, etc.) and re-import them after clearing the redis store. Databases created with version 4.x.x are not compatible with the automated migration routine and won't start if the `db_version` key is unset.
+- If you're upgrading from a 5.x DB : A transparent migration process will occur and should typically take less than a minute.
+
 ## [5.11.2] - 2025-11-12
 
 ### 🐛 Bug Fixes (#598)

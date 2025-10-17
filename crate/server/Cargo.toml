@@ -104,6 +104,7 @@ cosmian_kms_client_utils = { path = "../client_utils", version = "5.11.2" }
 cosmian_kms_interfaces = { path = "../interfaces", version = "5.11.2" }
 native-tls = { workspace = true }
 pem = { workspace = true }
+redis = { version = "0.32", features = ["aio", "connection-manager"] }
 
 [build-dependencies]
 actix-http = "3.10"
@@ -210,13 +211,13 @@ assets = [
 [package.metadata.generate-rpm]
 license = "BUSL-1.1"
 assets = [
-  { source = "ui/dist/*", dest = "/usr/local/cosmian/ui/dist/", mode = "500" },
-  { source = "ui/dist/assets/*", dest = "/usr/local/cosmian/ui/dist/assets/", mode = "500" },
-  { source = "target/release/cosmian_kms", dest = "/usr/sbin/cosmian_kms", mode = "500" },
-  { source = "/usr/local/openssl/lib64/ossl-modules/legacy.so", dest = "/usr/local/openssl/lib64/ossl-modules/legacy.so", mode = "500" },
-  { source = "../../README.md", dest = "/usr/share/doc/cosmian/README", mode = "644", doc = true },
-  { source = "../../pkg/kms.toml", dest = "/etc/cosmian/kms.toml", mode = "400" },
-  { source = "../../pkg/cosmian_kms.service", dest = "/lib/systemd/system/cosmian_kms.service", mode = "644" },
+    { source = "ui/dist/*", dest = "/usr/local/cosmian/ui/dist/", mode = "500" },
+    { source = "ui/dist/assets/*", dest = "/usr/local/cosmian/ui/dist/assets/", mode = "500" },
+    { source = "target/release/cosmian_kms", dest = "/usr/sbin/cosmian_kms", mode = "500" },
+    { source = "/usr/local/openssl/lib64/ossl-modules/legacy.so", dest = "/usr/local/openssl/lib64/ossl-modules/legacy.so", mode = "500" },
+    { source = "../../README.md", dest = "/usr/share/doc/cosmian/README", mode = "644", doc = true },
+    { source = "../../pkg/kms.toml", dest = "/etc/cosmian/kms.toml", mode = "400" },
+    { source = "../../pkg/cosmian_kms.service", dest = "/lib/systemd/system/cosmian_kms.service", mode = "644" },
 ]
 auto-req = "no" # do not try to discover .so dependencies
 require-sh = true
