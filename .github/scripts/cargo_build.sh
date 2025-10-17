@@ -36,6 +36,8 @@ COSMIAN_KMS_EXE="target/$TARGET/$DEBUG_OR_RELEASE/cosmian_kms"
 
 # Must use OpenSSL with this specific version 3.2.0
 OPENSSL_VERSION_REQUIRED="3.2.0"
+# # Must use specific OpenSSL version; allow override via env, default 3.1.2
+# : "${OPENSSL_VERSION_REQUIRED:=3.1.2}"
 correct_openssl_version_found=$(./"$COSMIAN_KMS_EXE" --info | grep "$OPENSSL_VERSION_REQUIRED")
 if [ -z "$correct_openssl_version_found" ]; then
   echo "Error: The correct OpenSSL version $OPENSSL_VERSION_REQUIRED is not found."
