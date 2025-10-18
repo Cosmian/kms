@@ -1,8 +1,14 @@
 { pkgs ? import <nixpkgs> {} }:
 
 let
-  # Detect the host nixpkgs glibc version
-  hostGlibcVersion = pkgs.stdenv.cc.libc.version or (pkgs.lib.getVersion pkgs.stdenv.cc.libc);
+  # Platform flags
+  isLinux = pkgs.stdenv.isLinux;
+  isDarwin = pkgs.stdenv.isDarwin;
+  isLinuxStr = if isLinux then "1" else "0";
+  isDarwinStr = if isDarwin then "1" else "0";
+
+  # Detect the host nixpkgs glibc version (Linux only)
+  hostGlibcVersion = if isLinux then (pkgs.stdenv.cc.libc.version or (pkgs.lib.getVersion pkgs.stdenv.cc.libc)) else "n/a";
 
   # If host glibc > 2.28, fall back to a pinned nixpkgs with glibc 2.28 (nixos-19.03)
   # You can override via environment variable NIXPKGS_GLIBC_228_URL if needed.
@@ -10,22 +16,27 @@ let
   nixpkgs_19_03_url = if legacyUrl != "" then legacyUrl
     else "https://github.com/NixOS/nixpkgs/archive/refs/heads/nixos-19.03.tar.gz";
 
-  pkgsGlibc228 = if pkgs.lib.versionOlder hostGlibcVersion "2.29"
+  # On Linux, if host glibc > 2.28, fall back to a pinned nixpkgs with glibc 2.28; on non-Linux, just use current pkgs
+  pkgsGlibc228 = if isLinux then (
+    if pkgs.lib.versionOlder hostGlibcVersion "2.29"
     then pkgs
     else import (builtins.fetchTarball {
       # Consider pinning sha256 for full reproducibility
       url = nixpkgs_19_03_url;
-    }) {};
+    }) {}
+  ) else pkgs;
 
   # Verify the selected pkgs set actually uses glibc 2.28
-  selectedGlibcVersion = pkgsGlibc228.stdenv.cc.libc.version or (pkgsGlibc228.lib.getVersion pkgsGlibc228.stdenv.cc.libc);
-  _ = pkgsGlibc228.lib.assertMsg (pkgsGlibc228.lib.versionOlder selectedGlibcVersion "2.29")
+  selectedGlibcVersion = if isLinux then (pkgsGlibc228.stdenv.cc.libc.version or (pkgsGlibc228.lib.getVersion pkgsGlibc228.stdenv.cc.libc)) else "n/a";
+  _ = if isLinux then pkgsGlibc228.lib.assertMsg (pkgsGlibc228.lib.versionOlder selectedGlibcVersion "2.29")
     ("Selected nixpkgs uses glibc > 2.28 (got " + selectedGlibcVersion
-      + "). Set NIXPKGS_GLIBC_228_URL to a nixpkgs tarball with glibc <= 2.28.");
+      + "). Set NIXPKGS_GLIBC_228_URL to a nixpkgs tarball with glibc <= 2.28.") else true;
 
   # Allow using a preinstalled OpenSSL instead of building in Nix when provided
   externalOpenSSLDir = builtins.getEnv "EXTERNAL_OPENSSL_DIR";
-  useExternalOpenSSL = externalOpenSSLDir != "";
+  useNixOpenSSLFlag = builtins.getEnv "USE_NIX_OPENSSL";
+  # If USE_NIX_OPENSSL=1 is provided, force using Nix-built OpenSSL even if EXTERNAL_OPENSSL_DIR is set
+  useExternalOpenSSL = if useNixOpenSSLFlag == "1" then false else externalOpenSSLDir != "";
 
   # Pinned OpenSSL 3.1.2 derivation (only when no external dir is provided)
   openssl312 = if useExternalOpenSSL then null else pkgsGlibc228.callPackage ./nix/openssl-3_1_2-fips.nix {};
@@ -39,10 +50,11 @@ pkgsGlibc228.mkShell {
     pkgsGlibc228.pkg-config
     pkgsGlibc228.cmake
     pkgsGlibc228.git
-    pkgsGlibc228.gcc
-    pkgsGlibc228.binutils
     pkgsGlibc228.rustup
-  ] ++ (if useExternalOpenSSL then [] else [ openssl312 ]);
+  ]
+  # Prefer GCC/binutils on Linux; avoid GNU binutils on macOS where Apple tooling is used
+  ++ (if isLinux then [ pkgsGlibc228.gcc pkgsGlibc228.binutils ] else [])
+  ++ (if useExternalOpenSSL then [] else [ openssl312 ]);
 
   # Defaults that can be overridden when invoking
   DEBUG_OR_RELEASE = "debug";
@@ -63,13 +75,19 @@ pkgsGlibc228.mkShell {
   OPENSSL_LIB_DIR = "${opensslOut}/lib";
 
   shellHook = ''
-    if [ -n "${externalOpenSSLDir}" ]; then
+    # Export simple platform flags for use in shell logic
+    export IS_LINUX="${isLinuxStr}"
+    export IS_DARWIN="${isDarwinStr}"
+
+    if [ -n "${externalOpenSSLDir}" ] && [ "${useNixOpenSSLFlag}" != "1" ]; then
       echo "cosmian-kms nix-shell ready (OpenSSL 3.1.2 from EXTERNAL_OPENSSL_DIR: ${externalOpenSSLDir})"
     else
       echo "cosmian-kms nix-shell ready (OpenSSL 3.1.2 from Nix derivation)"
     fi
-    echo "host glibc version: ${hostGlibcVersion}"
-    echo "toolchain glibc (nixpkgs) version: ${selectedGlibcVersion}"
+    if [ "$IS_LINUX" = "1" ]; then
+      echo "host glibc version: ${hostGlibcVersion}"
+      echo "toolchain glibc (nixpkgs) version: ${selectedGlibcVersion}"
+    fi
 
     # Force OpenSSL environment to our Nix-built OpenSSL 3.1.2
     export OPENSSL_DIR="${opensslOut}"
@@ -111,8 +129,10 @@ pkgsGlibc228.mkShell {
     else
       export NIX_LDFLAGS="-L''${OPENSSL_DIR}/lib ''${NIX_LDFLAGS:-}"
     fi
-
-    # Ensure we always use the Nix toolchain (glibc ≤ 2.28) for linking
+  ''
+  # Linux-only toolchain pinning and glibc rpath/dynamic linker injection (avoid evaluating on macOS)
+  + (if isLinux then ''
+    # Ensure we always use the Nix toolchain (glibc ≤ 2.28) for linking (Linux only)
     export NIX_CC_DIR="${pkgsGlibc228.stdenv.cc}/bin"
     export NIX_BINUTILS_DIR="${pkgsGlibc228.binutils}/bin"
     if [ -d "''${NIX_CC_DIR}" ]; then
@@ -137,23 +157,39 @@ pkgsGlibc228.mkShell {
     # Make rust/cargo use the pinned linker
     export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER="$CC"
     # And the pinned archiver (avoid stale binutils-wrapper paths)
-  export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_AR="$AR"
+    export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_AR="$AR"
     # Also set target-specific CC/AR env vars that the cc crate recognizes
-  export CC_x86_64_unknown_linux_gnu="$CC"
-  export AR_x86_64_unknown_linux_gnu="$AR"
+    export CC_x86_64_unknown_linux_gnu="$CC"
+    export AR_x86_64_unknown_linux_gnu="$AR"
 
-    # Old binutils in the glibc 2.27 toolchain can choke on compressed DWARF in dev builds
-    # Avoid the issue in debug by disabling debuginfo unless explicitly overridden
-    if [ "''${DEBUG_OR_RELEASE}" = "debug" ] && [ -z "''${RUSTFLAGS:-}" ]; then
-      export RUSTFLAGS="-C debuginfo=0"
-    fi
-
-    # Enforce dynamic linker and rpath to glibc <= 2.28 from the pinned nixpkgs
-    # This helps prevent picking up a newer host glibc at runtime/link time.
+    # Enforce dynamic linker and rpath to glibc <= 2.28 from the pinned nixpkgs (Linux only)
     glibc_lib_dir="${pkgsGlibc228.glibc}/lib"
     dyn_linker_path="${pkgsGlibc228.glibc}/lib/ld-linux-x86-64.so.2"
     # Append link-args while preserving any existing RUSTFLAGS
     export RUSTFLAGS="''${RUSTFLAGS:+$RUSTFLAGS }-C link-args=-Wl,--dynamic-linker=$dyn_linker_path -C link-args=-Wl,-rpath,$glibc_lib_dir"
+
+    echo "Toolchain: CC=$CC | AR=$AR"
+    echo "Target toolchain: CC_x86_64_unknown_linux_gnu=$CC_x86_64_unknown_linux_gnu | AR_x86_64_unknown_linux_gnu=$AR_x86_64_unknown_linux_gnu"
+    echo "Cargo target overrides: LINKER=$CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER | AR=$CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_AR"
+    if [ ! -x "$AR" ]; then
+      echo "Warning: AR does not exist at $AR; attempting to fall back to 'ar' on PATH" >&2
+      if command -v ar >/dev/null 2>&1; then
+        export AR="$(command -v ar)"
+        export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_AR="$AR"
+        export AR_x86_64_unknown_linux_gnu="$AR"
+        echo "Using fallback AR at $AR" >&2
+      else
+        echo "Error: could not find a working 'ar' tool" >&2
+        exit 1
+      fi
+    fi
+  '' else "")
+  + ''
+    # Old binutils in the glibc 2.27 toolchain can choke on compressed DWARF in dev builds
+    # Avoid the issue in debug by disabling debuginfo unless explicitly overridden
+    if [ "''${DEBUG_OR_RELEASE}" = "debug" ] && [ -z "''${RUSTFLAGS:-}" ]; then
+      export RUSTFLAGS="-C debuginfo=0 $RUSTFLAGS"
+    fi
 
     # Validate OpenSSL version = 3.1.2
     if ! command -v openssl >/dev/null 2>&1; then
@@ -224,20 +260,5 @@ pkgsGlibc228.mkShell {
     fi
     export CARGO_BUILD_TARGET="$TARGET"
     echo "Using TARGET=$TARGET"
-    echo "Toolchain: CC=$CC | AR=$AR"
-    echo "Target toolchain: CC_x86_64_unknown_linux_gnu=$CC_x86_64_unknown_linux_gnu | AR_x86_64_unknown_linux_gnu=$AR_x86_64_unknown_linux_gnu"
-    echo "Cargo target overrides: LINKER=$CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER | AR=$CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_AR"
-    if [ ! -x "$AR" ]; then
-      echo "Warning: AR does not exist at $AR; attempting to fall back to 'ar' on PATH" >&2
-      if command -v ar >/dev/null 2>&1; then
-        export AR="$(command -v ar)"
-        export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_AR="$AR"
-        export AR_x86_64_unknown_linux_gnu="$AR"
-        echo "Using fallback AR at $AR" >&2
-      else
-        echo "Error: could not find a working 'ar' tool" >&2
-        exit 1
-      fi
-    fi
   '';
 }

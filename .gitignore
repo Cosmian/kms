@@ -21,3 +21,4 @@ run.sh
 .aider/
 .cache
 .local
+.openssl
