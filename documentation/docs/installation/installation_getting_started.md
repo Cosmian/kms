@@ -1,5 +1,5 @@
 Cosmian KMS can be installed on various platforms, including Docker, Ubuntu, Rocky Linux, macOS, and Windows.
-It is prepackaged with an integrated web ui (except for Windows) that is available on the `/ui` path of the server.
+It is prepackaged with an integrated web ui (except for macOS) that is available on the `/ui` path of the server.
 
 The KMS is also available on the marketplaces of major cloud providers, prepackaged to run confidentially in a Cosmian VM.
 Please check [this page](./marketplace_guide.md) for more information.
@@ -178,56 +178,50 @@ For high availability and scalability, refer to the [High Availability Guide](./
     - The server uses the configuration file located at `/etc/cosmian/kms.toml`.
     - The KMS UI is available at `http://localhost:9998/ui`.
 
-=== "MacOS"
+=== "macOS"
 
-    On ARM MacOS, download the build archive and extract it:
+        Download the installer for your architecture and run it:
 
-    ```sh
-    wget https://package.cosmian.com/kms/5.10.0/macos_arm-release.zip
-    unzip macos_arm-release.zip
-    cp ./macos_arm-release/Users/runner/work/kms/kms/target/aarch64-apple-darwin/release/cosmian_kms /usr/local/bin/
-    chmod u+x /usr/local/bin/cosmian_kms
-    cosmian_kms --version
-    ```
+        - Apple Silicon (ARM64):
 
-    On Intel MacOS, download the build archive and extract it:
+            ```sh
+            open https://package.cosmian.com/kms/5.9.0/macos/cosmian-kms-server_5.9.0_arm64.dmg
+            ```
 
-    ```sh
-    wget https://package.cosmian.com/kms/5.10.0/macos_intel-release.zip
-    unzip macos_intel-release.zip
-    cp ./macos_intel-release/Users/runner/work/kms/kms/target/x86_64-apple-darwin/release/cosmian_kms /usr/local/bin/
-    chmod u+x /usr/local/bin/cosmian_kms
-    cosmian_kms --version
-    ```
+        Then drag-and-drop the app to Applications or follow the DMG instructions.
 
-    The server uses the configuration file located at `/etc/cosmian/kms.toml`.
+        After installation, run:
 
-    NOTE: The MacOS version does NOT come with a web UI. It can be manually installed by copying the `dist` folder
-    of a packaged Linux distribution to a folder and updating the `ui_index_html_folder` property of the `kms.toml`
-    to point to it.
+        ```sh
+        cosmian_kms --version
+        ```
+
+        The server uses the configuration file located at `/etc/cosmian/kms.toml`.
 
 === "Windows"
 
-    On Windows, download the build archive:
+    On Windows, download the NSIS installer:
 
     ```sh
-     https://package.cosmian.com/kms/5.10.0/windows-release.zip
+    https://package.cosmian.com/kms/5.9.0/cosmian-kms-server_5.9.0_x64_en-US.exe
     ```
 
-    Extract the cosmian_kms from:
+    Run the installer to install Cosmian KMS Server. The installer will:
+    - Install the KMS server with integrated web UI
+    - Set up the configuration file at `%LOCALAPPDATA%\Cosmian KMS Server\kms.toml`
 
-    ```sh
-    /windows-release/target/x86_64-pc-windows-msvc/release/cosmian_kms.exe
-    ```
-
-    Copy it to a folder in your PATH and run it:
+    After installation, you can run the server:
 
     ```sh
     cosmian_kms --version
     ```
-    The server uses the configuration file located at `%LOCALAPPDATA%\\Cosmian KMS Server\kms.toml`.
-    if it is available. See the [server configuration](../server_configuration_file.md) for more information.
 
-    NOTE: The Windows version does NOT come with a web UI. It can be manually installed by copying the `dist` folder
-    of a packaged Linux distribution to a folder and updating the `ui_index_html_folder` property of the `kms.toml`
-    to point to it.
+    To start the KMS server:
+
+    ```sh
+    cosmian_kms --database-type sqlite --sqlite-path %LOCALAPPDATA%\Cosmian KMS Server\data
+    ```
+
+    - The KMS UI is available at `http://localhost:9998/ui`
+    - The server uses the configuration file located at `%LOCALAPPDATA%\Cosmian KMS Server\kms.toml`
+    - See the [server configuration](../server_configuration_file.md) for more information
