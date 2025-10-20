@@ -13,15 +13,39 @@ let
   _ = lib.assertMsg (lib.versionAtMost glibcVersion "2.28")
     ("cosmian_kms OpenSSL derivation requires glibc <= 2.28; detected glibc "
       + glibcVersion + ". Use an older Nixpkgs or compatible environment.");
+  
+  # Path to local tarball relative to the Nix expression
+  localTarball = ../resources/tarballs/openssl-3.1.2.tar.gz;
+  
+  # Expected SHA256 hash of the official OpenSSL 3.1.2 tarball
+  expectedHash = "a0ce69b8b97ea6a35b96875235aa453b966ba3cba8af2de23657d8b6767d6539";
+  
+  # Validate local tarball hash and select source
+  opensslSrc = if builtins.pathExists localTarball
+    then 
+      let
+        actualHash = builtins.hashFile "sha256" localTarball;
+        hashValidation = lib.assertMsg (actualHash == expectedHash)
+          ("Local OpenSSL tarball hash mismatch!\n" +
+           "Expected: ${expectedHash}\n" +
+           "Actual:   ${actualHash}\n" +
+           "Please verify the integrity of ${toString localTarball}");
+      in
+      # Force evaluation of hash validation
+      builtins.seq hashValidation localTarball
+    else fetchurl {
+      url = "https://www.openssl.org/source/old/3.1/openssl-3.1.2.tar.gz";
+      # SRI hash pinned from nix fetch (sha256-oM5puLl+pqNblodSNapFO5Zro8uory3iNlfYtnZ9ZTk=)
+      sha256 = "sha256-oM5puLl+pqNblodSNapFO5Zro8uory3iNlfYtnZ9ZTk=";
+    };
 in stdenv.mkDerivation rec {
   pname = "openssl";
   version = "3.1.2";
 
-  src = fetchurl {
-    url = "https://www.openssl.org/source/old/3.1/openssl-${version}.tar.gz";
-    # SRI hash pinned from nix fetch (sha256-oM5puLl+pqNblodSNapFO5Zro8uory3iNlfYtnZ9ZTk=)
-    sha256 = "sha256-oM5puLl+pqNblodSNapFO5Zro8uory3iNlfYtnZ9ZTk=";
-  };
+  src = opensslSrc;
+  
+  # Force evaluation of source path to trigger hash validation early
+  passthru.srcPath = toString opensslSrc;
 
   # We need perl for OpenSSL build system, and coreutils for runtime scripts
   nativeBuildInputs = [ perl coreutils ];
