@@ -2,7 +2,7 @@ use clap::Args;
 use serde::{Deserialize, Serialize};
 
 #[cfg(not(target_os = "windows"))]
-pub const DEFAULT_COSMIAN_UI_DIST_PATH: &str = "/usr/local/cosmian/ui/dist/";
+pub(super) const DEFAULT_COSMIAN_UI_DIST_PATH: &str = "/usr/local/cosmian/ui/dist/";
 
 // On Windows, we need to resolve %LOCALAPPDATA% at runtime
 #[cfg(target_os = "windows")]
@@ -16,11 +16,12 @@ pub fn get_default_ui_dist_path() -> String {
 }
 
 #[cfg(not(target_os = "windows"))]
+#[must_use]
 pub fn get_default_ui_dist_path() -> String {
-    DEFAULT_COSMIAN_UI_DIST_PATH.to_string()
+    DEFAULT_COSMIAN_UI_DIST_PATH.to_owned()
 }
 
-#[derive(Debug, Args, Deserialize, Serialize, Clone)]
+#[derive(Default, Debug, Args, Deserialize, Serialize, Clone)]
 #[serde(default)]
 pub struct UiConfig {
     /// The UI distribution folder
@@ -29,15 +30,6 @@ pub struct UiConfig {
 
     #[clap(flatten)]
     pub ui_oidc_auth: OidcConfig,
-}
-
-impl Default for UiConfig {
-    fn default() -> Self {
-        Self {
-            ui_index_html_folder: None,
-            ui_oidc_auth: OidcConfig::default(),
-        }
-    }
 }
 
 impl UiConfig {

@@ -6,8 +6,7 @@ use cosmian_logger::{debug, warn};
 use super::TlsParams;
 use crate::{
     config::{
-        ClapConfig, GoogleCseConfig, IdpConfig, OidcConfig,
-        params::proxy_params::ProxyParams,
+        ClapConfig, GoogleCseConfig, IdpConfig, OidcConfig, params::proxy_params::ProxyParams,
     },
     error::KmsError,
     result::{KResult, KResultHelper},
@@ -131,7 +130,10 @@ impl ServerParams {
     pub fn try_from(conf: ClapConfig) -> KResult<Self> {
         debug!("{conf:#?}");
 
+        #[cfg(target_os = "windows")]
         let mut ui_index_html_folder: PathBuf = conf.ui_config.get_ui_index_html_folder().into();
+        #[cfg(not(target_os = "windows"))]
+        let ui_index_html_folder: PathBuf = conf.ui_config.get_ui_index_html_folder().into();
         debug!("{ui_index_html_folder:#?}");
 
         // On Windows, some configs may still carry the Linux default path. Fallback to LOCALAPPDATA default.
