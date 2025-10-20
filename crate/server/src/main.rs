@@ -222,7 +222,7 @@ mod tests {
                 ]),
             },
             ui_config: UiConfig {
-                ui_index_html_folder: "[ui index html folder]".to_owned(),
+                ui_index_html_folder: Some("[ui index html folder]".to_owned()),
                 ui_oidc_auth: OidcConfig {
                     ui_oidc_client_id: Some("[client id]".to_owned()),
                     ui_oidc_client_secret: Some("[client secret]".to_owned()),

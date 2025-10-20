@@ -32,7 +32,7 @@ fn get_default_config_path() -> String {
 
 #[cfg(not(target_os = "windows"))]
 fn get_default_config_path() -> String {
-    DEFAULT_COSMIAN_KMS_CONF.to_string()
+    DEFAULT_COSMIAN_KMS_CONF.to_owned()
 }
 
 const DEFAULT_USERNAME: &str = "admin";
@@ -297,7 +297,10 @@ impl fmt::Debug for ClapConfig {
         } else {
             x
         };
-        let x = x.field("ui_index_html_folder", &self.ui_config.get_ui_index_html_folder());
+        let x = x.field(
+            "ui_index_html_folder",
+            &self.ui_config.get_ui_index_html_folder(),
+        );
         let x = if self.ui_config.ui_oidc_auth.ui_oidc_client_id.is_some() {
             x.field("ui_oidc_auth", &self.ui_config.ui_oidc_auth)
         } else {
