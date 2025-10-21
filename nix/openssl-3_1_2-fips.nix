@@ -75,16 +75,22 @@ in stdenv.mkDerivation rec {
 
   buildPhase = ''
     runHook preBuild
-    : "Use available parallelism if provided by Nix"
-    if [ -z "$NIX_BUILD_CORES" ]; then export NIX_BUILD_CORES=4; fi
-    make -j"$NIX_BUILD_CORES"
+    make depend
+    make -j
   '';
 
   installPhase = ''
     runHook preInstall
-    make install_sw
-    # Explicitly install the FIPS provider module and its config
-    make install_fips || true
+    make -j install
+
+    # Enable FIPS provider in the installed OpenSSL configuration.
+    # 1) Include the generated fipsmodule.cnf
+    # 2) Activate FIPS by default and define a base provider section
+    if [ -f "$out/ssl/openssl.cnf" ]; then
+      sed -i.bu "s,# \.include fipsmodule\.cnf,\.include $out/ssl/fipsmodule.cnf," "$out/ssl/openssl.cnf"
+      sed -i.bu 's/# activate = 1/activate = 1/' "$out/ssl/openssl.cnf"
+      sed -i.bu 's/# fips = fips_sect/fips = fips_sect\nbase = base_sect\n\n[ base_sect ]\nactivate = 1\n/' "$out/ssl/openssl.cnf"
+    fi
 
     # OpenSSL on some Linux targets installs modules under lib64/ossl-modules.
     # Do NOT create symlinks here; Nix fixupPhase will move lib64/* to lib/*.
@@ -123,6 +129,11 @@ in stdenv.mkDerivation rec {
 
     runHook postInstall
   '';
+
+  # Critical for FIPS: do not strip or patch ELF on the provider module, as it
+  # would invalidate the module integrity MAC and break self-tests at runtime.
+  dontStrip = true;
+  dontPatchELF = true;
 
   # Provide .pc files in $out/lib/pkgconfig so that pkg-config picks them up
   postInstall = ''
