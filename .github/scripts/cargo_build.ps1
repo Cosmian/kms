@@ -23,11 +23,13 @@ function BuildProject
     {
         cargo build --release --target x86_64-pc-windows-msvc --features "non-fips"
         cargo test  --release --target x86_64-pc-windows-msvc --features "non-fips" -- --nocapture
+        cargo packager --verbose --formats nsis --release
     }
     else
     {
         cargo build --target x86_64-pc-windows-msvc --features "non-fips"
         cargo test  --target x86_64-pc-windows-msvc --features "non-fips" -- --nocapture
+        cargo packager --verbose --formats nsis
     }
     Get-ChildItem ..\..
 
