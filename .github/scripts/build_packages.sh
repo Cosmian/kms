@@ -42,5 +42,11 @@ if [ "$DEBUG_OR_RELEASE" = "release" ]; then
     else
       cargo deb --target "$TARGET" -p cosmian_kms_server --variant fips
     fi
+  elif [[ "$TARGET" == *"apple-darwin"* ]]; then
+    cargo install --version 0.11.17 cargo-packager --force
+    cd crate/server
+    cargo packager --verbose --formats dmg --release
+    cd "$ROOT_FOLDER"
   fi
+
 fi
