@@ -18,8 +18,22 @@ use crate::{
 
 #[cfg(not(target_os = "windows"))]
 const DEFAULT_COSMIAN_KMS_CONF: &str = "/etc/cosmian/kms.toml";
+
+// On Windows, we need to resolve %LOCALAPPDATA% at runtime
 #[cfg(target_os = "windows")]
-const DEFAULT_COSMIAN_KMS_CONF: &str = r"C:\ProgramData\Cosmian\kms.toml";
+fn get_default_config_path() -> String {
+    if let Ok(localappdata) = std::env::var("LOCALAPPDATA") {
+        format!("{}\\Cosmian KMS Server\\kms.toml", localappdata)
+    } else {
+        // Fallback if LOCALAPPDATA is not set (shouldn't happen on Windows)
+        String::from("C:\\ProgramData\\cosmian\\kms.toml")
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn get_default_config_path() -> String {
+    DEFAULT_COSMIAN_KMS_CONF.to_owned()
+}
 
 const DEFAULT_USERNAME: &str = "admin";
 
@@ -195,7 +209,7 @@ impl ClapConfig {
 
         let explicit = preliminary.config_path.clone();
         let env_path = std::env::var("COSMIAN_KMS_CONF").ok().map(PathBuf::from);
-        let default_path = PathBuf::from(DEFAULT_COSMIAN_KMS_CONF);
+        let default_path = PathBuf::from(get_default_config_path());
 
         // Helper to load a TOML file into ClapConfig
         let load_file = |p: &PathBuf| -> KResult<Self> {
@@ -283,7 +297,10 @@ impl fmt::Debug for ClapConfig {
         } else {
             x
         };
-        let x = x.field("ui_index_html_folder", &self.ui_config.ui_index_html_folder);
+        let x = x.field(
+            "ui_index_html_folder",
+            &self.ui_config.get_ui_index_html_folder(),
+        );
         let x = if self.ui_config.ui_oidc_auth.ui_oidc_client_id.is_some() {
             x.field("ui_oidc_auth", &self.ui_config.ui_oidc_auth)
         } else {
@@ -433,7 +450,7 @@ mod tests {
     }
 
     fn default_path_exists() -> bool {
-        std::path::Path::new(super::DEFAULT_COSMIAN_KMS_CONF).exists()
+        std::path::Path::new(&super::get_default_config_path()).exists()
     }
 
     #[test]
@@ -483,7 +500,7 @@ mod tests {
             } else {
                 // Create a temporary default config file for this test
                 let default_content = "[http]\nport=34567\n";
-                let default_path = PathBuf::from(super::DEFAULT_COSMIAN_KMS_CONF);
+                let default_path = PathBuf::from(super::get_default_config_path());
                 if let Some(parent) = default_path.parent() {
                     drop(std::fs::create_dir_all(parent));
                 }

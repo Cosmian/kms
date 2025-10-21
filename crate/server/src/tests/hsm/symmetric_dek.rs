@@ -1,16 +1,5 @@
 use std::sync::Arc;
 
-use crate::tests::hsm::export_object;
-use crate::{
-    config::ServerParams,
-    core::KMS,
-    error::KmsError,
-    result::KResult,
-    tests::{
-        hsm::{EMPTY_TAGS, create_kek, delete_key, hsm_clap_config, revoke_key, send_message},
-        test_utils::get_tmp_sqlite_path,
-    },
-};
 use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::kmip_objects::ObjectType;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::BlockCipherMode,
@@ -21,6 +10,20 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     },
 };
 use uuid::Uuid;
+
+use crate::{
+    config::ServerParams,
+    core::KMS,
+    error::KmsError,
+    result::KResult,
+    tests::{
+        hsm::{
+            EMPTY_TAGS, create_kek, delete_key, export_object, hsm_clap_config, revoke_key,
+            send_message,
+        },
+        test_utils::get_tmp_sqlite_path,
+    },
+};
 
 pub(super) async fn test_wrapped_symmetric_dek() -> KResult<()> {
     let kek_uuid = Uuid::new_v4();

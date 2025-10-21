@@ -1,11 +1,10 @@
 use std::{ops::Add, sync::Arc};
 
-use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::kmip_objects::{
-    Object, ObjectType,
-};
-use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::kmip_operations::{Export, Import};
 use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::{
-    kmip_attributes::Attributes, requests::create_rsa_key_pair_request,
+    kmip_attributes::Attributes,
+    kmip_objects::{Object, ObjectType},
+    kmip_operations::{Export, Import},
+    requests::create_rsa_key_pair_request,
 };
 use cosmian_kms_interfaces::as_hsm_uid;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
