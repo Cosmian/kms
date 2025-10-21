@@ -10,7 +10,7 @@ use cosmian_kmip::{
 /// function) in SQL databases.
 /// This trait contains default naming overridden
 /// by implementation if needed
-pub(crate) trait PlaceholderTrait {
+pub(super) trait PlaceholderTrait {
     const JSON_FN_EACH_ELEMENT: &'static str = "json_each";
     const JSON_FN_EXTRACT_PATH: &'static str = "json_extract";
     const JSON_FN_EXTRACT_TEXT: &'static str = "json_extract";
@@ -26,7 +26,7 @@ pub(crate) trait PlaceholderTrait {
 
     /// Handle different placeholders (`?`, `$1`) in SQL queries
     /// to bind value into a query
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     #[must_use]
     fn binder(param_number: usize) -> String {
         format!("${param_number}")
@@ -103,7 +103,7 @@ pub(crate) trait PlaceholderTrait {
     }
 }
 
-pub(crate) enum MySqlPlaceholder {}
+pub(super) enum MySqlPlaceholder {}
 impl PlaceholderTrait for MySqlPlaceholder {
     const JSON_ARRAY_LENGTH: &'static str = "JSON_LENGTH";
     const JSON_FN_EACH_ELEMENT: &'static str = "json_search";
@@ -155,7 +155,7 @@ impl PlaceholderTrait for MySqlPlaceholder {
         )
     }
 }
-pub(crate) enum PgSqlPlaceholder {}
+pub(super) enum PgSqlPlaceholder {}
 impl PlaceholderTrait for PgSqlPlaceholder {
     const JSON_ARRAY_LENGTH: &'static str = "json_array_length";
     const JSON_FN_EACH_ELEMENT: &'static str = "json_array_elements";
@@ -176,7 +176,7 @@ impl PlaceholderTrait for PgSqlPlaceholder {
         attribute_names.join(",")
     }
 }
-pub(crate) enum SqlitePlaceholder {}
+pub(super) enum SqlitePlaceholder {}
 impl PlaceholderTrait for SqlitePlaceholder {}
 
 /// Builds a SQL query depending on `attributes` and `state` constraints,
@@ -185,7 +185,7 @@ impl PlaceholderTrait for SqlitePlaceholder {}
 /// The different placeholder for variable binding is handled by trait specification.
 // TODO  although this is a select query, it is complex and the occurrence is unlikely,
 // TODO  protection against SQL Injection is not covered here
-pub(crate) fn query_from_attributes<P: PlaceholderTrait>(
+pub(super) fn query_from_attributes<P: PlaceholderTrait>(
     attributes: Option<&Attributes>,
     state: Option<State>,
     user: &str,

@@ -45,12 +45,12 @@ impl TryFrom<&VendorAttribute> for EnclaveSharedKeyCreateRequest {
         {
             return Err(CryptoError::Kmip(
                 "the attributes in not a shared key create request".to_owned(),
-            ))
+            ));
         }
         let VendorAttributeValue::ByteString(value) = &attribute.attribute_value else {
             return Err(CryptoError::Kmip(
                 "the attributes in not a shared key create request".to_owned(),
-            ))
+            ));
         };
         serde_json::from_slice::<Self>(value).map_err(|e| {
             CryptoError::Kmip(format!(

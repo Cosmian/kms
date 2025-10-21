@@ -1,3 +1,4 @@
+```text
 Cosmian Key Management Service
 
 Usage: cosmian_kms [OPTIONS] [KEY_ENCRYPTION_KEY]
@@ -13,11 +14,15 @@ Options:
           - sqlite: `SQLite`. The data will be stored at the `sqlite_path` directory
             A key must be supplied on every call
           - redis-findex [non-FIPS]: a Redis database with encrypted data and indexes thanks to Findex.
-            The Redis URL must be provided, as well as the redis-master-password and the redis-findex-label [env: KMS_DATABASE_TYPE=] [possible values: postgresql, mysql, sqlite]
+            The Redis URL must be provided, as well as the redis-master-password and the redis-findex-label [env: KMS_DATABASE_TYPE=] [possible values: postgresql, mysql, sqlite, redis-findex]
       --database-url <DATABASE_URL>
           The URL of the database for `Postgres`, `MySQL`, or `Findex-Redis` [env: KMS_DATABASE_URL=]
       --sqlite-path <SQLITE_PATH>
           The directory path of the `SQLite` [env: KMS_SQLITE_PATH=] [default: ./sqlite-data]
+      --redis-master-password <REDIS_MASTER_PASSWORD>
+          redis-findex: a master password used to encrypt the Redis data and indexes [env: KMS_REDIS_MASTER_PASSWORD=]
+      --redis-findex-label <REDIS_FINDEX_LABEL>
+          redis-findex: a public arbitrary label that can be changed to rotate the Findex ciphertexts without changing the key [env: KMS_REDIS_FINDEX_LABEL=]
       --clear-database
           Clear the database on start.
           WARNING: This will delete ALL the data in the database [env: KMS_CLEAR_DATABASE=]
@@ -91,12 +96,12 @@ Options:
           Set the Proxy-Authorization header to a specified value. [env: KMS_PROXY_CUSTOM_AUTH_HEADER=]
       --proxy-exclusion-list <PROXY_EXCLUSION_LIST>
           The No Proxy exclusion list to this Proxy [env: KMS_PROXY_NO_PROXY=]
-      --jwt-issuer-uri <JWT_ISSUER_URI>
-          DEPRECATED: use the Idp config section instead. JWT authentication issuer URI [env: KMS_JWT_ISSUER_URI=]
-      --jwks-uri <JWKS_URI>
-          DEPRECATED: use the Idp config section instead. JWT authentication JWKS URI [env: KMS_JWKS_URI=]
-      --jwt-audience <JWT_AUDIENCE>
-          DEPRECATED: use the Idp config section instead. JWT authentication audience [env: KMS_JWT_AUDIENCE=]
+      --jwt-issuer-uri <JWT_ISSUER_URI>...
+          DEPRECATED: use the Idp config section instead. The issuer URI of the JWT token [env: KMS_JWT_ISSUER_URI=]
+      --jwks-uri <JWKS_URI>...
+          DEPRECATED: use the Idp config section instead. The JWKS (JSON Web Key Set) URI of the JWT token [env: KMS_JWKS_URI=]
+      --jwt-audience <JWT_AUDIENCE>...
+          DEPRECATED: use the Idp config section instead. The audience of the JWT token [env: KMS_JWT_AUDIENCE=]
       --jwt-auth-provider <JWT_AUTH_PROVIDER>
           JWT authentication provider configuration [env: KMS_JWT_AUTH_PROVIDER=]
   -u, --ui-index-html-folder <UI_INDEX_HTML_FOLDER>
@@ -157,7 +162,7 @@ Options:
           Print the server configuration information and exit
       --hsm-model <HSM_MODEL>
           The HSM model.
-          Trustway Proteccio and Utimaco General purpose HSMs are supported. [default: proteccio] [possible values: proteccio, utimaco]
+          Trustway Proteccio, Utimaco General purpose HSM, Smartcard HSM, and SoftHSM2 are supported. [default: proteccio] [possible values: proteccio, utimaco, softhsm2, smartcardhsm]
       --hsm-admin <HSM_ADMIN>
           The username of the HSM admin. The HSM admin can create objects on the HSM, destroy them, and potentially export them [env: KMS_HSM_ADMIN=] [default: admin]
       --hsm-slot <HSM_SLOT>
@@ -165,14 +170,19 @@ Options:
           Repeat this option to specify multiple slots
           while specifying a password for each slot (or an empty string for no password)
           e.g.
-          ```sh
-            --hsm_slot 1 --hsm_password password1 \
-            --hsm_slot 2 --hsm_password password2
-          ```
+            --hsm-slot 1 --hsm-password password1 \
+            --hsm-slot 2 --hsm-password password2
       --hsm-password <HSM_PASSWORD>
           Password for the user logging in to the HSM Slot specified with `--hsm_slot`
           Provide an empty string for no password
           see `--hsm_slot` for more information
+      --default-unwrap-type <DEFAULT_UNWRAP_TYPE>
+          Specifies which KMIP object types should be automatically unwrapped when retrieved.
+          Repeat this option to specify multiple object types
+          e.g.
+            --default-unwrap-type SecretData \
+            --default-unwrap-type SymmetricKey
+          [possible values: PrivateKey, PublicKey, SymmetricKey, SecretData]
       --kms-public-url <KMS_PUBLIC_URL>
           The exposed URL of the KMS - this is required if Google CSE configuration is activated.
           If this server is running on the domain `cse.my_domain.com` with this public URL,
@@ -185,3 +195,4 @@ Options:
           Print help (see more with '--help')
   -V, --version
           Print version
+```

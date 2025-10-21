@@ -38,7 +38,7 @@ enum KmipVersion {
 
 #[derive(PartialEq, Eq, Serialize)]
 #[serde(untagged)]
-#[allow(clippy::large_enum_variant)]
+#[expect(clippy::large_enum_variant)]
 pub enum RequestMessageBatchItemVersioned {
     V14(crate::kmip_1_4::kmip_messages::RequestMessageBatchItem),
     V21(crate::kmip_2_1::kmip_messages::RequestMessageBatchItem),
@@ -173,7 +173,7 @@ impl<'de> Deserialize<'de> for RequestMessage {
                                 x => {
                                     return Err(de::Error::custom(format!(
                                         "unsupported protocol version: {x}"
-                                    )))
+                                    )));
                                 }
                             };
                             // deserialize using the RequestMessageBatchItemVersionedDeserializer
@@ -318,7 +318,7 @@ impl Display for RequestMessageHeader {
 
 #[derive(PartialEq, Eq, Serialize)]
 #[serde(untagged)]
-#[allow(clippy::large_enum_variant)]
+#[expect(clippy::large_enum_variant)]
 pub enum ResponseMessageBatchItemVersioned {
     V14(crate::kmip_1_4::kmip_messages::ResponseMessageBatchItem),
     V21(crate::kmip_2_1::kmip_messages::ResponseMessageBatchItem),
@@ -451,7 +451,7 @@ impl<'de> Deserialize<'de> for ResponseMessage {
                                 x => {
                                     return Err(de::Error::custom(format!(
                                         "unsupported protocol version: {x}"
-                                    )))
+                                    )));
                                 }
                             };
                             // deserialize using the RequestMessageBatchItemVersionedDeserializer

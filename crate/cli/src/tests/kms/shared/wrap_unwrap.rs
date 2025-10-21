@@ -85,7 +85,7 @@ pub(crate) async fn password_wrap_import_test(
         object.key_block()?.key_bytes()?
     };
 
-    //wrap and unwrap using a password
+    // wrap and unwrap using a password
     {
         let b64_wrapping_key = WrapSecretDataOrKeyAction {
             key_file_in: key_file.clone(),
@@ -125,9 +125,9 @@ pub(crate) async fn password_wrap_import_test(
             },
             key_bytes
         );
-    }
+    };
 
-    //wrap and unwrap using a base64 key
+    // wrap and unwrap using a base64 key
     {
         let mut rng = CsRng::from_entropy();
         let mut key = vec![0_u8; 32];
@@ -171,7 +171,7 @@ pub(crate) async fn password_wrap_import_test(
             },
             key_bytes
         );
-    }
+    };
 
     // other wrap unwrap scenarios are covered by tests in utils/wrap_unwrap
 

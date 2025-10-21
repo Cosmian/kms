@@ -92,7 +92,6 @@ pub struct Attributes {
 
     /// The Certificate Attributes are the various items included in a certificate.
     /// The following list is based on RFC2253.
-    #[allow(clippy::struct_field_names)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub certificate_attributes: Option<CertificateAttributes>,
 
@@ -443,7 +442,6 @@ pub struct Attributes {
     /// created by the server with Vendor Identification "y" are not created
     /// (provided during object creation), set, added, adjusted, modified or
     /// deleted by the client.
-    #[allow(clippy::struct_field_names)]
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "Attribute")]
     pub vendor_attributes: Option<Vec<VendorAttribute>>,
@@ -488,7 +486,6 @@ impl Attributes {
     ///
     /// # Returns
     ///     * `Option<VendorAttributeValue>` - The old value of the attribute if it existed.
-    ///
     pub fn set_vendor_attribute(
         &mut self,
         vendor_identification: &str,
@@ -514,14 +511,13 @@ impl Attributes {
         vendor_identification: &str,
         attribute_name: &str,
     ) -> Option<&VendorAttributeValue> {
-        self.vendor_attributes.as_ref().and_then(|vas| {
-            vas.iter()
-                .find(|&va| {
-                    va.vendor_identification == vendor_identification
-                        && va.attribute_name == attribute_name
-                })
-                .map(|va| &va.attribute_value)
-        })
+        let vas = self.vendor_attributes.as_ref()?;
+        vas.iter()
+            .find(|&va| {
+                va.vendor_identification == vendor_identification
+                    && va.attribute_name == attribute_name
+            })
+            .map(|va| &va.attribute_value)
     }
 
     /// Remove the vendor attribute with the given vendor identification and attribute name.
@@ -554,12 +550,11 @@ impl Attributes {
     /// Get the link to the object.
     #[must_use]
     pub fn get_link(&self, link_type: LinkType) -> Option<LinkedObjectIdentifier> {
-        self.link.as_ref().and_then(|links| {
-            links
-                .iter()
-                .find(|&l| l.link_type == link_type)
-                .map(|l| l.linked_object_identifier.clone())
-        })
+        let links = self.link.as_ref()?;
+        links
+            .iter()
+            .find(|&l| l.link_type == link_type)
+            .map(|l| l.linked_object_identifier.clone())
     }
 
     /// Remove the link from the attributes
@@ -637,14 +632,12 @@ impl Attributes {
     /// Remove the authenticated additional data from the attributes and return it - for AESGCM unwrapping
     #[must_use]
     pub fn remove_aad(&mut self) -> Option<Vec<u8>> {
-        self.remove_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_AAD)
-            .and_then(|val| {
-                if let VendorAttributeValue::ByteString(value) = val {
-                    Some(value)
-                } else {
-                    None
-                }
-            })
+        let val = self.remove_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_AAD)?;
+        if let VendorAttributeValue::ByteString(value) = val {
+            Some(value)
+        } else {
+            None
+        }
     }
 
     /// Add the authenticated additional data to the attributes - for AESGCM unwrapping
@@ -655,6 +648,15 @@ impl Attributes {
             attribute_value: VendorAttributeValue::ByteString(value.to_vec()),
         };
         self.add_vendor_attribute(va);
+    }
+
+    /// Get the cryptographic length as `usize`.
+    ///
+    /// Returns `None` if cryptographic length is not set.
+    /// Returns `Some(0)` should the cryptographic length be negative.
+    pub fn get_cryptographic_length(&mut self) -> Option<usize> {
+        self.cryptographic_length
+            .map(|cryptographic_length| usize::try_from(cryptographic_length).unwrap_or(0))
     }
 
     /// Merge the attributes from `other` into `self`.
@@ -856,7 +858,7 @@ impl Display for Attributes {
             writeln!(f, "  Destroy Date: {value}")?;
         }
         if let Some(value) = &self.digest {
-            writeln!(f, "  Digest: {value:#?}")?;
+            writeln!(f, "  Digest: {value}")?;
         }
         if let Some(value) = &self.digital_signature_algorithm {
             writeln!(f, "  Digital Signature Algorithm: {value}")?;
@@ -989,7 +991,7 @@ impl Display for Attributes {
 /// Structure used in various operations to provide the New Attribute value in the request.
 /// Each variant corresponds to a field in the Attributes struct.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, strum::VariantNames)]
-#[allow(clippy::large_enum_variant)]
+#[expect(clippy::large_enum_variant)]
 pub enum Attribute {
     /// The Activation Date attribute contains the date and time when the
     /// Managed Object MAY begin to be used. This time corresponds to state

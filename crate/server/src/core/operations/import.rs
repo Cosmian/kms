@@ -99,7 +99,7 @@ pub(crate) async fn import(
         x => {
             return Err(KmsError::InvalidRequest(format!(
                 "Import is not yet supported for objects of type : {x}"
-            )))
+            )));
         }
     };
     // execute the operations
@@ -114,11 +114,11 @@ pub(crate) async fn import(
 /// If the user specified tags, we will use these and remove them from the request.
 /// else we will use the tags with the object attributes
 /// If no tags are found, an empty set is returned
-pub(crate) fn recover_tags(request_attributes: &Attributes, object: &Object) -> HashSet<String> {
+pub(super) fn recover_tags(request_attributes: &Attributes, object: &Object) -> HashSet<String> {
     // extract the tags from the request attributes
     let mut tags = request_attributes.get_tags();
     if !tags.is_empty() {
-        //remove system tags starting with '_'
+        // remove system tags starting with '_'
         tags.retain(|t| !t.starts_with('_'));
         return tags;
     }
@@ -135,7 +135,7 @@ pub(crate) fn recover_tags(request_attributes: &Attributes, object: &Object) -> 
     HashSet::new()
 }
 
-pub(crate) async fn process_symmetric_key(
+pub(super) async fn process_symmetric_key(
     kms: &KMS,
     request: Import,
     owner: &str,
@@ -160,7 +160,7 @@ pub(crate) async fn process_symmetric_key(
     let mut tags = recover_tags(&request.attributes, &object);
     tags.insert("_kk".to_owned());
 
-    //Request attributes will hold the final attributes of the object.
+    // Request attributes will hold the final attributes of the object.
     let mut attributes = request.attributes;
     // force the object type to be SymmetricKey
     attributes.object_type = Some(ObjectType::SymmetricKey);
@@ -170,7 +170,7 @@ pub(crate) async fn process_symmetric_key(
     // set the tags in the attributes
     attributes.set_tags(tags.clone())?;
     // merge the object attributes with the request attributes without overwriting
-    //This will recover existing links, for instance
+    // This will recover existing links, for instance
     if let Ok(object_attributes) = object.key_block()?.attributes() {
         attributes.merge(object_attributes, false);
     }
@@ -219,7 +219,7 @@ pub(crate) async fn process_symmetric_key(
     ))
 }
 
-pub(crate) fn process_certificate(
+pub(super) fn process_certificate(
     request: Import,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     // check if the object will be replaced if it already exists.
@@ -286,7 +286,7 @@ pub(crate) fn process_certificate(
     ))
 }
 
-pub(crate) async fn process_public_key(
+pub(super) async fn process_public_key(
     kms: &KMS,
     request: Import,
     owner: &str,
@@ -383,7 +383,7 @@ pub(crate) async fn process_public_key(
     ))
 }
 
-pub(crate) async fn process_private_key(
+pub(super) async fn process_private_key(
     kms: &KMS,
     request: Import,
     owner: &str,
@@ -400,7 +400,7 @@ pub(crate) async fn process_private_key(
 
     // PKCS12 has its own processing
     if object.key_block()?.key_format_type == KeyFormatType::PKCS12 {
-        //PKCS#12 contains more than just a private key, and performs specific processing
+        // PKCS#12 contains more than just a private key, and performs specific processing
         return Box::pin(process_pkcs12(
             kms,
             owner,
@@ -512,7 +512,6 @@ fn single_operation(
     }
 }
 
-#[allow(clippy::ref_option)]
 async fn process_pkcs12(
     kms: &KMS,
     owner: &str,
@@ -577,7 +576,7 @@ async fn process_pkcs12(
         private_key_tags.insert("_sk".to_owned());
         // set tags in the attributes
         attributes.set_tags(private_key_tags.clone())?;
-        //set the updated attributes on the key
+        // set the updated attributes on the key
         if let Some(KeyValue::Structure {
             attributes: attrs, ..
         }) = private_key.key_block_mut()?.key_value.as_mut()
@@ -633,7 +632,7 @@ async fn process_pkcs12(
         public_key_tags.insert("_pk".to_owned());
         // set tags in the attributes
         attributes.set_tags(public_key_tags.clone())?;
-        //set the updated attributes on the key
+        // set the updated attributes on the key
         if let Some(KeyValue::Structure {
             attributes: attrs, ..
         }) = public_key.key_block_mut()?.key_value.as_mut()
@@ -667,18 +666,17 @@ async fn process_pkcs12(
         chain.iter().map(|(id, _, _)| id).collect::<Vec<_>>()
     );
 
-    //
     // Stage 2: update the attributes and tags
     // and create the corresponding operations
     //
     let mut operations = Vec::with_capacity(2 + chain.len());
 
-    //add link to certificate in the private key attributes
+    // add link to certificate in the private key attributes
     if let Some(KeyValue::Structure { attributes, .. }) =
         private_key.key_block_mut()?.key_value.as_mut()
     {
         let attributes = attributes.get_or_insert(Attributes::default());
-        //Note: it is unclear what link type should be used here according to KMIP
+        // Note: it is unclear what link type should be used here according to KMIP
         // CertificateLink seems to be for public key only, and there is no description
         // for PKCS12CertificateLink
         attributes.set_link(
@@ -811,11 +809,11 @@ async fn process_pkcs12(
         parent_certificate_id = Some(chain_certificate_uid);
     }
 
-    //return the private key
+    // return the private key
     Ok((private_key_id, operations))
 }
 
-pub(crate) async fn process_secret_data(
+pub(super) async fn process_secret_data(
     kms: &KMS,
     request: Import,
     owner: &str,
@@ -840,7 +838,7 @@ pub(crate) async fn process_secret_data(
     let mut tags = recover_tags(&request.attributes, &object);
     tags.insert("_sd".to_owned());
 
-    //Request attributes will hold the final attributes of the object.
+    // Request attributes will hold the final attributes of the object.
     let mut attributes = request.attributes;
     // force the object type to be SecretData
     attributes.object_type = Some(ObjectType::SecretData);
@@ -850,7 +848,7 @@ pub(crate) async fn process_secret_data(
     // set the tags in the attributes
     attributes.set_tags(tags.clone())?;
     // merge the object attributes with the request attributes without overwriting
-    //This will recover existing links, for instance
+    // This will recover existing links, for instance
     if let Ok(object_attributes) = object.key_block()?.attributes() {
         attributes.merge(object_attributes, false);
     }
@@ -895,7 +893,7 @@ pub(crate) async fn process_secret_data(
     ))
 }
 
-pub(crate) fn process_opaque_object(
+pub(super) fn process_opaque_object(
     request: Import,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     // check if the object will be replaced if it already exists

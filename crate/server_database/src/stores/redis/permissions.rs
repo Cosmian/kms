@@ -20,7 +20,7 @@ use crate::{DbError, error::DbResult};
 /// the database for all permissions for a given object or user because
 /// there is no convenient access to the callback for a search
 #[derive(Clone, Eq, PartialEq, Debug, Hash)]
-pub(crate) struct Triple {
+pub struct Triple {
     obj_uid: String,
     user_id: String,
     permission: KmipOperation,
@@ -190,7 +190,7 @@ impl PermissionsDB {
             .map(|triple| triple.permission)
             .collect::<HashSet<KmipOperation>>();
         if no_inherited_access {
-            return Ok(user_perms)
+            return Ok(user_perms);
         }
         let wildcard_user_perms = self
             .search_one_keyword(findex_key, &Triple::build_key(obj_uid, "*"))
@@ -225,7 +225,7 @@ impl PermissionsDB {
         let mut additions = HashMap::new();
         additions.insert(indexed_value, HashSet::from([keyword.clone()]));
 
-        //upsert the index
+        // upsert the index
         let new_keywords = self
             .findex
             .upsert(
@@ -238,7 +238,7 @@ impl PermissionsDB {
         let is_already_present = !new_keywords.contains(&keyword);
         if is_already_present {
             // we assume that the other two keywords are already present
-            return Ok(())
+            return Ok(());
         }
 
         // we need to add the other two keywords
@@ -280,7 +280,7 @@ impl PermissionsDB {
         let mut deletions = HashMap::new();
         deletions.insert(indexed_value, HashSet::from([keyword.clone()]));
 
-        //upsert the deletions in the index
+        // upsert the deletions in the index
         let new_keywords = self
             .findex
             .upsert(

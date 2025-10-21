@@ -43,7 +43,7 @@ impl OffsetDateTimeDeserializer {
     }
 }
 
-#[allow(unused_variables)]
+#[expect(unused_variables)]
 impl<'de> de::Deserializer<'de> for &mut OffsetDateTimeDeserializer {
     type Error = TtlvError;
 

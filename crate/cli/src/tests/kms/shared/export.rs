@@ -401,7 +401,6 @@ pub(crate) async fn test_export_x25519() -> KmsCliResult<()> {
     .run(ctx.get_owner_client())
     .await?;
 
-    //
     // Private Key
     //
     ExportSecretDataOrKeyAction {
@@ -457,7 +456,6 @@ pub(crate) async fn test_export_x25519() -> KmsCliResult<()> {
         pkey_2.private_key_to_pkcs8().unwrap()
     );
 
-    //
     // Public Key
     //
     ExportSecretDataOrKeyAction {
@@ -641,28 +639,24 @@ pub(crate) async fn test_sensitive_covercrypt_key() -> KmsCliResult<()> {
     };
 
     // master secret key should not be exportable
-    assert!(
-        ExportSecretDataOrKeyAction {
-            key_id: Some(master_private_key_id.to_string()),
-            key_file: tmp_path.join("output.sk.export"),
-            ..Default::default()
-        }
-        .run(ctx.get_owner_client())
-        .await
-        .is_err()
-    );
+    ExportSecretDataOrKeyAction {
+        key_id: Some(master_private_key_id.clone()),
+        key_file: tmp_path.join("output.sk.export"),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await
+    .unwrap_err();
 
     // Master public key should be exportable
-    assert!(
-        ExportSecretDataOrKeyAction {
-            key_id: Some(master_public_key_id),
-            key_file: tmp_path.join("output.sk.export"),
-            ..Default::default()
-        }
-        .run(ctx.get_owner_client())
-        .await
-        .is_ok()
-    );
+    ExportSecretDataOrKeyAction {
+        key_id: Some(master_public_key_id),
+        key_file: tmp_path.join("output.sk.export"),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await
+    .unwrap();
 
     let user_key_id = CreateUserKeyAction {
         master_secret_key_id: master_private_key_id.clone(),
@@ -676,16 +670,14 @@ pub(crate) async fn test_sensitive_covercrypt_key() -> KmsCliResult<()> {
     .await?
     .to_string();
 
-    assert!(
-        ExportSecretDataOrKeyAction {
-            key_id: Some(user_key_id),
-            key_file: tmp_path.join("output.export"),
-            ..Default::default()
-        }
-        .run(ctx.get_owner_client())
-        .await
-        .is_err()
-    );
+    ExportSecretDataOrKeyAction {
+        key_id: Some(user_key_id),
+        key_file: tmp_path.join("output.export"),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await
+    .unwrap_err();
 
     Ok(())
 }

@@ -293,7 +293,7 @@ async fn get_subject(
             .and_then(|attributes| attributes.unique_identifier.clone())
             .unwrap_or_default();
         // see if there is a link to a private key (in case of self-signed cert)
-        return Ok(Subject::X509Req(certificate_id, x509_req))
+        return Ok(Subject::X509Req(certificate_id, x509_req));
     }
 
     // no CSR provided. Was the reference to an existing certificate or public key provided?
@@ -320,15 +320,15 @@ async fn get_subject(
                         certificate_id,
                         kmip_certificate_to_openssl(owm.object())?,
                         owm.attributes().to_owned(),
-                    ))
+                    ));
                 }
-                //If the user passed a public key, it is a new certificate signing this public key
+                // If the user passed a public key, it is a new certificate signing this public key
                 ObjectType::PublicKey => Some(owm),
                 // Invalid request
                 x => kms_bail!("Invalid Certify request for object type {x:?}"),
             }
         } else {
-            return Err(KmsError::ItemNotFound(request_id.to_string()))
+            return Err(KmsError::ItemNotFound(request_id.to_string()));
         }
     } else {
         None
@@ -355,7 +355,7 @@ async fn get_subject(
             attributes.unique_identifier.clone().unwrap_or_default(),
             public_key,
             subject_name,
-        ))
+        ));
     }
 
     // If we do not have a public key, we need to create a key pair

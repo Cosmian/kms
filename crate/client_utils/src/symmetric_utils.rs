@@ -160,7 +160,7 @@ pub fn parse_decrypt_elements(
             _ => {
                 return Err(UtilsError::Default(
                     "Unsupported block cipher mode".to_owned(),
-                ))
+                ));
             }
         },
         #[cfg(feature = "non-fips")]
@@ -170,13 +170,13 @@ pub fn parse_decrypt_elements(
         a => {
             return Err(UtilsError::Default(format!(
                 "Unsupported cryptographic algorithm: {a}"
-            )))
+            )));
         }
     };
     if nonce_size + tag_size > ciphertext.len() {
         return Err(UtilsError::Default(
             "The ciphertext is too short to contain the nonce/tweak and the tag".to_owned(),
-        ))
+        ));
     }
     let nonce = ciphertext.drain(..nonce_size).collect::<Vec<_>>();
     let tag = ciphertext

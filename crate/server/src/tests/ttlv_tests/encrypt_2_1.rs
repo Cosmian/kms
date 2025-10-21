@@ -36,7 +36,7 @@ fn test_encrypt_2_1() {
     encrypt(&client, &key_id, b"Hello, world!", None);
 }
 
-pub(crate) fn encrypt(client: &SocketClient, key_id: &str, data: &[u8], aad: Option<&[u8]>) {
+pub(super) fn encrypt(client: &SocketClient, key_id: &str, data: &[u8], aad: Option<&[u8]>) {
     let protocol_major = 2;
     let kmip_flavor = if protocol_major == 2 {
         KmipFlavor::Kmip2

@@ -73,7 +73,9 @@ impl KmipBigInt {
     pub fn to_signed_bytes_be(&self) -> Vec<u8> {
         let mut bytes = self.0.to_signed_bytes_be();
         let len = bytes.len();
-        if len % 8 != 0 {
+        if len.is_multiple_of(8) {
+            bytes
+        } else {
             let padding = 8 - len % 8;
             let mut padded_bytes = match self.0.sign() {
                 Sign::Minus => vec![255_u8; padding],
@@ -81,8 +83,6 @@ impl KmipBigInt {
             };
             padded_bytes.append(&mut bytes);
             padded_bytes
-        } else {
-            bytes
         }
     }
 
@@ -152,8 +152,8 @@ impl KmipBigInt {
         for digit in digits {
             let mut acc = *digit;
             for _ in 0..4 {
-                #[allow(clippy::as_conversions)]
-                bytes.push((acc & 0xFF) as u8);
+                let [b0, ..] = acc.to_le_bytes();
+                bytes.push(b0);
                 acc >>= 8;
             }
         }
@@ -200,8 +200,7 @@ impl<'de> Deserialize<'de> for KmipBigInt {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
-#[allow(clippy::panic)]
+#[expect(clippy::unwrap_used)]
 mod tests {
     use num_bigint_dig::BigInt;
     use num_traits::pow::Pow;

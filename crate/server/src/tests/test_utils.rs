@@ -31,7 +31,6 @@ use crate::{
     start_kms_server::handle_google_cse_rsa_keypair,
 };
 
-#[allow(dead_code)]
 pub(crate) fn https_clap_config() -> ClapConfig {
     https_clap_config_opts(None)
 }
@@ -108,7 +107,6 @@ pub(crate) fn get_tmp_sqlite_path() -> PathBuf {
 /// The app automatically generates and manages RSA keypairs for JWT authentication:
 /// - Private key stored as `google_cse_rsa`
 /// - Public key stored as  `google_cse_rsa_pk` and exposed via `/google_cse/certs`
-///
 pub(crate) async fn test_app(
     kms_public_url: Option<String>,
     privileged_users: Option<Vec<String>>,

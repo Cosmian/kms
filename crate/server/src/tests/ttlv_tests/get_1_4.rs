@@ -35,7 +35,7 @@ fn test_get_1_4() {
     get_symmetric_key(&client, &key_id);
 }
 
-pub(crate) fn get_symmetric_key(client: &SocketClient, key_id: &str) {
+pub(super) fn get_symmetric_key(client: &SocketClient, key_id: &str) {
     let protocol_major = 1;
     let kmip_flavor = if protocol_major == 2 {
         KmipFlavor::Kmip2

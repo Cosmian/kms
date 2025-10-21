@@ -105,7 +105,7 @@ impl Display for KeyMaterial421 {
     }
 }
 
-#[allow(clippy::upper_case_acronyms)]
+#[expect(clippy::upper_case_acronyms)]
 #[derive(Serialize, Deserialize, Clone, Copy)]
 enum KeyTypeSer {
     DH,
@@ -152,7 +152,7 @@ impl<'de> Deserialize<'de> for KeyMaterial421 {
                 formatter.write_str("struct KeyMaterialVisitor")
             }
 
-            #[allow(clippy::many_single_char_names)]
+            #[expect(clippy::many_single_char_names)]
             fn visit_map<V>(self, mut map: V) -> Result<Self::Value, V::Error>
             where
                 V: MapAccess<'de>,
@@ -183,109 +183,109 @@ impl<'de> Deserialize<'de> for KeyMaterial421 {
                     match field {
                         Field::ByteString => {
                             if bytestring.is_some() {
-                                return Err(de::Error::duplicate_field("ByteString"))
+                                return Err(de::Error::duplicate_field("ByteString"));
                             }
                             bytestring = Some(map.next_value()?);
                         }
                         Field::D => {
                             if d.is_some() {
-                                return Err(de::Error::duplicate_field("D"))
+                                return Err(de::Error::duplicate_field("D"));
                             }
                             d = Some(Box::new(map.next_value()?));
                         }
                         Field::P => {
                             if p.is_some() {
-                                return Err(de::Error::duplicate_field("P"))
+                                return Err(de::Error::duplicate_field("P"));
                             }
                             p = Some(Box::new(map.next_value()?));
                         }
                         Field::Q => {
                             if q.is_some() {
-                                return Err(de::Error::duplicate_field("Q"))
+                                return Err(de::Error::duplicate_field("Q"));
                             }
                             q = Some(Box::new(map.next_value()?));
                         }
                         Field::G => {
                             if g.is_some() {
-                                return Err(de::Error::duplicate_field("G"))
+                                return Err(de::Error::duplicate_field("G"));
                             }
                             g = Some(Box::new(map.next_value()?));
                         }
                         Field::J => {
                             if j.is_some() {
-                                return Err(de::Error::duplicate_field("J"))
+                                return Err(de::Error::duplicate_field("J"));
                             }
                             j = Some(Box::new(map.next_value()?));
                         }
                         Field::X => {
                             if x.is_some() {
-                                return Err(de::Error::duplicate_field("X"))
+                                return Err(de::Error::duplicate_field("X"));
                             }
                             x = Some(Box::new(map.next_value()?));
                         }
                         Field::Y => {
                             if y.is_some() {
-                                return Err(de::Error::duplicate_field("Y"))
+                                return Err(de::Error::duplicate_field("Y"));
                             }
                             y = Some(Box::new(map.next_value()?));
                         }
                         Field::Key => {
                             if key.is_some() {
-                                return Err(de::Error::duplicate_field("Key"))
+                                return Err(de::Error::duplicate_field("Key"));
                             }
                             key = Some(map.next_value()?);
                         }
                         Field::KeyTypeSer => {
                             if key_type_ser.is_some() {
-                                return Err(de::Error::duplicate_field("KeyTypeSer"))
+                                return Err(de::Error::duplicate_field("KeyTypeSer"));
                             }
                             key_type_ser = Some(map.next_value()?);
                         }
                         Field::Modulus => {
                             if modulus.is_some() {
-                                return Err(de::Error::duplicate_field("Modulus"))
+                                return Err(de::Error::duplicate_field("Modulus"));
                             }
                             modulus = Some(Box::new(map.next_value()?));
                         }
                         Field::PrivateExponent => {
                             if private_exponent.is_some() {
-                                return Err(de::Error::duplicate_field("PrivateExponent"))
+                                return Err(de::Error::duplicate_field("PrivateExponent"));
                             }
                             private_exponent = Some(Box::new(map.next_value()?));
                         }
                         Field::PublicExponent => {
                             if public_exponent.is_some() {
-                                return Err(de::Error::duplicate_field("PublicExponent"))
+                                return Err(de::Error::duplicate_field("PublicExponent"));
                             }
                             public_exponent = Some(Box::new(map.next_value()?));
                         }
                         Field::PrimeExponentP => {
                             if prime_exponent_p.is_some() {
-                                return Err(de::Error::duplicate_field("PrimeExponentP"))
+                                return Err(de::Error::duplicate_field("PrimeExponentP"));
                             }
                             prime_exponent_p = Some(Box::new(map.next_value()?));
                         }
                         Field::PrimeExponentQ => {
                             if prime_exponent_q.is_some() {
-                                return Err(de::Error::duplicate_field("PrimeExponentQ"))
+                                return Err(de::Error::duplicate_field("PrimeExponentQ"));
                             }
                             prime_exponent_q = Some(Box::new(map.next_value()?));
                         }
                         Field::CrtCoefficient => {
                             if crt_coefficient.is_some() {
-                                return Err(de::Error::duplicate_field("CrtCoefficient"))
+                                return Err(de::Error::duplicate_field("CrtCoefficient"));
                             }
                             crt_coefficient = Some(Box::new(map.next_value()?));
                         }
                         Field::RecommendedCurve => {
                             if recommended_curve.is_some() {
-                                return Err(de::Error::duplicate_field("RecommendedCurve"))
+                                return Err(de::Error::duplicate_field("RecommendedCurve"));
                             }
                             recommended_curve = Some(map.next_value()?);
                         }
                         Field::QString => {
                             if q_string.is_some() {
-                                return Err(de::Error::duplicate_field("QString"))
+                                return Err(de::Error::duplicate_field("QString"));
                             }
                             q_string = Some(map.next_value()?);
                         }
@@ -372,7 +372,7 @@ impl<'de> Deserialize<'de> for KeyMaterial421 {
                         _ => {
                             return Err(de::Error::custom(
                                 "unable to differentiate key material variant",
-                            ))
+                            ));
                         }
                     })
                 }

@@ -1,4 +1,9 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::unwrap_in_result
+)]
 
 use std::path::Path;
 
@@ -79,9 +84,10 @@ async fn get_redis_with_findex() -> DbResult<RedisWithFindex> {
     Ok(redis_findex)
 }
 
+#[ignore = "Requires a running Redis instance"]
 #[cfg(feature = "non-fips")]
 #[tokio::test]
-pub(crate) async fn test_redis_with_findex() -> DbResult<()> {
+pub(crate) async fn test_db_redis_with_findex() -> DbResult<()> {
     log_init(option_env!("RUST_LOG"));
     test_objects_db().await?;
     test_permissions_db().await?;
@@ -108,7 +114,7 @@ pub(crate) async fn test_redis_with_findex() -> DbResult<()> {
 /// ));
 /// ```
 #[tokio::test]
-pub(crate) async fn test_sqlite() -> DbResult<()> {
+pub(crate) async fn test_db_sqlite() -> DbResult<()> {
     // log_init(option_env!("RUST_LOG"));
     log_init(Some("info"));
     let dir = TempDir::new()?;
@@ -129,8 +135,9 @@ pub(crate) async fn test_sqlite() -> DbResult<()> {
     Ok(())
 }
 
+#[ignore = "Requires a running PostgreSQL instance"]
 #[tokio::test]
-pub(crate) async fn test_postgresql() -> DbResult<()> {
+pub(crate) async fn test_db_postgresql() -> DbResult<()> {
     log_init(option_env!("RUST_LOG"));
     // log_init(Some("trace"));
     Box::pin(json_access(&get_pgsql().await?, None)).await?;
@@ -146,8 +153,9 @@ pub(crate) async fn test_postgresql() -> DbResult<()> {
     Ok(())
 }
 
+#[ignore = "Requires a running MySQL or MariaDB instance"]
 #[tokio::test]
-pub(crate) async fn test_mysql() -> DbResult<()> {
+pub(crate) async fn test_db_mysql() -> DbResult<()> {
     log_init(option_env!("RUST_LOG"));
     Box::pin(json_access(&get_mysql().await?, None)).await?;
     find_attributes(&get_mysql().await?, None).await?;

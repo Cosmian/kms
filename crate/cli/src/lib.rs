@@ -10,11 +10,15 @@ pub mod reexport {
 #[cfg(test)]
 #[allow(
     clippy::unwrap_used,
+    clippy::expect_used,
     clippy::panic_in_result_fn,
     clippy::indexing_slicing,
     clippy::panic,
-    clippy::string_to_string,
+    clippy::implicit_clone,
     clippy::str_to_string,
-    clippy::assertions_on_result_states
+    clippy::large_stack_frames,
+    clippy::ignore_without_reason,
+    dead_code,
+    clippy::unwrap_in_result
 )]
 mod tests;

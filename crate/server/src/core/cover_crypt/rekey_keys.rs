@@ -35,8 +35,8 @@ use crate::{core::cover_crypt::locate_usk, error::KmsError, kms_bail, result::KR
 /// - `DisableAttribute`: Disable attributes in the access structure.
 /// - `AddAttribute`: Add new attributes to the access structure.
 /// - `RenameAttribute`: Rename attributes in the access structure.
-#[allow(clippy::large_futures)]
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::large_futures)]
+#[expect(clippy::too_many_arguments)]
 pub(crate) async fn rekey_keypair_cover_crypt(
     kmip_server: &KMS,
     cover_crypt: Covercrypt,
@@ -194,7 +194,7 @@ pub(crate) async fn rekey_keypair_cover_crypt(
 /// Updates the key-pair associated to the MSK which UID is given using the
 /// given mutator, and replaces the stored key-pair with the mutated
 /// one. Returns the associated MPK UID.
-pub(crate) async fn update_master_keys(
+pub(super) async fn update_master_keys(
     server: &KMS,
     owner: &str,
     params: Option<Arc<dyn SessionParams>>,

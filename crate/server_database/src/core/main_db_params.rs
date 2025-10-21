@@ -66,7 +66,7 @@ impl Display for MainDbParams {
 }
 
 /// Redact the username and password from the URL for logging purposes
-#[allow(clippy::expect_used)]
+#[expect(clippy::expect_used)]
 fn redact_url(original: &Url) -> Url {
     let mut url = original.clone();
 

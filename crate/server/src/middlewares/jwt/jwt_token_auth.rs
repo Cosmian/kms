@@ -57,7 +57,7 @@ fn extract_user_claim(configs: &[JwtConfig], token: &str) -> Result<UserClaim, V
 /// # Returns
 /// * `Ok(AuthenticatedUser)` - Authentication successful with user email
 /// * `Err(KmsError)` - Authentication failed
-pub(crate) async fn handle_jwt(
+pub(super) async fn handle_jwt(
     configs: Arc<Vec<JwtConfig>>,
     req: &ServiceRequest,
 ) -> KResult<AuthenticatedUser> {

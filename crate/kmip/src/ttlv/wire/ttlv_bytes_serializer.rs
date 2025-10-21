@@ -15,9 +15,7 @@ fn write_tag<W: Write, TAG: KmipTag>(writer: &mut W, tag_str: &str) -> Result<()
 
 /// Write a type as a 1-byte integer
 fn write_type<W: Write>(writer: &mut W, item_type: TtlvType) -> Result<(), TtlvError> {
-    // Clippy doesn't like the as conversion, but it's safe here
-    #[allow(clippy::as_conversions)]
-    writer.write_all(&[item_type as u8])?;
+    writer.write_all(&[item_type.to_byte()])?;
     Ok(())
 }
 
@@ -42,6 +40,8 @@ where
     }
 
     pub fn write_ttlv<TAG: KmipTag>(&mut self, ttlv: &TTLV) -> Result<(), TtlvError> {
+        #[cfg(test)]
+        cosmian_logger::debug!("[serialize] writing tag: {}", ttlv.tag);
         // Write Tag (3 bytes)
         write_tag::<W, TAG>(&mut self.writer, &ttlv.tag)?;
 
@@ -142,9 +142,9 @@ where
     }
 }
 
-#[allow(clippy::unwrap_used)]
-#[allow(clippy::as_conversions)]
-#[allow(clippy::indexing_slicing)]
+#[expect(clippy::unwrap_used)]
+#[expect(clippy::as_conversions)]
+#[expect(clippy::indexing_slicing)]
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;
@@ -281,7 +281,7 @@ mod tests {
 
         assert_eq!(
             buffer.len(),
-            3 /* tag */ + 1 /* type */ + 4 /* length */ + 4 /* i32 value */ + 4 /* padding */
+            3 /* tag */ + 1 /* type */ + 4 /* length */ + 4 /* i32 value */ + 4 // padding
         );
         // Check the first 3 bytes (tag) - BatchCount
         assert_eq!(
@@ -312,7 +312,7 @@ mod tests {
 
         assert_eq!(
             buffer.len(),
-            3 /* tag */ + 1 /* type */ + 4 /* length */ + 8 /* i64 value */
+            3 /* tag */ + 1 /* type */ + 4 /* length */ + 8 // i64 value
         );
         // Check the first 3 bytes (tag) - IterationCount
         assert_eq!(
@@ -348,7 +348,7 @@ mod tests {
 
         assert_eq!(
             buffer.len(),
-            3 /* tag */ + 1 /* type */ + 4 /* length */ + bi_len /* BigInt value */
+            3 /* tag */ + 1 /* type */ + 4 /* length */ + bi_len // BigInt value
         );
         // Check the first 3 bytes (tag) - D
         assert_eq!(
@@ -386,7 +386,7 @@ mod tests {
 
         assert_eq!(
             buffer.len(),
-            3 /* tag */ + 1 /* type */ + 4 /* length */ + 4 /* variant */ + 4 /* padding */
+            3 /* tag */ + 1 /* type */ + 4 /* length */ + 4 /* variant */ + 4 // padding
         );
         // Check the first 3 bytes (tag) - CryptographicAlgorithm
         assert_eq!(
@@ -420,7 +420,7 @@ mod tests {
 
         assert_eq!(
             buffer.len(),
-            3 /* tag */ + 1 /* type */ + 4 /* length */ + 8 /* boolean */
+            3 /* tag */ + 1 /* type */ + 4 /* length */ + 8 // boolean
         );
         // Check the first 3 bytes (tag) - Sensitive
         assert_eq!(
@@ -454,7 +454,7 @@ mod tests {
 
         assert_eq!(
             buffer.len(),
-            3 /* tag */ + 1 /* type */ + 4 /* length */ + 10 /* string */ + 6 /* padding */
+            3 /* tag */ + 1 /* type */ + 4 /* length */ + 10 /* string */ + 6 // padding
         );
         // Check the first 3 bytes (tag) - Name
         assert_eq!(
@@ -488,7 +488,7 @@ mod tests {
 
         assert_eq!(
             buffer.len(),
-            3 /* tag */ + 1 /* type */ + 4 /* length */ + msg_len /* string */ + 3 /* padding */
+            3 /* tag */ + 1 /* type */ + 4 /* length */ + msg_len /* string */ + 3 // padding
         );
         // Check the first 3 bytes (tag) - KeyValue
         assert_eq!(
@@ -520,7 +520,7 @@ mod tests {
 
         assert_eq!(
             buffer.len(),
-            3 /* tag */ + 1 /* type */ + 4 /* length */ + 8 /* datetime */
+            3 /* tag */ + 1 /* type */ + 4 /* length */ + 8 // datetime
         );
         // Check the first 3 bytes (tag) - DeactivationDate
         assert_eq!(
@@ -549,7 +549,7 @@ mod tests {
 
         assert_eq!(
             buffer.len(),
-            3 /* tag */ + 1 /* type */ + 4 /* length */ + 4 /* interval */ + 4 /* padding */
+            3 /* tag */ + 1 /* type */ + 4 /* length */ + 4 /* interval */ + 4 // padding
         );
         // Check the first 3 bytes (tag) - ValidityIndicator
         assert_eq!(
@@ -584,7 +584,7 @@ mod tests {
 
         assert_eq!(
             buffer.len(),
-            3 /* tag */ + 1 /* type */ + 4 /* length */ + 8 /* datetime extended */
+            3 /* tag */ + 1 /* type */ + 4 /* length */ + 8 // datetime extended
         );
         // Check the first 3 bytes (tag) - ActivationDate
         assert_eq!(
@@ -638,7 +638,7 @@ mod tests {
         assert_eq!(&buffer[4..8], &(8_u32 + 8 + 8 + 16).to_be_bytes());
 
         // Check LinkType inner structure
-        #[allow(clippy::items_after_statements)]
+        #[expect(clippy::items_after_statements)]
         const OFFSET_1: usize = 8;
         assert_eq!(
             &buffer[OFFSET_1..3 + OFFSET_1],
@@ -657,7 +657,7 @@ mod tests {
         assert_eq!(&buffer[12 + OFFSET_1..16 + OFFSET_1], &[0; 4]);
 
         // Check LinkedObjectIdentifier inner structure
-        #[allow(clippy::items_after_statements)]
+        #[expect(clippy::items_after_statements)]
         const OFFSET_2: usize = 8 + 16;
         assert_eq!(
             &buffer[OFFSET_2..3 + OFFSET_2],
@@ -890,7 +890,7 @@ mod tests {
             name: "TestEnum".to_owned(),
         };
         let ttlv_enum = TTLV {
-            tag: kmip_1_4::kmip_types::Tag::ApplicationSpecificInformation.to_string(), // "420004", Custom tag from example
+            tag: kmip_1_4::kmip_types::Tag::ApplicationSpecificInformation.to_string(), /* "420004", Custom tag from example */
             value: TTLValue::Enumeration(enum_variant),
         };
         let ttlv_int = TTLV {

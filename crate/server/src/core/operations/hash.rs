@@ -65,7 +65,7 @@ pub(crate) async fn hash_operation(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::panic_in_result_fn)]
+#[expect(clippy::unwrap_used, clippy::panic_in_result_fn)]
 mod tests {
     use std::sync::Arc;
 
@@ -78,6 +78,7 @@ mod tests {
         config::ServerParams, core::KMS, result::KResult, tests::test_utils::https_clap_config,
     };
 
+    #[allow(clippy::unwrap_in_result)]
     #[tokio::test]
     async fn test_server_hash_operation() -> KResult<()> {
         let kms = Arc::new(
@@ -114,6 +115,7 @@ mod tests {
         Ok(())
     }
 
+    #[allow(clippy::unwrap_in_result)]
     #[tokio::test]
     async fn test_server_hash_operation_with_correlation() -> KResult<()> {
         let kms = Arc::new(

@@ -34,7 +34,7 @@ pub(crate) fn unwrap_user_decryption_key_object(
     if key_block.key_format_type != KeyFormatType::CoverCryptSecretKey {
         return Err(CryptoError::Kmip(
             "Expected an Covercrypt User Decryption Key".to_owned(),
-        ))
+        ));
     }
     let Some(KeyValue::Structure { key_material, .. }) = key_block.key_value.as_ref() else {
         return Err(CryptoError::Default(
@@ -46,7 +46,7 @@ pub(crate) fn unwrap_user_decryption_key_object(
         x => {
             return Err(CryptoError::Kmip(format!(
                 "Invalid Key Material for the Covercrypt User Decryption Key: {x}"
-            )))
+            )));
         }
     };
     let attributes = key_block.attributes().map_err(|e| {
@@ -79,7 +79,6 @@ impl<'a> UserDecryptionKeysHandler<'a> {
         create_attributes: &Attributes,
         msk_id: &str,
     ) -> Result<Object, CryptoError> {
-        //
         // Generate a fresh user decryption key
         //
         let access_policy = AccessPolicy::parse(access_policy_str)?;

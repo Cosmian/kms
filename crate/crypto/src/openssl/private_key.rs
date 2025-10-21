@@ -49,7 +49,6 @@ use crate::{
 /// # Returns
 ///
 /// * `PKey<Private>` - The openssl Private key
-///
 pub fn kmip_private_key_to_openssl(private_key: &Object) -> Result<PKey<Private>, CryptoError> {
     let key_block = match private_key {
         Object::PrivateKey(PrivateKey { key_block }) => key_block,
@@ -521,7 +520,7 @@ pub fn openssl_private_key_to_kmip(
     Ok(Object::PrivateKey(PrivateKey { key_block }))
 }
 
-#[allow(clippy::unwrap_used, clippy::panic)]
+#[expect(clippy::unwrap_used, clippy::panic)]
 #[cfg(test)]
 mod tests {
     #[cfg(feature = "non-fips")]

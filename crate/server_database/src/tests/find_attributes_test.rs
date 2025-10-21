@@ -20,7 +20,7 @@ use uuid::Uuid;
 
 use crate::{db_error, error::DbResult};
 
-pub(crate) async fn find_attributes<DB: ObjectsStore>(
+pub(super) async fn find_attributes<DB: ObjectsStore>(
     db: &DB,
     db_params: Option<Arc<dyn SessionParams>>,
 ) -> DbResult<()> {

@@ -134,7 +134,7 @@ impl<'a> Deserializer<'a> {
     }
 }
 
-// Implement `ZeroizeOnDrop` not to leak serialized sercrets.
+// Implement `ZeroizeOnDrop` not to leak serialized secrets.
 pub struct Serializer(Zeroizing<Vec<u8>>);
 
 impl Serializer {
@@ -269,7 +269,7 @@ pub fn test_serialization<T: PartialEq + Debug + Serializable>(v: &T) -> Result<
 }
 
 #[cfg(test)]
-#[allow(clippy::panic_in_result_fn)]
+#[expect(clippy::panic_in_result_fn)]
 mod tests {
     use rand::RngCore;
 
@@ -344,7 +344,6 @@ mod tests {
         {
             let empty_error = DummyLeb128Serializable::deserialize(&[]);
 
-            dbg!(&empty_error);
             match empty_error {
                 Err(KmipError::Deserialization(e)) => {
                     assert_eq!("empty bytes", e);
@@ -362,23 +361,21 @@ mod tests {
             bytes.pop();
             let too_small_error = DummyLeb128Serializable::deserialize(&bytes);
 
-            dbg!(&too_small_error);
             assert!(matches!(
                 too_small_error,
                 Err(KmipError::DeserializationSize(514, 513))
             ));
-        }
+        };
         {
             let mut bytes = dummy.serialize()?;
             bytes.push(42);
             let too_big_error = DummyLeb128Serializable::deserialize(&bytes);
 
-            dbg!(&too_big_error);
             assert!(matches!(
                 too_big_error,
                 Err(KmipError::DeserializationSize(515, 514))
             ));
-        }
+        };
 
         Ok(())
     }

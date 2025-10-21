@@ -9,14 +9,14 @@ use crate::{
     result::{KResult, KResultHelper},
 };
 
-pub(crate) const UID_PREFIX_SEPARATOR: &str = "::";
+pub(super) const UID_PREFIX_SEPARATOR: &str = "::";
 
 /// Determine whether the unique identifier has a prefix or not
 /// # Arguments
 ///  * `uid` - A string slice representing the unique identifier
 /// # Returns
 /// * `Option` - A tuple of two string slices, the first one is the prefix and the second one is the full uid
-pub(crate) fn has_prefix(uid: &str) -> Option<&str> {
+pub(super) fn has_prefix(uid: &str) -> Option<&str> {
     uid.split_once(UID_PREFIX_SEPARATOR)
         .map(|(prefix, _)| prefix)
 }
@@ -29,7 +29,7 @@ pub(crate) fn has_prefix(uid: &str) -> Option<&str> {
 /// * `params` - An optional reference to the `ExtraStoreParams` object
 /// # Returns
 /// * `KResult` - A `HashSet` of strings representing the possible UIDs
-pub(crate) async fn uids_from_unique_identifier(
+pub(super) async fn uids_from_unique_identifier(
     unique_identifier: &UniqueIdentifier,
     kms: &KMS,
     params: Option<Arc<dyn SessionParams>>,

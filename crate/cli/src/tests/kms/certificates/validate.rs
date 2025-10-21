@@ -81,7 +81,7 @@ async fn import_revoked_certificate_encrypt(curve_name: &str) -> KmsCliResult<()
 }
 
 #[tokio::test]
-#[ignore]
+#[ignore = "Requires specific certificate setup"]
 async fn test_import_revoked_certificate_encrypt_prime256() -> KmsCliResult<()> {
     Box::pin(import_revoked_certificate_encrypt("prime256v1")).await
 }

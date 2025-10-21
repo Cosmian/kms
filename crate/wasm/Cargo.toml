@@ -24,8 +24,8 @@ non-fips = ["cosmian_kms_client_utils/non-fips"]
 default = ["getrandom/js"]
 
 [dependencies]
-base64.workspace = true
-cosmian_kms_client_utils = { path = "../client_utils", version = "5.9.0" }
+base64 = { workspace = true }
+cosmian_kms_client_utils = { path = "../client_utils", version = "5.10.0" }
 getrandom = { version = "0.2", features = ["js"], optional = true }
 js-sys = "0.3.77"
 pem = { workspace = true }

@@ -281,7 +281,7 @@ async fn check_certificate_and_public_key_linked(
     .unwrap();
 
     let public_key = read_object_from_json_ttlv_file(&tmp_exported_pubkey).unwrap();
-    //check that the public key contains a link to the certificate
+    // check that the public key contains a link to the certificate
     let public_key_attributes = public_key.attributes().unwrap();
     let certificate_link = public_key_attributes
         .get_link(LinkType::CertificateLink)
@@ -313,7 +313,7 @@ async fn check_public_and_private_key_linked(
     .unwrap();
 
     let private_key = read_object_from_json_ttlv_file(&tmp_exported_privkey).unwrap();
-    //check that the private key contains a link to the public key
+    // check that the private key contains a link to the public key
     let public_key_link = private_key
         .attributes()
         .unwrap()

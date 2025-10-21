@@ -101,14 +101,30 @@ Assuming Google is the Identity Provider, the KMS should be started with the fol
 
 For example, if you are using the docker image, you can run the following command:
 
-```sh
-docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest \
-    --jwt-issuer-uri=https://accounts.google.com \
-    --jwks-uri=https://www.googleapis.com/oauth2/v3/certs \
-    --kms-public-url=https://cse.example.com \
-    --google-cse-enable
-```
+=== "Docker"
 
+    ```sh
+    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest \
+        --jwt-issuer-uri=https://accounts.google.com \
+        --jwks-uri=https://www.googleapis.com/oauth2/v3/certs \
+        --kms-public-url=https://cse.example.com \
+        --google-cse-enable
+    ```
+
+=== "kms.toml"
+
+    ```toml title="Configuration file"
+    # Server configuration
+    kms_public_url = "http://localhost:9998"
+    
+    # JWT authentication with Google
+    [idp_auth]
+    jwt_auth_provider = ["https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs,"]
+    
+    # Google CSE configuration
+    [google_cse_config]
+    google_cse_enable = true
+    ```
 ![external keys service](./images/configure_external_key_service.png)
 
 Then test the connection; it should show:

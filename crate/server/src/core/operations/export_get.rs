@@ -140,8 +140,16 @@ pub(crate) async fn export_get(
                 #[cfg(not(feature = "non-fips"))]
                 let is_pkcs12 = *key_format_type == KeyFormatType::PKCS12;
                 #[cfg(feature = "non-fips")]
-                let is_pkcs12 = *key_format_type == KeyFormatType::PKCS12
-                    || *key_format_type == KeyFormatType::Pkcs12Legacy;
+                let is_pkcs12 = *key_format_type == KeyFormatType::PKCS12 || {
+                    #[cfg(feature = "non-fips")]
+                    {
+                        *key_format_type == KeyFormatType::Pkcs12Legacy
+                    }
+                    #[cfg(not(feature = "non-fips"))]
+                    {
+                        false
+                    }
+                };
                 if is_pkcs12 {
                     // retrieve the private key
                     owm = retrieve_private_key_for_certificate(
@@ -182,7 +190,16 @@ pub(crate) async fn export_get(
                 let is_wrong_format = *key_format_type != KeyFormatType::X509
                     && *key_format_type != KeyFormatType::PKCS7
                     && *key_format_type != KeyFormatType::PKCS12
-                    && *key_format_type != KeyFormatType::Pkcs12Legacy;
+                    && {
+                        #[cfg(feature = "non-fips")]
+                        {
+                            *key_format_type != KeyFormatType::Pkcs12Legacy
+                        }
+                        #[cfg(not(feature = "non-fips"))]
+                        {
+                            true
+                        }
+                    };
                 if is_wrong_format {
                     kms_bail!(
                         "export: unsupported Key Format Type for a certificate: {:?}",
@@ -257,8 +274,16 @@ async fn post_process_private_key(
     );
     // determine if the user wants a PKCS#12
     #[cfg(feature = "non-fips")]
-    let is_pkcs12 = request.key_format_type == Some(KeyFormatType::PKCS12)
-        || request.key_format_type == Some(KeyFormatType::Pkcs12Legacy);
+    let is_pkcs12 = request.key_format_type == Some(KeyFormatType::PKCS12) || {
+        #[cfg(feature = "non-fips")]
+        {
+            request.key_format_type == Some(KeyFormatType::Pkcs12Legacy)
+        }
+        #[cfg(not(feature = "non-fips"))]
+        {
+            false
+        }
+    };
 
     #[cfg(not(feature = "non-fips"))]
     let is_pkcs12 = request.key_format_type == Some(KeyFormatType::PKCS12);
@@ -292,7 +317,7 @@ async fn post_process_private_key(
         )
         .await?;
     }
-    //in the case of a PKCS#12, the private key must be packaged with the certificate
+    // in the case of a PKCS#12, the private key must be packaged with the certificate
     if is_pkcs12 {
         build_pkcs12_for_private_key(kms, operation_type, user, params, request, owm).await?;
     }
@@ -320,6 +345,7 @@ async fn post_process_active_private_key(
         kms,
         user,
         params.clone(),
+        ObjectType::PrivateKey,
     )
     .await?;
 
@@ -397,10 +423,10 @@ async fn post_process_active_private_key(
         wrap_object(&mut object, key_wrapping_specification, kms, user, params).await?;
         // reassign the wrapped key
         object_with_metadata.set_object(object);
-        return Ok(())
+        return Ok(());
     }
 
-    //No wrapping requested: export the private key to the requested format
+    // No wrapping requested: export the private key to the requested format
     if let Some(key_format_type) = key_format_type {
         debug!(
             "export: exporting private key with format: {:?}",
@@ -414,6 +440,7 @@ async fn post_process_active_private_key(
             KeyFormatType::TransparentRSAPrivateKey,
             KeyFormatType::ECPrivateKey,
             KeyFormatType::PKCS12,
+            #[cfg(feature = "non-fips")]
             KeyFormatType::Pkcs12Legacy,
         ];
 
@@ -460,7 +487,7 @@ async fn post_process_active_private_key(
     Ok(())
 }
 
-#[allow(clippy::ref_option)]
+#[expect(clippy::ref_option)]
 async fn process_public_key(
     object_with_metadata: &mut ObjectWithMetadata,
     key_format_type: &Option<KeyFormatType>,
@@ -477,10 +504,11 @@ async fn process_public_key(
         kms,
         user,
         params.clone(),
+        ObjectType::PublicKey,
     )
     .await?;
 
-    //make a copy of the existing attributes
+    // make a copy of the existing attributes
     let owm_attributes = object_with_metadata.attributes().clone();
     {
         let key_block = object_with_metadata.object().key_block()?;
@@ -559,7 +587,7 @@ async fn process_public_key(
         return Ok(());
     }
 
-    //No wrapping requested: export the private key to the requested format
+    // No wrapping requested: export the private key to the requested format
     if let Some(key_format_type) = key_format_type {
         match key_format_type {
             KeyFormatType::PKCS1
@@ -607,9 +635,22 @@ async fn unwrap_if_requested(
     kms: &KMS,
     user: &str,
     params: Option<Arc<dyn SessionParams>>,
+    object_type: ObjectType,
 ) -> Result<(), KmsError> {
+    let mut key_wrap_type = *key_wrap_type;
+    if key_wrap_type.is_none() {
+        if let Some(defaults) = &kms.params.default_unwrap_types {
+            if defaults
+                .iter()
+                .any(|d| d.eq_ignore_ascii_case(&object_type.to_string()))
+            {
+                key_wrap_type = Some(KeyWrapType::NotWrapped);
+            }
+        }
+    }
+    debug!("Key wrap type: {:?}", key_wrap_type);
     if let Some(key_wrap_type) = key_wrap_type {
-        if *key_wrap_type == KeyWrapType::NotWrapped {
+        if key_wrap_type == KeyWrapType::NotWrapped {
             let mut object = kms
                 .get_unwrapped(
                     object_with_metadata.id(),
@@ -634,7 +675,7 @@ async fn unwrap_if_requested(
     Ok(())
 }
 
-#[allow(clippy::ref_option)]
+#[expect(clippy::ref_option)]
 async fn process_covercrypt_key(
     covercrypt_key: &mut Object,
     key_wrapping_specification: &Option<KeyWrappingSpecification>,
@@ -664,7 +705,7 @@ async fn process_covercrypt_key(
     Ok(())
 }
 
-pub(crate) fn openssl_private_key_to_kmip_default_format(
+pub(super) fn openssl_private_key_to_kmip_default_format(
     key: &PKey<Private>,
     cryptographic_usage_mask: Option<CryptographicUsageMask>,
 ) -> KResult<Object> {
@@ -687,7 +728,7 @@ pub(crate) fn openssl_private_key_to_kmip_default_format(
     Ok(object)
 }
 
-pub(crate) fn openssl_public_key_to_kmip_default_format(
+pub(super) fn openssl_public_key_to_kmip_default_format(
     key: &PKey<Public>,
     cryptographic_usage_mask: Option<CryptographicUsageMask>,
 ) -> KResult<Object> {
@@ -710,7 +751,7 @@ pub(crate) fn openssl_public_key_to_kmip_default_format(
     Ok(object)
 }
 
-#[allow(clippy::ref_option)]
+#[expect(clippy::ref_option)]
 async fn process_symmetric_key(
     object_with_metadata: &mut ObjectWithMetadata,
     key_format_type: &Option<KeyFormatType>,
@@ -732,6 +773,7 @@ async fn process_symmetric_key(
         kms,
         user,
         params.clone(),
+        ObjectType::SymmetricKey,
     )
     .await?;
 
@@ -889,6 +931,7 @@ async fn build_pkcs12_for_private_key(
     #[cfg(feature = "non-fips")]
     {
         // support for OLD PKCS#12 formats
+        #[cfg(feature = "non-fips")]
         if request.key_format_type == Some(KeyFormatType::Pkcs12Legacy) {
             pkcs12_builder
                 .cert_algorithm(Nid::PBE_WITHSHA1AND40BITRC2_CBC)
@@ -1003,7 +1046,7 @@ async fn post_process_pkcs7(
     Ok(cert_owm)
 }
 
-#[allow(clippy::ref_option)]
+#[expect(clippy::ref_option)]
 async fn process_secret_data(
     object_with_metadata: &mut ObjectWithMetadata,
     key_format_type: &Option<KeyFormatType>,
@@ -1025,13 +1068,14 @@ async fn process_secret_data(
         kms,
         user,
         params.clone(),
+        ObjectType::SecretData,
     )
     .await?;
 
     let object = object_with_metadata.object_mut();
     let key_block = object.key_block_mut()?;
 
-    // If the key is still wrapped the the export KeyFormatType must be the default (none)
+    // If the key is still wrapped the export KeyFormatType must be the default (none)
     if key_block.key_wrapping_data.is_some() {
         if key_format_type.is_some() {
             kms_bail!(
@@ -1041,7 +1085,7 @@ async fn process_secret_data(
         }
         // The key is wrapped and as expected the requested Key Format Type is the default (none)
         // => The key is exported as such
-        return Ok(())
+        return Ok(());
     }
 
     // we have an unwrapped key, convert it to the pivotal format first,
@@ -1079,7 +1123,7 @@ async fn process_secret_data(
         key_block.attributes_mut()?.key_format_type = Some(KeyFormatType::Raw);
         // wrap the key
         wrap_object(object, key_wrapping_specification, kms, user, params).await?;
-        return Ok(())
+        return Ok(());
     }
 
     // The key  is not wrapped => export to desired format

@@ -40,7 +40,7 @@ pub(crate) async fn run_encrypt_decrypt_test(
         return Err(KmsCliError::Default(format!(
             "Output file {} could not be removed",
             output_file.to_str().unwrap()
-        )))
+        )));
     }
 
     EncryptAction {
@@ -80,7 +80,7 @@ pub(crate) async fn run_encrypt_decrypt_test(
         return Err(KmsCliError::Default(format!(
             "Recovered file {} does not exist",
             recovered_file.to_str().unwrap()
-        )))
+        )));
     }
 
     let original_content = read_bytes_from_file(&input_file)?;
@@ -90,7 +90,7 @@ pub(crate) async fn run_encrypt_decrypt_test(
             "Recovered content in file {} does not match the original file content {}",
             recovered_file.to_str().unwrap(),
             input_file.to_str().unwrap()
-        )))
+        )));
     }
 
     Ok(())
@@ -112,7 +112,7 @@ async fn test_aes_gcm_server_side() -> KmsCliResult<()> {
         &dek,
         DataEncryptionAlgorithm::AesGcm,
         None,
-        12 /* nonce */  + 16, /* tag */
+        12 /* nonce */  + 16, // tag
     )
     .await
 }
@@ -133,7 +133,7 @@ async fn test_aes_cbc_server_side() -> KmsCliResult<()> {
         &dek,
         DataEncryptionAlgorithm::AesCbc,
         None,
-        8 /* padding */ + 16, /* iv */
+        8 /* padding */ + 16, // iv
     )
     .await
 }
@@ -154,7 +154,7 @@ async fn test_aes_xts_server_side() -> KmsCliResult<()> {
         &dek,
         DataEncryptionAlgorithm::AesXts,
         None,
-        16, /* tweak */
+        16, // tweak
     )
     .await
 }
@@ -176,7 +176,7 @@ async fn test_aes_gcm_siv_server_side() -> KmsCliResult<()> {
         &dek,
         DataEncryptionAlgorithm::AesGcmSiv,
         None,
-        12 /* nonce */ + 16, /* ag */
+        12 /* nonce */ + 16, // ag
     )
     .await
 }
@@ -198,7 +198,7 @@ async fn test_chacha20_poly1305_server_side() -> KmsCliResult<()> {
         &dek,
         DataEncryptionAlgorithm::Chacha20Poly1305,
         None,
-        12 /* nonce */ + 16, /* ag */
+        12 /* nonce */ + 16, // ag
     )
     .await
 }
@@ -230,7 +230,7 @@ async fn test_encrypt_decrypt_with_tags() -> KmsCliResult<()> {
         return Err(KmsCliError::Default(format!(
             "Output file {} could not be removed",
             output_file.to_str().unwrap()
-        )))
+        )));
     }
 
     EncryptAction {
@@ -262,7 +262,7 @@ async fn test_encrypt_decrypt_with_tags() -> KmsCliResult<()> {
         return Err(KmsCliError::Default(format!(
             "Recovered file {} does not exist",
             recovered_file.to_str().unwrap()
-        )))
+        )));
     }
 
     let original_content = read_bytes_from_file(&input_file)?;
@@ -272,7 +272,7 @@ async fn test_encrypt_decrypt_with_tags() -> KmsCliResult<()> {
             "Recovered content in file {} does not match the original file content {}",
             recovered_file.to_str().unwrap(),
             input_file.to_str().unwrap()
-        )))
+        )));
     }
 
     Ok(())
@@ -297,7 +297,7 @@ async fn test_aes_gcm_aes_gcm_client_side() -> KmsCliResult<()> {
         Some(KeyEncryptionAlgorithm::AesGcm),
         12 + 32 + 16 /* encapsulation size */
             + 1 /* encapsulation len leb128 */
-            + 12 /* nonce */  + 16, /* ag */
+            + 12 /* nonce */  + 16, // ag
     )
     .await
 }
@@ -320,7 +320,7 @@ async fn test_aes_gcm_aes_xts_client_side() -> KmsCliResult<()> {
         Some(KeyEncryptionAlgorithm::AesGcm),
         12 + 64 + 16 /* encapsulation size */
             + 1 /* encapsulation len leb128 */
-            + 16, /* tweak */
+            + 16, // tweak
     )
     .await
 }
@@ -344,7 +344,7 @@ async fn test_aes_gcm_chacha20_client_side() -> KmsCliResult<()> {
         Some(KeyEncryptionAlgorithm::AesGcm),
         12 + 32 + 16 /* encapsulation size */
             + 1 /* encapsulation len leb128 */
-            + 12 /* nonce */  + 16, /* ag */
+            + 12 /* nonce */  + 16, // ag
     )
     .await
 }
@@ -367,7 +367,7 @@ async fn test_rfc5649_aes_gcm_client_side() -> KmsCliResult<()> {
         Some(KeyEncryptionAlgorithm::RFC5649),
         8 + 32 /* encapsulation size */
             + 1 /* encapsulation len leb128 */
-            + 12 /* nonce */ + 16, /* tag */
+            + 12 /* nonce */ + 16, // tag
     )
     .await
 }

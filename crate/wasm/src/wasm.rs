@@ -70,9 +70,9 @@ fn parse_ttlv_response<T: DeserializeOwned + Serialize>(
 }
 
 // Locate request
-#[allow(clippy::needless_pass_by_value)]
-#[allow(clippy::too_many_arguments)]
 #[wasm_bindgen]
+#[allow(clippy::too_many_arguments)]
+#[allow(clippy::needless_pass_by_value)]
 pub fn locate_ttlv_request(
     tags: Option<Vec<String>>,
     cryptographic_algorithm: Option<String>,
@@ -125,6 +125,7 @@ pub fn parse_locate_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
 // Create keys Requests
 #[wasm_bindgen]
 #[allow(clippy::needless_pass_by_value)]
+#[allow(clippy::too_many_arguments)]
 pub fn create_rsa_key_pair_ttlv_request(
     private_key_id: Option<String>,
     tags: Vec<String>,
@@ -147,6 +148,7 @@ pub fn create_rsa_key_pair_ttlv_request(
 
 #[wasm_bindgen]
 #[allow(clippy::needless_pass_by_value)]
+#[allow(clippy::too_many_arguments)]
 pub fn create_ec_key_pair_ttlv_request(
     private_key_id: Option<String>,
     tags: Vec<String>,
@@ -175,8 +177,8 @@ pub fn parse_create_keypair_ttlv_response(response: &str) -> Result<JsValue, JsV
     parse_ttlv_response::<CreateKeyPairResponse>(response)
 }
 
-#[allow(clippy::needless_pass_by_value)]
 #[wasm_bindgen]
+#[allow(clippy::needless_pass_by_value)]
 pub fn create_sym_key_ttlv_request(
     key_id: Option<String>,
     tags: Vec<String>,

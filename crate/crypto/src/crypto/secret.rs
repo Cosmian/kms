@@ -19,7 +19,7 @@ impl<const LENGTH: usize> Secret<LENGTH> {
     ///
     /// All bytes are initially set to 0.
     #[must_use]
-    #[allow(unsafe_code)]
+    #[expect(unsafe_code)]
     pub fn new() -> Self {
         // heap-allocate and turn into `Box` but looses `LENGTH`-constraint in type
         let data = vec![0_u8; LENGTH].into_boxed_slice();

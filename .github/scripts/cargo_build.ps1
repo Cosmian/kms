@@ -22,12 +22,12 @@ function BuildProject
     if ($BuildType -eq "release")
     {
         cargo build --release --target x86_64-pc-windows-msvc --features "non-fips"
-        cargo test  --release --target x86_64-pc-windows-msvc --features "non-fips" -- --nocapture --skip sql --skip redis --skip google_cse --skip hsm
+        cargo test  --release --target x86_64-pc-windows-msvc --features "non-fips" -- --nocapture
     }
     else
     {
         cargo build --target x86_64-pc-windows-msvc --features "non-fips"
-        cargo test  --target x86_64-pc-windows-msvc --features "non-fips" -- --nocapture --skip sql --skip redis --skip google_cse --skip hsm
+        cargo test  --target x86_64-pc-windows-msvc --features "non-fips" -- --nocapture
     }
     Get-ChildItem ..\..
 

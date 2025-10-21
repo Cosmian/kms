@@ -1,12 +1,13 @@
 {
     "name": "ui",
     "private": true,
-    "version": "5.9.0",
+    "version": "5.10.0",
     "type": "module",
     "scripts": {
         "dev": "vite",
         "build": "tsc -b && vite build",
         "lint": "eslint .",
+        "fix": "eslint . --fix",
         "preview": "vite preview"
     },
     "dependencies": {
@@ -25,12 +26,22 @@
         "@types/react": "^19.1.2",
         "@types/react-dom": "^19.1.2",
         "@vitejs/plugin-react-swc": "^3.9.0",
-        "eslint": "^9.25.1",
+        "eslint": "^9.35.0",
         "eslint-plugin-react-hooks": "^5.2.0",
         "eslint-plugin-react-refresh": "^0.4.20",
         "globals": "^16.0.0",
         "typescript": "~5.8.3",
         "typescript-eslint": "^8.31.1",
-        "vite": "^6.3.3"
+        "vite": "^6.3.6"
+    },
+    "overrides": {
+        "esbuild": "^0.25.10",
+        "@babel/runtime": "^7.26.10"
+    },
+    "pnpm": {
+        "overrides": {
+            "esbuild": "^0.25.10",
+            "@babel/runtime": "^7.26.10"
+        }
     }
 }

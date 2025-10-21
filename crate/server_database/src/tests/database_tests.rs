@@ -21,7 +21,7 @@ use crate::{
     error::{DbError, DbResult},
 };
 
-pub(crate) async fn tx_and_list<DB: ObjectsStore>(
+pub(super) async fn tx_and_list<DB: ObjectsStore>(
     db: &DB,
     db_params: Option<Arc<dyn SessionParams>>,
 ) -> DbResult<()> {
@@ -100,7 +100,7 @@ pub(crate) async fn tx_and_list<DB: ObjectsStore>(
     Ok(())
 }
 
-pub(crate) async fn atomic<DB: ObjectsStore>(
+pub(super) async fn atomic<DB: ObjectsStore>(
     db: &DB,
     db_params: Option<Arc<dyn SessionParams>>,
 ) -> DbResult<()> {
@@ -220,7 +220,7 @@ pub(crate) async fn atomic<DB: ObjectsStore>(
     Ok(())
 }
 
-pub(crate) async fn upsert<DB: ObjectsStore>(
+pub(super) async fn upsert<DB: ObjectsStore>(
     db: &DB,
     db_params: Option<Arc<dyn SessionParams>>,
 ) -> DbResult<()> {
@@ -300,7 +300,7 @@ pub(crate) async fn upsert<DB: ObjectsStore>(
     Ok(())
 }
 
-pub(crate) async fn crud<DB: ObjectsStore>(
+pub(super) async fn crud<DB: ObjectsStore>(
     db: &DB,
     db_params: Option<Arc<dyn SessionParams>>,
 ) -> DbResult<()> {

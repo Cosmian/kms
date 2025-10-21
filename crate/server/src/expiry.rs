@@ -26,9 +26,9 @@ pub(crate) async fn demo_timeout() {
 
             if now > end {
                 warn!("Shutting down...");
-                warn!("Demo version expired ! If you ❤️  this software please buy a license 🦀");
+                warn!("Demo version expired ! If you ❤️ this software please buy a license 🦀");
                 warn!("Reach us at https://cosmian.com/contact-us");
-                break
+                break;
             }
         }
         actix_rt::time::sleep(ONE_HOUR).await;

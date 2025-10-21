@@ -10,20 +10,17 @@ repository.workspace = true
 rust-version.workspace = true
 description = "Base PKCS#11 HSM integration implementation"
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
-panic = "deny"
-panic_in_result_fn = "deny"
-indexing_slicing = "deny"
+[lints]
+workspace = true
 
 [lib]
 doctest = false
 
 [dependencies]
 async-trait = { workspace = true }
-cosmian_kms_interfaces = { path = "../../interfaces", version = "5.9.0" }
+cosmian_kms_interfaces = { path = "../../interfaces", version = "5.10.0" }
 cosmian_logger = { workspace = true }
+futures = { workspace = true }
 libloading = { workspace = true }
 lru = { workspace = true }
 pkcs11-sys = { workspace = true }

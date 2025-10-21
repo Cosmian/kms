@@ -101,7 +101,7 @@ impl JwksManager {
             .await
             .into_iter()
             .filter(|res| {
-                //log errors and filter them out
+                // log errors and filter them out
                 res.as_ref()
                     .map_err(|e| {
                         tracing::warn!("Fetch JWKS: {e}");

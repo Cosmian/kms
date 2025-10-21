@@ -1,6 +1,6 @@
 pub mod symmetric_ciphers;
 
-#[allow(clippy::indexing_slicing)]
+#[expect(clippy::indexing_slicing)]
 pub mod rfc5649;
 
 #[cfg(feature = "non-fips")]

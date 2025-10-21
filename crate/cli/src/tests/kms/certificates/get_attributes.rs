@@ -22,7 +22,7 @@ async fn test_get_attributes_p12() -> KmsCliResult<()> {
     // Create a test server
     let ctx = start_default_test_kms_server().await;
 
-    //import the certificate
+    // import the certificate
     let imported_p12_sk_uid = Box::pin(
         ImportCertificateAction {
             certificate_file: Some(PathBuf::from(
@@ -39,7 +39,7 @@ async fn test_get_attributes_p12() -> KmsCliResult<()> {
     )
     .await?;
 
-    //get the attributes of the private key and check that they are correct
+    // get the attributes of the private key and check that they are correct
     let pkcs12_attributes = GetAttributesAction {
         id: imported_p12_sk_uid.clone(),
         tags: None,
@@ -60,7 +60,7 @@ async fn test_get_attributes_p12() -> KmsCliResult<()> {
         pkcs12_attributes[&LinkType::PKCS12CertificateLink.to_string()].clone(),
     )?;
 
-    //get the attributes of the certificate and check that they are correct
+    // get the attributes of the certificate and check that they are correct
     let intermediate_attributes = GetAttributesAction {
         id: Some(intermediate_certificate_id.clone()),
         tags: None,

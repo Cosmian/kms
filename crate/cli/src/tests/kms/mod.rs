@@ -4,6 +4,7 @@ mod auth_tests;
 mod certificates;
 #[cfg(feature = "non-fips")]
 mod cover_crypt;
+mod derive_key;
 mod elliptic_curve;
 mod google_cmd;
 mod hash;

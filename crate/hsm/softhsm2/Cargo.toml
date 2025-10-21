@@ -10,23 +10,19 @@ repository.workspace = true
 rust-version.workspace = true
 description = "Utimaco HSM PKCS#11 loader"
 
-# [lints]
-# workspace = true
+[lints]
+workspace = true
 
 [lib]
 doctest = false
 
 [dependencies]
-cosmian_kms_base_hsm = { path = "../base_hsm", version = "5.5.1" }
-cosmian_kms_interfaces = { path = "../../interfaces", version = "5.5.1" }
-libloading = { workspace = true }
-pkcs11-sys = { workspace = true }
-uuid = { workspace = true, features = ["v4"] }
+cosmian_kms_base_hsm = { path = "../base_hsm", version = "5.10.0" }
 
 [dev-dependencies]
-cosmian_logger = { workspace = true }
-uuid = { workspace = true }
-rand = { workspace = true }
+libloading = { workspace = true }
+pkcs11-sys = { workspace = true }
+
 
 [features]
 # Enable this feature to run softhsm2 tests (they require a softhsm2 HSM)

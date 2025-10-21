@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_in_result)]
+
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     KmipError,
     kmip_0::kmip_types::{BlockCipherMode, CryptographicUsageMask},
@@ -21,7 +23,6 @@ use crate::{error::KmsError, result::KResult, tests::test_utils};
 const NUM_MESSAGES: usize = 1000;
 
 #[tokio::test]
-#[allow(clippy::panic_in_result_fn)]
 async fn bulk_encrypt_decrypt() -> KResult<()> {
     cosmian_logger::log_init(option_env!("RUST_LOG"));
     let app = test_utils::test_app(None, None).await;
@@ -82,7 +83,6 @@ async fn bulk_encrypt_decrypt() -> KResult<()> {
 }
 
 #[tokio::test]
-#[allow(clippy::panic_in_result_fn)]
 async fn single_encrypt_decrypt_cbc_mode() -> KResult<()> {
     cosmian_logger::log_init(option_env!("RUST_LOG"));
     let app = test_utils::test_app(None, None).await;
@@ -168,11 +168,7 @@ fn encrypt_request(
             ..CryptographicParameters::default()
         }),
         data: Some(Zeroizing::new(data)),
-        i_v_counter_nonce: if block_cipher_mode == BlockCipherMode::CBC {
-            Some(vec![0; 16])
-        } else {
-            None
-        },
+        i_v_counter_nonce: (block_cipher_mode == BlockCipherMode::CBC).then(|| vec![0; 16]),
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,
@@ -193,11 +189,7 @@ fn decrypt_request(
             ..CryptographicParameters::default()
         }),
         data: Some(data),
-        i_v_counter_nonce: if block_cipher_mode == BlockCipherMode::CBC {
-            Some(vec![0; 16])
-        } else {
-            None
-        },
+        i_v_counter_nonce: (block_cipher_mode == BlockCipherMode::CBC).then(|| vec![0; 16]),
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,

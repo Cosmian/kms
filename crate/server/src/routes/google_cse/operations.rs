@@ -1040,7 +1040,7 @@ pub async fn rewrap(
             _ => {
                 return Err(KmsError::InvalidRequest(
                     "Expected ByteString key material for RSA private key.".to_owned(),
-                ))
+                ));
             }
         },
         _ => {
@@ -1112,7 +1112,6 @@ pub async fn rewrap(
 ///
 /// # Errors
 /// Returns an error if decoding base64 fails, adding key wrapping data fails, unwrapping the key fails, or extracting the key bytes fails.
-///
 async fn cse_wrapped_key_decrypt(
     wrapped_key: String,
     wrapping_key_id: UniqueIdentifier,
@@ -1183,7 +1182,6 @@ async fn cse_wrapped_key_decrypt(
 ///
 /// # Errors
 /// Returns an error if decoding base64 fails, encrypting the key fails, or extracting the key bytes fails.
-///
 async fn cse_key_encrypt(
     key: String,
     user: String,
@@ -1240,7 +1238,6 @@ async fn cse_key_encrypt(
 ///
 /// # Errors
 /// Returns an error if encoding base64 fails, or if signing key fails.
-///
 pub fn compute_resource_key_hash(
     resource_name: &str,
     perimeter_id: &str,

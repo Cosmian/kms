@@ -94,7 +94,7 @@ pub fn unwrap_key_block(
 ///
 /// # Returns
 /// * `KResult<KeyValue>` - the unwrapped key
-pub(crate) fn unwrap(
+pub(super) fn unwrap(
     unwrapping_key: &Object,
     key_wrapping_data: &KeyWrappingData,
     wrapped_key: &[u8],
@@ -107,7 +107,7 @@ pub(crate) fn unwrap(
     {
         return Err(CryptoError::Kmip(
             "CryptographicUsageMask not authorized for UnwrapKey".to_owned(),
-        ))
+        ));
     }
 
     let unwrapping_key_block = unwrapping_key
@@ -120,7 +120,10 @@ pub(crate) fn unwrap(
     }
 
     let plaintext = match unwrapping_key_block.key_format_type {
-        KeyFormatType::TransparentSymmetricKey => {
+        // The default format for a symmetric key is Raw
+        //  according to sec. 4.26 Key Format Type of the KMIP 2.1 specs:
+        //  see https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html#_Toc57115585
+        KeyFormatType::TransparentSymmetricKey | KeyFormatType::Raw => {
             unwrap_with_symmetric_key(key_wrapping_data, wrapped_key, unwrapping_key_block)
         }
         KeyFormatType::TransparentECPrivateKey | KeyFormatType::TransparentRSAPrivateKey => {

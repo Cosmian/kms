@@ -5,7 +5,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_types::Sta
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::reexport::cosmian_cover_crypt::api::Covercrypt;
 use cosmian_kms_server_database::{
-    CachedUnwrappedObject,
+    CachedUnwrappedObject, DbError,
     reexport::{
         cosmian_kmip::{
             kmip_0::kmip_types::SecretDataType,
@@ -72,7 +72,9 @@ impl KMS {
                 }
             }
             Some(Err(e)) => {
-                return Err(e.into());
+                return Err(KmsError::Database(DbError::UnwrappedCache(format!(
+                    "Error retrieving cached object for {uid}: {e}",
+                ))));
             }
             None => {
                 // try unwrapping
@@ -84,7 +86,7 @@ impl KMS {
             let fingerprint = object.fingerprint()?;
             let mut unwrapped_object = object.clone();
             unwrap_object(&mut unwrapped_object, self, user, params).await?;
-            Ok(CachedUnwrappedObject::new(fingerprint, unwrapped_object))
+            Ok::<_, KmsError>(CachedUnwrappedObject::new(fingerprint, unwrapped_object))
         };
 
         // cache miss, try to unwrap
@@ -94,11 +96,17 @@ impl KMS {
         let result = unwrapped_object
             .as_ref()
             .map(|u| u.unwrapped_object().to_owned())
-            .map_err(KmsError::clone);
-        // update cache is there is one
+            .map_err(|e| {
+                // an error reference is returned, but we need an owned one
+                KmsError::Database(DbError::UnwrappedCache(format!("Unwrapping error: {e}")))
+            });
+        // update cache if there is one
         self.database
             .unwrapped_cache()
-            .insert(uid.to_owned(), unwrapped_object.map_err(Into::into))
+            .insert(
+                uid.to_owned(),
+                unwrapped_object.map_err(|e| DbError::UnwrappedCache(e.to_string())),
+            )
             .await;
         // return the result
         result
@@ -147,7 +155,7 @@ impl KMS {
                         .unique_identifier
                         .as_ref()
                         .map(ToString::to_string);
-                    //return the object and the tags
+                    // return the object and the tags
                     Ok((uid, object, tags))
                 }
                 Some(other) => Err(KmsError::InvalidRequest(format!(
@@ -197,7 +205,6 @@ impl KMS {
     ///  - the KMIP cryptographic algorithm in lower case prepended with "_"
     ///
     /// Only Covercrypt user decryption keys can be created using this function
-    #[allow(clippy::unused_async)]
     #[cfg(feature = "non-fips")]
     pub(crate) async fn create_private_key_and_tags(
         &self,
@@ -277,7 +284,7 @@ impl KMS {
             .unique_identifier
             .as_ref()
             .map(ToString::to_string);
-        //return the object and the tags
+        // return the object and the tags
         Ok((uid, object, tags))
     }
 

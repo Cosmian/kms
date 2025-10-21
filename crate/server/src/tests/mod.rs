@@ -3,6 +3,7 @@ mod bulk_encrypt_decrypt_tests;
 mod cover_crypt_tests;
 #[cfg(feature = "non-fips")]
 mod curve_25519_tests;
+mod derive_key_tests;
 pub(crate) mod google_cse;
 mod hsm;
 mod kmip_endpoints;
@@ -11,6 +12,7 @@ mod kmip_messages;
 #[cfg(feature = "non-fips")]
 mod kmip_server_tests;
 mod ms_dke;
+mod secret_data_tests;
 pub(crate) mod test_set_attribute;
 mod test_sign;
 pub(crate) mod test_utils;

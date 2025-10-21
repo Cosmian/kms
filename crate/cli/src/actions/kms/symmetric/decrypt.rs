@@ -266,7 +266,7 @@ impl DecryptAction {
             dem_cryptographic_parameters.block_cipher_mode,
             dek.len(),
         )?;
-        //read the nonce
+        // read the nonce
         let mut nonce = vec![0; cipher.nonce_size()];
         input_file.read_exact(&mut nonce)?;
         // decrypt the file
@@ -399,7 +399,7 @@ impl DecryptAction {
             dem_cryptographic_parameters.block_cipher_mode,
             dek.len(),
         )?;
-        //read the nonce
+        // read the nonce
         let mut nonce = vec![0; sym_cipher.nonce_size()];
 
         ct.read_exact(&mut nonce)?;

@@ -26,21 +26,25 @@ const AES_BLOCK_SIZE: usize = 0x10;
 ///
 /// `wrapped_key_size` is the size of the key to wrap.
 fn build_iv(wrapped_key_size: usize) -> CryptoResult<u64> {
-    Ok((u64::from(DEFAULT_RFC5649_CONST) << 32) | u64::try_from(wrapped_key_size)?.to_le())
+    // RFC 5649 AIV: 0xA65959A6 || MLI (MLI is 32-bit big-endian in the low 32 bits)
+    let mli_u32 = u32::try_from(wrapped_key_size)?;
+    Ok((u64::from(DEFAULT_RFC5649_CONST) << 32) | u64::from(mli_u32))
 }
 
 /// Check if the `iv` value obtained after decryption is appropriate according
 /// to the RFC 5649.
-#[allow(clippy::as_conversions, clippy::cast_possible_truncation)]
 fn check_iv(iv: u64, data: &[u8]) -> CryptoResult<bool> {
     let data_size: usize = data.len();
+    // High 32 bits must match the RFC 5649 constant
     if u32::try_from(iv >> 32)? != DEFAULT_RFC5649_CONST {
-        return Ok(false)
+        return Ok(false);
     }
 
-    let real_data_size = u32::to_le(iv as u32) as usize;
+    // Low 32 bits contain MLI (big-endian value placed in low 32 bits)
+    let low32 = u32::try_from(iv & 0xFFFF_FFFF)?;
+    let real_data_size = usize::try_from(low32)?;
     if real_data_size > data_size || real_data_size <= (data_size - 8) {
-        return Ok(false)
+        return Ok(false);
     }
 
     Ok(data[real_data_size..].iter().all(|&x| x == 0))
@@ -71,10 +75,8 @@ pub fn rfc5649_wrap(plain: &[u8], kek: &[u8]) -> Result<Vec<u8>, CryptoError> {
         ]
         .concat();
 
-        /*
-         * Encrypt block using AES with ECB mode i.e. raw AES as specified in
-         * RFC5649.
-         */
+        // Encrypt block using AES with ECB mode i.e. raw AES as specified in
+        // RFC5649.
         let ciphertext = match kek.len() {
             16 => encrypt(Cipher::aes_128_ecb(), kek, None, &iv_and_key)?,
             24 => encrypt(Cipher::aes_192_ecb(), kek, None, &iv_and_key)?,
@@ -82,7 +84,7 @@ pub fn rfc5649_wrap(plain: &[u8], kek: &[u8]) -> Result<Vec<u8>, CryptoError> {
             _ => {
                 return Err(CryptoError::InvalidSize(
                     "The kek size should be 16, 24 or 32".to_owned(),
-                ))
+                ));
             }
         };
 
@@ -96,14 +98,13 @@ pub fn rfc5649_wrap(plain: &[u8], kek: &[u8]) -> Result<Vec<u8>, CryptoError> {
 ///
 /// The function name matches the one used in the RFC and has no link to the
 /// unwrap function in Rust.
-#[allow(clippy::as_conversions, clippy::cast_possible_truncation)]
 pub fn rfc5649_unwrap(ciphertext: &[u8], kek: &[u8]) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
     let n = ciphertext.len();
 
-    if n % AES_WRAP_PAD_BLOCK_SIZE != 0 || n < AES_BLOCK_SIZE {
+    if !n.is_multiple_of(AES_WRAP_PAD_BLOCK_SIZE) || n < AES_BLOCK_SIZE {
         return Err(CryptoError::InvalidSize(
             "The ciphertext size should be >= 16 and a multiple of 16.".to_owned(),
-        ))
+        ));
     }
 
     if n > 16 {
@@ -113,18 +114,17 @@ pub fn rfc5649_unwrap(ciphertext: &[u8], kek: &[u8]) -> Result<Zeroizing<Vec<u8>
         if !check_iv(iv, &padded_plain)? {
             return Err(CryptoError::InvalidSize(
                 "The ciphertext is invalid. Decrypted IV is not appropriate".to_owned(),
-            ))
+            ));
         }
 
-        let unpadded_size = u32::from_le(iv as u32) as usize;
+        // Extract MLI (low 32 bits, big-endian numeric value)
+        let unpadded_size = usize::try_from(u32::try_from(iv & 0xFFFF_FFFF)?)?;
         Ok(Zeroizing::from(padded_plain[0..unpadded_size].to_vec()))
     } else {
-        /*
-         * Encrypt block using AES with ECB mode i.e. raw AES as specified in
-         * RFC5649.
-         * Make use of OpenSSL Crypter interface to decrypt blocks incrementally
-         * without padding since RFC5649 has special padding methods.
-         */
+        // Encrypt block using AES with ECB mode i.e. raw AES as specified in
+        // RFC5649.
+        // Make use of OpenSSL Crypter interface to decrypt blocks incrementally
+        // without padding since RFC5649 has special padding methods.
         let mut decrypt_cipher = match kek.len() {
             16 => Crypter::new(Cipher::aes_128_ecb(), Mode::Decrypt, kek, None)?,
             24 => Crypter::new(Cipher::aes_192_ecb(), Mode::Decrypt, kek, None)?,
@@ -132,7 +132,7 @@ pub fn rfc5649_unwrap(ciphertext: &[u8], kek: &[u8]) -> Result<Zeroizing<Vec<u8>
             _ => {
                 return Err(CryptoError::InvalidSize(
                     "The kek size should be 16, 24 or 32 bytes".to_owned(),
-                ))
+                ));
             }
         };
         decrypt_cipher.pad(false);
@@ -150,7 +150,7 @@ pub fn rfc5649_unwrap(ciphertext: &[u8], kek: &[u8]) -> Result<Zeroizing<Vec<u8>
         )? {
             return Err(CryptoError::InvalidSize(
                 "The ciphertext is invalid. Decrypted IV is not appropriate".to_owned(),
-            ))
+            ));
         }
 
         let unpadded_size = usize::try_from(u32::from_be_bytes(plaintext[4..8].try_into()?))?;
@@ -168,10 +168,10 @@ pub fn rfc5649_unwrap(ciphertext: &[u8], kek: &[u8]) -> Result<Zeroizing<Vec<u8>
 fn wrap_64(plain: &[u8], kek: &[u8], iv: Option<u64>) -> Result<Vec<u8>, CryptoError> {
     let n = plain.len();
 
-    if n % AES_WRAP_PAD_BLOCK_SIZE != 0 {
+    if !n.is_multiple_of(AES_WRAP_PAD_BLOCK_SIZE) {
         return Err(CryptoError::InvalidSize(
             "The plaintext size should be a multiple of 8".to_owned(),
-        ))
+        ));
     }
 
     // Number of 64-bit blocks (block size for RFC 5649).
@@ -191,7 +191,7 @@ fn wrap_64(plain: &[u8], kek: &[u8], iv: Option<u64>) -> Result<Vec<u8>, CryptoE
         _ => {
             return Err(CryptoError::InvalidSize(
                 "The kek size should be 16, 24 or 32".to_owned(),
-            ))
+            ));
         }
     };
 
@@ -200,10 +200,8 @@ fn wrap_64(plain: &[u8], kek: &[u8], iv: Option<u64>) -> Result<Vec<u8>, CryptoE
             // B = AES(K, A | R[i])
             let plaintext_block = ((u128::from(icr) << 64) | u128::from(*block)).to_be_bytes();
 
-            /*
-             * Encrypt block using AES with ECB mode i.e. raw AES as specified in
-             * RFC5649.
-             */
+            // Encrypt block using AES with ECB mode i.e. raw AES as specified in
+            // RFC5649.
             let ciphertext = encrypt(cipher, kek, None, &plaintext_block)?;
 
             // A = MSB(64, B) ^ t where t = (n*j)+i
@@ -226,10 +224,10 @@ fn wrap_64(plain: &[u8], kek: &[u8], iv: Option<u64>) -> Result<Vec<u8>, CryptoE
 fn unwrap_64(ciphertext: &[u8], kek: &[u8]) -> Result<(u64, Zeroizing<Vec<u8>>), CryptoError> {
     let n = ciphertext.len();
 
-    if n % AES_WRAP_PAD_BLOCK_SIZE != 0 || n < AES_BLOCK_SIZE {
+    if !n.is_multiple_of(AES_WRAP_PAD_BLOCK_SIZE) || n < AES_BLOCK_SIZE {
         return Err(CryptoError::InvalidSize(
             "The ciphertext size should be >= 16 and a multiple of 8".to_owned(),
-        ))
+        ));
     }
 
     // Number of 64-bit blocks minus 1
@@ -243,12 +241,10 @@ fn unwrap_64(ciphertext: &[u8], kek: &[u8]) -> Result<(u64, Zeroizing<Vec<u8>>),
     // ICR stands for Integrity Check Register initially containing the IV.
     let mut icr = blocks[0];
 
-    /*
-     * Encrypt block using AES with ECB mode i.e. raw AES as specified in
-     * RFC5649.
-     * Make use of OpenSSL Crypter interface to decrypt blocks incrementally
-     * without padding since RFC5649 has special padding methods.
-     */
+    // Encrypt block using AES with ECB mode i.e. raw AES as specified in
+    // RFC5649.
+    // Make use of OpenSSL Crypter interface to decrypt blocks incrementally
+    // without padding since RFC5649 has special padding methods.
     let mut decrypt_cipher = match kek.len() {
         16 => Crypter::new(Cipher::aes_128_ecb(), Mode::Decrypt, kek, None)?,
         24 => Crypter::new(Cipher::aes_192_ecb(), Mode::Decrypt, kek, None)?,
@@ -256,7 +252,7 @@ fn unwrap_64(ciphertext: &[u8], kek: &[u8]) -> Result<(u64, Zeroizing<Vec<u8>>),
         _ => {
             return Err(CryptoError::InvalidSize(
                 "The kek size should be 16, 24 or 32".to_owned(),
-            ))
+            ));
         }
     };
     decrypt_cipher.pad(false);
@@ -292,7 +288,7 @@ fn unwrap_64(ciphertext: &[u8], kek: &[u8]) -> Result<(u64, Zeroizing<Vec<u8>>),
     Ok((icr, unwrapped_key))
 }
 
-#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[expect(clippy::unwrap_used, clippy::expect_used)]
 #[cfg(test)]
 mod tests {
     use aes_kw::KeyInit;
@@ -301,7 +297,7 @@ mod tests {
     use crate::crypto::symmetric::rfc5649::{rfc5649_unwrap, rfc5649_wrap};
 
     #[test]
-    pub(crate) fn test_wrap1() {
+    pub(super) fn test_wrap1() {
         const TEST_SIZE_LIMIT: usize = 100;
         #[cfg(not(feature = "non-fips"))]
         // Load FIPS provider module from OpenSSL.
@@ -336,7 +332,7 @@ mod tests {
     }
 
     #[test]
-    pub(crate) fn test_wrap_large_length() {
+    pub(super) fn test_wrap_large_length() {
         #[cfg(not(feature = "non-fips"))]
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
@@ -361,7 +357,7 @@ mod tests {
     }
 
     #[test]
-    pub(crate) fn test_wrap_small_length() {
+    pub(super) fn test_wrap_small_length() {
         #[cfg(not(feature = "non-fips"))]
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
@@ -384,7 +380,7 @@ mod tests {
     }
 
     #[test]
-    pub(crate) fn test_wrap_bad_key_size() {
+    pub(super) fn test_wrap_bad_key_size() {
         #[cfg(not(feature = "non-fips"))]
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
@@ -415,7 +411,7 @@ mod tests {
     }
 
     #[test]
-    pub(crate) fn test_wrap_bad_input_size() {
+    pub(super) fn test_wrap_bad_input_size() {
         #[cfg(not(feature = "non-fips"))]
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
@@ -429,7 +425,7 @@ mod tests {
     }
 
     #[test]
-    pub(crate) fn test_wrap_bad_input_content() {
+    pub(super) fn test_wrap_bad_input_content() {
         #[cfg(not(feature = "non-fips"))]
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();

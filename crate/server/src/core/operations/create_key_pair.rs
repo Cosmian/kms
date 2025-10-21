@@ -189,7 +189,7 @@ pub(crate) async fn create_key_pair(
 ///  - the KMIP cryptographic algorithm in lower case prepended with "_"
 ///
 /// Only Covercrypt master keys can be created using this function
-pub(crate) fn generate_key_pair(
+pub(super) fn generate_key_pair(
     request: CreateKeyPair,
     private_key_uid: &str,
     public_key_uid: &str,

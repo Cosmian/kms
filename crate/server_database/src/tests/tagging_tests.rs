@@ -18,7 +18,7 @@ use uuid::Uuid;
 
 use crate::{db_error, error::DbResult};
 
-pub(crate) async fn tags<DB: ObjectsStore + PermissionsStore>(
+pub(super) async fn tags<DB: ObjectsStore + PermissionsStore>(
     db: &DB,
     db_params: Option<Arc<dyn SessionParams>>,
     verify_attributes: bool,
@@ -55,7 +55,7 @@ pub(crate) async fn tags<DB: ObjectsStore + PermissionsStore>(
         .await?;
     assert_eq!(&uid, &uid_);
 
-    //recover the object from DB and check that the vendor attributes contain the tags
+    // recover the object from DB and check that the vendor attributes contain the tags
     let owm = db
         .retrieve(&uid, db_params.clone())
         .await?

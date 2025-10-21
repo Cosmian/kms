@@ -42,15 +42,22 @@ fn get_effective_rust_log(config_rust_log: Option<String>, info_only: bool) -> O
 /// This function sets up the necessary environment variables and logging options,
 /// then parses the command line arguments using [`ClapConfig::parse()`](https://docs.rs/clap/latest/clap/struct.ClapConfig.html#method.parse).
 #[tokio::main]
-async fn main() -> KResult<()> {
+async fn main() {
+    if let Err(e) = run().await {
+        eprintln!("Error: {e}");
+        std::process::exit(1);
+    }
+}
+
+async fn run() -> KResult<()> {
     // Load variable from a .env file
     dotenv().ok();
 
-    let clap_config = ClapConfig::load_from_file()?;
+    let clap_config = ClapConfig::load_configuration()?;
 
     let info_only = clap_config.info;
 
-    //Initialize the tracing system
+    // Initialize the tracing system
     let _otel_guard = tracing_init(&TracingConfig {
         service_name: "cosmian_kms".to_owned(),
         otlp: clap_config
@@ -81,7 +88,7 @@ async fn main() -> KResult<()> {
         with_ansi_colors: clap_config.logging.ansi_colors,
     });
 
-    //TODO: For an unknown reason, this span never goes to OTLP
+    // TODO: For an unknown reason, this span never goes to OTLP
     let span = span!(tracing::Level::TRACE, "kms");
     let _guard = span.enter();
 
@@ -116,14 +123,14 @@ async fn main() -> KResult<()> {
     #[cfg(feature = "non-fips")]
     if openssl::version::number() >= 0x3000_0000 {
         Provider::try_load(None, "legacy", true)
-            .context("export: unable to load the openssl legacy provider")?;
+            .context("unable to load the openssl legacy provider")?;
     } else {
         // In version < 3.0, we only load the default provider
         Provider::load(None, "default")?;
     }
 
     // Instantiate a config object using the env variables and the args of the binary
-    debug!("Command line config: {clap_config:#?}");
+    debug!("Command line / file config: {clap_config:#?}");
 
     // Parse the Server Config from the command line arguments
     let server_params = Arc::new(ServerParams::try_from(clap_config)?);
@@ -142,8 +149,8 @@ async fn main() -> KResult<()> {
     {
         warn!("This is a demo version, the server will stop in 3 months");
         let demo = actix_rt::spawn(expiry::demo_timeout());
-        futures::future::select(Box::pin(start_kms_server(server_params, None)), demo).await;
-    }
+        futures::future::select(Box::pin(start_kms_server(server_params, None)), demo).await
+    };
 
     // Start the KMS
     #[cfg(not(feature = "timeout"))]
@@ -154,7 +161,7 @@ async fn main() -> KResult<()> {
 
 #[cfg(feature = "non-fips")]
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::unwrap_in_result)]
 mod tests {
     use std::path::PathBuf;
 
@@ -167,6 +174,7 @@ mod tests {
     #[test]
     fn test_toml() {
         let config = ClapConfig {
+            config_path: None,
             db: MainDBConfig {
                 database_type: Some("[redis-findex, postgresql,...]".to_owned()),
                 database_url: Some("[redis urls]".to_owned()),
@@ -252,11 +260,14 @@ mod tests {
                 ansi_colors: false,
             },
             info: false,
-            hsm_model: String::new(),
-            hsm_admin: String::new(),
-            hsm_slot: vec![],
-            hsm_password: vec![],
+            hsm: cosmian_kms_server::config::HsmConfig {
+                hsm_model: String::new(),
+                hsm_admin: String::new(),
+                hsm_slot: vec![],
+                hsm_password: vec![],
+            },
             key_encryption_key: Some("key wrapping key".to_owned()),
+            default_unwrap_type: None,
             non_revocable_key_id: None,
             privileged_users: None,
         };

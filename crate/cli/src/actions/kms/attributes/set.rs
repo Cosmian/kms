@@ -25,7 +25,6 @@ use crate::{
     error::result::KmsCliResult,
 };
 
-#[allow(clippy::upper_case_acronyms)]
 #[derive(ValueEnum, Clone, Copy, Debug, EnumIter)]
 pub enum CCryptographicAlgorithm {
     AES,
@@ -355,7 +354,6 @@ impl SetAttributesAction {
     /// This function can return a `KmsCliError` if one of the following conditions occur:
     ///
     /// - Either `--id` or one or more `--tag` must be specified.
-    ///
     pub async fn process(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
         trace!("{self:?}");
         let id = get_key_uid(

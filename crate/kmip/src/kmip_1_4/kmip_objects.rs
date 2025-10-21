@@ -8,8 +8,10 @@ use serde::{
 };
 use strum::VariantNames;
 
-#[allow(clippy::wildcard_imports)]
-use super::{kmip_data_structures::KeyBlock, kmip_types::*};
+use super::{
+    kmip_data_structures::KeyBlock,
+    kmip_types::{ObjectType, OpaqueDataType, ResultReason, SplitKeyMethod},
+};
 use crate::{
     error::KmipError,
     kmip_0::kmip_types::{CertificateType, SecretDataType},

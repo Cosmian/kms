@@ -93,7 +93,7 @@ pub(crate) async fn mac(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::panic_in_result_fn)]
+#[expect(clippy::unwrap_used, clippy::panic_in_result_fn)]
 mod tests {
     use std::sync::Arc;
 
@@ -163,6 +163,7 @@ mod tests {
         Ok(())
     }
 
+    #[allow(clippy::unwrap_in_result)]
     #[tokio::test]
     async fn test_server_mac_operation() -> KResult<()> {
         let kms = Arc::new(

@@ -803,7 +803,7 @@ impl TryFrom<kmip_2_1::kmip_types::OperationEnumeration> for OperationEnumeratio
                 return Err(KmipError::InvalidKmip14Value(
                     ResultReason::OperationNotSupported,
                     format!("Operation not supported: {value:?}"),
-                ))
+                ));
             }
             kmip_2_1::kmip_types::OperationEnumeration::Archive => Self::Archive,
             kmip_2_1::kmip_types::OperationEnumeration::Cancel => Self::Cancel,
@@ -1279,7 +1279,7 @@ impl TryFrom<kmip_2_1::kmip_types::RecommendedCurve> for RecommendedCurve {
                 return Err(KmipError::InvalidKmip14Value(
                     ResultReason::OperationNotSupported,
                     format!("RecommendedCurve not supported in KMIP 1: {x:?}"),
-                ))
+                ));
             }
         })
     }
@@ -1374,7 +1374,7 @@ impl TryFrom<kmip_2_1::kmip_types::DigitalSignatureAlgorithm> for DigitalSignatu
                 return Err(KmipError::InvalidKmip14Value(
                     ResultReason::OperationNotSupported,
                     format!("DigitalSignatureAlgorithm not supported in KMIP 1: {x:?}"),
-                ))
+                ));
             }
         })
     }
@@ -1626,7 +1626,7 @@ impl TryFrom<kmip_2_1::kmip_types::LinkedObjectIdentifier> for LinkedObjectIdent
                 return Err(KmipError::InvalidKmip14Value(
                     ResultReason::OperationNotSupported,
                     format!("{value:?} not supported in KMIP 1"),
-                ))
+                ));
             }
         })
     }
@@ -1938,7 +1938,7 @@ pub enum Tag {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[expect(clippy::unwrap_used)]
 mod tests {
     use super::*;
 

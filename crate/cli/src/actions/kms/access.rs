@@ -85,7 +85,6 @@ impl GrantAccess {
     /// # Errors
     ///
     /// Returns an error if the query execution on the KMS server fails.
-    ///
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
         let requires_object_uid = self
             .operations
@@ -93,11 +92,11 @@ impl GrantAccess {
             .any(|op| *op != KmipOperation::Create);
 
         let uid = if requires_object_uid {
-            Some(UniqueIdentifier::TextString(
-                self.object_uid
-                    .clone()
-                    .context("Object UID is required for operations other than `create`")?,
-            ))
+            let object_uid = self
+                .object_uid
+                .clone()
+                .context("Object UID is required for operations other than `create`")?;
+            Some(UniqueIdentifier::TextString(object_uid))
         } else {
             None
         };
@@ -119,7 +118,7 @@ impl GrantAccess {
             self.operations,
             self.user,
             uid.as_ref()
-                .map_or("N/A".to_owned(), std::string::ToString::to_string)
+                .map_or_else(|| "N/A".to_owned(), std::string::ToString::to_string)
         );
         console::Stdout::new(&stdout).write()?;
 
@@ -160,7 +159,6 @@ impl RevokeAccess {
     /// # Errors
     ///
     /// Returns an error if the query execution on the KMS server fails.
-    ///
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
         let requires_object_uid = self
             .operations
@@ -168,11 +166,11 @@ impl RevokeAccess {
             .any(|op| *op != KmipOperation::Create);
 
         let uid = if requires_object_uid {
-            Some(UniqueIdentifier::TextString(
-                self.object_uid
-                    .clone()
-                    .context("Object UID is required for operations other than `create`")?,
-            ))
+            let object_uid = self
+                .object_uid
+                .clone()
+                .context("Object UID is required for operations other than `create`")?;
+            Some(UniqueIdentifier::TextString(object_uid))
         } else {
             None
         };
@@ -193,7 +191,7 @@ impl RevokeAccess {
             self.operations,
             self.user,
             uid.as_ref()
-                .map_or("N/A".to_owned(), std::string::ToString::to_string)
+                .map_or_else(|| "N/A".to_owned(), std::string::ToString::to_string)
         );
         console::Stdout::new(&stdout).write()?;
 
@@ -222,7 +220,6 @@ impl ListAccessesGranted {
     /// # Errors
     ///
     /// Returns an error if the query execution on the KMS server fails.
-    ///
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<Vec<UserAccessResponse>> {
         let accesses = kms_rest_client
             .list_access(&self.object_uid)
@@ -258,7 +255,6 @@ impl ListOwnedObjects {
     /// # Errors
     ///
     /// Returns an error if the query execution on the KMS server fails.
-    ///
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<Vec<ObjectOwnedResponse>> {
         let objects = kms_rest_client
             .list_owned_objects()
@@ -294,7 +290,6 @@ impl ListAccessRightsObtained {
     /// # Errors
     ///
     /// Returns an error if the query execution on the KMS server fails.
-    ///
     pub async fn run(
         &self,
         kms_rest_client: KmsClient,

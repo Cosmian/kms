@@ -2,10 +2,10 @@ use std::process::Command;
 
 use assert_cmd::prelude::*;
 use cosmian_kms_client::{GmailApiConf, write_json_object_to_file};
+use cosmian_logger::trace;
 use serde::Deserialize;
 use tempfile::TempDir;
 use test_kms_server::{TestsContext, start_default_test_kms_server};
-use cosmian_logger::trace;
 
 use crate::error::CosmianError;
 
@@ -49,7 +49,7 @@ Tysd08+GiFbz0eQpsKcb2XE=
 }
 
 #[tokio::test]
-#[ignore] // This test is ignored because it requires a Gmail test user (not blue nor red users)
+#[ignore = "Requires a Gmail test user (not blue/red); not available in CI"]
 async fn test_google_identities() -> Result<(), CosmianError> {
     // Create a test server
     let ctx = start_default_test_kms_server().await;

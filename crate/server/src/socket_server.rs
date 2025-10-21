@@ -138,7 +138,6 @@ impl SocketServer {
     /// # Errors
     /// - If the server fails to bind to the specified host and port
     /// - If an error occurs while handling a client connection
-    ///
     pub fn start_threaded<F>(
         &self,
         kms_server: Arc<KMS>,
@@ -154,7 +153,7 @@ impl SocketServer {
         let (tx, rx) = mpsc::channel::<KResult<()>>();
 
         let thread_handle = tokio::spawn(async move {
-            //We swallow the error, if any; the mpsc receiver will receive it
+            // We swallow the error, if any; the mpsc receiver will receive it
             let _swallowed = Self::start_listening(
                 &kms_server,
                 &addr,
@@ -195,12 +194,13 @@ impl SocketServer {
                 listener
             }
             Err(e) => {
+                let error_msg = e.to_string(); // keep the message before moving the error
                 if let Some(notifier) = start_notifier {
                     notifier
-                        .send(Err(e.clone()))
+                        .send(Err(e))
                         .context("Failed to notify the error on socket server start")?;
                 }
-                kms_bail!("Failed to bind to {addr}: {}", e);
+                kms_bail!("Failed to bind to {addr}: {}", error_msg);
             }
         };
 
@@ -227,8 +227,25 @@ impl SocketServer {
                     *stop_requested = true;
                     // Trigger a connection to ourselves to break the `accept` loop
                     if let Ok(local_address) = listener_clone.local_addr() {
+                        // On Windows, connecting to an unspecified address (0.0.0.0 or ::) fails (os error 10049).
+                        // Prefer loopback when the listener is bound to an unspecified address.
+                        let connect_addr = match local_address.ip() {
+                            std::net::IpAddr::V4(ipv4) if ipv4.is_unspecified() => {
+                                std::net::SocketAddr::new(
+                                    std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+                                    local_address.port(),
+                                )
+                            }
+                            std::net::IpAddr::V6(ipv6) if ipv6.is_unspecified() => {
+                                std::net::SocketAddr::new(
+                                    std::net::IpAddr::V6(std::net::Ipv6Addr::LOCALHOST),
+                                    local_address.port(),
+                                )
+                            }
+                            _ => local_address,
+                        };
                         if let Ok(_c) =
-                            TcpStream::connect_timeout(&local_address, Duration::from_secs(5))
+                            TcpStream::connect_timeout(&connect_addr, Duration::from_secs(5))
                                 .map_err(|e| {
                                     error!("Socket server failed to connect to itself: {}", e);
                                 })
@@ -294,7 +311,7 @@ fn handle_client(
     // Accept TLS connection
     let peer_addr = stream
         .peer_addr()
-        .map_or("[N/A]".to_owned(), |sa| sa.to_string());
+        .map_or_else(|_| "[N/A]".to_owned(), |sa| sa.to_string());
     debug!("socket server: client connected from {}", peer_addr);
 
     let mut tls_stream = server_config

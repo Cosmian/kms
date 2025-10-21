@@ -68,6 +68,8 @@ nav:
       - HSM keys & operations: hsms/hsm_operations.md
       - Trustway Proteccio: hsms/proteccio.md
       - Utimaco General Purpose: hsms/utimaco.md
+      - Smartcard HSM: hsms/sc_hsm.md
+      - SoftHSMv2: hsms/softhsm2.md
   - Integrations:
       - API Endpoints: api.md
       - Azure:
@@ -95,6 +97,7 @@ nav:
       - High-availability: installation/high_availability_mode.md
   - Configuration:
       - Configuration file: server_configuration_file.md
+      - Configuration examples: configurations.md
       - Command line arguments: server_cli.md
       - Databases: database.md
       - Authenticating users to the server: authentication.md

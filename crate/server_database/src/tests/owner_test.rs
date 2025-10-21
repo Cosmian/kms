@@ -16,7 +16,7 @@ use uuid::Uuid;
 
 use crate::{db_error, error::DbResult};
 
-pub(crate) async fn owner<DB: ObjectsStore + PermissionsStore>(
+pub(super) async fn owner<DB: ObjectsStore + PermissionsStore>(
     db: &DB,
     db_params: Option<Arc<dyn SessionParams>>,
 ) -> DbResult<()> {

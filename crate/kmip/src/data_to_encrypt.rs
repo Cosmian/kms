@@ -70,7 +70,7 @@ impl DataToEncrypt {
     }
 }
 
-#[allow(clippy::unwrap_used)]
+#[expect(clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
     use super::DataToEncrypt;
@@ -86,7 +86,7 @@ mod tests {
             let bytes = data_to_encrypt.to_bytes().unwrap();
             let data_to_encrypt_full_deserialized = DataToEncrypt::try_from_bytes(&bytes).unwrap();
             assert_eq!(data_to_encrypt, data_to_encrypt_full_deserialized);
-        }
+        };
         // empty header metadata
         {
             let data_to_encrypt = DataToEncrypt {
@@ -96,7 +96,7 @@ mod tests {
             let bytes = data_to_encrypt.to_bytes().unwrap();
             let data_to_encrypt_full_deserialized = DataToEncrypt::try_from_bytes(&bytes).unwrap();
             assert_eq!(data_to_encrypt, data_to_encrypt_full_deserialized);
-        }
+        };
         // empty policy
         {
             let data_to_encrypt = DataToEncrypt {
@@ -106,7 +106,7 @@ mod tests {
             let bytes = data_to_encrypt.to_bytes().unwrap();
             let data_to_encrypt_full_deserialized = DataToEncrypt::try_from_bytes(&bytes).unwrap();
             assert_eq!(data_to_encrypt, data_to_encrypt_full_deserialized);
-        }
+        };
         // plaintext only
         {
             let data_to_encrypt = DataToEncrypt {

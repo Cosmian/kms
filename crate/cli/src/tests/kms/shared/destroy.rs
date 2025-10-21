@@ -192,7 +192,7 @@ async fn test_destroy_ec_key() -> KmsCliResult<()> {
         // assert
         assert_destroyed(ctx, &private_key_id.to_string(), false).await?;
         assert_destroyed(ctx, &public_key_id.to_string(), false).await?;
-    }
+    };
 
     // destroy via public key
     {
@@ -234,7 +234,7 @@ async fn test_destroy_ec_key() -> KmsCliResult<()> {
         // assert
         assert_destroyed(ctx, &private_key_id.to_string(), false).await?;
         assert_destroyed(ctx, &public_key_id.to_string(), false).await?;
-    }
+    };
 
     Ok(())
 }
@@ -279,7 +279,7 @@ async fn test_destroy_and_remove_ec_key() -> KmsCliResult<()> {
         // assert
         assert_destroyed(ctx, &private_key_id.to_string(), true).await?;
         assert_destroyed(ctx, &public_key_id.to_string(), true).await?;
-    }
+    };
 
     // destroy via public key
     {
@@ -321,14 +321,13 @@ async fn test_destroy_and_remove_ec_key() -> KmsCliResult<()> {
         // assert
         assert_destroyed(ctx, &private_key_id.to_string(), true).await?;
         assert_destroyed(ctx, &public_key_id.to_string(), true).await?;
-    }
+    };
 
     Ok(())
 }
 
 #[cfg(feature = "non-fips")]
 #[tokio::test]
-#[allow(clippy::large_stack_frames)]
 async fn test_destroy_cover_crypt() -> KmsCliResult<()> {
     use std::path::PathBuf;
 
@@ -374,16 +373,14 @@ async fn test_destroy_cover_crypt() -> KmsCliResult<()> {
         .to_string();
 
         // destroy should not work when not revoked
-        assert!(
-            DestroyKeyAction {
-                key_id: Some(master_private_key_id.clone()),
-                remove: false,
-                tags: None,
-            }
-            .run(ctx.get_owner_client())
-            .await
-            .is_err()
-        );
+        DestroyKeyAction {
+            key_id: Some(master_private_key_id.clone()),
+            remove: false,
+            tags: None,
+        }
+        .run(ctx.get_owner_client())
+        .await
+        .unwrap_err();
 
         // revoke then destroy
         RevokeKeyAction {
@@ -407,7 +404,7 @@ async fn test_destroy_cover_crypt() -> KmsCliResult<()> {
         assert_destroyed(ctx, &master_public_key_id, false).await?;
         assert_destroyed(ctx, &user_key_id_1, false).await?;
         assert_destroyed(ctx, &user_key_id_2, false).await?;
-    }
+    };
 
     // check revocation of all keys when the public key is destroyed
     {
@@ -449,16 +446,14 @@ async fn test_destroy_cover_crypt() -> KmsCliResult<()> {
         .to_string();
 
         // destroy should not work when not revoked
-        assert!(
-            DestroyKeyAction {
-                key_id: Some(master_public_key_id.clone()),
-                remove: false,
-                tags: None,
-            }
-            .run(ctx.get_owner_client())
-            .await
-            .is_err()
-        );
+        DestroyKeyAction {
+            key_id: Some(master_public_key_id.clone()),
+            remove: false,
+            tags: None,
+        }
+        .run(ctx.get_owner_client())
+        .await
+        .unwrap_err();
 
         // revoke then destroy
         RevokeKeyAction {
@@ -482,7 +477,7 @@ async fn test_destroy_cover_crypt() -> KmsCliResult<()> {
         assert_destroyed(ctx, &master_public_key_id, false).await?;
         assert_destroyed(ctx, &user_key_id_1, false).await?;
         assert_destroyed(ctx, &user_key_id_2, false).await?;
-    }
+    };
 
     // check that revoking a user key, does not destroy anything else
     {
@@ -524,16 +519,14 @@ async fn test_destroy_cover_crypt() -> KmsCliResult<()> {
         .to_string();
 
         // destroy should not work when not revoked
-        assert!(
-            DestroyKeyAction {
-                key_id: Some(user_key_id_1.clone()),
-                remove: false,
-                tags: None,
-            }
-            .run(ctx.get_owner_client())
-            .await
-            .is_err()
-        );
+        DestroyKeyAction {
+            key_id: Some(user_key_id_1.clone()),
+            remove: false,
+            tags: None,
+        }
+        .run(ctx.get_owner_client())
+        .await
+        .unwrap_err();
 
         // revoke then destroy
         RevokeKeyAction {
@@ -553,43 +546,37 @@ async fn test_destroy_cover_crypt() -> KmsCliResult<()> {
         .await?;
 
         // assert
-        assert_destroyed(ctx, &user_key_id_1.to_string(), false).await?;
+        assert_destroyed(ctx, &user_key_id_1.clone(), false).await?;
 
         // create a temp dir
         let tmp_dir = TempDir::new()?;
         let tmp_path = tmp_dir.path();
         // should able to Get the Master Keys and user key 2
-        assert!(
-            ExportSecretDataOrKeyAction {
-                key_id: Some(master_private_key_id.clone()),
-                key_file: tmp_path.join("output.export"),
-                ..Default::default()
-            }
-            .run(ctx.get_owner_client())
-            .await
-            .is_ok()
-        );
-        assert!(
-            ExportSecretDataOrKeyAction {
-                key_id: Some(master_public_key_id.clone()),
-                key_file: tmp_path.join("output.export"),
-                ..Default::default()
-            }
-            .run(ctx.get_owner_client())
-            .await
-            .is_ok()
-        );
-        assert!(
-            ExportSecretDataOrKeyAction {
-                key_id: Some(user_key_id_2.clone()),
-                key_file: tmp_path.join("output.export"),
-                ..Default::default()
-            }
-            .run(ctx.get_owner_client())
-            .await
-            .is_ok()
-        );
-    }
+        ExportSecretDataOrKeyAction {
+            key_id: Some(master_private_key_id.clone()),
+            key_file: tmp_path.join("output.export"),
+            ..Default::default()
+        }
+        .run(ctx.get_owner_client())
+        .await
+        .unwrap();
+        ExportSecretDataOrKeyAction {
+            key_id: Some(master_public_key_id.clone()),
+            key_file: tmp_path.join("output.export"),
+            ..Default::default()
+        }
+        .run(ctx.get_owner_client())
+        .await
+        .unwrap();
+        ExportSecretDataOrKeyAction {
+            key_id: Some(user_key_id_2.clone()),
+            key_file: tmp_path.join("output.export"),
+            ..Default::default()
+        }
+        .run(ctx.get_owner_client())
+        .await
+        .unwrap();
+    };
 
     Ok(())
 }

@@ -3,15 +3,37 @@
 To quick-start a Cosmian KMS server on `http://localhost:9998` that stores its data
 inside the container, run the following command:
 
-```sh
-docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest
-```
+=== "Docker"
+
+      ```sh
+      docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest
+      ```
+
+=== "kms.toml"
+
+      ```toml
+      # Minimal default configuration
+      [http]
+      port = 9998
+      hostname = "0.0.0.0"
+      ```
 
 To run a KMS where the database will survive restarts, run:
 
-```sh
-docker run  -p 9998:9998 --name kms --volume cosmian-kms:/cosmian-kms  ghcr.io/cosmian/kms:latest
-```
+=== "Docker"
+
+      ```sh
+      docker run  -p 9998:9998 --name kms --volume cosmian-kms:/cosmian-kms  ghcr.io/cosmian/kms:latest
+      ```
+
+=== "kms.toml"
+
+      ```toml
+      # Same default configuration; persistence is handled by Docker volume
+      [http]
+      port = 9998
+      hostname = "0.0.0.0"
+      ```
 
 Please note that if you want to use the KMIP wire protocol, you need to configure TLS and the socket server
 using the [server configuration file](./server_configuration_file.md) first.

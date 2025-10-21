@@ -46,17 +46,17 @@ use crate::{
 pub struct ExportSecretDataOrKeyAction {
     /// The file to export the key to
     #[clap(required = true)]
-    pub(crate) key_file: PathBuf,
+    pub key_file: PathBuf,
 
     /// The key or secret data unique identifier stored in the KMS.
     /// If not specified, tags should be specified
     #[clap(long = KEY_ID, short = 'k', group = "key-tags")]
-    pub(crate) key_id: Option<String>,
+    pub key_id: Option<String>,
 
     /// Tag to use to retrieve the key when no key or secret data id is specified.
     /// To specify multiple tags, use the option multiple times.
     #[clap(long = "tag", short = 't', value_name = "TAG", group = "key-tags")]
-    pub(crate) tags: Option<Vec<String>>,
+    pub tags: Option<Vec<String>>,
 
     /// The format of the key
     ///  - `json-ttlv` [default]. It should be the format to use to later re-import the key
@@ -74,7 +74,7 @@ pub struct ExportSecretDataOrKeyAction {
         default_value = "json-ttlv",
         verbatim_doc_comment
     )]
-    pub(crate) export_format: ExportKeyFormat,
+    pub export_format: ExportKeyFormat,
 
     /// Unwrap the key if it is wrapped before export
     #[clap(
@@ -83,7 +83,7 @@ pub struct ExportSecretDataOrKeyAction {
         default_value = "false",
         group = "wrapping"
     )]
-    pub(crate) unwrap: bool,
+    pub unwrap: bool,
 
     /// The id of the key/certificate (a.k.a. Key Encryption Key - KEK)
     /// to use to wrap this key before export
@@ -93,7 +93,7 @@ pub struct ExportSecretDataOrKeyAction {
         required = false,
         group = "wrapping"
     )]
-    pub(crate) wrap_key_id: Option<String>,
+    pub wrap_key_id: Option<String>,
 
     /// Allow exporting revoked and destroyed keys.
     /// The user must be the owner of the key.
@@ -104,7 +104,7 @@ pub struct ExportSecretDataOrKeyAction {
         default_value = "false",
         verbatim_doc_comment
     )]
-    pub(crate) allow_revoked: bool,
+    pub allow_revoked: bool,
 
     /// Wrapping algorithm to use when exporting the key
     /// The possible wrapping algorithms are
@@ -124,7 +124,7 @@ pub struct ExportSecretDataOrKeyAction {
         default_value = None,
         verbatim_doc_comment
     )]
-    pub(crate) wrapping_algorithm: Option<WrappingAlgorithm>,
+    pub wrapping_algorithm: Option<WrappingAlgorithm>,
 
     /// Authenticated encryption additional data
     /// Only available for AES GCM wrapping
@@ -133,7 +133,7 @@ pub struct ExportSecretDataOrKeyAction {
         short = 'd',
         default_value = None,
     )]
-    pub(crate) authenticated_additional_data: Option<String>,
+    pub authenticated_additional_data: Option<String>,
 }
 
 impl ExportSecretDataOrKeyAction {
@@ -145,7 +145,6 @@ impl ExportSecretDataOrKeyAction {
     ///
     /// - Either `--key-id` or one or more `--tag` is not specified.
     /// - There is a server error while exporting the object.
-    ///
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<UniqueIdentifier> {
         let id = get_key_uid(self.key_id.as_ref(), self.tags.as_ref(), KEY_ID)?;
 

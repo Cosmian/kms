@@ -21,3 +21,10 @@ pub enum KeyType {
     RsaPrivateKey,
     RsaPublicKey,
 }
+
+#[macro_export]
+macro_rules! as_hsm_uid {
+    ($slot:expr, $uuid:expr) => {
+        format!("hsm::{}::{}", $slot, $uuid)
+    };
+}

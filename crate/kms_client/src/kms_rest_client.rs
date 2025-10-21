@@ -3,17 +3,15 @@ use cosmian_http_client::{
     reexport::reqwest::{Response, StatusCode},
 };
 // re-export the kmip module as kmip
-use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::kmip_operations::{
-    Certify, CertifyResponse, Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse,
-    Decrypt, DecryptResponse, Destroy, DestroyResponse, Encrypt, EncryptResponse, Export,
-    ExportResponse, Get, GetAttributes, GetAttributesResponse, GetResponse, Import, ImportResponse,
-    Locate, LocateResponse, ReKeyKeyPair, ReKeyKeyPairResponse, Revoke, RevokeResponse,
-    StatusResponse, Validate, ValidateResponse,
-};
 use cosmian_kms_client_utils::reexport::{
     cosmian_kmip::kmip_2_1::kmip_operations::{
-        DeleteAttribute, DeleteAttributeResponse, Hash, HashResponse, MAC, MACResponse, ReKey,
-        ReKeyResponse, SetAttribute, SetAttributeResponse,
+        Certify, CertifyResponse, Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse,
+        Decrypt, DecryptResponse, DeleteAttribute, DeleteAttributeResponse, DeriveKey,
+        DeriveKeyResponse, Destroy, DestroyResponse, Encrypt, EncryptResponse, Export,
+        ExportResponse, Get, GetAttributes, GetAttributesResponse, GetResponse, Hash, HashResponse,
+        Import, ImportResponse, Locate, LocateResponse, MAC, MACResponse, ReKey, ReKeyKeyPair,
+        ReKeyKeyPairResponse, ReKeyResponse, Revoke, RevokeResponse, SetAttribute,
+        SetAttributeResponse, StatusResponse, Validate, ValidateResponse,
     },
     cosmian_kms_access::access::{
         Access, AccessRightsObtainedResponse, ObjectOwnedResponse, SuccessResponse,
@@ -160,6 +158,18 @@ impl KmsClient {
     /// Status (and if failure the Result Reason) in the response header.
     pub async fn decrypt(&self, request: Decrypt) -> Result<DecryptResponse, KmsClientError> {
         self.post_ttlv_2_1::<Decrypt, DecryptResponse>(&request)
+            .await
+    }
+
+    /// This operation is used to derive a new key from an existing key using a specified derivation method
+    /// such as PBKDF2 or HKDF. The server SHALL perform the derivation function, and then register
+    /// the derived object as a new Managed Object, returning the new Unique Identifier for the new object
+    /// in the response.
+    pub async fn derive_key(
+        &self,
+        request: DeriveKey,
+    ) -> Result<DeriveKeyResponse, KmsClientError> {
+        self.post_ttlv_2_1::<DeriveKey, DeriveKeyResponse>(&request)
             .await
     }
 
@@ -480,7 +490,7 @@ impl KmsClient {
 
     /// This operation requests the server to send a message, which is a list of operations,
     /// to the server.
-    ///The messages in the protocol consist of a message header, one or more batch items
+    /// The messages in the protocol consist of a message header, one or more batch items
     /// (which contain OPTIONAL message payloads), and OPTIONAL message extensions.
     /// The message headers contain fields whose presence is determined
     /// by the protocol features used (e.g., asynchronous responses).
@@ -560,13 +570,13 @@ impl KmsClient {
 
         let status_code = response.status();
         if status_code.is_success() {
-            return Ok(response.json::<R>().await?)
+            return Ok(response.json::<R>().await?);
         }
 
         // process error
         let p = handle_error(endpoint, response).await?;
         if status_code == StatusCode::UNAUTHORIZED {
-            return Err(KmsClientError::Unauthorized(p))
+            return Err(KmsClientError::Unauthorized(p));
         }
         Err(KmsClientError::RequestFailed(p))
     }
@@ -587,13 +597,13 @@ impl KmsClient {
 
         let status_code = response.status();
         if status_code.is_success() {
-            return Ok(response.json::<R>().await?)
+            return Ok(response.json::<R>().await?);
         }
 
         // process error
         let p = handle_error(endpoint, response).await?;
         if status_code == StatusCode::UNAUTHORIZED {
-            return Err(KmsClientError::Unauthorized(p))
+            return Err(KmsClientError::Unauthorized(p));
         }
         Err(KmsClientError::RequestFailed(p))
     }
@@ -626,13 +636,13 @@ impl KmsClient {
                 "<==\n{}",
                 serde_json::to_string_pretty(&response).unwrap_or_else(|_| "[N/A]".to_owned())
             );
-            return Ok(response)
+            return Ok(response);
         }
 
         // process error
         let p = handle_error(endpoint, response).await?;
         if status_code == StatusCode::UNAUTHORIZED {
-            return Err(KmsClientError::Unauthorized(p))
+            return Err(KmsClientError::Unauthorized(p));
         }
         Err(KmsClientError::RequestFailed(p))
     }
@@ -673,18 +683,18 @@ impl KmsClient {
                 "<==\n{}",
                 serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_owned())
             );
-            return from_ttlv(ttlv).map_err(|e| KmsClientError::ResponseFailed(e.to_string()))
+            return from_ttlv(ttlv).map_err(|e| KmsClientError::ResponseFailed(e.to_string()));
         }
 
         // process error
         let p = handle_error(endpoint, response).await?;
         if status_code == StatusCode::UNAUTHORIZED {
-            return Err(KmsClientError::Unauthorized(p))
+            return Err(KmsClientError::Unauthorized(p));
         }
         Err(KmsClientError::RequestFailed(p))
     }
 
-    #[allow(clippy::print_stdout)]
+    #[expect(clippy::print_stdout)]
     pub async fn post_message(
         &self,
         request_message: &RequestMessage,
@@ -719,13 +729,13 @@ impl KmsClient {
                 "<==\n{}",
                 serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_owned())
             );
-            return from_ttlv(ttlv).map_err(|e| KmsClientError::ResponseFailed(e.to_string()))
+            return from_ttlv(ttlv).map_err(|e| KmsClientError::ResponseFailed(e.to_string()));
         }
 
         // process error
         let p = handle_error(endpoint, response).await?;
         if status_code == StatusCode::UNAUTHORIZED {
-            return Err(KmsClientError::Unauthorized(p))
+            return Err(KmsClientError::Unauthorized(p));
         }
         Err(KmsClientError::RequestFailed(p))
     }

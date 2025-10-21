@@ -1,5 +1,5 @@
 import { Button, Card, Space, Table, Tag } from "antd";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { useAuth } from "./AuthContext";
 import { getNoTTLVRequest } from "./utils";
 
@@ -36,7 +36,7 @@ const ObjectsOwnedList: React.FC = () => {
         },
     ];
 
-    const fetchOwnedObjects = async () => {
+    const fetchOwnedObjects = useCallback(async () => {
         setIsLoading(true);
         setRes(undefined);
         setObjects([]);
@@ -53,11 +53,11 @@ const ObjectsOwnedList: React.FC = () => {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [idToken, serverUrl]);
 
     useEffect(() => {
         fetchOwnedObjects();
-    }, []);
+    }, [fetchOwnedObjects]);
 
     return (
         <div className="p-6">

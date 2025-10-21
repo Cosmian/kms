@@ -91,6 +91,8 @@ impl SqlitePool {
 
         let pool = SqlitePoolOptions::new()
             .max_connections(
+                // SAFETY: num_cpus::get() returns a reasonable value that fits in u32
+                #[expect(clippy::expect_used)]
                 u32::try_from(num_cpus::get())
                     .expect("this conversion cannot fail (or I want that machine)"),
             )
@@ -328,20 +330,20 @@ impl PermissionsStore for SqlitePool {
         &self,
         uid: &str,
         user: &str,
-        operation_types: HashSet<KmipOperation>,
+        operations: HashSet<KmipOperation>,
         _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
-        Ok(insert_access_(uid, user, operation_types, &self.pool).await?)
+        Ok(insert_access_(uid, user, operations, &self.pool).await?)
     }
 
     async fn remove_operations(
         &self,
         uid: &str,
         user: &str,
-        operation_types: HashSet<KmipOperation>,
+        operations: HashSet<KmipOperation>,
         _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
-        Ok(remove_access_(uid, user, operation_types, &self.pool).await?)
+        Ok(remove_access_(uid, user, operations, &self.pool).await?)
     }
 
     async fn list_user_operations_on_object(
@@ -355,7 +357,7 @@ impl PermissionsStore for SqlitePool {
     }
 }
 
-pub(crate) async fn create_(
+pub(super) async fn create_(
     uid: Option<String>,
     owner: &str,
     object: &Object,
@@ -394,7 +396,7 @@ pub(crate) async fn create_(
     Ok(uid)
 }
 
-pub(crate) async fn retrieve_<'e, E>(uid: &str, executor: E) -> DbResult<Option<ObjectWithMetadata>>
+pub(super) async fn retrieve_<'e, E>(uid: &str, executor: E) -> DbResult<Option<ObjectWithMetadata>>
 where
     E: Executor<'e, Database = Sqlite> + Copy,
 {
@@ -403,12 +405,12 @@ where
         .fetch_optional(executor)
         .await?;
     if let Some(row) = row {
-        return Ok(Some(sqlite_row_to_owm(&row)?))
+        return Ok(Some(sqlite_row_to_owm(&row)?));
     }
     Ok(None)
 }
 
-pub(crate) async fn retrieve_tags_<'e, E>(uid: &str, executor: E) -> DbResult<HashSet<String>>
+pub(super) async fn retrieve_tags_<'e, E>(uid: &str, executor: E) -> DbResult<HashSet<String>>
 where
     E: Executor<'e, Database = Sqlite> + Copy,
 {
@@ -422,7 +424,7 @@ where
     Ok(tags)
 }
 
-pub(crate) async fn update_object_(
+pub(super) async fn update_object_(
     uid: &str,
     object: &Object,
     attributes: &Attributes,
@@ -462,7 +464,7 @@ pub(crate) async fn update_object_(
     Ok(())
 }
 
-pub(crate) async fn update_state_(
+pub(super) async fn update_state_(
     uid: &str,
     state: State,
     executor: &mut Transaction<'_, Sqlite>,
@@ -476,7 +478,7 @@ pub(crate) async fn update_state_(
     Ok(())
 }
 
-pub(crate) async fn delete_(uid: &str, executor: &mut Transaction<'_, Sqlite>) -> DbResult<()> {
+pub(super) async fn delete_(uid: &str, executor: &mut Transaction<'_, Sqlite>) -> DbResult<()> {
     // delete the object
     sqlx::query(get_sqlite_query!("delete-object"))
         .bind(uid)
@@ -493,7 +495,7 @@ pub(crate) async fn delete_(uid: &str, executor: &mut Transaction<'_, Sqlite>) -
     Ok(())
 }
 
-pub(crate) async fn upsert_(
+pub(super) async fn upsert_(
     uid: &str,
     owner: &str,
     object: &Object,
@@ -542,7 +544,7 @@ pub(crate) async fn upsert_(
     Ok(())
 }
 
-pub(crate) async fn list_uids_for_tags_<'e, E>(
+pub(super) async fn list_uids_for_tags_<'e, E>(
     tags: &HashSet<String>,
     executor: E,
 ) -> DbResult<HashSet<String>>
@@ -572,7 +574,7 @@ where
     Ok(ids)
 }
 
-pub(crate) async fn list_accesses_<'e, E>(
+pub(super) async fn list_accesses_<'e, E>(
     uid: &str,
     executor: E,
 ) -> DbResult<HashMap<String, HashSet<KmipOperation>>>
@@ -597,7 +599,7 @@ where
     Ok(ids)
 }
 
-pub(crate) async fn list_user_granted_access_rights_<'e, E>(
+pub(super) async fn list_user_granted_access_rights_<'e, E>(
     user: &str,
     executor: E,
 ) -> DbResult<HashMap<String, (String, State, HashSet<KmipOperation>)>>
@@ -627,7 +629,7 @@ where
     Ok(ids)
 }
 
-pub(crate) async fn list_user_access_rights_on_object_<'e, E>(
+pub(super) async fn list_user_access_rights_on_object_<'e, E>(
     uid: &str,
     userid: &str,
     no_inherited_access: bool,
@@ -638,7 +640,7 @@ where
 {
     let mut user_perms = perms(uid, userid, executor).await?;
     if no_inherited_access || userid == "*" {
-        return Ok(user_perms)
+        return Ok(user_perms);
     }
     user_perms.extend(perms(uid, "*", executor).await?);
     Ok(user_perms)
@@ -660,7 +662,7 @@ where
     })
 }
 
-pub(crate) async fn insert_access_<'e, E>(
+pub(super) async fn insert_access_<'e, E>(
     uid: &str,
     userid: &str,
     operation_types: HashSet<KmipOperation>,
@@ -674,7 +676,7 @@ where
     let mut perms = list_user_access_rights_on_object_(uid, userid, false, executor).await?;
     if operation_types.is_subset(&perms) {
         // permissions are already setup
-        return Ok(())
+        return Ok(());
     }
     perms.extend(operation_types.iter());
 
@@ -693,7 +695,7 @@ where
     Ok(())
 }
 
-pub(crate) async fn remove_access_<'e, E>(
+pub(super) async fn remove_access_<'e, E>(
     uid: &str,
     userid: &str,
     operation_types: HashSet<KmipOperation>,
@@ -716,7 +718,7 @@ where
             .bind(userid)
             .execute(executor)
             .await?;
-        return Ok(())
+        return Ok(());
     }
 
     // Serialize permissions
@@ -734,7 +736,7 @@ where
     Ok(())
 }
 
-pub(crate) async fn is_object_owned_by_<'e, E>(
+pub(super) async fn is_object_owned_by_<'e, E>(
     uid: &str,
     owner: &str,
     executor: E,
@@ -750,7 +752,7 @@ where
     Ok(row.is_some())
 }
 
-pub(crate) async fn find_<'e, E>(
+pub(super) async fn find_<'e, E>(
     researched_attributes: Option<&Attributes>,
     state: Option<State>,
     user: &str,
@@ -800,7 +802,7 @@ fn to_qualified_uids(rows: &[SqliteRow]) -> DbResult<Vec<(String, State, Attribu
     Ok(uids)
 }
 
-pub(crate) async fn atomic_(
+pub(super) async fn atomic_(
     owner: &str,
     operations: &[AtomicOperation],
     tx: &mut Transaction<'_, Sqlite>,

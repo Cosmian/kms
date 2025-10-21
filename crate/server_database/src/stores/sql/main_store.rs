@@ -14,7 +14,7 @@ use crate::{
 };
 
 #[async_trait(?Send)]
-pub(crate) trait SqlMainStore<DB>
+pub(super) trait SqlMainStore<DB>
 where
     DB: sqlx::Database,
     for<'z> &'z mut DB::Connection: Executor<'z, Database = DB>,

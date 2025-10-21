@@ -42,7 +42,7 @@ pub(crate) async fn revoke_operation(
         .as_ref()
         .ok_or(KmsError::UnsupportedPlaceholder)?;
 
-    //TODO   Reasons should be kept in the database
+    // TODO   Reasons should be kept in the database
     let revocation_reason = request.revocation_reason.clone();
     let compromise_occurrence_date = request.compromise_occurrence_date;
 
@@ -104,7 +104,7 @@ pub(crate) async fn recursively_revoke_key(
                     .list_user_operations_on_object(&uid, user, false, params.clone())
                     .await?;
                 if !ops.iter().any(|p| KmipOperation::Revoke == *p) {
-                    continue
+                    continue;
                 }
             }
             if kms
@@ -124,15 +124,15 @@ pub(crate) async fn recursively_revoke_key(
                 "Objects with prefix '{prefix}' cannot be revoked. Destroy them directly."
             )));
         }
-        //retrieve the object
+        // retrieve the object
         let Some(owm) = kms.database.retrieve_object(&uid, params.clone()).await? else {
-            continue
+            continue;
         };
 
         let object_type = owm.object().object_type();
         let uid = owm.id().to_owned();
         if owm.state() != State::Active && owm.state() != State::PreActive {
-            continue
+            continue;
         }
         if object_type != ObjectType::PrivateKey
             && object_type != ObjectType::Certificate
@@ -140,7 +140,7 @@ pub(crate) async fn recursively_revoke_key(
             && object_type != ObjectType::PublicKey
             && object_type != ObjectType::SecretData
         {
-            continue
+            continue;
         }
         // if the user is not the owner, we need to check if the user has the right to decrypt
         // or get the key (in which case it can decrypt on its side)
@@ -150,11 +150,11 @@ pub(crate) async fn recursively_revoke_key(
                 .list_user_operations_on_object(owm.id(), user, false, params.clone())
                 .await?;
             if !permissions.contains(&KmipOperation::Revoke) {
-                continue
+                continue;
             }
         }
         count += 1;
-        //Perform the chain of revoke operations depending on the type of object
+        // Perform the chain of revoke operations depending on the type of object
         let object_type = owm.object().object_type();
         match object_type {
             ObjectType::SymmetricKey | ObjectType::Certificate | ObjectType::SecretData => {
@@ -169,7 +169,7 @@ pub(crate) async fn recursively_revoke_key(
                 .await?;
             }
             ObjectType::PrivateKey => {
-                //add this key to the ids to skip
+                // add this key to the ids to skip
                 ids_to_skip.insert(owm.id().to_owned());
                 // for Covercrypt, if that is a master secret key, revoke the user decryption keys
                 #[cfg(feature = "non-fips")]
@@ -217,7 +217,7 @@ pub(crate) async fn recursively_revoke_key(
                 .await?;
             }
             ObjectType::PublicKey => {
-                //add this key to the ids to skip
+                // add this key to the ids to skip
                 ids_to_skip.insert(owm.id().to_owned());
                 // revoke any linked private key
                 if let Some(private_key_id) = owm
@@ -267,7 +267,7 @@ pub(crate) async fn recursively_revoke_key(
         return Err(KmsError::Kmip21Error(
             ErrorReason::Item_Not_Found,
             unique_identifier.to_string(),
-        ))
+        ));
     }
 
     Ok(())

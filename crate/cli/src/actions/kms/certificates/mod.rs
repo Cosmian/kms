@@ -43,7 +43,6 @@ impl CertificatesCommands {
     /// # Errors
     ///
     /// Returns an error if the query execution on the KMS server fails.
-    ///
     pub async fn process(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
         match self {
             Self::Certify(action) => {

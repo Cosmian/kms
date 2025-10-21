@@ -184,7 +184,12 @@ fn init_ckm_rsa_pkcs_oaep_decryption_context(
     Ok((ctx, plaintext))
 }
 
-#[allow(clippy::panic_in_result_fn, clippy::unwrap_used)]
+#[allow(
+    clippy::panic_in_result_fn,
+    clippy::unwrap_in_result,
+    clippy::unwrap_used,
+    clippy::expect_used
+)]
 #[cfg(test)]
 mod tests {
     use cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm;
@@ -202,7 +207,8 @@ mod tests {
     fn test_ckm_rsa_pkcs_oaep() -> Result<(), CryptoError> {
         // Load FIPS provider module from OpenSSL.
         #[cfg(not(feature = "non-fips"))]
-        openssl::provider::Provider::load(None, "fips").unwrap();
+        openssl::provider::Provider::load(None, "fips")
+            .map_err(|e| CryptoError::Default(format!("Failed to load FIPS provider: {e}")))?;
 
         let priv_key = PKey::from_rsa(openssl::rsa::Rsa::generate(2048)?)?;
         let pub_key = PKey::public_key_from_pem(&priv_key.public_key_to_pem()?)?;

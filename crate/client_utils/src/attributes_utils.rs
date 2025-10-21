@@ -60,7 +60,7 @@ pub enum CLinkType {
     PKCS12Password,
     /// For wrapped objects: the object that was used to wrap this object.
     WrappingKey,
-    //Extensions 8XXXXXXX
+    // Extensions 8XXXXXXX
 }
 
 impl Display for CLinkType {
@@ -365,7 +365,7 @@ pub fn parse_selected_attributes_flatten(
                 .map(|(key, val)| (key, serde_json::to_value(val).unwrap_or(Value::Null)))
                 .collect();
         }
-        return Ok(results)
+        return Ok(results);
     }
     for &selected_attribute_name in selected_attributes {
         match selected_attribute_name {
@@ -558,14 +558,14 @@ pub fn build_selected_attribute(
         _ => {
             return Err(UtilsError::Default(format!(
                 "Unknown attribute name: {attribute_name}"
-            )))
+            )));
         }
     };
     Ok(attribute)
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
+#[expect(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
 mod tests {
     use super::*;
     use crate::reexport::cosmian_kmip::kmip_2_1::{

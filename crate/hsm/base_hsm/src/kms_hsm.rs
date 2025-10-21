@@ -36,12 +36,17 @@ use cosmian_kms_interfaces::{
     CryptoAlgorithm, EncryptedContent, HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject,
     HsmObjectFilter, InterfaceError, InterfaceResult, KeyMetadata, KeyType,
 };
+use cosmian_logger::debug;
 use zeroize::Zeroizing;
 
 use crate::{AesKeySize, BaseHsm, RsaKeySize, hsm_capabilities::HsmProvider};
 
 #[async_trait]
 impl<P: HsmProvider> HSM for BaseHsm<P> {
+    async fn get_available_slot_list(&self) -> InterfaceResult<Vec<usize>> {
+        Ok(self.get_available_slot_list()?)
+    }
+
     async fn get_supported_algorithms(
         &self,
         slot_id: usize,
@@ -74,7 +79,7 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
                     x => {
                         return Err(InterfaceError::Default(format!(
                             "Invalid key length: {x} bits, for and HSM AES key"
-                        )))
+                        )));
                     }
                 };
                 let _ = session.generate_aes_key(id, key_size, sensitive)?;
@@ -115,7 +120,7 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
                 return Err(InterfaceError::Default(format!(
                     "Invalid key length: {x} bits, for and HSM RSA key (valid values are 1024, \
                      2048, 3072, 4096)"
-                )))
+                )));
             }
         };
 
@@ -147,15 +152,17 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
     async fn find(
         &self,
         slot_id: usize,
-        object_type: HsmObjectFilter,
+        object_filter: HsmObjectFilter,
     ) -> InterfaceResult<Vec<Vec<u8>>> {
         let slot = self.get_slot(slot_id)?;
         let session = slot.open_session(true)?;
-        let handles = session.list_objects(object_type)?;
+        let handles = session.list_objects(object_filter)?;
         let mut object_ids = Vec::with_capacity(handles.len());
         for handle in handles {
-            if let Some(object_id) = session.get_object_id(handle)? {
+            if let Ok(Some(object_id)) = session.get_object_id(handle) {
                 object_ids.push(object_id);
+            } else {
+                debug!("Invalid object, skipping");
             }
         }
         Ok(object_ids)
@@ -171,7 +178,7 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         let slot = self.get_slot(slot_id)?;
         let session = slot.open_session(true)?;
         let handle = session.get_object_handle(key_id)?;
-        let encrypted_content = session.encrypt(handle, algorithm.clone().into(), data)?;
+        let encrypted_content = session.encrypt(handle, algorithm.into(), data)?;
         Ok(encrypted_content)
     }
 

@@ -5,6 +5,7 @@ mod create;
 mod create_key_pair;
 mod decrypt;
 mod delete_attribute;
+pub(crate) mod derive_key;
 mod destroy;
 mod digest;
 mod discover_versions;
@@ -36,6 +37,7 @@ pub(crate) use create::create;
 pub(crate) use create_key_pair::create_key_pair;
 pub(crate) use decrypt::decrypt;
 pub(crate) use delete_attribute::delete_attribute;
+pub(crate) use derive_key::derive_key;
 pub(crate) use destroy::destroy_operation;
 #[cfg(feature = "non-fips")]
 pub(crate) use destroy::recursively_destroy_object;

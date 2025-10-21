@@ -96,7 +96,7 @@ async fn test_rekey_error() -> KmsCliResult<()> {
     // export a wrapped key
     let exported_wrapped_key_file = tmp_path.join("exported_wrapped_master_private.key");
     ExportSecretDataOrKeyAction {
-        key_id: Some(master_secret_key_id.to_string()),
+        key_id: Some(master_secret_key_id.clone()),
         key_file: exported_wrapped_key_file.clone(),
         wrap_key_id: Some(symmetric_key_id),
         ..Default::default()
@@ -130,7 +130,6 @@ async fn test_rekey_error() -> KmsCliResult<()> {
 }
 
 #[test]
-#[allow(clippy::similar_names)]
 fn test_cc() -> KmsCliResult<()> {
     let access_structure = access_structure_from_json_file(&PathBuf::from(
         "../../test_data/access_structure_specifications.json",
@@ -311,7 +310,7 @@ async fn test_rekey_prune() -> KmsCliResult<()> {
     // export the user_decryption_key
     let exported_user_decryption_key_file = tmp_path.join("exported_user_decryption.key");
     ExportSecretDataOrKeyAction {
-        key_id: Some(user_decryption_key_id.to_string()),
+        key_id: Some(user_decryption_key_id.clone()),
         key_file: exported_user_decryption_key_file.clone(),
         ..Default::default()
     }
@@ -397,7 +396,7 @@ async fn test_rekey_prune() -> KmsCliResult<()> {
     // prune the attributes
     PruneAction {
         access_policy: "Department::MKG || Department::FIN".to_string(),
-        msk_uid: Some(master_secret_key_id.to_string()),
+        msk_uid: Some(master_secret_key_id.clone()),
         tags: None,
     }
     .run(ctx.get_owner_client())

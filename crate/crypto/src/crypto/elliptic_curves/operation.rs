@@ -87,7 +87,7 @@ fn check_ecc_mask_algorithm_compliance(
         crypto_bail!("EC: forbidden CryptographicAlgorithm value in FIPS mode.")
     }
     match algorithm {
-        CryptographicAlgorithm::ECDH => {
+        CryptographicAlgorithm::ECDH | CryptographicAlgorithm::EC => {
             check_ecc_mask_against_flags(private_key_mask, FIPS_PRIVATE_ECC_MASK_SIGN_ECDH)?;
             check_ecc_mask_against_flags(public_key_mask, FIPS_PUBLIC_ECC_MASK_SIGN_ECDH)?;
         }
@@ -96,10 +96,6 @@ fn check_ecc_mask_algorithm_compliance(
         | CryptographicAlgorithm::Ed448 => {
             check_ecc_mask_against_flags(private_key_mask, FIPS_PRIVATE_ECC_MASK_SIGN)?;
             check_ecc_mask_against_flags(public_key_mask, FIPS_PUBLIC_ECC_MASK_SIGN)?;
-        }
-        CryptographicAlgorithm::EC => {
-            check_ecc_mask_against_flags(private_key_mask, FIPS_PRIVATE_ECC_MASK_SIGN_ECDH)?;
-            check_ecc_mask_against_flags(public_key_mask, FIPS_PUBLIC_ECC_MASK_SIGN_ECDH)?;
         }
         // If `allowed` parameter is set correctly, should never fall in this case.
         _ => crypto_bail!("Invalid CryptographicAlgorithm value."),
@@ -228,7 +224,7 @@ pub fn to_ec_private_key(
                             public_key_uid.to_owned(),
                         ),
                     }]),
-                    sensitive: if sensitive { Some(true) } else { None },
+                    sensitive: sensitive.then_some(true),
                     ..Attributes::default()
                 }),
             }),
@@ -516,7 +512,7 @@ pub fn create_approved_ecc_key_pair(
     )
 }
 
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments)]
 fn create_ec_key_pair(
     private_key_bytes: &Zeroizing<Vec<u8>>,
     private_key_num_bits: u32,
@@ -593,7 +589,7 @@ fn create_ec_key_pair(
     Ok(KeyPair::new(private_key, public_key))
 }
 
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+#[expect(clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
 
@@ -679,6 +675,7 @@ mod tests {
         );
     }
 
+    #[expect(clippy::expect_used, clippy::panic)]
     #[test]
     #[cfg(feature = "non-fips")]
     fn test_x25519_conversions() {
@@ -706,7 +703,6 @@ mod tests {
         )
         .expect("failed to create x25519 key pair in test_x25519_conversions");
 
-        //
         // public key
         //
         let Some(KeyValue::Structure { key_material, .. }) =
@@ -727,7 +723,6 @@ mod tests {
         let raw_bytes = p_key.raw_public_key().unwrap();
         assert_eq!(&raw_bytes, original_public_key_bytes);
 
-        //
         // private key
         //
         let Some(KeyValue::Structure { key_material, .. }) =
@@ -819,6 +814,7 @@ mod tests {
         keypair_generation(RecommendedCurve::P521);
     }
 
+    #[expect(clippy::expect_used, clippy::panic)]
     #[test]
     #[cfg(feature = "non-fips")]
     fn test_x448_conversions() {
@@ -846,7 +842,6 @@ mod tests {
         )
         .expect("failed to create x25519 key pair in test_x448_conversions");
 
-        //
         // public key
         //
         let Some(KeyValue::Structure { key_material, .. }) = wrap_key_pair
@@ -871,7 +866,6 @@ mod tests {
         let raw_bytes = p_key.raw_public_key().unwrap();
         assert_eq!(&raw_bytes, original_public_key_bytes);
 
-        //
         // private key
         //
         let Some(KeyValue::Structure { key_material, .. }) = wrap_key_pair

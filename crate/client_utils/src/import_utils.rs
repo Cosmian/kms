@@ -239,7 +239,6 @@ use crate::error::UtilsError;
 /// | NEW CERTIFICATE REQUEST | PKCS#10 |
 /// | CERTIFICATE REQUEST | PKCS#10 |
 /// | PKCS12 | PKCS#12 |
-///
 pub fn objects_from_pem(bytes: &[u8]) -> Result<Vec<Object>, UtilsError> {
     let mut objects = Vec::<Object>::new();
     let pem_s = pem::parse_many(bytes)?;
@@ -274,7 +273,7 @@ pub fn objects_from_pem(bytes: &[u8]) -> Result<Vec<Object>, UtilsError> {
                     "PEM files with EC PUBLIC KEY are not supported: SEC1 should be reserved for \
                      EC private keys only"
                         .to_owned(),
-                ))
+                ));
             }
             "CERTIFICATE" => objects.push(Object::Certificate(Certificate {
                 certificate_type: CertificateType::X509,
@@ -283,22 +282,22 @@ pub fn objects_from_pem(bytes: &[u8]) -> Result<Vec<Object>, UtilsError> {
             "X509 CRL" => {
                 return Err(UtilsError::NotSupported(
                     "X509 CRL not supported on this server".to_owned(),
-                ))
+                ));
             }
             "NEW CERTIFICATE REQUEST" => {
                 return Err(UtilsError::NotSupported(
                     "NEW CERTIFICATE REQUEST not supported on this server".to_owned(),
-                ))
+                ));
             }
             "CERTIFICATE REQUEST" => {
                 return Err(UtilsError::NotSupported(
                     "CERTIFICATE REQUEST not supported on this server".to_owned(),
-                ))
+                ));
             }
             x => {
                 return Err(UtilsError::NotSupported(format!(
                     "PEM tag {x} not supported"
-                )))
+                )));
             }
         }
     }
@@ -364,14 +363,12 @@ pub fn prepare_key_import_elements(
     }
 
     if let Some(issuer_certificate_id) = &certificate_id {
-        //let attributes = import_attributes.get_or_insert(Attributes::default());
         import_attributes.set_link(
             LinkType::CertificateLink,
             LinkedObjectIdentifier::TextString(issuer_certificate_id.clone()),
         );
     }
     if let Some(private_key_id) = &private_key_id {
-        //let attributes = import_attributes.get_or_insert(Attributes::default());
         import_attributes.set_link(
             LinkType::PrivateKeyLink,
             LinkedObjectIdentifier::TextString(private_key_id.clone()),
@@ -410,21 +407,21 @@ pub fn prepare_certificate_attributes(
 ) -> Option<Attributes> {
     let mut certificate_attributes = None;
     if let Some(issuer_certificate_id) = &issuer_certificate_id {
-        let attributes = certificate_attributes.get_or_insert(Attributes::default());
+        let attributes = certificate_attributes.get_or_insert_with(Attributes::default);
         attributes.set_link(
             LinkType::CertificateLink,
             LinkedObjectIdentifier::TextString(issuer_certificate_id.clone()),
         );
     }
     if let Some(private_key_id) = &private_key_id {
-        let attributes = certificate_attributes.get_or_insert(Attributes::default());
+        let attributes = certificate_attributes.get_or_insert_with(Attributes::default);
         attributes.set_link(
             LinkType::PrivateKeyLink,
             LinkedObjectIdentifier::TextString(private_key_id.clone()),
         );
     }
     if let Some(public_key_id) = &public_key_id {
-        let attributes = certificate_attributes.get_or_insert(Attributes::default());
+        let attributes = certificate_attributes.get_or_insert_with(Attributes::default);
         attributes.set_link(
             LinkType::PublicKeyLink,
             LinkedObjectIdentifier::TextString(public_key_id.clone()),

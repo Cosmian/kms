@@ -33,7 +33,7 @@ fn test_encrypt_1_4() {
     encrypt(&client, &key_id, b"Hello, world!", None);
 }
 
-pub(crate) fn encrypt(
+pub(super) fn encrypt(
     client: &SocketClient,
     key_id: &str,
     data: &[u8],

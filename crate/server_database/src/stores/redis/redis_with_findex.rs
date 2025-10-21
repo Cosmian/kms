@@ -38,8 +38,8 @@ use crate::{
 
 pub(crate) const REDIS_WITH_FINDEX_MASTER_KEY_LENGTH: usize = 32;
 const REDIS_WITH_FINDEX_MASTER_KEY_DERIVATION_SALT: &[u8; 16] = b"rediswithfindex_";
-pub(crate) const REDIS_WITH_FINDEX_MASTER_FINDEX_KEY_DERIVATION_SALT: &[u8; 6] = b"findex";
-pub(crate) const REDIS_WITH_FINDEX_MASTER_DB_KEY_DERIVATION_SALT: &[u8; 2] = b"db";
+pub(super) const REDIS_WITH_FINDEX_MASTER_FINDEX_KEY_DERIVATION_SALT: &[u8; 6] = b"findex";
+pub(super) const REDIS_WITH_FINDEX_MASTER_DB_KEY_DERIVATION_SALT: &[u8; 2] = b"db";
 
 /// Derive a Redis Master Key from a password
 pub fn redis_master_key_from_password(
@@ -137,7 +137,7 @@ impl RedisWithFindex {
 
     /// Prepare an object for upsert
     /// Note: Findex indexes are upserted even if the object is not upserted later on
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     async fn prepare_object_for_upsert(
         &self,
         uid: &str,
@@ -151,7 +151,7 @@ impl RedisWithFindex {
         // additions to the index
         let mut index_additions = HashMap::new();
 
-        //replace the existing tags (if any) with the new ones (if provided)
+        // replace the existing tags (if any) with the new ones (if provided)
         let tags = if let Some(tags) = tags {
             tags.clone()
         } else {
@@ -378,7 +378,7 @@ impl ObjectsStore for RedisWithFindex {
         for operation in operations {
             match operation {
                 AtomicOperation::Upsert((uid, object, attributes, tags, state)) => {
-                    //TODO: this operation contains a non atomic retrieve_tags. It will be hard to make this whole method atomic
+                    // TODO: this operation contains a non atomic retrieve_tags. It will be hard to make this whole method atomic
                     let db_object = self
                         .prepare_object_for_upsert(
                             uid,
@@ -408,14 +408,14 @@ impl ObjectsStore for RedisWithFindex {
                     redis_operations.push(RedisOperation::Delete(uid.clone()));
                 }
                 AtomicOperation::UpdateObject((uid, object, attributes, tags)) => {
-                    //TODO: this operation contains a non atomic retrieve_object. It will be hard to make this whole method atomic
+                    // TODO: this operation contains a non atomic retrieve_object. It will be hard to make this whole method atomic
                     let db_object = self
                         .prepare_object_for_update(uid, object, attributes, tags.as_ref())
                         .await?;
                     redis_operations.push(RedisOperation::Upsert(uid.clone(), db_object));
                 }
                 AtomicOperation::UpdateState((uid, state)) => {
-                    //TODO: this operation contains a non atomic retrieve_object. It will be hard to make this whole method atomic
+                    // TODO: this operation contains a non atomic retrieve_object. It will be hard to make this whole method atomic
                     let db_object = self.prepare_object_for_state_update(uid, *state).await?;
                     redis_operations.push(RedisOperation::Upsert(uid.clone(), db_object));
                 }
@@ -494,7 +494,7 @@ impl ObjectsStore for RedisWithFindex {
         }
         // if there are now keywords, we return an empty list
         if keywords.is_empty() {
-            return Ok(vec![])
+            return Ok(vec![]);
         }
         // search the keywords in the index
         let res = self
@@ -602,10 +602,10 @@ impl PermissionsStore for RedisWithFindex {
         &self,
         uid: &str,
         user: &str,
-        operation_types: HashSet<KmipOperation>,
+        operations: HashSet<KmipOperation>,
         _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
-        for operation in &operation_types {
+        for operation in &operations {
             self.permissions_db
                 .add(&self.findex_key, uid, user, *operation)
                 .await?;
@@ -619,10 +619,10 @@ impl PermissionsStore for RedisWithFindex {
         &self,
         uid: &str,
         user: &str,
-        operation_types: HashSet<KmipOperation>,
+        operations: HashSet<KmipOperation>,
         _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
-        for operation in &operation_types {
+        for operation in &operations {
             self.permissions_db
                 .remove(&self.findex_key, uid, user, *operation)
                 .await?;

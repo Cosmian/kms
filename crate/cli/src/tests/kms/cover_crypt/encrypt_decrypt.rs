@@ -51,7 +51,7 @@ async fn test_encrypt_decrypt_using_object_ids() -> KmsCliResult<()> {
 
     // create a user decryption key
     let user_ok_key_id = CreateUserKeyAction {
-        master_secret_key_id: master_secret_key_id.to_string(),
+        master_secret_key_id: master_secret_key_id.clone(),
         access_policy: "(Department::MKG || Department::FIN) && Security Level::Top Secret"
             .to_string(),
         tags: vec![],
@@ -80,7 +80,7 @@ async fn test_encrypt_decrypt_using_object_ids() -> KmsCliResult<()> {
 
     // this user key should not be able to decrypt the file
     let user_ko_key_id = CreateUserKeyAction {
-        master_secret_key_id: master_secret_key_id.to_string(),
+        master_secret_key_id: master_secret_key_id.clone(),
         access_policy: "Department::FIN && Security Level::Top Secret".to_string(),
         tags: vec![],
         sensitive: false,
@@ -165,7 +165,7 @@ async fn test_encrypt_decrypt_bulk_using_object_ids() -> KmsCliResult<()> {
 
     // create a user decryption key
     let user_ok_key_id = CreateUserKeyAction {
-        master_secret_key_id: master_secret_key_id.to_string(),
+        master_secret_key_id: master_secret_key_id.clone(),
         access_policy: "(Department::MKG || Department::FIN) && Security Level::Top Secret"
             .to_string(),
         tags: vec![],
@@ -209,7 +209,7 @@ async fn test_encrypt_decrypt_bulk_using_object_ids() -> KmsCliResult<()> {
 
     // this user key should not be able to decrypt the file
     let user_ko_key_id = CreateUserKeyAction {
-        master_secret_key_id: master_secret_key_id.to_string(),
+        master_secret_key_id: master_secret_key_id.clone(),
         access_policy: "Department::FIN && Security Level::Top Secret".to_string(),
         tags: vec![],
         sensitive: false,
@@ -293,7 +293,7 @@ async fn test_encrypt_decrypt_using_tags() -> KmsCliResult<()> {
 
     // create a user decryption key
     let user_ok_key_id = CreateUserKeyAction {
-        master_secret_key_id: master_secret_key_id.to_string(),
+        master_secret_key_id: master_secret_key_id.clone(),
         access_policy: "(Department::MKG || Department::FIN) && Security Level::Top Secret"
             .to_string(),
         tags: vec!["tag".to_string()],
@@ -320,8 +320,8 @@ async fn test_encrypt_decrypt_using_tags() -> KmsCliResult<()> {
     let recovered_content = read_bytes_from_file(&recovered_file)?;
     assert_eq!(original_content, recovered_content);
 
-    //TODO Left here but this has become undefined behavior in the new version:
-    //TODO if the first key found is the correct one, decryption will work, else it will fail
+    // TODO Left here but this has become undefined behavior in the new version:
+    // TODO if the first key found is the correct one, decryption will work, else it will fail
 
     // // decrypt fails because two keys with same tag exist
     // let _user_ko_key_id = create_user_decryption_key(
@@ -343,7 +343,7 @@ async fn test_encrypt_decrypt_using_tags() -> KmsCliResult<()> {
 
     // this user key should not be able to decrypt the file
     let _user_ko_key_id = CreateUserKeyAction {
-        master_secret_key_id: master_secret_key_id.to_string(),
+        master_secret_key_id: master_secret_key_id.clone(),
         access_policy: "Department::FIN && Security Level::Top Secret".to_string(),
         tags: vec!["tag_ko".to_string()],
         sensitive: false,
@@ -442,7 +442,7 @@ async fn test_encrypt_decrypt_bulk_using_tags() -> KmsCliResult<()> {
 
     // create a user decryption key
     let user_ok_key_id = CreateUserKeyAction {
-        master_secret_key_id: master_secret_key_id.to_string(),
+        master_secret_key_id: master_secret_key_id.clone(),
         access_policy: "(Department::MKG || Department::FIN) && Security Level::Top Secret"
             .to_string(),
         tags: vec!["tag_bulk".to_string()],
@@ -484,8 +484,8 @@ async fn test_encrypt_decrypt_bulk_using_tags() -> KmsCliResult<()> {
     let recovered_content = read_bytes_from_file(&recovered_file3)?;
     assert_eq!(original_content, recovered_content);
 
-    //TODO Left here but this has become undefined behavior in the new version:
-    //TODO if the first key found is the correct one, decryption will work, else it will fail
+    // TODO Left here but this has become undefined behavior in the new version:
+    // TODO if the first key found is the correct one, decryption will work, else it will fail
 
     // // decrypt fails because two keys with same tag exist
     // let _user_ko_key_id = create_user_decryption_key(

@@ -2,7 +2,21 @@
 
 use cosmian_kms_base_hsm::hsm_capabilities::{HsmCapabilities, HsmProvider};
 
+/// Path to the `SoftHSM2` `PKCS#11` shared library
+pub const SOFTHSM2_PKCS11_LIB: &str = "/usr/lib/softhsm/libsofthsm2.so";
+
 #[cfg(test)]
+// Allow test-specific lint patterns for C library integration
+#[allow(unsafe_code)]
+#[allow(clippy::panic_in_result_fn)]
+#[allow(clippy::panic)]
+#[allow(clippy::expect_used)]
+#[allow(clippy::unwrap_used)]
+#[allow(clippy::assertions_on_result_states)]
+#[allow(clippy::as_conversions)]
+#[allow(clippy::map_err_ignore)]
+#[allow(clippy::redundant_clone)]
+#[allow(clippy::explicit_iter_loop)]
 #[cfg(feature = "softhsm2")]
 mod tests;
 

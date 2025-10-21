@@ -4,7 +4,7 @@ use time::{OffsetDateTime, ext::NumericalDuration, format_description::well_know
 
 const DEMO_TIMEOUT: i64 = 90; // 3 months in days
 
-#[allow(clippy::unwrap_used)]
+#[expect(clippy::unwrap_used)]
 fn main() {
     if cfg!(feature = "timeout") {
         let now = OffsetDateTime::now_utc();

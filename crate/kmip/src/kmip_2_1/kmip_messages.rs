@@ -46,45 +46,42 @@ impl ResponseMessage {
                         "Unsupported response message version".to_owned(),
                     ));
                 };
-                payload
-                    .response_payload
-                    .as_ref()
-                    .ok_or_else(|| {
-                        KmipError::Default("Missing operation in Message Response".to_owned())
-                    })
-                    .and_then(|response_payload| match response_payload {
-                        Operation::DecryptResponse(response) => response
-                            .data
-                            .as_ref()
-                            .map(|data| data.to_vec())
-                            .ok_or_else(|| {
-                                KmipError::Default("Missing data in Decrypt Response".to_owned())
-                            }),
-                        Operation::EncryptResponse(response) => response
-                            .data
-                            .as_ref()
-                            .ok_or_else(|| {
-                                KmipError::Default("Missing data in Encrypt Response".to_owned())
-                            })
-                            .cloned(),
-                        Operation::HashResponse(response) => response
-                            .data
-                            .as_ref()
-                            .ok_or_else(|| {
-                                KmipError::Default("Missing data in Hash Response".to_owned())
-                            })
-                            .cloned(),
-                        Operation::MACResponse(response) => response
-                            .mac_data
-                            .as_ref()
-                            .ok_or_else(|| {
-                                KmipError::Default("Missing data in Mac Response".to_owned())
-                            })
-                            .cloned(),
-                        unexpected_operation => Err(KmipError::Default(format!(
-                            "Unexpected operation in Message Response: {unexpected_operation}"
-                        ))),
-                    })
+                let response_payload = payload.response_payload.as_ref().ok_or_else(|| {
+                    KmipError::Default("Missing operation in Message Response".to_owned())
+                })?;
+                match response_payload {
+                    Operation::DecryptResponse(response) => response
+                        .data
+                        .as_ref()
+                        .map(|data| data.to_vec())
+                        .ok_or_else(|| {
+                            KmipError::Default("Missing data in Decrypt Response".to_owned())
+                        }),
+                    Operation::EncryptResponse(response) => response
+                        .data
+                        .as_ref()
+                        .ok_or_else(|| {
+                            KmipError::Default("Missing data in Encrypt Response".to_owned())
+                        })
+                        .cloned(),
+                    Operation::HashResponse(response) => response
+                        .data
+                        .as_ref()
+                        .ok_or_else(|| {
+                            KmipError::Default("Missing data in Hash Response".to_owned())
+                        })
+                        .cloned(),
+                    Operation::MACResponse(response) => response
+                        .mac_data
+                        .as_ref()
+                        .ok_or_else(|| {
+                            KmipError::Default("Missing data in Mac Response".to_owned())
+                        })
+                        .cloned(),
+                    unexpected_operation => Err(KmipError::Default(format!(
+                        "Unexpected operation in Message Response: {unexpected_operation}"
+                    ))),
+                }
             })
             .collect()
     }
@@ -248,7 +245,7 @@ impl<'de> Deserialize<'de> for RequestMessageBatchItem {
                             // we must have parsed the `operation` field before
                             // TODO: handle the case where the keys are not in right order
                             let Some(operation) = operation else {
-                                return Err(de::Error::missing_field("operation"))
+                                return Err(de::Error::missing_field("operation"));
                             };
                             // recover by hand the proper type of `request_payload`
                             // the default derived deserializer does not have enough
@@ -304,7 +301,7 @@ impl<'de> Deserialize<'de> for RequestMessageBatchItem {
                                 x => {
                                     return Err(de::Error::custom(format!(
                                         "Request Message Batch Item: unsupported operation: {x:?}"
-                                    )))
+                                    )));
                                 }
                             });
                         }
@@ -459,7 +456,7 @@ impl Serialize for ResponseMessageBatchItem {
                 return Err(ser::Error::custom(
                     "missing `ResultReason` with failed status (`ResultStatus` is set to \
                      `OperationFailed`)",
-                ))
+                ));
             }
             ResultStatusEnumeration::OperationFailed | ResultStatusEnumeration::OperationUndone
                 if self.result_message.is_none() =>
@@ -467,7 +464,7 @@ impl Serialize for ResponseMessageBatchItem {
                 return Err(ser::Error::custom(
                     "missing `ResultMessage` with unsuccessful status (`ResultStatus` is set to \
                      either `OperationFailed` or `OperationUndone`)",
-                ))
+                ));
             }
             ResultStatusEnumeration::OperationPending
                 if self.asynchronous_correlation_value.is_none() =>
@@ -475,7 +472,7 @@ impl Serialize for ResponseMessageBatchItem {
                 return Err(ser::Error::custom(
                     "missing `AsynchronousCorrelationValue` with pending status (`ResultStatus` \
                      is set to `OperationPending`)",
-                ))
+                ));
             }
             _ => (),
         }
@@ -617,7 +614,7 @@ impl<'de> Deserialize<'de> for ResponseMessageBatchItem {
                             // we must have parsed the `operation` field before
                             // TODO: handle the case where the keys are not in right order
                             let Some(operation) = operation else {
-                                return Err(de::Error::missing_field("operation"))
+                                return Err(de::Error::missing_field("operation"));
                             };
                             // recover by hand the proper type of `response_payload`
                             // the default derived deserializer does not have enough
@@ -680,7 +677,7 @@ impl<'de> Deserialize<'de> for ResponseMessageBatchItem {
                                     return Err(de::Error::custom(format!(
                                         "KMIP 2 response message payload: unsupported operation: \
                                          {x:?}"
-                                    )))
+                                    )));
                                 }
                             });
                         }
@@ -698,20 +695,20 @@ impl<'de> Deserialize<'de> for ResponseMessageBatchItem {
                 match result_status {
                     ResultStatusEnumeration::OperationFailed if result_reason.is_none() => {
                         // missing `ResultReason` with failed status
-                        return Err(de::Error::missing_field("result_reason"))
+                        return Err(de::Error::missing_field("result_reason"));
                     }
                     ResultStatusEnumeration::OperationFailed
                     | ResultStatusEnumeration::OperationUndone
                         if result_message.is_none() =>
                     {
                         // missing `ResultMessage` with unsuccessful status
-                        return Err(de::Error::missing_field("result_message"))
+                        return Err(de::Error::missing_field("result_message"));
                     }
                     ResultStatusEnumeration::OperationPending
                         if asynchronous_correlation_value.is_none() =>
                     {
                         // missing `ResultMessage` with unsuccessful status
-                        return Err(de::Error::missing_field("asynchronous_correlation_value"))
+                        return Err(de::Error::missing_field("asynchronous_correlation_value"));
                     }
                     _ => (),
                 }

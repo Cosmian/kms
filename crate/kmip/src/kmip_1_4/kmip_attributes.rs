@@ -555,7 +555,7 @@ impl<'de> Deserialize<'de> for Attribute {
                             value,
                         }))
                     }
-                    //This should never happen, but just in case
+                    // This should never happen, but just in case
                     "Custom Attribute" => {
                         let value: String = map.next_value()?;
                         serde_json::from_str(&value)
@@ -634,7 +634,7 @@ impl From<Attribute> for kmip_2_1::kmip_attributes::Attribute {
                         })
                     }
                 } else {
-                    //This should never happen, but just in case
+                    // This should never happen, but just in case
                     warn!(
                         "Custom attribute name does not start with 'x-' or 'y-': {}",
                         ca.name

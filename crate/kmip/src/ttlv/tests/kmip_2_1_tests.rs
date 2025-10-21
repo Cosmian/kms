@@ -441,10 +441,10 @@ fn test_import_symmetric_key() {
         object: key,
     };
 
-    //JSON serialize
+    // JSON serialize
     let json = serde_json::to_string_pretty(&import).unwrap();
     info!("{}", json);
-    //JSON deserialize
+    // JSON deserialize
     let import_from_json = serde_json::from_str::<Import>(&json).unwrap();
     assert!(import == import_from_json);
 
@@ -579,7 +579,7 @@ fn test_attributes() {
 fn test_some_attributes() {
     #[derive(Serialize, Deserialize, Clone, PartialEq)]
     #[serde(untagged)]
-    #[allow(clippy::large_enum_variant)]
+    #[expect(clippy::large_enum_variant)]
     enum Wrapper {
         #[serde(rename_all = "PascalCase")]
         Attr {
@@ -700,7 +700,7 @@ fn test_attributes_with_links() {
 }
 
 #[test]
-pub(crate) fn test_create() {
+pub(super) fn test_create() {
     log_init(option_env!("RUST_LOG"));
     let attributes = Attributes {
         object_type: Some(ObjectType::SymmetricKey),
@@ -729,7 +729,7 @@ pub(crate) fn test_create() {
     );
 }
 
-//Verify that issue https://github.com/Cosmian/kms/issues/92
+// Verify that issue https://github.com/Cosmian/kms/issues/92
 // is actually fixed
 #[test]
 fn test_issue_deserialize_object_with_empty_attributes() {
@@ -785,7 +785,7 @@ fn get_key_block() -> KeyBlock {
                     .unwrap(),
                 ),
             },
-            //TODO:: Empty attributes used to cause a deserialization issue for `Object`; `None` works
+            // TODO:: Empty attributes used to cause a deserialization issue for `Object`; `None` works
             attributes: Some(Attributes::default()),
         }),
         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -795,7 +795,7 @@ fn get_key_block() -> KeyBlock {
 }
 
 #[test]
-pub(crate) fn test_message_enforce_enum() {
+pub(super) fn test_message_enforce_enum() {
     log_init(option_env!("RUST_LOG"));
 
     // check Message request serializer reinforcement
@@ -1321,7 +1321,7 @@ fn test_locate_with_empty_attributes() {
     assert!(locate == locate_);
 }
 
-//TODO: implement the Query operation in 2.1 first
+// TODO: implement the Query operation in 2.1 first
 #[test]
 fn test_query_response() {
     log_init(option_env!("RUST_LOG"));
@@ -1365,7 +1365,7 @@ fn test_query_response() {
 }
 
 #[test]
-pub(crate) fn test_simple_message_request() {
+pub(super) fn test_simple_message_request() {
     log_init(option_env!("RUST_LOG"));
 
     let req = RequestMessage {
@@ -1408,7 +1408,7 @@ pub(crate) fn test_simple_message_request() {
 }
 
 #[test]
-pub(crate) fn test_message_request() {
+pub(super) fn test_message_request() {
     log_init(option_env!("RUST_LOG"));
     // log_init(Some("info,cosmian_kms_server=debug"));
 
@@ -1473,7 +1473,7 @@ pub(crate) fn test_message_request() {
 }
 
 #[test]
-pub(crate) fn test_message_response() {
+pub(super) fn test_message_response() {
     log_init(option_env!("RUST_LOG"));
 
     let res = ResponseMessage {

@@ -75,7 +75,7 @@ async fn get_api_token(kms: &Arc<KMS>, api_token_id: &str) -> KResult<String> {
 /// # Returns
 /// * `Ok(())` - If authentication is successful or not required
 /// * `Err(KmsError)` - If authentication fails
-pub(crate) async fn handle_api_token(kms_server: &Arc<KMS>, req: &ServiceRequest) -> KResult<()> {
+pub(super) async fn handle_api_token(kms_server: &Arc<KMS>, req: &ServiceRequest) -> KResult<()> {
     let Some(api_token_id) = kms_server.params.api_token_id.clone() else {
         return Err(KmsError::InvalidRequest(
             "API token authentication is not configured".to_owned(),

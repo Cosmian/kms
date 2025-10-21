@@ -42,13 +42,16 @@ pub fn create_symmetric_key_kmip_object(
     attributes.object_type = Some(ObjectType::SymmetricKey);
     attributes.cryptographic_algorithm = Some(cryptographic_algorithm);
     attributes.cryptographic_length = cryptographic_length;
-    attributes.cryptographic_usage_mask = Some(
-        CryptographicUsageMask::Encrypt
-            | CryptographicUsageMask::Decrypt
-            | CryptographicUsageMask::WrapKey
-            | CryptographicUsageMask::UnwrapKey
-            | CryptographicUsageMask::KeyAgreement,
-    );
+    attributes.cryptographic_usage_mask =
+        create_attributes.cryptographic_usage_mask.or_else(|| {
+            Some(
+                CryptographicUsageMask::Encrypt
+                    | CryptographicUsageMask::Decrypt
+                    | CryptographicUsageMask::WrapKey
+                    | CryptographicUsageMask::UnwrapKey
+                    | CryptographicUsageMask::KeyAgreement,
+            )
+        });
     attributes.key_format_type = Some(KeyFormatType::TransparentSymmetricKey);
     attributes.unique_identifier = Some(UniqueIdentifier::TextString(uid));
     // set the tags in the attributes
@@ -100,7 +103,7 @@ pub fn symmetric_key_create_request<T: IntoIterator<Item = impl AsRef<str>>>(
         key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
         object_type: Some(ObjectType::SymmetricKey),
         unique_identifier: key_id,
-        sensitive: if sensitive { Some(true) } else { None },
+        sensitive: sensitive.then_some(true),
         ..Attributes::default()
     };
     attributes.set_tags(tags)?;
@@ -161,7 +164,7 @@ pub fn create_secret_data_kmip_object(
     }))
 }
 
-/// Build a `Create` request for a secrete data - random Seed of 32 bytes generated server-side
+/// Build a `Create` request for a secret data - random Seed of 32 bytes generated server-side
 pub fn secret_data_create_request<T: IntoIterator<Item = impl AsRef<str>>>(
     secret_id: Option<UniqueIdentifier>,
     tags: T,
@@ -180,7 +183,7 @@ pub fn secret_data_create_request<T: IntoIterator<Item = impl AsRef<str>>>(
         key_format_type: Some(KeyFormatType::Raw),
         object_type: Some(ObjectType::SecretData),
         unique_identifier: secret_id,
-        sensitive: if sensitive { Some(true) } else { None },
+        sensitive: sensitive.then_some(true),
         ..Attributes::default()
     };
     attributes.set_tags(tags)?;
@@ -189,6 +192,43 @@ pub fn secret_data_create_request<T: IntoIterator<Item = impl AsRef<str>>>(
     }
     Ok(Create {
         object_type: ObjectType::SecretData,
+        attributes,
+        protection_storage_masks: None,
+    })
+}
+
+/// Build a `Create` request for base objects that can be used for key derivation operations.
+/// This function can create either symmetric keys or secret data objects with `DeriveKey` usage mask.
+pub fn create_derivation_object_request(object_type: ObjectType) -> Result<Create, KmipError> {
+    let attributes = match object_type {
+        ObjectType::SymmetricKey => Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            cryptographic_length: Some(256),
+            cryptographic_usage_mask: Some(
+                CryptographicUsageMask::Encrypt
+                    | CryptographicUsageMask::Decrypt
+                    | CryptographicUsageMask::DeriveKey,
+            ),
+            key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
+            object_type: Some(ObjectType::SymmetricKey),
+            ..Attributes::default()
+        },
+        ObjectType::SecretData => Attributes {
+            cryptographic_length: Some(256),
+            cryptographic_usage_mask: Some(CryptographicUsageMask::DeriveKey),
+            key_format_type: Some(KeyFormatType::Opaque),
+            object_type: Some(ObjectType::SecretData),
+            ..Attributes::default()
+        },
+        _ => {
+            return Err(KmipError::NotSupported(format!(
+                "Object type {object_type:?} is not supported for base derivation objects"
+            )));
+        }
+    };
+
+    Ok(Create {
+        object_type,
         attributes,
         protection_storage_masks: None,
     })

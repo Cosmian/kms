@@ -176,7 +176,7 @@ pub enum CredentialValue {
 }
 
 impl CredentialValue {
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     const fn value(&self) -> u32 {
         match *self {
             Self::UsernameAndPassword { .. } => 0x0000_0001,
@@ -453,7 +453,7 @@ impl<'de> Deserialize<'de> for CredentialValue {
                         attestation_assertion,
                     });
                 } else if let Some(ticket) = ticket {
-                    return Ok(CredentialValue::Ticket { ticket })
+                    return Ok(CredentialValue::Ticket { ticket });
                 } else if let Some(username) = username {
                     if let (Some(timestamp), Some(hashed_password)) = (timestamp, hashed_password) {
                         return Ok(CredentialValue::HashedPassword {
@@ -467,7 +467,7 @@ impl<'de> Deserialize<'de> for CredentialValue {
                             username,
                             password,
                             one_time_password,
-                        })
+                        });
                     }
 
                     return Ok(CredentialValue::UsernameAndPassword { username, password });
@@ -518,6 +518,7 @@ pub struct Nonce {
 }
 
 #[kmip_enum]
+#[derive(Default)]
 pub enum ErrorReason {
     Item_Not_Found = 0x0000_0001,
     Response_Too_Large = 0x0000_0002,
@@ -589,13 +590,8 @@ pub enum ErrorReason {
     Unknown_Object_Group = 0x0000_004A,
     Constraint_Violation = 0x0000_004B,
     Duplicate_Process_Request = 0x0000_004C,
+    #[default]
     General_Failure = 0x0000_0100,
-}
-
-impl Default for ErrorReason {
-    fn default() -> Self {
-        Self::General_Failure
-    }
 }
 
 /// The Message Extension is an OPTIONAL structure that MAY be appended to any Batch Item.
@@ -841,7 +837,6 @@ pub enum MaskGenerator {
 pub struct CryptographicUsageMask(pub(crate) u32);
 
 bitflags::bitflags! {
-#[allow(clippy::indexing_slicing)]
     impl CryptographicUsageMask: u32 {
         /// Allow for signing. Applies to Sign operation. Valid for PGP Key, Private Key
         const Sign=0x0000_0001;
@@ -1003,7 +998,7 @@ pub enum RevocationReasonCode {
     Superseded = 0x0000_0005,
     CessationOfOperation = 0x0000_0006,
     PrivilegeWithdrawn = 0x0000_0007,
-    //Extensions 8XXXXXXX
+    // Extensions 8XXXXXXX
 }
 
 /// The Revocation Reason attribute is a structure used to indicate why the

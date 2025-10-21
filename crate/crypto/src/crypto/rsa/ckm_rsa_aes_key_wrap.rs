@@ -113,7 +113,12 @@ pub fn ckm_rsa_aes_key_unwrap(
     Ok(plaintext)
 }
 
-#[allow(clippy::panic_in_result_fn, clippy::unwrap_used)]
+#[allow(
+    clippy::panic_in_result_fn,
+    clippy::unwrap_used,
+    clippy::unwrap_in_result,
+    clippy::expect_used
+)]
 #[cfg(test)]
 mod tests {
     use std::{fs, path::Path};
@@ -138,7 +143,7 @@ mod tests {
         error::{CryptoError, result::CryptoResult},
     };
 
-    const RSA_PRIVATE_KEY: &str = r"-----BEGIN PRIVATE KEY-----
+    const RSA_PRIVATE_KEY: &str = "-----BEGIN PRIVATE KEY-----
 MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQCzdXCsuC+YqBvc
 gGTe9oF4L3Ni0pj2pk6yTfGqt1Az/08IvueZsetFnrIew9ZSaACobSlwIs2moc3s
 ukkYTQpDxNEeRg1lPQArDlhz+twBbLx0q31RWwT0kW8R/+UW5GO4uehUhduAgi6s
@@ -167,7 +172,7 @@ qeDmXs6dH40L2I0TLPF0Ax2V7DgXwgeCPnlwLrf96xpV+2UXt1zvqzU8BdK8qT4b
 yLT7mm6+hAwMp3y0u6oBTA==
 -----END PRIVATE KEY-----";
 
-    const RSA_PUBLIC_KEY: &str = r"-----BEGIN PUBLIC KEY-----
+    const RSA_PUBLIC_KEY: &str = "-----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAs3VwrLgvmKgb3IBk3vaB
 eC9zYtKY9qZOsk3xqrdQM/9PCL7nmbHrRZ6yHsPWUmgAqG0pcCLNpqHN7LpJGE0K
 Q8TRHkYNZT0AKw5Yc/rcAWy8dKt9UVsE9JFvEf/lFuRjuLnoVIXbgIIurIrMUqal
@@ -181,7 +186,8 @@ FQIDAQAB
     fn test_rsa_kem_wrap_unwrap() -> Result<(), CryptoError> {
         #[cfg(not(feature = "non-fips"))]
         // Load FIPS provider module from OpenSSL.
-        openssl::provider::Provider::load(None, "fips").unwrap();
+        openssl::provider::Provider::load(None, "fips")
+            .map_err(|e| CryptoError::Default(format!("Failed to load FIPS provider: {e}")))?;
 
         let priv_key = PKey::from_rsa(openssl::rsa::Rsa::generate(2048)?)?;
         let pub_key = PKey::public_key_from_pem(&priv_key.public_key_to_pem()?)?;
@@ -332,6 +338,7 @@ FQIDAQAB
 
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     #[tokio::test]
+    #[allow(clippy::unwrap_in_result)]
     async fn test_wrap_against_openssl_cli() -> CryptoResult<()> {
         log_init(Some("info"));
         if !assert_openssl3_cli().await {
@@ -343,12 +350,18 @@ FQIDAQAB
 
         // PKCS#8 RSA key
         let priv_key = PKey::private_key_from_pem(RSA_PRIVATE_KEY.as_bytes())?;
-        let secret_bytes = priv_key.rsa().unwrap().private_key_to_der()?;
+        let secret_bytes = priv_key
+            .rsa()
+            .map_err(|e| CryptoError::Default(format!("Failed to get RSA: {e}")))?
+            .private_key_to_der()?;
         test_wrap_against_openssl_cli_inner(tmp_path, &secret_bytes).await?;
 
         // AES KEY
         let dek = "deadbeef7dfbf5419200f2ccb50bb24aafbeb0f07dfbf5419200f2ccb50bb24a";
-        test_wrap_against_openssl_cli_inner(tmp_path, &hex::decode(dek).unwrap()).await
+        let dek_bytes = hex::decode(dek)
+            .map_err(|e| CryptoError::Default(format!("Failed to decode hex: {e}")))?;
+        test_wrap_against_openssl_cli_inner(tmp_path, &dek_bytes).await?;
+        Ok(())
     }
     async fn test_wrap_against_openssl_cli_inner(
         tmp_path: &Path,
@@ -359,7 +372,11 @@ FQIDAQAB
 
         let ephemeral = "afbeb0f07dfbf5419200f2ccb50bb24aafbeb0f07dfbf5419200f2ccb50bb24a";
         let ephemeral_file = tmp_path.join("ephemeral.bin");
-        fs::write(&ephemeral_file, hex::decode(ephemeral).unwrap())?;
+        fs::write(
+            &ephemeral_file,
+            hex::decode(ephemeral)
+                .map_err(|e| CryptoError::Default(format!("Failed to decode hex: {e}")))?,
+        )?;
 
         let priv_key_file = tmp_path.join("rsa_private_key.pem");
         fs::write(&priv_key_file, RSA_PRIVATE_KEY)?;
@@ -370,7 +387,8 @@ FQIDAQAB
         let oaep_encapsulation = ckm_rsa_pkcs_oaep_key_wrap(
             &pub_key,
             HashingAlgorithm::SHA1,
-            &hex::decode(ephemeral).unwrap(),
+            &hex::decode(ephemeral)
+                .map_err(|e| CryptoError::Default(format!("Failed to decode hex: {e}")))?,
         )?;
         fs::write(&oaep_encapsulation_file, oaep_encapsulation)?;
 
@@ -400,14 +418,22 @@ FQIDAQAB
             );
         }
         let rec_ephemeral = fs::read(&rec_ephemeral_file)?;
-        assert_eq!(rec_ephemeral, hex::decode(ephemeral).unwrap());
+        assert_eq!(
+            rec_ephemeral,
+            hex::decode(ephemeral)
+                .map_err(|e| CryptoError::Default(format!("Failed to decode hex: {e}")))?
+        );
 
         // RFC 5649 of DEK using the ephemeral key
-        let rfc5649_encapsulation = rfc5649_wrap(secret_bytes, &hex::decode(ephemeral).unwrap())?;
+        let rfc5649_encapsulation = rfc5649_wrap(
+            secret_bytes,
+            &hex::decode(ephemeral)
+                .map_err(|e| CryptoError::Default(format!("Failed to decode hex: {e}")))?,
+        )?;
 
         let rfc5649_encapsulation_file = tmp_path.join("rfc5649_encapsulation.bin");
         fs::write(&rfc5649_encapsulation_file, rfc5649_encapsulation)?;
-        //Check
+        // Check
         let rec_secret_file = tmp_path.join("rec_secret.bin");
         let output = tokio::process::Command::new("openssl")
             .arg("enc")
@@ -435,6 +461,7 @@ FQIDAQAB
 
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     #[tokio::test]
+    #[allow(clippy::unwrap_in_result)]
     async fn test_unwrap_against_openssl_cli() -> CryptoResult<()> {
         log_init(Some("info"));
         if !assert_openssl3_cli().await {
@@ -446,12 +473,18 @@ FQIDAQAB
 
         // PKCS#8 RSA key
         let priv_key = PKey::private_key_from_pem(RSA_PRIVATE_KEY.as_bytes())?;
-        let secret_bytes = priv_key.rsa().unwrap().private_key_to_der()?;
+        let secret_bytes = priv_key
+            .rsa()
+            .map_err(|e| CryptoError::Default(format!("Failed to get RSA: {e}")))?
+            .private_key_to_der()?;
         test_unwrap_against_openssl_cli_inner(tmp_path, &secret_bytes).await?;
 
         // AES KEY
         let dek = "deadbeef7dfbf5419200f2ccb50bb24aafbeb0f07dfbf5419200f2ccb50bb24a";
-        test_unwrap_against_openssl_cli_inner(tmp_path, &hex::decode(dek).unwrap()).await
+        let dek_bytes = hex::decode(dek)
+            .map_err(|e| CryptoError::Default(format!("Failed to decode hex: {e}")))?;
+        test_unwrap_against_openssl_cli_inner(tmp_path, &dek_bytes).await?;
+        Ok(())
     }
     async fn test_unwrap_against_openssl_cli_inner(
         tmp_path: &Path,
@@ -462,7 +495,11 @@ FQIDAQAB
 
         let ephemeral = "afbeb0f07dfbf5419200f2ccb50bb24aafbeb0f07dfbf5419200f2ccb50bb24a";
         let ephemeral_file = tmp_path.join("ephemeral.bin");
-        fs::write(&ephemeral_file, hex::decode(ephemeral).unwrap())?;
+        fs::write(
+            &ephemeral_file,
+            hex::decode(ephemeral)
+                .map_err(|e| CryptoError::Default(format!("Failed to decode hex: {e}")))?,
+        )?;
 
         let pub_key_file = tmp_path.join("rsa_public_key.pem");
         fs::write(&pub_key_file, RSA_PUBLIC_KEY)?;
@@ -493,13 +530,15 @@ FQIDAQAB
         }
         let oaep_encapsulation = fs::read(&oaep_encapsulation_file)?;
 
-        //chack that we can decrypt the ephemeral using KEK_FOR_BYOK and our implementation
+        // chack that we can decrypt the ephemeral using KEK_FOR_BYOK and our implementation
         let priv_key = PKey::private_key_from_pem(RSA_PRIVATE_KEY.as_bytes())?;
         let rec_ephemeral =
             ckm_rsa_pkcs_oaep_key_unwrap(&priv_key, HashingAlgorithm::SHA1, &oaep_encapsulation)?;
         assert_eq!(
             rec_ephemeral.as_slice(),
-            hex::decode(ephemeral).unwrap().as_slice()
+            hex::decode(ephemeral)
+                .map_err(|e| CryptoError::Default(format!("Failed to decode hex: {e}")))?
+                .as_slice()
         );
 
         // RFC 5649 of DEK using the ephemeral key
@@ -522,9 +561,12 @@ FQIDAQAB
             crypto_bail!("test_for_byok: RFC5649 pkeyutl failed: {output:?}");
         }
         let rfc5649_encapsulation = fs::read(&rfc5649_encapsulation_file)?;
-        //Check against our implementation of NistKeyWrap
-        let rec_secret_bytes =
-            rfc5649_unwrap(&rfc5649_encapsulation, &hex::decode(ephemeral).unwrap())?;
+        // Check against our implementation of NistKeyWrap
+        let rec_secret_bytes = rfc5649_unwrap(
+            &rfc5649_encapsulation,
+            &hex::decode(ephemeral)
+                .map_err(|e| CryptoError::Default(format!("Failed to decode hex: {e}")))?,
+        )?;
         assert_eq!(rec_secret_bytes.as_slice(), secret_bytes);
 
         // Build the complete ciphertext
@@ -538,15 +580,14 @@ FQIDAQAB
         Ok(())
     }
 
-    const KEK_FOR_BYOK: &str = r"-----BEGIN PUBLIC KEY-----
+    const KEK_FOR_BYOK: &str = "-----BEGIN PUBLIC KEY-----
 MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAk0HniT34p3O8bD3pyy7p7YASh2Tk7oYag4fbFKVxMX23KX8n68Jx7LWBKgbv6JF6ndZMmUsiBRWoaRC1SUxmtMTZ551CnqeAN47e9FXL1QakHlje4+wK9/tCfllZ2jYNLhvRy1NjTi1ounhkOQC1gdNasvNIRsfzgNVJ8nwgK+1ZJSqkNaoBbQHlJhvUXD3ba0fVH66gat+ns1KPk0HR1WlepZ4cMBmwFlZtPStAqM0dNnflcUzpTeeLLqbuBSzcT0Qb1Q0a/qakmy5SM47nR6RzTZ8A+bOLXP9G+fiK2UPSaAxGMTh8+LfrJqZTEW/lG5GraIbqsJwEQd9ibTlPIDMz8DPUcASUNqU9wQWcVqcjesZXJTb+xurcUPxDvWH/TnIQa0CKt3xcBXw2GZYkn8ROhk/woPJi9IC+rg1TnA4LruNB2OD2Ltg+wt90JYHW6DIxWjVe8/dbEZFof9iE/dYcZqNcipy79C6kJw9Cq2Eq4nP9KX0lk0tAo1B+EI+adQNJv/Hho1fStabk1zSGGsjR2p0izi76AEeNwIn3NkQMewQlKZWHfKz9T2MT8kjsAqvGwDW7g/p7uBhVn2s05kIW8En2JBpitLpqqRTiErS6UsyL1EYwc35BjfMySCt89YZU/wOi/2O1kaHvfi4NjCxclQXM1Y74WjVr1LFgG2MCAwEAAQ==
 -----END PUBLIC KEY-----";
 
-    const KV_KEY_IDENTIFIER: &str =
-        "https://hsmbackedkeyvault.vault.azure.net/keys/KEKForBYOK/5e617a4d39c74f47b0b7d345f6a49d1b";
+    const KV_KEY_IDENTIFIER: &str = "https://hsmbackedkeyvault.vault.azure.net/keys/KEKForBYOK/5e617a4d39c74f47b0b7d345f6a49d1b";
 
-    #[allow(dead_code)]
-    const EC_PRIVATE_KEY: &str = r"-----BEGIN PRIVATE KEY-----
+    #[expect(dead_code)]
+    const EC_PRIVATE_KEY: &str = "-----BEGIN PRIVATE KEY-----
 MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg22cFLXwIE4yi+G2/
 xQWVI5BTNNbJn4HpvZ5BOmddMvmhRANCAATkiSFiMaIvIFBB1FiBzij+2PQyQNj6
 vKJMiWk/TowEqm5zcvCeTsPlceZdxidTBNB/EPCSxIHpycyzT3pQ4ehI

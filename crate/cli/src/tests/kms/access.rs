@@ -5,10 +5,10 @@ use cosmian_kms_client::{
     kmip_2_1::{KmipOperation, kmip_types::UniqueIdentifier},
     reexport::cosmian_kms_client_utils::symmetric_utils::DataEncryptionAlgorithm,
 };
-use cosmian_logger::{log_init, trace};
+use cosmian_logger::trace;
 use serial_test::serial;
 use test_kms_server::{
-    start_default_test_kms_server_with_cert_auth,
+    init_test_logging, start_default_test_kms_server_with_cert_auth,
     start_default_test_kms_server_with_privileged_users,
 };
 
@@ -285,25 +285,25 @@ pub(crate) async fn test_grant_error() -> KmsCliResult<()> {
 #[tokio::test]
 #[serial]
 pub(crate) async fn test_revoke_access() -> KmsCliResult<()> {
-    log_init(None);
+    init_test_logging();
     // the client conf will use the owner cert
     let ctx = start_default_test_kms_server_with_cert_auth().await;
     let key_id = gen_key(&ctx.get_owner_client()).await?;
 
-    /*    // the user should not be able to export
-    assert!(
-        export(
-            &ctx.user_client_conf_path,
-            "sym",
-            &key_id,
-            "/tmp/output.json",
-            None,
-            false,
-            None,
-            false,
-        )
-        .is_err()
-    );*/
+    //    // the user should not be able to export
+    // assert!(
+    // export(
+    // &ctx.user_client_conf_path,
+    // "sym",
+    // &key_id,
+    // "/tmp/output.json",
+    // None,
+    // false,
+    // None,
+    // false,
+    // )
+    // .is_err()
+    // );
 
     // switch back to owner
     // grant encrypt and decrypt access to user
@@ -431,7 +431,7 @@ pub(crate) async fn test_list_access_rights_error() -> KmsCliResult<()> {
 #[tokio::test]
 #[serial]
 pub(crate) async fn test_list_owned_objects() -> KmsCliResult<()> {
-    log_init(None);
+    init_test_logging();
     let ctx = start_default_test_kms_server_with_cert_auth().await;
     let key_id = gen_key(&ctx.get_owner_client()).await?;
 
@@ -495,7 +495,7 @@ pub(crate) async fn test_list_owned_objects() -> KmsCliResult<()> {
 #[tokio::test]
 #[serial]
 pub(crate) async fn test_access_right_obtained() -> KmsCliResult<()> {
-    log_init(None);
+    init_test_logging();
     let ctx = start_default_test_kms_server_with_cert_auth().await;
     let key_id = gen_key(&ctx.get_owner_client()).await?;
 
@@ -882,19 +882,18 @@ pub(crate) async fn test_grant_with_without_object_uid() -> KmsCliResult<()> {
 
 #[tokio::test]
 #[serial]
-#[allow(clippy::large_stack_frames)]
 pub(crate) async fn test_privileged_users() -> KmsCliResult<()> {
-    log_init(option_env!("RUST_LOG"));
+    init_test_logging();
     // log_init(Some("info,cosmian_kms=debug"));
     let ctx = start_default_test_kms_server_with_privileged_users(vec![
-        "tech@cosmian.com".to_owned(),
+        "owner.client@acme.com".to_owned(),
         "user.privileged@acme.com".to_owned(),
     ])
     .await;
 
-    //By default privileged users can create or import objects
+    // By default privileged users can create or import objects
     let key_id = gen_key(&ctx.get_owner_client()).await?;
-    //The owner should be able to grant access
+    // The owner should be able to grant access
     GrantAccess {
         object_uid: Some(key_id.to_string()),
         user: "user.client@acme.com".to_owned(),

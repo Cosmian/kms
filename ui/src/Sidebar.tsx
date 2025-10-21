@@ -1,5 +1,5 @@
 import { Layout, Menu, MenuProps, Tooltip } from "antd";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "./AuthContext.tsx";
 import { MenuItem, menuItems } from "./menuItems.tsx";
@@ -19,19 +19,19 @@ const Sidebar: React.FC = () => {
     const [processedMenuItems, setProcessedMenuItems] = useState<MenuItem[]>(menuItems);
     const { idToken, serverUrl } = useAuth();
 
-    useEffect(() => {
-        const fetchCreatePermission = async () => {
-            try {
-                const response = await getNoTTLVRequest("/access/create", idToken, serverUrl);
-                processMenuItems(response.has_create_permission);
-            } catch (e) {
-                console.error("Error fetching create permission:", e);
-                processMenuItems(false);
-            }
-        };
+    const fetchCreatePermission = useCallback(async () => {
+        try {
+            const response = await getNoTTLVRequest("/access/create", idToken, serverUrl);
+            processMenuItems(response.has_create_permission);
+        } catch (e) {
+            console.error("Error fetching create permission:", e);
+            processMenuItems(false);
+        }
+    }, [idToken, serverUrl]);
 
+    useEffect(() => {
         fetchCreatePermission();
-    }, []);
+    }, [fetchCreatePermission]);
 
     // Process menu items to disable "Create" and "Import" options based on access rights
     const processMenuItems = (hasCreateAccess: boolean) => {

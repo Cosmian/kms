@@ -1,14 +1,6 @@
 use std::sync::Arc;
 
-use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
-    kmip_operations::Operation,
-    kmip_types::{
-        CryptographicAlgorithm, CryptographicParameters, RecommendedCurve, UniqueIdentifier,
-    },
-    requests::{create_ec_key_pair_request, decrypt_request, encrypt_request},
-};
-use uuid::Uuid;
-
+use crate::tests::hsm::export_object;
 use crate::{
     config::ServerParams,
     core::KMS,
@@ -19,6 +11,15 @@ use crate::{
         test_utils::get_tmp_sqlite_path,
     },
 };
+use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::kmip_objects::ObjectType;
+use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
+    kmip_operations::Operation,
+    kmip_types::{
+        CryptographicAlgorithm, CryptographicParameters, RecommendedCurve, UniqueIdentifier,
+    },
+    requests::{create_ec_key_pair_request, decrypt_request, encrypt_request},
+};
+use uuid::Uuid;
 
 pub(super) async fn test_wrapped_ec_dek() -> KResult<()> {
     let kek_uuid = Uuid::new_v4();
@@ -29,7 +30,7 @@ pub(super) async fn test_wrapped_ec_dek() -> KResult<()> {
     let mut clap_config = hsm_clap_config(&owner, Some(kek_uuid))?;
     clap_config.db.sqlite_path = sqlite_path.clone();
     let Some(kek_uid) = clap_config.key_encryption_key.clone() else {
-        return Err(KmsError::Default("Missing KEK".to_owned()))
+        return Err(KmsError::Default("Missing KEK".to_owned()));
     };
 
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
@@ -53,9 +54,7 @@ pub(super) async fn test_wrapped_ec_dek() -> KResult<()> {
     // re-instantiate the kms
     let mut clap_config = hsm_clap_config(&owner, Some(kek_uuid))?;
     clap_config.db.sqlite_path = sqlite_path.clone();
-    let Some(kek_uid) = clap_config.key_encryption_key.clone() else {
-        return Err(KmsError::Default("Missing KEK".to_owned()))
-    };
+
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
 
     // Encrypt with the DEK - unwrapping the DEK reloaded from the DB
@@ -65,6 +64,32 @@ pub(super) async fn test_wrapped_ec_dek() -> KResult<()> {
     // Decrypt with the DEK - using the unwrapped DEK in cache
     let plaintext = ec_decrypt(&dek_uid, &owner, &kms, &ciphertext).await?;
     assert_eq!(data.to_vec(), plaintext);
+
+    let exported_sk = export_object(&kms, &owner, &dek_uid).await?;
+    assert_eq!(exported_sk.object_type(), ObjectType::PrivateKey);
+    assert!(exported_sk.is_wrapped());
+
+    let exported_pk = export_object(&kms, &owner, &format!("{dek_uid}_pk")).await?;
+    assert_eq!(exported_pk.object_type(), ObjectType::PublicKey);
+    assert!(exported_pk.is_wrapped());
+
+    drop(kms);
+    let mut clap_config = hsm_clap_config(&owner, Some(kek_uuid))?;
+    clap_config.db.sqlite_path = sqlite_path.clone();
+    clap_config.default_unwrap_type =
+        Some(["PrivateKey".to_owned(), "PublicKey".to_owned()].to_vec());
+    let Some(kek_uid) = clap_config.key_encryption_key.clone() else {
+        return Err(KmsError::Default("Missing KEK".to_owned()));
+    };
+    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+
+    let exported_sk = export_object(&kms, &owner, &dek_uid).await?;
+    assert_eq!(exported_sk.object_type(), ObjectType::PrivateKey);
+    assert!(!exported_sk.is_wrapped());
+
+    let exported_pk = export_object(&kms, &owner, &format!("{dek_uid}_pk")).await?;
+    assert_eq!(exported_pk.object_type(), ObjectType::PublicKey);
+    assert!(!exported_pk.is_wrapped());
 
     // Revoke and destroy all
     revoke_key(&dek_uid, &owner, &kms).await?;
@@ -89,7 +114,7 @@ async fn create_ec_dek(dek_uid: &str, kek_uid: &str, owner: &str, kms: &Arc<KMS>
     )
     .await?;
     let Operation::CreateKeyPairResponse(create_response) = &response[0] else {
-        return Err(KmsError::ServerError("invalid response".to_owned()))
+        return Err(KmsError::ServerError("invalid response".to_owned()));
     };
     assert_eq!(
         create_response.private_key_unique_identifier,
@@ -124,7 +149,7 @@ async fn ec_encrypt(dek_uid: &str, owner: &str, kms: &Arc<KMS>, data: &[u8]) -> 
         .first()
         .ok_or_else(|| KmsError::ServerError("no response".to_owned()))?
     else {
-        return Err(KmsError::ServerError("invalid response".to_owned()))
+        return Err(KmsError::ServerError("invalid response".to_owned()));
     };
     let response = response.to_owned();
     assert_eq!(
@@ -161,7 +186,7 @@ async fn ec_decrypt(
         .first()
         .ok_or_else(|| KmsError::ServerError("no response".to_owned()))?
     else {
-        return Err(KmsError::ServerError("invalid response".to_owned()))
+        return Err(KmsError::ServerError("invalid response".to_owned()));
     };
     let response = response.to_owned();
     assert_eq!(

@@ -1,16 +1,25 @@
 # TOML configuration file
 
 The KMS server can be configured using a TOML file. When a configuration file is provided,
-the [command line arguments](./server_cli.md) are ignored.
+the [command line arguments](./server_cli.md) are ignored (except `--help` / `--version`).
 
-By default, the configuration filepath is retrieved in the following order:
+Configuration file loading precedence:
 
-1. If the environment variable `COSMIAN_KMS_CONF` is set and the path behind exists, the KMS server will use this
-   configuration file,
-2. Otherwise, on Linux and macOS, if a file is found at `/etc/cosmian/kms.toml`, the KMS server will use this file.
-   On Windows, it will look for a file at `C:\ProgramData\Cosmian\kms.toml`, Make sure that the file is readable
-   by the user running the KMS server.
-3. Finally, if none of the above is found, the KMS server will use the [command line arguments](./server_cli.md)
+1. Command line flag `-c/--config <FILE>` (highest precedence). If the file does not exist, the server exits with an error.
+2. Environment variable `COSMIAN_KMS_CONF` (must point to an existing file).
+3. Default system path: `/etc/cosmian/kms.toml` (Linux/macOS) or `C:\\ProgramData\\Cosmian\\kms.toml` (Windows).
+4. If none of the above files is found, the server falls back to parsing the [command line arguments](./server_cli.md) and environment variables.
+
+Examples:
+
+```bash
+# Explicit configuration file
+./cosmian-kms -c ./test_data/configs/server/jwt_auth.toml
+
+# Using an environment variable
+export COSMIAN_KMS_CONF=./test_data/configs/server/jwt_auth.toml
+./cosmian-kms
+```
 
 The file should be a TOML file with the following structure:
 
@@ -50,6 +59,10 @@ hsm_password = ["<password_of_1st_slot1>", "<password_of_2bd_slot2>", ...]
 # This is most useful to ensure that an HSM key wraps all keys in the KMS database.
 # Note: This setting is ignored when a key is imported in JSON TTLV format and is already wrapped.
 key_encryption_key = "kek ID"
+
+# Specifies which KMIP object types should be automatically unwrapped when retrieved.
+# Valid values: ["PrivateKey", "PublicKey", "SymmetricKey", "SecretData"]
+default_unwrap_type = []
 
 # All users can create and import objects in the KMS by default.
 # Only these users can create and import objects when this setting contains a user ID list.
@@ -123,28 +136,26 @@ proxy_custom_auth_header = "my_custom_auth_token"
 # The list of domains to exclude from the proxy.
 proxy_exclusion_list = ["domain1", "domain2"]
 
-# Check the Authenticating Users documentation pages for more information.
-[auth]
-# The issuer URI of the JWT token
-# To handle multiple identity managers, add different parameters
-# under each argument (jwt-issuer-uri, jwks-uri, and optionally jwt-audience),
-# keeping them in the same order in the three lists.
-# For Auth0, this is the delegated authority domain configured on Auth0, for instance `https://<your-tenant>.<region>.auth0.com/`
-# For Google, this would be `https://accounts.google.com`
-jwt_issuer_uri = ["<jwt issuer uri>"]
-
-# The JWKS (Json Web Key Set) URI of the JWT token
-# To handle multiple identity managers, add different parameters under each argument
-#  (jwt-issuer-uri, jwks-uri and optionally jwt-audience), keeping them in the same order
-# To set an identity provider configuration element to None, set its value to an empty string.
-# For Auth0, this would be `https://<your-tenant>.<region>.auth0.com/.well-known/jwks.json`
-# For Google, this would be `https://www.googleapis.com/oauth2/v3/certs`
-# Defaults to `<jwt-issuer-uri>/.well-known/jwks.json` if not set
-jwks_uri = ["<jwks uri>"]
-
-# The audience of the JWT token
-# Optional: the server will validate the JWT `aud` claim against this value if set
-jwt_audience = ["<jwt audience>"]
+# Identity Provider Authentication
+[idp_auth]
+# JWT authentication provider configuration
+#
+# Each provider configuration should be in the format: "JWT_ISSUER_URI,JWKS_URI,JWT_AUDIENCE"
+# where:
+# - JWT_ISSUER_URI: The issuer URI of the JWT token (required)
+# - JWKS_URI: The JWKS (JSON Web Key Set) URI (optional, defaults to <JWT_ISSUER_URI>/.well-known/jwks.json)
+# - JWT_AUDIENCE: The audience of the JWT token (optional, can be empty)
+#
+# Examples:
+# - "https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs,my-audience"
+# - "https://auth0.example.com,,my-app"  (JWKS URI will default)
+# - "https://keycloak.example.com/auth/realms/myrealm,,"  (no audience, JWKS URI will default)
+#
+# For Auth0, the issuer would be like: https://<your-tenant>.<region>.auth0.com/
+# For Google, this would be: https://accounts.google.com
+#
+# This argument can be repeated to configure multiple identity providers.
+jwt_auth_provider = ["<jwt issuer uri>,<jwks uri>,<jwt audience>"]
 
 [workspace]
 # The root folder where the KMS will store its data
@@ -193,7 +204,7 @@ ui_index_html_folder = "path/kms/ui/dist"
 
 # Configuration for the handling of authentication with OIDC from the KMS UI.
 # This is used to authenticate users when they access the KMS UI.
-# The same Identity Provider must **also** be configured in the [auth] section above.
+# The same Identity Provider must **also** be configured in the [idp_auth] section above.
 [ui_config.ui_oidc_auth]
 ui_oidc_client_id = "<client id>"
 ui_oidc_client_secret = "<client secret>" (optional)

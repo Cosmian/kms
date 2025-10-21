@@ -1,4 +1,4 @@
-#![allow(clippy::unwrap_used)]
+#![allow(clippy::unwrap_used, clippy::unwrap_in_result)]
 
 use std::{fs, path, sync::Arc};
 
@@ -17,7 +17,6 @@ use crate::{
     config::ServerParams, core::KMS, error::KmsError, tests::test_utils::https_clap_config,
 };
 
-#[allow(clippy::panic_in_result_fn)]
 #[tokio::test]
 pub(crate) async fn test_validate_with_certificates_bytes() -> Result<(), KmsError> {
     cosmian_logger::log_init(None);
@@ -108,7 +107,6 @@ pub(crate) async fn test_validate_with_certificates_bytes() -> Result<(), KmsErr
     Ok(())
 }
 
-#[allow(clippy::panic_in_result_fn)]
 #[tokio::test]
 pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError> {
     cosmian_logger::log_init(None);
@@ -291,4 +289,4 @@ pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError
     Ok(())
 }
 
-//same tests but certs imported in kms.
+// same tests but certs imported in kms.

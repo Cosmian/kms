@@ -49,9 +49,9 @@ impl DecryptAction {
         let (cryptographic_algorithm, data) = if self.input_files.len() > 1 {
             (
                 CryptographicAlgorithm::CoverCryptBulk,
-                read_bytes_from_files_to_bulk(&self.input_files).with_context(|| {
-                    "Cannot read bytes from encrypted files to LEB-serialize them"
-                })?,
+                read_bytes_from_files_to_bulk(&self.input_files).with_context(
+                    || "Cannot read bytes from encrypted files to LEB-serialize them",
+                )?,
             )
         } else {
             let first_file = self
@@ -60,9 +60,9 @@ impl DecryptAction {
                 .context("No input files provided")?;
             (
                 CryptographicAlgorithm::CoverCrypt,
-                read_bytes_from_file(first_file).with_context(|| {
-                    "Cannot read bytes from encrypted files to LEB-serialize them"
-                })?,
+                read_bytes_from_file(first_file).with_context(
+                    || "Cannot read bytes from encrypted files to LEB-serialize them",
+                )?,
             )
         };
 

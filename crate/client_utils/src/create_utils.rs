@@ -111,7 +111,7 @@ pub fn prepare_sym_key_elements(
             _ => {
                 return Err(UtilsError::Default(format!(
                     "invalid number of bits for sha3 {number_of_bits}"
-                )))
+                )));
             }
         },
         SymmetricAlgorithm::Shake => match number_of_bits {
@@ -120,7 +120,7 @@ pub fn prepare_sym_key_elements(
             _ => {
                 return Err(UtilsError::Default(format!(
                     "invalid number of bits for shake {number_of_bits}"
-                )))
+                )));
             }
         },
     };

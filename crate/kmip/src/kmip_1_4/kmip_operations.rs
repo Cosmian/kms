@@ -8,9 +8,19 @@ use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use zeroize::Zeroizing;
 
-use super::kmip_objects::Certificate;
-#[allow(clippy::wildcard_imports)]
-use super::{kmip_data_structures::*, kmip_objects::Object, kmip_types::*};
+use super::{
+    kmip_data_structures::{
+        CapabilityInformation, CryptographicParameters, DerivationParameters, ExtensionInformation,
+        KeyWrappingData, KeyWrappingSpecification, ProfileInformation, RNGParameters,
+        ServerInformation, TemplateAttribute,
+    },
+    kmip_objects::{Certificate, Object},
+    kmip_types::{
+        CancellationResult, CertificateRequestType, ClientRegistrationMethod, DerivationMethod,
+        KeyCompressionType, KeyFormatType, ObjectGroupMember, ObjectType, OperationEnumeration,
+        QueryFunction, SplitKeyMethod, StorageStatusMask, UniqueIdentifier, ValidityIndicator,
+    },
+};
 use crate::{
     KmipError, KmipResultHelper,
     kmip_0::{
@@ -1151,7 +1161,7 @@ pub struct Decrypt {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub authenticated_encryption_additional_data: Option<Vec<u8>>,
 
-    ///Specifies the tag that will be needed to authenticate the decrypted data.
+    /// Specifies the tag that will be needed to authenticate the decrypted data.
     /// If supplied in multipart decryption, this data MUST be supplied on the initial
     /// Decrypt request
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1585,7 +1595,6 @@ impl TryFrom<kmip_2_1::kmip_operations::ImportResponse> for ImportResponse {
 /// The operation that processes a specific request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(untagged)]
-#[allow(clippy::large_enum_variant)]
 pub enum Operation {
     Activate(Activate),
     ActivateResponse(ActivateResponse),
@@ -2060,7 +2069,7 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             op => {
                 return Err(KmipError::NotSupported(format!(
                     "Conversion of KMIP 1.x operation to KMIP 2.1 is not supported for: {op:?}"
-                )))
+                )));
             }
         })
     }
@@ -2217,7 +2226,7 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
                 return Err(KmipError::NotSupported(format!(
                     "Conversion from KMIP 2.1 to KMIP 1.x is not supported for Response \
                      Operation: {op}"
-                )))
+                )));
             }
         })
     }

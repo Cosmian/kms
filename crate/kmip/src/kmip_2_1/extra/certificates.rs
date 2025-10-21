@@ -17,18 +17,16 @@ impl Attributes {
     /// # Returns
     /// * The requested validity days if it was set before
     pub fn set_requested_validity_days(&mut self, requested_validity_days: i32) -> Option<i32> {
-        self.set_vendor_attribute(
+        let val = self.set_vendor_attribute(
             VENDOR_ID_COSMIAN,
             VENDOR_ATTR_REQUESTED_VALIDITY_DAYS,
             VendorAttributeValue::Integer(requested_validity_days),
-        )
-        .and_then(|val| {
-            if let VendorAttributeValue::Integer(val) = val {
-                Some(val)
-            } else {
-                None
-            }
-        })
+        )?;
+        if let VendorAttributeValue::Integer(val) = val {
+            Some(val)
+        } else {
+            None
+        }
     }
 
     /// Extract the requested validity days
@@ -37,14 +35,13 @@ impl Attributes {
     /// * The requested validity days if it was set before
     /// * `None` if it was not set
     pub fn remove_validity_days(&mut self) -> Option<i32> {
-        self.remove_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_REQUESTED_VALIDITY_DAYS)
-            .and_then(|val| {
-                if let VendorAttributeValue::Integer(val) = val {
-                    Some(val)
-                } else {
-                    None
-                }
-            })
+        let val =
+            self.remove_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_REQUESTED_VALIDITY_DAYS)?;
+        if let VendorAttributeValue::Integer(val) = val {
+            Some(val)
+        } else {
+            None
+        }
     }
 
     /// Set an X509 extensions file containing a `v3_ca` parag.
@@ -56,18 +53,16 @@ impl Attributes {
     /// * The X509 extensions file if it was set before
     /// * `None` if it was not set
     pub fn set_x509_extension_file(&mut self, x509_extension_file: Vec<u8>) -> Option<Vec<u8>> {
-        self.set_vendor_attribute(
+        let val = self.set_vendor_attribute(
             VENDOR_ID_COSMIAN,
             VENDOR_ATTR_X509_EXTENSION,
             VendorAttributeValue::ByteString(x509_extension_file),
-        )
-        .and_then(|val| {
-            if let VendorAttributeValue::ByteString(val) = val {
-                Some(val)
-            } else {
-                None
-            }
-        })
+        )?;
+        if let VendorAttributeValue::ByteString(val) = val {
+            Some(val)
+        } else {
+            None
+        }
     }
 
     /// Extract the X509 extensions file
@@ -76,13 +71,11 @@ impl Attributes {
     /// * The X509 extensions file if it was set before
     /// * `None` if it was not set
     pub fn remove_x509_extension_file(&mut self) -> Option<Vec<u8>> {
-        self.remove_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_X509_EXTENSION)
-            .and_then(|val| {
-                if let VendorAttributeValue::ByteString(val) = val {
-                    Some(val)
-                } else {
-                    None
-                }
-            })
+        let val = self.remove_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_X509_EXTENSION)?;
+        if let VendorAttributeValue::ByteString(val) = val {
+            Some(val)
+        } else {
+            None
+        }
     }
 }

@@ -106,7 +106,7 @@ pub fn wrap_object_with_key(
         key_wrapping_specification,
     )?;
 
-    //wrap
+    // wrap
     let wrapped_key = wrap(
         wrapping_key,
         &key_wrapping_specification.get_key_wrapping_data(),
@@ -174,6 +174,9 @@ pub fn key_data_to_wrap(
             Object::SymmetricKey(SymmetricKey { key_block, .. }) => key_block
                 .key_bytes()
                 .context("cannot recover symmetric key bytes ")?,
+            Object::SecretData(SecretData { key_block, .. }) => key_block
+                .key_bytes()
+                .context("cannot recover secret data bytes ")?,
             Object::PrivateKey(..) => {
                 let pkey = kmip_private_key_to_openssl(object)?;
                 Zeroizing::new(pkey.private_key_to_pkcs8()?)
@@ -190,7 +193,7 @@ pub fn key_data_to_wrap(
 }
 
 /// Encrypt bytes using the wrapping key
-pub(crate) fn wrap(
+pub(super) fn wrap(
     wrapping_key: &Object,
     key_wrapping_data: &KeyWrappingData,
     key_to_wrap: &[u8],
@@ -230,11 +233,14 @@ pub(crate) fn wrap(
             {
                 return Err(CryptoError::Kmip(
                     "CryptographicUsageMask not authorized for WrapKey".to_owned(),
-                ))
+                ));
             }
 
             let ciphertext = match key_block.key_format_type {
-                KeyFormatType::TransparentSymmetricKey => {
+                // The default format for a symmetric key is Raw
+                //  according to sec. 4.26 Key Format Type of the KMIP 2.1 specs:
+                //  see https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html#_Toc57115585
+                KeyFormatType::TransparentSymmetricKey | KeyFormatType::Raw => {
                     let cryptographic_parameters = key_wrapping_data
                         .encryption_key_information
                         .clone()

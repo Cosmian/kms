@@ -165,7 +165,7 @@ pub(crate) async fn kmip_2_1_json(
     let user = kms.get_user(&req_http);
     info!(target: "kmip", user=user, tag=ttlv.tag.as_str(), "POST /kmip/2_1. Request: {:?} {}", ttlv.tag.as_str(), user);
 
-    let ttlv = handle_ttlv_2_1(&kms, ttlv, &user, None).await?;
+    let ttlv = Box::pin(handle_ttlv_2_1(&kms, ttlv, &user, None)).await?;
 
     Ok(Json(ttlv))
 }
@@ -203,7 +203,7 @@ async fn handle_ttlv_2_1(
             error_response_ttlv(2, 1, e.to_string().as_str())
         }))
     } else {
-        let operation = dispatch(kms, ttlv, user, database_params).await?;
+        let operation = Box::pin(dispatch(kms, ttlv, user, database_params)).await?;
         Ok(to_ttlv(&operation)?)
     }
 }
@@ -226,7 +226,7 @@ pub(crate) async fn kmip(
         .map_err(|e| KmsError::InvalidRequest(format!("Cannot parse content type: {e}")))?;
     match content_type {
         "application/octet-stream" => Ok(Box::pin(kmip_binary(req_http, body, kms)).await),
-        "application/json" => Ok(kmip_json(req_http, body, kms).await),
+        "application/json" => Ok(Box::pin(kmip_json(req_http, body, kms)).await),
         _ => Err(KmsError::InvalidRequest(format!(
             "Unsupported content type: {content_type}"
         ))),
@@ -242,7 +242,7 @@ pub(crate) async fn kmip_json(
     let span = span!(tracing::Level::TRACE, "json");
     let _guard = span.enter();
 
-    let json = kmip_json_inner(req_http, body, kms)
+    let json = Box::pin(kmip_json_inner(req_http, body, kms))
         .await
         .unwrap_or_else(|e| {
             error!(target: "kmip", "Failed to process request: {}", e);
@@ -277,7 +277,7 @@ async fn kmip_json_inner(req_http: HttpRequest, body: Bytes, kms: Data<Arc<KMS>>
     );
 
     if major == 2 && minor == 1 {
-        let ttlv = handle_ttlv_2_1(&kms, ttlv, &user, None).await?;
+        let ttlv = Box::pin(handle_ttlv_2_1(&kms, ttlv, &user, None)).await?;
         Ok(ttlv)
     } else if major == 1 && minor == 4 {
         Err(KmsError::InvalidRequest(
@@ -498,8 +498,8 @@ fn get_kmip_version(ttlv: &TTLV) -> KResult<(i32, i32)> {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used)]
-#[allow(clippy::unwrap_used)]
+#[expect(clippy::expect_used)]
+#[expect(clippy::unwrap_used)]
 mod tests {
     use cosmian_kms_client_utils::reexport::cosmian_kmip;
     use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_messages::ResponseMessageBatchItemVersioned;
@@ -512,7 +512,7 @@ mod tests {
         let response = super::invalid_response_message(1, 0, "Unknown Error".to_owned());
         assert_eq!(response.response_header.batch_count, 1);
         assert_eq!(response.batch_item.len(), 1);
-        #[allow(clippy::panic)]
+        #[expect(clippy::panic)]
         let ResponseMessageBatchItemVersioned::V14(batch_item) = &response
             .batch_item
             .first()
@@ -532,7 +532,7 @@ mod tests {
     }
 }
 
-#[allow(clippy::expect_used)]
+#[expect(clippy::expect_used)]
 #[cfg(test)]
 mod local_tests {
     use cosmian_kms_server_database::reexport::cosmian_kmip::{

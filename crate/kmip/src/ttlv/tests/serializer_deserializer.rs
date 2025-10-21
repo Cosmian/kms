@@ -34,19 +34,19 @@ fn test_ser_int() {
         int64: 8,
     };
 
-    //Serializer
+    // Serializer
     let ttlv = to_ttlv(&test).unwrap();
     let expected = r#"TTLV { tag: "Test", value: Structure([TTLV { tag: "Uint8", value: Integer(2) }, TTLV { tag: "Int8", value: Integer(3) }, TTLV { tag: "Uint16", value: Integer(4) }, TTLV { tag: "Int16", value: Integer(5) }, TTLV { tag: "Int32", value: Integer(6) }, TTLV { tag: "Uint64", value: LongInteger(7) }, TTLV { tag: "Int64", value: LongInteger(8) }]) }"#;
     let ttlv_s = format!("{ttlv:?}");
     assert_eq!(ttlv_s, expected);
 
-    //Serialize
+    // Serialize
     let json = serde_json::to_string_pretty(&ttlv).unwrap();
-    //Deserialize
+    // Deserialize
     let re_ttlv = serde_json::from_str::<TTLV>(&json).unwrap();
     assert_eq!(ttlv, re_ttlv);
 
-    //Deserializer
+    // Deserializer
     info!("*** Running Deserializer: {:?}", re_ttlv);
     let rec: Test = from_ttlv(re_ttlv).unwrap();
     assert_eq!(test, rec);
@@ -164,14 +164,14 @@ fn test_direct_array() {
     // Serializer
     let ttlv = to_ttlv(&array).unwrap();
 
-    //Serialize
+    // Serialize
     let json = serde_json::to_string_pretty(&ttlv).unwrap();
 
-    //Deserialize
+    // Deserialize
     let re_ttlv = serde_json::from_str::<TTLV>(&json).unwrap();
     assert_eq!(ttlv, re_ttlv);
 
-    //Deserializer
+    // Deserializer
     let rec: Vec<Element> = from_ttlv(re_ttlv).unwrap();
     assert_eq!(array, rec);
 }
@@ -199,15 +199,15 @@ fn test_ser_array() {
     // Serializer
     let ttlv = to_ttlv(&test).unwrap();
 
-    //Serialize
+    // Serialize
     let json = serde_json::to_string_pretty(&ttlv).unwrap();
 
-    //Deserialize
+    // Deserialize
     let re_ttlv = serde_json::from_str::<TTLV>(&json).unwrap();
     assert_eq!(json, serde_json::to_string_pretty(&re_ttlv).unwrap());
     assert_eq!(ttlv, re_ttlv);
 
-    //Deserializer
+    // Deserializer
     let rec: Test = from_ttlv(re_ttlv).unwrap();
     assert_eq!(test, rec);
 }
@@ -412,7 +412,7 @@ fn test_enumeration_untagged_variant_struct() {
     let rec: Test = from_ttlv(re_ttlv).unwrap();
     assert_eq!(test, rec);
 
-    //This should fail because on untagged enum, the deserializer finds the first variant that
+    // This should fail because on untagged enum, the deserializer finds the first variant that
     // can hold the structure and uses it.
     let test = Test {
         an_enum: Enumeration::TwoInt(Int { int_value: 42 }),

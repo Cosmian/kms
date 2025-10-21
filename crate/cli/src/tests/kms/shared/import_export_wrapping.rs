@@ -100,7 +100,7 @@ pub(crate) async fn test_import_export_wrap_rfc_5649() -> KmsCliResult<()> {
 pub(crate) async fn test_import_export_wrap_ecies() -> KmsCliResult<()> {
     use cosmian_kms_client::kmip_0::kmip_types::CryptographicUsageMask;
 
-    cosmian_logger::log_init(None);
+    test_kms_server::init_test_logging();
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
@@ -256,7 +256,7 @@ async fn test_import_export_wrap_private_key(
         );
         unwrap_key_block(wrapped_private_key.key_block_mut()?, unwrapping_key)?;
         assert!(wrapped_private_key.key_block()?.key_value == private_key.key_block()?.key_value);
-    }
+    };
 
     // test the unwrapping on import
     {
@@ -307,7 +307,7 @@ async fn test_import_export_wrap_private_key(
                 .get_link(LinkType::PublicKeyLink)
         );
         assert!(re_exported_key.key_wrapping_data().is_none());
-    }
+    };
 
     // test the unwrapping on export
     {
@@ -345,7 +345,7 @@ async fn test_import_export_wrap_private_key(
             exported_unwrapped_key.key_block()?.key_value == private_key.key_block()?.key_value
         );
         assert!(exported_unwrapped_key.key_wrapping_data().is_none());
-    }
+    };
 
     Ok(())
 }

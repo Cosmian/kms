@@ -609,7 +609,7 @@ pub(crate) async fn add_attribute(
                     "Sensitive already exists".to_owned(),
                 ));
             }
-            attributes.sensitive = if sensitive { Some(true) } else { None };
+            attributes.sensitive = sensitive.then_some(true);
         }
         Attribute::ShortUniqueIdentifier(short_unique_identifier) => {
             trace!("Short Unique Identifier: {:?}", short_unique_identifier);

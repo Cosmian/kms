@@ -216,7 +216,7 @@ fn get_or_create_subject_key_identifier_value(certificate: &X509) -> Result<Vec<
     })
 }
 
-#[allow(clippy::unwrap_used)]
+#[expect(clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
     use crate::openssl::certificate::openssl_x509_to_certificate_attributes;

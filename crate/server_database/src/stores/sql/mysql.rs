@@ -23,6 +23,10 @@ use sqlx::{
 };
 use uuid::Uuid;
 
+// Default MySQL lock wait timeout (seconds) applied to every new session.
+// MySQL default is ~50s; 10s is more appropriate for tests and reduces long stalls.
+const DEFAULT_LOCK_WAIT_TIMEOUT_SECS: u32 = 10;
+
 use crate::{
     db_bail, db_error,
     error::{DbError, DbResult, DbResultHelper},
@@ -88,8 +92,36 @@ impl MySqlPool {
             // disable logging of each query
             .disable_statement_logging();
 
+        // Default: reduce deadlocks by using READ COMMITTED isolation level per session
+        // This is applied for every new connection.
+        // Also set a reasonable lock wait timeout (seconds) to fail faster under contention
+
         let pool = MySqlPoolOptions::new()
             .max_connections(5)
+            .after_connect(move |conn, _meta| {
+                Box::pin(async move {
+                    // Always set READ COMMITTED for this session
+                    sqlx::query("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED")
+                        .execute(&mut *conn)
+                        .await?;
+                    // Best effort: may require privileges depending on server config
+                    match sqlx::query(&format!(
+                        "SET SESSION innodb_lock_wait_timeout = {DEFAULT_LOCK_WAIT_TIMEOUT_SECS}"
+                    ))
+                    .execute(&mut *conn)
+                    .await
+                    {
+                        Ok(_) => (),
+                        Err(e) => {
+                            debug!(
+                                "Could not set innodb_lock_wait_timeout to {}s: {e}",
+                                DEFAULT_LOCK_WAIT_TIMEOUT_SECS
+                            );
+                        }
+                    }
+                    Ok(())
+                })
+            })
             .connect_with(options)
             .await?;
 
@@ -328,20 +360,20 @@ impl PermissionsStore for MySqlPool {
         &self,
         uid: &str,
         user: &str,
-        operation_types: HashSet<KmipOperation>,
+        operations: HashSet<KmipOperation>,
         _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
-        Ok(insert_access_(uid, user, operation_types, &self.pool).await?)
+        Ok(insert_access_(uid, user, operations, &self.pool).await?)
     }
 
     async fn remove_operations(
         &self,
         uid: &str,
         user: &str,
-        operation_types: HashSet<KmipOperation>,
+        operations: HashSet<KmipOperation>,
         _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
-        Ok(remove_access_(uid, user, operation_types, &self.pool).await?)
+        Ok(remove_access_(uid, user, operations, &self.pool).await?)
     }
 
     async fn list_user_operations_on_object(
@@ -355,7 +387,7 @@ impl PermissionsStore for MySqlPool {
     }
 }
 
-pub(crate) async fn create_(
+pub(super) async fn create_(
     uid: Option<String>,
     owner: &str,
     object: &Object,
@@ -394,7 +426,7 @@ pub(crate) async fn create_(
     Ok(uid)
 }
 
-pub(crate) async fn retrieve_<'e, E>(uid: &str, executor: E) -> DbResult<Option<ObjectWithMetadata>>
+pub(super) async fn retrieve_<'e, E>(uid: &str, executor: E) -> DbResult<Option<ObjectWithMetadata>>
 where
     E: Executor<'e, Database = MySql> + Copy,
 {
@@ -423,7 +455,7 @@ where
     Ok(tags)
 }
 
-pub(crate) async fn update_object_(
+pub(super) async fn update_object_(
     uid: &str,
     object: &Object,
     attributes: &Attributes,
@@ -464,7 +496,7 @@ pub(crate) async fn update_object_(
     Ok(())
 }
 
-pub(crate) async fn update_state_(
+pub(super) async fn update_state_(
     uid: &str,
     state: State,
     executor: &mut Transaction<'_, MySql>,
@@ -478,7 +510,7 @@ pub(crate) async fn update_state_(
     Ok(())
 }
 
-pub(crate) async fn delete_(uid: &str, executor: &mut Transaction<'_, MySql>) -> DbResult<()> {
+pub(super) async fn delete_(uid: &str, executor: &mut Transaction<'_, MySql>) -> DbResult<()> {
     // delete the object
     sqlx::query(get_mysql_query!("delete-object"))
         .bind(uid)
@@ -495,7 +527,7 @@ pub(crate) async fn delete_(uid: &str, executor: &mut Transaction<'_, MySql>) ->
     Ok(())
 }
 
-pub(crate) async fn upsert_(
+pub(super) async fn upsert_(
     uid: &str,
     owner: &str,
     object: &Object,
@@ -540,7 +572,7 @@ pub(crate) async fn upsert_(
     Ok(())
 }
 
-pub(crate) async fn list_uids_for_tags_<'e, E>(
+pub(super) async fn list_uids_for_tags_<'e, E>(
     tags: &HashSet<String>,
     executor: E,
 ) -> DbResult<HashSet<String>>
@@ -565,7 +597,7 @@ where
     Ok(uids)
 }
 
-pub(crate) async fn list_accesses_<'e, E>(
+pub(super) async fn list_accesses_<'e, E>(
     uid: &str,
     executor: E,
 ) -> DbResult<HashMap<String, HashSet<KmipOperation>>>
@@ -591,7 +623,7 @@ where
     Ok(ids)
 }
 
-pub(crate) async fn list_user_granted_access_rights_<'e, E>(
+pub(super) async fn list_user_granted_access_rights_<'e, E>(
     user: &str,
     executor: E,
 ) -> DbResult<HashMap<String, (String, State, HashSet<KmipOperation>)>>
@@ -624,7 +656,7 @@ where
     Ok(ids)
 }
 
-pub(crate) async fn list_user_access_rights_on_object_<'e, E>(
+pub(super) async fn list_user_access_rights_on_object_<'e, E>(
     uid: &str,
     userid: &str,
     no_inherited_access: bool,
@@ -635,7 +667,7 @@ where
 {
     let mut user_perms = perms(uid, userid, executor).await?;
     if no_inherited_access || userid == "*" {
-        return Ok(user_perms)
+        return Ok(user_perms);
     }
     user_perms.extend(perms(uid, "*", executor).await?);
     Ok(user_perms)
@@ -657,7 +689,7 @@ where
     })
 }
 
-pub(crate) async fn insert_access_<'e, E>(
+pub(super) async fn insert_access_<'e, E>(
     uid: &str,
     userid: &str,
     operation_types: HashSet<KmipOperation>,
@@ -670,7 +702,7 @@ where
     let mut perms = list_user_access_rights_on_object_(uid, userid, false, executor).await?;
     if operation_types.is_subset(&perms) {
         // permissions are already setup
-        return Ok(())
+        return Ok(());
     }
     perms.extend(operation_types.iter());
 
@@ -689,7 +721,7 @@ where
     Ok(())
 }
 
-pub(crate) async fn remove_access_<'e, E>(
+pub(super) async fn remove_access_<'e, E>(
     uid: &str,
     userid: &str,
     operation_types: HashSet<KmipOperation>,
@@ -712,7 +744,7 @@ where
             .bind(userid)
             .execute(executor)
             .await?;
-        return Ok(())
+        return Ok(());
     }
 
     // Serialize permissions
@@ -729,7 +761,7 @@ where
     Ok(())
 }
 
-pub(crate) async fn is_object_owned_by_<'e, E>(
+pub(super) async fn is_object_owned_by_<'e, E>(
     uid: &str,
     owner: &str,
     executor: E,
@@ -745,7 +777,7 @@ where
     Ok(row.is_some())
 }
 
-pub(crate) async fn find_<'e, E>(
+pub(super) async fn find_<'e, E>(
     researched_attributes: Option<&Attributes>,
     state: Option<State>,
     user: &str,
@@ -787,7 +819,7 @@ fn to_qualified_uids(rows: &[MySqlRow]) -> DbResult<Vec<(String, State, Attribut
     Ok(uids)
 }
 
-pub(crate) async fn atomic_(
+pub(super) async fn atomic_(
     owner: &str,
     operations: &[AtomicOperation],
     tx: &mut Transaction<'_, MySql>,

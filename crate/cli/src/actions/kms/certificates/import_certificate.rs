@@ -112,24 +112,24 @@ impl ImportCertificateAction {
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<Option<String>> {
         trace!("{self:?}");
 
-        //generate the leaf certificate attributes if links are specified
+        // generate the leaf certificate attributes if links are specified
         let mut leaf_certificate_attributes = None;
         if let Some(issuer_certificate_id) = &self.issuer_certificate_id {
-            let attributes = leaf_certificate_attributes.get_or_insert(Attributes::default());
+            let attributes = leaf_certificate_attributes.get_or_insert_with(Attributes::default);
             attributes.set_link(
                 LinkType::CertificateLink,
                 LinkedObjectIdentifier::TextString(issuer_certificate_id.clone()),
             );
         }
         if let Some(private_key_id) = &self.private_key_id {
-            let attributes = leaf_certificate_attributes.get_or_insert(Attributes::default());
+            let attributes = leaf_certificate_attributes.get_or_insert_with(Attributes::default);
             attributes.set_link(
                 LinkType::PrivateKeyLink,
                 LinkedObjectIdentifier::TextString(private_key_id.clone()),
             );
         }
         if let Some(public_key_id) = &self.public_key_id {
-            let attributes = leaf_certificate_attributes.get_or_insert(Attributes::default());
+            let attributes = leaf_certificate_attributes.get_or_insert_with(Attributes::default);
             attributes.set_link(
                 LinkType::PublicKeyLink,
                 LinkedObjectIdentifier::TextString(public_key_id.clone()),
@@ -332,7 +332,7 @@ impl ImportCertificateAction {
             };
             // add link to issuer/parent certificate if any
             if let Some(id) = previous_identifier {
-                let attributes = import_attributes.get_or_insert(Attributes::default());
+                let attributes = import_attributes.get_or_insert_with(Attributes::default);
                 attributes.set_link(
                     LinkType::CertificateLink,
                     LinkedObjectIdentifier::TextString(id.clone()),
@@ -383,7 +383,7 @@ fn build_chain_from_stack(pem_chain: &[u8]) -> KmsCliResult<Vec<Object>> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[expect(clippy::unwrap_used)]
 mod tests {
     use crate::actions::kms::certificates::import_certificate::build_chain_from_stack;
 

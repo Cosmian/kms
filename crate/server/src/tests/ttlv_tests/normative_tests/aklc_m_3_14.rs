@@ -57,7 +57,7 @@ fn test_aklc_m_3_14() {
     // Step 4: Get state and activation date attributes
     get_activation_attributes(&client, &private_key_id);
 
-    //FIXME: Not Yet Supported
+    // FIXME: Not Yet Supported
     // // Step 5: Try to modify activation date (expected to fail)
     // try_modify_activation_date(&client, &private_key_id);
 
@@ -68,7 +68,7 @@ fn test_aklc_m_3_14() {
     check_key_compromised(&client, &private_key_id);
 
     // Step 8: Check public key state
-    //FIXME: Cosmian makes them compromised by default when the private key is compromised
+    // FIXME: Cosmian makes them compromised by default when the private key is compromised
     check_public_key_state(&client, &public_key_id);
 
     // Step 9: Destroy the private key
@@ -434,8 +434,7 @@ fn get_activation_attributes(client: &SocketClient, key_id: &str) {
     info!("Successfully verified activation attributes");
 }
 
-//FIXME: Not Yet Supported
-#[allow(dead_code)]
+// FIXME: Not Yet Supported
 /// Try to modify activation date (expected to fail)
 fn try_modify_activation_date(client: &SocketClient, key_id: &str) {
     // Get current time in UTC
@@ -457,7 +456,7 @@ fn try_modify_activation_date(client: &SocketClient, key_id: &str) {
             RequestMessageBatchItem {
                 operation: OperationEnumeration::ModifyAttribute,
                 ephemeral: None,
-                unique_batch_item_id: Some(b"0752c951bb9926cc".to_vec()), // Using the same ID as in the XML
+                unique_batch_item_id: Some(b"0752c951bb9926cc".to_vec()), /* Using the same ID as in the XML */
                 request_payload: Operation::ModifyAttribute(ModifyAttribute {
                     unique_identifier: key_id.to_owned(),
                     attribute: Attribute::ActivationDate(now),
@@ -591,7 +590,7 @@ fn check_key_compromised(client: &SocketClient, key_id: &str) {
     info!("Successfully verified key is in Compromised state");
 }
 
-//FIXME: Cosmian makes them compromised by default when the private key is compromised
+// FIXME: Cosmian makes them compromised by default when the private key is compromised
 /// Check public key state
 fn check_public_key_state(client: &SocketClient, key_id: &str) {
     let request_message = RequestMessage {
@@ -634,7 +633,7 @@ fn check_public_key_state(client: &SocketClient, key_id: &str) {
     };
 
     // Verify the public key state is PreActive (revocation of private key doesn't affect public key)
-    //FIXME: Cosmian makes them compromised by default when the private key is compromised
+    // FIXME: Cosmian makes them compromised by default when the private key is compromised
     assert!(
         get_attrs_response
             .attribute

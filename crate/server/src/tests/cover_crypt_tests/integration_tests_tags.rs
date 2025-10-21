@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_in_result)]
+
 use cosmian_kms_client_utils::cover_crypt_utils::{
     build_create_covercrypt_master_keypair_request, build_create_covercrypt_usk_request,
 };
@@ -22,6 +24,7 @@ use crate::{
     result::{KResult, KResultHelper},
     tests::test_utils,
 };
+
 #[tokio::test]
 async fn test_re_key_with_tags() -> KResult<()> {
     let app = test_utils::test_app(None, None).await;
@@ -39,7 +42,6 @@ async fn test_re_key_with_tags() -> KResult<()> {
     let private_key_unique_identifier = &create_key_pair_response.private_key_unique_identifier;
     let public_key_unique_identifier = &create_key_pair_response.public_key_unique_identifier;
 
-    //
     // Re_key all key pairs with matching access policy
     let request = build_rekey_keypair_request(
         &mkp_json_tag,
@@ -163,7 +165,6 @@ async fn integration_tests_with_tags() -> KResult<()> {
         .data
         .expect("There should be encrypted data");
 
-    //
     // Create a user decryption key
     let udk1_tag = "udk1";
     let udk1_json_tag = serde_json::to_string(&[udk1_tag.to_owned()])?;
@@ -177,7 +178,6 @@ async fn integration_tests_with_tags() -> KResult<()> {
     )?;
     let _create_response: CreateResponse = test_utils::post_2_1(&app, &request).await?;
 
-    //
     // Create another user decryption key
     let udk2_tag = "udk2";
     let udk2_json_tag = serde_json::to_string(&[udk2_tag.to_owned()])?;
@@ -239,7 +239,6 @@ async fn integration_tests_with_tags() -> KResult<()> {
     )
     .await?;
 
-    //
     // Rekey all key pairs with matching access policy
     let request = build_rekey_keypair_request(
         &mkp_json_tag,
@@ -299,7 +298,6 @@ async fn integration_tests_with_tags() -> KResult<()> {
         .context("There should be decrypted data")?;
     assert_eq!(data, &*decrypted_data);
 
-    //
     // Destroy user decryption key
     let request = Destroy {
         unique_identifier: Some(UniqueIdentifier::TextString(udk1_json_tag.clone())),

@@ -16,7 +16,6 @@ use crate::{
 /// This structure is the context used by the server
 /// while it is running. There is a singleton instance
 /// shared between all threads.
-#[allow(clippy::struct_excessive_bools)]
 #[derive(Default)]
 pub struct ServerParams {
     /// The JWT Config if Auth is enabled
@@ -98,6 +97,14 @@ pub struct ServerParams {
     /// The Key Wrapping Key, if any
     pub key_wrapping_key: Option<String>,
 
+    /// Specifies which KMIP object types should be automatically unwrapped when retrieved
+    ///
+    /// Each entry must be the string name of a KMIP `ObjectType`, for example:
+    /// `["SecretData", "SymmetricKey"]`.
+    ///
+    /// If `None`, no automatic unwrapping will be performed.
+    pub default_unwrap_types: Option<Vec<String>>,
+
     /// The non-revocable key ID used for demo purposes
     pub non_revocable_key_id: Option<Vec<String>>,
 
@@ -144,9 +151,10 @@ impl ServerParams {
             TlsParams::try_from(&conf.tls, &conf.http).context("failed to create TLS params")?;
 
         let slot_passwords: HashMap<usize, Option<String>> = conf
+            .hsm
             .hsm_slot
             .iter()
-            .zip(&conf.hsm_password)
+            .zip(&conf.hsm.hsm_password)
             .map(|(s, p)| {
                 let password = if p.is_empty() { None } else { Some(p.clone()) };
                 (*s, password)
@@ -195,14 +203,15 @@ impl ServerParams {
             api_token_id: conf.http.api_token_id,
             google_cse: conf.google_cse_config,
             ms_dke_service_url: conf.ms_dke_service_url,
-            hsm_admin: conf.hsm_admin,
+            hsm_admin: conf.hsm.hsm_admin,
             hsm_model: if slot_passwords.is_empty() {
                 None
             } else {
-                Some(conf.hsm_model)
+                Some(conf.hsm.hsm_model)
             },
             slot_passwords,
             key_wrapping_key: conf.key_encryption_key,
+            default_unwrap_types: conf.default_unwrap_type,
             non_revocable_key_id: conf.non_revocable_key_id,
             privileged_users: conf.privileged_users,
             proxy_params: ProxyParams::try_from(&conf.proxy)
@@ -229,7 +238,8 @@ impl fmt::Debug for ServerParams {
             .field("main_db_params", &self.main_db_params)
             .field("clear_db_on_start", &self.clear_db_on_start)
             .field("unwrapped_cache_max_age", &self.unwrapped_cache_max_age)
-            .field("non_revocable_key_id", &self.non_revocable_key_id);
+            .field("non_revocable_key_id", &self.non_revocable_key_id)
+            .field("default_unwrap_types", &self.default_unwrap_types);
 
         if self.start_socket_server {
             debug_struct

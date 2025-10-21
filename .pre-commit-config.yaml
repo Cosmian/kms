@@ -20,7 +20,14 @@ repos:
     rev: v0.44.0
     hooks:
       - id: markdownlint-fix
-        args: [--disable=MD013, --disable=MD033, --disable=MD041, --disable=MD046, --fix]
+        args:
+          [
+            --disable=MD013,
+            --disable=MD033,
+            --disable=MD041,
+            --disable=MD046,
+            --fix,
+          ]
 
   - repo: https://github.com/tcort/markdown-link-check
     rev: v3.13.7
@@ -113,9 +120,9 @@ repos:
         args: [--skip-string-normalization]
 
   - repo: https://github.com/Cosmian/git-hooks.git
-    rev: v1.0.40
+    rev: v1.0.41
     hooks:
-      - id: cargo-format
+      - id: nightly-cargo-format
       - id: dprint-toml-fix
         stages: [manual]
       - id: cargo-upgrade
@@ -127,12 +134,11 @@ repos:
       - id: renew-server-cli-doc
       - id: docker-compose-up
       - id: cargo-test
-        args: [--, --skip, test_wrap_auth, --skip, google_cse, --skip, hsm]
       - id: cargo-build
         args: [--all-features]
       - id: cargo-test
         alias: cargo-test-all
-        args: [--all-features, --, --skip, test_wrap_auth, --skip, google_cse, --skip, hsm]
+        args: [--all-features]
       - id: clippy-autofix-unreachable-pub
       - id: clippy-autofix-all-targets-all-features
       - id: clippy-autofix-all-targets
@@ -142,7 +148,7 @@ repos:
       - id: docker-compose-down
 
   - repo: https://github.com/EmbarkStudios/cargo-deny
-    rev: 0.18.4
+    rev: 0.18.2
     hooks:
       - id: cargo-deny
         args: [--all-features, check]

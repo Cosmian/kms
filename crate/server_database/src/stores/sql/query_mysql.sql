@@ -25,7 +25,7 @@ WHERE name = ?;
 CREATE TABLE IF NOT EXISTS objects
 (
     id         VARCHAR(128) PRIMARY KEY,
-    object     TEXT NOT NULL,
+    object     LONGTEXT NOT NULL,
     attributes json NOT NULL,
     state      VARCHAR(32),
     owner      VARCHAR(255)

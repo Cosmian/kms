@@ -64,7 +64,7 @@ pub(crate) async fn encrypt(
 ) -> KResult<EncryptResponse> {
     trace!("{}", serde_json::to_string(&request)?);
 
-    //We do not (yet) support continuation cases
+    // We do not (yet) support continuation cases
     let data = request.data.as_ref().ok_or_else(|| {
         KmsError::InvalidRequest("Encrypt: data to encrypt must be provided".to_owned())
     })?;
@@ -106,7 +106,7 @@ pub(crate) async fn encrypt(
                     .iter()
                     .any(|p| [KmipOperation::Encrypt, KmipOperation::Get].contains(p))
                 {
-                    continue
+                    continue;
                 }
             }
             debug!("user: {user} is authorized to encrypt using: {uid} from decryption oracle");
@@ -120,9 +120,9 @@ pub(crate) async fn encrypt(
                 KmsError::InvalidRequest(format!("Encrypt: failed to retrieve key: {uid}"))
             })?;
         if owm.state() != State::Active {
-            continue
+            continue;
         }
-        //check user permissions - owner can always encrypt
+        // check user permissions - owner can always encrypt
         if owm.owner() != user {
             let ops = kms
                 .database
@@ -132,14 +132,14 @@ pub(crate) async fn encrypt(
                 .iter()
                 .any(|p| [KmipOperation::Encrypt, KmipOperation::Get].contains(p))
             {
-                continue
+                continue;
             }
         }
         trace!("user: {user} is authorized to encrypt using: {uid}");
-        //TODO check why usage masks are not checked for certificates
+        // TODO check why usage masks are not checked for certificates
         if let Object::Certificate { .. } = owm.object() {
             selected_owm = Some(owm);
-            break
+            break;
         }
         if let Object::SymmetricKey { .. } | Object::PublicKey { .. } = owm.object() {
             // If an HSM wraps the object, likely the wrapping will be done with NoEncoding
@@ -150,10 +150,10 @@ pub(crate) async fn encrypt(
                 .unwrap_or_else(|_| owm.attributes());
             trace!("attributes: {attributes}");
             if !attributes.is_usage_authorized_for(CryptographicUsageMask::Encrypt)? {
-                continue
+                continue;
             }
             selected_owm = Some(owm);
-            break
+            break;
         }
     }
     let mut owm = selected_owm.ok_or_else(|| {
@@ -285,7 +285,7 @@ fn encrypt_single(owm: &ObjectWithMetadata, request: &Encrypt) -> KResult<Encryp
 /// # Returns
 /// * the encrypt response
 // TODO: Covercrypt already has a bulk encryption method; maybe this should be merged here
-pub(crate) fn encrypt_bulk(
+pub(super) fn encrypt_bulk(
     owm: &ObjectWithMetadata,
     mut request: Encrypt,
     bulk_data: BulkData,
@@ -415,7 +415,7 @@ fn get_key_and_cipher(
         return Err(KmsError::Kmip21Error(
             ErrorReason::Incompatible_Cryptographic_Usage_Mask,
             "CryptographicUsageMask not authorized for Encrypt".to_owned(),
-        ))
+        ));
     }
     let key_block = owm.object().key_block()?;
     let key_bytes = key_block.key_bytes()?;
@@ -445,7 +445,7 @@ fn get_key_and_cipher(
         other => {
             return Err(KmsError::NotSupported(format!(
                 "symmetric encryption with keys of format: {other}"
-            )))
+            )));
         }
     };
     Ok((key_bytes, aead))
@@ -465,7 +465,7 @@ fn encrypt_with_public_key(
         return Err(KmsError::Kmip21Error(
             ErrorReason::Incompatible_Cryptographic_Usage_Mask,
             "CryptographicUsageMask not authorized for Encrypt".to_owned(),
-        ))
+        ));
     }
 
     let key_block = owm.object().key_block()?;

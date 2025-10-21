@@ -3,10 +3,14 @@
 //! an encryption oracle.
 
 use async_trait::async_trait;
+use cosmian_kmip::kmip_2_1::{
+    kmip_attributes::Attributes, kmip_objects::ObjectType, kmip_types::CryptographicAlgorithm,
+};
 use zeroize::Zeroizing;
 
 use crate::{
-    CryptoAlgorithm, InterfaceResult, KeyMetadata, KeyType, encryption_oracle::EncryptedContent,
+    CryptoAlgorithm, InterfaceError, InterfaceResult, KeyMetadata, KeyType,
+    encryption_oracle::EncryptedContent,
 };
 
 /// Supported key algorithms
@@ -20,12 +24,71 @@ pub enum HsmKeypairAlgorithm {
 }
 
 /// Supported object filters on find
+#[derive(Clone, PartialEq, Eq)]
 pub enum HsmObjectFilter {
     Any,
     AesKey,
     RsaKey,
     RsaPrivateKey,
     RsaPublicKey,
+}
+
+impl TryFrom<&Attributes> for HsmObjectFilter {
+    type Error = InterfaceError;
+
+    fn try_from(researched_attributes: &Attributes) -> InterfaceResult<Self> {
+        let mut object_filter = if let Some(cryptographic_algorithm) =
+            researched_attributes.cryptographic_algorithm
+        {
+            match cryptographic_algorithm {
+                CryptographicAlgorithm::AES => Self::AesKey,
+                CryptographicAlgorithm::RSA => Self::RsaKey,
+                _ => {
+                    return Err(InterfaceError::Default(format!(
+                        "Unsupported cryptographic algorithm for HSMs: {cryptographic_algorithm}"
+                    )));
+                }
+            }
+        } else {
+            Self::Any
+        };
+
+        if let Some(object_type) = researched_attributes.object_type {
+            object_filter = match object_type {
+                ObjectType::SymmetricKey => {
+                    if object_filter == Self::RsaKey {
+                        return Err(InterfaceError::Default(
+                            "Incompatible object type: SymmetricKey with RSA".to_owned(),
+                        ));
+                    }
+                    Self::AesKey
+                }
+                ObjectType::PublicKey => {
+                    if object_filter == Self::AesKey {
+                        return Err(InterfaceError::Default(
+                            "Incompatible object type: PublicKey with AES".to_owned(),
+                        ));
+                    }
+                    Self::RsaPublicKey
+                }
+                ObjectType::PrivateKey => {
+                    if object_filter == Self::AesKey {
+                        return Err(InterfaceError::Default(
+                            "Incompatible object type: PrivateKey with AES".to_owned(),
+                        ));
+                    }
+                    Self::RsaPrivateKey
+                }
+                _ => {
+                    return Err(InterfaceError::Default(format!(
+                        "Unsupported object type for HSMs: {object_type}"
+                    )));
+                }
+            };
+        }
+
+        Ok(object_filter)
+    }
 }
 
 /// RSA private key value representation
@@ -90,6 +153,12 @@ impl HsmObject {
 /// The HSM is assumed to be a PKCS#11 compliant device.
 #[async_trait]
 pub trait HSM: Send + Sync {
+    /// Get the list of available slot identifiers for the HSM.
+    ///
+    /// This function retrieves the identifiers of all slots that the HSM
+    /// has been initialized with.
+    async fn get_available_slot_list(&self) -> InterfaceResult<Vec<usize>>;
+
     /// Get the supported cryptographic algorithms for a given HSM slot.
     ///
     /// This function queries the HSM to retrieve the list of algorithms
@@ -146,7 +215,7 @@ pub trait HSM: Send + Sync {
         &self,
         slot_id: usize,
         sk_id: &[u8],
-        pk_is: &[u8],
+        pk_id: &[u8],
         algorithm: HsmKeypairAlgorithm,
         key_length_in_bits: usize,
         sensitive: bool,

@@ -31,7 +31,7 @@ info = false
 hsm_model = "smartcardhsm"
 hsm_admin = "admin" # for Create operation on HSM
 hsm_slot = [1]
-hsm_password = ["648219"] # dafault PIN for development purposes
+hsm_password = ["648219"] # default PIN for development purposes
 
 # Force all newly created and imported keys to be wrapped by the key specified in this field.
 # This is most useful to ensure that an HSM key wraps all keys in the KMS database.

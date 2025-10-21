@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_in_result)]
+
 use std::sync::Arc;
 
 use cosmian_kms_server_database::reexport::{
@@ -72,7 +74,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         _ => {
             return Err(KmsError::ServerError(
                 "Expected a KMIP Private Key".to_owned(),
-            ))
+            ));
         }
     };
     assert_eq!(
@@ -87,7 +89,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         sk_key_block.key_format_type,
         KeyFormatType::TransparentECPrivateKey
     );
-    //check the link to a public key
+    // check the link to a public key
     let attr = sk_key_block.attributes()?;
     assert_eq!(
         attr.link
@@ -125,7 +127,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         _ => {
             return Err(KmsError::ServerError(
                 "Expected a KMIP Public Key".to_owned(),
-            ))
+            ));
         }
     };
     assert_eq!(
@@ -277,7 +279,6 @@ async fn test_create_transparent_symmetric_key() -> KResult<()> {
     let response = kms.create(request, owner, None, None).await?;
     trace!("response: {:?}", response);
 
-    //
     // Get symmetric key without specifying key format type
     //
     let request = Get::new(response.unique_identifier, false, None, None);
@@ -295,7 +296,6 @@ async fn test_create_transparent_symmetric_key() -> KResult<()> {
             .context("no string for the unique_identifier")?
     );
 
-    //
     // Get symmetric key specifying key format type
     //
     let request = Get::new(

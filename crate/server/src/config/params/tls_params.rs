@@ -114,9 +114,10 @@ impl fmt::Debug for TlsParams {
         f.debug_struct("TlsParams")
             .field(
                 "p12",
-                &self.p12.cert.as_ref().map_or("[N/A]".to_owned(), |cert| {
-                    format!("{:?}", cert.subject_name())
-                }),
+                &self.p12.cert.as_ref().map_or_else(
+                    || "[N/A]".to_owned(),
+                    |cert| format!("{:?}", cert.subject_name()),
+                ),
             )
             .field("authority_cert_file: ", &ca_cert)
             .field("cipher_suites: ", &cipher_suites)

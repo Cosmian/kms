@@ -1,5 +1,5 @@
 import { Alert, Button, Card, Space, Tag } from "antd";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { useAuth } from "./AuthContext";
 import { getNoTTLVRequest, sendKmipRequest } from "./utils";
 import { export_ttlv_request } from "./wasm/pkg/cosmian_kms_client_wasm";
@@ -23,7 +23,7 @@ const CseInfo: React.FC = () => {
     const [error, setError] = useState<string | undefined>(undefined);
     const { serverUrl, idToken } = useAuth();
 
-    const fetchCseInfo = async () => {
+    const fetchCseInfo = useCallback(async () => {
         setIsLoading(true);
         setError(undefined);
         setCseStatus(null);
@@ -53,11 +53,11 @@ const CseInfo: React.FC = () => {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [idToken, serverUrl]);
 
     useEffect(() => {
         fetchCseInfo();
-    }, []);
+    }, [fetchCseInfo]);
 
     return (
         <div className="p-6">

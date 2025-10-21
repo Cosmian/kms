@@ -37,7 +37,7 @@ cargo install wasm-pack
 # Build WASM component
 cd crate/wasm
 # shellcheck disable=SC2086
-RUSTFLAGS="-Z wasm-c-abi=spec" wasm-pack build --target web --release $CARGO_FEATURES
+wasm-pack build --target web --release $CARGO_FEATURES
 
 # Copy WASM artifacts to UI directory
 WASM_DIR="../../ui/src/wasm/"
@@ -50,6 +50,8 @@ cd ../../ui # current path: ./ui
 rm -rf node_modules
 npm install
 npm run build
+npm run lint
+npm audit
 
 # Deploy built UI to root
 cd .. # current path: ./

@@ -32,7 +32,7 @@ use crate::{error::KmsError, kms_bail, middlewares::AuthenticatedUser, result::K
 ///
 /// This struct stores the peer certificate in the request context.
 #[derive(Debug, Clone)]
-pub(crate) struct PeerCertificate {
+pub(super) struct PeerCertificate {
     /// The peer certificate.
     pub(crate) cert: X509,
 }
@@ -89,7 +89,6 @@ where
     S::Future: 'static,
 {
     type Error = Error;
-    #[allow(clippy::type_complexity)]
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>>>>;
     type Response = ServiceResponse<EitherBody<B, BoxBody>>;
 
@@ -140,7 +139,7 @@ fn ssl_auth(req: &ServiceRequest) -> KResult<AuthenticatedUser> {
         trace!("Ssl Authentication: no peer certificate found");
         return Err(KmsError::InvalidRequest(
             "SSL Authentication: no peer certificate found".to_owned(),
-        ))
+        ));
     };
 
     // Extract the common name from the peer certificate.
