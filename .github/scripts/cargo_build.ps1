@@ -17,6 +17,8 @@ function BuildProject
     $env:OPENSSL_DIR = "$env:VCPKG_INSTALLATION_ROOT\packages\openssl_x64-windows-static"
     Get-ChildItem -Recurse $env:OPENSSL_DIR
 
+    cargo install --version 0.11.17 cargo-packager --force
+
     # Build `server`
     Set-Location crate\server
     if ($BuildType -eq "release")
