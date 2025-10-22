@@ -606,17 +606,14 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
     // Generate key for actix session cookie encryption and elements for UI exposure
     let secret_key: Key = Key::generate();
 
-    let kms_public_url = kms_server.params.kms_public_url.clone().map_or_else(
-        || {
-            format!(
-                "http{}://{}:{}",
-                if tls_config.is_some() { "s" } else { "" },
-                &kms_server.params.http_hostname,
-                &kms_server.params.http_port
-            )
-        },
-        |url| url,
-    );
+    let kms_public_url = kms_server.params.kms_public_url.clone().unwrap_or_else(|| {
+        format!(
+            "http{}://{}:{}",
+            if tls_config.is_some() { "s" } else { "" },
+            &kms_server.params.http_hostname,
+            &kms_server.params.http_port
+        )
+    });
 
     // Create the `HttpServer` instance.
     let server = HttpServer::new(move || {
@@ -765,7 +762,17 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             .service(get_version);
 
         app.service(default_scope)
-    });
+    })
+    .keep_alive(actix_web::http::KeepAlive::Timeout(
+        std::time::Duration::from_secs(120),
+    )); // extended keep-alive for long KMIP vector sequences
+    // The KMIP XML vector test harness keeps a single HTTP connection open across
+    // many serialized requests with potentially long gaps (several seconds) while
+    // preparing the next request. Actix-web's default keep-alive (~5s) was closing
+    // the idle connection, leading to sporadic "connection reset by peer" errors
+    // surfaced in the client test (reqwest) when it attempted to reuse the pooled
+    // socket. Extending the keep-alive timeout prevents these false negatives and
+    // lets us observe true protocol-level failures instead of transport resets.
 
     Ok(match tls_config {
         Some(ssl_acceptor) => {

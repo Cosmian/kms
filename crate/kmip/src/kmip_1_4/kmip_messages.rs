@@ -36,7 +36,7 @@ use crate::{
 /// Batch item for a message request
 ///
 /// `request_payload` depends on the request
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub struct RequestMessageBatchItem {
     /// Type of the KMIP operation
     pub operation: OperationEnumeration,
@@ -60,16 +60,21 @@ pub struct RequestMessageBatchItem {
 
 impl Display for RequestMessageBatchItem {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "MessageBatchItem {{ operation: {:?}, ephemeral: {:?}, unique_batch_item_id: {:?}, \
-             request_payload: {}, message_extension: {:?} }}",
-            self.operation,
-            self.ephemeral,
-            self.unique_batch_item_id,
-            self.request_payload,
-            self.message_extension
-        )
+        {
+            let mut parts: Vec<String> = Vec::new();
+            parts.push(format!("operation: {}", self.operation));
+            if let Some(ephemeral) = self.ephemeral {
+                parts.push(format!("ephemeral: {ephemeral}"));
+            }
+            if let Some(ref id) = self.unique_batch_item_id {
+                parts.push(format!("unique_batch_item_id: {id:?}"));
+            }
+            parts.push(format!("request_payload: {}", self.request_payload));
+            if let Some(ref ext) = self.message_extension {
+                parts.push(format!("message_extension: {ext:?}"));
+            }
+            write!(f, "MessageBatchItem {{ {} }}", parts.join(", "))
+        }
     }
 }
 impl RequestMessageBatchItem {
@@ -214,6 +219,9 @@ impl<'de> Deserialize<'de> for RequestMessageBatchItem {
                                 OperationEnumeration::CreateKeyPair => {
                                     Operation::CreateKeyPair(map.next_value()?)
                                 }
+                                OperationEnumeration::ReKeyKeyPair => {
+                                    Operation::ReKeyKeyPair(map.next_value()?)
+                                }
                                 OperationEnumeration::Decrypt => {
                                     Operation::Decrypt(map.next_value()?)
                                 }
@@ -233,6 +241,9 @@ impl<'de> Deserialize<'de> for RequestMessageBatchItem {
                                 OperationEnumeration::GetAttributes => {
                                     Operation::GetAttributes(map.next_value()?)
                                 }
+                                OperationEnumeration::GetAttributeList => {
+                                    Operation::GetAttributeList(map.next_value()?)
+                                }
                                 OperationEnumeration::Import => {
                                     Operation::Import(map.next_value()?)
                                 }
@@ -240,12 +251,67 @@ impl<'de> Deserialize<'de> for RequestMessageBatchItem {
                                     Operation::Locate(map.next_value()?)
                                 }
                                 OperationEnumeration::MAC => Operation::MAC(map.next_value()?),
+                                OperationEnumeration::MACVerify => {
+                                    Operation::MACVerify(map.next_value()?)
+                                }
+                                OperationEnumeration::ModifyAttribute => {
+                                    Operation::ModifyAttribute(map.next_value()?)
+                                }
+                                OperationEnumeration::Sign => Operation::Sign(map.next_value()?),
+                                OperationEnumeration::SignatureVerify => {
+                                    Operation::SignatureVerify(map.next_value()?)
+                                }
+                                OperationEnumeration::RNGRetrieve => {
+                                    Operation::RNGRetrieve(map.next_value()?)
+                                }
+                                OperationEnumeration::RNGSeed => {
+                                    Operation::RNGSeed(map.next_value()?)
+                                }
+                                OperationEnumeration::Hash => Operation::Hash(map.next_value()?),
+                                OperationEnumeration::DeleteAttribute => {
+                                    Operation::DeleteAttribute(map.next_value()?)
+                                }
                                 OperationEnumeration::Query => Operation::Query(map.next_value()?),
                                 OperationEnumeration::Register => {
                                     Operation::Register(map.next_value()?)
                                 }
                                 OperationEnumeration::Revoke => {
                                     Operation::Revoke(map.next_value()?)
+                                }
+                                OperationEnumeration::Archive => {
+                                    Operation::Archive(map.next_value()?)
+                                }
+                                OperationEnumeration::Recover => {
+                                    Operation::Recover(map.next_value()?)
+                                }
+                                OperationEnumeration::Validate => {
+                                    Operation::Validate(map.next_value()?)
+                                }
+                                OperationEnumeration::ObtainLease => {
+                                    Operation::ObtainLease(map.next_value()?)
+                                }
+                                OperationEnumeration::GetUsageAllocation => {
+                                    Operation::GetUsageAllocation(map.next_value()?)
+                                }
+                                OperationEnumeration::Cancel => {
+                                    Operation::Cancel(map.next_value()?)
+                                }
+                                OperationEnumeration::Poll => Operation::Poll(map.next_value()?),
+                                OperationEnumeration::CreateSplitKey => {
+                                    Operation::CreateSplitKey(map.next_value()?)
+                                }
+                                OperationEnumeration::JoinSplitKey => {
+                                    Operation::JoinSplitKey(map.next_value()?)
+                                }
+                                OperationEnumeration::Notify => {
+                                    return Err(de::Error::custom(
+                                        "unsupported KMIP 1 operation: Notify",
+                                    ));
+                                }
+                                OperationEnumeration::Put => {
+                                    return Err(de::Error::custom(
+                                        "unsupported KMIP 1 operation: Put",
+                                    ));
                                 }
                                 x => {
                                     return Err(de::Error::custom(format!(
@@ -419,14 +485,6 @@ impl Serialize for ResponseMessageBatchItem {
                 return Err(ser::Error::custom(
                     "missing `ResultReason` with failed status (`ResultStatus` is set to \
                      `OperationFailed`)",
-                ));
-            }
-            ResultStatusEnumeration::OperationFailed | ResultStatusEnumeration::OperationUndone
-                if self.result_message.is_none() =>
-            {
-                return Err(ser::Error::custom(
-                    "missing `ResultMessage` with unsuccessful status (`ResultStatus` is set to \
-                     either `OperationFailed` or `OperationUndone`)",
                 ));
             }
             ResultStatusEnumeration::OperationPending
@@ -737,11 +795,7 @@ impl<'de> Deserialize<'de> for ResponseMessageBatchItem {
                         return Err(de::Error::missing_field("result_reason"));
                     }
                     ResultStatusEnumeration::OperationFailed
-                    | ResultStatusEnumeration::OperationUndone
-                        if result_message.is_none() =>
-                    {
-                        // missing `ResultMessage` with unsuccessful status
-                        return Err(de::Error::missing_field("result_message"));
+                    | ResultStatusEnumeration::OperationUndone => { /* allow missing result_message */
                     }
                     ResultStatusEnumeration::OperationPending
                         if asynchronous_correlation_value.is_none() =>

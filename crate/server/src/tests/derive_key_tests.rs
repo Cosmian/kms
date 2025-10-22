@@ -360,9 +360,10 @@ async fn test_derive_key_error_cases() -> KResult<()> {
     };
 
     let result = kms.derive_key(derive_request, owner, None).await;
-    assert!(result.is_err());
-    let error_message = result.unwrap_err().to_string();
-    assert!(error_message.contains("DeriveKey usage mask"));
+    match result {
+        Err(e) => assert!(e.to_string().contains("DeriveKey usage mask")),
+        Ok(_) => panic!("expected error"),
+    }
 
     Ok(())
 }
@@ -407,9 +408,13 @@ async fn test_derive_key_pbkdf2_missing_salt() -> KResult<()> {
     };
 
     let result = kms.derive_key(derive_request, owner, None).await;
-    assert!(result.is_err());
-    let error_message = result.unwrap_err().to_string();
-    assert!(error_message.contains("Salt is mandatory when derivation method is PBKDF2"));
+    match result {
+        Err(e) => assert!(
+            e.to_string()
+                .contains("Salt is mandatory when derivation method is PBKDF2")
+        ),
+        Ok(_) => panic!("expected error"),
+    }
 
     Ok(())
 }
@@ -449,9 +454,10 @@ async fn test_derive_key_nonexistent_base_key() -> KResult<()> {
     };
 
     let result = kms.derive_key(derive_request, owner, None).await;
-    assert!(result.is_err());
-    let error_message = result.unwrap_err().to_string();
-    assert!(error_message.contains("failed to retrieve base object"));
+    match result {
+        Err(e) => assert!(e.to_string().contains("failed to retrieve base object")),
+        Ok(_) => panic!("expected error"),
+    }
 
     Ok(())
 }
@@ -496,9 +502,13 @@ async fn test_derive_key_missing_cryptographic_length() -> KResult<()> {
     };
 
     let result = kms.derive_key(derive_request, owner, None).await;
-    assert!(result.is_err());
-    let error_message = result.unwrap_err().to_string();
-    assert!(error_message.contains("Cryptographic Length must be specified"));
+    match result {
+        Err(e) => assert!(
+            e.to_string()
+                .contains("Cryptographic Length must be specified")
+        ),
+        Ok(_) => panic!("expected error"),
+    }
 
     Ok(())
 }

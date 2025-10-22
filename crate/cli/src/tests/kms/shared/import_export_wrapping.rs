@@ -22,7 +22,7 @@ use cosmian_kms_crypto::{
         reexport::rand_core::{RngCore, SeedableRng},
     },
 };
-use cosmian_logger::{debug, trace};
+use cosmian_logger::{debug, log_init, trace};
 use tempfile::TempDir;
 use test_kms_server::{TestsContext, start_default_test_kms_server};
 
@@ -204,6 +204,7 @@ async fn test_import_export_wrap_private_key(
     wrapping_key_uid: &UniqueIdentifier,
     unwrapping_key: &Object,
 ) -> KmsCliResult<()> {
+    log_init(None);
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
@@ -244,7 +245,7 @@ async fn test_import_export_wrap_private_key(
                 .clone()
                 .unwrap()
                 .unique_identifier,
-            wrapping_key_uid.to_owned()
+            *wrapping_key_uid
         );
         assert!(
             wrapped_key_wrapping_data
@@ -255,6 +256,15 @@ async fn test_import_export_wrap_private_key(
                 .is_none()
         );
         unwrap_key_block(wrapped_private_key.key_block_mut()?, unwrapping_key)?;
+        trace!(
+            "wrapped_private_key: key_block after unwrapping: {}",
+            wrapped_private_key.key_block()?
+        );
+        trace!(
+            "private_key: key_block after unwrapping: {}",
+            private_key.key_block()?
+        );
+
         assert!(wrapped_private_key.key_block()?.key_value == private_key.key_block()?.key_value);
     };
 
@@ -341,8 +351,9 @@ async fn test_import_export_wrap_private_key(
             .unique_identifier
             .clone();
 
-        assert!(
-            exported_unwrapped_key.key_block()?.key_value == private_key.key_block()?.key_value
+        assert_eq!(
+            exported_unwrapped_key.key_block()?.key_value,
+            private_key.key_block()?.key_value
         );
         assert!(exported_unwrapped_key.key_wrapping_data().is_none());
     };

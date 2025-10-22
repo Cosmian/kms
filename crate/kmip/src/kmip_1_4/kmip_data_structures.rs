@@ -1631,11 +1631,71 @@ pub struct TransparentEcmqvPublicKey {
 }
 
 /// 2.1.8 Template-Attribute Structures
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct TemplateAttribute {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attribute: Option<Vec<Attribute>>,
+}
+
+impl<'de> Deserialize<'de> for TemplateAttribute {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize, Debug)]
+        #[serde(field_identifier)]
+        enum Field {
+            Attribute,
+        }
+
+        struct TemplateAttributeVisitor;
+
+        impl<'de> Visitor<'de> for TemplateAttributeVisitor {
+            type Value = TemplateAttribute;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("struct TemplateAttribute")
+            }
+
+            fn visit_map<V>(self, mut map: V) -> Result<Self::Value, V::Error>
+            where
+                V: MapAccess<'de>,
+            {
+                let mut attributes: Option<Vec<Attribute>> = None;
+
+                while let Some(field) = map.next_key::<Field>()? {
+                    match field {
+                        Field::Attribute => {
+                            // Collect one or more consecutive Attribute entries.
+                            // Depending on the TTLV deserializer, this may yield all repeated
+                            // siblings in one Vec, but we also support multiple occurrences
+                            // by extending the existing Vec to avoid duplicate_field errors.
+                            let mut batch: Vec<Attribute> = map.next_value()?;
+                            if batch.is_empty() {
+                                continue;
+                            }
+                            if let Some(ref mut acc) = attributes {
+                                acc.append(&mut batch);
+                            } else {
+                                attributes = Some(batch);
+                            }
+                        }
+                    }
+                }
+
+                Ok(TemplateAttribute {
+                    attribute: attributes,
+                })
+            }
+        }
+
+        deserializer.deserialize_struct(
+            "TemplateAttribute",
+            &["Attribute"],
+            TemplateAttributeVisitor,
+        )
+    }
 }
 
 impl From<TemplateAttribute> for kmip_2_1::kmip_attributes::Attributes {
@@ -1661,11 +1721,23 @@ impl TryFrom<kmip_2_1::kmip_data_structures::ExtensionInformation> for Extension
     fn try_from(
         val: kmip_2_1::kmip_data_structures::ExtensionInformation,
     ) -> Result<Self, Self::Error> {
-        #[expect(clippy::as_conversions)]
+        let mapped_ext_type = val.extension_type.map(|it| match it {
+            kmip_2_1::kmip_types::ItemType::Structure => 0x0000_0001,
+            kmip_2_1::kmip_types::ItemType::Integer => 0x0000_0002,
+            kmip_2_1::kmip_types::ItemType::LongInteger => 0x0000_0003,
+            kmip_2_1::kmip_types::ItemType::BigInteger => 0x0000_0004,
+            kmip_2_1::kmip_types::ItemType::Enumeration => 0x0000_0005,
+            kmip_2_1::kmip_types::ItemType::Boolean => 0x0000_0006,
+            kmip_2_1::kmip_types::ItemType::TextString => 0x0000_0007,
+            kmip_2_1::kmip_types::ItemType::ByteString => 0x0000_0008,
+            kmip_2_1::kmip_types::ItemType::DateTime => 0x0000_0009,
+            kmip_2_1::kmip_types::ItemType::Interval => 0x0000_000A,
+            kmip_2_1::kmip_types::ItemType::DateTimeExtended => 0x0000_000B,
+        });
         Ok(Self {
             extension_name: val.extension_name,
             extension_tag: val.extension_tag,
-            extension_type: val.extension_type.map(|v| v as i32),
+            extension_type: mapped_ext_type,
         })
     }
 }

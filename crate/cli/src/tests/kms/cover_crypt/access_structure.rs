@@ -78,6 +78,7 @@ async fn test_view_access_structure() -> KmsCliResult<()> {
 
 #[tokio::test]
 async fn test_edit_access_structure() -> KmsCliResult<()> {
+    log_init(None);
     let ctx = start_default_test_kms_server().await;
     // create a temp dir
     let tmp_dir = TempDir::new()?;
@@ -190,18 +191,16 @@ async fn test_edit_access_structure() -> KmsCliResult<()> {
     .await?;
 
     // finance and marketing user can not decrypt the sales file
-    assert!(
-        DecryptAction {
-            input_files: vec![new_cipher_file.clone()],
-            key_id: Some(user_decryption_key.to_string()),
-            tags: None,
-            output_file: Some(recovered_file.clone()),
-            authentication_data: Some("myid".to_owned()),
-        }
-        .run(ctx.get_owner_client())
-        .await
-        .is_err()
-    );
+    DecryptAction {
+        input_files: vec![new_cipher_file.clone()],
+        key_id: Some(user_decryption_key.to_string()),
+        tags: None,
+        output_file: Some(recovered_file.clone()),
+        authentication_data: Some("myid".to_owned()),
+    }
+    .run(ctx.get_owner_client())
+    .await
+    .unwrap_err();
 
     // sales and marketing user can decrypt the sales file
     DecryptAction {
@@ -224,19 +223,17 @@ async fn test_edit_access_structure() -> KmsCliResult<()> {
     .await?;
 
     // can no longer encrypt for this attribute
-    assert!(
-        EncryptAction {
-            input_files: vec![input_file],
-            encryption_policy: "Department::Sales && Security Level::Confidential".to_owned(),
-            key_id: Some(master_public_key_id.to_string()),
-            tags: None,
-            output_file: None,
-            authentication_data: None,
-        }
-        .run(ctx.get_owner_client())
-        .await
-        .is_err()
-    );
+    EncryptAction {
+        input_files: vec![input_file],
+        encryption_policy: "Department::Sales && Security Level::Confidential".to_owned(),
+        key_id: Some(master_public_key_id.to_string()),
+        tags: None,
+        output_file: None,
+        authentication_data: None,
+    }
+    .run(ctx.get_owner_client())
+    .await
+    .unwrap_err();
 
     // can still decrypt existing sales files
     DecryptAction {
@@ -259,18 +256,16 @@ async fn test_edit_access_structure() -> KmsCliResult<()> {
     .await?;
 
     // can no longer decrypt message for this attribute
-    assert!(
-        DecryptAction {
-            input_files: vec![new_cipher_file],
-            key_id: Some(sales_mkg_user_decryption_key.to_string()),
-            tags: None,
-            output_file: Some(recovered_file.clone()),
-            authentication_data: Some("myid".to_owned()),
-        }
-        .run(ctx.get_owner_client())
-        .await
-        .is_err()
-    );
+    DecryptAction {
+        input_files: vec![new_cipher_file],
+        key_id: Some(sales_mkg_user_decryption_key.to_string()),
+        tags: None,
+        output_file: Some(recovered_file.clone()),
+        authentication_data: Some("myid".to_owned()),
+    }
+    .run(ctx.get_owner_client())
+    .await
+    .unwrap_err();
 
     Ok(())
 }

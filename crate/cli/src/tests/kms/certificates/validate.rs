@@ -65,17 +65,15 @@ async fn import_revoked_certificate_encrypt(curve_name: &str) -> KmsCliResult<()
     .await?;
 
     debug!("\n\nEncrypt with certificate");
-    assert!(
-        EncryptCertificateAction {
-            input_file,
-            certificate_id,
-            output_file: Some(output_file),
-            ..Default::default()
-        }
-        .run(ctx.get_owner_client())
-        .await
-        .is_err()
-    );
+    EncryptCertificateAction {
+        input_file,
+        certificate_id,
+        output_file: Some(output_file),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await
+    .unwrap_err();
 
     Ok(())
 }

@@ -36,7 +36,7 @@ enum KmipVersion {
     V21,
 }
 
-#[derive(PartialEq, Eq, Serialize)]
+#[derive(PartialEq, Eq, Serialize, Clone, Debug)]
 #[serde(untagged)]
 #[expect(clippy::large_enum_variant)]
 pub enum RequestMessageBatchItemVersioned {
@@ -77,7 +77,7 @@ impl<'de> DeserializeSeed<'de> for &mut RequestMessageBatchItemVersionedDeserial
     }
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub struct RequestMessage {
     /// Header of the request
     pub request_header: RequestMessageHeader,
@@ -89,7 +89,7 @@ impl Display for RequestMessage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut batch_items = String::new();
         for batch_item in &self.batch_item {
-            write!(batch_items, "{batch_item}, ")?;
+            write!(batch_items, "\n{batch_item}")?;
         }
         write!(
             f,
@@ -203,7 +203,7 @@ impl<'de> Deserialize<'de> for RequestMessage {
 /// Header of the request
 ///
 /// Contains fields whose presence is determined by the protocol features used.
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 #[serde(rename_all = "PascalCase")]
 pub struct RequestMessageHeader {
     /// The KMIP protocol version used in this message
@@ -293,30 +293,44 @@ impl Default for RequestMessageHeader {
 
 impl Display for RequestMessageHeader {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "RequestMessageHeader {{ protocol_version: {}, maximum_response_size: {:?}, \
-             client_correlation_value: {:?}, server_correlation_value: {:?}, \
-             asynchronous_indicator: {:?}, attestation_capable_indicator: {:?}, attestation_type: \
-             {:?}, authentication: {:?}, batch_error_continuation_option: {:?}, \
-             batch_order_option: {:?}, time_stamp: {:?}, batch_count: {} }}",
-            self.protocol_version,
-            self.maximum_response_size,
-            self.client_correlation_value,
-            self.server_correlation_value,
-            self.asynchronous_indicator,
-            self.attestation_capable_indicator,
-            self.attestation_type,
-            self.authentication,
-            self.batch_error_continuation_option,
-            self.batch_order_option,
-            self.time_stamp,
-            self.batch_count
-        )
+        write!(f, "RequestMessageHeader {{")?;
+        write!(f, "  protocol_version: {}", self.protocol_version)?;
+        if let Some(v) = self.maximum_response_size {
+            write!(f, "  maximum_response_size: {v}")?;
+        }
+        if let Some(v) = &self.client_correlation_value {
+            write!(f, "  client_correlation_value: {v}")?;
+        }
+        if let Some(v) = &self.server_correlation_value {
+            write!(f, "  server_correlation_value: {v}")?;
+        }
+        if let Some(v) = &self.asynchronous_indicator {
+            write!(f, "  asynchronous_indicator: {v:?}")?;
+        }
+        if let Some(v) = self.attestation_capable_indicator {
+            write!(f, "  attestation_capable_indicator: {v}")?;
+        }
+        if let Some(v) = &self.attestation_type {
+            write!(f, "  attestation_type: {v:?}")?;
+        }
+        if let Some(v) = &self.authentication {
+            write!(f, "  authentication: {v:?}")?;
+        }
+        if let Some(v) = &self.batch_error_continuation_option {
+            write!(f, "  batch_error_continuation_option: {v:?}")?;
+        }
+        if let Some(v) = self.batch_order_option {
+            write!(f, "  batch_order_option: {v}")?;
+        }
+        if let Some(v) = &self.time_stamp {
+            write!(f, "  time_stamp: {v}")?;
+        }
+        write!(f, "  batch_count: {}", self.batch_count)?;
+        write!(f, "}}")
     }
 }
 
-#[derive(PartialEq, Eq, Serialize)]
+#[derive(PartialEq, Eq, Serialize, Debug)]
 #[serde(untagged)]
 #[expect(clippy::large_enum_variant)]
 pub enum ResponseMessageBatchItemVersioned {
@@ -359,7 +373,7 @@ impl<'de> DeserializeSeed<'de> for &mut ResponseMessageBatchItemVersionedDeseria
     }
 }
 
-#[derive(Eq, PartialEq)]
+#[derive(Eq, PartialEq, Debug)]
 pub struct ResponseMessage {
     /// Header of the response
     pub response_header: ResponseMessageHeader,
@@ -371,7 +385,7 @@ impl Display for ResponseMessage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut batch_items = String::new();
         for batch_item in &self.batch_item {
-            write!(batch_items, "{batch_item}, ")?;
+            write!(batch_items, "\n{batch_item}")?;
         }
         write!(
             f,
@@ -477,7 +491,7 @@ impl<'de> Deserialize<'de> for ResponseMessage {
 
 /// The `ResponseHeader` contains protocol version information and other
 /// metadata about the response.
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct ResponseMessageHeader {
     /// The KMIP protocol version used in this response
@@ -534,19 +548,25 @@ impl Default for ResponseMessageHeader {
 
 impl Display for ResponseMessageHeader {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "ResponseMessageHeader {{ protocol_version: {}, time_stamp: {}, nonce: {:?}, \
-             server_hashed_password: {:?}, attestation_type: {:?}, client_correlation_value: \
-             {:?}, server_correlation_value: {:?}, batch_count: {} }}",
-            self.protocol_version,
-            self.time_stamp,
-            self.nonce,
-            self.server_hashed_password.as_ref().map(hex::encode),
-            self.attestation_type,
-            self.client_correlation_value,
-            self.server_correlation_value,
-            self.batch_count
-        )
+        write!(f, "ResponseMessageHeader {{")?;
+        write!(f, "  protocol_version: {}", self.protocol_version)?;
+        write!(f, "  time_stamp: {}", self.time_stamp)?;
+        if let Some(v) = &self.nonce {
+            write!(f, "  nonce: {v:?}")?;
+        }
+        if let Some(v) = &self.server_hashed_password {
+            write!(f, "  server_hashed_password: {}", hex::encode(v))?;
+        }
+        if let Some(v) = &self.attestation_type {
+            write!(f, "  attestation_type: {v:?}")?;
+        }
+        if let Some(v) = &self.client_correlation_value {
+            write!(f, "  client_correlation_value: {v}")?;
+        }
+        if let Some(v) = &self.server_correlation_value {
+            write!(f, "  server_correlation_value: {v}")?;
+        }
+        write!(f, "  batch_count: {}", self.batch_count)?;
+        write!(f, "}}")
     }
 }

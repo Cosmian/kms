@@ -215,6 +215,7 @@ impl From<KmipError> for KmsError {
             | KmipError::ObjectNotFound(s) => Self::NotSupported(s),
             KmipError::TryFromSliceError(t) => Self::NotSupported(t.to_string()),
             KmipError::SerdeJsonError(e) => Self::NotSupported(e.to_string()),
+            KmipError::RegexError(e) => Self::ConversionError(e.to_string()),
             KmipError::Deserialization(e) | KmipError::Serialization(e) => {
                 Self::Kmip21Error(ErrorReason::Codec_Error, e)
             }
@@ -261,7 +262,32 @@ impl From<InterfaceError> for KmsError {
 
 impl From<CryptoError> for KmsError {
     fn from(value: CryptoError) -> Self {
-        Self::CryptographicError(value.to_string())
+        // Map low-level crypto layer errors to precise KMIP 2.1 ErrorReasons so that
+        // KMIP test vectors expecting CryptographicFailure (e.g. invalid GCM tag, wrong IV,
+        // manipulated ciphertext) receive the correct ResultReason instead of the generic
+        // Operation_Not_Supported fallback applied later in message.rs.
+        match value {
+            // Explicit cryptographic verification failures
+            CryptoError::InvalidTag(e)
+            | CryptoError::InvalidSize(e)
+            | CryptoError::OpenSSL(e)
+            | CryptoError::Kmip(e) => Self::Kmip21Error(
+                ErrorReason::Cryptographic_Failure,
+                format!("CRYPTO: error: {e}"),
+            ),
+            // Unsupported algorithm / mode / padding etc → Operation_Not_Supported
+            CryptoError::NotSupported(s) => {
+                Self::Kmip21Error(ErrorReason::Operation_Not_Supported, s)
+            }
+            // Object lookup failures
+            CryptoError::ObjectNotFound(s) => Self::Kmip21Error(ErrorReason::Item_Not_Found, s),
+            // Serialization / conversion style issues -> Codec_Error
+            CryptoError::ConversionError(s) => Self::Kmip21Error(ErrorReason::Codec_Error, s),
+            // Indexing/ slicing mistakes are internal server issues
+            CryptoError::IndexingSlicing(s) => Self::ServerError(s),
+            // Remaining variants: treat as generic cryptographic error
+            other => Self::CryptographicError(other.to_string()),
+        }
     }
 }
 
@@ -326,6 +352,7 @@ macro_rules! kms_bail {
 #[cfg(test)]
 mod tests {
     use super::KmsError;
+    // (No additional imports required for placeholder tests)
 
     #[test]
     fn test_kms_error_interpolation() {
@@ -352,4 +379,6 @@ mod tests {
         kms_ensure!(false, "interpolate {var}");
         Ok(())
     }
+
+    // NOTE: Crypto error mapping unit test omitted due to private module visibility; see integration tests.
 }

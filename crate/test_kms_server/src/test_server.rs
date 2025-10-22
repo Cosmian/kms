@@ -136,29 +136,53 @@ fn postgres_db_config() -> MainDBConfig {
 
 #[allow(deprecated)] // needed to migrate
 #[cfg(feature = "non-fips")]
-fn redis_findex_db_config() -> MainDBConfig {
+#[allow(clippy::as_conversions)]
+fn redis_findex_db_config(port: u16) -> MainDBConfig {
     trace!("TESTS: using redis-findex");
-    let url = env::var("REDIS_HOST").map_or_else(
+    let mut url = env::var("REDIS_HOST").map_or_else(
         |_| "redis://localhost:6379".to_owned(),
         |var_env| format!("redis://{var_env}:6379"),
     );
+    // Compute a logical DB index from the port to isolate concurrent servers.
+    // Using a small ring to keep index bounded.
+    let db_index: u8 = (port % 16) as u8;
+    // Ensure the redis URL carries the DB index (e.g., redis://host:6379/5)
+    // If the URL already has a trailing "/<digits>", replace it; otherwise append it
+    let has_db_suffix = url
+        .rsplit('/')
+        .next()
+        .is_some_and(|s| s.chars().all(|c| c.is_ascii_digit()));
+    if has_db_suffix {
+        if let Some(pos) = url.rfind('/') {
+            url.truncate(pos + 1);
+            url.push_str(&db_index.to_string());
+        }
+    } else {
+        if !url.ends_with('/') {
+            url.push('/');
+        }
+        url.push_str(&db_index.to_string());
+    }
+
     MainDBConfig {
         database_type: Some("redis-findex".to_owned()),
-        clear_database: false,
+        clear_database: true,
         unwrapped_cache_max_age: 15,
         database_url: Some(url),
         sqlite_path: PathBuf::default(),
         redis_master_password: Some("password".to_owned()),
-        redis_findex_label: Some("label".to_owned()),
+        // Use a unique Findex label to prevent index collisions across servers
+        redis_findex_label: Some(format!("label-{port}")),
     }
 }
 
-fn get_db_config(workspace_dir: Option<&PathBuf>) -> MainDBConfig {
+#[allow(clippy::used_underscore_binding)]
+fn get_db_config(_port: u16, workspace_dir: Option<&PathBuf>) -> MainDBConfig {
     env::var_os("KMS_TEST_DB").map_or_else(
         || sqlite_db_config(workspace_dir),
         |v| match v.to_str().unwrap_or("") {
             #[cfg(feature = "non-fips")]
-            "redis-findex" => redis_findex_db_config(),
+            "redis-findex" => redis_findex_db_config(_port),
             "mysql" => mysql_db_config(),
             "postgresql" => postgres_db_config(),
             _ => sqlite_db_config(workspace_dir),
@@ -182,7 +206,7 @@ pub async fn start_default_test_kms_server() -> &'static TestsContext {
             }
             None => {
                 start_test_server_with_options(
-                    get_db_config(None),
+                    get_db_config(DEFAULT_KMS_SERVER_PORT, None),
                     DEFAULT_KMS_SERVER_PORT,
                     AuthenticationOptions::new(),
                     None,
@@ -204,7 +228,7 @@ pub async fn start_default_test_kms_server_with_cert_auth() -> &'static TestsCon
     ONCE_SERVER_WITH_AUTH
         .get_or_try_init(|| async move {
             let port = DEFAULT_KMS_SERVER_PORT + 1;
-            let db_config = get_db_config(None);
+            let db_config = get_db_config(port, None);
 
             let server_params = build_server_params_full(BuildServerParamsOptions {
                 db_config,
@@ -236,7 +260,7 @@ pub async fn start_default_test_kms_server_with_non_revocable_key_ids(
     ONCE_SERVER_WITH_NON_REVOCABLE_KEY
         .get_or_try_init(|| async move {
             start_test_server_with_options(
-                get_db_config(None),
+                get_db_config(DEFAULT_KMS_SERVER_PORT + 2, None),
                 DEFAULT_KMS_SERVER_PORT + 2,
                 AuthenticationOptions::new(),
                 non_revocable_key_id,
@@ -258,7 +282,7 @@ pub async fn start_default_test_kms_server_with_utimaco_hsm() -> &'static TestsC
     ONCE_SERVER_WITH_HSM
         .get_or_try_init(|| async move {
             let port = DEFAULT_KMS_SERVER_PORT + 3;
-            let db_config = get_db_config(None);
+            let db_config = get_db_config(port, None);
 
             let server_params = build_server_params_full(BuildServerParamsOptions {
                 db_config,
@@ -391,7 +415,7 @@ async fn create_server_params_with_kek() -> Result<ServerParams, KmsClientError>
     );
 
     let port = DEFAULT_KMS_SERVER_PORT + 4;
-    let db_config = get_db_config(Some(&workspace_dir));
+    let db_config = get_db_config(port, Some(&workspace_dir));
 
     let reuse_db_config = MainDBConfig {
         clear_database: false,
@@ -448,7 +472,7 @@ pub async fn start_default_test_kms_server_with_privileged_users(
     ONCE_SERVER_WITH_PRIVILEGED_USERS
         .get_or_try_init(|| async move {
             let port = DEFAULT_KMS_SERVER_PORT + 5;
-            let db_config = get_db_config(None);
+            let db_config = get_db_config(port, None);
 
             // Use Auth0 config for IdP-enabled server
             let server_params = build_server_params_full(BuildServerParamsOptions {
@@ -474,6 +498,7 @@ pub async fn start_default_test_kms_server_with_privileged_users(
         })
 }
 
+#[derive(Debug)]
 pub struct TestsContext {
     pub server_port: u16,
     pub owner_client_config: KmsClientConfig,
@@ -664,7 +689,7 @@ pub async fn start_test_server_with_options(
     wait_for_server_to_start(&owner_client_config)
         .await
         .map_err(|e| {
-            error!("Error waiting for server to start: {e:?}");
+            // error!("Error waiting for server to start: {e:?}");
             KmsClientError::UnexpectedError(e.to_string())
         })?;
 
@@ -690,7 +715,7 @@ fn start_test_kms_server(
             .build()?
             .block_on(start_kms_server(Arc::new(server_params), Some(tx)))
             .map_err(|e| {
-                error!("Error starting the KMS server: {e:?}");
+                // error!("Error starting the KMS server: {e:?}");
                 KmsClientError::UnexpectedError(e.to_string())
             })
     });
@@ -771,6 +796,9 @@ pub fn build_server_params_full(
         workspace_dir.display()
     );
 
+    // Database configuration is already isolated for redis-findex within get_db_config(port)
+    let db_cfg = opts.db_config;
+
     let idp_auth = if opts.jwt.is_enabled() {
         // Issuer must match the JWTs embedded in test_kms_server::test_jwt
         get_auth0_jwt_config()
@@ -790,7 +818,8 @@ pub fn build_server_params_full(
             root_data_path: workspace_dir,
             tmp_path: PathBuf::from("./"),
         },
-        db: opts.db_config,
+        // db: opts.db_config,
+        db: db_cfg,
         tls: server_tls_config(opts.tls, opts.server_tls_cipher_suites),
         http: HttpConfig {
             port: opts.port,

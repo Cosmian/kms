@@ -51,7 +51,7 @@ pub(super) fn get_attributes(client: &SocketClient, key_id: &str) {
                 ephemeral: None,
                 unique_batch_item_id: Some(b"12345".to_vec()),
                 request_payload: Operation::GetAttributes(GetAttributes {
-                    unique_identifier: key_id.to_owned(),
+                    unique_identifier: Some(key_id.to_owned()),
                     attribute_name: Some(vec![
                         "x-Product_Version".to_owned(),
                         "x-Vendor".to_owned(),

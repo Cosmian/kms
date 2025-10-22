@@ -219,4 +219,22 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         let metadata = session.get_key_metadata(handle)?;
         Ok(metadata)
     }
+
+    async fn generate_random(&self, slot_id: usize, len: usize) -> InterfaceResult<Vec<u8>> {
+        let slot = self.get_slot(slot_id)?;
+        let session = slot.open_session(true)?;
+        let bytes = session.generate_random(len)?;
+        Ok(bytes)
+    }
+
+    async fn seed_random(&self, slot_id: usize, seed: &[u8]) -> InterfaceResult<()> {
+        let slot = self.get_slot(slot_id)?;
+        let session = slot.open_session(true)?;
+        let () = session.seed_random(seed)?;
+        Ok(())
+    }
+
+    fn hsm_lib(&self) -> Option<&dyn std::any::Any> {
+        Some(self.hsm_lib())
+    }
 }

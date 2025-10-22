@@ -68,19 +68,17 @@ async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs() -> KmsCliResult<()> {
     );
 
     // the user key should NOT be able to decrypt with another algorithm
-    assert!(
-        DecryptAction {
-            input_file: output_file.clone(),
-            key_id: Some(private_key_id.to_string()),
-            tags: None,
-            encryption_algorithm: RsaEncryptionAlgorithm::CkmRsaAesKeyWrap,
-            hash_fn: HashFn::Sha256,
-            output_file: Some(recovered_file.clone()),
-        }
-        .run(ctx.get_owner_client())
-        .await
-        .is_err()
-    );
+    DecryptAction {
+        input_file: output_file.clone(),
+        key_id: Some(private_key_id.to_string()),
+        tags: None,
+        encryption_algorithm: RsaEncryptionAlgorithm::CkmRsaAesKeyWrap,
+        hash_fn: HashFn::Sha256,
+        output_file: Some(recovered_file.clone()),
+    }
+    .run(ctx.get_owner_client())
+    .await
+    .unwrap_err();
 
     let original_content = read_bytes_from_file(&input_file)?;
     let recovered_content = read_bytes_from_file(&recovered_file)?;
@@ -147,34 +145,30 @@ async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs_oaep() -> KmsCliResult<()> 
     );
 
     // the user key should NOT be able to decrypt with another algorithm
-    assert!(
-        DecryptAction {
-            input_file: output_file.clone(),
-            key_id: Some(private_key_id.to_string()),
-            tags: None,
-            encryption_algorithm: RsaEncryptionAlgorithm::CkmRsaAesKeyWrap,
-            hash_fn: HashFn::Sha256,
-            output_file: Some(recovered_file.clone()),
-        }
-        .run(ctx.get_owner_client())
-        .await
-        .is_err()
-    );
+    DecryptAction {
+        input_file: output_file.clone(),
+        key_id: Some(private_key_id.to_string()),
+        tags: None,
+        encryption_algorithm: RsaEncryptionAlgorithm::CkmRsaAesKeyWrap,
+        hash_fn: HashFn::Sha256,
+        output_file: Some(recovered_file.clone()),
+    }
+    .run(ctx.get_owner_client())
+    .await
+    .unwrap_err();
 
     // ... or another hash function
-    assert!(
-        DecryptAction {
-            input_file: output_file.clone(),
-            key_id: Some(private_key_id.to_string()),
-            tags: None,
-            encryption_algorithm: RsaEncryptionAlgorithm::CkmRsaPkcsOaep,
-            hash_fn: HashFn::Sha1,
-            output_file: Some(recovered_file.clone()),
-        }
-        .run(ctx.get_owner_client())
-        .await
-        .is_err()
-    );
+    DecryptAction {
+        input_file: output_file.clone(),
+        key_id: Some(private_key_id.to_string()),
+        tags: None,
+        encryption_algorithm: RsaEncryptionAlgorithm::CkmRsaPkcsOaep,
+        hash_fn: HashFn::Sha1,
+        output_file: Some(recovered_file.clone()),
+    }
+    .run(ctx.get_owner_client())
+    .await
+    .unwrap_err();
 
     let original_content = read_bytes_from_file(&input_file)?;
     let recovered_content = read_bytes_from_file(&recovered_file)?;
@@ -232,34 +226,30 @@ async fn test_rsa_encrypt_decrypt_using_rsa_aes_key_wrap() -> KmsCliResult<()> {
     assert!(recovered_file.exists());
 
     // the user key should NOT be able to decrypt with another algorithm
-    assert!(
-        DecryptAction {
-            input_file: output_file.clone(),
-            key_id: Some(private_key_id.to_string()),
-            tags: None,
-            encryption_algorithm: RsaEncryptionAlgorithm::CkmRsaPkcsOaep,
-            hash_fn: HashFn::Sha256,
-            output_file: Some(recovered_file.clone()),
-        }
-        .run(ctx.get_owner_client())
-        .await
-        .is_err()
-    );
+    DecryptAction {
+        input_file: output_file.clone(),
+        key_id: Some(private_key_id.to_string()),
+        tags: None,
+        encryption_algorithm: RsaEncryptionAlgorithm::CkmRsaPkcsOaep,
+        hash_fn: HashFn::Sha256,
+        output_file: Some(recovered_file.clone()),
+    }
+    .run(ctx.get_owner_client())
+    .await
+    .unwrap_err();
 
     // ... or another hash function
-    assert!(
-        DecryptAction {
-            input_file: output_file.clone(),
-            key_id: Some(private_key_id.to_string()),
-            tags: None,
-            encryption_algorithm: RsaEncryptionAlgorithm::CkmRsaPkcsOaep,
-            hash_fn: HashFn::Sha1,
-            output_file: Some(recovered_file.clone()),
-        }
-        .run(ctx.get_owner_client())
-        .await
-        .is_err()
-    );
+    DecryptAction {
+        input_file: output_file.clone(),
+        key_id: Some(private_key_id.to_string()),
+        tags: None,
+        encryption_algorithm: RsaEncryptionAlgorithm::CkmRsaPkcsOaep,
+        hash_fn: HashFn::Sha1,
+        output_file: Some(recovered_file.clone()),
+    }
+    .run(ctx.get_owner_client())
+    .await
+    .unwrap_err();
 
     let original_content = read_bytes_from_file(&input_file)?;
     let recovered_content = read_bytes_from_file(&recovered_file)?;

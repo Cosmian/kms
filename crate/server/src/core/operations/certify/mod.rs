@@ -192,10 +192,13 @@ pub(crate) async fn certify(
                 LinkType::PrivateKeyLink,
                 LinkedObjectIdentifier::from(keypair_data.private_key_id.clone()),
             );
-            trace!(
-                "Certificate attributes links: {:?}",
-                certificate_attributes.link
-            );
+            if let Some(cert_links) = certificate_attributes.link.as_ref() {
+                for link in cert_links {
+                    trace!("Certificate attribute link: {}", link);
+                }
+            } else {
+                trace!("Certificate attributes links: None");
+            }
             (
                 vec![
                     // upsert the private key
@@ -462,10 +465,19 @@ async fn get_issuer<'a>(
                 let issuer_private_key_id = attributes.get_link(LinkType::PrivateKeyLink);
                 (issuer_certificate_id, issuer_private_key_id)
             });
-    trace!(
-        "Issuer certificate id: {issuer_certificate_id:?}, issuer private key id: \
-         {issuer_private_key_id:?}"
-    );
+
+    // Debug logging
+    if let Some(id) = &issuer_certificate_id {
+        trace!("Issuer certificate id: {}", id);
+    } else {
+        trace!("No issuer certificate id provided");
+    }
+    if let Some(id) = &issuer_private_key_id {
+        trace!("Issuer private key id: {}", id);
+    } else {
+        trace!("No issuer private key id provided");
+    }
+
     if issuer_certificate_id.is_none() && issuer_private_key_id.is_none() {
         // If no issuer is provided, the subject is self-signed
         return Box::pin(issuer_for_self_signed_certificate(

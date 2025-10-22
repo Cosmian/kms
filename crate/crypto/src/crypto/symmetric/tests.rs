@@ -6,8 +6,8 @@ use openssl::{provider::Provider, rand::rand_bytes};
 #[cfg(feature = "non-fips")]
 use crate::crypto::symmetric::symmetric_ciphers::AES_128_GCM_SIV_MAC_LENGTH;
 use crate::crypto::symmetric::symmetric_ciphers::{
-    AES_128_GCM_MAC_LENGTH, AES_128_XTS_MAC_LENGTH, AES_256_GCM_MAC_LENGTH, AES_256_XTS_MAC_LENGTH,
-    Mode, SymCipher, decrypt, encrypt, random_key, random_nonce,
+    AES_128_GCM_MAC_LENGTH, AES_256_GCM_MAC_LENGTH, Mode, SymCipher, decrypt, encrypt, random_key,
+    random_nonce,
 };
 
 #[test]
@@ -96,7 +96,7 @@ fn test_encrypt_decrypt_aes_xts_128() {
     let (ciphertext, tag) =
         encrypt(SymCipher::Aes128Xts, &key, &tweak, &[], &message, None).unwrap();
     assert_eq!(ciphertext.len(), message.len());
-    assert_eq!(tag.len(), AES_128_XTS_MAC_LENGTH); // always 0
+    assert_eq!(tag.len(), 0); // XTS has no tag
 
     let decrypted_data = decrypt(
         SymCipher::Aes128Xts,
@@ -128,7 +128,7 @@ fn test_encrypt_decrypt_aes_xts_256() {
     let (ciphertext, tag) =
         encrypt(SymCipher::Aes256Xts, &key, &tweak, &[], &message, None).unwrap();
     assert_eq!(ciphertext.len(), message.len());
-    assert_eq!(tag.len(), AES_256_XTS_MAC_LENGTH); // always 0
+    assert_eq!(tag.len(), 0); // XTS has no tag
 
     let decrypted_data = decrypt(
         SymCipher::Aes256Xts,
@@ -159,10 +159,11 @@ fn test_encrypt_decrypt_aes_cbc_256_pkcs5_padding() {
 
     // By default, when using None padding, PKCS5 padding is used
     let (ciphertext, tag) = encrypt(cipher, &key, &iv, &[], &message, None).unwrap();
+    assert_eq!(tag.len(), 0); // CBC has no tag
 
     // Let us explicit PKCS5 padding method to decrypt
     let decrypted_data = decrypt(
-        SymCipher::Aes256Cbc,
+        cipher,
         &key,
         &iv,
         &[],
@@ -190,6 +191,7 @@ fn test_encrypt_decrypt_aes_cbc_256_no_padding() {
     let padding_method = Some(PaddingMethod::None);
 
     let (ciphertext, tag) = encrypt(cipher, &key, &iv, &[], &message, padding_method).unwrap();
+    assert_eq!(tag.len(), 0); // CBC has no tag
 
     let decrypted_data = decrypt(
         SymCipher::Aes256Cbc,
@@ -257,7 +259,7 @@ fn test_encrypt_decrypt_chacha20_poly1305() {
 
     let decrypted_data = decrypt(
         SymCipher::Chacha20Poly1305,
-        key.as_ref(),
+        &key,
         &nonce,
         &aad,
         &ciphertext,
@@ -469,7 +471,7 @@ fn aes_xts_streaming_test() {
         result.len(),
         message1.len() + message2.len() + message3.len()
     );
-    assert_eq!(tag.len(), AES_256_XTS_MAC_LENGTH); //0
+    assert_eq!(tag.len(), 0); // XTS has no tag
     // decrypt
     let mut decryption_cipher = SymCipher::Aes256Xts
         .stream_cipher(Mode::Decrypt, &key, &tweak, &[])

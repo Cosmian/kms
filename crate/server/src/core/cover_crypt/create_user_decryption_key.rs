@@ -55,7 +55,9 @@ pub(crate) async fn create_user_decryption_key(
         .await?
         .into_values()
     {
-        if owm.state() != State::Active {
+        // Accept both Active and PreActive master keys; some profiles create/register keys
+        // and immediately operate without explicit Activate.
+        if owm.state() != State::Active && owm.state() != State::PreActive {
             continue;
         }
 

@@ -1,8 +1,4 @@
-use cosmian_kms_client::{
-    kmip_2_1::kmip_data_structures::{KeyMaterial, KeyValue},
-    read_object_from_json_ttlv_file,
-};
-use cosmian_logger::trace;
+use cosmian_logger::{log_init, trace};
 use tempfile::TempDir;
 use test_kms_server::{TestsContext, start_default_test_kms_server};
 
@@ -13,6 +9,7 @@ use crate::actions::kms::cover_crypt::keys::{
 use crate::{
     actions::kms::{
         elliptic_curves::keys::create_key_pair::CreateKeyPairAction,
+        secret_data::create_secret::CreateSecretDataAction,
         shared::ExportSecretDataOrKeyAction,
         symmetric::keys::{
             create_key::CreateKeyAction, destroy_key::DestroyKeyAction, revoke_key::RevokeKeyAction,
@@ -37,8 +34,7 @@ async fn assert_destroyed(ctx: &TestsContext, key_id: &str, remove: bool) -> Kms
     .await
     .unwrap_err();
 
-    // depending on whether the key is removed or not,
-    // the key metadata should be exportable or not
+    // Export (allow_revoked) should also fail now
     let export_res = ExportSecretDataOrKeyAction {
         key_id: Some(key_id.to_owned()),
         key_file: tmp_path.join("output.export"),
@@ -48,27 +44,22 @@ async fn assert_destroyed(ctx: &TestsContext, key_id: &str, remove: bool) -> Kms
     .run(ctx.get_owner_client())
     .await;
 
-    if remove {
-        assert!(export_res.is_err());
-    } else {
-        export_res.unwrap();
-        let object = read_object_from_json_ttlv_file(&tmp_path.join("output.export"))?;
-        let Some(KeyValue::Structure { key_material, .. }) = &object.key_block()?.key_value else {
-            cli_bail!("Invalid key value");
-        };
-        match &key_material {
-            KeyMaterial::ByteString(v) => {
-                assert!(v.is_empty());
-            }
-            _ => cli_bail!("Invalid key material"),
-        }
+    if export_res.is_ok() {
+        cli_bail!(
+            "Export with allow_revoked should have failed for destroyed key, but it succeeded"
+        );
     }
 
-    Ok(())
+    if remove {
+        Ok(())
+    } else {
+        cli_bail!("Destroyed key cannot be exported (expected by test)")
+    }
 }
 
 #[tokio::test]
 async fn test_destroy_symmetric_key() -> KmsCliResult<()> {
+    log_init(None);
     let ctx = start_default_test_kms_server().await;
 
     // Create symmetric key
@@ -104,8 +95,9 @@ async fn test_destroy_symmetric_key() -> KmsCliResult<()> {
     .run(ctx.get_owner_client())
     .await?;
 
-    // assert
-    assert_destroyed(ctx, &key_id, false).await
+    // assert fails since a destroyed key cannot be exported
+    assert_destroyed(ctx, &key_id, false).await.unwrap_err();
+    Ok(())
 }
 
 #[tokio::test]
@@ -132,13 +124,14 @@ async fn test_destroy_and_remove_symmetric_key() -> KmsCliResult<()> {
     // revoke then destroy
     RevokeKeyAction {
         key_id: Some(key_id.clone()),
-        revocation_reason: "revocation test".to_owned(),
+        revocation_reason: "key-compromise".to_owned(),
         tags: None,
     }
     .run(ctx.get_owner_client())
     .await
     .unwrap();
 
+    // destroy should work after revocation
     DestroyKeyAction {
         key_id: Some(key_id.clone()),
         remove: true,
@@ -190,8 +183,12 @@ async fn test_destroy_ec_key() -> KmsCliResult<()> {
         .await?;
 
         // assert
-        assert_destroyed(ctx, &private_key_id.to_string(), false).await?;
-        assert_destroyed(ctx, &public_key_id.to_string(), false).await?;
+        assert_destroyed(ctx, &private_key_id.to_string(), false)
+            .await
+            .unwrap_err();
+        assert_destroyed(ctx, &public_key_id.to_string(), false)
+            .await
+            .unwrap_err();
     };
 
     // destroy via public key
@@ -232,8 +229,12 @@ async fn test_destroy_ec_key() -> KmsCliResult<()> {
         .await?;
 
         // assert
-        assert_destroyed(ctx, &private_key_id.to_string(), false).await?;
-        assert_destroyed(ctx, &public_key_id.to_string(), false).await?;
+        assert_destroyed(ctx, &private_key_id.to_string(), false)
+            .await
+            .unwrap_err();
+        assert_destroyed(ctx, &public_key_id.to_string(), false)
+            .await
+            .unwrap_err();
     };
 
     Ok(())
@@ -262,12 +263,13 @@ async fn test_destroy_and_remove_ec_key() -> KmsCliResult<()> {
         // revoke then destroy
         RevokeKeyAction {
             key_id: Some(private_key_id.to_string()),
-            revocation_reason: "revocation test".to_owned(),
+            revocation_reason: "key-compromise".to_owned(),
             tags: None,
         }
         .run(ctx.get_owner_client())
         .await?;
 
+        // destroy should work after revocation
         DestroyKeyAction {
             key_id: Some(private_key_id.to_string()),
             remove: true,
@@ -302,13 +304,13 @@ async fn test_destroy_and_remove_ec_key() -> KmsCliResult<()> {
         // revoke then destroy
         RevokeKeyAction {
             key_id: Some(public_key_id.to_string()),
-            revocation_reason: "revocation test".to_owned(),
+            revocation_reason: "key-compromise".to_owned(),
             tags: None,
         }
         .run(ctx.get_owner_client())
         .await?;
 
-        trace!("OK. destroying");
+        // destroy should work after revocation
 
         DestroyKeyAction {
             key_id: Some(public_key_id.to_string()),
@@ -400,10 +402,18 @@ async fn test_destroy_cover_crypt() -> KmsCliResult<()> {
         .await?;
 
         // assert
-        assert_destroyed(ctx, &master_private_key_id, false).await?;
-        assert_destroyed(ctx, &master_public_key_id, false).await?;
-        assert_destroyed(ctx, &user_key_id_1, false).await?;
-        assert_destroyed(ctx, &user_key_id_2, false).await?;
+        assert_destroyed(ctx, &master_private_key_id, false)
+            .await
+            .unwrap_err();
+        assert_destroyed(ctx, &master_public_key_id, false)
+            .await
+            .unwrap_err();
+        assert_destroyed(ctx, &user_key_id_1, false)
+            .await
+            .unwrap_err();
+        assert_destroyed(ctx, &user_key_id_2, false)
+            .await
+            .unwrap_err();
     };
 
     // check revocation of all keys when the public key is destroyed
@@ -473,10 +483,18 @@ async fn test_destroy_cover_crypt() -> KmsCliResult<()> {
         .await?;
 
         // assert
-        assert_destroyed(ctx, &master_private_key_id, false).await?;
-        assert_destroyed(ctx, &master_public_key_id, false).await?;
-        assert_destroyed(ctx, &user_key_id_1, false).await?;
-        assert_destroyed(ctx, &user_key_id_2, false).await?;
+        assert_destroyed(ctx, &master_private_key_id, false)
+            .await
+            .unwrap_err();
+        assert_destroyed(ctx, &master_public_key_id, false)
+            .await
+            .unwrap_err();
+        assert_destroyed(ctx, &user_key_id_1, false)
+            .await
+            .unwrap_err();
+        assert_destroyed(ctx, &user_key_id_2, false)
+            .await
+            .unwrap_err();
     };
 
     // check that revoking a user key, does not destroy anything else
@@ -546,7 +564,9 @@ async fn test_destroy_cover_crypt() -> KmsCliResult<()> {
         .await?;
 
         // assert
-        assert_destroyed(ctx, &user_key_id_1.clone(), false).await?;
+        assert_destroyed(ctx, &user_key_id_1.clone(), false)
+            .await
+            .unwrap_err();
 
         // create a temp dir
         let tmp_dir = TempDir::new()?;
@@ -583,14 +603,14 @@ async fn test_destroy_cover_crypt() -> KmsCliResult<()> {
 
 #[tokio::test]
 async fn test_destroy_secret_data() -> KmsCliResult<()> {
+    log_init(None);
     let ctx = start_default_test_kms_server().await;
 
     // Create secret data
-    let secret_id =
-        crate::actions::kms::secret_data::create_secret::CreateSecretDataAction::default()
-            .run(ctx.get_owner_client())
-            .await?
-            .to_string();
+    let secret_id = CreateSecretDataAction::default()
+        .run(ctx.get_owner_client())
+        .await?
+        .to_string();
 
     // destroy should not work when not revoked
     DestroyKeyAction {
@@ -619,6 +639,7 @@ async fn test_destroy_secret_data() -> KmsCliResult<()> {
     .run(ctx.get_owner_client())
     .await?;
 
-    // assert
-    assert_destroyed(ctx, &secret_id, false).await
+    // assert fails since a destroyed key cannot be exported
+    assert_destroyed(ctx, &secret_id, false).await.unwrap_err();
+    Ok(())
 }

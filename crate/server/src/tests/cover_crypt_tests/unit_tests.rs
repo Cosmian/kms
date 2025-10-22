@@ -51,7 +51,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
             None,
         )
         .await?;
-    debug!("  -> response {:?}", cr);
+    debug!("  -> response {}", cr);
     let sk_uid = cr.private_key_unique_identifier.to_string();
     // check the generated id is an UUID
     let sk_uid_ = Uuid::parse_str(&sk_uid).map_err(|e| KmsError::InvalidRequest(e.to_string()))?;
@@ -146,7 +146,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
     let request =
         build_create_covercrypt_usk_request(access_policy, &sk_uid, EMPTY_TAGS, false, None)?;
     let cr = kms.create(request, owner, None, None).await?;
-    debug!("Create Response for User Decryption Key {:?}", cr);
+    debug!("Create Response for User Decryption Key {}", cr);
 
     let usk_uid = cr.unique_identifier.to_string();
     // check the generated ID is a UUID
@@ -176,7 +176,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
     let request =
         build_create_covercrypt_usk_request(access_policy, &sk_uid, EMPTY_TAGS, false, None)?;
     let cr = kms.create(request, owner, None, None).await?;
-    debug!("Create Response for User Decryption Key {:?}", cr);
+    debug!("Create Response for User Decryption Key {}", cr);
 
     let usk_uid = cr.unique_identifier.to_string();
     // check the generated ID is a UUID
@@ -504,10 +504,7 @@ async fn test_abe_json_access() -> KResult<()> {
 
     // now we have 1 key
     assert_eq!(locate_response.located_items.unwrap(), 1);
-    assert_eq!(
-        &locate_response.unique_identifier.unwrap()[0],
-        secret_mkg_fin_user_key_id
-    );
+    assert!(&locate_response.unique_identifier.unwrap()[0] == secret_mkg_fin_user_key_id);
 
     Ok(())
 }
@@ -535,7 +532,7 @@ async fn test_import_decrypt() -> KResult<()> {
             None,
         )
         .await?;
-    debug!("  -> response {:?}", cr);
+    debug!("  -> response created");
     let sk_uid = cr.private_key_unique_identifier.to_string();
     let pk_uid = cr.public_key_unique_identifier.to_string();
 

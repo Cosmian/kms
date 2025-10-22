@@ -11,6 +11,7 @@ use cosmian_kmip::{
         },
     },
 };
+use time::OffsetDateTime;
 
 use crate::error::UtilsError;
 pub const VENDOR_ATTR_COVER_CRYPT_ATTR: &str = "cover_crypt_attributes";
@@ -37,6 +38,11 @@ pub fn build_create_covercrypt_master_keypair_request<T: IntoIterator<Item = imp
         vendor_attributes: Some(vec![vendor_attributes]),
         cryptographic_usage_mask: Some(CryptographicUsageMask::Unrestricted),
         sensitive: sensitive.then_some(true),
+        activation_date: Some(
+            OffsetDateTime::now_utc()
+                .replace_millisecond(0)
+                .map_err(|e| UtilsError::Default(e.to_string()))?,
+        ),
         ..Attributes::default()
     };
     attributes.set_tags(tags)?;
@@ -75,6 +81,11 @@ pub fn build_create_covercrypt_usk_request<T: IntoIterator<Item = impl AsRef<str
         }]),
         cryptographic_usage_mask: Some(CryptographicUsageMask::Unrestricted),
         sensitive: sensitive.then_some(true),
+        activation_date: Some(
+            OffsetDateTime::now_utc()
+                .replace_millisecond(0)
+                .map_err(|e| UtilsError::Default(e.to_string()))?,
+        ),
         ..Attributes::default()
     };
     attributes.set_tags(tags)?;

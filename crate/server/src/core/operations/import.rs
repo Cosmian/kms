@@ -26,6 +26,7 @@ use cosmian_kms_server_database::reexport::{
 };
 use cosmian_logger::{debug, trace};
 use openssl::x509::X509;
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::{
@@ -179,6 +180,23 @@ pub(super) async fn process_symmetric_key(
         attributes.cryptographic_algorithm = Some(CryptographicAlgorithm::AES);
     }
 
+    // Preserve the originally registered KeyFormatType for later Get semantics if not already set
+    // This allows the server to return the same plaintext representation (e.g., TransparentSymmetricKey)
+    // on a Get without an explicit key_format_type request, matching KMIP XML vectors like BL-M-3-21.
+    if attributes.key_format_type.is_none() {
+        if let Ok(kb) = object.key_block() {
+            attributes.key_format_type = Some(kb.key_format_type);
+        }
+    }
+
+    // Ensure InitialDate is always set when importing a symmetric key
+    if attributes.initial_date.is_none() {
+        let now = OffsetDateTime::now_utc()
+            .replace_millisecond(0)
+            .map_err(|e| KmsError::Default(e.to_string()))?;
+        attributes.initial_date = Some(now);
+    }
+
     // force the usage mask to unrestricted if not in FIPS mode
     #[cfg(feature = "non-fips")]
     // In non-FIPS mode, if no CryptographicUsageMask has been specified,
@@ -259,6 +277,8 @@ pub(super) fn process_certificate(
     attributes.unique_identifier = Some(UniqueIdentifier::TextString(uid.clone()));
     // set the certificate attributes
     attributes.certificate_attributes = Some(openssl_x509_to_certificate_attributes(&certificate));
+    // Set Certificate Length as the DER length, per KMIP guidance
+    attributes.certificate_length = i32::try_from(certificate_der_bytes.len()).ok();
     // set the tags in the attributes
     attributes.set_tags(tags.clone())?;
 
@@ -266,6 +286,14 @@ pub(super) fn process_certificate(
     // Certificates do not hold attributes at this stage
     if let Ok(object_attributes) = object.attributes() {
         attributes.merge(object_attributes, false);
+    }
+
+    // Ensure InitialDate is set for imported certificates
+    if attributes.initial_date.is_none() {
+        let now = OffsetDateTime::now_utc()
+            .replace_millisecond(0)
+            .map_err(|e| KmsError::Default(e.to_string()))?;
+        attributes.initial_date = Some(now);
     }
 
     // if not in FIPS mode, set the CryptographicUsageMask to Unrestricted
@@ -315,10 +343,16 @@ pub(super) async fn process_public_key(
 
     // build the attributes from the request attributes
     let mut attributes = request.attributes;
+    // Preserve original cryptographic parameters supplied by the client (e.g., PSS/SHA256)
+    let original_cp = attributes.cryptographic_parameters.clone();
     // merge the object attributes with the request attributes without overwriting
     // This will recover existing links, for instance
     if let Ok(object_attributes) = object.attributes() {
         attributes.merge(object_attributes, false);
+    }
+    // If AlwaysSensitive not explicitly set, default it to Sensitive value at creation time
+    if attributes.always_sensitive.is_none() {
+        attributes.always_sensitive = attributes.sensitive;
     }
 
     // If the key is not wrapped and not a Covercrypt Key, try to parse it as an OpenSSL object and
@@ -339,6 +373,39 @@ pub(super) async fn process_public_key(
             if let Ok(obj_attrs) = object.attributes() {
                 attributes.merge(obj_attrs, true);
             }
+            // If the client supplied richer cryptographic parameters (e.g., PSS/hash),
+            // overlay them so they are preserved for future verify operations when request CP is omitted.
+            if let Some(orig) = original_cp {
+                let merged = match attributes.cryptographic_parameters.clone() {
+                    Some(mut existing) => {
+                        if existing.padding_method.is_none() {
+                            existing.padding_method = orig.padding_method;
+                        }
+                        if existing.hashing_algorithm.is_none() {
+                            existing.hashing_algorithm = orig.hashing_algorithm;
+                        }
+                        if existing.digital_signature_algorithm.is_none() {
+                            existing.digital_signature_algorithm = orig.digital_signature_algorithm;
+                        }
+                        if existing.cryptographic_algorithm.is_none() {
+                            existing.cryptographic_algorithm = orig.cryptographic_algorithm;
+                        }
+                        if existing.mask_generator.is_none() {
+                            existing.mask_generator = orig.mask_generator;
+                        }
+                        if existing.mask_generator_hashing_algorithm.is_none() {
+                            existing.mask_generator_hashing_algorithm =
+                                orig.mask_generator_hashing_algorithm;
+                        }
+                        if existing.p_source.is_none() && orig.p_source.is_some() {
+                            existing.p_source = orig.p_source;
+                        }
+                        Some(existing)
+                    }
+                    None => Some(orig),
+                };
+                attributes.cryptographic_parameters = merged;
+            }
         }
     }
 
@@ -352,6 +419,14 @@ pub(super) async fn process_public_key(
     attributes.set_tags(tags.clone())?;
     // set the unique identifier
     attributes.unique_identifier = Some(UniqueIdentifier::TextString(uid.clone()));
+
+    // Ensure InitialDate is set for imported public keys
+    if attributes.initial_date.is_none() {
+        let now = OffsetDateTime::now_utc()
+            .replace_millisecond(0)
+            .map_err(|e| KmsError::Default(e.to_string()))?;
+        attributes.initial_date = Some(now);
+    }
 
     // Replace updated attributes in the object structure.
     if let Ok(key_block) = object.key_block_mut() {
@@ -425,8 +500,11 @@ pub(super) async fn process_private_key(
         uid => uid,
     };
 
-    // Recover user tags.
+    // Recover user tags and original cryptographic parameters provided by the client.
     let mut attributes = request.attributes;
+    // Preserve Fresh requested by client; some merges/conversions may drop it
+    let requested_fresh = attributes.fresh;
+    let original_cp = attributes.cryptographic_parameters.clone();
     // merge the object attributes with the request attributes without overwriting
     // this will recover exiting links for instance
     if let Ok(object_attributes) = object.key_block()?.attributes() {
@@ -442,16 +520,88 @@ pub(super) async fn process_private_key(
         if object_key_block.key_wrapping_data.is_none()
             && object_key_block.cryptographic_algorithm != Some(CryptographicAlgorithm::CoverCrypt)
         {
-            object = openssl_private_key_to_kmip(
-                &kmip_private_key_to_openssl(&object)?,
-                KeyFormatType::PKCS8,
-                attributes.cryptographic_usage_mask,
-            )?;
-            // Merge the correct cryptographic attributes in the attributes if present
-            if let Ok(obj_attrs) = object.attributes() {
-                attributes.merge(obj_attrs, true);
+            // Skip OpenSSL re-encoding for Transparent DSA private keys; retain original structure.
+            if object_key_block.key_format_type != KeyFormatType::TransparentDSAPrivateKey {
+                object = openssl_private_key_to_kmip(
+                    &kmip_private_key_to_openssl(&object)?,
+                    KeyFormatType::PKCS8,
+                    attributes.cryptographic_usage_mask,
+                )?;
+                // Merge the correct cryptographic attributes in the attributes (overwriting to ensure consistency) if present
+                if let Ok(obj_attrs) = object.attributes() {
+                    attributes.merge(obj_attrs, true);
+                }
+            }
+            // If the client supplied richer cryptographic parameters (e.g., OAEP padding/hash/mgf1/label),
+            // overlay them so they are preserved for future decrypt operations when request CP is omitted.
+            // This is mandatory for tests "CS-AC - Cryptographic Service - Asymmetric Cryptography"
+            if let Some(orig) = original_cp {
+                let merged = match attributes.cryptographic_parameters.clone() {
+                    Some(mut existing) => {
+                        if existing.padding_method.is_none() {
+                            existing.padding_method = orig.padding_method;
+                        }
+                        if existing.hashing_algorithm.is_none() {
+                            existing.hashing_algorithm = orig.hashing_algorithm;
+                        }
+                        if existing.mask_generator.is_none() {
+                            existing.mask_generator = orig.mask_generator;
+                        }
+                        if existing.mask_generator_hashing_algorithm.is_none() {
+                            existing.mask_generator_hashing_algorithm =
+                                orig.mask_generator_hashing_algorithm;
+                        }
+                        if existing.p_source.is_none() && orig.p_source.is_some() {
+                            existing.p_source = orig.p_source;
+                        }
+                        if existing.block_cipher_mode.is_none() {
+                            existing.block_cipher_mode = orig.block_cipher_mode;
+                        }
+                        if existing.trailer_field.is_none() {
+                            existing.trailer_field = orig.trailer_field;
+                        }
+                        if existing.key_role_type.is_none() {
+                            existing.key_role_type = orig.key_role_type;
+                        }
+                        if existing.digital_signature_algorithm.is_none() {
+                            existing.digital_signature_algorithm = orig.digital_signature_algorithm;
+                        }
+                        if existing.random_iv.is_none() {
+                            existing.random_iv = orig.random_iv;
+                        }
+                        if existing.iv_length.is_none() {
+                            existing.iv_length = orig.iv_length;
+                        }
+                        if existing.tag_length.is_none() {
+                            existing.tag_length = orig.tag_length;
+                        }
+                        if existing.fixed_field_length.is_none() {
+                            existing.fixed_field_length = orig.fixed_field_length;
+                        }
+                        if existing.invocation_field_length.is_none() {
+                            existing.invocation_field_length = orig.invocation_field_length;
+                        }
+                        if existing.counter_length.is_none() {
+                            existing.counter_length = orig.counter_length;
+                        }
+                        if existing.initial_counter_value.is_none() {
+                            existing.initial_counter_value = orig.initial_counter_value;
+                        }
+                        if existing.salt_length.is_none() {
+                            existing.salt_length = orig.salt_length;
+                        }
+                        Some(existing)
+                    }
+                    None => Some(orig),
+                };
+                attributes.cryptographic_parameters = merged;
             }
         }
+    }
+
+    // If Fresh was provided by the client and is currently unset, restore it
+    if attributes.fresh.is_none() {
+        attributes.fresh = requested_fresh;
     }
 
     #[cfg(feature = "non-fips")]
@@ -464,6 +614,14 @@ pub(super) async fn process_private_key(
     attributes.set_tags(tags.clone())?;
     // set the unique identifier
     attributes.unique_identifier = Some(UniqueIdentifier::TextString(uid.clone()));
+
+    // Ensure InitialDate is set for imported private keys
+    if attributes.initial_date.is_none() {
+        let now = OffsetDateTime::now_utc()
+            .replace_millisecond(0)
+            .map_err(|e| KmsError::Default(e.to_string()))?;
+        attributes.initial_date = Some(now);
+    }
 
     // Replace updated attributes in the object structure if the object is not wrapped.
     if let Ok(key_block) = object.key_block_mut() {
@@ -582,6 +740,13 @@ async fn process_pkcs12(
         private_key_tags.insert("_sk".to_owned());
         // set tags in the attributes
         attributes.set_tags(private_key_tags.clone())?;
+        // Ensure InitialDate is set for PKCS#12-derived private key
+        if attributes.initial_date.is_none() {
+            let now = OffsetDateTime::now_utc()
+                .replace_millisecond(0)
+                .map_err(|e| KmsError::Default(e.to_string()))?;
+            attributes.initial_date = Some(now);
+        }
         // set the updated attributes on the key
         if let Some(KeyValue::Structure {
             attributes: attrs, ..
@@ -645,6 +810,13 @@ async fn process_pkcs12(
             attributes: attrs, ..
         }) = public_key.key_block_mut()?.key_value.as_mut()
         {
+            // Ensure InitialDate is set for PKCS#12-derived public key
+            if attributes.initial_date.is_none() {
+                let now = OffsetDateTime::now_utc()
+                    .replace_millisecond(0)
+                    .map_err(|e| KmsError::Default(e.to_string()))?;
+                attributes.initial_date = Some(now);
+            }
             *attrs = Some(attributes);
         }
 
@@ -742,6 +914,13 @@ async fn process_pkcs12(
         },
         true,
     );
+    // Ensure InitialDate is set for PKCS#12-derived leaf certificate
+    if leaf_attributes.initial_date.is_none() {
+        let now = OffsetDateTime::now_utc()
+            .replace_millisecond(0)
+            .map_err(|e| KmsError::Default(e.to_string()))?;
+        leaf_attributes.initial_date = Some(now);
+    }
     // certificate tags
     let mut leaf_tags = user_tags.clone();
     leaf_tags.insert("_cert".to_owned());
@@ -802,6 +981,13 @@ async fn process_pkcs12(
             },
             true,
         );
+        // Ensure InitialDate is set for PKCS#12-derived chain certificate
+        if chain_attributes.initial_date.is_none() {
+            let now = OffsetDateTime::now_utc()
+                .replace_millisecond(0)
+                .map_err(|e| KmsError::Default(e.to_string()))?;
+            chain_attributes.initial_date = Some(now);
+        }
         // certificate tags
         let mut chain_tags = user_tags.clone();
         chain_tags.insert("_cert".to_owned());
@@ -835,6 +1021,7 @@ pub(super) async fn process_secret_data(
     owner: &str,
     params: Option<Arc<dyn SessionParams>>,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
+    trace!("{request}");
     // check if the object will be replaced if it already exists
     let replace_existing = request.replace_existing.unwrap_or(false);
 
@@ -867,6 +1054,14 @@ pub(super) async fn process_secret_data(
     // This will recover existing links, for instance
     if let Ok(object_attributes) = object.key_block()?.attributes() {
         attributes.merge(object_attributes, false);
+    }
+
+    // Ensure InitialDate is set for imported secret data
+    if attributes.initial_date.is_none() {
+        let now = OffsetDateTime::now_utc()
+            .replace_millisecond(0)
+            .map_err(|e| KmsError::Default(e.to_string()))?;
+        attributes.initial_date = Some(now);
     }
 
     // force the usage mask to unrestricted if not in FIPS mode
@@ -912,6 +1107,7 @@ pub(super) async fn process_secret_data(
 pub(super) fn process_opaque_object(
     request: Import,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
+    trace!("{request}");
     // check if the object will be replaced if it already exists
     let replace_existing = request.replace_existing.unwrap_or(false);
 

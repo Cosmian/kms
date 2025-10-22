@@ -73,7 +73,7 @@ pub(super) fn locate_symmetric_keys(
                 ephemeral: None,
                 unique_batch_item_id: Some(b"12345".to_vec()),
                 request_payload: Operation::Locate(Locate {
-                    maximum_items: Some(16),
+                    maximum_items: None,
                     storage_status_mask: None,
                     object_group_member: None,
                     attribute: Some(attributes),

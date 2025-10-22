@@ -152,7 +152,7 @@ macro_rules! cli_bail {
 }
 
 #[cfg(test)]
-#[expect(clippy::unwrap_used)]
+#[allow(clippy::panic)]
 mod tests {
 
     use crate::error::result::KmsCliResult;
@@ -164,10 +164,16 @@ mod tests {
         assert_eq!("interpolate 42", err.to_string());
 
         let err = bail();
-        assert_eq!("interpolate 43", err.unwrap_err().to_string());
+        match err {
+            Err(e) => assert_eq!("interpolate 43", e.to_string()),
+            Ok(()) => panic!("expected error"),
+        }
 
         let err = ensure();
-        assert_eq!("interpolate 44", err.unwrap_err().to_string());
+        match err {
+            Err(e) => assert_eq!("interpolate 44", e.to_string()),
+            Ok(()) => panic!("expected error"),
+        }
     }
 
     fn bail() -> KmsCliResult<()> {

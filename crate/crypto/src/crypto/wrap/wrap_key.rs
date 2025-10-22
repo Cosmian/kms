@@ -134,7 +134,7 @@ pub fn key_data_to_wrap(
     object: &Object,
     key_wrapping_specification: &KeyWrappingSpecification,
 ) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
-    trace!("key_wrapping_specification: {key_wrapping_specification:?}");
+    trace!("key_wrapping_specification: {}", key_wrapping_specification);
     if object.key_block()?.key_wrapping_data.is_some() {
         crypto_bail!("unable to wrap the key: it is already wrapped")
     }
@@ -368,7 +368,7 @@ fn wrap_with_rsa(
             }
             PaddingMethod::OAEP => {
                 debug!("wrapping with CKM_RSA_OAEP and hashing function: {hashing_fn}");
-                ckm_rsa_pkcs_oaep_key_wrap(public_key, hashing_fn, key_to_wrap)
+                ckm_rsa_pkcs_oaep_key_wrap(public_key, hashing_fn, hashing_fn, None, key_to_wrap)
             }
             #[cfg(feature = "non-fips")]
             PaddingMethod::PKCS1v15 => {
