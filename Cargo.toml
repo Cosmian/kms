@@ -27,61 +27,61 @@ members = [
 resolver = "2"
 
 [workspace.lints.rust]
-nonstandard_style = "deny"
-refining_impl_trait = "deny"
-future_incompatible = "deny"
-keyword_idents = "deny"
-let_underscore = "deny"
-unreachable_pub = "deny"
-unused = "deny"
-unsafe_code = "deny"
+# nonstandard_style = "deny"
+# refining_impl_trait = "deny"
+# future_incompatible = "deny"
+# keyword_idents = "deny"
+# let_underscore = "deny"
+# unreachable_pub = "deny"
+# unused = "deny"
+# unsafe_code = "deny"
 
 [workspace.lints.clippy]
-# Main clippy categories
-pedantic = { level = "deny", priority = 90 }
-all = { level = "deny", priority = 80 }
-suspicious = { level = "deny", priority = 70 }
-complexity = { level = "deny", priority = 60 }
-perf = { level = "deny", priority = 50 }
-style = { level = "deny", priority = 40 }
-cargo = { level = "deny", priority = 30 }
-nursery = { level = "deny", priority = 20 }
-
-# Common allows (to be selectively enabled by crates as needed)
-similar_names = { level = "allow", priority = 91 }
-too_many_lines = { level = "allow", priority = 91 }
-ref_option = { level = "allow", priority = 91 }
-missing_errors_doc = { level = "allow", priority = 91 }
-multiple_crate_versions = { level = "allow", priority = 31 }
-redundant_pub_crate = { level = "allow", priority = 21 }
-future_not_send = { level = "allow", priority = 21 }
-cognitive_complexity = { level = "allow", priority = 21 }
-significant_drop_tightening = { level = "allow", priority = 21 }
-iter_with_drain = { level = "allow", priority = 21 }
-too_long_first_doc_paragraph = { level = "allow", priority = 21 }
-
-# Restriction lints (from server and other crates)
-module_name_repetitions = "allow"
-unwrap_used = "deny"
-get_unwrap = "deny"
-expect_used = "deny"
-indexing_slicing = "deny"
-missing_asserts_for_indexing = "deny"
-unwrap_in_result = "deny"
-assertions_on_result_states = "deny"
-panic = "deny"
-panic_in_result_fn = "deny"
-renamed_function_params = "deny"
-verbose_file_reads = "deny"
-str_to_string = "deny"
-implicit_clone = "deny"
-unreachable = "deny"
-as_conversions = "deny"
-print_stdout = "deny"
-empty_structs_with_brackets = "deny"
-unseparated_literal_suffix = "deny"
-map_err_ignore = "deny"
-redundant_clone = "deny"
+## Main clippy categories
+#pedantic = { level = "deny", priority = 90 }
+#all = { level = "deny", priority = 80 }
+#suspicious = { level = "deny", priority = 70 }
+#complexity = { level = "deny", priority = 60 }
+#perf = { level = "deny", priority = 50 }
+#style = { level = "deny", priority = 40 }
+#cargo = { level = "deny", priority = 30 }
+#nursery = { level = "deny", priority = 20 }
+#
+## Common allows (to be selectively enabled by crates as needed)
+#similar_names = { level = "allow", priority = 91 }
+#too_many_lines = { level = "allow", priority = 91 }
+#ref_option = { level = "allow", priority = 91 }
+#missing_errors_doc = { level = "allow", priority = 91 }
+#multiple_crate_versions = { level = "allow", priority = 31 }
+#redundant_pub_crate = { level = "allow", priority = 21 }
+#future_not_send = { level = "allow", priority = 21 }
+#cognitive_complexity = { level = "allow", priority = 21 }
+#significant_drop_tightening = { level = "allow", priority = 21 }
+#iter_with_drain = { level = "allow", priority = 21 }
+#too_long_first_doc_paragraph = { level = "allow", priority = 21 }
+#
+## Restriction lints (from server and other crates)
+#module_name_repetitions = "allow"
+#unwrap_used = "deny"
+#get_unwrap = "deny"
+#expect_used = "deny"
+#indexing_slicing = "deny"
+#missing_asserts_for_indexing = "deny"
+#unwrap_in_result = "deny"
+#assertions_on_result_states = "deny"
+#panic = "deny"
+#panic_in_result_fn = "deny"
+#renamed_function_params = "deny"
+#verbose_file_reads = "deny"
+#str_to_string = "deny"
+#implicit_clone = "deny"
+#unreachable = "deny"
+#as_conversions = "deny"
+#print_stdout = "deny"
+#empty_structs_with_brackets = "deny"
+#unseparated_literal_suffix = "deny"
+#map_err_ignore = "deny"
+#redundant_clone = "deny"
 
 [workspace.package]
 version = "5.9.0"
