@@ -151,7 +151,7 @@ async fn test_validate_cli() -> KmsCliResult<()> {
         "Validate chain with leaf1: result supposed to be invalid, as leaf1 was revoked. \
          test1_res: {test1_res:?}"
     );
-    test1_res.unwrap_err();
+    assert!(test1_res.is_err());
 
     let test2_res = ValidateCertificatesAction {
         certificate_id: vec![
@@ -178,7 +178,7 @@ async fn test_validate_cli() -> KmsCliResult<()> {
         "validate chain with leaf2: result supposed to be invalid, as date is posthumous to \
          leaf2's expiration date. test3_res: {test3_res:?}"
     );
-    test3_res.unwrap_err();
+    assert!(test3_res.is_err());
 
     let test4_res = ValidateCertificatesAction {
         certificate_id: vec![root_certificate_id],

@@ -13,6 +13,7 @@ use cosmian_logger::trace;
 use num_bigint_dig::{BigInt, Sign};
 use openssl::{
     bn::{BigNum, BigNumContext},
+    dsa::Dsa,
     ec::{EcGroup, EcKey, EcPoint, PointConversionForm},
     nid::Nid,
     pkey::{Id, PKey, Public},
@@ -69,7 +70,7 @@ pub fn kmip_public_key_to_openssl(public_key: &Object) -> Result<PKey<Public>, C
             PKey::from_rsa(rsa_public_key)?
         }
         // This really is a SPKI as specified by RFC 5480
-        KeyFormatType::PKCS8 => {
+        KeyFormatType::PKCS8 | KeyFormatType::X509 => {
             let key_bytes = key_block.pkcs_der_bytes()?;
             // This key may be an RSA or EC key
             PKey::public_key_from_der(&key_bytes)?
@@ -161,6 +162,30 @@ pub fn kmip_public_key_to_openssl(public_key: &Object) -> Result<PKey<Public>, C
                 _ => crypto_bail!(
                     "Invalid key material for a Transparent EC public key format: \
                      TransparentECPublicKey expected"
+                ),
+            }
+        }
+        KeyFormatType::TransparentDSAPublicKey => {
+            let Some(KeyValue::Structure { key_material, .. }) = key_block.key_value.as_ref()
+            else {
+                return Err(CryptoError::Default(
+                    "Key value not found in transparent DSA public key".to_owned(),
+                ));
+            };
+            match key_material {
+                KeyMaterial::TransparentDSAPublicKey { p, q, g, y } => {
+                    trace!("Key format type: TransparentDSAPublicKey");
+                    // Convert big integers to OpenSSL BigNum; skip leading sign byte from num_bigint_dig representation
+                    let p_bn = BigNum::from_slice(&p.to_bytes_be().1)?;
+                    let q_bn = BigNum::from_slice(&q.to_bytes_be().1)?;
+                    let g_bn = BigNum::from_slice(&g.to_bytes_be().1)?;
+                    let y_bn = BigNum::from_slice(&y.to_bytes_be().1)?;
+                    let dsa = Dsa::from_public_components(p_bn, q_bn, g_bn, y_bn)?;
+                    PKey::from_dsa(dsa)?
+                }
+                invalid => crypto_bail!(
+                    "Invalid Transparent DSA public key material: expected TransparentDSAPublicKey but got: {} ",
+                    invalid
                 ),
             }
         }

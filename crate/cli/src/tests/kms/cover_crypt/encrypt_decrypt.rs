@@ -266,13 +266,19 @@ async fn test_encrypt_decrypt_using_tags() -> KmsCliResult<()> {
     let output_file = tmp_path.join("plain.enc");
     let recovered_file = tmp_path.join("plain.txt");
 
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_else(|_| std::time::Duration::from_secs(0))
+        .as_nanos();
+    let base_tag = format!("tag_cc_{}", ts);
+
     fs::remove_file(&output_file).ok();
     assert!(!output_file.exists());
 
     let (master_secret_key_id, _master_public_key_id) = {
         let action = CreateMasterKeyPairAction {
             specification: PathBuf::from("../../test_data/access_structure_specifications.json"),
-            tags: vec!["tag".to_string()],
+            tags: vec![base_tag.clone()],
             sensitive: false,
             wrapping_key_id: None,
         };
@@ -285,7 +291,7 @@ async fn test_encrypt_decrypt_using_tags() -> KmsCliResult<()> {
         encryption_policy: "Department::MKG && Security Level::Confidential".to_string(),
         key_id: None,
         output_file: Some(output_file.clone()),
-        tags: Some(vec!["tag".to_string()]),
+        tags: Some(vec![base_tag.clone()]),
         authentication_data: Some("myid".to_owned()),
     }
     .run(ctx.get_owner_client())
@@ -296,7 +302,7 @@ async fn test_encrypt_decrypt_using_tags() -> KmsCliResult<()> {
         master_secret_key_id: master_secret_key_id.clone(),
         access_policy: "(Department::MKG || Department::FIN) && Security Level::Top Secret"
             .to_string(),
-        tags: vec!["tag".to_string()],
+        tags: vec![base_tag.clone()],
         sensitive: false,
         wrapping_key_id: None,
     }
@@ -310,7 +316,7 @@ async fn test_encrypt_decrypt_using_tags() -> KmsCliResult<()> {
         key_id: None,
         output_file: Some(recovered_file.clone()),
         authentication_data: Some("myid".to_owned()),
-        tags: Some(vec!["tag".to_string()]),
+        tags: Some(vec![base_tag.clone()]),
     }
     .run(ctx.get_owner_client())
     .await?;
@@ -401,6 +407,12 @@ async fn test_encrypt_decrypt_bulk_using_tags() -> KmsCliResult<()> {
     let recovered_file2 = tmp_path.join("plain2.plain");
     let recovered_file3 = tmp_path.join("plain3.plain");
 
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_else(|_| std::time::Duration::from_secs(0))
+        .as_nanos();
+    let base_tag = format!("tag_bulk_{}", ts);
+
     fs::remove_file(&output_file1).ok();
     assert!(!output_file1.exists());
 
@@ -413,7 +425,7 @@ async fn test_encrypt_decrypt_bulk_using_tags() -> KmsCliResult<()> {
     let (master_secret_key_id, _master_public_key_id) = {
         let action = CreateMasterKeyPairAction {
             specification: PathBuf::from("../../test_data/access_structure_specifications.json"),
-            tags: vec!["tag_bulk".to_string()],
+            tags: vec![base_tag.clone()],
             sensitive: false,
             wrapping_key_id: None,
         };
@@ -430,7 +442,7 @@ async fn test_encrypt_decrypt_bulk_using_tags() -> KmsCliResult<()> {
         encryption_policy: "Department::MKG && Security Level::Confidential".to_string(),
         key_id: None,
         output_file: Some(tmp_path.join("")),
-        tags: Some(vec!["tag_bulk".to_string()]),
+        tags: Some(vec![base_tag.clone()]),
         authentication_data: Some("myid".to_owned()),
     }
     .run(ctx.get_owner_client())
@@ -445,7 +457,7 @@ async fn test_encrypt_decrypt_bulk_using_tags() -> KmsCliResult<()> {
         master_secret_key_id: master_secret_key_id.clone(),
         access_policy: "(Department::MKG || Department::FIN) && Security Level::Top Secret"
             .to_string(),
-        tags: vec!["tag_bulk".to_string()],
+        tags: vec![base_tag.clone()],
         sensitive: false,
         wrapping_key_id: None,
     }
@@ -463,7 +475,7 @@ async fn test_encrypt_decrypt_bulk_using_tags() -> KmsCliResult<()> {
         key_id: None,
         output_file: None, // Will use default output naming
         authentication_data: Some("myid".to_owned()),
-        tags: Some(vec!["tag_bulk".to_string()]),
+        tags: Some(vec![base_tag.clone()]),
     }
     .run(ctx.get_owner_client())
     .await?;

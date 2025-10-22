@@ -366,7 +366,7 @@ pub(super) async fn create_(
         .bind(uid.clone())
         .bind(object_json)
         .bind(attributes_json)
-        .bind(State::Active.to_string())
+        .bind(attributes.state.unwrap_or(State::Active).to_string())
         .bind(owner)
         .execute(&mut **executor)
         .await?;
@@ -758,7 +758,7 @@ where
         user,
         user_must_be_owner,
     );
-    trace!("find_: {query:?}");
+    trace!("{query:?}");
     let query = sqlx::query(&query);
     let rows = query.fetch_all(executor).await?;
 

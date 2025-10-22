@@ -36,7 +36,7 @@ async fn test_single_signature(
         ..Default::default()
     };
     let sign_response: SignResponse = kms.sign(sign_request, owner, None).await?;
-    assert_eq!(sign_response.unique_identifier, *private_key_id);
+    assert!(sign_response.unique_identifier == *private_key_id);
     assert!(sign_response.signature_data.is_some());
 
     // Verify signature using raw data
@@ -50,7 +50,7 @@ async fn test_single_signature(
     };
     let verify_response = kms.signature_verify(verify_request, owner, None).await?;
     // Verify the signature verification response
-    assert_eq!(verify_response.unique_identifier, public_key_id.clone());
+    assert!(verify_response.unique_identifier == public_key_id.clone());
     assert_eq!(
         verify_response.validity_indicator,
         Some(ValidityIndicator::Valid)
@@ -63,7 +63,7 @@ async fn test_single_signature(
         ..Default::default()
     };
     let sign_response: SignResponse = kms.sign(sign_request, owner, None).await?;
-    assert_eq!(sign_response.unique_identifier, *private_key_id);
+    assert!(sign_response.unique_identifier == *private_key_id);
     assert!(sign_response.signature_data.is_some());
 
     // Verify signature
@@ -77,7 +77,7 @@ async fn test_single_signature(
     };
     let verify_response = kms.signature_verify(verify_request, owner, None).await?;
     // Verify the signature verification response
-    assert_eq!(verify_response.unique_identifier, public_key_id.clone());
+    assert!(verify_response.unique_identifier == public_key_id.clone());
     assert_eq!(
         verify_response.validity_indicator,
         Some(ValidityIndicator::Valid)
@@ -106,7 +106,7 @@ async fn _test_streaming_signature(
     };
 
     let init_response: SignResponse = kms.sign(init_request, owner, None).await?;
-    assert_eq!(init_response.unique_identifier, *private_key_id);
+    assert!(init_response.unique_identifier == *private_key_id);
     let mut correlation_value = init_response.correlation_value;
 
     // Middle calls - continue with remaining chunks except the last
@@ -121,7 +121,7 @@ async fn _test_streaming_signature(
         };
 
         let continue_response: SignResponse = kms.sign(continue_request, owner, None).await?;
-        assert_eq!(continue_response.unique_identifier, *private_key_id);
+        assert!(continue_response.unique_identifier == *private_key_id);
         correlation_value = continue_response.signature_data;
     }
 
@@ -136,7 +136,7 @@ async fn _test_streaming_signature(
     };
     let final_response: SignResponse = kms.sign(final_request, owner, None).await?;
 
-    assert_eq!(final_response.unique_identifier, *private_key_id);
+    assert!(final_response.unique_identifier == *private_key_id);
     assert!(final_response.signature_data.is_some());
 
     Ok(final_response.signature_data.unwrap())
@@ -174,7 +174,7 @@ async fn test_streaming_signature_verification(
     };
 
     let init_response = kms.signature_verify(init_request, owner, None).await?;
-    assert_eq!(init_response.unique_identifier, public_key_id.clone());
+    assert!(init_response.unique_identifier == public_key_id.clone());
     assert!(init_response.validity_indicator.is_none()); // No result yet
     let mut correlation_value = init_response.correlation_value;
     assert!(correlation_value.is_some());
@@ -192,7 +192,7 @@ async fn test_streaming_signature_verification(
         };
 
         let continue_response = kms.signature_verify(continue_request, owner, None).await?;
-        assert_eq!(continue_response.unique_identifier, public_key_id.clone());
+        assert!(continue_response.unique_identifier == public_key_id.clone());
         assert!(continue_response.validity_indicator.is_none()); // No result yet
         correlation_value = continue_response.correlation_value;
         assert!(correlation_value.is_some());
@@ -210,7 +210,7 @@ async fn test_streaming_signature_verification(
     };
     let final_response = kms.signature_verify(final_request, owner, None).await?;
 
-    assert_eq!(final_response.unique_identifier, public_key_id.clone());
+    assert!(final_response.unique_identifier == public_key_id.clone());
     assert_eq!(
         final_response.validity_indicator,
         Some(ValidityIndicator::Valid)

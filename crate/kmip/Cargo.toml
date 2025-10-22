@@ -38,6 +38,7 @@ num-bigint-dig = { workspace = true, features = [
 serde = { workspace = true, features = ["derive", "std"] }
 serde_json = { workspace = true, features = [] }
 strum = { workspace = true, features = ["std", "derive", "strum_macros"] }
+strum_macros = { workspace = true }
 thiserror = { workspace = true }
 time = { workspace = true, features = [
   "formatting",
@@ -49,6 +50,8 @@ num-traits = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 zeroize = { workspace = true, features = ["zeroize_derive", "std", "serde"] }
+quick-xml = { version = "0.31", features = ["serialize"] }
+regex = { version = "1" }
 
 [package.metadata.cargo-machete]
 ignored = ["rust-ini", "sha3"]

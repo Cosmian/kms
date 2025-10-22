@@ -349,11 +349,11 @@ fn test_vendor_attribute_value() {
     let json = serde_json::to_string_pretty(&vendor_attribute_value).unwrap();
     info!("JSON:\n{}", json);
     let vendor_attribute_: VendorAttributeValue = serde_json::from_str(&json).unwrap();
-    assert_eq!(vendor_attribute_value, vendor_attribute_);
+    assert!(vendor_attribute_value == vendor_attribute_);
 
     // Serializer
     let ttlv = to_ttlv(&vendor_attribute_value).unwrap();
-    info!("TTLV:\n{:#?}", ttlv);
+    // TTLV supports Debug; keep as-is
     // Serialize
     let json = serde_json::to_string_pretty(&ttlv).unwrap();
     info!("JSON TTLV:\n{}", json);
@@ -362,7 +362,7 @@ fn test_vendor_attribute_value() {
     assert_eq!(ttlv, ttlv_from_json);
     // Deserializer
     let rec: VendorAttributeValue = from_ttlv(ttlv).unwrap();
-    assert_eq!(vendor_attribute_value, rec);
+    assert!(vendor_attribute_value == rec);
 }
 
 #[test]
@@ -380,7 +380,7 @@ fn test_vendor_attribute() {
     let json = serde_json::to_string_pretty(&vendor_attribute).unwrap();
     info!("{}", json);
     let vendor_attribute_: VendorAttribute = serde_json::from_str(&json).unwrap();
-    assert_eq!(vendor_attribute, vendor_attribute_);
+    assert!(vendor_attribute == vendor_attribute_);
 
     // Serializer
     let ttlv = to_ttlv(&vendor_attribute).unwrap();
@@ -390,10 +390,10 @@ fn test_vendor_attribute() {
     info!("{}", json);
     // Deserialize
     let ttlv_from_json = serde_json::from_str::<TTLV>(&json).unwrap();
-    assert_eq!(ttlv, ttlv_from_json);
+    assert!(ttlv == ttlv_from_json);
     // Deserializer
     let rec: VendorAttribute = from_ttlv(ttlv).unwrap();
-    assert_eq!(vendor_attribute, rec);
+    assert!(vendor_attribute == rec);
 }
 
 #[test]
@@ -655,7 +655,7 @@ fn test_java_import_response() {
     };
     let json = serde_json::to_string(&to_ttlv(&ir).unwrap()).unwrap();
     let ir_ = from_ttlv(serde_json::from_str::<TTLV>(&json).unwrap()).unwrap();
-    assert_eq!(ir, ir_);
+    assert!(ir == ir_);
 }
 
 #[test]
@@ -723,9 +723,9 @@ pub(super) fn test_create() {
         CryptographicAlgorithm::AES,
         create_.attributes.cryptographic_algorithm.unwrap()
     );
-    assert_eq!(
-        LinkedObjectIdentifier::TextString("SK".to_owned()),
-        create_.attributes.link.as_ref().unwrap()[0].linked_object_identifier
+    assert!(
+        LinkedObjectIdentifier::TextString("SK".to_owned())
+            == create_.attributes.link.as_ref().unwrap()[0].linked_object_identifier
     );
 }
 
@@ -1020,7 +1020,7 @@ fn test_serde_attribute() {
     assert_eq!(ttlv, ttlv_from_json);
     // Deserializer
     let rec: Attribute = from_ttlv(ttlv).unwrap();
-    assert_eq!(attribute, rec);
+    assert!(attribute == rec);
 }
 
 #[test]
@@ -1164,7 +1164,11 @@ fn test_serialization_link() -> KmipResult<()> {
     trace!("link: {:#?}", link);
 
     let link_deserialized: Vec<Link> = from_ttlv(link)?;
-    trace!("set_attribute_deserialized: {:?}", link_deserialized);
+    // Avoid Debug on Link; just check lengths
+    trace!(
+        "set_attribute_deserialized: count={}",
+        link_deserialized.len()
+    );
 
     Ok(())
 }
@@ -1560,10 +1564,7 @@ pub(super) fn test_message_response() {
         decrypt.data,
         Some(Zeroizing::from(b"decrypted_data".to_vec()))
     );
-    assert_eq!(
-        decrypt.unique_identifier,
-        UniqueIdentifier::TextString("id_12345".to_owned())
-    );
+    assert!(decrypt.unique_identifier == UniqueIdentifier::TextString("id_12345".to_owned()));
     assert!(res == res_);
 }
 
@@ -1770,21 +1771,15 @@ fn test_set_attribute() {
     let deserialized_set_attribute: SetAttribute =
         from_ttlv(ttlv).expect("Failed to deserialize TTLV");
 
-    info!("Deserialized Object: {:#?}", deserialized_set_attribute);
-    assert_eq!(
-        set_attribute, deserialized_set_attribute,
-        "Deserialized Object does not match the original"
-    );
+    info!("Deserialized Object: {}", deserialized_set_attribute);
+    assert!(set_attribute == deserialized_set_attribute);
 
     // JSON Serde
     let json = serde_json::to_string_pretty(&set_attribute).expect("Failed to serialize to JSON");
     info!("JSON: {}", json);
     let deserialized_set_attribute_json: SetAttribute =
         serde_json::from_str(&json).expect("Failed to deserialize from JSON");
-    assert_eq!(
-        set_attribute, deserialized_set_attribute_json,
-        "Deserialized Object from JSON does not match the original"
-    );
+    assert!(set_attribute == deserialized_set_attribute_json);
 }
 
 #[test]

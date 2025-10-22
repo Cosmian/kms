@@ -1,16 +1,5 @@
 use std::sync::Arc;
 
-use crate::tests::hsm::export_object;
-use crate::{
-    config::ServerParams,
-    core::KMS,
-    error::KmsError,
-    result::KResult,
-    tests::{
-        hsm::{EMPTY_TAGS, create_kek, delete_key, hsm_clap_config, revoke_key, send_message},
-        test_utils::get_tmp_sqlite_path,
-    },
-};
 use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::kmip_objects::ObjectType;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::PaddingMethod,
@@ -21,6 +10,20 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     },
 };
 use uuid::Uuid;
+
+use crate::{
+    config::ServerParams,
+    core::KMS,
+    error::KmsError,
+    result::KResult,
+    tests::{
+        hsm::{
+            EMPTY_TAGS, create_kek, delete_key, export_object, hsm_clap_config, revoke_key,
+            send_message,
+        },
+        test_utils::get_tmp_sqlite_path,
+    },
+};
 
 pub(super) async fn test_wrapped_rsa_dek() -> KResult<()> {
     let kek_uuid = Uuid::new_v4();
@@ -116,9 +119,9 @@ async fn create_rsa_dek(dek_uid: &str, kek_uid: &str, owner: &str, kms: &Arc<KMS
     let Operation::CreateKeyPairResponse(create_response) = &response[0] else {
         return Err(KmsError::ServerError("invalid response".to_owned()));
     };
-    assert_eq!(
-        create_response.private_key_unique_identifier,
-        UniqueIdentifier::TextString(dek_uid.to_owned())
+    assert!(
+        create_response.private_key_unique_identifier
+            == UniqueIdentifier::TextString(dek_uid.to_owned())
     );
     assert_eq!(
         create_response.public_key_unique_identifier.to_string(),
@@ -153,10 +156,7 @@ async fn rsa_encrypt(dek_uid: &str, owner: &str, kms: &Arc<KMS>, data: &[u8]) ->
         return Err(KmsError::ServerError("invalid response".to_owned()));
     };
     let response = response.to_owned();
-    assert_eq!(
-        response.unique_identifier,
-        UniqueIdentifier::TextString(dek_uid.to_owned())
-    );
+    assert!(response.unique_identifier == UniqueIdentifier::TextString(dek_uid.to_owned()));
     Ok(response.data.unwrap_or_default())
 }
 
@@ -191,9 +191,6 @@ async fn rsa_decrypt(
         return Err(KmsError::ServerError("invalid response".to_owned()));
     };
     let response = response.to_owned();
-    assert_eq!(
-        response.unique_identifier,
-        UniqueIdentifier::TextString(dek_uid.to_owned())
-    );
+    assert!(response.unique_identifier == UniqueIdentifier::TextString(dek_uid.to_owned()));
     Ok(response.data.unwrap_or_default().to_vec())
 }

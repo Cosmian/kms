@@ -27,6 +27,9 @@ if [ -z "$OPENSSL_DIR" ]; then
   exit 1
 fi
 
+# Force on Rust-openssl no vendoring to ensure linkage against the system OpenSSL
+export OPENSSL_NO_VENDOR=1
+
 rustup target add "$TARGET"
 
 # shellcheck disable=SC2086

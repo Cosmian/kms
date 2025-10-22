@@ -200,6 +200,18 @@ let openssl_key = convert_key(&kmip_key)?;
 
 ## Feature Flags
 
+### XML Test Vector Parsing Strictness
+
+The XML → TTLV helper used in tests now enforces strict KMIP enumeration and
+usage mask validation by default. Unknown enumeration tokens, unknown
+CryptographicUsageMask textual values, or unknown AttributeReference names
+produce errors. The only tolerated deviation (for interoperability with some
+public test vectors) is that a missing `type="Structure"` attribute on a
+container element is still accepted and treated as a Structure.
+
+If your custom vectors fail, ensure all textual enumeration and usage mask
+tokens are valid per the KMIP specification.
+
 - **`openssl`**: Enable OpenSSL integration and conversions
 - **`non-fips`**: Enable non-FIPS cryptographic algorithms
 - **`default`**: Includes commonly used features

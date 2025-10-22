@@ -9,6 +9,8 @@ services:
       - POSTGRES_DB=kms
       - POSTGRES_PASSWORD=kms
       - PGDATA=/tmp/postgres2
+    tmpfs:
+      - /tmp/postgres2
   mysql:
     image: mysql
     ports:

@@ -78,6 +78,7 @@ async fn test_view_access_structure() -> KmsCliResult<()> {
 
 #[tokio::test]
 async fn test_edit_access_structure() -> KmsCliResult<()> {
+    log_init(None);
     let ctx = start_default_test_kms_server().await;
     // create a temp dir
     let tmp_dir = TempDir::new()?;

@@ -753,8 +753,8 @@ async fn test_certify_twice() -> KmsCliResult<()> {
     let public_key_id2 = attributes2.get_link(LinkType::PublicKeyLink).unwrap();
 
     assert_eq!(certificate_id, certificate_id2);
-    assert_ne!(private_key_id, private_key_id2);
-    assert_ne!(public_key_id, public_key_id2);
+    assert!(private_key_id != private_key_id2);
+    assert!(public_key_id != public_key_id2);
 
     Ok(())
 }

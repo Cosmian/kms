@@ -105,10 +105,7 @@ pub(super) fn get_attributes(client: &SocketClient, key_id: &str) {
     let Some(Operation::GetAttributesResponse(response)) = &batch_item.response_payload else {
         panic!("Expected AddAttributeResponse");
     };
-    assert_eq!(
-        response.unique_identifier,
-        UniqueIdentifier::TextString(key_id.to_owned())
-    );
+    assert!(response.unique_identifier == UniqueIdentifier::TextString(key_id.to_owned()));
     let vendor_attributes = response
         .attributes
         .vendor_attributes

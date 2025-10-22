@@ -221,7 +221,7 @@ fn get_attributes(client: &SocketClient, uid: &str) {
     let Operation::GetAttributes(get_attributes_request) = &mut batch_item.request_payload else {
         panic!("Expected GetAttributes operation");
     };
-    get_attributes_request.unique_identifier = uid.to_owned();
+    get_attributes_request.unique_identifier = Some(uid.to_owned());
     info!("Getting attributes with request: {request_message}",);
     let raw_request = to_ttlv(&request_message)
         .expect("Failed to encode request")
@@ -342,7 +342,7 @@ fn get_symmetric_key(client: &SocketClient, uid: &str) {
     let Operation::Get(get_request) = &mut batch_item.request_payload else {
         panic!("Expected Get operation");
     };
-    get_request.unique_identifier = uid.to_owned();
+    get_request.unique_identifier = Some(uid.to_owned());
     info!("Getting symmetric key with request: {request_message}",);
     let raw_request = to_ttlv(&request_message)
         .expect("Failed to encode request")
