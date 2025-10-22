@@ -93,10 +93,7 @@ pub(super) fn get_symmetric_key(client: &SocketClient, key_id: &str) {
     let Some(Operation::GetResponse(response)) = &batch_item.response_payload else {
         panic!("Expected AddAttributeResponse");
     };
-    assert_eq!(
-        response.unique_identifier,
-        UniqueIdentifier::TextString(key_id.to_owned())
-    );
+    assert!(response.unique_identifier == UniqueIdentifier::TextString(key_id.to_owned()));
     assert_eq!(response.object_type, ObjectType::SymmetricKey);
     let Object::SymmetricKey(symmetric_key) = response.object.clone() else {
         panic!("Expected SymmetricKey");

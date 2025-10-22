@@ -624,6 +624,18 @@ pub struct MessageExtension {
     pub vendor_extension: Vec<u8>,
 }
 
+impl std::fmt::Display for MessageExtension {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "MessageExtension {{ vendor_identification: {}, criticality_indicator: {}, vendor_extension: <{} bytes> }}",
+            self.vendor_identification,
+            self.criticality_indicator,
+            self.vendor_extension.len()
+        )
+    }
+}
+
 /// This option SHALL only be present if the Batch Count is greater than 1.
 /// This option SHALL have one of three values (Undo, Stop or Continue).
 /// If not specified, then Stop is assumed.
@@ -888,6 +900,37 @@ bitflags::bitflags! {
     }
 }
 
+impl std::fmt::Display for CryptographicUsageMask {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut first = true;
+        for (name, flag) in [
+            ("Sign", Self::Sign),
+            ("Verify", Self::Verify),
+            ("Encrypt", Self::Encrypt),
+            ("Decrypt", Self::Decrypt),
+            ("WrapKey", Self::WrapKey),
+            ("UnwrapKey", Self::UnwrapKey),
+            ("MACGenerate", Self::MACGenerate),
+            ("MACVerify", Self::MACVerify),
+            ("DeriveKey", Self::DeriveKey),
+            ("KeyAgreement", Self::KeyAgreement),
+            ("CertificateSign", Self::CertificateSign),
+            ("CRLSign", Self::CRLSign),
+            ("Authenticate", Self::Authenticate),
+            ("Unrestricted", Self::Unrestricted),
+        ] {
+            if self.contains(flag) {
+                if !first {
+                    write!(f, " | ")?;
+                }
+                write!(f, "{name}")?;
+                first = false;
+            }
+        }
+        Ok(())
+    }
+}
+
 impl Serialize for CryptographicUsageMask {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -977,7 +1020,8 @@ pub struct UsageLimits {
     /// The usage limits unit
     pub usage_limits_unit: UsageLimitsUnit,
     /// The usage limits count
-    pub usage_limits_count: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage_limits_count: Option<i64>,
     /// The usage limits total
     pub usage_limits_total: i64,
 }
@@ -1017,6 +1061,16 @@ pub struct RevocationReason {
     pub revocation_message: Option<String>,
 }
 
+impl std::fmt::Display for RevocationReason {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(message) = &self.revocation_message {
+            write!(f, "{}: {}", self.revocation_reason_code, message)
+        } else {
+            write!(f, "{}", self.revocation_reason_code)
+        }
+    }
+}
+
 /// `ApplicationSpecificInformation` structure for storing application-specific data
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
@@ -1028,6 +1082,16 @@ pub struct ApplicationSpecificInformation {
     pub application_data: Option<String>,
 }
 
+impl std::fmt::Display for ApplicationSpecificInformation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(data) = &self.application_data {
+            write!(f, "{}: {}", self.application_namespace, data)
+        } else {
+            write!(f, "{}", self.application_namespace)
+        }
+    }
+}
+
 /// `AlternativeName` structure for compact identification of objects using various name types
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
@@ -1036,6 +1100,16 @@ pub struct AlternativeName {
     pub alternative_name_type: AlternativeNameType,
     /// Value of the alternative name
     pub alternative_name_value: String,
+}
+
+impl std::fmt::Display for AlternativeName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}: {}",
+            self.alternative_name_type, self.alternative_name_value
+        )
+    }
 }
 
 /// `AlternativeNameType` enumeration
@@ -1067,6 +1141,17 @@ pub struct X509CertificateIdentifier {
     pub issuer_distinguished_name: Vec<u8>,
     /// The Certificate Serial Number
     pub certificate_serial_number: Vec<u8>,
+}
+
+impl std::fmt::Display for X509CertificateIdentifier {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Issuer: {}, Serial Number: {}",
+            String::from_utf8_lossy(&self.issuer_distinguished_name),
+            hex::encode(&self.certificate_serial_number)
+        )
+    }
 }
 
 /// This attribute is an indication of the State of an object as known to the

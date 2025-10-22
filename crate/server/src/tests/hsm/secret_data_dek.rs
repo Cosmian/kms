@@ -52,10 +52,7 @@ pub(super) async fn test_wrapped_secret_data() -> KResult<()> {
         ObjectType::SecretData,
     )
     .await?;
-    assert_eq!(
-        imported_uid,
-        UniqueIdentifier::TextString(secret_id.clone())
-    );
+    assert!(imported_uid == UniqueIdentifier::TextString(secret_id.clone()));
     let exported = export_object(&kms, &owner, &secret_id).await?;
     assert_eq!(exported.object_type(), secret_data.object_type());
 

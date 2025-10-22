@@ -221,19 +221,19 @@ impl EncryptAction {
             .with_context(|| "Can't execute the query on the kms server")?;
 
         // extract the nonce and write it
-        let nonce = encrypt_response
-            .i_v_counter_nonce
-            .context("the nonce is empty")?;
+        let nonce = encrypt_response.i_v_counter_nonce.unwrap_or_default(); // Some encryption modes (like RFC5649) don't use nonces
 
         // extract the ciphertext and write it
         let data = encrypt_response
             .data
             .context("The encrypted data is empty")?;
 
-        // extract the authentication tag and write it
+        // extract the authentication tag (only mandatory for AEAD modes: GCM, GCM-SIV, ChaCha20-Poly1305)
+        // Note: For server_side_encrypt, the algorithm used is determined by the cryptographic_parameters
+        // which may be different from self.data_encryption_algorithm (e.g., for key wrapping)
         let authentication_tag = encrypt_response
             .authenticated_encryption_tag
-            .context("the authentication tag is empty")?;
+            .unwrap_or_default(); // Some encryption modes don't use authentication tags
         Ok((nonce, data, authentication_tag))
     }
 

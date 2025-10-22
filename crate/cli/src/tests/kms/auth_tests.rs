@@ -106,7 +106,10 @@ async fn create_api_token(ctx: &TestsContext) -> KmsCliResult<(String, String)> 
     let api_token_id = CreateKeyAction::default()
         .run(ctx.get_owner_client())
         .await?;
-    trace!("Symmetric key created of unique identifier: {api_token_id:?}");
+    trace!(
+        "Symmetric key created of unique identifier: {}",
+        api_token_id
+    );
 
     // Export as default (JsonTTLV with Raw Key Format Type)
     // create a temp dir

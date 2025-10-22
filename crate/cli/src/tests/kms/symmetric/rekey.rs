@@ -44,7 +44,7 @@ pub(crate) async fn test_rekey_symmetric_key() -> KmsCliResult<()> {
     .run(ctx.get_owner_client())
     .await?;
 
-    assert_eq!(id, id_2);
+    assert!(id == id_2);
 
     // Export as default (JsonTTLV with Raw Key Format Type)
     ExportSecretDataOrKeyAction {

@@ -9,7 +9,7 @@ use cosmian_kmip::{
 };
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize)]
 pub struct Access {
     /// Determines the object being requested. If omitted, then the ID
     /// Placeholder value is used by the server as the Unique Identifier.
@@ -69,7 +69,7 @@ impl From<(String, State, Attributes)> for ObjectOwnedResponse {
         }
     }
 }
-#[derive(Deserialize, Serialize, Clone, Debug)] // Debug is required by ok_json()
+#[derive(Deserialize, Serialize, Clone)]
 pub struct AccessRightsObtainedResponse {
     pub object_id: UniqueIdentifier,
     pub owner_id: String,

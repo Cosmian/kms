@@ -92,5 +92,32 @@
       "name": "test"
     }
   ],
-  "sqltools.useNodeRuntime": true
+  "sqltools.useNodeRuntime": true,
+  "files.associations": {
+    "*.dbclient-js": "javascript",
+    "**.json.*": "json",
+    "**.pl*": "perl",
+    "**.yml*": "yaml",
+    "**/*_vars/**/*.yml": "yaml",
+    "**/*ansible*/**/*.yml": "yaml",
+    "**/defaults/**/*": "yaml",
+    "**/handler/*.yml": "yaml",
+    "**/inventory/*/*": "yaml",
+    "**/playbooks/**/*.yml": "yaml",
+    "**/roles/**/*.yml": "yaml",
+    "**/tasks/**/*.yml": "yaml",
+    "**/vars/**/*.yml": "yaml",
+    "**config": "toml",
+    "Dockerfile.*": "dockerfile",
+    "*.bash": "shellscript",
+    "*.zsh": "shellscript",
+    "*.ksh": "shellscript",
+    "*.env": "shellscript",
+    "array": "cpp",
+    "compare": "cpp",
+    "functional": "cpp",
+    "tuple": "cpp",
+    "type_traits": "cpp",
+    "utility": "cpp"
+  }
 }

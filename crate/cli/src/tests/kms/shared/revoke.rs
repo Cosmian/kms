@@ -23,14 +23,16 @@ pub(crate) async fn assert_revoked(
     let tmp_path = tmp_dir.path();
 
     // should not be able to Get....
-    ExportSecretDataOrKeyAction {
-        key_file: tmp_path.join("output.export"),
-        key_id: Some(key_id.to_string()),
-        ..Default::default()
-    }
-    .run(ctx.get_owner_client())
-    .await
-    .unwrap_err();
+    assert!(
+        ExportSecretDataOrKeyAction {
+            key_file: tmp_path.join("output.export"),
+            key_id: Some(key_id.to_string()),
+            ..Default::default()
+        }
+        .run(ctx.get_owner_client())
+        .await
+        .is_err()
+    );
 
     // but should be able to Export....
     ExportSecretDataOrKeyAction {

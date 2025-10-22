@@ -17,6 +17,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     ttlv::KmipFlavor,
 };
 use cosmian_logger::log_init;
+use time::OffsetDateTime;
 
 use super::socket_client::SocketClient;
 use crate::tests::ttlv_tests::get_client;
@@ -60,6 +61,11 @@ pub(super) fn create_symmetric_key(client: &SocketClient, name: &str) -> String 
                                 name_value: name.to_owned(),
                                 name_type: NameType::UninterpretedTextString,
                             }),
+                            Attribute::ActivationDate(
+                                OffsetDateTime::now_utc()
+                                    .replace_millisecond(0)
+                                    .expect("Failed to set activation date"),
+                            ),
                         ]),
                     },
                 }),

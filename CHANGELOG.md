@@ -2,6 +2,49 @@
 
 All notable changes to this project will be documented in this file.
 
+## [X.Y.Z] - 2025-10-15
+
+### ✅ KMIP XML Vector Conformance (1.4 & 2.1)
+
+- KMIP crate updates (DiscoverVersions types/fields, TTLV coercions, Attribute decoding), server routing parity, and CLI coverage align Create, Query/DiscoverVersions, and OpaqueObject revoke/destroy flows with the official XML test vectors.
+
+### 🚀 Features
+
+- kmip (crate)
+    - kmip_operations.rs: Expanded Operation enum with Interop/PKCS11/Check/RNG Retrieve/Seed/GetAttributeList/MACVerify/ModifyAttribute/Log + responses; implemented Display via strum for cleaner debug output.
+    - kmip_messages.rs: Request/Response batch items now Clone + structured Display; deserializer maps added for new ops including GetAttributeList, MACVerify, Sign/SignatureVerify, RNGRetrieve/Seed, ModifyAttribute, Check, Interop, Log, PKCS11.
+    - kmip_types.rs: Added Vendor OpaqueDataType; implemented Display for CryptographicDomainParameters, ProtectionStorageMasks, and StorageStatusMask to improve diagnostics.
+    - TTLV (deserializer.rs): More permissive coercions (Integer→i64, Interval→i64, Enumeration/LongInteger→u8), ByteString→hex for ShortUniqueIdentifier, relaxed Attribute enum decoding for VendorAttribute and AttributeName+Value forms.
+    - TTLV (byte_string_deserializer.rs): Support deserialize_ignored_any as no-op to avoid loops in permissive paths.
+    - DiscoverVersions: uses KMIP 0.x types with protocol_version_major/minor; Query advertises supported operations and objects.
+    - XML serializer/deserializer for XML test vectors support.
+- server
+    - Added/validated routing for: DiscoverVersions, Query, RNG Retrieve/Seed, MACVerify, GetAttributeList; Revoke supports OpaqueObject; GetAttributeList ordering is deterministic.
+    - Newly exposed KMIP operations:
+        - DiscoverVersions
+        - Query
+        - RNGRetrieve
+        - RNGSeed
+        - MACVerify
+        - GetAttributeList
+    - Make optional the cascade mechanism for Destroy and Revoke operations.
+- cli
+    - New opaque-object subcommand: Create/Import/Export/Revoke/Destroy (no wrap/unwrap).
+    - New rng (Retrieve/Seed), mac verify, discover-versions, and query commands.
+- kms_client
+    - Added facade methods for RNG Retrieve/Seed, MACVerify, Query, DiscoverVersions, Check, GetAttributeList, attribute ops, register, and crypto ops.
+
+### 🐛 Bug Fixes
+
+- Export OpaqueObject Raw/Base64 returns opaque bytes (no KeyBlock).
+- DiscoverVersions type/field mismatches fixed by switching to KMIP 0.x (major/minor).
+- TTLV deserializer: better errors and coercions (u8 from Enumeration/LongInteger; i64 widening from Integer/Interval; vendor Attribute decoding) for XML vector compatibility.
+- GetAttributeList: unified, deterministic ordering across environments.
+
+### 🧪 Testing
+
+- Added CLI tests: OpaqueObject CRUD (create/import, export json/base64/raw, revoke, destroy), RNG Retrieve/Seed, MAC Verify, Query, and DiscoverVersions.
+
 ## [5.11.0] - 2025-10-28
 
 ### 🚀 Features

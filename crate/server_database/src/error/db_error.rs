@@ -87,10 +87,6 @@ pub enum DbError {
     #[error("Access denied: {0}")]
     Unauthorized(String),
 
-    // When a user requests with placeholder id arg.
-    #[error("This KMIP server does not yet support place holder id")]
-    UnsupportedPlaceholder,
-
     // When a user requests with protection masks arg.
     #[error("This KMIP server does not yet support protection masks")]
     UnsupportedProtectionMasks,
