@@ -349,21 +349,7 @@ fn verify_signature(
             if DigitalSignatureAlgorithm::RSASSAPSS == signature_algorithm
                 && verification_key.id() == Id::RSA
             {
-                if !is_digested {
-                    // Use OpenSSL-managed digesting so the PSS MD is set correctly
-                    let mut verifier = Verifier::new(message_digest, verification_key)?;
-                    verifier.set_rsa_padding(Padding::PKCS1_PSS)?;
-                    verifier.set_rsa_mgf1_md(mgf1_digest)?;
-                    let mut ok = verifier.verify_oneshot(signature, data)?;
-                    if !ok && crypto_params.mask_generator_hashing_algorithm.is_none() {
-                        // Fallback: retry with MGF1=SHA1 when unspecified
-                        let mut verifier = Verifier::new(message_digest, verification_key)?;
-                        verifier.set_rsa_padding(Padding::PKCS1_PSS)?;
-                        verifier.set_rsa_mgf1_md(MessageDigest::sha1())?;
-                        ok = verifier.verify_oneshot(signature, data)?;
-                    }
-                    ok
-                } else {
+                if is_digested {
                     // Pre-hashed input path: verify against digest directly
                     let mut verifier = Verifier::new_without_digest(verification_key)?;
                     verifier.set_rsa_padding(Padding::PKCS1_PSS)?;
@@ -372,6 +358,20 @@ fn verify_signature(
                     if !ok && crypto_params.mask_generator_hashing_algorithm.is_none() {
                         // Fallback: retry with MGF1=SHA1, which some toolchains use by default
                         let mut verifier = Verifier::new_without_digest(verification_key)?;
+                        verifier.set_rsa_padding(Padding::PKCS1_PSS)?;
+                        verifier.set_rsa_mgf1_md(MessageDigest::sha1())?;
+                        ok = verifier.verify_oneshot(signature, data)?;
+                    }
+                    ok
+                } else {
+                    // Use OpenSSL-managed digesting so the PSS MD is set correctly
+                    let mut verifier = Verifier::new(message_digest, verification_key)?;
+                    verifier.set_rsa_padding(Padding::PKCS1_PSS)?;
+                    verifier.set_rsa_mgf1_md(mgf1_digest)?;
+                    let mut ok = verifier.verify_oneshot(signature, data)?;
+                    if !ok && crypto_params.mask_generator_hashing_algorithm.is_none() {
+                        // Fallback: retry with MGF1=SHA1 when unspecified
+                        let mut verifier = Verifier::new(message_digest, verification_key)?;
                         verifier.set_rsa_padding(Padding::PKCS1_PSS)?;
                         verifier.set_rsa_mgf1_md(MessageDigest::sha1())?;
                         ok = verifier.verify_oneshot(signature, data)?;

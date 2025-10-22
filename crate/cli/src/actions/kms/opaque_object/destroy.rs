@@ -9,7 +9,7 @@ use crate::{
     error::result::KmsCliResult,
 };
 
-/// Destroy an OpaqueObject.
+/// Destroy an `OpaqueObject`.
 ///
 /// The object must have been revoked first unless server policy allows otherwise.
 #[derive(Parser, Debug)]

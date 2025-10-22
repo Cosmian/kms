@@ -438,7 +438,7 @@ impl Display for PKCS11 {
                 PKCS11Function::C_GetInfo => "C_GetInfo",
                 PKCS11Function::C_Finalize => "C_Finalize",
             };
-            write!(f, "  PKCS11Function: {}", func_str)?;
+            write!(f, "  PKCS11Function: {func_str}")?;
         } else {
             write!(f, "  PKCS11Function: None")?;
         }
@@ -501,7 +501,7 @@ impl Display for PKCS11Response {
                 PKCS11Function::C_GetInfo => "C_GetInfo",
                 PKCS11Function::C_Finalize => "C_Finalize",
             };
-            write!(f, "  PKCS11Function: {}", func_str)?;
+            write!(f, "  PKCS11Function: {func_str}")?;
         } else {
             write!(f, "  PKCS11Function: None")?;
         }
@@ -514,7 +514,7 @@ impl Display for PKCS11Response {
             let code_str = match code {
                 PKCS11ReturnCode::OK => "OK",
             };
-            write!(f, "  PKCS11ReturnCode: {}", code_str)?;
+            write!(f, "  PKCS11ReturnCode: {code_str}")?;
         } else {
             write!(f, "  PKCS11ReturnCode: None")?;
         }
@@ -551,7 +551,7 @@ impl Display for Log {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Log {{")?;
         if let Some(msg) = &self.log_message {
-            write!(f, "  LogMessage: {}", msg)?;
+            write!(f, "  LogMessage: {msg}")?;
         } else {
             write!(f, "  LogMessage: None")?;
         }
@@ -572,7 +572,7 @@ impl Display for LogResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "LogResponse {{")?;
         if let Some(msg) = &self.log_message {
-            write!(f, "  LogMessage: {}", msg)?;
+            write!(f, "  LogMessage: {msg}")?;
         } else {
             write!(f, "  LogMessage: None")?;
         }
@@ -600,12 +600,12 @@ impl Display for Interop {
                 InteropFunction::Begin => "Begin",
                 InteropFunction::End => "End",
             };
-            write!(f, "  InteropFunction: {}", func_str)?;
+            write!(f, "  InteropFunction: {func_str}")?;
         } else {
             write!(f, "  InteropFunction: None")?;
         }
         if let Some(id) = &self.interop_identifier {
-            write!(f, "  InteropIdentifier: {}", id)?;
+            write!(f, "  InteropIdentifier: {id}")?;
         } else {
             write!(f, "  InteropIdentifier: None")?;
         }
@@ -637,7 +637,7 @@ pub enum InteropFunction {
 /// This operation requests that the server check whether a Managed Object can be used
 /// according to values specified in the request. The server evaluates the request
 /// against its policy and, if compliant, indicates success; otherwise it returns a
-/// failure with an appropriate reason (e.g., IncompatibleCryptographicUsageMask).
+/// failure with an appropriate reason (e.g., `IncompatibleCryptographicUsageMask`).
 ///
 /// Request fields:
 /// - Unique Identifier (optional): Determines the object being checked. If omitted,
@@ -658,13 +658,13 @@ pub enum InteropFunction {
 /// On success, the Response Payload MAY include the Unique Identifier and MAY include
 /// the policy-adjusted values for the requested elements. If any policy validation
 /// fails (e.g., an incompatible Cryptographic Usage Mask), the server SHALL return an
-/// OperationFailed with the appropriate ResultReason (e.g.,
-/// IncompatibleCryptographicUsageMask). In batched requests using Undo semantics, a
+/// `OperationFailed` with the appropriate `ResultReason` (e.g.,
+/// `IncompatibleCryptographicUsageMask`). In batched requests using Undo semantics, a
 /// later failure MAY cause prior successful operations (including Check) to be marked
-/// OperationUndone in the response, potentially including only the Unique Identifier
+/// `OperationUndone` in the response, potentially including only the Unique Identifier
 /// in the payload as per the KMIP profiles.
 ///
-/// Reference: https://docs.oasis-open.org/kmip/kmip-spec/v2.0/os/kmip-spec-v2.0-os.html#_Toc6497533L
+/// Reference: <https://docs.oasis-open.org/kmip/kmip-spec/v2.0/os/kmip-spec-v2.0-os.html>#_`Toc6497533L`
 #[derive(Serialize, Deserialize, PartialEq, Eq, Clone)]
 #[serde(rename_all = "PascalCase")]
 pub struct Check {
@@ -687,12 +687,12 @@ impl Display for Check {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Check {{")?;
         if let Some(uid) = &self.unique_identifier {
-            write!(f, "  UniqueIdentifier: {}", uid)?;
+            write!(f, "  UniqueIdentifier: {uid}")?;
         } else {
             write!(f, "  UniqueIdentifier: None")?;
         }
         if let Some(count) = &self.usage_limits_count {
-            write!(f, "  UsageLimitsCount: {}", count)?;
+            write!(f, "  UsageLimitsCount: {count}")?;
         } else {
             write!(f, "  UsageLimitsCount: None")?;
         }
@@ -702,7 +702,7 @@ impl Display for Check {
             write!(f, "  CryptographicUsageMask: None")?;
         }
         if let Some(lt) = &self.lease_time {
-            write!(f, "  LeaseTime: {}", lt)?;
+            write!(f, "  LeaseTime: {lt}")?;
         } else {
             write!(f, "  LeaseTime: None")?;
         }
@@ -732,22 +732,22 @@ impl Display for CheckResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "CheckResponse {{")?;
         if let Some(uid) = &self.unique_identifier {
-            write!(f, "  UniqueIdentifier: {}", uid)?;
+            write!(f, "  UniqueIdentifier: {uid}")?;
         } else {
             write!(f, "  UniqueIdentifier: None")?;
         }
         if let Some(count) = &self.usage_limits_count {
-            write!(f, "  UsageLimitsCount: {}", count)?;
+            write!(f, "  UsageLimitsCount: {count}")?;
         } else {
             write!(f, "  UsageLimitsCount: None")?;
         }
         if let Some(mask) = &self.cryptographic_usage_mask {
-            write!(f, "  CryptographicUsageMask: {}", mask)?;
+            write!(f, "  CryptographicUsageMask: {mask}")?;
         } else {
             write!(f, "  CryptographicUsageMask: None")?;
         }
         if let Some(lt) = &self.lease_time {
-            write!(f, "  LeaseTime: {}", lt)?;
+            write!(f, "  LeaseTime: {lt}")?;
         } else {
             write!(f, "  LeaseTime: None")?;
         }
@@ -756,7 +756,7 @@ impl Display for CheckResponse {
     }
 }
 
-/// RNGRetrieve operation
+/// `RNGRetrieve` operation
 ///
 /// Requests the server to return cryptographically secure random data.
 /// The request contains the desired Data Length.
@@ -792,7 +792,7 @@ impl Display for RNGRetrieveResponse {
     }
 }
 
-/// RNGSeed operation
+/// `RNGSeed` operation
 ///
 /// Requests the server to seed an RNG instance with the provided Data.
 /// The response returns the Amount of Seed Data consumed.
@@ -848,7 +848,7 @@ impl Display for ModifyAttribute {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "ModifyAttribute {{")?;
         if let Some(uid) = &self.unique_identifier {
-            write!(f, "  UniqueIdentifier: {}", uid)?;
+            write!(f, "  UniqueIdentifier: {uid}")?;
         } else {
             write!(f, "  UniqueIdentifier: None")?;
         }
@@ -869,7 +869,7 @@ impl Display for ModifyAttributeResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "ModifyAttributeResponse {{")?;
         if let Some(uid) = &self.unique_identifier {
-            write!(f, "  UniqueIdentifier: {}", uid)?;
+            write!(f, "  UniqueIdentifier: {uid}")?;
         } else {
             write!(f, "  UniqueIdentifier: None")?;
         }
@@ -1311,7 +1311,7 @@ impl Display for Decrypt {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Decrypt {{")?;
         if let Some(uid) = &self.unique_identifier {
-            write!(f, "  unique_identifier: {}", uid)?;
+            write!(f, "  unique_identifier: {uid}")?;
         }
         if let Some(v) = &self.cryptographic_parameters {
             write!(f, "  cryptographic_parameters: {v}")?;
@@ -1452,7 +1452,7 @@ impl Display for DeleteAttribute {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "DeleteAttribute {{")?;
         if let Some(v) = &self.unique_identifier {
-            write!(f, "  unique_identifier: {}", v)?;
+            write!(f, "  unique_identifier: {v}")?;
         }
         if let Some(v) = &self.current_attribute {
             write!(f, "  current_attribute: {v}")?;
@@ -1496,7 +1496,7 @@ pub struct Destroy {
     #[serde(skip_serializing_if = "<&bool>::not", default)]
     pub remove: bool,
     /// Cosmian extension: when true, Destroy will cascade to linked objects (e.g.,
-    /// destroying a PrivateKey will also destroy its linked PublicKey, and vice versa).
+    /// destroying a `PrivateKey` will also destroy its linked `PublicKey`, and vice versa).
     /// Default is false to match KMIP profiles that do not cascade by default.
     #[serde(skip_serializing_if = "<&bool>::not", default)]
     pub cascade: bool,
@@ -1506,7 +1506,7 @@ impl Display for Destroy {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Destroy {{")?;
         if let Some(v) = &self.unique_identifier {
-            write!(f, "  unique_identifier: {}", v)?;
+            write!(f, "  unique_identifier: {v}")?;
         }
         if self.remove {
             write!(f, "  remove: true")?;
@@ -1659,7 +1659,7 @@ impl Display for Encrypt {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Encrypt {{")?;
         if let Some(v) = &self.unique_identifier {
-            write!(f, "  unique_identifier: {}", v)?;
+            write!(f, "  unique_identifier: {v}")?;
         }
         if let Some(v) = &self.cryptographic_parameters {
             write!(f, "  cryptographic_parameters: {v}")?;
@@ -2593,7 +2593,7 @@ impl Display for Query {
         write!(f, "Query {{")?;
         if let Some(v) = &self.query_function {
             for func in v {
-                write!(f, "  query_function: {}", func)?;
+                write!(f, "  query_function: {func}")?;
             }
         }
         write!(f, "}}")
@@ -2662,12 +2662,12 @@ impl Display for QueryResponse {
         write!(f, "QueryResponse {{")?;
         if let Some(v) = &self.operation {
             for op in v {
-                write!(f, "  operation: {}", op)?;
+                write!(f, "  operation: {op}")?;
             }
         }
         if let Some(v) = &self.object_type {
             for object_type in v {
-                write!(f, "  object_type: {}", object_type)?;
+                write!(f, "  object_type: {object_type}")?;
             }
         }
         if let Some(v) = &self.vendor_identification {
@@ -2686,7 +2686,7 @@ impl Display for QueryResponse {
         }
         if let Some(v) = &self.attestation_types {
             for at in v {
-                write!(f, "  attestation_types: {}", at)?;
+                write!(f, "  attestation_types: {at}")?;
             }
         }
         if let Some(v) = &self.rng_parameters {
@@ -2990,7 +2990,7 @@ impl Display for ReKeyKeyPair {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "ReKeyKeyPair {{")?;
         if let Some(v) = &self.private_key_unique_identifier {
-            write!(f, "  private_key_unique_identifier: {}", v)?;
+            write!(f, "  private_key_unique_identifier: {v}")?;
         }
         if let Some(v) = self.offset {
             write!(f, "  offset: {v}")?;
@@ -3121,7 +3121,7 @@ impl Display for Validate {
         }
         if let Some(v) = &self.unique_identifier {
             for uid in v {
-                write!(f, "  unique_identifier: {}", uid)?;
+                write!(f, "  unique_identifier: {uid}")?;
             }
         }
         if let Some(v) = &self.validity_time {

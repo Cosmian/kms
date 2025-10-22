@@ -13,7 +13,7 @@ use crate::{
     result::KResult,
 };
 
-/// RNGRetrieve operation implementation
+/// `RNGRetrieve` operation implementation
 ///
 /// Generates cryptographically secure random bytes. If RNG Parameters are
 /// provided they are currently accepted but not used to alter generation.

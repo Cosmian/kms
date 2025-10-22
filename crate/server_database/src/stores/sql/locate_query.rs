@@ -170,14 +170,14 @@ impl PlaceholderTrait for PgSqlPlaceholder {
 
     // const JSON_NODE_WRAPPING: &'static str = "'object', 'KeyBlock', 'KeyWrappingData'";
 
-    /// For PostgreSQL, json_extract_path_text expects each path element as a separate
-    /// argument (e.g., json_extract_path_text(json, 'ApplicationSpecificInformation', 'ApplicationData')).
-    /// Override extract_attribute_path to build a call with multiple quoted args instead
+    /// For `PostgreSQL`, `json_extract_path_text` expects each path element as a separate
+    /// argument (e.g., `json_extract_path_text(json`, '`ApplicationSpecificInformation`', '`ApplicationData`')).
+    /// Override `extract_attribute_path` to build a call with multiple quoted args instead
     /// of a single comma-joined string.
     fn extract_attribute_path(attribute_names: &[&str]) -> String {
         let args = attribute_names
             .iter()
-            .map(|s| format!("'{}'", s))
+            .map(|s| format!("'{s}'"))
             .collect::<Vec<_>>()
             .join(", ");
         format!(

@@ -61,24 +61,20 @@ impl Display for DerivationParameters {
         let mut parts = Vec::new();
         if let Some(cryptographic_parameters) = &self.cryptographic_parameters {
             parts.push(format!(
-                "cryptographic_parameters: {}",
-                cryptographic_parameters
+                "cryptographic_parameters: {cryptographic_parameters}"
             ));
         }
         if let Some(initialization_vector) = &self.initialization_vector {
-            parts.push(format!(
-                "initialization_vector: {:?}",
-                initialization_vector
-            ));
+            parts.push(format!("initialization_vector: {initialization_vector:?}"));
         }
         if let Some(derivation_data) = &self.derivation_data {
-            parts.push(format!("derivation_data: {:?}", derivation_data));
+            parts.push(format!("derivation_data: {derivation_data:?}"));
         }
         if let Some(salt) = &self.salt {
-            parts.push(format!("salt: {:?}", salt));
+            parts.push(format!("salt: {salt:?}"));
         }
         if let Some(iteration_count) = &self.iteration_count {
-            parts.push(format!("iteration_count: {}", iteration_count));
+            parts.push(format!("iteration_count: {iteration_count}"));
         }
         write!(f, "DerivationParameters {{ {} }}", parts.join(", "))
     }
@@ -116,22 +112,21 @@ impl Display for KeyBlock {
         let mut parts = Vec::new();
         parts.push(format!("key_format_type: {}", self.key_format_type));
         if let Some(key_compression_type) = &self.key_compression_type {
-            parts.push(format!("key_compression_type: {:?}", key_compression_type));
+            parts.push(format!("key_compression_type: {key_compression_type:?}"));
         }
         if let Some(key_value) = &self.key_value {
-            parts.push(format!("key_value: {}", key_value));
+            parts.push(format!("key_value: {key_value}"));
         }
         if let Some(cryptographic_algorithm) = &self.cryptographic_algorithm {
             parts.push(format!(
-                "cryptographic_algorithm: {}",
-                cryptographic_algorithm
+                "cryptographic_algorithm: {cryptographic_algorithm}"
             ));
         }
         if let Some(cryptographic_length) = &self.cryptographic_length {
-            parts.push(format!("cryptographic_length: {}", cryptographic_length));
+            parts.push(format!("cryptographic_length: {cryptographic_length}"));
         }
         if let Some(key_wrapping_data) = &self.key_wrapping_data {
-            parts.push(format!("key_wrapping_data: {}", key_wrapping_data));
+            parts.push(format!("key_wrapping_data: {key_wrapping_data}"));
         }
         write!(f, "KeyBlock {{ {} }}", parts.join(", "))
     }
@@ -864,10 +859,10 @@ impl Display for KeyWrappingData {
         let mut parts = Vec::new();
         parts.push(format!("wrapping_method: {}", self.wrapping_method));
         if let Some(eki) = &self.encryption_key_information {
-            parts.push(format!("encryption_key_information: {}", eki));
+            parts.push(format!("encryption_key_information: {eki}"));
         }
         if let Some(mski) = &self.mac_signature_key_information {
-            parts.push(format!("mac_signature_key_information: {}", mski));
+            parts.push(format!("mac_signature_key_information: {mski}"));
         }
         if let Some(mac) = &self.mac_signature {
             parts.push(format!("mac_signature: len={}", mac.len()));
@@ -876,7 +871,7 @@ impl Display for KeyWrappingData {
             parts.push(format!("iv_counter_nonce: len={}", iv.len()));
         }
         if let Some(encoding) = &self.encoding_option {
-            parts.push(format!("encoding_option: {:?}", encoding));
+            parts.push(format!("encoding_option: {encoding:?}"));
         }
         write!(f, "KeyWrappingData {{ {} }}", parts.join(", "))
     }
@@ -961,16 +956,16 @@ impl Display for KeyWrappingSpecification {
         let mut parts = Vec::new();
         parts.push(format!("wrapping_method: {}", self.wrapping_method));
         if let Some(eki) = &self.encryption_key_information {
-            parts.push(format!("encryption_key_information: {}", eki));
+            parts.push(format!("encryption_key_information: {eki}"));
         }
         if let Some(mski) = &self.mac_or_signature_key_information {
-            parts.push(format!("mac_or_signature_key_information: {}", mski));
+            parts.push(format!("mac_or_signature_key_information: {mski}"));
         }
         if let Some(attr_names) = &self.attribute_name {
-            parts.push(format!("attribute_name: {:?}", attr_names));
+            parts.push(format!("attribute_name: {attr_names:?}"));
         }
         if let Some(encoding) = &self.encoding_option {
-            parts.push(format!("encoding_option: {:?}", encoding));
+            parts.push(format!("encoding_option: {encoding:?}"));
         }
         write!(f, "KeyWrappingSpecification {{ {} }}", parts.join(", "))
     }

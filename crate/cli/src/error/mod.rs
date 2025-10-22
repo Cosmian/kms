@@ -162,13 +162,13 @@ mod tests {
         let err = bail();
         match err {
             Err(e) => assert_eq!("interpolate 43", e.to_string()),
-            Ok(_) => panic!("expected error"),
+            Ok(()) => panic!("expected error"),
         }
 
         let err = ensure();
         match err {
             Err(e) => assert_eq!("interpolate 44", e.to_string()),
-            Ok(_) => panic!("expected error"),
+            Ok(()) => panic!("expected error"),
         }
     }
 

@@ -184,8 +184,7 @@ pub(crate) async fn message(
                 if ga
                     .attribute_reference
                     .as_ref()
-                    .map(|v| v.is_empty())
-                    .unwrap_or(true)
+                    .is_none_or(std::vec::Vec::is_empty)
                 {
                     use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::{AttributeReference, Tag};
                     let mut refs: Vec<AttributeReference> = Vec::new();
@@ -285,14 +284,24 @@ pub(crate) async fn message(
                 // Determine if the client explicitly requested attributes
                 let explicit_request = getattrs_requested_refs
                     .as_ref()
-                    .map(|v| !v.is_empty())
-                    .unwrap_or(false);
+                    .is_some_and(|v| !v.is_empty());
 
                 // Only apply KMIP 1.x default omissions when the client did NOT explicitly
                 // request a subset. If an explicit list was provided, preserve the returned
                 // attributes, including vendor attributes like "x-Product_Version" and
                 // "x-Vendor" that are represented with vendor_identification="KMIP1".
-                if !explicit_request {
+                if explicit_request {
+                    // Still remove internal Cosmian tagging attribute if present
+                    if let Some(vas) = attrs.vendor_attributes.as_mut() {
+                        vas.retain(|va| {
+                            !(va.vendor_identification == VENDOR_ID_COSMIAN
+                                && va.attribute_name == VENDOR_ATTR_TAG)
+                        });
+                        if vas.is_empty() {
+                            attrs.vendor_attributes = None;
+                        }
+                    }
+                } else {
                     // Drop TL-omitted standard attributes
                     attrs.always_sensitive = None;
                     attrs.extractable = None;
@@ -307,17 +316,6 @@ pub(crate) async fn message(
                             va.vendor_identification == "x"
                                 && !(va.vendor_identification == VENDOR_ID_COSMIAN
                                     && va.attribute_name == VENDOR_ATTR_TAG)
-                        });
-                        if vas.is_empty() {
-                            attrs.vendor_attributes = None;
-                        }
-                    }
-                } else {
-                    // Still remove internal Cosmian tagging attribute if present
-                    if let Some(vas) = attrs.vendor_attributes.as_mut() {
-                        vas.retain(|va| {
-                            !(va.vendor_identification == VENDOR_ID_COSMIAN
-                                && va.attribute_name == VENDOR_ATTR_TAG)
                         });
                         if vas.is_empty() {
                             attrs.vendor_attributes = None;
@@ -348,11 +346,11 @@ pub(crate) async fn message(
                 // set the placeholder when exactly one UID is located. Otherwise, clear it.
                 Some(Operation::LocateResponse(lr)) => {
                     if let Some(list) = &lr.unique_identifier {
-                        if !list.is_empty() {
+                        if list.is_empty() {
+                            id_placeholder = None;
+                        } else {
                             // Per KMIP TL-M-3-14 behavior, default to the first UID when multiple are returned
                             id_placeholder = Some(list[0].clone());
-                        } else {
-                            id_placeholder = None;
                         }
                     } else {
                         id_placeholder = None;
@@ -444,7 +442,7 @@ pub(crate) async fn message(
     // If UNDO mode was triggered, revert side-effects for operations that had already mutated state.
     if undo_triggered.is_some() {
         for uid in undo_activate_uids {
-            let _ = revert_activation_to_preactive(kms, &uid, user, params.clone()).await;
+            drop(revert_activation_to_preactive(kms, &uid, user, params.clone()).await);
         }
     }
 
@@ -467,8 +465,8 @@ pub(crate) async fn message(
     Ok(response_message)
 }
 
-/// Revert an Activate operation by setting the object's state back to PreActive and clearing
-/// the activation_date. This is a best-effort revert used when batch UNDO is triggered.
+/// Revert an Activate operation by setting the object's state back to `PreActive` and clearing
+/// the `activation_date`. This is a best-effort revert used when batch UNDO is triggered.
 async fn revert_activation_to_preactive(
     kms: &KMS,
     uid: &str,
@@ -541,7 +539,7 @@ async fn process_operation(
             // Generate correlation value if absent (first C_Initialize)
             let correl = pkcs_req
                 .correlation_value
-                .clone()
+
                 .unwrap_or_else(|| b"PKCS11CV".to_vec());
             match func {
                 PKCS11Function::C_Initialize => {
