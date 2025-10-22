@@ -9,7 +9,8 @@ keywords.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Cosmian Key Management Service"
+homepage.workspace = true
+description = "Cosmian Key Management Service - A high-performance, FIPS 140-3 compliant Key Management System"
 
 [lints]
 workspace = true
@@ -232,11 +233,7 @@ require-sh = true
 
 # Product information
 product-name = "Cosmian KMS Server"
-version = "5.9.0"
-description = "Cosmian Key Management Service - A high-performance, FIPS 140-3 compliant Key Management System"
 long-description = "Cosmian KMS is a high-performance, open-source FIPS 140-3 compliant Key Management System written in Rust. It provides enterprise-grade key management capabilities with support for various cryptographic operations, database backends, and HSM integrations."
-homepage = "https://github.com/Cosmian/kms"
-authors = ["Cosmian Tech SAS <tech@cosmian.com>"]
 license-file = "../../LICENSE"
 
 # Identifier for the package (Windows)
