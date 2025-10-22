@@ -26,6 +26,7 @@ test = false
 doctest = false
 
 [features]
+default = ["interop"]
 # Do not verify auth0 token expiration date, and https ssl is auto-signed (to avoid to be banned by letsencrypt)
 insecure = []
 # The binary won't start after a date chosen at compile-time
@@ -35,13 +36,14 @@ non-fips = [
     "cosmian_kms_client_utils/non-fips",
     "cosmian_kms_server_database/non-fips",
 ]
+# Enable interop test operations (should only be used for testing)
+interop = ["cosmian_kms_server_database/interop"]
 
 [dependencies]
 actix-cors = "0.6"
 actix-files = "0.6.6"
 actix-identity = "0.6"
 actix-rt = { workspace = true }
-actix-service = "2.0"
 actix-session = { version = "0.8", features = ["cookie-session"] }
 actix-tls = "3.4"
 actix-web = { workspace = true, features = ["macros", "openssl"] }
@@ -59,6 +61,7 @@ clap = { workspace = true, features = [
     "cargo",
 ] }
 cosmian_kms_access = { path = "../access", version = "5.12.1" }
+cosmian_kms_base_hsm = { path = "../hsm/base_hsm", version = "5.12.1" }
 cosmian_kms_server_database = { path = "../server_database", version = "5.12.1" }
 cosmian_logger = { workspace = true, features = ["full"] }
 crypt2pay_pkcs11_loader = { path = "../hsm/crypt2pay", version = "5.12.1" }

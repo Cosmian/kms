@@ -5,16 +5,19 @@ use std::sync::Arc;
 use cosmian_kms_client_utils::cover_crypt_utils::{
     build_create_covercrypt_master_keypair_request, build_create_covercrypt_usk_request,
 };
-use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
-    extra::tagging::EMPTY_TAGS,
-    kmip_attributes::Attributes,
-    kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
-    kmip_operations::{Get, Import, Locate},
-    kmip_types::{
-        CryptographicAlgorithm, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
-        UniqueIdentifier,
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    kmip_2_1::{
+        extra::tagging::EMPTY_TAGS,
+        kmip_attributes::Attributes,
+        kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
+        kmip_operations::{Get, Import, Locate},
+        kmip_types::{
+            CryptographicAlgorithm, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
+            UniqueIdentifier,
+        },
+        requests::{decrypt_request, encrypt_request},
     },
-    requests::{decrypt_request, encrypt_request},
+    time_normalize,
 };
 use cosmian_logger::{debug, log_init};
 use uuid::Uuid;
@@ -51,7 +54,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
             None,
         )
         .await?;
-    debug!("  -> response {:?}", cr);
+    debug!("  -> response {}", cr);
     let sk_uid = cr.private_key_unique_identifier.to_string();
     // check the generated id is an UUID
     let sk_uid_ = Uuid::parse_str(&sk_uid).map_err(|e| KmsError::InvalidRequest(e.to_string()))?;
@@ -146,7 +149,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
     let request =
         build_create_covercrypt_usk_request(access_policy, &sk_uid, EMPTY_TAGS, false, None)?;
     let cr = kms.create(request, owner, None, None).await?;
-    debug!("Create Response for User Decryption Key {:?}", cr);
+    debug!("Create Response for User Decryption Key {}", cr);
 
     let usk_uid = cr.unique_identifier.to_string();
     // check the generated ID is a UUID
@@ -176,7 +179,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
     let request =
         build_create_covercrypt_usk_request(access_policy, &sk_uid, EMPTY_TAGS, false, None)?;
     let cr = kms.create(request, owner, None, None).await?;
-    debug!("Create Response for User Decryption Key {:?}", cr);
+    debug!("Create Response for User Decryption Key {}", cr);
 
     let usk_uid = cr.unique_identifier.to_string();
     // check the generated ID is a UUID
@@ -504,10 +507,7 @@ async fn test_abe_json_access() -> KResult<()> {
 
     // now we have 1 key
     assert_eq!(locate_response.located_items.unwrap(), 1);
-    assert_eq!(
-        &locate_response.unique_identifier.unwrap()[0],
-        secret_mkg_fin_user_key_id
-    );
+    assert!(&locate_response.unique_identifier.unwrap()[0] == secret_mkg_fin_user_key_id);
 
     Ok(())
 }
@@ -535,7 +535,7 @@ async fn test_import_decrypt() -> KResult<()> {
             None,
         )
         .await?;
-    debug!("  -> response {:?}", cr);
+    debug!("  -> response created");
     let sk_uid = cr.private_key_unique_identifier.to_string();
     let pk_uid = cr.public_key_unique_identifier.to_string();
 
@@ -612,6 +612,7 @@ async fn test_import_decrypt() -> KResult<()> {
         // researched attributes won't match stored attributes
         attributes: Attributes {
             object_type: Some(ObjectType::PrivateKey),
+            activation_date: Some(time_normalize()?),
             ..Attributes::default()
         },
         object: gr_sk.object.clone(),
@@ -619,6 +620,7 @@ async fn test_import_decrypt() -> KResult<()> {
     kms.import(request, owner, None, None)
         .await
         .context(&custom_sk_uid)?;
+
     // decrypt resource MKG + Confidential
     let dr = kms
         .decrypt(
@@ -654,6 +656,10 @@ async fn test_import_decrypt() -> KResult<()> {
     kms.import(request, owner, None, None)
         .await
         .context(&custom_sk_uid)?;
+
+    // Note: No activation needed here because the imported attributes include
+    // activation_date from the original key, so it's imported as Active
+
     // decrypt resource MKG + Confidential
     let dr = kms
         .decrypt(

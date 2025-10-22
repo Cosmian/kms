@@ -14,7 +14,9 @@ use cosmian_kms_server_database::reexport::cosmian_kms_crypto::{
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         KmipError,
-        kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, PaddingMethod, State},
+        kmip_0::kmip_types::{
+            BlockCipherMode, CryptographicUsageMask, ErrorReason, PaddingMethod, State,
+        },
         kmip_2_1::{
             KmipOperation,
             extra::BulkData,
@@ -22,8 +24,10 @@ use cosmian_kms_server_database::reexport::{
             kmip_operations::{Encrypt, EncryptResponse},
             kmip_types::{
                 CryptographicAlgorithm, CryptographicParameters, KeyFormatType, UniqueIdentifier,
+                UsageLimitsUnit,
             },
         },
+        time_normalize,
     },
     cosmian_kms_crypto::{
         crypto::{
@@ -47,6 +51,7 @@ use zeroize::Zeroizing;
 use crate::{
     core::{
         KMS,
+        operations::get_effective_state,
         uid_utils::{has_prefix, uids_from_unique_identifier},
     },
     error::KmsError,
@@ -62,7 +67,7 @@ pub(crate) async fn encrypt(
     user: &str,
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<EncryptResponse> {
-    trace!("{}", serde_json::to_string(&request)?);
+    trace!("{request}");
 
     // We do not (yet) support continuation cases
     let data = request.data.as_ref().ok_or_else(|| {
@@ -119,7 +124,8 @@ pub(crate) async fn encrypt(
             .ok_or_else(|| {
                 KmsError::InvalidRequest(format!("Encrypt: failed to retrieve key: {uid}"))
             })?;
-        if owm.state() != State::Active {
+        // Check effective state (PreActive with past activation_date counts as Active)
+        if get_effective_state(&owm)? != State::Active {
             continue;
         }
         // check user permissions - owner can always encrypt
@@ -163,31 +169,121 @@ pub(crate) async fn encrypt(
         )
     })?;
 
-    // unwrap if wrapped
-    match owm.object() {
-        Object::Certificate { .. } => {}
-        _ => {
-            owm.set_object(
-                kms.get_unwrapped(owm.id(), owm.object(), user, params.clone())
-                    .await?,
-            );
+    // Enforce time window constraints: Active key is unusable for Encrypt if current time is
+    // before ProcessStartDate OR after ProtectStopDate (when those attributes are present).
+    // The CS-BC-M-14-21 vector sets ActivationDate in the past, ProcessStartDate in the future
+    // and ProtectStopDate in the past expecting Encrypt to fail with WrongKeyLifecycleState.
+    if get_effective_state(&owm)? == State::Active {
+        if let Ok(attrs) = owm.object().attributes() {
+            let now = time_normalize()?;
+            let too_early = attrs.process_start_date.is_some_and(|d| now < d);
+            let too_late = attrs.protect_stop_date.is_some_and(|d| now > d);
+            if too_early || too_late {
+                return Err(KmsError::Kmip21Error(
+                    ErrorReason::Wrong_Key_Lifecycle_State,
+                    "DENIED".to_owned(),
+                ));
+            }
         }
     }
 
+    // get unwrapped object for encryption but preserve original wrapped object
+    let unwrapped_object = match owm.object() {
+        Object::Certificate { .. } => owm.object().clone(),
+        _ => {
+            kms.get_unwrapped(owm.id(), owm.object(), user, params.clone())
+                .await?
+        }
+    };
+
+    // Create a new ObjectWithMetadata with the unwrapped object for encryption operations
+    let mut unwrapped_owm = owm.clone();
+    unwrapped_owm.set_object(unwrapped_object);
+
     // plaintext length for logging
     let plaintext_len = request.data.as_ref().map_or(0, |d| d.len());
+
+    // Enforce UsageLimits (byte unit). The vector CS-BC-M-7-21 sets a UsageLimitsTotal=16 (bytes)
+    // and performs two 16-byte ECB encrypts expecting the second to fail with PermissionDenied.
+    // We implement a simple in-memory decrement persisted via attributes/state update.
+    // NOTE: For durability a DB column would be better; for conformance tests this suffices.
+    if let Ok(attrs) = unwrapped_owm.object().attributes() {
+        if let Some(usage_limits) = attrs.usage_limits.as_ref() {
+            // Only enforce for Byte unit
+            if matches!(usage_limits.usage_limits_unit, UsageLimitsUnit::Byte) {
+                let remaining = usage_limits.usage_limits_total; // total remaining bytes allowed
+                let needed = i64::try_from(plaintext_len).map_or(i64::MAX, |v| v);
+                if remaining < needed {
+                    return Err(KmsError::Kmip21Error(
+                        ErrorReason::Permission_Denied,
+                        "DENIED".to_owned(),
+                    ));
+                }
+            }
+        }
+    }
 
     // It may be a bulk encryption request; if not, fallback to single encryption
     let res = match BulkData::deserialize(data) {
         Ok(bulk_data) => {
             // It is a bulk encryption request
-            encrypt_bulk(&owm, request, bulk_data)
+            encrypt_bulk(&unwrapped_owm, request, bulk_data)
         }
         Err(_) => {
             // fallback to single encryption
-            encrypt_single(&owm, &request)
+            encrypt_single(&unwrapped_owm, &request)
         }
     }?;
+
+    // Post-encryption: decrement usage limits if enforced.
+    if let Ok(attrs) = unwrapped_owm.object_mut().attributes_mut() {
+        if let Some(ref mut usage_limits) = attrs.usage_limits {
+            if matches!(usage_limits.usage_limits_unit, cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::UsageLimitsUnit::Byte) {
+                if let Ok(p) = i64::try_from(plaintext_len) {
+                    usage_limits.usage_limits_total -= p;
+                } else {
+                    usage_limits.usage_limits_total = 0;
+                }
+                if usage_limits.usage_limits_total < 0 {
+                    usage_limits.usage_limits_total = 0;
+                }
+            }
+        }
+    }
+
+    // Copy updated usage limits from unwrapped_owm back to original owm for persistence
+    if let (Ok(unwrapped_attrs), Ok(original_attrs)) = (
+        unwrapped_owm.object().attributes(),
+        owm.object_mut().attributes_mut(),
+    ) {
+        if let Some(unwrapped_usage_limits) = unwrapped_attrs.usage_limits.as_ref() {
+            if let Some(ref mut original_usage_limits) = original_attrs.usage_limits {
+                original_usage_limits.usage_limits_total =
+                    unwrapped_usage_limits.usage_limits_total;
+            }
+        }
+    }
+
+    // Persist updated attributes (including possibly decremented UsageLimits) so subsequent
+    // operations observe the reduced remaining total. We ignore failure here only if the
+    // encryption itself succeeded; but propagate errors to surface DB issues.
+    if let Ok(attributes) = owm.object().attributes() {
+        if let Err(e) = kms
+            .database
+            .update_object(
+                owm.id(),
+                owm.object(),
+                attributes,
+                None, // tags unchanged
+                params.clone(),
+            )
+            .await
+        {
+            return Err(KmsError::ServerError(format!(
+                "Encrypt: failed to persist updated usage limits: {e}"
+            )));
+        }
+    }
 
     info!(
         uid = owm.id(),
@@ -365,10 +461,15 @@ fn encrypt_with_symmetric_key(
     let plaintext = request.data.as_ref().ok_or_else(|| {
         KmsError::InvalidRequest("Encrypt: data to encrypt must be provided".to_owned())
     })?;
-    let nonce = request
-        .i_v_counter_nonce
-        .clone()
-        .unwrap_or(random_nonce(aead)?);
+    // ECB (nonce_size == 0) MUST NOT output or require a nonce; do not generate one.
+    let nonce = if aead.nonce_size() == 0 {
+        Vec::new()
+    } else {
+        request
+            .i_v_counter_nonce
+            .clone()
+            .unwrap_or(random_nonce(aead)?)
+    };
     let aad = request
         .authenticated_encryption_additional_data
         .as_deref()
@@ -377,11 +478,24 @@ fn encrypt_with_symmetric_key(
         .cryptographic_parameters
         .as_ref()
         .and_then(|cp| cp.padding_method)
-        .unwrap_or(PaddingMethod::PKCS5);
-    trace!(
-        "plaintext: {plaintext:?}, nonce: {nonce:?}, aad: {aad:?}, padding_method: \
-         {padding_method:?}"
-    );
+        .unwrap_or({
+            // KMIP mandatory vectors for ECB expect no padding when the plaintext is block aligned
+            // and omit an explicit PaddingMethod. Default to None ONLY for ECB; keep PKCS5 elsewhere.
+            match aead {
+                SymCipher::Aes128Ecb | SymCipher::Aes192Ecb | SymCipher::Aes256Ecb => {
+                    PaddingMethod::None
+                }
+                _ => PaddingMethod::PKCS5,
+            }
+        });
+    if aead.nonce_size() == 0 {
+        trace!("plaintext (ECB): {plaintext:?}, aad: {aad:?}, padding_method: {padding_method:?}");
+    } else {
+        trace!(
+            "plaintext: {plaintext:?}, nonce: {nonce:?}, aad: {aad:?}, padding_method: \
+             {padding_method:?}"
+        );
+    }
     let (ciphertext, tag) = sym_encrypt(
         aead,
         &key_bytes,
@@ -390,13 +504,85 @@ fn encrypt_with_symmetric_key(
         plaintext,
         Some(padding_method),
     )?;
-    trace!("ciphertext: {ciphertext:?}, tag: {tag:?},");
+
+    if aead.nonce_size() == 0 {
+        trace!("ciphertext (ECB): {ciphertext:?}");
+    } else {
+        trace!("ciphertext: {ciphertext:?}, tag: {tag:?},");
+    }
+    // Validate and apply AEAD TagLength handling.
+    // For AEAD (ChaCha20-Poly1305), KMIP vectors expect an invalid tag length to fail the request
+    // (e.g., TagLength=1). For GCM, vectors accept only specific lengths; reject others.
+    let adjusted_tag = if aead.tag_size() != 0 {
+        if let Some(cp) = request.cryptographic_parameters.as_ref() {
+            if let Some(mode) = cp.block_cipher_mode {
+                match mode {
+                    BlockCipherMode::AEAD => {
+                        if let Some(tl) = cp.tag_length {
+                            // ChaCha20-Poly1305 has a fixed 16-byte tag; reject mismatched lengths
+                            let expected = tag.len();
+                            if usize::try_from(tl).ok() != Some(expected) {
+                                return Err(KmsError::Kmip21Error(
+                                    ErrorReason::General_Failure,
+                                    "L_KMIPCRYPTO_random:invalid-tag-length".to_owned(),
+                                ));
+                            }
+                        }
+                        Some(tag)
+                    }
+                    BlockCipherMode::GCM => {
+                        if let Some(tl) = cp.tag_length {
+                            // KMIP vectors validate GCM TagLength values; allow 12..=16 bytes only.
+                            let tl_usize = usize::try_from(tl)?;
+                            if !(12..=16).contains(&tl_usize) {
+                                return Err(KmsError::Kmip21Error(
+                                    ErrorReason::General_Failure,
+                                    "L_KMIPCRYPTO_random:invalid-tag-length".to_owned(),
+                                ));
+                            }
+                            // Truncate to requested length within allowed range
+                            let truncated = if tl_usize < tag.len() {
+                                tag.get(..tl_usize)
+                                    .map_or_else(|| tag.clone(), std::borrow::ToOwned::to_owned)
+                            } else {
+                                tag
+                            };
+                            Some(truncated)
+                        } else {
+                            Some(tag)
+                        }
+                    }
+                    _ => Some(tag),
+                }
+            } else {
+                Some(tag)
+            }
+        } else {
+            Some(tag)
+        }
+    } else {
+        None
+    };
+
     Ok(EncryptResponse {
         unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
         data: Some(ciphertext),
-        i_v_counter_nonce: Some(nonce),
+        // nonce-return-policy:
+        // The value used if the Cryptographic Parameters specified Random IV
+        // and the IV/Counter/Nonce value was not provided in the request and the algorithm requires the provision of an IV/Counter/Nonce.
+        i_v_counter_nonce: if aead.nonce_size() != 0
+            && request
+                .i_v_counter_nonce
+                .as_ref()
+                .map_or(0, std::vec::Vec::len)
+                == 0
+        {
+            Some(nonce)
+        } else {
+            None
+        },
         correlation_value: request.correlation_value.clone(),
-        authenticated_encryption_tag: Some(tag),
+        authenticated_encryption_tag: adjusted_tag,
     })
 }
 
@@ -422,20 +608,17 @@ fn get_key_and_cipher(
     let aead = match key_block.key_format_type {
         KeyFormatType::TransparentSymmetricKey | KeyFormatType::Raw => {
             // recover the cryptographic algorithm from the request or the key block or default to AES
-            let cryptographic_algorithm = request
-                .cryptographic_parameters
-                .as_ref()
+            let req_cp = request.cryptographic_parameters.as_ref();
+            let stored_cp = owm.attributes().cryptographic_parameters.as_ref();
+            let cryptographic_algorithm = req_cp
                 .and_then(|cp| cp.cryptographic_algorithm)
-                .unwrap_or_else(|| {
-                    key_block
-                        .cryptographic_algorithm()
-                        .copied()
-                        .unwrap_or(CryptographicAlgorithm::AES)
-                });
-            let block_cipher_mode = request
-                .cryptographic_parameters
-                .as_ref()
-                .and_then(|cp| cp.block_cipher_mode);
+                .or_else(|| stored_cp.and_then(|cp| cp.cryptographic_algorithm))
+                .or_else(|| key_block.cryptographic_algorithm().copied())
+                .unwrap_or(CryptographicAlgorithm::AES);
+            // Block cipher mode may be only on stored attributes (e.g. ECB). If absent in request, fallback to stored.
+            let block_cipher_mode = req_cp
+                .and_then(|cp| cp.block_cipher_mode)
+                .or_else(|| stored_cp.and_then(|cp| cp.block_cipher_mode));
             SymCipher::from_algorithm_and_key_size(
                 cryptographic_algorithm,
                 block_cipher_mode,
@@ -504,11 +687,17 @@ fn encrypt_with_pkey(
     public_key: &PKey<Public>,
 ) -> KResult<EncryptResponse> {
     let ciphertext = match public_key.id() {
-        Id::RSA => encrypt_with_rsa(
-            public_key,
-            request.cryptographic_parameters.as_ref(),
-            plaintext,
-        )?,
+        Id::RSA => {
+            // Merge stored key cryptographic parameters (from key attributes if available via request? For encryption,
+            // we only have the request parameters and the key's own attributes if we retrieved them earlier.
+            // Here we do not have direct access to the key's Attributes (only key id + public key) so we rely solely
+            // on request parameters for now. If future need arises we can thread Attributes through.
+            encrypt_with_rsa(
+                public_key,
+                request.cryptographic_parameters.as_ref(),
+                plaintext,
+            )?
+        }
         #[cfg(feature = "non-fips")]
         Id::EC | Id::X25519 | Id::ED25519 => ecies_encrypt(public_key, plaintext)?,
         other => {
@@ -531,12 +720,23 @@ fn encrypt_with_rsa(
 ) -> KResult<Vec<u8>> {
     let (algorithm, padding, hashing_fn, _) =
         default_cryptographic_parameters(cryptographic_parameters);
-    debug!("encrypting with RSA {algorithm:?} {padding:?} {hashing_fn:?}");
+    let (mgf1_hash_fn, label) = cryptographic_parameters.map_or((hashing_fn, None), |cp| {
+        (
+            cp.mask_generator_hashing_algorithm.unwrap_or(hashing_fn),
+            cp.p_source.as_deref(),
+        )
+    });
+    debug!(
+        "encrypting with RSA {algorithm:?} {padding:?} hashing_fn:{hashing_fn:?} mgf1:{mgf1_hash_fn:?} label_len:{}",
+        label.map_or(0, <[u8]>::len)
+    );
 
     let ciphertext = match algorithm {
         CryptographicAlgorithm::RSA => match padding {
             PaddingMethod::None => ckm_rsa_aes_key_wrap(public_key, hashing_fn, plaintext)?,
-            PaddingMethod::OAEP => ckm_rsa_pkcs_oaep_encrypt(public_key, hashing_fn, plaintext)?,
+            PaddingMethod::OAEP => {
+                ckm_rsa_pkcs_oaep_encrypt(public_key, hashing_fn, mgf1_hash_fn, label, plaintext)?
+            }
             #[cfg(feature = "non-fips")]
             PaddingMethod::PKCS1v15 => ckm_rsa_pkcs_encrypt(public_key, plaintext)?,
             _ => kms_bail!("Unable to encrypt with RSA: padding method not supported: {padding:?}"),

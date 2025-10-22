@@ -28,6 +28,14 @@ pub(crate) async fn test_locate_cover_crypt() -> KmsCliResult<()> {
 
     log_init(option_env!("RUST_LOG"));
 
+    // Generate unique tags to avoid cross-test collisions when tests run concurrently
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_else(|_| std::time::Duration::from_secs(0))
+        .as_nanos();
+    let base_tag = format!("test_cc_{ts}");
+    let another_tag = format!("another_tag_{ts}");
+
     // init the test server
     let ctx = start_default_test_kms_server_with_cert_auth().await;
 
@@ -35,7 +43,7 @@ pub(crate) async fn test_locate_cover_crypt() -> KmsCliResult<()> {
     let (master_private_key_id, master_public_key_id) = {
         let action = CreateMasterKeyPairAction {
             specification: PathBuf::from("../../test_data/access_structure_specifications.json"),
-            tags: vec!["test_cc".to_string()],
+            tags: vec![base_tag.clone()],
             sensitive: false,
             wrapping_key_id: None,
         };
@@ -45,7 +53,7 @@ pub(crate) async fn test_locate_cover_crypt() -> KmsCliResult<()> {
 
     // Locate with Tags
     let ids = LocateObjectsAction {
-        tags: Some(vec!["test_cc".to_string()]),
+        tags: Some(vec![base_tag.clone()]),
         ..Default::default()
     }
     .run(ctx.get_owner_client())
@@ -57,7 +65,7 @@ pub(crate) async fn test_locate_cover_crypt() -> KmsCliResult<()> {
     // Locate with cryptographic algorithm
     // this should be case insensitive
     let ids = LocateObjectsAction {
-        tags: Some(vec!["test_cc".to_string()]),
+        tags: Some(vec![base_tag.clone()]),
         cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
         ..Default::default()
     }
@@ -69,7 +77,7 @@ pub(crate) async fn test_locate_cover_crypt() -> KmsCliResult<()> {
 
     // locate using the key format type
     let ids = LocateObjectsAction {
-        tags: Some(vec!["test_cc".to_string()]),
+        tags: Some(vec![base_tag.clone()]),
         key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
         ..Default::default()
     }
@@ -78,7 +86,7 @@ pub(crate) async fn test_locate_cover_crypt() -> KmsCliResult<()> {
     assert_eq!(ids.len(), 1);
     assert!(ids.contains(&master_private_key_id));
     let ids = LocateObjectsAction {
-        tags: Some(vec!["test_cc".to_string()]),
+        tags: Some(vec![base_tag.clone()]),
         key_format_type: Some(KeyFormatType::CoverCryptPublicKey),
         ..Default::default()
     }
@@ -89,7 +97,7 @@ pub(crate) async fn test_locate_cover_crypt() -> KmsCliResult<()> {
 
     // locate using tags and cryptographic algorithm and key format type
     let ids = LocateObjectsAction {
-        tags: Some(vec!["test_cc".to_string()]),
+        tags: Some(vec![base_tag.clone()]),
         cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
         key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
         ..Default::default()
@@ -104,7 +112,7 @@ pub(crate) async fn test_locate_cover_crypt() -> KmsCliResult<()> {
         master_secret_key_id: master_private_key_id.to_string(),
         access_policy: "(Department::MKG || Department::FIN) && Security Level::Top Secret"
             .to_string(),
-        tags: vec!["test_cc".to_string(), "another_tag".to_string()],
+        tags: vec![base_tag.clone(), another_tag.clone()],
         sensitive: false,
         wrapping_key_id: None,
     }
@@ -113,7 +121,7 @@ pub(crate) async fn test_locate_cover_crypt() -> KmsCliResult<()> {
 
     // Locate with Tags
     let ids = LocateObjectsAction {
-        tags: Some(vec!["test_cc".to_string()]),
+        tags: Some(vec![base_tag.clone()]),
         ..Default::default()
     }
     .run(ctx.get_owner_client())
@@ -125,7 +133,7 @@ pub(crate) async fn test_locate_cover_crypt() -> KmsCliResult<()> {
 
     // locate using tags and cryptographic algorithm and key format type
     let ids = LocateObjectsAction {
-        tags: Some(vec!["test_cc".to_string()]),
+        tags: Some(vec![base_tag.clone()]),
         cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
         key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
         ..Default::default()
@@ -136,7 +144,7 @@ pub(crate) async fn test_locate_cover_crypt() -> KmsCliResult<()> {
     assert!(ids.contains(&master_private_key_id));
     assert!(ids.contains(&user_key_id));
     let ids = LocateObjectsAction {
-        tags: Some(vec!["test_cc".to_string(), "another_tag".to_string()]),
+        tags: Some(vec![base_tag.clone(), another_tag.clone()]),
         cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
         key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
         ..Default::default()
@@ -148,7 +156,7 @@ pub(crate) async fn test_locate_cover_crypt() -> KmsCliResult<()> {
 
     // test using system Tags
     let ids = LocateObjectsAction {
-        tags: Some(vec!["test_cc".to_string(), "_uk".to_string()]),
+        tags: Some(vec![base_tag.clone(), "_uk".to_string()]),
         ..Default::default()
     }
     .run(ctx.get_owner_client())
@@ -156,7 +164,7 @@ pub(crate) async fn test_locate_cover_crypt() -> KmsCliResult<()> {
     assert_eq!(ids.len(), 1);
     assert!(ids.contains(&user_key_id));
     let ids = LocateObjectsAction {
-        tags: Some(vec!["test_cc".to_string(), "_sk".to_string()]),
+        tags: Some(vec![base_tag.clone(), "_sk".to_string()]),
         ..Default::default()
     }
     .run(ctx.get_owner_client())
@@ -164,7 +172,7 @@ pub(crate) async fn test_locate_cover_crypt() -> KmsCliResult<()> {
     assert_eq!(ids.len(), 1);
     assert!(ids.contains(&master_private_key_id));
     let ids = LocateObjectsAction {
-        tags: Some(vec!["test_cc".to_string(), "_pk".to_string()]),
+        tags: Some(vec![base_tag, "_pk".to_string()]),
         ..Default::default()
     }
     .run(ctx.get_owner_client())
@@ -181,10 +189,17 @@ pub(crate) async fn test_locate_elliptic_curve() -> KmsCliResult<()> {
     // init the test server
     let ctx = start_default_test_kms_server_with_cert_auth().await;
 
+    // Generate unique tags to avoid cross-test collisions when tests run concurrently
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_else(|_| std::time::Duration::from_secs(0))
+        .as_nanos();
+    let base_tag = format!("test_ec_{ts}");
+
     // generate a new key pair
     let (private_key_id, public_key_id) = CreateEcKeyPairAction {
         curve: Curve::NistP256,
-        tags: vec!["test_ec".to_owned()],
+        tags: vec![base_tag.clone()],
         sensitive: false,
         ..Default::default()
     }
@@ -193,7 +208,7 @@ pub(crate) async fn test_locate_elliptic_curve() -> KmsCliResult<()> {
 
     // Locate with Tags
     let ids = LocateObjectsAction {
-        tags: Some(vec!["test_ec".to_owned()]),
+        tags: Some(vec![base_tag.clone()]),
         ..Default::default()
     }
     .run(ctx.get_owner_client())
@@ -205,7 +220,7 @@ pub(crate) async fn test_locate_elliptic_curve() -> KmsCliResult<()> {
     // Locate with cryptographic algorithm
     // this should be case insensitive
     let ids = LocateObjectsAction {
-        tags: Some(vec!["test_ec".to_owned()]),
+        tags: Some(vec![base_tag.clone()]),
         cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
         ..Default::default()
     }
@@ -217,7 +232,7 @@ pub(crate) async fn test_locate_elliptic_curve() -> KmsCliResult<()> {
 
     // locate using the key format type
     let ids = LocateObjectsAction {
-        tags: Some(vec!["test_ec".to_owned()]),
+        tags: Some(vec![base_tag.clone()]),
         key_format_type: Some(KeyFormatType::TransparentECPrivateKey),
         ..Default::default()
     }
@@ -226,7 +241,7 @@ pub(crate) async fn test_locate_elliptic_curve() -> KmsCliResult<()> {
     assert_eq!(ids.len(), 1);
     assert!(ids.contains(&private_key_id));
     let ids = LocateObjectsAction {
-        tags: Some(vec!["test_ec".to_owned()]),
+        tags: Some(vec![base_tag.clone()]),
         key_format_type: Some(KeyFormatType::TransparentECPublicKey),
         ..Default::default()
     }
@@ -237,7 +252,7 @@ pub(crate) async fn test_locate_elliptic_curve() -> KmsCliResult<()> {
 
     // locate using tags and cryptographic algorithm and key format type
     let ids = LocateObjectsAction {
-        tags: Some(vec!["test_ec".to_owned()]),
+        tags: Some(vec![base_tag.clone()]),
         cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
         key_format_type: Some(KeyFormatType::TransparentECPrivateKey),
         ..Default::default()
@@ -249,7 +264,7 @@ pub(crate) async fn test_locate_elliptic_curve() -> KmsCliResult<()> {
 
     // test using system Tags
     let ids = LocateObjectsAction {
-        tags: Some(vec!["test_ec".to_owned(), "_sk".to_owned()]),
+        tags: Some(vec![base_tag.clone(), "_sk".to_owned()]),
         ..Default::default()
     }
     .run(ctx.get_owner_client())
@@ -257,7 +272,7 @@ pub(crate) async fn test_locate_elliptic_curve() -> KmsCliResult<()> {
     assert_eq!(ids.len(), 1);
     assert!(ids.contains(&private_key_id));
     let ids = LocateObjectsAction {
-        tags: Some(vec!["test_ec".to_owned(), "_pk".to_owned()]),
+        tags: Some(vec![base_tag.clone(), "_pk".to_owned()]),
         ..Default::default()
     }
     .run(ctx.get_owner_client())
@@ -273,16 +288,23 @@ pub(crate) async fn test_locate_symmetric_key() -> KmsCliResult<()> {
     // init the test server
     let ctx = start_default_test_kms_server_with_cert_auth().await;
 
+    // Generate unique tags to avoid cross-test collisions when tests run concurrently
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_else(|_| std::time::Duration::from_secs(0))
+        .as_nanos();
+    let base_tag = format!("test_sym_{ts}");
+
     // generate a new key
     let key_id = CreateKeyAction {
-        tags: vec!["test_sym".to_owned()],
+        tags: vec![base_tag.clone()],
         ..Default::default()
     }
     .run(ctx.get_owner_client())
     .await?;
     // Locate with Tags
     let ids = LocateObjectsAction {
-        tags: Some(vec!["test_sym".to_owned()]),
+        tags: Some(vec![base_tag.clone()]),
         ..Default::default()
     }
     .run(ctx.get_owner_client())
@@ -293,7 +315,7 @@ pub(crate) async fn test_locate_symmetric_key() -> KmsCliResult<()> {
     // Locate with cryptographic algorithm
     // this should be case insensitive
     let ids = LocateObjectsAction {
-        tags: Some(vec!["test_sym".to_owned()]),
+        tags: Some(vec![base_tag.clone()]),
         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
         ..Default::default()
     }
@@ -304,7 +326,7 @@ pub(crate) async fn test_locate_symmetric_key() -> KmsCliResult<()> {
 
     // locate using the key format type
     let ids = LocateObjectsAction {
-        tags: Some(vec!["test_sym".to_owned()]),
+        tags: Some(vec![base_tag.clone()]),
         key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
         ..Default::default()
     }
@@ -315,7 +337,7 @@ pub(crate) async fn test_locate_symmetric_key() -> KmsCliResult<()> {
 
     // locate using tags and cryptographic algorithm and key format type
     let ids = LocateObjectsAction {
-        tags: Some(vec!["test_sym".to_owned()]),
+        tags: Some(vec![base_tag.clone()]),
         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
         key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
         ..Default::default()
@@ -327,7 +349,7 @@ pub(crate) async fn test_locate_symmetric_key() -> KmsCliResult<()> {
 
     // test using system Tags
     let ids = LocateObjectsAction {
-        tags: Some(vec!["test_sym".to_owned(), "_kk".to_owned()]),
+        tags: Some(vec![base_tag.clone(), "_kk".to_owned()]),
         ..Default::default()
     }
     .run(ctx.get_owner_client())
@@ -350,11 +372,18 @@ pub(crate) async fn test_locate_grant() -> KmsCliResult<()> {
     use crate::actions::kms::access::{GrantAccess, RevokeAccess};
     let ctx = start_default_test_kms_server_with_cert_auth().await;
 
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_else(|_| std::time::Duration::from_secs(0))
+        .as_nanos();
+    let base_tag = format!("test_grant_{ts}");
+    let another_tag = format!("another_tag_{ts}");
+
     // generate a new master key pair
     let (master_private_key_id, master_public_key_id) = {
         let action = CreateMasterKeyPairAction {
             specification: PathBuf::from("../../test_data/access_structure_specifications.json"),
-            tags: vec!["test_grant".to_string()],
+            tags: vec![base_tag.clone()],
             sensitive: false,
             wrapping_key_id: None,
         };
@@ -364,7 +393,7 @@ pub(crate) async fn test_locate_grant() -> KmsCliResult<()> {
 
     // Locate with Tags
     let ids = LocateObjectsAction {
-        tags: Some(vec!["test_grant".to_string()]),
+        tags: Some(vec![base_tag.clone()]),
         ..Default::default()
     }
     .run(ctx.get_owner_client())
@@ -376,7 +405,7 @@ pub(crate) async fn test_locate_grant() -> KmsCliResult<()> {
     // Locate with cryptographic algorithm
     // this should be case insensitive
     let ids = LocateObjectsAction {
-        tags: Some(vec!["test_grant".to_string()]),
+        tags: Some(vec![base_tag.clone()]),
         cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
         ..Default::default()
     }
@@ -391,7 +420,7 @@ pub(crate) async fn test_locate_grant() -> KmsCliResult<()> {
         master_secret_key_id: master_private_key_id.to_string(),
         access_policy: "(Department::MKG || Department::FIN) && Security Level::Top Secret"
             .to_string(),
-        tags: vec!["test_grant".to_string(), "another_tag".to_string()],
+        tags: vec![base_tag.clone(), another_tag.clone()],
         sensitive: false,
         wrapping_key_id: None,
     }
@@ -400,7 +429,7 @@ pub(crate) async fn test_locate_grant() -> KmsCliResult<()> {
 
     // Locate with Tags
     let ids = LocateObjectsAction {
-        tags: Some(vec!["test_grant".to_string()]),
+        tags: Some(vec![base_tag.clone()]),
         ..Default::default()
     }
     .run(ctx.get_owner_client())
@@ -412,7 +441,7 @@ pub(crate) async fn test_locate_grant() -> KmsCliResult<()> {
 
     // the user should not be able to locate anything
     let ids = LocateObjectsAction {
-        tags: Some(vec!["test_grant".to_string()]),
+        tags: Some(vec![base_tag.clone()]),
         ..Default::default()
     }
     .run(ctx.get_user_client())
@@ -430,7 +459,7 @@ pub(crate) async fn test_locate_grant() -> KmsCliResult<()> {
 
     // The user should be able to locate the user key and only that one
     let ids = LocateObjectsAction {
-        tags: Some(vec!["test_grant".to_string()]),
+        tags: Some(vec![base_tag.clone()]),
         ..Default::default()
     }
     .run(ctx.get_user_client())
@@ -449,7 +478,7 @@ pub(crate) async fn test_locate_grant() -> KmsCliResult<()> {
 
     // the user should no more be able to locate the key
     let ids = LocateObjectsAction {
-        tags: Some(vec!["test_grant".to_string()]),
+        tags: Some(vec![base_tag.clone()]),
         ..Default::default()
     }
     .run(ctx.get_user_client())
@@ -465,16 +494,22 @@ pub(crate) async fn test_locate_secret_data() -> KmsCliResult<()> {
     // init the test server
     let ctx = start_default_test_kms_server_with_cert_auth().await;
 
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_else(|_| std::time::Duration::from_secs(0))
+        .as_nanos();
+    let base_tag = format!("test_secret_{ts}");
+
     // generate a new secret
     let secret_id = crate::actions::kms::secret_data::create_secret::CreateSecretDataAction {
-        tags: vec!["test_secret".to_string()],
+        tags: vec![base_tag.clone()],
         ..Default::default()
     }
     .run(ctx.get_owner_client())
     .await?;
     // Locate with Tags
     let ids = LocateObjectsAction {
-        tags: Some(vec!["test_secret".to_string()]),
+        tags: Some(vec![base_tag.clone()]),
         ..Default::default()
     }
     .run(ctx.get_owner_client())
@@ -484,7 +519,7 @@ pub(crate) async fn test_locate_secret_data() -> KmsCliResult<()> {
 
     // locate using the key format type
     let ids = LocateObjectsAction {
-        tags: Some(vec!["test_secret".to_string()]),
+        tags: Some(vec![base_tag.clone()]),
         key_format_type: Some(KeyFormatType::Raw),
         ..Default::default()
     }
@@ -495,7 +530,7 @@ pub(crate) async fn test_locate_secret_data() -> KmsCliResult<()> {
 
     // test using system Tags
     let ids = LocateObjectsAction {
-        tags: Some(vec!["test_secret".to_string(), "_sd".to_string()]),
+        tags: Some(vec![base_tag.clone(), "_sd".to_string()]),
         ..Default::default()
     }
     .run(ctx.get_owner_client())

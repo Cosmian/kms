@@ -45,7 +45,11 @@ impl DeleteAttributesAction {
                 attribute_references,
             })
             .await?;
-        trace!("response for {unique_identifier}: {current_attribute:?}",);
+        if let Some(attr) = &current_attribute {
+            trace!("response for {unique_identifier}: {}", attr);
+        } else {
+            trace!("response for {unique_identifier}: <none>");
+        }
         let mut stdout = console::Stdout::new("Attribute deleted successfully");
         stdout.set_tags(self.requested_attributes.tags.as_ref());
         stdout.set_unique_identifier(&id);

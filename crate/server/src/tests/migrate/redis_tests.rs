@@ -126,6 +126,7 @@ async fn from_5_2_0_to_5_12_0() -> KResult<()> {
                     revocation_reason_code: RevocationReasonCode::Unspecified,
                 },
                 compromise_occurrence_date: None,
+                cascade: true,
             },
             user,
             None,
@@ -297,6 +298,7 @@ async fn from_5_1_0_to_5_12_0() -> KResult<()> {
                     revocation_reason_code: RevocationReasonCode::Unspecified,
                 },
                 compromise_occurrence_date: None,
+                cascade: true,
             },
             owner,
             None,
@@ -310,6 +312,7 @@ async fn from_5_1_0_to_5_12_0() -> KResult<()> {
 // If those tests are run in parallel, they will trigger redis errors;
 // for some reason, the #[serial] attribute from serial_test crate does
 // not solve the problem, hence this function.
+#[ignore = "Requires a running Redis instance"]
 #[allow(clippy::large_futures)]
 #[tokio::test]
 #[cfg(not(any(target_os = "windows", target_os = "macos")))] // no redis on those CI machines

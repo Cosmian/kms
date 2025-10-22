@@ -1,15 +1,18 @@
 use std::fmt::{Display, Formatter};
 
 use clap::ValueEnum;
-use cosmian_kmip::kmip_2_1::{
-    kmip_attributes::Attributes,
-    kmip_objects::ObjectType,
-    kmip_operations::Certify,
-    kmip_types::{
-        CertificateAttributes, CertificateRequestType, CryptographicAlgorithm,
-        CryptographicDomainParameters, KeyFormatType, LinkType, LinkedObjectIdentifier,
-        RecommendedCurve, UniqueIdentifier,
+use cosmian_kmip::{
+    kmip_2_1::{
+        kmip_attributes::Attributes,
+        kmip_objects::ObjectType,
+        kmip_operations::Certify,
+        kmip_types::{
+            CertificateAttributes, CertificateRequestType, CryptographicAlgorithm,
+            CryptographicDomainParameters, KeyFormatType, LinkType, LinkedObjectIdentifier,
+            RecommendedCurve, UniqueIdentifier,
+        },
     },
+    time_normalize,
 };
 use strum::EnumString;
 
@@ -105,6 +108,7 @@ pub fn build_certify_request(
         attributes.unique_identifier = Some(UniqueIdentifier::TextString(certificate_id.clone()));
     }
 
+    attributes.activation_date = Some(time_normalize()?);
     attributes.set_tags(tags)?;
 
     let mut certificate_request_value = None;

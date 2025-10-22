@@ -2,6 +2,66 @@
 
 All notable changes to this project will be documented in this file.
 
+## ✅ KMIP XML Vector Conformance (1.4 & 2.1)
+
+- End-to-end alignment with the official KMIP XML test vectors across library, server routing, and CLI: Create, Query/DiscoverVersions, attribute flows, and OpaqueObject revoke/destroy are covered.
+
+### 🚀 Features
+
+- KMIP crate
+    - Operations/types/messages:
+        - Expanded Operation enum and message wiring to include: Interop, PKCS11, Check, RNG Retrieve, RNG Seed, GetAttributeList, MACVerify, ModifyAttribute, Log, plus responses.
+        - Request/Response batch items are Clone with structured Display for clearer diagnostics.
+        - Added Vendor OpaqueDataType; Display impls for CryptographicDomainParameters, ProtectionStorageMasks, StorageStatusMask.
+    - TTLV improvements:
+        - Deserializer coercions: Integer/Interval→i64, Enumeration/LongInteger→u8; ByteString→hex for ShortUniqueIdentifier.
+        - Relaxed Attribute decoding supporting VendorAttribute and AttributeName+Value forms.
+        - deserialize_ignored_any no-op to avoid loops in permissive paths.
+    - Protocol alignment:
+        - DiscoverVersions now uses KMIP 0.x types (protocol_version_major/minor) per spec; Query advertises operations/objects supported.
+    - XML support:
+        - Added XML serializer/deserializer and parser with tests for 1.4 and 2.1 XML vectors.
+
+- server
+    - New KMIP operations exposed and routed: DiscoverVersions, Query, RNG Retrieve, RNG Seed, MACVerify, GetAttributeList, ModifyAttribute, Check.
+    - OpaqueObject Revoke/Destroy parity with vectors; deterministic ordering for GetAttributeList.
+    - RNG implementation module (ANSI X9.31) with public routing.
+    - Optional cascade mechanism for Destroy and Revoke.
+
+- CLI
+    - New subcommands: rng (Retrieve/Seed), mac verify, discover-versions, query.
+    - New opaque-object subcommands: Create/Import/Export/Revoke/Destroy (no wrap/unwrap).
+
+- kms_client
+    - REST client methods added for RNG Retrieve/Seed, MACVerify, Query, DiscoverVersions, Check, GetAttributeList, attribute ops, register, and crypto ops.
+
+- server_database
+    - Deterministic GetAttributeList behavior across backends; Locate query refinements; backend adapters updated (MySQL, PostgreSQL, SQLite, Redis-Findex).
+
+- crypto
+    - Robustness and consistency improvements to RSA OAEP and wrap/unwrap paths used by KMIP flows.
+
+- interfaces / hsm / access / client_utils
+    - Minor interface refinements and HSM integration stability improvements supporting the new routes and attribute flows.
+
+### 🐛 Bug Fixes
+
+- Export OpaqueObject Raw/Base64 returns opaque bytes (no KeyBlock).
+- DiscoverVersions type/field mismatches fixed by switching to KMIP 0.x (major/minor).
+- TTLV deserializer: better errors and coercions (u8 from Enumeration/LongInteger; i64 widening from Integer/Interval; vendor Attribute decoding) for XML vector compatibility.
+- GetAttributeList: unified, deterministic ordering across environments.
+
+### 🧪 Testing
+
+- Extensive XML vector tests for 1.4 and 2.1 in the kmip crate (mandatory/optional suites, crypto coverage).
+- Added CLI tests: OpaqueObject CRUD (create/import, export json/base64/raw, revoke, destroy), RNG Retrieve/Seed, MAC Verify, Query, and DiscoverVersions.
+- Server TTLV tests expanded (e.g., DSA creation/get flows) and vector integrations.
+
+### 📚 Documentation / Tooling
+
+- Added KMIP specification scaffolding READMEs and a script to generate XML-based support tables.
+- Build scripts adjusted for the new test coverage and flows.
+
 ## [5.12.1] - 2025-11-28
 
 ### 🐛 Bug Fixes

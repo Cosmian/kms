@@ -208,6 +208,40 @@ async fn handle_ttlv_2_1(
     }
 }
 
+/// Handle input TTLV requests for KMIP 1.4 (JSON)
+///
+/// Mirrors the 2.1 handler but returns 1.4-compatible error envelopes.
+async fn handle_ttlv_1_4(
+    kms: &KMS,
+    ttlv: TTLV,
+    user: &str,
+    database_params: Option<Arc<dyn SessionParams>>,
+) -> KResult<TTLV> {
+    if ttlv.tag.as_str() == "RequestMessage" {
+        let req = match from_ttlv::<RequestMessage>(ttlv) {
+            Ok(req) => req,
+            Err(e) => {
+                error!(target: "kmip", "Failed to parse RequestMessage: {}", e);
+                return Ok(error_response_ttlv(1, 4, &e.to_string()));
+            }
+        };
+        let resp = kms
+            .message(req, user, database_params)
+            .await
+            .unwrap_or_else(|e| {
+                error!(target: "kmip", "Failed to process request: {}", e);
+                invalid_response_message(1, 4, e.to_string())
+            });
+        Ok(to_ttlv(&resp).unwrap_or_else(|e| {
+            error!(target: "kmip", "Failed to convert response message to TTLV: {}", e);
+            error_response_ttlv(1, 4, e.to_string().as_str())
+        }))
+    } else {
+        let operation = Box::pin(dispatch(kms, ttlv, user, database_params)).await?;
+        Ok(to_ttlv(&operation)?)
+    }
+}
+
 /// Handle KMIP requests with JSON content type
 #[post("/kmip")]
 pub(crate) async fn kmip(
@@ -280,9 +314,8 @@ async fn kmip_json_inner(req_http: HttpRequest, body: Bytes, kms: Data<Arc<KMS>>
         let ttlv = Box::pin(handle_ttlv_2_1(&kms, ttlv, &user, None)).await?;
         Ok(ttlv)
     } else if major == 1 && minor == 4 {
-        Err(KmsError::InvalidRequest(
-            "Handling of 1.4 not yet implemented".to_owned(),
-        ))
+        let ttlv = Box::pin(handle_ttlv_1_4(&kms, ttlv, &user, None)).await?;
+        Ok(ttlv)
     } else {
         Err(KmsError::InvalidRequest(
             "The /kmip endpoint only accepts KMIP 2.1 or 1.4 requests".to_owned(),

@@ -33,6 +33,7 @@ cosmian_kms_server = { path = "../server", features = [
 ], version = "5.12.1" }
 cosmian_logger = { workspace = true }
 serde_json = { workspace = true }
+time = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 
 [dev-dependencies]

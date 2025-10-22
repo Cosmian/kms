@@ -210,7 +210,8 @@ pub fn create_sym_key_ttlv_request(
             })?;
             attributes.set_wrapping_key_id(wrapping_key_id);
         }
-        let request = import_object_request(key_id, object, None, false, false, &tags);
+        let request = import_object_request(key_id, object, None, false, false, &tags)
+            .map_err(|e| JsValue::from_str(&format!("Error forging import request: {e}")))?;
         let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
         serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
     } else {
@@ -255,7 +256,9 @@ pub fn create_secret_data_ttlv_request(
             })?;
             attributes.set_wrapping_key_id(wrapping_key_id);
         }
-        let request = import_object_request(secret_id, object, None, false, false, &tags);
+        let request = import_object_request(secret_id, object, None, false, false, &tags)
+            .map_err(|e| JsValue::from_str(&format!("Error forging import request: {e}")))?;
+
         let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
         serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
     } else {
@@ -341,6 +344,7 @@ pub fn destroy_ttlv_request(unique_identifier: String, remove: bool) -> Result<J
     let request = Destroy {
         unique_identifier: Some(unique_identifier),
         remove,
+        cascade: false,
     };
     let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
     serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
@@ -605,7 +609,9 @@ pub fn import_ttlv_request(
         unwrap,
         replace_existing,
         tags,
-    );
+    )
+    .map_err(|e| JsValue::from_str(&format!("Error forging import request: {e}")))?;
+
     let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
     serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
 }
@@ -826,7 +832,8 @@ pub fn import_certificate_ttlv_request(
             "CCADB import not supported from the UI.".to_owned(),
         ))
         .map_err(|e| JsValue::from(e.to_string()))?,
-    };
+    }
+    .map_err(|e| JsValue::from_str(&format!("Error forging import request: {e}")))?;
     let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
     serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
 }

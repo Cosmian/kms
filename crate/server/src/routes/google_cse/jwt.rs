@@ -286,7 +286,7 @@ pub(super) async fn validate_cse_authorization_token(
     authorization_token: &str,
     google_cse_kacls_url: &str,
     cse_config: &Option<GoogleCseConfig>,
-    _roles: Option<&[Role]>,
+    #[cfg_attr(any(test, feature = "insecure"), allow(unused_variables))] roles: Option<&[Role]>,
 ) -> KResult<UserClaim> {
     debug!("entering");
 
@@ -323,7 +323,7 @@ pub(super) async fn validate_cse_authorization_token(
     trace!("authorization token headers: {jwt_headers:?}");
 
     #[cfg(all(not(test), not(feature = "insecure")))]
-    if let Some(roles) = _roles {
+    if let Some(roles) = roles {
         let role = authorization_token.role.as_ref().ok_or_else(|| {
             KmsError::Unauthorized("Authorization token should contain a role".to_owned())
         })?;

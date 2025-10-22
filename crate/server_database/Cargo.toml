@@ -27,6 +27,8 @@ non-fips = [
   "redis_for_migrations",
   "redis",
 ]
+# Enable interop test operations (should only be used for testing)
+interop = ["cosmian_kmip/interop"]
 
 [dependencies]
 async-trait = { workspace = true }

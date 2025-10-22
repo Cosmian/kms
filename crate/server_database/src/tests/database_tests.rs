@@ -75,14 +75,14 @@ pub(super) async fn tx_and_list<DB: ObjectsStore>(
     match list.iter().find(|(id, _state, _attrs)| id == &uid_1) {
         Some((uid_, state_, _attrs)) => {
             assert_eq!(&uid_1, uid_);
-            assert_eq!(&State::Active, state_);
+            assert_eq!(&State::PreActive, state_);
         }
         None => db_bail!("The object 1, uid_1 should be in the list"),
     }
     match list.iter().find(|(id, _state, _attrs)| id == &uid_2) {
         Some((uid_, state_, _attrs)) => {
             assert_eq!(&uid_2, uid_);
-            assert_eq!(&State::Active, state_);
+            assert_eq!(&State::PreActive, state_);
         }
         None => db_bail!("The object 2, uid_2 should be in the list"),
     }
@@ -257,8 +257,8 @@ pub(super) async fn upsert<DB: ObjectsStore>(
         .retrieve(&uid, db_params.clone())
         .await?
         .expect("uid should be in the db");
-    assert_eq!(State::Active, owm.state());
-    assert!(&symmetric_key == owm.object());
+    assert_eq!(State::PreActive, owm.state());
+    assert_eq!(&symmetric_key, owm.object());
 
     let attributes = symmetric_key.attributes_mut()?;
     attributes.link = Some(vec![Link {
@@ -285,13 +285,13 @@ pub(super) async fn upsert<DB: ObjectsStore>(
         .await?
         .expect("uid should be in the db");
     assert_eq!(State::Deactivated, owm.state());
-    assert_eq!(
+    assert!(
         owm.attributes()
             .link
             .as_ref()
             .ok_or_else(|| DbError::ServerError("links should not be empty".to_owned()))?[0]
-            .linked_object_identifier,
-        LinkedObjectIdentifier::TextString("foo".to_owned())
+            .linked_object_identifier
+            == LinkedObjectIdentifier::TextString("foo".to_owned())
     );
 
     db.delete(&uid, db_params.clone()).await?;
@@ -348,8 +348,8 @@ pub(super) async fn crud<DB: ObjectsStore>(
         .retrieve(&uid, db_params.clone())
         .await?
         .expect("uid should be in the db");
-    assert_eq!(State::Active, obj.state());
-    assert!(&symmetric_key == obj.object());
+    assert_eq!(State::PreActive, obj.state());
+    assert_eq!(&symmetric_key, obj.object());
 
     let attributes = symmetric_key.attributes_mut()?;
     attributes.link = Some(vec![Link {
@@ -370,15 +370,15 @@ pub(super) async fn crud<DB: ObjectsStore>(
         .retrieve(&uid, db_params.clone())
         .await?
         .expect("uid should be in the db");
-    assert_eq!(State::Active, obj.state());
-    assert_eq!(
+    assert_eq!(State::PreActive, obj.state());
+    assert!(
         obj.object()
             .attributes()?
             .link
             .as_ref()
             .ok_or_else(|| DbError::ServerError("links should not be empty".to_owned()))?[0]
-            .linked_object_identifier,
-        LinkedObjectIdentifier::TextString("foo".to_owned())
+            .linked_object_identifier
+            == LinkedObjectIdentifier::TextString("foo".to_owned())
     );
 
     db.update_state(&uid, State::Deactivated, db_params.clone())
@@ -389,7 +389,7 @@ pub(super) async fn crud<DB: ObjectsStore>(
         .await?
         .expect("uid should be in the db");
     assert_eq!(State::Deactivated, obj.state());
-    assert!(&symmetric_key == obj.object());
+    assert_eq!(&symmetric_key, obj.object());
 
     db.delete(&uid, db_params.clone()).await?;
 

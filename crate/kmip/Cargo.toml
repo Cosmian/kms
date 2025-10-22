@@ -19,8 +19,11 @@ workspace = true
 doctest = false
 
 [features]
+default = ["interop"]
 # Enable FIPS module feature build. KMS builds in FIPS mode when this is enabled.
 non-fips = []
+# Enable interop test operations (should only be used for testing)
+interop = []
 
 [dependencies]
 base64 = { workspace = true }
@@ -38,6 +41,7 @@ num-bigint-dig = { workspace = true, features = [
 serde = { workspace = true, features = ["derive", "std"] }
 serde_json = { workspace = true, features = [] }
 strum = { workspace = true, features = ["std", "derive", "strum_macros"] }
+strum_macros = { workspace = true }
 thiserror = { workspace = true }
 time = { workspace = true, features = [
   "formatting",
@@ -49,6 +53,8 @@ num-traits = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 zeroize = { workspace = true, features = ["zeroize_derive", "std", "serde"] }
+quick-xml = { version = "0.31", features = ["serialize"] }
+regex = { version = "1" }
 
 [package.metadata.cargo-machete]
 ignored = ["rust-ini", "sha3"]

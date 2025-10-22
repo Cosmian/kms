@@ -59,8 +59,8 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(
         .retrieve(&uid, db_params.clone())
         .await?
         .ok_or_else(|| db_error!("Object not found"))?;
-    assert_eq!(State::Active, obj.state());
-    assert!(&symmetric_key == obj.object());
+    assert_eq!(State::PreActive, obj.state());
+    assert_eq!(&symmetric_key, obj.object());
 
     // Find with crypto algo attribute
 
@@ -72,7 +72,7 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(
     let found = db
         .find(
             researched_attributes.as_ref(),
-            Some(State::Active),
+            Some(State::PreActive),
             owner,
             true,
             db_params.clone(),
@@ -91,7 +91,7 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(
     let found = db
         .find(
             researched_attributes.as_ref(),
-            Some(State::Active),
+            Some(State::PreActive),
             owner,
             true,
             db_params.clone(),
@@ -111,7 +111,7 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(
     let found = db
         .find(
             researched_attributes.as_ref(),
-            Some(State::Active),
+            Some(State::PreActive),
             owner,
             true,
             db_params.clone(),
@@ -130,7 +130,7 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(
     let found = db
         .find(
             researched_attributes.as_ref(),
-            Some(State::Active),
+            Some(State::PreActive),
             owner,
             true,
             db_params.clone(),
@@ -152,7 +152,7 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(
     let found = db
         .find(
             researched_attributes.as_ref(),
-            Some(State::Active),
+            Some(State::PreActive),
             owner,
             true,
             db_params.clone(),
@@ -171,7 +171,7 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(
     let found = db
         .find(
             researched_attributes.as_ref(),
-            Some(State::Active),
+            Some(State::PreActive),
             owner,
             true,
             db_params.clone(),
@@ -189,7 +189,7 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(
     let found = db
         .find(
             researched_attributes.as_ref(),
-            Some(State::Active),
+            Some(State::PreActive),
             owner,
             true,
             db_params,

@@ -226,7 +226,7 @@ impl RedisWithFindex {
                 object,
                 attributes,
                 Some(tags),
-                State::Active,
+                attributes.state.unwrap_or(State::PreActive),
                 None,
             )
             .await?;

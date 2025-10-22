@@ -2,15 +2,15 @@ use std::fmt::{self, Display, Formatter};
 
 use cosmian_logger::trace;
 use serde::{Deserialize, Serialize};
+use strum::Display;
 use time::OffsetDateTime;
 
-use super::kmip_types::{Digest, VendorAttributeValue};
+use super::kmip_types::{Digest, UsageLimits, VendorAttributeValue};
 use crate::{
     KmipError,
     kmip_0::kmip_types::{
         AlternativeName, ApplicationSpecificInformation, CertificateType, CryptographicUsageMask,
-        ErrorReason, KeyValueLocationType, RevocationReason, State, UsageLimits,
-        X509CertificateIdentifier,
+        ErrorReason, KeyValueLocationType, RevocationReason, State, X509CertificateIdentifier,
     },
     kmip_2_1::{
         extra::VENDOR_ID_COSMIAN,
@@ -48,7 +48,7 @@ use crate::{
 /// the server MAY retain all, some or none of the object attributes,
 /// depending on the object type and server policy.
 // TODO: there are 56 attributes in the specs. Only a handful are implemented here
-#[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Default)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct Attributes {
     /// The Activation Date attribute contains the date and time when the
@@ -247,9 +247,9 @@ pub struct Attributes {
     pub last_change_date: Option<OffsetDateTime>,
 
     /// The Lease Time attribute is the length of time in seconds that the object MAY
-    /// be retained by the client.
+    /// be retained by the client. KMIP Interval type (32-bit signed integer in TTLV).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub lease_time: Option<i64>,
+    pub lease_time: Option<i32>,
 
     /// The Link attribute is a structure used to create a link from one Managed
     /// Cryptographic Object to another, closely related target Managed
@@ -347,7 +347,9 @@ pub struct Attributes {
 
     /// The Protection Storage Masks attribute contains a list of masks that define
     /// storage protections required for an object.
+    /// Accept both singular and plural XML tag forms.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(alias = "ProtectionStorageMask")]
     pub protection_storage_masks: Option<ProtectionStorageMasks>,
 
     /// The Quantum Safe attribute is a Boolean that indicates whether the key is
@@ -800,13 +802,13 @@ impl Display for Attributes {
             writeln!(f, "  Activation Date: {value}")?;
         }
         if let Some(value) = &self.alternative_name {
-            writeln!(f, "  Alternative Name: {value:#?}")?;
+            writeln!(f, "  Alternative Name: {value}")?;
         }
         if let Some(value) = &self.always_sensitive {
             writeln!(f, "  Always Sensitive: {value}")?;
         }
         if let Some(value) = &self.application_specific_information {
-            writeln!(f, "  Application Specific Information: {value:#?}")?;
+            writeln!(f, "  Application Specific Information: {value}")?;
         }
         if let Some(value) = &self.archive_date {
             writeln!(f, "  Archive Date: {value}")?;
@@ -815,7 +817,7 @@ impl Display for Attributes {
             writeln!(f, "  Attribute Index: {value}")?;
         }
         if let Some(value) = &self.certificate_attributes {
-            writeln!(f, "  Certificate Attributes: {value:#?}")?;
+            writeln!(f, "  Certificate Attributes: {value}")?;
         }
         if let Some(value) = &self.certificate_type {
             writeln!(f, "  Certificate Type: {value}")?;
@@ -842,16 +844,16 @@ impl Display for Attributes {
             writeln!(f, "  Cryptographic Algorithm: {value}")?;
         }
         if let Some(value) = &self.cryptographic_domain_parameters {
-            writeln!(f, "  Cryptographic Domain Parameters: {value:#?}")?;
+            writeln!(f, "  Cryptographic Domain Parameters: {value}")?;
         }
         if let Some(value) = &self.cryptographic_length {
             writeln!(f, "  Cryptographic Length: {value}")?;
         }
         if let Some(value) = &self.cryptographic_parameters {
-            writeln!(f, "  Cryptographic Parameters: {value:#?}")?;
+            writeln!(f, "  Cryptographic Parameters: {value}")?;
         }
         if let Some(value) = &self.cryptographic_usage_mask {
-            writeln!(f, "  Cryptographic Usage Mask: {value:#?}")?;
+            writeln!(f, "  Cryptographic Usage Mask: {value}")?;
         }
         if let Some(value) = &self.deactivation_date {
             writeln!(f, "  Deactivation Date: {value}")?;
@@ -871,6 +873,9 @@ impl Display for Attributes {
         if let Some(value) = &self.extractable {
             writeln!(f, "  Extractable: {value}")?;
         }
+        if let Some(value) = &self.never_extractable {
+            writeln!(f, "  Never Extractable: {value}")?;
+        }
         if let Some(value) = &self.fresh {
             writeln!(f, "  Fresh: {value}")?;
         }
@@ -885,6 +890,11 @@ impl Display for Attributes {
         }
         if let Some(value) = &self.key_value_present {
             writeln!(f, "  Key Value Present: {value}")?;
+        }
+        if let Some(names) = &self.name {
+            for name in names {
+                writeln!(f, "  Name: {} ({})", name.name_value, name.name_type)?;
+            }
         }
         if let Some(value) = &self.last_change_date {
             writeln!(f, "  Last Change Date: {value}")?;
@@ -926,16 +936,16 @@ impl Display for Attributes {
             writeln!(f, "  Protection Period: {value}")?;
         }
         if let Some(value) = &self.protection_storage_masks {
-            writeln!(f, "  Protection Storage Masks: {value:#?}")?;
+            writeln!(f, "  Protection Storage Masks: {value}")?;
         }
         if let Some(value) = &self.quantum_safe {
             writeln!(f, "  Quantum Safe: {value}")?;
         }
         if let Some(value) = &self.random_number_generator {
-            writeln!(f, "  Random Number Generator: {value:#?}")?;
+            writeln!(f, "  Random Number Generator: {value}")?;
         }
         if let Some(value) = &self.revocation_reason {
-            writeln!(f, "  Revocation Reason: {value:#?}")?;
+            writeln!(f, "  Revocation Reason: {value}")?;
         }
         if let Some(value) = &self.rotate_date {
             writeln!(f, "  Rotate Date: {value}")?;
@@ -968,10 +978,10 @@ impl Display for Attributes {
             writeln!(f, "  Unique Identifier: {value}")?;
         }
         if let Some(value) = &self.usage_limits {
-            writeln!(f, "  Usage Limits: {value:#?}")?;
+            writeln!(f, "  Usage Limits: {value}")?;
         }
         if let Some(value) = &self.x_509_certificate_identifier {
-            writeln!(f, "  X.509 Certificate Identifier: {value:#?}")?;
+            writeln!(f, "  X.509 Certificate Identifier: {value}")?;
         }
         if let Some(value) = &self.x_509_certificate_issuer {
             writeln!(f, "  X.509 Certificate Issuer: {value}")?;
@@ -981,7 +991,7 @@ impl Display for Attributes {
         }
         if let Some(links) = &self.link {
             for link in links {
-                writeln!(f, "  Link: {link:#?}")?;
+                writeln!(f, "  Link: {link}")?;
             }
         }
         if let Some(vendor_attributes) = &self.vendor_attributes {
@@ -995,7 +1005,7 @@ impl Display for Attributes {
 
 /// Structure used in various operations to provide the New Attribute value in the request.
 /// Each variant corresponds to a field in the Attributes struct.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, strum::VariantNames)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, strum::VariantNames, Display, Debug)]
 #[expect(clippy::large_enum_variant)]
 pub enum Attribute {
     /// The Activation Date attribute contains the date and time when the
@@ -1151,8 +1161,8 @@ pub enum Attribute {
     LastChangeDate(OffsetDateTime),
 
     /// The Lease Time attribute is the length of time in seconds that the object MAY
-    /// be retained by the client.
-    LeaseTime(i64),
+    /// be retained by the client. KMIP Interval type (32-bit signed integer in TTLV).
+    LeaseTime(i32),
 
     /// The Link attribute is a structure used to create a link from one Managed
     /// Cryptographic Object to another, closely related target Managed
@@ -1623,8 +1633,10 @@ impl From<Vec<Attribute>> for Attributes {
                 Attribute::X509CertificateSubject(value) => {
                     attrs.x_509_certificate_subject = Some(value);
                 }
-                // NeverExtractable is not included in Attributes, so we ignore it
-                Attribute::NeverExtractable(_) => {}
+                // Map NeverExtractable to the Attributes field
+                Attribute::NeverExtractable(value) => {
+                    attrs.never_extractable = Some(value);
+                }
             }
         }
         attrs

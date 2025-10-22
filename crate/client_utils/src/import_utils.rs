@@ -6,6 +6,7 @@ use cosmian_kmip::{
         kmip_objects::{Certificate, ObjectType, PrivateKey, PublicKey, SymmetricKey},
         kmip_types::{CryptographicAlgorithm, LinkType, LinkedObjectIdentifier},
     },
+    time_normalize,
     ttlv::{TTLV, from_ttlv},
 };
 use cosmian_logger::info;
@@ -383,6 +384,8 @@ pub fn prepare_key_import_elements(
     if let Some(kek) = wrapping_key_id {
         import_attributes.set_wrapping_key_id(kek);
     }
+    // Activate the key by default
+    import_attributes.activation_date = Some(time_normalize()?);
 
     Ok((object, import_attributes))
 }

@@ -60,6 +60,10 @@ pub(super) fn create_symmetric_key(client: &SocketClient, name: &str) -> String 
                                 name_value: name.to_owned(),
                                 name_type: NameType::UninterpretedTextString,
                             }),
+                            Attribute::ActivationDate(
+                                cosmian_kms_server_database::reexport::cosmian_kmip::time_normalize()
+                                    .expect("Failed to set activation date"),
+                            ),
                         ]),
                     },
                 }),

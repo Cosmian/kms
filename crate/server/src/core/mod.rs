@@ -4,6 +4,7 @@ pub(crate) mod cover_crypt;
 mod kms;
 pub(crate) mod operations;
 pub(crate) mod retrieve_object_utils;
+pub(crate) mod rng;
 mod uid_utils;
 pub(crate) mod wrapping;
 

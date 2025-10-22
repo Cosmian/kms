@@ -4,14 +4,20 @@ use cosmian_http_client::{
 };
 // re-export the kmip module as kmip
 use cosmian_kms_client_utils::reexport::{
+    cosmian_kmip::kmip_0::kmip_operations::{DiscoverVersions, DiscoverVersionsResponse},
     cosmian_kmip::kmip_2_1::kmip_operations::{
-        Certify, CertifyResponse, Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse,
+        Activate, ActivateResponse, AddAttribute, AddAttributeResponse, Certify, CertifyResponse,
+        Check, CheckResponse, Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse,
         Decrypt, DecryptResponse, DeleteAttribute, DeleteAttributeResponse, DeriveKey,
         DeriveKeyResponse, Destroy, DestroyResponse, Encrypt, EncryptResponse, Export,
-        ExportResponse, Get, GetAttributes, GetAttributesResponse, GetResponse, Hash, HashResponse,
-        Import, ImportResponse, Locate, LocateResponse, MAC, MACResponse, ReKey, ReKeyKeyPair,
-        ReKeyKeyPairResponse, ReKeyResponse, Revoke, RevokeResponse, SetAttribute,
-        SetAttributeResponse, StatusResponse, Validate, ValidateResponse,
+        ExportResponse, Get, GetAttributeList, GetAttributeListResponse, GetAttributes,
+        GetAttributesResponse, GetResponse, Hash, HashResponse, Import, ImportResponse, Locate,
+        LocateResponse, MAC, MACResponse, MACVerify, MACVerifyResponse, ModifyAttribute,
+        ModifyAttributeResponse, Query, QueryResponse, RNGRetrieve, RNGRetrieveResponse, RNGSeed,
+        RNGSeedResponse, ReKey, ReKeyKeyPair, ReKeyKeyPairResponse, ReKeyResponse, Register,
+        RegisterResponse, Revoke, RevokeResponse, SetAttribute, SetAttributeResponse, Sign,
+        SignResponse, SignatureVerify, SignatureVerifyResponse, StatusResponse, Validate,
+        ValidateResponse,
     },
     cosmian_kms_access::access::{
         Access, AccessRightsObtainedResponse, ObjectOwnedResponse, SuccessResponse,
@@ -98,6 +104,30 @@ impl KmsClient {
     /// information in the Certificate Request takes precedence.
     pub async fn certify(&self, request: Certify) -> Result<CertifyResponse, KmsClientError> {
         self.post_ttlv_2_1::<Certify, CertifyResponse>(&request)
+            .await
+    }
+
+    /// This operation requests the server to activate a Managed Object currently in Pre-Active state.
+    pub async fn activate(&self, request: Activate) -> Result<ActivateResponse, KmsClientError> {
+        self.post_ttlv_2_1::<Activate, ActivateResponse>(&request)
+            .await
+    }
+
+    /// Add a new attribute instance to an object.
+    pub async fn add_attribute(
+        &self,
+        request: AddAttribute,
+    ) -> Result<AddAttributeResponse, KmsClientError> {
+        self.post_ttlv_2_1::<AddAttribute, AddAttributeResponse>(&request)
+            .await
+    }
+
+    /// Modify an existing single-valued attribute on an object.
+    pub async fn modify_attribute(
+        &self,
+        request: ModifyAttribute,
+    ) -> Result<ModifyAttributeResponse, KmsClientError> {
+        self.post_ttlv_2_1::<ModifyAttribute, ModifyAttributeResponse>(&request)
             .await
     }
 
@@ -265,6 +295,15 @@ impl KmsClient {
             .await
     }
 
+    /// This operation returns the list of attribute names set on an object.
+    pub async fn get_attribute_list(
+        &self,
+        request: GetAttributeList,
+    ) -> Result<GetAttributeListResponse, KmsClientError> {
+        self.post_ttlv_2_1::<GetAttributeList, GetAttributeListResponse>(&request)
+            .await
+    }
+
     /// This operation requests the server to perform a hash operation on the data provided.
     ///
     /// The request contains information about the cryptographic parameters (hash algorithm)
@@ -276,6 +315,11 @@ impl KmsClient {
     /// (and if failure the Result Reason) in the response header.
     pub async fn hash(&self, request: Hash) -> Result<HashResponse, KmsClientError> {
         self.post_ttlv_2_1::<Hash, HashResponse>(&request).await
+    }
+
+    /// Send a Query operation to interrogate server capabilities and metadata.
+    pub async fn query(&self, request: Query) -> Result<QueryResponse, KmsClientError> {
+        self.post_ttlv_2_1::<Query, QueryResponse>(&request).await
     }
 
     /// This operation requests the server to either add or modify an attribute. The request contains the Unique Identifier of the Managed Object to which the attribute pertains, along with the attribute and value. If the object did not have any instances of the attribute, one is created. If the object had exactly one instance, then it is modified. If it has more than one instance an error is raised. Read-Only attributes SHALL NOT be added or modified using this operation.
@@ -420,6 +464,15 @@ impl KmsClient {
         self.post_ttlv_2_1::<MAC, MACResponse>(&request).await
     }
 
+    /// Verify a Message Authentication Code (MAC) against provided data.
+    pub async fn mac_verify(
+        &self,
+        request: MACVerify,
+    ) -> Result<MACVerifyResponse, KmsClientError> {
+        self.post_ttlv_2_1::<MACVerify, MACVerifyResponse>(&request)
+            .await
+    }
+
     // This request is used to generate a replacement key pair for an existing
     // public/private key pair.  It is analogous to the Create Key Pair operation,
     // except that attributes of the replacement key pair are copied from the
@@ -486,6 +539,55 @@ impl KmsClient {
     pub async fn validate(&self, request: Validate) -> Result<ValidateResponse, KmsClientError> {
         self.post_ttlv_2_1::<Validate, ValidateResponse>(&request)
             .await
+    }
+
+    /// Register an existing object (key/cert/opaque/secret data) with the server.
+    pub async fn register(&self, request: Register) -> Result<RegisterResponse, KmsClientError> {
+        self.post_ttlv_2_1::<Register, RegisterResponse>(&request)
+            .await
+    }
+
+    /// Compute a signature over provided data with a Managed Object key.
+    pub async fn sign(&self, request: Sign) -> Result<SignResponse, KmsClientError> {
+        self.post_ttlv_2_1::<Sign, SignResponse>(&request).await
+    }
+
+    /// Verify a signature over provided data.
+    pub async fn signature_verify(
+        &self,
+        request: SignatureVerify,
+    ) -> Result<SignatureVerifyResponse, KmsClientError> {
+        self.post_ttlv_2_1::<SignatureVerify, SignatureVerifyResponse>(&request)
+            .await
+    }
+
+    /// Retrieve random bytes from server's RNG.
+    pub async fn rng_retrieve(
+        &self,
+        request: RNGRetrieve,
+    ) -> Result<RNGRetrieveResponse, KmsClientError> {
+        self.post_ttlv_2_1::<RNGRetrieve, RNGRetrieveResponse>(&request)
+            .await
+    }
+
+    /// Seed the server's RNG with provided data.
+    pub async fn rng_seed(&self, request: RNGSeed) -> Result<RNGSeedResponse, KmsClientError> {
+        self.post_ttlv_2_1::<RNGSeed, RNGSeedResponse>(&request)
+            .await
+    }
+
+    /// Discover protocol versions supported by the server.
+    pub async fn discover_versions(
+        &self,
+        request: DiscoverVersions,
+    ) -> Result<DiscoverVersionsResponse, KmsClientError> {
+        self.post_ttlv_2_1::<DiscoverVersions, DiscoverVersionsResponse>(&request)
+            .await
+    }
+
+    /// Check if a Managed Object may be used under server policy with given parameters.
+    pub async fn check(&self, request: Check) -> Result<CheckResponse, KmsClientError> {
+        self.post_ttlv_2_1::<Check, CheckResponse>(&request).await
     }
 
     /// This operation requests the server to send a message, which is a list of operations,

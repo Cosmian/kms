@@ -26,6 +26,10 @@ pub(crate) async fn destroy(
     let destroy_query = Destroy {
         unique_identifier: Some(uid.clone()),
         remove,
+        // Cosmian extension: request cascade by default from the CLI helper so
+        // destroying a public/private key cascades to its pair unless the server is
+        // configured otherwise.
+        cascade: true,
     };
 
     // Query the KMS with your kmip data

@@ -63,19 +63,19 @@ async fn test_google_identities() -> Result<(), CosmianError> {
 
     // Fetch and list identities and compare them
     let listed_identities = list_identities(&owner_client_conf_path, user_id)?;
-    assert!(listed_identities.cseIdentities.len() == 1);
-    assert!(listed_identities.cseIdentities[0].emailAddress == user_id);
-    let fetched_identity = get_identities(&owner_client_conf_path, user_id)?;
-    assert!(fetched_identity.emailAddress == user_id);
-    assert!(
-        listed_identities.cseIdentities[0].primaryKeyPairId == fetched_identity.primaryKeyPairId
+    assert_eq!(listed_identities.cseIdentities.len(), 1);
+    assert_eq!(listed_identities.cseIdentities[0].emailAddress, user_id);
+    let fetched_identity = get_identities(&owner_client_conf_path, user_id)?
+    assert_eq!(fetched_identity.emailAddress, user_id);
+    assert_eq!(
+        listed_identities.cseIdentities[0].primaryKeyPairId, fetched_identity.primaryKeyPairId
     );
 
     // Delete an identity and insert it back
     let key_pair_id = fetched_identity.primaryKeyPairId;
     assert!(delete_identities(&owner_client_conf_path, user_id).is_ok());
-    assert!(get_identities(&owner_client_conf_path, user_id).is_err());
+    get_identities(&owner_client_conf_path, user_id).unwrap_err();
     let inserted_identity = insert_identities(&owner_client_conf_path, user_id, &key_pair_id)?;
-    assert!(inserted_identity.primaryKeyPairId == key_pair_id);
+    assert_eq!(inserted_identity.primaryKeyPairId, key_pair_id);
     Ok(())
 }

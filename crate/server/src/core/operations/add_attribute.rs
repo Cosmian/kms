@@ -1,17 +1,20 @@
 use std::sync::Arc;
 
 use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::kmip_2_1::{
-        KmipOperation,
-        kmip_attributes::Attribute,
-        kmip_objects::ObjectType,
-        kmip_operations::{AddAttribute, AddAttributeResponse},
-        kmip_types::UniqueIdentifier,
+    cosmian_kmip::{
+        kmip_0::kmip_types::ErrorReason,
+        kmip_2_1::{
+            KmipOperation,
+            kmip_attributes::Attribute,
+            kmip_objects::ObjectType,
+            kmip_operations::{AddAttribute, AddAttributeResponse},
+            kmip_types::UniqueIdentifier,
+        },
+        time_normalize,
     },
     cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams},
 };
 use cosmian_logger::{debug, trace};
-use time::OffsetDateTime;
 
 use crate::{
     core::{KMS, retrieve_object_utils::retrieve_object_for_operation},
@@ -57,7 +60,7 @@ pub(crate) async fn add_attribute(
             attributes.activation_date = Some(activation_date);
         }
         Attribute::CryptographicAlgorithm(cryptographic_algorithm) => {
-            trace!("Cryptographic Algorithm: {:?}", cryptographic_algorithm);
+            trace!("Cryptographic Algorithm: {}", cryptographic_algorithm);
             if attributes.cryptographic_algorithm.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Cryptographic Algorithm already exists".to_owned(),
@@ -66,7 +69,7 @@ pub(crate) async fn add_attribute(
             attributes.cryptographic_algorithm = Some(cryptographic_algorithm);
         }
         Attribute::CryptographicLength(length) => {
-            trace!("Cryptographic Length: {:?}", length);
+            trace!("Cryptographic Length: {}", length);
             if attributes.cryptographic_length.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Cryptographic Length already exists".to_owned(),
@@ -75,7 +78,7 @@ pub(crate) async fn add_attribute(
             attributes.cryptographic_length = Some(length);
         }
         Attribute::CryptographicParameters(parameters) => {
-            trace!("Cryptographic Parameters: {:?}", parameters);
+            trace!("Cryptographic Parameters: {}", parameters);
             if attributes.cryptographic_parameters.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Cryptographic Parameters already exists".to_owned(),
@@ -84,7 +87,7 @@ pub(crate) async fn add_attribute(
             attributes.cryptographic_parameters = Some(parameters);
         }
         Attribute::CryptographicDomainParameters(domain_parameters) => {
-            trace!("Cryptographic Domain Parameters: {:?}", domain_parameters);
+            trace!("Cryptographic Domain Parameters: {}", domain_parameters);
             if attributes.cryptographic_domain_parameters.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Cryptographic Domain Parameters already exists".to_owned(),
@@ -93,7 +96,7 @@ pub(crate) async fn add_attribute(
             attributes.cryptographic_domain_parameters = Some(domain_parameters);
         }
         Attribute::CryptographicUsageMask(usage_mask) => {
-            trace!("Cryptographic Usage Mask: {:?}", usage_mask);
+            trace!("Cryptographic Usage Mask: {}", usage_mask);
             if attributes.cryptographic_usage_mask.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Cryptographic Usage Mask already exists".to_owned(),
@@ -102,14 +105,14 @@ pub(crate) async fn add_attribute(
             attributes.cryptographic_usage_mask = Some(usage_mask);
         }
         Attribute::Digest(digest) => {
-            trace!("Digest: {:?}", digest);
+            trace!("Digest: {}", digest);
             if attributes.digest.is_some() {
                 return Err(KmsError::InvalidRequest("Digest already exists".to_owned()));
             }
             attributes.digest = Some(digest);
         }
         Attribute::Link(link) => {
-            trace!("Link: {:?}", link);
+            trace!("Link: {}", link);
             // Link is special case, it can be updated
             if attributes.get_link(link.link_type).is_some() {
                 return Err(KmsError::InvalidRequest("Link already exists".to_owned()));
@@ -117,7 +120,7 @@ pub(crate) async fn add_attribute(
             attributes.set_link(link.link_type, link.linked_object_identifier);
         }
         Attribute::VendorAttribute(vendor_attribute) => {
-            trace!("Vendor Attributes: {:?}", vendor_attribute);
+            trace!("Vendor Attribute: {}", vendor_attribute);
             // Vendor attributes can be updated
             if attributes
                 .get_vendor_attribute_value(
@@ -137,7 +140,7 @@ pub(crate) async fn add_attribute(
             );
         }
         Attribute::DeactivationDate(deactivation_date) => {
-            trace!("Deactivation Date: {:?}", deactivation_date);
+            trace!("Deactivation Date: {}", deactivation_date);
             if attributes.deactivation_date.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Deactivation Date already exists".to_owned(),
@@ -146,7 +149,7 @@ pub(crate) async fn add_attribute(
             attributes.deactivation_date = Some(deactivation_date);
         }
         Attribute::ObjectGroup(object_group) => {
-            trace!("Object Group: {:?}", object_group);
+            trace!("Object Group: {}", object_group);
             if attributes.object_group.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Object Group already exists".to_owned(),
@@ -155,7 +158,7 @@ pub(crate) async fn add_attribute(
             attributes.object_group = Some(object_group);
         }
         Attribute::ContactInformation(contact_information) => {
-            trace!("Contact Information: {:?}", contact_information);
+            trace!("Contact Information: {}", contact_information);
             if attributes.contact_information.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Contact Information already exists".to_owned(),
@@ -164,7 +167,7 @@ pub(crate) async fn add_attribute(
             attributes.contact_information = Some(contact_information);
         }
         Attribute::ObjectType(object_type) => {
-            trace!("Object Type: {:?}", object_type);
+            trace!("Object Type: {}", object_type);
             if attributes.object_type.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Object Type already exists".to_owned(),
@@ -173,16 +176,23 @@ pub(crate) async fn add_attribute(
             attributes.object_type = Some(object_type);
         }
         Attribute::Name(name) => {
-            trace!("Name: {:?}", name);
+            trace!("Name: {name}");
             // Name is special case, can have multiple names
             let names = attributes.name.get_or_insert(vec![]);
-            // check if the name already exists
-            if !names.iter().any(|n| n == &name) {
-                names.push(name);
+            // check if the exact same name already exists
+            if names.iter().any(|n| n == &name) {
+                // KMIP 2.1 profiles expect NonUniqueNameAttribute (Non_Unique_Name_Attribute)
+                // when attempting to add a duplicate Name value. Vector BL-M-8-21 asserts
+                // ResultStatus=OperationFailed, ResultReason=NonUniqueNameAttribute, ResultMessage="DENIED".
+                return Err(KmsError::Kmip21Error(
+                    ErrorReason::Non_Unique_Name_Attribute,
+                    "DENIED".to_owned(),
+                ));
             }
+            names.push(name);
         }
         Attribute::UniqueIdentifier(unique_identifier) => {
-            trace!("Unique Identifier: {:?}", unique_identifier);
+            trace!("Unique Identifier: {}", unique_identifier);
             if attributes.unique_identifier.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Unique Identifier already exists".to_owned(),
@@ -191,7 +201,7 @@ pub(crate) async fn add_attribute(
             attributes.unique_identifier = Some(unique_identifier);
         }
         Attribute::X509CertificateSubject(x509_certificate_subject) => {
-            trace!("X509 Certificate Subject: {:?}", x509_certificate_subject);
+            trace!("X509 Certificate Subject: {}", x509_certificate_subject);
             if attributes.x_509_certificate_subject.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "X509 Certificate Subject already exists".to_owned(),
@@ -257,7 +267,7 @@ pub(crate) async fn add_attribute(
             attributes.attribute_index = Some(attribute_index);
         }
         Attribute::CertificateAttributes(certificate_attributes) => {
-            trace!("Certificate Attributes: {:?}", certificate_attributes);
+            trace!("Certificate Attributes: {}", certificate_attributes);
             if attributes.certificate_attributes.is_some() {
                 return Err(KmsError::InvalidRequest(
                     "Certificate Attributes already exists".to_owned(),
@@ -325,8 +335,11 @@ pub(crate) async fn add_attribute(
         Attribute::Description(description) => {
             trace!("Description: {:?}", description);
             if attributes.description.is_some() {
-                return Err(KmsError::InvalidRequest(
-                    "Description already exists".to_owned(),
+                // KMIP expects Attribute_Single_Valued for a duplicate add attempt on a
+                // single-valued attribute like Description, with the canonical message "DENIED".
+                return Err(KmsError::Kmip21Error(
+                    ErrorReason::Attribute_Single_Valued,
+                    "DENIED".to_owned(),
                 ));
             }
             attributes.description = Some(description);
@@ -651,11 +664,7 @@ pub(crate) async fn add_attribute(
     }
 
     // update the last change date
-    attributes.last_change_date = Some(
-        OffsetDateTime::now_utc()
-            .replace_millisecond(0)
-            .map_err(|e| KmsError::Default(e.to_string()))?,
-    );
+    attributes.last_change_date = Some(time_normalize()?);
 
     let tags = kms.database.retrieve_tags(owm.id(), params.clone()).await?;
 

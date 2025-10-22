@@ -23,6 +23,10 @@ use crate::{DbError, db_bail, error::DbResult, stores::redis::findex::Keyword};
 /// Extract the keywords from the attributes
 pub(crate) fn keywords_from_attributes(attributes: &Attributes) -> HashSet<Keyword> {
     let mut keywords = HashSet::new();
+    // Object Type (e.g., SymmetricKey, SecretData, PublicKey, ...)
+    if let Some(object_type) = attributes.object_type {
+        keywords.insert(Keyword::from(object_type.to_string().as_bytes()));
+    }
     if let Some(algo) = attributes.cryptographic_algorithm {
         keywords.insert(Keyword::from(algo.to_string().as_bytes()));
     }
@@ -31,6 +35,16 @@ pub(crate) fn keywords_from_attributes(attributes: &Attributes) -> HashSet<Keywo
     }
     if let Some(cryptographic_length) = attributes.cryptographic_length {
         keywords.insert(Keyword::from(cryptographic_length.to_be_bytes().as_slice()));
+    }
+    // Index the Object Group to support Locate by ObjectGroup
+    if let Some(object_group) = &attributes.object_group {
+        keywords.insert(Keyword::from(object_group.as_bytes()));
+    }
+    // Index Application Specific Information as a single structure to allow Locate by it
+    if let Some(asi) = &attributes.application_specific_information {
+        if let Ok(bytes) = serde_json::to_vec(asi) {
+            keywords.insert(Keyword::from(bytes.as_slice()));
+        }
     }
     if let Some(links) = &attributes.link {
         for link in links {
@@ -98,6 +112,10 @@ impl RedisDbObject {
             .unwrap_or_default();
         // index some of the attributes
         if let Ok(attributes) = self.object.attributes() {
+            keywords.extend(keywords_from_attributes(attributes));
+        }
+        // also index the stored Attributes if present (may include ObjectGroup and others)
+        if let Some(attributes) = &self.attributes {
             keywords.extend(keywords_from_attributes(attributes));
         }
         // index the owner

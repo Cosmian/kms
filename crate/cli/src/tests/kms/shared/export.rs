@@ -160,7 +160,7 @@ pub(crate) async fn test_export_wrapped() -> KmsCliResult<()> {
         .encryption_key_information
         .unwrap()
         .cryptographic_parameters;
-    assert_eq!(cryptographic_parameters, None);
+    assert!(cryptographic_parameters.is_none());
 
     // Wrapping with symmetric key should be by default with rfc5649
     ExportSecretDataOrKeyAction {
@@ -185,7 +185,7 @@ pub(crate) async fn test_export_wrapped() -> KmsCliResult<()> {
         .encryption_key_information
         .unwrap()
         .cryptographic_parameters;
-    assert_eq!(cryptographic_parameters, None);
+    assert!(cryptographic_parameters.is_none());
 
     assert_eq!(key_bytes, key_bytes_2);
 

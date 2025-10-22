@@ -40,6 +40,7 @@ pub(crate) async fn revoke_user_decryption_keys(
                 &UniqueIdentifier::TextString(id.to_owned()),
                 revocation_reason.clone(),
                 compromise_occurrence_date,
+                false,
                 kms,
                 owner,
                 params.clone(),

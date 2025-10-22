@@ -67,6 +67,9 @@ pub enum KmipError {
 
     #[error(transparent)]
     TryFromSliceError(#[from] std::array::TryFromSliceError),
+
+    #[error(transparent)]
+    RegexError(#[from] regex::Error),
 }
 
 impl KmipError {

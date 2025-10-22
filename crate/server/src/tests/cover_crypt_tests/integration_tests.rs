@@ -206,6 +206,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
                 revocation_message: Some("Revocation test".to_owned()),
             },
             compromise_occurrence_date: None,
+            cascade: true,
         },
     )
     .await?;
@@ -427,6 +428,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
             user_decryption_key_identifier_1.to_owned(),
         )),
         remove: false,
+        cascade: true,
     };
     let destroy_response: DestroyResponse = test_utils::post_2_1(&app, &request).await?;
     assert_eq!(

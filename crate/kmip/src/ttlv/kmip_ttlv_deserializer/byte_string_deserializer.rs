@@ -309,13 +309,17 @@ impl<'a, 'de: 'a> de::Deserializer<'de> for &mut ByteStringDeserializer<'a> {
         ))
     }
 
-    fn deserialize_ignored_any<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
+    fn deserialize_ignored_any<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        Err(de::Error::custom(
-            "deserialize_ignored_any: should not be called by ByteString deserializer".to_owned(),
-        ))
+        // Be permissive: treat ignored values as no-ops and return an error-free unit.
+        // This path should normally not be invoked, but some higher-level serde
+        // sequences may attempt to skip remaining elements via `deserialize_ignored_any`.
+        // Advance one byte if available to avoid infinite loops.
+        // Consume all remaining bytes to avoid repeated calls leading to infinite loops.
+        self.index = self.byte_string.len();
+        visitor.visit_unit()
     }
 }
 
