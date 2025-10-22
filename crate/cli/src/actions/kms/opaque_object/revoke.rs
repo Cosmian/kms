@@ -9,7 +9,7 @@ use crate::{
     error::result::KmsCliResult,
 };
 
-/// Revoke an OpaqueObject.
+/// Revoke an `OpaqueObject`.
 ///
 /// Once revoked, the object can typically only be exported by the owner when explicitly allowed.
 #[derive(Parser, Default, Debug)]

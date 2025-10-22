@@ -41,7 +41,7 @@ impl TTLVXMLDeserializer {
                 let mut attrs: Vec<TTLV> = Vec::new();
                 let mut suffix: Vec<TTLV> = Vec::new();
                 let mut seen_first_attr = false;
-                for ch in std::mem::take(children).into_iter() {
+                for ch in std::mem::take(children) {
                     if ch.tag == "Attribute" {
                         attrs.push(ch);
                         seen_first_attr = true;

@@ -27,14 +27,14 @@ members = [
 resolver = "2"
 
 [workspace.lints.rust]
-# nonstandard_style = "deny"
-# refining_impl_trait = "deny"
-# future_incompatible = "deny"
-# keyword_idents = "deny"
-# let_underscore = "deny"
-# unreachable_pub = "deny"
-# unused = "deny"
-# unsafe_code = "deny"
+nonstandard_style = "deny"
+refining_impl_trait = "deny"
+future_incompatible = "deny"
+keyword_idents = "deny"
+let_underscore = "deny"
+unreachable_pub = "deny"
+unused = "deny"
+unsafe_code = "deny"
 
 [workspace.lints.clippy]
 # Main clippy categories
@@ -48,20 +48,20 @@ resolver = "2"
 # nursery = { level = "deny", priority = 20 }
 
 # # Common allows (to be selectively enabled by crates as needed)
-# similar_names = { level = "allow", priority = 91 }
-# too_many_lines = { level = "allow", priority = 91 }
-# ref_option = { level = "allow", priority = 91 }
-# missing_errors_doc = { level = "allow", priority = 91 }
-# multiple_crate_versions = { level = "allow", priority = 31 }
-# redundant_pub_crate = { level = "allow", priority = 21 }
-# future_not_send = { level = "allow", priority = 21 }
-# cognitive_complexity = { level = "allow", priority = 21 }
-# significant_drop_tightening = { level = "allow", priority = 21 }
-# iter_with_drain = { level = "allow", priority = 21 }
-# too_long_first_doc_paragraph = { level = "allow", priority = 21 }
+similar_names = { level = "allow", priority = 91 }
+too_many_lines = { level = "allow", priority = 91 }
+ref_option = { level = "allow", priority = 91 }
+missing_errors_doc = { level = "allow", priority = 91 }
+multiple_crate_versions = { level = "allow", priority = 31 }
+redundant_pub_crate = { level = "allow", priority = 21 }
+future_not_send = { level = "allow", priority = 21 }
+cognitive_complexity = { level = "allow", priority = 21 }
+significant_drop_tightening = { level = "allow", priority = 21 }
+iter_with_drain = { level = "allow", priority = 21 }
+too_long_first_doc_paragraph = { level = "allow", priority = 21 }
 
 # # Restriction lints (from server and other crates)
-# module_name_repetitions = "allow"
+module_name_repetitions = "allow"
 # unwrap_used = "deny"
 # get_unwrap = "deny"
 # expect_used = "deny"

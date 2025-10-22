@@ -621,7 +621,7 @@ fn attribute_name_from_tag(tag: kmip_2_1::kmip_types::Tag) -> String {
     // Convert enum variant name (e.g., CryptographicAlgorithm) to spaced form ("Cryptographic Algorithm")
     // by inserting a space before uppercase letters, then trimming.
     // Also handle a few specific prettifications.
-    let raw = format!("{:?}", tag); // variant name
+    let raw = format!("{tag:?}"); // variant name
     let mut out = String::with_capacity(raw.len() * 2);
     let chars: Vec<char> = raw.chars().collect();
     for (i, &ch) in chars.iter().enumerate() {
@@ -695,7 +695,7 @@ pub struct ModifyAttribute {
 
 impl From<ModifyAttribute> for kmip_2_1::kmip_operations::ModifyAttribute {
     fn from(v: ModifyAttribute) -> Self {
-        kmip_2_1::kmip_operations::ModifyAttribute {
+        Self {
             unique_identifier: v
                 .unique_identifier
                 .map(kmip_2_1::kmip_types::UniqueIdentifier::TextString),
@@ -765,7 +765,7 @@ impl From<DeleteAttribute> for kmip_2_1::kmip_operations::DeleteAttribute {
                 attribute_name,
             })
         };
-        kmip_2_1::kmip_operations::DeleteAttribute {
+        Self {
             unique_identifier: Some(UniqueIdentifier::TextString(v.unique_identifier)),
             current_attribute: None,
             attribute_references: Some(vec![aref]),
@@ -1603,7 +1603,7 @@ pub struct MACVerify {
 
 impl From<MACVerify> for kmip_2_1::kmip_operations::MACVerify {
     fn from(value: MACVerify) -> Self {
-        kmip_2_1::kmip_operations::MACVerify {
+        Self {
             unique_identifier: kmip_2_1::kmip_types::UniqueIdentifier::TextString(
                 value.unique_identifier,
             ),
@@ -1654,7 +1654,7 @@ pub struct RNGRetrieveResponse {
 
 impl From<RNGRetrieve> for kmip_2_1::kmip_operations::RNGRetrieve {
     fn from(value: RNGRetrieve) -> Self {
-        kmip_2_1::kmip_operations::RNGRetrieve {
+        Self {
             data_length: value.data_length,
         }
     }
@@ -1689,7 +1689,7 @@ pub struct RNGSeedResponse {
 
 impl From<RNGSeed> for kmip_2_1::kmip_operations::RNGSeed {
     fn from(value: RNGSeed) -> Self {
-        kmip_2_1::kmip_operations::RNGSeed { data: value.data }
+        Self { data: value.data }
     }
 }
 
@@ -1722,7 +1722,7 @@ pub struct HashResponse {
 
 impl From<Hash> for kmip_2_1::kmip_operations::Hash {
     fn from(value: Hash) -> Self {
-        kmip_2_1::kmip_operations::Hash {
+        Self {
             cryptographic_parameters: value
                 .cryptographic_parameters
                 .map(Into::into)

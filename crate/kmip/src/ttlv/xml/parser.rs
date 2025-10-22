@@ -21,6 +21,7 @@ use regex::Regex;
 
 use crate::{
     KmipError,
+    error::result::KmipResult,
     kmip_0::kmip_messages::{RequestMessage, ResponseMessage},
     ttlv::{TTLV, from_ttlv, xml::TTLVXMLDeserializer},
 };
@@ -60,31 +61,30 @@ pub struct KmipXmlDoc {
 }
 
 impl KmipXmlDoc {
-    /// Parse KMIP XML content into a KmipXmlDoc (requests + responses)
-    pub fn new(xml: &str) -> Result<KmipXmlDoc, KmipError> {
+    /// Parse KMIP XML content into a `KmipXmlDoc` (requests + responses)
+    pub fn new(xml: &str) -> Result<Self, KmipError> {
         parse_internal(xml)
     }
 
-    /// Read a KMIP XML file from disk and parse it into a KmipXmlDoc
-    pub fn new_with_file(path: &std::path::Path) -> Result<KmipXmlDoc, KmipError> {
+    /// Read a KMIP XML file from disk and parse it into a `KmipXmlDoc`
+    pub fn new_with_file(path: &std::path::Path) -> Result<Self, KmipError> {
         let xml = std::fs::read_to_string(path)
             .map_err(|e| KmipError::Default(format!("read xml file: {e}")))?;
-        KmipXmlDoc::new(&xml)
+        Self::new(&xml)
     }
 }
 
-fn substitute_placeholders(raw: &str, uid_state: &mut Vec<String>) -> String {
+fn substitute_placeholders(raw: &str, uid_state: &mut Vec<String>) -> KmipResult<String> {
     // Normalize timestamps: replace $NOW-<delta> first, then plain $NOW
-    let mut out = Regex::new(r"\$NOW-\d+")
-        .unwrap()
-        .replace_all(raw, "0")
-        .to_string();
+    let mut out = Regex::new(r"\$NOW-\d+")?.replace_all(raw, "0").to_string();
     out = out.replace("$NOW", "0");
     // Deterministic unique identifiers
-    out = Regex::new(r"\$UNIQUE_IDENTIFIER_(\d+)")
-        .unwrap()
+    out = Regex::new(r"\$UNIQUE_IDENTIFIER_(\d+)")?
         .replace_all(&out, |caps: &regex::Captures| {
-            let idx: usize = caps[1].parse().unwrap();
+            let idx: usize = caps
+                .get(1)
+                .and_then(|m| m.as_str().parse::<usize>().ok())
+                .unwrap_or(0);
             if uid_state.len() <= idx {
                 uid_state.resize(idx + 1, String::new());
             }
@@ -94,29 +94,44 @@ fn substitute_placeholders(raw: &str, uid_state: &mut Vec<String>) -> String {
             uid_state[idx].clone()
         })
         .to_string();
-    out
+    Ok(out)
 }
 
 fn xml_fragment_to_ttlv(fragment: &str) -> Result<TTLV, KmipError> {
     TTLVXMLDeserializer::from_xml(fragment)
 }
 
-fn normalize_fragment(fragment: &str, uid_state: &mut Vec<String>) -> Result<String, KmipError> {
-    let mut substituted = substitute_placeholders(fragment, uid_state);
-    // Inject structure type hints if absent.
+fn normalize_fragment(fragment: &str, uid_state: &mut Vec<String>) -> KmipResult<String> {
+    let mut substituted = substitute_placeholders(fragment, uid_state)?;
+
+    // Inject structure type hints if absent
     for tag in STRUCTURAL_TAGS {
-        let re = Regex::new(&format!(r"<({tag})(\s[^>]*?)?>")).unwrap();
+        // Match the full start tag (including attributes) so we can accurately
+        // detect an existing type attribute and avoid duplicating it.
+        let pattern = format!(r"<{tag}\\b[^>]*>");
+        let re = if let Ok(r) = Regex::new(&pattern) {
+            r
+        } else {
+            continue;
+        };
+
         substituted = re
             .replace_all(&substituted, |caps: &regex::Captures| {
-                let full = caps.get(0).unwrap().as_str();
-                if full.contains("type=\"") {
-                    full.to_string()
+                let matched = &caps[0]; // e.g., "<Tag ...>" or "<Tag/>"
+                // If a type attribute already exists, leave as-is
+                if matched.contains(" type=\"") || matched.contains(" type =\"") {
+                    matched.to_string()
                 } else {
-                    full.replace(&format!("<{tag}"), &format!("<{tag} type=\"Structure\""))
+                    // Insert type="Structure" immediately after the tag name
+                    // matched starts with "<" then the tag name; keep the remainder as-is
+                    let insert_pos = 1 + tag.len();
+                    let remainder = &matched[insert_pos..];
+                    format!("<{tag} type=\"Structure\"{}", remainder)
                 }
             })
             .to_string();
     }
+
     Ok(substituted)
 }
 
@@ -197,8 +212,7 @@ fn parse_internal(xml: &str) -> Result<KmipXmlDoc, KmipError> {
                                             let cnt = lr
                                                 .unique_identifier
                                                 .as_ref()
-                                                .map(|v| v.len() as i32)
-                                                .unwrap_or(0);
+                                                .map_or(0, |v| v.len() as i32);
                                             lr.located_items = Some(cnt);
                                         }
                                     }
@@ -269,8 +283,7 @@ fn parse_internal(xml: &str) -> Result<KmipXmlDoc, KmipError> {
                                                 let cnt = lr
                                                     .unique_identifier
                                                     .as_ref()
-                                                    .map(|v| v.len() as i32)
-                                                    .unwrap_or(0);
+                                                    .map_or(0, |v| v.len() as i32);
                                                 lr.located_items = Some(cnt);
                                             }
                                         }
@@ -337,7 +350,10 @@ mod tests {
         </RequestPayload>
     </BatchItem>
 </RequestMessage>"#;
-        let doc = KmipXmlDoc::new(xml).expect("parse minimal valid request");
+        let doc = match KmipXmlDoc::new(xml) {
+            Ok(d) => d,
+            Err(e) => panic!("parse minimal valid request: {e}"),
+        };
         assert_eq!(doc.requests.len(), 1, "expected exactly one request parsed");
         assert!(doc.responses.is_empty(), "expected no responses parsed");
     }

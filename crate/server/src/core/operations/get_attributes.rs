@@ -407,10 +407,10 @@ pub(crate) async fn get_attributes(
                     // - Transparent RSA formats -> PKCS1
                     // - TransparentSymmetricKey -> Raw (default for symmetric keys)
                     res.key_format_type = match attributes.key_format_type {
-                        Some(KeyFormatType::TransparentRSAPrivateKey)
-                        | Some(KeyFormatType::TransparentRSAPublicKey) => {
-                            Some(KeyFormatType::PKCS1)
-                        }
+                        Some(
+                            KeyFormatType::TransparentRSAPrivateKey
+                            | KeyFormatType::TransparentRSAPublicKey,
+                        ) => Some(KeyFormatType::PKCS1),
                         Some(KeyFormatType::TransparentSymmetricKey) => Some(KeyFormatType::Raw),
                         other => other,
                     };
@@ -524,10 +524,10 @@ pub(crate) async fn get_attributes(
                                     && va.attribute_name == VENDOR_ATTR_TAG)
                             })
                             .collect();
-                        if !filtered.is_empty() {
-                            res.vendor_attributes = Some(filtered);
-                        } else {
+                        if filtered.is_empty() {
                             res.vendor_attributes = None;
+                        } else {
+                            res.vendor_attributes = Some(filtered);
                         }
                     }
                 }

@@ -92,7 +92,7 @@ fn test_create_get_dsa_roundtrip() {
                 ephemeral: None,
                 unique_batch_item_id: Some(b"dsa-rt-get".to_vec()),
                 request_payload: Operation::Get(Get {
-                    unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
+                    unique_identifier: Some(UniqueIdentifier::TextString(uid)),
                     key_format_type: None,
                     key_compression_type: None,
                     key_wrap_type: None,

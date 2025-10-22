@@ -17,7 +17,7 @@ use crate::{
 };
 
 /// Returns the names of all attributes currently set on the object.
-pub(crate) async fn get_attribute_list(
+pub(super) async fn get_attribute_list(
     kms: &KMS,
     request: GetAttributeList,
     user: &str,
@@ -99,7 +99,7 @@ pub(crate) async fn get_attribute_list(
             refs
                 .iter()
                 .map(|r| match r {
-                    AttributeReference::Standard(t) => format!("{:?}", t),
+                    AttributeReference::Standard(t) => format!("{t:?}"),
                     AttributeReference::Vendor(v) => format!("vendor:{}:{}", v.vendor_identification, v.attribute_name),
                 })
                 .collect::<Vec<_>>()

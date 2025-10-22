@@ -993,21 +993,21 @@ async fn process_symmetric_key(
     }
 
     // We have an unwrapped key, collect the key bytes and a copy of nested attributes
-    let (key_bytes, mut nested_attrs) = match key_block.key_value.as_ref() {
-        Some(KeyValue::Structure {
-            key_material,
-            attributes,
-        }) => match key_material {
+    let (key_bytes, mut nested_attrs) = if let Some(KeyValue::Structure {
+        key_material,
+        attributes,
+    }) = key_block.key_value.as_ref()
+    {
+        match key_material {
             KeyMaterial::ByteString(b) => (b.clone(), attributes.clone()),
             KeyMaterial::TransparentSymmetricKey { key } => (key.clone(), attributes.clone()),
             _ => kms_bail!("export: unsupported key material"),
-        },
-        _ => {
-            trace!(target: "kmip", "[diag-process_symmetric_key] missing key_value structure uid={}", object_with_metadata.id());
-            return Err(KmsError::Default(
-                "process_symmetric_key: key value not found in key".to_owned(),
-            ));
         }
+    } else {
+        trace!(target: "kmip", "[diag-process_symmetric_key] missing key_value structure uid={}", object_with_metadata.id());
+        return Err(KmsError::Default(
+            "process_symmetric_key: key value not found in key".to_owned(),
+        ));
     };
 
     // Wrapping is only available for KeyFormatType being the default (i.e. None)

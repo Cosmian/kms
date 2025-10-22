@@ -11,7 +11,7 @@ use crate::{
     result::KResult,
 };
 
-/// RNGSeed operation implementation
+/// `RNGSeed` operation implementation
 ///
 /// Accepts seed material to influence the RNG state. For compliance
 /// with the XML vectors, we acknowledge the data and report the amount
@@ -30,11 +30,11 @@ pub(crate) async fn rng_seed(
         // Choose slot from env KMS_HSM_RNG_SLOT or first available
         if let Ok(v) = std::env::var("KMS_HSM_RNG_SLOT") {
             if let Ok(slot) = v.parse::<usize>() {
-                let _ = hsm.seed_random(slot, &request.data).await;
+                drop(hsm.seed_random(slot, &request.data).await);
             }
         } else if let Ok(slots) = hsm.get_available_slot_list().await {
             if let Some(slot) = slots.first().copied() {
-                let _ = hsm.seed_random(slot, &request.data).await;
+                drop(hsm.seed_random(slot, &request.data).await);
             }
         }
     }

@@ -170,8 +170,7 @@ fn redis_findex_db_config(port: u16) -> MainDBConfig {
     let has_db_suffix = url
         .rsplit('/')
         .next()
-        .map(|s| s.chars().all(|c| c.is_ascii_digit()))
-        .unwrap_or(false);
+        .is_some_and(|s| s.chars().all(|c| c.is_ascii_digit()));
     if has_db_suffix {
         if let Some(pos) = url.rfind('/') {
             url.truncate(pos + 1);
@@ -192,7 +191,7 @@ fn redis_findex_db_config(port: u16) -> MainDBConfig {
         sqlite_path: PathBuf::default(),
         redis_master_password: Some("password".to_owned()),
         // Use a unique Findex label to prevent index collisions across servers
-        redis_findex_label: Some(format!("label-{}", port)),
+        redis_findex_label: Some(format!("label-{port}")),
     }
 }
 

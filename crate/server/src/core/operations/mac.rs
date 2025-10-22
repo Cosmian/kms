@@ -171,7 +171,7 @@ pub(crate) async fn mac(
     Ok(response)
 }
 
-pub(crate) async fn mac_verify(
+pub(super) async fn mac_verify(
     kms: &KMS,
     request: MACVerify,
     user: &str,

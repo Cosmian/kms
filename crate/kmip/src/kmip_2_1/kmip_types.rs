@@ -371,46 +371,46 @@ bitflags::bitflags! {
 impl Display for ProtectionStorageMasks {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut parts: Vec<&str> = Vec::new();
-        if self.contains(ProtectionStorageMasks::Software) {
+        if self.contains(Self::Software) {
             parts.push("Software");
         }
-        if self.contains(ProtectionStorageMasks::Hardware) {
+        if self.contains(Self::Hardware) {
             parts.push("Hardware");
         }
-        if self.contains(ProtectionStorageMasks::OnProcessor) {
+        if self.contains(Self::OnProcessor) {
             parts.push("On Processor");
         }
-        if self.contains(ProtectionStorageMasks::OnSystem) {
+        if self.contains(Self::OnSystem) {
             parts.push("On System");
         }
-        if self.contains(ProtectionStorageMasks::OffSystem) {
+        if self.contains(Self::OffSystem) {
             parts.push("Off System");
         }
-        if self.contains(ProtectionStorageMasks::Hypervisor) {
+        if self.contains(Self::Hypervisor) {
             parts.push("Hypervisor");
         }
-        if self.contains(ProtectionStorageMasks::OperatingSystem) {
+        if self.contains(Self::OperatingSystem) {
             parts.push("Operating System");
         }
-        if self.contains(ProtectionStorageMasks::Container) {
+        if self.contains(Self::Container) {
             parts.push("Container");
         }
-        if self.contains(ProtectionStorageMasks::OnPremises) {
+        if self.contains(Self::OnPremises) {
             parts.push("On Premises");
         }
-        if self.contains(ProtectionStorageMasks::OffPremises) {
+        if self.contains(Self::OffPremises) {
             parts.push("Off Premises");
         }
-        if self.contains(ProtectionStorageMasks::SelfManaged) {
+        if self.contains(Self::SelfManaged) {
             parts.push("Self Managed");
         }
-        if self.contains(ProtectionStorageMasks::Outsourced) {
+        if self.contains(Self::Outsourced) {
             parts.push("Outsourced");
         }
-        if self.contains(ProtectionStorageMasks::Validated) {
+        if self.contains(Self::Validated) {
             parts.push("Validated");
         }
-        if self.contains(ProtectionStorageMasks::SameJurisdiction) {
+        if self.contains(Self::SameJurisdiction) {
             parts.push("Same Jurisdiction");
         }
         write!(f, "{}", parts.join(" | "))
@@ -502,13 +502,13 @@ bitflags::bitflags! {
 impl Display for StorageStatusMask {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut parts: Vec<&str> = Vec::new();
-        if self.contains(StorageStatusMask::OnlineStorage) {
+        if self.contains(Self::OnlineStorage) {
             parts.push("Online Storage");
         }
-        if self.contains(StorageStatusMask::ArchivalStorage) {
+        if self.contains(Self::ArchivalStorage) {
             parts.push("Archival Storage");
         }
-        if self.contains(StorageStatusMask::DestroyedStorage) {
+        if self.contains(Self::DestroyedStorage) {
             parts.push("Destroyed Storage");
         }
         write!(f, "{}", parts.join(" | "))
@@ -1510,7 +1510,7 @@ impl Display for EncryptionKeyInformation {
             self.unique_identifier,
             self.cryptographic_parameters
                 .as_ref()
-                .map_or("None".to_string(), |p| p.to_string())
+                .map_or("None".to_string(), std::string::ToString::to_string)
         )
     }
 }
@@ -1531,7 +1531,7 @@ impl Display for MacSignatureKeyInformation {
             self.unique_identifier,
             self.cryptographic_parameters
                 .as_ref()
-                .map_or("None".to_string(), |p| p.to_string())
+                .map_or("None".to_string(), std::string::ToString::to_string)
         )
     }
 }
@@ -2025,7 +2025,7 @@ impl From<UsageLimits> for crate::kmip_0::kmip_types::UsageLimits {
                 crate::kmip_0::kmip_types::UsageLimitsUnit::Object
             }
         };
-        crate::kmip_0::kmip_types::UsageLimits {
+        Self {
             usage_limits_unit: unit,
             usage_limits_count: v.usage_limits_count,
             usage_limits_total: v.usage_limits_total,

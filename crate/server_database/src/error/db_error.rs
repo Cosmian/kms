@@ -199,6 +199,7 @@ impl From<KmipError> for DbError {
             | KmipError::IndexingSlicing(s)
             | KmipError::ObjectNotFound(s) => Self::NotSupported(s),
             KmipError::TryFromSliceError(s) => Self::ConversionError(s.to_string()),
+            KmipError::RegexError(s) => Self::ConversionError(s.to_string()),
             KmipError::SerdeJsonError(s) => Self::ConversionError(s.to_string()),
             KmipError::Deserialization(e) | KmipError::Serialization(e) => {
                 Self::Kmip21Error(ErrorReason::Codec_Error, e)

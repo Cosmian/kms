@@ -565,8 +565,7 @@ fn encrypt_with_symmetric_key(
             && request
                 .i_v_counter_nonce
                 .as_ref()
-                .map(|v| v.len())
-                .unwrap_or(0)
+                .map_or(0, std::vec::Vec::len)
                 == 0
         {
             Some(nonce)

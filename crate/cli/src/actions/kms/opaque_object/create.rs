@@ -13,7 +13,7 @@ use crate::{
     error::result::{KmsCliResult, KmsCliResultHelper},
 };
 
-/// Create (register) an OpaqueObject by importing raw bytes.
+/// Create (register) an `OpaqueObject` by importing raw bytes.
 ///
 /// The data can be provided inline with --data or via --file. If both are provided, --data wins.
 #[derive(Parser, Default, Debug)]
@@ -64,8 +64,8 @@ impl std::str::FromStr for OpaqueTypeArg {
 impl From<OpaqueTypeArg> for OpaqueDataType {
     fn from(value: OpaqueTypeArg) -> Self {
         match value {
-            OpaqueTypeArg::Unknown => OpaqueDataType::Unknown,
-            OpaqueTypeArg::Vendor => OpaqueDataType::Vendor,
+            OpaqueTypeArg::Unknown => Self::Unknown,
+            OpaqueTypeArg::Vendor => Self::Vendor,
         }
     }
 }

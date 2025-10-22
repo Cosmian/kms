@@ -224,6 +224,7 @@ impl From<KmipError> for KmsError {
             | KmipError::ObjectNotFound(s) => Self::NotSupported(s),
             KmipError::TryFromSliceError(t) => Self::NotSupported(t.to_string()),
             KmipError::SerdeJsonError(e) => Self::NotSupported(e.to_string()),
+            KmipError::RegexError(e) => Self::ConversionError(e.to_string()),
             KmipError::Deserialization(e) | KmipError::Serialization(e) => {
                 Self::Kmip21Error(ErrorReason::Codec_Error, e)
             }
@@ -279,22 +280,22 @@ impl From<CryptoError> for KmsError {
             CryptoError::InvalidTag(e)
             | CryptoError::InvalidSize(e)
             | CryptoError::OpenSSL(e)
-            | CryptoError::Kmip(e) => KmsError::Kmip21Error(
+            | CryptoError::Kmip(e) => Self::Kmip21Error(
                 ErrorReason::Cryptographic_Failure,
                 format!("CRYPTO: error: {e}"),
             ),
             // Unsupported algorithm / mode / padding etc → Operation_Not_Supported
             CryptoError::NotSupported(s) => {
-                KmsError::Kmip21Error(ErrorReason::Operation_Not_Supported, s)
+                Self::Kmip21Error(ErrorReason::Operation_Not_Supported, s)
             }
             // Object lookup failures
-            CryptoError::ObjectNotFound(s) => KmsError::Kmip21Error(ErrorReason::Item_Not_Found, s),
+            CryptoError::ObjectNotFound(s) => Self::Kmip21Error(ErrorReason::Item_Not_Found, s),
             // Serialization / conversion style issues -> Codec_Error
-            CryptoError::ConversionError(s) => KmsError::Kmip21Error(ErrorReason::Codec_Error, s),
+            CryptoError::ConversionError(s) => Self::Kmip21Error(ErrorReason::Codec_Error, s),
             // Indexing/ slicing mistakes are internal server issues
-            CryptoError::IndexingSlicing(s) => KmsError::ServerError(s),
+            CryptoError::IndexingSlicing(s) => Self::ServerError(s),
             // Remaining variants: treat as generic cryptographic error
-            other => KmsError::CryptographicError(other.to_string()),
+            other => Self::CryptographicError(other.to_string()),
         }
     }
 }

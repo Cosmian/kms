@@ -530,7 +530,7 @@ impl Session {
         #[cfg(not(target_os = "windows"))]
         let len = u64::try_from(seed.len())?;
         // PKCS#11 expects a mutable u8 pointer, cast away constness safely here.
-        let mut_ptr = seed.as_ptr() as *mut u8;
+        let mut_ptr = seed.as_ptr().cast_mut();
         hsm_call!(
             self.hsm,
             "Failed seeding HSM RNG",

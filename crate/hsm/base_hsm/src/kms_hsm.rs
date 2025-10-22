@@ -230,7 +230,7 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
     async fn seed_random(&self, slot_id: usize, seed: &[u8]) -> InterfaceResult<()> {
         let slot = self.get_slot(slot_id)?;
         let session = slot.open_session(true)?;
-        let _ = session.seed_random(seed)?;
+        let () = session.seed_random(seed)?;
         Ok(())
     }
 }

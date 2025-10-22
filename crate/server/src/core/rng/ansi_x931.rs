@@ -18,9 +18,9 @@ impl AnsiX931Rng {
         let mut v = [0u8; 16];
         let mut dt = [0u8; 16];
         // Seed from OS RNG
-        let _ = rand_bytes(&mut key);
-        let _ = rand_bytes(&mut v);
-        let _ = rand_bytes(&mut dt);
+        drop(rand_bytes(&mut key));
+        drop(rand_bytes(&mut v));
+        drop(rand_bytes(&mut dt));
         Self { key, v, dt }
     }
 
