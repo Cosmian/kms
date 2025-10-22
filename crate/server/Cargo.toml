@@ -228,7 +228,7 @@ require-sh = true
 # cargo packager --verbose --formats nsis --release --features non-fips
 [package.metadata.packager]
 # Build command to run before packaging
-before-packaging-command = "cargo build --release --features non-fips -p cosmian_kms_server"
+# before-packaging-command = "cargo build --release --features non-fips -p cosmian_kms_server"
 
 # Product information
 product-name = "Cosmian KMS Server"

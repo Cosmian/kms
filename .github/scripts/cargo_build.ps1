@@ -23,21 +23,21 @@ function BuildProject
     Set-Location crate\server
     if ($BuildType -eq "release")
     {
-        cargo build --release --target x86_64-pc-windows-msvc --features "non-fips"
-        cargo test  --release --target x86_64-pc-windows-msvc --features "non-fips" -- --nocapture
+        cargo build --release --features "non-fips"
+        cargo test  --release --features "non-fips" -- --nocapture
         cargo packager --verbose --formats nsis --release
     }
     else
     {
-        cargo build --target x86_64-pc-windows-msvc --features "non-fips"
-        cargo test  --target x86_64-pc-windows-msvc --features "non-fips" -- --nocapture
+        cargo build --features "non-fips"
+        cargo test  --features "non-fips" -- --nocapture
         cargo packager --verbose --formats nsis
     }
     Get-ChildItem ..\..
 
     # Check dynamic links
     $ErrorActionPreference = "SilentlyContinue"
-    $output = & "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\dumpbin.exe" /dependents target\x86_64-pc-windows-msvc\$BuildType\cosmian_kms.exe | Select-String "libcrypto"
+    $output = & "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\dumpbin.exe" /dependents target\$BuildType\cosmian_kms.exe | Select-String "libcrypto"
     if ($output)
     {
         throw "OpenSSL (libcrypto) found in dynamic dependencies. Error: $output"
