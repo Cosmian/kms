@@ -37,7 +37,6 @@ use crate::{
 ///  - the plaintext length is unlimited
 ///
 /// Note: this is not a streaming call: the file is entirely loaded in memory before being sent for decryption.
-/// TEST
 #[derive(Parser, Debug)]
 #[clap(verbatim_doc_comment)]
 pub struct SignatureVerifyAction {
