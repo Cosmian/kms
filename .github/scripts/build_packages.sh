@@ -50,4 +50,3 @@ if [ "$DEBUG_OR_RELEASE" = "release" ]; then
   fi
 
 fi
-/Applications/Cosmian KMS Server.app/Contents/MacOS/cosmian_kms
