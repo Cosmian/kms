@@ -11,6 +11,7 @@ mod kmip_endpoints;
 mod kmip_messages;
 #[cfg(feature = "non-fips")]
 mod kmip_server_tests;
+mod locate;
 #[cfg(feature = "non-fips")]
 mod migrate;
 mod ms_dke;
