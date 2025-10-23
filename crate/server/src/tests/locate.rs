@@ -6,12 +6,9 @@ use cosmian_kms_client_utils::reexport::cosmian_kmip::{
         kmip_types::ProtocolVersion,
     },
     kmip_2_1::{
-        kmip_attributes::Attributes,
-        kmip_messages::RequestMessageBatchItem,
-        kmip_objects::ObjectType,
-        kmip_operations::Operation,
-        kmip_types::RecommendedCurve,
-        requests::create_ec_key_pair_request, //kmip_types::CryptographicAlgorithm,
+        kmip_attributes::Attributes, kmip_messages::RequestMessageBatchItem,
+        kmip_objects::ObjectType, kmip_operations::Operation, kmip_types::RecommendedCurve,
+        requests::create_ec_key_pair_request,
     },
 };
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::Locate;
@@ -36,12 +33,11 @@ fn get_redis_url() -> String {
 }
 
 #[tokio::test]
-#[allow(deprecated, clippy::all, unused, print_stdout)]
+#[allow(deprecated, clippy::all, unused)]
 async fn test_locate() -> KResult<()> {
     log_init(option_env!("RUST_LOG"));
 
     let owner = "mt_owner";
-    let user = "mt_normal_user";
     let redis_url = get_redis_url();
     // we start a fresh KMS, it finds the data in redis, and migrates it
     let mut clap_config = https_clap_config();
