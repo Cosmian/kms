@@ -227,8 +227,10 @@ require-sh = true
 # ------------------------------------------------------------------------------
 # START WINDOWS INSTALLER PACKAGING (cargo-packager)
 # cargo packager --verbose --formats nsis --release --features non-fips
+# cargo packager --verbose --formats dmg --release --features non-fips
 [package.metadata.packager]
 # Build command to run before packaging
+# Prerequisite: build the server in non-fips mode
 # before-packaging-command = "cargo build --release --features non-fips -p cosmian_kms_server"
 
 # Product information
