@@ -3,24 +3,24 @@ mod other_kms_methods;
 mod permissions;
 
 use cosmian_kms_server_database::{
-    reexport::cosmian_kms_interfaces::{
-        EncryptionOracle, HsmEncryptionOracle, HsmStore, ObjectsStore, HSM,
-    },
     Database,
+    reexport::cosmian_kms_interfaces::{
+        EncryptionOracle, HSM, HsmEncryptionOracle, HsmStore, ObjectsStore,
+    },
 };
 use cosmian_logger::trace;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::RwLock;
 
-use crypt2pay_pkcs11_loader::{Crypt2pay, CRYPT2PAY_PKCS11_LIB};
+use crypt2pay_pkcs11_loader::{CRYPT2PAY_PKCS11_LIB, Crypt2pay};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use proteccio_pkcs11_loader::{Proteccio, PROTECCIO_PKCS11_LIB};
+use proteccio_pkcs11_loader::{PROTECCIO_PKCS11_LIB, Proteccio};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use smartcardhsm_pkcs11_loader::{Smartcardhsm, SMARTCARDHSM_PKCS11_LIB};
+use smartcardhsm_pkcs11_loader::{SMARTCARDHSM_PKCS11_LIB, Smartcardhsm};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use softhsm2_pkcs11_loader::{Softhsm2, SOFTHSM2_PKCS11_LIB};
+use softhsm2_pkcs11_loader::{SOFTHSM2_PKCS11_LIB, Softhsm2};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use utimaco_pkcs11_loader::{Utimaco, UTIMACO_PKCS11_LIB};
+use utimaco_pkcs11_loader::{UTIMACO_PKCS11_LIB, Utimaco};
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 const OTHER_HSM_PKCS11_LIB: &str = "/lib/libhsm.so";

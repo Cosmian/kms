@@ -1,7 +1,7 @@
 //! Copyright 2024 Cosmian Tech SAS
 use cosmian_kms_base_hsm::{
-    hsm_capabilities::{HsmCapabilities, HsmProvider},
     BaseHsm,
+    hsm_capabilities::{HsmCapabilities, HsmProvider},
 };
 
 /// Path to the Crypt2pay `PKCS#11` shared library

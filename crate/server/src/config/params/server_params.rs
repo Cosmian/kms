@@ -6,8 +6,8 @@ use cosmian_logger::{debug, warn};
 use super::TlsParams;
 use crate::{
     config::{
-        params::proxy_params::ProxyParams, ClapConfig, GoogleCseConfig, IdpConfig, OidcConfig,
-        DEFAULT_COSMIAN_UI_DIST_PATH,
+        ClapConfig, DEFAULT_COSMIAN_UI_DIST_PATH, GoogleCseConfig, IdpConfig, OidcConfig,
+        params::proxy_params::ProxyParams,
     },
     error::KmsError,
     result::{KResult, KResultHelper},
