@@ -70,22 +70,16 @@ pub(crate) async fn sign(
             .attributes()
             .unwrap_or_else(|_| owm.attributes());
         let now = time::OffsetDateTime::now_utc();
-        let activation_ok = match attributes.activation_date {
-            Some(ad) => ad <= now,
-            None => owm.state() == State::Active, // legacy behavior
-        };
-        let process_window_ok = match attributes.process_start_date {
-            Some(psd) => psd <= now,
-            None => true,
-        } && match attributes.protect_stop_date {
-            Some(psd) => psd > now,
-            None => true,
-        };
+        let activation_ok = attributes
+            .activation_date
+            .map_or_else(|| owm.state() == State::Active, |ad| ad <= now);
+        let process_window_ok = attributes.process_start_date.is_none_or(|psd| psd <= now)
+            && attributes.protect_stop_date.is_none_or(|psd| psd > now);
         if !(activation_ok && process_window_ok) {
             // force Wrong_Key_Lifecycle_State semantics for this candidate
             return Err(KmsError::Kmip21Error(
                 ErrorReason::Wrong_Key_Lifecycle_State,
-                "DENIED".to_string(),
+                "DENIED".to_owned(),
             ));
         }
         if owm.state() != State::Active {
@@ -283,7 +277,6 @@ fn sign_with_rsa(request: Sign, private_key: &PKey<Private>) -> KResult<Vec<u8>>
     } else {
         match default_hash {
             KmipHash::SHA1 => MessageDigest::sha1(),
-            KmipHash::SHA256 => MessageDigest::sha256(),
             KmipHash::SHA384 => MessageDigest::sha384(),
             KmipHash::SHA512 => MessageDigest::sha512(),
             KmipHash::SHA3256 => MessageDigest::sha3_256(),
@@ -302,7 +295,6 @@ fn sign_with_rsa(request: Sign, private_key: &PKey<Private>) -> KResult<Vec<u8>>
             if let Some(h) = &cp.mask_generator_hashing_algorithm {
                 let mgf1 = match h {
                     KmipHash::SHA1 => MessageDigest::sha1(),
-                    KmipHash::SHA256 => MessageDigest::sha256(),
                     KmipHash::SHA384 => MessageDigest::sha384(),
                     KmipHash::SHA512 => MessageDigest::sha512(),
                     KmipHash::SHA3256 => MessageDigest::sha3_256(),

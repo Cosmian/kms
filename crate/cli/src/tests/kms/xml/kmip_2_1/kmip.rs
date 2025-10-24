@@ -6,10 +6,8 @@ use crate::tests::kms::xml::runner::{
     run_single_xml_vector_with_server as run_single_xml_vector_with_server_generic,
 };
 
-// Note: Paths are referenced directly in test macros below; helper resolvers removed to avoid unused warnings.
-
 /// Run a single XML vector using the shared default test server (single sqlite path).
-/// test_name is used to namespace UID placeholder keys to avoid cross-test collisions.
+/// `test_name` is used to namespace UID placeholder keys to avoid cross-test collisions.
 pub(crate) async fn run_single_xml_vector(test_name: &str, path: &str) {
     run_single_xml_vector_with_server_generic(test_name, path).await;
 }
@@ -24,11 +22,7 @@ pub(crate) async fn run_single_xml_vector_on_client(
     run_single_xml_vector_on_client_generic(test_name, client, path).await;
 }
 
-// Note: Any pre-seeding helpers were removed; tests do not rely on them currently.
-
-// Hardcoded per-file tests (replacing previous build.rs generation)
 macro_rules! xml_test {
-    // Pattern: test_name, file
     ($name:ident, $file:expr) => {
         #[tokio::test]
         #[serial]
@@ -39,7 +33,6 @@ macro_rules! xml_test {
 }
 
 macro_rules! xml_test_group {
-    // Pattern: test_name, one or more file paths
     ($name:ident, $($file:expr),+ $(,)?) => {
         #[tokio::test]
         #[serial]
@@ -93,6 +86,12 @@ xml_test_group!(
     "../kmip/src/kmip_2_1/specifications/XML/mandatory/BL-M-13-21.xml",
 );
 
+// Focused single-file test for Sign ($SIGNATURE_DATA placeholder substitution)
+xml_test!(
+    kmip_2_1_xml_cs_ac_m_1_21_only,
+    "../kmip/src/kmip_2_1/specifications/XML/mandatory/CS-AC-M-1-21.xml"
+);
+
 // CS-AC - Cryptographic Service - Asymmetric Cryptography (18 files)
 xml_test_group!(
     kmip_2_1_xml_cs_ac,
@@ -114,12 +113,6 @@ xml_test_group!(
     "../kmip/src/kmip_2_1/specifications/XML/mandatory/CS-AC-M-OAEP-8-21.xml",
     "../kmip/src/kmip_2_1/specifications/XML/mandatory/CS-AC-M-OAEP-9-21.xml",
     "../kmip/src/kmip_2_1/specifications/XML/mandatory/CS-AC-M-OAEP-10-21.xml",
-);
-
-// Focused single-file test for Sign ($SIGNATURE_DATA placeholder substitution)
-xml_test!(
-    kmip_2_1_xml_cs_ac_m_1_21_only,
-    "../kmip/src/kmip_2_1/specifications/XML/mandatory/CS-AC-M-1-21.xml"
 );
 
 // CS-BC - Cryptographic Service - Block Cryptography (21 files)
@@ -225,16 +218,6 @@ xml_test!(
     kmip_2_1_xml_aklc_o_1_21,
     "../kmip/src/kmip_2_1/specifications/XML/optional/AKLC-O-1-21.xml"
 );
-
-// TODO(enable them)
-// CS-RNG - Cryptographic Service - Random Number Generation (optional, 4 files)
-// xml_test_group!(
-//     kmip_2_1_xml_cs_rng_o,
-//         "../kmip/src/kmip_2_1/specifications/XML/optional/CS-RNG-O-1-21.xml",
-//         "../kmip/src/kmip_2_1/specifications/XML/optional/CS-RNG-O-2-21.xml",
-//         "../kmip/src/kmip_2_1/specifications/XML/optional/CS-RNG-O-3-21.xml",
-//         "../kmip/src/kmip_2_1/specifications/XML/optional/CS-RNG-O-4-21.xml",
-// );
 
 // OMOS - Object Management and Object State (optional)
 xml_test!(

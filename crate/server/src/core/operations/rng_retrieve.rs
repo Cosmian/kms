@@ -24,7 +24,8 @@ pub(crate) async fn rng_retrieve(
     _params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<RNGRetrieveResponse> {
     trace!("RNGRetrieve: {}", serde_json::to_string(&request)?);
-    let req_len = request.data_length.max(0) as usize;
+    let req_len: usize = usize::try_from(request.data_length.max(0))
+        .map_err(|e| KmsError::InvalidRequest(format!("Requested RNG length too large: {e}")))?;
     // Enforce sane upper bound; defaults to 64KiB and can be tuned via env
     let max_len: usize = std::env::var("KMS_MAX_RNG_RETRIEVE")
         .ok()
@@ -36,7 +37,7 @@ pub(crate) async fn rng_retrieve(
             format!("Requested RNG length {req_len} exceeds maximum {max_len}"),
         ));
     }
-    let mut data = vec![0u8; req_len];
+    let mut data = vec![0_u8; req_len];
     if req_len > 0 {
         // Prefer HSM RNG when available; fall back to ANSI X9.31 (AES-256) then OpenSSL
         if let Some(hsm) = kms.hsm.as_ref() {

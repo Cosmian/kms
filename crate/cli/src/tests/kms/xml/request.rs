@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use cosmian_kmip::kmip_1_4::kmip_operations::Operation as Op14;
+
 // Simple aliases to keep field and map types readable
 type EncryptArtifacts = (Vec<u8>, Vec<u8>, Vec<u8>);
 type AadArtifactsMap = HashMap<Vec<u8>, EncryptArtifacts>;
@@ -11,11 +13,12 @@ use cosmian_kmip::{
             RequestMessageBatchItemVersioned, ResponseMessage, ResponseMessageBatchItemVersioned,
         },
     },
-    kmip_2_1::{self, kmip_types::UniqueIdentifier},
+    kmip_2_1::{self, kmip_operations::Operation, kmip_types::UniqueIdentifier},
 };
-use cosmian_kms_client::{
-    cosmian_kmip as kms_kmip, cosmian_kmip::kmip_2_1::kmip_operations::Operation,
-};
+
+// Import version-specific artifact updaters
+use crate::tests::kms::xml::kmip_1_4::request::update_cached_artifacts_v14;
+use crate::tests::kms::xml::kmip_2_1::request::update_cached_artifacts_v21;
 
 /// Contains all the state and artifacts needed for request preparation during KMIP test execution.
 /// This struct consolidates the various maps, cached artifacts, and flags that are passed between
@@ -44,7 +47,7 @@ pub(crate) struct PrepareRequest {
 }
 
 impl PrepareRequest {
-    /// Creates a new PrepareRequest with the given request and empty/default values for other fields
+    /// Creates a new `PrepareRequest` with the given request and empty/default values for other fields
     pub(crate) fn new(request: kmip_0::kmip_messages::RequestMessage, test_name: &str) -> Self {
         Self {
             request,
@@ -62,7 +65,7 @@ impl PrepareRequest {
 }
 
 impl PrepareRequest {
-    /// Creates a new PrepareRequest with an empty request and default values for all fields
+    /// Creates a new `PrepareRequest` with an empty request and default values for all fields
     pub(crate) fn with_empty_request(test_name: &str) -> Self {
         use cosmian_kmip::kmip_0::{
             kmip_messages::{RequestMessage, RequestMessageHeader},
@@ -95,7 +98,7 @@ impl PrepareRequest {
 
     /// Determine if the expected response represents the specific negative test case where a
     /// Decrypt is expected to fail due to a missing IV. We detect this by looking for an
-    /// OperationFailed + InvalidMessage with a result_message containing "missing-iv" (case-insensitive).
+    /// `OperationFailed` + `InvalidMessage` with a `result_message` containing "missing-iv" (case-insensitive).
     pub(crate) fn expected_response_is_missing_iv_error(&mut self, resp: &ResponseMessage) -> bool {
         // Reset flag for this request; only set to true if we positively detect the pattern
         self.expected_response_is_missing_iv_error = false;
@@ -158,7 +161,7 @@ impl PrepareRequest {
         // Inject PKCS11 correlation value if needed
         self.inject_pkcs11_correlation_value();
 
-        // Inject implicit UIDs for intrabatch operations that need them
+        // Inject implicit UIDs for intra-batch operations that need them
         self.inject_implicit_uids();
 
         // Inject decrypt artifacts unless we expect a missing IV error
@@ -179,147 +182,9 @@ impl PrepareRequest {
         resp: &ResponseMessage,
         pending_encrypt_aad: &mut Option<Vec<u8>>,
     ) {
-        for bi in &resp.batch_item {
-            let inner_v21 = match bi {
-                ResponseMessageBatchItemVersioned::V21(inner) => Some(inner),
-                _ => None,
-            };
-            if let Some(inner) = inner_v21 {
-                if let Some(kmip_2_1::kmip_operations::Operation::EncryptResponse(enc_resp)) =
-                    &inner.response_payload
-                {
-                    match (&enc_resp.data, &enc_resp.i_v_counter_nonce) {
-                        (Some(data), Some(iv)) => {
-                            let tag: Vec<u8> = enc_resp
-                                .authenticated_encryption_tag
-                                .clone()
-                                .unwrap_or_default();
-                            self.last_encrypt_artifacts =
-                                Some((data.clone(), iv.clone(), tag.clone()));
-                            if let Some(aad) = pending_encrypt_aad.take() {
-                                self.encrypt_artifacts_by_aad
-                                    .insert(aad, (data.clone(), iv.clone(), tag.clone()));
-                            }
-                        }
-                        _ => {
-                            self.last_encrypt_artifacts = None;
-                        }
-                    }
-                }
-                if let Some(kmip_2_1::kmip_operations::Operation::DecryptResponse(_)) =
-                    &inner.response_payload
-                {
-                    self.last_encrypt_artifacts = None;
-                }
-                if let Some(kmip_2_1::kmip_operations::Operation::SignResponse(sr)) =
-                    &inner.response_payload
-                {
-                    // Cache the signature data for potential use by next SignatureVerify
-                    self.last_signature_from_sign = sr.signature_data.clone();
-                }
-                if let Some(kmip_2_1::kmip_operations::Operation::MACResponse(mr)) =
-                    &inner.response_payload
-                {
-                    // Cache the MAC data for potential use by next MACVerify
-                    self.last_mac_from_mac = mr.mac_data.clone();
-                }
-
-                // Update last_uid from operations that return UIDs
-                match &inner.response_payload {
-                    Some(kmip_2_1::kmip_operations::Operation::CreateResponse(cr)) => {
-                        if let cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier::TextString(s) =
-                            &cr.unique_identifier
-                        {
-                            self.last_uid = Some(s.clone());
-                        }
-                    }
-                    Some(kmip_2_1::kmip_operations::Operation::PKCS11Response(pk)) => {
-                        // Cache correlation value for next PKCS11 request needing it
-                        self.last_pkcs11_correlation_value = pk.correlation_value.clone();
-                    }
-                    Some(kmip_2_1::kmip_operations::Operation::RegisterResponse(rr)) => {
-                        if let cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier::TextString(s) =
-                            &rr.unique_identifier
-                        {
-                            self.last_uid = Some(s.clone());
-                        }
-                    }
-                    Some(kmip_2_1::kmip_operations::Operation::CreateKeyPairResponse(ckpr)) => {
-                        if let cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier::TextString(s) =
-                            &ckpr.private_key_unique_identifier
-                        {
-                            self.last_uid = Some(s.clone());
-                        }
-                    }
-                    Some(kmip_2_1::kmip_operations::Operation::LocateResponse(lr)) => {
-                        if let Some(list) = &lr.unique_identifier {
-                            if list.len() == 1 {
-                                if let cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier::TextString(s) =
-                                &list[0]
-                            {
-                                self.last_uid = Some(s.clone());
-                            }
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-            }
-
-            // Handle KMIP 1.4 responses similarly
-            let inner_v14 = match bi {
-                kmip_0::kmip_messages::ResponseMessageBatchItemVersioned::V14(inner) => Some(inner),
-                _ => None,
-            };
-            if let Some(inner) = inner_v14 {
-                use kms_kmip::kmip_1_4::kmip_operations::Operation as Op14;
-                match &inner.response_payload {
-                    Some(Op14::EncryptResponse(enc_resp)) => {
-                        match (&enc_resp.data, &enc_resp.i_v_counter_nonce) {
-                            (Some(data), Some(iv)) => {
-                                let tag: Vec<u8> = enc_resp
-                                    .authenticated_encryption_tag
-                                    .clone()
-                                    .unwrap_or_default();
-                                self.last_encrypt_artifacts =
-                                    Some((data.clone(), iv.clone(), tag.clone()));
-                                if let Some(aad) = pending_encrypt_aad.take() {
-                                    self.encrypt_artifacts_by_aad
-                                        .insert(aad, (data.clone(), iv.clone(), tag.clone()));
-                                }
-                            }
-                            _ => self.last_encrypt_artifacts = None,
-                        }
-                    }
-                    Some(Op14::DecryptResponse(_)) => {
-                        self.last_encrypt_artifacts = None;
-                    }
-                    Some(Op14::SignResponse(sr)) => {
-                        self.last_signature_from_sign = Some(sr.signature_data.clone());
-                    }
-                    Some(Op14::MACResponse(mr)) => {
-                        self.last_mac_from_mac = mr.mac_data.clone();
-                    }
-                    Some(Op14::CreateResponse(cr)) => {
-                        self.last_uid = Some(cr.unique_identifier.clone());
-                    }
-                    Some(Op14::RegisterResponse(rr)) => {
-                        self.last_uid = Some(rr.unique_identifier.clone());
-                    }
-                    Some(Op14::CreateKeyPairResponse(ckpr)) => {
-                        self.last_uid = Some(ckpr.private_key_unique_identifier.clone());
-                    }
-                    Some(Op14::LocateResponse(lr)) => {
-                        if let Some(list) = &lr.unique_identifier {
-                            if list.len() == 1 {
-                                self.last_uid = Some(list[0].clone());
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
+        // Delegate to version-specific updaters
+        update_cached_artifacts_v21(self, resp, pending_encrypt_aad);
+        update_cached_artifacts_v14(self, resp, pending_encrypt_aad);
     }
 
     /// Capture the AAD bytes of any Encrypt request (if present) before sending so we can
@@ -335,9 +200,7 @@ impl PrepareRequest {
                     }
                 }
                 RequestMessageBatchItemVersioned::V14(inner) => {
-                    if let kms_kmip::kmip_1_4::kmip_operations::Operation::Encrypt(enc) =
-                        &inner.request_payload
-                    {
+                    if let Op14::Encrypt(enc) = &inner.request_payload {
                         if let Some(aad) = &enc.authenticated_encryption_additional_data {
                             *pending_aad = Some(aad.clone());
                         }
@@ -434,9 +297,7 @@ impl PrepareRequest {
                     }
                 }
                 RequestMessageBatchItemVersioned::V14(inner) => {
-                    if let kms_kmip::kmip_1_4::kmip_operations::Operation::Decrypt(dec) =
-                        &mut inner.request_payload
-                    {
+                    if let Op14::Decrypt(dec) = &mut inner.request_payload {
                         let desired = dec
                             .authenticated_encryption_additional_data
                             .as_ref()
@@ -477,7 +338,7 @@ impl PrepareRequest {
         }
     }
 
-    /// Inject the latest captured signature (from a prior SignResponse) into any SignatureVerify
+    /// Inject the latest captured signature (from a prior `SignResponse`) into any `SignatureVerify`
     /// request payloads that are missing or have empty `signature_data`. Returns true if an
     /// injection occurred (so callers can clear the cached signature).
     fn inject_signature_for_verification(&mut self) -> bool {
@@ -507,9 +368,7 @@ impl PrepareRequest {
                     }
                 }
                 RequestMessageBatchItemVersioned::V14(inner) => {
-                    if let kms_kmip::kmip_1_4::kmip_operations::Operation::SignatureVerify(v) =
-                        &mut inner.request_payload
-                    {
+                    if let Op14::SignatureVerify(v) = &mut inner.request_payload {
                         let needs_sig = match &v.signature_data {
                             None => true,
                             Some(d) if d.is_empty() => true,
@@ -528,7 +387,7 @@ impl PrepareRequest {
         injected
     }
 
-    /// Inject the latest captured MAC (from a prior MACResponse) into any MACVerify request
+    /// Inject the latest captured MAC (from a prior `MACResponse`) into any `MACVerify` request
     /// payloads that are missing or have empty `mac_data`. Returns true if an injection occurred
     /// so caller can clear the cache.
     fn inject_mac_for_verification(&mut self) -> bool {
@@ -548,9 +407,7 @@ impl PrepareRequest {
                     }
                 }
                 RequestMessageBatchItemVersioned::V14(inner) => {
-                    if let kms_kmip::kmip_1_4::kmip_operations::Operation::MACVerify(mv) =
-                        &mut inner.request_payload
-                    {
+                    if let Op14::MACVerify(mv) = &mut inner.request_payload {
                         let placeholder = b"$MAC_DATA";
                         let needs_mac =
                             mv.mac_data.is_empty() || mv.mac_data.as_slice() == placeholder;
@@ -567,9 +424,9 @@ impl PrepareRequest {
         injected
     }
 
-    /// Inject PKCS11 CorrelationValue into requests when vectors leave a placeholder or omit it.
-    /// Recognizes the literal placeholder "$CORRELATION_VALUE" (as bytes) and empty/missing values,
-    /// replacing them with the latest correlation captured from a prior PKCS11Response.
+    /// Inject PKCS11 `CorrelationValue` into requests when vectors leave a placeholder or omit it.
+    /// Recognizes the literal placeholder "$`CORRELATION_VALUE`" (as bytes) and empty/missing values,
+    /// replacing them with the latest correlation captured from a prior `PKCS11Response`.
     fn inject_pkcs11_correlation_value(&mut self) {
         let Some(last_corr) = self.last_pkcs11_correlation_value.as_ref() else {
             return;
@@ -709,7 +566,7 @@ impl PrepareRequest {
                     _ => {}
                 },
                 RequestMessageBatchItemVersioned::V14(inner) => {
-                    use kms_kmip::kmip_1_4::kmip_operations::Operation as Op14;
+                    use Op14;
                     match &mut inner.request_payload {
                         Op14::Get(g) => {
                             if g.unique_identifier.is_none() {
@@ -937,29 +794,12 @@ fn fallback_substitute_with_last_uid(
     let Some(last) = last_uid else {
         return;
     };
-    let unresolved_matches = |s: &str| -> bool {
-        // Consider it unresolved if it still looks like a uid placeholder and not found in map
-        if let Some(idx) = s
-            .strip_prefix(&format!("{test_name}-uid-"))
-            .and_then(|n| n.parse::<usize>().ok())
-        {
-            !uid_map.contains_key(&idx)
-        } else if let Some(idx) = s.strip_prefix("uid-").and_then(|n| n.parse::<usize>().ok()) {
-            !uid_map.contains_key(&idx)
-        } else if let Some(idx) = s
-            .strip_prefix("$UNIQUE_IDENTIFIER_")
-            .and_then(|n| n.parse::<usize>().ok())
-        {
-            !uid_map.contains_key(&idx)
-        } else {
-            false
-        }
-    };
-
     let maybe_fix_uid = |uid: &mut UniqueIdentifier| {
         if let UniqueIdentifier::TextString(s) = uid {
-            if unresolved_matches(s) {
-                *s = last.to_string();
+            if let Some(idx) = parse_uid_placeholder_index(test_name, s) {
+                if !uid_map.contains_key(&idx) {
+                    *s = last.to_string();
+                }
             }
         }
     };
@@ -1052,38 +892,21 @@ fn fallback_substitute_with_last_uid(
 
 fn fallback_substitute_with_last_uid_v14(
     test_name: &str,
-    op: &mut kms_kmip::kmip_1_4::kmip_operations::Operation,
+    op: &mut Op14,
     uid_map: &HashMap<usize, String>,
     last_uid: Option<&str>,
 ) {
     let Some(last) = last_uid else {
         return;
     };
-    let unresolved_matches = |s: &str| -> bool {
-        if let Some(idx) = s
-            .strip_prefix(&format!("{test_name}-uid-"))
-            .and_then(|n| n.parse::<usize>().ok())
-        {
-            !uid_map.contains_key(&idx)
-        } else if let Some(idx) = s.strip_prefix("uid-").and_then(|n| n.parse::<usize>().ok()) {
-            !uid_map.contains_key(&idx)
-        } else if let Some(idx) = s
-            .strip_prefix("$UNIQUE_IDENTIFIER_")
-            .and_then(|n| n.parse::<usize>().ok())
-        {
-            !uid_map.contains_key(&idx)
-        } else {
-            false
-        }
-    };
-
     let maybe_fix_uid = |uid: &mut String| {
-        if unresolved_matches(uid) {
-            *uid = last.to_string();
+        if let Some(idx) = parse_uid_placeholder_index(test_name, uid) {
+            if !uid_map.contains_key(&idx) {
+                *uid = last.to_string();
+            }
         }
     };
 
-    use kms_kmip::kmip_1_4::kmip_operations::Operation as Op14;
     match op {
         Op14::Get(g) => {
             if let Some(uid) = &mut g.unique_identifier {
@@ -1150,10 +973,9 @@ fn fallback_substitute_with_last_uid_v14(
 
 fn substitute_op_placeholders_v14(
     test_name: &str,
-    op: &mut kms_kmip::kmip_1_4::kmip_operations::Operation,
+    op: &mut Op14,
     uid_map: &HashMap<usize, String>,
 ) {
-    use kms_kmip::kmip_1_4::kmip_operations::Operation as Op14;
     match op {
         Op14::Activate(a) => substitute_uid_text(test_name, &mut a.unique_identifier, uid_map),
         Op14::Get(g) => {
@@ -1237,50 +1059,43 @@ fn substitute_op_placeholders_v14(
 }
 
 fn substitute_uid_text(test_name: &str, uid: &mut String, uid_map: &HashMap<usize, String>) {
-    // Support raw (uid-N / $UNIQUE_IDENTIFIER_N) and namespaced (test-name-uid-N) placeholders
-    let idx_opt = if let Some(rest) = uid
-        .strip_prefix(&format!("{test_name}-uid-"))
-        .and_then(|n| n.parse::<usize>().ok())
-    {
-        Some(rest)
-    } else if let Some(index) = uid
-        .strip_prefix("uid-")
-        .and_then(|n| n.parse::<usize>().ok())
-    {
-        Some(index)
-    } else if let Some(rest) = uid.strip_prefix("$UNIQUE_IDENTIFIER_") {
-        rest.parse::<usize>().ok()
-    } else {
-        None
-    };
-    if let Some(index) = idx_opt {
-        if let Some(real) = uid_map.get(&index) {
-            *uid = real.clone();
-        }
+    // Delegate the placeholder parsing/substitution to substitute_uid by wrapping as UniqueIdentifier::TextString
+    let mut ui = UniqueIdentifier::TextString(uid.clone());
+    substitute_uid(test_name, &mut ui, uid_map);
+    if let UniqueIdentifier::TextString(s) = ui {
+        *uid = s;
     }
 }
 
 fn substitute_uid(test_name: &str, uid: &mut UniqueIdentifier, uid_map: &HashMap<usize, String>) {
     if let UniqueIdentifier::TextString(s) = uid {
-        // Support raw (uid-N / $UNIQUE_IDENTIFIER_N) and namespaced (test-name-uid-N) placeholders
-        let idx_opt = if let Some(index) = s
-            .strip_prefix(&format!("{test_name}-uid-"))
-            .and_then(|n| n.parse::<usize>().ok())
-        {
-            Some(index)
-        } else if let Some(index) = s.strip_prefix("uid-").and_then(|n| n.parse::<usize>().ok()) {
-            Some(index)
-        } else if let Some(rest) = s.strip_prefix("$UNIQUE_IDENTIFIER_") {
-            rest.parse::<usize>().ok()
-        } else {
-            None
-        };
-        if let Some(index) = idx_opt {
+        if let Some(index) = parse_uid_placeholder_index(test_name, s) {
             if let Some(real) = uid_map.get(&index) {
                 *s = real.clone();
             }
         }
     }
+}
+
+// Single source of truth to parse placeholder index from a UniqueIdentifier text string.
+// Supports raw (uid-N / $UNIQUE_IDENTIFIER_N) and namespaced (test-name-uid-N) placeholders.
+fn parse_uid_placeholder_index(test_name: &str, s: &str) -> Option<usize> {
+    s.strip_prefix(&format!("{test_name}-uid-"))
+        .and_then(|n| n.parse::<usize>().ok())
+        .map_or_else(
+            || {
+                s.strip_prefix("uid-")
+                    .and_then(|n| n.parse::<usize>().ok())
+                    .map_or_else(
+                        || {
+                            s.strip_prefix("$UNIQUE_IDENTIFIER_")
+                                .and_then(|rest| rest.parse::<usize>().ok())
+                        },
+                        Some,
+                    )
+            },
+            Some,
+        )
 }
 
 // Inject `EncryptResponse` artifacts (ciphertext, IV/nonce, tag) into any Decrypt request batch items
@@ -1352,7 +1167,7 @@ mod injection_tests {
         let mut req = build_request(dec);
         let mut pr = PrepareRequest::new(req.clone(), "injection_tests");
         pr.encrypt_artifacts_by_aad = AadArtifactsMap::default();
-        pr.last_encrypt_artifacts = Some((ciphertext.clone(), iv.clone(), tag.clone()));
+        pr.last_encrypt_artifacts = Some((ciphertext, iv.clone(), tag.clone()));
         pr.inject_decrypt_artifacts();
         req = pr.request;
 

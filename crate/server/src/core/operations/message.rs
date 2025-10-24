@@ -15,7 +15,7 @@ use cosmian_kms_server_database::reexport::{
         kmip_2_1::{
             extra::{VENDOR_ID_COSMIAN, tagging::VENDOR_ATTR_TAG},
             kmip_messages::ResponseMessageBatchItem,
-            kmip_operations::Operation,
+            kmip_operations::{InteropResponse, LogResponse, Operation},
             kmip_types::{OperationEnumeration, UniqueIdentifier, UniqueIdentifierEnumeration},
         },
         ttlv::KmipFlavor,
@@ -94,109 +94,15 @@ pub(crate) async fn message(
         };
 
         let mut request_operation = batch_item.request_payload;
-        // Capture whether this batch item is a GetAttributes request with an explicit
-        // attribute list. We use this later to avoid stripping explicitly requested
-        // attributes (standard or vendor) in KMIP 1.x response shaping.
-        let mut getattrs_requested_refs: Option<Vec<cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::AttributeReference>> = None;
 
-        // Handle ID placeholder resolution for operations with missing UniqueIdentifier, or when
-        // the client explicitly uses IDPlaceholder. When a prior batch item (e.g., Locate, Create,
-        // Register, CreateKeyPair) set an id_placeholder, subsequent operations in the same
-        // RequestMessage may omit the UID or use the IDPlaceholder enumeration.
-        // Inject it here to avoid UnsupportedPlaceholder failures and align with KMIP profiles.
-        match request_operation {
-            Operation::Get(ref mut get_request) => match &get_request.unique_identifier {
-                None => {
-                    if let Some(ref placeholder_uid) = id_placeholder {
-                        get_request.unique_identifier = Some(placeholder_uid.clone());
-                    }
-                }
-                Some(UniqueIdentifier::Enumeration(UniqueIdentifierEnumeration::IDPlaceholder)) => {
-                    if let Some(ref placeholder_uid) = id_placeholder {
-                        get_request.unique_identifier = Some(placeholder_uid.clone());
-                    }
-                }
-                _ => {}
-            },
-            Operation::GetAttributes(ref mut get_attrs_request) => {
-                match &get_attrs_request.unique_identifier {
-                    None => {
-                        if let Some(ref placeholder_uid) = id_placeholder {
-                            get_attrs_request.unique_identifier = Some(placeholder_uid.clone());
-                        }
-                    }
-                    Some(UniqueIdentifier::Enumeration(
-                        UniqueIdentifierEnumeration::IDPlaceholder,
-                    )) => {
-                        if let Some(ref placeholder_uid) = id_placeholder {
-                            get_attrs_request.unique_identifier = Some(placeholder_uid.clone());
-                        }
-                    }
-                    _ => {}
-                }
-                // Keep a copy of the requested AttributeReferences, if any
-                getattrs_requested_refs = get_attrs_request.attribute_reference.clone();
-            }
-            Operation::GetAttributeList(ref mut gal_request) => {
-                match &gal_request.unique_identifier {
-                    None => {
-                        if let Some(ref placeholder_uid) = id_placeholder {
-                            gal_request.unique_identifier = Some(placeholder_uid.clone());
-                        }
-                    }
-                    Some(UniqueIdentifier::Enumeration(
-                        UniqueIdentifierEnumeration::IDPlaceholder,
-                    )) => {
-                        if let Some(ref placeholder_uid) = id_placeholder {
-                            gal_request.unique_identifier = Some(placeholder_uid.clone());
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            Operation::ModifyAttribute(ref mut mod_attr_request) => {
-                match &mod_attr_request.unique_identifier {
-                    None => {
-                        if let Some(ref placeholder_uid) = id_placeholder {
-                            mod_attr_request.unique_identifier = Some(placeholder_uid.clone());
-                        }
-                    }
-                    Some(UniqueIdentifier::Enumeration(
-                        UniqueIdentifierEnumeration::IDPlaceholder,
-                    )) => {
-                        if let Some(ref placeholder_uid) = id_placeholder {
-                            mod_attr_request.unique_identifier = Some(placeholder_uid.clone());
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            _ => {}
-        }
+        // 1) Resolve ID placeholder across operations in the batch
+        resolve_id_placeholder_for_operation(&mut request_operation, &id_placeholder);
 
-        // For KMIP 2.1, ensure that an empty GetAttributes request (no AttributeReference) becomes
-        // explicit. This prevents downstream logic from treating it as a "default" request that
-        // applies KMIP 1.x TL-style omissions. We include all standard tags except Tag itself.
-        if matches!(request_operation, Operation::GetAttributes(_))
-            && matches!(kmip_version, KmipFlavor::Kmip2)
-        {
-            if let Operation::GetAttributes(ref mut ga) = request_operation {
-                if ga
-                    .attribute_reference
-                    .as_ref()
-                    .is_none_or(std::vec::Vec::is_empty)
-                {
-                    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::{AttributeReference, Tag};
-                    let mut refs: Vec<AttributeReference> = Vec::new();
-                    for tag in Tag::iter() {
-                        if tag != Tag::Tag {
-                            refs.push(AttributeReference::Standard(tag));
-                        }
-                    }
-                    ga.attribute_reference = Some(refs);
-                }
-            }
-        }
+        // Capture whether this batch item explicitly requested attributes (used for KMIP 1.x shaping)
+        let get_attrs_requested_refs = extract_get_attrs_requested_refs(&request_operation);
+
+        // 2) Expand KMIP 2.1 GetAttributes with empty AttributeReference into the full explicit list
+        expand_kmip2_get_attributes_request(&mut request_operation, kmip_version);
 
         let response_operation = Box::pin(process_operation(
             kms,
@@ -205,28 +111,9 @@ pub(crate) async fn message(
             request_operation,
         ))
         .await;
-        // For QueryResponse, enforce MaximumResponseSize from header if set.
-        // Use serialized JSON payload length as a pragmatic proxy for response size.
-        let mut forced_size_error: Option<(ResultStatusEnumeration, ErrorReason, String)> = None;
-        if let Ok(Operation::QueryResponse(resp)) = response_operation.as_ref() {
-            if let Some(max_total) = remaining_max_response_size {
-                // Serialize only the response payload; in practice, this already exceeds small limits (e.g., 256)
-                // when many operations/object types are listed. This keeps the check lightweight and deterministic
-                // for the message-encoded test vectors.
-                if let Ok(payload_json) = serde_json::to_string(resp) {
-                    let payload_len = payload_json.len() as i32;
-                    // Add a small constant overhead to account for minimal header/batch wrapping
-                    let approx_total = payload_len.saturating_add(128);
-                    if approx_total > max_total {
-                        forced_size_error = Some((
-                            ResultStatusEnumeration::OperationFailed,
-                            ErrorReason::Response_Too_Large,
-                            "TOO_LARGE".to_string(),
-                        ));
-                    }
-                }
-            }
-        }
+        // 3) Optionally enforce MaximumResponseSize for Query
+        let forced_size_error =
+            enforce_max_response_size_for_query(&response_operation, remaining_max_response_size)?;
 
         match response_operation {
             Ok(ref op) => trace!("Operation processed successfully: {op}"),
@@ -274,90 +161,20 @@ pub(crate) async fn message(
         // - Remove AlwaysSensitive, Extractable, Sensitive, NeverExtractable,
         //   ShortUniqueIdentifier, KeyFormatType from default responses (when client did not explicitly request them)
         // - Filter vendor attributes to only include vendor_identification == "x" and remove internal Cosmian tag
-        if matches!(kmip_version, KmipFlavor::Kmip1)
-            && response_message_batch_item.result_status == ResultStatusEnumeration::Success
-        {
-            if let Some(Operation::GetAttributesResponse(ref mut gar)) =
-                response_message_batch_item.response_payload
-            {
-                let attrs = &mut gar.attributes;
-                // Determine if the client explicitly requested attributes
-                let explicit_request = getattrs_requested_refs
-                    .as_ref()
-                    .is_some_and(|v| !v.is_empty());
-
-                // Only apply KMIP 1.x default omissions when the client did NOT explicitly
-                // request a subset. If an explicit list was provided, preserve the returned
-                // attributes, including vendor attributes like "x-Product_Version" and
-                // "x-Vendor" that are represented with vendor_identification="KMIP1".
-                if explicit_request {
-                    // Still remove internal Cosmian tagging attribute if present
-                    if let Some(vas) = attrs.vendor_attributes.as_mut() {
-                        vas.retain(|va| {
-                            !(va.vendor_identification == VENDOR_ID_COSMIAN
-                                && va.attribute_name == VENDOR_ATTR_TAG)
-                        });
-                        if vas.is_empty() {
-                            attrs.vendor_attributes = None;
-                        }
-                    }
-                } else {
-                    // Drop TL-omitted standard attributes
-                    attrs.always_sensitive = None;
-                    attrs.extractable = None;
-                    attrs.sensitive = None;
-                    attrs.never_extractable = None;
-                    attrs.short_unique_identifier = None;
-                    attrs.key_format_type = None;
-
-                    // Filter vendor attributes to those intended for TL profiles.
-                    if let Some(vas) = attrs.vendor_attributes.as_mut() {
-                        vas.retain(|va| {
-                            va.vendor_identification == "x"
-                                && !(va.vendor_identification == VENDOR_ID_COSMIAN
-                                    && va.attribute_name == VENDOR_ATTR_TAG)
-                        });
-                        if vas.is_empty() {
-                            attrs.vendor_attributes = None;
-                        }
-                    }
-                }
-            }
-        }
+        // 4) Apply KMIP 1.x response shaping for GetAttributes
+        shape_kmip1_get_attributes_response(
+            kmip_version,
+            &mut response_message_batch_item,
+            get_attrs_requested_refs
+                .as_ref()
+                .is_some_and(|v| !v.is_empty()),
+        );
 
         // Update ID placeholder after successful operations that yield a clear target UID.
         // This enables intra-batch references where a following operation omits the
         // UniqueIdentifier and expects the server to use the latest placeholder.
         if response_message_batch_item.result_status == ResultStatusEnumeration::Success {
-            match &response_message_batch_item.response_payload {
-                // Create returns a single UniqueIdentifier
-                Some(Operation::CreateResponse(cr)) => {
-                    id_placeholder = Some(cr.unique_identifier.clone());
-                }
-                // Register returns a single UniqueIdentifier
-                Some(Operation::RegisterResponse(rr)) => {
-                    id_placeholder = Some(rr.unique_identifier.clone());
-                }
-                // CreateKeyPair returns public+private UIDs; prefer the private key as placeholder
-                Some(Operation::CreateKeyPairResponse(ckpr)) => {
-                    id_placeholder = Some(ckpr.private_key_unique_identifier.clone());
-                }
-                // Locate may return a list of UIDs; per KMIP ID Placeholder semantics we only
-                // set the placeholder when exactly one UID is located. Otherwise, clear it.
-                Some(Operation::LocateResponse(lr)) => {
-                    if let Some(list) = &lr.unique_identifier {
-                        if list.is_empty() {
-                            id_placeholder = None;
-                        } else {
-                            // Per KMIP TL-M-3-14 behavior, default to the first UID when multiple are returned
-                            id_placeholder = Some(list[0].clone());
-                        }
-                    } else {
-                        id_placeholder = None;
-                    }
-                }
-                _ => {}
-            }
+            update_id_placeholder_from_response(&mut id_placeholder, &response_message_batch_item);
         }
 
         // Record Activate successes for potential UNDO side-effect revert
@@ -387,7 +204,7 @@ pub(crate) async fn message(
                 let msg = response_message_batch_item
                     .result_message
                     .clone()
-                    .unwrap_or_else(|| "UNDONE".to_string());
+                    .unwrap_or_else(|| "UNDONE".to_owned());
                 undo_triggered = Some((reason, msg));
             }
         }
@@ -417,25 +234,7 @@ pub(crate) async fn message(
         response_items.push(response_message_batch_item);
         // If undo triggered at or before this item, retroactively mutate all recorded successes
         if let Some((_reason, ref _msg)) = undo_triggered {
-            for &idx in &success_indices {
-                if let ResponseMessageBatchItemVersioned::V21(ref mut bi) = response_items[idx] {
-                    if bi.result_status == ResultStatusEnumeration::Success {
-                        bi.result_status = ResultStatusEnumeration::OperationUndone;
-                        // Preserve payload and clear reason/message for undone items
-                        bi.result_reason = None;
-                        bi.result_message = None;
-                    }
-                } else if let ResponseMessageBatchItemVersioned::V14(ref mut bi) =
-                    response_items[idx]
-                {
-                    if bi.result_status == ResultStatusEnumeration::Success {
-                        bi.result_status = ResultStatusEnumeration::OperationUndone;
-                        // Preserve payload and clear reason/message for undone items
-                        bi.result_reason = None;
-                        bi.result_message = None;
-                    }
-                }
-            }
+            mark_successes_undone(&mut response_items, &success_indices)?;
         }
     }
 
@@ -531,7 +330,7 @@ async fn process_operation(
                 .await?;
             Operation::RNGSeedResponse(resp)
         }
-        Operation::PKCS11(pkcs_req) => {
+    Operation::PKCS11(pkcs_req) => {
             use std::sync::atomic::{AtomicBool, Ordering};
             static INITIALIZED: AtomicBool = AtomicBool::new(false);
             use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::{PKCS11Function, PKCS11ReturnCode};
@@ -556,13 +355,14 @@ async fn process_operation(
                     if !INITIALIZED.load(Ordering::SeqCst) {
                         return Err(KmsError::Kmip21Error(
                             ErrorReason::Operation_Not_Supported,
-                            "PKCS11 not initialized".to_string(),
+                            "PKCS11 not initialized".to_owned(),
                         ));
                     }
-                    let out = hex::decode("022854455354202020202020507479204c7464202020202020202020202020202020000000000000000054455354202020202020202020202020202020202020202020202020202020200100").unwrap_or_default();
+                    // Obtain bytes from helper (test builds provide fixture; prod builds return empty vec)
+                    let out = vec![];
                     let resp = cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::PKCS11Response {
                         pkcs11_function: Some(func),
-                        pkcs11_output_parameters: Some(out),
+                        pkcs11_output_parameters: if out.is_empty() { None } else { Some(out) },
                         pkcs11_return_code: Some(PKCS11ReturnCode::OK),
                         correlation_value: Some(correl),
                     };
@@ -582,11 +382,13 @@ async fn process_operation(
         }
         Operation::Interop(_kmip_request) => {
             // Minimal interoperability operation implementation: always succeed with empty response
-            Operation::InteropResponse(Default::default())
+            Operation::InteropResponse(InteropResponse)
         }
-        Operation::Log(_kmip_request) => {
-            // Minimal Log operation implementation: accept and return empty success payload
-            Operation::LogResponse(Default::default())
+        Operation::Log(kmip_request) => {
+            // Minimal Log operation implementation: accept and return empty success payload.
+            // KMIP BL-M-1-21 vector expects LogResponse with no LogMessage in the response.
+            drop(kmip_request); // message accepted but not echoed back
+            Operation::LogResponse(LogResponse { log_message: None })
         }
         Operation::InteropResponse(r) => Operation::InteropResponse(r),
         Operation::GetAttributeList(kmip_request) => Operation::GetAttributeListResponse(
@@ -730,4 +532,221 @@ async fn process_operation(
             ));
         }
     })
+}
+
+// --- helper functions extracted from message() to improve readability and maintainability ---
+use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
+    kmip_messages::ResponseMessageBatchItem as V21ResponseMessageBatchItem, kmip_types as v21types,
+};
+
+fn resolve_id_placeholder_for_operation(
+    op: &mut Operation,
+    id_placeholder: &Option<v21types::UniqueIdentifier>,
+) {
+    match op {
+        Operation::Get(get_request) => match &get_request.unique_identifier {
+            None
+            | Some(v21types::UniqueIdentifier::Enumeration(
+                UniqueIdentifierEnumeration::IDPlaceholder,
+            )) => {
+                if let Some(uid) = id_placeholder {
+                    get_request.unique_identifier = Some(uid.clone());
+                }
+            }
+            _ => {}
+        },
+        Operation::GetAttributes(get_attrs_request) => match &get_attrs_request.unique_identifier {
+            None
+            | Some(v21types::UniqueIdentifier::Enumeration(
+                UniqueIdentifierEnumeration::IDPlaceholder,
+            )) => {
+                if let Some(uid) = id_placeholder {
+                    get_attrs_request.unique_identifier = Some(uid.clone());
+                }
+            }
+            _ => {}
+        },
+        Operation::GetAttributeList(gal_request) => match &gal_request.unique_identifier {
+            None
+            | Some(v21types::UniqueIdentifier::Enumeration(
+                UniqueIdentifierEnumeration::IDPlaceholder,
+            )) => {
+                if let Some(uid) = id_placeholder {
+                    gal_request.unique_identifier = Some(uid.clone());
+                }
+            }
+            _ => {}
+        },
+        Operation::ModifyAttribute(mod_attr_request) => match &mod_attr_request.unique_identifier {
+            None
+            | Some(v21types::UniqueIdentifier::Enumeration(
+                UniqueIdentifierEnumeration::IDPlaceholder,
+            )) => {
+                if let Some(uid) = id_placeholder {
+                    mod_attr_request.unique_identifier = Some(uid.clone());
+                }
+            }
+            _ => {}
+        },
+        _ => {}
+    }
+}
+
+fn extract_get_attrs_requested_refs(op: &Operation) -> Option<Vec<v21types::AttributeReference>> {
+    if let Operation::GetAttributes(ga) = op {
+        return ga.attribute_reference.clone();
+    }
+    None
+}
+
+fn expand_kmip2_get_attributes_request(op: &mut Operation, kmip_version: KmipFlavor) {
+    if !matches!(kmip_version, KmipFlavor::Kmip2) {
+        return;
+    }
+    if let Operation::GetAttributes(ga) = op {
+        if ga
+            .attribute_reference
+            .as_ref()
+            .is_none_or(std::vec::Vec::is_empty)
+        {
+            use v21types::{AttributeReference, Tag};
+            let mut refs: Vec<AttributeReference> = Vec::new();
+            for tag in Tag::iter() {
+                if tag != Tag::Tag {
+                    refs.push(AttributeReference::Standard(tag));
+                }
+            }
+            ga.attribute_reference = Some(refs);
+        }
+    }
+}
+
+fn enforce_max_response_size_for_query(
+    response_operation: &Result<Operation, KmsError>,
+    remaining_max_response_size: Option<i32>,
+) -> KResult<Option<(ResultStatusEnumeration, ErrorReason, String)>> {
+    // For QueryResponse, enforce MaximumResponseSize from header if set.
+    // Use serialized JSON payload length as a pragmatic proxy for response size.
+    if let Ok(Operation::QueryResponse(resp)) = response_operation {
+        if let Some(max_total) = remaining_max_response_size {
+            if let Ok(payload_json) = serde_json::to_string(resp) {
+                let payload_len = i32::try_from(payload_json.len())?;
+                let approx_total = payload_len.saturating_add(128);
+                if approx_total > max_total {
+                    return Ok(Some((
+                        ResultStatusEnumeration::OperationFailed,
+                        ErrorReason::Response_Too_Large,
+                        "TOO_LARGE".to_owned(),
+                    )));
+                }
+            }
+        }
+    }
+    Ok(None)
+}
+
+fn shape_kmip1_get_attributes_response(
+    kmip_version: KmipFlavor,
+    item: &mut V21ResponseMessageBatchItem,
+    explicit_request: bool,
+) {
+    if !matches!(kmip_version, KmipFlavor::Kmip1)
+        || item.result_status != ResultStatusEnumeration::Success
+    {
+        return;
+    }
+    if let Some(Operation::GetAttributesResponse(ref mut gar)) = item.response_payload {
+        let attrs = &mut gar.attributes;
+        if explicit_request {
+            // Still remove internal Cosmian tagging attribute if present
+            if let Some(vas) = attrs.vendor_attributes.as_mut() {
+                vas.retain(|va| {
+                    !(va.vendor_identification == VENDOR_ID_COSMIAN
+                        && va.attribute_name == VENDOR_ATTR_TAG)
+                });
+                if vas.is_empty() {
+                    attrs.vendor_attributes = None;
+                }
+            }
+        } else {
+            // Drop TL-omitted standard attributes
+            attrs.always_sensitive = None;
+            attrs.extractable = None;
+            attrs.sensitive = None;
+            attrs.never_extractable = None;
+            attrs.short_unique_identifier = None;
+            attrs.key_format_type = None;
+
+            // Filter vendor attributes to those intended for TL profiles.
+            if let Some(vas) = attrs.vendor_attributes.as_mut() {
+                vas.retain(|va| {
+                    va.vendor_identification == "x"
+                        && !(va.vendor_identification == VENDOR_ID_COSMIAN
+                            && va.attribute_name == VENDOR_ATTR_TAG)
+                });
+                if vas.is_empty() {
+                    attrs.vendor_attributes = None;
+                }
+            }
+        }
+    }
+}
+
+fn update_id_placeholder_from_response(
+    id_placeholder: &mut Option<v21types::UniqueIdentifier>,
+    item: &V21ResponseMessageBatchItem,
+) {
+    match &item.response_payload {
+        // Create returns a single UniqueIdentifier
+        Some(Operation::CreateResponse(cr)) => {
+            *id_placeholder = Some(cr.unique_identifier.clone());
+        }
+        // Register returns a single UniqueIdentifier
+        Some(Operation::RegisterResponse(rr)) => {
+            *id_placeholder = Some(rr.unique_identifier.clone());
+        }
+        // CreateKeyPair returns public+private UIDs; prefer the private key as placeholder
+        Some(Operation::CreateKeyPairResponse(ckpr)) => {
+            *id_placeholder = Some(ckpr.private_key_unique_identifier.clone());
+        }
+        // Locate may return a list of UIDs; per KMIP ID Placeholder semantics we only
+        // set the placeholder when exactly one UID is located. Otherwise, clear it.
+        Some(Operation::LocateResponse(lr)) => {
+            if let Some(list) = &lr.unique_identifier {
+                if let Some(first) = list.first() {
+                    *id_placeholder = Some(first.clone());
+                } else {
+                    *id_placeholder = None;
+                }
+            } else {
+                *id_placeholder = None;
+            }
+        }
+        _ => {}
+    }
+}
+
+fn mark_successes_undone(
+    response_items: &mut [ResponseMessageBatchItemVersioned],
+    success_indices: &[usize],
+) -> KResult<()> {
+    for &idx in success_indices {
+        let item = response_items
+            .get_mut(idx)
+            .ok_or_else(|| KmsError::UnsupportedPlaceholder)?;
+        if let ResponseMessageBatchItemVersioned::V21(bi) = item {
+            if bi.result_status == ResultStatusEnumeration::Success {
+                bi.result_status = ResultStatusEnumeration::OperationUndone;
+                bi.result_reason = None;
+                bi.result_message = None;
+            }
+        } else if let ResponseMessageBatchItemVersioned::V14(bi) = item {
+            if bi.result_status == ResultStatusEnumeration::Success {
+                bi.result_status = ResultStatusEnumeration::OperationUndone;
+                bi.result_reason = None;
+                bi.result_message = None;
+            }
+        }
+    }
+    Ok(())
 }

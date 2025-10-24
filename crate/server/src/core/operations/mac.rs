@@ -178,9 +178,8 @@ pub(super) async fn mac_verify(
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<MACVerifyResponse> {
     trace!("MacVerify: {}", serde_json::to_string(&request)?);
-    let uid = match &request.unique_identifier {
-        UniqueIdentifier::TextString(s) => s,
-        _ => kms_bail!("MacVerify: unique_identifier must be a string"),
+    let UniqueIdentifier::TextString(uid) = &request.unique_identifier else {
+        kms_bail!("MacVerify: unique_identifier must be a string")
     };
     trace!("MacVerify: Unique identifier: {uid}");
 
@@ -302,7 +301,7 @@ mod tests {
         let key = vec![];
         let data = vec![];
         let result = compute_hmac(&key, &data, HashingAlgorithm::SHA256);
-        assert!(result.is_err());
+        result.unwrap_err();
 
         // Empty data
         let key = vec![1, 2, 3, 4];
@@ -314,7 +313,7 @@ mod tests {
         let key = vec![];
         let data = vec![1, 2, 3];
         let result = compute_hmac(&key, &data, HashingAlgorithm::SHA256);
-        assert!(result.is_err());
+        result.unwrap_err();
 
         // Large data (1MB)
         let key = vec![1, 2, 3, 4];
@@ -340,7 +339,7 @@ mod tests {
 
         // Test unsupported algorithm
         let result = compute_hmac(&key, &data, HashingAlgorithm::MD5);
-        assert!(result.is_err());
+        result.unwrap_err();
 
         Ok(())
     }

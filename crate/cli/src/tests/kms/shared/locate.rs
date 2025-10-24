@@ -33,8 +33,8 @@ pub(crate) async fn test_locate_cover_crypt() -> KmsCliResult<()> {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_else(|_| std::time::Duration::from_secs(0))
         .as_nanos();
-    let base_tag = format!("test_cc_{}", ts);
-    let another_tag = format!("another_tag_{}", ts);
+    let base_tag = format!("test_cc_{ts}");
+    let another_tag = format!("another_tag_{ts}");
 
     // init the test server
     let ctx = start_default_test_kms_server_with_cert_auth().await;
@@ -194,7 +194,7 @@ pub(crate) async fn test_locate_elliptic_curve() -> KmsCliResult<()> {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_else(|_| std::time::Duration::from_secs(0))
         .as_nanos();
-    let base_tag = format!("test_ec_{}", ts);
+    let base_tag = format!("test_ec_{ts}");
 
     // generate a new key pair
     let (private_key_id, public_key_id) = CreateEcKeyPairAction {
@@ -293,7 +293,7 @@ pub(crate) async fn test_locate_symmetric_key() -> KmsCliResult<()> {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_else(|_| std::time::Duration::from_secs(0))
         .as_nanos();
-    let base_tag = format!("test_sym_{}", ts);
+    let base_tag = format!("test_sym_{ts}");
 
     // generate a new key
     let key_id = CreateKeyAction {
@@ -376,8 +376,8 @@ pub(crate) async fn test_locate_grant() -> KmsCliResult<()> {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_else(|_| std::time::Duration::from_secs(0))
         .as_nanos();
-    let base_tag = format!("test_grant_{}", ts);
-    let another_tag = format!("another_tag_{}", ts);
+    let base_tag = format!("test_grant_{ts}");
+    let another_tag = format!("another_tag_{ts}");
 
     // generate a new master key pair
     let (master_private_key_id, master_public_key_id) = {
@@ -498,7 +498,7 @@ pub(crate) async fn test_locate_secret_data() -> KmsCliResult<()> {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_else(|_| std::time::Duration::from_secs(0))
         .as_nanos();
-    let base_tag = format!("test_secret_{}", ts);
+    let base_tag = format!("test_secret_{ts}");
 
     // generate a new secret
     let secret_id = crate::actions::kms::secret_data::create_secret::CreateSecretDataAction {

@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{borrow::Cow, sync::Arc};
 
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::{
@@ -438,7 +438,6 @@ fn decrypt_single_with_symmetric_key(
     // IVCounterNonce element to indicate an all-zero IV (e.g. CBC test cases). Treat a
     // present-but-empty value as a zero IV of the required size. Any other length mismatch
     // is reported as Invalid_Message instead of triggering an OpenSSL panic.
-    use std::borrow::Cow;
     let empty_nonce_storage = Vec::new();
     let nonce_storage: Cow<[u8]> = if aead.nonce_size() == 0 {
         Cow::Borrowed(&empty_nonce_storage)
@@ -448,7 +447,7 @@ fn decrypt_single_with_symmetric_key(
         })?;
         if provided.is_empty() {
             // Interpret empty provided IV as an all-zero IV of the recommended size for the cipher.
-            Cow::Owned(vec![0u8; aead.nonce_size()])
+            Cow::Owned(vec![0_u8; aead.nonce_size()])
         } else if provided.len() == aead.nonce_size() {
             Cow::Borrowed(provided)
         } else {

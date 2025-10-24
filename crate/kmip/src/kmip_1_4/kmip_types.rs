@@ -307,6 +307,22 @@ pub enum ObjectType {
     PGPKey = 0x9,
 }
 
+impl From<ObjectType> for kmip_2_1::kmip_objects::ObjectType {
+    fn from(val: ObjectType) -> Self {
+        match val {
+            // KMIP 2.1 does not support Template object type. Return Certificate as a placeholder.
+            ObjectType::Certificate | ObjectType::Template => Self::Certificate,
+            ObjectType::SymmetricKey => Self::SymmetricKey,
+            ObjectType::PublicKey => Self::PublicKey,
+            ObjectType::PrivateKey => Self::PrivateKey,
+            ObjectType::SplitKey => Self::SplitKey,
+            ObjectType::SecretData => Self::SecretData,
+            ObjectType::OpaqueObject => Self::OpaqueObject,
+            ObjectType::PGPKey => Self::PGPKey,
+        }
+    }
+}
+
 impl TryFrom<kmip_2_1::kmip_objects::ObjectType> for ObjectType {
     type Error = KmipError;
 
@@ -368,25 +384,28 @@ impl TryFrom<u32> for ObjectType {
     }
 }
 
-impl From<ObjectType> for kmip_2_1::kmip_objects::ObjectType {
-    fn from(val: ObjectType) -> Self {
-        match val {
-            ObjectType::Certificate => Self::Certificate,
-            ObjectType::SymmetricKey => Self::SymmetricKey,
-            ObjectType::PublicKey => Self::PublicKey,
-            ObjectType::PrivateKey => Self::PrivateKey,
-            ObjectType::SplitKey => Self::SplitKey,
-            // KMIP 2.1 does not support Template object type. This path should never be hit
-            // by valid 1.4 -> 2.1 operation conversions (Template appears only in Query responses).
-            ObjectType::Template => {
-                panic!("KMIP 1.4 ObjectType::Template cannot be converted to KMIP 2.1")
-            }
-            ObjectType::SecretData => Self::SecretData,
-            ObjectType::OpaqueObject => Self::OpaqueObject,
-            ObjectType::PGPKey => Self::PGPKey,
-        }
-    }
-}
+// impl core::convert::TryFrom<ObjectType> for kmip_2_1::kmip_objects::ObjectType {
+//     type Error = KmipError;
+
+//     fn try_from(val: ObjectType) -> Result<Self, Self::Error> {
+//         Ok(match val {
+//             ObjectType::Certificate => Self::Certificate,
+//             ObjectType::SymmetricKey => Self::SymmetricKey,
+//             ObjectType::PublicKey => Self::PublicKey,
+//             ObjectType::PrivateKey => Self::PrivateKey,
+//             ObjectType::SplitKey => Self::SplitKey,
+//             // KMIP 2.1 does not support Template object type. Return an error instead of panicking.
+//             ObjectType::Template => {
+//                 return Err(KmipError::Default(
+//                     "KMIP 1.4 ObjectType::Template cannot be converted to KMIP 2.1".into(),
+//                 ))
+//             }
+//             ObjectType::SecretData => Self::SecretData,
+//             ObjectType::OpaqueObject => Self::OpaqueObject,
+//             ObjectType::PGPKey => Self::PGPKey,
+//         })
+//     }
+// }
 
 /// KMIP 1.4 Cryptographic Algorithm Enumeration
 #[kmip_enum]

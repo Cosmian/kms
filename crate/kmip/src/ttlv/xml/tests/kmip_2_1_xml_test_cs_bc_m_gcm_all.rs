@@ -80,12 +80,12 @@ fn kmip_cs_bc_m_gcm_all() {
     let mut saw_register = false;
     let mut encrypt_tag_lengths: Vec<i32> = Vec::new();
     let mut decrypt_tag_lengths: Vec<i32> = Vec::new();
-    let mut saw_create = 0usize;
-    let mut saw_get_attributes = 0usize;
-    let mut saw_destroy = 0usize;
-    let mut saw_activate = 0usize;
-    let mut saw_revoke = 0usize; // may remain unused if only counted for presence
-    let mut saw_mac = 0usize;
+    let mut saw_create = 0_usize;
+    let mut saw_get_attributes = 0_usize;
+    let mut saw_destroy = 0_usize;
+    let mut saw_activate = 0_usize;
+    let mut saw_revoke = 0_usize; // may remain unused if only counted for presence
+    let mut saw_mac = 0_usize;
     // Track cryptographic length for specific registered keys (e.g., key-6 should be 192 bits)
     let mut found_key6_len: Option<i32> = None;
 

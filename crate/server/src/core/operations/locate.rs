@@ -51,7 +51,7 @@ pub(crate) async fn locate(
 
     // Respect MaximumItems only when explicitly provided. If absent, return all matches.
     if let Some(mi) = request.maximum_items {
-        let max_items = mi.max(0) as usize;
+        let max_items = usize::try_from(mi.max(0))?;
         if uids.len() > max_items {
             uids.truncate(max_items);
         }

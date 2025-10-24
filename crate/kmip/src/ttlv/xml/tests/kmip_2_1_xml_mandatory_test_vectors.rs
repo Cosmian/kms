@@ -1,12 +1,19 @@
 use std::{fs, path::PathBuf};
 
-use crate::ttlv::xml::KmipXmlDoc;
+use crate::{
+    kmip_0::kmip_messages::ResponseMessageBatchItemVersioned as V,
+    kmip_2_1::{
+        kmip_messages::ResponseMessageBatchItem, kmip_operations::Operation,
+        kmip_types::AttributeReference,
+    },
+    ttlv::xml::KmipXmlDoc,
+};
 
 #[test]
 fn test_parse_all_kmip_2_1_mandatory_vectors() {
     let base = PathBuf::from("./src/kmip_2_1/specifications/XML/mandatory");
     assert!(base.is_dir(), "mandatory directory missing: {base:?}");
-    let mut parsed = 0usize;
+    let mut parsed = 0_usize;
     for entry in fs::read_dir(&base).expect("list mandatory dir") {
         let entry = entry.expect("dir entry");
         let path = entry.path();
@@ -31,13 +38,6 @@ fn tl_m_3_21_attribute_reference_count() {
     assert!(path.is_file(), "missing TL-M-3-21.xml at {path:?}");
     let doc = KmipXmlDoc::new_with_file(&path).expect("parse TL-M-3-21.xml");
     // Find the response containing GetAttributeList
-    use crate::{
-        kmip_0::kmip_messages::ResponseMessageBatchItemVersioned as V,
-        kmip_2_1::{
-            kmip_messages::ResponseMessageBatchItem, kmip_operations::Operation,
-            kmip_types::AttributeReference,
-        },
-    };
 
     // Iterate all responses and their batch items to find the GetAttributeList response payload
     let mut found = false;

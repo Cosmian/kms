@@ -23,6 +23,7 @@ mod locate;
 mod mac;
 mod message;
 mod modify_attribute;
+mod pkcs11;
 mod query;
 mod register;
 mod rekey;

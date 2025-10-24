@@ -15,5 +15,11 @@ pub use serializer::TTLVXMLSerializer;
 mod parser;
 pub use parser::KmipXmlDoc;
 
+#[allow(
+    clippy::panic,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing
+)]
 #[cfg(test)]
 mod tests;

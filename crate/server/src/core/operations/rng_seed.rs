@@ -41,18 +41,17 @@ pub(crate) async fn rng_seed(
 
     // Also reseed the software ANSI X9.31 RNG for deterministic testability
     // Cap seed length to 16 bytes per vectors requirement
-    let seed = if request.data.len() > 16 {
-        &request.data[..16]
-    } else {
-        &request.data
-    };
+    let seed: &[u8] = request
+        .data
+        .get(..16)
+        .map_or_else(|| request.data.as_slice(), |s| s);
     if !seed.is_empty() {
         if let Ok(mut rng) = global_rng().try_lock() {
             rng.reseed(seed);
         }
     }
 
-    let amount_of_seed_data: i32 = request.data.len() as i32;
+    let amount_of_seed_data: i32 = i32::try_from(request.data.len()).map_or(i32::MAX, |v| v);
     Ok(RNGSeedResponse {
         amount_of_seed_data,
     })

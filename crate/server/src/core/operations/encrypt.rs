@@ -210,7 +210,8 @@ pub(crate) async fn encrypt(
             // Only enforce for Byte unit
             if matches!(usage_limits.usage_limits_unit, UsageLimitsUnit::Byte) {
                 let remaining = usage_limits.usage_limits_total; // total remaining bytes allowed
-                if remaining < (plaintext_len as i64) {
+                let needed = i64::try_from(plaintext_len).map_or(i64::MAX, |v| v);
+                if remaining < needed {
                     return Err(KmsError::Kmip21Error(
                         ErrorReason::Permission_Denied,
                         "DENIED".to_owned(),
@@ -236,7 +237,11 @@ pub(crate) async fn encrypt(
     if let Ok(attrs) = unwrapped_owm.object_mut().attributes_mut() {
         if let Some(ref mut usage_limits) = attrs.usage_limits {
             if matches!(usage_limits.usage_limits_unit, cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::UsageLimitsUnit::Byte) {
-                usage_limits.usage_limits_total -= plaintext_len as i64;
+                if let Ok(p) = i64::try_from(plaintext_len) {
+                    usage_limits.usage_limits_total -= p;
+                } else {
+                    usage_limits.usage_limits_total = 0;
+                }
                 if usage_limits.usage_limits_total < 0 {
                     usage_limits.usage_limits_total = 0;
                 }
@@ -514,7 +519,7 @@ fn encrypt_with_symmetric_key(
                         if let Some(tl) = cp.tag_length {
                             // ChaCha20-Poly1305 has a fixed 16-byte tag; reject mismatched lengths
                             let expected = tag.len();
-                            if (tl as usize) != expected {
+                            if usize::try_from(tl).ok() != Some(expected) {
                                 return Err(KmsError::Kmip21Error(
                                     ErrorReason::General_Failure,
                                     "L_KMIPCRYPTO_random:invalid-tag-length".to_owned(),
@@ -526,7 +531,7 @@ fn encrypt_with_symmetric_key(
                     BlockCipherMode::GCM => {
                         if let Some(tl) = cp.tag_length {
                             // KMIP vectors validate GCM TagLength values; allow 12..=16 bytes only.
-                            let tl_usize = tl as usize;
+                            let tl_usize = usize::try_from(tl)?;
                             if !(12..=16).contains(&tl_usize) {
                                 return Err(KmsError::Kmip21Error(
                                     ErrorReason::General_Failure,
@@ -534,11 +539,13 @@ fn encrypt_with_symmetric_key(
                                 ));
                             }
                             // Truncate to requested length within allowed range
-                            if tl_usize < tag.len() {
-                                Some(tag[..tl_usize].to_vec())
+                            let truncated = if tl_usize < tag.len() {
+                                tag.get(..tl_usize)
+                                    .map_or_else(|| tag.clone(), std::borrow::ToOwned::to_owned)
                             } else {
-                                Some(tag)
-                            }
+                                tag
+                            };
+                            Some(truncated)
                         } else {
                             Some(tag)
                         }

@@ -16,6 +16,8 @@
 //! The merge keeps the deterministic placeholder behavior from the legacy
 //! parser and the cleaner split / transform layering from the refactored one.
 
+use std::fmt::Write as _;
+
 use quick_xml::{Reader, events::Event};
 use regex::Regex;
 
@@ -25,6 +27,23 @@ use crate::{
     kmip_0::kmip_messages::{RequestMessage, ResponseMessage},
     ttlv::{TTLV, from_ttlv, xml::TTLVXMLDeserializer},
 };
+
+// Helper to backfill LocateResponse.located_items when omitted in XML
+fn backfill_locate_response(resp: &mut ResponseMessage) {
+    for bi in &mut resp.batch_item {
+        if let crate::kmip_0::kmip_messages::ResponseMessageBatchItemVersioned::V21(inner) = bi {
+            if let Some(crate::kmip_2_1::kmip_operations::Operation::LocateResponse(lr)) =
+                &mut inner.response_payload
+            {
+                if lr.located_items.is_none() {
+                    let len = lr.unique_identifier.as_ref().map_or(0_usize, Vec::len);
+                    let cnt = i32::try_from(len).unwrap_or(i32::MAX);
+                    lr.located_items = Some(cnt);
+                }
+            }
+        }
+    }
+}
 // Known structural KMIP tags that should be treated as Structures even if no type attribute present
 const STRUCTURAL_TAGS: &[&str] = &[
     "RequestMessage",
@@ -76,7 +95,7 @@ impl KmipXmlDoc {
 
 fn substitute_placeholders(raw: &str, uid_state: &mut Vec<String>) -> KmipResult<String> {
     // Normalize timestamps: replace $NOW-<delta> first, then plain $NOW
-    let mut out = Regex::new(r"\$NOW-\d+")?.replace_all(raw, "0").to_string();
+    let mut out = Regex::new(r"\$NOW-\d+")?.replace_all(raw, "0").into_owned();
     out = out.replace("$NOW", "0");
     // Deterministic unique identifiers
     out = Regex::new(r"\$UNIQUE_IDENTIFIER_(\d+)")?
@@ -88,12 +107,17 @@ fn substitute_placeholders(raw: &str, uid_state: &mut Vec<String>) -> KmipResult
             if uid_state.len() <= idx {
                 uid_state.resize(idx + 1, String::new());
             }
-            if uid_state[idx].is_empty() {
-                uid_state[idx] = format!("uid-{idx}");
-            }
-            uid_state[idx].clone()
+            uid_state.get_mut(idx).map_or_else(
+                || format!("uid-{idx}"),
+                |slot| {
+                    if slot.is_empty() {
+                        *slot = format!("uid-{idx}");
+                    }
+                    slot.clone()
+                },
+            )
         })
-        .to_string();
+        .into_owned();
     Ok(out)
 }
 
@@ -109,9 +133,7 @@ fn normalize_fragment(fragment: &str, uid_state: &mut Vec<String>) -> KmipResult
         // Match the full start tag (including attributes) so we can accurately
         // detect an existing type attribute and avoid duplicating it.
         let pattern = format!(r"<{tag}\\b[^>]*>");
-        let re = if let Ok(r) = Regex::new(&pattern) {
-            r
-        } else {
+        let Ok(re) = Regex::new(&pattern) else {
             continue;
         };
 
@@ -120,16 +142,16 @@ fn normalize_fragment(fragment: &str, uid_state: &mut Vec<String>) -> KmipResult
                 let matched = &caps[0]; // e.g., "<Tag ...>" or "<Tag/>"
                 // If a type attribute already exists, leave as-is
                 if matched.contains(" type=\"") || matched.contains(" type =\"") {
-                    matched.to_string()
+                    matched.to_owned()
                 } else {
                     // Insert type="Structure" immediately after the tag name
                     // matched starts with "<" then the tag name; keep the remainder as-is
                     let insert_pos = 1 + tag.len();
                     let remainder = &matched[insert_pos..];
-                    format!("<{tag} type=\"Structure\"{}", remainder)
+                    format!("<{tag} type=\"Structure\"{remainder}")
                 }
             })
-            .to_string();
+            .into_owned();
     }
 
     Ok(substituted)
@@ -147,18 +169,15 @@ fn parse_internal(xml: &str) -> Result<KmipXmlDoc, KmipError> {
     let mut depth: i32 = 0;
     let mut capturing = false;
     let mut current = String::new();
-    // Currently not used for downstream logic; keep for potential diagnostics
-    let mut _current_root: Option<String> = None;
 
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(e)) => {
-                let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                let name = String::from_utf8_lossy(e.name().as_ref()).into_owned();
                 if !capturing && (name == "RequestMessage" || name == "ResponseMessage") {
                     capturing = true;
                     depth = 0; // depth relative to root
                     current.clear();
-                    _current_root = Some(name.clone());
                 }
                 if capturing {
                     // Reconstruct start tag with attributes
@@ -178,10 +197,9 @@ fn parse_internal(xml: &str) -> Result<KmipXmlDoc, KmipError> {
                 }
             }
             Ok(Event::Empty(e)) => {
-                let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                let name = String::from_utf8_lossy(e.name().as_ref()).into_owned();
                 if !capturing && (name == "RequestMessage" || name == "ResponseMessage") {
                     // Self-closing root (unlikely in KMIP); treat as full fragment
-                    _current_root = Some(name.clone());
                     current.clear();
                     current.push('<');
                     current.push_str(&name);
@@ -205,19 +223,7 @@ fn parse_internal(xml: &str) -> Result<KmipXmlDoc, KmipError> {
                             let mut resp: ResponseMessage =
                                 from_ttlv(ttlv).map_err(|e| KmipError::Default(e.to_string()))?;
                             // Backfill LocateResponse.located_items when omitted in XML
-                            for bi in &mut resp.batch_item {
-                                if let crate::kmip_0::kmip_messages::ResponseMessageBatchItemVersioned::V21(inner) = bi {
-                                    if let Some(crate::kmip_2_1::kmip_operations::Operation::LocateResponse(lr)) = &mut inner.response_payload {
-                                        if lr.located_items.is_none() {
-                                            let cnt = lr
-                                                .unique_identifier
-                                                .as_ref()
-                                                .map_or(0, |v| v.len() as i32);
-                                            lr.located_items = Some(cnt);
-                                        }
-                                    }
-                                }
-                            }
+                            backfill_locate_response(&mut resp);
                             responses.push(resp);
                         }
                         other => {
@@ -227,7 +233,6 @@ fn parse_internal(xml: &str) -> Result<KmipXmlDoc, KmipError> {
                         }
                     }
                     current.clear();
-                    _current_root = None;
                 } else if capturing {
                     current.push('<');
                     current.push_str(&name);
@@ -260,9 +265,9 @@ fn parse_internal(xml: &str) -> Result<KmipXmlDoc, KmipError> {
                 }
             }
             Ok(Event::End(e)) => {
-                let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                let name = String::from_utf8_lossy(e.name().as_ref()).into_owned();
                 if capturing {
-                    current.push_str(&format!("</{name}>"));
+                    let _ = write!(&mut current, "</{name}>");
                     depth -= 1;
                     if depth == 0 {
                         // Completed one fragment
@@ -276,19 +281,7 @@ fn parse_internal(xml: &str) -> Result<KmipXmlDoc, KmipError> {
                                 let mut resp: ResponseMessage = from_ttlv(ttlv)
                                     .map_err(|e| KmipError::Default(e.to_string()))?;
                                 // Backfill LocateResponse.located_items when omitted in XML
-                                for bi in &mut resp.batch_item {
-                                    if let crate::kmip_0::kmip_messages::ResponseMessageBatchItemVersioned::V21(inner) = bi {
-                                        if let Some(crate::kmip_2_1::kmip_operations::Operation::LocateResponse(lr)) = &mut inner.response_payload {
-                                            if lr.located_items.is_none() {
-                                                let cnt = lr
-                                                    .unique_identifier
-                                                    .as_ref()
-                                                    .map_or(0, |v| v.len() as i32);
-                                                lr.located_items = Some(cnt);
-                                            }
-                                        }
-                                    }
-                                }
+                                backfill_locate_response(&mut resp);
                                 responses.push(resp);
                             }
                             other => {
@@ -299,7 +292,6 @@ fn parse_internal(xml: &str) -> Result<KmipXmlDoc, KmipError> {
                         }
                         capturing = false;
                         current.clear();
-                        _current_root = None;
                     }
                 }
             }
@@ -323,9 +315,8 @@ fn parse_internal(xml: &str) -> Result<KmipXmlDoc, KmipError> {
     })
 }
 
-// Public legacy API will be removed in a future release; prefer KmipXmlDoc::new / ::new_with_file
-
 #[cfg(test)]
+#[allow(clippy::panic)]
 mod tests {
     use super::*;
 

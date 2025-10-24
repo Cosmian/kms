@@ -1510,7 +1510,7 @@ impl Display for EncryptionKeyInformation {
             self.unique_identifier,
             self.cryptographic_parameters
                 .as_ref()
-                .map_or("None".to_string(), std::string::ToString::to_string)
+                .map_or_else(|| "None".to_owned(), std::string::ToString::to_string)
         )
     }
 }
@@ -1531,7 +1531,7 @@ impl Display for MacSignatureKeyInformation {
             self.unique_identifier,
             self.cryptographic_parameters
                 .as_ref()
-                .map_or("None".to_string(), std::string::ToString::to_string)
+                .map_or_else(|| "None".to_owned(), std::string::ToString::to_string)
         )
     }
 }
@@ -1640,14 +1640,20 @@ impl UniqueIdentifier {
     }
 }
 
-impl From<LinkedObjectIdentifier> for UniqueIdentifier {
-    fn from(value: LinkedObjectIdentifier) -> Self {
-        match value {
+impl TryFrom<LinkedObjectIdentifier> for UniqueIdentifier {
+    type Error = KmipError;
+
+    fn try_from(value: LinkedObjectIdentifier) -> Result<Self, Self::Error> {
+        Ok(match value {
             LinkedObjectIdentifier::TextString(s) => Self::TextString(s),
             LinkedObjectIdentifier::Enumeration(e) => Self::Enumeration(e),
-            #[expect(clippy::cast_possible_truncation, clippy::as_conversions)]
-            LinkedObjectIdentifier::Index(i) => Self::Integer(i as i32),
-        }
+            LinkedObjectIdentifier::Index(i) => {
+                let v = i32::try_from(i).map_err(|_e| {
+                    KmipError::Default("linked object index out of i32 range".into())
+                })?;
+                Self::Integer(v)
+            }
+        })
     }
 }
 
@@ -2002,10 +2008,9 @@ impl Display for UsageLimits {
 impl From<crate::kmip_0::kmip_types::UsageLimits> for UsageLimits {
     fn from(v: crate::kmip_0::kmip_types::UsageLimits) -> Self {
         // Map 1.x units (Byte=0x1, Object=0x2) to 2.x (Byte=0x1, Object=0x3)
-        let unit = match v.usage_limits_unit as i32 {
-            0x1 => UsageLimitsUnit::Byte,
-            0x2 => UsageLimitsUnit::Object,
-            _ => UsageLimitsUnit::Byte, // fallback, should not happen
+        let unit = match v.usage_limits_unit {
+            crate::kmip_0::kmip_types::UsageLimitsUnit::Byte => UsageLimitsUnit::Byte,
+            crate::kmip_0::kmip_types::UsageLimitsUnit::Object => UsageLimitsUnit::Object,
         };
         Self {
             usage_limits_unit: unit,

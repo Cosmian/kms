@@ -1721,11 +1721,23 @@ impl TryFrom<kmip_2_1::kmip_data_structures::ExtensionInformation> for Extension
     fn try_from(
         val: kmip_2_1::kmip_data_structures::ExtensionInformation,
     ) -> Result<Self, Self::Error> {
-        #[expect(clippy::as_conversions)]
+        let mapped_ext_type = val.extension_type.map(|it| match it {
+            kmip_2_1::kmip_types::ItemType::Structure => 0x0000_0001,
+            kmip_2_1::kmip_types::ItemType::Integer => 0x0000_0002,
+            kmip_2_1::kmip_types::ItemType::LongInteger => 0x0000_0003,
+            kmip_2_1::kmip_types::ItemType::BigInteger => 0x0000_0004,
+            kmip_2_1::kmip_types::ItemType::Enumeration => 0x0000_0005,
+            kmip_2_1::kmip_types::ItemType::Boolean => 0x0000_0006,
+            kmip_2_1::kmip_types::ItemType::TextString => 0x0000_0007,
+            kmip_2_1::kmip_types::ItemType::ByteString => 0x0000_0008,
+            kmip_2_1::kmip_types::ItemType::DateTime => 0x0000_0009,
+            kmip_2_1::kmip_types::ItemType::Interval => 0x0000_000A,
+            kmip_2_1::kmip_types::ItemType::DateTimeExtended => 0x0000_000B,
+        });
         Ok(Self {
             extension_name: val.extension_name,
             extension_tag: val.extension_tag,
-            extension_type: val.extension_type.map(|v| v as i32),
+            extension_type: mapped_ext_type,
         })
     }
 }

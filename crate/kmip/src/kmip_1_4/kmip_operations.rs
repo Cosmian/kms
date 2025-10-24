@@ -751,20 +751,21 @@ impl From<DeleteAttribute> for kmip_2_1::kmip_operations::DeleteAttribute {
 
         let name = v.attribute_name.trim();
         let cleaned = name.replace(' ', "");
-        let aref = if let Ok(tag) = Tag::from_str(&cleaned) {
-            AttributeReference::Standard(tag)
-        } else {
-            let (vendor_identification, attribute_name) = match name.split_once('-') {
-                Some((vendor, rest)) if !vendor.is_empty() && !rest.is_empty() => {
-                    (vendor.to_owned(), rest.to_owned())
-                }
-                _ => (String::new(), name.to_owned()),
-            };
-            AttributeReference::Vendor(VendorAttributeReference {
-                vendor_identification,
-                attribute_name,
-            })
-        };
+        let aref = Tag::from_str(&cleaned).map_or_else(
+            |_| {
+                let (vendor_identification, attribute_name) = match name.split_once('-') {
+                    Some((vendor, rest)) if !vendor.is_empty() && !rest.is_empty() => {
+                        (vendor.to_owned(), rest.to_owned())
+                    }
+                    _ => (String::new(), name.to_owned()),
+                };
+                AttributeReference::Vendor(VendorAttributeReference {
+                    vendor_identification,
+                    attribute_name,
+                })
+            },
+            AttributeReference::Standard,
+        );
         Self {
             unique_identifier: Some(UniqueIdentifier::TextString(v.unique_identifier)),
             current_attribute: None,

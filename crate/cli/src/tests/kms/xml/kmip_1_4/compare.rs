@@ -6,16 +6,15 @@ use crate::{
 };
 
 pub(crate) fn compare_payload_v14(
-    expected: kms_kmip::kmip_1_4::kmip_operations::Operation,
-    actual: kms_kmip::kmip_1_4::kmip_operations::Operation,
+    expected: &kms_kmip::kmip_1_4::kmip_operations::Operation,
+    actual: &kms_kmip::kmip_1_4::kmip_operations::Operation,
 ) -> KmsCliResult<()> {
     use std::mem::discriminant;
 
     use kms_kmip::kmip_1_4::kmip_operations::Operation as Op14;
-    if discriminant(&expected) != discriminant(&actual) {
+    if discriminant(expected) != discriminant(actual) {
         return Err(KmsCliError::Default(format!(
-            "Operation type mismatch expected={} actual={}",
-            expected, actual
+            "Operation type mismatch expected={expected} actual={actual}",
         )));
     }
 
@@ -171,14 +170,12 @@ pub(crate) fn compare_payload_v14(
                             .find(|(_, (l, r))| l != r);
                         if let Some((idx, (l, r))) = first_diff {
                             return Err(KmsCliError::Default(format!(
-                                "unique_identifier[{}] expected={} actual={}",
-                                idx, l, r
+                                "unique_identifier[{idx}] expected={l} actual={r}"
                             )));
-                        } else {
-                            return Err(KmsCliError::Default(
-                                "unique_identifier lists differ".to_string(),
-                            ));
                         }
+                        return Err(KmsCliError::Default(
+                            "unique_identifier lists differ".to_string(),
+                        ));
                     }
                     (None, Some(_)) => {
                         return Err(KmsCliError::Default(
@@ -218,36 +215,31 @@ pub(crate) fn compare_payload_v14(
                     exp.unique_identifier, act.unique_identifier
                 )));
             }
-            let el = exp.data.as_ref().map(|v| v.len()).unwrap_or(0);
-            let al = act.data.as_ref().map(|v| v.len()).unwrap_or(0);
+            let el = exp.data.as_ref().map_or(0, std::vec::Vec::len);
+            let al = act.data.as_ref().map_or(0, std::vec::Vec::len);
             if el != al {
                 return Err(KmsCliError::Default(format!(
-                    "data mismatch expected_len={} actual_len={}",
-                    el, al
+                    "data mismatch expected_len={el} actual_len={al}",
                 )));
             }
-            let el = exp.i_v_counter_nonce.as_ref().map(|v| v.len()).unwrap_or(0);
-            let al = act.i_v_counter_nonce.as_ref().map(|v| v.len()).unwrap_or(0);
+            let el = exp.i_v_counter_nonce.as_ref().map_or(0, std::vec::Vec::len);
+            let al = act.i_v_counter_nonce.as_ref().map_or(0, std::vec::Vec::len);
             if el != al {
                 return Err(KmsCliError::Default(format!(
-                    "iv_counter_nonce mismatch expected_len={} actual_len={}",
-                    el, al
+                    "iv_counter_nonce mismatch expected_len={el} actual_len={al}",
                 )));
             }
             let el = exp
                 .authenticated_encryption_tag
                 .as_ref()
-                .map(|v| v.len())
-                .unwrap_or(0);
+                .map_or(0, std::vec::Vec::len);
             let al = act
                 .authenticated_encryption_tag
                 .as_ref()
-                .map(|v| v.len())
-                .unwrap_or(0);
+                .map_or(0, std::vec::Vec::len);
             if el != al {
                 return Err(KmsCliError::Default(format!(
-                    "authenticated_encryption_tag mismatch expected_len={} actual_len={}",
-                    el, al
+                    "authenticated_encryption_tag mismatch expected_len={el} actual_len={al}",
                 )));
             }
         }
@@ -258,12 +250,11 @@ pub(crate) fn compare_payload_v14(
                     exp.unique_identifier, act.unique_identifier
                 )));
             }
-            let el = exp.data.as_ref().map(|v| v.len()).unwrap_or(0);
-            let al = act.data.as_ref().map(|v| v.len()).unwrap_or(0);
+            let el = exp.data.as_ref().map_or(0, std::vec::Vec::len);
+            let al = act.data.as_ref().map_or(0, std::vec::Vec::len);
             if el != al {
                 return Err(KmsCliError::Default(format!(
-                    "data mismatch expected_len={} actual_len={}",
-                    el, al
+                    "data mismatch expected_len={el} actual_len={al}",
                 )));
             }
         }
@@ -278,18 +269,16 @@ pub(crate) fn compare_payload_v14(
                 let el = exp.signature_data.len();
                 let al = act.signature_data.len();
                 return Err(KmsCliError::Default(format!(
-                    "signature_data mismatch expected_len={} actual_len={}",
-                    el, al
+                    "signature_data mismatch expected_len={el} actual_len={al}",
                 )));
             }
         }
         (Op14::MACResponse(exp), Op14::MACResponse(act)) => {
             if exp.mac_data != act.mac_data {
-                let el = exp.mac_data.as_ref().map(|v| v.len()).unwrap_or(0);
-                let al = act.mac_data.as_ref().map(|v| v.len()).unwrap_or(0);
+                let el = exp.mac_data.as_ref().map_or(0, std::vec::Vec::len);
+                let al = act.mac_data.as_ref().map_or(0, std::vec::Vec::len);
                 return Err(KmsCliError::Default(format!(
-                    "mac_data mismatch expected_len={} actual_len={}",
-                    el, al
+                    "mac_data mismatch expected_len={el} actual_len={al}",
                 )));
             }
         }
@@ -331,7 +320,6 @@ pub(crate) fn compare_payload_v14(
             // Convert KMIP 1.4 Attribute list to KMIP 2.1 Attributes and compare
             let exp_attrs_21: kms_kmip::kmip_2_1::kmip_attributes::Attributes = exp
                 .attribute
-                .clone()
                 .unwrap_or_default()
                 .into_iter()
                 .map(Into::into)
@@ -339,7 +327,6 @@ pub(crate) fn compare_payload_v14(
                 .into();
             let act_attrs_21: kms_kmip::kmip_2_1::kmip_attributes::Attributes = act
                 .attribute
-                .clone()
                 .unwrap_or_default()
                 .into_iter()
                 .map(Into::into)
@@ -378,8 +365,7 @@ pub(crate) fn compare_payload_v14(
         _ => {
             if expected != actual {
                 return Err(KmsCliError::Default(format!(
-                    "Payload mismatch for {}: expected={} actual={}",
-                    expected, expected, actual
+                    "Payload mismatch for expected={expected} actual={actual}",
                 )));
             }
         }

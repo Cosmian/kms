@@ -270,7 +270,7 @@ async fn test_encrypt_decrypt_using_tags() -> KmsCliResult<()> {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_else(|_| std::time::Duration::from_secs(0))
         .as_nanos();
-    let base_tag = format!("tag_cc_{}", ts);
+    let base_tag = format!("tag_cc_{ts}");
 
     fs::remove_file(&output_file).ok();
     assert!(!output_file.exists());
@@ -411,7 +411,7 @@ async fn test_encrypt_decrypt_bulk_using_tags() -> KmsCliResult<()> {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_else(|_| std::time::Duration::from_secs(0))
         .as_nanos();
-    let base_tag = format!("tag_bulk_{}", ts);
+    let base_tag = format!("tag_bulk_{ts}");
 
     fs::remove_file(&output_file1).ok();
     assert!(!output_file1.exists());

@@ -99,21 +99,13 @@ pub(crate) async fn signature_verify(
     // ProtectStopDate has passed.
     if let Ok(attrs) = uid_owm.object().attributes() {
         let now = time::OffsetDateTime::now_utc();
-        let activation_ok = match attrs.activation_date {
-            Some(ad) => ad <= now,
-            None => true,
-        };
-        let process_window_ok = match attrs.process_start_date {
-            Some(psd) => psd <= now,
-            None => true,
-        } && match attrs.protect_stop_date {
-            Some(psd) => psd > now,
-            None => true,
-        };
+        let activation_ok = attrs.activation_date.is_none_or(|ad| ad <= now);
+        let process_window_ok = attrs.process_start_date.is_none_or(|psd| psd <= now)
+            && attrs.protect_stop_date.is_none_or(|psd| psd > now);
         if !(activation_ok && process_window_ok) {
             return Err(KmsError::Kmip21Error(
                 ErrorReason::Wrong_Key_Lifecycle_State,
-                "DENIED".to_string(),
+                "DENIED".to_owned(),
             ));
         }
     }
@@ -500,6 +492,7 @@ fn handle_streaming_verification(
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use hex::FromHex;
 

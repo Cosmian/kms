@@ -105,14 +105,14 @@ pub(crate) async fn export_get(
     // export based on the Object type
     match object_type {
         ObjectType::PrivateKey => {
-            post_process_private_key(
+            Box::pin(post_process_private_key(
                 kms,
                 operation_type,
                 user,
                 params.clone(),
                 &request,
                 &mut owm,
-            )
+            ))
             .await?;
             // KMIP Fresh semantics: once the private key material has been returned unwrapped,
             // Fresh should flip to false. Persist this so a subsequent GetAttributes shows false
@@ -287,7 +287,7 @@ pub(crate) async fn export_get(
                         params.clone(),
                     )
                     .await?;
-                    post_process_private_key(
+                    Box::pin(post_process_private_key(
                         kms,
                         operation_type,
                         user,
@@ -302,7 +302,7 @@ pub(crate) async fn export_get(
                             key_wrapping_specification: request.key_wrapping_specification.clone(),
                         },
                         &mut owm,
-                    )
+                    ))
                     .await?;
                 } else if *key_format_type == KeyFormatType::PKCS7 {
                     owm = Box::pin(post_process_pkcs7(kms, operation_type, user, params, owm))
@@ -434,7 +434,7 @@ async fn post_process_private_key(
         });
         key_block.key_format_type = KeyFormatType::Opaque;
     } else {
-        post_process_active_private_key(
+        Box::pin(post_process_active_private_key(
             owm,
             &request.key_format_type,
             &request.key_wrap_type,
@@ -448,12 +448,20 @@ async fn post_process_private_key(
             kms,
             user,
             params.clone(),
-        )
+        ))
         .await?;
     }
     // in the case of a PKCS#12, the private key must be packaged with the certificate
     if is_pkcs12 {
-        build_pkcs12_for_private_key(kms, operation_type, user, params, request, owm).await?;
+        Box::pin(build_pkcs12_for_private_key(
+            kms,
+            operation_type,
+            user,
+            params,
+            request,
+            owm,
+        ))
+        .await?;
     }
     Ok(())
 }
@@ -544,9 +552,10 @@ async fn post_process_active_private_key(
     if is_transparent_dsa && requesting_same_transparent {
         // Still honor wrapping if specified
         if let Some(kws) = key_wrapping_specification {
-            if key_format_type.is_some()
-                && key_format_type.unwrap() != KeyFormatType::TransparentDSAPrivateKey
-            {
+            if !matches!(
+                key_format_type,
+                None | Some(KeyFormatType::TransparentDSAPrivateKey)
+            ) {
                 kms_bail!("export: incompatible key format request for TransparentDSAPrivateKey")
             }
             // Wrap the existing object in-place
@@ -974,7 +983,7 @@ async fn process_symmetric_key(
     .await?;
 
     // Capture id early to avoid borrow checker conflicts in trace statements
-    let obj_id = object_with_metadata.id().to_string();
+    let obj_id = object_with_metadata.id().to_owned();
     let object = object_with_metadata.object_mut();
     let key_block = object.key_block_mut()?;
     trace!(target: "kmip", "[diag-process_symmetric_key] key_block initial format={:?} wrapped={} uid={}", key_block.key_format_type, key_block.key_wrapping_data.is_some(), obj_id);

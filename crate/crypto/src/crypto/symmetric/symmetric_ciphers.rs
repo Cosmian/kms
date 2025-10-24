@@ -536,8 +536,8 @@ pub fn encrypt(
                     nonce.len()
                 )));
             }
-            let mut out = vec![0u8; plaintext.len()];
-            chacha20_xor(key, nonce, 0, plaintext, &mut out);
+            let mut out = vec![0_u8; plaintext.len()];
+            chacha20_xor(key, nonce, 0, plaintext, &mut out)?;
             Ok((out, vec![]))
         }
         _ => {
@@ -674,8 +674,8 @@ pub fn decrypt(
                     nonce.len()
                 )));
             }
-            let mut out = vec![0u8; ciphertext.len()];
-            chacha20_xor(key, nonce, 0, ciphertext, &mut out);
+            let mut out = vec![0_u8; ciphertext.len()];
+            chacha20_xor(key, nonce, 0, ciphertext, &mut out)?;
             Zeroizing::from(out)
         }
         _ => {
@@ -716,7 +716,13 @@ pub struct StreamCipher {
 // - For simplicity we keep a 64-bit block counter but expose only the lower 32-bit starting value (counter_low).
 // - This function XORs the keystream with input into output; input and output may alias.
 #[cfg(feature = "non-fips")]
-fn chacha20_xor(key: &[u8], nonce: &[u8], counter_low: u32, input: &[u8], output: &mut [u8]) {
+fn chacha20_xor(
+    key: &[u8],
+    nonce: &[u8],
+    counter_low: u32,
+    input: &[u8],
+    output: &mut [u8],
+) -> Result<(), CryptoError> {
     // Switch to OpenSSL-backed ChaCha20. OpenSSL expects a 16-byte IV for ChaCha20:
     // 4-byte little-endian counter followed by a 12-byte nonce (IETF layout).
     // Our API (KMIP vectors) provides an 8-byte nonce; we map it to the 12-byte nonce
@@ -726,34 +732,42 @@ fn chacha20_xor(key: &[u8], nonce: &[u8], counter_low: u32, input: &[u8], output
     debug_assert_eq!(nonce.len(), CHACHA20_IV_LENGTH);
     debug_assert_eq!(input.len(), output.len());
 
-    let mut iv = [0u8; 16];
+    let mut iv = [0_u8; 16];
     // 4-byte counter (little-endian)
     iv[0..4].copy_from_slice(&counter_low.to_le_bytes());
     // Next 4 bytes zero-padded to expand 8-byte nonce to 12 bytes
-    iv[4..8].copy_from_slice(&[0u8; 4]);
+    iv[4..8].copy_from_slice(&[0_u8; 4]);
     // Last 8 bytes are the provided 64-bit nonce
     iv[8..16].copy_from_slice(nonce);
 
-    let result = openssl_encrypt(Cipher::chacha20(), key, Some(&iv), input)
-        .expect("OpenSSL ChaCha20 encryption failed");
+    let result = openssl_encrypt(Cipher::chacha20(), key, Some(&iv), input)?;
     output.copy_from_slice(&result);
+    Ok(())
 }
 
 #[cfg(all(test, feature = "non-fips"))]
 mod chacha_tests {
     use super::{CHACHA20_IV_LENGTH, CHACHA20_KEY_LENGTH, chacha20_xor};
+    use crate::CryptoError;
     // Test vector adapted: 32-byte zero key, 8-byte zero nonce, zero plaintext -> keystream first 64 bytes per original variant.
     #[test]
-    fn chacha20_zero_key_nonce_block0() {
-        let key = [0u8; CHACHA20_KEY_LENGTH];
-        let nonce = [0u8; CHACHA20_IV_LENGTH];
-        let inp = [0u8; 64];
-        let mut out = [0u8; 64];
-        chacha20_xor(&key, &nonce, 0, &inp, &mut out); // XOR with zeros -> keystream directly
+    fn chacha20_zero_key_nonce_block0() -> Result<(), CryptoError> {
+        let key = [0_u8; CHACHA20_KEY_LENGTH];
+        let nonce = [0_u8; CHACHA20_IV_LENGTH];
+        let inp = [0_u8; 64];
+        let mut out = [0_u8; 64];
+        chacha20_xor(&key, &nonce, 0, &inp, &mut out)?; // XOR with zeros -> keystream directly
         // Expected first 16 bytes (original variant) differ from IETF 96-bit nonce vector; we assert internal consistency (non-zero mix) and length.
-        assert_eq!(out.len(), 64);
+        if out.len() != 64 {
+            return Err(CryptoError::Default("unexpected output length".to_owned()));
+        }
         // Basic diffusion sanity checks
-        assert!(out.iter().any(|&b| b != 0));
+        if !out.iter().any(|&b| b != 0) {
+            return Err(CryptoError::Default(
+                "unexpected all-zero ChaCha20 keystream".to_owned(),
+            ));
+        }
+        Ok(())
     }
 }
 

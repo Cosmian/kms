@@ -6,7 +6,7 @@ use crate::ttlv::xml::KmipXmlDoc;
 fn test_parse_all_kmip_1_4_mandatory_vectors() {
     let base = PathBuf::from("./src/kmip_1_4/specifications/XML/mandatory");
     assert!(base.is_dir(), "mandatory directory missing: {base:?}");
-    let mut parsed = 0usize;
+    let mut parsed = 0_usize;
     for entry in fs::read_dir(&base).expect("list mandatory dir") {
         let entry = entry.expect("dir entry");
         let path = entry.path();

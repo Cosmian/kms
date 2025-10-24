@@ -204,7 +204,7 @@ pub(crate) async fn recursively_destroy_object(
             );
             return Err(KmsError::Kmip21Error(
                 ErrorReason::Wrong_Key_Lifecycle_State,
-                "DENIED".to_string(),
+                "DENIED".to_owned(),
             ));
         }
 
@@ -287,20 +287,19 @@ pub(crate) async fn recursively_destroy_object(
                             .retrieve_object(&private_key_id, params.clone())
                             .await
                         {
-                            if private_owm.object().key_block().is_ok()
-                                && private_owm.object().key_block().unwrap().key_format_type
-                                    == KeyFormatType::CoverCryptSecretKey
-                            {
-                                destroy_user_decryption_keys(
-                                    &private_key_id,
-                                    remove,
-                                    true, // always cascade when destroying a `Covercrypt` master private key
-                                    kms,
-                                    user,
-                                    params.clone(),
-                                    ids_to_skip.clone(),
-                                )
-                                .await?;
+                            if let Ok(kb) = private_owm.object().key_block() {
+                                if kb.key_format_type == KeyFormatType::CoverCryptSecretKey {
+                                    destroy_user_decryption_keys(
+                                        &private_key_id,
+                                        remove,
+                                        true, // always cascade when destroying a `Covercrypt` master private key
+                                        kms,
+                                        user,
+                                        params.clone(),
+                                        ids_to_skip.clone(),
+                                    )
+                                    .await?;
+                                }
                             }
                         }
                         // Try to destroy the linked private key, but don't fail if it's not allowed

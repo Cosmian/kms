@@ -156,7 +156,11 @@ impl KMS {
                                     )));
                                 }
                                 let blocks = effective_bits / 56; // 56 effective bits per DES key (7 bits * 8 bytes with parity)
-                                usize::try_from(blocks * 8).expect("blocks computation overflow") // bytes including parity bits
+                                usize::try_from(blocks * 8).map_err(|e| {
+                                    KmsError::InvalidRequest(format!(
+                                        "blocks computation overflow: {e}"
+                                    ))
+                                })? // bytes including parity bits
                             }
                             _ => attributes
                                 .cryptographic_length
@@ -215,39 +219,45 @@ impl KMS {
 
         match cryptographic_algorithm {
             CryptographicAlgorithm::DSA => {
-                use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
-                    kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-                    kmip_objects::Object,
-                    kmip_types::{
-                        CryptographicAlgorithm as KmipAlg, KeyFormatType, UniqueIdentifier,
+                use cosmian_kms_server_database::reexport::cosmian_kmip::{
+                    SafeBigInt,
+                    kmip_2_1::{
+                        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+                        kmip_objects::Object,
+                        kmip_types::{
+                            CryptographicAlgorithm as KmipAlg, KeyFormatType, UniqueIdentifier,
+                        },
                     },
                 };
+                use num_bigint_dig::BigInt;
                 use openssl::dsa::Dsa;
                 let requested_bits = attributes.cryptographic_length.unwrap_or(3072);
                 // Build allowed sizes list from env or fallback
                 let allowed: Vec<i32> = vec![2048, 3072];
                 if !allowed.contains(&requested_bits) {
                     return Err(KmsError::NotSupported(format!(
-                        "unsupported DSA cryptographic_length {requested_bits}; allowed: {:?}",
-                        allowed
+                        "unsupported DSA cryptographic_length {requested_bits}; allowed: {allowed:?}"
                     )));
                 }
                 // OpenSSL expects bit length as i32
-                let dsa = Dsa::generate(requested_bits as u32).map_err(|e| {
+                let dsa_bits = u32::try_from(requested_bits).map_err(|e| {
                     KmsError::NotSupported(format!(
-                        "Failed to generate DSA parameters ({} bits): {e}",
-                        requested_bits
+                        "Requested DSA bit length out of range: {requested_bits}: {e}"
+                    ))
+                })?;
+                let dsa = Dsa::generate(dsa_bits).map_err(|e| {
+                    KmsError::NotSupported(format!(
+                        "Failed to generate DSA parameters ({requested_bits} bits): {e}"
                     ))
                 })?;
 
-                use cosmian_kms_server_database::reexport::cosmian_kmip::SafeBigInt;
-                use num_bigint_dig::BigInt;
                 // Helper closure converting BigNumRef to BigInt (big endian bytes)
                 let to_bigint = |bn: &openssl::bn::BigNumRef| -> BigInt {
                     BigInt::from_bytes_be(num_bigint_dig::Sign::Plus, &bn.to_vec())
                 };
                 let p_vec = dsa.p().to_vec();
-                let bit_len = (p_vec.len() * 8) as i32;
+                let bit_len = i32::try_from(p_vec.len() * 8)
+                    .map_err(|e| KmsError::NotSupported(format!("bit length overflow: {e}")))?;
                 let p = Box::new(to_bigint(dsa.p()));
                 let q = Box::new(to_bigint(dsa.q()));
                 let g = Box::new(to_bigint(dsa.g()));
@@ -345,14 +355,6 @@ impl KMS {
                 Ok((uid, object, tags))
             }
             CryptographicAlgorithm::DSA => {
-                use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
-                    kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-                    kmip_objects::Object,
-                    kmip_types::{
-                        CryptographicAlgorithm as KmipAlg, KeyFormatType, UniqueIdentifier,
-                    },
-                };
-                use openssl::dsa::Dsa;
                 let requested_bits = attributes.cryptographic_length.unwrap_or(3072);
                 let allowed: Vec<i32> = vec![2048, 3072];
                 if !allowed.contains(&requested_bits) {
@@ -360,54 +362,66 @@ impl KMS {
                         "unsupported DSA cryptographic_length {requested_bits}; allowed: {allowed:?}"
                     )));
                 }
-                let dsa = Dsa::generate(requested_bits as u32).map_err(|e| {
+                let dsa_bits = u32::try_from(requested_bits).map_err(|e| {
+                    KmsError::NotSupported(format!(
+                        "Requested DSA bit length out of range: {requested_bits}; error: {e}"
+                    ))
+                })?;
+                let dsa = openssl::dsa::Dsa::generate(dsa_bits).map_err(|e| {
                     KmsError::NotSupported(format!(
                         "Failed to generate DSA parameters ({requested_bits} bits): {e}"
                     ))
                 })?;
 
-                use cosmian_kms_server_database::reexport::cosmian_kmip::SafeBigInt;
-                use num_bigint_dig::BigInt;
-                let to_bigint = |bn: &openssl::bn::BigNumRef| -> BigInt {
-                    BigInt::from_bytes_be(num_bigint_dig::Sign::Plus, &bn.to_vec())
+                let to_bigint = |bn: &openssl::bn::BigNumRef| -> num_bigint_dig::BigInt {
+                    num_bigint_dig::BigInt::from_bytes_be(num_bigint_dig::Sign::Plus, &bn.to_vec())
                 };
                 let p_vec = dsa.p().to_vec();
-                let bit_len = (p_vec.len() * 8) as i32;
+                let bit_len = i32::try_from(p_vec.len() * 8)
+                    .map_err(|e| KmsError::NotSupported(format!("bit length overflow: {e}")))?
+                    .to_owned();
                 let p = Box::new(to_bigint(dsa.p()));
                 let q = Box::new(to_bigint(dsa.q()));
                 let g = Box::new(to_bigint(dsa.g()));
-                let x = Box::new(SafeBigInt::from(to_bigint(dsa.priv_key())));
+                let x = Box::new(
+                    cosmian_kms_server_database::reexport::cosmian_kmip::SafeBigInt::from(
+                        to_bigint(dsa.priv_key()),
+                    ),
+                );
                 if bit_len != requested_bits {
                     return Err(KmsError::InvalidRequest(format!(
                         "requested cryptographic_length {requested_bits} does not match generated length {bit_len}"
                     )));
                 }
 
-                let key_material = KeyMaterial::TransparentDSAPrivateKey { p, q, g, x };
+                let key_material = cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_data_structures::KeyMaterial::TransparentDSAPrivateKey { p, q, g, x };
                 let mut attributes = create_request.attributes.clone();
                 attributes.cryptographic_algorithm = Some(CryptographicAlgorithm::DSA);
                 attributes.cryptographic_length = Some(requested_bits);
-                attributes.key_format_type = Some(KeyFormatType::TransparentDSAPrivateKey);
+                attributes.key_format_type = Some(
+                    cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::KeyFormatType::TransparentDSAPrivateKey,
+                );
                 let mut tags = attributes.get_tags();
                 tags.insert("_dsa".to_owned());
                 attributes.set_tags(tags.clone())?;
                 if attributes.unique_identifier.is_none() {
-                    attributes.unique_identifier = Some(UniqueIdentifier::TextString(
+                    attributes.unique_identifier = Some(
+                        cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier::TextString(
                         uuid::Uuid::new_v4().to_string(),
                     ));
                 }
-                let key_block = KeyBlock {
-                    key_format_type: KeyFormatType::TransparentDSAPrivateKey,
+                let key_block = cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_data_structures::KeyBlock {
+                    key_format_type: cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::KeyFormatType::TransparentDSAPrivateKey,
                     key_compression_type: None,
-                    key_value: Some(KeyValue::Structure {
+                    key_value: Some(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_data_structures::KeyValue::Structure {
                         key_material,
                         attributes: Some(attributes.clone()),
                     }),
-                    cryptographic_algorithm: Some(KmipAlg::DSA),
+                    cryptographic_algorithm: Some(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm::DSA),
                     cryptographic_length: attributes.cryptographic_length,
                     key_wrapping_data: None,
                 };
-                let object = Object::PrivateKey(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_objects::PrivateKey { key_block });
+                let object = cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_objects::Object::PrivateKey(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_objects::PrivateKey { key_block });
                 let attributes_view = object.attributes()?;
                 let tags = attributes_view.get_tags();
                 let uid = attributes_view

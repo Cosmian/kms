@@ -107,7 +107,7 @@ impl TTLVXMLDeserializer {
             match reader.read_event_into(&mut buf) {
                 Ok(Event::Eof) => break,
                 Ok(Event::Start(e)) => {
-                    let mut tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                    let mut tag = String::from_utf8_lossy(e.name().as_ref()).into_owned();
                     // Preserve original RNGAlgorithm tag spelling (spec uses RNGAlgorithm). Older
                     // logic rewrote to RngAlgorithm which conflicted with explicit serde rename.
                     if tag.starts_with("PKCS_11") {
@@ -116,7 +116,7 @@ impl TTLVXMLDeserializer {
                     let mut node_type = None;
                     for a in e.attributes().flatten() {
                         if a.key.as_ref() == b"type" {
-                            node_type = Some(String::from_utf8_lossy(&a.value).to_string());
+                            node_type = Some(String::from_utf8_lossy(&a.value).into_owned());
                         }
                     }
                     let ttlv = TTLV {
@@ -139,7 +139,7 @@ impl TTLVXMLDeserializer {
                     });
                 }
                 Ok(Event::Empty(e)) => {
-                    let mut tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                    let mut tag = String::from_utf8_lossy(e.name().as_ref()).into_owned();
                     // Keep RNGAlgorithm as-is.
                     if tag.starts_with("PKCS_11") {
                         tag = tag.replace("PKCS_11", "PKCS11");
@@ -149,7 +149,7 @@ impl TTLVXMLDeserializer {
                     let mut name: Option<String> = None;
                     for a in e.attributes().flatten() {
                         let k = a.key.as_ref();
-                        let v = String::from_utf8_lossy(&a.value).to_string();
+                        let v = String::from_utf8_lossy(&a.value).into_owned();
                         match k {
                             b"type" => ty = Some(v),
                             b"value" => value = Some(v),
@@ -208,9 +208,15 @@ impl TTLVXMLDeserializer {
                         return Ok(root);
                     }
                 }
-                Ok(Event::Text(_)) => {}
+                Ok(
+                    Event::Text(_)
+                    | Event::CData(_)
+                    | Event::Comment(_)
+                    | Event::Decl(_)
+                    | Event::PI(_)
+                    | Event::DocType(_),
+                ) => {}
                 Err(e) => return Err(KmipError::Default(format!("XML parse error: {e}"))),
-                _ => {}
             }
             buf.clear();
         }
@@ -242,46 +248,30 @@ impl TTLVXMLDeserializer {
                         }
                         let bit = match token {
                             // KMIP CryptographicUsageMask bit values (kmip_0::kmip_types::CryptographicUsageMask)
-                            // Sign=0x0000_0001, Verify=0x0000_0002, Encrypt=0x0000_0004, Decrypt=0x0000_0008,
-                            // WrapKey=0x0000_0010, UnwrapKey=0x0000_0020, MACGenerate=0x0000_0080, MACVerify=0x0000_0100,
-                            // DeriveKey=0x0000_0200, KeyAgreement=0x0000_0800, CertificateSign=0x0000_1000,
-                            // CRLSign=0x0000_2000, Authenticate=0x0010_0000, Unrestricted=0x0020_0000
-                            "Sign" => Some(0x0000_0001),
-                            "Verify" => Some(0x0000_0002),
-                            "Encrypt" => Some(0x0000_0004),
-                            "Decrypt" => Some(0x0000_0008),
-                            "WrapKey" => Some(0x0000_0010),
-                            "UnwrapKey" => Some(0x0000_0020),
-                            "MACGenerate" => Some(0x0000_0080),
-                            "MACVerify" => Some(0x0000_0100),
-                            "DeriveKey" => Some(0x0000_0200),
-                            "KeyAgreement" => Some(0x0000_0800),
-                            "CertificateSign" => Some(0x0000_1000),
-                            "CRLSign" => Some(0x0000_2000),
+                            // and ProtectionStorageMasks combined when provided as tokens
+                            "Sign" | "Software" => Some(0x0000_0001),
+                            "Verify" | "Hardware" => Some(0x0000_0002),
+                            "Encrypt" | "OnProcessor" => Some(0x0000_0004),
+                            "Decrypt" | "OnSystem" => Some(0x0000_0008),
+                            "WrapKey" | "OffSystem" => Some(0x0000_0010),
+                            "UnwrapKey" | "Hypervisor" => Some(0x0000_0020),
+                            "OperatingSystem" => Some(0x0000_0040),
+                            "MACGenerate" | "Container" => Some(0x0000_0080),
+                            "MACVerify" | "OnPremises" => Some(0x0000_0100),
+                            "DeriveKey" | "OffPremises" => Some(0x0000_0200),
+                            "KeyAgreement" | "Outsourced" => Some(0x0000_0800),
+                            "CertificateSign" | "Validated" => Some(0x0000_1000),
+                            "CRLSign" | "SameJurisdiction" => Some(0x0000_2000),
                             "Authenticate" => Some(0x0010_0000),
                             "Unrestricted" => Some(0x0020_0000),
-                            // ProtectionStorageMasks (treated similarly when provided as tokens)
-                            "Software" => Some(0x0000_0001),
-                            "Hardware" => Some(0x0000_0002),
-                            "OnProcessor" => Some(0x0000_0004),
-                            "OnSystem" => Some(0x0000_0008),
-                            "OffSystem" => Some(0x0000_0010),
-                            "Hypervisor" => Some(0x0000_0020),
-                            "OperatingSystem" => Some(0x0000_0040),
-                            "Container" => Some(0x0000_0080),
-                            "OnPremises" => Some(0x0000_0100),
-                            "OffPremises" => Some(0x0000_0200),
                             "SelfManaged" => Some(0x0000_0400),
-                            "Outsourced" => Some(0x0000_0800),
-                            "Validated" => Some(0x0000_1000),
-                            "SameJurisdiction" => Some(0x0000_2000),
                             _ => None,
                         };
                         if let Some(b) = bit {
                             acc |= b;
                             any = true;
                         } else {
-                            unknown_tokens.push(token.to_string());
+                            unknown_tokens.push(token.to_owned());
                         }
                     }
                     if !unknown_tokens.is_empty() {
@@ -322,7 +312,7 @@ impl TTLVXMLDeserializer {
                     let even_hex = if stripped.len() % 2 == 1 {
                         format!("0{stripped}")
                     } else {
-                        stripped.to_string()
+                        stripped.to_owned()
                     };
                     hex::decode(&even_hex)
                         .map_err(|e| KmipError::Default(format!("bigint hex decode: {e}")))?
@@ -330,9 +320,9 @@ impl TTLVXMLDeserializer {
                     // Treat as hex (letters force hex interpretation)
                     let s = raw.trim_start_matches('0');
                     let hex_body = if s.is_empty() {
-                        "00".to_string()
+                        "00".to_owned()
                     } else {
-                        s.to_string()
+                        s.to_owned()
                     };
                     let even_hex = if hex_body.len() % 2 == 1 {
                         format!("0{hex_body}")
@@ -346,15 +336,14 @@ impl TTLVXMLDeserializer {
                     let bi = raw
                         .parse::<num_bigint_dig::BigInt>()
                         .map_err(|e| KmipError::Default(format!("bigint decimal parse: {e}")))?;
-                    use num_bigint_dig::Sign;
                     let (sign, mut mag) = bi.to_bytes_be();
-                    if sign == Sign::Minus {
-                        if mag.is_empty() {
-                            mag.push(0);
-                        }
+                    if mag.is_empty() {
+                        mag.push(0_u8);
+                    }
+                    if sign == num_bigint_dig::Sign::Minus {
                         let mut bytes = mag;
                         if !bytes.len().is_multiple_of(8) {
-                            bytes.splice(0..0, vec![0u8; 8 - (bytes.len() % 8)]);
+                            bytes.splice(0..0, vec![0_u8; 8 - (bytes.len() % 8)]);
                         }
                         for b in &mut bytes {
                             *b = !*b;
@@ -368,11 +357,8 @@ impl TTLVXMLDeserializer {
                         }
                         bytes
                     } else {
-                        if mag.is_empty() {
-                            mag.push(0);
-                        }
                         if !mag.len().is_multiple_of(8) {
-                            mag.splice(0..0, vec![0u8; 8 - (mag.len() % 8)]);
+                            mag.splice(0..0, vec![0_u8; 8 - (mag.len() % 8)]);
                         }
                         mag
                     }
@@ -388,7 +374,7 @@ impl TTLVXMLDeserializer {
                 let raw = value.ok_or_else(|| KmipError::Default("missing value".into()))?;
                 // Try numeric first; otherwise attempt known textual KMIP enumeration name mapping.
                 // Returns (code, canonical_variant_name)
-                fn lookup_enum_code(s: &str) -> Option<(u32, &'static str)> {
+                let lookup_enum_code = |s: &str| -> Option<(u32, &'static str)> {
                     // Normalized variants (strip optional hyphens in some aliases for matching)
                     let key = s.replace('-', "_");
                     match key.as_str() {
@@ -570,7 +556,9 @@ impl TTLVXMLDeserializer {
                         "SHA384" | "SHA_384" => Some((0x0000_0007, "SHA384")),
                         "SHA512" | "SHA_512" => Some((0x0000_0008, "SHA512")),
                         // RevocationReasonCode (spec 1.0 Table 167) - only mapping needed by vectors currently
-                        "Unspecified" => Some((0x0000_0001, "Unspecified")),
+                        "Unspecified" | "UNSPECIFIED_RNG" | "RNG_Unspecified" => {
+                            Some((0x0000_0001, "Unspecified"))
+                        }
                         "KeyCompromise" => Some((0x0000_0002, "KeyCompromise")),
                         "CACompromise" => Some((0x0000_0003, "CACompromise")),
                         // ErrorReason (ResultReason) mappings (KMIP 1.x/2.x) - textual camelCase used in vectors
@@ -717,7 +705,6 @@ impl TTLVXMLDeserializer {
                         "PSS" => Some((0x0000_000A, "PSS")),
                         // RNGAlgorithm (vectors alias ANSIX9_31 for ANSI_X931)
                         "ANSI_X931" | "ANSIX9_31" | "ANSI_X9_31" => Some((0x5, "ANSI_X931")),
-                        "UNSPECIFIED_RNG" | "RNG_Unspecified" => Some((0x1, "Unspecified")),
                         "FIPS186_2" | "FIPS_186_2" => Some((0x2, "FIPS186_2")),
                         "DRBG" => Some((0x3, "DRBG")),
                         "NRBG" => Some((0x4, "NRBG")),
@@ -771,9 +758,9 @@ impl TTLVXMLDeserializer {
                         "WrappingKeyLink" => Some((0x0000_010E, "WrappingKeyLink")),
                         _ => None,
                     }
-                }
+                };
                 // Provide correct Tag codes for AttributeReference names used in vectors
-                fn lookup_attribute_reference_tag(s: &str) -> Option<u32> {
+                let lookup_attribute_reference_tag = |s: &str| -> Option<u32> {
                     match s {
                         // Accurate Tag codes from kmip_2_1::kmip_types::Tag
                         "ActivationDate" => Some(0x42_0001),
@@ -835,16 +822,16 @@ impl TTLVXMLDeserializer {
                         "RngAlgorithm" | "RNGAlgorithm" => Some(0x42_00DA),
                         _ => None,
                     }
-                }
+                };
                 // Support decimal or 0x prefixed hexadecimal numeric enumeration literals.
                 let (v, final_name) = if let Some(stripped) = raw.strip_prefix("0x") {
                     match u32::from_str_radix(stripped, 16) {
-                        Ok(num) => (num, name.unwrap_or("").to_string()),
+                        Ok(num) => (num, name.unwrap_or("").to_owned()),
                         Err(_) => {
                             if let Some((code, canonical)) = lookup_enum_code(raw) {
-                                (code, canonical.to_string())
+                                (code, canonical.to_owned())
                             } else if let Some(code) = lookup_attribute_reference_tag(raw) {
-                                (code, name.unwrap_or(raw).to_string())
+                                (code, name.unwrap_or(raw).to_owned())
                             } else {
                                 return Err(KmipError::Default(format!(
                                     "unknown Enumeration value '{raw}'"
@@ -854,12 +841,12 @@ impl TTLVXMLDeserializer {
                     }
                 } else {
                     match raw.parse::<u32>() {
-                        Ok(num) => (num, name.unwrap_or("").to_string()),
+                        Ok(num) => (num, name.unwrap_or("").to_owned()),
                         Err(_) => {
                             if let Some((code, canonical)) = lookup_enum_code(raw) {
-                                (code, canonical.to_string())
+                                (code, canonical.to_owned())
                             } else if let Some(code) = lookup_attribute_reference_tag(raw) {
-                                (code, name.unwrap_or(raw).to_string())
+                                (code, name.unwrap_or(raw).to_owned())
                             } else {
                                 return Err(KmipError::Default(format!(
                                     "unknown Enumeration value '{raw}'"
@@ -880,7 +867,7 @@ impl TTLVXMLDeserializer {
                     other => return Err(KmipError::Default(format!("invalid boolean: {other}"))),
                 },
             ),
-            "TextString" => TextString(value.unwrap_or("").to_string()),
+            "TextString" => TextString(value.unwrap_or("").to_owned()),
             "ByteString" => ByteString(
                 value
                     .map(|v| hex::decode(v).unwrap_or_default())
