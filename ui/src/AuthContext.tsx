@@ -17,7 +17,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [idToken, setIdToken] = useState<string | null>(null);
     const [userId, setUserId] = useState<string | null>(null);
-    const [serverUrl, setServerUrl] = useState<string>("");
+    const [serverUrl, setServerUrl] = useState<string>("http://192.168.3.5:9998");
 
     const login = async () => {
         try {

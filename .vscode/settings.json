@@ -92,5 +92,7 @@
       "name": "test"
     }
   ],
-  "sqltools.useNodeRuntime": true
+  "sqltools.useNodeRuntime": true,
+  "rust-analyzer.cargo.features": "all",
+  "rust-analyzer.check.features": "all",
 }
