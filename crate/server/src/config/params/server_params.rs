@@ -6,8 +6,8 @@ use cosmian_logger::{debug, warn};
 use super::TlsParams;
 use crate::{
     config::{
-        ClapConfig, DEFAULT_COSMIAN_UI_DIST_PATH, GoogleCseConfig, IdpConfig, OidcConfig,
-        params::proxy_params::ProxyParams,
+        params::proxy_params::ProxyParams, ClapConfig, GoogleCseConfig, IdpConfig, OidcConfig,
+        DEFAULT_COSMIAN_UI_DIST_PATH,
     },
     error::KmsError,
     result::{KResult, KResultHelper},
@@ -156,7 +156,11 @@ impl ServerParams {
             .iter()
             .zip(&conf.hsm.hsm_password)
             .map(|(s, p)| {
-                let password = if p.is_empty() { None } else { Some(p.clone()) };
+                let password = if p == "<NO_LOGIN>" {
+                    None
+                } else {
+                    Some(p.clone())
+                };
                 (*s, password)
             })
             .collect();
