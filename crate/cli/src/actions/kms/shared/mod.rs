@@ -2,6 +2,7 @@ pub(crate) mod export_key;
 mod get_key_uid;
 pub(crate) mod import_key;
 mod locate;
+pub(crate) mod sign;
 pub mod utils;
 
 mod wrap_key;
@@ -12,6 +13,8 @@ pub use export_key::ExportSecretDataOrKeyAction;
 pub(crate) use get_key_uid::get_key_uid;
 pub use import_key::ImportSecretDataOrKeyAction;
 pub use locate::LocateObjectsAction;
+pub use sign::CDigitalSignatureAlgorithmEC;
+pub use sign::CDigitalSignatureAlgorithmRSA;
 pub use unwrap_key::UnwrapSecretDataOrKeyAction;
 pub use wrap_key::WrapSecretDataOrKeyAction;
 

@@ -145,6 +145,18 @@ impl KmsClient {
         self.post_ttlv_2_1::<Create, CreateResponse>(&request).await
     }
 
+    pub async fn sign(&self, request: Sign) -> Result<SignResponse, KmsClientError> {
+        self.post_ttlv_2_1::<Sign, SignResponse>(&request).await
+    }
+
+    pub async fn signature_verify(
+        &self,
+        request: SignatureVerify,
+    ) -> Result<SignatureVerifyResponse, KmsClientError> {
+        self.post_ttlv_2_1::<SignatureVerify, SignatureVerifyResponse>(&request)
+            .await
+    }
+
     /// This operation requests the server to generate a new public/private key
     /// pair and register the two corresponding new Managed Cryptographic Object
     /// The request contains attributes to be assigned to the objects (e.g.,
