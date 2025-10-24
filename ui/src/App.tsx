@@ -56,7 +56,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode }) =>
 
     useEffect(() => {
         // Automatically use dev URL in development mode
-        const location = import.meta.env.DEV ? "http://192.168.3.5:9998" : window.location.origin;
+        const location = import.meta.env.DEV ? "http://localhost:9998" : window.location.origin;
         setServerUrl(location);
 
         const fetchUser = async () => {
