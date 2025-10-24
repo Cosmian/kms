@@ -2,7 +2,6 @@ use std::path::PathBuf;
 
 use clap::Parser;
 use cosmian_kms_client::{
-    KmsClient,
     cosmian_kmip::{
         kmip_0::kmip_types::CertificateType,
         kmip_2_1::{
@@ -12,11 +11,12 @@ use cosmian_kms_client::{
         },
     },
     kmip_2_1::{self, kmip_attributes::Attributes, kmip_types::UniqueIdentifier},
-    read_bytes_from_file, read_object_from_json_ttlv_file,
-    reexport::cosmian_kms_client_utils::import_utils::{
-        CertificateInputFormat, KeyUsage, build_private_key_from_der_bytes,
-        build_usage_mask_from_key_usage,
+    read_bytes_from_file,
+    read_object_from_json_ttlv_file, reexport::cosmian_kms_client_utils::import_utils::{
+        build_private_key_from_der_bytes, build_usage_mask_from_key_usage, CertificateInputFormat,
+        KeyUsage,
     },
+    KmsClient,
 };
 use cosmian_logger::{debug, trace};
 use der::{Decode, DecodePem, Encode};
@@ -25,7 +25,7 @@ use zeroize::Zeroizing;
 
 use crate::{
     actions::kms::console,
-    error::{KmsCliError, result::KmsCliResult},
+    error::{result::KmsCliResult, KmsCliError},
 };
 
 const MOZILLA_CCADB: &str =
