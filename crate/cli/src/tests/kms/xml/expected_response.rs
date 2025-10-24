@@ -15,21 +15,23 @@ use cosmian_logger::trace;
 
 // KMIP 1.4 helper: substitute placeholder UID strings using the map of real values
 fn substitute_uid_text(test_name: &str, uid: &mut String, uid_map: &HashMap<usize, String>) {
-    let idx_opt = if let Some(rest) = uid
+    let idx_opt = uid
         .strip_prefix(&format!("{test_name}-uid-"))
         .and_then(|n| n.parse::<usize>().ok())
-    {
-        Some(rest)
-    } else if let Some(index) = uid
-        .strip_prefix("uid-")
-        .and_then(|n| n.parse::<usize>().ok())
-    {
-        Some(index)
-    } else if let Some(rest) = uid.strip_prefix("$UNIQUE_IDENTIFIER_") {
-        rest.parse::<usize>().ok()
-    } else {
-        None
-    };
+        .map_or_else(
+            || {
+                uid.strip_prefix("uid-")
+                    .and_then(|n| n.parse::<usize>().ok())
+                    .map_or_else(
+                        || {
+                            uid.strip_prefix("$UNIQUE_IDENTIFIER_")
+                                .and_then(|rest| rest.parse::<usize>().ok())
+                        },
+                        Some,
+                    )
+            },
+            Some,
+        );
     if let Some(index) = idx_opt {
         if let Some(real) = uid_map.get(&index) {
             *uid = real.clone();
@@ -69,16 +71,16 @@ pub(crate) fn capture_real_uids_from_response(
                 if let Some(op) = &inner.response_payload {
                     match op {
                         Operation::CreateResponse(cr) => {
-                            log_insert(test_name, uid_map, &cr.unique_identifier)
+                            log_insert(test_name, uid_map, &cr.unique_identifier);
                         }
                         Operation::RegisterResponse(rr) => {
-                            log_insert(test_name, uid_map, &rr.unique_identifier)
+                            log_insert(test_name, uid_map, &rr.unique_identifier);
                         }
                         Operation::ActivateResponse(ar) => {
-                            log_insert(test_name, uid_map, &ar.unique_identifier)
+                            log_insert(test_name, uid_map, &ar.unique_identifier);
                         }
                         Operation::GetResponse(gr) => {
-                            log_insert(test_name, uid_map, &gr.unique_identifier)
+                            log_insert(test_name, uid_map, &gr.unique_identifier);
                         }
                         Operation::CreateKeyPairResponse(ckpr) => {
                             log_insert(test_name, uid_map, &ckpr.private_key_unique_identifier);
@@ -96,7 +98,6 @@ pub(crate) fn capture_real_uids_from_response(
                                 }
                             }
                         }
-                        Operation::DestroyResponse(_) => {}
                         _ => {}
                     }
                 }
@@ -106,16 +107,16 @@ pub(crate) fn capture_real_uids_from_response(
                 if let Some(op) = &inner.response_payload {
                     match op {
                         Op14::CreateResponse(cr) => {
-                            log_insert_text(test_name, uid_map, &cr.unique_identifier)
+                            log_insert_text(test_name, uid_map, &cr.unique_identifier);
                         }
                         Op14::RegisterResponse(rr) => {
-                            log_insert_text(test_name, uid_map, &rr.unique_identifier)
+                            log_insert_text(test_name, uid_map, &rr.unique_identifier);
                         }
                         Op14::ActivateResponse(ar) => {
-                            log_insert_text(test_name, uid_map, &ar.unique_identifier)
+                            log_insert_text(test_name, uid_map, &ar.unique_identifier);
                         }
                         Op14::GetResponse(gr) => {
-                            log_insert_text(test_name, uid_map, &gr.unique_identifier)
+                            log_insert_text(test_name, uid_map, &gr.unique_identifier);
                         }
                         Op14::CreateKeyPairResponse(ckpr) => {
                             log_insert_text(
@@ -138,7 +139,6 @@ pub(crate) fn capture_real_uids_from_response(
                         Op14::AddAttributeResponse(ar) => {
                             log_insert_text(test_name, uid_map, &ar.unique_identifier);
                         }
-                        Op14::DestroyResponse(_) => {}
                         _ => {}
                     }
                 }
@@ -261,13 +261,13 @@ fn substitute_placeholders_in_expected_response(
                 if let Some(op) = &mut inner.response_payload {
                     match op {
                         Operation::CreateResponse(cr) => {
-                            substitute_uid(test_name, &mut cr.unique_identifier, uid_map)
+                            substitute_uid(test_name, &mut cr.unique_identifier, uid_map);
                         }
                         Operation::RegisterResponse(cr) => {
-                            substitute_uid(test_name, &mut cr.unique_identifier, uid_map)
+                            substitute_uid(test_name, &mut cr.unique_identifier, uid_map);
                         }
                         Operation::ActivateResponse(cr) => {
-                            substitute_uid(test_name, &mut cr.unique_identifier, uid_map)
+                            substitute_uid(test_name, &mut cr.unique_identifier, uid_map);
                         }
                         Operation::GetResponse(cr) => {
                             substitute_uid(test_name, &mut cr.unique_identifier, uid_map);
@@ -291,7 +291,7 @@ fn substitute_placeholders_in_expected_response(
                             }
                         }
                         Operation::DestroyResponse(dr) => {
-                            substitute_uid(test_name, &mut dr.unique_identifier, uid_map)
+                            substitute_uid(test_name, &mut dr.unique_identifier, uid_map);
                         }
                         Operation::LocateResponse(lr) => {
                             if let Some(list) = &mut lr.unique_identifier {
@@ -301,7 +301,7 @@ fn substitute_placeholders_in_expected_response(
                             }
                         }
                         Operation::AddAttributeResponse(ar) => {
-                            substitute_uid(test_name, &mut ar.unique_identifier, uid_map)
+                            substitute_uid(test_name, &mut ar.unique_identifier, uid_map);
                         }
                         Operation::ModifyAttributeResponse(ar) => {
                             if let Some(uid) = &mut ar.unique_identifier {
@@ -314,29 +314,29 @@ fn substitute_placeholders_in_expected_response(
                                 substitute_uid(test_name, inner_uid, uid_map);
                             }
                         }
-                        Operation::GetAttributeListResponse(galr) => {
-                            substitute_uid(test_name, &mut galr.unique_identifier, uid_map)
+                        Operation::GetAttributeListResponse(resp) => {
+                            substitute_uid(test_name, &mut resp.unique_identifier, uid_map);
                         }
                         Operation::EncryptResponse(er) => {
-                            substitute_uid(test_name, &mut er.unique_identifier, uid_map)
+                            substitute_uid(test_name, &mut er.unique_identifier, uid_map);
                         }
                         Operation::DecryptResponse(dr) => {
-                            substitute_uid(test_name, &mut dr.unique_identifier, uid_map)
+                            substitute_uid(test_name, &mut dr.unique_identifier, uid_map);
                         }
                         Operation::SignResponse(sr) => {
-                            substitute_uid(test_name, &mut sr.unique_identifier, uid_map)
+                            substitute_uid(test_name, &mut sr.unique_identifier, uid_map);
                         }
                         Operation::SignatureVerifyResponse(svr) => {
-                            substitute_uid(test_name, &mut svr.unique_identifier, uid_map)
+                            substitute_uid(test_name, &mut svr.unique_identifier, uid_map);
                         }
                         Operation::MACResponse(mr) => {
-                            substitute_uid(test_name, &mut mr.unique_identifier, uid_map)
+                            substitute_uid(test_name, &mut mr.unique_identifier, uid_map);
                         }
                         Operation::MACVerifyResponse(mvr) => {
-                            substitute_uid(test_name, &mut mvr.unique_identifier, uid_map)
+                            substitute_uid(test_name, &mut mvr.unique_identifier, uid_map);
                         }
                         Operation::RevokeResponse(rr) => {
-                            substitute_uid(test_name, &mut rr.unique_identifier, uid_map)
+                            substitute_uid(test_name, &mut rr.unique_identifier, uid_map);
                         }
                         _ => {}
                     }
@@ -349,13 +349,13 @@ fn substitute_placeholders_in_expected_response(
                 if let Some(op) = &mut inner.response_payload {
                     match op {
                         Op14::CreateResponse(cr) => {
-                            substitute_uid_text(test_name, &mut cr.unique_identifier, uid_map)
+                            substitute_uid_text(test_name, &mut cr.unique_identifier, uid_map);
                         }
                         Op14::RegisterResponse(rr) => {
-                            substitute_uid_text(test_name, &mut rr.unique_identifier, uid_map)
+                            substitute_uid_text(test_name, &mut rr.unique_identifier, uid_map);
                         }
                         Op14::ActivateResponse(ar) => {
-                            substitute_uid_text(test_name, &mut ar.unique_identifier, uid_map)
+                            substitute_uid_text(test_name, &mut ar.unique_identifier, uid_map);
                         }
                         Op14::GetResponse(gr) => {
                             substitute_uid_text(test_name, &mut gr.unique_identifier, uid_map);
@@ -377,7 +377,7 @@ fn substitute_placeholders_in_expected_response(
                             substitute_uid_text(test_name, &mut cr.unique_identifier, uid_map);
                         }
                         Op14::DestroyResponse(dr) => {
-                            substitute_uid_text(test_name, &mut dr.unique_identifier, uid_map)
+                            substitute_uid_text(test_name, &mut dr.unique_identifier, uid_map);
                         }
                         Op14::LocateResponse(lr) => {
                             if let Some(list) = &mut lr.unique_identifier {
@@ -398,35 +398,35 @@ fn substitute_placeholders_in_expected_response(
                                 }
                             }
                         }
-                        Op14::GetAttributeListResponse(galr) => {
-                            substitute_uid_text(test_name, &mut galr.unique_identifier, uid_map)
+                        Op14::GetAttributeListResponse(resp) => {
+                            substitute_uid_text(test_name, &mut resp.unique_identifier, uid_map);
                         }
                         Op14::EncryptResponse(er) => {
-                            substitute_uid_text(test_name, &mut er.unique_identifier, uid_map)
+                            substitute_uid_text(test_name, &mut er.unique_identifier, uid_map);
                         }
                         Op14::DecryptResponse(dr) => {
-                            substitute_uid_text(test_name, &mut dr.unique_identifier, uid_map)
+                            substitute_uid_text(test_name, &mut dr.unique_identifier, uid_map);
                         }
                         Op14::SignResponse(sr) => {
-                            substitute_uid_text(test_name, &mut sr.unique_identifier, uid_map)
+                            substitute_uid_text(test_name, &mut sr.unique_identifier, uid_map);
                         }
                         Op14::SignatureVerifyResponse(svr) => {
-                            substitute_uid_text(test_name, &mut svr.unique_identifier, uid_map)
+                            substitute_uid_text(test_name, &mut svr.unique_identifier, uid_map);
                         }
                         Op14::MACResponse(mr) => {
-                            substitute_uid_text(test_name, &mut mr.unique_identifier, uid_map)
+                            substitute_uid_text(test_name, &mut mr.unique_identifier, uid_map);
                         }
                         Op14::MACVerifyResponse(mvr) => {
-                            substitute_uid_text(test_name, &mut mvr.unique_identifier, uid_map)
+                            substitute_uid_text(test_name, &mut mvr.unique_identifier, uid_map);
                         }
                         Op14::RevokeResponse(rr) => {
-                            substitute_uid_text(test_name, &mut rr.unique_identifier, uid_map)
+                            substitute_uid_text(test_name, &mut rr.unique_identifier, uid_map);
                         }
                         Op14::AddAttributeResponse(ar) => {
-                            substitute_uid_text(test_name, &mut ar.unique_identifier, uid_map)
+                            substitute_uid_text(test_name, &mut ar.unique_identifier, uid_map);
                         }
                         Op14::ModifyAttributeResponse(ar) => {
-                            substitute_uid_text(test_name, &mut ar.unique_identifier, uid_map)
+                            substitute_uid_text(test_name, &mut ar.unique_identifier, uid_map);
                         }
                         _ => {}
                     }
@@ -436,8 +436,8 @@ fn substitute_placeholders_in_expected_response(
     }
 }
 
-/// For EncryptResponse payloads in the expected response, substitute placeholder fields
-/// like $DATA_25, $IV_COUNTER_NONCE, and $AUTHENTICATED_ENCRYPTION_TAG by copying the actual
+/// For `EncryptResponse` payloads in the expected response, substitute placeholder fields
+/// like $`DATA_25`, $`IV_COUNTER_NONCE`, and $`AUTHENTICATED_ENCRYPTION_TAG` by copying the actual
 /// response values when the expected fields are absent, empty, or contain these explicit placeholders.
 /// This makes vectors that leave these as placeholders compare strictly without relaxing byte equality elsewhere.
 fn substitute_encrypt_response_data_iv_from_actual(
@@ -547,8 +547,8 @@ fn substitute_encrypt_response_data_iv_from_actual(
     }
 }
 
-/// For SignResponse payloads in the expected response, substitute placeholder fields
-/// like $SIGNATURE_DATA by copying the actual response value when the expected field
+/// For `SignResponse` payloads in the expected response, substitute placeholder fields
+/// like $`SIGNATURE_DATA` by copying the actual response value when the expected field
 /// is absent or empty.
 fn substitute_sign_response_signature_from_actual(
     expected: &mut ResponseMessage,
@@ -585,8 +585,8 @@ fn substitute_sign_response_signature_from_actual(
 }
 
 /// Substitute `$KEY_MATERIAL_N` style placeholders in expected responses by copying the
-/// actual key material bytes returned by the server. This covers both KeyValue::ByteString
-/// and KeyValue::Structure(TransparentSymmetricKey) cases where vectors avoid embedding
+/// actual key material bytes returned by the server. This covers both `KeyValue::ByteString`
+/// and `KeyValue::Structure(TransparentSymmetricKey)` cases where vectors avoid embedding
 /// literal key bytes.
 fn substitute_key_material_from_actual(expected: &mut ResponseMessage, actual: &ResponseMessage) {
     fn is_placeholder_bytes_slice(v: &[u8]) -> bool {
@@ -664,7 +664,7 @@ fn substitute_key_material_from_actual(expected: &mut ResponseMessage, actual: &
     }
 }
 
-/// For PKCS11Response payloads in the expected response, substitute the
+/// For `PKCS11Response` payloads in the expected response, substitute the
 /// `$CORRELATION_VALUE` placeholder by copying the actual response bytes.
 fn substitute_pkcs11_correlation_from_actual(
     expected: &mut ResponseMessage,
@@ -693,8 +693,8 @@ fn substitute_pkcs11_correlation_from_actual(
     }
 }
 
-/// Substitute `$SHORT_UNIQUE_IDENTIFIER_N` placeholders in expected GetAttributesResponse
-/// by copying the actual ShortUniqueIdentifier from the server response.
+/// Substitute `$SHORT_UNIQUE_IDENTIFIER_N` placeholders in expected `GetAttributesResponse`
+/// by copying the actual `ShortUniqueIdentifier` from the server response.
 fn substitute_short_unique_identifier_from_actual(
     expected: &mut ResponseMessage,
     actual: &ResponseMessage,
@@ -723,7 +723,7 @@ fn substitute_short_unique_identifier_from_actual(
     }
 }
 
-/// For Create/Register responses, always copy the UniqueIdentifier from the actual
+/// For Create/Register responses, always copy the `UniqueIdentifier` from the actual
 /// response into the expected response. This avoids mismatches when a prior Locate
 /// (in the same vector) inserted an entry in the UID placeholder map before a Create/Register
 /// occurs, shifting index expectations.
@@ -801,13 +801,11 @@ fn substitute_locate_response_from_actual(
                     let exp_list_len = exp_lr
                         .unique_identifier
                         .as_ref()
-                        .map(|v| v.len())
-                        .unwrap_or(0);
+                        .map_or(0, std::vec::Vec::len);
                     let act_list_len = act_lr
                         .unique_identifier
                         .as_ref()
-                        .map(|v| v.len())
-                        .unwrap_or(0);
+                        .map_or(0, std::vec::Vec::len);
 
                     // If the number of returned UIDs differs in any way, adopt the actual
                     // list and the corresponding count to keep the expected response consistent.
@@ -831,13 +829,11 @@ fn substitute_locate_response_from_actual(
                     let exp_len = exp_lr
                         .unique_identifier
                         .as_ref()
-                        .map(|v| v.len())
-                        .unwrap_or(0);
+                        .map_or(0, std::vec::Vec::len);
                     let act_len = act_lr
                         .unique_identifier
                         .as_ref()
-                        .map(|v| v.len())
-                        .unwrap_or(0);
+                        .map_or(0, std::vec::Vec::len);
 
                     // If expected omits the list or the lengths differ, adopt actual list
                     if act_len != exp_len {
@@ -907,18 +903,21 @@ fn substitute_uid(test_name: &str, uid: &mut UniqueIdentifier, uid_map: &HashMap
     //   {test_name}-uid-{n}
     //   uid-{n}
     //   $UNIQUE_IDENTIFIER_{n}
-    let idx_opt = if let Some(rest) = s
+    let idx_opt = s
         .strip_prefix(test_name)
         .and_then(|r| r.strip_prefix("-uid-"))
-    {
-        rest.parse::<usize>().ok()
-    } else if let Some(rest) = s.strip_prefix("uid-") {
-        rest.parse::<usize>().ok()
-    } else if let Some(rest) = s.strip_prefix("$UNIQUE_IDENTIFIER_") {
-        rest.parse::<usize>().ok()
-    } else {
-        None
-    };
+        .map_or_else(
+            || {
+                s.strip_prefix("uid-").map_or_else(
+                    || {
+                        s.strip_prefix("$UNIQUE_IDENTIFIER_")
+                            .and_then(|rest| rest.parse::<usize>().ok())
+                    },
+                    |rest| rest.parse::<usize>().ok(),
+                )
+            },
+            |rest| rest.parse::<usize>().ok(),
+        );
     if let Some(idx) = idx_opt {
         if let Some(real) = uid_map.get(&idx) {
             *s = real.clone();

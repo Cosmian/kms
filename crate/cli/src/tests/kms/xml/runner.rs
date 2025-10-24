@@ -57,7 +57,7 @@ pub(crate) async fn run_single_xml_vector_on_client(
             path.display()
         );
         assert!(
-            request.request_header.batch_count as usize == bi_len,
+            usize::try_from(request.request_header.batch_count).unwrap() == bi_len,
             "{}: request batch_count mismatch (header={} actual={})",
             path.display(),
             request.request_header.batch_count,

@@ -17,7 +17,8 @@ impl TTLVXMLSerializer {
     pub fn to_xml(ttlv: &TTLV) -> Result<String, KmipError> {
         let mut writer = Writer::new_with_indent(Vec::new(), b' ', 2);
         Self::write_ttlv(&mut writer, ttlv)?;
-        Ok(String::from_utf8(writer.into_inner()).expect("utf8"))
+        let bytes = writer.into_inner();
+        String::from_utf8(bytes).map_err(|e| KmipError::Default(format!("utf8: {e}")))
     }
 
     fn write_ttlv(w: &mut Writer<Vec<u8>>, ttlv: &TTLV) -> Result<(), KmipError> {
@@ -38,11 +39,13 @@ impl TTLVXMLSerializer {
                 match primitive {
                     TTLValue::Integer(v) => {
                         elem.push_attribute(("type", "Integer"));
-                        elem.push_attribute(("value", v.to_string().as_str()));
+                        let val = v.to_string();
+                        elem.push_attribute(("value", val.as_str()));
                     }
                     TTLValue::LongInteger(v) => {
                         elem.push_attribute(("type", "LongInteger"));
-                        elem.push_attribute(("value", v.to_string().as_str()));
+                        let val = v.to_string();
+                        elem.push_attribute(("value", val.as_str()));
                     }
                     TTLValue::BigInteger(_) => {
                         elem.push_attribute(("type", "BigInteger"));
@@ -50,7 +53,8 @@ impl TTLVXMLSerializer {
                     }
                     TTLValue::Enumeration(evar) => {
                         elem.push_attribute(("type", "Enumeration"));
-                        elem.push_attribute(("value", evar.value.to_string().as_str()));
+                        let val = evar.value.to_string();
+                        elem.push_attribute(("value", val.as_str()));
                         if !evar.name.is_empty() {
                             elem.push_attribute(("name", evar.name.as_str()));
                         }
@@ -65,21 +69,29 @@ impl TTLVXMLSerializer {
                     }
                     TTLValue::ByteString(bytes) => {
                         elem.push_attribute(("type", "ByteString"));
-                        elem.push_attribute(("value", hex::encode(bytes).as_str()));
+                        let val = hex::encode(bytes);
+                        elem.push_attribute(("value", val.as_str()));
                     }
                     TTLValue::DateTime(dt) => {
                         elem.push_attribute(("type", "DateTime"));
-                        elem.push_attribute(("value", dt.unix_timestamp().to_string().as_str()));
+                        let val = dt.unix_timestamp().to_string();
+                        elem.push_attribute(("value", val.as_str()));
                     }
                     TTLValue::Interval(i) => {
                         elem.push_attribute(("type", "Interval"));
-                        elem.push_attribute(("value", i.to_string().as_str()));
+                        let val = i.to_string();
+                        elem.push_attribute(("value", val.as_str()));
                     }
                     TTLValue::DateTimeExtended(i) => {
                         elem.push_attribute(("type", "DateTimeExtended"));
-                        elem.push_attribute(("value", i.to_string().as_str()));
+                        let val = i.to_string();
+                        elem.push_attribute(("value", val.as_str()));
                     }
-                    TTLValue::Structure(_) => unreachable!(),
+                    TTLValue::Structure(_) => {
+                        return Err(KmipError::Default(
+                            "cannot serialize Structure as an empty XML element".into(),
+                        ));
+                    }
                 }
                 w.write_event(Event::Empty(elem))
                     .map_err(|e| KmipError::Default(format!("xml write: {e}")))?;

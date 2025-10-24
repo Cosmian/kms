@@ -55,7 +55,7 @@ pub(super) async fn get_attribute_list(
         x_vendor_names.sort();
         for name in x_vendor_names {
             refs.push(AttributeReference::Vendor(VendorAttributeReference {
-                vendor_identification: "x".to_string(),
+                vendor_identification: "x".to_owned(),
                 attribute_name: name,
             }));
         }
@@ -108,7 +108,7 @@ pub(super) async fn get_attribute_list(
     }
 
     Ok(GetAttributeListResponse {
-        unique_identifier: UniqueIdentifier::TextString(uid.to_string()),
+        unique_identifier: UniqueIdentifier::TextString(uid.to_owned()),
         attribute_references,
     })
 }

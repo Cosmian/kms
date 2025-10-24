@@ -5,10 +5,13 @@ use cosmian_kmip::{
 use cosmian_kms_client::cosmian_kmip::kmip_0::kmip_messages::{
     ResponseMessage, ResponseMessageBatchItemVersioned,
 };
+use cosmian_logger::trace;
 
+// Bring in version-specific payload comparators
+use crate::tests::kms::xml::kmip_1_4::compare::compare_payload_v14;
 use crate::{
     error::{KmsCliError, result::KmsCliResult},
-    tests::kms::xml::{compare_v14::compare_payload_v14, compare_v21::compare_payload_v21},
+    tests::kms::xml::kmip_2_1::compare::compare_payload_v21,
 };
 
 // Compare expected and actual KMIP1 responses on essential fields and payloads.
@@ -63,7 +66,7 @@ pub(crate) fn compare_response_messages(
                     (&exp.response_payload, &act.response_payload)
                 {
                     // Fail fast on first payload mismatch
-                    compare_payload_v21(exp_payload.clone(), act_payload.clone())?;
+                    compare_payload_v21(exp_payload, act_payload)?;
                 }
             }
             (
@@ -103,7 +106,7 @@ pub(crate) fn compare_response_messages(
                 if let (Some(exp_payload), Some(act_payload)) =
                     (&exp.response_payload, &act.response_payload)
                 {
-                    compare_payload_v14(exp_payload.clone(), act_payload.clone())?;
+                    compare_payload_v14(exp_payload, act_payload)?;
                 }
                 // Note: UniqueBatchItemID equality could be enforced if needed
             }
@@ -123,8 +126,7 @@ pub(crate) fn compare_object(expected: &Object, actual: &Object) -> KmsCliResult
     use std::mem::discriminant;
     if discriminant(expected) != discriminant(actual) {
         return Err(KmsCliError::Default(format!(
-            "Object type mismatch expected={} actual={}",
-            expected, actual
+            "Object type mismatch expected={expected} actual={actual}"
         )));
     }
 
@@ -237,12 +239,23 @@ pub(crate) fn compare_object(expected: &Object, actual: &Object) -> KmsCliResult
         // Should never happen due to discriminant check, but keep a safe fallback
         _ => {
             return Err(KmsCliError::Default(format!(
-                "Unexpected object types: expected={} actual={}",
-                expected, actual
+                "Unexpected object types: expected={expected} actual={actual}"
             )));
         }
     }
     Ok(())
+}
+
+// Normalize KeyWrappingData for comparison: per spec, absence of encoding_option
+// implies TTLV encoding. Treat None == Some(TTLVEncoding).
+fn normalize_kwd(
+    kwd: &kmip_2_1::kmip_data_structures::KeyWrappingData,
+) -> kmip_2_1::kmip_data_structures::KeyWrappingData {
+    let mut n = kwd.clone();
+    if n.encoding_option.is_none() {
+        n.encoding_option = Some(kmip_2_1::kmip_types::EncodingOption::TTLVEncoding);
+    }
+    n
 }
 
 pub(crate) fn compare_key_block(
@@ -295,18 +308,6 @@ pub(crate) fn compare_key_block(
         )));
     }
 
-    // Normalize KeyWrappingData for comparison: per spec, absence of encoding_option
-    // implies TTLV encoding. Treat None == Some(TTLVEncoding).
-    fn normalize_kwd(
-        kwd: &kmip_2_1::kmip_data_structures::KeyWrappingData,
-    ) -> kmip_2_1::kmip_data_structures::KeyWrappingData {
-        let mut n = kwd.clone();
-        if n.encoding_option.is_none() {
-            n.encoding_option = Some(kmip_2_1::kmip_types::EncodingOption::TTLVEncoding);
-        }
-        n
-    }
-
     match (&expected.key_wrapping_data, &actual.key_wrapping_data) {
         (None, None) => {}
         (Some(e), Some(a)) => {
@@ -340,8 +341,7 @@ pub(crate) fn compare_key_value(
     use kmip_2_1::kmip_data_structures::{KeyMaterial, KeyValue};
     if discriminant(expected) != discriminant(actual) {
         return Err(KmsCliError::Default(format!(
-            "KeyValue type mismatch expected={} actual={}",
-            expected, actual
+            "KeyValue type mismatch expected={expected} actual={actual}"
         )));
     }
     match (expected, actual) {
@@ -372,12 +372,10 @@ pub(crate) fn compare_key_value(
                 if tolerant {
                     // Consider equivalent for vector purposes
                     return Ok(());
-                } else {
-                    return Err(KmsCliError::Default(format!(
-                        "KeyMaterial type mismatch expected={} actual={}",
-                        ekm, akm
-                    )));
                 }
+                return Err(KmsCliError::Default(format!(
+                    "KeyMaterial type mismatch expected={ekm} actual={akm}"
+                )));
             }
 
             match (ekm, akm) {
@@ -421,33 +419,33 @@ pub(crate) fn compare_key_value(
                 (
                     KeyMaterial::TransparentRSAPrivateKey {
                         modulus: em,
-                        private_exponent: epriv,
-                        public_exponent: epub,
+                        private_exponent: e_priv,
+                        public_exponent: e_pub,
                         p: ep,
                         q: eq_,
-                        prime_exponent_p: epep,
-                        prime_exponent_q: epeq,
-                        c_r_t_coefficient: ecrt,
+                        prime_exponent_p: e_pep,
+                        prime_exponent_q: e_peq,
+                        c_r_t_coefficient: e_crt,
                     },
                     KeyMaterial::TransparentRSAPrivateKey {
                         modulus: am,
-                        private_exponent: apriv,
-                        public_exponent: apub,
+                        private_exponent: a_priv,
+                        public_exponent: a_pub,
                         p: ap,
                         q: aq,
-                        prime_exponent_p: apep,
-                        prime_exponent_q: apeq,
-                        c_r_t_coefficient: acrt,
+                        prime_exponent_p: a_pep,
+                        prime_exponent_q: a_peq,
+                        c_r_t_coefficient: a_crt,
                     },
                 ) => {
                     if em != am
-                        || epriv != apriv
-                        || epub != apub
+                        || e_priv != a_priv
+                        || e_pub != a_pub
                         || ep != ap
                         || eq_ != aq
-                        || epep != apep
-                        || epeq != apeq
-                        || ecrt != acrt
+                        || e_pep != a_pep
+                        || e_peq != a_peq
+                        || e_crt != a_crt
                     {
                         return Err(KmsCliError::Default(
                             "KeyMaterial::TransparentRSAPrivateKey mismatch".to_string(),
@@ -658,13 +656,12 @@ pub(crate) fn compare_attributes(
     match (&e.digest, &a.digest) {
         (None, None) => {}
         (Some(ed), Some(ad)) => {
-            let ed_len = ed.digest_value.as_ref().map(|v| v.len()).unwrap_or(0);
-            let ad_len = ad.digest_value.as_ref().map(|v| v.len()).unwrap_or(0);
+            let ed_len = ed.digest_value.as_ref().map_or(0, std::vec::Vec::len);
+            let ad_len = ad.digest_value.as_ref().map_or(0, std::vec::Vec::len);
 
             if ed_len != ad_len {
                 return Err(KmsCliError::Default(format!(
-                    "Attributes.digest.digest_value length mismatch expected_len={} actual_len={}",
-                    ed_len, ad_len
+                    "Attributes.digest.digest_value length mismatch expected_len={ed_len} actual_len={ad_len}"
                 )));
             }
 
@@ -745,8 +742,7 @@ pub(crate) fn compare_attributes(
             for (i, (ne, na)) in en.iter().zip(an.iter()).enumerate() {
                 if ne != na {
                     return Err(KmsCliError::Default(format!(
-                        "Attributes.name[{}] mismatch",
-                        i
+                        "Attributes.name[{i}] mismatch"
                     )));
                 }
             }
@@ -806,7 +802,9 @@ pub(crate) fn compare_attributes(
     cmp_opt!(usage_limits);
     // vendor_attributes: Option<Vec<VendorAttribute>>
     match (&e.vendor_attributes, &a.vendor_attributes) {
-        (None, None) => {}
+        (None, None) => {
+            trace!("Both expected and actual Attributes.vendor_attributes are None");
+        }
         (Some(ev), Some(av)) => {
             if ev.len() != av.len() {
                 return Err(KmsCliError::Default(format!(
@@ -818,23 +816,17 @@ pub(crate) fn compare_attributes(
             for (i, (ve, va)) in ev.iter().zip(av.iter()).enumerate() {
                 if ve != va {
                     return Err(KmsCliError::Default(format!(
-                        "Attributes.vendor_attributes[{}] mismatch. Expected: {}, Actual: {}",
-                        i, ve, va
+                        "Attributes.vendor_attributes[{i}] mismatch. Expected: {ve}, Actual: {va}"
                     )));
                 }
             }
         }
-        (None, Some(_)) => {
+        // TODO: re-enable
+        (None, Some(_)) | (Some(_), None) => {
             // Cosmian KMS always return vendor_attributes with a tag to facilitate KMIP Locate operation
             // return Err(KmsCliError::Default(
             //     "Attributes.vendor_attributes expected=None actual=Some".to_string(),
             // ));
-        }
-        // TODO: re-enable
-        (Some(_), None) => {
-            //     return Err(KmsCliError::Default(
-            //         "Attributes.vendor_attributes expected=Some actual=None".to_string(),
-            //     ));
         }
     }
     cmp_opt!(x_509_certificate_identifier);

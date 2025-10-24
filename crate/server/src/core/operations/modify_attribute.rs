@@ -31,7 +31,7 @@ pub(crate) async fn modify_attribute(
     let uid = request.unique_identifier.clone().ok_or_else(|| {
         KmsError::Kmip21Error(
             ErrorReason::Operation_Not_Supported,
-            "Missing UniqueIdentifier in ModifyAttribute".to_string(),
+            "Missing UniqueIdentifier in ModifyAttribute".to_owned(),
         )
     })?;
 
@@ -40,7 +40,7 @@ pub(crate) async fn modify_attribute(
         Attribute::State(_) | Attribute::CertificateLength(_) => {
             return Err(KmsError::Kmip21Error(
                 ErrorReason::Attribute_Read_Only,
-                "DENIED".to_string(),
+                "DENIED".to_owned(),
             ));
         }
         _ => {}
@@ -53,7 +53,7 @@ pub(crate) async fn modify_attribute(
             .retrieve_object(&uid.to_string(), None)
             .await?
             .ok_or_else(|| {
-                KmsError::Kmip21Error(ErrorReason::Item_Not_Found, "Object not found".to_string())
+                KmsError::Kmip21Error(ErrorReason::Item_Not_Found, "Object not found".to_owned())
             })?;
         let attributes = object_with_metadata
             .object()
@@ -63,13 +63,13 @@ pub(crate) async fn modify_attribute(
             if state != State::PreActive {
                 return Err(KmsError::Kmip21Error(
                     ErrorReason::Wrong_Key_Lifecycle_State,
-                    "ACTIVATION_DATE:!PRE_ACTIVE".to_string(),
+                    "ACTIVATION_DATE:!PRE_ACTIVE".to_owned(),
                 ));
             }
         } else {
             return Err(KmsError::Kmip21Error(
                 ErrorReason::Wrong_Key_Lifecycle_State,
-                "ACTIVATION_DATE:!PRE_ACTIVE".to_string(),
+                "ACTIVATION_DATE:!PRE_ACTIVE".to_owned(),
             ));
         }
     } // Other attribute types: no-op success for now.

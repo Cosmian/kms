@@ -1752,9 +1752,10 @@ impl Display for ObjectDefaults {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         if let Some(attributes) = &self.attributes {
             if let Some(object_groups) = &self.object_groups {
+                use std::fmt::Write as _;
                 let mut groups = String::new();
                 for group in object_groups {
-                    groups.push_str(&format!("{group}, "));
+                    let _ = write!(groups, "{group}, ");
                 }
                 let object_groups = groups.trim_end_matches(", ");
                 return write!(
@@ -1770,9 +1771,10 @@ impl Display for ObjectDefaults {
             );
         }
         if let Some(object_groups) = &self.object_groups {
+            use std::fmt::Write as _;
             let mut groups = String::new();
             for group in object_groups {
-                groups.push_str(&format!("{group}, "));
+                let _ = write!(groups, "{group}, ");
             }
             let object_groups = groups.trim_end_matches(", ");
 

@@ -82,8 +82,8 @@ pub(crate) async fn retrieve_object_for_operation(
                 State::Destroyed
                 | State::Destroyed_Compromised
                 | State::Compromised
-                | State::Deactivated => state,
-                State::Active => state, // never downgrade Active to PreActive
+                | State::Deactivated
+                | State::Active => state, // never downgrade Active to PreActive
                 State::PreActive => attr_state.unwrap_or(State::PreActive),
             };
             // Synchronize both external attributes and embedded object attributes to effective state

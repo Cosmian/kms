@@ -258,79 +258,45 @@ impl Operation {
     #[must_use]
     pub const fn direction(&self) -> Direction {
         match self {
-            // Alphabetical by variant name
-            Self::Activate(_) => Direction::Request,
-            Self::ActivateResponse(_) => Direction::Response,
-            Self::AddAttribute(_) => Direction::Request,
-            Self::AddAttributeResponse(_) => Direction::Response,
-            Self::Certify(_) => Direction::Request,
-            Self::CertifyResponse(_) => Direction::Response,
-            Self::Check(_) => Direction::Request,
-            Self::CheckResponse(_) => Direction::Response,
-            Self::Create(_) => Direction::Request,
-            Self::CreateKeyPair(_) => Direction::Request,
-            Self::CreateKeyPairResponse(_) => Direction::Response,
-            Self::CreateResponse(_) => Direction::Response,
-            Self::Decrypt(_) => Direction::Request,
-            Self::DecryptResponse(_) => Direction::Response,
-            Self::DeleteAttribute(_) => Direction::Request,
-            Self::DeleteAttributeResponse(_) => Direction::Response,
-            Self::DeriveKey(_) => Direction::Request,
-            Self::DeriveKeyResponse(_) => Direction::Response,
-            Self::Destroy(_) => Direction::Request,
-            Self::DestroyResponse(_) => Direction::Response,
-            Self::DiscoverVersions(_) => Direction::Request,
-            Self::DiscoverVersionsResponse(_) => Direction::Response,
-            Self::Encrypt(_) => Direction::Request,
-            Self::EncryptResponse(_) => Direction::Response,
-            Self::Export(_) => Direction::Request,
-            Self::ExportResponse(_) => Direction::Response,
-            Self::Get(_) => Direction::Request,
-            Self::GetAttributeList(_) => Direction::Request,
-            Self::GetAttributeListResponse(_) => Direction::Response,
-            Self::GetAttributes(_) => Direction::Request,
-            Self::GetAttributesResponse(_) => Direction::Response,
-            Self::GetResponse(_) => Direction::Response,
-            Self::Hash(_) => Direction::Request,
-            Self::HashResponse(_) => Direction::Response,
-            Self::Import(_) => Direction::Request,
-            Self::ImportResponse(_) => Direction::Response,
-            Self::Interop(_) => Direction::Request,
-            Self::InteropResponse(_) => Direction::Response,
-            Self::Locate(_) => Direction::Request,
-            Self::LocateResponse(_) => Direction::Response,
-            Self::Log(_) => Direction::Request,
-            Self::LogResponse(_) => Direction::Response,
-            Self::MAC(_) => Direction::Request,
-            Self::MACResponse(_) => Direction::Response,
-            Self::MACVerify(_) => Direction::Request,
-            Self::MACVerifyResponse(_) => Direction::Response,
-            Self::ModifyAttribute(_) => Direction::Request,
-            Self::ModifyAttributeResponse(_) => Direction::Response,
-            Self::PKCS11(_) => Direction::Request,
-            Self::PKCS11Response(_) => Direction::Response,
-            Self::Query(_) => Direction::Request,
-            Self::QueryResponse(_) => Direction::Response,
-            Self::ReKey(_) => Direction::Request,
-            Self::ReKeyKeyPair(_) => Direction::Request,
-            Self::ReKeyKeyPairResponse(_) => Direction::Response,
-            Self::ReKeyResponse(_) => Direction::Response,
-            Self::Register(_) => Direction::Request,
-            Self::RegisterResponse(_) => Direction::Response,
-            Self::Revoke(_) => Direction::Request,
-            Self::RevokeResponse(_) => Direction::Response,
-            Self::RNGRetrieve(_) => Direction::Request,
-            Self::RNGRetrieveResponse(_) => Direction::Response,
-            Self::RNGSeed(_) => Direction::Request,
-            Self::RNGSeedResponse(_) => Direction::Response,
-            Self::SetAttribute(_) => Direction::Request,
-            Self::SetAttributeResponse(_) => Direction::Response,
-            Self::Sign(_) => Direction::Request,
-            Self::SignResponse(_) => Direction::Response,
-            Self::SignatureVerify(_) => Direction::Request,
-            Self::SignatureVerifyResponse(_) => Direction::Response,
-            Self::Validate(_) => Direction::Request,
-            Self::ValidateResponse(_) => Direction::Response,
+            // All Response variants
+            Self::ActivateResponse(_)
+            | Self::AddAttributeResponse(_)
+            | Self::CertifyResponse(_)
+            | Self::CheckResponse(_)
+            | Self::CreateKeyPairResponse(_)
+            | Self::CreateResponse(_)
+            | Self::DecryptResponse(_)
+            | Self::DeleteAttributeResponse(_)
+            | Self::DeriveKeyResponse(_)
+            | Self::DestroyResponse(_)
+            | Self::DiscoverVersionsResponse(_)
+            | Self::EncryptResponse(_)
+            | Self::ExportResponse(_)
+            | Self::GetAttributeListResponse(_)
+            | Self::GetAttributesResponse(_)
+            | Self::GetResponse(_)
+            | Self::HashResponse(_)
+            | Self::ImportResponse(_)
+            | Self::InteropResponse(_)
+            | Self::LocateResponse(_)
+            | Self::LogResponse(_)
+            | Self::MACResponse(_)
+            | Self::MACVerifyResponse(_)
+            | Self::ModifyAttributeResponse(_)
+            | Self::PKCS11Response(_)
+            | Self::QueryResponse(_)
+            | Self::ReKeyKeyPairResponse(_)
+            | Self::ReKeyResponse(_)
+            | Self::RegisterResponse(_)
+            | Self::RevokeResponse(_)
+            | Self::RNGRetrieveResponse(_)
+            | Self::RNGSeedResponse(_)
+            | Self::SetAttributeResponse(_)
+            | Self::SignResponse(_)
+            | Self::SignatureVerifyResponse(_)
+            | Self::ValidateResponse(_) => Direction::Response,
+            // All Request variants
+            _ => Direction::Request,
         }
     }
 
@@ -560,9 +526,8 @@ impl Display for Log {
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Default)]
 #[serde(rename_all = "PascalCase")]
-#[derive(Default)]
 pub struct LogResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub log_message: Option<String>,
@@ -617,7 +582,7 @@ impl Display for Interop {
 #[derive(Serialize, Deserialize, PartialEq, Eq, Clone)]
 #[serde(rename_all = "PascalCase")]
 #[derive(Default)]
-pub struct InteropResponse {}
+pub struct InteropResponse;
 
 impl Display for InteropResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

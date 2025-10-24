@@ -156,6 +156,7 @@ fn postgres_db_config() -> MainDBConfig {
 }
 
 #[cfg(feature = "non-fips")]
+#[allow(clippy::as_conversions)]
 fn redis_findex_db_config(port: u16) -> MainDBConfig {
     trace!("TESTS: using redis-findex");
     let mut url = env::var("REDIS_HOST").map_or_else(
@@ -195,6 +196,7 @@ fn redis_findex_db_config(port: u16) -> MainDBConfig {
     }
 }
 
+#[allow(clippy::used_underscore_binding)]
 fn get_db_config(_port: u16) -> MainDBConfig {
     env::var_os("KMS_TEST_DB").map_or_else(sqlite_db_config, |v| match v.to_str().unwrap_or("") {
         #[cfg(feature = "non-fips")]

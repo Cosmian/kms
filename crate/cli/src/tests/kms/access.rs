@@ -432,14 +432,12 @@ pub(crate) async fn test_list_access_rights() -> KmsCliResult<()> {
     );
 
     // The user is not the owner and thus should not be able to list accesses on this object
-    assert!(
-        ListAccessesGranted {
-            object_uid: key_id.to_string(),
-        }
-        .run(ctx.get_user_client())
-        .await
-        .is_err()
-    );
+    ListAccessesGranted {
+        object_uid: key_id.to_string(),
+    }
+    .run(ctx.get_user_client())
+    .await
+    .unwrap_err();
 
     Ok(())
 }
@@ -448,14 +446,12 @@ pub(crate) async fn test_list_access_rights() -> KmsCliResult<()> {
 #[serial]
 pub(crate) async fn test_list_access_rights_error() -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server_with_cert_auth().await;
-    assert!(
-        ListAccessesGranted {
-            object_uid: "BAD KEY".to_owned(),
-        }
-        .run(ctx.get_owner_client())
-        .await
-        .is_err()
-    );
+    ListAccessesGranted {
+        object_uid: "BAD KEY".to_owned(),
+    }
+    .run(ctx.get_owner_client())
+    .await
+    .unwrap_err();
     Ok(())
 }
 
@@ -951,11 +947,9 @@ pub(crate) async fn test_privileged_users() -> KmsCliResult<()> {
     // non-privileged users can't create or import by default
     assert!(gen_key(&ctx.get_user_client()).await.is_err());
     assert!(gen_keypair(&ctx.get_user_client()).await.is_err());
-    assert!(
-        export_import_sym_key(&key_id.to_string(), &ctx.get_user_client())
-            .await
-            .is_err()
-    );
+    export_import_sym_key(&key_id.to_string(), &ctx.get_user_client())
+        .await
+        .unwrap_err();
 
     // privileged user can grant create access
     GrantAccess {
@@ -1009,11 +1003,9 @@ pub(crate) async fn test_privileged_users() -> KmsCliResult<()> {
     // user can't create objects anymore
     assert!(gen_key(&ctx.get_user_client()).await.is_err());
     assert!(gen_keypair(&ctx.get_user_client()).await.is_err());
-    assert!(
-        export_import_sym_key(&key_id.to_string(), &ctx.get_user_client())
-            .await
-            .is_err()
-    );
+    export_import_sym_key(&key_id.to_string(), &ctx.get_user_client())
+        .await
+        .unwrap_err();
 
     // can't revoke create access from privileged user
     assert!(

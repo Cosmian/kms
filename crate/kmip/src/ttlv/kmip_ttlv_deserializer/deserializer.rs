@@ -326,7 +326,10 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
                         e.value
                     )));
                 }
-                visitor.visit_u8(e.value as u8)
+                let value = u8::try_from(e.value).map_err(|_e| {
+                    TtlvError::from("Enumeration value conversion to u8 failed".to_owned())
+                })?;
+                visitor.visit_u8(value)
             }
             x => Err(TtlvError::from(format!(
                 "Expected Integer/LongInteger/Enumeration value in TTLV for u8, got: {x:?}"
@@ -554,7 +557,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
                 TTLValue::DateTimeExtended(_) => "DateTimeExtended",
                 TTLValue::Interval(_) => "Interval",
                 TTLValue::Structure(_) => "Structure",
-                TTLValue::TextString(_) => unreachable!(),
+                TTLValue::TextString(_) => "TextString",
             };
             Err(TtlvError::from(format!(
                 "deserialize_str: expected a TextString value in TTLV; tag='{}' actual={}",
@@ -609,18 +612,20 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
     }
 
     // In Serde, unit means an anonymous value containing no data.
-    #[instrument(level = "trace", skip(self, _visitor))]
-    fn deserialize_unit<V>(self, _visitor: V) -> Result<V::Value>
+    #[instrument(level = "trace", skip(self, visitor))]
+    fn deserialize_unit<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
         trace!("deserialize_unit: state:  {:?}", self.current);
-        unimplemented!("deserialize_unit");
+        // KMIP does not have an explicit Unit representation; when a unit is expected,
+        // just signal an empty value to the visitor.
+        visitor.visit_unit()
     }
 
     // Unit struct means a named value containing no data.
-    #[instrument(level = "trace", skip(self, _visitor))]
-    fn deserialize_unit_struct<V>(self, name: &'static str, _visitor: V) -> Result<V::Value>
+    #[instrument(level = "trace", skip(self, visitor))]
+    fn deserialize_unit_struct<V>(self, name: &'static str, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
@@ -628,7 +633,8 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
             "deserialize_unit_struct with name: {name}, state:  {:?}",
             self
         );
-        unimplemented!("deserialize_unit_struct");
+        // Treat unit structs as units; the name is only informational.
+        visitor.visit_unit()
     }
 
     // As is done here, serializers are encouraged to treat newtype structs as

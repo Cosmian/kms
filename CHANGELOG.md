@@ -86,7 +86,7 @@ All notable changes to this project will be documented in this file.
 ### 📚 Documentation
 
 - Add SmartCard HSM to README.md (#563)
-- Added documentation for Smartcard HSM and SoftHSM2 (#570)
+- Added documentation for Smart card HSM and SoftHSM2 (#570)
 - Add server configs examples (#568)
 
 ### 🧪 Testing
