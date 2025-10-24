@@ -1,0 +1,26 @@
+[package]
+name = "crypt2pay_pkcs11_loader"
+version.workspace = true
+authors.workspace = true
+categories.workspace = true
+edition.workspace = true
+keywords.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Crypt2Pay HSM PKCS#11 loader"
+
+[lints]
+workspace = true
+
+[lib]
+doctest = false
+
+[dependencies]
+cosmian_kms_base_hsm = { path = "../base_hsm", version = "5.9.0" }
+
+[dev-dependencies]
+
+[features]
+# Enable this feature to run Crypt2Pay tests (they require a Crypt2Pay HSM)
+crypt2pay = []

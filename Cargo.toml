@@ -1,25 +1,26 @@
 [workspace]
 default-members = ["crate/server"]
 members = [
-  # Client crates
-  "crate/client_utils",
-  "crate/kms_client",
-  "crate/wasm",
-  "crate/cli",
-  # Server crates
-  "crate/access",
-  "crate/crypto",
-  "crate/hsm/proteccio",
-  "crate/hsm/softhsm2",
-  "crate/hsm/smartcardhsm",
-  "crate/hsm/utimaco",
-  "crate/hsm/base_hsm",
-  "crate/interfaces",
-  "crate/kmip",
-  "crate/server",
-  "crate/server_database",
-  # Test crates
-  "crate/test_kms_server",
+    # Client crates
+    "crate/client_utils",
+    "crate/kms_client",
+    "crate/wasm",
+    "crate/cli",
+    # Server crates
+    "crate/access",
+    "crate/crypto",
+    "crate/hsm/proteccio",
+    "crate/hsm/crypt2pay",
+    "crate/hsm/softhsm2",
+    "crate/hsm/smartcardhsm",
+    "crate/hsm/utimaco",
+    "crate/hsm/base_hsm",
+    "crate/interfaces",
+    "crate/kmip",
+    "crate/server",
+    "crate/server_database",
+    # Test crates
+    "crate/test_kms_server",
 ]
 # Do that if you don't want to enable `dev` feature by default due to the `dev-dependencies` of the cli.
 # For more details, read: https://doc.rust-lang.org/cargo/reference/resolver.html#feature-resolver-version-2
@@ -88,8 +89,8 @@ version = "5.10.0"
 edition = "2024"
 rust-version = "1.87.0"
 authors = [
-  "Bruno Grieder <bruno.grieder@cosmian.com>",
-  "Emmanuel Coste <emmanuel.coste@cosmian.com>",
+    "Bruno Grieder <bruno.grieder@cosmian.com>",
+    "Emmanuel Coste <emmanuel.coste@cosmian.com>",
 ]
 license = "BUSL-1.1" # "Business Source License 1.1"
 license-file = "LICENSE"
@@ -125,7 +126,7 @@ chrono = "0.4"
 clap = { version = "4.5", default-features = false }
 cosmian_config_utils = "0.3.1"
 cosmian_crypto_core = { version = "10.2", default-features = false, features = [
-  "ser",
+    "ser",
 ] }
 cosmian_logger = "0.5"
 der = { version = "0.7", default-features = false }
