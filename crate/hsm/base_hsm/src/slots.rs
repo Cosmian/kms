@@ -4,16 +4,16 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use cosmian_logger::warn;
+use cosmian_logger::{info, warn};
 use lru::LruCache;
 use pkcs11_sys::{
-    CK_FLAGS, CK_MECHANISM_INFO, CK_MECHANISM_TYPE, CK_OBJECT_HANDLE, CK_SESSION_HANDLE,
-    CK_SLOT_ID, CK_ULONG, CKF_RW_SESSION, CKF_SERIAL_SESSION, CKR_OK, CKR_USER_ALREADY_LOGGED_IN,
-    CKU_USER,
+    CKF_RW_SESSION, CKF_SERIAL_SESSION, CKR_OK, CKR_USER_ALREADY_LOGGED_IN, CKU_USER,
+    CK_FLAGS, CK_MECHANISM_INFO, CK_MECHANISM_TYPE, CK_OBJECT_HANDLE, CK_SESSION_HANDLE, CK_SLOT_ID,
+    CK_ULONG,
 };
 
 use crate::{
-    HError, HResult, Session, hsm_call, hsm_capabilities::HsmCapabilities, hsm_lib::HsmLib,
+    hsm_call, hsm_capabilities::HsmCapabilities, hsm_lib::HsmLib, HError, HResult, Session,
 };
 
 /// A cache structure that maps byte vectors to `CK_OBJECT_HANDLE` values using an LRU (Least Recently Used) strategy.
@@ -153,7 +153,11 @@ impl SlotManager {
                 false,
                 object_handles_cache.clone(),
                 supported_oaep_hash_cache.clone(),
-                Some(&password),
+                if password.is_empty() {
+                    None
+                } else {
+                    Some(&password)
+                },
                 hsm_capabilities.clone(),
             )?;
             Ok(Self {
@@ -312,26 +316,32 @@ impl SlotManager {
             None,
             &raw mut session_handle
         );
-        if let Some(password) = login_password {
-            let mut pwd_bytes = password.as_bytes().to_vec();
-            #[expect(unsafe_code)]
-            let rv = unsafe {
-                hsm_lib
-                    .C_Login
-                    .ok_or_else(|| HError::Default("C_Login not available on library".to_owned()))?(
-                    session_handle,
-                    CKU_USER,
-                    pwd_bytes.as_mut_ptr(),
-                    CK_ULONG::try_from(pwd_bytes.len())?,
-                )
-            };
-            if rv == CKR_USER_ALREADY_LOGGED_IN {
-                warn!("user already logged in, ignoring logging");
-            } else if rv != CKR_OK {
-                return Err(HError::Default(format!(
-                    "Failed logging in. Return code: {rv}"
-                )));
-            }
+        let mut pwd_bytes =
+            login_password.map_or_else(Vec::new, |password| password.as_bytes().to_vec());
+
+        info!("THE PASSWORD BYTES IS EMPTY? {}", pwd_bytes.is_empty());
+
+        #[expect(unsafe_code)]
+        let rv = unsafe {
+            hsm_lib
+                .C_Login
+                .ok_or_else(|| HError::Default("C_Login not available on library".to_owned()))?(
+                session_handle,
+                CKU_USER,
+                if pwd_bytes.is_empty() {
+                    ptr::null_mut()
+                } else {
+                    pwd_bytes.as_mut_ptr()
+                },
+                CK_ULONG::try_from(pwd_bytes.len())?,
+            )
+        };
+        if rv == CKR_USER_ALREADY_LOGGED_IN {
+            warn!("user already logged in, ignoring logging");
+        } else if rv != CKR_OK {
+            return Err(HError::Default(format!(
+                "Failed logging in. Return code: {rv}"
+            )));
         }
         Ok(Session::new(
             hsm_lib.clone(),

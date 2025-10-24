@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.11.0] - 2025-11-1
+
+### 🚀 Features
+
+- Support for the Trustway Crypt2pay HSM
+- Generic support for HSMs not explicitly mentioned 
+- Support for logging in an HSM Slot using an empty (null) password
+
 ## [5.10.0] - 2025-10-21
 
 ### 🚀 Features
