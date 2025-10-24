@@ -2,6 +2,56 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.10.0] - 2025-10-21
+
+### 🚀 Features
+
+- Add HSM key search with basic filters (#552)
+- Support wrapping SecretData object in export (#551)
+- Support DeriveKey KMIP operation (#554)
+- Add option to enable automatic unwrapping for Get and Export requests (#579)
+
+### 🐛 Bug Fixes
+
+- Enable workspace clippy lints for all crates (#553)
+- Release HSM tests (#567)
+- Keep error info on DBerror (#516)
+- React CVE deps (#566)
+- Remove min_specialization feature (#569)
+- HSM key search fails after encountering incompatible key (#574)
+- *(windows)* Socket server listen on localhost instead of 0.0.0.0 (#575)
+
+### 📚 Documentation
+
+- Add SmartCard HSM to README.md (#563)
+- Added documentation for Smartcard HSM and SoftHSM2 (#570)
+- Add server configs examples (#568)
+
+### 🧪 Testing
+
+- Filter tests with credentials and prerequisites (#571)
+- Enable Google CSE on workspace
+
+### ⚙️ Miscellaneous Tasks
+
+- Add CLA Assistant GitHub Action configuration
+- Create CLA.md and CONTRIBUTING.md
+- About forks, skip Google CSE tests and docker build
+- About dependabot branches, skip Google CSE tests and docker build (#559)
+- Move CLA assistant workflow to correct path
+- Skip public doc rebuild on forks and dependabot branches
+- Skip CLA assistant on dependabot branches
+- Integrate CLA signature in main_base.yml workflow - 2
+- Trigger on issue comment
+- Use an unprotected branch for CLA signing
+- Remove trigger on pull_request_target
+- Upgrade toolchain to nightly 2025-09-15 (#564)
+
+### Build
+
+- *(deps)* Bump actions/checkout from 4 to 5
+- *(deps)* Bump the npm_and_yarn group across 1 directory with 4 updates
+
 ## [5.9.0] - 2025-09-15
 
 ### 🚀 Features
