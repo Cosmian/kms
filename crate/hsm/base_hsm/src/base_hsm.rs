@@ -10,15 +10,15 @@ use std::{
 use cosmian_kms_interfaces::CryptoAlgorithm;
 use cosmian_logger::debug;
 use pkcs11_sys::{
-    CK_INFO, CKM_AES_CBC, CKM_AES_GCM, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP, CKM_SHA_1, CKM_SHA256,
+    CKM_AES_CBC, CKM_AES_GCM, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP, CKM_SHA256, CKM_SHA_1, CK_INFO,
 };
 
 use crate::{
-    HError, HResult, SlotManager,
-    error::HResultHelper,
-    hsm_call,
-    hsm_capabilities::{HsmCapabilities, HsmProvider},
+    error::HResultHelper, hsm_call, hsm_capabilities::{HsmCapabilities, HsmProvider},
     hsm_lib::HsmLib,
+    HError,
+    HResult,
+    SlotManager,
 };
 
 pub struct DefaultCapabilityProvider;
@@ -74,6 +74,7 @@ impl<P: HsmProvider> BaseHsm<P> {
         // check if we are supposed to use that slot
         if let Some(slot_state) = slots.get_mut(&slot_id) {
             if let Some(s) = &slot_state.slot {
+                debug!("Reusing slot {slot_id}");
                 Ok(s.clone())
             } else {
                 // instantiate a new slot

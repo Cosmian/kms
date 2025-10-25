@@ -6,14 +6,14 @@
 use std::{collections::HashMap, ptr};
 
 use cosmian_kms_base_hsm::{
-    HResult, RsaOaepDigest,
-    test_helpers::{get_hsm_password, get_hsm_slot_id},
-    tests_shared as shared,
+    test_helpers::{get_hsm_password, get_hsm_slot_id}, tests_shared as shared,
+    HResult,
+    RsaOaepDigest,
 };
 use libloading::Library;
-use pkcs11_sys::{CK_C_INITIALIZE_ARGS, CK_RV, CK_VOID_PTR, CKF_OS_LOCKING_OK, CKR_OK};
+use pkcs11_sys::{CKF_OS_LOCKING_OK, CKR_OK, CK_C_INITIALIZE_ARGS, CK_RV, CK_VOID_PTR};
 
-use crate::{SOFTHSM2_PKCS11_LIB, SofthsmCapabilityProvider};
+use crate::{SofthsmCapabilityProvider, SOFTHSM2_PKCS11_LIB};
 
 const LIB_PATH: &str = SOFTHSM2_PKCS11_LIB;
 
@@ -30,6 +30,15 @@ fn cfg() -> HResult<shared::HsmTestConfig<'static>> {
     })
 }
 
+/// To run all the tests, try something like
+/// ```sh
+///  RUST_LOG=info \
+///  HSM_USER_PASSWORD="12345678" \
+///  HSM_SLOT_ID=63715018 \
+///  cargo test test_hsm_softhsm2_all --features softhsm2 -- --ignored
+/// ```
+/// WARNING: Initialized tokens will be reassigned to another slot (based on the token serial number)
+/// So show the available slots first to determine which slot ID to use
 #[test]
 #[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
 fn test_hsm_softhsm2_all() -> HResult<()> {

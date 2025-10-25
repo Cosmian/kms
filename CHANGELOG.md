@@ -6,9 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ### 🚀 Features
 
-- Support for the Trustway Crypt2pay HSM
-- Generic support for HSMs not explicitly mentioned 
-- Support for logging in an HSM Slot using an empty (null) password
+- Add Crypt2pay HSM integration with a dedicated loader crate
+- Generic "other" HSM support using Softhsm2 compatibility
+- Enable empty (null) password/pin HSM login via special handling in slot management
 
 ## [5.10.0] - 2025-10-21
 

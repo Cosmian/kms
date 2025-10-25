@@ -1219,6 +1219,7 @@ dependencies = [
  "cosmian_logger",
  "futures",
  "libloading",
+ "log",
  "lru",
  "pkcs11-sys",
  "rand 0.9.2",
