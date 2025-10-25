@@ -75,7 +75,7 @@ async fn test_pems(
     .await?
     .to_string();
 
-    // PEM Line Endings are LF in both cases
+    // Normalize line endings for cross-platform comparison (Windows may write CRLF)
     let imported_bytes = read_bytes_from_file(&PathBuf::from(&key_file_path))?;
 
     // export the key
@@ -91,7 +91,11 @@ async fn test_pems(
     .await?;
 
     let export_bytes = read_bytes_from_file(&export_key_file.path())?;
-    assert_eq!(imported_bytes, export_bytes);
+    let norm = |b: Vec<u8>| {
+        let s = String::from_utf8_lossy(&b);
+        s.replace("\r\n", "\n").into_bytes()
+    };
+    assert_eq!(norm(imported_bytes.clone()), norm(export_bytes));
 
     // Get the key
     let get_key_file = tempfile::NamedTempFile::new()?;
@@ -105,7 +109,7 @@ async fn test_pems(
     .await?;
 
     let get_bytes = read_bytes_from_file(&get_key_file.path())?;
-    assert_eq!(imported_bytes, get_bytes);
+    assert_eq!(norm(imported_bytes), norm(get_bytes));
 
     Ok(())
 }

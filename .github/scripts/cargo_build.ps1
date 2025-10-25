@@ -24,26 +24,44 @@ function BuildProject
     if ($BuildType -eq "release")
     {
         cargo build --release --features "non-fips"
-        cargo test  --release --features "non-fips" -- --nocapture
         cargo packager --verbose --formats nsis --release
     }
     else
     {
         cargo build --features "non-fips"
-        cargo test  --features "non-fips" -- --nocapture
         cargo packager --verbose --formats nsis
     }
     Get-ChildItem ..\..
 
     # Check dynamic links
+    $previousErrorActionPreference = $ErrorActionPreference
     $ErrorActionPreference = "SilentlyContinue"
     $output = & "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\dumpbin.exe" /dependents target\$BuildType\cosmian_kms.exe | Select-String "libcrypto"
+    $ErrorActionPreference = $previousErrorActionPreference
     if ($output)
     {
-        throw "OpenSSL (libcrypto) found in dynamic dependencies. Error: $output"
+        Write-Error "OpenSSL (libcrypto) found in dynamic dependencies. Error: $output"
+        exit 1
     }
 
-    exit 0
+    if ($BuildType -eq "release")
+    {
+        cargo test --lib --workspace  --release --features "non-fips" -- --nocapture
+        if ($LASTEXITCODE -ne 0)
+        {
+            Write-Error "Release tests failed with exit code $LASTEXITCODE"
+            exit $LASTEXITCODE
+        }
+    }
+    else
+    {
+        cargo test --lib --workspace --features "non-fips" -- --nocapture
+        if ($LASTEXITCODE -ne 0)
+        {
+            Write-Error "Debug tests failed with exit code $LASTEXITCODE"
+            exit $LASTEXITCODE
+        }
+    }
 }
 
 

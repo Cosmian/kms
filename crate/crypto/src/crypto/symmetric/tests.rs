@@ -272,8 +272,8 @@ fn test_encrypt_decrypt_chacha20_poly1305() {
 #[cfg(feature = "non-fips")]
 #[test]
 fn test_encrypt_decrypt_aes_gcm_siv_128() {
-    // Load FIPS provider module from OpenSSL.
-    Provider::load(None, "fips").unwrap();
+    // Load default provider module from OpenSSL.
+    Provider::load(None, "default").unwrap();
 
     let mut message = vec![0_u8; 42];
     rand_bytes(&mut message).unwrap();
@@ -307,8 +307,8 @@ fn test_encrypt_decrypt_aes_gcm_siv_128() {
 #[cfg(feature = "non-fips")]
 #[test]
 fn test_encrypt_decrypt_aes_gcm_siv_256() {
-    // Load FIPS provider module from OpenSSL.
-    Provider::load(None, "fips").unwrap();
+    // Load default provider module from OpenSSL.
+    Provider::load(None, "default").unwrap();
 
     let mut message = vec![0_u8; 42];
     rand_bytes(&mut message).unwrap();

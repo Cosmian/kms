@@ -616,6 +616,7 @@ pub(super) async fn test_kms_all_authentications() -> KmsCliResult<()> {
     Ok(())
 }
 
+#[cfg(not(target_os = "windows"))]
 #[tokio::test]
 async fn test_tls_options() -> KmsCliResult<()> {
     init_test_logging();
