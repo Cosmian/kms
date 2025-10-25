@@ -1,6 +1,6 @@
 Integration of other HSMs is supported on **Linux (x86_64)**.
 
-Even if your HSM is not explicitly listed in this documentation, there is a great change that it will work, in
+Even if your HSM is not explicitly listed in this documentation, there is a great chance that it will work, in
 particular its PKCS#11 driver API is compatible with that of SofHsmV2.
 
 ### Library setup
