@@ -1,4 +1,4 @@
-//! Copyright 2024 Cosmian Tech SAS
+//! Copyright 2025 Cosmian Tech SAS
 use cosmian_kms_base_hsm::{
     BaseHsm,
     hsm_capabilities::{HsmCapabilities, HsmProvider},

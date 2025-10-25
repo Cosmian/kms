@@ -60,7 +60,7 @@ clap = { workspace = true, features = [
 cosmian_kms_access = { path = "../access", version = "5.10.0" }
 cosmian_kms_server_database = { path = "../server_database", version = "5.10.0" }
 cosmian_logger = { workspace = true, features = ["full"] }
-crypt2pay_pkcs11_loader = { path = "../hsm/crypt2pay", version = "5.9.0" }
+crypt2pay_pkcs11_loader = { path = "../hsm/crypt2pay", version = "5.10.0" }
 dotenvy = "0.15"
 futures = { workspace = true }
 hex = { workspace = true, features = ["serde"] }
