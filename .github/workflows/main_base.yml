@@ -45,7 +45,7 @@ jobs:
   cargo-publish:
     uses: Cosmian/reusable_workflows/.github/workflows/cargo-publish-workspace.yml@develop
     with:
-      toolchain: ${{ inputs.toolchain }}
+      toolchain: nightly-2025-10-15
     secrets:
       token: ${{ secrets.CRATES_IO }}
 
