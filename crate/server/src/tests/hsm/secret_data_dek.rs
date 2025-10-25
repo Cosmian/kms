@@ -1,28 +1,28 @@
 use std::sync::Arc;
 
-use crate::tests::hsm::{export_object, import_object, revoke_key};
+use cosmian_kms_client_utils::reexport::cosmian_kmip::{
+    kmip_0::kmip_types::SecretDataType,
+    kmip_2_1::{
+        kmip_attributes::Attributes,
+        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+        kmip_objects::{Object, ObjectType, SecretData},
+        kmip_types::KeyFormatType,
+    },
+};
+use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier;
+use uuid::Uuid;
+use zeroize::Zeroizing;
+
 use crate::{
     config::ServerParams,
     core::KMS,
     error::KmsError,
     result::KResult,
     tests::{
-        hsm::{create_kek, delete_key, hsm_clap_config},
+        hsm::{create_kek, delete_key, export_object, hsm_clap_config, import_object, revoke_key},
         test_utils::get_tmp_sqlite_path,
     },
 };
-use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_0::kmip_types::SecretDataType;
-use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::kmip_attributes::Attributes;
-use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::kmip_data_structures::{
-    KeyBlock, KeyMaterial, KeyValue,
-};
-use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::kmip_objects::{
-    Object, ObjectType, SecretData,
-};
-use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::kmip_types::KeyFormatType;
-use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier;
-use uuid::Uuid;
-use zeroize::Zeroizing;
 
 pub(super) async fn test_wrapped_secret_data() -> KResult<()> {
     let kek_uuid = Uuid::new_v4();

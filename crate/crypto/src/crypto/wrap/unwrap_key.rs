@@ -1,3 +1,4 @@
+use base64::{Engine, engine::general_purpose};
 use cosmian_kmip::{
     kmip_0::kmip_types::{BlockCipherMode, CryptographicUsageMask, PaddingMethod},
     kmip_2_1::{
@@ -36,6 +37,61 @@ use crate::{
 
 const NONCE_LENGTH: usize = 12;
 const TAG_LENGTH: usize = 16;
+
+/// Decrypt a Google CSE-wrapped key blob using AES-GCM and optional AAD (resource name).
+///
+/// The wrapped blob layout is: nonce (12 bytes) | ciphertext | tag (16 bytes), all base64-encoded.
+/// The function decodes base64, splits the components, selects AES-GCM based on the KEK length
+/// (supports 16 or 32 bytes), and returns the decrypted plaintext.
+///
+/// Arguments
+/// - `wrapped_key_b64`: base64-encoded wrapped key bytes
+/// - `unwrap_secret`: the AES-GCM key bytes (KEK); typically 16 or 32 bytes
+/// - `aad`: optional additional authenticated data (e.g., resource name) used during wrapping
+///
+/// Errors
+/// - Returns `CryptoError` if decoding, slicing, or decryption fails
+pub fn aes_gcm_decrypt(
+    wrapped_key_b64: &str,
+    unwrap_secret: &[u8],
+    aad: Option<&[u8]>,
+) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
+    let wrapped_key = general_purpose::STANDARD
+        .decode(wrapped_key_b64)
+        .map_err(|e| CryptoError::Default(format!("Invalid base64 wrapped key: {e}")))?;
+    let len = wrapped_key.len();
+    if len < TAG_LENGTH + NONCE_LENGTH {
+        crypto_bail!("Invalid wrapped key - insufficient length.");
+    }
+    let nonce = wrapped_key
+        .get(..NONCE_LENGTH)
+        .ok_or_else(|| CryptoError::IndexingSlicing("cse_wrapped_key_decrypt: nonce".to_owned()))?;
+    let ciphertext = wrapped_key
+        .get(NONCE_LENGTH..len - TAG_LENGTH)
+        .ok_or_else(|| {
+            CryptoError::IndexingSlicing("cse_wrapped_key_decrypt: ciphertext".to_owned())
+        })?;
+    let tag = wrapped_key
+        .get(len - TAG_LENGTH..)
+        .ok_or_else(|| CryptoError::IndexingSlicing("cse_wrapped_key_decrypt: tag".to_owned()))?;
+
+    // Choose AES-GCM variant based on key size
+    let sym = SymCipher::from_algorithm_and_key_size(
+        CryptographicAlgorithm::AES,
+        Some(BlockCipherMode::GCM),
+        unwrap_secret.len(),
+    )?;
+
+    decrypt(
+        sym,
+        unwrap_secret,
+        nonce,
+        aad.unwrap_or(&[]),
+        ciphertext,
+        tag,
+        None,
+    )
+}
 
 /// Unwrap a key using a password
 pub fn unwrap_key_bytes(
