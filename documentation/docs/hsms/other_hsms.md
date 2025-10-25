@@ -1,15 +1,16 @@
 Integration of other HSMs is supported on **Linux (x86_64)**.
-If your HSM is not explicitly listed, there is a great change that it will work, in particular it is PKCS#11 driver is
-compatible with SofHsmV2
+
+Even if your HSM is not explicitly listed in this documentation, there is a great change that it will work, in
+particular its PKCS#11 driver API is compatible with that of SofHsmV2.
 
 ### Library setup
 
-The KMS expects the linux PKCS#11 library to be installed at `/lib/libkmshsm.so`.
-Rename the library to `libkmshsm.so` if necessary.
+The KMS expects the HSM linux PKCS#11 library to be installed at `/lib/libkmshsm.so`.
+Rename your HSM library to `libkmshsm.so` if necessary.
 
 ### HSM initialization
 
-Before using, the HSM with the KMS, follow your documentation to initialize a slot and a user pin/password for that
+Before using the HSM with the KMS, follow your documentation to initialize a slot and a user pin/password for that
 slot.
 
 ### KMS configuration

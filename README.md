@@ -24,7 +24,7 @@ The Cosmian KMS presents some unique features, such as:
   [Google Workspace Client Side Encryption (CSE)](./documentation/docs/google_cse/index.md)
 - out-of-the-box support
   of [Microsoft Double Key Encryption (DKE)](./documentation/docs/ms_dke/index.md)
-- support for the [CardContact SmartCard, Nitrokey HSM 2, Proteccio, and Utimaco HSMs](./documentation/docs/hsms/index.md) with KMS keys wrapped by the HSM
+- support for the [CardContact SmartCard, Nitrokey HSM 2, Proteccio, Crypt2pay, Utimaco and other HSMs](./documentation/docs/hsms/index.md) with KMS keys wrapped by the HSM
 - [Veracrypt](https://docs.cosmian.com/cosmian_cli/pkcs11/veracrypt/)
   and [LUKS](https://docs.cosmian.com/cosmian_cli/pkcs11/luks/) disk encryption support
 - [FIPS 140-3](./documentation/docs/fips.md) mode gated behind the feature `fips`
@@ -178,9 +178,11 @@ The **Cosmian KMS** is written in [Rust](https://www.rust-lang.org/) and organiz
 
 - **`hsm/base_hsm`** - Base HSM abstraction layer
 - **`hsm/smartcardhsm`** - Nitrokey HSM 2 resp. CardContact SmartCard-HSM
+- **`hsm/crypt2pay`** - Crypt2pay HSM integration
 - **`hsm/proteccio`** - Proteccio HSM integration
 - **`hsm/softhsm2`** - SoftHSM2 integration for testing and development
 - **`hsm/utimaco`** - Utimaco HSM integration
+- **`hsm/other`** - Other HSMs support
 
 #### Database Interfaces
 
