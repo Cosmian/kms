@@ -3,27 +3,27 @@ mod other_kms_methods;
 mod permissions;
 
 use cosmian_kms_server_database::{
-    Database,
     reexport::cosmian_kms_interfaces::{
-        EncryptionOracle, HSM, HsmEncryptionOracle, HsmStore, ObjectsStore,
+        EncryptionOracle, HsmEncryptionOracle, HsmStore, ObjectsStore, HSM,
     },
+    Database,
 };
 use cosmian_logger::trace;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::RwLock;
 
-use crypt2pay_pkcs11_loader::{CRYPT2PAY_PKCS11_LIB, Crypt2pay};
+use crypt2pay_pkcs11_loader::{Crypt2pay, CRYPT2PAY_PKCS11_LIB};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use proteccio_pkcs11_loader::{PROTECCIO_PKCS11_LIB, Proteccio};
+use proteccio_pkcs11_loader::{Proteccio, PROTECCIO_PKCS11_LIB};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use smartcardhsm_pkcs11_loader::{SMARTCARDHSM_PKCS11_LIB, Smartcardhsm};
+use smartcardhsm_pkcs11_loader::{Smartcardhsm, SMARTCARDHSM_PKCS11_LIB};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use softhsm2_pkcs11_loader::{SOFTHSM2_PKCS11_LIB, Softhsm2};
+use softhsm2_pkcs11_loader::{Softhsm2, SOFTHSM2_PKCS11_LIB};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use utimaco_pkcs11_loader::{UTIMACO_PKCS11_LIB, Utimaco};
+use utimaco_pkcs11_loader::{Utimaco, UTIMACO_PKCS11_LIB};
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-const OTHER_HSM_PKCS11_LIB: &str = "/lib/libhsm.so";
+const OTHER_HSM_PKCS11_LIB: &str = "/lib/libkmshsm.so";
 
 use crate::{config::ServerParams, error::KmsError, kms_bail, result::KResult};
 
@@ -192,7 +192,7 @@ impl KMS {
                             )
                             .map_err(|e| {
                                 KmsError::InvalidRequest(format!(
-                                    "Failed to instantiate the Crypt2pay HSM: {e}"
+                                    "Failed to instantiate the Other HSM: {e}"
                                 ))
                             })?,
                         );
