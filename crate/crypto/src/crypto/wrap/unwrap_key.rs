@@ -38,7 +38,7 @@ use crate::{
 const NONCE_LENGTH: usize = 12;
 const TAG_LENGTH: usize = 16;
 
-/// Decrypt a Google CSE-wrapped key blob using AES-GCM and optional AAD (resource name).
+/// Decrypt a Google CSE-wrapped key blob using AES-GCM.
 ///
 /// The wrapped blob layout is: nonce (12 bytes) | ciphertext | tag (16 bytes), all base64-encoded.
 /// The function decodes base64, splits the components, selects AES-GCM based on the KEK length
@@ -47,14 +47,12 @@ const TAG_LENGTH: usize = 16;
 /// Arguments
 /// - `wrapped_key_b64`: base64-encoded wrapped key bytes
 /// - `unwrap_secret`: the AES-GCM key bytes (KEK); typically 16 or 32 bytes
-/// - `aad`: optional additional authenticated data (e.g., resource name) used during wrapping
 ///
 /// Errors
 /// - Returns `CryptoError` if decoding, slicing, or decryption fails
 pub fn aes_gcm_decrypt(
     wrapped_key_b64: &str,
     unwrap_secret: &[u8],
-    aad: Option<&[u8]>,
 ) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
     let wrapped_key = general_purpose::STANDARD
         .decode(wrapped_key_b64)
@@ -82,15 +80,7 @@ pub fn aes_gcm_decrypt(
         unwrap_secret.len(),
     )?;
 
-    decrypt(
-        sym,
-        unwrap_secret,
-        nonce,
-        aad.unwrap_or(&[]),
-        ciphertext,
-        tag,
-        None,
-    )
+    decrypt(sym, unwrap_secret, nonce, &[], ciphertext, tag, None)
 }
 
 /// Unwrap a key using a password
@@ -146,7 +136,6 @@ pub fn unwrap_key_block(
 /// * `key_wrapping_data` - the key wrapping data
 /// * `wrapped_key` - the wrapped key
 /// * `key_format_type` - the unwrapped key expected key format type
-/// * `aad` - the additional authenticated data
 ///
 /// # Returns
 /// * `KResult<KeyValue>` - the unwrapped key

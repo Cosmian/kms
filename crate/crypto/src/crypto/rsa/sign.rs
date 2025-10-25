@@ -18,7 +18,7 @@ pub fn sign_rsa_digest_with_algorithm(
     digest_b64: &str,
     _rsa_pss_salt_length: Option<i32>,
 ) -> CryptoResult<Vec<u8>> {
-    // Validate the DER is a loadable private key (accept PKCS#1)
+    // Validate the DER is a loadable private key (accept PKCS#8)
     let private_key = PKey::private_key_from_der(pkcs1_private_key).map_err(|e| {
         CryptoError::ConversionError(format!(
             "Could not load RSA private key at PKCS#8 format: {e}"
@@ -36,7 +36,7 @@ pub fn sign_rsa_digest_with_algorithm(
         "SHA512withRSA/PSS" => (Padding::PKCS1_PSS, Md::sha512()),
         _ => {
             return Err(crate::error::CryptoError::Default(
-                "Decryption algorithm not handled.".to_owned(),
+                "Padding algorithm not handled.".to_owned(),
             ));
         }
     };
