@@ -178,7 +178,7 @@ async fn create_google_key_pair_and_sign_with_private_key() -> KmsCliResult<()> 
             .unwrap(),
     );
     info!(
-        "Exported private key in PKCS#1 DER (base64): {}",
+        "Exported private key in PKCS#8 DER (base64): {}",
         &pkcs1_b64
     );
 

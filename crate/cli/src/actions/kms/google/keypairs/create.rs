@@ -436,7 +436,7 @@ async fn private_key_rsa_sanity_check(
         .key_bytes()
         .map_err(|e| KmsCliError::ServerError(format!("KEK key_bytes error: {e}")))?;
 
-    // 3) Unwrap the wrapped private key using the crypto helper (no AAD for private keys)
+    // 3) Unwrap the wrapped private key using the crypto helper (no AAD for private keys, unlike data keys which use resource names as AAD)
     let wrapped_b64 = general_purpose::STANDARD.encode(wrapped_private_key_bytes);
     let private_key_pkcs8 = cse_unwrap(&wrapped_b64, &kek_bytes)
         .map_err(|e| KmsCliError::ServerError(format!("Unwrap failed: {e}")))?;
