@@ -10,6 +10,10 @@ pub mod ckm_rsa_aes_key_wrap;
 pub mod ckm_rsa_pkcs;
 pub mod ckm_rsa_pkcs_oaep;
 pub mod operation;
+pub mod sign;
+
+// Re-export for simpler import paths
+pub use sign::sign_rsa_digest_with_algorithm;
 
 #[must_use]
 pub fn default_cryptographic_parameters(

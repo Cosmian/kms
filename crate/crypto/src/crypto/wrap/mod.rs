@@ -12,5 +12,5 @@ mod wrap_key;
 
 const WRAPPING_SECRET_LENGTH: usize = 32;
 
-pub use unwrap_key::{decode_unwrapped_key, unwrap_key_block, unwrap_key_bytes};
+pub use unwrap_key::{aes_gcm_decrypt, decode_unwrapped_key, unwrap_key_block, unwrap_key_bytes};
 pub use wrap_key::{key_data_to_wrap, wrap_key_bytes, wrap_object_with_key};
