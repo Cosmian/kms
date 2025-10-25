@@ -1,11 +1,10 @@
 use std::{ops::Add, sync::Arc};
 
-use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::kmip_objects::{
-    Object, ObjectType,
-};
-use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::kmip_operations::{Export, Import};
 use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::{
-    kmip_attributes::Attributes, requests::create_rsa_key_pair_request,
+    kmip_attributes::Attributes,
+    kmip_objects::{Object, ObjectType},
+    kmip_operations::{Export, Import},
+    requests::create_rsa_key_pair_request,
 };
 use cosmian_kms_interfaces::as_hsm_uid;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
@@ -133,10 +132,7 @@ async fn create_sym_key(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<(
     let Operation::CreateResponse(create_response) = &response[0] else {
         return Err(KmsError::ServerError("invalid response".to_owned()));
     };
-    assert_eq!(
-        create_response.unique_identifier,
-        UniqueIdentifier::TextString(key_uid.to_owned())
-    );
+    assert!(create_response.unique_identifier == UniqueIdentifier::TextString(key_uid.to_owned()));
     Ok(())
 }
 
@@ -158,13 +154,13 @@ async fn create_key_pair(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<
     let Operation::CreateKeyPairResponse(create_response) = &response[0] else {
         return Err(KmsError::ServerError("invalid response".to_owned()));
     };
-    assert_eq!(
-        create_response.private_key_unique_identifier,
-        UniqueIdentifier::TextString(key_uid.to_owned())
+    assert!(
+        create_response.private_key_unique_identifier
+            == UniqueIdentifier::TextString(key_uid.to_owned())
     );
-    assert_eq!(
-        create_response.public_key_unique_identifier,
-        UniqueIdentifier::TextString(key_uid.to_owned().add("_pk"))
+    assert!(
+        create_response.public_key_unique_identifier
+            == UniqueIdentifier::TextString(key_uid.to_owned().add("_pk"))
     );
     Ok(())
 }
@@ -237,6 +233,7 @@ async fn delete_key(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<()> {
     let destroy_request = Destroy {
         unique_identifier: Some(UniqueIdentifier::TextString(key_uid.to_owned())),
         remove: true,
+        cascade: true,
     };
     let response = send_message(
         kms.clone(),
@@ -247,10 +244,7 @@ async fn delete_key(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<()> {
     let Operation::DestroyResponse(destroy_response) = &response[0] else {
         return Err(KmsError::ServerError("invalid response".to_owned()));
     };
-    assert_eq!(
-        destroy_response.unique_identifier,
-        UniqueIdentifier::TextString(key_uid.to_owned())
-    );
+    assert!(destroy_response.unique_identifier == UniqueIdentifier::TextString(key_uid.to_owned()));
     Ok(())
 }
 
@@ -274,16 +268,14 @@ async fn revoke_key(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<()> {
             revocation_message: Some("revoke".to_owned()),
         },
         compromise_occurrence_date: None,
+        cascade: true,
     };
     let response =
         send_message(kms.clone(), owner, vec![Operation::Revoke(revoke_request)]).await?;
     let Operation::RevokeResponse(revoke_response) = &response[0] else {
         return Err(KmsError::ServerError("invalid response".to_owned()));
     };
-    assert_eq!(
-        revoke_response.unique_identifier,
-        UniqueIdentifier::TextString(key_uid.to_owned())
-    );
+    assert!(revoke_response.unique_identifier == UniqueIdentifier::TextString(key_uid.to_owned()));
     Ok(())
 }
 

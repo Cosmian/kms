@@ -72,7 +72,7 @@ impl TryFrom<kmip_2_1::kmip_operations::CreateResponse> for CreateResponse {
     type Error = KmipError;
 
     fn try_from(value: kmip_2_1::kmip_operations::CreateResponse) -> Result<Self, Self::Error> {
-        trace!("Converting KMIP 2.1 CreateResponse to KMIP 1.4: {value:#?}");
+        trace!("Converting KMIP 2.1 CreateResponse to KMIP 1.4: {value}");
 
         Ok(Self {
             object_type: value.object_type.try_into()?,
@@ -138,7 +138,7 @@ impl TryFrom<kmip_2_1::kmip_operations::CreateKeyPairResponse> for CreateKeyPair
     fn try_from(
         value: kmip_2_1::kmip_operations::CreateKeyPairResponse,
     ) -> Result<Self, Self::Error> {
-        trace!("Converting KMIP 2.1 CreateKeyPairResponse to KMIP 1.4: {value:#?}");
+        trace!("Converting KMIP 2.1 CreateKeyPairResponse to KMIP 1.4: {value}");
 
         Ok(Self {
             private_key_unique_identifier: value.private_key_unique_identifier.to_string(),
@@ -189,7 +189,7 @@ impl TryFrom<kmip_2_1::kmip_operations::RegisterResponse> for RegisterResponse {
     type Error = KmipError;
 
     fn try_from(value: kmip_2_1::kmip_operations::RegisterResponse) -> Result<Self, Self::Error> {
-        trace!("Converting KMIP 2.1 RegisterResponse to KMIP 1.4: {value:#?}");
+        trace!("Converting KMIP 2.1 RegisterResponse to KMIP 1.4: {value}");
 
         Ok(Self {
             unique_identifier: value.unique_identifier.to_string(),
@@ -389,7 +389,7 @@ impl TryFrom<kmip_2_1::kmip_operations::LocateResponse> for LocateResponse {
     type Error = KmipError;
 
     fn try_from(value: kmip_2_1::kmip_operations::LocateResponse) -> Result<Self, Self::Error> {
-        trace!("Converting KMIP 2.1 LocateResponse to KMIP 1.4: {value:#?}");
+        trace!("Converting KMIP 2.1 LocateResponse to KMIP 1.4: {value}");
 
         Ok(Self {
             unique_identifier: value
@@ -433,7 +433,10 @@ pub struct CheckResponse {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Get {
-    pub unique_identifier: String,
+    /// The Unique Identifier of the Managed Object to get.
+    /// If omitted, the ID Placeholder SHALL be used (per KMIP 1.4 spec).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub key_format_type: Option<KeyFormatType>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -445,9 +448,9 @@ pub struct Get {
 impl From<Get> for kmip_2_1::kmip_operations::Get {
     fn from(get: Get) -> Self {
         Self {
-            unique_identifier: Some(kmip_2_1::kmip_types::UniqueIdentifier::TextString(
-                get.unique_identifier,
-            )),
+            unique_identifier: get
+                .unique_identifier
+                .map(kmip_2_1::kmip_types::UniqueIdentifier::TextString),
             key_format_type: get.key_format_type.map(Into::into),
             key_compression_type: get.key_compression_type.map(Into::into),
             key_wrapping_specification: get.key_wrapping_specification.map(Into::into),
@@ -486,7 +489,8 @@ impl TryFrom<kmip_2_1::kmip_operations::GetResponse> for GetResponse {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct GetAttributes {
-    pub unique_identifier: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attribute_name: Option<Vec<String>>,
 }
@@ -494,9 +498,9 @@ pub struct GetAttributes {
 impl From<GetAttributes> for kmip_2_1::kmip_operations::GetAttributes {
     fn from(get_attributes: GetAttributes) -> Self {
         Self {
-            unique_identifier: Some(kmip_2_1::kmip_types::UniqueIdentifier::TextString(
-                get_attributes.unique_identifier,
-            )),
+            unique_identifier: get_attributes
+                .unique_identifier
+                .map(kmip_2_1::kmip_types::UniqueIdentifier::TextString),
             attribute_reference: get_attributes.attribute_name.map(|v| {
                 v.into_iter()
                     .map(|v| {
@@ -560,7 +564,18 @@ impl TryFrom<kmip_2_1::kmip_operations::GetAttributesResponse> for GetAttributes
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct GetAttributeList {
-    pub unique_identifier: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<String>,
+}
+
+impl From<GetAttributeList> for kmip_2_1::kmip_operations::GetAttributeList {
+    fn from(v: GetAttributeList) -> Self {
+        Self {
+            unique_identifier: v
+                .unique_identifier
+                .map(kmip_2_1::kmip_types::UniqueIdentifier::TextString),
+        }
+    }
 }
 
 /// Response to a Get Attribute List request
@@ -568,7 +583,65 @@ pub struct GetAttributeList {
 #[serde(rename_all = "PascalCase")]
 pub struct GetAttributeListResponse {
     pub unique_identifier: String,
+    // XML encodes this as a repeated AttributeName element, not a pluralized container
+    #[serde(rename = "AttributeName")]
     pub attribute_names: Vec<String>,
+}
+
+impl TryFrom<kmip_2_1::kmip_operations::GetAttributeListResponse> for GetAttributeListResponse {
+    type Error = KmipError;
+
+    fn try_from(
+        value: kmip_2_1::kmip_operations::GetAttributeListResponse,
+    ) -> Result<Self, Self::Error> {
+        // Convert 2.1 AttributeReference list into 1.4 AttributeName list
+        let mut names: Vec<String> = Vec::new();
+        if let Some(attr_refs) = value.attribute_references {
+            for ar in attr_refs {
+                match ar {
+                    kmip_2_1::kmip_types::AttributeReference::Vendor(v) => {
+                        // In 1.4, vendor attribute names are carried as-is (e.g., "x-ID")
+                        names.push(v.attribute_name);
+                    }
+                    kmip_2_1::kmip_types::AttributeReference::Standard(tag) => {
+                        names.push(attribute_name_from_tag(tag));
+                    }
+                }
+            }
+        }
+
+        Ok(Self {
+            unique_identifier: value.unique_identifier.to_string(),
+            attribute_names: names,
+        })
+    }
+}
+
+fn attribute_name_from_tag(tag: kmip_2_1::kmip_types::Tag) -> String {
+    // Convert enum variant name (e.g., CryptographicAlgorithm) to spaced form ("Cryptographic Algorithm")
+    // by inserting a space before uppercase letters, then trimming.
+    // Also handle a few specific prettifications.
+    let raw = format!("{tag:?}"); // variant name
+    let mut out = String::with_capacity(raw.len() * 2);
+    let chars: Vec<char> = raw.chars().collect();
+    for (i, &ch) in chars.iter().enumerate() {
+        if i > 0 && ch.is_ascii_uppercase() {
+            // insert space when transitioning to an uppercase letter
+            out.push(' ');
+        }
+        out.push(ch);
+    }
+
+    // Minor normalizations to better match KMIP 1.x attribute naming
+    // ShortUniqueIdentifier -> Short Unique Identifier
+    // IVCounterNonce -> IV Counter Nonce
+    // X509CertificateSubject -> X509 Certificate Subject (best effort)
+    out = out
+        .replace("I V", "IV")
+        .replace("M A C", "MAC")
+        .replace("U R I", "URI");
+
+    out
 }
 
 /// 4.14 Add Attribute
@@ -615,8 +688,20 @@ impl From<kmip_2_1::kmip_operations::AddAttributeResponse> for AddAttributeRespo
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct ModifyAttribute {
-    pub unique_identifier: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<String>,
     pub attribute: Attribute,
+}
+
+impl From<ModifyAttribute> for kmip_2_1::kmip_operations::ModifyAttribute {
+    fn from(v: ModifyAttribute) -> Self {
+        Self {
+            unique_identifier: v
+                .unique_identifier
+                .map(kmip_2_1::kmip_types::UniqueIdentifier::TextString),
+            new_attribute: v.attribute.into(),
+        }
+    }
 }
 
 /// Response to a Modify Attribute request
@@ -625,6 +710,26 @@ pub struct ModifyAttribute {
 pub struct ModifyAttributeResponse {
     pub unique_identifier: String,
     pub attribute: Attribute,
+}
+
+impl TryFrom<kmip_2_1::kmip_operations::ModifyAttributeResponse> for ModifyAttributeResponse {
+    type Error = KmipError;
+
+    fn try_from(
+        value: kmip_2_1::kmip_operations::ModifyAttributeResponse,
+    ) -> Result<Self, Self::Error> {
+        Ok(Self {
+            unique_identifier: value
+                .unique_identifier
+                .map(|u| u.to_string())
+                .unwrap_or_default(),
+            // KMIP 2.1 doesn't echo the modified attribute in the response. Preserve 1.4 shape
+            // by returning a placeholder Comment attribute to avoid deep comparisons.
+            attribute: Attribute::Comment(
+                "KMIP 2 does not send the attribute value on the response".to_owned(),
+            ),
+        })
+    }
 }
 
 /// 4.16 Delete Attribute
@@ -638,11 +743,54 @@ pub struct DeleteAttribute {
     pub attribute_index: Option<i32>,
 }
 
+impl From<DeleteAttribute> for kmip_2_1::kmip_operations::DeleteAttribute {
+    fn from(v: DeleteAttribute) -> Self {
+        use kmip_2_1::kmip_types::{
+            AttributeReference, Tag, UniqueIdentifier, VendorAttributeReference,
+        };
+
+        let name = v.attribute_name.trim();
+        let cleaned = name.replace(' ', "");
+        let aref = Tag::from_str(&cleaned).map_or_else(
+            |_| {
+                let (vendor_identification, attribute_name) = match name.split_once('-') {
+                    Some((vendor, rest)) if !vendor.is_empty() && !rest.is_empty() => {
+                        (vendor.to_owned(), rest.to_owned())
+                    }
+                    _ => (String::new(), name.to_owned()),
+                };
+                AttributeReference::Vendor(VendorAttributeReference {
+                    vendor_identification,
+                    attribute_name,
+                })
+            },
+            AttributeReference::Standard,
+        );
+        Self {
+            unique_identifier: Some(UniqueIdentifier::TextString(v.unique_identifier)),
+            current_attribute: None,
+            attribute_references: Some(vec![aref]),
+        }
+    }
+}
+
 /// Response to a Delete Attribute request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct DeleteAttributeResponse {
     pub unique_identifier: String,
+}
+
+impl TryFrom<kmip_2_1::kmip_operations::DeleteAttributeResponse> for DeleteAttributeResponse {
+    type Error = KmipError;
+
+    fn try_from(
+        value: kmip_2_1::kmip_operations::DeleteAttributeResponse,
+    ) -> Result<Self, Self::Error> {
+        Ok(Self {
+            unique_identifier: value.unique_identifier.to_string(),
+        })
+    }
 }
 
 /// 4.17 Obtain Lease
@@ -731,6 +879,7 @@ impl From<Revoke> for kmip_2_1::kmip_operations::Revoke {
                 .map(kmip_2_1::kmip_types::UniqueIdentifier::TextString),
             revocation_reason: revoke.revocation_reason,
             compromise_occurrence_date: revoke.compromise_occurrence_date,
+            cascade: false,
         }
     }
 }
@@ -766,6 +915,7 @@ impl From<Destroy> for kmip_2_1::kmip_operations::Destroy {
                 destroy.unique_identifier,
             )),
             remove: false,
+            cascade: false,
         }
     }
 }
@@ -781,7 +931,7 @@ impl TryFrom<kmip_2_1::kmip_operations::DestroyResponse> for DestroyResponse {
     type Error = KmipError;
 
     fn try_from(value: kmip_2_1::kmip_operations::DestroyResponse) -> Result<Self, Self::Error> {
-        trace!("Converting KMIP 2.1 DestroyResponse to KMIP 1.4: {value:#?}");
+        trace!("Converting KMIP 2.1 DestroyResponse to KMIP 1.4: {value}");
 
         Ok(Self {
             unique_identifier: value.unique_identifier.to_string(),
@@ -1102,7 +1252,7 @@ impl TryFrom<kmip_2_1::kmip_operations::EncryptResponse> for EncryptResponse {
     type Error = KmipError;
 
     fn try_from(value: kmip_2_1::kmip_operations::EncryptResponse) -> Result<Self, Self::Error> {
-        trace!("Converting KMIP 2.1 EncryptResponse to KMIP 1.4: {value:#?}");
+        trace!("Converting KMIP 2.1 EncryptResponse to KMIP 1.4: {value}");
 
         Ok(Self {
             unique_identifier: value.unique_identifier.to_string(),
@@ -1208,7 +1358,7 @@ impl TryFrom<kmip_2_1::kmip_operations::DecryptResponse> for DecryptResponse {
     type Error = KmipError;
 
     fn try_from(value: kmip_2_1::kmip_operations::DecryptResponse) -> Result<Self, Self::Error> {
-        trace!("Converting KMIP 2.1 DecryptResponse to KMIP 1.4: {value:#?}");
+        trace!("Converting KMIP 2.1 DecryptResponse to KMIP 1.4: {value}");
 
         Ok(Self {
             unique_identifier: value.unique_identifier.to_string(),
@@ -1291,6 +1441,18 @@ pub struct SignResponse {
     pub signature_data: Vec<u8>,
 }
 
+impl TryFrom<kmip_2_1::kmip_operations::SignResponse> for SignResponse {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_operations::SignResponse) -> Result<Self, Self::Error> {
+        trace!("Converting KMIP 2.1 SignResponse to KMIP 1.4: {value}");
+        Ok(Self {
+            unique_identifier: value.unique_identifier.to_string(),
+            signature_data: value.signature_data.unwrap_or_default(),
+        })
+    }
+}
+
 /// 4.32 Signature Verify
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
@@ -1344,6 +1506,26 @@ impl From<SignatureVerify> for kmip_2_1::kmip_operations::SignatureVerify {
 pub struct SignatureVerifyResponse {
     pub unique_identifier: String,
     pub validity_indicator: ValidityIndicator,
+}
+
+impl TryFrom<kmip_2_1::kmip_operations::SignatureVerifyResponse> for SignatureVerifyResponse {
+    type Error = KmipError;
+
+    fn try_from(
+        value: kmip_2_1::kmip_operations::SignatureVerifyResponse,
+    ) -> Result<Self, Self::Error> {
+        let vi_1_4 = match value.validity_indicator {
+            Some(kmip_2_1::kmip_types::ValidityIndicator::Valid) => ValidityIndicator::Valid,
+            Some(kmip_2_1::kmip_types::ValidityIndicator::Invalid) => ValidityIndicator::Invalid,
+            Some(kmip_2_1::kmip_types::ValidityIndicator::Unknown) | None => {
+                ValidityIndicator::Unknown
+            }
+        };
+        Ok(Self {
+            unique_identifier: value.unique_identifier.to_string(),
+            validity_indicator: vi_1_4,
+        })
+    }
 }
 
 /// 4.33 MAC
@@ -1416,7 +1598,21 @@ pub struct MACVerify {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_parameters: Option<CryptographicParameters>,
     pub data: Vec<u8>,
+    #[serde(rename = "MACData")]
     pub mac_data: Vec<u8>,
+}
+
+impl From<MACVerify> for kmip_2_1::kmip_operations::MACVerify {
+    fn from(value: MACVerify) -> Self {
+        Self {
+            unique_identifier: kmip_2_1::kmip_types::UniqueIdentifier::TextString(
+                value.unique_identifier,
+            ),
+            cryptographic_parameters: value.cryptographic_parameters.map(Into::into),
+            data: value.data,
+            mac_data: value.mac_data,
+        }
+    }
 }
 
 /// Response to a MAC Verify request
@@ -1425,6 +1621,22 @@ pub struct MACVerify {
 pub struct MACVerifyResponse {
     pub unique_identifier: String,
     pub validity_indicator: ValidityIndicator,
+}
+
+impl TryFrom<kmip_2_1::kmip_operations::MACVerifyResponse> for MACVerifyResponse {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_operations::MACVerifyResponse) -> Result<Self, Self::Error> {
+        let vi_1_4 = match value.validity_indicator {
+            kmip_2_1::kmip_types::ValidityIndicator::Valid => ValidityIndicator::Valid,
+            kmip_2_1::kmip_types::ValidityIndicator::Invalid => ValidityIndicator::Invalid,
+            kmip_2_1::kmip_types::ValidityIndicator::Unknown => ValidityIndicator::Unknown,
+        };
+        Ok(Self {
+            unique_identifier: value.unique_identifier.to_string(),
+            validity_indicator: vi_1_4,
+        })
+    }
 }
 
 /// 4.35 RNG Retrieve
@@ -1441,6 +1653,24 @@ pub struct RNGRetrieveResponse {
     pub data: Vec<u8>,
 }
 
+impl From<RNGRetrieve> for kmip_2_1::kmip_operations::RNGRetrieve {
+    fn from(value: RNGRetrieve) -> Self {
+        Self {
+            data_length: value.data_length,
+        }
+    }
+}
+
+impl TryFrom<kmip_2_1::kmip_operations::RNGRetrieveResponse> for RNGRetrieveResponse {
+    type Error = KmipError;
+
+    fn try_from(
+        value: kmip_2_1::kmip_operations::RNGRetrieveResponse,
+    ) -> Result<Self, Self::Error> {
+        Ok(Self { data: value.data })
+    }
+}
+
 /// 4.36 RNG Seed
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
@@ -1452,7 +1682,26 @@ pub struct RNGSeed {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct RNGSeedResponse {
-    amount_of_seed_data: i32,
+    /// Number of bytes of seed data accepted by the RNG.
+    /// KMIP 1.4 optional vectors use <DataLength>; accept it as an alias.
+    #[serde(alias = "DataLength")]
+    pub amount_of_seed_data: i32,
+}
+
+impl From<RNGSeed> for kmip_2_1::kmip_operations::RNGSeed {
+    fn from(value: RNGSeed) -> Self {
+        Self { data: value.data }
+    }
+}
+
+impl TryFrom<kmip_2_1::kmip_operations::RNGSeedResponse> for RNGSeedResponse {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_operations::RNGSeedResponse) -> Result<Self, Self::Error> {
+        Ok(Self {
+            amount_of_seed_data: value.amount_of_seed_data,
+        })
+    }
 }
 
 /// 4.37 Hash
@@ -1468,7 +1717,33 @@ pub struct Hash {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct HashResponse {
+    #[serde(rename = "Data", alias = "HashData")]
     pub hash_data: Vec<u8>,
+}
+
+impl From<Hash> for kmip_2_1::kmip_operations::Hash {
+    fn from(value: Hash) -> Self {
+        Self {
+            cryptographic_parameters: value
+                .cryptographic_parameters
+                .map(Into::into)
+                .unwrap_or_default(),
+            data: Some(value.data),
+            correlation_value: None,
+            init_indicator: None,
+            final_indicator: None,
+        }
+    }
+}
+
+impl TryFrom<kmip_2_1::kmip_operations::HashResponse> for HashResponse {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_operations::HashResponse) -> Result<Self, Self::Error> {
+        Ok(Self {
+            hash_data: value.data.unwrap_or_default(),
+        })
+    }
 }
 
 /// 4.38 Create Split Key
@@ -1584,7 +1859,7 @@ impl TryFrom<kmip_2_1::kmip_operations::ImportResponse> for ImportResponse {
     type Error = KmipError;
 
     fn try_from(value: kmip_2_1::kmip_operations::ImportResponse) -> Result<Self, Self::Error> {
-        trace!("Converting KMIP 2.1 ImportResponse to KMIP 1.4: {value:#?}");
+        trace!("Converting KMIP 2.1 ImportResponse to KMIP 1.4: {value}");
 
         Ok(Self {
             unique_identifier: value.unique_identifier.to_string(),
@@ -2002,9 +2277,9 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
                 Self::CreateKeyPair(Box::new(create_key_pair.into()))
             }
             Operation::Decrypt(decrypt) => Self::Decrypt(Box::new((*decrypt).into())),
-            // Operation::DeleteAttribute(delete_attribute) => {
-            //     Self::DeleteAttribute(delete_attribute.into())
-            // }
+            Operation::DeleteAttribute(delete_attribute) => {
+                Self::DeleteAttribute(delete_attribute.into())
+            }
             // Operation::DeriveKey(derive_key) => {
             //     Self::DeriveKey(derive_key.into())
             // }
@@ -2018,9 +2293,9 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             Operation::Encrypt(encrypt) => Self::Encrypt(Box::new((*encrypt).into())),
             Operation::Get(get) => Self::Get(get.into()),
             Operation::GetAttributes(get_attributes) => Self::GetAttributes(get_attributes.into()),
-            // Operation::GetAttributeList(get_attribute_list) => {
-            //     Self::GetAttributeList(get_attribute_list.into())
-            // }
+            Operation::GetAttributeList(get_attribute_list) => {
+                Self::GetAttributeList(get_attribute_list.into())
+            }
             // Operation::GetUsageAllocation(get_usage_allocation) => {
             //     Self::GetUsageAllocation(get_usage_allocation.into())
             // }
@@ -2030,12 +2305,10 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             // }
             Operation::Locate(locate) => Self::Locate(Box::new(locate.into())),
             Operation::MAC(mac) => Self::MAC(mac.into()),
-            // Operation::MACVerify(mac_verify) => {
-            //     Self::MACVerify(mac_verify.into())
-            // }
-            // Operation::ModifyAttribute(modify_attribute) => {
-            //     Self::ModifyAttribute(modify_attribute.into())
-            // }
+            Operation::MACVerify(mac_verify) => Self::MACVerify(mac_verify.into()),
+            Operation::ModifyAttribute(modify_attribute) => {
+                Self::ModifyAttribute(modify_attribute.into())
+            }
             // Operation::ObtainLease(obtain_lease) => {
             //     Self::ObtainLease(obtain_lease.into())
             // }
@@ -2053,16 +2326,13 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             //     Self::ReKeyKeyPair(rekey_key_pair.into())
             // }
             Operation::Revoke(revoke) => Self::Revoke(revoke.into()),
-            // Operation::RNGRetrieve(rng_retrieve) => {
-            //     Self::RNGRetrieve(rng_retrieve.into())
-            // }
-            // Operation::RNGSeed(rng_seed) => {
-            //     Self::RNGSeed(rng_seed.into())
-            // }
+            Operation::RNGRetrieve(rng_retrieve) => Self::RNGRetrieve(rng_retrieve.into()),
+            Operation::RNGSeed(rng_seed) => Self::RNGSeed(rng_seed.into()),
             Operation::Sign(sign) => Self::Sign(sign.into()),
             Operation::SignatureVerify(signature_verify) => {
                 Self::SignatureVerify(signature_verify.into())
             }
+            Operation::Hash(hash) => Self::Hash(hash.into()),
             // Operation::Validate(validate) => {
             //     Self::Validate(validate.into())
             // }
@@ -2111,17 +2381,26 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             kmip_2_1::kmip_operations::Operation::DecryptResponse(decrypt_response) => {
                 Self::DecryptResponse(decrypt_response.try_into().context("DecryptResponse")?)
             }
-            // Operation::DeleteAttributeResponse(delete_attribute_response) => {
-            //     Self::DeleteAttributeResponse(
-            //         delete_attribute_response.into(),
-            //     )
-            // }
+            kmip_2_1::kmip_operations::Operation::DeleteAttributeResponse(
+                delete_attribute_response,
+            ) => Self::DeleteAttributeResponse(
+                delete_attribute_response
+                    .try_into()
+                    .context("DeleteAttributeResponse")?,
+            ),
             // Operation::DeriveKeyResponse(derive_key_response) => {
             //     Self::DeriveKeyResponse(derive_key_response.into())
             // }
             kmip_2_1::kmip_operations::Operation::DestroyResponse(destroy_response) => {
                 Self::DestroyResponse(destroy_response.try_into().context("DestroyResponse")?)
             }
+            kmip_2_1::kmip_operations::Operation::ModifyAttributeResponse(
+                modify_attribute_response,
+            ) => Self::ModifyAttributeResponse(
+                modify_attribute_response
+                    .try_into()
+                    .context("ModifyAttributeResponse")?,
+            ),
             kmip_2_1::kmip_operations::Operation::DiscoverVersions(discover_versions) => {
                 Self::DiscoverVersions(discover_versions)
             }
@@ -2134,11 +2413,13 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             kmip_2_1::kmip_operations::Operation::GetAttributesResponse(
                 get_attributes_response,
             ) => Self::GetAttributesResponse((*get_attributes_response).try_into()?),
-            // Operation::GetAttributeListResponse(get_attribute_list_response) => {
-            //     Self::GetAttributeListResponse(
-            //         get_attribute_list_response.into(),
-            //     )
-            // }
+            kmip_2_1::kmip_operations::Operation::GetAttributeListResponse(
+                get_attribute_list_response,
+            ) => Self::GetAttributeListResponse(
+                get_attribute_list_response
+                    .try_into()
+                    .context("GetAttributeListResponse")?,
+            ),
             kmip_2_1::kmip_operations::Operation::GetResponse(get_response) => {
                 Self::GetResponse(get_response.try_into()?)
             }
@@ -2162,9 +2443,13 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             kmip_2_1::kmip_operations::Operation::MACResponse(mac_response) => {
                 Self::MACResponse(mac_response.try_into().context("MACResponse")?)
             }
-            // Operation::MACVerifyResponse(mac_verify_response) => {
-            //     Self::MACVerifyResponse(mac_verify_response.into())
-            // }
+            kmip_2_1::kmip_operations::Operation::MACVerifyResponse(mac_verify_response) => {
+                Self::MACVerifyResponse(
+                    mac_verify_response
+                        .try_into()
+                        .context("MACVerifyResponse")?,
+                )
+            }
             // Operation::ModifyAttributeResponse(modify_attribute_response) => {
             //     Self::ModifyAttributeResponse(
             //         modify_attribute_response.into(),
@@ -2203,22 +2488,29 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             kmip_2_1::kmip_operations::Operation::RevokeResponse(revoke_response) => {
                 Self::RevokeResponse(revoke_response.try_into().context("RevokeResponse")?)
             }
-            // Operation::RNGRetrieveResponse(rng_retrieve_response) => {
-            //     Self::RNGRetrieveResponse(
-            //         rng_retrieve_response.into(),
-            //     )
-            // }
-            // Operation::RNGSeedResponse(rng_seed_response) => {
-            //     Self::RNGSeedResponse(rng_seed_response.into())
-            // }
-            // Operation::SignatureVerifyResponse(signature_verify_response) => {
-            //     Self::SignatureVerifyResponse(
-            //         signature_verify_response.into(),
-            //     )
-            // }
-            // Operation::SignResponse(sign_response) => {
-            //     Self::SignResponse(sign_response.into())
-            // }
+            kmip_2_1::kmip_operations::Operation::HashResponse(hash_response) => {
+                Self::HashResponse(hash_response.try_into().context("HashResponse")?)
+            }
+            kmip_2_1::kmip_operations::Operation::RNGRetrieveResponse(rng_retrieve_response) => {
+                Self::RNGRetrieveResponse(
+                    rng_retrieve_response
+                        .try_into()
+                        .context("RNGRetrieveResponse")?,
+                )
+            }
+            kmip_2_1::kmip_operations::Operation::RNGSeedResponse(rng_seed_response) => {
+                Self::RNGSeedResponse(rng_seed_response.try_into().context("RNGSeedResponse")?)
+            }
+            kmip_2_1::kmip_operations::Operation::SignatureVerifyResponse(
+                signature_verify_response,
+            ) => Self::SignatureVerifyResponse(
+                signature_verify_response
+                    .try_into()
+                    .context("SignatureVerifyResponse")?,
+            ),
+            kmip_2_1::kmip_operations::Operation::SignResponse(sign_response) => {
+                Self::SignResponse(sign_response.try_into().context("SignResponse")?)
+            }
             // Operation::ValidateResponse(validate_response) => {
             //     Self::ValidateResponse(validate_response.into())
             // }

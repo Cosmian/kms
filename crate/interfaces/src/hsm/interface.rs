@@ -305,4 +305,18 @@ pub trait HSM: Send + Sync {
         slot_id: usize,
         key_id: &[u8],
     ) -> InterfaceResult<Option<KeyMetadata>>;
+
+    /// Generate cryptographically secure random bytes using the HSM RNG.
+    ///
+    /// # Arguments
+    /// * `slot_id` - the slot ID of the HSM to use for RNG
+    /// * `len` - number of random bytes to generate
+    ///
+    /// # Returns
+    /// * `InterfaceResult<Vec<u8>>` - random bytes
+    async fn generate_random(&self, slot_id: usize, len: usize) -> InterfaceResult<Vec<u8>>;
+
+    /// Seed the HSM RNG with the provided data. Some devices may not support seeding and
+    /// can return an error; callers may choose to ignore such errors.
+    async fn seed_random(&self, slot_id: usize, seed: &[u8]) -> InterfaceResult<()>;
 }

@@ -133,7 +133,7 @@ where
                         });
                     }
                     Err(e) => {
-                        debug!("JWT authentication failed: {e:?}");
+                        debug!("API token authentication failed: {e:?}");
                     }
                 }
             }

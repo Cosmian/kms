@@ -5,7 +5,6 @@ use cosmian_kms_server_database::reexport::{
         kmip_0::{
             kmip_messages::{RequestMessage, ResponseMessage},
             kmip_operations::{DiscoverVersions, DiscoverVersionsResponse},
-            kmip_types::State,
         },
         kmip_2_1::kmip_operations::{
             Activate, ActivateResponse, AddAttribute, AddAttributeResponse, Certify,
@@ -14,9 +13,10 @@ use cosmian_kms_server_database::reexport::{
             DeriveKeyResponse, Destroy, DestroyResponse, Encrypt, EncryptResponse, Export,
             ExportResponse, Get, GetAttributes, GetAttributesResponse, GetResponse, Hash,
             HashResponse, Import, ImportResponse, Locate, LocateResponse, MAC, MACResponse, Query,
-            QueryResponse, ReKey, ReKeyKeyPair, ReKeyKeyPairResponse, ReKeyResponse, Register,
-            RegisterResponse, Revoke, RevokeResponse, SetAttribute, SetAttributeResponse, Sign,
-            SignResponse, SignatureVerify, SignatureVerifyResponse, Validate, ValidateResponse,
+            QueryResponse, RNGRetrieve, RNGRetrieveResponse, RNGSeed, RNGSeedResponse, ReKey,
+            ReKeyKeyPair, ReKeyKeyPairResponse, ReKeyResponse, Register, RegisterResponse, Revoke,
+            RevokeResponse, SetAttribute, SetAttributeResponse, Sign, SignResponse,
+            SignatureVerify, SignatureVerifyResponse, Validate, ValidateResponse,
         },
     },
     cosmian_kms_interfaces::SessionParams,
@@ -402,6 +402,32 @@ impl KMS {
         operations::hash_operation(self, request, user, params).await
     }
 
+    /// This operation requests the server to return cryptographically secure random data.
+    pub(crate) async fn rng_retrieve(
+        &self,
+        request: RNGRetrieve,
+        user: &str,
+        params: Option<Arc<dyn SessionParams>>,
+    ) -> KResult<RNGRetrieveResponse> {
+        let span = tracing::span!(tracing::Level::ERROR, "rng_retrieve");
+        let _enter = span.enter();
+
+        operations::rng_retrieve(self, request, user, params).await
+    }
+
+    /// This operation requests the server to seed an RNG instance with provided data.
+    pub(crate) async fn rng_seed(
+        &self,
+        request: RNGSeed,
+        user: &str,
+        params: Option<Arc<dyn SessionParams>>,
+    ) -> KResult<RNGSeedResponse> {
+        let span = tracing::span!(tracing::Level::ERROR, "rng_seed");
+        let _enter = span.enter();
+
+        operations::rng_seed(self, request, user, params).await
+    }
+
     /// This operation requests the server to Import a Managed Object specified
     /// by its Unique Identifier. The request specifies the object being
     /// imported and all the attributes to be assigned to the object. The
@@ -536,7 +562,9 @@ impl KMS {
         let span = tracing::span!(tracing::Level::ERROR, "locate");
         let _enter = span.enter();
 
-        operations::locate(self, request, Some(State::Active), user, params).await
+        // Do not over-constrain Locate by state here; filtering is handled in the
+        // operation layer to include both PreActive and Active by default.
+        operations::locate(self, request, None, user, params).await
     }
 
     /// This operation is used by the client to interrogate the server

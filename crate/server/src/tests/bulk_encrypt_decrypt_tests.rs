@@ -15,6 +15,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         },
     },
 };
+use time::OffsetDateTime;
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
@@ -145,6 +146,11 @@ fn aes_256_key_request<T: IntoIterator<Item = impl AsRef<str>>>(
         ),
         key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
         object_type: Some(ObjectType::SymmetricKey),
+        activation_date: Some(
+            OffsetDateTime::now_utc()
+                .replace_millisecond(0)
+                .map_err(|e| KmipError::Default(e.to_string()))?,
+        ),
         ..Attributes::default()
     };
     attributes.set_tags(tags)?;

@@ -133,7 +133,7 @@ mod tests {
             init_indicator: Some(true),
             final_indicator: Some(true),
         };
-        kms.hash(request, "test", None).await.unwrap_err();
+        assert!(kms.hash(request, "test", None).await.is_err());
 
         // Test different hashing algorithms
         for algorithm in [
@@ -184,7 +184,7 @@ mod tests {
             init_indicator: None,
             final_indicator: None,
         };
-        kms.hash(request, "test", None).await.unwrap_err();
+        assert!(kms.hash(request, "test", None).await.is_err());
 
         Ok(())
     }

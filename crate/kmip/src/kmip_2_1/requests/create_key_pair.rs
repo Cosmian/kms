@@ -1,3 +1,5 @@
+use time::OffsetDateTime;
+
 #[cfg(not(feature = "non-fips"))]
 use crate::kmip_2_1::extra::fips::{FIPS_PRIVATE_RSA_MASK, FIPS_PUBLIC_RSA_MASK};
 use crate::{
@@ -50,6 +52,11 @@ pub fn create_rsa_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
         cryptographic_usage_mask: Some(private_key_mask | public_key_mask),
         key_format_type: Some(KeyFormatType::TransparentRSAPrivateKey),
         object_type: Some(ObjectType::PrivateKey),
+        activation_date: Some(
+            OffsetDateTime::now_utc()
+                .replace_millisecond(0)
+                .map_err(|e| KmipError::Default(e.to_string()))?,
+        ),
         ..Attributes::default()
     };
     if let Some(wrap_key_id) = wrapping_key_id {
@@ -188,8 +195,14 @@ pub fn create_ec_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
             ..CryptographicDomainParameters::default()
         }),
         cryptographic_usage_mask: Some(private_key_mask | public_key_mask),
-        key_format_type: Some(KeyFormatType::ECPrivateKey),
+        // Do not set a key format at common level for EC, as public/private differ
+        key_format_type: None,
         object_type: Some(ObjectType::PrivateKey),
+        activation_date: Some(
+            OffsetDateTime::now_utc()
+                .replace_millisecond(0)
+                .map_err(|e| KmipError::Default(e.to_string()))?,
+        ),
         ..Attributes::default()
     };
     if let Some(wrap_key_id) = wrapping_key_id {
@@ -210,6 +223,12 @@ pub fn create_ec_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
         object_type: Some(ObjectType::PrivateKey),
         unique_identifier: private_key_id,
         sensitive: sensitive.then_some(true),
+        activation_date: Some(
+            OffsetDateTime::now_utc()
+                .replace_millisecond(0)
+                .map_err(|e| KmipError::Default(e.to_string()))?,
+        ),
+
         ..Attributes::default()
     };
 
@@ -222,8 +241,14 @@ pub fn create_ec_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
             ..CryptographicDomainParameters::default()
         }),
         cryptographic_usage_mask: Some(public_key_mask),
-        key_format_type: Some(KeyFormatType::ECPrivateKey),
-        object_type: Some(ObjectType::PrivateKey),
+        key_format_type: Some(KeyFormatType::TransparentECPublicKey),
+        object_type: Some(ObjectType::PublicKey),
+        activation_date: Some(
+            OffsetDateTime::now_utc()
+                .replace_millisecond(0)
+                .map_err(|e| KmipError::Default(e.to_string()))?,
+        ),
+
         ..Attributes::default()
     };
 

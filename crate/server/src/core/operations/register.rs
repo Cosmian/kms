@@ -15,6 +15,7 @@ use cosmian_kms_server_database::reexport::{
 use cosmian_logger::{debug, trace};
 use time::OffsetDateTime;
 
+use super::import::process_opaque_object;
 use crate::{
     core::{
         KMS,
@@ -36,7 +37,7 @@ pub(crate) async fn register(
     params: Option<Arc<dyn SessionParams>>,
     privileged_users: Option<Vec<String>>,
 ) -> KResult<RegisterResponse> {
-    trace!("Register: {}", serde_json::to_string(&request)?);
+    trace!("{request}");
     if request.protection_storage_masks.is_some() {
         kms_bail!(KmsError::UnsupportedPlaceholder)
     }
@@ -66,15 +67,20 @@ pub(crate) async fn register(
         ))
     }
 
-    // Update the initial date and last changed date of the object
-    // Update the state of the object to Active and activation date
+    // Update lifecycle: do NOT auto-set InitialDate; determine state based on provided dates.
+    // Default to PreActive when both are absent; Active if either InitialDate is provided
+    // and <= now.
     let now = OffsetDateTime::now_utc()
         .replace_millisecond(0)
         .map_err(|e| KmsError::Default(e.to_string()))?;
     if let Ok(object_attributes) = request.object.attributes_mut() {
-        object_attributes.state = Some(State::Active);
-        // update the initial date
-        object_attributes.initial_date = Some(now);
+        let initial_allows_active = object_attributes.initial_date.is_some_and(|d| d <= now);
+        let desired_state = if initial_allows_active {
+            State::Active
+        } else {
+            State::PreActive
+        };
+        object_attributes.state = Some(desired_state);
         // update the last change date
         object_attributes.last_change_date = Some(now);
     }
@@ -117,6 +123,11 @@ pub(crate) async fn register(
                 params.clone(),
             ))
             .await?
+        }
+        ObjectType::OpaqueObject => {
+            // Reuse the import path logic (no unwrap/wrap for opaque objects)
+            let (uid, ops) = process_opaque_object(request.into())?;
+            (uid, ops)
         }
         x => {
             return Err(KmsError::InvalidRequest(format!(

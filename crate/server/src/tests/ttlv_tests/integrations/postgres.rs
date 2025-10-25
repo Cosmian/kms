@@ -177,7 +177,7 @@ fn get_symmetric_key(client: &SocketClient, uid: &str) -> Object {
     let Operation::Get(get_request) = &mut batch_item.request_payload else {
         panic!("Expected Get operation");
     };
-    get_request.unique_identifier = uid.to_owned();
+    get_request.unique_identifier = Some(uid.to_owned());
     info!("Getting symmetric key with request: {request_message}",);
 
     // Use the raw request to send the Get operation

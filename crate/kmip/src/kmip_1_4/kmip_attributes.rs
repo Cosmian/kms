@@ -9,12 +9,12 @@ use serde::{
 };
 use time::OffsetDateTime;
 
-use crate::kmip_1_4::kmip_types::CustomAttribute;
 pub use crate::{
     KmipError,
     kmip_0::kmip_types::{
-        AlternativeName, ApplicationSpecificInformation, CertificateType, CryptographicUsageMask,
-        KeyValueLocationType, RevocationReason, State, UsageLimits, X509CertificateIdentifier,
+        AlternativeName, ApplicationSpecificInformation, BlockCipherMode, CertificateType,
+        CryptographicUsageMask, KeyValueLocationType, PaddingMethod, RevocationReason, State,
+        UsageLimits, X509CertificateIdentifier,
     },
     kmip_1_4::{
         kmip_data_structures::CryptographicParameters,
@@ -28,6 +28,7 @@ pub use crate::{
         kmip_types::{VendorAttribute, VendorAttributeValue},
     },
 };
+use crate::{kmip_0::kmip_types::HashingAlgorithm, kmip_1_4::kmip_types::CustomAttribute};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Attribute {
@@ -368,8 +369,49 @@ impl<'de> Deserialize<'de> for Attribute {
                         Ok(Attribute::CryptographicLength(value))
                     }
                     "Cryptographic Parameters" => {
-                        let value: CryptographicParameters = map.next_value()?;
-                        Ok(Attribute::CryptographicParameters(value))
+                        // Some KMIP 1.4 vectors encode AttributeValue directly as a single Enumeration
+                        // (e.g., HMACSHA256) instead of the full CryptographicParameters structure.
+                        // Accept both forms by deserializing an untagged union and mapping into a structure.
+                        #[derive(Deserialize)]
+                        #[serde(untagged)]
+                        enum CryptoParamsOrEnum {
+                            Struct(CryptographicParameters),
+                            BlockCipherMode(BlockCipherMode),
+                            PaddingMethod(PaddingMethod),
+                            CryptographicAlgorithm(CryptographicAlgorithm),
+                            DigitalSignatureAlgorithm(DigitalSignatureAlgorithm),
+                            HashingAlgorithm(HashingAlgorithm),
+                        }
+
+                        let value: CryptoParamsOrEnum = map.next_value()?;
+                        let params = match value {
+                            CryptoParamsOrEnum::Struct(s) => s,
+                            CryptoParamsOrEnum::BlockCipherMode(m) => CryptographicParameters {
+                                block_cipher_mode: Some(m),
+                                ..Default::default()
+                            },
+                            CryptoParamsOrEnum::PaddingMethod(p) => CryptographicParameters {
+                                padding_method: Some(p),
+                                ..Default::default()
+                            },
+                            CryptoParamsOrEnum::CryptographicAlgorithm(a) => {
+                                CryptographicParameters {
+                                    cryptographic_algorithm: Some(a),
+                                    ..Default::default()
+                                }
+                            }
+                            CryptoParamsOrEnum::DigitalSignatureAlgorithm(d) => {
+                                CryptographicParameters {
+                                    digital_signature_algorithm: Some(d),
+                                    ..Default::default()
+                                }
+                            }
+                            CryptoParamsOrEnum::HashingAlgorithm(h) => CryptographicParameters {
+                                hashing_algorithm: Some(h),
+                                ..Default::default()
+                            },
+                        };
+                        Ok(Attribute::CryptographicParameters(params))
                     }
                     "Cryptographic Domain Parameters" => {
                         let value: CryptographicDomainParameters = map.next_value()?;
@@ -688,7 +730,7 @@ impl From<Attribute> for kmip_2_1::kmip_attributes::Attribute {
             Attribute::UniqueIdentifier(v) => {
                 Self::UniqueIdentifier(kmip_2_1::kmip_types::UniqueIdentifier::TextString(v))
             }
-            Attribute::UsageLimits(v) => Self::UsageLimits(v),
+            Attribute::UsageLimits(v) => Self::UsageLimits(v.into()),
         }
     }
 }
@@ -743,7 +785,7 @@ impl TryFrom<kmip_2_1::kmip_attributes::Attribute> for Attribute {
                 Ok(Self::DigitalSignatureAlgorithm(v.try_into()?))
             }
             kmip_2_1::kmip_attributes::Attribute::LeaseTime(v) => Ok(Self::LeaseTime(v)),
-            kmip_2_1::kmip_attributes::Attribute::UsageLimits(v) => Ok(Self::UsageLimits(v)),
+            kmip_2_1::kmip_attributes::Attribute::UsageLimits(v) => Ok(Self::UsageLimits(v.into())),
             kmip_2_1::kmip_attributes::Attribute::State(v) => Ok(Self::State(v)),
             kmip_2_1::kmip_attributes::Attribute::InitialDate(v) => Ok(Self::InitialDate(v)),
             kmip_2_1::kmip_attributes::Attribute::DestroyDate(v) => Ok(Self::DestroyDate(v)),
@@ -778,6 +820,16 @@ impl TryFrom<kmip_2_1::kmip_attributes::Attribute> for Attribute {
                             value: vendor_attribute.attribute_value.into(),
                         }))
                     }
+                } else if vendor_id.as_str() == "x" {
+                    // KMIP 1.x TL vectors expect vendor attributes with the synthetic
+                    // "x-" prefix (e.g., x-ID, x-Barcode). When the server stores
+                    // attributes internally as KMIP 2.1 VendorAttribute with
+                    // vendor_identification="x", map back to KMIP 1.4 CustomAttribute
+                    // using the expected x-* naming convention.
+                    Ok(Self::CustomAttribute(CustomAttribute {
+                        name: format!("x-{}", vendor_attribute.attribute_name),
+                        value: vendor_attribute.attribute_value.into(),
+                    }))
                 } else {
                     let name = format!("y-{}::{}", vendor_id, vendor_attribute.attribute_name);
                     let value = vendor_attribute.attribute_value.into();
@@ -972,7 +1024,7 @@ impl From<Vec<Attribute>> for kmip_2_1::kmip_attributes::Attributes {
                     attributes.lease_time = Some(v);
                 }
                 Attribute::UsageLimits(v) => {
-                    attributes.usage_limits = Some(v);
+                    attributes.usage_limits = Some(v.into());
                 }
                 Attribute::State(v) => {
                     attributes.state = Some(v);

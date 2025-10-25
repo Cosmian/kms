@@ -30,7 +30,7 @@ pub(crate) async fn retrieve_object_for_operation(
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<ObjectWithMetadata> {
     trace!(
-        "retrieve_object_for_operation: key_uid_or_tags: {uid_or_tags:?}, user: {user}, \
+        "uid_or_tags: {uid_or_tags:?}, user: {user}, \
          operation_type: {operation_type:?}"
     );
 
@@ -41,25 +41,55 @@ pub(crate) async fn retrieve_object_for_operation(
         .values()
     {
         let state = owm.state();
-        if !(state == State::Active
-            || state == State::PreActive
-            || operation_type == KmipOperation::Export
-            || operation_type == KmipOperation::GetAttributes)
-        {
+        // Allow retrieval based on state and operation semantics.
+        // Rules:
+        // - Active / PreActive: always retrievable.
+        // - Compromised: permitted for Get / Export / GetAttributes (profiling vectors inspect attrs post-revoke).
+        // - Destroyed / Destroyed_Compromised: ONLY permit GetAttributes so clients can read lifecycle state.
+        let state_allows = match state {
+            State::Active | State::PreActive | State::Deactivated => true,
+            State::Compromised => matches!(
+                operation_type,
+                KmipOperation::Get | KmipOperation::Export | KmipOperation::GetAttributes
+            ),
+            State::Destroyed | State::Destroyed_Compromised => {
+                // KMIP profiles expect Get on a destroyed object to return OperationFailed / ObjectDestroyed
+                // rather than ObjectNotFound. We therefore allow retrieval for Get so the operation layer
+                // can emit the correct Object_Destroyed error (BL-M-8-21 vector). Still restrict other
+                // operations besides GetAttributes and Get.
+                matches!(
+                    operation_type,
+                    KmipOperation::Get | KmipOperation::GetAttributes
+                )
+            }
+        };
+        if !state_allows {
+            trace!(
+                "state_allows: {state_allows}: state: {state}, operation_type: {operation_type}"
+            );
             continue;
         }
 
         if user_has_permission(user, Some(owm), &operation_type, kms, params.clone()).await? {
             let mut owm = owm.to_owned();
-            // Update the state on the object attributes if they are not present.
-            if owm.attributes().state.is_none() {
-                owm.attributes_mut().state = Some(state);
-            }
+            // Compute effective state with lifecycle precedence:
+            // - If the DB marks the object as Destroyed / Destroyed_Compromised / Compromised / Deactivated,
+            //   NEVER override it with attribute-level values.
+            // - Otherwise (Active/PreActive), prefer attribute PreActive when present to satisfy
+            //   profile vectors that keep objects PreActive until explicit Activate.
+            let attr_state = owm.attributes().state;
+            let effective_state = match state {
+                State::Destroyed
+                | State::Destroyed_Compromised
+                | State::Compromised
+                | State::Deactivated
+                | State::Active => state, // never downgrade Active to PreActive
+                State::PreActive => attr_state.unwrap_or(State::PreActive),
+            };
+            // Synchronize both external attributes and embedded object attributes to effective state
+            owm.attributes_mut().state = Some(effective_state);
             if let Ok(ref mut attributes) = owm.object_mut().attributes_mut() {
-                // Update the state on the object attributes if they are not present.
-                if attributes.state.is_none() {
-                    attributes.state = Some(state);
-                }
+                attributes.state = Some(effective_state);
             }
             return Ok(owm);
         }

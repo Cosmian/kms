@@ -408,7 +408,7 @@ pub(super) async fn create_(
         .bind(uid.clone())
         .bind(object_json)
         .bind(attributes_json)
-        .bind(State::Active.to_string())
+        .bind(attributes.state.unwrap_or(State::Active).to_string())
         .bind(owner)
         .execute(&mut **executor)
         .await?;

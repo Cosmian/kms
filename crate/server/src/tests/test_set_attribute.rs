@@ -195,7 +195,7 @@ async fn set_link_attribute_and_remove_it(
     set_attribute(kms, uid, Attribute::Link(link.clone())).await?;
 
     let get_response = get_attributes(kms, uid, tag).await?;
-    assert_eq!(get_response.attributes.link, Some(vec![link]));
+    assert!(get_response.attributes.link == Some(vec![link]));
 
     kms.delete_attribute(
         DeleteAttribute {

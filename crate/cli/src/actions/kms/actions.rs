@@ -8,8 +8,9 @@ use crate::{
         access::AccessAction, attributes::AttributesCommands, azure::AzureCommands,
         bench::BenchAction, certificates::CertificatesCommands, derive_key::DeriveKeyAction,
         elliptic_curves::EllipticCurveCommands, google::GoogleCommands, hash::HashAction,
-        login::LoginAction, mac::MacAction, rsa::RsaCommands, secret_data::SecretDataCommands,
-        shared::LocateObjectsAction, symmetric::SymmetricCommands, version::ServerVersionAction,
+        login::LoginAction, mac::MacCommands, opaque_object::OpaqueObjectCommands, rng::RngAction,
+        rsa::RsaCommands, secret_data::SecretDataCommands, shared::LocateObjectsAction,
+        symmetric::SymmetricCommands, version::ServerVersionAction,
     },
     error::result::KmsCliResult,
 };
@@ -41,9 +42,17 @@ pub enum KmsActions {
     /// The access token will be removed from the cosmian configuration file.
     Logout,
     Hash(HashAction),
-    Mac(MacAction),
+    Mac(MacCommands),
+    /// RNG utilities: retrieve random bytes or seed RNG
+    Rng(RngAction),
+    /// Discover KMIP protocol versions supported by the server.
+    DiscoverVersions,
+    /// Query server capabilities and metadata (KMIP Query)
+    Query,
     #[command(subcommand)]
     Rsa(RsaCommands),
+    #[command(subcommand)]
+    OpaqueObject(OpaqueObjectCommands),
     #[command(subcommand)]
     SecretData(SecretDataCommands),
     ServerVersion(ServerVersionAction),
@@ -60,36 +69,85 @@ impl KmsActions {
         let mut new_config = kms_rest_client.config.clone();
 
         match self {
-            Self::AccessRights(action) => action.process(kms_rest_client).await?,
-            Self::Attributes(action) => action.process(kms_rest_client).await?,
-            Self::Azure(action) => action.process(kms_rest_client).await?,
+            Self::AccessRights(action) => Box::pin(action.process(kms_rest_client)).await?,
+            Self::Attributes(action) => Box::pin(action.process(kms_rest_client)).await?,
+            Self::Azure(action) => Box::pin(action.process(kms_rest_client)).await?,
             Self::Bench(action) => Box::pin(action.process(kms_rest_client)).await?,
             #[cfg(feature = "non-fips")]
-            Self::Cc(action) => action.process(kms_rest_client).await?,
+            Self::Cc(action) => Box::pin(action.process(kms_rest_client)).await?,
             Self::Certificates(action) => {
                 Box::pin(action.process(kms_rest_client)).await?;
             }
             Self::DeriveKey(action) => {
-                action.run(&kms_rest_client).await?;
+                Box::pin(action.run(&kms_rest_client)).await?;
             }
-            Self::Ec(action) => action.process(kms_rest_client).await?,
-            Self::Google(action) => action.process(kms_rest_client).await?,
+            Self::Ec(action) => Box::pin(action.process(kms_rest_client)).await?,
+            Self::Google(action) => Box::pin(action.process(kms_rest_client)).await?,
             Self::Locate(action) => {
-                action.run(kms_rest_client).await?;
+                Box::pin(action.run(kms_rest_client)).await?;
             }
             Self::Login(action) => {
-                let access_token = action.process(kms_rest_client.config).await?;
+                let access_token = Box::pin(action.process(kms_rest_client.config)).await?;
                 new_config.http_config.access_token = Some(access_token);
             }
             Self::Logout => {
                 new_config.http_config.access_token = None;
             }
-            Self::Hash(action) => action.run(kms_rest_client).await?,
-            Self::Mac(action) => action.run(kms_rest_client).await?,
-            Self::Rsa(action) => action.process(kms_rest_client).await?,
-            Self::ServerVersion(action) => action.process(kms_rest_client).await?,
-            Self::Sym(action) => action.process(kms_rest_client).await?,
-            Self::SecretData(action) => action.process(kms_rest_client).await?,
+            Self::Hash(action) => Box::pin(action.run(kms_rest_client)).await?,
+            Self::Mac(action) => Box::pin(action.process(kms_rest_client)).await?,
+            Self::Rng(action) => Box::pin(action.run(kms_rest_client)).await?,
+            Self::DiscoverVersions => {
+                Box::pin(async move {
+                    use cosmian_kms_client::cosmian_kmip::kmip_0::kmip_operations::DiscoverVersions;
+
+                    use crate::actions::kms::console;
+                    let resp = kms_rest_client
+                        .discover_versions(DiscoverVersions {
+                            protocol_version: None,
+                        })
+                        .await?;
+                    let versions = resp
+                        .protocol_version
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|v| {
+                            format!("{}.{}", v.protocol_version_major, v.protocol_version_minor)
+                        })
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    console::Stdout::new(&format!("Supported KMIP versions: {versions}"))
+                        .write()?;
+                    Ok::<(), crate::error::KmsCliError>(())
+                })
+                .await?;
+            }
+            Self::Query => {
+                Box::pin(async move {
+                    use cosmian_kms_client::kmip_2_1::kmip_operations::Query;
+
+                    use crate::actions::kms::console;
+                    let resp = kms_rest_client
+                        .query(Query {
+                            query_function: None,
+                        })
+                        .await?;
+                    let ops = resp
+                        .operation
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|o| o.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    console::Stdout::new(&format!("Supported operations: {ops}")).write()?;
+                    Ok::<(), crate::error::KmsCliError>(())
+                })
+                .await?;
+            }
+            Self::Rsa(action) => Box::pin(action.process(kms_rest_client)).await?,
+            Self::OpaqueObject(action) => Box::pin(action.process(kms_rest_client)).await?,
+            Self::ServerVersion(action) => Box::pin(action.process(kms_rest_client)).await?,
+            Self::Sym(action) => Box::pin(action.process(kms_rest_client)).await?,
+            Self::SecretData(action) => Box::pin(action.process(kms_rest_client)).await?,
         }
 
         Ok(new_config)

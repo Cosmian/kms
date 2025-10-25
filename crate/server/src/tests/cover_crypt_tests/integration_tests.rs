@@ -206,6 +206,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
                 revocation_message: Some("Revocation test".to_owned()),
             },
             compromise_occurrence_date: None,
+            cascade: true,
         },
     )
     .await?;
@@ -264,7 +265,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         None,
     );
     let post_ttlv_decrypt: KResult<DecryptResponse> = test_utils::post_2_1(&app, &request).await;
-    post_ttlv_decrypt.unwrap_err();
+    assert!(post_ttlv_decrypt.is_err());
 
     // decrypt
     let request = decrypt_request(
@@ -301,7 +302,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         None,
     );
     let post_ttlv_decrypt: KResult<DecryptResponse> = test_utils::post_2_1(&app, &request).await;
-    post_ttlv_decrypt.unwrap_err();
+    assert!(post_ttlv_decrypt.is_err());
 
     let encryption_policy = "Security Level::Confidential && (Department::IT || Department::RnD)";
 
@@ -390,7 +391,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         }),
     )?;
     let encrypt_response: KResult<EncryptResponse> = test_utils::post_2_1(&app, &request).await;
-    encrypt_response.unwrap_err();
+    assert!(encrypt_response.is_err());
 
     // Delete attribute
     let request = build_rekey_keypair_request(
@@ -419,7 +420,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         }),
     )?;
     let encrypt_response: KResult<EncryptResponse> = test_utils::post_2_1(&app, &request).await;
-    encrypt_response.unwrap_err();
+    assert!(encrypt_response.is_err());
 
     // Destroy user decryption key
     let request = Destroy {
@@ -427,6 +428,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
             user_decryption_key_identifier_1.to_owned(),
         )),
         remove: false,
+        cascade: true,
     };
     let destroy_response: DestroyResponse = test_utils::post_2_1(&app, &request).await?;
     assert_eq!(

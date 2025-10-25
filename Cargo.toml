@@ -47,7 +47,7 @@ style = { level = "deny", priority = 40 }
 cargo = { level = "deny", priority = 30 }
 nursery = { level = "deny", priority = 20 }
 
-# Common allows (to be selectively enabled by crates as needed)
+# # Common allows (to be selectively enabled by crates as needed)
 similar_names = { level = "allow", priority = 91 }
 too_many_lines = { level = "allow", priority = 91 }
 ref_option = { level = "allow", priority = 91 }
