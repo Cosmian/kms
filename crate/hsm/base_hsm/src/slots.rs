@@ -319,7 +319,6 @@ impl SlotManager {
         let mut pwd_bytes =
             login_password.map_or_else(Vec::new, |password| password.as_bytes().to_vec());
 
-        info!("THE PASSWORD BYTES IS EMPTY? {}", pwd_bytes.is_empty());
 
         #[expect(unsafe_code)]
         let rv = unsafe {

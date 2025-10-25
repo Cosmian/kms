@@ -4,7 +4,7 @@ It has been tested with the following devices: BULL PKCS11 C2P 5.0.7 (Release) U
 
 ## HSM files installation
 
-### Copy the Cryp2pay PKCS#11 library to `/lib`
+### Copy the Crypt2pay PKCS#11 library to `/lib`
 
 Copy `libpkcs11c2p.so` to `/lib`.
 Make sure it is readable by the user running the KMS.
@@ -20,7 +20,6 @@ In this directory copy the following files:
 - `ca.der`     <- The CA certificate
 - `installca`  <- The Crypt2pay CA installation tool
 - `p11tool`    <- The PKCS#11 tool used to test the connection
-- `installca`  <- The certificate authority installation tool
 - The two files with extensions `.kdk` and `.ksk` <- The client key files
 
 ### Install the CA certificate
@@ -63,7 +62,7 @@ In the `c2p.xml` file, set the logging to
 </C2Pconfig>
 ```
 
-Check the Crypt2pay manual to make sure that other elements of the `c2p.xml` are correct, in paritular,
+Check the Crypt2pay manual to make sure that other elements of the `c2p.xml` are correct, in particular,
 
 - the name of the `. ksk` file in `C2Pconfig/KSKfile`
 - the name of the `. kdk` file in `C2Pconfig/C2pSlot/C2PBox/KDKfile`
