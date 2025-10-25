@@ -28,10 +28,10 @@ info = false
 
 # The following fields are only needed if an HSM is used.
 # Check the HSMs documentation pages for more information.
-## hsm_model = "<hsm_name>"
-## hsm_admin = "<hsm admin username>" #for Create operation on HSM
-## hsm_slot = [1, 2, ...]
-## hsm_password = ["<password_of_1st_slot1>", "<password_of_2bd_slot2>", ...]
+## hsm_model = "<hsm_name>" # the name of the HSM model (see HSMs documentation)
+## hsm_admin = "<hsm admin username>" # KMS user that can perform the Create operation on the HSM
+## hsm_slot = [1, 2, ...] # slot numbers
+## hsm_password = ["<password_of_1st_slot1>", "<password_of_2bd_slot2>", ...] # corresponding user slot passwords/pins
 
 # Force all newly created and imported keys to be wrapped by the key specified in this field.
 # This is most useful to ensure that an HSM key wraps all keys in the KMS database.

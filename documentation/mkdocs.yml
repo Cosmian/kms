@@ -67,10 +67,12 @@ nav:
   - HSM support:
       - Introduction: hsms/index.md
       - HSM keys & operations: hsms/hsm_operations.md
+      - Trustway Crypt2pay: hsms/crypt2pay.md
       - Trustway Proteccio: hsms/proteccio.md
       - Utimaco General Purpose: hsms/utimaco.md
-      - Smartcard HSM: hsms/sc_hsm.md
+      - Smartcard HSM / Nitrokey HSM 2: hsms/sc_hsm.md
       - SoftHSMv2: hsms/softhsm2.md
+      - Other HSMs: hsms/other_hsms.md
   - Integrations:
       - API Endpoints: api.md
       - Azure:
