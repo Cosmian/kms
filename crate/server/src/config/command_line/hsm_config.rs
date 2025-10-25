@@ -9,7 +9,7 @@ pub struct HsmConfig {
     /// The HSM model.
     /// `Trustway Proteccio`, `Trustway Crypt2pay`, `Utimaco General Purpose HSM`,
     /// `Smartcard HSM`, and `SoftHSM2` are natively supported.
-    /// Other HSMs are supported to; specify `other` and check the documentation
+    /// Other HSMs are supported too; specify `other` and check the documentation
     #[clap(
         verbatim_doc_comment,
         long,
