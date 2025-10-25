@@ -39,6 +39,15 @@ function BuildProject
         throw "OpenSSL (libcrypto) found in dynamic dependencies. Error: $output"
     }
 
+    if ($BuildType -eq "release")
+    {
+        cargo test --lib --workspace  --release --target x86_64-pc-windows-msvc --features "non-fips" -- --nocapture
+    }
+    else
+    {
+        cargo test --lib --workspace  --target x86_64-pc-windows-msvc --features "non-fips" -- --nocapture
+    }
+
     exit 0
 }
 
