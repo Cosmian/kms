@@ -192,7 +192,7 @@ impl KMS {
                             )
                             .map_err(|e| {
                                 KmsError::InvalidRequest(format!(
-                                    "Failed to instantiate the Other HSM: {e}"
+                                    "Failed to instantiate the HSM lib at {OTHER_HSM_PKCS11_LIB}: {e}"
                                 ))
                             })?,
                         );

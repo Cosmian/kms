@@ -7,20 +7,23 @@
 
 use std::collections::HashMap;
 
+use crate::{Crypt2payCapabilityProvider, CRYPT2PAY_PKCS11_LIB};
+use cosmian_kms_base_hsm::test_helpers::get_hsm_slot_id;
 use cosmian_kms_base_hsm::{
-    HResult, RsaOaepDigest, test_helpers::get_hsm_password, tests_shared as shared,
+    test_helpers::get_hsm_password, tests_shared as shared, HResult, RsaOaepDigest,
 };
 
-use crate::{CRYPT2PAY_PKCS11_LIB, Crypt2payCapabilityProvider};
-
 const LIB_PATH: &str = CRYPT2PAY_PKCS11_LIB;
-const SLOT_ID: usize = 0x04; // Crypt2pay default slot
+const SLOT_ID: usize = 0x01; // Crypt2pay default slot
 
 fn cfg() -> HResult<shared::HsmTestConfig<'static>> {
     let user_password = get_hsm_password()?;
     Ok(shared::HsmTestConfig {
         lib_path: LIB_PATH,
-        slot_ids_and_passwords: HashMap::from([(SLOT_ID, Some(user_password))]),
+        slot_ids_and_passwords: HashMap::from([(
+            get_hsm_slot_id().unwrap_or(SLOT_ID),
+            Some(user_password),
+        )]),
         slot_id_for_tests: SLOT_ID,
         rsa_oaep_digest: Some(RsaOaepDigest::SHA256),
         threads: 4,
@@ -28,6 +31,14 @@ fn cfg() -> HResult<shared::HsmTestConfig<'static>> {
     })
 }
 
+/// To tun all the tests, try something like
+/// ```sh
+///  RUST_LOG=info \
+///  C2P_CONF=<PATH_TO_C2P_DIR>/c2p.xml \
+///  HSM_USER_PASSWORD="" \
+///  HSM_SLOT_ID=1 \
+///  cargo test test_hsm_crypt2pay_all --features crypt2pay -- --ignored
+/// ```
 #[test]
 #[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and HSM environment"]
 fn test_hsm_crypt2pay_all() -> HResult<()> {

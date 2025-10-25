@@ -50,23 +50,23 @@ use cosmian_kms_interfaces::{
 };
 use cosmian_logger::{debug, trace};
 use pkcs11_sys::{
-    CK_AES_GCM_PARAMS, CK_ATTRIBUTE, CK_BBOOL, CK_FALSE, CK_KEY_TYPE, CK_MECHANISM,
-    CK_MECHANISM_TYPE, CK_OBJECT_CLASS, CK_OBJECT_HANDLE, CK_RSA_PKCS_MGF_TYPE,
-    CK_RSA_PKCS_OAEP_PARAMS, CK_SESSION_HANDLE, CK_TRUE, CK_ULONG, CKA_CLASS, CKA_COEFFICIENT,
-    CKA_EXPONENT_1, CKA_EXPONENT_2, CKA_KEY_TYPE, CKA_LABEL, CKA_MODULUS, CKA_PRIME_1, CKA_PRIME_2,
-    CKA_PRIVATE_EXPONENT, CKA_PUBLIC_EXPONENT, CKA_SENSITIVE, CKA_VALUE, CKA_VALUE_LEN,
-    CKG_MGF1_SHA1, CKG_MGF1_SHA256, CKG_MGF1_SHA384, CKG_MGF1_SHA512, CKK_AES, CKK_RSA,
-    CKK_VENDOR_DEFINED, CKM_AES_CBC, CKM_AES_GCM, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP, CKM_SHA_1,
-    CKM_SHA256, CKM_SHA384, CKM_SHA512, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKO_SECRET_KEY,
-    CKO_VENDOR_DEFINED, CKR_ATTRIBUTE_SENSITIVE, CKR_OBJECT_HANDLE_INVALID, CKR_OK,
-    CKZ_DATA_SPECIFIED,
+    CKA_CLASS, CKA_COEFFICIENT, CKA_EXPONENT_1, CKA_EXPONENT_2, CKA_KEY_TYPE, CKA_LABEL,
+    CKA_MODULUS, CKA_PRIME_1, CKA_PRIME_2, CKA_PRIVATE_EXPONENT,
+    CKA_PUBLIC_EXPONENT, CKA_SENSITIVE, CKA_VALUE, CKA_VALUE_LEN, CKG_MGF1_SHA1, CKG_MGF1_SHA256,
+    CKG_MGF1_SHA384, CKG_MGF1_SHA512, CKK_AES, CKK_RSA, CKK_VENDOR_DEFINED, CKM_AES_CBC, CKM_AES_GCM,
+    CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP, CKM_SHA256, CKM_SHA384, CKM_SHA512,
+    CKM_SHA_1, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKO_SECRET_KEY, CKO_VENDOR_DEFINED, CKR_ATTRIBUTE_SENSITIVE,
+    CKR_OBJECT_HANDLE_INVALID, CKR_OK, CKZ_DATA_SPECIFIED, CK_AES_GCM_PARAMS, CK_ATTRIBUTE, CK_BBOOL,
+    CK_FALSE, CK_KEY_TYPE, CK_MECHANISM, CK_MECHANISM_TYPE, CK_OBJECT_CLASS, CK_OBJECT_HANDLE,
+    CK_RSA_PKCS_MGF_TYPE, CK_RSA_PKCS_OAEP_PARAMS, CK_SESSION_HANDLE, CK_TRUE,
+    CK_ULONG,
 };
-use rand::{TryRngCore, rngs::OsRng};
+use rand::{rngs::OsRng, TryRngCore};
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
 pub use crate::session::{aes::AesKeySize, rsa::RsaKeySize};
-use crate::{HError, HResult, ObjectHandlesCache, hsm_call, hsm_capabilities::HsmCapabilities};
+use crate::{hsm_call, hsm_capabilities::HsmCapabilities, HError, HResult, ObjectHandlesCache};
 
 /// AES block size in bytes
 const AES_BLOCK_SIZE: usize = 16;
@@ -175,7 +175,7 @@ pub struct Session {
     handle: CK_SESSION_HANDLE,
     object_handles_cache: Arc<ObjectHandlesCache>,
     supported_oaep_hash_cache: Arc<Mutex<Option<Vec<CK_MECHANISM_TYPE>>>>,
-    is_logged_in: bool,
+    logging_in: bool,
     hsm_capabilities: HsmCapabilities,
 }
 
@@ -185,16 +185,16 @@ impl Session {
         session_handle: CK_SESSION_HANDLE,
         object_handles_cache: Arc<ObjectHandlesCache>,
         supported_oaep_hash_cache: Arc<Mutex<Option<Vec<CK_MECHANISM_TYPE>>>>,
-        is_logged_in: bool,
+        logging_in: bool,
         hsm_capabilities: HsmCapabilities,
     ) -> Self {
-        debug!("Creating new session: {session_handle}");
+        debug!("Creating new session: {session_handle}. Logging in? {logging_in}");
         Self {
             hsm,
             handle: session_handle,
             object_handles_cache,
             supported_oaep_hash_cache,
-            is_logged_in,
+            logging_in,
             hsm_capabilities,
         }
     }
@@ -216,7 +216,7 @@ impl Session {
 
     /// Close the session and log out if necessary
     pub fn close(&self) -> HResult<()> {
-        if self.is_logged_in {
+        if self.logging_in {
             hsm_call!(self.hsm, "Failed logging out", C_Logout, self.handle);
         }
         hsm_call!(
