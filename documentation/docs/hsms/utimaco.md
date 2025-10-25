@@ -34,8 +34,13 @@ hsm_admin = "<HSM_ADMIN_USERNAME>" # defaults to "admin"
 hsm_slot = [0, 0, ] # example [0,4] for slots 0 and 4
 hsm_password = ["<password>", "<password>", ] # example ["pass0", "pass4"] for slots 0 and 4
 ```
-
-The `hsm_slot` and `hsm_password` parameters must be arrays even if only one slot is used.
+> **_NOTE:_**  `hsm_slot` and `hsm_password` must always be arrays, even if only one slot is used.
+>
+> The order of the passwords must match the order of the slots in the `hsm_slot` array.
+>
+> If you want to login with an empty (null) password, use an empty string.
+>
+> If you do not want to login, use the special password value `<NO_LOGIN>`
 
 When the KMS is started from the command line, the HSM support can be enabled by using the following arguments:
 
