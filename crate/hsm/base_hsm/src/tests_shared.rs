@@ -6,21 +6,21 @@
 use std::{collections::HashMap, ptr, sync::Arc, thread};
 
 use crate::{
-    hsm_call, AesKeySize, BaseHsm, HError, HResult, HsmEncryptionAlgorithm, RsaKeySize,
-    RsaOaepDigest, Session, SlotManager,
+    AesKeySize, BaseHsm, HError, HResult, HsmEncryptionAlgorithm, RsaKeySize, RsaOaepDigest,
+    Session, SlotManager, hsm_call,
 };
-use cosmian_kms_interfaces::{HsmObjectFilter, KeyMaterial, KeyType, HSM};
+use cosmian_kms_interfaces::{HSM, HsmObjectFilter, KeyMaterial, KeyType};
 use cosmian_logger::{debug, info, log_init};
 use futures::executor::block_on;
 use libloading::Library;
 use pkcs11_sys::{
-    CKA_DECRYPT, CKA_ECDSA_PARAMS, CKA_ENCRYPT, CKA_EXTRACTABLE, CKA_KEY_TYPE, CKA_LABEL,
-    CKA_PRIVATE, CKA_SENSITIVE, CKA_SIGN, CKA_TOKEN, CKA_UNWRAP, CKA_VERIFY, CKA_WRAP,
-    CKF_OS_LOCKING_OK, CKK_EC, CKM_AES_CBC, CKM_EC_KEY_PAIR_GEN, CKM_RSA_PKCS_OAEP, CKR_OK,
-    CK_ATTRIBUTE, CK_BBOOL, CK_C_INITIALIZE_ARGS, CK_FALSE, CK_KEY_TYPE, CK_MECHANISM, CK_MECHANISM_PTR,
-    CK_OBJECT_HANDLE, CK_RV, CK_TRUE, CK_ULONG, CK_VOID_PTR,
+    CK_ATTRIBUTE, CK_BBOOL, CK_C_INITIALIZE_ARGS, CK_FALSE, CK_KEY_TYPE, CK_MECHANISM,
+    CK_MECHANISM_PTR, CK_OBJECT_HANDLE, CK_RV, CK_TRUE, CK_ULONG, CK_VOID_PTR, CKA_DECRYPT,
+    CKA_ECDSA_PARAMS, CKA_ENCRYPT, CKA_EXTRACTABLE, CKA_KEY_TYPE, CKA_LABEL, CKA_PRIVATE,
+    CKA_SENSITIVE, CKA_SIGN, CKA_TOKEN, CKA_UNWRAP, CKA_VERIFY, CKA_WRAP, CKF_OS_LOCKING_OK,
+    CKK_EC, CKM_AES_CBC, CKM_EC_KEY_PAIR_GEN, CKM_RSA_PKCS_OAEP, CKR_OK,
 };
-use rand::{rngs::OsRng, TryRngCore};
+use rand::{TryRngCore, rngs::OsRng};
 use uuid::Uuid;
 
 /// Per-HSM configuration for shared tests

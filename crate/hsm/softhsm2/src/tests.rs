@@ -6,14 +6,14 @@
 use std::{collections::HashMap, ptr};
 
 use cosmian_kms_base_hsm::{
-    test_helpers::{get_hsm_password, get_hsm_slot_id}, tests_shared as shared,
-    HResult,
-    RsaOaepDigest,
+    HResult, RsaOaepDigest,
+    test_helpers::{get_hsm_password, get_hsm_slot_id},
+    tests_shared as shared,
 };
 use libloading::Library;
-use pkcs11_sys::{CKF_OS_LOCKING_OK, CKR_OK, CK_C_INITIALIZE_ARGS, CK_RV, CK_VOID_PTR};
+use pkcs11_sys::{CK_C_INITIALIZE_ARGS, CK_RV, CK_VOID_PTR, CKF_OS_LOCKING_OK, CKR_OK};
 
-use crate::{SofthsmCapabilityProvider, SOFTHSM2_PKCS11_LIB};
+use crate::{SOFTHSM2_PKCS11_LIB, SofthsmCapabilityProvider};
 
 const LIB_PATH: &str = SOFTHSM2_PKCS11_LIB;
 

@@ -12,6 +12,7 @@ use cosmian_logger::trace;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::RwLock;
 
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use crypt2pay_pkcs11_loader::{Crypt2pay, CRYPT2PAY_PKCS11_LIB};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use proteccio_pkcs11_loader::{Proteccio, PROTECCIO_PKCS11_LIB};

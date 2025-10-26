@@ -1,9 +1,9 @@
 use cosmian_logger::{debug, warn};
 use lru::LruCache;
 use pkcs11_sys::{
-    CKF_RW_SESSION, CKF_SERIAL_SESSION, CKR_OK, CKR_USER_ALREADY_LOGGED_IN, CKU_USER,
-    CK_FLAGS, CK_MECHANISM_INFO, CK_MECHANISM_TYPE, CK_OBJECT_HANDLE, CK_SESSION_HANDLE, CK_SLOT_ID,
-    CK_ULONG,
+    CK_FLAGS, CK_MECHANISM_INFO, CK_MECHANISM_TYPE, CK_OBJECT_HANDLE, CK_SESSION_HANDLE,
+    CK_SLOT_ID, CK_ULONG, CKF_RW_SESSION, CKF_SERIAL_SESSION, CKR_OK, CKR_USER_ALREADY_LOGGED_IN,
+    CKU_USER,
 };
 use std::{
     num::NonZeroUsize,
@@ -12,7 +12,7 @@ use std::{
 };
 
 use crate::{
-    hsm_call, hsm_capabilities::HsmCapabilities, hsm_lib::HsmLib, HError, HResult, Session,
+    HError, HResult, Session, hsm_call, hsm_capabilities::HsmCapabilities, hsm_lib::HsmLib,
 };
 
 /// A cache structure that maps byte vectors to `CK_OBJECT_HANDLE` values using an LRU (Least Recently Used) strategy.
