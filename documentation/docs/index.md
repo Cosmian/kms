@@ -1,24 +1,28 @@
 # Cosmian KMS
 
-The **Cosmian KMS** is a high-performance, [**open-source**](https://github.com/Cosmian/kms), [FIPS 140-3 compliant](./fips.md) server application written in [**Rust**](https://www.rust-lang.org/) with unique capabilities.
+The **Cosmian KMS** is a high-performance, [**open-source
+**](https://github.com/Cosmian/kms), [FIPS 140-3 compliant](./fips.md) server application written in [**Rust
+**](https://www.rust-lang.org/) with unique capabilities.
 
 ## High-scale, secure encryption, anywhere
 
 - **High-performance**: Delivers encryption and decryption services at up to **millions of operations per second**,
   close to the applications that use it, while keeping keys in a secure HSM-backed environment.
-- **Flexible pricing**: Per-CPU pricing with no hidden costs for deploying any number of servers.
+- **Flexible pricing**: Per-CPU pricing with no hidden costs, all connectors are included, for deploying any number of
+  servers.
 - **Confidential computing**: Runs securely in public clouds or zero-trust environments via Cosmian VM. Available
   on [Azure, GCP, and AWS marketplaces](https://cosmian.com/marketplaces/) - see
   our [deployment guide](installation/marketplace_guide.md).
 
 ## Standards' compliance
 
-- [FIPS 140-3](./fips.md) mode (gated behind the feature `fips`)
+- [FIPS 140-3](./fips.md) mode
 - Full KMIP support (versions 1.0-1.4, 2.0-2.1) in both binary and JSON formats -
   see [KMIP documentation](./kmip/index.md)
-- [HSM support](./hsms/index.md) for Trustway Proteccio and Utimaco general purpose HSMs with KMS keys wrapped by the
-  HSM
-- 100% developed in the European Union
+- [HSM support](./hsms/index.md) for Trustway Proteccio & Crypt2Pay, Utimaco general purpose, Nitrokey HSM 2, Smartcard
+  HSMs,...
+  with KMS keys wrapped by the HSM
+- 100% developed in Rust in the European Union
 
 ## Modern technology
 
@@ -38,7 +42,9 @@ The **Cosmian KMS** is a high-performance, [**open-source**](https://github.com/
 - **Disk encryption**:
     - [Veracrypt](../cosmian_cli/pkcs11/veracrypt.md)
     - [LUKS](../cosmian_cli/pkcs11/luks.md)
-- Enterprise integrations with VMware, [Oracle Database TDE](../cosmian_cli/pkcs11/oracle/tde.md), and more
+- Enterprise integrations with
+  [VMware](./vcenter.md), [Oracle Database TDE](../cosmian_cli/pkcs11/oracle/tde.md), [MongoDB](./mongodb.md), [PostgreSQL](./percona.md)
+  and more
 
 ## Three-in-one: KMS + Oracle + PKI
 
