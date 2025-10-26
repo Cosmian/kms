@@ -5,7 +5,7 @@ html {
 }
 
 :root {
-    --md-primary-fg-color: #320099;
+    --md-primary-fg-color: #e34319;
     --md-primary-fg-color--light: #ecb7b7;
     --md-primary-fg-color--dark: #1b0056;
     --md-accent-fg-color: #1b0056;
@@ -17,17 +17,17 @@ html {
     --nav-bg-color: #f8f8fb;
     --warning: #f2994a;
     --bg-color-dark-mode: #2a2b2c;
-    --bg-color-light-dark-mode: #4c4e4f;
+    --bg-color-deep-dark-mode: #1d1d1e;
     --body-bg-color-light-mode: #fff;
     --light: #c0c0c0;
     --lighter: #d2d2d2;
     --md-code-bg-color-dark-mode: rgb(45, 47, 48);
     --md-code-fg-color-dark-mode: #c5c0b8;
-    --md-default-fg-color--light-dark-mode: rgba(236, 234, 231, 0.54);
-    --text--md-primary-fg-color-dark-mode: #9e6eff;
-    --text--active-dark-mode: #afafff;
-    --border--md-primary-fg-color-dark-mode: #5313d7;
-    --text-dark-mode: #bdb8af;
+    --md-default-fg-color--light-dark-mode: rgba(230, 230, 230, 0.85);
+    --text--md-primary-fg-color-dark-mode: #afafff;
+    --text--active-dark-mode: #9e6eff;
+    --border--md-primary-fg-color-dark-mode: #9e6eff;
+    --text-dark-mode: #dddddd;
     --md-code-hl-string-color-dark-mode: #89e6b8;
     --border--grey-4-dark-mode: #4a4f51;
 }
@@ -40,6 +40,9 @@ body {
     -moz-osx-font-smoothing: grayscale;
 }
 
+.md-main {
+    background-color: #f4f4f5;
+}
 
 /* ------- HEADER ------- */
 .md-header {
@@ -58,19 +61,36 @@ body {
 
 .md-header__button.md-logo img,
 .md-header__button.md-logo svg {
-    height: 28px;
+    height: 32px;
 }
 
 .md-header__topic:first-child {
     font-weight: 400;
 }
 
-.md-header[data-md-state="shadow"] {
+.md-header--shadow {
     box-shadow: none;
 }
 
-.md-header__title .md-header__topic {
-    display: none;
+.md-header__title {
+    height: 100%;
+}
+
+.md-header-nav__title {
+    font-weight: 700;
+    font-size: large;
+}
+
+@media (min-width: 76.25em) {
+    .md-header__title .md-header__topic {
+        display: none;
+    }
+}
+
+@media screen and (max-width: 76.25em) {
+    .md-header__title .md-header__topic {
+        display: block;
+    }
 }
 
 .md-search__inner {
@@ -180,14 +200,14 @@ strong {
 
 .admonition,
 code,
-.md-typeset .tabbed-labels > label {
+.md-typeset .tabbed-labels>label {
     font-size: 0.875rem !important;
 }
 
 .md-typeset,
 .tabbed-set,
-> input:first-child:checked,
-~ .tabbed-labels,
+>input:first-child:checked,
+~.tabbed-labels,
 > :first-child {
     color: var(--md-primary-fg-color);
 }
@@ -203,6 +223,7 @@ code,
 /* GRID and Body */
 .md-content {
     min-height: calc(100vh - 70px);
+    background-color: white;
 }
 
 .md-content__inner:before {
@@ -210,41 +231,25 @@ code,
 }
 
 .md-grid {
-    max-width: 1220px;
+    max-width: 1440px;
 }
 
-@media (min-width: 1220px) {
-    .md-main {
-        background: linear-gradient(90deg, var(--nav-bg-color) 50%, #fff 50%);
-    }
-
-    .md-main__inner {
-        margin-top: 0;
-    }
-
-    .md-content,
-    .md-sidebar .md-sidebar--secondary.md-sidebar__scrollwrap {
-        background-color: #ffffff;
-    }
+.md-main__inner {
+    margin-top: 0px;
 }
 
 /* Sidebar */
-@media screen and (max-width: 76.1875em) {
+@media screen and (max-width: 76.2344em) {
     .md-sidebar--primary {
+        margin-top: 71px;
     }
 }
 
-@media screen and (min-width: 76.25em) {
-    .md-sidebar {
-        padding-top: 50px;
-    }
-
+@media screen and (min-width: 76.2344em) {
     .md-sidebar--primary {
-        min-width: 200px;
-    }
-
-    .md-content:first-child {
-        padding-top: 40px;
+        min-width: 280px;
+        height: 100%;
+        border-right: 1px solid var(--grey-4);
     }
 
     .md-sidebar--primary .md-nav__title {
@@ -255,10 +260,25 @@ code,
     .md-nav__item {
         margin-top: 1.25em;
         margin-bottom: 2.5em;
+        font-weight: 600;
     }
 
     .md-sidebar--primary .md-nav__item {
         padding-right: 0.25em;
+    }
+}
+
+@supports selector(::-webkit-scrollbar) {
+    .md-sidebar__scrollwrap {
+        scrollbar-gutter: auto
+    }
+
+    [dir=ltr] .md-sidebar__inner {
+        padding-right: 0.5rem;
+    }
+
+    [dir=rtl] .md-sidebar__inner {
+        padding-left: 0.5rem;
     }
 }
 
@@ -267,6 +287,20 @@ code,
     text-transform: uppercase;
     visibility: visible;
     display: block;
+}
+
+.md-sidebar__inner {
+    height: 100%;
+}
+
+.md-nav--secondary {
+    background-color: #fff;
+    height: 100%;
+    padding-top: 50px;
+}
+
+.md-sidebar__scrollwrap {
+    margin: -20px 0px 0px 0px;
 }
 
 .md-nav--secondary .md-nav__title {
@@ -291,17 +325,14 @@ code,
 }
 
 .md-nav__link:is(:focus, :hover) svg {
-    fill: #320099;
+    fill: #e34319;
 }
 
 .md-nav--primary .md-nav__list .md-nav__list .md-nav__item {
-    font-size: 0.875rem;
-    padding-left: 0.25em;
+    font-weight: 400;
+    font-size: 0.8rem;
+    padding-left: 0;
     margin: 1em 0;
-}
-
-.md-nav__icon {
-    /* display: none; */
 }
 
 /* second sidebar */
@@ -356,12 +387,12 @@ code,
     text-transform: uppercase;
 }
 
-.md-typeset :is(.tip, .hint) > :is(.admonition-title, summary) {
+.md-typeset :is(.tip, .hint)> :is(.admonition-title, summary) {
     color: var(--md-primary-fg-color);
     border-bottom: 1px solid var(--md-primary-fg-color);
 }
 
-.md-typeset :is(.important, .warning) > :is(.admonition-title, summary) {
+.md-typeset :is(.important, .warning)> :is(.admonition-title, summary) {
     color: var(--warning);
     border-bottom: 1px solid var(--warning);
 }
@@ -441,18 +472,23 @@ footer,
     font-family: "Roboto", "Helvetica Neue", Helvetica, Arial, sans-serif;
     white-space: pre;
     color: grey;
+
     @top-left {
         content: url("../../../docs/favicon.png");
     }
+
     @top-center {
         content: string(chapter);
     }
+
     @bottom-center {
         content: "© Copyright 2018-2021 Cosmian. All rights reserved";
     }
+
     @bottom-right {
         content: "Page " counter(__pgnum__);
     }
+
     @bottom-left {
         content: "Version draft";
     }
@@ -463,6 +499,23 @@ footer,
     color: white;
 }
 
+select {
+    background-color: white;
+    color: #333;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    padding: 4px;
+    margin-left: 5px;
+    font-size: 12px;
+    line-height: 1.5;
+    cursor: pointer;
+  }
+
+  select:focus {
+    outline: none;
+    border-color: #e34319;
+    box-shadow: 0 0 3px rgba(0, 123, 255, 0.25);
+  }
 
 /* ------- DARK MODE ------- */
 
@@ -475,7 +528,6 @@ body.dark-mode {
 body.dark-mode .md-main {
     background: var(--bg-color-dark-mode) none !important;
 }
-
 
 /* Keep the background of images white */
 body.dark-mode p:has(img:only-child) {
@@ -502,7 +554,7 @@ body.dark-mode .p {
 }
 
 body.dark-mode a,
-body.dark-mode .md-typeset .tabbed-labels > label {
+body.dark-mode .md-typeset .tabbed-labels>label {
     color: var(--text--md-primary-fg-color-dark-mode);
 }
 
@@ -517,18 +569,26 @@ body.dark-mode select {
     background-color: var(--bg-color-dark-mode);
 }
 
-body.dark-mode .md-content,
 body.dark-mode .md-sidebar,
 body.dark-mode .md-sidebar--secondary.md-sidebar__scrollwrap,
-body.dark-mode .md-nav--primary,
-body.dark-mode .md-nav__title ~ .md-nav__list {
+body.dark-mode .md-nav--primary {
     background-color: var(--bg-color-dark-mode);
+}
+
+body.dark-mode  .md-nav--primary .md-nav__title ~ .md-nav__list {
+    background-color: var(--bg-color-dark-mode);
+}
+
+
+
+body.dark-mode .md-content {
+    background-color: var(--bg-color-deep-dark-mode);
 }
 
 body.dark-mode .md-nav__title[for=__drawer],
 body.dark-mode .md-nav__title {
-    background-color: var(--bg-color-light-dark-mode);
-    box-shadow: var(--bg-color-dark-mode);
+    background-color: var(--bg-color-dark-mode);
+    box-shadow: var(--bg-color-deedark-mode);
 }
 
 body.dark-mode .md-nav__title {
@@ -546,6 +606,10 @@ body.dark-mode .md-nav__link:not(.md-nav__container):hover {
     color: var(--text--md-primary-fg-color-dark-mode);
 }
 
+body.dark-mode .md-nav--secondary {
+    background-color: var(--bg-color-deep-dark-mode);
+}
+
 body.dark-mode .highlight .ch,
 body.dark-mode .highlight .cm,
 body.dark-mode .highlight .cs,
@@ -561,8 +625,11 @@ body.dark-mode .highlight .cpf,
 body.dark-mode .highlight .l,
 body.dark-mode .highlight .sb,
 body.dark-mode .highlight .sc,
+body.dark-mode .highlight .sd,
 body.dark-mode .highlight .si,
-body.dark-mode .highlight .ss {
+body.dark-mode .highlight .ss,
+body.dark-mode .highlight .go,
+body.dark-mode .highlight .gp {
     color: var(--md-default-fg-color--light-dark-mode);
 }
 
@@ -616,7 +683,7 @@ body.dark-mode .md-typeset .md-button {
 
 body.dark-mode .md-header,
 body.dark-mode .md-header input {
-    background-color: var(--bg-color-light-dark-mode);
+    background-color: var(--bg-color-deep-dark-mode);
     color: var(--text-dark-mode);
 }
 
@@ -643,7 +710,7 @@ body.dark-mode .md-search-result h2 {
     color: var(--text-dark-mode);
 }
 
-body.dark-mode .md-search-result__more > summary > div {
+body.dark-mode .md-search-result__more>summary>div {
     color: var(--text--md-primary-fg-color-dark-mode);
 }
 
@@ -669,25 +736,25 @@ body.dark-mode .md-typeset table:not([class]) tr {
     border-left-color: var(--border--grey-4-dark-mode);
 }
 
-body.dark-mode .md-typeset .tabbed-set > input:first-child:checked ~ .tabbed-labels > :first-child,
-body.dark-mode .md-typeset .tabbed-set > input:nth-child(10):checked ~ .tabbed-labels > :nth-child(10),
-body.dark-mode .md-typeset .tabbed-set > input:nth-child(11):checked ~ .tabbed-labels > :nth-child(11),
-body.dark-mode .md-typeset .tabbed-set > input:nth-child(12):checked ~ .tabbed-labels > :nth-child(12),
-body.dark-mode .md-typeset .tabbed-set > input:nth-child(13):checked ~ .tabbed-labels > :nth-child(13),
-body.dark-mode .md-typeset .tabbed-set > input:nth-child(14):checked ~ .tabbed-labels > :nth-child(14),
-body.dark-mode .md-typeset .tabbed-set > input:nth-child(15):checked ~ .tabbed-labels > :nth-child(15),
-body.dark-mode .md-typeset .tabbed-set > input:nth-child(16):checked ~ .tabbed-labels > :nth-child(16),
-body.dark-mode .md-typeset .tabbed-set > input:nth-child(17):checked ~ .tabbed-labels > :nth-child(17),
-body.dark-mode .md-typeset .tabbed-set > input:nth-child(18):checked ~ .tabbed-labels > :nth-child(18),
-body.dark-mode .md-typeset .tabbed-set > input:nth-child(19):checked ~ .tabbed-labels > :nth-child(19),
-body.dark-mode .md-typeset .tabbed-set > input:nth-child(2):checked ~ .tabbed-labels > :nth-child(2),
-body.dark-mode .md-typeset .tabbed-set > input:nth-child(20):checked ~ .tabbed-labels > :nth-child(20),
-body.dark-mode .md-typeset .tabbed-set > input:nth-child(3):checked ~ .tabbed-labels > :nth-child(3),
-body.dark-mode .md-typeset .tabbed-set > input:nth-child(4):checked ~ .tabbed-labels > :nth-child(4),
-body.dark-mode .md-typeset .tabbed-set > input:nth-child(5):checked ~ .tabbed-labels > :nth-child(5),
-body.dark-mode .md-typeset .tabbed-set > input:nth-child(6):checked ~ .tabbed-labels > :nth-child(6),
-body.dark-mode .md-typeset .tabbed-set > input:nth-child(7):checked ~ .tabbed-labels > :nth-child(7),
-body.dark-mode .md-typeset .tabbed-set > input:nth-child(8):checked ~ .tabbed-labels > :nth-child(8),
-body.dark-mode .md-typeset .tabbed-set > input:nth-child(9):checked ~ .tabbed-labels > :nth-child(9) {
+body.dark-mode .md-typeset .tabbed-set>input:first-child:checked~.tabbed-labels> :first-child,
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(10):checked~.tabbed-labels> :nth-child(10),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(11):checked~.tabbed-labels> :nth-child(11),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(12):checked~.tabbed-labels> :nth-child(12),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(13):checked~.tabbed-labels> :nth-child(13),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(14):checked~.tabbed-labels> :nth-child(14),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(15):checked~.tabbed-labels> :nth-child(15),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(16):checked~.tabbed-labels> :nth-child(16),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(17):checked~.tabbed-labels> :nth-child(17),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(18):checked~.tabbed-labels> :nth-child(18),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(19):checked~.tabbed-labels> :nth-child(19),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(2):checked~.tabbed-labels> :nth-child(2),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(20):checked~.tabbed-labels> :nth-child(20),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(3):checked~.tabbed-labels> :nth-child(3),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(4):checked~.tabbed-labels> :nth-child(4),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(5):checked~.tabbed-labels> :nth-child(5),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(6):checked~.tabbed-labels> :nth-child(6),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(7):checked~.tabbed-labels> :nth-child(7),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(8):checked~.tabbed-labels> :nth-child(8),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(9):checked~.tabbed-labels> :nth-child(9) {
     color: var(--text--active-dark-mode);
 }

@@ -1,32 +1,32 @@
 # Cosmian KMS
 
-The **Cosmian KMS** is a high-performance, [**open-source
-**](https://github.com/Cosmian/kms), [FIPS 140-3 compliant](./fips.md) server application written in [**Rust
-**](https://www.rust-lang.org/) with unique capabilities.
+The **Cosmian KMS** is a high-performance, [**source available**](https://github.com/Cosmian/kms), [**FIPS 140-3 compliant**](./fips.md) 
+server application written in [**Rust**](https://www.rust-lang.org/) with unique capabilities.
 
 ## High-scale, secure encryption, anywhere
 
 - **High-performance**: Delivers encryption and decryption services at up to **millions of operations per second**,
-  close to the applications that use it, while keeping keys in a secure HSM-backed environment.
-- **Flexible pricing**: Per-CPU pricing with no hidden costs, all connectors are included, for deploying any number of
+  with master keys held in a secure HSM-backed environment.
+- **Flexible pricing**: Per-CPU pricing with no hidden costs, all connectors are included; deploying any number of
   servers.
-- **Confidential computing**: Runs securely in public clouds or zero-trust environments via Cosmian VM. Available
+- **Runs securely in public clouds**:  or zero-trust environments using Cosmian VMs available
   on [Azure, GCP, and AWS marketplaces](https://cosmian.com/marketplaces/) - see
   our [deployment guide](installation/marketplace_guide.md).
 
 ## Standards' compliance
 
 - [FIPS 140-3](./fips.md) mode
-- Full KMIP support (versions 1.0-1.4, 2.0-2.1) in both binary and JSON formats -
+- KMIP support (versions 1.0-1.4, 2.0-2.1) in both binary and JSON formats -
   see [KMIP documentation](./kmip/index.md)
 - [HSM support](./hsms/index.md) for Trustway Proteccio & Crypt2Pay, Utimaco general purpose, Nitrokey HSM 2, Smartcard
   HSMs,...
   with KMS keys wrapped by the HSM
-- 100% developed in Rust in the European Union
+- Developed in Rust, a memory safe language, with the source code available on [GitHub](https://github.com/Cosmian/kms)
+- 100% developed in the European Union
 
 ## Modern technology
 
-- [Open-source](https://github.com/Cosmian/kms) server application written in [Rust](https://www.rust-lang.org/)
+- [Source Available](https://github.com/Cosmian/kms) server application written in [Rust](https://www.rust-lang.org/)
 - Full-featured [Web UI](#user-interface) with client [command line and graphical interface](../cosmian_cli/index.md)
 - Advanced [authentication mechanisms](./authentication.md)
 - [High-availability mode](installation/high_availability_mode.md) with simple horizontal scaling
@@ -36,17 +36,26 @@ The **Cosmian KMS** is a high-performance, [**open-source
 
 ## Integrations
 
-- **Cloud collaboration security**:
+- **Cloud integrations**:
+    - [Azure BYOK](./azure/byok.md)
+    - [GCP CSEK](./google_gcp/csek.md) and [Google CMEK](./google_gcp/cmek.md)
+    - ...
+- **Workplace security**:
     - [Google Workspace Client Side Encryption (CSE)](./google_cse/index.md)
     - [Microsoft 365 Double Key Encryption (DKE)](./ms_dke/index.md)
-- **Disk encryption**:
+- **Transparent data encryption**:
     - [Veracrypt](../cosmian_cli/pkcs11/veracrypt.md)
     - [LUKS](../cosmian_cli/pkcs11/luks.md)
-- Enterprise integrations with
-  [VMware](./vcenter.md), [Oracle Database TDE](../cosmian_cli/pkcs11/oracle/tde.md), [MongoDB](./mongodb.md), [PostgreSQL](./percona.md)
-  and more
+    - [VMware](./vcenter.md)
+    - [Oracle Database TDE](../cosmian_cli/pkcs11/oracle/tde.md), 
+    - [MongoDB](./mongodb.md), 
+    - [PostgreSQL](./percona.md)
+    - and more
+- **Big Data encryption**:
+    - [Snowflake](./snowflake/index.md)
+    - [Databricks, Spark,..  UDFs](./python_udf/index.md)
 
-## Three-in-one: KMS + Oracle + PKI
+## Three-in-one: Key lifecycle management + Encryption oracle + Public key infrastructure
 
 The **Cosmian KMS** combines the functions of a Key Management System, an Encryption Oracle, and a Public Key
 Infrastructure:
