@@ -1,5 +1,10 @@
 use base64::{Engine, engine::general_purpose};
-use openssl::{md::Md, pkey::PKey, pkey_ctx::PkeyCtx, rsa::Padding};
+use openssl::{
+    md::Md,
+    pkey::{PKey, Private},
+    pkey_ctx::PkeyCtx,
+    rsa::{Padding, Rsa},
+};
 
 use crate::{CryptoError, error::result::CryptoResult};
 
@@ -13,17 +18,23 @@ use crate::{CryptoError, error::result::CryptoResult};
 /// - `SHA256withRSA/PSS`
 /// - `SHA512withRSA/PSS`
 pub fn sign_rsa_digest_with_algorithm(
-    pkcs1_private_key: &[u8],
+    raw_private_key: &[u8],
     algorithm: &str,
     digest_b64: &str,
     _rsa_pss_salt_length: Option<i32>,
 ) -> CryptoResult<Vec<u8>> {
-    // Validate the DER is a loadable private key (accept PKCS#8)
-    let private_key = PKey::private_key_from_der(pkcs1_private_key).map_err(|e| {
-        CryptoError::ConversionError(format!(
-            "Could not load RSA private key at PKCS#8 format: {e}"
-        ))
-    })?;
+    // Validate the DER is a loadable private key (accept PKCS#8). If it fails, try PKCS#1.
+    let private_key = match PKey::private_key_from_der(raw_private_key) {
+        Ok(key) => key,
+        Err(_) => {
+            // For already uploaded Gmail CSE wrapped private keys, need to also handle PKCS#1 format.
+            PKey::from_rsa(Rsa::<Private>::private_key_from_der(raw_private_key)?).map_err(|e| {
+                CryptoError::ConversionError(format!(
+                    "Neither PKCS#8 nor PKCS#1 could load RSA private key: {e}"
+                ))
+            })?
+        }
+    };
 
     let mut ctx = PkeyCtx::new(&private_key)?;
     ctx.sign_init()?;
