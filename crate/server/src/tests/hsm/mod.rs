@@ -97,6 +97,10 @@ fn hsm_clap_config(owner: &str, kek_id: Option<Uuid>) -> KResult<ClapConfig> {
             clap_config.hsm.hsm_model = "smartcardhsm".to_owned();
         } else if unwrapped_model == "proteccio" {
             clap_config.hsm.hsm_model = "proteccio".to_owned();
+        } else if unwrapped_model == "crypt2pay" {
+            clap_config.hsm.hsm_model = "crypt2pay".to_owned();
+        } else if unwrapped_model == "other" {
+            clap_config.hsm.hsm_model = "other".to_owned();
         } else {
             return Err(KmsError::Default(
                 "The provided HSM model is unknown".to_owned(),

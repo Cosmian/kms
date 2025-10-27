@@ -7,11 +7,13 @@ const HSM_ADMIN_DEFAULT: &str = "admin";
 #[serde(default)]
 pub struct HsmConfig {
     /// The HSM model.
-    /// `Trustway Proteccio`, `Utimaco General Purpose HSM`, `Smartcard HSM`, and `SoftHSM2` are supported.
+    /// `Trustway Proteccio`, `Trustway Crypt2pay`, `Utimaco General Purpose HSM`,
+    /// `Smartcard HSM`, and `SoftHSM2` are natively supported.
+    /// Other HSMs are supported too; specify `other` and check the documentation
     #[clap(
         verbatim_doc_comment,
         long,
-        value_parser(["proteccio", "utimaco", "softhsm2", "smartcardhsm"]),
+        value_parser(["proteccio", "crypt2pay", "utimaco", "softhsm2", "smartcardhsm", "other"]),
         default_value = "proteccio"
     )]
     pub hsm_model: String,

@@ -175,7 +175,7 @@ pub struct Session {
     handle: CK_SESSION_HANDLE,
     object_handles_cache: Arc<ObjectHandlesCache>,
     supported_oaep_hash_cache: Arc<Mutex<Option<Vec<CK_MECHANISM_TYPE>>>>,
-    is_logged_in: bool,
+    logging_in: bool,
     hsm_capabilities: HsmCapabilities,
 }
 
@@ -185,16 +185,16 @@ impl Session {
         session_handle: CK_SESSION_HANDLE,
         object_handles_cache: Arc<ObjectHandlesCache>,
         supported_oaep_hash_cache: Arc<Mutex<Option<Vec<CK_MECHANISM_TYPE>>>>,
-        is_logged_in: bool,
+        logging_in: bool,
         hsm_capabilities: HsmCapabilities,
     ) -> Self {
-        debug!("Creating new session: {session_handle}");
+        debug!("Creating new session: {session_handle}. Logging in? {logging_in}");
         Self {
             hsm,
             handle: session_handle,
             object_handles_cache,
             supported_oaep_hash_cache,
-            is_logged_in,
+            logging_in,
             hsm_capabilities,
         }
     }
@@ -216,7 +216,7 @@ impl Session {
 
     /// Close the session and log out if necessary
     pub fn close(&self) -> HResult<()> {
-        if self.is_logged_in {
+        if self.logging_in {
             hsm_call!(self.hsm, "Failed logging out", C_Logout, self.handle);
         }
         hsm_call!(

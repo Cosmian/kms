@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.11.0] - 2025-11-01
+
+### 🚀 Features
+
+- Add Crypt2pay HSM integration with a dedicated loader crate
+- Generic "other" HSM support using Softhsm2 compatibility
+- Enable empty (null) password/pin HSM login via special handling in slot management
+
 ## [5.10.0] - 2025-10-21
 
 ### 🚀 Features
