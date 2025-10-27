@@ -1,36 +1,37 @@
 #![allow(clippy::unwrap_in_result)]
 
-use crate::{
-    config::ServerParams, core::KMS, result::KResult, tests::test_utils::https_clap_config,
+use std::sync::Arc;
+
+use cosmian_kms_client_utils::reexport::cosmian_kmip::{
+    kmip_0::kmip_types::{KeyWrapType, SecretDataType},
+    kmip_2_1::{
+        kmip_attributes::Attributes,
+        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+        kmip_objects::SecretData,
+        kmip_operations::Import,
+        kmip_types::{
+            CryptographicAlgorithm, EncodingOption, EncryptionKeyInformation, KeyFormatType,
+        },
+    },
 };
-use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_0::kmip_types::{
-    KeyWrapType, SecretDataType,
-};
-use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::kmip_attributes::Attributes;
-use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::kmip_data_structures::{
-    KeyBlock, KeyMaterial, KeyValue,
-};
-use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::kmip_objects::SecretData;
-use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::kmip_operations::Import;
-use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::kmip_types::{
-    CryptographicAlgorithm, EncodingOption, EncryptionKeyInformation, KeyFormatType,
-};
-use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_objects::ObjectType;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::{RevocationReason, RevocationReasonCode},
     kmip_2_1::{
         extra::tagging::EMPTY_TAGS,
         kmip_data_structures::KeyWrappingSpecification,
-        kmip_objects::Object,
+        kmip_objects::{Object, ObjectType},
         kmip_operations::{Destroy, Export, Get, Revoke},
         kmip_types::{UniqueIdentifier, WrappingMethod},
         requests::{secret_data_create_request, symmetric_key_create_request},
     },
 };
 use cosmian_logger::log_init;
-use std::sync::Arc;
 use uuid::Uuid;
 use zeroize::Zeroizing;
+
+use crate::{
+    config::ServerParams, core::KMS, result::KResult, tests::test_utils::https_clap_config,
+};
 
 #[tokio::test]
 async fn test_secret_data_create_basic() -> KResult<()> {
