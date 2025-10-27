@@ -185,7 +185,7 @@ For high availability and scalability, refer to the [High Availability Guide](./
         - Apple Silicon (ARM64):
 
             ```sh
-            open https://package.cosmian.com/kms/5.9.0/macos/cosmian-kms-server_5.9.0_arm64.dmg
+            open https://package.cosmian.com/kms/5.10.0/macos/cosmian-kms-server_5.10.0_arm64.dmg
             ```
 
         Then drag-and-drop the app to Applications or follow the DMG instructions.
@@ -203,7 +203,7 @@ For high availability and scalability, refer to the [High Availability Guide](./
     On Windows, download the NSIS installer:
 
     ```sh
-    https://package.cosmian.com/kms/5.9.0/cosmian-kms-server_5.9.0_x64_en-US.exe
+    https://package.cosmian.com/kms/5.10.0/cosmian-kms-server_5.10.0_x64_en-US.exe
     ```
 
     Run the installer to install Cosmian KMS Server. The installer will:
