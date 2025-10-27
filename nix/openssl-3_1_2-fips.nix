@@ -13,16 +13,16 @@ let
   _ = lib.assertMsg (lib.versionAtMost glibcVersion "2.28")
     ("cosmian_kms OpenSSL derivation requires glibc <= 2.28; detected glibc "
       + glibcVersion + ". Use an older Nixpkgs or compatible environment.");
-  
+
   # Path to local tarball relative to the Nix expression
   localTarball = ../resources/tarballs/openssl-3.1.2.tar.gz;
-  
+
   # Expected SHA256 hash of the official OpenSSL 3.1.2 tarball
   expectedHash = "a0ce69b8b97ea6a35b96875235aa453b966ba3cba8af2de23657d8b6767d6539";
-  
+
   # Validate local tarball hash and select source
   opensslSrc = if builtins.pathExists localTarball
-    then 
+    then
       let
         actualHash = builtins.hashFile "sha256" localTarball;
         hashValidation = lib.assertMsg (actualHash == expectedHash)
@@ -43,7 +43,7 @@ in stdenv.mkDerivation rec {
   version = "3.1.2";
 
   src = opensslSrc;
-  
+
   # Force evaluation of source path to trigger hash validation early
   passthru.srcPath = toString opensslSrc;
 
@@ -53,8 +53,9 @@ in stdenv.mkDerivation rec {
   # Force static libraries and enable FIPS provider
   # We also ensure the platform target is correct (darwin64-arm64-cc on Apple Silicon)
   # Choose OpenSSL build target based on host platform
-  target = if stdenv.isDarwin then (if stdenv.hostPlatform.parsed.cpu == "aarch64" then "darwin64-arm64-cc" else "darwin64-x86_64-cc")
-           else if stdenv.hostPlatform.parsed.cpu == "aarch64" then "linux-aarch64"
+  target = if stdenv.isDarwin
+           then (if stdenv.hostPlatform.isAarch64 then "darwin64-arm64-cc" else "darwin64-x86_64-cc")
+           else if stdenv.hostPlatform.isAarch64 then "linux-aarch64"
            else "linux-x86_64";
 
   soExt = if stdenv.isDarwin then "dylib" else "so";

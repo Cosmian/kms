@@ -6,6 +6,9 @@ export OPENSSL_STATIC=1
 export PKG_CONFIG_ALL_STATIC=1
 [ -d "${NIX_OPENSSL_OUT:-}/bin" ] && export PATH="${NIX_OPENSSL_OUT}/bin:$PATH"
 if [ -n "${NIX_OPENSSL_OUT:-}" ]; then
+  export OPENSSL_DIR="${NIX_OPENSSL_OUT}"
+  export OPENSSL_LIB_DIR="${NIX_OPENSSL_OUT}/lib"
+  export OPENSSL_INCLUDE_DIR="${NIX_OPENSSL_OUT}/include"
   if [ -d "${NIX_OPENSSL_OUT}/lib/pkgconfig" ]; then
     export PKG_CONFIG_PATH="${NIX_OPENSSL_OUT}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
   fi
