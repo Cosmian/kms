@@ -37,10 +37,11 @@ jobs:
     with:
       toolchain: ${{ inputs.toolchain }}
 
-  cargo-semver:
-    uses: Cosmian/reusable_workflows/.github/workflows/cargo-semver.yml@develop
-    with:
-      toolchain: ${{ inputs.toolchain }}
+  # ml-kem-0.2.1 does not build on toolchain 1.90.0 and cargo-semver v0.44.0.
+  # cargo-semver:
+  #   uses: Cosmian/reusable_workflows/.github/workflows/cargo-semver.yml@develop
+  #   with:
+  #     toolchain: ${{ inputs.toolchain }}
 
   cargo-publish:
     uses: Cosmian/reusable_workflows/.github/workflows/cargo-publish-workspace.yml@develop
