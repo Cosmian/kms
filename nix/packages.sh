@@ -13,11 +13,6 @@ REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
 
 # Using nix-shell OpenSSL toolchain provided by the environment (no external import)
 
-if [ "$DEBUG_OR_RELEASE" != "release" ]; then
-  echo "Error: Packaging requires DEBUG_OR_RELEASE=release" >&2
-  exit 1
-fi
-
 FEATURES_FLAG=()
 if [ -n "$FEATURES" ]; then
   FEATURES_FLAG=(--features "$FEATURES")
