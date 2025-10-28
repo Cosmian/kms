@@ -57,16 +57,16 @@ For high availability and scalability, refer to the [High Availability Guide](./
 
     ```sh
     sudo apt update && sudo apt install -y wget
-    wget https://package.cosmian.com/kms/5.10.0/debian10/cosmian-kms-server_5.10.0-1_amd64.deb
-    sudo apt install ./cosmian-kms-server_5.10.0-1_amd64.deb
+    wget https://package.cosmian.com/kms/5.11.0/debian10/cosmian-kms-server_5.11.0-1_amd64.deb
+    sudo apt install ./cosmian-kms-server_5.11.0-1_amd64.deb
     sudo cosmian_kms --version
     ```
 
     Or install the FIPS version:
 
     ```sh
-    wget https://package.cosmian.com/kms/5.10.0/debian10/cosmian-kms-server-fips_5.10.0-1_amd64.deb
-    sudo apt install ./cosmian-kms-server-fips_5.10.0-1_amd64.deb
+    wget https://package.cosmian.com/kms/5.11.0/debian10/cosmian-kms-server-fips_5.11.0-1_amd64.deb
+    sudo apt install ./cosmian-kms-server-fips_5.11.0-1_amd64.deb
     sudo cosmian_kms --version
     ```
 
@@ -86,16 +86,16 @@ For high availability and scalability, refer to the [High Availability Guide](./
 
     ```sh
     sudo apt update && sudo apt install -y wget
-    wget https://package.cosmian.com/kms/5.10.0/ubuntu-22.04/cosmian-kms-server_5.10.0-1_amd64.deb
-    sudo apt install ./cosmian-kms-server_5.10.0-1_amd64.deb
+    wget https://package.cosmian.com/kms/5.11.0/ubuntu-22.04/cosmian-kms-server_5.11.0-1_amd64.deb
+    sudo apt install ./cosmian-kms-server_5.11.0-1_amd64.deb
     sudo cosmian_kms --version
     ```
 
     Or install the FIPS version:
 
     ```sh
-    wget https://package.cosmian.com/kms/5.10.0/ubuntu-22.04/cosmian-kms-server-fips_5.10.0-1_amd64.deb
-    sudo apt install ./cosmian-kms-server-fips_5.10.0-1_amd64.deb
+    wget https://package.cosmian.com/kms/5.11.0/ubuntu-22.04/cosmian-kms-server-fips_5.11.0-1_amd64.deb
+    sudo apt install ./cosmian-kms-server-fips_5.11.0-1_amd64.deb
     sudo cosmian_kms --version
     ```
 
@@ -115,16 +115,16 @@ For high availability and scalability, refer to the [High Availability Guide](./
 
     ```sh
     sudo apt update && sudo apt install -y wget
-    wget https://package.cosmian.com/kms/5.10.0/ubuntu-24.04/cosmian-kms-server_5.10.0-1_amd64.deb
-    sudo apt install ./cosmian-kms-server_5.10.0-1_amd64.deb
+    wget https://package.cosmian.com/kms/5.11.0/ubuntu-24.04/cosmian-kms-server_5.11.0-1_amd64.deb
+    sudo apt install ./cosmian-kms-server_5.11.0-1_amd64.deb
     sudo cosmian_kms --version
     ```
 
     Or install the FIPS version:
 
     ```sh
-    wget https://package.cosmian.com/kms/5.10.0/ubuntu-24.04/cosmian-kms-server-fips_5.10.0-1_amd64.deb
-    sudo apt install ./cosmian-kms-server-fips_5.10.0-1_amd64.deb
+    wget https://package.cosmian.com/kms/5.11.0/ubuntu-24.04/cosmian-kms-server-fips_5.11.0-1_amd64.deb
+    sudo apt install ./cosmian-kms-server-fips_5.11.0-1_amd64.deb
     sudo cosmian_kms --version
     ```
 
@@ -144,8 +144,8 @@ For high availability and scalability, refer to the [High Availability Guide](./
 
     ```sh
     sudo dnf update && sudo dnf install -y wget
-    wget https://package.cosmian.com/kms/5.10.0/rockylinux8/cosmian_kms_server-5.10.0-1.x86_64.rpm
-    sudo dnf install ./cosmian_kms_server-5.10.0-1.x86_64.rpm
+    wget https://package.cosmian.com/kms/5.11.0/rockylinux8/cosmian_kms_server-5.11.0-1.x86_64.rpm
+    sudo dnf install ./cosmian_kms_server-5.11.0-1.x86_64.rpm
     sudo cosmian_kms --version
     ```
 
@@ -164,8 +164,8 @@ For high availability and scalability, refer to the [High Availability Guide](./
 
     ```sh
     sudo dnf update && sudo dnf install -y wget
-    wget https://package.cosmian.com/kms/5.10.0/rockylinux9/cosmian_kms_server-5.10.0-1.x86_64.rpm
-    sudo dnf install ./cosmian_kms_server-5.10.0-1.x86_64.rpm
+    wget https://package.cosmian.com/kms/5.11.0/rockylinux9/cosmian_kms_server-5.11.0-1.x86_64.rpm
+    sudo dnf install ./cosmian_kms_server-5.11.0-1.x86_64.rpm
     sudo cosmian_kms --version
     ```
 
@@ -185,7 +185,7 @@ For high availability and scalability, refer to the [High Availability Guide](./
         - Apple Silicon (ARM64):
 
             ```sh
-            open https://package.cosmian.com/kms/5.10.0/macos/cosmian-kms-server_5.10.0_arm64.dmg
+            open https://package.cosmian.com/kms/5.11.0/macos/cosmian-kms-server_5.11.0_arm64.dmg
             ```
 
         Then drag-and-drop the app to Applications or follow the DMG instructions.
@@ -205,7 +205,7 @@ For high availability and scalability, refer to the [High Availability Guide](./
     On Windows, download the NSIS installer:
 
     ```sh
-    https://package.cosmian.com/kms/5.10.0/cosmian-kms-server_5.10.0_x64_en-US.exe
+    https://package.cosmian.com/kms/5.11.0/cosmian-kms-server_5.11.0_x64_en-US.exe
     ```
 
     Run the installer to install Cosmian KMS Server. The installer will:

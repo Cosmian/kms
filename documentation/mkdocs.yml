@@ -70,7 +70,7 @@ nav:
       - Trustway Crypt2pay: hsms/crypt2pay.md
       - Trustway Proteccio: hsms/proteccio.md
       - Utimaco General Purpose: hsms/utimaco.md
-      - Smartcard HSM / Nitrokey HSM 2: hsms/sc_hsm.md
+      - Smart card HSM / Nitrokey HSM 2: hsms/sc_hsm.md
       - SoftHSMv2: hsms/softhsm2.md
       - Other HSMs: hsms/other_hsms.md
   - Integrations:
@@ -119,6 +119,7 @@ nav:
       - Zeroization: zeroization.md
   - KMIP Support:
       - Introduction: kmip/index.md
+      - KMIP support summary: kmip/support.md
       - Supported Objects: kmip/objects.md
       - Supported Formats: kmip/formats.md
       - Objects Tagging: kmip/tagging.md
