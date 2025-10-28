@@ -12,6 +12,26 @@ Follow the instructions at <https://github.com/softhsm/SoftHSMv2>.
 
 When running on a Linux system, you can install SoftHSM2 using the package manager. For example, on Ubuntu, you can run:
 
+```shell
+sudo apt install softhsm2
+```
+
+Export the configuration file location
+
+```shell
+export SOFTHSM2_CONF=/etc/softhsm2/softhsm2.conf
+```
+
+Make sure the token directory set in the configuration file exists:
+
+```shell
+mkdir -p /var/lib/softhsm/tokens
+# Set appropriate permissions for your systems on the directory
+sudo chmod 777 /var/lib/softhsm/tokens
+```
+
+To initialize the token, run the following command:
+
 ```bash
 softhsm2-util --init-token --slot 0 --label "my_token_1"
 ```

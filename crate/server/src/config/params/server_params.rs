@@ -6,8 +6,7 @@ use cosmian_logger::{debug, warn};
 use super::TlsParams;
 use crate::{
     config::{
-        ClapConfig, DEFAULT_COSMIAN_UI_DIST_PATH, GoogleCseConfig, IdpConfig, OidcConfig,
-        params::proxy_params::ProxyParams,
+        ClapConfig, GoogleCseConfig, IdpConfig, OidcConfig, params::proxy_params::ProxyParams,
     },
     error::KmsError,
     result::{KResult, KResultHelper},
@@ -131,13 +130,29 @@ impl ServerParams {
     pub fn try_from(conf: ClapConfig) -> KResult<Self> {
         debug!("{conf:#?}");
 
-        let ui_index_html_folder: PathBuf = if conf.ui_config.ui_index_html_folder.is_empty() {
-            DEFAULT_COSMIAN_UI_DIST_PATH.to_owned()
-        } else {
-            conf.ui_config.ui_index_html_folder
-        }
-        .into();
+        #[cfg(target_os = "windows")]
+        let mut ui_index_html_folder: PathBuf = conf.ui_config.get_ui_index_html_folder().into();
+        #[cfg(not(target_os = "windows"))]
+        let ui_index_html_folder: PathBuf = conf.ui_config.get_ui_index_html_folder().into();
         debug!("{ui_index_html_folder:#?}");
+
+        // On Windows, some configs may still carry the Linux default path. Fallback to LOCALAPPDATA default.
+        #[cfg(target_os = "windows")]
+        {
+            use crate::config::get_default_ui_dist_path;
+            if ui_index_html_folder.to_string_lossy() == "/usr/local/cosmian/ui/dist/"
+                || !ui_index_html_folder.join("index.html").exists()
+            {
+                let fallback = PathBuf::from(get_default_ui_dist_path());
+                if fallback.join("index.html").exists() {
+                    warn!(
+                        "UI folder invalid or Linux default detected, falling back to: {fallback:#?}"
+                    );
+                    ui_index_html_folder = fallback;
+                }
+            }
+        }
+
         if ui_index_html_folder.join("index.html").exists() {
             debug!("{ui_index_html_folder:#?}");
         } else {
@@ -156,7 +171,11 @@ impl ServerParams {
             .iter()
             .zip(&conf.hsm.hsm_password)
             .map(|(s, p)| {
-                let password = if p.is_empty() { None } else { Some(p.clone()) };
+                let password = if p == "<NO_LOGIN>" {
+                    None
+                } else {
+                    Some(p.clone())
+                };
                 (*s, password)
             })
             .collect();

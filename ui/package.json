@@ -1,7 +1,7 @@
 {
     "name": "ui",
     "private": true,
-    "version": "5.10.0",
+    "version": "5.11.0",
     "type": "module",
     "scripts": {
         "dev": "vite",
@@ -32,7 +32,7 @@
         "globals": "^16.0.0",
         "typescript": "~5.8.3",
         "typescript-eslint": "^8.31.1",
-        "vite": "^6.3.6"
+        "vite": "^7.0.8"
     },
     "overrides": {
         "esbuild": "^0.25.10",

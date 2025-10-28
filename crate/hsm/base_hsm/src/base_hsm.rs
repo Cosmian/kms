@@ -74,6 +74,7 @@ impl<P: HsmProvider> BaseHsm<P> {
         // check if we are supposed to use that slot
         if let Some(slot_state) = slots.get_mut(&slot_id) {
             if let Some(s) = &slot_state.slot {
+                debug!("Reusing slot {slot_id}");
                 Ok(s.clone())
             } else {
                 // instantiate a new slot

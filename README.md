@@ -24,7 +24,7 @@ The Cosmian KMS presents some unique features, such as:
   [Google Workspace Client Side Encryption (CSE)](./documentation/docs/google_cse/index.md)
 - out-of-the-box support
   of [Microsoft Double Key Encryption (DKE)](./documentation/docs/ms_dke/index.md)
-- support for the [CardContact SmartCard, Nitrokey HSM 2, Proteccio, and Utimaco HSMs](./documentation/docs/hsms/index.md) with KMS keys wrapped by the HSM
+- support for the [CardContact SmartCard, Nitrokey HSM 2, Proteccio, Crypt2pay, Utimaco and other HSMs](./documentation/docs/hsms/index.md) with KMS keys wrapped by the HSM
 - [Veracrypt](https://docs.cosmian.com/cosmian_cli/pkcs11/veracrypt/)
   and [LUKS](https://docs.cosmian.com/cosmian_cli/pkcs11/luks/) disk encryption support
 - [FIPS 140-3](./documentation/docs/fips.md) mode gated behind the feature `fips`
@@ -80,10 +80,19 @@ The KMS has extensive online [documentation](https://docs.cosmian.com/key_manage
     - [Use the KMS inside a Cosmian VM on SEV/TDX](#use-the-kms-inside-a-cosmian-vm-on-sevtdx)
     - [Releases](#releases)
     - [Benchmarks](#benchmarks)
+    - [KMIP support by Cosmian KMS](#kmip-support-by-cosmian-kms)
+        - [KMIP coverage](#kmip-coverage)
+            - [Messages](#messages)
+            - [Operations](#operations)
+            - [Methodology](#methodology)
+            - [Managed Objects](#managed-objects)
+            - [Base Objects](#base-objects)
+            - [Transparent Key Structures](#transparent-key-structures)
+            - [Attributes](#attributes)
 
 ## Quick start
 
-Pre-built binaries [are available](https://package.cosmian.com/kms/5.10.0/)
+Pre-built binaries [are available](https://package.cosmian.com/kms/5.11.0/)
 for Linux, MacOS, and Windows, as well as Docker images. To run the server binary, OpenSSL must be
 available in your path (see "building the KMS" below for details); other binaries do not have this
 requirement.
@@ -169,9 +178,11 @@ The **Cosmian KMS** is written in [Rust](https://www.rust-lang.org/) and organiz
 
 - **`hsm/base_hsm`** - Base HSM abstraction layer
 - **`hsm/smartcardhsm`** - Nitrokey HSM 2 resp. CardContact SmartCard-HSM
+- **`hsm/crypt2pay`** - Crypt2pay HSM integration
 - **`hsm/proteccio`** - Proteccio HSM integration
 - **`hsm/softhsm2`** - SoftHSM2 integration for testing and development
 - **`hsm/utimaco`** - Utimaco HSM integration
+- **`hsm/other`** - Other HSMs support
 
 #### Database Interfaces
 
@@ -380,3 +391,232 @@ Typical values for single-threaded HTTP KMIP 2.1 requests
     -  2048 bits: 33 milliseconds
     -  4096 bits: 322 milliseconds
 ```
+
+<!-- KMIP_SUPPORT_START -->
+<!-- This section is auto-generated from documentation/docs/kmip/support.md by scripts/update_readme_kmip.py. Do not edit manually. -->
+## KMIP support by Cosmian KMS
+
+This page summarizes the KMIP coverage in Cosmian KMS. The support status is
+derived from the actual implementation in `crate/server/src/core/operations`.
+
+Legend:
+
+- ✅ Fully supported
+- ❌ Not implemented
+- 🚫 Deprecated
+- 🚧 Partially supported (not used here)
+- N/A Not applicable
+
+### KMIP coverage
+
+#### Messages
+
+| Message          | Current |
+| ---------------- | ------: |
+| Request Message  |       ✅ |
+| Response Message |       ✅ |
+
+#### Operations
+
+| Operation              | Current |
+| ---------------------- | ------: |
+| Create                 |       ✅ |
+| Create Key Pair        |       ✅ |
+| Register               |       ✅ |
+| Re-key                 |       ✅ |
+| Re-key Key Pair        |       ✅ |
+| DeriveKey              |       ✅ |
+| Certify                |       ✅ |
+| Re-certify             |       ❌ |
+| Locate                 |       ✅ |
+| Check                  |       ❌ |
+| Get                    |       ✅ |
+| Get Attributes         |       ✅ |
+| Get Attribute List     |       ❌ |
+| Add Attribute          |       ✅ |
+| Set Attribute (Modify) |       ✅ |
+| Delete Attribute       |       ✅ |
+| Obtain Lease           |       ❌ |
+| Get Usage Allocation   |       ❌ |
+| Activate               |       ✅ |
+| Revoke                 |       ✅ |
+| Destroy                |       ✅ |
+| Archive                |       ❌ |
+| Recover                |       ❌ |
+| Validate               |       ✅ |
+| Query                  |       ✅ |
+| Cancel                 |       ❌ |
+| Poll                   |       ❌ |
+| Notify                 |       ❌ |
+| Put                    |       ❌ |
+| Discover Versions      |       ✅ |
+| Encrypt                |       ✅ |
+| Decrypt                |       ✅ |
+| Sign                   |       ✅ |
+| Signature Verify       |       ✅ |
+| MAC                    |       ✅ |
+| MAC Verify             |       ❌ |
+| RNG Retrieve           |       ❌ |
+| RNG Seed               |       ❌ |
+| Hash                   |       ✅ |
+| Create Split Key       |       ❌ |
+| Join Split Key         |       ❌ |
+| Export                 |       ✅ |
+| Import                 |       ✅ |
+
+#### Methodology
+
+- Operations shown as ✅ are backed by a Rust implementation file under `crate/server/src/core/operations`.
+- If no implementation file exists for an operation, it is marked ❌.
+- This documentation is auto-generated by analyzing the source code.
+
+If you spot a mismatch or want to extend coverage, please open an issue or PR.
+
+#### Managed Objects
+
+| Managed Object | Current |
+| -------------- | ------: |
+| Certificate    |       ✅ |
+| Symmetric Key  |       ✅ |
+| Public Key     |       ✅ |
+| Private Key    |       ✅ |
+| Split Key      |       ❌ |
+| Template       |       🚫 |
+| Secret Data    |       ✅ |
+| Opaque Object  |       ✅ |
+| PGP Key        |       ❌ |
+
+Notes:
+
+- Opaque Object import support is present (see `import.rs`).
+- PGP Key types appear in digest and attribute handling but full object import/register is not implemented, hence ❌.
+
+#### Base Objects
+
+| Base Object                              | Current |
+| ---------------------------------------- | ------: |
+| Attribute                                |       ✅ |
+| Credential                               |       ✅ |
+| Key Block                                |       ✅ |
+| Key Value                                |       ✅ |
+| Key Wrapping Data                        |       ✅ |
+| Key Wrapping Specification               |       ✅ |
+| Transparent Key Structures               |       ✅ |
+| Template-Attribute Structures            |       ✅ |
+| Extension Information                    |       ✅ |
+| Data                                     |       ❌ |
+| Data Length                              |       ❌ |
+| Signature Data                           |       ❌ |
+| MAC Data                                 |       ❌ |
+| Nonce                                    |       ✅ |
+| Correlation Value                        |       ❌ |
+| Init Indicator                           |       ❌ |
+| Final Indicator                          |       ❌ |
+| RNG Parameter                            |       ✅ |
+| Profile Information                      |       ✅ |
+| Validation Information                   |       ✅ |
+| Capability Information                   |       ✅ |
+| Authenticated Encryption Additional Data |       ✅ |
+| Authenticated Encryption Tag             |       ✅ |
+
+Notes:
+
+- AEAD Additional Data and Tag are supported in encrypt/decrypt APIs.
+- Nonce and RNG Parameter are used by symmetric encryption paths.
+
+#### Transparent Key Structures
+
+| Structure                | Current |
+| ------------------------ | ------: |
+| Symmetric Key            |       ✅ |
+| DSA Private/Public Key   |       ❌ |
+| RSA Private/Public Key   |       ✅ |
+| DH Private/Public Key    |       ❌ |
+| ECDSA Private/Public Key |       ✅ |
+| ECDH Private/Public Key  |       ❌ |
+| ECMQV Private/Public     |       ❌ |
+| EC Private/Public        |       ✅ |
+
+Note: EC/ECDSA support is present; DH/DSA/ECMQV are not implemented.
+
+#### Attributes
+
+| Attribute                        | Current |
+| -------------------------------- | ------: |
+| Activation Date                  |       ✅ |
+| Alternative Name                 |       ❌ |
+| Always Sensitive                 |       ❌ |
+| Application Specific Information |       ❌ |
+| Archive Date                     |       ❌ |
+| Attribute Index                  |       ❌ |
+| Certificate Attributes           |       ❌ |
+| Certificate Identifier           |       🚫 |
+| Certificate Issuer               |       🚫 |
+| Certificate Length               |       ❌ |
+| Certificate Subject              |       🚫 |
+| Certificate Type                 |       ✅ |
+| Comment                          |       ❌ |
+| Compromise Date                  |       ❌ |
+| Compromise Occurrence Date       |       ✅ |
+| Contact Information              |       ❌ |
+| Critical                         |       ❌ |
+| Cryptographic Algorithm          |       ✅ |
+| Cryptographic Domain Parameters  |       ✅ |
+| Cryptographic Length             |       ✅ |
+| Cryptographic Parameters         |       ✅ |
+| Cryptographic Usage Mask         |       ✅ |
+| Deactivation Date                |       ✅ |
+| Description                      |       ❌ |
+| Destroy Date                     |       ❌ |
+| Digest                           |       ✅ |
+| Digital Signature Algorithm      |       ✅ |
+| Extractable                      |       ❌ |
+| Fresh                            |       ❌ |
+| Initial Date                     |       ✅ |
+| Key Format Type                  |       ❌ |
+| Key Value Location               |       ❌ |
+| Key Value Present                |       ❌ |
+| Last Change Date                 |       ✅ |
+| Lease Time                       |       ❌ |
+| Link                             |       ✅ |
+| Name                             |       ❌ |
+| Never Extractable                |       ❌ |
+| Nist Key Type                    |       ❌ |
+| Object Group                     |       ❌ |
+| Object Group Member              |       ❌ |
+| Object Type                      |       ✅ |
+| Opaque Data Type                 |       ❌ |
+| Operation Policy Name            |       🚫 |
+| Original Creation Date           |       ✅ |
+| PKCS#12 Friendly Name            |       ❌ |
+| Process Start Date               |       ❌ |
+| Protect Stop Date                |       ❌ |
+| Protection Level                 |       ❌ |
+| Protection Period                |       ❌ |
+| Protection Storage Masks         |       ❌ |
+| Quantum Safe                     |       ❌ |
+| Random Number Generator          |       ❌ |
+| Revocation Reason                |       ✅ |
+| Rotate Date                      |       ❌ |
+| Rotate Generation                |       ❌ |
+| Rotate Interval                  |       ❌ |
+| Rotate Latest                    |       ❌ |
+| Rotate Name                      |       ❌ |
+| Rotate Offset                    |       ❌ |
+| Sensitive                        |       ✅ |
+| Short Unique Identifier          |       ❌ |
+| State                            |       ✅ |
+| Unique Identifier                |       ✅ |
+| Usage Limits                     |       ❌ |
+| Vendor Attribute                 |       ❌ |
+| X.509 Certificate Identifier     |       ✅ |
+| X.509 Certificate Issuer         |       ✅ |
+| X.509 Certificate Subject        |       ✅ |
+
+Notes:
+
+- GetAttributes returns a union of metadata attributes and those embedded in KeyBlock structures.
+- "Vendor Attributes" are available via the Cosmian vendor namespace and are accessible via GetAttributes.
+- A ✅ indicates the attribute is used or updated by at least one KMIP operation implementation in `crate/server/src/core/operations`, explicitly excluding the attribute-only handlers (Add/Delete/Get/Set Attribute).
+
+<!-- KMIP_SUPPORT_END -->

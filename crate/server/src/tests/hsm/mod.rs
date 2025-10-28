@@ -1,11 +1,10 @@
 use std::{ops::Add, sync::Arc};
 
-use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::kmip_objects::{
-    Object, ObjectType,
-};
-use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::kmip_operations::{Export, Import};
 use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::{
-    kmip_attributes::Attributes, requests::create_rsa_key_pair_request,
+    kmip_attributes::Attributes,
+    kmip_objects::{Object, ObjectType},
+    kmip_operations::{Export, Import},
+    requests::create_rsa_key_pair_request,
 };
 use cosmian_kms_interfaces::as_hsm_uid;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
@@ -98,6 +97,10 @@ fn hsm_clap_config(owner: &str, kek_id: Option<Uuid>) -> KResult<ClapConfig> {
             clap_config.hsm.hsm_model = "smartcardhsm".to_owned();
         } else if unwrapped_model == "proteccio" {
             clap_config.hsm.hsm_model = "proteccio".to_owned();
+        } else if unwrapped_model == "crypt2pay" {
+            clap_config.hsm.hsm_model = "crypt2pay".to_owned();
+        } else if unwrapped_model == "other" {
+            clap_config.hsm.hsm_model = "other".to_owned();
         } else {
             return Err(KmsError::Default(
                 "The provided HSM model is unknown".to_owned(),

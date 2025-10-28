@@ -23,5 +23,5 @@ pub use logging::LoggingConfig;
 pub use proxy_config::ProxyConfig;
 pub use socket_server_config::SocketServerConfig;
 pub use tls_config::TlsConfig;
-pub use ui_config::{DEFAULT_COSMIAN_UI_DIST_PATH, OidcConfig, UiConfig};
+pub use ui_config::{OidcConfig, UiConfig, get_default_ui_dist_path};
 pub use workspace::WorkspaceConfig;

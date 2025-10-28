@@ -12,6 +12,8 @@ use cosmian_kms_server_database::{
 };
 use cosmian_logger::trace;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use crypt2pay_pkcs11_loader::{CRYPT2PAY_PKCS11_LIB, Crypt2pay};
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use proteccio_pkcs11_loader::{PROTECCIO_PKCS11_LIB, Proteccio};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use smartcardhsm_pkcs11_loader::{SMARTCARDHSM_PKCS11_LIB, Smartcardhsm};
@@ -20,6 +22,9 @@ use softhsm2_pkcs11_loader::{SOFTHSM2_PKCS11_LIB, Softhsm2};
 use tokio::sync::RwLock;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use utimaco_pkcs11_loader::{UTIMACO_PKCS11_LIB, Utimaco};
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+const OTHER_HSM_PKCS11_LIB: &str = "/lib/libkmshsm.so";
 
 use crate::{config::ServerParams, error::KmsError, kms_bail, result::KResult};
 
@@ -109,6 +114,20 @@ impl KMS {
                     KmsError::InvalidRequest("The HSM model is not specified".to_owned())
                 })?;
                 match hsm_model.as_str() {
+                    "crypt2pay" => {
+                        let crypt2pay: Arc<dyn HSM + Send + Sync> = Arc::new(
+                            Crypt2pay::instantiate(
+                                CRYPT2PAY_PKCS11_LIB,
+                                server_params.slot_passwords.clone(),
+                            )
+                            .map_err(|e| {
+                                KmsError::InvalidRequest(format!(
+                                    "Failed to instantiate the Crypt2pay HSM: {e}"
+                                ))
+                            })?,
+                        );
+                        Some(crypt2pay)
+                    }
                     "proteccio" => {
                         let proteccio: Arc<dyn HSM + Send + Sync> = Arc::new(
                             Proteccio::instantiate(
@@ -165,8 +184,23 @@ impl KMS {
                         );
                         Some(smartcardhsm)
                     }
+                    "other" => {
+                        // we expect the other HSM to be compatible with Softhsm2
+                        let other_hsm: Arc<dyn HSM + Send + Sync> = Arc::new(
+                            Softhsm2::instantiate(
+                                OTHER_HSM_PKCS11_LIB,
+                                server_params.slot_passwords.clone(),
+                            )
+                            .map_err(|e| {
+                                KmsError::InvalidRequest(format!(
+                                    "Failed to instantiate the HSM lib at {OTHER_HSM_PKCS11_LIB}: {e}"
+                                ))
+                            })?,
+                        );
+                        Some(other_hsm)
+                    }
                     _ => kms_bail!(
-                        "The only supported HSM models are proteccio, softhsm2 and utimaco"
+                        "The only supported HSM models are proteccio, crypt2pay, smartcardhsm, softhsm2, utimaco and other"
                     ),
                 }
             }

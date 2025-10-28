@@ -3,7 +3,7 @@
 #
 FROM rust:1.86.0-bookworm AS builder
 
-LABEL version="5.10.0"
+LABEL version="5.11.0"
 LABEL name="Cosmian KMS docker container"
 LABEL org.opencontainers.image.description="Cosmian KMS docker container"
 LABEL org.opencontainers.image.title="Cosmian KMS"

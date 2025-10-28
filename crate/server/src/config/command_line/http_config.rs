@@ -4,6 +4,9 @@ use clap::Args;
 use serde::{Deserialize, Serialize};
 
 const DEFAULT_PORT: u16 = 9998;
+#[cfg(target_os = "windows")]
+const DEFAULT_HOSTNAME: &str = "127.0.0.1";
+#[cfg(not(target_os = "windows"))]
 const DEFAULT_HOSTNAME: &str = "0.0.0.0";
 
 #[derive(Args, Clone, Deserialize, Serialize)]

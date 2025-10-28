@@ -30,6 +30,15 @@ fn cfg() -> HResult<shared::HsmTestConfig<'static>> {
     })
 }
 
+/// To run all the tests, try something like
+/// ```sh
+///  RUST_LOG=info \
+///  HSM_USER_PASSWORD="12345678" \
+///  HSM_SLOT_ID=63715018 \
+///  cargo test test_hsm_softhsm2_all --features softhsm2 -- --ignored
+/// ```
+/// WARNING: Initialized tokens will be reassigned to another slot (based on the token serial number)
+/// So show the available slots first to determine which slot ID to use
 #[test]
 #[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
 fn test_hsm_softhsm2_all() -> HResult<()> {

@@ -19,7 +19,7 @@ use cosmian_kms_server_database::reexport::{
             kmip_types::{CryptographicParameters, KeyFormatType, UniqueIdentifier},
         },
     },
-    cosmian_kms_crypto::CryptoResultHelper,
+    cosmian_kms_crypto::{CryptoResultHelper, crypto::rsa::sign_rsa_digest_with_algorithm},
 };
 use cosmian_logger::{debug, trace};
 use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
@@ -437,42 +437,16 @@ pub async fn private_key_sign(
     )
     .await?;
 
-    // Sign with the unwrapped RSA private key
-    debug!("from_rsa");
-    let private_key = PKey::from_rsa(Rsa::<Private>::private_key_from_der(&private_key_der)?)?;
-
-    debug!("build signer");
-    let mut ctx = PkeyCtx::new(&private_key)?;
-    ctx.sign_init()?;
-    let (padding, md) = match request.algorithm.as_str() {
-        "SHA1withRSA" => (Padding::PKCS1, Md::sha1()),
-        "SHA256withRSA" => (Padding::PKCS1, Md::sha256()),
-        "SHA512withRSA" => (Padding::PKCS1, Md::sha512()),
-        "SHA1withRSA/PSS" => (Padding::PKCS1_PSS, Md::sha1()),
-        "SHA256withRSA/PSS" => (Padding::PKCS1_PSS, Md::sha256()),
-        "SHA512withRSA/PSS" => (Padding::PKCS1_PSS, Md::sha512()),
-        _ => {
-            return Err(KmsError::InvalidRequest(
-                "Decryption algorithm not handled.".to_owned(),
-            ));
-        }
-    };
-    ctx.set_rsa_padding(padding)?;
-    ctx.set_signature_md(md)?;
-    let digest = general_purpose::STANDARD.decode(request.digest)?;
-    let allocation_size = ctx.sign(&digest, None)?;
-
-    let mut signature = vec![0_u8; allocation_size];
-    let signature_size = ctx.sign(&digest, Some(&mut *signature))?;
-    debug!("signature {signature_size}");
-    kms_ensure!(
-        allocation_size == signature_size,
-        "allocation_size MUST be equal to signature_size"
-    );
+    let signature = sign_rsa_digest_with_algorithm(
+        &private_key_der,
+        &request.algorithm,
+        &request.digest,
+        request.rsa_pss_salt_length,
+    )?;
 
     debug!(
         "exiting with success: {}",
-        general_purpose::STANDARD.encode(signature.clone())
+        general_purpose::STANDARD.encode(&signature)
     );
     Ok(PrivateKeySignResponse {
         signature: general_purpose::STANDARD.encode(signature),
@@ -836,7 +810,7 @@ pub async fn privileged_private_key_decrypt(
     debug!("decode encrypted_dek");
     let encrypted_dek = general_purpose::STANDARD.decode(&request.encrypted_data_encryption_key)?;
 
-    // Unwrap private key which has been previously wrapped using AES
+    // Unwrap private key which has been previously wrapped using AES-GCM
     let private_key_der = cse_wrapped_key_decrypt(
         request.wrapped_private_key,
         UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned()),

@@ -13,8 +13,8 @@ use cosmian_kms_client::{
 };
 use cosmian_kms_server::{
     config::{
-        ClapConfig, HsmConfig, HttpConfig, IdpAuthConfig, MainDBConfig, ServerParams,
-        SocketServerConfig, TlsConfig, WorkspaceConfig,
+        ClapConfig, GoogleCseConfig, HsmConfig, HttpConfig, IdpAuthConfig, MainDBConfig,
+        ServerParams, SocketServerConfig, TlsConfig, WorkspaceConfig,
     },
     start_kms_server::start_kms_server,
 };
@@ -609,7 +609,7 @@ pub fn build_server_params_full(
         IdpAuthConfig::default()
     };
 
-    let clap = ClapConfig {
+    let mut clap = ClapConfig {
         idp_auth,
         socket_server: SocketServerConfig {
             // Start socket server when HTTPS and client cert auth are used
@@ -628,12 +628,23 @@ pub fn build_server_params_full(
             api_token_id: opts.api_token_id,
             ..HttpConfig::default()
         },
+        // Expose Google CSE endpoints in tests and relax token validation
+        kms_public_url: Some(format!("http://localhost:{}/google_cse", opts.port)),
+        google_cse_config: GoogleCseConfig {
+            google_cse_enable: true,
+            google_cse_disable_tokens_validation: true,
+            google_cse_incoming_url_whitelist: None,
+            google_cse_migration_key: None,
+        },
         non_revocable_key_id: opts.non_revocable_key_id,
         privileged_users: opts.privileged_users,
-        // HSM configuration (defaults to empty when not provided)
-        hsm: opts.hsm.unwrap_or_default(),
         ..ClapConfig::default()
     };
+
+    // If HSM options were provided, set them under the nested HSM config
+    if let Some(h) = opts.hsm {
+        clap.hsm = h;
+    }
 
     ServerParams::try_from(clap).map_err(|e| {
         KmsClientError::Default(format!(

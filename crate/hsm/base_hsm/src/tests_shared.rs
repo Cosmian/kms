@@ -6,7 +6,7 @@
 use std::{collections::HashMap, ptr, sync::Arc, thread};
 
 use cosmian_kms_interfaces::{HSM, HsmObjectFilter, KeyMaterial, KeyType};
-use cosmian_logger::{info, log_init};
+use cosmian_logger::{debug, info, log_init};
 use futures::executor::block_on;
 use libloading::Library;
 use pkcs11_sys::{
@@ -25,6 +25,7 @@ use crate::{
 };
 
 /// Per-HSM configuration for shared tests
+#[derive(Debug)]
 pub struct HsmTestConfig<'a> {
     pub lib_path: &'a str,
     pub slot_ids_and_passwords: HashMap<usize, Option<String>>, // for BaseHsm::instantiate
@@ -57,7 +58,7 @@ pub fn low_level_init_test(cfg: &HsmTestConfig) -> HResult<()> {
         pReserved: ptr::null_mut(),
     };
     let rv = init(
-        std::ptr::from_ref(&p_init_args)
+        ptr::from_ref(&p_init_args)
             .cast::<std::ffi::c_void>()
             .cast_mut(),
     );
@@ -81,15 +82,16 @@ where
     P: crate::hsm_capabilities::HsmProvider,
     BaseHsm<P>: Sized,
 {
-    info!("getting available slot list");
+    debug!("Getting available slot list");
     let slots = hsm.get_available_slot_list()?;
+    info!("Available slots: {:?}", slots);
     if !slots.contains(&cfg.slot_id_for_tests) {
         return Err(HError::Default(format!(
             "Configured slot {} is not available in {:?}",
             cfg.slot_id_for_tests, slots
         )));
     }
-    info!("Getting slot");
+    debug!("HSM Test configuration: {cfg:#?}");
     hsm.get_slot(cfg.slot_id_for_tests)
 }
 
@@ -127,11 +129,11 @@ pub fn get_mechanisms_and_hashes(slot: &Arc<SlotManager>) -> HResult<()> {
     info!("CKM_AES_CBC info: {:?}", cbc_mechanism_info);
     let session = slot.open_session(true)?;
     let supported_hash = session.get_supported_oaep_hash();
-    info!("{:?}", supported_hash);
+    info!("Supported OAEP Hash (1) {:?}", supported_hash);
     session.close()?;
     let session_2 = slot.open_session(true)?;
     let supported_hash_2 = session_2.get_supported_oaep_hash();
-    info!("{:?}", supported_hash_2);
+    info!("Supported OAEP Hash (2) {:?}", supported_hash_2);
     Ok(())
 }
 
@@ -140,6 +142,8 @@ where
     P: crate::hsm_capabilities::HsmProvider,
     BaseHsm<P>: Sized,
 {
+    log_init(None);
+    info!("Config: {cfg:#?}");
     let hsm = BaseHsm::<P>::instantiate(cfg.lib_path, cfg.slot_ids_and_passwords.clone())?;
     let supported_algorithms = hsm.get_algorithms(cfg.slot_id_for_tests)?;
     info!("{:?}", supported_algorithms);

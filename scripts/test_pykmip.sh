@@ -95,31 +95,31 @@ check_prerequisites() {
 run_operation() {
     local operation=$1
     local verbose=${2:-false}
-    
+
     print_status "Running PyKMIP $operation operation..."
-    
+
     local cmd_args=(
         "$PYTHON_CMD"
         "$PYKMIP_SCRIPT"
         "--configuration" "$PYKMIP_CONF"
         "--operation" "$operation"
     )
-    
+
     if [[ "$verbose" == "true" ]]; then
         cmd_args+=("--verbose")
     fi
 
     print_status "Executing: ${cmd_args[*]}"
-    
+
     # Capture both stdout and stderr with timeout
     local output=""
     local exit_code=0
-    
+
     # Use timeout to prevent hanging operations
     if command -v timeout >/dev/null 2>&1; then
         output=$(timeout 30 "${cmd_args[@]}" 2>&1)
         exit_code=$?
-        
+
         if [[ $exit_code -eq 124 ]]; then
             print_error "$operation operation timed out after 30 seconds"
             return 1
@@ -129,36 +129,36 @@ run_operation() {
         output=$("${cmd_args[@]}" 2>&1)
         exit_code=$?
     fi
-    
+
     # Always show the output first
     echo ""
     echo "=== $operation OPERATION OUTPUT ==="
     echo "$output"
     echo "=================================="
     echo ""
-    
+
     # Initialize failure detection
     local failure_detected=false
     local failure_reason=""
-    
+
     # Check for empty output (might indicate hanging or crash)
     if [[ -z "$output" ]]; then
         failure_detected=true
         failure_reason="no output received"
     fi
-    
+
     # Check if command failed with non-zero exit code
     if [[ $exit_code -ne 0 ]] && [[ $exit_code -ne 124 ]]; then
         failure_detected=true
         failure_reason="command exit code: $exit_code"
     fi
-    
+
     # Check for JSON with error status (most important check)
     if echo "$output" | grep -q '"status": "error"'; then
         failure_detected=true
         failure_reason="KMIP response status is error"
     fi
-    
+
     # Check for Python errors/exceptions (improved detection)
     if echo "$output" | grep -qi "traceback\|exception\|error:" && ! echo "$output" | grep -q '"status":'; then
         failure_detected=true
@@ -179,7 +179,7 @@ run_operation() {
             failure_reason="invalid or missing JSON output"
         fi
     fi
-    
+
     # Report results
     if [[ "$failure_detected" == "true" ]]; then
         print_error "$operation operation FAILED - $failure_reason"
@@ -193,35 +193,35 @@ run_operation() {
 # Function to run all operations
 run_all_operations() {
     local verbose=${1:-false}
-    
+
     operations=("activate" "create" "create_keypair" "decrypt" "destroy" "discover_versions" "encrypt" "get" "get_attributes" "locate" "mac" "query" "revoke")
     failed_operations=()
     successful_operations=()
-    
+
     print_status "Running all PyKMIP operations..."
     echo ""
-    
+
     for op in "${operations[@]}"; do
         echo "######################################"
         echo "# TESTING OPERATION: $op"
         echo "######################################"
-        
+
         if run_operation "$op" "$verbose"; then
             successful_operations+=("$op")
         else
             failed_operations+=("$op")
         fi
-        
+
         echo ""
         echo "######################################"
         echo ""
     done
-    
+
     # Report final results
     echo "======================================"
     echo "FINAL TEST RESULTS SUMMARY"
     echo "======================================"
-    
+
     if [[ ${#successful_operations[@]} -gt 0 ]]; then
         print_success "SUCCESSFUL operations (${#successful_operations[@]}/${#operations[@]}):"
         for op in "${successful_operations[@]}"; do
@@ -229,14 +229,14 @@ run_all_operations() {
         done
         echo ""
     fi
-    
+
     if [[ ${#failed_operations[@]} -gt 0 ]]; then
         print_error "FAILED operations (${#failed_operations[@]}/${#operations[@]}):"
         for op in "${failed_operations[@]}"; do
             echo "  ❌ $op"
         done
         echo ""
-        
+
         return 1
     else
         print_success "ALL operations completed successfully!"
@@ -247,7 +247,7 @@ run_all_operations() {
 # Function to run Rust tests
 run_rust_tests() {
     print_status "Running Rust PyKMIP integration tests..."
-    
+
     if cargo test test_pykmip --package cosmian_kms_server; then
         print_success "Rust PyKMIP tests passed"
     else
@@ -302,7 +302,7 @@ show_usage() {
 main() {
     local command=""
     local verbose="false"
-    
+
     # Parse command line arguments
     while [[ $# -gt 0 ]]; do
         case $1 in
@@ -325,7 +325,7 @@ main() {
                 ;;
         esac
     done
-    
+
     case $command in
         check)
             check_prerequisites

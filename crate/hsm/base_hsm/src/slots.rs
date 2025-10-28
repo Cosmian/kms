@@ -4,7 +4,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use cosmian_logger::warn;
+use cosmian_logger::{debug, warn};
 use lru::LruCache;
 use pkcs11_sys::{
     CK_FLAGS, CK_MECHANISM_INFO, CK_MECHANISM_TYPE, CK_OBJECT_HANDLE, CK_SESSION_HANDLE,
@@ -280,7 +280,7 @@ impl SlotManager {
             read_write,
             self.object_handles_cache.clone(),
             self.supported_oaep_hash_cache.clone(),
-            None,
+            None, // Do Not Log In
             self.hsm_capabilities.clone(),
         )
     }
@@ -302,6 +302,11 @@ impl SlotManager {
         };
         let mut session_handle: CK_SESSION_HANDLE = 0;
 
+        debug!(
+            "Opening a session on slot: {slot_id}. Read write? {read_write}. Logging in? {}",
+            login_password.is_some()
+        );
+
         hsm_call!(
             hsm_lib,
             format!("HSM: Failed opening a session on slot: {slot_id}: return code"),
@@ -312,8 +317,11 @@ impl SlotManager {
             None,
             &raw mut session_handle
         );
-        if let Some(password) = login_password {
-            let mut pwd_bytes = password.as_bytes().to_vec();
+
+        if let Some(login_password) = login_password {
+            debug!("Logging in session {session_handle} with password");
+            let mut pwd_bytes = login_password.as_bytes().to_vec();
+
             #[expect(unsafe_code)]
             let rv = unsafe {
                 hsm_lib
@@ -321,7 +329,11 @@ impl SlotManager {
                     .ok_or_else(|| HError::Default("C_Login not available on library".to_owned()))?(
                     session_handle,
                     CKU_USER,
-                    pwd_bytes.as_mut_ptr(),
+                    if pwd_bytes.is_empty() {
+                        ptr::null_mut()
+                    } else {
+                        pwd_bytes.as_mut_ptr()
+                    },
                     CK_ULONG::try_from(pwd_bytes.len())?,
                 )
             };
@@ -333,6 +345,7 @@ impl SlotManager {
                 )));
             }
         }
+
         Ok(Session::new(
             hsm_lib.clone(),
             session_handle,

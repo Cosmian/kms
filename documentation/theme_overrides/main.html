@@ -10,6 +10,11 @@ Check this documentation for customizations: https://squidfunk.github.io/mkdocs-
 {% endblock %}
 
 
+{% block libs %}
+{{ super() }}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.0/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+{% endblock %}
+
 {% block header %}
 <script type="application/ecmascript">
     //
@@ -21,16 +26,16 @@ Check this documentation for customizations: https://squidfunk.github.io/mkdocs-
         const favicon = document.querySelector('link[rel="icon"]'); // get favicon.ico element
         const darkModeOn = mode === "dark" || (mode === "auto" && window.matchMedia("(prefers-color-scheme: dark)").matches);
         if (darkModeOn) {
-            if (favicon) {
-                favicon.href = "/images/favicon-white.png";
-            }
+            // if (favicon) {
+            //     favicon.href = "/images/cosmian-favicon-white.png";
+            // }
             if (!document.body.classList.contains("dark-mode")) {
                 document.body.classList.add("dark-mode");
             }
         } else {
-            if (favicon) {
-                favicon.href = "/images/favicon-black.png";
-            }
+            // if (favicon) {
+            //     favicon.href = "/images/cosmian-favicon-black.png";
+            // }
             document.body.classList.remove("dark-mode");
         }
     }
@@ -76,22 +81,22 @@ Check this documentation for customizations: https://squidfunk.github.io/mkdocs-
 
 </script>
 {{ super() }}
-<div style="display: flex;margin-right: 15px;margin-top: 5px">
-    <div style="margin-left: auto;font-size: 0.75em">
-        <label for="themeToggle">View mode</label>
-        <select id="themeToggle" onchange="change_theme(this.value);this.blur()">
-            <option value="auto" selected>Auto</option>
-            <option value="dark">Dark</option>
-            <option value="light">Light</option>
-        </select>
-    </div>
-</div>
 {% endblock %}
 
 
 {% block content %}
 
 <div class="md-content" data-md-component="content">
+    <div style="display: flex;margin-right: 15px;margin-bottom: 5px">
+        <div style="margin-left: auto;font-size: 0.75em">
+            <label for="themeToggle">View mode</label>
+            <select id="themeToggle" onchange="change_theme(this.value);this.blur()">
+                <option value="auto" selected>Auto</option>
+                <option value="dark">Dark</option>
+                <option value="light">Light</option>
+            </select>
+        </div>
+    </div>
     <article class="md-content__inner md-typeset">
         {% if not "cosmian" in page.abs_url %} {% endif %} {% if
         "developer_documentation" in page.abs_url %}
