@@ -95,6 +95,7 @@ authors = [
 license = "BUSL-1.1" # "Business Source License 1.1"
 license-file = "LICENSE"
 repository = "https://github.com/Cosmian/kms"
+homepage = "https://github.com/Cosmian/kms"
 keywords = ["kms", "cosmian"]
 categories = ["security"]
 

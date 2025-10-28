@@ -1,14 +1,15 @@
+use std::{
+    num::NonZeroUsize,
+    ptr,
+    sync::{Arc, Mutex},
+};
+
 use cosmian_logger::{debug, warn};
 use lru::LruCache;
 use pkcs11_sys::{
     CK_FLAGS, CK_MECHANISM_INFO, CK_MECHANISM_TYPE, CK_OBJECT_HANDLE, CK_SESSION_HANDLE,
     CK_SLOT_ID, CK_ULONG, CKF_RW_SESSION, CKF_SERIAL_SESSION, CKR_OK, CKR_USER_ALREADY_LOGGED_IN,
     CKU_USER,
-};
-use std::{
-    num::NonZeroUsize,
-    ptr,
-    sync::{Arc, Mutex},
 };
 
 use crate::{
@@ -279,7 +280,7 @@ impl SlotManager {
             read_write,
             self.object_handles_cache.clone(),
             self.supported_oaep_hash_cache.clone(),
-            None, //Do Not Log In
+            None, // Do Not Log In
             self.hsm_capabilities.clone(),
         )
     }

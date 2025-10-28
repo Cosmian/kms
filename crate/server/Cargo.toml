@@ -9,7 +9,8 @@ keywords.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Cosmian Key Management Service"
+homepage.workspace = true
+description = "Cosmian Key Management Service - A high-performance, FIPS 140-3 compliant Key Management System"
 
 [lints]
 workspace = true
@@ -100,7 +101,7 @@ zeroize = { workspace = true }
 [dev-dependencies]
 actix-http = "3.10"
 cosmian_kms_client_utils = { path = "../client_utils", version = "5.10.0" }
-cosmian_kms_interfaces= { path = "../interfaces", version = "5.10.0" }
+cosmian_kms_interfaces = { path = "../interfaces", version = "5.10.0" }
 native-tls = { workspace = true }
 pem = { workspace = true }
 
@@ -219,3 +220,51 @@ assets = [
 ]
 auto-req = "no" # do not try to discover .so dependencies
 require-sh = true
+
+# END RPM PACKAGING
+# ------------------------------------------------------------------------------
+
+# ------------------------------------------------------------------------------
+# START WINDOWS INSTALLER PACKAGING (cargo-packager)
+# cargo packager --verbose --formats nsis --release --features non-fips
+# cargo packager --verbose --formats dmg --release --features non-fips
+[package.metadata.packager]
+# Build command to run before packaging
+# Prerequisite: build the server in non-fips mode
+# before-packaging-command = "cargo build --release --features non-fips -p cosmian_kms_server"
+
+# Product information
+product-name = "Cosmian KMS Server"
+long-description = "Cosmian KMS is a high-performance, open-source FIPS 140-3 compliant Key Management System written in Rust. It provides enterprise-grade key management capabilities with support for various cryptographic operations, database backends, and HSM integrations."
+license-file = "../../LICENSE"
+
+# Identifier for the package (Windows)
+identifier = "com.cosmian.kms.server"
+
+# Use platform installers
+# - Windows: NSIS (.exe)
+# - macOS:  DMG (.dmg)
+formats = ["nsis", "dmg"]
+
+# Files to include in the installer
+[[package.metadata.packager.resources]]
+src = "../../README.md"
+target = "README.md"
+
+[[package.metadata.packager.resources]]
+src = "../../pkg/kms.toml"
+target = "kms.toml"
+
+[[package.metadata.packager.resources]]
+src = "ui_non_fips/dist"
+target = "ui/"
+
+# NSIS-specific configuration
+[package.metadata.packager.nsis]
+# Installer configuration
+display-language-selector = false
+installer-mode = "currentUser"    # or "perMachine" for system-wide installation
+languages = ["English"]
+
+# END WINDOWS INSTALLER PACKAGING
+# ------------------------------------------------------------------------------

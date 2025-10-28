@@ -2,6 +2,8 @@ mod kmip;
 mod other_kms_methods;
 mod permissions;
 
+use std::{collections::HashMap, sync::Arc};
+
 use cosmian_kms_server_database::{
     Database,
     reexport::cosmian_kms_interfaces::{
@@ -9,9 +11,6 @@ use cosmian_kms_server_database::{
     },
 };
 use cosmian_logger::trace;
-use std::{collections::HashMap, sync::Arc};
-use tokio::sync::RwLock;
-
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use crypt2pay_pkcs11_loader::{CRYPT2PAY_PKCS11_LIB, Crypt2pay};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
@@ -20,6 +19,7 @@ use proteccio_pkcs11_loader::{PROTECCIO_PKCS11_LIB, Proteccio};
 use smartcardhsm_pkcs11_loader::{SMARTCARDHSM_PKCS11_LIB, Smartcardhsm};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use softhsm2_pkcs11_loader::{SOFTHSM2_PKCS11_LIB, Softhsm2};
+use tokio::sync::RwLock;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use utimaco_pkcs11_loader::{UTIMACO_PKCS11_LIB, Utimaco};
 
