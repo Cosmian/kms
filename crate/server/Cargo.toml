@@ -104,6 +104,7 @@ cosmian_kms_client_utils = { path = "../client_utils", version = "5.11.0" }
 cosmian_kms_interfaces = { path = "../interfaces", version = "5.11.0" }
 native-tls = { workspace = true }
 pem = { workspace = true }
+redis = { version = "0.32", features = ["aio", "connection-manager"] }
 
 [build-dependencies]
 actix-http = "3.10"

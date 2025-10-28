@@ -1,3 +1,4 @@
+//! TODO
 //! This module is deactivated
 //! and needs to be revisited as part of https://github.com/Cosmian/kms/issues/379
 
@@ -12,20 +13,20 @@ use cosmian_kms_interfaces::{
     AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
     SessionParams,
 };
-use sqlx::{Executor, IntoArguments, Row, Transaction};
 use cosmian_logger::trace;
+use sqlx::{Executor, IntoArguments, Row, Transaction};
 use uuid::Uuid;
 
 use crate::{
+    DbError,
     error::{DbResult, DbResultHelper},
     stores::{
+        DBObject,
         sql::{
-            database::{get_query, SqlDatabase},
+            database::{SqlDatabase, get_query},
             main_store::SqlMainStore,
         },
-        DBObject,
     },
-    DbError,
 };
 
 #[async_trait(?Send)]
@@ -91,7 +92,7 @@ where
             .await
             .context("retrieve")?;
         if let Some(row) = row {
-            return Ok(Some(self.db_row_to_owm(&row)?))
+            return Ok(Some(self.db_row_to_owm(&row)?));
         }
         Ok(None)
     }
