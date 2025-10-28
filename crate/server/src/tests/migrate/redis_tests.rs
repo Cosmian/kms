@@ -80,9 +80,7 @@ fn log_init_colorized(rust_log: Option<&str>) {
 // | mt_rsa_pk | cat, fox | RSA | None | mt_owner: ALL permissions|
 // | [UID_Covercrypt] | cat, dog | Covercrypt | The example JSON | mt_owner: ALL permissions |
 // | [UID_Covercrypt]_pk | cat, dog | Covercrypt | The example JSON | mt_owner: ALL permissions |
-#[allow(deprecated, clippy::all)]
-// // #[tokio::test]
-// #[serial]
+#[allow(deprecated)]
 async fn from_5_2_0_to_5_9_0() -> KResult<()> {
     log_init_colorized(option_env!("RUST_LOG"));
 
@@ -90,8 +88,8 @@ async fn from_5_2_0_to_5_9_0() -> KResult<()> {
     let user = "mt_normal_user";
     let kms = init_test_kms("redis_dump_v5_2_0.bin").await?;
 
-    // now, we check that the data is correctly migrated by "locating" it
-    // all keys have the "cat" tag, so the owner should find 5 keys
+    // Now, we check that the data is correctly migrated by "locating" it.
+    // All keys have the "cat" tag, so the owner should find 5 keys.
     let mut search_attrs = Attributes::default();
     let _: () = search_attrs.set_tags(vec!["cat".to_owned()])?;
     let locate = Locate {
@@ -310,6 +308,7 @@ async fn from_5_1_0_to_5_9_0() -> KResult<()> {
 // not solve the problem, hence this function.
 #[allow(clippy::large_futures)]
 #[tokio::test]
+#[cfg(not(any(target_os = "windows", target_os = "macos")))] // no redis on those CI machines
 async fn findex_redis_migration_tests() -> KResult<()> {
     log_init_colorized(option_env!("RUST_LOG"));
     let _: () = from_5_1_0_to_5_9_0().await?;

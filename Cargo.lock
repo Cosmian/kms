@@ -1458,11 +1458,9 @@ name = "cosmian_kms_server_database"
 version = "5.11.0"
 dependencies = [
  "async-trait",
- "byteorder",
  "cloudproof_findex",
  "cosmian_findex 8.0.0",
  "cosmian_kmip",
- "cosmian_kms_cli",
  "cosmian_kms_crypto",
  "cosmian_kms_interfaces",
  "cosmian_logger",
@@ -1478,7 +1476,6 @@ dependencies = [
  "sqlx",
  "strum",
  "tempfile",
- "test_kms_server",
  "thiserror 2.0.16",
  "tiny-keccak",
  "tokio",

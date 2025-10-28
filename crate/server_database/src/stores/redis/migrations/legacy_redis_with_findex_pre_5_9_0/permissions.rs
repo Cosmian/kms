@@ -153,8 +153,8 @@ impl PermissionsDB {
             .collect::<LegacyDbResult<HashSet<Triple>>>()
     }
 
-    // /// List all the permissions granted to the user
-    // /// per object uid
+    // List all the permissions granted to the user
+    // per object uid
     // pub(crate) async fn list_user_permissions(
     //     &self,
     //     findex_key: &SymmetricKey<MASTER_KEY_LENGTH>,

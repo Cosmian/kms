@@ -15,17 +15,7 @@ pub mod requests;
 /// Operation types that can get or create objects
 /// These operations use `retrieve` or `get` methods.
 #[derive(
-    Eq,
-    PartialEq,
-    Serialize,
-    Deserialize,
-    Copy,
-    Clone,
-    Hash,
-    PartialOrd,
-    Ord,
-    FromRepr,
-    EnumCount, // TODO: del enum count
+    Eq, PartialEq, Serialize, Deserialize, Copy, Clone, Hash, PartialOrd, Ord, FromRepr, EnumCount,
 )]
 #[serde(rename_all = "lowercase")]
 #[repr(u8)]
