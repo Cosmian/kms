@@ -12,7 +12,7 @@ use cloudproof_findex::{
 use cosmian_kmip::kmip_2_1::KmipOperation;
 use cosmian_kms_crypto::reexport::cosmian_crypto_core::{FixedSizeCBytes, SymmetricKey};
 
-use crate::stores::redis::migrations::legacy_redis_with_findex_pre_5_9_0::error::{
+use crate::stores::redis::migrations::legacy_redis_with_findex_pre_5_12_0::error::{
     LegacyDbError, LegacyDbResult,
 };
 

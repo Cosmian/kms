@@ -1,4 +1,4 @@
-pub(crate) mod legacy_redis_with_findex_pre_5_9_0;
+pub(crate) mod legacy_redis_with_findex_pre_5_12_0;
 
 use async_trait::async_trait;
 use cosmian_findex::IndexADT;
@@ -15,7 +15,7 @@ use crate::{
         redis::{
             findex::{FindexRedis, IndexedValue, Keyword},
             init_findex_redis,
-            migrations::legacy_redis_with_findex_pre_5_9_0::RedisWithFindex as LegacyRedisWithFindex,
+            migrations::legacy_redis_with_findex_pre_5_12_0::RedisWithFindex as LegacyRedisWithFindex,
             objects_db::keywords_from_attributes,
             permissions::{ObjectUid, PermissionsDB, UserId},
         },
@@ -73,7 +73,7 @@ impl Migrate for RedisWithFindex {
 
 impl RedisMigrate for RedisWithFindex {
     // docs : https://www.notion.so/cosmian/KMS-Database-migration-Redis-26bede69f24280a09226f997b3d79c47
-    async fn migrate_to_5_9_0(&self, parameters: MigrateTo590Parameters<'_>) -> DbResult<()> {
+    async fn migrate_to_5_12_0(&self, parameters: MigrateTo590Parameters<'_>) -> DbResult<()> {
         // we fetch all object uids from the keys in redis
         let db_0_url = format!("{}/0", parameters.redis_url);
         let db_1_url = format!("{}/1", parameters.redis_url);

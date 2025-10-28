@@ -139,8 +139,8 @@ mod redis_migrate {
     /// New parameters can be added here as new migrations are introduced
     #[derive(Debug, Default)]
     pub(crate) struct MigrationParams<'a> {
-        /// Parameters for 5.9.0 migration (`cloudproof_findex_v5` to `cosmian_findex_v8`)
-        pub(crate) migrate_to_5_9_0_parameters: Option<MigrateTo590Parameters<'a>>,
+        /// Parameters for 5.12.0 migration (`cloudproof_findex_v5` to `cosmian_findex_v8`)
+        pub(crate) migrate_to_5_12_0_parameters: Option<MigrateTo590Parameters<'a>>,
     }
 
     // We cannot implement SqlMigrate for RedisWithFindex or else we would face the following issue:
@@ -204,30 +204,30 @@ mod redis_migrate {
             debug!("Starting migration process...");
 
             if lower(&current_db_version, "5.8.1")? {
-                // From 4.5.0 to 5.8.1 : `cloudproof_findex_v5`
-                // Starting 5.9 : cosmian_findex_v8
                 debug!("  ==> migrating to version 5.8.1...");
-                if parameters.migrate_to_5_9_0_parameters.is_none() {
-                    let msg = "Missing parameters for migration to version 5.9.0. Aborting. Please \
+                if parameters.migrate_to_5_12_0_parameters.is_none() {
+                    let msg = "Missing parameters for migration to version 5.12.0. Aborting. Please \
                            provide the Redis URL, the master key and the label used by the \
                            previous DB instance.";
                     error!("{}", msg);
                     return Err(DbError::DatabaseError(msg.to_owned()));
                 }
-                self.migrate_to_5_9_0(parameters.migrate_to_5_9_0_parameters.ok_or_else(|| {
-                    DbError::DatabaseError(
-                        "Missing parameters for migration to version 5.9.0. Aborting. Please \
+                self.migrate_to_5_12_0(parameters.migrate_to_5_12_0_parameters.ok_or_else(
+                    || {
+                        DbError::DatabaseError(
+                            "Missing parameters for migration to version 5.12.0. Aborting. Please \
             provide the Redis URL, the master key and the label used by the \
             previous DB instance."
-                            .to_owned(),
-                    )
-                })?)
+                                .to_owned(),
+                        )
+                    },
+                )?)
                 .await?;
-                self.set_current_db_version("5.9.0").await?;
+                self.set_current_db_version("5.12.0").await?;
             }
 
             // INFO: add future migrations here if breaking changes are made to the RedisWithFindex store
-            // If we reach this point, we know that kms_version is at least 5.9.0
+            // If we reach this point, we know that kms_version is at least 5.12.0
             // simply increment the current version to the current KMS version
 
             if kms_version != current_db_version {
@@ -241,7 +241,7 @@ mod redis_migrate {
             Ok(())
         }
 
-        async fn migrate_to_5_9_0(&self, parameters: MigrateTo590Parameters) -> DbResult<()>;
+        async fn migrate_to_5_12_0(&self, parameters: MigrateTo590Parameters) -> DbResult<()>;
     }
 }
 

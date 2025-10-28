@@ -5,7 +5,7 @@ use std::{
 
 use super::permissions::PermissionsDB;
 use crate::stores::redis::{
-    migrations::legacy_redis_with_findex_pre_5_9_0::error::LegacyDbResult,
+    migrations::legacy_redis_with_findex_pre_5_12_0::error::LegacyDbResult,
     objects_db::DB_KEY_LENGTH,
 };
 use async_trait::async_trait;

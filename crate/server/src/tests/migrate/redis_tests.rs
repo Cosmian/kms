@@ -81,7 +81,7 @@ fn log_init_colorized(rust_log: Option<&str>) {
 // | [UID_Covercrypt] | cat, dog | Covercrypt | The example JSON | mt_owner: ALL permissions |
 // | [UID_Covercrypt]_pk | cat, dog | Covercrypt | The example JSON | mt_owner: ALL permissions |
 #[allow(deprecated)]
-async fn from_5_2_0_to_5_9_0() -> KResult<()> {
+async fn from_5_2_0_to_5_12_0() -> KResult<()> {
     log_init_colorized(option_env!("RUST_LOG"));
 
     let owner = "mt_owner";
@@ -221,7 +221,7 @@ async fn from_5_2_0_to_5_9_0() -> KResult<()> {
 // - destroy mt_should_not_exist, **tick Remove completely from database**
 // The redis database is now ready, dump it using the utility function `dump_all`
 #[allow(deprecated)]
-async fn from_5_1_0_to_5_9_0() -> KResult<()> {
+async fn from_5_1_0_to_5_12_0() -> KResult<()> {
     log_init_colorized(option_env!("RUST_LOG"));
     let dump_file = open_file(TEST_DATA_PATH, "redis_dump_v5_1_0.bin");
 
@@ -311,8 +311,8 @@ async fn from_5_1_0_to_5_9_0() -> KResult<()> {
 #[cfg(not(any(target_os = "windows", target_os = "macos")))] // no redis on those CI machines
 async fn findex_redis_migration_tests() -> KResult<()> {
     log_init_colorized(option_env!("RUST_LOG"));
-    let _: () = from_5_1_0_to_5_9_0().await?;
-    let _: () = from_5_2_0_to_5_9_0().await?;
+    let _: () = from_5_1_0_to_5_12_0().await?;
+    let _: () = from_5_2_0_to_5_12_0().await?;
     trace!("Both migration tests completed successfully");
     Ok(())
 }

@@ -74,11 +74,11 @@ pub struct MainDBConfig {
     /// redis-findex: a public arbitrary label that can be changed to rotate the Findex ciphertexts
     /// without changing the key
     #[deprecated(
-        since = "5.9.0",
+        since = "5.12.0",
         note = "!IMPORTANT if this KMS is launched with a non-empty Redis store that with \
-                versions prior to 5.9.0, you MUST provide the same label as before, otherwise the \
+                versions prior to 5.12.0, you MUST provide the same label as before, otherwise the \
                 migration might fail and data can be forever lost. If you are launching a fresh \
-                KMS with an empty Redis store, or one that was already used with version 5.9.0 or \
+                KMS with an empty Redis store, or one that was already used with version 5.12.0 or \
                 later, you can safely discard this parameter."
     )]
     #[cfg(feature = "non-fips")]

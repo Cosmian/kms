@@ -165,7 +165,7 @@ impl RedisWithFindex {
             redis_with_findex
                 .migrate({
                     MigrationParams {
-                        migrate_to_5_9_0_parameters: Some(MigrateTo590Parameters {
+                        migrate_to_5_12_0_parameters: Some(MigrateTo590Parameters {
                             redis_url: redis_url.to_owned(),
                             findex_key: &master_key,
                             label: Label::from(label),

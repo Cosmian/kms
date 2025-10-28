@@ -35,4 +35,4 @@ static SQLITE_QUERIES: LazyLock<Loader> = LazyLock::new(|| {
 });
 
 #[cfg(feature = "non-fips")]
-pub(crate) use crate::stores::redis::migrations::legacy_redis_with_findex_pre_5_9_0::LegacyDbError;
+pub(crate) use crate::stores::redis::migrations::legacy_redis_with_findex_pre_5_12_0::LegacyDbError;
