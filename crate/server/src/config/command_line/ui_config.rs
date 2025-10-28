@@ -1,9 +1,6 @@
 use clap::Args;
 use serde::{Deserialize, Serialize};
 
-#[cfg(not(target_os = "windows"))]
-pub(super) const DEFAULT_COSMIAN_UI_DIST_PATH: &str = "/usr/local/cosmian/ui/dist/";
-
 // On Windows, we need to resolve %LOCALAPPDATA% at runtime
 #[cfg(target_os = "windows")]
 pub fn get_default_ui_dist_path() -> String {
@@ -15,10 +12,16 @@ pub fn get_default_ui_dist_path() -> String {
     }
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "linux")]
 #[must_use]
 pub fn get_default_ui_dist_path() -> String {
-    DEFAULT_COSMIAN_UI_DIST_PATH.to_owned()
+    "/usr/local/cosmian/ui/dist/".to_owned()
+}
+
+#[cfg(target_os = "macos")]
+#[must_use]
+pub fn get_default_ui_dist_path() -> String {
+    "/Applications/Cosmian KMS Server.app/Contents/Resources/ui/".to_owned()
 }
 
 #[derive(Default, Debug, Args, Deserialize, Serialize, Clone)]

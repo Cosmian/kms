@@ -7,11 +7,13 @@
 
 use std::collections::HashMap;
 
-use crate::{CRYPT2PAY_PKCS11_LIB, Crypt2payCapabilityProvider};
-use cosmian_kms_base_hsm::test_helpers::get_hsm_slot_id;
 use cosmian_kms_base_hsm::{
-    HResult, RsaOaepDigest, test_helpers::get_hsm_password, tests_shared as shared,
+    HResult, RsaOaepDigest,
+    test_helpers::{get_hsm_password, get_hsm_slot_id},
+    tests_shared as shared,
 };
+
+use crate::{CRYPT2PAY_PKCS11_LIB, Crypt2payCapabilityProvider};
 
 const LIB_PATH: &str = CRYPT2PAY_PKCS11_LIB;
 const SLOT_ID: usize = 0x01; // Crypt2pay default slot

@@ -5,10 +5,6 @@
 
 use std::{collections::HashMap, ptr, sync::Arc, thread};
 
-use crate::{
-    AesKeySize, BaseHsm, HError, HResult, HsmEncryptionAlgorithm, RsaKeySize, RsaOaepDigest,
-    Session, SlotManager, hsm_call,
-};
 use cosmian_kms_interfaces::{HSM, HsmObjectFilter, KeyMaterial, KeyType};
 use cosmian_logger::{debug, info, log_init};
 use futures::executor::block_on;
@@ -22,6 +18,11 @@ use pkcs11_sys::{
 };
 use rand::{TryRngCore, rngs::OsRng};
 use uuid::Uuid;
+
+use crate::{
+    AesKeySize, BaseHsm, HError, HResult, HsmEncryptionAlgorithm, RsaKeySize, RsaOaepDigest,
+    Session, SlotManager, hsm_call,
+};
 
 /// Per-HSM configuration for shared tests
 #[derive(Debug)]

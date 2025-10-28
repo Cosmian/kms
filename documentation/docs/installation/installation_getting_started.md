@@ -193,10 +193,12 @@ For high availability and scalability, refer to the [High Availability Guide](./
         After installation, run:
 
         ```sh
-        cosmian_kms --version
+        /Applications/Cosmian\ KMS\ Server.app/Contents/MacOS/cosmian_kms --version
+        /Applications/Cosmian\ KMS\ Server.app/Contents/MacOS/cosmian_kms
         ```
 
-        The server uses the configuration file located at `/etc/cosmian/kms.toml`.
+    - The server uses the configuration file located at `/etc/cosmian/kms.toml`.
+    - The KMS UI is available at `http://localhost:9998/ui`.
 
 === "Windows"
 
