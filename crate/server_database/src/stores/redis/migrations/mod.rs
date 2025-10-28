@@ -104,9 +104,8 @@ impl RedisMigrate for RedisWithFindex {
             .map_err(|e| DbError::DatabaseError(format!("Failed upon get_object_uids: {e}")))?;
 
         let all_object_uids = all_obj_keys
-            .clone() // TODO: dangerous clone, might be avoided in case of bottlenecks
-            .into_iter()
-            .filter_map(|key| key.strip_prefix("do::").map(std::borrow::ToOwned::to_owned))
+            .iter()
+            .filter_map(|key| key.strip_prefix("do::").map(str::to_owned))
             .collect::<HashSet<String>>();
 
         // step: perm triplets migration

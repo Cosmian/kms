@@ -154,8 +154,9 @@ mod redis_migrate {
 
             // In the absence of both, we assume the DB was constructed using a 4.5.0+ version of the KMS, up until 4.24.0
             if db_state.is_none() || current_db_version.is_none() {
-                let msg = "Database state (and/or version) not set - which usually means that it was constructed with a KMS version below 5.0.0. If that's the case, 
-                    please export all keys using standard formats such as PKCS#8 or Raw and \
+                let msg = "Database state (and/or version) not set - which usually means that it was constructed with
+                    a KMS version below 5.0.0. If that's the case, 
+                    please export all keys using standard formats such as PKCS#8 or Raw and
                     reimport them in this KMS version.".to_owned();
                 error!("{}", msg);
                 return Err(DbError::DatabaseError(msg));

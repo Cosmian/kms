@@ -55,17 +55,6 @@ impl Triple {
         }
         map
     }
-
-    // pub(crate) fn permissions_per_object(
-    //     list: HashSet<Self>,
-    // ) -> HashMap<String, HashSet<KmipOperation>> {
-    //     let mut map = HashMap::new();
-    //     for triple in list {
-    //         let entry = map.entry(triple.obj_uid).or_insert_with(HashSet::new);
-    //         entry.insert(triple.permission);
-    //     }
-    //     map
-    // }
 }
 
 impl TryFrom<&Location> for Triple {
@@ -152,18 +141,6 @@ impl PermissionsDB {
             .map(Triple::try_from)
             .collect::<LegacyDbResult<HashSet<Triple>>>()
     }
-
-    // List all the permissions granted to the user
-    // per object uid
-    // pub(crate) async fn list_user_permissions(
-    //     &self,
-    //     findex_key: &SymmetricKey<MASTER_KEY_LENGTH>,
-    //     user_id: &str,
-    // ) -> LegacyDbResult<HashMap<String, HashSet<KmipOperation>>> {
-    //     Ok(Triple::permissions_per_object(
-    //         self.search_one_keyword(findex_key, user_id).await?,
-    //     ))
-    // }
 
     /// List all the permissions granted on an object
     /// per user id
