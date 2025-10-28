@@ -85,8 +85,15 @@ esac
   exit 1
 }
 
+# Ensure <nixpkgs> lookups work even if NIX_PATH is unset (common on CI)
+# Pin to the same nixpkgs as shell.nix to keep environments consistent
+PINNED_NIXPKGS_URL="https://github.com/NixOS/nixpkgs/archive/24.05.tar.gz"
+if [ -z "${NIX_PATH:-}" ]; then
+  export NIX_PATH="nixpkgs=${PINNED_NIXPKGS_URL}"
+fi
+
 # Run the appropriate script inside nix-shell
 # shellcheck disable=SC2086
-nix-shell "$REPO_ROOT/shell.nix" --pure \
+nix-shell -I "nixpkgs=${PINNED_NIXPKGS_URL}" "$REPO_ROOT/shell.nix" --pure \
   $KEEP_VARS \
   --run "bash '$SCRIPT' $*"

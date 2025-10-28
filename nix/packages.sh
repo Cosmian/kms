@@ -31,37 +31,30 @@ rm -rf target/"$TARGET"/generate-rpm
 cargo install --version 2.4.0 cargo-deb --force
 cargo install --version 0.16.0 cargo-generate-rpm --force
 
-if [ -f /etc/redhat-release ]; then
-  # Red Hat/Fedora/CentOS: Build RPM package
-  echo "Building RPM package for Red Hat-based system..."
+# Red Hat/Fedora/CentOS: Build RPM package
+echo "Building RPM package for Red Hat-based system..."
 
-  # Build with non-fips features for RPM
-  cd crate/server
-  cargo build --features non-fips --release --target "$TARGET"
-  cd "$REPO_ROOT"
+# Build with non-fips features for RPM
+cd crate/server
+cargo build --features non-fips --release --target "$TARGET"
+cd "$REPO_ROOT"
 
-  cargo generate-rpm --target "$TARGET" -p crate/server --metadata-overwrite=pkg/rpm/scriptlets.toml
+cargo generate-rpm --target "$TARGET" -p crate/server --metadata-overwrite=pkg/rpm/scriptlets.toml
 
-  echo "RPM package built successfully."
+echo "RPM package built successfully."
 
-elif [ -f /etc/debian_version ]; then
-  # Debian/Ubuntu: Build DEB package
-  echo "Building DEB package for Debian-based system..."
+# Debian/Ubuntu: Build DEB package
+echo "Building DEB package for Debian-based system..."
 
-  if [ -n "$FEATURES" ]; then
-    # Non-FIPS variant
-    cargo deb --target "$TARGET" -p cosmian_kms_server "${FEATURES_FLAG[@]}"
-  else
-    # FIPS variant
-    cargo deb --target "$TARGET" -p cosmian_kms_server --variant fips
-  fi
-
-  echo "DEB package built successfully."
-
+if [ -n "$FEATURES" ]; then
+  # Non-FIPS variant
+  cargo deb --target "$TARGET" -p cosmian_kms_server "${FEATURES_FLAG[@]}"
 else
-  echo "Error: Unsupported Linux distribution. Only Debian/Ubuntu and Red Hat/Fedora/CentOS are supported." >&2
-  exit 1
+  # FIPS variant
+  cargo deb --target "$TARGET" -p cosmian_kms_server --variant fips
 fi
+
+echo "DEB package built successfully."
 
 # Display package location
 if [ -f /etc/redhat-release ]; then
