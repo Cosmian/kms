@@ -16,12 +16,12 @@ Create a `c2p` directory in, say, `/etc/c2p` (hereafter called `[C2P_DIR]`)
 
 In this directory copy the following files:
 
- - `c2padmin`   <- The Crypt2pay admin tool
- - `c2p.xml`    <- The Crypt2pay configuration file
- - `ca.der`     <- The CA certificate
- - `installca`  <- The Crypt2pay CA installation tool
--  `p11tool`    <- The PKCS#11 tool used to test the connection
--  The two files with extensions `.kdk` and `.ksk` <- The Crypt2pay key files
+- `c2padmin`   <- The Crypt2pay admin tool
+- `c2p.xml`    <- The Crypt2pay configuration file
+- `ca.der`     <- The CA certificate
+- `installca`  <- The Crypt2pay CA installation tool
+- `p11tool`    <- The PKCS#11 tool used to test the connection
+- The two files with extensions `.kdk` and `.ksk` <- The Crypt2pay key files
 
 ### Install the CA certificate
 
@@ -40,20 +40,22 @@ To check that the CA certificate is installed correctly, run:
 ```
 
 Edit the `c2p.xml` file and insert the full path to the CA certificate `ssl` directory in `C2Pconfig/sslDefinition/Authorities`:
+
 ```xml
 <C2Pconfig>
   ...
   <sslDefinition>
-	  <Authorities>[C2P_DIR]/ssl</Authorities>
+   <Authorities>[C2P_DIR]/ssl</Authorities>
   </sslDefinition>
   ...
 </C2Pconfig>
 ```
+
 replace `[C2P_DIR]` with the actual path.
 
 ### Set logging and Verify the `c2p.xml` file
 
-In the `c2p.xml` file, set the logging to 
+In the `c2p.xml` file, set the logging to
 
 ```xml
 <C2Pconfig>
@@ -80,8 +82,8 @@ Check the Crypt2pay manual for details.
 ```sh
 export C2P_CONF=[C2P_DIR]/c2p.xml
 ```
-replace `[C2P_DIR]` with the actual path.
 
+replace `[C2P_DIR]` with the actual path.
 
 ### Test the configuration
 
@@ -92,6 +94,7 @@ Run the `p11tool` tool to create a new 256-bit AES key:
 ```
 
 The creation should be successful and print the key alias and ID:
+
 ```shell
 use slot #1
 Alias 'mykey' selected

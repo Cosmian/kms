@@ -2,8 +2,8 @@
 
 <!-- TOC -->
 * [SoftHSM2](#softhsm2)
-  * [Installing SoftHSM2](#installing-softhsm2)
-  * [Running the KMS server](#running-the-kms-server)
+    * [Installing SoftHSM2](#installing-softhsm2)
+    * [Running the KMS server](#running-the-kms-server)
 <!-- TOC -->
 
 ## Installing SoftHSM2

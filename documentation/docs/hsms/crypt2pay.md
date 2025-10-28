@@ -1,5 +1,5 @@
 
-The Smartcard HSM integration is supported on **Linux (x86_64)**.  
+The Smartcard HSM integration is supported on **Linux (x86_64)**.
 It has been tested with the following devices: BULL PKCS11 C2P 5.0.7 (Release) Unix64
 
 ## HSM files installation
@@ -39,15 +39,17 @@ To check that the CA certificate is installed correctly, run:
 ```
 
 Edit the `c2p.xml` file and insert the full path to the CA certificate `ssl` directory in `C2Pconfig/sslDefinition/Authorities`:
+
 ```xml
 <C2Pconfig>
   ...
   <sslDefinition>
-	  <Authorities>[C2P_DIR]/ssl</Authorities>
+   <Authorities>[C2P_DIR]/ssl</Authorities>
   </sslDefinition>
   ...
 </C2Pconfig>
 ```
+
 replace `[C2P_DIR]` with the actual path.
 
 ### Set logging and Verify the `c2p.xml` file
@@ -79,8 +81,8 @@ Check the Crypt2pay manual for details.
 ```sh
 export C2P_CONF=[C2P_DIR]/c2p.xml
 ```
-replace `[C2P_DIR]` with the actual path.
 
+replace `[C2P_DIR]` with the actual path.
 
 ### Test the configuration
 
@@ -91,6 +93,7 @@ Run the `p11tool` tool to create a new 256-bit AES key:
 ```
 
 The creation should be successful and print the key alias and ID:
+
 ```shell
 use slot #1
 Alias 'mykey' selected
@@ -109,16 +112,19 @@ hsm_admin = "<HSM_ADMIN_USERNAME>" # defaults to "admin"
 hsm_slot = [0, 0, ] # example [0,4] for slots 0 and 4
 hsm_password = ["<password>", "<password>", ] # example ["648219", "648219"] for slots 0 and 4
 ```
+
 > **_NOTE:_**  `hsm_slot` and `hsm_password` must always be arrays, even if only one slot is used.
-> 
+>
 > The order of the passwords must match the order of the slots in the `hsm_slot` array.
-> 
-> If you want to login with an empty (null) password, use an empty string. 
-> 
+>
+> If you want to login with an empty (null) password, use an empty string.
+>
 > If you do not want to login, use the special password value `<NO_LOGIN>`
 
 #### Configuration via command-line
+
 HSM support can also be enabled with command-line arguments:
+
 ```shell
 --hsm-model "crypt2pay" \
 --hsm-admin "<HSM_ADMIN_USERNAME>"  \
@@ -136,6 +142,7 @@ The `hsm-slot` and `hsm-password` parameters are the slot number and user passwo
 These options can be repeated to configure multiple slots.
 
 > **_NOTE:_** To list available slots and keys run from the `[C2P_DIR]` directory:
+>
 > ```shell
 > ./p11tool -list -shared /lib/libpkcs11c2p.so -verbose
 > ```

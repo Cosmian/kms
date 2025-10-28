@@ -34,6 +34,7 @@ hsm_admin = "<HSM_ADMIN_USERNAME>" # defaults to "admin"
 hsm_slot = [0, 0, ] # example [0,4] for slots 0 and 4
 hsm_password = ["<password>", "<password>", ] # example ["pass0", "pass4"] for slots 0 and 4
 ```
+
 > **_NOTE:_**  `hsm_slot` and `hsm_password` must always be arrays, even if only one slot is used.
 >
 > The order of the passwords must match the order of the slots in the `hsm_slot` array.

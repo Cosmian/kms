@@ -2,13 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
-## [5.11.0] - 2025-11-01
+## [5.11.0] - 2025-10-28
 
 ### 🚀 Features
 
 - Add Crypt2pay HSM integration with a dedicated loader crate
 - Generic "other" HSM support using Softhsm2 compatibility
 - Enable empty (null) password/pin HSM login via special handling in slot management
+- Add Windows/macOS installers with cargo packager tool (#585)
+
+### 🐛 Bug Fixes
+
+- *(google_cse)* Load RSA private as PKCS8 or PKCS1 format (#592)
+
+### ⚠️ WARNING
+
+**Gmail CSE users:** Versions 5.8/5.9 and 5.10 contain a blocking issue with Gmail Client-Side Encryption support (issue loading PKCS#8 RSA private key). Please upgrade to version 5.11.0 or later to ensure proper Gmail CSE functionality.
+
+### 📚 Documentation
+
+- Add KMIP current support (#581)
+
+### Build
+
+- *(deps)* Bump esbuild (#587)
 
 ## [5.10.0] - 2025-10-21
 
@@ -32,7 +49,7 @@ All notable changes to this project will be documented in this file.
 ### 📚 Documentation
 
 - Add SmartCard HSM to README.md (#563)
-- Added documentation for Smartcard HSM and SoftHSM2 (#570)
+- Added documentation for Smart card HSM and SoftHSM2 (#570)
 - Add server configs examples (#568)
 
 ### 🧪 Testing

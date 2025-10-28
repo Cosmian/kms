@@ -42,15 +42,15 @@ check_directory() {
 # Check Python installation
 check_python() {
     print_status "Checking Python installation..."
-    
+
     if ! command -v python3 &> /dev/null; then
         print_error "Python 3 is not installed. Please install Python 3.8 or later."
         exit 1
     fi
-    
+
     python_version=$(python3 --version | cut -d' ' -f2)
     print_status "Found Python $python_version"
-    
+
     # Check if venv module is available
     if ! python3 -m venv --help &> /dev/null; then
         print_error "Python venv module is not available. Please install python3-venv package."
@@ -94,40 +94,40 @@ setup_venv_and_pykmip() {
     # Activate virtual environment
     print_status "Activating virtual environment..."
     source .venv/bin/activate
-    
+
     # Upgrade pip
     print_status "Upgrading pip..."
     python -m pip install --upgrade pip
-    
+
     # Install PyKMIP
     print_status "Installing PyKMIP in virtual environment..."
-    
+
     if python -c "import kmip" &> /dev/null; then
         print_status "PyKMIP is already installed"
         pykmip_version=$(python -c "import kmip; print(getattr(kmip, '__version__', 'unknown'))" 2>/dev/null || echo "unknown")
         print_status "PyKMIP version: $pykmip_version"
     else
         print_status "Installing PyKMIP using pip..."
-        
+
         # Check Python version and install appropriate PyKMIP version
         python_version=$(python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
         print_status "Python version: $python_version"
-        
+
         # For Python 3.9+, we need to be more careful with PyKMIP installation
         # Extract major and minor version numbers for comparison
         IFS='.' read -ra VERSION_PARTS <<< "$python_version"
         major=${VERSION_PARTS[0]}
         minor=${VERSION_PARTS[1]:-0}
-        
+
         if [[ $major -gt 3 ]] || [[ $major -eq 3 && $minor -ge 9 ]]; then
             print_warning "Python 3.9+ detected. Installing PyKMIP with compatibility fixes..."
-            
+
             # Install PyKMIP with --no-compile to avoid syntax errors in demo files
             if python -m pip install --no-compile PyKMIP; then
                 print_status "PyKMIP installed successfully (with compilation disabled)"
             else
                 print_warning "Standard installation failed, trying alternative approach..."
-                
+
                 # Try installing from source with specific version
                 if python -m pip install --no-deps --no-compile PyKMIP==0.10.0; then
                     print_status "PyKMIP 0.10.0 installed successfully"
@@ -155,7 +155,7 @@ setup_venv_and_pykmip() {
                 exit 1
             fi
         fi
-        
+
         # Verify installation
         if python -c "import kmip" &> /dev/null; then
             pykmip_version=$(python -c "import kmip; print(getattr(kmip, '__version__', 'unknown'))" 2>/dev/null || echo "unknown")
@@ -166,7 +166,7 @@ setup_venv_and_pykmip() {
             exit 1
         fi
     fi
-    
+
     # Create activation script for convenience
     print_status "Creating virtual environment activation helper..."
     cat > scripts/activate_venv.sh << 'EOF'
@@ -186,7 +186,7 @@ EOF
 # Create PyKMIP configuration
 create_config() {
     print_status "Creating PyKMIP configuration..."
-    
+
     if [[ ! -f "scripts/pykmip.conf" ]]; then
         print_status "PyKMIP configuration already exists"
     else
@@ -197,10 +197,10 @@ create_config() {
 # Test the setup
 test_setup() {
     print_status "Testing PyKMIP setup..."
-    
+
     # Activate virtual environment for testing
     source .venv/bin/activate
-    
+
     # Test if the client script exists and can show help
     if [[ -f "scripts/pykmip_client.py" ]]; then
         if python scripts/pykmip_client.py --help &> /dev/null; then
@@ -212,7 +212,7 @@ test_setup() {
         print_error "PyKMIP client script not found"
         exit 1
     fi
-    
+
     # Make test script executable
     if [[ -f "scripts/test_pykmip.sh" ]]; then
         chmod +x scripts/test_pykmip.sh
@@ -252,14 +252,14 @@ show_next_steps() {
 # Main setup function
 main() {
     print_header
-    
+
     check_directory
     check_python
     setup_venv_and_pykmip
     create_config
     test_setup
     show_next_steps
-    
+
     print_status "PyKMIP integration setup completed successfully!"
 }
 
