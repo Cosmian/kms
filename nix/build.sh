@@ -38,12 +38,10 @@ NIX_OPENSSL_BASE=$(dirname "$NIX_OPENSSLDIR")
 NIX_OPENSSL_MODULES="$NIX_OPENSSL_BASE/lib/ossl-modules"
 
 if [[ "${FEATURES}" != *"non-fips"* ]]; then
-  # FIPS build: REUSE fipsmodule.cnf from the OpenSSL build; do NOT autogenerate
-  CONF_TMP_DIR=$(mktemp -d -t cosmian_kms_openssl_conf.XXXXXX)
-  OPENSSL_CONF_PATH="$CONF_TMP_DIR/openssl.cnf"
-  TEMPLATE="$REPO_ROOT/nix/openssl-fips.cnf.in"
-  if [ ! -f "$TEMPLATE" ]; then
-    echo "Error: missing template $TEMPLATE" >&2
+  # FIPS build: Use the installed openssl.cnf which already includes fipsmodule.cnf
+  OPENSSL_CONF_PATH="$NIX_OPENSSLDIR/openssl.cnf"
+  if [ ! -f "$OPENSSL_CONF_PATH" ]; then
+    echo "Error: openssl.cnf not found at $OPENSSL_CONF_PATH" >&2
     exit 1
   fi
   FIPS_CNF_SRC="$NIX_OPENSSLDIR/fipsmodule.cnf"
@@ -52,10 +50,6 @@ if [[ "${FEATURES}" != *"non-fips"* ]]; then
     echo "Ensure you're using the Nix-provided OpenSSL FIPS build, or adjust the nix derivation to install fipsmodule.cnf." >&2
     exit 1
   fi
-  # Build final openssl.cnf by embedding the OpenSSL-provided fipsmodule.cnf content
-  # followed by the provider configuration from the template (without the include line)
-  cat "$FIPS_CNF_SRC" >"$OPENSSL_CONF_PATH"
-  sed '/^\.include /d' "$TEMPLATE" >>"$OPENSSL_CONF_PATH"
 else
   # Non-FIPS: use the repo-provided default config directly, do not generate or copy
   OPENSSL_CONF_PATH="$REPO_ROOT/nix/openssl-default.cnf.in"
@@ -79,7 +73,20 @@ if [ "$UNAME" = "Linux" ]; then
     echo "Error: Dynamic OpenSSL linkage detected on Linux (ldd | grep ssl)." >&2
     exit 1
   }
+
+  # Verify GLIBC symbol versions are <= 2.28 (Linux only)
+  GLIBC_SYMS=$(readelf -sW "$COSMIAN_KMS_EXE" | grep -o 'GLIBC_[0-9][0-9.]*' | sort -Vu)
+  echo "$GLIBC_SYMS"
+  MAX_GLIBC_VER=""
+  if [ -n "$GLIBC_SYMS" ]; then
+    MAX_GLIBC_VER=$(echo "$GLIBC_SYMS" | sed 's/^GLIBC_//' | sort -V | tail -n1)
+  fi
+  if [ -n "$MAX_GLIBC_VER" ] && [ "$(printf '%s\n' "$MAX_GLIBC_VER" "2.28" | sort -V | tail -n1)" != "2.28" ]; then
+    echo "Error: GLIBC symbols exceed 2.28 (max found: $MAX_GLIBC_VER)." >&2
+    exit 1
+  fi
 else
+  # macOS: check with otool
   if command -v otool >/dev/null 2>&1; then
     OTOOL_OUTPUT=$(otool -L "$COSMIAN_KMS_EXE")
     echo "$OTOOL_OUTPUT"
@@ -88,18 +95,6 @@ else
       exit 1
     }
   fi
-fi
-
-# Verify GLIBC symbol versions are <= 2.28
-GLIBC_SYMS=$(readelf -sW "$COSMIAN_KMS_EXE" | grep -o 'GLIBC_[0-9][0-9.]*' | sort -Vu)
-echo "$GLIBC_SYMS"
-MAX_GLIBC_VER=""
-if [ -n "$GLIBC_SYMS" ]; then
-  MAX_GLIBC_VER=$(echo "$GLIBC_SYMS" | sed 's/^GLIBC_//' | sort -V | tail -n1)
-fi
-if [ -n "$MAX_GLIBC_VER" ] && [ "$(printf '%s\n' "$MAX_GLIBC_VER" "2.28" | sort -V | tail -n1)" != "2.28" ]; then
-  echo "Error: GLIBC symbols exceed 2.28 (max found: $MAX_GLIBC_VER)." >&2
-  exit 1
 fi
 
 echo "Build and OpenSSL checks succeeded."
