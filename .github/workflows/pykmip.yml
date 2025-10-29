@@ -18,6 +18,16 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Install base deps (bash, curl) and build deps
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            bash \
+            curl \
+            libssl-dev \
+            build-essential \
+            pkg-config
+
       - name: Install rustup silently
         shell: bash
         run: |
@@ -29,15 +39,8 @@ jobs:
           toolchain: ${{ inputs.toolchain }}
           components: rustfmt, clippy
 
-      - name: Install build deps and OpenSSL dev
-        run: |
-          apt-get update
-          apt-get install -y --no-install-recommends \
-            libssl-dev \
-            build-essential \
-            pkg-config
-
       - name: Tests PyKMIP
+        shell: bash
         env:
           COSMIAN_KMS_CONF: ./scripts/kms.toml
         run: |

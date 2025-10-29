@@ -120,6 +120,10 @@ test)
     usage
     ;;
   esac
+  # Signal to shell.nix to include extra tools for tests (wget, softhsm2, psmisc)
+  if [ "$TEST_TYPE" = "hsm" ]; then
+    export WITH_HSM=1
+  fi
   KEEP_VARS="--keep DEBUG_OR_RELEASE --keep FEATURES \
       --keep REDIS_HOST --keep REDIS_PORT \
       --keep MYSQL_HOST --keep MYSQL_PORT \
@@ -127,8 +131,9 @@ test)
       --keep TEST_GOOGLE_OAUTH_CLIENT_ID \
       --keep TEST_GOOGLE_OAUTH_CLIENT_SECRET \
       --keep TEST_GOOGLE_OAUTH_REFRESH_TOKEN \
-    --keep GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY \
-    --keep WITH_WGET"
+      --keep GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY \
+      --keep WITH_WGET \
+      --keep WITH_HSM"
   ;;
 package)
   case "$PACKAGE_TYPE" in

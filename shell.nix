@@ -13,6 +13,7 @@ let
   openssl312 = pkgs228.callPackage ./nix/openssl-3_1_2-fips.nix {};
   # Allow selectively adding extra tools from the environment (kept via nix-shell --keep)
   withWget = (builtins.getEnv "WITH_WGET") == "1";
+  withHsm = (builtins.getEnv "WITH_HSM") == "1";
   extraTools = (if withWget then [ pkgs228.wget ] else []);
 in
 pkgs228.mkShell {
@@ -20,8 +21,9 @@ pkgs228.mkShell {
   buildInputs = [ pkgs228.pkg-config pkgs228.cmake pkgs228.git pkgs228.rustup ]
     ++ (if isLinux then [ pkgs228.gcc pkgs228.binutils ] else [])
     ++ (if pkgs228.stdenv.isDarwin then [ pkgs228.libiconv ] ++ (with pkgs228.darwin.apple_sdk.frameworks; [ SystemConfiguration Security CoreFoundation ]) else [])
-    ++ [ openssl312 ]
-    ++ extraTools;
+  ++ [ openssl312 ]
+  ++ extraTools
+  ++ (if withHsm then [ pkgs228.psmisc pkgs228.softhsm ] else []);
   shellHook = ''
     export NIX_OPENSSL_OUT="${builtins.toString openssl312}"
     ${if isLinux then ''
