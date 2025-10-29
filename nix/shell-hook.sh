@@ -9,6 +9,10 @@ if [ -n "${NIX_OPENSSL_OUT:-}" ]; then
   export OPENSSL_DIR="${NIX_OPENSSL_OUT}"
   export OPENSSL_LIB_DIR="${NIX_OPENSSL_OUT}/lib"
   export OPENSSL_INCLUDE_DIR="${NIX_OPENSSL_OUT}/include"
+
+  # Force openssl-sys to use our specific OpenSSL and detect version correctly
+  # Disable pkg-config to prevent it from finding wrong OpenSSL versions
+  export OPENSSL_NO_PKG_CONFIG=1
   if [ -d "${NIX_OPENSSL_OUT}/lib/pkgconfig" ]; then
     export PKG_CONFIG_PATH="${NIX_OPENSSL_OUT}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
   fi

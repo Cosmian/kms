@@ -14,7 +14,7 @@ let
 in
 pkgs228.mkShell {
   name = "cosmian-kms-dev-shell";
-  buildInputs = [ pkgs228.pkg-config pkgs228.cmake pkgs228.git pkgs228.rustup pkgs228.curl ]
+  buildInputs = [ pkgs228.pkg-config pkgs228.cmake pkgs228.git pkgs228.rustup ]
     ++ (if isLinux then [ pkgs228.gcc pkgs228.binutils ] else [])
     ++ (if pkgs228.stdenv.isDarwin then [ pkgs228.libiconv ] ++ (with pkgs228.darwin.apple_sdk.frameworks; [ SystemConfiguration Security CoreFoundation ]) else [])
     ++ [ openssl312 ];

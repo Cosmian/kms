@@ -34,6 +34,10 @@ cargo install --version 2.4.0 cargo-deb --force
 echo "Preparing OpenSSL artifacts for ${VARIANT_NAME} packaging..."
 
 OPENSSL_STAGING="$REPO_ROOT/target/openssl-staging"
+
+# Clean staging directory first to avoid permission issues with read-only files from Nix store
+rm -rf "$OPENSSL_STAGING"
+
 mkdir -p "$OPENSSL_STAGING/lib64/ossl-modules"
 
 # Find OpenSSL in Nix store - it should be in PATH from nix-shell
