@@ -14,7 +14,6 @@ env:
 jobs:
   pykmip-tests:
     runs-on: ubuntu-24.04
-    # container: python:3.11
     container:
       image: cosmian/rockylinux9
 
@@ -35,12 +34,12 @@ jobs:
           OS_NAME: ubuntu_20_04
 
       - name: Tests PyKMIP
-        shell: bash
         env:
+          OPENSSL_DIR: ${{ env.OPENSSL_DIR }}
           COSMIAN_KMS_CONF: ./scripts/kms.toml
         run: |
+          cargo build --bin cosmian_kms --features non-fips
           cargo run --bin cosmian_kms --features non-fips &
-
           python3 -m pip install --upgrade pip
           python3 -m venv .venv
           source .venv/bin/activate
