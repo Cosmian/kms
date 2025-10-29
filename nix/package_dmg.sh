@@ -10,7 +10,13 @@ SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
 
 # Determine variant based on FEATURES environment variable
+: "${DEBUG_OR_RELEASE:=debug}"
 : "${FEATURES:=}"
+
+RELEASE_FLAG=""
+if [ "$DEBUG_OR_RELEASE" = "release" ]; then
+  RELEASE_FLAG="--release"
+fi
 
 if [ -n "$FEATURES" ]; then
   VARIANT_NAME="non-FIPS"
@@ -34,13 +40,13 @@ cargo install --version 0.11.7 cargo-packager --force
 # Build the server with appropriate features
 cd crate/server
 if [ -n "$FEATURES" ]; then
-  cargo build --features "$FEATURES" --release
+  cargo build --features "$FEATURES" $RELEASE_FLAG
 else
-  cargo build --release
+  cargo build $RELEASE_FLAG
 fi
 
 # Build DMG package
-cargo packager --verbose --formats dmg --release
+cargo packager --verbose --formats dmg $RELEASE_FLAG
 
 cd "$REPO_ROOT"
 
