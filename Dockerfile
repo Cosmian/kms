@@ -1,7 +1,7 @@
 #
 # KMS server
 #
-FROM rust:1.86.0-bookworm AS builder
+FROM rust:1.90.0-bullseye AS builder
 
 LABEL version="5.11.0"
 LABEL name="Cosmian KMS docker container"
@@ -12,8 +12,6 @@ LABEL org.opencontainers.image.source="https://github.com/Cosmian/kms"
 LABEL org.opencontainers.image.documentation="https://docs.cosmian.com/key_management_system/"
 LABEL org.opencontainers.image.licenses="BUSL-1.1"
 
-ENV OPENSSL_DIR=/usr/local/openssl
-
 # Add build argument for FIPS mode
 ARG FIPS=false
 
@@ -22,10 +20,6 @@ WORKDIR /root
 COPY . /root/kms
 
 WORKDIR /root/kms
-
-ARG TARGETPLATFORM
-RUN if [ "$TARGETPLATFORM" = "linux/amd64" ]; then export ARCHITECTURE=x86_64; elif [ "$TARGETPLATFORM" = "linux/arm/v7" ]; then export ARCHITECTURE=arm; elif [ "$TARGETPLATFORM" = "linux/arm64" ]; then export ARCHITECTURE=arm64; else export ARCHITECTURE=x86_64; fi \
-    && bash /root/kms/.github/reusable_scripts/get_openssl_binaries.sh
 
 # Conditional cargo build based on FIPS argument
 RUN if [ "$FIPS" = "true" ]; then \
@@ -56,7 +50,6 @@ RUN mkdir -p /usr/local/cosmian
 
 COPY --from=builder /tmp/ui_to_copy                             /usr/local/cosmian/ui
 COPY --from=builder /root/kms/target/release/cosmian_kms        /usr/bin/cosmian_kms
-COPY --from=builder /usr/local/openssl                          /usr/local/openssl
 
 EXPOSE 9998
 

@@ -24,6 +24,11 @@ jobs:
           toolchain: ${{ inputs.toolchain }}
           components: rustfmt, clippy
 
+      - name: Install OpenSSL development package
+        run: |
+          apt-get update
+          apt-get install -y libssl-dev
+
       - name: Tests PyKMIP
         env:
           COSMIAN_KMS_CONF: ./scripts/kms.toml
