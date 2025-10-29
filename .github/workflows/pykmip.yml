@@ -11,8 +11,6 @@ on:
 jobs:
   pykmip-tests:
     runs-on: ubuntu-24.04
-    container:
-      image: cosmian/rockylinux9
 
     steps:
       - uses: actions/checkout@v5
@@ -26,8 +24,8 @@ jobs:
 
       - name: Install OpenSSL development package
         run: |
-          apt-get update
-          apt-get install -y libssl-dev
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev
 
       - name: Tests PyKMIP
         env:

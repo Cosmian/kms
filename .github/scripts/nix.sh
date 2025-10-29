@@ -79,6 +79,13 @@ if [ "$COMMAND" = "package" ]; then
   shift
 fi
 
+# Extra nix packages to include in the nix-shell environment
+# Ensure wget is available for tests that need to fetch external resources
+EXTRA_NIX_PKGS=""
+if [ "$COMMAND" = "test" ]; then
+  EXTRA_NIX_PKGS="-p wget"
+fi
+
 # Determine repository root
 REPO_ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 cd "$REPO_ROOT"
@@ -179,7 +186,7 @@ if [ "$COMMAND" = "package" ] && [ "$PACKAGE_TYPE" = "dmg" ] && [ "$(uname)" = "
     --run "bash '$SCRIPT' $*"
 else
   # shellcheck disable=SC2086
-  nix-shell -I "nixpkgs=${PINNED_NIXPKGS_URL}" "$REPO_ROOT/shell.nix" --pure \
+  nix-shell -I "nixpkgs=${PINNED_NIXPKGS_URL}" $EXTRA_NIX_PKGS "$REPO_ROOT/shell.nix" --pure \
     $KEEP_VARS \
     --run "bash '$SCRIPT' $*"
 fi
