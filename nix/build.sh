@@ -8,7 +8,6 @@ REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
 
 # Resolve inputs with defaults inside the nix environment
 : "${DEBUG_OR_RELEASE:=debug}"
-: "${TARGET:=x86_64-unknown-linux-gnu}"
 : "${FEATURES:=}"
 
 # Using nix-shell OpenSSL toolchain provided by the environment (no external import)
@@ -23,13 +22,9 @@ if [ -n "$FEATURES" ]; then
   FEATURES_FLAG=(--features "$FEATURES")
 fi
 
-if command -v rustup >/dev/null 2>&1; then
-  rustup target add "$TARGET"
-fi
+cargo build -p cosmian_kms_server $RELEASE_FLAG "${FEATURES_FLAG[@]}"
 
-cargo build -p cosmian_kms_server --target "$TARGET" $RELEASE_FLAG "${FEATURES_FLAG[@]}"
-
-COSMIAN_KMS_EXE="target/$TARGET/$DEBUG_OR_RELEASE/cosmian_kms"
+COSMIAN_KMS_EXE="target/$DEBUG_OR_RELEASE/cosmian_kms"
 
 # Prepare OpenSSL runtime config from templates in nix/ and use it for --info
 # Discover the nix OpenSSL install dir used during link/runtime

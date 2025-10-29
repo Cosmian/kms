@@ -76,13 +76,16 @@ in stdenv.mkDerivation rec {
 
   buildPhase = ''
     runHook preBuild
-    make depend
-    make -j
+    echo "Building OpenSSL ${version}..."
+    make depend > /dev/null 2>&1
+    make -j > /dev/null 2>&1
+    echo "OpenSSL build completed."
   '';
 
   installPhase = ''
     runHook preInstall
-    make -j install
+    echo "Installing OpenSSL ${version}..."
+    make -j install > /dev/null 2>&1
 
     # Enable FIPS provider in the installed OpenSSL configuration.
     # 1) Include the generated fipsmodule.cnf
@@ -112,7 +115,8 @@ in stdenv.mkDerivation rec {
 
     # Create ssl dir if not present
     mkdir -p "$out/ssl"
-    "$out/bin/openssl" fipsinstall -module "$fips_mod" -out "$out/ssl/fipsmodule.cnf"
+    echo "Generating FIPS module configuration..."
+    "$out/bin/openssl" fipsinstall -module "$fips_mod" -out "$out/ssl/fipsmodule.cnf" > /dev/null 2>&1
 
     # Sanity checks
     test -x "$out/bin/openssl"
@@ -127,6 +131,8 @@ in stdenv.mkDerivation rec {
       exit 1
     fi
     test -f "$out/ssl/fipsmodule.cnf"
+
+    echo "OpenSSL installation completed successfully."
 
     runHook postInstall
   '';

@@ -8,7 +8,6 @@ REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
 
 # Resolve inputs with defaults inside the nix environment
 : "${DEBUG_OR_RELEASE:=debug}"
-: "${TARGET:=x86_64-unknown-linux-gnu}"
 : "${FEATURES:=}"
 
 # Using nix-shell OpenSSL toolchain provided by the environment (no external import)
@@ -21,10 +20,6 @@ fi
 FEATURES_FLAG=()
 if [ -n "$FEATURES" ]; then
   FEATURES_FLAG=(--features "$FEATURES")
-fi
-
-if command -v rustup >/dev/null 2>&1; then
-  rustup target add "$TARGET"
 fi
 
 export RUST_LOG="cosmian_kms_cli=error,cosmian_kms_server=error,cosmian_kmip=error,test_kms_server=error"
@@ -59,15 +54,15 @@ check_port() {
 }
 
 # Test workspace binaries
-cargo test --workspace --bins --target "$TARGET" $RELEASE_FLAG "${FEATURES_FLAG[@]}"
+cargo test --workspace --bins $RELEASE_FLAG "${FEATURES_FLAG[@]}"
 
 # Run benchmarks (no-run mode)
-cargo bench --target "$TARGET" "${FEATURES_FLAG[@]}" --no-run
+cargo bench "${FEATURES_FLAG[@]}" --no-run
 
 # SQLite tests (always available)
 echo "SQLite is running on filesystem"
-KMS_TEST_DB="sqlite" cargo test --workspace --lib --target "$TARGET" $RELEASE_FLAG "${FEATURES_FLAG[@]}" -- --nocapture
-KMS_TEST_DB="sqlite" cargo test -p cosmian_kms_server_database --lib --target "$TARGET" $RELEASE_FLAG "${FEATURES_FLAG[@]}" -- --nocapture test_db_sqlite --ignored
+KMS_TEST_DB="sqlite" cargo test --workspace --lib $RELEASE_FLAG "${FEATURES_FLAG[@]}" -- --nocapture
+KMS_TEST_DB="sqlite" cargo test -p cosmian_kms_server_database --lib $RELEASE_FLAG "${FEATURES_FLAG[@]}" -- --nocapture test_db_sqlite --ignored
 
 # Redis tests (if available)
 : "${REDIS_HOST:=127.0.0.1}"
@@ -78,8 +73,8 @@ if check_port "$REDIS_HOST" "$REDIS_PORT"; then
   if [[ "${FEATURES}" != *"non-fips"* ]]; then
     echo "Skipping Redis-findex tests in FIPS mode"
   else
-    KMS_TEST_DB="redis-findex" cargo test --workspace --lib --target "$TARGET" $RELEASE_FLAG "${FEATURES_FLAG[@]}" -- --nocapture
-    KMS_TEST_DB="redis-findex" cargo test -p cosmian_kms_server_database --lib --target "$TARGET" $RELEASE_FLAG "${FEATURES_FLAG[@]}" -- --nocapture test_db_redis_with_findex --ignored
+    KMS_TEST_DB="redis-findex" cargo test --workspace --lib $RELEASE_FLAG "${FEATURES_FLAG[@]}" -- --nocapture
+    KMS_TEST_DB="redis-findex" cargo test -p cosmian_kms_server_database --lib $RELEASE_FLAG "${FEATURES_FLAG[@]}" -- --nocapture test_db_redis_with_findex --ignored
   fi
 else
   echo "Redis is not running at $REDIS_HOST:$REDIS_PORT"
@@ -90,8 +85,8 @@ fi
 : "${MYSQL_PORT:=3306}"
 if check_port "$MYSQL_HOST" "$MYSQL_PORT"; then
   echo "MySQL is running at $MYSQL_HOST:$MYSQL_PORT"
-  KMS_TEST_DB="mysql" cargo test --workspace --lib --target "$TARGET" $RELEASE_FLAG "${FEATURES_FLAG[@]}" -- --nocapture
-  KMS_TEST_DB="mysql" cargo test -p cosmian_kms_server_database --lib --target "$TARGET" $RELEASE_FLAG "${FEATURES_FLAG[@]}" -- --nocapture test_db_mysql --ignored
+  KMS_TEST_DB="mysql" cargo test --workspace --lib $RELEASE_FLAG "${FEATURES_FLAG[@]}" -- --nocapture
+  KMS_TEST_DB="mysql" cargo test -p cosmian_kms_server_database --lib $RELEASE_FLAG "${FEATURES_FLAG[@]}" -- --nocapture test_db_mysql --ignored
 else
   echo "MySQL is not running at $MYSQL_HOST:$MYSQL_PORT"
 fi
@@ -101,8 +96,8 @@ fi
 : "${POSTGRES_PORT:=5432}"
 if check_port "$POSTGRES_HOST" "$POSTGRES_PORT"; then
   echo "PostgreSQL is running at $POSTGRES_HOST:$POSTGRES_PORT"
-  KMS_TEST_DB="postgresql" cargo test --workspace --lib --target "$TARGET" $RELEASE_FLAG "${FEATURES_FLAG[@]}" -- --nocapture
-  KMS_TEST_DB="postgresql" cargo test --workspace --lib --target "$TARGET" $RELEASE_FLAG "${FEATURES_FLAG[@]}" -- --nocapture test_db_postgresql --ignored
+  KMS_TEST_DB="postgresql" cargo test --workspace --lib $RELEASE_FLAG "${FEATURES_FLAG[@]}" -- --nocapture
+  KMS_TEST_DB="postgresql" cargo test --workspace --lib $RELEASE_FLAG "${FEATURES_FLAG[@]}" -- --nocapture test_db_postgresql --ignored
 else
   echo "PostgreSQL is not running at $POSTGRES_HOST:$POSTGRES_PORT"
 fi
@@ -113,7 +108,7 @@ if [ -n "${TEST_GOOGLE_OAUTH_CLIENT_ID:-}" ] &&
   [ -n "${TEST_GOOGLE_OAUTH_REFRESH_TOKEN:-}" ] &&
   [ -n "${GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY:-}" ]; then
   echo "Running Google CSE tests..."
-  cargo test --workspace --lib --target "$TARGET" $RELEASE_FLAG "${FEATURES_FLAG[@]}" -- --nocapture test_google_cse --ignored
+  cargo test --workspace --lib $RELEASE_FLAG "${FEATURES_FLAG[@]}" -- --nocapture test_google_cse --ignored
 else
   echo "Skipping Google CSE tests (credentials not provided)"
 fi
@@ -147,11 +142,11 @@ if [ -f /etc/lsb-release ]; then
 
     # Test HSM package directly
     sudo -E env "PATH=$PATH" HSM_MODEL="$HSM_MODEL" HSM_USER_PASSWORD="$HSM_USER_PASSWORD" HSM_SLOT_ID="$HSM_SLOT_ID" \
-      cargo test -p "$HSM_PACKAGE" --target "$TARGET" $RELEASE_FLAG --features "$HSM_FEATURE" -- tests::test_hsm_"${HSM_MODEL}"_all --ignored
+      cargo test -p "$HSM_PACKAGE" $RELEASE_FLAG --features "$HSM_FEATURE" -- tests::test_hsm_"${HSM_MODEL}"_all --ignored
 
     # Test HSM integration with KMS server
     sudo -E env "PATH=$PATH" HSM_MODEL="$HSM_MODEL" HSM_USER_PASSWORD="$HSM_USER_PASSWORD" HSM_SLOT_ID="$HSM_SLOT_ID" \
-      cargo test --target "$TARGET" "${FEATURES_FLAG[@]}" $RELEASE_FLAG -- tests::hsm::test_hsm_all --ignored
+      cargo test "${FEATURES_FLAG[@]}" $RELEASE_FLAG -- tests::hsm::test_hsm_all --ignored
   done
 else
   echo "Skipping HSM tests (not on Linux)"

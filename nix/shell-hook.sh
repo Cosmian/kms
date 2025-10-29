@@ -30,9 +30,3 @@ if [ "$(uname -s)" = "Linux" ]; then
   export AR_x86_64_unknown_linux_gnu="$AR"
   export RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }-C link-args=-Wl,--dynamic-linker=${NIX_DYN_LINKER:-} -C link-args=-Wl,-rpath,${NIX_GLIBC_LIB:-}"
 fi
-
-if [ -z "${TARGET:-}" ]; then
-  host=$(rustc -vV 2>/dev/null | sed -n 's/^host: //p')
-  [ -n "$host" ] && export TARGET="$host"
-fi
-export CARGO_BUILD_TARGET="${TARGET:-}"

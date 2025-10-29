@@ -14,7 +14,6 @@ Commands:
 
 Environment variables:
   DEBUG_OR_RELEASE   debug or release (default: debug for build, release for packages)
-  TARGET             Target architecture (default: x86_64-unknown-linux-gnu)
   FEATURES           Cargo features (e.g., "non-fips")
 
   For testing, also supports:
@@ -50,11 +49,11 @@ cd "$REPO_ROOT"
 case "$COMMAND" in
 build)
   SCRIPT="$REPO_ROOT/nix/build.sh"
-  KEEP_VARS="--keep DEBUG_OR_RELEASE --keep TARGET --keep FEATURES"
+  KEEP_VARS="--keep DEBUG_OR_RELEASE --keep FEATURES"
   ;;
 test)
   SCRIPT="$REPO_ROOT/nix/test.sh"
-  KEEP_VARS="--keep DEBUG_OR_RELEASE --keep TARGET --keep FEATURES \
+  KEEP_VARS="--keep DEBUG_OR_RELEASE --keep FEATURES \
       --keep REDIS_HOST --keep REDIS_PORT \
       --keep MYSQL_HOST --keep MYSQL_PORT \
       --keep POSTGRES_HOST --keep POSTGRES_PORT \
@@ -65,7 +64,7 @@ test)
   ;;
 packages)
   SCRIPT="$REPO_ROOT/nix/packages.sh"
-  KEEP_VARS="--keep DEBUG_OR_RELEASE --keep TARGET --keep FEATURES"
+  KEEP_VARS="--keep DEBUG_OR_RELEASE --keep FEATURES"
   ;;
 *)
   echo "Error: Unknown command '$COMMAND'" >&2
