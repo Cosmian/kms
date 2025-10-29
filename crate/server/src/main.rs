@@ -92,8 +92,6 @@ async fn run() -> KResult<()> {
     let span = span!(tracing::Level::TRACE, "kms");
     let _guard = span.enter();
 
-    // print openssl version
-
     #[cfg(not(feature = "non-fips"))]
     info!(
         "OpenSSL FIPS mode version: {}, in {}, number: {:x}",

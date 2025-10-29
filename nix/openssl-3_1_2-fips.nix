@@ -77,8 +77,11 @@ in stdenv.mkDerivation rec {
   buildPhase = ''
     runHook preBuild
     echo "Building OpenSSL ${version}..."
-    make depend > /dev/null 2>&1
-    make -j > /dev/null 2>&1
+    make depend
+    make -j
+
+    # make depend > /dev/null 2>&1
+    # make -j > /dev/null 2>&1
     echo "OpenSSL build completed."
   '';
 

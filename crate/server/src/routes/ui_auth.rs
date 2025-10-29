@@ -152,8 +152,7 @@ pub(crate) async fn callback(
         Some(url) => match IssuerUrl::new(url.clone()) {
             Ok(valid_url) => valid_url,
             Err(e) => {
-                return HttpResponse::InternalServerError()
-                    .body(format!("Invalid issuer URL: {e}"));
+                return HttpResponse::InternalServerError().body(format!("Invalid issuer URL: {e}"));
             }
         },
         None => return HttpResponse::InternalServerError().body("Issuer URL is missing"),
@@ -279,8 +278,7 @@ pub(crate) async fn logout(
         Some(url) => match Url::parse(url) {
             Ok(parsed_url) => parsed_url,
             Err(e) => {
-                return HttpResponse::InternalServerError()
-                    .body(format!("Invalid logout URL: {e}"));
+                return HttpResponse::InternalServerError().body(format!("Invalid logout URL: {e}"));
             }
         },
         None => return HttpResponse::InternalServerError().body("Logout URL is missing"),

@@ -5,16 +5,27 @@ set -euo pipefail
 # Display usage information
 usage() {
   cat <<EOF
-Usage: $0 <command>
+Usage: $0 <command> [subcommand]
 
 Commands:
-  build      Build the KMS server inside nix-shell
-  test       Run tests inside nix-shell with multi-database support
-  packages   Build Debian/RPM packages inside nix-shell
+  build              Build the KMS server inside nix-shell
+  test <type>        Run specific tests inside nix-shell
+    sqlite           Run SQLite tests (default, always available)
+    mysql            Run MySQL tests (requires MySQL server)
+    psql             Run PostgreSQL tests (requires PostgreSQL server)
+    redis            Run Redis-findex tests (requires Redis server, non-FIPS only)
+    google_cse       Run Google CSE tests (requires credentials)
+    hsm              Run HSM tests (Linux only, requires Utimaco and SoftHSM2)
+  package <type>     Build a specific package type inside nix-shell
+    deb              Build Debian package (FIPS or non-FIPS based on FEATURES)
+    rpm              Build RPM package (FIPS or non-FIPS based on FEATURES)
+    dmg              Build macOS DMG package (FIPS or non-FIPS based on FEATURES)
 
 Environment variables:
   DEBUG_OR_RELEASE   debug or release (default: debug for build, release for packages)
   FEATURES           Cargo features (e.g., "non-fips")
+                     - If set: builds non-FIPS variant
+                     - If empty/unset: builds FIPS variant
 
   For testing, also supports:
   REDIS_HOST, REDIS_PORT
@@ -26,8 +37,13 @@ Environment variables:
 Examples:
   $0 build
   DEBUG_OR_RELEASE=release FEATURES=non-fips $0 build
-  $0 test
-  DEBUG_OR_RELEASE=release $0 packages
+  $0 test sqlite
+  $0 test mysql
+  FEATURES=non-fips $0 test redis
+  $0 package deb                          # FIPS variant
+  FEATURES=non-fips $0 package deb        # non-FIPS variant
+  FEATURES=non-fips $0 package rpm        # non-FIPS variant
+  FEATURES=non-fips $0 package dmg        # non-FIPS variant
 EOF
   exit 1
 }
@@ -41,6 +57,28 @@ fi
 COMMAND="$1"
 shift
 
+# Handle test subcommand
+TEST_TYPE=""
+if [ "$COMMAND" = "test" ]; then
+  if [ $# -eq 0 ]; then
+    echo "Error: test command requires a test type (sqlite, mysql, psql, redis, google_cse, hsm)" >&2
+    usage
+  fi
+  TEST_TYPE="$1"
+  shift
+fi
+
+# Handle package subcommand
+PACKAGE_TYPE=""
+if [ "$COMMAND" = "package" ]; then
+  if [ $# -eq 0 ]; then
+    echo "Error: package command requires a package type (deb, rpm, or dmg)" >&2
+    usage
+  fi
+  PACKAGE_TYPE="$1"
+  shift
+fi
+
 # Determine repository root
 REPO_ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 cd "$REPO_ROOT"
@@ -52,7 +90,31 @@ build)
   KEEP_VARS="--keep DEBUG_OR_RELEASE --keep FEATURES"
   ;;
 test)
-  SCRIPT="$REPO_ROOT/nix/test.sh"
+  case "$TEST_TYPE" in
+  sqlite)
+    SCRIPT="$REPO_ROOT/nix/test_sqlite.sh"
+    ;;
+  mysql)
+    SCRIPT="$REPO_ROOT/nix/test_mysql.sh"
+    ;;
+  psql)
+    SCRIPT="$REPO_ROOT/nix/test_psql.sh"
+    ;;
+  redis)
+    SCRIPT="$REPO_ROOT/nix/test_redis.sh"
+    ;;
+  google_cse)
+    SCRIPT="$REPO_ROOT/nix/test_google_cse.sh"
+    ;;
+  hsm)
+    SCRIPT="$REPO_ROOT/nix/test_hsm.sh"
+    ;;
+  *)
+    echo "Error: Unknown test type '$TEST_TYPE'" >&2
+    echo "Valid types: sqlite, mysql, psql, redis, google_cse, hsm" >&2
+    usage
+    ;;
+  esac
   KEEP_VARS="--keep DEBUG_OR_RELEASE --keep FEATURES \
       --keep REDIS_HOST --keep REDIS_PORT \
       --keep MYSQL_HOST --keep MYSQL_PORT \
@@ -62,8 +124,23 @@ test)
       --keep TEST_GOOGLE_OAUTH_REFRESH_TOKEN \
       --keep GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY"
   ;;
-packages)
-  SCRIPT="$REPO_ROOT/nix/packages.sh"
+package)
+  case "$PACKAGE_TYPE" in
+  deb)
+    SCRIPT="$REPO_ROOT/nix/package_deb.sh"
+    ;;
+  rpm)
+    SCRIPT="$REPO_ROOT/nix/package_rpm.sh"
+    ;;
+  dmg)
+    SCRIPT="$REPO_ROOT/nix/package_dmg.sh"
+    ;;
+  *)
+    echo "Error: Unknown package type '$PACKAGE_TYPE'" >&2
+    echo "Valid types: deb, rpm, dmg" >&2
+    usage
+    ;;
+  esac
   KEEP_VARS="--keep DEBUG_OR_RELEASE --keep FEATURES"
   ;;
 *)
@@ -92,7 +169,17 @@ if [ -z "${NIX_PATH:-}" ]; then
 fi
 
 # Run the appropriate script inside nix-shell
-# shellcheck disable=SC2086
-nix-shell -I "nixpkgs=${PINNED_NIXPKGS_URL}" "$REPO_ROOT/shell.nix" --pure \
-  $KEEP_VARS \
-  --run "bash '$SCRIPT' $*"
+# On macOS, DMG packaging requires system utilities (sw_vers, etc.) that aren't available in pure mode
+# So we skip --pure for DMG packages on Darwin
+if [ "$COMMAND" = "package" ] && [ "$PACKAGE_TYPE" = "dmg" ] && [ "$(uname)" = "Darwin" ]; then
+  echo "Note: Running without --pure mode on macOS for DMG packaging (requires system utilities)"
+  # shellcheck disable=SC2086
+  nix-shell -I "nixpkgs=${PINNED_NIXPKGS_URL}" "$REPO_ROOT/shell.nix" \
+    $KEEP_VARS \
+    --run "bash '$SCRIPT' $*"
+else
+  # shellcheck disable=SC2086
+  nix-shell -I "nixpkgs=${PINNED_NIXPKGS_URL}" "$REPO_ROOT/shell.nix" --pure \
+    $KEEP_VARS \
+    --run "bash '$SCRIPT' $*"
+fi
