@@ -405,6 +405,13 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         trace!("deserialize_i32: state:  {:?}", self.current);
         match &self.fetch_element()?.value {
             TTLValue::Integer(i) => visitor.visit_i32(*i),
+            TTLValue::Interval(i) => {
+                // KMIP Interval is encoded as an unsigned 32-bit value; accept it for i32 fields
+                let v: i32 = (*i)
+                    .try_into()
+                    .map_err(|e| TtlvError::from(format!("Interval conversion error{e}")))?;
+                visitor.visit_i32(v)
+            }
             _ => Err(TtlvError::from("Expected Integer value in TTLV for i32")),
         }
     }

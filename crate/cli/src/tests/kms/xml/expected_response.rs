@@ -5,7 +5,7 @@ use cosmian_kmip::{
     kmip_2_1::{
         kmip_data_structures::{KeyMaterial, KeyValue},
         kmip_objects::Object,
-        kmip_types::UniqueIdentifier,
+        kmip_types::{LinkedObjectIdentifier, UniqueIdentifier},
     },
 };
 use cosmian_kms_client::cosmian_kmip::{
@@ -59,6 +59,15 @@ pub(crate) fn prepare_expected_response(
     substitute_locate_response_from_actual(expected, actual);
 }
 
+/// Substitute placeholders in actual server response with real UIDs
+pub(crate) fn substitute_placeholders_in_response(
+    test_name: &str,
+    resp: &mut ResponseMessage,
+    uid_map: &HashMap<usize, String>,
+) {
+    substitute_placeholders_in_expected_response(test_name, resp, uid_map);
+}
+
 /// Capture real UIDs from responses and store them in the placeholder map for future use
 pub(crate) fn capture_real_uids_from_response(
     test_name: &str,
@@ -81,6 +90,9 @@ pub(crate) fn capture_real_uids_from_response(
                         }
                         Operation::GetResponse(gr) => {
                             log_insert(test_name, uid_map, &gr.unique_identifier);
+                        }
+                        Operation::GetAttributesResponse(gar) => {
+                            log_insert(test_name, uid_map, &gar.unique_identifier);
                         }
                         Operation::CreateKeyPairResponse(ckpr) => {
                             log_insert(test_name, uid_map, &ckpr.private_key_unique_identifier);
@@ -117,6 +129,9 @@ pub(crate) fn capture_real_uids_from_response(
                         }
                         Op14::GetResponse(gr) => {
                             log_insert_text(test_name, uid_map, &gr.unique_identifier);
+                        }
+                        Op14::GetAttributesResponse(gar) => {
+                            log_insert_text(test_name, uid_map, &gar.unique_identifier);
                         }
                         Op14::CreateKeyPairResponse(ckpr) => {
                             log_insert_text(
@@ -313,6 +328,16 @@ fn substitute_placeholders_in_expected_response(
                             if let Some(inner_uid) = &mut gar.attributes.unique_identifier {
                                 substitute_uid(test_name, inner_uid, uid_map);
                             }
+                            // Also substitute any Unique Identifier attribute present in the Links
+                            if let Some(links) = &mut gar.attributes.link {
+                                for link in links.iter_mut() {
+                                    substitute_linked_uid(
+                                        test_name,
+                                        &mut link.linked_object_identifier,
+                                        uid_map,
+                                    );
+                                }
+                            }
                         }
                         Operation::GetAttributeListResponse(resp) => {
                             substitute_uid(test_name, &mut resp.unique_identifier, uid_map);
@@ -392,8 +417,18 @@ fn substitute_placeholders_in_expected_response(
                             // Also substitute any Unique Identifier attribute present in the attribute list
                             if let Some(attrs) = &mut gar.attribute {
                                 for a in attrs.iter_mut() {
-                                    if let Attr14::UniqueIdentifier(s) = a {
-                                        substitute_uid_text(test_name, s, uid_map);
+                                    match a {
+                                        Attr14::UniqueIdentifier(s) => {
+                                            substitute_uid_text(test_name, s, uid_map);
+                                        }
+                                        Attr14::Link(link) => {
+                                            substitute_uid_text(
+                                                test_name,
+                                                &mut link.linked_object_identifier,
+                                                uid_map,
+                                            );
+                                        }
+                                        _ => {}
                                     }
                                 }
                             }
@@ -906,6 +941,41 @@ fn substitute_uid(test_name: &str, uid: &mut UniqueIdentifier, uid_map: &HashMap
     let idx_opt = s
         .strip_prefix(test_name)
         .and_then(|r| r.strip_prefix("-uid-"))
+        .map_or_else(
+            || {
+                s.strip_prefix("uid-").map_or_else(
+                    || {
+                        s.strip_prefix("$UNIQUE_IDENTIFIER_")
+                            .and_then(|rest| rest.parse::<usize>().ok())
+                    },
+                    |rest| rest.parse::<usize>().ok(),
+                )
+            },
+            |rest| rest.parse::<usize>().ok(),
+        );
+    if let Some(idx) = idx_opt {
+        if let Some(real) = uid_map.get(&idx) {
+            *s = real.clone();
+        }
+    }
+}
+
+// Substitute a placeholder LinkedObjectIdentifier with the real value from the map.
+fn substitute_linked_uid(
+    test_name: &str,
+    uid: &mut LinkedObjectIdentifier,
+    uid_map: &HashMap<usize, String>,
+) {
+    let LinkedObjectIdentifier::TextString(s) = uid else {
+        return;
+    };
+    // Accept patterns:
+    //   {test_name}-uid-{n}
+    //   uid-{n}
+    //   $UNIQUE_IDENTIFIER_{n}
+    let idx_opt = s
+        .strip_prefix(test_name)
+        .and_then(|r| r.strip_prefix("uid-"))
         .map_or_else(
             || {
                 s.strip_prefix("uid-").map_or_else(

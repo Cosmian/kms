@@ -18,7 +18,8 @@ use super::{
     kmip_types::{
         CancellationResult, CertificateRequestType, ClientRegistrationMethod, DerivationMethod,
         KeyCompressionType, KeyFormatType, ObjectGroupMember, ObjectType, OperationEnumeration,
-        QueryFunction, SplitKeyMethod, StorageStatusMask, UniqueIdentifier, ValidityIndicator,
+        PutFunction, QueryFunction, SplitKeyMethod, StorageStatusMask, UniqueIdentifier,
+        ValidityIndicator,
     },
 };
 use crate::{
@@ -410,8 +411,9 @@ pub struct Check {
     pub usage_limits_count: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_usage_mask: Option<u32>,
+    // KMIP 1.4 specifies Lease Time as an Interval; use i32 to match TTLV Interval
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub lease_time: Option<bool>,
+    pub lease_time: Option<i32>,
 }
 
 /// Response to a Check request
@@ -1953,6 +1955,11 @@ pub enum Operation {
     SignatureVerifyResponse(SignatureVerifyResponse),
     Validate(Validate),
     ValidateResponse(ValidateResponse),
+    // KMIP 1.4 additional operations (declared for completeness)
+    Notify(Notify),
+    NotifyResponse(NotifyResponse),
+    Put(Put),
+    PutResponse(PutResponse),
 }
 
 impl Operation {
@@ -2078,6 +2085,8 @@ impl Operation {
             }
             Self::Export(_) | Self::ExportResponse(_) => OperationEnumeration::Export,
             Self::Import(_) | Self::ImportResponse(_) => OperationEnumeration::Import,
+            Self::Notify(_) | Self::NotifyResponse(_) => OperationEnumeration::Notify,
+            Self::Put(_) | Self::PutResponse(_) => OperationEnumeration::Put,
         }
     }
 }
@@ -2250,6 +2259,14 @@ impl Display for Operation {
             Self::Import(import) => write!(f, "Import({import:?})"),
             Self::ImportResponse(import_resp) => {
                 write!(f, "ImportResponse({import_resp:?})")
+            }
+            Self::Notify(notify) => write!(f, "Notify({notify:?})"),
+            Self::NotifyResponse(notify_resp) => {
+                write!(f, "NotifyResponse({notify_resp:?})")
+            }
+            Self::Put(put) => write!(f, "Put({put:?})"),
+            Self::PutResponse(put_resp) => {
+                write!(f, "PutResponse({put_resp:?})")
             }
         }
     }
@@ -2522,4 +2539,50 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             }
         })
     }
+}
+
+/// 4.26 Notify (server to client)
+/// Minimal declaration to allow encoding/decoding when present in KMIP 1.4 vectors.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
+pub struct Notify {
+    /// Carries the correlation value of the original asynchronous request
+    pub asynchronous_correlation_value: String,
+    /// Identifies the operation that completed
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub operation: Option<OperationEnumeration>,
+    /// Unique Identifier related to the notification (if applicable)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<String>,
+}
+
+/// Response to a Notify request (empty body per spec; included for completeness)
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+#[serde(rename_all = "PascalCase")]
+pub struct NotifyResponse;
+
+/// 4.26 Put
+/// This operation requests the server to store or replace a Managed Object with provided attributes.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
+pub struct Put {
+    /// Object Type of the object being put
+    pub object_type: ObjectType,
+    /// Unique Identifier to use or replace (depends on `PutFunction`)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<String>,
+    /// `NEW` or `REPLACE` (see `PutFunction`)
+    pub put_function: PutFunction,
+    /// Attributes to set on the object
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attribute: Option<Vec<Attribute>>,
+    /// The object to store
+    pub object: Object,
+}
+
+/// Response to a Put request
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
+pub struct PutResponse {
+    pub unique_identifier: String,
 }

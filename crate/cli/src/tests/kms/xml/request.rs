@@ -209,9 +209,7 @@ impl PrepareRequest {
             }
         }
     }
-}
 
-impl PrepareRequest {
     fn substitute_placeholders_in_request(&mut self) {
         let request = &mut self.request;
         let uid_map = &self.uid_placeholder_map;
@@ -711,7 +709,20 @@ fn substitute_op_placeholders(
                 substitute_uid(test_name, uid, uid_map);
             }
         }
-        Operation::AddAttribute(a) => substitute_uid(test_name, &mut a.unique_identifier, uid_map),
+        Operation::AddAttribute(a) => {
+            // Substitute on target UniqueIdentifier
+            substitute_uid(test_name, &mut a.unique_identifier, uid_map);
+            // Also substitute inside Link attribute payloads (LinkedObjectIdentifier)
+            if let cosmian_kmip::kmip_2_1::kmip_attributes::Attribute::Link(link) =
+                &mut a.new_attribute
+            {
+                substitute_linked_uid_in_request(
+                    test_name,
+                    &mut link.linked_object_identifier,
+                    uid_map,
+                );
+            }
+        }
         Operation::DeleteAttribute(d) => {
             if let Some(uid) = &mut d.unique_identifier {
                 substitute_uid(test_name, uid, uid_map);
@@ -720,6 +731,16 @@ fn substitute_op_placeholders(
         Operation::SetAttribute(s) => {
             if let Some(uid) = &mut s.unique_identifier {
                 substitute_uid(test_name, uid, uid_map);
+            }
+            // Also substitute inside Link attribute payloads (LinkedObjectIdentifier)
+            if let cosmian_kmip::kmip_2_1::kmip_attributes::Attribute::Link(link) =
+                &mut s.new_attribute
+            {
+                substitute_linked_uid_in_request(
+                    test_name,
+                    &mut link.linked_object_identifier,
+                    uid_map,
+                );
             }
         }
         Operation::Certify(c) => {
@@ -753,6 +774,15 @@ fn substitute_op_placeholders(
         Operation::ModifyAttribute(m) => {
             if let Some(uid) = &mut m.unique_identifier {
                 substitute_uid(test_name, uid, uid_map);
+            }
+            if let cosmian_kmip::kmip_2_1::kmip_attributes::Attribute::Link(link) =
+                &mut m.new_attribute
+            {
+                substitute_linked_uid_in_request(
+                    test_name,
+                    &mut link.linked_object_identifier,
+                    uid_map,
+                );
             }
         }
         Operation::Sign(s) => {
@@ -1008,13 +1038,23 @@ fn substitute_op_placeholders_v14(
                 substitute_uid_text(test_name, uid, uid_map);
             }
         }
-        Op14::AddAttribute(a) => substitute_uid_text(test_name, &mut a.unique_identifier, uid_map),
+        Op14::AddAttribute(a) => {
+            substitute_uid_text(test_name, &mut a.unique_identifier, uid_map);
+            if let cosmian_kmip::kmip_1_4::kmip_attributes::Attribute::Link(link) = &mut a.attribute
+            {
+                substitute_uid_text(test_name, &mut link.linked_object_identifier, uid_map);
+            }
+        }
         Op14::DeleteAttribute(d) => {
             substitute_uid_text(test_name, &mut d.unique_identifier, uid_map);
         }
         Op14::ModifyAttribute(m) => {
             if let Some(uid) = &mut m.unique_identifier {
                 substitute_uid_text(test_name, uid, uid_map);
+            }
+            if let cosmian_kmip::kmip_1_4::kmip_attributes::Attribute::Link(link) = &mut m.attribute
+            {
+                substitute_uid_text(test_name, &mut link.linked_object_identifier, uid_map);
             }
         }
         Op14::Export(e) => {
@@ -1058,6 +1098,24 @@ fn substitute_op_placeholders_v14(
     }
 }
 
+// Substitute a placeholder LinkedObjectIdentifier within KMIP 2.1 request payloads.
+// Recognizes raw (uid-N / $UNIQUE_IDENTIFIER_N) and namespaced (test-name-uid-N) placeholders
+// and replaces them using the provided uid_map.
+fn substitute_linked_uid_in_request(
+    test_name: &str,
+    uid: &mut cosmian_kmip::kmip_2_1::kmip_types::LinkedObjectIdentifier,
+    uid_map: &HashMap<usize, String>,
+) {
+    use cosmian_kmip::kmip_2_1::kmip_types::LinkedObjectIdentifier as L;
+    if let L::TextString(s) = uid {
+        if let Some(index) = parse_uid_placeholder_index(test_name, s) {
+            if let Some(real) = uid_map.get(&index) {
+                *s = real.clone();
+            }
+        }
+    }
+}
+
 fn substitute_uid_text(test_name: &str, uid: &mut String, uid_map: &HashMap<usize, String>) {
     // Delegate the placeholder parsing/substitution to substitute_uid by wrapping as UniqueIdentifier::TextString
     let mut ui = UniqueIdentifier::TextString(uid.clone());
@@ -1097,20 +1155,6 @@ fn parse_uid_placeholder_index(test_name: &str, s: &str) -> Option<usize> {
             Some,
         )
 }
-
-// Inject `EncryptResponse` artifacts (ciphertext, IV/nonce, tag) into any Decrypt request batch items
-// that have missing or empty placeholder fields. Existing non-empty user supplied fields are preserved.
-// moved into PrepareRequest::inject_decrypt_artifacts
-
-// Inject the latest captured signature (from a prior SignResponse) into any
-// SignatureVerify request payloads that are missing or have empty `signature_data`.
-// Returns true if an injection occurred (so callers can clear the cached signature).
-// moved into PrepareRequest::inject_signature_for_verification
-
-// Inject the latest captured MAC (from a prior MACResponse) into any
-// MACVerify request payloads that are missing or have empty `mac_data`.
-// Returns true if an injection occurred so caller can clear the cache.
-// moved into PrepareRequest::inject_mac_for_verification
 
 #[cfg(test)]
 mod injection_tests {
@@ -1238,15 +1282,3 @@ mod injection_tests {
         assert_eq!(dec.authenticated_encryption_tag.as_ref().unwrap(), &tag);
     }
 }
-
-// Inject PKCS11 CorrelationValue into requests when vectors leave a placeholder
-// or omit it. Recognizes the literal placeholder "$CORRELATION_VALUE" (as bytes)
-// and empty/missing values, replacing them with the latest correlation captured
-// from a prior PKCS11Response.
-// moved into PrepareRequest::inject_pkcs11_correlation_value
-
-// Inject implicit `UniqueIdentifiers` client-side for batch operations that omit them but
-// are expected (by KMIP profile vectors) to target the most recently created/located object
-// earlier in the same `RequestMessage`. This prevents TTLV serialization of `Option::None` for
-// required fields (e.g., `ModifyAttribute`) and aligns with server-side fallback semantics.
-// moved into PrepareRequest::inject_implicit_uids

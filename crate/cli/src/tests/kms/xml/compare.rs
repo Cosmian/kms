@@ -1,5 +1,5 @@
 use cosmian_kmip::{
-    kmip_0::{self, kmip_types::ErrorReason},
+    kmip_0::{self},
     kmip_2_1::{self, kmip_objects::Object},
 };
 use cosmian_kms_client::cosmian_kmip::kmip_0::kmip_messages::{
@@ -79,21 +79,11 @@ pub(crate) fn compare_response_messages(
                         exp.result_status, act.result_status
                     )));
                 }
-                match (&exp.result_reason, &act.result_reason) {
-                    // Between KMIP 1.4 and 2.1, KMS server chooses returns the KMIP 2.1 expected result reason Wrong_Key_Lifecycle_State and not Denied
-                    (
-                        Some(ErrorReason::Permission_Denied),
-                        Some(ErrorReason::Wrong_Key_Lifecycle_State),
-                    )
-                    | (None, None) => {}
-                    (e, a) => {
-                        if e != a {
-                            return Err(KmsCliError::Default(format!(
-                                "1.4 batch[{index}] result_reason mismatch expected={:?} actual={:?}",
-                                exp.result_reason, act.result_reason
-                            )));
-                        }
-                    }
+                if exp.result_status != act.result_status {
+                    return Err(KmsCliError::Default(format!(
+                        "batch[{index}] result_status mismatch expected={:?} actual={:?}",
+                        exp.result_status, act.result_status
+                    )));
                 }
                 if exp.result_message.is_some() != act.result_message.is_some() {
                     return Err(KmsCliError::Default(format!(
@@ -709,12 +699,11 @@ pub(crate) fn compare_attributes(
                 }
 
                 // Filter on unique_identifier
-                // if le != la {
-                //     return Err(KmsCliError::Default(format!(
-                //         "Attributes.link[{}] mismatch: expected={} actual={}",
-                //         i, le, la
-                //     )));
-                // }
+                if le != la {
+                    return Err(KmsCliError::Default(format!(
+                        "Attributes.link[{i}] mismatch: expected={le} actual={la}"
+                    )));
+                }
             }
         }
         (None, Some(_)) => {

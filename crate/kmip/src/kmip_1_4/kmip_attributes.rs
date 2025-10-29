@@ -30,6 +30,28 @@ pub use crate::{
 };
 use crate::{kmip_0::kmip_types::HashingAlgorithm, kmip_1_4::kmip_types::CustomAttribute};
 
+#[inline]
+#[allow(
+    clippy::as_conversions,
+    clippy::cast_possible_truncation,
+    clippy::cast_lossless
+)]
+fn clamp_lease_time_to_i32(v: i64) -> i32 {
+    if v < 0 {
+        warn!("KMIP 1.4 Lease Time was negative ({v}); clamping to 0");
+        0
+    } else if v > i64::from(i32::MAX) {
+        warn!(
+            "KMIP 1.4 Lease Time too large for i32 ({v}); clamping to {}",
+            i32::MAX
+        );
+        i32::MAX
+    } else {
+        // Safe: value proven within i32 range
+        v as i32
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Attribute {
     ActivationDate(OffsetDateTime),
@@ -125,7 +147,8 @@ impl Serialize for Attribute {
                 st.serialize_field("AttributeValue", value)?;
             }
             Self::CertificateLength(value) => {
-                st.serialize_field("AttributeName", "CertificateLength")?;
+                // KMIP 1.4 uses the spaced form "Certificate Length"
+                st.serialize_field("AttributeName", "Certificate Length")?;
                 st.serialize_field("AttributeValue", value)?;
             }
             Self::X509CertificateIdentifier(value) => {
@@ -709,7 +732,9 @@ impl From<Attribute> for kmip_2_1::kmip_attributes::Attribute {
             Attribute::KeyValueLocation(v) => Self::KeyValueLocation(v),
             Attribute::KeyValuePresent(v) => Self::KeyValuePresent(v),
             Attribute::LastChangeDate(v) => Self::LastChangeDate(v),
-            Attribute::LeaseTime(v) => Self::LeaseTime(v),
+            // KMIP 1.4 encodes Lease Time as an Interval (non-negative). Clamp into i32 range to
+            // keep this conversion infallible and avoid panics; log when saturation occurs.
+            Attribute::LeaseTime(v) => Self::LeaseTime(clamp_lease_time_to_i32(v)),
             Attribute::Link(v) => Self::Link(v.into()),
             Attribute::Name(v) => Self::Name(v.into()),
             Attribute::NeverExtractable(v) => Self::NeverExtractable(v),
@@ -784,7 +809,7 @@ impl TryFrom<kmip_2_1::kmip_attributes::Attribute> for Attribute {
             kmip_2_1::kmip_attributes::Attribute::DigitalSignatureAlgorithm(v) => {
                 Ok(Self::DigitalSignatureAlgorithm(v.try_into()?))
             }
-            kmip_2_1::kmip_attributes::Attribute::LeaseTime(v) => Ok(Self::LeaseTime(v)),
+            kmip_2_1::kmip_attributes::Attribute::LeaseTime(v) => Ok(Self::LeaseTime(v.into())),
             kmip_2_1::kmip_attributes::Attribute::UsageLimits(v) => Ok(Self::UsageLimits(v.into())),
             kmip_2_1::kmip_attributes::Attribute::State(v) => Ok(Self::State(v)),
             kmip_2_1::kmip_attributes::Attribute::InitialDate(v) => Ok(Self::InitialDate(v)),
@@ -1021,7 +1046,7 @@ impl From<Vec<Attribute>> for kmip_2_1::kmip_attributes::Attributes {
                 }
 
                 Attribute::LeaseTime(v) => {
-                    attributes.lease_time = Some(v);
+                    attributes.lease_time = Some(clamp_lease_time_to_i32(v));
                 }
                 Attribute::UsageLimits(v) => {
                     attributes.usage_limits = Some(v.into());

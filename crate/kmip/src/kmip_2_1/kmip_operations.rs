@@ -644,8 +644,9 @@ pub struct Check {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_usage_mask: Option<CryptographicUsageMask>,
     /// Specifies a Lease Time value that the Client is asking the server to validate against policy.
+    /// KMIP Interval type (32-bit signed integer in TTLV).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub lease_time: Option<i64>,
+    pub lease_time: Option<i32>,
 }
 
 impl Display for Check {
@@ -689,8 +690,9 @@ pub struct CheckResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_usage_mask: Option<CryptographicUsageMask>,
     /// Returned if the Lease Time requested exceeds a valid Lease Time the server MAY grant.
+    /// KMIP Interval type (32-bit signed integer in TTLV).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub lease_time: Option<i64>,
+    pub lease_time: Option<i32>,
 }
 
 impl Display for CheckResponse {

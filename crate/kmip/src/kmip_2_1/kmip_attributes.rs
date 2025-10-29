@@ -246,9 +246,9 @@ pub struct Attributes {
     pub last_change_date: Option<OffsetDateTime>,
 
     /// The Lease Time attribute is the length of time in seconds that the object MAY
-    /// be retained by the client.
+    /// be retained by the client. KMIP Interval type (32-bit signed integer in TTLV).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub lease_time: Option<i64>,
+    pub lease_time: Option<i32>,
 
     /// The Link attribute is a structure used to create a link from one Managed
     /// Cryptographic Object to another, closely related target Managed
@@ -1156,8 +1156,8 @@ pub enum Attribute {
     LastChangeDate(OffsetDateTime),
 
     /// The Lease Time attribute is the length of time in seconds that the object MAY
-    /// be retained by the client.
-    LeaseTime(i64),
+    /// be retained by the client. KMIP Interval type (32-bit signed integer in TTLV).
+    LeaseTime(i32),
 
     /// The Link attribute is a structure used to create a link from one Managed
     /// Cryptographic Object to another, closely related target Managed
