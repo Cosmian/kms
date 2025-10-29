@@ -86,7 +86,7 @@ fi
 echo "OpenSSL ${VARIANT_NAME} artifacts prepared at: $OPENSSL_STAGING"
 ls -la "$OPENSSL_STAGING/lib64/ossl-modules/"
 if [ -z "$FEATURES" ]; then
-  ls -la "$OPENSSL_STAGING/ssl/" || true
+  ls -la "$OPENSSL_STAGING/ssl/"
 fi
 
 # Build the server with appropriate features

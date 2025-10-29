@@ -8,36 +8,31 @@ on:
         required: true
         type: string
 
+env:
+  OPENSSL_DIR: /usr/local/openssl
+
 jobs:
   pykmip-tests:
     runs-on: ubuntu-24.04
-    container: python:3.11
+    # container: python:3.11
+    container:
+      image: cosmian/rockylinux9
 
     steps:
       - uses: actions/checkout@v5
         with:
           submodules: recursive
 
-      - name: Install base deps (bash, curl) and build deps
-        run: |
-          apt-get update
-          apt-get install -y --no-install-recommends \
-            bash \
-            curl \
-            libssl-dev \
-            build-essential \
-            pkg-config
-
-      - name: Install rustup silently
-        shell: bash
-        run: |
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
-          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ inputs.toolchain }}
           components: rustfmt, clippy
+
+      - name: Local OpenSSL Install
+        run: |
+          bash .github/reusable_scripts/get_openssl_binaries.sh
+        env:
+          OS_NAME: ubuntu_20_04
 
       - name: Tests PyKMIP
         shell: bash

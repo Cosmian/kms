@@ -2,10 +2,6 @@
 set -euo pipefail
 set -x
 
-# Discover repo root (works inside nix-shell)
-SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
-
 # Resolve inputs with defaults inside the nix environment
 : "${DEBUG_OR_RELEASE:=debug}"
 : "${FEATURES:=}"
@@ -26,34 +22,9 @@ cargo build -p cosmian_kms_server $RELEASE_FLAG "${FEATURES_FLAG[@]}"
 
 COSMIAN_KMS_EXE="target/$DEBUG_OR_RELEASE/cosmian_kms"
 
-# Prepare OpenSSL runtime config from templates in nix/ and use it for --info
-# Discover the nix OpenSSL install dir used during link/runtime
-NIX_OPENSSLDIR=$(openssl version -d | awk -F '"' '{print $2}')
-NIX_OPENSSL_BASE=$(dirname "$NIX_OPENSSLDIR")
-NIX_OPENSSL_MODULES="$NIX_OPENSSL_BASE/lib/ossl-modules"
-
-if [[ "${FEATURES}" != *"non-fips"* ]]; then
-  # FIPS build: Use the installed openssl.cnf which already includes fipsmodule.cnf
-  OPENSSL_CONF_PATH="$NIX_OPENSSLDIR/openssl.cnf"
-  if [ ! -f "$OPENSSL_CONF_PATH" ]; then
-    echo "Error: openssl.cnf not found at $OPENSSL_CONF_PATH" >&2
-    exit 1
-  fi
-  FIPS_CNF_SRC="$NIX_OPENSSLDIR/fipsmodule.cnf"
-  if [ ! -f "$FIPS_CNF_SRC" ]; then
-    echo "Error: fipsmodule.cnf not found at $FIPS_CNF_SRC. The OpenSSL 3.1.2 build must provide it."
-    echo "Ensure you're using the Nix-provided OpenSSL FIPS build, or adjust the nix derivation to install fipsmodule.cnf." >&2
-    exit 1
-  fi
-else
-  # Non-FIPS: use the repo-provided default config directly, do not generate or copy
-  OPENSSL_CONF_PATH="$REPO_ROOT/nix/openssl-default.cnf.in"
-fi
-:
-
 # Run --info with the composed OpenSSL config so the FIPS provider can load using the
 # fipsmodule.cnf provided by the OpenSSL build
-INFO_OUTPUT=$(OPENSSL_CONF="$OPENSSL_CONF_PATH" OPENSSL_MODULES="$NIX_OPENSSL_MODULES" "$COSMIAN_KMS_EXE" --info)
+INFO_OUTPUT=$("$COSMIAN_KMS_EXE" --info)
 echo "$INFO_OUTPUT"
 echo "$INFO_OUTPUT" | grep -q "OpenSSL 3.1.2" || {
   echo "Error: The correct OpenSSL version 3.1.2 is not found in --info output." >&2

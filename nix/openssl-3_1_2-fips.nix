@@ -1,4 +1,10 @@
-{ stdenv, lib, fetchurl, perl, coreutils }:
+{
+  stdenv,
+  lib,
+  fetchurl,
+  perl,
+  coreutils,
+}:
 
 # OpenSSL 3.1.2 built statically with FIPS provider and fipsmodule.cnf generated.
 # Output layout mirrors a typical OPENSSL_DIR tree for ease of consumption:
@@ -10,9 +16,11 @@
 
 let
   glibcVersion = stdenv.cc.libc.version or (lib.getVersion stdenv.cc.libc);
-  _ = lib.assertMsg (lib.versionAtMost glibcVersion "2.28")
-    ("cosmian_kms OpenSSL derivation requires glibc <= 2.28; detected glibc "
-      + glibcVersion + ". Use an older Nixpkgs or compatible environment.");
+  _ = lib.assertMsg (lib.versionAtMost glibcVersion "2.28") (
+    "cosmian_kms OpenSSL derivation requires glibc <= 2.28; detected glibc "
+    + glibcVersion
+    + ". Use an older Nixpkgs or compatible environment."
+  );
 
   # Path to local tarball relative to the Nix expression
   localTarball = ../resources/tarballs/openssl-3.1.2.tar.gz;
@@ -21,24 +29,27 @@ let
   expectedHash = "a0ce69b8b97ea6a35b96875235aa453b966ba3cba8af2de23657d8b6767d6539";
 
   # Validate local tarball hash and select source
-  opensslSrc = if builtins.pathExists localTarball
-    then
+  opensslSrc =
+    if builtins.pathExists localTarball then
       let
         actualHash = builtins.hashFile "sha256" localTarball;
-        hashValidation = lib.assertMsg (actualHash == expectedHash)
-          ("Local OpenSSL tarball hash mismatch!\n" +
-           "Expected: ${expectedHash}\n" +
-           "Actual:   ${actualHash}\n" +
-           "Please verify the integrity of ${toString localTarball}");
+        hashValidation = lib.assertMsg (actualHash == expectedHash) (
+          "Local OpenSSL tarball hash mismatch!\n"
+          + "Expected: ${expectedHash}\n"
+          + "Actual:   ${actualHash}\n"
+          + "Please verify the integrity of ${toString localTarball}"
+        );
       in
       # Force evaluation of hash validation
       builtins.seq hashValidation localTarball
-    else fetchurl {
-      url = "https://www.openssl.org/source/old/3.1/openssl-3.1.2.tar.gz";
-      # SRI hash pinned from nix fetch (sha256-oM5puLl+pqNblodSNapFO5Zro8uory3iNlfYtnZ9ZTk=)
-      sha256 = "sha256-oM5puLl+pqNblodSNapFO5Zro8uory3iNlfYtnZ9ZTk=";
-    };
-in stdenv.mkDerivation rec {
+    else
+      fetchurl {
+        url = "https://www.openssl.org/source/old/3.1/openssl-3.1.2.tar.gz";
+        # SRI hash pinned from nix fetch (sha256-oM5puLl+pqNblodSNapFO5Zro8uory3iNlfYtnZ9ZTk=)
+        sha256 = "sha256-oM5puLl+pqNblodSNapFO5Zro8uory3iNlfYtnZ9ZTk=";
+      };
+in
+stdenv.mkDerivation rec {
   pname = "openssl";
   version = "3.1.2";
 
@@ -48,15 +59,21 @@ in stdenv.mkDerivation rec {
   passthru.srcPath = toString opensslSrc;
 
   # We need perl for OpenSSL build system, and coreutils for runtime scripts
-  nativeBuildInputs = [ perl coreutils ];
+  nativeBuildInputs = [
+    perl
+    coreutils
+  ];
 
   # Force static libraries and enable FIPS provider
   # We also ensure the platform target is correct (darwin64-arm64-cc on Apple Silicon)
   # Choose OpenSSL build target based on host platform
-  target = if stdenv.isDarwin
-           then (if stdenv.hostPlatform.isAarch64 then "darwin64-arm64-cc" else "darwin64-x86_64-cc")
-           else if stdenv.hostPlatform.isAarch64 then "linux-aarch64"
-           else "linux-x86_64";
+  target =
+    if stdenv.isDarwin then
+      (if stdenv.hostPlatform.isAarch64 then "darwin64-arm64-cc" else "darwin64-x86_64-cc")
+    else if stdenv.hostPlatform.isAarch64 then
+      "linux-aarch64"
+    else
+      "linux-x86_64";
 
   soExt = if stdenv.isDarwin then "dylib" else "so";
 
@@ -160,7 +177,7 @@ in stdenv.mkDerivation rec {
     homepage = "https://www.openssl.org";
     license = licenses.openssl;
     platforms = platforms.unix;
-    maintainers = [];
+    maintainers = [ ];
     longDescription = ''
       Built against glibc <= 2.28 as enforced by the calling shell expression.
     '';
