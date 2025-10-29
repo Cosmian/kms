@@ -24,17 +24,10 @@ jobs:
           toolchain: ${{ inputs.toolchain }}
           components: rustfmt, clippy
 
-      - name: Local OpenSSL Install
-        run: |
-          bash .github/reusable_scripts/get_openssl_binaries.sh
-        env:
-          OS_NAME: ubuntu_20_04
-
       - name: Tests PyKMIP
         env:
           COSMIAN_KMS_CONF: ./scripts/kms.toml
         run: |
-          cargo build --bin cosmian_kms --features non-fips
           cargo run --bin cosmian_kms --features non-fips &
 
           python3 -m pip install --upgrade pip
