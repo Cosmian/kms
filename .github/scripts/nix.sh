@@ -79,11 +79,9 @@ if [ "$COMMAND" = "package" ]; then
   shift
 fi
 
-# Extra nix packages to include in the nix-shell environment
-# Ensure wget is available for tests that need to fetch external resources
-EXTRA_NIX_PKGS=""
+# Flag extra tools for nix-shell through environment (avoids mixing -p with shell.nix)
 if [ "$COMMAND" = "test" ]; then
-  EXTRA_NIX_PKGS="-p wget"
+  export WITH_WGET=1
 fi
 
 # Determine repository root
@@ -129,7 +127,8 @@ test)
       --keep TEST_GOOGLE_OAUTH_CLIENT_ID \
       --keep TEST_GOOGLE_OAUTH_CLIENT_SECRET \
       --keep TEST_GOOGLE_OAUTH_REFRESH_TOKEN \
-      --keep GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY"
+    --keep GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY \
+    --keep WITH_WGET"
   ;;
 package)
   case "$PACKAGE_TYPE" in
@@ -181,12 +180,10 @@ fi
 if [ "$COMMAND" = "package" ] && [ "$PACKAGE_TYPE" = "dmg" ] && [ "$(uname)" = "Darwin" ]; then
   echo "Note: Running without --pure mode on macOS for DMG packaging (requires system utilities)"
   # shellcheck disable=SC2086
-  nix-shell -I "nixpkgs=${PINNED_NIXPKGS_URL}" "$REPO_ROOT/shell.nix" \
-    $KEEP_VARS \
+  nix-shell -I "nixpkgs=${PINNED_NIXPKGS_URL}" $KEEP_VARS "$REPO_ROOT/shell.nix" \
     --run "bash '$SCRIPT' $*"
 else
   # shellcheck disable=SC2086
-  nix-shell -I "nixpkgs=${PINNED_NIXPKGS_URL}" $EXTRA_NIX_PKGS "$REPO_ROOT/shell.nix" --pure \
-    $KEEP_VARS \
+  nix-shell -I "nixpkgs=${PINNED_NIXPKGS_URL}" --pure $KEEP_VARS "$REPO_ROOT/shell.nix" \
     --run "bash '$SCRIPT' $*"
 fi

@@ -11,21 +11,31 @@ on:
 jobs:
   pykmip-tests:
     runs-on: ubuntu-24.04
+    container: python:3.11
 
     steps:
       - uses: actions/checkout@v5
         with:
           submodules: recursive
 
+      - name: Install rustup silently
+        shell: bash
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ inputs.toolchain }}
           components: rustfmt, clippy
 
-      - name: Install OpenSSL development package
+      - name: Install build deps and OpenSSL dev
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libssl-dev
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            libssl-dev \
+            build-essential \
+            pkg-config
 
       - name: Tests PyKMIP
         env:
