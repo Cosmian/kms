@@ -1,0 +1,44 @@
+---
+name: PyKMIP Tests
+
+on:
+  workflow_call:
+    inputs:
+      toolchain:
+        required: true
+        type: string
+
+jobs:
+  pykmip-tests:
+    runs-on: ubuntu-24.04
+    container:
+      image: cosmian/rockylinux9
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ inputs.toolchain }}
+          components: rustfmt, clippy
+
+      - name: Local OpenSSL Install
+        run: |
+          bash .github/reusable_scripts/get_openssl_binaries.sh
+        env:
+          OS_NAME: ubuntu_20_04
+
+      - name: Tests PyKMIP
+        env:
+          COSMIAN_KMS_CONF: ./scripts/kms.toml
+        run: |
+          cargo build --bin cosmian_kms --features non-fips
+          cargo run --bin cosmian_kms --features non-fips &
+
+          python3 -m pip install --upgrade pip
+          python3 -m venv .venv
+          source .venv/bin/activate
+          pip install PyKMIP
+          bash ./scripts/test_pykmip.sh all
