@@ -145,7 +145,7 @@ impl KMS {
                     "utimaco" => {
                         // Allow overriding PKCS#11 lib path via env for testing (falls back to default constant)
                         let lib_path = std::env::var("UTIMACO_PKCS11_LIB")
-                            .unwrap_or_else(|_| UTIMACO_PKCS11_LIB.to_string());
+                            .unwrap_or_else(|_| UTIMACO_PKCS11_LIB.to_owned());
                         let utimaco: Arc<dyn HSM + Send + Sync> = Arc::new(
                             Utimaco::instantiate(&lib_path, server_params.slot_passwords.clone())
                                 .map_err(|e| {
