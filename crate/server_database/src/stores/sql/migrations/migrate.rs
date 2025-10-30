@@ -16,15 +16,15 @@ use crate::{
     DbError,
     error::{DbResult, DbResultHelper},
     stores::{
-        migrate::{DbState, Migrate},
+        migrate::{DbState, HasDatabase, Migrate, SqlMigrate},
         sql::{database::SqlDatabase, migrations::key_material_old::KeyMaterial421},
     },
 };
 
 #[async_trait(?Send)]
-impl<T, DB> Migrate<DB> for T
+impl<T, DB> Migrate for T
 where
-    T: SqlDatabase<DB> + ObjectsStore,
+    T: SqlDatabase<DB> + ObjectsStore + HasDatabase<Database = DB>,
     DB: sqlx::Database,
     for<'z> &'z mut DB::Connection: Executor<'z, Database = DB>,
     for<'z> DB::Arguments<'z>: IntoArguments<'z, DB>,
@@ -90,7 +90,23 @@ where
             .map_err(DbError::from)?;
         Ok(())
     }
+}
 
+#[async_trait(?Send)]
+impl<T, DB> SqlMigrate<DB> for T
+where
+    T: SqlDatabase<DB> + ObjectsStore + HasDatabase<Database = DB>,
+    DB: sqlx::Database,
+    for<'z> &'z mut DB::Connection: Executor<'z, Database = DB>,
+    for<'z> DB::Arguments<'z>: IntoArguments<'z, DB>,
+    for<'z> i16: sqlx::Encode<'z, DB> + sqlx::Decode<'z, DB> + sqlx::Type<DB>,
+    for<'z> String: sqlx::Encode<'z, DB> + sqlx::Decode<'z, DB> + sqlx::Type<DB>,
+    for<'z> &'z str: sqlx::Encode<'z, DB> + sqlx::Decode<'z, DB> + sqlx::Type<DB>,
+    for<'z> Vec<u8>: sqlx::Encode<'z, DB> + sqlx::Decode<'z, DB> + sqlx::Type<DB>,
+    for<'w, 'z> sqlx::types::Json<&'w Value>: sqlx::Encode<'z, DB>,
+    for<'z> sqlx::types::Json<Value>: sqlx::Decode<'z, DB> + sqlx::Type<DB>,
+    usize: sqlx::ColumnIndex<<DB as sqlx::Database>::Row>,
+{
     async fn migrate_from_4_12_0_to_4_13_0(&self) -> DbResult<()> {
         trace!("Migrating from 4.12.0 to 4.13.0");
 

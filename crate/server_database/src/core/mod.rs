@@ -17,9 +17,9 @@ pub use main_db_params::{AdditionalObjectStoresParams, MainDbParams};
 mod unwrapped_cache;
 
 pub use crate::core::unwrapped_cache::{CachedUnwrappedObject, UnwrappedCache};
-use crate::stores::{MySqlPool, PgPool, SqlitePool};
 #[cfg(feature = "non-fips")]
-use crate::stores::{REDIS_WITH_FINDEX_MASTER_KEY_LENGTH, RedisWithFindex};
+use crate::stores::RedisWithFindex;
+use crate::stores::{MySqlPool, PgPool, SqlitePool};
 
 /// The `Database` struct represents the core database functionalities, including object management,
 /// permission checks, and caching mechanisms for unwrapped keys.
@@ -85,8 +85,10 @@ impl Database {
                 // There is no reason to keep a copy of the key in the shared config
                 // So we are going to create a "zeroizable" copy which will be passed to Redis with Findex
                 // and zeroize the one in the shared config
-
                 use cosmian_kms_crypto::reexport::cosmian_crypto_core::FixedSizeCBytes;
+
+                use crate::stores::REDIS_WITH_FINDEX_MASTER_KEY_LENGTH;
+
                 let new_master_key =
                     Secret::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::from_unprotected_bytes(
                         &mut master_key.to_bytes(),
@@ -97,8 +99,8 @@ impl Database {
                     RedisWithFindex::instantiate(
                         url.as_str(),
                         new_master_key,
-                        label,
                         clear_db_on_start,
+                        label.as_deref(),
                     )
                     .await?,
                 );
