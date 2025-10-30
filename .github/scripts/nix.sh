@@ -91,28 +91,28 @@ cd "$REPO_ROOT"
 # Validate command and corresponding script
 case "$COMMAND" in
 build)
-  SCRIPT="$REPO_ROOT/nix/build.sh"
+  SCRIPT="$REPO_ROOT/nix/scripts/build.sh"
   KEEP_VARS="--keep DEBUG_OR_RELEASE --keep FEATURES"
   ;;
 test)
   case "$TEST_TYPE" in
   sqlite)
-    SCRIPT="$REPO_ROOT/nix/test_sqlite.sh"
+    SCRIPT="$REPO_ROOT/nix/scripts/test_sqlite.sh"
     ;;
   mysql)
-    SCRIPT="$REPO_ROOT/nix/test_mysql.sh"
+    SCRIPT="$REPO_ROOT/nix/scripts/test_mysql.sh"
     ;;
   psql)
-    SCRIPT="$REPO_ROOT/nix/test_psql.sh"
+    SCRIPT="$REPO_ROOT/nix/scripts/test_psql.sh"
     ;;
   redis)
-    SCRIPT="$REPO_ROOT/nix/test_redis.sh"
+    SCRIPT="$REPO_ROOT/nix/scripts/test_redis.sh"
     ;;
   google_cse)
-    SCRIPT="$REPO_ROOT/nix/test_google_cse.sh"
+    SCRIPT="$REPO_ROOT/nix/scripts/test_google_cse.sh"
     ;;
   hsm)
-    SCRIPT="$REPO_ROOT/nix/test_hsm.sh"
+    SCRIPT="$REPO_ROOT/nix/scripts/test_hsm.sh"
     ;;
   *)
     echo "Error: Unknown test type '$TEST_TYPE'" >&2
@@ -138,13 +138,13 @@ test)
 package)
   case "$PACKAGE_TYPE" in
   deb)
-    SCRIPT="$REPO_ROOT/nix/package_deb.sh"
+    SCRIPT="$REPO_ROOT/nix/scripts/package_deb.sh"
     ;;
   rpm)
-    SCRIPT="$REPO_ROOT/nix/package_rpm.sh"
+    SCRIPT="$REPO_ROOT/nix/scripts/package_rpm.sh"
     ;;
   dmg)
-    SCRIPT="$REPO_ROOT/nix/package_dmg.sh"
+    SCRIPT="$REPO_ROOT/nix/scripts/package_dmg.sh"
     ;;
   *)
     echo "Error: Unknown package type '$PACKAGE_TYPE'" >&2

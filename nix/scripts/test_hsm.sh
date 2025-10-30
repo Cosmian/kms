@@ -7,7 +7,7 @@ set -x
 
 # Discover repo root (works inside nix-shell)
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
+REPO_ROOT=$(cd "$SCRIPT_DIR/../.." && pwd)
 
 # Resolve inputs with defaults inside the nix environment
 : "${DEBUG_OR_RELEASE:=debug}"

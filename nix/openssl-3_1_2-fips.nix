@@ -86,7 +86,7 @@ stdenv.mkDerivation rec {
       no-shared \
       enable-fips \
       --prefix=$out \
-      --openssldir=$out/ssl \
+      --openssldir=/usr/local/lib/openssl \
       ${target}
 
   '';
@@ -105,7 +105,24 @@ stdenv.mkDerivation rec {
   installPhase = ''
     runHook preInstall
     echo "Installing OpenSSL ${version}..."
-    make -j install > /dev/null 2>&1
+    # Install software (binaries, libs, headers) but not config files to wrong location
+    # Use install_sw to avoid trying to install to /usr/local/lib/openssl
+    make -j install_sw 2>&1
+
+    # Manually install FIPS provider module to $out instead of openssldir
+    # The FIPS module is built but not installed by install_sw
+    mkdir -p "$out/lib64/ossl-modules"
+    if [ -f "providers/fips.so" ]; then
+      cp providers/fips.so "$out/lib64/ossl-modules/"
+    elif [ -f "providers/.libs/fips.so" ]; then
+      cp providers/.libs/fips.so "$out/lib64/ossl-modules/"
+    fi
+
+    # Manually copy config files to $out/ssl instead of /usr/local/lib/openssl
+    mkdir -p "$out/ssl"
+    if [ -d "apps" ]; then
+      cp apps/openssl.cnf "$out/ssl/" || true
+    fi
 
     # Enable FIPS provider in the installed OpenSSL configuration.
     # 1) Include the generated fipsmodule.cnf
@@ -137,6 +154,16 @@ stdenv.mkDerivation rec {
     mkdir -p "$out/ssl"
     echo "Generating FIPS module configuration..."
     "$out/bin/openssl" fipsinstall -module "$fips_mod" -out "$out/ssl/fipsmodule.cnf" > /dev/null 2>&1
+
+    # Add the module path to fipsmodule.cnf since OPENSSLDIR is set to a different location
+    # This ensures OpenSSL can find the FIPS module at runtime
+    if [ -f "$out/ssl/fipsmodule.cnf" ]; then
+      # Check if module-filename is already present
+      if ! grep -q "^module-filename" "$out/ssl/fipsmodule.cnf"; then
+        # Insert module-filename after the [fips_sect] line
+        sed -i "/^\[fips_sect\]/a module-filename = $fips_mod" "$out/ssl/fipsmodule.cnf"
+      fi
+    fi
 
     # Sanity checks
     test -x "$out/bin/openssl"

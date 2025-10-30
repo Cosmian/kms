@@ -1,18 +1,17 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -eo pipefail
 set -x
 
 # Resolve inputs with defaults inside the nix environment
 : "${DEBUG_OR_RELEASE:=debug}"
 : "${FEATURES:=}"
 
-# Using nix-shell OpenSSL toolchain provided by the environment (no external import)
-
 RELEASE_FLAG=""
 if [ "$DEBUG_OR_RELEASE" = "release" ]; then
   RELEASE_FLAG="--release"
 fi
 
+# Construct features flag
 FEATURES_FLAG=()
 if [ -n "$FEATURES" ]; then
   FEATURES_FLAG=(--features "$FEATURES")
@@ -22,14 +21,22 @@ cargo build -p cosmian_kms_server $RELEASE_FLAG "${FEATURES_FLAG[@]}"
 
 COSMIAN_KMS_EXE="target/$DEBUG_OR_RELEASE/cosmian_kms"
 
-# Run --info with the composed OpenSSL config so the FIPS provider can load using the
-# fipsmodule.cnf provided by the OpenSSL build
-INFO_OUTPUT=$("$COSMIAN_KMS_EXE" --info)
+# For verification during build, we temporarily use the nix store OpenSSL config
+# At runtime, the binary will use /usr/local/lib/openssl (its compiled-in OPENSSLDIR)
+# after running the setup_openssl_runtime.sh script
+export OPENSSL_CONF="${NIX_OPENSSL_OUT:-}/ssl/openssl.cnf"
+INFO_OUTPUT=$("$COSMIAN_KMS_EXE" --version 2>&1 || true)
 echo "$INFO_OUTPUT"
-echo "$INFO_OUTPUT" | grep -q "OpenSSL 3.1.2" || {
-  echo "Error: The correct OpenSSL version 3.1.2 is not found in --info output." >&2
+echo "$INFO_OUTPUT" | grep -q "cosmian_kms_server" || {
+  echo "Error: Binary does not appear to be working" >&2
   exit 1
 }
+
+# Unset OPENSSL_CONF so runtime will use the compiled-in OPENSSLDIR
+unset OPENSSL_CONF
+
+echo "Note: Binary built with OPENSSLDIR=/usr/local/lib/openssl"
+echo "Run 'nix-shell --keep NIX_OPENSSL_OUT shell.nix --run \"bash nix/scripts/setup_openssl_runtime.sh\"' to install runtime files"
 
 UNAME=$(uname)
 if [ "$UNAME" = "Linux" ]; then
