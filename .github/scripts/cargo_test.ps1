@@ -19,8 +19,7 @@ function TestProject
 
     if ($BuildType -eq "release")
     {
-        cargo test -p cosmian_kms_server --release --features "non-fips" -- --nocapture
-        # cargo test --lib --workspace  --release --features "non-fips" -- --nocapture
+        cargo test --lib --workspace  --release --features "non-fips" -- --nocapture
         if ($LASTEXITCODE -ne 0)
         {
             Write-Error "Release tests failed with exit code $LASTEXITCODE"
@@ -29,8 +28,7 @@ function TestProject
     }
     else
     {
-        cargo test -p cosmian_kms_server --features "non-fips" -- --nocapture
-        # cargo test --lib --workspace --features "non-fips" -- --nocapture
+        cargo test --lib --workspace --features "non-fips" -- --nocapture
         if ($LASTEXITCODE -ne 0)
         {
             Write-Error "Debug tests failed with exit code $LASTEXITCODE"
