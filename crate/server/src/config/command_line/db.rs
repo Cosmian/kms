@@ -107,7 +107,6 @@ pub struct MainDBConfig {
 }
 
 impl Default for MainDBConfig {
-    #[allow(deprecated)] // Label will still be accepted until all data is migrated
     fn default() -> Self {
         Self {
             sqlite_path: PathBuf::from(DEFAULT_SQLITE_PATH),
@@ -118,13 +117,13 @@ impl Default for MainDBConfig {
             #[cfg(feature = "non-fips")]
             redis_master_password: None,
             #[cfg(feature = "non-fips")]
+            #[allow(deprecated)] // Label will still be accepted until all data is migrated
             redis_findex_label: None,
         }
     }
 }
 
 impl Display for MainDBConfig {
-    #[allow(deprecated)] // Label will still be accepted until all data is migrated
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(database_type) = &self.database_type {
             match database_type.as_str() {
@@ -146,6 +145,8 @@ impl Display for MainDBConfig {
                 ),
                 "sqlite" => write!(f, "sqlite: {}", self.sqlite_path.display()),
                 #[cfg(feature = "non-fips")]
+                #[allow(deprecated)]
+                // Label will still be accepted until all data is migrated
                 "redis-findex" => write!(
                     f,
                     "redis-findex: {}, password: [****]{}",
@@ -188,7 +189,6 @@ impl MainDBConfig {
     /// # Errors
     /// - If both Postgres and MariaDB/MySQL URLs are set
     /// - If `SQLCipher` is set along with a Postgres or MariaDB/MySQL URL
-    #[allow(deprecated)] // Label will still be accepted until all data is migrated
     pub(crate) fn init(&self, workspace: &WorkspaceConfig) -> KResult<MainDbParams> {
         if let Some(database_type) = &self.database_type {
             return Ok(match database_type.as_str() {
@@ -209,6 +209,8 @@ impl MainDBConfig {
                     MainDbParams::Sqlite(path)
                 }
                 #[cfg(feature = "non-fips")]
+                #[allow(deprecated)]
+                // Label will still be accepted until all data is migrated
                 "redis-findex" => {
                     use cosmian_kms_server_database::reexport::cloudproof_findex::Label;
 

@@ -121,7 +121,13 @@ impl RedisWithFindex {
 
         let objects_db = Arc::new(ObjectsDB::new(mgr.clone(), &db_key));
 
-        let findex_arc = Arc::new(init_findex_redis(&master_key, redis_url).await?);
+        let findex_arc = Arc::new(
+            init_findex_redis(
+                &Secret::from_unprotected_bytes(&mut findex_key.to_bytes()),
+                redis_url,
+            )
+            .await?,
+        );
 
         let permissions_db = PermissionsDB::new(findex_arc.clone());
 
@@ -152,22 +158,20 @@ impl RedisWithFindex {
             redis_with_findex.set_db_state(DbState::Ready).await?;
         } else {
             warn!("Non-empty Redis database detected. Starting migration routine.");
-            let label = if let Some(label) = label {
-                label
-            } else {
+            let label = label.unwrap_or_else(|| {
                 warn!(
                     "Label parameter not provided. Ignore this warning if this was \
-                      intentional. Otherwise, abort the migration and provide the correct \
-                      label."
+                    intentional. Otherwise, abort the migration and provide the correct \
+                    label."
                 );
                 b""
-            };
+            });
             redis_with_findex
                 .migrate({
                     MigrationParams {
                         migrate_to_5_12_0_parameters: Some(MigrateTo590Parameters {
                             redis_url: redis_url.to_owned(),
-                            findex_key: &master_key,
+                            findex_master_key: &master_key,
                             label: Label::from(label),
                         }),
                     }

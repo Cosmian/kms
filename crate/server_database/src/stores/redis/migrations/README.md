@@ -1,4 +1,4 @@
-## About this module
+# About this module
 
 This  module contains the bare necessary code required for reading the data written with any deprecated format that we still support migrating (ie. upgrading) from.
 

@@ -72,7 +72,7 @@ impl PermTriple {
     pub(crate) fn permissions_per_user(
         permissions_per_user: HashSet<Self>,
     ) -> HashMap<UserId, HashSet<KmipOperation>> {
-        let mut map = HashMap::with_capacity(permissions_per_user.len()); // set the capacity to the worst case
+        let mut map = HashMap::with_capacity(permissions_per_user.len());
         for triple in permissions_per_user {
             let entry = map.entry(triple.user_id).or_insert_with(HashSet::new);
             entry.insert(triple.permission);

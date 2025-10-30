@@ -48,11 +48,11 @@ echo "Covercrypt public key ID: $CC_PK_ID"
 # Grant all permissions to mt_owner on all keys
 echo "Granting all permissions on keys to mt_owner"
 OWNER_PERMISSIONS="get create destroy encrypt decrypt import revoke locate rekey"
-$COSMIAN_CLI kms access-rights grant mt_owner $OWNER_PERMISSIONS -i "$CC_SK_ID"
-$COSMIAN_CLI kms access-rights grant mt_owner $OWNER_PERMISSIONS -i "$CC_PK_ID"
-$COSMIAN_CLI kms access-rights grant mt_owner $OWNER_PERMISSIONS -i mt_rsa
-$COSMIAN_CLI kms access-rights grant mt_owner $OWNER_PERMISSIONS -i mt_rsa_pk
-$COSMIAN_CLI kms access-rights grant mt_owner $OWNER_PERMISSIONS -i mt_normal_aes
+$COSMIAN_CLI kms access-rights grant mt_owner "$OWNER_PERMISSIONS" -i "$CC_SK_ID"
+$COSMIAN_CLI kms access-rights grant mt_owner "$OWNER_PERMISSIONS" -i "$CC_PK_ID"
+$COSMIAN_CLI kms access-rights grant mt_owner "$OWNER_PERMISSIONS" -i mt_rsa
+$COSMIAN_CLI kms access-rights grant mt_owner "$OWNER_PERMISSIONS" -i mt_rsa_pk
+$COSMIAN_CLI kms access-rights grant mt_owner "$OWNER_PERMISSIONS" -i mt_normal_aes
 # Grant permissions to mt_normal_user
 echo "Granting permissions on mt_normal_aes to mt_normal_user"
 $COSMIAN_CLI kms access-rights grant mt_normal_user get encrypt decrypt -i mt_normal_aes

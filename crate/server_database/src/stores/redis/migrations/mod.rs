@@ -74,7 +74,8 @@ impl Migrate for RedisWithFindex {
 impl RedisMigrate for RedisWithFindex {
     // docs : https://www.notion.so/cosmian/KMS-Database-migration-Redis-26bede69f24280a09226f997b3d79c47
     async fn migrate_to_5_12_0(&self, parameters: MigrateTo590Parameters<'_>) -> DbResult<()> {
-        // we fetch all object uids from the keys in redis
+        // step 0: initialize two redis connections, one for DB 0 and one for DB 1, and two findex instances
+        // one legacy for reading permissions from DB 0, and one new for writing permissions to DB 1
         let db_0_url = format!("{}/0", parameters.redis_url);
         let db_1_url = format!("{}/1", parameters.redis_url);
 
@@ -84,18 +85,19 @@ impl RedisMigrate for RedisWithFindex {
         // the old RedisWithFindex to read the permissions "as they were". This store will read from DB 0
         let legacy_findex_redis_store = LegacyRedisWithFindex::instantiate(
             &format!("{}/0", parameters.redis_url),
-            parameters.findex_key,
+            parameters.findex_master_key,
             &parameters.label,
             false,
         )
         .await?;
 
-        // we will also create a findex_v8 instance that will write to DB 1
+        // we also create a findex_v8 instance that will write to DB 1
         let findex_v8_db1: Arc<FindexRedis> =
-            Arc::new(init_findex_redis(parameters.findex_key, &db_1_url).await?);
+            Arc::new(init_findex_redis(parameters.findex_master_key, &db_1_url).await?);
         let migration_perm_db = PermissionsDB::new(findex_v8_db1.clone());
 
-        // NOTICE!: this is a potentially long operation, depending on the number of objects in the DB
+        // step 1: retrieve all object UIDs from DB 0
+        // this is a potentially long operation, depending on the number of objects in the DB
         // If this becomes a problem, we can always do the migration in chunks
         let all_obj_keys: Vec<String> = redis::cmd("KEYS")
             .arg("do::*")
@@ -108,7 +110,7 @@ impl RedisMigrate for RedisWithFindex {
             .filter_map(|key| key.strip_prefix("do::").map(str::to_owned))
             .collect::<HashSet<String>>();
 
-        // step: perm triplets migration
+        // step 2: permissions triplets migration
         for obj_uid in all_object_uids.clone() {
             // List permission using the old version.
             let per_user = legacy_findex_redis_store
@@ -125,39 +127,40 @@ impl RedisMigrate for RedisWithFindex {
             }
         }
 
-        // Now, same things for tags
+        // step 2: indexed keywords migration
         for obj_uid in all_object_uids {
-            // NOTICE: it can tempting to do tags = self.retrieve_tags(&obj_uid, None).await?; and stop there.
-            // However, in the `keywords` method of the ObjectDb, we can notice (line 100) that tags are not the only data
-            // being indexed...
+            // In the previous versions, permissions were not the only data indexed using findex.
+            // Before each object was upserted to the DB, its tags and some attributes were indexed as keywords.
+            // In this step, we will re-perform this indexing using the new findex instance pointing to DB 1.
+            // We do not need to read back the previously indexed keywords, instead we will re-generate them from the object
+            // metadata the same way as it was done previously done (see the `keywords` method in objects_db.rs, around line 100).
             let object_with_metadata = self.retrieve(&obj_uid, None).await?.ok_or_else(|| {
                 DbError::Default(format!(
                     "Failed to retrieve object {obj_uid} during migration"
                 ))
             })?;
-            let object = object_with_metadata.object().clone();
+            let object = object_with_metadata.object();
 
             let tags = self.retrieve_tags(&obj_uid, None).await?;
-            let mut keywords = tags
+            let mut keywords_to_be_indexed = tags
                 .into_iter()
                 .map(|tag| Keyword::from(tag.as_bytes()))
                 .collect::<HashSet<Keyword>>();
             // index some of the attributes
             if let Ok(attributes) = object.attributes() {
-                keywords.extend(keywords_from_attributes(attributes));
+                keywords_to_be_indexed.extend(keywords_from_attributes(attributes));
             }
-            // index the owner
-            keywords.insert(Keyword::from(object_with_metadata.owner().as_bytes()));
+            // index the owner too
+            keywords_to_be_indexed.insert(Keyword::from(object_with_metadata.owner().as_bytes()));
 
-            // insert the new keywords
+            // finally, insert the new keywords
             let indexed_uid = IndexedValue::from(obj_uid.as_bytes());
-
-            for keyword in keywords {
+            for keyword in keywords_to_be_indexed {
                 findex_v8_db1.insert(keyword, [indexed_uid.clone()]).await?;
             }
         }
 
-        // last step: Move the object keys (do::*) and metadata keys to DB1
+        // step 3: Move the object keys (do::*) and metadata keys to DB1
         // NOTICE!: this can also be batched if needed
         let metadata_keys = vec!["db_state", "db_version"];
 
