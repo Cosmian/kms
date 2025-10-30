@@ -4,7 +4,6 @@ use std::ops::Deref;
 
 use cosmian_findex::{Findex, KEY_LENGTH, MemoryEncryptionLayer};
 use cosmian_sse_memories::{ADDRESS_LENGTH, Address, RedisMemory};
-use tiny_keccak::{Hasher, Sha3};
 pub(crate) const FINDEX_KEY_LENGTH: usize = KEY_LENGTH; // Keep consistent name with KMS code.
 pub(crate) const CUSTOM_WORD_LENGTH: usize = 200; // Findex's KMS specialization. Can be tuned.
 
@@ -74,22 +73,6 @@ macro_rules! impl_byte_vector {
 pub struct Keyword(Vec<u8>);
 
 impl_byte_vector!(Keyword);
-
-// Legacy hashing function kept for compatibility with existing indexes.
-impl Keyword {
-    /// Number of bytes used to hash keywords.
-    pub const HASH_LENGTH: usize = 32;
-
-    /// Hash this keyword using SHA3-256.
-    #[must_use]
-    pub fn hash(&self) -> [u8; Self::HASH_LENGTH] {
-        let mut hasher = Sha3::v256();
-        hasher.update(self);
-        let mut bytes = [0; Self::HASH_LENGTH];
-        hasher.finalize(&mut bytes);
-        bytes
-    }
-}
 
 /// An [`IndexedValue`] is a byte vector that is indexed by a [`Keyword`]
 /// within a Findex's instance.

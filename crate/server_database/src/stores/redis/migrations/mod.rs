@@ -72,7 +72,6 @@ impl Migrate for RedisWithFindex {
 }
 
 impl RedisMigrate for RedisWithFindex {
-    // docs : https://www.notion.so/cosmian/KMS-Database-migration-Redis-26bede69f24280a09226f997b3d79c47
     async fn migrate_to_5_12_0(&self, parameters: MigrateTo590Parameters<'_>) -> DbResult<()> {
         // step 0: initialize two redis connections, one for DB 0 and one for DB 1, and two findex instances
         // one legacy for reading permissions from DB 0, and one new for writing permissions to DB 1

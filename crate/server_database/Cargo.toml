@@ -60,7 +60,6 @@ sqlx = { version = "0.8", default-features = false, features = [
   "postgres",
   "sqlite",
 ] }
-tiny-keccak = { workspace = true, features = ["sha3"] }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 url = { workspace = true }

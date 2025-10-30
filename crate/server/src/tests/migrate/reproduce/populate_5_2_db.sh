@@ -2,6 +2,8 @@
 
 set -e
 
+# reminder : this code is to be executed in the cli repository once it's built
+# for minimum noise, checkout the following commit : 961c7d2
 COSMIAN_CLI="target/debug/cosmian"
 
 echo "Creating test keys in KMS..."

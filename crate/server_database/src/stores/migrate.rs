@@ -126,7 +126,7 @@ mod redis_migrate {
     use super::{DbError, DbResult, DbState, Migrate, debug, error, lower};
     use cloudproof_findex::Label;
     use cosmian_kms_crypto::reexport::cosmian_crypto_core::Secret;
-    pub(crate) const LOWEST_DB_VERSION_WITH_REDIS_SUPPORT: &str = "4.5.0";
+    pub(crate) const LOWEST_DB_VERSION_WITH_REDIS_SUPPORT: &str = "5.0.0";
 
     /// Parameters specific to migrating from `cloudproof_findex_v5` to `cosmian_findex_v8`
     #[derive(Debug, Clone)]
@@ -181,14 +181,6 @@ mod redis_migrate {
                 return Ok(());
             }
 
-            // Officially start the migration process
-            self.set_db_state(DbState::Upgrading).await?;
-
-            debug!(
-                "Database version before migration: {current_db_version}, Current KMS version: \
-             {kms_version}"
-            );
-
             if lower(&current_db_version, LOWEST_DB_VERSION_WITH_REDIS_SUPPORT)? {
                 // This case is normally unreachable and means that the db version was manually tampered-with
                 let msg = format!(
@@ -201,7 +193,13 @@ mod redis_migrate {
                 return Err(DbError::DatabaseError(msg));
             }
 
-            debug!("Starting migration process...");
+            // Officially start the migration process
+            self.set_db_state(DbState::Upgrading).await?;
+
+            debug!(
+                "Database version before migration: {current_db_version}, Current KMS version: \
+             {kms_version}, starting migration process..."
+            );
 
             if lower(&current_db_version, "5.8.1")? {
                 debug!("  ==> migrating to version 5.8.1...");
