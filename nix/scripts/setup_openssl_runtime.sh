@@ -29,7 +29,6 @@ echo "Setting up OpenSSL runtime files in /usr/local/lib/openssl"
 echo "OpenSSL source: $OPENSSL_STORE_PATH"
 
 # Create the target directory
-sudo mkdir -p /usr/local/lib/openssl
 sudo mkdir -p /usr/local/lib/openssl/ossl-modules
 
 # Copy configuration files

@@ -93,12 +93,20 @@ stdenv.mkDerivation rec {
 
   buildPhase = ''
     runHook preBuild
-    echo "Building OpenSSL ${version}..."
-    # make depend
-    # make -j
-
-    make depend > /dev/null 2>&1
-    make -j > /dev/null 2>&1
+    ${
+      if stdenv.isDarwin then
+        ''
+          echo "Building OpenSSL ${version}..."
+          make depend
+          make -j
+        ''
+      else
+        ''
+          echo "Building OpenSSL ${version} (output suppressed on Linux)..."
+          make depend > /dev/null 2>&1
+          make -j > /dev/null 2>&1
+        ''
+    }
     echo "OpenSSL build completed."
   '';
 

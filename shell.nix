@@ -70,7 +70,7 @@ pkgs228.mkShell {
       [ ]
   );
   shellHook = ''
-    export NIX_OPENSSL_OUT="${builtins.toString openssl312}"
+    export NIX_OPENSSL_OUT="${openssl312}"
     ${
       if isLinux then
         ''
