@@ -14,7 +14,7 @@ echo "Running SQLite tests"
 echo "========================================="
 
 echo "Testing workspace binaries..."
-cargo test --workspace --bins "$RELEASE_FLAG" "${FEATURES_FLAG[@]}"
+cargo test --workspace --bins sql$RELEASE_FLAG "${FEATURES_FLAG[@]}"
 
 echo "Building benchmarks..."
 cargo bench "${FEATURES_FLAG[@]}" --no-run

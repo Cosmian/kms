@@ -23,3 +23,6 @@ run.sh
 .local
 .openssl
 resources/tarballs/openssl-3.1.2.tar.gz
+.utimaco
+.softhsm2
+*.xz*

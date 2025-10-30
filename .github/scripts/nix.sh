@@ -9,13 +9,14 @@ Usage: $0 <command> [subcommand]
 
 Commands:
   build              Build the KMS server inside nix-shell
-  test <type>        Run specific tests inside nix-shell
-    sqlite           Run SQLite tests (default, always available)
-    mysql            Run MySQL tests (requires MySQL server)
-    psql             Run PostgreSQL tests (requires PostgreSQL server)
-    redis            Run Redis-findex tests (requires Redis server, non-FIPS only)
-    google_cse       Run Google CSE tests (requires credentials)
-    hsm              Run HSM tests (Linux only, requires Utimaco and SoftHSM2)
+  test [type] [args] Run specific tests inside nix-shell
+    sqlite                 Run SQLite tests (default; used when no type is provided)
+    mysql                  Run MySQL tests (requires MySQL server)
+    psql                   Run PostgreSQL tests (requires PostgreSQL server)
+    redis                  Run Redis-findex tests (requires Redis server, non-FIPS only)
+    google_cse             Run Google CSE tests (requires credentials)
+    hsm [backend]          Run HSM tests (Linux only)
+                           backend: softhsm2 | utimaco | all (default)
   package <type>     Build a specific package type inside nix-shell
     deb              Build Debian package (FIPS or non-FIPS based on FEATURES)
     rpm              Build RPM package (FIPS or non-FIPS based on FEATURES)
@@ -37,9 +38,13 @@ Environment variables:
 Examples:
   $0 build
   DEBUG_OR_RELEASE=release FEATURES=non-fips $0 build
+  $0 test                    # defaults to sqlite
   $0 test sqlite
   $0 test mysql
   FEATURES=non-fips $0 test redis
+  $0 test hsm                 # both SoftHSM2 + Utimaco
+  $0 test hsm softhsm2        # SoftHSM2 only
+  $0 test hsm utimaco         # Utimaco only
   $0 package deb                          # FIPS variant
   FEATURES=non-fips $0 package deb        # non-FIPS variant
   FEATURES=non-fips $0 package rpm        # non-FIPS variant
@@ -61,11 +66,12 @@ shift
 TEST_TYPE=""
 if [ "$COMMAND" = "test" ]; then
   if [ $# -eq 0 ]; then
-    echo "Error: test command requires a test type (sqlite, mysql, psql, redis, google_cse, hsm)" >&2
-    usage
+    # Default to sqlite when no type is provided
+    TEST_TYPE="sqlite"
+  else
+    TEST_TYPE="$1"
+    shift
   fi
-  TEST_TYPE="$1"
-  shift
 fi
 
 # Handle package subcommand
@@ -110,13 +116,46 @@ test)
     ;;
   google_cse)
     SCRIPT="$REPO_ROOT/nix/scripts/test_google_cse.sh"
+    # Validate required Google OAuth credentials before entering nix-shell
+    for var in TEST_GOOGLE_OAUTH_CLIENT_ID TEST_GOOGLE_OAUTH_CLIENT_SECRET \
+      TEST_GOOGLE_OAUTH_REFRESH_TOKEN GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY; do
+      if [ -z "${!var:-}" ]; then
+        echo "Error: Required environment variable $var is not set" >&2
+        echo "Google CSE tests require valid OAuth credentials." >&2
+        echo "Please set the following environment variables:" >&2
+        echo "  - TEST_GOOGLE_OAUTH_CLIENT_ID" >&2
+        echo "  - TEST_GOOGLE_OAUTH_CLIENT_SECRET" >&2
+        echo "  - TEST_GOOGLE_OAUTH_REFRESH_TOKEN" >&2
+        echo "  - GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY" >&2
+        exit 1
+      fi
+    done
     ;;
   hsm)
-    SCRIPT="$REPO_ROOT/nix/scripts/test_hsm.sh"
+    # Optional backend argument: softhsm2 | utimaco | all (default)
+    HSM_BACKEND="${1:-all}"
+    case "$HSM_BACKEND" in
+    all | both)
+      SCRIPT="$REPO_ROOT/nix/scripts/test_hsm.sh"
+      ;;
+    softhsm2)
+      SCRIPT="$REPO_ROOT/nix/scripts/test_hsm_softhsm2.sh"
+      shift
+      ;;
+    utimaco)
+      SCRIPT="$REPO_ROOT/nix/scripts/test_hsm_utimaco.sh"
+      shift
+      ;;
+    *)
+      echo "Error: Unknown HSM backend '$HSM_BACKEND'" >&2
+      echo "Valid backends for 'hsm': softhsm2, utimaco, all" >&2
+      usage
+      ;;
+    esac
     ;;
   *)
     echo "Error: Unknown test type '$TEST_TYPE'" >&2
-    echo "Valid types: sqlite, mysql, psql, redis, google_cse, hsm" >&2
+    echo "Valid types: sqlite, mysql, psql, redis, google_cse, hsm [softhsm2|utimaco|all]" >&2
     usage
     ;;
   esac
@@ -188,7 +227,16 @@ if [ "$COMMAND" = "package" ] && [ "$PACKAGE_TYPE" = "dmg" ] && [ "$(uname)" = "
   nix-shell -I "nixpkgs=${PINNED_NIXPKGS_URL}" $KEEP_VARS "$REPO_ROOT/shell.nix" \
     --run "bash '$SCRIPT' $*"
 else
-  # shellcheck disable=SC2086
-  nix-shell -I "nixpkgs=${PINNED_NIXPKGS_URL}" --pure $KEEP_VARS "$REPO_ROOT/shell.nix" \
-    --run "bash '$SCRIPT' $*"
+  # For HSM tests we need access to system libraries (e.g., vendor PKCS#11, OpenSSL)
+  # Run without --pure to allow system runtime resolution while keeping our pinned nix inputs
+  if [ "$COMMAND" = "test" ] && [ "$TEST_TYPE" = "hsm" ]; then
+    echo "Note: Running without --pure mode for HSM tests to allow system PKCS#11/runtime libraries"
+    # shellcheck disable=SC2086
+    nix-shell -I "nixpkgs=${PINNED_NIXPKGS_URL}" $KEEP_VARS "$REPO_ROOT/shell.nix" \
+      --run "bash '$SCRIPT' $*"
+  else
+    # shellcheck disable=SC2086
+    nix-shell -I "nixpkgs=${PINNED_NIXPKGS_URL}" --pure $KEEP_VARS "$REPO_ROOT/shell.nix" \
+      --run "bash '$SCRIPT' $*"
+  fi
 fi

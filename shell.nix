@@ -25,6 +25,18 @@ let
     else
       pkgs;
   openssl312 = pkgs228.callPackage ./nix/openssl-3_1_2-fips.nix { };
+  # SoftHSM override: force OpenSSL backend (disable Botan) to avoid ABI issues on glibc 2.27
+  # Note: softhsm 2.5.x in nixos-19.03 uses autotools (configure), not CMake
+  softhsm_openssl = pkgs228.softhsm.overrideAttrs (old: let
+    lib = pkgs.lib or pkgs228.lib;
+    filteredFlags = lib.filter (f: !(lib.hasPrefix "--with-crypto-backend=" f)) (old.configureFlags or []);
+  in {
+    configureFlags = filteredFlags ++ [
+      "--with-crypto-backend=openssl"
+      "--with-openssl=${pkgs228.openssl}"
+    ];
+    buildInputs = (old.buildInputs or []) ++ [ pkgs228.openssl ];
+  });
   # Allow selectively adding extra tools from the environment (kept via nix-shell --keep)
   withWget = (builtins.getEnv "WITH_WGET") == "1";
   withHsm = (builtins.getEnv "WITH_HSM") == "1";
@@ -59,12 +71,15 @@ pkgs228.mkShell {
       [ ]
   )
   ++ [ openssl312 ]
+  # Also include dynamic OpenSSL for runtime (libcrypto.so.3) needed by tests
+  ++ [ pkgs.openssl ]
   ++ extraTools
   ++ (
     if withHsm then
       [
         pkgs228.psmisc
-        pkgs228.softhsm
+        # Use a SoftHSM build configured for OpenSSL only (no Botan) on glibc 2.27
+        softhsm_openssl
       ]
     else
       [ ]

@@ -60,11 +60,11 @@ run_db_tests() {
   shift
 
   echo "Running $db_type library tests..."
-  KMS_TEST_DB="$db_type" cargo test --workspace --lib "$RELEASE_FLAG" "${FEATURES_FLAG[@]}" -- --nocapture "$@"
+  KMS_TEST_DB="$db_type" cargo test --workspace --lib $RELEASE_FLAG "${FEATURES_FLAG[@]}" -- --nocapture "$@"
 
   echo "Running $db_type database-specific tests..."
   local test_name="test_db_${db_type//-/_}"
-  KMS_TEST_DB="$db_type" cargo test -p cosmian_kms_server_database --lib "$RELEASE_FLAG" "${FEATURES_FLAG[@]}" -- --nocapture "$test_name" --ignored
+  KMS_TEST_DB="$db_type" cargo test -p cosmian_kms_server_database --lib $RELEASE_FLAG "${FEATURES_FLAG[@]}" -- --nocapture "$test_name" --ignored
 }
 
 # Check database service availability and run tests

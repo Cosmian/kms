@@ -210,8 +210,8 @@ assets = [
 [package.metadata.generate-rpm]
 license = "BUSL-1.1"
 assets = [
-    { source = "ui/dist/*", dest = "/usr/local/cosmian/ui/dist/", mode = "500" },
-    { source = "ui/dist/assets/*", dest = "/usr/local/cosmian/ui/dist/assets/", mode = "500" },
+    { source = "ui_non_fips/dist/*", dest = "/usr/local/cosmian/ui/dist/", mode = "500" },
+    { source = "ui_non_fips/dist/assets/*", dest = "/usr/local/cosmian/ui/dist/assets/", mode = "500" },
     { source = "target/release/cosmian_kms", dest = "/usr/sbin/cosmian_kms", mode = "500" },
     { source = "../../target/openssl-staging/lib64/ossl-modules/legacy.so", dest = "/usr/local/lib/openssl/lib64/ossl-modules/legacy.so", mode = "500" },
     { source = "../../README.md", dest = "/usr/share/doc/cosmian/README", mode = "644", doc = true },
