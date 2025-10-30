@@ -28,6 +28,25 @@ const OTHER_HSM_PKCS11_LIB: &str = "/lib/libkmshsm.so";
 
 use crate::{config::ServerParams, error::KmsError, kms_bail, result::KResult};
 
+/// Macro to instantiate an HSM with support for environment variable override
+/// Allows overriding PKCS#11 lib path via env for testing (falls back to default constant)
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[allow(unused_macros)]
+macro_rules! instantiate_hsm_with_env {
+    ($hsm_type:ty, $env_var:expr, $default_lib:expr, $hsm_name:expr, $slot_passwords:expr) => {{
+        let lib_path = std::env::var($env_var).unwrap_or_else(|_| $default_lib.to_owned());
+        let hsm: Arc<dyn HSM + Send + Sync> = Arc::new(
+            <$hsm_type>::instantiate(&lib_path, $slot_passwords).map_err(|e| {
+                KmsError::InvalidRequest(format!(
+                    "Failed to instantiate the {} HSM (lib: {lib_path}): {e}",
+                    $hsm_name
+                ))
+            })?,
+        );
+        Some(hsm)
+    }};
+}
+
 /// A Key Management System that partially implements KMIP 2.1
 ///
 /// `https://www.oasis-open.org/committees/tc_home.php?wg_abbrev=kmip`
@@ -114,91 +133,48 @@ impl KMS {
                     KmsError::InvalidRequest("The HSM model is not specified".to_owned())
                 })?;
                 match hsm_model.as_str() {
-                    "crypt2pay" => {
-                        let crypt2pay: Arc<dyn HSM + Send + Sync> = Arc::new(
-                            Crypt2pay::instantiate(
-                                CRYPT2PAY_PKCS11_LIB,
-                                server_params.slot_passwords.clone(),
-                            )
-                            .map_err(|e| {
-                                KmsError::InvalidRequest(format!(
-                                    "Failed to instantiate the Crypt2pay HSM: {e}"
-                                ))
-                            })?,
-                        );
-                        Some(crypt2pay)
-                    }
-                    "proteccio" => {
-                        let proteccio: Arc<dyn HSM + Send + Sync> = Arc::new(
-                            Proteccio::instantiate(
-                                PROTECCIO_PKCS11_LIB,
-                                server_params.slot_passwords.clone(),
-                            )
-                            .map_err(|e| {
-                                KmsError::InvalidRequest(format!(
-                                    "Failed to instantiate the Proteccio HSM: {e}"
-                                ))
-                            })?,
-                        );
-                        Some(proteccio)
-                    }
-                    "utimaco" => {
-                        // Allow overriding PKCS#11 lib path via env for testing (falls back to default constant)
-                        let lib_path = std::env::var("UTIMACO_PKCS11_LIB")
-                            .unwrap_or_else(|_| UTIMACO_PKCS11_LIB.to_owned());
-                        let utimaco: Arc<dyn HSM + Send + Sync> = Arc::new(
-                            Utimaco::instantiate(&lib_path, server_params.slot_passwords.clone())
-                                .map_err(|e| {
-                                KmsError::InvalidRequest(format!(
-                                    "Failed to instantiate the Utimaco HSM (lib: {lib_path}): {e}"
-                                ))
-                            })?,
-                        );
-                        Some(utimaco)
-                    }
-                    "softhsm2" => {
-                        let softhsm2: Arc<dyn HSM + Send + Sync> = Arc::new(
-                            Softhsm2::instantiate(
-                                SOFTHSM2_PKCS11_LIB,
-                                server_params.slot_passwords.clone(),
-                            )
-                            .map_err(|e| {
-                                KmsError::InvalidRequest(format!(
-                                    "Failed to instantiate the Softhsm2: {e}"
-                                ))
-                            })?,
-                        );
-                        Some(softhsm2)
-                    }
-                    "smartcardhsm" => {
-                        let smartcardhsm: Arc<dyn HSM + Send + Sync> = Arc::new(
-                            Smartcardhsm::instantiate(
-                                SMARTCARDHSM_PKCS11_LIB,
-                                server_params.slot_passwords.clone(),
-                            )
-                            .map_err(|e| {
-                                KmsError::InvalidRequest(format!(
-                                    "Failed to instantiate the Smartcardhsm: {e}"
-                                ))
-                            })?,
-                        );
-                        Some(smartcardhsm)
-                    }
-                    "other" => {
-                        // we expect the other HSM to be compatible with Softhsm2
-                        let other_hsm: Arc<dyn HSM + Send + Sync> = Arc::new(
-                            Softhsm2::instantiate(
-                                OTHER_HSM_PKCS11_LIB,
-                                server_params.slot_passwords.clone(),
-                            )
-                            .map_err(|e| {
-                                KmsError::InvalidRequest(format!(
-                                    "Failed to instantiate the HSM lib at {OTHER_HSM_PKCS11_LIB}: {e}"
-                                ))
-                            })?,
-                        );
-                        Some(other_hsm)
-                    }
+                    "crypt2pay" => instantiate_hsm_with_env!(
+                        Crypt2pay,
+                        "CRYPT2PAY_PKCS11_LIB",
+                        CRYPT2PAY_PKCS11_LIB,
+                        "Crypt2pay",
+                        server_params.slot_passwords.clone()
+                    ),
+                    "proteccio" => instantiate_hsm_with_env!(
+                        Proteccio,
+                        "PROTECCIO_PKCS11_LIB",
+                        PROTECCIO_PKCS11_LIB,
+                        "Proteccio",
+                        server_params.slot_passwords.clone()
+                    ),
+                    "utimaco" => instantiate_hsm_with_env!(
+                        Utimaco,
+                        "UTIMACO_PKCS11_LIB",
+                        UTIMACO_PKCS11_LIB,
+                        "Utimaco",
+                        server_params.slot_passwords.clone()
+                    ),
+                    "softhsm2" => instantiate_hsm_with_env!(
+                        Softhsm2,
+                        "SOFTHSM2_PKCS11_LIB",
+                        SOFTHSM2_PKCS11_LIB,
+                        "Softhsm2",
+                        server_params.slot_passwords.clone()
+                    ),
+                    "smartcardhsm" => instantiate_hsm_with_env!(
+                        Smartcardhsm,
+                        "SMARTCARDHSM_PKCS11_LIB",
+                        SMARTCARDHSM_PKCS11_LIB,
+                        "Smartcardhsm",
+                        server_params.slot_passwords.clone()
+                    ),
+                    "other" => instantiate_hsm_with_env!(
+                        Softhsm2,
+                        "OTHER_HSM_PKCS11_LIB",
+                        OTHER_HSM_PKCS11_LIB,
+                        "Other",
+                        server_params.slot_passwords.clone()
+                    ),
                     _ => kms_bail!(
                         "The only supported HSM models are proteccio, crypt2pay, smartcardhsm, softhsm2, utimaco and other"
                     ),

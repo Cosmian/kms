@@ -32,7 +32,7 @@ prepare_openssl_staging "$REPO_ROOT"
 rm -rf target/debian
 
 # Install packaging tool
-if cargo deb --version 2>/dev/null | grep -qv "2.4.0"; then
+if ! cargo deb --version 2>/dev/null | grep -q "2.4.0"; then
   cargo install --version 2.4.0 cargo-deb --force
 fi
 

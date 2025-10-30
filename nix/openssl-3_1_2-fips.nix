@@ -111,11 +111,11 @@ stdenv.mkDerivation rec {
 
     # Manually install FIPS provider module to $out instead of openssldir
     # The FIPS module is built but not installed by install_sw
-    mkdir -p "$out/lib64/ossl-modules"
-    if [ -f "providers/fips.so" ]; then
-      cp providers/fips.so "$out/lib64/ossl-modules/"
-    elif [ -f "providers/.libs/fips.so" ]; then
-      cp providers/.libs/fips.so "$out/lib64/ossl-modules/"
+    mkdir -p "$out/lib/ossl-modules"
+    if [ -f "providers/fips.${soExt}" ]; then
+      cp "providers/fips.${soExt}" "$out/lib/ossl-modules/"
+    elif [ -f "providers/.libs/fips.${soExt}" ]; then
+      cp "providers/.libs/fips.${soExt}" "$out/lib/ossl-modules/"
     fi
 
     # Manually copy config files to $out/ssl instead of /usr/local/lib/openssl

@@ -10,6 +10,12 @@ if [ -n "${NIX_OPENSSL_OUT:-}" ]; then
   export OPENSSL_LIB_DIR="${NIX_OPENSSL_OUT}/lib"
   export OPENSSL_INCLUDE_DIR="${NIX_OPENSSL_OUT}/include"
 
+  # Set OPENSSL_CONF to point to the nix store OpenSSL config
+  # This is required for FIPS mode to work properly during builds and tests
+  if [ -f "${NIX_OPENSSL_OUT}/ssl/openssl.cnf" ]; then
+    export OPENSSL_CONF="${NIX_OPENSSL_OUT}/ssl/openssl.cnf"
+  fi
+
   # Force openssl-sys to use our specific OpenSSL and detect version correctly
   # Disable pkg-config to prevent it from finding wrong OpenSSL versions
   export OPENSSL_NO_PKG_CONFIG=1

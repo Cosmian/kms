@@ -32,7 +32,9 @@ prepare_openssl_staging "$REPO_ROOT"
 rm -rf target/generate-rpm
 
 # Install packaging tool
-cargo install --version 0.16.0 cargo-generate-rpm --force
+if ! cargo generate-rpm --version 0.16.0 2>/dev/null | grep -q "0.16.0"; then
+  cargo install --version 0.16.0 cargo-generate-rpm --force
+fi
 
 # Run the standard build script
 bash "$SCRIPT_DIR/build.sh"
