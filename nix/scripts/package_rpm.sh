@@ -14,7 +14,6 @@ REPO_ROOT=$(cd "$SCRIPT_DIR/../.." && pwd)
 source "$SCRIPT_DIR/common.sh"
 
 # Set defaults (RPM always builds release)
-: "${DEBUG_OR_RELEASE:=release}"
 : "${FEATURES:=}"
 
 # Determine variant name for logging
@@ -37,7 +36,7 @@ if ! cargo generate-rpm --version 0.16.0 2>/dev/null | grep -q "0.16.0"; then
 fi
 
 # Run the standard build script
-bash "$SCRIPT_DIR/build.sh"
+DEBUG_OR_RELEASE=release bash "$SCRIPT_DIR/build.sh"
 
 # Build RPM package
 cd "$REPO_ROOT"
