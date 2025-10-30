@@ -27,7 +27,7 @@ use uuid::Uuid;
 use super::{
     FINDEX_KEY_LENGTH,
     objects_db::{DB_KEY_LENGTH, ObjectsDB, RedisDbObject, keywords_from_attributes},
-    permissions::PermissionsDB,
+    permissions::PermissionDB,
 };
 use crate::{
     db_error,
@@ -89,7 +89,7 @@ pub(crate) async fn init_findex_redis(
 pub(crate) struct RedisWithFindex {
     pub(crate) mgr: ConnectionManager,
     objects_db: Arc<ObjectsDB>,
-    permissions_db: PermissionsDB,
+    permission_db: PermissionDB,
     findex: Arc<FindexRedis>,
 }
 
@@ -113,10 +113,10 @@ impl RedisWithFindex {
 
         let objects_db = Arc::new(ObjectsDB::new(mgr.clone(), &db_key));
 
-        // there is no mistake in passing the master key to findex - the kdf key derivation is performed inside the new function of the encryption layer (line 53)
+        // there is no mistake in passing the master key to findex - the kdf key derivation is performed upon the creation of the encryption layer (method `new` line 53)
         let findex = Arc::new(init_findex_redis(&master_key, redis_url).await?);
 
-        let permissions_db = PermissionsDB::new(findex.clone());
+        let permission_db = PermissionDB::new(findex.clone());
 
         if clear_database {
             redis::cmd("FLUSHDB")
@@ -133,7 +133,7 @@ impl RedisWithFindex {
         let redis_with_findex = Self {
             mgr,
             objects_db,
-            permissions_db,
+            permission_db,
             findex,
         };
 
@@ -556,7 +556,7 @@ impl ObjectsStore for RedisWithFindex {
         let permissions = if user_must_be_owner {
             HashMap::new()
         } else {
-            self.permissions_db
+            self.permission_db
                 .list_user_permissions(&UserId(user.to_owned()))
                 .await?
                 .into_iter()
@@ -602,7 +602,7 @@ impl PermissionsStore for RedisWithFindex {
         _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashMap<String, (String, State, HashSet<KmipOperation>)>> {
         let permissions = self
-            .permissions_db
+            .permission_db
             .list_user_permissions(&UserId(user.to_owned()))
             .await?;
         let redis_db_objects = self
@@ -638,7 +638,7 @@ impl PermissionsStore for RedisWithFindex {
         _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashMap<String, HashSet<KmipOperation>>> {
         Ok(self
-            .permissions_db
+            .permission_db
             .list_object_permissions(&ObjectUid(uid.to_owned()))
             .await?
             .into_iter()
@@ -656,7 +656,7 @@ impl PermissionsStore for RedisWithFindex {
         _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
         for operation in &operations {
-            self.permissions_db
+            self.permission_db
                 .add(
                     &ObjectUid(uid.to_owned()),
                     &UserId(user.to_owned()),
@@ -677,7 +677,7 @@ impl PermissionsStore for RedisWithFindex {
         _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
         for operation in &operations {
-            self.permissions_db
+            self.permission_db
                 .remove(
                     &ObjectUid(uid.to_owned()),
                     &UserId(user.to_owned()),
@@ -696,7 +696,7 @@ impl PermissionsStore for RedisWithFindex {
         _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashSet<KmipOperation>> {
         Ok(self
-            .permissions_db
+            .permission_db
             .get(
                 &ObjectUid(uid.to_owned()),
                 &UserId(user.to_owned()),

@@ -4,13 +4,10 @@ use std::{
 };
 
 use super::permissions::PermissionsDB;
-use crate::stores::redis::{
-    migrations::legacy_redis_with_findex_pre_5_12_0::error::LegacyDbResult,
-    objects_db::DB_KEY_LENGTH,
-};
+use crate::stores::redis::migrations::legacy_redis_with_findex_pre_5_12_0::error::LegacyDbResult;
 use async_trait::async_trait;
 use cloudproof_findex::{
-    Label, Location,
+    Location,
     implementations::redis::{FindexRedis, FindexRedisError, RemovedLocationsFinder},
     parameters::MASTER_KEY_LENGTH,
 };
@@ -21,16 +18,12 @@ use redis_for_migrations::aio::ConnectionManager;
 
 pub(crate) const REDIS_WITH_FINDEX_MASTER_KEY_LENGTH: usize = 32;
 pub(crate) const REDIS_WITH_FINDEX_MASTER_FINDEX_KEY_DERIVATION_SALT: &[u8; 6] = b"findex";
-pub(crate) const REDIS_WITH_FINDEX_MASTER_DB_KEY_DERIVATION_SALT: &[u8; 2] = b"db";
 
 // object_db attribute as well as all its related methods have been deleted
+// this is the only part of the legacy code needed to migrate
 #[derive(Clone)]
 pub(crate) struct RedisWithFindex {
-    pub(crate) _mgr: ConnectionManager,
     permissions_db: PermissionsDB,
-    _findex: Arc<FindexRedis>,
-    findex_key: SymmetricKey<MASTER_KEY_LENGTH>,
-    _label: Label,
 }
 
 struct RemovedLocationDbStub;
@@ -61,7 +54,6 @@ impl RedisWithFindex {
         redis_url: &str,
         master_key: &Secret<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>,
         label: &[u8],
-        _clear_database: bool,
     ) -> LegacyDbResult<Self> {
         let mut findex_key = SymmetricKey::<MASTER_KEY_LENGTH>::default();
         kdf256!(
@@ -69,29 +61,14 @@ impl RedisWithFindex {
             REDIS_WITH_FINDEX_MASTER_FINDEX_KEY_DERIVATION_SALT,
             &**master_key
         );
-        // derive a DB Key
-        let mut db_key = SymmetricKey::<DB_KEY_LENGTH>::default();
-        kdf256!(
-            &mut *db_key,
-            REDIS_WITH_FINDEX_MASTER_DB_KEY_DERIVATION_SALT,
-            &**master_key
-        );
-
         let client = redis_for_migrations::Client::open(redis_url)?;
-        let _mgr = ConnectionManager::new(client).await?;
-        let _findex = Arc::new(
-            FindexRedis::connect_with_manager(_mgr.clone(), Arc::new(RemovedLocationDbStub {}))
-                .await?,
+        let mgr = ConnectionManager::new(client).await?;
+        let findex = Arc::new(
+            FindexRedis::connect_with_manager(mgr, Arc::new(RemovedLocationDbStub {})).await?,
         );
-        let permissions_db = PermissionsDB::new(_findex.clone(), label);
+        let permissions_db = PermissionsDB::new(findex_key, findex, label);
 
-        let redis_with_findex = Self {
-            _mgr,
-            permissions_db,
-            _findex,
-            findex_key,
-            _label: Label::from(label),
-        };
+        let redis_with_findex = Self { permissions_db };
 
         Ok(redis_with_findex)
     }
@@ -117,7 +94,7 @@ impl PermissionsStore for RedisWithFindex {
     ) -> InterfaceResult<HashMap<String, HashSet<KmipOperation>>> {
         Ok(self
             .permissions_db
-            .list_object_permissions(&self.findex_key, uid)
+            .list_object_permissions(uid)
             .await
             .map_err(map_kms_interface_error_stub)?)
     }
@@ -133,7 +110,7 @@ impl PermissionsStore for RedisWithFindex {
     ) -> InterfaceResult<()> {
         for operation in &operations {
             self.permissions_db
-                .add(&self.findex_key, uid, user, *operation)
+                .add(uid, user, *operation)
                 .await
                 .map_err(map_kms_interface_error_stub)?;
         }
@@ -151,7 +128,7 @@ impl PermissionsStore for RedisWithFindex {
     ) -> InterfaceResult<()> {
         for operation in &operations {
             self.permissions_db
-                .remove(&self.findex_key, uid, user, *operation)
+                .remove(uid, user, *operation)
                 .await
                 .map_err(map_kms_interface_error_stub)?;
         }
@@ -167,7 +144,7 @@ impl PermissionsStore for RedisWithFindex {
     ) -> InterfaceResult<HashSet<KmipOperation>> {
         Ok(self
             .permissions_db
-            .get(&self.findex_key, uid, user, no_inherited_access)
+            .get(uid, user, no_inherited_access)
             .await
             .unwrap_or_default()
             .into_iter()

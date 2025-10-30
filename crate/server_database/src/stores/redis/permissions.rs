@@ -5,7 +5,9 @@ use std::{
 
 use cosmian_findex::IndexADT;
 use cosmian_kmip::kmip_2_1::KmipOperation;
-use cosmian_kms_crypto::reexport::cosmian_crypto_core::bytes_ser_de::Serializable;
+use cosmian_kms_crypto::reexport::cosmian_crypto_core::bytes_ser_de::{
+    Deserializer, Serializable, Serializer,
+};
 
 use crate::{
     DbError,
@@ -101,10 +103,7 @@ impl Serializable for PermTriple {
         obj_uid_len + user_id_len + 1
     }
 
-    fn write(
-        &self,
-        ser: &mut cosmian_kms_crypto::reexport::cosmian_crypto_core::bytes_ser_de::Serializer, // full dependency path spec if needed to avoid collisions
-    ) -> Result<usize, Self::Error> {
+    fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         let mut written = 0;
         written += ser.write(&self.obj_uid.0)?;
         written += ser.write(&self.user_id.0)?;
@@ -112,9 +111,7 @@ impl Serializable for PermTriple {
         Ok(written)
     }
 
-    fn read(
-        de: &mut cosmian_kms_crypto::reexport::cosmian_crypto_core::bytes_ser_de::Deserializer,
-    ) -> Result<Self, Self::Error> {
+    fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
         let obj_uid = ObjectUid(String::from_utf8(de.read_vec()?)?);
         let user_id = UserId(String::from_utf8(de.read_vec()?)?);
         let perm_byte = de.read_array::<1>()?;
@@ -165,11 +162,11 @@ impl TryFrom<&PermTriple> for IndexedValue {
 /// which are not supported by Findex yet needed if we want to list all permissions
 /// for a given user OR object in a same [`PermissionsDB`].
 #[derive(Clone)]
-pub(crate) struct PermissionsDB {
+pub(crate) struct PermissionDB {
     findex: Arc<FindexRedis>,
 }
 
-impl PermissionsDB {
+impl PermissionDB {
     pub(crate) const fn new(findex: Arc<FindexRedis>) -> Self {
         Self { findex }
     }

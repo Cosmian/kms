@@ -107,28 +107,30 @@ impl TryFrom<&Triple> for Location {
 /// rather than just the permission
 #[derive(Clone)]
 pub(crate) struct PermissionsDB {
+    findex_key: SymmetricKey<MASTER_KEY_LENGTH>,
     findex: Arc<FindexRedis>,
     label: Vec<u8>,
 }
 
 impl PermissionsDB {
-    pub(crate) fn new(findex: Arc<FindexRedis>, label: &[u8]) -> Self {
+    pub(crate) fn new(
+        findex_key: SymmetricKey<MASTER_KEY_LENGTH>,
+        findex: Arc<FindexRedis>,
+        label: &[u8],
+    ) -> Self {
         Self {
+            findex_key,
             findex,
             label: label.to_vec(),
         }
     }
 
     /// Search for a keyword
-    async fn search_one_keyword(
-        &self,
-        findex_key: &SymmetricKey<MASTER_KEY_LENGTH>,
-        keyword: &str,
-    ) -> LegacyDbResult<HashSet<Triple>> {
+    async fn search_one_keyword(&self, keyword: &str) -> LegacyDbResult<HashSet<Triple>> {
         let keyword = Keyword::from(format!("p::{keyword}").as_bytes());
         self.findex
             .search(
-                &findex_key.to_bytes(),
+                &self.findex_key.to_bytes(),
                 &self.label,
                 HashSet::from([keyword.clone()]),
             )
@@ -146,24 +148,22 @@ impl PermissionsDB {
     /// per user id
     pub(crate) async fn list_object_permissions(
         &self,
-        findex_key: &SymmetricKey<MASTER_KEY_LENGTH>,
         obj_uid: &str,
     ) -> LegacyDbResult<HashMap<String, HashSet<KmipOperation>>> {
         Ok(Triple::permissions_per_user(
-            self.search_one_keyword(findex_key, obj_uid).await?,
+            self.search_one_keyword(obj_uid).await?,
         ))
     }
 
     /// List all the permissions granted to the user on an object
     pub(crate) async fn get(
         &self,
-        findex_key: &SymmetricKey<MASTER_KEY_LENGTH>,
         obj_uid: &str,
         user_id: &str,
         no_inherited_access: bool,
     ) -> LegacyDbResult<HashSet<KmipOperation>> {
         let mut user_perms = self
-            .search_one_keyword(findex_key, &Triple::build_key(obj_uid, user_id))
+            .search_one_keyword(&Triple::build_key(obj_uid, user_id))
             .await?
             .into_iter()
             .map(|triple| triple.permission)
@@ -172,7 +172,7 @@ impl PermissionsDB {
             return Ok(user_perms);
         }
         let wildcard_user_perms = self
-            .search_one_keyword(findex_key, &Triple::build_key(obj_uid, "*"))
+            .search_one_keyword(&Triple::build_key(obj_uid, "*"))
             .await?
             .into_iter()
             .map(|triple| triple.permission)
@@ -184,7 +184,6 @@ impl PermissionsDB {
     /// Add a permission to the user on an object
     pub(crate) async fn add(
         &self,
-        findex_key: &SymmetricKey<MASTER_KEY_LENGTH>,
         obj_uid: &str,
         user_id: &str,
         permission: KmipOperation,
@@ -208,7 +207,7 @@ impl PermissionsDB {
         let new_keywords = self
             .findex
             .upsert(
-                &findex_key.to_bytes(),
+                &self.findex_key.to_bytes(),
                 &self.label,
                 additions,
                 HashMap::new(),
@@ -231,7 +230,7 @@ impl PermissionsDB {
         );
         self.findex
             .upsert(
-                &findex_key.to_bytes(),
+                &self.findex_key.to_bytes(),
                 &self.label,
                 additions,
                 HashMap::new(),
@@ -244,7 +243,6 @@ impl PermissionsDB {
     /// Remove a permission to the user on an object
     pub(crate) async fn remove(
         &self,
-        findex_key: &SymmetricKey<MASTER_KEY_LENGTH>,
         obj_uid: &str,
         user_id: &str,
         permission: KmipOperation,
@@ -263,7 +261,7 @@ impl PermissionsDB {
         let new_keywords = self
             .findex
             .upsert(
-                &findex_key.to_bytes(),
+                &self.findex_key.to_bytes(),
                 &self.label,
                 HashMap::new(),
                 deletions,
@@ -288,7 +286,7 @@ impl PermissionsDB {
             );
             self.findex
                 .upsert(
-                    &findex_key.to_bytes(),
+                    &self.findex_key.to_bytes(),
                     &self.label,
                     additions,
                     HashMap::new(),

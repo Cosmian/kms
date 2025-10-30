@@ -22,7 +22,7 @@ use crate::{
     stores::redis::{
         init_findex_redis,
         objects_db::{ObjectsDB, RedisDbObject},
-        permissions::{ObjectUid, PermissionsDB, UserId},
+        permissions::{ObjectUid, PermissionDB, UserId},
     },
     tests::get_redis_url,
 };
@@ -103,7 +103,7 @@ pub(crate) async fn test_permissions_db() -> DbResult<()> {
 
     // create the findex
     let findex_arc = Arc::new(init_findex_redis(&findex_master_key, redis_url.as_str()).await?);
-    let permissions_db = PermissionsDB::new(findex_arc);
+    let permissions_db = PermissionDB::new(findex_arc);
 
     let object1 = ObjectUid("O1".to_owned());
     let user1 = UserId("U1".to_owned());
@@ -318,7 +318,7 @@ pub(crate) async fn test_corner_case() -> DbResult<()> {
 
     // create the findex
     let findex_arc = Arc::new(init_findex_redis(&findex_master_key, redis_url.as_str()).await?);
-    let permissions_db = PermissionsDB::new(findex_arc);
+    let permissions_db = PermissionDB::new(findex_arc);
 
     let object1 = ObjectUid("O1".to_owned());
     let user1 = UserId("U1".to_owned());

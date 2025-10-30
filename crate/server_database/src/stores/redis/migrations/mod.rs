@@ -17,7 +17,7 @@ use crate::{
             init_findex_redis,
             migrations::legacy_redis_with_findex_pre_5_12_0::RedisWithFindex as LegacyRedisWithFindex,
             objects_db::keywords_from_attributes,
-            permissions::{ObjectUid, PermissionsDB, UserId},
+            permissions::{ObjectUid, PermissionDB, UserId},
         },
     },
 };
@@ -86,14 +86,13 @@ impl RedisMigrate for RedisWithFindex {
             &format!("{}/0", parameters.redis_url),
             parameters.master_key,
             &parameters.label,
-            false,
         )
         .await?;
 
         // we also create a findex_v8 instance that will write to DB 1
         let findex_v8_db1: Arc<FindexRedis> =
             Arc::new(init_findex_redis(parameters.master_key, &db_1_url).await?);
-        let migration_perm_db = PermissionsDB::new(findex_v8_db1.clone());
+        let migration_perm_db = PermissionDB::new(findex_v8_db1.clone());
 
         // step 1: retrieve all object UIDs from DB 0
         // this is a potentially long operation, depending on the number of objects in the DB
