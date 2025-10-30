@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use cosmian_kms_client::{
     KmsClient,
     kmip_2_1::{KmipOperation, kmip_types::UniqueIdentifier},
@@ -7,6 +5,7 @@ use cosmian_kms_client::{
 };
 use cosmian_logger::trace;
 use serial_test::serial;
+use tempfile::TempDir;
 use test_kms_server::{
     init_test_logging, start_default_test_kms_server_with_cert_auth,
     start_default_test_kms_server_with_privileged_users,
@@ -40,16 +39,20 @@ async fn gen_keypair(kms_client: &KmsClient) -> KmsCliResult<(UniqueIdentifier, 
 
 /// Export and import symmetric key
 async fn export_import_sym_key(key_id: &str, kms_client: &KmsClient) -> KmsCliResult<String> {
+    let tmp_dir = TempDir::new()?;
+    let tmp_path = tmp_dir.path();
+    let export_file = tmp_path.join("output.export");
+
     ExportSecretDataOrKeyAction {
         key_id: Some(key_id.to_owned()),
-        key_file: PathBuf::from("/tmp/output.export"),
+        key_file: export_file.clone(),
         ..Default::default()
     }
     .run(kms_client.clone())
     .await?;
 
     Ok(ImportSecretDataOrKeyAction {
-        key_file: PathBuf::from("/tmp/output.export"),
+        key_file: export_file,
         ..Default::default()
     }
     .run(kms_client.clone())
@@ -60,13 +63,18 @@ async fn export_import_sym_key(key_id: &str, kms_client: &KmsClient) -> KmsCliRe
 #[tokio::test]
 #[serial]
 pub(crate) async fn test_ownership_and_grant() -> KmsCliResult<()> {
+    // create a temp dir
+    let tmp_dir = TempDir::new()?;
+    let tmp_path = tmp_dir.path();
+    let output_file = tmp_path.join("output.json");
+
     // the client conf will use the owner cert
     let ctx = start_default_test_kms_server_with_cert_auth().await;
     let key_id = gen_key(&ctx.get_owner_client()).await?;
 
     // the owner should have access
     ExportSecretDataOrKeyAction {
-        key_file: PathBuf::from("/tmp/output.json"),
+        key_file: output_file.clone(),
         key_id: Some(key_id.to_string()),
         ..Default::default()
     }
@@ -86,7 +94,7 @@ pub(crate) async fn test_ownership_and_grant() -> KmsCliResult<()> {
     // the user should not be able to export
     ExportSecretDataOrKeyAction {
         key_id: Some(key_id.to_string()),
-        key_file: PathBuf::from("/tmp/output.json"),
+        key_file: output_file.clone(),
         ..Default::default()
     }
     .run(ctx.get_user_client())
@@ -137,7 +145,7 @@ pub(crate) async fn test_ownership_and_grant() -> KmsCliResult<()> {
     // the user should still not be able to export
     ExportSecretDataOrKeyAction {
         key_id: Some(key_id.to_string()),
-        key_file: PathBuf::from("/tmp/output.json"),
+        key_file: output_file.clone(),
         ..Default::default()
     }
     .run(ctx.get_user_client())
@@ -186,7 +194,7 @@ pub(crate) async fn test_ownership_and_grant() -> KmsCliResult<()> {
     // the user should now be able to export
     ExportSecretDataOrKeyAction {
         key_id: Some(key_id.to_string()),
-        key_file: PathBuf::from("/tmp/output.json"),
+        key_file: output_file.clone(),
         ..Default::default()
     }
     .run(ctx.get_user_client())
@@ -286,6 +294,11 @@ pub(crate) async fn test_grant_error() -> KmsCliResult<()> {
 #[serial]
 pub(crate) async fn test_revoke_access() -> KmsCliResult<()> {
     init_test_logging();
+    // create a temp dir
+    let tmp_dir = TempDir::new()?;
+    let tmp_path = tmp_dir.path();
+    let output_file = tmp_path.join("output.json");
+
     // the client conf will use the owner cert
     let ctx = start_default_test_kms_server_with_cert_auth().await;
     let key_id = gen_key(&ctx.get_owner_client()).await?;
@@ -318,7 +331,7 @@ pub(crate) async fn test_revoke_access() -> KmsCliResult<()> {
     // switch to user
     // the user should now be able to export
     ExportSecretDataOrKeyAction {
-        key_file: PathBuf::from("/tmp/output.json"),
+        key_file: output_file.clone(),
         key_id: Some(key_id.to_string()),
         ..Default::default()
     }
@@ -337,7 +350,7 @@ pub(crate) async fn test_revoke_access() -> KmsCliResult<()> {
 
     // the user should not be able to export anymore
     ExportSecretDataOrKeyAction {
-        key_file: PathBuf::from("/tmp/output.json"),
+        key_file: output_file.clone(),
         key_id: Some(key_id.to_string()),
         ..Default::default()
     }
@@ -589,6 +602,11 @@ pub(crate) async fn test_access_right_obtained() -> KmsCliResult<()> {
 #[tokio::test]
 #[serial]
 pub(crate) async fn test_ownership_and_grant_wildcard_user() -> KmsCliResult<()> {
+    // create a temp dir
+    let tmp_dir = TempDir::new()?;
+    let tmp_path = tmp_dir.path();
+    let output_file = tmp_path.join("output.json");
+
     // the client conf will use the owner cert
     let ctx = start_default_test_kms_server_with_cert_auth().await;
     let key_id = gen_key(&ctx.get_owner_client()).await?;
@@ -596,7 +614,7 @@ pub(crate) async fn test_ownership_and_grant_wildcard_user() -> KmsCliResult<()>
     // the owner should have access
     ExportSecretDataOrKeyAction {
         key_id: Some(key_id.to_string()),
-        key_file: PathBuf::from("/tmp/output.json"),
+        key_file: output_file.clone(),
         ..Default::default()
     }
     .run(ctx.get_owner_client())
@@ -615,7 +633,7 @@ pub(crate) async fn test_ownership_and_grant_wildcard_user() -> KmsCliResult<()>
     // the user should not be able to export
     ExportSecretDataOrKeyAction {
         key_id: Some(key_id.to_string()),
-        key_file: PathBuf::from("/tmp/output.json"),
+        key_file: output_file.clone(),
         ..Default::default()
     }
     .run(ctx.get_user_client())
@@ -673,7 +691,7 @@ pub(crate) async fn test_ownership_and_grant_wildcard_user() -> KmsCliResult<()>
     // the user should still not be able to export
     ExportSecretDataOrKeyAction {
         key_id: Some(key_id.to_string()),
-        key_file: PathBuf::from("/tmp/output.json"),
+        key_file: output_file.clone(),
         ..Default::default()
     }
     .run(ctx.get_user_client())
@@ -722,7 +740,7 @@ pub(crate) async fn test_ownership_and_grant_wildcard_user() -> KmsCliResult<()>
     // the user should now be able to export
     ExportSecretDataOrKeyAction {
         key_id: Some(key_id.to_string()),
-        key_file: PathBuf::from("/tmp/output.json"),
+        key_file: output_file.clone(),
         ..Default::default()
     }
     .run(ctx.get_user_client())
