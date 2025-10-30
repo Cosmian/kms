@@ -55,7 +55,6 @@ where
     ))
 }
 
-#[allow(dead_code)] // this isn't dead.
 impl RedisWithFindex {
     #[allow(clippy::used_underscore_binding)]
     pub(crate) async fn instantiate(
@@ -64,7 +63,6 @@ impl RedisWithFindex {
         label: &[u8],
         _clear_database: bool,
     ) -> LegacyDbResult<Self> {
-        // derive an Findex Key
         let mut findex_key = SymmetricKey::<MASTER_KEY_LENGTH>::default();
         kdf256!(
             &mut *findex_key,

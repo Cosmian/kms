@@ -45,7 +45,6 @@ use crate::{
 
 const REDIS_WITH_FINDEX_MASTER_KEY_DERIVATION_SALT: &[u8; 16] = b"rediswithfindex_";
 const REDIS_WITH_FINDEX_MASTER_DB_KEY_DERIVATION_SALT: &[u8; 2] = b"db";
-const REDIS_WITH_FINDEX_MASTER_FINDEX_KEY_DERIVATION_SALT: &[u8; 6] = b"findex";
 
 /// Derive a Redis Master Key from a password
 pub fn redis_master_key_from_password(
@@ -101,13 +100,6 @@ impl RedisWithFindex {
         clear_database: bool,
         label: Option<&[u8]>,
     ) -> DbResult<Self> {
-        // derive an Findex Key
-        let mut findex_key = SymmetricKey::<FINDEX_KEY_LENGTH>::default();
-        kdf256!(
-            &mut *findex_key,
-            REDIS_WITH_FINDEX_MASTER_FINDEX_KEY_DERIVATION_SALT,
-            &*master_key
-        );
         // derive a DB Key
         let mut db_key = SymmetricKey::<DB_KEY_LENGTH>::default();
         kdf256!(
@@ -121,15 +113,10 @@ impl RedisWithFindex {
 
         let objects_db = Arc::new(ObjectsDB::new(mgr.clone(), &db_key));
 
-        let findex_arc = Arc::new(
-            init_findex_redis(
-                &Secret::from_unprotected_bytes(&mut findex_key.to_bytes()),
-                redis_url,
-            )
-            .await?,
-        );
+        // there is no mistake in passing the master key to findex - the kdf key derivation is performed inside the new function of the encryption layer (line 53)
+        let findex = Arc::new(init_findex_redis(&master_key, redis_url).await?);
 
-        let permissions_db = PermissionsDB::new(findex_arc.clone());
+        let permissions_db = PermissionsDB::new(findex.clone());
 
         if clear_database {
             redis::cmd("FLUSHDB")
@@ -147,7 +134,7 @@ impl RedisWithFindex {
             mgr,
             objects_db,
             permissions_db,
-            findex: findex_arc,
+            findex,
         };
 
         if count == 0 {
@@ -171,7 +158,7 @@ impl RedisWithFindex {
                     MigrationParams {
                         migrate_to_5_12_0_parameters: Some(MigrateTo590Parameters {
                             redis_url: redis_url.to_owned(),
-                            findex_master_key: &master_key,
+                            master_key: &master_key,
                             label: Label::from(label),
                         }),
                     }

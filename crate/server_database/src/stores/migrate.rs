@@ -132,7 +132,7 @@ mod redis_migrate {
     #[derive(Debug, Clone)]
     pub(crate) struct MigrateTo590Parameters<'a> {
         pub redis_url: String,
-        pub findex_master_key: &'a Secret<32>, // lifetime specified to avoid cloning the key
+        pub master_key: &'a Secret<32>, // lifetime specified to avoid cloning the key
         pub label: Label,
     }
     /// Container for all migration parameters

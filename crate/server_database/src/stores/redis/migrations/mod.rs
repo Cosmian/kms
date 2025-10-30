@@ -84,7 +84,7 @@ impl RedisMigrate for RedisWithFindex {
         // the old RedisWithFindex to read the permissions "as they were". This store will read from DB 0
         let legacy_findex_redis_store = LegacyRedisWithFindex::instantiate(
             &format!("{}/0", parameters.redis_url),
-            parameters.findex_master_key,
+            parameters.master_key,
             &parameters.label,
             false,
         )
@@ -92,7 +92,7 @@ impl RedisMigrate for RedisWithFindex {
 
         // we also create a findex_v8 instance that will write to DB 1
         let findex_v8_db1: Arc<FindexRedis> =
-            Arc::new(init_findex_redis(parameters.findex_master_key, &db_1_url).await?);
+            Arc::new(init_findex_redis(parameters.master_key, &db_1_url).await?);
         let migration_perm_db = PermissionsDB::new(findex_v8_db1.clone());
 
         // step 1: retrieve all object UIDs from DB 0
