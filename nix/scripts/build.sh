@@ -7,7 +7,8 @@ source "$SCRIPT_DIR/common.sh"
 
 init_build_env
 
-cargo build -p cosmian_kms_server "$RELEASE_FLAG" "${FEATURES_FLAG[@]}"
+# shellcheck disable=SC2086
+cargo build -p cosmian_kms_server $RELEASE_FLAG "${FEATURES_FLAG[@]}"
 
 COSMIAN_KMS_EXE="target/$DEBUG_OR_RELEASE/cosmian_kms"
 

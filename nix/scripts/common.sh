@@ -150,5 +150,7 @@ prepare_openssl_staging() {
 
   echo "OpenSSL ${variant_name} artifacts prepared at: $openssl_staging"
   ls -la "$openssl_staging/lib64/ossl-modules/"
-  [ -z "$FEATURES" ] && ls -la "$openssl_staging/ssl/"
+  if [ -z "$FEATURES" ]; then
+    ls -la "$openssl_staging/ssl/"
+  fi
 }
