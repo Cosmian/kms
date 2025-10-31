@@ -34,7 +34,7 @@ const ImportAzureKekForm: React.FC = () => {
         try {
             // Import the KEK with Azure-specific tags and key usage
             const tags = ["azure", `kid:${values.kid}`];
-            const keyUsage = ["wrap", "encrypt"];
+            const keyUsage = ["WrapKey", "Encrypt"];
 
             const request = import_ttlv_request(
                 values.keyId,

@@ -9,6 +9,29 @@ import {
     parse_get_attributes_ttlv_response
 } from "./wasm/pkg";
 
+
+const getTags = (attributes: Map<string, never>[]): string[] => {
+    const vendor_attributes = attributes.get("vendor_attributes");
+    if (vendor_attributes) {
+        const tags_string: string | undefined = vendor_attributes.find((attribute: Map<string, never>) => {
+            return attribute.get("AttributeName") === "tag";
+        })?.get("AttributeValue")?.get("_c");
+        if (tags_string) {
+            try {
+                return JSON.parse(tags_string);
+            } catch (error) {
+                console.error("Error parsing tags JSON:", error);
+                return [];
+            }
+        } else {
+            return [];
+        }
+    }
+
+
+    return []
+}
+
 interface ExportAzureBYOKFormData {
     wrappedKeyId: string;
     kekId: string;
@@ -52,16 +75,11 @@ const ExportAzureBYOKForm: React.FC = () => {
                 "vendor_attributes",
                 "public_key_id",
                 "private_key_id",
-                "certificate_id",
-                "pkcs12_certificate_id",
-                "pkcs12_password_certificate",
-                "parent_id",
-                "child_id",
             ];
             const attributes = await parse_get_attributes_ttlv_response(attrsResultStr, allAttributes);
-
+            
             // Extract tags from vendor_attributes or look for Tag field
-            const tags = attributes.Tag || attributes.vendor_attributes?.Tag || [];
+            const tags = getTags(attributes);
 
             if (!tags.includes("azure")) {
                 setRes(
@@ -224,6 +242,7 @@ const ExportAzureBYOKForm: React.FC = () => {
         </div>
     );
 };
+
 
 export default ExportAzureBYOKForm;
 
