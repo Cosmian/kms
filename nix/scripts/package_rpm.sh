@@ -8,10 +8,6 @@ source "$SCRIPT_DIR/common.sh"
 
 REPO_ROOT=$(get_repo_root "$SCRIPT_DIR")
 
-# RPM packages should always be built in release mode
-: "${DEBUG_OR_RELEASE:=release}"
-export DEBUG_OR_RELEASE
-
 init_build_env
 
 echo "Building ${VARIANT_NAME} RPM package..."
@@ -23,7 +19,7 @@ rm -rf target/generate-rpm
 cargo generate-rpm --version 0.16.0 2>/dev/null | grep -q "0.16.0" ||
   cargo install --version 0.16.0 cargo-generate-rpm --force
 
-bash "$SCRIPT_DIR/build.sh"
+DEBUG_OR_RELEASE=release bash "$SCRIPT_DIR/build.sh"
 
 cd "$REPO_ROOT"
 cargo generate-rpm -p crate/server --metadata-overwrite=pkg/rpm/scriptlets.toml

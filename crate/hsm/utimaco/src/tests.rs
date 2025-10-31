@@ -12,13 +12,12 @@ use cosmian_kms_base_hsm::{
 
 use crate::{UTIMACO_PKCS11_LIB, UtimacoCapabilityProvider};
 
-const LIB_PATH: &str = UTIMACO_PKCS11_LIB;
 const SLOT_ID: usize = 0x00;
 
-fn cfg() -> HResult<shared::HsmTestConfig<'static>> {
+fn cfg() -> HResult<shared::HsmTestConfig> {
     let user_password = get_hsm_password()?;
     Ok(shared::HsmTestConfig {
-        lib_path: LIB_PATH,
+        lib_path: shared::lib_path("UTIMACO_PKCS11_LIB", UTIMACO_PKCS11_LIB),
         slot_ids_and_passwords: HashMap::from([(SLOT_ID, Some(user_password))]),
         slot_id_for_tests: SLOT_ID,
         rsa_oaep_digest: Some(RsaOaepDigest::SHA256),
