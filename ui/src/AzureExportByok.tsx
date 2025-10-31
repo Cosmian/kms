@@ -9,13 +9,16 @@ import {
     parse_get_attributes_ttlv_response
 } from "./wasm/pkg";
 
-
-const getTags = (attributes: Map<string, never>[]): string[] => {
-    const vendor_attributes = attributes.get("vendor_attributes");
-    if (vendor_attributes) {
-        const tags_string: string | undefined = vendor_attributes.find((attribute: Map<string, never>) => {
+const getTags = (attributes: Map<string, never>): string[] => {
+    const vendor_attributes: Array<Map<string, never>> | undefined = attributes.get("vendor_attributes");
+    if (typeof vendor_attributes !== "undefined") {
+        const attrs_value_map: Map<string, never> | undefined = (vendor_attributes as Array<Map<string, never>>).find((attribute: Map<string, never>) => {
             return attribute.get("AttributeName") === "tag";
-        })?.get("AttributeValue")?.get("_c");
+        })?.get("AttributeValue");
+        if (typeof attrs_value_map === "undefined") {
+            return []
+        }
+        const tags_string = (attrs_value_map as Map<string, string>).get("_c");
         if (tags_string) {
             try {
                 return JSON.parse(tags_string);
@@ -77,7 +80,7 @@ const ExportAzureBYOKForm: React.FC = () => {
                 "private_key_id",
             ];
             const attributes = await parse_get_attributes_ttlv_response(attrsResultStr, allAttributes);
-            
+
             // Extract tags from vendor_attributes or look for Tag field
             const tags = getTags(attributes);
 
