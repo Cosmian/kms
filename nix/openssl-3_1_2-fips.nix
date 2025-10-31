@@ -98,7 +98,7 @@ stdenv.mkDerivation rec {
         ''
           echo "Building OpenSSL ${version}..."
           make depend
-          make -j
+          make -j4
         ''
       else
         ''

@@ -21,7 +21,9 @@ init_build_env
 
 echo "Building ${VARIANT_NAME} DMG package for macOS..."
 
-cargo install --version 0.11.7 cargo-packager --force
+# Install packaging tool (only if not already at the correct version)
+cargo packager --version 2>/dev/null | grep -q "0.11.7" || cargo install --version 0.11.7 cargo-packager --force
+
 bash "$SCRIPT_DIR/build.sh"
 
 cd "$REPO_ROOT/crate/server"
