@@ -7,6 +7,33 @@ source "$SCRIPT_DIR/common.sh"
 
 init_build_env
 
+# Ensure resulting Linux binaries do not embed /nix/store paths and use the system dynamic loader
+if [ "$(uname)" = "Linux" ]; then
+  # 1) Prevent Nix cc-wrapper from injecting RPATHs to /nix/store
+  export NIX_DONT_SET_RPATH=1
+  export NIX_LDFLAGS=""
+  export NIX_CFLAGS_LINK=""
+
+  # 2) Start from a clean RUSTFLAGS to avoid inherited Nix link-args/rpaths
+  export RUSTFLAGS=""
+
+  # 3) Use the Nix cc wrapper to link against the pinned glibc (ensures GLIBC<=2.28),
+  #    but we will override the runtime interpreter and suppress rpaths below.
+
+  # 4) Explicitly set the system dynamic linker (avoids /nix/store/…/ld-linux-x86-64.so.2)
+  #    Prefer /lib64 path when present (matches expected ldd output), fallback to /lib/x86_64-linux-gnu
+  if [ -e "/lib64/ld-linux-x86-64.so.2" ]; then
+    RUSTFLAGS+=" -C link-arg=-Wl,--dynamic-linker,/lib64/ld-linux-x86-64.so.2"
+  elif [ -e "/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2" ]; then
+    RUSTFLAGS+=" -C link-arg=-Wl,--dynamic-linker,/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2"
+  fi
+
+  export RUSTFLAGS
+
+  # 5) Ensure OpenSSL is linked statically so no runtime SSL deps or rpaths are introduced
+  export OPENSSL_STATIC=1
+fi
+
 # shellcheck disable=SC2086
 cargo build -p cosmian_kms_server $RELEASE_FLAG "${FEATURES_FLAG[@]}"
 
@@ -34,6 +61,23 @@ if [ "$UNAME" = "Linux" ]; then
     echo "Error: Dynamic OpenSSL linkage detected on Linux (ldd | grep ssl)." >&2
     exit 1
   }
+
+  # Enforce: no embedded /nix/store paths in ELF metadata (interpreter, RPATH/RUNPATH)
+  if command -v readelf >/dev/null 2>&1; then
+    # Interpreter path must be a system path, not /nix/store
+    INTERP_LINE=$(readelf -l "$COSMIAN_KMS_EXE" | sed -n 's/^\s*Requesting program interpreter: \(.*\)]$/\1/p')
+    if echo "$INTERP_LINE" | grep -q "/nix/store"; then
+      echo "Error: ELF interpreter points to a /nix/store path: $INTERP_LINE" >&2
+      exit 1
+    fi
+
+    # RPATH/RUNPATH must not reference /nix/store
+    if readelf -d "$COSMIAN_KMS_EXE" | grep -E "(RUNPATH|RPATH)" | grep -q "/nix/store"; then
+      echo "Error: ELF RUNPATH/RPATH contains /nix/store paths:" >&2
+      readelf -d "$COSMIAN_KMS_EXE" | grep -E "(RUNPATH|RPATH)"
+      exit 1
+    fi
+  fi
 
   # Verify GLIBC symbol versions are <= 2.28
   GLIBC_SYMS=$(readelf -sW "$COSMIAN_KMS_EXE" | grep -o 'GLIBC_[0-9][0-9.]*' | sort -Vu)

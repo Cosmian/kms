@@ -9,7 +9,7 @@ source "$SCRIPT_DIR/common.sh"
 REPO_ROOT=$(get_repo_root "$SCRIPT_DIR")
 
 # DEB packages should always be built in release mode
-: "${DEBUG_OR_RELEASE:=release}"
+: "${DEBUG_OR_RELEASE:=debug}"
 export DEBUG_OR_RELEASE
 
 init_build_env
