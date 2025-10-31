@@ -10,6 +10,8 @@ ExecStart=/usr/sbin/cosmian_kms
 Restart=on-failure
 RestartSec=3s
 Environment="COSMIAN_KMS_CONF=/etc/cosmian/kms.toml"
+Environment="OPENSSL_CONF=/usr/local/lib/openssl/ssl/openssl.cnf"
+Environment="OPENSSL_MODULES=/usr/local/lib/openssl/lib64/ossl-modules"
 StandardOutput=syslog+console
 
 [Install]
