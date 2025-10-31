@@ -148,9 +148,9 @@ assets = [
         "400",
     ],
     [
-        "/usr/local/openssl/lib64/ossl-modules/legacy.so",
-        "usr/local/openssl/lib64/ossl-modules/legacy.so",
-        "400",
+        "../../target/openssl-staging/lib64/ossl-modules/legacy.so",
+        "usr/local/lib/openssl/lib64/ossl-modules/legacy.so",
+        "500",
     ],
 ]
 systemd-units = [
@@ -186,18 +186,18 @@ assets = [
         "400",
     ],
     [
-        "/usr/local/openssl/lib64/ossl-modules/fips.so",
-        "usr/local/openssl/lib64/ossl-modules/fips.so",
+        "../../target/openssl-staging/lib64/ossl-modules/fips.so",
+        "usr/local/lib/openssl/lib64/ossl-modules/fips.so",
+        "500",
+    ],
+    [
+        "../../target/openssl-staging/ssl/openssl.cnf",
+        "usr/local/lib/openssl/ssl/openssl.cnf",
         "400",
     ],
     [
-        "/usr/local/openssl/ssl/openssl.cnf",
-        "usr/local/openssl/ssl/openssl.cnf",
-        "400",
-    ],
-    [
-        "/usr/local/openssl/ssl/fipsmodule.cnf",
-        "usr/local/openssl/ssl/fipsmodule.cnf",
+        "../../target/openssl-staging/ssl/fipsmodule.cnf",
+        "usr/local/lib/openssl/ssl/fipsmodule.cnf",
         "400",
     ],
 ]
@@ -210,13 +210,13 @@ assets = [
 [package.metadata.generate-rpm]
 license = "BUSL-1.1"
 assets = [
-  { source = "ui/dist/*", dest = "/usr/local/cosmian/ui/dist/", mode = "500" },
-  { source = "ui/dist/assets/*", dest = "/usr/local/cosmian/ui/dist/assets/", mode = "500" },
-  { source = "target/release/cosmian_kms", dest = "/usr/sbin/cosmian_kms", mode = "500" },
-  { source = "/usr/local/openssl/lib64/ossl-modules/legacy.so", dest = "/usr/local/openssl/lib64/ossl-modules/legacy.so", mode = "500" },
-  { source = "../../README.md", dest = "/usr/share/doc/cosmian/README", mode = "644", doc = true },
-  { source = "../../pkg/kms.toml", dest = "/etc/cosmian/kms.toml", mode = "400" },
-  { source = "../../pkg/cosmian_kms.service", dest = "/lib/systemd/system/cosmian_kms.service", mode = "644" },
+    { source = "ui_non_fips/dist/*", dest = "/usr/local/cosmian/ui/dist/", mode = "500" },
+    { source = "ui_non_fips/dist/assets/*", dest = "/usr/local/cosmian/ui/dist/assets/", mode = "500" },
+    { source = "target/release/cosmian_kms", dest = "/usr/sbin/cosmian_kms", mode = "500" },
+    { source = "../../target/openssl-staging/lib64/ossl-modules/legacy.so", dest = "/usr/local/lib/openssl/lib64/ossl-modules/legacy.so", mode = "500" },
+    { source = "../../README.md", dest = "/usr/share/doc/cosmian/README", mode = "644", doc = true },
+    { source = "../../pkg/kms.toml", dest = "/etc/cosmian/kms.toml", mode = "400" },
+    { source = "../../pkg/cosmian_kms.service", dest = "/lib/systemd/system/cosmian_kms.service", mode = "644" },
 ]
 auto-req = "no" # do not try to discover .so dependencies
 require-sh = true

@@ -1,7 +1,7 @@
 #
 # KMS server
 #
-FROM rust:1.86.0-bookworm AS builder
+FROM rust:1.90.0-bookworm AS builder
 
 LABEL version="5.11.0"
 LABEL name="Cosmian KMS docker container"

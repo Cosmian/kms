@@ -13,13 +13,12 @@ use cosmian_kms_base_hsm::{
 
 use crate::{PROTECCIO_PKCS11_LIB, ProteccioCapabilityProvider};
 
-const LIB_PATH: &str = PROTECCIO_PKCS11_LIB;
 const SLOT_ID: usize = 0x04; // Proteccio default slot
 
-fn cfg() -> HResult<shared::HsmTestConfig<'static>> {
+fn cfg() -> HResult<shared::HsmTestConfig> {
     let user_password = get_hsm_password()?;
     Ok(shared::HsmTestConfig {
-        lib_path: LIB_PATH,
+        lib_path: shared::lib_path("PROTECCIO_PKCS11_LIB", PROTECCIO_PKCS11_LIB),
         slot_ids_and_passwords: HashMap::from([(SLOT_ID, Some(user_password))]),
         slot_id_for_tests: SLOT_ID,
         rsa_oaep_digest: Some(RsaOaepDigest::SHA256),
