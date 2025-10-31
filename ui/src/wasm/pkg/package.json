@@ -1,0 +1,29 @@
+{
+  "name": "cosmian_kms_client_wasm",
+  "type": "module",
+  "collaborators": [
+    "Bruno Grieder <bruno.grieder@cosmian.com>",
+    "Emmanuel Coste <emmanuel.coste@cosmian.com>"
+  ],
+  "description": "Cosmian KMS Client Utilities for WASM",
+  "version": "5.11.0",
+  "license": "BUSL-1.1",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Cosmian/kms"
+  },
+  "files": [
+    "cosmian_kms_client_wasm_bg.wasm",
+    "cosmian_kms_client_wasm.js",
+    "cosmian_kms_client_wasm.d.ts"
+  ],
+  "main": "cosmian_kms_client_wasm.js",
+  "types": "cosmian_kms_client_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ],
+  "keywords": [
+    "kms",
+    "cosmian"
+  ]
+}
