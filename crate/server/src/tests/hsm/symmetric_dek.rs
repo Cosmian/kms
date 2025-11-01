@@ -114,10 +114,7 @@ async fn create_symmetric_dek(
     let Operation::CreateResponse(create_response) = &response[0] else {
         return Err(KmsError::ServerError("invalid response".to_owned()));
     };
-    assert_eq!(
-        create_response.unique_identifier,
-        UniqueIdentifier::TextString(dek_uid.to_owned())
-    );
+    assert!(create_response.unique_identifier == UniqueIdentifier::TextString(dek_uid.to_owned()));
     Ok(())
 }
 
@@ -152,10 +149,7 @@ async fn symmetric_encrypt(
         return Err(KmsError::ServerError("invalid response".to_owned()));
     };
     let response = response.to_owned();
-    assert_eq!(
-        response.unique_identifier,
-        UniqueIdentifier::TextString(dek_uid.to_owned())
-    );
+    assert!(response.unique_identifier == UniqueIdentifier::TextString(dek_uid.to_owned()));
     Ok([
         response.i_v_counter_nonce.unwrap_or_default(),
         response.data.unwrap_or_default(),
@@ -199,9 +193,6 @@ async fn symmetric_decrypt(
         return Err(KmsError::ServerError("invalid response".to_owned()));
     };
     let response = response.to_owned();
-    assert_eq!(
-        response.unique_identifier,
-        UniqueIdentifier::TextString(dek_uid.to_owned())
-    );
+    assert!(response.unique_identifier == UniqueIdentifier::TextString(dek_uid.to_owned()));
     Ok(response.data.unwrap_or_default().to_vec())
 }

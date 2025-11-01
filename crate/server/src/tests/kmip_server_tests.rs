@@ -103,9 +103,11 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         .as_ref()
         .ok_or_else(|| KmsError::ServerError("links should not be empty".to_owned()))?[0];
     assert_eq!(link.link_type, LinkType::PublicKeyLink);
-    assert_eq!(
-        link.linked_object_identifier,
-        LinkedObjectIdentifier::TextString(response.public_key_unique_identifier.to_string())
+    assert!(
+        link.linked_object_identifier
+            == LinkedObjectIdentifier::TextString(
+                response.public_key_unique_identifier.to_string()
+            )
     );
 
     // check public key
@@ -156,9 +158,11 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         .as_ref()
         .ok_or_else(|| KmsError::ServerError("links should not be empty".to_owned()))?[0];
     assert_eq!(link.link_type, LinkType::PrivateKeyLink);
-    assert_eq!(
-        link.linked_object_identifier,
-        LinkedObjectIdentifier::TextString(response.private_key_unique_identifier.to_string())
+    assert!(
+        link.linked_object_identifier
+            == LinkedObjectIdentifier::TextString(
+                response.private_key_unique_identifier.to_string()
+            )
     );
     // test import of public key
     let pk_bytes = pk_key_block.ec_raw_bytes()?;
@@ -200,7 +204,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         object: pk,
     };
     let update_response = kms.import(request, owner, None, None).await?;
-    assert_eq!(new_uid, update_response.unique_identifier);
+    assert!(new_uid == update_response.unique_identifier);
     Ok(())
 }
 
@@ -277,7 +281,7 @@ async fn test_create_transparent_symmetric_key() -> KResult<()> {
 
     trace!("request: {}", request);
     let response = kms.create(request, owner, None, None).await?;
-    trace!("response: {:?}", response);
+    trace!("response: {}", response);
 
     // Get symmetric key without specifying key format type
     //
@@ -431,7 +435,7 @@ async fn test_register_operation() -> KResult<()> {
 
     trace!("request: {}", request);
     let register_response = kms.register(request, owner, None, None).await?;
-    trace!("response: {:?}", register_response);
+    trace!("response: {}", register_response);
 
     let uid = register_response.unique_identifier;
     if let UniqueIdentifier::TextString(s) = &uid {

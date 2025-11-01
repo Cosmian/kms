@@ -4,6 +4,7 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kmip::kmip_2_1::{
         KmipOperation,
         kmip_attributes::Attribute,
+        kmip_objects::{Object, PrivateKey, PublicKey, SecretData, SymmetricKey},
         kmip_operations::{DeleteAttribute, DeleteAttributeResponse},
         kmip_types::{AttributeReference, Tag, UniqueIdentifier},
     },
@@ -132,6 +133,16 @@ pub(crate) async fn delete_attribute(
             Attribute::CryptographicLength(length) => {
                 if Some(length) == attributes.cryptographic_length {
                     attributes.cryptographic_length = None;
+                    // Directly modify underlying object key_block where applicable
+                    match owm.object_mut() {
+                        Object::SymmetricKey(SymmetricKey { key_block })
+                        | Object::PrivateKey(PrivateKey { key_block })
+                        | Object::PublicKey(PublicKey { key_block })
+                        | Object::SecretData(SecretData { key_block, .. }) => {
+                            key_block.cryptographic_length = None;
+                        }
+                        _ => {}
+                    }
                 }
             }
             Attribute::CryptographicParameters(parameters) => {

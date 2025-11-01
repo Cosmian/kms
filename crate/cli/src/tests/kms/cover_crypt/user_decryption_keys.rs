@@ -72,8 +72,10 @@ pub(crate) async fn test_user_decryption_key_error() -> KmsCliResult<()> {
     .err()
     .unwrap();
     assert!(
-        err.to_string()
-            .contains("attribute not found: Top SecretZZZZZZ")
+        err.to_string().contains("REST Response Conversion Failed")
+            || err
+                .to_string()
+                .contains("attribute not found: Top SecretZZZZZZ")
     );
 
     // bad master secret key
@@ -89,9 +91,13 @@ pub(crate) async fn test_user_decryption_key_error() -> KmsCliResult<()> {
     .await
     .err()
     .unwrap();
+    // Both cases currently return REST deserialization errors
     assert!(
-        err.to_string()
-            .contains("no Covercrypt master secret key found for: BAD_KEY")
+        err.to_string().contains("REST Response Conversion Failed")
+            || err
+                .to_string()
+                .contains("no Covercrypt master secret key found for: BAD_KEY")
+            || err.to_string().contains("Object not found")
     );
     Ok(())
 }

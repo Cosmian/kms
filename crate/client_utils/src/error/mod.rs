@@ -67,7 +67,8 @@ impl From<KmipError> for UtilsError {
             | KmipError::IndexingSlicing(s)
             | KmipError::ObjectNotFound(s) => Self::NotSupported(s),
             KmipError::TryFromSliceError(e) => Self::Default(e.to_string()),
-            KmipError::SerdeJsonError(e) => Self::Default(e.to_string()),
+            KmipError::SerdeJsonError(e) => Self::SerdeJsonError(e),
+            KmipError::RegexError(e) => Self::Default(e.to_string()),
             KmipError::Deserialization(e) | KmipError::Serialization(e) => {
                 Self::KmipError(ErrorReason::Codec_Error, e)
             }

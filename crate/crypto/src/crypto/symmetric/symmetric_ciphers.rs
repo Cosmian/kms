@@ -30,6 +30,13 @@ pub const AES_128_CBC_IV_LENGTH: usize = 16;
 /// AES 128 CBC tag/mac length in bytes.
 pub const AES_128_CBC_MAC_LENGTH: usize = 0;
 
+/// AES 192 CBC key length in bytes.
+pub const AES_192_CBC_KEY_LENGTH: usize = 24;
+/// AES 192 CBC nonce length in bytes.
+pub const AES_192_CBC_IV_LENGTH: usize = 24;
+/// AES 192 CBC tag/mac length in bytes.
+pub const AES_192_CBC_MAC_LENGTH: usize = 0;
+
 /// AES 256 CBC key length in bytes.
 pub const AES_256_CBC_KEY_LENGTH: usize = 32;
 /// AES 256 CBC nonce length in bytes.
@@ -43,6 +50,13 @@ pub const AES_128_GCM_KEY_LENGTH: usize = 16;
 pub const AES_128_GCM_IV_LENGTH: usize = 12;
 /// AES 128 GCM tag/mac length in bytes.
 pub const AES_128_GCM_MAC_LENGTH: usize = 16;
+
+/// AES 192 GCM key length in bytes.
+pub const AES_192_GCM_KEY_LENGTH: usize = 24;
+/// AES 192 GCM nonce length in bytes.
+pub const AES_192_GCM_IV_LENGTH: usize = 12;
+/// AES 192 GCM tag/mac length in bytes.
+pub const AES_192_GCM_MAC_LENGTH: usize = 16;
 
 /// AES 256 GCM key length in bytes.
 pub const AES_256_GCM_KEY_LENGTH: usize = 32;
@@ -104,6 +118,15 @@ pub const CHACHA20_POLY1305_IV_LENGTH: usize = 12;
 #[cfg(feature = "non-fips")]
 /// Chacha20-Poly1305 tag/mac length in bytes.
 pub const CHACHA20_POLY1305_MAC_LENGTH: usize = 16;
+#[cfg(feature = "non-fips")]
+/// `ChaCha20` (pure stream cipher, original variant with 64-bit nonce) key length in bytes.
+pub const CHACHA20_KEY_LENGTH: usize = 32;
+#[cfg(feature = "non-fips")]
+/// `ChaCha20` (pure stream cipher) nonce length in bytes (original variant uses 64-bit nonce).
+pub const CHACHA20_IV_LENGTH: usize = 8;
+#[cfg(feature = "non-fips")]
+/// `ChaCha20` (pure stream cipher) has no authentication tag.
+pub const CHACHA20_MAC_LENGTH: usize = 0;
 
 /// The mode of operation for the symmetric stream cipher.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -124,9 +147,14 @@ impl From<Mode> for OpenSslMode {
 /// The supported AEAD ciphers.
 #[derive(Debug, Clone, Copy)]
 pub enum SymCipher {
+    Aes256Ecb,
+    Aes192Ecb,
+    Aes128Ecb,
     Aes256Cbc,
+    Aes192Cbc,
     Aes128Cbc,
     Aes256Gcm,
+    Aes192Gcm,
     Aes128Gcm,
     Aes128Xts,
     Aes256Xts,
@@ -138,15 +166,22 @@ pub enum SymCipher {
     Aes256GcmSiv,
     #[cfg(feature = "non-fips")]
     Chacha20Poly1305,
+    #[cfg(feature = "non-fips")]
+    Chacha20, // pure stream cipher (no authentication)
 }
 
 impl SymCipher {
     /// Convert to the corresponding OpenSSL cipher.
     fn to_openssl_cipher(self) -> Result<Cipher, CryptoError> {
         match self {
+            Self::Aes128Ecb => Ok(Cipher::aes_128_ecb()),
+            Self::Aes192Ecb => Ok(Cipher::aes_192_ecb()),
+            Self::Aes256Ecb => Ok(Cipher::aes_256_ecb()),
             Self::Aes128Cbc => Ok(Cipher::aes_128_cbc()),
+            Self::Aes192Cbc => Ok(Cipher::aes_192_cbc()),
             Self::Aes256Cbc => Ok(Cipher::aes_256_cbc()),
             Self::Aes128Gcm => Ok(Cipher::aes_128_gcm()),
+            Self::Aes192Gcm => Ok(Cipher::aes_192_gcm()),
             Self::Aes256Gcm => Ok(Cipher::aes_256_gcm()),
             Self::Aes128Xts => Ok(Cipher::aes_128_xts()),
             Self::Aes256Xts => Ok(Cipher::aes_256_xts()),
@@ -157,6 +192,8 @@ impl SymCipher {
             }
             #[cfg(feature = "non-fips")]
             Self::Chacha20Poly1305 => Ok(Cipher::chacha20_poly1305()),
+            #[cfg(feature = "non-fips")]
+            Self::Chacha20 => Ok(Cipher::chacha20()),
             #[cfg(feature = "non-fips")]
             Self::Aes128GcmSiv | Self::Aes256GcmSiv => {
                 // TODO: openssl supports AES GCM SIV but the rust openssl crate does not expose it
@@ -171,9 +208,14 @@ impl SymCipher {
     #[must_use]
     pub const fn tag_size(&self) -> usize {
         match self {
+            Self::Aes128Ecb => 0,
+            Self::Aes192Ecb => 0,
+            Self::Aes256Ecb => 0,
             Self::Aes128Cbc => AES_128_CBC_MAC_LENGTH,
+            Self::Aes192Cbc => AES_192_CBC_MAC_LENGTH,
             Self::Aes256Cbc => AES_256_CBC_MAC_LENGTH,
             Self::Aes128Gcm => AES_128_GCM_MAC_LENGTH,
+            Self::Aes192Gcm => AES_192_GCM_MAC_LENGTH,
             Self::Aes256Gcm => AES_256_GCM_MAC_LENGTH,
             Self::Aes128Xts => AES_128_XTS_MAC_LENGTH,
             Self::Aes256Xts => AES_256_XTS_MAC_LENGTH,
@@ -181,6 +223,8 @@ impl SymCipher {
             Self::Rfc5649_32 => RFC5649_32_MAC_LENGTH,
             #[cfg(feature = "non-fips")]
             Self::Chacha20Poly1305 => CHACHA20_POLY1305_MAC_LENGTH,
+            #[cfg(feature = "non-fips")]
+            Self::Chacha20 => CHACHA20_MAC_LENGTH,
             #[cfg(feature = "non-fips")]
             Self::Aes128GcmSiv => AES_128_GCM_SIV_MAC_LENGTH,
             #[cfg(feature = "non-fips")]
@@ -192,9 +236,14 @@ impl SymCipher {
     #[must_use]
     pub const fn nonce_size(&self) -> usize {
         match self {
+            Self::Aes128Ecb => 0,
+            Self::Aes192Ecb => 0,
+            Self::Aes256Ecb => 0,
             Self::Aes128Cbc => AES_128_CBC_IV_LENGTH,
+            Self::Aes192Cbc => AES_192_CBC_IV_LENGTH,
             Self::Aes256Cbc => AES_256_CBC_IV_LENGTH,
             Self::Aes128Gcm => AES_128_GCM_IV_LENGTH,
+            Self::Aes192Gcm => AES_192_GCM_IV_LENGTH,
             Self::Aes256Gcm => AES_256_GCM_IV_LENGTH,
             Self::Aes128Xts => AES_128_XTS_TWEAK_LENGTH,
             Self::Aes256Xts => AES_256_XTS_TWEAK_LENGTH,
@@ -202,6 +251,8 @@ impl SymCipher {
             Self::Rfc5649_32 => RFC5649_32_IV_LENGTH,
             #[cfg(feature = "non-fips")]
             Self::Chacha20Poly1305 => CHACHA20_POLY1305_IV_LENGTH,
+            #[cfg(feature = "non-fips")]
+            Self::Chacha20 => CHACHA20_IV_LENGTH,
             #[cfg(feature = "non-fips")]
             Self::Aes128GcmSiv => AES_128_GCM_SIV_IV_LENGTH,
             #[cfg(feature = "non-fips")]
@@ -213,9 +264,14 @@ impl SymCipher {
     #[must_use]
     pub const fn key_size(&self) -> usize {
         match self {
+            Self::Aes128Ecb => 16,
+            Self::Aes192Ecb => 24,
+            Self::Aes256Ecb => 32,
             Self::Aes128Cbc => AES_128_CBC_KEY_LENGTH,
+            Self::Aes192Cbc => AES_192_CBC_KEY_LENGTH,
             Self::Aes256Cbc => AES_256_CBC_KEY_LENGTH,
             Self::Aes128Gcm => AES_128_GCM_KEY_LENGTH,
+            Self::Aes192Gcm => AES_192_GCM_KEY_LENGTH,
             Self::Aes256Gcm => AES_256_GCM_KEY_LENGTH,
             Self::Aes128Xts => AES_128_XTS_KEY_LENGTH,
             Self::Aes256Xts => AES_256_XTS_KEY_LENGTH,
@@ -223,6 +279,8 @@ impl SymCipher {
             Self::Rfc5649_32 => RFC5649_32_KEY_LENGTH,
             #[cfg(feature = "non-fips")]
             Self::Chacha20Poly1305 => CHACHA20_POLY1305_KEY_LENGTH,
+            #[cfg(feature = "non-fips")]
+            Self::Chacha20 => CHACHA20_KEY_LENGTH,
             #[cfg(feature = "non-fips")]
             Self::Aes128GcmSiv => AES_128_GCM_SIV_KEY_LENGTH,
             #[cfg(feature = "non-fips")]
@@ -243,8 +301,17 @@ impl SymCipher {
             CryptographicAlgorithm::AES => {
                 let block_cipher_mode = block_cipher_mode.unwrap_or(BlockCipherMode::GCM);
                 match block_cipher_mode {
+                    BlockCipherMode::ECB => match key_size {
+                        16 => Ok(Self::Aes128Ecb),
+                        24 => Ok(Self::Aes192Ecb),
+                        32 => Ok(Self::Aes256Ecb),
+                        _ => crypto_bail!(CryptoError::NotSupported(format!(
+                            "AES key must be 16, 24 or 32 bytes long for AES ECB. Found {key_size} bytes",
+                        ))),
+                    },
                     BlockCipherMode::AEAD | BlockCipherMode::GCM => match key_size {
                         AES_128_GCM_KEY_LENGTH => Ok(Self::Aes128Gcm),
+                        AES_192_GCM_KEY_LENGTH => Ok(Self::Aes192Gcm),
                         AES_256_GCM_KEY_LENGTH => Ok(Self::Aes256Gcm),
                         _ => crypto_bail!(CryptoError::NotSupported(format!(
                             "AES key must be 16 or 32 bytes long for AES GCM. Found {key_size} \
@@ -253,6 +320,7 @@ impl SymCipher {
                     },
                     BlockCipherMode::CBC => match key_size {
                         AES_128_CBC_KEY_LENGTH => Ok(Self::Aes128Cbc),
+                        AES_192_CBC_KEY_LENGTH => Ok(Self::Aes192Cbc),
                         AES_256_CBC_KEY_LENGTH => Ok(Self::Aes256Cbc),
                         _ => crypto_bail!(CryptoError::NotSupported(format!(
                             "AES key must be 16 or 32 bytes long for AES CBC. Found {key_size} \
@@ -291,14 +359,19 @@ impl SymCipher {
                 }
             }
             #[cfg(feature = "non-fips")]
-            CryptographicAlgorithm::ChaCha20 | CryptographicAlgorithm::ChaCha20Poly1305 => {
-                match key_size {
-                    32 => Ok(Self::Chacha20Poly1305),
-                    _ => crypto_bail!(CryptoError::NotSupported(
-                        "ChaCha20 key must be 32 bytes long".to_owned()
-                    )),
-                }
-            }
+            CryptographicAlgorithm::ChaCha20 => match key_size {
+                32 => Ok(Self::Chacha20),
+                _ => crypto_bail!(CryptoError::NotSupported(
+                    "ChaCha20 key must be 32 bytes long".to_owned()
+                )),
+            },
+            #[cfg(feature = "non-fips")]
+            CryptographicAlgorithm::ChaCha20Poly1305 => match key_size {
+                32 => Ok(Self::Chacha20Poly1305),
+                _ => crypto_bail!(CryptoError::NotSupported(
+                    "ChaCha20 key must be 32 bytes long".to_owned()
+                )),
+            },
             other => crypto_bail!(CryptoError::NotSupported(format!(
                 "unsupported cryptographic algorithm: {other} for a symmetric key"
             ))),
@@ -341,7 +414,50 @@ pub fn encrypt(
     plaintext: &[u8],
     padding_method: Option<PaddingMethod>,
 ) -> Result<(Vec<u8>, Vec<u8>), CryptoError> {
+    trace!(
+        "encrypt: sym_cipher: {sym_cipher:?}, key length: {}, nonce length: {}, aad length: {}, \
+         plaintext length: {}, padding_method: {padding_method:?}",
+        key.len(),
+        nonce.len(),
+        aad.len(),
+        plaintext.len()
+    );
     match sym_cipher {
+        SymCipher::Aes128Ecb | SymCipher::Aes192Ecb | SymCipher::Aes256Ecb => {
+            // ECB mode does not require IV/nonce or tag
+            // Default to no padding so block-aligned inputs remain deterministic (KMIP vectors)
+            let padding = padding_method.unwrap_or(PaddingMethod::None);
+            let cipher = sym_cipher.to_openssl_cipher()?;
+            let ciphertext = match padding {
+                PaddingMethod::None => {
+                    if !plaintext.len().is_multiple_of(cipher.block_size()) {
+                        return Err(CryptoError::InvalidSize(
+                            "Plaintext must be a multiple of the block size when no padding is used".to_owned(),
+                        ));
+                    }
+                    let mut c = Crypter::new(cipher, openssl::symm::Mode::Encrypt, key, None)?;
+                    c.pad(false);
+                    let mut ciphertext = vec![0; plaintext.len() + cipher.block_size()];
+                    let count = c.update(plaintext, &mut ciphertext)?;
+                    let rest = c.finalize(ciphertext.get_mut(count..).ok_or_else(|| {
+                        CryptoError::IndexingSlicing(
+                            "sym_ciphers::encrypt ecb: finalize: count..".to_owned(),
+                        )
+                    })?)?;
+                    ciphertext.truncate(count + rest);
+                    ciphertext
+                }
+                PaddingMethod::PKCS5 => {
+                    openssl_encrypt(sym_cipher.to_openssl_cipher()?, key, None, plaintext)?
+                }
+                not_supported => {
+                    return Err(CryptoError::NotSupported(format!(
+                        "Padding method {not_supported:?} is not currently supported"
+                    )));
+                }
+            };
+            Ok((ciphertext, vec![]))
+        }
         SymCipher::Aes128Xts | SymCipher::Aes256Xts => {
             //  XTS mode does not require a tag.
             if plaintext.len() < 16
@@ -398,6 +514,32 @@ pub fn encrypt(
         SymCipher::Rfc5649_16 | SymCipher::Rfc5649_32 => {
             Ok((rfc5649_wrap(plaintext, key)?, vec![]))
         }
+        #[cfg(feature = "non-fips")]
+        SymCipher::Chacha20 => {
+            trace!(
+                "ChaCha20 (pure) encryption: key_len={}, nonce_len={}, pt_len={}",
+                key.len(),
+                nonce.len(),
+                plaintext.len()
+            );
+            if key.len() != CHACHA20_KEY_LENGTH {
+                crypto_bail!(CryptoError::InvalidSize(format!(
+                    "ChaCha20 key must be {} bytes. Got {}",
+                    CHACHA20_KEY_LENGTH,
+                    key.len()
+                )));
+            }
+            if nonce.len() != CHACHA20_IV_LENGTH {
+                crypto_bail!(CryptoError::InvalidSize(format!(
+                    "ChaCha20 nonce must be {} bytes. Got {}",
+                    CHACHA20_IV_LENGTH,
+                    nonce.len()
+                )));
+            }
+            let mut out = vec![0_u8; plaintext.len()];
+            chacha20_xor(key, nonce, 0, plaintext, &mut out)?;
+            Ok((out, vec![]))
+        }
         _ => {
             // Create buffer for the tag
             let mut tag = vec![0; sym_cipher.tag_size()];
@@ -430,6 +572,39 @@ pub fn decrypt(
     padding_method: Option<PaddingMethod>,
 ) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
     Ok(match sym_cipher {
+        SymCipher::Aes128Ecb | SymCipher::Aes192Ecb | SymCipher::Aes256Ecb => {
+            // Default to no padding for ECB to mirror encrypt-side default
+            let padding = padding_method.unwrap_or(PaddingMethod::None);
+            let cipher = sym_cipher.to_openssl_cipher()?;
+            match padding {
+                PaddingMethod::PKCS5 => {
+                    Zeroizing::from(openssl_decrypt(cipher, key, None, ciphertext)?)
+                }
+                PaddingMethod::None => {
+                    if !ciphertext.len().is_multiple_of(cipher.block_size()) {
+                        return Err(CryptoError::InvalidSize(
+                            "Ciphertext must be a multiple of the block size when no padding is used".to_owned(),
+                        ));
+                    }
+                    let mut c = Crypter::new(cipher, openssl::symm::Mode::Decrypt, key, None)?;
+                    c.pad(false);
+                    let mut plaintext = vec![0; ciphertext.len() + cipher.block_size()];
+                    let count = c.update(ciphertext, &mut plaintext)?;
+                    let rest = c.finalize(plaintext.get_mut(count..).ok_or_else(|| {
+                        CryptoError::IndexingSlicing(
+                            "sym_ciphers::decrypt ecb: finalize: count..".to_owned(),
+                        )
+                    })?)?;
+                    plaintext.truncate(count + rest);
+                    Zeroizing::new(plaintext)
+                }
+                _ => {
+                    return Err(CryptoError::NotSupported(format!(
+                        "Padding method {padding:?} is not currently supported"
+                    )));
+                }
+            }
+        }
         SymCipher::Aes128Xts | SymCipher::Aes256Xts => {
             // XTS mode does not require a tag.
             Zeroizing::from(openssl_decrypt(
@@ -483,6 +658,26 @@ pub fn decrypt(
             aes_gcm_siv_not_openssl::decrypt(key, nonce, aad, ciphertext, tag)?
         }
         SymCipher::Rfc5649_16 | SymCipher::Rfc5649_32 => rfc5649_unwrap(ciphertext, key)?,
+        #[cfg(feature = "non-fips")]
+        SymCipher::Chacha20 => {
+            if key.len() != CHACHA20_KEY_LENGTH {
+                crypto_bail!(CryptoError::InvalidSize(format!(
+                    "ChaCha20 key must be {} bytes. Got {}",
+                    CHACHA20_KEY_LENGTH,
+                    key.len()
+                )));
+            }
+            if nonce.len() != CHACHA20_IV_LENGTH {
+                crypto_bail!(CryptoError::InvalidSize(format!(
+                    "ChaCha20 nonce must be {} bytes. Got {}",
+                    CHACHA20_IV_LENGTH,
+                    nonce.len()
+                )));
+            }
+            let mut out = vec![0_u8; ciphertext.len()];
+            chacha20_xor(key, nonce, 0, ciphertext, &mut out)?;
+            Zeroizing::from(out)
+        }
         _ => {
             // Decryption.
             Zeroizing::from(openssl_decrypt_aead(
@@ -509,6 +704,71 @@ pub struct StreamCipher {
     block_size: usize,
     tag_size: usize,
     buffer: Vec<u8>,
+}
+
+// --- Pure ChaCha20 (original 64-bit nonce variant) implementation -----------------------------
+// Implementation notes:
+// - Original ChaCha20 state layout (16 words):
+//   constants (4) | key (8) | block counter (1) | nonce (3)  (IETF 96-bit nonce variant)
+//   The earlier, "original" 64-bit nonce form instead uses: constants | key (8) | block counter (2) | nonce (2)
+// - The mandatory KMIP vectors provide an 8-byte nonce. We implement the original variant
+//   with a 64-bit block counter composed of two u32 words and a 64-bit nonce (two u32 words).
+// - For simplicity we keep a 64-bit block counter but expose only the lower 32-bit starting value (counter_low).
+// - This function XORs the keystream with input into output; input and output may alias.
+#[cfg(feature = "non-fips")]
+fn chacha20_xor(
+    key: &[u8],
+    nonce: &[u8],
+    counter_low: u32,
+    input: &[u8],
+    output: &mut [u8],
+) -> Result<(), CryptoError> {
+    // Switch to OpenSSL-backed ChaCha20. OpenSSL expects a 16-byte IV for ChaCha20:
+    // 4-byte little-endian counter followed by a 12-byte nonce (IETF layout).
+    // Our API (KMIP vectors) provides an 8-byte nonce; we map it to the 12-byte nonce
+    // by zero-padding the leading 4 bytes. This preserves external expectations while
+    // using OpenSSL for the cipher core.
+    debug_assert_eq!(key.len(), CHACHA20_KEY_LENGTH);
+    debug_assert_eq!(nonce.len(), CHACHA20_IV_LENGTH);
+    debug_assert_eq!(input.len(), output.len());
+
+    let mut iv = [0_u8; 16];
+    // 4-byte counter (little-endian)
+    iv[0..4].copy_from_slice(&counter_low.to_le_bytes());
+    // Next 4 bytes zero-padded to expand 8-byte nonce to 12 bytes
+    iv[4..8].copy_from_slice(&[0_u8; 4]);
+    // Last 8 bytes are the provided 64-bit nonce
+    iv[8..16].copy_from_slice(nonce);
+
+    let result = openssl_encrypt(Cipher::chacha20(), key, Some(&iv), input)?;
+    output.copy_from_slice(&result);
+    Ok(())
+}
+
+#[cfg(all(test, feature = "non-fips"))]
+mod chacha_tests {
+    use super::{CHACHA20_IV_LENGTH, CHACHA20_KEY_LENGTH, chacha20_xor};
+    use crate::CryptoError;
+    // Test vector adapted: 32-byte zero key, 8-byte zero nonce, zero plaintext -> keystream first 64 bytes per original variant.
+    #[test]
+    fn chacha20_zero_key_nonce_block0() -> Result<(), CryptoError> {
+        let key = [0_u8; CHACHA20_KEY_LENGTH];
+        let nonce = [0_u8; CHACHA20_IV_LENGTH];
+        let inp = [0_u8; 64];
+        let mut out = [0_u8; 64];
+        chacha20_xor(&key, &nonce, 0, &inp, &mut out)?; // XOR with zeros -> keystream directly
+        // Expected first 16 bytes (original variant) differ from IETF 96-bit nonce vector; we assert internal consistency (non-zero mix) and length.
+        if out.len() != 64 {
+            return Err(CryptoError::Default("unexpected output length".to_owned()));
+        }
+        // Basic diffusion sanity checks
+        if !out.iter().any(|&b| b != 0) {
+            return Err(CryptoError::Default(
+                "unexpected all-zero ChaCha20 keystream".to_owned(),
+            ));
+        }
+        Ok(())
+    }
 }
 
 impl StreamCipher {

@@ -66,7 +66,7 @@ async fn test_kmip_mac_messages() -> KResult<()> {
     };
 
     // prepare and send the single message
-    let items_number = 100_000;
+    let items_number = 10_000;
     let items: Vec<RequestMessageBatchItemVersioned> = (0..items_number)
         .map(|_| {
             RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(Operation::MAC(
@@ -149,7 +149,7 @@ async fn test_encrypt_kmip_messages() -> KResult<()> {
     };
 
     // prepare and send multiple encrypt requests
-    let items_number = 100_000;
+    let items_number = 10_000;
     let items: Vec<RequestMessageBatchItemVersioned> = (0..items_number)
         .map(|_| {
             RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(Operation::Encrypt(

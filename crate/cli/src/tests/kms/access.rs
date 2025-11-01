@@ -1,9 +1,11 @@
+// no std imports needed at top-level
+
 use cosmian_kms_client::{
     KmsClient,
     kmip_2_1::{KmipOperation, kmip_types::UniqueIdentifier},
     reexport::cosmian_kms_client_utils::symmetric_utils::DataEncryptionAlgorithm,
 };
-use cosmian_logger::trace;
+use cosmian_logger::{log_init, trace};
 use serial_test::serial;
 use tempfile::TempDir;
 use test_kms_server::{
@@ -37,22 +39,21 @@ async fn gen_keypair(kms_client: &KmsClient) -> KmsCliResult<(UniqueIdentifier, 
     CreateKeyPairAction::default().run(kms_client.clone()).await
 }
 
-/// Export and import symmetric key
+/// Export and import a symmetric key using a unique temp file to avoid concurrent test collisions
 async fn export_import_sym_key(key_id: &str, kms_client: &KmsClient) -> KmsCliResult<String> {
     let tmp_dir = TempDir::new()?;
-    let tmp_path = tmp_dir.path();
-    let export_file = tmp_path.join("output.export");
+    let export_path = tmp_dir.path().join("output.export");
 
     ExportSecretDataOrKeyAction {
         key_id: Some(key_id.to_owned()),
-        key_file: export_file.clone(),
+        key_file: export_path.clone(),
         ..Default::default()
     }
     .run(kms_client.clone())
     .await?;
 
     Ok(ImportSecretDataOrKeyAction {
-        key_file: export_file,
+        key_file: export_path,
         ..Default::default()
     }
     .run(kms_client.clone())
@@ -63,10 +64,9 @@ async fn export_import_sym_key(key_id: &str, kms_client: &KmsClient) -> KmsCliRe
 #[tokio::test]
 #[serial]
 pub(crate) async fn test_ownership_and_grant() -> KmsCliResult<()> {
-    // create a temp dir
+    // Use a per-test temp file for exports to avoid cross-test /tmp collisions
     let tmp_dir = TempDir::new()?;
-    let tmp_path = tmp_dir.path();
-    let output_file = tmp_path.join("output.json");
+    let output_json = tmp_dir.path().join("output.json");
 
     // the client conf will use the owner cert
     let ctx = start_default_test_kms_server_with_cert_auth().await;
@@ -74,7 +74,7 @@ pub(crate) async fn test_ownership_and_grant() -> KmsCliResult<()> {
 
     // the owner should have access
     ExportSecretDataOrKeyAction {
-        key_file: output_file.clone(),
+        key_file: output_json.clone(),
         key_id: Some(key_id.to_string()),
         ..Default::default()
     }
@@ -92,14 +92,16 @@ pub(crate) async fn test_ownership_and_grant() -> KmsCliResult<()> {
     .await?;
 
     // the user should not be able to export
-    ExportSecretDataOrKeyAction {
-        key_id: Some(key_id.to_string()),
-        key_file: output_file.clone(),
-        ..Default::default()
-    }
-    .run(ctx.get_user_client())
-    .await
-    .unwrap_err();
+    assert!(
+        ExportSecretDataOrKeyAction {
+            key_id: Some(key_id.to_string()),
+            key_file: output_json.clone(),
+            ..Default::default()
+        }
+        .run(ctx.get_user_client())
+        .await
+        .is_err()
+    );
     // the user should not be able to encrypt or decrypt
     assert!(
         run_encrypt_decrypt_test(
@@ -113,23 +115,27 @@ pub(crate) async fn test_ownership_and_grant() -> KmsCliResult<()> {
         .is_err()
     );
     // the user should not be able to revoke the key
-    RevokeKeyAction {
-        key_id: Some(key_id.to_string()),
-        revocation_reason: "failed revoke".to_owned(),
-        tags: None,
-    }
-    .run(ctx.get_user_client())
-    .await
-    .unwrap_err();
+    assert!(
+        RevokeKeyAction {
+            key_id: Some(key_id.to_string()),
+            revocation_reason: "failed revoke".to_owned(),
+            tags: None,
+        }
+        .run(ctx.get_user_client())
+        .await
+        .is_err()
+    );
     // the user should not be able to destroy the key
-    DestroyKeyAction {
-        key_id: Some(key_id.to_string()),
-        remove: false,
-        tags: None,
-    }
-    .run(ctx.get_user_client())
-    .await
-    .unwrap_err();
+    assert!(
+        DestroyKeyAction {
+            key_id: Some(key_id.to_string()),
+            remove: false,
+            tags: None,
+        }
+        .run(ctx.get_user_client())
+        .await
+        .is_err()
+    );
 
     // switch back to owner
     // grant encrypt and decrypt access to user
@@ -143,14 +149,16 @@ pub(crate) async fn test_ownership_and_grant() -> KmsCliResult<()> {
 
     // switch to user
     // the user should still not be able to export
-    ExportSecretDataOrKeyAction {
-        key_id: Some(key_id.to_string()),
-        key_file: output_file.clone(),
-        ..Default::default()
-    }
-    .run(ctx.get_user_client())
-    .await
-    .unwrap_err();
+    assert!(
+        ExportSecretDataOrKeyAction {
+            key_id: Some(key_id.to_string()),
+            key_file: output_json.clone(),
+            ..Default::default()
+        }
+        .run(ctx.get_user_client())
+        .await
+        .is_err()
+    );
 
     // the user should now be able to encrypt or decrypt
     run_encrypt_decrypt_test(
@@ -162,23 +170,27 @@ pub(crate) async fn test_ownership_and_grant() -> KmsCliResult<()> {
     )
     .await?;
     // the user should still not be able to revoke the key
-    RevokeKeyAction {
-        key_id: Some(key_id.to_string()),
-        revocation_reason: "failed revoke".to_owned(),
-        tags: None,
-    }
-    .run(ctx.get_user_client())
-    .await
-    .unwrap_err();
+    assert!(
+        RevokeKeyAction {
+            key_id: Some(key_id.to_string()),
+            revocation_reason: "failed revoke".to_owned(),
+            tags: None,
+        }
+        .run(ctx.get_user_client())
+        .await
+        .is_err()
+    );
     // the user should still not be able to destroy the key
-    DestroyKeyAction {
-        key_id: Some(key_id.to_string()),
-        remove: false,
-        tags: None,
-    }
-    .run(ctx.get_user_client())
-    .await
-    .unwrap_err();
+    assert!(
+        DestroyKeyAction {
+            key_id: Some(key_id.to_string()),
+            remove: false,
+            tags: None,
+        }
+        .run(ctx.get_user_client())
+        .await
+        .is_err()
+    );
 
     // switch back to owner
     // grant encrypt and decrypt access to user
@@ -194,29 +206,33 @@ pub(crate) async fn test_ownership_and_grant() -> KmsCliResult<()> {
     // the user should now be able to export
     ExportSecretDataOrKeyAction {
         key_id: Some(key_id.to_string()),
-        key_file: output_file.clone(),
+        key_file: output_json.clone(),
         ..Default::default()
     }
     .run(ctx.get_user_client())
     .await?;
     // the user should still not be able to revoke the key
-    RevokeKeyAction {
-        key_id: Some(key_id.to_string()),
-        revocation_reason: "failed revoke".to_owned(),
-        tags: None,
-    }
-    .run(ctx.get_user_client())
-    .await
-    .unwrap_err();
+    assert!(
+        RevokeKeyAction {
+            key_id: Some(key_id.to_string()),
+            revocation_reason: "failed revoke".to_owned(),
+            tags: None,
+        }
+        .run(ctx.get_user_client())
+        .await
+        .is_err()
+    );
     // the user should still not be able to destroy the key
-    DestroyKeyAction {
-        key_id: Some(key_id.to_string()),
-        remove: false,
-        tags: None,
-    }
-    .run(ctx.get_user_client())
-    .await
-    .unwrap_err();
+    assert!(
+        DestroyKeyAction {
+            key_id: Some(key_id.to_string()),
+            remove: false,
+            tags: None,
+        }
+        .run(ctx.get_user_client())
+        .await
+        .is_err()
+    );
 
     // grant revoke access to user
     GrantAccess {
@@ -296,8 +312,7 @@ pub(crate) async fn test_revoke_access() -> KmsCliResult<()> {
     init_test_logging();
     // create a temp dir
     let tmp_dir = TempDir::new()?;
-    let tmp_path = tmp_dir.path();
-    let output_file = tmp_path.join("output.json");
+    let output_json = tmp_dir.path().join("output.json");
 
     // the client conf will use the owner cert
     let ctx = start_default_test_kms_server_with_cert_auth().await;
@@ -331,7 +346,7 @@ pub(crate) async fn test_revoke_access() -> KmsCliResult<()> {
     // switch to user
     // the user should now be able to export
     ExportSecretDataOrKeyAction {
-        key_file: output_file.clone(),
+        key_file: output_json.clone(),
         key_id: Some(key_id.to_string()),
         ..Default::default()
     }
@@ -349,14 +364,16 @@ pub(crate) async fn test_revoke_access() -> KmsCliResult<()> {
     .await?;
 
     // the user should not be able to export anymore
-    ExportSecretDataOrKeyAction {
-        key_file: output_file.clone(),
-        key_id: Some(key_id.to_string()),
-        ..Default::default()
-    }
-    .run(ctx.get_user_client())
-    .await
-    .unwrap_err();
+    assert!(
+        ExportSecretDataOrKeyAction {
+            key_file: output_json,
+            key_id: Some(key_id.to_string()),
+            ..Default::default()
+        }
+        .run(ctx.get_user_client())
+        .await
+        .is_err()
+    );
 
     // revoke errors
     // switch back to owner
@@ -408,7 +425,7 @@ pub(crate) async fn test_list_access_rights() -> KmsCliResult<()> {
     .run(ctx.get_owner_client())
     .await?;
 
-    trace!("owner list {owner_list:?}");
+    trace!("owner list count {}", owner_list.len());
 
     assert!(
         owner_list
@@ -457,7 +474,7 @@ pub(crate) async fn test_list_owned_objects() -> KmsCliResult<()> {
     .run(ctx.get_owner_client())
     .await?;
 
-    // The user is not the owner and thus should not have the object in the list
+    // The user is not the owner and he should not have the object in the list
     let user_list = ListOwnedObjects.run(ctx.get_user_client()).await?;
     assert!(
         user_list
@@ -513,7 +530,7 @@ pub(crate) async fn test_access_right_obtained() -> KmsCliResult<()> {
     let key_id = gen_key(&ctx.get_owner_client()).await?;
 
     let list = ListAccessRightsObtained.run(ctx.get_owner_client()).await?;
-    trace!("owner list {list:?}");
+    trace!("owner list count {}", list.len());
     assert!(
         list.iter()
             .map(|x| x.object_id.clone())
@@ -531,7 +548,7 @@ pub(crate) async fn test_access_right_obtained() -> KmsCliResult<()> {
 
     // the user should have the "get" access granted
     let list = ListAccessRightsObtained.run(ctx.get_user_client()).await?;
-    trace!("user list {list:?}");
+    trace!("user list count {}", list.len());
     assert!(
         list.iter()
             .map(|x| x.object_id.clone())
@@ -579,7 +596,7 @@ pub(crate) async fn test_access_right_obtained() -> KmsCliResult<()> {
 
     // the user should have the "get" and "encrypt" access granted
     let list = ListAccessRightsObtained.run(ctx.get_user_client()).await?;
-    trace!("user list {list:?}");
+    trace!("user list count {}", list.len());
     assert!(list.iter().any(|x| x.object_id == key_id));
     assert!(
         list.iter()
@@ -602,19 +619,17 @@ pub(crate) async fn test_access_right_obtained() -> KmsCliResult<()> {
 #[tokio::test]
 #[serial]
 pub(crate) async fn test_ownership_and_grant_wildcard_user() -> KmsCliResult<()> {
-    // create a temp dir
-    let tmp_dir = TempDir::new()?;
-    let tmp_path = tmp_dir.path();
-    let output_file = tmp_path.join("output.json");
-
+    log_init(None);
     // the client conf will use the owner cert
     let ctx = start_default_test_kms_server_with_cert_auth().await;
+    let tmp_dir = TempDir::new()?;
+    let output_json = tmp_dir.path().join("output.json");
     let key_id = gen_key(&ctx.get_owner_client()).await?;
 
     // the owner should have access
     ExportSecretDataOrKeyAction {
         key_id: Some(key_id.to_string()),
-        key_file: output_file.clone(),
+        key_file: output_json.clone(),
         ..Default::default()
     }
     .run(ctx.get_owner_client())
@@ -631,14 +646,16 @@ pub(crate) async fn test_ownership_and_grant_wildcard_user() -> KmsCliResult<()>
     .await?;
 
     // the user should not be able to export
-    ExportSecretDataOrKeyAction {
-        key_id: Some(key_id.to_string()),
-        key_file: output_file.clone(),
-        ..Default::default()
-    }
-    .run(ctx.get_user_client())
-    .await
-    .unwrap_err();
+    assert!(
+        ExportSecretDataOrKeyAction {
+            key_id: Some(key_id.to_string()),
+            key_file: output_json.clone(),
+            ..Default::default()
+        }
+        .run(ctx.get_user_client())
+        .await
+        .is_err()
+    );
     // the user should not be able to encrypt or decrypt
     assert!(
         run_encrypt_decrypt_test(
@@ -652,51 +669,50 @@ pub(crate) async fn test_ownership_and_grant_wildcard_user() -> KmsCliResult<()>
         .is_err()
     );
     // the user should not be able to revoke the key
-    RevokeKeyAction {
-        key_id: Some(key_id.to_string()),
-        revocation_reason: "failed revoke".to_owned(),
-        tags: None,
-    }
-    .run(ctx.get_user_client())
-    .await
-    .unwrap_err();
+    assert!(
+        RevokeKeyAction {
+            key_id: Some(key_id.to_string()),
+            revocation_reason: "failed revoke".to_owned(),
+            tags: None,
+        }
+        .run(ctx.get_user_client())
+        .await
+        .is_err()
+    );
     // the user should not be able to destroy the key
-    DestroyKeyAction {
-        key_id: Some(key_id.to_string()),
-        remove: false,
-        tags: None,
-    }
-    .run(ctx.get_user_client())
-    .await
-    .unwrap_err();
+    assert!(
+        DestroyKeyAction {
+            key_id: Some(key_id.to_string()),
+            remove: false,
+            tags: None,
+        }
+        .run(ctx.get_user_client())
+        .await
+        .is_err()
+    );
 
     // switch back to owner
-    // grant encrypt and decrypt access to user
+    // grant encrypt and decrypt access to user in a single operation list
     GrantAccess {
         object_uid: Some(key_id.to_string()),
         user: "user.client@acme.com".to_owned(),
-        operations: vec![KmipOperation::Encrypt],
-    }
-    .run(ctx.get_owner_client())
-    .await?;
-    GrantAccess {
-        object_uid: Some(key_id.to_string()),
-        user: "user.client@acme.com".to_owned(),
-        operations: vec![KmipOperation::Decrypt],
+        operations: vec![KmipOperation::Encrypt, KmipOperation::Decrypt],
     }
     .run(ctx.get_owner_client())
     .await?;
 
     // switch to user
     // the user should still not be able to export
-    ExportSecretDataOrKeyAction {
-        key_id: Some(key_id.to_string()),
-        key_file: output_file.clone(),
-        ..Default::default()
-    }
-    .run(ctx.get_user_client())
-    .await
-    .unwrap_err();
+    assert!(
+        ExportSecretDataOrKeyAction {
+            key_id: Some(key_id.to_string()),
+            key_file: output_json.clone(),
+            ..Default::default()
+        }
+        .run(ctx.get_user_client())
+        .await
+        .is_err()
+    );
 
     // the user should now be able to encrypt or decrypt
     run_encrypt_decrypt_test(
@@ -708,23 +724,27 @@ pub(crate) async fn test_ownership_and_grant_wildcard_user() -> KmsCliResult<()>
     )
     .await?;
     // the user should still not be able to revoke the key
-    RevokeKeyAction {
-        key_id: Some(key_id.to_string()),
-        revocation_reason: "failed revoke".to_owned(),
-        tags: None,
-    }
-    .run(ctx.get_user_client())
-    .await
-    .unwrap_err();
+    assert!(
+        RevokeKeyAction {
+            key_id: Some(key_id.to_string()),
+            revocation_reason: "failed revoke".to_owned(),
+            tags: None,
+        }
+        .run(ctx.get_user_client())
+        .await
+        .is_err()
+    );
     // the user should still not be able to destroy the key
-    DestroyKeyAction {
-        key_id: Some(key_id.to_string()),
-        remove: false,
-        tags: None,
-    }
-    .run(ctx.get_user_client())
-    .await
-    .unwrap_err();
+    assert!(
+        DestroyKeyAction {
+            key_id: Some(key_id.to_string()),
+            remove: false,
+            tags: None,
+        }
+        .run(ctx.get_user_client())
+        .await
+        .is_err()
+    );
 
     // switch back to owner
     // grant encrypt and decrypt access to user
@@ -740,29 +760,33 @@ pub(crate) async fn test_ownership_and_grant_wildcard_user() -> KmsCliResult<()>
     // the user should now be able to export
     ExportSecretDataOrKeyAction {
         key_id: Some(key_id.to_string()),
-        key_file: output_file.clone(),
+        key_file: output_json,
         ..Default::default()
     }
     .run(ctx.get_user_client())
     .await?;
     // the user should still not be able to revoke the key
-    RevokeKeyAction {
-        key_id: Some(key_id.to_string()),
-        revocation_reason: "failed revoke".to_owned(),
-        tags: None,
-    }
-    .run(ctx.get_user_client())
-    .await
-    .unwrap_err();
+    assert!(
+        RevokeKeyAction {
+            key_id: Some(key_id.to_string()),
+            revocation_reason: "failed revoke".to_owned(),
+            tags: None,
+        }
+        .run(ctx.get_user_client())
+        .await
+        .is_err()
+    );
     // the user should still not be able to destroy the key
-    DestroyKeyAction {
-        key_id: Some(key_id.to_string()),
-        remove: false,
-        tags: None,
-    }
-    .run(ctx.get_user_client())
-    .await
-    .unwrap_err();
+    assert!(
+        DestroyKeyAction {
+            key_id: Some(key_id.to_string()),
+            remove: false,
+            tags: None,
+        }
+        .run(ctx.get_user_client())
+        .await
+        .is_err()
+    );
 
     // switch back to owner
     // grant revoke access to user
@@ -924,8 +948,8 @@ pub(crate) async fn test_privileged_users() -> KmsCliResult<()> {
     let _imported_key = export_import_sym_key(&key_id.to_string(), &ctx.get_owner_client()).await?;
 
     // non-privileged users can't create or import by default
-    gen_key(&ctx.get_user_client()).await.unwrap_err();
-    gen_keypair(&ctx.get_user_client()).await.unwrap_err();
+    assert!(gen_key(&ctx.get_user_client()).await.is_err());
+    assert!(gen_keypair(&ctx.get_user_client()).await.is_err());
     export_import_sym_key(&key_id.to_string(), &ctx.get_user_client())
         .await
         .unwrap_err();
@@ -980,8 +1004,8 @@ pub(crate) async fn test_privileged_users() -> KmsCliResult<()> {
     .await?;
 
     // user can't create objects anymore
-    gen_key(&ctx.get_user_client()).await.unwrap_err();
-    gen_keypair(&ctx.get_user_client()).await.unwrap_err();
+    assert!(gen_key(&ctx.get_user_client()).await.is_err());
+    assert!(gen_keypair(&ctx.get_user_client()).await.is_err());
     export_import_sym_key(&key_id.to_string(), &ctx.get_user_client())
         .await
         .unwrap_err();

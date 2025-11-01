@@ -47,7 +47,7 @@ async fn create_google_key_pair() -> KmsCliResult<()> {
         leaf_certificate_pkcs12_password: None,
         dry_run: true,
     };
-    action.run(ctx.get_owner_client()).await.unwrap_err();
+    assert!(action.run(ctx.get_owner_client()).await.is_err());
 
     // Create key pair with certificate extensions (must succeed)
     let action = CreateKeyPairsAction {

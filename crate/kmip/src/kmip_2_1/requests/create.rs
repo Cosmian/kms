@@ -1,3 +1,4 @@
+use time::OffsetDateTime;
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
@@ -36,8 +37,30 @@ pub fn create_symmetric_key_kmip_object(
         uid if uid.is_empty() => Uuid::new_v4().to_string(),
         uid => uid.to_owned(),
     };
-    // this length is in bits
-    let cryptographic_length = Some(i32::try_from(key_bytes.len())? * 8);
+    // Determine the cryptographic length to report in bits.
+    // For most algorithms, this is simply the bit length of the key material.
+    // THREE_DES must be supported to comply with official XML KMIP test vectors.
+    // For THREE_DES, KMIP profiles expect the effective key length (112 or 168),
+    // not the nominal 128/192 bits that include the parity bits.
+    let cryptographic_length: Option<i32> = {
+        match cryptographic_algorithm {
+            CryptographicAlgorithm::THREE_DES => {
+                // Map byte lengths (including parity) to effective key bits
+                //  - 16 bytes (2-key 3DES) => 112 effective bits
+                //  - 24 bytes (3-key 3DES) => 168 effective bits
+                //  - 8 bytes (single DES)  => 56 effective bits (included for completeness)
+                let eff = match key_bytes.len() {
+                    24 => 168,
+                    16 => 112,
+                    8 => 56,
+                    // Fallback: use the raw length if non-standard, though profiles shouldn't hit this
+                    other => i32::try_from(other).unwrap_or(0) * 8,
+                };
+                Some(eff)
+            }
+            _ => Some(i32::try_from(key_bytes.len())? * 8),
+        }
+    };
     let mut attributes = create_attributes.clone();
     attributes.object_type = Some(ObjectType::SymmetricKey);
     attributes.cryptographic_algorithm = Some(cryptographic_algorithm);
@@ -104,6 +127,11 @@ pub fn symmetric_key_create_request<T: IntoIterator<Item = impl AsRef<str>>>(
         object_type: Some(ObjectType::SymmetricKey),
         unique_identifier: key_id,
         sensitive: sensitive.then_some(true),
+        activation_date: Some(
+            OffsetDateTime::now_utc()
+                .replace_millisecond(0)
+                .map_err(|e| KmipError::Default(e.to_string()))?,
+        ),
         ..Attributes::default()
     };
     attributes.set_tags(tags)?;
@@ -184,6 +212,11 @@ pub fn secret_data_create_request<T: IntoIterator<Item = impl AsRef<str>>>(
         object_type: Some(ObjectType::SecretData),
         unique_identifier: secret_id,
         sensitive: sensitive.then_some(true),
+        activation_date: Some(
+            OffsetDateTime::now_utc()
+                .replace_millisecond(0)
+                .map_err(|e| KmipError::Default(e.to_string()))?,
+        ),
         ..Attributes::default()
     };
     attributes.set_tags(tags)?;

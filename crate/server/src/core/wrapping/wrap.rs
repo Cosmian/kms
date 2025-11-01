@@ -19,7 +19,7 @@ use cosmian_kms_server_database::{
         cosmian_kms_interfaces::SessionParams,
     },
 };
-use cosmian_logger::{debug, warn};
+use cosmian_logger::{debug, trace, warn};
 
 use crate::{
     core::{KMS, uid_utils::has_prefix},
@@ -107,6 +107,7 @@ pub(crate) async fn wrap_and_cache(
         EncodingOption::TTLVEncoding
     };
 
+    trace!("Wrapping key with id: {wrapping_key_id}");
     // wrap the current object
     wrap_object(
         object,

@@ -43,10 +43,13 @@ use crate::{error::CryptoError, openssl::hashing_algorithm_to_openssl_ref};
 /// - `key_to_wrap`: the data encryption key to wrap
 pub fn ckm_rsa_pkcs_oaep_key_wrap(
     pub_key: &PKey<Public>,
-    hash_fn: HashingAlgorithm,
+    oaep_hash_fn: HashingAlgorithm,
+    mgf1_hash_fn: HashingAlgorithm,
+    label: Option<&[u8]>,
     key_to_wrap: &[u8],
 ) -> Result<Vec<u8>, CryptoError> {
-    let (mut ctx, mut ciphertext) = init_ckm_rsa_pkcs_oaep_encryption_context(pub_key, hash_fn)?;
+    let (mut ctx, mut ciphertext) =
+        init_ckm_rsa_pkcs_oaep_encryption_context(pub_key, oaep_hash_fn, mgf1_hash_fn, label)?;
     ctx.encrypt_to_vec(key_to_wrap, &mut ciphertext)?;
     Ok(ciphertext)
 }
@@ -68,17 +71,22 @@ pub fn ckm_rsa_pkcs_oaep_key_wrap(
 /// - `plaintext`: the plaintext to encrypt
 pub fn ckm_rsa_pkcs_oaep_encrypt(
     pub_key: &PKey<Public>,
-    hash_fn: HashingAlgorithm,
+    oaep_hash_fn: HashingAlgorithm,
+    mgf1_hash_fn: HashingAlgorithm,
+    label: Option<&[u8]>,
     plaintext: &[u8],
 ) -> Result<Vec<u8>, CryptoError> {
-    let (mut ctx, mut ciphertext) = init_ckm_rsa_pkcs_oaep_encryption_context(pub_key, hash_fn)?;
+    let (mut ctx, mut ciphertext) =
+        init_ckm_rsa_pkcs_oaep_encryption_context(pub_key, oaep_hash_fn, mgf1_hash_fn, label)?;
     ctx.encrypt_to_vec(plaintext, &mut ciphertext)?;
     Ok(ciphertext)
 }
 
 fn init_ckm_rsa_pkcs_oaep_encryption_context(
     pub_key: &PKey<Public>,
-    hash_fn: HashingAlgorithm,
+    oaep_hash_fn: HashingAlgorithm,
+    mgf1_hash_fn: HashingAlgorithm,
+    label: Option<&[u8]>,
 ) -> Result<(PkeyCtx<Public>, Vec<u8>), CryptoError> {
     let rsa_pub_key = pub_key.rsa()?;
     #[cfg(not(feature = "non-fips"))]
@@ -92,7 +100,8 @@ fn init_ckm_rsa_pkcs_oaep_encryption_context(
     }
 
     // The openssl hash function
-    let hash_fn: &MdRef = hashing_algorithm_to_openssl_ref(hash_fn)?;
+    let oaep_hash_fn_ref: &MdRef = hashing_algorithm_to_openssl_ref(oaep_hash_fn)?;
+    let mgf1_hash_fn_ref: &MdRef = hashing_algorithm_to_openssl_ref(mgf1_hash_fn)?;
 
     // The ciphertext has the same length as the modulus.
     let encapsulation_bytes_len = usize::try_from(rsa_pub_key.size())?;
@@ -102,8 +111,12 @@ fn init_ckm_rsa_pkcs_oaep_encryption_context(
     let mut ctx = PkeyCtx::new(pub_key)?;
     ctx.encrypt_init()?;
     ctx.set_rsa_padding(openssl::rsa::Padding::PKCS1_OAEP)?;
-    ctx.set_rsa_oaep_md(hash_fn)?;
-    ctx.set_rsa_mgf1_md(hash_fn)?;
+    ctx.set_rsa_oaep_md(oaep_hash_fn_ref)?;
+    ctx.set_rsa_mgf1_md(mgf1_hash_fn_ref)?;
+    if let Some(label) = label.filter(|l| !l.is_empty()) {
+        // OpenSSL copies internally; safe to pass slice.
+        ctx.set_rsa_oaep_label(label)?;
+    }
     Ok((ctx, ciphertext))
 }
 
@@ -122,10 +135,13 @@ fn init_ckm_rsa_pkcs_oaep_encryption_context(
 /// - `wrapped_key`: the `wrapped_key` of the key to unwrap
 pub fn ckm_rsa_pkcs_oaep_key_unwrap(
     priv_key: &PKey<Private>,
-    hash_fn: HashingAlgorithm,
+    oaep_hash_fn: HashingAlgorithm,
+    mgf1_hash_fn: HashingAlgorithm,
+    label: Option<&[u8]>,
     wrapped_key: &[u8],
 ) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
-    let (mut ctx, mut plaintext) = init_ckm_rsa_pkcs_oaep_decryption_context(priv_key, hash_fn)?;
+    let (mut ctx, mut plaintext) =
+        init_ckm_rsa_pkcs_oaep_decryption_context(priv_key, oaep_hash_fn, mgf1_hash_fn, label)?;
     ctx.decrypt_to_vec(wrapped_key, &mut plaintext)?;
     Ok(plaintext)
 }
@@ -145,17 +161,22 @@ pub fn ckm_rsa_pkcs_oaep_key_unwrap(
 /// - `ciphertext`: the ciphertext to decrypt
 pub fn ckm_rsa_pkcs_oaep_key_decrypt(
     priv_key: &PKey<Private>,
-    hash_fn: HashingAlgorithm,
+    oaep_hash_fn: HashingAlgorithm,
+    mgf1_hash_fn: HashingAlgorithm,
+    label: Option<&[u8]>,
     ciphertext: &[u8],
 ) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
-    let (mut ctx, mut plaintext) = init_ckm_rsa_pkcs_oaep_decryption_context(priv_key, hash_fn)?;
+    let (mut ctx, mut plaintext) =
+        init_ckm_rsa_pkcs_oaep_decryption_context(priv_key, oaep_hash_fn, mgf1_hash_fn, label)?;
     ctx.decrypt_to_vec(ciphertext, &mut plaintext)?;
     Ok(plaintext)
 }
 
 fn init_ckm_rsa_pkcs_oaep_decryption_context(
     priv_key: &PKey<Private>,
-    hash_fn: HashingAlgorithm,
+    oaep_hash_fn: HashingAlgorithm,
+    mgf1_hash_fn: HashingAlgorithm,
+    label: Option<&[u8]>,
 ) -> Result<(PkeyCtx<Private>, Zeroizing<Vec<u8>>), CryptoError> {
     let rsa_priv_key = priv_key.rsa()?;
     #[cfg(not(feature = "non-fips"))]
@@ -169,18 +190,23 @@ fn init_ckm_rsa_pkcs_oaep_decryption_context(
     }
 
     // The openssl hash function
-    let hash_fn: &MdRef = hashing_algorithm_to_openssl_ref(hash_fn)?;
+    let oaep_hash_fn_ref: &MdRef = hashing_algorithm_to_openssl_ref(oaep_hash_fn)?;
+    let mgf1_hash_fn_ref: &MdRef = hashing_algorithm_to_openssl_ref(mgf1_hash_fn)?;
 
     // The ciphertext has the same length as the modulus.
-    let plaintext_bytes_len = usize::try_from(rsa_priv_key.size())? - 2 - 2 * hash_fn.size();
+    let plaintext_bytes_len =
+        usize::try_from(rsa_priv_key.size())? - 2 - 2 * oaep_hash_fn_ref.size();
     let plaintext = Zeroizing::from(Vec::with_capacity(plaintext_bytes_len));
 
     // Perform OAEP encryption.
     let mut ctx = PkeyCtx::new(priv_key)?;
     ctx.decrypt_init()?;
     ctx.set_rsa_padding(openssl::rsa::Padding::PKCS1_OAEP)?;
-    ctx.set_rsa_oaep_md(hash_fn)?;
-    ctx.set_rsa_mgf1_md(hash_fn)?;
+    ctx.set_rsa_oaep_md(oaep_hash_fn_ref)?;
+    ctx.set_rsa_mgf1_md(mgf1_hash_fn_ref)?;
+    if let Some(label) = label.filter(|l| !l.is_empty()) {
+        ctx.set_rsa_oaep_label(label)?;
+    }
     Ok((ctx, plaintext))
 }
 
@@ -214,11 +240,21 @@ mod tests {
         let pub_key = PKey::public_key_from_pem(&priv_key.public_key_to_pem()?)?;
 
         let dek_to_wrap = Zeroizing::from(vec![0x01; 2048 / 8 - 2 - 2 * 256 / 8]);
-        let wrapped_key =
-            ckm_rsa_pkcs_oaep_key_wrap(&pub_key, HashingAlgorithm::SHA256, &dek_to_wrap)?;
+        let wrapped_key = ckm_rsa_pkcs_oaep_key_wrap(
+            &pub_key,
+            HashingAlgorithm::SHA256,
+            HashingAlgorithm::SHA256,
+            None,
+            &dek_to_wrap,
+        )?;
         assert_eq!(wrapped_key.len(), 2048 / 8);
-        let unwrapped_key =
-            ckm_rsa_pkcs_oaep_key_unwrap(&priv_key, HashingAlgorithm::SHA256, &wrapped_key)?;
+        let unwrapped_key = ckm_rsa_pkcs_oaep_key_unwrap(
+            &priv_key,
+            HashingAlgorithm::SHA256,
+            HashingAlgorithm::SHA256,
+            None,
+            &wrapped_key,
+        )?;
         assert_eq!(unwrapped_key.len(), 2048 / 8 - 2 - 2 * 256 / 8);
         assert_eq!(unwrapped_key, dek_to_wrap);
 
