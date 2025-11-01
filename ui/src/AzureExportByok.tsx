@@ -110,7 +110,7 @@ const ExportAzureBYOKForm: React.FC = () => {
                 true, // unwrap - export the key in wrapped form
                 "raw", // key_format - raw bytes
                 values.kekId, // wrap_key_id - the KEK to wrap with
-                "rsa-pkcs-oaep" // wrapping_algorithm
+                "rsa-aes-key-wrap-sha1" // wrapping_algorithm
             );
 
             const exportResultStr = await sendKmipRequest(exportRequest, idToken, serverUrl);
