@@ -64,16 +64,12 @@ async fn export_import_sym_key(key_id: &str, kms_client: &KmsClient) -> KmsCliRe
 #[tokio::test]
 #[serial]
 pub(crate) async fn test_ownership_and_grant() -> KmsCliResult<()> {
-    // create a temp dir
-    let tmp_dir = TempDir::new()?;
-    let tmp_path = tmp_dir.path();
-    let output_file = tmp_path.join("output.json");
-
-    // the client conf will use the owner cert
-    let ctx = start_default_test_kms_server_with_cert_auth().await;
     // Use a per-test temp file for exports to avoid cross-test /tmp collisions
     let tmp_dir = TempDir::new()?;
     let output_json = tmp_dir.path().join("output.json");
+
+    // the client conf will use the owner cert
+    let ctx = start_default_test_kms_server_with_cert_auth().await;
     let key_id = gen_key(&ctx.get_owner_client()).await?;
 
     // the owner should have access
@@ -316,14 +312,11 @@ pub(crate) async fn test_revoke_access() -> KmsCliResult<()> {
     init_test_logging();
     // create a temp dir
     let tmp_dir = TempDir::new()?;
-    let tmp_path = tmp_dir.path();
-    let output_file = tmp_path.join("output.json");
+    let output_json = tmp_dir.path().join("output.json");
 
     // the client conf will use the owner cert
     let ctx = start_default_test_kms_server_with_cert_auth().await;
     let key_id = gen_key(&ctx.get_owner_client()).await?;
-    let tmp_dir = TempDir::new()?;
-    let output_json = tmp_dir.path().join("output.json");
 
     //    // the user should not be able to export
     // assert!(

@@ -16,55 +16,37 @@ pub(crate) fn compare_payload_v21(expected: &Operation, actual: &Operation) -> K
 
     match (expected.clone(), actual.clone()) {
         (Operation::CheckResponse(exp), Operation::CheckResponse(act)) => {
-            if exp.unique_identifier != act.unique_identifier {
-                let exp_uid = exp
-                    .unique_identifier
-                    .as_ref()
-                    .map_or_else(|| "None".to_string(), std::string::ToString::to_string);
-                let act_uid = act
-                    .unique_identifier
-                    .as_ref()
-                    .map_or_else(|| "None".to_string(), std::string::ToString::to_string);
+            if exp != act {
                 return Err(KmsCliError::Default(format!(
-                    "unique_identifier expected={exp_uid} actual={act_uid}"
-                )));
-            }
-            if exp.cryptographic_usage_mask != act.cryptographic_usage_mask {
-                return Err(KmsCliError::Default(format!(
-                    "cryptographic_usage_mask expected={:?} actual={:?}",
-                    exp.cryptographic_usage_mask, act.cryptographic_usage_mask
+                    "CheckResponse mismatch expected={exp} actual={act}",
                 )));
             }
         }
         (Operation::ActivateResponse(exp), Operation::ActivateResponse(act)) => {
-            if exp.unique_identifier != act.unique_identifier {
+            if exp != act {
                 return Err(KmsCliError::Default(format!(
-                    "unique_identifier expected={} actual={}",
-                    exp.unique_identifier, act.unique_identifier
+                    "ActivateResponse mismatch expected={exp} actual={act}",
                 )));
             }
         }
         (Operation::CreateResponse(exp), Operation::CreateResponse(act)) => {
-            if exp.unique_identifier != act.unique_identifier {
+            if exp != act {
                 return Err(KmsCliError::Default(format!(
-                    "unique_identifier expected={} actual={}",
-                    exp.unique_identifier, act.unique_identifier
+                    "CreateResponse mismatch expected={exp} actual={act}",
                 )));
             }
         }
         (Operation::RegisterResponse(exp), Operation::RegisterResponse(act)) => {
-            if exp.unique_identifier != act.unique_identifier {
+            if exp != act {
                 return Err(KmsCliError::Default(format!(
-                    "unique_identifier expected={} actual={}",
-                    exp.unique_identifier, act.unique_identifier
+                    "RegisterResponse mismatch expected={exp} actual={act}",
                 )));
             }
         }
         (Operation::DestroyResponse(exp), Operation::DestroyResponse(act)) => {
-            if exp.unique_identifier != act.unique_identifier {
+            if exp != act {
                 return Err(KmsCliError::Default(format!(
-                    "unique_identifier expected={} actual={}",
-                    exp.unique_identifier, act.unique_identifier
+                    "DestroyResponse mismatch expected={exp} actual={act}",
                 )));
             }
         }
@@ -119,8 +101,9 @@ pub(crate) fn compare_payload_v21(expected: &Operation, actual: &Operation) -> K
                     .is_some_and(|u| *u == act.unique_identifier);
                 if !tolerate {
                     return Err(KmsCliError::Default(format!(
-                        "unique_identifier expected={} actual={}",
-                        exp.unique_identifier, act.unique_identifier
+                        "unique_identifier expected={exp_uid} actual={act_uid}",
+                        exp_uid = exp.unique_identifier,
+                        act_uid = act.unique_identifier
                     )));
                 }
             }
@@ -133,26 +116,18 @@ pub(crate) fn compare_payload_v21(expected: &Operation, actual: &Operation) -> K
             compare_object(&exp.object, &act.object)?;
         }
         (Operation::CreateKeyPairResponse(exp), Operation::CreateKeyPairResponse(act)) => {
-            if exp.private_key_unique_identifier != act.private_key_unique_identifier {
+            if exp != act {
                 return Err(KmsCliError::Default(format!(
-                    "private_key_unique_identifier expected={} actual={}",
-                    exp.private_key_unique_identifier, act.private_key_unique_identifier
-                )));
-            }
-            if exp.public_key_unique_identifier != act.public_key_unique_identifier {
-                return Err(KmsCliError::Default(format!(
-                    "public_key_unique_identifier expected={} actual={}",
-                    exp.public_key_unique_identifier, act.public_key_unique_identifier
+                    "CreateKeyPairResponse mismatch expected={exp} actual={act}",
                 )));
             }
         }
-        (Operation::DeleteAttributeResponse(_exp), Operation::DeleteAttributeResponse(_act)) => {
-            // if exp.unique_identifier != act.unique_identifier {
-            //     return Err(KmsCliError::Default(format!(
-            //         "unique_identifier expected={} actual={}",
-            //         exp.unique_identifier, act.unique_identifier
-            //     )));
-            // }
+        (Operation::DeleteAttributeResponse(exp), Operation::DeleteAttributeResponse(act)) => {
+            if exp != act {
+                return Err(KmsCliError::Default(format!(
+                    "DeleteAttributeResponse mismatch expected={exp} actual={act}"
+                )));
+            }
         }
         (Operation::LocateResponse(exp), Operation::LocateResponse(act)) => {
             if exp.located_items != act.located_items {
@@ -167,10 +142,10 @@ pub(crate) fn compare_payload_v21(expected: &Operation, actual: &Operation) -> K
                     act.unique_identifier.as_ref(),
                 ) {
                     (Some(e), Some(a)) if e != a => {
+                        let e_len = e.len();
+                        let a_len = a.len();
                         return Err(KmsCliError::Default(format!(
-                            "unique_identifier list mismatch expected_len={} actual_len={}",
-                            e.len(),
-                            a.len()
+                            "unique_identifier list mismatch expected_len={e_len} actual_len={a_len}"
                         )));
                     }
                     (Some(e), Some(a)) => {
@@ -204,27 +179,27 @@ pub(crate) fn compare_payload_v21(expected: &Operation, actual: &Operation) -> K
             }
         }
         (Operation::RNGSeedResponse(exp), Operation::RNGSeedResponse(act)) => {
-            if exp.amount_of_seed_data != act.amount_of_seed_data {
+            if exp != act {
                 return Err(KmsCliError::Default(format!(
-                    "RNGSeedResponse amount_of_seed_data expected={} actual={}",
-                    exp.amount_of_seed_data, act.amount_of_seed_data
+                    "RNGSeedResponse mismatch expected={exp} actual={act}",
                 )));
             }
         }
         (Operation::RNGRetrieveResponse(exp), Operation::RNGRetrieveResponse(act)) => {
             if exp.data.len() != act.data.len() {
+                let exp_len = exp.data.len();
+                let act_len = act.data.len();
                 return Err(KmsCliError::Default(format!(
-                    "RNGRetrieveResponse data mismatch expected_len={} actual_len={}",
-                    exp.data.len(),
-                    act.data.len()
+                    "RNGRetrieveResponse data mismatch expected_len={exp_len} actual_len={act_len}"
                 )));
             }
         }
         (Operation::EncryptResponse(exp), Operation::EncryptResponse(act)) => {
             if exp.unique_identifier != act.unique_identifier {
                 return Err(KmsCliError::Default(format!(
-                    "unique_identifier expected={} actual={}",
-                    exp.unique_identifier, act.unique_identifier
+                    "unique_identifier expected={exp_uid} actual={act_uid}",
+                    exp_uid = exp.unique_identifier,
+                    act_uid = act.unique_identifier
                 )));
             }
             let el = exp.data.as_ref().map_or(0, std::vec::Vec::len);
@@ -258,8 +233,9 @@ pub(crate) fn compare_payload_v21(expected: &Operation, actual: &Operation) -> K
         (Operation::DecryptResponse(exp), Operation::DecryptResponse(act)) => {
             if exp.unique_identifier != act.unique_identifier {
                 return Err(KmsCliError::Default(format!(
-                    "unique_identifier expected={} actual={}",
-                    exp.unique_identifier, act.unique_identifier
+                    "unique_identifier expected={exp_uid} actual={act_uid}",
+                    exp_uid = exp.unique_identifier,
+                    act_uid = act.unique_identifier
                 )));
             }
             let el = exp.data.as_ref().map_or(0, |v| v.len());
@@ -271,25 +247,20 @@ pub(crate) fn compare_payload_v21(expected: &Operation, actual: &Operation) -> K
             }
         }
         (Operation::SignResponse(exp), Operation::SignResponse(act)) => {
-            if exp.unique_identifier != act.unique_identifier {
+            if exp != act {
+                let exp = format!("{}", Operation::SignResponse(exp));
+                let act = format!("{}", Operation::SignResponse(act));
                 return Err(KmsCliError::Default(format!(
-                    "unique_identifier expected={} actual={}",
-                    exp.unique_identifier, act.unique_identifier
-                )));
-            }
-            if exp.signature_data != act.signature_data {
-                let el = exp.signature_data.as_ref().map_or(0, std::vec::Vec::len);
-                let al = act.signature_data.as_ref().map_or(0, std::vec::Vec::len);
-                return Err(KmsCliError::Default(format!(
-                    "signature_data mismatch expected_len={el} actual_len={al}"
+                    "SignResponse mismatch expected={exp} actual={act}",
                 )));
             }
         }
         (Operation::GetAttributesResponse(exp), Operation::GetAttributesResponse(act)) => {
             if exp.unique_identifier != act.unique_identifier {
                 return Err(KmsCliError::Default(format!(
-                    "unique_identifier expected={} actual={}",
-                    exp.unique_identifier, act.unique_identifier
+                    "unique_identifier expected={exp_uid} actual={act_uid}",
+                    exp_uid = exp.unique_identifier,
+                    act_uid = act.unique_identifier
                 )));
             }
             compare_attributes(&exp.attributes, &act.attributes)?;
@@ -297,8 +268,9 @@ pub(crate) fn compare_payload_v21(expected: &Operation, actual: &Operation) -> K
         (Operation::GetAttributeListResponse(exp), Operation::GetAttributeListResponse(act)) => {
             if exp.unique_identifier != act.unique_identifier {
                 return Err(KmsCliError::Default(format!(
-                    "unique_identifier expected={} actual={}",
-                    exp.unique_identifier, act.unique_identifier
+                    "unique_identifier expected={exp_uid} actual={act_uid}",
+                    exp_uid = exp.unique_identifier,
+                    act_uid = act.unique_identifier
                 )));
             }
             // Cannot reliably compare attribute_references list as servers may return
@@ -313,8 +285,9 @@ pub(crate) fn compare_payload_v21(expected: &Operation, actual: &Operation) -> K
         (Operation::AddAttributeResponse(exp), Operation::AddAttributeResponse(act)) => {
             if exp.unique_identifier != act.unique_identifier {
                 return Err(KmsCliError::Default(format!(
-                    "AddAttributeResponse unique_identifier expected={} actual={}",
-                    exp.unique_identifier, act.unique_identifier
+                    "AddAttributeResponse unique_identifier expected={exp_uid} actual={act_uid}",
+                    exp_uid = exp.unique_identifier,
+                    act_uid = act.unique_identifier
                 )));
             }
         }
@@ -363,16 +336,9 @@ pub(crate) fn compare_payload_v21(expected: &Operation, actual: &Operation) -> K
         }
         // Common MAC/signature verification variants
         (Operation::SignatureVerifyResponse(exp), Operation::SignatureVerifyResponse(act)) => {
-            if exp.unique_identifier != act.unique_identifier {
+            if exp != act {
                 return Err(KmsCliError::Default(format!(
-                    "unique_identifier expected={} actual={}",
-                    exp.unique_identifier, act.unique_identifier
-                )));
-            }
-            if exp.validity_indicator != act.validity_indicator {
-                return Err(KmsCliError::Default(format!(
-                    "validity_indicator expected={:?} actual={:?}",
-                    exp.validity_indicator, act.validity_indicator
+                    "SignatureVerifyResponse mismatch expected={exp} actual={act}",
                 )));
             }
         }
@@ -386,16 +352,9 @@ pub(crate) fn compare_payload_v21(expected: &Operation, actual: &Operation) -> K
             }
         }
         (Operation::MACVerifyResponse(exp), Operation::MACVerifyResponse(act)) => {
-            if exp.unique_identifier != act.unique_identifier {
+            if exp != act {
                 return Err(KmsCliError::Default(format!(
-                    "unique_identifier expected={} actual={}",
-                    exp.unique_identifier, act.unique_identifier
-                )));
-            }
-            if exp.validity_indicator != act.validity_indicator {
-                return Err(KmsCliError::Default(format!(
-                    "validity_indicator expected={:?} actual={:?}",
-                    exp.validity_indicator, act.validity_indicator
+                    "MACVerifyResponse mismatch expected={exp} actual={act}",
                 )));
             }
         }

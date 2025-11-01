@@ -20,24 +20,16 @@ pub(crate) fn compare_payload_v14(
 
     match (expected.clone(), actual.clone()) {
         (Op14::CheckResponse(exp), Op14::CheckResponse(act)) => {
-            if exp.unique_identifier != act.unique_identifier {
+            if exp != act {
                 return Err(KmsCliError::Default(format!(
-                    "unique_identifier expected={} actual={}",
-                    exp.unique_identifier, act.unique_identifier
-                )));
-            }
-            if exp.cryptographic_usage_mask != act.cryptographic_usage_mask {
-                return Err(KmsCliError::Default(format!(
-                    "cryptographic_usage_mask expected={:?} actual={:?}",
-                    exp.cryptographic_usage_mask, act.cryptographic_usage_mask
+                    "CheckResponse mismatch expected={exp} actual={act}",
                 )));
             }
         }
         (Op14::ActivateResponse(exp), Op14::ActivateResponse(act)) => {
-            if exp.unique_identifier != act.unique_identifier {
+            if exp != act {
                 return Err(KmsCliError::Default(format!(
-                    "unique_identifier expected={} actual={}",
-                    exp.unique_identifier, act.unique_identifier
+                    "ActivateResponse mismatch expected={exp} actual={act}",
                 )));
             }
         }
@@ -48,6 +40,19 @@ pub(crate) fn compare_payload_v14(
                     exp.unique_identifier, act.unique_identifier
                 )));
             }
+            if exp.object_type != act.object_type {
+                return Err(KmsCliError::Default(format!(
+                    "object_type expected={:?} actual={:?}",
+                    exp.object_type, act.object_type
+                )));
+            }
+            if exp.template_attribute.is_some() != act.template_attribute.is_some() {
+                return Err(KmsCliError::Default(format!(
+                    "template_attribute presence expected={:?} actual={:?}",
+                    exp.template_attribute.is_some(),
+                    act.template_attribute.is_some()
+                )));
+            }
         }
         (Op14::RegisterResponse(exp), Op14::RegisterResponse(act)) => {
             if exp.unique_identifier != act.unique_identifier {
@@ -56,12 +61,18 @@ pub(crate) fn compare_payload_v14(
                     exp.unique_identifier, act.unique_identifier
                 )));
             }
+            if exp.template_attribute.is_some() != act.template_attribute.is_some() {
+                return Err(KmsCliError::Default(format!(
+                    "template_attribute presence expected={:?} actual={:?}",
+                    exp.template_attribute.is_some(),
+                    act.template_attribute.is_some()
+                )));
+            }
         }
         (Op14::DestroyResponse(exp), Op14::DestroyResponse(act)) => {
-            if exp.unique_identifier != act.unique_identifier {
+            if exp != act {
                 return Err(KmsCliError::Default(format!(
-                    "unique_identifier expected={} actual={}",
-                    exp.unique_identifier, act.unique_identifier
+                    "DestroyResponse mismatch expected={exp} actual={act}",
                 )));
             }
         }
@@ -133,21 +144,18 @@ pub(crate) fn compare_payload_v14(
             compare_object(&exp_obj_21, &act_obj_21)?;
         }
         (Op14::CreateKeyPairResponse(exp), Op14::CreateKeyPairResponse(act)) => {
-            if exp.private_key_unique_identifier != act.private_key_unique_identifier {
+            if exp != act {
                 return Err(KmsCliError::Default(format!(
-                    "private_key_unique_identifier expected={} actual={}",
-                    exp.private_key_unique_identifier, act.private_key_unique_identifier
-                )));
-            }
-            if exp.public_key_unique_identifier != act.public_key_unique_identifier {
-                return Err(KmsCliError::Default(format!(
-                    "public_key_unique_identifier expected={} actual={}",
-                    exp.public_key_unique_identifier, act.public_key_unique_identifier
+                    "CreateKeyPairResponse mismatch expected={exp} actual={act}",
                 )));
             }
         }
-        (Op14::DeleteAttributeResponse(_exp), Op14::DeleteAttributeResponse(_act)) => {
-            // Skip strict UID comparison as servers may omit/alter it; mirrors v2.1 comparator leniency
+        (Op14::DeleteAttributeResponse(exp), Op14::DeleteAttributeResponse(act)) => {
+            if exp != act {
+                return Err(KmsCliError::Default(format!(
+                    "DeleteAttributeResponse mismatch expected={exp} actual={act}",
+                )));
+            }
         }
         (Op14::LocateResponse(exp), Op14::LocateResponse(act)) => {
             if exp.unique_identifier != act.unique_identifier {
@@ -192,10 +200,9 @@ pub(crate) fn compare_payload_v14(
             }
         }
         (Op14::RNGSeedResponse(exp), Op14::RNGSeedResponse(act)) => {
-            if exp.amount_of_seed_data != act.amount_of_seed_data {
+            if exp != act {
                 return Err(KmsCliError::Default(format!(
-                    "RNGSeedResponse amount_of_seed_data expected={} actual={}",
-                    exp.amount_of_seed_data, act.amount_of_seed_data
+                    "RNGSeedResponse mismatch expected={exp} actual={act}",
                 )));
             }
         }
@@ -259,17 +266,9 @@ pub(crate) fn compare_payload_v14(
             }
         }
         (Op14::SignResponse(exp), Op14::SignResponse(act)) => {
-            if exp.unique_identifier != act.unique_identifier {
+            if exp != act {
                 return Err(KmsCliError::Default(format!(
-                    "unique_identifier expected={} actual={}",
-                    exp.unique_identifier, act.unique_identifier
-                )));
-            }
-            if exp.signature_data != act.signature_data {
-                let el = exp.signature_data.len();
-                let al = act.signature_data.len();
-                return Err(KmsCliError::Default(format!(
-                    "signature_data mismatch expected_len={el} actual_len={al}",
+                    "SignResponse mismatch expected={exp} actual={act}",
                 )));
             }
         }
@@ -283,30 +282,16 @@ pub(crate) fn compare_payload_v14(
             }
         }
         (Op14::MACVerifyResponse(exp), Op14::MACVerifyResponse(act)) => {
-            if exp.unique_identifier != act.unique_identifier {
+            if exp != act {
                 return Err(KmsCliError::Default(format!(
-                    "unique_identifier expected={} actual={}",
-                    exp.unique_identifier, act.unique_identifier
-                )));
-            }
-            if exp.validity_indicator != act.validity_indicator {
-                return Err(KmsCliError::Default(format!(
-                    "validity_indicator expected={:?} actual={:?}",
-                    exp.validity_indicator, act.validity_indicator
+                    "MACVerifyResponse mismatch expected={exp} actual={act}",
                 )));
             }
         }
         (Op14::SignatureVerifyResponse(exp), Op14::SignatureVerifyResponse(act)) => {
-            if exp.unique_identifier != act.unique_identifier {
+            if exp != act {
                 return Err(KmsCliError::Default(format!(
-                    "unique_identifier expected={} actual={}",
-                    exp.unique_identifier, act.unique_identifier
-                )));
-            }
-            if exp.validity_indicator != act.validity_indicator {
-                return Err(KmsCliError::Default(format!(
-                    "validity_indicator expected={:?} actual={:?}",
-                    exp.validity_indicator, act.validity_indicator
+                    "SignatureVerifyResponse mismatch expected={exp} actual={act}",
                 )));
             }
         }

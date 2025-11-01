@@ -363,6 +363,9 @@ fn substitute_placeholders_in_expected_response(
                         Operation::RevokeResponse(rr) => {
                             substitute_uid(test_name, &mut rr.unique_identifier, uid_map);
                         }
+                        Operation::DeleteAttributeResponse(dr) => {
+                            substitute_uid(test_name, &mut dr.unique_identifier, uid_map);
+                        }
                         _ => {}
                     }
                 }
@@ -456,6 +459,9 @@ fn substitute_placeholders_in_expected_response(
                         }
                         Op14::RevokeResponse(rr) => {
                             substitute_uid_text(test_name, &mut rr.unique_identifier, uid_map);
+                        }
+                        Op14::DeleteAttributeResponse(dr) => {
+                            substitute_uid_text(test_name, &mut dr.unique_identifier, uid_map);
                         }
                         Op14::AddAttributeResponse(ar) => {
                             substitute_uid_text(test_name, &mut ar.unique_identifier, uid_map);
