@@ -15,13 +15,13 @@ use pkcs11_sys::{CK_C_INITIALIZE_ARGS, CK_RV, CK_VOID_PTR, CKF_OS_LOCKING_OK, CK
 
 use crate::{SOFTHSM2_PKCS11_LIB, SofthsmCapabilityProvider};
 
-const LIB_PATH: &str = SOFTHSM2_PKCS11_LIB;
+const SLOT_ID: usize = 0x01; // SoftHSM2 fallback slot if HSM_SLOT_ID is not set
 
-fn cfg() -> HResult<shared::HsmTestConfig<'static>> {
+fn cfg() -> HResult<shared::HsmTestConfig> {
     let user_password = get_hsm_password()?;
-    let slot = get_hsm_slot_id()?;
+    let slot = get_hsm_slot_id().unwrap_or(SLOT_ID);
     Ok(shared::HsmTestConfig {
-        lib_path: LIB_PATH,
+        lib_path: shared::lib_path("SOFTHSM2_PKCS11_LIB", SOFTHSM2_PKCS11_LIB),
         slot_ids_and_passwords: HashMap::from([(slot, Some(user_password))]),
         slot_id_for_tests: slot,
         rsa_oaep_digest: Some(RsaOaepDigest::SHA1),
@@ -65,8 +65,8 @@ fn test_hsm_softhsm2_all() -> HResult<()> {
 #[test]
 #[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
 fn test_hsm_softhsm2_low_level_test() -> HResult<()> {
-    let path = LIB_PATH;
-    let library = unsafe { Library::new(path) }?;
+    let cfg = cfg()?;
+    let library = unsafe { Library::new(&cfg.lib_path) }?;
     let init = unsafe { library.get::<fn(p_init_args: CK_VOID_PTR) -> CK_RV>(b"C_Initialize") }?;
 
     let mut p_init_args = CK_C_INITIALIZE_ARGS {

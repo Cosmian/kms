@@ -116,7 +116,11 @@ If you have never worked with Rust before, you will have to complete the followi
 1. Install Rust using [rustup](https://rustup.rs/)
 2. Install the required stable toolchain: `rustup toolchain install 1.90.0`
 3. Install required components: `rustup component add rustfmt clippy --toolchain 1.90.0`
-4. Set up OpenSSL 3.2.0 (required for FIPS compliance) by running: `bash .github/reusable_scripts/get_openssl_binaries.sh`
+4. Set up the build environment:
+    - Recommended (Linux/macOS): use the Nix-based build wrapper which provides OpenSSL 3.1.2 automatically:
+       `bash .github/scripts/cargo_build.sh`
+    - Alternative: use the same build wrapper which fetches and configures OpenSSL automatically:
+       `bash .github/scripts/cargo_build.sh`
 
 For detailed development setup, please refer to the [README](README.md) and the build instructions in
 [.github/copilot-instructions.md](.github/copilot-instructions.md).

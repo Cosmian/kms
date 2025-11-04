@@ -9,8 +9,30 @@
 # Exit on error, print commands
 set -ex
 
-if [ -n "$FEATURES" ]; then
-  CARGO_FEATURES="--features $FEATURES"
+# Args: --variant fips|non-fips (default: fips)
+VARIANT="fips"
+while [ $# -gt 0 ]; do
+  case "$1" in
+  -v | --variant)
+    VARIANT="${2:-}"
+    shift 2 || true
+    ;;
+  *) shift ;; # ignore
+  esac
+done
+
+case "$VARIANT" in
+fips | non-fips) : ;;
+*)
+  echo "Error: --variant must be 'fips' or 'non-fips'" >&2
+  exit 1
+  ;;
+esac
+
+if [ "$VARIANT" = "non-fips" ]; then
+  CARGO_FEATURES=(--features non-fips)
+else
+  CARGO_FEATURES=()
 fi
 
 # Install nodejs from nodesource if npm is not installed
@@ -37,7 +59,7 @@ cargo install wasm-pack
 # Build WASM component
 cd crate/wasm
 # shellcheck disable=SC2086
-wasm-pack build --target web --release $CARGO_FEATURES
+wasm-pack build --target web --release "${CARGO_FEATURES[@]}"
 
 # Copy WASM artifacts to UI directory
 WASM_DIR="../../ui/src/wasm/"
@@ -56,7 +78,10 @@ npm audit
 # Deploy built UI to root
 cd .. # current path: ./
 
-DEST_DIR="crate/server/ui${CARGO_FEATURES:+_non_fips}"
+DEST_DIR="crate/server/ui"
+if [ "$VARIANT" = "non-fips" ]; then
+  DEST_DIR="crate/server/ui_non_fips"
+fi
 rm -rf "$DEST_DIR"
 mkdir -p "$DEST_DIR"
 cp -R ui/dist "$DEST_DIR"

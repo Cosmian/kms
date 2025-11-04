@@ -8,20 +8,22 @@
 use std::collections::HashMap;
 
 use cosmian_kms_base_hsm::{
-    HResult, RsaOaepDigest, test_helpers::get_hsm_password, tests_shared as shared,
+    HResult, RsaOaepDigest,
+    test_helpers::{get_hsm_password, get_hsm_slot_id},
+    tests_shared as shared,
 };
 
 use crate::{PROTECCIO_PKCS11_LIB, ProteccioCapabilityProvider};
 
-const LIB_PATH: &str = PROTECCIO_PKCS11_LIB;
-const SLOT_ID: usize = 0x04; // Proteccio default slot
+const SLOT_ID: usize = 0x01; // Proteccio default slot
 
-fn cfg() -> HResult<shared::HsmTestConfig<'static>> {
+fn cfg() -> HResult<shared::HsmTestConfig> {
     let user_password = get_hsm_password()?;
+    let slot = get_hsm_slot_id().unwrap_or(SLOT_ID);
     Ok(shared::HsmTestConfig {
-        lib_path: LIB_PATH,
-        slot_ids_and_passwords: HashMap::from([(SLOT_ID, Some(user_password))]),
-        slot_id_for_tests: SLOT_ID,
+        lib_path: shared::lib_path("PROTECCIO_PKCS11_LIB", PROTECCIO_PKCS11_LIB),
+        slot_ids_and_passwords: HashMap::from([(slot, Some(user_password))]),
+        slot_id_for_tests: slot,
         rsa_oaep_digest: Some(RsaOaepDigest::SHA256),
         threads: 4,
         supports_rsa_wrap: true,
