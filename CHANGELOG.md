@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.11.1] - 2025-11-04
+
+### 📚 Documentation
+
+- Rework KMIP support documentation (#595)
+- Remove double entry on KMIP Support
+
+### 🧪 Testing
+
+- *(windows)*: Enable test on whole workspace(#593)
+
 ## [5.11.0] - 2025-10-28
 
 ### 🚀 Features
