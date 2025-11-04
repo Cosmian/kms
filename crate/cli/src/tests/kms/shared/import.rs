@@ -128,18 +128,26 @@ pub(crate) async fn export_import_test(
     private_key_id: &UniqueIdentifier,
     algorithm: Option<CryptographicAlgorithm>,
 ) -> KmsCliResult<()> {
+    use tempfile::TempDir;
+
     let ctx = start_default_test_kms_server().await;
+
+    // Create a temp dir
+    let tmp_dir = TempDir::new()?;
+    let tmp_path = tmp_dir.path();
+    let output_export = tmp_path.join("output.export");
+    let output2_export = tmp_path.join("output2.export");
 
     // Export
     ExportSecretDataOrKeyAction {
         key_id: Some(private_key_id.to_string()),
-        key_file: PathBuf::from("/tmp/output.export"),
+        key_file: output_export.clone(),
         ..Default::default()
     }
     .run(ctx.get_owner_client())
     .await?;
 
-    let object = read_object_from_json_ttlv_file(&PathBuf::from("/tmp/output.export"))?;
+    let object = read_object_from_json_ttlv_file(&output_export)?;
     let key_bytes = match algorithm {
         None => object.key_block()?.secret_data_bytes()?,
         Some(CryptographicAlgorithm::AES) => object.key_block()?.key_bytes()?,
@@ -154,7 +162,7 @@ pub(crate) async fn export_import_test(
 
     // import and re-export
     let uid: String = ImportSecretDataOrKeyAction {
-        key_file: PathBuf::from("/tmp/output.export"),
+        key_file: output_export,
         ..Default::default()
     }
     .run(ctx.get_owner_client())
@@ -163,12 +171,12 @@ pub(crate) async fn export_import_test(
 
     ExportSecretDataOrKeyAction {
         key_id: Some(uid),
-        key_file: PathBuf::from("/tmp/output2.export"),
+        key_file: output2_export.clone(),
         ..Default::default()
     }
     .run(ctx.get_owner_client())
     .await?;
-    let object2 = read_object_from_json_ttlv_file(&PathBuf::from("/tmp/output2.export"))?;
+    let object2 = read_object_from_json_ttlv_file(&output2_export)?;
     let object2_key_bytes = match algorithm {
         None => object.key_block()?.secret_data_bytes()?,
         Some(CryptographicAlgorithm::AES) => object2.key_block()?.key_bytes()?,

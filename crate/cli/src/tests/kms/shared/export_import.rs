@@ -8,18 +8,22 @@ use cosmian_kms_client::reexport::cosmian_kms_client_utils::{
     export_utils::{ExportKeyFormat, WrappingAlgorithm},
     import_utils::{ImportKeyFormat, KeyUsage},
 };
-use cosmian_logger::{debug, info, log_init, warn};
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+use cosmian_logger::warn;
+use cosmian_logger::{debug, info, log_init};
 use openssl::pkey::PKey;
 use tempfile::TempDir;
 use test_kms_server::{TestsContext, start_default_test_kms_server};
 
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+use crate::error::result::KmsCliResultHelper;
 use crate::{
     actions::kms::{
         shared::{ExportSecretDataOrKeyAction, ImportSecretDataOrKeyAction},
         symmetric::keys::create_key::CreateKeyAction,
     },
     cli_bail,
-    error::result::{KmsCliResult, KmsCliResultHelper},
+    error::result::KmsCliResult,
 };
 
 #[tokio::test]

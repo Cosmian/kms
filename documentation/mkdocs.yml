@@ -60,7 +60,6 @@ plugins:
 nav:
   - Why use the Cosmian KMS: index.md
   - Quick start: quick_start.md
-  - KMIP support: KMIP_support.md
   - Use cases:
       - Encrypting and decrypting at scale: encrypting_and_decrypting_at_scale.md
       - Client-side and application-level encryption: client_side_and_application_level_encryption.md

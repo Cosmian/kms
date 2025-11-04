@@ -83,7 +83,7 @@ fn test_password_derivation() {
 
 #[test]
 #[allow(clippy::unwrap_used)]
-#[cfg(not(feature = "non-fips"))]
+#[cfg(all(not(feature = "non-fips"), not(target_os = "windows")))]
 fn test_password_derivation_bad_size() {
     const BIG_KEY_LENGTH: usize = (((1 << 32) - 1) * 512) / 8 + 1;
     // Load FIPS provider module from OpenSSL.

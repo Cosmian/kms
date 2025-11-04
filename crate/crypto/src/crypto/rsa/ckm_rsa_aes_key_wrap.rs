@@ -121,25 +121,30 @@ pub fn ckm_rsa_aes_key_unwrap(
 )]
 #[cfg(test)]
 mod tests {
+    #[cfg(not(target_os = "windows"))]
     use std::{fs, path::Path};
 
     use base64::Engine;
     use cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm;
-    use cosmian_logger::{log_init, warn};
+    use cosmian_logger::log_init;
+    #[cfg(not(target_os = "windows"))]
+    use cosmian_logger::warn;
     use openssl::pkey::PKey;
     use serde_json::json;
+    #[cfg(not(target_os = "windows"))]
     use tempfile::TempDir;
     use zeroize::Zeroizing;
 
+    #[cfg(not(target_os = "windows"))]
+    use crate::{crypto::symmetric::rfc5649::rfc5649_unwrap, crypto_bail};
     use crate::{
         crypto::{
             rsa::{
                 ckm_rsa_aes_key_wrap::{ckm_rsa_aes_key_unwrap, ckm_rsa_aes_key_wrap},
                 ckm_rsa_pkcs_oaep::{ckm_rsa_pkcs_oaep_key_unwrap, ckm_rsa_pkcs_oaep_key_wrap},
             },
-            symmetric::rfc5649::{rfc5649_unwrap, rfc5649_wrap},
+            symmetric::rfc5649::rfc5649_wrap,
         },
-        crypto_bail,
         error::{CryptoError, result::CryptoResult},
     };
 
@@ -305,6 +310,7 @@ FQIDAQAB
         assert_eq!(rec_dek, dek);
     }
 
+    #[cfg(not(target_os = "windows"))]
     async fn assert_openssl3_cli() -> bool {
         if let Ok(output) = tokio::process::Command::new("openssl")
             .arg("version")
@@ -336,7 +342,7 @@ FQIDAQAB
         }
     }
 
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(not(target_os = "windows"))]
     #[tokio::test]
     #[allow(clippy::unwrap_in_result)]
     async fn test_wrap_against_openssl_cli() -> CryptoResult<()> {
@@ -363,6 +369,7 @@ FQIDAQAB
         test_wrap_against_openssl_cli_inner(tmp_path, &dek_bytes).await?;
         Ok(())
     }
+    #[cfg(not(target_os = "windows"))]
     async fn test_wrap_against_openssl_cli_inner(
         tmp_path: &Path,
         secret_bytes: &[u8],
@@ -459,7 +466,7 @@ FQIDAQAB
         Ok(())
     }
 
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(not(target_os = "windows"))]
     #[tokio::test]
     #[allow(clippy::unwrap_in_result)]
     async fn test_unwrap_against_openssl_cli() -> CryptoResult<()> {
@@ -486,6 +493,7 @@ FQIDAQAB
         test_unwrap_against_openssl_cli_inner(tmp_path, &dek_bytes).await?;
         Ok(())
     }
+    #[cfg(not(target_os = "windows"))]
     async fn test_unwrap_against_openssl_cli_inner(
         tmp_path: &Path,
         secret_bytes: &[u8],
