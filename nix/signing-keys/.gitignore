@@ -1,0 +1,14 @@
+# Ignore private keys (encrypted or not) to prevent accidental commits
+cosmian-kms-private.asc
+*.asc
+*.gpg
+
+# Allow public key to be committed
+!cosmian-kms-public.asc
+
+# Key ID can be committed for automation
+!key-id.txt
+
+# Keep README
+!README.md
+!.gitignore

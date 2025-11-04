@@ -1,7 +1,6 @@
 target/
 .cargo_check/
 .history/
-*nix
 *.swp
 TODO.md
 data/html
@@ -20,3 +19,16 @@ node_modules/
 **/*cosmian-kms/sqlite-data*
 run.sh
 .aider/
+.cache
+.local
+.openssl
+resources/tarballs/openssl-3.1.2.tar.gz
+.utimaco
+.softhsm2
+*.xz*
+result*
+crate/server/Cargo.toml.bak
+sbom/*.json
+sbom/*.csv
+sbom/*.png
+crate/server/ui*

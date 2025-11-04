@@ -1,0 +1,12 @@
+#!/bin/sh
+# RPM pre-remove script for Cosmian KMS
+set -e
+
+case "$1" in
+0 | 1)
+  # 0: erase, 1: upgrade
+  :
+  ;;
+esac
+
+exit 0

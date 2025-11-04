@@ -127,7 +127,7 @@ Operations that fail will show:
 
 After running all operations, you'll see a summary like:
 
-```
+```text
 ======================================
 FINAL TEST RESULTS SUMMARY
 ======================================
@@ -171,35 +171,35 @@ FINAL TEST RESULTS SUMMARY
 
 2. **PyKMIP import errors**: Run `setup_pykmip.sh` to install dependencies
 
-   ```
+   ```text
    Error: No module named 'kmip'
    Solution: ./scripts/setup_pykmip.sh
    ```
 
 3. **Connection refused**: Verify the KMS server is running with KMIP socket server enabled
 
-   ```
+   ```text
    Error: Connection refused on port 5696
    Solution: Check server is running and socket_server_start = true in config
    ```
 
 4. **Virtual environment not found**: The test runner requires a .venv directory
 
-   ```
+   ```text
    Error: Virtual environment not found
    Solution: Run ./scripts/setup_pykmip.sh to create .venv
    ```
 
 5. **TLS/Certificate errors**: Verify certificate paths and validity
 
-   ```
+   ```text
    Error: [SSL: CERTIFICATE_VERIFY_FAILED]
    Solution: Check certificate files in test_data/certificates/client_server/
    ```
 
 6. **Operation timeouts**: Some operations may timeout due to server processing time
 
-   ```
+   ```text
    Error: Operation timed out after 30 seconds
    Solution: Check server logs, increase timeout, or use -v for verbose output
    ```
@@ -236,7 +236,7 @@ Run individual operations to isolate issues:
 
 The PyKMIP test suite consists of the following files:
 
-```
+```text
 scripts/
 ├── README_PYKMIP.md              # This documentation
 ├── setup_pykmip.sh               # Environment setup script

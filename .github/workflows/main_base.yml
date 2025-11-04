@@ -10,9 +10,6 @@ on:
       debug_or_release:
         required: true
         type: string
-      platforms:
-        required: true
-        type: string
 
 jobs:
   cla-assistant:
@@ -44,91 +41,18 @@ jobs:
   #     toolchain: ${{ inputs.toolchain }}
 
   cargo-publish:
-    uses: Cosmian/reusable_workflows/.github/workflows/cargo-publish-workspace.yml@develop
+    name: Cargo Publish Workspace
+    uses: ./.github/workflows/cargo-publish.yml
     with:
       toolchain: ${{ inputs.toolchain }}
     secrets:
       token: ${{ secrets.CRATES_IO }}
 
-  pykmip:
-    env:
-      OPENSSL_DIR: /usr/local/openssl
-    runs-on: ubuntu-24.04
-    container:
-      image: cosmian/rockylinux9
-
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          submodules: recursive
-
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: ${{ inputs.toolchain }}
-          components: rustfmt, clippy
-
-      - name: Local OpenSSL Install
-        run: |
-          bash .github/reusable_scripts/get_openssl_binaries.sh
-        env:
-          OS_NAME: ubuntu_20_04
-
-      - name: Tests PyKMIP
-        env:
-          OPENSSL_DIR: ${{ env.OPENSSL_DIR }}
-          COSMIAN_KMS_CONF: ./scripts/kms.toml
-        run: |
-          cargo build --bin cosmian_kms --features non-fips
-          cargo run --bin cosmian_kms --features non-fips &
-
-          python3 -m pip install --upgrade pip
-          python3 -m venv .venv
-          source .venv/bin/activate
-          pip install PyKMIP
-          bash ./scripts/test_pykmip.sh all
-
-  build: # Build on Ubuntu 22/24, Rocky 8/9, MacOS 13/15 and Windows Server 22
-    uses: Cosmian/reusable_workflows/.github/workflows/build_all.yml@develop
+  test: # Run all tests
+    uses: ./.github/workflows/test_all.yml
     secrets: inherit
     with:
       toolchain: ${{ inputs.toolchain }}
-      debug_or_release: ${{ inputs.debug_or_release }}
-
-  non-fips-image:
-    name: Non-FIPS image build and tests
-    if: github.repository == 'Cosmian/kms' && !startsWith(github.ref_name, 'dependabot/')
-    uses: Cosmian/reusable_workflows/.github/workflows/build_docker_image.yml@develop
-    with:
-      prefix: ''
-      registry-image: ghcr.io/cosmian/kms
-      platforms: ${{ inputs.platforms }}
-      fips: false
-
-  fips-image:
-    name: FIPS image build and tests
-    if: github.repository == 'Cosmian/kms' && !startsWith(github.ref_name, 'dependabot/')
-    uses: Cosmian/reusable_workflows/.github/workflows/build_docker_image.yml@develop
-    with:
-      prefix: FIPS
-      registry-image: ghcr.io/cosmian/kms-fips
-      platforms: ${{ inputs.platforms }}
-      fips: true
-
-  ##############################################################################
-  ### Push binaries on package.cosmian.com and make Release
-  ##############################################################################
-  push-artifacts:
-    if: github.repository == 'Cosmian/kms' && !startsWith(github.ref_name, 'dependabot/')
-    needs:
-      - cargo-clippy
-      - cargo-deny
-      - cargo-machete
-      - build
-      - pykmip
-    uses: Cosmian/reusable_workflows/.github/workflows/push-artifacts.yml@develop
-    with:
-      project-name: kms
-      destination: kms
       debug_or_release: ${{ inputs.debug_or_release }}
 
   public_documentation:

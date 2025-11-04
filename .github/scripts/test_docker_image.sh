@@ -18,9 +18,7 @@ CLIENT_PKCS12_PATH="test_data/certificates/client_server/owner/owner.client.acme
 set -ex
 
 # install cli
-sudo apt update && sudo apt install -y wget
-wget "https://package.cosmian.com/cli/$CLI_VERSION/ubuntu-24.04/cosmian-cli_$CLI_VERSION-1_amd64.deb"
-sudo apt install ./"cosmian-cli_$CLI_VERSION-1_amd64.deb"
+cargo install cosmian_cli --version "$CLI_VERSION"
 cosmian --version
 
 # update cli conf

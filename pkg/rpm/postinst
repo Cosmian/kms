@@ -1,0 +1,10 @@
+#!/bin/sh
+# RPM post-install script for Cosmian KMS
+set -e
+
+# Reload systemd to pick up the service file, but don't enable/start automatically here
+if command -v systemctl >/dev/null 2>&1; then
+  systemctl daemon-reload || true
+fi
+
+exit 0

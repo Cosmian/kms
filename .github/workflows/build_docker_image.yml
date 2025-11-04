@@ -1,0 +1,159 @@
+---
+name: Docker build
+
+on:
+  workflow_call:
+    inputs:
+      registry-image:
+        required: true
+        type: string
+      os:
+        required: true
+        type: string
+      features:
+        required: true
+        type: string
+      debug_or_release:
+        required: false
+        type: string
+        default: release
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build-and-push-image:
+    name: Image ${{ inputs.features }} - ${{ inputs.os }}
+    runs-on: ${{ inputs.os }}
+    permissions:
+      contents: read
+      packages: write
+      id-token: write  # Required for cosign keyless signing
+    steps:
+      - name: Derive architecture from runner
+        id: arch
+        run: |
+          set -euo pipefail
+          if [[ "${{ inputs.os }}" == *arm* ]]; then
+            echo "arch=arm64" >> "$GITHUB_OUTPUT"
+            echo "platform=linux/arm64" >> "$GITHUB_OUTPUT"
+            echo "suffix=-arm64" >> "$GITHUB_OUTPUT"
+          else
+            echo "arch=amd64" >> "$GITHUB_OUTPUT"
+            echo "platform=linux/amd64" >> "$GITHUB_OUTPUT"
+            echo "suffix=-amd64" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Display cpuinfo
+        run: cat /proc/cpuinfo
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Download package artifacts
+        id: artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.features }}_${{ inputs.os }}-${{ inputs.debug_or_release }}
+      - name: Locate Debian package
+        id: deb
+        run: |
+          set -euo pipefail
+          DEB_FILE=$(find . -type f -name '*.deb' | head -n1 || true)
+          if [ -z "$DEB_FILE" ]; then
+            echo "No .deb file found" >&2
+            exit 1
+          fi
+          REL="${DEB_FILE##$GITHUB_WORKSPACE/}"
+          echo "deb_file_path=$REL" >> "$GITHUB_OUTPUT"
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3.7.0
+      - name: Extract base Docker metadata
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: |
+            ${{ inputs.registry-image }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+      - name: Append arch suffix to tags
+        id: arch_tags
+        run: |
+          set -euo pipefail
+          echo "tags_with_arch<<EOF" >> $GITHUB_OUTPUT
+          while IFS= read -r t; do
+            [ -n "$t" ] && echo "${t}${{ steps.arch.outputs.suffix }}" >> $GITHUB_OUTPUT
+          done <<< "${{ steps.meta.outputs.tags }}"
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build and push single-arch image(s)
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: ${{ steps.arch.outputs.platform }}
+          tags: ${{ steps.arch_tags.outputs.tags_with_arch }}
+          build-args: |
+            DEB_FILE=${{ steps.deb.outputs.deb_file_path }}
+          labels: |
+            org.opencontainers.image.source=${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.arch=${{ steps.arch.outputs.arch }}
+      - name: Sign Docker image with Cosign
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          TAGS: ${{ steps.arch_tags.outputs.tags_with_arch }}
+        run: |
+          images=""
+          for tag in ${TAGS}; do
+            images+="${tag}@${DIGEST} "
+          done
+          cosign sign --yes ${images}
+      - name: Select tag for test
+        id: pick
+        run: |
+          first=$(echo "${{ steps.arch_tags.outputs.tags_with_arch }}" | head -n1)
+          echo "first_tag=$first" >> $GITHUB_OUTPUT
+    outputs:
+      arch-tag: ${{ steps.pick.outputs.first_tag }}
+      arch: ${{ steps.arch.outputs.arch }}
+
+  test-image:
+    name: Test Image ${{ inputs.features }} - ${{ inputs.os }}
+    runs-on: ${{ inputs.os }}
+    needs: build-and-push-image
+    env:
+      DOCKER_IMAGE_NAME: ${{ needs.build-and-push-image.outputs.arch-tag }}
+    steps:
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Smoke test pulled image
+        run: |
+          docker pull "$DOCKER_IMAGE_NAME"
+          docker image inspect "$DOCKER_IMAGE_NAME" | jq '.[0].Architecture'
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+
+      - name: test image
+        run: |
+          bash .github/scripts/test_docker_image.sh
