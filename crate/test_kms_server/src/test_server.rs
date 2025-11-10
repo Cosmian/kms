@@ -266,7 +266,7 @@ pub async fn start_default_test_kms_server_with_utimaco_hsm() -> &'static TestsC
                 db_config,
                 port,
                 tls: TlsMode::PlainHttp,
-                jwt: JwtAuth::Disabled,
+                jwt: JwtAuth::Enabled,
                 hsm: Some(HsmConfig {
                     hsm_model: "utimaco".to_owned(),
                     hsm_admin: "admin".to_owned(),
@@ -633,7 +633,9 @@ pub fn build_server_params_full(
         google_cse_config: GoogleCseConfig {
             google_cse_enable: true,
             google_cse_disable_tokens_validation: true,
-            google_cse_incoming_url_whitelist: None,
+            google_cse_incoming_url_whitelist: Some(vec![
+                "https://cse.cosmian.com/google_cse".to_owned(),
+            ]),
             google_cse_migration_key: None,
         },
         non_revocable_key_id: opts.non_revocable_key_id,

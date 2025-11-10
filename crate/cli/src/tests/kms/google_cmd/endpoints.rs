@@ -20,8 +20,18 @@ use openssl::{
     rsa::{Padding, Rsa},
     sign::Signer,
 };
-use serde::{Deserialize, Serialize};
-use test_kms_server::{TestsContext, start_default_test_kms_server_with_utimaco_hsm};
+use serde::Deserialize;
+use test_kms_server::{
+    TestsContext,
+    reexport::cosmian_kms_server::routes::google_cse::operations::{
+        PrivateKeyDecryptRequest, PrivateKeyDecryptResponse, PrivateKeySignRequest,
+        PrivateKeySignResponse, PrivilegedPrivateKeyDecryptRequest,
+        PrivilegedPrivateKeyDecryptResponse, PrivilegedUnwrapRequest, PrivilegedUnwrapResponse,
+        PrivilegedWrapRequest, PrivilegedWrapResponse, UnwrapRequest, UnwrapResponse, WrapRequest,
+        WrapResponse,
+    },
+    start_default_test_kms_server_with_utimaco_hsm,
+};
 
 use crate::{
     actions::kms::{
@@ -115,128 +125,6 @@ async fn import_google_cse_demo_key_and_grant(ctx: &TestsContext) -> KmsCliResul
     Ok(())
 }
 
-#[derive(Serialize, Deserialize)]
-struct PrivateKeySignReq<'a> {
-    authentication: &'a str,
-    authorization: &'a str,
-    algorithm: &'a str,
-    digest: &'a str,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    rsa_pss_salt_length: Option<i32>,
-    reason: &'a str,
-    wrapped_private_key: &'a str,
-}
-
-#[derive(Deserialize, Serialize)]
-struct PrivateKeySignResp {
-    signature: String,
-}
-
-#[derive(Serialize, Deserialize)]
-struct PrivateKeyDecryptReq<'a> {
-    authentication: &'a str,
-    authorization: &'a str,
-    algorithm: &'a str,
-    #[serde(rename = "encrypted_data_encryption_key")]
-    encrypted_dek: &'a str,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    rsa_oaep_label: Option<String>,
-    reason: &'a str,
-    wrapped_private_key: &'a str,
-}
-
-#[derive(Deserialize, Serialize)]
-struct PrivateKeyDecryptResp {
-    #[serde(rename = "data_encryption_key")]
-    dek: String,
-}
-
-#[derive(Serialize, Deserialize)]
-struct WrapRequest<'a> {
-    authentication: &'a str,
-    authorization: &'a str,
-    key: &'a str,
-    reason: &'a str,
-}
-
-#[derive(Deserialize, Serialize)]
-struct WrapResponse {
-    wrapped_key: String,
-}
-
-#[derive(Serialize, Deserialize)]
-struct UnwrapRequest<'a> {
-    authentication: &'a str,
-    authorization: &'a str,
-    wrapped_key: &'a str,
-    reason: &'a str,
-}
-
-#[derive(Deserialize, Serialize)]
-struct UnwrapResponse {
-    key: String,
-}
-
-#[derive(Serialize, Deserialize)]
-struct PrivilegedWrapRequest<'a> {
-    authentication: &'a str,
-    key: &'a str,
-    perimeter_id: &'a str,
-    resource_name: &'a str,
-    reason: &'a str,
-}
-
-#[derive(Deserialize, Serialize)]
-struct PrivilegedWrapResponse {
-    wrapped_key: String,
-}
-
-#[derive(Serialize, Deserialize)]
-struct PrivilegedUnwrapRequest<'a> {
-    authentication: &'a str,
-    resource_name: &'a str,
-    wrapped_key: &'a str,
-    reason: &'a str,
-}
-
-#[derive(Deserialize, Serialize)]
-struct PrivilegedUnwrapResponse {
-    key: String,
-}
-
-#[derive(Serialize, Deserialize)]
-struct PrivilegedPrivateKeyDecryptRequest<'a> {
-    authentication: &'a str,
-    algorithm: &'a str,
-    #[serde(rename = "encrypted_data_encryption_key")]
-    encrypted_dek: &'a str,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    rsa_oaep_label: Option<String>,
-    reason: &'a str,
-    wrapped_private_key: &'a str,
-    spki_hash: &'a str,
-    spki_hash_algorithm: &'a str,
-}
-
-#[derive(Deserialize, Serialize)]
-struct PrivilegedPrivateKeyDecryptResponse {
-    #[serde(rename = "data_encryption_key")]
-    dek: String,
-}
-
-#[derive(Serialize, Deserialize)]
-struct DigestRequest<'a> {
-    authorization: &'a str,
-    wrapped_key: &'a str,
-    reason: &'a str,
-}
-
-#[derive(Deserialize, Serialize)]
-struct DigestResponse {
-    #[serde(rename = "resource_key_hash")]
-    hash: String,
-}
-
 // ----------------------------- Tests -----------------------------
 #[tokio::test]
 #[ignore = "Requires Google OAuth credentials and access to Google CSE endpoints and an Utimaco HSM"]
@@ -264,18 +152,18 @@ async fn hsm_google_cse_private_key_sign() -> KmsCliResult<()> {
         include_str!("../../../../../../documentation/docs/google_cse/test_wrapped_private_key");
     let digest = "gXIjp2D7tR4WvHJBXaINWLekf5k5AeKRw4zkySYDDYs="; // base64
 
-    let req = PrivateKeySignReq {
-        authentication: "test",
-        authorization: "test",
-        algorithm: "SHA256withRSA",
-        digest,
+    let req = PrivateKeySignRequest {
+        authentication: "test".to_string(),
+        authorization: "test".to_string(),
+        algorithm: "SHA256withRSA".to_string(),
+        digest: digest.to_string(),
         rsa_pss_salt_length: None,
-        reason: "Gmail",
-        wrapped_private_key,
+        reason: "Gmail".to_string(),
+        wrapped_private_key: wrapped_private_key.to_string(),
     };
 
     debug!("private key sign request post");
-    let resp: PrivateKeySignResp = owner
+    let resp: PrivateKeySignResponse = owner
         .post_no_ttlv("/google_cse/privatekeysign", Some(&req))
         .await?;
     debug!("private key sign response: {:?}", resp.signature);
@@ -328,21 +216,24 @@ async fn hsm_google_cse_encrypt_and_private_key_decrypt() -> KmsCliResult<()> {
     let wrapped_private_key: &str =
         include_str!("../../../../../../documentation/docs/google_cse/test_wrapped_private_key");
 
-    let req = PrivateKeyDecryptReq {
-        authentication: "test",
-        authorization: "test",
-        algorithm: "RSA/ECB/PKCS1Padding",
-        encrypted_dek: &encrypted_dek_b64,
+    let req = PrivateKeyDecryptRequest {
+        authentication: "test".to_string(),
+        authorization: "test".to_string(),
+        algorithm: "RSA/ECB/PKCS1Padding".to_string(),
+        encrypted_data_encryption_key: encrypted_dek_b64,
         rsa_oaep_label: None,
-        reason: "Gmail",
-        wrapped_private_key,
+        reason: "Gmail".to_string(),
+        wrapped_private_key: wrapped_private_key.to_string(),
     };
 
-    let resp: PrivateKeyDecryptResp = owner
+    let resp: PrivateKeyDecryptResponse = owner
         .post_no_ttlv("/google_cse/privatekeydecrypt", Some(&req))
         .await?;
 
-    assert_eq!(general_purpose::STANDARD.encode(dek), resp.dek);
+    assert_eq!(
+        general_purpose::STANDARD.encode(dek),
+        resp.data_encryption_key
+    );
     Ok(())
 }
 
@@ -359,20 +250,20 @@ async fn hsm_google_cse_wrap_unwrap_key() -> KmsCliResult<()> {
     let dek_b64 = "wHrlNOTI9mU6PBdqiq7EQA=="; // arbitrary base64 key
 
     let wrap_req = WrapRequest {
-        authentication: "test",
-        authorization: "test",
-        key: dek_b64,
-        reason: "",
+        authentication: "test".to_string(),
+        authorization: "test".to_string(),
+        key: dek_b64.to_string(),
+        reason: String::new(),
     };
     let wrap_resp: WrapResponse = owner
         .post_no_ttlv("/google_cse/wrap", Some(&wrap_req))
         .await?;
 
     let unwrap_req = UnwrapRequest {
-        authentication: "test",
-        authorization: "test",
-        wrapped_key: &wrap_resp.wrapped_key,
-        reason: "",
+        authentication: "test".to_string(),
+        authorization: "test".to_string(),
+        wrapped_key: wrap_resp.wrapped_key,
+        reason: String::new(),
     };
     let unwrap_resp: UnwrapResponse = owner
         .post_no_ttlv("/google_cse/unwrap", Some(&unwrap_req))
@@ -409,108 +300,114 @@ async fn test_google_cse_resource_key_hash() -> KmsCliResult<()> {
     Ok(())
 }
 
-// #[tokio::test]
-// #[ignore = "Requires Google OAuth credentials and access to Google CSE privileged endpoints and an Utimaco HSM"]
-// async fn hsm_google_cse_privileged_wrap_unwrap_key() -> KmsCliResult<()> {
-//     log_init(None);
-//     let ctx = start_default_test_kms_server_with_utimaco_hsm().await;
-//     let owner = ctx.get_owner_client();
-//     import_google_cse_demo_key_and_grant(ctx).await?;
+#[tokio::test]
+#[ignore = "Requires Google OAuth credentials and access to Google CSE privileged endpoints and an Utimaco HSM"]
+async fn hsm_google_cse_privileged_wrap_unwrap_key() -> KmsCliResult<()> {
+    log_init(None);
+    let ctx = start_default_test_kms_server_with_utimaco_hsm().await;
+    let owner = ctx.get_owner_client();
+    import_google_cse_demo_key_and_grant(ctx).await?;
 
-//     let dek_b64 = "wHrlNOTI9mU6PBdqiq7EQA==";
-//     let resource_name = "resource_name_test";
-//     let token: String = generate_google_jwt()
-//         .await
-//         .expect("Error on token generation");
+    let dek_b64 = "wHrlNOTI9mU6PBdqiq7EQA==";
+    let resource_name = "resource_name_test";
+    let token: String = generate_google_jwt()
+        .await
+        .expect("Error on token generation");
 
-//     let p_wrap = PrivilegedWrapRequest {
-//         authentication: &token,
-//         key: dek_b64,
-//         perimeter_id: "",
-//         resource_name,
-//         reason: "",
-//     };
-//     let w: PrivilegedWrapResponse = owner
-//         .post_no_ttlv("/google_cse/privilegedwrap", Some(&p_wrap))
-//         .await?;
+    let p_wrap = PrivilegedWrapRequest {
+        authentication: token,
+        key: dek_b64.to_string(),
+        perimeter_id: String::new(),
+        resource_name: resource_name.to_string(),
+        reason: String::new(),
+    };
+    let w: PrivilegedWrapResponse = owner
+        .post_no_ttlv("/google_cse/privilegedwrap", Some(&p_wrap))
+        .await?;
 
-//     let p_unwrap = PrivilegedUnwrapRequest {
-//         authentication: "test",
-//         resource_name,
-//         wrapped_key: &w.wrapped_key,
-//         reason: "",
-//     };
-//     let u: PrivilegedUnwrapResponse = owner
-//         .post_no_ttlv("/google_cse/privilegedunwrap", Some(&p_unwrap))
-//         .await?;
+    let p_unwrap = PrivilegedUnwrapRequest {
+        authentication: "test".to_string(),
+        resource_name: resource_name.to_string(),
+        wrapped_key: w.wrapped_key,
+        reason: String::new(),
+    };
+    let u: PrivilegedUnwrapResponse = owner
+        .post_no_ttlv("/google_cse/privilegedunwrap", Some(&p_unwrap))
+        .await?;
 
-//     assert_eq!(dek_b64, u.key);
-//     Ok(())
-// }
+    assert_eq!(dek_b64, u.key);
+    Ok(())
+}
 
-// #[tokio::test]
-// #[ignore = "Requires Google OAuth credentials and access to Google CSE privileged endpoints and an Utimaco HSM"]
-// async fn hsm_google_cse_privileged_private_key_decrypt() -> KmsCliResult<()> {
-//     log_init(None);
-//     let ctx = start_default_test_kms_server_with_utimaco_hsm().await;
-//     let owner = ctx.get_owner_client();
-//     import_google_cse_demo_key_and_grant(ctx).await?;
+#[tokio::test]
+#[ignore = "Requires Google OAuth credentials and access to Google CSE privileged endpoints and an Utimaco HSM"]
+async fn hsm_google_cse_privileged_private_key_decrypt() -> KmsCliResult<()> {
+    log_init(None);
+    let ctx = start_default_test_kms_server_with_utimaco_hsm().await;
+    let owner = ctx.get_owner_client();
+    import_google_cse_demo_key_and_grant(ctx).await?;
 
-//     // Load user's public key (PKCS1) and compute SPKI hash
-//     let user_public_key_pem_pkcs1 =
-//         include_bytes!("../../../../../../test_data/certificates/gmail_cse/test_public_key");
-//     let rsa_public_key = Rsa::public_key_from_pem_pkcs1(user_public_key_pem_pkcs1)
-//         .map_err(|e| KmsCliError::Default(e.to_string()))?;
-//     let public_key =
-//         PKey::from_rsa(rsa_public_key).map_err(|e| KmsCliError::Default(e.to_string()))?;
-//     let spki_hash = openssl::hash::hash(
-//         MessageDigest::sha256(),
-//         &public_key
-//             .public_key_to_der()
-//             .map_err(|e| KmsCliError::Default(e.to_string()))?,
-//     )
-//     .map_err(|e| KmsCliError::Default(e.to_string()))?;
-//     let spki_hash_b64 = general_purpose::STANDARD.encode(spki_hash);
+    // Load user's public key (PKCS1) and compute SPKI hash
+    let user_public_key_pem_pkcs1 =
+        include_bytes!("../../../../../../test_data/certificates/gmail_cse/test_public_key");
+    let rsa_public_key = Rsa::public_key_from_pem_pkcs1(user_public_key_pem_pkcs1)
+        .map_err(|e| KmsCliError::Default(e.to_string()))?;
+    let public_key =
+        PKey::from_rsa(rsa_public_key).map_err(|e| KmsCliError::Default(e.to_string()))?;
+    let spki_hash = openssl::hash::hash(
+        MessageDigest::sha256(),
+        &public_key
+            .public_key_to_der()
+            .map_err(|e| KmsCliError::Default(e.to_string()))?,
+    )
+    .map_err(|e| KmsCliError::Default(e.to_string()))?;
+    let spki_hash_b64 = general_purpose::STANDARD.encode(spki_hash);
 
-//     // Encrypt a 32-byte DEK with the public key (PKCS1 padding)
-//     let dek = vec![1_u8; 32];
-//     let mut pk_ctx = PkeyCtx::new(&public_key).map_err(|e| KmsCliError::Default(e.to_string()))?;
-//     pk_ctx.encrypt_init()
-//         .map_err(|e| KmsCliError::Default(e.to_string()))?;
-//     pk_ctx.set_rsa_padding(Padding::PKCS1)
-//         .map_err(|e| KmsCliError::Default(e.to_string()))?;
-//     let sz = pk_ctx
-//         .encrypt(&dek, None)
-//         .map_err(|e| KmsCliError::Default(e.to_string()))?;
-//     let mut encrypted_dek = vec![0u8; sz];
-//     pk_ctx.encrypt(&dek, Some(&mut encrypted_dek))
-//         .map_err(|e| KmsCliError::Default(e.to_string()))?;
-//     let encrypted_dek_b64 = general_purpose::STANDARD.encode(encrypted_dek);
+    // Encrypt a 32-byte DEK with the public key (PKCS1 padding)
+    let dek = vec![1_u8; 32];
+    let mut pk_ctx = PkeyCtx::new(&public_key).map_err(|e| KmsCliError::Default(e.to_string()))?;
+    pk_ctx
+        .encrypt_init()
+        .map_err(|e| KmsCliError::Default(e.to_string()))?;
+    pk_ctx
+        .set_rsa_padding(Padding::PKCS1)
+        .map_err(|e| KmsCliError::Default(e.to_string()))?;
+    let sz = pk_ctx
+        .encrypt(&dek, None)
+        .map_err(|e| KmsCliError::Default(e.to_string()))?;
+    let mut encrypted_dek = vec![0_u8; sz];
+    pk_ctx
+        .encrypt(&dek, Some(&mut encrypted_dek))
+        .map_err(|e| KmsCliError::Default(e.to_string()))?;
+    let encrypted_dek_b64 = general_purpose::STANDARD.encode(encrypted_dek);
 
-//     let wrapped_private_key: &str =
-//         include_str!("../../../../../../documentation/docs/google_cse/test_wrapped_private_key");
-//     let token: String = generate_google_jwt()
-//         .await
-//         .expect("Error on token generation");
+    let wrapped_private_key: &str =
+        include_str!("../../../../../../documentation/docs/google_cse/test_wrapped_private_key");
+    let token: String = generate_google_jwt()
+        .await
+        .expect("Error on token generation");
 
-//     let req = PrivilegedPrivateKeyDecryptRequest {
-//         authentication: &token,
-//         algorithm: "RSA/ECB/PKCS1Padding",
-//         encrypted_dek: &encrypted_dek_b64,
-//         rsa_oaep_label: None,
-//         reason: "Gmail",
-//         wrapped_private_key,
-//         spki_hash: &spki_hash_b64,
-//         spki_hash_algorithm: "SHA-256",
-//     };
+    let req = PrivilegedPrivateKeyDecryptRequest {
+        authentication: token,
+        algorithm: "RSA/ECB/PKCS1Padding".to_string(),
+        encrypted_data_encryption_key: encrypted_dek_b64,
+        rsa_oaep_label: None,
+        reason: "Gmail".to_string(),
+        wrapped_private_key: wrapped_private_key.to_string(),
+        spki_hash: spki_hash_b64,
+        spki_hash_algorithm: "SHA-256".to_string(),
+    };
 
-//     let resp: PrivilegedPrivateKeyDecryptResponse = owner
-//         .post_no_ttlv("/google_cse/privilegedprivatekeydecrypt", Some(&req))
-//         .await?;
+    let resp: PrivilegedPrivateKeyDecryptResponse = owner
+        .post_no_ttlv("/google_cse/privilegedprivatekeydecrypt", Some(&req))
+        .await?;
 
-//     assert_eq!(general_purpose::STANDARD.encode(dek), resp.dek);
-//     Ok(())
-// }
+    assert_eq!(
+        general_purpose::STANDARD.encode(dek),
+        resp.data_encryption_key
+    );
+    Ok(())
+}
 
 // NOTE: The original server-side test `test_google_cse_custom_jwt` validates a custom JWT
 // against the server's JWKS and uses internal helpers. Replicating it here would require
