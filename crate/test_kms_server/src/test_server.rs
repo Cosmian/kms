@@ -640,6 +640,7 @@ pub fn build_server_params_full(
         },
         non_revocable_key_id: opts.non_revocable_key_id,
         privileged_users: opts.privileged_users,
+        default_username: "owner.client@acme.com".to_owned(),
         ..ClapConfig::default()
     };
 

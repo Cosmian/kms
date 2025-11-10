@@ -665,7 +665,7 @@ fn build_and_sign_certificate(
 
     let digest = match subject.public_key()?.id() {
         Id::ED25519 | Id::ED448 => MessageDigest::null(), // EdDSA does not use a digest
-        _ => MessageDigest::sha256(),                     // Default to SHA-256 for other algorithms
+        _ => MessageDigest::sha256(), // Default to SHA-256 for other algorithms
     };
 
     // Set the issuer name and private key
