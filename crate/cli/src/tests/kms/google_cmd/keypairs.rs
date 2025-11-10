@@ -92,7 +92,7 @@ async fn create_google_key_pair() -> KmsCliResult<()> {
 
 #[ignore = "Requires an Utimaco HSM setup"]
 #[tokio::test]
-async fn hsm_test_google_cse_create_key_pair() -> KmsCliResult<()> {
+async fn hsm_google_cse_create_key_pair() -> KmsCliResult<()> {
     log_init(None);
     let ctx = start_default_test_kms_server_with_utimaco_hsm().await;
 
@@ -167,7 +167,7 @@ async fn hsm_test_google_cse_create_key_pair() -> KmsCliResult<()> {
 
 #[ignore = "Requires an Utimaco HSM setup"]
 #[tokio::test]
-async fn hsm_test_google_cse_create_key_pair_using_imported_google_cse() -> KmsCliResult<()> {
+async fn hsm_google_cse_create_key_pair_using_imported_google_cse() -> KmsCliResult<()> {
     log_init(None);
     let ctx = start_default_test_kms_server_with_utimaco_hsm().await;
 

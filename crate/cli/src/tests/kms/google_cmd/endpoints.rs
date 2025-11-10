@@ -240,7 +240,7 @@ struct DigestResponse {
 // ----------------------------- Tests -----------------------------
 #[tokio::test]
 #[ignore = "Requires Google OAuth credentials and access to Google CSE endpoints and an Utimaco HSM"]
-async fn hsm_test_google_cse_status() -> KmsCliResult<()> {
+async fn hsm_google_cse_status() -> KmsCliResult<()> {
     log_init(option_env!("RUST_LOG"));
     let ctx = start_default_test_kms_server_with_utimaco_hsm().await;
     let status = ctx.get_owner_client().google_cse_status().await?;
@@ -252,7 +252,7 @@ async fn hsm_test_google_cse_status() -> KmsCliResult<()> {
 
 #[tokio::test]
 #[ignore = "Requires Google OAuth credentials and access to Google CSE endpoints and an Utimaco HSM"]
-async fn hsm_test_google_cse_private_key_sign() -> KmsCliResult<()> {
+async fn hsm_google_cse_private_key_sign() -> KmsCliResult<()> {
     log_init(None);
     let ctx = start_default_test_kms_server_with_utimaco_hsm().await;
     let owner = ctx.get_owner_client();
@@ -302,7 +302,7 @@ async fn hsm_test_google_cse_private_key_sign() -> KmsCliResult<()> {
 
 #[tokio::test]
 #[ignore = "Requires Google OAuth credentials and access to Google CSE endpoints and an Utimaco HSM"]
-async fn hsm_test_google_cse_encrypt_and_private_key_decrypt() -> KmsCliResult<()> {
+async fn hsm_google_cse_encrypt_and_private_key_decrypt() -> KmsCliResult<()> {
     log_init(None);
     let ctx = start_default_test_kms_server_with_utimaco_hsm().await;
     let owner = ctx.get_owner_client();
@@ -348,7 +348,7 @@ async fn hsm_test_google_cse_encrypt_and_private_key_decrypt() -> KmsCliResult<(
 
 #[tokio::test]
 #[ignore = "Requires Google OAuth credentials and access to Google CSE endpoints and an Utimaco HSM"]
-async fn hsm_test_google_cse_wrap_unwrap_key() -> KmsCliResult<()> {
+async fn hsm_google_cse_wrap_unwrap_key() -> KmsCliResult<()> {
     log_init(None);
     let ctx = start_default_test_kms_server_with_utimaco_hsm().await;
     let owner = ctx.get_owner_client();
@@ -411,7 +411,7 @@ async fn test_google_cse_resource_key_hash() -> KmsCliResult<()> {
 
 // #[tokio::test]
 // #[ignore = "Requires Google OAuth credentials and access to Google CSE privileged endpoints and an Utimaco HSM"]
-// async fn hsm_test_google_cse_privileged_wrap_unwrap_key() -> KmsCliResult<()> {
+// async fn hsm_google_cse_privileged_wrap_unwrap_key() -> KmsCliResult<()> {
 //     log_init(None);
 //     let ctx = start_default_test_kms_server_with_utimaco_hsm().await;
 //     let owner = ctx.get_owner_client();
@@ -450,7 +450,7 @@ async fn test_google_cse_resource_key_hash() -> KmsCliResult<()> {
 
 // #[tokio::test]
 // #[ignore = "Requires Google OAuth credentials and access to Google CSE privileged endpoints and an Utimaco HSM"]
-// async fn hsm_test_google_cse_privileged_private_key_decrypt() -> KmsCliResult<()> {
+// async fn hsm_google_cse_privileged_private_key_decrypt() -> KmsCliResult<()> {
 //     log_init(None);
 //     let ctx = start_default_test_kms_server_with_utimaco_hsm().await;
 //     let owner = ctx.get_owner_client();
