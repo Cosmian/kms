@@ -19,10 +19,10 @@ use cosmian_kms_server_database::{
         cosmian_kms_interfaces::SessionParams,
     },
 };
-use cosmian_logger::{debug, warn};
+use cosmian_logger::{debug, trace, warn};
 
 use crate::{
-    core::{KMS, uid_utils::has_prefix},
+    core::{KMS, uid_utils::has_prefix, wrapping::unwrap_object},
     error::KmsError,
     kms_bail,
     result::{KResult, KResultHelper},
@@ -108,7 +108,7 @@ pub(crate) async fn wrap_and_cache(
     };
 
     // wrap the current object
-    wrap_object(
+    Box::pin(wrap_object(
         object,
         &KeyWrappingSpecification {
             encryption_key_information: Some(EncryptionKeyInformation {
@@ -121,7 +121,7 @@ pub(crate) async fn wrap_and_cache(
         kms,
         owner,
         params,
-    )
+    ))
     .await?;
 
     // store the unwrapped object in the unwrapped cache
@@ -185,14 +185,14 @@ pub(crate) async fn wrap_object(
             "...wrapping the key block with key uid: {wrapping_key_uid} using the KMS, user: \
              {user}"
         );
-        wrap_using_kms(
+        Box::pin(wrap_using_kms(
             object,
             key_wrapping_specification,
             kms,
             user,
             params,
             wrapping_key_uid,
-        )
+        ))
         .await?;
     }
     debug!("Key wrapped successfully by key {}", wrapping_key_uid);
@@ -207,7 +207,8 @@ async fn wrap_using_kms(
     user: &str,
     params: Option<Arc<dyn SessionParams>>,
     wrapping_key_uid: &str,
-) -> Result<(), KmsError> {
+) -> KResult<()> {
+    trace!("Checking permissions to wrap with key {wrapping_key_uid}");
     // fetch the wrapping key
     let wrapping_key = kms
         .database
@@ -219,6 +220,8 @@ async fn wrap_using_kms(
             "The wrapping key {wrapping_key_uid} does not exist or is not accessible"
         ))
     })?;
+    trace!("Wrapping key retrieved successfully: {wrapping_key}");
+
     // in the case the key is a Private Key, we need to fetch the corresponding private key or certificate
     let object_type = wrapping_key.object().object_type();
     let wrapping_key = match object_type {
@@ -250,24 +253,10 @@ async fn wrap_using_kms(
             "The wrapping key {wrapping_key_uid} is not active"
         )));
     }
-    // Check usage mask for non Certificate objects
-    // TODO: certs attributes should be checked instead
-    if wrapping_key.object().object_type() != ObjectType::Certificate {
-        let attributes = wrapping_key
-            .object()
-            .attributes()
-            .cloned()
-            .unwrap_or_default();
-        if !attributes.is_usage_authorized_for(CryptographicUsageMask::WrapKey)? {
-            return Err(KmsError::NotSupported(format!(
-                "The key: {wrapping_key_uid} is not meant to wrap keys"
-            )));
-        }
-    }
     if wrapping_key.owner() != user {
         let ops = kms
             .database
-            .list_user_operations_on_object(wrapping_key.id(), user, false, params)
+            .list_user_operations_on_object(wrapping_key.id(), user, false, params.clone())
             .await?;
         if !ops
             .iter()
@@ -279,14 +268,53 @@ async fn wrap_using_kms(
             )));
         }
     }
+
+    // If the wrapping key is itself wrapped, we must unwrap it first
+    let mut wrapping_key_object = if wrapping_key.object().is_wrapped() {
+        debug!("The wrapping key {wrapping_key_uid} is itself wrapped, unwrapping it first");
+        let mut wrapping_key_object = wrapping_key.object().clone();
+        unwrap_object(&mut wrapping_key_object, kms, user, params).await?;
+        wrapping_key_object.clone()
+    } else {
+        wrapping_key.object().clone()
+    };
+
+    // If unwrap produced a KeyValue::Structure without attributes, reattach attributes
+    // from the ObjectWithMetadata (database) when available so lower-level crypto code
+    // can read them via KMIP accessors without triggering attribute-missing errors.
+    if let Ok(kb) = wrapping_key_object.key_block_mut()
+        && let Some(kv) = &mut kb.key_value
+        && let KeyValue::Structure { attributes, .. } = kv
+        && attributes.is_none()
+    {
+        // copy object-with-metadata attributes into the unwrapped key value
+        let attrs = wrapping_key.attributes().clone();
+        *attributes = Some(attrs);
+    }
+
+    // Check usage mask for non Certificate objects (after potential unwrap)
+    trace!("Checking usage mask for wrapping key {wrapping_key_uid}");
+    // TODO: certs attributes should be checked instead
+    if wrapping_key_object.object_type() != ObjectType::Certificate {
+        if !wrapping_key
+            .attributes()
+            .is_usage_authorized_for(CryptographicUsageMask::WrapKey)?
+        {
+            return Err(KmsError::NotSupported(format!(
+                "The key: {wrapping_key_uid} is not meant to wrap keys"
+            )));
+        }
+        trace!("The wrapping key {wrapping_key_uid} is authorized to wrap keys");
+    }
+
     debug!(
         "The user: {user}, is authorized to wrap with the key {wrapping_key_uid}. Encoding: {:?}, \
          format: {}",
         key_wrapping_specification.get_encoding(),
         object.key_block()?.key_format_type
     );
-
-    wrap_object_with_key(object, wrapping_key.object(), key_wrapping_specification)?;
+    // wrap the object
+    wrap_object_with_key(object, &wrapping_key_object, key_wrapping_specification)?;
     Ok(())
 }
 

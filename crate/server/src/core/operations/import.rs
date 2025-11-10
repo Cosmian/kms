@@ -198,13 +198,13 @@ pub(super) async fn process_symmetric_key(
     }
 
     // Wrap the object if requested by the user or on the server params
-    wrap_and_cache(
+    Box::pin(wrap_and_cache(
         kms,
         owner,
         params,
         &UniqueIdentifier::TextString(uid.clone()),
         &mut object,
-    )
+    ))
     .await?;
 
     Ok((
@@ -335,8 +335,10 @@ pub(super) async fn process_public_key(
                 KeyFormatType::PKCS8,
                 attributes.cryptographic_usage_mask,
             )?;
-            // Merge the correct cryptographic attributes in the attributes
-            attributes.merge(object.attributes()?, true);
+            // Merge the correct cryptographic attributes in the attributes if present
+            if let Ok(obj_attrs) = object.attributes() {
+                attributes.merge(obj_attrs, true);
+            }
         }
     }
 
@@ -362,13 +364,13 @@ pub(super) async fn process_public_key(
     }
 
     // Wrap the object if requested by the user or on the server params
-    wrap_and_cache(
+    Box::pin(wrap_and_cache(
         kms,
         owner,
         params,
         &UniqueIdentifier::TextString(uid.clone()),
         &mut object,
-    )
+    ))
     .await?;
 
     Ok((
@@ -445,8 +447,10 @@ pub(super) async fn process_private_key(
                 KeyFormatType::PKCS8,
                 attributes.cryptographic_usage_mask,
             )?;
-            // Merge the correct cryptographic attributes in the attributes
-            attributes.merge(object.attributes()?, true);
+            // Merge the correct cryptographic attributes in the attributes if present
+            if let Ok(obj_attrs) = object.attributes() {
+                attributes.merge(obj_attrs, true);
+            }
         }
     }
 
@@ -472,13 +476,13 @@ pub(super) async fn process_private_key(
     }
 
     // Wrap the object if requested by the user or on the server params
-    wrap_and_cache(
+    Box::pin(wrap_and_cache(
         kms,
         owner,
         params,
         &UniqueIdentifier::TextString(uid.clone()),
         &mut object,
-    )
+    ))
     .await?;
 
     Ok((
@@ -685,13 +689,13 @@ async fn process_pkcs12(
         );
     }
     // Wrap the private key if requested by the user or on the server params
-    wrap_and_cache(
+    Box::pin(wrap_and_cache(
         kms,
         owner,
         params,
         &UniqueIdentifier::TextString(private_key_id.clone()),
         &mut private_key,
-    )
+    ))
     .await?;
     // Create an operation to set the private key
     let private_key_attributes = private_key.attributes()?.clone();
@@ -872,13 +876,13 @@ pub(super) async fn process_secret_data(
     }
 
     // Wrap the object if requested by the user or on the server params
-    wrap_and_cache(
+    Box::pin(wrap_and_cache(
         kms,
         owner,
         params,
         &UniqueIdentifier::TextString(uid.clone()),
         &mut object,
-    )
+    ))
     .await?;
 
     Ok((
