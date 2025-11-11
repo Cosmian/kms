@@ -196,19 +196,15 @@ async fn hsm_google_cse_private_key_sign() -> KmsCliResult<()> {
     // Verify signature with test public key
     let user_public_key_pem_pkcs1 =
         include_bytes!("../../../../../../test_data/certificates/gmail_cse/test_public_key");
-    let rsa_public_key = Rsa::public_key_from_pem_pkcs1(user_public_key_pem_pkcs1)
-        .map_err(|e| KmsCliError::Default(e.to_string()))?;
-    let public_key =
-        PKey::from_rsa(rsa_public_key).map_err(|e| KmsCliError::Default(e.to_string()))?;
+    let rsa_public_key = Rsa::public_key_from_pem_pkcs1(user_public_key_pem_pkcs1)?;
+    let public_key = PKey::from_rsa(rsa_public_key)?;
 
-    let mut pk = PkeyCtx::new(&public_key).map_err(|e| KmsCliError::Default(e.to_string()))?;
-    pk.verify_init()
-        .map_err(|e| KmsCliError::Default(e.to_string()))?;
+    let mut pk = PkeyCtx::new(&public_key)?;
+    pk.verify_init()?;
     pk.verify(
         &general_purpose::STANDARD.decode(digest)?,
         &general_purpose::STANDARD.decode(resp.signature)?,
-    )
-    .map_err(|e| KmsCliError::Default(e.to_string()))?;
+    )?;
 
     Ok(())
 }
@@ -227,11 +223,9 @@ async fn hsm_google_cse_encrypt_and_private_key_decrypt() -> KmsCliResult<()> {
     let dek = vec![1_u8; 32];
     let pub_key_pem =
         include_bytes!("../../../../../../test_data/certificates/gmail_cse/test_public_key");
-    let rsa_public_key = Rsa::public_key_from_pem_pkcs1(pub_key_pem)
-        .map_err(|e| KmsCliError::Default(e.to_string()))?;
-    let public_key =
-        PKey::from_rsa(rsa_public_key).map_err(|e| KmsCliError::Default(e.to_string()))?;
-    let mut pk_ctx = PkeyCtx::new(&public_key).map_err(|e| KmsCliError::Default(e.to_string()))?;
+    let rsa_public_key = Rsa::public_key_from_pem_pkcs1(pub_key_pem)?;
+    let public_key = PKey::from_rsa(rsa_public_key)?;
+    let mut pk_ctx = PkeyCtx::new(&public_key)?;
     pk_ctx.encrypt_init().unwrap();
     pk_ctx.set_rsa_padding(Padding::PKCS1).unwrap();
     let sz = pk_ctx.encrypt(&dek, None).unwrap();
@@ -514,35 +508,19 @@ async fn hsm_google_cse_privileged_private_key_decrypt() -> KmsCliResult<()> {
     // Load user's public key (PKCS1) and compute SPKI hash
     let user_public_key_pem_pkcs1 =
         include_bytes!("../../../../../../test_data/certificates/gmail_cse/test_public_key");
-    let rsa_public_key = Rsa::public_key_from_pem_pkcs1(user_public_key_pem_pkcs1)
-        .map_err(|e| KmsCliError::Default(e.to_string()))?;
-    let public_key =
-        PKey::from_rsa(rsa_public_key).map_err(|e| KmsCliError::Default(e.to_string()))?;
-    let spki_hash = openssl::hash::hash(
-        MessageDigest::sha256(),
-        &public_key
-            .public_key_to_der()
-            .map_err(|e| KmsCliError::Default(e.to_string()))?,
-    )
-    .map_err(|e| KmsCliError::Default(e.to_string()))?;
+    let rsa_public_key = Rsa::public_key_from_pem_pkcs1(user_public_key_pem_pkcs1)?;
+    let public_key = PKey::from_rsa(rsa_public_key)?;
+    let spki_hash = openssl::hash::hash(MessageDigest::sha256(), &public_key.public_key_to_der()?)?;
     let spki_hash_b64 = general_purpose::STANDARD.encode(spki_hash);
 
     // Encrypt a 32-byte DEK with the public key (PKCS1 padding)
     let dek = vec![1_u8; 32];
-    let mut pk_ctx = PkeyCtx::new(&public_key).map_err(|e| KmsCliError::Default(e.to_string()))?;
-    pk_ctx
-        .encrypt_init()
-        .map_err(|e| KmsCliError::Default(e.to_string()))?;
-    pk_ctx
-        .set_rsa_padding(Padding::PKCS1)
-        .map_err(|e| KmsCliError::Default(e.to_string()))?;
-    let sz = pk_ctx
-        .encrypt(&dek, None)
-        .map_err(|e| KmsCliError::Default(e.to_string()))?;
+    let mut pk_ctx = PkeyCtx::new(&public_key)?;
+    pk_ctx.encrypt_init()?;
+    pk_ctx.set_rsa_padding(Padding::PKCS1)?;
+    let sz = pk_ctx.encrypt(&dek, None)?;
     let mut encrypted_dek = vec![0_u8; sz];
-    pk_ctx
-        .encrypt(&dek, Some(&mut encrypted_dek))
-        .map_err(|e| KmsCliError::Default(e.to_string()))?;
+    pk_ctx.encrypt(&dek, Some(&mut encrypted_dek))?;
     let encrypted_dek_b64 = general_purpose::STANDARD.encode(encrypted_dek);
 
     let wrapped_private_key: &str =

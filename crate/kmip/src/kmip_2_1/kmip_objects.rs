@@ -14,6 +14,8 @@ use serde::{
 };
 use strum::{Display, VariantNames};
 
+// Bring the Base64Display extension trait into scope to use `.to_base64()` on byte buffers
+use super::kmip_operations::Base64Display;
 use super::{
     kmip_attributes::Attributes,
     kmip_data_structures::{KeyBlock, KeyWrappingData},
@@ -287,7 +289,8 @@ impl Display for Object {
             }) => write!(
                 f,
                 "Certificate(certificate_type: {certificate_type:?}, certificate_value: \
-                 {certificate_value:?})"
+                 {})",
+                certificate_value.to_base64()
             ),
             Self::CertificateRequest(CertificateRequest {
                 certificate_request_type,

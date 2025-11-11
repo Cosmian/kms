@@ -669,7 +669,7 @@ pub fn build_server_params_full(
         google_cse_config: GoogleCseConfig {
             google_cse_enable: true,
             google_cse_disable_tokens_validation: !opts.jwt.is_enabled(),
-            google_cse_incoming_url_whitelist: None,
+            google_cse_incoming_url_whitelist: Some(vec!["https://cse.cosmian.com".to_owned()]),
             google_cse_migration_key: None,
         },
         non_revocable_key_id: opts.non_revocable_key_id,

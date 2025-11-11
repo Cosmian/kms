@@ -13,7 +13,7 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kms_crypto::crypto::wrap::{decode_unwrapped_key, unwrap_key_block},
     cosmian_kms_interfaces::SessionParams,
 };
-use cosmian_logger::debug;
+use cosmian_logger::{debug, trace};
 
 use crate::{
     core::{KMS, uid_utils::has_prefix},
@@ -219,6 +219,7 @@ async fn unwrap_using_encryption_oracle(
             )));
         }
     }
+    trace!("Checked permissions OK for user: {user} on key: {unwrapping_key_uid}");
 
     // fetch the key wrapping data
     let key_wrapping_data = object_key_block.key_wrapping_data.as_ref().ok_or_else(|| {
