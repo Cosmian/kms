@@ -19,7 +19,9 @@ use proteccio_pkcs11_loader::{PROTECCIO_PKCS11_LIB, Proteccio};
 use smartcardhsm_pkcs11_loader::{SMARTCARDHSM_PKCS11_LIB, Smartcardhsm};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use softhsm2_pkcs11_loader::{SOFTHSM2_PKCS11_LIB, Softhsm2};
-use tokio::sync::{OnceCell, RwLock};
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use tokio::sync::OnceCell;
+use tokio::sync::RwLock;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use utimaco_pkcs11_loader::{UTIMACO_PKCS11_LIB, Utimaco};
 
