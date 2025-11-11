@@ -3,7 +3,8 @@
     clippy::print_stdout,
     clippy::panic_in_result_fn,
     clippy::unwrap_in_result,
-    clippy::expect_used
+    clippy::expect_used,
+    unused_imports
 )]
 
 use std::{
@@ -12,7 +13,11 @@ use std::{
 };
 
 use base64::{Engine, engine::general_purpose};
-use cosmian_logger::{debug, log_init, reexport::tracing};
+use cosmian_kmip::kmip_2_1::KmipOperation;
+use cosmian_logger::{
+    debug, log_init,
+    reexport::tracing::{self, trace},
+};
 use openssl::{
     hash::MessageDigest,
     pkey::PKey,
@@ -21,6 +26,7 @@ use openssl::{
     sign::Signer,
 };
 use serde::Deserialize;
+use serial_test::serial;
 use test_kms_server::{
     TestsContext,
     reexport::cosmian_kms_server::routes::google_cse::operations::{
@@ -31,13 +37,16 @@ use test_kms_server::{
         WrapResponse,
     },
     start_default_test_kms_server_with_utimaco_hsm,
+    start_default_test_kms_server_with_utimaco_hsm_and_jwt,
 };
 
 use crate::{
     actions::kms::{
+        access::GrantAccess, google::keypairs::create::CreateKeyPairsAction,
         shared::ImportSecretDataOrKeyAction, symmetric::keys::create_key::CreateKeyAction,
     },
     error::{KmsCliError, result::KmsCliResult},
+    tests::kms::certificates::certify::import_root_and_intermediate,
 };
 
 pub(crate) async fn generate_google_jwt() -> KmsCliResult<String> {
@@ -122,11 +131,26 @@ async fn import_google_cse_demo_key_and_grant(ctx: &TestsContext) -> KmsCliResul
     .run(ctx.get_owner_client())
     .await?;
 
+    GrantAccess {
+        // user: "tech@cosmian.com".to_string(),
+        // user: "owner.client@acme.com".to_string(),
+        user: "blue@cosmian.com".to_string(),
+        object_uid: Some("google_cse".to_string()),
+        operations: vec![
+            KmipOperation::Get,
+            // KmipOperation::Encrypt,
+            // KmipOperation::Decrypt,
+        ],
+    }
+    .run(ctx.get_owner_client())
+    .await?;
+
     Ok(())
 }
 
 // ----------------------------- Tests -----------------------------
 #[tokio::test]
+#[serial]
 #[ignore = "Requires Google OAuth credentials and access to Google CSE endpoints and an Utimaco HSM"]
 async fn hsm_google_cse_status() -> KmsCliResult<()> {
     log_init(option_env!("RUST_LOG"));
@@ -140,6 +164,7 @@ async fn hsm_google_cse_status() -> KmsCliResult<()> {
 
 #[tokio::test]
 #[ignore = "Requires Google OAuth credentials and access to Google CSE endpoints and an Utimaco HSM"]
+#[serial]
 async fn hsm_google_cse_private_key_sign() -> KmsCliResult<()> {
     log_init(None);
     let ctx = start_default_test_kms_server_with_utimaco_hsm().await;
@@ -189,6 +214,7 @@ async fn hsm_google_cse_private_key_sign() -> KmsCliResult<()> {
 }
 
 #[tokio::test]
+#[serial]
 #[ignore = "Requires Google OAuth credentials and access to Google CSE endpoints and an Utimaco HSM"]
 async fn hsm_google_cse_encrypt_and_private_key_decrypt() -> KmsCliResult<()> {
     log_init(None);
@@ -238,6 +264,7 @@ async fn hsm_google_cse_encrypt_and_private_key_decrypt() -> KmsCliResult<()> {
 }
 
 #[tokio::test]
+#[serial]
 #[ignore = "Requires Google OAuth credentials and access to Google CSE endpoints and an Utimaco HSM"]
 async fn hsm_google_cse_wrap_unwrap_key() -> KmsCliResult<()> {
     log_init(None);
@@ -300,11 +327,145 @@ async fn test_google_cse_resource_key_hash() -> KmsCliResult<()> {
     Ok(())
 }
 
+#[ignore = "Requires an Utimaco HSM setup"]
+#[serial]
 #[tokio::test]
+async fn hsm_google_cse_create_key_pair() -> KmsCliResult<()> {
+    log_init(None);
+    let ctx = start_default_test_kms_server_with_utimaco_hsm().await;
+
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis();
+    // Create the Google CSE key in the HSM (prefix hsm::0::)
+    let cse_key_id = CreateKeyAction {
+        key_id: Some(format!("hsm::0::google_cse_{ts}")),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?;
+
+    // import signers
+    let (_root_id, _intermediate_id, issuer_private_key_id) =
+        Box::pin(import_root_and_intermediate(ctx)).await.unwrap();
+
+    // Create key pair without certificate extensions (must fail)
+    let action = CreateKeyPairsAction {
+        user_id: "john.doe@acme.com".to_owned(),
+        cse_key_id: cse_key_id.to_string(),
+        issuer_private_key_id: None,
+        subject_name: "CN=John Doe,OU=Org Unit,O=Org Name,L=City,ST=State,C=US".to_owned(),
+        rsa_private_key_id: None,
+        sensitive: false,
+        wrapping_key_id: None,
+        leaf_certificate_extensions: None,
+        leaf_certificate_id: None,
+        leaf_certificate_pkcs12_file: None,
+        leaf_certificate_pkcs12_password: None,
+        dry_run: true,
+    };
+    action.run(ctx.get_owner_client()).await.unwrap_err();
+
+    // Create key pair with certificate extensions (must succeed)
+    let action = CreateKeyPairsAction {
+        issuer_private_key_id: Some(issuer_private_key_id.clone()),
+        leaf_certificate_extensions: Some(PathBuf::from(
+            "../../test_data/certificates/openssl/ext_leaf.cnf",
+        )),
+        ..action
+    };
+    let certificate_1 = action.run(ctx.get_owner_client()).await.unwrap();
+
+    // Create key pair with certificate id (must succeed)
+    let action = CreateKeyPairsAction {
+        issuer_private_key_id: None,
+        leaf_certificate_extensions: None,
+        leaf_certificate_id: Some(certificate_1.to_string()),
+        ..action
+    };
+    let _certificate_2 = action.run(ctx.get_owner_client()).await.unwrap();
+
+    // Create key pair using a certificate file (must succeed)
+    let action = CreateKeyPairsAction {
+        user_id: "john.barry@acme.com".to_owned(),
+        leaf_certificate_id: None,
+        issuer_private_key_id: None,
+        leaf_certificate_extensions: None,
+        leaf_certificate_pkcs12_file: Some(PathBuf::from(
+            "../../test_data/certificates/csr/leaf.p12",
+        )),
+        leaf_certificate_pkcs12_password: Some("secret".to_owned()),
+        ..action
+    };
+    let _certificate_3 = action.run(ctx.get_owner_client()).await.unwrap();
+
+    Ok(())
+}
+
+#[ignore = "Requires an Utimaco HSM setup"]
+#[serial]
+#[tokio::test]
+async fn hsm_google_cse_create_key_pair_using_imported_google_cse() -> KmsCliResult<()> {
+    log_init(None);
+    let ctx = start_default_test_kms_server_with_utimaco_hsm().await;
+
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis();
+    // Create the Google CSE key in the HSM (prefix hsm::0::)
+    let wrapping_key_id = CreateKeyAction {
+        key_id: Some(format!("hsm::0::another_google_cse_{ts}")),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?;
+
+    let cse_key_id = ImportSecretDataOrKeyAction {
+        key_file: PathBuf::from(
+            "../../documentation/docs/google_cse/original_kms_cse_key.demo.key.json",
+        ),
+        replace_existing: true,
+        unwrap: true,
+        wrapping_key_id: Some(wrapping_key_id.to_string()),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?;
+
+    // import signers
+    let (_root_id, _intermediate_id, issuer_private_key_id) =
+        Box::pin(import_root_and_intermediate(ctx)).await.unwrap();
+
+    // Create key pair without certificate extensions (must succeed)
+    let action = CreateKeyPairsAction {
+        user_id: "john.doe@acme.com".to_owned(),
+        cse_key_id: cse_key_id.to_string(),
+        issuer_private_key_id: Some(issuer_private_key_id.clone()),
+        leaf_certificate_extensions: Some(PathBuf::from(
+            "../../test_data/certificates/openssl/ext_leaf.cnf",
+        )),
+        subject_name: "CN=John Doe,OU=Org Unit,O=Org Name,L=City,ST=State,C=US".to_owned(),
+        rsa_private_key_id: None,
+        sensitive: false,
+        wrapping_key_id: None,
+        leaf_certificate_id: None,
+        leaf_certificate_pkcs12_file: None,
+        leaf_certificate_pkcs12_password: None,
+        dry_run: true,
+    };
+    action.run(ctx.get_owner_client()).await.unwrap();
+
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
 #[ignore = "Requires Google OAuth credentials and access to Google CSE privileged endpoints and an Utimaco HSM"]
 async fn hsm_google_cse_privileged_wrap_unwrap_key() -> KmsCliResult<()> {
     log_init(None);
-    let ctx = start_default_test_kms_server_with_utimaco_hsm().await;
+    let ctx = start_default_test_kms_server_with_utimaco_hsm_and_jwt().await;
     let owner = ctx.get_owner_client();
     import_google_cse_demo_key_and_grant(ctx).await?;
 
@@ -315,7 +476,7 @@ async fn hsm_google_cse_privileged_wrap_unwrap_key() -> KmsCliResult<()> {
         .expect("Error on token generation");
 
     let p_wrap = PrivilegedWrapRequest {
-        authentication: token,
+        authentication: token.clone(),
         key: dek_b64.to_string(),
         perimeter_id: String::new(),
         resource_name: resource_name.to_string(),
@@ -325,8 +486,10 @@ async fn hsm_google_cse_privileged_wrap_unwrap_key() -> KmsCliResult<()> {
         .post_no_ttlv("/google_cse/privilegedwrap", Some(&p_wrap))
         .await?;
 
+    trace!("Wrapped key: {:?}", w.wrapped_key);
+
     let p_unwrap = PrivilegedUnwrapRequest {
-        authentication: "test".to_string(),
+        authentication: token,
         resource_name: resource_name.to_string(),
         wrapped_key: w.wrapped_key,
         reason: String::new(),
@@ -340,10 +503,11 @@ async fn hsm_google_cse_privileged_wrap_unwrap_key() -> KmsCliResult<()> {
 }
 
 #[tokio::test]
+#[serial]
 #[ignore = "Requires Google OAuth credentials and access to Google CSE privileged endpoints and an Utimaco HSM"]
 async fn hsm_google_cse_privileged_private_key_decrypt() -> KmsCliResult<()> {
     log_init(None);
-    let ctx = start_default_test_kms_server_with_utimaco_hsm().await;
+    let ctx = start_default_test_kms_server_with_utimaco_hsm_and_jwt().await;
     let owner = ctx.get_owner_client();
     import_google_cse_demo_key_and_grant(ctx).await?;
 

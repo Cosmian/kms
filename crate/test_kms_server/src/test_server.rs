@@ -33,6 +33,7 @@ pub(crate) static ONCE_SERVER_WITH_AUTH: OnceCell<TestsContext> = OnceCell::cons
 pub(crate) static ONCE_SERVER_WITH_NON_REVOCABLE_KEY: OnceCell<TestsContext> =
     OnceCell::const_new();
 pub(crate) static ONCE_SERVER_WITH_HSM: OnceCell<TestsContext> = OnceCell::const_new();
+pub(crate) static ONCE_SERVER_WITH_HSM_AND_JWT: OnceCell<TestsContext> = OnceCell::const_new();
 pub(crate) static ONCE_SERVER_WITH_PRIVILEGED_USERS: OnceCell<TestsContext> = OnceCell::const_new();
 
 const DEFAULT_KMS_SERVER_PORT: u16 = 9998;
@@ -253,9 +254,9 @@ pub async fn start_default_test_kms_server_with_non_revocable_key_ids(
     })
 }
 
-/// revocable key IDs
+/// With Utimaco HSM
 pub async fn start_default_test_kms_server_with_utimaco_hsm() -> &'static TestsContext {
-    trace!("Starting test server with non-revocable key ids");
+    trace!("Starting test server with Utimaco HSM");
     // Build ServerParams with HSM fields directly and start from them
     ONCE_SERVER_WITH_HSM
         .get_or_try_init(|| async move {
@@ -266,10 +267,45 @@ pub async fn start_default_test_kms_server_with_utimaco_hsm() -> &'static TestsC
                 db_config,
                 port,
                 tls: TlsMode::PlainHttp,
+                jwt: JwtAuth::Disabled,
+                hsm: Some(HsmConfig {
+                    hsm_model: "utimaco".to_owned(),
+                    hsm_admin: "tech@cosmian.com".to_owned(),
+                    hsm_slot: vec![0],
+                    hsm_password: vec!["12345678".to_owned()],
+                }),
+                ..Default::default()
+            })
+            .map_err(|e| {
+                KmsClientError::Default(format!("failed initializing the server config (HSM): {e}"))
+            })?;
+
+            start_from_server_params(server_params).await
+        })
+        .await
+        .unwrap_or_else(|e| {
+            error!("failed to start test server with utimaco hsm: {e}");
+            std::process::abort();
+        })
+}
+
+/// With Utimaco HSM
+pub async fn start_default_test_kms_server_with_utimaco_hsm_and_jwt() -> &'static TestsContext {
+    trace!("Starting test server with Utimaco HSM and JWT Auth");
+    // Build ServerParams with HSM fields directly and start from them
+    ONCE_SERVER_WITH_HSM_AND_JWT
+        .get_or_try_init(|| async move {
+            let port = DEFAULT_KMS_SERVER_PORT + 4;
+            let db_config = get_db_config();
+
+            let server_params = build_server_params_full(BuildServerParamsOptions {
+                db_config,
+                port,
+                tls: TlsMode::PlainHttp,
                 jwt: JwtAuth::Enabled,
                 hsm: Some(HsmConfig {
                     hsm_model: "utimaco".to_owned(),
-                    hsm_admin: "admin".to_owned(),
+                    hsm_admin: "tech@cosmian.com".to_owned(),
                     hsm_slot: vec![0],
                     hsm_password: vec!["12345678".to_owned()],
                 }),
@@ -295,7 +331,7 @@ pub async fn start_default_test_kms_server_with_privileged_users(
     trace!("Starting test server with privileged users");
     ONCE_SERVER_WITH_PRIVILEGED_USERS
         .get_or_try_init(|| async move {
-            let port = DEFAULT_KMS_SERVER_PORT + 4;
+            let port = DEFAULT_KMS_SERVER_PORT + 5;
             let db_config = get_db_config();
 
             // Use Auth0 config for IdP-enabled server
@@ -632,15 +668,13 @@ pub fn build_server_params_full(
         kms_public_url: Some(format!("http://localhost:{}/google_cse", opts.port)),
         google_cse_config: GoogleCseConfig {
             google_cse_enable: true,
-            google_cse_disable_tokens_validation: true,
-            google_cse_incoming_url_whitelist: Some(vec![
-                "https://cse.cosmian.com/google_cse".to_owned(),
-            ]),
+            google_cse_disable_tokens_validation: !opts.jwt.is_enabled(),
+            google_cse_incoming_url_whitelist: None,
             google_cse_migration_key: None,
         },
         non_revocable_key_id: opts.non_revocable_key_id,
         privileged_users: opts.privileged_users,
-        default_username: "owner.client@acme.com".to_owned(),
+        default_username: "tech@cosmian.com".to_owned(),
         ..ClapConfig::default()
     };
 

@@ -1,7 +1,4 @@
-use std::{
-    path::PathBuf,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::path::PathBuf;
 
 use base64::Engine;
 use cosmian_kmip::{
@@ -11,12 +8,13 @@ use cosmian_kmip::{
 use cosmian_kms_client::{ExportObjectParams, export_object};
 use cosmian_logger::{info, log_init};
 use test_kms_server::{
-    start_default_test_kms_server, start_default_test_kms_server_with_utimaco_hsm,
+    reexport::cosmian_kms_server::routes::google_cse::operations::PrivateKeySignRequest,
+    start_default_test_kms_server,
 };
 
 use crate::{
     actions::kms::{
-        google::keypairs::create::CreateKeyPairsAction, shared::ImportSecretDataOrKeyAction,
+        google::keypairs::create::CreateKeyPairsAction,
         symmetric::keys::create_key::CreateKeyAction,
     },
     error::result::KmsCliResult,
@@ -88,148 +86,6 @@ async fn create_google_key_pair() -> KmsCliResult<()> {
     let _certificate_3 = action.run(ctx.get_owner_client()).await.unwrap();
 
     Ok(())
-}
-
-#[ignore = "Requires an Utimaco HSM setup"]
-#[tokio::test]
-async fn hsm_google_cse_create_key_pair() -> KmsCliResult<()> {
-    log_init(None);
-    let ctx = start_default_test_kms_server_with_utimaco_hsm().await;
-
-    let ts = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_millis();
-    // Create the Google CSE key in the HSM (prefix hsm::0::)
-    let cse_key_id = CreateKeyAction {
-        key_id: Some(format!("hsm::0::google_cse_{ts}")),
-        ..Default::default()
-    }
-    .run(ctx.get_owner_client())
-    .await?;
-
-    // import signers
-    let (_root_id, _intermediate_id, issuer_private_key_id) =
-        Box::pin(import_root_and_intermediate(ctx)).await.unwrap();
-
-    // Create key pair without certificate extensions (must fail)
-    let action = CreateKeyPairsAction {
-        user_id: "john.doe@acme.com".to_owned(),
-        cse_key_id: cse_key_id.to_string(),
-        issuer_private_key_id: None,
-        subject_name: "CN=John Doe,OU=Org Unit,O=Org Name,L=City,ST=State,C=US".to_owned(),
-        rsa_private_key_id: None,
-        sensitive: false,
-        wrapping_key_id: None,
-        leaf_certificate_extensions: None,
-        leaf_certificate_id: None,
-        leaf_certificate_pkcs12_file: None,
-        leaf_certificate_pkcs12_password: None,
-        dry_run: true,
-    };
-    action.run(ctx.get_owner_client()).await.unwrap_err();
-
-    // Create key pair with certificate extensions (must succeed)
-    let action = CreateKeyPairsAction {
-        issuer_private_key_id: Some(issuer_private_key_id.clone()),
-        leaf_certificate_extensions: Some(PathBuf::from(
-            "../../test_data/certificates/openssl/ext_leaf.cnf",
-        )),
-        ..action
-    };
-    let certificate_1 = action.run(ctx.get_owner_client()).await.unwrap();
-
-    // Create key pair with certificate id (must succeed)
-    let action = CreateKeyPairsAction {
-        issuer_private_key_id: None,
-        leaf_certificate_extensions: None,
-        leaf_certificate_id: Some(certificate_1.to_string()),
-        ..action
-    };
-    let _certificate_2 = action.run(ctx.get_owner_client()).await.unwrap();
-
-    // Create key pair using a certificate file (must succeed)
-    let action = CreateKeyPairsAction {
-        user_id: "john.barry@acme.com".to_owned(),
-        leaf_certificate_id: None,
-        issuer_private_key_id: None,
-        leaf_certificate_extensions: None,
-        leaf_certificate_pkcs12_file: Some(PathBuf::from(
-            "../../test_data/certificates/csr/leaf.p12",
-        )),
-        leaf_certificate_pkcs12_password: Some("secret".to_owned()),
-        ..action
-    };
-    let _certificate_3 = action.run(ctx.get_owner_client()).await.unwrap();
-
-    Ok(())
-}
-
-#[ignore = "Requires an Utimaco HSM setup"]
-#[tokio::test]
-async fn hsm_google_cse_create_key_pair_using_imported_google_cse() -> KmsCliResult<()> {
-    log_init(None);
-    let ctx = start_default_test_kms_server_with_utimaco_hsm().await;
-
-    let ts = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_millis();
-    // Create the Google CSE key in the HSM (prefix hsm::0::)
-    let wrapping_key_id = CreateKeyAction {
-        key_id: Some(format!("hsm::0::another_google_cse_{ts}")),
-        ..Default::default()
-    }
-    .run(ctx.get_owner_client())
-    .await?;
-
-    let cse_key_id = ImportSecretDataOrKeyAction {
-        key_file: PathBuf::from(
-            "../../documentation/docs/google_cse/original_kms_cse_key.demo.key.json",
-        ),
-        replace_existing: true,
-        unwrap: true,
-        wrapping_key_id: Some(wrapping_key_id.to_string()),
-        ..Default::default()
-    }
-    .run(ctx.get_owner_client())
-    .await?;
-
-    // import signers
-    let (_root_id, _intermediate_id, issuer_private_key_id) =
-        Box::pin(import_root_and_intermediate(ctx)).await.unwrap();
-
-    // Create key pair without certificate extensions (must succeed)
-    let action = CreateKeyPairsAction {
-        user_id: "john.doe@acme.com".to_owned(),
-        cse_key_id: cse_key_id.to_string(),
-        issuer_private_key_id: Some(issuer_private_key_id.clone()),
-        leaf_certificate_extensions: Some(PathBuf::from(
-            "../../test_data/certificates/openssl/ext_leaf.cnf",
-        )),
-        subject_name: "CN=John Doe,OU=Org Unit,O=Org Name,L=City,ST=State,C=US".to_owned(),
-        rsa_private_key_id: None,
-        sensitive: false,
-        wrapping_key_id: None,
-        leaf_certificate_id: None,
-        leaf_certificate_pkcs12_file: None,
-        leaf_certificate_pkcs12_password: None,
-        dry_run: true,
-    };
-    action.run(ctx.get_owner_client()).await.unwrap();
-
-    Ok(())
-}
-
-#[derive(serde::Serialize)]
-struct PrivateKeySignReq<'a> {
-    authentication: &'a str,
-    authorization: &'a str,
-    algorithm: &'a str,
-    digest: &'a str,
-    rsa_pss_salt_length: Option<i32>,
-    reason: &'a str,
-    wrapped_private_key: &'a str,
 }
 
 #[tokio::test]
@@ -322,14 +178,14 @@ async fn create_google_key_pair_and_sign_with_private_key() -> KmsCliResult<()> 
     // which equals 47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=
     let digest_b64 = "47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=".to_owned();
     // In tests, token validation is disabled (see server test utils), so any non-empty strings will do
-    let req = PrivateKeySignReq {
-        authentication: "test",
-        authorization: "test",
-        algorithm: "SHA256withRSA",
-        digest: &digest_b64,
+    let req = PrivateKeySignRequest {
+        authentication: "test".to_string(),
+        authorization: "test".to_string(),
+        algorithm: "SHA256withRSA".to_string(),
+        digest: digest_b64,
         rsa_pss_salt_length: None,
-        reason: "CLI test",
-        wrapped_private_key: &pkcs1_b64,
+        reason: "CLI test".to_string(),
+        wrapped_private_key: pkcs1_b64,
     };
 
     // Use raw post_no_ttlv to send JSON to /google_cse/privatekeysign and expect an error
