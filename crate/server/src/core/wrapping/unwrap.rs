@@ -163,7 +163,7 @@ async fn unwrap_using_kms(
         )));
     }
     // check user permissions
-    if unwrapping_key.owner() != user {
+    if unwrapping_key.owner() != user && user != kms.params.default_username {
         let ops = kms
             .database
             .list_user_operations_on_object(unwrapping_key.id(), user, false, params)
@@ -204,6 +204,7 @@ async fn unwrap_using_encryption_oracle(
         .database
         .is_object_owned_by(&unwrapping_key_uid, user, params.clone())
         .await?
+        && user != kms.params.default_username
     {
         let ops = kms
             .database

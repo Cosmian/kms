@@ -204,7 +204,7 @@ pub async fn validate_cse_authentication_token(
     kms_default_username: &str,
     is_priv_unwrap: Option<String>,
 ) -> KResult<String> {
-    debug!("entering: cse_config: {:?}", cse_config);
+    trace!("entering: cse_config: {:?}", cse_config);
     let cse_config = cse_config.as_ref().ok_or_else(|| {
         KmsError::ServerError(
             "JWT authentication and authorization configurations for Google CSE are not set"

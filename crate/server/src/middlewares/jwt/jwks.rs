@@ -8,6 +8,7 @@ use std::{collections::HashMap, sync::RwLock};
 
 use alcoholic_jwt::{JWK, JWKS};
 use chrono::{DateTime, Duration, Utc};
+use cosmian_logger::trace;
 use reqwest::{Client, header::HeaderValue};
 use serde_json::{Value, json};
 
@@ -171,11 +172,11 @@ async fn parse_jwks(
             .into_iter()
             .filter(|v| match serde_json::from_value::<JWK>(v.clone()) {
                 Ok(jwk) => {
-                    tracing::debug!("Found valid JWK in JWKS at `{jwks_uri}`: {jwk:#?}");
+                    trace!("Found valid JWK in JWKS at `{jwks_uri}`: {jwk:#?}");
                     true
                 }
                 Err(e) => {
-                    tracing::debug!("Ignoring invalid JWK in JWKS at `{jwks_uri}`: {e}: {v:#?}",);
+                    trace!("Ignoring invalid JWK in JWKS at `{jwks_uri}`: {e}: {v:#?}",);
                     false
                 }
             })
