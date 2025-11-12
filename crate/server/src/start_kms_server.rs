@@ -23,19 +23,19 @@ use actix_web::{
     middleware::Condition,
     web::{self, Data, JsonConfig, PayloadConfig},
 };
-use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::{
-        kmip_0::kmip_types::KeyWrapType,
-        kmip_2_1::{
+use cosmian_kms_server_database::{
+    CachedUnwrappedObject, DbError,
+    reexport::{
+        cosmian_kmip::kmip_2_1::{
             kmip_attributes::Attributes,
             kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
             kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
-            kmip_operations::Get,
+            kmip_operations::GetAttributes,
             kmip_types::{KeyFormatType, LinkType, LinkedObjectIdentifier, UniqueIdentifier},
             requests::{create_rsa_key_pair_request, import_object_request},
         },
+        cosmian_kms_crypto::openssl::kmip_private_key_to_openssl,
     },
-    cosmian_kms_crypto::openssl::kmip_private_key_to_openssl,
 };
 use cosmian_logger::{debug, error, info, trace};
 use openssl::ssl::SslAcceptorBuilder;
@@ -43,7 +43,7 @@ use tokio::{runtime::Handle, task::JoinHandle, try_join};
 
 use crate::{
     config::{JwtAuthConfig, ServerParams, TlsParams},
-    core::KMS,
+    core::{KMS, wrapping::unwrap_object},
     error::KmsError,
     middlewares::{
         ApiTokenAuth, EnsureAuth, JwksManager, JwtAuth, JwtConfig, SslAuth,
@@ -97,6 +97,24 @@ pub async fn handle_google_cse_rsa_keypair(
     let uid_sk = format!("{GOOGLE_CSE_ID}_rsa");
     let uid_pk = format!("{GOOGLE_CSE_ID}_rsa_pk");
 
+    // Fast path: if the private key already exists, we're done.
+    if let Ok(resp) = kms_server
+        .get_attributes(
+            GetAttributes {
+                unique_identifier: Some(UniqueIdentifier::TextString(uid_sk.clone())),
+                attribute_reference: None,
+            },
+            &server_params.default_username,
+            None,
+        )
+        .await
+    {
+        if resp.attributes.object_type == Some(ObjectType::PrivateKey) {
+            info!("RSA Keypair for Google CSE already exists (pre-check).");
+            return Ok(());
+        }
+    }
+
     let response =
         if let Some(migration_key_pem) = &server_params.google_cse.google_cse_migration_key {
             info!("Found Google CSE migration key, importing it.");
@@ -129,29 +147,37 @@ pub async fn handle_google_cse_rsa_keypair(
         };
 
     if let Err(e) = response {
-        // We got an error. If this is due to a duplicate key, this is fine; we already have it created
-        let get_request = Get {
-            unique_identifier: Some(UniqueIdentifier::TextString(uid_sk)),
-            key_format_type: Some(KeyFormatType::PKCS1),
-            key_wrap_type: Some(KeyWrapType::NotWrapped),
-            key_compression_type: None,
-            key_wrapping_specification: None,
-        };
-
+        // If the error is due to a UNIQUE constraint, treat it as success (idempotent behavior).
+        let err_str = format!("{e:?}");
+        if err_str.contains("UNIQUE constraint failed") {
+            info!(
+                "RSA Keypair for Google CSE already exists (detected by UNIQUE constraint). Continuing without error."
+            );
+            return Ok(());
+        }
+        // We got an error (likely due to a duplicate). Treat existence as success by checking attributes.
         return match kms_server
-            .get(get_request, &server_params.default_username, None)
+            .get_attributes(
+                GetAttributes {
+                    unique_identifier: Some(UniqueIdentifier::TextString(uid_sk)),
+                    attribute_reference: None,
+                },
+                &server_params.default_username,
+                None,
+            )
             .await
         {
-            Ok(resp) => match resp.object_type {
-                ObjectType::PrivateKey => {
+            Ok(resp) => {
+                if resp.attributes.object_type == Some(ObjectType::PrivateKey) {
                     info!("RSA Keypair for Google CSE already exists.");
                     Ok(())
+                } else {
+                    Err(KmsError::CryptographicError(format!(
+                        "Unexpected object type for Google CSE RSA keypair: {:?}",
+                        resp.attributes.object_type
+                    )))
                 }
-                _ => Err(KmsError::CryptographicError(format!(
-                    "Unexpected object type for Google CSE RSA keypair: {:?}",
-                    resp.object_type
-                ))),
-            },
+            }
             Err(eg) => {
                 let msg = format!(
                     "RSA Keypair for Google CSE not found from existing DB ({eg:#?}), and there \
@@ -292,6 +318,94 @@ async fn import_cse_migration_key(
         .map(|(resp_sk, resp_pk)| (resp_sk.unique_identifier, resp_pk.unique_identifier))
 }
 
+/// Pre-populates the unwrapped cache with the Google CSE key.
+///
+/// This function retrieves the Google CSE symmetric key from the database and stores
+/// its unwrapped version in the cache. This allows to benefit of the KMS unwrapped keys cleanup
+/// while keeping the key ready to be unwrapped.
+///
+/// **Note**: This function only caches the key if it exists AND is wrapped.
+///
+/// # Errors
+///
+/// * `KmsError::ServerError` if the key cannot be retrieved or cached
+async fn cache_google_cse_key(
+    kms_server: &Arc<KMS>,
+    server_params: &Arc<ServerParams>,
+) -> KResult<()> {
+    let uid = GOOGLE_CSE_ID.to_owned();
+
+    // Retrieve the Google CSE key from the database
+    let owm = match kms_server.database.retrieve_object(&uid, None).await {
+        Ok(Some(owm)) => owm,
+        Ok(None) => {
+            debug!(
+                "Google CSE key '{}' not found in database, skipping cache population",
+                uid
+            );
+            return Ok(());
+        }
+        Err(e) => {
+            return Err(KmsError::ServerError(format!(
+                "Failed to retrieve Google CSE key for caching: {e}"
+            )));
+        }
+    };
+
+    let object = owm.object();
+
+    if !object.is_wrapped() {
+        debug!(
+            "Google CSE key '{}' is not wrapped, skipping cache population",
+            uid
+        );
+        return Ok(());
+    }
+
+    // The key is wrapped, so we need to unwrap it and cache it
+    debug!("Google CSE key '{}' is wrapped, unwrapping for cache", uid);
+
+    // Unwrap the object manually
+    let fingerprint = object.fingerprint().map_err(|e| {
+        KmsError::ServerError(format!(
+            "Failed to compute fingerprint for Google CSE key: {e}"
+        ))
+    })?;
+
+    let mut unwrapped_object = object.clone();
+    let unwrap_result = unwrap_object(
+        &mut unwrapped_object,
+        kms_server,
+        &server_params.default_username,
+        None,
+    )
+    .await;
+
+    // Create the cached unwrapped object based on the unwrap result
+    let cached_unwrapped = match &unwrap_result {
+        Ok(()) => Ok(CachedUnwrappedObject::new(fingerprint, unwrapped_object)),
+        Err(e) => Err(DbError::UnwrappedCache(e.to_string())),
+    };
+
+    // Insert into the cache
+    kms_server
+        .database
+        .unwrapped_cache()
+        .insert(uid.clone(), cached_unwrapped)
+        .await;
+
+    // Return the result based on whether unwrapping succeeded
+    match unwrap_result {
+        Ok(()) => {
+            info!("Google CSE key '{}' unwrapped and cached successfully", uid);
+            Ok(())
+        }
+        Err(e) => Err(KmsError::ServerError(format!(
+            "Failed to unwrap and cache Google CSE key: {e}"
+        ))),
+    }
+}
+
 /// Starts the Key Management System (KMS) server based on the provided configuration.
 ///
 /// The server is started using one of three methods:
@@ -347,6 +461,11 @@ pub async fn start_kms_server(
         handle_google_cse_rsa_keypair(&kms_server, &server_params)
             .await
             .context("start KMS server: failed managing Google CSE RSA Keypair")?;
+
+        // Pre-populate the unwrapped cache with the Google CSE key
+        Box::pin(cache_google_cse_key(&kms_server, &server_params))
+            .await
+            .context("start KMS server: failed caching Google CSE key")?;
     }
 
     // Handle sockets

@@ -34,11 +34,17 @@ use crate::{
 };
 
 /// Extension trait to add base64 display functionality to byte types
-trait Base64Display {
+pub(crate) trait Base64Display {
     fn to_base64(&self) -> String;
 }
 
 impl Base64Display for Vec<u8> {
+    fn to_base64(&self) -> String {
+        general_purpose::STANDARD.encode(self)
+    }
+}
+
+impl Base64Display for &Vec<u8> {
     fn to_base64(&self) -> String {
         general_purpose::STANDARD.encode(self)
     }

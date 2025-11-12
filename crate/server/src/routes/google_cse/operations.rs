@@ -166,7 +166,7 @@ pub async fn display_rsa_public_key(
     kms: &Arc<KMS>,
     current_kacls_url: &str,
 ) -> KResult<CertsResponse> {
-    debug!("get rsa public key");
+    debug!("get rsa public key on {current_kacls_url}");
     let get_request = Get {
         unique_identifier: Some(UniqueIdentifier::TextString(format!(
             "{GOOGLE_CSE_ID}_rsa_pk"

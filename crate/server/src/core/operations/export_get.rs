@@ -77,14 +77,14 @@ pub(crate) async fn export_get(
     // export based on the Object type
     match object_type {
         ObjectType::PrivateKey => {
-            post_process_private_key(
+            Box::pin(post_process_private_key(
                 kms,
                 operation_type,
                 user,
                 params.clone(),
                 &request,
                 &mut owm,
-            )
+            ))
             .await?;
         }
         ObjectType::PublicKey => {
@@ -99,7 +99,7 @@ pub(crate) async fn export_get(
                 });
                 key_block.key_format_type = KeyFormatType::Opaque;
             } else {
-                process_public_key(
+                Box::pin(process_public_key(
                     &mut owm,
                     &request.key_format_type,
                     &request.key_wrap_type,
@@ -107,7 +107,7 @@ pub(crate) async fn export_get(
                     kms,
                     user,
                     params.clone(),
-                )
+                ))
                 .await?;
             }
         }
@@ -123,7 +123,7 @@ pub(crate) async fn export_get(
                 });
                 key_block.key_format_type = KeyFormatType::Opaque;
             } else {
-                process_symmetric_key(
+                Box::pin(process_symmetric_key(
                     &mut owm,
                     &request.key_format_type,
                     &request.key_wrap_type,
@@ -131,7 +131,7 @@ pub(crate) async fn export_get(
                     kms,
                     user,
                     params.clone(),
-                )
+                ))
                 .await?;
             }
         }
@@ -160,7 +160,7 @@ pub(crate) async fn export_get(
                         params.clone(),
                     )
                     .await?;
-                    post_process_private_key(
+                    Box::pin(post_process_private_key(
                         kms,
                         operation_type,
                         user,
@@ -175,7 +175,7 @@ pub(crate) async fn export_get(
                             key_wrapping_specification: request.key_wrapping_specification.clone(),
                         },
                         &mut owm,
-                    )
+                    ))
                     .await?;
                 } else if *key_format_type == KeyFormatType::PKCS7 {
                     owm = Box::pin(post_process_pkcs7(kms, operation_type, user, params, owm))
@@ -220,7 +220,7 @@ pub(crate) async fn export_get(
                 });
                 key_block.key_format_type = KeyFormatType::Opaque;
             } else {
-                process_secret_data(
+                Box::pin(process_secret_data(
                     &mut owm,
                     &request.key_format_type,
                     &request.key_wrap_type,
@@ -228,7 +228,7 @@ pub(crate) async fn export_get(
                     kms,
                     user,
                     params.clone(),
-                )
+                ))
                 .await?;
             }
         }
@@ -300,7 +300,7 @@ async fn post_process_private_key(
         });
         key_block.key_format_type = KeyFormatType::Opaque;
     } else {
-        post_process_active_private_key(
+        Box::pin(post_process_active_private_key(
             owm,
             &request.key_format_type,
             &request.key_wrap_type,
@@ -314,7 +314,7 @@ async fn post_process_private_key(
             kms,
             user,
             params.clone(),
-        )
+        ))
         .await?;
     }
     // in the case of a PKCS#12, the private key must be packaged with the certificate
@@ -368,14 +368,14 @@ async fn post_process_active_private_key(
 
     // Covercrypt keys cannot be post-processed, process them here
     if key_block.cryptographic_algorithm == Some(CryptographicAlgorithm::CoverCrypt) {
-        return process_covercrypt_key(
+        return Box::pin(process_covercrypt_key(
             object,
             key_wrapping_specification,
             key_format_type,
             kms,
             user,
             params.clone(),
-        )
+        ))
         .await;
     }
 
@@ -411,16 +411,46 @@ async fn post_process_active_private_key(
             attributes.cryptographic_usage_mask,
         )?;
 
-        // Merge the correct cryptographic attributes in the attributes
-        attributes.merge(object.attributes()?, true);
+        // Merge the correct cryptographic attributes in the attributes if present
+        if let Ok(obj_attrs) = object.attributes() {
+            attributes.merge(obj_attrs, true);
+        }
 
         // Get the key block
         let key_block = object.key_block_mut()?;
-        // add the attributes back
-        *key_block.attributes_mut()? = attributes;
+        // add the attributes back; handle missing attribute container gracefully
+        match key_block.key_value.as_mut() {
+            Some(KeyValue::Structure {
+                attributes: attrs, ..
+            }) => {
+                *attrs = Some(attributes.clone());
+            }
+            Some(KeyValue::ByteString(bytes)) => {
+                // Preserve existing key material and create a structured KeyValue with attributes
+                let km = KeyMaterial::ByteString(bytes.clone());
+                key_block.key_value = Some(KeyValue::Structure {
+                    key_material: km,
+                    attributes: Some(attributes.clone()),
+                });
+            }
+            None => {
+                // No key value present: create an empty structure with attributes
+                key_block.key_value = Some(KeyValue::Structure {
+                    key_material: KeyMaterial::ByteString(Zeroizing::from(vec![])),
+                    attributes: Some(attributes.clone()),
+                });
+            }
+        }
 
         // wrap the key
-        wrap_object(&mut object, key_wrapping_specification, kms, user, params).await?;
+        Box::pin(wrap_object(
+            &mut object,
+            key_wrapping_specification,
+            kms,
+            user,
+            params,
+        ))
+        .await?;
         // reassign the wrapped key
         object_with_metadata.set_object(object);
         return Ok(());
@@ -481,8 +511,27 @@ async fn post_process_active_private_key(
         attributes.merge(key_block_attributes, true);
     }
 
-    // add the attributes back
-    *key_block.attributes_mut()? = attributes;
+    // add the attributes back; handle missing attribute container gracefully
+    match key_block.key_value.as_mut() {
+        Some(KeyValue::Structure {
+            attributes: attrs, ..
+        }) => {
+            *attrs = Some(attributes.clone());
+        }
+        Some(KeyValue::ByteString(bytes)) => {
+            let km = KeyMaterial::ByteString(bytes.clone());
+            key_block.key_value = Some(KeyValue::Structure {
+                key_material: km,
+                attributes: Some(attributes.clone()),
+            });
+        }
+        None => {
+            key_block.key_value = Some(KeyValue::Structure {
+                key_material: KeyMaterial::ByteString(Zeroizing::from(vec![])),
+                attributes: Some(attributes.clone()),
+            });
+        }
+    }
 
     Ok(())
 }
@@ -528,14 +577,14 @@ async fn process_public_key(
         // process Covercrypt keys
         if key_block.cryptographic_algorithm == Some(CryptographicAlgorithm::CoverCrypt) {
             let object = object_with_metadata.object_mut();
-            return process_covercrypt_key(
+            return Box::pin(process_covercrypt_key(
                 object,
                 key_wrapping_specification,
                 key_format_type,
                 kms,
                 user,
                 params.clone(),
-            )
+            ))
             .await;
         }
     }
@@ -581,7 +630,14 @@ async fn process_public_key(
         }
 
         // wrap the key
-        wrap_object(&mut object, key_wrapping_specification, kms, user, params).await?;
+        Box::pin(wrap_object(
+            &mut object,
+            key_wrapping_specification,
+            kms,
+            user,
+            params,
+        ))
+        .await?;
         // reassign the wrapped key
         *object_with_metadata.object_mut() = object;
         return Ok(());
@@ -693,13 +749,13 @@ async fn process_covercrypt_key(
             )
         }
         // wrap the key
-        wrap_object(
+        Box::pin(wrap_object(
             covercrypt_key,
             key_wrapping_specification,
             kms,
             user,
             params,
-        )
+        ))
         .await?;
     }
     Ok(())
@@ -777,24 +833,69 @@ async fn process_symmetric_key(
     )
     .await?;
 
-    let object = object_with_metadata.object_mut();
-    let key_block = object.key_block_mut()?;
+    // Check whether the stored object is wrapped without taking a mutable borrow.
+    let is_wrapped = object_with_metadata
+        .object()
+        .key_block()?
+        .key_wrapping_data
+        .is_some();
 
-    // If the key is still wrapped the the export KeyFormatType must be the default (none)
-    if key_block.key_wrapping_data.is_some() {
-        if key_format_type.is_some() {
-            kms_bail!(
-                "export: unable to export a wrapped symmetric key with a requested Key Format \
-                 Type. It must be the default"
-            )
+    // If the key is still wrapped then historically we rejected any requested KeyFormatType.
+    // Allow the client to request `Raw` but, in order to provide actual raw key bytes (so the
+    // KEK can be used to wrap another object), attempt to obtain the unwrapped key from the
+    // KMS before returning. If the request explicitly asks for other formats, keep rejecting
+    // them for wrapped objects.
+    if is_wrapped {
+        if let Some(req_fmt) = key_format_type {
+            if matches!(req_fmt, KeyFormatType::Raw) {
+                // Try to unwrap the stored wrapped key so callers requesting Raw actually get the
+                // underlying key bytes. This mirrors the behavior expected when the key must be
+                // unwrapped to be used as a KEK to wrap another key.
+                let mut unwrapped = kms
+                    .get_unwrapped(
+                        object_with_metadata.id(),
+                        object_with_metadata.object(),
+                        user,
+                        params.clone(),
+                    )
+                    .await?;
+
+                // If the unwrapped object lost attributes in the KeyValue::Structure, restore
+                // them from the object metadata so downstream attribute accessors succeed.
+                if let Ok(kb) = unwrapped.key_block_mut() {
+                    if let Some(KeyValue::Structure {
+                        attributes: attrs, ..
+                    }) = kb.key_value.as_mut()
+                    {
+                        if attrs.is_none() {
+                            *attrs = Some(object_with_metadata.attributes().clone());
+                        }
+                    }
+                }
+
+                // Replace the object with the unwrapped representation and continue processing
+                // as an unwrapped symmetric key (so the normal export flow will return raw
+                // key bytes).
+                object_with_metadata.set_object(unwrapped);
+            } else {
+                // any other requested format remains unsupported for wrapped objects
+                kms_bail!(
+                    "export: unable to export a wrapped symmetric key with a requested Key Format \
+                     Type. It must be the default or Raw"
+                )
+            }
+        } else {
+            // No specific KeyFormatType requested — export the wrapped object as registered
+            return Ok(());
         }
-        // The key is wrapped and as expected the requested Key Format Type is the default (none)
-        // => The key is exported as such
-        return Ok(());
     }
 
     // we have an unwrapped key, convert it to the pivotal format first,
     // which is getting the key bytes
+
+    // Obtain mutable access to the (now guaranteed unwrapped) object and key block.
+    let object = object_with_metadata.object_mut();
+    let key_block = object.key_block_mut()?;
 
     let Some(&mut KeyValue::Structure {
         ref mut key_material,
@@ -828,7 +929,14 @@ async fn process_symmetric_key(
         key_block.key_format_type = KeyFormatType::Raw;
         key_block.attributes_mut()?.key_format_type = Some(KeyFormatType::Raw);
         // wrap the key
-        wrap_object(object, key_wrapping_specification, kms, user, params).await?;
+        Box::pin(wrap_object(
+            object,
+            key_wrapping_specification,
+            kms,
+            user,
+            params,
+        ))
+        .await?;
         return Ok(());
     }
 
@@ -1122,7 +1230,14 @@ async fn process_secret_data(
         key_block.key_format_type = KeyFormatType::Raw;
         key_block.attributes_mut()?.key_format_type = Some(KeyFormatType::Raw);
         // wrap the key
-        wrap_object(object, key_wrapping_specification, kms, user, params).await?;
+        Box::pin(wrap_object(
+            object,
+            key_wrapping_specification,
+            kms,
+            user,
+            params,
+        ))
+        .await?;
         return Ok(());
     }
 

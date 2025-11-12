@@ -7,7 +7,10 @@ use cosmian_kmip::{
 };
 use cosmian_kms_client::{ExportObjectParams, export_object};
 use cosmian_logger::{info, log_init};
-use test_kms_server::start_default_test_kms_server;
+use test_kms_server::{
+    reexport::cosmian_kms_server::routes::google_cse::operations::PrivateKeySignRequest,
+    start_default_test_kms_server,
+};
 
 use crate::{
     actions::kms::{
@@ -83,17 +86,6 @@ async fn create_google_key_pair() -> KmsCliResult<()> {
     let _certificate_3 = action.run(ctx.get_owner_client()).await.unwrap();
 
     Ok(())
-}
-
-#[derive(serde::Serialize)]
-struct PrivateKeySignReq<'a> {
-    authentication: &'a str,
-    authorization: &'a str,
-    algorithm: &'a str,
-    digest: &'a str,
-    rsa_pss_salt_length: Option<i32>,
-    reason: &'a str,
-    wrapped_private_key: &'a str,
 }
 
 #[tokio::test]
@@ -186,14 +178,14 @@ async fn create_google_key_pair_and_sign_with_private_key() -> KmsCliResult<()> 
     // which equals 47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=
     let digest_b64 = "47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=".to_owned();
     // In tests, token validation is disabled (see server test utils), so any non-empty strings will do
-    let req = PrivateKeySignReq {
-        authentication: "test",
-        authorization: "test",
-        algorithm: "SHA256withRSA",
-        digest: &digest_b64,
+    let req = PrivateKeySignRequest {
+        authentication: "test".to_string(),
+        authorization: "test".to_string(),
+        algorithm: "SHA256withRSA".to_string(),
+        digest: digest_b64,
         rsa_pss_salt_length: None,
-        reason: "CLI test",
-        wrapped_private_key: &pkcs1_b64,
+        reason: "CLI test".to_string(),
+        wrapped_private_key: pkcs1_b64,
     };
 
     // Use raw post_no_ttlv to send JSON to /google_cse/privatekeysign and expect an error
