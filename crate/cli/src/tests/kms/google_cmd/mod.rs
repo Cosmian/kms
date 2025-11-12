@@ -3,3 +3,4 @@
 // mod identities;
 // mod keypairs_enabling;
 mod keypairs;
+mod using_hsm;

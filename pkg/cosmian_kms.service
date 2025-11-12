@@ -10,7 +10,7 @@ ExecStart=/usr/sbin/cosmian_kms
 Restart=on-failure
 RestartSec=3s
 Environment="COSMIAN_KMS_CONF=/etc/cosmian/kms.toml"
-StandardOutput=syslog+console
+StandardOutput=journal+console
 
 [Install]
 WantedBy=multi-user.target

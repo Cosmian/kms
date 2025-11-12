@@ -146,10 +146,16 @@ pub(super) fn unwrap(
     key_format_type: KeyFormatType,
 ) -> Result<KeyValue, CryptoError> {
     // Make sure that the key used to unwrap can be used to unwrap.
-    if !unwrapping_key
-        .attributes()?
-        .is_usage_authorized_for(CryptographicUsageMask::UnwrapKey)?
-    {
+    // The KMIP object may not expose attributes (e.g. when stored as a ByteString or when
+    // the KeyValue structure has no attributes). In that case, treat the absence of
+    // attributes as not-authorized and return a clear CryptoError instead of propagating
+    // a KMIP attribute error.
+    let unwrapping_authorized = unwrapping_key.attributes().is_ok_and(|attrs| {
+        attrs
+            .is_usage_authorized_for(CryptographicUsageMask::UnwrapKey)
+            .unwrap_or(false)
+    });
+    if !unwrapping_authorized {
         return Err(CryptoError::Kmip(
             "CryptographicUsageMask not authorized for UnwrapKey".to_owned(),
         ));

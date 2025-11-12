@@ -227,10 +227,15 @@ pub(super) fn wrap(
             }
 
             // Make sure that the key used to wrap can be used to wrap.
-            if !wrapping_key
-                .attributes()?
-                .is_usage_authorized_for(CryptographicUsageMask::WrapKey)?
-            {
+            // The KMIP object may not expose attributes (e.g. when stored as a ByteString or when
+            // the KeyValue structure has no attributes). Avoid propagating KMIP attribute errors
+            // here: treat missing attributes as not-authorized and return a clear CryptoError.
+            let wrapping_authorized = wrapping_key.attributes().is_ok_and(|attrs| {
+                attrs
+                    .is_usage_authorized_for(CryptographicUsageMask::WrapKey)
+                    .unwrap_or(false)
+            });
+            if !wrapping_authorized {
                 return Err(CryptoError::Kmip(
                     "CryptographicUsageMask not authorized for WrapKey".to_owned(),
                 ));

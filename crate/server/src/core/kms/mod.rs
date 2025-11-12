@@ -19,12 +19,20 @@ use proteccio_pkcs11_loader::{PROTECCIO_PKCS11_LIB, Proteccio};
 use smartcardhsm_pkcs11_loader::{SMARTCARDHSM_PKCS11_LIB, Smartcardhsm};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use softhsm2_pkcs11_loader::{SOFTHSM2_PKCS11_LIB, Softhsm2};
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use tokio::sync::OnceCell;
 use tokio::sync::RwLock;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use utimaco_pkcs11_loader::{UTIMACO_PKCS11_LIB, Utimaco};
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 const OTHER_HSM_PKCS11_LIB: &str = "/lib/libkmshsm.so";
+
+// Reuse a single HSM instance across multiple test servers (e.g. Utimaco) to
+// avoid re-initialization failures when starting several KMS instances in the
+// same process for CLI tests exercising privileged & non-privileged endpoints.
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+static GLOBAL_HSM: OnceCell<Arc<dyn HSM + Send + Sync>> = OnceCell::const_new();
 
 use crate::{config::ServerParams, error::KmsError, kms_bail, result::KResult};
 
@@ -110,6 +118,10 @@ impl KMS {
             kms_bail!("Fatal: HSMs are only supported on Linux x86_64");
             #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
             {
+                // Attempt reuse first (used by test harness to allow multiple servers sharing one physical HSM).
+                if let Some(existing) = GLOBAL_HSM.get() {
+                    return Ok(Some(existing.clone()));
+                }
                 let hsm_model = server_params.hsm_model.as_ref().ok_or_else(|| {
                     KmsError::InvalidRequest("The HSM model is not specified".to_owned())
                 })?;
@@ -126,6 +138,7 @@ impl KMS {
                                 ))
                             })?,
                         );
+                        GLOBAL_HSM.set(crypt2pay.clone()).ok();
                         Some(crypt2pay)
                     }
                     "proteccio" => {
@@ -140,6 +153,7 @@ impl KMS {
                                 ))
                             })?,
                         );
+                        GLOBAL_HSM.set(proteccio.clone()).ok();
                         Some(proteccio)
                     }
                     "utimaco" => {
@@ -154,6 +168,7 @@ impl KMS {
                                 ))
                             })?,
                         );
+                        GLOBAL_HSM.set(utimaco.clone()).ok();
                         Some(utimaco)
                     }
                     "softhsm2" => {
@@ -168,6 +183,7 @@ impl KMS {
                                 ))
                             })?,
                         );
+                        GLOBAL_HSM.set(softhsm2.clone()).ok();
                         Some(softhsm2)
                     }
                     "smartcardhsm" => {
@@ -182,6 +198,7 @@ impl KMS {
                                 ))
                             })?,
                         );
+                        GLOBAL_HSM.set(smartcardhsm.clone()).ok();
                         Some(smartcardhsm)
                     }
                     "other" => {
@@ -197,6 +214,7 @@ impl KMS {
                                 ))
                             })?,
                         );
+                        GLOBAL_HSM.set(other_hsm.clone()).ok();
                         Some(other_hsm)
                     }
                     _ => kms_bail!(

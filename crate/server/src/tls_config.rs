@@ -60,19 +60,27 @@ fn configure_cipher_suites(cipher_suites: Option<&str>) -> KResult<SslAcceptorBu
     let builder = if let Some(suites) = cipher_suites {
         trace!("configure_cipher_suites: Setting custom cipher string: {suites}");
 
-        let mut builder = SslAcceptor::mozilla_modern_v5(SslMethod::tls())?;
-
         // Helper function to check if a cipher suite is TLS 1.3
         let is_tls13_cipher = |cipher: &str| -> bool { TLS13_CIPHER_SUITES.contains(&cipher) };
 
-        // Parse and configure cipher suites
+        // Parse and split cipher suites into TLS1.3 vs TLS1.2 buckets
         let (tls13_ciphers, tls12_ciphers): (Vec<&str>, Vec<&str>) = suites
             .split(':')
             .filter(|s| !s.trim().is_empty())
             .partition(|&cipher| is_tls13_cipher(cipher));
 
+        // Choose baseline profile depending on whether TLS1.2 ciphers are requested
+        // - mozilla_intermediate allows TLS1.2 and TLS1.3
+        // - mozilla_modern is TLS1.3-only; keep it when only TLS1.3 ciphers are provided
+        let mut builder = if tls12_ciphers.is_empty() {
+            SslAcceptor::mozilla_modern_v5(SslMethod::tls())?
+        } else {
+            SslAcceptor::mozilla_intermediate_v5(SslMethod::tls())?
+        };
+
         if !tls12_ciphers.is_empty() {
             builder.set_min_proto_version(Some(SslVersion::TLS1_2))?;
+            builder.set_max_proto_version(Some(SslVersion::TLS1_3))?;
             builder.set_cipher_list(&tls12_ciphers.join(":"))?;
         }
 

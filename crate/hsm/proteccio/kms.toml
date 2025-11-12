@@ -1,0 +1,27 @@
+## Cosmian KMS configuration file (Proteccio HSM)
+# Minimal configuration demonstrating the new [idp_auth] section.
+
+# The default username to use when no authentication method is provided.
+default_username = "admin"
+force_default_username = false
+
+[db]
+database_type = "sqlite"
+clear_database = false
+unwrapped_cache_max_age = 15
+
+# The following fields are only needed if an HSM is used.
+# Check the HSMs documentation pages for more information.
+hsm_model = "proteccio"
+hsm_admin = "admin"       # for Create operation on HSM
+hsm_slot = [1]
+hsm_password = ["648219"] # default PIN for development purposes
+
+[http]
+port = 9998
+hostname = "0.0.0.0"
+
+[logging]
+rust_log = "info,cosmian_kms=debug"
+quiet = false
+log_to_syslog = false

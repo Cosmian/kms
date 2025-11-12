@@ -98,7 +98,14 @@ pub(crate) async fn create(
     };
 
     // Wrap the object if requested by the user or on the server params
-    wrap_and_cache(kms, owner, params.clone(), &unique_identifier, &mut object).await?;
+    Box::pin(wrap_and_cache(
+        kms,
+        owner,
+        params.clone(),
+        &unique_identifier,
+        &mut object,
+    ))
+    .await?;
 
     // create the object in the database
     let uid = kms

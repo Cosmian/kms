@@ -1,5 +1,6 @@
 use std::fmt::{self, Display, Formatter};
 
+use cosmian_logger::trace;
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
@@ -615,6 +616,10 @@ impl Attributes {
     /// return `false` otherwise.
     /// Raise error if object's `CryptographicUsageMask` is None.
     pub fn is_usage_authorized_for(&self, flag: CryptographicUsageMask) -> Result<bool, KmipError> {
+        trace!(
+            "Checking usage mask authorization {:?} for flag: {:?}",
+            self.cryptographic_usage_mask, flag
+        );
         let usage_mask = self.cryptographic_usage_mask.ok_or_else(|| {
             KmipError::InvalidKmip21Value(
                 ErrorReason::Incompatible_Cryptographic_Usage_Mask,
@@ -622,8 +627,8 @@ impl Attributes {
             )
         })?;
 
-        #[cfg(feature = "non-fips")]
         // In non-FIPS mode, Unrestricted can be allowed.
+        #[cfg(feature = "non-fips")]
         let flag = flag | CryptographicUsageMask::Unrestricted;
 
         Ok((usage_mask & flag).bits() != 0)

@@ -104,13 +104,14 @@ pub(crate) async fn create_key_pair(
     };
     let private_key_tags = private_key_attributes.get_tags();
     let cryptographic_algorithm = private_key_attributes.cryptographic_algorithm;
-    wrap_and_cache(
+
+    Box::pin(wrap_and_cache(
         kms,
         owner,
         params.clone(),
         &UniqueIdentifier::TextString(sk_uid.clone()),
         &mut private_key,
-    )
+    ))
     .await?;
 
     let mut public_key = key_pair.public_key().to_owned();
@@ -131,13 +132,13 @@ pub(crate) async fn create_key_pair(
         attributes.clone()
     };
     let public_key_tags = public_key_attributes.get_tags();
-    wrap_and_cache(
+    Box::pin(wrap_and_cache(
         kms,
         owner,
         params.clone(),
         &UniqueIdentifier::TextString(pk_uid.clone()),
         &mut public_key,
-    )
+    ))
     .await?;
 
     let operations = vec![

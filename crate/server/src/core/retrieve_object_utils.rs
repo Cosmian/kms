@@ -30,7 +30,7 @@ pub(crate) async fn retrieve_object_for_operation(
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<ObjectWithMetadata> {
     trace!(
-        "retrieve_object_for_operation: key_uid_or_tags: {uid_or_tags:?}, user: {user}, \
+        "key_uid_or_tags: {uid_or_tags:?}, user: {user}, \
          operation_type: {operation_type:?}"
     );
 
@@ -40,6 +40,7 @@ pub(crate) async fn retrieve_object_for_operation(
         .await?
         .values()
     {
+        trace!("Checking key with ID: {}", owm.id());
         let state = owm.state();
         if !(state == State::Active
             || state == State::PreActive
